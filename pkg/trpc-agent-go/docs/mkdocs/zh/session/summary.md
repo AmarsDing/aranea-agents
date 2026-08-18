@@ -36,7 +36,7 @@ summarizer := summary.NewSummarizer(
     summary.WithChecksAny(                     // 任一条件满足即触发
         summary.CheckEventThreshold(20),       // 自上次摘要后新增 20 个事件后触发
         summary.CheckTokenThreshold(4000),     // 自上次摘要后新增 4000 个 token 后触发
-        summary.CheckTimeThreshold(5*time.Minute), // 在摘要检查时判断；比较被检查 session 的最后一个事件（在增量摘要路径里通常就是最近一个待摘要事件）
+        summary.CheckTimeThreshold(5*time.Minute), // Runner 路径：下一请求到来前的空闲时间超过 5 分钟时触发
     ),
     summary.WithMaxSummaryWords(200),          // 限制摘要在 200 字以内
 )
@@ -99,6 +99,8 @@ sessionService, err := clickhouse.NewService(
 )
 ```
 
+`WithAsyncSummaryNum` 只控制后台异步摘要 worker 的并发数，不是同步/异步模式开关，也不是关闭摘要功能的开关。如果不需要生成摘要，不配置 `WithSummarizer` 即可；如果需要在同一次 `Run` 的长 ReAct loop 中让下一次 LLM 调用前立刻看到最新摘要，应在 Agent 侧使用 `llmagent.WithSyncSummaryIntraRun(true)`。
+
 ### 步骤 3：配置 Agent 和 Runner
 
 创建 Agent 并配置摘要注入行为：
@@ -128,7 +130,144 @@ r := runner.NewRunner(
 eventChan, err := r.Run(ctx, userID, sessionID, userMessage)
 ```
 
+主示例保持默认异步摘要路径。只有在长 ReAct loop 需要同一次 `Run` 内下一次 LLM 调用前立刻看到最新摘要时，才显式添加同步 intra-run 选项：
+
+```go
+llmAgent := llmagent.New(
+    "my-agent",
+    llmagent.WithModel(summaryModel),
+    llmagent.WithAddSessionSummary(true),   // 启用摘要注入
+    llmagent.WithSyncSummaryIntraRun(true),
+    llmagent.WithMaxHistoryRuns(10),        // 当AddSessionSummary=false时限制历史轮次
+)
+```
+
 完成以上配置后，摘要功能即可自动运行。
+
+## Cache-Safe 摘要 Forking
+
+摘要器有两种请求构造模式。
+
+**独立摘要请求** 是默认模式。框架会先选出需要摘要的 events，把它们转换成
+conversation text；如果配置了 `WithPreSummaryHook(...)`，还会先执行这个
+hook。随后摘要模型收到的请求由下面两部分组成：
+
+- 可选的 system message，来自 `WithSystemPrompt(...)`。
+- 一条 user message，来自 `WithPrompt(...)`；其中 `{conversation_text}` 会被替换为提取出的对话文本。自定义 prompt 还可以使用 `{previous_summary}`，把上一版滚动摘要与本次新增的对话事件分别放置。
+
+这条请求和主 agent 的请求相互独立，因此同步摘要、异步摘要、手动调用摘要接口
+都能使用。
+
+如果长会话场景对 prompt cache 命中率比较敏感，可以显式开启 cache-safe forking：
+
+```go
+summarizer := summary.NewSummarizer(
+    summaryModel,
+    summary.WithContextThreshold(),
+    summary.WithMaxSummaryWords(200),
+    summary.WithCacheSafeForking(true),
+)
+```
+
+在普通 LLM flow 里触发 context compaction 时，框架已经构造好了当前主 agent
+调用的父 `model.Request`。开启 `WithCacheSafeForking(true)` 后，摘要请求会按
+下面的方式构造：
+
+- 克隆这个父请求，保留它对模型可见的 prefix，包括 system context、已注入的
+  summary、session history、用户输入、工具定义、headers、extra fields 和
+  generation settings。
+- 在末尾追加一条 user message，内容来自 `WithCacheSafeForkPrompt(...)`。
+- 强制摘要调用使用非流式输出，并清掉 structured output，因为摘要调用只需要返回普通摘要文本。
+
+这样摘要请求和父请求拥有相同的前缀，支持 prompt cache 的模型服务就能复用更多
+已缓存输入。如果当前没有父请求，例如手动或外部调用摘要接口，摘要器会自动
+回退到独立摘要请求。开启 cache-safe forking 后，这条独立请求的 user message 会先
+放入 `WithPrompt(...)` 的渲染结果，再追加固定的 source-data boundary 和
+`WithCacheSafeForkPrompt(...)` 渲染出的指令。boundary 会明确要求模型把前面的对话
+当作待总结的源数据，而不是需要继续执行的任务。其他 standalone fallback（包括
+bounded 请求和 retry 请求）也使用相同结构。
+
+无论最终使用哪种请求，发送前都会按摘要模型的有效输入预算做准入检查：如果模型
+能够提供 provider-specific input budget，框架会取它与“模型 context window 的
+70%”这层保守上限中的较小值。fork 请求超预算时，框架只修改 clone，不会污染父
+请求：先移除摘要调用不会使用的 tool schemas，必要时再用明确的省略标记替换较大
+的 tool arguments/results payload，但不会删除 source conversation turn。如果仍然
+放不下，再重建为 bounded standalone 请求。完整渲染后的 fork prompt（包括自定义
+内容）在 fork 和 standalone 两种请求中都会占用输入预算。当预算能够容纳全部尚未
+覆盖的新对话时，standalone 路径会完整保留这些内容；使用
+`{previous_summary}` 时，只允许压缩这块上一版滚动摘要。固定的 system prompt、
+user prompt 模板、source boundary 和 fork prompt 都会保持完整。
+
+如果尚未覆盖的新对话无法一次放进 standalone 请求，摘要器可以先处理较旧的完整
+前缀，其余 events 保持未覆盖，留待后续摘要。前缀只能结束在稳定的 event 边界，
+不能拆开同一 response 的 chunks，也不能拆开仍未闭合的 tool call/result round。
+只有模型生成与 post-summary 处理都完成后，summary boundary 才会推进到所选前缀。
+如果连最小的完整前缀都放不下，请求会在调用模型前失败，原 boundary 保持不变。
+配置 `WithPreSummaryHook(...)` 时不会启用部分前缀 fallback，因为 hook 重写后的文本
+无法安全映射回 event boundary。前缀摘要始终使用 standalone 请求，不会复用
+cache-safe fork。
+
+预算适配和 fork → standalone 的选择发生在 `BeforeModel` callback 之前，因此
+callback 看到并修改的就是最终准备送模的请求。callback 返回后框架会再次计数；
+如果 callback 自己把请求扩到超预算，会明确失败，而不是再次换请求并静默丢失
+callback 的修改。如果 provider 仍返回 context-length error，或者非 custom 的
+模型调用返回空 summary，摘要器会用第一次输入预算的一半再做一次 bounded
+standalone 重试；这次重试也可以按相同的边界规则选择更小的完整前缀。
+
+这里有一个重要的 branch 摘要行为：开启 `WithCacheSafeForking(true)` 后，非空
+branch 触发摘要时，可以用当前父请求 fork 来生成 branch 摘要；但同一轮 summary
+pass 不会再跑级联出来的全量会话摘要。框架会直接跳过这个全量摘要目标，而不是
+回退到独立的全量摘要 prompt，也不会复用这个 branch 视角的 fork request。如果
+需要覆盖所有 branch 的全量摘要，需要单独触发一次全量会话摘要。
+
+Prompt 规则：
+
+- `WithPrompt(...)` 配置独立摘要请求的 user prompt，必须包含
+  `{conversation_text}`，并可选包含 `{previous_summary}`。使用该可选占位符时，
+  `{previous_summary}` 是上一版滚动摘要，`{conversation_text}` 只包含摘要边界后
+  新增的事件；不使用时，上一版摘要继续合并在 `{conversation_text}` 中以保持兼容。
+  如果配置了 `WithMaxSummaryWords(...)`，
+  `{max_summary_words}` 必须出现在 `WithPrompt(...)` 或
+  `WithSystemPrompt(...)` 其中之一。
+- `WithSystemPrompt(...)` 配置独立摘要请求里可选的 system message，不能包含
+  `{conversation_text}` 或 `{previous_summary}`，可以包含 `{max_summary_words}`。
+- `WithCacheSafeForkPrompt(...)` 配置开启 cache-safe forking 后使用的最终摘要指令。
+  在 fork 模式下，它会作为 user message 追加到克隆的父请求；在 standalone
+  fallback 中，它会追加到同一条 standalone user message 的固定 source-data
+  boundary 之后。它不能包含 `{conversation_text}` 或 `{previous_summary}`，因为
+  两种请求结构都已在它前面放入源对话；它可以包含 `{max_summary_words}`，完整的
+  渲染结果会计入摘要模型的输入预算。
+
+即使开启了 cache-safe forking，也要保持独立摘要 prompt 有效，因为 fallback
+路径仍然会使用它。自定义 fork prompt 时，建议明确要求模型“总结上面的对话，
+供后续继续对话使用”，并保留用户目标、决策、约束、未完成事项、工具结果和重要
+事实；同时要求模型不要调用工具、不要直接回答最新用户请求，也不要把 system
+和 tool-use 指令当作事实写进摘要。
+
+`WithPreSummaryHook(...)` 仍然会在摘要模型调用前执行。独立摘要模式下，hook
+修改后的文本会渲染进 `{conversation_text}`。当 prompt 使用
+`{previous_summary}` 时，hook 的 `Events` 和 `Text` 是本次新增对话，
+`PreviousSummary` 则是可以单独修改的上一版摘要。如果 fork 模式拿到了父请求，
+这些 payload 修改不会再被塞进摘要请求，因为对话内容已经在克隆的父请求里。
+此时 hook 仍可用于更新 context、做副作用处理，以及服务 fallback 到独立摘要请求的场景。
+
+在 fork 模式下，`WithPreSummaryHook(...)` 对 text 或 events 的修改不会对克隆
+出来的父请求做脱敏、redaction 或 filtering。如果这个 hook 用于在摘要前做脱敏
+或过滤，请让这类流程使用独立摘要模式，或确保父 `model.Request` 在被克隆前已经
+完成脱敏。
+
+Cache-safe forking 控制的是“生成摘要那次请求”的构造方式。摘要已经生成以后，
+下一次普通对话请求如果也希望更利于 prompt cache，建议把摘要注入为 user
+message，而不是合并进 system prompt：
+
+```go
+llmAgent := llmagent.New(
+    "my-agent",
+    llmagent.WithModel(summaryModel),
+    llmagent.WithAddSessionSummary(true),
+    llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser),
+)
+```
 
 ## 摘要 + 渐进式披露
 
@@ -321,7 +460,7 @@ resolver 返回 nil 会跳过自动摘要检查；如果直接调用 `Summarize`
 | `WithEventThreshold(eventCount int)` | 当自上次摘要后的事件数量超过阈值时触发 |
 | `WithTokenThreshold(tokenCount int)` | 当自上次摘要后的 token 数量超过阈值时触发 |
 | `WithContextThreshold(opts ...ContextThresholdOption)` | 当自上次摘要后的 token 数量超过当前模型 context window 的指定比例时触发 |
-| `WithTimeThreshold(interval time.Duration)` | 在执行摘要检查时，包装 `CheckTimeThreshold`；当被检查 session 的最后一个事件距离当前已超过该间隔时触发 |
+| `WithTimeThreshold(interval time.Duration)` | Runner 路径按当前顶层 request 到来前的空闲间隔判断；standalone 调用保留“最后事件距现在多久”的兼容行为 |
 
 如果你希望使用固定的业务阈值，例如“不管当前使用什么模型，只要新增
 4000 token 就摘要”，使用 `WithTokenThreshold`。这个阈值会固化在摘要器配置里，
@@ -335,8 +474,49 @@ resolver 返回 nil 会跳过自动摘要检查；如果直接调用 `Summarize`
 2. 模型实例配置：例如 `openai.WithContextWindow(tokens)` 或 `provider.WithContextWindow(tokens)`
 3. 进程级模型名注册表：`model.RegisterModelContextWindow(name, tokens)`
 
-然后按 `contextWindow * ratio` 计算阈值（默认 50%）。对于私有部署、endpoint ID、
-微调模型、新模型或多租户自定义模型配置，优先使用模型实例或单次运行 option，
+然后按 `contextWindow * ratio` 计算阈值（默认 50%）。为了避免在极短上下文中
+过早摘要，`WithContextThreshold` 默认还会施加 2000 token 的最小触发阈值。
+也就是说，实际阈值是 `max(contextWindow * ratio, minTokenThreshold)`，且内置
+checker 只有在估算 token 数**大于**阈值时才触发。如果把 ratio 设置得很小，
+例如 `0.001`，但希望 1000 token 左右就开始摘要，需要显式传入
+`summary.WithContextThresholdMinTokens(0)`，或设置成业务希望的最小值。
+
+### 触发和调用上报
+
+如果需要观察“为什么触发 summary”以及“summary 模型请求实际用了多少 token”，
+可以配置 `summary.WithReportHook`：
+
+```go
+summarizer := summary.NewSummarizer(
+    summaryModel,
+    summary.WithContextThreshold(),
+    summary.WithReportHook(func(ctx context.Context, report summary.Report) {
+        triggerTokens := report.Trigger.Value
+        summaryPromptTokens := report.Call.PromptTokens
+        _ = triggerTokens
+        _ = summaryPromptTokens
+    }),
+)
+```
+
+`Report` 会把两个 token 口径拆开：
+
+- `report.Trigger.Value`：触发 checker 使用的值，例如上次 summary 之后增量事件的估算 token 数
+- `report.Call.EstimatedPromptTokens`：框架在发起 summary 模型请求前，对完整请求做的本地估算
+- `report.Call.PromptTokens`：summary 模型返回的官方 `usage.prompt_tokens`
+
+开启 cache-safe forking 时，`report.Call.Mode` 为 `cache_safe_fork`，请求估算值来自 fork
+后的父请求加上追加的 summary 指令。普通独立 summary prompt 模式下，mode 为 `standalone`。
+如果 `BeforeModel` callback 返回 custom response，实际没有发送 summary 模型请求，mode 为
+`custom_response`，prompt 估算值保持为 0。
+
+高级集成如果要在高层 summary 流程前放入同一个 report，可以使用
+`summary.ContextWithReport(ctx, report)`，需要从 context 取出时使用
+`summary.ReportFromContext(ctx)`。单一路径会复用这个 report；cascade 并行生成多个
+summary 时，框架会给每个 worker 克隆一份 report，避免不同分支同时写同一个对象。
+这些 fork 出来的 report 会通过各自调用的 hook 发出，不会再合并回 root report。
+
+对于私有部署、endpoint ID、微调模型、新模型或多租户自定义模型配置，优先使用模型实例或单次运行 option，
 避免不同用户覆盖同一个进程级注册表：
 
 ```go
@@ -371,6 +551,14 @@ eventChan, err = r.Run(
 model.RegisterModelContextWindow("my-custom-model", 32768)
 ```
 
+常用 `ContextThresholdOption`：
+
+| 选项 | 说明 |
+| --- | --- |
+| `WithContextThresholdRatio(ratio float64)` | 设置 context window 的触发比例，默认 `0.5` |
+| `WithContextThresholdMinTokens(tokens int)` | 设置绝对最小触发 token 数，默认 `2000`；传入 `0` 可以取消这层下限 |
+| `WithContextThresholdFallbackWindow(tokens int)` | 设置 summary checker 的兜底 context window，默认 `8192`。在 `WithContextThreshold` 路径中，不传这个选项时，框架会尽量从 summarizer model 推导 fallback；显式传入后会使用你的值，并跳过 summarizer model fallback。实际检查时，只有当运行上下文、模型实例和注册表都无法解析 context window 时才使用该 fallback；这不同于 token tailoring 对未知模型使用的 `128000` fallback |
+
 ### 组合条件
 
 | 选项 | 说明 |
@@ -403,8 +591,10 @@ summary.WithChecksAny(
 | 选项 | 说明 |
 | --- | --- |
 | `WithMaxSummaryWords(maxWords int)` | 限制摘要的最大字数，包含在提示词中指导模型生成 |
-| `WithPrompt(prompt string)` | 自定义摘要提示词，必须包含 `{conversation_text}` 占位符 |
-| `WithSystemPrompt(prompt string)` | 为摘要额外添加独立的 system message 指令；不能包含 `{conversation_text}` |
+| `WithPrompt(prompt string)` | 自定义摘要提示词，必须包含 `{conversation_text}`，可选包含 `{previous_summary}` |
+| `WithSystemPrompt(prompt string)` | 为摘要额外添加独立的 system message 指令；不能包含 `{conversation_text}` 或 `{previous_summary}` |
+| `WithCacheSafeForking(enable bool)` | 在有父请求可用时，启用 cache-safe 摘要请求 forking。默认关闭 |
+| `WithCacheSafeForkPrompt(prompt string)` | 自定义 cache-safe fork 请求的最终指令；standalone fallback 会在 source-data boundary 后追加同一指令，其渲染结果会计入输入预算。可包含 `{max_summary_words}`，但不能包含 `{conversation_text}` 或 `{previous_summary}` |
 | `WithSkipRecent(skipFunc SkipRecentFunc)` | 自定义函数跳过最近事件 |
 
 ### Hook 选项
@@ -506,7 +696,7 @@ type Checker func(sess *session.Session) bool
 | Checker | 说明 |
 | --- | --- |
 | `CheckEventThreshold(eventCount int)` | 当自上次摘要以来的增量事件数大于阈值时返回 true |
-| `CheckTimeThreshold(interval time.Duration)` | 当被检查 session 的最后一个事件距离当前已超过该间隔时返回 true |
+| `CheckTimeThreshold(interval time.Duration)` | Runner 摘要路径检查当前顶层 request 到来前的空闲间隔；没有 Runner observation 的直接调用保留 last-event-age 行为 |
 | `CheckTokenThreshold(tokenCount int)` | 当自上次摘要以来的增量事件提取的对话文本估算 token 数大于阈值时返回 true（通过 `TokenCounter` 估算，而非 `event.Response.Usage.TotalTokens`） |
 | `ChecksAll(checks []Checker)` | 组合多个 Checker，所有都返回 true 时才返回 true（AND） |
 | `ChecksAny(checks []Checker)` | 组合多个 Checker，任一返回 true 时返回 true（OR） |
@@ -532,10 +722,32 @@ summarizer := summary.NewSummarizer(
 )
 ```
 
-**必需占位符**：
+**Prompt 占位符**：
 
 - `{conversation_text}`：必须包含，会被对话内容替换
+- `{previous_summary}`：可选，用于把上一版滚动摘要与摘要边界后的新增事件分开；
+  第一次摘要时为空。不使用该占位符时，上一版摘要仍会合并进
+  `{conversation_text}`，保持原有行为
 - `{max_summary_words}`：当 `maxSummaryWords > 0` 时，必须包含在 `WithPrompt(...)` 或 `WithSystemPrompt(...)` 其中之一
+
+如果希望在增量摘要中单独放置上一版摘要，可以这样写：
+
+```go
+userPrompt := `请根据新增对话更新上一版摘要。
+
+<previous_summary>
+{previous_summary}
+</previous_summary>
+
+<new_conversation>
+{conversation_text}
+</new_conversation>
+
+更新后的摘要：`
+```
+
+`{previous_summary}` 适用于 standalone 请求和 cache-safe fallback 请求。
+cache-safe fork 成功时会直接使用克隆的父请求，摘要在父请求中的位置不会由该占位符改变。
 
 如果希望把摘要指令放到独立的 system message，可以组合使用
 `WithSystemPrompt` 和一个更轻量的 user prompt：
@@ -564,13 +776,28 @@ summarizer := summary.NewSummarizer(
 
 - `WithPrompt` 仍然渲染到 **user message**
 - `WithSystemPrompt` 会渲染到独立的 **system message**
-- `WithSystemPrompt` 不能包含 `{conversation_text}`；对话内容必须保留在 user prompt 中
+- `WithSystemPrompt` 不能包含 `{conversation_text}` 或
+  `{previous_summary}`；对话内容必须保留在 user prompt 中
 
 ## Token 计数器配置
 
 默认情况下，`CheckTokenThreshold` 使用内置的 `SimpleTokenCounter` 基于文本长度估算 token 数量。如果需要自定义 token 计数行为，可以使用 `summary.SetTokenCounter` 设置全局 token 计数器：
 
 `SimpleTokenCounter` 的 `WithApproxRunesPerToken(v)` 表示约 `v` 个 UTF-8 字符对应 1 个 token，估算公式是 `estimatedTokens = countedUTF8Runes / v`。例如 `v=1.5` 表示约 `1.5` 字符/token；不要把它当成 token 乘数。
+
+> **Token 估算取舍**
+>
+> 内置 `SimpleTokenCounter` 只按 UTF-8 字符数做轻量估算，默认 `4.0`
+> 字符/token 更接近英文文本的经验值。中文、日文、韩文以及中英文混合内容通常会偏离这个比例，
+> 建议结合业务压测或线上观测按模型和语料校准，例如把
+> `WithApproxRunesPerToken` 调整到更保守的 `1.2` 到 `2.0` 区间。
+>
+> 框架没有默认调用模型厂商的精确 token API：很多模型的 tokenizer 并未开源，
+> tokenizer 也会随模型版本演进；如果在每次摘要检查中远程调用 token 统计接口，
+> 会引入额外延迟、成本和限流风险，而且不同 provider 的接口能力也不一致。
+> 因此 summary checker 使用可替换的本地估算器作为快速 gate。如果业务需要更高精度，
+> 建议实现 `model.TokenCounter`，并在应用初始化时通过 `summary.SetTokenCounter`
+> 统一设置。
 
 ```go
 import (
@@ -699,6 +926,11 @@ type PostSummaryHookContext struct {
 type PostSummaryHook func(in *PostSummaryHookContext) error
 ```
 
+Hook 会看到本次 summary source 对应的临时 boundary。Hook 成功，或其错误被配置为
+不中断流程时，摘要器会在 Hook 返回后恢复该 source 的精确 boundary，因此 Hook 对
+summary boundary state 的写入不会保留。Hook 以错误中断或发生 panic 时，则恢复本次
+摘要尝试前的 boundary。
+
 ### 使用示例
 
 ```go
@@ -722,15 +954,54 @@ summarizer := summary.NewSummarizer(
 
 Runner 在每次对话完成后自动检查触发条件，满足条件时在后台异步生成摘要。
 
+如果启用了 `WithSyncSummaryIntraRun(true)`，Flow 会在同一次 `Run` 的 LLM 迭代之间同步调用 `CreateSessionSummary(...)`，确保下一次 LLM 调用前可以使用最新摘要。中间 tool result 的冗余异步入队会被跳过；最终 assistant response 仍然可以入队一个摘要任务，用于刷新本轮结束后的摘要。在 async worker 可用且队列有容量时，该任务会在后台执行；如果没有配置 async worker 或队列已满，`EnqueueSummaryJob` 可能 fallback 到同步摘要创建，因此这不是严格的非阻塞保证。同步路径与异步 worker 共享同一套 boundary/delta 判断和进程内 session/filterKey 级别的串行控制，在单进程内通常可以避免对同一批事件重复发起昂贵的 LLM 摘要，但它不是跨实例分布式锁。
+
 **触发时机**：
 
 - 事件数量超过阈值（`WithEventThreshold`）
 - Token 数量超过阈值（`WithTokenThreshold`）
 - Token 数量超过当前模型 context window 的指定比例（`WithContextThreshold`）
-- 在一次摘要检查中，被检查 session 的最后一个事件已超过指定时间；在默认增量摘要路径里，这通常就是最近一个待摘要事件（`WithTimeThreshold`）
+- 当前顶层 request 到来前的空闲间隔超过阈值（Runner 路径中的 `WithTimeThreshold`）
 - 满足自定义组合条件（`WithChecksAny` / `WithChecksAll`）
 
-`WithTimeThreshold` 不是后台定时器。系统不会在“静默满 5 分钟”的瞬间主动生成摘要；只有在执行摘要检查时才会评估，通常发生在一轮对话结束后，或你手动调用摘要 API 时。它判断的是被检查 session 的最后一个事件；在默认增量摘要路径里，这个 session 只包含待摘要增量，所以 `5*time.Minute` 通常等价于：“到下一次摘要检查时，如果最近一个待摘要事件已经超过 5 分钟，就立即生成摘要。”
+`WithTimeThreshold` 不是后台定时器。Runner 自动路径会在顶层 request 到达时固定记录时间，并将它与同一摘要 scope 中的上一条相关事件比较。例如，`5*time.Minute` 表示：“下一次顶层 request 在该 scope 静默超过 5 分钟后到达时，由这次 request 引发的摘要检查可以触发。”模型响应耗时和异步 worker 排队时间不会计入 gap。没有 Runner request observation 的直接 checker 或摘要 API 调用保留原有的 last-event-age 行为。
+
+### 同轮同步摘要（长 ReAct loop）
+
+默认自动触发路径是异步的：Runner 追加符合条件的完整响应事件后（例如
+`tool result` 或最终 assistant response）入队 summary job，由后台 worker
+再按触发条件决定是否生成摘要。user message、tool-call response、无效内容、
+`SkipSummarization` 事件，以及 sync summary 下的中间 `tool result` 不会入队异步
+summary job。这个模式能保护主链路延迟，但在同一次 `Run` 包含多轮 LLM/tool
+迭代时，后台摘要可能来不及在下一次 LLM 调用前完成。
+
+如果你的 agent 经常在同一次 `Run` 内连续调用工具，并且工具结果可能快速推高
+上下文长度，可以开启同轮同步摘要：
+
+```go
+agent := llmagent.New(
+    "my-agent",
+    llmagent.WithModel(modelInstance),
+    llmagent.WithAddSessionSummary(true),
+    llmagent.WithSyncSummaryIntraRun(true),
+)
+```
+
+开启后，Flow 会在同一次 `Run` 的 LLM loop 之间同步执行一次摘要检查。它调用
+`CreateSessionSummary(..., force=false)`，因此不会绕过摘要器配置的事件数、token
+数、时间或 context window 阈值；只有条件满足时才会真正生成摘要。配合
+`WithAddSessionSummary(true)` 时，下一次 LLM 请求会注入刚刷新的 summary；对于普通
+已完成历史，通常只拼接 summary 边界之后的增量事件。但在同一次 `Run` 内，请求组装仍
+可能保留或压缩边界前必要的 tool-call/tool-result 消息，以维持当前 ReAct 工具链的合法
+结构。
+
+为避免重复工作，开启同轮同步摘要后，中间 `tool result` 事件会跳过冗余的异步
+summary 入队；最终 assistant response 仍然可以触发异步 job，让本轮结束后的
+session summary 保持最新。这个选项不会替代跨 `Run` 的默认异步摘要行为。
+
+同轮同步摘要会把一次可能的 summary LLM 调用放进主链路，适合长 ReAct loop、coding
+agent、连续大工具输出或接近 context window 的场景；一般在线问答和低延迟场景仍建议
+优先使用默认异步摘要。
 
 ### 手动触发
 
@@ -830,8 +1101,8 @@ llmagent.WithAddSessionSummary(true)
 
 - 会话摘要**合并到已有的系统消息中**（如果存在），否则作为新的系统消息插入到开头
 - 这确保了与要求单条系统消息位于开头的模型兼容（如 Qwen3.5 系列）
-- 包含摘要时间点之后的**所有增量事件**（不截断）
-- 保证完整上下文：浓缩历史 + 完整新对话
+- 包含摘要时间点之后的**所有增量事件**。如果同步 intra-run summary 在当前 invocation 内推进了 boundary，重建请求时还会保留当前 user message，以及 cutoff 前最新一个完整 tool round 作为有界 resume tail
+- 通过浓缩历史、cutoff 后事件和当前 invocation 的有界 resume tail 保持语义连续；更早且已被覆盖的 tool rounds 只由 summary 表达
 - **`WithMaxHistoryRuns` 参数被忽略**
 
 #### 摘要注入模式
@@ -854,7 +1125,26 @@ agent := llmagent.New(
 | 模式 | 注入位置 | Token Tailoring 行为 | 适用场景 |
 | --- | --- | --- | --- |
 | `SessionSummaryInjectionSystem`（默认） | 合并到 system message | 摘要在 preserved head 中，不会被裁剪 | 需要摘要始终存在的场景 |
-| `SessionSummaryInjectionUser` | 优先合并到第一条 user history/current message；否则在靠近 history 的位置注入 | 摘要参与普通轮次裁剪，可被滑动窗口淘汰 | 超长对话的滑动窗口场景 |
+| `SessionSummaryInjectionUser` | 优先合并到第一条 user history/current message；否则在靠近 history 的位置注入 | 摘要参与普通轮次裁剪，可被滑动窗口淘汰；也更利于保持稳定 system 前缀 | 超长对话、prompt cache 敏感场景 |
+
+Memory preload 和 session recall preload 有各自独立的 placement 设置。为了兼容
+已有用户，它们默认仍注入 system context，因此会留在 token tailoring 的
+preserved head 中。如果 cache-sensitive 场景希望把它们也放到 user/history
+路径，需要显式 opt in：
+
+```go
+agent := llmagent.New(
+    "my-agent",
+    llmagent.WithModel(modelInstance),
+    llmagent.WithPreloadMemory(10),
+    llmagent.WithPreloadMemoryInjectionMode(llmagent.PreloadMemoryInjectionUser),
+    llmagent.WithPreloadSessionRecall(5),
+    llmagent.WithPreloadSessionRecallInjectionMode(llmagent.PreloadSessionRecallInjectionUser),
+)
+```
+
+User placement 能让稳定 system 前缀更利于 prompt cache，但 preloaded memory
+和 recalled session events 会参与 token tailoring，可能被裁剪。
 
 **User 模式的消息结构**：
 
@@ -913,13 +1203,19 @@ LLM 摘要，也不会像 token tailoring 那样直接丢弃完整消息轮次�
 > 指 prompt-side tool result compaction/pruning；如果需要语义摘要，仍然由
 > `WithAddSessionSummary(true)` 和会话摘要器负责。
 
-当开启 `WithEnableContextCompaction(true)` 时，框架会在真正调用模型前执行两遍压缩：
+当开启 `WithEnableContextCompaction(true)` 时，框架会在真正调用模型前按配置执行下面几类 `tool result` 压缩：
+
+**Pass 0 — 按工具名强制占位替换**（`ForceCleanToolNames`，默认未配置）：
+
+- 只作用于命中 `ForceCleanToolNames` 的历史 `tool result`，不需要超过 `ContextCompactionToolResultMaxTokens` 阈值
+- 当前 request、recent 保护集合中的 request/invocation 不受影响；`KeepToolNames` 优先级更高
+- 适合清理 shell、grep、日志抓取等高噪声工具的历史输出
 
 **Pass 1 — 历史 tool result 占位替换**（`ContextCompactionToolResultMaxTokens`，默认 1024 tokens）：
 
 - 只作用于**旧 request** 中超过阈值的 `tool result`，将其内容整体替换为简短占位符，但保留 `ToolID` 和 `ToolName`
-- 当前 request 和最近 `ContextCompactionKeepRecentRequests` 个已完成 request 不受影响
-- 如果 `ToolResultCompactionConfig.SkipRecentFunc` 返回正数，尾部这些 event 所属的 request/invocation 也会被视为 recent，从而跳过 Pass 1
+- current/recent 保护集合不受影响；这个集合包含当前 request、最近 `ContextCompactionKeepRecentRequests` 个已完成 request，以及 `ToolResultCompactionConfig.SkipRecentFunc` 返回的尾部 event 所属 request/invocation
+- `SkipRecentFunc` 与 `ContextCompactionKeepRecentRequests` 是并集关系；如果希望完全由自定义 recent 逻辑控制，可将 `ContextCompactionKeepRecentRequests` 设为 `0`
 - 适合清理已不重要的历史工具输出
 
 **Pass 2 — 超大 tool result 截断**（`ContextCompactionOversizedToolResultMaxTokens`，**默认 0 / 关闭**）：
@@ -928,19 +1224,36 @@ LLM 摘要，也不会像 token tailoring 那样直接丢弃完整消息轮次�
 - 超过阈值的 tool result 会使用首尾保留策略截断：保留内容的开头和结尾，中间插入 `[...N characters truncated...]` 标记
 - 这是防止单个超大 tool result 直接撑爆 context window 的安全网（例如 `web_fetch` 返回 800K+ 字符的 HTML）
 
-两遍压缩的定位不同：Pass 1 低阈值、全量替换，激进清理旧历史；Pass 2 高阈值、只在极端情况触发，但能保护当前 request。
+几类压缩的定位不同：Pass 0 是显式工具名策略；Pass 1 低阈值、全量替换，激进清理旧历史；Pass 2 高阈值、只在极端情况触发，也可能作用于当前 request。
+
+同步 intra-run summary 还有一条专门的请求投影规则。如果新 summary boundary
+覆盖到了当前 invocation 的 events，那么普通已覆盖历史以 boundary 为硬边界，
+但重建后的主 agent 请求仍会保留：
+
+1. 当前 invocation 的 user message。
+2. cutoff 前最新一个完整 tool round；并行 tool calls 及其匹配 results 会整批保留。
+3. cutoff 后的全部增量 events。
+
+框架只恢复这一个最新的完整 tool round；更早的已覆盖 tool rounds 只由 summary
+表达。这个小型 resume tail 能避免主模型把已完成的工具步骤误判为“尚未执行”，
+进而重复有副作用的调用。开启 context compaction 后，恢复出来的每个 tool-call
+arguments payload，以及每个未被 keep 规则保护的 tool result，都会分别与
+`ContextCompactionToolResultMaxTokens` 比较；只替换单项超限的内容，并保留
+tool ID、名称和 call/result 配对。关闭 context compaction 时，框架不会改写这些
+payload。如果 cutoff 正好落在 tool call 和 result 中间，原有的配对修复仍会补齐
+协议结构，但不会带回无关的已覆盖历史。
 
 Pass 2 默认是关闭的（`0`），需要满足两个条件才会生效：(1) `WithEnableContextCompaction(true)` 总开关已打开；(2) `ContextCompactionOversizedToolResultMaxTokens > 0`（推荐显式传入 `8192`，可读取常量 `processor.DefaultContextCompactionOversizedToolResultMaxTokens`）。这样 `EnableContextCompaction=false` 在语义上始终等于"框架不会修改任何 tool result"。
 
 如果需要按工具名控制行为，可以使用 `WithToolResultCompactionConfig(...)`：
 
-- `ForceCleanToolNames`：这些 tool 的历史结果在 context compaction 开启、且 current/recent 保护生效之后会直接替换为策略占位符，适合 shell、grep、日志抓取等高噪声工具
+- `ForceCleanToolNames`：这些 tool 的历史结果在 context compaction 开启、且 current/recent 保护生效之后会通过 Pass 0 直接替换为策略占位符，适合 shell、grep、日志抓取等高噪声工具
 - `KeepToolNames`：这些 tool 的结果不会被 context compaction 清理，适合 `session_load`、`session_search` 这类模型可能需要逐字读取的恢复工具
-- `SkipRecentFunc`：自定义尾部多少个 event 视为 recent，影响 Pass 0 强制清理和 Pass 1 的"历史"判定；Pass 2 仍会处理 recent/current 中的超大 tool result
+- `SkipRecentFunc`：自定义尾部多少个 event 视为 recent，和 `ContextCompactionKeepRecentRequests` 一起组成 recent 保护集合，影响 Pass 0 强制清理和 Pass 1 的"历史"判定；Pass 2 仍会处理 recent/current 中的超大 tool result
 
 如果同一个 tool name 同时出现在 `ForceCleanToolNames` 和 `KeepToolNames` 中，`KeepToolNames` 优先。
 
-当被压缩的事件有 `event_id` 时，占位符或截断标记会携带 `event_id`、`tool_call_id`、`tool_name` 等恢复线索。开启 `WithEnableOnDemandSession(true)` 且后端实现 `session.WindowService` 后，模型可以调用 `session_load`，用 `content_offset` / `content_limit` 精确加载原始 tool result 的小片段。`session_load` 的返回大小由它自己的窗口参数和 `content_limit` 控制；读取超大结果时建议分片加载，而不是一次请求全文。
+当 Pass 1 占位符或 Pass 2 截断标记对应的事件有 `event_id` 时，会携带 `event_id`、`tool_call_id`、`tool_name` 等恢复线索；Pass 0 的策略占位符不携带这些恢复线索。开启 `WithEnableOnDemandSession(true)` 且后端实现 `session.WindowService` 后，模型可以调用 `session_load`，用 `content_offset` / `content_limit` 精确加载原始 tool result 的小片段。`session_load` 的返回大小由它自己的窗口参数和 `content_limit` 控制；读取超大结果时建议分片加载，而不是一次请求全文。
 
 此外：
 
@@ -996,11 +1309,14 @@ request，用来检查历史大 `tool result` 是否按预期被替换为占位�
 │ System Prompt                           │
 │ (merged with Session Summary)           │ ← 系统提示 + 浓缩历史
 ├─────────────────────────────────────────┤
+│ User: current invocation message        │ ← intra-run cutoff 后仍保留
+├─────────────────────────────────────────┤
+│ Latest complete pre-cutoff tool round   │ ← 最多一轮；超大 payload 可替换为占位符
+├─────────────────────────────────────────┤
 │ Event 1 (after summary)                 │ ┐
-│ Event 2                                 │ │
-│ Event 3                                 │ │ 摘要后的新事件
-│ ...                                     │ │ (完整保留)
-│ Event N (current message)               │ ┘
+│ Event 2                                 │ │ 摘要后的增量 events
+│ ...                                     │ │ （受已配置 compaction/tailoring 约束）
+│ Event N                                 │ ┘
 └─────────────────────────────────────────┘
 ```
 
@@ -1188,6 +1504,10 @@ sessionService := inmemory.NewSessionService(
   `session.SummaryFilterKeyAllContents` 这个全量摘要目标。
 - `WithCascadeFullSessionSummary(...)` 控制非空分支触发摘要时，是否同时刷新
   全量会话摘要。
+- 开启 `WithCacheSafeForking(true)` 后，如果当前有父请求可 fork，branch 触发的
+  summary pass 只会生成 branch 摘要；级联出来的全量会话摘要目标会被跳过，不会
+  回退到独立的全量摘要 prompt，也不会复用这个 branch 视角的 fork request。如果
+  确实需要覆盖所有 branch 的全量摘要，请单独触发一次全量会话摘要。
 - 如果只想保留 branch 触发出来的全量摘要，不写任何 branch 摘要，可以显式传入
   空 allowlist，并保持默认 cascade 开启：
 
@@ -1274,7 +1594,7 @@ func main() {
         summary.WithChecksAny(
             summary.CheckEventThreshold(20),
             summary.CheckTokenThreshold(4000),
-            summary.CheckTimeThreshold(5*time.Minute), // 在摘要检查时判断；比较被检查 session 的最后一个事件（在增量摘要路径里通常就是最近一个待摘要事件）
+            summary.CheckTimeThreshold(5*time.Minute), // Runner 路径：下一请求到来前的空闲时间超过 5 分钟时触发
         ),
     )
 

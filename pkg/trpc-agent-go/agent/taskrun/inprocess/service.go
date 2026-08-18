@@ -798,8 +798,8 @@ func runFinalizer(
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Warnf(
-				"taskrun: finalizer panic for run %s: %v",
+			log.Errorf(
+				log.PanicPrefix+" taskrun: finalizer panic for run %s: %v",
 				run.ID,
 				recovered,
 			)

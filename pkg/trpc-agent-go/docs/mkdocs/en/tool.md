@@ -226,7 +226,11 @@ For Function Tools, the input `req` is automatically converted into a JSON Schem
 
 - **Field name**: use `json:"..."` as the schema property name.
 - **Field description (recommended)**: use `jsonschema:"description=..."` to populate `properties.<field>.description`.
+- **String pattern constraint**: use `jsonschema:"pattern=^[a-z0-9_-]+$"` to populate `properties.<field>.pattern`.
+- **Manual schemas**: when constructing `tool.Schema` directly, set `Pattern: "^[a-z0-9_-]+$"` to emit the JSON Schema `pattern` keyword.
 - **Note**: the `jsonschema` tag uses comma `,` as the separator, so **the description value must not contain `,`**; otherwise it will be parsed as multiple tag items.
+- **Note**: `pattern` is subject to the same comma separator limitation. If the regular expression itself needs commas, use `function.WithInputSchema(customInputSchema)` to define the schema directly.
+- **Runtime compatibility**: tool-call sanitization enforces `pattern` with Go `regexp`, not strict JSON Schema ECMA-262 regular expressions. Patterns that cannot compile with Go `regexp` are treated as non-enforcing at runtime.
 - **Compatibility**: `description:"..."` is also supported for legacy code. If both `jsonschema:"description=..."` and `description:"..."` are present, the `jsonschema` description wins.
 - **More flexible schema**: if you need full control over the input schema (e.g. complex JSON Schema constraints), use `function.WithInputSchema(customInputSchema)` to bypass auto-generation.
 
@@ -491,6 +495,108 @@ bare context, downstream tool code will no longer see that ID.
 So if you replace the context inside callbacks, make sure you preserve the
 existing context values you still need.
 
+## Tool Result Formatting
+
+Function Tools use JSON for model-visible tool result messages by default. Use
+`function.WithResultFormatter` when a tool needs custom text, such as an
+XML-like observation, without constructing `model.Message` or managing the tool
+call ID.
+
+Currently supported:
+
+- Function Tools registered with an LLMAgent and executed by its default
+  tool-call flow.
+
+Not currently supported:
+
+- Graph ToolsNode;
+- ToolPipe;
+- extensions or application wrappers that replace or re-wrap the tool instance;
+- direct `Tool.Call` consumers or other execution paths that construct their
+  own tool-result messages.
+
+```go
+import (
+    "context"
+
+    "trpc.group/trpc-go/trpc-agent-go/tool/function"
+    "trpc.group/trpc-go/trpc-agent-go/tool/resultformat"
+)
+
+bashTool := function.NewFunctionTool(
+    runBash,
+    function.WithName("bash"),
+    function.WithResultFormatter(
+        resultformat.FormatterFunc[BashResult](func(
+            _ context.Context,
+            result BashResult,
+        ) (string, error) {
+            return formatBashObservation(result), nil
+        }),
+    ),
+)
+```
+
+The formatter receives the final result after `AfterTool` callbacks. It changes
+only `DefaultToolMessage.Content`; the framework still manages the tool message
+role, name, tool call ID, ordering, events, and session persistence.
+
+- Without a formatter, existing JSON output remains unchanged.
+- A formatting error or panic is reported as an error. The framework does not
+  fall back to JSON or run the completed tool again. Formatting is presentation
+  only, so a tool that already ran still applies its session state updates.
+- A formatter runs only when the tool declared a result for the call. When it
+  did not, the framework keeps the default JSON: permission results, state-only
+  final stream results, the `CustomResult` a `BeforeTool` callback or plugin
+  returns to short-circuit the call, and stream content the framework merged
+  because a stream ended without `tool.FinalResultChunk` (see below). An
+  `AfterTool` callback replacing the result of a tool that did run is a
+  different case: the replacement is formatted, so it has to be a value the
+  formatter accepts.
+- For other streamable results, only the final result is formatted;
+  intermediate events are unchanged. A streamable tool must declare that final
+  result with `tool.FinalResultChunk`. When a stream ends without one, the
+  final result is the stream content merged by the framework rather than the
+  tool's declared output type, so the formatter is skipped, the default JSON is
+  kept, and the framework logs a warning. An `AfterTool` callback that replaces
+  the merged content does not make the call eligible for formatting again; emit
+  `tool.FinalResultChunk` to have a streamable result formatted.
+- For tools that update session state, the state update consumes the tool
+  message content the framework would send without a formatter, which is the
+  JSON of the result produced after `AfterTool` callbacks. A formatter is not
+  part of the state protocol: even if a formatter breaks the read-only contract
+  and mutates a pointer or map result in place, the session records the value
+  from before that mutation. When
+  `ToolResultMessages` rewrites the tool message content, the rewritten content
+  wins, exactly as it did before formatting existed.
+- The `ToolResultMessages` callback still runs after the default tool result
+  message is prepared and may replace it with the messages returned by the
+  callback. Continue using it for multiple messages, multimodal content, or
+  complete control of the message protocol. Note that a formatter is configured
+  per tool while `ToolResultMessages` is registered for the whole agent: for a
+  tool with a formatter, the callback receives formatted text in
+  `DefaultToolMessage.Content` rather than JSON. A callback that needs
+  structured data should read `ToolResultMessagesInput.Result` instead of
+  parsing `DefaultToolMessage.Content`.
+
+The formatter's return value becomes the default tool result message. The
+formatting function can apply any escaping, truncation, or validation required
+by the application's message format. A formatter must treat its input result as
+read-only: the same value is handed to the `ToolResultMessages` callback as
+`ToolResultMessagesInput.Result`, so mutating it in place makes consumers of one
+tool call disagree about what the tool returned. A formatter may be called
+concurrently and must synchronize any mutable state it owns.
+
+The framework discovers a formatter through a
+`ResultFormatter() resultformat.Formatter` method on the semantic tool, meaning
+the tool that remains after the framework unwraps its own declaration and name
+wrappers. `function.FunctionTool` and `function.StreamableFunctionTool` provide
+that method; a tool implemented outside `tool/function` that exposes the same
+method participates on the same terms and under the same support scope.
+
+For a runnable end-to-end example, see
+[examples/toolresultformat](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/toolresultformat).
+
 ## Built-in Tools
 
 ### Tool Call Retry
@@ -738,7 +844,7 @@ agent := llmagent.New("todo-assistant",
 )
 ```
 
-The extension contributes both `todo_write` and `todo_declare_blocker`; do not also pass a separate `todo.New()` through `WithTools`. To reuse `tool/todo` options such as `WithStateKeyPrefix`, `WithClearOnAllDone`, or `WithNudgeHook`, construct the tool yourself and pass it with `todoenforcer.WithTodoTool(todo.New(...))`. `todo_declare_blocker` is the escape hatch for objective blockers such as missing permissions, credentials, infrastructure, or user decisions.
+The extension contributes both `todo_write` and `todo_declare_blocker`; do not also pass a separate `todo.New()` through `WithTools`. To reuse `tool/todo` options such as `WithStateKeyPrefix`, `WithClearOnAllDone`, or `WithNudgeHook`, construct the tool yourself and pass it with `todoenforcer.WithTodoTool(todo.New(...))`. `todo_declare_blocker` is the escape hatch for objective blockers such as missing permissions, credentials, infrastructure, or user decisions. The extension preserves the caller's streaming setting: text from an unfinished attempt may already reach the client, but its final response is converted into a continuation signal and is not persisted as the turn's terminal assistant history.
 
 #### Tool Result
 
@@ -840,6 +946,33 @@ if err := mcpToolSet.Init(ctx); err != nil {
 agent := llmagent.New("mcp-assistant",
     llmagent.WithModel(model),
     llmagent.WithToolSets([]tool.ToolSet{mcpToolSet}))
+```
+
+### Tool Name Prefixing
+
+When an MCP ToolSet is wired into an `LLMAgent` via `WithToolSets`, the
+framework wraps it with `NamedToolSet`. The model sees each remote tool under
+`{toolSetName}_{remoteToolName}` while the underlying MCP `tools/call` still
+uses the original remote name.
+
+- Default ToolSet name is `"mcp"`, so a remote tool `search` becomes
+  `mcp_search`.
+- Set a distinct name per MCP server with `mcp.WithName(...)` when you attach
+  multiple ToolSets. Reusing the default for every server can produce duplicate
+  prefixed names (for example, two servers both exposing `search` would both
+  appear as `mcp_search`).
+- If `ToolSet.Name()` is empty, no prefix is applied (not the default for
+  `NewMCPToolSet`).
+
+```go
+githubToolSet := mcp.NewMCPToolSet(githubCfg, mcp.WithName("github"))
+slackToolSet := mcp.NewMCPToolSet(slackCfg, mcp.WithName("slack"))
+
+agent := llmagent.New("multi-mcp",
+    llmagent.WithModel(model),
+    llmagent.WithToolSets([]tool.ToolSet{githubToolSet, slackToolSet}),
+)
+// Model-visible names: github_search, slack_search, ...
 ```
 
 ### MCP Annotations and Permission Metadata
@@ -1529,10 +1662,16 @@ still fall back to `Event.Branch` for compatibility.
 AgentTool currently has two history scopes:
 
 - `HistoryScopeIsolated` (default): the child Agent uses an independent
-  `FilterKey`, such as `math-specialist-<uuid>`. With normal Runner-generated
-  events, the child sees only the current tool arguments and does not inherit
-  parent Agent history. Child events are still stored in the same session, but
-  under a separate view.
+  `FilterKey`, such as `math-specialist-<uuid>` (a new child key is generated on
+  every call). With normal Runner-generated events, the child sees only the
+  current tool arguments and does not inherit parent Agent history. Child events
+  are still stored in the same session, but under a separate view.
+  - If you want the same AgentTool to be called multiple times while the child
+    Agent continues from its own prior execution history, enable
+    `WithPersistentHistory*` under `HistoryScopeIsolated` (see Options below).
+    This switches the child key to a stable value (for example
+    `agenttool:math-specialist:default`) so the child context becomes
+    continuous.
 - `HistoryScopeParentBranch`: the child Agent uses a sub-key under the parent
   key, such as `assistant/math-specialist-<uuid>`. The default prefix matching
   treats ancestors and descendants as the same lineage. This means the child
@@ -1589,6 +1728,33 @@ change when you switch history scope:
     assistant messages into the tool result
   - `ResponseModeFinalOnly`: return only the last complete child assistant
     message as the tool result
+
+- WithPersistentHistory() / WithPersistentHistoryKey(string) / WithPersistentHistoryKeyFunc(...):
+
+  - Purpose: use a **stable child `FilterKey`** under `HistoryScopeIsolated` so
+    the child Agent can read its own history across multiple AgentTool calls
+    within the same session (instead of starting from a fresh UUID key every
+    time).
+  - Default key: `agenttool:<toolName>:default` (intentionally avoids `/` so it
+    does not accidentally fall under the parent's prefix/subtree filters).
+  - Advanced: use `WithPersistentHistoryKey(...)` or
+    `WithPersistentHistoryKeyFunc(...)` to shard different tasks onto different
+    keys and avoid interleaving history when multiple tasks share one tool.
+  - Notes:
+    - This is not a permission boundary. If the parent uses `BranchFilterModeAll`
+      / an empty key, or you design keys that create a prefix relationship such
+      as `parent/...`, parent context may still include child events.
+    - Whether the child can see earlier history also depends on the child Agent
+      message filter/timeline settings (defaults include history; "current
+      request/invocation only" modes will limit cross-call visibility even with
+      a stable key).
+    - Currently supported only for `agenttool.NewTool(agent)`. It is ignored by
+      `agenttool.NewDynamicTool()` (dynamic tools are intentionally short-lived
+      and memoryless).
+    - Incompatible with `HistoryScopeParentBranch`: when both are set, the
+      framework ignores persistent history and uses the `parent/child-uuid`
+      semantics.
+  - Complete example: see `examples/agenttool/` (use `-persistent-child-history` / `-persistent-child-key`).
 
 - WithHistoryScope(HistoryScope):
   - `HistoryScopeIsolated` (default): Use an independent child `FilterKey`; the child usually sees only the current tool arguments and does not inherit parent history.
@@ -1718,6 +1884,9 @@ Common options:
 - `WithCapabilitySkills(repo)`: set the maximum skill repository the model may
   choose from. When omitted, it is derived from the parent Agent's effective skill
   repository for the current run.
+- `WithDynamicTimeout(timeout)`: cap one dynamic child Agent invocation. A
+  non-positive value keeps using the parent request context without an extra
+  deadline.
 - `WithExposeToolSelection(false)`: hide the `tools` field from the model. The
   child still receives the code-defined tool surface, but the model cannot narrow
   it.
@@ -1866,124 +2035,319 @@ apply to all agents
 - 🛡️ **Smart Protection**: Framework tools (`transfer_to_agent`, `knowledge_search`, optional `await_user_reply`) automatically preserved, never filtered
 - 🔧 **Flexible Customization**: Support for built-in filters and custom FilterFunc
 
-#### Tool Search (Automatic Tool Selection)
+#### Tool Search (Deferred Tools, Loaded On Demand)
 
-In addition to rule-based filtering (Tool Filter), the framework provides **Tool Search**: before each main model call, it runs a lightweight “tool selection” step to shrink the available tool set to **TopK** (for example, 3 tools), then sends only those tools to the main model. This typically reduces token usage (especially **PromptTokens**) when the full tool list is large.
+`plugin/toolsearch` is a Runner plugin that keeps a large set of tools **out of
+the model's context until they are needed**. Instead of advertising every tool
+on each request, it defers tools behind a single `tool_search` function plus a
+catalog surfaced to the model. The model calls `tool_search` to load the tools
+it actually needs; loaded tools stay callable for the rest of the same session,
+and the loaded set is persisted in session state under the key
+`tool_search:discovered_tools`. A new session starts with an empty loaded set.
+
+**Why defer tools:**
+
+- Every advertised tool schema costs prompt tokens on every request and
+  dilutes the model's attention. With dozens or hundreds of tools this hurts
+  both cost and accuracy.
+- Deferring tools keeps requests small while leaving the full toolset
+  reachable on demand.
+
+**Core concepts:**
+
+- **Preset tools** are passed to `toolsearch.New(presetTools, ...)`. They are
+  always advertised (like normal tools) and can be loaded by exact name via
+  `tool_names`, but are never deferred. Preset tools are **not** discoverable
+  through keyword queries or embedding search — only deferred tools are.
+- **Deferred tools** are registered via `WithToolboxes` or `WithDeferredTools`.
+  They are not advertised until the model loads them through `tool_search`.
+- A **Toolbox** groups semantically-related deferred tools under a namespace.
+  Keyword searches are scoped to that namespace, which is the strongest guard
+  against same-named tools from different domains colliding in results.
+  Toolbox entries whose `Name` is empty are skipped (with an error log).
+- An **MCP toolbox** (`WithMCPToolboxes`) registers a `tool.ToolSet`-shaped
+  MCP client as a deferred namespace. The set is listed on every model
+  request so the catalog always reflects its current tools; every listed
+  tool is renamed to `mcp__<ServerName>__<tool>` so names from different
+  servers never collide.
 
 Trade-offs to keep in mind:
 
-- **Latency**: Tool Search adds extra work (another LLM call and/or embedding + vector search), so end-to-end latency may increase.
-- **Prompt caching**: the tool list can change every turn, which may reduce prompt caching hit rate on some providers.
+- **Latency**: each time the model needs a deferred tool that has not yet
+  been loaded, an extra `tool_search` round-trip is added.
+- **Prompt caching**: the catalog and the loaded-tools set can change across
+  turns, which may reduce prompt caching hit rate on some providers.
 
-How it differs from Tool Filter:
+##### Basic Usage
 
-- **Tool Filter**: you (or your business logic) decide which tools are allowed/blocked (access control / cost control).
-- **Tool Search**: the framework picks tools automatically based on the current user query (automation / cost optimization).
-
-They can be combined: use Tool Filter for permissions/allow-lists first, then use Tool Search to select TopK from the remaining tools.
-
-**Two strategies:**
-
-- **LLM Search**: put the candidate tool list (name + description) into the prompt and ask an LLM to output the selected tool names.
-  - Pros: no vector store needed; simple to adopt.
-  - Cons: the prompt cost grows roughly linearly with the number/length of tool descriptions, and repeats every turn.
-- **Knowledge Search**: rewrite the query with an LLM, then use embeddings + vector search to find relevant tools.
-  - Pros: you don’t need to send the full tool list to the selection LLM every turn; and **tool embeddings are cached within the same `ToolKnowledge` instance** (so tools are not re-embedded repeatedly).
-  - Note: the query is still embedded each turn (a fixed per-turn cost).
-
-##### Basic Usage (LLM Search)
-
-Tool Search can be used either as a Runner plugin or as a per-agent callback.
-
-**Option A: Runner Plugin**
+Register the plugin on the Runner, group deferred tools into namespaced
+Toolboxes, and let the plugin inject the catalog into the system prompt:
 
 ```go
 import (
     "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
     "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
     "trpc.group/trpc-go/trpc-agent-go/runner"
+    "trpc.group/trpc-go/trpc-agent-go/tool"
 )
-
-ts, err := toolsearch.New(modelInstance,
-    toolsearch.WithMaxTools(3),
-    toolsearch.WithFailOpen(), // optional: fallback to full tool set on failure
-)
-if err != nil { /* handle */ }
 
 ag := llmagent.New("assistant",
     llmagent.WithModel(modelInstance),
-    llmagent.WithTools(allTools), // register full tools; Tool Search picks TopK
+    // Preset tools are always available; deferred tools are loaded on demand.
+    llmagent.WithTools(presetTools),
+    llmagent.WithInstruction(`
+You can browse deferred tools in this catalog and load them via tool_search:
+{deferred_tools_section}
+`),
 )
 
-r := runner.NewRunner("app", ag,
-    runner.WithPlugins(ts),
+ts := toolsearch.New(
+    presetTools,
+    toolsearch.WithToolboxes([]toolsearch.Toolbox{
+        {
+            Name:        "billing",
+            Description: "Invoices, payments and refunds.",
+            Tools:       billingTools,
+        },
+        {
+            Name:        "crm",
+            Description: "Customer, contact and opportunity management.",
+            Tools:       crmTools,
+        },
+    }),
+    toolsearch.WithMaxResults(5), // cap the number of tools returned per search
+)
+
+r := runner.NewRunner("app", ag, runner.WithPlugins(ts))
+```
+
+Recommended usage guidelines:
+
+1. **Prefer namespaced `WithToolboxes` over a flat tool list.** Grouping
+   related tools under a `Toolbox.Name` lets `tool_search` scope its keyword
+   matching to a single domain, which dramatically reduces ambiguity between
+   similarly named tools once the catalog grows. Tools that genuinely have no
+   business namespace can still be registered via `WithDeferredTools`; they
+   are collected under an internal default namespace and can be searched
+   without a namespace argument.
+
+2. **Control where the catalog is rendered.** By default the plugin renders
+   the deferred-tool catalog into any system instruction that contains the
+   placeholder `{deferred_tools_section}`. If the placeholder is absent, the
+   plugin **appends the catalog to the end of the first existing system
+   message**; only when the request has no system message at all does the
+   plugin prepend a brand-new one. Placing the placeholder yourself is the
+   recommended way to keep prompts stable and to control exactly where the
+   catalog appears (keep the placeholder literal — do not expand it through
+   a Go template beforehand).
+
+3. **Filter deferred tools per caller with `WithToolPermissionFilter`.** The
+   filter is invoked with the active invocation context (so it can key on the
+   authenticated user), and any tool the caller may not use is dropped from
+   the catalog, from search results, and blocked at call time. Preset
+   (non-deferred) tools are **not** governed by this option — the filter
+   only applies to the deferred toolset.
+
+4. **Move the catalog into the tool description with `WithCatalogInDescription`.**
+   When enabled, the deferred-tool catalog is embedded into the `tool_search`
+   tool's description on every turn instead of being injected into the system
+   prompt (the `{deferred_tools_section}` placeholder, if present, is stripped
+   so it never leaks). Some backends prefer keeping the catalog next to the
+   tool that consumes it and prefer stable system prompts (better prompt
+   caching).
+
+5. **Choose an invocation mode with `WithInvocationMode`.** The default
+   `toolsearch.NativeToolCalls` advertises each loaded deferred tool as its
+   own function tool, and the model invokes it directly through the backend's
+   native function-calling protocol. Switching to
+   `toolsearch.DispatchToolCalls` collapses the deferred toolset behind
+   exactly two function tools — `tool_search` (discover + load, each result
+   carries the matched tool's `input_schema`) and `call_tool` (invoke a
+   loaded tool by name with a `params` object matching that schema). The
+   deferred tools always occupy only `tool_search` and `call_tool` (two
+   function tools); preset tools are still declared separately. This keeps
+   the deferred-tool footprint constant regardless of how many are loaded,
+   which some backends handle better than a growing tool list.
+
+> Tip: keep the preset tool list passed to `toolsearch.New(presetTools, ...)`
+> consistent with `llmagent.WithTools(presetTools)`. The former indexes preset
+> tools so they can be resolved by exact `tool_names`; the latter lets the
+> agent call them directly during a turn. If the two lists diverge, preset
+> tools remain callable but may not be resolvable via `tool_names`. Note that
+> preset tools are never discoverable through keyword queries or embedding
+> search — only deferred tools participate in those paths.
+
+##### `WithMCPToolboxes` Example
+
+Register a live MCP server (any `tool.ToolSet` implementation) as a deferred
+namespace:
+
+```go
+import (
+    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
+)
+
+ts := toolsearch.New(
+    presetTools,
+    toolsearch.WithMCPToolboxes([]toolsearch.MCPToolbox{
+        {
+            ServerName:  "github",              // note: the field is ServerName, NOT Name
+            Description: "GitHub issues / PR / repo",
+            ToolSet:     githubMCPToolSet,      // a MCP client that implements tool.ToolSet
+        },
+    }),
+)
+// Tools from this server appear in the catalog as mcp__github__<tool>.
+```
+
+##### `DispatchToolCalls` Mode
+
+On backends sensitive to the number of advertised tools, collapse the deferred
+toolset behind two function tools — `tool_search` and `call_tool`:
+
+```go
+ts := toolsearch.New(
+    presetTools,
+    toolsearch.WithToolboxes(boxes),
+    toolsearch.WithInvocationMode(toolsearch.DispatchToolCalls),
+)
+// The deferred tool surface always consists of tool_search + call_tool; preset tools remain advertised separately.
+// Each tool_search result includes the target tool's input_schema so the
+// model can build the params object for the following call_tool invocation.
+```
+
+##### `WithToolPermissionFilter` Example
+
+Gate deferred tools per caller (e.g. by the authenticated user's RBAC role):
+
+```go
+ts := toolsearch.New(presetTools,
+    toolsearch.WithToolboxes(boxes),
+    toolsearch.WithToolPermissionFilter(func(ctx context.Context, names []string) map[string]bool {
+        user := auth.UserFromContext(ctx)
+        allowed := make(map[string]bool, len(names))
+        for _, n := range names {
+            allowed[n] = rbac.CanUse(user, n)
+        }
+        return allowed
+    }),
 )
 ```
 
-**Option B: Per-Agent BeforeModel Callback**
+##### Configuration Cheat Sheet
 
-Register Tool Search as a `BeforeModel` callback. It will mutate `req.Tools`
-before the main model call:
+| Option | Purpose |
+| --- | --- |
+| ⭐ `WithToolboxes([]Toolbox{...})` | Register deferred tools grouped by namespace (recommended). Entries with an empty `Name` are skipped. |
+| `WithDeferredTools([]tool.Tool{...})` | Register deferred tools that do not belong to any namespace. Coexists with `WithToolboxes`. |
+| `WithMCPToolboxes([]MCPToolbox{...})` | Register a `tool.ToolSet`-shaped MCP client as a deferred namespace; tools are listed on every request and renamed to `mcp__<ServerName>__<tool>`. |
+| `WithMaxResults(n)` | Cap the number of matches returned by a keyword search (default `5`, hard ceiling `10`; extra matches are returned as name-only additional candidates). |
+| `WithToolPermissionFilter(fn)` | Per-caller allow-list applied to catalog, search, and call time. Does not affect preset tools. |
+| `WithCatalogInDescription(true)` | Render the catalog into the `tool_search` description instead of the system prompt. |
+| `WithInvocationMode(mode)` | `NativeToolCalls` (default) or `DispatchToolCalls`. |
+| `WithSemanticToolIndex(idx)` | Rank the `queries` path with embedding-based semantic search. |
+| `WithEmbeddingFailOpen()` | On embedding failure, fall back to keyword matching (only effective when `WithSemanticToolIndex` is set). |
+| `WithName(name)` | Override the default plugin name `tool_search` (must be unique within a Runner). |
 
-```go
-	import (
-	    "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
-	    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
-	    "trpc.group/trpc-go/trpc-agent-go/model"
-	)
+##### Semantic (Embedding) Search
 
-modelCallbacks := model.NewCallbacks()
-tc, err := toolsearch.New(modelInstance,
-    toolsearch.WithMaxTools(3),
-    toolsearch.WithFailOpen(), // optional: fallback to full tool set on failure
-)
-if err != nil { /* handle */ }
-modelCallbacks.RegisterBeforeModel(tc.Callback())
-
-agent := llmagent.New("assistant",
-    llmagent.WithModel(modelInstance),
-    llmagent.WithTools(allTools), // register full tools; Tool Search will pick TopK per run
-    llmagent.WithModelCallbacks(modelCallbacks),
-)
-```
-
-##### Basic Usage (Knowledge Search)
-
-Create a `ToolKnowledge` (embedder + vector store) and enable it via `toolsearch.WithToolKnowledge(...)`:
+By default the `tool_search` `queries` path ranks deferred tools with a
+built-in keyword matcher. Passing `WithSemanticToolIndex(...)` switches ranking to
+embedding-based semantic search: each deferred tool's name, description, and
+parameter schema are embedded into a vector store, and a keyword query is
+ranked by vector similarity instead of literal term overlap. Exact
+`tool_names` loads and namespace-only listings still use the deterministic
+index path.
 
 ```go
-	import (
-	    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
-	    openaiembedder "trpc.group/trpc-go/trpc-agent-go/knowledge/embedder/openai"
-	    vectorinmemory "trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore/inmemory"
-	)
+import (
+    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
+    openaiembedder "trpc.group/trpc-go/trpc-agent-go/knowledge/embedder/openai"
+    vectorinmemory "trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore/inmemory"
+)
 
-toolKnowledge, err := toolsearch.NewToolKnowledge(
+semanticIndex, err := toolsearch.NewSemanticToolIndex(
     openaiembedder.New(openaiembedder.WithModel(openaiembedder.ModelTextEmbedding3Small)),
-    toolsearch.WithVectorStore(vectorinmemory.New()),
+    toolsearch.WithVectorStore(vectorinmemory.New()), // optional; defaults to in-memory
 )
 if err != nil { /* handle */ }
 
-tc, err := toolsearch.New(modelInstance,
-    toolsearch.WithMaxTools(3),
-    toolsearch.WithToolKnowledge(toolKnowledge),
-    toolsearch.WithFailOpen(),
+ts := toolsearch.New(presetTools,
+    toolsearch.WithToolboxes(boxes),
+    toolsearch.WithSemanticToolIndex(semanticIndex),
+    toolsearch.WithMaxResults(5),
+    toolsearch.WithEmbeddingFailOpen(), // fall back to keyword matching on embedding failure
 )
-if err != nil { /* handle */ }
-modelCallbacks.RegisterBeforeModel(tc.Callback())
 ```
 
 ##### Token Usage (Optional)
 
-Tool Search stores usage in `context.Context`, which you can use for metrics/cost analysis:
+With semantic search enabled, the embedding token usage produced by each
+`tool_search` turn is accumulated on the context and can be read back for
+metrics or cost analysis:
 
 ```go
-	import "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
+import "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
 
 if usage, ok := toolsearch.ToolSearchUsageFromContext(ctx); ok && usage != nil {
     // usage.PromptTokens / usage.CompletionTokens / usage.TotalTokens
 }
 ```
+
+##### Migrating From the Previous API (Break Change)
+
+This release is a break change: the plugin moved from "automatic TopK tool
+selection" to "deferred tools loaded on demand". Migration cheat sheet:
+
+- **Constructor**: `toolsearch.New(model, ...)` →
+  `toolsearch.New(presetTools, WithToolboxes(...) / WithDeferredTools(...))`.
+  The new signature no longer takes a `model` argument and no longer returns
+  an `error`.
+- **`WithMaxResults(n)` semantics changed**: from "TopK cap on tools passed to
+  the main model" to "cap on matches returned by a single `tool_search`
+  keyword search" (default `5`, hard ceiling `10`). This option was
+  previously named `WithMaxTools`; it is renamed in this release.
+- **`WithSystemPrompt(...)` removed**: place the placeholder
+  `{deferred_tools_section}` in `llmagent.WithInstruction` instead, or use
+  `WithCatalogInDescription(true)` to render the catalog into the
+  `tool_search` description.
+- **`WithAlwaysInclude(...)` removed**: pass those tools as **preset tools**
+  to `toolsearch.New(presetTools, ...)`. Preset tools are always advertised
+  to the model, can be resolved by exact `tool_names`, but are not
+  discoverable through keyword queries or embedding search.
+- **`WithFailOpen()` removed**: if using embedding-based semantic search,
+  use `WithEmbeddingFailOpen()` to fall back to keyword matching on embedding
+  failure.
+- **Embedding index API renamed**: type `ToolKnowledge` → `SemanticToolIndex`;
+  constructor `NewToolKnowledge` → `NewSemanticToolIndex`; plugin option
+  `WithToolKnowledge` → `WithSemanticToolIndex`. Semantics and usage are
+  unchanged — just swap the identifiers.
+- **Per-Agent BeforeModel Callback usage** (previously "Option B", registering
+  `tc.Callback()` via `RegisterBeforeModel`) is dropped. Only the Runner
+  Plugin form is supported.
+
+##### Benchmark & Configuration Recipes
+
+`plugin/toolsearch` is wired into
+[trpc-agent-go-benchmark/toolsearch](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/toolsearch),
+which measures how different configurations affect **tool-selection
+accuracy**, **prompt token cost** and **end-to-end latency** on realistic
+tool inventories. See the README under that directory for datasets,
+scripts and result tables — you can reproduce the runs or plug in your
+own tool catalog for comparison.
+
+Typical starting points, chosen based on scale and runtime constraints:
+
+| Scenario | Deferred tools | Recommended config | Notes |
+| --- | --- | --- | --- |
+| Small, well-named set | ≤ 20 | `WithDeferredTools(...)` + default keyword search | No namespaces / embedding — lowest integration cost |
+| Multiple domains, colliding names | 20 – 100 | `WithToolboxes([]Toolbox{...})` + keyword search | Namespaces isolate similar tools across domains |
+| Large scale with semantic queries | 100+ | `WithToolboxes` + `WithSemanticToolIndex(...)` + `WithEmbeddingFailOpen()` | Vector similarity scoring with keyword fallback on embedding failure |
+| Backends sensitive to declared tool count | any | `WithInvocationMode(toolsearch.DispatchToolCalls)` | Deferred set collapses behind `tool_search` + `call_tool` |
+| Prompt-cache friendly | any | `WithCatalogInDescription(true)` | Catalog travels with the `tool_search` description; system prompt stays stable |
+| Multi-tenant / RBAC | any | any of the above + `WithToolPermissionFilter(fn)` | Uniformly filters catalog, search results and invocation |
+
+> `WithMaxResults(n)` defaults to 5 with a hard cap of 10; extras beyond the cap are surfaced as name-only candidates.
 
 #### Basic Usage
 
@@ -2247,10 +2611,21 @@ and only its per-run execution policy should change, continue to use
 `agent.WithToolExecutionFilter(...)`. `WithExternalTools` is better for AG-UI,
 browser, mobile, or upstream-service callers that declare tools dynamically on
 each request. The AG-UI runner maps request `input.Tools` to `WithExternalTools`
-by default. If an external tool has the same name as an existing tool, the
+by default; the OpenAI Chat Completions adapter (`server/openai`) maps request
+`tools` to `WithExternalTools` as well. The server does not execute those tools;
+callers run them after receiving `tool_calls` and resume with `role=tool`
+messages. If an external tool has the same name as an existing tool, the
 existing tool wins; the external declaration does not override or intercept it.
 This includes tools registered on the Agent and tools added with
 `WithAdditionalTools`.
+
+The `server/openai` adapter only implements `tool_choice: "none"` (skip
+exposing tools to the model) and `tool_choice: "auto"` or an omitted value
+(let the model decide, which is the only behavior the adapter can offer since
+it never executes tools itself). `tool_choice: "required"` and forced-function
+tool choice (`{"type":"function","function":{"name":"..."}}`) are rejected
+with an HTTP 400 when the request also includes `tools`, instead of being
+silently treated as `"auto"`.
 
 **Complete example:** `examples/toolinterrupt/`
 
@@ -2277,14 +2652,91 @@ agent := llmagent.New("ai-assistant",
     llmagent.WithTools(tools),
     llmagent.WithToolSets(toolSets),
     llmagent.WithEnableParallelTools(true), // Enable parallel execution.
+    llmagent.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        Groups: []tool.ConcurrencyGroup{
+            {
+                ToolNames: []string{"subagent"},
+                Limit:     3,
+            },
+            {
+                // search calls are serial.
+                ToolNames: []string{"search"},
+                Limit:     1,
+            },
+            {
+                // fetch calls are serial.
+                ToolNames: []string{"fetch"},
+                Limit:     1,
+            },
+        },
+    }),
 )
 ```
 
 Graph workflows can also enable parallelism for a Tools node:
 
 ```go
-stateGraph.AddToolsNode("tools", tools, graph.WithEnableParallelTools(true))
+stateGraph.AddToolsNode(
+    "tools",
+    tools,
+    graph.WithEnableParallelTools(true),
+    graph.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        Groups: []tool.ConcurrencyGroup{
+            {ToolNames: []string{"subagent"}, Limit: 3},
+            {ToolNames: []string{"search"}, Limit: 1},
+            {ToolNames: []string{"fetch"}, Limit: 1},
+        },
+    }),
+)
 ```
+
+`MaxConcurrency` and group limits are cumulative. Every direct tool call
+counts toward a positive overall limit, while a call in a group must also
+acquire capacity from that group. A group containing multiple tool names
+limits their combined active calls. When `MaxConcurrency` is non-positive,
+there is no overall limit: positive group limits still apply, and tools
+outside those groups have no limit from this configuration.
+
+Each `LLMAgent.Run` and each invocation of a Graph Tools node gets independent
+capacity. Concurrent runs of the same Agent do not consume one another's
+limits. For example, if `subagent` has `Limit: 3`, two concurrent runs of the
+same Agent may each execute up to three direct `subagent` calls. These limits
+control per-invocation fan-out; they do not protect capacity shared across
+multiple runs, Agent instances, processes, or service replicas. Put such a
+shared limit in the resource-owning tool or downstream client.
+
+Limits follow execution ownership. An owning Agent or Tools node limits only
+the tools it executes directly. If a tool named `subagent` runs a child Agent,
+the outer `subagent` call remains subject to the owner's limit while it is
+running, but `search`, `fetch`, and other tools executed inside the child are
+not additional calls for the owner. Configure those limits on every child
+Agent that provides these tools:
+
+```go
+child := llmagent.New(
+    "worker",
+    llmagent.WithModel(model),
+    llmagent.WithTools([]tool.Tool{searchTool, fetchTool}),
+    llmagent.WithEnableParallelTools(true),
+    llmagent.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        Groups: []tool.ConcurrencyGroup{
+            {ToolNames: []string{"search"}, Limit: 1},
+            {ToolNames: []string{"fetch"}, Limit: 1},
+        },
+    }),
+)
+```
+
+The separate groups make `search` and `fetch` individually serial while still
+allowing one of each to run at the same time. Each child Agent invocation gets
+independent limits, even when concurrent invocations reuse the same child
+Agent instance. Therefore, three concurrent child invocations can run up to
+three `search` calls and three `fetch` calls in total.
+
+The configuration has no effect unless parallel tool execution is enabled.
+Non-positive group limits are ignored. Each tool name may appear in only one
+positive-limit group; duplicate membership causes
+`WithToolConcurrencyConfig` to panic.
 
 **Parallel execution effect:**
 

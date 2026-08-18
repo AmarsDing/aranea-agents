@@ -30,6 +30,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
+	astructure "trpc.group/trpc-go/trpc-agent-go/agent/structure"
 	atrace "trpc.group/trpc-go/trpc-agent-go/agent/trace"
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
@@ -1656,7 +1657,9 @@ func TestGraphAgent_CreateInitialStateWithContextCompaction(t *testing.T) {
 	require.Len(t, messages, 5)
 	require.Equal(t, model.RoleAssistant, messages[0].Role)
 	require.Equal(t, model.RoleTool, messages[1].Role)
-	require.Contains(t, messages[1].Content, "Historical tool result omitted to save context.")
+	require.Contains(t, messages[1].Content, "Previous tool call succeeded")
+	require.Contains(t, messages[1].Content, "read-only or idempotent tools")
+	require.Contains(t, messages[1].Content, "do not repeat side-effecting")
 	require.Contains(t, messages[1].Content, "event_id: event-old")
 	require.Contains(t, messages[1].Content, "tool_call_id: tool-call-old")
 	require.Contains(t, messages[1].Content, "tool_name: worker")
@@ -1784,6 +1787,43 @@ func TestGraphAgent_CreateInitialStateWithToolMessageDoesNotSetUserInput(t *test
 	require.Equal(t, model.RoleTool, messages[len(messages)-1].Role)
 	require.Equal(t, "call-1", messages[len(messages)-1].ToolID)
 	require.Equal(t, "result", messages[len(messages)-1].Content)
+}
+
+func TestGraphAgent_CreateInitialStateWithToolMessageNoSession(t *testing.T) {
+	schema := graph.NewStateSchema().
+		AddField(graph.StateKeyMessages, graph.StateField{
+			Type:    reflect.TypeOf([]model.Message{}),
+			Reducer: graph.DefaultReducer,
+		}).
+		AddField(graph.StateKeyUserInput, graph.StateField{
+			Type:    reflect.TypeOf(""),
+			Reducer: graph.DefaultReducer,
+		})
+	g, err := graph.NewStateGraph(schema).
+		AddNode("process", func(ctx context.Context, state graph.State) (any, error) {
+			return state, nil
+		}).
+		SetEntryPoint("process").
+		SetFinishPoint("process").
+		Compile()
+	require.NoError(t, err)
+	graphAgent, err := New("test-agent", g)
+	require.NoError(t, err)
+	toolMsg := model.NewToolMessage("call-1", "calc", "result")
+	invocation := agent.NewInvocation(
+		agent.WithInvocationID("inv"),
+		agent.WithInvocationMessage(toolMsg),
+	)
+	graphAgent.setupInvocation(invocation)
+	state := graphAgent.createInitialState(context.Background(), invocation)
+	_, hasUserInput := state[graph.StateKeyUserInput]
+	require.False(t, hasUserInput)
+	messages, ok := graph.GetStateValue[[]model.Message](state, graph.StateKeyMessages)
+	require.True(t, ok)
+	require.Len(t, messages, 1)
+	require.Equal(t, model.RoleTool, messages[0].Role)
+	require.Equal(t, "call-1", messages[0].ToolID)
+	require.Equal(t, "result", messages[0].Content)
 }
 
 // mockCheckpointSaver is a mock implementation of graph.CheckpointSaver.
@@ -4038,10 +4078,10 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 			"route_count": count + 1,
 			"visited":     []string{"route"},
 		}, nil
-	})
+	}, graph.WithNodeType(graph.NodeTypeRouter))
 	builder.AddNode("tools", func(context.Context, graph.State) (any, error) {
 		return graph.State{"visited": []string{"tools"}}, nil
-	})
+	}, graph.WithNodeType(graph.NodeType("custom")))
 	builder.AddNode("branch_a", func(context.Context, graph.State) (any, error) {
 		return graph.State{"visited": []string{"branch_a"}}, nil
 	})
@@ -4053,7 +4093,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 	})
 	builder.AddNode("join", func(context.Context, graph.State) (any, error) {
 		return graph.State{"visited": []string{"join"}}, nil
-	})
+	}, graph.WithNodeType(graph.NodeTypeJoin))
 	builder.AddNode("done", func(context.Context, graph.State) (any, error) {
 		return graph.State{"visited": []string{"done"}}, nil
 	})
@@ -4101,6 +4141,17 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 	require.NotNil(t, completion)
 	require.NotNil(t, completion.ExecutionTrace)
 	executionTrace := completion.ExecutionTrace
+	staticStructure, err := astructure.Export(context.Background(), ag)
+	require.NoError(t, err)
+	staticNodeKinds := make(map[string]astructure.NodeKind, len(staticStructure.Nodes))
+	for _, node := range staticStructure.Nodes {
+		staticNodeKinds[node.NodeID] = node.Kind
+	}
+	for _, step := range executionTrace.Steps {
+		staticNodeKind, ok := staticNodeKinds[step.NodeID]
+		require.True(t, ok, "trace node %q is missing from static structure", step.NodeID)
+		require.Equal(t, string(staticNodeKind), step.NodeType, step.NodeID)
+	}
 	require.Equal(t, atrace.Trace{
 		RootAgentName:    "assistant",
 		RootInvocationID: "root-invocation",
@@ -4116,6 +4167,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/branch_a",
 				NodeID:             "assistant/branch_a",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/route#2"},
@@ -4130,6 +4182,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/branch_b",
 				NodeID:             "assistant/branch_b",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/prepare#1"},
@@ -4144,6 +4197,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/done",
 				NodeID:             "assistant/done",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/join#1"},
@@ -4158,6 +4212,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/join",
 				NodeID:             "assistant/join",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/branch_a#1", "assistant/branch_b#1"},
@@ -4172,6 +4227,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/prepare",
 				NodeID:             "assistant/prepare",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/start#1"},
@@ -4186,6 +4242,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/route",
 				NodeID:             "assistant/route",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/start#1"},
@@ -4200,6 +4257,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/route",
 				NodeID:             "assistant/route",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/tools#1"},
@@ -4214,6 +4272,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/start",
 				NodeID:             "assistant/start",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{},
@@ -4228,6 +4287,7 @@ func TestGraphAgent_Run_ExecutionTraceCapturesComplexGraph(t *testing.T) {
 				AgentName:          "assistant",
 				Branch:             "assistant/tools",
 				NodeID:             "assistant/tools",
+				NodeType:           graph.NodeTypeFunction.String(),
 				StartedAt:          graphAgentTraceAssertionStartTime,
 				EndedAt:            graphAgentTraceAssertionEndTime,
 				PredecessorStepIDs: []string{"assistant/route#1"},
@@ -4512,6 +4572,7 @@ func normalizeGraphAgentTraceForAssertion(executionTrace *atrace.Trace) atrace.T
 			AgentName:          step.AgentName,
 			Branch:             step.Branch,
 			NodeID:             step.NodeID,
+			NodeType:           step.NodeType,
 			StartedAt:          graphAgentTraceAssertionStartTime,
 			EndedAt:            graphAgentTraceAssertionEndTime,
 			PredecessorStepIDs: predecessors,

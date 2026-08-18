@@ -1389,15 +1389,33 @@ sg.AddEdge(nodeCompose, nodeB)
 - 返回一个**增量**更新（一个小 `graph.State`），不要返回或原地修改“完整 state”。
   否则可能会覆盖内部 key（执行上下文、回调、session 等）导致工作流异常。
 
-#### Agent 节点：输入/输出映射（进阶）
+#### Agent 节点：RunOption 与输入/输出映射（进阶）
 
-Agent 节点支持两个映射器，用于控制父图/子代理之间到底传什么：
+Agent 节点支持节点级 RunOption 与多个映射器，用于控制父图与子代理之间的运行选项、
+输入和输出：
 
-- `WithSubgraphInputMapper`：父 State → 子 RuntimeState（`Invocation.RunOptions.RuntimeState`）
-- `WithSubgraphOutputMapper`：子执行结果 → 父 State 更新
+- `WithAgentNodeRunOptions`：只作用于当前 AgentNode 的子调用 `agent.RunOption`。
+  适合为单个 Agent 节点配置外部工具、模型覆盖、过滤器等单次运行选项。
+  多个 AgentNode 可以分别配置不同的 RunOption。
+- `WithSubgraphInputMapper`：父 State → 子 RuntimeState（`Invocation.RunOptions.RuntimeState`）。
+- `WithAgentNodeInputMapper`：父 State → 子 Agent 的输入消息。返回的 state 中如果包含
+  `graph.StateKeyAgentInputMessage`，且值是 `model.Message` 或 `*model.Message`，
+  Agent 节点会用它作为子 Agent 的输入消息。这适合传递 `role=tool` 这类工具消息，
+  而不是普通 user 文本。
+- `WithSubgraphOutputMapper`：子执行结果 → 父 State 更新。对于 `AddAgentNode`，
+  无论子 Agent 是 GraphAgent 还是 LLMAgent，这里都会通过 `SubgraphResult`
+  接收子 Agent 的执行结果。
 
 常见用途：
 
+- **只给某个 AgentNode 暴露调用方执行的工具**：使用
+  `graph.WithAgentNodeRunOptions(agent.WithExternalTools(...))`。这些工具只对
+  该子调用可见，不会注册到兄弟 AgentNode 上。
+- **在调用方执行工具后恢复 AgentNode**：把调用方返回的工具结果先保存到父图
+  自定义 state key，再用 `WithAgentNodeInputMapper` 投影成
+  `StateKeyAgentInputMessage`，让 AgentNode 再次运行时收到工具消息。
+  注意清理你自己的源 state key；mapper 返回的 `StateKeyAgentInputMessage`
+  只是本次子调用的临时输入。
 - **让子代理读取结构化状态**（避免把结构化数据硬塞进 prompt）：通过
   `WithSubgraphInputMapper` 只传递必要键。可运行示例：
   `examples/graph/subagent_runtime_state`。
@@ -1405,7 +1423,7 @@ Agent 节点支持两个映射器，用于控制父图/子代理之间到底传�
   `SubgraphResult.FinalState` 会携带子图最终状态快照，可通过
   `WithSubgraphOutputMapper` 拷贝到父 State。可运行示例：
   `examples/graph/agent_state_handoff`。
-- **单独处理 fatal child fallback state**：如果子图在 `graph.execution`
+- **单独处理子代理失败兜底状态**：如果子图在 `graph.execution`
   之前失败，可读取 `SubgraphResult.FallbackState` /
   `SubgraphResult.FallbackStateDelta`；如果你希望一套逻辑兼容两种情况，
   可以使用 `SubgraphResult.EffectiveState()`。
@@ -1591,8 +1609,19 @@ stateGraph.AddToolsNode(
     "tools",
     tools,
     graph.WithEnableParallelTools(true), // 可选；默认串行
+    graph.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        MaxConcurrency: 2,
+        Groups: []tool.ConcurrencyGroup{
+            {ToolNames: []string{"search"}, Limit: 1},
+        },
+    }),
 )
 ```
+
+每次 Tools 节点调用都有独立额度，因此并发的 Graph execution 不会相互占用
+容量。同一组中的多个工具名在一次调用内共同消耗该组的容量。每个工具名只能
+出现在一个正数上限的组中；重复配置会导致 `WithToolConcurrencyConfig`
+panic。
 
 为 ToolsNode 配置 Tool 调用重试：
 
@@ -4151,6 +4180,40 @@ events, err := r.Run(ctx, userID, sessionID,
 )
 ```
 
+#### AgentNode 子 LLMAgent 外部工具
+
+如果父图通过 AgentNode 调用子 `LLMAgent`，且外部工具由调用方执行，通常由子
+`LLMAgent` 产出工具调用，再由父图的普通节点调用 `graph.Interrupt`。恢复后，
+普通节点把工具结果写入父 State，AgentNode 再通过输入映射把工具结果传回子
+`LLMAgent`。
+
+代码示例片段如下：
+
+```go
+sg.AddAgentNode(
+    nodeResearch,
+    graph.WithAgentNodeRunOptions(agent.WithExternalTools([]tool.Tool{
+        externalSearchTool(),
+    })),
+    graph.WithSubgraphOutputMapper(storeExternalToolRequest),
+    graph.WithAgentNodeInputMapper(mapExternalToolMessage),
+)
+sg.AddNode(nodeExternalGate, interruptForExternalTool)
+sg.AddEdge(nodeResearch, nodeExternalGate)
+sg.AddConditionalEdges(nodeExternalGate, routeAfterExternalGate, map[string]string{
+    nodeResearch: nodeResearch,
+    graph.End:    graph.End,
+})
+```
+
+其中 `WithAgentNodeRunOptions` 只给当前 AgentNode 配置外部工具，
+`storeExternalToolRequest` 负责保存子 `LLMAgent` 产出的工具调用，
+`interruptForExternalTool` 负责等待调用方回传工具结果，
+`mapExternalToolMessage` 负责把恢复后的工具结果转换为
+`graph.StateKeyAgentInputMessage`。
+
+完整示例见 `examples/graph/agentnode_llmagent_externaltool`。
+
 ### 事件监控
 
 事件流承载了整个图的执行过程与增量输出。下面的示例展示了如何遍历事件并区分图事件与模型增量：
@@ -4761,5 +4824,5 @@ func buildApprovalWorkflow() (*graph.Graph, error) {
   - I/O 约定：`io_conventions`、`io_conventions_tools`
   - 并行 / 扇出：`parallel`、`fanout`、`diamond`
   - 占位符：`placeholder`
-  - 检查点 / 中断：`checkpoint`、`interrupt`、`nested_interrupt`、`static_interrupt`
+  - 检查点 / 中断：`checkpoint`、`interrupt`、`nested_interrupt`、`agentnode_llmagent_externaltool`、`static_interrupt`
 - 进一步阅读：`graph/state_graph.go`、`graph/executor.go`、`agent/graphagent`

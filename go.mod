@@ -51,13 +51,13 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.12.3
 	github.com/mattn/go-isatty v0.0.20
-	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/peterh/liner v1.2.2
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_model v0.6.2
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/slack-go/slack v0.23.1
 	github.com/spf13/cobra v1.10.2
@@ -90,22 +90,22 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
-	trpc.group/trpc-go/trpc-a2a-go v0.2.5
-	trpc.group/trpc-go/trpc-agent-go v1.10.0
+	trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb
+	trpc.group/trpc-go/trpc-agent-go v1.11.1
 	trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe v1.10.0
 	trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0
-	trpc.group/trpc-go/trpc-agent-go/codeexecutor/container v0.0.0-00010101000000-000000000000
-	trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0
-	trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf v1.5.0
-	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0
-	trpc.group/trpc-go/trpc-agent-go/model/bedrock v0.0.0-00010101000000-000000000000
+	trpc.group/trpc-go/trpc-agent-go/codeexecutor/container v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/evaluation v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/model/bedrock v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0
 	trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1
-	trpc.group/trpc-go/trpc-agent-go/server/agui v0.0.0
-	trpc.group/trpc-go/trpc-agent-go/session/postgres v1.8.0
+	trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/session/postgres v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/claudecode v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/email v1.9.0
@@ -141,18 +141,18 @@ require (
 	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260305114736-115a967b66a9 // indirect
+	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260514093510-e9e910b230b9 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.37.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.7 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.24 // indirect
-	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.30.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.50.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.23 // indirect
@@ -251,7 +251,7 @@ require (
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.2.0 // indirect
 	github.com/olekukonko/ll v0.1.6 // indirect
-	github.com/ollama/ollama v0.16.3 // indirect
+	github.com/ollama/ollama v0.17.1 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -261,12 +261,12 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/richardlehane/mscfb v1.0.6 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
@@ -311,6 +311,6 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
 	mvdan.cc/sh/v3 v3.8.0 // indirect
-	trpc.group/trpc-go/trpc-agent-go/storage/postgres v1.8.0 // indirect
+	trpc.group/trpc-go/trpc-agent-go/storage/postgres v1.11.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 )

@@ -52,12 +52,19 @@ func (stubConversation) Close() error {
 	return nil
 }
 
+type stubEvalCaseResultAggregator struct{}
+
+func (stubEvalCaseResultAggregator) Aggregate(context.Context, *EvalCaseResultAggregationInput) (*EvalCaseResultAggregationResult, error) {
+	return &EvalCaseResultAggregationResult{}, nil
+}
+
 func TestNewOptionsDefaults(t *testing.T) {
 	opts := NewOptions()
 	assert.NotNil(t, opts.EvalSetManager)
 	assert.NotNil(t, opts.EvalResultManager)
 	assert.NotNil(t, opts.Registry)
 	assert.NotNil(t, opts.MetricRegistry)
+	assert.NotNil(t, opts.EvalCaseResultAggregator)
 	assert.NotNil(t, opts.SessionIDSupplier)
 	assert.Nil(t, opts.ExpectedRunner)
 	assert.Nil(t, opts.UserSimulator)
@@ -93,6 +100,12 @@ func TestWithMetricRegistry(t *testing.T) {
 	assert.Equal(t, custom, opts.MetricRegistry)
 }
 
+func TestWithEvalCaseResultAggregator(t *testing.T) {
+	custom := stubEvalCaseResultAggregator{}
+	opts := NewOptions(WithEvalCaseResultAggregator(custom))
+	assert.Equal(t, custom, opts.EvalCaseResultAggregator)
+}
+
 func TestWithSessionIDSupplier(t *testing.T) {
 	called := false
 	supplier := func(ctx context.Context) string {
@@ -120,6 +133,12 @@ func TestWithExpectedRunner(t *testing.T) {
 	custom := stubRunner{}
 	opts := NewOptions(WithExpectedRunner(custom))
 	assert.Equal(t, custom, opts.ExpectedRunner)
+}
+
+func TestWithToolMockRunner(t *testing.T) {
+	custom := stubRunner{}
+	opts := NewOptions(WithToolMockRunner(custom))
+	assert.Equal(t, custom, opts.ToolMockRunner)
 }
 
 func TestWithRunOptions(t *testing.T) {

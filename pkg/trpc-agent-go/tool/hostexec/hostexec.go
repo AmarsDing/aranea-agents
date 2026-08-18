@@ -177,7 +177,10 @@ func (t *execCommandTool) Declaration() *tool.Declaration {
 			"general local shell work in the configured base " +
 			"directory. Long-running or interactive commands can " +
 			"continue with write_stdin. Relative workdir values " +
-			"resolve from the tool set base directory.",
+			"resolve from the tool set base directory. If a file " +
+			"tool must read command output later, write that output " +
+			"to a relative path under the workdir/base directory " +
+			"instead of an absolute temp path.",
 		InputSchema: &tool.Schema{
 			Type:     "object",
 			Required: []string{"command"},
@@ -389,8 +392,14 @@ func (t *writeStdinTool) Call(
 		return nil, errors.New(errSessionIDRequired)
 	}
 
-	if err := t.mgr.write(
-		sessionID,
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	sess, err := t.mgr.get(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := sess.write(
 		in.Chars,
 		firstBool(in.AppendNewline, in.Submit),
 	); err != nil {
@@ -405,18 +414,17 @@ func (t *writeStdinTool) Call(
 	if yield > 0 {
 		timer := time.NewTimer(time.Duration(yield) * time.Millisecond)
 		defer timer.Stop()
+		// Return as soon as the process exits: sleeping out the full
+		// yield after exit only delays the result the caller is
+		// waiting for. Mirrors the manager's own exec yield path.
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
 		case <-timer.C:
+		case <-sess.doneCh:
 		}
 	}
 
-	poll, err := t.mgr.poll(sessionID, nil)
-	if err != nil {
-		return nil, err
-	}
-	return mapPollResult(sessionID, poll), nil
+	return mapPollResult(sessionID, sess.poll(nil)), nil
 }
 
 type killSessionTool struct {

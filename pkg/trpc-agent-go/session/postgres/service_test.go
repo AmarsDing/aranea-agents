@@ -249,6 +249,7 @@ func TestListSessions_EventPageValidation(t *testing.T) {
 // TestServiceOpts contains options for creating a test service
 type TestServiceOpts struct {
 	sessionTTL         time.Duration
+	trackEventTTL      *time.Duration
 	appStateTTL        time.Duration
 	userStateTTL       time.Duration
 	sessionEventLimit  int
@@ -366,6 +367,7 @@ func setupMockService(t *testing.T, opts *TestServiceOpts) (*Service, sqlmock.Sq
 		pgClient: client,
 		opts: ServiceOpts{
 			sessionTTL:         opts.sessionTTL,
+			trackEventTTL:      opts.trackEventTTL,
 			appStateTTL:        opts.appStateTTL,
 			userStateTTL:       opts.userStateTTL,
 			sessionEventLimit:  opts.sessionEventLimit,
@@ -1901,6 +1903,52 @@ func TestAppendTrackEvent_SyncMode(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestAppendTrackEvent_TrackTTLOverridesSessionTTL(t *testing.T) {
+	trackTTL := time.Duration(0)
+	s, mock, db := setupMockService(t, &TestServiceOpts{
+		sessionTTL:    time.Hour,
+		trackEventTTL: &trackTTL,
+	})
+	defer db.Close()
+
+	sess := &session.Session{
+		ID:      "test-session",
+		AppName: "test-app",
+		UserID:  "test-user",
+		State:   session.StateMap{},
+	}
+	trackEvent := &session.TrackEvent{
+		Track:     "agui",
+		Payload:   json.RawMessage(`{"delta":"hi"}`),
+		Timestamp: time.Now(),
+	}
+	sessState := &SessionState{
+		ID:    "test-session",
+		State: session.StateMap{},
+	}
+	stateBytes, _ := json.Marshal(sessState)
+	stateRows := sqlmock.NewRows([]string{"state", "expires_at"}).
+		AddRow(stateBytes, nil)
+	expectLoadSessionStateForUpdate(mock, session.Key{
+		AppName:   "test-app",
+		UserID:    "test-user",
+		SessionID: "test-session",
+	}).WillReturnRows(stateRows)
+	mock.ExpectExec("UPDATE session_states SET state").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			"test-app", "test-user", "test-session").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO session_track_events").
+		WithArgs("test-app", "test-user", "test-session", "agui",
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), nil).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err := s.AppendTrackEvent(context.Background(), sess, trackEvent)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestAppendTrackEvent_AsyncSuccess(t *testing.T) {
 	service := &Service{
 		opts: ServiceOpts{
@@ -2996,6 +3044,38 @@ func TestNewService_WithInstance_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestNewService_InitDBFailureClosesClient covers NewService closing the client
+// and returning an error when initDB fails (rather than leaking the pool).
+func TestNewService_InitDBFailureClosesClient(t *testing.T) {
+	restrictToSessionStates(t)
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+
+	originalBuilder := storage.GetClientBuilder()
+	defer storage.SetClientBuilder(originalBuilder)
+	storage.SetClientBuilder(func(ctx context.Context, builderOpts ...storage.ClientBuilderOpt) (storage.Client, error) {
+		return &mockPostgresClient{db: db}, nil
+	})
+
+	instanceName := "test-instance-initdb-fail"
+	storage.RegisterPostgresInstance(instanceName,
+		storage.WithClientConnString("test:test@tcp(localhost:5432)/testdb"),
+	)
+
+	// initDB runs (skipDBInit is false) and fails on the first CREATE TABLE;
+	// NewService must then close the client. ExpectClose (with no deferred
+	// db.Close) is only satisfied if NewService actually closed it.
+	mock.ExpectExec("CREATE TABLE").WillReturnError(assert.AnError)
+	mock.ExpectClose()
+
+	svc, err := NewService(WithPostgresInstance(instanceName))
+	require.Error(t, err)
+	require.Nil(t, svc)
+	assert.Contains(t, err.Error(), "init database failed")
+	require.ErrorIs(t, err, assert.AnError)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestNewService_WithDSN_Success(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
@@ -3498,4 +3578,64 @@ func TestUpdateSessionState_Success(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestServiceGetTrackEventsReadsTrackStorage(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	svc := createTestService(t, db)
+	ctx := context.Background()
+	key := session.Key{AppName: "app", UserID: "user", SessionID: "sess"}
+	track := session.Track("agui")
+	base := time.Now().Add(-time.Hour)
+	oldEvent := session.TrackEvent{Track: track, Payload: json.RawMessage(`"old"`), Timestamp: base}
+	newEvent := session.TrackEvent{Track: track, Payload: json.RawMessage(`"new"`), Timestamp: base.Add(time.Second)}
+	oldBytes, err := json.Marshal(oldEvent)
+	require.NoError(t, err)
+	newBytes, err := json.Marshal(newEvent)
+	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT event FROM session_track_events")).
+		WithArgs(key.AppName, key.UserID, key.SessionID, track, sqlmock.AnyArg(), base.Add(-time.Minute), 2).
+		WillReturnRows(sqlmock.NewRows([]string{"event"}).AddRow(newBytes).AddRow(oldBytes))
+	got, err := svc.GetTrackEvents(ctx, key, track, session.WithEventTime(base.Add(-time.Minute)), session.WithEventNum(2))
+	require.NoError(t, err)
+	require.Equal(t, track, got.Track)
+	require.Len(t, got.Events, 2)
+	require.Equal(t, oldEvent.Payload, got.Events[0].Payload)
+	require.Equal(t, newEvent.Payload, got.Events[1].Payload)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT event FROM session_track_events")).
+		WithArgs(key.AppName, key.UserID, key.SessionID, session.Track("missing"), sqlmock.AnyArg(), time.Time{}).
+		WillReturnRows(sqlmock.NewRows([]string{"event"}))
+	missing, err := svc.GetTrackEvents(ctx, key, "missing")
+	require.NoError(t, err)
+	require.Equal(t, session.Track("missing"), missing.Track)
+	require.Empty(t, missing.Events)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestServiceGetTrackEventsErrors(t *testing.T) {
+	t.Run("invalid key", func(t *testing.T) {
+		db, _, err := sqlmock.New()
+		require.NoError(t, err)
+		defer db.Close()
+		svc := createTestService(t, db)
+		_, err = svc.GetTrackEvents(context.Background(), session.Key{UserID: "user", SessionID: "sess"}, "agui")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, session.ErrAppNameRequired)
+	})
+	t.Run("query error", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer db.Close()
+		svc := createTestService(t, db)
+		key := session.Key{AppName: "app", UserID: "user", SessionID: "sess"}
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT event FROM session_track_events")).
+			WithArgs(key.AppName, key.UserID, key.SessionID, session.Track("agui"), sqlmock.AnyArg(), time.Time{}).
+			WillReturnError(assert.AnError)
+		_, err = svc.GetTrackEvents(context.Background(), key, "agui")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "postgres session service get track events failed")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }

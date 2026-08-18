@@ -536,6 +536,58 @@ func (s *Service) ReadMemories(
 // search triggers a fallback unfiltered search when KindFallback is enabled.
 const minKindFallbackResults = 3
 
+// ProactiveRecall retrieves associated memories based on the conversation
+// context by issuing one search per extracted keyword and de-duplicating
+// the results.
+func (s *Service) ProactiveRecall(ctx context.Context, userKey memory.UserKey,
+	convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	if err := userKey.CheckUserKey(); err != nil {
+		return nil, err
+	}
+	queries := collectProactiveQueries(convCtx)
+	if len(queries) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	var out []*memory.Entry
+	for _, q := range queries {
+		entries, err := s.SearchMemories(ctx, userKey, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e == nil || e.ID == "" {
+				continue
+			}
+			if _, ok := seen[e.ID]; ok {
+				continue
+			}
+			seen[e.ID] = struct{}{}
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// collectProactiveQueries extracts search keywords from the conversation
+// context. Returns nil when the context carries no usable signal.
+func collectProactiveQueries(convCtx memory.ConversationContext) []string {
+	var queries []string
+	for _, e := range convCtx.MentionedEntities {
+		e = strings.TrimSpace(e)
+		if e != "" {
+			queries = append(queries, e)
+		}
+	}
+	if topic := strings.TrimSpace(convCtx.CurrentTopic); topic != "" {
+		queries = append(queries, topic)
+	}
+	if stmt := strings.TrimSpace(convCtx.UserStatement); stmt != "" {
+		queries = append(queries, stmt)
+	}
+	return queries
+}
+
 // SearchMemories searches memories for a user using vector similarity.
 // Options may include WithSearchOptions for advanced filtering
 // (kind, time range, hybrid search, etc.).

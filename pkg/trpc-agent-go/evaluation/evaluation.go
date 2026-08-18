@@ -65,9 +65,11 @@ func New(appName string, runner runner.Runner, opt ...Option) (AgentEvaluator, e
 		metricManager:                     opts.metricManager,
 		registry:                          opts.registry,
 		metricRegistry:                    opts.metricRegistry,
+		evalCaseResultAggregator:          opts.evalCaseResultAggregator,
 		evalService:                       opts.evalService,
 		callbacks:                         opts.callbacks,
 		expectedRunner:                    opts.expectedRunner,
+		toolMockRunner:                    opts.toolMockRunner,
 		numRuns:                           opts.numRuns,
 		evalCaseIDs:                       append([]string(nil), opts.evalCaseIDs...),
 		numRunsParallelEnabled:            opts.numRunsParallelEnabled,
@@ -91,6 +93,9 @@ func New(appName string, runner runner.Runner, opt ...Option) (AgentEvaluator, e
 		if opts.expectedRunner != nil {
 			serviceOpts = append(serviceOpts, service.WithExpectedRunner(opts.expectedRunner))
 		}
+		if opts.toolMockRunner != nil {
+			serviceOpts = append(serviceOpts, service.WithToolMockRunner(opts.toolMockRunner))
+		}
 		if opts.evalCaseParallelism != nil {
 			serviceOpts = append(serviceOpts, service.WithEvalCaseParallelism(*opts.evalCaseParallelism))
 		}
@@ -102,6 +107,9 @@ func New(appName string, runner runner.Runner, opt ...Option) (AgentEvaluator, e
 		}
 		if opts.userSimulator != nil {
 			serviceOpts = append(serviceOpts, service.WithUserSimulator(opts.userSimulator))
+		}
+		if opts.evalCaseResultAggregator != nil {
+			serviceOpts = append(serviceOpts, service.WithEvalCaseResultAggregator(opts.evalCaseResultAggregator))
 		}
 		evalService, err := local.New(a.runner, serviceOpts...)
 		if err != nil {
@@ -123,9 +131,11 @@ type agentEvaluator struct {
 	metricManager                     metric.Manager
 	registry                          registry.Registry
 	metricRegistry                    metricregistry.Registry
+	evalCaseResultAggregator          service.EvalCaseResultAggregator
 	evalService                       service.Service
 	callbacks                         *service.Callbacks
 	expectedRunner                    runner.Runner
+	toolMockRunner                    runner.Runner
 	numRuns                           int
 	evalCaseIDs                       []string
 	numRunsParallelEnabled            *bool
@@ -215,9 +225,11 @@ func (a *agentEvaluator) mergeCallOptions(opt ...Option) (*options, error) {
 		metricManager:                     a.metricManager,
 		registry:                          a.registry,
 		metricRegistry:                    a.metricRegistry,
+		evalCaseResultAggregator:          a.evalCaseResultAggregator,
 		evalService:                       a.evalService,
 		callbacks:                         a.callbacks,
 		expectedRunner:                    a.expectedRunner,
+		toolMockRunner:                    a.toolMockRunner,
 		judgeRunner:                       a.judgeRunner,
 		judgeRunnerNumSamples:             a.judgeRunnerNumSamples,
 		numRuns:                           a.numRuns,
@@ -454,6 +466,9 @@ func (a *agentEvaluator) runEvaluationOnce(
 	if opts.expectedRunner != nil {
 		inferenceOpts = append(inferenceOpts, service.WithExpectedRunner(opts.expectedRunner))
 	}
+	if opts.toolMockRunner != nil {
+		inferenceOpts = append(inferenceOpts, service.WithToolMockRunner(opts.toolMockRunner))
+	}
 	if opts.evalCaseParallelism != nil {
 		inferenceOpts = append(inferenceOpts, service.WithEvalCaseParallelism(*opts.evalCaseParallelism))
 	}
@@ -486,6 +501,9 @@ func (a *agentEvaluator) runEvaluationOnce(
 	if opts.expectedRunner != nil {
 		evaluateOpts = append(evaluateOpts, service.WithExpectedRunner(opts.expectedRunner))
 	}
+	if opts.toolMockRunner != nil {
+		evaluateOpts = append(evaluateOpts, service.WithToolMockRunner(opts.toolMockRunner))
+	}
 	if len(opts.runOptions) != 0 {
 		evaluateOpts = append(evaluateOpts, service.WithRunOptions(opts.runOptions...))
 	}
@@ -494,6 +512,9 @@ func (a *agentEvaluator) runEvaluationOnce(
 	}
 	if opts.evalCaseParallelEvaluationEnabled != nil {
 		evaluateOpts = append(evaluateOpts, service.WithEvalCaseParallelEvaluationEnabled(*opts.evalCaseParallelEvaluationEnabled))
+	}
+	if opts.evalCaseResultAggregator != nil {
+		evaluateOpts = append(evaluateOpts, service.WithEvalCaseResultAggregator(opts.evalCaseResultAggregator))
 	}
 	runResult, err := opts.evalService.Evaluate(ctx, evaluateRequest, evaluateOpts...)
 	if err != nil {
@@ -521,13 +542,15 @@ func aggregateCaseRuns(caseID string, runs []*evalresult.EvalCaseResult) (*Evalu
 		threshold float64
 		criterion *criterion.Criterion
 	}
-	hasRunError := false
 	// Group metrics results by metric name.
 	aggregatedMetrics := make(map[string]*aggregatedMetric)
+	runStatuses := make([]status.EvalStatus, 0, len(runs))
+	hasRunError := false
 	for _, run := range runs {
 		if run == nil {
 			continue
 		}
+		runStatuses = append(runStatuses, run.FinalEvalStatus)
 		if run.ErrorMessage != "" {
 			hasRunError = true
 		}
@@ -560,12 +583,9 @@ func aggregateCaseRuns(caseID string, runs []*evalresult.EvalCaseResult) (*Evalu
 			Criterion:  aggregatedMetric.criterion,
 		})
 	}
-	overallStatus, err := istatus.SummarizeMetricsStatus(metricResults)
+	overallStatus, err := summarizeAggregateCaseRunsStatus(runStatuses, metricResults, hasRunError)
 	if err != nil {
-		return nil, fmt.Errorf("summarize metrics status: %w", err)
-	}
-	if overallStatus == status.EvalStatusNotEvaluated && hasRunError {
-		overallStatus = status.EvalStatusFailed
+		return nil, fmt.Errorf("summarize case run status: %w", err)
 	}
 	return &EvaluationCaseResult{
 		EvalCaseID:      caseID,
@@ -573,6 +593,27 @@ func aggregateCaseRuns(caseID string, runs []*evalresult.EvalCaseResult) (*Evalu
 		EvalCaseResults: runs,
 		MetricResults:   metricResults,
 	}, nil
+}
+
+func summarizeAggregateCaseRunsStatus(runStatuses []status.EvalStatus, metricResults []*evalresult.EvalMetricResult, hasRunError bool) (status.EvalStatus, error) {
+	if len(runStatuses) <= 1 {
+		overallStatus, err := istatus.Summarize(runStatuses)
+		if err != nil {
+			return status.EvalStatusFailed, err
+		}
+		if overallStatus == status.EvalStatusNotEvaluated && hasRunError {
+			return status.EvalStatusFailed, nil
+		}
+		return overallStatus, nil
+	}
+	overallStatus, err := istatus.SummarizeMetricsStatus(metricResults)
+	if err != nil {
+		return status.EvalStatusFailed, err
+	}
+	if overallStatus == status.EvalStatusNotEvaluated && hasRunError {
+		return status.EvalStatusFailed, nil
+	}
+	return overallStatus, nil
 }
 
 func collectRunDetails(runs []*evalresult.EvalCaseResult, runDetailsByID map[int]*EvaluationCaseRunDetails) []*EvaluationCaseRunDetails {

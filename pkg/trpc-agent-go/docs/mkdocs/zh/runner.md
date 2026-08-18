@@ -354,6 +354,22 @@ defer r.Close()
 - 插件按注册顺序执行。
 - 如果插件实现了 `plugin.Closer`，Runner 会在 `Close()` 时调用它。
 
+如果插件只需要影响某一次运行，可以把它作为 RunOption 传给 `Run`：
+
+```go
+eventChan, err := r.Run(
+    ctx,
+    userID,
+    sessionID,
+    message,
+    plugin.WithPlugins(requestPlugin),
+)
+```
+
+单次 Run 插件会排在 Runner 级插件之后执行，只对本次 `Run` 生效。Runner 不会在
+本次运行结束时调用这些插件的 `Close()`；如果插件持有外部资源，调用方需要自行管理。
+更完整的作用域、执行顺序和生命周期说明见 [插件文档](plugin.md)。
+
 ### 🔄 Ralph Loop Mode
 
 Ralph Loop 是一种“外部循环（outer loop）”模式：不依赖 LLM 主观判断“我已经完成了”，
@@ -510,6 +526,46 @@ tool(result B)
 `runOneStep()` 开始之前。
 
 可运行示例：`examples/steer/`
+
+#### 逐个接收工具结果事件
+
+当模型的一次回复请求多个工具时，Runner 默认会等待所有工具执行完，再发送一个
+合并的 `tool.response` 事件。如果希望改为每个工具调用完成后分别发送一个结果事件，
+可以为本次 `Run` 开启以下选项：
+
+该选项仅适用于全部由 Runner 处理且不含 long-running 工具的多工具轮次；其他轮次
+仍沿用原有的执行和事件行为。
+
+```go
+eventChan, err := r.Run(
+    ctx,
+    userID,
+    sessionID,
+    message,
+    agent.WithToolResultEventPerCallEnabled(true),
+)
+```
+
+开启后：
+
+- 每个工具调用完成时，`eventChan` 都会收到一个最终的 `tool.response` 事件。
+  每个事件只包含一个调用的结果，可以通过结果消息中的 `ToolID` 与原调用对应。
+- 所有工具完成后，不会再额外发送一个合并结果事件。
+- 每个结果事件会分别保存到 Session。
+- 并行工具的结果按实际完成顺序发送，可能与模型发起调用的顺序不同。
+- `StateDelta` 和 `Actions.SkipSummarization` 表示整个工具调用轮次的效果，不属于
+  某个结果事件。前面的结果事件不携带这些值；正常完成时请从最后一个结果事件读取，
+  提前出错时请从终止错误事件读取。
+
+例如，模型依次请求 A 和 B，但 B 先完成：
+
+```text
+eventChan 收到：result B -> result A
+提供给模型：result A -> result B
+```
+
+该选项只改变应用收到结果的时机。Runner 仍会等待所有工具调用完成后才发起下一次
+模型请求，并按原始 tool-call 顺序把结果提供给模型。
 
 #### 按请求覆盖 AppName（多租户隔离）
 
@@ -678,7 +734,8 @@ msgs := []model.Message{
 ch, err := runner.RunWithMessages(ctx, r, userID, sessionID, msgs, agent.WithRequestID("request-ID"))
 ```
 
-示例：`examples/runwithmessages`（使用 `RunWithMessages`；Runner 会 auto-seed 并复用 Session）
+示例：`examples/runwithmessages`（使用 `session/noop`，并在每次请求中通过
+`RunWithMessages` 传入业务侧维护的完整历史）
 
 方式 B：通过 RunOption 显式传入（与 Python ADK 一致的理念）
 
@@ -691,6 +748,8 @@ ch, err := r.Run(ctx, userID, sessionID, model.Message{}, agent.WithMessages(msg
 Session。内容处理器不会读取这个选项，它只会从 Session 事件中派生消息（或在 Session
 没有事件时回退到单条 `invocation.Message`）。`RunWithMessages` 仍会把最新的用户消息写入
 `invocation.Message`。
+
+如果上游业务负责持久化完整历史，并且不希望 Runner 跨请求保存 Session，可以给 Runner 注入 `session/noop`，并在每次请求中通过 `RunWithMessages` 传入更新后的完整历史。Noop 仍保留单次 `Run` 所需的临时 Session，但不会自动恢复上一轮数据。详见 [无持久化（Noop）](./session/noop.md)。
 
 #### 用户消息改写
 
@@ -773,6 +832,18 @@ eventChan, err := r.Run(
 ```
 
 完整示例可参考 [examples/usermessagerewriter](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/usermessagerewriter)。
+
+#### 注入单次请求上下文（非持久化）
+
+如果你需要为**本轮**提供额外上下文（例如“rules”、动态约束、检索结果、背景知识），但又不希望把它写入 session transcript，可以使用这些 RunOption：
+
+- `agent.WithInjectedContextMessages(...)`：把消息注入到 **session history 之前**
+- `agent.WithLateContextMessages(...)`：把消息注入到 **贴近最新用户回合**
+  （历史之后，插入到最后一个 user message 之前）
+
+两者都只影响本次模型请求，不会持久化到 Session 事件中。
+
+可运行示例：`examples/prompt/late_context_messages`。
 
 #### 按 `nodeID` 覆盖指定节点的运行时 surface
 
@@ -1682,6 +1753,199 @@ func checkRunner(r runner.Runner, ctx context.Context) error {
     return nil
 }
 ```
+
+## 在线 Best-of-N 候选选择
+
+Best-of-N 用于在一次 `Runner.Run` 内完成多次生成、评估排序和最佳结果输出。Runner 收到同一条用户消息后，会让同一个 Agent 基于当前会话上下文生成 N 份候选结果，再通过 [评估指标 Metric](evaluation.md#评估指标-evalmetric) 判断候选质量，最终只将质量最高的候选作为本轮输出。
+
+`runner/bestofn` 以 `runner.Option` 的方式接入现有 Runner。业务 Agent 负责生成候选结果，[Evaluation](evaluation.md) 负责评估候选结果，Runner 负责管理会话、事件流和最终结果提交。候选选择依据来自 `WithEvalMetrics(...)` 注入的 [评估指标 Metric](evaluation.md#评估指标-evalmetric)，既可以是静态规则评估器，也可以是 LLM Judge 类评估器。
+
+下面示例使用 [llm_rubric_response](evaluation.md#llm-细则响应评估器) 作为候选选择指标，该指标会逐个评估候选最终回答是否满足评估细则。
+
+```go
+import (
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion"
+	criterionllm "trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/llm"
+	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/runner/bestofn"
+)
+
+qualityMetric := &metric.EvalMetric{
+	MetricName: "llm_rubric_response",
+	Threshold:  1.0,
+	Criterion: &criterion.Criterion{
+		LLMJudge: &criterionllm.LLMCriterion{
+			Rubrics: []*criterionllm.Rubric{
+				{
+					ID: "quality",
+					Content: &criterionllm.RubricContent{
+						Text: "The final answer directly satisfies the user's request and does not introduce unsupported claims.",
+					},
+				},
+			},
+		},
+	},
+}
+
+judgeRunner := runner.NewRunner("my-app-judge", judgeAgent)
+defer judgeRunner.Close()
+
+bestOfNOpt, err := bestofn.NewRunnerOption(
+	// WithAttempts 设置每次 Runner.Run 生成的候选数量。
+	bestofn.WithAttempts(3),
+	// WithEvalMetrics 设置用于选择候选结果的评估指标。
+	bestofn.WithEvalMetrics(qualityMetric),
+	// WithJudgeRunner 设置 LLM Judge 类指标使用的裁判 Runner。
+	bestofn.WithJudgeRunner(judgeRunner),
+)
+if err != nil {
+	return err
+}
+
+r := runner.NewRunner("my-app", candidateAgent, bestOfNOpt)
+defer r.Close()
+```
+
+`WithAttempts(attempts)` 设置每次 `Runner.Run` 生成的候选数量。默认值为 2；取值必须大于或等于 1。设置为 1 时只生成一次候选，底层 Runner 会按普通单次运行流程执行，不触发候选选择；
+
+`WithEvalMetrics(metrics...)` 设置候选选择使用的 [评估指标 Metric](evaluation.md#评估指标-evalmetric)。至少需要提供一个评估指标。每个评估指标会产出分数和评估状态，Runner 会根据 `WithSelectionMode` 指定的候选选择模式汇总这些结果；默认模式会逐个评估候选，也可以切换为成对比较。
+
+`WithContextMessages(messages...)` 给每个候选 [评估用例 EvalCase](evaluation.md#评估集-evalset) 附加 [ContextMessages](evaluation.md#上下文注入)。这些消息会进入评估用例，供评估器读取额外背景。
+
+`WithJudgeRunner(r)` 设置 LLM Judge 类评估指标使用的裁判 Runner。配置后，LLM Judge 类评估指标的裁判模型调用会走该 Runner。
+
+`WithJudgeRunnerNumSamples(n)` 设置 LLM Judge 类评估指标对同一份评估输入调用裁判 Runner 的采样次数。取值必须大于 0，同时需要配置 `WithJudgeRunner`，并且评估指标中需要包含 LLM Judge criterion。
+
+`WithSelectionMode(mode)` 设置候选结果如何交给 [评估指标 Metric](evaluation.md#评估指标-evalmetric)，以及评估指标结果如何汇总成最终选中候选。默认值为 `SelectionModePointwise`。
+
+- `SelectionModePointwise` 会逐个评估候选。每份候选独立生成一个 [评估用例 EvalCase](evaluation.md#评估集-evalset)，评估指标给这份候选打分，最终选择平均分最高的候选。分数相同时，评估状态为 passed 的候选优先；状态也相同时，候选序号较小的结果优先。这个模式适合使用能直接评价单份回复质量的 [评估指标 Metric](evaluation.md#评估指标-evalmetric)。
+- `SelectionModePairwise` 会对候选做成对比较。每两个候选形成一组比较，前一个候选作为 actual，后一个候选作为 expected 交给 [Evaluation](evaluation.md)，由对应的 [评估器 Evaluator](evaluation.md#评估器-evaluator) 根据 [评估指标 Metric](evaluation.md#评估指标-evalmetric) 配置执行比较并输出比较分数；分数大于 0.5 表示前一个候选质量更高，小于 0.5 表示后一个候选质量更高，等于 0.5 表示质量相当。所有候选比较完成后，胜场更多的候选优先；胜场相同时，比较分数偏离 0.5 幅度更大的候选优先；仍然相同时，候选序号较小的结果优先。这个模式只要求评估器能输出比较分数，并不绑定具体评估器。
+
+`WithRequirePassingCandidate(enabled)` 要求 `SelectionModePointwise` 的选中候选必须通过评估指标阈值。开启后，未达到 passed 状态的候选不会被选中；所有候选都未通过时，事件流会发出选择错误。该选项只支持 `SelectionModePointwise`，与 `SelectionModePairwise` 同用时 `NewRunnerOption` 会返回配置错误。
+
+候选生成默认串行执行，可以通过 `WithAttemptParallelEnabled(enabled)` 开启候选运行并发，默认值为 `false`。`WithAttemptParallelism(parallelism)` 设置候选运行最大并发数；开启并发且 `parallelism <= 0` 时，使用 `runtime.GOMAXPROCS(0)`。
+
+开启并发的配置示例如下。
+
+```go
+bestOfNOpt, err := bestofn.NewRunnerOption(
+	// WithAttempts 设置候选生成次数。
+	bestofn.WithAttempts(6),
+	// WithAttemptParallelEnabled 开启候选生成并发。
+	bestofn.WithAttemptParallelEnabled(true),
+	// WithAttemptParallelism 设置候选生成最大并发数。
+	bestofn.WithAttemptParallelism(3),
+	// WithEvalMetrics 设置用于选择候选结果的评估指标。
+	bestofn.WithEvalMetrics(qualityMetric),
+	// WithJudgeRunner 设置 LLM Judge 类指标使用的裁判 Runner。
+	bestofn.WithJudgeRunner(judgeRunner),
+)
+```
+
+`WithEvalSetManager(manager)` 设置候选评测过程中使用的 [EvalSet Manager](evaluation.md#evalset-manager)，用于管理 [评估集 EvalSet](evaluation.md#评估集-evalset) 和 [评估用例 EvalCase](evaluation.md#评估集-evalset)，默认使用内存 manager 实现。
+
+`WithRegistry(registry)` 设置 [评估服务 Service](evaluation.md#评估服务-service) 解析 [评估器 Evaluator](evaluation.md#评估器-evaluator) 名称时使用的 [评估器注册中心 Registry](evaluation.md#评估器注册中心)，通常只在接入自定义评估器时配置。
+
+`WithMetricRegistry(registry)` 设置 [评估服务 Service](evaluation.md#评估服务-service) 解析 [评估指标 Metric](evaluation.md#评估指标-evalmetric) 扩展时使用的 [MetricRegistry](evaluation.md#metricregistry-扩展)，通常只在接入自定义评估指标扩展时配置。
+
+如果需要用 [llm_verifier_pairwise](evaluation.md#llm-成对比较评估器) 对候选最终响应做成对比较，可以将选择模式改为 `SelectionModePairwise`。该模式会把候选两两组成比较用例，并根据比较分数汇总选择结果。裁判 Agent 需要开启 `logprobs` 与 `top_logprobs`，完整配置方式可参考 [LLM Verifier](evaluation.md#llm-verifier) 说明。
+
+```go
+verifierMetric := &metric.EvalMetric{
+	MetricName: "llm_verifier_pairwise",
+	Threshold:  0.5,
+	Criterion: &criterion.Criterion{
+		LLMJudge: &criterionllm.LLMCriterion{
+			Rubrics: []*criterionllm.Rubric{
+				{
+					ID: "quality",
+					Content: &criterionllm.RubricContent{
+						Text: "The final answer directly satisfies the user's request and does not introduce unsupported claims.",
+					},
+				},
+			},
+		},
+	},
+}
+
+bestOfNOpt, err := bestofn.NewRunnerOption(
+	bestofn.WithAttempts(3),
+	bestofn.WithSelectionMode(bestofn.SelectionModePairwise),
+	bestofn.WithEvalMetrics(verifierMetric),
+	bestofn.WithJudgeRunner(judgeRunner),
+)
+```
+
+使用 [llm_verifier_pairwise](evaluation.md#llm-成对比较评估器) 作为候选选择指标的完整示例参见 [examples/evaluation/llmverifier](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/llmverifier)。
+
+运行时，Runner 会基于当前用户消息和 Session 创建多次候选运行。每个候选运行调用同一个 Agent，候选轨迹随后转换成 [评估用例 EvalCase](evaluation.md#评估集-evalset) 参与评估。选择完成后，外层 Session 只提交选中候选的运行事件，调用方收到的是选中候选事件和正常的完成事件。Agent 开启流式输出时，候选事件会先进入内部缓冲，调用方在选择完成后收到选中候选的流式片段。
+
+工具、插件、Skill、MCP ToolSet 和回调会在候选运行中执行。框架会隔离 Session 提交，并通过只读服务拦截框架管理的 Memory 和 Artifact 写入。业务代码主动发起的外部请求由业务侧控制。
+
+开启执行链路追踪或 Graph checkpoint 恢复时，本轮会绕过 Best-of-N 候选选择，按原有 Runner 流程执行。
+
+## 远程 tRPC-Agent Runner
+
+`runner/trpcagent` 用于把一次 `Runner.Run` 调用转成 [tRPC-Agent API](trpcagent.md) HTTP 请求。它适合平台和业务 Agent 服务分离的场景：业务服务用 `server/trpcagent` 暴露真实 Agent，平台侧用 `runner/trpcagent` 像普通 Runner 一样发起运行。
+
+用户服务侧先暴露 [tRPC-Agent API](trpcagent.md)：
+
+```go
+import (
+	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/server/trpcagent"
+)
+
+agentRunner := runner.NewRunner(appName, agent)
+defer agentRunner.Close()
+
+server, err := trpcagent.New(
+	trpcagent.WithAppName(appName),
+	trpcagent.WithAgent(agent),
+	trpcagent.WithRunner(agentRunner),
+)
+if err != nil {
+	return err
+}
+http.ListenAndServe(":8080", server.Handler())
+```
+
+平台侧创建远程 Runner：
+
+```go
+import (
+	"trpc.group/trpc-go/trpc-agent-go/model"
+	trpcagentrunner "trpc.group/trpc-go/trpc-agent-go/runner/trpcagent"
+)
+
+remoteRunner, err := trpcagentrunner.New(
+	"calculator",
+	trpcagentrunner.WithTarget("http://127.0.0.1:8080"),
+)
+if err != nil {
+	return err
+}
+defer remoteRunner.Close()
+
+snapshot, err := remoteRunner.Describe(ctx)
+if err != nil {
+	return err
+}
+_ = snapshot
+
+events, err := remoteRunner.Run(
+	ctx,
+	"user1",
+	"session1",
+	model.NewUserMessage("Use the calculator to compute 12 * 7."),
+)
+if err != nil {
+	return err
+}
+```
+
+默认路径为 `/trpc-agent/v1/apps/{appName}`。`Describe` 请求远端 structure，`Run` 请求远端 runs 接口并恢复为框架标准 `event.Event` 流。更多完整代码可参考 `examples/trpcagent`。
 
 ## 📝 总结
 

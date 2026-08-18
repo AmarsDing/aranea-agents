@@ -286,6 +286,8 @@ func TestApplyGenerationConfigPatch(t *testing.T) {
 		Stop:             []string{"STOP"},
 		PresencePenalty:  Float64Ptr(0.1),
 		FrequencyPenalty: Float64Ptr(0.2),
+		Logprobs:         BoolPtr(false),
+		TopLogprobs:      IntPtr(5),
 		ReasoningEffort:  StringPtr("low"),
 		ThinkingEnabled:  BoolPtr(true),
 		ThinkingTokens:   IntPtr(100),
@@ -299,6 +301,8 @@ func TestApplyGenerationConfigPatch(t *testing.T) {
 		Stop:             []string{"X"},
 		PresencePenalty:  Float64Ptr(1.1),
 		FrequencyPenalty: Float64Ptr(1.2),
+		Logprobs:         BoolPtr(true),
+		TopLogprobs:      IntPtr(20),
 		ReasoningEffort:  StringPtr("high"),
 		ThinkingEnabled:  BoolPtr(false),
 		ThinkingTokens:   IntPtr(200),
@@ -317,6 +321,10 @@ func TestApplyGenerationConfigPatch(t *testing.T) {
 	require.Equal(t, 1.1, *got.PresencePenalty)
 	require.NotNil(t, got.FrequencyPenalty)
 	require.Equal(t, 1.2, *got.FrequencyPenalty)
+	require.NotNil(t, got.Logprobs)
+	require.True(t, *got.Logprobs)
+	require.NotNil(t, got.TopLogprobs)
+	require.Equal(t, 20, *got.TopLogprobs)
 	require.NotNil(t, got.ReasoningEffort)
 	require.Equal(t, "high", *got.ReasoningEffort)
 	require.NotNil(t, got.ThinkingEnabled)
@@ -799,6 +807,40 @@ func TestMessage_AddAudioData(t *testing.T) {
 			assert.Equal(t, tt.format, msg.ContentParts[0].Audio.Format)
 		})
 	}
+}
+
+func TestMessage_AddAudioURL(t *testing.T) {
+	msg := &Message{}
+	msg.AddAudioURL("https://example.com/audio.mp3", "audio/mpeg")
+
+	require.Len(t, msg.ContentParts, 1)
+	assert.Equal(t, ContentTypeAudio, msg.ContentParts[0].Type)
+	require.NotNil(t, msg.ContentParts[0].Audio)
+	assert.Equal(t, "https://example.com/audio.mp3", msg.ContentParts[0].Audio.URL)
+	assert.Equal(t, "audio/mpeg", msg.ContentParts[0].Audio.Format)
+}
+
+func TestMessage_AddVideoURL(t *testing.T) {
+	msg := &Message{}
+	msg.AddVideoURL("https://example.com/video.mp4", "video/mp4")
+
+	require.Len(t, msg.ContentParts, 1)
+	assert.Equal(t, ContentTypeVideo, msg.ContentParts[0].Type)
+	require.NotNil(t, msg.ContentParts[0].Video)
+	assert.Equal(t, "https://example.com/video.mp4", msg.ContentParts[0].Video.URL)
+	assert.Equal(t, "video/mp4", msg.ContentParts[0].Video.Format)
+}
+
+func TestMessage_AddVideoData(t *testing.T) {
+	data := []byte("video data")
+	msg := &Message{}
+	msg.AddVideoData(data, "mp4")
+
+	require.Len(t, msg.ContentParts, 1)
+	assert.Equal(t, ContentTypeVideo, msg.ContentParts[0].Type)
+	require.NotNil(t, msg.ContentParts[0].Video)
+	assert.Equal(t, data, msg.ContentParts[0].Video.Data)
+	assert.Equal(t, "mp4", msg.ContentParts[0].Video.Format)
 }
 
 func TestMessage_AddFilePath(t *testing.T) {

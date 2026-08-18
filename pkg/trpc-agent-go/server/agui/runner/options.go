@@ -17,13 +17,14 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/server/agui/adapter"
 	"trpc.group/trpc-go/trpc-agent-go/server/agui/aggregator"
-	"trpc.group/trpc-go/trpc-agent-go/server/agui/internal/track"
 	"trpc.group/trpc-go/trpc-agent-go/server/agui/translator"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 const (
+	defaultFlushInterval                          = time.Second
 	defaultPostRunFinalizationTimeout             = 5 * time.Second
+	defaultTrackPersistenceTimeout                = 5 * time.Second
 	defaultTimeout                                = time.Hour
 	defaultGraphNodeLifecycleActivityEnabled      = false
 	defaultGraphNodeInterruptActivityEnabled      = false
@@ -33,6 +34,7 @@ const (
 	defaultToolResultInputTranslationEnabled      = false
 	defaultToolCallDeltaStreamingEnabled          = false
 	defaultStreamingToolResultActivityEnabled     = false
+	defaultConcurrentMessageStreamsEnabled        = false
 	defaultDistributedCancelEnabled               = false
 	defaultDistributedCancelPollInterval          = time.Second
 )
@@ -43,6 +45,7 @@ type Options struct {
 	UserIDResolver                            UserIDResolver        // UserIDResolver derives the user identifier for an AG-UI run.
 	TranslateCallbacks                        *translator.Callbacks // TranslateCallbacks translates the run events to AG-UI events.
 	RunAgentInputHook                         RunAgentInputHook     // RunAgentInputHook allows modifying the run input before processing.
+	RunHooks                                  []RunHook             // RunHooks observe an AG-UI run and may emit run-scoped UI events.
 	AppName                                   string                // AppName is the name of the application.
 	AppNameResolver                           AppNameResolver       // AppNameResolver derives the app name for an AG-UI run.
 	SessionService                            session.Service       // SessionService is the session service.
@@ -56,16 +59,18 @@ type Options struct {
 	MessagesSnapshotRunLifecycleEventsEnabled bool                  // MessagesSnapshotRunLifecycleEventsEnabled includes persisted RUN_* events as activity messages in MESSAGES_SNAPSHOT.
 	StartSpan                                 StartSpan             // StartSpan starts a span for an AG-UI run.
 	PostRunFinalizationTimeout                time.Duration         // PostRunFinalizationTimeout bounds how long post-run finalization is allowed to take.
+	TrackPersistenceTimeout                   time.Duration         // TrackPersistenceTimeout bounds how long AG-UI track persistence is allowed to take.
 	Timeout                                   time.Duration         // Timeout controls how long a run is allowed to execute.
 	CancelOnContextDoneEnabled                bool                  // CancelOnContextDoneEnabled cancels the run when the parent context is done.
 	GraphNodeLifecycleActivityEnabled         bool                  // GraphNodeLifecycleActivityEnabled enables graph node lifecycle activity events.
 	GraphNodeInterruptActivityEnabled         bool                  // GraphNodeInterruptActivityEnabled enables graph interrupt activity events.
 	GraphNodeInterruptActivityTopLevelOnly    bool                  // GraphNodeInterruptActivityTopLevelOnly drops nested graph interrupt activity events.
 	ReasoningContentEnabled                   bool                  // ReasoningContentEnabled controls whether reasoning content events are emitted.
-	EventSourceMetadataEnabled                bool                  // EventSourceMetadataEnabled attaches original trpc-agent-go source metadata to translated AG-UI events.
+	EventSourceMetadataEnabled                bool                  // EventSourceMetadataEnabled attaches source metadata to AG-UI rawEvent fields.
 	ToolResultInputTranslationEnabled         bool                  // ToolResultInputTranslationEnabled controls whether tool-result inputs are translated before emission.
 	ToolCallDeltaStreamingEnabled             bool                  // ToolCallDeltaStreamingEnabled streams partial tool-call arguments.
 	StreamingToolResultActivityEnabled        bool                  // StreamingToolResultActivityEnabled rewrites partial tool results as activity events.
+	ConcurrentMessageStreamsEnabled           bool                  // ConcurrentMessageStreamsEnabled keeps multiple message streams open by message ID.
 	DistributedCancelEnabled                  bool                  // DistributedCancelEnabled enables best-effort cancel signaling through SessionState.
 	DistributedCancelPollInterval             time.Duration         // DistributedCancelPollInterval controls how often owner runs poll cancel markers.
 }
@@ -80,9 +85,10 @@ func NewOptions(opt ...Option) *Options {
 		StateResolver:                          defaultStateResolver,
 		RunOptionResolver:                      defaultRunOptionResolver,
 		AggregatorFactory:                      aggregator.New,
-		FlushInterval:                          track.DefaultFlushInterval,
+		FlushInterval:                          defaultFlushInterval,
 		StartSpan:                              defaultStartSpan,
 		PostRunFinalizationTimeout:             defaultPostRunFinalizationTimeout,
+		TrackPersistenceTimeout:                defaultTrackPersistenceTimeout,
 		Timeout:                                defaultTimeout,
 		GraphNodeLifecycleActivityEnabled:      defaultGraphNodeLifecycleActivityEnabled,
 		GraphNodeInterruptActivityEnabled:      defaultGraphNodeInterruptActivityEnabled,
@@ -92,6 +98,7 @@ func NewOptions(opt ...Option) *Options {
 		ToolResultInputTranslationEnabled:      defaultToolResultInputTranslationEnabled,
 		ToolCallDeltaStreamingEnabled:          defaultToolCallDeltaStreamingEnabled,
 		StreamingToolResultActivityEnabled:     defaultStreamingToolResultActivityEnabled,
+		ConcurrentMessageStreamsEnabled:        defaultConcurrentMessageStreamsEnabled,
 		DistributedCancelEnabled:               defaultDistributedCancelEnabled,
 		DistributedCancelPollInterval:          defaultDistributedCancelPollInterval,
 	}
@@ -140,6 +147,15 @@ func WithRunAgentInputHook(hook RunAgentInputHook) Option {
 	}
 }
 
+// WithRunHook appends a hook that runs after the AG-UI run has started.
+func WithRunHook(hook RunHook) Option {
+	return func(o *Options) {
+		if hook != nil {
+			o.RunHooks = append(o.RunHooks, hook)
+		}
+	}
+}
+
 // WithAppName sets the app name.
 func WithAppName(n string) Option {
 	return func(o *Options) {
@@ -164,10 +180,13 @@ func WithSessionService(s session.Service) Option {
 	}
 }
 
-// StateResolver is a function that derives runtime state for an AG-UI run.
+// StateResolver derives runtime state for an AG-UI run.
 type StateResolver func(ctx context.Context, input *adapter.RunAgentInput) (map[string]any, error)
 
-// WithStateResolver sets the runtime state resolver.
+// WithStateResolver sets a custom runtime state resolver.
+//
+// By default, object-shaped AG-UI state is merged into runtime state. A custom
+// resolver can filter, rename, or convert the client-provided state.
 func WithStateResolver(r StateResolver) Option {
 	return func(o *Options) {
 		o.StateResolver = r
@@ -251,6 +270,13 @@ func WithPostRunFinalizationTimeout(d time.Duration) Option {
 	}
 }
 
+// WithTrackPersistenceTimeout sets the maximum duration allowed for AG-UI track persistence.
+func WithTrackPersistenceTimeout(d time.Duration) Option {
+	return func(o *Options) {
+		o.TrackPersistenceTimeout = d
+	}
+}
+
 // WithCancelOnContextDoneEnabled controls whether a run is canceled when the parent context is done.
 func WithCancelOnContextDoneEnabled(enabled bool) Option {
 	return func(o *Options) {
@@ -286,8 +312,10 @@ func WithReasoningContentEnabled(enabled bool) Option {
 	}
 }
 
-// WithEventSourceMetadataEnabled controls whether translated AG-UI events
-// carry source metadata from the original trpc-agent-go event in rawEvent.
+// WithEventSourceMetadataEnabled controls whether AG-UI events carry source
+// metadata in rawEvent. Translated events use the original trpc-agent-go event,
+// and message snapshots include request forwardedProps under rawEvent.runs when
+// present.
 func WithEventSourceMetadataEnabled(enabled bool) Option {
 	return func(o *Options) {
 		o.EventSourceMetadataEnabled = enabled
@@ -314,6 +342,14 @@ func WithToolCallDeltaStreamingEnabled(enabled bool) Option {
 func WithStreamingToolResultActivityEnabled(enabled bool) Option {
 	return func(o *Options) {
 		o.StreamingToolResultActivityEnabled = enabled
+	}
+}
+
+// WithConcurrentMessageStreamsEnabled controls whether multiple text and reasoning
+// message streams with different message IDs may stay open concurrently.
+func WithConcurrentMessageStreamsEnabled(enabled bool) Option {
+	return func(o *Options) {
+		o.ConcurrentMessageStreamsEnabled = enabled
 	}
 }
 
@@ -357,9 +393,13 @@ func defaultRunOptionResolver(ctx context.Context, input *adapter.RunAgentInput)
 	return nil, nil
 }
 
-// defaultStateResolver returns no runtime state.
-func defaultStateResolver(ctx context.Context, input *adapter.RunAgentInput) (map[string]any, error) {
-	return nil, nil
+// defaultStateResolver forwards object-shaped AG-UI state as runtime state.
+func defaultStateResolver(_ context.Context, input *adapter.RunAgentInput) (map[string]any, error) {
+	if input == nil {
+		return nil, nil
+	}
+	state, _ := input.State.(map[string]any)
+	return state, nil
 }
 
 // defaultStartSpan returns the original context and a non-recording span.

@@ -22,7 +22,7 @@ type RunAgentInput struct {
 	ThreadID       string          // Conversation thread ID. The framework uses it as SessionID.
 	RunID          string          // Run ID, used to correlate run lifecycle events.
 	ParentRunID    *string         // Parent run ID. Optional.
-	State          any             // Arbitrary state that can be written into RuntimeState through StateResolver.
+	State          any             // Arbitrary state; object-shaped values are merged into RuntimeState by default.
 	Messages       []Message       // Message list used to pass the current user input or external tool results.
 	Tools          []Tool          // Tool definitions. Protocol field. Optional.
 	Context        []Context       // Context list. Protocol field. Optional.
@@ -242,6 +242,8 @@ server, _ := agui.New(runner, agui.WithAGUIRunnerOptions(aguirunner.WithUserIDRe
 
 When `AppNameResolver` returns a non-empty string, that value is used as the `AppName` for the request. When it returns an empty string, the framework falls back to `agui.WithAppName(name)`. The real-time conversation, message snapshot, and cancel routes reuse the same resolution logic, so related requests for the same session must resolve to the same `AppName`.
 
+The resolved `AppName` is the canonical session boundary for an AG-UI request. During a real-time run, AG-UI passes it to the underlying Runner as `agent.WithAppName`, keeping the Runner session key consistent with AG-UI track events, message snapshots, and cancel routing.
+
 When message snapshots are enabled, configure `agui.WithAppName(name)` as the default value.
 
 ```go
@@ -274,6 +276,8 @@ server, _ := agui.New(
 ## Custom `RunOptionResolver`
 
 `RunOptionResolver` adds [`agent.RunOption`](https://github.com/trpc-group/trpc-agent-go/blob/main/agent/invocation.go) for the current agent run. It runs for every request, and the returned options only affect that run. The AG-UI runner still maps request `input.Tools` to caller-executed tools after the custom resolver returns.
+
+Do not return `agent.WithAppName` from `RunOptionResolver` to configure AG-UI session ownership. AG-UI `AppName` should come from `agui.WithAppName` or `agui.WithAppNameResolver`; when the resolved `AppName` is non-empty, it overrides any `agent.WithAppName` set by `RunOptionResolver`.
 
 ```go
 import (
@@ -311,9 +315,13 @@ server, _ := agui.New(runner, agui.WithAGUIRunnerOptions(aguirunner.WithRunOptio
 
 ## Custom `StateResolver`
 
-`StateResolver` converts `RunAgentInput.State` into RuntimeState for the current run. The returned map is passed to Runner as `agent.WithRuntimeState(...)` and only affects the current run.
+By default, object-shaped `RunAgentInput.State` is merged into RuntimeState for the current run. Existing RuntimeState keys are preserved, while AG-UI state wins when the same key is present in both maps. Non-object state is not projected automatically.
 
-Returning `nil` means RuntimeState is not set. Returning an empty map sets an empty RuntimeState.
+`StateResolver` customizes this conversion when the state must be filtered, renamed, or converted. Its returned map is merged into RuntimeState with `agent.MergeRuntimeState(...)` and only affects the current run. AG-UI state is supplied by the client; filter security-sensitive values instead of treating them as trusted server context.
+
+An LLMAgent can read a resolved value in its `Instruction` or `SystemPrompt` with a `{runtime:key}` placeholder. Use `{runtime:key?}` when the value is optional.
+
+Returning `nil` means no state is merged. Returning an empty map does not add any values.
 
 ```go
 import (
@@ -334,6 +342,71 @@ stateResolver := func(_ context.Context, input *adapter.RunAgentInput) (map[stri
 
 server, _ := agui.New(runner, agui.WithAGUIRunnerOptions(aguirunner.WithStateResolver(stateResolver)))
 ```
+
+## Run Hook
+
+`RunHook` is for real-time conversation runs where server-side background logic proactively pushes AG-UI events to the frontend at its own pace. It is used for server-initiated UI status updates, rather than translating internal events that the Agent has already produced into AG-UI events; use a custom Translator or event translation callbacks for the latter.
+
+After `RUN_STARTED` is sent, AG-UI creates the `Run` for the current request, binds it to the execution `ctx`, starts `RunHook`, and then calls the underlying Runner. A hook can use the `run` argument directly. Agent, Tool, or other business code that runs with the same `ctx` can retrieve the same `Run` through `aguirunner.RunFromContext(ctx)`. Events sent with `run.Emit(ctx, event)` are written into the SSE stream for the current request. If `SessionService` is configured, these events are also written to AG-UI history and can be restored through the [message snapshot route](history.md). They are not written to normal session events, so they do not become model context in later runs.
+
+The following example shows a background report task that pushes generation progress every 100ms. For the complete example, see [examples/agui/server/runhook](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/runhook). For proactive progress updates from GraphAgent nodes, see [examples/agui/server/graph_progress](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/graph_progress).
+
+```go
+import (
+	aguievents "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/events"
+	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/server/agui"
+	aguirunner "trpc.group/trpc-go/trpc-agent-go/server/agui/runner"
+)
+
+const reportEventName = "background.report.status"
+
+func pushBackgroundReportStatus(ctx context.Context, run *aguirunner.Run) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for step := 1; step <= 5; step++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		err := run.Emit(ctx, aguievents.NewCustomEvent(
+			reportEventName,
+			aguievents.WithValue(map[string]any{
+				"progress": step * 20,
+			}),
+		))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+coreRunner := runner.NewRunner(agent.Info().Name, agent)
+server, _ := agui.New(coreRunner, agui.WithRunHook(pushBackgroundReportStatus))
+```
+
+When Agent or Tool code needs to push events proactively, do not store `Run` in state yourself. If the code receives the `ctx` for the current run, read it from `ctx`.
+
+```go
+func emitReportStatus(ctx context.Context, progress int) error {
+	run, ok := aguirunner.RunFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	return run.Emit(ctx, aguievents.NewCustomEvent(
+		reportEventName,
+		aguievents.WithValue(map[string]any{
+			"progress": progress,
+		}),
+	))
+}
+```
+
+If the background task needs business fields from the current request, call `run.Input()` to get the `RunAgentInput`, for example to read business parameters from `forwardedProps`. Treat the request body as read-only in the hook, and do not keep rewriting it after the run has started.
+
+`run.Emit` is for UI events proactively produced by the server. It should not send framework-owned events such as `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, or `MESSAGES_SNAPSHOT`. If the Agent finishes before the hook, the framework waits for the hook to return before sending the final run terminal event, so UI events pushed from the hook do not appear after the terminal event. The hook should honor `ctx.Done()` and return promptly when the run is canceled or times out. If the hook returns an error, the current AG-UI run returns `RUN_ERROR`.
 
 ## Custom Translator
 
@@ -702,20 +775,34 @@ After this is enabled, AG-UI events generated by the Translator carry `rawEvent`
 ```json
 {
   "type": "TOOL_CALL_START",
+  "timestamp": 1781258400000,
   "toolCallId": "tool-call-1",
   "rawEvent": {
     "eventId": "evt-tool-call",
     "author": "member-a",
     "invocationId": "inv-1",
     "parentInvocationId": "parent-1",
+    "parentMetadata": {
+      "triggerType": "tool_call",
+      "triggerId": "call-abc-123",
+      "triggerName": "researcher"
+    },
     "branch": "root.member-a"
   }
 }
 ```
 
-`author` indicates the event author and is usually used to group by agent or member. `invocationId` identifies the current execution, `parentInvocationId` identifies the parent execution, and `branch` identifies the current execution's branch in the call chain. When the same agent name appears multiple times in a single run, `branch` can distinguish different execution branches.
+The top-level `timestamp` on a real-time AG-UI event is the protocol event timestamp in Unix milliseconds. `author` indicates the event author and is usually used to group by agent or member. `invocationId` identifies the current execution, `parentInvocationId` identifies the parent execution, and `branch` identifies the current execution's branch in the call chain. When the same agent name appears multiple times in a single run, `branch` can distinguish different execution branches.
 
-The `MESSAGES_SNAPSHOT` event returned by the message snapshot route can also carry source information. In this case, `rawEvent` is not source information for one event, but a source index built by message and tool call:
+`parentMetadata` describes the immediate parent edge that triggered this invocation:
+
+- `triggerType`: the kind of parent trigger. Currently `tool_call` (an AgentTool invocation) or `transfer` (a `transfer_to_agent` handoff).
+- `triggerId`: the parent's `toolCallId`. This is the join key against the parent's `TOOL_CALL_START` event. Use it to attach a sub-agent's events to the exact `TOOL_CALL_START` that spawned them.
+- `triggerName`: a human-readable trigger name. For `tool_call` it is the AgentTool name; for `transfer` it is `transfer_to_agent`.
+
+`parentMetadata` is necessary because `parentInvocationId` only identifies the parent execution, not the specific tool call inside it. When a model issues parallel AgentTool calls to the same sub-agent in one turn, all spawned invocations share the same `parentInvocationId`; only `parentMetadata.triggerId` can disambiguate which `TOOL_CALL_START` each child invocation belongs to. When the parent did not invoke this child via a tool call (e.g., a top-level run), `parentMetadata` is absent.
+
+The `MESSAGES_SNAPSHOT` event returned by the message snapshot route can also carry source information. In this case, `rawEvent` is not source information for one event, but a source index built by message, tool call, and run:
 
 ```json
 {
@@ -726,7 +813,8 @@ The `MESSAGES_SNAPSHOT` event returned by the message snapshot route can also ca
         "eventId": "evt-assistant",
         "author": "member-a",
         "invocationId": "inv-1",
-        "branch": "root.member-a"
+        "branch": "root.member-a",
+        "timestamp": 1781258400000
       }
     },
     "toolCalls": {
@@ -734,14 +822,29 @@ The `MESSAGES_SNAPSHOT` event returned by the message snapshot route can also ca
         "eventId": "evt-tool-call",
         "author": "member-a",
         "invocationId": "inv-1",
-        "branch": "root.member-a"
+        "parentMetadata": {
+          "triggerType": "tool_call",
+          "triggerId": "call-abc-123",
+          "triggerName": "researcher"
+        },
+        "branch": "root.member-a",
+        "timestamp": 1781258401000
+      }
+    },
+    "runs": {
+      "run-1": {
+        "author": "demo-user",
+        "forwardedProps": {
+          "file_url": "https://example.com/demo.png"
+        },
+        "timestamp": 1781258400000
       }
     }
   }
 }
 ```
 
-When restoring historical messages, use `rawEvent.messages[messageId]` to get the message source, or `rawEvent.toolCalls[toolCallId]` to get the tool call source. Source information in the index uses the same fields as `rawEvent` in real-time events, so the frontend can reuse those field semantics to restore grouping state.
+When restoring historical messages, use `rawEvent.messages[messageId]` to get the message source and timestamp, or `rawEvent.toolCalls[toolCallId]` to get the tool call source and timestamp. To restore request-level `forwardedProps`, read `rawEvent.runs[runId].forwardedProps`. The indexed `timestamp` first reuses the top-level `timestamp` from the historical real-time event; only old data without an event `timestamp` falls back to the persisted track event time. Source information in the index uses the same fields as `rawEvent` in real-time events, so the frontend can reuse those field semantics to restore grouping state.
 
 ## External Tools
 
@@ -754,7 +857,7 @@ The general flow is:
 - The caller sends the tool result back with a subsequent request, represented as a `role=tool` message.
 - The AG-UI server sends `TOOL_CALL_RESULT`, writes it to session history, and passes the tool result to the agent to continue running.
 
-Two server-side forms are currently supported. When directly wrapping an `llmagent.Agent`, use LLMAgent External Tool mode. When external execution belongs to a GraphAgent node and must resume from a checkpoint, use GraphAgent Interrupt mode.
+Two server-side forms are currently supported. When directly wrapping an `llmagent.Agent`, use LLMAgent External Tool mode. When external execution belongs to a GraphAgent and must resume from a checkpoint, use GraphAgent Interrupt mode. GraphAgent Interrupt mode covers the graph topologies described below.
 
 ### LLMAgent External Tool Mode
 
@@ -847,6 +950,70 @@ The second request uses `role=tool`. The request's `toolCallId` corresponds to t
 
 The resume contract is defined by GraphAgent. The interrupted node consumes the returned result through the `ResumeMap` key. A single pending tool call corresponds to one tool result. If one interrupt contains multiple pending tool calls, their results are consumed by the graph-level `ResumeMap` contract. When a graph mixes server-executed tools and caller-executed tools, split them into separate stages so the interrupt node only handles caller-provided results while internal tool execution remains on the normal graph tools path.
 
+#### Request and Event Shape
+
+GraphAgent request examples:
+
+First request (`role=user`):
+
+```json
+{
+  "threadId": "demo-thread",
+  "runId": "demo-run-1",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Search and answer my question."
+    }
+  ]
+}
+```
+
+Second request (`role=tool`):
+
+```json
+{
+  "threadId": "demo-thread",
+  "runId": "demo-run-2",
+  "forwardedProps": {
+    "lineage_id": "lineage-from-graph-node-interrupt",
+    "checkpoint_id": "checkpoint-from-graph-node-interrupt"
+  },
+  "messages": [
+    {
+      "id": "tool-result-<toolCallId>",
+      "role": "tool",
+      "toolCallId": "<toolCallId>",
+      "name": "<toolName>",
+      "content": "tool output as string"
+    }
+  ]
+}
+```
+
+GraphAgent event stream example:
+
+```text
+First request role=user
+  → RUN_STARTED
+  → TOOL_CALL_START
+  → TOOL_CALL_ARGS
+  → TOOL_CALL_END
+  → ACTIVITY_DELTA graph.node.interrupt
+  → RUN_FINISHED
+
+Second request role=tool
+  → RUN_STARTED
+  → TOOL_CALL_RESULT generated from the tail tool message
+  → ACTIVITY_DELTA graph.node.interrupt resume acknowledgement, when enabled
+  → TEXT_MESSAGE_* generated after resuming
+  → RUN_FINISHED
+```
+
+#### Regular Node Interrupts
+
+Use this form when the interrupt is emitted by a regular node in the current `GraphAgent`. This node usually sits after an LLM node, reads the tool call produced by the previous node, and calls `graph.Interrupt` to wait for the caller to send back the tool result. After resume, the node writes the tool result back into graph state and the graph continues.
+
 Code snippet:
 
 ```go
@@ -912,63 +1079,155 @@ server, err := agui.New(
 
 For the complete GraphAgent example, see the server implementation in [examples/agui/server/externaltool/graphagent](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/externaltool/graphagent), and the frontend implementation in [examples/agui/client/tdesign-chat](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/client/tdesign-chat).
 
-GraphAgent request examples:
+#### AgentNode Child LLMAgent External Tools
 
-First request (`role=user`):
+Use this form when the tool call comes from an AgentNode child `LLMAgent`, but the interrupt is still emitted by a regular node in the parent graph. The child `LLMAgent` gets the external tool declaration through `graph.WithAgentNodeRunOptions(agent.WithExternalTools(...))`; the parent graph stores the child Agent's tool call with `graph.WithSubgraphOutputMapper(...)`; then a following regular node calls `graph.Interrupt` to wait for the caller to send back the tool result. After resume, the parent graph passes the result back to the same AgentNode as `model.NewToolMessage(...)`.
 
-```json
-{
-  "threadId": "demo-thread",
-  "runId": "demo-run-1",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Search and answer my question."
+Code snippet:
+
+```go
+sg.AddAgentNode(
+    researchAgentName,
+    graph.WithAgentNodeRunOptions(agent.WithExternalTools([]tool.Tool{
+        externalSearchTool(),
+    })),
+    graph.WithSubgraphOutputMapper(storeResearchResult),
+    graph.WithAgentNodeInputMapper(mapExternalToolMessage),
+)
+sg.AddNode(nodeExternalGate, interruptForExternalTool)
+sg.AddEdge(researchAgentName, nodeExternalGate)
+sg.AddConditionalEdges(nodeExternalGate, routeAfterGate, map[string]string{
+    researchAgentName: researchAgentName,
+    graph.End:         graph.End,
+})
+
+func storeResearchResult(_ graph.State, result graph.SubgraphResult) graph.State {
+    for _, call := range result.ToolCalls {
+        if call.ID == "" || call.Function.Name != externalToolName {
+            continue
+        }
+        return graph.State{keyToolRequest: toolRequest{
+            ToolCallID: call.ID,
+            Name:       call.Function.Name,
+            Args:       string(call.Function.Arguments),
+        }}
     }
-  ]
+    return graph.State{keyToolMessage: nil}
+}
+
+func mapExternalToolMessage(state graph.State) graph.State {
+    if state[keyToolMessage] == nil {
+        return nil
+    }
+    return graph.State{graph.StateKeyAgentInputMessage: state[keyToolMessage]}
 }
 ```
 
-Second request (`role=tool`):
+`storeResearchResult` writes the child Agent's tool call into parent graph state. `mapExternalToolMessage` projects the tool message generated after resume to `graph.StateKeyAgentInputMessage`.
 
-```json
-{
-  "threadId": "demo-thread",
-  "runId": "demo-run-2",
-  "forwardedProps": {
-    "lineage_id": "lineage-from-graph-node-interrupt",
-    "checkpoint_id": "checkpoint-from-graph-node-interrupt"
-  },
-  "messages": [
-    {
-      "id": "tool-result-<toolCallId>",
-      "role": "tool",
-      "toolCallId": "<toolCallId>",
-      "name": "<toolName>",
-      "content": "tool output as string"
-    }
-  ]
+Complete example: [examples/agui/server/externaltool/agentnode_llmagent](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/externaltool/agentnode_llmagent).
+
+#### AgentNode Child GraphAgent Interrupts
+
+Use this form when a parent GraphAgent calls a child `GraphAgent` through an AgentNode and the interrupt is emitted by a node inside the child `GraphAgent`. The child graph interrupt bubbles up and the parent graph also enters the interrupt state. Resume still starts from the parent checkpoint, and the framework continues from the corresponding child graph checkpoint.
+
+Code snippet:
+
+```go
+func buildParentGraph() (*graph.Graph, error) {
+    sg := graph.NewStateGraph(graph.MessagesStateSchema())
+    sg.AddAgentNode(researchAgentName)
+    sg.AddAgentNode(reviewAgentName)
+    sg.SetEntryPoint(researchAgentName)
+    sg.AddEdge(researchAgentName, reviewAgentName)
+    sg.SetFinishPoint(reviewAgentName)
+    return sg.Compile()
 }
+
+func buildResearchGraph(m model.Model, cfg model.GenerationConfig) (*graph.Graph, error) {
+    sg := graph.NewStateGraph(graph.MessagesStateSchema())
+    sg.AddLLMNode(
+        nodeResearchLLM,
+        m,
+        childInstruction(),
+        map[string]tool.Tool{externalToolName: externalSearchTool()},
+        graph.WithGenerationConfig(cfg),
+    )
+    sg.AddNode(nodeExternalGate, interruptForExternalTool)
+    sg.SetEntryPoint(nodeResearchLLM)
+    sg.AddEdge(nodeResearchLLM, nodeExternalGate)
+    sg.AddConditionalEdges(nodeExternalGate, routeAfterExternalGate, map[string]string{
+        nodeResearchLLM: nodeResearchLLM,
+        graph.End:       graph.End,
+    })
+    sg.SetFinishPoint(nodeResearchLLM)
+    return sg.Compile()
+}
+
+server, err := agui.New(
+    runner,
+    agui.WithGraphNodeInterruptActivityEnabled(true),
+    agui.WithGraphNodeInterruptActivityTopLevelOnly(true),
+)
 ```
 
-GraphAgent event stream example:
+`buildParentGraph` defines two AgentNodes in the parent graph, and `buildResearchGraph` defines the LLM node and interrupt node inside the child `GraphAgent`. `agui.WithGraphNodeInterruptActivityTopLevelOnly(true)` exposes only the parent graph interrupt activity to the frontend. The caller resumes with the `lineageId` and `checkpointId` returned by the parent graph.
 
-```text
-First request role=user
-  → RUN_STARTED
-  → TOOL_CALL_START
-  → TOOL_CALL_ARGS
-  → TOOL_CALL_END
-  → ACTIVITY_DELTA graph.node.interrupt
-  → RUN_FINISHED
+Disable `TopLevelOnly` if the frontend needs to observe the child graph's own interrupt activity.
 
-Second request role=tool
-  → RUN_STARTED
-  → TOOL_CALL_RESULT generated from the tail tool message
-  → ACTIVITY_DELTA graph.node.interrupt resume acknowledgement, when enabled
-  → TEXT_MESSAGE_* generated after resuming
-  → RUN_FINISHED
+Complete example: [examples/agui/server/externaltool/agentnode_graphagent](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/externaltool/agentnode_graphagent).
+
+#### AgentTool Child GraphAgent Interrupts
+
+Use this form when a parent `GraphAgent` runs `agenttool.NewTool(childGraphAgent)` in a `ToolsNode`, and the interrupt is emitted by a node inside the child `GraphAgent`. Unlike AgentNode execution, the child graph enters the parent graph as a normal tool call. From the parent graph's point of view, the interrupt point is the `ToolsNode` currently running AgentTool, but the actual `graph.Interrupt(...)` call happens inside the child `GraphAgent` node. When it interrupts, the parent `ToolsNode` checkpoint records the AgentTool child graph checkpoint metadata. After the caller receives the external result, it resumes with a subsequent AG-UI request instead of continuing within the same SSE run. On resume, the caller still passes only the parent graph `lineage_id` and parent graph `checkpoint_id`, then writes the tool result into `state.resume_map` with the key used by the child graph's `graph.Interrupt`. The framework routes that value to the corresponding child graph checkpoint.
+
+Code snippet:
+
+```go
+tools := map[string]tool.Tool{
+    childAgentName: agenttool.NewTool(childGraphAgent),
+}
+
+sg.AddLLMNode(
+    nodeCallReviewGraph,
+    modelInstance,
+    instruction,
+    tools,
+    graph.WithGenerationConfig(generationConfig),
+)
+sg.AddToolsNode(nodeExecuteTools, tools)
+sg.AddConditionalEdges(nodeCallReviewGraph, routeAfterReviewGraph, map[string]string{
+    nodeExecuteTools: nodeExecuteTools,
+    graph.End:        graph.End,
+})
+sg.AddEdge(nodeExecuteTools, nodeCallReviewGraph)
+
+func childReviewNode(ctx context.Context, state graph.State) (any, error) {
+    value, err := graph.Interrupt(ctx, state, childInterruptKey, "Review decision is required.")
+    if err != nil {
+        return nil, err
+    }
+    decision, ok := value.(string)
+    if !ok {
+        return nil, fmt.Errorf("review decision must be a string")
+    }
+    return graph.State{graph.StateKeyLastResponse: "review decision: " + decision}, nil
+}
+
+server, err := agui.New(
+    runner,
+    agui.WithGraphNodeInterruptActivityEnabled(true),
+    agui.WithAGUIRunnerOptions(
+        aguirunner.WithStateResolver(resolveRuntimeState),
+    ),
+)
 ```
+
+After `nodeExecuteTools` completes, the graph returns to `nodeCallReviewGraph`, so the same LLM node consumes the tool message returned by AgentTool and generates the final response. A separate final-answer node is not required. `resolveRuntimeState` converts `state.lineage_id`, `state.checkpoint_id`, and `state.resume_map` from the AG-UI request into GraphAgent runtime state. `state.checkpoint_id` should be the parent graph `ToolsNode` interrupt checkpoint. The child graph checkpoint is resumed internally by AgentTool, so AG-UI callers should not pass the child checkpoint. The `state.resume_map` key should be the key passed to the child graph's `graph.Interrupt`, such as `childInterruptKey` in the snippet above.
+
+If the frontend also needs to observe inner graph events, enable `agenttool.WithStreamInner(true)` when constructing the AgentTool. If it only consumes the parent graph's `graph.node.interrupt` activity, the default configuration is enough.
+
+Complete example: [examples/agui/server/externaltool/agenttool_graphagent_graphagent](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/externaltool/agenttool_graphagent_graphagent). If the outer flow first uses an AgentNode to produce a handoff tool call, and then the parent graph selects an AgentTool to execute it, see [examples/agui/server/externaltool/agentnode_handoff_agenttool](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/externaltool/agentnode_handoff_agenttool).
 
 ### AG-UI `role=tool` Input Handling
 
@@ -1200,6 +1459,66 @@ server, err := agui.New(
 On the output side, accumulate text events in the `AfterTranslate` event translation callback, then write `trace.output` after output ends. This aligns frontend streaming events with backend traces for the same run, making it easier to inspect both input and final output in the observability platform.
 
 For the Langfuse observability integration example, see [examples/agui/server/langfuse](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/agui/server/langfuse).
+
+## Concurrent Message Streams
+
+In multi-agent or sub-agent stream forwarding scenarios, a single real-time conversation event stream may contain multiple text messages being generated at the same time. For example, when a parent agent executes multiple `AgentTool`s in parallel and the child agents all produce streaming output, text chunks from different child agents may arrive at the AG-UI server interleaved.
+
+AG-UI message events use `messageId` to associate lifecycle events. When handling streaming messages, the frontend should maintain message state by `messageId` and merge `TEXT_MESSAGE_CONTENT` events with the same `messageId` into the same message.
+
+By default, the AG-UI server keeps the compatible behavior: only one message stream stays open at a time. When later events switch to a new `messageId`, the Translator closes the current message stream before starting the new message stream. This behavior is suitable for frontends that render output as a linear stream.
+
+The default event sequence looks like this:
+
+```text
+RUN_STARTED
+→ TEXT_MESSAGE_START messageId=msg-a
+→ TEXT_MESSAGE_CONTENT messageId=msg-a delta=a1
+→ TEXT_MESSAGE_END messageId=msg-a
+→ TEXT_MESSAGE_START messageId=msg-b
+→ TEXT_MESSAGE_CONTENT messageId=msg-b delta=b1
+→ TEXT_MESSAGE_END messageId=msg-b
+→ TEXT_MESSAGE_START messageId=msg-a
+→ TEXT_MESSAGE_CONTENT messageId=msg-a delta=a2
+→ TEXT_MESSAGE_END messageId=msg-a
+→ TEXT_MESSAGE_START messageId=msg-b
+→ TEXT_MESSAGE_CONTENT messageId=msg-b delta=b2
+→ TEXT_MESSAGE_END messageId=msg-b
+→ RUN_FINISHED
+```
+
+If the frontend supports maintaining multiple open message streams by `messageId`, enable concurrent message streams:
+
+```go
+import "trpc.group/trpc-go/trpc-agent-go/server/agui"
+
+server, err := agui.New(
+    runner,
+    agui.WithConcurrentMessageStreamsEnabled(true),
+)
+```
+
+After this is enabled, message streams with different `messageId` values can stay open at the same time. The same logical message keeps its lifecycle when chunks from other messages are inserted; later chunks with the same `messageId` continue to append to the original message until that message receives its own end event, or the run finalization phase fills in the end event.
+
+The enabled event sequence looks like this:
+
+```text
+RUN_STARTED
+→ TEXT_MESSAGE_START messageId=msg-a
+→ TEXT_MESSAGE_CONTENT messageId=msg-a delta=a1
+→ TEXT_MESSAGE_START messageId=msg-b
+→ TEXT_MESSAGE_CONTENT messageId=msg-b delta=b1
+→ TEXT_MESSAGE_CONTENT messageId=msg-a delta=a2
+→ TEXT_MESSAGE_CONTENT messageId=msg-b delta=b2
+→ TEXT_MESSAGE_END messageId=msg-a
+→ TEXT_MESSAGE_END messageId=msg-b
+→ RUN_FINISHED
+```
+
+Frontend handling needs to follow two rules:
+
+- `TEXT_MESSAGE_CONTENT` events with the same `messageId` may appear in different positions in the event stream. Accumulate content by `messageId`.
+- The order of `TEXT_MESSAGE_END` for different `messageId` values depends on the actual end order of those messages. Use the `TEXT_MESSAGE_END` events in the stream as the end order.
 
 ## Best Practices
 

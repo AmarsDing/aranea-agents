@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/trace"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/internal/callback"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/service"
@@ -374,6 +375,7 @@ func (s *local) inferTraceConversation(
 		return nil, nil, errors.New("conversationScenario is not supported in trace mode")
 	}
 	var inferences []*evalset.Invocation
+	var expectedInputs []*evalset.Invocation
 	if len(evalCase.ActualConversation) != 0 {
 		if len(evalCase.Conversation) != 0 && len(evalCase.ActualConversation) != len(evalCase.Conversation) {
 			return nil, nil, fmt.Errorf("actual conversation length %d does not match conversation length %d",
@@ -388,26 +390,72 @@ func (s *local) inferTraceConversation(
 			}
 		}
 		inferences = evalCase.ActualConversation
+		expectedInputs = evalCase.ActualConversation
+		if len(evalCase.Conversation) != 0 {
+			expectedInputs = traceExpectedRunnerInputs(evalCase.ActualConversation, evalCase.Conversation)
+		}
 	} else {
 		if len(evalCase.Conversation) == 0 {
 			return nil, nil, errors.New("invocations are empty")
 		}
 		inferences = evalCase.Conversation
+		expectedInputs = evalCase.Conversation
 	}
 	if !evalCase.ExpectedRunnerEnabled {
-		return &inference.Result{Invocations: inferences}, nil, nil
+		return &inference.Result{
+			Invocations:     inferences,
+			ExecutionTraces: executionTracesFromInvocations(inferences),
+		}, nil, nil
 	}
 	expectedInferences, err := s.inferExpectedInferences(
 		ctx,
 		evalCase,
-		userInputOnlyInvocationsForEval(inferences),
+		expectedInputs,
 		expectedRunnerSessionID(sessionID),
 		opts,
 	)
 	if err != nil {
-		return &inference.Result{Invocations: inferences}, nil, err
+		return &inference.Result{
+			Invocations:     inferences,
+			ExecutionTraces: executionTracesFromInvocations(inferences),
+		}, nil, err
 	}
-	return &inference.Result{Invocations: inferences}, expectedInferences, nil
+	return &inference.Result{
+		Invocations:     inferences,
+		ExecutionTraces: executionTracesFromInvocations(inferences),
+	}, expectedInferences, nil
+}
+
+func executionTracesFromInvocations(invocations []*evalset.Invocation) []*trace.Trace {
+	if len(invocations) == 0 {
+		return nil
+	}
+	traces := make([]*trace.Trace, len(invocations))
+	for i, invocation := range invocations {
+		if invocation == nil {
+			continue
+		}
+		traces[i] = invocation.ExecutionTrace
+	}
+	return traces
+}
+
+func traceExpectedRunnerInputs(actuals, expecteds []*evalset.Invocation) []*evalset.Invocation {
+	inputs := make([]*evalset.Invocation, len(actuals))
+	for i, actual := range actuals {
+		if actual == nil {
+			continue
+		}
+		input := &evalset.Invocation{
+			InvocationID: actual.InvocationID,
+			UserContent:  actual.UserContent,
+		}
+		if expecteds[i] != nil {
+			input.ToolMock = expecteds[i].ToolMock
+		}
+		inputs[i] = input
+	}
+	return inputs
 }
 
 func (s *local) inferStaticConversation(
@@ -424,6 +472,8 @@ func (s *local) inferStaticConversation(
 		evalCase.SessionInput,
 		sessionID,
 		runOptions,
+		inference.WithToolMockRunner(opts.ToolMockRunner),
+		inference.WithToolMockMode(inference.ToolMockModeActual),
 	)
 	if err != nil {
 		return inferenceResult, nil, err
@@ -434,7 +484,7 @@ func (s *local) inferStaticConversation(
 	expectedInferences, err := s.inferExpectedInferences(
 		ctx,
 		evalCase,
-		userInputOnlyInvocationsForEval(inferenceResult.Invocations),
+		evalCase.Conversation,
 		expectedRunnerSessionID(sessionID),
 		opts,
 	)
@@ -475,7 +525,7 @@ func (s *local) inferScenarioConversation(
 		expectedInferences, err := s.inferExpectedInferences(
 			ctx,
 			evalCase,
-			userInputOnlyInvocationsForEval(inferenceResult.Invocations),
+			inferenceResult.Invocations,
 			expectedRunnerSessionID(sessionID),
 			opts,
 		)

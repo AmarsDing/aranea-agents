@@ -285,6 +285,176 @@ func TestProcessRequest_InsertsInjectedContextMessages_BeforeSessionHistory(t *t
 	require.True(t, model.MessagesEqual(model.NewUserMessage("current"), req.Messages[5]))
 }
 
+func TestProcessRequest_InsertsLateContextMessages_BeforeLatestUserMessage(t *testing.T) {
+	lateContext := []model.Message{
+		model.NewUserMessage("late rules"),
+		model.NewUserMessage("late background"),
+	}
+
+	sess := &session.Session{}
+	sess.Events = append(sess.Events,
+		newSessionEvent("user", model.NewUserMessage("hello")),
+		newSessionEvent("test-agent", model.NewAssistantMessage("hi")),
+	)
+
+	inv := &agent.Invocation{
+		InvocationID: "inv-late-context",
+		AgentName:    "test-agent",
+		Session:      sess,
+		Message:      model.NewUserMessage("current"),
+		RunOptions: agent.RunOptions{
+			LateContextMessages: lateContext,
+		},
+	}
+
+	req := &model.Request{
+		Messages: []model.Message{model.NewSystemMessage("agent system prompt")},
+	}
+	p := NewContentRequestProcessor()
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	require.Len(t, req.Messages, 1+2+len(lateContext)+1)
+	require.True(t, model.MessagesEqual(model.NewSystemMessage("agent system prompt"), req.Messages[0]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("hello"), req.Messages[1]))
+	require.True(t, model.MessagesEqual(model.NewAssistantMessage("hi"), req.Messages[2]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("late rules"), req.Messages[3]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("late background"), req.Messages[4]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("current"), req.Messages[5]))
+}
+
+func TestProcessRequest_InsertsLateContextMessages_AfterLeadingSystemWhenNoUser(t *testing.T) {
+	lateContext := []model.Message{
+		model.NewUserMessage("late rules"),
+	}
+
+	inv := &agent.Invocation{
+		InvocationID: "inv-late-no-user",
+		AgentName:    "test-agent",
+		RunOptions: agent.RunOptions{
+			LateContextMessages: lateContext,
+		},
+	}
+
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("agent system prompt"),
+			model.NewAssistantMessage("assistant tail"),
+		},
+	}
+	p := NewContentRequestProcessor()
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	require.Len(t, req.Messages, 3)
+	require.True(t, model.MessagesEqual(model.NewSystemMessage("agent system prompt"), req.Messages[0]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("late rules"), req.Messages[1]))
+	require.True(t, model.MessagesEqual(model.NewAssistantMessage("assistant tail"), req.Messages[2]))
+}
+
+func TestProcessRequest_InsertsLateContextMessages_KeepsToolTailAfterUserTurn(t *testing.T) {
+	lateContext := []model.Message{
+		model.NewUserMessage("late rules"),
+		model.NewUserMessage("late background"),
+	}
+
+	toolCallMsg := model.Message{
+		Role: model.RoleAssistant,
+		ToolCalls: []model.ToolCall{
+			{
+				Type: "function",
+				ID:   "call_1",
+				Function: model.FunctionDefinitionParam{
+					Name:      "get_user_phone",
+					Arguments: []byte(`{"purpose":"test"}`),
+				},
+			},
+		},
+	}
+	toolResultMsg := model.NewToolMessage("call_1", "get_user_phone", `{"status":"ok"}`)
+
+	sess := &session.Session{}
+	sess.Events = append(sess.Events,
+		newSessionEvent("user", model.NewUserMessage("hello")),
+		newSessionEvent("test-agent", model.NewAssistantMessage("hi")),
+		newSessionEvent("user", model.NewUserMessage("current")),
+		newSessionEvent("test-agent", toolCallMsg),
+		newSessionEvent("test-agent", toolResultMsg),
+	)
+
+	inv := &agent.Invocation{
+		InvocationID: "inv-late-tool-tail",
+		AgentName:    "test-agent",
+		Session:      sess,
+		Message:      model.NewUserMessage("current"),
+		RunOptions: agent.RunOptions{
+			LateContextMessages: lateContext,
+		},
+	}
+
+	req := &model.Request{
+		Messages: []model.Message{model.NewSystemMessage("agent system prompt")},
+	}
+	p := NewContentRequestProcessor()
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	require.Len(t, req.Messages, 8)
+	require.True(t, model.MessagesEqual(model.NewSystemMessage("agent system prompt"), req.Messages[0]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("hello"), req.Messages[1]))
+	require.True(t, model.MessagesEqual(model.NewAssistantMessage("hi"), req.Messages[2]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("late rules"), req.Messages[3]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("late background"), req.Messages[4]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("current"), req.Messages[5]))
+	require.True(t, model.MessagesEqual(toolCallMsg, req.Messages[6]))
+	require.True(t, model.MessagesEqual(toolResultMsg, req.Messages[7]))
+}
+
+func TestProcessRequest_InsertsInjectedAndLateContextMessages_InOrder(t *testing.T) {
+	injectedContext := []model.Message{
+		model.NewSystemMessage("ctx system"),
+		model.NewUserMessage("ctx user"),
+	}
+	lateContext := []model.Message{
+		model.NewUserMessage("late rules"),
+	}
+
+	sess := &session.Session{}
+	sess.Events = append(sess.Events,
+		newSessionEvent("user", model.NewUserMessage("hello")),
+		newSessionEvent("test-agent", model.NewAssistantMessage("hi")),
+	)
+
+	inv := &agent.Invocation{
+		InvocationID: "inv-injected-and-late",
+		AgentName:    "test-agent",
+		Session:      sess,
+		Message:      model.NewUserMessage("current"),
+		RunOptions: agent.RunOptions{
+			InjectedContextMessages: injectedContext,
+			LateContextMessages:     lateContext,
+		},
+	}
+
+	req := &model.Request{
+		Messages: []model.Message{model.NewSystemMessage("agent system prompt")},
+	}
+	p := NewContentRequestProcessor()
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	require.Len(t, req.Messages, 1+len(injectedContext)+2+len(lateContext)+1)
+	require.True(t, model.MessagesEqual(model.NewSystemMessage("agent system prompt"), req.Messages[0]))
+
+	// Injected context is inserted early, before session history.
+	require.True(t, model.MessagesEqual(model.NewSystemMessage("ctx system"), req.Messages[1]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("ctx user"), req.Messages[2]))
+
+	// Session history stays canonical.
+	require.True(t, model.MessagesEqual(model.NewUserMessage("hello"), req.Messages[3]))
+	require.True(t, model.MessagesEqual(model.NewAssistantMessage("hi"), req.Messages[4]))
+
+	// Late context is inserted right before the latest user message.
+	require.True(t, model.MessagesEqual(model.NewUserMessage("late rules"), req.Messages[5]))
+	require.True(t, model.MessagesEqual(model.NewUserMessage("current"), req.Messages[6]))
+}
+
 func TestProcessRequest_NoDuplicateInvocationToolMessage(t *testing.T) {
 	const (
 		requestID   = "req-tool-message"
@@ -715,7 +885,7 @@ func TestProcessRequest_SessionSummary_MergesIntoSystemMessage(t *testing.T) {
 	require.Equal(t, "current request", req3.Messages[3].Content)
 }
 
-func TestProcessRequest_SessionSummary_CompactsSameTurnToolHistory(t *testing.T) {
+func TestProcessRequest_SessionSummary_ResumesLatestCoveredToolRound(t *testing.T) {
 	baseTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	userMsg := model.NewUserMessage("run the task")
 	toolCallMsg := model.Message{
@@ -805,6 +975,7 @@ func TestProcessRequest_SessionSummary_CompactsSameTurnToolHistory(t *testing.T)
 	}
 	p := NewContentRequestProcessor(
 		WithAddSessionSummary(true),
+		WithEnableContextCompaction(true),
 		WithContextCompactionToolResultMaxTokens(10),
 	)
 	p.ProcessRequest(context.Background(), inv, req, nil)
@@ -823,17 +994,23 @@ func TestProcessRequest_SessionSummary_CompactsSameTurnToolHistory(t *testing.T)
 	require.Equal(t, "Starting with step 1.", req.Messages[2].Content)
 	require.Len(t, req.Messages[2].ToolCalls, 1)
 	require.Equal(t, "call_1", req.Messages[2].ToolCalls[0].ID)
+	require.JSONEq(t, `{"step":1}`, string(
+		req.Messages[2].ToolCalls[0].Function.Arguments,
+	))
 	require.Equal(t, model.RoleTool, req.Messages[3].Role)
 	require.Equal(t, "call_1", req.Messages[3].ToolID)
 	require.Equal(t, "step_worker", req.Messages[3].ToolName)
 	require.Contains(t, req.Messages[3].Content, compactedToolResultPlaceholder)
-	require.Contains(t, req.Messages[3].Content, "event_id: tool-result-1")
-	require.Contains(t, req.Messages[3].Content, "tool_call_id: call_1")
-	require.Contains(t, req.Messages[3].Content, "tool_name: step_worker")
 	require.NotContains(t, req.Messages[3].Content, "large-result;")
+	require.Equal(
+		t,
+		`{"step":1}`,
+		string(sess.Events[1].Choices[0].Message.ToolCalls[0].Function.Arguments),
+		"resume-tail compaction must not mutate session history",
+	)
 }
 
-func TestProcessRequest_SessionSummary_PreservesSmallSameTurnToolHistory(t *testing.T) {
+func TestProcessRequest_SessionSummary_PreservesSmallLatestToolRound(t *testing.T) {
 	baseTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	userMsg := model.NewUserMessage("run the task")
 	toolCallMsg := model.Message{
@@ -859,6 +1036,11 @@ func TestProcessRequest_SessionSummary_PreservesSmallSameTurnToolHistory(t *test
 			"test-agent": {
 				Summary:   "step 1 completed successfully",
 				UpdatedAt: baseTime.Add(2 * time.Second),
+				Boundary: session.NewSummaryBoundaryWithEventID(
+					"test-agent",
+					baseTime.Add(2*time.Second),
+					"evt-tool-result",
+				),
 			},
 		},
 		Events: []event.Event{
@@ -917,10 +1099,13 @@ func TestProcessRequest_SessionSummary_PreservesSmallSameTurnToolHistory(t *test
 	p := NewContentRequestProcessor(WithAddSessionSummary(true))
 	p.ProcessRequest(context.Background(), inv, req, nil)
 
-	_, ok := inv.GetState(contentHasCompactedToolResultsStateKey)
+	raw, ok := inv.GetState(contentHasCompactedToolResultsStateKey)
 	require.False(t, ok)
+	require.Nil(t, raw)
 
 	require.Len(t, req.Messages, 4)
+	require.True(t, model.MessagesEqual(userMsg, req.Messages[1]))
+	require.Equal(t, toolCallMsg.ToolCalls, req.Messages[2].ToolCalls)
 	require.Equal(t, model.RoleTool, req.Messages[3].Role)
 	require.Equal(t, "call_1", req.Messages[3].ToolID)
 	require.Equal(t, "step_worker", req.Messages[3].ToolName)
@@ -1027,7 +1212,10 @@ func TestContentRequestProcessor_HasCompactedCurrentInvocationToolResults(t *tes
 	})
 
 	t.Run("detects compacted tool result", func(t *testing.T) {
-		p := NewContentRequestProcessor(WithContextCompactionToolResultMaxTokens(1))
+		p := NewContentRequestProcessor(
+			WithEnableContextCompaction(true),
+			WithContextCompactionToolResultMaxTokens(1),
+		)
 		inv := agent.NewInvocation(
 			agent.WithInvocationID("inv1"),
 			agent.WithInvocationRunOptions(agent.RunOptions{RequestID: "req1"}),
@@ -1079,6 +1267,7 @@ func TestContentRequestProcessor_HasCompactedCurrentInvocationToolResults(t *tes
 		}
 		p := NewContentRequestProcessor(
 			WithBranchFilterMode(BranchFilterModeExact),
+			WithEnableContextCompaction(true),
 			WithContextCompactionKeepToolNames("session_load"),
 			WithContextCompactionToolResultMaxTokens(1),
 		)
@@ -1114,6 +1303,7 @@ func TestContentRequestProcessor_HasCompactedCurrentInvocationToolResults(t *tes
 
 	t.Run("ignores kept tool result", func(t *testing.T) {
 		p := NewContentRequestProcessor(
+			WithEnableContextCompaction(true),
 			WithContextCompactionKeepToolNames("session_load"),
 		)
 		inv := agent.NewInvocation(
@@ -1161,7 +1351,10 @@ func TestContentRequestProcessor_HasCompactedCurrentInvocationToolResults(t *tes
 	})
 
 	t.Run("detects compacted tool result in later choice", func(t *testing.T) {
-		p := NewContentRequestProcessor(WithContextCompactionToolResultMaxTokens(1))
+		p := NewContentRequestProcessor(
+			WithEnableContextCompaction(true),
+			WithContextCompactionToolResultMaxTokens(1),
+		)
 		inv := agent.NewInvocation(
 			agent.WithInvocationID("inv1"),
 			agent.WithInvocationRunOptions(agent.RunOptions{RequestID: "req1"}),
@@ -1605,6 +1798,19 @@ func TestPrependSummaryUserMessage(t *testing.T) {
 		require.Equal(t, model.RoleAssistant, result[1].Role)
 	})
 
+	t.Run("zero_role_history_message_merges_as_user", func(t *testing.T) {
+		msgs := []model.Message{
+			{Content: "zero role current request"},
+			model.NewAssistantMessage("hi"),
+		}
+		result := p.prependSummaryUserMessage("some summary", msgs, nil)
+		require.Len(t, result, 2)
+		require.Equal(t, model.Role(""), result[0].Role)
+		require.Contains(t, result[0].Content, "some summary")
+		require.Contains(t, result[0].Content, "zero role current request")
+		require.Equal(t, model.RoleAssistant, result[1].Role)
+	})
+
 	t.Run("does_not_mutate_original", func(t *testing.T) {
 		original := []model.Message{
 			model.NewUserMessage("original content"),
@@ -1689,6 +1895,21 @@ func TestPrependSummaryUserMessage(t *testing.T) {
 		// trailing prefix user message.
 		require.Contains(t, prefix[len(prefix)-1].Content, "some summary")
 		require.Contains(t, prefix[len(prefix)-1].Content, "few-shot user example")
+		require.Equal(t, msgs, result)
+	})
+
+	t.Run("req_prefix_ends_with_zero_role_user_merges_as_fallback", func(t *testing.T) {
+		prefix := []model.Message{
+			model.NewSystemMessage("system prompt"),
+			{Content: "zero role user example"},
+		}
+		msgs := []model.Message{
+			model.NewAssistantMessage("history assistant"),
+		}
+		result := p.prependSummaryUserMessage("some summary", msgs, prefix)
+		require.Equal(t, model.Role(""), prefix[len(prefix)-1].Role)
+		require.Contains(t, prefix[len(prefix)-1].Content, "some summary")
+		require.Contains(t, prefix[len(prefix)-1].Content, "zero role user example")
 		require.Equal(t, msgs, result)
 	})
 

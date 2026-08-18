@@ -15,6 +15,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent/trace"
 	"trpc.group/trpc-go/trpc-agent-go/internal/surfacepatch"
 	"trpc.group/trpc-go/trpc-agent-go/internal/tracecapture"
+	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // WithExecutionTraceEnabled toggles execution trace recording for this run.
@@ -187,6 +188,19 @@ func SetExecutionTraceStepAppliedSurfaceIDs(inv *Invocation, stepID string) {
 	capture.SetStepAppliedSurfaceIDs(stepID, reporter.ExecutionTraceAppliedSurfaceIDs(inv))
 }
 
+// SetExecutionTraceStepUsage records token usage for one execution trace step.
+func SetExecutionTraceStepUsage(inv *Invocation, stepID string, usage *model.Usage) {
+	if inv == nil || stepID == "" || usage == nil {
+		return
+	}
+	inv.initializeExecutionTrace()
+	capture := inv.executionTraceCapture()
+	if capture == nil {
+		return
+	}
+	capture.SetStepUsage(stepID, usage)
+}
+
 // NextExecutionTracePredecessors returns the predecessor set for the next real step or child invocation.
 func NextExecutionTracePredecessors(inv *Invocation) []string {
 	if inv == nil {
@@ -294,6 +308,21 @@ func (inv *Invocation) executionTraceFields() (*tracecapture.Capture, string) {
 	inv.traceMu.Lock()
 	defer inv.traceMu.Unlock()
 	return inv.traceCapture, inv.traceNodeID
+}
+
+func (inv *Invocation) executionTraceRuntimeFields() (
+	*tracecapture.StepBinding,
+	*tracecapture.Capture,
+) {
+	if inv == nil || !inv.RunOptions.ExecutionTraceEnabled {
+		return nil, nil
+	}
+	inv.traceMu.Lock()
+	defer inv.traceMu.Unlock()
+	if inv.executionTraceStepBinding == nil {
+		inv.executionTraceStepBinding = tracecapture.NewStepBinding()
+	}
+	return inv.executionTraceStepBinding, inv.traceCapture
 }
 
 func cloneStringSlice(values []string) []string {

@@ -20,6 +20,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/internal/flow/processor"
 	"trpc.group/trpc-go/trpc-agent-go/internal/skillprofile"
 	"trpc.group/trpc-go/trpc-agent-go/internal/structuredoutput"
+	"trpc.group/trpc-go/trpc-agent-go/internal/toolcall"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/searchfilter"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -28,6 +29,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	toolskill "trpc.group/trpc-go/trpc-agent-go/tool/skill"
+	toolworkspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 )
 
 const (
@@ -69,6 +71,14 @@ const (
 	// Use this for maximum bandwidth savings when reasoning history is not needed.
 	ReasoningContentModeDiscardAll = processor.ReasoningContentModeDiscardAll
 
+	// ToolTranscriptModeKeepAll keeps all historical tool-call/tool-result
+	// transcripts in model requests.
+	ToolTranscriptModeKeepAll = processor.ToolTranscriptModeKeepAll
+	// ToolTranscriptModeOmitPreviousCompleted omits completed historical
+	// tool-call/tool-result pairs from previous requests when projecting session
+	// history into model requests.
+	ToolTranscriptModeOmitPreviousCompleted = processor.ToolTranscriptModeOmitPreviousCompleted
+
 	// SkillLoadModeOnce injects loaded skill content for the next model
 	// request, then offloads it from session state.
 	SkillLoadModeOnce = processor.SkillLoadModeOnce
@@ -80,20 +90,42 @@ const (
 	// invocations until cleared or the session expires.
 	SkillLoadModeSession = processor.SkillLoadModeSession
 
-	// SessionSummaryInjectionSystem injects the session summary as a system
-	// message (default behavior).
+	// SessionSummaryInjectionSystem injects the session summary as system
+	// context (default behavior).
 	SessionSummaryInjectionSystem = processor.SessionSummaryInjectionSystem
-	// SessionSummaryInjectionUser injects the session summary as a user
-	// message that participates in token-budget trimming for sliding-window
-	// behavior. The processor prefers merging it into the first user
-	// history/current message and only falls back to a trailing prefix user
-	// message when needed.
+	// SessionSummaryInjectionUser injects the session summary near user/history
+	// messages. The summary participates in token-budget trimming for
+	// sliding-window behavior.
 	SessionSummaryInjectionUser = processor.SessionSummaryInjectionUser
+	// PreloadMemoryInjectionSystem injects preloaded memories as system context
+	// (default behavior).
+	PreloadMemoryInjectionSystem = processor.PreloadMemoryInjectionSystem
+	// PreloadMemoryInjectionUser injects preloaded memories near user/history.
+	// This is more prompt-cache friendly, but memory context participates in
+	// token-budget trimming.
+	PreloadMemoryInjectionUser = processor.PreloadMemoryInjectionUser
+	// PreloadSessionRecallInjectionSystem injects recalled session events as
+	// system context (default behavior).
+	PreloadSessionRecallInjectionSystem = processor.PreloadSessionRecallInjectionSystem
+	// PreloadSessionRecallInjectionUser injects recalled session events near
+	// user/history. This is more prompt-cache friendly, but recall context
+	// participates in token-budget trimming.
+	PreloadSessionRecallInjectionUser = processor.PreloadSessionRecallInjectionUser
 )
 
-// SessionSummaryInjectionMode controls how the session summary is injected
-// into the model request.
+// SessionSummaryInjectionMode controls where session summaries are injected.
 type SessionSummaryInjectionMode = processor.SessionSummaryInjectionMode
+
+// PreloadMemoryInjectionMode controls where preloaded memories are injected.
+type PreloadMemoryInjectionMode = processor.PreloadMemoryInjectionMode
+
+// PreloadSessionRecallInjectionMode controls where recalled session events are
+// injected.
+type PreloadSessionRecallInjectionMode = processor.PreloadSessionRecallInjectionMode
+
+// ToolTranscriptMode controls how historical tool-call/tool-result transcripts
+// are projected into model requests.
+type ToolTranscriptMode = processor.ToolTranscriptMode
 
 // MessageFilterMode is the mode for filtering messages.
 type MessageFilterMode int
@@ -162,15 +194,18 @@ var (
 		//     usage and API costs, especially for users with many stored
 		//     memories. Consider using a positive budget (e.g., 10-50) for
 		//     production use.
-		PreloadMemory: 0,
+		PreloadMemory:              0,
+		PreloadMemoryInjectionMode: processor.PreloadMemoryInjectionSystem,
 		// Default to disabling query-time session recall preload.
-		PreloadSessionRecall:           0,
-		PreloadSessionRecallSearchMode: session.SearchModeHybrid,
+		PreloadSessionRecall:              0,
+		PreloadSessionRecallInjectionMode: processor.PreloadSessionRecallInjectionSystem,
+		PreloadSessionRecallSearchMode:    session.SearchModeHybrid,
 
 		SkillLoadMode: SkillLoadModeTurn,
 
 		SkipSkillsFallbackOnSessionSummary: true,
 
+		ToolTranscriptMode:                   processor.ToolTranscriptModeKeepAll,
 		EnableContextCompaction:              false,
 		ContextCompactionThresholdRatio:      0.7,
 		ContextCompactionToolResultMaxTokens: processor.DefaultContextCompactionToolResultMaxTokens,
@@ -278,8 +313,15 @@ type Options struct {
 	ModelCallbacks *model.Callbacks
 	// ToolCallbacks contains callbacks for tool operations.
 	ToolCallbacks *tool.Callbacks
+	// ToolResultAttachmentBudget limits callback-managed attachments across
+	// one tool response processing pass. Non-positive values preserve the
+	// default unlimited behavior.
+	ToolResultAttachmentBudget int
 	// ToolCallRetryPolicy configures retry behavior for callable tool calls.
 	ToolCallRetryPolicy *tool.RetryPolicy
+	// ToolConcurrencyConfig limits active tool calls when parallel execution is enabled.
+	// Each invocation of the agent has independent limits.
+	ToolConcurrencyConfig tool.ConcurrencyConfig
 	// Knowledge is the knowledge base for the agent.
 	// If provided, the knowledge search tool will be automatically added.
 	Knowledge knowledge.Knowledge
@@ -316,13 +358,12 @@ type Options struct {
 	// When false, foreign agent events are passed directly without the prefix.
 	AddContextPrefix bool
 
-	// AddSessionSummary controls whether to prepend the current branch summary
-	// as a system message when available (default: false).
+	// AddSessionSummary controls whether to include the current branch summary
+	// when available (default: false).
 	AddSessionSummary bool
-	// SessionSummaryInjectionMode controls how the session summary is injected
-	// into the model request. Default is "system" (SessionSummaryInjectionSystem).
-	// Set to "user" (SessionSummaryInjectionUser) to inject as a user message
-	// that participates in token-budget trimming for sliding-window behavior.
+	// SessionSummaryInjectionMode controls where session summaries are injected.
+	// Default is "system" (SessionSummaryInjectionSystem). In user mode, the
+	// summary participates in token-budget trimming.
 	SessionSummaryInjectionMode processor.SessionSummaryInjectionMode
 	// SyncSummaryIntraRun controls whether to refresh session summary
 	// synchronously between LLM loop iterations inside the same run.
@@ -333,6 +374,9 @@ type Options struct {
 	// MaxHistoryRuns sets the maximum number of history messages when AddSessionSummary is false.
 	// When 0 (default), no limit is applied.
 	MaxHistoryRuns int
+	// ToolTranscriptMode controls how historical tool-call/tool-result
+	// transcripts are projected into model requests. Default is keep_all.
+	ToolTranscriptMode processor.ToolTranscriptMode
 	// EnableContextCompaction enables prompt-side context compaction.
 	// Historical oversized tool results can be compacted during request
 	// projection even when AddSessionSummary is false. When AddSessionSummary
@@ -383,6 +427,13 @@ type Options struct {
 	//   - > 0: the limit is enforced per invocation.
 	//   - <= 0: no limit is applied (default, preserves existing behavior).
 	MaxToolIterations int
+	// llmCallLimitFinalizationInstruction enables proactive finalization at
+	// MaxLLMCalls when non-nil. An empty value selects the framework default.
+	llmCallLimitFinalizationInstruction *string
+	// toolIterationLimitFinalizationInstruction enables proactive finalization
+	// at MaxToolIterations when non-nil. An empty value selects the framework
+	// default.
+	toolIterationLimitFinalizationInstruction *string
 
 	// PreserveSameBranch controls whether the content request processor
 	// should preserve original roles (assistant/tool) for events that
@@ -436,6 +487,19 @@ type Options struct {
 	// When <= 0, no cap is applied (default behavior).
 	MaxLoadedSkills int
 
+	// MaxOverviewSkills caps how many skill summaries (name + full
+	// description) are rendered into the system-prompt overview.
+	//
+	// When > 0 and the repository exposes more than this many skills,
+	// only the first N are rendered with descriptions; the remaining
+	// skill names are listed as a compact tail so the agent can still
+	// discover them via skill_load.
+	//
+	// When <= 0, no cap is applied (default behavior) and every skill
+	// summary is rendered. Use this to bound the per-invocation prompt
+	// budget when the managed-skill library grows large.
+	MaxOverviewSkills int
+
 	// SkillsLoadedContentInToolResults controls where loaded skill bodies
 	// and selected docs are materialized.
 	//
@@ -457,6 +521,10 @@ type Options struct {
 
 	// skillsRepository enables agent skills when non-nil.
 	skillsRepository skill.Repository
+	// skillsRepositoryProvider resolves a scoped skills repository per run.
+	skillsRepositoryProvider skill.RepositoryProvider
+	// skillScopeMode controls app-level sharing vs app+user isolation.
+	skillScopeMode skill.SkillScopeMode
 	// skillFilter narrows the visible skill set per run context.
 	skillFilter skill.VisibilityFilter
 	// skillToolProfile controls which built-in skill tools are registered.
@@ -513,6 +581,9 @@ type Options struct {
 	// explicit Deny > implicit deny > explicit Allow > implicit
 	// allow.
 	workspaceExecDeniedCommands []string
+	// workspaceExecOutputLimits caps inline terminal output before
+	// workspace_exec tool-result events are persisted.
+	workspaceExecOutputLimits toolworkspaceexec.OutputLimits
 	// workspaceBootstrap declares static files and commands that
 	// must be present/executed in the workspace before user
 	// commands run. When non-empty it is converted into a Provider
@@ -544,12 +615,25 @@ type Options struct {
 	// When 0 (default), no memories are preloaded (use tools instead).
 	// When < 0, all memories are loaded.
 	PreloadMemory int
-	// PreloadSessionRecall sets the number of recalled
-	// session events to preload into the system prompt.
+	// PreloadMemoryInjectionMode controls where preloaded memories are injected.
+	// Default is "system" (PreloadMemoryInjectionSystem). User mode is more
+	// prompt-cache friendly, but memory context participates in token-budget
+	// trimming.
+	PreloadMemoryInjectionMode processor.PreloadMemoryInjectionMode
+	// PreloadMemoryPlaybook overrides the built-in read-path guidance prepended
+	// to preloaded memories. Empty keeps the built-in playbook.
+	PreloadMemoryPlaybook string
+	// PreloadSessionRecall sets the number of recalled session events to
+	// preload as context.
 	// When > 0, search runs across other sessions owned by
 	// the current user. When 0 (default), recall preload is
 	// disabled.
 	PreloadSessionRecall int
+	// PreloadSessionRecallInjectionMode controls where recalled session events
+	// are injected. Default is "system" (PreloadSessionRecallInjectionSystem).
+	// User mode is more prompt-cache friendly, but recall context participates
+	// in token-budget trimming.
+	PreloadSessionRecallInjectionMode processor.PreloadSessionRecallInjectionMode
 	// PreloadSessionRecallMinScore filters low-confidence
 	// recalled session hits before injection.
 	PreloadSessionRecallMinScore float64
@@ -562,20 +646,20 @@ type Options struct {
 	// a small overview prompt.
 	EnableOnDemandSession bool
 
-	// postToolPromptEnabled controls whether the post-tool dynamic prompt
-	// injection is enabled. When nil (default), injection is enabled to
-	// preserve existing behavior.
+	// postToolPromptEnabled controls whether stable post-tool guidance is
+	// injected. When nil (default), injection is enabled to preserve existing
+	// behavior.
 	postToolPromptEnabled *bool
 
-	// PostToolPrompt overrides the default dynamic prompt injected when
-	// tool results are detected.
+	// PostToolPrompt overrides the default stable guidance injected into the
+	// system prompt for tool-result handling.
 	//
 	// When empty (default), the built-in default prompt is used.
 	// To disable prompt injection entirely, use
 	// WithEnablePostToolPrompt(false).
 	//
-	// Set to a non-empty string to customize the guidance given to the
-	// model after tool calls.
+	// Set to a non-empty string to customize the guidance given to the model
+	// for tool calls.
 	PostToolPrompt string
 
 	// extensions holds the agent-scoped extensions registered via
@@ -743,6 +827,45 @@ func WithMaxToolIterations(limit int) Option {
 	}
 }
 
+// WithLLMCallLimitFinalization uses the last call allowed by WithMaxLLMCalls
+// to request one tool-free final model response. The finalization call counts
+// toward the configured limit. An empty instruction uses the framework
+// default. This option has no effect when the LLM call limit is not positive.
+// The instruction is appended as a transient tail user message for the final
+// model request; it is not emitted or persisted as a user event. Before-model
+// callbacks observe the tool-free finalization request.
+//
+// When this option is not set, exceeding MaxLLMCalls preserves the default
+// terminal StopError behavior.
+func WithLLMCallLimitFinalization(instruction string) Option {
+	return func(opts *Options) {
+		opts.llmCallLimitFinalizationInstruction = &instruction
+	}
+}
+
+// WithToolIterationLimitFinalization requests one tool-free final model
+// response after the last fully framework-executed iteration allowed by
+// WithMaxToolIterations, when normal flow can continue to another LLM call.
+// The finalization call counts toward MaxLLMCalls when that limit is configured,
+// and is not attempted if that budget is exhausted.
+// If the limit-reaching response contains any caller-executed tool, including
+// an external tool or one deferred by the execution filter, the existing
+// deferred-tool lifecycle ends the current invocation without a finalization
+// call. That response still counts toward MaxToolIterations. An empty
+// instruction uses the framework default. This option has no effect when the
+// tool iteration limit is not positive.
+// The instruction is appended as a transient tail user message for the final
+// model request; it is not emitted or persisted as a user event. Before-model
+// callbacks observe the tool-free finalization request.
+//
+// When this option is not set, exceeding MaxToolIterations preserves the
+// default terminal flow_error behavior.
+func WithToolIterationLimitFinalization(instruction string) Option {
+	return func(opts *Options) {
+		opts.toolIterationLimitFinalizationInstruction = &instruction
+	}
+}
+
 // WithChannelBufferSize sets the buffer size for event channels.
 func WithChannelBufferSize(size int) Option {
 	return func(opts *Options) {
@@ -855,6 +978,27 @@ func WithSkills(repo skill.Repository) Option {
 	}
 }
 
+// WithSkillRepositoryProvider enables model-agnostic Agent Skills support
+// using a repository selected from the current app/user scope.
+//
+// When an invocation declares SkillLoads, LLMAgent resolves the effective
+// repository once after BeforeAgent callbacks and retains the Skill contents
+// validated during preflight for tool construction and request processing in
+// that invocation.
+func WithSkillRepositoryProvider(provider skill.RepositoryProvider) Option {
+	return func(opts *Options) {
+		opts.skillsRepositoryProvider = provider
+	}
+}
+
+// WithSkillScopeMode configures whether scoped skills are shared per app or
+// isolated per app+user.
+func WithSkillScopeMode(mode skill.SkillScopeMode) Option {
+	return func(opts *Options) {
+		opts.skillScopeMode = mode
+	}
+}
+
 // WithSkillFilter narrows visible skills per run context without changing the
 // mounted repository roots. The filter is evaluated against skill summaries
 // and can read runtime state from ctx.
@@ -960,6 +1104,24 @@ func WithSkillLoadMode(mode string) Option {
 func WithMaxLoadedSkills(max int) Option {
 	return func(opts *Options) {
 		opts.MaxLoadedSkills = max
+	}
+}
+
+// WithMaxOverviewSkills caps how many skill summaries are rendered
+// into the system-prompt overview with full descriptions.
+//
+// When max <= 0, no cap is applied (default behavior). When max > 0
+// and the repository exposes more than max skills, only the first max
+// summaries are rendered fully; the remaining skill names are listed
+// as a compact, comma-separated tail so the agent can still load them
+// on demand via skill_load.
+//
+// Use this to bound the per-invocation prompt budget when the managed-
+// skill library grows large enough to push the request close to the
+// model's context window.
+func WithMaxOverviewSkills(max int) Option {
+	return func(opts *Options) {
+		opts.MaxOverviewSkills = max
 	}
 }
 
@@ -1258,6 +1420,19 @@ func WithWorkspaceExecDeniedCommands(cmds ...string) Option {
 	}
 }
 
+// WithWorkspaceExecOutputLimits limits terminal output returned inline by
+// workspace_exec and workspace_write_stdin. The limit is applied before the
+// tool-result event is persisted, so it also bounds the corresponding session
+// payload. A non-positive MaxOutputBytes leaves output unlimited, which is the
+// default for compatibility.
+func WithWorkspaceExecOutputLimits(
+	limits toolworkspaceexec.OutputLimits,
+) Option {
+	return func(opts *Options) {
+		opts.workspaceExecOutputLimits = limits
+	}
+}
+
 // WithWorkspaceBootstrap declares the static files and one-shot
 // commands that must be materialized in every workspace before
 // workspace_exec runs user commands. Files are applied first, then
@@ -1320,6 +1495,15 @@ func WithModelCallbacks(callbacks *model.Callbacks) Option {
 func WithToolCallbacks(callbacks *tool.Callbacks) Option {
 	return func(opts *Options) {
 		opts.ToolCallbacks = callbacks
+	}
+}
+
+// WithToolResultAttachmentBudget limits callback-managed attachments across
+// one tool response processing pass. Non-positive values preserve the default
+// unlimited behavior.
+func WithToolResultAttachmentBudget(maxAttachments int) Option {
+	return func(opts *Options) {
+		opts.ToolResultAttachmentBudget = maxAttachments
 	}
 }
 
@@ -1432,6 +1616,39 @@ func WithEnableParallelTools(enable bool) Option {
 	}
 }
 
+// WithToolConcurrencyConfig configures overall and per-group limits for
+// parallel tool execution. Each invocation of the agent has independent
+// limits. The configuration only takes effect with
+// WithEnableParallelTools(true).
+// It panics if a tool name appears in more than one positive-limit group.
+func WithToolConcurrencyConfig(config tool.ConcurrencyConfig) Option {
+	if err := toolcall.ValidateConcurrencyConfig(config); err != nil {
+		panic(err)
+	}
+	snapshot := cloneToolConcurrencyConfig(config)
+	return func(opts *Options) {
+		opts.ToolConcurrencyConfig = cloneToolConcurrencyConfig(snapshot)
+	}
+}
+
+func cloneToolConcurrencyConfig(
+	config tool.ConcurrencyConfig,
+) tool.ConcurrencyConfig {
+	cloned := config
+	if config.Groups == nil {
+		return cloned
+	}
+	cloned.Groups = make([]tool.ConcurrencyGroup, len(config.Groups))
+	for i, group := range config.Groups {
+		cloned.Groups[i] = group
+		cloned.Groups[i].ToolNames = append(
+			[]string(nil),
+			group.ToolNames...,
+		)
+	}
+	return cloned
+}
+
 // WithDefaultTransferMessage configures the default message used when the model
 // calls a sub-agent without providing a message. If msg is an empty string,
 // the default message injection is disabled; if non-empty, it is enabled and msg is used.
@@ -1530,14 +1747,15 @@ func WithAddSessionSummary(addSummary bool) Option {
 	}
 }
 
-// WithSessionSummaryInjectionMode sets the injection mode for session summaries.
+// WithSessionSummaryInjectionMode sets where session summaries are injected.
 //
 // Available modes:
-//   - processor.SessionSummaryInjectionSystem (default): injects as system message.
-//   - processor.SessionSummaryInjectionUser: injects as a user message that
-//     participates in token-budget trimming for sliding-window behavior.
-//     If the first history message is also a user message, the summary is
-//     merged into it to avoid consecutive user messages.
+//   - processor.SessionSummaryInjectionSystem (default): injects session
+//     summary as system context.
+//   - processor.SessionSummaryInjectionUser: injects session summary near
+//     user/history. The summary participates in token-budget trimming. If the
+//     first history message is also a user message, the summary is merged into
+//     it to avoid consecutive user messages.
 func WithSessionSummaryInjectionMode(mode processor.SessionSummaryInjectionMode) Option {
 	return func(opts *Options) {
 		opts.SessionSummaryInjectionMode = mode
@@ -1559,6 +1777,14 @@ func WithSyncSummaryIntraRun(enable bool) Option {
 func WithMaxHistoryRuns(maxRuns int) Option {
 	return func(opts *Options) {
 		opts.MaxHistoryRuns = maxRuns
+	}
+}
+
+// WithToolTranscriptMode sets how historical tool-call/tool-result transcripts
+// are projected into model requests.
+func WithToolTranscriptMode(mode ToolTranscriptMode) Option {
+	return func(opts *Options) {
+		opts.ToolTranscriptMode = processor.ToolTranscriptMode(mode)
 	}
 }
 
@@ -1818,11 +2044,60 @@ func WithPreloadMemory(limit int) Option {
 	}
 }
 
-// WithPreloadSessionRecall sets the number of recalled
-// session events to preload into the system prompt.
+// WithPreloadMemoryInjectionMode sets where preloaded memories are injected.
+//
+// Available modes:
+//   - processor.PreloadMemoryInjectionSystem (default): injects preloaded
+//     memories as system context.
+//   - processor.PreloadMemoryInjectionUser: injects preloaded memories near
+//     user/history. This is more prompt-cache friendly, but memory context
+//     participates in token-budget trimming and can be trimmed.
+func WithPreloadMemoryInjectionMode(mode processor.PreloadMemoryInjectionMode) Option {
+	return func(opts *Options) {
+		switch mode {
+		case processor.PreloadMemoryInjectionUser:
+			opts.PreloadMemoryInjectionMode = processor.PreloadMemoryInjectionUser
+		default:
+			opts.PreloadMemoryInjectionMode = processor.PreloadMemoryInjectionSystem
+		}
+	}
+}
+
+// WithPreloadMemoryPlaybook overrides the built-in read-path guidance prepended
+// to preloaded memories. Passing an empty string keeps the built-in playbook.
+func WithPreloadMemoryPlaybook(playbook string) Option {
+	return func(opts *Options) {
+		opts.PreloadMemoryPlaybook = playbook
+	}
+}
+
+// WithPreloadSessionRecall sets the number of recalled session events to
+// preload as context.
 func WithPreloadSessionRecall(limit int) Option {
 	return func(opts *Options) {
 		opts.PreloadSessionRecall = limit
+	}
+}
+
+// WithPreloadSessionRecallInjectionMode sets where recalled session events are
+// injected.
+//
+// Available modes:
+//   - processor.PreloadSessionRecallInjectionSystem (default): injects recalled
+//     session events as system context.
+//   - processor.PreloadSessionRecallInjectionUser: injects recalled session
+//     events near user/history. This is more prompt-cache friendly, but recall
+//     context participates in token-budget trimming and can be trimmed.
+func WithPreloadSessionRecallInjectionMode(
+	mode processor.PreloadSessionRecallInjectionMode,
+) Option {
+	return func(opts *Options) {
+		switch mode {
+		case processor.PreloadSessionRecallInjectionUser:
+			opts.PreloadSessionRecallInjectionMode = processor.PreloadSessionRecallInjectionUser
+		default:
+			opts.PreloadSessionRecallInjectionMode = processor.PreloadSessionRecallInjectionSystem
+		}
 	}
 }
 
@@ -1860,24 +2135,26 @@ func WithEnableOnDemandSession(enable bool) Option {
 	}
 }
 
-// WithPostToolPrompt overrides the default dynamic prompt injected when tool
-// results are detected in the conversation. The default prompt guides the
-// model to synthesize results naturally without meta-commentary.
+// WithPostToolPrompt overrides the default stable prompt injected into the
+// system prompt for tool-result handling. The default prompt guides the model
+// to synthesize results naturally without meta-commentary.
 // To disable post-tool prompt injection entirely, use
 // WithEnablePostToolPrompt(false).
 //
 // Example usage:
 //
-//	llmagent.WithPostToolPrompt("[Dynamic Prompt] Summarize the tool output concisely.")
+//	llmagent.WithPostToolPrompt(
+//		"[Dynamic Prompt] Summarize the tool output concisely.",
+//	)
 func WithPostToolPrompt(prompt string) Option {
 	return func(opts *Options) {
 		opts.PostToolPrompt = prompt
 	}
 }
 
-// WithEnablePostToolPrompt enables or disables post-tool prompt injection.
-// When disabled, no prompt is injected after tool results, even if a custom
-// PostToolPrompt is configured.
+// WithEnablePostToolPrompt enables or disables stable post-tool prompt
+// injection. When disabled, no post-tool guidance is injected even if a
+// custom PostToolPrompt is configured.
 func WithEnablePostToolPrompt(enable bool) Option {
 	return func(opts *Options) {
 		opts.postToolPromptEnabled = &enable

@@ -1,5 +1,7 @@
 # 文档源配置
 
+![Knowledge Chunking Viewer](../../assets/img/knowledge/chunk-viewer.png)
+
 > **示例代码**: [examples/knowledge/sources](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources)
 
 源模块提供了多种文档源类型，每种类型都支持丰富的配置选项。
@@ -110,258 +112,25 @@ autoSrc := autosource.New(
 
 ## 仓库源 (Repo Source)
 
-仓库源面向代码仓库场景，适合：
-
-- 直接加载 **Git URL**
-- 加载本地 checkout 后的 **仓库目录**
-- 对单个仓库统一处理 Go / Proto / Markdown 等内容
-
-> **当前开源状态说明**：目前 AST-aware 代码解析能力已开源支持 **Go** 和 **Proto / PB**。`Python`、`C++`、`JavaScript` 等语言能力正在逐步开源中。对于这些尚未开源的语言，仓库源仍可通过普通文档 reader 处理对应文本类文件，但不会产出同等级别的 AST 语义实体。 
-
-### 典型场景
-
-- 加载远程 Git 仓库进行代码知识库构建
-- 加载本地仓库并限制到某个子目录
-- 对单个仓库做 Go + Markdown（以及已支持类型）统一 ingest
-
-### 基本用法
+仓库源面向代码仓库场景：把一个 Git 仓库（或本地 checkout 目录）整体 ingest 进知识库，按文件类型分发到对应 reader，对 `.go` / `.py` / `.proto` 等做 AST 语义切块。它是「代码知识库 / Code RAG」的数据入口。
 
 ```go
 import (
     _ "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/golang"
+    _ "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/python"
     reposource "trpc.group/trpc-go/trpc-agent-go/knowledge/source/repo"
 )
 
 repoSrc := reposource.New(
-    reposource.WithRepository(
-        reposource.Repository{
-            URL:    "https://github.com/trpc-group/trpc-go",
-            Branch: "main",
-        },
-    ),
-    reposource.WithName("Code Repository"),
-    reposource.WithFileExtensions([]string{".go", ".md"}),
+    reposource.WithRepository(reposource.Repository{
+        URL:    "https://github.com/trpc-group/trpc-go",
+        Branch: "main",
+    }),
+    reposource.WithFileExtensions([]string{".go", ".py", ".md"}),
 )
 ```
 
-Go AST reader 是可选模块。扫描 `.go` 文件时，需要手动 blank import
-`knowledge/document/reader/golang` 完成注册；Proto reader 默认注册。
-
-### Repository 结构说明
-
-`Repository` 用于描述单个仓库输入，可分别配置版本与范围：
-
-| 字段 | 说明 |
-|------|------|
-| `URL` | 远程 Git 仓库地址 |
-| `Dir` | 本地仓库目录 |
-| `Branch` | 指定分支 |
-| `Tag` | 指定 tag |
-| `Commit` | 指定 commit |
-| `Subdir` | 仅扫描仓库中的某个子目录 |
-| `RepoName` | 自定义仓库名称 |
-| `RepoURL` | 自定义仓库 URL（覆盖默认推导） |
-
-> `URL` 与 `Dir` 通常二选一。当前一个 `repo.Source` 仅处理一个仓库输入。
-
-### 版本选择优先级
-
-当同时配置多个版本字段时，优先级为：
-
-1. `Commit`
-2. `Tag`
-3. `Branch`
-
-也就是说，如果同时给出 `Commit` 和 `Branch`，最终会 checkout `Commit`。
-
-### 扫描范围控制
-
-仓库源当前推荐暴露的是“仓库语义”相关配置：
-
-- [`WithFileExtensions`](https://github.com/trpc-group/trpc-agent-go/blob/main/knowledge/source/repo/options.go) 控制扫描哪些文件后缀
-- [`WithSkipDirs`](https://github.com/trpc-group/trpc-agent-go/blob/main/knowledge/source/repo/options.go) 控制跳过哪些目录名
-- [`WithSkipSuffixes`](https://github.com/trpc-group/trpc-agent-go/blob/main/knowledge/source/repo/options.go) 控制跳过哪些文件后缀
-- `Repository.Subdir` 控制某个仓库只扫描部分目录
-
-例如只扫描仓库内 `server/` 目录下的 Go 与 Markdown：
-
-```go
-repoSrc := reposource.New(
-    reposource.WithRepository(
-        reposource.Repository{
-            URL:    "https://github.com/trpc-group/trpc-go",
-            Branch: "main",
-            Subdir: "server",
-        },
-    ),
-    reposource.WithFileExtensions([]string{".go", ".md"}),
-    reposource.WithSkipSuffixes([]string{".pb.go", ".trpc.go", "_mock.go"}),
-)
-```
-
-### Metadata 行为
-
-仓库源会在 reader 产出的文档基础上补充仓库级 metadata，例如：
-
-| Metadata | 说明 |
-|----------|------|
-| `trpc_agent_go_source=repo` | 文档来自仓库源 |
-| `trpc_agent_go_repo_path` | 本地克隆后的仓库根目录 |
-| `trpc_ast_repo_name` | 仓库名称 |
-| `trpc_ast_repo_url` | 仓库 URL |
-| `trpc_ast_branch` | 当前解析的版本标识（branch/tag/commit） |
-| `trpc_ast_file_path` | 仓库内相对路径 |
-
-注意：
-
-- `trpc_ast_file_path` 语义上表示 **仓库内逻辑路径**，不是远程 Git URL
-- 如果输入来自 Git URL，仓库源会先 clone 到临时目录，再以相对路径形式写入 `trpc_ast_file_path`
-
-### 与 AST Reader 的关系
-
-仓库源不会自己解析代码，而是根据文件类型分发到底层 reader：
-
-- `.go` -> Go AST reader
-- `.proto` -> Proto AST reader
-- `.md` -> Markdown reader
-- 其他已注册扩展 -> 对应 reader
-
-因此，仓库源非常适合演示和构建“**同一个仓库内多语言 / 多类型内容统一 ingest**”的知识库。
-
-### 解析效果示例
-
-下面是仓库源对远程 Go 仓库中的一个结构体定义切块后的示意输出：
-
-```text
-parsed content:
-index: 7
-name: Server
-content_length: 570
-
-content:
-// Server is a tRPC server.
-// One process, one server. A server may offer one or more services.
-type Server struct {
-	MaxCloseWaitTime time.Duration // max waiting time when closing server
-
-	services map[string]Service // k=serviceName,v=Service
-
-	mux sync.Mutex // guards onShutdownHooks
-	// onShutdownHooks are hook functions that would be executed when server is
-	// shutting down (before closing all services of the server).
-	onShutdownHooks []func()
-
-	failedServices sync.Map
-	signalCh       chan os.Signal
-	closeCh        chan struct{}
-	closeOnce      sync.Once
-}
-
-embedding text:
-{
-  "comment": "Server is a tRPC server.\nOne process, one server. A server may offer one or more services.",
-  "file_path": "/tmp/trpc-agent-go-repo-483441217/server/server.go",
-  "full_name": "trpc.group/trpc-go/trpc-go/server.Server",
-  "id": "trpc.group/trpc-go/trpc-go/server.Server",
-  "name": "Server",
-  "package": "trpc.group/trpc-go/trpc-go/server",
-  "signature": "type Server struct",
-  "type": "Struct"
-}
-
-metadata:
-trpc_agent_go_source: repo
-trpc_agent_go_file_path: server/server.go
-trpc_ast_repo_name: trpc-go
-trpc_ast_repo_url: https://github.com/trpc-group/trpc-go
-trpc_ast_file_path: server/server.go
-trpc_ast_full_name: trpc.group/trpc-go/trpc-go/server.Server
-trpc_ast_type: Struct
-trpc_ast_signature: type Server struct
-trpc_ast_language: go
-...
-```
-
-这个输出可以分成三层理解：
-
-#### 1. `content`：原始切块内容
-
-`content` 字段保存的是最终入库时的正文内容。对于 AST-aware 的 Go / Proto reader，这里的正文不是随便按字符截断的文本，而是**按语义实体切出来的代码片段**。
-
-在上面的例子里，切出来的是 `Server` 这个结构体定义，因此你会直接看到：
-
-- 结构体注释
-- `type Server struct { ... }`
-- 以及结构体内部的字段定义
-
-这意味着后续无论是展示、调试，还是全文检索，都能直接回到比较完整的实体级代码片段，而不是零散的文本块。
-
-#### 2. `embedding text`：用于向量化的结构化摘要
-
-`embedding text` 不等于原始代码本身，而是**更适合做语义向量化的摘要文本**。它通常会保留：
-
-- `name`
-- `full_name`
-- `package`
-- `signature`
-- `comment`
-- `file_path`
-
-这些字段能够让 embedding 更聚焦在“这个实体是什么、属于哪个包、作用是什么”。
-
-对于 Go 结构体示例来说，`embedding text` 比完整代码更紧凑，更强调：
-- 这是一个 `Struct`
-- 它的全限定名是 `trpc.group/trpc-go/trpc-go/server.Server`
-- 它的签名是 `type Server struct`
-- 它的注释说明了这个结构体的职责
-
-而对于 `.proto` 文件，`embedding text` 通常还会带上 message / rpc / service 相关的语义信息，帮助向量检索更准确地理解接口定义。
-
-#### 3. `metadata`：过滤、定位与展示信息
-
-`metadata` 主要不是拿来做 embedding，而是给系统在检索、过滤、展示时使用的结构化信息。
-
-可以把它理解成两组：
-
-##### `trpc_agent_go_*`
-
-这组是框架级元数据，描述文档从哪里来、文件本身是什么：
-
-- `trpc_agent_go_source=repo`：说明来源是仓库源
-- `trpc_agent_go_file_path`：仓库内相对路径
-- `trpc_agent_go_repo_path`：本地克隆后的仓库根目录
-- `trpc_agent_go_uri`：实际文件 URI
-
-这类信息更偏“文档管理”和“来源定位”。
-
-##### `trpc_ast_*`
-
-这组是 AST 语义元数据，描述这个切块对应的代码实体是什么：
-
-- `trpc_ast_type=Struct`
-- `trpc_ast_full_name`
-- `trpc_ast_signature`
-- `trpc_ast_language=go`
-- `trpc_ast_repo_name` / `trpc_ast_repo_url`
-
-这类信息更偏“代码理解”和“语义过滤”。
-
-例如后续如果要检索：
-- 某个仓库里的 `Struct`
-- 某个包下的方法或结构体
-- 某个 proto service / rpc / message
-
-就主要依赖这些 AST 元数据来做精确过滤。
-
-#### 总结
-
-可以把仓库源切出来的结果理解为：
-
-- `content`：保留可读、可回溯的原始代码/文本片段
-- `embedding text`：保留更适合向量化的结构化语义摘要
-- `metadata`：保留用于过滤、定位、展示的结构化上下文
-
-对于 `.proto` 文件，仓库源在处理对应仓库时也会用同样的思路补充 `service` / `rpc` / `message` / `enum` 这些语义实体信息。 
+> 仓库源的完整摄取配置（Repository 结构、版本与扫描控制、metadata、AST 解析效果），以及配套的代码检索工具（`code_search` 向量检索 / `code_graph_*` 图检索），详见 [代码知识库与检索（Code RAG）](code-rag.md)。
 
 ## 组合使用
 
@@ -439,7 +208,7 @@ sources := []source.Source{
 
 ## 分块策略 (Chunking Strategy)
 
-> **示例代码**: [fixed-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/fixed-chunking) | [recursive-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/recursive-chunking)
+> **示例代码**: [交互式 Chunking Viewer](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/chunking) | [fixed-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/fixed-chunking) | [recursive-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/recursive-chunking)
 
 分块（Chunking）是将长文档拆分为较小片段的过程，这对于向量检索至关重要。框架提供了多种内置分块策略，同时支持自定义分块策略。
 
@@ -447,35 +216,68 @@ sources := []source.Source{
 
 | 策略 | 说明 | 适用场景 |
 |-----|------|---------|
-| **FixedSizeChunking** | 固定大小分块 | 通用文本，简单快速 |
-| **RecursiveChunking** | 递归分块，按分隔符层级拆分 | 保持语义完整性 |
+| **FixedSizeChunking** | 限制大小，并优先选择附近的自然边界 | 通用文本，简单快速 |
+| **RecursiveChunking** | 按分隔符层级递归拆分并合并小片段 | 保持语义完整性 |
 | **MarkdownChunking** | 按 Markdown 结构分块 | Markdown 文档（默认） |
 | **JSONChunking** | 按 JSON 结构分块 | JSON 文件（默认） |
 
 ### 默认行为
 
-每种文件类型都有相关的分块策略：
+多数应用只需要配置 Source 或 Reader，不需要直接创建 Chunking
+Strategy。Reader 会按文档类型选择默认行为：
 
-- `.md` 文件 → MarkdownChunking（按标题层级 H1→H6→段落→固定大小 递归分块）
-- `.json` 文件 → JSONChunking（按 JSON 结构分块）
-- `.txt/.csv/.docx` 等 → FixedSizeChunking
+| 文档类型 | Reader 默认行为 |
+|---------|----------------|
+| `.md`、`.markdown` | MarkdownChunking（标题层级 H1→H6→段落→自然文本边界） |
+| `.json` | JSONChunking（JSON 结构） |
+| `.txt`、`.text` | 使用自然文本边界的 FixedSizeChunking |
+| `.csv` | 保留完整行的 FixedSizeChunking；仅当单条记录超过当前新正文预算时拆分 |
+| `.pdf`、`.doc`、`.docx` | 导入可选格式 Reader 后使用 FixedSizeChunking |
+| `.proto` | ProtoReader 按 AST 实体分块 |
+| `.go`、`.py` | 导入可选语言 Reader 后按 AST 实体分块；未导入时 Source 回退到 TextReader |
+
+如果普通文本需要按分隔符层级处理，可以显式使用 RecursiveChunking
+作为自定义策略。
+
+PDF、DOCX、Go 和 Python Reader 都是按需导入的包。应用需要显式导入所需
+Reader，让它注册到 Reader registry。
 
 **默认参数**：
 
 | 参数 | 默认值 | 说明 |
 |-----|-------|------|
-| ChunkSize | 1024 | 每个分块的最大字符数 |
-| Overlap | 128 | 相邻分块之间的重叠字符数 |
+| ChunkSize | 1024 | FixedSizeChunking、RecursiveChunking、MarkdownChunking 的最大 Unicode rune 数 |
+| JSON ChunkSize | 2000 | JSONChunking 序列化后的最大字节数 |
+| Overlap | 0 | 相邻分块之间的最大 Unicode rune 数 |
 
-> 默认的分块策略都受 `chunkSize` 参数影响。`overlap` 参数仅对 FixedSizeChunking、RecursiveChunking、MarkdownChunking 生效，JSONChunking 不支持 overlap。
+> `overlap` 仅对 FixedSizeChunking、RecursiveChunking、MarkdownChunking 生效。它表示上限：策略可以把 overlap 起点移动到自然边界，也可以缩小实际 overlap，以保证最终分块不超过 `chunkSize`。较大的 overlap 会压缩新正文的空间，因此产生更多 chunk。JSONChunking 不支持 overlap。
+
+Overlap 是前一个 chunk 尾部与后一个 chunk 头部共享的内容，并不是在单个
+chunk 的头尾分别追加一段重叠内容。
+
+文本策略的隐式 overlap 默认值从 `128` 改为 `0`。没有显式配置 overlap
+的已有知识库会受到影响，其 chunk 边界和 embedding 输入都会变化。如果仍需
+重叠窗口，请通过 `WithChunkOverlap` 或对应策略的 overlap option 显式配置
+所需值，然后重新导入受影响的文档。由于 overlap 现在计入 `chunkSize`，
+即使显式配置为 `128`，也不一定能逐字节复现旧的超预算 chunk。
+
+文本分块策略会在调用 `Chunk` 时校验配置：`chunkSize` 必须大于 0，
+`overlap` 必须位于 `[0, chunkSize)`。无效配置会返回
+`ErrInvalidChunkSize`、`ErrInvalidOverlap` 或 `ErrOverlapTooLarge`，而不是
+静默调整参数。
+
+JSONChunking 会按确定顺序遍历对象字段，并按数值顺序遍历数组索引。当
+字符串值连同 JSON path 无法放入一个分块时，策略会在 UTF-8 安全边界上
+继续拆分。如果不可拆分的值连同路径仍然无法放入 byte 预算，chunking 会
+返回错误，而不是输出 over-budget chunk。
 
 可通过 `WithChunkSize` 和 `WithChunkOverlap` 调整默认策略的参数：
 
 ```go
 fileSrc := filesource.New(
     []string{"./data/document.txt"},
-    filesource.WithChunkSize(512),     // 分块大小（字符数）
-    filesource.WithChunkOverlap(64),   // 分块重叠（字符数）
+    filesource.WithChunkSize(512),     // 最大 Unicode rune 数
+    filesource.WithChunkOverlap(64),   // 最大重叠 Unicode rune 数
 )
 ```
 
@@ -487,7 +289,7 @@ fileSrc := filesource.New(
 
 #### FixedSizeChunking - 固定大小分块
 
-将文本按固定字符数分割，支持重叠：
+在大小上限附近切分，并优先选择附近的换行、句子、标点或单词边界，同时支持 overlap：
 
 ```go
 import (
@@ -497,8 +299,8 @@ import (
 
 // 创建固定大小分块策略
 fixedChunking := chunking.NewFixedSizeChunking(
-    chunking.WithChunkSize(512),   // 每块最大 512 字符
-    chunking.WithOverlap(64),      // 块间重叠 64 字符
+    chunking.WithChunkSize(512),   // 每块最大 512 个 Unicode rune
+    chunking.WithOverlap(64),      // 最大重叠 64 个 Unicode rune
 )
 
 fileSrc := filesource.New(
@@ -506,6 +308,11 @@ fileSrc := filesource.New(
     filesource.WithCustomChunkingStrategy(fixedChunking),
 )
 ```
+
+当输入中的每一行都是一条逻辑记录时，可以配置
+`chunking.WithPreserveLines()`。能够放入当前新正文预算的完整行不会被
+拆开；单行自身超预算时，才继续按句子、标点、空白和 UTF-8 安全的 rune
+边界切分。CSVReader 默认启用这个选项。
 
 #### RecursiveChunking - 递归分块
 
@@ -539,6 +346,13 @@ fileSrc := filesource.New(
 4. ` ` - 按空格分割
 
 递归分块会尝试使用更高优先级的分隔符，仅当分块仍超过最大大小时才使用下一级分隔符。若所有分隔符都无法将文本切分到 chunkSize 以内，则按 chunkSize 强制切分。
+
+对于同一个超长逻辑块，内置文本策略会对小于一半 chunk budget 的尾块
+进行重平衡。普通文本优先选择附近的自然边界；Markdown 长段落优先按
+句子和标点，长表格与 fenced code block 优先按完整行切分；连续 token
+找不到自然边界时，才回退到 UTF-8 安全的 rune 边界。重平衡不会跨越
+Markdown 标题作用域或无关的结构化记录，因此语义完整的短章节仍可能
+保留为较小的 chunk。
 
 
 

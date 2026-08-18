@@ -20,10 +20,12 @@ import (
 
 // LLMCriterion configures an LLM judge for evaluation.
 type LLMCriterion struct {
-	Rubrics            []*Rubric             `json:"rubrics,omitempty"`
-	JudgeModel         *JudgeModelOptions    `json:"judgeModel,omitempty"` // JudgeModel holds configuration for the judge model.
-	JudgeRunnerOptions *JudgeRunnerOptions   `json:"-"`                    // JudgeRunnerOptions holds runtime judge runner configuration.
-	Template           *JudgeTemplateOptions `json:"template,omitempty"`   // Template holds template evaluator configuration.
+	Rubrics                  []*Rubric             `json:"rubrics,omitempty"`
+	JudgeModel               *JudgeModelOptions    `json:"judgeModel,omitempty"`               // JudgeModel holds configuration for the judge model.
+	JudgeRunnerOptions       *JudgeRunnerOptions   `json:"-"`                                  // JudgeRunnerOptions holds runtime judge runner configuration.
+	SampleParallelismEnabled bool                  `json:"sampleParallelismEnabled,omitempty"` // SampleParallelismEnabled enables concurrent sample requests.
+	SampleParallelism        int                   `json:"sampleParallelism,omitempty"`        // SampleParallelism caps concurrent sample requests.
+	Template                 *JudgeTemplateOptions `json:"template,omitempty"`                 // Template holds template evaluator configuration.
 }
 
 // Rubric defines a single judging rubric item for LLM-based evaluation.
@@ -67,11 +69,34 @@ type JudgeModelOptions struct {
 
 // JudgeTemplateOptions configures the template-based LLM judge evaluator.
 type JudgeTemplateOptions struct {
-	Prompt                   string                     `json:"prompt,omitempty"`
-	ResponseScorerName       string                     `json:"responseScorerName,omitempty"`
-	VariableBindings         []*TemplateVariableBinding `json:"variableBindings,omitempty"`
-	SampleAggregatorName     string                     `json:"sampleAggregatorName,omitempty"`
-	InvocationAggregatorName string                     `json:"invocationAggregatorName,omitempty"`
+	// Prompt is the judge template text rendered with variable bindings.
+	Prompt string `json:"prompt,omitempty"`
+	// ResponseScorerName selects how the judge response is parsed.
+	ResponseScorerName string `json:"responseScorerName,omitempty"`
+	// StructuredOutputName optionally selects a structured output provider independent of ResponseScorerName.
+	StructuredOutputName string `json:"structuredOutputName,omitempty"`
+	// ResponseScorerOptions carries response scorer-specific configuration.
+	ResponseScorerOptions *ResponseScorerOptions `json:"responseScorerOptions,omitempty"`
+	// VariableBindings bind template placeholders to evaluation artifacts.
+	VariableBindings []*TemplateVariableBinding `json:"variableBindings,omitempty"`
+	// SampleAggregatorName selects how multiple judge samples for one invocation are aggregated.
+	SampleAggregatorName string `json:"sampleAggregatorName,omitempty"`
+	// InvocationAggregatorName selects how invocation-level results are aggregated for a metric.
+	InvocationAggregatorName string `json:"invocationAggregatorName,omitempty"`
+}
+
+// ResponseScorerOptions configures template response scoring.
+type ResponseScorerOptions struct {
+	// Categories maps categorical labels to numeric scores for the categorical response scorer.
+	Categories []*CategoryScore `json:"categories,omitempty"`
+}
+
+// CategoryScore maps one categorical label to a numeric score.
+type CategoryScore struct {
+	// Label identifies the category.
+	Label string `json:"label,omitempty"`
+	// Score is the numeric score mapped from the category and must be between 0 and 1.
+	Score float64 `json:"score"`
 }
 
 // TemplateVariableBinding binds one template variable to one evaluation source.
@@ -82,8 +107,15 @@ type TemplateVariableBinding struct {
 
 // TemplateVariableSource identifies which evaluation artifact feeds a template variable.
 type TemplateVariableSource struct {
-	Scope TemplateVariableScope `json:"scope,omitempty"`
-	Field TemplateVariableField `json:"field,omitempty"`
+	Scope    TemplateVariableScope     `json:"scope,omitempty"`
+	Field    TemplateVariableField     `json:"field,omitempty"`
+	Selector *TemplateVariableSelector `json:"selector,omitempty"`
+	Path     string                    `json:"path,omitempty"`
+}
+
+// TemplateVariableSelector selects one execution trace step.
+type TemplateVariableSelector struct {
+	NodeID string `json:"nodeID,omitempty"`
 }
 
 // TemplateVariableScope identifies the source object visible to template rendering.
@@ -94,6 +126,8 @@ const (
 	TemplateVariableScopeActual TemplateVariableScope = "actual"
 	// TemplateVariableScopeExpected binds against the current expected invocation.
 	TemplateVariableScopeExpected TemplateVariableScope = "expected"
+	// TemplateVariableScopeMetric binds against the current metric configuration.
+	TemplateVariableScopeMetric TemplateVariableScope = "metric"
 )
 
 // TemplateVariableField identifies which field is extracted from the source object.
@@ -104,6 +138,12 @@ const (
 	TemplateVariableFieldUserContent TemplateVariableField = "userContent"
 	// TemplateVariableFieldFinalResponse extracts the current final response text.
 	TemplateVariableFieldFinalResponse TemplateVariableField = "finalResponse"
+	// TemplateVariableFieldTraceStepInput extracts the selected trace step input text.
+	TemplateVariableFieldTraceStepInput TemplateVariableField = "traceStepInput"
+	// TemplateVariableFieldTraceStepOutput extracts the selected trace step output text.
+	TemplateVariableFieldTraceStepOutput TemplateVariableField = "traceStepOutput"
+	// TemplateVariableFieldRubrics extracts the metric rubrics.
+	TemplateVariableFieldRubrics TemplateVariableField = "rubrics"
 )
 
 // MarshalJSON omits APIKey from JSON output while still allowing JSON input to populate it.
@@ -135,7 +175,9 @@ func New(providerName, modelName string, opt ...Option) *LLMCriterion {
 	opts := newOptions(opt...)
 	numSamples := opts.numSamples
 	return &LLMCriterion{
-		Rubrics: opts.rubrics,
+		Rubrics:                  opts.rubrics,
+		SampleParallelismEnabled: opts.sampleParallelismEnabled,
+		SampleParallelism:        opts.sampleParallelism,
 		JudgeModel: &JudgeModelOptions{
 			ProviderName: providerName,
 			ModelName:    modelName,

@@ -17,9 +17,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
+
+	"go.opentelemetry.io/otel/attribute"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/internal/jsonutils"
 	"trpc.group/trpc-go/trpc-agent-go/internal/skillprofile"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -51,6 +55,16 @@ const (
 	defaultSkillLoadMode = SkillLoadModeTurn
 )
 
+var skillOverviewStopwords = map[string]struct{}{
+	"the": {}, "and": {}, "for": {}, "with": {}, "from": {}, "into": {},
+	"this": {}, "that": {}, "your": {}, "you": {}, "must": {}, "should": {},
+	"need": {}, "task": {}, "tasks": {}, "using": {}, "use": {}, "user": {},
+	"final": {}, "json": {}, "file": {}, "files": {}, "output": {}, "result": {},
+	"results": {}, "tool": {}, "tools": {}, "workspace": {}, "required": {},
+	"include": {}, "save": {}, "write": {}, "create": {}, "build": {},
+	"easy": {}, "medium": {}, "hard": {},
+}
+
 type skillsRequestProcessorOptions struct {
 	capabilityGuidance *string
 	protocolGuidance   *string
@@ -58,12 +72,14 @@ type skillsRequestProcessorOptions struct {
 	loadMode           string
 	toolResultMode     bool
 	maxLoadedSkills    int
+	maxOverviewSkills  int
 	toolProfile        string
 	toolFlags          skillprofile.Flags
 	toolFlagsResolver  func(*agent.Invocation) skillprofile.Flags
 	hasToolFlags       bool
 	execToolsDisabled  bool
-	repoResolver       func(*agent.Invocation) skill.Repository
+	repoResolver       func(context.Context, *agent.Invocation) skill.Repository
+	loadStateDeltaHook func(context.Context, *agent.Invocation, *event.Event)
 	directoryHints     bool
 	filePathHints      bool
 }
@@ -189,10 +205,20 @@ func WithSkillExecToolsDisabled() SkillsRequestProcessorOption {
 
 // WithSkillsRepositoryResolver sets an invocation-aware repository resolver.
 func WithSkillsRepositoryResolver(
-	resolver func(*agent.Invocation) skill.Repository,
+	resolver func(context.Context, *agent.Invocation) skill.Repository,
 ) SkillsRequestProcessorOption {
 	return func(o *skillsRequestProcessorOptions) {
 		o.repoResolver = resolver
+	}
+}
+
+// WithSkillLoadStateDeltaHook installs an internal hook that observes and may
+// extend the state update produced for invocation-declared skill loads.
+func WithSkillLoadStateDeltaHook(
+	hook func(context.Context, *agent.Invocation, *event.Event),
+) SkillsRequestProcessorOption {
+	return func(o *skillsRequestProcessorOptions) {
+		o.loadStateDeltaHook = hook
 	}
 }
 
@@ -206,6 +232,28 @@ func WithSkillsRepositoryResolver(
 func WithMaxLoadedSkills(max int) SkillsRequestProcessorOption {
 	return func(o *skillsRequestProcessorOptions) {
 		o.maxLoadedSkills = max
+	}
+}
+
+// WithMaxOverviewSkills caps how many skill summaries (name +
+// description) are rendered into the system-prompt overview.
+//
+// When max <= 0, no cap is applied (default behavior) and every skill
+// summary is rendered.
+//
+// When max > 0 and the repository exposes more than max skills, only
+// the first max are rendered with full descriptions. The remaining
+// skill names are listed as a compact "Additional skills" tail so the
+// agent can still discover them via skill_load. Truncation is
+// deterministic — repository order is preserved, so tests and prompt
+// caching stay stable.
+//
+// Use this when a large managed-skill library risks pushing the system
+// prompt close to the model's context window. Capping the overview
+// trades full per-skill context for a discovery-only tail of names.
+func WithMaxOverviewSkills(max int) SkillsRequestProcessorOption {
+	return func(o *skillsRequestProcessorOptions) {
+		o.maxOverviewSkills = max
 	}
 }
 
@@ -242,13 +290,15 @@ func WithSkillsFilePathHints(
 //     "*" or JSON array of file names.
 type SkillsRequestProcessor struct {
 	repo               skill.Repository
-	repoResolver       func(*agent.Invocation) skill.Repository
+	repoResolver       func(context.Context, *agent.Invocation) skill.Repository
+	loadStateDeltaHook func(context.Context, *agent.Invocation, *event.Event)
 	capabilityGuidance *string
 	protocolGuidance   *string
 	toolingGuidance    *string
 	loadMode           string
 	toolResultMode     bool
 	maxLoadedSkills    int
+	maxOverviewSkills  int
 	toolFlags          skillprofile.Flags
 	toolFlagsResolver  func(*agent.Invocation) skillprofile.Flags
 	directoryHints     bool
@@ -256,7 +306,8 @@ type SkillsRequestProcessor struct {
 }
 
 const (
-	skillsTurnInitStateKey = "processor:skills:turn_init"
+	skillsTurnInitStateKey         = "processor:skills:turn_init"
+	skillsRequestedLoadsAppliedKey = "processor:skills:requested_loads_applied"
 )
 
 // NewSkillsRequestProcessor creates a processor instance.
@@ -286,12 +337,14 @@ func NewSkillsRequestProcessor(
 	return &SkillsRequestProcessor{
 		repo:               repo,
 		repoResolver:       options.repoResolver,
+		loadStateDeltaHook: options.loadStateDeltaHook,
 		capabilityGuidance: options.capabilityGuidance,
 		protocolGuidance:   options.protocolGuidance,
 		toolingGuidance:    options.toolingGuidance,
 		loadMode:           normalizeSkillLoadMode(options.loadMode),
 		toolResultMode:     options.toolResultMode,
 		maxLoadedSkills:    options.maxLoadedSkills,
+		maxOverviewSkills:  options.maxOverviewSkills,
 		toolFlags:          flags,
 		toolFlagsResolver:  options.toolFlagsResolver,
 		directoryHints:     options.directoryHints,
@@ -318,7 +371,7 @@ func (p *SkillsRequestProcessor) ProcessRequest(
 	ctx context.Context, inv *agent.Invocation, req *model.Request,
 	ch chan<- *event.Event,
 ) {
-	repo := p.repositoryForInvocation(inv)
+	repo := p.repositoryForInvocation(ctx, inv)
 	if req == nil || inv == nil || inv.Session == nil || repo == nil {
 		return
 	}
@@ -326,17 +379,47 @@ func (p *SkillsRequestProcessor) ProcessRequest(
 	maybeMigrateLegacySkillState(ctx, inv, ch)
 
 	p.maybeClearSkillStateForTurn(ctx, inv, ch)
+	p.applyRequestedSkillLoads(ctx, inv, ch)
+
+	promptCtx, promptSpan, promptStarted := startProcessorLatencySpan(
+		ctx,
+		inv,
+		processorLatencySpanPromptRender,
+		processorSkillRepositoryAttrs(repo)...,
+	)
 
 	// 1) Always inject overview (names + descriptions) into system
 	//    message. Merge into existing system message if present.
-	p.injectOverview(ctx, inv, req, repo)
+	p.injectOverview(promptCtx, inv, req, repo)
 
+	_, stateSpan, stateStarted := startProcessorLatencySpan(
+		promptCtx,
+		inv,
+		processorLatencySpanStateScan,
+	)
 	loaded := p.getLoadedSkills(inv)
+	if stateStarted {
+		stateSpan.SetAttributes(
+			attribute.Int(processorAttrSkillSelectedCount, len(loaded)),
+		)
+	}
+	finishProcessorLatencySpan(stateSpan, stateStarted, nil)
+
 	loaded = p.maybeCapLoadedSkills(ctx, inv, loaded, ch)
+	if promptStarted {
+		promptSpan.SetAttributes(
+			attribute.Int(processorAttrSkillSelectedCount, len(loaded)),
+			attribute.Bool(
+				processorAttrSkillToolResultMode,
+				p.toolResultMode,
+			),
+		)
+	}
 
 	if p.toolResultMode {
 		// Loaded skill bodies/docs are materialized into tool results by a
 		// post-content request processor.
+		finishProcessorLatencySpan(promptSpan, promptStarted, nil)
 		agent.EmitEvent(ctx, inv, ch, event.New(
 			inv.InvocationID, inv.AgentName,
 			event.WithObject(model.ObjectTypePreprocessingInstruction),
@@ -347,12 +430,18 @@ func (p *SkillsRequestProcessor) ProcessRequest(
 	// 2) Loaded skills full content (merge into existing system message).
 	sort.Strings(loaded) // stable prompt order
 
+	loadCtx, loadSpan, loadStarted := startProcessorLatencySpan(
+		promptCtx,
+		inv,
+		processorLatencySpanRepositoryLoad,
+		attribute.Int(processorAttrSkillSelectedCount, len(loaded)),
+	)
 	var lb strings.Builder
 	for _, name := range loaded {
-		sk, err := skill.GetForContext(ctx, repo, name)
+		sk, err := skill.GetForContext(loadCtx, repo, name)
 		if err != nil || sk == nil {
 			log.WarnfContext(
-				ctx,
+				loadCtx,
 				"skills: get %s failed: %v",
 				name,
 				err,
@@ -363,13 +452,13 @@ func (p *SkillsRequestProcessor) ProcessRequest(
 			lb.WriteString("\n[Loaded] ")
 			lb.WriteString(name)
 			lb.WriteString("\n")
-			p.appendSkillPathHints(&lb, ctx, repo, name)
+			p.appendSkillPathHints(&lb, loadCtx, repo, name)
 			lb.WriteString("\n")
 			lb.WriteString(sk.Body)
 			lb.WriteString("\n")
 		}
 		// Docs
-		sel := p.getDocsSelection(ctx, inv, name)
+		sel := p.getDocsSelection(loadCtx, inv, name)
 		// Summary line to make selected docs explicit.
 		lb.WriteString("Docs loaded: ")
 		if len(sel) == 0 {
@@ -384,11 +473,24 @@ func (p *SkillsRequestProcessor) ProcessRequest(
 			}
 		}
 	}
+	if loadStarted {
+		loadSpan.SetAttributes(
+			attribute.Int(processorAttrSkillRenderedBytes, lb.Len()),
+			attribute.Int(processorAttrSkillLoadedCount, len(loaded)),
+		)
+	}
+	finishProcessorLatencySpan(loadSpan, loadStarted, nil)
 	if s := lb.String(); s != "" {
 		p.mergeIntoSystem(req, s)
 	}
 
 	p.maybeOffloadLoadedSkills(ctx, inv, loaded, ch)
+	if promptStarted {
+		promptSpan.SetAttributes(
+			attribute.Int(processorAttrSkillRenderedBytes, lb.Len()),
+		)
+	}
+	finishProcessorLatencySpan(promptSpan, promptStarted, nil)
 
 	// Send a preprocessing trace event even when only overview is
 	// injected, for consistent trace semantics.
@@ -398,11 +500,72 @@ func (p *SkillsRequestProcessor) ProcessRequest(
 	))
 }
 
+func (p *SkillsRequestProcessor) applyRequestedSkillLoads(
+	ctx context.Context,
+	inv *agent.Invocation,
+	ch chan<- *event.Event,
+) {
+	if inv == nil || inv.Session == nil || len(inv.RunOptions.SkillLoads) == 0 {
+		return
+	}
+	if _, ok := inv.GetState(skillsRequestedLoadsAppliedKey); ok {
+		return
+	}
+	inv.SetState(skillsRequestedLoadsAppliedKey, true)
+
+	// In turn mode, combine the turn reset and the declared loads into one
+	// state update. Emitting a reset event followed by a load event allows an
+	// outer asynchronous event consumer (for example, Ralph Loop under Runner)
+	// to apply the stale reset after the next continuation has already loaded
+	// the skill into the shared session.
+	delta := make(map[string][]byte, len(inv.RunOptions.SkillLoads)*2+1)
+	if p.loadMode == SkillLoadModeTurn {
+		for key, value := range clearSkillState(inv) {
+			delta[key] = value
+		}
+	}
+	orderKey := skill.LoadedOrderKey(inv.AgentName)
+	var order []string
+	if raw, ok := inv.Session.GetState(orderKey); ok {
+		order = skill.ParseLoadedOrder(raw)
+	}
+	for _, load := range inv.RunOptions.SkillLoads {
+		delta[skill.LoadedKey(inv.AgentName, load.Name)] = []byte("1")
+		switch {
+		case load.IncludeAllDocs:
+			delta[skill.DocsKey(inv.AgentName, load.Name)] = []byte("*")
+		case len(load.Docs) > 0:
+			// json.Marshal cannot fail for a string slice.
+			docs, _ := json.Marshal(load.Docs)
+			delta[skill.DocsKey(inv.AgentName, load.Name)] = docs
+		}
+		order = skill.TouchLoadedOrder(order, load.Name)
+	}
+	if encoded := skill.MarshalLoadedOrder(order); len(encoded) > 0 {
+		delta[orderKey] = encoded
+	}
+
+	ev := event.New(
+		inv.InvocationID,
+		inv.AgentName,
+		event.WithObject(model.ObjectTypeStateUpdate),
+		event.WithStateDelta(delta),
+	)
+	if p.loadStateDeltaHook != nil {
+		p.loadStateDeltaHook(ctx, inv, ev)
+	}
+	for key, value := range ev.StateDelta {
+		inv.Session.SetState(key, value)
+	}
+	agent.EmitEvent(ctx, inv, ch, ev)
+}
+
 func (p *SkillsRequestProcessor) repositoryForInvocation(
+	ctx context.Context,
 	inv *agent.Invocation,
 ) skill.Repository {
 	if p.repoResolver != nil {
-		return p.repoResolver(inv)
+		return p.repoResolver(ctx, inv)
 	}
 	return p.repo
 }
@@ -637,7 +800,7 @@ func skillNameFromToolResponse(msg model.Message) string {
 		return parseLoadedSkillFromText(msg.Content)
 	case skillToolSelectDocs:
 		var in skillNameInput
-		if err := json.Unmarshal([]byte(msg.Content), &in); err != nil {
+		if err := jsonutils.DecodeFlexibleJSON(msg.Content, &in); err != nil {
 			return ""
 		}
 		return strings.TrimSpace(in.Skill)
@@ -658,6 +821,13 @@ func (p *SkillsRequestProcessor) maybeClearSkillStateForTurn(
 		return
 	}
 	inv.SetState(skillsTurnInitStateKey, true)
+
+	// A declared load is committed together with the turn reset by
+	// applyRequestedSkillLoads so asynchronous consumers observe only the
+	// final atomic state.
+	if len(inv.RunOptions.SkillLoads) > 0 {
+		return
+	}
 
 	delta := clearSkillState(inv)
 	if len(delta) == 0 {
@@ -737,13 +907,36 @@ func (p *SkillsRequestProcessor) injectOverview(
 	req *model.Request,
 	repo skill.Repository,
 ) {
-	sums := skill.SummariesForContext(ctx, repo)
+	cacheCtx, cacheSpan, cacheStarted := startProcessorLatencySpan(
+		ctx,
+		inv,
+		processorLatencySpanSummaryCache,
+		processorSkillSummaryCacheAttrs(ctx, repo)...,
+	)
+	finishProcessorLatencySpan(cacheSpan, cacheStarted, nil)
+
+	summaryCtx, summarySpan, summaryStarted := startProcessorLatencySpan(
+		cacheCtx,
+		inv,
+		processorLatencySpanSummaryCompute,
+	)
+	sums := skill.SummariesForContext(summaryCtx, repo)
+	if summaryStarted {
+		summarySpan.SetAttributes(
+			attribute.Int(processorAttrSkillSummaryCount, len(sums)),
+		)
+	}
+	finishProcessorLatencySpan(summarySpan, summaryStarted, nil)
 	if len(sums) == 0 {
 		return
 	}
+	var topRecommendation string
+	sums, topRecommendation = prioritizeSummariesForRequest(sums, req.Messages)
+	rendered, truncated := p.applyOverviewCap(sums)
 	flags := p.toolFlagsForInvocation(inv)
-	availableSkills := p.availableSkillsText(ctx, inv, repo, sums)
-	overview, prepend := p.defaultOverviewText(flags, availableSkills)
+	protocol := p.protocolGuidanceText(flags)
+	availableSkills := p.availableSkillsText(summaryCtx, inv, repo, sums, rendered, truncated, flags, topRecommendation)
+	overview, prepend := p.defaultOverviewText(flags, availableSkills, protocol)
 	p.mergeOverview(req, overview, prepend)
 }
 
@@ -751,7 +944,9 @@ func (p *SkillsRequestProcessor) availableSkillsText(
 	ctx context.Context,
 	inv *agent.Invocation,
 	repo skill.Repository,
-	sums []skill.Summary,
+	sums, rendered, truncated []skill.Summary,
+	flags skillprofile.Flags,
+	topRecommendation string,
 ) string {
 	if renderer := availableSkillsRendererFromInvocation(inv); renderer != nil {
 		return normalizeSkillsOverviewText(
@@ -761,31 +956,34 @@ func (p *SkillsRequestProcessor) availableSkillsText(
 		)
 	}
 	var b strings.Builder
-	b.WriteString(skillsOverviewHeader)
-	b.WriteString("\n")
+	writeOverviewHeader(&b, len(rendered), len(sums), len(truncated))
+	if flags.Load && !flags.Run {
+		b.WriteString("The short lines below are routing summaries only. ")
+		b.WriteString("If one looks relevant, call skill_load before relying on it or repeating domain-specific tool work.\n")
+	}
+	if topRecommendation != "" && flags.Load {
+		fmt.Fprintf(&b, "Top recommended skill for this request: `%s`. If this skill matches the task family, call skill_load on it as your first tool call before any domain tool.\n", topRecommendation)
+	}
 	if p.directoryHints || p.filePathHints {
 		if rootsText := buildSkillRootsText(repo); rootsText != "" {
 			b.WriteString(rootsText)
 		}
 	}
-	for _, s := range sums {
-		line := fmt.Sprintf(
-			"- %s: %s%s\n",
-			s.Name,
-			s.Description,
-			p.skillOverviewSuffix(ctx, repo, s.Name),
-		)
-		b.WriteString(line)
+	for _, s := range rendered {
+		fmt.Fprintf(&b, "- %s: %s%s\n", s.Name, s.Description,
+			p.skillOverviewSuffix(ctx, repo, s.Name))
 	}
+	writeTruncatedTail(&b, truncated)
 	return b.String()
 }
 
 func (p *SkillsRequestProcessor) defaultOverviewText(
 	flags skillprofile.Flags,
 	availableSkills string,
+	protocol string,
 ) (string, bool) {
 	var b strings.Builder
-	if protocol := p.protocolGuidanceText(flags); protocol != "" {
+	if protocol != "" {
 		b.WriteString(protocol)
 		if availableSkills != "" {
 			b.WriteString("\n")
@@ -803,6 +1001,31 @@ func (p *SkillsRequestProcessor) defaultOverviewText(
 		b.WriteString(guidance)
 	}
 	return b.String(), false
+}
+
+func writeOverviewHeader(b *strings.Builder, renderedN, totalN, truncatedN int) {
+	b.WriteString(skillsOverviewHeader)
+	if truncatedN > 0 {
+		fmt.Fprintf(b, " (showing %d of %d; remaining names listed below)",
+			renderedN, totalN)
+	}
+	b.WriteString("\n")
+}
+
+// writeTruncatedTail renders the truncated names as a single
+// comma-separated line so the agent can still discover them via
+// skill_load without paying for full descriptions.
+func writeTruncatedTail(b *strings.Builder, truncated []skill.Summary) {
+	if len(truncated) == 0 {
+		return
+	}
+	b.WriteString("Additional skills (use skill_load by name to access): ")
+	names := make([]string, 0, len(truncated))
+	for _, s := range truncated {
+		names = append(names, s.Name)
+	}
+	b.WriteString(strings.Join(names, ", "))
+	b.WriteString("\n")
 }
 
 func availableSkillsRendererFromInvocation(
@@ -862,9 +1085,157 @@ func (p *SkillsRequestProcessor) mergeOverview(
 		}
 		return
 	}
-	// No system message yet: create one at the front.
 	msg := model.NewSystemMessage(overview)
 	req.Messages = append([]model.Message{msg}, req.Messages...)
+}
+
+// applyOverviewCap splits the available summaries into a "rendered"
+// slice (full description) and a "truncated" slice (names only). When
+// no cap is configured or every summary fits, truncated is empty.
+func (p *SkillsRequestProcessor) applyOverviewCap(
+	sums []skill.Summary,
+) (rendered, truncated []skill.Summary) {
+	if p.maxOverviewSkills <= 0 || len(sums) <= p.maxOverviewSkills {
+		return sums, nil
+	}
+	return sums[:p.maxOverviewSkills], sums[p.maxOverviewSkills:]
+}
+
+func prioritizeSummariesForRequest(
+	sums []skill.Summary,
+	messages []model.Message,
+) (sorted []skill.Summary, topRecommendation string) {
+	if len(sums) < 2 {
+		return sums, ""
+	}
+	queryWeights := overviewQueryWeights(messages)
+	if len(queryWeights) == 0 {
+		return sums, ""
+	}
+	type scoredSummary struct {
+		summary skill.Summary
+		score   int
+	}
+	scored := make([]scoredSummary, len(sums))
+	maxScore := 0
+	for i, s := range sums {
+		score := overviewSummaryScore(s, queryWeights)
+		if score > maxScore {
+			maxScore = score
+		}
+		scored[i] = scoredSummary{summary: s, score: score}
+	}
+	if maxScore == 0 {
+		return sums, ""
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+	out := make([]skill.Summary, len(scored))
+	for i, item := range scored {
+		out[i] = item.summary
+	}
+	// A skill is considered a clear top recommendation only when its
+	// score is materially higher than the runner-up. We use a 2x
+	// threshold with a small absolute floor so tiny-score ties do not
+	// fire the hint.
+	top := ""
+	if len(scored) >= 1 && scored[0].score >= 4 {
+		if len(scored) == 1 || scored[0].score >= 2*scored[1].score {
+			top = scored[0].summary.Name
+		}
+	}
+	return out, top
+}
+
+func overviewQueryWeights(messages []model.Message) map[string]int {
+	if len(messages) == 0 {
+		return nil
+	}
+	var query strings.Builder
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Role != model.RoleUser {
+			continue
+		}
+		if text := strings.TrimSpace(overviewMessageText(msg)); text != "" {
+			if query.Len() > 0 {
+				query.WriteString("\n")
+			}
+			query.WriteString(text)
+			break
+		}
+	}
+	if query.Len() == 0 {
+		return nil
+	}
+	weights := make(map[string]int)
+	for _, token := range overviewTokens(query.String()) {
+		weights[token]++
+	}
+	return weights
+}
+
+func overviewSummaryScore(
+	summary skill.Summary,
+	queryWeights map[string]int,
+) int {
+	if len(queryWeights) == 0 {
+		return 0
+	}
+	nameTokens := make(map[string]struct{})
+	for _, token := range overviewTokens(summary.Name) {
+		nameTokens[token] = struct{}{}
+	}
+	descTokens := make(map[string]struct{})
+	for _, token := range overviewTokens(summary.Description) {
+		descTokens[token] = struct{}{}
+	}
+	score := 0
+	for token, weight := range queryWeights {
+		if _, ok := nameTokens[token]; ok {
+			score += 3 * weight
+			continue
+		}
+		if _, ok := descTokens[token]; ok {
+			score += weight
+		}
+	}
+	return score
+}
+
+func overviewTokens(text string) []string {
+	text = strings.ToLower(text)
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if len(field) < 3 {
+			continue
+		}
+		if _, stop := skillOverviewStopwords[field]; stop {
+			continue
+		}
+		out = append(out, field)
+	}
+	return out
+}
+
+func overviewMessageText(msg model.Message) string {
+	if msg.Content != "" {
+		return msg.Content
+	}
+	var parts []string
+	for _, part := range msg.ContentParts {
+		if part.Text != nil {
+			parts = append(parts, *part.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func skillsOverviewMergeMarker(overview string) string {
@@ -986,6 +1357,9 @@ func defaultKnowledgeOnlyGuidance(flags skillprofile.Flags) string {
 	b.WriteString("- Before doing anything attributed to a skill, call ")
 	b.WriteString("skill_load for that skill so the full SKILL.md is in ")
 	b.WriteString("context.\n")
+	b.WriteString("- Prefer loading one plausible skill early over ")
+	b.WriteString("re-reading the same task pattern and repeating the ")
+	b.WriteString("same domain tool calls without new information.\n")
 	appendKnowledgeGuidance(&b, flags)
 	b.WriteString("- skill_load returns instructions and bundled ")
 	b.WriteString("resources but does not execute the skill by itself. ")
@@ -1297,7 +1671,8 @@ func skillFileText(
 }
 
 // canonicalPathForRel expands symlinks in a path so filepath.Rel agrees across
-// aliases such as /var vs /private/var on macOS.
+// aliases such as /var vs /private/var on macOS. This keeps skill roots from
+// RootedRepository aligned with paths returned by the skill package.
 func canonicalPathForRel(p string) string {
 	p = filepath.Clean(strings.TrimSpace(p))
 	if p == "" {
@@ -1384,6 +1759,8 @@ func appendKnowledgeGuidance(
 		b.WriteString("- If you need docs, request them directly with ")
 		b.WriteString("skill_load.docs or include_all_docs.\n")
 	}
+	b.WriteString("- When one skill is clearly relevant, prefer loading it ")
+	b.WriteString("before repeating the same domain workflow from scratch.\n")
 	b.WriteString("- Avoid include_all_docs unless the user asks or the ")
 	b.WriteString("task genuinely needs the full doc set.\n")
 }
@@ -1425,7 +1802,7 @@ func (p *SkillsRequestProcessor) getDocsSelection(
 	inv *agent.Invocation,
 	name string,
 ) []string {
-	repo := p.repositoryForInvocation(inv)
+	repo := p.repositoryForInvocation(ctx, inv)
 	if repo == nil {
 		return nil
 	}

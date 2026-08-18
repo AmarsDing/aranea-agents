@@ -634,6 +634,49 @@ and the parent Agent should only consume its final answer. Use
 `InnerTextModeExclude` separately when you also want to hide child assistant
 text from the streamed UI.
 
+#### Model and Structured Output Pinning
+
+By default, a sub-agent inherits the caller's run-scoped overrides from
+`RunOptions`. This only matters when the caller passes options at
+`runner.Run` time (for example, an AGUI server forwarding the end-user's model
+or output-format choice). If no runtime override is set in `RunOptions`, the
+sub-agent naturally uses its own static configuration.
+
+For fixed `AgentTool` sub-agents, you can pin selected child-side
+configuration so the inherited runtime overrides are cleared at the AgentTool
+boundary:
+
+```go
+agenttool.NewTool(subAgent,
+    agenttool.WithPinModel(true),
+    agenttool.WithPinStructuredOutput(true),
+)
+```
+
+The options map to different inherited fields:
+
+- `WithPinModel(true)`: clears `RunOptions.ModelName`, `RunOptions.Model` and
+  `RunOptions.ModelSelector`, so the sub-agent's own `llmagent.WithModel(...)`
+  or model selector takes effect.
+- `WithPinStructuredOutput(true)`: clears `RunOptions.StructuredOutput` and
+  `RunOptions.StructuredOutputType`, so the sub-agent's own
+  `llmagent.WithStructuredOutputJSON(...)` or
+  `llmagent.WithStructuredOutputJSONSchema(...)` takes effect.
+
+#### Correlating Sub-Agent Events to the Parent Tool Call
+
+Events emitted by a sub-agent invoked through `AgentTool` carry a
+`ParentMetadata` field whose `TriggerID` is the parent's `toolCallId`. AG-UI
+consumers can use this as the join key to attach sub-agent events to the
+specific `TOOL_CALL_START` that spawned them, which is essential when a model
+issues parallel AgentTool calls to the same sub-agent in one turn (in that
+case all child invocations share the same `ParentInvocationID`, so
+`ParentMetadata.TriggerID` is the only disambiguator). See the
+[Event Source Metadata](agui/chat.md#event-source-metadata) section in the
+AG-UI chat doc and the
+[ParentMetadata field](event.md#relationship-and-usage-scenarios-of-requestid-parentinvocationid-and-invocationid)
+in the Event doc for the wire format and field semantics.
+
 ### Agent Transfer
 
 Agent Transfer implements task delegation between Agents through the `transfer_to_agent` tool, allowing the main Agent to automatically select appropriate SubAgents based on task type.
@@ -880,6 +923,17 @@ Important behavior:
 
 For custom Agents that do not use `LLMAgent`, see the `runner` guide for the
 low-level `agent.MarkAwaitingUserReply(...)` API.
+
+#### Correlating Transfer Target Events to the Triggering Tool Call
+
+When `transfer_to_agent` hands off control to a target Agent, events emitted
+by the target invocation carry a `ParentMetadata` field with
+`TriggerType=transfer`, `TriggerID=<the parent's toolCallId>`, and
+`TriggerName=transfer_to_agent`. AG-UI consumers can use `TriggerID` to attach
+the target's events to the specific `TOOL_CALL_START` of the
+`transfer_to_agent` call. See the
+[Event Source Metadata](agui/chat.md#event-source-metadata) section in the
+AG-UI chat doc for the wire format.
 
 ## Built-in Explorer (Read-only Exploration Agent)
 

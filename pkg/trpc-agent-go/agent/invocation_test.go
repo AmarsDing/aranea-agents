@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,6 +131,80 @@ func TestInvocation_Clone(t *testing.T) {
 	require.Equal(t, "Hello", subInv.Message.Content)
 	require.Equal(t, inv.noticeChannels, subInv.noticeChannels)
 	require.Equal(t, inv.noticeMu, subInv.noticeMu)
+}
+
+func TestInvocation_Clone_PropagatesParentMetadata(t *testing.T) {
+	parentMeta := &ParentInvocationMetadata{
+		TriggerType: TriggerTypeToolCall,
+		TriggerID:   "call-abc",
+		TriggerName: "tool-x",
+	}
+	inv := NewInvocation(
+		WithInvocationID("test-invocation"),
+		WithInvocationParentMetadata(parentMeta),
+	)
+
+	// Clone without explicit ParentMetadata option should inherit from parent.
+	cloned := inv.Clone(WithInvocationAgent(&mockAgent{name: "child-agent"}))
+	require.NotNil(t, cloned.ParentMetadata)
+	require.Equal(t, "call-abc", cloned.ParentMetadata.TriggerID,
+		"Clone should propagate ParentMetadata so events from derived invocations preserve correlation")
+
+	// Clone with explicit ParentMetadata option should override the parent value.
+	overrideMeta := &ParentInvocationMetadata{
+		TriggerType: TriggerTypeToolCall,
+		TriggerID:   "call-xyz",
+		TriggerName: "tool-y",
+	}
+	overridden := inv.Clone(
+		WithInvocationAgent(&mockAgent{name: "child-agent"}),
+		WithInvocationParentMetadata(overrideMeta),
+	)
+	require.Equal(t, "call-xyz", overridden.ParentMetadata.TriggerID,
+		"explicit WithInvocationParentMetadata should override the inherited value")
+}
+
+func TestInvocation_View_PropagatesParentMetadata(t *testing.T) {
+	parentMeta := &ParentInvocationMetadata{
+		TriggerType: TriggerTypeToolCall,
+		TriggerID:   "call-abc",
+		TriggerName: "tool-x",
+	}
+	inv := NewInvocation(
+		WithInvocationID("test-invocation"),
+		WithInvocationAgent(&mockAgent{name: "root-agent"}),
+		WithInvocationParentMetadata(parentMeta),
+	)
+
+	view := inv.View()
+	require.NotNil(t, view.ParentMetadata)
+	require.Equal(t, "call-abc", view.ParentMetadata.TriggerID,
+		"View should preserve ParentMetadata since it is part of invocation identity")
+}
+
+func TestInvocation_SyncView_PropagatesParentMetadata(t *testing.T) {
+	originalMeta := &ParentInvocationMetadata{
+		TriggerType: TriggerTypeToolCall,
+		TriggerID:   "call-original",
+		TriggerName: "tool-x",
+	}
+	source := NewInvocation(
+		WithInvocationID("test-invocation"),
+		WithInvocationAgent(&mockAgent{name: "root-agent"}),
+		WithInvocationParentMetadata(originalMeta),
+	)
+
+	view := source.View()
+	view.ParentMetadata = &ParentInvocationMetadata{
+		TriggerType: TriggerTypeToolCall,
+		TriggerID:   "call-updated",
+		TriggerName: "tool-x",
+	}
+
+	source.SyncView(view)
+	require.NotNil(t, source.ParentMetadata)
+	require.Equal(t, "call-updated", source.ParentMetadata.TriggerID,
+		"SyncView should sync ParentMetadata back to the source invocation")
 }
 
 func TestInvocation_View_PreservesIdentityWithoutMutatingSource(t *testing.T) {
@@ -679,6 +754,155 @@ func TestInvocation_ViewCopiesNestedMutableCustomState(t *testing.T) {
 	require.Equal(t, []byte("ghi"), sourceNode.Data)
 }
 
+func TestInvocation_ViewClonesKnownMutableState(t *testing.T) {
+	const (
+		bufferPtrStateKey   = "custom:buffer_ptr"
+		bufferValueStateKey = "custom:buffer_value"
+		builderStateKey     = "custom:builder"
+		bigPtrStateKey      = "custom:big_ptr"
+		bigValueStateKey    = "custom:big_value"
+	)
+	bufferPtr := bytes.NewBufferString("abc")
+	bufferValue := *bytes.NewBufferString("def")
+	var builder strings.Builder
+	builder.WriteString("ghi")
+	bigPtr := big.NewInt(10)
+	bigValue := *big.NewInt(20)
+
+	inv := NewInvocation()
+	inv.SetState(bufferPtrStateKey, bufferPtr)
+	inv.SetState(bufferValueStateKey, bufferValue)
+	inv.SetState(builderStateKey, &builder)
+	inv.SetState(bigPtrStateKey, bigPtr)
+	inv.SetState(bigValueStateKey, bigValue)
+
+	view := inv.View()
+	viewBufferPtr, ok := GetStateValue[*bytes.Buffer](view, bufferPtrStateKey)
+	require.True(t, ok)
+	require.NotSame(t, bufferPtr, viewBufferPtr)
+	viewBufferPtr.WriteString("-view")
+	require.Equal(t, "abc", bufferPtr.String())
+
+	viewBufferValue, ok := GetStateValue[bytes.Buffer](view, bufferValueStateKey)
+	require.True(t, ok)
+	viewBufferValue.WriteString("-view")
+	sourceBufferValue, ok := GetStateValue[bytes.Buffer](inv, bufferValueStateKey)
+	require.True(t, ok)
+	require.Equal(t, "def", sourceBufferValue.String())
+
+	viewBuilder, ok := GetStateValue[*strings.Builder](view, builderStateKey)
+	require.True(t, ok)
+	require.NotSame(t, &builder, viewBuilder)
+	viewBuilder.WriteString("-view")
+	require.Equal(t, "ghi", builder.String())
+
+	viewBigPtr, ok := GetStateValue[*big.Int](view, bigPtrStateKey)
+	require.True(t, ok)
+	require.NotSame(t, bigPtr, viewBigPtr)
+	viewBigPtr.Add(viewBigPtr, big.NewInt(1))
+	require.Equal(t, int64(10), bigPtr.Int64())
+
+	viewBigValue, ok := GetStateValue[big.Int](view, bigValueStateKey)
+	require.True(t, ok)
+	viewBigValue.Add(&viewBigValue, big.NewInt(1))
+	sourceBigValue, ok := GetStateValue[big.Int](inv, bigValueStateKey)
+	require.True(t, ok)
+	require.Equal(t, int64(20), sourceBigValue.Int64())
+}
+
+func TestInvocation_ViewKeepsNilKnownMutablePointers(t *testing.T) {
+	const (
+		nilBufferStateKey  = "custom:nil_buffer"
+		nilBuilderStateKey = "custom:nil_builder"
+		nilBigStateKey     = "custom:nil_big"
+	)
+	var (
+		nilBuffer  *bytes.Buffer
+		nilBuilder *strings.Builder
+		nilBig     *big.Int
+	)
+	inv := NewInvocation()
+	inv.SetState(nilBufferStateKey, nilBuffer)
+	inv.SetState(nilBuilderStateKey, nilBuilder)
+	inv.SetState(nilBigStateKey, nilBig)
+
+	view := inv.View()
+	viewBuffer, ok := GetStateValue[*bytes.Buffer](view, nilBufferStateKey)
+	require.True(t, ok)
+	require.Nil(t, viewBuffer)
+	viewBuilder, ok := GetStateValue[*strings.Builder](view, nilBuilderStateKey)
+	require.True(t, ok)
+	require.Nil(t, viewBuilder)
+	viewBig, ok := GetStateValue[*big.Int](view, nilBigStateKey)
+	require.True(t, ok)
+	require.Nil(t, viewBig)
+}
+
+func TestInvocation_ViewKeepsOpaqueStateByReference(t *testing.T) {
+	const opaqueStateKey = "custom:opaque"
+	type opaqueState struct {
+		mu    sync.Mutex
+		value int
+	}
+	source := &opaqueState{value: 1}
+	inv := NewInvocation()
+	inv.SetState(opaqueStateKey, source)
+
+	view := inv.View()
+	viewState, ok := GetStateValue[*opaqueState](view, opaqueStateKey)
+	require.True(t, ok)
+	require.Same(t, source, viewState)
+}
+
+func TestInvocationViewDoesNotRaceWithOpaqueStateMutation(t *testing.T) {
+	const opaqueStateKey = "custom:opaque"
+	type opaqueState struct {
+		mu    sync.Mutex
+		value int
+	}
+	source := &opaqueState{}
+	inv := NewInvocation()
+	inv.SetState(opaqueStateKey, source)
+
+	const iterations = 10000
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := 0; i < iterations; i++ {
+			_ = inv.View()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := 0; i < iterations; i++ {
+			source.mu.Lock()
+			source.value++
+			source.mu.Unlock()
+		}
+	}()
+
+	close(start)
+	wg.Wait()
+}
+
+func TestCloneKnownStateReflectValueRejectsUnsafeReflectValues(t *testing.T) {
+	cloned, ok := cloneKnownStateReflectValue(reflect.Value{})
+	require.False(t, ok)
+	require.False(t, cloned.IsValid())
+
+	type opaqueState struct {
+		hidden int
+	}
+	hiddenField := reflect.ValueOf(opaqueState{hidden: 1}).Field(0)
+	cloned, ok = cloneKnownStateReflectValue(hiddenField)
+	require.False(t, ok)
+	require.False(t, cloned.IsValid())
+}
+
 func TestCloneStateValueHandlesEdgeCases(t *testing.T) {
 	type namedString string
 	type customPayload struct {
@@ -924,6 +1148,31 @@ func TestInjectIntoEvent(t *testing.T) {
 				require.Equal(t, "parent-id", e.ParentInvocationID)
 			},
 		},
+		{
+			name: "inject parent metadata",
+			inv: NewInvocation(WithInvocationID("inv-id"), WithInvocationParentMetadata(
+				&ParentInvocationMetadata{TriggerType: TriggerTypeToolCall, TriggerID: "call-123", TriggerName: "tool-x"},
+			)),
+			event: &event.Event{},
+			validate: func(t *testing.T, e *event.Event) {
+				require.Equal(t, "inv-id", e.InvocationID)
+				require.NotNil(t, e.ParentMetadata)
+				require.Equal(t, "call-123", e.ParentMetadata.TriggerID)
+				require.Equal(t, TriggerTypeToolCall, e.ParentMetadata.TriggerType)
+			},
+		},
+		{
+			name: "does not overwrite existing parent metadata",
+			inv: NewInvocation(WithInvocationID("inv-id"), WithInvocationParentMetadata(
+				&ParentInvocationMetadata{TriggerType: TriggerTypeToolCall, TriggerID: "call-new", TriggerName: "tool-x"},
+			)),
+			event: &event.Event{ParentMetadata: &event.ParentInvocationMetadata{
+				TriggerType: TriggerTypeToolCall, TriggerID: "call-existing", TriggerName: "tool-x",
+			}},
+			validate: func(t *testing.T, e *event.Event) {
+				require.Equal(t, "call-existing", e.ParentMetadata.TriggerID)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1068,6 +1317,17 @@ func TestWithModelName(t *testing.T) {
 	WithModelName("gpt-4")(opts)
 
 	require.Equal(t, "gpt-4", opts.ModelName)
+}
+
+func TestWithToolResultEventPerCallEnabled(t *testing.T) {
+	opts := NewRunOptions()
+	require.False(t, opts.ToolResultEventPerCallEnabled)
+
+	WithToolResultEventPerCallEnabled(true)(&opts)
+	require.True(t, opts.ToolResultEventPerCallEnabled)
+
+	WithToolResultEventPerCallEnabled(false)(&opts)
+	require.False(t, opts.ToolResultEventPerCallEnabled)
 }
 
 func TestWithModelContextWindow(t *testing.T) {
@@ -1322,12 +1582,13 @@ func TestInvocation_IncToolIteration_NoLimitOrNil(t *testing.T) {
 	// nil invocation should be a no-op and report not exceeded.
 	var nilInv *Invocation
 	require.False(t, nilInv.IncToolIteration())
+	require.Zero(t, nilInv.ToolIterationCount())
 
 	// MaxToolIterations <= 0 should be treated as "no limit".
 	inv := &Invocation{}
 	exceeded := inv.IncToolIteration()
 	require.False(t, exceeded)
-	require.Equal(t, 0, inv.toolIterationCount, "counter should not increment when no limit is configured")
+	require.Zero(t, inv.ToolIterationCount(), "counter should not increment when no limit is configured")
 }
 
 func TestInvocation_IncToolIteration_WithLimitAndOverflow(t *testing.T) {
@@ -1338,17 +1599,26 @@ func TestInvocation_IncToolIteration_WithLimitAndOverflow(t *testing.T) {
 	// First iteration within limit.
 	exceeded := inv.IncToolIteration()
 	require.False(t, exceeded)
-	require.Equal(t, 1, inv.toolIterationCount)
+	require.Equal(t, 1, inv.ToolIterationCount())
 
 	// Second iteration still within limit.
 	exceeded = inv.IncToolIteration()
 	require.False(t, exceeded)
-	require.Equal(t, 2, inv.toolIterationCount)
+	require.Equal(t, 2, inv.ToolIterationCount())
 
 	// Third iteration exceeds limit and should report true.
 	exceeded = inv.IncToolIteration()
 	require.True(t, exceeded, "expected true when tool iteration limit is exceeded")
-	require.Equal(t, 3, inv.toolIterationCount)
+	require.Equal(t, 3, inv.ToolIterationCount())
+}
+
+func TestInvocation_ToolIterationCount_CloneAndView(t *testing.T) {
+	inv := NewInvocation()
+	inv.MaxToolIterations = 2
+	require.False(t, inv.IncToolIteration())
+
+	require.Equal(t, 1, inv.View().ToolIterationCount())
+	require.Zero(t, inv.Clone().ToolIterationCount())
 }
 
 func TestWithInjectedContextMessages(t *testing.T) {
@@ -1362,6 +1632,21 @@ func TestWithInjectedContextMessages(t *testing.T) {
 		{Role: model.RoleUser, Content: "Hello"},
 		{Role: model.RoleAssistant, Content: "Hello"},
 	}, opts.InjectedContextMessages)
+}
+
+func TestWithLateContextMessages(t *testing.T) {
+	opts := &RunOptions{}
+	WithLateContextMessages([]model.Message{
+		{Role: model.RoleUser, Content: "Rules A"},
+	})(opts)
+	WithLateContextMessages([]model.Message{
+		{Role: model.RoleUser, Content: "Rules B"},
+	})(opts)
+
+	require.Equal(t, []model.Message{
+		{Role: model.RoleUser, Content: "Rules A"},
+		{Role: model.RoleUser, Content: "Rules B"},
+	}, opts.LateContextMessages)
 }
 
 func TestWithUserMessageRewriter(t *testing.T) {

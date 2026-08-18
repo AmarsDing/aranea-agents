@@ -12,6 +12,7 @@ package source
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	aguievents "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/events"
 	aguitypes "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/types"
@@ -19,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
+	"trpc.group/trpc-go/trpc-agent-go/server/agui/internal/multimodal"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -35,6 +37,7 @@ const (
 func TestMetadataIsZero(t *testing.T) {
 	assert.True(t, Metadata{}.IsZero())
 	assert.False(t, testMetadata("evt-1").IsZero())
+	assert.False(t, Metadata{ForwardedProps: map[string]any{}}.IsZero())
 }
 
 func TestSnapshotMetadataIsZero(t *testing.T) {
@@ -42,6 +45,11 @@ func TestSnapshotMetadataIsZero(t *testing.T) {
 	assert.False(t, SnapshotMetadata{
 		Messages: map[string]Metadata{
 			testMessageID: testMetadata("evt-1"),
+		},
+	}.IsZero())
+	assert.False(t, SnapshotMetadata{
+		Runs: map[string]Metadata{
+			"run-1": {ForwardedProps: map[string]any{}},
 		},
 	}.IsZero())
 }
@@ -154,12 +162,16 @@ func TestFromRawEventRejectsUnsupportedValues(t *testing.T) {
 }
 
 func TestFromRawEventSupportsMapPayload(t *testing.T) {
+	timestamp := int64(1781258400000)
+	forwardedProps := map[string]any{"file_url": "https://example.com/demo.png"}
 	metadata, ok := FromRawEvent(map[string]any{
 		"eventId":            "evt-1",
 		"author":             "member-a",
 		"invocationId":       "inv-1",
 		"parentInvocationId": "parent-1",
 		"branch":             "root.member-a",
+		"timestamp":          float64(timestamp),
+		"forwardedProps":     forwardedProps,
 	})
 	require.True(t, ok)
 	assert.Equal(t, Metadata{
@@ -168,7 +180,64 @@ func TestFromRawEventSupportsMapPayload(t *testing.T) {
 		InvocationID:       "inv-1",
 		ParentInvocationID: "parent-1",
 		Branch:             "root.member-a",
+		Timestamp:          &timestamp,
+		ForwardedProps:     forwardedProps,
 	}, metadata)
+}
+
+func TestFromRawEventParsesMapTimestampValues(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     any
+		want      int64
+		wantValue bool
+	}{
+		{
+			name:      "int64",
+			value:     int64(1781258400000),
+			want:      1781258400000,
+			wantValue: true,
+		},
+		{
+			name:      "int",
+			value:     int(1781258400000),
+			want:      1781258400000,
+			wantValue: true,
+		},
+		{
+			name:      "json number",
+			value:     json.Number("1781258400000"),
+			want:      1781258400000,
+			wantValue: true,
+		},
+		{
+			name:  "fractional float",
+			value: float64(1781258400000.5),
+		},
+		{
+			name:  "invalid json number",
+			value: json.Number("invalid"),
+		},
+		{
+			name:  "unsupported value",
+			value: "1781258400000",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			metadata, ok := FromRawEvent(map[string]any{
+				"eventId":   "evt-1",
+				"timestamp": tt.value,
+			})
+			require.True(t, ok)
+			if tt.wantValue {
+				require.NotNil(t, metadata.Timestamp)
+				assert.Equal(t, tt.want, *metadata.Timestamp)
+				return
+			}
+			assert.Nil(t, metadata.Timestamp)
+		})
+	}
 }
 
 func TestRecordSnapshotMetadataIndexesSupportedEvents(t *testing.T) {
@@ -494,35 +563,69 @@ func TestRecordSnapshotMetadataSkipsChunkEventsWithoutMessageID(
 	}
 }
 
+func TestRecordMetadataSkipsEmptyIDs(t *testing.T) {
+	messages := map[string]Metadata{}
+	toolCalls := map[string]Metadata{}
+	runs := map[string]Metadata{}
+	recordMessageMetadata(messages, "", testMetadata("evt-1"))
+	recordToolCallMetadata(toolCalls, "", testMetadata("evt-1"))
+	recordRunMetadata(runs, "", Metadata{ForwardedProps: map[string]any{}})
+	recordRunMetadata(runs, "run-1", Metadata{})
+	assert.Empty(t, messages)
+	assert.Empty(t, toolCalls)
+	assert.Empty(t, runs)
+}
+
+func TestRunIDFromRawEvent(t *testing.T) {
+	assert.Empty(t, runIDFromRawEvent(nil))
+	assert.Equal(t, "run-1", runIDFromRawEvent(map[string]any{"runId": "run-1"}))
+	assert.Empty(t, runIDFromRawEvent(map[string]any{"runId": 123}))
+	assert.Equal(t, "run-2", runIDFromRawEvent(struct {
+		RunID string `json:"runId,omitempty"`
+	}{RunID: "run-2"}))
+	assert.Empty(t, runIDFromRawEvent(struct {
+		RunID int `json:"runId,omitempty"`
+	}{RunID: 123}))
+	assert.Empty(t, runIDFromRawEvent(func() {}))
+}
+
 func TestBuildSnapshotMetadataIndexesMessagesAndToolCalls(t *testing.T) {
+	assistantTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	toolTime := assistantTime.Add(time.Second)
 	assistantMetadata := Metadata{
 		EventID:      "evt-tool-call",
 		Author:       "member-a",
 		InvocationID: "inv-assistant",
 		Branch:       "root.member-a",
 	}
+	wantAssistantMetadata := assistantMetadata
+	assistantTimestamp := assistantTime.UnixMilli()
+	wantAssistantMetadata.Timestamp = &assistantTimestamp
 	toolMetadata := Metadata{
 		EventID:      "evt-tool-result",
 		Author:       "member-a",
 		InvocationID: "inv-tool",
 		Branch:       "root.member-a",
 	}
+	wantToolMetadata := toolMetadata
+	toolTimestamp := toolTime.UnixMilli()
+	wantToolMetadata.Timestamp = &toolTimestamp
 
 	trackEvents := []session.TrackEvent{
 		newTrackEvent(t, withRawEvent(
-			aguievents.NewToolCallStartEvent(
+			withTimestamp(aguievents.NewToolCallStartEvent(
 				"call-1",
 				"search",
 				aguievents.WithParentMessageID("assistant-1"),
-			),
+			), assistantTime),
 			assistantMetadata,
 		)),
 		newTrackEvent(t, withRawEvent(
-			aguievents.NewToolCallResultEvent(
+			withTimestamp(aguievents.NewToolCallResultEvent(
 				"tool-msg-1",
 				"call-1",
 				"done",
-			),
+			), toolTime),
 			toolMetadata,
 		)),
 	}
@@ -530,39 +633,71 @@ func TestBuildSnapshotMetadataIndexesMessagesAndToolCalls(t *testing.T) {
 	metadata := BuildSnapshotMetadata(trackEvents)
 	assert.Equal(t, SnapshotMetadata{
 		Messages: map[string]Metadata{
-			"assistant-1": assistantMetadata,
-			"tool-msg-1":  toolMetadata,
+			"assistant-1": wantAssistantMetadata,
+			"tool-msg-1":  wantToolMetadata,
 		},
 		ToolCalls: map[string]Metadata{
-			"call-1": assistantMetadata,
+			"call-1": wantAssistantMetadata,
 		},
 	}, metadata)
 }
 
 func TestBuildSnapshotMetadataIgnoresInvalidEntries(t *testing.T) {
+	runFinished := aguievents.NewRunFinishedEvent("thread", "run")
+	runFinished.GetBaseEvent().TimestampMs = nil
 	metadata := BuildSnapshotMetadata([]session.TrackEvent{
 		{},
 		{Payload: []byte("{")},
-		newTrackEvent(t, aguievents.NewRunFinishedEvent("thread", "run")),
+		newTrackEvent(t, runFinished),
 	})
 	assert.True(t, metadata.IsZero())
 }
 
+func TestBuildSnapshotMetadataSkipsRunLifecycleEventsByDefault(t *testing.T) {
+	timestampTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	runStarted := aguievents.NewRunStartedEvent("thread", "run")
+	withTimestamp(runStarted, timestampTime)
+	metadata := BuildSnapshotMetadata([]session.TrackEvent{
+		newTrackEventAt(t, runStarted, timestampTime.Add(time.Hour)),
+	})
+	assert.True(t, metadata.IsZero())
+}
+
+func TestBuildSnapshotMetadataIncludesRunLifecycleEventsWhenEnabled(t *testing.T) {
+	timestampTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	runStarted := aguievents.NewRunStartedEvent("thread", "run")
+	withTimestamp(runStarted, timestampTime)
+	metadata := BuildSnapshotMetadata(
+		[]session.TrackEvent{
+			newTrackEventAt(t, runStarted, timestampTime.Add(time.Hour)),
+		},
+		WithRunLifecycleEvents(true),
+	)
+	require.Contains(t, metadata.Messages, runStarted.ID())
+	got := metadata.Messages[runStarted.ID()]
+	require.NotNil(t, got.Timestamp)
+	assert.Equal(t, timestampTime.UnixMilli(), *got.Timestamp)
+}
+
 func TestBuildSnapshotMetadataFallsBackToToolResultSource(t *testing.T) {
+	timestampTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 	toolMetadata := Metadata{
 		EventID:      "evt-tool-result",
 		Author:       "member-a",
 		InvocationID: "inv-tool",
 		Branch:       "root.member-a",
 	}
+	wantToolMetadata := toolMetadata
+	timestamp := timestampTime.UnixMilli()
+	wantToolMetadata.Timestamp = &timestamp
 
 	trackEvents := []session.TrackEvent{
 		newTrackEvent(t, withRawEvent(
-			aguievents.NewToolCallResultEvent(
+			withTimestamp(aguievents.NewToolCallResultEvent(
 				"tool-msg-1",
 				"call-1",
 				"done",
-			),
+			), timestampTime),
 			toolMetadata,
 		)),
 	}
@@ -570,12 +705,176 @@ func TestBuildSnapshotMetadataFallsBackToToolResultSource(t *testing.T) {
 	metadata := BuildSnapshotMetadata(trackEvents)
 	assert.Equal(t, SnapshotMetadata{
 		Messages: map[string]Metadata{
-			"tool-msg-1": toolMetadata,
+			"tool-msg-1": wantToolMetadata,
 		},
 		ToolCalls: map[string]Metadata{
-			"call-1": toolMetadata,
+			"call-1": wantToolMetadata,
 		},
 	}, metadata)
+}
+
+func TestBuildSnapshotMetadataUsesEventTimestamps(t *testing.T) {
+	startedAt := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	updatedAt := startedAt.Add(2 * time.Second)
+	toolStartedAt := startedAt.Add(3 * time.Second)
+	trackEvents := []session.TrackEvent{
+		newTrackEventAt(t, withTimestamp(aguievents.NewTextMessageStartEvent(
+			"assistant-1",
+			aguievents.WithRole("assistant"),
+		), startedAt), startedAt.Add(time.Hour)),
+		newTrackEventAt(t, withTimestamp(aguievents.NewTextMessageContentEvent(
+			"assistant-1",
+			"hello",
+		), startedAt.Add(time.Second)), startedAt.Add(time.Hour)),
+		newTrackEventAt(t, withTimestamp(aguievents.NewTextMessageEndEvent(
+			"assistant-1",
+		), updatedAt), startedAt.Add(time.Hour)),
+		newTrackEventAt(t, withTimestamp(aguievents.NewToolCallStartEvent(
+			"call-1",
+			"search",
+			aguievents.WithParentMessageID("assistant-1"),
+		), toolStartedAt), startedAt.Add(time.Hour)),
+	}
+	metadata := BuildSnapshotMetadata(trackEvents)
+	require.Contains(t, metadata.Messages, "assistant-1")
+	assistant := metadata.Messages["assistant-1"]
+	require.NotNil(t, assistant.Timestamp)
+	assert.Equal(t, startedAt.UnixMilli(), *assistant.Timestamp)
+	require.Contains(t, metadata.ToolCalls, "call-1")
+	toolCall := metadata.ToolCalls["call-1"]
+	require.NotNil(t, toolCall.Timestamp)
+	assert.Equal(t, toolStartedAt.UnixMilli(), *toolCall.Timestamp)
+}
+
+func TestBuildSnapshotMetadataFallsBackToTrackEventTimestamp(t *testing.T) {
+	timestampTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	event := aguievents.NewTextMessageStartEvent(
+		"assistant-1",
+		aguievents.WithRole("assistant"),
+	)
+	event.GetBaseEvent().TimestampMs = nil
+	metadata := BuildSnapshotMetadata([]session.TrackEvent{
+		newTrackEventAt(t, event, timestampTime),
+	})
+	require.Contains(t, metadata.Messages, "assistant-1")
+	got := metadata.Messages["assistant-1"]
+	require.NotNil(t, got.Timestamp)
+	assert.Equal(t, timestampTime.UnixMilli(), *got.Timestamp)
+}
+
+func TestBuildSnapshotMetadataIndexesCustomUserMessageID(t *testing.T) {
+	timestampTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	userMessage := aguitypes.Message{
+		ID:      "user-1",
+		Role:    aguitypes.RoleUser,
+		Content: "hello",
+	}
+	userEvent := aguievents.NewCustomEvent(
+		multimodal.CustomEventNameUserMessage,
+		aguievents.WithValue(userMessage),
+	)
+	userEvent.GetBaseEvent().SetTimestamp(timestampTime.UnixMilli())
+	metadata := BuildSnapshotMetadata([]session.TrackEvent{
+		newTrackEventAt(t, aguievents.NewCustomEvent(
+			"ignored",
+		), timestampTime.Add(time.Hour)),
+		newTrackEventAt(t, userEvent, timestampTime.Add(time.Hour)),
+	})
+	require.Contains(t, metadata.Messages, "user-1")
+	require.NotContains(t, metadata.Messages, userEvent.ID())
+	got := metadata.Messages["user-1"]
+	require.NotNil(t, got.Timestamp)
+	assert.Equal(t, timestampTime.UnixMilli(), *got.Timestamp)
+}
+
+func TestBuildSnapshotMetadataIndexesForwardedPropsByRunID(t *testing.T) {
+	timestampTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	forwardedProps := map[string]any{"file_url": "https://example.com/demo.png"}
+	userMessage := aguitypes.Message{
+		ID:      "user-1",
+		Role:    aguitypes.RoleUser,
+		Content: "hello",
+	}
+	userEvent := aguievents.NewCustomEvent(
+		multimodal.CustomEventNameUserMessage,
+		aguievents.WithValue(userMessage),
+	)
+	withTimestamp(userEvent, timestampTime)
+	metadata := BuildSnapshotMetadata([]session.TrackEvent{
+		newTrackEventAt(t, withRawEvent(userEvent, map[string]any{
+			"runId":          "run-1",
+			"author":         "demo-user",
+			"forwardedProps": forwardedProps,
+		}), timestampTime.Add(time.Hour)),
+	})
+	require.Contains(t, metadata.Runs, "run-1")
+	gotRun := metadata.Runs["run-1"]
+	require.NotNil(t, gotRun.Timestamp)
+	assert.Equal(t, timestampTime.UnixMilli(), *gotRun.Timestamp)
+	assert.Equal(t, "demo-user", gotRun.Author)
+	assert.Equal(t, forwardedProps, gotRun.ForwardedProps)
+	require.Contains(t, metadata.Messages, "user-1")
+	gotMessage := metadata.Messages["user-1"]
+	assert.Nil(t, gotMessage.ForwardedProps)
+}
+
+func TestBuildSnapshotMetadataIndexesRunOnlyForwardedProps(t *testing.T) {
+	forwardedProps := map[string]any{"file_url": "https://example.com/demo.png"}
+	userMessage := aguitypes.Message{
+		ID:      "user-1",
+		Role:    aguitypes.RoleUser,
+		Content: "hello",
+	}
+	userEvent := aguievents.NewCustomEvent(
+		multimodal.CustomEventNameUserMessage,
+		aguievents.WithValue(userMessage),
+	)
+	userEvent.GetBaseEvent().TimestampMs = nil
+	metadata := BuildSnapshotMetadata([]session.TrackEvent{
+		newTrackEvent(t, withRawEvent(userEvent, map[string]any{
+			"runId":          "run-1",
+			"forwardedProps": forwardedProps,
+		})),
+	})
+	assert.Equal(t, SnapshotMetadata{
+		Runs: map[string]Metadata{
+			"run-1": {ForwardedProps: forwardedProps},
+		},
+	}, metadata)
+}
+
+func TestCustomUserMessageIDRejectsInvalidPayloads(t *testing.T) {
+	tests := []struct {
+		name  string
+		event *aguievents.CustomEvent
+	}{
+		{
+			name: "nil event",
+		},
+		{
+			name:  "nil value",
+			event: aguievents.NewCustomEvent(multimodal.CustomEventNameUserMessage),
+		},
+		{
+			name: "marshal error",
+			event: aguievents.NewCustomEvent(
+				multimodal.CustomEventNameUserMessage,
+				aguievents.WithValue(make(chan int)),
+			),
+		},
+		{
+			name: "unmarshal error",
+			event: aguievents.NewCustomEvent(
+				multimodal.CustomEventNameUserMessage,
+				aguievents.WithValue("invalid"),
+			),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Empty(t, customUserMessageID(tt.event))
+		})
+	}
 }
 
 func testMetadata(eventID string) Metadata {
@@ -596,10 +895,26 @@ func newTrackEvent(t *testing.T, event aguievents.Event) session.TrackEvent {
 	return session.TrackEvent{Payload: payload}
 }
 
+func newTrackEventAt(
+	t *testing.T,
+	event aguievents.Event,
+	timestamp time.Time,
+) session.TrackEvent {
+	t.Helper()
+	trackEvent := newTrackEvent(t, event)
+	trackEvent.Timestamp = timestamp
+	return trackEvent
+}
+
+func withTimestamp(event aguievents.Event, timestamp time.Time) aguievents.Event {
+	event.GetBaseEvent().SetTimestamp(timestamp.UnixMilli())
+	return event
+}
+
 func withRawEvent(
 	event aguievents.Event,
-	metadata Metadata,
+	raw any,
 ) aguievents.Event {
-	event.GetBaseEvent().RawEvent = metadata
+	event.GetBaseEvent().RawEvent = raw
 	return event
 }

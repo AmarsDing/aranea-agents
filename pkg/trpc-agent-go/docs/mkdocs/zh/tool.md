@@ -213,7 +213,11 @@ Function Tool 的入参 `req` 会自动生成对应的 JSON Schema（用于模�
 
 - **字段名**：使用 `json:"..."` 作为 schema 的字段名。
 - **字段描述（推荐）**：使用 `jsonschema:"description=..."` 写入 schema 的 `properties.<field>.description`。
+- **字符串正则约束**：使用 `jsonschema:"pattern=^[a-z0-9_-]+$"` 写入 schema 的 `properties.<field>.pattern`。
+- **手写 schema**：如果直接构造 `tool.Schema`，可设置 `Pattern: "^[a-z0-9_-]+$"` 输出 JSON Schema 的 `pattern` 关键字。
 - **注意**：`jsonschema` tag 内部使用英文逗号 `,` 作为分隔符，因此 **description 内容中不能包含 `,`**，否则会被误解析成多个 tag。
+- **注意**：`pattern` 内容同样受逗号分隔限制；如果正则本身需要包含逗号，建议使用 `function.WithInputSchema(customInputSchema)` 自定义 schema。
+- **运行时兼容性**：工具调用清理阶段使用 Go `regexp` 校验 `pattern`，不是严格的 JSON Schema ECMA-262 正则语法；无法被 Go `regexp` 编译的 pattern 在运行时会按“不强制约束”处理。
 - **兼容**：也支持 `description:"..."` 作为字段描述（用于历史代码）；若同时配置 `jsonschema:"description=..."` 与 `description:"..."`，以 `jsonschema` 中的 `description` 为准。
 - **更灵活的 schema**：如果想完全自定义入参 schema（例如需要更复杂的 JSON Schema 结构/约束），可使用 `function.WithInputSchema(customInputSchema)` 跳过自动生成。
 
@@ -473,6 +477,90 @@ toolCallID, ok := agent.GetRuntimeStateValueFromContext[string](
 因此，如果你会在回调里替换 context，记得把已有的 context value
 一并透传。
 
+## 工具结果格式化
+
+Function Tool 默认使用 JSON 构造模型可见的工具结果消息。当某个工具需要 XML-like
+observation 等自定义文本时，可以使用 `function.WithResultFormatter`，无需自行构造
+`model.Message` 或维护 tool call ID。
+
+当前支持：
+
+- 注册到 LLMAgent，并由其默认工具调用流程执行的 Function Tool。
+
+当前暂不支持：
+
+- Graph ToolsNode；
+- ToolPipe；
+- 替换或重新包装工具实例的扩展及业务 wrapper；
+- 直接调用 `Tool.Call`，或自行构造工具结果消息的其他执行链路。
+
+```go
+import (
+    "context"
+
+    "trpc.group/trpc-go/trpc-agent-go/tool/function"
+    "trpc.group/trpc-go/trpc-agent-go/tool/resultformat"
+)
+
+bashTool := function.NewFunctionTool(
+    runBash,
+    function.WithName("bash"),
+    function.WithResultFormatter(
+        resultformat.FormatterFunc[BashResult](func(
+            _ context.Context,
+            result BashResult,
+        ) (string, error) {
+            return formatBashObservation(result), nil
+        }),
+    ),
+)
+```
+
+Formatter 接收 `AfterTool` callback 处理后的最终结果，仅改变
+`DefaultToolMessage.Content`。消息角色、工具名、tool call ID 配对、顺序、事件和
+会话记录仍由框架维护。
+
+- 未配置 formatter 时，现有默认 JSON 输出保持不变。
+- formatter 返回错误或发生 panic 时，本次工具结果会报告错误；框架不会回退 JSON，
+  也不会重新执行已经完成的工具。格式化失败只是展示失败，工具已经执行完毕，它的会话
+  状态更新照常写入。
+- formatter 只在工具为本次调用声明了结果时才会运行。工具没有声明结果时，框架保持
+  默认 JSON：`tool.PermissionResult`、仅携带状态的流式最终结果、`BeforeTool`
+  callback 或插件短路本次调用时返回的 `CustomResult`，以及流结束时没有
+  `tool.FinalResultChunk` 而由框架合并出的流内容（见下一条）。工具确实执行并声明了
+  结果时，`AfterTool` callback 的替换值属于另一种情况：它会被格式化，因此必须是
+  formatter 能接受的类型。
+- 其他 `StreamableTool` 只格式化最终结果，中间事件不变。流式工具必须通过
+  `tool.FinalResultChunk` 声明这个最终结果。若数据流结束时没有 final chunk，最终
+  结果就是框架合并出的流内容，而不是工具声明的输出类型，此时框架跳过 formatter、
+  保持默认 JSON，并打印一条告警；`AfterTool` callback 即使替换了合并内容，本次调用
+  也不会重新具备格式化资格。要让流式结果被格式化，请发出
+  `tool.FinalResultChunk`。
+- 对于会更新会话状态的工具，状态更新消费的是「未配置 formatter 时框架会发出的那条
+  工具消息内容」，也就是 `AfterTool` callback 处理后结果的 JSON。formatter 不参与
+  状态协议：即使它违反只读契约、原地修改了指针或 map 类型的结果，写入会话的仍然是
+  修改前的内容。如果 `ToolResultMessages` 改写了工具消息内容，则以改写后的内容为
+  准——这与引入 formatter 之前的行为一致。
+- `ToolResultMessages` callback 仍会在默认工具结果消息生成后执行，并可用其返回的消息
+  覆盖默认消息；多消息、多模态内容或完全接管消息协议的场景继续使用该 callback。注意
+  formatter 是按工具配置的，而 `ToolResultMessages` 是整个 Agent 全局的：对配置了
+  formatter 的工具，回调拿到的 `DefaultToolMessage.Content` 是格式化后的文本而不是
+  JSON。回调如果需要结构化数据，请读取 `ToolResultMessagesInput.Result`，不要解析
+  `DefaultToolMessage.Content`。
+
+Formatter 返回的文本会直接写入默认工具结果消息，可以在格式化函数中按业务协议处理
+转义、截断和格式校验。Formatter 必须把入参结果视为只读：同一个结果对象随后会作为
+`ToolResultMessagesInput.Result` 交给回调，原地修改会让同一次工具调用的不同消费方
+看到不一致的结果。Formatter 可能被并发调用；若持有可变状态，需要自行保证并发安全。
+
+框架通过语义工具上的 `ResultFormatter() resultformat.Formatter` 方法发现该能力；
+语义工具指的是框架解开自身的声明包装和名称包装之后剩下的那个工具。
+`function.FunctionTool` 和 `function.StreamableFunctionTool` 提供了该方法；
+`tool/function` 之外的工具实现只要暴露同名方法，就按同样的规则和同样的支持范围参与。
+
+完整可运行示例见
+[examples/toolresultformat](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/toolresultformat)。
+
 ## 内置工具类型
 
 ### Tool 调用重试
@@ -719,7 +807,7 @@ agent := llmagent.New("todo-assistant",
 )
 ```
 
-该 extension 会自动贡献 `todo_write` 和 `todo_declare_blocker`，不要再通过 `WithTools` 额外传入 `todo.New()`。如果需要复用 `tool/todo` 的选项（例如 `WithStateKeyPrefix`、`WithClearOnAllDone` 或 `WithNudgeHook`），先构造 `todo.New(...)`，再通过 `todoenforcer.WithTodoTool(...)` 传入。`todo_declare_blocker` 用于声明客观阻塞，例如缺少权限、凭据、基础设施或必须由用户决策的信息。
+该 extension 会自动贡献 `todo_write` 和 `todo_declare_blocker`，不要再通过 `WithTools` 额外传入 `todo.New()`。如果需要复用 `tool/todo` 的选项（例如 `WithStateKeyPrefix`、`WithClearOnAllDone` 或 `WithNudgeHook`），先构造 `todo.New(...)`，再通过 `todoenforcer.WithTodoTool(...)` 传入。`todo_declare_blocker` 用于声明客观阻塞，例如缺少权限、凭据、基础设施或必须由用户决策的信息。extension 不会改写调用方的流式设置：未完成时模型已经输出的文本仍可能到达客户端，但最终响应会被转为继续执行信号，不会作为本轮终态写入会话历史。
 
 #### 工具返回结构
 
@@ -818,6 +906,29 @@ if err := mcpToolSet.Init(ctx); err != nil {
 agent := llmagent.New("mcp-assistant",
     llmagent.WithModel(model),
     llmagent.WithToolSets([]tool.ToolSet{mcpToolSet}))
+```
+
+### 工具名前缀
+
+通过 `WithToolSets` 把 MCP ToolSet 挂到 `LLMAgent` 上时，框架会用
+`NamedToolSet` 包装它。模型侧看到的工具名为
+`{toolSetName}_{远端工具名}`，实际 MCP `tools/call` 仍使用远端原始名称。
+
+- 默认 ToolSet 名为 `"mcp"`，远端工具 `search` 会暴露为 `mcp_search`。
+- 挂载多个 MCP ToolSet 时，请用 `mcp.WithName(...)` 为每个 ToolSet 设置
+  不同名称。若都使用默认名，可能出现前缀冲突（例如两个 server 都有
+  `search`，模型侧都会显示为 `mcp_search`）。
+- 当 `ToolSet.Name()` 为空时不加前缀（`NewMCPToolSet` 默认不会为空）。
+
+```go
+githubToolSet := mcp.NewMCPToolSet(githubCfg, mcp.WithName("github"))
+slackToolSet := mcp.NewMCPToolSet(slackCfg, mcp.WithName("slack"))
+
+agent := llmagent.New("multi-mcp",
+    llmagent.WithModel(model),
+    llmagent.WithToolSets([]tool.ToolSet{githubToolSet, slackToolSet}),
+)
+// 模型可见名称：github_search、slack_search、...
 ```
 
 ### MCP Annotations 与权限 Metadata
@@ -1480,9 +1591,12 @@ AgentTool 会复用当前 invocation 和 session 来运行子 Agent。为了避�
 AgentTool 目前有两个历史作用域：
 
 - `HistoryScopeIsolated`（默认）：子 Agent 使用独立的 `FilterKey`，例如
-  `math-specialist-<uuid>`。在正常 Runner 生成的事件下，子 Agent 只会看到本次
-  工具调用参数，不会继承父 Agent 的历史。子 Agent 的事件仍会写入同一个
-  session，但位于独立视图下。
+  `math-specialist-<uuid>`（每次调用都会生成新的子 key）。在正常 Runner 生成的事件下，
+  子 Agent 只会看到本次工具调用参数，不会继承父 Agent 的历史。子 Agent 的事件仍会写入
+  同一个 session，但位于独立视图下。
+  - 如果你希望“同一个 AgentTool 多次调用时，子 Agent 能看到自己上一次的执行历史”，可以
+    在 `HistoryScopeIsolated` 下开启 `WithPersistentHistory*`（见下文选项说明）。此时子 key
+    会改为稳定值（例如 `agenttool:math-specialist:default`），从而让子 Agent 的上下文连续。
 - `HistoryScopeParentBranch`：子 Agent 使用父 key 的子 key，例如
   `assistant/math-specialist-<uuid>`。默认的 prefix 匹配会把祖先和子孙都视为同一
   上下文链路，因此子 Agent 可以看到父 Agent 历史，父 Agent 后续也可能看到这个
@@ -1526,6 +1640,22 @@ AgentTool 目前有两个历史作用域：
 
   - `ResponseModeDefault`（默认）：保持历史兼容行为，把子 Agent 的 assistant 消息拼接成工具结果
   - `ResponseModeFinalOnly`：只把子 Agent 最后一条完整 assistant 消息作为工具结果返回
+
+- WithPersistentHistory() / WithPersistentHistoryKey(string) / WithPersistentHistoryKeyFunc(...)：
+
+  - 作用：在 `HistoryScopeIsolated` 下使用**稳定的子 `FilterKey`**，让子 Agent 能在同一个 session 内跨多次
+    AgentTool 调用读取自己的历史（而不是每次都从“全新子 key”开始）。
+  - 默认 key：`agenttool:<toolName>:default`（刻意不含 `/`，避免和父 key 形成前缀关系导致父侧误入上下文）。
+  - 高级用法：用 `WithPersistentHistoryKey(...)` 或 `WithPersistentHistoryKeyFunc(...)` 把不同任务分到不同 key，
+    防止多个并发/多任务把历史混在一起。
+  - 注意：
+    - 这不是权限边界；如果父 Agent 侧配置了 `BranchFilterModeAll` / 空 key，或你把子 key 设计成 `parent/...` 这类
+      前缀关系，父 Agent 仍可能在后续请求里看到子事件。
+    - 子 Agent 是否真的能看到“更早历史”，还取决于子 Agent 自身的 `MessageFilterMode` / timeline 过滤（默认会包含历史；
+      如果你把子 Agent 配成只看当前 request/invocation，则稳定 key 也不会带来跨次可见）。
+    - 目前仅 `agenttool.NewTool(agent)` 支持；`agenttool.NewDynamicTool()` 会忽略该配置（dynamic 设计上是短生命周期、无记忆的）。
+    - 与 `HistoryScopeParentBranch` 不兼容：当同时开启时，框架会忽略 persistent history，并沿用 `parent/child-uuid` 语义。
+  - 完整示例：见 `examples/agenttool/`（通过 `-persistent-child-history` / `-persistent-child-key` 体验）。
 
 - WithHistoryScope(HistoryScope)：
   - `HistoryScopeIsolated`（默认）：子调用使用独立 `FilterKey`，通常只读取本次工具参数，不继承父历史。
@@ -1637,6 +1767,8 @@ Agent、模型或 executor；它只能在开发者配置好的边界内，为这
   解析，不会在此枚举）。
 - `WithCapabilitySkills(repo)`：设置模型可选择的最大 skill 仓库。未设置时默认从父
   Agent 本轮有效 skill 仓库派生。
+- `WithDynamicTimeout(timeout)`：限制一次动态子 Agent 调用的最长时间。非正值表示不额外
+  设置 deadline，继续使用父请求的 context。
 - `WithExposeToolSelection(false)`：不向模型暴露 `tools` 字段。子 Agent 仍使用代码边界内
   的工具面，但模型不能进一步收窄。
 - `WithExposeSkillSelection(true)`：向模型暴露 `skills` 字段。默认关闭，因为 skill 是否
@@ -1765,117 +1897,180 @@ toolSet := mcp.NewMCPToolSet(
 - 🛡️ **智能保护**：框架工具（`transfer_to_agent`、`knowledge_search`、`agentic_knowledge_search`、可选的 `await_user_reply`）自动保留，永不被过滤
 - 🔧 **灵活定制**：支持内置过滤器和自定义 FilterFunc
 
-#### Tool Search（自动工具筛选）
+#### Tool Search（延迟工具按需加载）
 
-除了“规则过滤（Tool Filter）”，框架还提供 **Tool Search**：在每次主模型调用前，先做一次“工具选择”，把**候选工具集压缩到 TopK**（例如 3 个），再交给主模型执行，从而进一步降低 token（尤其是 PromptTokens）。
+`plugin/toolsearch` 是一个 Runner 插件，专门用来把庞大的工具集合从模型上下文中**推迟**出去，等模型真正需要时再加载。它不会把全部工具都塞进每一次模型请求，而是只向模型暴露一个 `tool_search` 函数以及一份工具目录（catalog）；模型通过 `tool_search` 加载它当前需要的工具，加载后的工具在同一个 session 剩余轮次中都可以直接调用，加载记录通过 session state（键 `tool_search:discovered_tools`）跨轮保存；新开 session 时会重新从空状态开始。
 
-需要注意的 trade-off：
+**为什么要延迟工具：**
 
-- **耗时**：Tool Search 会引入额外步骤（额外 LLM 调用、以及/或 embedding + 向量检索），端到端耗时可能增加。
-- **Prompt Caching**：每轮传给主模型的工具列表会变化，可能降低部分平台的 prompt caching 命中率。
+- 每一个工具 schema 都会在每次请求中占用 prompt token，也会分散模型的注意力。工具达到几十上百个后，全部暴露给模型对成本和准确率都不利。
+- 延迟机制让请求保持精简，但完整工具集仍然按需可达。
 
-和 Tool Filter 的区别：
+**核心概念：**
 
-- **Tool Filter**：你（或业务）通过规则决定“允许/禁止哪些工具”（访问控制/成本控制），更偏策略与安全。
-- **Tool Search**：框架根据“当前用户问题”自动挑选相关工具，更偏自动化与成本优化。
+- **Preset 工具**：通过 `toolsearch.New(presetTools, ...)` 传入，会像普通工具一样一直暴露给模型，可以通过 `tool_names` 精确名称加载，但不会被延迟。Preset 工具**不能**通过 keyword 查询或 embedding 搜索发现——只有延迟工具支持这两种搜索方式。
+- **延迟工具**：通过 `WithToolboxes` 或 `WithDeferredTools` 注册，未被 `tool_search` 加载前不会暴露给模型。
+- **Toolbox**：把一组语义相关的延迟工具归到同一个 namespace 下。`tool_search` 的关键字搜索会限定在该 namespace 范围内，避免不同业务域出现同名或近义工具时相互混淆。注意：`Toolbox.Name` 为空的项会被忽略并打印 error 日志。
+- **MCP Toolbox**（`WithMCPToolboxes`）：把一个 `tool.ToolSet` 形态的 MCP 客户端注册成延迟 namespace。插件会在每次模型请求前重新列出该 server 的工具，因此目录始终反映其当前工具集；列出的每个工具会被重命名为 `mcp__<ServerName>__<tool>`，避免不同 server 之间的名称冲突。
 
-它们可以组合使用：先用 Tool Filter 做权限/白名单，再用 Tool Search 在剩余工具里做 TopK 选择。
+需要关注的 trade-off：
 
-**两种策略：**
+- **耗时**：每次模型需要一个尚未加载的延迟工具时，都会先经历一次 `tool_search` 调用往返。
+- **Prompt Caching**：目录和已加载工具集合会随对话变化，可能降低部分平台的 prompt caching 命中率。
 
-- **LLM Search**：把候选工具列表（name + description）拼进 prompt，让 LLM 直接输出“应该使用哪些工具”。
-  - 优点：不依赖向量库；实现简单。
-  - 缺点：每轮都会把工具列表放进 prompt，开销随工具数量/描述长度近似线性增长。
-- **Knowledge Search**：先用 LLM 做 query rewrite，再用 embedding + 向量检索做语义匹配。
-  - 优点：不需要每轮把完整工具列表塞进 LLM；并且 **tool embedding 会在同一 `ToolKnowledge` 实例内缓存**，后续轮/后续请求可以复用。
-  - 注意：每轮仍需要对 query 做 embedding（固定开销之一）。
+##### 基本用法
 
-##### 基本用法（LLM Search）
-
-Tool Search 既可以作为 Runner plugin 使用，也可以作为单个 Agent 的
-callback 使用。
-
-**方案 A：Runner Plugin**
+在 Runner 上挂载插件，把延迟工具按 namespace 分组到 Toolbox 中，并让插件把工具目录注入到 system prompt：
 
 ```go
 import (
     "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
     "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
     "trpc.group/trpc-go/trpc-agent-go/runner"
+    "trpc.group/trpc-go/trpc-agent-go/tool"
 )
-
-ts, err := toolsearch.New(modelInstance,
-    toolsearch.WithMaxTools(3),
-    toolsearch.WithFailOpen(), // 可选：search 失败时退回到“全部工具可用”
-)
-if err != nil { /* handle */ }
 
 ag := llmagent.New("assistant",
     llmagent.WithModel(modelInstance),
-    llmagent.WithTools(allTools), // 仍然注册“全量工具”，Tool Search 会挑 TopK
+    // Preset 工具始终可见；延迟工具在需要时通过 tool_search 加载
+    llmagent.WithTools(presetTools),
+    llmagent.WithInstruction(`
+你可以在下面的目录中浏览延迟工具，并通过 tool_search 加载它们：
+{deferred_tools_section}
+`),
 )
 
-r := runner.NewRunner("app", ag,
-    runner.WithPlugins(ts),
+ts := toolsearch.New(
+    presetTools,
+    toolsearch.WithToolboxes([]toolsearch.Toolbox{
+        {
+            Name:        "billing",
+            Description: "发票、支付、退款相关工具",
+            Tools:       billingTools,
+        },
+        {
+            Name:        "crm",
+            Description: "客户、联系人、商机管理工具",
+            Tools:       crmTools,
+        },
+    }),
+    toolsearch.WithMaxResults(5), // 单次搜索最多返回的工具数
+)
+
+r := runner.NewRunner("app", ag, runner.WithPlugins(ts))
+```
+
+推荐的使用姿势：
+
+1. **优先使用带 Namespace 的 `WithToolboxes`，而不是平铺的工具列表。** 通过 `Toolbox.Name` 将相关工具归到同一 namespace，`tool_search` 的关键字匹配可以限定在单个业务域内，工具目录变大后能显著减少相似工具之间的歧义。对于确实没有明确业务域的工具，也可以通过 `WithDeferredTools` 注册；它们会被收集到一个内部的默认 namespace 中，搜索时无需指定 namespace 参数。
+
+2. **控制目录（catalog）的渲染位置。** 默认情况下，插件会在包含占位符 `{deferred_tools_section}` 的 system instruction 中把目录替换进去；如果 instruction 里没有这个占位符，插件会把目录**追加到已有的第一条 system message 末尾**；若整个请求都没有 system message，才会额外插入一条新的 system message。推荐显式在 prompt 中放置该占位符（占位符须原样保留，不要经 Go template 之类二次替换），以便精确控制目录出现的位置。
+
+3. **用 `WithToolPermissionFilter` 按调用者过滤工具。** 过滤器接收当前 invocation 的 context（因此可以基于登录用户来判断），凡是被过滤掉的延迟工具会在目录、搜索结果以及执行时都被拒绝。该选项**不**会影响 preset 工具的可见性——过滤器仅作用于延迟工具集合。
+
+4. **打开 `WithCatalogInDescription`，把目录挂到工具描述里。** 开启后，延迟工具目录会在每一轮被嵌入到 `tool_search` 的 tool description 中，而不会再注入到 system prompt（即使 prompt 中有 `{deferred_tools_section}` 占位符，也会被清除，避免泄漏）。当业务侧希望 system prompt 保持稳定（利于 prompt caching），或某些模型后端更偏好把目录放在工具旁边时，可以使用这个选项。
+
+5. **通过 `WithInvocationMode` 选择调用方式。** 默认的 `toolsearch.NativeToolCalls` 会把每一个已加载的延迟工具作为独立的 function tool 暴露给模型，由模型直接按名字调用。切换成 `toolsearch.DispatchToolCalls` 之后，整个延迟工具集只对模型暴露两个 function tool：`tool_search`（检索 + 加载，且每条搜索结果都会附带匹配工具的 `input_schema`），以及 `call_tool`（按工具名调用，`params` 字段需与该 schema 匹配）。此时无论已加载多少延迟工具，延迟工具部分始终只占用 `tool_search` 和 `call_tool` 两个 function tool，preset 工具仍单独声明；对声明工具数量敏感的后端会更友好。
+
+> 提示：传给 `toolsearch.New(presetTools, ...)` 与 `llmagent.WithTools(presetTools)` 的 preset 工具列表建议保持一致。前者用于把 preset 工具建入索引，让 `tool_search` 通过精确 `tool_names` 解析到它们；后者用于让 agent 在对话中直接调用。两者不一致时 preset 工具仍可调用，只是可能无法通过 `tool_names` 精确解析。注意：preset 工具无法通过 keyword 查询或 embedding 搜索发现——只有延迟工具参与这两种搜索路径。
+
+##### `WithMCPToolboxes` 示例
+
+把一个正在运行的 MCP server（实现了 `tool.ToolSet` 接口）注册为延迟 namespace：
+
+```go
+import (
+    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
+)
+
+ts := toolsearch.New(
+    presetTools,
+    toolsearch.WithMCPToolboxes([]toolsearch.MCPToolbox{
+        {
+            ServerName:  "github",              // 注意字段名是 ServerName，不是 Name
+            Description: "GitHub issues / PR / repo",
+            ToolSet:     githubMCPToolSet,      // 实现了 tool.ToolSet 的 MCP 客户端
+        },
+    }),
+)
+// server 内的工具在 catalog 中会自动被重命名为 mcp__github__<tool>
+```
+
+##### `DispatchToolCalls` 模式
+
+在对声明工具数量敏感的后端上，把延迟工具集统一收敛到 `tool_search` + `call_tool` 两个 function tool 后面：
+
+```go
+ts := toolsearch.New(
+    presetTools,
+    toolsearch.WithToolboxes(boxes),
+    toolsearch.WithInvocationMode(toolsearch.DispatchToolCalls),
+)
+// 延迟工具部分始终只暴露 tool_search + call_tool，preset 工具仍单独声明
+// tool_search 的每条结果都会带上目标工具的 input_schema，供 call_tool 的 params 使用。
+```
+
+##### `WithToolPermissionFilter` 示例
+
+按调用者维度过滤延迟工具（例如按登录用户的 RBAC 角色）：
+
+```go
+ts := toolsearch.New(presetTools,
+    toolsearch.WithToolboxes(boxes),
+    toolsearch.WithToolPermissionFilter(func(ctx context.Context, names []string) map[string]bool {
+        user := auth.UserFromContext(ctx)
+        allowed := make(map[string]bool, len(names))
+        for _, n := range names {
+            allowed[n] = rbac.CanUse(user, n)
+        }
+        return allowed
+    }),
 )
 ```
 
-**方案 B：Per-Agent BeforeModel Callback**
+##### 配置速查表
 
-通过 `modelCallbacks.RegisterBeforeModel(...)` 注册 Tool Search 的 callback
-（会在主模型调用前自动重写 `req.Tools`）：
+| 选项 | 作用 |
+| --- | --- |
+| ⭐ `WithToolboxes([]Toolbox{...})` | 按 namespace 分组注册延迟工具（推荐）。`Toolbox.Name` 为空会被跳过。 |
+| `WithDeferredTools([]tool.Tool{...})` | 注册没有业务 namespace 的延迟工具，可与 `WithToolboxes` 共存。 |
+| `WithMCPToolboxes([]MCPToolbox{...})` | 将 MCP server（`tool.ToolSet`）注册为延迟 namespace；每次请求都会重新列出工具并重命名为 `mcp__<ServerName>__<tool>`。 |
+| `WithMaxResults(n)` | 关键字搜索单次返回的匹配数上限（默认 `5`，硬上限 `10`；超过硬上限部分会以 name-only 形式作为附加候选返回）。 |
+| `WithToolPermissionFilter(fn)` | 按调用者过滤延迟工具，影响目录、搜索和调用；不影响 preset 工具。 |
+| `WithCatalogInDescription(true)` | 把目录渲染进 `tool_search` 的 description，而不是 system prompt。 |
+| `WithInvocationMode(mode)` | `NativeToolCalls`（默认）或 `DispatchToolCalls`。 |
+| `WithSemanticToolIndex(idx)` | 用 embedding 语义搜索为 `queries` 分支打分。 |
+| `WithEmbeddingFailOpen()` | Embedding 失败时回退到内置关键字匹配（仅当 `WithSemanticToolIndex` 开启时生效）。 |
+| `WithName(name)` | 覆盖插件默认名 `tool_search`（同一 Runner 内需唯一）。 |
 
-```go
-	import (
-	    "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
-	    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
-	    "trpc.group/trpc-go/trpc-agent-go/model"
-	)
+##### 语义（Embedding）搜索
 
-modelCallbacks := model.NewCallbacks()
-tc, err := toolsearch.New(modelInstance,
-    toolsearch.WithMaxTools(3),
-    toolsearch.WithFailOpen(), // 可选：search 失败时退回到“全部工具可用”
-)
-if err != nil { /* handle */ }
-modelCallbacks.RegisterBeforeModel(tc.Callback())
-
-agent := llmagent.New("assistant",
-    llmagent.WithModel(modelInstance),
-    llmagent.WithTools(allTools), // 仍然注册“全量工具”，Tool Search 会在每次调用前挑 TopK
-    llmagent.WithModelCallbacks(modelCallbacks),
-)
-```
-
-##### 基本用法（Knowledge Search）
-
-需要先创建 `ToolKnowledge`（embedding + vector store），再通过 `toolsearch.WithToolKnowledge(...)` 启用 Knowledge Search：
+默认情况下，`tool_search` 的 `queries` 路径使用内置的关键字匹配来打分。通过 `WithSemanticToolIndex(...)` 可以切换成基于 embedding 的语义搜索：每个延迟工具的名称、描述、参数 schema 会被写入向量库，关键字查询将改用向量相似度而不是字面重合度进行排序。按 `tool_names` 精确加载和按 namespace 列出的路径不受影响，仍走确定性索引。
 
 ```go
-	import (
-	    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
-	    openaiembedder "trpc.group/trpc-go/trpc-agent-go/knowledge/embedder/openai"
-	    vectorinmemory "trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore/inmemory"
-	)
+import (
+    "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
+    openaiembedder "trpc.group/trpc-go/trpc-agent-go/knowledge/embedder/openai"
+    vectorinmemory "trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore/inmemory"
+)
 
-toolKnowledge, err := toolsearch.NewToolKnowledge(
+semanticIndex, err := toolsearch.NewSemanticToolIndex(
     openaiembedder.New(openaiembedder.WithModel(openaiembedder.ModelTextEmbedding3Small)),
-    toolsearch.WithVectorStore(vectorinmemory.New()),
+    toolsearch.WithVectorStore(vectorinmemory.New()), // 可选，默认使用内存向量库
 )
 if err != nil { /* handle */ }
 
-tc, err := toolsearch.New(modelInstance,
-    toolsearch.WithMaxTools(3),
-    toolsearch.WithToolKnowledge(toolKnowledge),
-    toolsearch.WithFailOpen(),
+ts := toolsearch.New(presetTools,
+    toolsearch.WithToolboxes(boxes),
+    toolsearch.WithSemanticToolIndex(semanticIndex),
+    toolsearch.WithMaxResults(5),
+    toolsearch.WithEmbeddingFailOpen(), // embedding 失败时回退到关键字匹配
 )
-if err != nil { /* handle */ }
-modelCallbacks.RegisterBeforeModel(tc.Callback())
 ```
 
 ##### Token 统计（可选）
 
-Tool Search 的 token usage 会写入 context，可用于打点与成本分析：
+启用语义搜索后，每轮 `tool_search` 产生的 embedding token usage 会累计到 context 中，可用于埋点与成本分析：
 
 ```go
 import "trpc.group/trpc-go/trpc-agent-go/plugin/toolsearch"
@@ -1884,6 +2079,35 @@ if usage, ok := toolsearch.ToolSearchUsageFromContext(ctx); ok && usage != nil {
     // usage.PromptTokens / usage.CompletionTokens / usage.TotalTokens
 }
 ```
+
+##### 从旧版本迁移（Break Change）
+
+本次为 break change，从「自动 TopK 工具筛选」改为「延迟工具按需加载」。对照关系：
+
+- **构造函数**：`toolsearch.New(model, ...)` → `toolsearch.New(presetTools, WithToolboxes(...) / WithDeferredTools(...))`。新签名不再需要 `model`，也不再返回 `error`。
+- **`WithMaxResults(n)` 语义变更**：从「筛给主模型的 TopK 上限」变为「`tool_search` 单次关键字搜索返回的匹配数上限」（默认 5，硬上限 10）；此选项即旧版本的 `WithMaxTools`，本次同时更名。
+- **`WithSystemPrompt(...)`** 已移除：改为在 `llmagent.WithInstruction` 中放置占位符 `{deferred_tools_section}`，或使用 `WithCatalogInDescription(true)` 把目录嵌入到 `tool_search` 的 description。
+- **`WithAlwaysInclude(...)`** 已移除：改为把这些工具作为 **preset 工具** 传入 `toolsearch.New(presetTools, ...)`——preset 工具始终暴露给模型，可通过精确 `tool_names` 解析，但无法通过 keyword 查询或 embedding 搜索发现。
+- **`WithFailOpen()`** 已移除：若使用 embedding 语义搜索，可用 `WithEmbeddingFailOpen()` 在 embedding 失败时回退到关键字匹配。
+- **Embedding 索引 API 更名**：类型 `ToolKnowledge` → `SemanticToolIndex`；构造器 `NewToolKnowledge` → `NewSemanticToolIndex`；插件 Option `WithToolKnowledge` → `WithSemanticToolIndex`。语义与用法不变，直接替换标识符即可。
+- **Per-Agent BeforeModel Callback** 用法（旧文档中的方案 B，`tc.Callback()` 挂到 `RegisterBeforeModel`）已下线；现只保留 Runner Plugin 形态。
+
+##### 评测与配置建议
+
+`plugin/toolsearch` 已接入 [trpc-agent-go-benchmark/toolsearch](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/toolsearch)，在真实工具集合上度量不同配置对**工具选中准确率**、**prompt token** 和**端到端延迟**的影响。数据集、评测脚本与结果表见该目录下的 README，可按其中说明自行复现或替换成自己的工具库对比。
+
+面对不同规模与运行环境，可参考以下典型配置组合：
+
+| 场景 | 延迟工具规模 | 建议配置 | 说明 |
+| --- | --- | --- | --- |
+| 少量、命名清晰 | ≤ 20 | `WithDeferredTools(...)` + 默认关键字搜索 | 无需 namespace 与 embedding，接入成本最低 |
+| 多业务域、有同名/近义工具 | 20 ~ 100 | `WithToolboxes([]Toolbox{...})` + 默认关键字搜索 | 用 namespace 隔离，避免不同业务域下相似工具串扰 |
+| 大规模 & 语义化查询 | 100+ | `WithToolboxes` + `WithSemanticToolIndex(...)` + `WithEmbeddingFailOpen()` | 使用 embedding 语义相似度打分，embedding 失败自动回退到关键字匹配 |
+| 对声明工具数量敏感的后端 | 任意 | `WithInvocationMode(toolsearch.DispatchToolCalls)` | 延迟工具集统一收敛为 `tool_search` + `call_tool` 两个 function tool |
+| 需要 prompt cache 命中 | 任意 | `WithCatalogInDescription(true)` | 目录挂到 `tool_search` 的 description，system prompt 保持稳定 |
+| 多租户 / RBAC | 任意 | 上述任意组合 + `WithToolPermissionFilter(fn)` | 目录、搜索结果、执行三处统一按调用者过滤 |
+
+> `WithMaxResults(n)` 默认 5、硬上限 10（超出部分以 name-only 形式作为附加候选返回）。
 
 #### 基本用法
 
@@ -2144,7 +2368,9 @@ ch, err = r.Run(ctx, userID, sessionID, toolMsg,
 运行中改成由调用方执行，可以继续使用 `agent.WithToolExecutionFilter(...)`。
 `WithExternalTools` 更适合 AG-UI、浏览器、移动端或上游服务在每次请求中动态声明
 工具的场景。AG-UI runner 默认会把请求里的 `input.Tools` 映射为
-`WithExternalTools`。外部工具与已有工具同名时，已有工具优先，外部声明不会覆盖或拦截它。这里的已有工具包括 Agent 上注册的工具，以及通过 `WithAdditionalTools` 追加的工具。
+`WithExternalTools`；OpenAI Chat Completions adapter（`server/openai`）同样会把请求里的 `tools` 映射为 `WithExternalTools`，服务端不执行这些工具，由调用方在收到 `tool_calls` 后外部执行并用 `role=tool` 消息续聊。外部工具与已有工具同名时，已有工具优先，外部声明不会覆盖或拦截它。这里的已有工具包括 Agent 上注册的工具，以及通过 `WithAdditionalTools` 追加的工具。
+
+`server/openai` adapter 目前只实现了 `tool_choice: "none"`（不把 tools 暴露给模型）和 `tool_choice: "auto"` 或省略该字段（由模型自行决定，这也是该 adapter 能提供的唯一行为，因为它自身从不执行工具）。当请求同时带有 `tools` 时，`tool_choice: "required"` 以及强制指定函数的写法（`{"type":"function","function":{"name":"..."}}`）会被拒绝并返回 HTTP 400，而不会被静默当作 `"auto"` 处理。
 
 **完整示例：** `examples/toolinterrupt/`
 
@@ -2171,14 +2397,84 @@ agent := llmagent.New("ai-assistant",
     llmagent.WithTools(tools),
     llmagent.WithToolSets(toolSets),
     llmagent.WithEnableParallelTools(true), // 启用并行执行
+    llmagent.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        Groups: []tool.ConcurrencyGroup{
+            {
+                ToolNames: []string{"subagent"},
+                Limit:     3,
+            },
+            {
+                // search 调用串行执行
+                ToolNames: []string{"search"},
+                Limit:     1,
+            },
+            {
+                // fetch 调用串行执行
+                ToolNames: []string{"fetch"},
+                Limit:     1,
+            },
+        },
+    }),
 )
 ```
 
 Graph 工作流下也可以在工具节点开启并行：
 
 ```go
-stateGraph.AddToolsNode("tools", tools, graph.WithEnableParallelTools(true))
+stateGraph.AddToolsNode(
+    "tools",
+    tools,
+    graph.WithEnableParallelTools(true),
+    graph.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        Groups: []tool.ConcurrencyGroup{
+            {ToolNames: []string{"subagent"}, Limit: 3},
+            {ToolNames: []string{"search"}, Limit: 1},
+            {ToolNames: []string{"fetch"}, Limit: 1},
+        },
+    }),
+)
 ```
+
+`MaxConcurrency` 和分组上限会同时生效。每个直接工具调用都会占用正数的整体
+并发额度；属于某个分组的调用还必须同时取得该分组的额度。同一组内的多个工具名
+共享活跃调用上限。当 `MaxConcurrency` 为非正数时，不设置整体上限：正数的
+分组上限仍然生效，分组外的工具不受该配置的并发限制。
+
+每次 `LLMAgent.Run` 以及每次 Graph Tools 节点调用都有独立额度。同一个 Agent
+的并发 Run 不会相互占用额度。例如 `subagent` 的 `Limit` 为 3 时，同一个
+Agent 的两个并发 Run 可以各自同时执行最多 3 个直接 `subagent` 调用。这些
+配置用于控制单次 invocation 的并行宽度，不会保护多个 Run、Agent 实例、进程
+或服务副本共享的下游容量；此类共享限制应放在拥有资源的工具或下游 client 中。
+
+并发限制跟随工具的执行方。所属 Agent 或 Tools 节点只限制自己直接执行的工具。
+如果名为 `subagent` 的工具运行了一个子 Agent，外层 `subagent` 在运行期间
+仍然占用所属 Agent 或节点的额度，但子 Agent 内部执行的 `search`、`fetch`
+等工具不会额外占用所属 Agent 或节点的工具额度。需要在每个提供这些工具的子
+Agent 上分别配置：
+
+```go
+child := llmagent.New(
+    "worker",
+    llmagent.WithModel(model),
+    llmagent.WithTools([]tool.Tool{searchTool, fetchTool}),
+    llmagent.WithEnableParallelTools(true),
+    llmagent.WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+        Groups: []tool.ConcurrencyGroup{
+            {ToolNames: []string{"search"}, Limit: 1},
+            {ToolNames: []string{"fetch"}, Limit: 1},
+        },
+    }),
+)
+```
+
+拆成两个分组后，`search` 和 `fetch` 各自串行，但两者之间仍可以各运行一个、
+相互并行。每次子 Agent invocation 都有独立额度，即使多个并发 invocation
+复用同一个子 Agent 实例也是如此。因此 3 个并发子 Agent invocation 合计最多
+可以同时运行 3 个 `search` 和 3 个 `fetch`。
+
+只有显式开启工具并行执行后，该配置才会生效。非正数的分组上限会被忽略。每个
+工具名只能出现在一个正数上限的组中；重复配置会导致
+`WithToolConcurrencyConfig` panic。
 
 **并行执行效果：**
 

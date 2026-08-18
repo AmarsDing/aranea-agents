@@ -98,6 +98,7 @@ Related configuration:
 
 - `aggregator.WithEnabled(true)` controls whether event aggregation is enabled. It is enabled by default.
 - `agui.WithFlushInterval(time.Second)` controls the periodic flush interval for aggregation results. The default is `1s`. Setting it to `0` disables periodic flushing.
+- `agui.WithTrackPersistenceTimeout(5*time.Second)` limits the maximum duration for event history persistence. The default is `5s`. Setting it to `0` means no timeout is applied.
 - `agui.WithPostRunFinalizationTimeout(5*time.Second)` limits the maximum duration of post-run finalization. The default is `5s`. Finalization needs to fill in protocol closing events and write the aggregation cache to `SessionService`; if session storage becomes slow or fails, the timeout prevents the request from blocking for too long. Setting it to `0` means no timeout is applied.
 
 ```go
@@ -116,6 +117,7 @@ server, err := agui.New(
     agui.WithSessionService(sessionService),
     agui.WithMessagesSnapshotEnabled(true),
     agui.WithFlushInterval(time.Second),
+    agui.WithTrackPersistenceTimeout(5*time.Second),
     agui.WithPostRunFinalizationTimeout(5*time.Second),
     agui.WithAGUIRunnerOptions(
         aguirunner.WithAggregationOption(aggregator.WithEnabled(true)),
@@ -176,6 +178,62 @@ Historical `RUN_*` messages in `MESSAGES_SNAPSHOT` have the following shape:
       }
     }
   ]
+}
+```
+
+## User Input forwardedProps Metadata
+
+If your business stores attachments, form context, or other request-side information in AG-UI request `forwardedProps` and needs to restore that information from the history route after a page refresh, enable event source metadata:
+
+```go
+import (
+	"trpc.group/trpc-go/trpc-agent-go/server/agui"
+)
+
+server, err := agui.New(
+    runner,
+    agui.WithAppName(appName),
+    agui.WithSessionService(sessionService),
+    agui.WithMessagesSnapshotEnabled(true),
+    agui.WithEventSourceMetadataEnabled(true),
+)
+```
+
+After this is enabled, when the real-time conversation request persists the user input event, it writes the `forwardedProps` field from the AG-UI request body to the user input event's `rawEvent.forwardedProps`; in the Go API, that field corresponds to `RunAgentInput.ForwardedProps`. When reading history, the message snapshot route aggregates it into `MESSAGES_SNAPSHOT.rawEvent.runs[runId].forwardedProps`:
+
+```json
+{
+  "type": "MESSAGES_SNAPSHOT",
+  "messages": [
+    {
+      "id": "user-1",
+      "role": "user",
+      "content": "Please check the attachment"
+    }
+  ],
+  "rawEvent": {
+    "runs": {
+      "run-1": {
+        "author": "demo-user",
+        "forwardedProps": {
+          "file_url": "https://example.com/demo.png",
+          "attachments": [
+            {
+              "id": "file-1",
+              "mimeType": "image/png"
+            }
+          ]
+        },
+        "timestamp": 1781258400000
+      }
+    },
+    "messages": {
+      "user-1": {
+        "author": "demo-user",
+        "timestamp": 1781258400000
+      }
+    }
+  }
 }
 ```
 

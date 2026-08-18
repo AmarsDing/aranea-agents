@@ -26,7 +26,9 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	"trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/internal/state/messageoriginkey"
 	"trpc.group/trpc-go/trpc-agent-go/internal/structuredoutput"
+	itool "trpc.group/trpc-go/trpc-agent-go/internal/tool"
 	"trpc.group/trpc-go/trpc-agent-go/internal/tracecapture"
 	"trpc.group/trpc-go/trpc-agent-go/internal/util"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/searchfilter"
@@ -64,7 +66,6 @@ const (
 	// session after the function-call processor clones the invocation
 	// session for state-delta isolation.
 	liveSessionStateKey = "__live_session__"
-
 	// streamHubStateKey is the invocation state key used by the graph to
 	// share ephemeral streams across node invocations within the same run.
 	streamHubStateKey = "__graph_stream_hub__"
@@ -86,7 +87,37 @@ type TransferInfo struct {
 	TargetAgentName string
 	// Message is the message to send to the target agent.
 	Message string
+	// ToolCallID is the originating toolCallId of the transfer_to_agent
+	// invocation. transfer_to_agent tool captures it from its ctx so the
+	// transfer response processor can build a ParentInvocationMetadata for
+	// the target invocation; without this, the toolCallId is lost when the
+	// per-tool ctx is discarded.
+	ToolCallID string
 }
+
+// TriggerType enumerates how a child invocation was created from its parent.
+const (
+	// TriggerTypeToolCall indicates the child invocation was created because
+	// the parent agent invoked an AgentTool (sub-task delegation pattern).
+	TriggerTypeToolCall = event.TriggerTypeToolCall
+	// TriggerTypeTransfer indicates the child invocation was created because
+	// the parent agent invoked the transfer_to_agent tool (handoff pattern).
+	TriggerTypeTransfer = event.TriggerTypeTransfer
+	// TriggerTypeDynamicWorkflow indicates the child invocation was created by
+	// a dynamic workflow script calling a registered child agent.
+	TriggerTypeDynamicWorkflow = event.TriggerTypeDynamicWorkflow
+)
+
+// ParentInvocationMetadata describes how a child invocation was triggered by
+// its parent. It is set on the child Invocation (not the parent), and is
+// propagated into events emitted by the child via InjectIntoEvent so that
+// downstream consumers (e.g., AGUI) can correlate child events with the
+// specific parent action that spawned them.
+//
+// The canonical type lives in the event package (where Event also carries it)
+// to avoid a cyclic import; this is an alias for ergonomic use within the
+// agent package.
+type ParentInvocationMetadata = event.ParentInvocationMetadata
 
 // Invocation represents the context for a flow execution.
 type Invocation struct {
@@ -99,6 +130,22 @@ type Invocation struct {
 	// Branch records agent execution chain information.
 	// In multi-agent mode, this is useful for tracing agent execution trajectories.
 	Branch string
+	// ParentMetadata describes how this invocation was created from its
+	// parent. It is non-nil when the framework spawned this invocation via a
+	// known mechanism (AgentTool, transfer). Top-level invocations (started
+	// directly by Runner) have ParentMetadata == nil.
+	//
+	// ParentMetadata describes the *immediate* parent edge only (e.g., a
+	// transferred-to agent records the transfer that produced it, not
+	// whatever spawned the transferring agent). Walking the ancestral chain
+	// requires following parent invocations via GetParentInvocation.
+	//
+	// Downstream consumers (e.g., AGUI) can read ParentMetadata.TriggerID to
+	// correlate this invocation's events with the specific parent action
+	// that spawned it. This is critical when a parent agent issues parallel
+	// AgentTool calls to the same sub-agent: parentInvocationId alone cannot
+	// disambiguate the parallel branches; ParentMetadata.TriggerID can.
+	ParentMetadata *ParentInvocationMetadata
 	// EndInvocation is a flag that indicates if the invocation is complete.
 	EndInvocation bool
 	// Session is the session that is being used for the invocation.
@@ -124,6 +171,8 @@ type Invocation struct {
 
 	// MemoryService is the service for managing memory.
 	MemoryService memory.Service
+	// MemoryReader is the read-only memory source for memory preload.
+	MemoryReader memory.Reader
 	// ArtifactService is the service for managing artifacts.
 	ArtifactService artifact.Service
 
@@ -143,6 +192,10 @@ type Invocation struct {
 	entryPredecessorStepIDs []string
 	// traceNodeID stores the mounted static root node id for this invocation.
 	traceNodeID string
+	// executionTraceStepBinding is the internal ownership bridge for the
+	// structural trace step represented by this invocation. Derived invocations
+	// bind their own structural visit explicitly.
+	executionTraceStepBinding *tracecapture.StepBinding
 
 	// state stores invocation-scoped state data (lazy initialized).
 	// Can be used by callbacks, middleware, or any invocation-scoped logic.
@@ -404,6 +457,15 @@ func WithInjectedContextMessages(messages []model.Message) RunOption {
 	}
 }
 
+// WithLateContextMessages appends per-run messages that are injected into the
+// model request near the latest user turn but are not persisted into the session
+// transcript.
+func WithLateContextMessages(messages []model.Message) RunOption {
+	return func(opts *RunOptions) {
+		opts.LateContextMessages = append(opts.LateContextMessages, messages...)
+	}
+}
+
 // UserMessageRewriteArgs contains stable metadata for one user message rewrite.
 type UserMessageRewriteArgs struct {
 	AppName         string
@@ -561,6 +623,21 @@ func WithDisableResponseUsageTracking(disable bool) RunOption {
 func WithDisableModelExecutionEvents(disable bool) RunOption {
 	return func(opts *RunOptions) {
 		opts.DisableModelExecutionEvents = disable
+	}
+}
+
+// WithLatencyDiagnostics enables pre-LLM diagnostic spans and status events.
+func WithLatencyDiagnostics(enabled bool) RunOption {
+	return func(opts *RunOptions) {
+		opts.LatencyDiagnosticsEnabled = enabled
+		opts.LatencyDiagnosticsEmitEvents = enabled
+	}
+}
+
+// WithLatencyDiagnosticsEvents controls whether diagnostics emit events.
+func WithLatencyDiagnosticsEvents(enabled bool) RunOption {
+	return func(opts *RunOptions) {
+		opts.LatencyDiagnosticsEmitEvents = enabled
 	}
 }
 
@@ -894,6 +971,19 @@ func WithToolExecutionFilter(filter tool.FilterFunc) RunOption {
 	}
 }
 
+// WithToolResultEventPerCallEnabled controls whether each result is emitted as
+// its tool call completes in framework-executed, non-long-running multi-tool
+// rounds. No additional aggregate event is emitted, and the next model call
+// still waits for all results. Other rounds keep the existing behavior.
+// Round-level StateDelta and Actions.SkipSummarization are carried only by the
+// last result event, or by the terminal error if the round ends early.
+// Disabled by default.
+func WithToolResultEventPerCallEnabled(enabled bool) RunOption {
+	return func(opts *RunOptions) {
+		opts.ToolResultEventPerCallEnabled = enabled
+	}
+}
+
 // WithToolPermissionPolicy sets a per-run policy that is checked after
 // before-tool callbacks finalize arguments and immediately before the
 // framework executes a tool call.
@@ -949,6 +1039,15 @@ func WithToolCallArgumentsJSONRepairEnabled(enabled bool) RunOption {
 	return func(opts *RunOptions) {
 		e := enabled
 		opts.ToolCallArgumentsJSONRepairEnabled = &e
+	}
+}
+
+// WithToolCallTextRepairEnabled enables best-effort repair for model responses
+// that emit tool calls as visible text instead of structured tool_calls.
+func WithToolCallTextRepairEnabled(enabled bool) RunOption {
+	return func(opts *RunOptions) {
+		e := enabled
+		opts.ToolCallTextRepairEnabled = &e
 	}
 }
 
@@ -1041,6 +1140,15 @@ type RunOptions struct {
 	// (e.g., room ID, user context) without modifying the agent's base initial state.
 	RuntimeState map[string]any
 
+	// SkillLoads declares skills that the selected agent must load before its
+	// first model request. The declarations are validated and applied
+	// atomically against the invocation's effective skill repository. Equivalent
+	// declarations for one skill are coalesced; conflicting document sets are
+	// invalid.
+	//
+	// Use WithSkillLoads to avoid retaining caller-owned slices.
+	SkillLoads []skill.LoadRequest
+
 	// EventFilterKey overrides the invocation's event filter key used for
 	// scoping session events (event.FilterKey) included in LLM context.
 	//
@@ -1067,6 +1175,11 @@ type RunOptions struct {
 	// into the model request for this run. These messages are not persisted into
 	// session events and therefore must be provided on every run if needed.
 	InjectedContextMessages []model.Message
+
+	// LateContextMessages allows callers to inject additional context messages
+	// near the latest user turn for this run. These messages are not persisted
+	// into session events and therefore must be provided on every run if needed.
+	LateContextMessages []model.Message
 
 	// UserMessageRewriter rewrites the current-turn input into an ordered
 	// message sequence before runner persists it into the session transcript.
@@ -1132,6 +1245,12 @@ type RunOptions struct {
 	// DisableModelExecutionEvents disables emitting model execution start/complete events.
 	DisableModelExecutionEvents bool
 
+	// LatencyDiagnosticsEnabled enables detailed pre-LLM diagnostic spans.
+	LatencyDiagnosticsEnabled bool
+
+	// LatencyDiagnosticsEmitEvents emits caller-visible diagnostic status events.
+	LatencyDiagnosticsEmitEvents bool
+
 	// DisablePartialEventIDs disables generating IDs for partial response events.
 	DisablePartialEventIDs bool
 
@@ -1172,6 +1291,9 @@ type RunOptions struct {
 	// CustomAgentConfigs stores configurations for custom agents.
 	// Key: agent type, Value: agent-specific config.
 	CustomAgentConfigs map[string]any
+
+	// Plugins contains plugin managers that apply only to this run.
+	Plugins []PluginManager
 
 	// Agent overrides the runner's default agent for this run.
 	Agent Agent
@@ -1299,6 +1421,10 @@ type RunOptions struct {
 	// externally and later provide tool results (RoleTool messages).
 	ToolExecutionFilter tool.FilterFunc
 
+	// ToolResultEventPerCallEnabled enables the behavior documented by
+	// [WithToolResultEventPerCallEnabled].
+	ToolResultEventPerCallEnabled bool
+
 	// ToolPermissionPolicy checks whether a tool call may run after the model
 	// has requested it, after argument repair, and after before-tool callbacks
 	// have finalized arguments.
@@ -1313,6 +1439,11 @@ type RunOptions struct {
 	// ToolCallArgumentsJSONRepairEnabled enables best-effort JSON repair for tool call arguments.
 	// When nil, JSON repair is disabled by default.
 	ToolCallArgumentsJSONRepairEnabled *bool
+
+	// ToolCallTextRepairEnabled enables best-effort repair for model responses
+	// that emit tool calls as visible text instead of structured tool_calls.
+	// When nil, text repair is disabled by default.
+	ToolCallTextRepairEnabled *bool
 
 	// runControlConfig stores internal event and buffering controls.
 	runControlConfig runControlConfig
@@ -1332,7 +1463,7 @@ func (opts RunOptions) ShouldExecuteTool(
 	if opts.ToolExecutionFilter == nil {
 		return true
 	}
-	return opts.ToolExecutionFilter(ctx, tl)
+	return opts.ToolExecutionFilter(ctx, itool.ResolveDeclaration(tl))
 }
 
 func (opts RunOptions) isExternalTool(tl tool.Tool) bool {
@@ -1429,13 +1560,17 @@ func (inv *Invocation) Clone(invocationOpts ...InvocationOptions) *Invocation {
 	if inv == nil {
 		return nil
 	}
+	childRunOptions := inv.RunOptions
+	childRunOptions.SkillLoads = nil
 	newInv := &Invocation{
 		InvocationID:    uuid.NewString(),
+		ParentMetadata:  inv.ParentMetadata,
 		Session:         inv.Session,
 		SessionService:  inv.SessionService,
 		Message:         inv.Message,
-		RunOptions:      inv.RunOptions,
+		RunOptions:      childRunOptions,
 		MemoryService:   inv.MemoryService,
+		MemoryReader:    inv.MemoryReader,
 		ArtifactService: inv.ArtifactService,
 		Plugins:         inv.Plugins,
 		noticeMu:        inv.noticeMu,
@@ -1487,6 +1622,7 @@ func (inv *Invocation) View(invocationOpts ...InvocationOptions) *Invocation {
 		Agent:                inv.Agent,
 		AgentName:            inv.AgentName,
 		InvocationID:         inv.InvocationID,
+		ParentMetadata:       inv.ParentMetadata,
 		Branch:               inv.Branch,
 		EndInvocation:        inv.EndInvocation,
 		Session:              inv.Session,
@@ -1499,6 +1635,7 @@ func (inv *Invocation) View(invocationOpts ...InvocationOptions) *Invocation {
 		StructuredOutput:     inv.StructuredOutput,
 		StructuredOutputType: inv.StructuredOutputType,
 		MemoryService:        inv.MemoryService,
+		MemoryReader:         inv.MemoryReader,
 		ArtifactService:      inv.ArtifactService,
 		noticeChannels:       inv.noticeChannels,
 		noticeMu:             inv.noticeMu,
@@ -1530,6 +1667,7 @@ func (inv *Invocation) SyncView(view *Invocation) {
 	inv.Agent = view.Agent
 	inv.AgentName = view.AgentName
 	inv.InvocationID = view.InvocationID
+	inv.ParentMetadata = view.ParentMetadata
 	inv.Branch = view.Branch
 	inv.EndInvocation = view.EndInvocation
 	inv.Session = view.Session
@@ -1541,6 +1679,7 @@ func (inv *Invocation) SyncView(view *Invocation) {
 	inv.StructuredOutput = view.StructuredOutput
 	inv.StructuredOutputType = view.StructuredOutputType
 	inv.MemoryService = view.MemoryService
+	inv.MemoryReader = view.MemoryReader
 	inv.ArtifactService = view.ArtifactService
 	inv.noticeChannels = view.noticeChannels
 	inv.noticeMu = view.noticeMu
@@ -1616,6 +1755,7 @@ func isCloneStateKey(key string) bool {
 		appenderStateKey,
 		liveSessionStateKey,
 		streamHubStateKey,
+		messageoriginkey.Key,
 		surfaceRootNodeIDStateKey,
 		teamMemberTraceRootStateKey:
 		return true
@@ -1654,10 +1794,8 @@ func cloneStateReflectValue(
 	value reflect.Value,
 	visited map[reflectVisit]reflect.Value,
 ) (reflect.Value, bool) {
-	if value.IsValid() && value.CanInterface() {
-		if cloned, ok := cloneKnownStateValue(value.Interface()); ok {
-			return reflect.ValueOf(cloned), true
-		}
+	if cloned, ok := cloneKnownStateReflectValue(value); ok {
+		return cloned, true
 	}
 	switch value.Kind() {
 	case reflect.Interface:
@@ -1680,31 +1818,49 @@ func cloneStateReflectValue(
 	}
 }
 
-func cloneKnownStateValue(value any) (any, bool) {
-	switch v := value.(type) {
-	case *bytes.Buffer:
-		if v == nil {
-			return v, true
+var (
+	bytesBufferStateType    = reflect.TypeOf(bytes.Buffer{})
+	bytesBufferPtrStateType = reflect.TypeOf((*bytes.Buffer)(nil))
+	stringBuilderStateType  = reflect.TypeOf((*strings.Builder)(nil))
+	bigIntStateType         = reflect.TypeOf(big.Int{})
+	bigIntPtrStateType      = reflect.TypeOf((*big.Int)(nil))
+)
+
+func cloneKnownStateReflectValue(value reflect.Value) (reflect.Value, bool) {
+	if !value.IsValid() || !value.CanInterface() {
+		return reflect.Value{}, false
+	}
+	// Match by type before calling Interface. Interface on an arbitrary struct
+	// copies its fields, which is unsafe for opaque state carrying locks.
+	switch value.Type() {
+	case bytesBufferPtrStateType:
+		if value.IsNil() {
+			return value, true
 		}
-		return bytes.NewBuffer(cloneBytes(v.Bytes())), true
-	case bytes.Buffer:
-		return *bytes.NewBuffer(cloneBytes(v.Bytes())), true
-	case *strings.Builder:
-		if v == nil {
-			return v, true
+		v := value.Interface().(*bytes.Buffer)
+		return reflect.ValueOf(bytes.NewBuffer(cloneBytes(v.Bytes()))), true
+	case bytesBufferStateType:
+		v := value.Interface().(bytes.Buffer)
+		return reflect.ValueOf(*bytes.NewBuffer(cloneBytes(v.Bytes()))), true
+	case stringBuilderStateType:
+		if value.IsNil() {
+			return value, true
 		}
+		v := value.Interface().(*strings.Builder)
 		var cloned strings.Builder
 		_, _ = cloned.WriteString(v.String())
-		return &cloned, true
-	case *big.Int:
-		if v == nil {
-			return v, true
+		return reflect.ValueOf(&cloned), true
+	case bigIntPtrStateType:
+		if value.IsNil() {
+			return value, true
 		}
-		return new(big.Int).Set(v), true
-	case big.Int:
-		return *new(big.Int).Set(&v), true
+		v := value.Interface().(*big.Int)
+		return reflect.ValueOf(new(big.Int).Set(v)), true
+	case bigIntStateType:
+		v := value.Interface().(big.Int)
+		return reflect.ValueOf(*new(big.Int).Set(&v)), true
 	default:
-		return nil, false
+		return reflect.Value{}, false
 	}
 }
 
@@ -1907,6 +2063,9 @@ func InjectIntoEvent(inv *Invocation, e *event.Event) {
 	e.InvocationID = inv.InvocationID
 	e.Branch = inv.Branch
 	e.FilterKey = inv.GetEventFilterKey()
+	if e.ParentMetadata == nil && inv.ParentMetadata != nil {
+		e.ParentMetadata = inv.ParentMetadata
+	}
 }
 
 // EmitEvent inject invocation information into event and emit it to channel.
@@ -2056,6 +2215,24 @@ func (inv *Invocation) IncLLMCallCount() error {
 		)
 	}
 	return nil
+}
+
+// ToolIterationCount reports the current MaxToolIterations enforcement
+// counter.
+//
+// This is not a general tool-usage metric. The count remains zero while
+// MaxToolIterations is non-positive because IncToolIteration is then a no-op.
+// A tool-call response that exceeds the configured limit is included even
+// though its tools are not executed. Clone starts a new counter at zero,
+// while View preserves the current value.
+//
+// The counter follows Invocation's execution ownership and is not synchronized
+// for concurrent reads and writes.
+func (inv *Invocation) ToolIterationCount() int {
+	if inv == nil {
+		return 0
+	}
+	return inv.toolIterationCount
 }
 
 // IncToolIteration increments the tool iteration counter and reports whether

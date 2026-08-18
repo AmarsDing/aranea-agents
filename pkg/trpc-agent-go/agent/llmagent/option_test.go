@@ -23,6 +23,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	toolskill "trpc.group/trpc-go/trpc-agent-go/tool/skill"
+	toolworkspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 )
 
 type stubSkillStager struct{}
@@ -279,6 +280,28 @@ func TestWithMaxLoadedSkills(t *testing.T) {
 	require.Equal(t, 0, c.option.MaxLoadedSkills)
 }
 
+func TestWithMaxOverviewSkills(t *testing.T) {
+	const (
+		agentName = "test-agent"
+		maxSkills = 8
+	)
+
+	a := New(agentName)
+	require.Equal(t, 0, a.option.MaxOverviewSkills,
+		"default must be 0 (no cap) so existing callers see no behavior change")
+
+	b := New(agentName, WithMaxOverviewSkills(maxSkills))
+	require.Equal(t, maxSkills, b.option.MaxOverviewSkills)
+
+	c := New(agentName, WithMaxOverviewSkills(0))
+	require.Equal(t, 0, c.option.MaxOverviewSkills,
+		"explicit 0 must remain a no-op")
+
+	d := New(agentName, WithMaxOverviewSkills(-1))
+	require.Equal(t, -1, d.option.MaxOverviewSkills,
+		"negative values are stored as-is; processor treats them as no-cap")
+}
+
 func TestWithSkillsLoadedContentInToolResults(t *testing.T) {
 	a := New("test-agent")
 	require.False(t, a.option.SkillsLoadedContentInToolResults)
@@ -328,6 +351,13 @@ func TestWithWorkspaceExecSurfaceEnabled(t *testing.T) {
 	)
 	require.NotNil(t, b.option.workspaceExecSurfaceEnabled)
 	require.False(t, *b.option.workspaceExecSurfaceEnabled)
+}
+
+func TestWithWorkspaceExecOutputLimits(t *testing.T) {
+	limits := toolworkspaceexec.OutputLimits{MaxOutputBytes: 1234}
+	opts := &Options{}
+	WithWorkspaceExecOutputLimits(limits)(opts)
+	require.Equal(t, limits, opts.workspaceExecOutputLimits)
 }
 
 func TestWithSkillsCapabilityGuidance(t *testing.T) {
@@ -486,6 +516,8 @@ func TestWithMaxLimits_OnOptions(t *testing.T) {
 
 	WithMaxLLMCalls(3)(opts)
 	WithMaxToolIterations(4)(opts)
+	WithLLMCallLimitFinalization("")(opts)
+	WithToolIterationLimitFinalization("finish with available results")(opts)
 
 	if opts.MaxLLMCalls != 3 {
 		t.Fatalf("expected MaxLLMCalls=3, got %d", opts.MaxLLMCalls)
@@ -493,6 +525,14 @@ func TestWithMaxLimits_OnOptions(t *testing.T) {
 	if opts.MaxToolIterations != 4 {
 		t.Fatalf("expected MaxToolIterations=4, got %d", opts.MaxToolIterations)
 	}
+	require.NotNil(t, opts.llmCallLimitFinalizationInstruction)
+	require.Empty(t, *opts.llmCallLimitFinalizationInstruction)
+	require.NotNil(t, opts.toolIterationLimitFinalizationInstruction)
+	require.Equal(
+		t,
+		"finish with available results",
+		*opts.toolIterationLimitFinalizationInstruction,
+	)
 }
 
 func TestWithToolCallRetryPolicy_OnOptions(t *testing.T) {
@@ -500,6 +540,15 @@ func TestWithToolCallRetryPolicy_OnOptions(t *testing.T) {
 	policy := &tool.RetryPolicy{MaxAttempts: 2}
 	WithToolCallRetryPolicy(policy)(opts)
 	require.Same(t, policy, opts.ToolCallRetryPolicy)
+}
+
+func TestWithToolResultAttachmentBudget_OnOptionsAndAgent(t *testing.T) {
+	opts := &Options{}
+	WithToolResultAttachmentBudget(3)(opts)
+	require.Equal(t, 3, opts.ToolResultAttachmentBudget)
+
+	a := New("budget-agent", WithToolResultAttachmentBudget(3))
+	require.Equal(t, 3, a.option.ToolResultAttachmentBudget)
 }
 
 func TestWithPreloadMemory(t *testing.T) {
@@ -540,6 +589,27 @@ func TestWithPreloadMemory(t *testing.T) {
 	}
 }
 
+func TestWithPreloadMemoryInjectionMode(t *testing.T) {
+	opts := &Options{}
+	WithPreloadMemoryInjectionMode(PreloadMemoryInjectionUser)(opts)
+	require.Equal(t, PreloadMemoryInjectionUser, opts.PreloadMemoryInjectionMode)
+
+	WithPreloadMemoryInjectionMode(PreloadMemoryInjectionSystem)(opts)
+	require.Equal(t, PreloadMemoryInjectionSystem, opts.PreloadMemoryInjectionMode)
+
+	WithPreloadMemoryInjectionMode(processor.PreloadMemoryInjectionMode("invalid"))(opts)
+	require.Equal(t, PreloadMemoryInjectionSystem, opts.PreloadMemoryInjectionMode)
+}
+
+func TestWithPreloadMemoryPlaybook(t *testing.T) {
+	opts := &Options{}
+	WithPreloadMemoryPlaybook("custom playbook")(opts)
+	require.Equal(t, "custom playbook", opts.PreloadMemoryPlaybook)
+
+	WithPreloadMemoryPlaybook("")(opts)
+	require.Empty(t, opts.PreloadMemoryPlaybook)
+}
+
 func TestWithPreloadSessionRecall(t *testing.T) {
 	opts := &Options{}
 	WithPreloadSessionRecall(6)(opts)
@@ -547,6 +617,32 @@ func TestWithPreloadSessionRecall(t *testing.T) {
 
 	WithPreloadSessionRecall(0)(opts)
 	require.Equal(t, 0, opts.PreloadSessionRecall)
+}
+
+func TestWithPreloadSessionRecallInjectionMode(t *testing.T) {
+	opts := &Options{}
+	WithPreloadSessionRecallInjectionMode(PreloadSessionRecallInjectionUser)(opts)
+	require.Equal(
+		t,
+		PreloadSessionRecallInjectionUser,
+		opts.PreloadSessionRecallInjectionMode,
+	)
+
+	WithPreloadSessionRecallInjectionMode(PreloadSessionRecallInjectionSystem)(opts)
+	require.Equal(
+		t,
+		PreloadSessionRecallInjectionSystem,
+		opts.PreloadSessionRecallInjectionMode,
+	)
+
+	WithPreloadSessionRecallInjectionMode(
+		processor.PreloadSessionRecallInjectionMode("invalid"),
+	)(opts)
+	require.Equal(
+		t,
+		PreloadSessionRecallInjectionSystem,
+		opts.PreloadSessionRecallInjectionMode,
+	)
 }
 
 func TestWithPreloadSessionRecallMinScore(t *testing.T) {
@@ -817,4 +913,38 @@ func TestWithEnablePostToolPrompt(t *testing.T) {
 
 	require.NotNil(t, opts.postToolPromptEnabled)
 	require.True(t, *opts.postToolPromptEnabled)
+}
+
+func TestWithToolConcurrencyConfigCopiesGroups(t *testing.T) {
+	config := tool.ConcurrencyConfig{
+		MaxConcurrency: 4,
+		Groups: []tool.ConcurrencyGroup{{
+			ToolNames: []string{"search", "fetch"},
+			Limit:     1,
+		}},
+	}
+	option := WithToolConcurrencyConfig(config)
+	config.Groups[0].ToolNames[0] = "changed"
+
+	opts := &Options{}
+	option(opts)
+
+	require.Equal(t, 4, opts.ToolConcurrencyConfig.MaxConcurrency)
+	require.Equal(
+		t,
+		[]string{"search", "fetch"},
+		opts.ToolConcurrencyConfig.Groups[0].ToolNames,
+	)
+	require.Equal(t, 1, opts.ToolConcurrencyConfig.Groups[0].Limit)
+}
+
+func TestWithToolConcurrencyConfigRejectsDuplicateGroups(t *testing.T) {
+	require.Panics(t, func() {
+		WithToolConcurrencyConfig(tool.ConcurrencyConfig{
+			Groups: []tool.ConcurrencyGroup{
+				{ToolNames: []string{"search"}, Limit: 1},
+				{ToolNames: []string{"search"}, Limit: 2},
+			},
+		})
+	})
 }

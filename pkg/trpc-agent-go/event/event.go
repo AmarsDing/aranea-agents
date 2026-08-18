@@ -58,6 +58,43 @@ const (
 	ToolCallArgsExtensionKey = "trpc_agent.tool_call_args"
 )
 
+// TriggerType enumerates how a child invocation was created from its parent.
+// These values are carried in ParentInvocationMetadata.TriggerType.
+const (
+	// TriggerTypeToolCall indicates the child invocation was created because
+	// the parent agent invoked an AgentTool (sub-task delegation pattern).
+	TriggerTypeToolCall = "tool_call"
+	// TriggerTypeTransfer indicates the child invocation was created because
+	// the parent agent invoked the transfer_to_agent tool (handoff pattern).
+	TriggerTypeTransfer = "transfer"
+	// TriggerTypeDynamicWorkflow indicates the child invocation was created by
+	// one dynamic workflow script calling a registered child agent.
+	TriggerTypeDynamicWorkflow = "dynamic_workflow"
+)
+
+// ParentInvocationMetadata describes how a child invocation was triggered by
+// its parent. It is set on the child Invocation and propagated into events
+// the child emits (via InjectIntoEvent), so downstream consumers (e.g., AGUI)
+// can correlate child events with the specific parent action that spawned
+// them.
+//
+// This is critical when a parent agent issues parallel AgentTool calls to
+// the same sub-agent: ParentInvocationID alone cannot disambiguate the
+// parallel branches; ParentMetadata.TriggerID can.
+type ParentInvocationMetadata struct {
+	// TriggerType identifies the framework mechanism that created the child
+	// invocation. See TriggerType* constants.
+	TriggerType string `json:"triggerType,omitempty"`
+	// TriggerID is the ID of the specific parent action that created the
+	// child invocation. For TriggerTypeToolCall and TriggerTypeTransfer this
+	// is the originating toolCallId.
+	TriggerID string `json:"triggerId,omitempty"`
+	// TriggerName is the human-readable name of the parent action. For
+	// TriggerTypeToolCall this is the AgentTool's tool name; for
+	// TriggerTypeTransfer this is "transfer_to_agent".
+	TriggerName string `json:"triggerName,omitempty"`
+}
+
 // Event represents an event in conversation between agents and users.
 type Event struct {
 	// Response is the base struct for all LLM response functionality.
@@ -71,6 +108,16 @@ type Event struct {
 
 	// ParentInvocationID is the parent invocation ID of the event.
 	ParentInvocationID string `json:"parentInvocationId,omitempty"`
+
+	// ParentMetadata describes how this event's invocation was triggered by
+	// its parent (e.g., AgentTool call, transfer). It enables correlating
+	// sub-agent events with the specific parent action that spawned them—
+	// notably for parallel tool calls to the same sub-agent, where
+	// ParentInvocationID alone cannot disambiguate the parallel branches.
+	//
+	// Nil when the invocation was started directly (top-level Runner.Run)
+	// or the framework mechanism that spawned it is unknown.
+	ParentMetadata *ParentInvocationMetadata `json:"parentMetadata,omitempty"`
 
 	// Author is the author of the event.
 	Author string `json:"author"`
@@ -204,6 +251,9 @@ func cloneExecutionTrace(executionTrace *trace.Trace) *trace.Trace {
 		StartedAt:        executionTrace.StartedAt,
 		EndedAt:          executionTrace.EndedAt,
 		Status:           executionTrace.Status,
+		Input:            cloneExecutionTraceSnapshot(executionTrace.Input),
+		Output:           cloneExecutionTraceSnapshot(executionTrace.Output),
+		Usage:            cloneUsage(executionTrace.Usage),
 		Steps:            make([]trace.Step, 0, len(executionTrace.Steps)),
 	}
 	for _, step := range executionTrace.Steps {
@@ -223,6 +273,7 @@ func cloneExecutionTraceStep(step trace.Step) trace.Step {
 		AgentName:          step.AgentName,
 		Branch:             step.Branch,
 		NodeID:             step.NodeID,
+		NodeType:           step.NodeType,
 		StartedAt:          step.StartedAt,
 		EndedAt:            step.EndedAt,
 		PredecessorStepIDs: append(
@@ -232,6 +283,7 @@ func cloneExecutionTraceStep(step trace.Step) trace.Step {
 		AppliedSurfaceIDs: append([]string(nil), step.AppliedSurfaceIDs...),
 		Input:             cloneExecutionTraceSnapshot(step.Input),
 		Output:            cloneExecutionTraceSnapshot(step.Output),
+		Usage:             cloneUsage(step.Usage),
 		Error:             step.Error,
 	}
 }
@@ -241,6 +293,18 @@ func cloneExecutionTraceSnapshot(snapshot *trace.Snapshot) *trace.Snapshot {
 		return nil
 	}
 	return &trace.Snapshot{Text: snapshot.Text}
+}
+
+func cloneUsage(usage *model.Usage) *model.Usage {
+	if usage == nil {
+		return nil
+	}
+	cloned := *usage
+	if usage.TimingInfo != nil {
+		timingInfo := *usage.TimingInfo
+		cloned.TimingInfo = &timingInfo
+	}
+	return &cloned
 }
 
 // Filter checks if the event matches the specified filter key.
@@ -385,7 +449,7 @@ func redactedEventForLogging(e *Event) Event {
 
 func tryEmitReadyEvent(ctx context.Context, ch chan<- *Event, e *Event) (bool, error) {
 	// Snapshot before send: once ch <- e returns, the receiver owns *e and
-	// may mutate it concurrently (runner.copyEventInvocationFields). Reading
+	// may mutate it concurrently (runner.backfillEventMetadata). Reading
 	// *e after the send for logging is a data race.
 	eventStr := snapshotEvent(e)
 	select {

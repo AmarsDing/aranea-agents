@@ -14,7 +14,9 @@ import (
 	"encoding/json"
 
 	aguievents "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/events"
+	aguitypes "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/types"
 	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/server/agui/internal/multimodal"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -29,23 +31,56 @@ type Metadata struct {
 	Author             string `json:"author,omitempty"`
 	InvocationID       string `json:"invocationId,omitempty"`
 	ParentInvocationID string `json:"parentInvocationId,omitempty"`
-	Branch             string `json:"branch,omitempty"`
+	// ParentMetadata describes how the invocation was triggered by its
+	// parent (e.g., AgentTool call, transfer). Use ParentMetadata.TriggerID
+	// to correlate this event with the parent's TOOL_CALL_START.
+	ParentMetadata *agentevent.ParentInvocationMetadata `json:"parentMetadata,omitempty"`
+	Branch         string                               `json:"branch,omitempty"`
+	Timestamp      *int64                               `json:"timestamp,omitempty"`
+	// ForwardedProps stores run-scoped AG-UI forwardedProps captured for a user input event.
+	ForwardedProps any `json:"forwardedProps,omitempty"`
 }
 
-// SnapshotMetadata indexes source metadata for messages snapshot payloads.
+// SnapshotMetadata indexes source metadata for message snapshot payloads.
 type SnapshotMetadata struct {
 	Messages  map[string]Metadata `json:"messages,omitempty"`
 	ToolCalls map[string]Metadata `json:"toolCalls,omitempty"`
+	// Runs stores run-scoped metadata keyed by run ID. It is populated from
+	// persisted user-input forwardedProps metadata and is not a general run
+	// event source index.
+	Runs map[string]Metadata `json:"runs,omitempty"`
+}
+
+// SnapshotMetadataOption configures how snapshot metadata is built.
+type SnapshotMetadataOption func(*snapshotMetadataOptions)
+
+type snapshotMetadataOptions struct {
+	includeRunLifecycleEvents bool
+}
+
+// WithRunLifecycleEvents controls whether RUN_* lifecycle events are included
+// in message snapshot metadata.
+func WithRunLifecycleEvents(include bool) SnapshotMetadataOption {
+	return func(o *snapshotMetadataOptions) {
+		o.includeRunLifecycleEvents = include
+	}
 }
 
 // IsZero reports whether the metadata is empty.
 func (m Metadata) IsZero() bool {
-	return m == (Metadata{})
+	return m.EventID == "" &&
+		m.Author == "" &&
+		m.InvocationID == "" &&
+		m.ParentInvocationID == "" &&
+		m.ParentMetadata == nil &&
+		m.Branch == "" &&
+		m.Timestamp == nil &&
+		m.ForwardedProps == nil
 }
 
 // IsZero reports whether the snapshot metadata is empty.
 func (m SnapshotMetadata) IsZero() bool {
-	return len(m.Messages) == 0 && len(m.ToolCalls) == 0
+	return len(m.Messages) == 0 && len(m.ToolCalls) == 0 && len(m.Runs) == 0
 }
 
 // FromEvent resolves source metadata from an agent event.
@@ -64,6 +99,7 @@ func FromEvent(ev *agentevent.Event) (Metadata, bool) {
 		Author:             ev.Author,
 		InvocationID:       ev.InvocationID,
 		ParentInvocationID: ev.ParentInvocationID,
+		ParentMetadata:     ev.ParentMetadata,
 		Branch:             ev.Branch,
 	}
 	return metadata, !metadata.IsZero()
@@ -107,6 +143,17 @@ func FromRawEvent(raw any) (Metadata, bool) {
 			InvocationID:       stringFromMap(v, "invocationId"),
 			ParentInvocationID: stringFromMap(v, "parentInvocationId"),
 			Branch:             stringFromMap(v, "branch"),
+			Timestamp:          int64FromMap(v, "timestamp"),
+		}
+		if forwardedProps, ok := v["forwardedProps"]; ok {
+			metadata.ForwardedProps = forwardedProps
+		}
+		if pm, ok := v["parentMetadata"].(map[string]any); ok {
+			metadata.ParentMetadata = &agentevent.ParentInvocationMetadata{
+				TriggerType: stringFromMap(pm, "triggerType"),
+				TriggerID:   stringFromMap(pm, "triggerId"),
+				TriggerName: stringFromMap(pm, "triggerName"),
+			}
 		}
 		return metadata, !metadata.IsZero()
 	default:
@@ -124,10 +171,18 @@ func FromRawEvent(raw any) (Metadata, bool) {
 
 // BuildSnapshotMetadata derives message and tool-call source indexes from
 // persisted AG-UI track events.
-func BuildSnapshotMetadata(events []session.TrackEvent) SnapshotMetadata {
+func BuildSnapshotMetadata(
+	events []session.TrackEvent,
+	opts ...SnapshotMetadataOption,
+) SnapshotMetadata {
+	options := snapshotMetadataOptions{}
+	for _, opt := range opts {
+		opt(&options)
+	}
 	metadata := SnapshotMetadata{
 		Messages:  make(map[string]Metadata),
 		ToolCalls: make(map[string]Metadata),
+		Runs:      make(map[string]Metadata),
 	}
 	for _, trackEvent := range events {
 		if len(trackEvent.Payload) == 0 {
@@ -141,8 +196,24 @@ func BuildSnapshotMetadata(events []session.TrackEvent) SnapshotMetadata {
 		if base == nil {
 			continue
 		}
+		if !options.includeRunLifecycleEvents && isRunLifecycleEvent(evt) {
+			continue
+		}
 		sourceMetadata, ok := FromRawEvent(base.RawEvent)
-		if !ok {
+		if timestamp := base.Timestamp(); timestamp != nil {
+			ts := *timestamp
+			sourceMetadata.Timestamp = &ts
+		} else if !trackEvent.Timestamp.IsZero() {
+			ts := trackEvent.Timestamp.UnixMilli()
+			sourceMetadata.Timestamp = &ts
+		}
+		if !ok && sourceMetadata.Timestamp == nil {
+			continue
+		}
+		runID := runIDFromRawEvent(base.RawEvent)
+		recordRunMetadata(metadata.Runs, runID, sourceMetadata)
+		sourceMetadata.ForwardedProps = nil
+		if sourceMetadata.IsZero() {
 			continue
 		}
 		recordSnapshotMetadata(metadata.Messages, metadata.ToolCalls,
@@ -154,7 +225,21 @@ func BuildSnapshotMetadata(events []session.TrackEvent) SnapshotMetadata {
 	if len(metadata.ToolCalls) == 0 {
 		metadata.ToolCalls = nil
 	}
+	if len(metadata.Runs) == 0 {
+		metadata.Runs = nil
+	}
 	return metadata
+}
+
+func isRunLifecycleEvent(evt aguievents.Event) bool {
+	switch evt.(type) {
+	case *aguievents.RunStartedEvent,
+		*aguievents.RunFinishedEvent,
+		*aguievents.RunErrorEvent:
+		return true
+	default:
+		return false
+	}
 }
 
 func fromEventOverride(ev *agentevent.Event) (Metadata, bool) {
@@ -184,6 +269,55 @@ func stringFromMap(values map[string]any, key string) string {
 	return text
 }
 
+func int64FromMap(values map[string]any, key string) *int64 {
+	value, ok := values[key]
+	if !ok {
+		return nil
+	}
+	switch v := value.(type) {
+	case int64:
+		return &v
+	case int:
+		ts := int64(v)
+		return &ts
+	case float64:
+		ts := int64(v)
+		if float64(ts) != v {
+			return nil
+		}
+		return &ts
+	case json.Number:
+		ts, err := v.Int64()
+		if err != nil {
+			return nil
+		}
+		return &ts
+	default:
+		return nil
+	}
+}
+
+func runIDFromRawEvent(raw any) string {
+	switch v := raw.(type) {
+	case nil:
+		return ""
+	case map[string]any:
+		return stringFromMap(v, "runId")
+	default:
+		rawJSON, err := json.Marshal(raw)
+		if err != nil {
+			return ""
+		}
+		var metadata struct {
+			RunID string `json:"runId,omitempty"`
+		}
+		if err := json.Unmarshal(rawJSON, &metadata); err != nil {
+			return ""
+		}
+		return metadata.RunID
+	}
+}
+
 func recordSnapshotMetadata(
 	messages map[string]Metadata,
 	toolCalls map[string]Metadata,
@@ -192,63 +326,145 @@ func recordSnapshotMetadata(
 ) {
 	switch e := event.(type) {
 	case *aguievents.TextMessageStartEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.TextMessageContentEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.TextMessageEndEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.TextMessageChunkEvent:
 		if e.MessageID != nil && *e.MessageID != "" {
-			messages[*e.MessageID] = metadata
+			recordMessageMetadata(messages, *e.MessageID, metadata)
 		}
 	case *aguievents.ReasoningMessageStartEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.ReasoningMessageContentEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.ReasoningMessageEndEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.ReasoningMessageChunkEvent:
 		if e.MessageID != nil && *e.MessageID != "" {
-			messages[*e.MessageID] = metadata
+			recordMessageMetadata(messages, *e.MessageID, metadata)
 		}
 	case *aguievents.ToolCallStartEvent:
-		toolCalls[e.ToolCallID] = metadata
+		recordToolCallMetadata(toolCalls, e.ToolCallID, metadata)
 		if e.ParentMessageID != nil && *e.ParentMessageID != "" {
-			messages[*e.ParentMessageID] = metadata
+			recordMessageMetadata(messages, *e.ParentMessageID, metadata)
 		}
 	case *aguievents.ToolCallArgsEvent:
-		toolCalls[e.ToolCallID] = metadata
+		recordToolCallMetadata(toolCalls, e.ToolCallID, metadata)
 	case *aguievents.ToolCallEndEvent:
-		toolCalls[e.ToolCallID] = metadata
+		recordToolCallMetadata(toolCalls, e.ToolCallID, metadata)
 	case *aguievents.ToolCallResultEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 		if _, exists := toolCalls[e.ToolCallID]; !exists {
-			toolCalls[e.ToolCallID] = metadata
+			recordToolCallMetadata(toolCalls, e.ToolCallID, metadata)
 		}
 	case *aguievents.ActivitySnapshotEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.ActivityDeltaEvent:
-		messages[e.MessageID] = metadata
+		recordMessageMetadata(messages, e.MessageID, metadata)
 	case *aguievents.StepStartedEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.StepFinishedEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.StateSnapshotEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.StateDeltaEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.MessagesSnapshotEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.RunStartedEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.RunFinishedEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.RunErrorEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.CustomEvent:
-		messages[e.ID()] = metadata
+		if e.Name == multimodal.CustomEventNameUserMessage {
+			if messageID := customUserMessageID(e); messageID != "" {
+				recordMessageMetadata(messages, messageID, metadata)
+				return
+			}
+		}
+		recordMessageMetadata(messages, e.ID(), metadata)
 	case *aguievents.RawEvent:
-		messages[e.ID()] = metadata
+		recordMessageMetadata(messages, e.ID(), metadata)
 	default:
 	}
+}
+
+func recordMessageMetadata(
+	messages map[string]Metadata,
+	messageID string,
+	metadata Metadata,
+) {
+	if messageID == "" {
+		return
+	}
+	messages[messageID] = mergeMetadata(messages[messageID], metadata)
+}
+
+func recordToolCallMetadata(
+	toolCalls map[string]Metadata,
+	toolCallID string,
+	metadata Metadata,
+) {
+	if toolCallID == "" {
+		return
+	}
+	toolCalls[toolCallID] = mergeMetadata(toolCalls[toolCallID], metadata)
+}
+
+func recordRunMetadata(
+	runs map[string]Metadata,
+	runID string,
+	metadata Metadata,
+) {
+	if runID == "" || metadata.ForwardedProps == nil {
+		return
+	}
+	runs[runID] = mergeMetadata(runs[runID], metadata)
+}
+
+func mergeMetadata(existing Metadata, incoming Metadata) Metadata {
+	merged := existing
+	if incoming.EventID != "" {
+		merged.EventID = incoming.EventID
+	}
+	if incoming.Author != "" {
+		merged.Author = incoming.Author
+	}
+	if incoming.InvocationID != "" {
+		merged.InvocationID = incoming.InvocationID
+	}
+	if incoming.ParentInvocationID != "" {
+		merged.ParentInvocationID = incoming.ParentInvocationID
+	}
+	if incoming.Branch != "" {
+		merged.Branch = incoming.Branch
+	}
+	if incoming.Timestamp != nil &&
+		(merged.Timestamp == nil || *incoming.Timestamp < *merged.Timestamp) {
+		ts := *incoming.Timestamp
+		merged.Timestamp = &ts
+	}
+	if incoming.ForwardedProps != nil {
+		merged.ForwardedProps = incoming.ForwardedProps
+	}
+	return merged
+}
+
+func customUserMessageID(e *aguievents.CustomEvent) string {
+	if e == nil || e.Value == nil {
+		return ""
+	}
+	data, err := json.Marshal(e.Value)
+	if err != nil {
+		return ""
+	}
+	var message aguitypes.Message
+	if err := json.Unmarshal(data, &message); err != nil {
+		return ""
+	}
+	return message.ID
 }

@@ -41,7 +41,11 @@ const (
 	ReasoningContentKey = "reasoning_content"
 	// ReasoningContentKeyAlt is the alternative key used by some providers (e.g. Ollama).
 	ReasoningContentKeyAlt = "reasoning"
-	// EnabledThinkingKey is the key used for enabling thinking mode in API requests e.g. Qwen model.
+	// EnableThinkingKey is the key used for enabling thinking mode in API requests e.g. Qwen model.
+	EnableThinkingKey = "enable_thinking"
+	// EnabledThinkingKey is kept for backward compatibility.
+	//
+	// Deprecated: use EnableThinkingKey.
 	EnabledThinkingKey = "enabled_thinking"
 )
 
@@ -214,6 +218,20 @@ func (m *Message) AddImageData(data []byte, detail, format string) {
 	})
 }
 
+// AddAudioURL adds URL-based audio to the message.
+// Format may be a media subtype such as "mpeg" or a full MIME type such as
+// "audio/mpeg". An empty format leaves media type resolution to the model
+// provider.
+func (m *Message) AddAudioURL(url, format string) {
+	m.ContentParts = append(m.ContentParts, ContentPart{
+		Type: ContentTypeAudio,
+		Audio: &Audio{
+			URL:    url,
+			Format: format,
+		},
+	})
+}
+
 // AddAudioFilePath adds an audio file path to the message.
 func (m *Message) AddAudioFilePath(path string) error {
 	content, err := os.ReadFile(path)
@@ -247,6 +265,32 @@ func (m *Message) AddAudioData(data []byte, format string) {
 	})
 }
 
+// AddVideoURL adds URL-based video to the message.
+// Format may be a media subtype such as "mp4" or a full MIME type such as
+// "video/mp4". An empty format leaves media type resolution to the model
+// provider.
+func (m *Message) AddVideoURL(url, format string) {
+	m.ContentParts = append(m.ContentParts, ContentPart{
+		Type: ContentTypeVideo,
+		Video: &Video{
+			URL:    url,
+			Format: format,
+		},
+	})
+}
+
+// AddVideoData adds inline video data to the message.
+// The argument of data is the raw video data without base64 encoding.
+func (m *Message) AddVideoData(data []byte, format string) {
+	m.ContentParts = append(m.ContentParts, ContentPart{
+		Type: ContentTypeVideo,
+		Video: &Video{
+			Data:   data,
+			Format: format,
+		},
+	})
+}
+
 // ContentType represents the type of content.
 type ContentType string
 
@@ -255,12 +299,14 @@ const (
 	ContentTypeText  ContentType = "text"
 	ContentTypeImage ContentType = "image"
 	ContentTypeAudio ContentType = "audio"
+	// ContentTypeVideo identifies video content.
+	ContentTypeVideo ContentType = "video"
 	ContentTypeFile  ContentType = "file"
 )
 
 // ContentPart represents a single content part in a multimodal message.
 type ContentPart struct {
-	// Type is the type of content: "text", "image", "audio", "file"
+	// Type is the type of content: "text", "image", "audio", "video", "file".
 	Type ContentType `json:"type"`
 	// Text is the text content.
 	Text *string `json:"text,omitempty"`
@@ -268,8 +314,36 @@ type ContentPart struct {
 	Image *Image `json:"image,omitempty"`
 	// Audio is the audio data.
 	Audio *Audio `json:"audio,omitempty"`
+	// Video is the video data.
+	Video *Video `json:"video,omitempty"`
 	// File is the file data.
 	File *File `json:"file,omitempty"`
+	// ContentRef is an internal reference to externalized content.
+	ContentRef *ContentRef `json:"content_ref,omitempty"`
+}
+
+// ContentRef records where externalized content is stored and how to restore it.
+//
+// A missing schema version represents the v1 schema.
+type ContentRef struct {
+	// ArtifactRef is the pinned artifact reference, for example artifact://name@0.
+	ArtifactRef string `json:"artifact_ref"`
+	// ArtifactName is the artifact filename.
+	ArtifactName string `json:"artifact_name,omitempty"`
+	// ArtifactVersion is the pinned artifact revision.
+	ArtifactVersion int `json:"artifact_version"`
+	// MimeType is the MIME type used when saving and hydrating the content.
+	MimeType string `json:"mime_type,omitempty"`
+	// SizeBytes is the original content size in bytes.
+	SizeBytes int64 `json:"size_bytes,omitempty"`
+	// SHA256 is the lowercase hex SHA256 of the original bytes.
+	SHA256 string `json:"sha256,omitempty"`
+	// OriginalName is the user-facing filename or display name, if any.
+	OriginalName string `json:"original_name,omitempty"`
+	// EventID identifies the owning event for debugging.
+	EventID string `json:"event_id,omitempty"`
+	// RequestID identifies the owning request for debugging.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // File represents file content for file input models.
@@ -325,10 +399,28 @@ type Image struct {
 
 // Audio represents audio input for audio models.
 type Audio struct {
+	// URL is the URL of the audio. When URL and Data are both set, URL takes
+	// precedence.
+	URL string `json:"url,omitempty"`
 	// Data is the raw audio data.
 	Data []byte `json:"data"`
-	// Format is the format of the encoded audio data. Currently supports "wav" and "mp3".
+	// Format is the format of the encoded audio data.
+	// Data-backed audio usually uses a subtype such as "wav" or "mp3".
+	// URL-backed audio may use a full MIME type such as "audio/mpeg".
 	Format string `json:"format"`
+}
+
+// Video represents video input for multimodal models.
+type Video struct {
+	// URL is the URL of the video. When URL and Data are both set, URL takes
+	// precedence.
+	URL string `json:"url,omitempty"`
+	// Data is the raw video data.
+	Data []byte `json:"data"`
+	// Format is the video format.
+	// Data-backed video usually uses a subtype such as "mp4".
+	// URL-backed video may use a full MIME type such as "video/mp4".
+	Format string `json:"format,omitempty"`
 }
 
 // NewSystemMessage creates a new system message.
@@ -387,6 +479,10 @@ type GenerationConfig struct {
 
 	// FrequencyPenalty penalizes new tokens based on their frequency in the text so far.
 	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"`
+	// Logprobs controls whether providers should return token log probabilities.
+	Logprobs *bool `json:"logprobs,omitempty"`
+	// TopLogprobs controls how many alternative token log probabilities are returned.
+	TopLogprobs *int `json:"top_logprobs,omitempty"`
 
 	// ReasoningEffort limits the reasoning effort for reasoning models.
 	// The accepted values depend on the provider:
@@ -442,6 +538,8 @@ type GenerationConfigPatch struct {
 	Stop             []string `json:"stop,omitempty"`
 	PresencePenalty  *float64 `json:"presence_penalty,omitempty"`
 	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"`
+	Logprobs         *bool    `json:"logprobs,omitempty"`
+	TopLogprobs      *int     `json:"top_logprobs,omitempty"`
 	ReasoningEffort  *string  `json:"reasoning_effort,omitempty"`
 	ThinkingEnabled  *bool    `json:"thinking_enabled,omitempty"`
 	ThinkingTokens   *int     `json:"thinking_tokens,omitempty"`
@@ -474,6 +572,12 @@ func ApplyGenerationConfigPatch(
 	}
 	if patch.FrequencyPenalty != nil {
 		base.FrequencyPenalty = patch.FrequencyPenalty
+	}
+	if patch.Logprobs != nil {
+		base.Logprobs = patch.Logprobs
+	}
+	if patch.TopLogprobs != nil {
+		base.TopLogprobs = patch.TopLogprobs
 	}
 	if patch.ReasoningEffort != nil {
 		base.ReasoningEffort = patch.ReasoningEffort

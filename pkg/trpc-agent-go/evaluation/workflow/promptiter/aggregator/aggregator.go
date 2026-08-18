@@ -22,7 +22,7 @@ import (
 	idecode "trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/internal/decode"
 	iloss "trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/internal/loss"
 	irunner "trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/internal/runner"
-	isurface "trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/internal/surface"
+	"trpc.group/trpc-go/trpc-agent-go/internal/profilecompiler"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -170,7 +170,7 @@ func normalizeRequest(request *Request) (*Request, error) {
 	if nodeID == "" {
 		return nil, errors.New("node id is empty")
 	}
-	if !isurface.IsSupportedType(request.Type) {
+	if !profilecompiler.IsSupportedType(request.Type) {
 		return nil, fmt.Errorf("surface type %q is invalid", request.Type)
 	}
 	gradients, err := normalizeGradients(surfaceID, request.Gradients)
@@ -261,6 +261,35 @@ func sanitizeAggregatedGradientProposal(
 			SurfaceID: request.SurfaceID,
 			Severity:  item.Severity,
 			Gradient:  item.Gradient,
+		})
+	}
+	if len(resolved.Gradients) == 0 {
+		return fallbackAggregatedGradient(request)
+	}
+	sort.SliceStable(resolved.Gradients, func(i, j int) bool {
+		return compareGradients(resolved.Gradients[i], resolved.Gradients[j]) < 0
+	})
+	return resolved, nil
+}
+
+func fallbackAggregatedGradient(request *Request) (*promptiter.AggregatedSurfaceGradient, error) {
+	resolved := &promptiter.AggregatedSurfaceGradient{
+		SurfaceID: request.SurfaceID,
+		NodeID:    request.NodeID,
+		Type:      request.Type,
+		Gradients: make([]promptiter.SurfaceGradient, 0, len(request.Gradients)),
+	}
+	for _, gradient := range request.Gradients {
+		if gradient.Gradient == "" {
+			continue
+		}
+		resolved.Gradients = append(resolved.Gradients, promptiter.SurfaceGradient{
+			EvalSetID:  gradient.EvalSetID,
+			EvalCaseID: gradient.EvalCaseID,
+			StepID:     gradient.StepID,
+			SurfaceID:  request.SurfaceID,
+			Severity:   gradient.Severity,
+			Gradient:   gradient.Gradient,
 		})
 	}
 	if len(resolved.Gradients) == 0 {

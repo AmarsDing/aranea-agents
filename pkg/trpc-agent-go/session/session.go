@@ -47,6 +47,12 @@ var (
 	ErrEventPageConflictsWithEventFilters = errors.New("event page cannot be combined with EventNum or EventTime")
 	// ErrInvalidListSessionPage indicates list-session paging arguments are invalid.
 	ErrInvalidListSessionPage = errors.New("list session page requires offset >= 0 and limit >= 0")
+	// ErrTracksEmpty indicates the session has no track data.
+	ErrTracksEmpty = errors.New("tracks is empty")
+	// ErrTrackEventsNotFound indicates the requested track has no events.
+	ErrTrackEventsNotFound = errors.New("track events not found")
+	// ErrEventWindowAnchorNotFound indicates an event-window anchor was missing.
+	ErrEventWindowAnchorNotFound = errors.New("anchor event not found")
 )
 
 // SummaryFilterKeyAllContents is the filter key representing
@@ -416,11 +422,11 @@ func (sess *Session) GetTrackEvents(track Track) (*TrackEvents, error) {
 	sess.TracksMu.RLock()
 	defer sess.TracksMu.RUnlock()
 	if sess.Tracks == nil {
-		return nil, fmt.Errorf("tracks is empty")
+		return nil, ErrTracksEmpty
 	}
 	trackEvents, ok := sess.Tracks[track]
 	if !ok || trackEvents == nil {
-		return nil, fmt.Errorf("track events not found: %s", track)
+		return nil, fmt.Errorf("%w: %s", ErrTrackEventsNotFound, track)
 	}
 	copied := &TrackEvents{Track: trackEvents.Track}
 	if len(trackEvents.Events) > 0 {
@@ -465,15 +471,14 @@ func (sess *Session) UpdateUserSession(event *event.Event, opts ...Option) {
 		log.Info("session or event is nil")
 		return
 	}
+	sess.EventMu.Lock()
 	if event.Response != nil && !event.IsPartial && event.IsValidContent() {
-		sess.EventMu.Lock()
 		sess.Events = append(sess.Events, *event)
 		// Apply filtering options.
 		sess.ApplyEventFiltering(opts...)
-		sess.EventMu.Unlock()
 	}
-
 	sess.UpdatedAt = time.Now()
+	sess.EventMu.Unlock()
 	sess.ApplyEventStateDelta(event)
 }
 

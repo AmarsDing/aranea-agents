@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/internal/flow/calllimit"
 	itransfer "trpc.group/trpc-go/trpc-agent-go/internal/transfer"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -32,13 +33,14 @@ const (
 
 // mockAgent minimal implementation for transfer tests.
 type mockAgent struct {
-	name             string
-	emit             bool
-	gotEndInvocation bool
-	gotTraceNodeID   string
-	gotSurfaceRoot   string
-	gotMessage       model.Message
-	invoked          bool
+	name              string
+	emit              bool
+	gotEndInvocation  bool
+	gotTraceNodeID    string
+	gotSurfaceRoot    string
+	gotMessage        model.Message
+	gotParentMetadata *agent.ParentInvocationMetadata
+	invoked           bool
 }
 
 func (m *mockAgent) Info() agent.Info                { return agent.Info{Name: m.name} }
@@ -55,6 +57,7 @@ func (m *mockAgent) Run(ctx context.Context, inv *agent.Invocation) (<-chan *eve
 		m.gotTraceNodeID = agent.InvocationTraceNodeID(inv)
 		m.gotSurfaceRoot = agent.InvocationSurfaceRootNodeID(inv)
 		m.gotMessage = inv.Message
+		m.gotParentMetadata = inv.ParentMetadata
 		if m.emit {
 			ch <- event.New(inv.InvocationID, m.name)
 		}
@@ -78,6 +81,23 @@ func (p *parentAgent) Run(ctx context.Context, inv *agent.Invocation) (<-chan *e
 	ch := make(chan *event.Event)
 	close(ch)
 	return ch, nil
+}
+
+type runErrorAgent struct {
+	name  string
+	calls int
+}
+
+func (a *runErrorAgent) Info() agent.Info                { return agent.Info{Name: a.name} }
+func (a *runErrorAgent) SubAgents() []agent.Agent        { return nil }
+func (a *runErrorAgent) FindSubAgent(string) agent.Agent { return nil }
+func (a *runErrorAgent) Tools() []tool.Tool              { return nil }
+func (a *runErrorAgent) Run(
+	context.Context,
+	*agent.Invocation,
+) (<-chan *event.Event, error) {
+	a.calls++
+	return nil, errors.New("target run failed")
 }
 
 func TestTransferResponseProc_Successful(t *testing.T) {
@@ -175,6 +195,54 @@ func TestTransferResponseProc_Target404(t *testing.T) {
 	require.NotNil(t, evt.Error)
 	require.Equal(t, model.ErrorTypeFlowError, evt.Error.Type)
 	require.Nil(t, inv.TransferInfo)
+}
+
+func TestTransferResponseProc_FinalizationDoesNotRetryFailedTransfer(t *testing.T) {
+	target := &runErrorAgent{name: "child"}
+	parent := &parentAgent{child: target}
+	inv := &agent.Invocation{
+		Agent:        parent,
+		AgentName:    "parent",
+		InvocationID: "inv-finalize-transfer",
+		TransferInfo: &agent.TransferInfo{TargetAgentName: "child"},
+	}
+	instruction := "finish without tools"
+	calllimit.Configure(inv, nil, &instruction)
+	require.True(t, calllimit.RecordToolIteration(inv, 1))
+	calllimit.ScheduleToolFinalization(inv)
+
+	proc := NewTransferResponseProcessor(true)
+	firstOut := make(chan *event.Event, 2)
+	proc.ProcessResponse(
+		context.Background(),
+		inv,
+		&model.Request{},
+		&model.Response{ID: "r-transfer"},
+		firstOut,
+	)
+	close(firstOut)
+	for range firstOut {
+	}
+	require.Equal(t, 1, target.calls)
+	require.NotNil(t, inv.TransferInfo)
+	require.False(t, inv.EndInvocation)
+
+	_, active := calllimit.ActivateForLLM(inv, false)
+	require.True(t, active)
+	finalOut := make(chan *event.Event, 1)
+	proc.ProcessResponse(
+		context.Background(),
+		inv,
+		&model.Request{},
+		&model.Response{ID: "r-final"},
+		finalOut,
+	)
+	close(finalOut)
+
+	require.Equal(t, 1, target.calls)
+	require.Nil(t, inv.TransferInfo)
+	require.True(t, inv.EndInvocation)
+	require.Empty(t, finalOut)
 }
 
 type rejectTransferController struct{}
@@ -1147,4 +1215,112 @@ func TestTransferResponseProc_ControllerCompletionMethodIsObserved(t *testing.T)
 	for range out {
 	}
 	require.Equal(t, 1, handler.count)
+}
+
+// TestTransferResponseProc_PropagatesParentMetadataFromToolCallID verifies
+// that when TransferInfo carries a ToolCallID, the target invocation receives
+// a ParentMetadata describing the transfer trigger. This is the join key that
+// AG-UI consumers use to correlate the target's events with the parent's
+// transfer_to_agent tool call.
+func TestTransferResponseProc_PropagatesParentMetadataFromToolCallID(t *testing.T) {
+	target := &mockAgent{name: "child"}
+	parent := &parentAgent{child: target}
+	inv := &agent.Invocation{
+		Agent:        parent,
+		AgentName:    "parent",
+		InvocationID: "inv-pm",
+		TransferInfo: &agent.TransferInfo{
+			TargetAgentName: "child",
+			ToolCallID:      "call-xyz-789",
+		},
+	}
+	rsp := &model.Response{ID: "r-pm", Created: time.Now().Unix(), Model: "m"}
+	out := make(chan *event.Event, 10)
+	NewTransferResponseProcessor(true).ProcessResponse(
+		context.Background(), inv, &model.Request{}, rsp, out,
+	)
+	close(out)
+	for range out {
+	}
+
+	require.True(t, target.invoked)
+	require.NotNil(t, target.gotParentMetadata,
+		"target invocation should have ParentMetadata when TransferInfo.ToolCallID is set")
+	require.Equal(t, agent.TriggerTypeTransfer, target.gotParentMetadata.TriggerType)
+	require.Equal(t, "call-xyz-789", target.gotParentMetadata.TriggerID)
+	require.Equal(t, "transfer_to_agent", target.gotParentMetadata.TriggerName)
+}
+
+// TestTransferResponseProc_NoParentMetadataWithoutToolCallID verifies the
+// degraded path: when TransferInfo has no ToolCallID (e.g., transfer triggered
+// outside the tool path), the target invocation's ParentMetadata is left nil
+// rather than fabricated.
+func TestTransferResponseProc_NoParentMetadataWithoutToolCallID(t *testing.T) {
+	target := &mockAgent{name: "child"}
+	parent := &parentAgent{child: target}
+	inv := &agent.Invocation{
+		Agent:        parent,
+		AgentName:    "parent",
+		InvocationID: "inv-no-pm",
+		TransferInfo: &agent.TransferInfo{TargetAgentName: "child"},
+	}
+	rsp := &model.Response{ID: "r-no-pm", Created: time.Now().Unix(), Model: "m"}
+	out := make(chan *event.Event, 10)
+	NewTransferResponseProcessor(true).ProcessResponse(
+		context.Background(), inv, &model.Request{}, rsp, out,
+	)
+	close(out)
+	for range out {
+	}
+
+	require.True(t, target.invoked)
+	require.Nil(t, target.gotParentMetadata,
+		"target invocation should not synthesize ParentMetadata when ToolCallID is absent")
+}
+
+// TestTransferResponseProc_DoesNotInheritParentMetadataFromSource is a
+// regression test: when the source invocation already carries a
+// ParentMetadata (e.g., the transferring agent was itself spawned by an
+// upstream AgentTool call) and TransferInfo has no ToolCallID, the target
+// invocation must NOT inherit the source's ParentMetadata via
+// Invocation.Clone's default copy behavior. Instead, the target's
+// ParentMetadata must be cleared to nil, because the transfer boundary
+// creates a new parent edge — the transfer itself is the immediate parent
+// now, not whatever spawned the source agent.
+//
+// Without the fix at the transfer boundary, AG-UI would correlate the
+// target's events to the wrong parent edge (the source's upstream parent).
+func TestTransferResponseProc_DoesNotInheritParentMetadataFromSource(t *testing.T) {
+	target := &mockAgent{name: "child"}
+	parent := &parentAgent{child: target}
+
+	// Source invocation already carries a ParentMetadata — simulating a
+	// transferring agent that was itself spawned by an upstream AgentTool.
+	upstreamMeta := &agent.ParentInvocationMetadata{
+		TriggerType: agent.TriggerTypeToolCall,
+		TriggerID:   "upstream-call-id",
+		TriggerName: "upstream-tool",
+	}
+	inv := &agent.Invocation{
+		Agent:          parent,
+		AgentName:      "parent",
+		InvocationID:   "inv-inherit",
+		ParentMetadata: upstreamMeta,
+		// No ToolCallID — simulating the degraded path.
+		TransferInfo: &agent.TransferInfo{TargetAgentName: "child"},
+	}
+	rsp := &model.Response{ID: "r-inherit", Created: time.Now().Unix(), Model: "m"}
+	out := make(chan *event.Event, 10)
+	NewTransferResponseProcessor(true).ProcessResponse(
+		context.Background(), inv, &model.Request{}, rsp, out,
+	)
+	close(out)
+	for range out {
+	}
+
+	require.True(t, target.invoked)
+	require.Nil(t, target.gotParentMetadata,
+		"target must NOT inherit source's ParentMetadata across the transfer boundary; "+
+			"the transfer is itself the new parent edge, and absent a ToolCallID, "+
+			"that edge has no representable ParentMetadata (must be nil, not inherited)")
 }

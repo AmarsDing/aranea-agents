@@ -12,12 +12,14 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
@@ -28,11 +30,13 @@ import (
 )
 
 type mockRepo struct {
-	sums  []skill.Summary
-	full  map[string]*skill.Skill
-	paths map[string]string
-	roots []string
-	errs  map[string]error
+	sums       []skill.Summary
+	full       map[string]*skill.Skill
+	paths      map[string]string
+	roots      []string
+	errs       map[string]error
+	cacheHit   bool
+	cacheKnown bool
 }
 
 func (m *mockRepo) Summaries() []skill.Summary { return m.sums }
@@ -54,6 +58,10 @@ func (m *mockRepo) Path(name string) (string, error) {
 
 func (m *mockRepo) Roots() []string {
 	return append([]string(nil), m.roots...)
+}
+
+func (m *mockRepo) SummaryCacheHit(context.Context) (bool, bool) {
+	return m.cacheHit, m.cacheKnown
 }
 
 func TestSkillsRequestProcessor_ProcessRequest_OverviewAndDocs(
@@ -127,6 +135,308 @@ func TestSkillsRequestProcessor_ProcessRequest_OverviewAndDocs(
 	ev := <-ch
 	require.NotNil(t, ev)
 	require.Equal(t, model.ObjectTypePreprocessingInstruction, ev.Object)
+}
+
+func TestSkillsRequestProcessor_AppliesDeclaredLoadsAfterTurnClear(
+	t *testing.T,
+) {
+	repo := &mockRepo{
+		sums: []skill.Summary{{Name: "review"}},
+		full: map[string]*skill.Skill{
+			"review": {
+				Summary: skill.Summary{Name: "review"},
+				Body:    "Review body",
+				Docs: []skill.Doc{{
+					Path:    "guide.md",
+					Content: "Guide body",
+				}},
+			},
+		},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv",
+		AgentName:    "tester",
+		Session: &session.Session{State: session.StateMap{
+			skill.LoadedKey("tester", "old"): []byte("1"),
+		}},
+		RunOptions: agent.RunOptions{
+			SkillLoads: []skill.LoadRequest{{
+				Name: "review",
+				Docs: []string{"guide.md"},
+			}},
+		},
+	}
+	req := &model.Request{}
+	ch := make(chan *event.Event, 8)
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillLoadMode(SkillLoadModeTurn),
+	)
+
+	p.ProcessRequest(context.Background(), inv, req, ch)
+
+	oldLoaded, _ := inv.Session.GetState(skill.LoadedKey("tester", "old"))
+	require.Empty(t, oldLoaded)
+	loaded, ok := inv.Session.GetState(skill.LoadedKey("tester", "review"))
+	require.True(t, ok)
+	require.Equal(t, []byte("1"), loaded)
+	docs, ok := inv.Session.GetState(skill.DocsKey("tester", "review"))
+	require.True(t, ok)
+	require.JSONEq(t, `["guide.md"]`, string(docs))
+	require.Contains(t, req.Messages[0].Content, "Review body")
+	require.Contains(t, req.Messages[0].Content, "Guide body")
+	require.Len(t, ch, 2)
+	stateUpdate := <-ch
+	require.Contains(
+		t,
+		stateUpdate.StateDelta,
+		skill.LoadedKey("tester", "old"),
+	)
+	require.Empty(
+		t,
+		stateUpdate.StateDelta[skill.LoadedKey("tester", "old")],
+	)
+	require.Equal(
+		t,
+		[]byte("1"),
+		stateUpdate.StateDelta[skill.LoadedKey("tester", "review")],
+	)
+	require.JSONEq(
+		t,
+		`["guide.md"]`,
+		string(stateUpdate.StateDelta[skill.DocsKey("tester", "review")]),
+	)
+
+	p.ProcessRequest(context.Background(), inv, req, ch)
+	require.Len(t, ch, 2, "declared loads must be committed only once")
+}
+
+func TestSkillsRequestProcessor_DeclaredLoadPreservesSessionDocs(
+	t *testing.T,
+) {
+	repo := &mockRepo{
+		sums: []skill.Summary{{Name: "review"}},
+		full: map[string]*skill.Skill{
+			"review": {
+				Summary: skill.Summary{Name: "review"},
+				Body:    "Review body",
+				Docs: []skill.Doc{{
+					Path:    "old.md",
+					Content: "Old doc body",
+				}},
+			},
+		},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv",
+		AgentName:    "tester",
+		Session: &session.Session{State: session.StateMap{
+			skill.DocsKey("tester", "review"): []byte(`["old.md"]`),
+		}},
+		RunOptions: agent.RunOptions{
+			SkillLoads: []skill.LoadRequest{{Name: "review"}},
+		},
+	}
+	req := &model.Request{}
+	ch := make(chan *event.Event, 4)
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillLoadMode(SkillLoadModeSession),
+	)
+
+	p.ProcessRequest(context.Background(), inv, req, ch)
+
+	docs, ok := inv.Session.GetState(skill.DocsKey("tester", "review"))
+	require.True(t, ok)
+	require.JSONEq(t, `["old.md"]`, string(docs))
+	require.Contains(t, req.Messages[0].Content, "Old doc body")
+}
+
+func TestSkillsRequestProcessor_DeclaredLoadStaysWithinMaxLoadedSkills(
+	t *testing.T,
+) {
+	repo := &mockRepo{
+		sums: []skill.Summary{{Name: "a"}, {Name: "b"}, {Name: "c"}},
+		full: map[string]*skill.Skill{
+			"a": {Summary: skill.Summary{Name: "a"}, Body: "Body A"},
+			"b": {Summary: skill.Summary{Name: "b"}, Body: "Body B"},
+			"c": {Summary: skill.Summary{Name: "c"}, Body: "Body C"},
+		},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv",
+		AgentName:    "tester",
+		Session: &session.Session{State: session.StateMap{
+			skill.LoadedKey("tester", "a"): []byte("1"),
+			skill.LoadedKey("tester", "b"): []byte("1"),
+			skill.LoadedOrderKey("tester"): []byte(`["a","b"]`),
+		}},
+		RunOptions: agent.RunOptions{
+			SkillLoads: []skill.LoadRequest{{Name: "c"}},
+		},
+	}
+	req := &model.Request{}
+	ch := make(chan *event.Event, 4)
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillLoadMode(SkillLoadModeSession),
+		WithMaxLoadedSkills(2),
+	)
+
+	p.ProcessRequest(context.Background(), inv, req, ch)
+
+	aLoaded, _ := inv.Session.GetState(skill.LoadedKey("tester", "a"))
+	require.Empty(t, aLoaded)
+	bLoaded, _ := inv.Session.GetState(skill.LoadedKey("tester", "b"))
+	require.NotEmpty(t, bLoaded)
+	cLoaded, _ := inv.Session.GetState(skill.LoadedKey("tester", "c"))
+	require.NotEmpty(t, cLoaded)
+	require.Contains(t, req.Messages[0].Content, "Body C")
+	require.NotContains(t, req.Messages[0].Content, "Body A")
+}
+
+func TestSkillsRequestProcessor_ProcessRequest_PrioritizesRelevantSkillsBeforeOverviewCap(
+	t *testing.T,
+) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "Economic Snapshot - Multi-Country", Description: "Collect economic indicators"},
+			{Name: "Recipe Cookbook - Multi-Dish", Description: "Build a cookbook from recipes"},
+			{Name: "Weather Data Collection", Description: "Collect weather data"},
+			{Name: "Weather Monitor - Multi-City", Description: "Monitor weather across cities"},
+		},
+	}
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewUserMessage("Monitor weather across multiple cities and compare current conditions."),
+		},
+	}
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillToolFlags(skillprofile.Flags{Load: true}),
+		WithMaxOverviewSkills(2),
+	)
+
+	p.ProcessRequest(context.Background(), &agent.Invocation{
+		AgentName: "tester",
+		Session:   &session.Session{},
+	}, req, nil)
+
+	require.NotEmpty(t, req.Messages)
+	sys := req.Messages[0].Content
+	require.Contains(t, sys, "- Weather Monitor - Multi-City: Monitor weather across cities")
+	require.Contains(t, sys, "- Weather Data Collection: Collect weather data")
+	require.Contains(t, sys, "Additional skills (use skill_load by name to access): Economic Snapshot - Multi-Country, Recipe Cookbook - Multi-Dish")
+}
+
+func TestSkillsRequestProcessor_LatencyDiagnosticsSpans(
+	t *testing.T,
+) {
+	recorder := useSpanRecorder(t)
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "calc", Description: "math ops"},
+		},
+		full: map[string]*skill.Skill{
+			"calc": {
+				Summary: skill.Summary{Name: "calc"},
+				Body:    "Calc body",
+			},
+		},
+		cacheHit:   true,
+		cacheKnown: true,
+	}
+
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		RunOptions: agent.RunOptions{
+			LatencyDiagnosticsEnabled: true,
+		},
+		Session: &session.Session{
+			State: session.StateMap{
+				skill.LoadedKey("tester", "calc"): []byte("1"),
+			},
+		},
+	}
+	req := &model.Request{}
+
+	ch := make(chan *event.Event, 2)
+	p := NewSkillsRequestProcessor(repo)
+	p.ProcessRequest(context.Background(), inv, req, ch)
+
+	spans := recorder.Ended()
+	require.NotNil(
+		t,
+		findProcessorSpan(spans, processorLatencySpanPromptRender),
+	)
+	require.NotNil(
+		t,
+		findProcessorSpan(spans, processorLatencySpanRepositoryLoad),
+	)
+	summarySpan := findProcessorSpan(
+		spans,
+		processorLatencySpanSummaryCompute,
+	)
+	require.NotNil(t, summarySpan)
+	require.True(
+		t,
+		processorSpanHasAttr(
+			summarySpan,
+			processorAttrSkillSummaryCount,
+			1,
+		),
+	)
+	cacheSpan := findProcessorSpan(
+		spans,
+		processorLatencySpanSummaryCache,
+	)
+	require.NotNil(t, cacheSpan)
+	require.True(
+		t,
+		processorSpanHasAttr(
+			cacheSpan,
+			processorAttrSkillCacheKnown,
+			true,
+		),
+	)
+	require.True(
+		t,
+		processorSpanHasAttr(
+			cacheSpan,
+			processorAttrSkillCacheHit,
+			true,
+		),
+	)
+}
+
+func findProcessorSpan(
+	spans []sdktrace.ReadOnlySpan,
+	name string,
+) sdktrace.ReadOnlySpan {
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+	return nil
+}
+
+func processorSpanHasAttr(
+	span sdktrace.ReadOnlySpan,
+	key string,
+	want any,
+) bool {
+	if span == nil {
+		return false
+	}
+	for _, kv := range span.Attributes() {
+		if string(kv.Key) == key &&
+			fmt.Sprint(kv.Value.AsInterface()) == fmt.Sprint(want) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSkillsRequestProcessor_ProcessRequest_ContextAwareRepoFiltersVisibleSkills(
@@ -389,14 +699,14 @@ func TestSkillsRequestProcessor_RepositoryResolverAndHints(t *testing.T) {
 	p := NewSkillsRequestProcessor(
 		nil,
 		WithSkillsRepositoryResolver(
-			func(*agent.Invocation) skill.Repository { return resolvedRepo },
+			func(context.Context, *agent.Invocation) skill.Repository { return resolvedRepo },
 		),
 		WithSkillsDirectoryHints(true),
 		WithSkillsFilePathHints(true),
 		WithSkillsCapabilityGuidance(""),
 		WithSkillsToolingGuidance(""),
 	)
-	require.Same(t, resolvedRepo, p.repositoryForInvocation(inv))
+	require.Same(t, resolvedRepo, p.repositoryForInvocation(context.Background(), inv))
 	p.ProcessRequest(context.Background(), inv, req, nil)
 
 	sys := req.Messages[0].Content
@@ -966,6 +1276,7 @@ func TestSkillsRequestProcessor_LoadOnlyGuidance(t *testing.T) {
 	require.NotContains(t, sys, "skill discovery and knowledge loading only")
 	require.Contains(t, sys, skillsToolingGuidanceHeader)
 	require.Contains(t, sys, "skill_load.docs or include_all_docs")
+	require.Contains(t, sys, "prefer loading it before repeating the same domain workflow")
 	require.NotContains(t, sys, "skill_list_docs")
 	require.NotContains(t, sys, "skill_select_docs")
 	require.NotContains(t, sys, "skill_run runs with CWD")
@@ -2049,6 +2360,14 @@ func TestSkillNameFromToolResponse_UnknownTool(t *testing.T) {
 	require.Empty(t, name)
 }
 
+func TestSkillNameFromToolResponse_SelectDocsInvalidJSON(t *testing.T) {
+	name := skillNameFromToolResponse(model.Message{
+		ToolName: skillToolSelectDocs,
+		Content:  "not valid json",
+	})
+	require.Empty(t, name)
+}
+
 func TestSkillsToolResultRequestProcessor_MaterializesIntoLastToolMsg(
 	t *testing.T,
 ) {
@@ -2452,6 +2771,49 @@ func TestSkillsToolResultRequestProcessor_SessionSummary_DisablesFallbackWithout
 		}
 		require.NotContains(t, m.Content, skillsLoadedContextHeader)
 	}
+}
+
+func TestSkillsToolResultRequestProcessor_DeclaredLoadOverridesSummaryFallbackSkip(
+	t *testing.T,
+) {
+	repo := &mockRepo{
+		sums: []skill.Summary{{Name: "calc", Description: "math"}},
+		full: map[string]*skill.Skill{
+			"calc": {Summary: skill.Summary{Name: "calc"}, Body: "B"},
+		},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session: &session.Session{State: session.StateMap{
+			skill.LoadedKey("tester", "calc"): []byte("1"),
+		}},
+		RunOptions: agent.RunOptions{
+			SkillLoads: []skill.LoadRequest{{Name: "calc"}},
+		},
+	}
+	inv.SetState(contentHasSessionSummaryStateKey, true)
+	req := &model.Request{Messages: []model.Message{
+		model.NewSystemMessage("sys"),
+		model.NewUserMessage("u"),
+	}}
+
+	p := NewSkillsToolResultRequestProcessor(
+		repo,
+		WithSkillsToolResultLoadMode(SkillLoadModeSession),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	var found bool
+	for _, message := range req.Messages {
+		if message.Role == model.RoleSystem &&
+			strings.Contains(message.Content, skillsLoadedContextHeader) {
+			found = true
+			require.Contains(t, message.Content, "[Loaded] calc")
+			require.Contains(t, message.Content, "B")
+		}
+	}
+	require.True(t, found)
 }
 
 func TestSkillsToolResultRequestProcessor_SessionSummary_SkipsFallbackWhenMaterialized(
@@ -3078,7 +3440,7 @@ func TestSkillsToolResultRequestProcessor_RepositoryResolver_MaterializesToolRes
 	p := NewSkillsToolResultRequestProcessor(
 		nil,
 		WithSkillsToolResultRepositoryResolver(
-			func(*agent.Invocation) skill.Repository {
+			func(context.Context, *agent.Invocation) skill.Repository {
 				return dynamicRepo
 			},
 		),
@@ -3132,7 +3494,7 @@ func TestSkillsToolResultRequestProcessor_RepositoryResolver_CanDisableStaticRep
 	p := NewSkillsToolResultRequestProcessor(
 		staticRepo,
 		WithSkillsToolResultRepositoryResolver(
-			func(*agent.Invocation) skill.Repository {
+			func(context.Context, *agent.Invocation) skill.Repository {
 				return nil
 			},
 		),
@@ -3148,7 +3510,7 @@ func TestSkillsToolResultRequestProcessor_RepositoryResolver_DoesNotPanicOnNilIn
 	p := NewSkillsToolResultRequestProcessor(
 		nil,
 		WithSkillsToolResultRepositoryResolver(
-			func(inv *agent.Invocation) skill.Repository {
+			func(_ context.Context, inv *agent.Invocation) skill.Repository {
 				require.Nil(t, inv)
 				return nil
 			},
@@ -3505,4 +3867,111 @@ func toolResponseEvent(
 			}},
 		},
 	}
+}
+
+// --- WithMaxOverviewSkills ---
+
+// fiveSkillsRepo returns a deterministic 5-skill mock repo used by the
+// overview-cap tests below.
+func fiveSkillsRepo() *mockRepo {
+	return &mockRepo{
+		sums: []skill.Summary{
+			{Name: "alpha", Description: "alpha desc"},
+			{Name: "beta", Description: "beta desc"},
+			{Name: "gamma", Description: "gamma desc"},
+			{Name: "delta", Description: "delta desc"},
+			{Name: "epsilon", Description: "epsilon desc"},
+		},
+	}
+}
+
+func runOverviewProcessor(
+	t *testing.T,
+	repo skill.Repository,
+	opts ...SkillsRequestProcessorOption,
+) string {
+	t.Helper()
+	inv := &agent.Invocation{
+		InvocationID: "inv-cap",
+		AgentName:    "tester",
+		Session:      &session.Session{State: session.StateMap{}},
+	}
+	req := &model.Request{Messages: []model.Message{model.NewSystemMessage("base sys")}}
+	ch := make(chan *event.Event, 4)
+	p := NewSkillsRequestProcessor(repo, opts...)
+	p.ProcessRequest(context.Background(), inv, req, ch)
+	require.NotEmpty(t, req.Messages)
+	require.Equal(t, model.RoleSystem, req.Messages[0].Role)
+	return req.Messages[0].Content
+}
+
+func TestSkillsRequestProcessor_OverviewCap_NoCapShowsAllDescriptions(
+	t *testing.T,
+) {
+	sys := runOverviewProcessor(t, fiveSkillsRepo())
+	for _, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
+		require.Contains(t, sys, "- "+name+": "+name+" desc",
+			"every skill should be rendered with full description when no cap is set")
+	}
+	require.NotContains(t, sys, "Additional skills",
+		"no truncation tail when uncapped")
+	require.NotContains(t, sys, "showing ",
+		"no truncation header when uncapped")
+}
+
+func TestSkillsRequestProcessor_OverviewCap_CapAtOrAboveTotalIsNoOp(
+	t *testing.T,
+) {
+	for _, cap := range []int{5, 10, 100} {
+		sys := runOverviewProcessor(t, fiveSkillsRepo(), WithMaxOverviewSkills(cap))
+		require.NotContains(t, sys, "Additional skills",
+			"cap >= total must not trigger truncation (cap=%d)", cap)
+		require.NotContains(t, sys, "showing ",
+			"cap >= total must not change the header (cap=%d)", cap)
+		for _, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
+			require.Contains(t, sys, "- "+name+":",
+				"every skill must still be fully rendered (cap=%d)", cap)
+		}
+	}
+}
+
+func TestSkillsRequestProcessor_OverviewCap_TruncatesWithDiscoveryTail(
+	t *testing.T,
+) {
+	sys := runOverviewProcessor(t, fiveSkillsRepo(), WithMaxOverviewSkills(2))
+
+	// First two summaries are rendered with full descriptions...
+	require.Contains(t, sys, "- alpha: alpha desc")
+	require.Contains(t, sys, "- beta: beta desc")
+	// ...the rest are not.
+	require.NotContains(t, sys, "- gamma: gamma desc")
+	require.NotContains(t, sys, "- delta: delta desc")
+	require.NotContains(t, sys, "- epsilon: epsilon desc")
+	// Truncation header announces the trimmed view.
+	require.Contains(t, sys, "showing 2 of 5")
+	// Discovery tail names every truncated skill so skill_load can
+	// still find them.
+	require.Contains(t, sys, "Additional skills (use skill_load by name to access): gamma, delta, epsilon")
+}
+
+func TestSkillsRequestProcessor_OverviewCap_PreservesRepoOrder(
+	t *testing.T,
+) {
+	// Custom mock that returns its summaries in an unsorted order; the
+	// processor must not re-sort, so the cap selects the FIRST two by
+	// repo order, not by alphabetical name.
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "zeta", Description: "zeta desc"},
+			{Name: "alpha", Description: "alpha desc"},
+			{Name: "mu", Description: "mu desc"},
+		},
+	}
+	sys := runOverviewProcessor(t, repo, WithMaxOverviewSkills(2))
+	require.Contains(t, sys, "- zeta: zeta desc",
+		"first repo-order entry must be rendered")
+	require.Contains(t, sys, "- alpha: alpha desc",
+		"second repo-order entry must be rendered")
+	require.NotContains(t, sys, "- mu: mu desc")
+	require.Contains(t, sys, "Additional skills (use skill_load by name to access): mu")
 }

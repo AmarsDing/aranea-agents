@@ -512,7 +512,7 @@ metricManager.Add(ctx, appName, evalSetID, evalMetric)
 - **评估指标 Metric** 用于定义评估指标配置，包含 `metricName`、`criterion`、`threshold`。`metricName` 用来选择评估器实现，`criterion` 用来描述评估准则，`threshold` 用来定义阈值。
 - **评估器 Evaluator** 读取实际轨迹与预期轨迹，按 `criterion` 计算 `score`，再与 `threshold` 对比得到通过或失败。
 - **评估器注册中心 Registry** 维护 `metricName` 与 Evaluator 的映射关系，内置评估器和自定义评估器都通过它接入。
-- **评估服务 Service** 负责执行用例、采集轨迹、调用评估器打分，返回评估结果。
+- **评估服务 Service** 负责执行用例、采集轨迹、调用评估器打分，并通过用例结果聚合器生成评估用例级别的分数与状态。
 - **AgentEvaluator** 通过 `evaluation.New` 创建并注入 Runner、Managers、Registry 等依赖，对用户接入层提供 `Evaluate` 方法。
 
 一次评估运行通常包含以下步骤。
@@ -536,6 +536,7 @@ EvalSet 是评估用例的集合，每个用例用 EvalCase 表达。默认模�
 ```go
 import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/epochtime"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/toolmock"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -592,6 +593,7 @@ type Invocation struct {
 	UserContent           *model.Message       // UserContent 是本轮用户输入，必填
 	FinalResponse         *model.Message       // FinalResponse 是最终响应，可选
 	Tools                 []*Tool              // Tools 是工具轨迹，可选
+	ToolMock              *toolmock.ToolMock   // ToolMock 是本轮工具返回 Mock 配置，可选
 	IntermediateResponses []*model.Message     // IntermediateResponses 是中间响应，可选
 	CreationTimestamp     *epochtime.EpochTime // CreationTimestamp 是创建时间戳，可选
 }
@@ -617,6 +619,8 @@ EvalSet 由 `evalSetId` 标识，包含多个 EvalCase，每个用例用 `evalId
 默认模式推理阶段有两种组织方式。配置 `conversation` 时，框架会按轮读取 `userContent` 作为输入；配置 `conversationScenario` 时，框架会先创建被测 Agent 的会话，再通过 UserSimulator 根据场景动态生成每一轮用户输入。两种方式都使用 `sessionInput.userId` 创建会话，必要时通过 `sessionInput.state` 注入初始状态，`contextMessages` 会在每次推理前注入额外上下文。Trace 模式下不会推理，而是直接使用 `actualConversation` 作为实际轨迹。
 
 EvalSet 中的 `tools` 与 `finalResponse` 用于描述工具轨迹与最终响应，是否需要填写取决于所选评估指标。
+
+`toolMock` 用于推理阶段替换工具执行返回，不是评估阶段的预期输出。它只作用于所在 invocation；配置后模型仍基于真实工具声明决定是否发起 tool call，框架只在工具执行点替换返回值，并把 mock 结果继续写入实际工具轨迹。
 
 Trace 模式下可以通过 `actualConversation` 显式配置实际输出轨迹。
 
@@ -851,6 +855,7 @@ type EvalMetric struct {
 	EvaluatorName string               // EvaluatorName 是评估器实现名，可选
 	Threshold     float64              // Threshold 是阈值
 	Criterion     *criterion.Criterion // Criterion 是评估准则
+	Extension     any                  // Extension 是调用方自定义元数据
 }
 
 // Criterion 表示评估准则集合
@@ -861,19 +866,22 @@ type Criterion struct {
 }
 ```
 
-`metricName` 默认用于从 Registry 选择评估器实现，常见内置评估器如下：
+`metricName` 用于从 Registry 选择评估器实现，并作为结果中的指标标识。常见内置评估器如下：
 
 - `tool_trajectory_avg_score`：工具轨迹一致性评估器，需要配置预期输出。
 - `final_response_avg_score`：最终响应评估器，不需要 LLM，需要配置预期输出。
 - `llm_final_response`：LLM 最终响应评估器，需要配置预期输出。
 - `llm_hallucinations`：LLM 幻觉评估器，基于实际轨迹中的上下文、工具调用与工具输出判断最终回答是否脱离证据，不需要配置预期输出。
 - `llm_judge_template`：LLM 模板评估器，使用 `criterion.llmJudge.template` 中的自定义 prompt、变量绑定和响应解析策略执行模板化评估。
+- `llm_verifier_pairwise`：LLM 成对比较评估器，用于比较实际侧与预期侧两份最终响应的质量，需要配置 LLMJudge 和评估细则 rubrics，裁判模型需要返回 logprobs。
 - `llm_rubric_critic`：LLM 细则批判评估器，需要配置预期输出以及 LLMJudge 和评估细则 rubrics。
 - `llm_rubric_reference_critic`：LLM 参考答案细则批判评估器，需要配置预期输出以及 LLMJudge 和评估细则 rubrics，并将参考答案作为质量锚点而不是精确匹配的 golden target。
 - `llm_rubric_response`：LLM 细则响应评估器，需要评估集提供会话输入并配置 LLMJudge 和评估细则 rubrics。
 - `llm_rubric_knowledge_recall`：LLM rubric 知识召回评估器，需要评估集提供会话输入并配置 LLMJudge 和评估细则 rubrics。
 
 `metricName` 需要在同一份指标文件中保持唯一，因为它同时作为结果中的指标标识。`threshold` 用于定义阈值，评估器会输出 `score` 并据此判断通过或失败。不同评估器对 `score` 的定义略有差异，但常见做法是对每轮 Invocation 计算分数，再对多轮结果做聚合得到整体分数。指标文件的数组顺序也会影响评估执行顺序与结果展示顺序。
+
+`extension` 用于携带调用方自定义的评估指标元数据，例如平台侧的权重、分组或展示配置。框架只负责随 `EvalMetric` 读取、存储和传递该字段，不解释其中的业务语义，也不承诺对其内容做深拷贝；自定义评估器、平台逻辑或自定义聚合逻辑可以按需读取。
 
 下面给出一个工具轨迹指标文件示例。
 
@@ -1003,6 +1011,7 @@ type JSONCriterion struct {
 	MatchStrategy   JSONMatchStrategy                        // MatchStrategy 表示匹配策略
 	NumberTolerance *float64                                 // NumberTolerance 表示数字容差
 	Valid           bool                                     // Valid 表示校验实际内容是否为合法 JSON。
+	Schema          json.RawMessage                          // Schema 表示用于校验实际内容的 JSON Schema。
 	Compare         func(actual, expected any) (bool, error) // Compare 自定义比较逻辑
 }
 
@@ -1010,7 +1019,19 @@ type JSONCriterion struct {
 type JSONMatchStrategy string
 ```
 
-对比时 actual 是实际值，expected 是预期值。如果在代码中提供了 `Compare`，JSONCriterion 会直接使用自定义逻辑。未提供 `Compare` 时，`valid` 用于先校验 actual 是否是一段完整且严格合法的 JSON，随后再按照 `matchStrategy` 决定是否执行内置 JSON 值匹配。当前 `matchStrategy` 支持 `exact` 与 `skip`，默认值为 `exact`；`exact` 表示按 JSON 结构精确匹配，`skip` 表示跳过内置 JSON 值匹配。因此，如果只希望做合法性校验、不希望继续比较 expected，应同时配置 `valid: true` 与 `matchStrategy: "skip"`。对象对比要求键集合一致，数组对比要求长度一致且顺序一致。数字对比支持数值容差，默认值为 `1e-6`。`ignoreTree` 用于忽略不稳定字段，叶子节点为 true 表示忽略该字段及其子树。`onlyTree` 用于只对比指定字段，未出现在字段树中的字段将被忽略；叶子节点为 true 表示对比该字段及其子树。`onlyTree` 与 `ignoreTree` 不能同时配置。两者同时非空时将报错。
+对比时，`actual` 是实际值，`expected` 是预期值。JSONCriterion 的执行顺序如下：
+
+1. 如果在代码中提供了 `Compare`，直接使用自定义逻辑，不再执行内置的 `valid`、`schema` 与 `matchStrategy`。
+2. 未提供 `Compare` 时，先执行 `valid` 校验，再执行 `schema` 校验，最后根据 `matchStrategy` 决定是否执行内置 JSON 值匹配。
+3. 如果只希望做合法性校验或 Schema 校验、不希望继续比较 `expected`，应配置 `valid: true` 或 `schema`，并设置 `matchStrategy: "skip"`。
+
+`schema` 字段本身是 JSON Schema 的原始 JSON 值，通常为对象，也支持布尔 schema；在 metrics JSON 中直接写 JSON Schema，不需要再编码成字符串。代码中可通过 `WithSchema` 传入序列化后的 JSON Schema 文本。
+
+用于校验的 `actual` 按运行时值处理：`json.RawMessage` 与 `[]byte` 会先按原始 JSON 解析，普通 `string` 默认作为已解码的字符串值校验。当同时配置 `valid: true` 与 `schema` 时，schema 校验会复用 `valid` 已解析出的 JSON 值。`schema` 为空时不执行 Schema 校验；未声明 `$schema` 时按 Draft 2020-12 编译；schema 解析失败或 actual 校验失败都会返回 `(false, error)`。
+
+当前 `matchStrategy` 支持 `exact` 与 `skip`，默认值为 `exact`。`exact` 表示按 JSON 结构精确匹配，`skip` 表示跳过内置 JSON 值匹配。对象对比要求键集合一致，数组对比要求长度一致且顺序一致。数字对比支持数值容差，默认值为 `1e-6`。
+
+`ignoreTree` 用于忽略不稳定字段，叶子节点为 true 表示忽略该字段及其子树。`onlyTree` 用于只对比指定字段，未出现在字段树中的字段将被忽略；叶子节点为 true 表示对比该字段及其子树。`onlyTree` 与 `ignoreTree` 不能同时配置，两者同时非空时将报错。
 
 配置示例片段如下，忽略 `id` 和 `metadata.timestamp` 字段，并放宽数字容差。
 
@@ -1036,6 +1057,24 @@ type JSONMatchStrategy string
       "id": true
     }
   }
+}
+```
+
+配置示例片段如下，只校验 actual 是否符合 JSON Schema，不继续对比 expected。
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "matchStrategy": "skip"
 }
 ```
 
@@ -1529,9 +1568,11 @@ import "trpc.group/trpc-go/trpc-agent-go/model"
 
 // LLMCriterion 表示 LLM Judge 准则
 type LLMCriterion struct {
-	Rubrics    []*Rubric             // Rubrics 是评估细则列表
-	JudgeModel *JudgeModelOptions    // JudgeModel 是裁判模型配置
-	Template   *JudgeTemplateOptions // Template 是模板评估器配置
+	Rubrics                  []*Rubric             // Rubrics 是评估细则列表
+	JudgeModel               *JudgeModelOptions    // JudgeModel 是裁判模型配置
+	SampleParallelismEnabled bool                  // SampleParallelismEnabled 是否启用样本并发请求
+	SampleParallelism        int                   // SampleParallelism 是样本请求并发上限
+	Template                 *JudgeTemplateOptions // Template 是模板评估器配置
 }
 
 // JudgeModelOptions 表示裁判模型配置
@@ -1550,9 +1591,22 @@ type JudgeModelOptions struct {
 type JudgeTemplateOptions struct {
 	Prompt                   string                     // Prompt 是裁判模板文本
 	ResponseScorerName       string                     // ResponseScorerName 是响应解析器名称
+	StructuredOutputName     string                     // StructuredOutputName 是结构化输出器名称
+	ResponseScorerOptions    *ResponseScorerOptions     // ResponseScorerOptions 是响应解析器配置
 	VariableBindings         []*TemplateVariableBinding // VariableBindings 是变量绑定列表
 	SampleAggregatorName     string                     // SampleAggregatorName 是样本聚合器名称，可选
 	InvocationAggregatorName string                     // InvocationAggregatorName 是多轮聚合器名称，可选
+}
+
+// ResponseScorerOptions 表示响应解析器专属配置
+type ResponseScorerOptions struct {
+	Categories []*CategoryScore // Categories 将分类标签映射为数值分数
+}
+
+// CategoryScore 将一个分类标签映射为数值分数
+type CategoryScore struct {
+	Label string  // Label 是分类标签
+	Score float64 // Score 是 0 到 1 之间的数值分数
 }
 
 // TemplateVariableBinding 表示单个模板变量绑定
@@ -1563,8 +1617,15 @@ type TemplateVariableBinding struct {
 
 // TemplateVariableSource 表示模板变量来源
 type TemplateVariableSource struct {
-	Scope TemplateVariableScope // Scope 是来源作用域
-	Field TemplateVariableField // Field 是来源字段
+	Scope    TemplateVariableScope     // Scope 是来源作用域
+	Field    TemplateVariableField     // Field 是来源字段
+	Selector *TemplateVariableSelector // Selector 是 trace step 选择器，可选
+	Path     string                    // Path 是可选 JSONPath，用于从来源值中继续提取子字段
+}
+
+// TemplateVariableSelector 表示模板变量选择器
+type TemplateVariableSelector struct {
+	NodeID string // NodeID 是要读取的 trace step 节点 ID
 }
 
 // TemplateVariableScope 表示模板变量来源作用域
@@ -1573,14 +1634,18 @@ type TemplateVariableScope string
 const (
 	TemplateVariableScopeActual   TemplateVariableScope = "actual"
 	TemplateVariableScopeExpected TemplateVariableScope = "expected"
+	TemplateVariableScopeMetric   TemplateVariableScope = "metric"
 )
 
 // TemplateVariableField 表示模板变量来源字段
 type TemplateVariableField string
 
 const (
-	TemplateVariableFieldUserContent   TemplateVariableField = "userContent"
-	TemplateVariableFieldFinalResponse TemplateVariableField = "finalResponse"
+	TemplateVariableFieldUserContent     TemplateVariableField = "userContent"
+	TemplateVariableFieldFinalResponse   TemplateVariableField = "finalResponse"
+	TemplateVariableFieldTraceStepInput  TemplateVariableField = "traceStepInput"
+	TemplateVariableFieldTraceStepOutput TemplateVariableField = "traceStepOutput"
+	TemplateVariableFieldRubrics         TemplateVariableField = "rubrics"
 )
 
 // Rubric 表示一条评估细则
@@ -1604,6 +1669,50 @@ type RubricContent struct {
 
 `numSamples` 用于控制每轮的采样次数，默认为 1，采样次数越大越能抵御裁判波动，但开销也会相应增加。
 
+`sampleParallelismEnabled` 用于控制同一轮内裁判样本请求是否可以并发执行。默认值为 `false`，保持原有串行行为。`sampleParallelism` 只在启用样本并发后作为并发上限生效。当 `sampleParallelismEnabled=true` 且 `sampleParallelism=0` 时，评估器使用 `runtime.GOMAXPROCS(0)`，并按 `numSamples` 截断并发数。当 `sampleParallelism>0` 时，评估器使用 `min(sampleParallelism, numSamples)`。如果模型服务有 QPS 或并发限制，建议显式配置较保守的 `sampleParallelism`。
+
+配置示例：
+
+不配置`sampleParallelismEnabled`时，默认保持串行：
+```json
+{
+  "llmJudge": {
+    "judgeModel": {
+      "providerName": "openai",
+      "modelName": "gpt-4o-mini",
+      "numSamples": 3
+    }
+  }
+}
+```
+配置`sampleParallelismEnabled=true`，但是不配置`sampleParallelism`时，开启并发，并发度默认使用`runtime.GOMAXPROCS(0)`，再按 `numSamples`截断：
+```json
+{
+  "llmJudge": {
+    "sampleParallelismEnabled": true,
+    "judgeModel": {
+      "providerName": "openai",
+      "modelName": "gpt-4o-mini",
+      "numSamples": 3
+    }
+  }
+}
+```
+配置`sampleParallelismEnabled=true`且配置`sampleParallelism=2`时，并发度为2:
+```json
+{
+  "llmJudge": {
+    "sampleParallelismEnabled": true,
+    "sampleParallelism": 2,
+    "judgeModel": {
+      "providerName": "openai",
+      "modelName": "gpt-4o-mini",
+      "numSamples": 3
+    }
+  }
+}
+```
+
 `providerName` 表示裁判模型的供应商，对应框架的 Model Provider。框架会按 `providerName` 与 `modelName` 创建裁判模型实例，常见取值有 `openai`、`anthropic` 和 `gemini`。Provider 的详细介绍可参考 [Provider](./model.md#provider)。
 
 `rubrics` 用于把一个指标拆成多条粒度清晰的评估细则。每条细则尽量保持独立，并能从用户输入与最终回答中直接验证，使裁判判断更稳定，也便于定位问题。`id` 用作稳定标识，`content.text` 是裁判实际执行的细则文本。
@@ -1612,22 +1721,59 @@ type RubricContent struct {
 
 目标 metric 使用 `criterion.llmJudge` 承载 rubric 列表。内置 rubric evaluator 会读取合并后的细则，并默认使用结构化输出让裁判按 `rubricScores` 返回逐条评分。每次 `Evaluate` 执行时，框架会先合并 metric 级 rubrics 与 `EvalCase.rubrics`，再在调用裁判模型前校验参与结构化输出的 merged rubric：每条 rubric 都必须具备非空且唯一的 `id`。如果校验失败，评估会返回类似 `llm judge rubric id is required for structured output` 或 `duplicate llm judge rubric id "accuracy"` 的错误。排查时请检查 metric 配置与 case 级 rubrics 合并后的 `criterion.llmJudge.rubrics` 及其 `id`。自定义 rubric evaluator 按同一字段读取即可。
 
-`template` 仅用于 `llm_judge_template`。它将模板化评估限制在“prompt 不同，但评估编排逻辑相同”的场景，不要求框架把所有评估器都表达成模板。模板评估器不读取 `rubrics`，评估标准应直接写入 `template.prompt`。
+`template` 仅用于 `llm_judge_template`。它将模板化评估限制在“prompt 不同，但评估编排逻辑相同”的场景，不要求框架把所有评估器都表达成模板。模板评估器默认不会像 `llm_rubric_*` 系列那样按结构化 `rubrics` 执行评估；如果模板需要引用当前指标的 rubric 内容，可以通过 `metric.rubrics` 显式绑定到 prompt。
 
 `template.prompt` 使用双大括号模板语法，例如 `{{question}}`、`{{answer}}`。每个占位符都必须在 `variableBindings` 中显式绑定；未绑定变量、未知变量或绑定解析失败都会直接报错，不存在“可选变量”或空字符串兜底。
 
-`template.variableBindings` 当前只支持从当前评分轮的 `actual` 与 `expected` 中取值：
+`template.variableBindings` 支持从当前评分轮的 `actual`、`expected` 以及当前指标配置 `metric` 中取值：
 
 - `actual.userContent`
 - `actual.finalResponse`
+- `actual.traceStepInput`
+- `actual.traceStepOutput`
 - `expected.finalResponse`
+- `metric.rubrics`
 
-其中 `expected.finalResponse` 要求当前预期轮必须存在 `finalResponse`；如果模板绑定了该字段，但预期轮只有占位 `userContent`、没有 `finalResponse`，评估会直接报错。
+其中 `actual.userContent`、`actual.finalResponse`、`expected.finalResponse` 分别渲染当前评分轮的用户输入、实际最终回答和预期最终回答；`actual.traceStepInput` 与 `actual.traceStepOutput` 需要在 `source.selector.nodeID` 中指定 trace step 的 `NodeID`，解析器会在当前 invocation 的 `executionTrace.steps` 中选择最后一个匹配 step，并分别读取 `Input.Text` 或 `Output.Text`。使用 trace source 时，发起评估需要传入 `agent.WithExecutionTraceEnabled(true)`；如果当前 actual invocation 没有 `ExecutionTrace`，评估会报错。`expected.finalResponse` 要求当前预期轮必须存在 `finalResponse`；如果模板绑定了该字段，但预期轮只有占位 `userContent`、没有 `finalResponse`，评估会直接报错。`metric.rubrics` 会把当前指标生效的 `criterion.llmJudge.rubrics` 渲染为 JSON 字符串，包含 case 级 rubric 合并后的结果。
+
+`source.path` 是可选字段，用于在来源值解析完成后继续提取 JSON 子字段。它支持受限 JSONPath：根选择器 `$`、对象字段 `.field`、数组下标 `[index]`，例如 `$[0].content.text`；不支持带引号的方括号 key、通配符、过滤表达式、字段名中包含点号的 key，也不支持数组下标后省略分隔符。来源值不是合法 JSON、路径语法非法、字段或下标不存在、越界或类型不匹配时，评估会失败。提取到字符串时会原样渲染，提取到对象或数组时会重新编码为 JSON 字符串。
+
+例如，模板可以把当前指标的第一条 rubric 文本绑定为一个变量：
+
+```json
+{
+  "templateVariable": "first_rubric",
+  "source": {
+    "scope": "metric",
+    "field": "rubrics",
+    "path": "$[0].content.text"
+  }
+}
+```
+
+如果 agent 的最终回答本身是合法 JSON 字符串，也可以用 `path` 提取其中字段。例如 `actual.finalResponse.content` 为 `{"answer":"Paris","confidence":0.98}` 时：
+
+```json
+{
+  "templateVariable": "answer",
+  "source": {
+    "scope": "actual",
+    "field": "finalResponse",
+    "path": "$.answer"
+  }
+}
+```
+
+普通自然语言文本、Markdown code fence 包裹的 JSON 或带额外前后缀的内容不会被自动裁剪或修正。
 
 `template.responseScorerName` 用于指定如何解析裁判输出，当前支持：
 
 - `single_score`：要求裁判输出 `{"score": number, "reason": string}`。
 - `rubric_scores`：要求裁判输出 `{"rubricScores": [{"id": string, "score": number, "reason": string}]}`。
+- `boolean`：要求裁判输出 `{"passed": boolean, "reason": string}`。`passed=true` 映射为分数 `1`，`passed=false` 映射为分数 `0`。
+- `categorical`：要求裁判输出 `{"category": string, "reason": string}`。需要通过 `template.responseScorerOptions.categories` 配置允许的分类标签，并把每个标签映射为 `0` 到 `1` 之间的数值分数。
+
+`template.structuredOutputName` 为可选字段。不配置时，模板评估器会尝试使用与 `responseScorerName` 同名的结构化输出器；当裁判 JSON schema 与响应解析器需要独立命名时，可以显式配置该字段，例如平台用自定义 schema 约束模型输出，再用另一个 scorer 名称解析结果。
 
 `template.sampleAggregatorName` 与 `template.invocationAggregatorName` 为可选字段，默认分别使用 `majority_vote` 与 `average`。模板评估器复用 LLM Judge 的统一多次采样与多轮聚合编排。
 
@@ -1922,6 +2068,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalresult"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/score"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
 )
 
@@ -1955,6 +2102,7 @@ type PerInvocationResult struct {
 type PerInvocationDetails struct {
 	Reason       string                    // Reason 是本轮打分解释
 	Score        float64                   // Score 是本轮得分
+	Value        *score.Value              // Value 是本轮类型化分数
 	RubricScores []*evalresult.RubricScore // RubricScores 是评估细则分数列表
 }
 ```
@@ -1962,6 +2110,8 @@ type PerInvocationDetails struct {
 Evaluator 的输入是两组 Invocation 列表。actuals 表示推理阶段采集到的实际轨迹，expecteds 表示 EvalSet 中的预期轨迹。框架会以 EvalCase 为粒度调用 Evaluate，actuals 与 expecteds 分别表示 EvalCase 的实际轨迹与预期轨迹，并按轮次对齐。大多数评估器要求两者轮数一致，否则会直接返回错误。
 
 Evaluator 的输出包含整体结果与逐轮明细。整体分数通常由逐轮分数聚合得到，整体状态通常由整体分数与 `threshold` 对比得到。对确定性评估器，`reason` 通常用于记录不匹配原因。对 LLM Judge 类评估器，`reason` 与 `rubricScores` 会用于保留裁判依据。
+
+`Score` 仍然是框架的统一数值分数，取值通常归一到 0 到 1，并继续用于阈值判断、状态计算和结果聚合。`Details.Value` 是可选的类型化分数明细，用于保留评估器原始输出形态，便于平台展示或做后续处理。`Details.Value` 存在时，由其中的 `kind` 决定读取哪个字段；未写入 value 表示没有类型化明细。框架内置三类类型化分数：`numeric`、`boolean` 与 `categorical`。当前内置数值型评估器会写入 `numeric` value；自定义评估器也可以在不改变 `Score` 语义的前提下写入 `boolean` 或 `categorical` value。
 
 #### 工具轨迹评估器
 
@@ -2045,6 +2195,7 @@ LLM Judge 类评估器使用裁判模型对输出进行语义打分，适合评�
 - `llm_final_response` 侧重最终回答与参考答案的一致性，通常要求 EvalSet 预期侧提供 `finalResponse` 作为参考。
 - `llm_hallucinations` 侧重检查最终回答是否能被运行过程中拿到的证据支撑，通常不要求 EvalSet 预期侧提供 `finalResponse`，更适合工具调用、RAG 与工作流编排等场景。
 - `llm_judge_template` 侧重通过 `criterion.llmJudge.template` 自定义裁判 prompt、变量绑定和响应解析策略，适合 prompt 不同但执行编排一致的模板化评估场景。
+- `llm_verifier_pairwise` 侧重比较实际侧与预期侧两份最终响应的质量，要求两侧分别提供 `finalResponse`，并配置 `criterion.llmJudge.rubrics`。
 - `llm_rubric_critic` 侧重以参考答案为 golden，对最终回答做按细则拆解的批判式评估，要求 EvalSet 预期侧提供 `finalResponse`，并配置 `criterion.llmJudge.rubrics`。
 - `llm_rubric_reference_critic` 侧重基于参考答案做按细则拆解的对照评估，但允许忠实的同义改写和不同句式，要求 EvalSet 预期侧提供 `finalResponse`，并配置 `criterion.llmJudge.rubrics`。
 - `llm_rubric_response` 侧重最终回答是否满足评估细则，要求配置 `criterion.llmJudge.rubrics`，并以每条细则的通过情况聚合分数。
@@ -2111,6 +2262,7 @@ type StructuredOutputMessagesConstructor interface {
 - `messagesconstructor/finalresponse` 用于 `llm_final_response`，将用户输入、实际最终回答与预期最终回答组织为裁判输入
 - `messagesconstructor/hallucination` 用于 `llm_hallucinations`，先将实际最终回答拆成句子或列表项，再结合运行过程中捕获到的上下文、工具调用与工具输出组织裁判输入
 - `messagesconstructor/template` 用于 `llm_judge_template`，按 `template.prompt` 与 `template.variableBindings` 渲染裁判输入
+- `messagesconstructor/verifierpairwise` 用于 `llm_verifier_pairwise`，将用户输入、实际最终回答、预期最终回答与 `rubrics` 组织为成对比较裁判输入
 - `messagesconstructor/rubriccritic` 用于 `llm_rubric_critic`，将用户输入、实际最终回答、预期最终回答与 `rubrics` 组织为裁判输入，并使用更严格的评估器视角提示词
 - `messagesconstructor/rubricreferencecritic` 用于 `llm_rubric_reference_critic`，将用户输入、实际最终回答、预期最终回答与 `rubrics` 组织为裁判输入，并将参考答案视为质量锚点而非逐字匹配目标
 - `messagesconstructor/rubricresponse` 用于 `llm_rubric_response`，将用户输入、实际最终回答与 `rubrics` 组织为裁判输入
@@ -2142,6 +2294,7 @@ type ResponseScorer interface {
 - `responsescorer/finalresponse` 用于 `llm_final_response`，解析裁判输出中的 valid 或 invalid 并映射为 1 或 0，同时保留 reasoning 作为 `reason`
 - `responsescorer/hallucination` 用于 `llm_hallucinations`，逐句解析裁判结论；被证据支撑或无需事实支撑的句子记 1 分，其余句子记 0 分，再按句级平均值得到该轮分数
 - `responsescorer/singlescore` 用于 `llm_judge_template` 的 `single_score` 模式，解析 `score` 与 `reason`
+- `responsescorer/verifierpairwise` 用于 `llm_verifier_pairwise`，根据裁判输出中 A 到 T 质量标签的 logprobs 计算两份候选的比较分数
 - `responsescorer/rubricscores` 用于 `llm_judge_template` 的 `rubric_scores` 模式，以及 `llm_rubric_critic`、`llm_rubric_reference_critic`、`llm_rubric_response` 与 `llm_rubric_knowledge_recall`，解析 `rubricScores` 并按逐条 `score` 平均得到该轮分数
 
 ##### 样本聚合算子 samplesaggregator
@@ -2318,31 +2471,138 @@ LLM 幻觉评估器对应的指标名称为 `llm_hallucinations`，属于 LLM Ju
 
 如果已经在代码中通过 `evaluation.WithJudgeRunner(...)` 注入裁判 Runner，则可以像完整示例那样将指标文件中的 `llmJudge` 保持为空对象。完整示例参见 [examples/evaluation/llm/hallucination](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/llm/hallucination)。该示例同时提供正常场景与 `-force-hallucination` 故意失败场景，便于本地验证评估通过与失败两条链路。
 
+##### LLM 成对比较评估器
+
+LLM 成对比较评估器对应的评估器名称为 `llm_verifier_pairwise`，属于 LLM Judge 类评估器。它用于比较实际侧与预期侧两份最终响应的质量，适合和 `bestofn.SelectionModePairwise` 配合，用于在线 Best-of-N 候选选择。
+
+该评估器参考 [LLM-as-a-Verifier](https://llm-as-a-verifier.notion.site/) 的质量标签与 logprobs expected score 方法。评估时，实际侧 `actual.finalResponse` 会作为 Candidate A，预期侧 `expected.finalResponse` 会作为 Candidate B。评估器会将用户输入、Candidate A、Candidate B 以及 `criterion.llmJudge.rubrics` 组织成裁判输入，让裁判模型分别给两份候选输出 A 到 T 的 20 档质量标签。A 表示最高质量等级，T 表示最低质量等级，越靠前的字母代表质量越高。
+
+该评估器读取质量标签 token 的 logprobs，并基于 logprobs 计算两份候选的期望质量分，再转换成 0 到 1 之间的比较分数。分数大于 0.5 表示 Candidate A 质量更高，小于 0.5 表示 Candidate B 质量更高，等于 0.5 表示质量相当。与 `SelectionModePairwise` 配合时，Best-of-N 会按这个比较分数累计胜场，并在胜场相同时比较分数偏离 0.5 的幅度。
+
+使用 `llm_verifier_pairwise` 时，裁判模型必须返回 logprobs，也就是 token 级概率分布。通过 `criterion.llmJudge.judgeModel` 直连裁判模型时，可以在 `generationConfig` 中开启 `logprobs`，并建议设置 `top_logprobs` 为 20，以覆盖 A 到 T 的质量标签分布。通过 `evaluation.WithJudgeRunner(...)` 或 `bestofn.WithJudgeRunner(...)` 注入裁判 Runner 时，需要在裁判 Agent 的生成配置中开启同样的能力。模型服务不支持或未返回 logprobs 时，评估会返回错误。
+
+LLM 成对比较评估指标配置示例如下：
+
+```json
+[
+  {
+    "metricName": "llm_verifier_quality",
+    "evaluatorName": "llm_verifier_pairwise",
+    "threshold": 0.5,
+    "criterion": {
+      "llmJudge": {
+        "judgeModel": {
+          "providerName": "openai",
+          "modelName": "deepseek-v4-flash",
+          "baseURL": "${JUDGE_MODEL_BASE_URL}",
+          "apiKey": "${JUDGE_MODEL_API_KEY}",
+          "generationConfig": {
+            "max_tokens": 1200,
+            "temperature": 0,
+            "stream": false,
+            "logprobs": true,
+            "top_logprobs": 20
+          }
+        },
+        "rubrics": [
+          {
+            "id": "quality",
+            "content": {
+              "text": "The final answer directly satisfies the user's request and does not introduce unsupported claims."
+            }
+          }
+        ]
+      }
+    }
+  }
+]
+```
+
 ##### LLM 模板评估器
 
-LLM 模板评估器对应的评估器名称为 `llm_judge_template`，属于 LLM Judge 类评估器。它适用于这样一类场景：评估执行链路本身没有变化，但希望通过自定义 prompt、变量绑定和响应解析策略来减少新评估器定义数量。与 `llm_rubric_*` 系列不同，模板评估器不消费结构化 `rubrics`，评估标准应直接写入 `criterion.llmJudge.template.prompt`。
+LLM 模板评估器对应的评估器名称为 `llm_judge_template`，属于 LLM Judge 类评估器。它适用于这样一类场景：评估执行链路本身没有变化，但希望通过自定义 prompt、变量绑定和响应解析策略来减少新评估器定义数量。与 `llm_rubric_*` 系列不同，模板评估器默认不会按结构化 `rubrics` 执行评估；评估标准通常直接写入 `criterion.llmJudge.template.prompt`，需要复用当前指标 rubric 时再通过 `metric.rubrics` 显式绑定。
 
-模板评估器通常配合 `evaluatorName: "llm_judge_template"` 使用，并让 `metricName` 仅承担指标实例名的职责。这样一份指标文件里可以同时配置多条模板评估指标，例如一条走 `single_score`，另一条走 `rubric_scores`，它们都复用同一个评估器实现，但结果中的 `metricName` 彼此独立。
+模板评估器通常配合 `evaluatorName: "llm_judge_template"` 使用，并让 `metricName` 仅承担指标实例名的职责。这样一份指标文件里可以同时配置多条模板评估指标，例如一条走 `single_score`，另一条走 `rubric_scores`，另一条走平台注册的 scorer，它们都复用同一个评估器实现，但结果中的 `metricName` 彼此独立。
 
 模板评估器的运行方式如下：
 
 1. `messagesconstructor/template` 使用 `template.prompt` 与 `template.variableBindings` 渲染当前轮唯一的裁判输入。
-2. 裁判模型按 `responseScorerName` 对应的结构化输出 schema 返回 JSON。
-3. `responsescorer/singlescore` 或 `responsescorer/rubricscores` 解析裁判输出。
+2. 裁判模型按 `structuredOutputName` 对应的结构化输出 schema 返回 JSON；如果未配置 `structuredOutputName`，则使用与 `responseScorerName` 同名的结构化输出器。
+3. `responseScorerName` 选中的响应解析器解析裁判输出。
 4. 样本聚合默认使用 `majority_vote`，多轮聚合默认使用 `average`，也可以分别通过 `template.sampleAggregatorName` 和 `template.invocationAggregatorName` 显式指定。
 
-变量绑定当前只支持以下来源：
+变量绑定支持以下来源：
 
 - `actual.userContent`
 - `actual.finalResponse`
+- `actual.traceStepInput`
+- `actual.traceStepOutput`
 - `expected.finalResponse`
+- `metric.rubrics`
 
-模板中的每个占位符都必须在 `variableBindings` 中显式绑定。`expected.finalResponse` 绑定要求当前预期轮存在 `finalResponse`；如果模板使用了该字段但预期轮没有最终回答，评估会直接报错。
+模板中的每个占位符都必须在 `variableBindings` 中显式绑定。`actual.traceStepInput` 与 `actual.traceStepOutput` 需要配置 `source.selector.nodeID`，解析器会选择当前 invocation execution trace 中最后一个 `NodeID` 匹配的 step。使用 trace source 时，评估调用方需要开启 `agent.WithExecutionTraceEnabled(true)`；`expected.finalResponse` 绑定要求当前预期轮存在 `finalResponse`，如果模板使用了该字段但预期轮没有最终回答，评估会直接报错。`metric.rubrics` 会把当前指标生效的 `criterion.llmJudge.rubrics` 渲染为 JSON 字符串，包含 case 级 rubric 合并后的结果。
 
-模板评估器当前支持两种响应解析模式：
+`source.path` 可以从来源值中继续提取 JSON 子字段，支持 `$`、`.field`、`[index]` 这类受限 JSONPath；不支持带引号的方括号 key、通配符、过滤表达式、字段名中包含点号的 key，也不支持数组下标后省略分隔符。来源值不是合法 JSON 或路径解析失败时，评估会失败。例如：
+
+```json
+{
+  "templateVariable": "first_rubric",
+  "source": {
+    "scope": "metric",
+    "field": "rubrics",
+    "path": "$[0].content.text"
+  }
+}
+```
+
+如果 agent 的最终回答本身是合法 JSON 字符串，也可以用 `path` 提取其中字段。例如 `actual.finalResponse.content` 为 `{"answer":"Paris","confidence":0.98}` 时：
+
+```json
+{
+  "templateVariable": "answer",
+  "source": {
+    "scope": "actual",
+    "field": "finalResponse",
+    "path": "$.answer"
+  }
+}
+```
+
+模板评估器当前内置四种响应解析模式：
 
 - `single_score`：裁判返回 `score` 与 `reason`
 - `rubric_scores`：裁判返回 `rubricScores`
+- `boolean`：裁判返回 `passed` 与 `reason`
+- `categorical`：裁判返回 `category` 与 `reason`；需要通过 `responseScorerOptions.categories` 将标签映射为数值分数
+
+平台可以注册自定义模板 operator，并在创建 evaluator 时注入。自定义结构化输出器是可选的；当需要用平台自己的 JSON schema 约束裁判模型输出时再注册。
+
+```go
+opRegistry := operatorregistry.New()
+_ = opRegistry.RegisterResponseScorer("platform_score", platformScorer{})
+_ = opRegistry.RegisterStructuredOutput("platform_schema", platformStructuredOutput{})
+
+evalRegistry := evaluatorregistry.New(
+	evaluatorregistry.WithLLMOperatorRegistry(opRegistry),
+)
+
+agentEvaluator, err := evaluation.New(
+	"app",
+	runner,
+	evaluation.WithRegistry(evalRegistry),
+)
+```
+
+指标配置中引用注册名称即可：
+
+```json
+{
+  "template": {
+    "responseScorerName": "platform_score",
+    "structuredOutputName": "platform_schema"
+  }
+}
+```
 
 模板评估指标配置示例如下：
 
@@ -2400,6 +2660,83 @@ LLM 模板评估器对应的评估器名称为 `llm_judge_template`，属于 LLM
 ```
 
 完整示例参见 [examples/evaluation/llm/template](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/llm/template)。该示例同时演示了 `single_score` 与 `rubric_scores` 两种模板评估指标。
+
+如果裁判 prompt 需要引用 agent 执行过程中的某个 trace step 输出，可以按下面方式绑定变量。该类 metric 依赖 execution trace，评估时需要传入 `agent.WithExecutionTraceEnabled(true)`。
+
+```json
+[
+  {
+    "metricName": "weather_trace_grounded_template",
+    "evaluatorName": "llm_judge_template",
+    "threshold": 1.0,
+    "criterion": {
+      "llmJudge": {
+        "judgeModel": {
+          "providerName": "openai",
+          "modelName": "gpt-5.2",
+          "baseURL": "${OPENAI_BASE_URL}",
+          "apiKey": "${OPENAI_API_KEY}",
+          "numSamples": 1,
+          "generationConfig": {
+            "max_tokens": 256,
+            "temperature": 0,
+            "stream": false
+          }
+        },
+        "template": {
+          "prompt": "你是裁判，需要判断候选回答是否基于指定的 ToolNode trace step，并且是否与参考答案一致。\\n\\n用户问题：\\n{{question}}\\n\\n天气 ToolNode 输入快照：\\n{{tool_input}}\\n\\n天气 ToolNode 输出快照：\\n{{tool_output}}\\n\\n参考答案：\\n{{reference}}\\n\\n候选回答：\\n{{answer}}\\n\\n请返回 JSON：\\n- score: 如果候选回答由天气 ToolNode 的输入和输出快照支持，并且与参考答案事实等价，则返回 1。\\n- score: 否则返回 0。\\n- reason: 用一句简洁的话说明原因。\\n\\n轻微措辞和标点差异可以视为等价。",
+          "responseScorerName": "single_score",
+          "variableBindings": [
+            {
+              "templateVariable": "question",
+              "source": {
+                "scope": "actual",
+                "field": "userContent"
+              }
+            },
+            {
+              "templateVariable": "answer",
+              "source": {
+                "scope": "actual",
+                "field": "finalResponse"
+              }
+            },
+            {
+              "templateVariable": "reference",
+              "source": {
+                "scope": "expected",
+                "field": "finalResponse"
+              }
+            },
+            {
+              "templateVariable": "tool_input",
+              "source": {
+                "scope": "actual",
+                "field": "traceStepInput",
+                "selector": {
+                  "nodeID": "template-trace-agent/weather_lookup"
+                }
+              }
+            },
+            {
+              "templateVariable": "tool_output",
+              "source": {
+                "scope": "actual",
+                "field": "traceStepOutput",
+                "selector": {
+                  "nodeID": "template-trace-agent/weather_lookup"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+]
+```
+
+完整 trace 模板示例参见 [examples/evaluation/llm/templatetrace](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/llm/templatetrace)。该示例演示了如何开启 execution trace，并通过 `source.selector.nodeID` 将模板变量绑定到指定 trace step 的输入或输出。
 
 ##### LLM 细则批判评估器
 
@@ -2619,6 +2956,7 @@ Registry 用于管理评估器注册关系，评估执行会用 `metricName` 从
 - `final_response_avg_score`：最终响应评估器，不需要 LLM，需要配置预期输出。
 - `llm_final_response`：LLM 最终响应评估器，需要配置预期输出。
 - `llm_hallucinations`：LLM 幻觉评估器，基于实际轨迹中的上下文、工具调用与工具输出判断最终回答是否脱离证据，不需要配置预期输出。
+- `llm_verifier_pairwise`：LLM 成对比较评估器，用于比较实际侧与预期侧两份最终响应的质量，需要配置 LLMJudge 和评估细则 rubrics，裁判模型需要返回 logprobs。
 - `llm_rubric_critic`：LLM 细则批判评估器，需要配置预期输出以及 LLMJudge 和评估细则 rubrics。
 - `llm_rubric_reference_critic`：LLM 参考答案细则批判评估器，需要配置预期输出以及 LLMJudge 和评估细则 rubrics，并将参考答案作为质量锚点。
 - `llm_rubric_response`：LLM 细则响应评估器，需要评估集提供会话输入并配置 LLMJudge 和评估细则 rubrics。
@@ -2642,6 +2980,39 @@ agentEvaluator, err := evaluation.New(
 )
 ```
 
+#### 自定义评估器
+
+当内置评估器不能覆盖业务规则时，可以实现 `evaluator.Evaluator` 并注册到 Registry。指标文件通过 `metricName` 选择评估器实现，并把它作为结果中的指标标识。如果评估器需要额外配置，可以放在 `extension` 中，由自定义评估器自行读取。
+
+指标配置示例：
+
+```json
+{
+  "metricName": "support_response_policy",
+  "threshold": 1,
+  "extension": {
+    "requiredPhrase": "support"
+  }
+}
+```
+
+代码接入示例：
+
+```go
+reg := registry.New()
+if err := reg.Register("support_response_policy", responsePolicyEvaluator{}); err != nil {
+	log.Fatalf("register evaluator: %v", err)
+}
+
+agentEvaluator, err := evaluation.New(
+	appName,
+	runner,
+	evaluation.WithRegistry(reg),
+)
+```
+
+完整可运行示例参见 [examples/evaluation/metricextension](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/metricextension)。
+
 ### 评估结果 EvalResult
 
 EvalResult 用于承载评估输出。一次评估运行会生成一个 EvalSetResult，按 EvalCase 组织结果，并记录每条评估指标的分数、状态与逐轮明细。
@@ -2655,6 +3026,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/epochtime"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/score"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
 )
 
@@ -2671,6 +3043,8 @@ type EvalSetResult struct {
 type EvalCaseResult struct {
 	EvalSetID                     string                           // EvalSetID 是评估集标识
 	EvalID                        string                           // EvalID 是用例标识
+	RunID                         int                              // RunID 是运行序号
+	Score                         float64                          // Score 是用例级聚合分数
 	FinalEvalStatus               status.EvalStatus                // FinalEvalStatus 是最终状态
 	ErrorMessage                  string                           // ErrorMessage 是错误信息
 	OverallEvalMetricResults      []*EvalMetricResult              // OverallEvalMetricResults 是整体指标结果列表
@@ -2693,6 +3067,7 @@ type EvalMetricResult struct {
 type EvalMetricResultDetails struct {
 	Reason       string         // Reason 是该指标的打分解释
 	Score        float64        // Score 是该指标得分
+	Value        *score.Value   // Value 是类型化分数明细
 	RubricScores []*RubricScore // RubricScores 是评估细则分数列表
 }
 
@@ -2711,7 +3086,13 @@ type RubricScore struct {
 }
 ```
 
-整体结果会将每个指标的输出写入 `overallEvalMetricResults`，逐轮明细会写入 `evalMetricResultPerInvocation` 并保留 `actualInvocation` 与 `expectedInvocation` 两侧轨迹，便于问题定位。
+整体结果会将每个指标的输出写入 `overallEvalMetricResults`，逐轮明细会写入 `evalMetricResultPerInvocation` 并保留 `actualInvocation` 与 `expectedInvocation` 两侧轨迹，便于问题定位。`EvalCaseResult.score` 表示评估用例级别的聚合分数，`finalEvalStatus` 表示评估用例级别的最终状态；它们由 Service 的用例结果聚合器计算。
+
+指标明细中的 `details.value` 表示类型化分数明细。它不替代 `score`，也不参与框架默认的阈值判断；默认通过逻辑仍然由评估器产出的数值 `score` 与 `threshold` 决定。`details.value` 存在时，由 `kind` 决定读取哪个字段；没有 `details.value` 表示评估器没有提供类型化明细。数值 0 和布尔值 false 都是有效值。类型化分数主要用于逐轮指标明细；整体指标明细保留聚合后的数值结果，不默认聚合类型化分数。平台如果需要区分“数值分”“布尔结论”或“分类标签”，可以读取 `details.value.kind` 与对应字段：
+
+- `kind: "numeric"` 使用 `numeric` 字段，例如 `{"kind": "numeric", "numeric": 0.9}`。
+- `kind: "boolean"` 使用 `boolean` 字段，例如 `{"kind": "boolean", "boolean": true}`。
+- `kind: "categorical"` 使用 `categorical` 字段，例如 `{"kind": "categorical", "categorical": "good"}`。
 
 对于 `llm_judge_template`，结果中的 `criterion.llmJudge.template.prompt` 需要区分两层语义：
 
@@ -2727,13 +3108,42 @@ type RubricScore struct {
   "evalCaseResults": [
     {
       "evalId": "calc_add",
+      "score": 1,
       "finalEvalStatus": "passed",
       "overallEvalMetricResults": [
         {
           "metricName": "tool_trajectory_avg_score",
           "score": 1,
           "evalStatus": "passed",
-          "threshold": 1
+          "threshold": 1,
+          "details": {
+            "score": 1
+          }
+        }
+      ],
+      "evalMetricResultPerInvocation": [
+        {
+          "actualInvocation": {
+            "invocationId": "turn-1"
+          },
+          "expectedInvocation": {
+            "invocationId": "turn-1"
+          },
+          "evalMetricResults": [
+            {
+              "metricName": "tool_trajectory_avg_score",
+              "score": 1,
+              "evalStatus": "passed",
+              "threshold": 1,
+              "details": {
+                "score": 1,
+                "value": {
+                  "kind": "numeric",
+                  "numeric": 1
+                }
+              }
+            }
+          ]
         }
       ]
     }
@@ -2928,6 +3338,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalresult"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
 )
 
 // Service 是评估服务接口
@@ -2977,6 +3388,27 @@ type EvalSetRunResult struct {
 	EvalSetID       string                       // EvalSetID 是评估集标识
 	EvalCaseResults []*evalresult.EvalCaseResult // EvalCaseResults 是评估用例结果
 }
+
+// EvalCaseResultAggregator 聚合单个评估用例下的多条指标结果
+type EvalCaseResultAggregator interface {
+	Aggregate(ctx context.Context, input *EvalCaseResultAggregationInput) (*EvalCaseResultAggregationResult, error)
+}
+
+// EvalCaseResultAggregationInput 是聚合单个评估用例结果所需的上下文
+type EvalCaseResultAggregationInput struct {
+	AppName         string                         // AppName 是应用名
+	EvalSetID       string                         // EvalSetID 是评估集标识
+	EvalCase        *evalset.EvalCase              // EvalCase 是当前评估用例配置
+	InferenceResult *InferenceResult               // InferenceResult 是当前评估用例的推理结果
+	EvalMetrics     []*metric.EvalMetric           // EvalMetrics 是实际执行的评估指标列表
+	MetricResults   []*evalresult.EvalMetricResult // MetricResults 是对应指标的整体结果
+}
+
+// EvalCaseResultAggregationResult 是聚合后的评估用例结果
+type EvalCaseResultAggregationResult struct {
+	Score  float64           // Score 是用例级分数
+	Status status.EvalStatus // Status 是用例级状态
+}
 ```
 
 框架提供了 Service 的本地实现，依赖 Runner 执行推理，EvalSetManager 读取 EvalSet，Registry 定位评估器实现。
@@ -2999,7 +3431,98 @@ Local 实现会通过 Registry 按 `MetricName` 获取 Evaluator，并调用 `Ev
 
 当 `evalMode` 为 `trace` 时，推理阶段跳过 Runner；若配置了 `actualConversation`，则实际轨迹 actuals 来自 `actualConversation`，而 `conversation` 继续表示预期轨迹。若未配置 `actualConversation`，则 `conversation` 会被视为实际轨迹，评估阶段再基于该轨迹构造仅保留 `userContent` 的占位 expecteds；开启 `expectedRunnerEnabled` 时，评估阶段则直接复用推理阶段已经生成好的 `ExpectedInferences`。
 
-评估完成后会生成 `EvalSetRunResult` 并返回给 AgentEvaluator。
+所有指标评估完成后，Local 实现会把当前用例、实际推理结果、实际执行的指标列表和对应指标结果交给 `EvalCaseResultAggregator`，由它计算 `EvalCaseResult.score` 与 `EvalCaseResult.finalEvalStatus`。评估完成后会生成 `EvalSetRunResult` 并返回给 AgentEvaluator。
+
+#### 评估用例结果聚合
+
+一个评估用例可以包含多个指标。各 Evaluator 先产出指标级 `score`、`threshold` 与 `evalStatus`，再由 `EvalCaseResultAggregator` 汇总为用例级 `score` 和 `finalEvalStatus`。默认聚合器沿用框架原有的全指标通过语义，任一指标失败则用例失败，没有失败且至少一个指标通过则用例通过，没有可用指标结果则用例未评估。默认分数是二值的，用例通过时为 1，失败或未评估时为 0。
+
+`EvalCaseResultAggregator` 接口定义如下。
+
+```go
+import (
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalresult"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
+)
+
+type EvalCaseResultAggregator interface {
+	// Aggregate 聚合单个评估用例的指标结果
+	Aggregate(ctx context.Context, input *EvalCaseResultAggregationInput) (*EvalCaseResultAggregationResult, error)
+}
+
+type EvalCaseResultAggregationInput struct {
+	AppName         string                         // AppName 是应用名
+	EvalSetID       string                         // EvalSetID 是评估集标识
+	EvalCase        *evalset.EvalCase              // EvalCase 是当前评估用例配置
+	InferenceResult *InferenceResult               // InferenceResult 是当前评估用例的推理结果
+	EvalMetrics     []*metric.EvalMetric           // EvalMetrics 是实际执行的评估指标列表
+	MetricResults   []*evalresult.EvalMetricResult // MetricResults 是对应指标的整体结果
+}
+
+type EvalCaseResultAggregationResult struct {
+	Score  float64           // Score 是用例级分数
+	Status status.EvalStatus // Status 是用例级状态
+}
+```
+
+下面示例按 `EvalMetric.Extension.weight` 计算加权分。完整示例参见 [examples/evaluation/caseaggregation](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/caseaggregation)。
+
+```go
+import (
+	"trpc.group/trpc-go/trpc-agent-go/evaluation"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/service"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
+)
+
+type weightedAggregator struct {
+	Threshold float64
+}
+
+func (a weightedAggregator) Aggregate(ctx context.Context, input *service.EvalCaseResultAggregationInput) (*service.EvalCaseResultAggregationResult, error) {
+	var totalScore float64
+	var totalWeight float64
+	for i, evalMetric := range input.EvalMetrics {
+		weight := weightFromExtension(evalMetric.Extension)
+		totalScore += input.MetricResults[i].Score * weight
+		totalWeight += weight
+	}
+	if totalWeight == 0 {
+		return &service.EvalCaseResultAggregationResult{Status: status.EvalStatusNotEvaluated}, nil
+	}
+	score := totalScore / totalWeight
+	resultStatus := status.EvalStatusFailed
+	if score >= a.Threshold {
+		resultStatus = status.EvalStatusPassed
+	}
+	return &service.EvalCaseResultAggregationResult{Score: score, Status: resultStatus}, nil
+}
+
+func weightFromExtension(extension any) float64 {
+	values, ok := extension.(map[string]any)
+	if !ok {
+		return 1
+	}
+	weight, ok := values["weight"].(float64)
+	if !ok || weight <= 0 {
+		return 1
+	}
+	return weight
+}
+
+agentEvaluator, err := evaluation.New(
+	appName,
+	runner,
+	evaluation.WithEvalCaseResultAggregator(weightedAggregator{
+		Threshold: 0.8,
+	}),
+)
+```
+
+如果自定义聚合器返回错误，Local 实现会将当前用例标记为 `failed`，并把错误信息写入 `errorMessage`。
+
+读取结果时需要区分用例级结果和指标级结果。自定义聚合器只决定用例级 `score` 与 `finalEvalStatus`。单条指标自己的 `score`、`threshold` 与 `evalStatus` 仍由对应 Evaluator 计算，并保留在 `overallEvalMetricResults` 中。因此，自定义聚合策略可能让某个指标失败但用例整体通过。
 
 ### AgentEvaluator
 
@@ -3039,11 +3562,11 @@ type EvaluationCaseResult struct {
 
 默认情况下，`evaluation.New` 会创建 AgentEvaluator 并使用 InMemory 的 EvalSetManager、MetricManager、EvalResultManager 与默认 Registry，同时创建本地 Service。若希望从本地文件读取 EvalSet 与指标配置，并将结果写入文件，需要显式注入 Local Manager。
 
-AgentEvaluator 支持通过 `WithNumRuns` 对同一评估集运行多次。聚合时会按用例维度汇总多次运行的结果，对同名指标取平均分并与阈值对比得到聚合状态，聚合结果写入 `MetricResults`，每次运行的原始结果保留在 `EvalCaseResults`。
+AgentEvaluator 支持通过 `WithNumRuns` 对同一评估集运行多次。默认运行 1 次时，`OverallStatus` 来自该次运行的 `EvalCaseResult.finalEvalStatus`；当 `WithNumRuns` 大于 1 时，聚合会按用例维度对同名指标取平均分并与阈值对比，再由聚合后的指标状态得到用例 `OverallStatus`。每次运行的原始结果保留在 `EvalCaseResults`，聚合后的指标结果写入 `MetricResults` 用于展示和诊断。
 
 ### NumRuns 重复运行次数
 
-由于 Agent 的运行过程可能存在不确定性，`evaluation.WithNumRuns` 提供了重复运行机制，用于降低单次运行带来的偶然性。默认运行次数为 1 次，指定 `evaluation.WithNumRuns(n)` 后，同一个评估集会在同一次 Evaluate 中完成 n 次推理与评估，并在汇总时以用例为粒度聚合多次运行的分数，默认按同名指标的平均分得到聚合结果。
+由于 Agent 的运行过程可能存在不确定性，`evaluation.WithNumRuns` 提供了重复运行机制，用于降低单次运行带来的偶然性。默认运行次数为 1 次，指定 `evaluation.WithNumRuns(n)` 且 n 大于 1 后，同一个评估集会在同一次 Evaluate 中完成 n 次推理与评估，并在汇总时以用例为粒度对同名指标取平均分，再根据聚合后的指标状态计算用例状态。
 
 重复运行次数不会线性增加评估结果文件的数量。一次 Evaluate 只会写入一份评估结果文件，对应一个 EvalSetResult；当 `NumRuns` 大于 1 时，文件内部会包含多次运行的明细结果，同一用例在不同运行中的结果会分别出现在 `EvalCaseResults` 中，并通过 `runId` 区分。
 
@@ -3195,6 +3718,144 @@ agentEvaluator, err := evaluation.New(
 	evaluation.WithExpectedRunner(expectedRunner),
 )
 ```
+
+### ToolMock 模拟工具执行结果
+
+当评估目标依赖外部工具、实时服务或不稳定数据时，可以在 EvalSet 的单轮 `Invocation` 中配置 `toolMock`，让推理阶段在工具执行点返回指定结果。ToolMock 不会改变模型可见的工具声明，也不会强制模型调用工具；模型仍按真实工具声明决定是否发起 tool call，框架只在命中工具名和参数规则后替换工具返回。
+
+`toolMock` 只支持配置在 `Invocation` 级别。`EvalCase` 和 `Metric` 不配置 ToolMock；`conversationScenario` 没有预声明 invocation，当前不支持声明式 ToolMock。
+
+结构定义如下：
+
+```go
+package toolmock
+
+type ToolMock struct {
+	Actual   []*Tool // Actual 作用于被测 Runner 推理
+	Expected []*Tool // Expected 作用于 ExpectedRunner 推理
+}
+
+type Tool struct {
+	Name         string          // Name 是需要 Mock 的工具名
+	Arguments    *ArgumentsMatch // Arguments 是工具入参匹配规则；为空时只按工具名匹配
+	Result       any             // Result 是静态工具返回
+	LLMGenerator *LLMGenerator   // LLMGenerator 表示由 ToolMockRunner 动态生成工具返回
+}
+
+type ArgumentsMatch struct {
+	Ignore          bool           // Ignore 表示忽略入参，只按工具名匹配
+	Expected        any            // Expected 是期望工具入参
+	OnlyTree        map[string]any // OnlyTree 只比较指定字段
+	IgnoreTree      map[string]any // IgnoreTree 忽略指定字段
+	NumberTolerance *float64       // NumberTolerance 是数字比较容差；默认 0
+}
+
+type LLMGenerator struct {
+	Prompt string // Prompt 是 ToolMockRunner 的 instruction
+}
+```
+
+`actual` 与 `expected` 分别作用于被测 Runner 与 ExpectedRunner。两侧可以为同一个工具配置不同结果，用于固定候选实现与参考实现各自看到的外部环境。同一个工具名可以出现多次，按配置顺序匹配，先命中先返回；更具体的参数规则应放在前面，忽略参数的兜底规则放在后面。
+
+参数匹配通常按使用意图选择写法。最常见的是只按工具名固定返回，此时省略 `arguments` 即可：
+
+```json
+{
+  "name": "get_weather",
+  "result": {"condition": "sunny"}
+}
+```
+
+如果同一个工具需要按入参返回不同结果，再配置 `arguments.expected`。默认会完整比较 JSON，数字也必须精确相等；只关心部分稳定字段时用 `onlyTree`，需要跳过不稳定字段时用 `ignoreTree`，数字允许误差时再配置非负的 `numberTolerance`。
+
+```json
+{
+  "name": "get_weather",
+  "arguments": {
+    "expected": {"city": "Shenzhen", "date": "2026-07-01"},
+    "onlyTree": {"city": true, "date": true}
+  },
+  "result": {"condition": "sunny"}
+}
+```
+
+`ignore=true` 是“显式忽略入参”的写法，语义等价于省略 `arguments`，适合希望在配置中明确标注“不比较参数”的场景。使用 `ignore=true` 时不要再配置 `expected`、`onlyTree`、`ignoreTree` 或 `numberTolerance`；`onlyTree` 与 `ignoreTree` 也不要同时配置。
+
+静态返回示例如下：
+
+```json
+{
+  "evalId": "weather-case",
+  "conversation": [
+    {
+      "invocationId": "turn-1",
+      "userContent": {
+        "role": "user",
+        "content": "深圳明天适合户外活动吗？"
+      },
+      "toolMock": {
+        "actual": [
+          {
+            "name": "get_weather",
+            "arguments": {
+              "expected": {"city": "Shenzhen", "date": "2026-07-01"},
+              "onlyTree": {"city": true, "date": true}
+            },
+            "result": {"city": "Shenzhen", "condition": "sunny", "temperature": 28}
+          }
+        ],
+        "expected": [
+          {
+            "name": "get_weather",
+            "result": {"city": "Shenzhen", "condition": "sunny", "temperature": 28}
+          }
+        ]
+      }
+    }
+  ],
+  "sessionInput": {
+    "appName": "weather-eval-app",
+    "userId": "demo-user"
+  }
+}
+```
+
+如果配置了某个工具名的 ToolMock，但工具调用参数没有命中任何规则，本轮推理会失败，而不是回退到真实工具执行。这样可以避免评估在 mock 配置失效时静默访问真实外部依赖。
+
+除了静态 `result`，也可以使用 `llmGenerator` 由单独的 ToolMockRunner 动态生成工具返回。`prompt` 会作为 ToolMockRunner 的 instruction，本次工具调用参数 JSON 会作为 user message。未配置工具调用参数时 user message 为 `{}`。使用 `llmGenerator` 时，需要在创建 AgentEvaluator 时注入 ToolMockRunner。
+
+```json
+{
+  "toolMock": {
+    "actual": [
+      {
+        "name": "search_hotels",
+        "arguments": {"ignore": true},
+        "llmGenerator": {
+          "prompt": "Return only the tool result JSON, for example {\"hotels\":[]}."
+        }
+      }
+    ]
+  }
+}
+```
+
+```go
+mockRunner := runner.NewRunner(appName, toolMockAgent)
+agentEvaluator, err := evaluation.New(
+	appName,
+	actualRunner,
+	evaluation.WithToolMockRunner(mockRunner),
+)
+```
+
+直接使用 `evaluation/service` 层 API 时，可以通过 `service.WithToolMockRunner(mockRunner)` 注入同一个 ToolMockRunner。
+
+如果工具声明包含类型为 `object` 的 `OutputSchema`，框架会在调用 ToolMockRunner 时复用该 schema 作为结构化输出约束；schema name 使用真实工具声明名，description 使用工具输出 schema 的描述。ToolMock 不定义额外的输出 schema 字段，也不要求用户为 mock 结果单独配置 schema。未使用结构化输出时，ToolMockRunner 的最终文本如果能解析为 JSON，则使用解析后的结构；否则使用原始文本。空输出和 JSON `null` 不合法。
+
+Trace 模式下 actual 侧不运行被测 Runner，因此 `toolMock.actual` 不会生效。如果开启 `expectedRunnerEnabled`，ExpectedRunner 仍会执行，此时 `toolMock.expected` 可以生效。当 Trace 用例同时配置 `actualConversation` 和 `conversation` 时，ExpectedRunner 使用 `actualConversation[i].userContent` 作为输入，并使用 `conversation[i].toolMock.expected` 作为 expected 侧工具 mock 配置。
+
+完整示例参见 [examples/evaluation/toolmock](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/toolmock)。
 
 ### UserSimulation 动态用户模拟
 
@@ -4141,6 +4802,123 @@ Langfuse Web 页面当前接受 `80` 或 `443` 端口的远程评估地址。服
 评估结果的保存方式取决于 `EvalResultManager` 的实现。使用 local 实现时，结果会写入本地目录，便于离线排查与回归比对。
 
 ![langfuse-run-results](../assets/img/evaluation/langfuse/run-results.png)
+
+### LLM Verifier
+
+[LLM Verifier](https://llm-as-a-verifier.notion.site/) 是一种用裁判模型评估候选结果质量的方法，适用于同一请求下存在多份候选结果、并且需要从中选出质量最高结果的场景。
+
+普通 LLM Judge 往往让裁判模型直接输出一个离散分数，并用这个分数表示候选结果的质量。当两份复杂回答都被打到同一档时，排序会失去区分度；当裁判模型在相邻分档之间犹豫时，只取最终生成的分数也会丢掉不确定性。LLM Verifier 的核心做法是让裁判模型在一组有序质量标签上表达判断，并读取质量标签位置的 token logprobs，用概率分布计算期望质量分数。
+
+一次 LLM Verifier 判断通常包含用户请求、候选结果、评估标准和裁判模型四类输入。用户请求用于定义任务目标，候选结果是待比较的回答，评估标准说明哪些质量维度需要被考虑，裁判模型负责根据评估标准给候选结果打质量标签。
+
+质量标签是一组有严格顺序的离散等级。这里使用 A 到 T 共 20 档，A 表示最高质量，T 表示最低质量，越靠前的字母代表质量越高。A 表示明确且完整满足要求，B-D 表示只有轻微问题，E-G 表示大体正确但仍有问题，H-J 表示倾向成功但存在不确定性，K-M 表示倾向失败，N-P 表示仍有显著问题，Q-S 表示失败但有部分进展，T 表示明确失败。
+
+评分时，裁判模型会在质量标签位置生成一个标签 token，同时模型服务可以返回该位置的 logprobs。logprobs 表示模型在该位置分配给不同 token 的对数概率，可以理解为模型对各个候选 token 的相对倾向；数值越接近 0，表示该 token 的概率越高。`top_logprobs` 则表示该位置概率较高的若干个候选 token 及其 logprobs。例如 OpenAI 兼容接口在开启 `logprobs` 与 `top_logprobs` 后，质量标签 token 对应的返回片段可能如下：
+
+```json
+{
+  "choices": [
+    {
+      "logprobs": {
+        "content": [
+          {
+            "token": "B",
+            "logprob": -0.20,
+            "top_logprobs": [
+              { "token": "B", "logprob": -0.20 },
+              { "token": "C", "logprob": -1.10 },
+              { "token": "D", "logprob": -2.30 }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+上述片段表示裁判模型最终在质量标签位置生成了 B，但在同一个位置上也给 C、D 分配了一定概率。LLM Verifier 会把这些相邻标签一起纳入期望分计算，而不是只把 B 当成唯一结论。这样可以保留裁判模型在相邻质量档之间的不确定性，减少只取单个离散标签带来的并列结果。
+
+候选结果的质量分数可以表示为：
+
+$$
+R(t, \tau)
+= \frac{1}{CK} \sum_{c=1}^{C} \sum_{k=1}^{K}
+\sum_{g=1}^{G} p_{\theta}(v_g \mid t, c, \tau)\,\phi(v_g)
+$$
+
+其中，$t$ 表示任务输入，$\tau$ 表示待验证的候选结果，$G$ 表示质量标签数量，$v_g$ 表示第 $g$ 个质量标签，$K$ 表示重复验证次数，$C$ 表示评估标准数量，$c$ 表示第 $c$ 个评估标准。$p_{\theta}(v_g \mid t, c, \tau)$ 表示裁判模型在给定任务、评估标准和候选结果时对该质量标签分配的概率，$\phi(v_g)$ 表示质量标签到数值分的映射。每个评估标准和每次验证都会基于质量标签概率计算一次加权分数，候选结果的最终质量分数是这些加权分数的平均值。
+
+成对比较会把两份候选分别记为 Candidate A 和 Candidate B，其中 Candidate A/B 里的 A/B 是候选编号，不是质量标签。裁判模型分别给两份候选输出质量标签；随后把 A 到 T 映射到 1 到 0 的连续质量刻度，A 对应 1，T 对应 0，中间字母按顺序线性递减；再用标签 logprobs 计算两份候选各自的期望质量分。最后将两个期望质量分转换为 0 到 1 之间的比较分数。比较分数大于 0.5 表示 Candidate A 质量更高，小于 0.5 表示 Candidate B 质量更高，等于 0.5 表示质量相当。
+
+在 tRPC-Agent-Go 中，LLM Verifier 通过 `llm_verifier_pairwise` 评估器接入。它是 Evaluation 模块中的 LLM Judge 类评估器，输入是同一轮用户请求下的两份最终响应。Evaluation 中的实际侧 `actual.finalResponse` 会作为 Candidate A，预期侧 `expected.finalResponse` 会作为 Candidate B。
+
+`llm_verifier_pairwise` 的裁判输入由用户请求、Candidate A、Candidate B 和 `criterion.llmJudge.rubrics` 组成。`rubrics` 是裁判模型判断质量时必须遵守的评估标准，例如回答是否直接满足用户请求、是否遗漏关键约束、是否引入无依据内容。
+
+评估器的执行顺序如下。
+
+1. `messagesconstructor/verifierpairwise` 构造裁判输入，把同一个用户请求、两份最终响应和 rubrics 放入同一条裁判消息。
+2. LLM Judge 调用裁判模型，要求裁判模型分别输出 `<score_A>` 和 `<score_B>` 两个质量标签。
+3. `responsescorer/verifierpairwise` 在裁判模型响应中定位这两个标签位置，并读取标签 token 的 logprobs。
+4. 评估器把 A 到 T 映射到 1 到 0 的连续质量刻度。
+5. 评估器用标签 token 的 logprobs 还原概率分布，并计算 Candidate A 与 Candidate B 各自的期望质量分。
+6. 评估器把两个期望质量分转换成 0 到 1 之间的比较分数。
+
+`llm_verifier_pairwise` 通过固定的 `<score_A>` 与 `<score_B>` 标签定位裁判输出中的质量标签 token，并使用这些 token 的 logprobs 计算分数。因此裁判模型必须支持并返回 logprobs。通过 `criterion.llmJudge.judgeModel` 直连裁判模型时，需要在 `generationConfig` 中开启 `logprobs`，并建议设置 `top_logprobs` 为 20，以覆盖 A 到 T 的质量标签分布。通过 `evaluation.WithJudgeRunner(...)` 或 `bestofn.WithJudgeRunner(...)` 注入裁判 Runner 时，需要在裁判 Agent 的生成配置中开启同样的能力。
+
+[在线 Best-of-N 候选选择](runner.md#在线-best-of-n-候选选择) 会让同一个 Agent 针对同一输入生成多份候选结果，再通过评估指标选出最终输出。接入时，可以通过 `WithEvalMetrics` 将 `llm_verifier_pairwise` 配置为候选选择评估指标，并使用 `SelectionModePairwise` 让多个候选两两比较，示例代码如下。
+
+```go
+qualityMetric := &metric.EvalMetric{
+	MetricName: "llm_verifier_pairwise",
+	Threshold:  0.5,
+	Criterion: &criterion.Criterion{
+		LLMJudge: &criterionllm.LLMCriterion{
+			Rubrics: []*criterionllm.Rubric{
+				{
+					ID: "quality",
+					Content: &criterionllm.RubricContent{
+						Text: "The final answer directly satisfies the user's request and does not introduce unsupported claims.",
+					},
+				},
+			},
+		},
+	},
+}
+
+func newJudgeAgent(modelName string, opts ...openai.Option) agent.Agent {
+	logprobs := true
+	topLogprobs := 20
+	return llmagent.New(
+		"judge-agent",
+		llmagent.WithModel(openai.New(modelName, opts...)),
+		llmagent.WithGenerationConfig(model.GenerationConfig{
+			Logprobs:    &logprobs,
+			TopLogprobs: &topLogprobs,
+		}),
+	)
+}
+
+judgeAgent := newJudgeAgent("deepseek-v4-flash")
+judgeRunner := runner.NewRunner("my-app-judge", judgeAgent)
+defer judgeRunner.Close()
+
+bestOfNOpt, err := bestofn.NewRunnerOption(
+	bestofn.WithAttempts(3),
+	bestofn.WithSelectionMode(bestofn.SelectionModePairwise),
+	bestofn.WithEvalMetrics(qualityMetric),
+	bestofn.WithJudgeRunner(judgeRunner),
+	bestofn.WithJudgeRunnerNumSamples(1),
+)
+if err != nil {
+	return err
+}
+
+r := runner.NewRunner("my-app", candidateAgent, bestOfNOpt)
+defer r.Close()
+```
+
+完整可运行示例参见 [examples/evaluation/llmverifier](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/evaluation/llmverifier)。
 
 ## 最佳实践
 

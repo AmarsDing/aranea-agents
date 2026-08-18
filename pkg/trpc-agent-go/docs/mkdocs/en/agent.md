@@ -96,19 +96,22 @@ llmAgent := llmagent.New(
 )
 ```
 
-### Placeholder Variables (Session State Injection)
+### Placeholder Variables (State Injection)
 
-LLMAgent automatically injects session state into `Instruction` and the optional `SystemPrompt` via placeholder variables. Supported patterns:
+LLMAgent automatically injects state into `Instruction` and the optional `SystemPrompt` via placeholder variables. Supported patterns:
 
 - `{key}`: Replaced with the string value corresponding to the key `key` in the session state (write via `invocation.Session.SetState("key", ...)` or SessionService)
 - `{key?}`: Optional; if missing, replaced with an empty string
 - `{user:subkey}` / `{app:subkey}` / `{temp:subkey}`: Use user/app/temp scoped keys (session services merge app/user state into session with these prefixes)
 - `{invocation:subkey}`: Replaces with the value of fmt.Sprintf("%+v", `invocation.state["subkey"]`). (The state can be set via invocation.SetState(k, v))
+- `{runtime:subkey}`: Reads request-scoped data from `RunOptions.RuntimeState` (set via `agent.WithRuntimeState` or `agent.MergeRuntimeState`)
 
 Notes:
 
 - If a non-optional key is not found, the original `{key}` is preserved (helps the LLM notice missing context)
-- Values are read from session state (Runner + SessionService set/merge this automatically)
+- Add `?` before the closing brace to make any supported placeholder optional, for example `{runtime:document?}`
+- Bare and app/user/temp-prefixed keys read session state; `invocation:` and `runtime:` read only their respective state stores and do not fall back to session state
+- Runtime strings are injected as plain text; primitive values use their JSON text representation, and objects and arrays are injected as JSON
 
 Example:
 
@@ -118,12 +121,17 @@ llm := llmagent.New(
   llmagent.WithModel(modelInstance),
   llmagent.WithInstruction(
     "You are a research assistant. Focus: {research_topics}. " +
-    "User interests: {user:topics?}. App banner: {app:banner?}.",
+    "User interests: {user:topics?}. App banner: {app:banner?}. " +
+    "Draft: {runtime:document?}.",
   ),
 )
 
-inv := agent.NewInvoction()
+inv := agent.NewInvocation()
 inv.SetState("case", "case-1")
+
+runOptions := []agent.RunOption{
+  agent.WithRuntimeState(map[string]any{"document": "Current draft"}),
+}
 
 // Initialize session state (Runner + SessionService)
 _ = sessionService.UpdateUserState(ctx, session.UserKey{AppName: app, UserID: user}, session.StateMap{
@@ -371,6 +379,63 @@ agent := llmagent.New(
 
 **Note:** This option only affects how historical messages are processed before sending to the model. The current response's `reasoning_content` is always captured and stored in session events.
 
+### Tool Transcript History Mode
+
+By default, LLMAgent sends historical tool calls and their matching tool
+results back to the model on later requests. This is the most conservative
+behavior and preserves full compatibility, but long sessions with many completed
+tool rounds can spend unnecessary context on tool transcripts that the model no
+longer needs.
+
+LLMAgent provides `WithToolTranscriptMode` to control how completed historical
+tool-call/tool-result pairs are projected into model requests:
+
+| Mode | Constant | Description |
+|------|----------|-------------|
+| Keep All | `ToolTranscriptModeKeepAll` | Keep all historical tool-call/tool-result transcripts in model requests. **(Default)** |
+| Omit Previous Completed | `ToolTranscriptModeOmitPreviousCompleted` | Omit completed tool-call/tool-result pairs from previous requests while preserving active or incomplete tool rounds. |
+
+**Usage Example:**
+
+```go
+agent := llmagent.New(
+    "assistant",
+    llmagent.WithModel(modelInstance),
+    llmagent.WithInstruction("You are a helpful assistant."),
+    // Reduce prompt size by omitting completed tool transcripts from previous requests.
+    llmagent.WithToolTranscriptMode(llmagent.ToolTranscriptModeOmitPreviousCompleted),
+)
+```
+
+**How It Works:**
+
+- **`keep_all`**: All historical tool calls and tool results are preserved in
+  model requests.
+- **`omit_previous_completed`**: When building the message list for a new
+  request, completed tool-call/tool-result pairs from previous requests are
+  omitted from the projected history.
+
+The omit mode is intentionally conservative:
+
+- Current-request tool loops are preserved, so the model can still see the tool
+  calls it is actively resolving.
+- Incomplete historical tool calls are preserved because dropping them could
+  produce an invalid tool-call transcript.
+- Assistant text attached to an omitted tool-call event is retained; only the
+  tool calls and matching tool results are removed.
+- Session events are not deleted. The mode only changes what is sent to the
+  model request.
+
+Use `ToolTranscriptModeOmitPreviousCompleted` when completed historical tool
+transcripts are no longer needed by the model and prompt size matters. Keep the
+default `ToolTranscriptModeKeepAll` if later answers must inspect previous raw
+tool calls or tool results exactly.
+
+This option is different from context compaction: tool transcript mode can omit
+whole completed historical tool-call/tool-result pairs from request projection,
+while context compaction keeps the tool result message shape and only shrinks
+large tool-result content.
+
 ### Delegation Visibility Options
 
 When building multi‑Agent systems (task delegation between Agents), LLMAgent provides a unified fallback option for delegation events. Transfer events always include announcement text and are tagged `transfer` so UIs (User Interfaces) can filter them if desired.
@@ -404,8 +469,10 @@ When the model calls tools, the tool outputs are added to the conversation as
 on the tool result…”, or reveal internal process details.
 
 To make the assistant respond more naturally after tool calls, LLMAgent
-injects a short “post-tool” dynamic prompt into the system message **only when
-tool results are present**.
+injects a short “post-tool” guidance block into the system message when the
+feature is enabled. The guidance is present from the first model request so
+later tool-call turns keep the same prompt prefix and can reuse provider-side
+prompt caches more effectively.
 
 - Default: enabled, using the built-in prompt.
 - Customize the injected text: `llmagent.WithPostToolPrompt("...")`.
@@ -433,6 +500,8 @@ To prevent Agents from entering infinite loops or consuming excessive resources,
 |---------------|-------------|
 | `llmagent.WithMaxLLMCalls(n)` | Limits the maximum number of LLM calls per invocation. Takes effect when `n > 0`; no limit when `n <= 0` (default). |
 | `llmagent.WithMaxToolIterations(n)` | Limits the maximum number of tool-call iterations per invocation. Takes effect when `n > 0`; no limit when `n <= 0` (default). |
+| `llmagent.WithLLMCallLimitFinalization(instruction)` | Uses the last call allowed by `WithMaxLLMCalls` for a tool-free final response. |
+| `llmagent.WithToolIterationLimitFinalization(instruction)` | Requests a tool-free final response after the last fully framework-executed iteration allowed by `WithMaxToolIterations`, if the current invocation and LLM-call budget permit another call. |
 
 **Usage Example:**
 
@@ -445,15 +514,28 @@ agent := llmagent.New(
   llmagent.WithMaxLLMCalls(10),
   // Limit to at most 5 tool-call iterations.
   llmagent.WithMaxToolIterations(5),
+  // Opt in to graceful, tool-free final responses at both limits.
+  // An empty string selects the framework's default instruction.
+  llmagent.WithLLMCallLimitFinalization(""),
+  llmagent.WithToolIterationLimitFinalization(""),
 )
 ```
 
 **Behavior:**
 
-- **`WithMaxLLMCalls`**: When LLM call count exceeds the limit, a `StopError` is returned and the current invocation terminates.
-- **`WithMaxToolIterations`**: When tool iteration count exceeds the limit, a `flow_error` response event is emitted and the invocation ends. It does not return a `StopError`.
+- Without a finalization option, the existing behavior is unchanged:
+  - **`WithMaxLLMCalls`** returns a `StopError` when the count exceeds the limit.
+  - **`WithMaxToolIterations`** emits a `flow_error` response event when the count exceeds the limit.
+- Each finalization option is independent and opt-in. Pass `""` to use the framework's default finalization instruction, or pass a non-empty string to provide a custom instruction.
+- LLM-limit finalization uses the final call inside `MaxLLMCalls`. Tool-limit finalization uses the next LLM call after the final allowed tool iteration.
+- Tool-limit finalization requires every tool call in the limit-reaching iteration to be framework-executed. If any call is external or deferred by `WithToolExecutionFilter`, the response still counts toward `MaxToolIterations`, but the current run follows the existing caller-executed lifecycle and ends without a finalization call. A later caller continuation is a new invocation with independent limits.
+- `MaxLLMCalls` remains a strict outer budget. Finalization calls count toward it, so reserve an LLM call when combining tool-limit finalization with `WithMaxLLMCalls`.
+- For the final model request, the instruction is appended as a transient tail user message without changing the existing system prompt. It is visible to before-model callbacks but is not emitted or persisted as a user event.
+- During finalization, tools and forced tool-choice fields are removed before before-model callbacks and scrubbed again after callbacks. If a tool call is still produced, the framework rejects it without executing the tool.
+- If both finalization policies become eligible on the same LLM call, the LLM-limit instruction takes precedence.
 - Both limits are independent and can be used separately or together.
 - These limits are per-invocation; different `runner.Run()` calls maintain independent counts.
+- `(*agent.Invocation).ToolIterationCount()` provides read-only access to the tool-iteration limit enforcement counter. It remains zero when `MaxToolIterations` is not positive, includes the over-limit tool-call response that is rejected without execution, starts from zero in `Clone()`, and is preserved by `View()`. It is not a general tool-usage metric.
 
 **Recommended Usage:**
 
@@ -838,6 +920,31 @@ Structured output ensures that agent responses conform to a predefined format, m
 | **Data Location** | Event.StructuredOutput | Event.StructuredOutput | Model response content | Session State |
 | **Primary Use Case** | Flexible schema with tools | Type-safe structured output | Simple structured responses | State storage & flow control |
 
+### Provider Compatibility
+
+The framework allows tools to be configured with
+`WithStructuredOutputJSONSchema` or `WithStructuredOutputJSON`, but the model
+service must also support combining tool calling with native structured output.
+Some OpenAI-compatible endpoints accept both `tools` and
+`response_format: json_schema` while applying the JSON constraint to the entire
+generation. In that case, constrained decoding can suppress the model-specific
+tool-call syntax and return schema-valid JSON without any tool call.
+
+An HTTP success response and valid JSON therefore do not prove that a required
+tool ran. When correctness depends on tool execution, verify the tool-call and
+tool-result events. If an endpoint does not reliably support the combination,
+split the operation into a tool-enabled call without native structured output,
+followed by a tool-disabled call that produces the structured final response.
+The second call must receive the first call's evidence by continuing the same
+session or message history, or by explicitly including its tool-call and
+tool-result messages.
+
+Related backend discussions include
+[vLLM #39929](https://github.com/vllm-project/vllm/issues/39929), which tracks
+`response_format` suppressing automatic tool calls, and
+[SGLang #21593](https://github.com/sgl-project/sglang/pull/21593), which fixes
+conflicts between constrained decoding and model-specific tool-call formats.
+
 ### WithStructuredOutputJSONSchema
 
 Provides a user-defined JSON schema for structured output while **allowing tool usage**. This is the most flexible option for agents that need both structured output and tool capabilities.
@@ -1046,6 +1153,45 @@ Memory Service is used to record user preference information, supporting persona
 1. [Runner](runner.md) - Learn the recommended usage
 2. [Session](session/index.md) - Understand session management
 3. [Multi-Agent](multiagent.md) - Learn multi-Agent systems
+
+## Prompt Scaffolding (“Rules” / Context Injection)
+
+Many agent products expose a “rules” feature (project memory, per‑turn constraints, etc.). In practice, “rules” is not a single stable framework‑level concept: different products choose different semantics (system vs user role, placement relative to history, persistence, file‑scoped selection, cache behavior).
+
+tRPC‑Agent‑Go intentionally keeps this generic and provides **prompt / context injection primitives** that you can combine to implement your product’s “rules” semantics.
+
+### Choose the right primitive
+
+- Always‑on stable guidance (recommended for “global rules”):
+  - Agent‑level: `llmagent.WithGlobalInstruction(...)` / `llmagent.WithInstruction(...)`
+  - Per‑run override (does not mutate the agent): `agent.WithGlobalInstruction(...)` / `agent.WithInstruction(...)`
+- Per‑run, non‑persistent context injected **before session history** (good for background seed context):
+  - `agent.WithInjectedContextMessages([]model.Message{...})`
+- Per‑run, non‑persistent context injected **near the latest user turn** (useful for per‑turn “rules” / dynamic constraints):
+  - `agent.WithLateContextMessages([]model.Message{...})`
+- Full control over the final request messages:
+  - Use a structured `BeforeModel` callback to rewrite `request.Messages` (see `docs/mkdocs/en/callbacks.md`).
+
+### Message placement (high level)
+
+The content request processor assembles the final model request roughly like this:
+
+1. System prompt / instructions (stable prefix)
+2. Few-shot examples (if configured, inserted after the leading system block)
+3. Injected context messages (`WithInjectedContextMessages`) — **before history**
+4. Session history (canonical transcript)
+5. Late context messages (`WithLateContextMessages`) — **inserted before the latest user message** (if there is no user message, they are inserted immediately after the leading system block)
+6. (If already present) tool / assistant tail belonging to the current turn
+
+This “late” placement is useful when your injected content is dynamic and you want it close to the current user request, while keeping the prefix stable for prompt caching.
+
+### Notes and best practices
+
+- Prefer `role=user` for late context messages. Injecting `role=system` in the middle of the message list is not universally supported across providers and may interact poorly with validators.
+- `WithInjectedContextMessages` and `WithLateContextMessages` are **not persisted** into the session transcript (they affect only the current model request).
+- In multi‑agent runs, these options live on `RunOptions` and are propagated via invocation cloning. If you need per‑agent scoping, use callbacks and filter by `invocation.AgentName`.
+
+Runnable example: `examples/prompt/late_context_messages`.
 
 ## Runtime Instruction Updates
 
@@ -1438,6 +1584,7 @@ Execution traces are attached to the runner completion event as an in-memory art
 Each recorded step carries stable fields such as:
 
 - `NodeID`: the static node path for the executed node
+- `NodeType`: the node's semantic type (`function`, `llm`, `tool`, or `agent`), matching the node kind in the static structure; `agent` represents an agent execution unit, including `LLMAgent`, and `llm` represents an explicit LLM operation node
 - `PredecessorStepIDs`: the direct step dependencies in this run
 - `Input` and `Output`: stable text snapshots captured for the step
 - `Error`: the terminal step error, when the step fails

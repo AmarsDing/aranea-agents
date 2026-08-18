@@ -59,7 +59,7 @@ func main() {
         summary.WithChecksAny(                         // Trigger when any condition is met
             summary.CheckEventThreshold(20),           // Trigger when 20+ new events since last summary
             summary.CheckTokenThreshold(4000),         // Trigger when 4000+ new tokens since last summary
-            summary.CheckTimeThreshold(5*time.Minute), // Evaluated on summary check; compares the checked session's last event (normally the latest unsummarized event in delta flow)
+            summary.CheckTimeThreshold(5*time.Minute), // Runner path: trigger when the idle gap before the next request exceeds 5 minutes
         ),
         summary.WithMaxSummaryWords(200), // Limit summary to 200 words
     )
@@ -205,7 +205,7 @@ summarizer := summary.NewSummarizer(
     summary.WithChecksAny(                         // Trigger when any condition is met
         summary.CheckEventThreshold(20),           // Trigger when 20+ new events since last summary
         summary.CheckTokenThreshold(4000),         // Trigger when 4000+ new tokens since last summary
-        summary.CheckTimeThreshold(5*time.Minute), // Evaluated on summary check; compares the checked session's last event (normally the latest unsummarized event in delta flow)
+        summary.CheckTimeThreshold(5*time.Minute), // Runner path: trigger when the idle gap before the next request exceeds 5 minutes
     ),
     summary.WithMaxSummaryWords(200),              // Limit summary to 200 words
 )
@@ -1841,13 +1841,14 @@ tailoring may.
 > controlled by `WithAddSessionSummary(true)` and the configured session
 > summarizer.
 
-When `WithEnableContextCompaction(true)` is enabled, the framework adds prompt-side compaction before the LLM call:
+When `WithEnableContextCompaction(true)` is enabled, the framework applies prompt-side `tool result` compaction before the LLM call, depending on configuration:
 
+- **Pass 0** — Historical tool results whose tool name appears in `ForceCleanToolNames` are replaced with a policy placeholder without requiring them to exceed `ContextCompactionToolResultMaxTokens`; current/recent protection and `KeepToolNames` still apply.
 - **Pass 1** — Historical tool results from older requests that exceed `ContextCompactionToolResultMaxTokens` (default 1024 tokens) are replaced with a placeholder while keeping `ToolID` and `ToolName`.
 - **Pass 2** — Any single tool result (including the current request) exceeding `ContextCompactionOversizedToolResultMaxTokens` is truncated using head+tail preservation with a `[...N characters truncated...]` marker. **Disabled by default (value `0`)** — you must explicitly call `WithContextCompactionOversizedToolResultMaxTokens(...)` and keep `WithEnableContextCompaction(true)` for Pass 2 to fire (recommended opt-in value: 8192 tokens).
-- The latest `ContextCompactionKeepRecentRequests` completed requests are exempt from Pass 1. You can also use `WithToolResultCompactionConfig(...).SkipRecentFunc` to decide how many tail events are recent (but if Pass 2 is opted into, recent/current tool results remain subject to Pass 2 truncation unless kept by tool policy).
+- The recent protected set is exempt from Pass 0 and Pass 1. It includes the current request, the latest `ContextCompactionKeepRecentRequests` completed requests, and the request/invocation units that own the tail events returned by `WithToolResultCompactionConfig(...).SkipRecentFunc`. `SkipRecentFunc` and `ContextCompactionKeepRecentRequests` are additive; set `ContextCompactionKeepRecentRequests` to `0` if the custom recency function should define the boundary by itself. If Pass 2 is opted into, recent/current tool results remain subject to Pass 2 truncation unless kept by tool policy.
 - `WithToolResultCompactionConfig(...)` also supports tool-name policy: `ForceCleanToolNames` forces selected historical tool results to be cleaned after current/recent protection, while `KeepToolNames` preserves selected tool results and has higher priority.
-- When the compacted event has an `event_id`, placeholders and truncation markers include recovery hints such as `event_id`, `tool_call_id`, and `tool_name`. With `WithEnableOnDemandSession(true)` and a session backend that implements `session.WindowService`, the model can call `session_load` with `content_offset` / `content_limit` to reload a precise slice of the original tool result.
+- When a Pass 1 placeholder or Pass 2 truncation marker is created from an event with an `event_id`, it includes recovery hints such as `event_id`, `tool_call_id`, and `tool_name`; Pass 0 policy placeholders do not include these recovery hints. With `WithEnableOnDemandSession(true)` and a session backend that implements `session.WindowService`, the model can call `session_load` with `content_offset` / `content_limit` to reload a precise slice of the original tool result.
 - Pass 2 skips tool results returned by `session_load` itself. This prevents recovered slices from being silently compacted again; `session_load` output size is controlled by its own window parameters and `content_limit`, so very large results should be reloaded in slices instead of as one full payload.
 - If `WithAddSessionSummary(true)` is also enabled and the rebuilt request still approaches the model context window, the framework performs one synchronous `CreateSessionSummary(...)` retry before calling the model.
 - Model-layer token tailoring remains the final fallback. It trims whole message rounds, so keep recovered slices small enough that they still fit in the final provider request.
@@ -1932,7 +1933,7 @@ Configure the summarizer behavior with the following options:
 - **`WithContextThreshold(opts ...ContextThresholdOption)`**: Zero-configuration trigger that dynamically resolves the model's context window at evaluation time. It calculates a token threshold as a fraction of the context window (default 50%), adapting automatically when the user switches models mid-session. This is the recommended option for most use cases, similar to the auto-compact behavior in Codex CLI and Claude Code. Example: `WithContextThreshold()` for zero-config, or `WithContextThreshold(summary.WithContextThresholdRatio(0.6))` for custom ratio.
 - **`WithEventThreshold(eventCount int)`**: Trigger summarization when the number of new events since last summary exceeds the threshold. Example: `WithEventThreshold(20)` triggers when 20+ new events have occurred since last summary.
 - **`WithTokenThreshold(tokenCount int)`**: Trigger summarization when the new token count since last summary exceeds the threshold. Example: `WithTokenThreshold(4000)` triggers when 4000+ new tokens have been added since last summary.
-- **`WithTimeThreshold(interval time.Duration)`**: Evaluate the condition when a summary check runs; it wraps `CheckTimeThreshold` and triggers when the last event in the checked session is older than the interval. In the normal delta-summary path, that checked session contains only unsummarized events, so this effectively means the latest unsummarized event. This is not a standalone background timer. Example: `WithTimeThreshold(5*time.Minute)` means "on the next summary check, if the checked session's last event is already older than 5 minutes, summarize now."
+- **`WithTimeThreshold(interval time.Duration)`**: In the Runner path, trigger when the idle gap before the current top-level request exceeds the interval. The request-arrival time is captured once, so model latency and async queue delay do not count toward the gap. This is not a background timer: `WithTimeThreshold(5*time.Minute)` is evaluated when the next request causes a summary check. Direct calls without a Runner request observation retain the legacy last-event-age behavior.
 
 > **Context Window Configuration**
 >
@@ -1979,8 +1980,8 @@ Configure the summarizer behavior with the following options:
 **Summary Generation:**
 
 - **`WithMaxSummaryWords(maxWords int)`**: Limit the summary to a maximum word count. The limit is included in the prompt to guide the model's generation. Example: `WithMaxSummaryWords(150)` requests summaries within 150 words.
-- **`WithPrompt(prompt string)`**: Provide a custom summarization prompt. The prompt must include the placeholder `{conversation_text}`, which will be replaced with the conversation content. When `WithMaxSummaryWords(...)` is set, include `{max_summary_words}` in either `WithPrompt(...)` or `WithSystemPrompt(...)`.
-- **`WithSystemPrompt(prompt string)`**: Add a dedicated system message for summarization instructions. It must not include `{conversation_text}`; keep the conversation content in `WithPrompt(...)` so the system message remains instruction-only.
+- **`WithPrompt(prompt string)`**: Provide a custom summarization prompt. The prompt must include `{conversation_text}` and may include `{previous_summary}` to place the previous rolling summary separately from newly uncovered conversation events. When `WithMaxSummaryWords(...)` is set, include `{max_summary_words}` in either `WithPrompt(...)` or `WithSystemPrompt(...)`.
+- **`WithSystemPrompt(prompt string)`**: Add a dedicated system message for summarization instructions. It must not include `{conversation_text}` or `{previous_summary}`; keep the conversation content in `WithPrompt(...)` so the system message remains instruction-only.
 - **`WithSkipRecent(skipFunc SkipRecentFunc)`**: Skip the _most recent_ events during summarization using a custom function. The function receives all events and returns how many tail events to skip. Return 0 to skip none. Useful for avoiding summarizing very recent/incomplete conversations, or applying time/content-based skipping strategies.
 
 #### Token Counter Configuration
@@ -2117,6 +2118,22 @@ summarizer := summary.NewSummarizer(
     summary.WithPrompt(customPrompt), // Custom Prompt
     summary.WithMaxSummaryWords(100), // Inject into {max_summary_words}
     summary.WithEventThreshold(15),
+)
+
+// Optionally position the previous rolling summary separately.
+incrementalPrompt := `<previous_summary>
+{previous_summary}
+</previous_summary>
+
+<new_conversation>
+{conversation_text}
+</new_conversation>
+
+Updated summary:`
+
+summarizer = summary.NewSummarizer(
+    summaryModel,
+    summary.WithPrompt(incrementalPrompt),
 )
 
 // Split instructions into a dedicated system message
@@ -2293,7 +2310,7 @@ The `GetSessionSummaryText` method supports an optional `WithSummaryFilterKey` o
 
 2. **Delta Summarization**: New events are combined with the previous summary (prepended as a system event) to generate an updated summary that incorporates both old context and new information.
 
-3. **Trigger Evaluation**: Before generating a summary, the summarizer evaluates configured trigger conditions (based on incremental event count, incremental token count, and, for time-based checks, whether the last event in the checked session is older than the configured threshold. In the normal delta-summary path, that corresponds to the latest unsummarized event). If conditions aren't met and `force=false`, summarization is skipped.
+3. **Trigger Evaluation**: Before generating a summary, the summarizer evaluates configured trigger conditions. Event and token checks use the incremental input. In the Runner path, time checks use the idle gap between the current top-level request's arrival and the previous relevant event in the checked scope; direct calls without a Runner observation retain the last-event-age fallback. If conditions aren't met and `force=false`, summarization is skipped.
 
 4. **Async Workers**: Summary jobs are distributed across multiple worker goroutines using hash-based distribution. This ensures jobs for the same session are processed sequentially while different sessions can be processed in parallel.
 
@@ -2465,7 +2482,7 @@ func main() {
         summary.WithChecksAny(
             summary.CheckEventThreshold(20),
             summary.CheckTokenThreshold(4000),
-            summary.CheckTimeThreshold(5*time.Minute), // Evaluated on summary check; compares the checked session's last event (normally the latest unsummarized event in delta flow)
+            summary.CheckTimeThreshold(5*time.Minute), // Runner path: trigger when the idle gap before the next request exceeds 5 minutes
         ),
     )
 

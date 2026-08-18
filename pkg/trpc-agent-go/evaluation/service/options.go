@@ -31,8 +31,10 @@ type Options struct {
 	EvalResultManager                 evalresult.Manager               // EvalResultManager is used to store and retrieve eval results.
 	Registry                          registry.Registry                // Registry is used to store and retrieve evaluator.
 	MetricRegistry                    metricregistry.Registry          // MetricRegistry resolves runtime metric extensions.
+	EvalCaseResultAggregator          EvalCaseResultAggregator         // EvalCaseResultAggregator computes eval case score and status.
 	SessionIDSupplier                 func(ctx context.Context) string // SessionIDSupplier is used to generate session IDs.
 	ExpectedRunner                    runner.Runner                    // ExpectedRunner is used to generate dynamic expected outputs.
+	ToolMockRunner                    runner.Runner                    // ToolMockRunner generates dynamic tool mock results.
 	UserSimulator                     usersimulation.Simulator         // UserSimulator drives conversationScenario inference.
 	Callbacks                         *Callbacks                       // Callbacks holds evaluation callbacks.
 	RunOptions                        []agent.RunOption                // RunOptions configures runner.Run calls during inference.
@@ -47,10 +49,11 @@ type Option func(*Options)
 // NewOptions creates a new Options with the default values.
 func NewOptions(opt ...Option) *Options {
 	opts := &Options{
-		EvalSetManager:    evalsetinmemory.New(),
-		EvalResultManager: evalresultinmemory.New(),
-		Registry:          registry.New(),
-		MetricRegistry:    metricregistry.New(),
+		EvalSetManager:           evalsetinmemory.New(),
+		EvalResultManager:        evalresultinmemory.New(),
+		Registry:                 registry.New(),
+		MetricRegistry:           metricregistry.New(),
+		EvalCaseResultAggregator: defaultEvalCaseResultAggregator{},
 		SessionIDSupplier: func(ctx context.Context) string {
 			return uuid.New().String()
 		},
@@ -95,6 +98,13 @@ func WithMetricRegistry(r metricregistry.Registry) Option {
 	}
 }
 
+// WithEvalCaseResultAggregator sets the eval case result aggregator.
+func WithEvalCaseResultAggregator(aggregator EvalCaseResultAggregator) Option {
+	return func(o *Options) {
+		o.EvalCaseResultAggregator = aggregator
+	}
+}
+
 // WithSessionIDSupplier sets the function used to generate session IDs.
 // UUID generator is used by default.
 func WithSessionIDSupplier(s func(ctx context.Context) string) Option {
@@ -107,6 +117,13 @@ func WithSessionIDSupplier(s func(ctx context.Context) string) Option {
 func WithExpectedRunner(r runner.Runner) Option {
 	return func(o *Options) {
 		o.ExpectedRunner = r
+	}
+}
+
+// WithToolMockRunner sets the runner used to generate dynamic tool mock results.
+func WithToolMockRunner(r runner.Runner) Option {
+	return func(o *Options) {
+		o.ToolMockRunner = r
 	}
 }
 

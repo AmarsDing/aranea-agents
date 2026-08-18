@@ -23,6 +23,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/appender"
+	"trpc.group/trpc-go/trpc-agent-go/internal/state/steer"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -173,6 +174,8 @@ type ralphLoopAgent struct {
 	cfg   RalphLoopConfig
 }
 
+var _ agent.InvocationSkillLoadSupport = (*ralphLoopAgent)(nil)
+
 func (a *ralphLoopAgent) Info() agent.Info {
 	if a == nil || a.inner == nil {
 		return agent.Info{}
@@ -205,6 +208,14 @@ func (a *ralphLoopAgent) FindSubAgent(name string) agent.Agent {
 		return nil
 	}
 	return a.inner.FindSubAgent(name)
+}
+
+func (a *ralphLoopAgent) SupportsInvocationSkillLoads() bool {
+	if a == nil || a.inner == nil {
+		return false
+	}
+	support, ok := a.inner.(agent.InvocationSkillLoadSupport)
+	return ok && support.SupportsInvocationSkillLoads()
 }
 
 func (a *ralphLoopAgent) Run(
@@ -297,7 +308,31 @@ func (a *ralphLoopAgent) newInnerInvocation(
 	if len(entryPredecessors) > 0 {
 		invocationOpts = append(invocationOpts, agent.WithInvocationEntryPredecessorStepIDs(entryPredecessors))
 	}
-	return base.Clone(invocationOpts...)
+	inner := base.Clone(invocationOpts...)
+	if len(base.RunOptions.SkillLoads) > 0 {
+		runOptions := inner.RunOptions
+		agent.WithSkillLoads(base.RunOptions.SkillLoads...)(&runOptions)
+		inner.RunOptions = runOptions
+	}
+
+	// Carry the run's steer queue across the iteration boundary so user
+	// messages enqueued onto the run (Runner.EnqueueUserMessage) reach the inner
+	// agent and drain at its next safe boundary.
+	//
+	// The attachment is borrowed, not owning: the inner llmflow closes its
+	// invocation queue when it finishes an iteration, but the run-level queue
+	// must stay open across iterations — otherwise EnqueueUserMessage returns
+	// ErrRunNotFound for every steer after the first iteration. The runner owns
+	// the queue and closes it once when the whole run ends.
+	//
+	// It is also intentionally NOT in the clone allowlist: that would propagate
+	// it into delegated sub-agent invocations (which Clone the inner agent), and
+	// a member would then drain a steer meant for the lead. Re-attaching here
+	// scopes it to exactly the loop's inner agent — the lead the user is steering.
+	if queue, ok := agent.GetStateValue[*steer.Queue](base, steer.StateKeyQueuedUserMessages); ok && queue != nil {
+		steer.AttachBorrowed(inner, queue)
+	}
+	return inner
 }
 
 func (a *ralphLoopAgent) forwardEvents(

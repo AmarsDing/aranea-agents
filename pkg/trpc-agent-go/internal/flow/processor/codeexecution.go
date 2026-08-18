@@ -16,6 +16,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	"trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/internal/flow/calllimit"
+	"trpc.group/trpc-go/trpc-agent-go/internal/workspacesession"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -54,6 +56,9 @@ func (p *CodeExecutionResponseProcessor) ProcessResponse(
 	if invocation == nil || rsp == nil || rsp.IsPartial {
 		return
 	}
+	if calllimit.Active(invocation) {
+		return
+	}
 	e := codeExecutorForInvocation(invocation)
 	if e == nil {
 		return
@@ -90,7 +95,7 @@ func (p *CodeExecutionResponseProcessor) ProcessResponse(
 
 	codeExecutionResult, err := e.ExecuteCode(ctx, codeexecutor.CodeExecutionInput{
 		CodeBlocks:  codeBlocks,
-		ExecutionID: invocation.Session.ID,
+		ExecutionID: workspacesession.KeyFromInvocation(invocation),
 	})
 	if err != nil {
 		agent.EmitEvent(ctx, invocation, ch, event.New(

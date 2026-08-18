@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/internal/summarytrigger"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/session"
+	isummarycontext "trpc.group/trpc-go/trpc-agent-go/session/internal/summarycontext"
 	isummaryscope "trpc.group/trpc-go/trpc-agent-go/session/internal/summaryscope"
 	"trpc.group/trpc-go/trpc-agent-go/session/summary"
 )
@@ -201,9 +203,12 @@ func SummarizeSession(
 	if !ok {
 		return false, nil
 	}
-	text, err := m.Summarize(ctx, input.session)
+	text, err := m.Summarize(input.ctx, input.session)
 	if err != nil {
 		return false, fmt.Errorf("summarize session %s failed: %w", base.ID, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
 	if text == "" {
 		return false, nil
@@ -235,6 +240,7 @@ type previousSummary struct {
 
 type summaryInput struct {
 	session        *session.Session
+	ctx            context.Context
 	latestBoundary *session.SummaryBoundary
 	hasDelta       bool
 }
@@ -319,11 +325,29 @@ func buildSummaryInput(
 	}
 	input := prependPrevSummary(prev.text, delta, time.Now())
 	tmp := buildFilterSession(base, filterKey, input)
-	if !shouldGenerateSummary(ctx, m, base, tmp, input, filterKey, force) {
+	report, ok := summary.ReportFromContext(ctx)
+	reportCtx := ctx
+	if !ok {
+		report = &summary.Report{}
+		reportCtx = summary.ContextWithReport(ctx, report)
+	}
+	reportCtx = isummarycontext.WithPreviousSummary(reportCtx, prev.text)
+	if !shouldGenerateSummary(
+		reportCtx,
+		m,
+		base,
+		tmp,
+		input,
+		filterKey,
+		force,
+		prev.boundary,
+		report,
+	) {
 		return summaryInput{}, false
 	}
 	return summaryInput{
 		session:        tmp,
+		ctx:            reportCtx,
 		latestBoundary: latestBoundary,
 		hasDelta:       len(delta) > 0,
 	}, true
@@ -338,17 +362,114 @@ func shouldGenerateSummary(
 	input []event.Event,
 	filterKey string,
 	force bool,
+	previousBoundary *session.SummaryBoundary,
+	report *summary.Report,
 ) bool {
 	if force {
+		if shouldSkipBranchForkFullSessionCascade(ctx, m, tmp, filterKey) {
+			return false
+		}
+		if report != nil {
+			report.Trigger = summary.Trigger{
+				Fired:     true,
+				Name:      "force",
+				Metric:    "custom",
+				FilterKey: reportFilterKey(ctx, filterKey),
+			}
+		}
 		return true
 	}
 	checkTmp := tmp
 	if filterKey == session.SummaryFilterKeyAllContents {
 		if triggerFilterKey := summaryTriggerFilterKeyFromContext(ctx); triggerFilterKey != "" {
+			if shouldSkipBranchForkFullSessionCascade(ctx, m, tmp, filterKey) {
+				return false
+			}
 			checkTmp = buildFilterSession(base, triggerFilterKey, input)
 		}
 	}
+	attachRequestGapObservation(ctx, base, checkTmp, previousBoundary)
 	return ShouldSummarize(ctx, m, checkTmp)
+}
+
+func attachRequestGapObservation(
+	ctx context.Context,
+	base *session.Session,
+	checkSess *session.Session,
+	previousBoundary *session.SummaryBoundary,
+) {
+	start, ok := summarytrigger.RequestStartFromContext(ctx)
+	if !ok {
+		return
+	}
+	filterKey := isummaryscope.GetScopeFilterKey(checkSess)
+	observation := summarytrigger.ObserveRequestGap(
+		base,
+		start,
+		filterKey,
+	)
+	if previousBoundary != nil {
+		cutoff := previousBoundary.CutoffTime()
+		if !cutoff.IsZero() && !cutoff.Before(start.StartedAt) {
+			observation.Available = false
+			observation.Elapsed = 0
+		}
+	}
+	summarytrigger.SetObservation(checkSess, observation)
+}
+
+// shouldSkipBranchForkFullSessionCascade suppresses only the full-session target
+// that is explicitly marked as a branch cascade. This also applies to force=true:
+// force should not turn a branch fork request into a full-session summary.
+func shouldSkipBranchForkFullSessionCascade(
+	ctx context.Context,
+	m summary.SessionSummarizer,
+	tmp *session.Session,
+	filterKey string,
+) bool {
+	if !skipBranchForkFullSessionCascadeFromContext(ctx) {
+		return false
+	}
+	if filterKey != session.SummaryFilterKeyAllContents {
+		return false
+	}
+	if summaryTriggerFilterKeyFromContext(ctx) == "" {
+		return false
+	}
+	if _, ok := summary.CacheSafeForkRequestFromContext(ctx); !ok {
+		return false
+	}
+	return cacheSafeForkingEnabled(ctx, m, tmp)
+}
+
+type cacheSafeForkingResolver interface {
+	CacheSafeForkingEnabled(context.Context, *session.Session) bool
+}
+
+func cacheSafeForkingEnabled(
+	ctx context.Context,
+	m summary.SessionSummarizer,
+	sess *session.Session,
+) bool {
+	if m == nil {
+		return false
+	}
+	if resolver, ok := m.(cacheSafeForkingResolver); ok {
+		return resolver.CacheSafeForkingEnabled(ctx, sess)
+	}
+	metadata := m.Metadata()
+	enabled, _ := metadata["cache_safe_forking"].(bool)
+	return enabled
+}
+
+func reportFilterKey(ctx context.Context, filterKey string) string {
+	if filterKey != session.SummaryFilterKeyAllContents {
+		return filterKey
+	}
+	if triggerFilterKey := summaryTriggerFilterKeyFromContext(ctx); triggerFilterKey != "" {
+		return triggerFilterKey
+	}
+	return filterKey
 }
 
 // writeSummary stores the generated summary under filterKey.
@@ -369,12 +490,6 @@ func writeSummary(
 		UpdatedAt: updatedAt,
 		Boundary:  boundary,
 	}
-}
-
-func selectUpdatedAt(tmp *session.Session, prevAt, latestTs time.Time, hasDelta bool) time.Time {
-	prev := session.NewSummaryBoundary("", prevAt)
-	latest := session.NewSummaryBoundary("", latestTs)
-	return selectSummaryBoundary(tmp, "", prev, latest, hasDelta).CutoffTime()
 }
 
 func selectSummaryBoundary(
@@ -402,6 +517,7 @@ func selectSummaryBoundary(
 }
 
 type summaryTriggerFilterKeyContextKey struct{}
+type skipBranchForkFullSessionCascadeContextKey struct{}
 
 // summaryLockKey identifies the summary scope that must be serialized.
 type summaryLockKey struct {
@@ -495,6 +611,13 @@ func contextWithSummaryTriggerFilterKey(ctx context.Context, filterKey string) c
 	return context.WithValue(ctx, summaryTriggerFilterKeyContextKey{}, filterKey)
 }
 
+func contextWithSkipBranchForkFullSessionCascade(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, skipBranchForkFullSessionCascadeContextKey{}, true)
+}
+
 func summaryTriggerFilterKeyFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -503,12 +626,12 @@ func summaryTriggerFilterKeyFromContext(ctx context.Context) string {
 	return filterKey
 }
 
-func readLastIncludedTimestamp(tmp *session.Session) time.Time {
-	boundary := readLastIncludedBoundary(tmp, "")
-	if boundary == nil {
-		return time.Time{}
+func skipBranchForkFullSessionCascadeFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
 	}
-	return boundary.CutoffTime()
+	skip, _ := ctx.Value(skipBranchForkFullSessionCascadeContextKey{}).(bool)
+	return skip
 }
 
 func readLastIncludedBoundary(
@@ -568,6 +691,30 @@ func PickSummaryText(
 		}
 	}
 	return "", false
+}
+
+func contextWithForkedReport(ctx context.Context) context.Context {
+	report, ok := summary.ReportFromContext(ctx)
+	if !ok {
+		return ctx
+	}
+	// Parallel cascade paths keep per-target report writes isolated. The cloned
+	// report is emitted through that target's hook and is not merged back to the
+	// caller-attached root report.
+	cloned := report.Clone()
+	return summary.ContextWithReport(ctx, &cloned)
+}
+
+func contextForSummaryTarget(
+	ctx context.Context,
+	triggerFilterKey string,
+	targetFilterKey string,
+) context.Context {
+	if targetFilterKey != session.SummaryFilterKeyAllContents ||
+		triggerFilterKey == session.SummaryFilterKeyAllContents {
+		return ctx
+	}
+	return contextWithSummaryTriggerFilterKey(ctx, triggerFilterKey)
 }
 
 // GetSummaryTextFromSession attempts to retrieve summary text from the session's
@@ -678,10 +825,7 @@ func CreateSessionSummaryWithCascade(
 	}
 	if len(targets) == 1 {
 		target := targets[0]
-		if target == session.SummaryFilterKeyAllContents &&
-			filterKey != session.SummaryFilterKeyAllContents {
-			ctx = contextWithSummaryTriggerFilterKey(ctx, filterKey)
-		}
+		ctx = contextForSummaryTarget(ctx, filterKey, target)
 		return createSummaryFunc(ctx, sess, target, force)
 	}
 
@@ -708,18 +852,19 @@ func CreateSessionSummaryWithCascade(
 	result := make([]error, len(targets))
 	summaryWg.Add(len(targets))
 	for i, fk := range targets {
-		go func(i int, fk string) {
+		callCtx := contextWithForkedReport(ctx)
+		go func(i int, fk string, callCtx context.Context) {
 			defer summaryWg.Done()
-			callCtx := ctx
+			callCtx = contextForSummaryTarget(callCtx, filterKey, fk)
 			if fk == session.SummaryFilterKeyAllContents &&
 				filterKey != session.SummaryFilterKeyAllContents {
-				callCtx = contextWithSummaryTriggerFilterKey(callCtx, filterKey)
+				callCtx = contextWithSkipBranchForkFullSessionCascade(callCtx)
 			}
 			err := createSummaryFunc(callCtx, sess, fk, force)
 			if err != nil {
 				result[i] = fmt.Errorf("create session summary for filterKey %q failed: %w", fk, err)
 			}
-		}(i, fk)
+		}(i, fk, callCtx)
 	}
 	summaryWg.Wait()
 

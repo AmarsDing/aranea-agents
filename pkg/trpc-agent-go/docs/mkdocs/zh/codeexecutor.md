@@ -60,6 +60,7 @@ func main() {
 - [examples/codeexecution/main.go](https://github.com/trpc-group/trpc-agent-go/blob/main/examples/codeexecution/main.go)（本地 backend）
 - [examples/codeexecution/container/README.md](https://github.com/trpc-group/trpc-agent-go/blob/main/examples/codeexecution/container/README.md)（Docker container backend）
 - [examples/codeexecution/jupyter/README.md](https://github.com/trpc-group/trpc-agent-go/blob/main/examples/codeexecution/jupyter/README.md)（Jupyter kernel backend）
+- [工具代码编排](codeact.md)（生成代码通过 `call_tool` 编排受限工具）
 
 ### `WithCodeExecutor` 与围栏代码自动执行
 
@@ -657,6 +658,51 @@ args.Invocation.Session.AppendStateValue("last_report", ref.Ref)
 
 完整可运行示例：[examples/workspace_io](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/workspace_io)。
 
+## 限制 `workspace_exec` 的 Session 内联输出
+
+`workspace_exec` 默认保持兼容行为，完整返回本次调用观察到的终端文本。若要
+避免超大 stdout/stderr 作为 tool result 写入 Session，可在 Agent 级别配置
+内联字节上限：
+
+```go
+import workspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
+
+agent := llmagent.New(
+    "my-agent",
+    llmagent.WithCodeExecutor(executor),
+    llmagent.WithWorkspaceExecOutputLimits(workspaceexec.OutputLimits{
+        MaxOutputBytes: 64 * 1024,
+    }),
+)
+```
+
+也可以直接配置工具：
+
+```go
+tool := workspaceexec.NewExecTool(
+    executor,
+    workspaceexec.WithOutputLimits(workspaceexec.OutputLimits{
+        MaxOutputBytes: 64 * 1024,
+    }),
+)
+```
+
+该限制同时作用于一次性 `workspace_exec` 以及交互式
+`workspace_exec` / `workspace_write_stdin` 的每次返回。超限时保留内容首尾，
+并返回 `truncated: true` 与截断前的 `total_bytes`。截断发生在 tool-result
+event 创建之前，因此 Session 持久化的也是窗口化结果；这与只在入模前改写
+请求投影的 Context Compaction 不同。
+
+若配置的上限小到无法容纳截断标记，结果会退化为 UTF-8 安全的前缀截断。
+启用限制时，会先丢弃非法 UTF-8 序列，再应用字节预算；`total_bytes` 仍表示
+原始输出的字节数。交互式返回中的 `offset` / `next_offset` 始终表示底层 poll
+已消费的范围；当 `truncated: true` 时，`output` 只是该范围的有界视图，被省略
+的内容不会在后续 poll 中重新返回。
+
+`MaxOutputBytes <= 0` 表示关闭限制，也是默认行为。该选项限制的是工具返回和
+Session 体积；底层 executor 在命令运行期间是否限制 stdout/stderr 捕获仍由
+具体 backend 决定。
+
 ## 限制 `workspace_exec` 可执行的命令
 
 `workspace_exec` 会执行模型发过来的任意 shell 命令。当沙箱允许出网时，
@@ -856,13 +902,10 @@ deny 里。
     是 `false`，工具会在 spawn 之前直接拒掉这次调用，错误信息指引
     operator 切到支持的 runtime。
 
-    目前只有 `codeexecutor/local` 声明了 `SupportsCleanEnv: true`。
-    `codeexecutor/container` 和 `codeexecutor/e2b` 保持 zero-valued
-    capabilities，所以这两个后端上的策略模式当前会在闸门处被拒掉。
-    给它们实现 `CleanEnv`（让它们声明 capability 后闸门自动放开）
-    跟在 [#1845](https://github.com/trpc-group/trpc-agent-go/issues/1845)
-    里。在那之前，请在 local 后端上开策略模式，或者去掉 allow/deny
-    列表，把 env / 网络隔离交给沙箱层。
+    目前 `codeexecutor/local`、`codeexecutor/container` 和
+    `codeexecutor/e2b` 都已声明 `SupportsCleanEnv: true`，因此这三个后端
+    都支持策略模式。其它后端会保持 zero-valued capabilities，并在闸门处被拒掉，
+    直到完成审计并通过 `NewEngineWithCapabilities` 显式声明能力。
 
 ### 边界
 

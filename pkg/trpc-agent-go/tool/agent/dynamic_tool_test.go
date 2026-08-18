@@ -19,12 +19,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	"trpc.group/trpc-go/trpc-agent-go/event"
+	"trpc.group/trpc-go/trpc-agent-go/internal/state/livesession"
 	agentlog "trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -37,11 +39,17 @@ import (
 // dynStubTool is a minimal tool.Tool used to exercise the dynamic tool's
 // selection logic without a runtime.
 type dynStubTool struct {
-	name string
+	name        string
+	description string
+	inputSchema *tool.Schema
 }
 
 func (s dynStubTool) Declaration() *tool.Declaration {
-	return &tool.Declaration{Name: s.name}
+	return &tool.Declaration{
+		Name:        s.name,
+		Description: s.description,
+		InputSchema: s.inputSchema,
+	}
 }
 
 func stubTools(names ...string) []tool.Tool {
@@ -85,6 +93,18 @@ func TestNewDynamicTool_Defaults(t *testing.T) {
 func TestNewDynamicTool_TypesRemainComparable(t *testing.T) {
 	_ = map[Tool]struct{}{}
 	_ = map[agentToolOptions]struct{}{}
+}
+
+func TestNewDynamicTool_WarnsWhenPersistentHistoryEnabled(t *testing.T) {
+	original := agentlog.Default
+	logger := &dynTestWarnLogger{}
+	agentlog.Default = logger
+	t.Cleanup(func() {
+		agentlog.Default = original
+	})
+
+	_ = NewDynamicTool(WithPersistentHistory())
+	require.Equal(t, 1, logger.warnfCalls)
 }
 
 func TestNewDynamicTool_WithNameAndDescription(t *testing.T) {
@@ -187,6 +207,38 @@ func TestNewDynamicTool_CapabilityToolsEnumerated(t *testing.T) {
 		}))
 	ts4 := at4.Declaration().InputSchema.Properties[fieldTools]
 	require.Nil(t, ts4.Items.Enum)
+
+	// Provider takes runtime precedence over static tools, so the schema must
+	// not expose the static enum when both options are configured.
+	at4b := NewDynamicTool(
+		WithCapabilityTools(stubTools("static_only")),
+		WithCapabilityProvider(
+			func(context.Context, *agent.Invocation) ([]tool.Tool, map[string]bool) {
+				return stubTools("runtime_only"), nil
+			},
+		),
+	)
+	ts4b := at4b.Declaration().InputSchema.Properties[fieldTools]
+	require.Nil(t, ts4b.Items.Enum)
+
+	// Structured provider: also resolved per call, not enumerable at schema-build time.
+	at5 := NewDynamicTool(WithCapabilitySurfaceProvider(
+		func(context.Context, *agent.Invocation) CapabilitySurface {
+			return CapabilitySurface{Tools: stubTools("x")}
+		}))
+	ts5 := at5.Declaration().InputSchema.Properties[fieldTools]
+	require.Nil(t, ts5.Items.Enum)
+
+	at5b := NewDynamicTool(
+		WithCapabilityTools(stubTools("static_only")),
+		WithCapabilitySurfaceProvider(
+			func(context.Context, *agent.Invocation) CapabilitySurface {
+				return CapabilitySurface{Tools: stubTools("runtime_only")}
+			},
+		),
+	)
+	ts5b := at5b.Declaration().InputSchema.Properties[fieldTools]
+	require.Nil(t, ts5b.Items.Enum)
 }
 
 func TestNewDynamicTool_ExposeToggles(t *testing.T) {
@@ -200,6 +252,257 @@ func TestNewDynamicTool_ExposeToggles(t *testing.T) {
 	require.NotContains(t, props, fieldInstruction)
 	require.NotContains(t, props, fieldTools)
 	require.Contains(t, props, fieldSkills)
+}
+
+func TestDynamicTool_CapabilitySkillsProviderOverridesFixed(t *testing.T) {
+	fixed := newDynTestSkillRepo(t, "fixed")
+	dynamic := newDynTestSkillRepo(t, "dynamic")
+	calls := 0
+	at := NewDynamicTool(
+		WithCapabilitySkills(fixed),
+		WithCapabilitySkillsProvider(
+			func(context.Context, *agent.Invocation) skill.Repository {
+				calls++
+				return dynamic
+			},
+		),
+	)
+
+	got := at.dynamicMaxSkillRepo(
+		context.Background(),
+		agent.NewInvocation(),
+	)
+	require.Equal(t, dynamic.Summaries(), got.Summaries())
+	require.Equal(t, 1, calls)
+}
+
+func TestCapabilitySearchTool_SearchesToolsAndSkills(t *testing.T) {
+	repo := newDynTestSkillRepo(t, "coding", "weather")
+	parent := agent.NewInvocation()
+	search := NewCapabilitySearchTool(
+		WithCapabilitySearchProvider(
+			func(
+				_ context.Context,
+				got *agent.Invocation,
+			) ([]tool.Tool, map[string]bool) {
+				require.Same(t, parent, got)
+				return stubTools("read_file", "search_web"), nil
+			},
+		),
+		WithCapabilitySearchSkillsProvider(
+			func(
+				_ context.Context,
+				got *agent.Invocation,
+			) skill.Repository {
+				require.Same(t, parent, got)
+				return repo
+			},
+		),
+	)
+	callable, ok := search.(tool.CallableTool)
+	require.True(t, ok)
+
+	out, err := callable.Call(
+		agent.NewInvocationContext(context.Background(), parent),
+		[]byte(`{"query":"read","limit":10}`),
+	)
+	require.NoError(t, err)
+	got := out.(CapabilitySearchResult)
+	require.Equal(t, []CapabilityToolSummary{{Name: "read_file"}}, got.Tools)
+	require.Empty(t, got.Skills)
+	require.False(t, got.Truncated)
+	require.Contains(t, got.Note, "dynamic_agent")
+
+	out, err = callable.Call(
+		agent.NewInvocationContext(context.Background(), parent),
+		[]byte(`{"query":"","limit":2}`),
+	)
+	require.NoError(t, err)
+	got = out.(CapabilitySearchResult)
+	require.Len(t, got.Tools, 2)
+	require.Empty(t, got.Skills)
+	require.Equal(t, "catalog", got.SearchMode)
+	require.Equal(t, 4, got.Total)
+	require.True(t, got.Truncated)
+	require.Equal(t, []CapabilityNameGroup{
+		{Kind: "tools", Names: []string{"read_file", "search_web"}},
+		{Kind: "skills", Names: []string{"coding", "weather"}},
+	}, got.Groups)
+}
+
+func TestCapabilitySearchTool_SelectsExactNames(t *testing.T) {
+	repo := newDynTestSkillRepo(t, "coding", "weather")
+	search := NewCapabilitySearchTool(
+		WithCapabilitySearchProvider(
+			func(
+				context.Context,
+				*agent.Invocation,
+			) ([]tool.Tool, map[string]bool) {
+				return stubTools("read_file", "search_web"), nil
+			},
+		),
+		WithCapabilitySearchSkillsProvider(
+			func(context.Context, *agent.Invocation) skill.Repository {
+				return repo
+			},
+		),
+	)
+	callable := search.(tool.CallableTool)
+
+	out, err := callable.Call(
+		context.Background(),
+		[]byte(`{"query":"select:search_web,coding,missing"}`),
+	)
+	require.NoError(t, err)
+	got := out.(CapabilitySearchResult)
+	require.Equal(t, "select", got.SearchMode)
+	require.Equal(t, []CapabilityToolSummary{{Name: "search_web"}}, got.Tools)
+	require.Equal(t, []CapabilitySkillSummary{{
+		Name:        "coding",
+		Description: "test skill",
+	}}, got.Skills)
+	require.Equal(t, []string{"missing"}, got.Missing)
+	require.False(t, got.Truncated)
+}
+
+func TestCapabilitySearchTool_ResolvesToolAliases(t *testing.T) {
+	search := NewCapabilitySearchTool(
+		WithCapabilitySearchProvider(
+			func(
+				context.Context,
+				*agent.Invocation,
+			) ([]tool.Tool, map[string]bool) {
+				return []tool.Tool{dynStubTool{
+					name:        "browser",
+					description: "Control a real browser.",
+				}}, nil
+			},
+		),
+		WithCapabilitySearchToolAliases(map[string]string{
+			"trpc-claw-browser-runtime": "browser",
+			"browser-runtime":           "browser",
+		}),
+	)
+	callable := search.(tool.CallableTool)
+
+	out, err := callable.Call(
+		context.Background(),
+		[]byte(`{"query":"trpc-claw-browser-runtime","limit":5}`),
+	)
+	require.NoError(t, err)
+	got := out.(CapabilitySearchResult)
+	require.Equal(t, "bm25", got.SearchMode)
+	require.Equal(t, []CapabilityToolSummary{{
+		Name:        "browser",
+		Description: "Control a real browser.",
+	}}, got.Tools)
+
+	out, err = callable.Call(
+		context.Background(),
+		[]byte(`{"query":"select:trpc-claw-browser-runtime,browser-runtime"}`),
+	)
+	require.NoError(t, err)
+	got = out.(CapabilitySearchResult)
+	require.Equal(t, "select", got.SearchMode)
+	require.Equal(t, []CapabilityToolSummary{{
+		Name:        "browser",
+		Description: "Control a real browser.",
+	}}, got.Tools)
+	require.Empty(t, got.Missing)
+}
+
+func TestCapabilitySearchTool_SearchesSchemaMetadataWithBM25(
+	t *testing.T,
+) {
+	search := NewCapabilitySearchTool(
+		WithCapabilitySearchProvider(
+			func(
+				context.Context,
+				*agent.Invocation,
+			) ([]tool.Tool, map[string]bool) {
+				return []tool.Tool{
+					dynStubTool{
+						name:        "write_file",
+						description: "Modify file contents.",
+						inputSchema: &tool.Schema{
+							Type: "object",
+							Properties: map[string]*tool.Schema{
+								"path": {
+									Type:        "string",
+									Description: "Workspace path to update.",
+								},
+							},
+						},
+					},
+					dynStubTool{
+						name:        "search_web",
+						description: "Search public web pages.",
+					},
+				}, nil
+			},
+		),
+	)
+	callable := search.(tool.CallableTool)
+
+	out, err := callable.Call(
+		context.Background(),
+		[]byte(`{"query":"workspace path","limit":5}`),
+	)
+	require.NoError(t, err)
+	got := out.(CapabilitySearchResult)
+	require.Equal(t, "bm25", got.SearchMode)
+	require.Equal(t, []CapabilityToolSummary{{
+		Name:        "write_file",
+		Description: "Modify file contents.",
+	}}, got.Tools)
+	require.Empty(t, got.Skills)
+	require.Equal(t, 1, got.Total)
+}
+
+func TestCapabilitySearchTool_RebuildsCachedIndexOnCapabilityChange(
+	t *testing.T,
+) {
+	tools := []tool.Tool{dynStubTool{
+		name:        "alpha_tool",
+		description: "Alpha-only capability.",
+	}}
+	search := NewCapabilitySearchTool(
+		WithCapabilitySearchProvider(
+			func(
+				context.Context,
+				*agent.Invocation,
+			) ([]tool.Tool, map[string]bool) {
+				return tools, nil
+			},
+		),
+	)
+	callable := search.(tool.CallableTool)
+
+	out, err := callable.Call(
+		context.Background(),
+		[]byte(`{"query":"alpha"}`),
+	)
+	require.NoError(t, err)
+	got := out.(CapabilitySearchResult)
+	require.Equal(t, []CapabilityToolSummary{{
+		Name:        "alpha_tool",
+		Description: "Alpha-only capability.",
+	}}, got.Tools)
+
+	tools = []tool.Tool{dynStubTool{
+		name:        "beta_tool",
+		description: "Beta-only capability.",
+	}}
+	out, err = callable.Call(
+		context.Background(),
+		[]byte(`{"query":"beta"}`),
+	)
+	require.NoError(t, err)
+	got = out.(CapabilitySearchResult)
+	require.Equal(t, []CapabilityToolSummary{{
+		Name:        "beta_tool",
+		Description: "Beta-only capability.",
+	}}, got.Tools)
 }
 
 func TestNewDynamicTool_CustomFieldDescriptions(t *testing.T) {
@@ -281,7 +584,8 @@ func TestSelectDynamicTools_ExcludesSelfAndTransfer(t *testing.T) {
 		transfer.TransferToolName, // transfer must be excluded
 	)
 	// No selection => all candidates minus excluded.
-	selected, warnings := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, dynamicSpec{})
+	selected, warnings, err := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, nil, dynamicSpec{})
+	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Equal(t, []string{"file_read", "file_write"}, selectedNames(selected))
 }
@@ -290,7 +594,8 @@ func TestSelectDynamicTools_OnlyUserTools(t *testing.T) {
 	at := NewDynamicTool()
 	maxTools := stubTools("file_read", "framework_tool")
 	userTools := map[string]bool{"file_read": true} // framework_tool not a user tool
-	selected, warnings := at.selectDynamicTools(maxTools, userTools, nil, dynamicSpec{})
+	selected, warnings, err := at.selectDynamicTools(maxTools, userTools, nil, nil, dynamicSpec{})
+	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Equal(t, []string{"file_read"}, selectedNames(selected))
 }
@@ -299,29 +604,108 @@ func TestSelectDynamicTools_SubsetSelection(t *testing.T) {
 	at := NewDynamicTool()
 	maxTools := stubTools("a", "b", "c")
 	spec := dynamicSpec{toolsProvided: true, tools: []string{"a", "c"}}
-	selected, warnings := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, spec)
+	selected, warnings, err := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, nil, spec)
+	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Equal(t, []string{"a", "c"}, selectedNames(selected))
+}
+
+func TestSelectDynamicTools_ResolvesAliases(t *testing.T) {
+	at := NewDynamicTool(WithCapabilityToolAliases(map[string]string{
+		"browser-runtime": "browser",
+		"runtime":         "browser",
+		"blank":           "",
+		"same":            "same",
+	}))
+	maxTools := stubTools("browser", "web_fetch")
+	spec := dynamicSpec{
+		toolsProvided: true,
+		tools:         []string{"browser-runtime", "browser", "web_fetch"},
+	}
+	selected, warnings, err := at.selectDynamicTools(
+		maxTools, toolNameSet(maxTools), nil, nil, spec)
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, []string{"browser", "web_fetch"}, selectedNames(selected))
+
+	spec = dynamicSpec{toolsProvided: true, tools: []string{"runtime"}}
+	selected, warnings, err = at.selectDynamicTools(
+		maxTools, toolNameSet(maxTools), nil, nil, spec)
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, []string{"browser"}, selectedNames(selected))
 }
 
 func TestSelectDynamicTools_UnknownRequestedToolWarns(t *testing.T) {
 	at := NewDynamicTool()
 	maxTools := stubTools("a", "b")
 	spec := dynamicSpec{toolsProvided: true, tools: []string{"a", "nope"}}
-	selected, warnings := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, spec)
+	selected, warnings, err := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, nil, spec)
+	require.NoError(t, err)
 	require.Equal(t, []string{"a"}, selectedNames(selected))
 	require.Len(t, warnings, 1)
 	require.Contains(t, warnings[0], "nope")
+}
+
+func TestSelectDynamicTools_UnavailableRequestedToolWarnsWithReason(t *testing.T) {
+	at := NewDynamicTool()
+	maxTools := stubTools("available", "secret")
+	unavailable := map[string]UnavailableCapability{
+		"secret": {
+			Name:   "secret",
+			Reason: CapabilityUnavailableReasonMissingCredential,
+			Detail: "configure SECRET_TOKEN",
+		},
+	}
+
+	// No selection: unavailable tools are simply not mounted and do not add noise.
+	selected, warnings, err := at.selectDynamicTools(
+		maxTools, toolNameSet(maxTools), nil, unavailable, dynamicSpec{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"available"}, selectedNames(selected))
+	require.Empty(t, warnings)
+
+	// Explicit selection: the parent gets an actionable reason instead of a
+	// generic "not available" warning.
+	spec := dynamicSpec{toolsProvided: true, tools: []string{"available", "secret"}}
+	selected, warnings, err = at.selectDynamicTools(
+		maxTools, toolNameSet(maxTools), nil, unavailable, spec)
+	require.NoError(t, err)
+	require.Equal(t, []string{"available"}, selectedNames(selected))
+	require.Len(t, warnings, 1)
+	require.Contains(t, warnings[0], "secret")
+	require.Contains(t, warnings[0], string(CapabilityUnavailableReasonMissingCredential))
+	require.Contains(t, warnings[0], "SECRET_TOKEN")
+}
+
+func TestFormatUnavailableToolWarning_SanitizesDetail(t *testing.T) {
+	warning := formatUnavailableToolWarning("secret", UnavailableCapability{
+		Reason: CapabilityUnavailableReasonPermissionDenied,
+		Detail: "  policy\n\tdenied  ",
+	})
+	require.Contains(t, warning, "detail: policy denied")
+	require.NotContains(t, warning, "\n")
+	require.Contains(t, warning, string(CapabilityUnavailableReasonPermissionDenied))
+
+	longDetail := strings.Repeat("x", maxUnavailableDetailRunes+5)
+	warning = formatUnavailableToolWarning("secret", UnavailableCapability{
+		Detail: longDetail,
+	})
+	require.Contains(t, warning, string(CapabilityUnavailableReasonUnknown))
+	require.Contains(t, warning, strings.Repeat("x", maxUnavailableDetailRunes)+"...")
+	require.NotContains(t, warning, strings.Repeat("x", maxUnavailableDetailRunes+1))
 }
 
 func TestSelectDynamicTools_AllUnknownWarnsNoUserTools(t *testing.T) {
 	at := NewDynamicTool()
 	maxTools := stubTools("a", "b")
 	spec := dynamicSpec{toolsProvided: true, tools: []string{"x", "y"}}
-	selected, warnings := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, spec)
+	selected, warnings, err := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, nil, spec)
 	require.Empty(t, selected)
 	require.NotEmpty(t, warnings)
-	require.Contains(t, warnings[len(warnings)-1], "no user tools")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "none of the requested tools")
+	require.Contains(t, err.Error(), "a, b")
 }
 
 // TestSelectDynamicTools_ExcludesExternalTools verifies that caller-executed
@@ -334,17 +718,19 @@ func TestSelectDynamicTools_ExcludesExternalTools(t *testing.T) {
 	externalNames := map[string]bool{"ext_tool": true}
 
 	// No selection: external tool must not appear among the candidates.
-	selected, warnings := at.selectDynamicTools(
-		maxTools, toolNameSet(maxTools), externalNames, dynamicSpec{})
+	selected, warnings, err := at.selectDynamicTools(
+		maxTools, toolNameSet(maxTools), externalNames, nil, dynamicSpec{})
+	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Equal(t, []string{"tool_a"}, selectedNames(selected))
 
 	// Explicit selection of an external tool is rejected as unavailable.
 	spec := dynamicSpec{toolsProvided: true, tools: []string{"ext_tool"}}
-	selected, warnings = at.selectDynamicTools(
-		maxTools, toolNameSet(maxTools), externalNames, spec)
+	selected, warnings, err = at.selectDynamicTools(
+		maxTools, toolNameSet(maxTools), externalNames, nil, spec)
 	require.Empty(t, selected)
 	require.NotEmpty(t, warnings)
+	require.Error(t, err)
 }
 
 // TestSelectDynamicTools_EmptyArrayAllowsNoneWithoutWarning verifies that an
@@ -354,9 +740,83 @@ func TestSelectDynamicTools_EmptyArrayAllowsNoneWithoutWarning(t *testing.T) {
 	at := NewDynamicTool()
 	maxTools := stubTools("a", "b")
 	spec := dynamicSpec{toolsProvided: true, tools: nil} // provided, but empty
-	selected, warnings := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, spec)
+	selected, warnings, err := at.selectDynamicTools(maxTools, toolNameSet(maxTools), nil, nil, spec)
+	require.NoError(t, err)
 	require.Empty(t, selected)
 	require.Empty(t, warnings, "an explicit empty selection must not warn")
+}
+
+func TestDynamicMaxToolSurface_DetailedProviderWinsAndReportsUnavailable(t *testing.T) {
+	legacyCalled := false
+	at := NewDynamicTool(
+		WithCapabilityTools(stubTools("static")),
+		WithCapabilityProvider(func(context.Context, *agent.Invocation) ([]tool.Tool, map[string]bool) {
+			legacyCalled = true
+			return stubTools("legacy"), nil
+		}),
+		WithCapabilitySurfaceProvider(func(context.Context, *agent.Invocation) CapabilitySurface {
+			return CapabilitySurface{
+				Tools:             stubTools("available"),
+				UserToolNames:     map[string]bool{"available": true},
+				ExternalToolNames: map[string]bool{"external": true},
+				UnavailableTools: []UnavailableCapability{{
+					Name:   " unavailable ",
+					Reason: CapabilityUnavailableReasonExecutorUnavailable,
+					Detail: " no sandbox ",
+				}},
+			}
+		}),
+	)
+
+	tools, users, externals, unavailable := at.dynamicMaxToolSurface(context.Background(), nil)
+	require.False(t, legacyCalled, "structured provider should take precedence")
+	require.Equal(t, []string{"available"}, selectedNames(tools))
+	require.True(t, users["available"])
+	require.True(t, externals["external"])
+	got := unavailable["unavailable"]
+	require.Equal(t, CapabilityUnavailableReasonExecutorUnavailable, got.Reason)
+	require.Equal(t, "no sandbox", got.Detail)
+}
+
+func TestUnavailableCapabilityMap_NormalizesEntries(t *testing.T) {
+	values := unavailableCapabilityMap([]UnavailableCapability{
+		{Name: "  ", Reason: CapabilityUnavailableReasonPermissionDenied},
+		{Name: " tool_a ", Detail: "  access\n\tdenied  "},
+	})
+	require.Len(t, values, 1)
+	got := values["tool_a"]
+	require.Equal(t, CapabilityUnavailableReasonUnknown, got.Reason)
+	require.Equal(t, "access denied", got.Detail)
+	require.Nil(t, unavailableCapabilityMap(nil))
+	require.Nil(t, unavailableCapabilityMap([]UnavailableCapability{{Name: " "}}))
+}
+
+func TestFormatUnavailableToolWarning_WithoutDetail(t *testing.T) {
+	warning := formatUnavailableToolWarning("tool_a", UnavailableCapability{
+		Reason: CapabilityUnavailableReasonNetworkDisabled,
+	})
+	require.Contains(t, warning, "tool_a")
+	require.Contains(t, warning, string(CapabilityUnavailableReasonNetworkDisabled))
+	require.NotContains(t, warning, "detail:")
+}
+
+func TestDynamicMaxToolSurface_LegacyProviderAndNilParent(t *testing.T) {
+	at := NewDynamicTool(WithCapabilityProvider(
+		func(context.Context, *agent.Invocation) ([]tool.Tool, map[string]bool) {
+			return stubTools("legacy"), map[string]bool{"legacy": true}
+		},
+	))
+	tools, users, externals, unavailable := at.dynamicMaxToolSurface(context.Background(), nil)
+	require.Equal(t, []string{"legacy"}, selectedNames(tools))
+	require.True(t, users["legacy"])
+	require.Nil(t, externals)
+	require.Nil(t, unavailable)
+
+	tools, users, externals, unavailable = NewDynamicTool().dynamicMaxToolSurface(context.Background(), nil)
+	require.Nil(t, tools)
+	require.Nil(t, users)
+	require.Nil(t, externals)
+	require.Nil(t, unavailable)
 }
 
 func TestDedupeNonEmpty(t *testing.T) {
@@ -415,6 +875,61 @@ func TestCallDynamic_RequiresRequest(t *testing.T) {
 	require.Contains(t, err.Error(), "request")
 }
 
+func TestCallDynamic_TimeoutBoundsSubAgent(t *testing.T) {
+	t.Parallel()
+
+	main := llmagent.New("main", llmagent.WithModel(&dynBlockingModel{}))
+	at := NewDynamicTool(WithDynamicTimeout(10 * time.Millisecond))
+	sess := session.NewSession("app", "user", "session")
+	parent := agent.NewInvocation(
+		agent.WithInvocationAgent(main),
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationEventFilterKey("main"),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), parent)
+
+	start := time.Now()
+	_, err := at.Call(ctx, []byte(`{"request":"wait"}`))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), context.DeadlineExceeded.Error())
+	require.Less(t, time.Since(start), time.Second)
+}
+
+func TestStreamDynamic_TimeoutBoundsSubAgent(t *testing.T) {
+	t.Parallel()
+
+	main := llmagent.New("main", llmagent.WithModel(&dynBlockingModel{}))
+	at := NewDynamicTool(WithDynamicTimeout(10 * time.Millisecond))
+	sess := session.NewSession("app", "user", "session")
+	parent := agent.NewInvocation(
+		agent.WithInvocationAgent(main),
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationEventFilterKey("main"),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), parent)
+
+	start := time.Now()
+	reader, err := at.StreamableCall(ctx, []byte(`{"request":"wait"}`))
+	require.NoError(t, err)
+	defer reader.Close()
+
+	var sb strings.Builder
+	for {
+		chunk, recvErr := reader.Recv()
+		if recvErr == io.EOF {
+			break
+		}
+		require.NoError(t, recvErr)
+		if text, ok := chunk.Content.(string); ok {
+			sb.WriteString(text)
+		}
+	}
+
+	require.Contains(t, sb.String(), context.DeadlineExceeded.Error())
+	require.Less(t, time.Since(start), time.Second)
+}
+
 // dynRecordingModel records the set of tool names visible in each request.
 type dynRecordingModel struct {
 	name     string
@@ -455,6 +970,20 @@ func (m *dynRecordingModel) snapshot() [][]string {
 	out := make([][]string, len(m.seen))
 	copy(out, m.seen)
 	return out
+}
+
+type dynBlockingModel struct{}
+
+func (m *dynBlockingModel) GenerateContent(
+	ctx context.Context,
+	_ *model.Request,
+) (<-chan *model.Response, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (m *dynBlockingModel) Info() model.Info {
+	return model.Info{Name: "blocking"}
 }
 
 func newDynTestTool(name string) tool.Tool {
@@ -529,6 +1058,73 @@ func TestNewDynamicTool_Integration_DefaultAllTools(t *testing.T) {
 	seen := recModel.snapshot()
 	require.Len(t, seen, 1)
 	require.Equal(t, []string{"tool_a", "tool_b"}, seen[0])
+}
+
+func TestNewDynamicTool_Integration_UnavailableReasonReturnedToParent(t *testing.T) {
+	recModel := &dynRecordingModel{name: "rec", response: "child-done"}
+	main := llmagent.New("main", llmagent.WithModel(recModel))
+	at := NewDynamicTool(WithCapabilitySurfaceProvider(
+		func(context.Context, *agent.Invocation) CapabilitySurface {
+			return CapabilitySurface{
+				Tools: stubTools("available"),
+				UnavailableTools: []UnavailableCapability{{
+					Name:   "secret",
+					Reason: CapabilityUnavailableReasonMissingCredential,
+					Detail: "configure SECRET_TOKEN",
+				}},
+			}
+		},
+	))
+
+	sess := session.NewSession("app", "user", "session")
+	parent := agent.NewInvocation(
+		agent.WithInvocationAgent(main),
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationEventFilterKey("main"),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), parent)
+
+	got, err := at.Call(ctx, []byte(
+		`{"request":"use both tools","tools":["available","secret"]}`,
+	))
+	require.NoError(t, err)
+	out, ok := got.(string)
+	require.True(t, ok)
+	require.Contains(t, out, "Note from "+at.name)
+	require.Contains(t, out, "secret")
+	require.Contains(t, out, string(CapabilityUnavailableReasonMissingCredential))
+	require.Contains(t, out, "configure SECRET_TOKEN")
+	require.Contains(t, out, "child-done")
+
+	seen := recModel.snapshot()
+	require.Len(t, seen, 1, "child should have run exactly once")
+	require.Equal(t, []string{"available"}, seen[0],
+		"child must not see known-but-unavailable tools")
+}
+
+func TestNewDynamicTool_Integration_AllRequestedToolsUnavailableErrors(t *testing.T) {
+	recModel := &dynRecordingModel{name: "rec", response: "child-done"}
+	main := llmagent.New(
+		"main",
+		llmagent.WithModel(recModel),
+		llmagent.WithTools([]tool.Tool{newDynTestTool("tool_a")}),
+	)
+	at := NewDynamicTool()
+
+	sess := session.NewSession("app", "user", "session")
+	parent := agent.NewInvocation(
+		agent.WithInvocationAgent(main),
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationEventFilterKey("main"),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), parent)
+
+	_, err := at.Call(ctx, []byte(
+		`{"request":"use unavailable tool","tools":["web_search"]}`,
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "none of the requested tools")
+	require.Empty(t, recModel.snapshot(), "child must not run without requested tools")
 }
 
 // TestNewDynamicTool_Integration_WithTemplateAgent verifies that a distinctly
@@ -641,6 +1237,30 @@ func TestNewDynamicTool_Integration_ExcludesSiblingAgentTools(t *testing.T) {
 	require.Len(t, seen, 1)
 	require.Equal(t, []string{"tool_a"}, seen[0],
 		"dynamic child surface must exclude all AgentTool entrypoints")
+}
+
+func TestNewDynamicTool_RestoresLiveSessionFromParallelClone(t *testing.T) {
+	const liveOnlyContent = "dynamic-live-only-history"
+	liveSess, frozenSess := liveAndFrozenSessionsForTest(t, liveOnlyContent)
+
+	child := &liveSessionHistoryAgent{
+		name:            "dynamic-live-session-child",
+		liveOnlyContent: liveOnlyContent,
+	}
+	at := NewDynamicTool()
+	parent := agent.NewInvocation(
+		agent.WithInvocationAgent(child),
+		agent.WithInvocationSession(frozenSess),
+		agent.WithInvocationEventFilterKey("parent"),
+	)
+	livesession.Attach(parent, liveSess)
+	ctx := agent.NewInvocationContext(context.Background(), parent)
+
+	res, err := at.Call(ctx, []byte(`{"request":"hi"}`))
+	require.NoError(t, err)
+	require.Equal(t, "saw-live-session", res)
+	require.Same(t, liveSess, child.seenSession)
+	require.True(t, child.sawLiveOnly)
 }
 
 // --- Fix 5: WithName is dynamic-only ---------------------------------------

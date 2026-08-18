@@ -1,5 +1,7 @@
 # Document Source Configuration
 
+![Knowledge Chunking Viewer](../../assets/img/knowledge/chunk-viewer.png)
+
 > **Example Code**: [examples/knowledge/sources](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources)
 
 The source module provides various document source types, each supporting rich configuration options.
@@ -110,209 +112,25 @@ autoSrc := autosource.New(
 
 ## Repo Source
 
-The repo source targets code repository scenarios, suited for:
-
-- Loading a remote **Git URL** directly
-- Loading a locally checked-out **repository directory**
-- Uniformly processing Go / Proto / Markdown and other content within a single repository
-
-> **Current open-source status**: AST-aware code parsing is currently open-sourced for **Go** and **Proto / PB**. Support for `Python`, `C++`, `JavaScript`, and other languages is being progressively open-sourced. For languages not yet open-sourced, the repo source can still process text files via plain document readers, but without AST-level semantic entities.
-
-### Typical Use Cases
-
-- Loading a remote Git repository to build a code knowledge base
-- Loading a local repository restricted to a specific subdirectory
-- Unified ingest of Go + Markdown (and other supported types) within a single repository
-
-### Basic Usage
+The repo source targets code repository scenarios: it ingests an entire Git repository (or a locally checked-out directory) into the knowledge base, dispatches files to the matching reader by type, and chunks `.go` / `.py` / `.proto` and similar files into AST semantic entities. It is the data entry point of a code knowledge base / Code RAG.
 
 ```go
 import (
     _ "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/golang"
+    _ "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/python"
     reposource "trpc.group/trpc-go/trpc-agent-go/knowledge/source/repo"
 )
 
 repoSrc := reposource.New(
-    reposource.WithRepository(
-        reposource.Repository{
-            URL:    "https://github.com/trpc-group/trpc-go",
-            Branch: "main",
-        },
-    ),
-    reposource.WithName("Code Repository"),
-    reposource.WithFileExtensions([]string{".go", ".md"}),
+    reposource.WithRepository(reposource.Repository{
+        URL:    "https://github.com/trpc-group/trpc-go",
+        Branch: "main",
+    }),
+    reposource.WithFileExtensions([]string{".go", ".py", ".md"}),
 )
 ```
 
-The Go AST reader is an optional module. Import `knowledge/document/reader/golang`
-for side-effect registration when scanning `.go` files. Proto files are
-registered by default.
-
-### Repository Struct
-
-`Repository` describes a single repository input with independent version and scope configuration:
-
-| Field | Description |
-|-------|-------------|
-| `URL` | Remote Git repository URL |
-| `Dir` | Local repository directory |
-| `Branch` | Target branch |
-| `Tag` | Target tag |
-| `Commit` | Target commit |
-| `Subdir` | Scan only a subdirectory within the repository |
-| `RepoName` | Custom repository name |
-| `RepoURL` | Custom repository URL (overrides auto-detection) |
-
-> `URL` and `Dir` are mutually exclusive. A single `repo.Source` processes only one repository input.
-
-### Version Selection Priority
-
-When multiple version fields are set, the priority is:
-
-1. `Commit`
-2. `Tag`
-3. `Branch`
-
-That is, if both `Commit` and `Branch` are provided, `Commit` is checked out.
-
-### Scan Scope Control
-
-- [`WithFileExtensions`](https://github.com/trpc-group/trpc-agent-go/blob/main/knowledge/source/repo/options.go) — controls which file extensions are scanned
-- [`WithSkipDirs`](https://github.com/trpc-group/trpc-agent-go/blob/main/knowledge/source/repo/options.go) — controls which directory names are skipped
-- [`WithSkipSuffixes`](https://github.com/trpc-group/trpc-agent-go/blob/main/knowledge/source/repo/options.go) — controls which file suffixes are skipped
-- `Repository.Subdir` — restricts scanning to a subdirectory within the repository
-
-Example: scan only Go and Markdown files under `server/`:
-
-```go
-repoSrc := reposource.New(
-    reposource.WithRepository(
-        reposource.Repository{
-            URL:    "https://github.com/trpc-group/trpc-go",
-            Branch: "main",
-            Subdir: "server",
-        },
-    ),
-    reposource.WithFileExtensions([]string{".go", ".md"}),
-    reposource.WithSkipSuffixes([]string{".pb.go", ".trpc.go", "_mock.go"}),
-)
-```
-
-### Metadata
-
-The repo source enriches documents produced by readers with repository-level metadata:
-
-| Metadata Key | Description |
-|---|---|
-| `trpc_agent_go_source=repo` | Document originates from a repo source |
-| `trpc_agent_go_repo_path` | Local root directory of the cloned repository |
-| `trpc_ast_repo_name` | Repository name |
-| `trpc_ast_repo_url` | Repository URL |
-| `trpc_ast_branch` | Version identifier being parsed (branch/tag/commit) |
-| `trpc_ast_file_path` | Repo-relative file path |
-
-Notes:
-
-- `trpc_ast_file_path` represents the **logical path within the repository**, not a remote Git URL.
-- For Git URL inputs, the repo source first clones to a temporary directory, then writes the repo-relative path into `trpc_ast_file_path`.
-
-### Relation to AST Readers
-
-The repo source does not parse code itself; it dispatches to the appropriate reader based on file type:
-
-- `.go` → Go AST reader
-- `.proto` → Proto AST reader
-- `.md` → Markdown reader
-- Other registered extensions → corresponding reader
-
-### Parsed Output Example
-
-Below is a sample output from chunking a struct definition in a remote Go repository:
-
-```text
-parsed content:
-index: 7
-name: Server
-content_length: 570
-
-content:
-// Server is a tRPC server.
-// One process, one server. A server may offer one or more services.
-type Server struct {
-    MaxCloseWaitTime time.Duration
-
-    services map[string]Service
-
-    mux sync.Mutex
-    onShutdownHooks []func()
-
-    failedServices sync.Map
-    signalCh       chan os.Signal
-    closeCh        chan struct{}
-    closeOnce      sync.Once
-}
-
-embedding text:
-{
-  "comment": "Server is a tRPC server.\nOne process, one server. A server may offer one or more services.",
-  "file_path": "/tmp/trpc-agent-go-repo-483441217/server/server.go",
-  "full_name": "trpc.group/trpc-go/trpc-go/server.Server",
-  "id": "trpc.group/trpc-go/trpc-go/server.Server",
-  "name": "Server",
-  "package": "trpc.group/trpc-go/trpc-go/server",
-  "signature": "type Server struct",
-  "type": "Struct"
-}
-
-metadata:
-trpc_agent_go_source: repo
-trpc_agent_go_file_path: server/server.go
-trpc_ast_repo_name: trpc-go
-trpc_ast_repo_url: https://github.com/trpc-group/trpc-go
-trpc_ast_file_path: server/server.go
-trpc_ast_full_name: trpc.group/trpc-go/trpc-go/server.Server
-trpc_ast_type: Struct
-trpc_ast_signature: type Server struct
-trpc_ast_language: go
-...
-```
-
-The output has three layers:
-
-#### 1. `content`: Raw chunk content
-
-The `content` field stores the final text written to the knowledge base. For AST-aware Go / Proto readers, content is not a character-truncated fragment but a **semantically complete code entity**.
-
-In the example above, the entity is the `Server` struct, so the content includes the struct comment, `type Server struct { ... }`, and all field definitions.
-
-#### 2. `embedding text`: Structured summary for vectorization
-
-`embedding text` is a compact summary optimized for semantic embedding, retaining fields such as `name`, `full_name`, `package`, `signature`, `comment`, and `file_path`. This helps embeddings focus on "what this entity is, which package it belongs to, and what it does."
-
-#### 3. `metadata`: Filtering, locating, and display
-
-`metadata` is primarily used for retrieval filtering, display, and source tracking — not for embedding.
-
-##### `trpc_agent_go_*`
-
-Framework-level metadata describing the document origin:
-
-- `trpc_agent_go_source=repo`: document comes from a repo source
-- `trpc_agent_go_file_path`: repo-relative file path
-- `trpc_agent_go_repo_path`: local root of the cloned repository
-- `trpc_agent_go_uri`: actual file URI
-
-##### `trpc_ast_*`
-
-AST semantic metadata describing the code entity:
-
-- `trpc_ast_type=Struct`
-- `trpc_ast_full_name`
-- `trpc_ast_signature`
-- `trpc_ast_language=go`
-- `trpc_ast_repo_name` / `trpc_ast_repo_url`
-
-These are used for precise filtering, such as retrieving all `Struct` types in a given package, or all `rpc` / `message` definitions in a proto service.
+> For full repo-source ingest configuration (Repository struct, version & scan control, metadata, AST parsing) plus the accompanying code retrieval tools (`code_search` vector search / `code_graph_*` graph search), see [Code RAG](code-rag.md).
 
 ## Combined Usage
 
@@ -350,7 +168,7 @@ if err := kb.Load(ctx); err != nil {
 
 ## Chunking Strategy
 
-> **Example Code**: [fixed-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/fixed-chunking) | [recursive-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/recursive-chunking)
+> **Example Code**: [interactive chunking viewer](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/chunking) | [fixed-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/fixed-chunking) | [recursive-chunking](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/knowledge/sources/recursive-chunking)
 
 Chunking is the process of splitting long documents into smaller fragments, which is crucial for vector retrieval. The framework provides multiple built-in chunking strategies and supports custom strategies.
 
@@ -358,35 +176,73 @@ Chunking is the process of splitting long documents into smaller fragments, whic
 
 | Strategy | Description | Use Case |
 |----------|-------------|----------|
-| **FixedSizeChunking** | Fixed-size chunking | General text, simple and fast |
-| **RecursiveChunking** | Recursive chunking by separator hierarchy | Preserving semantic integrity |
+| **FixedSizeChunking** | Size-bounded chunking with nearby natural boundaries | General text, simple and fast |
+| **RecursiveChunking** | Recursive splitting and merging by separator hierarchy | Preserving semantic integrity |
 | **MarkdownChunking** | Chunk by Markdown structure | Markdown documents (default) |
 | **JSONChunking** | Chunk by JSON structure | JSON files (default) |
 
 ### Default Behavior
 
-Each file type has an associated chunking strategy:
+Most applications configure a Source or Reader and do not need to construct a
+strategy directly. The Reader selects the default behavior:
 
-- `.md` files → MarkdownChunking (recursively chunk by heading levels H1→H6→paragraph→fixed size)
-- `.json` files → JSONChunking (chunk by JSON structure)
-- `.txt/.csv/.docx` etc. → FixedSizeChunking
+| Document type | Default Reader behavior |
+|---------------|-------------------------|
+| `.md`, `.markdown` | MarkdownChunking (heading levels H1→H6→paragraph→natural text boundary) |
+| `.json` | JSONChunking (JSON structure) |
+| `.txt`, `.text` | FixedSizeChunking with natural text boundaries |
+| `.csv` | Line-preserving FixedSizeChunking; a record is split only when it exceeds the active new-content budget |
+| `.pdf`, `.doc`, `.docx` | The optional format Reader uses FixedSizeChunking when its package is imported |
+| `.proto` | ProtoReader creates AST entity chunks |
+| `.go`, `.py` | The optional language Reader creates AST entity chunks when imported; otherwise Source falls back to TextReader |
+
+RecursiveChunking is available as an explicit custom strategy when
+separator-aware plain-text splitting is preferred.
+
+PDF, DOCX, Go, and Python Readers are opt-in packages. Import the Reader package
+for the formats an application needs so it registers itself with the Reader
+registry.
 
 **Default Parameters**:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| ChunkSize | 1024 | Maximum characters per chunk |
-| Overlap | 128 | Overlapping characters between adjacent chunks |
+| ChunkSize | 1024 | Maximum Unicode runes for FixedSizeChunking, RecursiveChunking, and MarkdownChunking |
+| JSON ChunkSize | 2000 | Maximum serialized bytes for JSONChunking |
+| Overlap | 0 | Maximum overlapping Unicode runes between adjacent chunks |
 
-> Default chunking strategies are affected by `chunkSize` parameter. The `overlap` parameter only applies to FixedSizeChunking, RecursiveChunking, and MarkdownChunking. JSONChunking does not support overlap.
+> `overlap` only applies to FixedSizeChunking, RecursiveChunking, and MarkdownChunking. It is a maximum: the strategy may move the overlap start to a natural boundary or reduce it so the final chunk remains within `chunkSize`. A large overlap leaves less room for new content and produces more chunks. JSONChunking does not support overlap.
+
+Overlap is the content shared by the end of one chunk and the beginning of the
+next. It does not add separate overlap regions to both ends of a single chunk.
+
+The implicit text-strategy overlap changed from `128` to `0`. This affects
+knowledge bases created without an explicit overlap: chunk boundaries and
+embedding inputs will change. To keep an overlapping window, configure the
+desired value explicitly with `WithChunkOverlap` or the strategy-specific
+overlap option, then re-ingest the affected documents. Because overlap now
+counts inside `chunkSize`, even an explicit value of `128` may not reproduce
+the old over-budget chunks byte for byte.
+
+The text strategies validate their configuration when `Chunk` is called:
+`chunkSize` must be greater than zero, and `overlap` must be in
+`[0, chunkSize)`. Invalid values return `ErrInvalidChunkSize`,
+`ErrInvalidOverlap`, or `ErrOverlapTooLarge` instead of being adjusted
+silently.
+
+JSONChunking traverses object keys deterministically and array indices in
+numeric order. When a string value cannot fit together with its JSON path, it
+is split at UTF-8-safe boundaries. If an indivisible value plus its path cannot
+fit within the byte budget, chunking returns an error instead of emitting an
+over-budget chunk.
 
 Adjust default strategy parameters via `WithChunkSize` and `WithChunkOverlap`:
 
 ```go
 fileSrc := filesource.New(
     []string{"./data/document.txt"},
-    filesource.WithChunkSize(512),     // Chunk size (characters)
-    filesource.WithChunkOverlap(64),   // Chunk overlap (characters)
+    filesource.WithChunkSize(512),     // Maximum size in Unicode runes
+    filesource.WithChunkOverlap(64),   // Maximum overlap in Unicode runes
 )
 ```
 
@@ -398,7 +254,8 @@ Use `WithCustomChunkingStrategy` to override the default chunking strategy.
 
 #### FixedSizeChunking - Fixed Size Chunking
 
-Splits text by fixed character count with overlap support:
+Splits text near the size limit, preferring a nearby line, sentence,
+punctuation, or word boundary, with optional overlap:
 
 ```go
 import (
@@ -408,8 +265,8 @@ import (
 
 // Create fixed-size chunking strategy
 fixedChunking := chunking.NewFixedSizeChunking(
-    chunking.WithChunkSize(512),   // Max 512 characters per chunk
-    chunking.WithOverlap(64),      // 64 characters overlap between chunks
+    chunking.WithChunkSize(512),   // Max 512 Unicode runes per chunk
+    chunking.WithOverlap(64),      // Max 64 Unicode runes of overlap
 )
 
 fileSrc := filesource.New(
@@ -417,6 +274,12 @@ fileSrc := filesource.New(
     filesource.WithCustomChunkingStrategy(fixedChunking),
 )
 ```
+
+Use `chunking.WithPreserveLines()` when each input line is a logical record.
+Complete lines are packed without splitting whenever they fit the active
+new-content budget; an oversized line still falls back to sentence,
+punctuation, whitespace, and UTF-8-safe rune boundaries. CSVReader enables this
+option by default.
 
 #### RecursiveChunking - Recursive Chunking
 
@@ -450,6 +313,14 @@ fileSrc := filesource.New(
 4. ` ` - Split by space
 
 Recursive chunking attempts to use higher priority separators, only using the next level separator when chunks still exceed the maximum size. If all separators fail to split text within chunkSize, it will force split by chunkSize.
+
+For oversized logical blocks, the built-in text strategies rebalance a final
+piece smaller than half the chunk budget. Plain text prefers nearby natural
+boundaries; Markdown paragraphs prefer sentences and punctuation, while tables
+and fenced code blocks prefer complete lines. An unbroken token falls back to a
+UTF-8-safe rune boundary. Rebalancing does not cross Markdown heading scope or
+unrelated structured records, so a complete short section may remain a small
+chunk.
 
 ## Configuring Metadata
 

@@ -11,7 +11,6 @@ package tencentdb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -52,6 +51,21 @@ type searchConversationsToolResponse struct {
 	Total   int    `json:"total"`
 }
 
+type readOffloadRefToolRequest struct {
+	ResultRef string `json:"result_ref" description:"Result reference produced by TencentDB context offload, for example offload/session/refs/call_1.md."`
+	Query     string `json:"query,omitempty" description:"Optional case-insensitive text to locate within the archived result. Cannot be combined with line ranges."`
+	StartLine int    `json:"start_line,omitempty" description:"Optional one-based first line to read. Cannot be combined with query."`
+	EndLine   int    `json:"end_line,omitempty" description:"Optional one-based last line to read. Cannot be combined with query."`
+	MaxTokens int    `json:"max_tokens,omitempty" description:"Maximum response size in tokens. Defaults to 1600, maximum 4096."`
+}
+
+type readOffloadRefToolResponse struct {
+	ResultRef  string `json:"result_ref"`
+	Content    string `json:"content"`
+	Truncated  bool   `json:"truncated"`
+	MatchFound *bool  `json:"match_found,omitempty"`
+}
+
 func (s *Service) buildTools() []tool.Tool {
 	out := make([]tool.Tool, 0, 3)
 	seen := make(map[string]struct{}, 3)
@@ -76,11 +90,18 @@ func (s *Service) buildTools() []tool.Tool {
 	if s.opts.EnableConversationSearchTool {
 		add(s.newConversationSearchTool(s.nativeToolName("conversation_search")))
 	}
+	if s.opts.ContextOffload.Enabled {
+		add(s.newReadOffloadRefTool(s.nativeToolName("read_offload_ref")))
+	}
 	return out
 }
 
 func (s *Service) nativeToolName(name string) string {
-	prefix := strings.Trim(strings.TrimSpace(s.opts.ToolPrefix), "_-")
+	return nativeToolName(s.opts, name)
+}
+
+func nativeToolName(opts Options, name string) string {
+	prefix := strings.Trim(strings.TrimSpace(opts.ToolPrefix), "_-")
 	if prefix == "" {
 		return name
 	}
@@ -156,12 +177,75 @@ func (s *Service) newConversationSearchTool(name string) tool.CallableTool {
 	)
 }
 
-func currentSession(ctx context.Context) (*session.Session, error) {
-	inv, ok := agent.InvocationFromContext(ctx)
-	if !ok || inv == nil || inv.Session == nil {
-		return nil, errors.New("tencentdb memory tool: invocation session is required")
+func (s *Service) newReadOffloadRefTool(name string) tool.CallableTool {
+	fn := func(ctx context.Context, req *readOffloadRefToolRequest) (*readOffloadRefToolResponse, error) {
+		if req == nil || strings.TrimSpace(req.ResultRef) == "" {
+			return nil, fmt.Errorf("%s: result_ref is required", name)
+		}
+		query := strings.TrimSpace(req.Query)
+		if query != "" && (req.StartLine != 0 || req.EndLine != 0) {
+			return nil, fmt.Errorf("%s: query cannot be combined with line ranges", name)
+		}
+		if req.StartLine < 0 || req.EndLine < 0 ||
+			req.MaxTokens < 0 || req.MaxTokens > 4096 {
+			return nil, fmt.Errorf(
+				"%s: start_line, end_line, and max_tokens must be within the supported ranges",
+				name,
+			)
+		}
+		if req.StartLine > 0 && req.EndLine > 0 &&
+			req.StartLine > req.EndLine {
+			return nil, fmt.Errorf("%s: start_line must not exceed end_line", name)
+		}
+		inv, err := currentInvocation(ctx)
+		if err != nil {
+			return nil, err
+		}
+		client := s.contextOffloadClient()
+		if client == nil {
+			return nil, fmt.Errorf("%s: context offload gateway is unavailable", name)
+		}
+		rsp, err := client.readRef(ctx, offloadReadRefRequest{
+			SessionID: s.sessionKey(inv.Session),
+			ResultRef: strings.TrimSpace(req.ResultRef),
+			Query:     query,
+			StartLine: optionalPositiveInt(req.StartLine),
+			EndLine:   optionalPositiveInt(req.EndLine),
+			MaxTokens: optionalPositiveInt(req.MaxTokens),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if rsp == nil {
+			return &readOffloadRefToolResponse{
+				ResultRef: strings.TrimSpace(req.ResultRef),
+			}, nil
+		}
+		return &readOffloadRefToolResponse{
+			ResultRef:  rsp.ResultRef,
+			Content:    rsp.Content,
+			Truncated:  rsp.Truncated,
+			MatchFound: rsp.MatchFound,
+		}, nil
 	}
-	if err := validateSessionScope(inv.Session); err != nil {
+	return function.NewFunctionTool(
+		fn,
+		function.WithName(name),
+		function.WithDescription("Read a tool result externalized by TencentDB context offload. "+
+			"Use this when the prompt contains a result_ref and exact details are needed."),
+	)
+}
+
+func optionalPositiveInt(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	return &value
+}
+
+func currentSession(ctx context.Context) (*session.Session, error) {
+	inv, err := currentInvocation(ctx)
+	if err != nil {
 		return nil, err
 	}
 	return inv.Session, nil
@@ -175,4 +259,15 @@ func normalizeLimit(limit int) int {
 		return maxSearchLimit
 	}
 	return limit
+}
+
+func currentInvocation(ctx context.Context) (*agent.Invocation, error) {
+	inv, ok := agent.InvocationFromContext(ctx)
+	if !ok || inv == nil || inv.Session == nil {
+		return nil, fmt.Errorf("tencentdb memory: invocation session is required")
+	}
+	if err := validateSessionScope(inv.Session); err != nil {
+		return nil, err
+	}
+	return inv, nil
 }

@@ -16,9 +16,13 @@ import (
 	"fmt"
 	"reflect"
 
+	"trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/internal/jsonrepair"
+	"trpc.group/trpc-go/trpc-agent-go/internal/jsonutils"
 	itool "trpc.group/trpc-go/trpc-agent-go/internal/tool"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/resultformat"
 )
 
 // FunctionTool implements the CallableTool interface for executing functions with arguments.
@@ -35,6 +39,13 @@ type FunctionTool[I, O any] struct {
 	// skipSummarization indicates whether the outer flow should skip
 	// the post-tool summarization step after this tool returns.
 	skipSummarization bool
+	// resultFormatter optionally formats the final tool result as model-visible
+	// message content. When nil, the framework keeps its default JSON behavior.
+	resultFormatter resultformat.Formatter
+	// concurrencySafe reports whether this tool may share a turn with others on
+	// the parallel tool path. It defaults to true, which is how a tool that
+	// publishes nothing at all is already read.
+	concurrencySafe bool
 }
 
 // Option is a function that configures a FunctionTool.
@@ -47,8 +58,10 @@ type functionToolOptions struct {
 	unmarshaler       unmarshaler
 	longRunning       bool
 	skipSummarization bool
+	concurrencySafe   bool
 	inputSchema       *tool.Schema
 	outputSchema      *tool.Schema
+	resultFormatter   resultformat.Formatter
 }
 
 // WithName sets the name of the function tool.
@@ -90,6 +103,20 @@ func WithSkipSummarization(skip bool) Option {
 	}
 }
 
+// WithConcurrencySafe sets whether the function tool tolerates running at the
+// same time as the other tool calls in a turn. It defaults to true.
+//
+// Set it to false for a tool whose calls contend for something the caller cannot
+// see — a shared working directory, an external process, a session the tool
+// reads back after writing. The value is published through tool.ConcurrencyAware
+// so schedulers and host policies can honor it; a tool that says nothing is read
+// as safe, which is why the default here is true.
+func WithConcurrencySafe(safe bool) Option {
+	return func(opts *functionToolOptions) {
+		opts.concurrencySafe = safe
+	}
+}
+
 // WithInputSchema sets a custom input schema for the function tool.
 // When provided, the automatic schema generation will be skipped.
 func WithInputSchema(schema *tool.Schema) Option {
@@ -106,6 +133,28 @@ func WithOutputSchema(schema *tool.Schema) Option {
 	}
 }
 
+// WithResultFormatter sets the formatter for the function tool's final result.
+// It is currently supported by LLMAgent's default tool-call flow. Graph
+// ToolsNode, ToolPipe, wrappers that replace tool instances, and direct
+// Tool.Call consumers do not currently apply it. The formatter changes only
+// the default model-visible tool message content; the framework continues to
+// manage the message role, tool name, tool call ID, ordering, and session
+// persistence. When formatter is nil, the framework uses its default JSON
+// representation. A formatter runs only when the tool declared a result for
+// the call: when a before-tool callback or plugin short-circuits the call with
+// its own result, the tool never runs and the framework keeps its default
+// JSON. An after-tool callback replacing the result of a tool that did run is
+// a different case: the replacement is formatted, so it has to be a value the
+// formatter accepts. A streamable tool must declare its final result with
+// tool.FinalResultChunk to be formatted; see
+// StreamableFunctionTool.ResultFormatter. Repeated configuration is
+// last-writer-wins.
+func WithResultFormatter(formatter resultformat.Formatter) Option {
+	return func(opts *functionToolOptions) {
+		opts.resultFormatter = formatter
+	}
+}
+
 // NewFunctionTool creates and returns a new instance of FunctionTool with the specified
 // function implementation and optional configuration.
 // Parameters:
@@ -117,7 +166,8 @@ func WithOutputSchema(schema *tool.Schema) Option {
 func NewFunctionTool[I, O any](fn func(context.Context, I) (O, error), opts ...Option) *FunctionTool[I, O] {
 	// Set default options
 	options := &functionToolOptions{
-		unmarshaler: &jsonUnmarshaler{},
+		unmarshaler:     &jsonUnmarshaler{},
+		concurrencySafe: true,
 	}
 
 	// Apply provided options
@@ -159,6 +209,8 @@ func NewFunctionTool[I, O any](fn func(context.Context, I) (O, error), opts ...O
 		inputSchema:       iSchema,
 		outputSchema:      oSchema,
 		skipSummarization: options.skipSummarization,
+		resultFormatter:   options.resultFormatter,
+		concurrencySafe:   options.concurrencySafe,
 	}
 }
 
@@ -173,8 +225,9 @@ func NewFunctionTool[I, O any](fn func(context.Context, I) (O, error), opts ...O
 // Returns:
 //   - The result of the function execution or an error if unmarshalling fails.
 func (ft *FunctionTool[I, O]) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+	jsonArgs = normalizeJSONArgs(jsonArgs, ft.inputSchema)
 	var input I
-	if err := ft.unmarshaler.Unmarshal(jsonArgs, &input); err != nil {
+	if err := unmarshalToolArgs(ctx, jsonArgs, &input); err != nil {
 		return nil, err
 	}
 	return ft.fn(ctx, input)
@@ -189,6 +242,20 @@ func (ft *FunctionTool[I, O]) LongRunning() bool {
 // outer-agent summarization after tool.response.
 func (ft *FunctionTool[I, O]) SkipSummarization() bool {
 	return ft.skipSummarization
+}
+
+// ResultFormatter returns the formatter configured by WithResultFormatter.
+// It is used by LLMAgent's default tool-call flow; configure formatting with
+// WithResultFormatter rather than calling this method directly.
+func (ft *FunctionTool[I, O]) ResultFormatter() resultformat.Formatter {
+	return ft.resultFormatter
+}
+
+// IsConcurrencySafe reports whether this tool may run at the same time as the
+// other tool calls in a turn, implementing tool.ConcurrencyAware. It is true
+// unless WithConcurrencySafe(false) was given.
+func (ft *FunctionTool[I, O]) IsConcurrencySafe() bool {
+	return ft.concurrencySafe
 }
 
 // Declaration returns the tool's declaration information.
@@ -226,6 +293,11 @@ type StreamableFunctionTool[I, O any] struct {
 	unmarshaler  unmarshaler
 	// skipSummarization has the same meaning as in FunctionTool.
 	skipSummarization bool
+	// resultFormatter optionally formats the final tool result as model-visible
+	// message content. Intermediate stream events are unaffected.
+	resultFormatter resultformat.Formatter
+	// concurrencySafe has the same meaning as in FunctionTool.
+	concurrencySafe bool
 }
 
 // NewStreamableFunctionTool creates a new StreamableFunctionTool instance.
@@ -240,7 +312,8 @@ type StreamableFunctionTool[I, O any] struct {
 func NewStreamableFunctionTool[I, O any](fn func(context.Context, I) (*tool.StreamReader, error), opts ...Option) *StreamableFunctionTool[I, O] {
 	// Set default options
 	options := &functionToolOptions{
-		unmarshaler: &jsonUnmarshaler{},
+		unmarshaler:     &jsonUnmarshaler{},
+		concurrencySafe: true,
 	}
 
 	// Apply provided options
@@ -276,6 +349,8 @@ func NewStreamableFunctionTool[I, O any](fn func(context.Context, I) (*tool.Stre
 		inputSchema:       iSchema,
 		outputSchema:      oSchema,
 		skipSummarization: options.skipSummarization,
+		resultFormatter:   options.resultFormatter,
+		concurrencySafe:   options.concurrencySafe,
 	}
 }
 
@@ -291,8 +366,9 @@ func NewStreamableFunctionTool[I, O any](fn func(context.Context, I) (*tool.Stre
 //   - A StreamReader[string] containing JSON-encoded results, or an error.
 func (t *StreamableFunctionTool[I, O]) StreamableCall(ctx context.Context, jsonArgs []byte) (*tool.StreamReader, error) {
 	// FunctionTool does not support streaming calls, so we return an error.
+	jsonArgs = normalizeJSONArgs(jsonArgs, t.inputSchema)
 	var input I
-	if err := t.unmarshaler.Unmarshal(jsonArgs, &input); err != nil {
+	if err := unmarshalToolArgs(ctx, jsonArgs, &input); err != nil {
 		return nil, err
 	}
 	if t.fn == nil {
@@ -334,11 +410,62 @@ func (t *StreamableFunctionTool[I, O]) SkipSummarization() bool {
 	return t.skipSummarization
 }
 
+// ResultFormatter returns the formatter configured by WithResultFormatter.
+// In LLMAgent's default tool-call flow, only the final streamable result is
+// formatted; intermediate events are not. The tool must declare that result
+// with tool.FinalResultChunk. When a stream ends without one, the final result
+// is the stream content merged by the framework rather than O, so the
+// framework keeps its default JSON representation instead of formatting it,
+// and an after-tool callback replacing that content does not make the call
+// eligible for formatting again.
+func (t *StreamableFunctionTool[I, O]) ResultFormatter() resultformat.Formatter {
+	return t.resultFormatter
+}
+
+// IsConcurrencySafe reports whether this tool may run at the same time as the
+// other tool calls in a turn, implementing tool.ConcurrencyAware. It is true
+// unless WithConcurrencySafe(false) was given.
+func (t *StreamableFunctionTool[I, O]) IsConcurrencySafe() bool {
+	return t.concurrencySafe
+}
+
 type unmarshaler interface {
 	Unmarshal([]byte, any) error
 }
 
 type jsonUnmarshaler struct{}
+
+// normalizeJSONArgs coerces nil or empty argument payloads to "{}" only for
+// zero-parameter tools (input schema with no properties and no required fields).
+// Tools with required or optional properties keep empty args so unmarshal fails.
+func normalizeJSONArgs(jsonArgs []byte, inputSchema *tool.Schema) []byte {
+	if len(jsonArgs) > 0 {
+		return jsonArgs
+	}
+	if schemaAcceptsEmptyObject(inputSchema) {
+		return []byte("{}")
+	}
+	return jsonArgs
+}
+
+// schemaAcceptsEmptyObject reports whether an omitted argument object is valid.
+func schemaAcceptsEmptyObject(inputSchema *tool.Schema) bool {
+	if inputSchema == nil {
+		return false
+	}
+	return len(inputSchema.Required) == 0 && len(inputSchema.Properties) == 0
+}
+
+// unmarshalToolArgs decodes tool arguments using strict JSON by default. When
+// ToolCallArgumentsJSONRepairEnabled is set on the invocation in ctx, malformed
+// JSON is repaired via internal/jsonutils before unmarshaling.
+func unmarshalToolArgs(ctx context.Context, data []byte, v any) error {
+	if inv, ok := agent.InvocationFromContext(ctx); ok &&
+		jsonrepair.IsToolCallArgumentsJSONRepairEnabled(inv) {
+		return jsonutils.DecodeLeadingJSON(string(data), v)
+	}
+	return json.Unmarshal(data, v)
+}
 
 // Unmarshal unmarshals JSON data into the provided interface.
 func (j *jsonUnmarshaler) Unmarshal(data []byte, v any) error {

@@ -23,8 +23,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/aggregator"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/backwarder"
-	iprofile "trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/internal/profile"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/workflow/promptiter/optimizer"
+	"trpc.group/trpc-go/trpc-agent-go/internal/profilecompiler"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -42,7 +42,7 @@ type RunRequest struct {
 	Train []EvalSetInput `json:"train"`
 	// Validation identifies evaluation data used for patch acceptance checks.
 	Validation []EvalSetInput `json:"validation"`
-	// InitialProfile is the baseline profile for round one optimization.
+	// InitialProfile stores optional overrides for round one optimization.
 	InitialProfile *promptiter.Profile
 	// Teacher executes trace generation requests for evaluation.
 	Teacher runner.Runner
@@ -74,6 +74,17 @@ type EvalSetInput struct {
 	EvalCaseIDs []string `json:"evalCaseIds,omitempty"`
 	// LossHints stores operator-provided loss reasons keyed by failed eval case and metric.
 	LossHints []LossHint `json:"lossHints,omitempty"`
+	// LossTargets specify trace nodes where failed training metric losses start backward propagation.
+	// LossTargets are valid only for training inputs.
+	LossTargets []LossTarget `json:"lossTargets,omitempty"`
+}
+
+// LossTarget specifies the trace node where one failed metric's loss starts backward propagation.
+type LossTarget struct {
+	// MetricName identifies the failed metric affected by this target.
+	MetricName string `json:"metricName"`
+	// NodeID identifies the trace node whose last executed step receives the metric loss.
+	NodeID string `json:"nodeId"`
 }
 
 // LossHint carries operator-provided context for one failed metric on one eval case.
@@ -114,8 +125,6 @@ type RunResult struct {
 	Status RunStatus
 	// CurrentRound stores the latest round started by the run.
 	CurrentRound int
-	// Structure is the snapshot used for all rounds in this request.
-	Structure *astructure.Snapshot
 	// BaselineValidation stores the accepted baseline validation result before optimization rounds.
 	BaselineValidation *EvaluationResult
 	// AcceptedProfile is the profile that passed acceptance and can be published.
@@ -154,8 +163,10 @@ type RoundResult struct {
 
 // engine is the default Engine implementation.
 type engine struct {
-	// targetAgent exports the current PromptIter structure for the optimization target.
-	targetAgent agent.Agent
+	// agent exports the structure snapshot used by local optimization runs.
+	agent agent.Agent
+	// structure stores a directly injected structure snapshot.
+	structure *astructure.Snapshot
 	// agentEvaluator executes train and validation evaluations through the shared evaluation framework.
 	agentEvaluator evaluation.AgentEvaluator
 	// backwarder computes sample-level gradient packets from terminal losses.
@@ -167,41 +178,40 @@ type engine struct {
 }
 
 // New creates an Engine implementation with injected collaborators.
-func New(ctx context.Context,
-	targetAgent agent.Agent,
-	agentEvaluator evaluation.AgentEvaluator,
-	backwarder backwarder.Backwarder,
-	aggregator aggregator.Aggregator,
-	optimizer optimizer.Optimizer) (Engine, error) {
+func New(ctx context.Context, opts ...Option) (Engine, error) {
+	options := newOptions(opts...)
 	switch {
-	case targetAgent == nil:
-		return nil, errors.New("target agent is nil")
-	case agentEvaluator == nil:
+	case options.agent == nil && options.structure == nil:
+		return nil, errors.New("agent or structure is nil")
+	case options.agent != nil && options.structure != nil:
+		return nil, errors.New("agent and structure cannot both be set")
+	case options.agentEvaluator == nil:
 		return nil, errors.New("agent evaluator is nil")
-	case backwarder == nil:
+	case options.backwarder == nil:
 		return nil, errors.New("backwarder is nil")
-	case aggregator == nil:
+	case options.aggregator == nil:
 		return nil, errors.New("aggregator is nil")
-	case optimizer == nil:
+	case options.optimizer == nil:
 		return nil, errors.New("optimizer is nil")
 	default:
 		return &engine{
-			targetAgent:    targetAgent,
-			backwarder:     backwarder,
-			aggregator:     aggregator,
-			optimizer:      optimizer,
-			agentEvaluator: agentEvaluator,
+			agent:          options.agent,
+			structure:      options.structure,
+			backwarder:     options.backwarder,
+			aggregator:     options.aggregator,
+			optimizer:      options.optimizer,
+			agentEvaluator: options.agentEvaluator,
 		}, nil
 	}
 }
 
 // Describe returns the structure snapshot used for the current optimization session.
 func (e *engine) Describe(ctx context.Context) (*astructure.Snapshot, error) {
-	snapshot, err := e.describeStructure(ctx)
+	structure, err := e.loadStructure(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return snapshot, nil
+	return structure.Snapshot, nil
 }
 
 // Run executes all optimization stages in sequence for each configured round.
@@ -218,18 +228,14 @@ func (e *engine) run(
 	if err := e.validateRunRequest(request); err != nil {
 		return nil, err
 	}
-	snapshot, err := e.describeStructure(ctx)
+	structure, err := e.loadStructure(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("describe structure: %w", err)
-	}
-	if err := appendRunEvent(ctx, observer, EventKindStructureSnapshot, 0, snapshot); err != nil {
 		return nil, err
 	}
-	structure, err := newStructureState(snapshot)
-	if err != nil {
-		return nil, fmt.Errorf("create structure state: %w", err)
+	if err := validateLossTargetNodes(structure, request.Train); err != nil {
+		return nil, fmt.Errorf("validate train loss targets: %w", err)
 	}
-	targetSurfaceSet, err := compileTargetSurfaceIDs(structure, request.TargetSurfaceIDs)
+	targetSurfaceSet, err := compileTargetSurfaceIDs(structure.SurfaceIndex, request.TargetSurfaceIDs)
 	if err != nil {
 		return nil, fmt.Errorf("compile target surface ids: %w", err)
 	}
@@ -260,9 +266,8 @@ func (e *engine) run(
 	result := &RunResult{
 		Status:             RunStatusRunning,
 		CurrentRound:       0,
-		Structure:          structure.snapshot,
 		BaselineValidation: baselineValidation,
-		AcceptedProfile:    iprofile.Clone(acceptedProfile),
+		AcceptedProfile:    acceptedProfile,
 		Rounds:             make([]RoundResult, 0, request.MaxRounds),
 	}
 	roundsWithoutAcceptance := 0
@@ -319,7 +324,7 @@ func (e *engine) run(
 			return nil, err
 		}
 		result.Rounds = append(result.Rounds, *roundResult)
-		result.AcceptedProfile = iprofile.Clone(acceptedProfile)
+		result.AcceptedProfile = acceptedProfile
 		if roundResult.Stop.ShouldStop {
 			break
 		}
@@ -341,7 +346,7 @@ func (e *engine) validateRunRequest(request *RunRequest) error {
 	switch {
 	case request.MaxRounds <= 0:
 		return errors.New("max rounds must be greater than 0")
-	case request.TargetSurfaceIDs != nil && len(request.TargetSurfaceIDs) == 0:
+	case len(request.TargetSurfaceIDs) == 0:
 		return errors.New("target surface ids must not be empty")
 	case request.BackwardOptions.CaseParallelism < 0:
 		return errors.New("backward case parallelism must be non-negative")
@@ -349,8 +354,6 @@ func (e *engine) validateRunRequest(request *RunRequest) error {
 		return errors.New("aggregation surface parallelism must be non-negative")
 	case request.OptimizerOptions.SurfaceParallelism < 0:
 		return errors.New("optimizer surface parallelism must be non-negative")
-	case e.targetAgent == nil:
-		return errors.New("target agent is nil")
 	case e.agentEvaluator == nil:
 		return errors.New("agent evaluator is nil")
 	default:
@@ -358,13 +361,28 @@ func (e *engine) validateRunRequest(request *RunRequest) error {
 	}
 }
 
-func (e *engine) describeStructure(ctx context.Context) (*astructure.Snapshot, error) {
-	if e.targetAgent == nil {
-		return nil, errors.New("target agent is nil")
-	}
-	snapshot, err := astructure.Export(ctx, e.targetAgent)
+func (e *engine) loadStructure(ctx context.Context) (*profilecompiler.Structure, error) {
+	snapshot, err := e.structureSnapshot(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("export target agent structure: %w", err)
+		return nil, err
+	}
+	structure, err := profilecompiler.NewStructure(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("create structure: %w", err)
+	}
+	return structure, nil
+}
+
+func (e *engine) structureSnapshot(ctx context.Context) (*astructure.Snapshot, error) {
+	if e.structure != nil {
+		return e.structure, nil
+	}
+	if e.agent == nil {
+		return nil, errors.New("agent or structure is nil")
+	}
+	snapshot, err := astructure.Export(ctx, e.agent)
+	if err != nil {
+		return nil, fmt.Errorf("export structure: %w", err)
 	}
 	return snapshot, nil
 }
@@ -372,7 +390,7 @@ func (e *engine) describeStructure(ctx context.Context) (*astructure.Snapshot, e
 func (e *engine) executeRound(
 	ctx context.Context,
 	request *RunRequest,
-	structure *structureState,
+	structure *profilecompiler.Structure,
 	targetSurfaceSet targetSurfaceSet,
 	observer Observer,
 	evaluationOptions EvaluationOptions,
@@ -385,7 +403,7 @@ func (e *engine) executeRound(
 	}
 	roundResult := &RoundResult{
 		Round:        roundNumber,
-		InputProfile: iprofile.Clone(acceptedProfile),
+		InputProfile: acceptedProfile,
 	}
 	trainResult, err := e.evaluate(ctx, structure, e.newEvaluationRequest(
 		request.Train,
@@ -401,7 +419,7 @@ func (e *engine) executeRound(
 	if err := appendRunEvent(ctx, observer, EventKindRoundTrainEvaluation, roundNumber, trainResult); err != nil {
 		return nil, 0, err
 	}
-	losses, err := e.loss(trainResult)
+	losses, err := e.loss(trainResult, request.Train)
 	if err != nil {
 		return nil, 0, fmt.Errorf("extract train losses round %d: %w", roundNumber, err)
 	}
@@ -518,6 +536,12 @@ func validateEvalSetInputs(role string, inputs []EvalSetInput) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("%sevaluation sets are empty", prefix)
 	}
+	type lossTargetInputKey struct {
+		evalSetID  string
+		metricName string
+	}
+	seenLossTargets := make(map[lossTargetInputKey]struct{})
+	validateLossTargets := role == "train"
 	for _, input := range inputs {
 		if input.EvalSetID == "" {
 			return fmt.Errorf("%sevaluation set id is empty", prefix)
@@ -569,6 +593,36 @@ func validateEvalSetInputs(role string, inputs []EvalSetInput) error {
 					)
 				}
 			}
+		}
+		if !validateLossTargets {
+			if role == "validation" && len(input.LossTargets) > 0 {
+				return fmt.Errorf("%sloss targets for eval set %q are not supported", prefix, input.EvalSetID)
+			}
+			continue
+		}
+		for _, target := range input.LossTargets {
+			metricName := strings.TrimSpace(target.MetricName)
+			switch {
+			case metricName == "":
+				return fmt.Errorf("%sloss target metric name for eval set %q is empty", prefix, input.EvalSetID)
+			case strings.TrimSpace(target.NodeID) == "":
+				return fmt.Errorf(
+					"%sloss target node id for eval set %q metric %q is empty",
+					prefix,
+					input.EvalSetID,
+					target.MetricName,
+				)
+			}
+			key := lossTargetInputKey{evalSetID: input.EvalSetID, metricName: metricName}
+			if _, ok := seenLossTargets[key]; ok {
+				return fmt.Errorf(
+					"%sloss target metric %q for eval set %q is duplicated",
+					prefix,
+					target.MetricName,
+					input.EvalSetID,
+				)
+			}
+			seenLossTargets[key] = struct{}{}
 		}
 	}
 	return nil

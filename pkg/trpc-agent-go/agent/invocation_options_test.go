@@ -46,6 +46,18 @@ func TestWithModelRequestExtraFields(t *testing.T) {
 	assert.Equal(t, "tenant-a", opts.ModelRequestExtraFields["tenant"])
 }
 
+func TestWithLatencyDiagnostics(t *testing.T) {
+	var ro RunOptions
+	WithLatencyDiagnostics(true)(&ro)
+
+	require.True(t, ro.LatencyDiagnosticsEnabled)
+	require.True(t, ro.LatencyDiagnosticsEmitEvents)
+
+	WithLatencyDiagnosticsEvents(false)(&ro)
+	require.True(t, ro.LatencyDiagnosticsEnabled)
+	require.False(t, ro.LatencyDiagnosticsEmitEvents)
+}
+
 func TestWithModelRequestHeaders(t *testing.T) {
 	opts := &RunOptions{}
 	WithModelRequestHeaders(nil)(opts)
@@ -625,4 +637,18 @@ func TestModelResponseRunOptionSetters(t *testing.T) {
 
 	WithDisablePartialEventTimestamps(true)(opts)
 	require.True(t, opts.DisablePartialEventTimestamps)
+}
+
+func TestWithInvocationParentMetadata(t *testing.T) {
+	meta := &ParentInvocationMetadata{
+		TriggerType: TriggerTypeToolCall,
+		TriggerID:   "call-abc-123",
+		TriggerName: "tool-x",
+	}
+	inv := NewInvocation(WithInvocationParentMetadata(meta))
+	require.NotNil(t, inv)
+	require.NotNil(t, inv.ParentMetadata)
+	assert.Equal(t, "call-abc-123", inv.ParentMetadata.TriggerID)
+	assert.Equal(t, TriggerTypeToolCall, inv.ParentMetadata.TriggerType)
+	assert.Equal(t, "tool-x", inv.ParentMetadata.TriggerName)
 }

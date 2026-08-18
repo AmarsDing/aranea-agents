@@ -36,11 +36,13 @@ type options struct {
 	metricManager                     metric.Manager
 	registry                          registry.Registry
 	metricRegistry                    metricregistry.Registry
+	evalCaseResultAggregator          service.EvalCaseResultAggregator
 	evalService                       service.Service
 	expectedRunner                    runner.Runner
 	userSimulator                     usersimulation.Simulator
 	callbacks                         *service.Callbacks
 	judgeRunner                       runner.Runner
+	toolMockRunner                    runner.Runner
 	judgeRunnerNumSamples             *int
 	numRuns                           int
 	evalCaseIDs                       []string
@@ -109,6 +111,13 @@ func WithMetricRegistry(r metricregistry.Registry) Option {
 	}
 }
 
+// WithEvalCaseResultAggregator sets the eval case result aggregator for service evaluation.
+func WithEvalCaseResultAggregator(aggregator service.EvalCaseResultAggregator) Option {
+	return func(o *options) {
+		o.evalCaseResultAggregator = aggregator
+	}
+}
+
 // WithEvaluationService sets the evaluation service.
 func WithEvaluationService(s service.Service) Option {
 	return func(o *options) {
@@ -148,6 +157,13 @@ func WithJudgeRunnerNumSamples(numSamples int) Option {
 func WithExpectedRunner(r runner.Runner) Option {
 	return func(o *options) {
 		o.expectedRunner = r
+	}
+}
+
+// WithToolMockRunner sets the runner used to generate dynamic tool mock results.
+func WithToolMockRunner(r runner.Runner) Option {
+	return func(o *options) {
+		o.toolMockRunner = r
 	}
 }
 
