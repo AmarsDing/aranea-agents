@@ -293,7 +293,7 @@ func provideGlobalShardCache() agent.ShardCache {
 // the lifecycle abstraction. The policyResolver parameter is an init-time
 // dependency only (P1-2): the resolver is a pure in-memory snapshot with no
 // shutdown work, but it must be constructed (and first-loaded) at startup.
-func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, shardCache agent.ShardCache, policyResolver *agent.PolicyResolver, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
+func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, shardCache agent.ShardCache, policyResolver *agent.PolicyResolver, monitorBus contract.MonitorBus, evolutionSvc trpcevolution.Service, lg loggateway.Logger) *lifecycle.LifecycleManager {
 	cache.SetLogger(lg)
 	cache.SetMonitorBus(monitorBus)
 	mcpPool.SetLogger(lg)
@@ -306,6 +306,8 @@ func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetP
 	// closing，随后 build-cache 关闭经 graveyard 释放分片引用占位符，
 	// 分片在最后一次 release 时完成关闭（其内 MCP toolset 池引用随之释放）。
 	mgr.Register("global-shard-cache", shardCache)
+	// 框架 v1.11 技能演化 worker：进程退出时优雅停止（nil 时 Register 跳过）。
+	mgr.Register("skill-evolution-service", evolutionSvc)
 	return mgr
 }
 
