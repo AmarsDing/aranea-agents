@@ -24,6 +24,17 @@ var bizKeyToRegistryName = map[string]string{
 	// shell
 	"shell_exec": "hostexec",
 
+	// computer-use：装配为 CustomTools 扁平工具（Declaration 名 = catalog key），
+	// 映射到自身才能被 FinalizeDeferredTools 按名包装进 ToolFilter。
+	"computer_use_observe":    "computer_use_observe",
+	"computer_use_screenshot": "computer_use_screenshot",
+	"computer_use_act":        "computer_use_act",
+	"computer_use_launch":     "computer_use_launch",
+	"computer_use_session":    "computer_use_session",
+
+	// spirit CustomTool：构图 schema ~1.7k tok，闲聊不常驻。
+	"build_orchestration_graph": "build_orchestration_graph",
+
 	// web
 	"web_fetch":         "httpfetch",
 	"gemini_web_fetch":  "geminifetch",
@@ -82,7 +93,8 @@ var bizKeyToRegistryName = map[string]string{
 
 // RegistryNamesForBizKeys 将业务工具键列表转换为 Registry 名称列表（去重、排序）。
 // 只返回可以被 deferred 的 Registry 名称（即在 bizKeyToRegistryName 中有映射的）。
-// 不可 deferred 的工具键（如 memory_search、plan_and_execute 等 CustomTools）被跳过。
+// 未映射的 CustomTools（如 memory_search、plan_and_execute）被跳过，保持常驻。
+// computer_use_* / build_orchestration_graph 映射到自身（扁平 CustomTool）。
 func RegistryNamesForBizKeys(bizKeys []string) []string {
 	set := make(map[string]bool, len(bizKeys))
 	for _, key := range bizKeys {

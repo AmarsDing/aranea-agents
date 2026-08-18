@@ -309,7 +309,7 @@ func SeedSystemAgentRuntimeSettings(ctx context.Context, client *ent.Client, d D
 	const q = `INSERT INTO agent_runtime_settings (agent_id, tools_profile, created_at, updated_at)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT (agent_id) DO UPDATE SET
-			tools_profile = COALESCE(NULLIF(agent_runtime_settings.tools_profile, ''), excluded.tools_profile),
+			tools_profile = excluded.tools_profile,
 			updated_at = excluded.updated_at`
 	for _, a := range agents {
 		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), a.id, a.toolsProfile, now, now); err != nil {
@@ -325,7 +325,8 @@ func SeedSystemAgentRuntimeSettings(ctx context.Context, client *ent.Client, d D
 	const qVoice = `INSERT INTO agent_runtime_settings (agent_id, tools_profile, intent_pass_enabled, created_at, updated_at)
 		VALUES (?, 'chat_only', FALSE, ?, ?)
 		ON CONFLICT (agent_id) DO UPDATE SET
-			tools_profile = COALESCE(NULLIF(agent_runtime_settings.tools_profile, ''), excluded.tools_profile),
+			tools_profile = excluded.tools_profile,
+			intent_pass_enabled = excluded.intent_pass_enabled,
 			updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(qVoice), "agent___voice_butler__", now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_agent_runtime_settings"), loggateway.Str("agent_id", "agent___voice_butler__"), loggateway.Err(err))

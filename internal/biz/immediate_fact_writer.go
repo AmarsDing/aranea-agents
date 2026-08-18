@@ -72,8 +72,9 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 	// Convert FactMark to MemoryFactWrite
 	factWrites := make([]MemoryFactWrite, 0, len(facts))
 	for _, f := range facts {
-		// Map fact type to fact_kind
-		factKind := mapFactTypeToKind(f.Type)
+		// Map fact type to fact_kind, then canonicalize so 工号/我叫/负责
+		// cannot land as preference/profile/domain_knowledge duplicates.
+		factKind := CanonicalizeFactKind(mapFactTypeToKind(f.Type), f.Content)
 
 		// Map confidence string to float
 		confidence := mapConfidenceToFloat(f.Confidence)
@@ -88,7 +89,7 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 			ScopeID:         scopeID,
 			UserID:          userID,
 			AgentID:         agentID,
-			Statement:       f.Content,
+			Statement:       NormalizeStatementPunctuation(f.Content),
 			FactKind:        factKind,
 			Confidence:      confidence,
 			Importance:      0.8, // High importance for user-explicit facts
@@ -124,7 +125,7 @@ func mapFactTypeToKind(factType string) string {
 	case "identity":
 		return "user_identity"
 	case "preference":
-		return "user_preference"
+		return "preference"
 	case "instruction":
 		return "agent_instruction"
 	case "domain_knowledge":
@@ -135,12 +136,11 @@ func mapFactTypeToKind(factType string) string {
 }
 
 // mapFactKindToScope maps fact_kind to the owning recall scope.
-// user_identity/user_preference belong to the user (aligned with the remember
+// user_identity/preference belong to the user (aligned with the remember
 // tool, cross-session visible); everything else is an agent asset. Falls back
 // to agent scope when userID is empty so facts stay recallable.
 func mapFactKindToScope(factKind, agentID, userID string) (scopeType, scopeID string) {
-	switch factKind {
-	case "user_identity", "user_preference":
+	if UserScopedFactKind(factKind) {
 		if id := strings.TrimSpace(userID); id != "" {
 			return "user", id
 		}

@@ -147,3 +147,26 @@ func TestImmediateFactWriter_UserScopeFallsBackToAgent(t *testing.T) {
 		t.Fatalf("empty userID must fall back to agent scope, got %+v", fw.writes)
 	}
 }
+
+func TestImmediateFactWriter_CanonicalizesEmployeeIDAsUserIdentity(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{}}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "我的工号是 DIAG-20260818-A7。"},
+		{Type: "preference", Confidence: "high", Content: "喜欢简洁的回答"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(fw.writes) != 2 {
+		t.Fatalf("writes = %d, want 2", len(fw.writes))
+	}
+	if fw.writes[0].FactKind != "user_identity" || fw.writes[0].ScopeType != "user" {
+		t.Fatalf("employee-id preference must canonicalize to user_identity/user, got %+v", fw.writes[0])
+	}
+	if fw.writes[0].Statement != "我的工号是 DIAG-20260818-A7" {
+		t.Fatalf("trailing punctuation must be stripped, got %q", fw.writes[0].Statement)
+	}
+	if fw.writes[1].FactKind != "preference" {
+		t.Fatalf("plain preference must stay preference, got %q", fw.writes[1].FactKind)
+	}
+}

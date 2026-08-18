@@ -48,6 +48,22 @@ func TestVoiceFastPathBeforeHook_UntouchedWithoutMarker(t *testing.T) {
 	}
 }
 
+func TestVoiceFastPathBeforeHook_DisablesThinkingForDirectReply(t *testing.T) {
+	hook := newVoiceFastPathBeforeHook()
+	fn := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	ctx := WithThinkingDisabled(context.Background())
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{}}
+	if _, err := fn.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	te := args.Request.GenerationConfig.ThinkingEnabled
+	if te == nil || *te != false {
+		t.Fatalf("direct-reply fast path must set ThinkingEnabled=false, got %v", te)
+	}
+}
+
 func TestVoiceFastPathBeforeHook_NilArgsSafe(t *testing.T) {
 	hook := newVoiceFastPathBeforeHook()
 	fn := hook.(interface {

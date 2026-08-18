@@ -82,3 +82,19 @@ func TestSkillOptionsForPromptMode(t *testing.T) {
 		t.Fatalf("complete: profile=%v hints=%v", profile, hints)
 	}
 }
+
+func TestSkillOptionsForAgent_SpiritDropsExecSuite(t *testing.T) {
+	ag := biz.Agent{
+		SystemPromptMode: "complete",
+		Settings:         &biz.AgentRuntimeSettings{ToolsProfile: "spirit"},
+	}
+	profile, hints := skillOptionsForAgent(ag)
+	if profile != trpcllmagent.SkillToolProfileKnowledgeOnly || hints {
+		t.Fatalf("spirit+complete must be knowledge_only, got profile=%v hints=%v", profile, hints)
+	}
+	ag.Settings.ToolsProfile = "coding"
+	profile, _ = skillOptionsForAgent(ag)
+	if profile != trpcllmagent.SkillToolProfileFull {
+		t.Fatalf("coding+complete must keep full skill suite, got %v", profile)
+	}
+}

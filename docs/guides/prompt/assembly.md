@@ -166,7 +166,7 @@ You are {AgentKey}. {DisplayName}
 Aranea 在 `trpc_build.go` 中启用：
 
 - `WithSkills(repo)` + `WithSkillFilter`（Layer A/B 可见性）
-- **`complete` 模式**：`SkillToolProfileFull` + `SkillsDirectoryHints(true)`
+- **`complete` 模式**：默认 `SkillToolProfileFull`；`tools_profile` 为 `spirit` / `chat_only` 时强制 `SkillToolProfileKnowledgeOnly`（编排者不常驻 `skill_exec` / `skill_run` / stdin+poll）
 - **`task` / `minimized` / `none`**：`SkillToolProfileKnowledgeOnly` + 目录提示关闭
 - `SkillLoadMode`：`once` / `turn`（默认）/ `session`
 

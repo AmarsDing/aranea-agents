@@ -134,8 +134,27 @@ func formatL4JSONBlock(title string, raw []byte, maxChars int) string {
 	if body == "" || body == "{}" || body == "null" {
 		return ""
 	}
+	if isVacuousL4JSON(raw) {
+		return ""
+	}
 	body = truncateText(body, maxChars)
 	return fmt.Sprintf("## %s\n```json\n%s\n```", title, body)
+}
+
+// isVacuousL4JSON reports empty identity/strategy payloads such as
+// {"agent_id":"...","identity":null} that must not be injected as a persona.
+func isVacuousL4JSON(raw []byte) bool {
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return false
+	}
+	if v, ok := m["identity"]; ok && v == nil {
+		return true
+	}
+	if v, ok := m["strategy"]; ok && v == nil {
+		return true
+	}
+	return false
 }
 
 // safeTruncate 保留 maxChars<=0 原样返回的边界语义；核心截断走

@@ -94,8 +94,27 @@ func TestShouldRunProactiveRecall_VoiceTurnSkipped(t *testing.T) {
 	if shouldRunProactiveRecall(biz.TurnInput{Voice: &biz.VoiceTurnMeta{ASRProvider: "volcengine_sauc"}}) {
 		t.Fatal("voice turn must skip proactive recall (hits empirically 0, pure critical-path overhead)")
 	}
-	if !shouldRunProactiveRecall(biz.TurnInput{}) {
-		t.Fatal("text turn must keep proactive recall")
+	if !shouldRunProactiveRecall(biz.TurnInput{Content: "请排查杭州滨江机房核心交换机最近一次告警的根因并给出处置步骤"}) {
+		t.Fatal("task-like text turn must keep proactive recall")
+	}
+	if shouldRunProactiveRecall(biz.TurnInput{Content: "你好，请用两三句话介绍你自己。不要调用工具。"}) {
+		t.Fatal("direct-reply chitchat must skip proactive recall")
+	}
+	if shouldRunProactiveRecall(biz.TurnInput{}) {
+		t.Fatal("empty text turn must skip proactive recall")
+	}
+}
+
+func TestShouldSkipIntentPass_DirectReplyWithoutPlanner(t *testing.T) {
+	o := &ChatOrchestrator{}
+	if !shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。") {
+		t.Fatal("direct-reply must skip intent even when planner is nil")
+	}
+	if shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "帮我做个应用") {
+		t.Fatal("underspecified task must not skip intent")
+	}
+	if shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "请排查杭州滨江机房核心交换机告警") {
+		t.Fatal("without planner, non-direct-reply tasks must still run intent")
 	}
 }
 

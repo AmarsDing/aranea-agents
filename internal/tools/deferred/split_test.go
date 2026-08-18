@@ -17,15 +17,16 @@ func TestSplitCoreResidentTools_SpiritProfile(t *testing.T) {
 	}
 	core, def := SplitCoreResidentTools(enabled, "spirit")
 
-	// Spirit 核心集：编排工具 + 基础工具
+	// Spirit 核心集：编排入口 + 收口 + 基础工具（构图走 deferred）
 	assertContainsAll(t, core, []string{
 		"plan_and_execute", "synthesize_results", "get_team_deliverable",
-		"build_orchestration_graph", "cancel_orchestration",
+		"cancel_orchestration",
 		"datetime", "memory_search",
 	})
 	// 长尾应进 deferred
 	assertContainsAll(t, def, []string{
 		"web_fetch", "read_file", "save_file",
+		"build_orchestration_graph",
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
 		"computer_use_launch", "computer_use_session",
 		"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel",

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
@@ -415,6 +416,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var proactiveHits []biz.CompositeRecallHit
 	eg, egCtx := errgroup.WithContext(ctx)
 
+	// QuickAssess is pure computation; run it before the errgroup so simple /
+	// DirectReply turns can skip Intent Pass instead of waiting on that LLM.
+	skipIntent := shouldSkipIntentPass(o, ctx, input, content)
+	if skipIntent {
+		// 闲聊/simple：per-request 关 thinking（BUILD 缓存不含入口，不能烘进 GenerationConfig）。
+		ctx = chatagent.WithThinkingDisabled(ctx)
+	}
+
 	// Goroutine 1: BUILD
 	// P1-8: CheckpointSaver is force-enabled for all graph-based Runs at the
 	// graph builder factory (internal/graph/adapter.runtime_adapter.createAgent),
@@ -443,7 +452,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			return nil // Recall failure is non-fatal; runProactiveRecall warns internally
 		})
 	} else {
-		emitter.LogSkip("chat.proactive_recall", "语音轮次跳过主动召回", event.P("reason", "voice_fast_path"))
+		emitter.LogSkip("chat.proactive_recall", "跳过主动召回", event.P("reason", proactiveRecallSkipReason(input)))
 	}
 
 	// Goroutine 3: Intent Pass
@@ -467,6 +476,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			event.P("outcome", "reused_speculative"),
 			event.P("intent_kind", intentArtifact.IntentKind),
 			event.P("refined_goal_len", len(intentArtifact.RefinedGoal)))
+	} else if skipIntent {
+		emitter.LogSkip("chat.intent.pass", "闲聊/简单轮次跳过意图识别", event.P("reason", "direct_reply_or_simple"))
 	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
@@ -679,6 +690,28 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	return userMsg, persistResult.assistantMsg, nil
 }
 
+// shouldSkipIntentPass reports whether this turn should skip the extra intent
+// LLM: DirectReply patterns (介绍自己 / 不要调用工具 / 请记住 / 现在几点),
+// or QuickAssess==simple when the message is not an underspecified task
+// (帮我做个应用 still needs the clarification gate).
+func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, input biz.TurnInput, content string) bool {
+	if intent.SkipForDirectReply(content) {
+		return true
+	}
+	if intent.LooksLikeUnderspecifiedTask(content) {
+		return false
+	}
+	planner := o.team().TaskPlanner
+	if planner == nil {
+		return false
+	}
+	level, _, err := planner.QuickAssess(ctx, biz.PlanInput{
+		UserMessage:     content,
+		SpiritSessionID: input.SessionID,
+	})
+	return err == nil && level == biz.ComplexitySimple
+}
+
 // shouldRunProactiveRecall 判定本 turn 是否执行主动召回（P3-11）。
 //
 // 语音轮次（input.Voice != nil）跳过：真机实测语音轮次 recall hits 恒为 0
@@ -686,9 +719,35 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 // 向量检索，耗时 0.3-3.3s；虽然 recall 与 BUILD/Intent Pass 同 errgroup
 // 并行，eg.Wait() 以最慢 goroutine 收口，零产出召回会成为关键路径纯开销，
 // 直接击穿 ≤2s 停口到首音预算（2026-08-11）。
+//
+// 文字 DirectReply / 短闲聊同样跳过：中文分词几乎总会抽出「实体」，不能
+// 靠 extractMentionedEntities 判断；L3 硬注入仍覆盖工号召回。
 // Stability:internal
 func shouldRunProactiveRecall(input biz.TurnInput) bool {
-	return input.Voice == nil
+	if input.Voice != nil {
+		return false
+	}
+	if intent.SkipForDirectReply(input.Content) {
+		return false
+	}
+	text := strings.TrimSpace(input.Content)
+	if text == "" {
+		return false
+	}
+	if utf8.RuneCountInString(text) <= 8 && !intent.LooksLikeUnderspecifiedTask(text) {
+		return false
+	}
+	return true
+}
+
+func proactiveRecallSkipReason(input biz.TurnInput) string {
+	if input.Voice != nil {
+		return "voice_fast_path"
+	}
+	if intent.SkipForDirectReply(input.Content) {
+		return "direct_reply"
+	}
+	return "simple_chitchat"
 }
 
 // runProactiveRecall triggers proactive memory recall at turn start to surface
@@ -763,7 +822,7 @@ func extractMentionedEntities(content string) []string {
 	out := make([]string, 0, maxEntities)
 	seen := make(map[string]bool, len(fields))
 	for _, f := range fields {
-		if len(f) < minTokenLen || seen[f] {
+		if utf8.RuneCountInString(f) < minTokenLen || seen[f] {
 			continue
 		}
 		seen[f] = true

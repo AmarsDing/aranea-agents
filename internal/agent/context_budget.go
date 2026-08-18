@@ -34,6 +34,7 @@ const (
 	ContextBudgetCategorySkillOverview   = "skill_overview"
 	ContextBudgetCategoryHistory         = "history"
 	ContextBudgetCategoryOtherDynamic    = "other_dynamic"
+	ContextBudgetCategoryToolCatalogCue  = "tool_catalog_cue"
 )
 
 // contextBudgetCtxKey carries the per-request ContextBudget.
@@ -263,6 +264,28 @@ func newContextBudgetHistoryBeforeHook() *callbacks.BeforeModelHookFunc {
 			totalChars += utf8.RuneCountInString(msg.Content)
 		}
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryHistory, totalChars)
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+
+// newContextBudgetStaticPrefixBeforeHook meters the actual system prefix sent
+// to the model (WithInstruction + any extra system messages). The runtime-cue
+// hook used to record only the small capability cue, which left IDENTITY /
+// CAPABILITIES uncounted and made est_tokens ~5× below provider prompt_tokens.
+func newContextBudgetStaticPrefixBeforeHook() *callbacks.BeforeModelHookFunc {
+	return callbacks.NewBeforeModelHook(0, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		b := ContextBudgetFromContext(ctx)
+		if b == nil || args == nil || args.Request == nil || b.has(ContextBudgetCategoryStaticPrefix) {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		totalChars := 0
+		for _, msg := range args.Request.Messages {
+			if msg.Role != trpcmodel.RoleSystem || isDynamicCueMessage(msg) {
+				continue
+			}
+			totalChars += utf8.RuneCountInString(msg.Content)
+		}
+		recordContextBudgetOnce(ctx, ContextBudgetCategoryStaticPrefix, totalChars)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

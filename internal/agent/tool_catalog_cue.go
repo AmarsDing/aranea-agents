@@ -55,8 +55,9 @@ func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 		}
 		// P1-4 漏斗度量：预激活覆盖率（推荐区非空的轮次占比）。
 		metrics.DeferredCatalogRecommendTotal.WithLabelValues(strconv.FormatBool(matched)).Inc()
-		// 上下文预算台账（29-token §9.6）：目录 cue 计量。
-		recordContextBudgetOnce(ctx, ContextBudgetCategoryToolsSchema, utf8.RuneCountInString(cue))
+		// 上下文预算台账（29-token §9.6）：目录 cue 与 Request.Tools schema 分列，
+		// 避免先写入 tools_schema 导致计量 hook 跳过、tools_count 恒为 0。
+		recordContextBudgetOnce(ctx, ContextBudgetCategoryToolCatalogCue, utf8.RuneCountInString(cue))
 		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})

@@ -35,8 +35,6 @@ func newStaticRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
-		recordContextBudgetOnce(ctx, ContextBudgetCategoryStaticPrefix, utf8.RuneCountInString(cue))
 		// Production bakes this cue into WithInstruction. Skip a second system
 		// message when the instruction already carries it so DeepSeek sees one
 		// contiguous system prefix. Tests that use a fake base system still

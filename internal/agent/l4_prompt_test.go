@@ -144,3 +144,33 @@ func TestL4MemoryCue_ConfidenceGateStillApplies(t *testing.T) {
 		t.Fatalf("expected no recalled IDs below confidence gate, got %v", ids)
 	}
 }
+
+func TestL4MemoryCue_NullIdentityJSONNotInjected(t *testing.T) {
+	store := &l4NullIdentityStore{}
+	ag := biz.Agent{ID: "ag1"}
+	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
+		MemoryEnabled:    true,
+		L4Enabled:        true,
+		L0InjectL4:       true,
+		L4IdentityInject: true,
+	})
+	got, _ := L4MemoryCue(context.Background(), store, ag, policy, "介绍你自己", nil)
+	if strings.Contains(got, "L4 agent identity") || strings.Contains(got, `"identity":null`) {
+		t.Fatalf("empty identity JSON must not be injected, got %q", got)
+	}
+}
+
+func TestFormatL4JSONBlock_SkipsVacuousIdentity(t *testing.T) {
+	if block := formatL4JSONBlock("L4 agent identity", []byte(`{"agent_id":"ag1","identity":null}`), 2000); block != "" {
+		t.Fatalf("null identity must be empty, got %q", block)
+	}
+	if block := formatL4JSONBlock("L4 agent identity", []byte(`{"identity":{"persona":"ops"}}`), 2000); block == "" {
+		t.Fatal("populated identity must inject")
+	}
+}
+
+type l4NullIdentityStore struct{ l4EntityStoreMock }
+
+func (m *l4NullIdentityStore) AgentIdentityJSON(_ context.Context, agentID string) ([]byte, error) {
+	return []byte(`{"agent_id":"` + agentID + `","identity":null}`), nil
+}

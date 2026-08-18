@@ -20,8 +20,17 @@ func FactFingerprint(statement, scopeType, scopeID string) string {
 	return fmt.Sprintf("%x", h[:])
 }
 
+const statementTrailingPunct = " \t。！？.!?,;；，、"
+
+// NormalizeStatementPunctuation trims surrounding space and trailing sentence
+// punctuation so write-path statements share a fingerprint with near-duplicates
+// that only differ by a period / 句号.
+func NormalizeStatementPunctuation(s string) string {
+	return strings.TrimRight(strings.TrimSpace(s), statementTrailingPunct)
+}
+
 // NormalizeForDedup normalizes a string for cross-layer dedup comparison:
-// lowercase, trim, collapse whitespace.
+// lowercase, trim, collapse whitespace, strip trailing punctuation.
 func NormalizeForDedup(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
@@ -38,7 +47,7 @@ func NormalizeForDedup(s string) string {
 			prevSpace = false
 		}
 	}
-	return strings.TrimSpace(b.String())
+	return strings.TrimRight(strings.TrimSpace(b.String()), statementTrailingPunct)
 }
 
 // DedupL3WithL1 filters L3 fact rows whose normalized statement matches any

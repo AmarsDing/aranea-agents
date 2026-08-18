@@ -425,3 +425,55 @@ func TestContextBudgetToolsHook_BareContextNoop(t *testing.T) {
 		t.Fatalf("bare ctx call err = %v", err)
 	}
 }
+
+func TestContextBudgetStaticPrefixHook_CountsSystemMessages(t *testing.T) {
+	hook := newContextBudgetStaticPrefixBeforeHook()
+	ctx, b := WithContextBudget(context.Background())
+	instruction := strings.Repeat("IDENTITY ", 200)
+	args := &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{
+			Messages: []trpcmodel.Message{
+				trpcmodel.NewSystemMessage(instruction),
+				trpcmodel.NewUserMessage("hello"),
+				asDynamicCue("catalog cue must not count as static prefix"),
+			},
+		},
+	}
+	if _, err := hook.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("first call err = %v", err)
+	}
+	want := utf8.RuneCountInString(instruction)
+	if got := b.Snapshot().Chars[ContextBudgetCategoryStaticPrefix]; got != want {
+		t.Fatalf("static_prefix chars = %d, want %d (instruction only)", got, want)
+	}
+	args.Request.Messages = append(args.Request.Messages, trpcmodel.NewSystemMessage("later system"))
+	if _, err := hook.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("re-entry err = %v", err)
+	}
+	if got := b.Snapshot().Chars[ContextBudgetCategoryStaticPrefix]; got != want {
+		t.Fatalf("re-entry must keep first measurement, got %d want %d", got, want)
+	}
+}
+
+func TestContextBudgetToolsHook_NotBlockedByCatalogCueCategory(t *testing.T) {
+	ctx, b := WithContextBudget(context.Background())
+	recordContextBudgetOnce(ctx, ContextBudgetCategoryToolCatalogCue, 8000)
+	hook := newContextBudgetToolsBeforeHook()
+	bm := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	if _, err := bm.HandleBeforeModel(ctx, &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{Tools: map[string]trpctool.Tool{
+			"datetime": sizedDeclTool{name: "datetime", desc: "now"},
+		}},
+	}); err != nil {
+		t.Fatalf("call err = %v", err)
+	}
+	snap := b.Snapshot()
+	if snap.ToolsCount != 1 {
+		t.Fatalf("ToolsCount = %d, want 1 (catalog cue must not occupy tools_schema)", snap.ToolsCount)
+	}
+	if snap.Chars[ContextBudgetCategoryToolsSchema] <= 0 {
+		t.Fatal("tools_schema must record Request.Tools even after catalog cue")
+	}
+}

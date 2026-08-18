@@ -168,6 +168,26 @@ func TestRemember_InvalidKind(t *testing.T) {
 	}
 }
 
+func TestRemember_UserIdentityKindAndHeuristic(t *testing.T) {
+	w := &fakeWriter{}
+	deps := baseDeps()
+	deps.Writer = w
+	out := callTool(t, deps, ctxWithSession("user-1", "sess-1"), `{"statement":"我的工号是 DIAG-20260818-A7。","kind":"preference"}`)
+	if out.Kind != "user_identity" {
+		t.Fatalf("employee-id preference must canonicalize to user_identity, got %+v", out)
+	}
+	if w.writes[0].FactKind != "user_identity" || w.writes[0].Statement != "我的工号是 DIAG-20260818-A7" {
+		t.Fatalf("unexpected write: %+v", w.writes[0])
+	}
+
+	w2 := &fakeWriter{}
+	deps.Writer = w2
+	out = callTool(t, deps, ctxWithSession("user-1", "sess-1"), `{"statement":"我叫测试用户","kind":"user_identity"}`)
+	if out.Kind != "user_identity" || w2.writes[0].FactKind != "user_identity" {
+		t.Fatalf("explicit user_identity must pass through, got %+v / %+v", out, w2.writes)
+	}
+}
+
 func TestRemember_EmptyStatement(t *testing.T) {
 	tl := NewRememberTool(baseDeps())
 	if _, err := tl.Call(ctxWithSession("user-1", "sess-1"), []byte(`{"statement":"  "}`)); err == nil {

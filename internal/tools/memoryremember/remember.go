@@ -40,8 +40,8 @@ type Deps struct {
 }
 
 type rememberInput struct {
-	Statement string `json:"statement" jsonschema:"description=要记住的偏好或工作要求陈述,required"`
-	Kind      string `json:"kind" jsonschema:"description=记忆类型：preference（偏好，默认）或 constraint（硬性约束）,enum=preference,enum=constraint"`
+	Statement string `json:"statement" jsonschema:"description=要记住的偏好、身份或工作要求陈述,required"`
+	Kind      string `json:"kind" jsonschema:"description=记忆类型：preference（偏好，默认）、user_identity（工号/姓名/职责）或 constraint（硬性约束）,enum=preference,enum=user_identity,enum=constraint"`
 }
 
 type rememberOutput struct {
@@ -63,7 +63,7 @@ func NewRememberTool(deps Deps) trpctool.CallableTool {
 		lg = loggateway.NewNoop()
 	}
 	execute := func(ctx context.Context, input rememberInput) (rememberOutput, error) {
-		stmt := strings.TrimSpace(input.Statement)
+		stmt := biz.NormalizeStatementPunctuation(input.Statement)
 		if stmt == "" {
 			return rememberOutput{}, apierror.BadRequest("MEMORY", "statement is required")
 		}
@@ -71,9 +71,10 @@ func NewRememberTool(deps Deps) trpctool.CallableTool {
 		if kind == "" {
 			kind = "preference"
 		}
-		if kind != "preference" && kind != "constraint" {
-			return rememberOutput{}, apierror.BadRequest("MEMORY", "kind must be preference or constraint")
+		if kind != "preference" && kind != "constraint" && kind != "user_identity" {
+			return rememberOutput{}, apierror.BadRequest("MEMORY", "kind must be preference, user_identity, or constraint")
 		}
+		kind = biz.CanonicalizeFactKind(kind, stmt)
 		agentID := strings.TrimSpace(deps.AgentID)
 		if agentID == "" {
 			return rememberOutput{}, apierror.Internal("MEMORY", "agent identity not injected")
@@ -118,7 +119,7 @@ func NewRememberTool(deps Deps) trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("memory_remember"),
-		function.WithDescription("当用户明确要求记住某个偏好或工作要求时（如\"记住\"\"以后都…\"\"不要再…\"），立即写入长期记忆。kind=preference 表示偏好（默认），constraint 表示硬性约束。不要用于临时上下文或任务信息。"),
+		function.WithDescription("当用户明确要求记住某个偏好、身份或工作要求时（如\"记住\"\"以后都…\"\"不要再…\"），立即写入长期记忆。kind=preference 表示偏好（默认），user_identity 表示工号/姓名/职责，constraint 表示硬性约束。不要用于临时上下文或任务信息。"),
 	)
 }
 

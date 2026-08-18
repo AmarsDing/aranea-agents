@@ -1794,3 +1794,17 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 修改：`internal/biz/team_types.go`（DeliverableArtifact + DeliverableRef.Artifacts）、`internal/biz/spirit_delivery.go`（buildDeliverableArtifacts / aggregateTopicSummaries / renderArtifactSections 含内联预算与空载荷标注 / ReadUpstreamDeliverableKey 及 key 解析助手 / 协议样例 2 顺序）、`internal/biz/spirit_team_usecase.go`（InlineUpstreamPayloadMaxChars + InlineUpstreamArtifactMaxCount + InlineUpstreamPayloadTotalMaxChars、ReadUpstreamDeliverableKey 委托、SpiritTeamController 接口）、`internal/biz/spirit_synthesis.go`（digest 载荷行）、`internal/graph/adapter/agent_summary_fallback.go`（兜底 content）、`internal/tools/deliverable/upstream_reader.go`（key 入参 + 路由 + 声明）、测试五处（`spirit_team_deliverable_test.go` / `upstream_reader_test.go` / `agent_summary_fallback_test.go` + service stub / `tool_test.go` / `member_contract_bridge_test.go` 锚定）、`docs/development/1-chat.design.md`、`1-chat.development.md`
 
 回归：`internal/service` 41.5s / `internal/agent` 27.7s / `internal/tools/...` / `internal/graph/...` 全绿；`internal/biz` 仅 6 个既有 DB 环境用例失败（`aranea_test` 密码认证，与本改动无关）
+
+---
+
+## DirectReply 关思考（2026-08-18）
+
+> **范围**：`shouldSkipIntentPass` 为真时 `WithThinkingDisabled(ctx)`，BeforeModel 钩子 per-request 置 `ThinkingEnabled=false`（BUILD 缓存不含入口）。
+> **设计**：[1-chat.design.md B.10.18.1](./1-chat.design.md)
+
+| # | 任务 | 状态 |
+|---|------|------|
+| T1 | `chat_orchestrator_turn.go` skipIntent 打标 | ✅ 2026-08-18 |
+| T2 | `voice_fastpath.go` 共用 BeforeModel 钩子；单测 DirectReply 关思考 | ✅ 2026-08-18 |
+
+改动：`internal/service/chat_orchestrator_turn.go`、`internal/agent/voice_fastpath.go`、`voice_fastpath_test.go`

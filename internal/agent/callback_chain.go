@@ -91,11 +91,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
-	// 上下文预算台账（29-token §9.6）：tools_schema + history 计量。无条件注册——
+	// 上下文预算台账（29-token §9.6）：tools_schema + history + static_prefix 计量。无条件注册——
 	// ctx 无收集器时每次仅一次 ctx 读，与缓存 BUILD 产物共享安全。
 	entries = append(entries, newContextBudgetToolsBeforeHook())
 	// N3：history 计量（最终请求中的非 system 消息）。
 	entries = append(entries, newContextBudgetHistoryBeforeHook())
+	// Instruction / 系统前缀计量（IDENTITY 等），与 runtime cue 的 285 字区别开。
+	entries = append(entries, newContextBudgetStaticPrefixBeforeHook())
 	// F5：skill_overview 计量（镜像框架 overview 渲染，零额外 DB 查询）。
 	// 批次 B 计量对齐：预算与 RunOptionWithOverviewBudget 安装的渲染器同值，
 	// 计量截断后的实际注入文本。typed-nil 防护同 trpc_build.go runtimeIface。

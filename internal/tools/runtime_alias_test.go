@@ -227,6 +227,17 @@ func TestAliasTool_LongRunning_false(t *testing.T) {
 	}
 }
 
+func TestAliasTool_ShouldDefer_delegates(t *testing.T) {
+	plain := NewAliasTool("shell", &mockToolForAlias{decl: &Declaration{Name: "exec_command"}})
+	if trpctool.ShouldDefer(context.Background(), plain) {
+		t.Fatal("plain inner must not ShouldDefer")
+	}
+	deferred := NewAliasTool("shell", &deferredMockForAlias{decl: &Declaration{Name: "exec_command"}})
+	if !trpctool.ShouldDefer(context.Background(), deferred) {
+		t.Fatal("alias wrapping a deferred inner must ShouldDefer")
+	}
+}
+
 func TestValidateRuntimeAliasesAgainstPolicy(t *testing.T) {
 	err := ValidateRuntimeAliasesAgainstPolicy()
 	if err != nil {
@@ -336,6 +347,16 @@ type mockToolForAlias struct {
 func (m *mockToolForAlias) Declaration() *Declaration {
 	return m.decl
 }
+
+type deferredMockForAlias struct {
+	decl *Declaration
+}
+
+func (m *deferredMockForAlias) Declaration() *Declaration {
+	return m.decl
+}
+
+func (m *deferredMockForAlias) ShouldDefer(context.Context) bool { return true }
 
 type mockCallableForAlias struct {
 	decl *Declaration

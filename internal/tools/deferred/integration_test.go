@@ -117,9 +117,9 @@ func TestManager_CatalogNames(t *testing.T) {
 	}
 
 	expected := map[string]bool{
-		"weather_lookup":  true,
-		"translate_text":  true,
-		"file_read_file":  true,
+		"weather_lookup": true,
+		"translate_text": true,
+		"file_read_file": true,
 	}
 	for _, name := range names {
 		if !expected[name] {
@@ -235,6 +235,33 @@ func TestToolFilter_PassesNonDeferredTools(t *testing.T) {
 	)
 	if !filter(context.Background(), nonDeferred) {
 		t.Fatal("non-deferred tool should always pass filter")
+	}
+}
+
+func TestToolFilter_HidesHostexecAliasByBaseName(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "hostexec_exec_command", BaseName: "exec_command", Description: "Run a shell command"},
+	}
+	manager := NewDeferredToolManager(catalog)
+	filter := manager.ToolFilter()
+
+	inner := trpcfunction.NewFunctionTool(
+		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
+		trpcfunction.WithName("exec_command"),
+		trpcfunction.WithDescription("Run a shell command"),
+	)
+	deferred := NewDeferredCallableTool(inner, loggateway.NewNoop())
+	manager.RegisterTool("hostexec_exec_command", deferred)
+	alias := &fakeInnerWrapper{inner: deferred, name: "shell"}
+
+	ctx := withTestInvocation(context.Background())
+	if filter(ctx, alias) {
+		t.Fatal("shell alias of deferred hostexec_exec_command must stay hidden until tool_load")
+	}
+	writeActivatedSet(ctx, "hostexec_exec_command")
+	writeActivatedSet(ctx, "exec_command")
+	if !filter(ctx, alias) {
+		t.Fatal("shell alias should pass after activating hostexec_exec_command")
 	}
 }
 

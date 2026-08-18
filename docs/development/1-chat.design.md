@@ -5618,7 +5618,9 @@ TeamStarter.NotifyAllTeamsCompleted
 
 ```
 用户消息 → ChatOrchestrator.RunTurn
-   → Intent Pass（LLM 意图识别，输出 intent.Artifact）
+   → DirectReply / QuickAssess=simple：跳过 Intent Pass，ctx 打 WithThinkingDisabled
+     （per-request 关思考；BUILD 缓存不含入口，不能烘进 GenerationConfig）
+   → 否则 Intent Pass（LLM 意图识别，输出 intent.Artifact）
         │  ① Artifact 新增 Clarifications[]（结构化问题集）
         │     + RiskFlags 含 "needs_clarification"
         ▼

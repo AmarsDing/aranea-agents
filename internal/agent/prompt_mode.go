@@ -62,3 +62,17 @@ func skillOptionsForPromptMode(mode string) (trpcllmagent.SkillToolProfile, bool
 	}
 	return trpcllmagent.SkillToolProfileKnowledgeOnly, false
 }
+
+// skillOptionsForAgent picks the skill-tool suite. Spirit / chat_only are
+// orchestrators: they must not register skill_exec / skill_run / stdin+poll
+// (those schemas dominated tools_schema ~20k tok). complete prompt mode still
+// keeps IDENTITY files; only the execution tools are dropped.
+func skillOptionsForAgent(ag biz.Agent) (trpcllmagent.SkillToolProfile, bool) {
+	if ag.Settings != nil {
+		switch strings.ToLower(strings.TrimSpace(ag.Settings.ToolsProfile)) {
+		case "spirit", "chat_only":
+			return trpcllmagent.SkillToolProfileKnowledgeOnly, false
+		}
+	}
+	return skillOptionsForPromptMode(ag.SystemPromptMode)
+}

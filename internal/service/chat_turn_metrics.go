@@ -155,6 +155,7 @@ func (m *chatTurnMetrics) recordContextBudgetLog(ctx context.Context, p TurnUsag
 		loggateway.Int("skill_guidance_tokens", snap.EstTokens[chatagent.ContextBudgetCategorySkillGuidance]),
 		loggateway.Int("skill_overview_tokens", snap.EstTokens[chatagent.ContextBudgetCategorySkillOverview]),
 		loggateway.Int("other_dynamic_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryOtherDynamic]),
+		loggateway.Int("tool_catalog_cue_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryToolCatalogCue]),
 		loggateway.Int("est_total_input", snap.EstTotalInput),
 		loggateway.Float64("static_ratio", staticRatio),
 	}

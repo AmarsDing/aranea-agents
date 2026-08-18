@@ -244,7 +244,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		if exec != nil {
 			opts = append(opts, trpcllmagent.WithCodeExecutor(exec))
 		}
-		skillProfile, dirHints := skillOptionsForPromptMode(ag.SystemPromptMode)
+		skillProfile, dirHints := skillOptionsForAgent(ag)
 		if ag.Settings != nil && biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
 			// Progressive mode keeps directory hints for skill_run path
 			// resolution; skill bodies still go to tool results (below).

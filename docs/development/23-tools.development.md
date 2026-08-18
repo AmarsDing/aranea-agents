@@ -798,3 +798,16 @@ catalog/策略层：
 - `pkg/trpc-agent-go/tool/hostexec` — running 结果暴露 pid（产品 wrap 透传）
 - `internal/agent/prompt.go` — 省略 path + `delete_file` cue
 
+### Round 10（2026-08-18 spirit 闲聊 schema：computer_use / shell / 编排图 deferred）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| spirit 核心去掉 `build_orchestration_graph` | ✅ | `internal/tools/deferred/split.go` |
+| computer_use_* / graph 映射到自身 | ✅ | `registry_map.go`；CustomTool 才能被 FinalizeDeferredTools 按名包装 |
+| ToolFilter 收录 BaseName | ✅ | `shell`/`shell_exec` 别名不再漏完整 schema |
+| aliasTool.ShouldDefer 委托 inner | ✅ | `runtime_alias.go` |
+
+- `internal/tools/deferred/split.go`、`registry_map.go`、`tool_search.go`
+- `internal/tools/runtime_alias.go`
+- 测试：`split_test.go`、`registry_map_test.go`、`integration_test.go`、`runtime_alias_test.go`
+

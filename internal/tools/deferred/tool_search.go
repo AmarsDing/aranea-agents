@@ -69,6 +69,13 @@ func newView(catalog []DeferredToolEntry) *deferredView {
 	}
 	for _, entry := range catalog {
 		v.names[entry.Name] = true
+		// BaseName lets ToolFilter hide runtime aliases (shell / shell_exec)
+		// whose Declaration().Name is the unprefixed inner tool, not the
+		// "{toolset}_{tool}" catalog key. Without this, ApplyRuntimeNameAliases
+		// re-exposes the full schema after deferred wrap.
+		if entry.BaseName != "" {
+			v.names[entry.BaseName] = true
+		}
 	}
 	return v
 }
@@ -242,7 +249,7 @@ func (m *DeferredToolManager) ToolFilter() trpctool.FilterFunc {
 
 // resolveDeferredName 递归解包工具包装链，返回命中的延迟工具规范名称。
 // 解包约定：优先 InnerTool()（deferred/alias 包装器），其次 Original()
-//（ToolDecorator 等框架装饰器约定）。最多解包 8 层防循环。
+// （ToolDecorator 等框架装饰器约定）。最多解包 8 层防循环。
 func resolveDeferredName(t trpctool.Tool, deferredNames map[string]bool) (string, bool) {
 	for i := 0; i < 8 && t != nil; i++ {
 		decl := t.Declaration()

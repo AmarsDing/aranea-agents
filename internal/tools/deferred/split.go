@@ -14,9 +14,10 @@ import (
 //   - 长尾集 = 低频、特定场景、可容忍一次 tool_load 调用的工具
 var coreResidentToolsByProfile = map[string][]string{
 	"spirit": {
-		// 编排骨架（每次对话必经）
+		// 编排骨架（闲聊也常驻：计划入口 + 收口）。DAG 构图 schema 很大，
+		// 走 deferred + tool_load，不进 Request.Tools。
 		"plan_and_execute", "synthesize_results", "get_team_deliverable",
-		"build_orchestration_graph", "cancel_orchestration",
+		"cancel_orchestration",
 		// 基础工具
 		"datetime", "memory_search",
 	},

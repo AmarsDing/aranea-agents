@@ -1911,6 +1911,8 @@ Assemble()
   → 追加到 AssembledToolsets.Tools
 ```
 
+**spirit 档闲聊常驻 vs deferred（2026-08-18）**：`SplitCoreResidentTools("spirit")` 核心只留 `plan_and_execute` / `synthesize_results` / `get_team_deliverable` / `cancel_orchestration` / `datetime` / `memory_search`。`build_orchestration_graph`、`computer_use_*`、`shell_exec`（registry=`hostexec`）经 `bizKeyToRegistryName` 进入 deferred catalog；扁平 CustomTool 映射到自身 Declaration 名才能被 `FinalizeDeferredTools` 包装。`ToolFilter` 的 names 同时收录 catalog `Name` 与 `BaseName`，否则 `ApplyRuntimeNameAliases` 后的 `shell`/`shell_exec` 会带着完整 schema 漏进 `Request.Tools`。
+
 ### 7.10 子代理工具（SubAgent Tools）
 
 子代理工具通过 `SubAgentService` 注入，支持运行时动态生成、列表、查询和取消子代理。

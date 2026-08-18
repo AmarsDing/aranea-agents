@@ -90,6 +90,13 @@ func (a *aliasTool) InnerTool() trpctool.Tool {
 	return a.inner
 }
 
+func (a *aliasTool) ShouldDefer(ctx context.Context) bool {
+	if a == nil {
+		return false
+	}
+	return trpctool.ShouldDefer(ctx, a.inner)
+}
+
 func (a *aliasTool) LongRunning() bool {
 	type longRunner interface{ LongRunning() bool }
 	if l, ok := a.inner.(longRunner); ok {

@@ -50,6 +50,10 @@ func TestFactFingerprint(t *testing.T) {
 		}
 	}
 
+	if FactFingerprint("工号是 DIAG-A7。", "user", "u1") != FactFingerprint("工号是 DIAG-A7", "user", "u1") {
+		t.Error("trailing punctuation must not change fingerprint")
+	}
+
 	// Empty statement should still produce a valid fingerprint
 	fpEmpty := FactFingerprint("", "agent", "ag1")
 	if len(fpEmpty) != 64 {
@@ -68,6 +72,9 @@ func TestNormalizeForDedup(t *testing.T) {
 		{"", ""},
 		{"  ", ""},
 		{"UPPERCASE", "uppercase"},
+		{"工号是 DIAG-20260818-A7。", "工号是 diag-20260818-a7"},
+		{"工号是 DIAG-20260818-A7", "工号是 diag-20260818-a7"},
+		{"喜欢简洁的回答！", "喜欢简洁的回答"},
 	}
 	for _, tt := range tests {
 		got := NormalizeForDedup(tt.input)

@@ -55,6 +55,47 @@ func TestRegistryNamesForBizKeys_SkipsUnmapped(t *testing.T) {
 	}
 }
 
+func TestSpiritDeferredRegistryIncludesShellComputerUseAndGraph(t *testing.T) {
+	enabled := []string{
+		"plan_and_execute", "cancel_orchestration", "synthesize_results",
+		"get_team_deliverable", "build_orchestration_graph", "memory_search",
+		"shell_exec", "datetime",
+		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
+		"computer_use_launch", "computer_use_session",
+		"subagents_spawn",
+	}
+	_, def := SplitCoreResidentTools(enabled, "spirit")
+	names := RegistryNamesForBizKeys(def)
+	assertContainsAll(t, names, []string{
+		"hostexec",
+		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
+		"computer_use_launch", "computer_use_session",
+		"build_orchestration_graph",
+		"subagents_spawn",
+	})
+	for _, n := range names {
+		if n == "plan_and_execute" || n == "datetime" || n == "memory_search" {
+			t.Errorf("core tool %q must not be in deferred registry names", n)
+		}
+	}
+}
+
+func TestRegistryNamesForBizKeys_IdentityMappedCustomTools(t *testing.T) {
+	keys := []string{
+		"computer_use_act", "computer_use_observe", "computer_use_screenshot",
+		"computer_use_launch", "computer_use_session",
+		"build_orchestration_graph",
+		"shell_exec",
+	}
+	names := RegistryNamesForBizKeys(keys)
+	assertContainsAll(t, names, []string{
+		"computer_use_act", "computer_use_observe", "computer_use_screenshot",
+		"computer_use_launch", "computer_use_session",
+		"build_orchestration_graph",
+		"hostexec",
+	})
+}
+
 func TestBizKeysForRegistryName_File(t *testing.T) {
 	keys := BizKeysForRegistryName("file")
 	if len(keys) != 9 {
