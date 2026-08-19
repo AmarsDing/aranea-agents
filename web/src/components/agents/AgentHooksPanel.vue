@@ -38,8 +38,8 @@
       :label="t('hooksPage.agentPanel.expansionCreate')"
       default-opened
     >
-      <div class="app-dialog-section q-pa-md q-mt-sm">
-        <div class="app-form-field-grid app-form-field-grid--wide q-mb-md">
+      <div class="app-dialog-section agent-hooks-panel__create q-pa-md q-mt-sm">
+        <div class="app-form-field-grid app-form-field-grid--2col q-mb-md">
           <q-input
             v-model="draftName"
             dense
@@ -53,11 +53,13 @@
         <callback-editor
           v-model="draftRule"
           v-model:sort-order="draftSort"
+          v-model:valid="draftValid"
           :agent-id="agentId"
           :agent-key="agentKey"
           lock-agent-id
           :tool-options="toolOptions"
           :loading-tool-options="loadingToolOptions"
+          :enabled-tool-keys="enabledToolKeys"
         />
         <div class="row justify-end q-mt-md">
           <q-btn
@@ -65,6 +67,7 @@
             unelevated
             :label="t('hooksPage.agentPanel.btnCreate')"
             :loading="saving"
+            :disable="!draftValid"
             @click="createScopedHook"
           />
         </div>
@@ -94,11 +97,13 @@
               v-if="editRow"
               v-model="editRule"
               v-model:sort-order="editSort"
+              v-model:valid="editValid"
               :agent-id="agentId"
               :agent-key="agentKey"
               lock-agent-id
               :tool-options="toolOptions"
               :loading-tool-options="loadingToolOptions"
+              :enabled-tool-keys="enabledToolKeys"
             />
           </q-card-section>
         </div>
@@ -111,6 +116,7 @@
             no-caps
             :label="t('hooksPage.btnSave')"
             :loading="saving"
+            :disable="!editValid"
             @click="saveEdit"
           />
         </q-card-actions>
@@ -120,10 +126,12 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import CallbackEditor from '../hooks/CallbackEditor.vue';
 import HooksTable from '../hooks/HooksTable.vue';
 import { useAgentHooksPanel } from '../../features/agents/useAgentHooksPanel';
+import { getAgentEffectiveTools } from '../../features/tools/api';
 
 const { t } = useI18n();
 
@@ -138,6 +146,27 @@ const props = withDefaults(
     toolOptions: undefined,
     loadingToolOptions: false,
   },
+);
+
+/** 当前 Agent 生效工具 key 集合（后端聚合），用于 Tool 下拉「已启用」标注。 */
+const enabledToolKeys = ref<string[]>([]);
+watch(
+  () => props.agentId,
+  async (id) => {
+    if (!id) {
+      enabledToolKeys.value = [];
+      return;
+    }
+    try {
+      const eff = await getAgentEffectiveTools(id);
+      enabledToolKeys.value = (eff.items ?? [])
+        .filter((it) => it.effective_state === 'allowed')
+        .map((it) => it.tool_key);
+    } catch {
+      enabledToolKeys.value = [];
+    }
+  },
+  { immediate: true },
 );
 
 const {
@@ -158,6 +187,8 @@ const {
   editName,
   editEnabled,
   togglingId,
+  draftValid,
+  editValid,
   createScopedHook,
   openEdit,
   saveEdit,

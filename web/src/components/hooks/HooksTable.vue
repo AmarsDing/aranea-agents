@@ -10,6 +10,12 @@
     :pagination="{ rowsPerPage: 0 }"
     :column-persist-key="columnPersistKey"
   >
+    <template #no-data>
+      <div class="full-width row flex-center q-pa-lg text-grey-6">
+        {{ emptyText }}
+      </div>
+    </template>
+
     <template #body-cell-name="slotProps">
       <q-td :props="slotProps">
         <AppRegistryHoverTip :text="slotProps.row.description" :empty-label="t('hooksPage.noDescription')">
@@ -143,6 +149,10 @@ const tableColumns = computed(() => {
   if (props.readonly) return createHooksReadonlyTableColumns(t);
   return props.variant === 'agent' ? createHooksAgentTableColumns(t) : createHooksTableColumns(t);
 });
+
+const emptyText = computed(() =>
+  props.variant === 'agent' && !props.readonly ? t('hooksPage.agentPanel.emptyScoped') : t('hooksPage.emptyList'),
+);
 
 const columnPersistKey = computed(() => {
   if (props.readonly) return 'hooks-readonly-table';

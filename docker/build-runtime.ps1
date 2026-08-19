@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+﻿﻿﻿﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   本地交叉编译 Aranea admin（linux/amd64）并重建 aranea-runtime:local 薄镜像。

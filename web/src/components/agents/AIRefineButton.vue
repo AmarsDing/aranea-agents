@@ -8,14 +8,16 @@
     :outline="outline"
     :rounded="rounded ?? true"
     icon="auto_awesome"
-    :label="label ?? 'AI 优化'"
+    :label="label ?? t('agentSettings.aiRefine.buttonLabel')"
     @click="handleRefine"
   >
     <q-tooltip v-if="guide">
       <div class="text-caption" style="max-width: 280px">
         <strong>{{ guide.titleZh }}</strong
         >：{{ guide.purpose }}
-        <template v-if="guide.budget.soft"> <br />建议字数：{{ guide.budget.soft }} 字以内 </template>
+        <template v-if="guide.budget.soft">
+          <br />{{ $t('agentSettings.aiRefine.guideBudget', { count: guide.budget.soft }) }}
+        </template>
       </div>
     </q-tooltip>
   </q-btn>
@@ -24,11 +26,11 @@
   <q-dialog v-model="showResult" persistent>
     <q-card class="ai-refine-dialog-card app-dialog-card app-glass-dialog">
       <q-card-section class="row items-center">
-        <div class="text-h6">AI 优化结果</div>
+        <div class="text-h6">{{ $t('agentSettings.aiRefine.dialogTitle') }}</div>
         <q-space />
         <span v-if="result" class="refine-chip">
           {{ result.provider }} / {{ result.model }}
-          <q-tooltip>模型来源：{{ result.source }}</q-tooltip>
+          <q-tooltip>{{ $t('agentSettings.aiRefine.modelSource', { source: result.source }) }}</q-tooltip>
         </span>
         <q-btn flat round dense icon="close" class="q-ml-sm" @click="handleCancel">
           <q-tooltip>{{ $t('agentSettings.aiRefine.closeTooltip') }}</q-tooltip>
@@ -53,10 +55,7 @@
             dense
             flat
             toggle-color="primary"
-            :options="[
-              { label: '优化结果', value: 'result' },
-              { label: '差异对比', value: 'diff' },
-            ]"
+            :options="viewOptions"
           />
         </div>
 
@@ -73,8 +72,17 @@
 
         <!-- Char budget indicator -->
         <div v-if="guide && editedResult" class="q-mt-xs text-caption">
-          <span :class="budgetClass">{{ charCount }} 字</span>
-          <span class="text-grey-6"> / 软上限 {{ guide.budget.soft }}（硬上限 {{ guide.budget.hard || '无' }}） </span>
+          <span :class="budgetClass">{{
+            $t('agentSettings.aiRefine.charCount', { count: charCount })
+          }}</span>
+          <span class="text-grey-6">
+            {{
+              $t('agentSettings.aiRefine.charBudget', {
+                soft: guide.budget.soft,
+                hard: guide.budget.hard || $t('agentSettings.aiRefine.charBudgetNone'),
+              })
+            }}
+          </span>
         </div>
 
         <!-- User hint input -->
@@ -83,16 +91,28 @@
           class="q-mt-md"
           dense
           outlined
-          label="补充优化说明（可选）"
-          placeholder='例如："更正式一些" 或 "补充 KPI 指标"'
+          :label="$t('agentSettings.aiRefine.hintLabel')"
+          :placeholder="$t('agentSettings.aiRefine.hintPlaceholder')"
           @keyup.enter="handleRefine"
         />
       </q-card-section>
 
       <q-card-actions align="right" class="q-pa-md">
         <q-btn flat :label="$t('agentSettings.aiRefine.cancel')" @click="handleCancel" />
-        <q-btn flat :loading="loading" icon="refresh" label="重新优化" @click="handleRefine" />
-        <q-btn color="primary" unelevated rounded label="应用" @click="applyResult" />
+        <q-btn
+          flat
+          :loading="loading"
+          icon="refresh"
+          :label="$t('agentSettings.aiRefine.refineAgain')"
+          @click="handleRefine"
+        />
+        <q-btn
+          color="primary"
+          unelevated
+          rounded
+          :label="$t('agentSettings.aiRefine.apply')"
+          @click="applyResult"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -100,6 +120,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { FieldScope, FieldGuide } from '../../features/agents/fieldGuides';
 import { getFieldGuide } from '../../features/agents/fieldGuides';
 import type { RefineResponse } from '../../features/agents/aiRefine';
@@ -145,6 +166,8 @@ const emit = defineEmits<{
   (e: 'error', message: string): void;
 }>();
 
+const { t } = useI18n();
+
 // ──────────────────────────────────────────────────────────────────────────────
 // State
 // ──────────────────────────────────────────────────────────────────────────────
@@ -177,6 +200,11 @@ const budgetClass = computed(() => {
 
 const btnColor = computed(() => props.color ?? 'primary');
 
+const viewOptions = computed(() => [
+  { label: t('agentSettings.aiRefine.viewResult'), value: 'result' },
+  { label: t('agentSettings.aiRefine.viewDiff'), value: 'diff' },
+]);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Actions
 // ──────────────────────────────────────────────────────────────────────────────
@@ -196,7 +224,7 @@ async function handleRefine() {
     editedResult.value = res.refined;
     showResult.value = true;
   } catch (e: unknown) {
-    emit('error', e instanceof Error ? e.message : 'AI 优化失败，请重试');
+    emit('error', e instanceof Error ? e.message : t('agentSettings.aiRefine.failed'));
   } finally {
     loading.value = false;
   }

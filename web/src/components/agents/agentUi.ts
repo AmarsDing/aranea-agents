@@ -197,11 +197,6 @@ export function isFileInjectedInMode(name: string, mode: string): boolean {
 
 export { tokenEstimateFor } from '../../features/agents/agentUtils';
 
-export function tokenText(value: string) {
-  const count = tokenEstimateFor(value);
-  return count > 0 ? `估计 ${count} token` : '空';
-}
-
 export function formatContext(value?: number) {
   if (!value) return '默认 ctx';
   if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M ctx`;

@@ -52,7 +52,7 @@ func newUsageTestRunner(usage biz.TeamUsageQuerier, sessions biz.SessionTurnMana
 
 // P2-1 双计根治：anchor-fallback 的 member 行携带 run 全量（与 team_turn 行
 // 同量），落库但必须跳过 session 累加（team_turn 行是唯一 session 累加源）；
-// 真实 per-member 行（flag=false，如失败路径部分 step）保留累加。
+// 无 attribution 标记的行（如失败路径部分 step）保留累加。
 func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 	run := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1"}
 	ag := biz.Agent{ID: "a1", AgentKey: "worker-a"}
@@ -66,7 +66,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		sessions := &fakeMetricSessions{}
 		r := newUsageTestRunner(usage, sessions)
 
-		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", true)
+		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", biz.UsageAttributionRunLevelAnchorFallback)
 
 		if len(usage.events) != 1 {
 			t.Fatalf("events=%d want 1", len(usage.events))
@@ -85,7 +85,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		sessions := &fakeMetricSessions{}
 		r := newUsageTestRunner(usage, sessions)
 
-		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", false)
+		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
 
 		if len(usage.events) != 1 {
 			t.Fatalf("events=%d want 1", len(usage.events))
@@ -99,6 +99,24 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		d := sessions.deltas[0]
 		if d.InputTokens != 280 || d.OutputTokens != 55 || d.ModelCallCount != 1 {
 			t.Fatalf("delta = %+v, want tokens 280/55 call 1", d)
+		}
+	})
+
+	t.Run("member_level_stream row recorded but not accumulated", func(t *testing.T) {
+		usage := &fakeTeamUsage{}
+		sessions := &fakeMetricSessions{}
+		r := newUsageTestRunner(usage, sessions)
+
+		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", biz.UsageAttributionMemberLevelStream)
+
+		if len(usage.events) != 1 {
+			t.Fatalf("events=%d want 1", len(usage.events))
+		}
+		if !strings.Contains(usage.events[0].MetadataJSON, biz.UsageAttributionMemberLevelStream) {
+			t.Fatalf("metadata missing member_level_stream marker: %s", usage.events[0].MetadataJSON)
+		}
+		if len(sessions.deltas) != 0 {
+			t.Fatalf("member_level_stream row must not accumulate session metrics, got %d deltas", len(sessions.deltas))
 		}
 	})
 }
@@ -117,7 +135,7 @@ func TestPersistStep_BackfillsCostMicroUSD(t *testing.T) {
 	t.Run("quote result lands on step", func(t *testing.T) {
 		usage := &fakeTeamUsage{quoteCost: 4200}
 		r := newUsageTestRunner(usage, nil)
-		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "deepseek", "deepseek-chat", "default", 0, 40, "streaming", time.Time{}, false)
+		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "deepseek", "deepseek-chat", "default", 0, 40, "streaming", time.Time{}, "")
 
 		repo := r.runWriter.(*stepBusRunWriter)
 		if len(repo.steps) != 1 {
@@ -130,7 +148,7 @@ func TestPersistStep_BackfillsCostMicroUSD(t *testing.T) {
 
 	t.Run("nil usage keeps zero cost", func(t *testing.T) {
 		r := newUsageTestRunner(nil, nil)
-		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, "", time.Time{}, false)
+		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, "", time.Time{}, "")
 
 		repo := r.runWriter.(*stepBusRunWriter)
 		if len(repo.steps) != 1 {

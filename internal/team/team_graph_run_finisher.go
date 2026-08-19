@@ -67,8 +67,8 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 	startedAt, _ := stepCtx.NodeStartedAt(nodeID)
 	// usageSource "": this path carries no token counts (asst TokenIn/Out are
 	// zero → recordMemberUsage skips), so there is no provenance to label.
-	// runLevelAttribution=false: zero-token rows never reach session metrics anyway.
-	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0, "", startedAt, false)
+	// attribution "": zero-token rows never reach session metrics anyway.
+	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0, "", startedAt, "")
 	stepCtx.MarkPersisted(nodeID)
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
@@ -267,6 +267,12 @@ func enrichTeamRunMetricsFromSteps(run *biz.TeamRunRecord, steps []biz.TeamRunSt
 }
 
 // ensureGraphRunStepsFallback persists a single anchor step when graph events produced no team_run_steps.
+//
+// suppressUsageRow: P2-1b (2026-08-19). When stream-derived genuine member
+// rows were already persisted (recordGraphMemberUsageFromResult), the fallback
+// anchor row would double-count the same run totals in billable aggregates —
+// the step is then persisted display-only (tokens zeroed so recordMemberUsage
+// skips). Run-level totals remain on team_runs for display.
 func (r *Runner) ensureGraphRunStepsFallback(
 	ctx context.Context,
 	run biz.TeamRunRecord,
@@ -278,6 +284,7 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	promptTok, completionTok, cachedTok int,
 	prov, mod string,
 	usageSource string,
+	suppressUsageRow bool,
 ) {
 	if r == nil || r.runReader == nil {
 		return
@@ -295,10 +302,14 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	}
 	stepMsg := assistantMsg
 	stepMsg.TokenIn, stepMsg.TokenOut = promptTok, completionTok
+	if suppressUsageRow {
+		stepMsg.TokenIn, stepMsg.TokenOut = 0, 0
+		cachedTok = 0
+	}
 	prov = strutil.FirstNonEmpty(strings.TrimSpace(prov), strings.TrimSpace(anchorAg.Provider))
 	mod = strutil.FirstNonEmpty(strings.TrimSpace(mod), strings.TrimSpace(anchorAg.Model))
-	// runLevelAttribution=true: this anchor fallback step carries RUN-LEVEL totals
-	// (same totals the team_turn row records), so its usage row must not also
-	// accumulate session metrics (P2-1 双计根治).
-	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok, usageSource, time.Time{}, true)
+	// attribution=run_level_anchor_fallback: this anchor fallback step carries
+	// RUN-LEVEL totals (same totals the team_turn row records), so its usage row
+	// must not also accumulate session metrics (P2-1 双计根治).
+	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok, usageSource, time.Time{}, biz.UsageAttributionRunLevelAnchorFallback)
 }

@@ -144,7 +144,8 @@ func (uc *LearningLoopUsecase) DetectPatterns(ctx context.Context, agentID strin
 		if confidence < 0.1 {
 			continue
 		}
-		existing, exErr := uc.patterns.ListByAgent(ctx, agentID, string(PatternStatusDetected))
+		// 去重覆盖全部状态：已确认/已忽略的模式不再重复检出（否则「忽略」形同虚设）。
+		existing, exErr := uc.patterns.ListByAgent(ctx, agentID, "")
 		if exErr != nil {
 			continue
 		}
@@ -305,6 +306,10 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 	return applied, nil
 }
 
+// ApproveProposal 审批并注册：validated → approved → applied。
+// 审批对话框承诺「审批后将注册到 Agent 知识库」，因此审批成功后自动接续
+// RegisterKnowledge，避免提议永久滞留 approved 态（闭环断裂）。
+// 对已 approved 的提议幂等：直接重试注册（审批后注册失败的恢复路径）。
 func (uc *LearningLoopUsecase) ApproveProposal(ctx context.Context, proposalID string, approvedBy string) (KnowledgeProposal, error) {
 	proposalID, err := requireNonEmpty(proposalID, "LEARNING", "proposal_id")
 	if err != nil {
@@ -314,17 +319,29 @@ func (uc *LearningLoopUsecase) ApproveProposal(ctx context.Context, proposalID s
 	if err != nil {
 		return KnowledgeProposal{}, err
 	}
-	if p.Status != ProposalStatusValidated {
+	switch p.Status {
+	case ProposalStatusValidated:
+		if _, ok, casErr := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusValidated}, ProposalStatusApproved, approvedBy); casErr != nil {
+			return KnowledgeProposal{}, casErr
+		} else if !ok {
+			return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
+		}
+	case ProposalStatusApproved:
+		// 已审批未注册（此前注册失败），直接重试注册。
+	default:
 		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only validated proposals can be approved")
 	}
-	approved, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusValidated}, ProposalStatusApproved, approvedBy)
+	return uc.RegisterKnowledge(ctx, proposalID, approvedBy)
+}
+
+// ApplyProposal 显式注册入口：validated/approved → applied。
+// 供 UI 对 approved 态提议（审批时注册失败的恢复态）提供重试按钮。
+func (uc *LearningLoopUsecase) ApplyProposal(ctx context.Context, proposalID string, approvedBy string) (KnowledgeProposal, error) {
+	proposalID, err := requireNonEmpty(proposalID, "LEARNING", "proposal_id")
 	if err != nil {
 		return KnowledgeProposal{}, err
 	}
-	if !ok {
-		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
-	}
-	return approved, nil
+	return uc.RegisterKnowledge(ctx, proposalID, approvedBy)
 }
 
 func (uc *LearningLoopUsecase) RejectProposal(ctx context.Context, proposalID string) (KnowledgeProposal, error) {
@@ -347,6 +364,26 @@ func (uc *LearningLoopUsecase) RejectProposal(ctx context.Context, proposalID st
 		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
 	}
 	return rejected, nil
+}
+
+// UpdatePatternStatus 人工处置模式：detected → confirmed/dismissed。
+// UI 过滤器提供「已确认/已忽略」档位，此前没有任何状态流转入口（死选项）。
+func (uc *LearningLoopUsecase) UpdatePatternStatus(ctx context.Context, patternID string, status PatternStatus) (Pattern, error) {
+	patternID, err := requireNonEmpty(patternID, "LEARNING", "pattern_id")
+	if err != nil {
+		return Pattern{}, err
+	}
+	if status != PatternStatusConfirmed && status != PatternStatusDismissed {
+		return Pattern{}, apierror.BadRequest("LEARNING", "status must be confirmed or dismissed")
+	}
+	p, err := uc.patterns.GetByID(ctx, patternID)
+	if err != nil {
+		return Pattern{}, err
+	}
+	if p.Status != PatternStatusDetected {
+		return Pattern{}, apierror.BadRequest("LEARNING", "only detected patterns can be confirmed or dismissed")
+	}
+	return uc.patterns.UpdateStatus(ctx, patternID, status)
 }
 
 func (uc *LearningLoopUsecase) ListProposals(ctx context.Context, agentID string, status string) ([]KnowledgeProposal, error) {

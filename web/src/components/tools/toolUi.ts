@@ -275,7 +275,8 @@ export function schemaSizeHint(json: string): string {
 
 export function formatInvocationDuration(ms?: number): string {
   if (ms == null || Number.isNaN(ms)) return '—';
-  if (ms < 1000) return `${ms}ms`;
+  // 1 位小数（去除尾随 .0），避免 3.8333333333333335ms 这类原始浮点直出
+  if (ms < 1000) return `${Math.round(ms * 10) / 10}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
 

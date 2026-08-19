@@ -1,4 +1,4 @@
-﻿# sh-04 定向探针：用原始问题打 recall/debug，确认管理 IP 事实的得分分量
+﻿﻿﻿﻿# sh-04 定向探针：用原始问题打 recall/debug，确认管理 IP 事实的得分分量
 . "f:\myproject\aranea-agents\docs\testing\agent-eval-20260818\_lib.ps1"
 $ev = Join-Path $PSScriptRoot "evidence"
 Renew-Token | Out-Null

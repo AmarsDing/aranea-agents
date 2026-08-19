@@ -8,6 +8,16 @@
         </div>
       </div>
       <div class="row items-center q-gutter-sm">
+        <q-select
+          v-model="stateFilter"
+          dense
+          outlined
+          emit-value
+          map-options
+          :options="stateFilterOptions"
+          :label="$t('toolsPage.agentTools.filterState')"
+          style="min-width: 120px"
+        />
         <q-input
           v-model="search"
           dense
@@ -32,7 +42,7 @@
           :shell="false"
           :data-shell="true"
           table-class="agent-tool-overrides-table"
-          :rows="filteredRows"
+          :rows="pagedRows"
           :columns="AGENT_TOOL_OVERRIDE_TABLE_COLUMNS"
           row-key="tool_key"
           hide-pagination
@@ -103,6 +113,14 @@
             </q-td>
           </template>
         </AppRegistryTable>
+        <AppRegistryPagination
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :page-max="pageMax"
+          :total="filteredRows.length"
+          :loading="loading"
+          :label="$t('toolsPage.list.pageUnit')"
+        />
       </template>
     </q-card-section>
 
@@ -136,8 +154,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import AgentToolOverrideEditorDialog from './AgentToolOverrideEditorDialog.vue';
 
 import type { AgentToolOverrideForm, AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
@@ -169,12 +189,41 @@ defineEmits<{
   'update:form': [value: AgentToolOverrideForm];
 }>();
 
+const { t } = useI18n();
+
 const search = ref('');
+const stateFilter = ref('');
+const stateFilterOptions = computed(() => [
+  { label: t('toolsPage.agentTools.stateAll'), value: '' },
+  { label: t('toolsPage.agentTools.stateAllowed'), value: 'allowed' },
+  { label: t('toolsPage.agentTools.stateDenied'), value: 'denied' },
+]);
+
 const filteredRows = computed(() => {
   const q = search.value.trim().toLowerCase();
-  if (!q) return panelProps.rows;
-  return panelProps.rows.filter(
+  let list = panelProps.rows;
+  if (stateFilter.value) {
+    list = list.filter((r) => r.effective_state === stateFilter.value);
+  }
+  if (!q) return list;
+  return list.filter(
     (r) => r.tool_key.toLowerCase().includes(q) || r.display_name.toLowerCase().includes(q),
   );
+});
+
+// 客户端分页：与全局 Tools 页（AppRegistryPagination）交互模式一致
+const page = ref(1);
+const pageSize = ref(20);
+const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredRows.value.slice(start, start + pageSize.value);
+});
+
+watch([search, stateFilter], () => {
+  page.value = 1;
+});
+watch(pageMax, (max) => {
+  if (page.value > max) page.value = max;
 });
 </script>

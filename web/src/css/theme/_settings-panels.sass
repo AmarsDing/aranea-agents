@@ -60,14 +60,6 @@
   gap: 6px
   flex-shrink: 0
 
-.settings-muted-empty
-  padding: 16px
-  border: 1px dashed color-mix(in srgb, var(--glass-border) 85%, transparent)
-  border-radius: 12px
-  text-align: center
-  font-size: 13px
-  color: var(--color-text-secondary)
-
 .section-heading
   display: flex
   justify-content: space-between
@@ -123,10 +115,6 @@
   font-size: 12px
   line-height: 1.45
   color: var(--color-text-secondary)
-
-.settings-field-stack
-  display: grid
-  gap: 10px
 
 .capability-card
   border-color: var(--glass-border)
@@ -203,6 +191,10 @@
 
   code
     font-size: 11px
+
+// 创建表单收窄：宽屏下避免单行字段被拉成超长条，与编辑对话框密度对齐
+.agent-hooks-panel__create
+  max-width: 960px
 
 // Hook / Callback 规则编辑器
 .callback-editor
@@ -549,7 +541,8 @@ body.body--dark
     padding: 12px
 
 .prompt-mode-grid
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))
+  // auto-fit 折叠多余空轨，4 张卡片拉满整行，消除右侧留白
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))
 
 .prompt-mode-card
   height: 100%
@@ -570,11 +563,12 @@ body.body--dark
 .prompt-mode-card.is-active
   border-color: var(--color-accent)
   background: var(--interaction-surface-hover, rgb(255 243 228 / 92%))
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%)
+  // q-card flat 附带 .no-shadow !important，选中态投影需 !important 才能生效
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 30%, transparent) !important
 
 .prompt-mode-card__token
-  background: var(--glass-elevated, var(--color-on-accent))
-  color: var(--color-text-secondary)
+  background: var(--color-accent)
+  color: var(--color-on-accent)
   font-weight: 700
 
 .prompt-mode-card__caption
@@ -707,11 +701,7 @@ body.body--dark
   .prompt-mode-card.is-active
     border-color: var(--color-neon-cyan)
     background: color-mix(in srgb, var(--color-neon-cyan) 8%, transparent)
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-neon-cyan) 35%, transparent)
-
-  .prompt-mode-card__token
-    background: rgb(30 41 59 / 94%)
-    color: var(--color-text-slate-300)
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-neon-cyan) 35%, transparent), 0 2px 10px color-mix(in srgb, var(--color-neon-cyan) 22%, transparent) !important
 
   .prompt-dialog
     background: var(--glass-surface)

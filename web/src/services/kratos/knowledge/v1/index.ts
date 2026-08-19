@@ -716,7 +716,8 @@ export interface KnowledgeService {
   // 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
   ListGovernanceProposals(request: ListGovernanceProposalsRequest): Promise<ListGovernanceProposalsResponse>;
   // ResolveGovernanceProposal closes one pending proposal (人工二审):
-  // decision=applied approves the governance action, rejected dismisses it.
+  // decision=applied approves the action; rejected dismisses it;
+  // keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
   ResolveGovernanceProposal(request: ResolveGovernanceProposalRequest): Promise<ResolveGovernanceProposalResponse>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;

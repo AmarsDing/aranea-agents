@@ -102,6 +102,9 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
       return false;
     }
     Object.assign(deps.form, agent);
+    // 存量行 system_prompt_mode 可能为空串（wire 层仅对缺省回退），归一化为默认模式，
+    // 否则提示模式卡片严格相等无选中态，与头部 chip 的兜底显示矛盾
+    deps.form.system_prompt_mode ||= 'complete';
     deps.hydrateSettings(agent, runtimeHydrateHooks());
     deps.appStore.upsertAgent(agent);
     // Hydrate before snapshot: the initial snapshot must capture the server

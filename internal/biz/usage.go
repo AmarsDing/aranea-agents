@@ -51,6 +51,8 @@ const (
 	UsageKindAuxTitle     = usage.KindAuxTitle
 	UsageKindAuxIntent    = usage.KindAuxIntent
 	UsageKindAuxEvolution = usage.KindAuxEvolution
+	// UsageKindAuxEmbedding mirrors usage.KindAuxEmbedding (P1-3).
+	UsageKindAuxEmbedding = usage.KindAuxEmbedding
 	QuotaScopeGlobal      = usage.QuotaScopeGlobal
 	GlobalQuotaScopeID    = usage.GlobalQuotaScopeID
 	// MinCacheablePromptTokens mirrors usage.MinCacheablePromptTokens.
@@ -63,6 +65,10 @@ const (
 	MetadataKeyUsageAttribution = usage.MetadataKeyUsageAttribution
 	// UsageAttributionRunLevelAnchorFallback mirrors usage.UsageAttributionRunLevelAnchorFallback (P2-1).
 	UsageAttributionRunLevelAnchorFallback = usage.UsageAttributionRunLevelAnchorFallback
+	// UsageAttributionMemberLevelStream mirrors usage.UsageAttributionMemberLevelStream (P2-1b).
+	UsageAttributionMemberLevelStream = usage.UsageAttributionMemberLevelStream
+	// UsageAttributionStreamAnchorRemainder mirrors usage.UsageAttributionStreamAnchorRemainder (P2-1b).
+	UsageAttributionStreamAnchorRemainder = usage.UsageAttributionStreamAnchorRemainder
 )
 
 var (

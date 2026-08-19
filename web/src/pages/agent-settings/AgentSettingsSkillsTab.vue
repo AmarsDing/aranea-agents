@@ -77,14 +77,14 @@
           </div>
         </div>
 
-        <div class="settings-subsection">
+        <div class="settings-subsection settings-subsection--span">
           <div class="settings-subsection__head">
             <div class="settings-subsection__title">Slug 与标签</div>
             <p class="settings-subsection__hint">
               允许与拒绝同一 slug 互斥；历史重叠配置保存时按<strong>拒绝优先</strong>规整。
             </p>
           </div>
-          <div class="settings-field-stack">
+          <div class="app-form-field-grid app-form-field-grid--3col">
             <q-select
               v-model="config.skillRuntime.allowed_slugs"
               dense
@@ -149,7 +149,12 @@
           </div>
           <p class="settings-section__hint">全局 allow/deny 与 profile；下方可逐工具覆盖启用、模式与确认策略。</p>
         </div>
-        <q-toggle v-model="config.tools.enabled" label="启用工具" />
+        <div class="row items-center q-gutter-sm">
+          <span v-if="!config.tools.enabled" class="settings-subsection__hint">
+            工具总开关关闭时，下方逐工具覆盖不会生效。
+          </span>
+          <q-toggle v-model="config.tools.enabled" label="启用工具" />
+        </div>
       </div>
 
       <template v-if="config.tools.enabled">
@@ -272,7 +277,6 @@
 
         <agent-tools-section :agent-id="agentId" />
       </template>
-      <div v-else class="settings-muted-empty">工具总开关关闭时，下方逐工具覆盖不会生效。</div>
     </section>
 
     <!-- 代码执行 -->

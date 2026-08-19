@@ -39,6 +39,7 @@ export function useCallbackEditor(
   emit: {
     (event: 'update:modelValue', value: HookRuleConfig): void;
     (event: 'update:sortOrder', value: number): void;
+    (event: 'update:valid', value: boolean): void;
   },
 ) {
   const { t } = useI18n();
@@ -145,6 +146,10 @@ export function useCallbackEditor(
     modifyPatchError.value = '';
     modifyPatchText.value = stringifyModifyPatch(localRule.value.action.modify_patch);
   }
+
+  const valid = computed(() => !webhookUrlError.value && !modifyPatchError.value);
+
+  watch(valid, (v) => emit('update:valid', v), { immediate: true });
 
   function emitChange() {
     emit('update:modelValue', cloneHookRuleConfig(localRule.value));

@@ -73,6 +73,8 @@ type MultiProviderEmbedder struct {
 	lastPrewarmAt time.Time
 	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
 	monitorBus contract.MonitorBus
+	// usageRec embedding 用量记录器（装配层经 SetUsageRecorder 注入；nil 时不记录）。
+	usageRec EmbedUsageRecorder
 	// queryCache 仅缓存查询侧单条 embedding；配置变更立即清空。键为哈希，
 	// 避免在进程堆中额外保留查询明文。
 	queryCache  map[[sha256.Size]byte]queryEmbeddingCacheEntry
@@ -337,7 +339,7 @@ func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, text
 	return vecs, err
 }
 
-func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
+func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, texts []string, taskType string) (vecs [][]float32, err error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -348,23 +350,33 @@ func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, text
 		return nil, ErrEmbedderNotConfigured
 	}
 	provider, baseURL, apiKey, model, dim := e.snapshot()
+	start := time.Now()
+	tokens := 0
+	defer func() {
+		e.recordUsage(ctx, texts, taskType, tokens, time.Since(start), err)
+	}()
 	switch provider {
 	case ProviderOllama:
-		return e.embedOllamaBatch(ctx, baseURL, model, texts)
+		vecs, err = e.embedOllamaBatch(ctx, baseURL, model, texts)
 	case ProviderGemini:
-		return e.embedGeminiBatch(ctx, apiKey, model, dim, texts, taskType)
+		vecs, err = e.embedGeminiBatch(ctx, apiKey, model, dim, texts, taskType)
 	case ProviderHuggingFace:
-		return e.embedHuggingFaceBatch(ctx, baseURL, dim, texts)
+		vecs, err = e.embedHuggingFaceBatch(ctx, baseURL, dim, texts)
 	default:
-		return e.embedOpenAIBatch(ctx, baseURL, apiKey, model, texts)
+		vecs, tokens, err = e.embedOpenAIBatch(ctx, baseURL, apiKey, model, texts)
 	}
+	return vecs, err
 }
 
-func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model string, texts []string) ([][]float32, error) {
+// embedOpenAIBatch returns the embeddings plus the provider-reported prompt
+// token sum across chunk requests (0 when the gateway omits usage — callers
+// then fall back to chars-based estimation).
+func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model string, texts []string) ([][]float32, int, error) {
 	if baseURL == "" {
-		return nil, ErrEmbedderNotConfigured
+		return nil, 0, ErrEmbedderNotConfigured
 	}
 	out := make([][]float32, 0, len(texts))
+	promptTokens := 0
 	for start := 0; start < len(texts); start += defaultEmbedBatchSize {
 		end := start + defaultEmbedBatchSize
 		if end > len(texts) {
@@ -379,40 +391,46 @@ func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, a
 			Index     int       `json:"index"`
 			Embedding []float32 `json:"embedding"`
 		}
+		type usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		}
 		type resp struct {
-			Data []embObj `json:"data"`
+			Data  []embObj `json:"data"`
+			Usage usage    `json:"usage"`
 		}
 		body, err := jsonPOST(ctx, embedHTTPClient, baseURL+"/v1/embeddings", apiKey, req{
 			Model: model,
 			Input: batch,
 		})
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		var r resp
 		if err := json.Unmarshal(body, &r); err != nil {
 			e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai parse failed").WithCause(err)
+			return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai parse failed").WithCause(err)
 		}
 		if len(r.Data) != len(batch) {
 			e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
-			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data))
+			return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data))
 		}
+		promptTokens += r.Usage.PromptTokens
 		ordered := make([][]float32, len(batch))
 		for _, item := range r.Data {
 			if item.Index < 0 || item.Index >= len(batch) {
-				return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai: invalid index %d", item.Index)
+				return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: invalid index %d", item.Index)
 			}
 			ordered[item.Index] = item.Embedding
 		}
 		for i, vec := range ordered {
 			if len(vec) == 0 {
-				return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai: empty embedding at %d", start+i)
+				return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: empty embedding at %d", start+i)
 			}
 			out = append(out, vec)
 		}
 	}
-	return out, nil
+	return out, promptTokens, nil
 }
 
 func (e *MultiProviderEmbedder) embedOllamaBatch(ctx context.Context, baseURL, model string, texts []string) ([][]float32, error) {

@@ -109,6 +109,8 @@ export function clusterStatsP90(
   exclude?: Uint8Array | null,
   radiusFloor = 20,
 ): ClusterStats {
+  // 防御：空图返回零质心 + 下限半径（当前调用方均有 guard，防未来独立调用产生 NaN）
+  if (count === 0) return { cx: 0, cy: 0, cz: 0, radius: radiusFloor, included: 0 };
   let included = 0;
   if (exclude) {
     for (let i = 0; i < count; i++) if (!exclude[i]) included++;

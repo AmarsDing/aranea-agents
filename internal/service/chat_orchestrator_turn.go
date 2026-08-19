@@ -657,12 +657,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// (runSingleAgentViaTRPC L477-503) handles publishRunStatus +
 		// transitionSessionStatus + publishTurnFailure.
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
-		// 2026-08-19 00:48 no-reply 事故修复4：EXECUTE 失败必须在此终结
-		// session run（phase=failed）。原先 Finish defer 注册在本 return 之后，
-		// EXECUTE 失败永不终结 → run 残留 interactive → 进程重启被
-		// EscalateToDurableOnShutdown 升级 durable → durable worker 静默续跑
-		// 已失败的 turn。PERSIST 失败仍由下方 L663 附近的 defer 覆盖。
-		o.finishSessionRunOnExecuteError(ctx, sessionID, execResult.sessionRunID, admit, err)
 		return execResult.userMsg, biz.ChatMessage{}, err
 	}
 	defer func() {
@@ -701,39 +695,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	o.postProcessTurn(ctx, sess, ag, input, admit, execResult, persistResult, emitter, turnStart, turnStatus)
 
 	return userMsg, persistResult.assistantMsg, nil
-}
-
-// finishSessionRunOnExecuteError terminates the session run (phase=failed)
-// when the EXECUTE phase returns an error.
-//
-// 2026-08-19 00:48 no-reply 事故：EXECUTE 失败路径原先不调用
-// FinishSessionRunLifecycle（defer 注册在错误 return 之后），session run
-// 残留 interactive 相位；进程重启时 EscalateToDurableOnShutdown 将其升级为
-// durable，durable worker 随后静默续跑一个早已失败的 turn。
-//
-// Cancel 排除：runWasCancelled 命中（用户取消 / durable 升级取消 runner）
-// 时跳过——cancelled 语义由 cancelActiveRun / C-10 负责，且相位机拒绝
-// 终态再迁移，这里显式跳过避免错误日志噪音。execResult.sessionRunID 为空
-// 时回退 durable 续跑的 spec.SessionRunID（续跑 turn 不再 Begin，run 行
-// 早已存在且为 durable 相位；durable→failed 是合法迁移，同时 Fail 会
-// ClearResumeClaim 终止续跑循环）。
-//
-// 使用 context.WithoutCancel：turn ctx 可能已随失败/超时取消，DB 终态
-// 写入不应被中断。
-func (o *ChatOrchestrator) finishSessionRunOnExecuteError(ctx context.Context, sessionID, sessionRunID string, admit turnAdmissionResult, turnErr error) {
-	if turnErr == nil {
-		return
-	}
-	if sessionRunID == "" && admit.durableCtx.active {
-		sessionRunID = admit.durableCtx.spec.SessionRunID
-	}
-	if sessionRunID == "" {
-		return
-	}
-	if o.runWasCancelled(ctx, sessionID, turnErr) {
-		return
-	}
-	o.sessionRunLC().FinishSessionRunLifecycle(context.WithoutCancel(ctx), sessionID, sessionRunID, turnErr)
 }
 
 // shouldSkipIntentPass reports whether this turn should skip the extra intent

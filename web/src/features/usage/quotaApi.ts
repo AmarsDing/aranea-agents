@@ -37,13 +37,6 @@ function quotaFromUnknown(raw: unknown): UsageQuota {
   };
 }
 
-export async function getUsageQuota(scopeType: string, scopeId: string): Promise<UsageQuota> {
-  const { data } = await kratosApi.get<unknown>(
-    `/v1/usage/quotas/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeId)}`,
-  );
-  return quotaFromUnknown(data);
-}
-
 export async function setUsageQuota(
   scopeType: string,
   scopeId: string,

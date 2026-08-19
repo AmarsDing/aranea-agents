@@ -20,12 +20,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LearningLoopService_ListProposals_FullMethodName    = "/kratos.learning_loop.v1.LearningLoopService/ListProposals"
-	LearningLoopService_ListPatterns_FullMethodName     = "/kratos.learning_loop.v1.LearningLoopService/ListPatterns"
-	LearningLoopService_ListObservations_FullMethodName = "/kratos.learning_loop.v1.LearningLoopService/ListObservations"
-	LearningLoopService_ApproveProposal_FullMethodName  = "/kratos.learning_loop.v1.LearningLoopService/ApproveProposal"
-	LearningLoopService_RejectProposal_FullMethodName   = "/kratos.learning_loop.v1.LearningLoopService/RejectProposal"
-	LearningLoopService_RunLoop_FullMethodName          = "/kratos.learning_loop.v1.LearningLoopService/RunLoop"
+	LearningLoopService_ListProposals_FullMethodName       = "/kratos.learning_loop.v1.LearningLoopService/ListProposals"
+	LearningLoopService_ListPatterns_FullMethodName        = "/kratos.learning_loop.v1.LearningLoopService/ListPatterns"
+	LearningLoopService_ListObservations_FullMethodName    = "/kratos.learning_loop.v1.LearningLoopService/ListObservations"
+	LearningLoopService_ApproveProposal_FullMethodName     = "/kratos.learning_loop.v1.LearningLoopService/ApproveProposal"
+	LearningLoopService_RejectProposal_FullMethodName      = "/kratos.learning_loop.v1.LearningLoopService/RejectProposal"
+	LearningLoopService_ApplyProposal_FullMethodName       = "/kratos.learning_loop.v1.LearningLoopService/ApplyProposal"
+	LearningLoopService_UpdatePatternStatus_FullMethodName = "/kratos.learning_loop.v1.LearningLoopService/UpdatePatternStatus"
+	LearningLoopService_RunLoop_FullMethodName             = "/kratos.learning_loop.v1.LearningLoopService/RunLoop"
 )
 
 // LearningLoopServiceClient is the client API for LearningLoopService service.
@@ -37,6 +39,8 @@ type LearningLoopServiceClient interface {
 	ListObservations(ctx context.Context, in *ListObservationsRequest, opts ...grpc.CallOption) (*ListObservationsResponse, error)
 	ApproveProposal(ctx context.Context, in *ApproveProposalRequest, opts ...grpc.CallOption) (*KnowledgeProposal, error)
 	RejectProposal(ctx context.Context, in *RejectProposalRequest, opts ...grpc.CallOption) (*KnowledgeProposal, error)
+	ApplyProposal(ctx context.Context, in *ApplyProposalRequest, opts ...grpc.CallOption) (*KnowledgeProposal, error)
+	UpdatePatternStatus(ctx context.Context, in *UpdatePatternStatusRequest, opts ...grpc.CallOption) (*Pattern, error)
 	RunLoop(ctx context.Context, in *RunLoopRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -98,6 +102,26 @@ func (c *learningLoopServiceClient) RejectProposal(ctx context.Context, in *Reje
 	return out, nil
 }
 
+func (c *learningLoopServiceClient) ApplyProposal(ctx context.Context, in *ApplyProposalRequest, opts ...grpc.CallOption) (*KnowledgeProposal, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnowledgeProposal)
+	err := c.cc.Invoke(ctx, LearningLoopService_ApplyProposal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *learningLoopServiceClient) UpdatePatternStatus(ctx context.Context, in *UpdatePatternStatusRequest, opts ...grpc.CallOption) (*Pattern, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Pattern)
+	err := c.cc.Invoke(ctx, LearningLoopService_UpdatePatternStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *learningLoopServiceClient) RunLoop(ctx context.Context, in *RunLoopRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -117,6 +141,8 @@ type LearningLoopServiceServer interface {
 	ListObservations(context.Context, *ListObservationsRequest) (*ListObservationsResponse, error)
 	ApproveProposal(context.Context, *ApproveProposalRequest) (*KnowledgeProposal, error)
 	RejectProposal(context.Context, *RejectProposalRequest) (*KnowledgeProposal, error)
+	ApplyProposal(context.Context, *ApplyProposalRequest) (*KnowledgeProposal, error)
+	UpdatePatternStatus(context.Context, *UpdatePatternStatusRequest) (*Pattern, error)
 	RunLoop(context.Context, *RunLoopRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedLearningLoopServiceServer()
 }
@@ -142,6 +168,12 @@ func (UnimplementedLearningLoopServiceServer) ApproveProposal(context.Context, *
 }
 func (UnimplementedLearningLoopServiceServer) RejectProposal(context.Context, *RejectProposalRequest) (*KnowledgeProposal, error) {
 	return nil, status.Error(codes.Unimplemented, "method RejectProposal not implemented")
+}
+func (UnimplementedLearningLoopServiceServer) ApplyProposal(context.Context, *ApplyProposalRequest) (*KnowledgeProposal, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyProposal not implemented")
+}
+func (UnimplementedLearningLoopServiceServer) UpdatePatternStatus(context.Context, *UpdatePatternStatusRequest) (*Pattern, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdatePatternStatus not implemented")
 }
 func (UnimplementedLearningLoopServiceServer) RunLoop(context.Context, *RunLoopRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method RunLoop not implemented")
@@ -257,6 +289,42 @@ func _LearningLoopService_RejectProposal_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LearningLoopService_ApplyProposal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyProposalRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LearningLoopServiceServer).ApplyProposal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LearningLoopService_ApplyProposal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LearningLoopServiceServer).ApplyProposal(ctx, req.(*ApplyProposalRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LearningLoopService_UpdatePatternStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePatternStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LearningLoopServiceServer).UpdatePatternStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LearningLoopService_UpdatePatternStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LearningLoopServiceServer).UpdatePatternStatus(ctx, req.(*UpdatePatternStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LearningLoopService_RunLoop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RunLoopRequest)
 	if err := dec(in); err != nil {
@@ -301,6 +369,14 @@ var LearningLoopService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RejectProposal",
 			Handler:    _LearningLoopService_RejectProposal_Handler,
+		},
+		{
+			MethodName: "ApplyProposal",
+			Handler:    _LearningLoopService_ApplyProposal_Handler,
+		},
+		{
+			MethodName: "UpdatePatternStatus",
+			Handler:    _LearningLoopService_UpdatePatternStatus_Handler,
 		},
 		{
 			MethodName: "RunLoop",

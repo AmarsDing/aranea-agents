@@ -58,6 +58,7 @@ func TestRepairResponseToolCallTextInPlace(t *testing.T) {
 		},
 	}
 	resp := &model.Response{
+		ID:   "test-resp-42",
 		Done: true,
 		Choices: []model.Choice{{
 			Message: model.Message{
@@ -79,7 +80,7 @@ func TestRepairResponseToolCallTextInPlace(t *testing.T) {
 	require.Equal(t, "Let me inspect it.", resp.Choices[0].Message.Content)
 	require.Len(t, resp.Choices[0].Message.ToolCalls, 1)
 	call := resp.Choices[0].Message.ToolCalls[0]
-	require.Equal(t, "auto_text_call_0", call.ID)
+	require.Equal(t, "auto_text_call_test-resp-42_0", call.ID)
 	require.Equal(t, "exec_command", call.Function.Name)
 	require.JSONEq(
 		t,
@@ -307,6 +308,7 @@ func TestRepairResponseToolCallTextInPlace_MultipleCalls(t *testing.T) {
 		},
 	}
 	resp := &model.Response{
+		ID:   "test-resp-multi",
 		Done: true,
 		Choices: []model.Choice{{
 			Message: model.Message{
@@ -333,14 +335,14 @@ func TestRepairResponseToolCallTextInPlace_MultipleCalls(t *testing.T) {
 	require.Len(t, resp.Choices[0].Message.ToolCalls, 2)
 
 	first := resp.Choices[0].Message.ToolCalls[0]
-	require.Equal(t, "auto_text_call_0", first.ID)
+	require.Equal(t, "auto_text_call_test-resp-multi_0", first.ID)
 	require.Equal(t, "exec_command", first.Function.Name)
 	require.JSONEq(t, `{"command":"echo ok"}`, string(first.Function.Arguments))
 	require.NotNil(t, first.Index)
 	require.Equal(t, 0, *first.Index)
 
 	second := resp.Choices[0].Message.ToolCalls[1]
-	require.Equal(t, "auto_text_call_1", second.ID)
+	require.Equal(t, "auto_text_call_test-resp-multi_1", second.ID)
 	require.Equal(t, "current_time", second.Function.Name)
 	require.JSONEq(t, `{}`, string(second.Function.Arguments))
 	require.NotNil(t, second.Index)
@@ -776,7 +778,7 @@ func TestParseTextToolCallsRejectsInvalidBlocks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cleaned, calls, ok := parseTextToolCalls(tt.text, tools)
+			cleaned, calls, ok := parseTextToolCalls(tt.text, tools, "t")
 
 			require.False(t, ok)
 			require.Equal(t, tt.text, cleaned)
@@ -793,6 +795,7 @@ func TestParseTextToolCallsNoMarkup(t *testing.T) {
 		map[string]tool.Tool{
 			"exec_command": textRepairTool{name: "exec_command"},
 		},
+		"t",
 	)
 
 	require.False(t, ok)

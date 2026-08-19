@@ -30,6 +30,7 @@ export function useHooksPage() {
     sort_order: 0,
     rule: defaultHookRuleConfig() as HookRuleConfig,
   });
+  const formValid = ref(true);
 
   function ruleOf(row: HookRow) {
     return parseHookConfig(row.config_json);
@@ -104,6 +105,10 @@ export function useHooksPage() {
       $q.notify({ type: 'warning', message: t('hooksPage.notifyRequired') });
       return;
     }
+    if (!formValid.value) {
+      $q.notify({ type: 'warning', message: t('hooksPage.notifyFixErrors') });
+      return;
+    }
     saving.value = true;
     try {
       if (editingId.value) {
@@ -176,6 +181,7 @@ export function useHooksPage() {
     editingId,
     busyId,
     form,
+    formValid,
     page,
     pageSize,
     total,

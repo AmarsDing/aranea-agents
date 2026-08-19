@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
@@ -59,7 +60,11 @@ func repairResponseToolCallTextInPlace(
 		if !ok {
 			continue
 		}
-		cleaned, calls, ok := parseTextToolCalls(text, req.Tools)
+		cleaned, calls, ok := parseTextToolCalls(
+			text,
+			req.Tools,
+			textToolCallIDScope(response, text),
+		)
 		if !ok {
 			continue
 		}
@@ -109,6 +114,7 @@ func repairableMessageText(msg *model.Message) (string, bool) {
 func parseTextToolCalls(
 	text string,
 	tools map[string]tool.Tool,
+	idScope string,
 ) (string, []model.ToolCall, bool) {
 	if !strings.Contains(text, textToolCallOpenTag) {
 		return text, nil, false
@@ -142,7 +148,7 @@ func parseTextToolCalls(
 			return text, nil, false
 		}
 
-		call, ok := parseTextToolCallBlock(afterOpen[:end], tools, len(calls))
+		call, ok := parseTextToolCallBlock(afterOpen[:end], tools, len(calls), idScope)
 		if !ok {
 			return text, nil, false
 		}
@@ -161,11 +167,12 @@ func parseTextToolCallBlock(
 	block string,
 	tools map[string]tool.Tool,
 	index int,
+	idScope string,
 ) (model.ToolCall, bool) {
 	firstArg := strings.Index(block, textToolCallArgKeyOpen)
 	if firstArg < 0 {
 		toolName := strings.TrimSpace(block)
-		return newTextToolCall(toolName, json.RawMessage(`{}`), tools, index)
+		return newTextToolCall(toolName, json.RawMessage(`{}`), tools, index, idScope)
 	}
 	toolName := strings.TrimSpace(block[:firstArg])
 	args, ok := parseTextToolCallArgs(block[firstArg:])
@@ -176,7 +183,7 @@ func parseTextToolCallBlock(
 	if err != nil {
 		return model.ToolCall{}, false
 	}
-	return newTextToolCall(toolName, rawArgs, tools, index)
+	return newTextToolCall(toolName, rawArgs, tools, index, idScope)
 }
 
 func newTextToolCall(
@@ -184,6 +191,7 @@ func newTextToolCall(
 	rawArgs json.RawMessage,
 	tools map[string]tool.Tool,
 	index int,
+	idScope string,
 ) (model.ToolCall, bool) {
 	if toolName == "" {
 		return model.ToolCall{}, false
@@ -193,7 +201,7 @@ func newTextToolCall(
 	}
 	idx := index
 	return model.ToolCall{
-		ID:    fmt.Sprintf("auto_text_call_%d", index),
+		ID:    fmt.Sprintf("auto_text_call_%s_%d", idScope, index),
 		Type:  "function",
 		Index: &idx,
 		Function: model.FunctionDefinitionParam{
@@ -201,6 +209,40 @@ func newTextToolCall(
 			Arguments: rawArgs,
 		},
 	}, true
+}
+
+// textToolCallIDScope derives a per-response discriminator for synthesized
+// text tool-call IDs. Without it every repaired call is named
+// "auto_text_call_<n>", which repeats across rounds: session history then
+// holds duplicate tool-call IDs, and ID-keyed consumers (tool-pair boundary
+// snapping during context truncation) can mismatch pairs across rounds.
+// The scope is the sanitized response ID (unique per LLM response); when the
+// provider does not set one, it falls back to an FNV-1a hash of the source
+// text so distinct rounds still mint distinct IDs.
+func textToolCallIDScope(response *model.Response, text string) string {
+	const maxScopeLen = 24
+	if response != nil && response.ID != "" {
+		var b strings.Builder
+		for _, r := range response.ID {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+				r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+				b.WriteRune(r)
+			default:
+				b.WriteByte('_')
+			}
+		}
+		scope := b.String()
+		if len(scope) > maxScopeLen {
+			scope = scope[:maxScopeLen]
+		}
+		if scope != "" {
+			return scope
+		}
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(text))
+	return fmt.Sprintf("h%08x", h.Sum32())
 }
 
 func parseTextToolCallArgs(block string) (map[string]any, bool) {

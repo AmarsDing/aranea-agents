@@ -4,45 +4,39 @@ import (
 	"testing"
 )
 
-func TestSplitPublicPath_Empty(t *testing.T) {
-	agentID, suffix := splitPublicPath("")
-	if agentID != "" || suffix != "/" {
-		t.Fatalf("expected ('', '/'), got (%q, %q)", agentID, suffix)
+func TestAgentIDFromPublicPath_Empty(t *testing.T) {
+	if got := agentIDFromPublicPath(""); got != "" {
+		t.Fatalf("expected '', got %q", got)
 	}
 }
 
-func TestSplitPublicPath_JustPrefix(t *testing.T) {
-	agentID, suffix := splitPublicPath("/v1/a2a/public/")
-	if agentID != "" || suffix != "/" {
-		t.Fatalf("expected ('', '/'), got (%q, %q)", agentID, suffix)
+func TestAgentIDFromPublicPath_JustPrefix(t *testing.T) {
+	if got := agentIDFromPublicPath("/v1/a2a/public/"); got != "" {
+		t.Fatalf("expected '', got %q", got)
 	}
 }
 
-func TestSplitPublicPath_AgentOnly(t *testing.T) {
-	agentID, suffix := splitPublicPath("/v1/a2a/public/agent1")
-	if agentID != "agent1" || suffix != "/" {
-		t.Fatalf("expected ('agent1', '/'), got (%q, %q)", agentID, suffix)
+func TestAgentIDFromPublicPath_AgentOnly(t *testing.T) {
+	if got := agentIDFromPublicPath("/v1/a2a/public/agent1"); got != "agent1" {
+		t.Fatalf("expected 'agent1', got %q", got)
 	}
 }
 
-func TestSplitPublicPath_AgentWithSuffix(t *testing.T) {
-	agentID, suffix := splitPublicPath("/v1/a2a/public/agent1/.well-known/agent.json")
-	if agentID != "agent1" || suffix != "/.well-known/agent.json" {
-		t.Fatalf("expected ('agent1', '/.well-known/agent.json'), got (%q, %q)", agentID, suffix)
+func TestAgentIDFromPublicPath_AgentWithSuffix(t *testing.T) {
+	if got := agentIDFromPublicPath("/v1/a2a/public/agent1/.well-known/agent-card.json"); got != "agent1" {
+		t.Fatalf("expected 'agent1', got %q", got)
 	}
 }
 
-func TestSplitPublicPath_AgentWithTrailingSlash(t *testing.T) {
-	agentID, suffix := splitPublicPath("/v1/a2a/public/agent1/")
-	if agentID != "agent1" || suffix != "/" {
-		t.Fatalf("expected ('agent1', '/'), got (%q, %q)", agentID, suffix)
+func TestAgentIDFromPublicPath_AgentWithTrailingSlash(t *testing.T) {
+	if got := agentIDFromPublicPath("/v1/a2a/public/agent1/"); got != "agent1" {
+		t.Fatalf("expected 'agent1', got %q", got)
 	}
 }
 
-func TestSplitPublicPath_WhitespaceAgentID(t *testing.T) {
-	agentID, suffix := splitPublicPath("/v1/a2a/public/  ")
-	if agentID != "" || suffix != "/" {
-		t.Fatalf("expected ('', '/'), got (%q, %q)", agentID, suffix)
+func TestAgentIDFromPublicPath_WhitespaceAgentID(t *testing.T) {
+	if got := agentIDFromPublicPath("/v1/a2a/public/  "); got != "" {
+		t.Fatalf("expected '', got %q", got)
 	}
 }
 

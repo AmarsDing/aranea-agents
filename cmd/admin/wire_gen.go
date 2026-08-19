@@ -152,7 +152,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	monitorBus := event.ProvideMonitorEventBus(infra)
 	alertNotifier := provideMonitorAlertNotifier(channelUsecase, monitorBus, loggatewayLogger)
 	skillRepo := data.NewSkillRepo(dataData)
-	multiProviderEmbedder := service.NewKnowledgeEmbedder(confData, systemSettingRepo, loggatewayLogger)
+	usecaseRef := provideUsageUsecaseRef()
+	multiProviderEmbedder := service.NewKnowledgeEmbedder(confData, systemSettingRepo, usecaseRef, loggatewayLogger)
 	skillDedupRepo := data.NewSkillDedupRepo(dataData, loggatewayLogger)
 	dedupEmbedder := biz.ProvideSkillEmbedder()
 	similarityWeights := biz.ProvideDefaultDedupWeights()
@@ -212,7 +213,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	l4Reconsolidator := provideReconsolidationService(dataData, loggatewayLogger)
 	memoryJobDeadLetterRepo := data.NewMemoryJobDeadLetterRepo(dataData)
 	repository := service.NewSkillDBRepository(skillUsecase, loggatewayLogger)
-	usecaseRef := provideUsageUsecaseRef()
 	evolutionService := provideEvolutionService(llmProviderModelUsecase, repository, usecaseRef, loggatewayLogger)
 	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, l4Reconsolidator, loggatewayLogger, memoryJobDeadLetterRepo, evolutionService)
 	promptFileAIEditor := providePromptFileAIEditor(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
@@ -2791,6 +2791,16 @@ func provideSkillEvolutionOrchestrator(
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
+	orch.SetExpirationResolver(func(ctx context.Context, targetType, targetID string) time.Duration {
+		if targetType != string(biz.EvolutionTargetAgent) || strings.TrimSpace(targetID) == "" {
+			return 0
+		}
+		s, err := agents.GetAgentRuntimeSettings(ctx, targetID)
+		if err != nil || s.EvoProposalTTLDays <= 0 {
+			return 0
+		}
+		return time.Duration(s.EvoProposalTTLDays) * 24 * time.Hour
+	})
 	if cooldownStore != nil {
 		orch.AttachCooldownStore(cooldownStore)
 		if err := orch.HydrateTriggerCooldowns(context.Background()); err != nil {

@@ -1,6 +1,6 @@
 // Container: approved — feature-local panel; refineFn injected from Page via props.
 <template>
-  <q-splitter v-model="splitterModel" class="agent-files-splitter fit">
+  <q-splitter v-model="splitterModel" :limits="[18, 45]" class="agent-files-splitter fit">
     <template #before>
       <div class="agent-file-side column fit">
         <q-list bordered separator class="agent-file-list col">
@@ -106,7 +106,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AgentFile } from './agentUi';
-import { isFileInjectedInMode, isRemovableAgentFile, tokenEstimateFor, tokenText } from './agentUi';
+import { isFileInjectedInMode, isRemovableAgentFile, tokenEstimateFor } from './agentUi';
 import AIRefineButton from './AIRefineButton.vue';
 import type { RefineResponse } from '../../features/agents/aiRefine';
 
@@ -136,7 +136,10 @@ const props = defineProps<{
 function fileTokenLabel(name: string, body: string) {
   const n = props.fileTokenByName?.[name];
   if (n != null && n > 0) return t('agentSettings.files.tokenEstimateLabel', { n });
-  return tokenText(body);
+  const count = tokenEstimateFor(body);
+  return count > 0
+    ? t('agentSettings.files.tokenEstimateLabel', { n: count })
+    : t('agentSettings.files.tokenEmpty');
 }
 
 /** Footer uses the live local estimate so it tracks edits in real time. */

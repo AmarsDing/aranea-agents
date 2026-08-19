@@ -4,9 +4,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">进化</span>
+            <span class="section-title__text">{{ $t('agentSettings.evolution.sectionTitle') }}</span>
           </div>
-          <p class="settings-section__hint">控制风格进化、技能进化、指标采集与建议生成。</p>
+          <p class="settings-section__hint">{{ $t('agentSettings.evolution.sectionHint') }}</p>
         </div>
       </div>
       <q-list separator class="app-glass-list">
@@ -19,8 +19,7 @@
         </q-item>
       </q-list>
       <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mt-md">
-        <strong>沟通风格</strong
-        >（SOUL.md）与下方<strong>自动提议流水线</strong>独立：前者控制是否改写语调，后者控制是否扫描并生成改进提议。
+        {{ $t('agentSettings.evolution.styleVsPipelineBanner') }}
       </q-banner>
     </section>
 
@@ -28,9 +27,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">自动提议流水线</span>
+            <span class="section-title__text">{{ $t('agentSettings.evolution.pipelineSectionTitle') }}</span>
           </div>
-          <p class="settings-section__hint">基于 Episode / 负反馈触发结构化进化提议（与 L4 图谱注入无关）。</p>
+          <p class="settings-section__hint">{{ $t('agentSettings.evolution.pipelineSectionHint') }}</p>
         </div>
       </div>
       <q-list separator class="app-glass-list q-mb-md">
@@ -60,54 +59,66 @@
           dense
           outlined
           type="number"
-          label="触发 Episode 数"
+          :label="$t('agentSettings.evolution.minEpisodesLabel')"
           :min="1"
+          :max="10000"
           :hint="$t('agentSettings.evolution.minEpisodesHint')"
+          @blur="clampIntField(evolutionSettings, 'min_episodes', 1, 10000)"
         />
         <q-input
           v-model.number="evolutionSettings.min_negative_feedback"
           dense
           outlined
           type="number"
-          label="触发负反馈数"
+          :label="$t('agentSettings.evolution.minNegativeFeedbackLabel')"
           :min="1"
+          :max="10000"
           :hint="$t('agentSettings.evolution.minNegativeFeedbackHint')"
+          @blur="clampIntField(evolutionSettings, 'min_negative_feedback', 1, 10000)"
         />
         <q-input
           v-model.number="evolutionSettings.throttle_hours"
           dense
           outlined
           type="number"
-          label="节流小时"
+          :label="$t('agentSettings.evolution.throttleHoursLabel')"
           :min="1"
+          :max="8760"
           :hint="$t('agentSettings.evolution.throttleHoursHint')"
+          @blur="clampIntField(evolutionSettings, 'throttle_hours', 1, 8760)"
         />
         <q-input
           v-model.number="evolutionSettings.proposal_ttl_days"
           dense
           outlined
           type="number"
-          label="提议过期天数"
+          :label="$t('agentSettings.evolution.proposalTtlDaysLabel')"
           :min="1"
+          :max="365"
           :hint="$t('agentSettings.evolution.proposalTtlDaysHint')"
+          @blur="clampIntField(evolutionSettings, 'proposal_ttl_days', 1, 365)"
         />
         <q-input
           v-model.number="evolutionSettings.persona_max_chars"
           dense
           outlined
           type="number"
-          label="Persona 最大字符"
+          :label="$t('agentSettings.evolution.personaMaxCharsLabel')"
           :min="1"
+          :max="20000"
           :hint="$t('agentSettings.evolution.personaMaxCharsHint')"
+          @blur="clampIntField(evolutionSettings, 'persona_max_chars', 1, 20000)"
         />
         <q-input
           v-model.number="evolutionSettings.system_prompt_max_appends"
           dense
           outlined
           type="number"
-          label="Prompt 追加段上限"
+          :label="$t('agentSettings.evolution.maxAppendsLabel')"
           :min="0"
+          :max="50"
           :hint="$t('agentSettings.evolution.maxAppendsHint')"
+          @blur="clampIntField(evolutionSettings, 'system_prompt_max_appends', 0, 50)"
         />
       </div>
     </section>
@@ -154,6 +165,7 @@
           :max="10"
           :label="$t('agentSettings.evalAutoNumRuns')"
           :disable="!evalAuto.auto_after_turn"
+          @blur="clampIntField(evalAuto, 'num_runs', 1, 10)"
         />
         <q-input
           v-model.number="evalAuto.min_interval_sec"
@@ -161,9 +173,11 @@
           outlined
           type="number"
           :min="0"
+          :max="86400"
           :label="$t('agentSettings.evalAutoMinInterval')"
           :hint="$t('agentSettings.evalAutoMinIntervalHint')"
           :disable="!evalAuto.auto_after_turn"
+          @blur="clampIntField(evalAuto, 'min_interval_sec', 0, 86400)"
         />
       </div>
       <q-banner
@@ -179,9 +193,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">指标与建议</span>
+            <span class="section-title__text">{{ $t('agentSettings.evolution.metricsSectionTitle') }}</span>
           </div>
-          <p class="settings-section__hint">时间范围只影响看板读取，不写入 Agent 配置。</p>
+          <p class="settings-section__hint">{{ $t('agentSettings.evolution.metricsSectionHint') }}</p>
         </div>
         <q-btn-toggle
           v-model="rangeModel"
@@ -200,30 +214,30 @@
         {{ $t('agentSettings.evolution.metricsDisabledBanner') }}
       </q-banner>
       <template v-else>
-        <q-inner-loading :showing="metricsLoading" label="加载指标..." />
+        <q-inner-loading :showing="metricsLoading" :label="$t('agentSettings.evolution.metricsLoading')" />
         <div v-if="!metricsLoading" class="app-metrics-grid q-mt-sm">
         <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
           <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
               <q-icon name="query_stats" color="primary" size="26px" />
-              <div class="overview-metric-card__label">工具成功率</div>
+              <div class="overview-metric-card__label">{{ $t('agentSettings.evolution.toolSuccessRateLabel') }}</div>
             </div>
             <div class="overview-metric-card__value">{{ formatPercent(metrics?.tool_success_rate) }}</div>
-            <div class="overview-metric-card__caption">共 {{ metrics?.total_episodes ?? 0 }} 个会话</div>
+            <div class="overview-metric-card__caption">{{ $t('agentSettings.evolution.totalEpisodesCaption', { count: metrics?.total_episodes ?? 0 }) }}</div>
           </q-card-section>
         </q-card>
         <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
           <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
               <q-icon name="travel_explore" color="primary" size="26px" />
-              <div class="overview-metric-card__label">检索质量</div>
+              <div class="overview-metric-card__label">{{ $t('agentSettings.evolution.retrievalQualityLabel') }}</div>
             </div>
             <div v-if="hasRetrievalData" class="overview-metric-card__value">
               {{ formatPercent(metrics?.retrieval_quality) }}
             </div>
-            <div v-else class="overview-metric-card__value text-grey-6">暂无数据</div>
+            <div v-else class="overview-metric-card__value text-grey-6">{{ $t('agentSettings.evolution.noData') }}</div>
             <div class="overview-metric-card__caption">
-              {{ hasRetrievalData ? '记忆工具调用成功率' : '时间范围内无记忆工具调用' }}
+              {{ hasRetrievalData ? $t('agentSettings.evolution.retrievalQualityCaption') : $t('agentSettings.evolution.retrievalNoCallsCaption') }}
             </div>
           </q-card-section>
         </q-card>
@@ -231,15 +245,15 @@
           <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
               <q-icon name="tips_and_updates" color="primary" size="26px" />
-              <div class="overview-metric-card__label">建议</div>
+              <div class="overview-metric-card__label">{{ $t('agentSettings.evolution.suggestionsCardLabel') }}</div>
             </div>
             <div class="overview-metric-card__value">{{ pendingSuggestionsCount }}</div>
-            <div class="overview-metric-card__caption">待处理改进建议</div>
+            <div class="overview-metric-card__caption">{{ $t('agentSettings.evolution.pendingSuggestionsCaption') }}</div>
           </q-card-section>
         </q-card>
       </div>
       <div v-if="metrics?.tool_success_series?.length" class="q-mt-md">
-        <div class="settings-subsection__title q-mb-sm">工具成功率趋势</div>
+        <div class="settings-subsection__title q-mb-sm">{{ $t('agentSettings.evolution.toolSuccessTrendTitle') }}</div>
         <div class="app-mini-bar-chart">
           <div
             v-for="(pt, idx) in metrics.tool_success_series"
@@ -257,9 +271,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">进化建议列表</span>
+            <span class="section-title__text">{{ $t('agentSettings.evolution.suggestionsSectionTitle') }}</span>
           </div>
-          <p class="settings-section__hint">基于指标自动生成的改进建议，可应用或拒绝。</p>
+          <p class="settings-section__hint">{{ $t('agentSettings.evolution.suggestionsSectionHint') }}</p>
         </div>
       </div>
       <div v-if="suggestions.length === 0" class="app-empty-state-center app-empty-state-center--sm">
@@ -329,9 +343,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">适应护栏</span>
+            <span class="section-title__text">{{ $t('agentSettings.evolution.guardrailsSectionTitle') }}</span>
           </div>
-          <p class="settings-section__hint">限制自动调整幅度，样本不足或表现下降时回滚。</p>
+          <p class="settings-section__hint">{{ $t('agentSettings.evolution.guardrailsSectionHint') }}</p>
         </div>
       </div>
       <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mb-md">
@@ -344,16 +358,22 @@
           outlined
           type="number"
           step="0.01"
-          label="每周期最大变化"
+          :label="$t('agentSettings.evolution.maxChangeLabel')"
+          :min="0"
+          :max="1"
           :hint="$t('agentSettings.evolution.maxChangeHint')"
+          @blur="clampFloatField(guardrails, 'max_change_per_period', 0, 1)"
         />
         <q-input
           v-model.number="guardrails.min_data_points"
           dense
           outlined
           type="number"
-          label="最少数据点"
+          :label="$t('agentSettings.evolution.minDataPointsLabel')"
+          :min="1"
+          :max="100000"
           :hint="$t('agentSettings.evolution.minDataPointsHint')"
+          @blur="clampIntField(guardrails, 'min_data_points', 1, 100000)"
         />
         <q-input
           v-model.number="guardrails.rollback_on_decline_percent"
@@ -361,8 +381,11 @@
           outlined
           type="number"
           suffix="%"
-          label="下降时回滚"
+          :label="$t('agentSettings.evolution.rollbackDeclineLabel')"
+          :min="0"
+          :max="100"
           :hint="$t('agentSettings.evolution.rollbackDeclineHint')"
+          @blur="clampIntField(guardrails, 'rollback_on_decline_percent', 0, 100)"
         />
       </div>
     </section>
@@ -394,6 +417,7 @@ import { useI18n } from 'vue-i18n';
 import type { EvolutionKey } from './agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
+import { formatDate } from '../../shared/format';
 import AgentEvolutionRejectDialog from './AgentEvolutionRejectDialog.vue';
 import AgentEvolutionSuggestionDialog from './AgentEvolutionSuggestionDialog.vue';
 
@@ -453,37 +477,57 @@ const rangeModel = computed({
 });
 
 const rangeOptions = ['7d', '30d', '90d'].map((value) => ({ label: value, value }));
-const evolutionToggles: Array<{ key: EvolutionKey; title: string; caption: string }> = [
-  { key: 'self_evolve', title: '允许 Agent 进化其沟通风格', caption: '允许随时间更新 SOUL.md 中的语调与风格。' },
-  { key: 'skill_evolve', title: '允许从经验中创建和管理技能', caption: '提示用户将有效工作流保存为 Skill。' },
-  { key: 'evolution_metrics_enabled', title: '进化指标', caption: '记录工具效果、检索质量、反馈等。' },
-  { key: 'evolution_suggestions_enabled', title: '进化建议', caption: '基于指标生成改进建议。' },
-];
+const evolutionToggles = computed<Array<{ key: EvolutionKey; title: string; caption: string }>>(() => [
+  {
+    key: 'self_evolve',
+    title: t('agentSettings.evolution.toggleSelfEvolveTitle'),
+    caption: t('agentSettings.evolution.toggleSelfEvolveCaption'),
+  },
+  {
+    key: 'skill_evolve',
+    title: t('agentSettings.evolution.toggleSkillEvolveTitle'),
+    caption: t('agentSettings.evolution.toggleSkillEvolveCaption'),
+  },
+  {
+    key: 'evolution_metrics_enabled',
+    title: t('agentSettings.evolution.toggleMetricsTitle'),
+    caption: t('agentSettings.evolution.toggleMetricsCaption'),
+  },
+  {
+    key: 'evolution_suggestions_enabled',
+    title: t('agentSettings.evolution.toggleSuggestionsTitle'),
+    caption: t('agentSettings.evolution.toggleSuggestionsCaption'),
+  },
+]);
 
 function formatPercent(v: number | undefined): string {
   if (v === undefined || v === null) return '—';
   return (v * 100).toFixed(1) + '%';
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
+// 数字输入失焦钳位：空值/非法值回落到 min，超出边界截断，避免静默依赖后端默认值。
+function clampIntField(obj: Record<string, unknown>, key: string, min: number, max: number): void {
+  const raw = Number(obj[key]);
+  const rounded = Number.isFinite(raw) ? Math.round(raw) : min;
+  obj[key] = Math.min(max, Math.max(min, rounded));
+}
+
+function clampFloatField(obj: Record<string, unknown>, key: string, min: number, max: number): void {
+  const raw = Number(obj[key]);
+  const v = Number.isFinite(raw) ? raw : min;
+  obj[key] = Math.min(max, Math.max(min, Math.round(v * 100) / 100));
 }
 
 function suggestionTypeLabel(type: string): string {
   switch (type) {
     case 'persona':
-      return '沟通风格';
+      return t('agentSettings.evolution.typePersona');
     case 'prompt':
-      return '系统提示';
+      return t('agentSettings.evolution.typePrompt');
     case 'skill':
-      return '技能调整';
+      return t('agentSettings.evolution.typeSkill');
     case 'orchestration_optimization':
-      return '编排优化';
+      return t('agentSettings.evolution.typeOrchestration');
     default:
       return type || '—';
   }

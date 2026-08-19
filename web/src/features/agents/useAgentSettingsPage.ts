@@ -77,7 +77,14 @@ export function useAgentSettingsPage() {
     loadCodeExecutorCapabilities,
   } = useAgentSkillCatalog();
 
-  const tab = ref('agent');
+  // Tab 深链：?tab= 初始化 + 切换时写回 URL（replace，不污染历史栈）
+  const AGENT_SETTINGS_TABS = ['agent', 'memory', 'files', 'permissions', 'skills', 'evolution', 'learning', 'hooks', 'a2a'];
+  const initialTab = String(route.query.tab ?? '');
+  const tab = ref((AGENT_SETTINGS_TABS as string[]).includes(initialTab) ? initialTab : 'agent');
+  watch(tab, (value) => {
+    if (String(route.query.tab ?? '') === value) return;
+    void router.replace({ query: { ...route.query, tab: value } });
+  });
 
   const form = reactive<Agent>({
     id: '',
@@ -285,6 +292,10 @@ export function useAgentSettingsPage() {
       }));
     } catch {
       evalDatasetOptions.value = [];
+      $q.notify({
+        type: 'negative',
+        message: t('agentSettings.evolution.evalDatasetLoadFailed'),
+      });
     } finally {
       loadingEvalDatasets.value = false;
     }

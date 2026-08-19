@@ -75,7 +75,18 @@
           :loading="loadingToolOptions"
           @filter="onToolFilter"
           @update:model-value="emitChange"
-        />
+        >
+          <template #option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section>
+                <q-item-label>{{ scope.opt.label }}</q-item-label>
+              </q-item-section>
+              <q-item-section v-if="enabledToolSet.has(scope.opt.value)" side>
+                <q-badge outline color="positive" :label="t('hooksPage.callbackEditor.toolEnabledBadge')" />
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
         <q-input
           v-else
           v-model="localRule.condition.tool_name"
@@ -235,12 +246,17 @@ const props = defineProps<{
   lockAgentId?: boolean;
   toolOptions?: { label: string; value: string }[];
   loadingToolOptions?: boolean;
+  /** 当前 Agent 生效工具 key（用于 Tool 下拉「已启用」标注；不传则不标注）。 */
+  enabledToolKeys?: string[];
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [HookRuleConfig];
   'update:sortOrder': [number];
+  'update:valid': [boolean];
 }>();
+
+const enabledToolSet = computed(() => new Set(props.enabledToolKeys ?? []));
 
 const {
   localRule,

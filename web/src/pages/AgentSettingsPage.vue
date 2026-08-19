@@ -30,7 +30,7 @@
           <q-tab name="agent" label="Agent 属性" />
           <q-tab name="memory" label="记忆" />
           <q-tab name="files" label="文件" />
-          <q-tab name="permissions" label="token配额" />
+          <q-tab name="permissions" label="用量配额" />
           <q-tab name="skills" label="Skill / 工具" />
           <q-tab name="evolution" label="进化" />
           <q-tab name="learning" label="学习闭环" />

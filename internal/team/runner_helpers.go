@@ -277,7 +277,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 	}))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int, usageSource string, startedAt time.Time, runLevelAttribution bool) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int, usageSource string, startedAt time.Time, attribution string) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -320,7 +320,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 	if err != nil {
 		return
 	}
-	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok, usageSource, runLevelAttribution)
+	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok, usageSource, attribution)
 	// 2026-07-28 单写者重设计：此处不再发布成员 completed 事件。step 落库
 	// 即消息生命周期的事实记录；成员终态由 service 终态 outcome pass（哨兵
 	// 权威带）依据完整证据链唯一裁决——成员产出最终文本不代表工作成功（12:33）。

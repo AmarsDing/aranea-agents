@@ -23,14 +23,16 @@ type UnifiedEvolutionRepo struct {
 // RowsAffected 批量更新）用 Ent 表达不便。
 
 var (
-	_ biz.UnifiedEvolutionCheckReader      = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionQueryReader      = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionPatternReader    = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionMutationWriter   = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionExpirationWriter = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionReader           = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionWriter           = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionDiversityReader  = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionCheckReader            = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionQueryReader            = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionPatternReader          = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionMutationWriter         = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionExpirationWriter       = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionPendingTargetLister    = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionTargetExpirationWriter = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionReader                 = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionWriter                 = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionDiversityReader        = (*UnifiedEvolutionRepo)(nil)
 )
 
 func NewUnifiedEvolutionRepo(data *Data, lg loggateway.Logger) *UnifiedEvolutionRepo {
@@ -428,6 +430,47 @@ func (r *UnifiedEvolutionRepo) ExpireOlderThan(ctx context.Context, cutoff time.
 	if err != nil {
 		r.lg.Warn("ExpireOlderThan: RowsAffected failed",
 			loggateway.StepID("unified_evolution.expire"),
+			loggateway.Err(err))
+		return 0, nil
+	}
+	return int(affected), nil
+}
+
+// ListPendingTargets 返回仍持有 pending 建议的去重 (target_type, target_id) 列表，
+// 供编排器按 target 独立 TTL 过期（Agent 维度读 evo_proposal_ttl_days）。
+func (r *UnifiedEvolutionRepo) ListPendingTargets(ctx context.Context) ([]biz.UnifiedEvolutionPendingTarget, error) {
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT DISTINCT target_type, target_id FROM unified_evolution_suggestions WHERE status = 'pending'`)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q)
+	if err != nil {
+		return nil, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	defer rows.Close()
+	var out []biz.UnifiedEvolutionPendingTarget
+	for rows.Next() {
+		var target biz.UnifiedEvolutionPendingTarget
+		if err := rows.Scan(&target.TargetType, &target.TargetID); err != nil {
+			return nil, entErrToBizErr(err, "UNIFIED_EVO")
+		}
+		out = append(out, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	return out, nil
+}
+
+// ExpireOlderThanForTarget 仅过期指定 target 的 pending 建议（per-agent TTL）。
+func (r *UnifiedEvolutionRepo) ExpireOlderThanForTarget(ctx context.Context, targetType, targetID string, cutoff time.Time) (int, error) {
+	q := r.data.Dialect().RenumberPlaceholders(`UPDATE unified_evolution_suggestions SET status = 'expired'
+	      WHERE status = 'pending' AND target_type = ? AND target_id = ? AND created_at < ?`)
+	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, targetType, targetID, cutoff.UTC().Format(time.RFC3339))
+	if err != nil {
+		return 0, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		r.lg.Warn("ExpireOlderThanForTarget: RowsAffected failed",
+			loggateway.StepID("unified_evolution.expire_target"),
 			loggateway.Err(err))
 		return 0, nil
 	}

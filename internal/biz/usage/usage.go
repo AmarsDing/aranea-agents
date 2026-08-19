@@ -66,6 +66,11 @@ const (
 	KindAuxTitle     = "aux_title"     // session-title generation
 	KindAuxIntent    = "aux_intent"    // intent pass classification
 	KindAuxEvolution = "aux_evolution" // evolution draft generation
+	// KindAuxEmbedding marks embedding API calls (knowledge ingest / retrieval
+	// query vectorization / memory fact embedding). Tokens live in the
+	// EmbeddingTokens column and are priced via EmbeddingPrice (P1-3,
+	// 2026-08-19).
+	KindAuxEmbedding = "aux_embedding"
 )
 
 // MetadataKeyUsageSource is the metadata_json key recording how a usage row's
@@ -105,6 +110,21 @@ const MetadataKeyUsageAttribution = "usage_attribution"
 // UsageAttributionRunLevelAnchorFallback see MetadataKeyUsageAttribution.
 const UsageAttributionRunLevelAnchorFallback = "run_level_anchor_fallback"
 
+// UsageAttributionMemberLevelStream marks team_member rows persisted from the
+// stream's per-member MemberUsage on the completion path (P2-1b, 2026-08-19):
+// graph watch writes member steps with zero tokens, so without these rows a
+// watch-healthy team run is invisible to billable aggregates. Like the
+// anchor-fallback row, these duplicate the team_turn row's totals and must NOT
+// additionally accumulate session metrics.
+const UsageAttributionMemberLevelStream = "member_level_stream"
+
+// UsageAttributionStreamAnchorRemainder marks the team_member row carrying the
+// run-total REMAINDER (run totals − Σ MemberUsage) attributed to the anchor
+// member: consumption authored by the team root (non-member author) is inside
+// the run totals but outside every MemberUsage entry. Same session-metrics
+// rule as UsageAttributionMemberLevelStream.
+const UsageAttributionStreamAnchorRemainder = "stream_anchor_remainder"
+
 // MergeUsageAttributionMetadata sets metadata_json[usage_attribution],
 // preserving existing keys. Same passthrough rules as MergeUsageSourceMetadata.
 func MergeUsageAttributionMetadata(metaJSON, attribution string) string {
@@ -117,6 +137,35 @@ func MergeUsageAttributionMetadata(metaJSON, attribution string) string {
 		payload = map[string]any{}
 	}
 	payload[MetadataKeyUsageAttribution] = attribution
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return metaJSON
+	}
+	return string(raw)
+}
+
+// MetadataKeyCostStatus is the metadata_json key flagging rows whose cost could
+// not be priced (P2-2, 2026-08-19). CostStatusNoPricing marks events that carry
+// billable tokens but zero computed cost AND no price fields at all — without
+// the flag, missing pricing config is indistinguishable from legitimately-free
+// consumption in aggregates.
+const MetadataKeyCostStatus = "cost_status"
+
+// CostStatusNoPricing see MetadataKeyCostStatus.
+const CostStatusNoPricing = "no_pricing"
+
+// MergeCostStatusMetadata sets metadata_json[cost_status], preserving existing
+// keys. Same passthrough rules as MergeUsageSourceMetadata.
+func MergeCostStatusMetadata(metaJSON, status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return metaJSON
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metaJSON), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	payload[MetadataKeyCostStatus] = status
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return metaJSON
@@ -527,7 +576,10 @@ type Usecase struct {
 	sessAccum     SessionMetricsAccumulator
 	completion    CompletionUsageLinker
 	envelopePub   UsageEnvelopePublisher
-	lg            loggateway.Logger
+	// noPricingLogged dedups the P2-2 no-pricing Warn per provider|model so
+	// high-frequency unpriced calls (e.g. local ollama) don't flood the log.
+	noPricingLogged sync.Map
+	lg              loggateway.Logger
 }
 
 // NewUsecase constructs a UsageUsecase.
@@ -827,17 +879,26 @@ func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error
 }
 
 // RecordTokenUsageEvent inserts one usage row (events INSERT only; session aggregate and daily/hourly rollup are handled separately).
+//
+// Envelope publishing happens here so both the internal path (RecordTurnUsage /
+// RecordAuxLLMUsage) and the external API path (UsageService.RecordTokenUsageEvent)
+// emit exactly one event — no double-publish, no omission (P1-4, 2026-08-19).
 func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
 	if strings.TrimSpace(e.ID) == "" {
 		return TokenUsageEvent{}, apierror.BadRequest("USAGE", "id is required")
 	}
 	e = normalizeTokenUsageEventForInsert(e, u.now())
 	u.enrichPricing(ctx, &e)
+	u.markNoPricing(&e)
 	out, err := u.repo.RecordTokenUsageEvent(ctx, e)
-	if err == nil {
-		u.scheduleBudgetAlerts(ctx, out)
+	if err != nil {
+		return out, err
 	}
-	return out, err
+	u.scheduleBudgetAlerts(ctx, out)
+	if u.envelopePub != nil {
+		u.envelopePub.PublishTokenUsageEnvelope(ctx, out)
+	}
+	return out, nil
 }
 
 func (u *Usecase) RollupDailyHourly(ctx context.Context, e TokenUsageEvent) error {
@@ -898,6 +959,41 @@ func (u *Usecase) enrichPricing(ctx context.Context, e *TokenUsageEvent) {
 		}
 	}
 	ApplyTokenUsageCosts(e)
+}
+
+// markNoPricing flags events carrying billable tokens whose cost resolved to
+// zero with NO price fields at all (no active pricing snapshot, no
+// caller-supplied prices): such rows are indistinguishable from legitimately
+// free consumption in aggregates, so they get metadata_json[cost_status]=
+// "no_pricing" plus a Warn log deduped per provider|model (P2-2, 2026-08-19).
+func (u *Usecase) markNoPricing(e *TokenUsageEvent) {
+	if e == nil {
+		return
+	}
+	billable := e.InputTokens + e.OutputTokens + e.CachedInputTokens +
+		e.CacheWriteTokens + e.ReasoningTokens + e.EmbeddingTokens
+	if billable <= 0 || e.TotalCostMicroUSD > 0 {
+		return
+	}
+	if e.InputPriceUSDPer1M != 0 || e.OutputPriceUSDPer1M != 0 ||
+		e.CacheReadPriceUSDPer1M != 0 || e.CacheWritePriceUSDPer1M != 0 ||
+		e.ReasoningPriceUSDPer1M != 0 || e.EmbeddingPriceUSDPer1M != 0 ||
+		e.InputPriceMicroUSDPer1K != 0 || e.OutputPriceMicroUSDPer1K != 0 ||
+		e.CachedInputPriceMicroUSDPer1K != 0 || e.CacheWritePriceMicroUSDPer1K != 0 ||
+		e.ReasoningPriceMicroUSDPer1K != 0 || e.EmbeddingPriceMicroUSDPer1K != 0 {
+		return // priced (possibly at an explicitly-free rate) — not a config gap
+	}
+	e.MetadataJSON = MergeCostStatusMetadata(e.MetadataJSON, CostStatusNoPricing)
+	key := strings.TrimSpace(e.ProviderCode) + "|" + strings.TrimSpace(e.ModelAPIID)
+	if _, dup := u.noPricingLogged.LoadOrStore(key, struct{}{}); dup {
+		return
+	}
+	u.lg.Warn("usage event has tokens but no pricing; cost_status=no_pricing",
+		loggateway.StepID("usage.no_pricing"),
+		loggateway.Str("provider", e.ProviderCode),
+		loggateway.Str("model", e.ModelAPIID),
+		loggateway.Str("usage_kind", e.UsageKind),
+		loggateway.Int("total_tokens", billable))
 }
 
 func applyPricingUSDToEvent(e *TokenUsageEvent, snap ModelPricingSnapshot) {
@@ -1061,8 +1157,36 @@ func (u *Usecase) SetQuota(ctx context.Context, quota Quota) (Quota, error) {
 	if quota.MonthlyMicroUSD < 0 {
 		return Quota{}, apierror.BadRequest("USAGE_QUOTA", "monthly_micro_usd must be >= 0")
 	}
+	if err := validateQuotaPeriod(quota.PeriodStart, quota.PeriodEnd); err != nil {
+		return Quota{}, err
+	}
 	q, err := u.repo.SetQuota(ctx, quota)
 	return q, MapRepoErr(err)
+}
+
+// validateQuotaPeriod rejects malformed period bounds. Both empty is allowed
+// (the data layer defaults to the current calendar month); exactly one set is
+// ambiguous and rejected. When both are set they must be YYYY-MM-DD and
+// start <= end.
+func validateQuotaPeriod(periodStart, periodEnd string) error {
+	start := strings.TrimSpace(periodStart)
+	end := strings.TrimSpace(periodEnd)
+	if start == "" && end == "" {
+		return nil
+	}
+	if start == "" || end == "" {
+		return apierror.BadRequest("USAGE_QUOTA", "period_start and period_end must be set together")
+	}
+	if _, err := time.Parse("2006-01-02", start); err != nil {
+		return apierror.BadRequest("USAGE_QUOTA", "period_start must be YYYY-MM-DD")
+	}
+	if _, err := time.Parse("2006-01-02", end); err != nil {
+		return apierror.BadRequest("USAGE_QUOTA", "period_end must be YYYY-MM-DD")
+	}
+	if start > end {
+		return apierror.BadRequest("USAGE_QUOTA", "period_start must be <= period_end")
+	}
+	return nil
 }
 
 // CheckQuota returns whether another chat turn is allowed under the configured cap.
@@ -1313,9 +1437,7 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
-	if u.envelopePub != nil {
-		u.envelopePub.PublishTokenUsageEnvelope(ctx, recEv)
-	}
+	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4).
 	if u.completion != nil && strings.TrimSpace(in.SessionID) != "" && strings.TrimSpace(in.RunID) != "" {
 		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(usageLinkTimeoutSec)*time.Second)
 		defer linkCancel()
@@ -1363,6 +1485,11 @@ type AuxLLMUsageInput struct {
 	PromptTok     int
 	CompletionTok int
 	CachedTok     int
+	// EmbeddingTok is the embedding-call token count (KindAuxEmbedding only);
+	// persisted into the EmbeddingTokens column and priced at the embedding
+	// rate. Mutually exclusive with the Prompt/Completion split: embedding
+	// calls have input-only consumption.
+	EmbeddingTok int
 	// UsageSource records how the token counts were obtained
 	// (UsageSourceResponse / "streaming" / "estimated"); merged into
 	// metadata_json["usage_source"].
@@ -1403,7 +1530,8 @@ func (u *Usecase) RecordAuxLLMUsage(ctx context.Context, in AuxLLMUsageInput) er
 		InputTokens:       in.PromptTok,
 		OutputTokens:      in.CompletionTok,
 		CachedInputTokens: in.CachedTok,
-		TotalTokens:       in.PromptTok + in.CompletionTok,
+		EmbeddingTokens:   in.EmbeddingTok,
+		TotalTokens:       in.PromptTok + in.CompletionTok + in.EmbeddingTok,
 		LatencyMS:         int(in.Latency.Milliseconds()),
 		Status:            in.Status,
 		UsageKind:         in.Kind,
@@ -1432,9 +1560,7 @@ func (u *Usecase) RecordAuxLLMUsage(ctx context.Context, in AuxLLMUsageInput) er
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
-	if u.envelopePub != nil {
-		u.envelopePub.PublishTokenUsageEnvelope(ctx, recEv)
-	}
+	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4).
 	return nil
 }
 

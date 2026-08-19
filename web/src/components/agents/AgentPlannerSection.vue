@@ -4,8 +4,8 @@
       <div>
         <div class="text-subtitle1 text-weight-bold">规划模式</div>
         <div class="text-caption text-grey-7">
-          Agent 级持久化，与 Chat「对话模式」独立。空 kind 三态：保存仅允许 config
-          <code>{}</code>；运行时 Builtin 仅当会话「深思考」(plan)；Chat 展示仍可按消息标签启发式识别 ReAct/A2UI。
+          规划模式为 Agent
+          级配置，保存后长期生效，与聊天页的「对话模式」互不影响。不选择策略时：保存不允许附带规划参数，仅当会话开启「深思考」时才临时启用内置规划。
         </div>
       </div>
     </div>
@@ -31,13 +31,12 @@
     </q-select>
 
     <q-banner v-if="form.kind === ''" rounded dense class="q-mt-sm settings-info-banner">
-      <strong>空 kind 三态</strong>：① API 保存时 <code>planner_config_json</code> 只能为 <code>{}</code>；② 运行时
-      Builtin 仅当本会话 <code>dialog_mode=plan</code>（深思考）；③ Chat 历史消息仍可按正文标签展示 ReAct/A2UI，与持久化
-      kind 无关。
+      <strong>未选择规划策略</strong>：① 保存时不允许附带任何规划参数；② 仅当会话开启「深思考」时才临时使用内置规划；③
+      聊天记录仍会根据消息内容展示 ReAct / A2UI 步骤标记，与此处配置无关。
     </q-banner>
 
     <div v-if="form.kind === 'builtin'" class="q-mt-md app-form-field-grid">
-      <div class="text-subtitle2">Builtin 推理参数</div>
+      <div class="text-subtitle2">内置规划推理参数</div>
       <q-select
         v-model="form.builtin.reasoning_effort"
         dense
@@ -72,7 +71,7 @@
 
     <div v-else-if="form.kind === 'react'" class="q-mt-md">
       <q-banner rounded dense class="settings-info-banner">
-        ReAct 无额外配置。模型输出需包含 /*PLANNING*/、/*REASONING*/、/*ACTION*/ 等标签；Chat 将展示步骤卡片。
+        ReAct 无额外配置。启用后模型按「规划 → 推理 → 行动」分步输出，聊天页将展示对应的步骤卡片。
       </q-banner>
     </div>
 

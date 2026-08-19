@@ -783,6 +783,118 @@ func (x *RunLoopRequest) GetAgentId() string {
 	return ""
 }
 
+type UpdatePatternStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdatePatternStatusRequest) Reset() {
+	*x = UpdatePatternStatusRequest{}
+	mi := &file_kratos_learning_loop_v1_learning_loop_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdatePatternStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdatePatternStatusRequest) ProtoMessage() {}
+
+func (x *UpdatePatternStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_learning_loop_v1_learning_loop_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdatePatternStatusRequest.ProtoReflect.Descriptor instead.
+func (*UpdatePatternStatusRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_learning_loop_v1_learning_loop_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *UpdatePatternStatusRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *UpdatePatternStatusRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdatePatternStatusRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type ApplyProposalRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyProposalRequest) Reset() {
+	*x = ApplyProposalRequest{}
+	mi := &file_kratos_learning_loop_v1_learning_loop_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyProposalRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyProposalRequest) ProtoMessage() {}
+
+func (x *ApplyProposalRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_learning_loop_v1_learning_loop_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyProposalRequest.ProtoReflect.Descriptor instead.
+func (*ApplyProposalRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_learning_loop_v1_learning_loop_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ApplyProposalRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ApplyProposalRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 var File_kratos_learning_loop_v1_learning_loop_proto protoreflect.FileDescriptor
 
 const file_kratos_learning_loop_v1_learning_loop_proto_rawDesc = "" +
@@ -850,13 +962,23 @@ const file_kratos_learning_loop_v1_learning_loop_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x14\n" +
 	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id\"1\n" +
 	"\x0eRunLoopRequest\x12\x1f\n" +
-	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId2\xe4\a\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\"q\n" +
+	"\x1aUpdatePatternStatusRequest\x12\x1f\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x14\n" +
+	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1c\n" +
+	"\x06status\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x06status\"M\n" +
+	"\x14ApplyProposalRequest\x12\x1f\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x14\n" +
+	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xc0\n" +
+	"\n" +
 	"\x13LearningLoopService\x12\xa0\x01\n" +
 	"\rListProposals\x12-.kratos.learning_loop.v1.ListProposalsRequest\x1a..kratos.learning_loop.v1.ListProposalsResponse\"0\x82\xd3\xe4\x93\x02*\x12(/v1/agents/{agent_id}/learning/proposals\x12\x9c\x01\n" +
 	"\fListPatterns\x12,.kratos.learning_loop.v1.ListPatternsRequest\x1a-.kratos.learning_loop.v1.ListPatternsResponse\"/\x82\xd3\xe4\x93\x02)\x12'/v1/agents/{agent_id}/learning/patterns\x12\xac\x01\n" +
 	"\x10ListObservations\x120.kratos.learning_loop.v1.ListObservationsRequest\x1a1.kratos.learning_loop.v1.ListObservationsResponse\"3\x82\xd3\xe4\x93\x02-\x12+/v1/agents/{agent_id}/learning/observations\x12\xb0\x01\n" +
 	"\x0fApproveProposal\x12/.kratos.learning_loop.v1.ApproveProposalRequest\x1a*.kratos.learning_loop.v1.KnowledgeProposal\"@\x82\xd3\xe4\x93\x02::\x01*\"5/v1/agents/{agent_id}/learning/proposals/{id}/approve\x12\xad\x01\n" +
-	"\x0eRejectProposal\x12..kratos.learning_loop.v1.RejectProposalRequest\x1a*.kratos.learning_loop.v1.KnowledgeProposal\"?\x82\xd3\xe4\x93\x029:\x01*\"4/v1/agents/{agent_id}/learning/proposals/{id}/reject\x12y\n" +
+	"\x0eRejectProposal\x12..kratos.learning_loop.v1.RejectProposalRequest\x1a*.kratos.learning_loop.v1.KnowledgeProposal\"?\x82\xd3\xe4\x93\x029:\x01*\"4/v1/agents/{agent_id}/learning/proposals/{id}/reject\x12\xaa\x01\n" +
+	"\rApplyProposal\x12-.kratos.learning_loop.v1.ApplyProposalRequest\x1a*.kratos.learning_loop.v1.KnowledgeProposal\">\x82\xd3\xe4\x93\x028:\x01*\"3/v1/agents/{agent_id}/learning/proposals/{id}/apply\x12\xac\x01\n" +
+	"\x13UpdatePatternStatus\x123.kratos.learning_loop.v1.UpdatePatternStatusRequest\x1a .kratos.learning_loop.v1.Pattern\">\x82\xd3\xe4\x93\x028:\x01*\"3/v1/agents/{agent_id}/learning/patterns/{id}/status\x12y\n" +
 	"\aRunLoop\x12'.kratos.learning_loop.v1.RunLoopRequest\x1a\x16.google.protobuf.Empty\"-\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/agents/{agent_id}/learning/runBM\n" +
 	"\x1bapi.kratos.learning_loop.v1P\x01Z,aranea-agents/api/kratos/learning_loop/v1;v1b\x06proto3"
 
@@ -872,21 +994,23 @@ func file_kratos_learning_loop_v1_learning_loop_proto_rawDescGZIP() []byte {
 	return file_kratos_learning_loop_v1_learning_loop_proto_rawDescData
 }
 
-var file_kratos_learning_loop_v1_learning_loop_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_kratos_learning_loop_v1_learning_loop_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_kratos_learning_loop_v1_learning_loop_proto_goTypes = []any{
-	(*Observation)(nil),              // 0: kratos.learning_loop.v1.Observation
-	(*Pattern)(nil),                  // 1: kratos.learning_loop.v1.Pattern
-	(*KnowledgeProposal)(nil),        // 2: kratos.learning_loop.v1.KnowledgeProposal
-	(*ListProposalsRequest)(nil),     // 3: kratos.learning_loop.v1.ListProposalsRequest
-	(*ListProposalsResponse)(nil),    // 4: kratos.learning_loop.v1.ListProposalsResponse
-	(*ListPatternsRequest)(nil),      // 5: kratos.learning_loop.v1.ListPatternsRequest
-	(*ListPatternsResponse)(nil),     // 6: kratos.learning_loop.v1.ListPatternsResponse
-	(*ListObservationsRequest)(nil),  // 7: kratos.learning_loop.v1.ListObservationsRequest
-	(*ListObservationsResponse)(nil), // 8: kratos.learning_loop.v1.ListObservationsResponse
-	(*ApproveProposalRequest)(nil),   // 9: kratos.learning_loop.v1.ApproveProposalRequest
-	(*RejectProposalRequest)(nil),    // 10: kratos.learning_loop.v1.RejectProposalRequest
-	(*RunLoopRequest)(nil),           // 11: kratos.learning_loop.v1.RunLoopRequest
-	(*emptypb.Empty)(nil),            // 12: google.protobuf.Empty
+	(*Observation)(nil),                // 0: kratos.learning_loop.v1.Observation
+	(*Pattern)(nil),                    // 1: kratos.learning_loop.v1.Pattern
+	(*KnowledgeProposal)(nil),          // 2: kratos.learning_loop.v1.KnowledgeProposal
+	(*ListProposalsRequest)(nil),       // 3: kratos.learning_loop.v1.ListProposalsRequest
+	(*ListProposalsResponse)(nil),      // 4: kratos.learning_loop.v1.ListProposalsResponse
+	(*ListPatternsRequest)(nil),        // 5: kratos.learning_loop.v1.ListPatternsRequest
+	(*ListPatternsResponse)(nil),       // 6: kratos.learning_loop.v1.ListPatternsResponse
+	(*ListObservationsRequest)(nil),    // 7: kratos.learning_loop.v1.ListObservationsRequest
+	(*ListObservationsResponse)(nil),   // 8: kratos.learning_loop.v1.ListObservationsResponse
+	(*ApproveProposalRequest)(nil),     // 9: kratos.learning_loop.v1.ApproveProposalRequest
+	(*RejectProposalRequest)(nil),      // 10: kratos.learning_loop.v1.RejectProposalRequest
+	(*RunLoopRequest)(nil),             // 11: kratos.learning_loop.v1.RunLoopRequest
+	(*UpdatePatternStatusRequest)(nil), // 12: kratos.learning_loop.v1.UpdatePatternStatusRequest
+	(*ApplyProposalRequest)(nil),       // 13: kratos.learning_loop.v1.ApplyProposalRequest
+	(*emptypb.Empty)(nil),              // 14: google.protobuf.Empty
 }
 var file_kratos_learning_loop_v1_learning_loop_proto_depIdxs = []int32{
 	2,  // 0: kratos.learning_loop.v1.ListProposalsResponse.items:type_name -> kratos.learning_loop.v1.KnowledgeProposal
@@ -897,15 +1021,19 @@ var file_kratos_learning_loop_v1_learning_loop_proto_depIdxs = []int32{
 	7,  // 5: kratos.learning_loop.v1.LearningLoopService.ListObservations:input_type -> kratos.learning_loop.v1.ListObservationsRequest
 	9,  // 6: kratos.learning_loop.v1.LearningLoopService.ApproveProposal:input_type -> kratos.learning_loop.v1.ApproveProposalRequest
 	10, // 7: kratos.learning_loop.v1.LearningLoopService.RejectProposal:input_type -> kratos.learning_loop.v1.RejectProposalRequest
-	11, // 8: kratos.learning_loop.v1.LearningLoopService.RunLoop:input_type -> kratos.learning_loop.v1.RunLoopRequest
-	4,  // 9: kratos.learning_loop.v1.LearningLoopService.ListProposals:output_type -> kratos.learning_loop.v1.ListProposalsResponse
-	6,  // 10: kratos.learning_loop.v1.LearningLoopService.ListPatterns:output_type -> kratos.learning_loop.v1.ListPatternsResponse
-	8,  // 11: kratos.learning_loop.v1.LearningLoopService.ListObservations:output_type -> kratos.learning_loop.v1.ListObservationsResponse
-	2,  // 12: kratos.learning_loop.v1.LearningLoopService.ApproveProposal:output_type -> kratos.learning_loop.v1.KnowledgeProposal
-	2,  // 13: kratos.learning_loop.v1.LearningLoopService.RejectProposal:output_type -> kratos.learning_loop.v1.KnowledgeProposal
-	12, // 14: kratos.learning_loop.v1.LearningLoopService.RunLoop:output_type -> google.protobuf.Empty
-	9,  // [9:15] is the sub-list for method output_type
-	3,  // [3:9] is the sub-list for method input_type
+	13, // 8: kratos.learning_loop.v1.LearningLoopService.ApplyProposal:input_type -> kratos.learning_loop.v1.ApplyProposalRequest
+	12, // 9: kratos.learning_loop.v1.LearningLoopService.UpdatePatternStatus:input_type -> kratos.learning_loop.v1.UpdatePatternStatusRequest
+	11, // 10: kratos.learning_loop.v1.LearningLoopService.RunLoop:input_type -> kratos.learning_loop.v1.RunLoopRequest
+	4,  // 11: kratos.learning_loop.v1.LearningLoopService.ListProposals:output_type -> kratos.learning_loop.v1.ListProposalsResponse
+	6,  // 12: kratos.learning_loop.v1.LearningLoopService.ListPatterns:output_type -> kratos.learning_loop.v1.ListPatternsResponse
+	8,  // 13: kratos.learning_loop.v1.LearningLoopService.ListObservations:output_type -> kratos.learning_loop.v1.ListObservationsResponse
+	2,  // 14: kratos.learning_loop.v1.LearningLoopService.ApproveProposal:output_type -> kratos.learning_loop.v1.KnowledgeProposal
+	2,  // 15: kratos.learning_loop.v1.LearningLoopService.RejectProposal:output_type -> kratos.learning_loop.v1.KnowledgeProposal
+	2,  // 16: kratos.learning_loop.v1.LearningLoopService.ApplyProposal:output_type -> kratos.learning_loop.v1.KnowledgeProposal
+	1,  // 17: kratos.learning_loop.v1.LearningLoopService.UpdatePatternStatus:output_type -> kratos.learning_loop.v1.Pattern
+	14, // 18: kratos.learning_loop.v1.LearningLoopService.RunLoop:output_type -> google.protobuf.Empty
+	11, // [11:19] is the sub-list for method output_type
+	3,  // [3:11] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
 	3,  // [3:3] is the sub-list for extension extendee
 	0,  // [0:3] is the sub-list for field type_name
@@ -922,7 +1050,7 @@ func file_kratos_learning_loop_v1_learning_loop_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_learning_loop_v1_learning_loop_proto_rawDesc), len(file_kratos_learning_loop_v1_learning_loop_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

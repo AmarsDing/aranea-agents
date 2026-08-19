@@ -145,7 +145,8 @@ type KnowledgeServiceClient interface {
 	// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
 	ListGovernanceProposals(ctx context.Context, in *ListGovernanceProposalsRequest, opts ...grpc.CallOption) (*ListGovernanceProposalsResponse, error)
 	// ResolveGovernanceProposal closes one pending proposal (人工二审):
-	// decision=applied approves the governance action, rejected dismisses it.
+	// decision=applied approves the action; rejected dismisses it;
+	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(ctx context.Context, in *ResolveGovernanceProposalRequest, opts ...grpc.CallOption) (*ResolveGovernanceProposalResponse, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
@@ -581,7 +582,8 @@ type KnowledgeServiceServer interface {
 	// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
 	ListGovernanceProposals(context.Context, *ListGovernanceProposalsRequest) (*ListGovernanceProposalsResponse, error)
 	// ResolveGovernanceProposal closes one pending proposal (人工二审):
-	// decision=applied approves the governance action, rejected dismisses it.
+	// decision=applied approves the action; rejected dismisses it;
+	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)

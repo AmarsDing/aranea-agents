@@ -138,7 +138,8 @@ type KnowledgeServiceHTTPServer interface {
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error)
 	// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
-	// decision=applied approves the governance action, rejected dismisses it.
+	// decision=applied approves the action; rejected dismisses it;
+	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
@@ -1040,7 +1041,8 @@ type KnowledgeServiceHTTPClient interface {
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(ctx context.Context, req *ReembedDocumentsRequest, opts ...http.CallOption) (rsp *ReembedDocumentsResponse, err error)
 	// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
-	// decision=applied approves the governance action, rejected dismisses it.
+	// decision=applied approves the action; rejected dismisses it;
+	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(ctx context.Context, req *ResolveGovernanceProposalRequest, opts ...http.CallOption) (rsp *ResolveGovernanceProposalResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
@@ -1490,7 +1492,8 @@ func (c *KnowledgeServiceHTTPClientImpl) ReembedDocuments(ctx context.Context, i
 }
 
 // ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
-// decision=applied approves the governance action, rejected dismisses it.
+// decision=applied approves the action; rejected dismisses it;
+// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 func (c *KnowledgeServiceHTTPClientImpl) ResolveGovernanceProposal(ctx context.Context, in *ResolveGovernanceProposalRequest, opts ...http.CallOption) (*ResolveGovernanceProposalResponse, error) {
 	var out ResolveGovernanceProposalResponse
 	pattern := "/v1/knowledge/governance-proposals/{id}:resolve"

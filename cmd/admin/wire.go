@@ -2244,6 +2244,17 @@ func provideSkillEvolutionOrchestrator(
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
+	// per-agent 提议过期：Agent target 读 evo_proposal_ttl_days，其余/异常回退全局默认。
+	orch.SetExpirationResolver(func(ctx context.Context, targetType, targetID string) time.Duration {
+		if targetType != string(biz.EvolutionTargetAgent) || strings.TrimSpace(targetID) == "" {
+			return 0
+		}
+		s, err := agents.GetAgentRuntimeSettings(ctx, targetID)
+		if err != nil || s.EvoProposalTTLDays <= 0 {
+			return 0
+		}
+		return time.Duration(s.EvoProposalTTLDays) * 24 * time.Hour
+	})
 	if cooldownStore != nil {
 		orch.AttachCooldownStore(cooldownStore)
 		if err := orch.HydrateTriggerCooldowns(context.Background()); err != nil {

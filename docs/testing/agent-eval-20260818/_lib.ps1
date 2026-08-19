@@ -1,4 +1,4 @@
-﻿# Aranea 指令驱动评测公共库（agent-eval-20260818）
+﻿﻿﻿﻿# Aranea 指令驱动评测公共库（agent-eval-20260818）
 # 与 realmachine-20260817/_lib.ps1 同口径，TestRoot 指向本评测目录
 $script:BaseUrl = "http://127.0.0.1:8810"
 $script:TokenFile = "f:\myproject\aranea-agents\docker\.test-token.txt"

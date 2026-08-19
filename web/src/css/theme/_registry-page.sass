@@ -335,6 +335,17 @@ body.app-registry-col-resizing
   &:hover
     text-decoration: underline
 
+// 行名称作为详情入口的链接单元格（如 Skill 列表 → 详情页）
+.app-registry-cell-title-link
+  display: block
+  color: var(--color-text-primary)
+  text-decoration: none
+  transition: color 0.15s ease
+
+  &:hover
+    color: var(--color-accent)
+    text-decoration: underline
+
 .app-registry-cell-desc,
 .app-registry-description
   display: -webkit-box

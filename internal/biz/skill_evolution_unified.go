@@ -236,6 +236,28 @@ type UnifiedEvolutionExpirationWriter interface {
 	ExpireOlderThan(ctx context.Context, cutoff time.Time) (int, error)
 }
 
+// UnifiedEvolutionPendingTarget identifies a distinct (target_type, target_id)
+// pair that currently holds pending suggestions.
+// Stability:evolving
+type UnifiedEvolutionPendingTarget struct {
+	TargetType string
+	TargetID   string
+}
+
+// UnifiedEvolutionPendingTargetLister lists distinct targets holding pending
+// suggestions; drives per-target expiration with per-agent TTL.
+// Stability:evolving
+type UnifiedEvolutionPendingTargetLister interface {
+	ListPendingTargets(ctx context.Context) ([]UnifiedEvolutionPendingTarget, error)
+}
+
+// UnifiedEvolutionTargetExpirationWriter expires pending suggestions scoped to
+// a single target (per-agent proposal TTL).
+// Stability:evolving
+type UnifiedEvolutionTargetExpirationWriter interface {
+	ExpireOlderThanForTarget(ctx context.Context, targetType, targetID string, cutoff time.Time) (int, error)
+}
+
 // UnifiedEvolutionReader 统一进化建议的读接口 (composition of sub-interfaces).
 type UnifiedEvolutionReader interface {
 	UnifiedEvolutionCheckReader
@@ -278,6 +300,10 @@ type SkillEvolutionOrchestrator struct {
 	cooldownMu    sync.RWMutex
 	cooldownMul   map[string]float64
 	cooldownStore SITriggerCooldownStore
+
+	// expireResolver 解析单个 target 的 pending 建议 TTL（Agent 维度读
+	// evo_proposal_ttl_days）；nil 时 ExpirePending 回退全局统一过期常量。
+	expireResolver func(ctx context.Context, targetType, targetID string) time.Duration
 }
 
 func NewSkillEvolutionOrchestrator(
@@ -290,6 +316,12 @@ func NewSkillEvolutionOrchestrator(
 		writer:      writer,
 		lg:          lg,
 	}
+}
+
+// SetExpirationResolver 接线按 target 的过期时长解析器（可选）。
+// resolver 返回 <= 0 时该 target 回退全局默认 evoExpirationDuration。
+func (o *SkillEvolutionOrchestrator) SetExpirationResolver(resolver func(ctx context.Context, targetType, targetID string) time.Duration) {
+	o.expireResolver = resolver
 }
 
 // RegisterTrigger 注册触发器。
@@ -504,8 +536,49 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 	return created, nil
 }
 
-// ExpirePending 过期 pending 建议（超过 7 天）
+// ExpirePending 过期 pending 建议：已接线 resolver 且存储支持 per-target 过期时，
+// 按 target 独立 TTL（Agent 维度读 evo_proposal_ttl_days）；否则回退全局统一过期
+// （EvoExpirationDays 常量，兼容未升级存储/测试桩）。
 func (o *SkillEvolutionOrchestrator) ExpirePending(ctx context.Context) (int, error) {
+	lister, canList := o.checkReader.(UnifiedEvolutionPendingTargetLister)
+	targetWriter, canExpirePerTarget := o.writer.(UnifiedEvolutionTargetExpirationWriter)
+	if o.expireResolver == nil || !canList || !canExpirePerTarget {
+		return o.expirePendingGlobal(ctx)
+	}
+	targets, err := lister.ListPendingTargets(ctx)
+	if err != nil {
+		o.lg.Warn("orchestrator: ListPendingTargets failed",
+			loggateway.StepID("evo_orchestrator.expire"),
+			loggateway.Err(err))
+		return 0, err
+	}
+	now := time.Now().UTC()
+	total := 0
+	for _, target := range targets {
+		ttl := o.expireResolver(ctx, target.TargetType, target.TargetID)
+		if ttl <= 0 {
+			ttl = evoExpirationDuration
+		}
+		n, err := targetWriter.ExpireOlderThanForTarget(ctx, target.TargetType, target.TargetID, now.Add(-ttl))
+		if err != nil {
+			// 单 target 失败不阻塞其余 target 的过期扫描。
+			o.lg.Warn("orchestrator: per-target expire failed",
+				loggateway.StepID("evo_orchestrator.expire"),
+				loggateway.Err(err))
+			continue
+		}
+		total += n
+	}
+	if total > 0 {
+		o.lg.Info("orchestrator: expired pending suggestions",
+			loggateway.StepID("evo_orchestrator.expire"),
+			loggateway.Int("count", total))
+	}
+	return total, nil
+}
+
+// expirePendingGlobal 过期 pending 建议（统一超过 EvoExpirationDays，不区分 target）。
+func (o *SkillEvolutionOrchestrator) expirePendingGlobal(ctx context.Context) (int, error) {
 	cutoff := time.Now().UTC().Add(-evoExpirationDuration)
 	expired, err := o.writer.ExpireOlderThan(ctx, cutoff)
 	if err != nil {

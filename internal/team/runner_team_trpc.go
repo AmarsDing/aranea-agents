@@ -427,7 +427,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AnchorMem:      ar.member,
 		AnchorAg:       ar.agent,
 	}
-	r.finalizeGraphRunStepsFallback(ctx, finishIn)
+	// P2-1b (2026-08-19): persist genuine per-member usage rows from the
+	// stream's MemberUsage — graph watch writes member steps with zero tokens,
+	// so without this pass a watch-healthy team run is invisible to billable
+	// aggregates (team_turn rows are excluded by design). When rows were
+	// written, the anchor-fallback usage row is suppressed (double-count guard).
+	usageFromStream := r.recordGraphMemberUsageFromResult(ctx, finishIn)
+	r.finalizeGraphRunStepsFallback(ctx, finishIn, usageFromStream)
 
 	// Persist swarm active member for CrossRequestTransfer (next turn entry override).
 	if def.Swarm != nil && def.Swarm.CrossRequestTransfer && ar.agent.AgentKey != "" {

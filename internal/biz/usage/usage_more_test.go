@@ -233,6 +233,81 @@ func TestSetQuota(t *testing.T) {
 			wantCode:   apierror.CodeBadRequest,
 			check:      func(t *testing.T, _ Quota) {},
 		},
+		{
+			name: "valid_period_accepted",
+			input: Quota{
+				ScopeType:       "agent",
+				ScopeID:         "agent-1",
+				MonthlyMicroUSD: 50000,
+				PeriodStart:     "2026-05-01",
+				PeriodEnd:       "2026-05-31",
+			},
+			setup: func(r *mockUsageRepo) {
+				r.setQuotaFn = func(_ context.Context, q Quota) (Quota, error) {
+					return q, nil
+				}
+			},
+			check: func(t *testing.T, got Quota) {
+				if got.PeriodStart != "2026-05-01" || got.PeriodEnd != "2026-05-31" {
+					t.Fatalf("expected period preserved, got %q~%q", got.PeriodStart, got.PeriodEnd)
+				}
+			},
+		},
+		{
+			name: "invalid_period_start_returns_error",
+			input: Quota{
+				ScopeType:       "agent",
+				ScopeID:         "agent-1",
+				MonthlyMicroUSD: 50000,
+				PeriodStart:     "abc",
+				PeriodEnd:       "2026-05-31",
+			},
+			wantErr:    true,
+			wantReason: "USAGE_QUOTA",
+			wantCode:   apierror.CodeBadRequest,
+			check:      func(t *testing.T, _ Quota) {},
+		},
+		{
+			name: "invalid_period_end_returns_error",
+			input: Quota{
+				ScopeType:       "agent",
+				ScopeID:         "agent-1",
+				MonthlyMicroUSD: 50000,
+				PeriodStart:     "2026-05-01",
+				PeriodEnd:       "2026-13-01",
+			},
+			wantErr:    true,
+			wantReason: "USAGE_QUOTA",
+			wantCode:   apierror.CodeBadRequest,
+			check:      func(t *testing.T, _ Quota) {},
+		},
+		{
+			name: "period_start_after_end_returns_error",
+			input: Quota{
+				ScopeType:       "agent",
+				ScopeID:         "agent-1",
+				MonthlyMicroUSD: 50000,
+				PeriodStart:     "2026-06-01",
+				PeriodEnd:       "2026-05-31",
+			},
+			wantErr:    true,
+			wantReason: "USAGE_QUOTA",
+			wantCode:   apierror.CodeBadRequest,
+			check:      func(t *testing.T, _ Quota) {},
+		},
+		{
+			name: "only_period_start_set_returns_error",
+			input: Quota{
+				ScopeType:       "agent",
+				ScopeID:         "agent-1",
+				MonthlyMicroUSD: 50000,
+				PeriodStart:     "2026-05-01",
+			},
+			wantErr:    true,
+			wantReason: "USAGE_QUOTA",
+			wantCode:   apierror.CodeBadRequest,
+			check:      func(t *testing.T, _ Quota) {},
+		},
 	}
 
 	for _, tt := range tests {

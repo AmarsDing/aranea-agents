@@ -54,6 +54,20 @@ describe('buildTickMessage（Worker 出向 tick）', () => {
     const { msg } = buildTickMessage(eng);
     expect(msg.alpha).toBe(0.42);
   });
+
+  it('V13-A1 park 后 buildTickMessage 携带停泊坐标（Worker 补广播语义）', () => {
+    const eng = mkEngine();
+    eng.tick();
+    eng.park(2, 99, 0, 0);
+    const { msg } = buildTickMessage(eng);
+    expect(msg.type).toBe('tick');
+    if (msg.type !== 'tick') return;
+    expect(msg.positions[6]).toBe(99);
+    expect(msg.positions[7]).toBe(0);
+    expect(msg.positions[8]).toBe(0);
+    // 未停泊节点保持物理结果
+    expect(msg.positions[0]).not.toBe(99);
+  });
 });
 
 /**

@@ -12,7 +12,11 @@
       <q-td :props="props">
         <AppRegistryHoverTip :text="props.row.description" empty-label="暂无描述">
           <div class="min-width-0">
-            <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+            <router-link
+              :to="{ name: 'skill-detail', params: { skillId: props.row.id } }"
+              class="app-registry-cell-primary app-registry-cell-title-link"
+              >{{ props.row.name }}</router-link
+            >
             <div class="app-registry-cell-sub">{{ props.row.slug }}</div>
           </div>
         </AppRegistryHoverTip>

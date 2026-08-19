@@ -87,6 +87,17 @@ message RunLoopRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message UpdatePatternStatusRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+  string status = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ApplyProposalRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 service LearningLoopService {
   rpc ListProposals(ListProposalsRequest) returns (ListProposalsResponse) {
     option (google.api.http) = {
@@ -112,6 +123,18 @@ service LearningLoopService {
   rpc RejectProposal(RejectProposalRequest) returns (KnowledgeProposal) {
     option (google.api.http) = {
       post: "/v1/agents/{agent_id}/learning/proposals/{id}/reject"
+      body: "*"
+    };
+  }
+  rpc ApplyProposal(ApplyProposalRequest) returns (KnowledgeProposal) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/learning/proposals/{id}/apply"
+      body: "*"
+    };
+  }
+  rpc UpdatePatternStatus(UpdatePatternStatusRequest) returns (Pattern) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/learning/patterns/{id}/status"
       body: "*"
     };
   }

@@ -90,7 +90,7 @@ func (r *EndpointRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
-	agentID, suffix := splitPublicPath(req.URL.Path)
+	agentID := agentIDFromPublicPath(req.URL.Path)
 	if agentID == "" {
 		http.NotFound(w, req)
 		return
@@ -107,10 +107,10 @@ func (r *EndpointRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "A2A endpoint unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	req.URL.Path = suffix
-	if req.URL.Path == "" {
-		req.URL.Path = "/"
-	}
+	// 保留完整路径：下游 trpc-a2a-go server 按 agentCard.URL 提取的 basePath
+	// 注册路由（basePath + "/.well-known/agent-card.json" 等），若在此剥离
+	// /v1/a2a/public/{agent_id} 前缀会导致双重前缀失配、全部 404。
+	r.lg.Info("A2A endpoint dispatch", loggateway.StepID("a2a.endpoint.dispatch"), loggateway.Str("agent_id", agentID), loggateway.Str("path", req.URL.Path))
 	handler.ServeHTTP(w, req)
 }
 
@@ -143,17 +143,13 @@ func (r *EndpointRegistry) handlerFor(ctx context.Context, agentID string) (http
 	return handler, nil
 }
 
-func splitPublicPath(path string) (agentID, suffix string) {
+// agentIDFromPublicPath extracts the agent id segment from /v1/a2a/public/{agent_id}/*.
+func agentIDFromPublicPath(path string) string {
 	path = strings.TrimPrefix(path, PublicPathPrefix)
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		return "", "/"
+		return ""
 	}
 	parts := strings.SplitN(path, "/", 2)
-	agentID = strings.TrimSpace(parts[0])
-	if len(parts) == 1 {
-		return agentID, "/"
-	}
-	suffix = "/" + parts[1]
-	return agentID, suffix
+	return strings.TrimSpace(parts[0])
 }

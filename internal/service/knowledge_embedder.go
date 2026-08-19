@@ -16,7 +16,10 @@ import (
 // NewKnowledgeEmbedder builds the knowledge embedder from env, then system_settings (EP-KN-01).
 //
 // Priority: KRATOS_KNOWLEDGE_EMBED_* env > system_settings.knowledge_embed_* > provider key env fallbacks.
-func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, lg loggateway.Logger) *knowledge.MultiProviderEmbedder {
+//
+// usageRef wires embedding usage recording (P1-3): the embedder resolves the
+// usecase lazily at record time, so the upstream construction order is safe.
+func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) *knowledge.MultiProviderEmbedder {
 	cfg := loadKnowledgeEmbedFromEnv(c)
 	if sys != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -25,7 +28,9 @@ func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, lg loggateway
 			cfg = mergeKnowledgeEmbedConfig(cfg, stored)
 		}
 	}
-	return knowledge.NewMultiProviderEmbedder(cfg.provider, cfg.baseURL, cfg.apiKey, cfg.model, cfg.dim, lg)
+	e := knowledge.NewMultiProviderEmbedder(cfg.provider, cfg.baseURL, cfg.apiKey, cfg.model, cfg.dim, lg)
+	e.SetUsageRecorder(NewEmbedUsageRecorder(usageRef, lg))
+	return e
 }
 
 type knowledgeEmbedConfig struct {

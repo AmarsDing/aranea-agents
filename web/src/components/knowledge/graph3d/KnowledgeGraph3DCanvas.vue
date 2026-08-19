@@ -678,7 +678,7 @@ function handleSettled(): void {
     const p = engine?.positions ?? model.positions;
     backdrop.setHazeAnchor(p[hub * 3], p[hub * 3 + 1], p[hub * 3 + 2]);
   }
-  // V13-A1：收敛后孤立节点统一停泊到规则圆环（半径=主簇 p90×1.5；不 reheat，Worker 自补位置广播）
+  // V13-A1：收敛后孤立节点统一停泊到规则圆环（半径=主簇 p90×PARK_RING_FACTOR(1.4)；不 reheat，Worker 自补位置广播）
   if (model && engine && isolatedSet.length > 0) {
     const stats = clusterStatsP90(engine.positions, model.count, fitExcludeMask);
     engine.park(isolatedSet, parkingRingPositions(isolatedSet.length, stats.radius * PARK_RING_FACTOR));
@@ -859,7 +859,12 @@ function onPointerMove(ev: PointerEvent): void {
       const hit = raycaster.ray.intersectPlane(drag.plane, tmpV1);
       if (hit) {
         hit.sub(drag.offset);
-        engine.pin(drag.index, hit.x, hit.y, hit.z);
+        // V13-A1：孤立节点拖拽用 park（钉住+写坐标但不 reheat 全局物理，避免拖一个孤立点全图微动）
+        if (isolatedSet.includes(drag.index)) {
+          engine.park(Uint32Array.from([drag.index]), Float32Array.from([hit.x, hit.y, hit.z]));
+        } else {
+          engine.pin(drag.index, hit.x, hit.y, hit.z);
+        }
         // 零延迟直写当前渲染位置（下一 tick 同值覆盖）
         const p = engine.positions;
         p[drag.index * 3] = hit.x;

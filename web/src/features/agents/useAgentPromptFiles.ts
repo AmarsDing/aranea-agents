@@ -96,6 +96,7 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
     const name = activeFile.value;
     if (!id) {
       activeFileBody.value = initialFileBodies.value[name] ?? activeFileBody.value;
+      notify({ type: 'info', message: t('agentSettings.files.reloadLocalFallback') });
       return;
     }
     try {
@@ -126,7 +127,7 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
     }
     for (const saved of savedFiles) {
       if (!files.some((file) => file.name === saved.name)) {
-        files.push({ id: saved.id, name: saved.name, caption: '自定义 Prompt 文件', body: saved.body });
+        files.push({ id: saved.id, name: saved.name, caption: t('agentSettings.files.customFileCaption'), body: saved.body });
       }
     }
     if (!files.some((file) => file.name === activeFile.value)) {

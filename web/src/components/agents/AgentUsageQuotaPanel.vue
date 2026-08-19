@@ -25,6 +25,8 @@
             prefix="$"
             label="月预算 (USD)"
             hint="留空或 0 表示不限制"
+            lazy-rules
+            :rules="monthlyUsdRules"
           />
           <q-input
             v-model="periodStart"
@@ -32,7 +34,9 @@
             outlined
             label="周期开始"
             placeholder="YYYY-MM-DD"
-            hint="过期后自动重置为当自然月"
+            hint="留空自动取当自然月；过期后自动重置"
+            lazy-rules
+            :rules="periodStartRules"
           />
           <q-input
             v-model="periodEnd"
@@ -40,12 +44,13 @@
             outlined
             label="周期结束"
             placeholder="YYYY-MM-DD"
-            hint="过期后自动重置为当自然月"
+            hint="留空自动取当自然月；过期后自动重置"
+            lazy-rules
+            :rules="periodEndRules"
           />
         </div>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat rounded no-caps label="检查用量" :loading="checking" :disable="!agentId" @click="runCheck" />
         <q-btn
           color="primary"
           rounded
@@ -63,7 +68,7 @@
       <q-card-section>
         <div class="text-subtitle2 q-mb-sm">预算告警阈值</div>
         <div class="text-caption text-grey-7 q-mb-md">
-          当月消耗达到月预算比例时写入监控事件（`usage.budget_alert`），同一阈值 60 分钟内不重复通知。
+          当月消耗达到月预算比例时写入监控事件（<code>usage.budget_alert</code>），同一阈值 60 分钟内不重复通知。
         </div>
         <div class="app-form-field-grid app-form-field-grid--2col items-end">
           <q-input
@@ -75,6 +80,8 @@
             max="100"
             suffix="%"
             label="告警比例"
+            lazy-rules
+            :rules="alertRatioRules"
           />
           <q-toggle v-model="alertEnabled" label="启用" />
         </div>
@@ -142,9 +149,12 @@ const {
   alertRatioPct,
   alertEnabled,
   alertSaving,
+  monthlyUsdRules,
+  periodStartRules,
+  periodEndRules,
+  alertRatioRules,
   microUsdToUsd,
   loadQuota,
-  runCheck,
   saveQuota,
   saveAlert,
 } = useAgentUsageQuota(toRef(props, 'agentId'));

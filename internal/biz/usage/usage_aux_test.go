@@ -2,6 +2,7 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -182,6 +183,29 @@ func TestRecordAuxLLMUsage(t *testing.T) {
 		}
 	})
 
+	t.Run("embedding tokens flow into event", func(t *testing.T) {
+		var got TokenUsageEvent
+		repo := &mockUsageRepo{
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				got = e
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+		if err := u.RecordAuxLLMUsage(context.Background(), AuxLLMUsageInput{
+			Kind: KindAuxEmbedding, Provider: "openai", Model: "text-embedding-3-small",
+			EmbeddingTok: 42, UsageSource: "response",
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		if got.EmbeddingTokens != 42 {
+			t.Errorf("EmbeddingTokens = %d, want 42", got.EmbeddingTokens)
+		}
+		if got.TotalTokens != 42 {
+			t.Errorf("TotalTokens = %d, want 42", got.TotalTokens)
+		}
+	})
+
 	t.Run("pricing enrichment applies to aux rows", func(t *testing.T) {
 		repo := &mockUsageRepo{
 			getActiveModelPricingFn: func(_ context.Context, prov, mod string) (ModelPricingSnapshot, bool, error) {
@@ -209,6 +233,126 @@ func TestRecordAuxLLMUsage(t *testing.T) {
 			PromptTok: 1000, CompletionTok: 500,
 		}); err != nil {
 			t.Fatalf("record failed: %v", err)
+		}
+	})
+}
+
+// P1-4 (2026-08-19): envelope publishing lives in RecordTokenUsageEvent so the
+// external API path (UsageService.RecordTokenUsageEvent) emits exactly like the
+// internal RecordTurnUsage/RecordAuxLLMUsage path — once, and only on success.
+func TestRecordTokenUsageEventPublishesEnvelope(t *testing.T) {
+	t.Run("publishes once on success", func(t *testing.T) {
+		repo := &mockUsageRepo{
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+		pub := &mockEnvelopePub{}
+		u.SetUsageEnvelopePublisher(pub)
+		if _, err := u.RecordTokenUsageEvent(context.Background(), TokenUsageEvent{
+			ID: "evt-1", UsageKind: KindChatTurn, InputTokens: 10, OutputTokens: 5,
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		if len(pub.events) != 1 {
+			t.Fatalf("expected 1 envelope, got %d", len(pub.events))
+		}
+		if pub.events[0].ID != "evt-1" {
+			t.Errorf("envelope id = %q, want evt-1", pub.events[0].ID)
+		}
+	})
+
+	t.Run("no envelope on repo failure", func(t *testing.T) {
+		repo := &mockUsageRepo{
+			recordTokenUsageEventFn: func(_ context.Context, _ TokenUsageEvent) (TokenUsageEvent, error) {
+				return TokenUsageEvent{}, errors.New("db down")
+			},
+		}
+		u := NewUsecase(repo, nil)
+		pub := &mockEnvelopePub{}
+		u.SetUsageEnvelopePublisher(pub)
+		if _, err := u.RecordTokenUsageEvent(context.Background(), TokenUsageEvent{ID: "evt-2"}); err == nil {
+			t.Fatal("expected error")
+		}
+		if len(pub.events) != 0 {
+			t.Errorf("expected no envelopes on failure, got %d", len(pub.events))
+		}
+	})
+}
+
+// P2-2 (2026-08-19): events with billable tokens but no pricing must be flagged
+// metadata_json[cost_status]="no_pricing"; priced rows and zero-token rows are not.
+func TestRecordTokenUsageEventNoPricingFlag(t *testing.T) {
+	t.Run("unpriced tokens get no_pricing flag", func(t *testing.T) {
+		var got TokenUsageEvent
+		repo := &mockUsageRepo{
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				got = e
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+		if _, err := u.RecordTokenUsageEvent(context.Background(), TokenUsageEvent{
+			ID: "evt-np", ProviderCode: "ollama", ModelAPIID: "qwen3", InputTokens: 100, OutputTokens: 50,
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(got.MetadataJSON), &meta); err != nil {
+			t.Fatalf("metadata unparseable: %v", err)
+		}
+		if meta[MetadataKeyCostStatus] != CostStatusNoPricing {
+			t.Errorf("cost_status = %v, want %q", meta[MetadataKeyCostStatus], CostStatusNoPricing)
+		}
+	})
+
+	t.Run("priced row is not flagged", func(t *testing.T) {
+		var got TokenUsageEvent
+		repo := &mockUsageRepo{
+			getActiveModelPricingFn: func(_ context.Context, _, _ string) (ModelPricingSnapshot, bool, error) {
+				return ModelPricingSnapshot{InputPriceUSDPer1M: 0.27, OutputPriceUSDPer1M: 1.10}, true, nil
+			},
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				got = e
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+		if _, err := u.RecordTokenUsageEvent(context.Background(), TokenUsageEvent{
+			ID: "evt-p", ProviderCode: "deepseek", ModelAPIID: "deepseek-chat", InputTokens: 100, OutputTokens: 50,
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(got.MetadataJSON), &meta); err != nil {
+			t.Fatalf("metadata unparseable: %v", err)
+		}
+		if _, flagged := meta[MetadataKeyCostStatus]; flagged {
+			t.Errorf("priced row must not carry cost_status, meta=%v", meta)
+		}
+	})
+
+	t.Run("zero-token row is not flagged", func(t *testing.T) {
+		var got TokenUsageEvent
+		repo := &mockUsageRepo{
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				got = e
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+		if _, err := u.RecordTokenUsageEvent(context.Background(), TokenUsageEvent{
+			ID: "evt-z", ProviderCode: "ollama", ModelAPIID: "qwen3",
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(got.MetadataJSON), &meta); err != nil {
+			t.Fatalf("metadata unparseable: %v", err)
+		}
+		if _, flagged := meta[MetadataKeyCostStatus]; flagged {
+			t.Errorf("zero-token row must not carry cost_status, meta=%v", meta)
 		}
 	})
 }

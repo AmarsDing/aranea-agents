@@ -95,12 +95,35 @@ export type RunLoopRequest = {
   agentId: string | undefined;
 };
 
+export type UpdatePatternStatusRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  status: string | undefined;
+};
+
+export type ApplyProposalRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
 export interface LearningLoopService {
   ListProposals(request: ListProposalsRequest): Promise<ListProposalsResponse>;
   ListPatterns(request: ListPatternsRequest): Promise<ListPatternsResponse>;
   ListObservations(request: ListObservationsRequest): Promise<ListObservationsResponse>;
   ApproveProposal(request: ApproveProposalRequest): Promise<KnowledgeProposal>;
   RejectProposal(request: RejectProposalRequest): Promise<KnowledgeProposal>;
+  ApplyProposal(request: ApplyProposalRequest): Promise<KnowledgeProposal>;
+  UpdatePatternStatus(request: UpdatePatternStatusRequest): Promise<Pattern>;
   RunLoop(request: RunLoopRequest): Promise<wellKnownEmpty>;
 }
 
@@ -230,6 +253,52 @@ export function createLearningLoopServiceClient(
         service: "LearningLoopService",
         method: "RejectProposal",
       }) as Promise<KnowledgeProposal>;
+    },
+    ApplyProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/agents/${request.agentId}/learning/proposals/${request.id}/apply`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "ApplyProposal",
+      }) as Promise<KnowledgeProposal>;
+    },
+    UpdatePatternStatus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/agents/${request.agentId}/learning/patterns/${request.id}/status`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "UpdatePatternStatus",
+      }) as Promise<Pattern>;
     },
     RunLoop(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {

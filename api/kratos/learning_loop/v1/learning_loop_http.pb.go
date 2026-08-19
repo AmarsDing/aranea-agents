@@ -20,20 +20,24 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationLearningLoopServiceApplyProposal = "/kratos.learning_loop.v1.LearningLoopService/ApplyProposal"
 const OperationLearningLoopServiceApproveProposal = "/kratos.learning_loop.v1.LearningLoopService/ApproveProposal"
 const OperationLearningLoopServiceListObservations = "/kratos.learning_loop.v1.LearningLoopService/ListObservations"
 const OperationLearningLoopServiceListPatterns = "/kratos.learning_loop.v1.LearningLoopService/ListPatterns"
 const OperationLearningLoopServiceListProposals = "/kratos.learning_loop.v1.LearningLoopService/ListProposals"
 const OperationLearningLoopServiceRejectProposal = "/kratos.learning_loop.v1.LearningLoopService/RejectProposal"
 const OperationLearningLoopServiceRunLoop = "/kratos.learning_loop.v1.LearningLoopService/RunLoop"
+const OperationLearningLoopServiceUpdatePatternStatus = "/kratos.learning_loop.v1.LearningLoopService/UpdatePatternStatus"
 
 type LearningLoopServiceHTTPServer interface {
+	ApplyProposal(context.Context, *ApplyProposalRequest) (*KnowledgeProposal, error)
 	ApproveProposal(context.Context, *ApproveProposalRequest) (*KnowledgeProposal, error)
 	ListObservations(context.Context, *ListObservationsRequest) (*ListObservationsResponse, error)
 	ListPatterns(context.Context, *ListPatternsRequest) (*ListPatternsResponse, error)
 	ListProposals(context.Context, *ListProposalsRequest) (*ListProposalsResponse, error)
 	RejectProposal(context.Context, *RejectProposalRequest) (*KnowledgeProposal, error)
 	RunLoop(context.Context, *RunLoopRequest) (*emptypb.Empty, error)
+	UpdatePatternStatus(context.Context, *UpdatePatternStatusRequest) (*Pattern, error)
 }
 
 func RegisterLearningLoopServiceHTTPServer(s *http.Server, srv LearningLoopServiceHTTPServer) {
@@ -43,6 +47,8 @@ func RegisterLearningLoopServiceHTTPServer(s *http.Server, srv LearningLoopServi
 	r.GET("/v1/agents/{agent_id}/learning/observations", _LearningLoopService_ListObservations0_HTTP_Handler(srv))
 	r.POST("/v1/agents/{agent_id}/learning/proposals/{id}/approve", _LearningLoopService_ApproveProposal0_HTTP_Handler(srv))
 	r.POST("/v1/agents/{agent_id}/learning/proposals/{id}/reject", _LearningLoopService_RejectProposal0_HTTP_Handler(srv))
+	r.POST("/v1/agents/{agent_id}/learning/proposals/{id}/apply", _LearningLoopService_ApplyProposal0_HTTP_Handler(srv))
+	r.POST("/v1/agents/{agent_id}/learning/patterns/{id}/status", _LearningLoopService_UpdatePatternStatus0_HTTP_Handler(srv))
 	r.POST("/v1/agents/{agent_id}/learning/run", _LearningLoopService_RunLoop0_HTTP_Handler(srv))
 }
 
@@ -162,6 +168,56 @@ func _LearningLoopService_RejectProposal0_HTTP_Handler(srv LearningLoopServiceHT
 	}
 }
 
+func _LearningLoopService_ApplyProposal0_HTTP_Handler(srv LearningLoopServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ApplyProposalRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationLearningLoopServiceApplyProposal)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ApplyProposal(ctx, req.(*ApplyProposalRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*KnowledgeProposal)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _LearningLoopService_UpdatePatternStatus0_HTTP_Handler(srv LearningLoopServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdatePatternStatusRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationLearningLoopServiceUpdatePatternStatus)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdatePatternStatus(ctx, req.(*UpdatePatternStatusRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*Pattern)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _LearningLoopService_RunLoop0_HTTP_Handler(srv LearningLoopServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in RunLoopRequest
@@ -188,12 +244,14 @@ func _LearningLoopService_RunLoop0_HTTP_Handler(srv LearningLoopServiceHTTPServe
 }
 
 type LearningLoopServiceHTTPClient interface {
+	ApplyProposal(ctx context.Context, req *ApplyProposalRequest, opts ...http.CallOption) (rsp *KnowledgeProposal, err error)
 	ApproveProposal(ctx context.Context, req *ApproveProposalRequest, opts ...http.CallOption) (rsp *KnowledgeProposal, err error)
 	ListObservations(ctx context.Context, req *ListObservationsRequest, opts ...http.CallOption) (rsp *ListObservationsResponse, err error)
 	ListPatterns(ctx context.Context, req *ListPatternsRequest, opts ...http.CallOption) (rsp *ListPatternsResponse, err error)
 	ListProposals(ctx context.Context, req *ListProposalsRequest, opts ...http.CallOption) (rsp *ListProposalsResponse, err error)
 	RejectProposal(ctx context.Context, req *RejectProposalRequest, opts ...http.CallOption) (rsp *KnowledgeProposal, err error)
 	RunLoop(ctx context.Context, req *RunLoopRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	UpdatePatternStatus(ctx context.Context, req *UpdatePatternStatusRequest, opts ...http.CallOption) (rsp *Pattern, err error)
 }
 
 type LearningLoopServiceHTTPClientImpl struct {
@@ -202,6 +260,19 @@ type LearningLoopServiceHTTPClientImpl struct {
 
 func NewLearningLoopServiceHTTPClient(client *http.Client) LearningLoopServiceHTTPClient {
 	return &LearningLoopServiceHTTPClientImpl{client}
+}
+
+func (c *LearningLoopServiceHTTPClientImpl) ApplyProposal(ctx context.Context, in *ApplyProposalRequest, opts ...http.CallOption) (*KnowledgeProposal, error) {
+	var out KnowledgeProposal
+	pattern := "/v1/agents/{agent_id}/learning/proposals/{id}/apply"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationLearningLoopServiceApplyProposal))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *LearningLoopServiceHTTPClientImpl) ApproveProposal(ctx context.Context, in *ApproveProposalRequest, opts ...http.CallOption) (*KnowledgeProposal, error) {
@@ -274,6 +345,19 @@ func (c *LearningLoopServiceHTTPClientImpl) RunLoop(ctx context.Context, in *Run
 	pattern := "/v1/agents/{agent_id}/learning/run"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationLearningLoopServiceRunLoop))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *LearningLoopServiceHTTPClientImpl) UpdatePatternStatus(ctx context.Context, in *UpdatePatternStatusRequest, opts ...http.CallOption) (*Pattern, error) {
+	var out Pattern
+	pattern := "/v1/agents/{agent_id}/learning/patterns/{id}/status"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationLearningLoopServiceUpdatePatternStatus))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

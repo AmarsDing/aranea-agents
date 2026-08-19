@@ -30,9 +30,12 @@ type TeamRunFinishInput struct {
 }
 
 // finalizeGraphRunStepsFallback ensures at least one step exists when graph events produced none.
-func (r *Runner) finalizeGraphRunStepsFallback(ctx context.Context, in TeamRunFinishInput) {
+// suppressUsageRow is threaded from recordGraphMemberUsageFromResult: when
+// stream-derived member usage rows already carry this run's billable usage,
+// the fallback anchor row is persisted display-only (P2-1b 双计守卫).
+func (r *Runner) finalizeGraphRunStepsFallback(ctx context.Context, in TeamRunFinishInput, suppressUsageRow bool) {
 	if r == nil || in.GraphExecID == "" {
 		return
 	}
-	r.ensureGraphRunStepsFallback(ctx, in.Run, in.TeamID, in.AnchorMem, in.AnchorAg, in.Content, in.AssistantMsg, in.PromptTok, in.CompletionTok, in.Result.CachedTok, in.Prov, in.Mod, in.UsageSource)
+	r.ensureGraphRunStepsFallback(ctx, in.Run, in.TeamID, in.AnchorMem, in.AnchorAg, in.Content, in.AssistantMsg, in.PromptTok, in.CompletionTok, in.Result.CachedTok, in.Prov, in.Mod, in.UsageSource, suppressUsageRow)
 }

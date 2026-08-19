@@ -30,6 +30,8 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
   const editName = ref('');
   const editEnabled = ref(true);
   const togglingId = ref('');
+  const draftValid = ref(true);
+  const editValid = ref(true);
 
   function ruleOf(row: HookRow) {
     return parseHookConfig(row.config_json);
@@ -88,6 +90,10 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
   }
 
   async function createScopedHook() {
+    if (!draftValid.value) {
+      $q.notify({ type: 'warning', message: t('hooksPage.notifyFixErrors') });
+      return;
+    }
     const prefix = agentKey() || agentId() || 'hook';
     const key = `${prefix}-hook-${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '_');
     const rule = cloneHookRuleConfig(draftRule.value);
@@ -123,6 +129,10 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
 
   async function saveEdit() {
     if (!editRow.value) return;
+    if (!editValid.value) {
+      $q.notify({ type: 'warning', message: t('hooksPage.notifyFixErrors') });
+      return;
+    }
     saving.value = true;
     try {
       const rule = cloneHookRuleConfig(editRule.value);
@@ -194,6 +204,8 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
     editName,
     editEnabled,
     togglingId,
+    draftValid,
+    editValid,
     agentId,
     agentKey,
     createScopedHook,

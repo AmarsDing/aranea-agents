@@ -18,13 +18,13 @@ import (
 // usageSource records how tin/tout were obtained ("streaming"/"estimated"…);
 // persisted into metadata_json["usage_source"] so estimated rows stay identifiable.
 //
-// runLevelAttribution=true marks the row as carrying RUN-LEVEL totals attributed
-// to the anchor member (anchor-fallback path when graph watch produced no
-// per-member steps). Such rows duplicate the team_turn row's totals, so they
-// must NOT additionally accumulate session metrics — the team_turn row is the
-// single session-metrics accumulator on completion paths (P2-1 双计根治,
-// 2026-08-19). Genuine per-member rows (flag=false, e.g. failed-run partial
-// steps) keep accumulating: no team_turn row exists on those paths.
+// attribution records metadata_json["usage_attribution"]. Non-empty marks
+// completion-path rows (run_level_anchor_fallback / member_level_stream /
+// stream_anchor_remainder): such rows duplicate the team_turn row's totals, so
+// they must NOT additionally accumulate session metrics — the team_turn row is
+// the single session-metrics accumulator on completion paths (P2-1/P2-1b,
+// 2026-08-19). Empty attribution = genuine row on a path WITHOUT a team_turn
+// row (e.g. failed-run partial steps) → keeps accumulating.
 func (r *Runner) recordMemberUsage(
 	ctx context.Context,
 	run biz.TeamRunRecord,
@@ -35,7 +35,7 @@ func (r *Runner) recordMemberUsage(
 	stepID string,
 	cachedTok int,
 	usageSource string,
-	runLevelAttribution bool,
+	attribution string,
 ) {
 	if r == nil || r.usage == nil {
 		return
@@ -63,9 +63,7 @@ func (r *Runner) recordMemberUsage(
 		meta = string(b)
 	}
 	meta = biz.MergeUsageSourceMetadata(meta, usageSource)
-	if runLevelAttribution {
-		meta = biz.MergeUsageAttributionMetadata(meta, biz.UsageAttributionRunLevelAnchorFallback)
-	}
+	meta = biz.MergeUsageAttributionMetadata(meta, attribution)
 	ev := biz.TokenUsageEvent{
 		ID:                uuid.NewString(),
 		TeamID:            teamID,
@@ -105,7 +103,7 @@ func (r *Runner) recordMemberUsage(
 		)
 		return
 	}
-	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" && !runLevelAttribution {
+	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" && strings.TrimSpace(attribution) == "" {
 		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
 			SessionID:         run.SessionID,
 			ModelCallCount:    recEv.CallCount,
@@ -115,7 +113,8 @@ func (r *Runner) recordMemberUsage(
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
-	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, recEv)
+	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4) —
+	// publishing here as well would double-emit.
 }
 
 // recordAuxUsage records auxiliary LLM usage for team-side旁路 calls (intent pass).
@@ -205,5 +204,6 @@ func (r *Runner) recordTeamRunUsage(
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
-	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, recEv)
+	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4) —
+	// publishing here as well would double-emit.
 }

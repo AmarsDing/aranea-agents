@@ -1,4 +1,4 @@
-﻿# Domain B ask-phase only rerun (facts already planted in DB)
+﻿﻿﻿﻿# Domain B ask-phase only rerun (facts already planted in DB)
 # Usage: powershell -ExecutionPolicy Bypass -File ask-only.ps1 [-StartIndex N] [-Count N]
 param([int]$StartIndex = 0, [int]$Count = 50)
 . (Join-Path (Split-Path $PSScriptRoot -Parent) "_lib.ps1")

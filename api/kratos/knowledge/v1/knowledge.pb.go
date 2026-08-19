@@ -3517,7 +3517,7 @@ func (x *ListGovernanceProposalsResponse) GetItems() []*GovernanceProposal {
 type ResolveGovernanceProposalRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Decision      string                 `protobuf:"bytes,2,opt,name=decision,proto3" json:"decision,omitempty"` // applied | rejected
+	Decision      string                 `protobuf:"bytes,2,opt,name=decision,proto3" json:"decision,omitempty"` // applied | rejected | keep_old | keep_new
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

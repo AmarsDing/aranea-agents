@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/agent"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -45,11 +46,14 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 		if in.Result.MemberToolCalls != nil {
 			toolCalls = in.Result.MemberToolCalls[ag.AgentKey]
 		}
-		// runLevelAttribution mirrors stepTokensForMember: the sortIdx==0 anchor
+		// attribution mirrors stepTokensForMember: the sortIdx==0 anchor
 		// without genuine MemberUsage carries RUN-LEVEL totals (same totals the
 		// team_turn row records) → its usage row must skip session accumulation.
-		runLevelAttribution := i == 0 && !genuine
-		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok, memberUsageSource, time.Time{}, runLevelAttribution)
+		attribution := ""
+		if i == 0 && !genuine {
+			attribution = biz.UsageAttributionRunLevelAnchorFallback
+		}
+		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok, memberUsageSource, time.Time{}, attribution)
 		stepCtx.MarkPersisted(nodeID)
 	}
 }

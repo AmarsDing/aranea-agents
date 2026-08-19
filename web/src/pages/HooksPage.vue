@@ -111,7 +111,7 @@
               autogrow
               :label="t('hooksPage.fieldDescription')"
             />
-            <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" />
+            <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" v-model:valid="formValid" />
           </q-card-section>
         </div>
         <q-separator />
@@ -123,7 +123,7 @@
             no-caps
             :label="t('hooksPage.btnSave')"
             :loading="saving"
-            :disable="!form.key?.trim() || !form.name?.trim()"
+            :disable="!formValid || !form.key?.trim() || !form.name?.trim()"
             @click="saveHook"
           />
         </q-card-actions>
@@ -152,6 +152,7 @@ const {
   editingId,
   busyId,
   form,
+  formValid,
   page,
   pageSize,
   total,

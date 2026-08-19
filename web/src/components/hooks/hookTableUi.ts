@@ -16,7 +16,7 @@ export function createHooksTableColumns(t: I18nT): QTableColumn<HookRow>[] {
     registryCol<HookRow>('enabled', t('hooksPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
       sortable: false,
     }),
-    registryColActions<HookRow>(REGISTRY_COL_W.actionsWide),
+    registryColActions<HookRow>(REGISTRY_COL_W.actionsWide, t('hooksPage.colActions')),
   ];
 }
 
@@ -27,7 +27,7 @@ export function createHooksAgentTableColumns(t: I18nT): QTableColumn<HookRow>[] 
     registryCol<HookRow>('enabled', t('hooksPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
       sortable: false,
     }),
-    registryColActions<HookRow>(REGISTRY_COL_W.actionsWide),
+    registryColActions<HookRow>(REGISTRY_COL_W.actionsWide, t('hooksPage.colActions')),
   ];
 }
 
