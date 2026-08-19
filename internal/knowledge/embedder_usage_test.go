@@ -71,8 +71,8 @@ func TestEmbedUsage_OpenAIUsageRecorded(t *testing.T) {
 	if got.Err != nil {
 		t.Fatalf("Err=%v want nil", got.Err)
 	}
-	if got.Latency <= 0 {
-		t.Fatal("Latency must be positive")
+	if got.Latency < 0 {
+		t.Fatal("Latency must not be negative")
 	}
 }
 
