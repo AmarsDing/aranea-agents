@@ -58,11 +58,25 @@ export type DeleteWebhookRequest = {
   id: string | undefined;
 };
 
+export type TestWebhookRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type TestWebhookResponse = {
+  success: boolean | undefined;
+  statusCode: number | undefined;
+  error: string | undefined;
+  durationMs: number | undefined;
+};
+
 export interface GatewayService {
   CreateWebhook(request: CreateWebhookRequest): Promise<Webhook>;
   ListWebhooks(request: ListWebhooksRequest): Promise<ListWebhooksResponse>;
   UpdateWebhook(request: UpdateWebhookRequest): Promise<Webhook>;
   DeleteWebhook(request: DeleteWebhookRequest): Promise<wellKnownEmpty>;
+  TestWebhook(request: TestWebhookRequest): Promise<TestWebhookResponse>;
 }
 
 type RequestType = {
@@ -159,6 +173,26 @@ export function createGatewayServiceClient(
         service: "GatewayService",
         method: "DeleteWebhook",
       }) as Promise<wellKnownEmpty>;
+    },
+    TestWebhook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/gateway/webhooks/${request.id}/test`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "GatewayService",
+        method: "TestWebhook",
+      }) as Promise<TestWebhookResponse>;
     },
   };
 }

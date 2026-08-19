@@ -92,6 +92,10 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l3_max_per_recall_chars").Default(1500),
 		// FR-12/P2: 召回块 token 预算（档位 400/800/1600，默认 800）。
 		field.Int("l3_recall_budget_tokens").Default(800),
+		// 2026-08-20 token 成本审查：L2 独立召回预算（此前复用 l3_recall_budget_tokens）。
+		field.Int("l2_recall_budget_tokens").Default(800),
+		// 2026-08-20 token 成本审查：L3 事实 provenance 注入开关（此前硬编码 true）。
+		field.Bool("l3_inject_provenance").Default(true),
 		field.Bool("l4_enabled").Default(true),
 		field.Bool("l4_graph_inject_neighbors").Default(true),
 		field.Int("l4_graph_max_neighbors").Default(6),

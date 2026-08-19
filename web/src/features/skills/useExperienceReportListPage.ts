@@ -1,8 +1,10 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useSkillIntelligenceStore } from '../../stores/skillIntelligence';
 
 export function useExperienceReportListPage(skillIdFromQuery?: string) {
   const store = useSkillIntelligenceStore();
+  const route = useRoute();
 
   const skillId = ref(skillIdFromQuery ?? '');
   const from = ref('');
@@ -10,7 +12,7 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
   const page = ref(1);
   const pageSize = ref(20);
 
-  // Filter guard: prevent double-load when filter change resets page to 1.
+  // 防双加载守卫：resetFilters 同时改筛选值与页码时两个 watch 都会触发，跳过 page watch，由 filter watch 统一加载
   let skipNextPageWatch = false;
 
   const pageMax = computed(() => Math.max(1, Math.ceil(store.total / pageSize.value)));
@@ -37,22 +39,40 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
   }
 
   function resetFilters() {
-    skillId.value = skillIdFromQuery ?? '';
+    const nextSkillId = skillIdFromQuery ?? '';
+    const filtersWillChange = skillId.value !== nextSkillId || from.value !== '' || to.value !== '';
+    skillId.value = nextSkillId;
     from.value = '';
     to.value = '';
-    page.value = 1;
-    skipNextPageWatch = true;
-    void loadRows();
+    if (page.value !== 1) {
+      // 筛选值与页码同时变化时 filter watch 会统一加载，跳过 page watch 防双加载
+      if (filtersWillChange) {
+        skipNextPageWatch = true;
+      }
+      page.value = 1;
+    }
   }
 
   watch([skillId, from, to], () => {
     if (page.value === 1) {
       void loadRows();
     } else {
-      skipNextPageWatch = true;
-      page.value = 1; // triggers page watch, but skipNextPageWatch prevents double load
+      // 不可设 skipNextPageWatch：page watch 是唯一会触发的加载入口，跳过将导致筛选后数据不刷新
+      page.value = 1;
     }
   });
+
+  // 同路由 query 变化时组件被复用、setup 不重跑：同步外部 skill_id 导航（行级入口/侧栏菜单），
+  // 避免筛选残留。skillId 变更由上方 watch 统一触发 reload。
+  watch(
+    () => route.query.skill_id,
+    (val) => {
+      const next = typeof val === 'string' ? val : '';
+      if (next !== skillId.value) {
+        skillId.value = next;
+      }
+    },
+  );
 
   watch([page, pageSize], () => {
     if (skipNextPageWatch) {

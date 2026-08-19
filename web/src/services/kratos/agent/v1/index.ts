@@ -161,6 +161,15 @@ export type AgentRuntimeSettings = {
   // truncated once the estimated tokens exceed this budget. 0 = default 800.
   // Preset tiers: 400 (compact) / 800 (standard) / 1600 (generous).
   l3RecallBudgetTokens: number | undefined;
+  // L2RecallBudgetTokens is the token budget for the standalone L2 episodic
+  // recall block (2026-08-20: split from l3_recall_budget_tokens so the two
+  // blocks can be tuned independently). 0 = default 800.
+  // Preset tiers: 400 (compact) / 800 (standard) / 1600 (generous).
+  l2RecallBudgetTokens: number | undefined;
+  // L3InjectProvenance controls whether injected L3 facts carry provenance
+  // metadata ([id:…, src:…, conf:…, v…]) in the prompt. Absent → default true
+  // (matches DefaultAgentRuntimeSettings and Ent schema default).
+  l3InjectProvenance?: boolean;
 };
 
 export type AgentPromptFile = {

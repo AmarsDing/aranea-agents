@@ -77,6 +77,11 @@ type MemoryCfg struct {
 	L3ArchiveThreshold   float64 `json:"l3_archive_threshold,omitempty"`
 	L3MaxPerRecallChars  int     `json:"l3_max_per_recall_chars,omitempty"`
 	L3RecallBudgetTokens int     `json:"l3_recall_budget_tokens,omitempty"`
+	// L2RecallBudgetTokens is the standalone L2 episodic recall block budget
+	// (2026-08-20: split from L3RecallBudgetTokens). 0 = default 800.
+	L2RecallBudgetTokens int `json:"l2_recall_budget_tokens,omitempty"`
+	// L3InjectProvenance toggles provenance metadata on injected L3 facts.
+	L3InjectProvenance bool `json:"l3_inject_provenance,omitempty"`
 
 	// L4 knowledge graph.
 	L4Enabled              bool   `json:"l4_enabled,omitempty"`
@@ -272,6 +277,8 @@ func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
 	s.L3ArchiveThreshold = cfg.L3ArchiveThreshold
 	s.L3MaxPerRecallChars = cfg.L3MaxPerRecallChars
 	s.L3RecallBudgetTokens = cfg.L3RecallBudgetTokens
+	s.L2RecallBudgetTokens = cfg.L2RecallBudgetTokens
+	s.L3InjectProvenance = cfg.L3InjectProvenance
 	s.L4Enabled = cfg.L4Enabled
 	s.L4GraphInjectNeighbors = cfg.L4GraphInjectNeighbors
 	s.L4GraphMaxNeighbors = cfg.L4GraphMaxNeighbors

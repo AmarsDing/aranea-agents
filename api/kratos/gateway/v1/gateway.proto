@@ -58,6 +58,17 @@ message DeleteWebhookRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message TestWebhookRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TestWebhookResponse {
+  bool success = 1;
+  int32 status_code = 2;
+  string error = 3;
+  int64 duration_ms = 4;
+}
+
 service GatewayService {
   rpc CreateWebhook(CreateWebhookRequest) returns (Webhook) {
     option (google.api.http) = { post: "/v1/gateway/webhooks" body: "*" };
@@ -70,5 +81,8 @@ service GatewayService {
   }
   rpc DeleteWebhook(DeleteWebhookRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = { delete: "/v1/gateway/webhooks/{id}" };
+  }
+  rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse) {
+    option (google.api.http) = { post: "/v1/gateway/webhooks/{id}/test" body: "*" };
   }
 }

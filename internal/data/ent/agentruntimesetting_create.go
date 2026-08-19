@@ -1002,6 +1002,34 @@ func (_c *AgentRuntimeSettingCreate) SetNillableL3RecallBudgetTokens(v *int) *Ag
 	return _c
 }
 
+// SetL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field.
+func (_c *AgentRuntimeSettingCreate) SetL2RecallBudgetTokens(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetL2RecallBudgetTokens(v)
+	return _c
+}
+
+// SetNillableL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableL2RecallBudgetTokens(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetL2RecallBudgetTokens(*v)
+	}
+	return _c
+}
+
+// SetL3InjectProvenance sets the "l3_inject_provenance" field.
+func (_c *AgentRuntimeSettingCreate) SetL3InjectProvenance(v bool) *AgentRuntimeSettingCreate {
+	_c.mutation.SetL3InjectProvenance(v)
+	return _c
+}
+
+// SetNillableL3InjectProvenance sets the "l3_inject_provenance" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableL3InjectProvenance(v *bool) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetL3InjectProvenance(*v)
+	}
+	return _c
+}
+
 // SetL4Enabled sets the "l4_enabled" field.
 func (_c *AgentRuntimeSettingCreate) SetL4Enabled(v bool) *AgentRuntimeSettingCreate {
 	_c.mutation.SetL4Enabled(v)
@@ -2373,6 +2401,14 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultL3RecallBudgetTokens
 		_c.mutation.SetL3RecallBudgetTokens(v)
 	}
+	if _, ok := _c.mutation.L2RecallBudgetTokens(); !ok {
+		v := agentruntimesetting.DefaultL2RecallBudgetTokens
+		_c.mutation.SetL2RecallBudgetTokens(v)
+	}
+	if _, ok := _c.mutation.L3InjectProvenance(); !ok {
+		v := agentruntimesetting.DefaultL3InjectProvenance
+		_c.mutation.SetL3InjectProvenance(v)
+	}
 	if _, ok := _c.mutation.L4Enabled(); !ok {
 		v := agentruntimesetting.DefaultL4Enabled
 		_c.mutation.SetL4Enabled(v)
@@ -2886,6 +2922,12 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.L3RecallBudgetTokens(); !ok {
 		return &ValidationError{Name: "l3_recall_budget_tokens", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l3_recall_budget_tokens"`)}
+	}
+	if _, ok := _c.mutation.L2RecallBudgetTokens(); !ok {
+		return &ValidationError{Name: "l2_recall_budget_tokens", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l2_recall_budget_tokens"`)}
+	}
+	if _, ok := _c.mutation.L3InjectProvenance(); !ok {
+		return &ValidationError{Name: "l3_inject_provenance", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l3_inject_provenance"`)}
 	}
 	if _, ok := _c.mutation.L4Enabled(); !ok {
 		return &ValidationError{Name: "l4_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l4_enabled"`)}
@@ -3432,6 +3474,14 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.L3RecallBudgetTokens(); ok {
 		_spec.SetField(agentruntimesetting.FieldL3RecallBudgetTokens, field.TypeInt, value)
 		_node.L3RecallBudgetTokens = value
+	}
+	if value, ok := _c.mutation.L2RecallBudgetTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldL2RecallBudgetTokens, field.TypeInt, value)
+		_node.L2RecallBudgetTokens = value
+	}
+	if value, ok := _c.mutation.L3InjectProvenance(); ok {
+		_spec.SetField(agentruntimesetting.FieldL3InjectProvenance, field.TypeBool, value)
+		_node.L3InjectProvenance = value
 	}
 	if value, ok := _c.mutation.L4Enabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldL4Enabled, field.TypeBool, value)
@@ -4832,6 +4882,36 @@ func (u *AgentRuntimeSettingUpsert) UpdateL3RecallBudgetTokens() *AgentRuntimeSe
 // AddL3RecallBudgetTokens adds v to the "l3_recall_budget_tokens" field.
 func (u *AgentRuntimeSettingUpsert) AddL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsert {
 	u.Add(agentruntimesetting.FieldL3RecallBudgetTokens, v)
+	return u
+}
+
+// SetL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsert) SetL2RecallBudgetTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldL2RecallBudgetTokens, v)
+	return u
+}
+
+// UpdateL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateL2RecallBudgetTokens() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldL2RecallBudgetTokens)
+	return u
+}
+
+// AddL2RecallBudgetTokens adds v to the "l2_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsert) AddL2RecallBudgetTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldL2RecallBudgetTokens, v)
+	return u
+}
+
+// SetL3InjectProvenance sets the "l3_inject_provenance" field.
+func (u *AgentRuntimeSettingUpsert) SetL3InjectProvenance(v bool) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldL3InjectProvenance, v)
+	return u
+}
+
+// UpdateL3InjectProvenance sets the "l3_inject_provenance" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateL3InjectProvenance() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldL3InjectProvenance)
 	return u
 }
 
@@ -7155,6 +7235,41 @@ func (u *AgentRuntimeSettingUpsertOne) AddL3RecallBudgetTokens(v int) *AgentRunt
 func (u *AgentRuntimeSettingUpsertOne) UpdateL3RecallBudgetTokens() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateL3RecallBudgetTokens()
+	})
+}
+
+// SetL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) SetL2RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetL2RecallBudgetTokens(v)
+	})
+}
+
+// AddL2RecallBudgetTokens adds v to the "l2_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) AddL2RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddL2RecallBudgetTokens(v)
+	})
+}
+
+// UpdateL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateL2RecallBudgetTokens() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateL2RecallBudgetTokens()
+	})
+}
+
+// SetL3InjectProvenance sets the "l3_inject_provenance" field.
+func (u *AgentRuntimeSettingUpsertOne) SetL3InjectProvenance(v bool) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetL3InjectProvenance(v)
+	})
+}
+
+// UpdateL3InjectProvenance sets the "l3_inject_provenance" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateL3InjectProvenance() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateL3InjectProvenance()
 	})
 }
 
@@ -9820,6 +9935,41 @@ func (u *AgentRuntimeSettingUpsertBulk) AddL3RecallBudgetTokens(v int) *AgentRun
 func (u *AgentRuntimeSettingUpsertBulk) UpdateL3RecallBudgetTokens() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateL3RecallBudgetTokens()
+	})
+}
+
+// SetL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetL2RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetL2RecallBudgetTokens(v)
+	})
+}
+
+// AddL2RecallBudgetTokens adds v to the "l2_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddL2RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddL2RecallBudgetTokens(v)
+	})
+}
+
+// UpdateL2RecallBudgetTokens sets the "l2_recall_budget_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateL2RecallBudgetTokens() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateL2RecallBudgetTokens()
+	})
+}
+
+// SetL3InjectProvenance sets the "l3_inject_provenance" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetL3InjectProvenance(v bool) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetL3InjectProvenance(v)
+	})
+}
+
+// UpdateL3InjectProvenance sets the "l3_inject_provenance" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateL3InjectProvenance() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateL3InjectProvenance()
 	})
 }
 

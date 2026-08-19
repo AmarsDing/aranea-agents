@@ -39,6 +39,30 @@ func TestRuntimeCapabilityCue_ModeTrimming(t *testing.T) {
 	}
 }
 
+// 方案E（2026-08-20 token 成本审查）：memory self-marking 指令（~40 行
+// <fact> 标签格式说明）只在 L3 事实层启用时注入——<fact> 标记的落点是
+// memory_fact（L3），L3 关闭时指令纯属系统提示常驻浪费。
+func TestBuildSystemPrompt_SelfMarkingGatedByL3(t *testing.T) {
+	mk := func(settings *biz.AgentRuntimeSettings) biz.Agent {
+		return biz.Agent{ID: "a1", AgentDescription: "desc", Settings: settings}
+	}
+	// L3 启用 → 注入 self-marking 指令。
+	withL3 := BuildSystemPrompt(mk(&biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true}), nil, "complete")
+	if !strings.Contains(withL3, "<memory_self_marking>") {
+		t.Fatal("L3 enabled should inject self-marking instructions")
+	}
+	// L3 关闭（记忆总开关仍开）→ 不注入。
+	withoutL3 := BuildSystemPrompt(mk(&biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: false}), nil, "complete")
+	if strings.Contains(withoutL3, "<memory_self_marking>") {
+		t.Fatal("L3 disabled must not inject self-marking instructions")
+	}
+	// 记忆总开关关闭 → 不注入（回归）。
+	off := BuildSystemPrompt(mk(&biz.AgentRuntimeSettings{MemoryEnabled: false, L3Enabled: true}), nil, "complete")
+	if strings.Contains(off, "<memory_self_marking>") {
+		t.Fatal("memory disabled must not inject self-marking instructions")
+	}
+}
+
 func TestIdentityDescriptionForAgent(t *testing.T) {
 	files := []biz.AgentPromptFile{{Name: "IDENTITY.md", Body: "persona"}}
 	ag := biz.Agent{DisplayName: "Bot", SystemPromptMode: "task"}

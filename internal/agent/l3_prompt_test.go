@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -71,6 +72,33 @@ func TestL2MemoryCue_FormatsEpisodes(t *testing.T) {
 	got := L2MemoryCue(context.Background(), l2, ag, policy, "sess-1", "", 0, nil)
 	if got == "" || !containsAll(got, "L2 episodic memory", "Auto-memory consolidation") {
 		t.Fatalf("unexpected cue: %q", got)
+	}
+}
+
+// TestL2MemoryCue_UsesIndependentBudget verifies the L2 recall block packs
+// lines against policy.L2RecallBudgetTokens — not the L3 budget (2026-08-20
+// token-cost review: L2 previously borrowed L3RecallBudgetTokens).
+func TestL2MemoryCue_UsesIndependentBudget(t *testing.T) {
+	mk := func(i int) []byte {
+		return []byte(fmt.Sprintf(`{"title":"episode-%d","outcome_summary":"%s"}`, i, strings.Repeat("事", 150)))
+	}
+	l2 := &memoryL2RecallerMock{rows: [][]byte{mk(1), mk(2), mk(3)}}
+	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
+		MemoryEnabled:   true,
+		L2RecallEnabled: true,
+		L2RecallMax:     3,
+		// L2 预算 200 tokens：header(~47) + 两条 gist(~64+64) 放入，第三条溢出。
+		L2RecallBudgetTokens: 200,
+		// L3 预算充足——若实现仍复用它，三条会全部注入。
+		L3RecallBudgetTokens: 1600,
+	})
+	ag := biz.Agent{ID: "ag1"}
+	got := L2MemoryCue(context.Background(), l2, ag, policy, "sess-1", "", 0, nil)
+	if !strings.Contains(got, "episode-1") {
+		t.Fatalf("episode-1 should be kept, got %q", got)
+	}
+	if strings.Contains(got, "episode-3") {
+		t.Fatalf("L2 budget 200 should truncate before episode-3, got %q", got)
 	}
 }
 

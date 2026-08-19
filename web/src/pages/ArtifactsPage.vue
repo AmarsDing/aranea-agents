@@ -128,8 +128,7 @@
             {{ groupHeaderCaption(group.sessionId) }}
           </span>
           <span class="text-caption text-grey-7">
-            {{ t('artifact.page.groupCount', { count: group.items.length }) }} ·
-            {{ formatBytes(group.totalSize) }}
+            {{ t('artifact.page.groupPageStats', { count: group.items.length, size: formatBytes(group.totalSize) }) }}
           </span>
         </div>
         <AppRegistryTable

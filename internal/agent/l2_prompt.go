@@ -47,7 +47,9 @@ func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, pol
 	b.WriteString(header)
 	// FR-12/P2: pack lines into the recall-block token budget (score-descended
 	// input, "按分截断").
-	packer := newRecallLinePacker(policy.L3RecallBudgetTokens)
+	// 2026-08-20 token 成本审查：L2 块改用独立预算 L2RecallBudgetTokens
+	// （此前复用 L3RecallBudgetTokens，两块互相挤压、无法独立调档）。
+	packer := newRecallLinePacker(policy.L2RecallBudgetTokens)
 	packer.allow(header)
 	lines := 0
 	for i, raw := range rows {

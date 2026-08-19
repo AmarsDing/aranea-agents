@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -138,18 +139,28 @@ func (r *MemoryCueResult) JoinCues() string {
 // memoryCueTruncMarker 是统一预算截断的可见标记（P3-2：块级截断后追加）。
 const memoryCueTruncMarker = "…\n[memory cue truncated by prompt budget]"
 
-// JoinCuesWithBudget returns the combined cue text, truncated to the given
-// character budget (P2-04). budgetChars <= 0 means unlimited.
+// JoinCuesWithTokenBudget returns the combined cue text, truncated to the
+// given token budget (P2-04). budgetTokens <= 0 means unlimited.
+//
+// 2026-08-20 token 成本审查（方案D）：统一预算从字符口径改为 token 口径，
+// 与 L2/L3 召回块预算同一计量单位（此前字符口径与模型真实计费单位偏差大，
+// CJK 文本 4000 chars ≈ 1600+ tokens，预算形同虚设）。估算走共享校准估算器
+// llmcontext.EstimateTokensFromChars。
 //
 // P3-2（2026-08-16）块级截断：超预算时优先整块丢弃尾部块（recall → L1），
 // 避免半条事实/半段图谱进 prompt 产生误导；仅当首个块（profile 卡）自身
 // 就超预算时才退化为按 rune 硬切。
-func (r *MemoryCueResult) JoinCuesWithBudget(budgetChars int) string {
+func (r *MemoryCueResult) JoinCuesWithTokenBudget(budgetTokens int) string {
 	combined := r.JoinCues()
-	if budgetChars <= 0 || len([]rune(combined)) <= budgetChars {
+	if budgetTokens <= 0 {
 		return combined
 	}
-	reserve := len([]rune(memoryCueTruncMarker))
+	combinedRunes := len([]rune(combined))
+	combinedEst := llmcontext.EstimateTokensFromChars(combinedRunes)
+	if combinedEst <= budgetTokens {
+		return combined
+	}
+	reserve := llmcontext.EstimateTokensFromChars(len([]rune(memoryCueTruncMarker)))
 	blocks := make([]string, 0, 3)
 	for _, blk := range []string{r.ProfileCue, r.L1Cue, r.RecallCue} {
 		if blk != "" {
@@ -159,12 +170,12 @@ func (r *MemoryCueResult) JoinCuesWithBudget(budgetChars int) string {
 	kept := make([]string, 0, len(blocks))
 	used := 0
 	for _, blk := range blocks {
-		n := len([]rune(blk))
+		n := llmcontext.EstimateTokensFromChars(len([]rune(blk)))
 		if len(kept) > 0 {
-			n += 2 // "\n\n" 分隔符
+			n += 1 // "\n\n" 分隔符 ≈ 1 token
 		}
 		// +1：输出形态是 join(kept)+"\n"+marker，marker 前的换行也占预算。
-		if used+n+reserve+1 > budgetChars {
+		if used+n+reserve+1 > budgetTokens {
 			break
 		}
 		kept = append(kept, blk)
@@ -173,11 +184,18 @@ func (r *MemoryCueResult) JoinCuesWithBudget(budgetChars int) string {
 	if len(kept) > 0 {
 		return strings.Join(kept, "\n\n") + "\n" + memoryCueTruncMarker
 	}
-	// 首个块就超预算：硬切（按 rune，避免劈开多字节字符）。
+	// 首个块就超预算：硬切。切点按本段文本的真实 token/rune 比率换算，
+	// 避免固定比率对 CJK/英文混排的系统性误判；按 rune 切，不劈开多字节字符。
 	runes := []rune(combined)
-	cut := budgetChars - reserve
+	cut := 0
+	if combinedEst > 0 {
+		cut = (budgetTokens - reserve) * combinedRunes / combinedEst
+	}
 	if cut < 0 {
 		cut = 0
+	}
+	if cut > len(runes) {
+		cut = len(runes)
 	}
 	return string(runes[:cut]) + memoryCueTruncMarker
 }
@@ -239,7 +257,8 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 			ctx = triggerL4Reconsolidation(ctx, deps, result.L4RecalledEntityIDs)
 		}
 		// P2-04: apply unified prompt budget across L1+L2+L3+L4 cues.
-		cue := result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars)
+		// 2026-08-20（方案D）：token 口径，与 L2/L3 召回块预算同一单位。
+		cue := result.JoinCuesWithTokenBudget(policy.MemoryPromptTotalBudgetTokens)
 		// P2 TTFT + DeepSeek system-prefix: append as a user-role cue at the
 		// END so the [system block + history + user] prefix stays cacheable
 		// and the cue does not enter the provider's system prefix.

@@ -159,6 +159,8 @@ export function useArtifactsPage() {
     { label: t('artifact.page.mimeAll'), value: '' },
     { label: t('artifact.page.mimeImage'), value: 'image/' },
     { label: t('artifact.page.mimeText'), value: 'text/' },
+    { label: t('artifact.page.mimeAudio'), value: 'audio/' },
+    { label: t('artifact.page.mimeVideo'), value: 'video/' },
     { label: 'PDF', value: 'application/pdf' },
     { label: 'JSON', value: 'application/json' },
   ]);

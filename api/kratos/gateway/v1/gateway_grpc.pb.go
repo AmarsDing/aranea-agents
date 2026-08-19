@@ -24,6 +24,7 @@ const (
 	GatewayService_ListWebhooks_FullMethodName  = "/kratos.gateway.v1.GatewayService/ListWebhooks"
 	GatewayService_UpdateWebhook_FullMethodName = "/kratos.gateway.v1.GatewayService/UpdateWebhook"
 	GatewayService_DeleteWebhook_FullMethodName = "/kratos.gateway.v1.GatewayService/DeleteWebhook"
+	GatewayService_TestWebhook_FullMethodName   = "/kratos.gateway.v1.GatewayService/TestWebhook"
 )
 
 // GatewayServiceClient is the client API for GatewayService service.
@@ -34,6 +35,7 @@ type GatewayServiceClient interface {
 	ListWebhooks(ctx context.Context, in *ListWebhooksRequest, opts ...grpc.CallOption) (*ListWebhooksResponse, error)
 	UpdateWebhook(ctx context.Context, in *UpdateWebhookRequest, opts ...grpc.CallOption) (*Webhook, error)
 	DeleteWebhook(ctx context.Context, in *DeleteWebhookRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	TestWebhook(ctx context.Context, in *TestWebhookRequest, opts ...grpc.CallOption) (*TestWebhookResponse, error)
 }
 
 type gatewayServiceClient struct {
@@ -84,6 +86,16 @@ func (c *gatewayServiceClient) DeleteWebhook(ctx context.Context, in *DeleteWebh
 	return out, nil
 }
 
+func (c *gatewayServiceClient) TestWebhook(ctx context.Context, in *TestWebhookRequest, opts ...grpc.CallOption) (*TestWebhookResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TestWebhookResponse)
+	err := c.cc.Invoke(ctx, GatewayService_TestWebhook_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GatewayServiceServer is the server API for GatewayService service.
 // All implementations must embed UnimplementedGatewayServiceServer
 // for forward compatibility.
@@ -92,6 +104,7 @@ type GatewayServiceServer interface {
 	ListWebhooks(context.Context, *ListWebhooksRequest) (*ListWebhooksResponse, error)
 	UpdateWebhook(context.Context, *UpdateWebhookRequest) (*Webhook, error)
 	DeleteWebhook(context.Context, *DeleteWebhookRequest) (*emptypb.Empty, error)
+	TestWebhook(context.Context, *TestWebhookRequest) (*TestWebhookResponse, error)
 	mustEmbedUnimplementedGatewayServiceServer()
 }
 
@@ -113,6 +126,9 @@ func (UnimplementedGatewayServiceServer) UpdateWebhook(context.Context, *UpdateW
 }
 func (UnimplementedGatewayServiceServer) DeleteWebhook(context.Context, *DeleteWebhookRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteWebhook not implemented")
+}
+func (UnimplementedGatewayServiceServer) TestWebhook(context.Context, *TestWebhookRequest) (*TestWebhookResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TestWebhook not implemented")
 }
 func (UnimplementedGatewayServiceServer) mustEmbedUnimplementedGatewayServiceServer() {}
 func (UnimplementedGatewayServiceServer) testEmbeddedByValue()                        {}
@@ -207,6 +223,24 @@ func _GatewayService_DeleteWebhook_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GatewayService_TestWebhook_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TestWebhookRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServiceServer).TestWebhook(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayService_TestWebhook_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServiceServer).TestWebhook(ctx, req.(*TestWebhookRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GatewayService_ServiceDesc is the grpc.ServiceDesc for GatewayService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -229,6 +263,10 @@ var GatewayService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteWebhook",
 			Handler:    _GatewayService_DeleteWebhook_Handler,
+		},
+		{
+			MethodName: "TestWebhook",
+			Handler:    _GatewayService_TestWebhook_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

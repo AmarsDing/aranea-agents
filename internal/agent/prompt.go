@@ -65,10 +65,11 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 		}
 	}
 
-	// Memory Self-Marking Instructions: inject only when memory is enabled.
-	// This instructs the agent to mark user-stated facts using <fact> tags
-	// so the backend can persist them immediately to memory_fact.
-	if agent.Settings != nil && agent.Settings.MemoryEnabled {
+	// Memory Self-Marking Instructions: inject only when memory is enabled
+	// AND the L3 fact layer is enabled. The <fact> tags are persisted to
+	// memory_fact (L3) — with L3 off the instructions are pure system-prompt
+	// overhead (2026-08-20 token 成本审查 方案E).
+	if agent.Settings != nil && agent.Settings.MemoryEnabled && agent.Settings.L3Enabled {
 		b.WriteString(memorySelfMarkingInstructions())
 		b.WriteString("\n\n")
 	}

@@ -91,6 +91,8 @@ type AgentRuntimeSettings struct {
 	L3ArchiveThreshold        float64
 	L3MaxPerRecallChars       int
 	L3RecallBudgetTokens      int
+	L2RecallBudgetTokens      int
+	L3InjectProvenance        bool
 	L4Enabled                 bool
 	L4GraphInjectNeighbors    bool
 	L4GraphMaxNeighbors       int
@@ -289,6 +291,8 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L3ArchiveThreshold:       s.L3ArchiveThreshold,
 		L3MaxPerRecallChars:      s.L3MaxPerRecallChars,
 		L3RecallBudgetTokens:     s.L3RecallBudgetTokens,
+		L2RecallBudgetTokens:     s.L2RecallBudgetTokens,
+		L3InjectProvenance:       s.L3InjectProvenance,
 		L4Enabled:                s.L4Enabled,
 		L4GraphInjectNeighbors:   s.L4GraphInjectNeighbors,
 		L4GraphMaxNeighbors:      s.L4GraphMaxNeighbors,

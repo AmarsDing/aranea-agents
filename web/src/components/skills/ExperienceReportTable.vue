@@ -10,7 +10,7 @@
   >
     <template #body-cell-skillName="props">
       <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ props.row.skillName || '-' }}</div>
+        <div class="app-registry-cell-primary">{{ props.row.skillName || props.row.skillId || '-' }}</div>
       </q-td>
     </template>
     <template #body-cell-result="props">

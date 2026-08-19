@@ -92,6 +92,10 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L3MaxPerRecallChars:  1500,
 		// FR-12/P2: 召回块 token 预算默认 standard 档（800）。
 		L3RecallBudgetTokens: MemoryRecallBudgetStandard,
+		// 2026-08-20：L2 独立召回预算，默认与 L3 同档（800）。
+		L2RecallBudgetTokens: MemoryRecallBudgetStandard,
+		// 2026-08-20：provenance 默认开（此前硬编码 true，保持行为一致）。
+		L3InjectProvenance: true,
 
 		// --- Memory L4 ---
 		L4Enabled:              true,

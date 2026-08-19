@@ -41,6 +41,9 @@
                 dense
               />
             </div>
+            <div v-if="selectedEventTypes.length === 0" class="text-caption text-negative q-mt-xs">
+              {{ t('webhooksPage.notifyEventTypesRequired') }}
+            </div>
           </div>
           <div>
             <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldHeaders') }}</div>
@@ -71,7 +74,7 @@
           no-caps
           :label="t('webhooksPage.btnSave')"
           :loading="saving"
-          :disable="!form.name?.trim() || !form.url?.trim()"
+          :disable="!form.name?.trim() || !form.url?.trim() || selectedEventTypes.length === 0"
           @click="$emit('save')"
         />
       </q-card-actions>
@@ -152,7 +155,9 @@ function getPayload(): {
   const headers: Record<string, string> = {};
   for (const entry of headerEntries) {
     const k = entry.key?.trim();
-    if (k) headers[k] = entry.value ?? '';
+    const v = entry.value?.trim();
+    // Skip incomplete rows: empty values would persist and ship as blank headers.
+    if (k && v) headers[k] = v;
   }
   const payload: {
     name: string;

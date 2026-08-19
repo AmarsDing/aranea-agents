@@ -23,12 +23,14 @@ const _ = http.SupportPackageIsVersion1
 const OperationGatewayServiceCreateWebhook = "/kratos.gateway.v1.GatewayService/CreateWebhook"
 const OperationGatewayServiceDeleteWebhook = "/kratos.gateway.v1.GatewayService/DeleteWebhook"
 const OperationGatewayServiceListWebhooks = "/kratos.gateway.v1.GatewayService/ListWebhooks"
+const OperationGatewayServiceTestWebhook = "/kratos.gateway.v1.GatewayService/TestWebhook"
 const OperationGatewayServiceUpdateWebhook = "/kratos.gateway.v1.GatewayService/UpdateWebhook"
 
 type GatewayServiceHTTPServer interface {
 	CreateWebhook(context.Context, *CreateWebhookRequest) (*Webhook, error)
 	DeleteWebhook(context.Context, *DeleteWebhookRequest) (*emptypb.Empty, error)
 	ListWebhooks(context.Context, *ListWebhooksRequest) (*ListWebhooksResponse, error)
+	TestWebhook(context.Context, *TestWebhookRequest) (*TestWebhookResponse, error)
 	UpdateWebhook(context.Context, *UpdateWebhookRequest) (*Webhook, error)
 }
 
@@ -38,6 +40,7 @@ func RegisterGatewayServiceHTTPServer(s *http.Server, srv GatewayServiceHTTPServ
 	r.GET("/v1/gateway/webhooks", _GatewayService_ListWebhooks0_HTTP_Handler(srv))
 	r.PUT("/v1/gateway/webhooks/{id}", _GatewayService_UpdateWebhook0_HTTP_Handler(srv))
 	r.DELETE("/v1/gateway/webhooks/{id}", _GatewayService_DeleteWebhook0_HTTP_Handler(srv))
+	r.POST("/v1/gateway/webhooks/{id}/test", _GatewayService_TestWebhook0_HTTP_Handler(srv))
 }
 
 func _GatewayService_CreateWebhook0_HTTP_Handler(srv GatewayServiceHTTPServer) func(ctx http.Context) error {
@@ -128,10 +131,36 @@ func _GatewayService_DeleteWebhook0_HTTP_Handler(srv GatewayServiceHTTPServer) f
 	}
 }
 
+func _GatewayService_TestWebhook0_HTTP_Handler(srv GatewayServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in TestWebhookRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGatewayServiceTestWebhook)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.TestWebhook(ctx, req.(*TestWebhookRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*TestWebhookResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type GatewayServiceHTTPClient interface {
 	CreateWebhook(ctx context.Context, req *CreateWebhookRequest, opts ...http.CallOption) (rsp *Webhook, err error)
 	DeleteWebhook(ctx context.Context, req *DeleteWebhookRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	ListWebhooks(ctx context.Context, req *ListWebhooksRequest, opts ...http.CallOption) (rsp *ListWebhooksResponse, err error)
+	TestWebhook(ctx context.Context, req *TestWebhookRequest, opts ...http.CallOption) (rsp *TestWebhookResponse, err error)
 	UpdateWebhook(ctx context.Context, req *UpdateWebhookRequest, opts ...http.CallOption) (rsp *Webhook, err error)
 }
 
@@ -176,6 +205,19 @@ func (c *GatewayServiceHTTPClientImpl) ListWebhooks(ctx context.Context, in *Lis
 	opts = append(opts, http.Operation(OperationGatewayServiceListWebhooks))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *GatewayServiceHTTPClientImpl) TestWebhook(ctx context.Context, in *TestWebhookRequest, opts ...http.CallOption) (*TestWebhookResponse, error) {
+	var out TestWebhookResponse
+	pattern := "/v1/gateway/webhooks/{id}/test"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGatewayServiceTestWebhook))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

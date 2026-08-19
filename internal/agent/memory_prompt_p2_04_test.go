@@ -6,16 +6,20 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 )
 
 // --- P2-04: Unified prompt budget tests ---
+// 2026-08-20 token 成本审查（方案D）：统一预算从字符口径改为 token 口径，
+// 与 L2/L3 召回块预算（L2/L3RecallBudgetTokens）同一计量单位；估算走共享
+// 校准估算器 llmcontext.EstimateTokensFromChars（默认 2.5 chars/token）。
 
-func TestJoinCuesWithBudget_NoTruncationWhenUnderLimit(t *testing.T) {
+func TestJoinCuesWithTokenBudget_NoTruncationWhenUnderLimit(t *testing.T) {
 	r := &MemoryCueResult{
 		L1Cue:     "## L1 working memory\nTask: test",
 		RecallCue: "## L3 semantic memory\n- fact one",
 	}
-	got := r.JoinCuesWithBudget(1000)
+	got := r.JoinCuesWithTokenBudget(1000)
 	if strings.Contains(got, "truncated") {
 		t.Fatalf("expected no truncation, got: %q", got)
 	}
@@ -24,12 +28,13 @@ func TestJoinCuesWithBudget_NoTruncationWhenUnderLimit(t *testing.T) {
 	}
 }
 
-func TestJoinCuesWithBudget_TruncatesWhenOverLimit(t *testing.T) {
+func TestJoinCuesWithTokenBudget_TruncatesWhenOverLimit(t *testing.T) {
 	r := &MemoryCueResult{
 		L1Cue:     strings.Repeat("a", 200),
 		RecallCue: strings.Repeat("b", 200),
 	}
-	got := r.JoinCuesWithBudget(100)
+	// 400 runes ≈ 160 tokens；预算 100 tokens → 保住 L1（80 tok）、丢弃 recall。
+	got := r.JoinCuesWithTokenBudget(100)
 	if !strings.Contains(got, "truncated by prompt budget") {
 		t.Fatalf("expected truncation marker, got length=%d", len(got))
 	}
@@ -39,12 +44,12 @@ func TestJoinCuesWithBudget_TruncatesWhenOverLimit(t *testing.T) {
 	}
 }
 
-func TestJoinCuesWithBudget_ZeroBudgetMeansUnlimited(t *testing.T) {
+func TestJoinCuesWithTokenBudget_ZeroBudgetMeansUnlimited(t *testing.T) {
 	r := &MemoryCueResult{
 		L1Cue:     strings.Repeat("x", 5000),
 		RecallCue: strings.Repeat("y", 5000),
 	}
-	got := r.JoinCuesWithBudget(0)
+	got := r.JoinCuesWithTokenBudget(0)
 	if strings.Contains(got, "truncated") {
 		t.Fatalf("expected no truncation with zero budget, got: %q", got)
 	}
@@ -53,12 +58,13 @@ func TestJoinCuesWithBudget_ZeroBudgetMeansUnlimited(t *testing.T) {
 	}
 }
 
-func TestJoinCuesWithBudget_MultiByteSafe(t *testing.T) {
+func TestJoinCuesWithTokenBudget_MultiByteSafe(t *testing.T) {
 	// Use multi-byte (Chinese) characters to verify rune-safe truncation.
+	// 100 runes ≈ 40 tokens；预算 20 tokens → 首块即超预算，走硬切路径。
 	r := &MemoryCueResult{
 		L1Cue: strings.Repeat("你", 100),
 	}
-	got := r.JoinCuesWithBudget(50)
+	got := r.JoinCuesWithTokenBudget(20)
 	if !strings.Contains(got, "truncated by prompt budget") {
 		t.Fatalf("expected truncation marker, got length=%d", len(got))
 	}
@@ -67,15 +73,16 @@ func TestJoinCuesWithBudget_MultiByteSafe(t *testing.T) {
 // P3-2（2026-08-16）块级截断：超预算时整块丢弃尾部块（recall → L1），
 // 保留块完整无缺，不留半句残文误导模型；仅首块自身超预算才退化为硬切
 // （硬切路径由 MultiByteSafe 覆盖）。
-func TestJoinCuesWithBudget_DropsTailBlocksWhole(t *testing.T) {
+func TestJoinCuesWithTokenBudget_DropsTailBlocksWhole(t *testing.T) {
 	r := &MemoryCueResult{
 		ProfileCue: strings.Repeat("p", 20),
 		L1Cue:      strings.Repeat("l", 30),
 		RecallCue:  strings.Repeat("r", 100),
 	}
-	// 预算窗口：触发截断（< 总长 154）且保得住 profile+L1（≥ 52+marker 42）
-	// 但放不下 recall 块（52+2+100+42=196 超预算）。
-	got := r.JoinCuesWithBudget(120)
+	// token 预算窗口：触发截断（总长 154 runes ≈ 61 tok）且保得住
+	// profile(8)+L1(12)+分隔(1)+marker(16)+换行(1)=38 tok，但放不下
+	// recall 块（21+41+16+1=79 tok 超预算）。
+	got := r.JoinCuesWithTokenBudget(48)
 	if strings.Contains(got, "rrr") {
 		t.Fatalf("tail recall block must be dropped whole, got %q", got)
 	}
@@ -85,8 +92,8 @@ func TestJoinCuesWithBudget_DropsTailBlocksWhole(t *testing.T) {
 	if !strings.Contains(got, "truncated by prompt budget") {
 		t.Fatalf("truncation marker missing, got %q", got)
 	}
-	if len([]rune(got)) > 120 {
-		t.Fatalf("output exceeds budget: %d > 120", len([]rune(got)))
+	if est := llmcontext.EstimateTokensFromChars(len([]rune(got))); est > 48 {
+		t.Fatalf("output exceeds token budget: %d > 48", est)
 	}
 }
 

@@ -462,7 +462,13 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		}
 	}
 
-	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.SpiritSessionID, exec.GraphID, executionID, lineageID, resumeValue)
+	// 同 Run 路径（L261）：resume 的事件流也必须脱离请求生命周期——HTTP
+	// handler 返回后请求 ctx 被取消，会把新 runtime 的事件流提前掐断
+	// （executor EmitEventWithTimeout: context canceled），run 被误判为
+	// failed（stream terminated without completion event）。取消语义由
+	// runtime 自带 runCancel 承担（CancelExecution / 下次 Resume 路径）。
+	runCtx := context.WithoutCancel(ctx)
+	runtime, eventCh, err := uc.factory.BuildAndResume(runCtx, ct.GraphBuildConfig, exec.SessionID, exec.SpiritSessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
 		// Roll back status on failure (running → waiting_human via interrupt semantics).
 		exec.execMu.Lock()

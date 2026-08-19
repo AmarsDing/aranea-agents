@@ -122,3 +122,24 @@ func TestWebhookUsecase_Update_AllowsUnchangedName(t *testing.T) {
 		t.Fatalf("keeping own name must succeed: %v", err)
 	}
 }
+
+func TestWebhookUsecase_Create_StripsEmptyHeaderValues(t *testing.T) {
+	repo := &stubWebhookRepo{}
+	uc := NewWebhookUsecase(repo, repo)
+	_, err := uc.Create(context.Background(), WebhookConfig{
+		Name: "Alerts",
+		URL:  "https://example.com/hook",
+		Headers: map[string]string{
+			"X-Keep":  "1",
+			"X-Empty": "",
+			"X-Blank": "   ",
+			"  ":      "orphan",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.created.Headers) != 1 || repo.created.Headers["X-Keep"] != "1" {
+		t.Fatalf("headers=%v", repo.created.Headers)
+	}
+}

@@ -42,10 +42,11 @@ func provideMCPProber() biz.MCPProber {
 	}
 	prober := mcpprobe.NewProber(resolver)
 	// P2: full_handshake probe mode rides the same real-handshake discovery as
-	// the manual/runner paths. cfg.Name may be empty (config_json carries no
-	// server key); prefix stripping is best-effort display sugar only.
+	// the manual/runner paths. serverKey 恒为空串（probe 路径无持久化 server
+	// 上下文，config_json 不含 server key，同 L41 resolver）；prefix stripping
+	// is best-effort display sugar only.
 	prober.SetHandshakeFunc(func(ctx context.Context, cfg mcpconfig.ServerConfig, headers map[string]string) ([]string, error) {
-		return tools.DiscoverMCPToolNames(ctx, tools.MCPServerConfigFromServerConfig(cfg.Name, cfg, headers))
+		return tools.DiscoverMCPToolNames(ctx, tools.MCPServerConfigFromServerConfig("", cfg, headers))
 	})
 	return mcpProberAdapter{prober: prober}
 }

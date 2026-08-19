@@ -30,7 +30,7 @@ func capL2GistLine(line string) string {
 // ("按分截断"), not a hard cut at the first overflow.
 //
 // The resident profile card and pinned preference block bypass this packer
-// (100% injection by design); MemoryPromptTotalBudgetChars stays the outer
+// (100% injection by design); MemoryPromptTotalBudgetTokens stays the outer
 // backstop for the whole memory cue.
 type recallLinePacker struct {
 	remaining int

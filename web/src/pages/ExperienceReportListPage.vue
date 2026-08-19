@@ -54,7 +54,7 @@
     </q-card>
 
     <template v-else>
-      <div class="row q-col-gutter-md q-mb-md">
+      <div v-if="hasAnalytics" class="row q-col-gutter-md q-mb-md">
         <div class="col-12 col-md-6">
           <FailureTagsChart :failure-tags="failureTagsDistribution" />
         </div>
@@ -110,4 +110,9 @@ const {
 
 /** 任一筛选条件生效（Skill ID / 日期范围），用于空态文案区分「无数据」与「无匹配」 */
 const hasActiveFilters = computed(() => Boolean(skillId.value || from.value || to.value));
+
+/** 有失败标签或根因分析数据时才展示统计卡片，避免全成功场景下两个「暂无数据」卡片占空间 */
+const hasAnalytics = computed(
+  () => Object.keys(failureTagsDistribution.value).length > 0 || rootCauseReports.value.length > 0,
+);
 </script>

@@ -413,6 +413,16 @@ func L3RecallBudgetTokens(v int) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldL3RecallBudgetTokens, v))
 }
 
+// L2RecallBudgetTokens applies equality check predicate on the "l2_recall_budget_tokens" field. It's identical to L2RecallBudgetTokensEQ.
+func L2RecallBudgetTokens(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldL2RecallBudgetTokens, v))
+}
+
+// L3InjectProvenance applies equality check predicate on the "l3_inject_provenance" field. It's identical to L3InjectProvenanceEQ.
+func L3InjectProvenance(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldL3InjectProvenance, v))
+}
+
 // L4Enabled applies equality check predicate on the "l4_enabled" field. It's identical to L4EnabledEQ.
 func L4Enabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldL4Enabled, v))
@@ -3416,6 +3426,56 @@ func L3RecallBudgetTokensLT(v int) predicate.AgentRuntimeSetting {
 // L3RecallBudgetTokensLTE applies the LTE predicate on the "l3_recall_budget_tokens" field.
 func L3RecallBudgetTokensLTE(v int) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldL3RecallBudgetTokens, v))
+}
+
+// L2RecallBudgetTokensEQ applies the EQ predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldL2RecallBudgetTokens, v))
+}
+
+// L2RecallBudgetTokensNEQ applies the NEQ predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensNEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldL2RecallBudgetTokens, v))
+}
+
+// L2RecallBudgetTokensIn applies the In predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldIn(FieldL2RecallBudgetTokens, vs...))
+}
+
+// L2RecallBudgetTokensNotIn applies the NotIn predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensNotIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNotIn(FieldL2RecallBudgetTokens, vs...))
+}
+
+// L2RecallBudgetTokensGT applies the GT predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensGT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGT(FieldL2RecallBudgetTokens, v))
+}
+
+// L2RecallBudgetTokensGTE applies the GTE predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensGTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGTE(FieldL2RecallBudgetTokens, v))
+}
+
+// L2RecallBudgetTokensLT applies the LT predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensLT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLT(FieldL2RecallBudgetTokens, v))
+}
+
+// L2RecallBudgetTokensLTE applies the LTE predicate on the "l2_recall_budget_tokens" field.
+func L2RecallBudgetTokensLTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldL2RecallBudgetTokens, v))
+}
+
+// L3InjectProvenanceEQ applies the EQ predicate on the "l3_inject_provenance" field.
+func L3InjectProvenanceEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldL3InjectProvenance, v))
+}
+
+// L3InjectProvenanceNEQ applies the NEQ predicate on the "l3_inject_provenance" field.
+func L3InjectProvenanceNEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldL3InjectProvenance, v))
 }
 
 // L4EnabledEQ applies the EQ predicate on the "l4_enabled" field.

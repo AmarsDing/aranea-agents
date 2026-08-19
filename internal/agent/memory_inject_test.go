@@ -77,6 +77,66 @@ func TestBuildRuntimeMemoryCue_TurnCacheReuse(t *testing.T) {
 	}
 }
 
+// countingL4Store wraps l4EntityStoreMock counting ListEntityRows calls.
+type countingL4Store struct {
+	l4EntityStoreMock
+	calls int
+}
+
+func (m *countingL4Store) ListEntityRows(ctx context.Context, scopeType, scopeID, a, b, c, status, keyword string, limit, offset int32) ([][]byte, int32, error) {
+	m.calls++
+	return m.l4EntityStoreMock.ListEntityRows(ctx, scopeType, scopeID, a, b, c, status, keyword, limit, offset)
+}
+
+// 方案C（2026-08-20 token 成本审查）：L4 块必须随召回块一起进 per-turn
+// 缓存——工具循环续轮（keyword 不变）命中缓存，不得重查 L4 存储，且缓存
+// 结果保留 L4 块与被召回实体 ID（重巩固副作用按 fresh 门控为 once-per-turn）。
+func TestBuildRuntimeMemoryCue_TurnCacheCoversL4(t *testing.T) {
+	store := &countingL4Store{l4EntityStoreMock: l4EntityStoreMock{rows: [][]byte{
+		[]byte(`{"id":"e1","name":"测试用户张三","entity_type":"person","confidence":0.9}`),
+	}}}
+	ag := biz.Agent{ID: "ag-1", Settings: &biz.AgentRuntimeSettings{
+		MemoryEnabled: true,
+		L4Enabled:     true,
+		L0InjectL4:    true,
+	}}
+	deps := TRPCBuilderDeps{}
+	deps.L4Entities = store
+	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	msgs := []trpcmodel.Message{trpcmodel.NewUserMessage("张三是谁")}
+	first, fresh := buildRuntimeMemoryCue(ctx, deps, ag, msgs)
+	if !fresh {
+		t.Fatal("first call in a turn must be a fresh recall")
+	}
+	if !strings.Contains(first.RecallCue, "L4 knowledge graph") {
+		t.Fatalf("fresh cue must contain the L4 block, got %q", first.RecallCue)
+	}
+	if len(first.L4RecalledEntityIDs) != 1 || first.L4RecalledEntityIDs[0] != "e1" {
+		t.Fatalf("fresh recall must report L4 entity IDs, got %v", first.L4RecalledEntityIDs)
+	}
+	if store.calls != 1 {
+		t.Fatalf("fresh recall must query the L4 store exactly once, got %d", store.calls)
+	}
+
+	// 工具循环续轮：keyword 不变 → 命中缓存，L4 存储不得重查。
+	loopMsgs := append(msgs, trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "calling tool"})
+	second, fresh := buildRuntimeMemoryCue(ctx, deps, ag, loopMsgs)
+	if fresh {
+		t.Fatal("tool-loop re-entry with unchanged keyword must hit the turn cache")
+	}
+	if store.calls != 1 {
+		t.Fatalf("cached turn must not re-query the L4 store, got %d calls", store.calls)
+	}
+	if !strings.Contains(second.RecallCue, "L4 knowledge graph") {
+		t.Fatalf("cached cue must replay the L4 block, got %q", second.RecallCue)
+	}
+	if len(second.L4RecalledEntityIDs) != 1 || second.L4RecalledEntityIDs[0] != "e1" {
+		t.Fatalf("cached turn must replay L4 entity IDs, got %v", second.L4RecalledEntityIDs)
+	}
+}
+
 func TestIsMemoryInjectMessage(t *testing.T) {
 	msg := asDynamicCue(memoryInjectCueContent("test cue"))
 	if !isMemoryInjectMessage(msg) {

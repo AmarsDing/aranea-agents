@@ -151,6 +151,10 @@ const (
 	FieldL3MaxPerRecallChars = "l3_max_per_recall_chars"
 	// FieldL3RecallBudgetTokens holds the string denoting the l3_recall_budget_tokens field in the database.
 	FieldL3RecallBudgetTokens = "l3_recall_budget_tokens"
+	// FieldL2RecallBudgetTokens holds the string denoting the l2_recall_budget_tokens field in the database.
+	FieldL2RecallBudgetTokens = "l2_recall_budget_tokens"
+	// FieldL3InjectProvenance holds the string denoting the l3_inject_provenance field in the database.
+	FieldL3InjectProvenance = "l3_inject_provenance"
 	// FieldL4Enabled holds the string denoting the l4_enabled field in the database.
 	FieldL4Enabled = "l4_enabled"
 	// FieldL4GraphInjectNeighbors holds the string denoting the l4_graph_inject_neighbors field in the database.
@@ -378,6 +382,8 @@ var Columns = []string{
 	FieldL3ArchiveThreshold,
 	FieldL3MaxPerRecallChars,
 	FieldL3RecallBudgetTokens,
+	FieldL2RecallBudgetTokens,
+	FieldL3InjectProvenance,
 	FieldL4Enabled,
 	FieldL4GraphInjectNeighbors,
 	FieldL4GraphMaxNeighbors,
@@ -606,6 +612,10 @@ var (
 	DefaultL3MaxPerRecallChars int
 	// DefaultL3RecallBudgetTokens holds the default value on creation for the "l3_recall_budget_tokens" field.
 	DefaultL3RecallBudgetTokens int
+	// DefaultL2RecallBudgetTokens holds the default value on creation for the "l2_recall_budget_tokens" field.
+	DefaultL2RecallBudgetTokens int
+	// DefaultL3InjectProvenance holds the default value on creation for the "l3_inject_provenance" field.
+	DefaultL3InjectProvenance bool
 	// DefaultL4Enabled holds the default value on creation for the "l4_enabled" field.
 	DefaultL4Enabled bool
 	// DefaultL4GraphInjectNeighbors holds the default value on creation for the "l4_graph_inject_neighbors" field.
@@ -1116,6 +1126,16 @@ func ByL3MaxPerRecallChars(opts ...sql.OrderTermOption) OrderOption {
 // ByL3RecallBudgetTokens orders the results by the l3_recall_budget_tokens field.
 func ByL3RecallBudgetTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldL3RecallBudgetTokens, opts...).ToFunc()
+}
+
+// ByL2RecallBudgetTokens orders the results by the l2_recall_budget_tokens field.
+func ByL2RecallBudgetTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldL2RecallBudgetTokens, opts...).ToFunc()
+}
+
+// ByL3InjectProvenance orders the results by the l3_inject_provenance field.
+func ByL3InjectProvenance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldL3InjectProvenance, opts...).ToFunc()
 }
 
 // ByL4Enabled orders the results by the l4_enabled field.

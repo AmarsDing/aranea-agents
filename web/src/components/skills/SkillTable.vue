@@ -185,6 +185,16 @@
             flat
             dense
             round
+            color="primary"
+            icon="assessment"
+            :to="{ path: '/skills/experience-reports', query: { skill_id: props.row.id } }"
+          >
+            <q-tooltip>{{ t('skillsPage.viewReportsTooltip') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
             color="negative"
             icon="delete"
             :disable="!props.row.permissions.can_delete"

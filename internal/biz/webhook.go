@@ -17,6 +17,9 @@ const (
 	WebhookEventRunFailed       = "run.failed"
 	WebhookEventRunCancelled    = "run.cancelled"
 	WebhookEventGraphTaskStatus = "graph.task.status"
+	// WebhookEventTest is the synthetic event sent by the manual "test send"
+	// action (TestWebhook RPC); it is never produced by run lifecycle.
+	WebhookEventTest = "webhook.test"
 )
 
 // WebhookConfig is one outbound callback target for run lifecycle events.
@@ -99,6 +102,10 @@ func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookC
 	if err := validateWebhookConfig(w); err != nil {
 		return WebhookConfig{}, err
 	}
+	if err := uc.ensureNameUnique(ctx, w.Name, ""); err != nil {
+		return WebhookConfig{}, err
+	}
+	w.Headers = sanitizeWebhookHeaders(w.Headers)
 	if strings.TrimSpace(w.ID) == "" {
 		w.ID = uuid.NewString()
 	}
@@ -160,6 +167,12 @@ func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) 
 	if err := validateWebhookConfig(merged); err != nil {
 		return WebhookConfig{}, err
 	}
+	if !strings.EqualFold(merged.Name, cur.Name) {
+		if err := uc.ensureNameUnique(ctx, merged.Name, cur.ID); err != nil {
+			return WebhookConfig{}, err
+		}
+	}
+	merged.Headers = sanitizeWebhookHeaders(merged.Headers)
 	merged.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	return uc.writer.Update(ctx, merged)
 }
@@ -214,6 +227,43 @@ func validateWebhookConfig(w WebhookConfig) error {
 		}
 	}
 	return nil
+}
+
+// ensureNameUnique rejects a webhook name already used by another config
+// (case-insensitive). excludeID skips the record being updated.
+func (uc *WebhookUsecase) ensureNameUnique(ctx context.Context, name, excludeID string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || uc.reader == nil {
+		return nil
+	}
+	items, err := uc.reader.List(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		if items[i].ID == excludeID {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(items[i].Name), name) {
+			return apierror.Conflict("GATEWAY", "webhook 名称 %q 已存在，请换一个名称", name)
+		}
+	}
+	return nil
+}
+
+// sanitizeWebhookHeaders drops entries with blank keys or blank values so
+// that incomplete UI rows never persist (and never ship as empty headers).
+func sanitizeWebhookHeaders(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" || v == "" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 func defaultWebhookEventTypesJSON() string {

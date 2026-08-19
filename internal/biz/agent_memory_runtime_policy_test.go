@@ -2,6 +2,50 @@ package biz
 
 import "testing"
 
+// TestResolveMemoryRuntimePolicy_L2RecallBudgetTokensIndependent verifies the
+// L2 episodic recall block has its own token budget knob, independent from
+// L3RecallBudgetTokens (2026-08-20 token-cost review: L2 previously borrowed
+// the L3 budget field, making the two blocks impossible to tune separately).
+func TestResolveMemoryRuntimePolicy_L2RecallBudgetTokensIndependent(t *testing.T) {
+	p := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
+		MemoryEnabled:        true,
+		L2RecallEnabled:      true,
+		L2RecallBudgetTokens: 400,
+	})
+	if p.L2RecallBudgetTokens != 400 {
+		t.Fatalf("L2RecallBudgetTokens should pass through, got %d", p.L2RecallBudgetTokens)
+	}
+	// Unset → standard tier default.
+	p2 := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
+		MemoryEnabled:   true,
+		L2RecallEnabled: true,
+	})
+	if p2.L2RecallBudgetTokens != MemoryRecallBudgetStandard {
+		t.Fatalf("L2RecallBudgetTokens default should be %d, got %d", MemoryRecallBudgetStandard, p2.L2RecallBudgetTokens)
+	}
+}
+
+// TestResolveMemoryRuntimePolicy_L3InjectProvenanceConfigurable verifies
+// provenance injection is driven by settings instead of being hardcoded on
+// (2026-08-20 token-cost review: the old code set it true unconditionally,
+// despite the comment claiming opt-out was possible).
+func TestResolveMemoryRuntimePolicy_L3InjectProvenanceConfigurable(t *testing.T) {
+	base := func(provenance bool) *AgentRuntimeSettings {
+		return &AgentRuntimeSettings{
+			MemoryEnabled:      true,
+			L3Enabled:          true,
+			L0InjectL3:         true,
+			L3InjectProvenance: provenance,
+		}
+	}
+	if !ResolveMemoryRuntimePolicy(base(true)).L3InjectProvenance {
+		t.Fatal("L3InjectProvenance=true should pass through")
+	}
+	if ResolveMemoryRuntimePolicy(base(false)).L3InjectProvenance {
+		t.Fatal("L3InjectProvenance=false should disable provenance injection")
+	}
+}
+
 func TestResolveMemoryRuntimePolicy_MasterOff(t *testing.T) {
 	p := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
 		MemoryEnabled: false,

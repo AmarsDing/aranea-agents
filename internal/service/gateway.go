@@ -14,11 +14,12 @@ import (
 // GatewayService implements kratos gateway.v1 webhook CRUD.
 type GatewayService struct {
 	v1.UnimplementedGatewayServiceServer
-	wh *biz.WebhookUsecase
+	wh  *biz.WebhookUsecase
+	whd *biz.WebhookDispatcher
 }
 
-func NewGatewayService(wh *biz.WebhookUsecase) *GatewayService {
-	return &GatewayService{wh: wh}
+func NewGatewayService(wh *biz.WebhookUsecase, whd *biz.WebhookDispatcher) *GatewayService {
+	return &GatewayService{wh: wh, whd: whd}
 }
 
 // maskSecret returns a redacted placeholder when a secret is set so that
@@ -172,4 +173,27 @@ func (s *GatewayService) DeleteWebhook(ctx context.Context, req *v1.DeleteWebhoo
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// TestWebhook sends one synthetic webhook.test event to the stored config so
+// operators can verify URL reachability, headers, and signature end-to-end.
+// The delivery outcome is reported in the response, not as a RPC error.
+func (s *GatewayService) TestWebhook(ctx context.Context, req *v1.TestWebhookRequest) (*v1.TestWebhookResponse, error) {
+	if s.whd == nil {
+		return nil, apierror.Internal("GATEWAY", "webhook dispatcher not configured")
+	}
+	w, err := s.wh.Get(ctx, req.GetId())
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound("GATEWAY", "webhook not found")
+		}
+		return nil, err
+	}
+	res := s.whd.TestDeliver(ctx, w)
+	return &v1.TestWebhookResponse{
+		Success:    res.Success,
+		StatusCode: int32(res.StatusCode),
+		Error:      res.Error,
+		DurationMs: res.DurationMs,
+	}, nil
 }

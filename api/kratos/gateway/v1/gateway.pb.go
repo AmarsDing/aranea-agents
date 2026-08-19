@@ -479,6 +479,118 @@ func (x *DeleteWebhookRequest) GetId() string {
 	return ""
 }
 
+type TestWebhookRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestWebhookRequest) Reset() {
+	*x = TestWebhookRequest{}
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestWebhookRequest) ProtoMessage() {}
+
+func (x *TestWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestWebhookRequest.ProtoReflect.Descriptor instead.
+func (*TestWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TestWebhookRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type TestWebhookResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	StatusCode    int32                  `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	DurationMs    int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestWebhookResponse) Reset() {
+	*x = TestWebhookResponse{}
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestWebhookResponse) ProtoMessage() {}
+
+func (x *TestWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestWebhookResponse.ProtoReflect.Descriptor instead.
+func (*TestWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *TestWebhookResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *TestWebhookResponse) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *TestWebhookResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *TestWebhookResponse) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
+}
+
 var File_kratos_gateway_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_kratos_gateway_v1_gateway_proto_rawDesc = "" +
@@ -534,12 +646,22 @@ const file_kratos_gateway_v1_gateway_proto_rawDesc = "" +
 	"\n" +
 	"\b_enabled\",\n" +
 	"\x14DeleteWebhookRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xf7\x03\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"*\n" +
+	"\x12TestWebhookRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x87\x01\n" +
+	"\x13TestWebhookResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
+	"\vstatus_code\x18\x02 \x01(\x05R\n" +
+	"statusCode\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x1f\n" +
+	"\vduration_ms\x18\x04 \x01(\x03R\n" +
+	"durationMs2\x81\x05\n" +
 	"\x0eGatewayService\x12u\n" +
 	"\rCreateWebhook\x12'.kratos.gateway.v1.CreateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/gateway/webhooks\x12}\n" +
 	"\fListWebhooks\x12&.kratos.gateway.v1.ListWebhooksRequest\x1a'.kratos.gateway.v1.ListWebhooksResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/gateway/webhooks\x12z\n" +
 	"\rUpdateWebhook\x12'.kratos.gateway.v1.UpdateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\x1a\x19/v1/gateway/webhooks/{id}\x12s\n" +
-	"\rDeleteWebhook\x12'.kratos.gateway.v1.DeleteWebhookRequest\x1a\x16.google.protobuf.Empty\"!\x82\xd3\xe4\x93\x02\x1b*\x19/v1/gateway/webhooks/{id}BA\n" +
+	"\rDeleteWebhook\x12'.kratos.gateway.v1.DeleteWebhookRequest\x1a\x16.google.protobuf.Empty\"!\x82\xd3\xe4\x93\x02\x1b*\x19/v1/gateway/webhooks/{id}\x12\x87\x01\n" +
+	"\vTestWebhook\x12%.kratos.gateway.v1.TestWebhookRequest\x1a&.kratos.gateway.v1.TestWebhookResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/gateway/webhooks/{id}/testBA\n" +
 	"\x15api.kratos.gateway.v1P\x01Z&aranea-agents/api/kratos/gateway/v1;v1b\x06proto3"
 
 var (
@@ -554,7 +676,7 @@ func file_kratos_gateway_v1_gateway_proto_rawDescGZIP() []byte {
 	return file_kratos_gateway_v1_gateway_proto_rawDescData
 }
 
-var file_kratos_gateway_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kratos_gateway_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_kratos_gateway_v1_gateway_proto_goTypes = []any{
 	(*Webhook)(nil),              // 0: kratos.gateway.v1.Webhook
 	(*CreateWebhookRequest)(nil), // 1: kratos.gateway.v1.CreateWebhookRequest
@@ -562,29 +684,33 @@ var file_kratos_gateway_v1_gateway_proto_goTypes = []any{
 	(*ListWebhooksResponse)(nil), // 3: kratos.gateway.v1.ListWebhooksResponse
 	(*UpdateWebhookRequest)(nil), // 4: kratos.gateway.v1.UpdateWebhookRequest
 	(*DeleteWebhookRequest)(nil), // 5: kratos.gateway.v1.DeleteWebhookRequest
-	nil,                          // 6: kratos.gateway.v1.Webhook.HeadersEntry
-	nil,                          // 7: kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
-	nil,                          // 8: kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
-	(*emptypb.Empty)(nil),        // 9: google.protobuf.Empty
+	(*TestWebhookRequest)(nil),   // 6: kratos.gateway.v1.TestWebhookRequest
+	(*TestWebhookResponse)(nil),  // 7: kratos.gateway.v1.TestWebhookResponse
+	nil,                          // 8: kratos.gateway.v1.Webhook.HeadersEntry
+	nil,                          // 9: kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
+	nil,                          // 10: kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
+	(*emptypb.Empty)(nil),        // 11: google.protobuf.Empty
 }
 var file_kratos_gateway_v1_gateway_proto_depIdxs = []int32{
-	6, // 0: kratos.gateway.v1.Webhook.headers:type_name -> kratos.gateway.v1.Webhook.HeadersEntry
-	7, // 1: kratos.gateway.v1.CreateWebhookRequest.headers:type_name -> kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
-	0, // 2: kratos.gateway.v1.ListWebhooksResponse.items:type_name -> kratos.gateway.v1.Webhook
-	8, // 3: kratos.gateway.v1.UpdateWebhookRequest.headers:type_name -> kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
-	1, // 4: kratos.gateway.v1.GatewayService.CreateWebhook:input_type -> kratos.gateway.v1.CreateWebhookRequest
-	2, // 5: kratos.gateway.v1.GatewayService.ListWebhooks:input_type -> kratos.gateway.v1.ListWebhooksRequest
-	4, // 6: kratos.gateway.v1.GatewayService.UpdateWebhook:input_type -> kratos.gateway.v1.UpdateWebhookRequest
-	5, // 7: kratos.gateway.v1.GatewayService.DeleteWebhook:input_type -> kratos.gateway.v1.DeleteWebhookRequest
-	0, // 8: kratos.gateway.v1.GatewayService.CreateWebhook:output_type -> kratos.gateway.v1.Webhook
-	3, // 9: kratos.gateway.v1.GatewayService.ListWebhooks:output_type -> kratos.gateway.v1.ListWebhooksResponse
-	0, // 10: kratos.gateway.v1.GatewayService.UpdateWebhook:output_type -> kratos.gateway.v1.Webhook
-	9, // 11: kratos.gateway.v1.GatewayService.DeleteWebhook:output_type -> google.protobuf.Empty
-	8, // [8:12] is the sub-list for method output_type
-	4, // [4:8] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	8,  // 0: kratos.gateway.v1.Webhook.headers:type_name -> kratos.gateway.v1.Webhook.HeadersEntry
+	9,  // 1: kratos.gateway.v1.CreateWebhookRequest.headers:type_name -> kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
+	0,  // 2: kratos.gateway.v1.ListWebhooksResponse.items:type_name -> kratos.gateway.v1.Webhook
+	10, // 3: kratos.gateway.v1.UpdateWebhookRequest.headers:type_name -> kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
+	1,  // 4: kratos.gateway.v1.GatewayService.CreateWebhook:input_type -> kratos.gateway.v1.CreateWebhookRequest
+	2,  // 5: kratos.gateway.v1.GatewayService.ListWebhooks:input_type -> kratos.gateway.v1.ListWebhooksRequest
+	4,  // 6: kratos.gateway.v1.GatewayService.UpdateWebhook:input_type -> kratos.gateway.v1.UpdateWebhookRequest
+	5,  // 7: kratos.gateway.v1.GatewayService.DeleteWebhook:input_type -> kratos.gateway.v1.DeleteWebhookRequest
+	6,  // 8: kratos.gateway.v1.GatewayService.TestWebhook:input_type -> kratos.gateway.v1.TestWebhookRequest
+	0,  // 9: kratos.gateway.v1.GatewayService.CreateWebhook:output_type -> kratos.gateway.v1.Webhook
+	3,  // 10: kratos.gateway.v1.GatewayService.ListWebhooks:output_type -> kratos.gateway.v1.ListWebhooksResponse
+	0,  // 11: kratos.gateway.v1.GatewayService.UpdateWebhook:output_type -> kratos.gateway.v1.Webhook
+	11, // 12: kratos.gateway.v1.GatewayService.DeleteWebhook:output_type -> google.protobuf.Empty
+	7,  // 13: kratos.gateway.v1.GatewayService.TestWebhook:output_type -> kratos.gateway.v1.TestWebhookResponse
+	9,  // [9:14] is the sub-list for method output_type
+	4,  // [4:9] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kratos_gateway_v1_gateway_proto_init() }
@@ -600,7 +726,7 @@ func file_kratos_gateway_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_gateway_v1_gateway_proto_rawDesc), len(file_kratos_gateway_v1_gateway_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

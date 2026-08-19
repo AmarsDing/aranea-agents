@@ -92,6 +92,17 @@ export function useWebhooksPage() {
       $q.notify({ type: 'warning', message: t('webhooksPage.notifyUrlInvalid') });
       return;
     }
+    let eventTypes: unknown[] = [];
+    try {
+      const parsed = JSON.parse(payload.event_types_json ?? '[]');
+      if (Array.isArray(parsed)) eventTypes = parsed;
+    } catch {
+      /* fall through to the empty check below */
+    }
+    if (eventTypes.length === 0) {
+      $q.notify({ type: 'warning', message: t('webhooksPage.notifyEventTypesRequired') });
+      return;
+    }
     saving.value = true;
     const body = {
       name: payload.name.trim(),

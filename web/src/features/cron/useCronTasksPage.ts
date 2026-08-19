@@ -31,7 +31,6 @@ export function useCronTasksPage() {
     { label: '已暂停', value: 'paused' },
     { label: '已失败', value: 'dead' },
   ];
-  const activeCount = computed(() => rows.value.filter((row) => row.enabled).length);
   const page = ref(1);
   const pageSize = ref(12);
   const filteredRows = computed(() => {
@@ -57,6 +56,8 @@ export function useCronTasksPage() {
       );
     });
   });
+  // 与 filteredRows 同口径：汇总行两个数字都描述当前筛选结果，避免「筛出 1 条却显示全局 N 个启用」的误读
+  const activeCount = computed(() => filteredRows.value.filter((row) => row.enabled).length);
   const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
   const pagedRows = computed(() => {
     const start = (page.value - 1) * pageSize.value;

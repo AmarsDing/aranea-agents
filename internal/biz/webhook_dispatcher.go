@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -101,6 +102,76 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 			d.postOne(bg, sessionID, eventType, cfg, body)
 		}
 	})
+}
+
+// WebhookTestResult reports the outcome of one manual test delivery.
+type WebhookTestResult struct {
+	Success    bool
+	StatusCode int
+	Error      string
+	DurationMs int64
+}
+
+// TestDeliver sends a single synthetic webhook.test event to cfg.URL with no
+// retries, backing the manual "test send" action (TestWebhook RPC). It applies
+// the same SSRF guard, custom headers, and HMAC signature as real deliveries,
+// so a green result means the stored config is genuinely deliverable.
+func (d *WebhookDispatcher) TestDeliver(ctx context.Context, cfg WebhookConfig) WebhookTestResult {
+	start := time.Now()
+	res := WebhookTestResult{}
+	finish := func() WebhookTestResult {
+		res.DurationMs = time.Since(start).Milliseconds()
+		return res
+	}
+	if d == nil || d.client == nil {
+		res.Error = "webhook dispatcher not configured"
+		return finish()
+	}
+	target := strings.TrimSpace(cfg.URL)
+	if err := webhookurl.ValidateNotifyURL(target); err != nil {
+		res.Error = err.Error()
+		return finish()
+	}
+	body, err := json.Marshal(WebhookPayload{
+		EventType: WebhookEventTest,
+		RunID:     "test-run",
+		SessionID: "test-session",
+		Status:    "test",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Data:      map[string]any{"webhook_id": cfg.ID, "trigger": "manual"},
+	})
+	if err != nil {
+		res.Error = err.Error()
+		return finish()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+	if err != nil {
+		res.Error = err.Error()
+		return finish()
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Aranea-Gateway-Webhook/1.0")
+	for k, v := range cfg.Headers {
+		if strings.TrimSpace(k) != "" {
+			req.Header.Set(k, v)
+		}
+	}
+	if secret := strings.TrimSpace(cfg.Secret); secret != "" {
+		outboundwebhook.AddSignatureHeaders(req, secret, body)
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		res.Error = err.Error()
+		return finish()
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	res.StatusCode = resp.StatusCode
+	res.Success = resp.StatusCode < 300
+	if !res.Success {
+		res.Error = fmt.Sprintf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+	return finish()
 }
 
 func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID, eventType string, cfg WebhookConfig, body []byte) {

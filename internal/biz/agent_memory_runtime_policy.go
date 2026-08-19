@@ -13,7 +13,7 @@ const maxL3RecallLimit = 20
 // packed score-descending and the block stops growing once the estimated
 // tokens exceed the configured budget. The resident profile card and pinned
 // preference block are NOT gated by this budget (100% injection by design);
-// MemoryPromptTotalBudgetChars remains the outer backstop.
+// MemoryPromptTotalBudgetTokens remains the outer backstop.
 const (
 	MemoryRecallBudgetCompact  = 400
 	MemoryRecallBudgetStandard = 800
@@ -54,6 +54,10 @@ type MemoryRuntimePolicy struct {
 	L3MinScorePassive      float64
 	L3MaxPerRecallChars    int
 	L3RecallBudgetTokens   int
+	// L2RecallBudgetTokens is the standalone L2 episodic recall block budget
+	// (2026-08-20: split from L3RecallBudgetTokens). Same tier semantics:
+	// 400/800/1600, 0 → default standard (800).
+	L2RecallBudgetTokens int
 	L3RecallScopes         []string
 	L0L3MaxChunks          int
 	L0L4MaxPaths           int
@@ -92,11 +96,14 @@ type MemoryRuntimePolicy struct {
 	// this value are skipped. Default: 0.3.
 	EpisodeMinImportance float64
 
-	// MemoryPromptTotalBudgetChars (P2-04) is the unified character ceiling
-	// for the combined memory inject (L1 + L2 + L3 + L4 cues). When the
-	// total exceeds this budget, the cue is truncated to fit. 0 = unlimited.
-	// Default: 4000.
-	MemoryPromptTotalBudgetChars int
+	// MemoryPromptTotalBudgetTokens (P2-04) is the unified token ceiling for
+	// the combined memory inject (L1 + L2 + L3 + L4 cues). When the total
+	// exceeds this budget, the cue is truncated to fit. 0 = unlimited.
+	// Default: 1600.
+	// 2026-08-20 token 成本审查（方案D）：从字符口径（4000 chars）改为 token
+	// 口径，与 L2/L3 召回块预算同一计量单位；1600 tokens ≈ 原 4000 chars 的
+	// 有效上限（默认 2.5 chars/token）。
+	MemoryPromptTotalBudgetTokens int
 	// L3InjectProvenance (P2-04) controls whether L3 facts and composite
 	// recall hits include provenance metadata (fact ID, source session,
 	// confidence, version) in the prompt text. Default: true.
@@ -132,6 +139,7 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		L3MinScorePassive:      0,
 		L3MaxPerRecallChars:    settings.L3MaxPerRecallChars,
 		L3RecallBudgetTokens:   settings.L3RecallBudgetTokens,
+		L2RecallBudgetTokens:   settings.L2RecallBudgetTokens,
 		L3RecallScopes:         parseMemoryScopeList(settings.L3RecallScopesJSON),
 		L0L3MaxChunks:          settings.L0L3MaxChunks,
 		L0L4MaxPaths:           settings.L0L4MaxPaths,
@@ -174,6 +182,9 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 	if p.L3RecallBudgetTokens <= 0 {
 		p.L3RecallBudgetTokens = MemoryRecallBudgetStandard
 	}
+	if p.L2RecallBudgetTokens <= 0 {
+		p.L2RecallBudgetTokens = MemoryRecallBudgetStandard
+	}
 	if p.L1FieldMaxChars <= 0 {
 		p.L1FieldMaxChars = 2048 * 4
 	}
@@ -202,10 +213,13 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		p.L3RecallScopes = []string{"agent", "team"}
 	}
 	// P2-04: unified prompt budget and provenance defaults.
-	if p.MemoryPromptTotalBudgetChars <= 0 {
-		p.MemoryPromptTotalBudgetChars = 4000
+	if p.MemoryPromptTotalBudgetTokens <= 0 {
+		p.MemoryPromptTotalBudgetTokens = 1600
 	}
-	p.L3InjectProvenance = true // default on; opt-out only via explicit false
+	// 2026-08-20 token 成本审查：provenance 改为设置驱动（此前无条件 true，
+	// 注释声称可 opt-out 但并无 settings 映射）。默认 true 由
+	// DefaultAgentRuntimeSettings + Ent schema default + proto optional 兜底。
+	p.L3InjectProvenance = settings.L3InjectProvenance
 	p.WriteConsolidate = p.WriteL3Facts || p.WriteL2Episode || p.WriteL4Graph
 	return p
 }

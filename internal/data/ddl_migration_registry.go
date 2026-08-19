@@ -390,6 +390,12 @@ var ddlMigrations = []ddlMigration{
 	// 摘要）截成 "exit status 255: exit statu..."，详情永久丢失。扩到 512（与 ent
 	// schema 同步）；PG varchar 加宽仅目录变更、无损，SQLite 不校验长度直接跳过。
 	{Version: 20261231, Name: "si_run_closed_reason_widen", Func: ddlSIRunClosedReasonWiden},
+	// 20261232 agent_runtime_token_budget（2026-08-20 token 成本审查）：
+	// 方案A 新增 l2_recall_budget_tokens（L2 独立召回预算，此前复用
+	// l3_recall_budget_tokens，两块互相挤占）；方案B 新增 l3_inject_provenance
+	// （L3 事实 provenance 注入开关，此前硬编码 true 无法关闭省 token）。
+	// ent schema 默认值已同步（800 / true）；存量库补列，默认保持旧行为。
+	{Version: 20261232, Name: "agent_runtime_token_budget", SQL: "sql/migrations/20261232_agent_runtime_token_budget.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
