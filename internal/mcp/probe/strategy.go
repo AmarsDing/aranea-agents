@@ -19,6 +19,12 @@ const (
 
 type TokenResolver func(ctx context.Context, auth config.AuthConfig) (string, error)
 
+// HandshakeFunc performs a real MCP handshake (initialize + tools/list) and
+// returns the exposed tool names. headers carry resolved auth (nil for
+// stdio). Injected once at startup via Prober.SetHandshakeFunc; production
+// wires it to internal/tools.DiscoverMCPToolNames.
+type HandshakeFunc func(ctx context.Context, cfg config.ServerConfig, headers map[string]string) ([]string, error)
+
 type ProbeStrategy interface {
 	Name() string
 	Probe(ctx context.Context, cfg config.ServerConfig) TestResult
@@ -127,18 +133,99 @@ func (a *AuthAwareProbe) buildAuthHeaders(cfg config.ServerConfig, token string)
 	return headers
 }
 
+// resolveHeaders returns the effective request headers with auth applied;
+// without auth config it returns the static headers unchanged.
+func (a *AuthAwareProbe) resolveHeaders(ctx context.Context, cfg config.ServerConfig) (map[string]string, error) {
+	hasAuth := cfg.Auth.Type != "" || cfg.Auth.APIKey != "" || cfg.Auth.AccessToken != "" || cfg.Auth.RefreshToken != ""
+	if !hasAuth {
+		return cfg.Headers, nil
+	}
+	token, err := a.resolveToken(ctx, cfg.Auth)
+	if err != nil {
+		return nil, err
+	}
+	return a.buildAuthHeaders(cfg, token), nil
+}
+
+// ResolveHeaders exports the auth-aware header resolution for one-shot
+// callers outside the probe pipeline (e.g. the wire-time tool discoverer
+// adapter), so handshake auth stays identical to probe auth.
+func ResolveHeaders(ctx context.Context, resolver TokenResolver, cfg config.ServerConfig) (map[string]string, error) {
+	return NewAuthAwareProbe(resolver).resolveHeaders(ctx, cfg)
+}
+
+// maxProbeToolNames caps tool names embedded in the probe result Details so a
+// server exposing hundreds of tools cannot bloat the API response.
+const maxProbeToolNames = 50
+
+// FullHandshakeProbe first runs the auth-aware connectivity probe (fast-fail
+// on unreachable/misconfigured servers and SSRF re-validation), then performs
+// a real MCP handshake (initialize + tools/list) via the injected
+// HandshakeFunc. The discovered tool count/names ride in Details so callers
+// can persist them without a second connection.
+type FullHandshakeProbe struct {
+	inner     *AuthAwareProbe
+	handshake HandshakeFunc
+}
+
+func (f *FullHandshakeProbe) Name() string { return string(ProbeModeFullHandshake) }
+
+func (f *FullHandshakeProbe) Probe(ctx context.Context, cfg config.ServerConfig) TestResult {
+	if f.handshake == nil {
+		return TestResult{OK: false, Status: "error", Message: "full_handshake 探针未配置握手能力（服务未注入 HandshakeFunc）"}
+	}
+	inner := f.inner.Probe(ctx, cfg)
+	if !inner.OK {
+		return inner
+	}
+	headers, err := f.inner.resolveHeaders(ctx, cfg)
+	if err != nil {
+		return TestResult{OK: false, Status: "auth_failed", Message: "鉴权凭据解析失败: " + err.Error()}
+	}
+	names, err := f.handshake(ctx, cfg, headers)
+	if err != nil {
+		return TestResult{
+			OK:      false,
+			Status:  "error",
+			Message: err.Error(),
+			Details: map[string]any{"phase": "handshake"},
+		}
+	}
+	stored := names
+	if len(stored) > maxProbeToolNames {
+		stored = stored[:maxProbeToolNames]
+	}
+	return TestResult{
+		OK:      true,
+		Status:  "ok",
+		Message: fmt.Sprintf("握手成功，发现 %d 个工具", len(names)),
+		Details: map[string]any{"tool_count": len(names), "tool_names": stored},
+	}
+}
+
 type Prober struct {
 	strategies map[ProbeMode]ProbeStrategy
+	authAware  *AuthAwareProbe
+	handshake  HandshakeFunc
 }
 
 func NewProber(tokenResolver TokenResolver) *Prober {
 	connectivity := ConnectivityProbe{}
+	authAware := NewAuthAwareProbe(tokenResolver)
 	return &Prober{
 		strategies: map[ProbeMode]ProbeStrategy{
 			ProbeModeConnectivity: connectivity,
-			ProbeModeAuthAware:    NewAuthAwareProbe(tokenResolver),
+			ProbeModeAuthAware:    authAware,
 		},
+		authAware: authAware,
 	}
+}
+
+// SetHandshakeFunc injects the real-handshake capability used by the
+// full_handshake probe mode. Must be called once at startup before serving;
+// not concurrency-safe by design (wire-time configuration).
+func (p *Prober) SetHandshakeFunc(f HandshakeFunc) {
+	p.handshake = f
 }
 
 func (p *Prober) Evaluate(ctx context.Context, enabled bool, configJSON string) TestResult {
@@ -154,7 +241,7 @@ func (p *Prober) Evaluate(ctx context.Context, enabled bool, configJSON string) 
 		mode = ProbeModeConnectivity
 	}
 	if mode == ProbeModeFullHandshake {
-		return TestResult{OK: false, Status: "error", Message: "full_handshake 探针模式尚未实现，请使用 connectivity 或 auth_aware"}
+		return (&FullHandshakeProbe{inner: p.authAware, handshake: p.handshake}).Probe(ctx, cfg)
 	}
 	strategy, ok := p.strategies[mode]
 	if !ok {

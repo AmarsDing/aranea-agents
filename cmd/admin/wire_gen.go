@@ -449,7 +449,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	scopeAgentLookup := biz.NewScopeAgentLookup(agentRepository)
 	pluginUsecase := plugin.NewUsecase(pluginRepo, runRepo, scopeAgentLookup)
 	pluginService := service.NewPluginServiceWithBootstrap(pluginUsecase, plugintrpcRuntime, loggatewayLogger, monitorBus)
-	mcpServerService := service.NewMCPServerService(mcpServerUsecase, monitorUsecase, loggatewayLogger, monitorBus)
+	mcpServerService := service.NewMCPServerService(mcpServerUsecase, monitorUsecase, agentUsecase, loggatewayLogger, monitorBus)
 	skillHealthReader := data.NewSkillHealthRepo(dataData)
 	skillHealthUsecase := biz.NewSkillHealthUsecase(skillHealthReader, loggatewayLogger)
 	v := service.ProvideSkillResolveRootFn(systemSettingRepo)
@@ -898,8 +898,12 @@ func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
+// P2: the real-handshake tool discoverer is wired here too (setter keeps the
+// wire graph unchanged).
 func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, credRepo biz.MCPServerUserCredentialRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor, crypto *biz.CredentialCrypto) *biz.MCPServerUsecase {
-	return biz.NewMCPServerUsecase(repo, credRepo, prober, metaEdit, crypto)
+	uc := biz.NewMCPServerUsecase(repo, credRepo, prober, metaEdit, crypto)
+	uc.SetToolDiscoverer(mcpToolDiscovererAdapter{})
+	return uc
 }
 
 func provideRunRegistry(lg loggateway.Logger) *runtime.RunRegistry {
@@ -2791,6 +2795,7 @@ func provideSkillEvolutionOrchestrator(
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
+
 	orch.SetExpirationResolver(func(ctx context.Context, targetType, targetID string) time.Duration {
 		if targetType != string(biz.EvolutionTargetAgent) || strings.TrimSpace(targetID) == "" {
 			return 0

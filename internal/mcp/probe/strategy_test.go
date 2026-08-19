@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/mcp/config"
@@ -200,14 +201,81 @@ func TestProber_AuthAwareMode_Stdio(t *testing.T) {
 	}
 }
 
-func TestProber_FullHandshakeNotImplemented(t *testing.T) {
+func TestProber_FullHandshakeNotConfigured(t *testing.T) {
 	p := NewProber(nil)
-	result := p.Evaluate(context.Background(), true, `{"transport":"stdio","probe_mode":"full_handshake"}`)
+	// stdio 需要可执行 command 才能过内层连通性校验；用一个 PATH 中必然
+	// 存在的命令（go tool 链自带的 compile 不稳定，用当前测试二进制不可行，
+	// 直接选 "go"——测试机必有，因为测试就是 go 跑的）。
+	result := p.Evaluate(context.Background(), true, `{"transport":"stdio","command":"go","probe_mode":"full_handshake"}`)
 	if result.OK {
-		t.Error("expected OK=false for full_handshake (not implemented)")
+		t.Error("expected OK=false when handshake func not injected")
 	}
 	if result.Status != "error" {
 		t.Errorf("expected status=error, got %q", result.Status)
+	}
+	if !strings.Contains(result.Message, "HandshakeFunc") {
+		t.Errorf("expected message to mention HandshakeFunc, got %q", result.Message)
+	}
+}
+
+func TestProber_FullHandshakeSuccess(t *testing.T) {
+	p := NewProber(nil)
+	var gotHeaders map[string]string
+	p.SetHandshakeFunc(func(_ context.Context, _ config.ServerConfig, headers map[string]string) ([]string, error) {
+		gotHeaders = headers
+		return []string{"search", "fetch"}, nil
+	})
+	result := p.Evaluate(context.Background(), true, `{"transport":"stdio","command":"go","probe_mode":"full_handshake"}`)
+	if !result.OK {
+		t.Fatalf("expected OK=true, got message: %s", result.Message)
+	}
+	if result.Status != "ok" {
+		t.Errorf("expected status=ok, got %q", result.Status)
+	}
+	if !strings.Contains(result.Message, "2 个工具") {
+		t.Errorf("expected message to mention tool count, got %q", result.Message)
+	}
+	if result.Details["tool_count"] != 2 {
+		t.Errorf("tool_count=%v", result.Details["tool_count"])
+	}
+	names, ok := result.Details["tool_names"].([]string)
+	if !ok || len(names) != 2 || names[0] != "search" {
+		t.Errorf("tool_names=%v", result.Details["tool_names"])
+	}
+	_ = gotHeaders
+}
+
+func TestProber_FullHandshakeInnerProbeFails(t *testing.T) {
+	p := NewProber(nil)
+	called := false
+	p.SetHandshakeFunc(func(_ context.Context, _ config.ServerConfig, _ map[string]string) ([]string, error) {
+		called = true
+		return nil, nil
+	})
+	// stdio 无 command → 内层连通性校验失败，握手不应被调用。
+	result := p.Evaluate(context.Background(), true, `{"transport":"stdio","probe_mode":"full_handshake"}`)
+	if result.OK {
+		t.Error("expected OK=false when inner probe fails")
+	}
+	if called {
+		t.Error("handshake must not run when inner probe fails")
+	}
+}
+
+func TestProber_FullHandshakeHandshakeFails(t *testing.T) {
+	p := NewProber(nil)
+	p.SetHandshakeFunc(func(_ context.Context, _ config.ServerConfig, _ map[string]string) ([]string, error) {
+		return nil, context.DeadlineExceeded
+	})
+	result := p.Evaluate(context.Background(), true, `{"transport":"stdio","command":"go","probe_mode":"full_handshake"}`)
+	if result.OK {
+		t.Error("expected OK=false when handshake fails")
+	}
+	if result.Status != "error" {
+		t.Errorf("expected status=error, got %q", result.Status)
+	}
+	if result.Details["phase"] != "handshake" {
+		t.Errorf("expected phase=handshake detail, got %v", result.Details)
 	}
 }
 

@@ -14,7 +14,8 @@ import (
 )
 
 // visionExtractTimeout 是单次图片理解调用的总超时。
-const visionExtractTimeout = 60 * time.Second
+// 本地 CPU 视觉推理（如 Ollama qwen2.5vl 无 GPU）单张大图可达数分钟，60s 会永久超时循环。
+const visionExtractTimeout = 300 * time.Second
 
 // VisionExtractor 使用多模态 LLM 将图片理解结果输出为结构化 Markdown。
 type VisionExtractor struct {

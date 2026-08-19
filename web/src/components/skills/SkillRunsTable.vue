@@ -6,6 +6,7 @@
     :columns="SKILL_RUNS_TABLE_COLUMNS"
     :loading="loading"
     hide-pagination
+    :pagination="{ rowsPerPage: 0 }"
     @row-click="onRowClick"
   >
     <template #body-cell-time="props">

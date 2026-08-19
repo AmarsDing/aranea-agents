@@ -17,7 +17,18 @@ const (
 	KeyLastHealthAlertAt = "last_health_alert_at"
 	KeyReconnectCount    = "reconnect_count"
 	KeyLastReconnectAt   = "last_reconnect_at"
+	// Tool discovery keys (P2): written by real MCP handshake (initialize +
+	// tools/list), orthogonal to health_* — discovery failure never flips
+	// health_status.
+	KeyToolCount          = "tool_count"
+	KeyToolNames          = "tool_names"
+	KeyToolsDiscoveredAt  = "tools_discovered_at"
+	KeyToolsErrorMessage  = "tools_error_message"
 )
+
+// maxStoredToolNames caps tool_names persisted into metadata_json so a
+// server exposing hundreds of tools cannot bloat the row.
+const maxStoredToolNames = 50
 
 // Parse unmarshals metadata_json; invalid JSON yields an empty map.
 func Parse(raw string) map[string]any {
@@ -104,6 +115,61 @@ func ApplyReconnect(m map[string]any, at time.Time) map[string]any {
 		out[KeyReconnectCount] = float64(1)
 	}
 	return out
+}
+
+// ApplyToolDiscovery returns a new map with a successful tool discovery merged:
+// tool_count (the server's full exposed count), tool_names (capped at
+// maxStoredToolNames — callers may pass a pre-capped slice while count stays
+// exact), tools_discovered_at; any previous tools_error_message is cleared.
+// The input map is not modified. tool_count is stored as float64 to match
+// JSON unmarshal semantics (Parse).
+func ApplyToolDiscovery(m map[string]any, count int, names []string, at time.Time) map[string]any {
+	out := cloneMap(m)
+	stored := make([]any, 0, minInt(len(names), maxStoredToolNames))
+	for i, n := range names {
+		if i >= maxStoredToolNames {
+			break
+		}
+		stored = append(stored, n)
+	}
+	out[KeyToolCount] = float64(count)
+	out[KeyToolNames] = stored
+	out[KeyToolsDiscoveredAt] = at.UTC().Format(time.RFC3339)
+	delete(out, KeyToolsErrorMessage)
+	return out
+}
+
+// ApplyToolDiscoveryError returns a new map recording a failed discovery
+// attempt: tools_error_message + tools_discovered_at (the attempt timestamp
+// feeds the refresh cadence so a broken server is not re-probed every health
+// tick). Previously discovered tool_count/tool_names are preserved — stale
+// data plus a visible error is friendlier than blanking the column.
+func ApplyToolDiscoveryError(m map[string]any, errMsg string, at time.Time) map[string]any {
+	out := cloneMap(m)
+	out[KeyToolsErrorMessage] = errMsg
+	out[KeyToolsDiscoveredAt] = at.UTC().Format(time.RFC3339)
+	return out
+}
+
+// ToolsDiscoveryStale reports whether the stored discovery is missing or older
+// than after. Servers never discovered (empty timestamp) are stale.
+func ToolsDiscoveryStale(m map[string]any, now time.Time, after time.Duration) bool {
+	raw := strings.TrimSpace(metaString(m[KeyToolsDiscoveredAt]))
+	if raw == "" {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return true
+	}
+	return now.Sub(t) >= after
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func metaString(v any) string {

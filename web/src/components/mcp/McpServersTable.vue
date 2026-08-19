@@ -46,12 +46,22 @@
 
     <template #body-cell-health="props">
       <q-td :props="props">
-        <AppRegistryHoverTip :text="rowMetadata(props.row).last_error_message">
-          <q-chip v-if="rowMetadata(props.row).health_status" dense outline :color="healthColor(props.row)">
-            {{ healthLabel(props.row) }}
-          </q-chip>
-          <span v-else class="text-grey-7">—</span>
-        </AppRegistryHoverTip>
+        <div class="column items-start q-gutter-xs">
+          <AppRegistryHoverTip :text="rowMetadata(props.row).last_error_message">
+            <q-chip v-if="rowMetadata(props.row).health_status" dense outline :color="healthColor(props.row)">
+              {{ healthLabel(props.row) }}
+            </q-chip>
+            <span v-else class="text-grey-7">—</span>
+          </AppRegistryHoverTip>
+          <span
+            v-if="toolCountLabel(props.row)"
+            class="mcp-tool-count"
+            :class="{ 'mcp-tool-count--error': toolDiscoveryFailed(props.row) }"
+          >
+            {{ toolCountLabel(props.row) }}
+            <q-tooltip>{{ toolCountTooltip(props.row) }}</q-tooltip>
+          </span>
+        </div>
       </q-td>
     </template>
 
@@ -185,6 +195,39 @@ function healthLabel(row: McpServerRow) {
   if (status === 'degraded') return t('mcpPage.statusDegraded');
   return status || '';
 }
+
+// --- P2 工具发现展示（metadata.tool_*，与 health_* 正交） --------------------
+
+/** 发现失败 = 无有效计数但有错误记录（保留 last-good 时不算失败）。 */
+function toolDiscoveryFailed(row: McpServerRow) {
+  const m = rowMetadata(row);
+  return typeof m.tool_count !== 'number' && !!m.tools_error_message;
+}
+
+function toolCountLabel(row: McpServerRow) {
+  const m = rowMetadata(row);
+  if (typeof m.tool_count === 'number') return `${m.tool_count} 工具`;
+  if (m.tools_error_message) return '发现失败';
+  return '';
+}
+
+function toolCountTooltip(row: McpServerRow) {
+  const m = rowMetadata(row);
+  if (typeof m.tool_count === 'number') {
+    const names = Array.isArray(m.tool_names) ? m.tool_names.filter((n): n is string => typeof n === 'string') : [];
+    const shown = names.slice(0, 10).join('、');
+    const suffix = m.tool_count > names.length || names.length > 10 ? ` 等 ${m.tool_count} 个` : '';
+    const list = shown ? `：${shown}${names.length > 10 ? '…' : ''}${suffix}` : '';
+    const at = m.tools_discovered_at ? `（最近发现：${formatDateTime(m.tools_discovered_at)}）` : '';
+    return `已发现 ${m.tool_count} 个工具${list}${at}`;
+  }
+  return m.tools_error_message ? `工具发现失败：${m.tools_error_message}` : '';
+}
+
+function formatDateTime(value: string) {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
+}
 </script>
 
 <style scoped>
@@ -195,5 +238,16 @@ function healthLabel(row: McpServerRow) {
   border: 1px solid var(--glass-border);
   border-radius: 6px;
   padding: 1px 6px;
+}
+
+.mcp-tool-count {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+  cursor: default;
+}
+
+.mcp-tool-count--error {
+  color: var(--q-warning);
 }
 </style>

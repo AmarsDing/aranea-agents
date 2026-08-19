@@ -118,24 +118,30 @@ func siOutcomeFixture(t *testing.T, pending []SelfImprovementRun, mutate func(*S
 // ── tests ────────────────────────────────────────────────────────────────────
 
 // verdict 映射（D8）：closed→effective / rolled_back→regressed / 其余终态→neutral。
+// 2026-08-19：closed 但 record_only（低置信度仅记录、补丁未应用）→ neutral，
+// 否则有效率指标被从未生效的补丁虚增。
 func TestSIOutcome_VerdictMapping(t *testing.T) {
+	recordOnlyRun := siOutcomeRun("run-recordonly", RunStatusClosed, TriggerSourcePerfBottleneck)
+	recordOnlyRun.ClosedReason = "record_only: confidence 0.35 < 0.50"
 	pending := []SelfImprovementRun{
 		siOutcomeRun("run-closed", RunStatusClosed, TriggerSourceErrorCluster),
 		siOutcomeRun("run-rolled", RunStatusRolledBack, TriggerSourcePerfBottleneck),
 		siOutcomeRun("run-vfailed", RunStatusVerifyFailed, TriggerSourceEvalRegression),
 		siOutcomeRun("run-rejected", RunStatusRejected, TriggerSourceTestFailure),
 		siOutcomeRun("run-failed", RunStatusFailed, TriggerSourceErrorCluster),
+		recordOnlyRun,
 	}
 	uc, outcomes, patterns, _ := siOutcomeFixture(t, pending, nil)
 	if err := uc.ScanOnce(context.Background()); err != nil {
 		t.Fatalf("ScanOnce: %v", err)
 	}
-	if len(outcomes.created) != 5 {
-		t.Fatalf("应为 5 个终态 run 各建一条 outcome, 实际 %d", len(outcomes.created))
+	if len(outcomes.created) != 6 {
+		t.Fatalf("应为 6 个终态 run 各建一条 outcome, 实际 %d", len(outcomes.created))
 	}
 	want := map[string]SelfImprovementVerdict{
 		"run-closed": VerdictEffective, "run-rolled": VerdictRegressed,
 		"run-vfailed": VerdictNeutral, "run-rejected": VerdictNeutral, "run-failed": VerdictNeutral,
+		"run-recordonly": VerdictNeutral,
 	}
 	for _, o := range outcomes.created {
 		if o.Verdict != want[o.RunID] {

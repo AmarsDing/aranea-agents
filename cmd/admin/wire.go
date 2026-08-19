@@ -253,8 +253,12 @@ func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, 
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
+// P2: the real-handshake tool discoverer is wired here too (setter keeps the
+// wire graph unchanged).
 func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, credRepo biz.MCPServerUserCredentialRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor, crypto *biz.CredentialCrypto) *biz.MCPServerUsecase {
-	return biz.NewMCPServerUsecase(repo, credRepo, prober, metaEdit, crypto)
+	uc := biz.NewMCPServerUsecase(repo, credRepo, prober, metaEdit, crypto)
+	uc.SetToolDiscoverer(mcpToolDiscovererAdapter{})
+	return uc
 }
 
 func provideRunRegistry(lg loggateway.Logger) *rt.RunRegistry {

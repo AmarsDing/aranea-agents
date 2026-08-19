@@ -81,7 +81,8 @@ logging:
 #     batch_size: 10                # rows per flush
 # Platform self-improvement (V3) pipeline (73-self-iteration-v3). Default off;
 # enable only after reviewing the governance model (design 搂6).
-# 2026-08-09锛氭寜榛樿閰嶇疆鍚敤锛堢伆搴﹀紑鍚紝绔埌绔繍琛屾椂楠岃瘉锛夈€?self_improvement:
+# 2026-08-09锛氭寜榛樿閰嶇疆鍚敤锛堢伆搴﹀紑鍚紝绔埌绔繍琛屾椂楠岃瘉锛夈€?
+self_improvement:
   enabled: true                   # master switch (gray rollout)
   observe_interval: 900s          # observe-worker scan interval (15m; proto Duration 浠呮敮鎸佺鍗曚綅)
   error_cluster:
@@ -103,7 +104,7 @@ logging:
       g2: 600s                    # test gate timeout (10m)
       g3: 300s                    # lint gate timeout (5m)
     worktree_root: ".aranea-self-improve"  # sandbox worktree root (relative to repo root, gitignored)
-    repo_root: "f:\\aranea-agents" # platform repo root the sandbox/applier operates on (empty = process working directory)
+    repo_root: "f:\\myproject\\aranea-agents" # platform repo root the sandbox/applier operates on (empty = process working directory)
   observe_window:
     duration: 86400s              # post-apply observing window length (24h)
     error_rate_factor: 1.5        # rollback when error_rate > before*factor

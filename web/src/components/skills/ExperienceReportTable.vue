@@ -6,6 +6,7 @@
     :columns="EXPERIENCE_REPORT_TABLE_COLUMNS"
     :loading="loading"
     hide-pagination
+    :pagination="{ rowsPerPage: 0 }"
   >
     <template #body-cell-skillName="props">
       <q-td :props="props">

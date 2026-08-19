@@ -127,6 +127,22 @@ func DefaultInterval() time.Duration {
 	return d
 }
 
+// discoveryInterval is the fallback cadence (P2) for refreshing tool metadata
+// on servers whose probe_mode does not run a real handshake (connectivity /
+// auth_aware). MCP_DISCOVERY_INTERVAL overrides; defaults to
+// mcp.DefaultDiscoveryInterval.
+func discoveryInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("MCP_DISCOVERY_INTERVAL"))
+	if raw == "" {
+		return mcp.DefaultDiscoveryInterval
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return mcp.DefaultDiscoveryInterval
+	}
+	return d
+}
+
 func (r *Runner) Start(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		interval = mcp.DefaultHealthInterval
@@ -255,6 +271,35 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 		updated := res.Server
 		if r.deps.Alerts != nil {
 			r.deps.Alerts.MaybeEmitAfterHealth(ctx, updated, result)
+		}
+	}
+
+	// P2 低频兜底发现：对 probe_mode 非 full_handshake 的服务器，健康巡检只
+	// 验证连通性、不写 tool 元数据。这里按 discoveryInterval（默认 30min）
+	// 对 metadata 过期且本次可达的服务器追加一次真实握手发现。full_handshake
+	// 服务器刚在 persistHealth 写过 tools_discovered_at，stale 判定天然跳过，
+	// 不会重复握手。发现失败只记日志，绝不影响健康主流程。
+	if result.OK && mcpmetadata.ToolsDiscoveryStale(mcpmetadata.Parse(res.Server.MetadataJSON), time.Now().UTC(), discoveryInterval()) {
+		discRes, derr := r.deps.UC.DiscoverMCPServerTools(ctx, srv.ID)
+		switch {
+		case derr != nil:
+			r.lg.Warn("MCP 工具发现持久化失败",
+				loggateway.StepID("mcp.tools_discovery_persist_fail"),
+				loggateway.Str("server_id", srv.ID),
+				loggateway.Str("server_key", srv.Key),
+				loggateway.Err(derr))
+		case !discRes.OK:
+			r.lg.Warn("MCP 工具发现失败",
+				loggateway.StepID("mcp.tools_discovery_fail"),
+				loggateway.Str("server_id", srv.ID),
+				loggateway.Str("server_key", srv.Key),
+				loggateway.Str("message", discRes.Message))
+		default:
+			r.lg.Info("MCP 工具发现完成",
+				loggateway.StepID("mcp.tools_discovery_done"),
+				loggateway.Str("server_id", srv.ID),
+				loggateway.Str("server_key", srv.Key),
+				loggateway.Int("tool_count", discRes.ToolCount))
 		}
 	}
 }

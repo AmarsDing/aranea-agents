@@ -45,6 +45,11 @@ export type McpServerMetadata = {
   last_error_message?: string;
   last_reconnect_at?: string;
   reconnect_count?: number;
+  /** P2 工具发现（真实握手 initialize+tools/list 写入，与 health_* 正交）。 */
+  tool_count?: number;
+  tool_names?: string[];
+  tools_discovered_at?: string;
+  tools_error_message?: string;
   [key: string]: unknown;
 };
 

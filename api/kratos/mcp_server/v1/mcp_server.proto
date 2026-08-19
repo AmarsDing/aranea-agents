@@ -44,6 +44,14 @@ message ListMCPServersResponse {
   int32 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  // summary 是 MCP 采纳汇总统计（使用方数量），供管理页提示「配置了但无 Agent 使用」。
+  MCPUsageSummary summary = 5;
+}
+
+// MCPUsageSummary 是 MCP 采纳汇总：多少 Agent 的有效工具策略开启了 MCP 门禁。
+message MCPUsageSummary {
+  int32 enabled_agent_count = 1; // 开启 mcp_tool_set / mcp_broker 门禁的 agent 数
+  int32 total_agent_count = 2;   // 全部 agent 数，供展示「N / M」
 }
 
 message CreateMCPServerRequest {

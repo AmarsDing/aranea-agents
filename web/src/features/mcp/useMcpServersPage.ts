@@ -13,7 +13,7 @@ export function useMcpServersPage() {
   const mcpStore = useMcpStore();
   const auth = useAuthStore();
   const { user } = storeToRefs(auth);
-  const { servers, total, loading: storeLoading } = storeToRefs(mcpStore);
+  const { servers, total, loading: storeLoading, usageSummary } = storeToRefs(mcpStore);
 
   const search = ref('');
   const page = ref(1);
@@ -41,6 +41,18 @@ export function useMcpServersPage() {
   const rows = computed(() => servers.value);
   const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length);
   const filteredRows = computed(() => rows.value);
+
+  // MCP 采纳汇总（使用方数量）：后端 best-effort，可能为 null。
+  const usageEnabledAgents = computed(() => usageSummary.value?.enabled_agent_count ?? null);
+  const usageTotalAgents = computed(() => usageSummary.value?.total_agent_count ?? null);
+  /** 有可用服务器但无 Agent 开门禁 → 显示闲置警告。 */
+  const showUnusedWarning = computed(
+    () => usageEnabledAgents.value === 0 && enabledCount.value > 0,
+  );
+  const usageSummaryText = computed(() => {
+    if (usageEnabledAgents.value == null || usageTotalAgents.value == null) return '';
+    return `${usageEnabledAgents.value} / ${usageTotalAgents.value} 个 Agent 已启用 MCP 工具集`;
+  });
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
   const pagedRows = computed(() => rows.value);
 
@@ -171,11 +183,19 @@ export function useMcpServersPage() {
 
   function healthTooltip(row: McpServerRow) {
     const metadata = parseJSON<McpServerMetadata>(row.metadata_json, {});
-    if (metadata.last_error_message) return metadata.last_error_message;
-    if (metadata.health_status === 'ok' && metadata.last_health_at)
-      return `最近成功：${formatDate(metadata.last_health_at)}`;
-    if (!row.enabled) return t('mcpPage.notEnabledNotTested');
-    return t('mcpPage.notTested');
+    let base: string;
+    if (metadata.last_error_message) base = metadata.last_error_message;
+    else if (metadata.health_status === 'ok' && metadata.last_health_at)
+      base = `最近成功：${formatDate(metadata.last_health_at)}`;
+    else if (!row.enabled) base = t('mcpPage.notEnabledNotTested');
+    else base = t('mcpPage.notTested');
+    // P2：工具发现摘要与连通性结论正交，作为附加信息尾随展示。
+    if (typeof metadata.tool_count === 'number') {
+      base += `；已发现 ${metadata.tool_count} 个工具`;
+    } else if (metadata.tools_error_message) {
+      base += '；工具发现失败';
+    }
+    return base;
   }
 
   function formatDate(value: string) {
@@ -204,6 +224,10 @@ export function useMcpServersPage() {
     credUserLabel,
     enabledCount,
     filteredRows,
+    usageEnabledAgents,
+    usageTotalAgents,
+    showUnusedWarning,
+    usageSummaryText,
     loadRows,
     openCreate,
     openEdit,

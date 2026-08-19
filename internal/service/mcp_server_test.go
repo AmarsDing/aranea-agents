@@ -2,6 +2,9 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,10 +104,16 @@ func (fakeMCPMetaEdit) ApplyReconnect(m map[string]any, _ time.Time) map[string]
 func (fakeMCPMetaEdit) MarkHealthAlert(m map[string]any, _ time.Time) map[string]any {
 	return m
 }
+func (fakeMCPMetaEdit) ApplyToolDiscovery(m map[string]any, _ int, _ []string, _ time.Time) map[string]any {
+	return m
+}
+func (fakeMCPMetaEdit) ApplyToolDiscoveryError(m map[string]any, _ string, _ time.Time) map[string]any {
+	return m
+}
 
 func newTestMCPServerService(repo *fakeMCPRepo) *service.MCPServerService {
 	uc := biz.NewMCPServerUsecase(repo, nil, fakeMCPProber{}, fakeMCPMetaEdit{}, nil)
-	return service.NewMCPServerService(uc, nil, nil, nil)
+	return service.NewMCPServerService(uc, nil, nil, nil, nil)
 }
 
 // fakeMCPCredRepo records user-credential writes for assertions.
@@ -130,7 +139,7 @@ func (r *fakeMCPCredRepo) DeleteMCPServerUserCredential(_ context.Context, _, _,
 func newTestMCPCredentialService(repo *fakeMCPRepo, credRepo *fakeMCPCredRepo) *service.MCPServerService {
 	crypto := biz.NewCredentialCrypto(func(context.Context) ([]byte, error) { return make([]byte, 32), nil }, loggateway.NewNoop())
 	uc := biz.NewMCPServerUsecase(repo, credRepo, fakeMCPProber{}, fakeMCPMetaEdit{}, crypto)
-	return service.NewMCPServerService(uc, nil, nil, nil)
+	return service.NewMCPServerService(uc, nil, nil, nil, nil)
 }
 
 // --- tests -----------------------------------------------------------------
@@ -181,6 +190,80 @@ func TestMCPServerService_TestMCPServer_OwnServerAllowed(t *testing.T) {
 	ctx := workspace.WithContext(context.Background(), "default")
 	if _, err := svc.TestMCPServer(ctx, &mcpv1.TestMCPServerRequest{Id: "own-1"}); err != nil {
 		t.Fatalf("tenant probing own server must succeed, got %v", err)
+	}
+}
+
+// --- P2: manual 测试连接 appends real-handshake discovery --------------------
+
+type fakeMCPDiscoverer struct {
+	names []string
+	err   error
+}
+
+func (d fakeMCPDiscoverer) DiscoverTools(_ context.Context, _ string, _ string) ([]string, error) {
+	return d.names, d.err
+}
+
+func newTestMCPServiceWithDiscoverer(repo *fakeMCPRepo, d biz.MCPToolDiscoverer) *service.MCPServerService {
+	uc := biz.NewMCPServerUsecase(repo, nil, fakeMCPProber{}, fakeMCPMetaEdit{}, nil)
+	uc.SetToolDiscoverer(d)
+	return service.NewMCPServerService(uc, nil, nil, nil, nil)
+}
+
+// P2: 手动「测试连接」连通性通过后追加握手发现，message 带「发现 N 个工具」，
+// details 带 tool_count/tool_names。
+func TestMCPServerService_TestMCPServer_AppendsDiscovery(t *testing.T) {
+	repo := &fakeMCPRepo{servers: map[string]biz.MCPServer{
+		"own-1": {ID: "own-1", Key: "own", Enabled: true, WorkspaceID: "default",
+			ConfigJSON: `{"transport":"stdio","command":"x"}`},
+	}}
+	svc := newTestMCPServiceWithDiscoverer(repo, fakeMCPDiscoverer{names: []string{"search", "fetch"}})
+
+	ctx := workspace.WithContext(context.Background(), "default")
+	res, err := svc.TestMCPServer(ctx, &mcpv1.TestMCPServerRequest{Id: "own-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.GetOk() {
+		t.Fatalf("expected ok=true, got %+v", res)
+	}
+	if !strings.Contains(res.GetMessage(), "2 个工具") {
+		t.Fatalf("message should mention tool count, got %q", res.GetMessage())
+	}
+	var details map[string]any
+	if err := json.Unmarshal([]byte(res.GetDetailsJson()), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["tool_count"] != float64(2) {
+		t.Fatalf("tool_count=%v", details["tool_count"])
+	}
+}
+
+// P2: 握手发现失败不改变连通性结论（ok 仍 true），仅以 tools_error 呈现。
+func TestMCPServerService_TestMCPServer_DiscoveryFailureKeepsConnectivityVerdict(t *testing.T) {
+	repo := &fakeMCPRepo{servers: map[string]biz.MCPServer{
+		"own-1": {ID: "own-1", Key: "own", Enabled: true, WorkspaceID: "default",
+			ConfigJSON: `{"transport":"stdio","command":"x"}`},
+	}}
+	svc := newTestMCPServiceWithDiscoverer(repo, fakeMCPDiscoverer{err: errors.New("handshake timeout")})
+
+	ctx := workspace.WithContext(context.Background(), "default")
+	res, err := svc.TestMCPServer(ctx, &mcpv1.TestMCPServerRequest{Id: "own-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.GetOk() {
+		t.Fatalf("discovery failure must not flip connectivity verdict, got %+v", res)
+	}
+	var details map[string]any
+	if err := json.Unmarshal([]byte(res.GetDetailsJson()), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["tools_error"] != "handshake timeout" {
+		t.Fatalf("tools_error=%v", details["tools_error"])
+	}
+	if _, ok := details["tool_count"]; ok {
+		t.Fatal("failed discovery must not carry tool_count")
 	}
 }
 

@@ -215,6 +215,66 @@ func (x *CreateWebhookRequest) GetEnabled() bool {
 	return false
 }
 
+type ListWebhooksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          int32                  `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Search        string                 `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWebhooksRequest) Reset() {
+	*x = ListWebhooksRequest{}
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWebhooksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWebhooksRequest) ProtoMessage() {}
+
+func (x *ListWebhooksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWebhooksRequest.ProtoReflect.Descriptor instead.
+func (*ListWebhooksRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListWebhooksRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListWebhooksRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListWebhooksRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
+}
+
 type ListWebhooksResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*Webhook             `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -227,7 +287,7 @@ type ListWebhooksResponse struct {
 
 func (x *ListWebhooksResponse) Reset() {
 	*x = ListWebhooksResponse{}
-	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[2]
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -239,7 +299,7 @@ func (x *ListWebhooksResponse) String() string {
 func (*ListWebhooksResponse) ProtoMessage() {}
 
 func (x *ListWebhooksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[2]
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -252,7 +312,7 @@ func (x *ListWebhooksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWebhooksResponse.ProtoReflect.Descriptor instead.
 func (*ListWebhooksResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{2}
+	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListWebhooksResponse) GetItems() []*Webhook {
@@ -298,7 +358,7 @@ type UpdateWebhookRequest struct {
 
 func (x *UpdateWebhookRequest) Reset() {
 	*x = UpdateWebhookRequest{}
-	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[3]
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -310,7 +370,7 @@ func (x *UpdateWebhookRequest) String() string {
 func (*UpdateWebhookRequest) ProtoMessage() {}
 
 func (x *UpdateWebhookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[3]
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -323,7 +383,7 @@ func (x *UpdateWebhookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWebhookRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWebhookRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{3}
+	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *UpdateWebhookRequest) GetId() string {
@@ -384,7 +444,7 @@ type DeleteWebhookRequest struct {
 
 func (x *DeleteWebhookRequest) Reset() {
 	*x = DeleteWebhookRequest{}
-	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[4]
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -396,7 +456,7 @@ func (x *DeleteWebhookRequest) String() string {
 func (*DeleteWebhookRequest) ProtoMessage() {}
 
 func (x *DeleteWebhookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[4]
+	mi := &file_kratos_gateway_v1_gateway_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -409,7 +469,7 @@ func (x *DeleteWebhookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteWebhookRequest.ProtoReflect.Descriptor instead.
 func (*DeleteWebhookRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{4}
+	return file_kratos_gateway_v1_gateway_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeleteWebhookRequest) GetId() string {
@@ -450,7 +510,11 @@ const file_kratos_gateway_v1_gateway_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\n" +
 	"\n" +
-	"\b_enabled\"\x8f\x01\n" +
+	"\b_enabled\"^\n" +
+	"\x13ListWebhooksRequest\x12\x12\n" +
+	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06search\x18\x03 \x01(\tR\x06search\"\x8f\x01\n" +
 	"\x14ListWebhooksResponse\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.kratos.gateway.v1.WebhookR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
@@ -470,10 +534,10 @@ const file_kratos_gateway_v1_gateway_proto_rawDesc = "" +
 	"\n" +
 	"\b_enabled\",\n" +
 	"\x14DeleteWebhookRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xe7\x03\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xf7\x03\n" +
 	"\x0eGatewayService\x12u\n" +
-	"\rCreateWebhook\x12'.kratos.gateway.v1.CreateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/gateway/webhooks\x12m\n" +
-	"\fListWebhooks\x12\x16.google.protobuf.Empty\x1a'.kratos.gateway.v1.ListWebhooksResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/gateway/webhooks\x12z\n" +
+	"\rCreateWebhook\x12'.kratos.gateway.v1.CreateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/gateway/webhooks\x12}\n" +
+	"\fListWebhooks\x12&.kratos.gateway.v1.ListWebhooksRequest\x1a'.kratos.gateway.v1.ListWebhooksResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/gateway/webhooks\x12z\n" +
 	"\rUpdateWebhook\x12'.kratos.gateway.v1.UpdateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\x1a\x19/v1/gateway/webhooks/{id}\x12s\n" +
 	"\rDeleteWebhook\x12'.kratos.gateway.v1.DeleteWebhookRequest\x1a\x16.google.protobuf.Empty\"!\x82\xd3\xe4\x93\x02\x1b*\x19/v1/gateway/webhooks/{id}BA\n" +
 	"\x15api.kratos.gateway.v1P\x01Z&aranea-agents/api/kratos/gateway/v1;v1b\x06proto3"
@@ -490,31 +554,32 @@ func file_kratos_gateway_v1_gateway_proto_rawDescGZIP() []byte {
 	return file_kratos_gateway_v1_gateway_proto_rawDescData
 }
 
-var file_kratos_gateway_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kratos_gateway_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_kratos_gateway_v1_gateway_proto_goTypes = []any{
 	(*Webhook)(nil),              // 0: kratos.gateway.v1.Webhook
 	(*CreateWebhookRequest)(nil), // 1: kratos.gateway.v1.CreateWebhookRequest
-	(*ListWebhooksResponse)(nil), // 2: kratos.gateway.v1.ListWebhooksResponse
-	(*UpdateWebhookRequest)(nil), // 3: kratos.gateway.v1.UpdateWebhookRequest
-	(*DeleteWebhookRequest)(nil), // 4: kratos.gateway.v1.DeleteWebhookRequest
-	nil,                          // 5: kratos.gateway.v1.Webhook.HeadersEntry
-	nil,                          // 6: kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
-	nil,                          // 7: kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
-	(*emptypb.Empty)(nil),        // 8: google.protobuf.Empty
+	(*ListWebhooksRequest)(nil),  // 2: kratos.gateway.v1.ListWebhooksRequest
+	(*ListWebhooksResponse)(nil), // 3: kratos.gateway.v1.ListWebhooksResponse
+	(*UpdateWebhookRequest)(nil), // 4: kratos.gateway.v1.UpdateWebhookRequest
+	(*DeleteWebhookRequest)(nil), // 5: kratos.gateway.v1.DeleteWebhookRequest
+	nil,                          // 6: kratos.gateway.v1.Webhook.HeadersEntry
+	nil,                          // 7: kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
+	nil,                          // 8: kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
+	(*emptypb.Empty)(nil),        // 9: google.protobuf.Empty
 }
 var file_kratos_gateway_v1_gateway_proto_depIdxs = []int32{
-	5, // 0: kratos.gateway.v1.Webhook.headers:type_name -> kratos.gateway.v1.Webhook.HeadersEntry
-	6, // 1: kratos.gateway.v1.CreateWebhookRequest.headers:type_name -> kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
+	6, // 0: kratos.gateway.v1.Webhook.headers:type_name -> kratos.gateway.v1.Webhook.HeadersEntry
+	7, // 1: kratos.gateway.v1.CreateWebhookRequest.headers:type_name -> kratos.gateway.v1.CreateWebhookRequest.HeadersEntry
 	0, // 2: kratos.gateway.v1.ListWebhooksResponse.items:type_name -> kratos.gateway.v1.Webhook
-	7, // 3: kratos.gateway.v1.UpdateWebhookRequest.headers:type_name -> kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
+	8, // 3: kratos.gateway.v1.UpdateWebhookRequest.headers:type_name -> kratos.gateway.v1.UpdateWebhookRequest.HeadersEntry
 	1, // 4: kratos.gateway.v1.GatewayService.CreateWebhook:input_type -> kratos.gateway.v1.CreateWebhookRequest
-	8, // 5: kratos.gateway.v1.GatewayService.ListWebhooks:input_type -> google.protobuf.Empty
-	3, // 6: kratos.gateway.v1.GatewayService.UpdateWebhook:input_type -> kratos.gateway.v1.UpdateWebhookRequest
-	4, // 7: kratos.gateway.v1.GatewayService.DeleteWebhook:input_type -> kratos.gateway.v1.DeleteWebhookRequest
+	2, // 5: kratos.gateway.v1.GatewayService.ListWebhooks:input_type -> kratos.gateway.v1.ListWebhooksRequest
+	4, // 6: kratos.gateway.v1.GatewayService.UpdateWebhook:input_type -> kratos.gateway.v1.UpdateWebhookRequest
+	5, // 7: kratos.gateway.v1.GatewayService.DeleteWebhook:input_type -> kratos.gateway.v1.DeleteWebhookRequest
 	0, // 8: kratos.gateway.v1.GatewayService.CreateWebhook:output_type -> kratos.gateway.v1.Webhook
-	2, // 9: kratos.gateway.v1.GatewayService.ListWebhooks:output_type -> kratos.gateway.v1.ListWebhooksResponse
+	3, // 9: kratos.gateway.v1.GatewayService.ListWebhooks:output_type -> kratos.gateway.v1.ListWebhooksResponse
 	0, // 10: kratos.gateway.v1.GatewayService.UpdateWebhook:output_type -> kratos.gateway.v1.Webhook
-	8, // 11: kratos.gateway.v1.GatewayService.DeleteWebhook:output_type -> google.protobuf.Empty
+	9, // 11: kratos.gateway.v1.GatewayService.DeleteWebhook:output_type -> google.protobuf.Empty
 	8, // [8:12] is the sub-list for method output_type
 	4, // [4:8] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -528,14 +593,14 @@ func file_kratos_gateway_v1_gateway_proto_init() {
 		return
 	}
 	file_kratos_gateway_v1_gateway_proto_msgTypes[1].OneofWrappers = []any{}
-	file_kratos_gateway_v1_gateway_proto_msgTypes[3].OneofWrappers = []any{}
+	file_kratos_gateway_v1_gateway_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_gateway_v1_gateway_proto_rawDesc), len(file_kratos_gateway_v1_gateway_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

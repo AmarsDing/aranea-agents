@@ -19,6 +19,81 @@ func TestApplyHealth_OKClearsError(t *testing.T) {
 	}
 }
 
+func TestApplyToolDiscovery_Success(t *testing.T) {
+	at := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	m := Parse(`{"tools_error_message":"old err","health_status":"ok"}`)
+	updated := ApplyToolDiscovery(m, 2, []string{"a", "b"}, at)
+	if updated[KeyToolCount] != float64(2) {
+		t.Fatalf("tool_count=%v", updated[KeyToolCount])
+	}
+	names, ok := updated[KeyToolNames].([]any)
+	if !ok || len(names) != 2 || names[0] != "a" {
+		t.Fatalf("tool_names=%v", updated[KeyToolNames])
+	}
+	if updated[KeyToolsDiscoveredAt] != at.Format(time.RFC3339) {
+		t.Fatalf("tools_discovered_at=%v", updated[KeyToolsDiscoveredAt])
+	}
+	if _, ok := updated[KeyToolsErrorMessage]; ok {
+		t.Fatal("expected tools_error_message cleared")
+	}
+	// unrelated keys preserved
+	if updated[KeyHealthStatus] != "ok" {
+		t.Fatalf("health_status=%v", updated[KeyHealthStatus])
+	}
+	// input untouched
+	if _, ok := m[KeyToolCount]; ok {
+		t.Fatal("input map mutated")
+	}
+}
+
+func TestApplyToolDiscovery_CapsNames(t *testing.T) {
+	names := make([]string, 120)
+	for i := range names {
+		names[i] = "t"
+	}
+	updated := ApplyToolDiscovery(Parse(`{}`), 120, names, time.Now().UTC())
+	if updated[KeyToolCount] != float64(120) {
+		t.Fatalf("tool_count=%v", updated[KeyToolCount])
+	}
+	if got := len(updated[KeyToolNames].([]any)); got != maxStoredToolNames {
+		t.Fatalf("stored names=%d, want %d", got, maxStoredToolNames)
+	}
+}
+
+func TestApplyToolDiscoveryError_PreservesLastGood(t *testing.T) {
+	at := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	m := Parse(`{"tool_count":12,"tool_names":["a"],"tools_discovered_at":"2026-08-19T11:00:00Z"}`)
+	updated := ApplyToolDiscoveryError(m, "boom", at)
+	if updated[KeyToolsErrorMessage] != "boom" {
+		t.Fatalf("tools_error_message=%v", updated[KeyToolsErrorMessage])
+	}
+	if updated[KeyToolsDiscoveredAt] != at.Format(time.RFC3339) {
+		t.Fatalf("tools_discovered_at=%v", updated[KeyToolsDiscoveredAt])
+	}
+	if updated[KeyToolCount] != float64(12) {
+		t.Fatalf("tool_count clobbered: %v", updated[KeyToolCount])
+	}
+}
+
+func TestToolsDiscoveryStale(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	if !ToolsDiscoveryStale(Parse(`{}`), now, 30*time.Minute) {
+		t.Fatal("never discovered should be stale")
+	}
+	fresh := Parse(`{"tools_discovered_at":"2026-08-19T11:45:00Z"}`)
+	if ToolsDiscoveryStale(fresh, now, 30*time.Minute) {
+		t.Fatal("15min old should be fresh")
+	}
+	old := Parse(`{"tools_discovered_at":"2026-08-19T11:00:00Z"}`)
+	if !ToolsDiscoveryStale(old, now, 30*time.Minute) {
+		t.Fatal("60min old should be stale")
+	}
+	bad := Parse(`{"tools_discovered_at":"not-a-time"}`)
+	if !ToolsDiscoveryStale(bad, now, 30*time.Minute) {
+		t.Fatal("unparseable should be stale")
+	}
+}
+
 func TestShouldEmitHealthAlert(t *testing.T) {
 	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	m := map[string]any{

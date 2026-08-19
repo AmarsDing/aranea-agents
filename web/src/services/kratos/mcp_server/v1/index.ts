@@ -36,6 +36,14 @@ export type ListMCPServersResponse = {
   total: number | undefined;
   page: number | undefined;
   pageSize: number | undefined;
+  // summary 是 MCP 采纳汇总统计（使用方数量），供管理页提示「配置了但无 Agent 使用」。
+  summary: MCPUsageSummary | undefined;
+};
+
+// MCPUsageSummary 是 MCP 采纳汇总：多少 Agent 的有效工具策略开启了 MCP 门禁。
+export type MCPUsageSummary = {
+  enabledAgentCount: number | undefined;
+  totalAgentCount: number | undefined;
 };
 
 export type CreateMCPServerRequest = {

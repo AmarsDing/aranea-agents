@@ -159,6 +159,67 @@ func TestRepoSandboxRunner_PrepareDuplicateRunIDFails(t *testing.T) {
 	}
 }
 
+// 回归（2026-08-19 运行时事故）：git 注册 worktree 后、checkout 完成前被杀
+//（exit 255），PrepareWorktree 返回错误但半截 worktree+分支永久泄漏。新增
+// purgeRegisteredWorktree 负责摘除该注册态；这里直接对原语做确定性验证。
+func TestRepoSandboxRunner_PurgeRegisteredWorktree(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	r := newTestRunner(t, repo)
+	ctx := context.Background()
+
+	// 手工构造"已注册的半截 worktree"（等价于 git 被杀瞬间的状态）。
+	wtPath := filepath.Join(repo, ".aranea-self-improve", "run-half")
+	cmd := exec.Command("git", "-c", "core.longpaths=true", "worktree", "add", "-b", "self-improve/run-half", wtPath, "HEAD")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("setup worktree: %v\n%s", err, out)
+	}
+	if !r.worktreeRegistered(ctx, wtPath) {
+		t.Fatal("setup: worktree should be registered")
+	}
+
+	r.purgeRegisteredWorktree(ctx, "self-improve/run-half", wtPath)
+
+	if r.worktreeRegistered(ctx, wtPath) {
+		t.Error("worktree still registered after purge")
+	}
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Errorf("worktree dir still exists after purge: %v", err)
+	}
+	cmd = exec.Command("git", "rev-parse", "--verify", "self-improve/run-half")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Errorf("branch still exists after purge: %s", out)
+	}
+}
+
+// 边界守卫：add 报错且 wtPath 在调用前已被他人注册（活跃占用），不得清理。
+func TestRepoSandboxRunner_PrepareKeepsForeignRegisteredWorktree(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	r := newTestRunner(t, repo)
+	ctx := context.Background()
+
+	// 外来占用：同路径、不同分支的已注册 worktree。
+	wtPath := filepath.Join(repo, ".aranea-self-improve", "run-foreign")
+	cmd := exec.Command("git", "-c", "core.longpaths=true", "worktree", "add", "-b", "other/foreign", wtPath, "HEAD")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("setup foreign worktree: %v\n%s", err, out)
+	}
+	defer func() {
+		c := exec.Command("git", "-c", "core.longpaths=true", "worktree", "remove", "--force", wtPath)
+		c.Dir = repo
+		_ = c.Run()
+	}()
+
+	if _, _, err := r.PrepareWorktree(ctx, "run-foreign", ""); err == nil {
+		t.Fatal("PrepareWorktree on foreign-registered path must fail")
+	}
+	if !r.worktreeRegistered(ctx, wtPath) {
+		t.Error("foreign worktree must not be purged by failed PrepareWorktree")
+	}
+}
+
 // 回归（2026-08-08 运行时事故）：prepare 在分支创建后/checkout 中途失败（或进程
 // 被杀），留下同名分支 + 残留目录的崩溃孤儿；stale 恢复重驱动时 `worktree add -b`
 // 撞 "already exists" 永久 exit 128。PrepareWorktree 必须清理孤儿后自愈重试。

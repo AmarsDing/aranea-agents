@@ -30,8 +30,8 @@ const (
 	defaultSIMaxConcurrentObserving = 3
 	// defaultSIObserveWindow is the D7 observing-window length.
 	defaultSIObserveWindow = 24 * time.Hour
-	// siClosedReasonMaxLen mirrors the ent schema closed_reason MaxLen(64).
-	siClosedReasonMaxLen = 64
+	// siClosedReasonMaxLen mirrors the ent schema closed_reason MaxLen(512).
+	siClosedReasonMaxLen = 512
 )
 
 // SelfImprovementApplyUsecaseDeps carries the apply usecase's injected deps.

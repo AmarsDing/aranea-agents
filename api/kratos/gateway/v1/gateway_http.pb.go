@@ -28,7 +28,7 @@ const OperationGatewayServiceUpdateWebhook = "/kratos.gateway.v1.GatewayService/
 type GatewayServiceHTTPServer interface {
 	CreateWebhook(context.Context, *CreateWebhookRequest) (*Webhook, error)
 	DeleteWebhook(context.Context, *DeleteWebhookRequest) (*emptypb.Empty, error)
-	ListWebhooks(context.Context, *emptypb.Empty) (*ListWebhooksResponse, error)
+	ListWebhooks(context.Context, *ListWebhooksRequest) (*ListWebhooksResponse, error)
 	UpdateWebhook(context.Context, *UpdateWebhookRequest) (*Webhook, error)
 }
 
@@ -64,13 +64,13 @@ func _GatewayService_CreateWebhook0_HTTP_Handler(srv GatewayServiceHTTPServer) f
 
 func _GatewayService_ListWebhooks0_HTTP_Handler(srv GatewayServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
-		var in emptypb.Empty
+		var in ListWebhooksRequest
 		if err := ctx.BindQuery(&in); err != nil {
 			return err
 		}
 		http.SetOperation(ctx, OperationGatewayServiceListWebhooks)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
-			return srv.ListWebhooks(ctx, req.(*emptypb.Empty))
+			return srv.ListWebhooks(ctx, req.(*ListWebhooksRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -131,7 +131,7 @@ func _GatewayService_DeleteWebhook0_HTTP_Handler(srv GatewayServiceHTTPServer) f
 type GatewayServiceHTTPClient interface {
 	CreateWebhook(ctx context.Context, req *CreateWebhookRequest, opts ...http.CallOption) (rsp *Webhook, err error)
 	DeleteWebhook(ctx context.Context, req *DeleteWebhookRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
-	ListWebhooks(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListWebhooksResponse, err error)
+	ListWebhooks(ctx context.Context, req *ListWebhooksRequest, opts ...http.CallOption) (rsp *ListWebhooksResponse, err error)
 	UpdateWebhook(ctx context.Context, req *UpdateWebhookRequest, opts ...http.CallOption) (rsp *Webhook, err error)
 }
 
@@ -169,7 +169,7 @@ func (c *GatewayServiceHTTPClientImpl) DeleteWebhook(ctx context.Context, in *De
 	return &out, nil
 }
 
-func (c *GatewayServiceHTTPClientImpl) ListWebhooks(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListWebhooksResponse, error) {
+func (c *GatewayServiceHTTPClientImpl) ListWebhooks(ctx context.Context, in *ListWebhooksRequest, opts ...http.CallOption) (*ListWebhooksResponse, error) {
 	var out ListWebhooksResponse
 	pattern := "/v1/gateway/webhooks"
 	path := binding.EncodeURL(pattern, in, true)

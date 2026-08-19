@@ -299,3 +299,49 @@ func (u *AgentUsecase) AgentIDsReferencingMCPServer(ctx context.Context, serverK
 	}
 	return out, nil
 }
+
+// MCPUsageSummary is the aggregate MCP-adoption stat shown on the admin MCP page.
+type MCPUsageSummary struct {
+	// EnabledAgentCount 是有效工具策略开启了 MCP 门禁（mcp_tool_set / mcp_broker）的 agent 数。
+	EnabledAgentCount int
+	// TotalAgentCount 是全部 agent 数（任意状态），供前端展示「N / M」上下文。
+	TotalAgentCount int
+}
+
+// GetMCPUsageSummary 以批量方式计算 MCP 采纳统计：
+// 一次 ListAgentRuntimeSettings + 一次 catalog SearchTools + 一次 agent 计数，
+// 然后对每条 settings 行做内存门禁评估。与 AgentIDsReferencingMCPServer
+// （per-agent GetEffectiveTools，N+1）不同，本方法对高频的 MCP 列表页加载安全。
+//
+// 正确性说明：无 agent_runtime_settings 行的 agent 回退 DefaultAgentRuntimeSettings
+// （profile "coding"），不含 mcp_tool_set / mcp_broker，门禁关闭——因此仅迭代已存
+// settings 行即完备（profile 非默认值的 agent 必有 settings 行）。per-agent 工具覆盖
+// （ListToolAgentOverridesByAgent）有意不应用：那是 per-agent 查询，会重引入 N+1；
+// 针对 mcp 门禁的 override 属边缘场景，本统计是汇总指标，可接受。
+func (u *AgentUsecase) GetMCPUsageSummary(ctx context.Context) (MCPUsageSummary, error) {
+	var out MCPUsageSummary
+	if u == nil || u.reader == nil || u.settings == nil || u.tools == nil {
+		return out, nil
+	}
+	agents, err := u.reader.SearchAgents(ctx, AgentListQuery{Limit: 1, Offset: 0})
+	if err != nil {
+		return out, err
+	}
+	out.TotalAgentCount = agents.Total
+
+	settingsMap, err := u.settings.ListAgentRuntimeSettings(ctx)
+	if err != nil {
+		return out, err
+	}
+	catalog, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
+	if err != nil {
+		return out, err
+	}
+	for _, s := range settingsMap {
+		eff := buildAgentEffectiveTools(withSettingDefaults(s), catalog.Items, u.lg)
+		if effectiveToolsAllowsMCPServers(eff) {
+			out.EnabledAgentCount++
+		}
+	}
+	return out, nil
+}

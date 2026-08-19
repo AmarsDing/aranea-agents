@@ -231,11 +231,13 @@ func (x *ListMCPServersRequest) GetSearch() string {
 }
 
 type ListMCPServersResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         []*MCPServer           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	Page          int32                  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
-	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Items    []*MCPServer           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Total    int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Page     int32                  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// summary 是 MCP 采纳汇总统计（使用方数量），供管理页提示「配置了但无 Agent 使用」。
+	Summary       *MCPUsageSummary `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -298,6 +300,66 @@ func (x *ListMCPServersResponse) GetPageSize() int32 {
 	return 0
 }
 
+func (x *ListMCPServersResponse) GetSummary() *MCPUsageSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+// MCPUsageSummary 是 MCP 采纳汇总：多少 Agent 的有效工具策略开启了 MCP 门禁。
+type MCPUsageSummary struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	EnabledAgentCount int32                  `protobuf:"varint,1,opt,name=enabled_agent_count,json=enabledAgentCount,proto3" json:"enabled_agent_count,omitempty"` // 开启 mcp_tool_set / mcp_broker 门禁的 agent 数
+	TotalAgentCount   int32                  `protobuf:"varint,2,opt,name=total_agent_count,json=totalAgentCount,proto3" json:"total_agent_count,omitempty"`       // 全部 agent 数，供展示「N / M」
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MCPUsageSummary) Reset() {
+	*x = MCPUsageSummary{}
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MCPUsageSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MCPUsageSummary) ProtoMessage() {}
+
+func (x *MCPUsageSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MCPUsageSummary.ProtoReflect.Descriptor instead.
+func (*MCPUsageSummary) Descriptor() ([]byte, []int) {
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *MCPUsageSummary) GetEnabledAgentCount() int32 {
+	if x != nil {
+		return x.EnabledAgentCount
+	}
+	return 0
+}
+
+func (x *MCPUsageSummary) GetTotalAgentCount() int32 {
+	if x != nil {
+		return x.TotalAgentCount
+	}
+	return 0
+}
+
 type CreateMCPServerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -314,7 +376,7 @@ type CreateMCPServerRequest struct {
 
 func (x *CreateMCPServerRequest) Reset() {
 	*x = CreateMCPServerRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[3]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -326,7 +388,7 @@ func (x *CreateMCPServerRequest) String() string {
 func (*CreateMCPServerRequest) ProtoMessage() {}
 
 func (x *CreateMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[3]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -339,7 +401,7 @@ func (x *CreateMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*CreateMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{3}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateMCPServerRequest) GetKey() string {
@@ -407,7 +469,7 @@ type GetMCPServerRequest struct {
 
 func (x *GetMCPServerRequest) Reset() {
 	*x = GetMCPServerRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[4]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +481,7 @@ func (x *GetMCPServerRequest) String() string {
 func (*GetMCPServerRequest) ProtoMessage() {}
 
 func (x *GetMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[4]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +494,7 @@ func (x *GetMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*GetMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{4}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetMCPServerRequest) GetId() string {
@@ -452,7 +514,7 @@ type UpdateMCPServerRequest struct {
 
 func (x *UpdateMCPServerRequest) Reset() {
 	*x = UpdateMCPServerRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[5]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -464,7 +526,7 @@ func (x *UpdateMCPServerRequest) String() string {
 func (*UpdateMCPServerRequest) ProtoMessage() {}
 
 func (x *UpdateMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[5]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -477,7 +539,7 @@ func (x *UpdateMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{5}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateMCPServerRequest) GetId() string {
@@ -503,7 +565,7 @@ type DeleteMCPServerRequest struct {
 
 func (x *DeleteMCPServerRequest) Reset() {
 	*x = DeleteMCPServerRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[6]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -515,7 +577,7 @@ func (x *DeleteMCPServerRequest) String() string {
 func (*DeleteMCPServerRequest) ProtoMessage() {}
 
 func (x *DeleteMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[6]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -528,7 +590,7 @@ func (x *DeleteMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{6}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteMCPServerRequest) GetId() string {
@@ -547,7 +609,7 @@ type TestMCPServerRequest struct {
 
 func (x *TestMCPServerRequest) Reset() {
 	*x = TestMCPServerRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[7]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +621,7 @@ func (x *TestMCPServerRequest) String() string {
 func (*TestMCPServerRequest) ProtoMessage() {}
 
 func (x *TestMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[7]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +634,7 @@ func (x *TestMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*TestMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{7}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *TestMCPServerRequest) GetId() string {
@@ -594,7 +656,7 @@ type MCPServerTestResponse struct {
 
 func (x *MCPServerTestResponse) Reset() {
 	*x = MCPServerTestResponse{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[8]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -606,7 +668,7 @@ func (x *MCPServerTestResponse) String() string {
 func (*MCPServerTestResponse) ProtoMessage() {}
 
 func (x *MCPServerTestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[8]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -619,7 +681,7 @@ func (x *MCPServerTestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MCPServerTestResponse.ProtoReflect.Descriptor instead.
 func (*MCPServerTestResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{8}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *MCPServerTestResponse) GetOk() bool {
@@ -660,7 +722,7 @@ type ValidateMCPServerRequest struct {
 
 func (x *ValidateMCPServerRequest) Reset() {
 	*x = ValidateMCPServerRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[9]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -672,7 +734,7 @@ func (x *ValidateMCPServerRequest) String() string {
 func (*ValidateMCPServerRequest) ProtoMessage() {}
 
 func (x *ValidateMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[9]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -685,7 +747,7 @@ func (x *ValidateMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*ValidateMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{9}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ValidateMCPServerRequest) GetEnabled() bool {
@@ -714,7 +776,7 @@ type ValidateMCPServerResponse struct {
 
 func (x *ValidateMCPServerResponse) Reset() {
 	*x = ValidateMCPServerResponse{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[10]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -726,7 +788,7 @@ func (x *ValidateMCPServerResponse) String() string {
 func (*ValidateMCPServerResponse) ProtoMessage() {}
 
 func (x *ValidateMCPServerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[10]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -739,7 +801,7 @@ func (x *ValidateMCPServerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateMCPServerResponse.ProtoReflect.Descriptor instead.
 func (*ValidateMCPServerResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{10}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ValidateMCPServerResponse) GetOk() bool {
@@ -787,7 +849,7 @@ type MCPServerUserCredential struct {
 
 func (x *MCPServerUserCredential) Reset() {
 	*x = MCPServerUserCredential{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[11]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -799,7 +861,7 @@ func (x *MCPServerUserCredential) String() string {
 func (*MCPServerUserCredential) ProtoMessage() {}
 
 func (x *MCPServerUserCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[11]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -812,7 +874,7 @@ func (x *MCPServerUserCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MCPServerUserCredential.ProtoReflect.Descriptor instead.
 func (*MCPServerUserCredential) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{11}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *MCPServerUserCredential) GetId() string {
@@ -888,7 +950,7 @@ type ListMCPServerUserCredentialsRequest struct {
 
 func (x *ListMCPServerUserCredentialsRequest) Reset() {
 	*x = ListMCPServerUserCredentialsRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[12]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -900,7 +962,7 @@ func (x *ListMCPServerUserCredentialsRequest) String() string {
 func (*ListMCPServerUserCredentialsRequest) ProtoMessage() {}
 
 func (x *ListMCPServerUserCredentialsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[12]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -913,7 +975,7 @@ func (x *ListMCPServerUserCredentialsRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListMCPServerUserCredentialsRequest.ProtoReflect.Descriptor instead.
 func (*ListMCPServerUserCredentialsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{12}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListMCPServerUserCredentialsRequest) GetMcpServerId() string {
@@ -939,7 +1001,7 @@ type ListMCPServerUserCredentialsResponse struct {
 
 func (x *ListMCPServerUserCredentialsResponse) Reset() {
 	*x = ListMCPServerUserCredentialsResponse{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[13]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1013,7 @@ func (x *ListMCPServerUserCredentialsResponse) String() string {
 func (*ListMCPServerUserCredentialsResponse) ProtoMessage() {}
 
 func (x *ListMCPServerUserCredentialsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[13]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1026,7 @@ func (x *ListMCPServerUserCredentialsResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ListMCPServerUserCredentialsResponse.ProtoReflect.Descriptor instead.
 func (*ListMCPServerUserCredentialsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{13}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListMCPServerUserCredentialsResponse) GetItems() []*MCPServerUserCredential {
@@ -987,7 +1049,7 @@ type UpsertMCPServerUserCredentialRequest struct {
 
 func (x *UpsertMCPServerUserCredentialRequest) Reset() {
 	*x = UpsertMCPServerUserCredentialRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[14]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -999,7 +1061,7 @@ func (x *UpsertMCPServerUserCredentialRequest) String() string {
 func (*UpsertMCPServerUserCredentialRequest) ProtoMessage() {}
 
 func (x *UpsertMCPServerUserCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[14]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1012,7 +1074,7 @@ func (x *UpsertMCPServerUserCredentialRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use UpsertMCPServerUserCredentialRequest.ProtoReflect.Descriptor instead.
 func (*UpsertMCPServerUserCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{14}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UpsertMCPServerUserCredentialRequest) GetMcpServerId() string {
@@ -1061,7 +1123,7 @@ type DeleteMCPServerUserCredentialRequest struct {
 
 func (x *DeleteMCPServerUserCredentialRequest) Reset() {
 	*x = DeleteMCPServerUserCredentialRequest{}
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[15]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +1135,7 @@ func (x *DeleteMCPServerUserCredentialRequest) String() string {
 func (*DeleteMCPServerUserCredentialRequest) ProtoMessage() {}
 
 func (x *DeleteMCPServerUserCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[15]
+	mi := &file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1086,7 +1148,7 @@ func (x *DeleteMCPServerUserCredentialRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use DeleteMCPServerUserCredentialRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMCPServerUserCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{15}
+	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DeleteMCPServerUserCredentialRequest) GetMcpServerId() string {
@@ -1138,12 +1200,16 @@ const file_kratos_mcp_server_v1_mcp_server_proto_rawDesc = "" +
 	"\x15ListMCPServersRequest\x12\x12\n" +
 	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
-	"\x06search\x18\x03 \x01(\tR\x06search\"\x96\x01\n" +
+	"\x06search\x18\x03 \x01(\tR\x06search\"\xd7\x01\n" +
 	"\x16ListMCPServersResponse\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.kratos.mcp_server.v1.MCPServerR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\x83\x02\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12?\n" +
+	"\asummary\x18\x05 \x01(\v2%.kratos.mcp_server.v1.MCPUsageSummaryR\asummary\"m\n" +
+	"\x0fMCPUsageSummary\x12.\n" +
+	"\x13enabled_agent_count\x18\x01 \x01(\x05R\x11enabledAgentCount\x12*\n" +
+	"\x11total_agent_count\x18\x02 \x01(\x05R\x0ftotalAgentCount\"\x83\x02\n" +
 	"\x16CreateMCPServerRequest\x12\x16\n" +
 	"\x03key\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x03key\x12\x18\n" +
 	"\x04name\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x04name\x12 \n" +
@@ -1234,55 +1300,57 @@ func file_kratos_mcp_server_v1_mcp_server_proto_rawDescGZIP() []byte {
 	return file_kratos_mcp_server_v1_mcp_server_proto_rawDescData
 }
 
-var file_kratos_mcp_server_v1_mcp_server_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_kratos_mcp_server_v1_mcp_server_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_kratos_mcp_server_v1_mcp_server_proto_goTypes = []any{
 	(*MCPServer)(nil),                            // 0: kratos.mcp_server.v1.MCPServer
 	(*ListMCPServersRequest)(nil),                // 1: kratos.mcp_server.v1.ListMCPServersRequest
 	(*ListMCPServersResponse)(nil),               // 2: kratos.mcp_server.v1.ListMCPServersResponse
-	(*CreateMCPServerRequest)(nil),               // 3: kratos.mcp_server.v1.CreateMCPServerRequest
-	(*GetMCPServerRequest)(nil),                  // 4: kratos.mcp_server.v1.GetMCPServerRequest
-	(*UpdateMCPServerRequest)(nil),               // 5: kratos.mcp_server.v1.UpdateMCPServerRequest
-	(*DeleteMCPServerRequest)(nil),               // 6: kratos.mcp_server.v1.DeleteMCPServerRequest
-	(*TestMCPServerRequest)(nil),                 // 7: kratos.mcp_server.v1.TestMCPServerRequest
-	(*MCPServerTestResponse)(nil),                // 8: kratos.mcp_server.v1.MCPServerTestResponse
-	(*ValidateMCPServerRequest)(nil),             // 9: kratos.mcp_server.v1.ValidateMCPServerRequest
-	(*ValidateMCPServerResponse)(nil),            // 10: kratos.mcp_server.v1.ValidateMCPServerResponse
-	(*MCPServerUserCredential)(nil),              // 11: kratos.mcp_server.v1.MCPServerUserCredential
-	(*ListMCPServerUserCredentialsRequest)(nil),  // 12: kratos.mcp_server.v1.ListMCPServerUserCredentialsRequest
-	(*ListMCPServerUserCredentialsResponse)(nil), // 13: kratos.mcp_server.v1.ListMCPServerUserCredentialsResponse
-	(*UpsertMCPServerUserCredentialRequest)(nil), // 14: kratos.mcp_server.v1.UpsertMCPServerUserCredentialRequest
-	(*DeleteMCPServerUserCredentialRequest)(nil), // 15: kratos.mcp_server.v1.DeleteMCPServerUserCredentialRequest
-	(*emptypb.Empty)(nil),                        // 16: google.protobuf.Empty
+	(*MCPUsageSummary)(nil),                      // 3: kratos.mcp_server.v1.MCPUsageSummary
+	(*CreateMCPServerRequest)(nil),               // 4: kratos.mcp_server.v1.CreateMCPServerRequest
+	(*GetMCPServerRequest)(nil),                  // 5: kratos.mcp_server.v1.GetMCPServerRequest
+	(*UpdateMCPServerRequest)(nil),               // 6: kratos.mcp_server.v1.UpdateMCPServerRequest
+	(*DeleteMCPServerRequest)(nil),               // 7: kratos.mcp_server.v1.DeleteMCPServerRequest
+	(*TestMCPServerRequest)(nil),                 // 8: kratos.mcp_server.v1.TestMCPServerRequest
+	(*MCPServerTestResponse)(nil),                // 9: kratos.mcp_server.v1.MCPServerTestResponse
+	(*ValidateMCPServerRequest)(nil),             // 10: kratos.mcp_server.v1.ValidateMCPServerRequest
+	(*ValidateMCPServerResponse)(nil),            // 11: kratos.mcp_server.v1.ValidateMCPServerResponse
+	(*MCPServerUserCredential)(nil),              // 12: kratos.mcp_server.v1.MCPServerUserCredential
+	(*ListMCPServerUserCredentialsRequest)(nil),  // 13: kratos.mcp_server.v1.ListMCPServerUserCredentialsRequest
+	(*ListMCPServerUserCredentialsResponse)(nil), // 14: kratos.mcp_server.v1.ListMCPServerUserCredentialsResponse
+	(*UpsertMCPServerUserCredentialRequest)(nil), // 15: kratos.mcp_server.v1.UpsertMCPServerUserCredentialRequest
+	(*DeleteMCPServerUserCredentialRequest)(nil), // 16: kratos.mcp_server.v1.DeleteMCPServerUserCredentialRequest
+	(*emptypb.Empty)(nil),                        // 17: google.protobuf.Empty
 }
 var file_kratos_mcp_server_v1_mcp_server_proto_depIdxs = []int32{
 	0,  // 0: kratos.mcp_server.v1.ListMCPServersResponse.items:type_name -> kratos.mcp_server.v1.MCPServer
-	0,  // 1: kratos.mcp_server.v1.UpdateMCPServerRequest.mcp_server:type_name -> kratos.mcp_server.v1.MCPServer
-	11, // 2: kratos.mcp_server.v1.ListMCPServerUserCredentialsResponse.items:type_name -> kratos.mcp_server.v1.MCPServerUserCredential
-	1,  // 3: kratos.mcp_server.v1.MCPServerService.ListMCPServers:input_type -> kratos.mcp_server.v1.ListMCPServersRequest
-	3,  // 4: kratos.mcp_server.v1.MCPServerService.CreateMCPServer:input_type -> kratos.mcp_server.v1.CreateMCPServerRequest
-	4,  // 5: kratos.mcp_server.v1.MCPServerService.GetMCPServer:input_type -> kratos.mcp_server.v1.GetMCPServerRequest
-	5,  // 6: kratos.mcp_server.v1.MCPServerService.UpdateMCPServer:input_type -> kratos.mcp_server.v1.UpdateMCPServerRequest
-	6,  // 7: kratos.mcp_server.v1.MCPServerService.DeleteMCPServer:input_type -> kratos.mcp_server.v1.DeleteMCPServerRequest
-	7,  // 8: kratos.mcp_server.v1.MCPServerService.TestMCPServer:input_type -> kratos.mcp_server.v1.TestMCPServerRequest
-	9,  // 9: kratos.mcp_server.v1.MCPServerService.ValidateMCPServer:input_type -> kratos.mcp_server.v1.ValidateMCPServerRequest
-	12, // 10: kratos.mcp_server.v1.MCPServerService.ListMCPServerUserCredentials:input_type -> kratos.mcp_server.v1.ListMCPServerUserCredentialsRequest
-	14, // 11: kratos.mcp_server.v1.MCPServerService.UpsertMCPServerUserCredential:input_type -> kratos.mcp_server.v1.UpsertMCPServerUserCredentialRequest
-	15, // 12: kratos.mcp_server.v1.MCPServerService.DeleteMCPServerUserCredential:input_type -> kratos.mcp_server.v1.DeleteMCPServerUserCredentialRequest
-	2,  // 13: kratos.mcp_server.v1.MCPServerService.ListMCPServers:output_type -> kratos.mcp_server.v1.ListMCPServersResponse
-	0,  // 14: kratos.mcp_server.v1.MCPServerService.CreateMCPServer:output_type -> kratos.mcp_server.v1.MCPServer
-	0,  // 15: kratos.mcp_server.v1.MCPServerService.GetMCPServer:output_type -> kratos.mcp_server.v1.MCPServer
-	0,  // 16: kratos.mcp_server.v1.MCPServerService.UpdateMCPServer:output_type -> kratos.mcp_server.v1.MCPServer
-	16, // 17: kratos.mcp_server.v1.MCPServerService.DeleteMCPServer:output_type -> google.protobuf.Empty
-	8,  // 18: kratos.mcp_server.v1.MCPServerService.TestMCPServer:output_type -> kratos.mcp_server.v1.MCPServerTestResponse
-	10, // 19: kratos.mcp_server.v1.MCPServerService.ValidateMCPServer:output_type -> kratos.mcp_server.v1.ValidateMCPServerResponse
-	13, // 20: kratos.mcp_server.v1.MCPServerService.ListMCPServerUserCredentials:output_type -> kratos.mcp_server.v1.ListMCPServerUserCredentialsResponse
-	11, // 21: kratos.mcp_server.v1.MCPServerService.UpsertMCPServerUserCredential:output_type -> kratos.mcp_server.v1.MCPServerUserCredential
-	16, // 22: kratos.mcp_server.v1.MCPServerService.DeleteMCPServerUserCredential:output_type -> google.protobuf.Empty
-	13, // [13:23] is the sub-list for method output_type
-	3,  // [3:13] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	3,  // 1: kratos.mcp_server.v1.ListMCPServersResponse.summary:type_name -> kratos.mcp_server.v1.MCPUsageSummary
+	0,  // 2: kratos.mcp_server.v1.UpdateMCPServerRequest.mcp_server:type_name -> kratos.mcp_server.v1.MCPServer
+	12, // 3: kratos.mcp_server.v1.ListMCPServerUserCredentialsResponse.items:type_name -> kratos.mcp_server.v1.MCPServerUserCredential
+	1,  // 4: kratos.mcp_server.v1.MCPServerService.ListMCPServers:input_type -> kratos.mcp_server.v1.ListMCPServersRequest
+	4,  // 5: kratos.mcp_server.v1.MCPServerService.CreateMCPServer:input_type -> kratos.mcp_server.v1.CreateMCPServerRequest
+	5,  // 6: kratos.mcp_server.v1.MCPServerService.GetMCPServer:input_type -> kratos.mcp_server.v1.GetMCPServerRequest
+	6,  // 7: kratos.mcp_server.v1.MCPServerService.UpdateMCPServer:input_type -> kratos.mcp_server.v1.UpdateMCPServerRequest
+	7,  // 8: kratos.mcp_server.v1.MCPServerService.DeleteMCPServer:input_type -> kratos.mcp_server.v1.DeleteMCPServerRequest
+	8,  // 9: kratos.mcp_server.v1.MCPServerService.TestMCPServer:input_type -> kratos.mcp_server.v1.TestMCPServerRequest
+	10, // 10: kratos.mcp_server.v1.MCPServerService.ValidateMCPServer:input_type -> kratos.mcp_server.v1.ValidateMCPServerRequest
+	13, // 11: kratos.mcp_server.v1.MCPServerService.ListMCPServerUserCredentials:input_type -> kratos.mcp_server.v1.ListMCPServerUserCredentialsRequest
+	15, // 12: kratos.mcp_server.v1.MCPServerService.UpsertMCPServerUserCredential:input_type -> kratos.mcp_server.v1.UpsertMCPServerUserCredentialRequest
+	16, // 13: kratos.mcp_server.v1.MCPServerService.DeleteMCPServerUserCredential:input_type -> kratos.mcp_server.v1.DeleteMCPServerUserCredentialRequest
+	2,  // 14: kratos.mcp_server.v1.MCPServerService.ListMCPServers:output_type -> kratos.mcp_server.v1.ListMCPServersResponse
+	0,  // 15: kratos.mcp_server.v1.MCPServerService.CreateMCPServer:output_type -> kratos.mcp_server.v1.MCPServer
+	0,  // 16: kratos.mcp_server.v1.MCPServerService.GetMCPServer:output_type -> kratos.mcp_server.v1.MCPServer
+	0,  // 17: kratos.mcp_server.v1.MCPServerService.UpdateMCPServer:output_type -> kratos.mcp_server.v1.MCPServer
+	17, // 18: kratos.mcp_server.v1.MCPServerService.DeleteMCPServer:output_type -> google.protobuf.Empty
+	9,  // 19: kratos.mcp_server.v1.MCPServerService.TestMCPServer:output_type -> kratos.mcp_server.v1.MCPServerTestResponse
+	11, // 20: kratos.mcp_server.v1.MCPServerService.ValidateMCPServer:output_type -> kratos.mcp_server.v1.ValidateMCPServerResponse
+	14, // 21: kratos.mcp_server.v1.MCPServerService.ListMCPServerUserCredentials:output_type -> kratos.mcp_server.v1.ListMCPServerUserCredentialsResponse
+	12, // 22: kratos.mcp_server.v1.MCPServerService.UpsertMCPServerUserCredential:output_type -> kratos.mcp_server.v1.MCPServerUserCredential
+	17, // 23: kratos.mcp_server.v1.MCPServerService.DeleteMCPServerUserCredential:output_type -> google.protobuf.Empty
+	14, // [14:24] is the sub-list for method output_type
+	4,  // [4:14] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kratos_mcp_server_v1_mcp_server_proto_init() }
@@ -1296,7 +1364,7 @@ func file_kratos_mcp_server_v1_mcp_server_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_mcp_server_v1_mcp_server_proto_rawDesc), len(file_kratos_mcp_server_v1_mcp_server_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

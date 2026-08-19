@@ -48,8 +48,8 @@
     <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="assessment" />
-        <div class="text-h6 q-mt-md">{{ skillId ? '没有匹配的经验报告' : '暂无经验报告' }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">Skill 执行后将自动生成经验报告，可在此查看。</div>
+        <div class="text-h6 q-mt-md">{{ hasActiveFilters ? '没有匹配的经验报告' : '暂无经验报告' }}</div>
+        <div class="text-body2 text-grey-7 q-mt-sm">{{ hasActiveFilters ? '请调整筛选条件后重试。' : 'Skill 执行后将自动生成经验报告，可在此查看。' }}</div>
       </q-card-section>
     </q-card>
 
@@ -78,6 +78,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
@@ -106,4 +107,7 @@ const {
   loadRows,
   resetFilters,
 } = useExperienceReportListPage(initialSkillId);
+
+/** 任一筛选条件生效（Skill ID / 日期范围），用于空态文案区分「无数据」与「无匹配」 */
+const hasActiveFilters = computed(() => Boolean(skillId.value || from.value || to.value));
 </script>

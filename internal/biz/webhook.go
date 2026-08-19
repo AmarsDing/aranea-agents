@@ -203,7 +203,8 @@ func validateWebhookConfig(w WebhookConfig) error {
 		return apierror.BadRequest("GATEWAY", "url is required")
 	}
 	if err := webhookurl.ValidateNotifyURL(rawURL); err != nil {
-		return apierror.BadRequest("GATEWAY", err.Error())
+		return apierror.BadRequest("GATEWAY",
+			"回调 URL 不可用：%v。须为 HTTPS 或公网 HTTP 地址；localhost/内网地址需在服务端环境变量 ARANEA_OUTBOUND_ALLOW_HOSTS 中显式放行", err)
 	}
 	// S-08 fix: removed unused requireSecret parameter; secret is optional.
 	if v := strings.TrimSpace(w.EventTypesJSON); v != "" {

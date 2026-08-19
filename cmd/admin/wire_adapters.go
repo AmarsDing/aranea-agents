@@ -18,6 +18,7 @@ import (
 	mcpprobe "aranea-agents/internal/mcp/probe"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
+	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/testexec"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -36,9 +37,37 @@ func (a mcpProberAdapter) Evaluate(ctx context.Context, enabled bool, configJSON
 func provideMCPProber() biz.MCPProber {
 	// Probe path has no persisted server context: pass an empty serverKey so a
 	// rotation during probing stays in-memory only (no config_json write-back).
-	return mcpProberAdapter{prober: mcpprobe.NewProber(func(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
+	resolver := func(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 		return chatagent.ResolveMCPAuthToken(ctx, "", auth)
-	})}
+	}
+	prober := mcpprobe.NewProber(resolver)
+	// P2: full_handshake probe mode rides the same real-handshake discovery as
+	// the manual/runner paths. cfg.Name may be empty (config_json carries no
+	// server key); prefix stripping is best-effort display sugar only.
+	prober.SetHandshakeFunc(func(ctx context.Context, cfg mcpconfig.ServerConfig, headers map[string]string) ([]string, error) {
+		return tools.DiscoverMCPToolNames(ctx, tools.MCPServerConfigFromServerConfig(cfg.Name, cfg, headers))
+	})
+	return mcpProberAdapter{prober: prober}
+}
+
+// mcpToolDiscovererAdapter wraps internal/tools real-handshake discovery to
+// implement biz.MCPToolDiscoverer (P2). configJSON is already decrypted by
+// the biz layer; auth headers are resolved with the same logic the probe
+// pipeline uses so discovery never diverges from connectivity probing.
+type mcpToolDiscovererAdapter struct{}
+
+func (mcpToolDiscovererAdapter) DiscoverTools(ctx context.Context, serverKey string, configJSON string) ([]string, error) {
+	cfg, err := mcpconfig.ParseServerConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("config_json 格式错误: %w", err)
+	}
+	headers, err := mcpprobe.ResolveHeaders(ctx, func(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
+		return chatagent.ResolveMCPAuthToken(ctx, serverKey, auth)
+	}, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("鉴权凭据解析失败: %w", err)
+	}
+	return tools.DiscoverMCPToolNames(ctx, tools.MCPServerConfigFromServerConfig(serverKey, cfg, headers))
 }
 
 // mcpMetadataAdapter wraps internal/mcp/metadata to implement biz.MCPMetadataEditor.
@@ -54,6 +83,12 @@ func (mcpMetadataAdapter) ApplyReconnect(m map[string]any, at time.Time) map[str
 }
 func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) map[string]any {
 	return mcpmetadata.MarkHealthAlert(m, at)
+}
+func (mcpMetadataAdapter) ApplyToolDiscovery(m map[string]any, count int, names []string, at time.Time) map[string]any {
+	return mcpmetadata.ApplyToolDiscovery(m, count, names, at)
+}
+func (mcpMetadataAdapter) ApplyToolDiscoveryError(m map[string]any, errMsg string, at time.Time) map[string]any {
+	return mcpmetadata.ApplyToolDiscoveryError(m, errMsg, at)
 }
 
 func provideMCPMetadataEditor() biz.MCPMetadataEditor { return mcpMetadataAdapter{} }

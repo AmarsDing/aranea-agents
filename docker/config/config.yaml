@@ -104,7 +104,7 @@ self_improvement:
       g2: 600s                    # test gate timeout (10m)
       g3: 300s                    # lint gate timeout (5m)
     worktree_root: ".aranea-self-improve"  # sandbox worktree root (relative to repo root, gitignored)
-    repo_root: "" # platform repo root the sandbox/applier operates on (empty = process working directory)
+    repo_root: "f:\\myproject\\aranea-agents" # platform repo root the sandbox/applier operates on (empty = process working directory)
   observe_window:
     duration: 86400s              # post-apply observing window length (24h)
     error_rate_factor: 1.5        # rollback when error_rate > before*factor

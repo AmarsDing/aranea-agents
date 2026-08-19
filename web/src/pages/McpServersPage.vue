@@ -23,8 +23,25 @@
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <div class="app-page-toolbar__meta">共 {{ total }} 个服务器，本页 {{ enabledCount }} 个已启用</div>
+      <div class="app-page-toolbar__meta">
+        共 {{ total }} 个服务器，本页 {{ enabledCount }} 个已启用
+        <template v-if="usageSummaryText">
+          · <span :class="showUnusedWarning ? 'text-warning text-weight-medium' : 'text-grey-7'">{{ usageSummaryText }}</span>
+        </template>
+      </div>
     </AppPageToolbar>
+
+    <q-banner
+      v-if="showUnusedWarning"
+      rounded
+      dense
+      class="bg-orange-1 text-orange-10 q-mb-md mcp-unused-banner"
+    >
+      <template #avatar>
+        <q-icon name="warning_amber" color="warning" />
+      </template>
+      当前没有任何 Agent 启用 <code>mcp_tool_set</code>，已配置的「已启用」服务器不会被挂载到运行时。请到「Agent 管理 → 工具设置」为需要的 Agent 开启 MCP 工具集。
+    </q-banner>
 
     <q-banner
       v-if="mcpGuideVisible"
@@ -121,6 +138,8 @@ const {
   credUserLabel,
   enabledCount,
   filteredRows,
+  usageSummaryText,
+  showUnusedWarning,
   total,
   page,
   pageSize,

@@ -51,11 +51,19 @@ export type McpServerListQuery = {
   search?: string;
 };
 
+/** MCP 采纳汇总：多少 Agent 的有效工具策略开启了 MCP 门禁。 */
+export type McpUsageSummary = {
+  enabled_agent_count: number;
+  total_agent_count: number;
+};
+
 export type McpServerListResult = {
   items: McpServerRow[];
   total: number;
   page: number;
   page_size: number;
+  /** best-effort：后端未注入 AgentUsecase 或计算失败时缺省。 */
+  summary?: McpUsageSummary;
 };
 
 /** Full catalog (no page params) — pickers / platform resource manager. */
@@ -77,12 +85,24 @@ export async function listMcpServersPaged(query: McpServerListQuery = {}): Promi
     }),
   );
   const items = res.items ?? res.Items;
+  const summary = extractUsageSummary(res);
   return {
     items: Array.isArray(items) ? items.map(mcpRowToPlatform) : [],
     total: Number(res.total ?? 0),
     page: Number(res.page ?? page),
     page_size: Number(res.pageSize ?? res.page_size ?? pageSize),
+    summary,
   };
+}
+
+/** 从 list 响应提取 MCP 采纳汇总；字段缺省/非数时返回 undefined（best-effort）。 */
+function extractUsageSummary(res: Record<string, unknown>): McpUsageSummary | undefined {
+  const raw = asRecord(res.summary ?? (res as { Summary?: unknown }).Summary);
+  if (!raw) return undefined;
+  const enabled = Number(raw.enabled_agent_count ?? raw.enabledAgentCount ?? NaN);
+  const total = Number(raw.total_agent_count ?? raw.totalAgentCount ?? NaN);
+  if (!Number.isFinite(enabled) || !Number.isFinite(total)) return undefined;
+  return { enabled_agent_count: enabled, total_agent_count: total };
 }
 
 export async function createMcpServer(payload: PlatformResourceInput): Promise<McpServerRow> {

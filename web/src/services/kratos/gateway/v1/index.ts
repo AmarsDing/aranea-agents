@@ -27,6 +27,12 @@ export type CreateWebhookRequest = {
   enabled?: boolean;
 };
 
+export type ListWebhooksRequest = {
+  page: number | undefined;
+  pageSize: number | undefined;
+  search: string | undefined;
+};
+
 export type ListWebhooksResponse = {
   items: Webhook[] | undefined;
   total: number | undefined;
@@ -54,7 +60,7 @@ export type DeleteWebhookRequest = {
 
 export interface GatewayService {
   CreateWebhook(request: CreateWebhookRequest): Promise<Webhook>;
-  ListWebhooks(request: wellKnownEmpty): Promise<ListWebhooksResponse>;
+  ListWebhooks(request: ListWebhooksRequest): Promise<ListWebhooksResponse>;
   UpdateWebhook(request: UpdateWebhookRequest): Promise<Webhook>;
   DeleteWebhook(request: DeleteWebhookRequest): Promise<wellKnownEmpty>;
 }
@@ -92,6 +98,15 @@ export function createGatewayServiceClient(
       const path = `v1/gateway/webhooks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.search) {
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

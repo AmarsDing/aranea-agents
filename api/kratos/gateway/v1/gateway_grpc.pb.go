@@ -31,7 +31,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GatewayServiceClient interface {
 	CreateWebhook(ctx context.Context, in *CreateWebhookRequest, opts ...grpc.CallOption) (*Webhook, error)
-	ListWebhooks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListWebhooksResponse, error)
+	ListWebhooks(ctx context.Context, in *ListWebhooksRequest, opts ...grpc.CallOption) (*ListWebhooksResponse, error)
 	UpdateWebhook(ctx context.Context, in *UpdateWebhookRequest, opts ...grpc.CallOption) (*Webhook, error)
 	DeleteWebhook(ctx context.Context, in *DeleteWebhookRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -54,7 +54,7 @@ func (c *gatewayServiceClient) CreateWebhook(ctx context.Context, in *CreateWebh
 	return out, nil
 }
 
-func (c *gatewayServiceClient) ListWebhooks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListWebhooksResponse, error) {
+func (c *gatewayServiceClient) ListWebhooks(ctx context.Context, in *ListWebhooksRequest, opts ...grpc.CallOption) (*ListWebhooksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListWebhooksResponse)
 	err := c.cc.Invoke(ctx, GatewayService_ListWebhooks_FullMethodName, in, out, cOpts...)
@@ -89,7 +89,7 @@ func (c *gatewayServiceClient) DeleteWebhook(ctx context.Context, in *DeleteWebh
 // for forward compatibility.
 type GatewayServiceServer interface {
 	CreateWebhook(context.Context, *CreateWebhookRequest) (*Webhook, error)
-	ListWebhooks(context.Context, *emptypb.Empty) (*ListWebhooksResponse, error)
+	ListWebhooks(context.Context, *ListWebhooksRequest) (*ListWebhooksResponse, error)
 	UpdateWebhook(context.Context, *UpdateWebhookRequest) (*Webhook, error)
 	DeleteWebhook(context.Context, *DeleteWebhookRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedGatewayServiceServer()
@@ -105,7 +105,7 @@ type UnimplementedGatewayServiceServer struct{}
 func (UnimplementedGatewayServiceServer) CreateWebhook(context.Context, *CreateWebhookRequest) (*Webhook, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateWebhook not implemented")
 }
-func (UnimplementedGatewayServiceServer) ListWebhooks(context.Context, *emptypb.Empty) (*ListWebhooksResponse, error) {
+func (UnimplementedGatewayServiceServer) ListWebhooks(context.Context, *ListWebhooksRequest) (*ListWebhooksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListWebhooks not implemented")
 }
 func (UnimplementedGatewayServiceServer) UpdateWebhook(context.Context, *UpdateWebhookRequest) (*Webhook, error) {
@@ -154,7 +154,7 @@ func _GatewayService_CreateWebhook_Handler(srv interface{}, ctx context.Context,
 }
 
 func _GatewayService_ListWebhooks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(ListWebhooksRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func _GatewayService_ListWebhooks_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: GatewayService_ListWebhooks_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GatewayServiceServer).ListWebhooks(ctx, req.(*emptypb.Empty))
+		return srv.(GatewayServiceServer).ListWebhooks(ctx, req.(*ListWebhooksRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

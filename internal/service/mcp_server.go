@@ -28,11 +28,12 @@ type MCPServerService struct {
 
 	uc         *biz.MCPServerUsecase
 	mon        *biz.MonitorUsecase
+	agents     *biz.AgentUsecase // 可选：用于 ListMCPServers 的 MCP 采纳汇总；nil 时跳过 summary
 	lg         loggateway.Logger
 	monitorBus contract.MonitorBus
 }
 
-func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, lg loggateway.Logger, monitorBus contract.MonitorBus) *MCPServerService {
+func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, agents *biz.AgentUsecase, lg loggateway.Logger, monitorBus contract.MonitorBus) *MCPServerService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -53,7 +54,7 @@ func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, lg l
 			loggateway.Str("server_key", serverKey))
 		return nil
 	})
-	return &MCPServerService{uc: uc, mon: mon, lg: lg, monitorBus: monitorBus}
+	return &MCPServerService{uc: uc, mon: mon, agents: agents, lg: lg, monitorBus: monitorBus}
 }
 
 // logMCPFlow emits a user-visible flow log (流程日志) for MCP server CRUD steps.
@@ -231,6 +232,7 @@ func (s *MCPServerService) ListMCPServers(ctx context.Context, req *v1.ListMCPSe
 			Total:    int32(result.Total),
 			Page:     page,
 			PageSize: pageSize,
+			Summary:  s.usageSummary(ctx),
 		}
 		for i := range result.Items {
 			resp.Items = append(resp.Items, toProtoMCP(result.Items[i]))
@@ -246,11 +248,31 @@ func (s *MCPServerService) ListMCPServers(ctx context.Context, req *v1.ListMCPSe
 		Total:    int32(len(items)),
 		Page:     1,
 		PageSize: int32(len(items)),
+		Summary:  s.usageSummary(ctx),
 	}
 	for i := range items {
 		resp.Items = append(resp.Items, toProtoMCP(items[i]))
 	}
 	return resp, nil
+}
+
+// usageSummary 计算 MCP 采纳汇总（使用方数量），供管理页提示「配置了但无 Agent 使用」。
+// best-effort：agents 未注入或计算失败时返回 nil，绝不让汇总拖垮列表主流程。
+func (s *MCPServerService) usageSummary(ctx context.Context) *v1.MCPUsageSummary {
+	if s == nil || s.agents == nil {
+		return nil
+	}
+	sum, err := s.agents.GetMCPUsageSummary(ctx)
+	if err != nil {
+		s.lg.Warn("MCP 采纳汇总计算失败（降级不返回 summary）",
+			loggateway.StepID("mcp.server.usage_summary"),
+			loggateway.Err(err))
+		return nil
+	}
+	return &v1.MCPUsageSummary{
+		EnabledAgentCount: int32(sum.EnabledAgentCount),
+		TotalAgentCount:   int32(sum.TotalAgentCount),
+	}
 }
 
 func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMCPServerRequest) (*v1.MCPServer, error) {
@@ -374,9 +396,20 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 
 func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.ValidateMCPServerRequest) (*v1.ValidateMCPServerResponse, error) {
 	res := s.uc.ValidateConfig(ctx, req.GetConfigJson())
+	// P2: 表单校验通过后，best-effort 追加一次真实握手工具发现，让配置对话
+	// 框即时反馈「发现 N 个工具」。不持久化（配置可能尚未保存）。
+	message := res.Message
+	details := res.Details
+	if res.OK && !detailsHasToolCount(details) {
+		if disc := s.uc.DiscoverToolsForConfig(ctx, req.GetConfigJson()); disc.OK {
+			details, message = mergeDiscoveryResult(details, disc)
+		} else if disc.Message != "" {
+			details = mergeDiscoveryError(details, disc)
+		}
+	}
 	detailsJSON := "{}"
-	if len(res.Details) > 0 {
-		b, err := json.Marshal(res.Details)
+	if len(details) > 0 {
+		b, err := json.Marshal(details)
 		if err != nil {
 			return nil, err
 		}
@@ -385,9 +418,48 @@ func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.Valida
 	return &v1.ValidateMCPServerResponse{
 		Ok:          res.OK,
 		Status:      res.Status,
-		Message:     res.Message,
+		Message:     message,
 		DetailsJson: detailsJSON,
 	}, nil
+}
+
+// detailsHasToolCount reports whether probe Details already carry a discovery
+// result (full_handshake mode merged it in biz already).
+func detailsHasToolCount(details map[string]any) bool {
+	if details == nil {
+		return false
+	}
+	_, ok := details["tool_count"]
+	return ok
+}
+
+// mergeDiscoveryResult folds a successful discovery into response details and
+// returns the user-facing message suffix appended.
+func mergeDiscoveryResult(details map[string]any, disc biz.MCPToolDiscoveryResult) (map[string]any, string) {
+	out := make(map[string]any, len(details)+2)
+	for k, v := range details {
+		out[k] = v
+	}
+	out["tool_count"] = disc.ToolCount
+	if len(disc.ToolNames) > 0 {
+		names := disc.ToolNames
+		if len(names) > 50 {
+			names = names[:50]
+		}
+		out["tool_names"] = names
+	}
+	return out, fmt.Sprintf("，发现 %d 个工具", disc.ToolCount)
+}
+
+// mergeDiscoveryError records a failed discovery in details without changing
+// the probe verdict (connectivity OK stands; discovery is orthogonal).
+func mergeDiscoveryError(details map[string]any, disc biz.MCPToolDiscoveryResult) map[string]any {
+	out := make(map[string]any, len(details)+1)
+	for k, v := range details {
+		out[k] = v
+	}
+	out["tools_error"] = disc.Message
+	return out
 }
 
 func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPServerRequest) (*v1.MCPServerTestResponse, error) {
@@ -408,9 +480,26 @@ func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPSer
 		}
 		return nil, err
 	}
+	// P2: 手动「测试连接」在连通性通过后追加一次真实握手发现（非
+	// full_handshake 模式时 Details 无 tool_count），结果持久化并即时反馈
+	// 「发现 N 个工具」。发现失败不改变连通性结论，仅以 tools_error 呈现。
+	message := res.Result.Message
+	details := res.Result.Details
+	if res.Result.OK && !detailsHasToolCount(details) {
+		if disc, derr := s.uc.DiscoverMCPServerTools(ctx, req.GetId()); derr != nil {
+			s.lg.Warn("MCP 手动测试后工具发现持久化失败",
+				loggateway.StepID("mcp.server.tools_discovery"),
+				loggateway.Str("server_id", req.GetId()),
+				loggateway.Err(derr))
+		} else if disc.OK {
+			details, message = mergeDiscoveryResult(details, disc)
+		} else if disc.Message != "" {
+			details = mergeDiscoveryError(details, disc)
+		}
+	}
 	detailsJSON := "{}"
-	if len(res.Result.Details) > 0 {
-		b, err := json.Marshal(res.Result.Details)
+	if len(details) > 0 {
+		b, err := json.Marshal(details)
 		if err != nil {
 			return nil, err
 		}
@@ -419,7 +508,7 @@ func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPSer
 	return &v1.MCPServerTestResponse{
 		Ok:          res.Result.OK,
 		Status:      res.Result.Status,
-		Message:     res.Result.Message,
+		Message:     message,
 		DetailsJson: detailsJSON,
 	}, nil
 }

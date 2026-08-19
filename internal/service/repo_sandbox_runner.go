@@ -115,15 +115,26 @@ func (r *RepoSandboxRunner) PrepareWorktree(ctx context.Context, runID, baseRef 
 	}
 
 	r.mu.Lock()
+	// 2026-08-19 事故：git 在注册 worktree 后、checkout 完成前被杀（exit 255），
+	// 留下"已注册的半截 worktree"。先快照注册态以区分两种已注册报错：
+	// pre-registered = 活跃重复 runID（不动、直接报错）；post-only = 本次调用半截
+	// 创建（归我们清理，否则 worktree+分支永久泄漏，run 已失败无人持有路径）。
+	preRegistered := r.worktreeRegistered(ctx, wtPath)
 	err := r.runGit(ctx, r.repoRoot, nil, "worktree", "add", "-b", branch, wtPath, ref)
-	if err != nil && !r.worktreeRegistered(ctx, wtPath) {
+	if err != nil && !preRegistered && r.worktreeRegistered(ctx, wtPath) {
+		r.purgeRegisteredWorktree(ctx, branch, wtPath)
+	} else if err != nil && !r.worktreeRegistered(ctx, wtPath) {
 		// 崩溃孤儿自愈（2026-08-08 exit 128 事故）：分支已建/目录残留但 worktree
 		// 未注册 = 上次 prepare 中途失败（或进程被杀）的遗留。清理后重试一次；
 		// 再失败同样清理，保证错误返回后无孤儿，下次 stale 恢复仍是干净起点。
 		// 已注册的同名 worktree（活跃重复 runID）不在此清理，直接报错。
 		r.purgeWorktreeOrphan(ctx, branch, wtPath)
 		if retryErr := r.runGit(ctx, r.repoRoot, nil, "worktree", "add", "-b", branch, wtPath, ref); retryErr != nil {
-			r.purgeWorktreeOrphan(ctx, branch, wtPath)
+			if r.worktreeRegistered(ctx, wtPath) {
+				r.purgeRegisteredWorktree(ctx, branch, wtPath)
+			} else {
+				r.purgeWorktreeOrphan(ctx, branch, wtPath)
+			}
 			r.mu.Unlock()
 			return "", nil, err
 		}
@@ -311,6 +322,20 @@ func (r *RepoSandboxRunner) purgeWorktreeOrphan(ctx context.Context, branch, wtP
 			loggateway.Str("path", wtPath),
 			loggateway.Err(err))
 	}
+}
+
+// purgeRegisteredWorktree removes a half-created worktree that IS registered
+// (git died after registration, e.g. 2026-08-19 exit 255): worktree remove
+// unregisters + deletes the dir, then the branch is dropped. Best-effort like
+// purgeWorktreeOrphan; the error return to the caller is the real verdict.
+func (r *RepoSandboxRunner) purgeRegisteredWorktree(ctx context.Context, branch, wtPath string) {
+	if err := r.runGit(ctx, r.repoRoot, nil, "worktree", "remove", "--force", wtPath); err != nil {
+		r.lg.Warn("self-improve half-created worktree removal failed",
+			loggateway.StepID("sandbox.worktree.purge"),
+			loggateway.Str("path", wtPath),
+			loggateway.Err(err))
+	}
+	r.purgeWorktreeOrphan(ctx, branch, wtPath)
 }
 
 // runGit executes a git command with optional stdin and wraps failures with

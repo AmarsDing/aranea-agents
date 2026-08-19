@@ -386,6 +386,10 @@ var ddlMigrations = []ddlMigration{
 	// ent schema）已有该字段，但存量库缺列 → 查询组装 settings 时列不存在直接报错/
 	// 开关恒 false，reply_reminder 无法按 agent 关闭。补列，默认 1 保持旧行为。
 	{Version: 20261230, Name: "agent_runtime_reply_reminder", SQL: "sql/migrations/20261230_agent_runtime_reply_reminder.sql"},
+	// 2026-08-19 自我改进排障事故：closed_reason MaxLen(64) 把失败根因（git stderr
+	// 摘要）截成 "exit status 255: exit statu..."，详情永久丢失。扩到 512（与 ent
+	// schema 同步）；PG varchar 加宽仅目录变更、无损，SQLite 不校验长度直接跳过。
+	{Version: 20261231, Name: "si_run_closed_reason_widen", Func: ddlSIRunClosedReasonWiden},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1483,5 +1487,36 @@ func ddlMonitorAlertFiringMsBigint(ctx context.Context, rawDB *sql.DB, _ *ent.Cl
 			loggateway.StepID("data.ddl_migration.monitor_alert_firing_ms_bigint"),
 			loggateway.Str("column", col))
 	}
+	return nil
+}
+
+// ddlSIRunClosedReasonWiden widens self_improvement_runs.closed_reason from
+// varchar(64) to varchar(512) (2026-08-19 排障事故：64 字符截断丢失失败根因）。
+// PG varchar 加宽仅系统目录变更、不重写表、无损。SQLite 不校验 varchar 长度，
+// 跳过。幂等：information_schema 长度守卫，已达 512 不再 ALTER。
+func ddlSIRunClosedReasonWiden(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("si_run_closed_reason_widen skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.si_run_closed_reason_widen"))
+		return nil
+	}
+	var maxLen *int
+	err := rawDB.QueryRowContext(ctx, `
+		SELECT character_maximum_length FROM information_schema.columns
+		WHERE table_name = 'self_improvement_runs' AND column_name = 'closed_reason'`).Scan(&maxLen)
+	if err == sql.ErrNoRows || maxLen == nil {
+		return nil // 列不存在：新库由 ent Schema.Create 以 512 形态建表
+	}
+	if err != nil {
+		return fmt.Errorf("check self_improvement_runs.closed_reason length: %w", err)
+	}
+	if *maxLen >= 512 {
+		return nil
+	}
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE self_improvement_runs ALTER COLUMN closed_reason TYPE varchar(512)`); err != nil {
+		return fmt.Errorf("widen self_improvement_runs.closed_reason to 512: %w", err)
+	}
+	lg.Info("self_improvement_runs.closed_reason widened to 512",
+		loggateway.StepID("data.ddl_migration.si_run_closed_reason_widen"))
 	return nil
 }

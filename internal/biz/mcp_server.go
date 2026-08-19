@@ -57,6 +57,19 @@ type MCPMetadataEditor interface {
 	ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string)
 	ApplyReconnect(m map[string]any, at time.Time) map[string]any
 	MarkHealthAlert(m map[string]any, at time.Time) map[string]any
+	// ApplyToolDiscovery merges a successful handshake discovery (P2):
+	// exact tool count + (possibly pre-capped) names + discovery timestamp.
+	ApplyToolDiscovery(m map[string]any, count int, names []string, at time.Time) map[string]any
+	// ApplyToolDiscoveryError records a failed discovery attempt without
+	// touching the last-good tool_count/tool_names.
+	ApplyToolDiscoveryError(m map[string]any, errMsg string, at time.Time) map[string]any
+}
+
+// MCPToolDiscoverer performs a real MCP handshake (initialize + tools/list)
+// for tool discovery (P2). configJSON is already decrypted for runtime use.
+// Stability:evolving
+type MCPToolDiscoverer interface {
+	DiscoverTools(ctx context.Context, serverKey string, configJSON string) ([]string, error)
 }
 
 // MCPServer matches legacy PlatformResource for mcp-servers.
@@ -129,15 +142,23 @@ type MCPServerRepo interface {
 }
 
 type MCPServerUsecase struct {
-	repo     MCPServerRepo
-	credRepo MCPServerUserCredentialRepo
-	prober   MCPProber
-	metaEdit MCPMetadataEditor
-	crypto   *CredentialCrypto
+	repo       MCPServerRepo
+	credRepo   MCPServerUserCredentialRepo
+	prober     MCPProber
+	metaEdit   MCPMetadataEditor
+	crypto     *CredentialCrypto
+	discoverer MCPToolDiscoverer
 }
 
 func NewMCPServerUsecase(repo MCPServerRepo, credRepo MCPServerUserCredentialRepo, prober MCPProber, metaEdit MCPMetadataEditor, crypto *CredentialCrypto) *MCPServerUsecase {
 	return &MCPServerUsecase{repo: repo, credRepo: credRepo, prober: prober, metaEdit: metaEdit, crypto: crypto}
+}
+
+// SetToolDiscoverer injects the optional real-handshake discovery capability
+// (P2). Nil disables discovery: DiscoverMCPServerTools then reports OK=false
+// with a "not configured" message instead of failing.
+func (u *MCPServerUsecase) SetToolDiscoverer(d MCPToolDiscoverer) {
+	u.discoverer = d
 }
 
 func (u *MCPServerUsecase) List(ctx context.Context, q MCPListQuery) ([]MCPServer, error) {
@@ -447,6 +468,10 @@ func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, re
 	meta := u.metaEdit.Parse(row.MetadataJSON)
 	at := time.Now().UTC()
 	meta, status := u.metaEdit.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
+	// P2: full_handshake probes carry discovery results in Details — merge in
+	// the same write so tool metadata never lags a separate DB roundtrip.
+	// Handshake failures record tools_error_message but never flip health.
+	meta = u.mergeDiscoveryDetails(meta, result, at)
 	raw, err := u.metaEdit.Marshal(meta)
 	if err != nil {
 		return MCPServer{}, err
@@ -458,6 +483,127 @@ func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, re
 	row.MetadataJSON = raw
 	row.Status = status
 	return *row, nil
+}
+
+// mergeDiscoveryDetails folds full_handshake discovery Details into metadata.
+// No-op for connectivity/auth_aware results (no Details markers).
+func (u *MCPServerUsecase) mergeDiscoveryDetails(meta map[string]any, result MCPTestResult, at time.Time) map[string]any {
+	if result.Details == nil {
+		return meta
+	}
+	if count, ok := detailsInt(result.Details["tool_count"]); ok && result.OK {
+		return u.metaEdit.ApplyToolDiscovery(meta, count, detailsStringSlice(result.Details["tool_names"]), at)
+	}
+	if phase, _ := result.Details["phase"].(string); phase == "handshake" && !result.OK {
+		return u.metaEdit.ApplyToolDiscoveryError(meta, result.Message, at)
+	}
+	return meta
+}
+
+func detailsInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
+func detailsStringSlice(v any) []string {
+	switch s := v.(type) {
+	case []string:
+		return s
+	case []any:
+		out := make([]string, 0, len(s))
+		for _, item := range s {
+			if str, ok := item.(string); ok {
+				out = append(out, str)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// MCPToolDiscoveryResult is the outcome of one tool-discovery attempt (P2).
+// OK=false carries a human-readable Message; persist-level errors ride the
+// error return instead.
+type MCPToolDiscoveryResult struct {
+	OK        bool
+	ToolCount int
+	ToolNames []string
+	Message   string
+}
+
+// DiscoverMCPServerTools runs a real MCP handshake (initialize + tools/list)
+// against the stored server and persists tool_count/tool_names into
+// metadata_json. Discovery failures are recorded as tools_error_message but
+// never flip health_status (discovery ≠ connectivity). Servers requiring
+// per-user credentials short-circuit OK=false: no user context exists on
+// background/manual-admin paths.
+func (u *MCPServerUsecase) DiscoverMCPServerTools(ctx context.Context, id string) (MCPToolDiscoveryResult, error) {
+	if strings.TrimSpace(id) == "" {
+		return MCPToolDiscoveryResult{}, apierror.BadRequest("MCP_SERVER", "id is required")
+	}
+	row, err := u.repo.GetMCPServer(ctx, id)
+	if err != nil {
+		return MCPToolDiscoveryResult{}, err
+	}
+	res := u.discover(ctx, row.Key, row.ConfigJSON)
+	if u.metaEdit == nil {
+		return res, apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
+	}
+	meta := u.metaEdit.Parse(row.MetadataJSON)
+	at := time.Now().UTC()
+	if res.OK {
+		meta = u.metaEdit.ApplyToolDiscovery(meta, res.ToolCount, res.ToolNames, at)
+	} else {
+		meta = u.metaEdit.ApplyToolDiscoveryError(meta, res.Message, at)
+	}
+	raw, err := u.metaEdit.Marshal(meta)
+	if err != nil {
+		return res, err
+	}
+	// Field-level write with status="" — discovery never touches row status.
+	if err := u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, ""); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+// DiscoverToolsForConfig discovers against an unsaved config (pre-create
+// validation in the form dialog). Nothing is persisted.
+func (u *MCPServerUsecase) DiscoverToolsForConfig(ctx context.Context, configJSON string) MCPToolDiscoveryResult {
+	return u.discover(ctx, "", configJSON)
+}
+
+// discover is the shared handshake path. require_user_credentials servers
+// short-circuit before any network/process work.
+func (u *MCPServerUsecase) discover(ctx context.Context, serverKey string, storedConfigJSON string) MCPToolDiscoveryResult {
+	if u.discoverer == nil {
+		return MCPToolDiscoveryResult{OK: false, Message: "工具发现能力未配置"}
+	}
+	cfgJSON, err := u.configJSONForRuntime(ctx, storedConfigJSON)
+	if err != nil {
+		return MCPToolDiscoveryResult{OK: false, Message: "配置解密失败: " + err.Error()}
+	}
+	var probeCfg struct {
+		RequireUserCredentials bool `json:"require_user_credentials"`
+	}
+	_ = json.Unmarshal([]byte(cfgJSON), &probeCfg)
+	if probeCfg.RequireUserCredentials {
+		return MCPToolDiscoveryResult{OK: false, Message: "该服务器要求按用户凭据，无用户上下文时无法自动发现工具"}
+	}
+	names, derr := u.discoverer.DiscoverTools(ctx, serverKey, cfgJSON)
+	if derr != nil {
+		return MCPToolDiscoveryResult{OK: false, Message: derr.Error()}
+	}
+	return MCPToolDiscoveryResult{OK: true, ToolCount: len(names), ToolNames: names}
 }
 
 // validateMCPConfigURLs parses configJSON and validates that any HTTP

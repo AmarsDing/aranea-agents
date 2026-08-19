@@ -46,7 +46,9 @@ func (SelfImprovementRun) Fields() []ent.Field {
 		field.String("applied_commit").MaxLen(64).Optional().Default(""),
 		field.String("rollback_pointer").MaxLen(64).Optional().Default(""),
 		field.Time("observe_until").Optional().Nillable(),
-		field.String("closed_reason").MaxLen(64).Optional().Default(""),
+		// 512（2026-08-19，原 64）：失败根因（git stderr 摘要等）需要足够预算，
+		// 64 字符会把 "exit status" 后的关键详情截掉，排障信息永久丢失。
+		field.String("closed_reason").MaxLen(512).Optional().Default(""),
 		field.JSON("metadata", map[string]any{}).Optional(),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),

@@ -123,4 +123,22 @@ describe('useMcpServersPage healthTooltip', () => {
     expect(page.healthTooltip(makeRow({}, { enabled: false }))).toBe('mcpPage.notEnabledNotTested');
     expect(page.healthTooltip(makeRow({}))).toBe('mcpPage.notTested');
   });
+
+  it('P2：tool_count 存在时追加「已发现 N 个工具」', () => {
+    const page = setupPage();
+    const row = makeRow({ health_status: 'ok', last_health_at: '2026-08-01T12:00:00Z', tool_count: 5 });
+    expect(page.healthTooltip(row)).toMatch(/^最近成功：.*；已发现 5 个工具$/);
+  });
+
+  it('P2：仅 tools_error_message（无 last-good 计数）→ 追加「工具发现失败」', () => {
+    const page = setupPage();
+    const row = makeRow({ health_status: 'ok', last_health_at: '2026-08-01T12:00:00Z', tools_error_message: 'boom' });
+    expect(page.healthTooltip(row)).toMatch(/；工具发现失败$/);
+  });
+
+  it('P2：last-good 计数优先于错误记录（ApplyToolDiscoveryError 语义）', () => {
+    const page = setupPage();
+    const row = makeRow({ tool_count: 3, tools_error_message: 'recent fail' });
+    expect(page.healthTooltip(row)).toBe('mcpPage.notTested；已发现 3 个工具');
+  });
 });

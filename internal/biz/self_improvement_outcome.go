@@ -131,7 +131,7 @@ func (uc *SelfImprovementOutcomeUsecase) attribute(ctx context.Context, run *Sel
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
 		SuggestionID:  run.SuggestionID,
-		Verdict:       SIVerdictForStatus(run.Status),
+		Verdict:       SIVerdictForStatus(run.Status, run.ClosedReason),
 		MetricsBefore: siWatchMetricFromMeta(run.Metadata, siMetaObserveBaseline),
 		MetricsAfter:  siWatchMetricFromMeta(run.Metadata, siMetaObserveAfter),
 		CreatedAt:     time.Now().UTC(),
@@ -215,9 +215,15 @@ func (uc *SelfImprovementOutcomeUsecase) adaptTrigger(ctx context.Context, run *
 }
 
 // SIVerdictForStatus maps a terminal run status to its D8 verdict.
-func SIVerdictForStatus(status SelfImprovementRunStatus) SelfImprovementVerdict {
+// closed 需区分关闭原因：record_only（低置信度仅记录、从未应用补丁）没有可
+// 归因的效果，记 neutral；只有真正走完应用+观察窗口的关闭才算 effective
+//（2026-08-19：record_only 记 effective 导致有效率指标虚高）。
+func SIVerdictForStatus(status SelfImprovementRunStatus, closedReason string) SelfImprovementVerdict {
 	switch status {
 	case RunStatusClosed:
+		if strings.HasPrefix(closedReason, siClosedReasonRecordOnlyPrefix) {
+			return VerdictNeutral
+		}
 		return VerdictEffective
 	case RunStatusRolledBack:
 		return VerdictRegressed

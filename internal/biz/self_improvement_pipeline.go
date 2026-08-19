@@ -129,6 +129,10 @@ func NewSelfImprovementPipelineUsecase(deps SelfImprovementPipelineDeps) *SelfIm
 // siConfidenceFloor is the Analyst confidence threshold (types.go: <0.5 降级为仅记录).
 const siConfidenceFloor = 0.5
 
+// siClosedReasonRecordOnlyPrefix 是 record_only 关闭原因的前缀（低置信度仅
+// 记录，补丁从未应用）。outcome 归因按此前缀区分 effective/neutral。
+const siClosedReasonRecordOnlyPrefix = "record_only"
+
 // Execute runs the pipeline for one detected run until a terminal or
 // governance-waiting state. Stage errors fail the run (status=failed) and are
 // returned; policy rejections and verify exhaustion are normal terminals
@@ -281,7 +285,7 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 	emitStage(SIStageDiagnosing, 0, ActivityStatusCompleted, "")
 	cursor.stage = ""
 	if diagnosis.Confidence < siConfidenceFloor {
-		run.ClosedReason = fmt.Sprintf("record_only: confidence %.2f < %.2f", diagnosis.Confidence, siConfidenceFloor)
+		run.ClosedReason = fmt.Sprintf("%s: confidence %.2f < %.2f", siClosedReasonRecordOnlyPrefix, diagnosis.Confidence, siConfidenceFloor)
 		uc.lg.Info("self-improve run record-only (low confidence)",
 			loggateway.StepID("si_pipeline.record_only"), loggateway.Str("run_id", run.ID))
 		return transition(RunEventRecordOnly)

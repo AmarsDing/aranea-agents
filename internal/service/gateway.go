@@ -91,9 +91,15 @@ func (s *GatewayService) CreateWebhook(ctx context.Context, req *v1.CreateWebhoo
 	return webhookToProtoWithSecret(w), nil
 }
 
-func (s *GatewayService) ListWebhooks(ctx context.Context, _ *emptypb.Empty) (*v1.ListWebhooksResponse, error) {
-	search := searchQueryFromContext(ctx)
-	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+func (s *GatewayService) ListWebhooks(ctx context.Context, req *v1.ListWebhooksRequest) (*v1.ListWebhooksResponse, error) {
+	search := strings.TrimSpace(req.GetSearch())
+	if search == "" {
+		// Fallback for direct HTTP callers hitting the endpoint with legacy
+		// query keys (q/keyword) outside the proto-bound fields.
+		search = searchQueryFromContext(ctx)
+	}
+	page, pageSize := req.GetPage(), req.GetPageSize()
+	if page > 0 || pageSize > 0 || search != "" {
 		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
 		result, err := s.wh.ListPaged(ctx, biz.WebhookListQuery{
 			Search: search,

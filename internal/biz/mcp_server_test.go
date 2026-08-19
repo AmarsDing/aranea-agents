@@ -77,7 +77,10 @@ func (s *stubMCPRepo) UpdateMCPServerMetadata(_ context.Context, id string, meta
 	for i := range s.rows {
 		if s.rows[i].ID == id {
 			s.rows[i].MetadataJSON = metadataJSON
-			s.rows[i].Status = status
+			// 与真实 data 层一致：status="" 表示不触碰行状态。
+			if status != "" {
+				s.rows[i].Status = status
+			}
 			return nil
 		}
 	}
@@ -190,6 +193,12 @@ func (mcpMetadataAdapter) ApplyReconnect(m map[string]any, at time.Time) map[str
 }
 func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) map[string]any {
 	return mcpmetadata.MarkHealthAlert(m, at)
+}
+func (mcpMetadataAdapter) ApplyToolDiscovery(m map[string]any, count int, names []string, at time.Time) map[string]any {
+	return mcpmetadata.ApplyToolDiscovery(m, count, names, at)
+}
+func (mcpMetadataAdapter) ApplyToolDiscoveryError(m map[string]any, errMsg string, at time.Time) map[string]any {
+	return mcpmetadata.ApplyToolDiscoveryError(m, errMsg, at)
 }
 
 func TestValidateMCPConfigURLs(t *testing.T) {
@@ -350,5 +359,178 @@ func TestResolveUserAuthHeaders_FallbackUsesServerHeaderName(t *testing.T) {
 	// Ensure secret was NOT written to the credential's own key.
 	if _, leaked := headers["x-api-key"]; leaked {
 		t.Fatal("S2 bug: secret leaked to 'x-api-key' header instead of server-configured 'authorization'")
+	}
+}
+
+// --- P2: tool discovery -------------------------------------------------
+
+type stubMCPProber struct{ result MCPTestResult }
+
+func (s stubMCPProber) Evaluate(_ context.Context, _ bool, _ string) MCPTestResult { return s.result }
+
+type stubMCPDiscoverer struct {
+	names      []string
+	err        error
+	called     int
+	lastKey    string
+	lastConfig string
+}
+
+func (s *stubMCPDiscoverer) DiscoverTools(_ context.Context, serverKey string, configJSON string) ([]string, error) {
+	s.called++
+	s.lastKey = serverKey
+	s.lastConfig = configJSON
+	return s.names, s.err
+}
+
+func TestTestMCPServer_MergesFullHandshakeDetails(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, Status: "active",
+		ConfigJSON: `{"transport":"stdio","command":"x","probe_mode":"full_handshake"}`,
+	}}}
+	prober := stubMCPProber{result: MCPTestResult{
+		OK: true, Status: "ok", Message: "握手成功，发现 2 个工具",
+		Details: map[string]any{"tool_count": 2, "tool_names": []string{"search", "fetch"}},
+	}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, prober, mcpMetadataAdapter{}, nil)
+
+	res, err := uc.TestMCPServer(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Result.OK {
+		t.Fatalf("result=%+v", res.Result)
+	}
+	meta := mcpmetadata.Parse(repo.rows[0].MetadataJSON)
+	if meta["tool_count"] != float64(2) {
+		t.Fatalf("tool_count=%v", meta["tool_count"])
+	}
+	if meta["tools_discovered_at"] == nil || meta["tools_discovered_at"] == "" {
+		t.Fatal("tools_discovered_at missing")
+	}
+	if repo.rows[0].Status != "active" {
+		t.Fatalf("status=%q", repo.rows[0].Status)
+	}
+}
+
+func TestTestMCPServer_HandshakeFailureRecordsToolsError(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, Status: "active",
+		ConfigJSON:   `{"transport":"stdio","command":"x","probe_mode":"full_handshake"}`,
+		MetadataJSON: `{"tool_count":5}`,
+	}}}
+	prober := stubMCPProber{result: MCPTestResult{
+		OK: false, Status: "error", Message: "MCP 握手失败: boom",
+		Details: map[string]any{"phase": "handshake"},
+	}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, prober, mcpMetadataAdapter{}, nil)
+
+	_, err := uc.TestMCPServer(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := mcpmetadata.Parse(repo.rows[0].MetadataJSON)
+	if meta["tools_error_message"] != "MCP 握手失败: boom" {
+		t.Fatalf("tools_error_message=%v", meta["tools_error_message"])
+	}
+	// 上次成功数据保留
+	if meta["tool_count"] != float64(5) {
+		t.Fatalf("tool_count clobbered: %v", meta["tool_count"])
+	}
+	if repo.rows[0].Status != "error" {
+		t.Fatalf("status=%q, want error (health flipped)", repo.rows[0].Status)
+	}
+}
+
+func TestDiscoverMCPServerTools_Success(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, Status: "active",
+		ConfigJSON: `{"transport":"stdio","command":"x"}`,
+	}}}
+	disc := &stubMCPDiscoverer{names: []string{"a", "b", "c"}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+	uc.SetToolDiscoverer(disc)
+
+	res, err := uc.DiscoverMCPServerTools(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || res.ToolCount != 3 {
+		t.Fatalf("res=%+v", res)
+	}
+	if disc.lastKey != "srv" {
+		t.Fatalf("discoverer key=%q", disc.lastKey)
+	}
+	meta := mcpmetadata.Parse(repo.rows[0].MetadataJSON)
+	if meta["tool_count"] != float64(3) {
+		t.Fatalf("tool_count=%v", meta["tool_count"])
+	}
+	if repo.rows[0].Status != "active" {
+		t.Fatalf("status clobbered: %q", repo.rows[0].Status)
+	}
+}
+
+func TestDiscoverMCPServerTools_RequireUserCredentialsShortCircuits(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, Status: "active",
+		ConfigJSON: `{"transport":"streamable","url":"https://x","require_user_credentials":true}`,
+	}}}
+	disc := &stubMCPDiscoverer{names: []string{"a"}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+	uc.SetToolDiscoverer(disc)
+
+	res, err := uc.DiscoverMCPServerTools(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("expected OK=false for per-user credential server")
+	}
+	if disc.called != 0 {
+		t.Fatal("discoverer must not be called for per-user credential server")
+	}
+	meta := mcpmetadata.Parse(repo.rows[0].MetadataJSON)
+	if meta["tools_error_message"] == nil || meta["tools_error_message"] == "" {
+		t.Fatal("expected tools_error_message recorded")
+	}
+}
+
+func TestDiscoverMCPServerTools_FailurePreservesLastGood(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, Status: "active",
+		ConfigJSON:   `{"transport":"stdio","command":"x"}`,
+		MetadataJSON: `{"tool_count":7,"tool_names":["a"]}`,
+	}}}
+	disc := &stubMCPDiscoverer{err: context.DeadlineExceeded}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+	uc.SetToolDiscoverer(disc)
+
+	res, err := uc.DiscoverMCPServerTools(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("expected OK=false")
+	}
+	meta := mcpmetadata.Parse(repo.rows[0].MetadataJSON)
+	if meta["tool_count"] != float64(7) {
+		t.Fatalf("tool_count clobbered: %v", meta["tool_count"])
+	}
+	if meta["tools_error_message"] == nil {
+		t.Fatal("tools_error_message missing")
+	}
+}
+
+func TestDiscoverMCPServerTools_NoDiscovererConfigured(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, ConfigJSON: `{"transport":"stdio","command":"x"}`,
+	}}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+	res, err := uc.DiscoverMCPServerTools(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("expected OK=false when discoverer not configured")
 	}
 }

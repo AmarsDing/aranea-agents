@@ -13,6 +13,7 @@ import {
   deleteMcpUserCredential,
   type PlatformResourceInput,
   type McpServerListQuery,
+  type McpUsageSummary,
 } from '../../features/mcp/api';
 import type {
   McpServerRow,
@@ -26,6 +27,8 @@ export const useMcpStore = defineStore('mcp', () => {
   const servers = ref<McpServerRow[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  /** MCP 采纳汇总（使用方数量）；后端 best-effort，可能为 null。 */
+  const usageSummary = ref<McpUsageSummary | null>(null);
 
   async function loadServers(query?: McpServerListQuery) {
     loading.value = true;
@@ -34,6 +37,7 @@ export const useMcpStore = defineStore('mcp', () => {
         const result = await listMcpServersPaged(query);
         servers.value = result.items;
         total.value = result.total;
+        usageSummary.value = result.summary ?? null;
         return result;
       }
       servers.value = await listMcpServers();
@@ -87,6 +91,7 @@ export const useMcpStore = defineStore('mcp', () => {
     servers,
     total,
     loading,
+    usageSummary,
     loadServers,
     addServer,
     editServer,

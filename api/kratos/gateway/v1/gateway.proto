@@ -31,6 +31,12 @@ message CreateWebhookRequest {
   optional bool enabled = 6;
 }
 
+message ListWebhooksRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string search = 3;
+}
+
 message ListWebhooksResponse {
   repeated Webhook items = 1;
   int32 total = 2;
@@ -56,7 +62,7 @@ service GatewayService {
   rpc CreateWebhook(CreateWebhookRequest) returns (Webhook) {
     option (google.api.http) = { post: "/v1/gateway/webhooks" body: "*" };
   }
-  rpc ListWebhooks(google.protobuf.Empty) returns (ListWebhooksResponse) {
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse) {
     option (google.api.http) = { get: "/v1/gateway/webhooks" };
   }
   rpc UpdateWebhook(UpdateWebhookRequest) returns (Webhook) {

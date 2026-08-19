@@ -211,7 +211,8 @@ body.app-registry-col-resizing
   .app-registry-col-resize
     position: absolute
     top: 0
-    right: -4px
+    // 整条保持在当前 th 内：-4px 会让右半被相邻 th 遮挡，导致无法命中拖拽
+    right: 0
     width: 8px
     height: 100%
     cursor: col-resize
