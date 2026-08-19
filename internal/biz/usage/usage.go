@@ -888,8 +888,8 @@ func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) 
 		return TokenUsageEvent{}, apierror.BadRequest("USAGE", "id is required")
 	}
 	e = normalizeTokenUsageEventForInsert(e, u.now())
-	u.enrichPricing(ctx, &e)
-	u.markNoPricing(&e)
+	priced := u.enrichPricing(ctx, &e)
+	u.markNoPricing(&e, priced)
 	out, err := u.repo.RecordTokenUsageEvent(ctx, e)
 	if err != nil {
 		return out, err
@@ -942,46 +942,60 @@ func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUs
 	return e
 }
 
-func (u *Usecase) enrichPricing(ctx context.Context, e *TokenUsageEvent) {
+// enrichPricing resolves prices for the event (caller-supplied prices win;
+// otherwise the active pricing snapshot is applied) and recomputes costs.
+//
+// The return value reports whether the event is considered PRICED: true when a
+// pricing snapshot matched (even an explicitly all-zero free tier) or any
+// price field was supplied — in both cases the operator made a deliberate
+// pricing decision. false means no pricing source exists at all, which
+// markNoPricing treats as a config gap (P2-2 review fix, 2026-08-19).
+func (u *Usecase) enrichPricing(ctx context.Context, e *TokenUsageEvent) bool {
 	if e == nil {
-		return
+		return true
 	}
 	prov := strings.TrimSpace(e.ProviderCode)
 	mod := strings.TrimSpace(e.ModelAPIID)
-	if prov == "" || mod == "" {
-		ApplyTokenUsageCosts(e)
-		return
-	}
-	if e.InputPriceUSDPer1M == 0 && e.OutputPriceUSDPer1M == 0 &&
+	if prov != "" && mod != "" &&
+		e.InputPriceUSDPer1M == 0 && e.OutputPriceUSDPer1M == 0 &&
 		e.InputPriceMicroUSDPer1K == 0 && e.OutputPriceMicroUSDPer1K == 0 {
 		if snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, mod); err == nil && ok {
 			applyPricingUSDToEvent(e, snap)
+			ApplyTokenUsageCosts(e)
+			return true
 		}
 	}
 	ApplyTokenUsageCosts(e)
+	return hasAnyPrice(e)
+}
+
+// hasAnyPrice reports whether any price field is non-zero (caller-supplied or
+// snapshot-applied). Snapshot hits return early in enrichPricing and never
+// reach this check, so a false here reliably means "no pricing source".
+func hasAnyPrice(e *TokenUsageEvent) bool {
+	return e.InputPriceUSDPer1M != 0 || e.OutputPriceUSDPer1M != 0 ||
+		e.CacheReadPriceUSDPer1M != 0 || e.CacheWritePriceUSDPer1M != 0 ||
+		e.ReasoningPriceUSDPer1M != 0 || e.EmbeddingPriceUSDPer1M != 0 ||
+		e.InputPriceMicroUSDPer1K != 0 || e.OutputPriceMicroUSDPer1K != 0 ||
+		e.CachedInputPriceMicroUSDPer1K != 0 || e.CacheWritePriceMicroUSDPer1K != 0 ||
+		e.ReasoningPriceMicroUSDPer1K != 0 || e.EmbeddingPriceMicroUSDPer1K != 0
 }
 
 // markNoPricing flags events carrying billable tokens whose cost resolved to
-// zero with NO price fields at all (no active pricing snapshot, no
+// zero with NO pricing source at all (no active pricing snapshot, no
 // caller-supplied prices): such rows are indistinguishable from legitimately
 // free consumption in aggregates, so they get metadata_json[cost_status]=
 // "no_pricing" plus a Warn log deduped per provider|model (P2-2, 2026-08-19).
-func (u *Usecase) markNoPricing(e *TokenUsageEvent) {
+// priced comes from enrichPricing; an explicitly all-zero snapshot (free tier)
+// reports priced=true and is NOT flagged.
+func (u *Usecase) markNoPricing(e *TokenUsageEvent, priced bool) {
 	if e == nil {
 		return
 	}
 	billable := e.InputTokens + e.OutputTokens + e.CachedInputTokens +
 		e.CacheWriteTokens + e.ReasoningTokens + e.EmbeddingTokens
-	if billable <= 0 || e.TotalCostMicroUSD > 0 {
+	if billable <= 0 || e.TotalCostMicroUSD > 0 || priced {
 		return
-	}
-	if e.InputPriceUSDPer1M != 0 || e.OutputPriceUSDPer1M != 0 ||
-		e.CacheReadPriceUSDPer1M != 0 || e.CacheWritePriceUSDPer1M != 0 ||
-		e.ReasoningPriceUSDPer1M != 0 || e.EmbeddingPriceUSDPer1M != 0 ||
-		e.InputPriceMicroUSDPer1K != 0 || e.OutputPriceMicroUSDPer1K != 0 ||
-		e.CachedInputPriceMicroUSDPer1K != 0 || e.CacheWritePriceMicroUSDPer1K != 0 ||
-		e.ReasoningPriceMicroUSDPer1K != 0 || e.EmbeddingPriceMicroUSDPer1K != 0 {
-		return // priced (possibly at an explicitly-free rate) — not a config gap
 	}
 	e.MetadataJSON = MergeCostStatusMetadata(e.MetadataJSON, CostStatusNoPricing)
 	key := strings.TrimSpace(e.ProviderCode) + "|" + strings.TrimSpace(e.ModelAPIID)

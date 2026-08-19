@@ -76,6 +76,26 @@ func (s *LearningLoopService) RejectProposal(ctx context.Context, req *v1.Reject
 	return toProtoProposal(p), nil
 }
 
+func (s *LearningLoopService) ApplyProposal(ctx context.Context, req *v1.ApplyProposalRequest) (*v1.KnowledgeProposal, error) {
+	appliedBy := biz.ApprovedBySystem
+	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
+		appliedBy = biz.FormatApprovedByUser(a.UserID)
+	}
+	p, err := s.uc.ApplyProposal(ctx, req.GetId(), appliedBy)
+	if err != nil {
+		return nil, err
+	}
+	return toProtoProposal(p), nil
+}
+
+func (s *LearningLoopService) UpdatePatternStatus(ctx context.Context, req *v1.UpdatePatternStatusRequest) (*v1.Pattern, error) {
+	p, err := s.uc.UpdatePatternStatus(ctx, req.GetId(), biz.PatternStatus(req.GetStatus()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoPattern(p), nil
+}
+
 func (s *LearningLoopService) RunLoop(ctx context.Context, req *v1.RunLoopRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, s.uc.RunLoop(ctx, req.GetAgentId())
 }

@@ -35,7 +35,7 @@ type HookServiceHTTPServer interface {
 	// to avoid gorilla/mux matching the variable segment first
 	// (e.g. "deliveries" as {id}).
 	ListHookDeliveries(context.Context, *ListHookDeliveriesRequest) (*ListHookDeliveriesResponse, error)
-	ListHooks(context.Context, *emptypb.Empty) (*ListHooksResponse, error)
+	ListHooks(context.Context, *ListHooksRequest) (*ListHooksResponse, error)
 	UpdateHook(context.Context, *UpdateHookRequest) (*Hook, error)
 }
 
@@ -51,13 +51,13 @@ func RegisterHookServiceHTTPServer(s *http.Server, srv HookServiceHTTPServer) {
 
 func _HookService_ListHooks0_HTTP_Handler(srv HookServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
-		var in emptypb.Empty
+		var in ListHooksRequest
 		if err := ctx.BindQuery(&in); err != nil {
 			return err
 		}
 		http.SetOperation(ctx, OperationHookServiceListHooks)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
-			return srv.ListHooks(ctx, req.(*emptypb.Empty))
+			return srv.ListHooks(ctx, req.(*ListHooksRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -186,7 +186,7 @@ type HookServiceHTTPClient interface {
 	// to avoid gorilla/mux matching the variable segment first
 	// (e.g. "deliveries" as {id}).
 	ListHookDeliveries(ctx context.Context, req *ListHookDeliveriesRequest, opts ...http.CallOption) (rsp *ListHookDeliveriesResponse, err error)
-	ListHooks(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListHooksResponse, err error)
+	ListHooks(ctx context.Context, req *ListHooksRequest, opts ...http.CallOption) (rsp *ListHooksResponse, err error)
 	UpdateHook(ctx context.Context, req *UpdateHookRequest, opts ...http.CallOption) (rsp *Hook, err error)
 }
 
@@ -253,7 +253,7 @@ func (c *HookServiceHTTPClientImpl) ListHookDeliveries(ctx context.Context, in *
 	return &out, nil
 }
 
-func (c *HookServiceHTTPClientImpl) ListHooks(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListHooksResponse, error) {
+func (c *HookServiceHTTPClientImpl) ListHooks(ctx context.Context, in *ListHooksRequest, opts ...http.CallOption) (*ListHooksResponse, error) {
 	var out ListHooksResponse
 	pattern := "/v1/hooks"
 	path := binding.EncodeURL(pattern, in, true)

@@ -419,11 +419,16 @@ func (uc *LearningLoopUsecase) RunLoop(ctx context.Context, agentID string) erro
 		return apierror.Internal("LEARNING", "generate proposals: %s", err)
 	}
 	for _, prop := range proposals {
-		if _, err := uc.ValidateProposal(ctx, prop.ID); err != nil {
+		validated, err := uc.ValidateProposal(ctx, prop.ID)
+		if err != nil {
 			uc.lg.Warn("learning_loop: validate proposal failed",
 				loggateway.StepID("learning_loop.validate_proposal"),
 				loggateway.Str("proposal_id", prop.ID),
 				loggateway.Err(err))
+			continue
+		}
+		if validated.Status != ProposalStatusValidated {
+			// conflict 等非 validated 态不参与自动注册（RegisterKnowledge 守卫也必拒）。
 			continue
 		}
 		settings, serr := uc.agents.GetAgentRuntimeSettings(ctx, agentID)

@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // embedUsageRecorder adapts the knowledge embedder's usage hook to
@@ -22,6 +23,10 @@ import (
 // Attribution: embedding is a platform-shared resource (one embedder serves
 // all agents/collections), so events carry no AgentID/SessionID; the
 // metadata's task_type distinguishes ingest batches from retrieval queries.
+//
+// Async: persistence runs via safego so the synchronous embedding call chain
+// (retrieval hot path) never blocks on a DB INSERT (P1-3 review fix,
+// 2026-08-19). RecordAuxLLMUsage already detaches ctx (WithoutCancel+timeout).
 type embedUsageRecorder struct {
 	usageRef *biz.UsageUsecaseRef
 	lg       loggateway.Logger
@@ -44,16 +49,30 @@ func (r *embedUsageRecorder) RecordEmbedUsage(ctx context.Context, in knowledge.
 	if uc == nil {
 		return
 	}
+	safego.Go(ctx, "knowledge.embed_usage", func() {
+		r.record(ctx, uc, in)
+	})
+}
+
+// record persists one embedding usage row; runs inside the safego goroutine.
+func (r *embedUsageRecorder) record(ctx context.Context, uc *biz.UsageUsecase, in knowledge.EmbedUsageInput) {
 	status := "success"
 	errMsg := ""
 	if in.Err != nil {
 		status = "failed"
 		errMsg = in.Err.Error()
 	}
-	meta, _ := json.Marshal(map[string]any{
+	metaMap := map[string]any{
 		"task_type":  in.TaskType,
 		"batch_size": in.BatchSize,
-	})
+	}
+	if in.Prewarm {
+		// Probe traffic (startup / voice-session prewarm pings) is marked so
+		// analytics can exclude it from real retrieval/ingest consumption
+		// (P1-3 review fix, 2026-08-19).
+		metaMap["prewarm"] = true
+	}
+	meta, _ := json.Marshal(metaMap)
 	if err := uc.RecordAuxLLMUsage(ctx, biz.AuxLLMUsageInput{
 		Kind:         biz.UsageKindAuxEmbedding,
 		Provider:     strings.TrimSpace(in.Provider),

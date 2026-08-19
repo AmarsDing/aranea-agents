@@ -120,6 +120,36 @@ func TestEmbedUsage_FailureRecordsFailedRowWithoutTokens(t *testing.T) {
 	}
 }
 
+// P1-3 review fix (2026-08-19): Prewarm probe pings are tagged Prewarm=true so
+// analytics can exclude them; real Embed calls carry Prewarm=false.
+func TestEmbedUsage_PrewarmTagged(t *testing.T) {
+	srv := openaiEmbedServer(t, true)
+	defer srv.Close()
+	rec := &captureUsageRecorder{}
+	e := NewMultiProviderEmbedder(ProviderOpenAI, srv.URL, "k", "m", 3, loggateway.NewNoop())
+	e.SetUsageRecorder(rec)
+
+	if err := e.Prewarm(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("calls=%d want 1", len(rec.calls))
+	}
+	if !rec.last().Prewarm {
+		t.Fatal("prewarm ping must carry Prewarm=true")
+	}
+
+	if _, err := e.Embed(context.Background(), []string{"real query"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.calls) != 2 {
+		t.Fatalf("calls=%d want 2", len(rec.calls))
+	}
+	if rec.last().Prewarm {
+		t.Fatal("real embed call must carry Prewarm=false")
+	}
+}
+
 func TestEmbedUsage_NilRecorderSkips(t *testing.T) {
 	srv := openaiEmbedServer(t, true)
 	defer srv.Close()

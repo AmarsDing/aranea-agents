@@ -221,8 +221,9 @@ func (e *MultiProviderEmbedder) Prewarm(ctx context.Context) error {
 	}
 	// RETRIEVAL_QUERY task type: semantically a query-side warm-up, and it
 	// keeps the ping out of the ingest flow log (EmbedBatchWithTaskType only
-	// flow-logs non-query batches).
-	if _, err := e.embedBatchWithTaskType(ctx, []string{"ping"}, "RETRIEVAL_QUERY"); err != nil {
+	// flow-logs non-query batches). prewarm=true tags the usage row as probe
+	// traffic so analytics can exclude it from real retrieval consumption.
+	if _, err := e.embedBatchInternal(ctx, []string{"ping"}, "RETRIEVAL_QUERY", true); err != nil {
 		e.lg.Warn("embedding prewarm failed", loggateway.StepID("knowledge.embed_prewarm"), loggateway.Err(err))
 		return err
 	}
@@ -339,7 +340,14 @@ func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, text
 	return vecs, err
 }
 
-func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, texts []string, taskType string) (vecs [][]float32, err error) {
+func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
+	return e.embedBatchInternal(ctx, texts, taskType, false)
+}
+
+// embedBatchInternal is the single network-call funnel for all embedding
+// traffic. prewarm marks probe pings (Prewarm) so usage rows can be excluded
+// from real ingest/retrieval consumption stats (P1-3 review fix, 2026-08-19).
+func (e *MultiProviderEmbedder) embedBatchInternal(ctx context.Context, texts []string, taskType string, prewarm bool) (vecs [][]float32, err error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -353,7 +361,7 @@ func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, text
 	start := time.Now()
 	tokens := 0
 	defer func() {
-		e.recordUsage(ctx, texts, taskType, tokens, time.Since(start), err)
+		e.recordUsage(ctx, texts, taskType, tokens, time.Since(start), err, prewarm)
 	}()
 	switch provider {
 	case ProviderOllama:

@@ -17,6 +17,13 @@ export type Hook = {
   deletedAt: string | undefined;
 };
 
+export type ListHooksRequest = {
+  page: number | undefined;
+  pageSize: number | undefined;
+  search: string | undefined;
+  callbackPoint: string | undefined;
+};
+
 export type ListHooksResponse = {
   items: Hook[] | undefined;
   total: number | undefined;
@@ -90,7 +97,7 @@ export type ListHookDeliveriesResponse = {
 };
 
 export interface HookService {
-  ListHooks(request: wellKnownEmpty): Promise<ListHooksResponse>;
+  ListHooks(request: ListHooksRequest): Promise<ListHooksResponse>;
   CreateHook(request: CreateHookRequest): Promise<Hook>;
   // Static sub-resource GET paths MUST be registered before /v1/hooks/{id}
   // to avoid gorilla/mux matching the variable segment first
@@ -117,6 +124,18 @@ export function createHookServiceClient(
       const path = `v1/hooks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.search) {
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+      }
+      if (request.callbackPoint) {
+        queryParams.push(`callbackPoint=${encodeURIComponent(request.callbackPoint.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

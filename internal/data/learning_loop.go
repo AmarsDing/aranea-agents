@@ -35,8 +35,9 @@ func NewPatternRepo(data *Data) biz.PatternReadWriter         { return &patternR
 func NewProposalRepo(data *Data) biz.ProposalReadWriter       { return &proposalRepo{data: data} }
 
 func (r *obsRepo) ListByAgent(ctx context.Context, agentID string, since time.Time) ([]biz.Observation, error) {
+	// 最新在前：与 patterns/proposals 的 DESC 一致，用户最关心最近行为。
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, session_id, kind, content, metadata, observed_at
-	       FROM learning_observations WHERE agent_id = ? AND observed_at >= ? ORDER BY observed_at ASC`)
+	       FROM learning_observations WHERE agent_id = ? AND observed_at >= ? ORDER BY observed_at DESC`)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, agentID, since.UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, entErrToBizErr(err, "LEARNING")

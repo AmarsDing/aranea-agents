@@ -23,6 +23,10 @@ type EmbedUsageInput struct {
 	// (chars-based estimate for providers without usage reporting).
 	UsageSource string
 	Err         error
+	// Prewarm marks probe pings (startup / voice-session warm-up) as opposed
+	// to real ingest/retrieval traffic; persisted into metadata so analytics
+	// can exclude probe rows (P1-3 review fix, 2026-08-19).
+	Prewarm bool
 }
 
 // EmbedUsageRecorder records embedding consumption (e.g. into
@@ -44,7 +48,7 @@ func (e *MultiProviderEmbedder) SetUsageRecorder(r EmbedUsageRecorder) {
 
 // recordUsage fires the usage recorder best-effort; recorder errors are Warn-logged
 // and never fail the embedding call.
-func (e *MultiProviderEmbedder) recordUsage(ctx context.Context, texts []string, taskType string, tokens int, latency time.Duration, callErr error) {
+func (e *MultiProviderEmbedder) recordUsage(ctx context.Context, texts []string, taskType string, tokens int, latency time.Duration, callErr error, prewarm bool) {
 	rec := e.usageRec
 	if rec == nil {
 		return
@@ -70,6 +74,7 @@ func (e *MultiProviderEmbedder) recordUsage(ctx context.Context, texts []string,
 	in := EmbedUsageInput{
 		Provider: provider, Model: model, Tokens: tokens, BatchSize: len(texts),
 		Latency: latency, TaskType: taskType, UsageSource: source, Err: callErr,
+		Prewarm: prewarm,
 	}
 	defer func() {
 		if r := recover(); r != nil {

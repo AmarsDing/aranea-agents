@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -75,13 +76,14 @@ func patchFromProtoHook(pb *v1.Hook) biz.HookPatch {
 	}
 }
 
-func (s *HookService) ListHooks(ctx context.Context, _ *emptypb.Empty) (*v1.ListHooksResponse, error) {
-	search := searchQueryFromContext(ctx)
-	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
-		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+func (s *HookService) ListHooks(ctx context.Context, req *v1.ListHooksRequest) (*v1.ListHooksResponse, error) {
+	search := strings.TrimSpace(req.GetSearch())
+	callbackPoint := strings.TrimSpace(req.GetCallbackPoint())
+	if req.GetPage() > 0 || req.GetPageSize() > 0 || search != "" || callbackPoint != "" {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 		result, err := s.uc.ListPaged(ctx, biz.HookListQuery{
 			Search:        search,
-			CallbackPoint: queryParamFromContext(ctx, "callback_point", "callbackPoint"),
+			CallbackPoint: callbackPoint,
 			Limit:         limit,
 			Offset:        offset,
 		})

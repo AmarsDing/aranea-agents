@@ -25,6 +25,13 @@ message Hook {
   string deleted_at = 12;
 }
 
+message ListHooksRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string search = 3;
+  string callback_point = 4;
+}
+
 message ListHooksResponse {
   repeated Hook items = 1;
   int32 total = 2;
@@ -88,7 +95,7 @@ message ListHookDeliveriesResponse {
 }
 
 service HookService {
-  rpc ListHooks(google.protobuf.Empty) returns (ListHooksResponse) {
+  rpc ListHooks(ListHooksRequest) returns (ListHooksResponse) {
     option (google.api.http) = {get: "/v1/hooks"};
   }
   rpc CreateHook(CreateHookRequest) returns (Hook) {

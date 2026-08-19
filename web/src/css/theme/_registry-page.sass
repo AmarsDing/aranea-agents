@@ -264,7 +264,8 @@ body.app-registry-col-resizing
 
   &--external-pagination
     .q-table__bottom
-      display: none
+      &:not(.q-table__bottom--nodata)
+        display: none
 
 // Registry 列表通用行高（Skill 表格密度）
 .app-registry-table:not(.app-registry-table--sessions)

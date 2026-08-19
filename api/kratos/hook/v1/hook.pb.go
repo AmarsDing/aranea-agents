@@ -155,6 +155,74 @@ func (x *Hook) GetDeletedAt() string {
 	return ""
 }
 
+type ListHooksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          int32                  `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Search        string                 `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
+	CallbackPoint string                 `protobuf:"bytes,4,opt,name=callback_point,json=callbackPoint,proto3" json:"callback_point,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListHooksRequest) Reset() {
+	*x = ListHooksRequest{}
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListHooksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListHooksRequest) ProtoMessage() {}
+
+func (x *ListHooksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListHooksRequest.ProtoReflect.Descriptor instead.
+func (*ListHooksRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ListHooksRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListHooksRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListHooksRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
+}
+
+func (x *ListHooksRequest) GetCallbackPoint() string {
+	if x != nil {
+		return x.CallbackPoint
+	}
+	return ""
+}
+
 type ListHooksResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*Hook                `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -167,7 +235,7 @@ type ListHooksResponse struct {
 
 func (x *ListHooksResponse) Reset() {
 	*x = ListHooksResponse{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[1]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -179,7 +247,7 @@ func (x *ListHooksResponse) String() string {
 func (*ListHooksResponse) ProtoMessage() {}
 
 func (x *ListHooksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[1]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -192,7 +260,7 @@ func (x *ListHooksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHooksResponse.ProtoReflect.Descriptor instead.
 func (*ListHooksResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{1}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListHooksResponse) GetItems() []*Hook {
@@ -239,7 +307,7 @@ type CreateHookRequest struct {
 
 func (x *CreateHookRequest) Reset() {
 	*x = CreateHookRequest{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[2]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -251,7 +319,7 @@ func (x *CreateHookRequest) String() string {
 func (*CreateHookRequest) ProtoMessage() {}
 
 func (x *CreateHookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[2]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -264,7 +332,7 @@ func (x *CreateHookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateHookRequest.ProtoReflect.Descriptor instead.
 func (*CreateHookRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{2}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateHookRequest) GetKey() string {
@@ -332,7 +400,7 @@ type GetHookRequest struct {
 
 func (x *GetHookRequest) Reset() {
 	*x = GetHookRequest{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[3]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -344,7 +412,7 @@ func (x *GetHookRequest) String() string {
 func (*GetHookRequest) ProtoMessage() {}
 
 func (x *GetHookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[3]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -357,7 +425,7 @@ func (x *GetHookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetHookRequest.ProtoReflect.Descriptor instead.
 func (*GetHookRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{3}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetHookRequest) GetId() string {
@@ -377,7 +445,7 @@ type UpdateHookRequest struct {
 
 func (x *UpdateHookRequest) Reset() {
 	*x = UpdateHookRequest{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[4]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -389,7 +457,7 @@ func (x *UpdateHookRequest) String() string {
 func (*UpdateHookRequest) ProtoMessage() {}
 
 func (x *UpdateHookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[4]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -402,7 +470,7 @@ func (x *UpdateHookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateHookRequest.ProtoReflect.Descriptor instead.
 func (*UpdateHookRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{4}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *UpdateHookRequest) GetId() string {
@@ -428,7 +496,7 @@ type DeleteHookRequest struct {
 
 func (x *DeleteHookRequest) Reset() {
 	*x = DeleteHookRequest{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[5]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -440,7 +508,7 @@ func (x *DeleteHookRequest) String() string {
 func (*DeleteHookRequest) ProtoMessage() {}
 
 func (x *DeleteHookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[5]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -453,7 +521,7 @@ func (x *DeleteHookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteHookRequest.ProtoReflect.Descriptor instead.
 func (*DeleteHookRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{5}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteHookRequest) GetId() string {
@@ -483,7 +551,7 @@ type HookDelivery struct {
 
 func (x *HookDelivery) Reset() {
 	*x = HookDelivery{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[6]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -495,7 +563,7 @@ func (x *HookDelivery) String() string {
 func (*HookDelivery) ProtoMessage() {}
 
 func (x *HookDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[6]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -508,7 +576,7 @@ func (x *HookDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HookDelivery.ProtoReflect.Descriptor instead.
 func (*HookDelivery) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{6}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HookDelivery) GetId() string {
@@ -609,7 +677,7 @@ type ListHookDeliveriesRequest struct {
 
 func (x *ListHookDeliveriesRequest) Reset() {
 	*x = ListHookDeliveriesRequest{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[7]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +689,7 @@ func (x *ListHookDeliveriesRequest) String() string {
 func (*ListHookDeliveriesRequest) ProtoMessage() {}
 
 func (x *ListHookDeliveriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[7]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +702,7 @@ func (x *ListHookDeliveriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHookDeliveriesRequest.ProtoReflect.Descriptor instead.
 func (*ListHookDeliveriesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{7}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListHookDeliveriesRequest) GetHookKey() string {
@@ -691,7 +759,7 @@ type ListHookDeliveriesResponse struct {
 
 func (x *ListHookDeliveriesResponse) Reset() {
 	*x = ListHookDeliveriesResponse{}
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[8]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -703,7 +771,7 @@ func (x *ListHookDeliveriesResponse) String() string {
 func (*ListHookDeliveriesResponse) ProtoMessage() {}
 
 func (x *ListHookDeliveriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_hook_v1_hook_proto_msgTypes[8]
+	mi := &file_kratos_hook_v1_hook_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -716,7 +784,7 @@ func (x *ListHookDeliveriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHookDeliveriesResponse.ProtoReflect.Descriptor instead.
 func (*ListHookDeliveriesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{8}
+	return file_kratos_hook_v1_hook_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListHookDeliveriesResponse) GetItems() []*HookDelivery {
@@ -770,7 +838,12 @@ const file_kratos_hook_v1_hook_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\v \x01(\tR\tupdatedAt\x12\x1d\n" +
 	"\n" +
-	"deleted_at\x18\f \x01(\tR\tdeletedAt\"\x86\x01\n" +
+	"deleted_at\x18\f \x01(\tR\tdeletedAt\"\x82\x01\n" +
+	"\x10ListHooksRequest\x12\x12\n" +
+	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06search\x18\x03 \x01(\tR\x06search\x12%\n" +
+	"\x0ecallback_point\x18\x04 \x01(\tR\rcallbackPoint\"\x86\x01\n" +
 	"\x11ListHooksResponse\x12*\n" +
 	"\x05items\x18\x01 \x03(\v2\x14.kratos.hook.v1.HookR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
@@ -823,9 +896,9 @@ const file_kratos_hook_v1_hook_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.hook.v1.HookDeliveryR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xf0\x04\n" +
-	"\vHookService\x12Y\n" +
-	"\tListHooks\x12\x16.google.protobuf.Empty\x1a!.kratos.hook.v1.ListHooksResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/hooks\x12[\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xfa\x04\n" +
+	"\vHookService\x12c\n" +
+	"\tListHooks\x12 .kratos.hook.v1.ListHooksRequest\x1a!.kratos.hook.v1.ListHooksResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/hooks\x12[\n" +
 	"\n" +
 	"CreateHook\x12!.kratos.hook.v1.CreateHookRequest\x1a\x14.kratos.hook.v1.Hook\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/hooks\x12\x89\x01\n" +
 	"\x12ListHookDeliveries\x12).kratos.hook.v1.ListHookDeliveriesRequest\x1a*.kratos.hook.v1.ListHookDeliveriesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/hooks/deliveries\x12W\n" +
@@ -848,40 +921,41 @@ func file_kratos_hook_v1_hook_proto_rawDescGZIP() []byte {
 	return file_kratos_hook_v1_hook_proto_rawDescData
 }
 
-var file_kratos_hook_v1_hook_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kratos_hook_v1_hook_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_kratos_hook_v1_hook_proto_goTypes = []any{
 	(*Hook)(nil),                       // 0: kratos.hook.v1.Hook
-	(*ListHooksResponse)(nil),          // 1: kratos.hook.v1.ListHooksResponse
-	(*CreateHookRequest)(nil),          // 2: kratos.hook.v1.CreateHookRequest
-	(*GetHookRequest)(nil),             // 3: kratos.hook.v1.GetHookRequest
-	(*UpdateHookRequest)(nil),          // 4: kratos.hook.v1.UpdateHookRequest
-	(*DeleteHookRequest)(nil),          // 5: kratos.hook.v1.DeleteHookRequest
-	(*HookDelivery)(nil),               // 6: kratos.hook.v1.HookDelivery
-	(*ListHookDeliveriesRequest)(nil),  // 7: kratos.hook.v1.ListHookDeliveriesRequest
-	(*ListHookDeliveriesResponse)(nil), // 8: kratos.hook.v1.ListHookDeliveriesResponse
-	(*emptypb.Empty)(nil),              // 9: google.protobuf.Empty
+	(*ListHooksRequest)(nil),           // 1: kratos.hook.v1.ListHooksRequest
+	(*ListHooksResponse)(nil),          // 2: kratos.hook.v1.ListHooksResponse
+	(*CreateHookRequest)(nil),          // 3: kratos.hook.v1.CreateHookRequest
+	(*GetHookRequest)(nil),             // 4: kratos.hook.v1.GetHookRequest
+	(*UpdateHookRequest)(nil),          // 5: kratos.hook.v1.UpdateHookRequest
+	(*DeleteHookRequest)(nil),          // 6: kratos.hook.v1.DeleteHookRequest
+	(*HookDelivery)(nil),               // 7: kratos.hook.v1.HookDelivery
+	(*ListHookDeliveriesRequest)(nil),  // 8: kratos.hook.v1.ListHookDeliveriesRequest
+	(*ListHookDeliveriesResponse)(nil), // 9: kratos.hook.v1.ListHookDeliveriesResponse
+	(*emptypb.Empty)(nil),              // 10: google.protobuf.Empty
 }
 var file_kratos_hook_v1_hook_proto_depIdxs = []int32{
-	0, // 0: kratos.hook.v1.ListHooksResponse.items:type_name -> kratos.hook.v1.Hook
-	0, // 1: kratos.hook.v1.UpdateHookRequest.hook:type_name -> kratos.hook.v1.Hook
-	6, // 2: kratos.hook.v1.ListHookDeliveriesResponse.items:type_name -> kratos.hook.v1.HookDelivery
-	9, // 3: kratos.hook.v1.HookService.ListHooks:input_type -> google.protobuf.Empty
-	2, // 4: kratos.hook.v1.HookService.CreateHook:input_type -> kratos.hook.v1.CreateHookRequest
-	7, // 5: kratos.hook.v1.HookService.ListHookDeliveries:input_type -> kratos.hook.v1.ListHookDeliveriesRequest
-	3, // 6: kratos.hook.v1.HookService.GetHook:input_type -> kratos.hook.v1.GetHookRequest
-	4, // 7: kratos.hook.v1.HookService.UpdateHook:input_type -> kratos.hook.v1.UpdateHookRequest
-	5, // 8: kratos.hook.v1.HookService.DeleteHook:input_type -> kratos.hook.v1.DeleteHookRequest
-	1, // 9: kratos.hook.v1.HookService.ListHooks:output_type -> kratos.hook.v1.ListHooksResponse
-	0, // 10: kratos.hook.v1.HookService.CreateHook:output_type -> kratos.hook.v1.Hook
-	8, // 11: kratos.hook.v1.HookService.ListHookDeliveries:output_type -> kratos.hook.v1.ListHookDeliveriesResponse
-	0, // 12: kratos.hook.v1.HookService.GetHook:output_type -> kratos.hook.v1.Hook
-	0, // 13: kratos.hook.v1.HookService.UpdateHook:output_type -> kratos.hook.v1.Hook
-	9, // 14: kratos.hook.v1.HookService.DeleteHook:output_type -> google.protobuf.Empty
-	9, // [9:15] is the sub-list for method output_type
-	3, // [3:9] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0,  // 0: kratos.hook.v1.ListHooksResponse.items:type_name -> kratos.hook.v1.Hook
+	0,  // 1: kratos.hook.v1.UpdateHookRequest.hook:type_name -> kratos.hook.v1.Hook
+	7,  // 2: kratos.hook.v1.ListHookDeliveriesResponse.items:type_name -> kratos.hook.v1.HookDelivery
+	1,  // 3: kratos.hook.v1.HookService.ListHooks:input_type -> kratos.hook.v1.ListHooksRequest
+	3,  // 4: kratos.hook.v1.HookService.CreateHook:input_type -> kratos.hook.v1.CreateHookRequest
+	8,  // 5: kratos.hook.v1.HookService.ListHookDeliveries:input_type -> kratos.hook.v1.ListHookDeliveriesRequest
+	4,  // 6: kratos.hook.v1.HookService.GetHook:input_type -> kratos.hook.v1.GetHookRequest
+	5,  // 7: kratos.hook.v1.HookService.UpdateHook:input_type -> kratos.hook.v1.UpdateHookRequest
+	6,  // 8: kratos.hook.v1.HookService.DeleteHook:input_type -> kratos.hook.v1.DeleteHookRequest
+	2,  // 9: kratos.hook.v1.HookService.ListHooks:output_type -> kratos.hook.v1.ListHooksResponse
+	0,  // 10: kratos.hook.v1.HookService.CreateHook:output_type -> kratos.hook.v1.Hook
+	9,  // 11: kratos.hook.v1.HookService.ListHookDeliveries:output_type -> kratos.hook.v1.ListHookDeliveriesResponse
+	0,  // 12: kratos.hook.v1.HookService.GetHook:output_type -> kratos.hook.v1.Hook
+	0,  // 13: kratos.hook.v1.HookService.UpdateHook:output_type -> kratos.hook.v1.Hook
+	10, // 14: kratos.hook.v1.HookService.DeleteHook:output_type -> google.protobuf.Empty
+	9,  // [9:15] is the sub-list for method output_type
+	3,  // [3:9] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_kratos_hook_v1_hook_proto_init() }
@@ -895,7 +969,7 @@ func file_kratos_hook_v1_hook_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_hook_v1_hook_proto_rawDesc), len(file_kratos_hook_v1_hook_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

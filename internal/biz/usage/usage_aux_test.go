@@ -307,6 +307,33 @@ func TestRecordTokenUsageEventNoPricingFlag(t *testing.T) {
 		}
 	})
 
+	t.Run("explicit all-zero pricing snapshot is not flagged", func(t *testing.T) {
+		var got TokenUsageEvent
+		repo := &mockUsageRepo{
+			getActiveModelPricingFn: func(_ context.Context, _, _ string) (ModelPricingSnapshot, bool, error) {
+				// Explicit free tier: snapshot exists, all prices are zero.
+				return ModelPricingSnapshot{}, true, nil
+			},
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				got = e
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+		if _, err := u.RecordTokenUsageEvent(context.Background(), TokenUsageEvent{
+			ID: "evt-free", ProviderCode: "ollama", ModelAPIID: "qwen3", InputTokens: 100, OutputTokens: 50,
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(got.MetadataJSON), &meta); err != nil {
+			t.Fatalf("metadata unparseable: %v", err)
+		}
+		if _, flagged := meta[MetadataKeyCostStatus]; flagged {
+			t.Errorf("explicitly-free snapshot row must not carry cost_status, meta=%v", meta)
+		}
+	})
+
 	t.Run("priced row is not flagged", func(t *testing.T) {
 		var got TokenUsageEvent
 		repo := &mockUsageRepo{

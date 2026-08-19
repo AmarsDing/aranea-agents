@@ -32,7 +32,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type HookServiceClient interface {
-	ListHooks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListHooksResponse, error)
+	ListHooks(ctx context.Context, in *ListHooksRequest, opts ...grpc.CallOption) (*ListHooksResponse, error)
 	CreateHook(ctx context.Context, in *CreateHookRequest, opts ...grpc.CallOption) (*Hook, error)
 	// Static sub-resource GET paths MUST be registered before /v1/hooks/{id}
 	// to avoid gorilla/mux matching the variable segment first
@@ -51,7 +51,7 @@ func NewHookServiceClient(cc grpc.ClientConnInterface) HookServiceClient {
 	return &hookServiceClient{cc}
 }
 
-func (c *hookServiceClient) ListHooks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListHooksResponse, error) {
+func (c *hookServiceClient) ListHooks(ctx context.Context, in *ListHooksRequest, opts ...grpc.CallOption) (*ListHooksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListHooksResponse)
 	err := c.cc.Invoke(ctx, HookService_ListHooks_FullMethodName, in, out, cOpts...)
@@ -115,7 +115,7 @@ func (c *hookServiceClient) DeleteHook(ctx context.Context, in *DeleteHookReques
 // All implementations must embed UnimplementedHookServiceServer
 // for forward compatibility.
 type HookServiceServer interface {
-	ListHooks(context.Context, *emptypb.Empty) (*ListHooksResponse, error)
+	ListHooks(context.Context, *ListHooksRequest) (*ListHooksResponse, error)
 	CreateHook(context.Context, *CreateHookRequest) (*Hook, error)
 	// Static sub-resource GET paths MUST be registered before /v1/hooks/{id}
 	// to avoid gorilla/mux matching the variable segment first
@@ -134,7 +134,7 @@ type HookServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedHookServiceServer struct{}
 
-func (UnimplementedHookServiceServer) ListHooks(context.Context, *emptypb.Empty) (*ListHooksResponse, error) {
+func (UnimplementedHookServiceServer) ListHooks(context.Context, *ListHooksRequest) (*ListHooksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListHooks not implemented")
 }
 func (UnimplementedHookServiceServer) CreateHook(context.Context, *CreateHookRequest) (*Hook, error) {
@@ -174,7 +174,7 @@ func RegisterHookServiceServer(s grpc.ServiceRegistrar, srv HookServiceServer) {
 }
 
 func _HookService_ListHooks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(ListHooksRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ func _HookService_ListHooks_Handler(srv interface{}, ctx context.Context, dec fu
 		FullMethod: HookService_ListHooks_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HookServiceServer).ListHooks(ctx, req.(*emptypb.Empty))
+		return srv.(HookServiceServer).ListHooks(ctx, req.(*ListHooksRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
