@@ -12,31 +12,32 @@
       <q-inner-loading :showing="loading" label="加载学习数据..." />
       <learning-loop-overview
         v-if="!loading"
-        :observation-count="observations.length"
-        :pattern-count="patterns.length"
-        :pending-count="pendingProposalsCount"
-        :registered-count="registeredKnowledgeCount"
+        :observation-count="overview.observationCount"
+        :pattern-count="overview.patternCount"
+        :pending-count="overview.pendingCount"
+        :registered-count="overview.registeredCount"
         :running-loop="runningLoop"
         @run-loop="onRunLoop"
       />
     </section>
 
     <learning-pattern-list
-      :patterns="patterns"
+      :patterns="filteredPatterns"
       :loading="loading"
-      :status-filter="patternStatusFilter"
-      @update:status-filter="patternStatusFilter = $event"
+      :status-filter="patternStatus"
+      @update:status-filter="patternStatus = $event"
+      @confirm="onConfirmPattern"
+      @dismiss="onDismissPattern"
     />
 
     <learning-proposal-list
-      :proposals="proposals"
+      :proposals="filteredProposals"
       :loading="loading"
-      :status-filter="proposalStatusFilter"
-      :approving-id="approvingId"
-      :rejecting-id="rejectingId"
-      @update:status-filter="proposalStatusFilter = $event"
+      :status-filter="proposalStatus"
+      @update:status-filter="proposalStatus = $event"
       @approve="onApprove"
       @reject="onReject"
+      @apply="onApply"
     />
 
     <learning-observation-list :observations="observations" :loading="loading" />
@@ -60,17 +61,17 @@ const agentIdFn = () => toValue(props.agentId);
 const {
   loading,
   runningLoop,
-  approvingId,
-  rejectingId,
-  patternStatusFilter,
-  proposalStatusFilter,
+  patternStatus,
+  proposalStatus,
+  filteredPatterns,
+  filteredProposals,
   observations,
-  patterns,
-  proposals,
-  pendingProposalsCount,
-  registeredKnowledgeCount,
+  overview,
+  onRunLoop,
+  onConfirmPattern,
+  onDismissPattern,
   onApprove,
   onReject,
-  onRunLoop,
+  onApply,
 } = useLearningLoopPanel(agentIdFn);
 </script>

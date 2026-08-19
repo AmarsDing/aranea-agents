@@ -1,6 +1,7 @@
 # aranea × TwinMonitor 深度融合完整方案
 
-> 版本：v1.0（评审通过后的细化版本）　日期：2026-08-19
+> 版本：v1.1（代码级评审后优化版）　日期：2026-08-19
+> v1.1 变更：依据 R1~R9 评审结论修订——GNS3 平面定位（R1）、auto 模式与工具风险联动规则（R2）、Skill 机制修正为动态路由注入（R3）、MCP 新增域收敛为 2 个（R4）、新增 §3.6 降级/对账/配额治理（R5/R6/R7）、多环境拓扑与自监控场景补充（R8/R9）。
 > 前置文档：TwinMonitor AI融合总体设计方案 v1.2 / 13-AI智能运维 v2.1 / 14-自动修复与自愈 v3.0 / 19-语音精灵 v2.0
 > 本次设计产出定位：新写深度融合总纲（非修订既有文档），聚焦「单通道 MCP 收敛 + 技能/记忆体系化 + 全场景 E2E 落地路线」。
 
@@ -74,6 +75,7 @@
 | F4 智能告警 S3 | 04 告警预检/风暴聚合 | Agent（RCA + 叙述生成） | alarm + metric + knowledge | 误报降级 / 事件叙述 |
 | F5 告警追踪自愈可视化 S5 | 告警模式切换 / 手动追踪 | Graph / Spirit | alarm + scene（UE 指令） | UE 相机追踪 + 多告警卡片 |
 | F6 定时巡检 + 洞察看板 | Cron(13) / 手动 | Team / Graph | metric + server + knowledge | 巡检报告 + 看板指标 |
+| F7 基础设施自愈（aranea 自身） | 04 告警（aranea 指标） | **无（aranea 旁路，14 直驱 16）** | 不经 MCP，14→16 直连 | aranea 宿主修复记录 |
 
 ---
 
@@ -169,20 +171,25 @@
 
 #### 3.1.1 MCP 工具目录 v2 扩展
 
-现有 24 个内置工具按领域分组（alarm/asset/metric/server/network/database/knowledge/notify_ticket/config），需新增：
+现有 24 个内置工具按 8 大领域分组（alarm/asset/metric/server/network/database/knowledge/notify_ticket/config）。为控制治理面碎片化（评审 R4），新增工具**只新增 2 个域**：`gns3`（仿真演练域）与 `ops`（运维运营域），线路类并入既有 `network` 域：
 
-| 新增工具名 | 领域 | 风险等级 | 只读 | 来源 | 对应原 aranea 工具 |
-|-----------|------|----------|------|------|---------------------|
-| `gns3.health_check` | gns3 | readonly | ✅ | builtin | `gns3_health_check` |
-| `gns3.exec` | gns3 | high | ❌ | builtin | `gns3_exec` |
-| `gns3.fault_inject` | gns3 | destructive | ❌ | builtin | `gns3_fault_inject` |
-| `gns3.fault_clear` | gns3 | destructive | ❌ | builtin | `gns3_fault_clear` |
-| `network.line_status` | network | readonly | ✅ | builtin | `twin_line_status` |
-| `network.line_probe` | network | readonly | ✅ | builtin | `twin_line_probe` |
-| `network.line_events` | network | readonly | ✅ | builtin | `twin_line_events` |
-| `remediation.status` | remediation | readonly | ✅ | builtin | `twin_remediation_status` |
-| `inspection.query` | inspection | readonly | ✅ | builtin | `twin_inspection_query` |
-| `collector.status` | collector | readonly | ✅ | builtin | `twin_collector_status` |
+| 新增工具名 | 领域 | 风险等级 | 只读 | 对应原 aranea 工具 |
+|-----------|------|----------|------|---------------------|
+| `gns3.health_check` | gns3 | readonly | ✅ | `gns3_health_check` |
+| `gns3.exec` | gns3 | high | ❌ | `gns3_exec` |
+| `gns3.fault_inject` | gns3 | destructive | ❌ | `gns3_fault_inject` |
+| `gns3.fault_clear` | gns3 | destructive | ❌ | `gns3_fault_clear` |
+| `network.line_status` | network | readonly | ✅ | `twin_line_status` |
+| `network.line_probe` | network | low | ❌ | `twin_line_probe`（主动探测，有副作用） |
+| `network.line_events` | network | readonly | ✅ | `twin_line_events` |
+| `ops.remediation_status` | ops | readonly | ✅ | `twin_remediation_status` |
+| `ops.inspection_query` | ops | readonly | ✅ | `twin_inspection_query` |
+| `ops.collector_status` | ops | readonly | ✅ | `twin_collector_status` |
+
+**GNS3 平面定位（评审 R1，关键澄清）**：当前环境的设备操作面是 **GNS3 共享仿真执行环境**（14 代码实证："并发修复同一故障会争抢共享执行环境（GNS3 console 等）"），gns3 域工具的后端是 GNS3 控制器（gns3_agent），**不是** 16 opstools 的生产设备 SSH/Agent 通道。因此：
+- gns3 域独立成域，与 16 生产命令通道（server/db/network 配置类工具经 opstools 下发）物理隔离，避免演练流量误入生产通道；
+- gns3 域承载双重角色：① 修复剧本的**演练验证平面**（新剧本先在 GNS3 仿真验证通过才允许上生产白名单）；② 当前演示环境的**实际设备面**；
+- 生产化演进时，gns3 域工具键不变，仅后端实现切换为 opstools 生产设备通道，上层 aranea 剧本与 budget 规则零改动。
 
 > 新增工具总表见附录 A。
 
@@ -219,18 +226,35 @@
 
 **与现有 ops_change_execution 机制的衔接**：现有 `ops_change_execution` 变更执行岗审批（项目记忆中「高危工具操作必须审批」规则）映射到第二层：工具级 interrupt 的审批人解析走 13 审批中心 `approver_roles` 角色码配置，与 twinmonitor 统一 RBAC 对齐。
 
+**策略-工具风险联动规则（评审 R2，新增）**：14 的 `execution_mode=auto` 策略若不加约束地关联含 destructive 工具的修复场景，则每次执行都会被第二层 interrupt 卡住——"全自动"名存实亡。联动规则如下：
+
+| 策略 execution_mode | 场景含工具最高风险 | 行为 |
+|---------------------|-------------------|------|
+| auto | ≤ high | 全自动，无 interrupt（第二层不触发） |
+| auto | destructive | **需策略预授权**：策略创建/启用时对「场景×工具组合」做一次显式授权（记录 grant_policy=always + approval_ttl），授权有效期内 destructive 工具调用自动放行（aranea 侧经系统级 Resume 直通，不再产生审批待办）；未预授权的策略禁止启用（14 侧校验） |
+| approval | 任意 | 第一层审批通过后，第二层仍按工具风险逐个 interrupt（双重确认） |
+| suggestion | 任意 | 不创建执行，仅产出建议 |
+
+> 预授权是「一次审批、N 次执行」的让渡，必须配套：冷却期 + 频率限制（14 已有）+ 场景级配额熔断（§3.6）三重兜底。GNS3 演练平面内的 destructive 工具可放宽为免预授权（演练环境无生产风险），由 13 按目标平面标记判定。
+
 ### 3.3 决策 3：技能（Skill）体系化运维剧本沉淀
 
-**现状**：aranea Skill 体系已有 DB 表和 CRUD 能力（`internal/biz/skill/skill.go`：ID/Name/Slug/Tags/Triggers/ExtendsSkillID/Enabled/CurrentVersion），但 Skill 与 Agent 的绑定关系、Skill 在运行时的激活机制（注入 system prompt vs 显式调用）在运维场景中尚未体系化。
+**现状（评审 R3 修正）**：aranea 技能体系远比"CRUD + 静态绑定"成熟，真实机制是**运行时动态路由注入**（[skill_guidance_inject.go](file:///f:/myproject/aranea-agents/internal/agent/skill_guidance_inject.go)）：
 
-**设计**：把已验证的运维剧本沉淀为 4 个核心 Skill，绑定到对应预设 Agent：
+- **路由**：BeforeModel hook 按本轮 query 与 Agent 策略解析候选技能——触发词（Triggers）匹配 + 语义（embedding）匹配 + 健康度指标过滤，每次 invocation 记忆化一次；
+- **注入**：选中技能渲染为 guidance cue（上限 4000 字符）注入模型上下文，工具循环内复用缓存不重复渲染；
+- **显式加载**：模型也可经 `skill_load` / `skill_run` 工具主动加载技能全文/执行；
+- **进化闭环**：`skill_curator_worker`（技能整理）+ `llm_skill_evolver`（LLM 进化）+ `skills_butler`（推荐）+ `skill_trigger_golden_runner`（触发词金标回归）——技能是可持续演化的资产，不是静态配置；
+- **版本与缓存**：`CurrentVersion` 变更使 Agent `buildKeyFP` 失效触发重建（符合「直改 agents 表必须 bump updated_at」规则）。
+
+**设计**：把已验证的运维剧本沉淀为 4 个核心 Skill，经触发词 + Agent 技能路由策略接入对应预设 Agent：
 
 | Skill 名称 | 绑定 Agent | 触发词（Triggers） | 内容形态 | 运行时行为 |
 |-----------|-----------|-------------------|----------|-----------|
-| `gns3-remediate-runbook` | 故障诊断 Agent / 变更执行 Agent | "故障自愈"、"自动修复"、"remediate" | Markdown 剧本：取证预算（≤2 次）、第 3 次必须是 fault_clear、复核预算（≤2 次）、方案 C 拦截规则、循环守卫（同工具同参数 2 次后拦截） | Agent 调用该 Skill 时，内容作为 system prompt 追加注入（priority 次于核心 persona），约束工具调用序列 |
-| `rca-evidence-path` | 故障诊断 Agent | "根因分析"、"RCA"、"为什么告警" | 标准取证路径：告警详情 → 同时间窗关联告警 → 资产拓扑（asset.cabinet_tree） → 近期变更 → 历史处置经验（knowledge.search） → 指标验证（metric.query） | 作为「工具调用前规划」约束，引导 Agent 按固定路径取证，避免跳步或遗漏 |
-| `cabinet-inspection-script` | 系统巡检 Agent | "巡检"、"inspect cabinet"、"机柜状态" | S1 语音巡检的标准话术与指令序列：overview → focus_cabinet → cabinet_detail → focus_server → hardware_explode → inventory_card | Spirit 分解任务时识别触发词，激活该 Skill 生成 scene_actions 序列 |
-| `alarm-triage-rules` | 告警处理 Agent | "告警分级"、"误报检测"、"告警风暴" | S3 智能告警三道防线规则：预检指标 → 动态基线比对 → 维护窗口抑制 → 聚合组叙述生成 | Agent system prompt 追加 triage 规则，输出结构化分级结论 |
+| `gns3-remediate-runbook` | 故障诊断 Agent / 变更执行 Agent | "故障自愈"、"自动修复"、"remediate" | Markdown 剧本：取证预算（≤2 次）、第 3 次必须是 fault_clear、复核预算（≤2 次）、方案 C 拦截规则、循环守卫（同工具同参数 2 次后拦截） | 命中路由后 guidance cue 注入，约束工具调用序列；remediate 图场景的任务文本固定含触发词，确保必中 |
+| `rca-evidence-path` | 故障诊断 Agent | "根因分析"、"RCA"、"为什么告警" | 标准取证路径：告警详情 → 同时间窗关联告警 → 资产拓扑（asset.cabinet_tree） → 近期变更 → 历史处置经验（knowledge.search） → 指标验证（metric.query） | guidance cue 注入作为「工具调用前规划」约束，引导按固定路径取证；RCA 场景任务文本固定含"根因分析"触发词 |
+| `cabinet-inspection-script` | 系统巡检 Agent | "巡检"、"inspect cabinet"、"机柜状态" | S1 语音巡检的标准话术与指令序列：overview → focus_cabinet → cabinet_detail → focus_server → hardware_explode → inventory_card | Spirit 分解任务时路由命中，guidance cue 约束生成白名单内 scene_actions 序列 |
+| `alarm-triage-rules` | 告警处理 Agent | "告警分级"、"误报检测"、"告警风暴" | S3 智能告警三道防线规则：预检指标 → 动态基线比对 → 维护窗口抑制 → 聚合组叙述生成 | guidance cue 注入 triage 规则，输出结构化分级结论 |
 
 **Skill 版本管理**：Skill 内容以 Markdown 文件存储于 `internal/skill-library/twinmonitor/`（与 `aranea-coding-guide` §Skill 体系对齐），通过 Skill CRUD API 导入 aranea，版本号按 SemVer 管理。更新 Skill 后，绑定 Agent 的 `buildKeyFP` 因 `SkillHash` 变化自动失效，重新构建 Agent 时生效（符合项目记忆「直改 agents 表必须同步 bump updated_at」规则）。
 
@@ -284,6 +308,45 @@
 - `knowledge.search` MCP 工具优先检索 10 知识库（词法库，team KB 无语义层时 BM25 空转风险已由 `ReembedDocuments` 修复）；aranea 侧内部 `knowledge_search` 工具检索 aranea 知识库（含向量层）。
 - 知识写入必须触发 **chunk 重放**（项目记忆 2026-08-15 事故根治：biz 层 `SetWriteBackReplay` 钩子确保所有写回链路消费方都经过 chunk 重放）。
 - 团队知识库是纯词法库（embedding_model 空），检索走 tsvector/trigram，同样依赖 knowledge_chunks 表。
+
+### 3.6 决策 6：降级、对账与配额治理（评审 R5/R6/R7 新增）
+
+#### 3.6.1 aranea 不可用降级矩阵（R5）
+
+13 HealthProber 连续 3 次探测失败 → 实例状态置 `unhealthy` 并发布 `ai.aranea.health` 事件，各消费方按矩阵降级：
+
+| 消费方 | 降级行为 | 恢复行为 |
+|--------|----------|----------|
+| 14 策略引擎（auto） | 新命中告警**不再创建执行记录**，事件落 `pending_degraded` 队列；已有 running 执行不做状态假设 | 健康恢复后批量重放 degraded 事件（幂等键防重） |
+| 14 策略引擎（approval/suggestion） | 照常受理（审批/建议不依赖 aranea 实时调用），仅「批准即下发」按钮置灰 | 恢复后自动解禁 |
+| 13 RCA 自动触发 | 订阅者暂停创建 Run，告警事件继续落库不丢 | 恢复后按告警时间窗补触发（≤15 分钟，过期跳过） |
+| 13 定时巡检 | 到点跳过并记 `skipped_aranea_down` | 下一周期正常 |
+| 19 语音精灵 | 语音指令回复「AI 编排服务暂不可用」，scene_actions 降级为纯本地预置指令 | KWS 心跳探测恢复 |
+
+#### 3.6.2 任务镜像对账（R6）
+
+- 14 FallbackPoller（30s 轮询 running 记录）保留，作为事件丢失的短周期兜底；
+- **新增周期对账 worker**（13 侧，5 分钟）：拉取 aranea `GET /api/v1/runs/{id}` 比对 `ai_tasks` 镜像状态，漂移则按 aranea 侧为准修正并发布补偿事件；
+- **卡死清扫**（13 侧，10 分钟）：`running` 超过 graph 超时上限 2 倍且无新节点事件的镜像，主动调用 aranea cancel 并置 `timeout` 终态，释放 14 并发槽（在途执行占用 GNS3 共享环境，卡死会阻塞后续修复——呼应 R1）。
+
+#### 3.6.3 场景级配额熔断（R7）
+
+项目已有事故先例：知识检索降级空转导致单任务 179 次工具调用 / 291K tokens（sh-04）。在 aranea 既有成本配额之上，为运维场景增加两级熔断（治理配置存 13 场景定义 `definition`）：
+
+| 维度 | 默认阈值 | 触发动作 |
+|------|----------|----------|
+| 单 Run 工具调用次数 | RCA 场景 15 次；remediate 场景 12 次（预算 10 + 冗余 2） | 超限即取消 Run，标记 `budget_exceeded`，产出已有证据的部分结论 |
+| 单 Run LLM 成本 | 按模型档位配置（如 deepseek-chat 0.5 元/Run） | 同上，并计入洞察看板熔断率指标 |
+
+> 与 aranea 既有循环守卫（同工具同参数 ≥3 次拦截）互补：守卫防「重复」，熔断防「总量」。
+
+#### 3.6.4 多环境拓扑（R8）
+
+`ai_aranea_instances` 表天然支持多实例：dev/test/prod 三套 twinmonitor 各自登记独立 aranea 实例（独立 Bearer token + webhook_secret + 健康探测）。**禁止跨环境共用 aranea 实例**——演练平面的 destructive 工具调用与生产平面必须物理隔离。种子同步按实例独立执行，Agent 编码（如 `ops.fault.diagnosis`）跨环境保持一致以便剧本移植。
+
+#### 3.6.5 自监控闭环（R9）
+
+twinmonitor 已将 aranea 自身纳入监控（register-monitor.ps1 / register-env.ps1 采集 aranea 指标）。自愈闭环同样覆盖 aranea 自身故障：aranea 进程告警 → 14 策略匹配「基础设施自愈」场景 → 修复剧本走 16 opstools 对 aranea 宿主执行（重启/扩容/日志采集），**此类场景不依赖 aranea 在环**（aranea 挂了无法自己修自己）——由 14 直接驱动 opstools 执行，是自愈体系中唯一合法的「aranea 旁路」。
 
 ---
 
@@ -562,10 +625,10 @@ MCP：server.top / server.disk_usage / server.service_status / metric.query
 
 | 任务 | 验收标准 |
 |------|----------|
-| 13 MCP-Server 注册新增 10 个工具（gns3 4 + network 3 + remediation 1 + inspection 1 + collector 1） | `GET /mcp/sse` tools/list 返回新增工具，风险等级正确 |
+| 13 MCP-Server 注册新增 10 个工具（gns3 域 4 + network 域 3 + ops 域 3） | `GET /mcp/sse` tools/list 返回新增工具，风险等级正确（network.line_probe=low 非只读） |
 | 13 `ai_mcp_tools` 表 upsert 幂等 | 重启服务不重复创建，治理调整字段保留 |
 | aranea 侧登记 twinmonitor MCP-Server | `mcp_servers` 表新增记录，MCPVersionHash 正确计算 |
-| gns3 工具后端实现（转发到对应内部服务） | `gns3.exec` 调用经 16 opstools 成功下发命令，返回 stdout/stderr |
+| gns3 工具后端实现（转发 GNS3 控制器，非 opstools 生产通道） | `gns3.exec` 经 gns3_agent 在仿真环境执行成功，返回 stdout/stderr；审计记录含目标平面标记 `plane=gns3_sim` |
 | 新增工具冒烟测试 | McpTesterPage 可调用新增工具，返回结果符合预期 |
 
 ### 阶段 P2：双跑切换
@@ -574,9 +637,10 @@ MCP：server.top / server.disk_usage / server.service_status / metric.query
 |------|----------|
 | 12 预设 Agent tool_whitelist 全面切 MCP | Agent 在线测试时工具调用走 MCP 通道，内置 twinops 无调用记录 |
 | remediate 图节点工具切换 | verify/取证/fault_clear 节点调用 MCP 工具，budget 规则不变形 |
-| 技能 4 个上线并绑定 Agent | Skill 触发词测试：输入触发词后 Agent system prompt 含 Skill 内容 |
+| 技能 4 个上线并完成路由配置 | Skill 路由测试：命中触发词后注入的 guidance cue 含 Skill 内容（relay 抓包验证） |
 | 循环守卫与 budget 规则验证 | test/ts10-gns3 扩展 E2E：同工具同参数 3 次触发拦截，第 3 次 fault_clear 前强制 fault_clear |
 | 双层审批验证 | destructive 工具触发 interrupt → 13 审批中心 → Resume → 执行完成 |
+| 策略预授权验证 | auto 策略关联 destructive 场景：未预授权禁止启用；预授权后执行全程无 interrupt；授权过期自动回落为逐次确认 |
 | L3 记忆写入验证 | 修复闭环终点调用 `POST /api/v1/memory/facts` 成功， facts 表可查 |
 
 ### 阶段 P3：内置工具退役
@@ -606,9 +670,10 @@ MCP：server.top / server.disk_usage / server.service_status / metric.query
 | 文档 | 章节 | 修订内容 | 优先级 |
 |------|------|----------|--------|
 | TwinMonitor-AI融合总体设计方案 v1.2 | §0 D1 | 补充 MCP 单通道收敛决策（原 D1 只提编排委托，未提工具通道收敛） | 高 |
-| 13-AI智能运维需求文档 v2.1 | §5.9 MCP | 扩展 gns3/network 域工具（原 24 个 → 34 个），补充 destructive 工具与 aranea interrupt 的联动规则 | 高 |
-| 13-AI智能运维概要设计 v2.1 | §6.1/6.2 | `ai_mcp_tools` 表新增 gns3/network 条目；`ai_mcp_call_history` 补充拦截原因字段 | 高 |
-| 13-AI智能运维详设 v2.1 | §2.2.6 MCP | 新增 gns3 工具后端实现章节（转发到 opstools / gns3_agent） | 高 |
+| 13-AI智能运维需求文档 v2.1 | §5.9 MCP | 扩展 gns3/network/ops 三域工具（原 24 个 → 34 个），补充 destructive 工具与 aranea interrupt 的联动规则及 GNS3 平面定位 | 高 |
+| 13-AI智能运维概要设计 v2.1 | §6.1/6.2 | `ai_mcp_tools` 表新增 gns3/network/ops 三域条目；`ai_mcp_call_history` 补充拦截原因与目标平面（plane）字段；新增对账/卡死清扫 worker 设计 | 高 |
+| 14-自动修复与自愈详设 v2.0 | §5 | 补充策略-工具风险联动规则（auto+destructive 需策略预授权）、aranea 不可用降级矩阵、F7 基础设施自愈旁路 | 高 |
+| 13-AI智能运维详设 v2.1 | §2.2.6 MCP | 新增 gns3 工具后端实现章节（转发 GNS3 控制器 gns3_agent，与 opstools 生产通道隔离） | 高 |
 | 14-自动修复与自愈需求文档 v3.0 | §2.3 | 外部依赖接口契约中「场景执行引擎」明确为 aranea Graph，补充 MCP 工具调用路径 | 中 |
 | 14-自动修复与自愈概设 v2.0 | §4 | 架构图中「aranea」与「TwinMonitor MCP-Server」之间增加 MCP 标注 | 中 |
 | 19-语音精灵交互 | §3 | S1 场景指令集中补充 `track_alarm` / `alarm_mode`（S5 新增指令） | 中 |
@@ -627,18 +692,18 @@ MCP：server.top / server.disk_usage / server.service_status / metric.query
 | 3 | `twin_alarm_ack` | `alarm.acknowledge` | alarm | low | ❌ | 04 告警确认 API |
 | 4 | `twin_line_status` | `network.line_status` | network | readonly | ✅ | 08 线路监控 API |
 | 5 | `twin_line_events` | `network.line_events` | network | readonly | ✅ | 08 线路事件 API |
-| 6 | `twin_line_probe` | `network.line_probe` | network | readonly | ✅ | 08 线路探测 API（或 16 命令通道） |
+| 6 | `twin_line_probe` | `network.line_probe` | network | low | ❌ | 08 线路探测 API（主动探测，非只读） |
 | 7 | `twin_device_search` | `asset.get` + 参数扩展 | asset | readonly | ✅ | 02 资产查询 API |
 | 8 | `twin_device_get` | `asset.get` | asset | readonly | ✅ | 02 资产详情 API |
 | 9 | `twin_device_metrics` | `metric.query` | metric | readonly | ✅ | 06 指标查询 API |
-| 10 | `twin_remediation_status` | `remediation.status` | remediation | readonly | ✅ | 14 执行记录查询 API |
+| 10 | `twin_remediation_status` | `ops.remediation_status` | ops | readonly | ✅ | 14 执行记录查询 API |
 | 11 | `twin_alarm_rule_get` | `alarm.query` 参数扩展 | alarm | readonly | ✅ | 04 告警规则 API |
-| 12 | `twin_collector_status` | `collector.status` | collector | readonly | ✅ | 03 采集状态 API |
-| 13 | `twin_inspection_query` | `inspection.query` | inspection | readonly | ✅ | 16 巡检记录 API |
-| 14 | `gns3_health_check` | `gns3.health_check` | gns3 | readonly | ✅ | 16 gns3 健康检查 API |
-| 15 | `gns3_exec` | `gns3.exec` | gns3 | high | ❌ | 16 命令执行 API（经 gns3 代理） |
-| 16 | `gns3_fault_inject` | `gns3.fault_inject` | gns3 | destructive | ❌ | 16 gns3 故障注入 API |
-| 17 | `gns3_fault_clear` | `gns3.fault_clear` | gns3 | destructive | ❌ | 16 gns3 故障清除 API |
+| 12 | `twin_collector_status` | `ops.collector_status` | ops | readonly | ✅ | 03 采集状态 API |
+| 13 | `twin_inspection_query` | `ops.inspection_query` | ops | readonly | ✅ | 16 巡检记录 API |
+| 14 | `gns3_health_check` | `gns3.health_check` | gns3 | readonly | ✅ | GNS3 控制器健康检查（gns3_agent） |
+| 15 | `gns3_exec` | `gns3.exec` | gns3 | high | ❌ | GNS3 仿真设备命令执行（gns3_agent console） |
+| 16 | `gns3_fault_inject` | `gns3.fault_inject` | gns3 | destructive | ❌ | GNS3 仿真故障注入（gns3_agent） |
+| 17 | `gns3_fault_clear` | `gns3.fault_clear` | gns3 | destructive | ❌ | GNS3 仿真故障清除（gns3_agent） |
 
 > 原 aranea `twin_alarm_query` 与 MCP `alarm.query` 语义不完全一致时，13 侧 `mcp_call.go` 做参数适配。
 

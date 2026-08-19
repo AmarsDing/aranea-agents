@@ -21,21 +21,21 @@
         </template>
         {{ loadError }}
         <template #action>
-          <q-btn flat color="white" label="重试" @click="loadInitial" />
+          <q-btn flat color="white" :label="t('agentSettings.retry')" @click="loadInitial" />
         </template>
       </q-banner>
 
       <template v-if="!loadError">
         <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" :breakpoint="0">
-          <q-tab name="agent" label="Agent 属性" />
-          <q-tab name="memory" label="记忆" />
-          <q-tab name="files" label="文件" />
-          <q-tab name="permissions" label="用量配额" />
-          <q-tab name="skills" label="Skill / 工具" />
-          <q-tab name="evolution" label="进化" />
-          <q-tab name="learning" label="学习闭环" />
-          <q-tab name="hooks" label="钩子" />
-          <q-tab name="a2a" label="A2A 协议" />
+          <q-tab name="agent" :label="t('agentSettings.tabs.agent')" />
+          <q-tab name="memory" :label="t('agentSettings.tabs.memory')" />
+          <q-tab name="files" :label="t('agentSettings.tabs.files')" />
+          <q-tab name="permissions" :label="t('agentSettings.tabs.permissions')" />
+          <q-tab name="skills" :label="t('agentSettings.tabs.skills')" />
+          <q-tab name="evolution" :label="t('agentSettings.tabs.evolution')" />
+          <q-tab name="learning" :label="t('agentSettings.tabs.learning')" />
+          <q-tab name="hooks" :label="t('agentSettings.tabs.hooks')" />
+          <q-tab name="a2a" :label="t('agentSettings.tabs.a2a')" />
         </q-tabs>
         <q-separator />
 
@@ -101,7 +101,7 @@
           <q-tab-panel name="permissions">
             <div class="settings-grid settings-grid--wide">
               <agent-usage-quota-panel v-if="form.id" :agent-id="form.id" />
-              <q-banner v-else rounded class="settings-placeholder-banner">加载 Agent 后可配置用量配额。</q-banner>
+              <q-banner v-else rounded class="settings-placeholder-banner">{{ t('agentSettings.quotaNeedAgent') }}</q-banner>
             </div>
           </q-tab-panel>
 
@@ -196,6 +196,7 @@
 
 <script setup lang="ts">
 import { computed, toValue } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AgentAvatarPicker from '../components/avatar/AgentAvatarPicker.vue';
 import AgentEvolutionPanel from '../components/agents/AgentEvolutionPanel.vue';
 import AgentLearningLoopPanel from '../components/agents/AgentLearningLoopPanel.vue';
@@ -212,6 +213,8 @@ import AgentSettingsA2ATab from '../components/agents/AgentSettingsA2ATab.vue';
 import AgentSettingsA2AEndpointTab from '../components/agents/AgentSettingsA2AEndpointTab.vue';
 import AgentUsageQuotaPanel from '../components/agents/AgentUsageQuotaPanel.vue';
 import { useAgentSettingsPage } from '../features/agents/useAgentSettingsPage';
+
+const { t } = useI18n();
 
 const {
   tab,

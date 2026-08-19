@@ -186,7 +186,7 @@ export class EdgeLayer {
   /** V13：边颜色热切换（着色模式 unified/typed，不重建层）。colors = 每边 RGB（edgeCount×3）。 */
   setColors(colors: Float32Array): void {
     if (colors.length !== this.edgeCount * 3) {
-      throw new Error(`EdgeLayer.setColors: 期望 ${this.edgeCount * 3}，实得 ${colors.length}`);
+      throw new Error(`EdgeLayer.setColors: expected ${this.edgeCount * 3}, got ${colors.length}`);
     }
     const attr = this.geometry.getAttribute('aColor') as THREE.BufferAttribute;
     const arr = attr.array as Float32Array;

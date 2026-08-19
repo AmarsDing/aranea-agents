@@ -10,7 +10,7 @@
           :icon="agent.icon"
           :alt="agent.display_name || 'Agent 设置'"
         />
-        <q-tooltip>点击更换头像（内置或上传）</q-tooltip>
+        <q-tooltip>{{ $t('agentSettings.header.avatarTip') }}</q-tooltip>
       </div>
       <div class="min-width-0">
         <div class="row items-center q-gutter-sm">
@@ -20,7 +20,9 @@
             statusLabel(agent.status)
           }}</q-badge>
           <q-chip dense square class="settings-chip">{{ promptModeLabel(agent.system_prompt_mode) }}</q-chip>
-          <q-chip v-if="showEvolving" dense square class="settings-chip is-evolving" icon="auto_awesome">进化中</q-chip>
+          <q-chip v-if="showEvolving" dense square class="settings-chip is-evolving" icon="auto_awesome">{{
+            $t('agentSettings.header.evolving')
+          }}</q-chip>
         </div>
         <div v-if="metaCaption" class="text-caption text-grey-7">{{ metaCaption }}</div>
       </div>
@@ -32,7 +34,7 @@
         rounded
         color="primary"
         icon="visibility"
-        label="系统提示词"
+        :label="$t('agentSettings.header.prompt')"
         class="settings-action"
         @click="$emit('open-prompt')"
       />
@@ -41,7 +43,7 @@
         rounded
         color="grey-7"
         icon="settings"
-        label="高级"
+        :label="$t('agentSettings.header.advanced')"
         class="settings-action"
         @click="$emit('open-advanced')"
       />
@@ -58,7 +60,7 @@
         rounded
         unelevated
         icon="save"
-        label="保存设置"
+        :label="$t('agentSettings.header.save')"
         class="settings-save"
         :loading="saving"
         :disable="!agent.id || agent.readonly"

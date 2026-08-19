@@ -76,6 +76,22 @@ export async function rejectLearningProposal(agentId: string, proposalId: string
   return normalizeProposal(res);
 }
 
+export async function applyLearningProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
+  const svc = createLearningLoopService();
+  const res = await svc.ApplyProposal({ agentId, id: proposalId });
+  return normalizeProposal(res);
+}
+
+export async function updateLearningPatternStatus(
+  agentId: string,
+  patternId: string,
+  status: 'confirmed' | 'dismissed',
+): Promise<LearningPattern> {
+  const svc = createLearningLoopService();
+  const res = await svc.UpdatePatternStatus({ agentId, id: patternId, status });
+  return normalizePattern(res);
+}
+
 export async function runLearningLoop(agentId: string): Promise<void> {
   const svc = createLearningLoopService();
   await svc.RunLoop({ agentId });

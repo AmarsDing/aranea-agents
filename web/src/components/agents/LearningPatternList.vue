@@ -30,7 +30,33 @@
           <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(p.detected_at) }}</q-item-label>
         </q-item-section>
         <q-item-section side>
-          <q-badge :color="patternStatusColor(p.status)" :label="patternStatusLabel(p.status)" />
+          <div class="row items-center no-wrap q-gutter-xs">
+            <q-badge :color="patternStatusColor(p.status)" :label="patternStatusLabel(p.status)" />
+            <template v-if="p.status === 'detected'">
+              <q-btn
+                flat
+                dense
+                round
+                size="sm"
+                icon="check"
+                color="positive"
+                @click="emit('confirm', p.id)"
+              >
+                <q-tooltip>确认模式</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                dense
+                round
+                size="sm"
+                icon="visibility_off"
+                color="grey"
+                @click="emit('dismiss', p.id)"
+              >
+                <q-tooltip>忽略模式</q-tooltip>
+              </q-btn>
+            </template>
+          </div>
         </q-item-section>
       </q-item>
     </q-list>
@@ -41,6 +67,9 @@
 <script setup lang="ts">
 import type { LearningPattern } from '../../features/agents/learning.types';
 import { formatDate } from '../../features/agents/learning.utils';
+import { i18n } from '../../i18n';
+
+const t = i18n.global.t;
 
 defineProps<{
   patterns: LearningPattern[];
@@ -50,6 +79,8 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:status-filter': [value: string];
+  confirm: [patternId: string];
+  dismiss: [patternId: string];
 }>();
 
 const statusOptions = [
@@ -90,11 +121,11 @@ function patternStatusColor(status: string): string {
 function patternStatusLabel(status: string): string {
   switch (status) {
     case 'detected':
-      return '已检测';
+      return t('agents.learning_loop.pattern_status_detected');
     case 'confirmed':
-      return '已确认';
+      return t('agents.learning_loop.pattern_status_confirmed');
     case 'dismissed':
-      return '已忽略';
+      return t('agents.learning_loop.pattern_status_dismissed');
     default:
       return status;
   }

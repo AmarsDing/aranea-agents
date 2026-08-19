@@ -6,6 +6,8 @@ import {
   listLearningProposals,
   approveLearningProposal,
   rejectLearningProposal,
+  applyLearningProposal,
+  updateLearningPatternStatus,
   runLearningLoop,
 } from '../../features/agents/api.learning';
 import type { LearningObservation, LearningPattern, LearningProposal } from '../../features/agents/learning.types';
@@ -89,6 +91,36 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
     }
   }
 
+  async function applyProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
+    error.value = null;
+    try {
+      const result = await applyLearningProposal(agentId, proposalId);
+      const idx = proposals.value.findIndex((p) => p.id === proposalId);
+      if (idx !== -1) proposals.value[idx] = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
+  }
+
+  async function updatePatternStatus(
+    agentId: string,
+    patternId: string,
+    status: 'confirmed' | 'dismissed',
+  ): Promise<LearningPattern> {
+    error.value = null;
+    try {
+      const result = await updateLearningPatternStatus(agentId, patternId, status);
+      const idx = patterns.value.findIndex((p) => p.id === patternId);
+      if (idx !== -1) patterns.value[idx] = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
+  }
+
   async function runLoop(agentId: string): Promise<void> {
     error.value = null;
     try {
@@ -110,6 +142,8 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
     fetchProposals,
     approveProposal,
     rejectProposal,
+    applyProposal,
+    updatePatternStatus,
     runLoop,
   };
 });

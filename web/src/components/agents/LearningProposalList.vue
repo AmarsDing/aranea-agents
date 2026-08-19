@@ -27,7 +27,7 @@
           <q-item-label caption class="q-mt-xs">{{ p.content }}</q-item-label>
           <q-item-label caption class="q-mt-xs text-grey-5">
             {{ formatDate(p.created_at) }}
-            <span v-if="p.approved_by"> · 审批人: {{ p.approved_by }}</span>
+            <span v-if="p.approved_by"> · 审批人: {{ formatApprovedBy(p.approved_by) }}</span>
           </q-item-label>
         </q-item-section>
         <q-item-section side>
@@ -39,7 +39,6 @@
               icon="check"
               color="positive"
               size="sm"
-              :loading="approvingId === p.id"
               @click="emit('approve', p.id)"
             >
               <q-tooltip>审批</q-tooltip>
@@ -51,10 +50,23 @@
               icon="close"
               color="negative"
               size="sm"
-              :loading="rejectingId === p.id"
               @click="emit('reject', p.id)"
             >
               <q-tooltip>拒绝</q-tooltip>
+            </q-btn>
+          </div>
+          <div v-else-if="p.status === 'approved'" class="row items-center no-wrap q-gutter-xs">
+            <q-badge :color="proposalStatusColor(p.status)" :label="proposalStatusLabel(p.status)" />
+            <q-btn
+              flat
+              round
+              dense
+              icon="school"
+              color="primary"
+              size="sm"
+              @click="emit('apply', p.id)"
+            >
+              <q-tooltip>注册到知识库</q-tooltip>
             </q-btn>
           </div>
           <q-badge v-else :color="proposalStatusColor(p.status)" :label="proposalStatusLabel(p.status)" />
@@ -67,20 +79,22 @@
 
 <script setup lang="ts">
 import type { LearningProposal } from '../../features/agents/learning.types';
-import { formatDate } from '../../features/agents/learning.utils';
+import { formatDate, formatApprovedBy } from '../../features/agents/learning.utils';
+import { i18n } from '../../i18n';
+
+const t = i18n.global.t;
 
 defineProps<{
   proposals: LearningProposal[];
   loading: boolean;
   statusFilter: string;
-  approvingId: string | null;
-  rejectingId: string | null;
 }>();
 
 const emit = defineEmits<{
   'update:status-filter': [value: string];
   approve: [id: string];
   reject: [id: string];
+  apply: [id: string];
 }>();
 
 const statusOptions = [
@@ -131,19 +145,19 @@ function proposalStatusColor(status: string): string {
 function proposalStatusLabel(status: string): string {
   switch (status) {
     case 'draft':
-      return '草稿';
+      return t('agents.learning_loop.proposal_status_draft');
     case 'validated':
-      return '已验证';
+      return t('agents.learning_loop.proposal_status_validated');
     case 'approved':
-      return '已审批';
+      return t('agents.learning_loop.proposal_status_approved');
     case 'rejected':
-      return '已拒绝';
+      return t('agents.learning_loop.proposal_status_rejected');
     case 'applied':
-      return '已应用';
+      return t('agents.learning_loop.proposal_status_applied');
     case 'conflict':
-      return '冲突';
+      return t('agents.learning_loop.proposal_status_conflict');
     case 'expired':
-      return '已过期';
+      return t('agents.learning_loop.proposal_status_expired');
     default:
       return status;
   }

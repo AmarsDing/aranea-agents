@@ -478,12 +478,14 @@ func TestMoveDocument_Success(t *testing.T) {
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
 	src, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
 		Name: "默认知识库", EmbeddingModel: "m", Dim: 1536,
+		Workspace: workspace.DefaultWorkspaceID, // 模拟 service RPC 的 C-01 盖章
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dst, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
 		Name: "quant", EmbeddingModel: "m", Dim: 1536,
+		Workspace: workspace.DefaultWorkspaceID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -516,12 +518,14 @@ func TestMoveDocument_DimMismatch_ReturnsConflict(t *testing.T) {
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
 	src, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
 		Name: "默认知识库", EmbeddingModel: "m", Dim: 1536,
+		Workspace: workspace.DefaultWorkspaceID,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dst, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
 		Name: "other-dim", EmbeddingModel: "m", Dim: 768,
+		Workspace: workspace.DefaultWorkspaceID,
 	})
 	if err != nil {
 		t.Fatal(err)
