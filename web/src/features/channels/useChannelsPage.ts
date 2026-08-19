@@ -73,8 +73,13 @@ export function useChannelsPage() {
   }
 
   async function openEdit(row: ChannelRow) {
+    try {
+      editingCredentials.value = await channelsStore.fetchCredentials(row.id);
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.loadFailed') });
+      return;
+    }
     editingRow.value = row;
-    editingCredentials.value = await channelsStore.fetchCredentials(row.id);
     editorOpen.value = true;
   }
 

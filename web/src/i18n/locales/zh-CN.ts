@@ -3238,6 +3238,8 @@ export default {
     paginationUnit: '个 Channel',
     opsTitle: 'Channel 运维面板',
     opsClose: '收起',
+    sharedBadge: '共享',
+    sharedReadonly: '系统内置共享渠道，当前租户只读，不可变更',
   },
   channelEditor: {
     editTitle: '编辑 Channel',

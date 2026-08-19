@@ -63,6 +63,10 @@ function statusText(row: ChannelRow): string {
   return row.status || 'unknown';
 }
 
+export function isChannelShared(row: ChannelRow): boolean {
+  return row.workspace_id === '';
+}
+
 export function isChannelConnected(row: ChannelRow): boolean {
   const meta = channelMetadata(row);
   if (meta.runtime_connected === true) {

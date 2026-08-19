@@ -179,6 +179,25 @@ function isSelfPresentedToolWrite(meta?: RequestMeta): boolean {
   return meta?.service === 'ToolService' && TOOL_SELF_PRESENTED_WRITES.has(meta.method);
 }
 
+/**
+ * ChannelService 写方法的业务调用方（useChannelsPage.toggleRow/testRow/confirmDelete、
+ * useChannelEditorForm.save/saveAndTest）均 catch 后自行 `$q.notify`，全局 4xx/5xx
+ * toast 会与之重复，故跳过。共享渠道只读（403）等后端文案经调用方 toast 呈现。
+ */
+const CHANNEL_SELF_PRESENTED_WRITES = new Set([
+  'CreateChannel',
+  'UpdateChannel',
+  'DeleteChannel',
+  'ToggleChannel',
+  'TestChannel',
+  'UpsertChannelCredentials',
+  'DeleteChannelCredential',
+]);
+
+function isSelfPresentedChannelWrite(meta?: RequestMeta): boolean {
+  return meta?.service === 'ChannelService' && CHANNEL_SELF_PRESENTED_WRITES.has(meta.method);
+}
+
 /** 与 proto 生成的 HTTP 客户端（`v1/...`）双参 handler 签名一致；`meta` 可供拦截器或日志使用 */
 export function requestHandler({ path, method, body }: Request, meta?: RequestMeta): Promise<unknown> {
   const headers: Record<string, string> = {};
@@ -191,7 +210,8 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
   const skipErrorNotify =
     (meta?.skipErrorNotify ?? meta?.method === 'CreateAgent') ||
     meta?.service === 'SelfImprovementService' ||
-    isSelfPresentedToolWrite(meta);
+    isSelfPresentedToolWrite(meta) ||
+    isSelfPresentedChannelWrite(meta);
   const urlPath = '/' + path.replace(/^\//, '');
   return kratosApi
     .request({

@@ -548,13 +548,17 @@ body:not(.body--dark) .q-dialog .q-card.channel-editor-dialog
   padding-top: var(--space-4)
   padding-bottom: var(--space-4)
 
-// 内层不再用实色白卡，避免盖住毛玻璃
+// 内层不再用实色白卡，避免盖住毛玻璃；
+// 滚动统一交由外层 app-glass-dialog__scroll：去掉内层 max-height 限高与自滚动，
+// 否则内外两个滚动上下文嵌套（滚动链混乱），且 640px 上限浪费纵向空间
 .channel-editor-dialog .app-glass-dialog__body .channel-editor-config-panel
+  flex: none
   width: 100%
   max-width: none
-  max-height: min(calc(92vh - 148px), 640px)
+  max-height: none
   margin: 0
   padding: var(--space-4) var(--space-5) var(--space-5)
+  overflow: visible
   background: transparent !important
   border: none !important
   box-shadow: none !important

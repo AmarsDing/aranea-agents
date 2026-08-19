@@ -110,4 +110,7 @@ export type ChannelTestResult = {
   details?: Record<string, unknown>;
 };
 
-export type ChannelRow = PlatformResource;
+export type ChannelRow = PlatformResource & {
+  /** P2-B 租户隔离：'' = 系统内置/共享（租户只读）；非空 = 归属 workspace。 */
+  workspace_id?: string;
+};

@@ -26,6 +26,21 @@
       <div class="app-page-toolbar__meta">共 {{ total }} 个服务器，本页 {{ enabledCount }} 个已启用</div>
     </AppPageToolbar>
 
+    <q-banner
+      v-if="mcpGuideVisible"
+      rounded
+      dense
+      class="bg-blue-1 text-grey-9 q-mb-md mcp-guide-banner"
+    >
+      <template #avatar>
+        <q-icon name="hub" color="primary" />
+      </template>
+      MCP 工具需在各 Agent 的「工具设置」中启用 <code>mcp_tool_set</code> 后才会挂载到运行时；启用后所有「已启用」的服务器都会生效。服务器健康仅代表连通性，不代表已被 Agent 使用。
+      <template #action>
+        <q-btn flat dense round icon="close" aria-label="关闭提示" @click="dismissMcpGuide" />
+      </template>
+    </q-banner>
+
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
       <template #action>
@@ -88,6 +103,9 @@ import McpServersTable from '../components/mcp/McpServersTable.vue';
 import McpServerFormDialog from '../features/mcp/McpServerFormDialog.vue';
 import McpUserCredentialDialog from '../features/mcp/McpUserCredentialDialog.vue';
 import { useMcpServersPage } from '../features/mcp/useMcpServersPage';
+import { useMcpGuide } from '../features/mcp/useMcpGuide';
+
+const { mcpGuideVisible, dismissMcpGuide } = useMcpGuide();
 
 const {
   search,

@@ -3206,6 +3206,8 @@ export default {
     paginationUnit: 'channels',
     opsTitle: 'Channel ops panel',
     opsClose: 'Collapse',
+    sharedBadge: 'Shared',
+    sharedReadonly: 'System built-in shared channel; read-only for this workspace',
   },
   channelEditor: {
     editTitle: 'Edit channel',

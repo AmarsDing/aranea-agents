@@ -23,6 +23,10 @@
                 <q-tooltip>{{ t('channelsPage.statusConnected') }}</q-tooltip>
               </q-icon>
               <div class="app-registry-cell-primary ellipsis">{{ props.row.name }}</div>
+              <q-badge v-if="isChannelShared(props.row)" outline color="grey-7" class="channel-shared-badge">
+                {{ t('channelsPage.sharedBadge') }}
+                <q-tooltip>{{ t('channelsPage.sharedReadonly') }}</q-tooltip>
+              </q-badge>
             </div>
             <div class="app-registry-cell-sub ellipsis">{{ props.row.key }}</div>
           </div>
@@ -55,9 +59,11 @@
         <q-toggle
           :model-value="props.row.enabled"
           class="channel-enable-toggle"
-          :disable="togglingId === props.row.id"
+          :disable="togglingId === props.row.id || isChannelShared(props.row)"
           @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
-        />
+        >
+          <q-tooltip v-if="isChannelShared(props.row)">{{ t('channelsPage.sharedReadonly') }}</q-tooltip>
+        </q-toggle>
       </q-td>
     </template>
 
@@ -97,12 +103,25 @@
             class="channel-icon-btn"
             icon="science"
             :loading="testingId === props.row.id"
+            :disable="isChannelShared(props.row)"
             @click="$emit('testConnection', props.row)"
           >
-            <q-tooltip>{{ t('channelsPage.testConnection') }}</q-tooltip>
+            <q-tooltip>{{
+              isChannelShared(props.row) ? t('channelsPage.sharedReadonly') : t('channelsPage.testConnection')
+            }}</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="channel-icon-btn" icon="edit" @click="$emit('edit', props.row)">
-            <q-tooltip>{{ t('channelsPage.edit') }}</q-tooltip>
+          <q-btn
+            flat
+            dense
+            round
+            class="channel-icon-btn"
+            icon="edit"
+            :disable="isChannelShared(props.row)"
+            @click="$emit('edit', props.row)"
+          >
+            <q-tooltip>{{
+              isChannelShared(props.row) ? t('channelsPage.sharedReadonly') : t('channelsPage.edit')
+            }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -110,9 +129,12 @@
             round
             class="channel-icon-btn channel-icon-btn--danger"
             icon="delete"
+            :disable="isChannelShared(props.row)"
             @click="$emit('remove', props.row)"
           >
-            <q-tooltip>{{ t('channelsPage.delete') }}</q-tooltip>
+            <q-tooltip>{{
+              isChannelShared(props.row) ? t('channelsPage.sharedReadonly') : t('channelsPage.delete')
+            }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -138,6 +160,7 @@ import {
   channelType,
   formatChannelDate,
   isChannelConnected,
+  isChannelShared,
   receiveMode,
 } from './channelUi';
 

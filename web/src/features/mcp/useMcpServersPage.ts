@@ -3,7 +3,7 @@ import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import type { McpHealthTone, McpServerConfig, McpServerMetadata, McpServerRow } from './types';
-import { parseJSON } from './utils';
+import { parseJSON, mcpTestNotify } from './utils';
 import { useMcpStore } from '../../stores/mcp';
 import { useAuthStore } from '../../stores/auth';
 
@@ -119,7 +119,7 @@ export function useMcpServersPage() {
     testingId.value = row.id;
     try {
       const result = await mcpStore.test(row.id);
-      $q.notify({ type: result.ok ? 'positive' : 'warning', message: result.message || result.status });
+      $q.notify(mcpTestNotify(result));
       await loadRows();
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '测试连接失败' });

@@ -122,18 +122,40 @@ function syncFromProps() {
   }));
 }
 
-watch(() => props.modelValue, syncFromProps, { immediate: true, deep: true });
+function toPayload(rows: ChannelRoutingRuleRow[]): ChannelRoutingRulePayload[] {
+  return rows
+    .filter((r) => r.peer_pattern.trim())
+    .map((r) => ({
+      peer_pattern: r.peer_pattern.trim(),
+      ...(r.target_type === 'team' ? { team_id: r.team_id.trim() } : { agent_id: r.agent_id.trim() }),
+    }));
+}
+
+function payloadKeyOf(rule: ChannelRoutingRulePayload): string {
+  const peer = (rule.peer_pattern ?? '').trim();
+  const team = (rule.team_id ?? '').trim();
+  return team ? `${peer}→team:${team}` : `${peer}→agent:${(rule.agent_id ?? '').trim()}`;
+}
+
+function samePayload(a: ChannelRoutingRulePayload[], b: ChannelRoutingRulePayload[]): boolean {
+  const fa = a.filter((r) => (r.peer_pattern ?? '').trim());
+  const fb = b.filter((r) => (r.peer_pattern ?? '').trim());
+  return fa.length === fb.length && fa.every((r, i) => payloadKeyOf(r) === payloadKeyOf(fb[i]!));
+}
+
+watch(
+  () => props.modelValue,
+  (val) => {
+    // 本地 emit 回显时跳过重同步：否则新增的空行会被过滤后丢弃（按钮“无响应”），
+    // 且输入过程中 key 随 peer_pattern 变化导致输入框重建失焦。
+    if (samePayload(val ?? [], toPayload(rules.value))) return;
+    syncFromProps();
+  },
+  { immediate: true, deep: true },
+);
 
 function emitRules() {
-  emit(
-    'update:modelValue',
-    rules.value
-      .filter((r) => r.peer_pattern.trim())
-      .map((r) => ({
-        peer_pattern: r.peer_pattern.trim(),
-        ...(r.target_type === 'team' ? { team_id: r.team_id.trim() } : { agent_id: r.agent_id.trim() }),
-      })),
-  );
+  emit('update:modelValue', toPayload(rules.value));
 }
 
 function addRule() {

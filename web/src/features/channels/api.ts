@@ -72,6 +72,7 @@ function kratosChannelToLegacy(k: KratosChannel): ChannelRow {
     created_at: k.createdAt ?? '',
     updated_at: k.updatedAt ?? '',
     deleted_at: k.deletedAt ?? '',
+    workspace_id: k.workspaceId ?? '',
   };
 }
 
@@ -139,7 +140,13 @@ export type ChannelListResult = {
 
 /** Full catalog (no page params) — pickers / monitor / routing. */
 export async function listChannels(): Promise<ChannelRow[]> {
-  const data = await channelApi.ListChannels({});
+  const data = await channelApi.ListChannels({
+    page: undefined,
+    pageSize: undefined,
+    search: undefined,
+    type: undefined,
+    status: undefined,
+  });
   return (data.items ?? []).map(kratosChannelToLegacy);
 }
 

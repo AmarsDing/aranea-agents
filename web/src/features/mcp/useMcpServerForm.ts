@@ -2,7 +2,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import type { PlatformResourceInput } from '../platform/types';
 import type { McpKeyValue, McpServerConfig, McpServerFormValue, McpServerMetadata, McpServerRow } from './types';
-import { parseJSON } from './utils';
+import { parseJSON, mcpTestNotify } from './utils';
 import { useMcpStore } from '../../stores/mcp';
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -181,7 +181,7 @@ export function useMcpServerForm(
       const result = await mcpStore.test(saved.id);
       emit('tested');
       emit('update:modelValue', false);
-      $q.notify({ type: result.ok ? 'positive' : 'warning', message: result.message || result.status });
+      $q.notify(mcpTestNotify(result));
     } catch (err) {
       serverError.value = err instanceof Error ? err.message : '测试连接失败';
       $q.notify({ type: 'negative', message: serverError.value });
