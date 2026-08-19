@@ -96,6 +96,16 @@ func (s *ChannelService) checkChannelAccess(ctx context.Context, channelID strin
 	callerWS := workspace.IDFromContext(ctx)
 	if mutate {
 		err = workspace.AssertWorkspaceMutate(callerWS, c.WorkspaceID)
+		// 共享渠道（workspace_id=""）在列表中对所有租户可见，存在性本不保密，
+		// 返回 403 + 明确原因（而非 404），前端可呈现准确的「只读」提示。
+		// 跨租户渠道仍走下方 404，避免泄露存在性（IDOR 防护）。
+		if err != nil && c.WorkspaceID == "" {
+			s.lg.Warn("channel mutate denied: shared channel is read-only",
+				loggateway.StepID("channel.shared_readonly"),
+				loggateway.Str("channel_id", channelID),
+				loggateway.Str("caller_ws", callerWS))
+			return apierror.Forbidden("CHANNEL", "channel is shared/system builtin and read-only for tenant callers")
+		}
 	} else {
 		err = workspace.AssertWorkspaceOrShared(callerWS, c.WorkspaceID)
 	}
@@ -137,6 +147,7 @@ func channelRowToProto(c biz.Channel, runtimeMetaJSON string) *v1.Channel {
 		CreatedAt:    c.CreatedAt,
 		UpdatedAt:    c.UpdatedAt,
 		DeletedAt:    c.DeletedAt,
+		WorkspaceId:  c.WorkspaceID,
 	}
 }
 
@@ -285,14 +296,32 @@ func (s *ChannelService) ListChannelTypes(ctx context.Context, _ *emptypb.Empty)
 	return &v1.ListChannelTypesResponse{Items: protoItems}, nil
 }
 
-func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v1.ListChannelsResponse, error) {
-	search := searchQueryFromContext(ctx)
-	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+func (s *ChannelService) ListChannels(ctx context.Context, req *v1.ListChannelsRequest) (*v1.ListChannelsResponse, error) {
+	search := req.GetSearch()
+	if search == "" {
+		search = searchQueryFromContext(ctx)
+	}
+	typeFilter := req.GetType()
+	if typeFilter == "" {
+		typeFilter = queryParamFromContext(ctx, "type")
+	}
+	statusFilter := req.GetStatus()
+	if statusFilter == "" {
+		statusFilter = queryParamFromContext(ctx, "status")
+	}
+	page, pageSize := req.GetPage(), req.GetPageSize()
+	hasPagination := page > 0 || pageSize > 0
+	if !hasPagination {
+		if p, ps, ok := pageQueryFromContext(ctx); ok {
+			page, pageSize, hasPagination = p, ps, true
+		}
+	}
+	if hasPagination {
 		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
 		result, err := s.uc.ListPaged(ctx, biz.ChannelListQuery{
 			Search: search,
-			Type:   queryParamFromContext(ctx, "type"),
-			Status: queryParamFromContext(ctx, "status"),
+			Type:   typeFilter,
+			Status: statusFilter,
 			Limit:  limit,
 			Offset: offset,
 		})
@@ -336,6 +365,46 @@ func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v
 			if strings.Contains(strings.ToLower(c.Key), needle) ||
 				strings.Contains(strings.ToLower(c.Name), needle) ||
 				strings.Contains(strings.ToLower(c.Description), needle) {
+				filtered = append(filtered, c)
+			}
+		}
+		items = filtered
+	}
+	// Keep filter semantics consistent with the paginated path (data/channelListQuery):
+	// status "enabled"/"disabled" map to the enabled flag, others match row status;
+	// type matches the channel config type.
+	switch status := strings.TrimSpace(strings.ToLower(statusFilter)); status {
+	case "":
+		// no status filter
+	case "enabled":
+		filtered := make([]biz.Channel, 0, len(items))
+		for _, c := range items {
+			if c.Enabled {
+				filtered = append(filtered, c)
+			}
+		}
+		items = filtered
+	case "disabled":
+		filtered := make([]biz.Channel, 0, len(items))
+		for _, c := range items {
+			if !c.Enabled {
+				filtered = append(filtered, c)
+			}
+		}
+		items = filtered
+	default:
+		filtered := make([]biz.Channel, 0, len(items))
+		for _, c := range items {
+			if strings.EqualFold(strings.TrimSpace(c.Status), status) {
+				filtered = append(filtered, c)
+			}
+		}
+		items = filtered
+	}
+	if t := strings.TrimSpace(typeFilter); t != "" {
+		filtered := make([]biz.Channel, 0, len(items))
+		for _, c := range items {
+			if strings.EqualFold(biz.ChannelTypeFromConfig(c.ConfigJSON), t) {
 				filtered = append(filtered, c)
 			}
 		}

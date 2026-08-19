@@ -46,6 +46,14 @@ export default {
       unknown: 'Unknown',
     },
   },
+  heartbeat: {
+    serverRestarting: 'Server restarting, waiting for recovery…',
+    serverRecovered: 'Server recovered, session still valid',
+    connectionDegraded: 'Real-time connection lost, reconnecting…',
+    serverShutdown: 'Server shut down, please log in again',
+    connectionTimeout: 'Server connection timed out, please log in again',
+    relogin: 'Log in again',
+  },
   auth: {
     subtitle:
       'Sign in with an admin account. Session uses an HttpOnly cookie (sent automatically on same-origin proxy).',
@@ -4645,6 +4653,8 @@ export default {
     propertyGroupGraph: 'Graph Properties',
     propertyGroupStateSchema: 'State Schema',
     propertyEmptyHint: 'Select a node to view properties, or edit Graph settings',
+    propertyCollapse: 'Collapse property panel',
+    propertyExpand: 'Expand property panel',
     fieldNodeId: 'Node ID',
     fieldNodeType: 'Node Type',
     fieldNodeDesc: 'Description',
@@ -4897,6 +4907,9 @@ export default {
     validationFilterErrors: 'Errors',
     validationFilterWarnings: 'Warnings',
     validationRevalidate: 'Re-validate',
+    editorSave: 'Save',
+    editorRun: 'Run',
+    editorHistory: 'History',
     validationClose: 'Collapse',
     validationLocate: 'Locate',
     validationGraphLevel: 'Graph',
@@ -5139,6 +5152,7 @@ export default {
     fieldMetadataJson: 'Metadata JSON',
     prevStep: 'Previous',
     nextStep: 'Next',
+    selectProviderAndModelFirst: 'Select or enter a Provider and model in Step 1 first',
     checkRequiredEdit: 'After modifying the Provider/Model ID, you must run "Check" first',
     checkRequiredCreate:
       'Remote models require a successful "Check" before creating; local custom models can be created directly',

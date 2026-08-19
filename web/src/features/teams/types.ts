@@ -13,6 +13,7 @@ export type Team = {
   app_name: string;
   linked_graph_id: string;
   has_active_run: boolean;
+  // 组织重构（M67）后语义为「所属部门」：wire departmentId 的别名，指向 organizations 树 department 节点。
   taxonomy_industry_id: string;
   readonly?: boolean;
   source?: string; // user | system | imported

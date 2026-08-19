@@ -40,6 +40,10 @@ export const HEARTBEAT_PONG_TIMEOUT_MS = 90_000; // Pong timeout (server offline
 export const HEARTBEAT_RECONNECT_BASE_DELAY_MS = 1_000; // Reconnect base delay
 export const HEARTBEAT_RECONNECT_MAX_DELAY_MS = 30_000; // Reconnect max delay
 export const HEARTBEAT_INITIAL_CONNECT_TIMEOUT_MS = 8_000; // Initial connection timeout
+// DEV-only: after a server_shutdown, poll /healthz waiting for the dev backend
+// to finish restarting before deciding whether the session must be dropped.
+export const HEARTBEAT_SHUTDOWN_RECOVERY_POLL_MS = 2_000; // Recovery health poll interval
+export const HEARTBEAT_SHUTDOWN_RECOVERY_TIMEOUT_MS = 60_000; // Max wait for backend recovery
 
 // ── Chat UI Debounce / Delay ───────────────────────────────────────────
 export const CHAT_HYDRATE_DEBOUNCE_MS = 200; // Inbound message hydration debounce

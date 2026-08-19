@@ -522,6 +522,7 @@ export function useProviderWizard(deps: {
     providerIdentityChanged: inspect.providerIdentityChanged,
     providerRuntimeBindingPreview,
     canSubmitNewProviderModel: inspect.canSubmitNewProviderModel,
+    submitBlockReason: inspect.submitBlockReason,
     catalogPricingMissing: catalog.catalogPricingMissing,
     ensureCatalogLoaded: catalog.ensureCatalogLoaded,
     reloadCatalogProviders: catalog.reloadCatalogProviders,

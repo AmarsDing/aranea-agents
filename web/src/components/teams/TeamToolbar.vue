@@ -41,16 +41,16 @@
       @update:model-value="$emit('update:statusFilter', String($event ?? ''))"
     />
     <q-select
-      :model-value="industryFilter"
+      :model-value="departmentFilter"
       class="app-page-toolbar__field team-control"
       dense
       outlined
       clearable
       emit-value
       map-options
-      label="行业"
-      :options="industryOptions"
-      @update:model-value="$emit('update:industryFilter', String($event ?? ''))"
+      label="部门"
+      :options="departmentOptions"
+      @update:model-value="$emit('update:departmentFilter', String($event ?? ''))"
     />
     <q-toggle
       :model-value="showOrchestrated"
@@ -87,9 +87,9 @@ defineProps<{
   search: string;
   modeFilter: string;
   statusFilter: string;
-  industryFilter: string;
+  departmentFilter: string;
   showOrchestrated: boolean;
-  industryOptions: Array<{ label: string; value: string }>;
+  departmentOptions: Array<{ label: string; value: string }>;
   loading: boolean;
   isDark: boolean;
 }>();
@@ -98,7 +98,7 @@ defineEmits<{
   'update:search': [value: string];
   'update:modeFilter': [value: string];
   'update:statusFilter': [value: string];
-  'update:industryFilter': [value: string];
+  'update:departmentFilter': [value: string];
   'update:showOrchestrated': [value: boolean];
   refresh: [];
 }>();

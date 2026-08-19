@@ -190,6 +190,7 @@ export function useResourceManagerPage() {
     secretKeyMaskedPlaceholder: wizard.secretKeyMaskedPlaceholder,
     showPricingWarning: wizard.showPricingWarning,
     canSubmitNewProviderModel: wizard.canSubmitNewProviderModel,
+    submitBlockReason: wizard.submitBlockReason,
     providerIdentityChanged: wizard.providerIdentityChanged,
     providerRuntimeBindingPreview: wizard.providerRuntimeBindingPreview,
     catalogPricingMissing: wizard.catalogPricingMissing,

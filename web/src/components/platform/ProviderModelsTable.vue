@@ -44,11 +44,19 @@
                 <q-tooltip>{{ category.tooltip }}</q-tooltip>
               </span>
               <span
-                v-for="chip in providerCapabilityChips(rowConfig(props.row))"
+                v-for="chip in visibleCapabilityChips(props.row)"
                 :key="chip.key"
                 class="provider-tag provider-tag--capability"
               >
                 {{ chip.label }}
+              </span>
+              <span
+                v-if="hiddenCapabilityChips(props.row).length"
+                class="provider-tag provider-tag--capability provider-tag--more"
+                tabindex="0"
+              >
+                +{{ hiddenCapabilityChips(props.row).length }}
+                <q-tooltip>{{ hiddenCapabilityChipLabels(props.row) }}</q-tooltip>
               </span>
               <q-icon
                 v-if="rowPricingNotConfigured(props.row)"
@@ -264,5 +272,22 @@ function rowHotnessLabel(row: PlatformResource) {
 
 function rowHotnessTone(row: PlatformResource) {
   return hotnessTone(rowHotnessScore(row));
+}
+
+// 能力标签最多直显 2 个，其余折叠为「+N」+ 悬停 tooltip，避免模型列视觉拥挤
+const CAPABILITY_CHIP_VISIBLE_COUNT = 2;
+
+function visibleCapabilityChips(row: PlatformResource) {
+  return providerCapabilityChips(rowConfig(row)).slice(0, CAPABILITY_CHIP_VISIBLE_COUNT);
+}
+
+function hiddenCapabilityChips(row: PlatformResource) {
+  return providerCapabilityChips(rowConfig(row)).slice(CAPABILITY_CHIP_VISIBLE_COUNT);
+}
+
+function hiddenCapabilityChipLabels(row: PlatformResource) {
+  return hiddenCapabilityChips(row)
+    .map((chip) => chip.label)
+    .join('、');
 }
 </script>

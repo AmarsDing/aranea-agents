@@ -16,8 +16,8 @@ import {
   definitionTopologyKey,
   definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
-  groupTeamsByIndustry,
-  industryOptionsFromTree,
+  groupTeamsByDepartment,
+  departmentOptionsFromTree,
   linkableGraphOptions,
   parseDefinition,
   rebuildDefinitionGraph,
@@ -61,7 +61,7 @@ export function useTeamsPage() {
   const search = ref('');
   const modeFilter = ref('');
   const statusFilter = ref('');
-  const industryFilter = ref('');
+  const departmentFilter = ref('');
   // Orchestration-generated teams (spirit_session_id set) are hidden by default
   // on the management page; users opt in via the toolbar toggle.
   const showOrchestrated = ref(false);
@@ -208,18 +208,18 @@ export function useTeamsPage() {
   const hiddenOrchestratedCount = computed(() =>
     showOrchestrated.value ? 0 : store.teams.filter((team) => isOrchestrated(team) && matchesListFilters(team)).length,
   );
-  const industryOptions = computed(() => industryOptionsFromTree(taxonomyTree.value));
+  const departmentOptions = computed(() => departmentOptionsFromTree(taxonomyTree.value));
   const totalFiltered = computed(() => filteredTeams.value.length);
   const pageMax = computed(() => Math.max(1, Math.ceil(totalFiltered.value / pageSize.value)));
   const paginatedTeams = computed(() => {
     const start = (currentPage.value - 1) * pageSize.value;
     return filteredTeams.value.slice(start, start + pageSize.value);
   });
-  const teamIndustryGroups = computed(() =>
-    groupTeamsByIndustry(paginatedTeams.value, store.agents, taxonomyTree.value, industryFilter.value),
+  const teamGroups = computed(() =>
+    groupTeamsByDepartment(paginatedTeams.value, store.agents, taxonomyTree.value, departmentFilter.value),
   );
 
-  watch([search, modeFilter, statusFilter, industryFilter, showOrchestrated], () => {
+  watch([search, modeFilter, statusFilter, departmentFilter, showOrchestrated], () => {
     currentPage.value = 1;
   });
 
@@ -562,12 +562,12 @@ export function useTeamsPage() {
     search,
     modeFilter,
     statusFilter,
-    industryFilter,
+    departmentFilter,
     showOrchestrated,
     hiddenOrchestratedCount,
     taxonomyTree,
-    industryOptions,
-    teamIndustryGroups,
+    departmentOptions,
+    teamGroups,
     currentPage,
     pageSize,
     totalFiltered,

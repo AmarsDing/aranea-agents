@@ -110,8 +110,8 @@
                   emit-value
                   map-options
                   clearable
-                  label="行业归属"
-                  :options="industryOptions"
+                  label="所属部门"
+                  :options="departmentOptions"
                 />
                 <q-input
                   v-model="definition.description"
@@ -541,7 +541,7 @@ const props = withDefaults(
     editingId: string;
     definitionJson?: string;
     agentOptions: Array<{ label: string; value: string }>;
-    industryOptions: Array<{ label: string; value: string }>;
+    departmentOptions: Array<{ label: string; value: string }>; // 部门选项（公司 / 部门）
     /** 「关联 Graph」选择器选项（仅独立图资产，父级已排除 team-owned） */
     graphOptions?: Array<{ label: string; value: string }>;
     /** 打开编辑器时的覆盖确认基线（definitionTopologyOverwriteKey）；custom 团队指纹漂移即触发覆盖确认 */
@@ -783,8 +783,14 @@ const failureOnError = computed({
 
 <style scoped>
 .team-editor--readonly {
-  pointer-events: none;
   opacity: 72%;
+}
+
+/* 运行中只读：仅禁用内部表单交互元素，保留折叠面板展开、滚动查看能力 */
+.team-editor--readonly :where(input, select, textarea, [contenteditable]),
+.team-editor--readonly :where(.q-btn:not(.q-expansion-item__container > .q-expansion-item__header *)),
+.team-editor--readonly :where(.q-field, .q-select) {
+  pointer-events: none;
 }
 
 .team-editor-spirit-banner {

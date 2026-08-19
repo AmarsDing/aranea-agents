@@ -10,8 +10,8 @@ import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Team, TeamDefinition } from '../../features/teams/types';
 import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
 import {
-  BuiltinIndustryId,
-  PresetIndustryId,
+  BuiltinGroupId,
+  PresetGroupId,
   teamRoleLabel,
   teamModeLabel,
   failurePolicyValueLabel,
@@ -29,8 +29,8 @@ export {
   failureDefaultOptions,
   parallelFailOptions,
   failureOnErrorOptions,
-  BuiltinIndustryId,
-  PresetIndustryId,
+  BuiltinGroupId,
+  PresetGroupId,
   validStatusTransitions,
   isValidStatusTransition,
   teamModeMap,
@@ -44,14 +44,14 @@ export {
 export type { TeamTemplateKey } from './teamConstants';
 export { defaultDefinition, definitionFromTemplate, defaultA2AConfig, withGraph } from './teamTemplates';
 
-export type TeamIndustryGroup = {
+export type TeamGroup = {
   id: string;
   label: string;
   sortOrder: number;
   teams: Team[];
 };
 
-const UNCategorizedIndustryId = '__uncategorized__';
+const UNCategorizedGroupId = '__uncategorized__';
 
 // ── Role-mode validation (mirrors backend validRolesForMode) ──
 
@@ -534,23 +534,25 @@ function teamDefinitionExtras(team: Team) {
   }
 }
 
-/** 根据成员 Agent 所属行业投票；无成员时回退 definition 中的 category / industry_id。 */
-export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: PlatformResourceTreeNode[]): string {
+/** 根据成员 Agent 所属部门投票；无成员时回退 definition 中的 category / industry_id。 */
+export function inferTeamDepartmentId(team: Team, agents: Agent[], taxonomyTree: PlatformResourceTreeNode[]): string {
   if (team.taxonomy_industry_id) {
-    const found = findIndustryNode(taxonomyTree, team.taxonomy_industry_id);
+    const found = findDepartmentNode(taxonomyTree, team.taxonomy_industry_id);
     if (found) return found.id; // normalize key → UUID
   }
   const extras = teamDefinitionExtras(team);
   if (extras.industry_id) {
-    const found = findIndustryNode(taxonomyTree, extras.industry_id);
+    const found = findDepartmentNode(taxonomyTree, extras.industry_id);
     if (found) return found.id; // normalize key → UUID
   }
 
-  const industries = taxonomyTree.filter((node) => node.level === 'industry');
+  const departments = taxonomyTree.flatMap((company) =>
+    (company.children ?? []).filter((node) => node.level === 'department'),
+  );
   const matchByName = (name?: string) => {
     const q = String(name || '').trim();
     if (!q) return '';
-    return industries.find((node) => node.name === q)?.id ?? '';
+    return departments.find((node) => node.name === q)?.id ?? '';
   };
   const named = matchByName(extras.category) || matchByName(extras.group);
   if (named) return named;
@@ -560,15 +562,15 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: P
   for (const member of def.members.filter((row) => row.enabled !== false)) {
     const agent = agents.find((row) => row.id === member.agent_id);
     if (!agent?.taxonomy_position_id) continue;
-    const industry = findTaxonomyPath(taxonomyTree, agent.taxonomy_position_id).find(
-      (node) => node.level === 'industry',
+    const department = findTaxonomyPath(taxonomyTree, agent.taxonomy_position_id).find(
+      (node) => node.level === 'department',
     );
-    if (!industry) continue;
-    counts.set(industry.id, (counts.get(industry.id) ?? 0) + 1);
+    if (!department) continue;
+    counts.set(department.id, (counts.get(department.id) ?? 0) + 1);
   }
-  if (counts.size === 0) return UNCategorizedIndustryId;
+  if (counts.size === 0) return UNCategorizedGroupId;
 
-  let bestId = UNCategorizedIndustryId;
+  let bestId = UNCategorizedGroupId;
   let bestCount = 0;
   for (const [id, count] of counts) {
     if (count > bestCount) {
@@ -579,61 +581,72 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: P
   return bestId;
 }
 
-function findIndustryNode(taxonomyTree: PlatformResourceTreeNode[], industryId: string) {
-  return (
-    taxonomyTree.find((node) => node.level === 'industry' && (node.id === industryId || node.key === industryId)) ??
-    null
-  );
+function findDepartmentNode(taxonomyTree: PlatformResourceTreeNode[], departmentId: string) {
+  for (const company of taxonomyTree) {
+    for (const node of company.children ?? []) {
+      if (node.level === 'department' && (node.id === departmentId || node.key === departmentId)) return node;
+    }
+  }
+  return null;
 }
 
-export function industryOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]) {
+/** 部门选项：label 带公司前缀（公司 / 部门），value 为部门节点 id。 */
+export function departmentOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]) {
   return taxonomyTree
-    .filter((node) => node.level === 'industry')
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'zh-CN'))
-    .map((node) => ({
-      label: node.enabled ? node.name : `${node.name}（已停用）`,
+    .flatMap((company) =>
+      (company.children ?? [])
+        .filter((node) => node.level === 'department')
+        .map((node) => ({ company, node })),
+    )
+    .sort((a, b) => (a.node.sort_order ?? 0) - (b.node.sort_order ?? 0) || a.node.name.localeCompare(b.node.name, 'zh-CN'))
+    .map(({ company, node }) => ({
+      label: `${company.name} / ${node.enabled ? node.name : `${node.name}（已停用）`}`,
       value: node.id,
     }));
 }
 
-export function groupTeamsByIndustry(
+export function groupTeamsByDepartment(
   teams: Team[],
   agents: Agent[],
   taxonomyTree: PlatformResourceTreeNode[],
-  industryFilter = '',
-): TeamIndustryGroup[] {
+  departmentFilter = '',
+): TeamGroup[] {
   const builtinTeams = teams.filter((t) => t.readonly);
   const presetTeams = teams.filter((t) => !t.readonly && t.kind === 'ecosystem_preset');
   const userTeams = teams.filter((t) => !t.readonly && t.kind !== 'ecosystem_preset');
 
-  const industries = taxonomyTree.filter((node) => node.level === 'industry');
+  const departments = taxonomyTree.flatMap((company) =>
+    (company.children ?? [])
+      .filter((node) => node.level === 'department')
+      .map((node) => ({ company, node })),
+  );
   const buckets = new Map<string, Team[]>();
-  buckets.set(UNCategorizedIndustryId, []);
-  for (const industry of industries) buckets.set(industry.id, []);
+  buckets.set(UNCategorizedGroupId, []);
+  for (const { node } of departments) buckets.set(node.id, []);
 
   for (const team of userTeams) {
-    const industryId = inferTeamIndustryId(team, agents, taxonomyTree);
-    if (!buckets.has(industryId)) buckets.set(industryId, []);
-    buckets.get(industryId)!.push(team);
+    const departmentId = inferTeamDepartmentId(team, agents, taxonomyTree);
+    if (!buckets.has(departmentId)) buckets.set(departmentId, []);
+    buckets.get(departmentId)!.push(team);
   }
 
-  const groups: TeamIndustryGroup[] = industries
-    .map((industry) => ({
-      id: industry.id,
-      label: industry.enabled ? industry.name : `${industry.name}（已停用）`,
-      sortOrder: industry.sort_order ?? 0,
-      teams: buckets.get(industry.id) ?? [],
+  const groups: TeamGroup[] = departments
+    .map(({ company, node }) => ({
+      id: node.id,
+      label: `${company.name} / ${node.enabled ? node.name : `${node.name}（已停用）`}`,
+      sortOrder: node.sort_order ?? 0,
+      teams: buckets.get(node.id) ?? [],
     }))
     .filter((group) => group.teams.length > 0);
 
   const assigned = new Set(groups.flatMap((group) => group.teams.map((team) => team.id)));
-  // Uncategorized = user teams not claimed by any visible industry group.
+  // Uncategorized = user teams not claimed by any visible department group.
   // Filtering from userTeams (instead of appending to the bucket) prevents
   // double-adding teams already placed in the uncategorized bucket above.
   const uncategorized = userTeams.filter((team) => !assigned.has(team.id));
   if (uncategorized.length > 0) {
     groups.push({
-      id: UNCategorizedIndustryId,
+      id: UNCategorizedGroupId,
       label: '未分类',
       sortOrder: 9999,
       teams: uncategorized,
@@ -642,7 +655,7 @@ export function groupTeamsByIndustry(
 
   if (presetTeams.length > 0) {
     groups.unshift({
-      id: PresetIndustryId,
+      id: PresetGroupId,
       label: '预设模板',
       sortOrder: 0,
       teams: presetTeams,
@@ -651,7 +664,7 @@ export function groupTeamsByIndustry(
 
   if (builtinTeams.length > 0) {
     groups.unshift({
-      id: BuiltinIndustryId,
+      id: BuiltinGroupId,
       label: '系统内置',
       sortOrder: -1,
       teams: builtinTeams,
@@ -659,8 +672,8 @@ export function groupTeamsByIndustry(
   }
 
   groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'zh-CN'));
-  if (!industryFilter) return groups;
+  if (!departmentFilter) return groups;
   return groups.filter(
-    (group) => group.id === industryFilter || group.id === BuiltinIndustryId || group.id === PresetIndustryId,
+    (group) => group.id === departmentFilter || group.id === BuiltinGroupId || group.id === PresetGroupId,
   );
 }

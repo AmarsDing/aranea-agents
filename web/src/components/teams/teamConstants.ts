@@ -162,5 +162,5 @@ export const failureOnErrorOptions = ['await_review', 'halt'].map((value) => ({
   value,
 }));
 
-export const BuiltinIndustryId = '__builtin__';
-export const PresetIndustryId = '__preset__';
+export const BuiltinGroupId = '__builtin__';
+export const PresetGroupId = '__preset__';

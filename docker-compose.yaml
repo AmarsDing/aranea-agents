@@ -78,6 +78,9 @@ services:
       # 当前用于宿主机 Recordly MCP（host.docker.internal:8951）。精确匹配无通配，
       # 新增主机须逐个登记并保持与 app 部署包一致
       ARANEA_OUTBOUND_ALLOW_HOSTS: "host.docker.internal"
+      # WebSocket Origin 放行：Docker 部署下前端可能通过宿主机 IP 或 dev server 访问，
+      # 这些 Origin 不在默认 localhost/127.0.0.1 白名单内，必须显式配置。
+      KRATOS_HTTP_EXTRA_CORS_ORIGINS: "http://0.0.0.0:9301,http://192.168.0.106:9301,http://192.168.0.106:8810,http://localhost:9301,http://127.0.0.1:9301"
       # G1 观测面（agent-eval-20260818）：pprof 独立端口，仅 araneanet 内网可达（不映射宿主机），
       # 抓取：docker exec aranea-admin wget -qO- http://127.0.0.1:8813/debug/pprof/heap
       # 缺省该环境变量即关闭（cmd/admin/pprof.go）；app 便携部署包不注入此变量。

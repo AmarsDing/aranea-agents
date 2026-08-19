@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { i18n } from '../../i18n';
 import { buildHealthWsUrl } from './api';
 import { getCurrentAdmin } from '../admin/api';
 import { useAuthStore } from '../../stores/auth';
@@ -10,6 +11,8 @@ import {
   HEARTBEAT_RECONNECT_BASE_DELAY_MS,
   HEARTBEAT_RECONNECT_MAX_DELAY_MS,
   HEARTBEAT_INITIAL_CONNECT_TIMEOUT_MS,
+  HEARTBEAT_SHUTDOWN_RECOVERY_POLL_MS,
+  HEARTBEAT_SHUTDOWN_RECOVERY_TIMEOUT_MS,
 } from '../constants/timeouts';
 
 export type ServerHeartbeatOptions = {
@@ -53,8 +56,31 @@ export async function checkBackendHealth(): Promise<boolean> {
   }
 }
 
+/** DEV 专用：后端优雅关闭后轮询 /healthz 等待其完成重启，超时视为未恢复。 */
+async function waitForBackendRecovery(): Promise<boolean> {
+  const deadline = Date.now() + HEARTBEAT_SHUTDOWN_RECOVERY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await checkBackendHealth()) return true;
+    await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_SHUTDOWN_RECOVERY_POLL_MS));
+  }
+  return false;
+}
+
 async function shouldForceLogout(shutdown: boolean): Promise<boolean> {
-  if (shutdown) return true;
+  if (shutdown) {
+    // DEV 下后端热重启是常态：等 /healthz 恢复后重新校验会话，仍有效则不强制登出；
+    // 生产保持原语义——收到 server_shutdown 即要求重新登录。
+    if (import.meta.env.DEV) {
+      if (!(await waitForBackendRecovery())) return true;
+      try {
+        await getCurrentAdmin();
+        return false;
+      } catch {
+        return true;
+      }
+    }
+    return true;
+  }
   if (import.meta.env.DEV) return false;
   if (!(await checkBackendHealth())) return true;
   const auth = useAuthStore();
@@ -151,6 +177,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       firstConnection = false;
       notifiedDown = false;
       degradedNotified = false;
+      shutdownReceived = false;
       clearInitialTimer();
       touchLastAlive();
       startPing();
@@ -285,6 +312,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     notifiedDown = false;
     shutdownReceived = false;
     degradedNotified = false;
+    probeInFlight = false;
     isAlive.value = true;
     if (!stopped) {
       reconnectProbe();
@@ -302,42 +330,66 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     scheduleReconnect();
   }
 
+  let probeInFlight = false;
+
   async function handleProbeFailure(): Promise<void> {
-    isAlive.value = false;
-    const forceLogout = await shouldForceLogout(shutdownReceived);
-
-    if (!forceLogout) {
-      if (!degradedNotified) {
-        degradedNotified = true;
-        Notify.create({
+    // 防重入：DEV 关机恢复最长等待 60s，期间 pong 超时检查可能再次触发
+    if (probeInFlight) return;
+    probeInFlight = true;
+    try {
+      isAlive.value = false;
+      const wasShutdown = shutdownReceived;
+      let dismissRecovering: (() => void) | null = null;
+      if (wasShutdown && import.meta.env.DEV) {
+        dismissRecovering = Notify.create({
           type: 'info',
-          message: '实时连接中断，正在重连…',
-          timeout: 4000,
-        });
+          message: i18n.global.t('heartbeat.serverRestarting'),
+          timeout: 0,
+          group: 'heartbeat-recovering',
+        }) as () => void;
       }
-      reconnectProbe();
-      return;
-    }
+      const forceLogout = await shouldForceLogout(wasShutdown);
+      dismissRecovering?.();
 
-    if (notifiedDown) return;
-    notifiedDown = true;
+      if (!forceLogout) {
+        if (wasShutdown) {
+          // DEV：后端已恢复且会话仍然有效，无需重新登录
+          shutdownReceived = false;
+          Notify.create({ type: 'positive', message: i18n.global.t('heartbeat.serverRecovered'), timeout: 3000 });
+        } else if (!degradedNotified) {
+          degradedNotified = true;
+          Notify.create({
+            type: 'info',
+            message: i18n.global.t('heartbeat.connectionDegraded'),
+            timeout: 4000,
+          });
+        }
+        reconnectProbe();
+        return;
+      }
 
-    const auth = useAuthStore();
-    auth.user = null;
-    auth.sessionChecked = true;
+      if (notifiedDown) return;
+      notifiedDown = true;
 
-    dismissDownNotify?.();
-    dismissDownNotify = Notify.create({
-      type: 'warning',
-      message: shutdownReceived ? '服务器已关闭，请重新登录' : '服务器连接超时，请重新登录',
-      timeout: 0,
-      actions: [{ label: '重新登录', color: 'white', handler: () => {} }],
-    }) as () => void;
+      const auth = useAuthStore();
+      auth.user = null;
+      auth.sessionChecked = true;
 
-    const { default: router } = await import('../../router');
-    const current = router.currentRoute.value;
-    if (current.path !== '/login') {
-      router.replace({ path: '/login', query: { redirect: current.fullPath } });
+      dismissDownNotify?.();
+      dismissDownNotify = Notify.create({
+        type: 'warning',
+        message: shutdownReceived ? i18n.global.t('heartbeat.serverShutdown') : i18n.global.t('heartbeat.connectionTimeout'),
+        timeout: 0,
+        actions: [{ label: i18n.global.t('heartbeat.relogin'), color: 'white', handler: () => {} }],
+      }) as () => void;
+
+      const { default: router } = await import('../../router');
+      const current = router.currentRoute.value;
+      if (current.path !== '/login') {
+        router.replace({ path: '/login', query: { redirect: current.fullPath } });
+      }
+    } finally {
+      probeInFlight = false;
     }
   }
 

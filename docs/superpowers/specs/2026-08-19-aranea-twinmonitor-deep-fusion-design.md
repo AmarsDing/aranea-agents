@@ -1,6 +1,7 @@
 # aranea × TwinMonitor 深度融合完整方案
 
-> 版本：v1.1（代码级评审后优化版）　日期：2026-08-19
+> 版本：v1.2（实施计划交叉核验勘误版）　日期：2026-08-19
+> v1.2 变更：8 份实施计划撰写时对代码逐行核验，发现 12 处总纲与代码的不一致，以代码为准勘误（见文末「附录 F：v1.2 勘误表」）。实施细节以 `docs/superpowers/plans/2026-08-19-p*.md` 为准。
 > v1.1 变更：依据 R1~R9 评审结论修订——GNS3 平面定位（R1）、auto 模式与工具风险联动规则（R2）、Skill 机制修正为动态路由注入（R3）、MCP 新增域收敛为 2 个（R4）、新增 §3.6 降级/对账/配额治理（R5/R6/R7）、多环境拓扑与自监控场景补充（R8/R9）。
 > 前置文档：TwinMonitor AI融合总体设计方案 v1.2 / 13-AI智能运维 v2.1 / 14-自动修复与自愈 v3.0 / 19-语音精灵 v2.0
 > 本次设计产出定位：新写深度融合总纲（非修订既有文档），聚焦「单通道 MCP 收敛 + 技能/记忆体系化 + 全场景 E2E 落地路线」。
@@ -757,3 +758,24 @@ MCP：server.top / server.disk_usage / server.service_status / metric.query
 | L2 | 跨 Run 会话上下文 | session 存储 | session | `session.append_event` | `UpdateSessionContextFromLLMUsage` |
 | L3 | 运维经验事实 | PG facts 表 | **agent**（修正后） | `POST /api/v1/memory/facts` | `memory.search`（fact_id） |
 | L4 | 结构性知识索引 | PG knowledge_chunks | agent/team | `knowledge_write` / `knowledge.create` MCP | `knowledge.search`（embedding+tsvector） |
+
+### F. v1.2 勘误表（以代码为准）
+
+实施计划撰写期间逐行核验代码，以下总纲表述与代码不一致，**以代码/实施计划为准**：
+
+| # | 总纲位置 | 原表述 | 代码事实（勘误后） | 证据 |
+|---|----------|--------|---------------------|------|
+| E1 | §5.2 Webhook 事件表 | `run.interrupted` | 实际事件名为 **`run.waiting_approval`**（常量 `AraneaEventRunWaitingApproval`） | aiops biz/webhook.go |
+| E2 | §3.4 L3 payload 示例 | `fact_id` 字段 | aranea `FactUpsert` 无 FactID 字段，业务键经 **`Fingerprint`** 承载（`handleWriteMemoryFact` 把 `key` 写入 Fingerprint） | aranea twin_openapi_compat.go |
+| E3 | 附录 A / §3.1.1 | 12 预设 Agent 白名单已对应合法 MCP 键 | `agent_preset.go` 含 11 个注册表不存在的**幽灵键**（`alarm.detail`/`asset.detail`/`server.top`/`server.disk_usage` 等），P2 计划按注册表真实键（`server.process_list`/`server.exec_command` 等）修正 | aiops biz/agent_preset.go × mcp_registry.go |
+| E4 | §2.1 架构图 | `alarm.severity_assess` 已改本地规则 | 该工具仍在 MCP 注册表（保留供其他调用方），但已从告警处理 Agent 白名单移除；是否下线工具本身留 P3 裁定 | aiops biz/mcp_registry.go |
+| E5 | §3.1 工具命名 | MCP 工具名点分风格 `gns3.exec` | aranea `NamedToolSet` 装配后以 `_` 拼接前缀（如 `twinmonitor_gns3.exec`），effective_tools 配置前须先查 tools/list 实际返回名 | aranea internal/tools/mcp |
+| E6 | §3.3 Skill 库路径 | `internal/skill-library/twinmonitor/` | aranea 运行时技能根由 `internal/skill/storage/root.go` 解析（默认 `~/.config/aranea/skills`）；代码库维护 SKILL.md + Import API 导入运行时（P4 采用此弥合方式） | aranea internal/skill/storage |
+| E7 | §4 F2 | 「机房精灵」属 12 预设 Agent | 不在 `agent_preset.go` 种子内；voice 模块经配置 `agent_key: sprite` 动态引用，调用走 `POST /v1/sessions` + `WS /v1/ws` | twinmonitor voice 模块 |
+| E8 | §4 F2 scene_actions 示例 | `focus_cabinet`/`focus_server` | 白名单实际为 `focus_entity`（entity.type 区分 cabinet/server）+ `view_server` 等，以 19 详设/代码为准 | 19 语音精灵详设 |
+| E9 | §4 F2 ASR 判停 | `end_window_size=800/force_to_speech_time=0` | 该配方属 aranea 侧 volcengine ASR；Voice Bridge 走 sherpa-onnx（`EnableEndpoint:1`+`silence_eof_ms:8000`），两条链路判停机制不同 | aranea internal/data/speech / voice 模块 |
+| E10 | §4 F3 | 报告任务表 | 06 报告物理表为 `report_generation_tasks`（twinmonitor_log 库）；通知送达证据落 `notice_records`（05） | twinmonitor 06/05 |
+| E11 | §3.5 知识沉淀 | 「13 侧知识沉淀联动」自动闭环 | `DepositKnowledge` 在 RcaUsecase 中且为**手动触发**；P5 计划根治为 14 终态自动调用 | aiops biz/rca.go |
+| E12 | §6 P0 | llm 抓包先例 `test/ts10-gns3/llm_relay.py` | 该文件在 aranea 仓库不存在（项目记忆中的路径已过期）；P4 新建 `skill_routing_verify.py` 承担同类职责 | aranea test/ 目录 |
+
+另：实施计划主动补全的代码新增点（非错误）：13 `AraneaRuntimeStore` 需追加 `SetDegraded/IsDegraded`；`GraphDefinition` 需追加 budget 字段（或走 definition JSON 内部字段）；14 `ManualProcessUsecase` 需注入 degraded 状态源（跨域经 Redis 键读取，避免直接引用 13 域接口）；13 `configs/config.yaml` 需新增 `gns3agent` 客户端配置；`ai_mcp_call_history.plane` 取值三级（`gns3_sim`/`readonly`/`production`）。

@@ -25,25 +25,27 @@ const (
 
 // Aligns with legacy PlatformResource JSON for resource "channels".
 type Channel struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Resource      string                 `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
-	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
-	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
-	Enabled       bool                   `protobuf:"varint,7,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	SortOrder     int32                  `protobuf:"varint,8,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
-	ParentId      string                 `protobuf:"bytes,9,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
-	Level         string                 `protobuf:"bytes,10,opt,name=level,proto3" json:"level,omitempty"`
-	AgentId       string                 `protobuf:"bytes,11,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Provider      string                 `protobuf:"bytes,12,opt,name=provider,proto3" json:"provider,omitempty"`
-	Model         string                 `protobuf:"bytes,13,opt,name=model,proto3" json:"model,omitempty"`
-	ConfigJson    string                 `protobuf:"bytes,14,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
-	MetadataJson  string                 `protobuf:"bytes,15,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,16,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     string                 `protobuf:"bytes,17,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	DeletedAt     string                 `protobuf:"bytes,18,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Resource     string                 `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
+	Key          string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Name         string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Description  string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	Status       string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Enabled      bool                   `protobuf:"varint,7,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	SortOrder    int32                  `protobuf:"varint,8,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	ParentId     string                 `protobuf:"bytes,9,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	Level        string                 `protobuf:"bytes,10,opt,name=level,proto3" json:"level,omitempty"`
+	AgentId      string                 `protobuf:"bytes,11,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Provider     string                 `protobuf:"bytes,12,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model        string                 `protobuf:"bytes,13,opt,name=model,proto3" json:"model,omitempty"`
+	ConfigJson   string                 `protobuf:"bytes,14,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
+	MetadataJson string                 `protobuf:"bytes,15,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
+	CreatedAt    string                 `protobuf:"bytes,16,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt    string                 `protobuf:"bytes,17,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	DeletedAt    string                 `protobuf:"bytes,18,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
+	// P2-B 租户隔离：空 = 系统内置/共享（租户只读）；非空 = 归属 workspace。
+	WorkspaceId   string `protobuf:"bytes,19,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -200,6 +202,13 @@ func (x *Channel) GetUpdatedAt() string {
 func (x *Channel) GetDeletedAt() string {
 	if x != nil {
 		return x.DeletedAt
+	}
+	return ""
+}
+
+func (x *Channel) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
 	}
 	return ""
 }
@@ -740,6 +749,82 @@ func (x *ListChannelTypesResponse) GetItems() []*ChannelTypeItem {
 	return nil
 }
 
+type ListChannelsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          int32                  `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Search        string                 `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
+	Type          string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
+	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListChannelsRequest) Reset() {
+	*x = ListChannelsRequest{}
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListChannelsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListChannelsRequest) ProtoMessage() {}
+
+func (x *ListChannelsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListChannelsRequest.ProtoReflect.Descriptor instead.
+func (*ListChannelsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListChannelsRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListChannelsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListChannelsRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
+}
+
+func (x *ListChannelsRequest) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ListChannelsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 type ListChannelsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*Channel             `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -752,7 +837,7 @@ type ListChannelsResponse struct {
 
 func (x *ListChannelsResponse) Reset() {
 	*x = ListChannelsResponse{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[7]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -764,7 +849,7 @@ func (x *ListChannelsResponse) String() string {
 func (*ListChannelsResponse) ProtoMessage() {}
 
 func (x *ListChannelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[7]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -777,7 +862,7 @@ func (x *ListChannelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChannelsResponse.ProtoReflect.Descriptor instead.
 func (*ListChannelsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{7}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListChannelsResponse) GetItems() []*Channel {
@@ -817,7 +902,7 @@ type GetChannelRequest struct {
 
 func (x *GetChannelRequest) Reset() {
 	*x = GetChannelRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[8]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -829,7 +914,7 @@ func (x *GetChannelRequest) String() string {
 func (*GetChannelRequest) ProtoMessage() {}
 
 func (x *GetChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[8]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -842,7 +927,7 @@ func (x *GetChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetChannelRequest.ProtoReflect.Descriptor instead.
 func (*GetChannelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{8}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetChannelRequest) GetId() string {
@@ -869,7 +954,7 @@ type CreateChannelRequest struct {
 
 func (x *CreateChannelRequest) Reset() {
 	*x = CreateChannelRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[9]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +966,7 @@ func (x *CreateChannelRequest) String() string {
 func (*CreateChannelRequest) ProtoMessage() {}
 
 func (x *CreateChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[9]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +979,7 @@ func (x *CreateChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateChannelRequest.ProtoReflect.Descriptor instead.
 func (*CreateChannelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{9}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateChannelRequest) GetKey() string {
@@ -978,7 +1063,7 @@ type UpdateChannelRequest struct {
 
 func (x *UpdateChannelRequest) Reset() {
 	*x = UpdateChannelRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[10]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -990,7 +1075,7 @@ func (x *UpdateChannelRequest) String() string {
 func (*UpdateChannelRequest) ProtoMessage() {}
 
 func (x *UpdateChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[10]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1003,7 +1088,7 @@ func (x *UpdateChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateChannelRequest.ProtoReflect.Descriptor instead.
 func (*UpdateChannelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{10}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpdateChannelRequest) GetId() string {
@@ -1085,7 +1170,7 @@ type DeleteChannelRequest struct {
 
 func (x *DeleteChannelRequest) Reset() {
 	*x = DeleteChannelRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[11]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1097,7 +1182,7 @@ func (x *DeleteChannelRequest) String() string {
 func (*DeleteChannelRequest) ProtoMessage() {}
 
 func (x *DeleteChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[11]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1110,7 +1195,7 @@ func (x *DeleteChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteChannelRequest.ProtoReflect.Descriptor instead.
 func (*DeleteChannelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{11}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeleteChannelRequest) GetId() string {
@@ -1130,7 +1215,7 @@ type ToggleChannelRequest struct {
 
 func (x *ToggleChannelRequest) Reset() {
 	*x = ToggleChannelRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[12]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1142,7 +1227,7 @@ func (x *ToggleChannelRequest) String() string {
 func (*ToggleChannelRequest) ProtoMessage() {}
 
 func (x *ToggleChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[12]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1155,7 +1240,7 @@ func (x *ToggleChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToggleChannelRequest.ProtoReflect.Descriptor instead.
 func (*ToggleChannelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{12}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ToggleChannelRequest) GetId() string {
@@ -1181,7 +1266,7 @@ type TestChannelRequest struct {
 
 func (x *TestChannelRequest) Reset() {
 	*x = TestChannelRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[13]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1193,7 +1278,7 @@ func (x *TestChannelRequest) String() string {
 func (*TestChannelRequest) ProtoMessage() {}
 
 func (x *TestChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[13]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1206,7 +1291,7 @@ func (x *TestChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestChannelRequest.ProtoReflect.Descriptor instead.
 func (*TestChannelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{13}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TestChannelRequest) GetId() string {
@@ -1225,7 +1310,7 @@ type ListChannelCredentialsResponse struct {
 
 func (x *ListChannelCredentialsResponse) Reset() {
 	*x = ListChannelCredentialsResponse{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[14]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1322,7 @@ func (x *ListChannelCredentialsResponse) String() string {
 func (*ListChannelCredentialsResponse) ProtoMessage() {}
 
 func (x *ListChannelCredentialsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[14]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1335,7 @@ func (x *ListChannelCredentialsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChannelCredentialsResponse.ProtoReflect.Descriptor instead.
 func (*ListChannelCredentialsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{14}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListChannelCredentialsResponse) GetItems() []*ChannelCredential {
@@ -1270,7 +1355,7 @@ type UpsertChannelCredentialsRequest struct {
 
 func (x *UpsertChannelCredentialsRequest) Reset() {
 	*x = UpsertChannelCredentialsRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[15]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1282,7 +1367,7 @@ func (x *UpsertChannelCredentialsRequest) String() string {
 func (*UpsertChannelCredentialsRequest) ProtoMessage() {}
 
 func (x *UpsertChannelCredentialsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[15]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1295,7 +1380,7 @@ func (x *UpsertChannelCredentialsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertChannelCredentialsRequest.ProtoReflect.Descriptor instead.
 func (*UpsertChannelCredentialsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{15}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *UpsertChannelCredentialsRequest) GetChannelId() string {
@@ -1322,7 +1407,7 @@ type DeleteChannelCredentialRequest struct {
 
 func (x *DeleteChannelCredentialRequest) Reset() {
 	*x = DeleteChannelCredentialRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[16]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1334,7 +1419,7 @@ func (x *DeleteChannelCredentialRequest) String() string {
 func (*DeleteChannelCredentialRequest) ProtoMessage() {}
 
 func (x *DeleteChannelCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[16]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1347,7 +1432,7 @@ func (x *DeleteChannelCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteChannelCredentialRequest.ProtoReflect.Descriptor instead.
 func (*DeleteChannelCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{16}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DeleteChannelCredentialRequest) GetChannelId() string {
@@ -1374,7 +1459,7 @@ type ListChannelDeliveriesRequest struct {
 
 func (x *ListChannelDeliveriesRequest) Reset() {
 	*x = ListChannelDeliveriesRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[17]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1386,7 +1471,7 @@ func (x *ListChannelDeliveriesRequest) String() string {
 func (*ListChannelDeliveriesRequest) ProtoMessage() {}
 
 func (x *ListChannelDeliveriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[17]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1399,7 +1484,7 @@ func (x *ListChannelDeliveriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChannelDeliveriesRequest.ProtoReflect.Descriptor instead.
 func (*ListChannelDeliveriesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{17}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListChannelDeliveriesRequest) GetId() string {
@@ -1425,7 +1510,7 @@ type ListChannelDeliveriesResponse struct {
 
 func (x *ListChannelDeliveriesResponse) Reset() {
 	*x = ListChannelDeliveriesResponse{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[18]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1437,7 +1522,7 @@ func (x *ListChannelDeliveriesResponse) String() string {
 func (*ListChannelDeliveriesResponse) ProtoMessage() {}
 
 func (x *ListChannelDeliveriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[18]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1450,7 +1535,7 @@ func (x *ListChannelDeliveriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChannelDeliveriesResponse.ProtoReflect.Descriptor instead.
 func (*ListChannelDeliveriesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{18}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListChannelDeliveriesResponse) GetItems() []*ChannelDelivery {
@@ -1484,7 +1569,7 @@ type ChannelTurnJob struct {
 
 func (x *ChannelTurnJob) Reset() {
 	*x = ChannelTurnJob{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[19]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1496,7 +1581,7 @@ func (x *ChannelTurnJob) String() string {
 func (*ChannelTurnJob) ProtoMessage() {}
 
 func (x *ChannelTurnJob) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[19]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1509,7 +1594,7 @@ func (x *ChannelTurnJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChannelTurnJob.ProtoReflect.Descriptor instead.
 func (*ChannelTurnJob) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{19}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ChannelTurnJob) GetId() string {
@@ -1634,7 +1719,7 @@ type ListChannelTurnJobsRequest struct {
 
 func (x *ListChannelTurnJobsRequest) Reset() {
 	*x = ListChannelTurnJobsRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[20]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1646,7 +1731,7 @@ func (x *ListChannelTurnJobsRequest) String() string {
 func (*ListChannelTurnJobsRequest) ProtoMessage() {}
 
 func (x *ListChannelTurnJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[20]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1659,7 +1744,7 @@ func (x *ListChannelTurnJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChannelTurnJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListChannelTurnJobsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{20}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListChannelTurnJobsRequest) GetId() string {
@@ -1685,7 +1770,7 @@ type ListChannelTurnJobsResponse struct {
 
 func (x *ListChannelTurnJobsResponse) Reset() {
 	*x = ListChannelTurnJobsResponse{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[21]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1697,7 +1782,7 @@ func (x *ListChannelTurnJobsResponse) String() string {
 func (*ListChannelTurnJobsResponse) ProtoMessage() {}
 
 func (x *ListChannelTurnJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[21]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1710,7 +1795,7 @@ func (x *ListChannelTurnJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChannelTurnJobsResponse.ProtoReflect.Descriptor instead.
 func (*ListChannelTurnJobsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{21}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListChannelTurnJobsResponse) GetItems() []*ChannelTurnJob {
@@ -1729,7 +1814,7 @@ type WechatILinkLoginRequest struct {
 
 func (x *WechatILinkLoginRequest) Reset() {
 	*x = WechatILinkLoginRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[22]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1741,7 +1826,7 @@ func (x *WechatILinkLoginRequest) String() string {
 func (*WechatILinkLoginRequest) ProtoMessage() {}
 
 func (x *WechatILinkLoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[22]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1754,7 +1839,7 @@ func (x *WechatILinkLoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WechatILinkLoginRequest.ProtoReflect.Descriptor instead.
 func (*WechatILinkLoginRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{22}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *WechatILinkLoginRequest) GetChannelId() string {
@@ -1775,7 +1860,7 @@ type WechatILinkLoginResponse struct {
 
 func (x *WechatILinkLoginResponse) Reset() {
 	*x = WechatILinkLoginResponse{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[23]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1787,7 +1872,7 @@ func (x *WechatILinkLoginResponse) String() string {
 func (*WechatILinkLoginResponse) ProtoMessage() {}
 
 func (x *WechatILinkLoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[23]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1800,7 +1885,7 @@ func (x *WechatILinkLoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WechatILinkLoginResponse.ProtoReflect.Descriptor instead.
 func (*WechatILinkLoginResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{23}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *WechatILinkLoginResponse) GetQrcodeDataUrl() string {
@@ -1834,7 +1919,7 @@ type WechatILinkPollRequest struct {
 
 func (x *WechatILinkPollRequest) Reset() {
 	*x = WechatILinkPollRequest{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[24]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1846,7 +1931,7 @@ func (x *WechatILinkPollRequest) String() string {
 func (*WechatILinkPollRequest) ProtoMessage() {}
 
 func (x *WechatILinkPollRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[24]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1859,7 +1944,7 @@ func (x *WechatILinkPollRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WechatILinkPollRequest.ProtoReflect.Descriptor instead.
 func (*WechatILinkPollRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{24}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *WechatILinkPollRequest) GetChannelId() string {
@@ -1886,7 +1971,7 @@ type WechatILinkPollResponse struct {
 
 func (x *WechatILinkPollResponse) Reset() {
 	*x = WechatILinkPollResponse{}
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[25]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1898,7 +1983,7 @@ func (x *WechatILinkPollResponse) String() string {
 func (*WechatILinkPollResponse) ProtoMessage() {}
 
 func (x *WechatILinkPollResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_channel_v1_channel_proto_msgTypes[25]
+	mi := &file_kratos_channel_v1_channel_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1911,7 +1996,7 @@ func (x *WechatILinkPollResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WechatILinkPollResponse.ProtoReflect.Descriptor instead.
 func (*WechatILinkPollResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{25}
+	return file_kratos_channel_v1_channel_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *WechatILinkPollResponse) GetStatus() string {
@@ -1932,7 +2017,7 @@ var File_kratos_channel_v1_channel_proto protoreflect.FileDescriptor
 
 const file_kratos_channel_v1_channel_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkratos/channel/v1/channel.proto\x12\x11kratos.channel.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xf1\x03\n" +
+	"\x1fkratos/channel/v1/channel.proto\x12\x11kratos.channel.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x94\x04\n" +
 	"\aChannel\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bresource\x18\x02 \x01(\tR\bresource\x12\x10\n" +
@@ -1957,7 +2042,8 @@ const file_kratos_channel_v1_channel_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x11 \x01(\tR\tupdatedAt\x12\x1d\n" +
 	"\n" +
-	"deleted_at\x18\x12 \x01(\tR\tdeletedAt\"\xbd\x03\n" +
+	"deleted_at\x18\x12 \x01(\tR\tdeletedAt\x12!\n" +
+	"\fworkspace_id\x18\x13 \x01(\tR\vworkspaceId\"\xbd\x03\n" +
 	"\x0fChannelTypeItem\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12 \n" +
@@ -2014,7 +2100,13 @@ const file_kratos_channel_v1_channel_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12!\n" +
 	"\fdetails_json\x18\x04 \x01(\tR\vdetailsJson\"T\n" +
 	"\x18ListChannelTypesResponse\x128\n" +
-	"\x05items\x18\x01 \x03(\v2\".kratos.channel.v1.ChannelTypeItemR\x05items\"\x8f\x01\n" +
+	"\x05items\x18\x01 \x03(\v2\".kratos.channel.v1.ChannelTypeItemR\x05items\"\x8a\x01\n" +
+	"\x13ListChannelsRequest\x12\x12\n" +
+	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06search\x18\x03 \x01(\tR\x06search\x12\x12\n" +
+	"\x04type\x18\x04 \x01(\tR\x04type\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\"\x8f\x01\n" +
 	"\x14ListChannelsResponse\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.kratos.channel.v1.ChannelR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
@@ -2112,10 +2204,10 @@ const file_kratos_channel_v1_channel_proto_rawDesc = "" +
 	"\x0eqrcode_session\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\rqrcodeSession\"V\n" +
 	"\x17WechatILinkPollResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage2\xa4\x10\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage2\xb4\x10\n" +
 	"\x0eChannelService\x12u\n" +
-	"\x10ListChannelTypes\x12\x16.google.protobuf.Empty\x1a+.kratos.channel.v1.ListChannelTypesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/channels/catalog\x12e\n" +
-	"\fListChannels\x12\x16.google.protobuf.Empty\x1a'.kratos.channel.v1.ListChannelsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/channels\x12i\n" +
+	"\x10ListChannelTypes\x12\x16.google.protobuf.Empty\x1a+.kratos.channel.v1.ListChannelTypesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/channels/catalog\x12u\n" +
+	"\fListChannels\x12&.kratos.channel.v1.ListChannelsRequest\x1a'.kratos.channel.v1.ListChannelsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/channels\x12i\n" +
 	"\n" +
 	"GetChannel\x12$.kratos.channel.v1.GetChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/channels/{id}\x12m\n" +
 	"\rCreateChannel\x12'.kratos.channel.v1.CreateChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1/channels\x12r\n" +
@@ -2144,7 +2236,7 @@ func file_kratos_channel_v1_channel_proto_rawDescGZIP() []byte {
 	return file_kratos_channel_v1_channel_proto_rawDescData
 }
 
-var file_kratos_channel_v1_channel_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_kratos_channel_v1_channel_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_kratos_channel_v1_channel_proto_goTypes = []any{
 	(*Channel)(nil),                         // 0: kratos.channel.v1.Channel
 	(*ChannelTypeItem)(nil),                 // 1: kratos.channel.v1.ChannelTypeItem
@@ -2153,26 +2245,27 @@ var file_kratos_channel_v1_channel_proto_goTypes = []any{
 	(*ChannelDelivery)(nil),                 // 4: kratos.channel.v1.ChannelDelivery
 	(*ChannelTestResult)(nil),               // 5: kratos.channel.v1.ChannelTestResult
 	(*ListChannelTypesResponse)(nil),        // 6: kratos.channel.v1.ListChannelTypesResponse
-	(*ListChannelsResponse)(nil),            // 7: kratos.channel.v1.ListChannelsResponse
-	(*GetChannelRequest)(nil),               // 8: kratos.channel.v1.GetChannelRequest
-	(*CreateChannelRequest)(nil),            // 9: kratos.channel.v1.CreateChannelRequest
-	(*UpdateChannelRequest)(nil),            // 10: kratos.channel.v1.UpdateChannelRequest
-	(*DeleteChannelRequest)(nil),            // 11: kratos.channel.v1.DeleteChannelRequest
-	(*ToggleChannelRequest)(nil),            // 12: kratos.channel.v1.ToggleChannelRequest
-	(*TestChannelRequest)(nil),              // 13: kratos.channel.v1.TestChannelRequest
-	(*ListChannelCredentialsResponse)(nil),  // 14: kratos.channel.v1.ListChannelCredentialsResponse
-	(*UpsertChannelCredentialsRequest)(nil), // 15: kratos.channel.v1.UpsertChannelCredentialsRequest
-	(*DeleteChannelCredentialRequest)(nil),  // 16: kratos.channel.v1.DeleteChannelCredentialRequest
-	(*ListChannelDeliveriesRequest)(nil),    // 17: kratos.channel.v1.ListChannelDeliveriesRequest
-	(*ListChannelDeliveriesResponse)(nil),   // 18: kratos.channel.v1.ListChannelDeliveriesResponse
-	(*ChannelTurnJob)(nil),                  // 19: kratos.channel.v1.ChannelTurnJob
-	(*ListChannelTurnJobsRequest)(nil),      // 20: kratos.channel.v1.ListChannelTurnJobsRequest
-	(*ListChannelTurnJobsResponse)(nil),     // 21: kratos.channel.v1.ListChannelTurnJobsResponse
-	(*WechatILinkLoginRequest)(nil),         // 22: kratos.channel.v1.WechatILinkLoginRequest
-	(*WechatILinkLoginResponse)(nil),        // 23: kratos.channel.v1.WechatILinkLoginResponse
-	(*WechatILinkPollRequest)(nil),          // 24: kratos.channel.v1.WechatILinkPollRequest
-	(*WechatILinkPollResponse)(nil),         // 25: kratos.channel.v1.WechatILinkPollResponse
-	(*emptypb.Empty)(nil),                   // 26: google.protobuf.Empty
+	(*ListChannelsRequest)(nil),             // 7: kratos.channel.v1.ListChannelsRequest
+	(*ListChannelsResponse)(nil),            // 8: kratos.channel.v1.ListChannelsResponse
+	(*GetChannelRequest)(nil),               // 9: kratos.channel.v1.GetChannelRequest
+	(*CreateChannelRequest)(nil),            // 10: kratos.channel.v1.CreateChannelRequest
+	(*UpdateChannelRequest)(nil),            // 11: kratos.channel.v1.UpdateChannelRequest
+	(*DeleteChannelRequest)(nil),            // 12: kratos.channel.v1.DeleteChannelRequest
+	(*ToggleChannelRequest)(nil),            // 13: kratos.channel.v1.ToggleChannelRequest
+	(*TestChannelRequest)(nil),              // 14: kratos.channel.v1.TestChannelRequest
+	(*ListChannelCredentialsResponse)(nil),  // 15: kratos.channel.v1.ListChannelCredentialsResponse
+	(*UpsertChannelCredentialsRequest)(nil), // 16: kratos.channel.v1.UpsertChannelCredentialsRequest
+	(*DeleteChannelCredentialRequest)(nil),  // 17: kratos.channel.v1.DeleteChannelCredentialRequest
+	(*ListChannelDeliveriesRequest)(nil),    // 18: kratos.channel.v1.ListChannelDeliveriesRequest
+	(*ListChannelDeliveriesResponse)(nil),   // 19: kratos.channel.v1.ListChannelDeliveriesResponse
+	(*ChannelTurnJob)(nil),                  // 20: kratos.channel.v1.ChannelTurnJob
+	(*ListChannelTurnJobsRequest)(nil),      // 21: kratos.channel.v1.ListChannelTurnJobsRequest
+	(*ListChannelTurnJobsResponse)(nil),     // 22: kratos.channel.v1.ListChannelTurnJobsResponse
+	(*WechatILinkLoginRequest)(nil),         // 23: kratos.channel.v1.WechatILinkLoginRequest
+	(*WechatILinkLoginResponse)(nil),        // 24: kratos.channel.v1.WechatILinkLoginResponse
+	(*WechatILinkPollRequest)(nil),          // 25: kratos.channel.v1.WechatILinkPollRequest
+	(*WechatILinkPollResponse)(nil),         // 26: kratos.channel.v1.WechatILinkPollResponse
+	(*emptypb.Empty)(nil),                   // 27: google.protobuf.Empty
 }
 var file_kratos_channel_v1_channel_proto_depIdxs = []int32{
 	1,  // 0: kratos.channel.v1.ListChannelTypesResponse.items:type_name -> kratos.channel.v1.ChannelTypeItem
@@ -2182,37 +2275,37 @@ var file_kratos_channel_v1_channel_proto_depIdxs = []int32{
 	2,  // 4: kratos.channel.v1.ListChannelCredentialsResponse.items:type_name -> kratos.channel.v1.ChannelCredential
 	3,  // 5: kratos.channel.v1.UpsertChannelCredentialsRequest.credentials:type_name -> kratos.channel.v1.ChannelCredentialInput
 	4,  // 6: kratos.channel.v1.ListChannelDeliveriesResponse.items:type_name -> kratos.channel.v1.ChannelDelivery
-	19, // 7: kratos.channel.v1.ListChannelTurnJobsResponse.items:type_name -> kratos.channel.v1.ChannelTurnJob
-	26, // 8: kratos.channel.v1.ChannelService.ListChannelTypes:input_type -> google.protobuf.Empty
-	26, // 9: kratos.channel.v1.ChannelService.ListChannels:input_type -> google.protobuf.Empty
-	8,  // 10: kratos.channel.v1.ChannelService.GetChannel:input_type -> kratos.channel.v1.GetChannelRequest
-	9,  // 11: kratos.channel.v1.ChannelService.CreateChannel:input_type -> kratos.channel.v1.CreateChannelRequest
-	10, // 12: kratos.channel.v1.ChannelService.UpdateChannel:input_type -> kratos.channel.v1.UpdateChannelRequest
-	11, // 13: kratos.channel.v1.ChannelService.DeleteChannel:input_type -> kratos.channel.v1.DeleteChannelRequest
-	12, // 14: kratos.channel.v1.ChannelService.ToggleChannel:input_type -> kratos.channel.v1.ToggleChannelRequest
-	13, // 15: kratos.channel.v1.ChannelService.TestChannel:input_type -> kratos.channel.v1.TestChannelRequest
-	8,  // 16: kratos.channel.v1.ChannelService.ListChannelCredentials:input_type -> kratos.channel.v1.GetChannelRequest
-	15, // 17: kratos.channel.v1.ChannelService.UpsertChannelCredentials:input_type -> kratos.channel.v1.UpsertChannelCredentialsRequest
-	16, // 18: kratos.channel.v1.ChannelService.DeleteChannelCredential:input_type -> kratos.channel.v1.DeleteChannelCredentialRequest
-	17, // 19: kratos.channel.v1.ChannelService.ListChannelDeliveries:input_type -> kratos.channel.v1.ListChannelDeliveriesRequest
-	20, // 20: kratos.channel.v1.ChannelService.ListChannelTurnJobs:input_type -> kratos.channel.v1.ListChannelTurnJobsRequest
-	22, // 21: kratos.channel.v1.ChannelService.WechatILinkLogin:input_type -> kratos.channel.v1.WechatILinkLoginRequest
-	24, // 22: kratos.channel.v1.ChannelService.WechatILinkPoll:input_type -> kratos.channel.v1.WechatILinkPollRequest
+	20, // 7: kratos.channel.v1.ListChannelTurnJobsResponse.items:type_name -> kratos.channel.v1.ChannelTurnJob
+	27, // 8: kratos.channel.v1.ChannelService.ListChannelTypes:input_type -> google.protobuf.Empty
+	7,  // 9: kratos.channel.v1.ChannelService.ListChannels:input_type -> kratos.channel.v1.ListChannelsRequest
+	9,  // 10: kratos.channel.v1.ChannelService.GetChannel:input_type -> kratos.channel.v1.GetChannelRequest
+	10, // 11: kratos.channel.v1.ChannelService.CreateChannel:input_type -> kratos.channel.v1.CreateChannelRequest
+	11, // 12: kratos.channel.v1.ChannelService.UpdateChannel:input_type -> kratos.channel.v1.UpdateChannelRequest
+	12, // 13: kratos.channel.v1.ChannelService.DeleteChannel:input_type -> kratos.channel.v1.DeleteChannelRequest
+	13, // 14: kratos.channel.v1.ChannelService.ToggleChannel:input_type -> kratos.channel.v1.ToggleChannelRequest
+	14, // 15: kratos.channel.v1.ChannelService.TestChannel:input_type -> kratos.channel.v1.TestChannelRequest
+	9,  // 16: kratos.channel.v1.ChannelService.ListChannelCredentials:input_type -> kratos.channel.v1.GetChannelRequest
+	16, // 17: kratos.channel.v1.ChannelService.UpsertChannelCredentials:input_type -> kratos.channel.v1.UpsertChannelCredentialsRequest
+	17, // 18: kratos.channel.v1.ChannelService.DeleteChannelCredential:input_type -> kratos.channel.v1.DeleteChannelCredentialRequest
+	18, // 19: kratos.channel.v1.ChannelService.ListChannelDeliveries:input_type -> kratos.channel.v1.ListChannelDeliveriesRequest
+	21, // 20: kratos.channel.v1.ChannelService.ListChannelTurnJobs:input_type -> kratos.channel.v1.ListChannelTurnJobsRequest
+	23, // 21: kratos.channel.v1.ChannelService.WechatILinkLogin:input_type -> kratos.channel.v1.WechatILinkLoginRequest
+	25, // 22: kratos.channel.v1.ChannelService.WechatILinkPoll:input_type -> kratos.channel.v1.WechatILinkPollRequest
 	6,  // 23: kratos.channel.v1.ChannelService.ListChannelTypes:output_type -> kratos.channel.v1.ListChannelTypesResponse
-	7,  // 24: kratos.channel.v1.ChannelService.ListChannels:output_type -> kratos.channel.v1.ListChannelsResponse
+	8,  // 24: kratos.channel.v1.ChannelService.ListChannels:output_type -> kratos.channel.v1.ListChannelsResponse
 	0,  // 25: kratos.channel.v1.ChannelService.GetChannel:output_type -> kratos.channel.v1.Channel
 	0,  // 26: kratos.channel.v1.ChannelService.CreateChannel:output_type -> kratos.channel.v1.Channel
 	0,  // 27: kratos.channel.v1.ChannelService.UpdateChannel:output_type -> kratos.channel.v1.Channel
-	26, // 28: kratos.channel.v1.ChannelService.DeleteChannel:output_type -> google.protobuf.Empty
+	27, // 28: kratos.channel.v1.ChannelService.DeleteChannel:output_type -> google.protobuf.Empty
 	0,  // 29: kratos.channel.v1.ChannelService.ToggleChannel:output_type -> kratos.channel.v1.Channel
 	5,  // 30: kratos.channel.v1.ChannelService.TestChannel:output_type -> kratos.channel.v1.ChannelTestResult
-	14, // 31: kratos.channel.v1.ChannelService.ListChannelCredentials:output_type -> kratos.channel.v1.ListChannelCredentialsResponse
-	14, // 32: kratos.channel.v1.ChannelService.UpsertChannelCredentials:output_type -> kratos.channel.v1.ListChannelCredentialsResponse
-	26, // 33: kratos.channel.v1.ChannelService.DeleteChannelCredential:output_type -> google.protobuf.Empty
-	18, // 34: kratos.channel.v1.ChannelService.ListChannelDeliveries:output_type -> kratos.channel.v1.ListChannelDeliveriesResponse
-	21, // 35: kratos.channel.v1.ChannelService.ListChannelTurnJobs:output_type -> kratos.channel.v1.ListChannelTurnJobsResponse
-	23, // 36: kratos.channel.v1.ChannelService.WechatILinkLogin:output_type -> kratos.channel.v1.WechatILinkLoginResponse
-	25, // 37: kratos.channel.v1.ChannelService.WechatILinkPoll:output_type -> kratos.channel.v1.WechatILinkPollResponse
+	15, // 31: kratos.channel.v1.ChannelService.ListChannelCredentials:output_type -> kratos.channel.v1.ListChannelCredentialsResponse
+	15, // 32: kratos.channel.v1.ChannelService.UpsertChannelCredentials:output_type -> kratos.channel.v1.ListChannelCredentialsResponse
+	27, // 33: kratos.channel.v1.ChannelService.DeleteChannelCredential:output_type -> google.protobuf.Empty
+	19, // 34: kratos.channel.v1.ChannelService.ListChannelDeliveries:output_type -> kratos.channel.v1.ListChannelDeliveriesResponse
+	22, // 35: kratos.channel.v1.ChannelService.ListChannelTurnJobs:output_type -> kratos.channel.v1.ListChannelTurnJobsResponse
+	24, // 36: kratos.channel.v1.ChannelService.WechatILinkLogin:output_type -> kratos.channel.v1.WechatILinkLoginResponse
+	26, // 37: kratos.channel.v1.ChannelService.WechatILinkPoll:output_type -> kratos.channel.v1.WechatILinkPollResponse
 	23, // [23:38] is the sub-list for method output_type
 	8,  // [8:23] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
@@ -2231,7 +2324,7 @@ func file_kratos_channel_v1_channel_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_channel_v1_channel_proto_rawDesc), len(file_kratos_channel_v1_channel_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

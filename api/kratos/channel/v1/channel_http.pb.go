@@ -45,7 +45,7 @@ type ChannelServiceHTTPServer interface {
 	ListChannelDeliveries(context.Context, *ListChannelDeliveriesRequest) (*ListChannelDeliveriesResponse, error)
 	ListChannelTurnJobs(context.Context, *ListChannelTurnJobsRequest) (*ListChannelTurnJobsResponse, error)
 	ListChannelTypes(context.Context, *emptypb.Empty) (*ListChannelTypesResponse, error)
-	ListChannels(context.Context, *emptypb.Empty) (*ListChannelsResponse, error)
+	ListChannels(context.Context, *ListChannelsRequest) (*ListChannelsResponse, error)
 	TestChannel(context.Context, *TestChannelRequest) (*ChannelTestResult, error)
 	ToggleChannel(context.Context, *ToggleChannelRequest) (*Channel, error)
 	UpdateChannel(context.Context, *UpdateChannelRequest) (*Channel, error)
@@ -94,13 +94,13 @@ func _ChannelService_ListChannelTypes0_HTTP_Handler(srv ChannelServiceHTTPServer
 
 func _ChannelService_ListChannels0_HTTP_Handler(srv ChannelServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
-		var in emptypb.Empty
+		var in ListChannelsRequest
 		if err := ctx.BindQuery(&in); err != nil {
 			return err
 		}
 		http.SetOperation(ctx, OperationChannelServiceListChannels)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
-			return srv.ListChannels(ctx, req.(*emptypb.Empty))
+			return srv.ListChannels(ctx, req.(*ListChannelsRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -424,7 +424,7 @@ type ChannelServiceHTTPClient interface {
 	ListChannelDeliveries(ctx context.Context, req *ListChannelDeliveriesRequest, opts ...http.CallOption) (rsp *ListChannelDeliveriesResponse, err error)
 	ListChannelTurnJobs(ctx context.Context, req *ListChannelTurnJobsRequest, opts ...http.CallOption) (rsp *ListChannelTurnJobsResponse, err error)
 	ListChannelTypes(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListChannelTypesResponse, err error)
-	ListChannels(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListChannelsResponse, err error)
+	ListChannels(ctx context.Context, req *ListChannelsRequest, opts ...http.CallOption) (rsp *ListChannelsResponse, err error)
 	TestChannel(ctx context.Context, req *TestChannelRequest, opts ...http.CallOption) (rsp *ChannelTestResult, err error)
 	ToggleChannel(ctx context.Context, req *ToggleChannelRequest, opts ...http.CallOption) (rsp *Channel, err error)
 	UpdateChannel(ctx context.Context, req *UpdateChannelRequest, opts ...http.CallOption) (rsp *Channel, err error)
@@ -545,7 +545,7 @@ func (c *ChannelServiceHTTPClientImpl) ListChannelTypes(ctx context.Context, in 
 	return &out, nil
 }
 
-func (c *ChannelServiceHTTPClientImpl) ListChannels(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListChannelsResponse, error) {
+func (c *ChannelServiceHTTPClientImpl) ListChannels(ctx context.Context, in *ListChannelsRequest, opts ...http.CallOption) (*ListChannelsResponse, error) {
 	var out ListChannelsResponse
 	pattern := "/v1/channels"
 	path := binding.EncodeURL(pattern, in, true)

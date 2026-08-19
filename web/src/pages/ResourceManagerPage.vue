@@ -300,29 +300,29 @@
         </q-card-section>
         <q-separator v-if="isProviderResource" />
         <q-card-actions class="app-actions-bar app-glass-dialog__actions provider-dialog-actions">
-          <q-btn v-close-popup flat no-caps label="取消" />
+          <q-btn v-close-popup flat no-caps :label="t('common.cancel')" />
+          <span v-if="isProviderResource && !saving && submitBlockReason" class="provider-dialog-block-hint">
+            <q-icon name="info_outline" size="14px" class="q-mr-xs" />{{ submitBlockReason }}
+          </span>
           <q-space />
           <template v-if="isProviderResource">
-            <q-btn v-if="providerStep > 1" flat no-caps label="上一步" @click="providerStep -= 1" />
-            <q-btn v-if="providerStep < 4" flat no-caps label="下一步" @click="providerStep += 1" />
+            <q-btn v-if="providerStep > 1" flat no-caps :label="t('common.back')" @click="providerStep -= 1" />
+            <q-btn v-if="providerStep < 4" flat no-caps :label="t('common.next')" @click="providerStep += 1" />
           </template>
-          <q-btn
-            unelevated
-            no-caps
-            class="provider-dialog-save"
-            :label="editingId ? '保存' : '创建'"
-            :loading="saving"
-            :disable="saving || !canSubmitNewProviderModel"
-            @click="saveRow"
-          >
-            <q-tooltip v-if="isProviderResource && !canSubmitNewProviderModel">
-              {{
-                editingId && providerIdentityChanged
-                  ? '修改 Provider/模型 ID 后需先「检查」'
-                  : '远程模型需先点击「检查」并通过验证后再创建；本地自定义模型可直接创建'
-              }}
+          <span class="provider-dialog-save-wrap">
+            <q-btn
+              unelevated
+              no-caps
+              class="provider-dialog-save"
+              :label="editingId ? t('common.save') : t('common.create')"
+              :loading="saving"
+              :disable="saving || !canSubmitNewProviderModel"
+              @click="saveRow"
+            />
+            <q-tooltip v-if="isProviderResource && !saving && !canSubmitNewProviderModel">
+              {{ submitBlockReason }}
             </q-tooltip>
-          </q-btn>
+          </span>
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -423,6 +423,7 @@ const {
   secretKeyMaskedPlaceholder,
   showPricingWarning,
   canSubmitNewProviderModel,
+  submitBlockReason,
   providerIdentityChanged,
   providerRuntimeBindingPreview,
   catalogPricingMissing,

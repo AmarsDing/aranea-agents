@@ -98,7 +98,7 @@
           v-if="viewMode === 'tree'"
           :tree="filteredTree"
           :keyword="keyword"
-          :default-expand-all="true"
+          :default-expand-all="false"
           :toggling-ids="togglingIds"
           @edit="openEdit"
           @create-child="openCreate"

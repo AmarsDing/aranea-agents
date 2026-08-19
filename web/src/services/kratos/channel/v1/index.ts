@@ -22,6 +22,8 @@ export type Channel = {
   createdAt: string | undefined;
   updatedAt: string | undefined;
   deletedAt: string | undefined;
+  // P2-B 租户隔离：空 = 系统内置/共享（租户只读）；非空 = 归属 workspace。
+  workspaceId: string | undefined;
 };
 
 export type ChannelTypeItem = {
@@ -82,6 +84,14 @@ export type ChannelTestResult = {
 
 export type ListChannelTypesResponse = {
   items: ChannelTypeItem[] | undefined;
+};
+
+export type ListChannelsRequest = {
+  page: number | undefined;
+  pageSize: number | undefined;
+  search: string | undefined;
+  type: string | undefined;
+  status: string | undefined;
 };
 
 export type ListChannelsResponse = {
@@ -240,7 +250,7 @@ export type WechatILinkPollResponse = {
 
 export interface ChannelService {
   ListChannelTypes(request: wellKnownEmpty): Promise<ListChannelTypesResponse>;
-  ListChannels(request: wellKnownEmpty): Promise<ListChannelsResponse>;
+  ListChannels(request: ListChannelsRequest): Promise<ListChannelsResponse>;
   GetChannel(request: GetChannelRequest): Promise<Channel>;
   CreateChannel(request: CreateChannelRequest): Promise<Channel>;
   UpdateChannel(request: UpdateChannelRequest): Promise<Channel>;
@@ -289,6 +299,21 @@ export function createChannelServiceClient(
       const path = `v1/channels`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.search) {
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+      }
+      if (request.type) {
+        queryParams.push(`type=${encodeURIComponent(request.type.toString())}`)
+      }
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

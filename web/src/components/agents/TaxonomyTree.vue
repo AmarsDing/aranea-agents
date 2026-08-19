@@ -117,9 +117,14 @@ watch(
 watch(
   () => props.tree,
   (tree) => {
-    if (!props.defaultExpandAll || !tree.length) return;
+    if (!tree.length) return;
     if (expandedIds.value.size > 0) return;
-    expandedIds.value = collectDefaultExpandedIds(tree);
+    if (props.defaultExpandAll) {
+      expandedIds.value = collectDefaultExpandedIds(tree);
+    } else {
+      // defaultExpandAll=false: only expand top-level (company) nodes
+      expandedIds.value = new Set(tree.map((node) => node.id));
+    }
   },
   { immediate: true, deep: false },
 );

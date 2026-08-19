@@ -1,6 +1,16 @@
 <template>
-  <div :class="['graph-property-panel', { 'is-dark': isDark }]" :style="panelAccentStyle">
-    <template v-if="selectedNode">
+  <div
+    :class="['graph-property-panel', { 'is-dark': isDark, 'graph-property-panel--collapsed': collapsed }]"
+    :style="panelAccentStyle"
+  >
+    <!-- 折叠态：仅显示展开按钮 -->
+    <div v-if="collapsed" class="graph-property-panel__collapsed-bar" @click="collapsed = false">
+      <q-btn flat dense round icon="chevron_left" size="sm">
+        <q-tooltip>{{ t('graphs.propertyExpand') }}</q-tooltip>
+      </q-btn>
+    </div>
+
+    <template v-else-if="selectedNode">
       <div class="graph-property-panel__header">
         <div class="graph-property-panel__title">{{ t('graphs.propertyTitle') }}</div>
         <div class="row items-center q-gutter-xs">
@@ -14,6 +24,9 @@
             :label="t('graphs.propertyGlobalSettings')"
             @click="$emit('deselect')"
           />
+          <q-btn flat dense round icon="chevron_right" size="sm" @click="collapsed = true">
+            <q-tooltip>{{ t('graphs.propertyCollapse') }}</q-tooltip>
+          </q-btn>
           <q-btn flat dense round icon="close" size="sm" @click="$emit('deselect')" />
         </div>
       </div>
@@ -189,6 +202,7 @@
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
+          <!-- 中断开关为通用字段（NodeDef.InterruptBefore/After 不限节点类型） -->
           <q-toggle
             :model-value="selectedNode.interruptBefore"
             dense
@@ -201,6 +215,7 @@
             :label="t('graphs.fieldInterruptAfter')"
             @update:model-value="(v: boolean) => updateNodeField('interruptAfter', v)"
           />
+          <!-- 审批指派与超时租约仅 agent/hitl 节点有意义 -->
           <template v-if="selectedNode.type === 'hitl' || selectedNode.type === 'agent'">
             <q-separator class="q-my-xs" />
             <div class="graph-property-panel__section-title">{{ t('graphs.sectionApprovalAssign') }}</div>
@@ -407,6 +422,9 @@
     <template v-else-if="graphDef">
       <div class="graph-property-panel__header">
         <div class="graph-property-panel__title">{{ t('graphs.propertyGroupGraph') }}</div>
+        <q-btn flat dense round icon="chevron_right" size="sm" @click="collapsed = true">
+          <q-tooltip>{{ t('graphs.propertyCollapse') }}</q-tooltip>
+        </q-btn>
       </div>
       <q-separator />
 
@@ -564,7 +582,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   NodeDef,
@@ -586,6 +604,9 @@ import { useConditionalRoutes } from '../../features/graph/useConditionalRoutes'
 import GraphVariablePicker from './GraphVariablePicker.vue';
 
 const { t } = useI18n();
+
+/** P0-1：属性面板折叠状态（折叠为窄条，释放画布空间） */
+const collapsed = ref(false);
 
 const selectedNode = defineModel<NodeDef | null>('selectedNode', { required: true });
 const graphDef = defineModel<GraphDefinition | null>('graphDef', { required: true });

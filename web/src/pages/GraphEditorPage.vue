@@ -9,12 +9,17 @@
         </div>
       </div>
       <q-space />
-      <q-btn flat dense round icon="undo" :disable="!canUndo" @click="undo">
-        <q-tooltip>撤销 (Ctrl+Z)</q-tooltip>
-      </q-btn>
-      <q-btn flat dense round icon="redo" :disable="!canRedo" @click="redo">
-        <q-tooltip>重做 (Ctrl+Shift+Z)</q-tooltip>
-      </q-btn>
+
+      <!-- P0-2：编辑操作组（撤销/重做 + 校验状态） -->
+      <div class="graph-editor-page__toolbar-group">
+        <q-btn flat dense round icon="undo" :disable="!canUndo" @click="undo">
+          <q-tooltip>撤销 (Ctrl+Z)</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round icon="redo" :disable="!canRedo" @click="redo">
+          <q-tooltip>重做 (Ctrl+Shift+Z)</q-tooltip>
+        </q-btn>
+      </div>
+
       <q-chip v-if="dirty" dense square class="graph-workbench__dirty-chip">未保存</q-chip>
       <q-btn
         v-if="validationIssues.length > 0"
@@ -40,51 +45,72 @@
       <q-chip v-else dense square class="graph-editor-page__validation-pass">
         <q-icon name="check_circle" size="13px" class="q-mr-xs" />{{ t('graphs.validationPassed') }}
       </q-chip>
+
       <template v-if="!isNew">
-        <q-btn flat dense round icon="download" @click="exportCurrentGraph">
-          <q-tooltip>导出 JSON</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round icon="upload" @click="triggerImport">
-          <q-tooltip>导入 JSON</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round icon="account_tree" @click="autoLayout">
-          <q-tooltip>自动布局</q-tooltip>
-        </q-btn>
-        <q-btn v-if="graphDef.id" flat dense round icon="restore" @click="openVersionDialog">
-          <q-tooltip>版本历史</q-tooltip>
-        </q-btn>
-        <q-btn v-if="graphDef.id" flat dense round icon="bookmark_add" @click="openTemplateDialog">
-          <q-tooltip>保存为模板</q-tooltip>
-        </q-btn>
+        <q-separator vertical class="graph-editor-page__toolbar-sep" />
+
+        <!-- P0-2：文件操作组（导入/导出/布局/版本/模板） -->
+        <div class="graph-editor-page__toolbar-group">
+          <q-btn flat dense round icon="download" @click="exportCurrentGraph">
+            <q-tooltip>导出 JSON</q-tooltip>
+          </q-btn>
+          <q-btn flat dense round icon="upload" @click="triggerImport">
+            <q-tooltip>导入 JSON</q-tooltip>
+          </q-btn>
+          <q-btn flat dense round icon="account_tree" @click="autoLayout">
+            <q-tooltip>自动布局</q-tooltip>
+          </q-btn>
+          <q-btn v-if="graphDef.id" flat dense round icon="restore" @click="openVersionDialog">
+            <q-tooltip>版本历史</q-tooltip>
+          </q-btn>
+          <q-btn v-if="graphDef.id" flat dense round icon="bookmark_add" @click="openTemplateDialog">
+            <q-tooltip>保存为模板</q-tooltip>
+          </q-btn>
+        </div>
+
+        <q-separator vertical class="graph-editor-page__toolbar-sep" />
       </template>
-      <q-btn
-        flat
-        dense
-        round
-        icon="save"
-        color="primary"
-        :loading="saving"
-        :disable="!canSave"
-        data-test="graph-save"
-        @click="onSaveClick"
-      >
-        <q-tooltip>{{ isTeamOwnedGraph ? '保存（Team 拓扑，需确认）' : '保存' }}</q-tooltip>
+
+      <!-- P0-5：State Schema 抽屉入口 -->
+      <q-btn flat dense round icon="schema" @click="schemaDrawerOpen = true">
+        <q-tooltip>{{ t('graphs.schemaDrawerTitle') }}</q-tooltip>
       </q-btn>
-      <q-btn
-        v-if="!isNew"
-        flat
-        dense
-        round
-        icon="play_arrow"
-        color="positive"
-        :disable="!mergedValidationValid"
-        @click="openRunDialog"
-      >
-        <q-tooltip>{{ mergedValidationValid ? '执行' : t('graphs.validationRunBlocked') }}</q-tooltip>
-      </q-btn>
-      <q-btn v-if="!isNew" flat dense round icon="history" @click="goToExecutions">
-        <q-tooltip>执行历史</q-tooltip>
-      </q-btn>
+
+      <q-separator vertical class="graph-editor-page__toolbar-sep" />
+
+      <!-- P0-2：核心操作组（保存/执行/历史） — 带文字标签 -->
+      <div class="graph-editor-page__toolbar-group graph-editor-page__toolbar-group--actions">
+        <q-btn
+          unelevated
+          dense
+          no-caps
+          icon="save"
+          color="primary"
+          :loading="saving"
+          :disable="!canSave"
+          :label="t('graphs.editorSave')"
+          data-test="graph-save"
+          @click="onSaveClick"
+        >
+          <q-tooltip>{{ isTeamOwnedGraph ? '保存（Team 拓扑，需确认）' : '保存' }}</q-tooltip>
+        </q-btn>
+        <q-btn
+          v-if="!isNew"
+          unelevated
+          dense
+          no-caps
+          icon="play_arrow"
+          color="positive"
+          :disable="!mergedValidationValid"
+          :label="t('graphs.editorRun')"
+          @click="openRunDialog"
+        >
+          <q-tooltip>{{ mergedValidationValid ? '执行' : t('graphs.validationRunBlocked') }}</q-tooltip>
+        </q-btn>
+        <q-btn v-if="!isNew" flat dense no-caps icon="history" :label="t('graphs.editorHistory')" @click="goToExecutions">
+          <q-tooltip>执行历史</q-tooltip>
+        </q-btn>
+      </div>
     </div>
 
     <div class="graph-workbench__body">
@@ -167,6 +193,15 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- P0-5：State Schema 抽屉（open 为普通 prop，关闭走 close 事件） -->
+    <GraphStateSchemaDrawer
+      :open="schemaDrawerOpen"
+      v-model:graph-def="graphDef"
+      :is-dark="isDark"
+      @close="schemaDrawerOpen = false"
+      @change="markDirty"
+    />
   </q-page>
 </template>
 
@@ -180,11 +215,15 @@ import GraphPropertyPanel from '../components/graph/GraphPropertyPanel.vue';
 import GraphValidationPanel from '../components/graph/GraphValidationPanel.vue';
 import GraphVersionPanel from '../components/graph/GraphVersionPanel.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
+import GraphStateSchemaDrawer from '../components/graph/GraphStateSchemaDrawer.vue';
 import { useGraphEditorPage } from '../features/graph/useGraphEditorPage';
 
 const { t } = useI18n();
 
 const propertyPanelRef = ref<InstanceType<typeof GraphPropertyPanel> | null>(null);
+
+/** P0-5：State Schema 抽屉显隐 */
+const schemaDrawerOpen = ref(false);
 
 const {
   isDark,

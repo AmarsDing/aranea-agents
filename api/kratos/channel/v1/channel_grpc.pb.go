@@ -42,7 +42,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChannelServiceClient interface {
 	ListChannelTypes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListChannelTypesResponse, error)
-	ListChannels(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListChannelsResponse, error)
+	ListChannels(ctx context.Context, in *ListChannelsRequest, opts ...grpc.CallOption) (*ListChannelsResponse, error)
 	GetChannel(ctx context.Context, in *GetChannelRequest, opts ...grpc.CallOption) (*Channel, error)
 	CreateChannel(ctx context.Context, in *CreateChannelRequest, opts ...grpc.CallOption) (*Channel, error)
 	UpdateChannel(ctx context.Context, in *UpdateChannelRequest, opts ...grpc.CallOption) (*Channel, error)
@@ -76,7 +76,7 @@ func (c *channelServiceClient) ListChannelTypes(ctx context.Context, in *emptypb
 	return out, nil
 }
 
-func (c *channelServiceClient) ListChannels(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListChannelsResponse, error) {
+func (c *channelServiceClient) ListChannels(ctx context.Context, in *ListChannelsRequest, opts ...grpc.CallOption) (*ListChannelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListChannelsResponse)
 	err := c.cc.Invoke(ctx, ChannelService_ListChannels_FullMethodName, in, out, cOpts...)
@@ -221,7 +221,7 @@ func (c *channelServiceClient) WechatILinkPoll(ctx context.Context, in *WechatIL
 // for forward compatibility.
 type ChannelServiceServer interface {
 	ListChannelTypes(context.Context, *emptypb.Empty) (*ListChannelTypesResponse, error)
-	ListChannels(context.Context, *emptypb.Empty) (*ListChannelsResponse, error)
+	ListChannels(context.Context, *ListChannelsRequest) (*ListChannelsResponse, error)
 	GetChannel(context.Context, *GetChannelRequest) (*Channel, error)
 	CreateChannel(context.Context, *CreateChannelRequest) (*Channel, error)
 	UpdateChannel(context.Context, *UpdateChannelRequest) (*Channel, error)
@@ -248,7 +248,7 @@ type UnimplementedChannelServiceServer struct{}
 func (UnimplementedChannelServiceServer) ListChannelTypes(context.Context, *emptypb.Empty) (*ListChannelTypesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListChannelTypes not implemented")
 }
-func (UnimplementedChannelServiceServer) ListChannels(context.Context, *emptypb.Empty) (*ListChannelsResponse, error) {
+func (UnimplementedChannelServiceServer) ListChannels(context.Context, *ListChannelsRequest) (*ListChannelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListChannels not implemented")
 }
 func (UnimplementedChannelServiceServer) GetChannel(context.Context, *GetChannelRequest) (*Channel, error) {
@@ -330,7 +330,7 @@ func _ChannelService_ListChannelTypes_Handler(srv interface{}, ctx context.Conte
 }
 
 func _ChannelService_ListChannels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(ListChannelsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func _ChannelService_ListChannels_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: ChannelService_ListChannels_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ChannelServiceServer).ListChannels(ctx, req.(*emptypb.Empty))
+		return srv.(ChannelServiceServer).ListChannels(ctx, req.(*ListChannelsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

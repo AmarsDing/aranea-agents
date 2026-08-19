@@ -8,8 +8,8 @@ import {
   definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
   formatCost,
-  groupTeamsByIndustry,
-  inferTeamIndustryId,
+  groupTeamsByDepartment,
+  inferTeamDepartmentId,
   linkableGraphOptions,
   parseDefinition,
   rebuildDefinitionGraph,
@@ -481,7 +481,7 @@ describe('teamUtils.deriveMemberRolesForMode', () => {
   });
 });
 
-describe('teamUtils.groupTeamsByIndustry', () => {
+describe('teamUtils.groupTeamsByDepartment', () => {
   const taxonomyTree = [
     {
       id: 'ind-1',
@@ -493,7 +493,7 @@ describe('teamUtils.groupTeamsByIndustry', () => {
       enabled: true,
       sort_order: 10,
       parent_id: '',
-      level: 'industry',
+      level: 'company',
       agent_id: '',
       provider: '',
       model: '',
@@ -568,24 +568,24 @@ describe('teamUtils.groupTeamsByIndustry', () => {
     deleted_at: '',
   };
 
-  it('infers industry from member agents', () => {
-    expect(inferTeamIndustryId(team, agents, taxonomyTree)).toBe('ind-1');
-    const groups = groupTeamsByIndustry([team], agents, taxonomyTree);
+  it('infers department from member agents', () => {
+    expect(inferTeamDepartmentId(team, agents, taxonomyTree)).toBe('dep-1');
+    const groups = groupTeamsByDepartment([team], agents, taxonomyTree);
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe('金融');
+    expect(groups[0]?.label).toBe('金融 / 研究部');
     expect(groups[0]?.teams).toHaveLength(1);
   });
 
-  it('still shows teams under disabled industries', () => {
+  it('still shows teams under disabled departments', () => {
     const disabledTree: PlatformResourceTreeNode[] = [
       {
         ...taxonomyTree[0]!,
-        enabled: false,
+        children: [{ ...taxonomyTree[0]!.children![0]!, enabled: false }],
       },
     ];
-    const groups = groupTeamsByIndustry([team], agents, disabledTree);
+    const groups = groupTeamsByDepartment([team], agents, disabledTree);
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe('金融（已停用）');
+    expect(groups[0]?.label).toBe('金融 / 研究部（已停用）');
     expect(groups[0]?.teams).toHaveLength(1);
   });
 
@@ -600,7 +600,7 @@ describe('teamUtils.groupTeamsByIndustry', () => {
         members: [],
       }),
     };
-    const groups = groupTeamsByIndustry([orphanTeam], [], taxonomyTree);
+    const groups = groupTeamsByDepartment([orphanTeam], [], taxonomyTree);
     const uncategorized = groups.find((g) => g.id === '__uncategorized__');
     expect(uncategorized).toBeDefined();
     expect(uncategorized?.teams).toHaveLength(1);
@@ -621,7 +621,7 @@ describe('teamUtils.groupTeamsByIndustry', () => {
         members: [],
       }),
     };
-    const groups = groupTeamsByIndustry([team, orphanTeam], agents, taxonomyTree);
+    const groups = groupTeamsByDepartment([team, orphanTeam], agents, taxonomyTree);
     const allIds = groups.flatMap((g) => g.teams.map((t) => t.id));
     expect(allIds.sort()).toEqual(['t-orphan', 't1']);
   });

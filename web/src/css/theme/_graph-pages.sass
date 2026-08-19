@@ -366,6 +366,20 @@ body:not(.body--dark) .graph-card--add:hover
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
+// P0-2：工具栏分组
+.graph-editor-page__toolbar-group
+  display: flex
+  align-items: center
+  gap: 2px
+
+  &--actions
+    gap: 6px
+
+.graph-editor-page__toolbar-sep
+  height: 24px
+  margin: 0 4px
+  opacity: 0.4
+
 .graph-editor-page__title,
 .graph-run-page__title
   font-size: 15px
@@ -702,6 +716,22 @@ body:not(.body--dark) .graph-card--add:hover
   padding: 16px 14px
   overflow-y: auto
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.04)
+  transition: width 0.25s ease, padding 0.25s ease
+  flex-shrink: 0
+
+  // P0-1：折叠态 — 窄条仅显示展开按钮
+  &--collapsed
+    width: 44px
+    padding: 8px 4px
+    overflow: hidden
+    cursor: pointer
+
+.graph-property-panel__collapsed-bar
+  display: flex
+  align-items: flex-start
+  justify-content: center
+  padding-top: 8px
+  height: 100%
 
 .graph-property-panel.is-dark
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2)

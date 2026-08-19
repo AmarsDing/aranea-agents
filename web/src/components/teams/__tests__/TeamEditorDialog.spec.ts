@@ -101,7 +101,7 @@ function mountDialog(definitionOverrides: Partial<TeamDefinition> = {}, props: R
       form,
       definition,
       agentOptions: [{ label: 'W', value: 'a1' }],
-      industryOptions: [],
+      departmentOptions: [],
       saving: false,
       canSave: true,
       isDark: false,

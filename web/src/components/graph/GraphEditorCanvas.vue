@@ -132,6 +132,7 @@ import type {
   NodeIssueInfo,
 } from '../../features/graph/types';
 import { NODE_TYPE_STYLES } from '../../features/graph/types';
+import { isValidConnectionQuick } from '../../features/graph/portTypes';
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from '../../features/graph/editor/graphLayout';
 import { useSnapGuide } from '../../features/graph/useSnapGuide';
@@ -888,16 +889,29 @@ function deleteSelectedNodes() {
 function onConnect(connection: Connection) {
   if (readOnly.value) return;
   if (connection.source && connection.target) {
-    const existing = graphDef.value.edges.find((e) => e.from === connection.source && e.to === connection.target);
-    if (!existing) {
-      const edge: EdgeDef = { from: connection.source, to: connection.target, kind: '' };
-      if (props.undoRedo) {
-        // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
-        props.undoRedo.pushAddEdge(edge);
-      } else {
-        graphDef.value.edges.push(edge);
-        emit('updateGraph');
-      }
+    // P0-3：连接验证 — 自连接/重复边/字段不匹配
+    const validation = isValidConnectionQuick(
+      connection.source,
+      connection.sourceHandle ?? null,
+      connection.target,
+      connection.targetHandle ?? null,
+      graphDef.value.edges,
+    );
+    if (!validation.valid) {
+      $q.notify({ type: 'negative', message: validation.reason ?? '无效连接', timeout: 3000 });
+      return;
+    }
+    if (validation.warning) {
+      $q.notify({ type: 'warning', message: validation.warning, timeout: 4000 });
+    }
+
+    const edge: EdgeDef = { from: connection.source, to: connection.target, kind: '' };
+    if (props.undoRedo) {
+      // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
+      props.undoRedo.pushAddEdge(edge);
+    } else {
+      graphDef.value.edges.push(edge);
+      emit('updateGraph');
     }
   }
 }

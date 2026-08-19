@@ -9,7 +9,8 @@ import {
   failureDefaultOptions,
   parallelFailOptions,
   failureOnErrorOptions,
-  BuiltinIndustryId,
+  BuiltinGroupId,
+  PresetGroupId,
   validStatusTransitions,
   isValidStatusTransition,
 } from '../teamConstants';
@@ -74,8 +75,11 @@ describe('teamConstants', () => {
     expect(failureOnErrorOptions.map((o) => o.value)).toEqual(['await_review', 'halt']);
   });
 
-  it('BuiltinIndustryId is __builtin__', () => {
-    expect(BuiltinIndustryId).toBe('__builtin__');
+  it('BuiltinGroupId is __builtin__', () => {
+    expect(BuiltinGroupId).toBe('__builtin__');
+  });
+  it('PresetGroupId is __preset__', () => {
+    expect(PresetGroupId).toBe('__preset__');
   });
 
   it('validStatusTransitions mirrors backend state machine', () => {

@@ -30,6 +30,8 @@ message Channel {
   string created_at = 16;
   string updated_at = 17;
   string deleted_at = 18;
+  // P2-B 租户隔离：空 = 系统内置/共享（租户只读）；非空 = 归属 workspace。
+  string workspace_id = 19;
 }
 
 message ChannelTypeItem {
@@ -88,6 +90,14 @@ message ChannelTestResult {
 
 message ListChannelTypesResponse {
   repeated ChannelTypeItem items = 1;
+}
+
+message ListChannelsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string search = 3;
+  string type = 4;
+  string status = 5;
 }
 
 message ListChannelsResponse {
@@ -214,7 +224,7 @@ service ChannelService {
   rpc ListChannelTypes(google.protobuf.Empty) returns (ListChannelTypesResponse) {
     option (google.api.http) = {get: "/v1/channels/catalog"};
   }
-  rpc ListChannels(google.protobuf.Empty) returns (ListChannelsResponse) {
+  rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse) {
     option (google.api.http) = {get: "/v1/channels"};
   }
   rpc GetChannel(GetChannelRequest) returns (Channel) {

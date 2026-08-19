@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { i18n } from '../../i18n';
 import { errorMessage } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
 import { findModelPreset, type ProviderModelPreset } from '../../config/providerPresets';
@@ -97,6 +98,22 @@ export function useProviderInspect(deps: {
     return saved === providerCreateInspectFingerprintValue();
   });
 
+  /**
+   * 创建/保存按钮被禁用时给出的具体原因文案。
+   * 供禁用按钮的悬停 tooltip 与底栏常显提示共用——禁用按钮 pointer-events:none，
+   * tooltip 必须挂在外层 wrapper 上才能触发。
+   */
+  const submitBlockReason = computed(() => {
+    if (!deps.isProviderResource.value || canSubmitNewProviderModel.value) return '';
+    if (!deps.providerForm.provider_code.trim() || !deps.providerForm.model_api_id.trim()) {
+      return i18n.global.t('resourceManager.selectProviderAndModelFirst');
+    }
+    if (deps.editingId.value && providerIdentityChanged.value) {
+      return i18n.global.t('resourceManager.checkRequiredEdit');
+    }
+    return i18n.global.t('resourceManager.checkRequiredCreate');
+  });
+
   async function inspectCurrentProviderModel() {
     const code = deps.providerForm.provider_code.trim();
     const model = deps.providerForm.model_api_id.trim();
@@ -183,6 +200,7 @@ export function useProviderInspect(deps: {
     canInspectProviderModel,
     providerIdentityChanged,
     canSubmitNewProviderModel,
+    submitBlockReason,
     providerCreateInspectFingerprintValue,
     inspectCurrentProviderModel,
   };

@@ -191,7 +191,11 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 				if o == "" {
 					return true
 				}
-				return OriginAllowed(o)
+				if OriginAllowed(o) {
+					return true
+				}
+				lg.Warn("WS origin rejected", loggateway.Str("origin", o), loggateway.Str("remote_addr", r.RemoteAddr))
+				return false
 			},
 		},
 	}

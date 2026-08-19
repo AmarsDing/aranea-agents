@@ -14,10 +14,10 @@
       v-model:search="search"
       v-model:mode-filter="modeFilter"
       v-model:status-filter="statusFilter"
-      v-model:industry-filter="industryFilter"
+      v-model:department-filter="departmentFilter"
       v-model:show-orchestrated="showOrchestrated"
       class="q-mt-md"
-      :industry-options="industryOptions"
+      :department-options="departmentOptions"
       :loading="loading"
       :is-dark="isDark"
       @refresh="loadRows"
@@ -28,7 +28,7 @@
       <template #action><q-btn flat color="white" label="重试" @click="loadRows" /></template>
     </q-banner>
 
-    <section v-for="group in teamIndustryGroups" :key="group.id" class="teams-industry-section q-mt-lg">
+    <section v-for="group in teamGroups" :key="group.id" class="teams-industry-section q-mt-lg">
       <header class="teams-industry-section__head">
         <q-icon :name="group.id === '__builtin__' ? 'verified_user' : 'domain'" size="20px" color="primary" />
         <h2 class="teams-industry-section__title">{{ group.label }}</h2>
@@ -53,7 +53,7 @@
     </section>
 
     <q-card
-      v-if="!loading && teamIndustryGroups.length === 0"
+      v-if="!loading && teamGroups.length === 0"
       flat
       bordered
       :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']"
@@ -130,7 +130,7 @@
       :has-active-run="editingHasActiveRun"
       :definition-json="definitionJSON"
       :agent-options="agentOptions"
-      :industry-options="industryOptions"
+      :department-options="departmentOptions"
       :graph-options="graphOptions"
       :overwrite-baseline-key="editorOverwriteBaselineKey"
       :saving="saving"
@@ -204,11 +204,11 @@ const {
   search,
   modeFilter,
   statusFilter,
-  industryFilter,
+  departmentFilter,
   showOrchestrated,
   hiddenOrchestratedCount,
-  industryOptions,
-  teamIndustryGroups,
+  departmentOptions,
+  teamGroups,
   currentPage,
   pageSize,
   totalFiltered,
