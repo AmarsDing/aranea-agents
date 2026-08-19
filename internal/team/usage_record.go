@@ -15,6 +15,16 @@ import (
 )
 
 // recordMemberUsage writes model_token_usage_events for a team member step when tokens were consumed.
+// usageSource records how tin/tout were obtained ("streaming"/"estimated"…);
+// persisted into metadata_json["usage_source"] so estimated rows stay identifiable.
+//
+// runLevelAttribution=true marks the row as carrying RUN-LEVEL totals attributed
+// to the anchor member (anchor-fallback path when graph watch produced no
+// per-member steps). Such rows duplicate the team_turn row's totals, so they
+// must NOT additionally accumulate session metrics — the team_turn row is the
+// single session-metrics accumulator on completion paths (P2-1 双计根治,
+// 2026-08-19). Genuine per-member rows (flag=false, e.g. failed-run partial
+// steps) keep accumulating: no team_turn row exists on those paths.
 func (r *Runner) recordMemberUsage(
 	ctx context.Context,
 	run biz.TeamRunRecord,
@@ -24,6 +34,8 @@ func (r *Runner) recordMemberUsage(
 	prov, mod, dialogMode string,
 	stepID string,
 	cachedTok int,
+	usageSource string,
+	runLevelAttribution bool,
 ) {
 	if r == nil || r.usage == nil {
 		return
@@ -50,6 +62,10 @@ func (r *Runner) recordMemberUsage(
 		})
 		meta = string(b)
 	}
+	meta = biz.MergeUsageSourceMetadata(meta, usageSource)
+	if runLevelAttribution {
+		meta = biz.MergeUsageAttributionMetadata(meta, biz.UsageAttributionRunLevelAnchorFallback)
+	}
 	ev := biz.TokenUsageEvent{
 		ID:                uuid.NewString(),
 		TeamID:            teamID,
@@ -75,7 +91,10 @@ func (r *Runner) recordMemberUsage(
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
-	if _, err := r.usage.RecordTokenUsageEvent(recCtx, ev); err != nil {
+	// recEv carries the normalized row (CallCount=1); accumulate/publish from it
+	// (P1-1 fix: ev.CallCount was 0, so session model_call_count never grew).
+	recEv, err := r.usage.RecordTokenUsageEvent(recCtx, ev)
+	if err != nil {
 		r.lg.Warn("团队成员用量落库失败",
 			loggateway.StepID("team.usage_record_fail"),
 			loggateway.Err(err),
@@ -86,17 +105,36 @@ func (r *Runner) recordMemberUsage(
 		)
 		return
 	}
-	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
+	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" && !runLevelAttribution {
 		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
 			SessionID:         run.SessionID,
-			ModelCallCount:    ev.CallCount,
-			InputTokens:       int64(ev.InputTokens),
-			OutputTokens:      int64(ev.OutputTokens),
-			TotalTokens:       int64(ev.TotalTokens),
-			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+			ModelCallCount:    recEv.CallCount,
+			InputTokens:       int64(recEv.InputTokens),
+			OutputTokens:      int64(recEv.OutputTokens),
+			TotalTokens:       int64(recEv.TotalTokens),
+			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
-	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, ev)
+	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, recEv)
+}
+
+// recordAuxUsage records auxiliary LLM usage for team-side旁路 calls (intent pass).
+// Zero-token rows are skipped (skipped/failed calls consumed nothing observable).
+func (r *Runner) recordAuxUsage(ctx context.Context, in biz.AuxLLMUsageInput) {
+	if r == nil || r.usage == nil {
+		return
+	}
+	if in.PromptTok <= 0 && in.CompletionTok <= 0 {
+		return
+	}
+	if err := r.usage.RecordAuxLLMUsage(ctx, in); err != nil {
+		r.lg.Warn("团队旁路用量落库失败",
+			loggateway.StepID("team.usage_record_fail"),
+			loggateway.Err(err),
+			loggateway.Str("team_id", in.TeamID),
+			loggateway.Str("usage_kind", in.Kind),
+		)
+	}
 }
 
 // recordTeamRunUsage writes one aggregated team turn row (workflow-level tokens).
@@ -107,6 +145,7 @@ func (r *Runner) recordTeamRunUsage(
 	anchor biz.Agent,
 	promptTok, completionTok, cachedTok int,
 	prov, mod, dialogMode string,
+	usageSource string,
 ) {
 	if (r == nil || r.usage == nil) || (promptTok <= 0 && completionTok <= 0) {
 		return
@@ -122,6 +161,7 @@ func (r *Runner) recordTeamRunUsage(
 		})
 		meta = string(b)
 	}
+	meta = biz.MergeUsageSourceMetadata(meta, usageSource)
 	ev := biz.TokenUsageEvent{
 		ID:                uuid.NewString(),
 		TeamID:            teamID,
@@ -144,7 +184,8 @@ func (r *Runner) recordTeamRunUsage(
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
-	if _, err := r.usage.RecordTokenUsageEvent(recCtx, ev); err != nil {
+	recEv, err := r.usage.RecordTokenUsageEvent(recCtx, ev)
+	if err != nil {
 		r.lg.Warn("团队轮次用量落库失败",
 			loggateway.StepID("team.usage_record_fail"),
 			loggateway.Err(err),
@@ -157,12 +198,12 @@ func (r *Runner) recordTeamRunUsage(
 	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
 		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
 			SessionID:         run.SessionID,
-			ModelCallCount:    ev.CallCount,
-			InputTokens:       int64(ev.InputTokens),
-			OutputTokens:      int64(ev.OutputTokens),
-			TotalTokens:       int64(ev.TotalTokens),
-			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+			ModelCallCount:    recEv.CallCount,
+			InputTokens:       int64(recEv.InputTokens),
+			OutputTokens:      int64(recEv.OutputTokens),
+			TotalTokens:       int64(recEv.TotalTokens),
+			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
-	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, ev)
+	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, recEv)
 }

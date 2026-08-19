@@ -13,9 +13,11 @@
 /** tier → 目标半径占 outerRadius 比例（regular 外环 / super 中环 / ultra 核）。 */
 export const TIER_RADIUS_RATIO: readonly number[] = [1.0, 0.55, 0.25];
 
-/** 主簇外半径估计（stratify 壳层基准）：斥力/向心力平衡 R≈12.6·cbrt(N)，留裕量取 14。 */
+/** 主簇外半径估计（stratify 壳层基准）：紧凑力学（linkStrength 0.07/dist 24/gravity 0.015）
+ *  平衡下实测 p90 ≈ 6·cbrt(N)（123 连通节点实测 29），取 6.5 留少量裕量。
+ *  注意：旧 14·cbrt 是 hairball 力参（0.05/30/0.011）标定，紧凑化后高估近 3 倍会稀释分层。 */
 export function estimateOuterRadius(count: number): number {
-  return Math.max(40, Math.cbrt(count) * 14);
+  return Math.max(30, Math.cbrt(count) * 6.5);
 }
 
 /** 孤立节点（degree=0）索引收集。 */
@@ -50,12 +52,12 @@ export function buildTierTargetRadii(tiers: Uint8Array, degree: Uint16Array, out
   return out;
 }
 
-/** 停泊环节点弧长下限（保证节点/标签不贴脸；值越小单环容量越大、环带越窄）。 */
-export const PARK_ARC_MIN = 22;
+/** 停泊环节点弧长下限（孤立节点无标签，弧长可小；值越小单环容量越大、环带越窄越像「行星环」）。 */
+export const PARK_ARC_MIN = 10;
 /** 同心环径向间距（紧凑环带，形如「行星环」围绕主簇）。 */
-export const PARK_RING_SPACING = 16;
+export const PARK_RING_SPACING = 12;
 /** 停泊环半径 = 主簇 p90 半径 × 此系数（明显在主簇外，又不远到撑爆视野）。 */
-export const PARK_RING_FACTOR = 1.5;
+export const PARK_RING_FACTOR = 1.4;
 
 /**
  * 停泊环坐标生成（确定性）：

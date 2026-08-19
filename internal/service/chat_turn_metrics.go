@@ -17,6 +17,9 @@ import (
 type turnRecorder interface {
 	RecordTurnUsage(ctx context.Context, p TurnUsageParams)
 	RecordSessionTurn(ctx context.Context, p SessionTurnRecordParams)
+	// RecordAuxUsage records auxiliary (non-turn) LLM usage such as the intent
+	// pass (P1-2, 2026-08-19).
+	RecordAuxUsage(ctx context.Context, in biz.AuxLLMUsageInput)
 }
 
 // chatTurnMetrics implements turnRecorder.
@@ -51,8 +54,12 @@ type TurnUsageParams struct {
 	CompletionTok int
 	// CachedTok is the cache-hit portion of PromptTok (billed at cache-read price).
 	CachedTok int
-	Latency   time.Duration
-	ErrMsg    string
+	// UsageSource records how PromptTok/CompletionTok were obtained
+	// ("streaming"/"runner_completion"/"estimated"); persisted into
+	// metadata_json["usage_source"] so estimated rows stay identifiable.
+	UsageSource string
+	Latency     time.Duration
+	ErrMsg      string
 }
 
 // RecordTurnUsage records token usage for a turn.
@@ -81,6 +88,7 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 		meta = p.Emitter.MetadataJSON()
 	}
 	meta = mergeContextBudgetMetadata(ctx, meta)
+	meta = biz.MergeUsageSourceMetadata(meta, p.UsageSource)
 	traceID := ""
 	if p.Emitter != nil {
 		traceID = p.Emitter.TraceID()
@@ -109,6 +117,25 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 		)
 	}
 	m.recordRunnerCompletion(ctx, p, traceID)
+}
+
+// RecordAuxUsage records auxiliary LLM call usage (intent pass etc.).
+// Zero-token rows are skipped: a skipped/failed aux call consumed nothing
+// observable, and recording it would only add noise to aggregates.
+func (m *chatTurnMetrics) RecordAuxUsage(ctx context.Context, in biz.AuxLLMUsageInput) {
+	if m == nil || m.usage == nil {
+		return
+	}
+	if in.PromptTok <= 0 && in.CompletionTok <= 0 {
+		return
+	}
+	if err := m.usage.RecordAuxLLMUsage(ctx, in); err != nil {
+		m.lg.Warn("aux usage record failed",
+			loggateway.StepID("chat.usage_record_fail"),
+			loggateway.Str("usage_kind", in.Kind),
+			loggateway.SessionID(in.SessionID),
+			loggateway.Err(err))
+	}
 }
 
 // recordContextBudgetLog emits the per-turn context budget ledger

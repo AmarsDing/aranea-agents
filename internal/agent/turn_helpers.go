@@ -16,35 +16,68 @@ import (
 )
 
 // MemberTokenUsage is per team member (agent_key) usage observed in the event stream.
+// PromptTokens/CompletionTokens/CachedTokens are billing totals summed across
+// LLM rounds (each tool-call round is a separate billed API call).
 type MemberTokenUsage struct {
 	PromptTokens     int
 	CompletionTokens int
 	// CachedTokens is the cache-hit portion of PromptTokens (DeepSeek/OpenAI
 	// prompt caching). Billed at the cache-read price downstream.
 	CachedTokens int
+	// Per-round accumulators: within a round usage is reported cumulatively
+	// (max); on a round boundary the previous round's values are locked into
+	// the prev* sums.
+	prevPrompt, prevCompletion, prevCached int
+	curPrompt, curCompletion, curCached    int
 }
+
+// Usage source values for EventStreamResult.UsageSource. Persisted into
+// usage.metadata_json["usage_source"] so DB rows whose tokens came from text
+// estimation stay distinguishable from provider-reported usage (P0-2).
+const (
+	// UsageSourceStreaming — accumulated from streaming chat.completion events.
+	UsageSourceStreaming = "streaming"
+	// UsageSourceRunnerCompletion — final usage from a RunnerCompletion event.
+	UsageSourceRunnerCompletion = "runner_completion"
+	// UsageSourceEstimated — filled by EstimateTokensIfMissing from text (rough).
+	UsageSourceEstimated = "estimated"
+)
 
 type EventStreamResult struct {
 	Reply         strings.Builder
 	Reasoning     strings.Builder
+	// PromptTok/CompletionTok/CachedTok are BILLING totals summed across all
+	// LLM rounds of the turn (each tool-call round re-sends the full prompt
+	// and is billed separately). Use these for cost/quota recording.
 	PromptTok     int
 	CompletionTok int
-	// CachedTok is the cache-hit portion of PromptTok (max across rounds,
-	// same accumulation semantics as PromptTok).
+	// CachedTok is the cache-hit portion of PromptTok (summed across rounds).
 	CachedTok int
+	// LastRoundPromptTok/LastRoundCompletionTok describe the FINAL LLM round
+	// only — i.e. the current context-window occupancy after the turn. Use
+	// these (not the billing totals) for context_used_tokens patching and
+	// context occupancy display.
+	LastRoundPromptTok     int
+	LastRoundCompletionTok int
 	// UsageSource indicates where PromptTok/CompletionTok came from:
 	//   ""                   — no usage data observed (stream errored before usage emission; TECH-DEBT)
 	//   "streaming"          — accumulated from streaming chat.completion events
-	//   "runner_completion"  — final usage from RunnerCompletion event (most accurate)
+	//   "runner_completion"  — final usage from RunnerCompletion event (currently
+	//                          never fires: the framework does not attach Usage to
+	//                          the runner.completion event; kept for forward compat)
 	//   "estimated"          — filled by EstimateTokensIfMissing from text (rough estimate)
 	// Useful for diagnosing why tokens=0 or why prompt≈completion (estimation fallback).
 	UsageSource string
-	// prevRoundsCompletionTok tracks the sum of completion tokens from
-	// previous LLM rounds (when promptTok increased). CompletionTok is
-	// always prevRoundsCompletionTok + current round's max completion.
-	// This enables correct multi-round accumulation: prompt tokens are
-	// cumulative (take max), but completion tokens are per-round (sum).
+	// Per-round billing accumulators. Within one LLM round, streaming usage
+	// is reported cumulatively (track the max); when a new round is detected
+	// (prompt value changes), the previous round's maxima are locked into
+	// the prevRounds* sums. Exported totals are always prevRounds* + curRound*.
+	prevRoundsPromptTok     int
 	prevRoundsCompletionTok int
+	prevRoundsCachedTok     int
+	curRoundPromptTok       int
+	curRoundCompletionTok   int
+	curRoundCachedTok       int
 	// MemberUsage maps agent_key → latest usage from member completion events (Team parallel/swarm).
 	MemberUsage map[string]MemberTokenUsage
 	// MemberToolCalls maps agent_key → tool_call envelope count observed during the turn.
@@ -126,28 +159,35 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	if result == nil {
 		return
 	}
-	// Cached tokens share prompt-token semantics: reported cumulatively
-	// within a round, so take the max.
-	if cachedTok > result.CachedTok {
-		result.CachedTok = cachedTok
+	// Billing semantics (2026-08-19): every LLM round of a turn is a separate
+	// API call billed at its FULL prompt, so Prompt/Cached/Completion tokens
+	// are SUMMED across rounds (the previous max-based prompt accumulation
+	// undercounted input cost ~round-count-fold on tool-call-heavy turns).
+	// Within one round, streaming usage is reported cumulatively → per-round
+	// values track the max.
+	// Round boundary: a usage payload whose prompt differs from the current
+	// round's prompt marks a new billable call (prompt grows across rounds in
+	// tool loops; it shrinks after mid-run compaction — both are detected).
+	if promptTok != result.curRoundPromptTok {
+		result.prevRoundsPromptTok += result.curRoundPromptTok
+		result.prevRoundsCompletionTok += result.curRoundCompletionTok
+		result.prevRoundsCachedTok += result.curRoundCachedTok
+		result.curRoundPromptTok = promptTok
+		result.curRoundCompletionTok = completionTok
+		result.curRoundCachedTok = cachedTok
+	} else {
+		if completionTok > result.curRoundCompletionTok {
+			result.curRoundCompletionTok = completionTok
+		}
+		if cachedTok > result.curRoundCachedTok {
+			result.curRoundCachedTok = cachedTok
+		}
 	}
-	// Multi-round accumulation strategy:
-	// - Prompt tokens are cumulative across rounds (each round includes prior
-	//   context), so we take the max.
-	// - Completion tokens are per-round, so we sum them across rounds.
-	// - Within a single round (streaming chunks), usage is reported cumulatively,
-	//   so we take the max for that round.
-	// prevRoundsCompletionTok tracks the locked-in total from prior rounds;
-	// CompletionTok = prevRoundsCompletionTok + current round's max completion.
-	if promptTok > result.PromptTok {
-		// New LLM round detected: lock in previous rounds' total.
-		result.prevRoundsCompletionTok = result.CompletionTok
-		result.PromptTok = promptTok
-		result.CompletionTok = result.prevRoundsCompletionTok + completionTok
-	} else if promptTok == result.PromptTok && completionTok > (result.CompletionTok-result.prevRoundsCompletionTok) {
-		// Same round, streaming update: take max completion for this round.
-		result.CompletionTok = result.prevRoundsCompletionTok + completionTok
-	}
+	result.PromptTok = result.prevRoundsPromptTok + result.curRoundPromptTok
+	result.CompletionTok = result.prevRoundsCompletionTok + result.curRoundCompletionTok
+	result.CachedTok = result.prevRoundsCachedTok + result.curRoundCachedTok
+	result.LastRoundPromptTok = result.curRoundPromptTok
+	result.LastRoundCompletionTok = result.curRoundCompletionTok
 	if !isTeamMemberAuthor(ev.Author, meta) {
 		return
 	}
@@ -158,22 +198,26 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	if result.MemberUsage == nil {
 		result.MemberUsage = make(map[string]MemberTokenUsage)
 	}
-	prev := result.MemberUsage[key]
-	if cachedTok > prev.CachedTokens {
-		prev.CachedTokens = cachedTok
-		result.MemberUsage[key] = prev
-	}
-	if promptTok > prev.PromptTokens {
-		result.MemberUsage[key] = MemberTokenUsage{
-			PromptTokens:     promptTok,
-			CompletionTokens: prev.CompletionTokens + completionTok,
-			CachedTokens:     prev.CachedTokens,
+	// Per-member usage follows the same per-round billing semantics as the
+	// root totals above.
+	mu := result.MemberUsage[key]
+	if promptTok != mu.curPrompt {
+		mu.prevPrompt += mu.curPrompt
+		mu.prevCompletion += mu.curCompletion
+		mu.prevCached += mu.curCached
+		mu.curPrompt = promptTok
+		mu.curCompletion = completionTok
+		mu.curCached = cachedTok
+	} else {
+		if completionTok > mu.curCompletion {
+			mu.curCompletion = completionTok
 		}
-	} else if promptTok == prev.PromptTokens && completionTok > prev.CompletionTokens {
-		result.MemberUsage[key] = MemberTokenUsage{
-			PromptTokens:     promptTok,
-			CompletionTokens: completionTok,
-			CachedTokens:     prev.CachedTokens,
+		if cachedTok > mu.curCached {
+			mu.curCached = cachedTok
 		}
 	}
+	mu.PromptTokens = mu.prevPrompt + mu.curPrompt
+	mu.CompletionTokens = mu.prevCompletion + mu.curCompletion
+	mu.CachedTokens = mu.prevCached + mu.curCached
+	result.MemberUsage[key] = mu
 }

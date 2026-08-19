@@ -38,7 +38,7 @@ func TestFinalizeTeamRun_QualityGatePass_Success(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("run status=%q want %q", got.Status, biz.TeamRunStatusSuccess)
 	}
@@ -71,7 +71,7 @@ func TestFinalizeTeamRun_QualityRevise_EnqueuesFollowupAndFails(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 
 	if got.Status != biz.TeamRunStatusFailed {
 		t.Fatalf("revision round must fail the run, status=%q", got.Status)
@@ -112,7 +112,7 @@ func TestFinalizeTeamRun_QualityRevise_BudgetExhausted_FailOpenPass(t *testing.T
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("exhausted budget must fail-open pass, status=%q", got.Status)
 	}
@@ -140,7 +140,7 @@ func TestFinalizeTeamRun_QualityJudgeError_FailOpenPass(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("judge infra error must fail-open pass, status=%q", got.Status)
 	}
@@ -163,7 +163,7 @@ func TestFinalizeTeamRun_QualityRevise_NoEnqueuer_FailOpenPass(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("missing enqueuer must fail-open pass, status=%q", got.Status)
 	}
@@ -188,7 +188,7 @@ func TestFinalizeTeamRun_QualityGateSkippedWhenBinaryVetoes(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 	if qualityCalled {
 		t.Fatal("quality gate must not run after the binary gate vetoes (no deliverable)")
 	}

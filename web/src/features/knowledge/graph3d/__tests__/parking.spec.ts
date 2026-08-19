@@ -44,16 +44,16 @@ describe('buildTierTargetRadii', () => {
 
 describe('estimateOuterRadius', () => {
   it('随 cbrt(N) 增长且有下限', () => {
-    expect(estimateOuterRadius(1)).toBe(40);
-    expect(estimateOuterRadius(1000)).toBeCloseTo(140);
-    expect(estimateOuterRadius(8000)).toBeCloseTo(280);
+    expect(estimateOuterRadius(1)).toBe(30);
+    expect(estimateOuterRadius(1000)).toBeCloseTo(65);
+    expect(estimateOuterRadius(8000)).toBeCloseTo(130);
   });
 });
 
 describe('parkingRingPositions', () => {
   it('单环：所有点在 XZ 平面等半径、等角间距', () => {
     const count = 8;
-    const radius = 100; // 容量 floor(628/30)=20 ≥ 8 → 单环
+    const radius = 100; // 容量 floor(628/10)=62 ≥ 8 → 单环
     const p = parkingRingPositions(count, radius);
     expect(p.length).toBe(count * 3);
     for (let i = 0; i < count; i++) {
@@ -69,17 +69,15 @@ describe('parkingRingPositions', () => {
   });
 
   it('多环：过密时外扩同心环，弧长不低于 PARK_ARC_MIN', () => {
-    const radius = 50; // 环0容量 floor(2π·50/22)=14，环1容量 floor(2π·66/22)=18，环2容量 floor(2π·82/22)=23
-    const count = 50; // 环0 14 个（idx 0-13），环1 18 个（idx 14-31），环2 18 个（idx 32-49）
+    const radius = 50; // 环0容量 floor(2π·50/10)=31，环1容量 floor(2π·62/10)=38
+    const count = 50; // 环0 31 个（idx 0-30），环1 19 个（idx 31-49）
     const p = parkingRingPositions(count, radius);
     expect(p.length).toBe(count * 3);
     const ringOf = (i: number) => Math.round((Math.hypot(p[i * 3], p[i * 3 + 2]) - radius) / PARK_RING_SPACING) + 0; // +0 归一化 -0
     expect(ringOf(0)).toBe(0);
-    expect(ringOf(13)).toBe(0);
-    expect(ringOf(14)).toBe(1);
+    expect(ringOf(30)).toBe(0);
     expect(ringOf(31)).toBe(1);
-    expect(ringOf(32)).toBe(2);
-    expect(ringOf(49)).toBe(2);
+    expect(ringOf(49)).toBe(1);
     // 每环内相邻弧长 ≥ PARK_ARC_MIN（含闭环段）
     for (let ringStart = 0; ringStart < count; ) {
       const ring = ringOf(ringStart);

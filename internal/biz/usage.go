@@ -17,6 +17,8 @@ type (
 	UsageQuotaRepo            = usage.QuotaRepo
 	UsageRepo                 = usage.Repo
 	UsageUsecase              = usage.Usecase
+	// UsageUsecaseRef mirrors usage.UsecaseRef (P1-2 late-binding cell).
+	UsageUsecaseRef = usage.UsecaseRef
 	UsageQuota                = usage.Quota
 	UsageQuotaCheck           = usage.QuotaCheck
 	BudgetAlert               = usage.BudgetAlert
@@ -28,6 +30,7 @@ type (
 	CompletionUsageLinker     = usage.CompletionUsageLinker
 	UsageEnvelopePublisher    = usage.UsageEnvelopePublisher
 	TurnUsageInput            = usage.TurnUsageInput
+	AuxLLMUsageInput          = usage.AuxLLMUsageInput
 	CacheHitRatioStat         = usage.CacheHitRatioStat
 	CacheHitRatioStatsRepo    = usage.CacheHitRatioStatsRepo
 	ContextBudgetStats        = usage.ContextBudgetStats
@@ -43,10 +46,23 @@ const (
 	UsageKindChatTurn   = usage.KindChatTurn
 	UsageKindTeamMember = usage.KindTeamMember
 	UsageKindTeamTurn   = usage.KindTeamTurn
-	QuotaScopeGlobal    = usage.QuotaScopeGlobal
-	GlobalQuotaScopeID  = usage.GlobalQuotaScopeID
+	// Aux kinds mirror usage.KindAux* (P1-1, 2026-08-19).
+	UsageKindAuxSubagent  = usage.KindAuxSubagent
+	UsageKindAuxTitle     = usage.KindAuxTitle
+	UsageKindAuxIntent    = usage.KindAuxIntent
+	UsageKindAuxEvolution = usage.KindAuxEvolution
+	QuotaScopeGlobal      = usage.QuotaScopeGlobal
+	GlobalQuotaScopeID    = usage.GlobalQuotaScopeID
 	// MinCacheablePromptTokens mirrors usage.MinCacheablePromptTokens.
 	MinCacheablePromptTokens = usage.MinCacheablePromptTokens
+	// MetadataKeyUsageSource mirrors usage.MetadataKeyUsageSource.
+	MetadataKeyUsageSource = usage.MetadataKeyUsageSource
+	// UsageSourceResponse mirrors usage.UsageSourceResponse.
+	UsageSourceResponse = usage.UsageSourceResponse
+	// MetadataKeyUsageAttribution mirrors usage.MetadataKeyUsageAttribution (P2-1).
+	MetadataKeyUsageAttribution = usage.MetadataKeyUsageAttribution
+	// UsageAttributionRunLevelAnchorFallback mirrors usage.UsageAttributionRunLevelAnchorFallback (P2-1).
+	UsageAttributionRunLevelAnchorFallback = usage.UsageAttributionRunLevelAnchorFallback
 )
 
 var (
@@ -54,4 +70,10 @@ var (
 	NormalizeUsageStatus = usage.NormalizeStatus
 	ApplyTokenUsageCosts = usage.ApplyTokenUsageCosts
 	MapUsageRepoErr      = usage.MapRepoErr
+	// MergeUsageSourceMetadata mirrors usage.MergeUsageSourceMetadata.
+	MergeUsageSourceMetadata = usage.MergeUsageSourceMetadata
+	// MergeUsageAttributionMetadata mirrors usage.MergeUsageAttributionMetadata (P2-1).
+	MergeUsageAttributionMetadata = usage.MergeUsageAttributionMetadata
+	// NewUsageUsecaseRef mirrors usage.NewUsecaseRef.
+	NewUsageUsecaseRef = usage.NewUsecaseRef
 )

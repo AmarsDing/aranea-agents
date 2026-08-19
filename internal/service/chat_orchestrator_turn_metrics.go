@@ -50,6 +50,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 	emitter *event.TraceEmitter,
 	sessionID, runID, agentKey, agentID, prov, mod, status string,
 	promptTok, completionTok, cachedTok int,
+	usageSource string,
 	latency time.Duration,
 	errMsg string,
 ) {
@@ -65,6 +66,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
 		CachedTok:     cachedTok,
+		UsageSource:   usageSource,
 		Latency:       latency,
 		ErrMsg:        errMsg,
 	})

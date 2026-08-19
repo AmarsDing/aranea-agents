@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
@@ -41,6 +42,10 @@ type turnExecuteResult struct {
 	resultCompletionTok int
 	sessionRunID        string
 	turnArtCollector    *artifactbiz.TurnCollector
+	// turnProjector is the per-turn v2 projector (nil when the v2 factory is
+	// not wired). Carried into PERSIST so the empty-reply failure path can
+	// persist an error step via ProjectTurnFailure (2026-08-19 no-reply fix).
+	turnProjector *v2.ActivityProjector
 }
 
 // turnPersistResult holds the outputs of the PERSIST phase.
@@ -50,6 +55,15 @@ type turnPersistResult struct {
 	promptTok     int
 	completionTok int
 	cachedTok     int
+	// lastRound* are the final LLM round's tokens = current context-window
+	// occupancy (distinct from promptTok/completionTok which are billing
+	// totals summed across rounds).
+	lastRoundPromptTok     int
+	lastRoundCompletionTok int
+	// usageSource records how promptTok/completionTok were obtained
+	// ("streaming"/"runner_completion"/"estimated"); persisted into the
+	// usage event metadata so estimated rows stay identifiable.
+	usageSource string
 }
 
 // turnPhases encapsulates the core ADMISSION → EXECUTE → PERSIST turn phases.
@@ -225,7 +239,7 @@ func (p *turnPhases) persistTurn(
 	// Empty reply detection
 	displayMarkdown, reasoningAsDisplay := chatagent.DisplayMarkdownFromStream(result)
 	if displayMarkdown == "" {
-		return turnPersistResult{}, p.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
+		return turnPersistResult{}, p.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID, execResult.turnProjector)
 	}
 
 	// Immediate fact extraction: detect <fact> tags in agent response and persist to memory_fact.
@@ -263,15 +277,25 @@ func (p *turnPhases) persistTurn(
 	// UsageSource="" and tokens=0 until EstimateTokensIfMissing fills them.
 	usageSource := execResult.result.UsageSource
 	if promptTok != execResult.resultPromptTok || completionTok != execResult.resultCompletionTok {
-		usageSource = "estimated"
+		usageSource = chatagent.UsageSourceEstimated
 	}
-	if usageSource == "" || usageSource == "estimated" {
+	if usageSource == "" || usageSource == chatagent.UsageSourceEstimated {
 		emitter.LogDone("chat.turn.usage_source",
 			"token 使用来源追踪",
 			event.P("usage_source", usageSource),
 			event.P("prompt_tok", promptTok),
 			event.P("completion_tok", completionTok),
 			event.P("has_error", execResult.result.HasError))
+	}
+
+	// Context occupancy = final round tokens. When usage came from text
+	// estimation (UsageSource "estimated"), LastRound* are 0 — fall back to
+	// the estimated turn totals so occupancy stays approximately correct.
+	lastRoundPrompt := execResult.result.LastRoundPromptTok
+	lastRoundCompletion := execResult.result.LastRoundCompletionTok
+	if lastRoundPrompt <= 0 && promptTok > 0 {
+		lastRoundPrompt = promptTok
+		lastRoundCompletion = completionTok
 	}
 
 	// Build and persist assistant message
@@ -281,12 +305,15 @@ func (p *turnPhases) persistTurn(
 	}
 
 	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
-	p.patchSessionContextUsage(*ctx, sessionID, sess, ag, admit.provider, admit.model, promptTok, completionTok)
+	p.patchSessionContextUsage(*ctx, sessionID, sess, ag, admit.provider, admit.model, lastRoundPrompt, lastRoundCompletion)
 
 	return turnPersistResult{
-		assistantMsg:  assistantMsg,
-		promptTok:     promptTok,
-		completionTok: completionTok,
-		cachedTok:     execResult.result.CachedTok,
+		assistantMsg:           assistantMsg,
+		promptTok:              promptTok,
+		completionTok:          completionTok,
+		cachedTok:              execResult.result.CachedTok,
+		lastRoundPromptTok:     lastRoundPrompt,
+		lastRoundCompletionTok: lastRoundCompletion,
+		usageSource:            usageSource,
 	}, nil
 }

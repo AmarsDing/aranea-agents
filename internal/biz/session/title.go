@@ -5,8 +5,17 @@ import (
 	"strings"
 )
 
+// TitleGenRequest carries the input for LLM title generation.
+// SessionID/AgentID are used for aux usage recording (P1-2, 2026-08-19);
+// they do not affect the generated title.
+type TitleGenRequest struct {
+	UserMessage string
+	SessionID   string
+	AgentID     string
+}
+
 type SessionTitleGenerator interface {
-	Generate(ctx context.Context, userMessage string) (string, error)
+	Generate(ctx context.Context, req TitleGenRequest) (string, error)
 }
 
 type noopSessionTitleGenerator struct{}
@@ -15,7 +24,7 @@ func NewNoopSessionTitleGenerator() SessionTitleGenerator {
 	return &noopSessionTitleGenerator{}
 }
 
-func (noopSessionTitleGenerator) Generate(_ context.Context, _ string) (string, error) {
+func (noopSessionTitleGenerator) Generate(_ context.Context, _ TitleGenRequest) (string, error) {
 	return "", nil
 }
 

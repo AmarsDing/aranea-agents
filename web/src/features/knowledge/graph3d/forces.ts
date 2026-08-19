@@ -50,8 +50,9 @@ export const FORCE_DEFAULTS: ForceParams = {
   coreGravity: 0,
   discFlatten: 0,
   spiralSwirl: 0,
-  // V13-B：默认开（仅在注入 tierTargetRadius 时生效，否则零作用）
-  stratify: 0.02,
+  // V13-B：默认开（仅在注入 tierTargetRadius 时生效，否则零作用）。
+  // 0.05：相对弹簧 0.07 同量级，壳层可见又不撕裂局部结构（0.02 实测分层感不足）。
+  stratify: 0.05,
 };
 
 /** M2 星系盘布局预设（布局切换 = setParams(GALAXY_FORCE_PARAMS) + reheat）。 */

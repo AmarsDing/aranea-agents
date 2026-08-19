@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
@@ -44,6 +45,11 @@ type Config struct {
 	RT      *provider.RoundTrip
 	// Repo 向 reviewer 提供既有技能上下文（框架 skill.Repository 只读接口）。
 	Repo trpcskill.Repository
+	// UsageRef 迟绑定解析 usage usecase，记录评审 LLM 调用的
+	// aux_evolution 用量（P1-2，2026-08-19）；nil/未就绪时跳过记录。
+	// 用 ref 而非直接注入 *UsageUsecase：evolution service 经
+	// PersistenceSet 位于 wire DI 图上游，直接注入成环。
+	UsageRef *biz.UsageUsecaseRef
 	// CandidatesDir 为挂起修订的落盘目录；空时走默认（UserConfigDir/Aranea/
 	// evolution/candidates，可用 EVOLUTION_CANDIDATES_DIR 覆盖）。
 	CandidatesDir string
@@ -99,12 +105,17 @@ func (s *Service) resolve(ctx context.Context) trpcevolution.Service {
 	}
 	s.tried = true
 
-	m, err := s.resolveReviewModel(ctx)
+	m, prov, mod, err := s.resolveReviewModel(ctx)
 	if err != nil || m == nil {
 		s.cfg.Lg.Warn("evolution: 评审模型解析失败，技能演化保持停用",
 			loggateway.StepID("skill.evolution_resolve"),
 			loggateway.Err(err))
 		return nil
+	}
+	// P1-2 (2026-08-19): 计量包装——框架 reviewer 在内部调 LLM，用量不经
+	// aranea 任何记录点；包一层 model 把每次评审调用记为 aux_evolution。
+	if s.cfg.UsageRef != nil {
+		m = newMeteringModel(m, s.cfg.UsageRef, prov, mod, s.cfg.Lg)
 	}
 
 	dir := resolveCandidatesDir(s.cfg.CandidatesDir)
@@ -131,20 +142,25 @@ func (s *Service) resolve(ctx context.Context) trpcevolution.Service {
 }
 
 // resolveReviewModel 复用 session 摘要的模型选取策略：catalog 的标题模型，
-// 回退到第一个启用模型；目录为空时返回 (nil, nil)。
-func (s *Service) resolveReviewModel(ctx context.Context) (trpcmodel.Model, error) {
+// 回退到第一个启用模型；目录为空时返回 (nil, "", "", nil)。
+// 同时返回 provider/model 标识供用量计价归因（P1-2）。
+func (s *Service) resolveReviewModel(ctx context.Context) (trpcmodel.Model, string, string, error) {
 	models, err := s.cfg.Catalog.List(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	if len(models) == 0 {
-		return nil, nil
+		return nil, "", "", nil
 	}
 	pm, ok := biz.PickTitleModel(models)
 	if !ok {
-		return nil, nil
+		return nil, "", "", nil
 	}
-	return provider.TRPCModelForProviderModel(ctx, s.cfg.Catalog, s.cfg.RT, pm.Provider, pm.Model, s.cfg.Lg)
+	m, err := provider.TRPCModelForProviderModel(ctx, s.cfg.Catalog, s.cfg.RT, pm.Provider, pm.Model, s.cfg.Lg)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return m, pm.Provider, pm.Model, nil
 }
 
 func resolveCandidatesDir(configured string) string {
@@ -161,3 +177,110 @@ func resolveCandidatesDir(configured string) string {
 }
 
 var _ trpcevolution.Service = (*Service)(nil)
+
+// meteringModel 包装评审模型，把每次 GenerateContent 调用的 token 用量记录为
+// aux_evolution 事件（P1-2，2026-08-19）。框架 reviewer 在内部 worker 里调
+// LLM，不走 aranea 的任何计量点，只能用模型层装饰器截获。
+type meteringModel struct {
+	inner trpcmodel.Model
+	// record 落一条 aux 用量；由 newMeteringModel 从 UsageRef 迟解析填充。
+	// 测试可直注入捕获闭包。
+	record func(ctx context.Context, in biz.AuxLLMUsageInput) error
+	prov   string
+	mod    string
+	lg     loggateway.Logger
+}
+
+func newMeteringModel(inner trpcmodel.Model, usageRef *biz.UsageUsecaseRef, prov, mod string, lg loggateway.Logger) trpcmodel.Model {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &meteringModel{
+		inner: inner,
+		record: func(ctx context.Context, in biz.AuxLLMUsageInput) error {
+			if u := usageRef.Get(); u != nil {
+				return u.RecordAuxLLMUsage(ctx, in)
+			}
+			return nil
+		},
+		prov: prov,
+		mod:  mod,
+		lg:   lg,
+	}
+}
+
+func (m *meteringModel) Info() trpcmodel.Info { return m.inner.Info() }
+
+func (m *meteringModel) GenerateContent(ctx context.Context, req *trpcmodel.Request) (<-chan *trpcmodel.Response, error) {
+	ch, err := m.inner.GenerateContent(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan *trpcmodel.Response, 64)
+	go m.forward(ch, out)
+	return out, nil
+}
+
+// forward 透传响应流并累计计费口径用量（每轮独立计费 → 跨轮求和；轮内
+// 流式累计 → 取最大，与 agent.accumulateStreamUsage 同语义）。流关闭后
+// 落一条 aux_evolution 用量；零 token（provider 未回报）跳过。
+func (m *meteringModel) forward(in <-chan *trpcmodel.Response, out chan<- *trpcmodel.Response) {
+	defer close(out)
+	start := time.Now()
+	var prevPrompt, prevCompletion, prevCached int
+	var curPrompt, curCompletion, curCached int
+	var apiErr string
+	for resp := range in {
+		if resp != nil {
+			if resp.Error != nil {
+				apiErr = resp.Error.Message
+			}
+			if u := resp.Usage; u != nil {
+				if u.PromptTokens != curPrompt {
+					prevPrompt += curPrompt
+					prevCompletion += curCompletion
+					prevCached += curCached
+					curPrompt = u.PromptTokens
+					curCompletion = u.CompletionTokens
+					curCached = u.PromptTokensDetails.CachedTokens
+				} else {
+					if u.CompletionTokens > curCompletion {
+						curCompletion = u.CompletionTokens
+					}
+					if u.PromptTokensDetails.CachedTokens > curCached {
+						curCached = u.PromptTokensDetails.CachedTokens
+					}
+				}
+			}
+		}
+		out <- resp
+	}
+	promptTok := prevPrompt + curPrompt
+	completionTok := prevCompletion + curCompletion
+	if promptTok <= 0 && completionTok <= 0 {
+		return
+	}
+	if m.record == nil {
+		return
+	}
+	status := "success"
+	if apiErr != "" {
+		status = "failed"
+	}
+	if err := m.record(context.Background(), biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxEvolution,
+		Provider:      m.prov,
+		Model:         m.mod,
+		Status:        status,
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		CachedTok:     prevCached + curCached,
+		UsageSource:   biz.UsageSourceResponse,
+		Latency:       time.Since(start),
+		ErrMsg:        apiErr,
+	}); err != nil {
+		m.lg.Warn("evolution: 评审用量落库失败",
+			loggateway.StepID("skill.evolution_usage_record"),
+			loggateway.Err(err))
+	}
+}

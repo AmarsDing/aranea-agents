@@ -169,12 +169,12 @@ func providePromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, _ rt.Persis
 	return service.NewPromptFileAIEditor(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
 }
 
-func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet, lg loggateway.Logger) biz.SessionTitleGenerator {
+func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, usageRef *biz.UsageUsecaseRef, _ rt.PersistenceSet, lg loggateway.Logger) biz.SessionTitleGenerator {
 	if catalog == nil {
 		return biz.NewNoopSessionTitleGenerator()
 	}
 	httpClient := &http.Client{Timeout: 15 * time.Second}
-	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
+	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient}, usageRef, lg)
 }
 
 // provideRefineLLMRoundTrip provides a centralized HTTP client for
@@ -471,13 +471,24 @@ func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Log
 	})
 }
 
-func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, eventBus biz.EventBus, lg loggateway.Logger) *biz.UsageUsecase {
+// provideUsageUsecaseRef builds the late-binding cell for *biz.UsageUsecase
+// (P1-2, 2026-08-19). It has zero dependencies so aux-usage recorders that
+// sit upstream of UsageUsecase in the DI graph (session-title generator,
+// subagent service, evolution review model) can resolve the usecase lazily
+// at record time without creating wire cycles.
+func provideUsageUsecaseRef() *biz.UsageUsecaseRef {
+	return biz.NewUsageUsecaseRef()
+}
+
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, eventBus biz.EventBus, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) *biz.UsageUsecase {
 	uc := biz.NewUsageUsecase(repo, lg)
 	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
 	uc.SetTeamReader(teamUC)
 	uc.SetSessionMetricsAccumulator(&sessionMetricsAdapter{sessions: sessions})
 	uc.SetCompletionUsageLinker(&completionLinkerAdapter{mon: mon})
 	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{eventBus: eventBus})
+	// Publish to the late-binding cell so upstream aux recorders can resolve.
+	usageRef.Set(uc)
 	return uc
 }
 
@@ -1042,12 +1053,13 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 // provideEvolutionService 装配框架 v1.11 技能演化 service（hold-all 模式，
 // 详见 internal/skill/evolution 包注释）。模型目录/技能 repo 缺失时返回 nil，
 // runner 侧自动跳过演化学习。
-func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo trpcskill.Repository, lg loggateway.Logger) trpcevolution.Service {
+func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo trpcskill.Repository, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) trpcevolution.Service {
 	svc := skillevolution.NewService(skillevolution.Config{
-		Catalog: catalog,
-		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
-		Repo:    repo,
-		Lg:      lg,
+		Catalog:  catalog,
+		RT:       &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
+		Repo:     repo,
+		UsageRef: usageRef,
+		Lg:       lg,
 	})
 	if svc == nil {
 		return nil
@@ -1677,10 +1689,24 @@ func provideOutboundRouter(lg loggateway.Logger) *outbound.Router {
 	return outbound.NewRouter(lg)
 }
 
-func provideSubAgentService(lg loggateway.Logger) (*subagenttool.Service, error) {
+func provideSubAgentService(usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) (*subagenttool.Service, error) {
 	// stateDir: use ./data as the root for subagent state files.
 	// Runner is set later via SetRunner when the first turn creates a runner.
-	return subagenttool.NewService("./data", nil, lg)
+	svc, err := subagenttool.NewService("./data", nil, lg)
+	if err != nil {
+		return nil, err
+	}
+	// P1-2 (2026-08-19): record subagent runs' LLM usage as aux_subagent
+	// events. Late-bound via ref: the subagent service sits upstream of
+	// UsageUsecase in the DI graph (GraphNodeResolverSet → subagent), so
+	// direct injection would create a wire cycle.
+	svc.SetUsageRecorder(subagenttool.UsageRecorderFunc(func(ctx context.Context, in biz.AuxLLMUsageInput) error {
+		if u := usageRef.Get(); u != nil {
+			return u.RecordAuxLLMUsage(ctx, in)
+		}
+		return nil
+	}))
+	return svc, nil
 }
 
 func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL2DecayWorker {
@@ -4017,6 +4043,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideRedisClient,
 		provideTurnLifecycleUsecase,
 		provideMonitorUsecase,
+		provideUsageUsecaseRef,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,
 		provideModelRegistryApplyBackend,

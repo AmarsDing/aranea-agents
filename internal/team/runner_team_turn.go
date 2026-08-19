@@ -155,6 +155,21 @@ func (r *Runner) prepareUserTurnOptions(
 		// history 传 nil：成员 turn 的 content 是 leader 规划合成的指令（非用户原始
 		// 追问），无指代/省略需解析；注入会话历史反而可能干扰成员对指令的判定。
 		intRes = intent.RunForAgent(ctx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
+		// P1-2 (2026-08-19): 记录团队 intent pass 旁路用量（此前完全漏记）。
+		r.recordAuxUsage(ctx, biz.AuxLLMUsageInput{
+			Kind:          biz.UsageKindAuxIntent,
+			SessionID:     run.SessionID,
+			TeamID:        teamRow.ID,
+			AgentID:       ar.agent.ID,
+			AgentKey:      ar.agent.AgentKey,
+			Provider:      ar.prov,
+			Model:         ar.mod,
+			Status:        "success",
+			PromptTok:     intRes.PromptTok,
+			CompletionTok: intRes.CompletionTok,
+			UsageSource:   biz.UsageSourceResponse,
+			Latency:       intRes.Duration,
+		})
 		if intRes.Artifact != nil {
 			if strings.TrimSpace(intRes.RawJSON) != "" {
 				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
@@ -210,6 +225,7 @@ func (r *Runner) finalizeTeamRun(
 	assistantMsg biz.ChatMessage,
 	promptTok, completionTok, cachedTok int,
 	dialogMode string,
+	usageSource string,
 	graphExecID string,
 	t0 time.Time,
 	teamEmitter *event.TraceEmitter,
@@ -271,7 +287,7 @@ func (r *Runner) finalizeTeamRun(
 		_ = r.mediator.FinalizeTeamGraphExecution(ctx, graphExecID, false, "")
 	}
 
-	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode)
+	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode, usageSource)
 
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))

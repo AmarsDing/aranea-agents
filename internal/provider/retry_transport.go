@@ -90,7 +90,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 					loggateway.Str("retry_decision", decision.Type.String()),
 					loggateway.Err(err))
 			}
-			if decision.Type == RetryWithBackoff && t.shouldRetry(attempt) {
+			if decision.Type == RetryWithBackoff && t.shouldRetry(attempt, decision.MaxAttempts) {
 				attempt++
 				continue
 			}
@@ -115,7 +115,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 					loggateway.Bool("rate_limited", decision.IsRateLimited),
 					loggateway.Int("status_code", resp.StatusCode))
 			}
-			if t.shouldRetry(attempt) {
+			if t.shouldRetry(attempt, decision.MaxAttempts) {
 				attempt++
 				continue
 			}
@@ -127,11 +127,19 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // shouldRetry returns true if the transport should attempt another retry
 // after the given attempt index (0-indexed: attempt 0 = first try).
-func (t *retryTransport) shouldRetry(attempt int) bool {
-	if t.maxRetries < 0 {
+// decisionMax is the per-error-class cap from ClassifyRetry (0 = no
+// per-class cap, e.g. ECONNREFUSED carries connRefusedMaxAttempts). The
+// effective cap is the tighter of the transport cap and the decision cap;
+// a negative transport cap means infinite unless the decision caps it.
+func (t *retryTransport) shouldRetry(attempt int, decisionMax int) bool {
+	limit := t.maxRetries
+	if decisionMax > 0 && (limit < 0 || decisionMax < limit) {
+		limit = decisionMax
+	}
+	if limit < 0 {
 		return true // infinite
 	}
-	return attempt < t.maxRetries
+	return attempt < limit
 }
 
 // resetRequestBody rewinds the request body using GetBody, which is set by

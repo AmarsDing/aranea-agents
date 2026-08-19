@@ -304,18 +304,22 @@ func (uc *SessionMessageUsecase) maybeAutoTitleFromUserMessage(ctx context.Conte
 	}
 	appCtx := appctx.Ctx()
 	safego.Go(appCtx, "generate-title-async", func() {
-		uc.generateTitleAsync(appCtx, sessionID, content)
+		uc.generateTitleAsync(appCtx, sessionID, sess.AgentID, content)
 	})
 	return nil
 }
 
 // generateTitleAsync derives a 15s timeout context from parentCtx (app-lifecycle),
 // so it cancels both on timeout and on application shutdown.
-func (uc *SessionMessageUsecase) generateTitleAsync(parentCtx context.Context, sessionID, content string) {
+func (uc *SessionMessageUsecase) generateTitleAsync(parentCtx context.Context, sessionID, agentID, content string) {
 	bgCtx, cancel := context.WithTimeout(parentCtx, 15*time.Second)
 	defer cancel()
 
-	title, err := uc.titleGenerator.Generate(bgCtx, content)
+	title, err := uc.titleGenerator.Generate(bgCtx, TitleGenRequest{
+		UserMessage: content,
+		SessionID:   sessionID,
+		AgentID:     agentID,
+	})
 	if err != nil {
 		if uc.flowLog != nil {
 			uc.flowLog.LogFlowError(bgCtx, sessionID, "system.session.title_fail", "会话标题生成失败",

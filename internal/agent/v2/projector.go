@@ -54,6 +54,19 @@ type ActivityProjector struct {
 	activeTurn  map[string]*biz.Turn // turnID → turn (for OnTurnEnd)
 	activeTask  map[string]*biz.Task // taskID → task (root only, for OnTurnEnd)
 	stepCounter atomic.Int64
+	// turnStarted/turnEnded/errorProjected track the per-turn projection
+	// lifecycle for ProjectTurnFailure (2026-08-19 no-reply incident fix):
+	// failure paths outside the stream consumer must be able to materialize
+	// task+turn (when the consumer never ran), emit exactly one error step,
+	// and finalize an open turn — without duplicating what the consumer
+	// already projected. All three are guarded by mu.
+	turnStarted    bool
+	turnEnded      bool
+	errorProjected bool
+	// turnFailed is set by ProjectTurnFailure when it (rather than the stream
+	// consumer) finalizes the turn: OnTurnEnd then emits the terminal events
+	// with failed status instead of completed. Set/read under mu.
+	turnFailed bool
 	// factory 是创建此 projector 的 ProjectorFactory 引用（可能为 nil）。
 	// 用于 OnTurnEnd 查询 HasTeamDispatch 决定是否延迟 task.completed。
 	// 2026-07-04 问题 P5/D1 修复。
@@ -232,6 +245,11 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.replyStepIDs = make(map[string]string)
 	p.toolCallSteps = make(map[string]string)
 	p.memberToolCalls = make(map[string]int)
+	p.mu.Lock()
+	p.turnStarted = true
+	p.turnEnded = false
+	p.errorProjected = false
+	p.mu.Unlock()
 
 	if p.seq == nil {
 		return
@@ -447,6 +465,7 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 	}
 	now := time.Now()
 	p.mu.Lock()
+	p.errorProjected = true
 	task, ok := p.activeTask[p.meta.TaskID]
 	if ok {
 		task.Status = biz.TaskStatusFailed
@@ -505,6 +524,54 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 	// original Task's state machine is owned by the original user-input turn.
 	if p.meta.ParentTaskID == "" && task != nil {
 		p.seq.Publish(ctx, biz.NewTaskFailedEvent(*task))
+	}
+}
+
+// ProjectTurnFailure persists a turn-level failure as an error Step (plus
+// task.failed when the task is still open) so the failure survives reload.
+//
+// 2026-08-19 00:48 no-reply incident: the LLM-call failure paths only
+// published transient WS notices (system.notice / turn.failed); the v2
+// activity store — the only conversation history since the messages table
+// removal (Phase 1c-3) — recorded nothing, so after a reload the failed
+// turn left zero trace. This method is the persistent counterpart invoked
+// by the chat orchestrator's three turn failure paths: LLM call error
+// (stream consumer never ran), stream error (first-byte timeout etc.), and
+// empty reply.
+//
+// Behavior:
+//   - If OnTurnStart never ran (LLM call failed before any stream event),
+//     task.created + turn.started are emitted first so the error step has
+//     parents in the activity tree (p.meta was set by Configure before the
+//     LLM invocation).
+//   - If an error step was already projected for this turn (an in-stream
+//     Response.Error routed through OnError), the error-step emission is
+//     skipped to avoid duplicate error steps.
+//   - If the turn is still open, it is finalized after the error step so no
+//     turn hangs in "running". The task keeps the failed status set by
+//     OnError — OnTurnEnd's task branch no-ops because OnError already
+//     removed the task from activeTask.
+func (p *ActivityProjector) ProjectTurnFailure(ctx context.Context, errMsg, errType, errCode string) {
+	if p == nil || p.seq == nil || p.meta.TaskID == "" {
+		return
+	}
+	p.mu.Lock()
+	started, ended, projected := p.turnStarted, p.turnEnded, p.errorProjected
+	if !ended {
+		// The consumer never finalized this turn (LLM call error before any
+		// stream event): ProjectTurnFailure is the finalizer, so the terminal
+		// events must carry failed status, not completed.
+		p.turnFailed = true
+	}
+	p.mu.Unlock()
+	if !started {
+		p.OnTurnStart(ctx, p.meta)
+	}
+	if !projected {
+		p.OnError(ctx, errMsg, errType, errCode)
+	}
+	if !ended {
+		p.OnTurnEnd(ctx, p.meta, false)
 	}
 }
 
@@ -911,6 +978,9 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 	if p.seq == nil {
 		return
 	}
+	p.mu.Lock()
+	p.turnEnded = true
+	p.mu.Unlock()
 	now := time.Now()
 	// P1-02 fix: select terminal status based on the canceled flag.
 	turnStatus := biz.TurnStatusCompleted
@@ -918,6 +988,15 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 	if canceled {
 		turnStatus = biz.TurnStatusCancelled
 		taskStatus = biz.TaskStatusCancelled
+	}
+	p.mu.Lock()
+	turnFailed := p.turnFailed
+	p.mu.Unlock()
+	if turnFailed && !canceled {
+		// ProjectTurnFailure finalization (LLM call error path): the turn
+		// failed, so the terminal events must not claim completed.
+		turnStatus = biz.TurnStatusFailed
+		taskStatus = biz.TaskStatusFailed
 	}
 	p.mu.Lock()
 	turn, ok := p.activeTurn[meta.TurnID]

@@ -387,6 +387,10 @@ type assistantBuildResult struct {
 	msg           biz.ChatMessage
 	promptTok     int
 	completionTok int
+	// usageSource records how promptTok/completionTok were obtained
+	// ("streaming"/"runner_completion"/"estimated"); persisted into the
+	// team_turn usage event metadata so estimated rows stay identifiable.
+	usageSource string
 }
 
 // buildAssistantMessageFromResult constructs the assistant ChatMessage from stream result,
@@ -402,6 +406,12 @@ func (r *Runner) buildAssistantMessageFromResult(
 	reasoningText := strings.TrimSpace(result.Reasoning.String())
 	displayMarkdown, reasoningAsDisplay := agent.DisplayMarkdownFromStream(result)
 	promptTok, completionTok := agent.EstimateTokensIfMissing(result.PromptTok, result.CompletionTok, content, displayMarkdown)
+	// Mirror the chat path: estimation upgrades the provenance label so the
+	// persisted usage row is identifiable as text-estimated.
+	usageSource := result.UsageSource
+	if promptTok != result.PromptTok || completionTok != result.CompletionTok {
+		usageSource = agent.UsageSourceEstimated
+	}
 
 	assistantOptsStr, err := agent.AssistantOptionsJSON(ar.agent, &agent.TeamMemberAnchor{
 		AgentID: ar.agent.ID,
@@ -444,7 +454,7 @@ func (r *Runner) buildAssistantMessageFromResult(
 		TokenOut:         completionTok,
 		AttachmentsCount: assistantAttN,
 	}
-	return assistantBuildResult{msg: msg, promptTok: promptTok, completionTok: completionTok}, nil
+	return assistantBuildResult{msg: msg, promptTok: promptTok, completionTok: completionTok, usageSource: usageSource}, nil
 }
 
 // validateAssistantOutput checks that the stream produced usable output,

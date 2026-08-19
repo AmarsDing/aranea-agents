@@ -277,7 +277,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 	}))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int, startedAt time.Time) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int, usageSource string, startedAt time.Time, runLevelAttribution bool) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -300,6 +300,12 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 		CreatedAt:     agent.RFC3339Now(),
 		ToolCallCount: toolCallCount,
 	}
+	// P2-1 (2026-08-19): backfill the step's cost from the active pricing
+	// snapshot (same pricing path as persisted usage events). 0 when unpriced
+	// or tokenless — matches the usage-row behavior for missing pricing.
+	if r.usage != nil {
+		step.CostMicroUSD = r.usage.QuoteTokenUsageCostMicroUSD(ctx, prov, mod, asst.TokenIn, asst.TokenOut, cachedTok)
+	}
 	// 2026-08-08 问题4b：graph watch 路径传入 node_start 追踪的真实开始时刻
 	// 时，落真实执行窗口——StartedAt 取追踪值、DurationMS 取墙钟耗时；否则
 	// StartedAt≈FinishedAt≈落库时刻、DurationMS=0（graph 成员消息无 LatencyMS）。
@@ -314,7 +320,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 	if err != nil {
 		return
 	}
-	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok)
+	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok, usageSource, runLevelAttribution)
 	// 2026-07-28 单写者重设计：此处不再发布成员 completed 事件。step 落库
 	// 即消息生命周期的事实记录；成员终态由 service 终态 outcome pass（哨兵
 	// 权威带）依据完整证据链唯一裁决——成员产出最终文本不代表工作成功（12:33）。

@@ -129,7 +129,7 @@ func TestFinalizeTeamRun_DagTeamWithoutDeliverable_MarkedFailed(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 
 	if got.Status != biz.TeamRunStatusFailed {
 		t.Fatalf("returned run status=%q want %q", got.Status, biz.TeamRunStatusFailed)
@@ -160,7 +160,7 @@ func TestFinalizeTeamRun_DagTeamWithDeliverable_Success(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("run status=%q want %q", got.Status, biz.TeamRunStatusSuccess)
@@ -185,7 +185,7 @@ func TestFinalizeTeamRun_NonDagTeam_GateSkipped(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1"} // no DagNodeID
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 
 	if gateCalled {
 		t.Fatal("deliverable gate must not be consulted for non-DAG teams")
@@ -211,7 +211,7 @@ func TestFinalizeTeamRun_GateError_MarkedFailed(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 
 	if got.Status != biz.TeamRunStatusFailed {
 		t.Fatalf("run status=%q want %q", got.Status, biz.TeamRunStatusFailed)
@@ -231,7 +231,7 @@ func TestFinalizeTeamRun_NilGate_Success(t *testing.T) {
 	repo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("run status=%q want %q", got.Status, biz.TeamRunStatusSuccess)

@@ -212,7 +212,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	l4Reconsolidator := provideReconsolidationService(dataData, loggatewayLogger)
 	memoryJobDeadLetterRepo := data.NewMemoryJobDeadLetterRepo(dataData)
 	repository := service.NewSkillDBRepository(skillUsecase, loggatewayLogger)
-	evolutionService := provideEvolutionService(llmProviderModelUsecase, repository, loggatewayLogger)
+	usecaseRef := provideUsageUsecaseRef()
+	evolutionService := provideEvolutionService(llmProviderModelUsecase, repository, usecaseRef, loggatewayLogger)
 	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, l4Reconsolidator, loggatewayLogger, memoryJobDeadLetterRepo, evolutionService)
 	promptFileAIEditor := providePromptFileAIEditor(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
 	agentTemplateRepo := data.NewAgentTemplateRepo(dataData)
@@ -243,7 +244,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionRepo := data.NewSessionRepo(dataData, sessionMetricsWriter, sessionMetricsCache)
 	sessionAgentLookup := biz.NewSessionAgentLookup(agentRepository)
 	teamLookup := biz.NewSessionTeamLookup(teamRepo)
-	sessionTitleGenerator := provideSessionTitleGenerator(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
+	sessionTitleGenerator := provideSessionTitleGenerator(llmProviderModelUsecase, usecaseRef, persistenceSet, loggatewayLogger)
 	sessionParticipantRepository := data.NewSessionParticipantRepo(dataData)
 	sessionStatusPublisher := service.ProvideSessionStatusPublisher(v2Bus)
 	metricsUpdatedPublisher := service.ProvideMetricsUpdatedPublisher(v2Bus)
@@ -282,7 +283,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolResultReplacementRepo := data.NewToolResultReplacementRepo(dataData)
 	toolResultGate := biz.NewToolResultGate(toolResultBlobRepo, toolResultBlobRepo, toolResultReplacementRepo, toolResultReplacementRepo)
 	router := provideOutboundRouter(loggatewayLogger)
-	subagentService, err := provideSubAgentService(loggatewayLogger)
+	subagentService, err := provideSubAgentService(usecaseRef, loggatewayLogger)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -306,7 +307,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	teamAgentIDResolver := provideTeamAgentIDResolver(agentRepository)
 	teamUsecaseOpts := provideTeamUsecaseOpts(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, agentIDExistenceChecker, deptLeadManager, graphReader, graphWriter, teamCompiler, teamGraphAssetStore, dataData, teamLinkedGraphReader, teamAgentIDResolver, channelUsecase, loggatewayLogger)
 	teamUsecase := provideTeamUsecase(teamUsecaseOpts, graphUsecase)
-	usageUsecase := provideUsageUsecase(usageRepo, monitorUsecase, teamUsecase, sessionUsecase, v2Bus, loggatewayLogger)
+	usageUsecase := provideUsageUsecase(usageRepo, monitorUsecase, teamUsecase, sessionUsecase, v2Bus, usecaseRef, loggatewayLogger)
 	providerReader := data.NewMediaProviderRepo(dataData)
 	sessionRuntime := session2.NewRuntime(sessionService, loggatewayLogger)
 	compressReadDeps := session2.ProvideCompressReadDepsAdapter(sessionRepo, activityLister)
@@ -817,12 +818,12 @@ func providePromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, _ runtime.P
 	return service.NewPromptFileAIEditor(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
 }
 
-func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ runtime.PersistenceSet, lg loggateway.Logger) biz.SessionTitleGenerator {
+func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, usageRef *biz.UsageUsecaseRef, _ runtime.PersistenceSet, lg loggateway.Logger) biz.SessionTitleGenerator {
 	if catalog == nil {
 		return biz.NewNoopSessionTitleGenerator()
 	}
 	httpClient := &http.Client{Timeout: 15 * time.Second}
-	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
+	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient}, usageRef, lg)
 }
 
 // provideRefineLLMRoundTrip provides a centralized HTTP client for
@@ -948,7 +949,7 @@ func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetP
 	mgr.Register("mcp-toolset-pool", mcpPool)
 
 	mgr.Register("global-shard-cache", shardCache)
-	// 框架 v1.11 技能演化 worker：进程退出时优雅停止（nil 时 Register 跳过）。
+
 	mgr.Register("skill-evolution-service", evolutionSvc)
 	return mgr
 }
@@ -1099,13 +1100,24 @@ func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Log
 	})
 }
 
-func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, eventBus biz.EventBus, lg loggateway.Logger) *biz.UsageUsecase {
+// provideUsageUsecaseRef builds the late-binding cell for *biz.UsageUsecase
+// (P1-2, 2026-08-19). It has zero dependencies so aux-usage recorders that
+// sit upstream of UsageUsecase in the DI graph (session-title generator,
+// subagent service, evolution review model) can resolve the usecase lazily
+// at record time without creating wire cycles.
+func provideUsageUsecaseRef() *biz.UsageUsecaseRef {
+	return biz.NewUsageUsecaseRef()
+}
+
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, eventBus biz.EventBus, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) *biz.UsageUsecase {
 	uc := biz.NewUsageUsecase(repo, lg)
 	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
 	uc.SetTeamReader(teamUC)
 	uc.SetSessionMetricsAccumulator(&sessionMetricsAdapter{sessions: sessions})
 	uc.SetCompletionUsageLinker(&completionLinkerAdapter{mon: mon})
 	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{eventBus: eventBus})
+
+	usageRef.Set(uc)
 	return uc
 }
 
@@ -1468,8 +1480,7 @@ func provideChatServiceDeps(
 	teamStarter biz.TeamStarterPort,
 	graphExec biz.GraphExecutor,
 	taskOrch biz.TaskOrchestratorPort,
-	skillEvo *biz.SkillEvolutionUsecase,
-	evolution *biz.EvolutionUsecase,
+	skillEvo *biz.SkillEvolutionUsecase, evolution2 *biz.EvolutionUsecase,
 	skillStats biz.SkillInvocationStatsReader,
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagent.Service,
@@ -1541,7 +1552,7 @@ func provideChatServiceDeps(
 		},
 		Evolution: service.ChatEvolutionDeps{
 			SkillEvo:  skillEvo,
-			Evolution: evolution,
+			Evolution: evolution2,
 		},
 		Infra: service.ChatInfraDeps{
 			LG:                        lg,
@@ -1651,12 +1662,13 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 // provideEvolutionService 装配框架 v1.11 技能演化 service（hold-all 模式，
 // 详见 internal/skill/evolution 包注释）。模型目录/技能 repo 缺失时返回 nil，
 // runner 侧自动跳过演化学习。
-func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo skill.Repository, lg loggateway.Logger) evolution.Service {
+func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo skill.Repository, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) evolution.Service {
 	svc := evolution2.NewService(evolution2.Config{
-		Catalog: catalog,
-		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
-		Repo:    repo,
-		Lg:      lg,
+		Catalog:  catalog,
+		RT:       &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
+		Repo:     repo,
+		UsageRef: usageRef,
+		Lg:       lg,
 	})
 	if svc == nil {
 		return nil
@@ -2267,9 +2279,20 @@ func provideOutboundRouter(lg loggateway.Logger) *outbound.Router {
 	return outbound.NewRouter(lg)
 }
 
-func provideSubAgentService(lg loggateway.Logger) (*subagent.Service, error) {
+func provideSubAgentService(usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) (*subagent.Service, error) {
 
-	return subagent.NewService("./data", nil, lg)
+	svc, err := subagent.NewService("./data", nil, lg)
+	if err != nil {
+		return nil, err
+	}
+
+	svc.SetUsageRecorder(subagent.UsageRecorderFunc(func(ctx context.Context, in biz.AuxLLMUsageInput) error {
+		if u := usageRef.Get(); u != nil {
+			return u.RecordAuxLLMUsage(ctx, in)
+		}
+		return nil
+	}))
+	return svc, nil
 }
 
 func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL2DecayWorker {

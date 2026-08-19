@@ -249,5 +249,19 @@ func (s *VoiceIntentSpeculator) defaultRunIntent(ctx context.Context, ag biz.Age
 	prov, mod = resolveIntentPassProviderModel(ctx, s.orch.td().ReadDeps.LLM, prov, mod, s.lg)
 	res := intent.RunForAgent(ctx, ag, s.orch.td().ReadDeps.LLM, s.orch.td().LLMHTTP,
 		prov, mod, text, s.orch.recentIntentHistory(ctx, sessionID, text), s.lg)
+	// P1-2 (2026-08-19): 记录语音预推测 intent pass 旁路用量（与 Turn 侧同源）。
+	s.orch.turnMetrics().RecordAuxUsage(ctx, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxIntent,
+		SessionID:     sessionID,
+		AgentID:       ag.ID,
+		AgentKey:      ag.AgentKey,
+		Provider:      prov,
+		Model:         mod,
+		Status:        "success",
+		PromptTok:     res.PromptTok,
+		CompletionTok: res.CompletionTok,
+		UsageSource:   biz.UsageSourceResponse,
+		Latency:       res.Duration,
+	})
 	return res.Artifact
 }

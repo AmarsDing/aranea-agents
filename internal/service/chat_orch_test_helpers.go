@@ -124,6 +124,7 @@ type noopTurnRecorder struct{}
 
 func (noopTurnRecorder) RecordTurnUsage(context.Context, TurnUsageParams)           {}
 func (noopTurnRecorder) RecordSessionTurn(context.Context, SessionTurnRecordParams) {}
+func (noopTurnRecorder) RecordAuxUsage(context.Context, biz.AuxLLMUsageInput)       {}
 
 // noopTurnEventPublisher satisfies turnEventPublisher.
 type noopTurnEventPublisher struct{}

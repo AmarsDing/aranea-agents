@@ -17,6 +17,7 @@ import (
 
 	"aranea-agents/pkg/apierror"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -118,11 +119,38 @@ type ModeBStartedHook func(ctx context.Context, info ModeBStartedInfo)
 // ModeBFinishedHook is invoked after a subagent run finishes.
 type ModeBFinishedHook func(ctx context.Context, info ModeBFinishedInfo)
 
+// UsageRecorder records auxiliary (non-chat-turn) LLM usage. Implemented by
+// *biz.UsageUsecase; injected via SetUsageRecorder (P1-2, 2026-08-19).
+type UsageRecorder interface {
+	RecordAuxLLMUsage(ctx context.Context, in biz.AuxLLMUsageInput) error
+}
+
+// UsageRecorderFunc adapts a function to UsageRecorder.
+type UsageRecorderFunc func(ctx context.Context, in biz.AuxLLMUsageInput) error
+
+// RecordAuxLLMUsage implements UsageRecorder.
+func (f UsageRecorderFunc) RecordAuxLLMUsage(ctx context.Context, in biz.AuxLLMUsageInput) error {
+	return f(ctx, in)
+}
+
+// runAttribution snapshots the provider/model/agent identity of the parent
+// turn at Spawn time, so the (asynchronous) subagent run's token usage is
+// billed to the right model even after another session's turn has rotated
+// the service's current runner/attribution.
+type runAttribution struct {
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	AgentID  string `json:"agent_id,omitempty"`
+	AgentKey string `json:"agent_key,omitempty"`
+}
+
 type Service struct {
 	path           string
 	runner         trpcrunner.Runner
 	lg             loggateway.Logger
 	outboundRouter *outbound.Router // optional: for completion notifications
+	usageRecorder  UsageRecorder    // optional: nil skips aux usage recording
+	attribution    runAttribution   // latest turn's attribution (set alongside SetRunner)
 
 	runes *runesManager
 
@@ -201,6 +229,9 @@ type runRecord struct {
 	// summaryRunes is the max rune count for stored subagent summaries.
 	// When <= 0, defaultStoredSummaryRunes is used.
 	SummaryRunes int `json:"summary_runes,omitempty"`
+	// attribution snapshots the parent turn's provider/model/agent at Spawn
+	// time, for aux usage billing of the asynchronous run (P1-2).
+	Attribution runAttribution `json:"attribution,omitempty"`
 }
 
 type storeFile struct {
@@ -247,6 +278,33 @@ func (s *Service) SetRunner(r trpcrunner.Runner) {
 	if s != nil {
 		s.mu.Lock()
 		s.runner = r
+		s.mu.Unlock()
+	}
+}
+
+// SetUsageRecorder injects the aux-usage recorder (P1-2, 2026-08-19).
+// Safe to call before Start; nil disables recording.
+func (s *Service) SetUsageRecorder(ur UsageRecorder) {
+	if s != nil {
+		s.mu.Lock()
+		s.usageRecorder = ur
+		s.mu.Unlock()
+	}
+}
+
+// SetAttribution snapshots the current turn's provider/model/agent identity.
+// Must be called alongside SetRunner (same turn-build site): subagent runs
+// execute asynchronously, so billing attribution is captured at Spawn time
+// from this snapshot (last-writer-wins, same semantics as the runner itself).
+func (s *Service) SetAttribution(provider, model, agentID, agentKey string) {
+	if s != nil {
+		s.mu.Lock()
+		s.attribution = runAttribution{
+			Provider: strings.TrimSpace(provider),
+			Model:    strings.TrimSpace(model),
+			AgentID:  strings.TrimSpace(agentID),
+			AgentKey: strings.TrimSpace(agentKey),
+		}
 		s.mu.Unlock()
 	}
 }
@@ -458,6 +516,10 @@ func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
 		OwnerUserID:  strings.TrimSpace(req.OwnerUserID),
 		ResultRunes:  resultRunes,
 		SummaryRunes: summaryRunes,
+		// P1-2: snapshot billing attribution now — the run executes
+		// asynchronously and the service-level attribution may have rotated
+		// to another session's turn by then. Caller (Spawn) holds s.mu.
+		Attribution: s.attribution,
 	}
 }
 
@@ -610,9 +672,128 @@ func (s *Service) execute(parent context.Context, runID string, timeoutSeconds i
 	}
 
 	result := replyAccumulator{}
-	runErr := s.runChild(runCtx, record, started, &result)
+	usage := &usageAccum{}
+	runErr := s.runChild(runCtx, record, started, &result, usage)
 	output := sanitizeStoredResult(result.text, record.ResultRunes)
 	s.finishRun(runID, output, runErr, record.SummaryRunes)
+	s.recordRunUsage(record, started, usage, runErr)
+}
+
+// recordRunUsage persists the subagent run's LLM token usage as an
+// aux_subagent usage event (P1-2, 2026-08-19). Zero-token runs (spawn
+// failures, provider returned no usage) are skipped: nothing observable was
+// consumed. Best-effort: failures are Warn-logged, never fatal.
+func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *usageAccum, runErr error) {
+	if s == nil || record == nil || usage == nil {
+		return
+	}
+	s.mu.RLock()
+	rec := s.usageRecorder
+	s.mu.RUnlock()
+	if rec == nil {
+		return
+	}
+	promptTok, completionTok, cachedTok := usage.totals()
+	if promptTok <= 0 && completionTok <= 0 {
+		return
+	}
+	status := "success"
+	var errMsg string
+	switch {
+	case errors.Is(runErr, context.Canceled):
+		status = "cancelled"
+	case errors.Is(runErr, context.DeadlineExceeded):
+		status = "timeout"
+	case runErr != nil:
+		status = "failed"
+		errMsg = runErr.Error()
+	}
+	attr := record.Attribution
+	// Prefer the provider-reported model id (authoritative for what actually
+	// served the run); fall back to the Spawn-time attribution snapshot.
+	model := usage.model
+	if model == "" {
+		model = attr.Model
+	}
+	latency := time.Duration(0)
+	if !started.startedAt.IsZero() {
+		latency = s.clock().Sub(started.startedAt)
+	}
+	if err := rec.RecordAuxLLMUsage(context.Background(), biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxSubagent,
+		SessionID:     record.ParentSessionID,
+		RunID:         record.ID,
+		AgentID:       attr.AgentID,
+		AgentKey:      attr.AgentKey,
+		UserID:        record.OwnerUserID,
+		Provider:      attr.Provider,
+		Model:         model,
+		Status:        status,
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		CachedTok:     cachedTok,
+		UsageSource:   "streaming",
+		Latency:       latency,
+		ErrMsg:        errMsg,
+	}); err != nil {
+		s.lg.Warn("subagent aux usage record failed",
+			loggateway.StepID("tool.subagent_usage_record"),
+			loggateway.Str("run_id", record.ID),
+			loggateway.Err(err))
+	}
+}
+
+// usageAccum accumulates per-round billing totals from the run's event
+// stream. Semantics mirror agent.accumulateStreamUsage (2026-08-19): each
+// LLM round is a separately billed API call → prompt/cached/completion are
+// SUMMED across rounds; within one round streaming usage is cumulative →
+// track the max. A usage payload whose prompt differs from the current
+// round's prompt marks a new billable round.
+type usageAccum struct {
+	prevPrompt, prevCompletion, prevCached int
+	curPrompt, curCompletion, curCached    int
+	// model is the last non-empty provider-reported model id seen.
+	model string
+}
+
+func (a *usageAccum) consume(evt *trpcevent.Event) {
+	if a == nil || evt == nil || evt.Response == nil {
+		return
+	}
+	if m := strings.TrimSpace(evt.Response.Model); m != "" {
+		a.model = m
+	}
+	u := evt.Response.Usage
+	if u == nil {
+		return
+	}
+	promptTok := u.PromptTokens
+	completionTok := u.CompletionTokens
+	cachedTok := u.PromptTokensDetails.CachedTokens
+	if promptTok != a.curPrompt {
+		a.prevPrompt += a.curPrompt
+		a.prevCompletion += a.curCompletion
+		a.prevCached += a.curCached
+		a.curPrompt = promptTok
+		a.curCompletion = completionTok
+		a.curCached = cachedTok
+	} else {
+		if completionTok > a.curCompletion {
+			a.curCompletion = completionTok
+		}
+		if cachedTok > a.curCached {
+			a.curCached = cachedTok
+		}
+	}
+}
+
+func (a *usageAccum) totals() (prompt, completion, cached int) {
+	if a == nil {
+		return 0, 0, 0
+	}
+	return a.prevPrompt + a.curPrompt,
+		a.prevCompletion + a.curCompletion,
+		a.prevCached + a.curCached
 }
 
 func (s *Service) runChild(
@@ -620,6 +801,7 @@ func (s *Service) runChild(
 	record *runRecord,
 	started runningRun,
 	result *replyAccumulator,
+	usage *usageAccum,
 ) error {
 	if record == nil {
 		return apierror.Internal(apierror.DomainSubagent, "nil run record")
@@ -653,6 +835,7 @@ func (s *Service) runChild(
 		return err
 	}
 	for evt := range evts {
+		usage.consume(evt)
 		result.consume(evt)
 	}
 	return result.err

@@ -3,11 +3,13 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -22,13 +24,105 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
+// UsecaseRef is a late-binding cell for *Usecase (P1-2, 2026-08-19).
+// Aux-usage recorders (session-title generator, subagent service, evolution
+// review model) sit UPSTREAM of Usecase in the wire DI graph, so constructor
+// injection of *Usecase creates dependency cycles. The ref has zero
+// dependencies: wire builds it first, provideUsageUsecase populates it, and
+// recorders resolve the usecase lazily at record time (always post-startup).
+type UsecaseRef struct {
+	p atomic.Pointer[Usecase]
+}
+
+// NewUsecaseRef returns an empty ref (Get returns nil until Set is called).
+func NewUsecaseRef() *UsecaseRef { return &UsecaseRef{} }
+
+// Set publishes the usecase; safe for concurrent use, last-writer-wins.
+func (r *UsecaseRef) Set(u *Usecase) {
+	if r != nil {
+		r.p.Store(u)
+	}
+}
+
+// Get returns the current usecase, or nil before Set is called.
+func (r *UsecaseRef) Get() *Usecase {
+	if r == nil {
+		return nil
+	}
+	return r.p.Load()
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const (
 	KindChatTurn   = "chat_turn"
 	KindTeamMember = "team_member"
 	KindTeamTurn   = "team_turn"
+	// Aux kinds: auxiliary (non-chat-turn) LLM calls that previously went
+	// unrecorded (P1-1, 2026-08-19). All are billable consumption and must
+	// participate in aggregates/quota (the billable filter only excludes
+	// team_turn, so aux kinds are included by default).
+	KindAuxSubagent  = "aux_subagent"  // subagent tool runs (runner.Run child sessions)
+	KindAuxTitle     = "aux_title"     // session-title generation
+	KindAuxIntent    = "aux_intent"    // intent pass classification
+	KindAuxEvolution = "aux_evolution" // evolution draft generation
 )
+
+// MetadataKeyUsageSource is the metadata_json key recording how a usage row's
+// token counts were obtained: "streaming" / "runner_completion" (provider-reported)
+// or "estimated" (filled from text by EstimateTokensIfMissing). Lets DB queries
+// distinguish estimated rows from authoritative ones (P0-2, 2026-08-19).
+const MetadataKeyUsageSource = "usage_source"
+
+// MergeUsageSourceMetadata sets metadata_json[usage_source], preserving existing
+// keys. Passthrough when usageSource is empty (usage never observed — nothing to
+// claim) or metaJSON is unparseable (caller keeps its original payload).
+func MergeUsageSourceMetadata(metaJSON, usageSource string) string {
+	usageSource = strings.TrimSpace(usageSource)
+	if usageSource == "" {
+		return metaJSON
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metaJSON), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	payload[MetadataKeyUsageSource] = usageSource
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return metaJSON
+	}
+	return string(raw)
+}
+
+// MetadataKeyUsageAttribution is the metadata_json key recording how a usage
+// row's tokens are attributed. UsageAttributionRunLevelAnchorFallback marks
+// team_member rows that carry RUN-LEVEL totals attributed to the anchor member
+// (anchor-fallback path when graph watch produced no per-member steps) — such
+// rows duplicate the team_turn row's totals and must NOT additionally
+// accumulate session metrics (P2-1 双计根治, 2026-08-19).
+const MetadataKeyUsageAttribution = "usage_attribution"
+
+// UsageAttributionRunLevelAnchorFallback see MetadataKeyUsageAttribution.
+const UsageAttributionRunLevelAnchorFallback = "run_level_anchor_fallback"
+
+// MergeUsageAttributionMetadata sets metadata_json[usage_attribution],
+// preserving existing keys. Same passthrough rules as MergeUsageSourceMetadata.
+func MergeUsageAttributionMetadata(metaJSON, attribution string) string {
+	attribution = strings.TrimSpace(attribution)
+	if attribution == "" {
+		return metaJSON
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metaJSON), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	payload[MetadataKeyUsageAttribution] = attribution
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return metaJSON
+	}
+	return string(raw)
+}
 
 // Platform-wide quota scope identifiers.
 const (
@@ -849,6 +943,27 @@ func applyPricingUSDToEvent(e *TokenUsageEvent, snap ModelPricingSnapshot) {
 	}
 }
 
+// QuoteTokenUsageCostMicroUSD computes the total cost (micro USD) for the given
+// token counts via the same pricing path used when persisting usage events
+// (enrichPricing → ApplyTokenUsageCosts). Returns 0 for nil usecase, zero-token
+// input, or unpriced provider/model — callers treat 0 as "no cost data", which
+// matches the behavior of usage rows recorded without a pricing snapshot.
+// Read-only: nothing is persisted (P2-1 TeamRunStep.CostMicroUSD 回填).
+func (u *Usecase) QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod string, inputTok, outputTok, cachedTok int) int64 {
+	if u == nil || (inputTok <= 0 && outputTok <= 0) {
+		return 0
+	}
+	e := &TokenUsageEvent{
+		ProviderCode:      strings.TrimSpace(prov),
+		ModelAPIID:        strings.TrimSpace(mod),
+		InputTokens:       inputTok,
+		OutputTokens:      outputTok,
+		CachedInputTokens: cachedTok,
+	}
+	u.enrichPricing(ctx, e)
+	return e.TotalCostMicroUSD
+}
+
 // ── Status normalization ──────────────────────────────────────────────────────
 
 // NormalizeStatus maps legacy writer values to DB canonical status.
@@ -1181,21 +1296,25 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(usageRecordTimeoutSec)*time.Second)
 	defer cancel()
-	if _, err := u.RecordTokenUsageEvent(recCtx, ev); err != nil {
+	// recEv carries the normalized row (CallCount=1 etc.); accumulate/publish
+	// from it, not from the pre-normalization ev (P1-1 fix: ev.CallCount was 0,
+	// so session_metrics.model_call_count never incremented).
+	recEv, err := u.RecordTokenUsageEvent(recCtx, ev)
+	if err != nil {
 		return err
 	}
 	if u.sessAccum != nil && strings.TrimSpace(in.SessionID) != "" {
 		u.sessAccum.AccumulateMetricsDelta(SessionMetricsDelta{
 			SessionID:         in.SessionID,
-			ModelCallCount:    ev.CallCount,
-			InputTokens:       int64(ev.InputTokens),
-			OutputTokens:      int64(ev.OutputTokens),
-			TotalTokens:       int64(ev.TotalTokens),
-			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+			ModelCallCount:    recEv.CallCount,
+			InputTokens:       int64(recEv.InputTokens),
+			OutputTokens:      int64(recEv.OutputTokens),
+			TotalTokens:       int64(recEv.TotalTokens),
+			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
 	if u.envelopePub != nil {
-		u.envelopePub.PublishTokenUsageEnvelope(ctx, ev)
+		u.envelopePub.PublishTokenUsageEnvelope(ctx, recEv)
 	}
 	if u.completion != nil && strings.TrimSpace(in.SessionID) != "" && strings.TrimSpace(in.RunID) != "" {
 		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(usageLinkTimeoutSec)*time.Second)
@@ -1210,6 +1329,113 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 // newUsageID returns a new UUID for usage events.
 func newUsageID() string {
 	return uuid.NewString()
+}
+
+// UsageSourceResponse marks provider-reported usage read from a non-streaming
+// HTTP response body (intent pass / title generation / evolution calls).
+// Complements the stream-path sources defined in internal/agent/turn_helpers.go.
+const UsageSourceResponse = "response"
+
+// AuxLLMUsageInput captures the data needed to record usage for an auxiliary
+// (non-chat-turn) LLM call: subagent runs, session-title generation, intent
+// pass classification, evolution drafting, etc. (P1-1, 2026-08-19).
+type AuxLLMUsageInput struct {
+	// Kind is one of KindAux*; required.
+	Kind string
+	// SessionID is optional — empty for session-less callers (e.g. evolution).
+	// When set, session metrics are accumulated (same as chat turns).
+	SessionID string
+	// RunID is an optional correlation id (subagent run id / intent run id);
+	// stored in MessageID for cross-referencing.
+	RunID    string
+	AgentID  string
+	AgentKey string
+	TeamID   string
+	UserID   string
+	Provider string
+	Model    string
+	Status   string
+	// PromptTok/CompletionTok are provider-reported usage; CachedTok is the
+	// cache-hit portion of PromptTok. When the caller only knows the total
+	// (e.g. biz.LLMCaller collapses the breakdown), put it in CompletionTok
+	// and leave PromptTok=0 — cost is then priced at the output rate, which
+	// overestimates slightly; prefer plumbing the real breakdown where possible.
+	PromptTok     int
+	CompletionTok int
+	CachedTok     int
+	// UsageSource records how the token counts were obtained
+	// (UsageSourceResponse / "streaming" / "estimated"); merged into
+	// metadata_json["usage_source"].
+	UsageSource  string
+	Latency      time.Duration
+	ErrMsg       string
+	MetadataJSON string
+}
+
+// RecordAuxLLMUsage records token usage for an auxiliary LLM call.
+// Like RecordTurnUsage it persists the event (with pricing enrichment and
+// budget-alert scheduling), accumulates session metrics when SessionID is
+// set, and publishes an envelope; unlike it there is no runner-completion
+// row to link.
+func (u *Usecase) RecordAuxLLMUsage(ctx context.Context, in AuxLLMUsageInput) error {
+	if u == nil {
+		return nil
+	}
+	if strings.TrimSpace(in.Kind) == "" {
+		return apierror.BadRequest("USAGE", "kind is required")
+	}
+	now := u.now()
+	meta := strings.TrimSpace(in.MetadataJSON)
+	if meta == "" {
+		meta = "{}"
+	}
+	meta = MergeUsageSourceMetadata(meta, in.UsageSource)
+	ev := TokenUsageEvent{
+		ID:                newUsageID(),
+		SessionID:         in.SessionID,
+		AgentKey:          in.AgentKey,
+		AgentID:           in.AgentID,
+		TeamID:            in.TeamID,
+		UserID:            in.UserID,
+		ModelAPIID:        in.Model,
+		ModelDisplayName:  in.Model,
+		ProviderCode:      in.Provider,
+		InputTokens:       in.PromptTok,
+		OutputTokens:      in.CompletionTok,
+		CachedInputTokens: in.CachedTok,
+		TotalTokens:       in.PromptTok + in.CompletionTok,
+		LatencyMS:         int(in.Latency.Milliseconds()),
+		Status:            in.Status,
+		UsageKind:         in.Kind,
+		MetadataJSON:      meta,
+		OccurredAt:        now.Format(time.RFC3339),
+		DateKey:           now.Format("2006-01-02"),
+		HourKey:           now.Format("2006-01-02T15"),
+		ErrorMessage:      in.ErrMsg,
+	}
+	if in.RunID != "" {
+		ev.MessageID = in.RunID
+	}
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(usageRecordTimeoutSec)*time.Second)
+	defer cancel()
+	recEv, err := u.RecordTokenUsageEvent(recCtx, ev)
+	if err != nil {
+		return err
+	}
+	if u.sessAccum != nil && strings.TrimSpace(in.SessionID) != "" {
+		u.sessAccum.AccumulateMetricsDelta(SessionMetricsDelta{
+			SessionID:         in.SessionID,
+			ModelCallCount:    recEv.CallCount,
+			InputTokens:       int64(recEv.InputTokens),
+			OutputTokens:      int64(recEv.OutputTokens),
+			TotalTokens:       int64(recEv.TotalTokens),
+			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
+		})
+	}
+	if u.envelopePub != nil {
+		u.envelopePub.PublishTokenUsageEnvelope(ctx, recEv)
+	}
+	return nil
 }
 
 // ── Budget alerts ─────────────────────────────────────────────────────────────

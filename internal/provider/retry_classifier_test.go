@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -120,5 +122,46 @@ func TestClassifyRetry_UnknownErrorDefaultsToBackoff(t *testing.T) {
 	decision := ClassifyRetry(nil, errors.New("some unknown transient failure"))
 	if decision.Type != RetryWithBackoff {
 		t.Errorf("expected RetryWithBackoff for unknown error, got %v", decision.Type)
+	}
+}
+
+// TestClassifyRetry_ConnRefused verifies that ECONNREFUSED (endpoint process
+// down) is retried only up to connRefusedMaxAttempts instead of inheriting
+// the infinite default — a dead relay must fail fast, not hang the turn.
+func TestClassifyRetry_ConnRefused(t *testing.T) {
+	syscallErr := &net.OpError{Op: "dial", Net: "tcp", Err: &os.SyscallError{Syscall: "connect", Err: syscall.ECONNREFUSED}}
+	decision := ClassifyRetry(nil, syscallErr)
+	if decision.Type != RetryWithBackoff {
+		t.Errorf("expected RetryWithBackoff for ECONNREFUSED, got %v", decision.Type)
+	}
+	if decision.MaxAttempts != connRefusedMaxAttempts {
+		t.Errorf("expected MaxAttempts=%d for ECONNREFUSED, got %d", connRefusedMaxAttempts, decision.MaxAttempts)
+	}
+}
+
+// TestClassifyRetry_ConnRefusedStringFallback covers errors that carry the
+// "connection refused" text without a syscall.ECONNREFUSED in the unwrap
+// chain (e.g. proxy-generated messages).
+func TestClassifyRetry_ConnRefusedStringFallback(t *testing.T) {
+	decision := ClassifyRetry(nil, errors.New("Post \"http://localhost:8899/v1/chat/completions\": dial tcp 127.0.0.1:8899: connect: connection refused"))
+	if decision.Type != RetryWithBackoff {
+		t.Errorf("expected RetryWithBackoff for connection-refused text, got %v", decision.Type)
+	}
+	if decision.MaxAttempts != connRefusedMaxAttempts {
+		t.Errorf("expected MaxAttempts=%d for connection-refused text, got %d", connRefusedMaxAttempts, decision.MaxAttempts)
+	}
+}
+
+// TestClassifyRetry_ConnResetStaysUncapped guards the boundary: connection
+// reset by peer is a mid-flight transient failure and must NOT inherit the
+// connrefused cap.
+func TestClassifyRetry_ConnResetStaysUncapped(t *testing.T) {
+	var netErr net.Error = &net.OpError{Op: "read", Net: "tcp", Err: errors.New("connection reset by peer")}
+	decision := ClassifyRetry(nil, netErr)
+	if decision.Type != RetryWithBackoff {
+		t.Errorf("expected RetryWithBackoff for connection reset, got %v", decision.Type)
+	}
+	if decision.MaxAttempts != 0 {
+		t.Errorf("expected MaxAttempts=0 (uncapped) for connection reset, got %d", decision.MaxAttempts)
 	}
 }

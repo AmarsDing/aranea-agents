@@ -16,16 +16,34 @@ func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
 	meta := ProjectMeta{SessionID: "s1"}
 	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 100, 50, 40)
 	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 30, 150)
-	if result.PromptTok != 200 || result.CompletionTok != 80 {
+	// Billing semantics: every round is a separately billed API call, so
+	// prompt/cached/completion are summed across rounds.
+	if result.PromptTok != 300 || result.CompletionTok != 80 {
 		t.Fatalf("multi-round tokens: prompt=%d completion=%d", result.PromptTok, result.CompletionTok)
 	}
-	if result.CachedTok != 150 {
-		t.Fatalf("CachedTok = %d, want 150 (max across rounds)", result.CachedTok)
+	if result.CachedTok != 190 {
+		t.Fatalf("CachedTok = %d, want 190 (sum across rounds)", result.CachedTok)
 	}
-	// Lower cached in a later chunk must not shrink the accumulated max.
+	// Context occupancy reflects the final round only.
+	if result.LastRoundPromptTok != 200 || result.LastRoundCompletionTok != 30 {
+		t.Fatalf("last-round tokens: prompt=%d completion=%d", result.LastRoundPromptTok, result.LastRoundCompletionTok)
+	}
+	// A chunk with the same prompt is the SAME round (cumulative streaming):
+	// take the per-round max for completion/cached, not another sum step.
 	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 35, 100)
-	if result.CachedTok != 150 {
-		t.Fatalf("CachedTok = %d, want 150 (monotonic max)", result.CachedTok)
+	if result.PromptTok != 300 {
+		t.Fatalf("PromptTok = %d, want 300 (same-round chunk must not double count)", result.PromptTok)
+	}
+	if result.CompletionTok != 85 {
+		t.Fatalf("CompletionTok = %d, want 85 (50 + max(30,35))", result.CompletionTok)
+	}
+	if result.CachedTok != 190 {
+		t.Fatalf("CachedTok = %d, want 190 (40 + max(150,100))", result.CachedTok)
+	}
+	// Prompt shrink (mid-run compaction) also starts a new billed round.
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 60, 10, 0)
+	if result.PromptTok != 360 || result.LastRoundPromptTok != 60 {
+		t.Fatalf("post-compaction: prompt=%d lastRound=%d, want 360/60", result.PromptTok, result.LastRoundPromptTok)
 	}
 }
 
@@ -69,6 +87,32 @@ func TestAccumulateStreamUsage_skipsTeamRootAuthor(t *testing.T) {
 	accumulateStreamUsage(&result, ev, meta, 10, 5, 0)
 	if len(result.MemberUsage) != 0 {
 		t.Fatalf("expected no member usage for team root author, got %+v", result.MemberUsage)
+	}
+}
+
+func TestAccumulateStreamUsage_memberMultiRoundSums(t *testing.T) {
+	var result EventStreamResult
+	meta := ProjectMeta{
+		TeamID:          "team-1",
+		MemberAgentKeys: map[string]struct{}{"worker-b": {}},
+	}
+	usageEv := func(p, c, cached int) *trpcevent.Event {
+		return &trpcevent.Event{
+			Author: "worker-b",
+			Response: &trpcmodel.Response{
+				Usage: &trpcmodel.Usage{PromptTokens: p, CompletionTokens: c},
+			},
+		}
+	}
+	// Two rounds for worker-b: billing totals must sum across rounds.
+	accumulateStreamUsage(&result, usageEv(100, 50, 0), meta, 100, 50, 10)
+	accumulateStreamUsage(&result, usageEv(200, 30, 0), meta, 200, 30, 20)
+	u, ok := result.MemberUsage["worker-b"]
+	if !ok {
+		t.Fatalf("member usage missing: %+v", result.MemberUsage)
+	}
+	if u.PromptTokens != 300 || u.CompletionTokens != 80 || u.CachedTokens != 30 {
+		t.Fatalf("member multi-round: got %+v, want prompt=300 completion=80 cached=30", u)
 	}
 }
 

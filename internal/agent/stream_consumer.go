@@ -364,7 +364,11 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 			if ct := ev.Response.Usage.PromptTokensDetails.CachedTokens; ct > c.result.CachedTok {
 				c.result.CachedTok = ct
 			}
-			c.result.UsageSource = "runner_completion"
+			// Runner-completion usage is the authoritative final-round payload:
+			// treat it as the context occupancy source as well.
+			c.result.LastRoundPromptTok = ev.Response.Usage.PromptTokens
+			c.result.LastRoundCompletionTok = ev.Response.Usage.CompletionTokens
+			c.result.UsageSource = UsageSourceRunnerCompletion
 		}
 		return true
 	}
@@ -394,7 +398,7 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		// Streaming usage is interim; only mark as streaming if RunnerCompletion
 		// hasn't already set the authoritative source.
 		if c.result.UsageSource == "" {
-			c.result.UsageSource = "streaming"
+			c.result.UsageSource = UsageSourceStreaming
 		}
 	}
 
@@ -432,7 +436,10 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 }
 
 func (c *turnStreamConsumer) publishContextUsageStep() {
-	if c.projectMeta.ContextWindow <= 0 || c.result.PromptTok <= 0 {
+	// Context occupancy uses the LAST round's prompt (the current window
+	// fill), not the billing total summed across rounds.
+	occupancy := c.result.LastRoundPromptTok
+	if c.projectMeta.ContextWindow <= 0 || occupancy <= 0 {
 		return
 	}
 	if c.v2Projector == nil {
@@ -444,10 +451,10 @@ func (c *turnStreamConsumer) publishContextUsageStep() {
 		author = "agent"
 	}
 	meta := map[string]any{
-		"context_prompt_tokens": c.result.PromptTok,
-		"prompt_tokens":         c.result.PromptTok,
-		"completion_tokens":     c.result.CompletionTok,
-		"total_tokens":          turnTotal,
+		"context_prompt_tokens": occupancy,
+		"prompt_tokens":         occupancy,
+		"completion_tokens":     c.result.LastRoundCompletionTok,
+		"total_tokens":          occupancy + c.result.LastRoundCompletionTok,
 		"turn_total_tokens":     turnTotal,
 		"max_tokens":            c.projectMeta.ContextWindow,
 		"request_id":            c.projectMeta.RequestID,

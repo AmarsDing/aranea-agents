@@ -17,6 +17,13 @@ import (
 // Stability:evolving
 type TeamUsageQuerier interface {
 	RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error)
+	// RecordAuxLLMUsage records auxiliary (non-turn) LLM usage, e.g. the team
+	// intent pass (P1-2, 2026-08-19).
+	RecordAuxLLMUsage(ctx context.Context, in AuxLLMUsageInput) error
+	// QuoteTokenUsageCostMicroUSD computes the total cost (micro USD) for the
+	// given token counts via the active pricing snapshot; 0 when unpriced.
+	// Read-only (P2-1 TeamRunStep.CostMicroUSD 回填).
+	QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod string, inputTok, outputTok, cachedTok int) int64
 }
 
 // TeamSessionManager captures the subset of SessionUsecase needed by the team Runner.

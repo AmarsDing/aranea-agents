@@ -140,6 +140,20 @@ func (o *ChatOrchestrator) runIntentPass(
 	prov, mod = resolveIntentPassProviderModel(ctx, o.td().ReadDeps.LLM, prov, mod, o.lg())
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
 	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.recentIntentHistory(ctx, sessionID, content), o.lg())
+	// P1-2 (2026-08-19): 记录 intent pass 旁路用量（此前完全漏记）。
+	o.turnMetrics().RecordAuxUsage(ctx, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxIntent,
+		SessionID:     sessionID,
+		AgentID:       ag.ID,
+		AgentKey:      ag.AgentKey,
+		Provider:      prov,
+		Model:         mod,
+		Status:        "success",
+		PromptTok:     intRes.PromptTok,
+		CompletionTok: intRes.CompletionTok,
+		UsageSource:   biz.UsageSourceResponse,
+		Latency:       intRes.Duration,
+	})
 	if intRes.Artifact != nil {
 		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
 	} else {
@@ -314,18 +328,23 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 
 	// LLM invocation
-	events, err := o.invokeLLMCall(runCtx, ctx, runner, sess, input, ag, admit, emitter, traceBridge, runOpts, content, turnStart)
+	events, err := o.invokeLLMCall(runCtx, ctx, runner, sess, input, ag, admit, emitter, traceBridge, runOpts, content, turnStart, turnProjector)
 	if err != nil {
-		return turnExecuteResult{userMsg: userMsg}, err
+		// sessionRunID 随错误路径上抛：runSingleAgentViaTRPC 的 EXECUTE 失败
+		// 分支需要它终结 session run（phase=failed），否则残留 interactive/
+		// durable 相位的 run 会被 durable worker 静默续跑（2026-08-19 事故）。
+		return turnExecuteResult{userMsg: userMsg, sessionRunID: sessionRunID}, err
 	}
 
 	// Stream consumption
 	result, streamErr := o.consumeTurnStream(runCtx, abortRun, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
 	if streamErr != nil {
-		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), wrapLLMFailure(streamErr, firstByteTimeout)
+		res := o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart, turnProjector)
+		res.sessionRunID = sessionRunID
+		return res, wrapLLMFailure(streamErr, firstByteTimeout)
 	}
 
-	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart)
+	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart, turnProjector)
 }
 
 // assembleTurnResult checks for context timeout and assembles the final turnExecuteResult.
@@ -350,6 +369,7 @@ func (o *ChatOrchestrator) assembleTurnResult(
 	emitter *event.TraceEmitter,
 	ag biz.Agent,
 	turnStart time.Time,
+	turnProjector *v2.ActivityProjector,
 ) (turnExecuteResult, error) {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) && !result.HasContent {
 		emitter.LogCritical("chat.turn.timeout", "对话请求超时，推送超时提醒并继续等待", event.P("timeout", o.turnTimeout().String()), event.P("reason", "sync_cap"))
@@ -357,7 +377,7 @@ func (o *ChatOrchestrator) assembleTurnResult(
 		// Push a timeout notification via WS instead of failing the turn.
 		// The turn continues to wait for the LLM to respond.
 		o.publishTurnTimeoutNotification(ctx, sessionID, admit.runID, o.turnTimeout())
-		return turnExecuteResult{userMsg: userMsg}, TurnError(TurnErrTurnTimeout, o.turnTimeout().String())
+		return turnExecuteResult{userMsg: userMsg, sessionRunID: sessionRunID}, TurnError(TurnErrTurnTimeout, o.turnTimeout().String())
 	}
 
 	var turnArtCollector *artifactbiz.TurnCollector
@@ -366,10 +386,14 @@ func (o *ChatOrchestrator) assembleTurnResult(
 		userMsg: userMsg, userMsgPersisted: userMsgPersisted, result: result,
 		resultPromptTok: result.PromptTok, resultCompletionTok: result.CompletionTok,
 		sessionRunID: sessionRunID, turnArtCollector: turnArtCollector,
+		turnProjector: turnProjector,
 	}, nil
 }
 
 // invokeLLMCall builds the user turn message, calls the LLM, and returns the event stream.
+// turnProjector is the pre-configured per-turn v2 projector (may be nil); on
+// LLM call failure it persists the failure as an error step via
+// ProjectTurnFailure, since the stream consumer never runs on this path.
 // Stability:internal
 func (o *ChatOrchestrator) invokeLLMCall(
 	runCtx, ctx context.Context,
@@ -383,6 +407,7 @@ func (o *ChatOrchestrator) invokeLLMCall(
 	runOpts []trpcagent.RunOption,
 	content string,
 	turnStart time.Time,
+	turnProjector *v2.ActivityProjector,
 ) (<-chan *trpcevent.Event, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
 	runID := admit.runID
@@ -445,6 +470,16 @@ func (o *ChatOrchestrator) invokeLLMCall(
 		o.publishLLMFailureNotice(ctx, sessionID, fail, err.Error())
 		if fail.Kind == provider.FailureBilling || fail.Kind == provider.FailureAuth {
 			te = TurnError(turnCodeFromFailure(fail), err.Error())
+		}
+		// 2026-08-19 00:48 no-reply incident fix: the stream consumer never
+		// runs on this path, so without this call the failed turn left zero
+		// trace in the v2 activity store (user message + error both lost on
+		// reload). ProjectTurnFailure materializes task+turn, emits exactly
+		// one error step, and finalizes the turn as failed.
+		// Cancel 排除：用户取消期间 LLM 调用以 ctx.Canceled 返回时不得落
+		// error step（cancelled wins，C-10）。
+		if !o.runWasCancelled(ctx, sessionID, err) {
+			turnProjector.ProjectTurnFailure(ctx, err.Error(), string(fail.Kind), "")
 		}
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return nil, te
@@ -675,6 +710,9 @@ func (o *ChatOrchestrator) consumeTurnStream(
 }
 
 // handleStreamError classifies and records stream errors.
+// turnProjector (may be nil) persists the failure as an error step when the
+// stream consumer did not already project one (e.g. first-byte timeout and
+// doom-loop aborts never produce an in-stream Response.Error).
 // Stability:internal
 func (o *ChatOrchestrator) handleStreamError(
 	ctx context.Context,
@@ -685,11 +723,12 @@ func (o *ChatOrchestrator) handleStreamError(
 	streamErr error,
 	firstByteTimeout time.Duration,
 	turnStart time.Time,
+	turnProjector *v2.ActivityProjector,
 ) turnExecuteResult {
 	sessionID := strings.TrimSpace(userMsg.SessionID)
 	runID := admit.runID
+	fail := provider.ClassifyFailure(streamErr.Error(), streamErr)
 	if errors.Is(streamErr, chatagent.ErrFirstByteTimeout) {
-		fail := provider.ClassifyFailure(streamErr.Error(), streamErr)
 		o.publishLLMFailureNotice(ctx, sessionID, fail, streamErr.Error())
 		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，供应商无响应", event.P("timeout", firstByteTimeout.String()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
@@ -702,7 +741,6 @@ func (o *ChatOrchestrator) handleStreamError(
 		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
 	} else {
-		fail := provider.ClassifyFailure(streamErr.Error(), streamErr)
 		o.publishLLMFailureNotice(ctx, sessionID, fail, streamErr.Error())
 		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error()); serr != nil {
 			o.lg().Warn("set run status failed on stream error",
@@ -713,6 +751,11 @@ func (o *ChatOrchestrator) handleStreamError(
 		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 	}
+	// 2026-08-19 no-reply incident fix: persist a durable error step. When the
+	// consumer already routed an in-stream Response.Error through OnError,
+	// ProjectTurnFailure skips the duplicate; the consumer's finalize already
+	// closed the turn, so only the missing pieces are emitted.
+	turnProjector.ProjectTurnFailure(ctx, streamErr.Error(), string(fail.Kind), "")
 	o.publishTurnFailure(sessionID, runID, "chat-service", streamErr, "")
 	return turnExecuteResult{userMsg: userMsg}
 }
@@ -722,6 +765,10 @@ func (o *ChatOrchestrator) handleStreamError(
 // ────────────────────────────────────────────────────────────
 
 // handleEmptyReply records an empty reply error and returns it.
+// turnProjector (may be nil) persists the failure as an error step: the
+// stream consumer finalized the turn normally (no in-stream error), so
+// without this call an empty reply left no durable trace in the activity
+// store (2026-08-19 no-reply incident fix).
 // Stability:internal
 func (o *ChatOrchestrator) handleEmptyReply(
 	ctx context.Context,
@@ -734,6 +781,7 @@ func (o *ChatOrchestrator) handleEmptyReply(
 	turnErr *error,
 	turnErrMsg *string,
 	sessionID string,
+	turnProjector *v2.ActivityProjector,
 ) error {
 	runID := admit.runID
 	fail := provider.ClassifyFailure(result.LastError, nil)
@@ -763,6 +811,12 @@ func (o *ChatOrchestrator) handleEmptyReply(
 		code = turnCodeFromFailure(fail)
 	}
 	te := TurnError(code, detail)
+	// Cancel 排除：用户取消早于首字节时流消费者以 nil error 返回空结果，
+	// 会走到本路径；此时 turn/task 已被消费者以 cancelled 终结，不得再落
+	// error step（cancelled wins，C-10）。
+	if !o.runWasCancelled(ctx, sessionID, nil) {
+		turnProjector.ProjectTurnFailure(ctx, detail, string(fail.Kind), "")
+	}
 	o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 	return te
 }
@@ -993,6 +1047,9 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	o.runs.StoreRunner(sessionID, runID, runner)
 	if o.subAgentService() != nil {
 		o.subAgentService().SetRunner(runner)
+		// P1-2 (2026-08-19): 同步计费归因，供异步 subagent 运行的
+		// aux_subagent 用量记录按父 turn 的 provider/model/agent 计价。
+		o.subAgentService().SetAttribution(prov, mod, ag.ID, ag.AgentKey)
 		if ag.Settings != nil {
 			o.subAgentService().SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
 		}

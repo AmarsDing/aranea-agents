@@ -109,7 +109,7 @@ func TestFinalizeTeamRun_RecordsRunnerCompletion(t *testing.T) {
 	teamRow := biz.Team{ID: "team-1"}
 
 	t0 := time.Now().Add(-2 * time.Second)
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", t0, nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", t0, nil)
 
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("run status=%q want success", got.Status)
@@ -187,7 +187,7 @@ func TestFinalizeTeamRun_NilMonitorNoPanic(t *testing.T) {
 	runRepo.runs[run.ID] = run
 	teamRow := biz.Team{ID: "team-1"}
 
-	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", time.Now(), nil)
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 0, 0, 0, "default", "", "", time.Now(), nil)
 	if got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("run status=%q want success", got.Status)
 	}

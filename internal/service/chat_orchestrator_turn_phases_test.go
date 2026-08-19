@@ -271,7 +271,7 @@ func TestAssembleTurnResult_TurnTimeoutSoftDegradation(t *testing.T) {
 	execResult, err := orch.assembleTurnResult(
 		ctx, "sess-1", turnAdmissionResult{runID: "run-1"},
 		result, userMsg, true, "session-run-1",
-		emitter, biz.Agent{ID: "agent-1"}, time.Now(),
+		emitter, biz.Agent{ID: "agent-1"}, time.Now(), nil,
 	)
 	// Current implementation still returns a TurnError on turn timeout; the
 	// soft-degradation path (no error) is the target design but not yet

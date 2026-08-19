@@ -254,6 +254,11 @@ type RunResult struct {
 	Duration time.Duration
 	// Outcome is one of: completed, skipped_disabled, skipped_preflight, skipped_catalog, skipped_llm, skipped_parse
 	Outcome string
+	// PromptTok/CompletionTok are provider-reported usage of the intent call
+	// (0 when the call never happened or the provider returned no usage).
+	// Surfaced so callers can record aux LLM usage (P1-2, 2026-08-19).
+	PromptTok     int
+	CompletionTok int
 }
 
 // RunMeta carries IDs duplicated into intent_pass event payload (snake_case) for clients that only read payload.
@@ -371,11 +376,13 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 	callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
-	text, _, _, _, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
+	text, _, promptTok, completionTok, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
 	if err != nil {
 		res.Outcome = "skipped_llm"
 		return
 	}
+	res.PromptTok = promptTok
+	res.CompletionTok = completionTok
 	text = stripFences(text)
 	art, raw := parseArtifactJSON(text)
 	if art == nil {

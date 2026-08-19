@@ -333,7 +333,7 @@ function applyLodVisibility(): void {
 
 /** 运行时调试快照（验证 LOD/聚合层状态用，只读）。 */
 (window as unknown as { __kg3dDebug?: () => object }).__kg3dDebug = () => {
-  // V13-A1 验证：孤立节点径向分布（停泊后应集中在环带窄区间 [min≈1.5·p90, max=min+环数·16]）
+  // V13-A1 验证：孤立节点径向分布（停泊后应集中在环带窄区间 [min≈1.4·p90, max=min+环数·12]）
   let isoR: { min: number; max: number; mean: number } | null = null;
   if (engine && model && isolatedSet.length > 0) {
     const p = engine.positions;
@@ -575,7 +575,7 @@ function rebuildGraph(): void {
     {
       chargeScale: tierChargeScales(tiers),
       // V13-B：tier 径向分层（ultra 核 / super 中环 / regular 外环；孤立/末梢 -1 不分层）
-      tierTargetRadius: buildTierTargetRadii(tiers, m.degree, estimateOuterRadius(m.count)),
+      tierTargetRadius: buildTierTargetRadii(tiers, m.degree, estimateOuterRadius(m.count - isolatedSet.length)),
       // V13-A1：孤立节点 init 即冻结（收敛后 handleSettled 统一停泊环）
       pinnedInit: fitExcludeMask ?? undefined,
     },

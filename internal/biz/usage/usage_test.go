@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -9,6 +10,52 @@ import (
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 )
+
+func TestMergeUsageSourceMetadata(t *testing.T) {
+	t.Run("empty_source_passthrough", func(t *testing.T) {
+		if got := MergeUsageSourceMetadata(`{"a":1}`, ""); got != `{"a":1}` {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("sets_key_on_empty_object", func(t *testing.T) {
+		got := MergeUsageSourceMetadata("{}", "estimated")
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got), &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if payload[MetadataKeyUsageSource] != "estimated" {
+			t.Fatalf("usage_source=%v", payload[MetadataKeyUsageSource])
+		}
+	})
+	t.Run("preserves_existing_keys_and_overwrites_source", func(t *testing.T) {
+		got := MergeUsageSourceMetadata(`{"trace_id":"t1","usage_source":"streaming"}`, "estimated")
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got), &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if payload["trace_id"] != "t1" {
+			t.Fatalf("trace_id lost: %v", payload)
+		}
+		if payload[MetadataKeyUsageSource] != "estimated" {
+			t.Fatalf("usage_source=%v want estimated", payload[MetadataKeyUsageSource])
+		}
+	})
+	t.Run("invalid_json_replaced_with_fresh_payload", func(t *testing.T) {
+		got := MergeUsageSourceMetadata("not-json", "streaming")
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got), &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if payload[MetadataKeyUsageSource] != "streaming" {
+			t.Fatalf("usage_source=%v", payload[MetadataKeyUsageSource])
+		}
+	})
+	t.Run("whitespace_source_passthrough", func(t *testing.T) {
+		if got := MergeUsageSourceMetadata(`{"a":1}`, "  "); got != `{"a":1}` {
+			t.Fatalf("got %q", got)
+		}
+	})
+}
 
 func TestNormalizeStatus(t *testing.T) {
 	tests := []struct {

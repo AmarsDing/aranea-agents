@@ -17,6 +17,10 @@ type TeamRunFinishInput struct {
 	Result         agent.EventStreamResult
 	PromptTok      int
 	CompletionTok  int
+	// UsageSource records how PromptTok/CompletionTok were obtained
+	// ("streaming"/"runner_completion"/"estimated"); threaded into the
+	// team_turn / anchor-fallback team_member usage event metadata.
+	UsageSource    string
 	Prov           string
 	Mod            string
 	DialogMode     string
@@ -30,5 +34,5 @@ func (r *Runner) finalizeGraphRunStepsFallback(ctx context.Context, in TeamRunFi
 	if r == nil || in.GraphExecID == "" {
 		return
 	}
-	r.ensureGraphRunStepsFallback(ctx, in.Run, in.TeamID, in.AnchorMem, in.AnchorAg, in.Content, in.AssistantMsg, in.PromptTok, in.CompletionTok, in.Result.CachedTok, in.Prov, in.Mod)
+	r.ensureGraphRunStepsFallback(ctx, in.Run, in.TeamID, in.AnchorMem, in.AnchorAg, in.Content, in.AssistantMsg, in.PromptTok, in.CompletionTok, in.Result.CachedTok, in.Prov, in.Mod, in.UsageSource)
 }

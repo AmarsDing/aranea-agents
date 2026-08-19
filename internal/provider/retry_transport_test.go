@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -214,6 +217,52 @@ func TestRetryTransport_InfiniteRetry(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&stub.callCount); got != 6 {
 		t.Errorf("callCount = %d, want 6", got)
+	}
+}
+
+// TestRetryTransport_ConnRefusedCappedUnderInfinitePolicy verifies that an
+// ECONNREFUSED-class error terminates after connRefusedMaxAttempts retries
+// even when the transport is configured for infinite retry (-1): the
+// per-error-class cap from ClassifyRetry overrides the infinite default.
+func TestRetryTransport_ConnRefusedCappedUnderInfinitePolicy(t *testing.T) {
+	connRefused := &net.OpError{Op: "dial", Net: "tcp", Err: &os.SyscallError{Syscall: "connect", Err: syscall.ECONNREFUSED}}
+	stub := &stubTransport{
+		responses: []*http.Response{nil},
+		errs:      []error{connRefused},
+	}
+	rt := newRetryTransportForTest(stub, -1, nil)
+
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://test", nil)
+	_, err := rt.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected error after cap, got nil")
+	}
+	// 1 initial + connRefusedMaxAttempts retries.
+	want := int32(1 + connRefusedMaxAttempts)
+	if got := atomic.LoadInt32(&stub.callCount); got != want {
+		t.Errorf("callCount = %d, want %d", got, want)
+	}
+}
+
+// TestRetryTransport_ConnRefusedTransportCapTighter verifies that when the
+// transport cap is tighter than the per-error-class cap, the transport cap
+// wins (min semantics).
+func TestRetryTransport_ConnRefusedTransportCapTighter(t *testing.T) {
+	connRefused := &net.OpError{Op: "dial", Net: "tcp", Err: &os.SyscallError{Syscall: "connect", Err: syscall.ECONNREFUSED}}
+	stub := &stubTransport{
+		responses: []*http.Response{nil},
+		errs:      []error{connRefused},
+	}
+	rt := newRetryTransportForTest(stub, 1, nil)
+
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://test", nil)
+	_, err := rt.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected error after cap, got nil")
+	}
+	// 1 initial + 1 retry (transport cap tighter than connRefusedMaxAttempts).
+	if got := atomic.LoadInt32(&stub.callCount); got != 2 {
+		t.Errorf("callCount = %d, want 2", got)
 	}
 }
 
@@ -430,9 +479,23 @@ func TestRetryTransport_NilBaseUsesDefault(t *testing.T) {
 func TestShouldRetry_Infinite(t *testing.T) {
 	rt := &retryTransport{maxRetries: -1}
 	for i := 0; i < 100; i++ {
-		if !rt.shouldRetry(i) {
+		if !rt.shouldRetry(i, 0) {
 			t.Errorf("shouldRetry(%d) = false, want true (infinite)", i)
 		}
+	}
+}
+
+// TestShouldRetry_DecisionCapsInfinite verifies that a per-error-class cap
+// (decisionMax > 0) bounds an otherwise infinite transport policy.
+func TestShouldRetry_DecisionCapsInfinite(t *testing.T) {
+	rt := &retryTransport{maxRetries: -1}
+	for i := 0; i < connRefusedMaxAttempts; i++ {
+		if !rt.shouldRetry(i, connRefusedMaxAttempts) {
+			t.Errorf("shouldRetry(%d, %d) = false, want true", i, connRefusedMaxAttempts)
+		}
+	}
+	if rt.shouldRetry(connRefusedMaxAttempts, connRefusedMaxAttempts) {
+		t.Errorf("shouldRetry(%d, %d) = true, want false", connRefusedMaxAttempts, connRefusedMaxAttempts)
 	}
 }
 
@@ -440,11 +503,11 @@ func TestShouldRetry_Finite(t *testing.T) {
 	rt := &retryTransport{maxRetries: 3}
 	// attempt 0,1,2 should retry; attempt 3 should not.
 	for i := 0; i < 3; i++ {
-		if !rt.shouldRetry(i) {
+		if !rt.shouldRetry(i, 0) {
 			t.Errorf("shouldRetry(%d) = false, want true", i)
 		}
 	}
-	if rt.shouldRetry(3) {
+	if rt.shouldRetry(3, 0) {
 		t.Errorf("shouldRetry(3) = true, want false")
 	}
 }

@@ -7,7 +7,18 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 )
+
+// connRefusedMaxAttempts caps retries for ECONNREFUSED (endpoint process
+// down / port not listening). Unlike genuine transient errors (5xx/429/
+// timeouts), a refused connection means the target is not there at all;
+// retrying it under the default infinite policy (MaxAttempts=-1) makes a
+// dead relay/outage surface as a permanently hanging turn (2026-08-19
+// 00:48 no-reply incident: llm_relay :8899 down → turn retried silently
+// until container restart). 3 retries with 1s base backoff absorb a
+// seconds-level relay restart blip (~7s window) and then fail fast.
+const connRefusedMaxAttempts = 3
 
 // RetryDecisionType is the classified action for a failed LLM request.
 type RetryDecisionType int
@@ -122,6 +133,13 @@ func classifyError(err error) RetryDecision {
 		return RetryDecision{Type: RetryFatal, BackoffStrategy: "exponential"}
 	}
 	msg := strings.ToLower(err.Error())
+	// ECONNREFUSED: 目标进程/端口不存在，不是瞬时抖动。有限重试后上浮，
+	// 由上层走失败路径（持久化错误痕迹 + run 落 failed），而非无限空转。
+	// errors.Is 覆盖 url.Error→net.OpError→os.SyscallError 链；字符串匹配
+	// 兜底非 syscall 包装的代理/Resolver 报错。
+	if errors.Is(err, syscall.ECONNREFUSED) || strings.Contains(msg, "connection refused") {
+		return RetryDecision{Type: RetryWithBackoff, MaxAttempts: connRefusedMaxAttempts, BackoffStrategy: "exponential"}
+	}
 	switch {
 	case matchAny(msg, billingMarkers):
 		// 欠费/余额不足会原样重试到无限，必须 fatal 并交给上层抛横幅。

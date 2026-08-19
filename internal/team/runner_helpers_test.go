@@ -138,7 +138,7 @@ func TestPersistStep_NoMemberCompletedProjection(t *testing.T) {
 	m := MemberDef{Role: "worker"}
 	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: biz.TeamMemberStepStatusOK, CreatedAt: "2026-01-01T00:00:00Z"}
 
-	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2, 0, time.Time{})
+	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2, 0, "", time.Time{}, false)
 
 	repo := runner.runWriter.(*stepBusRunWriter)
 	if len(repo.steps) != 1 {
@@ -173,7 +173,7 @@ func TestPersistStep_NodeStartOverride(t *testing.T) {
 	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: biz.TeamMemberStepStatusOK, CreatedAt: agent.RFC3339Now()}
 	startedAt := time.Now().Add(-3 * time.Second)
 
-	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, startedAt)
+	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, "", startedAt, false)
 
 	repo := runner.runWriter.(*stepBusRunWriter)
 	if len(repo.steps) != 1 {
@@ -201,7 +201,7 @@ func TestPersistStep_ZeroStartKeepsLegacyFallback(t *testing.T) {
 	m := MemberDef{Role: "worker"}
 	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: biz.TeamMemberStepStatusOK, CreatedAt: "2026-01-01T00:00:00Z", LatencyMS: 1234}
 
-	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, time.Time{})
+	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, "", time.Time{}, false)
 
 	repo := runner.runWriter.(*stepBusRunWriter)
 	if len(repo.steps) != 1 {
