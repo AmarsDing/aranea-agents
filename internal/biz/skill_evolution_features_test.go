@@ -985,7 +985,8 @@ type patternStubRW struct {
 func (p *patternStubRW) ListByAgent(_ context.Context, agentID string, status string) ([]Pattern, error) {
 	var out []Pattern
 	for _, pt := range append(append([]Pattern{}, p.existing...), p.created...) {
-		if pt.AgentID == agentID && string(pt.Status) == status {
+		// status="" 返回全部（与真实 repo 语义一致）。
+		if pt.AgentID == agentID && (status == "" || string(pt.Status) == status) {
 			out = append(out, pt)
 		}
 	}
