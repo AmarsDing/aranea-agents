@@ -4,7 +4,7 @@ import { listTeams } from '../teams/api';
 import type { Agent } from '../agents/types';
 import type { Team } from '../teams/types';
 import type { PlatformResource, PlatformResourceInput } from '../platform/types';
-import type { CronTaskRun, CronTaskRunQuery } from './types';
+import type { CronTaskRun, CronTaskRunPage, CronTaskRunQuery } from './types';
 
 export type { PlatformResource, PlatformResourceInput } from '../platform/types';
 import type { CronTask as WireCronTask, CronTaskRun as WireCronTaskRun } from '../../services/kratos/cron/v1/index';
@@ -103,13 +103,15 @@ export async function resetCronTaskFailures(id: string): Promise<PlatformResourc
   return wireCronTask(row);
 }
 
-export async function listCronTaskRuns(query: CronTaskRunQuery = {}): Promise<CronTaskRun[]> {
+export async function listCronTaskRuns(query: CronTaskRunQuery = {}): Promise<CronTaskRunPage> {
   const res = await cron.ListCronTaskRuns({
     cronTaskId: query.cron_task_id,
     status: query.status,
     limit: query.limit,
+    page: query.page,
+    pageSize: query.page_size,
   });
-  return (res.items ?? []).map(wireCronTaskRun);
+  return { items: (res.items ?? []).map(wireCronTaskRun), total: res.total ?? 0 };
 }
 
 export async function listCronAgents(): Promise<Agent[]> {

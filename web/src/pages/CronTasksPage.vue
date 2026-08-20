@@ -226,15 +226,9 @@
       :page="runsPage"
       :page-size="runsPageSize"
       :page-max="runsPageMax"
-      :total="runs.length"
-      @update:task-id="
-        runsTaskId = $event;
-        void loadRuns();
-      "
-      @update:status="
-        runsStatus = $event;
-        void loadRuns();
-      "
+      :total="runsTotal"
+      @update:task-id="onRunsTaskChange"
+      @update:status="onRunsStatusChange"
       @update:page="runsPage = $event"
       @update:page-size="runsPageSize = $event"
       @load="loadRuns"
@@ -292,6 +286,7 @@ const {
   formatCronDate,
   runsOpen,
   runs,
+  runsTotal,
   runsTaskId,
   runsStatus,
   runsLoading,
@@ -304,6 +299,8 @@ const {
   runsPageMax,
   runsPaged,
   loadRuns,
+  onRunsTaskChange,
+  onRunsStatusChange,
   resetRunsFilters,
 } = useCronTasksPage();
 

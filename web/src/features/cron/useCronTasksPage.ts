@@ -12,7 +12,7 @@ import { formatCronDate } from '../../components/cron/cronTaskUtils';
 export function useCronTasksPage() {
   const $q = useQuasar();
   const cronStore = useCronStore();
-  const { tasks: rows, agents, teams, runs } = storeToRefs(cronStore);
+  const { tasks: rows, agents, teams, runs, runsTotal } = storeToRefs(cronStore);
 
   const loading = ref(false);
   const error = ref('');
@@ -159,19 +159,18 @@ export function useCronTasksPage() {
     { label: '跳过', value: 'skipped' },
     { label: '待执行', value: 'pending' },
   ];
-  const runsPageMax = computed(() => Math.max(1, Math.ceil(runs.value.length / runsPageSize.value)));
-  const runsPaged = computed(() => {
-    const start = (runsPage.value - 1) * runsPageSize.value;
-    return runs.value.slice(start, start + runsPageSize.value);
-  });
+  // 服务端分页：runs 即当前页数据，total 来自后端 count
+  const runsPageMax = computed(() => Math.max(1, Math.ceil(runsTotal.value / runsPageSize.value)));
+  const runsPaged = runs;
 
-  watch(runs, () => {
-    runsPage.value = 1;
+  watch([runsPage, runsPageSize], () => {
+    if (runsOpen.value) void loadRuns();
   });
 
   function openRuns(row?: CronTaskRow, status = '') {
     runsTaskId.value = row?.id || '';
     runsStatus.value = status;
+    runsPage.value = 1;
     runsOpen.value = true;
     void loadRuns();
   }
@@ -183,7 +182,8 @@ export function useCronTasksPage() {
       await cronStore.loadRuns({
         cron_task_id: runsTaskId.value || undefined,
         status: runsStatus.value || undefined,
-        limit: 200,
+        page: runsPage.value,
+        page_size: runsPageSize.value,
       });
     } catch (err) {
       runsError.value = err instanceof Error ? err.message : '加载执行历史失败';
@@ -192,9 +192,22 @@ export function useCronTasksPage() {
     }
   }
 
+  function onRunsTaskChange(value: string) {
+    runsTaskId.value = value;
+    runsPage.value = 1;
+    void loadRuns();
+  }
+
+  function onRunsStatusChange(value: string) {
+    runsStatus.value = value;
+    runsPage.value = 1;
+    void loadRuns();
+  }
+
   function resetRunsFilters() {
     runsTaskId.value = '';
     runsStatus.value = '';
+    runsPage.value = 1;
     void loadRuns();
   }
 
@@ -314,6 +327,7 @@ export function useCronTasksPage() {
     formatCronDate,
     runsOpen,
     runs,
+    runsTotal,
     runsTaskId,
     runsStatus,
     runsLoading,
@@ -326,6 +340,8 @@ export function useCronTasksPage() {
     runsPageMax,
     runsPaged,
     loadRuns,
+    onRunsTaskChange,
+    onRunsStatusChange,
     resetRunsFilters,
   };
 }

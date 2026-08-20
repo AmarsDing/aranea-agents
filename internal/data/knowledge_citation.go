@@ -151,7 +151,7 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 	}
 	contents, err := r.loadChunkContents(ctx, allIDs)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	out := make([]bizknowledge.KnowledgeCitationCandidate, 0, len(raws))
 	for _, rc := range raws {

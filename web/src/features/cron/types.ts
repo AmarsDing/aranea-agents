@@ -71,4 +71,11 @@ export type CronTaskRunQuery = {
   cron_task_id?: string;
   status?: string;
   limit?: number;
+  page?: number;
+  page_size?: number;
+};
+
+export type CronTaskRunPage = {
+  items: CronTaskRun[];
+  total: number;
 };

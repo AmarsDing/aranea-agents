@@ -20,6 +20,7 @@ import type { CronTaskRun, CronTaskRunQuery } from '../../features/cron/types';
 export const useCronStore = defineStore('cron', () => {
   const tasks = ref<PlatformResource[]>([]);
   const runs = ref<CronTaskRun[]>([]);
+  const runsTotal = ref(0);
   const agents = ref<Agent[]>([]);
   const teams = ref<Team[]>([]);
   const loading = ref(false);
@@ -54,7 +55,8 @@ export const useCronStore = defineStore('cron', () => {
 
   async function loadRuns(query?: CronTaskRunQuery) {
     const result = await listCronTaskRuns(query);
-    runs.value = result ?? [];
+    runs.value = result.items;
+    runsTotal.value = result.total;
     return result;
   }
 
@@ -88,6 +90,7 @@ export const useCronStore = defineStore('cron', () => {
   return {
     tasks,
     runs,
+    runsTotal,
     agents,
     teams,
     loading,

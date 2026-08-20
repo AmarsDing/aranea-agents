@@ -60,7 +60,7 @@ func (r *knowledgeBlockRepo) ReplaceDocBlocks(ctx context.Context, collectionID,
 	var edges []bizknowledge.KnowledgeBlockRefEdge
 	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_blocks WHERE doc_id = $1`, docID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		idByOrdinal := make(map[int]string, len(blocks))
 		for _, b := range blocks {
@@ -79,7 +79,7 @@ func (r *knowledgeBlockRepo) ReplaceDocBlocks(ctx context.Context, collectionID,
 				pq.Array(b.HeadingPath), b.ContentHash, b.TextExcerpt,
 				nullIfEmpty(b.PromotedFrom), nullIfEmpty(b.PromotedTo),
 			); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 			idByOrdinal[b.Ordinal] = id
 		}
@@ -106,7 +106,7 @@ func (r *knowledgeBlockRepo) ReplaceDocBlocks(ctx context.Context, collectionID,
 				collectionID, srcID, nullIfEmpty(rf.DstDocID), nullIfEmpty(dstBlockID),
 				rf.RawTarget, rf.Alias, rf.EdgeType, rf.Context, rf.Ambiguous,
 			); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 			edges = append(edges, bizknowledge.KnowledgeBlockRefEdge{
 				CollectionID:    collectionID,
@@ -318,12 +318,12 @@ func (r *knowledgeBlockRepo) WritePromoteLineage(ctx context.Context, pairs []bi
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE knowledge_blocks SET promoted_from = $1 WHERE id = $2`,
 				p.SrcBlockID, p.NewBlockID); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE knowledge_blocks SET promoted_to = $1 WHERE id = $2`,
 				p.NewBlockID, p.SrcBlockID); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 		}
 		return nil

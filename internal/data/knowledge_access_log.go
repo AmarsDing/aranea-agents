@@ -64,7 +64,7 @@ func (r *knowledgeRepo) BaseLevelScores(ctx context.Context, collectionID string
 		}
 		out[docID] = score
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // StrengthenCoActivations Hebbian 共激活（M1-3）：同批文档两两 upsert co_activated 边，

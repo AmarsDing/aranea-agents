@@ -24,7 +24,7 @@ func (r *knowledgeRepo) ListDocumentPaths(ctx context.Context, collectionID stri
 	args := append([]any{collectionID}, aclArgs...)
 	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.DocumentPath
@@ -33,12 +33,12 @@ func (r *knowledgeRepo) ListDocumentPaths(ctx context.Context, collectionID stri
 		var tagsRaw []byte
 		if err := rows.Scan(&p.ID, &p.RelPath, &p.Source, &p.Summary, &tagsRaw, &p.DocType,
 			&p.Status, &p.SizeBytes, &p.UpdatedAt, &p.ErrorMessage); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		p.Tags = unmarshalTags(tagsRaw)
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListResolvedLinks 列出文档关联（出向 + 入向），JOIN knowledge_documents 一次取回
@@ -58,7 +58,7 @@ func (r *knowledgeRepo) ListResolvedLinks(ctx context.Context, collectionID, doc
 	q += ` ORDER BY l.link_type, l.id`
 	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.ResolvedLink
@@ -67,7 +67,7 @@ func (r *knowledgeRepo) ListResolvedLinks(ctx context.Context, collectionID, doc
 		var srcSource, srcRel, dstSource, dstRel sql.NullString
 		if err := rows.Scan(&srcID, &dstID, &lt, &ctxStr,
 			&srcSource, &srcRel, &dstSource, &dstRel); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		rl := bizknowledge.ResolvedLink{LinkType: lt, Context: ctxStr}
 		if srcID == docID {
@@ -83,5 +83,5 @@ func (r *knowledgeRepo) ListResolvedLinks(ctx context.Context, collectionID, doc
 		}
 		out = append(out, rl)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
