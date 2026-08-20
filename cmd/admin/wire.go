@@ -2756,22 +2756,6 @@ func provideEvolutionUsecase(
 	return biz.ProvideEvolutionUsecase(metricsRepo, unifiedRepo, agents, tp, lg)
 }
 
-// provideSkillEvolutionUsecase wraps biz.NewSkillEvolutionUsecase to wire the
-// unified store (A6) and the unified orchestrator for cross-pipeline dedup (A1).
-func provideSkillEvolutionUsecase(
-	unifiedRepo *data.UnifiedEvolutionRepo,
-	patterns biz.PatternReader,
-	agents biz.AgentRepository,
-	creator biz.SkillAutoCreator,
-	registrar biz.SkillRegistrationPort,
-	orch *biz.SkillEvolutionOrchestrator,
-	lg loggateway.Logger,
-) *biz.SkillEvolutionUsecase {
-	uc := biz.NewSkillEvolutionUsecase(unifiedRepo, unifiedRepo, patterns, agents, creator, registrar, lg)
-	uc.SetOrchestrator(orch)
-	return uc
-}
-
 // provideLearningLoopUsecase wraps biz.NewLearningLoopUsecase to wire the
 // unified orchestrator so RegisterKnowledge creates UnifiedEvolutionSuggestions
 // through the single pipeline (A1).
@@ -3732,6 +3716,7 @@ func provideMemoryLLMExtractorConfig(
 	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
 	modelCatalog *biz.LlmProviderModelUsecase,
+	usageRef *biz.UsageUsecaseRef,
 	lg loggateway.Logger,
 ) service.MemoryLLMExtractorConfig {
 	return service.MemoryLLMExtractorConfig{
@@ -3740,6 +3725,7 @@ func provideMemoryLLMExtractorConfig(
 		ModelCatalog: modelCatalog,
 		RoundTrip:    &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		LLMDisabled:  false,
+		UsageRef:     usageRef,
 		Logger:       lg,
 	}
 }
@@ -3917,7 +3903,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSkillMergeUsecase,
 		provideSkillEvolutionOrchestrator,
 		provideEvolutionUsecase,
-		provideSkillEvolutionUsecase,
 		provideLearningLoopUsecase,
 		provideEvolutionDrafter,
 		provideEvolutionOrchestratorWorker,

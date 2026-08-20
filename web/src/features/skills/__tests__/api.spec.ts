@@ -11,7 +11,6 @@ vi.mock('../../../services', () => ({
   createSkillService: () => ({ GetSkillHealth: mockGetSkillHealth }),
   createSkillIntelligenceService: () => ({}),
   createSkillEvolutionSuggestionService: () => ({}),
-  createSkillEvolutionService: () => ({}),
   kratosApi: { get: vi.fn(), post: vi.fn() },
 }));
 

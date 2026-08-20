@@ -58,8 +58,12 @@ type TurnUsageParams struct {
 	// ("streaming"/"runner_completion"/"estimated"); persisted into
 	// metadata_json["usage_source"] so estimated rows stay identifiable.
 	UsageSource string
-	Latency     time.Duration
-	ErrMsg      string
+	// Rounds 是本 turn 的 LLM 调用轮数（流内按 response ID 去重实测），
+	// 落入 usage.metadata_json["llm_rounds"] 使跨轮求和的 token 行可解释。
+	// <=0 表示未观测，不落 metadata。
+	Rounds  int
+	Latency time.Duration
+	ErrMsg  string
 }
 
 // RecordTurnUsage records token usage for a turn.
@@ -89,6 +93,7 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 	}
 	meta = mergeContextBudgetMetadata(ctx, meta)
 	meta = biz.MergeUsageSourceMetadata(meta, p.UsageSource)
+	meta = biz.MergeLLMRoundsMetadata(meta, p.Rounds)
 	traceID := ""
 	if p.Emitter != nil {
 		traceID = p.Emitter.TraceID()
@@ -288,6 +293,14 @@ type SessionTurnRecordParams struct {
 	PromptTok      int
 	CompletionTok  int
 	ContentPreview string
+	// DurationMs 是整轮耗时（admission → postProcess）。<=0 表示未测量，不落库。
+	DurationMs int
+	// FirstTokenMs 是 TTFT（首个模型字节）。<=0 表示流内未观测到首字节，不落库。
+	FirstTokenMs int
+	// ModelCallCount / ToolCallCount 是流内实测的 LLM 轮次 / 工具调用数。
+	// <=0 表示未观测（如早退、无流事件），不落库，保留零值语义。
+	ModelCallCount int
+	ToolCallCount  int
 }
 
 // RecordSessionTurn records a completed agent or team turn.
@@ -307,10 +320,22 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 			InputTokens:         ptrInt(p.PromptTok),
 			OutputTokens:        ptrInt(p.CompletionTok),
 			TotalTokens:         ptrInt(p.PromptTok + p.CompletionTok),
-			ModelCallCount:      ptrInt(1),
 			FinalProvider:       ptrString(p.Provider),
 			FinalModel:          ptrString(p.Model),
 			FinalContentPreview: ptrString(preview),
+		}
+		// 实测指标仅在观测到时落库（>0），避免用零值覆盖并发/前序写入。
+		if p.DurationMs > 0 {
+			updates.DurationMs = ptrInt(p.DurationMs)
+		}
+		if p.FirstTokenMs > 0 {
+			updates.FirstTokenMs = ptrInt(p.FirstTokenMs)
+		}
+		if p.ModelCallCount > 0 {
+			updates.ModelCallCount = ptrInt(p.ModelCallCount)
+		}
+		if p.ToolCallCount > 0 {
+			updates.ToolCallCount = ptrInt(p.ToolCallCount)
 		}
 		switch p.OwnerType {
 		case "agent":
@@ -335,10 +360,13 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 		Status:              "completed",
 		StartedAt:           now,
 		EndedAt:             now,
+		DurationMs:          p.DurationMs,
+		FirstTokenMs:        p.FirstTokenMs,
+		ModelCallCount:      p.ModelCallCount,
+		ToolCallCount:       p.ToolCallCount,
 		InputTokens:         p.PromptTok,
 		OutputTokens:        p.CompletionTok,
 		TotalTokens:         p.PromptTok + p.CompletionTok,
-		ModelCallCount:      1,
 		FinalProvider:       p.Provider,
 		FinalModel:          p.Model,
 		FinalContentPreview: preview,

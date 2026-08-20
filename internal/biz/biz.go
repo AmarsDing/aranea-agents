@@ -50,9 +50,9 @@ var ProviderSet = wire.NewSet(
 	NewChannelTurnJobUsecase,
 	NewSessionRunUsecase,
 	NewAgentMCPTooling,
-	// NOTE(A1): SkillEvolutionOrchestrator + triggers, and the three evolution
-	// usecases that need SetOrchestrator (EvolutionUsecase / LearningLoopUsecase /
-	// SkillEvolutionUsecase), are assembled in cmd/admin/wire.go — trigger
+	// NOTE(A1): SkillEvolutionOrchestrator + triggers, and the evolution
+	// usecases that need SetOrchestrator (EvolutionUsecase / LearningLoopUsecase),
+	// are assembled in cmd/admin/wire.go — trigger
 	// registration and SetOrchestrator are imperative steps that wire cannot
 	// express via bare constructors here. ProvideEvolutionUsecase is wrapped by
 	// wire.go's provideEvolutionUsecase, so it is excluded from this set.

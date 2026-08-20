@@ -51,6 +51,8 @@ const (
 	UsageKindAuxTitle     = usage.KindAuxTitle
 	UsageKindAuxIntent    = usage.KindAuxIntent
 	UsageKindAuxEvolution = usage.KindAuxEvolution
+	// UsageKindAuxMemoryExtract mirrors usage.KindAuxMemoryExtract (P2-D).
+	UsageKindAuxMemoryExtract = usage.KindAuxMemoryExtract
 	// UsageKindAuxEmbedding mirrors usage.KindAuxEmbedding (P1-3).
 	UsageKindAuxEmbedding = usage.KindAuxEmbedding
 	QuotaScopeGlobal      = usage.QuotaScopeGlobal
@@ -78,6 +80,8 @@ var (
 	MapUsageRepoErr      = usage.MapRepoErr
 	// MergeUsageSourceMetadata mirrors usage.MergeUsageSourceMetadata.
 	MergeUsageSourceMetadata = usage.MergeUsageSourceMetadata
+	// MergeLLMRoundsMetadata mirrors usage.MergeLLMRoundsMetadata (P1-C).
+	MergeLLMRoundsMetadata = usage.MergeLLMRoundsMetadata
 	// MergeUsageAttributionMetadata mirrors usage.MergeUsageAttributionMetadata (P2-1).
 	MergeUsageAttributionMetadata = usage.MergeUsageAttributionMetadata
 	// NewUsageUsecaseRef mirrors usage.NewUsecaseRef.

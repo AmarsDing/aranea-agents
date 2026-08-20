@@ -40,7 +40,6 @@ import (
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
 	skilldedupv1 "aranea-agents/api/kratos/skill_dedup/v1"
-	skillevov1 "aranea-agents/api/kratos/skill_evolution/v1"
 	skillevosuggv1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	skillintlv1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
@@ -152,7 +151,6 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
 	organizationv1.RegisterOrganizationServiceHTTPServer(srv, s.Organization)
-	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
 	skillintlv1.RegisterSkillIntelligenceServiceHTTPServer(srv, s.SkillIntel)
 	skilldedupv1.RegisterSkillDedupServiceHTTPServer(srv, s.SkillDedup)
 	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceHTTPServer(srv, s.SkillEvoSuggestion)

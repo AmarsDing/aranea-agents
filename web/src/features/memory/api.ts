@@ -472,6 +472,7 @@ export async function listMemoryFacts(query: MemoryFactListQuery = {}): Promise<
     offset,
     active_count: pickOptionalI32(res, 'active_count', 'activeCount'),
     archived_count: pickOptionalI32(res, 'archived_count', 'archivedCount'),
+    filtered_count: pickOptionalI32(res, 'filtered_count', 'filteredCount'),
   };
 }
 

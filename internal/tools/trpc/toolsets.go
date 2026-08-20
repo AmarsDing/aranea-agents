@@ -232,7 +232,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		customTools[i] = t
 	}
 	if cfg.KnowledgeSearch {
-		customTools = append(customTools, knowledgepkg.NewSearchTool())
+		customTools = append(customTools, knowledgepkg.NewSearchTool(lg))
 	}
 	if cfg.KnowledgeReflect {
 		customTools = append(customTools, knowledgepkg.NewReflectTool(lg))

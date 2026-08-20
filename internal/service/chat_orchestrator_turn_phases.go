@@ -924,7 +924,8 @@ func (o *ChatOrchestrator) postProcessTurn(
 		metricsLabel = "timeout_degraded"
 	}
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
-	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, persistResult.assistantMsg.ContentMarkdown)
+	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, persistResult.assistantMsg.ContentMarkdown,
+		int(time.Since(turnStart).Milliseconds()), execResult.result.FirstTokenMs, execResult.result.ModelCallCount, execResult.result.ToolCallCount)
 	// F4 取消竞态：cancelActiveRun 已将 run 置 cancelled（终态）后，EXECUTE/PERSIST
 	// 成功路径才走到这里。cancelled wins——跳过 completed 状态发布 / Session 翻转 /
 	// revision bump / after_turn 钩子与"执行完成"流程日志，避免 cancelled 之后再冒出

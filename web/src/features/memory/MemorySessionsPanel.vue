@@ -17,35 +17,40 @@
             @click="$emit('refreshSessions')"
           />
         </q-card-section>
-        <q-list separator>
-          <q-item
-            v-for="session in sessionRows"
-            :key="session.id"
-            clickable
-            :active="selectedSessionId === session.id"
-            active-class="memory-active-item"
-            @click="$emit('update:selectedSessionId', session.id)"
-          >
-            <q-item-section>
-              <q-item-label>{{ session.title || t('memory.sessions.untitledSession') }}</q-item-label>
-              <q-item-label caption
-                >{{ session.provider }} / {{ session.model || t('memory.sessions.modelNotRecorded') }}</q-item-label
-              >
-              <q-linear-progress
-                rounded
-                size="7px"
-                :value="bounded(session.context_used_ratio)"
-                :color="contextColor(session.context_status)"
-                class="q-mt-sm"
-              />
-            </q-item-section>
-            <q-item-section side>
-              <q-chip dense :color="contextColor(session.context_status)" text-color="white">{{
-                formatPercent(session.context_used_ratio)
-              }}</q-chip>
-            </q-item-section>
-          </q-item>
-        </q-list>
+        <div class="memory-sessions-list">
+          <q-list separator>
+            <q-item
+              v-for="session in sessionRows"
+              :key="session.id"
+              clickable
+              :active="selectedSessionId === session.id"
+              active-class="memory-active-item"
+              @click="$emit('update:selectedSessionId', session.id)"
+            >
+              <q-item-section>
+                <q-item-label>{{ session.title || t('memory.sessions.untitledSession') }}</q-item-label>
+                <q-item-label caption
+                  >{{ session.provider }} / {{ session.model || t('memory.sessions.modelNotRecorded') }}</q-item-label
+                >
+                <q-item-label caption>{{
+                  t('memory.sessions.lastActiveAt', { time: formatSessionTime(session) })
+                }}</q-item-label>
+                <q-linear-progress
+                  rounded
+                  size="7px"
+                  :value="bounded(session.context_used_ratio)"
+                  :color="contextColor(session.context_status)"
+                  class="q-mt-sm"
+                />
+              </q-item-section>
+              <q-item-section side>
+                <q-chip dense :color="contextColor(session.context_status)" text-color="white">{{
+                  formatPercent(session.context_used_ratio)
+                }}</q-chip>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
       </q-card>
     </div>
     <div class="col-12 col-lg-7">
@@ -244,9 +249,26 @@ function formatPercent(value?: number) {
   return `${Math.round((Number(value) || 0) * 100)}%`;
 }
 
+/** 同名会话区分（ISSUE-5）：优先最近一条消息时间，退化为更新时间。 */
+function formatSessionTime(session: Session) {
+  const raw = session.last_message_at || session.updated_at;
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 function taskStatusLabel(status?: string) {
   if (!status) return '—';
   const key = `memory.sessions.taskStatus.${status}`;
   return te(key) ? t(key) : status;
 }
 </script>
+
+<style scoped>
+/* 会话列表独立滚动（ISSUE-5）：避免长列表撑开整页导致右栏出视口。 */
+.memory-sessions-list {
+  max-height: 560px;
+  overflow-y: auto;
+}
+</style>

@@ -313,7 +313,7 @@ type ChatTeamDeps struct {
 type ChatEvolutionDeps struct {
 	// SkillIntel is the ADR-3 unified evolution-suggestion entry point
 	// (skills_butler tools route here; the legacy SkillEvolutionUsecase
-	// proposal view was retired).
+	// proposal view was deleted in ADR-3-C5).
 	SkillIntel *biz.SkillIntelligenceUsecase
 	Evolution  *biz.EvolutionUsecase
 }

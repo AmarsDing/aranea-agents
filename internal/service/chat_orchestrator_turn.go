@@ -326,6 +326,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var resultPromptTok, resultCompletionTok, resultCachedTok int
 	var resultLastRoundPromptTok, resultLastRoundCompletionTok int
 	var resultUsageSource string
+	var resultModelCallCount int
 	var turnErrMsg string
 	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
@@ -368,7 +369,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.FinishRoot(turnStatus)
 		endTurnSpan(traceBridge, turnErr)
 		o.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
-			resultPromptTok, resultCompletionTok, resultCachedTok, resultUsageSource, time.Since(turnStart), turnErrMsg)
+			resultPromptTok, resultCompletionTok, resultCachedTok, resultUsageSource, resultModelCallCount, time.Since(turnStart), turnErrMsg)
 		if turnStatus != "ok" && resultPromptTok > 0 {
 			// Context patching uses the final round's tokens (window occupancy),
 			// not the billing totals summed across rounds.
@@ -662,6 +663,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	defer func() {
 		o.sessionRunLC().FinishSessionRunLifecycle(ctx, sessionID, execResult.sessionRunID, turnErr)
 	}()
+	// P1-C：LLM 轮次计数来自流内实测（executeTurn 产出的 EventStreamResult），
+	// 即使 PERSIST 失败也已观测，供 defer 中的 usage metadata 记录。
+	resultModelCallCount = execResult.result.ModelCallCount
 
 	// ── PERSIST ──
 	turnPhase.Store("persisting")

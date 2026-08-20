@@ -50,6 +50,12 @@ type turnStreamConsumer struct {
 	// chunkEvents 计数高频 chunk 类事件（text_delta/response），用于
 	// stream.event 日志采样节流。consume 循环单 goroutine 访问，无需 atomic。
 	chunkEvents int64
+
+	// seenResponseIDs / seenToolCallIDs 去重计数 LLM 轮次与工具调用
+	// （session_turns.model_call_count / tool_call_count）。consume 循环单
+	// goroutine 访问，无需锁。
+	seenResponseIDs map[string]struct{}
+	seenToolCallIDs map[string]struct{}
 }
 
 // streamEventSampleInterval 是高频流式事件日志的采样间隔（首条 + 每 N 条）。
@@ -211,6 +217,7 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) (result Eve
 				loggateway.Any("chunk_count", c.chunkEvents))
 		}
 		c.markFirstByte(ev)
+		c.countCalls(ev)
 		if !c.handleEvent(ev) {
 			// Y1: 早退（doom-loop）必须后台排干 events channel——trpc runner
 			// 生产者 goroutine 仍在写入，不排干会在 buffer 满后永久阻塞泄漏
@@ -295,6 +302,7 @@ func (c *turnStreamConsumer) markFirstByte(ev *trpcevent.Event) {
 	}
 	c.received = true
 	ttft := time.Since(c.consumeStart)
+	c.result.FirstTokenMs = int(ttft.Milliseconds())
 	evType := "unknown"
 	if ev.IsRunnerCompletion() {
 		evType = "runner_completion"
@@ -347,6 +355,51 @@ func countsAsFirstByte(ev *trpcevent.Event) bool {
 		}
 	}
 	return false
+}
+
+// countCalls 统计 LLM 轮次与工具调用次数，写入 result.ModelCallCount /
+// ToolCallCount 供 session_turns 落库。判定规则：
+//   - LLM 轮次：chat.completion 事件按 Response.ID 去重（每次 API 调用一个
+//     ID）；无 ID 时退化为按非 partial（最终）响应计数。
+//   - 工具调用：Message.ToolCalls + Delta.ToolCalls 按 tool-call ID 去重
+//     （流式 delta 会跨 chunk 重复同一 ID）。无 ID 的调用无法可靠去重，不计。
+func (c *turnStreamConsumer) countCalls(ev *trpcevent.Event) {
+	if ev.Response == nil || !isChatCompletionStreamObject(ev.Response.Object) {
+		return
+	}
+	if id := ev.Response.ID; id != "" {
+		if c.seenResponseIDs == nil {
+			c.seenResponseIDs = make(map[string]struct{})
+		}
+		if _, ok := c.seenResponseIDs[id]; !ok {
+			c.seenResponseIDs[id] = struct{}{}
+			c.result.ModelCallCount++
+		}
+	} else if !ev.Response.IsPartial {
+		c.result.ModelCallCount++
+	}
+	for _, choice := range ev.Response.Choices {
+		for _, tc := range choice.Message.ToolCalls {
+			c.countToolCall(tc.ID)
+		}
+		for _, tc := range choice.Delta.ToolCalls {
+			c.countToolCall(tc.ID)
+		}
+	}
+}
+
+func (c *turnStreamConsumer) countToolCall(id string) {
+	if id == "" {
+		return
+	}
+	if c.seenToolCallIDs == nil {
+		c.seenToolCallIDs = make(map[string]struct{})
+	}
+	if _, ok := c.seenToolCallIDs[id]; ok {
+		return
+	}
+	c.seenToolCallIDs[id] = struct{}{}
+	c.result.ToolCallCount++
 }
 
 func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {

@@ -43,7 +43,6 @@ type ServiceRegistry struct {
 	AIRefine           *service.AIRefineService
 	Taxonomy           *service.TaxonomyService
 	Organization       *service.OrganizationService
-	SkillEvo           *service.SkillEvolutionService
 	SkillIntel         *service.SkillIntelligenceService
 	SkillDedup         *service.SkillDedupService
 	Pack               *service.PackService
@@ -103,7 +102,6 @@ func NewServiceRegistry(
 	aiRefine *service.AIRefineService,
 	taxonomy *service.TaxonomyService,
 	organization *service.OrganizationService,
-	skillEvo *service.SkillEvolutionService,
 	skillIntel *service.SkillIntelligenceService,
 	skillDedup *service.SkillDedupService,
 	packSvc *service.PackService,
@@ -154,7 +152,6 @@ func NewServiceRegistry(
 		AIRefine:           aiRefine,
 		Taxonomy:           taxonomy,
 		Organization:       organization,
-		SkillEvo:           skillEvo,
 		SkillIntel:         skillIntel,
 		SkillDedup:         skillDedup,
 		Pack:               packSvc,

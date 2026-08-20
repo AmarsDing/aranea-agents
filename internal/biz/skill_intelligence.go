@@ -1259,7 +1259,9 @@ func stringToLegacySuggestionStatus(s string) EvolutionSuggestionStatus {
 		return EvoSuggestionApproved
 	case "rejected":
 		return EvoSuggestionRejected
-	case "applied":
+	case "applied", "registered":
+		// "registered" 是旧 SkillProposal 视图的历史状态（= 动作已执行），
+		// ADR-3 统一展示为 applied（语义等价，见 SkillEvolutionSuggestion 注释）。
 		return EvoSuggestionApplied
 	default:
 		return EvoSuggestionPending

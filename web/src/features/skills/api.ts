@@ -2,7 +2,6 @@ import {
   createSkillService,
   createSkillIntelligenceService,
   createSkillEvolutionSuggestionService,
-  createSkillEvolutionService,
   kratosApi,
 } from '../../services';
 import axios from 'axios';
@@ -612,94 +611,69 @@ export async function listUnifiedEvolutionSuggestions(params: {
   // Callers that omit targetType default to skill-level suggestions.
   const targetType = params.targetType === 'agent' ? 'agent' : 'skill';
 
-  if (targetType === 'skill') {
-    const client = createSkillEvolutionSuggestionService();
-    let skillRes;
-    try {
-      skillRes = await client.ListSkillEvolutionSuggestions({
-        skillId: params.targetId || undefined,
-        status: params.status || undefined,
-        page: params.page,
-        pageSize: params.pageSize,
-      });
-    } catch (err) {
-      // skillId 无匹配时后端返回 NOT_FOUND：视为空结果而非系统错误，
-      // 让列表页走"没有匹配的进化建议"空状态。
-      if (isNotFoundError(err)) return { items, total: 0, skillTotal: 0, agentTotal: 0 };
-      throw err;
-    }
-    for (const item of skillRes.items || []) {
-      items.push(mapProtoEvolutionSuggestionToView(item));
-    }
-    const skillTotal = Number(skillRes.total || 0);
-    return { items, total: skillTotal, skillTotal, agentTotal: 0 };
-  }
-
-  const evoClient = createSkillEvolutionService();
-  let agentRes;
+  // ADR-3: skill/agent 两个维度统一走 SkillEvolutionSuggestionService
+  // （agent 维度即原 SkillProposal 列表，旧 SkillEvolutionService 已退役）。
+  const client = createSkillEvolutionSuggestionService();
+  let res;
   try {
-    agentRes = await evoClient.ListSkillProposals({
-      agentId: params.targetId || undefined,
+    res = await client.ListSkillEvolutionSuggestions({
+      targetType,
+      targetId: params.targetId || undefined,
       status: params.status || undefined,
       page: params.page,
       pageSize: params.pageSize,
     });
   } catch (err) {
+    // targetId 无匹配时后端返回 NOT_FOUND：视为空结果而非系统错误，
+    // 让列表页走"没有匹配的进化建议"空状态。
     if (isNotFoundError(err)) return { items, total: 0, skillTotal: 0, agentTotal: 0 };
     throw err;
   }
-  for (const item of agentRes.items || []) {
-    items.push(mapProtoSkillProposalToView(item));
+  for (const item of res.items || []) {
+    items.push(mapProtoEvolutionSuggestionToView(item));
   }
-  const agentTotal = Number(agentRes.total || (agentRes.items || []).length);
-  return { items, total: agentTotal, skillTotal: 0, agentTotal };
+  const total = Number(res.total || 0);
+  return targetType === 'skill'
+    ? { items, total, skillTotal: total, agentTotal: 0 }
+    : { items, total, skillTotal: 0, agentTotal: total };
 }
 
 export async function approveUnifiedEvolutionSuggestion(id: string, approvedBy: string): Promise<void> {
-  // Try skill-level service first, then agent-level — but only fall through on 404 (NOT_FOUND).
-  // Real errors (500, 403, etc.) must propagate to the caller.
-  try {
-    const client = createSkillEvolutionSuggestionService();
-    await client.ApproveSkillEvolutionSuggestion({ id, approvedBy });
-    return;
-  } catch (err) {
-    if (!isNotFoundError(err)) throw err;
-    // Fall through to agent-level
-  }
-  const evoClient = createSkillEvolutionService();
-  await evoClient.ApproveSkillProposal({ id, approvedBy });
+  // ADR-3: 统一服务按 id 分发 skill/agent 两个维度的 IDOR 校验与状态迁移；
+  // agent create_skill 建议批准后由后端异步自动注册，无需单独 register 步骤。
+  const client = createSkillEvolutionSuggestionService();
+  await client.ApproveSkillEvolutionSuggestion({ id, approvedBy });
 }
 
 export async function rejectUnifiedEvolutionSuggestion(id: string, rejectedBy: string, reason: string): Promise<void> {
-  // Try skill-level service first, then agent-level — but only fall through on 404 (NOT_FOUND).
-  // Real errors (500, 403, etc.) must propagate to the caller.
-  try {
-    const client = createSkillEvolutionSuggestionService();
-    await client.RejectSkillEvolutionSuggestion({ id, rejectedBy, rejectionReason: reason });
-    return;
-  } catch (err) {
-    if (!isNotFoundError(err)) throw err;
-    // Fall through to agent-level
-  }
-  const evoClient = createSkillEvolutionService();
-  await evoClient.RejectSkillProposal({ id, rejectedBy });
-}
-
-export async function registerUnifiedEvolutionSuggestion(id: string): Promise<void> {
-  const evoClient = createSkillEvolutionService();
-  await evoClient.RegisterSkillProposal({ id });
+  const client = createSkillEvolutionSuggestionService();
+  await client.RejectSkillEvolutionSuggestion({ id, rejectedBy, rejectionReason: reason });
 }
 
 // ── Proto-to-View mapping helpers ──
 
 function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): SkillEvolutionView {
   const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
-  const lifecycleStatus = (s('lifecycle_status', 'lifecycleStatus') ||
-    'draft') as SkillEvolutionView['lifecycleStatus'];
+  // ADR-3: msg 携带 target_type/target_id/draft_name；空 target_type 视为
+  // "skill"（历史行兼容，与后端 normalizeEvolutionTargetType 对齐）。
+  const targetType = (s('target_type', 'targetType') || 'skill') as SkillEvolutionView['targetType'];
+  const isAgent = targetType === 'agent';
+  const status = (s('status', 'status') || 'pending') as SkillEvolutionView['status'];
+  const rawLifecycle = (s('lifecycle_status', 'lifecycleStatus') || 'draft') as SkillEvolutionView['lifecycleStatus'];
+  // agent 行的生命周期在审批/自动注册时只迁移 status（CAS 不动 lifecycle），
+  // 视图层按 status 推导展示态，与旧 SkillProposal 映射的显示语义一致。
+  const lifecycleStatus: SkillEvolutionView['lifecycleStatus'] = isAgent
+    ? status === 'applied'
+      ? 'applied'
+      : status === 'approved'
+        ? 'ready'
+        : 'draft'
+    : rawLifecycle;
   // Proto bool defaults to false; use lifecycleStatus to distinguish
   // "not yet validated" from "validation failed" (same semantics as mapEvolutionSuggestion).
   const rawSandboxPassed = item['sandbox_passed'] ?? item['sandboxPassed'];
   const sandboxPassed: boolean | null = (() => {
+    if (isAgent) return null; // agent 级建议无沙箱字段；置 null 让 UI 显示 "—"
     if (rawSandboxPassed === true) return true;
     if (rawSandboxPassed === false && (lifecycleStatus === 'validating' || lifecycleStatus === 'ready')) return false;
     return null; // not yet validated
@@ -716,51 +690,21 @@ function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): Skill
       : null;
   return {
     id: s('id', 'id'),
-    targetType: 'skill',
-    targetId: s('skill_id', 'skillId'),
-    targetName: '', // TODO: backend SkillEvolutionSuggestionMsg lacks skill_name; frontend should resolve via skill list lookup
-    actionType: mapSuggestionTypeToAction(s('type', 'type')),
-    triggerSource: 'health',
+    targetType,
+    targetId: s('target_id', 'targetId') || s('skill_id', 'skillId'),
+    targetName: isAgent ? s('target_id', 'targetId') : '', // TODO: backend msg lacks skill_name/agent_name; frontend should resolve via list lookup
+    actionType: isAgent ? 'create_skill' : mapSuggestionTypeToAction(s('type', 'type')),
+    triggerSource: isAgent ? 'pattern' : 'health',
     triggerReason: s('trigger_reason', 'triggerReason'),
-    status: (s('status', 'status') || 'pending') as SkillEvolutionView['status'],
+    status,
     priority: s('type', 'type') === 'fix_failure' ? 2 : 1,
     draftBody: s('draft_skill_body', 'draftSkillBody'),
-    draftName: '',
+    draftName: s('draft_name', 'draftName'),
     mergeTargetId: '',
     lifecycleStatus,
     sandboxPassed,
-    sandboxResult,
+    sandboxResult: isAgent ? null : sandboxResult,
     metadata,
-    createdAt: s('created_at', 'createdAt'),
-    approvedBy: s('approved_by', 'approvedBy'),
-    appliedAt: null,
-  };
-}
-
-function mapProtoSkillProposalToView(item: Record<string, unknown>): SkillEvolutionView {
-  const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
-  const status = (s('status', 'status') || 'pending') as SkillEvolutionView['status'];
-  // 生命周期从提案状态推导：registered→已应用，approved→就绪，其余→草稿
-  const lifecycleStatus: SkillEvolutionView['lifecycleStatus'] =
-    status === ('registered' as SkillEvolutionView['status']) ? 'applied' : status === 'approved' ? 'ready' : 'draft';
-  return {
-    id: s('id', 'id'),
-    targetType: 'agent',
-    targetId: s('agent_id', 'agentId'),
-    targetName: s('agent_id', 'agentId'),
-    actionType: 'create_skill',
-    triggerSource: 'pattern', // TODO: backend SkillProposal lacks trigger_source; default to 'pattern' until field is added
-    triggerReason: s('pattern_desc', 'patternDesc'),
-    status,
-    priority: 1,
-    draftBody: s('skill_md', 'skillMd'),
-    draftName: s('skill_name', 'skillName'),
-    mergeTargetId: '',
-    lifecycleStatus,
-    // agent 级 SkillProposal 无沙箱字段；置 null 让 UI 显示 "—"，避免误报"未通过"
-    sandboxPassed: null,
-    sandboxResult: null,
-    metadata: null,
     createdAt: s('created_at', 'createdAt'),
     approvedBy: s('approved_by', 'approvedBy'),
     appliedAt: null,

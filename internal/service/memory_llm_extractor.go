@@ -23,7 +23,11 @@ type MemoryLLMExtractor struct {
 	modelCatalog *biz.LlmProviderModelUsecase
 	rt           *provider.RoundTrip
 	llmDisabled  bool
-	lg           loggateway.Logger
+	// usageRef lazily resolves the usage usecase for aux_memory_extract
+	// recording (P2-D, 2026-08-20). Late binding breaks the DI cycle:
+	// the extractor sits upstream of UsageUsecase in the graph.
+	usageRef *biz.UsageUsecaseRef
+	lg       loggateway.Logger
 }
 
 // MemoryLLMExtractorConfig holds all dependencies for MemoryLLMExtractor.
@@ -33,6 +37,7 @@ type MemoryLLMExtractorConfig struct {
 	ModelCatalog *biz.LlmProviderModelUsecase
 	RoundTrip    *provider.RoundTrip
 	LLMDisabled  bool
+	UsageRef     *biz.UsageUsecaseRef
 	Logger       loggateway.Logger
 }
 
@@ -43,6 +48,7 @@ func NewMemoryLLMExtractor(cfg MemoryLLMExtractorConfig) *MemoryLLMExtractor {
 		modelCatalog: cfg.ModelCatalog,
 		rt:           cfg.RoundTrip,
 		llmDisabled:  cfg.LLMDisabled,
+		usageRef:     cfg.UsageRef,
 		lg:           cfg.Logger,
 	}
 }
@@ -140,11 +146,17 @@ func (e *MemoryLLMExtractor) callModel(ctx context.Context, in biz.ConsolidateIn
 		return "", nil, err
 	}
 
+	start := time.Now()
 	var text string
 	var toolCalls []toolCallResult
+	var usage *trpcmodel.Usage
 	for resp := range respCh {
 		if resp.Error != nil {
 			return "", nil, biz.ErrLLMExtractionFailed
+		}
+		// 单轮流式：usage 通常在末块给出（累计值），取最后一个非空。
+		if resp.Usage != nil {
+			usage = resp.Usage
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -161,7 +173,42 @@ func (e *MemoryLLMExtractor) callModel(ctx context.Context, in biz.ConsolidateIn
 			}
 		}
 	}
+	e.recordExtractUsage(ctx, in, prov, mod, usage, time.Since(start))
 	return strings.TrimSpace(text), toolCalls, nil
+}
+
+// recordExtractUsage persists the memory-extraction aux usage (P2-D,
+// 2026-08-20). Zero-token responses (provider returned no usage) are skipped.
+func (e *MemoryLLMExtractor) recordExtractUsage(ctx context.Context, in biz.ConsolidateInput, prov, mod string, usage *trpcmodel.Usage, latency time.Duration) {
+	if usage == nil || e.usageRef == nil {
+		return
+	}
+	u := e.usageRef.Get()
+	if u == nil {
+		return
+	}
+	if usage.PromptTokens <= 0 && usage.CompletionTokens <= 0 {
+		return
+	}
+	if err := u.RecordAuxLLMUsage(ctx, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxMemoryExtract,
+		SessionID:     in.SessionID,
+		AgentID:       in.AgentID,
+		UserID:        in.UserID,
+		Provider:      prov,
+		Model:         mod,
+		Status:        "success",
+		PromptTok:     usage.PromptTokens,
+		CompletionTok: usage.CompletionTokens,
+		CachedTok:     usage.PromptTokensDetails.CachedTokens,
+		UsageSource:   biz.UsageSourceResponse,
+		Latency:       latency,
+	}); err != nil {
+		e.lg.Warn("memory extract: usage record failed",
+			loggateway.StepID("memory.extract_usage"),
+			loggateway.SessionID(in.SessionID),
+			loggateway.Err(err))
+	}
 }
 
 // staticToolDecl wraps a trpctool.Declaration to implement the Tool interface.

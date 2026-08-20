@@ -12,6 +12,13 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// isAPIErrorCode reports whether err carries the given apierror code.
+// （原定义在已删除的 skill_evolution_test.go，merge 用例仍依赖，随 ADR-3-C5 回迁。）
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // A. 相似度引擎（SkillSimilarityEngine）
 // 需求来源：20-skill.design.md —— 四维加权（name/description/body/tag）+ 可选 embedding 增强

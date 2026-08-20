@@ -108,7 +108,7 @@ func TestSearchTool_SuccessWithRetriever(t *testing.T) {
 	embedder := &mockQueryEmbedder{}
 	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.NewNoop())
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithRetriever(context.Background(), ret)
 
 	args, _ := json.Marshal(searchInput{
@@ -148,7 +148,7 @@ func TestSearchTool_TopKDefault(t *testing.T) {
 	embedder := &mockQueryEmbedder{}
 	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.NewNoop())
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithRetriever(context.Background(), ret)
 
 	args, _ := json.Marshal(searchInput{
@@ -175,7 +175,7 @@ func TestSearchTool_CollectionIDFromScopedContext(t *testing.T) {
 	embedder := &mockQueryEmbedder{}
 	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.NewNoop())
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithRetriever(context.Background(), ret)
 	ctx = WithKnowledgeCollections(ctx, []string{"scoped-col"})
 
@@ -199,7 +199,7 @@ func TestSearchTool_CollectionIDFromScopedContext(t *testing.T) {
 }
 
 func TestSearchTool_MultipleScopedCollectionsRequireID(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithKnowledgeCollections(context.Background(), []string{"col-a", "col-b"})
 
 	args, _ := json.Marshal(searchInput{
@@ -226,7 +226,7 @@ func TestSearchTool_SuccessWithAdaptiveRouter(t *testing.T) {
 	hybrid := knowledge.NewHybridRetriever(ret, nil, loggateway.NewNoop())
 	router := knowledge.NewAdaptiveRouter(hybrid, nil, loggateway.NewNoop())
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithAdaptiveRouter(context.Background(), router)
 
 	args, _ := json.Marshal(searchInput{
@@ -444,7 +444,7 @@ func TestContextHelpers_WrongTypeAssertion(t *testing.T) {
 }
 
 func TestSearchTool_EmptyQuery(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := context.Background()
 
 	args, _ := json.Marshal(searchInput{
@@ -459,7 +459,7 @@ func TestSearchTool_EmptyQuery(t *testing.T) {
 }
 
 func TestSearchTool_ScopedCollectionNotAllowed(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithKnowledgeCollections(context.Background(), []string{"col-1"})
 
 	args, _ := json.Marshal(searchInput{

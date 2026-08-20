@@ -225,3 +225,77 @@ func TestCountsAsFirstByte_ResponseErrorCounts(t *testing.T) {
 		t.Fatal("provider error events must count as first byte so billing can surface immediately")
 	}
 }
+
+// P1-C：session_turns 真实指标——LLM 轮次按 response ID 去重、工具调用按
+// tool-call ID 去重（流式 delta 跨 chunk 重复同一 ID 不得重复计数）。
+func TestConsumeEventStream_CountsModelAndToolCalls(t *testing.T) {
+	chunk := func(id string, partial bool, delta trpcmodel.Message) *trpcevent.Event {
+		return &trpcevent.Event{Response: &trpcmodel.Response{
+			ID:        id,
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: partial,
+			Choices:   []trpcmodel.Choice{{Delta: delta}},
+		}}
+	}
+	toolDelta := func(callID string) trpcmodel.Message {
+		return trpcmodel.Message{ToolCalls: []trpcmodel.ToolCall{{
+			ID:       callID,
+			Function: trpcmodel.FunctionDefinitionParam{Name: "datetime"},
+		}}}
+	}
+
+	events := make(chan *trpcevent.Event, 8)
+	// 第 1 轮：同一 response ID 的多个 chunk + 同一 tool call 的重复 delta。
+	events <- chunk("resp-1", true, trpcmodel.Message{Content: "先"})
+	events <- chunk("resp-1", true, toolDelta("call-1"))
+	events <- chunk("resp-1", true, toolDelta("call-1"))
+	events <- chunk("resp-1", false, toolDelta("call-1"))
+	// 第 2 轮：新 response ID + 另一个 tool call。
+	events <- chunk("resp-2", true, toolDelta("call-2"))
+	events <- chunk("resp-2", false, trpcmodel.Message{Content: "完成"})
+	close(events)
+
+	result := ConsumeEventStream(context.Background(), events, ProjectMeta{
+		SessionID: "sess-1",
+		RequestID: "req-1",
+		AgentID:   "agent-1",
+	}, &StreamConsumeOptions{}, loggateway.NewNoop())
+
+	if result.ModelCallCount != 2 {
+		t.Errorf("ModelCallCount = %d, want 2", result.ModelCallCount)
+	}
+	if result.ToolCallCount != 2 {
+		t.Errorf("ToolCallCount = %d, want 2", result.ToolCallCount)
+	}
+	if result.FirstTokenMs < 0 {
+		t.Errorf("FirstTokenMs = %d, want >= 0", result.FirstTokenMs)
+	}
+}
+
+// P1-C：无 response ID 的 provider 退化为按最终（非 partial）响应计轮次。
+func TestConsumeEventStream_CountsModelCallsWithoutResponseID(t *testing.T) {
+	events := make(chan *trpcevent.Event, 4)
+	for i := 0; i < 2; i++ {
+		events <- &trpcevent.Event{Response: &trpcmodel.Response{
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: true,
+			Choices:   []trpcmodel.Choice{{Delta: trpcmodel.Message{Content: "x"}}},
+		}}
+	}
+	events <- &trpcevent.Event{Response: &trpcmodel.Response{
+		Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+		IsPartial: false,
+		Choices:   []trpcmodel.Choice{{Message: trpcmodel.Message{Content: "done"}}},
+	}}
+	close(events)
+
+	result := ConsumeEventStream(context.Background(), events, ProjectMeta{
+		SessionID: "sess-1",
+		RequestID: "req-1",
+		AgentID:   "agent-1",
+	}, &StreamConsumeOptions{}, loggateway.NewNoop())
+
+	if result.ModelCallCount != 1 {
+		t.Errorf("ModelCallCount = %d, want 1 (仅最终响应计数)", result.ModelCallCount)
+	}
+}

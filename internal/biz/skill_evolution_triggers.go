@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -9,6 +10,56 @@ import (
 
 	"aranea-agents/pkg/loggateway"
 )
+
+// ── 共享：L1 pattern → skill 创建链路（PatternTrigger / wire 注入） ──────────
+//
+// 以下符号原居于 skill_evolution.go / skill_evolution_types.go（ADR-3-C5 已随
+// 旧 SkillEvolutionService 一并删除），唯一存量消费方是 PatternTrigger 与
+// SkillIntelligenceUsecase（Registrar）。
+
+const skillPatternMinConfidence = 0.15
+
+// SkillAutoCreator generates a SKILL.md draft from a detected tool-call pattern.
+// Stability:evolving
+type SkillAutoCreator interface {
+	GenerateSKILLMD(ctx context.Context, patternDesc string, toolHistory []ToolCallRecord) (name string, content string, err error)
+}
+
+// SkillRegistrationPort registers an approved skill draft for an agent.
+// Stability:evolving
+type SkillRegistrationPort interface {
+	RegisterSkill(ctx context.Context, agentID string, name string, skillMD string) error
+	SkillExists(ctx context.Context, agentID string, name string) (bool, error)
+}
+
+// ToolCallRecord is one recorded tool invocation distilled from a Pattern.
+type ToolCallRecord struct {
+	ToolName  string
+	Arguments string
+	Result    string
+	Success   bool
+	CalledAt  time.Time
+}
+
+func patternHash(desc string) string {
+	h := sha256.Sum256([]byte(strings.TrimSpace(strings.ToLower(desc))))
+	return fmt.Sprintf("%x", h[:8])
+}
+
+func extractToolNamesFromDesc(desc string) []string {
+	var names []string
+	parts := strings.Split(desc, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if idx := strings.Index(part, "("); idx > 0 {
+			name := strings.TrimSpace(part[:idx])
+			if name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
 
 // ── PatternTrigger（原 SkillEvolutionUsecase） ──
 

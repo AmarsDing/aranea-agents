@@ -20,7 +20,6 @@ vi.mock('../../skills/api', () => ({
   listUnifiedEvolutionSuggestions,
   approveUnifiedEvolutionSuggestion,
   rejectUnifiedEvolutionSuggestion: vi.fn(async () => {}),
-  registerUnifiedEvolutionSuggestion: vi.fn(async () => {}),
   triggerCuratorFlow: vi.fn(async () => {}),
 }));
 

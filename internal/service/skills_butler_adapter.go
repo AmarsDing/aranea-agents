@@ -13,7 +13,7 @@ import (
 
 // skillsButlerSkillUsecaseAdapter bridges skills_butler tools to the ADR-3
 // unified evolution-suggestion API on SkillIntelligenceUsecase (the legacy
-// SkillProposal view on SkillEvolutionUsecase was retired).
+// SkillProposal view and SkillEvolutionUsecase were deleted in ADR-3-C5).
 type skillsButlerSkillUsecaseAdapter struct {
 	uc *biz.SkillIntelligenceUsecase
 }

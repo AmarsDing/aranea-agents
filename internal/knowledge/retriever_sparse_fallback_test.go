@@ -2,8 +2,11 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
@@ -90,6 +93,34 @@ func TestRetriever_Search_NilEmbedder_RepoWithoutBM25(t *testing.T) {
 	}
 	if !apierror.IsCode(err, apierror.CodeUnavailable) {
 		t.Fatalf("expected CodeUnavailable, got %v", err)
+	}
+}
+
+// P0-A（2026-08-20）：jsonPOST 传输层失败（连接拒绝等）归类 Unavailable，
+// 使 hybrid_retriever 的 BM25 降级（F5）在 embedding 服务宕机时真实生效。
+func TestJsonPOST_TransportError_IsUnavailable(t *testing.T) {
+	client := &http.Client{Timeout: 2 * time.Second}
+	// 127.0.0.1:1 为保留未监听端口，连接必被拒。
+	_, err := jsonPOST(context.Background(), client, "http://127.0.0.1:1/embed", "", map[string]string{"inputs": "x"})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if !apierror.IsCode(err, apierror.CodeUnavailable) {
+		t.Fatalf("transport error must be CodeUnavailable, got %v", err)
+	}
+}
+
+// P0-A：父 ctx 取消不算服务不可达——原样上抛，避免触发无意义降级。
+func TestJsonPOST_CanceledContext_NotUnavailable(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &http.Client{Timeout: 2 * time.Second}
+	_, err := jsonPOST(ctx, client, "http://127.0.0.1:1/embed", "", map[string]string{"inputs": "x"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if apierror.IsCode(err, apierror.CodeUnavailable) {
+		t.Fatal("canceled context must NOT be classified as CodeUnavailable")
 	}
 }
 

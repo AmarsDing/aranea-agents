@@ -70,6 +70,8 @@
               v-model:fact-keyword="factKeyword"
               v-model:fact-scope="factScope"
               v-model:fact-status="factStatus"
+              v-model:page="factPage"
+              v-model:page-size="factPageSize"
               :facts-endpoint-ready="factsEndpointReady"
               :scope-options="scopeOptions"
               :fact-status-options="factStatusOptions"
@@ -78,8 +80,10 @@
               :loading-facts="loadingFacts"
               :facts-active-count="factsActiveCount"
               :facts-archived-count="factsArchivedCount"
+              :facts-total="factsFilteredCount"
+              :page-max="factPageMax"
               @reset="resetFactFilters"
-              @search="loadFacts"
+              @search="reloadFactsFromFirstPage"
               @open-fact="openFact"
               @create-fact="openCreateFact"
             />
@@ -232,9 +236,14 @@ const {
   factsEndpointReady,
   factsActiveCount,
   factsArchivedCount,
+  factsFilteredCount,
+  factPage,
+  factPageSize,
+  factPageMax,
   loadAll,
   loadSessions,
   loadFacts,
+  reloadFactsFromFirstPage,
   loadSessionMemory,
   loadCascade,
   approveCascade,
@@ -294,7 +303,7 @@ async function onOpenInBrowse(node: UnifiedGraphNode) {
     factKeyword.value = parseNodeMetaStatement(node) || node.label;
     browseLayer.value = 'L3';
     tab.value = 'browse';
-    await loadFacts();
+    await reloadFactsFromFirstPage();
     return;
   }
   if (node.kind === 'episode') {

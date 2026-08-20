@@ -66,6 +66,10 @@ const (
 	KindAuxTitle     = "aux_title"     // session-title generation
 	KindAuxIntent    = "aux_intent"    // intent pass classification
 	KindAuxEvolution = "aux_evolution" // evolution draft generation
+	// KindAuxMemoryExtract marks sleep-time memory consolidation extraction
+	// calls (MemoryLLMExtractor). Previously unrecorded — every after-turn
+	// consolidation burned tokens invisibly (P2-D, 2026-08-20).
+	KindAuxMemoryExtract = "aux_memory_extract"
 	// KindAuxEmbedding marks embedding API calls (knowledge ingest / retrieval
 	// query vectorization / memory fact embedding). Tokens live in the
 	// EmbeddingTokens column and are priced via EmbeddingPrice (P1-3,
@@ -92,6 +96,31 @@ func MergeUsageSourceMetadata(metaJSON, usageSource string) string {
 		payload = map[string]any{}
 	}
 	payload[MetadataKeyUsageSource] = usageSource
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return metaJSON
+	}
+	return string(raw)
+}
+
+// MetadataKeyLLMRounds is the metadata_json key recording how many LLM rounds
+// (billable API calls) a chat_turn usage row sums over. Tool-call loops bill
+// each round's full prompt separately, so without the round count a summed
+// row is unexplainable (P1-C, 2026-08-20).
+const MetadataKeyLLMRounds = "llm_rounds"
+
+// MergeLLMRoundsMetadata sets metadata_json[llm_rounds], preserving existing
+// keys. Passthrough when rounds <= 0 (no stream observation — nothing to
+// claim) or metaJSON is unparseable.
+func MergeLLMRoundsMetadata(metaJSON string, rounds int) string {
+	if rounds <= 0 {
+		return metaJSON
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metaJSON), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	payload[MetadataKeyLLMRounds] = rounds
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return metaJSON

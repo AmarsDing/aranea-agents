@@ -71,6 +71,13 @@ export function useMemoryCenterPage() {
   const factsTotal = ref(0);
   const factsActiveCount = ref(0);
   const factsArchivedCount = ref(0);
+  /** 与当前 status 过滤同口径的事实总数（filtered_count），驱动知识面板服务端分页。 */
+  const factsFilteredCount = ref(0);
+  const factPage = ref(1);
+  const factPageSize = ref(10);
+  const factPageMax = computed(() => Math.max(1, Math.ceil(factsFilteredCount.value / factPageSize.value)));
+  // 请求序号守卫：翻页/筛选叠加时丢弃过期响应，避免旧数据覆盖新结果（对齐 useToolRunsPage 模式）。
+  let factsLoadSeq = 0;
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
   const factEditOpen = ref(false);
@@ -128,7 +135,7 @@ export function useMemoryCenterPage() {
       {
         label: t('memory.metrics.longTermKnowledge'),
         value: factsTotal.value,
-        hint: factsEndpointReady.value ? t('memory.metrics.l3FactsLoaded') : t('memory.metrics.l3FactsUnavailable'),
+        hint: factsEndpointReady.value ? t('memory.metrics.l3FactsTotal') : t('memory.metrics.l3FactsUnavailable'),
         icon: 'psychology',
         color: 'deep-purple',
       },
@@ -255,20 +262,39 @@ export function useMemoryCenterPage() {
 
   onMounted(loadAll);
 
+  // Agent 变更的统一加载入口（含首挂载 loadAgents 回填首个 Agent 的场景）；
+  // loadAll 仅在 Agent 未变化（手动刷新）时显式加载，避免 watcher + 显式调用双触发重复请求。
   watch(selectedAgentId, async () => {
     selectedSessionId.value = null;
-    await Promise.all([loadSessions(), loadFacts(), loadEvolution(), loadCascade()]);
+    try {
+      await Promise.all([loadSessions(), reloadFactsFromFirstPage(), loadEvolution(), loadCascade()]);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : t('memory.error.loadFailed');
+    }
   });
 
   watch(selectedSessionId, () => {
     void loadSessionMemory();
   });
 
+  // 单 watch 合并分页：pageSize 变化先归一到第 1 页（page 变化复用同一 watch），避免越界空页与双请求。
+  watch([factPage, factPageSize], (newVals, oldVals) => {
+    const sizeChanged = newVals[1] !== oldVals[1];
+    if (sizeChanged && factPage.value !== 1) {
+      factPage.value = 1;
+      return;
+    }
+    void loadFacts();
+  });
+
   async function loadAll() {
     error.value = '';
     try {
+      const prevAgentId = selectedAgentId.value;
       await loadAgents();
-      await Promise.all([loadSessions(), loadFacts(), loadEvolution(), loadCascade()]);
+      if (selectedAgentId.value === prevAgentId) {
+        await Promise.all([loadSessions(), reloadFactsFromFirstPage(), loadEvolution(), loadCascade()]);
+      }
     } catch (err) {
       error.value = err instanceof Error ? err.message : t('memory.error.loadFailed');
     }
@@ -437,6 +463,7 @@ export function useMemoryCenterPage() {
   }
 
   async function loadFacts() {
+    const seq = ++factsLoadSeq;
     loadingFacts.value = true;
     try {
       const result = await memoryStore.loadFacts({
@@ -444,22 +471,41 @@ export function useMemoryCenterPage() {
         scope_type: factScope.value || undefined,
         status: factStatus.value || undefined,
         agent_id: selectedAgentId.value || undefined,
-        limit: 50,
+        limit: factPageSize.value,
+        offset: (factPage.value - 1) * factPageSize.value,
       });
+      if (seq !== factsLoadSeq) return;
       factsTotal.value = result.total;
+      factsFilteredCount.value = result.filtered_count ?? result.total;
       factsActiveCount.value = result.active_count ?? 0;
       factsArchivedCount.value = result.archived_count ?? 0;
       factsEndpointReady.value = true;
+      // 治理动作删减事实后当前页可能越界：归一到最新末页，由 page watch 复用本函数重新加载。
+      if (factPage.value > factPageMax.value) {
+        factPage.value = factPageMax.value;
+        return;
+      }
       await loadConflictingFacts();
     } catch {
+      if (seq !== factsLoadSeq) return;
       memoryStore.clearFacts();
       factsTotal.value = 0;
+      factsFilteredCount.value = 0;
       factsActiveCount.value = 0;
       factsArchivedCount.value = 0;
       factsEndpointReady.value = false;
     } finally {
-      loadingFacts.value = false;
+      if (seq === factsLoadSeq) loadingFacts.value = false;
     }
+  }
+
+  /** 筛选/搜索/Agent 变更后从第 1 页重新加载：page 已是 1 时直接加载，>1 时归一由 page watch 触发，避免双请求。 */
+  async function reloadFactsFromFirstPage() {
+    if (factPage.value !== 1) {
+      factPage.value = 1;
+      return;
+    }
+    await loadFacts();
   }
 
   async function loadSessionMemory() {
@@ -499,7 +545,7 @@ export function useMemoryCenterPage() {
     factKeyword.value = '';
     factScope.value = null;
     factStatus.value = 'active';
-    void loadFacts();
+    void reloadFactsFromFirstPage();
   }
 
   function openSnapshot(row: L0AssemblySnapshot) {
@@ -684,9 +730,14 @@ export function useMemoryCenterPage() {
     factsEndpointReady,
     factsActiveCount,
     factsArchivedCount,
+    factsFilteredCount,
+    factPage,
+    factPageSize,
+    factPageMax,
     loadAll,
     loadSessions,
     loadFacts,
+    reloadFactsFromFirstPage,
     loadSessionMemory,
     loadCascade,
     approveCascade,

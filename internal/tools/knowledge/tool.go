@@ -120,7 +120,10 @@ type chunkSummary struct {
 }
 
 // NewSearchTool returns the knowledge_search tool.
-func NewSearchTool() trpctool.CallableTool {
+func NewSearchTool(lg loggateway.Logger) trpctool.CallableTool {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	execute := func(ctx context.Context, in searchInput) (searchOutput, error) {
 		if in.Query == "" {
 			return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: query is required")
@@ -171,7 +174,15 @@ func NewSearchTool() trpctool.CallableTool {
 			chunks, err = fr.SearchAll(ctx, q, nil, "", retrievalWorkspace(ctx))
 		}
 		if err != nil {
-			return searchOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: %s", err.Error()))
+			// 脱敏：底层错误链可能含基础设施细节（host:port、连接串、SQL），
+			// 模型可见错误只保留稳定 code 与通用文案；完整链路记服务端日志。
+			lg.Warn("knowledge_search 检索失败",
+				loggateway.StepID("tool.knowledge_search.fail"),
+				loggateway.Err(err))
+			if apierror.IsCode(err, apierror.CodeUnavailable) {
+				return searchOutput{}, apierror.Unavailable(apierror.DomainKnowledge, "knowledge_search: retrieval service temporarily unavailable, please try again later")
+			}
+			return searchOutput{}, apierror.Internal(apierror.DomainKnowledge, "knowledge_search: search failed, please try again later")
 		}
 
 		// 29-token P2-2: cited 回采 — 每次检索调用发射 knowledge_recalled

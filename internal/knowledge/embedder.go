@@ -641,12 +641,21 @@ func jsonPOST(ctx context.Context, client *http.Client, url, apiKey string, payl
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder http request failed").WithCause(err)
+		// 父 ctx 取消/超时原样上抛，避免误判为服务不可达而触发无意义降级。
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		// 传输层失败（连接拒绝/DNS/对端超时等）= 服务不可达，归类 Unavailable
+		// 使 hybrid_retriever 的 BM25 降级（F5）生效。
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "embedder service unreachable").WithCause(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "embedder response read failed").WithCause(err)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder http %d: %s", resp.StatusCode, string(body))

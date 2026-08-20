@@ -68,6 +68,16 @@ type EventStreamResult struct {
 	//   "estimated"          — filled by EstimateTokensIfMissing from text (rough estimate)
 	// Useful for diagnosing why tokens=0 or why prompt≈completion (estimation fallback).
 	UsageSource string
+	// FirstTokenMs is the turn TTFT (first meaningful model byte relative to
+	// consume start), in milliseconds. 0 means no first byte was observed
+	// (stream errored/stalled before any model output).
+	FirstTokenMs int
+	// ModelCallCount counts distinct LLM rounds observed in the stream
+	// (deduped by response ID). Tool-call loops produce one per round.
+	ModelCallCount int
+	// ToolCallCount counts distinct tool calls requested by the model
+	// (deduped by tool-call ID across streaming deltas).
+	ToolCallCount int
 	// Per-round billing accumulators. Within one LLM round, streaming usage
 	// is reported cumulatively (track the max); when a new round is detected
 	// (prompt value changes), the previous round's maxima are locked into

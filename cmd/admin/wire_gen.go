@@ -364,7 +364,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillRegistrationPort := provideSkillRegistrationPort(skillUsecase)
 	skillScoringUsecase := biz.NewSkillScoringUsecase(skillIntelligenceRepo, loggatewayLogger)
 	memoryAgentCaseRepo := data.NewMemoryAgentCaseStore(dataData)
-	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
+	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, usecaseRef, loggatewayLogger)
 	memoryLLMExtractor := service.NewMemoryLLMExtractor(memoryLLMExtractorConfig)
 	agentCaseSkillDistiller := service.NewAgentCaseSkillDistiller(memoryLLMExtractor)
 	selfImprovementSignalRepo := data.NewSelfImprovementSignalRepo(dataData)
@@ -418,7 +418,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphService := service.NewGraphService(graphUsecase, taskUsecase, graphExecutionTelemetry, graphOrchestrationProjector, graphTaskRuntime, monitorBus, loggatewayLogger)
 	orchestrationRepository := data.NewOrchestrationRepo(dataData, loggatewayLogger)
 	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamAssembler, orchestrationRepository, taskPlanRepository, allocationPlanRepository, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, loggatewayLogger)
-	skillEvolutionUsecase := provideSkillEvolutionUsecase(unifiedEvolutionRepo, patternReadWriter, agentRepository, skillAutoCreator, skillRegistrationPort, skillEvolutionOrchestrator, loggatewayLogger)
 	skillInvocationStatsReader := data.NewSkillInvocationStatsRepo(dataData)
 	experienceAnalyticsUsecase := biz.NewExperienceAnalyticsUsecase(evolutionMetricsRepo, skillRepo, teamRepo, teamRepo, usageRepo, memoryAdminUsecase, sessionRepo, toolRepo, loggatewayLogger)
 	turnLifecycleUsecase := provideTurnLifecycleUsecase(sessionUsecase, loggatewayLogger)
@@ -570,7 +569,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	aiRefineService := service.NewAIRefineService(promptRefiner)
 	taxonomyService := service.NewTaxonomyService(organizationUsecase)
 	organizationService := service.NewOrganizationService(organizationUsecase)
-	skillEvolutionService := service.NewSkillEvolutionService(skillEvolutionUsecase, loggatewayLogger)
 	skillIntelligenceService := service.NewSkillIntelligenceService(skillIntelligenceUsecase, loggatewayLogger)
 	skillMergeRepo := data.NewSkillMergeRepo(dataData, loggatewayLogger)
 	ruleBasedContentFuser := biz.NewRuleBasedContentFuser()
@@ -616,7 +614,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
 	agentBridgeAPI := service.NewAgentBridgeAPI(agentBridgeService)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -3276,22 +3274,6 @@ func provideEvolutionUsecase(
 	return biz.ProvideEvolutionUsecase(metricsRepo, unifiedRepo, agents, tp, lg)
 }
 
-// provideSkillEvolutionUsecase wraps biz.NewSkillEvolutionUsecase to wire the
-// unified store (A6) and the unified orchestrator for cross-pipeline dedup (A1).
-func provideSkillEvolutionUsecase(
-	unifiedRepo *data.UnifiedEvolutionRepo,
-	patterns biz.PatternReader,
-	agents biz.AgentRepository,
-	creator biz.SkillAutoCreator,
-	registrar biz.SkillRegistrationPort,
-	orch *biz.SkillEvolutionOrchestrator,
-	lg loggateway.Logger,
-) *biz.SkillEvolutionUsecase {
-	uc := biz.NewSkillEvolutionUsecase(unifiedRepo, unifiedRepo, patterns, agents, creator, registrar, lg)
-	uc.SetOrchestrator(orch)
-	return uc
-}
-
 // provideLearningLoopUsecase wraps biz.NewLearningLoopUsecase to wire the
 // unified orchestrator so RegisterKnowledge creates UnifiedEvolutionSuggestions
 // through the single pipeline (A1).
@@ -4201,6 +4183,7 @@ func provideMemoryLLMExtractorConfig(
 	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
 	modelCatalog *biz.LlmProviderModelUsecase,
+	usageRef *biz.UsageUsecaseRef,
 	lg loggateway.Logger,
 ) service.MemoryLLMExtractorConfig {
 	return service.MemoryLLMExtractorConfig{
@@ -4209,6 +4192,7 @@ func provideMemoryLLMExtractorConfig(
 		ModelCatalog: modelCatalog,
 		RoundTrip:    &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		LLMDisabled:  false,
+		UsageRef:     usageRef,
 		Logger:       lg,
 	}
 }

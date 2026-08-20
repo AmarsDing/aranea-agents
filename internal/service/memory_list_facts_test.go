@@ -29,6 +29,10 @@ func (f *fakeListFactRowsDeps) ListFactRows(_ context.Context, scopeType, scopeI
 	return nil, 0, 0, 0, nil
 }
 
+func (f *fakeListFactRowsDeps) CountFactRows(_ context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error) {
+	return 0, nil
+}
+
 // TestListMemoryFacts_PassesAgentIDThrough pins the F1 contract: the agent_id
 // query param reaches the admin store so the memory-center L3 browse tab shows
 // "this agent's facts" across all scopes, matching the panorama card count.

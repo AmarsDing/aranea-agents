@@ -28,7 +28,6 @@ import { createModelCatalogServiceClient } from './kratos/model_catalog/v1/index
 import { createMonitorServiceClient } from './kratos/monitor/v1/index';
 import { createMemoryServiceClient } from './kratos/memory/v1/index';
 import { createGraphServiceClient } from './kratos/graph/v1/index';
-import { createSkillEvolutionServiceClient } from './kratos/skill_evolution/v1/index';
 import { createSkillIntelligenceServiceClient } from './kratos/skill_intelligence/v1/index';
 import { createSkillEvolutionSuggestionServiceClient } from './kratos/skill_evolution_suggestion/v1/index';
 import { createSelfImprovementServiceClient } from './kratos/self_improvement/v1/index';
@@ -169,10 +168,6 @@ export function createEcosystemService() {
 
 export function createGatewayService() {
   return createGatewayServiceClient(requestHandler);
-}
-
-export function createSkillEvolutionService() {
-  return createSkillEvolutionServiceClient(requestHandler);
 }
 
 export function createSkillIntelligenceService() {

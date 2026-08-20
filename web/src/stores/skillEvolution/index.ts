@@ -5,7 +5,6 @@ import {
   listUnifiedEvolutionSuggestions,
   approveUnifiedEvolutionSuggestion,
   rejectUnifiedEvolutionSuggestion,
-  registerUnifiedEvolutionSuggestion,
   triggerCuratorFlow,
 } from '../../features/skills/api';
 
@@ -61,14 +60,6 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
     }
   }
 
-  async function registerProposal(id: string) {
-    await registerUnifiedEvolutionSuggestion(id);
-    const idx = suggestions.value.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      suggestions.value[idx] = { ...suggestions.value[idx], status: 'applied' };
-    }
-  }
-
   async function runCuratorFlow(skillId: string) {
     return triggerCuratorFlow(skillId);
   }
@@ -83,7 +74,6 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
     loadSuggestions,
     approveSuggestion,
     rejectSuggestion,
-    registerProposal,
     runCuratorFlow,
   };
 });

@@ -13,7 +13,7 @@ import (
 )
 
 // recordSessionTurn records a completed agent turn.
-func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
+func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string, durationMs, firstTokenMs, modelCallCount, toolCallCount int) {
 	o.turnMetrics().RecordSessionTurn(ctx, SessionTurnRecordParams{
 		SessionID:      sessionID,
 		OwnerType:      "agent",
@@ -25,6 +25,10 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 		PromptTok:      promptTok,
 		CompletionTok:  completionTok,
 		ContentPreview: contentPreview,
+		DurationMs:     durationMs,
+		FirstTokenMs:   firstTokenMs,
+		ModelCallCount: modelCallCount,
+		ToolCallCount:  toolCallCount,
 	})
 }
 
@@ -51,6 +55,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 	sessionID, runID, agentKey, agentID, prov, mod, status string,
 	promptTok, completionTok, cachedTok int,
 	usageSource string,
+	rounds int,
 	latency time.Duration,
 	errMsg string,
 ) {
@@ -67,6 +72,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 		CompletionTok: completionTok,
 		CachedTok:     cachedTok,
 		UsageSource:   usageSource,
+		Rounds:        rounds,
 		Latency:       latency,
 		ErrMsg:        errMsg,
 	})

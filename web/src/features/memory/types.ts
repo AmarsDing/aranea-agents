@@ -156,6 +156,8 @@ export type MemoryFactListResult = {
   /** 全量筛选集（忽略 status）下的活跃/归档计数，用于知识面板统计行。 */
   active_count?: number;
   archived_count?: number;
+  /** 与返回 items 同口径（含 status 过滤）的总数，用于服务端分页。 */
+  filtered_count?: number;
 };
 
 /** ReviewMemoryFact 治理动作（memory.md §9.4）。refine 需携带替换字段。 */

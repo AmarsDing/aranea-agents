@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewSearchTool_ReturnsCallableTool(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	if tool == nil {
 		t.Fatal("NewSearchTool returned nil")
 	}
@@ -73,7 +73,7 @@ func TestWithKnowledgeCollections_AllEmpty_ReturnsUnmodifiedContext(t *testing.T
 }
 
 func TestCallTool_NoRetriever_ReturnsError(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := context.Background()
 
 	args, _ := json.Marshal(searchInput{
@@ -88,7 +88,7 @@ func TestCallTool_NoRetriever_ReturnsError(t *testing.T) {
 }
 
 func TestCallTool_EmptyCollectionID_NoScopedCollections_ReturnsError(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := context.Background()
 
 	args, _ := json.Marshal(searchInput{
@@ -166,7 +166,7 @@ func TestReflectTool_UnscopedCollectionID(t *testing.T) {
 }
 
 func TestSearchTool_UnscopedCollectionID(t *testing.T) {
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := context.Background()
 	ctx = WithKnowledgeCollections(ctx, []string{"col-1", "col-2"})
 

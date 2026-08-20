@@ -132,11 +132,12 @@ func TestSkillSelfEvolution_EndToEnd(t *testing.T) {
 	t.Logf("T1 OK: skill evolved via LLM draft, new version %s (parent %s)", newVer.ID, newVer.ParentVersionID)
 }
 
-// ── T2 对话内容创建：observations → patterns → proposal → 注册 SKILL.md ──────
+// ── T2 对话内容创建：observations → patterns → suggestion → 注册 SKILL.md ─────
 //
-// 链路：对话中沉淀的工具调用观测 → LearningLoop.DetectPatterns 检测高频模式 →
-// SkillEvolutionUsecase.DetectAndPropose 用真实 SkillAutoCreator(fake LLM) 生成
-// SKILL.md → ApproveProposal → RegisterApproved → DB 中可解析的 SKILL.md。
+// 链路（ADR-3-C5 后）：对话中沉淀的工具调用观测 → LearningLoop.DetectPatterns
+// 检测高频模式 → PatternTrigger.Check 用真实 SkillAutoCreator(fake LLM) 生成
+// SKILL.md 建议 → 落库 → ApproveSuggestion → ApplyApprovedSuggestion（agent
+// create_skill 行自动注册）→ DB 中可解析的 SKILL.md。
 func TestSkillAutoCreate_FromConversation(t *testing.T) {
 	env := newSkillFuncEnv(t)
 	ctx := context.Background()
@@ -158,7 +159,9 @@ func TestSkillAutoCreate_FromConversation(t *testing.T) {
 	creator := skillpkg.NewSkillAutoCreator(skillpkg.NewLLMCallerAdapter(fakeLLM, "fake", "fake-model"), env.lg)
 	registrar := &dbSkillRegistrar{client: env.client}
 	unified := data.NewUnifiedEvolutionRepo(env.d, env.lg)
-	evoUC := biz.NewSkillEvolutionUsecase(unified, unified, patRepo, agentRepo, creator, registrar, env.lg)
+	trigger := biz.NewPatternTrigger(nil, patRepo, creator, registrar, unified, env.lg)
+	intelUC := biz.NewSkillIntelligenceUsecase(nil, nil, unified, nil, env.lg,
+		biz.SkillIntelligenceConfig{Registrar: registrar})
 
 	// 1) 对话观测：3 次 web_search + 1 次 fetch_page（≥3 次同 kind → 形成模式）。
 	obs := []biz.Observation{
@@ -189,23 +192,23 @@ func TestSkillAutoCreate_FromConversation(t *testing.T) {
 		t.Errorf("pattern confidence = %f, want >= 0.15", patterns[0].Confidence)
 	}
 
-	// 3) 生成提案（真实 SkillAutoCreator + fake LLM）。
-	proposals, err := evoUC.DetectAndPropose(ctx, agentID)
+	// 3) PatternTrigger 产出建议（真实 SkillAutoCreator + fake LLM）并落库。
+	suggestions, err := trigger.Check(ctx, agentID)
 	if err != nil {
-		t.Fatalf("DetectAndPropose: %v", err)
+		t.Fatalf("PatternTrigger.Check: %v", err)
 	}
-	if len(proposals) != 1 {
-		t.Fatalf("proposals = %d, want 1", len(proposals))
+	if len(suggestions) != 1 {
+		t.Fatalf("suggestions = %d, want 1", len(suggestions))
 	}
-	prop := proposals[0]
-	if prop.SkillName != "web_research" {
-		t.Errorf("skill name = %q, want web_research", prop.SkillName)
+	sug := suggestions[0]
+	if sug.DraftName != "web_research" {
+		t.Errorf("skill name = %q, want web_research", sug.DraftName)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(prop.SkillMD), "---") {
-		t.Errorf("SKILL.md must start with YAML front matter, got:\n%s", prop.SkillMD)
+	if !strings.HasPrefix(strings.TrimSpace(sug.DraftBody), "---") {
+		t.Errorf("SKILL.md must start with YAML front matter, got:\n%s", sug.DraftBody)
 	}
-	if prop.Status != biz.SkillProposalStatusPending {
-		t.Errorf("proposal status = %q, want pending", prop.Status)
+	if sug.Status != string(biz.UnifiedEvolutionStatePending) {
+		t.Errorf("suggestion status = %q, want pending", sug.Status)
 	}
 	// LLM 证据：prompt 携带模式描述与工具历史。
 	if fakeLLM.callCount() != 1 {
@@ -214,17 +217,23 @@ func TestSkillAutoCreate_FromConversation(t *testing.T) {
 	if !strings.Contains(fakeLLM.requests[0].User, "web_search") {
 		t.Error("creator prompt missing detected tool name")
 	}
+	if err := unified.Create(ctx, sug); err != nil {
+		t.Fatalf("unified.Create: %v", err)
+	}
 
-	// 4) 审批 → 注册。
-	if _, err := evoUC.ApproveProposal(ctx, prop.ID, "tester"); err != nil {
-		t.Fatalf("ApproveProposal: %v", err)
+	// 4) 审批 → 应用（ADR-3：agent create_skill 行批准后经 registrar 自动注册）。
+	if err := intelUC.ApproveSuggestion(ctx, sug.ID, "tester"); err != nil {
+		t.Fatalf("ApproveSuggestion: %v", err)
 	}
-	registered, err := evoUC.RegisterApproved(ctx, prop.ID)
-	if err != nil {
-		t.Fatalf("RegisterApproved: %v", err)
+	if err := intelUC.ApplyApprovedSuggestion(ctx, sug.ID); err != nil {
+		t.Fatalf("ApplyApprovedSuggestion: %v", err)
 	}
-	if registered.Status != biz.SkillProposalStatusRegistered {
-		t.Errorf("registered status = %q, want registered", registered.Status)
+	row, err := unified.GetByID(ctx, sug.ID)
+	if err != nil || row == nil {
+		t.Fatalf("unified GetByID: row=%v err=%v", row, err)
+	}
+	if row.Status != string(biz.UnifiedEvolutionStateApplied) {
+		t.Errorf("unified status = %q, want applied", row.Status)
 	}
 
 	// 5) DB 证据：skill 已注册，SKILL.md 可解析（frontmatter + name 字段）。
@@ -247,22 +256,23 @@ func TestSkillAutoCreate_FromConversation(t *testing.T) {
 	if !strings.Contains(md, "## triggers") || !strings.Contains(md, "## steps") {
 		t.Error("registered SKILL.md missing required sections (triggers/steps)")
 	}
-	t.Logf("T2 OK: skill %q auto-created from conversation pattern %q", prop.SkillName, patterns[0].Description)
+	t.Logf("T2 OK: skill %q auto-created from conversation pattern %q", sug.DraftName, patterns[0].Description)
 }
 
 // ── T3 去重 ──────────────────────────────────────────────────────────────────
 
-// T3a patternHash 去重：同一模式重复 DetectAndPropose 不重复生成提案。
+// T3a patternHash 去重：同一模式重复 Check 不重复生成建议（trigger 经
+// patternReader.GetLatestByPatternHash 查重，已落库行即去重依据）。
 // T3b SkillExists 预检：推断名已注册时跳过 LLM 生成。
 func TestSkillDedup_ProposalLevel(t *testing.T) {
 	ctx := context.Background()
 
-	newEvoUC := func(t *testing.T, env *skillFuncEnv, fakeLLM *fakeLLMCaller) *biz.SkillEvolutionUsecase {
+	newTrigger := func(t *testing.T, env *skillFuncEnv, fakeLLM *fakeLLMCaller) (*biz.PatternTrigger, *data.UnifiedEvolutionRepo) {
+		t.Helper()
 		patRepo := data.NewPatternRepo(env.d)
-		agentRepo := data.NewAgentRepo(env.d)
 		creator := skillpkg.NewSkillAutoCreator(skillpkg.NewLLMCallerAdapter(fakeLLM, "fake", "fake-model"), env.lg)
 		unified := data.NewUnifiedEvolutionRepo(env.d, env.lg)
-		return biz.NewSkillEvolutionUsecase(unified, unified, patRepo, agentRepo, creator, &dbSkillRegistrar{client: env.client}, env.lg)
+		return biz.NewPatternTrigger(nil, patRepo, creator, &dbSkillRegistrar{client: env.client}, unified, env.lg), unified
 	}
 	seedDetectedPattern := func(t *testing.T, env *skillFuncEnv, agentID, desc string) {
 		t.Helper()
@@ -290,18 +300,21 @@ func TestSkillDedup_ProposalLevel(t *testing.T) {
 		fakeLLM := &fakeLLMCaller{handler: func(req biz.LLMCallRequest) (string, error) {
 			return "NAME: web_search\n---\nname: web_search\ndescription: x\n---\n# Web Search\n", nil
 		}}
-		evoUC := newEvoUC(t, env, fakeLLM)
+		trigger, unified := newTrigger(t, env, fakeLLM)
 
-		first, err := evoUC.DetectAndPropose(ctx, agentID)
+		first, err := trigger.Check(ctx, agentID)
 		if err != nil || len(first) != 1 {
-			t.Fatalf("first DetectAndPropose: n=%d err=%v, want 1 proposal", len(first), err)
+			t.Fatalf("first Check: n=%d err=%v, want 1 suggestion", len(first), err)
 		}
-		second, err := evoUC.DetectAndPropose(ctx, agentID)
+		if err := unified.Create(ctx, first[0]); err != nil {
+			t.Fatalf("unified.Create: %v", err)
+		}
+		second, err := trigger.Check(ctx, agentID)
 		if err != nil {
-			t.Fatalf("second DetectAndPropose: %v", err)
+			t.Fatalf("second Check: %v", err)
 		}
 		if len(second) != 0 {
-			t.Errorf("second DetectAndPropose = %d proposals, want 0 (patternHash dedup)", len(second))
+			t.Errorf("second Check = %d suggestions, want 0 (patternHash dedup)", len(second))
 		}
 		if fakeLLM.callCount() != 1 {
 			t.Errorf("LLM calls = %d, want 1 (second run must not regenerate)", fakeLLM.callCount())
@@ -322,14 +335,14 @@ func TestSkillDedup_ProposalLevel(t *testing.T) {
 		fakeLLM := &fakeLLMCaller{handler: func(req biz.LLMCallRequest) (string, error) {
 			return "NAME: web_search\n---\nname: web_search\n---\n# dup\n", nil
 		}}
-		evoUC := newEvoUC(t, env, fakeLLM)
+		trigger, _ := newTrigger(t, env, fakeLLM)
 
-		proposals, err := evoUC.DetectAndPropose(ctx, agentID)
+		suggestions, err := trigger.Check(ctx, agentID)
 		if err != nil {
-			t.Fatalf("DetectAndPropose: %v", err)
+			t.Fatalf("Check: %v", err)
 		}
-		if len(proposals) != 0 {
-			t.Errorf("proposals = %d, want 0 (skill already exists)", len(proposals))
+		if len(suggestions) != 0 {
+			t.Errorf("suggestions = %d, want 0 (skill already exists)", len(suggestions))
 		}
 		if fakeLLM.callCount() != 0 {
 			t.Errorf("LLM calls = %d, want 0 (SkillExists pre-check must short-circuit)", fakeLLM.callCount())

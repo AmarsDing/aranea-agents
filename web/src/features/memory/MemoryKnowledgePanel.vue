@@ -92,7 +92,7 @@
           <AppRegistryTable
             :shell="false"
             table-class="memory-facts-table"
-            :rows="pagedRows"
+            :rows="factRows"
             :columns="factColumns"
             row-key="id"
             :loading="loadingFacts"
@@ -165,12 +165,14 @@
           </AppRegistryTable>
 
           <AppRegistryPagination
-            v-model:page="page"
-            v-model:page-size="pageSize"
+            :page="page"
+            :page-size="pageSize"
             :page-max="pageMax"
-            :total="factRows.length"
+            :total="factsTotal"
             :loading="loadingFacts"
             :label="t('memory.knowledge.paginationUnit')"
+            @update:page="$emit('update:page', $event)"
+            @update:page-size="$emit('update:pageSize', $event)"
           />
         </div>
       </template>
@@ -179,7 +181,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { QTableProps } from 'quasar';
 import AppPageToolbar from '../../components/layout/AppPageToolbar.vue';
@@ -190,7 +191,7 @@ import type { MemoryFact } from './types';
 
 const { t } = useI18n();
 
-const props = defineProps<{
+defineProps<{
   factsEndpointReady: boolean;
   factKeyword: string;
   factScope: string | null;
@@ -202,32 +203,24 @@ const props = defineProps<{
   loadingFacts: boolean;
   factsActiveCount: number;
   factsArchivedCount: number;
+  /** 与当前 status 过滤同口径的事实总数（服务端分页 total）。 */
+  factsTotal: number;
+  page: number;
+  pageSize: number;
+  pageMax: number;
 }>();
 
 defineEmits<{
   'update:factKeyword': [value: string];
   'update:factScope': [value: string | null];
   'update:factStatus': [value: string | null];
+  'update:page': [value: number];
+  'update:pageSize': [value: number];
   reset: [];
   search: [];
   openFact: [fact: MemoryFact];
   createFact: [];
 }>();
-
-const page = ref(1);
-const pageSize = ref(12);
-const pageMax = computed(() => Math.max(1, Math.ceil(props.factRows.length / pageSize.value)));
-const pagedRows = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return props.factRows.slice(start, start + pageSize.value);
-});
-
-watch(
-  () => props.factRows,
-  () => {
-    page.value = 1;
-  },
-);
 
 function bounded(value?: number) {
   const numeric = Number(value) || 0;

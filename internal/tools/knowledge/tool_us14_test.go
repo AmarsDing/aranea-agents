@@ -38,7 +38,7 @@ func TestSearchTool_EmptyCollection_NoScope_RoutesAllCollections(t *testing.T) {
 		biz.KnowledgeCollection{ID: "col-shipping", Name: "shipping info"},
 	)
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
 
 	args, _ := json.Marshal(searchInput{CollectionID: "", Query: "refund policy"})
@@ -74,7 +74,7 @@ func TestSearchTool_EmptyCollection_MultiScope_RoutesWithinScoped(t *testing.T) 
 		biz.KnowledgeCollection{ID: "col-c", Name: "gamma"},
 	)
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
 	ctx = WithKnowledgeCollections(ctx, []string{"col-a", "col-b"})
 
@@ -130,7 +130,7 @@ func TestSearchTool_EmptyCollection_ZeroCollections_ReturnsEmpty(t *testing.T) {
 	repo := &mockKnowledgeRepo{}
 	fr := newFederatedWithMeta(repo)
 
-	tool := NewSearchTool()
+	tool := NewSearchTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
 
 	args, _ := json.Marshal(searchInput{CollectionID: "", Query: "anything"})
