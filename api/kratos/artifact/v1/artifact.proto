@@ -71,8 +71,13 @@ message DeleteArtifactRequest {
 // Use the ID of any version as the lookup handle, and specify the version number
 // to delete. If it is the only remaining version the logical artifact is gone.
 message DeleteArtifactVersionRequest {
-  string id      = 1 [(google.api.field_behavior) = REQUIRED];
-  int32  version = 2 [(google.api.field_behavior) = REQUIRED];
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // version is 0-based (first upload is v0), so 0 is a legitimate value.
+  // It is NOT marked REQUIRED on purpose: the fieldbehavior validator treats
+  // proto3 scalar zero as "missing", which would wrongly reject v0. Presence
+  // is guaranteed by the HTTP path binding `/v1/artifacts/{id}/versions/{version}`;
+  // the service layer rejects negative values.
+  int32 version = 2;
 }
 
 message PreviewArtifactRequest {

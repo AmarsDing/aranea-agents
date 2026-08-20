@@ -497,9 +497,14 @@ func (x *DeleteArtifactRequest) GetId() string {
 // Use the ID of any version as the lookup handle, and specify the version number
 // to delete. If it is the only remaining version the logical artifact is gone.
 type DeleteArtifactVersionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Version       int32                  `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// version is 0-based (first upload is v0), so 0 is a legitimate value.
+	// It is NOT marked REQUIRED on purpose: the fieldbehavior validator treats
+	// proto3 scalar zero as "missing", which would wrongly reject v0. Presence
+	// is guaranteed by the HTTP path binding `/v1/artifacts/{id}/versions/{version}`;
+	// the service layer rejects negative values.
+	Version       int32 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -917,10 +922,10 @@ const file_kratos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2 .kratos.artifact.v1.ArtifactMetaR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"-\n" +
 	"\x15DeleteArtifactRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"T\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"N\n" +
 	"\x1cDeleteArtifactVersionRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1e\n" +
-	"\aversion\x18\x02 \x01(\x05B\x04\xe2A\x01\x02R\aversion\"H\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x05R\aversion\"H\n" +
 	"\x16PreviewArtifactRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\"\xb6\x01\n" +
