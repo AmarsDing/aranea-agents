@@ -9,13 +9,17 @@ import {
   type HookRuleConfig,
 } from '../hooks/types';
 import { useHooksStore } from '../../stores/hooks';
+import { useToolsStore } from '../../stores/tools';
 
 export function useAgentHooksPanel(agentId: () => string, agentKey: () => string) {
   const { t } = useI18n();
   const $q = useQuasar();
   const hooksStore = useHooksStore();
+  const toolsStore = useToolsStore();
   const loading = ref(false);
   const saving = ref(false);
+  const enabledToolKeys = ref<string[]>([]);
+  const loadingEnabledToolKeys = ref(false);
   const loadError = ref('');
   const rows = ref<HookRow[]>([]);
   const editorExpanded = ref(true);
@@ -66,6 +70,29 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
   watch(
     () => [agentId(), agentKey()] as const,
     () => resetDraft(),
+    { immediate: true },
+  );
+
+  /** 当前 Agent 生效工具 key 集合（后端聚合，经 tools store），用于 Tool 下拉「已启用」标注。 */
+  watch(
+    () => agentId(),
+    async (id) => {
+      if (!id) {
+        enabledToolKeys.value = [];
+        return;
+      }
+      loadingEnabledToolKeys.value = true;
+      try {
+        const eff = await toolsStore.fetchEffectiveTools(id);
+        enabledToolKeys.value = (eff.items ?? [])
+          .filter((it) => it.effective_state === 'allowed')
+          .map((it) => it.tool_key);
+      } catch {
+        enabledToolKeys.value = [];
+      } finally {
+        loadingEnabledToolKeys.value = false;
+      }
+    },
     { immediate: true },
   );
 
@@ -206,6 +233,8 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
     togglingId,
     draftValid,
     editValid,
+    enabledToolKeys,
+    loadingEnabledToolKeys,
     agentId,
     agentKey,
     createScopedHook,

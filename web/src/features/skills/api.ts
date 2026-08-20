@@ -614,12 +614,20 @@ export async function listUnifiedEvolutionSuggestions(params: {
 
   if (targetType === 'skill') {
     const client = createSkillEvolutionSuggestionService();
-    const skillRes = await client.ListSkillEvolutionSuggestions({
-      skillId: params.targetId || undefined,
-      status: params.status || undefined,
-      page: params.page,
-      pageSize: params.pageSize,
-    });
+    let skillRes;
+    try {
+      skillRes = await client.ListSkillEvolutionSuggestions({
+        skillId: params.targetId || undefined,
+        status: params.status || undefined,
+        page: params.page,
+        pageSize: params.pageSize,
+      });
+    } catch (err) {
+      // skillId 无匹配时后端返回 NOT_FOUND：视为空结果而非系统错误，
+      // 让列表页走"没有匹配的进化建议"空状态。
+      if (isNotFoundError(err)) return { items, total: 0, skillTotal: 0, agentTotal: 0 };
+      throw err;
+    }
     for (const item of skillRes.items || []) {
       items.push(mapProtoEvolutionSuggestionToView(item));
     }
@@ -628,12 +636,18 @@ export async function listUnifiedEvolutionSuggestions(params: {
   }
 
   const evoClient = createSkillEvolutionService();
-  const agentRes = await evoClient.ListSkillProposals({
-    agentId: params.targetId || undefined,
-    status: params.status || undefined,
-    page: params.page,
-    pageSize: params.pageSize,
-  });
+  let agentRes;
+  try {
+    agentRes = await evoClient.ListSkillProposals({
+      agentId: params.targetId || undefined,
+      status: params.status || undefined,
+      page: params.page,
+      pageSize: params.pageSize,
+    });
+  } catch (err) {
+    if (isNotFoundError(err)) return { items, total: 0, skillTotal: 0, agentTotal: 0 };
+    throw err;
+  }
   for (const item of agentRes.items || []) {
     items.push(mapProtoSkillProposalToView(item));
   }

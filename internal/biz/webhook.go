@@ -102,6 +102,9 @@ func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookC
 	if err := validateWebhookConfig(w); err != nil {
 		return WebhookConfig{}, err
 	}
+	if err := validateEventTypesNonEmpty(w.EventTypesJSON); err != nil {
+		return WebhookConfig{}, err
+	}
 	if err := uc.ensureNameUnique(ctx, w.Name, ""); err != nil {
 		return WebhookConfig{}, err
 	}
@@ -161,6 +164,10 @@ func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) 
 	}
 	cur, err := uc.reader.Get(ctx, patch.ID)
 	if err != nil {
+		return WebhookConfig{}, err
+	}
+	// 仅拦截本次 patch 显式写入的空数组；存量 "[]" 记录更新其他字段不受影响
+	if err := validateEventTypesNonEmpty(patch.EventTypesJSON); err != nil {
 		return WebhookConfig{}, err
 	}
 	merged := mergeWebhookPatch(cur, patch)
@@ -225,6 +232,25 @@ func validateWebhookConfig(w WebhookConfig) error {
 		if err := json.Unmarshal([]byte(v), &types); err != nil {
 			return apierror.BadRequest("GATEWAY", "event_types_json must be a JSON string array")
 		}
+	}
+	return nil
+}
+
+// validateEventTypesNonEmpty rejects an explicitly provided empty JSON array
+// ("[]"): WebhookSubscribes treats an empty list as "subscribe to everything",
+// which is the opposite of the caller's intent. Empty string is allowed —
+// Create maps it to the default run-event set, Update treats it as "unchanged".
+func validateEventTypesNonEmpty(raw string) error {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return nil
+	}
+	var types []string
+	if err := json.Unmarshal([]byte(v), &types); err != nil {
+		return nil // 格式错误由 validateWebhookConfig 统一报告
+	}
+	if len(types) == 0 {
+		return apierror.BadRequest("GATEWAY", "请至少选择一个事件类型")
 	}
 	return nil
 }

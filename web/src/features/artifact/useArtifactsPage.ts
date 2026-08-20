@@ -330,6 +330,38 @@ export function useArtifactsPage() {
     });
   }
 
+  /** 删除当前查看的单个版本（仅多版本时入口可见）；删后切到剩余最高版本并刷新列表。 */
+  function confirmDeleteVersion(meta: ArtifactMeta) {
+    if (detailVersions.value.length <= 1) return;
+    $q.dialog({
+      title: t('artifact.detail.deleteVersionTitle'),
+      message: t('artifact.detail.deleteVersionConfirm', { name: meta.name, version: meta.version }),
+      cancel: true,
+    }).onOk(async () => {
+      try {
+        await artifactStore.removeVersion(meta.id, meta.version);
+        const items = await artifactStore.listVersions(meta.id).catch(() => [] as ArtifactMeta[]);
+        detailVersions.value = items;
+        if (items.length === 0) {
+          detailOpen.value = false;
+          detailMeta.value = null;
+        } else {
+          const latest = items.reduce((a, b) => (b.version > a.version ? b : a));
+          detailMeta.value = latest;
+          detailArtifactId.value = latest.id;
+          detailVersion.value = latest.version;
+        }
+        await loadRows();
+        $q.notify({ type: 'positive', message: t('artifact.detail.versionDeleted') });
+      } catch (e) {
+        $q.notify({
+          type: 'negative',
+          message: e instanceof Error ? e.message : t('artifact.detail.deleteVersionFailed'),
+        });
+      }
+    });
+  }
+
   function onSearchChange() {
     page.value = 1;
     void loadRows();
@@ -420,6 +452,7 @@ export function useArtifactsPage() {
     onPreviewDownload,
     downloadRow,
     confirmDelete,
+    confirmDeleteVersion,
     artifactMaxSizeHint,
   };
 }

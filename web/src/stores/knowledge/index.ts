@@ -15,6 +15,7 @@ import {
   listDocuments,
   listDocumentLinks,
   listDocumentNeighborhood,
+  listUnlinkedMentions as listUnlinkedMentionsApi,
   listVaultTree,
   moveDocument,
   moveDocumentToDir,
@@ -40,6 +41,7 @@ import type {
   ListDocumentsResult,
   PromoteResult,
   SearchKnowledgeQuery,
+  UnlinkedMention,
   EmbedderConfig,
   EnableSemanticResult,
   UpdateEmbedderConfigInput,
@@ -63,6 +65,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   const linksByDoc = ref<Record<string, KnowledgeLink[]>>({});
   /** SP1-I：块级反链缓存，键 doc_id。 */
   const backlinksByDoc = ref<Record<string, BlockBacklink[]>>({});
+  /** SP2-5：未链接提及缓存，键 doc_id（右栏反链面板与反链同源失效）。 */
+  const unlinkedMentionsByDoc = ref<Record<string, UnlinkedMention[]>>({});
   /** SP1-I：悬空链缓存，键 collection_id。 */
   const danglingByCollection = ref<Record<string, DanglingLink[]>>({});
   /** 全库图谱共享缓存，键 collection_id（仅缓存无过滤全量图：linkTypes=[] + pathPrefix=''）。
@@ -133,6 +137,16 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return items;
   }
 
+  /** SP2-5：加载文档的未链接提及（缓存按 doc_id；连边增量时随反链一并失效）。 */
+  async function loadUnlinkedMentions(docId: string, force = false): Promise<UnlinkedMention[]> {
+    if (!force && unlinkedMentionsByDoc.value[docId]) {
+      return unlinkedMentionsByDoc.value[docId];
+    }
+    const items = await listUnlinkedMentionsApi(docId);
+    unlinkedMentionsByDoc.value[docId] = items;
+    return items;
+  }
+
   /** SP1-I：加载集合悬空链（缓存按 collection_id）。 */
   async function loadDanglingLinks(collectionId: string, force = false): Promise<DanglingLink[]> {
     if (!force && danglingByCollection.value[collectionId]) {
@@ -160,6 +174,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     for (const id of docIds) {
       delete linksByDoc.value[id];
       delete backlinksByDoc.value[id];
+      delete unlinkedMentionsByDoc.value[id];
     }
     for (const id of collectionIds) {
       delete danglingByCollection.value[id];
@@ -249,6 +264,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     }
     delete linksByDoc.value[id];
     delete backlinksByDoc.value[id];
+    delete unlinkedMentionsByDoc.value[id];
     // 文档删除改变所在集合连边拓扑：邻域缓存整体失效（小载荷重拉廉价）。
     neighborhoodsByKey.value = {};
     invalidateTree(collectionId);
@@ -336,6 +352,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     treeChildren,
     linksByDoc,
     backlinksByDoc,
+    unlinkedMentionsByDoc,
     danglingByCollection,
     graphsByCollection,
     neighborhoodsByKey,
@@ -344,6 +361,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     loadVaultTree,
     loadDocumentLinks,
     loadBlockBacklinks,
+    loadUnlinkedMentions,
     loadDanglingLinks,
     loadCollectionGraph,
     loadDocumentNeighborhood,

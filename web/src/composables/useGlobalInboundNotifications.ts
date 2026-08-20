@@ -2,7 +2,7 @@ import { onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
-import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../features/chat/globalWsHub';
+import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../realtime/globalWsHub';
 import { runStatusFromV2Payload } from '../features/chat/activityRunStatus';
 import { parseChannelSessionMeta } from '../features/chat/channelSessionMeta';
 import type { Session } from '../features/session/types';

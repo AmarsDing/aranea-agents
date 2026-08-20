@@ -55,9 +55,11 @@
         :rows="pagedRows"
         :loading="loading"
         :toggling-id="busyId"
+        :testing-id="testingId"
         @toggle-enabled="toggleEnabled"
         @edit="openEdit"
         @remove="confirmDelete"
+        @test="testRow"
       />
 
       <AppRegistryPagination
@@ -97,6 +99,7 @@ const {
   editorOpen,
   editingId,
   busyId,
+  testingId,
   dialogRef,
   page,
   pageSize,
@@ -108,6 +111,7 @@ const {
   openEdit,
   saveWebhook,
   toggleEnabled,
+  testRow,
   confirmDelete,
 } = useWebhooksPage();
 </script>

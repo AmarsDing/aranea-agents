@@ -39,7 +39,10 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
   }
 
   function resetFilters() {
-    const nextSkillId = skillIdFromQuery ?? '';
+    // 读当前 route.query 而非 setup 快照 skillIdFromQuery：同页导航到别的 skill_id 后，
+    // 快照已陈旧，重置应对齐当前路由上下文
+    const q = route.query.skill_id;
+    const nextSkillId = typeof q === 'string' ? q : '';
     const filtersWillChange = skillId.value !== nextSkillId || from.value !== '' || to.value !== '';
     skillId.value = nextSkillId;
     from.value = '';

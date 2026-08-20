@@ -143,3 +143,40 @@ func TestWebhookUsecase_Create_StripsEmptyHeaderValues(t *testing.T) {
 		t.Fatalf("headers=%v", repo.created.Headers)
 	}
 }
+
+func TestWebhookUsecase_Create_RejectsEmptyEventTypes(t *testing.T) {
+	repo := &stubWebhookRepo{}
+	uc := NewWebhookUsecase(repo, repo)
+	_, err := uc.Create(context.Background(), WebhookConfig{
+		Name:           "Alerts",
+		URL:            "https://example.com/hook",
+		EventTypesJSON: "[]",
+	})
+	if err == nil {
+		t.Fatal("expected empty event types rejection, got nil")
+	}
+}
+
+func TestWebhookUsecase_Update_RejectsEmptyEventTypes(t *testing.T) {
+	repo := &stubWebhookRepo{
+		get: WebhookConfig{ID: "wh-1", Name: "Alerts", URL: "https://example.com/a"},
+	}
+	uc := NewWebhookUsecase(repo, repo)
+	_, err := uc.Update(context.Background(), WebhookUpdatePatch{ID: "wh-1", EventTypesJSON: "[]"})
+	if err == nil {
+		t.Fatal("expected empty event types rejection, got nil")
+	}
+}
+
+// 存量 "[]" 记录（历史前端允许保存空选择产生）更新其他字段必须仍可用，
+// 仅拦截本次 patch 显式写入的空数组
+func TestWebhookUsecase_Update_AllowsLegacyEmptyEventTypesRecord(t *testing.T) {
+	repo := &stubWebhookRepo{
+		get:  WebhookConfig{ID: "wh-1", Name: "Alerts", URL: "https://example.com/a", EventTypesJSON: "[]"},
+		list: []WebhookConfig{{ID: "wh-1", Name: "Alerts", URL: "https://example.com/a", EventTypesJSON: "[]"}},
+	}
+	uc := NewWebhookUsecase(repo, repo)
+	if _, err := uc.Update(context.Background(), WebhookUpdatePatch{ID: "wh-1", Name: "Renamed"}); err != nil {
+		t.Fatalf("legacy empty-event-types record must stay updatable: %v", err)
+	}
+}

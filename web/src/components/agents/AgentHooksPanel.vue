@@ -126,12 +126,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import CallbackEditor from '../hooks/CallbackEditor.vue';
 import HooksTable from '../hooks/HooksTable.vue';
 import { useAgentHooksPanel } from '../../features/agents/useAgentHooksPanel';
-import { getAgentEffectiveTools } from '../../features/tools/api';
 
 const { t } = useI18n();
 
@@ -146,27 +144,6 @@ const props = withDefaults(
     toolOptions: undefined,
     loadingToolOptions: false,
   },
-);
-
-/** 当前 Agent 生效工具 key 集合（后端聚合），用于 Tool 下拉「已启用」标注。 */
-const enabledToolKeys = ref<string[]>([]);
-watch(
-  () => props.agentId,
-  async (id) => {
-    if (!id) {
-      enabledToolKeys.value = [];
-      return;
-    }
-    try {
-      const eff = await getAgentEffectiveTools(id);
-      enabledToolKeys.value = (eff.items ?? [])
-        .filter((it) => it.effective_state === 'allowed')
-        .map((it) => it.tool_key);
-    } catch {
-      enabledToolKeys.value = [];
-    }
-  },
-  { immediate: true },
 );
 
 const {
@@ -189,6 +166,7 @@ const {
   togglingId,
   draftValid,
   editValid,
+  enabledToolKeys,
   createScopedHook,
   openEdit,
   saveEdit,

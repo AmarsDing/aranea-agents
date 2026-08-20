@@ -103,6 +103,8 @@ export function evoSuggestionStatusLabel(status?: string): string {
       return '已拒绝';
     case 'applied':
       return '已应用';
+    case 'registered':
+      return '已注册';
     case 'expired':
       return i18n.global.t('evolutionSuggestionsPage.statusExpired');
     default:
@@ -120,6 +122,8 @@ export function evoSuggestionStatusColor(status?: string): string {
       return 'negative';
     case 'applied':
       return 'info';
+    case 'registered':
+      return 'teal';
     case 'expired':
       return 'grey';
     default:

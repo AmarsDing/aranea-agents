@@ -1,7 +1,7 @@
 import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import { listChatBackgroundJobs } from './api';
 import type { ChatBackgroundJobRow } from './types';
-import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from './globalWsHub';
+import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../../realtime/globalWsHub';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from './v2Types';
 
 // Backoff steps: 5s → 10s → 15s → 30s (max)

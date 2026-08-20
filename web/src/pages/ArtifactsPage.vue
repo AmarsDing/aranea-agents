@@ -204,6 +204,7 @@
       :format-bytes="formatBytes"
       :reveal-enabled="revealEnabled"
       @select-version="selectDetailVersion"
+      @delete-version="confirmDeleteVersion"
       @download="onPreviewDownload"
       @reveal="revealDetail"
     />
@@ -268,6 +269,7 @@ const {
   onPreviewDownload,
   downloadRow,
   confirmDelete,
+  confirmDeleteVersion,
   artifactMaxSizeHint,
 } = useArtifactsPage();
 

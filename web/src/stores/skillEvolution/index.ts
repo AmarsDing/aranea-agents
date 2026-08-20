@@ -34,6 +34,11 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
       agentTotal.value = res.agentTotal;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      // 失败时清空旧数据，避免错误横幅与过期列表/计数并存。
+      suggestions.value = [];
+      total.value = 0;
+      skillTotal.value = 0;
+      agentTotal.value = 0;
       error.value = msg;
     } finally {
       loading.value = false;

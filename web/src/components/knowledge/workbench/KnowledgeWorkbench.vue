@@ -71,7 +71,7 @@
           @activate="workbench.activateTab"
           @close="workbench.closeTab"
           @reorder="workbench.reorderTabs"
-          @save="onSave"
+          @save="saveDoc"
           @toggle-mode="workbench.toggleMode"
           @update-content="workbench.updateContent"
           @open-doc="openDocByName"
@@ -177,11 +177,10 @@
 
 <script setup lang="ts">
 // SP2 §SP2-1 工作台根：装配 TopBar + 三栏（树 / 标签页 / 联动面板）+ 浮层状态。
-// Container: approved because 工作台命令落盘（新建笔记/文件夹、索引重建）需就近访问 API，
-// 数据流纪律：全部状态经 props 注入的 workbench 状态机与 explorer，子组件不各自拉数。
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+// 数据流纪律：命令编排（命令面板/搜索/新建/写回/治理/落链 recency）收口于 useWorkbenchCommands；
+// 本组件只做布局、wikilink/大纲导航与脏关闭确认，状态经 props 注入的 workbench 状态机与 explorer。
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import ParticleField from '../effects/ParticleField.vue';
 import LiquidGlassDefs from '../effects/LiquidGlassDefs.vue';
 import GlassPanel from '../effects/GlassPanel.vue';
@@ -191,41 +190,16 @@ import WorkbenchTabs from './WorkbenchTabs.vue';
 import WorkbenchSidePanels from './WorkbenchSidePanels.vue';
 import QuickSwitcher from './QuickSwitcher.vue';
 import CommandPalette from './CommandPalette.vue';
-import SearchPanel, { type SearchItem } from './SearchPanel.vue';
+import SearchPanel from './SearchPanel.vue';
 import WritebackReviewDialog from '../WritebackReviewDialog.vue';
 import GovernanceReviewDialog from '../GovernanceReviewDialog.vue';
-import {
-  applyOutgoingAutolink,
-  applyWriteBackPending,
-  backfillAutolinkIndex,
-  createVaultDir,
-  createVaultDocument,
-  getCollectionHealth,
-  getWriteBackHome,
-  listCollectionExperts,
-  listGovernanceProposals,
-  listRecentLinkUses,
-  listWriteBackPending,
-  previewOutgoingAutolink,
-  recordLinkUse,
-  rebuildKnowledgeIndex,
-  resolveGovernanceProposal,
-  searchKnowledge,
-} from '../../../features/knowledge/api';
-import { COMMAND_DEFS, pushMru, type CommandId, type CommandItem } from '../../../features/knowledge/commands';
+import { useWorkbenchCommands } from '../../../features/knowledge/useWorkbenchCommands';
 import { normalizeTargetName } from '../../../features/knowledge/wikilink';
 import { parseOutline } from '../../../features/knowledge/outline';
 import type { KnowledgeWorkbench as Workbench } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
-import type {
-  GovernanceProposalItem,
-  KnowledgeCollection,
-  KnowledgeDocument,
-  PendingWriteBackItem,
-  VaultTreeNode,
-} from '../../../features/knowledge/types';
-import type { GovernanceDecision } from '../../../features/knowledge/governance';
+import type { KnowledgeCollection, KnowledgeDocument, VaultTreeNode } from '../../../features/knowledge/types';
 
 const props = defineProps<{
   workbench: Workbench;
@@ -274,149 +248,70 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
+
+/** 右栏大纲跳转（SP2-5）：透传到活动 NoteEditor 滚动定位。 */
+const tabsRef = ref<InstanceType<typeof WorkbenchTabs> | null>(null);
+
+/** C6：外部保存入口——先 flush 编辑器防抖写回再 CAS 保存（冲突提示由 commands 层统一发）。 */
+async function flushAndSave(docId: string): Promise<boolean> {
+  tabsRef.value?.flushPendingContent();
+  return props.workbench.saveTab(docId);
+}
+
+const {
+  linkRecencyRank,
+  onPickLink,
+  quickSwitcherOpen,
+  commandPaletteOpen,
+  openQuickSwitcher,
+  openCommandPalette,
+  searchOpen,
+  searchQuery,
+  searchItems,
+  searchLoading,
+  openSearch,
+  onSearchPick,
+  commandMru,
+  commandItems,
+  runCommand,
+  createNote,
+  createFolder,
+  createDocByName,
+  saveDoc,
+  onApplyAutolinkFromPanel,
+  pendingOpen,
+  pendingItems,
+  pendingHome,
+  pendingApplying,
+  onApplyPending,
+  onSwitchPendingHome,
+  govOpen,
+  govItems,
+  govHome,
+  govLoadingId,
+  onResolveGovernance,
+  onSwitchGovHome,
+  onGlobalKeydown,
+} = useWorkbenchCommands({
+  workbench: props.workbench,
+  currentVaultId: toRef(props, 'currentVaultId'),
+  currentPrefix: toRef(props, 'currentPrefix'),
+  documents: toRef(props, 'documents'),
+  collections: toRef(props, 'collections'),
+  events: {
+    refreshTree: () => emit('refresh-tree'),
+    switchVault: (id) => emit('switch-vault', id),
+    openGraph: (focusDocId) => emit('open-graph', focusDocId),
+    promoteActive: (docId) => emit('promote-active', docId),
+    ingestText: () => emit('ingest-text'),
+    saveDoc: flushAndSave,
+  },
+});
 
 /** wikilink 候选：当前库全部文档 relPath（补全 + 存在性判定同口径）。 */
 const candidates = computed(() =>
   props.documents.filter((d) => d.collection_id === props.currentVaultId).map((d) => d.rel_path || d.source),
 );
-
-// ---------- wikilink 落链 recency（B4 #8） ----------
-// 归一化名 → 名次（0=最近）；仅空查询补全消费。库切换时整表拉取一次（≤32 条），
-// 落链时乐观更新 + best-effort 上报（失败静默，recency 非正确性依赖）。
-const linkRecencyRank = ref<ReadonlyMap<string, number>>(new Map());
-
-async function loadLinkRecency(vaultId: string) {
-  if (!vaultId) {
-    linkRecencyRank.value = new Map();
-    return;
-  }
-  try {
-    const items = await listRecentLinkUses(vaultId);
-    const byId = new Map(props.documents.filter((d) => d.collection_id === vaultId).map((d) => [d.id, d]));
-    const rank = new Map<string, number>();
-    for (const it of items) {
-      const doc = byId.get(it.doc_id);
-      if (!doc) continue; // 已删除/移动文档的孤儿行不映射候选
-      const name = normalizeTargetName(doc.rel_path || doc.source);
-      if (name && !rank.has(name)) rank.set(name, rank.size);
-    }
-    linkRecencyRank.value = rank;
-  } catch {
-    linkRecencyRank.value = new Map(); // 拉取失败降级为无 recency 排序
-  }
-}
-
-watch(
-  () => props.currentVaultId,
-  (id) => void loadLinkRecency(id),
-  { immediate: true },
-);
-
-function onPickLink(target: string) {
-  const doc = props.documents.find(
-    (d) => d.collection_id === props.currentVaultId && (d.rel_path || d.source) === target,
-  );
-  if (!doc) return;
-  // 乐观置顶：目标 rank 0，其余按原名次顺延。
-  const next = new Map<string, number>();
-  const name = normalizeTargetName(target);
-  if (name) next.set(name, 0);
-  for (const [k] of [...linkRecencyRank.value.entries()].sort((a, b) => a[1] - b[1])) {
-    if (k !== name) next.set(k, next.size);
-  }
-  linkRecencyRank.value = next;
-  recordLinkUse(props.currentVaultId, doc.id).catch(() => undefined);
-}
-
-// ⌘O / ⌘K 浮层状态（SP2-6）
-const quickSwitcherOpen = ref(false);
-const commandPaletteOpen = ref(false);
-
-function openQuickSwitcher() {
-  quickSwitcherOpen.value = true;
-}
-
-function openCommandPalette() {
-  commandPaletteOpen.value = true;
-}
-
-// ---------- 全库搜索（Ctrl+Shift+F，P1-3） ----------
-// 容器内检索（数据流纪律）：SearchPanel 纯受控；防抖 300ms + seq 竞态守卫（慢响应不覆盖新查询）。
-const searchOpen = ref(false);
-const searchQuery = ref('');
-const searchItems = ref<SearchItem[]>([]);
-const searchLoading = ref(false);
-let searchSeq = 0;
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
-
-/** 命中文本窗口：以首个匹配词为中心截取片段（Obsidian 语义）。 */
-function buildSnippet(content: string, query: string): string {
-  const flat = content.replace(/\s+/g, ' ').trim();
-  const idx = flat.toLowerCase().indexOf(query.trim().toLowerCase());
-  if (idx < 0) return flat.slice(0, 160);
-  const start = Math.max(0, idx - 48);
-  const prefix = start > 0 ? '…' : '';
-  const tail = start + 160 < flat.length ? '…' : '';
-  return `${prefix}${flat.slice(start, start + 160)}${tail}`;
-}
-
-async function runSearch(q: string) {
-  const seq = ++searchSeq;
-  if (!q.trim() || !props.currentVaultId) {
-    searchItems.value = [];
-    searchLoading.value = false;
-    return;
-  }
-  searchLoading.value = true;
-  try {
-    const chunks = await searchKnowledge({ collection_id: props.currentVaultId, query: q.trim(), top_k: 12 });
-    if (seq !== searchSeq) return; // 已有更新的查询
-    searchItems.value = chunks.map((chunk) => {
-      const doc = props.documents.find((d) => d.id === chunk.doc_id);
-      const rel = doc?.rel_path || doc?.source || chunk.doc_id;
-      const name = rel.split('/').filter(Boolean).pop() || rel;
-      return {
-        chunk,
-        docId: chunk.doc_id,
-        name,
-        path: rel,
-        snippet: buildSnippet(chunk.content, q),
-        score: chunk.score,
-      };
-    });
-  } catch {
-    if (seq === searchSeq) searchItems.value = [];
-  } finally {
-    if (seq === searchSeq) searchLoading.value = false;
-  }
-}
-
-watch(searchQuery, (q) => {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => void runSearch(q), 300);
-});
-
-watch(searchOpen, (on) => {
-  if (on) return;
-  // 关闭时清理：取消防抖与在途结果，下次打开从零开始
-  if (searchTimer) clearTimeout(searchTimer);
-  searchSeq += 1;
-  searchQuery.value = '';
-  searchItems.value = [];
-  searchLoading.value = false;
-});
-
-function openSearch() {
-  quickSwitcherOpen.value = false;
-  commandPaletteOpen.value = false;
-  searchOpen.value = true;
-}
-
-function onSearchPick(it: SearchItem) {
-  const doc = props.documents.find((d) => d.id === it.docId);
-  if (doc) void props.workbench.openDoc(doc);
-}
 
 /** 当前库文档（快速切换数据源）。 */
 const vaultDocs = computed(() => props.documents.filter((d) => d.collection_id === props.currentVaultId));
@@ -430,399 +325,7 @@ const currentVaultName = computed(
   () => props.collections.find((c) => c.id === props.currentVaultId)?.name ?? props.currentVaultId,
 );
 
-// ---------- 命令面板（SP2-6） ----------
-
-// MRU（P2-6）：最近执行命令置顶；localStorage 持久化，隐私模式等写失败时静默降级为会话内 MRU。
-const MRU_STORAGE_KEY = 'kb.command.mru';
-function loadCommandMru(): CommandId[] {
-  try {
-    const raw = localStorage.getItem(MRU_STORAGE_KEY);
-    const arr: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter((x): x is CommandId => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-const commandMru = ref<CommandId[]>(loadCommandMru());
-function recordCommandMru(id: CommandId) {
-  commandMru.value = pushMru(commandMru.value, id);
-  try {
-    localStorage.setItem(MRU_STORAGE_KEY, JSON.stringify(commandMru.value));
-  } catch {
-    /* 写失败不影响功能 */
-  }
-}
-
-const commandItems = computed<CommandItem[]>(() => {
-  const active = props.workbench.activeTab.value;
-  return COMMAND_DEFS.map((def) => ({
-    def,
-    title: t(`knowledgePage.workbench.commands.${def.id}`),
-    disabled: !active
-      ? (['save', 'toggle-mode', 'close-tab', 'promote', 'apply-autolink'] as CommandId[]).includes(def.id)
-      : (def.id === 'save' || def.id === 'toggle-mode') && !active.editable,
-  }));
-});
-
-/** 新建笔记（命令面板/后续侧栏共用，SP2-7 复用）：当前目录落点 + 打开 + 刷新树。 */
-function createNote() {
-  if (!props.currentVaultId) return;
-  $q.dialog({
-    title: t('knowledgePage.workbench.commands.new-note'),
-    prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.noteNamePrompt') },
-    cancel: true,
-    class: 'kb-portal',
-  }).onOk(async (name: string) => {
-    const base = normalizeTargetName(name);
-    if (!base) return;
-    try {
-      const doc = await createVaultDocument(props.currentVaultId, `${props.currentPrefix}${base}.md`);
-      emit('refresh-tree');
-      await props.workbench.openDoc(doc);
-    } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-    }
-  });
-}
-
-function createFolder() {
-  if (!props.currentVaultId) return;
-  $q.dialog({
-    title: t('knowledgePage.workbench.commands.new-folder'),
-    prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.folderNamePrompt') },
-    cancel: true,
-    class: 'kb-portal',
-  }).onOk(async (name: string) => {
-    const base = normalizeTargetName(name);
-    if (!base) return;
-    try {
-      await createVaultDir(props.currentVaultId, `${props.currentPrefix}${base}`);
-      emit('refresh-tree');
-    } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-    }
-  });
-}
-
-async function onApplyAutolinkFromPanel() {
-  const active = props.workbench.activeTab.value;
-  if (!active) return;
-  try {
-    const prev = await previewOutgoingAutolink(active.docId);
-    if (prev.unchanged || prev.replacements <= 0) {
-      $q.notify({ type: 'info', message: t('knowledgePage.workbench.autolinkNone') });
-      return;
-    }
-    $q.dialog({
-      title: t('knowledgePage.workbench.commands.apply-autolink'),
-      message: t('knowledgePage.workbench.autolinkConfirm', { n: prev.replacements }),
-      cancel: true,
-      class: 'kb-portal',
-    }).onOk(async () => {
-      try {
-        const res = await applyOutgoingAutolink(active.docId);
-        $q.notify({
-          type: 'positive',
-          message: t('knowledgePage.workbench.autolinkDone', { n: res.replacements }),
-        });
-        emit('refresh-tree');
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-      }
-    });
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-type WriteBackTarget = { id: string; name: string; redirected: boolean };
-
-async function resolveWriteBackTarget(): Promise<WriteBackTarget | null> {
-  try {
-    const home = await getWriteBackHome();
-    if (!home.found || !home.collection_id) {
-      $q.notify({ type: 'info', message: t('knowledgePage.workbench.writebackHomeMissing') });
-      return null;
-    }
-    return {
-      id: home.collection_id,
-      name: home.name,
-      redirected: home.collection_id !== props.currentVaultId,
-    };
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-    return null;
-  }
-}
-
-function offerSwitchHome(home: WriteBackTarget) {
-  if (!home.redirected) return;
-  $q.notify({
-    type: 'info',
-    timeout: 8000,
-    message: t('knowledgePage.workbench.writebackHomeHint', { name: home.name }),
-    actions: [{ label: t('knowledgePage.workbench.writebackHomeSwitch'), handler: () => emit('switch-vault', home.id) }],
-  });
-}
-
-async function showKnowledgeHealth() {
-  if (!props.currentVaultId) return;
-  try {
-    const h = await getCollectionHealth(props.currentVaultId);
-    let message = t('knowledgePage.workbench.healthSummary', {
-      docs: h.document_count,
-      edges: h.edge_count,
-      explicit: h.explicit_edges,
-      orphan: Math.round(h.orphan_rate * 100),
-      dangling: h.dangling_count,
-    });
-    const home = await getWriteBackHome().catch(() => null);
-    if (home?.found && home.collection_id && home.collection_id !== props.currentVaultId) {
-      message += ` · ${t('knowledgePage.workbench.healthWritebackElsewhere', { name: home.name })}`;
-    }
-    $q.notify({ type: 'info', timeout: 8000, message });
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-async function showKnowledgeExperts() {
-  const home = await resolveWriteBackTarget();
-  if (!home) return;
-  try {
-    const items = await listCollectionExperts(home.id);
-    if (!items.length) {
-      $q.notify({ type: 'info', message: t('knowledgePage.workbench.expertsEmpty') });
-      offerSwitchHome(home);
-      return;
-    }
-    const lines = items
-      .slice(0, 8)
-      .map((e) => `${e.agent_id || e.user_id} (${e.fact_count})`)
-      .join('\n');
-    const message = home.redirected
-      ? `${t('knowledgePage.workbench.expertsFromHome', { name: home.name })}\n${lines}`
-      : lines;
-    $q.dialog({
-      title: t('knowledgePage.workbench.commands.list-experts'),
-      message,
-      class: 'kb-portal',
-    });
-    offerSwitchHome(home);
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-const pendingOpen = ref(false);
-const pendingItems = ref<PendingWriteBackItem[]>([]);
-const pendingHome = ref<WriteBackTarget>({ id: '', name: '', redirected: false });
-const pendingApplying = ref(false);
-
-async function reviewWriteBackPending() {
-  const home = await resolveWriteBackTarget();
-  if (!home) return;
-  try {
-    const items = await listWriteBackPending(home.id);
-    if (!items.length) {
-      $q.notify({ type: 'info', message: t('knowledgePage.workbench.pendingEmpty') });
-      offerSwitchHome(home);
-      return;
-    }
-    pendingHome.value = home;
-    pendingItems.value = items;
-    pendingOpen.value = true;
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-function onSwitchPendingHome() {
-  if (pendingHome.value.id) emit('switch-vault', pendingHome.value.id);
-}
-
-async function onApplyPending(factIds: string[]) {
-  if (!pendingHome.value.id || factIds.length === 0) return;
-  pendingApplying.value = true;
-  try {
-    const res = await applyWriteBackPending(pendingHome.value.id, factIds);
-    pendingOpen.value = false;
-    $q.notify({
-      type: 'positive',
-      message: t('knowledgePage.workbench.pendingDone', { n: res.appended }),
-    });
-    emit('refresh-tree');
-    offerSwitchHome(pendingHome.value);
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  } finally {
-    pendingApplying.value = false;
-  }
-}
-
-const govOpen = ref(false);
-const govItems = ref<GovernanceProposalItem[]>([]);
-const govHome = ref<WriteBackTarget>({ id: '', name: '', redirected: false });
-const govLoadingId = ref<number | undefined>(undefined);
-
-async function loadGovernanceItems(collectionId: string): Promise<GovernanceProposalItem[]> {
-  return listGovernanceProposals(collectionId, 'pending');
-}
-
-async function reviewGovernance() {
-  if (!props.currentVaultId) return;
-  try {
-    let items = await loadGovernanceItems(props.currentVaultId);
-    let home: WriteBackTarget = { id: props.currentVaultId, name: '', redirected: false };
-    if (!items.length) {
-      const inbox = await getWriteBackHome().catch(() => null);
-      if (inbox?.found && inbox.collection_id && inbox.collection_id !== props.currentVaultId) {
-        items = await loadGovernanceItems(inbox.collection_id);
-        if (items.length) {
-          home = { id: inbox.collection_id, name: inbox.name, redirected: true };
-        }
-      }
-    }
-    if (!items.length) {
-      $q.notify({ type: 'info', message: t('knowledgePage.workbench.govEmpty') });
-      return;
-    }
-    govHome.value = home;
-    govItems.value = items;
-    govOpen.value = true;
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-function onSwitchGovHome() {
-  if (govHome.value.id) emit('switch-vault', govHome.value.id);
-}
-
-async function onResolveGovernance(payload: { id: number; decision: GovernanceDecision }) {
-  govLoadingId.value = payload.id;
-  try {
-    await resolveGovernanceProposal(payload.id, payload.decision);
-    govItems.value = govItems.value.filter((it) => it.id !== payload.id);
-    $q.notify({ type: 'positive', message: t('knowledgePage.workbench.govDone') });
-    if (!govItems.value.length) govOpen.value = false;
-    emit('refresh-tree');
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  } finally {
-    govLoadingId.value = undefined;
-  }
-}
-
-function confirmBackfillAutolink() {
-  if (!props.currentVaultId) return;
-  $q.dialog({
-    title: t('knowledgePage.workbench.commands.backfill-autolink'),
-    message: t('knowledgePage.workbench.backfillAutolinkConfirm'),
-    cancel: true,
-    class: 'kb-portal',
-  }).onOk(async () => {
-    try {
-      await backfillAutolinkIndex(props.currentVaultId);
-      $q.notify({ type: 'info', message: t('knowledgePage.workbench.backfillStarted') });
-    } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-    }
-  });
-}
-
-async function runCommand(id: CommandId) {
-  recordCommandMru(id);
-  const active = props.workbench.activeTab.value;
-  switch (id) {
-    case 'new-note':
-      createNote();
-      break;
-    case 'new-folder':
-      createFolder();
-      break;
-    case 'save':
-      if (active) await onSave(active.docId);
-      break;
-    case 'toggle-mode':
-      if (active) props.workbench.toggleMode(active.docId);
-      break;
-    case 'open-graph':
-      emit('open-graph');
-      break;
-    case 'rebuild-index':
-      if (!props.currentVaultId) break;
-      try {
-        await rebuildKnowledgeIndex(props.currentVaultId);
-        $q.notify({ type: 'info', message: t('knowledgePage.workbench.rebuildStarted') });
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-      }
-      break;
-    case 'backfill-autolink':
-      confirmBackfillAutolink();
-      break;
-    case 'ingest-text':
-      emit('ingest-text');
-      break;
-    case 'promote':
-      if (active) emit('promote-active', active.docId);
-      break;
-    case 'apply-autolink':
-      void onApplyAutolinkFromPanel();
-      break;
-    case 'knowledge-health':
-      void showKnowledgeHealth();
-      break;
-    case 'list-experts':
-      void showKnowledgeExperts();
-      break;
-    case 'review-writeback':
-      void reviewWriteBackPending();
-      break;
-    case 'review-governance':
-      void reviewGovernance();
-      break;
-    case 'close-tab':
-      if (active) props.workbench.closeTab(active.docId);
-      break;
-    case 'switch-vault':
-      break; // 浮层内二级选择，不经 runCommand
-  }
-}
-
-// ---------- 全局快捷键（capture：输入框聚焦时 ⌘O/⌘K 仍可唤起） ----------
-
-function onGlobalKeydown(e: KeyboardEvent) {
-  // Ctrl+Shift+F：全库搜索（P1-3；shift 组合先行判定，下方守卫会排除其余 shift 组合）
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
-    e.preventDefault();
-    openSearch();
-    return;
-  }
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-  const key = e.key.toLowerCase();
-  if (key === 'o') {
-    e.preventDefault();
-    commandPaletteOpen.value = false;
-    searchOpen.value = false;
-    openQuickSwitcher();
-  } else if (key === 'k') {
-    e.preventDefault();
-    quickSwitcherOpen.value = false;
-    searchOpen.value = false;
-    openCommandPalette();
-  } else if (key === 'e') {
-    const active = props.workbench.activeTab.value;
-    if (active?.editable) {
-      e.preventDefault();
-      props.workbench.toggleMode(active.docId);
-    }
-  } else if (key === 'g') {
-    e.preventDefault();
-    emit('open-graph');
-  }
-}
+// ---------- 全局快捷键注册（处理器在 commands 层） ----------
 
 onMounted(() => window.addEventListener('keydown', onGlobalKeydown, { capture: true }));
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }));
@@ -874,33 +377,8 @@ function openDocById(docId: string) {
   if (doc) void props.workbench.openDoc(doc);
 }
 
-/** 右栏大纲跳转（SP2-5）：透传到活动 NoteEditor 滚动定位。 */
-const tabsRef = ref<InstanceType<typeof WorkbenchTabs> | null>(null);
-
 function jumpOutline(offset: number) {
   tabsRef.value?.scrollToOffset(offset);
-}
-
-/** dangling 链接点击：当前目录新建 `target.md` 并打开 + 刷新树（Obsidian 语义）。 */
-async function createDocByName(target: string) {
-  if (!props.currentVaultId) return;
-  const relPath = `${props.currentPrefix}${normalizeTargetName(target) || target}.md`;
-  try {
-    const doc = await createVaultDocument(props.currentVaultId, relPath);
-    emit('refresh-tree');
-    await props.workbench.openDoc(doc);
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-async function onSave(docId: string) {
-  // C6：命令面板/快捷键等外部保存入口，先 flush 编辑器防抖写回再 CAS 保存。
-  tabsRef.value?.flushPendingContent();
-  const ok = await props.workbench.saveTab(docId);
-  if (!ok) {
-    $q.notify({ type: 'warning', message: t('knowledgePage.workbench.conflictHint'), timeout: 6000 });
-  }
 }
 
 // ---------- 脏关闭确认 ----------
@@ -924,8 +402,7 @@ async function onSaveAndClose() {
   if (!id) return;
   confirmSaving.value = true;
   try {
-    tabsRef.value?.flushPendingContent();
-    const ok = await props.workbench.saveTab(id);
+    const ok = await flushAndSave(id);
     if (ok) {
       props.workbench.closeTab(id, { discard: true });
     } else {

@@ -1,5 +1,5 @@
 import { onMounted, onUnmounted, type Ref } from 'vue';
-import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../globalWsHub';
+import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../../../realtime/globalWsHub';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
 import type { WsSessionStream } from '../../../realtime/createWsSessionStream';
 import type { useAppStore } from '../../../stores/app';

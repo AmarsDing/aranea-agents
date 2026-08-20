@@ -35,6 +35,16 @@
               v{{ v.version }}
             </q-chip>
           </div>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="negative"
+            icon="delete_outline"
+            :label="t('artifact.detail.deleteVersion')"
+            class="q-mt-xs"
+            @click="$emit('delete-version', meta)"
+          />
         </div>
       </q-card-section>
       <q-card-section v-if="artifactId">
@@ -70,6 +80,7 @@ const props = defineProps<{
 defineEmits<{
   'update:open': [value: boolean];
   'select-version': [meta: ArtifactMeta];
+  'delete-version': [meta: ArtifactMeta];
   download: [meta: ArtifactMeta];
   reveal: [meta: ArtifactMeta];
 }>();

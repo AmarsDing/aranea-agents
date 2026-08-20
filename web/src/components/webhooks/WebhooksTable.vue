@@ -53,6 +53,19 @@
             dense
             round
             class="app-registry-icon-btn"
+            color="secondary"
+            icon="send"
+            :loading="testingId === props.row.id"
+            :disable="testingId !== '' && testingId !== props.row.id"
+            @click="$emit('test', props.row)"
+          >
+            <q-tooltip>{{ t('webhooksPage.tooltipTest') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            class="app-registry-icon-btn"
             color="primary"
             icon="edit"
             @click="$emit('edit', props.row)"
@@ -90,10 +103,12 @@ withDefaults(
     rows: WebhookRow[];
     loading: boolean;
     togglingId?: string;
+    testingId?: string;
     shell?: boolean;
   }>(),
   {
     togglingId: '',
+    testingId: '',
     shell: false,
   },
 );
@@ -102,6 +117,7 @@ defineEmits<{
   toggleEnabled: [row: WebhookRow, value: boolean];
   edit: [row: WebhookRow];
   remove: [row: WebhookRow];
+  test: [row: WebhookRow];
 }>();
 
 const tableColumns = computed(() => createWebhookColumns(t));

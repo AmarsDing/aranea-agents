@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue';
+import { reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { WEBHOOK_EVENT_TYPES, type WebhookRow } from '../../features/webhooks/types';
 
@@ -105,7 +105,9 @@ let form = reactive({
   enabled: true,
 });
 
-let selectedEventTypes = reactive<string[]>([]);
+// ref (not reactive): q-checkbox array-mode v-model reassigns the whole array,
+// which would silently break reactivity on a reactive() binding.
+const selectedEventTypes = ref<string[]>([]);
 const headerEntries = reactive<{ key: string; value: string }[]>([]);
 
 function reset() {
@@ -113,7 +115,7 @@ function reset() {
   form.url = '';
   form.secret = '';
   form.enabled = true;
-  selectedEventTypes.splice(0, selectedEventTypes.length);
+  selectedEventTypes.value = [];
   headerEntries.splice(0, headerEntries.length);
 }
 
@@ -124,12 +126,12 @@ function fill(row: WebhookRow) {
   form.secret = '';
   form.enabled = row.enabled;
   // Parse event types from JSON
-  selectedEventTypes.splice(0, selectedEventTypes.length);
+  selectedEventTypes.value = [];
   if (row.event_types_json) {
     try {
       const types = JSON.parse(row.event_types_json);
       if (Array.isArray(types)) {
-        selectedEventTypes.push(...types.filter((v: unknown) => typeof v === 'string'));
+        selectedEventTypes.value = types.filter((v: unknown): v is string => typeof v === 'string');
       }
     } catch {
       /* ignore invalid JSON */
@@ -169,7 +171,7 @@ function getPayload(): {
   } = {
     name: form.name,
     url: form.url,
-    event_types_json: JSON.stringify(selectedEventTypes),
+    event_types_json: JSON.stringify(selectedEventTypes.value),
     headers,
     enabled: form.enabled,
   };

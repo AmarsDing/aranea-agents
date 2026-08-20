@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
+import { testWebhook } from './api';
 import { useWebhooksStore } from '../../stores/webhooks';
 
 interface WebhookDialogExposed {
@@ -25,16 +26,19 @@ export function useWebhooksPage() {
   const editorOpen = ref(false);
   const editingId = ref('');
   const busyId = ref('');
+  const testingId = ref('');
   const dialogRef = ref<WebhookDialogExposed | null>(null);
 
   const filteredRows = computed(() => storeRows.value);
   const pagedRows = computed(() => storeRows.value);
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
 
+  // 仅做格式预检（http/https + 可解析）；公网/内网可达性由后端 SSRF 守卫裁决，
+  // 其报错信息会经 saveWebhook 的 catch 原样提示，避免前后端规则不一致误拦合法地址。
   function isValidWebhookUrl(url: string): boolean {
     try {
       const u = new URL(url);
-      return u.protocol === 'https:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+      return u.protocol === 'https:' || u.protocol === 'http:';
     } catch {
       return false;
     }
@@ -142,6 +146,32 @@ export function useWebhooksPage() {
     }
   }
 
+  async function testRow(row: WebhookRow) {
+    testingId.value = row.id;
+    try {
+      const res = await testWebhook(row.id);
+      if (res.success) {
+        $q.notify({
+          type: 'positive',
+          message: t('webhooksPage.notifyTestSuccess', {
+            status: res.status_code,
+            duration: res.duration_ms,
+          }),
+        });
+      } else {
+        $q.notify({
+          type: 'negative',
+          timeout: 8000,
+          message: t('webhooksPage.notifyTestFailed', { error: res.error || `HTTP ${res.status_code}` }),
+        });
+      }
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      testingId.value = '';
+    }
+  }
+
   function confirmDelete(row: WebhookRow) {
     $q.dialog({
       title: t('webhooksPage.confirmDeleteTitle'),
@@ -184,6 +214,7 @@ export function useWebhooksPage() {
     editorOpen,
     editingId,
     busyId,
+    testingId,
     dialogRef,
     page,
     pageSize,
@@ -196,6 +227,7 @@ export function useWebhooksPage() {
     openEdit,
     saveWebhook,
     toggleEnabled,
+    testRow,
     confirmDelete,
   };
 }

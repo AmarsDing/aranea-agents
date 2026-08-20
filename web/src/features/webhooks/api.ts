@@ -101,3 +101,22 @@ export async function deleteWebhook(id: string): Promise<void> {
   const svc = createWebhookService();
   await svc.DeleteWebhook({ id });
 }
+
+export type WebhookTestResult = {
+  success: boolean;
+  status_code: number;
+  error: string;
+  duration_ms: number;
+};
+
+/** Send one synthetic webhook.test event to verify the stored config end-to-end. */
+export async function testWebhook(id: string): Promise<WebhookTestResult> {
+  const svc = createWebhookService();
+  const res = await svc.TestWebhook({ id });
+  return {
+    success: Boolean(res.success),
+    status_code: Number(res.statusCode ?? 0),
+    error: String(res.error ?? ''),
+    duration_ms: Number(res.durationMs ?? 0),
+  };
+}

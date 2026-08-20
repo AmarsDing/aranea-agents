@@ -126,6 +126,17 @@
             flat
             dense
             round
+            icon="inventory_2"
+            color="primary"
+            :aria-label="t('sessionsPage.actionViewArtifacts')"
+            :to="{ name: 'artifacts', query: { session: slotProps.row.id } }"
+          >
+            <q-tooltip>{{ t('sessionsPage.actionViewArtifacts') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
             icon="push_pin"
             :color="isSessionPinned(slotProps.row) ? 'primary' : 'grey-6'"
             :aria-label="isSessionPinned(slotProps.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')"

@@ -562,7 +562,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	webhookReader := data.NewWebhookReader(dataData)
 	webhookWriter := data.NewWebhookWriter(dataData)
 	webhookUsecase := biz.NewWebhookUsecase(webhookReader, webhookWriter)
-	gatewayService := service.NewGatewayService(webhookUsecase)
+	gatewayService := service.NewGatewayService(webhookUsecase, webhookDispatcher)
 	promptRefiner := biz.NewPromptRefiner(agentRepository, systemSettingUsecase, llmProviderModelUsecase, dynamicLLMCaller)
 	aiRefineService := service.NewAIRefineService(promptRefiner)
 	taxonomyService := service.NewTaxonomyService(organizationUsecase)

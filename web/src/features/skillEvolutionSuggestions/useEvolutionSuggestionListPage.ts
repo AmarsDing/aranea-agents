@@ -10,6 +10,7 @@ export const statusOptions = [
   { label: '已批准', value: 'approved' },
   { label: '已拒绝', value: 'rejected' },
   { label: '已应用', value: 'applied' },
+  { label: '已注册', value: 'registered' },
   { label: i18n.global.t('evolutionSuggestionsPage.statusExpired'), value: 'expired' },
 ];
 
@@ -126,7 +127,9 @@ export function useEvolutionSuggestionListPage() {
   }
 
   function handleTriggerCurator(currentSkillId: string) {
-    curatorSkillId.value = currentSkillId || '';
+    // 仅在 Skill tab 下预填搜索框内容；Agent tab 的搜索值是 Agent ID，
+    // 不能当作 Curator 流水线的 Skill ID。
+    curatorSkillId.value = targetType.value === 'skill' ? currentSkillId || '' : '';
     curatorDialogOpen.value = true;
   }
 

@@ -16,7 +16,6 @@
           :loading="triggeringCurator"
           @click="handleTriggerCurator(targetId)"
         />
-        <q-btn unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </template>
     </AppPageHero>
 
@@ -45,7 +44,6 @@
         class="app-page-toolbar__field"
         dense
         outlined
-        clearable
         emit-value
         map-options
         label="状态"
@@ -68,7 +66,9 @@
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="auto_fix_high" />
         <div class="text-h6 q-mt-md">{{ targetId || status ? '没有匹配的进化建议' : '暂无进化建议' }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">技能管家将基于使用数据自动生成进化建议，待审批后生效。</div>
+        <div class="text-body2 text-grey-7 q-mt-sm">
+          {{ targetId || status ? '请调整筛选条件后重试。' : '技能管家将基于使用数据自动生成进化建议，待审批后生效。' }}
+        </div>
       </q-card-section>
     </q-card>
 
