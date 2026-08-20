@@ -35,14 +35,14 @@ func (r *knowledgeRepo) MergeEntities(ctx context.Context, collectionID string, 
 	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		keeper, mergees, err := loadKnowledgeEntityMergeRows(ctx, tx, collectionID, keeperID, mergeeIDs)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if len(mergees) == 0 {
 			return nil
 		}
 		mentions, err := mergeKnowledgeEntityRows(ctx, tx, collectionID, keeper, mergees)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		renames := map[string]string{}
 		for _, m := range mergees {
@@ -52,7 +52,7 @@ func (r *knowledgeRepo) MergeEntities(ctx context.Context, collectionID string, 
 		}
 		links, err := rewriteEntityLinkContexts(ctx, tx, collectionID, renames)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		result = bizknowledge.EntityMergeResult{
 			RewrittenMentions: mentions,
@@ -62,7 +62,7 @@ func (r *knowledgeRepo) MergeEntities(ctx context.Context, collectionID string, 
 		return nil
 	})
 	if err != nil {
-		return bizknowledge.EntityMergeResult{}, err
+		return bizknowledge.EntityMergeResult{}, entErrToBizErr(err, "knowledge")
 	}
 	return result, nil
 }
@@ -108,7 +108,7 @@ func loadKnowledgeEntityMergeRows(ctx context.Context, tx *sql.Tx, collectionID 
 		}
 		mergees = append(mergees, m)
 	}
-	return keeper, mergees, rows.Err()
+	return keeper, mergees, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListEntities 列出库内全部实体字典条目（按 id 有序），供合并建议计算（B11）。
@@ -117,18 +117,18 @@ func (r *knowledgeRepo) ListEntities(ctx context.Context, collectionID string) (
 		`SELECT id, name, name_norm, entity_type FROM knowledge_entities WHERE collection_id = $1 ORDER BY id`,
 		collectionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.Entity
 	for rows.Next() {
 		var e bizknowledge.Entity
 		if err := rows.Scan(&e.ID, &e.Name, &e.NameNorm, &e.EntityType); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // sqlEntityQuerier 抽象 *sql.DB / *sql.Tx 共有操作（迁移与 repo 合并共用）。

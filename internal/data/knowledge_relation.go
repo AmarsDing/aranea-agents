@@ -8,7 +8,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -42,7 +41,7 @@ func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, 
 			 FOR UPDATE`,
 			docID, bizknowledge.LinkTypeSemantic)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		active := make(map[semanticKey]int64)
 		for rows.Next() {
@@ -50,15 +49,15 @@ func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, 
 			var key semanticKey
 			if err := rows.Scan(&id, &key.target, &key.relation); err != nil {
 				rows.Close()
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 			active[key] = id
 		}
 		if err := rows.Close(); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if err := rows.Err(); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 
 		for _, l := range links {
@@ -88,7 +87,7 @@ func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, 
 						id, collectionID, l.Context, confidence)
 				}
 				if updateErr != nil {
-					return updateErr
+					return entErrToBizErr(updateErr, "knowledge")
 				}
 				delete(active, key)
 				continue
@@ -102,7 +101,7 @@ func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, 
 				               confidence = EXCLUDED.confidence, valid_to = EXCLUDED.valid_to`,
 				collectionID, docID, l.TargetDocID, bizknowledge.LinkTypeSemantic,
 				l.Relation, l.Context, confidence, confidence, l.Closed); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 		}
 		if len(active) > 0 {
@@ -114,7 +113,7 @@ func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, 
 				`UPDATE knowledge_links SET valid_to = NOW()
 				 WHERE id = ANY($1) AND valid_to IS NULL`,
 				pq.Array(ids)); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 		}
 		return nil
@@ -138,7 +137,7 @@ func (r *knowledgeRepo) UpsertCandidate(ctx context.Context, relation, proposedB
 		 WHERE knowledge_relation_vocab.tier = 'candidate'`,
 		relation, proposedBy)
 	if err != nil {
-		return fmt.Errorf("upsert relation candidate: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }
@@ -164,18 +163,18 @@ func (r *knowledgeRepo) ListHotDocuments(ctx context.Context, collectionID strin
 		 LIMIT $4`,
 		collectionID, sinceDays, minHits, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list hot documents: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, id)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // GetRelationState 取文档抽取状态；未抽取过返回 found=false（非错误）。
@@ -190,7 +189,7 @@ func (r *knowledgeRepo) GetRelationState(ctx context.Context, docID string) (biz
 		return bizknowledge.RelationState{}, false, nil
 	}
 	if err != nil {
-		return bizknowledge.RelationState{}, false, fmt.Errorf("get relation state: %w", err)
+		return bizknowledge.RelationState{}, false, entErrToBizErr(err, "knowledge")
 	}
 	if entAt != nil {
 		st.EntitiesExtractedAt = *entAt
@@ -223,7 +222,7 @@ func (r *knowledgeRepo) UpsertRelationState(ctx context.Context, st bizknowledge
 		   relations_extracted_at = COALESCE(EXCLUDED.relations_extracted_at, knowledge_relation_state.relations_extracted_at)`,
 		st.DocID, st.CollectionID, st.ContentHash, entAt, relAt)
 	if err != nil {
-		return fmt.Errorf("upsert relation state: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }
@@ -258,7 +257,7 @@ func (r *knowledgeRepo) ResolveEntityIDs(ctx context.Context, collectionID strin
 		`SELECT name_norm, id FROM knowledge_entities
 		 WHERE collection_id = $1 AND name_norm = ANY($2)`, collectionID, pq.Array(norms))
 	if err != nil {
-		return nil, fmt.Errorf("resolve entities: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	if err := func() error {
 		defer rows.Close()
@@ -266,13 +265,13 @@ func (r *knowledgeRepo) ResolveEntityIDs(ctx context.Context, collectionID strin
 			var norm string
 			var id int64
 			if err := rows.Scan(&norm, &id); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 			normToID[norm] = id
 		}
-		return rows.Err()
+		return entErrToBizErr(rows.Err(), "knowledge")
 	}(); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	// 未精确命中的走别名表（B12：合并效果跨同步持久）。
 	var miss []string
@@ -286,7 +285,7 @@ func (r *knowledgeRepo) ResolveEntityIDs(ctx context.Context, collectionID strin
 			`SELECT alias_norm, entity_id FROM knowledge_entity_aliases
 			 WHERE collection_id = $1 AND alias_norm = ANY($2)`, collectionID, pq.Array(miss))
 		if err != nil {
-			return nil, fmt.Errorf("resolve entity aliases: %w", err)
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		if err := func() error {
 			defer aliasRows.Close()
@@ -294,13 +293,13 @@ func (r *knowledgeRepo) ResolveEntityIDs(ctx context.Context, collectionID strin
 				var norm string
 				var id int64
 				if err := aliasRows.Scan(&norm, &id); err != nil {
-					return err
+					return entErrToBizErr(err, "knowledge")
 				}
 				normToID[norm] = id
 			}
-			return aliasRows.Err()
+			return entErrToBizErr(aliasRows.Err(), "knowledge")
 		}(); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 	}
 	for name, norm := range nameNorms {

@@ -28,7 +28,7 @@ func (r *knowledgeRepo) DecayCoActivatedEdges(ctx context.Context, collectionID 
 			 WHERE collection_id = $1 AND link_type = 'co_activated' AND valid_to IS NULL`,
 			collectionID, factor, minWeight).Scan(&decayed, &closed)
 		if err != nil {
-			return 0, 0, fmt.Errorf("estimate decay: %w", err)
+			return 0, 0, entErrToBizErr(err, "knowledge")
 		}
 		return decayed, closed, nil
 	}
@@ -37,7 +37,7 @@ func (r *knowledgeRepo) DecayCoActivatedEdges(ctx context.Context, collectionID 
 		 WHERE collection_id = $1 AND link_type = 'co_activated' AND valid_to IS NULL`,
 		collectionID, factor)
 	if err != nil {
-		return 0, 0, fmt.Errorf("decay co_activated edges: %w", err)
+		return 0, 0, entErrToBizErr(err, "knowledge")
 	}
 	if n, aerr := res.RowsAffected(); aerr == nil {
 		decayed = int(n)
@@ -47,7 +47,7 @@ func (r *knowledgeRepo) DecayCoActivatedEdges(ctx context.Context, collectionID 
 		 WHERE collection_id = $1 AND link_type = 'co_activated' AND valid_to IS NULL AND weight_f < $2`,
 		collectionID, minWeight)
 	if err != nil {
-		return decayed, 0, fmt.Errorf("close decayed edges: %w", err)
+		return decayed, 0, entErrToBizErr(err, "knowledge")
 	}
 	if n, aerr := res.RowsAffected(); aerr == nil {
 		closed = int(n)
@@ -62,18 +62,18 @@ func (r *knowledgeRepo) ListPromotableRelations(ctx context.Context, minUseCount
 		 WHERE tier = 'candidate' AND use_count >= $1
 		 ORDER BY use_count DESC, relation`, minUseCount)
 	if err != nil {
-		return nil, fmt.Errorf("list promotable relations: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []string
 	for rows.Next() {
 		var rel string
 		if err := rows.Scan(&rel); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, rel)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // PromoteRelation candidate → promoted（幂等：非 candidate 不动）。
@@ -84,7 +84,7 @@ func (r *knowledgeRepo) PromoteRelation(ctx context.Context, relation string) er
 	if _, err := r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_relation_vocab SET tier = 'promoted'
 		 WHERE relation = $1 AND tier = 'candidate'`, relation); err != nil {
-		return fmt.Errorf("promote relation: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }
@@ -112,18 +112,18 @@ func (r *knowledgeRepo) ListStaleEntries(ctx context.Context, collectionID strin
 		 ORDER BY last_access_days DESC
 		 LIMIT $3`, collectionID, inactiveDays, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list stale entries: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.StaleEntryStat
 	for rows.Next() {
 		var s bizknowledge.StaleEntryStat
 		if err := rows.Scan(&s.DocID, &s.RelPath, &s.LastAccessDays, &s.ClosedRatio); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, s)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListOrphanEntries 孤儿词条候选：entries/ 下无任何 active 边（出向+入向）
@@ -146,18 +146,18 @@ func (r *knowledgeRepo) ListOrphanEntries(ctx context.Context, collectionID stri
 		 ORDER BY last_access_days DESC
 		 LIMIT $3`, collectionID, inactiveDays, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list orphan entries: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.OrphanEntryStat
 	for rows.Next() {
 		var o bizknowledge.OrphanEntryStat
 		if err := rows.Scan(&o.DocID, &o.RelPath, &o.LastAccessDays); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, o)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListContradictsEdges active contradicts 语义边（M2 抽取产物，需人工仲裁）。
@@ -169,18 +169,18 @@ func (r *knowledgeRepo) ListContradictsEdges(ctx context.Context, collectionID s
 		 ORDER BY confidence DESC
 		 LIMIT $2`, collectionID, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list contradicts edges: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.ContradictsEdgeStat
 	for rows.Next() {
 		var c bizknowledge.ContradictsEdgeStat
 		if err := rows.Scan(&c.DocID, &c.TargetDocID, &c.Context, &c.Confidence); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListHubClusters hub 簇候选：entries/* 中 active 边度数 >= minDegree 的词条
@@ -218,7 +218,7 @@ func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string
 		 ORDER BY h.degree DESC, h.doc_id
 		 LIMIT $3`, collectionID, minDegree, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list hub clusters: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.HubClusterStat
@@ -226,7 +226,7 @@ func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string
 		var h bizknowledge.HubClusterStat
 		var raw []byte
 		if err := rows.Scan(&h.HubDocID, &h.HubRelPath, &h.Degree, &raw); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		var members []struct {
 			DocID   string `json:"doc_id"`
@@ -240,7 +240,7 @@ func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string
 		}
 		out = append(out, h)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // CountActiveEdgesWithin docIDs 集合内部的 active 无向边对数（doc_id 与 target_doc_id
@@ -259,7 +259,7 @@ func (r *knowledgeRepo) CountActiveEdgesWithin(ctx context.Context, collectionID
 		     AND doc_id = ANY($2) AND target_doc_id = ANY($2)
 		 ) pairs`,
 		collectionID, pq.Array(docIDs)).Scan(&n); err != nil {
-		return 0, fmt.Errorf("count active edges within: %w", err)
+		return 0, entErrToBizErr(err, "knowledge")
 	}
 	return n, nil
 }
@@ -277,7 +277,7 @@ func (r *knowledgeRepo) HasProposal(ctx context.Context, collectionID, kind, ded
 		     AND payload->>'dedup_key' = $3
 		     AND status = ANY($4)
 		 )`, collectionID, kind, dedupKey, pq.Array(statuses)).Scan(&exists); err != nil {
-		return false, fmt.Errorf("has proposal: %w", err)
+		return false, entErrToBizErr(err, "knowledge")
 	}
 	return exists, nil
 }
@@ -288,10 +288,10 @@ func (r *knowledgeRepo) ResolveGovernanceProposal(ctx context.Context, id int64,
 		`UPDATE knowledge_governance_proposal SET status = $2, resolved_at = NOW()
 		 WHERE id = $1 AND status = 'pending'`, id, status)
 	if err != nil {
-		return fmt.Errorf("resolve governance proposal: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	if n, aerr := res.RowsAffected(); aerr == nil && n == 0 {
-		return fmt.Errorf("proposal %d not found or not pending", id)
+		return apierror.NotFound(apierror.DomainKnowledge, "proposal %d not found or not pending", id)
 	}
 	return nil
 }
@@ -309,7 +309,7 @@ func (r *knowledgeRepo) GetGovernanceProposal(ctx context.Context, id int64) (bi
 		if err == sql.ErrNoRows {
 			return v, apierror.NotFound(apierror.DomainKnowledge, fmt.Sprintf("governance proposal %d not found", id))
 		}
-		return v, fmt.Errorf("get governance proposal: %w", err)
+		return v, entErrToBizErr(err, "knowledge")
 	}
 	if resolvedAt.Valid {
 		v.ResolvedAt = resolvedAt.Time
@@ -336,7 +336,7 @@ func (r *knowledgeRepo) CloseContradictsEdges(ctx context.Context, collectionID,
 		     OR (target_doc_id = $2 AND doc_id = ANY($3)))`,
 		collectionID, docID, pq.Array(targetDocIDs))
 	if err != nil {
-		return 0, fmt.Errorf("close contradicts edges: %w", err)
+		return 0, entErrToBizErr(err, "knowledge")
 	}
 	closed := 0
 	if n, aerr := res.RowsAffected(); aerr == nil {
@@ -355,7 +355,7 @@ func (r *knowledgeRepo) MarkStaleEntries(ctx context.Context, docIDs []string) e
 		`UPDATE knowledge_documents SET stale_at = NOW()
 		 WHERE id = ANY($1) AND stale_at IS NULL`, pq.Array(docIDs))
 	if err != nil {
-		return fmt.Errorf("mark stale entries: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }
@@ -382,7 +382,7 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 
 	rows, err := r.data.PostgresRead().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list governance proposals: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.GovernanceProposalView
@@ -391,7 +391,7 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 		var raw []byte
 		var resolvedAt sql.NullTime
 		if err := rows.Scan(&v.ID, &v.CollectionID, &v.Kind, &v.Risk, &v.Status, &raw, &v.CreatedAt, &resolvedAt); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		if resolvedAt.Valid {
 			v.ResolvedAt = resolvedAt.Time
@@ -401,5 +401,5 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }

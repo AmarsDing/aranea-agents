@@ -38,18 +38,18 @@ func (r *knowledgeRepo) ListActiveLinks(ctx context.Context, collectionID string
 		   AND (doc_id = ANY($2) OR target_doc_id = ANY($2)) `+acl,
 		args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.ActiveLink
 	for rows.Next() {
 		var l bizknowledge.ActiveLink
 		if err := rows.Scan(&l.DocID, &l.TargetDocID, &l.LinkType, &l.Relation, &l.WeightF); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ReplaceLinks 事务性替换某文档某类型的 active 出链。未变化边原位更新，
@@ -63,7 +63,7 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			 FOR UPDATE`,
 			docID, linkType)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		active := make(map[string]int64)
 		for rows.Next() {
@@ -71,15 +71,15 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			var target string
 			if err := rows.Scan(&id, &target); err != nil {
 				rows.Close()
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 			active[target] = id
 		}
 		if err := rows.Close(); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if err := rows.Err(); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 
 		for _, l := range links {
@@ -97,7 +97,7 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 				     weight_f = $5, confidence = 1.0
 				 WHERE id = $1`,
 				id, collectionID, l.Context, weight, float64(weight)); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 				delete(active, l.TargetDocID)
 				continue
@@ -108,7 +108,7 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			 ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
 			 DO UPDATE SET weight = EXCLUDED.weight, weight_f = EXCLUDED.weight_f, context = EXCLUDED.context`,
 			collectionID, docID, l.TargetDocID, linkType, l.Context, weight, float64(weight)); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		}
 		if len(active) > 0 {
@@ -120,7 +120,7 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 				`UPDATE knowledge_links SET valid_to = NOW()
 				 WHERE id = ANY($1) AND valid_to IS NULL`,
 				pq.Array(ids)); err != nil {
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 		}
 		return nil
@@ -143,18 +143,18 @@ func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, link
 	q += ` ORDER BY id`
 	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.Link
 	for rows.Next() {
 		var l bizknowledge.Link
 		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context, &l.Weight); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListCollectionLinks 列出库内全部关联（G4-B8 图谱数据源）；linkTypes 空 = 全部类型。
@@ -171,18 +171,18 @@ func (r *knowledgeRepo) ListCollectionLinks(ctx context.Context, collectionID st
 	q += ` ORDER BY id`
 	rows, err := r.data.PostgresRead().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.Link
 	for rows.Next() {
 		var l bizknowledge.Link
 		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context, &l.Weight); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ReplaceDocEntities 事务性替换文档实体（G5-F B9/B12）：归一化 name_norm 查/建
@@ -194,7 +194,7 @@ func (r *knowledgeRepo) ReplaceDocEntities(ctx context.Context, collectionID, do
 	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM knowledge_doc_entities WHERE doc_id = $1`, docID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		mentionsByID := map[int64]int{}
 		for _, e := range entities {
@@ -207,9 +207,9 @@ func (r *knowledgeRepo) ReplaceDocEntities(ctx context.Context, collectionID, do
 				continue // 无治理价值名跳过（与迁移垃圾行清理同规）
 			}
 			id, err := resolveKnowledgeEntityID(ctx, tx, collectionID, name, norm, e.EntityType)
-			if err != nil {
-				return err
-			}
+		if err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
 			mentions := e.Mentions
 			if mentions < 1 {
 				mentions = 1
@@ -226,8 +226,8 @@ func (r *knowledgeRepo) ReplaceDocEntities(ctx context.Context, collectionID, do
 				`INSERT INTO knowledge_doc_entities (collection_id, doc_id, entity_id, mentions)
 				 VALUES ($1,$2,$3,$4)`,
 				collectionID, docID, id, mentionsByID[id]); err != nil {
-				return err
-			}
+			return entErrToBizErr(err, "knowledge")
+		}
 		}
 		// 孤儿实体清理：不再被任何文档引用的实体删除（派生索引无残留；别名随行级联）。
 		if _, err := tx.ExecContext(ctx,
@@ -235,12 +235,12 @@ func (r *knowledgeRepo) ReplaceDocEntities(ctx context.Context, collectionID, do
 			 WHERE e.collection_id = $1
 			   AND NOT EXISTS (SELECT 1 FROM knowledge_doc_entities de WHERE de.entity_id = e.id)`,
 			collectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	return ids, nil
 }
@@ -257,7 +257,7 @@ func resolveKnowledgeEntityID(ctx context.Context, tx *sql.Tx, collectionID, dis
 		return id, refreshKnowledgeEntityType(ctx, tx, id, entityType)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
+		return 0, entErrToBizErr(err, "knowledge")
 	}
 	err = tx.QueryRowContext(ctx,
 		`SELECT entity_id FROM knowledge_entity_aliases WHERE collection_id = $1 AND alias_norm = $2`,
@@ -266,7 +266,7 @@ func resolveKnowledgeEntityID(ctx context.Context, tx *sql.Tx, collectionID, dis
 		return id, refreshKnowledgeEntityType(ctx, tx, id, entityType)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
+		return 0, entErrToBizErr(err, "knowledge")
 	}
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO knowledge_entities (collection_id, name, entity_type, name_norm)
@@ -281,7 +281,7 @@ func resolveKnowledgeEntityID(ctx context.Context, tx *sql.Tx, collectionID, dis
 			collectionID, nameNorm).Scan(&id)
 	}
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "knowledge")
 	}
 	return id, nil
 }
@@ -294,7 +294,7 @@ func refreshKnowledgeEntityType(ctx context.Context, tx *sql.Tx, id int64, entit
 	_, err := tx.ExecContext(ctx,
 		`UPDATE knowledge_entities SET entity_type = $2 WHERE id = $1 AND entity_type <> $2`,
 		id, entityType)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // FindEntityCooccurrences 按实体 ID 找共享实体的其他文档（excludeDocID 除外）；
@@ -324,7 +324,7 @@ WHERE de.collection_id = $1
 ORDER BY de.doc_id, e.name`,
 		collectionID, pq.Array(entityIDs), maxDocFreq, excludeDocID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var order []string
@@ -332,7 +332,7 @@ ORDER BY de.doc_id, e.name`,
 	for rows.Next() {
 		var docID, name string
 		if err := rows.Scan(&docID, &name); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		if _, ok := shared[docID]; !ok {
 			order = append(order, docID)
@@ -340,7 +340,7 @@ ORDER BY de.doc_id, e.name`,
 		shared[docID] = append(shared[docID], name)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	out := make([]bizknowledge.EntityCooccurrence, 0, len(order))
 	for _, docID := range order {

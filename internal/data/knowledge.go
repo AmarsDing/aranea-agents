@@ -400,7 +400,7 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 	// workspace) rows. Empty workspace query (system) returns everything.
 	cq := `SELECT COUNT(*) FROM knowledge_collections WHERE workspace = $1 OR workspace = '' OR $1 = ''`
 	if err := r.data.Postgres().QueryRowContext(ctx, cq, workspace).Scan(&total); err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
 		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
@@ -410,23 +410,23 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 		  ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	rows, err := r.data.Postgres().QueryContext(ctx, q, workspace, limit, offset)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []biz.KnowledgeCollection
 	for rows.Next() {
 		c, err := scanCollection(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, c)
 	}
-	return out, total, rows.Err()
+	return out, total, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 func (r *knowledgeRepo) DeleteCollection(ctx context.Context, id string) error {
 	_, err := r.data.Postgres().ExecContext(ctx, `DELETE FROM knowledge_collections WHERE id = $1`, id)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 func (r *knowledgeRepo) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error {
@@ -436,7 +436,7 @@ func (r *knowledgeRepo) UpdateCollectionCounts(ctx context.Context, id string, d
 		     chunk_count    = chunk_count    + $3,
 		     updated_at     = NOW()
 		 WHERE id = $1`, id, docDelta, chunkDelta)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // --- Document CRUD ---
@@ -445,7 +445,7 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	now := time.Now().UTC().Format(time.RFC3339)
 	tagsJSON, err := marshalTags(d.Tags)
 	if err != nil {
-		return biz.KnowledgeDocument{}, err
+		return biz.KnowledgeDocument{}, entErrToBizErr(err, "knowledge")
 	}
 	q := `INSERT INTO knowledge_documents
 		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri,
@@ -522,20 +522,20 @@ func (r *knowledgeRepo) ListDocumentNames(ctx context.Context, ids []string) (ma
 func (r *knowledgeRepo) UpdateDocumentRelPath(ctx context.Context, id, newRelPath string) error {
 	_, err := r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_documents SET rel_path = $2, updated_at = NOW() WHERE id = $1`, id, newRelPath)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // UpdateDocumentSyncMeta 文件内容变更时回写同步元数据（Vault 同步 modified 事件，P1-3）。
 func (r *knowledgeRepo) UpdateDocumentSyncMeta(ctx context.Context, id string, meta biz.KnowledgeDocumentSyncMeta) error {
 	tagsJSON, err := marshalTags(meta.Tags)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "knowledge")
 	}
 	_, err = r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_documents
 		 SET content_hash = $2, summary = $3, summary_hash = $4, tags = $5, doc_type = $6, stale_at = NULL, updated_at = NOW()
 		 WHERE id = $1`, id, meta.ContentHash, meta.Summary, meta.SummaryHash, tagsJSON, meta.DocType)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // UpdateCollectionSyncState 回写 vault 同步状态与最近一次同步完成时间（P1-3 轮询）。
@@ -544,12 +544,12 @@ func (r *knowledgeRepo) UpdateCollectionSyncState(ctx context.Context, id, state
 	if lastSyncAt.IsZero() {
 		_, err := r.data.Postgres().ExecContext(ctx,
 			`UPDATE knowledge_collections SET sync_state = $2, updated_at = NOW() WHERE id = $1`, id, state)
-		return err
+		return entErrToBizErr(err, "knowledge")
 	}
 	_, err := r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_collections SET sync_state = $2, last_sync_at = $3, updated_at = NOW() WHERE id = $1`,
 		id, state, lastSyncAt.UTC())
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // EnableCollectionSemantic 空语义层单向启用（B2）：守卫式 UPDATE，仅当集合
@@ -560,11 +560,11 @@ func (r *knowledgeRepo) EnableCollectionSemantic(ctx context.Context, id, model 
 		`UPDATE knowledge_collections SET embedding_model = $2, dim = $3, updated_at = NOW()
 		 WHERE id = $1 AND embedding_model = ''`, id, model, dim)
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "knowledge")
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "knowledge")
 	}
 	return affected > 0, nil
 }
@@ -599,7 +599,7 @@ func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, er
 		`UPDATE knowledge_documents
 		 SET status = $2, error_message = $3, chunk_count = $4, updated_at = NOW()
 		 WHERE id = $1`, id, status, errMsg, chunkCount)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
@@ -609,7 +609,7 @@ func (r *knowledgeRepo) UpdateDocumentContent(ctx context.Context, id, contentTe
 		`UPDATE knowledge_documents
 		 SET content_text = $2, organized = $3, stale_at = NULL, updated_at = NOW()
 		 WHERE id = $1`, id, contentText, organized)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // --- SP2 #9 embedding 熔断端口（bizknowledge.EmbedCircuitRepo） ---
@@ -689,7 +689,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	countArgs := append([]any{collectionID}, countACLArgs...)
 	var total int
 	if err := r.data.Postgres().QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	listACL, listACLArgs := docRowVisibilityClause(ctx, 4)
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
@@ -702,18 +702,18 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	args := append([]any{collectionID, limit, offset}, listACLArgs...)
 	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []biz.KnowledgeDocument
 	for rows.Next() {
 		d, err := scanDocumentSummary(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, d)
 	}
-	return out, total, rows.Err()
+	return out, total, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // ListDocumentsPendingReembed 列出待重嵌入文档（B1）：有正文、非 indexing、
@@ -748,18 +748,18 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		  ORDER BY created_at ASC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, collectionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []biz.KnowledgeDocument
 	for rows.Next() {
 		d, err := scanDocument(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, d)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // DeleteDocument removes a document, lets the FK cascade drop its chunks
@@ -789,14 +789,14 @@ func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 			return nil
 		}
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		// access_log 无 FK（检索热度流水），显式清理防垃圾行残留。
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_access_log WHERE doc_id = $1`, id); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if collectionID != "" {
 			docDelta := 0
@@ -810,7 +810,7 @@ func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 				     updated_at     = NOW()
 				 WHERE id = $1`, collectionID, docDelta, chunkCount); err != nil {
 				r.lg.Warn("delete document counter update failed", loggateway.StepID("knowledge.counter_drift"), loggateway.Err(err))
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 		}
 		return nil
@@ -825,11 +825,11 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 	err := r.data.Postgres().QueryRowContext(ctx,
 		"SELECT dim FROM knowledge_collections WHERE id = $1", chunks[0].CollectionID).Scan(&expectedDim)
 	if err != nil {
-		return fmt.Errorf("failed to query collection dimension: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	for _, ch := range chunks {
 		if expectedDim > 0 && len(ch.Embedding) != expectedDim {
-			return fmt.Errorf("embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding))
+			return apierror.BadRequest(apierror.DomainKnowledge, "embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding))
 		}
 	}
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -837,7 +837,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 			`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index)
 			 VALUES ($1,$2,$3,$4,$5,$6,$7)`)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		defer stmt.Close()
 		for _, ch := range chunks {
@@ -852,7 +852,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 			}
 			if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
 				r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
-				return err
+				return entErrToBizErr(err, "knowledge")
 			}
 		}
 		return nil
@@ -861,7 +861,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {
 	_, err := r.data.Postgres().ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID)
-	return err
+	return entErrToBizErr(err, "knowledge")
 }
 
 // ListChunksByDocuments 按文档取前 limitPerDoc 个 chunk（chunk_index 升序）。
@@ -888,18 +888,18 @@ WHERE rn <= $%d
 ORDER BY doc_id, chunk_index`, acl, limitPH)
 	rows, err := r.data.PostgresRead().QueryContext(ctx, raw, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []biz.KnowledgeChunk
 	for rows.Next() {
 		var ch biz.KnowledgeChunk
 		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, ch)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // MoveDocument moves a document (and its chunks) to another collection in one
@@ -924,7 +924,7 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
 			Scan(&sourceCollectionID, &chunkCount, &status)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if sourceCollectionID == targetCollectionID {
 			return nil // 同库 no-op（biz 已守卫，此处防御并发改写）
@@ -932,38 +932,38 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_documents SET collection_id = $2, updated_at = NOW() WHERE id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_chunks SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		// 附表随迁：links 仅源端（边归属源文档集合），其余按 doc_id 随迁。
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_links SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_access_log SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_doc_entities SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_relation_state SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_fact_version SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		docDelta := 0
 		if status == "indexed" {
@@ -975,7 +975,7 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 			     chunk_count    = GREATEST(chunk_count    - $3, 0),
 			     updated_at     = NOW()
 			 WHERE id = $1`, sourceCollectionID, docDelta, chunkCount); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_collections
@@ -983,12 +983,12 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 			     chunk_count    = chunk_count    + $3,
 			     updated_at     = NOW()
 			 WHERE id = $1`, targetCollectionID, docDelta, chunkCount); err != nil {
-			return err
+			return entErrToBizErr(err, "knowledge")
 		}
 		return nil
 	})
 	if err != nil {
-		return biz.KnowledgeDocument{}, err
+		return biz.KnowledgeDocument{}, entErrToBizErr(err, "knowledge")
 	}
 	return r.GetDocument(ctx, id)
 }
@@ -1094,7 +1094,7 @@ LIMIT $%d`, recencyScoreSQL(`1 - (c.embedding <=> $1::vector)`), clauses, overfe
 
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
-		return nil, fmt.Errorf("embedding is empty")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "embedding is empty")
 	}
 	vec := pgvector.NewVector(queryEmbedding)
 	args := []any{vec, q.CollectionID}
@@ -1132,7 +1132,7 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 
@@ -1140,11 +1140,11 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	for rows.Next() {
 		var ch biz.KnowledgeChunk
 		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, ch)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // SearchChunksBM25 词法召回：原查询的 tsvector + trigram（短针另加 substring），
@@ -1238,7 +1238,7 @@ LIMIT $%d`, recencyScoreSQL(`ts_rank(to_tsvector('simple', c.content), plainto_t
 	args = append(args, q.TopK)
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	return scanChunks(rows)
@@ -1265,7 +1265,7 @@ LIMIT $%d`, recencyScoreSQL(`word_similarity($1, c.content)`), recencyJoinSQL, e
 	args = append(args, q.TopK)
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	return scanChunks(rows)
@@ -1288,7 +1288,7 @@ LIMIT $%d`, recencyScoreSQL(`1.0`), recencyJoinSQL, extraClauses, 3+len(extraArg
 	args = append(args, q.TopK)
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	return scanChunks(rows)
@@ -1334,11 +1334,11 @@ func scanChunks(rows *sql.Rows) ([]biz.KnowledgeChunk, error) {
 	for rows.Next() {
 		var ch biz.KnowledgeChunk
 		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, ch)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }
 
 // --- scanner helpers ---
@@ -1352,7 +1352,7 @@ func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 	err := row.Scan(&c.ID, &c.Name, &c.Description, &c.EmbeddingModel, &c.Dim,
 		&c.Status, &c.DocumentCount, &c.ChunkCount, &c.Workspace,
 		&c.RootPath, &c.SyncState, &c.VaultBackend, &c.LastSyncAt, &c.CreatedAt, &c.UpdatedAt)
-	return c, err
+	return c, entErrToBizErr(err, "knowledge")
 }
 
 func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
@@ -1365,7 +1365,7 @@ func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 		&d.EmbedFailCount, &embedLastTried,
 		&d.CreatedAt, &d.UpdatedAt, &d.Visibility, &d.OwnerUserID)
 	if err != nil {
-		return d, err
+		return d, entErrToBizErr(err, "knowledge")
 	}
 	d.Tags = unmarshalTags(tagsRaw)
 	if embedLastTried.Valid {
@@ -1383,7 +1383,7 @@ func scanDocumentSummary(row scannable) (biz.KnowledgeDocument, error) {
 		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
 		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
-		return d, err
+		return d, entErrToBizErr(err, "knowledge")
 	}
 	d.Tags = unmarshalTags(tagsRaw)
 	return d, nil
