@@ -113,6 +113,9 @@ func BuildHostexecToolSet(baseDir string, env map[string]string) (trpctool.ToolS
 	if err != nil {
 		return nil, err
 	}
+	// UTF-8 归一化须在最内层：redacting/sessionEnhance/recorder/日志文件
+	// 全部消费包装后的字符串，一次归一化全链路受益。
+	ts = WrapUTF8Norm(ts)
 	if len(env) > 0 {
 		ts = NewRedactingToolSet(ts, env)
 	}

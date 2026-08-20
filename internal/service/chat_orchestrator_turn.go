@@ -227,7 +227,17 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	turnCtx, turnCancel := context.WithCancel(ctx)
 	o.runs.StoreCancelable(sessionID, agentRunID, turnCancel)
 	unlock()
-	return o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod)
+	userMsg, assistantMsg, err = o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod)
+	if err != nil {
+		// 早退兜底：admitTurn 失败（如 agent 越权 FORBIDDEN）/附件预检失败等
+		// 路径在 EXECUTE 收尾 defer 注册前返回，注册项（agentRunID）残留会让
+		// 该会话后续 turn 永久被准入层误判 CHAT_TURN_BUSY（2026-08-20 活体实证）。
+		// CAS 语义：正常路径 BUILD 阶段 StoreRunner 已把 runID 换成 admit.runID，
+		// 此 Finish(agentRunID) 失配跳过，由 EXECUTE defer 的 Finish(runID) 收尾。
+		o.runs.Finish(sessionID, agentRunID)
+		turnCancel()
+	}
+	return userMsg, assistantMsg, err
 }
 
 func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, prov, mod string) (string, string) {

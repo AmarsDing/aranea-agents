@@ -34,6 +34,16 @@ type SeqAssigner interface {
 	RestoreAtLeast(spiritSessionID string, minSeq int64)
 }
 
+// stepCheckpointInterval 流式 checkpoint 节流间隔：每个 step 至多每秒广播一次
+// 携带累积内容的 step.updated。
+const stepCheckpointInterval = time.Second
+
+// stepCheckpointState 记录单 step 的 checkpoint 节流状态。
+type stepCheckpointState struct {
+	lastAt  time.Time
+	pending int // 距上次 checkpoint 新累积的字节数
+}
+
 // ActivityProjector projects runtime callbacks into v2 events.
 //
 // It owns the BeginStep lifecycle: a step is created via BeginStep, streamed
@@ -51,6 +61,15 @@ type ActivityProjector struct {
 	lg          loggateway.Logger
 	mu          sync.Mutex
 	activeStep  map[string]*biz.Step // stepID → step
+	// stepCkpt 流式 checkpoint 节流状态（stepID → 节流状态）。
+	// P3-resume（2026-08-20 流式文本空洞修复）：流式期间把 delta 累积进
+	// step 实体并按节流广播 step.updated（携带累积 Content/Reasoning、
+	// Version++），经 sequencer 常管异步落库。此前流式期间 DB 中 step 内容
+	// 恒为空（仅 completeStep 一次性落库），前端刷新后 hydrate 到空壳、
+	// 只剩刷新后的 delta 尾巴，直到 step.completed 才自愈。checkpoint 让
+	// 刷新后 hydrate 拿到 ≤1s 前的快照，且下一次 checkpoint 的全量快照
+	// 会纠正重连后 delta 续传的错位。
+	stepCkpt    map[string]*stepCheckpointState
 	activeTurn  map[string]*biz.Turn // turnID → turn (for OnTurnEnd)
 	activeTask  map[string]*biz.Task // taskID → task (root only, for OnTurnEnd)
 	stepCounter atomic.Int64
@@ -113,6 +132,7 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 		replyStepIDs:    make(map[string]string),
 		toolCallSteps:   make(map[string]string),
 		memberToolCalls: make(map[string]int),
+		stepCkpt:        make(map[string]*stepCheckpointState),
 	}
 }
 
@@ -852,7 +872,17 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, stepID, delta, _ st
 	p.emitStreaming(ctx, stepID, "content", delta)
 }
 
-// emitStreaming looks up the active step and publishes a StepStreamingEvent.
+// emitStreaming looks up the active step, accumulates the delta into the step
+// entity, and publishes a StepStreamingEvent. When the per-step checkpoint
+// throttle fires (first delta, then at most once per stepCheckpointInterval),
+// it additionally publishes a StepUpdatedEvent carrying the accumulated
+// Content/Reasoning snapshot — this persists mid-stream content so a frontend
+// refresh re-hydrates the latest snapshot instead of an empty step body
+// (P3-resume, 2026-08-20).
+//
+// Ordering: the streaming event is published before the checkpoint snapshot;
+// the sequencer's single-goroutine publishLoop keeps FIFO order, so frontend
+// and persist pipeline observe deltas 1..N before the snapshot covering 1..N.
 // Seq is allocated upfront in BeginStep (no lazy allocation here).
 // No-op if the step is unknown.
 func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, delta string) {
@@ -861,11 +891,48 @@ func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, de
 	}
 	p.mu.Lock()
 	step, ok := p.activeStep[stepID]
-	p.mu.Unlock()
 	if !ok {
+		p.mu.Unlock()
 		return
 	}
-	p.seq.Publish(ctx, biz.NewStepStreamingEvent(step.SpiritSessionID, step.TaskID, stepID, field, delta))
+	// 累积进 step 实体（镜像前端 append 语义）。unknown field 前端同样忽略，
+	// 不参与累积与 checkpoint。
+	var snapshot biz.Step
+	ckptDue := false
+	if field == "content" || field == "reasoning" {
+		if field == "content" {
+			step.Content += delta
+		} else {
+			step.Reasoning += delta
+		}
+		ck := p.stepCkpt[stepID]
+		if ck == nil {
+			ck = &stepCheckpointState{}
+			p.stepCkpt[stepID] = ck
+		}
+		ck.pending += len(delta)
+		now := time.Now()
+		if ck.lastAt.IsZero() || now.Sub(ck.lastAt) >= stepCheckpointInterval {
+			ck.lastAt = now
+			ck.pending = 0
+			// Version++：data 层 UpsertStep 有 VersionLT 乐观守卫，同版本
+			// 更新会被丢弃（对齐 OnToolCall 的 step.updated 先例）。
+			step.Version++
+			snapshot = *step
+			// 快照过 StripFactMarks（只影响发布副本，实体继续累积原文）：
+			// <fact> 机器抽取标签约定出现在回复末尾，末段 delta 窗口恰好
+			// 触发 checkpoint 时避免未剥离标签落库/推送（对齐 OnTextDone
+			// 的既有纪律）。
+			snapshot.Content = biz.StripFactMarks(snapshot.Content)
+			ckptDue = true
+		}
+	}
+	spiritSessionID, taskID := step.SpiritSessionID, step.TaskID
+	p.mu.Unlock()
+	p.seq.Publish(ctx, biz.NewStepStreamingEvent(spiritSessionID, taskID, stepID, field, delta))
+	if ckptDue {
+		p.seq.Publish(ctx, biz.NewStepUpdatedEvent(snapshot))
+	}
 }
 
 // OnReasoningDone finalizes the reasoning content and completes the step.
@@ -1147,6 +1214,7 @@ func (p *ActivityProjector) completeStep(ctx context.Context, stepID, content st
 	step.CompletedAt = &now
 	step.Version++
 	delete(p.activeStep, stepID)
+	delete(p.stepCkpt, stepID)
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
 }
@@ -1171,6 +1239,7 @@ func (p *ActivityProjector) failStep(ctx context.Context, stepID string, err err
 		step.ToolErrorCode = err.Error()
 	}
 	delete(p.activeStep, stepID)
+	delete(p.stepCkpt, stepID)
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepFailedEvent(*step))
 }
@@ -1439,10 +1508,13 @@ func (p *ActivityProjector) handleTextDone(ctx context.Context, finalContent str
 		stepID = p.BeginStep(ctx, p.meta, biz.StepKindReply)
 		p.replyStepIDs[agentKey] = stepID
 	}
-	// 检查 step 是否为空（已创建但 Content 与 finalContent 均为空白）
+	// 检查 step 是否为空（已创建但 finalContent 为空白）。
+	// P3-resume 注：流式 checkpoint 让 step.Content 在流式期间累积 delta，
+	// 不再恒空；空回复判定须只看 finalContent（2026-07-04 既定语义：
+	// 最终无可见内容 → cancelled，前端过滤空 ReplyBlock）。
 	p.mu.Lock()
 	step, stepOk := p.activeStep[stepID]
-	isBlank := stepOk && strings.TrimSpace(step.Content) == "" && strings.TrimSpace(finalContent) == ""
+	isBlank := stepOk && strings.TrimSpace(finalContent) == ""
 	if isBlank {
 		// 空 reply 取消而非完成，前端按 status=cancelled 过滤
 		now := time.Now()

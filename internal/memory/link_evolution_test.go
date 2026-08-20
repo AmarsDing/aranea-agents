@@ -37,6 +37,10 @@ func (f *fakeFactReader) ListFactRows(_ context.Context, scopeType, scopeID, kin
 	return nil, 0, 0, 0, nil
 }
 
+func (f *fakeFactReader) CountFactRows(_ context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error) {
+	return 0, nil
+}
+
 func (f *fakeFactReader) ListFactRowsForUser(_ context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

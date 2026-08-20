@@ -26,12 +26,17 @@ const (
 // Send / options mirror legacy JSON (snake_case on wire, same as web `features/chat/api.ts`).
 // Streaming events are delivered via WebSocket + EventBus (no SSE route).
 type SendChatMessageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	AgentKey      *string                `protobuf:"bytes,2,opt,name=agent_key,json=agentKey,proto3,oneof" json:"agent_key,omitempty"`
-	TeamId        *string                `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3,oneof" json:"team_id,omitempty"`
-	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
-	Options       *SendMessageOptions    `protobuf:"bytes,5,opt,name=options,proto3" json:"options,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	AgentKey  *string                `protobuf:"bytes,2,opt,name=agent_key,json=agentKey,proto3,oneof" json:"agent_key,omitempty"`
+	TeamId    *string                `protobuf:"bytes,3,opt,name=team_id,json=teamId,proto3,oneof" json:"team_id,omitempty"`
+	Content   string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	Options   *SendMessageOptions    `protobuf:"bytes,5,opt,name=options,proto3" json:"options,omitempty"`
+	// request_id 是客户端生成的幂等键（与 WS user_message 的 request_id 同一
+	// 约定，如 pending-user-<uuid>）。重试复用同一键，服务端按
+	// session_id+request_id 去重，重复提交不产生第二条用户消息/第二轮 turn。
+	// 空 = 不去重（channel/cron 等无客户端键的入口）。
+	RequestId     string `protobuf:"bytes,6,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -99,6 +104,13 @@ func (x *SendChatMessageRequest) GetOptions() *SendMessageOptions {
 		return x.Options
 	}
 	return nil
+}
+
+func (x *SendChatMessageRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
 }
 
 type SendMessageOptions struct {
@@ -3523,14 +3535,16 @@ var File_kratos_chat_v1_chat_proto protoreflect.FileDescriptor
 
 const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\n" +
-	"\x19kratos/chat/v1/chat.proto\x12\x0ekratos.chat.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf5\x01\n" +
+	"\x19kratos/chat/v1/chat.proto\x12\x0ekratos.chat.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x94\x02\n" +
 	"\x16SendChatMessageRequest\x12#\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12 \n" +
 	"\tagent_key\x18\x02 \x01(\tH\x00R\bagentKey\x88\x01\x01\x12\x1c\n" +
 	"\ateam_id\x18\x03 \x01(\tH\x01R\x06teamId\x88\x01\x01\x12\x1e\n" +
 	"\acontent\x18\x04 \x01(\tB\x04\xe2A\x01\x02R\acontent\x12<\n" +
-	"\aoptions\x18\x05 \x01(\v2\".kratos.chat.v1.SendMessageOptionsR\aoptionsB\f\n" +
+	"\aoptions\x18\x05 \x01(\v2\".kratos.chat.v1.SendMessageOptionsR\aoptions\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x06 \x01(\tR\trequestIdB\f\n" +
 	"\n" +
 	"_agent_keyB\n" +
 	"\n" +

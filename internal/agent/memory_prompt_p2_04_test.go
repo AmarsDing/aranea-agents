@@ -104,10 +104,11 @@ func TestL3MemoryCue_ProvenanceIncludedByDefault(t *testing.T) {
 		[]byte(`{"id":"fact-abc-12345","statement":"User likes tea","source_session_id":"sess-xyz","confidence":0.85,"version":3}`),
 	}}
 	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
-		MemoryEnabled: true,
-		L3Enabled:     true,
-		L0InjectL3:    true,
-		L3RecallTopK:  5,
+		MemoryEnabled:      true,
+		L3Enabled:          true,
+		L0InjectL3:         true,
+		L3RecallTopK:       5,
+		L3InjectProvenance: true, // 设置驱动（2026-08-20 token 审查）：显式开启验证渲染
 	})
 	ag := biz.Agent{ID: "ag1", Settings: &biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true, L0InjectL3: true}}
 	got := L3MemoryCue(context.Background(), l3, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"}, "", 5, nil, nil)
@@ -241,10 +242,11 @@ func TestCompositeMemoryCue_ProvenanceForL3Hits(t *testing.T) {
 	}
 	stub := compositeRecallStub{hits: hits}
 	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
-		MemoryEnabled:   true,
-		L2RecallEnabled: true,
-		L3Enabled:       true,
-		L0InjectL3:      true,
+		MemoryEnabled:      true,
+		L2RecallEnabled:    true,
+		L3Enabled:          true,
+		L0InjectL3:         true,
+		L3InjectProvenance: true, // 设置驱动（2026-08-20 token 审查）：显式开启验证渲染
 	})
 	ag := biz.Agent{ID: "ag1"}
 	got := CompositeMemoryCue(context.Background(), stub, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1"}, "sess-1", "", 5, nil)

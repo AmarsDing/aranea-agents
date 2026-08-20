@@ -73,6 +73,9 @@ func (r *knowledgeRepo) StrengthenCoActivations(ctx context.Context, collectionI
 	if len(docIDs) < 2 || eta <= 0 {
 		return nil
 	}
+	// 先 UPDATE 命中对（含已衰减边 → valid_to 归 NULL 复活），再对未命中对 INSERT。
+	// 不能单靠 ON CONFLICT：唯一索引是 partial（WHERE valid_to IS NULL），衰减边
+	// 不入索引、永不触发冲突 → 会插出重复行且衰减边不被复活。
 	_, err := r.data.Postgres().ExecContext(ctx, `
 WITH ids AS (
 	SELECT DISTINCT d FROM UNNEST($2::text[]) AS d
@@ -82,9 +85,20 @@ pairs AS (
 	SELECT DISTINCT LEAST(a.d, b.d) AS src, GREATEST(a.d, b.d) AS dst
 	FROM ids a CROSS JOIN ids b
 	WHERE a.d <> b.d
+),
+updated AS (
+	UPDATE knowledge_links kl
+	SET weight_f = kl.weight_f + $3, valid_to = NULL
+	FROM pairs p
+	WHERE kl.collection_id = $1 AND kl.doc_id = p.src AND kl.target_doc_id = p.dst
+		AND kl.link_type = 'co_activated' AND kl.relation = ''
+	RETURNING kl.doc_id, kl.target_doc_id
 )
 INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, relation, weight_f)
-SELECT $1, src, dst, 'co_activated', '', $3 FROM pairs
+SELECT $1, p.src, p.dst, 'co_activated', '', $3 FROM pairs p
+WHERE NOT EXISTS (
+	SELECT 1 FROM updated u WHERE u.doc_id = p.src AND u.target_doc_id = p.dst
+)
 ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
 DO UPDATE SET weight_f = knowledge_links.weight_f + EXCLUDED.weight_f, valid_to = NULL`,
 		collectionID, pq.Array(docIDs), eta)

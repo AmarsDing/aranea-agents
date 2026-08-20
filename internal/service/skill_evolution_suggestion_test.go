@@ -16,6 +16,191 @@ import (
 // F6 (P-evo-2)：approve 后异步链不得覆盖审批时已有的草稿——仅当建议当前
 // 无 DraftSkillBody 时才 GenerateDraft；沙盒校验与应用流程不受影响。
 
+// stubProposalRepo implements biz.UnifiedEvolutionStore over an in-memory map
+// (A6). 原定义在 skill_evolution_test.go，ADR-3-C5 删除 legacy 服务测试时
+// 被一并移除；本文件（SkillEvolutionSuggestionService 测试）仍在使用，回迁于此。
+type stubProposalRepo struct {
+	proposals map[string]biz.UnifiedEvolutionSuggestion
+}
+
+func newStubProposalRepo() *stubProposalRepo {
+	return &stubProposalRepo{proposals: make(map[string]biz.UnifiedEvolutionSuggestion)}
+}
+
+func (s *stubProposalRepo) Create(_ context.Context, u biz.UnifiedEvolutionSuggestion) error {
+	s.proposals[u.ID] = u
+	return nil
+}
+
+func (s *stubProposalRepo) GetByID(_ context.Context, id string) (*biz.UnifiedEvolutionSuggestion, error) {
+	p, ok := s.proposals[id]
+	if !ok {
+		return nil, nil
+	}
+	return &p, nil
+}
+
+// mergeMeta sets keys on the row's JSON metadata, preserving existing keys.
+func mergeMeta(raw json.RawMessage, kv map[string]string) json.RawMessage {
+	m := map[string]string{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &m)
+	}
+	for k, v := range kv {
+		m[k] = v
+	}
+	out, _ := json.Marshal(m)
+	return out
+}
+
+// UpdateStatus mirrors UnifiedEvolutionRepo.UpdateStatus metadata semantics.
+func (s *stubProposalRepo) UpdateStatus(_ context.Context, id string, status string, actor string, reason string) error {
+	p, ok := s.proposals[id]
+	if !ok {
+		return apierror.NotFound("SKILL_EVO", "not found")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	p.Status = status
+	switch status {
+	case string(biz.UnifiedEvolutionStateApproved):
+		p.ApprovedBy = actor
+		p.Metadata = mergeMeta(p.Metadata, map[string]string{
+			biz.EvoMetaApprovedAt: now,
+			biz.EvoMetaResolvedAt: now,
+		})
+	case string(biz.UnifiedEvolutionStateRejected):
+		p.Metadata = mergeMeta(p.Metadata, map[string]string{
+			biz.EvoMetaRejectedBy:      actor,
+			biz.EvoMetaRejectionReason: reason,
+			biz.EvoMetaResolvedAt:      now,
+		})
+	}
+	s.proposals[id] = p
+	return nil
+}
+
+// UpdateStatusCAS mirrors UnifiedEvolutionRepo.UpdateStatusCAS: update only when
+// the current status is in from; report whether the transition happened.
+func (s *stubProposalRepo) UpdateStatusCAS(ctx context.Context, id string, from []string, to string, actor string, reason string) (bool, error) {
+	p, ok := s.proposals[id]
+	if !ok {
+		return false, apierror.NotFound("SKILL_EVO", "not found")
+	}
+	allowed := len(from) == 0
+	for _, f := range from {
+		if p.Status == f {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return false, nil
+	}
+	if err := s.UpdateStatus(ctx, id, to, actor, reason); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *stubProposalRepo) filter(targetType, targetID, actionType, status string) []biz.UnifiedEvolutionSuggestion {
+	var result []biz.UnifiedEvolutionSuggestion
+	for _, p := range s.proposals {
+		if targetType != "" && string(p.TargetType) != targetType {
+			continue
+		}
+		if targetID != "" && p.TargetID != targetID {
+			continue
+		}
+		if actionType != "" && string(p.ActionType) != actionType {
+			continue
+		}
+		if status != "" && p.Status != status {
+			continue
+		}
+		result = append(result, p)
+	}
+	return result
+}
+
+func (s *stubProposalRepo) ListByTarget(_ context.Context, targetType string, targetID string, _ string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return s.filter(targetType, targetID, "", status), nil
+}
+
+func (s *stubProposalRepo) CountByTarget(_ context.Context, targetType string, targetID string, _ string, status string) (int, error) {
+	return len(s.filter(targetType, targetID, "", status)), nil
+}
+
+func (s *stubProposalRepo) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return s.filter(targetType, targetID, actionType, status), nil
+}
+
+func (s *stubProposalRepo) CountByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string) (int, error) {
+	return len(s.filter(targetType, targetID, actionType, status)), nil
+}
+
+func (s *stubProposalRepo) HasPendingForTarget(_ context.Context, targetType string, targetID string) (bool, error) {
+	return len(s.filter(targetType, targetID, "", "pending")) > 0, nil
+}
+
+func (s *stubProposalRepo) GetLatestByTarget(_ context.Context, targetType string, targetID string) (*biz.UnifiedEvolutionSuggestion, error) {
+	var best *biz.UnifiedEvolutionSuggestion
+	for i := range s.proposals {
+		p := s.proposals[i]
+		if targetType != "" && string(p.TargetType) != targetType {
+			continue
+		}
+		if targetID != "" && p.TargetID != targetID {
+			continue
+		}
+		if best == nil || p.CreatedAt.After(best.CreatedAt) {
+			r := p
+			best = &r
+		}
+	}
+	return best, nil
+}
+
+func (s *stubProposalRepo) GetLatestByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string) (*biz.UnifiedEvolutionSuggestion, error) {
+	var best *biz.UnifiedEvolutionSuggestion
+	for i := range s.proposals {
+		p := s.proposals[i]
+		if string(p.TargetType) != targetType || p.TargetID != targetID || string(p.ActionType) != actionType {
+			continue
+		}
+		if best == nil || p.CreatedAt.After(best.CreatedAt) {
+			r := p
+			best = &r
+		}
+	}
+	return best, nil
+}
+
+func (s *stubProposalRepo) UpdateDraftBody(_ context.Context, id string, draftBody string) error {
+	p, ok := s.proposals[id]
+	if !ok {
+		return apierror.NotFound("SKILL_EVO", "not found")
+	}
+	p.DraftBody = draftBody
+	s.proposals[id] = p
+	return nil
+}
+
+func (s *stubProposalRepo) UpdateLifecycleStatus(context.Context, string, string) error {
+	return nil
+}
+
+func (s *stubProposalRepo) UpdateSandboxResult(context.Context, string, bool, json.RawMessage) error {
+	return nil
+}
+
+func (s *stubProposalRepo) UpdateMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
+
+func (s *stubProposalRepo) ExpireOlderThan(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
+
 func newSkillSuggestionServiceForTest(repo *stubProposalRepo) *SkillEvolutionSuggestionService {
 	uc := biz.NewSkillIntelligenceUsecase(nil, nil, repo, nil, loggateway.NewNoop())
 	curator := NewSkillCuratorService(uc, loggateway.NewNoop())

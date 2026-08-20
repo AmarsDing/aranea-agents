@@ -14,6 +14,11 @@ export type SendChatMessageRequest = {
   // Behaviors: REQUIRED
   content: string | undefined;
   options: SendMessageOptions | undefined;
+  // request_id 是客户端生成的幂等键（与 WS user_message 的 request_id 同一
+  // 约定，如 pending-user-<uuid>）。重试复用同一键，服务端按
+  // session_id+request_id 去重，重复提交不产生第二条用户消息/第二轮 turn。
+  // 空 = 不去重（channel/cron 等无客户端键的入口）。
+  requestId: string | undefined;
 };
 
 export type SendMessageOptions = {

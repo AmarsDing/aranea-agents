@@ -56,6 +56,9 @@ func (f *canaryFakeL3Reader) RecallL3Facts(ctx context.Context, scopeType, scope
 func (f *canaryFakeL3Reader) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
 	panic("unexpected call")
 }
+func (f *canaryFakeL3Reader) CountFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error) {
+	panic("unexpected call")
+}
 func (f *canaryFakeL3Reader) ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
 	panic("unexpected call")
 }

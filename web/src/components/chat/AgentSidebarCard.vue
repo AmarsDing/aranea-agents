@@ -9,8 +9,8 @@
     role="button"
     tabindex="0"
     :aria-label="member.displayName"
-    @click="$emit('locate', { agentKey: member.agentKey, teamSessionId, teamId })"
-    @keydown.enter="$emit('locate', { agentKey: member.agentKey, teamSessionId, teamId })"
+    @click="onCardActivate"
+    @keydown.enter="onCardActivate"
   >
     <!-- 单行布局：名称 → 状态标签 → 暂停/重试按钮 → 设置按钮 -->
     <span class="agent-sidebar-card__name ellipsis">{{ member.displayName }}</span>
@@ -90,8 +90,10 @@ const props = defineProps<{
   active?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   locate: [payload: { agentKey: string; teamSessionId: string; teamId: string }];
+  /** 点击卡片主体：请求弹出该成员的执行过程弹框（与 graph 成员行点击一致）。 */
+  'select-member': [payload: { agentKey: string; teamSessionId: string; teamId: string }];
   pause: [agentKey: string];
   resume: [agentKey: string];
   /** 失败重试：调 RetrySession API 重新入队最后一条用户消息 */
@@ -99,6 +101,13 @@ defineEmits<{
   /** 点击设置按钮，由外层根据 agentKey 解析 agentId 后打开设置弹窗 */
   settings: [agentKey: string];
 }>();
+
+/** 卡片主体激活：定位中间面板 + 请求弹出成员执行过程弹框。 */
+function onCardActivate() {
+  const payload = { agentKey: props.member.agentKey, teamSessionId: props.teamSessionId, teamId: props.teamId };
+  emit('locate', payload);
+  emit('select-member', payload);
+}
 
 /** 将 SpiritMember.status + teamStatus + 阻塞信息映射为显示状态。
  * 成员自身已达终态（completed/failed）时优先展示成员终态——团队可能带失败成员

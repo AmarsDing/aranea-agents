@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
@@ -71,6 +72,10 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 	if m == nil || m.usage == nil {
 		return
 	}
+	// 落库与执行 ctx 解耦：客户端断连/用户取消时 usage 行仍须写入，
+	// 否则计费与慢查询归因丢数据（P1，2026-08-20）。
+	ctx, cancel := appctx.Detach(ctx)
+	defer cancel()
 	// E 预算表分解（P0-A，2026-08-11）：per-turn token/缓存命中入进程日志，
 	// 前缀稳定化效果直接由 cache_hit_ratio 验证（此前只落库，排查需查表）。
 	if p.PromptTok > 0 {
@@ -134,6 +139,9 @@ func (m *chatTurnMetrics) RecordAuxUsage(ctx context.Context, in biz.AuxLLMUsage
 	if in.PromptTok <= 0 && in.CompletionTok <= 0 {
 		return
 	}
+	// aux usage（intent/memory extract）同样是计费数据，断连时仍须落库（P1）。
+	ctx, cancel := appctx.Detach(ctx)
+	defer cancel()
 	if err := m.usage.RecordAuxLLMUsage(ctx, in); err != nil {
 		m.lg.Warn("aux usage record failed",
 			loggateway.StepID("chat.usage_record_fail"),
@@ -270,7 +278,7 @@ func (m *chatTurnMetrics) recordRunnerCompletion(ctx context.Context, p TurnUsag
 	if p.Status == "error" {
 		de.Error = &biz.DomainError{Message: p.ErrMsg}
 	}
-	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	recCtx, cancel := appctx.Detach(ctx)
 	defer cancel()
 	if err := biz.RecordRunnerCompletion(recCtx, m.monitor, de); err != nil {
 		m.lg.Warn("runner.completion 监控事件落库失败",
@@ -308,6 +316,10 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 	if m == nil || m.sessions == nil {
 		return
 	}
+	// 与 RecordTurnUsage 同理：turn 收尾落库须独立于客户端连接存活（P1）。
+	// admittedTurnID 等 ctx values 由 Detach 保留。
+	ctx, cancel := appctx.Detach(ctx)
+	defer cancel()
 	now := time.Now().UTC().Format(time.RFC3339)
 	preview := strutil.ProtoPreview(p.ContentPreview, 200)
 	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {

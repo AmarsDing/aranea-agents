@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from '../useChatEventRouter';
+import { clearAllStepLiveText } from '../../stepLiveTextCache';
 import type { Task, Step } from '../../v2Types';
 
 function mkTask(over: Partial<Task> = {}): Task {
@@ -53,6 +54,9 @@ describe('useChatEventRouter', () => {
 
   beforeEach(() => {
     setActivePinia(createPinia());
+    // P3-resume: live-text 缓存是模块级单例，用例间硬编码 stepId（'s1'）
+    // 复用会串缓存——每个用例前全量清理。
+    clearAllStepLiveText();
     store = useChatActivityStore();
     router = useChatEventRouter(store);
   });

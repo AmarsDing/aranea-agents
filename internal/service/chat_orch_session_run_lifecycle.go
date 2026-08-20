@@ -8,6 +8,7 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -289,6 +290,10 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 		return
 	}
 	l.runStatus.DeleteBinding(sessionID)
+	// run 终态迁移是计费/恢复语义的一部分：客户端断连时仍须落库，
+	// 否则 run 永远停在 running，被判为中断（P1，2026-08-20）。
+	ctx, cancel := appctx.Detach(ctx)
+	defer cancel()
 	if turnErr != nil {
 		if err := l.sessionRuns.Fail(ctx, sessionRunID, turnErr.Error()); err != nil {
 			l.lg.Error("session run fail transition failed",

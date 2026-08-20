@@ -136,6 +136,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	input := WSTurnInput{
 		SessionID:   sessionID,
 		Content:     strings.TrimSpace(content),
+		RequestID:   requestID,
 		AllowQueue:  true,
 		AllowStream: true,
 	}

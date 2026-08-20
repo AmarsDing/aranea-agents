@@ -29,6 +29,13 @@ import {
 import { useNodeOutputStore } from './nodeOutputStore';
 import { MEDIA_TOOL_NAMES, type MediaArtifact } from '../../features/chat/mediaTypes';
 import {
+  noteStepLiveText,
+  mergeStepLiveText,
+  clearStepLiveText,
+  clearAllStepLiveText,
+  isTerminalStepStatus,
+} from '../../features/chat/stepLiveTextCache';
+import {
   MEMORY_RECALLED_NOTICE_TYPE,
   parseMemoryRecallHits,
   type MemoryRecallHit,
@@ -148,6 +155,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function upsertStep(s: Step) {
     const ex = steps.value.get(s.ID);
     if (ex && s.Version < ex.Version) return;
+    // P3-resume：终态到达（completed/failed/...）清除 live-text 缓存；
+    // 非终态则合并缓存（前缀一致取长者），刷新后 hydrate 的 DB 快照可能被
+    // 本 tab 更新的缓存补足。
+    if (isTerminalStepStatus(s.Status)) {
+      clearStepLiveText(s.ID);
+    } else {
+      s = mergeStepLiveText(s);
+    }
     // For same version (streaming updates), merge content fields instead of replacing
     if (ex && s.Version === ex.Version) {
       steps.value.set(s.ID, { ...ex, ...s });
@@ -298,9 +313,13 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     switch (field) {
       case 'content':
         s.Content += chunk;
+        // P3-resume：累积值写 live-text 缓存（节流 flush sessionStorage），
+        // 刷新后 hydrate 合并填补文本空洞。
+        noteStepLiveText(stepId, 'content', s.Content);
         break;
       case 'reasoning':
         s.Reasoning += chunk;
+        noteStepLiveText(stepId, 'reasoning', s.Reasoning);
         break;
       default:
         // Unknown delta field — ignore; final value comes from step.completed.
@@ -570,6 +589,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         steps.value.delete(id);
         lastDeltaSeqs.delete(`${id}:content`);
         lastDeltaSeqs.delete(`${id}:reasoning`);
+        clearStepLiveText(id);
       }
     }
     for (const [id, ts] of teamStages.value) {
@@ -600,6 +620,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     turns.value.clear();
     steps.value.clear();
     lastDeltaSeqs.clear();
+    clearAllStepLiveText();
     teamStages.value.clear();
     teamRuns.value.clear();
     memberSessions.value.clear();

@@ -25,6 +25,8 @@ export interface ChatMessageInput {
   agent_key?: string;
   team_id?: string;
   content: string;
+  /** 提交幂等键（P3）：重试复用同一键，服务端按 session+request_id 去重。 */
+  request_id?: string;
   options?: SendMessageOptions;
 }
 

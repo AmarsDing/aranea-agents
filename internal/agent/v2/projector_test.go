@@ -936,13 +936,15 @@ func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
 	}
 
 	// 2. Real-content delta: should create a step + emit streaming
+	//    (+ first-delta checkpoint step.updated, P3-resume 2026-08-20)
 	p.handleTextDelta(context.Background(), "Hello")
 	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; !ok || stepID == "" {
 		t.Fatal("expected replyStepIDs set after real-content delta")
 	}
-	// Expect 2 events: StepCreatedEvent (BeginStep) + StepStreamingEvent (OnTextDelta)
-	if len(capture.events) != 2 {
-		t.Fatalf("expected 2 events after real-content delta, got %d", len(capture.events))
+	// Expect 3 events: StepCreatedEvent (BeginStep) + StepStreamingEvent +
+	// StepUpdatedEvent (first-delta checkpoint snapshot)
+	if len(capture.events) != 3 {
+		t.Fatalf("expected 3 events after real-content delta, got %d", len(capture.events))
 	}
 	created, ok := capture.events[0].(*biz.StepCreatedEvent)
 	if !ok {
@@ -954,9 +956,13 @@ func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
 	if _, ok := capture.events[1].(*biz.StepStreamingEvent); !ok {
 		t.Fatalf("expected events[1]=StepStreamingEvent, got %T", capture.events[1])
 	}
+	if _, ok := capture.events[2].(*biz.StepUpdatedEvent); !ok {
+		t.Fatalf("expected events[2]=StepUpdatedEvent (checkpoint), got %T", capture.events[2])
+	}
 
 	// 3. Subsequent whitespace delta on existing step: should still stream
-	//    (whitespace is meaningful content once the step exists)
+	//    (whitespace is meaningful content once the step exists); within the
+	//    1s checkpoint throttle window → no extra step.updated.
 	capture.events = nil
 	p.handleTextDelta(context.Background(), " \n")
 	if len(capture.events) != 1 {
@@ -964,6 +970,102 @@ func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
 	}
 	if _, ok := capture.events[0].(*biz.StepStreamingEvent); !ok {
 		t.Fatalf("expected StepStreamingEvent, got %T", capture.events[0])
+	}
+}
+
+// TestEmitStreaming_Checkpoint verifies the P3-resume (2026-08-20) mid-stream
+// checkpoint: deltas accumulate into the step entity; a throttled
+// step.updated snapshot (Version++, fact-stripped) is published on the first
+// delta and at most once per stepCheckpointInterval, so a frontend refresh
+// re-hydrates the latest snapshot instead of an empty step body.
+func TestEmitStreaming_Checkpoint(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDelta(context.Background(), "Hello")
+	stepID := p.replyStepIDs[p.meta.AgentKey]
+	if stepID == "" {
+		t.Fatal("expected reply step created")
+	}
+	// First delta → checkpoint fired: events = created + streaming + updated.
+	if len(capture.events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(capture.events))
+	}
+	ckpt, ok := capture.events[2].(*biz.StepUpdatedEvent)
+	if !ok {
+		t.Fatalf("expected events[2]=StepUpdatedEvent, got %T", capture.events[2])
+	}
+	if ckpt.Step.Content != "Hello" {
+		t.Errorf("checkpoint content = %q, want %q", ckpt.Step.Content, "Hello")
+	}
+	created := capture.events[0].(*biz.StepCreatedEvent)
+	if ckpt.Step.Version != created.Step.Version+1 {
+		t.Errorf("checkpoint version = %d, want created+1 = %d", ckpt.Step.Version, created.Step.Version+1)
+	}
+
+	// Within throttle window → streaming only, no checkpoint.
+	capture.events = nil
+	p.handleTextDelta(context.Background(), " world")
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event within throttle window, got %d", len(capture.events))
+	}
+	if _, ok := capture.events[0].(*biz.StepStreamingEvent); !ok {
+		t.Fatalf("expected StepStreamingEvent, got %T", capture.events[0])
+	}
+
+	// Throttle window elapsed (backdate lastAt) → second checkpoint carries
+	// the accumulated snapshot and bumps version again.
+	p.mu.Lock()
+	p.stepCkpt[stepID].lastAt = time.Now().Add(-2 * stepCheckpointInterval)
+	p.mu.Unlock()
+	capture.events = nil
+	p.handleTextDelta(context.Background(), "!")
+	if len(capture.events) != 2 {
+		t.Fatalf("expected 2 events after throttle window, got %d", len(capture.events))
+	}
+	ckpt2, ok := capture.events[1].(*biz.StepUpdatedEvent)
+	if !ok {
+		t.Fatalf("expected events[1]=StepUpdatedEvent, got %T", capture.events[1])
+	}
+	if ckpt2.Step.Content != "Hello world!" {
+		t.Errorf("second checkpoint content = %q, want %q", ckpt2.Step.Content, "Hello world!")
+	}
+	if ckpt2.Step.Version != ckpt.Step.Version+1 {
+		t.Errorf("second checkpoint version = %d, want %d", ckpt2.Step.Version, ckpt.Step.Version+1)
+	}
+
+	// completeStep clears the checkpoint throttle state.
+	p.handleTextDone(context.Background(), "Hello world!")
+	p.mu.Lock()
+	_, ckptExists := p.stepCkpt[stepID]
+	p.mu.Unlock()
+	if ckptExists {
+		t.Error("expected stepCkpt entry cleared after completeStep")
+	}
+}
+
+// TestEmitStreaming_CheckpointStripsFactMarks verifies checkpoint snapshots
+// pass through StripFactMarks (publish copy only; the entity keeps the raw
+// accumulation for the final OnTextDone authoritative strip).
+func TestEmitStreaming_CheckpointStripsFactMarks(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDelta(context.Background(), `你好。<fact type="identity" confidence="high">name=张三</fact>`)
+	var ckpt *biz.StepUpdatedEvent
+	for _, ev := range capture.events {
+		if u, ok := ev.(*biz.StepUpdatedEvent); ok {
+			ckpt = u
+		}
+	}
+	if ckpt == nil {
+		t.Fatal("expected checkpoint step.updated on first delta")
+	}
+	if strings.Contains(ckpt.Step.Content, "<fact") {
+		t.Errorf("expected fact tags stripped in checkpoint snapshot, got %q", ckpt.Step.Content)
+	}
+	if !strings.Contains(ckpt.Step.Content, "你好。") {
+		t.Errorf("expected visible text preserved, got %q", ckpt.Step.Content)
 	}
 }
 

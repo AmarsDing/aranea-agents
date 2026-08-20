@@ -32,6 +32,7 @@
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
       @spirit-settings="(id) => entity.openSettings('agent', id)"
       @locate-agent="spirit.onSidebarLocateAgent"
+      @select-member="spirit.onSidebarSelectMember"
       @pause-agent="spirit.onSidebarPauseAgent"
       @resume-agent="spirit.onSidebarResumeAgent"
       @retry-agent="spirit.onSidebarRetryAgent"
@@ -184,6 +185,16 @@
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
 
+    <!-- 左侧成员卡片点击弹出的成员执行过程弹框（与 graph 成员行点击同一组件） -->
+    <MemberSessionDialog
+      v-model:open="sidebarMemberDialogOpen"
+      :member-session="sidebarActiveMember"
+      @pause-agent="spirit.onPauseAgent"
+      @inject-agent="spirit.onInjectAgent"
+      @expand="spirit.onExpandChildren"
+      @confirm-step="session.onConfirmActivityGrant"
+    />
+
     <ChatSideToggle
       :open="layout.rightOpen"
       :icon="layout.rightOpen ? 'chevron_right' : 'chevron_left'"
@@ -311,7 +322,14 @@ const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlo
 // Spirit/team 面板编排（状态栏聚合、Agent 卡片动作、成员会话定位）收口于 composable。
 const spirit = useChatSpiritPanel(workspace);
 // 注意：spirit 是普通对象，模板不会自动解包其嵌套 ref，必须解构为顶层绑定。
-const { activeMember, showSessionTree, spiritStatusBar, pulseTeamColors } = spirit;
+const {
+  activeMember,
+  showSessionTree,
+  spiritStatusBar,
+  pulseTeamColors,
+  sidebarMemberDialogOpen,
+  sidebarActiveMember,
+} = spirit;
 const spiritStore = useSpiritTeamStore();
 const runtimeStore = useChatRuntimeStore();
 const llmRetryStore = useLlmRetryStore();

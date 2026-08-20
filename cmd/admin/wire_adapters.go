@@ -318,6 +318,7 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 		Content:   input.Content,
 		AgentKey:  input.AgentKey,
 		TeamID:    input.TeamID,
+		RequestID: input.RequestID,
 		// Voice 语音溯源元数据必须透传：prepareRunContext 依此打 voice
 		// fast-path 标记（主 LLM 关思考），并持久化 ASR 溯源（V2-T6）。
 		Voice: input.Voice,
@@ -337,6 +338,14 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	start := time.Now()
 	_, err := a.gateway.ExecuteTurn(ctx, bizInput)
 	elapsed := time.Since(start)
+	if errors.Is(err, service.ErrTurnDuplicate) {
+		// P3：重复提交已被服务端去重——首次提交的 turn 事件会照常经 WS
+		// 下发，这里静默成功，不渲染假 send_failed 卡片。
+		a.lg.With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 重复提交已去重",
+			loggateway.StepID("ws.adapter_turn_duplicate"),
+			loggateway.Any("request_id", input.RequestID))
+		return nil
+	}
 	if errors.Is(err, service.ErrTurnMessageQueued) {
 		// queued = 成功受理（消息已入排队队列），不是失败。
 		// 与 chatTurnExecutor / spirit_team 的语义一致；透传会让前端渲染假 send_failed 卡片。

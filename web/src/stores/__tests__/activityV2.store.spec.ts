@@ -29,6 +29,7 @@ import {
   listOrphanMemberSessionsV2,
 } from '../../features/session/v2Api';
 import { useChatActivityStore } from '../chat/activityV2Store';
+import { clearAllStepLiveText } from '../../features/chat/stepLiveTextCache';
 import type { Task, Step } from '../../features/chat/v2Types';
 
 function makeTask(over: Partial<Task> = {}): Task {
@@ -75,7 +76,12 @@ function makeNoticeStep(over: Partial<Step> = {}): Step {
 }
 
 describe('useChatActivityStore', () => {
-  beforeEach(() => setActivePinia(createPinia()));
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    // P3-resume: live-text 缓存是模块级单例，用例间硬编码 stepId（'s1' 等）
+    // 复用会串缓存——每个用例前全量清理。
+    clearAllStepLiveText();
+  });
 
   it('starts empty', () => {
     const s = useChatActivityStore();
@@ -517,6 +523,7 @@ describe('useChatActivityStore', () => {
 describe('knowledge_recalled notice indexing', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    clearAllStepLiveText();
   });
 
   const kbPayload = JSON.stringify({
@@ -552,6 +559,7 @@ describe('knowledge_recalled notice indexing', () => {
 describe('fetchSessionHistory phased hydration', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    clearAllStepLiveText();
     vi.clearAllMocks();
     vi.mocked(listOrphanMemberSessionsV2).mockResolvedValue([]);
   });

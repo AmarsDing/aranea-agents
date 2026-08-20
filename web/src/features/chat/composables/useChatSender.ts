@@ -397,6 +397,7 @@ export function useChatSender(deps: SenderDeps) {
       model: string;
       attachments: ChatAttachment[];
     },
+    requestId?: string,
   ): Promise<void> {
     // B2: HTTP command channel — submit message and get ACK only.
     // Full message/state data arrives via the WS data channel.
@@ -408,6 +409,9 @@ export function useChatSender(deps: SenderDeps) {
       agent_key: agentKey,
       team_id: teamId,
       content,
+      // P3：HTTP fallback 与 WS 共用同一幂等键（pendingUserId），
+      // WS 发出后结果不明时的重试不会重复执行。
+      request_id: requestId,
       options: {
         dialog_mode: options.dialogMode,
         provider: options.provider,

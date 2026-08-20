@@ -99,6 +99,7 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"L2IndexEmbeddingModel":    classFullRebuild,
 	"L2RecallEnabled":          classFullRebuild,
 	"L2RecallMax":              classFullRebuild,
+	"L2RecallBudgetTokens":     classFullRebuild, // ResolveMemoryRuntimePolicy 构建时固化
 	"L2RetentionDays":          classFullRebuild,
 	"L2ArchiveAfterDays":       classFullRebuild,
 	"L3Enabled":                classFullRebuild,
@@ -110,6 +111,7 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"L3ArchiveThreshold":       classFullRebuild,
 	"L3MaxPerRecallChars":      classFullRebuild,
 	"L3RecallBudgetTokens":     classFullRebuild,
+	"L3InjectProvenance":       classFullRebuild, // ResolveMemoryRuntimePolicy 构建时固化
 	"L4Enabled":                classFullRebuild,
 	"L4GraphInjectNeighbors":   classFullRebuild,
 	"L4GraphMaxNeighbors":      classFullRebuild,

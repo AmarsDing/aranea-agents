@@ -184,6 +184,7 @@ type planStepWire struct {
 	Result            *stepResultWire    `json:"Result"`
 	Error             *stepErrorWire     `json:"Error"`
 	AgentKeys         []string           `json:"AgentKeys"`
+	Mode              string             `json:"Mode"`
 	// DeliverableContract 自带 snake_case json tag（本身即 wire 定义），直接复用。
 	Deliverables  []biz.DeliverableContract `json:"Deliverables"`
 	InputContract []biz.DeliverableContract `json:"InputContract"`

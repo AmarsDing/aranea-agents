@@ -47,6 +47,7 @@
               :team-id="card.teamId"
               :blocked-info="getBlockedInfoForAgent(card.member.agentKey)"
               @locate="onLocateAgent"
+              @select-member="onSelectMember"
               @pause="$emit('pause-agent', $event)"
               @resume="$emit('resume-agent', $event)"
               @retry="$emit('retry-agent', $event)"
@@ -95,6 +96,8 @@ const emit = defineEmits<{
   'spirit-settings': [id: string];
   'agent-settings': [id: string];
   'locate-agent': [payload: { agentKey: string; teamSessionId: string; teamId: string }];
+  /** 点击成员卡片主体：请求弹出成员执行过程弹框（与 graph 成员行点击一致）。 */
+  'select-member': [payload: { agentKey: string; teamSessionId: string; teamId: string }];
   'pause-agent': [agentKey: string];
   'resume-agent': [agentKey: string];
   'retry-agent': [agentKey: string];
@@ -181,6 +184,11 @@ const allAgentCards = computed<AgentCardData[]>(() => {
 
 function onLocateAgent(payload: { agentKey: string; teamSessionId: string; teamId: string }) {
   emit('locate-agent', payload);
+}
+
+/** 成员卡片主体点击：转发给外层解析 MemberSession 并弹出执行过程弹框。 */
+function onSelectMember(payload: { agentKey: string; teamSessionId: string; teamId: string }) {
+  emit('select-member', payload);
 }
 
 /** 左侧 Agent 卡片设置按钮：按 agentKey 查找 Agent 配置，转发 agentId 给外层打开设置弹窗 */

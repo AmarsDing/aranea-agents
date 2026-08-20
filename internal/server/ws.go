@@ -33,6 +33,9 @@ type WSTurnInput struct {
 	Options     WSTurnOptions
 	AllowQueue  bool
 	AllowStream bool
+	// RequestID 是客户端生成的提交幂等键（P3）：wsUpstream.request_id
+	// （pending-user-<uuid>），重试复用；空 = 不去重。
+	RequestID string
 	// Voice 语音输入溯源元数据（M74 V2-T6，/v1/voice 网关注入）；nil = 非语音输入。
 	Voice *biz.VoiceTurnMeta
 }

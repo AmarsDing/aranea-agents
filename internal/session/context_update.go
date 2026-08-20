@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -43,6 +44,11 @@ func PatchContextFromLLMUsage(
 	if sessions == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
+	// 上下文用量是压缩触发与上下文面板的数据源：客户端断连时仍须落库（P1，
+	// 2026-08-20）。Compress.AfterNativeTurn 内部已自行 Background 解耦，接收
+	// detached ctx 仅取 values（TRPC user key），不受 10s 兜底影响。
+	ctx, cancel := appctx.Detach(ctx)
+	defer cancel()
 	win := ResolveContextWindowTokens(ctx, catalog, sess, ag, prov, mod)
 	if err := sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win); err != nil {
 		lg.Warn("更新会话上下文用量失败",

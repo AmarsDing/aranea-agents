@@ -1,9 +1,10 @@
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Notify } from 'quasar';
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import type { Agent } from '../../agents/types';
+import type { MemberSession } from '../v2Types';
 import { useScrollToActivity } from './useScrollToActivity';
 import { USER_INPUT_HARD_LIMIT_CHARS } from './useChatSender';
 import type { useChatWorkspace } from './useChatWorkspace';
@@ -123,6 +124,55 @@ export function useChatSpiritPanel(workspace: Workspace) {
     locate(payload.agentKey, payload.teamSessionId, payload.teamId);
   }
 
+  // ── 左侧成员执行过程弹框（与 GraphStageBlock 成员行点击弹框同一组件） ──
+  const activityStore = useChatActivityStore();
+  const sidebarMemberDialogOpen = ref(false);
+  const sidebarActiveMemberId = ref<string | null>(null);
+  // 实时查询（同 GraphStageBlock）：store 以新对象替换方式 upsert memberSession，
+  // 点击时存快照会导致弹框中 Status/canInject 过期。
+  const sidebarActiveMember = computed<MemberSession | null>(() => {
+    const id = sidebarActiveMemberId.value;
+    return id ? (activityStore.memberSessions.get(id) ?? null) : null;
+  });
+
+  /** 解析左侧成员卡片对应的 MemberSession。
+   * 优先 member.chatSessionId == MemberSession.SessionID（精确 1:1）；
+   * 回退 AgentKey + TeamRun.SessionID == teamSessionId；
+   * 再回退 AgentKey + SpiritSessionID（同 key 多团队时取 Seq 最大者）。
+   */
+  function resolveSidebarMemberSession(payload: {
+    agentKey: string;
+    teamSessionId: string;
+    teamId: string;
+  }): MemberSession | null {
+    const team = spiritStore.teams.find((t) => t.id === payload.teamId);
+    const member = team?.members.find((m) => m.agentKey === payload.agentKey);
+    if (member?.chatSessionId) {
+      for (const ms of activityStore.memberSessions.values()) {
+        if (ms.SessionID === member.chatSessionId) return ms;
+      }
+    }
+    let best: MemberSession | null = null;
+    for (const ms of activityStore.memberSessions.values()) {
+      if (ms.AgentKey !== payload.agentKey) continue;
+      const run = activityStore.teamRuns.get(ms.TeamRunID);
+      if (run && payload.teamSessionId && run.SessionID === payload.teamSessionId) return ms;
+      if (team?.spiritSessionId && ms.SpiritSessionID === team.spiritSessionId) {
+        if (!best || ms.Seq > best.Seq) best = ms;
+      }
+    }
+    return best;
+  }
+
+  /** 点击左侧成员卡片主体：弹出该成员的执行过程弹框（同 graph 成员行点击）。
+   *  未命中（如历史会话尚未水合 memberSessions）时仅保留 locate 行为，不弹空框。 */
+  function onSidebarSelectMember(payload: { agentKey: string; teamSessionId: string; teamId: string }) {
+    const ms = resolveSidebarMemberSession(payload);
+    if (!ms) return;
+    sidebarActiveMemberId.value = ms.ID;
+    sidebarMemberDialogOpen.value = true;
+  }
+
   /** Resolve member chat session ID for Pause/Resume/Cancel (backend expects session_id). */
   function resolveMemberChatSessionId(agentKey: string): string | null {
     const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
@@ -215,11 +265,10 @@ export function useChatSpiritPanel(workspace: Workspace) {
   /** Patch MemberSession card status by chat SessionID (not entity ID).
    *  Returns the previous status when a matching card was found. */
   function patchMemberSessionStatus(sessionId: string, status: 'paused' | 'running'): string | null {
-    const store = useChatActivityStore();
-    for (const ms of store.memberSessions.values()) {
+    for (const ms of activityStore.memberSessions.values()) {
       if (ms.SessionID === sessionId) {
         const prev = ms.Status;
-        store.upsertMemberSession({ ...ms, Status: status });
+        activityStore.upsertMemberSession({ ...ms, Status: status });
         return prev;
       }
     }
@@ -281,6 +330,9 @@ export function useChatSpiritPanel(workspace: Workspace) {
     pulseTeamColors,
     onSelectSpirit,
     onSidebarLocateAgent,
+    onSidebarSelectMember,
+    sidebarMemberDialogOpen,
+    sidebarActiveMember,
     onSidebarPauseAgent,
     onSidebarResumeAgent,
     onSidebarRetryAgent,

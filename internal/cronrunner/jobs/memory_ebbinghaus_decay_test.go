@@ -38,6 +38,10 @@ func (m *mockL3FactReader) ListFactRows(ctx context.Context, scopeType, scopeID,
 	return m.rows, m.total, m.active, m.archived, m.err
 }
 
+func (m *mockL3FactReader) CountFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error) {
+	return m.total, m.err
+}
+
 func (m *mockL3FactReader) ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
 	return nil, nil
 }

@@ -167,6 +167,10 @@ type ChatOrchestrator struct {
 	// branch. Nil in production → resumeAwaitAfterRestart.
 	resumeAwaitFn func(ctx context.Context, sessionID, reply, runID string) error
 
+	// turnIdem 是提交幂等键登记表（P3）：按 session+request_id 去重，
+	// 客户端重试/双击/断连重发不产生重复消息与重复 turn。
+	turnIdem *turnIdemRegistry
+
 	sweepStop chan struct{}
 }
 
@@ -472,6 +476,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		chatUC:              chatUC,
 		v2Seq:               v2Seq,
 		immediateFactWriter: biz.NewImmediateFactWriter(deps.Infra.MemoryConsolidationWriter, deps.Infra.FactIndexSync, deps.Infra.LG),
+		turnIdem:            newTurnIdemRegistry(),
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,
 			turnRecorder:          metrics,

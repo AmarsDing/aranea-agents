@@ -127,6 +127,10 @@ func (s *bitemporalMockStore) ListFactRows(ctx context.Context, scopeType, scope
 	return rows, int32(len(rows)), int32(len(rows)), 0, nil
 }
 
+func (s *bitemporalMockStore) CountFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error) {
+	return int32(len(s.listForUser(scopeType, scopeID, "", keyword, true))), nil
+}
+
 func (s *bitemporalMockStore) ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
 	return s.listForUser(scopeType, scopeID, userID, keyword, false), nil
 }

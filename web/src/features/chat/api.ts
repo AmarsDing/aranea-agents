@@ -65,6 +65,9 @@ export async function sendMessage(payload: {
   agent_key?: string;
   team_id?: string;
   content: string;
+  // request_id 是提交幂等键（P3）：与 WS user_message 同一约定
+  // （pending-user-<uuid>），重试复用，服务端按 session+request_id 去重。
+  request_id?: string;
   options?: SendMessageOptions;
 }): Promise<MessageAck> {
   try {
@@ -73,6 +76,7 @@ export async function sendMessage(payload: {
       agentKey: payload.agent_key,
       teamId: payload.team_id,
       content: payload.content,
+      requestId: payload.request_id,
       options: payload.options
         ? {
             dialogMode: payload.options.dialog_mode,

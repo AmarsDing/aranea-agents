@@ -19,6 +19,11 @@ type TurnInput struct {
 	Options     TurnOptions
 	Timeouts    TurnTimeouts
 	EntryConfig TurnEntryPointConfig
+	// RequestID 是客户端生成的提交幂等键（P3，2026-08-20）：WS user_message
+	// 的 request_id / HTTP SendChatMessageRequest.request_id（如
+	// pending-user-<uuid>），重试复用同一键。服务端按 session+RequestID
+	// 去重；空 = 不去重（channel/cron/A2A 等无客户端键的入口）。
+	RequestID string
 	// ParentTaskID is set by the system-push pattern (e.g. synthesis trigger
 	// after all teams complete) to attach the new Turn to an existing Task
 	// instead of creating a new one. Empty for normal user-input turns.

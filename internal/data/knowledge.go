@@ -1302,6 +1302,15 @@ func mergeBM25Rankings(rankings [][]biz.KnowledgeChunk, topK int) []biz.Knowledg
 	}
 	byID := make(map[string]*scoredChunk)
 	for _, ranking := range rankings {
+		// 分支内按最高分归一化：各分支 SQL 分值已含 recency/stale 因子
+		// （recencyScoreSQL 的 ×0.5 降权），纯名次 RRF 会把它抹平（同内容两条
+		// 名次相邻 → 比值 61/62≈0.98，降权失效）。score/maxScore 把降权带进融合。
+		branchMax := 0.0
+		for _, chunk := range ranking {
+			if s := float64(chunk.Score); s > branchMax {
+				branchMax = s
+			}
+		}
 		for rank, chunk := range ranking {
 			item := byID[chunk.ID]
 			if item == nil {
@@ -1309,7 +1318,11 @@ func mergeBM25Rankings(rankings [][]biz.KnowledgeChunk, topK int) []biz.Knowledg
 				item = &scoredChunk{chunk: copy}
 				byID[chunk.ID] = item
 			}
-			item.score += 1.0 / float64(rrfK+rank+1)
+			weight := 1.0
+			if branchMax > 0 {
+				weight = float64(chunk.Score) / branchMax
+			}
+			item.score += weight / float64(rrfK+rank+1)
 		}
 	}
 	merged := make([]biz.KnowledgeChunk, 0, len(byID))

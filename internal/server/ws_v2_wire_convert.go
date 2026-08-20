@@ -218,6 +218,7 @@ func planStepToWire(ps biz.PlanStep) planStepWire {
 		Result:            stepResultToWire(ps.Result),
 		Error:             stepErrorToWire(ps.Error),
 		AgentKeys:         ps.AgentKeys,
+		Mode:              ps.Mode,
 		Deliverables:      ps.Deliverables,
 		InputContract:     ps.InputContract,
 	}

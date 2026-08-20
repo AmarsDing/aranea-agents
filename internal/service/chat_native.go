@@ -85,25 +85,45 @@ func chatNowRFC3339() string {
 }
 
 // ExecuteTurn implements biz.TurnGateway — delegates to ChatOrchestrator.Execute.
-func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (result biz.TurnResult, err error) {
 	s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: 入口",
 		loggateway.StepID("chat.execute_turn_start"),
 		loggateway.Any("agent_key", input.AgentKey),
 		loggateway.Any("has_pipeline", s.turnPipeline != nil))
 	start := time.Now()
 
+	// P3（2026-08-20）：提交幂等——WS 重试/断连重发携带同一 request_id，
+	// 重复提交返回 ErrTurnDuplicate（ws adapter 映射为静默成功），不产生
+	// 第二条用户消息。必须在 admission/排队之前判重，否则活跃 run 期间的
+	// 重复提交会被入队成 follow-up。
+	if s != nil && s.orch != nil {
+		if !s.orch.claimTurnIdem(input.SessionID, input.RequestID) {
+			s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: 重复提交已去重",
+				loggateway.StepID("chat.submit_duplicate"),
+				loggateway.Str("request_id", input.RequestID))
+			return biz.TurnResult{}, ErrTurnDuplicate
+		}
+		defer func() {
+			// 执行失败撤销幂等占位（queued 不算失败——消息已入队，重试须去重）。
+			if err != nil && !isTurnMessageQueued(err) {
+				s.orch.releaseTurnIdem(input.SessionID, input.RequestID)
+			}
+		}()
+	}
+
 	if s != nil && s.turnPipeline != nil {
-		if result, err, handled := s.tryAdmissionBeforePersistence(ctx, input); handled {
+		if admResult, admErr, handled := s.tryAdmissionBeforePersistence(ctx, input); handled {
 			s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: admission handled",
 				loggateway.StepID("chat.execute_turn_admission"),
 				loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 				loggateway.Any("handled", true))
+			result, err = admResult, admErr
 			if isTurnMessageQueued(err) {
 				return result, ErrTurnMessageQueued
 			}
 			return result, err
 		}
-		_, result, err := s.turnPipeline.Run(ctx, turnIntentFromInput(input))
+		_, result, err = s.turnPipeline.Run(ctx, turnIntentFromInput(input))
 		s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: pipeline 完成",
 			loggateway.StepID("chat.execute_turn_pipeline_done"),
 			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
@@ -113,11 +133,12 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz
 			return result, err
 		}
 		if result.Outcome == biz.TurnOutcomeQueued {
-			return result, ErrTurnMessageQueued
+			err = ErrTurnMessageQueued
+			return result, err
 		}
 		return result, nil
 	}
-	result, err := s.orch.Execute(ctx, input)
+	result, err = s.orch.Execute(ctx, input)
 	s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: orch.Execute 完成",
 		loggateway.StepID("chat.execute_turn_orch_done"),
 		loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
