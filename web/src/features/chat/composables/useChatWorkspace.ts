@@ -5,14 +5,13 @@ import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { SpiritPanelMode } from '../../spirit/types';
-import type { ConfirmStepPayload, SubmitClarificationPayload } from '../types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useSpiritTeamStore } from '../../../stores/spirit';
-import { confirmActivity, confirmActivityGrant, submitClarification } from '../api';
+import { useChatConfirmFlows } from './useChatConfirmFlows';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
 import { useChatInboundSync } from './useChatInboundSync';
@@ -34,7 +33,7 @@ import { useChatSettingsDialog } from './useChatSettingsDialog';
 import { useChatDialogs } from './useChatDialogs';
 import { useChatComposerActions } from './useChatComposerActions';
 import { joinDictationText, useVoiceDictation } from './useVoiceDictation';
-import { favoriteSessionIDs, toggleFavoriteSession } from '../../../stores/sessionSync';
+import { favoriteSessionIDs, toggleFavoriteSession } from '../../../stores/sessionFavorites';
 import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlannerSettings';
 import { parseChannelSessionMeta } from '../channelSessionMeta';
 
@@ -750,108 +749,10 @@ export function useChatWorkspace() {
     $q.notify({ type: 'warning', message: t('chat.clipboardFileUnsupported', '当前模型不支持此类型的文件粘贴') });
   }
 
-  async function onCompactSession(sessionId: string) {
-    try {
-      const result = await sessionStore.compactSessionAction(sessionId);
-      if (result.compacted) {
-        const before = Math.round((result.estimated_tokens_before / 1000) * 10) / 10;
-        const after = Math.round((result.estimated_tokens_after / 1000) * 10) / 10;
-        $q.notify({
-          type: 'positive',
-          message: t('chat.contextManuallyCompressed', `上下文已压缩 (${before}k → ${after}k tokens)`),
-          timeout: 4000,
-        });
-      } else {
-        $q.notify({
-          type: 'info',
-          message: t('chat.contextNoCompactionNeeded', '当前上下文无需压缩'),
-          timeout: 3000,
-        });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      $q.notify({ type: 'negative', message: t('chat.contextCompactFailed', '压缩失败') + `: ${msg}`, timeout: 5000 });
-    }
-  }
-
-  // N-14: Handle confirm-activity event from ConfirmBlock → API call.
-  // Encapsulated here (rather than in ChatPage.vue) to comply with FD2:
-  // Page must not import API directly.
-  async function onConfirmActivity(activityId: string, approved: boolean) {
-    const sid = selectedSessionForUi.value?.id;
-    if (!sid) return;
-    try {
-      const ok = await confirmActivity(sid, activityId, approved);
-      if (!ok) {
-        $q.notify({
-          type: 'warning',
-          message: approved ? t('chat.confirmActivity.approveRejected') : t('chat.confirmActivity.denyRejected'),
-        });
-      }
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
-    }
-  }
-
-  async function onConfirmActivityGrant(payload: ConfirmStepPayload) {
-    try {
-      const ok = await confirmActivityGrant(payload);
-      payload.onSettled?.(ok);
-      if (!ok) {
-        $q.notify({
-          type: 'warning',
-          message: t('chat.confirmActivity.approveRejected'),
-        });
-      }
-    } catch (err) {
-      payload.onSettled?.(false);
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
-    }
-  }
-
-  // Clarification Gate (B.10.18): Handle submit-clarification event from
-  // ClarifyBlock → API call. The backend flips the step to completed and
-  // resumes the turn; the WS step.updated event drives the card's summary view.
-  async function onSubmitClarification(payload: SubmitClarificationPayload) {
-    try {
-      const ok = await submitClarification(payload);
-      if (!ok) {
-        $q.notify({
-          type: 'warning',
-          message: t('chat.clarify.submitRejected'),
-        });
-      }
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.clarify.submitFailed') });
-    }
-  }
-
-  /**
-   * L3: Resume an interrupted task (server-restart recovery).
-   *
-   * Sends a `resume_task` WS upstream on the task's chat stream. The backend
-   * CAS-claims the task (interrupted → running) and reruns it with the
-   * persisted execution trace; the resulting `task.updated` event drives the
-   * UI back to the running state — no optimistic local update needed.
-   * Failures surface as a ws_error notice from the backend.
-   */
-  function resumeTask(task: { ID: string; SessionID: string }) {
-    const sid = task.SessionID || selectedSessionForUi.value?.id;
-    if (!sid || !task.ID) return;
-    try {
-      const stream = streamManager.ensureChatStream(sid);
-      streamManager.sendChatViaWs(stream, {
-        direction: 'client_to_server',
-        channel: 'chat',
-        type: 'resume_task',
-        payload: { task_id: task.ID },
-      });
-      $q.notify({ type: 'info', message: t('chat.v2.resumeTaskSent'), timeout: 1500 });
-    } catch (err) {
-      console.warn('[chat] resume_task send failed', err);
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.sendFailed') });
-    }
-  }
+  // 会话动作流（手动压缩 / HITL 确认+授权 / 澄清提交 / 中断任务恢复）收口于 composable；
+  // 本编排器仅在 session 分组透传。
+  const { onCompactSession, onConfirmActivity, onConfirmActivityGrant, onSubmitClarification, resumeTask } =
+    useChatConfirmFlows({ selectedSessionForUi, streamManager });
 
   /**
    * P3-4: ErrorBlock inline action handlers.

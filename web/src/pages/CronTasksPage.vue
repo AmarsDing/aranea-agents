@@ -143,7 +143,7 @@
               :model-value="props.row.enabled"
               color="primary"
               dense
-              :disable="savingId === props.row.id"
+              :disable="savingId !== '' && savingId === props.row.id"
               @update:model-value="toggleRow(props.row, Boolean($event))"
             />
           </q-td>
@@ -163,10 +163,10 @@
                       <q-item-section avatar><q-icon name="history" /></q-item-section>
                       <q-item-section>{{ t('cron.runHistory') }}</q-item-section>
                     </q-item>
-                    <q-item v-close-popup clickable :disable="triggeringId === props.row.id" @click="runNow(props.row)">
+                    <q-item v-close-popup clickable :disable="triggeringId !== '' && triggeringId === props.row.id" @click="runNow(props.row)">
                       <q-item-section avatar><q-icon name="play_arrow" /></q-item-section>
                       <q-item-section>{{ t('cron.runNow') }}</q-item-section>
-                      <q-item-section v-if="triggeringId === props.row.id" side
+                      <q-item-section v-if="triggeringId !== '' && triggeringId === props.row.id" side
                         ><q-spinner size="18px"
                       /></q-item-section>
                     </q-item>

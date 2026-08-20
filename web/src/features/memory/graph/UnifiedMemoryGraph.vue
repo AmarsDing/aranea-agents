@@ -139,9 +139,9 @@ import {
 import { useUnifiedMemoryGraph } from './composables/useUnifiedMemoryGraph';
 import { useActivationReplay } from './composables/useActivationReplay';
 import { memoryLayerColor } from '../panorama/layerMeta';
-import UnifiedGraphNode from './UnifiedGraphNode.vue';
+import UnifiedGraphNode from '../../../components/memory/graph/UnifiedGraphNode.vue';
 import GraphFilterRail from './GraphFilterRail.vue';
-import GraphNodeDetailDrawer from './GraphNodeDetailDrawer.vue';
+import GraphNodeDetailDrawer from '../../../components/memory/graph/GraphNodeDetailDrawer.vue';
 
 const props = defineProps<{ agentId: string | null }>();
 const emit = defineEmits<{

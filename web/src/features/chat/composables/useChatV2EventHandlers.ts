@@ -6,7 +6,7 @@ import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useLlmRetryStore } from '../../../stores/chat/llmRetryStore';
 import { useChatEventRouter } from './useChatEventRouter';
 import { cancelRunningToolMessages } from '../activityToolCall';
-import { emitSessionMutation } from '../../../stores/sessionSync';
+import { emitSessionMutation } from '../../../stores/sessionMutationBus';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { SESSION_RUN_STATUS } from '../sessionRunStatus';
 import { runStatusFromV2Payload } from '../activityRunStatus';

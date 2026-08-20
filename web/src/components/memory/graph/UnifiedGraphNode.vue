@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
-import { memoryLayerColor } from '../panorama/layerMeta';
+import { memoryLayerColor } from '../../../features/memory/panorama/layerMeta';
 
 export type UnifiedNodeData = {
   label: string;

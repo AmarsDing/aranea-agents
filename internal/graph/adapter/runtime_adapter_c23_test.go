@@ -117,7 +117,7 @@ func TestForwardEvents_ReleasesReplannerOnStreamEnd(t *testing.T) {
 	eventCh := make(chan *trpcevent.Event)
 	close(eventCh)
 	out := make(chan biz.GraphRuntimeEvent, 1)
-	rt.forwardEvents(eventCh, out, nil)
+	rt.forwardEvents(context.Background(), eventCh, out, nil)
 	if spy.releasedFor != "exec-s3" {
 		t.Fatalf("ReleaseExecution not called on stream end (releasedFor=%q)", spy.releasedFor)
 	}

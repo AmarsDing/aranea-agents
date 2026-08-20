@@ -26,7 +26,7 @@ import { isSessionCompressNoticeFromActivityEvent, sessionContextPatchFromActivi
 import { refreshAgentSessionsForChannel } from '../channelInboundSessionRefresh';
 import { isChannelInboundSession, resolveInboundAgentIdFromActivity } from '../channelInboundSession';
 import { projectConversationActivityEvent } from '../conversationEventDispatcher';
-import { emitSessionMutation } from '../../../stores/sessionSync';
+import { emitSessionMutation } from '../../../stores/sessionMutationBus';
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { CHAT_HYDRATE_DEBOUNCE_MS } from '../../constants/timeouts';
 

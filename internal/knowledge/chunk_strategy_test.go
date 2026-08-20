@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestParseChunkStrategy(t *testing.T) {
 
 func TestExtractDocumentText_plain(t *testing.T) {
 	t.Parallel()
-	text, err := ExtractDocumentText([]byte("hello"), "note.txt", "text/plain")
+	text, err := ExtractDocumentText(context.Background(), []byte("hello"), "note.txt", "text/plain")
 	if err != nil || text != "hello" {
 		t.Fatalf("got %q err %v", text, err)
 	}
@@ -29,7 +30,7 @@ func TestExtractDocumentText_plain(t *testing.T) {
 func TestExtractDocumentText_html(t *testing.T) {
 	t.Parallel()
 	raw := []byte("<html><body><p>Hi</p></body></html>")
-	text, err := ExtractDocumentText(raw, "page.html", "text/html")
+	text, err := ExtractDocumentText(context.Background(), raw, "page.html", "text/html")
 	if err != nil || !strings.Contains(text, "Hi") {
 		t.Fatalf("got %q err %v", text, err)
 	}

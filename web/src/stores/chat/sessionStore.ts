@@ -20,7 +20,7 @@ import type { SessionContextPatch } from '../../features/chat/sessionContextPatc
 import { reconcilePatchFromServer } from '../../features/chat/sessionContextPatch';
 import { formatSessionTime } from '../../features/chat/composables/chatWorkspaceUtils';
 import type { ChatEntityKind } from '../../components/chat/types';
-import { emitSessionMutation, onSessionMutation } from '../sessionSync';
+import { emitSessionMutation, onSessionMutation } from '../sessionMutationBus';
 import { sortSessionsForDisplay } from '../../features/session/sessionSort';
 
 export type TeamSessionRow = Session & { at: string };

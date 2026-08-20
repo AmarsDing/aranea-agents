@@ -80,7 +80,7 @@ func (a *runScopedAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-
 		return nil, err
 	}
 	out := make(chan *trpcevent.Event, 256)
-	go a.pump(ctx, inv, ch, out)
+	safego.Go(ctx, "agent.cache.run_scoped_pump", func() { a.pump(ctx, inv, ch, out) })
 	return out, nil
 }
 
@@ -150,7 +150,7 @@ func (c *BuildCache) retireToolSets(toolSets []trpctool.ToolSet, cacheKey string
 		// After Close the sweeper is gone; close immediately (async, caller
 		// holds mu) so ToolSets are not leaked. Shutdown has no in-flight
 		// requests left worth delaying for.
-		go closeToolSetsNow(c.lg, toolSets, cacheKey)
+		safego.Go(context.Background(), "agent.cache.close_toolsets", func() { closeToolSetsNow(c.lg, toolSets, cacheKey) })
 		return
 	}
 	c.graveyard = append(c.graveyard, retiredToolSet{

@@ -353,6 +353,7 @@ func SeedModelRegistryCronTask(ctx context.Context, cronRepo CronRepo) error {
 		}
 	}
 	_, err = cronRepo.CreateCronTask(ctx, CronTask{
+		ID:         "cron_model_registry_sync",
 		TaskKey:    "model-registry-sync",
 		Name:       "Model Registry Sync",
 		Enabled:    true,

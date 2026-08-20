@@ -479,7 +479,7 @@ func TestOnStuckTools(t *testing.T) {
 
 	// Create an action step and set it to tool_running (simulating a tool call
 	// that never received a result).
-	stepID := p.BeginStep(p.meta, biz.StepKindAction)
+	stepID := p.BeginStep(context.Background(), p.meta, biz.StepKindAction)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepID]; ok {
 		step.Status = biz.StepStatusToolRunning
@@ -520,7 +520,7 @@ func TestProcessToolLimitHardStop_ClosesUndispatchedStep(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil
 
-	stepID := p.BeginStep(p.meta, biz.StepKindAction)
+	stepID := p.BeginStep(context.Background(), p.meta, biz.StepKindAction)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepID]; ok {
 		step.Status = biz.StepStatusToolRunning
@@ -605,7 +605,7 @@ func TestProcessToolLimitHardStop_ScopedToEventAuthor(t *testing.T) {
 	// member-b 执行中的工具步骤（不得被 member-a 的硬停关闭）。
 	metaB := meta
 	metaB.AgentKey = "member-b"
-	stepB := p.BeginStep(metaB, biz.StepKindAction)
+	stepB := p.BeginStep(context.Background(), metaB, biz.StepKindAction)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepB]; ok {
 		step.Status = biz.StepStatusToolRunning
@@ -614,7 +614,7 @@ func TestProcessToolLimitHardStop_ScopedToEventAuthor(t *testing.T) {
 	p.mu.Unlock()
 
 	// member-a 被拒派发的调用步骤（应被关闭）。
-	stepA := p.BeginStep(meta, biz.StepKindAction)
+	stepA := p.BeginStep(context.Background(), meta, biz.StepKindAction)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepA]; ok {
 		step.Status = biz.StepStatusToolRunning
@@ -689,7 +689,7 @@ func TestOnTurnEndEnhancedCanceledWithStuckTool(t *testing.T) {
 	capture.events = nil
 
 	// Create a stuck tool step
-	stepID := p.BeginStep(p.meta, biz.StepKindAction)
+	stepID := p.BeginStep(context.Background(), p.meta, biz.StepKindAction)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepID]; ok {
 		step.Status = biz.StepStatusToolRunning
@@ -980,7 +980,7 @@ func TestHandleTextDone_EmptyContentCancelled(t *testing.T) {
 	// Simulate: LLM emitted a delta that created the step, but the accumulated
 	// content is whitespace. Use BeginStep directly to control the step's
 	// initial Content, then call handleTextDone with empty finalContent.
-	stepID := p.BeginStep(p.meta, biz.StepKindReply)
+	stepID := p.BeginStep(context.Background(), p.meta, biz.StepKindReply)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepID]; ok {
 		step.Content = " " // whitespace-only accumulated content

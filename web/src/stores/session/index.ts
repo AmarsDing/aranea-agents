@@ -29,7 +29,7 @@ import type {
   BatchPreviewResult,
   SessionBatchScope,
 } from '../../features/session/types';
-import { emitSessionMutation, onSessionMutation } from '../sessionSync';
+import { emitSessionMutation, onSessionMutation } from '../sessionMutationBus';
 import { SESSION_LIST_LIMIT, SESSION_TURNS_LIMIT } from '../../features/constants/queryLimits';
 
 export const useSessionStore = defineStore('session', () => {

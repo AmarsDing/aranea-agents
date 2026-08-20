@@ -396,6 +396,11 @@ var ddlMigrations = []ddlMigration{
 	// （L3 事实 provenance 注入开关，此前硬编码 true 无法关闭省 token）。
 	// ent schema 默认值已同步（800 / true）；存量库补列，默认保持旧行为。
 	{Version: 20261232, Name: "agent_runtime_token_budget", SQL: "sql/migrations/20261232_agent_runtime_token_budget.sql"},
+
+	// 20261233: cron 深度审查 F1 — 内置任务 model-registry-sync 的 cron_task.id 为 ''
+	//（seed 直插 repo 绕过 ID 生成），其 cron_task_run.task_id 亦全为 ''，导致 UI 启停/触发
+	// 禁用碰撞、编辑死胡同、执行历史无法按该任务筛选。统一改为显式 ID 并回填运行记录。
+	{Version: 20261233, Name: "cron_model_registry_sync_id", SQL: "sql/migrations/20261233_cron_model_registry_sync_id.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

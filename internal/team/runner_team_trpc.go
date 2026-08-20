@@ -164,7 +164,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			return
 		}
 		rollbackDone = true
-		if rberr := runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary); rberr != nil {
+		// defer 阶段请求 ctx 可能已取消：脱离取消语义（保留 trace 值）但必须有界。
+		rbCtx, rbCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer rbCancel()
+		if rberr := runnerMgr.RollbackToBoundary(rbCtx, rollbackBoundary); rberr != nil {
 			r.lg.Warn("RollbackToBoundary failed", loggateway.StepID("team.run.rollback_fail"), loggateway.Str("boundary", rollbackBoundary.BoundaryID), loggateway.Err(rberr))
 		}
 	}
@@ -318,7 +321,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	var onGraphInterrupt func(nodeID, lineageID string)
 	if r.mediator != nil && graphExecID != "" {
 		onGraphInterrupt = func(nodeID, lineageID string) {
-			if err := r.mediator.MarkTeamGraphInterrupt(context.Background(), graphExecID, nodeID, lineageID); err != nil {
+			// HITL 标记可能触发于 run ctx 取消后：WithoutCancel 保留值、WithTimeout 兜底有界。
+			markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer markCancel()
+			if err := r.mediator.MarkTeamGraphInterrupt(markCtx, graphExecID, nodeID, lineageID); err != nil {
 				r.lg.Warn("team graph: inline interrupt mark failed",
 					loggateway.StepID("team.graph.interrupt_mark_fail"),
 					loggateway.Str("exec_id", graphExecID),
@@ -327,7 +333,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			}
 		}
 	}
-	events = teeGraphStageNotices(events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
+	events = teeGraphStageNotices(ctx, events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
 	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
 	// Phase 7: Consume stream (streamOpts already has the pre-created projector)

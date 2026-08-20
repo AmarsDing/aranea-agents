@@ -26,6 +26,7 @@ import (
 type planningThinkingPublisher struct {
 	seq  v2.SequencerPublisher
 	step biz.Step
+	ctx  context.Context
 }
 
 // newPlanningThinkingPublisher 创建并立即发布 thinking step 的 created 事件。
@@ -46,7 +47,7 @@ func newPlanningThinkingPublisher(seq v2.SequencerPublisher, ctx context.Context
 		StartedAt:       time.Now(),
 		Version:         1,
 	}
-	p := &planningThinkingPublisher{seq: seq, step: step}
+	p := &planningThinkingPublisher{seq: seq, step: step, ctx: ctx}
 	p.seq.Publish(ctx, biz.NewStepCreatedEvent(step))
 	return p
 }
@@ -57,7 +58,7 @@ func (p *planningThinkingPublisher) OnReasoning(piece string) error {
 	if p == nil || piece == "" {
 		return nil
 	}
-	p.seq.Publish(context.Background(), biz.NewStepStreamingEvent(p.step.SpiritSessionID, p.step.TaskID, p.step.ID, "reasoning", piece))
+	p.seq.Publish(p.ctx, biz.NewStepStreamingEvent(p.step.SpiritSessionID, p.step.TaskID, p.step.ID, "reasoning", piece))
 	return nil
 }
 
@@ -80,5 +81,5 @@ func (p *planningThinkingPublisher) finish(status biz.StepStatus, finalReasoning
 	p.step.Reasoning = finalReasoning
 	p.step.CompletedAt = &now
 	p.step.Version++
-	p.seq.Publish(context.Background(), biz.NewStepCompletedEvent(p.step))
+	p.seq.Publish(p.ctx, biz.NewStepCompletedEvent(p.step))
 }

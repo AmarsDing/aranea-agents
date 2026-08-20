@@ -180,7 +180,7 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
 	safego.Go(ctx, "graph-event-bridge", func() {
-		r.forwardEvents(eventCh, out, flow)
+		r.forwardEvents(ctx, eventCh, out, flow)
 	})
 
 	return out, nil
@@ -190,7 +190,7 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 // emits the terminal flow log (graph.run.finish) when the stream ends:
 // done on the GraphExecution completion event, error when a non-retrying node
 // error was observed without a completion (cancel/interrupt are not terminal).
-func (r *trpcGraphRuntime) forwardEvents(eventCh <-chan *trpcevent.Event, out chan<- biz.GraphRuntimeEvent, flow *event.TraceEmitter) {
+func (r *trpcGraphRuntime) forwardEvents(ctx context.Context, eventCh <-chan *trpcevent.Event, out chan<- biz.GraphRuntimeEvent, flow *event.TraceEmitter) {
 	defer func() {
 		r.clearRunCancel()
 		// S3：流结束（done/failed/interrupt/cancel 的统一出口）释放 replan
@@ -225,7 +225,7 @@ func (r *trpcGraphRuntime) forwardEvents(eventCh <-chan *trpcevent.Event, out ch
 				}
 			}
 		}
-		out <- convertTrpcEvent(e, r.bridge, r.lg)
+		out <- convertTrpcEvent(ctx, e, r.bridge, r.lg)
 	}
 	if flow == nil {
 		return
@@ -323,7 +323,7 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
 	safego.Go(ctx, "graph-resume-bridge", func() {
-		r.forwardEvents(eventCh, out, flow)
+		r.forwardEvents(ctx, eventCh, out, flow)
 	})
 
 	return out, nil
@@ -401,7 +401,7 @@ func (r *trpcGraphRuntime) GetLineageID() string {
 	return r.lineageID
 }
 
-func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg loggateway.Logger) biz.GraphRuntimeEvent {
+func convertTrpcEvent(ctx context.Context, e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg loggateway.Logger) biz.GraphRuntimeEvent {
 	if bridge != nil {
 		ev := bridge.ConvertEvent(e)
 		if ev != nil {
@@ -409,7 +409,7 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 			sanitizeActivityControlCommand(ev, e)
 		}
 		if ev != nil && bridge.EventBus() != nil {
-			bridge.EventBus().Publish(context.Background(), graphtrpc.ActivityEventToSystemNotice(*ev))
+			bridge.EventBus().Publish(ctx, graphtrpc.ActivityEventToSystemNotice(*ev))
 		}
 	}
 

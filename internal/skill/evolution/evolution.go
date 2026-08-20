@@ -31,6 +31,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -217,14 +218,14 @@ func (m *meteringModel) GenerateContent(ctx context.Context, req *trpcmodel.Requ
 		return nil, err
 	}
 	out := make(chan *trpcmodel.Response, 64)
-	go m.forward(ch, out)
+	safego.Go(ctx, "skill.evolution.metering_forward", func() { m.forward(ctx, ch, out) })
 	return out, nil
 }
 
 // forward 透传响应流并累计计费口径用量（每轮独立计费 → 跨轮求和；轮内
 // 流式累计 → 取最大，与 agent.accumulateStreamUsage 同语义）。流关闭后
 // 落一条 aux_evolution 用量；零 token（provider 未回报）跳过。
-func (m *meteringModel) forward(in <-chan *trpcmodel.Response, out chan<- *trpcmodel.Response) {
+func (m *meteringModel) forward(ctx context.Context, in <-chan *trpcmodel.Response, out chan<- *trpcmodel.Response) {
 	defer close(out)
 	start := time.Now()
 	var prevPrompt, prevCompletion, prevCached int
@@ -253,7 +254,12 @@ func (m *meteringModel) forward(in <-chan *trpcmodel.Response, out chan<- *trpcm
 				}
 			}
 		}
-		out <- resp
+		select {
+		case out <- resp:
+		case <-ctx.Done():
+			// 收方随 ctx 取消弃读时必须有逃生门，否则本 goroutine 永久阻塞泄漏。
+			return
+		}
 	}
 	promptTok := prevPrompt + curPrompt
 	completionTok := prevCompletion + curCompletion
@@ -267,7 +273,10 @@ func (m *meteringModel) forward(in <-chan *trpcmodel.Response, out chan<- *trpcm
 	if apiErr != "" {
 		status = "failed"
 	}
-	if err := m.record(context.Background(), biz.AuxLLMUsageInput{
+	// 计费落库脱离已取消的请求 ctx（WithoutCancel 保留 trace 值），但必须有界。
+	rctx, rcancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer rcancel()
+	if err := m.record(rctx, biz.AuxLLMUsageInput{
 		Kind:          biz.UsageKindAuxEvolution,
 		Provider:      m.prov,
 		Model:         m.mod,

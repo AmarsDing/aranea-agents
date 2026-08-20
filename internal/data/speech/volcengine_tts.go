@@ -181,7 +181,7 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 	if conn := s.p.popWarm(); conn != nil {
 		if werr := conn.WriteMessage(websocket.BinaryMessage, frame); werr == nil {
 			s.setConn(conn)
-			go s.readPump(conn)
+			safego.Go(context.Background(), "speech.volc_tts.read_pump", func() { s.readPump(conn) })
 			return nil
 		}
 		_ = conn.Close()
@@ -197,7 +197,7 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 		s.failOnce(apierror.Wrap(err, apierror.CodeUnavailable, "speech"))
 		return nil
 	}
-	go s.readPump(conn)
+	safego.Go(context.Background(), "speech.volc_tts.read_pump", func() { s.readPump(conn) })
 	return nil
 }
 
@@ -238,28 +238,41 @@ func (s *volcTTSSession) setConn(c wsConn) {
 
 func (s *volcTTSSession) failOnce(err error) {
 	if s.ended.CompareAndSwap(false, true) {
-		s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: err}
+		// 终止通知必须非阻塞：audio 缓冲满且消费者弃读时，阻塞会把 Write 调用方
+		// （voice 管道）一并拖死；close 仍会唤醒 range 消费者，错误信息尽力投递即可。
+		select {
+		case s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: err}:
+		default:
+		}
 		close(s.audio)
 	}
 }
 
 func (s *volcTTSSession) finish() {
 	if s.ended.CompareAndSwap(false, true) {
-		s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkEnd}
+		select {
+		case s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkEnd}:
+		default:
+		}
 	}
 }
 
 func (s *volcTTSSession) readPump(conn wsConn) {
 	defer func() {
 		s.ended.Store(true)
-		close(s.audio)
+		// 先关连接再关通道：若 audio 已被 failOnce 关闭，close  panic 由 safego
+		// 兜底，连接也必须确保释放。
 		_ = conn.Close()
+		close(s.audio)
 	}()
 	for {
 		mt, data, err := conn.ReadMessage()
 		if err != nil {
 			if !s.ended.Load() {
-				s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: apierror.Wrap(err, apierror.CodeUnavailable, "speech")}
+				select {
+				case s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: apierror.Wrap(err, apierror.CodeUnavailable, "speech")}:
+				default:
+				}
 			}
 			return
 		}
@@ -282,7 +295,10 @@ func (s *volcTTSSession) readPump(conn wsConn) {
 				s.finish()
 			}
 		case volcMsgError:
-			s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: apierror.Internal("speech", "volc tts error: %s", formatVolcError(f))}
+			select {
+			case s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: apierror.Internal("speech", "volc tts error: %s", formatVolcError(f))}:
+			default:
+			}
 			return
 		}
 	}

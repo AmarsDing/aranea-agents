@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { createAgent, deleteAgent, listAgents, updateAgent } from '../features/agents/api';
 import type { Agent } from '../features/agents/types';
-import { emitSessionMutation, onSessionMutation } from './sessionSync';
+import { emitSessionMutation, onSessionMutation } from './sessionMutationBus';
 
 export const useAppStore = defineStore('app', {
   state: () => ({

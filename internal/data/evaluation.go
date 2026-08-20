@@ -485,7 +485,12 @@ func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRu
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	placeholders := r.data.Dialect().Placeholders(len(ids))
+	// Use ? placeholders for the IN list as well: the whole statement goes
+	// through RenumberPlaceholders once, so numbering stays consistent with
+	// the wsClause args appended after ids. Dialect().Placeholders would emit
+	// $1..$n on Postgres, which RenumberPlaceholders does not skip — it would
+	// renumber the wsClause ? from $1 again and collide with the IN list.
+	placeholders := strings.Repeat("?,", len(ids)-1) + "?"
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id

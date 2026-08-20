@@ -330,7 +330,7 @@ func (p *ActivityProjector) EmitConfirmRequest(ctx context.Context, params biz.A
 	if p == nil || p.seq == nil || p.meta.TaskID == "" {
 		return "", nil
 	}
-	stepID := p.BeginStep(p.meta, biz.StepKindConfirm)
+	stepID := p.BeginStep(ctx, p.meta, biz.StepKindConfirm)
 	p.mu.Lock()
 	step, ok := p.activeStep[stepID]
 	if ok {
@@ -822,7 +822,7 @@ func (p *ActivityProjector) OnTurnEndEnhanced(ctx context.Context, meta ProjectM
 // have a monotonic Seq for correct frontend ordering. Previously Seq was
 // lazily assigned only for streaming steps (thinking/reply), causing action/
 // notice steps to have Seq=0 and sort before thinking steps.
-func (p *ActivityProjector) BeginStep(meta ProjectMeta, kind biz.StepKind) string {
+func (p *ActivityProjector) BeginStep(ctx context.Context, meta ProjectMeta, kind biz.StepKind) string {
 	if p.seq == nil {
 		return ""
 	}
@@ -836,7 +836,7 @@ func (p *ActivityProjector) BeginStep(meta ProjectMeta, kind biz.StepKind) strin
 	p.mu.Lock()
 	p.activeStep[stepID] = &step
 	p.mu.Unlock()
-	p.seq.Publish(context.Background(), biz.NewStepCreatedEvent(step))
+	p.seq.Publish(ctx, biz.NewStepCreatedEvent(step))
 	return stepID
 }
 
@@ -901,7 +901,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, meta ProjectMeta, to
 	if p.seq == nil {
 		return ""
 	}
-	stepID := p.findOrCreateActionStep(meta)
+	stepID := p.findOrCreateActionStep(ctx, meta)
 	p.mu.Lock()
 	step, ok := p.activeStep[stepID]
 	if ok {
@@ -928,7 +928,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, meta ProjectMeta, to
 // turn，原逻辑只按 TurnID + Kind 查找会导致后续 member 复用首个 member 的
 // action step。增加 AuthorAgentKey 维度让每个 member agent 拥有独立的
 // action step。
-func (p *ActivityProjector) findOrCreateActionStep(meta ProjectMeta) string {
+func (p *ActivityProjector) findOrCreateActionStep(ctx context.Context, meta ProjectMeta) string {
 	p.mu.Lock()
 	for id, s := range p.activeStep {
 		if s.TurnID == meta.TurnID && s.Kind == biz.StepKindAction && s.AuthorAgentKey == meta.AgentKey {
@@ -937,7 +937,7 @@ func (p *ActivityProjector) findOrCreateActionStep(meta ProjectMeta) string {
 		}
 	}
 	p.mu.Unlock()
-	return p.BeginStep(meta, biz.StepKindAction)
+	return p.BeginStep(ctx, meta, biz.StepKindAction)
 }
 
 // OnToolResult completes (success) or fails (error) the action step.
@@ -1369,7 +1369,7 @@ func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta stri
 	agentKey := p.meta.AgentKey
 	stepID, ok := p.thinkingStepIDs[agentKey]
 	if !ok || stepID == "" {
-		stepID = p.BeginStep(p.meta, biz.StepKindThinking)
+		stepID = p.BeginStep(ctx, p.meta, biz.StepKindThinking)
 		p.thinkingStepIDs[agentKey] = stepID
 	}
 	p.OnReasoningDelta(ctx, stepID, delta, "")
@@ -1398,7 +1398,7 @@ func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
 		if strings.TrimSpace(delta) == "" {
 			return
 		}
-		stepID = p.BeginStep(p.meta, biz.StepKindReply)
+		stepID = p.BeginStep(ctx, p.meta, biz.StepKindReply)
 		p.replyStepIDs[agentKey] = stepID
 	}
 	p.OnTextDelta(ctx, stepID, delta, "")
@@ -1415,7 +1415,7 @@ func (p *ActivityProjector) handleReasoningDone(ctx context.Context, finalConten
 		if strings.TrimSpace(finalContent) == "" {
 			return
 		}
-		stepID = p.BeginStep(p.meta, biz.StepKindThinking)
+		stepID = p.BeginStep(ctx, p.meta, biz.StepKindThinking)
 		p.thinkingStepIDs[agentKey] = stepID
 	}
 	p.OnReasoningDone(ctx, stepID, finalContent)
@@ -1436,7 +1436,7 @@ func (p *ActivityProjector) handleTextDone(ctx context.Context, finalContent str
 		if strings.TrimSpace(finalContent) == "" {
 			return
 		}
-		stepID = p.BeginStep(p.meta, biz.StepKindReply)
+		stepID = p.BeginStep(ctx, p.meta, biz.StepKindReply)
 		p.replyStepIDs[agentKey] = stepID
 	}
 	// 检查 step 是否为空（已创建但 Content 与 finalContent 均为空白）

@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -53,7 +54,7 @@ func (a *summaryFallbackAgent) Run(ctx context.Context, inv *trpcagent.Invocatio
 		return nil, err
 	}
 	out := make(chan *trpcevent.Event, 256)
-	go a.pump(ctx, inv, innerCh, out)
+	safego.Go(ctx, "graph.adapter.summary_fallback.pump", func() { a.pump(ctx, inv, innerCh, out) })
 	return out, nil
 }
 

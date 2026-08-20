@@ -237,7 +237,7 @@ func (c *BuildCache) putWithFace(key string, ag trpcagent.Agent, a2uiResult *pla
 		// Cache already shut down: do not cache (would leak the ToolSets,
 		// since no sweeper/Close will ever reclaim them). Close the incoming
 		// ToolSets immediately so the caller's resources are not leaked.
-		go closeToolSetsNow(c.lg, toolSets, key)
+		safego.Go(context.Background(), "agent.cache.close_toolsets", func() { closeToolSetsNow(c.lg, toolSets, key) })
 		return nil
 	}
 	h := newAgentHandle(ag)

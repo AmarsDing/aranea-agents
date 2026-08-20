@@ -12,7 +12,7 @@ import {
 import type { Message } from '../../features/chat/types';
 import { mergeIncrementalSessionMessages, mergeSessionMessages } from '../../features/chat/mergeSessionMessages';
 import { clearToolEventCache } from '../../features/chat/activityToolCall';
-import { onSessionMutation } from '../sessionSync';
+import { onSessionMutation } from '../sessionMutationBus';
 
 export const useChatMessageStore = defineStore('chatMessage', () => {
   const messagesBySession = ref<Record<string, Message[]>>({});

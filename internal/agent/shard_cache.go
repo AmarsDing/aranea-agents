@@ -8,6 +8,7 @@ import (
 
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -166,7 +167,7 @@ func (c *shardCache) acquire(ctx context.Context, spec shardSpec) (*shardProduct
 		c.lruList.MoveToFront(e.elem)
 		lg := c.lg
 		c.mu.Unlock()
-		go closeToolSetsNow(lg, prod.toolSets, spec.fp)
+		safego.Go(context.Background(), "agent.shard_cache.close_toolsets", func() { closeToolSetsNow(lg, prod.toolSets, spec.fp) })
 		return e.prod, c.releaseFunc(e), nil
 	}
 	e := &shardCacheEntry{fp: spec.fp, group: spec.group, id: spec.id, prod: prod, refs: 1}

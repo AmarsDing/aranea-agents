@@ -77,10 +77,10 @@ func TestEndToEnd_V2Pipeline(t *testing.T) {
 	}
 
 	projector.OnTurnStart(ctx, meta)
-	thinkingStep := projector.BeginStep(meta, biz.StepKindThinking)
+	thinkingStep := projector.BeginStep(context.Background(), meta, biz.StepKindThinking)
 	projector.OnReasoningDelta(ctx, thinkingStep, "thinking about addition", "")
 	projector.OnReasoningDone(ctx, thinkingStep, "I'll just compute 2+2=4")
-	replyStep := projector.BeginStep(meta, biz.StepKindReply)
+	replyStep := projector.BeginStep(context.Background(), meta, biz.StepKindReply)
 	projector.OnTextDelta(ctx, replyStep, "4", "")
 	projector.OnTextDone(ctx, replyStep, "4", true /* isFinal */)
 	projector.OnTurnEnd(ctx, meta, false /* canceled */)
@@ -144,10 +144,10 @@ func TestEndToEnd_FIFOOrdering(t *testing.T) {
 	}
 
 	projector.OnTurnStart(ctx, meta)
-	thinkingStep := projector.BeginStep(meta, biz.StepKindThinking)
+	thinkingStep := projector.BeginStep(context.Background(), meta, biz.StepKindThinking)
 	projector.OnReasoningDelta(ctx, thinkingStep, "thinking", "")
 	projector.OnReasoningDone(ctx, thinkingStep, "done thinking")
-	replyStep := projector.BeginStep(meta, biz.StepKindReply)
+	replyStep := projector.BeginStep(context.Background(), meta, biz.StepKindReply)
 	projector.OnTextDelta(ctx, replyStep, "answer", "")
 	projector.OnTextDone(ctx, replyStep, "answer", true)
 	projector.OnTurnEnd(ctx, meta, false /* canceled */)
@@ -220,7 +220,7 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 	}
 
 	projector.OnTurnStart(ctx, meta)
-	thinkingStep := projector.BeginStep(meta, biz.StepKindThinking)
+	thinkingStep := projector.BeginStep(context.Background(), meta, biz.StepKindThinking)
 	projector.OnReasoningDelta(ctx, thinkingStep, "thinking...", "")
 	// Simulate user cancellation: OnTurnEndEnhanced with canceled=true.
 	projector.OnTurnEndEnhanced(ctx, meta, &ActivityUsage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}, true)

@@ -16,7 +16,7 @@ import type { PlatformResource, PlatformResourceTreeNode } from '../../features/
 import { flattenTaxonomyPositions, formatContext } from '../../components/agents/agentUi';
 import { buildAgentTableColumns } from '../../components/agents/agentTableUi';
 import { findTaxonomyPath, formatTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
-import { emitSessionMutation } from '../sessionSync';
+import { emitSessionMutation } from '../sessionMutationBus';
 
 /** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
 export const useAgentsPageStore = defineStore('agentsPage', () => {

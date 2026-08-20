@@ -1164,7 +1164,7 @@ func (s *KnowledgeService) extractText(ctx context.Context, raw []byte, source, 
 	if s.extractors != nil {
 		return s.extractors.Extract(ctx, raw, source, mimeType)
 	}
-	return knowledge.ExtractDocumentText(raw, source, mimeType)
+	return knowledge.ExtractDocumentText(ctx, raw, source, mimeType)
 }
 
 // resolveIngestCollection 解析入库目标 Collection（US-14 上传免预选）：

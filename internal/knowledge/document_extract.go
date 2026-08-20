@@ -27,8 +27,8 @@ func ExtractSupported(source string) bool {
 
 // ExtractDocumentText 提取文本内容（兼容保留的包级入口，内部委托 TextExtractor）。
 // 新代码应使用 ExtractorRegistry 路由（见 extractor.go）。
-func ExtractDocumentText(raw []byte, source, mimeType string) (string, error) {
-	return TextExtractor{}.Extract(context.Background(), raw, source, mimeType)
+func ExtractDocumentText(ctx context.Context, raw []byte, source, mimeType string) (string, error) {
+	return TextExtractor{}.Extract(ctx, raw, source, mimeType)
 }
 
 // ExtractVisibleText 从 HTML 提取可见文本：剥离 script/style/noscript 与标签，

@@ -105,7 +105,7 @@ func TestTeeGraphStageNotices_PregelInterrupt_MarksInlineAndPublishes(t *testing
 		gotNode, gotLineage = nodeID, lineageID
 		calledBefore = true
 	}
-	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", onInterrupt, loggateway.NewNoop())
+	out := teeGraphStageNotices(context.Background(), in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", onInterrupt, loggateway.NewNoop())
 
 	interruptEv := trpcgraph.NewPregelInterruptEvent(
 		trpcgraph.WithPregelEventInvocationID("inv-1"),
@@ -155,7 +155,7 @@ func TestTeeGraphStageNotices_PlainPregelStep_StaysFiltered(t *testing.T) {
 	bus := &teeRecordingBus{}
 	in := make(chan *trpcevent.Event, 8)
 	called := false
-	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", func(string, string) { called = true }, loggateway.NewNoop())
+	out := teeGraphStageNotices(context.Background(), in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", func(string, string) { called = true }, loggateway.NewNoop())
 
 	stepEv := trpcgraph.NewPregelStepEvent(
 		trpcgraph.WithPregelEventInvocationID("inv-1"),
@@ -181,7 +181,7 @@ func TestTeeGraphStageNotices_PlainPregelStep_StaysFiltered(t *testing.T) {
 func TestTeeGraphStageNotices_PublishesNodeLifecycle(t *testing.T) {
 	bus := &teeRecordingBus{}
 	in := make(chan *trpcevent.Event, 8)
-	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", nil, loggateway.NewNoop())
+	out := teeGraphStageNotices(context.Background(), in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", nil, loggateway.NewNoop())
 
 	forwarded := drainTee(t, in, out, func(feedIn chan<- *trpcevent.Event) {
 		feedIn <- teeNodeEvent(t, trpcgraph.ObjectTypeGraphNodeStart, "member-1")
@@ -225,7 +225,7 @@ func TestTeeGraphStageNotices_PublishesNodeLifecycle(t *testing.T) {
 func TestTeeGraphStageNotices_FiltersHighFrequencyEvents(t *testing.T) {
 	bus := &teeRecordingBus{}
 	in := make(chan *trpcevent.Event, 8)
-	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", nil, loggateway.NewNoop())
+	out := teeGraphStageNotices(context.Background(), in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", nil, loggateway.NewNoop())
 
 	forwarded := drainTee(t, in, out, func(feedIn chan<- *trpcevent.Event) {
 		feedIn <- &trpcevent.Event{Response: &model.Response{Object: trpcgraph.ObjectTypeGraphPregelStep}}
@@ -247,11 +247,11 @@ func TestTeeGraphStageNotices_FiltersHighFrequencyEvents(t *testing.T) {
 
 func TestTeeGraphStageNotices_PassthroughWhenNilBusOrEmptyExec(t *testing.T) {
 	in := make(chan *trpcevent.Event)
-	if got := teeGraphStageNotices(in, nil, "s", "sp", "g", "exec-1", nil, loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
+	if got := teeGraphStageNotices(context.Background(), in, nil, "s", "sp", "g", "exec-1", nil, loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
 		t.Error("nil bus: expected passthrough (same channel)")
 	}
 	bus := &teeRecordingBus{}
-	if got := teeGraphStageNotices(in, bus, "s", "sp", "g", "", nil, loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
+	if got := teeGraphStageNotices(context.Background(), in, bus, "s", "sp", "g", "", nil, loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
 		t.Error("empty execID: expected passthrough (same channel)")
 	}
 }

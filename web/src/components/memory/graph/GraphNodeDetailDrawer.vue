@@ -118,8 +118,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { UnifiedGraphEdge, UnifiedGraphNode } from '../types';
-import { memoryLayerColor } from '../panorama/layerMeta';
+import type { UnifiedGraphEdge, UnifiedGraphNode } from '../../../features/memory/types';
+import { memoryLayerColor } from '../../../features/memory/panorama/layerMeta';
 
 const props = defineProps<{
   modelValue: boolean;

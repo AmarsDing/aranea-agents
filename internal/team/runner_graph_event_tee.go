@@ -44,6 +44,7 @@ import (
 // mark stays as an idempotent fallback (MarkTeamGraphInterrupt early-returns
 // when already waiting_human). onInterrupt may be nil (tests/passthrough).
 func teeGraphStageNotices(
+	ctx context.Context,
 	in <-chan *trpcevent.Event,
 	bus biz.EventBus,
 	sessionID, spiritSessionID, graphID, execID string,
@@ -74,7 +75,7 @@ func teeGraphStageNotices(
 					)
 				}
 			}
-			bus.Publish(context.Background(), graphtrpc.ActivityEventToSystemNotice(*aev))
+			bus.Publish(ctx, graphtrpc.ActivityEventToSystemNotice(*aev))
 		}
 	})
 	return out
