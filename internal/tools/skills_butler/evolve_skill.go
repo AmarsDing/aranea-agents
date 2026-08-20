@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"aranea-agents/internal/biz"
-
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -19,11 +17,11 @@ type evolveSkillInput struct {
 }
 
 type evolveSkillOutput struct {
-	ProposalID  string `json:"proposal_id"`
-	SkillName   string `json:"skill_name"`
-	Status      string `json:"status"`
-	PatternDesc string `json:"pattern_desc"`
-	CreatedAt   string `json:"created_at"`
+	SuggestionID string `json:"suggestion_id"`
+	SkillName    string `json:"skill_name"`
+	Status       string `json:"status"`
+	PatternDesc  string `json:"pattern_desc"`
+	CreatedAt    string `json:"created_at"`
 }
 
 func newEvolveSkillTool(deps Deps) trpctool.Tool {
@@ -40,30 +38,22 @@ func newEvolveSkillTool(deps Deps) trpctool.Tool {
 		patternDesc := fmt.Sprintf("%s: %s", input.SkillName, input.ImprovementDescription)
 		h := sha256.Sum256([]byte(patternDesc))
 		patternHash := fmt.Sprintf("%x", h[:8])
-		proposal := biz.SkillProposal{
-			AgentID:     input.AgentID,
-			PatternHash: patternHash,
-			PatternDesc: patternDesc,
-			SkillName:   input.SkillName,
-			SkillMD:     "",
-			Status:      biz.SkillProposalStatusPending,
-			CreatedAt:   time.Now().UTC(),
-		}
-		created, err := deps.Skills.CreateProposal(ctx, proposal)
+		// ADR-3: 统一进化建议入口（替代已退役的 SkillProposal 视图）。
+		created, err := deps.Skills.CreateAgentSkillSuggestion(ctx, input.AgentID, input.SkillName, patternDesc, patternHash)
 		if err != nil {
 			return evolveSkillOutput{}, err
 		}
 		return evolveSkillOutput{
-			ProposalID:  created.ID,
-			SkillName:   created.SkillName,
-			Status:      string(created.Status),
-			PatternDesc: created.PatternDesc,
-			CreatedAt:   created.CreatedAt.Format(time.RFC3339),
+			SuggestionID: created.ID,
+			SkillName:    created.DraftName,
+			Status:       string(created.Status),
+			PatternDesc:  patternDesc,
+			CreatedAt:    created.CreatedAt.Format(time.RFC3339),
 		}, nil
 	}
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("skills_butler_evolve_skill"),
-		function.WithDescription("为指定 Agent 创建 Skill 进化提议，描述改进方向后系统将生成待审批的提案。"),
+		function.WithDescription("为指定 Agent 创建 Skill 进化建议，描述改进方向后系统将生成待审批的建议。"),
 	)
 }

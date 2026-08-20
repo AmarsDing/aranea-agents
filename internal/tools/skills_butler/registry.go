@@ -10,14 +10,13 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// SkillUsecasePort manages skill proposals lifecycle.
+// SkillUsecasePort manages agent-level skill-evolution suggestions via the
+// ADR-3 unified model (the legacy SkillProposal view was retired; agent
+// create_skill suggestions live in the unified evolution store).
 // Stability:evolving
 type SkillUsecasePort interface {
-	ListProposals(ctx context.Context, agentID string, status string) ([]biz.SkillProposal, error)
-	ApproveProposal(ctx context.Context, id string, approvedBy string) (biz.SkillProposal, error)
-	RejectProposal(ctx context.Context, id string, rejectedBy string) (biz.SkillProposal, error)
-	RegisterApproved(ctx context.Context, id string) (biz.SkillProposal, error)
-	CreateProposal(ctx context.Context, proposal biz.SkillProposal) (biz.SkillProposal, error)
+	ListAgentSuggestions(ctx context.Context, agentID string, status string) ([]biz.SkillEvolutionSuggestion, error)
+	CreateAgentSkillSuggestion(ctx context.Context, agentID, skillName, patternDesc, patternHash string) (*biz.SkillEvolutionSuggestion, error)
 }
 
 // EvolutionUsecasePort provides skill evolution metrics.

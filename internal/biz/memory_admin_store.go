@@ -310,6 +310,10 @@ type L3FactReader interface {
 	// used by the memory-center layer overview and browse tab so that facts an
 	// agent produced into session/user scopes are visible under that agent.
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error)
+	// CountFactRows returns the rows-caliber count (status filter applied,
+	// default 'active') — the pagination total for the memory-center browse
+	// tab, complementing ListFactRows' status-agnostic total.
+	CountFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error)
 	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
 	// ListFactRowsForUserAll returns facts for a user including invalidated
 	// ones (valid_until != ''). Used for historical reconstruction queries

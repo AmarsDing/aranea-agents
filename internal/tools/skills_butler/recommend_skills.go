@@ -37,17 +37,17 @@ func newRecommendSkillsTool(deps Deps) trpctool.Tool {
 			lg = loggateway.NewNoop()
 		}
 		var recs []skillRecommendation
-		pendingProposals, err := deps.Skills.ListProposals(ctx, input.AgentID, "pending")
+		pendingSuggestions, err := deps.Skills.ListAgentSuggestions(ctx, input.AgentID, "pending")
 		if err != nil {
-			lg.Warn("recommend_skills: ListProposals failed, skipping proposal-based recommendations",
-				loggateway.StepID("skills_butler.recommend.list_proposals_fail"),
+			lg.Warn("recommend_skills: ListAgentSuggestions failed, skipping suggestion-based recommendations",
+				loggateway.StepID("skills_butler.recommend.list_suggestions_fail"),
 				loggateway.Str("agent_id", input.AgentID),
 				loggateway.Err(err))
 		} else {
-			for _, p := range pendingProposals {
+			for _, s := range pendingSuggestions {
 				recs = append(recs, skillRecommendation{
-					SkillName: p.SkillName,
-					Reason:    fmt.Sprintf("检测到重复工具调用模式：%s", p.PatternDesc),
+					SkillName: s.DraftName,
+					Reason:    fmt.Sprintf("检测到重复工具调用模式：%s", s.TriggerReason),
 					Source:    "pending_proposal",
 				})
 			}

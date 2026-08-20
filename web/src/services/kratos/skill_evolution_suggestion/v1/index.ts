@@ -3,10 +3,16 @@
 // @ts-nocheck
 
 export type ListSkillEvolutionSuggestionsRequest = {
+  // skill_id 是 target_type=skill 时的等价快捷字段（ADR-3 后保留兼容）；
+  // 显式传 target_type/target_id 时以二者为准。
   skillId: string | undefined;
   status: string | undefined;
   page: number | undefined;
   pageSize: number | undefined;
+  // target_type: "skill"（默认）| "agent"；agent 维度返回 create_skill 建议。
+  targetType: string | undefined;
+  // target_id: 目标过滤；空串列出该 target_type 下全部建议。
+  targetId: string | undefined;
 };
 
 export type ListSkillEvolutionSuggestionsResponse = {
@@ -41,6 +47,13 @@ export type SkillEvolutionSuggestionMsg = {
   // "rule_template" (empty when no draft yet). Makes the evolver=nil template
   // degradation observable in the API instead of silent.
   draftOrigin: string | undefined;
+  // target_type/target_id identify the evolution target (ADR-3):
+  // "skill" rows carry skill_id in both skill_id and target_id;
+  // "agent" rows (create_skill suggestions) carry the agent id in target_id.
+  targetType: string | undefined;
+  targetId: string | undefined;
+  // draft_name holds the proposed skill name for agent create_skill rows.
+  draftName: string | undefined;
 };
 
 // Any JSON value.
@@ -129,6 +142,12 @@ export function createSkillEvolutionSuggestionServiceClient(
       }
       if (request.pageSize) {
         queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.targetType) {
+        queryParams.push(`targetType=${encodeURIComponent(request.targetType.toString())}`)
+      }
+      if (request.targetId) {
+        queryParams.push(`targetId=${encodeURIComponent(request.targetId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

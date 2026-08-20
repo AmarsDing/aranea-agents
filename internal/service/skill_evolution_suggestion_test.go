@@ -19,7 +19,7 @@ import (
 func newSkillSuggestionServiceForTest(repo *stubProposalRepo) *SkillEvolutionSuggestionService {
 	uc := biz.NewSkillIntelligenceUsecase(nil, nil, repo, nil, loggateway.NewNoop())
 	curator := NewSkillCuratorService(uc, loggateway.NewNoop())
-	return NewSkillEvolutionSuggestionService(uc, curator, nil, nil, loggateway.NewNoop())
+	return NewSkillEvolutionSuggestionService(uc, curator, nil, nil, nil, loggateway.NewNoop())
 }
 
 func seedSkillSuggestion(repo *stubProposalRepo, id, skillID, draft string) {
@@ -78,7 +78,7 @@ func (r *evoSkillGetterRepo) GetSkillByID(context.Context, string) (biz.Skill, e
 func newSkillSuggestionServiceWithSkill(repo *stubProposalRepo, sk biz.Skill) *SkillEvolutionSuggestionService {
 	uc := biz.NewSkillIntelligenceUsecase(nil, nil, repo, nil, loggateway.NewNoop())
 	skillUC := biz.NewSkillUsecase(&evoSkillGetterRepo{skill: sk}, nil, loggateway.NewNoop())
-	return NewSkillEvolutionSuggestionService(uc, nil, nil, skillUC, loggateway.NewNoop())
+	return NewSkillEvolutionSuggestionService(uc, nil, nil, skillUC, nil, loggateway.NewNoop())
 }
 
 func seedSkillSuggestionWithStatus(repo *stubProposalRepo, id, skillID, status string) {

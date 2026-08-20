@@ -46,6 +46,7 @@ type SkillIntelligenceUsecase struct {
 	gate         SkillGateVerifier
 	evolver      SkillDraftEvolver
 	reloader     SkillReloader
+	registrar    SkillRegistrationPort
 	lg           loggateway.Logger
 
 	// AS-FSM-01: suggestion status (unifiedSM) and draft lifecycle (lifecycleSM)
@@ -70,6 +71,10 @@ type SkillIntelligenceConfig struct {
 	// (Reload stage). nil → approval pipeline stops at lifecycle=ready with
 	// no version write (P0: nil-safe degradation).
 	Reloader SkillReloader
+	// Registrar mounts an approved agent create_skill suggestion's draft as a
+	// skill on the target agent (ADR-3 auto-register). nil → agent suggestions
+	// stay approved with no registration (nil-safe degradation).
+	Registrar SkillRegistrationPort
 }
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
@@ -105,6 +110,9 @@ func NewSkillIntelligenceUsecase(
 		}
 		if opt.Reloader != nil {
 			uc.reloader = opt.Reloader
+		}
+		if opt.Registrar != nil {
+			uc.registrar = opt.Registrar
 		}
 	}
 	return uc
@@ -845,13 +853,24 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.
 	return uc.unifiedStore.UpdateLifecycleStatus(ctx, id, string(lifecycleStatus))
 }
 
-// ListEvolutionSuggestions lists evolution suggestions for a skill, optionally filtered by status.
+// ListEvolutionSuggestions lists evolution suggestions for a target,
+// optionally filtered by status. targetType is "skill" (default) or "agent"
+// (ADR-3); agent rows are narrowed to action_type=create_skill so L3
+// evolve_agent suggestions sharing the same target_type stay out of the L1 view.
 // Reads the unified store and converts to the legacy L2 view (A6).
-func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error) {
+func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context, targetType, targetID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error) {
 	if uc.unifiedStore == nil {
 		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	unifiedList, err := uc.unifiedStore.ListByTarget(ctx, "skill", skillID, evolutionCallerWorkspace(ctx), string(status), limit, offset)
+	targetType = normalizeEvolutionTargetType(targetType)
+	workspaceID := evolutionCallerWorkspace(ctx)
+	var unifiedList []UnifiedEvolutionSuggestion
+	var err error
+	if targetType == string(EvolutionTargetAgent) {
+		unifiedList, err = uc.unifiedStore.ListByTargetAndAction(ctx, targetType, targetID, string(EvolutionActionCreate), workspaceID, string(status), limit, offset)
+	} else {
+		unifiedList, err = uc.unifiedStore.ListByTarget(ctx, targetType, targetID, workspaceID, string(status), limit, offset)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -862,12 +881,26 @@ func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context
 	return result, nil
 }
 
-// CountEvolutionSuggestions returns the total count of evolution suggestions for a skill, optionally filtered by status.
-func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error) {
+// CountEvolutionSuggestions returns the total count of evolution suggestions for a target, optionally filtered by status.
+func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Context, targetType, targetID string, status EvolutionSuggestionStatus) (int, error) {
 	if uc.unifiedStore == nil {
 		return 0, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	return uc.unifiedStore.CountByTarget(ctx, "skill", skillID, evolutionCallerWorkspace(ctx), string(status))
+	targetType = normalizeEvolutionTargetType(targetType)
+	workspaceID := evolutionCallerWorkspace(ctx)
+	if targetType == string(EvolutionTargetAgent) {
+		return uc.unifiedStore.CountByTargetAndAction(ctx, targetType, targetID, string(EvolutionActionCreate), workspaceID, string(status))
+	}
+	return uc.unifiedStore.CountByTarget(ctx, targetType, targetID, workspaceID, string(status))
+}
+
+// normalizeEvolutionTargetType maps an empty/unknown target type to "skill"
+// (historical default before ADR-3 generalized the list RPC).
+func normalizeEvolutionTargetType(targetType string) string {
+	if targetType == string(EvolutionTargetAgent) {
+		return string(EvolutionTargetAgent)
+	}
+	return string(EvolutionTargetSkill)
 }
 
 // ApproveSuggestion approves a pending evolution suggestion. The transition is
@@ -929,7 +962,7 @@ func (uc *SkillIntelligenceUsecase) transitionSuggestionStatus(ctx context.Conte
 // no automatic retry, to avoid duplicate version registration (manual retry
 // is possible by re-approving / re-invoking).
 func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context, suggestionID string) error {
-	if uc.reloader == nil || uc.unifiedStore == nil {
+	if uc.unifiedStore == nil {
 		return nil
 	}
 	suggestion, err := uc.GetEvolutionSuggestion(ctx, suggestionID)
@@ -938,6 +971,16 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 	}
 	if suggestion == nil {
 		return apierror.NotFound("SKILL_INTELLIGENCE", "suggestion not found: %s", suggestionID)
+	}
+
+	// ADR-3: agent create_skill rows bypass the sandbox/reloader pipeline;
+	// approval auto-registers the draft as a skill on the target agent.
+	if suggestion.TargetType == string(EvolutionTargetAgent) {
+		return uc.applyAgentCreateSkill(ctx, suggestion)
+	}
+
+	if uc.reloader == nil {
+		return nil
 	}
 
 	// Guards: draft presence and sandbox pass are plain field checks; the
@@ -985,6 +1028,101 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 		loggateway.Str("suggestion_id", suggestionID),
 		loggateway.Str("skill_id", suggestion.SkillID))
 	return nil
+}
+
+// applyAgentCreateSkill applies an approved agent create_skill suggestion
+// (ADR-3): it mounts the draft as a skill on the target agent via the
+// registrar, then CAS-advances the suggestion to applied. The flow is
+// idempotent — an already-registered skill still advances the state so a
+// prior partial success can settle. Registration failure leaves the
+// suggestion approved for manual inspection/retry.
+func (uc *SkillIntelligenceUsecase) applyAgentCreateSkill(ctx context.Context, suggestion *SkillEvolutionSuggestion) error {
+	nextStatus, err := uc.unifiedSM.Transition(UnifiedEvolutionState(suggestion.Status), UnifiedEvolutionEventApply)
+	if err != nil {
+		return nil // not in approved state → nothing to apply
+	}
+	if uc.registrar == nil {
+		return nil // nil-safe degradation: stay approved
+	}
+	name := strings.TrimSpace(suggestion.DraftName)
+	body := strings.TrimSpace(suggestion.DraftSkillBody)
+	if name == "" || body == "" {
+		uc.lg.Warn("applyAgentCreateSkill: empty draft name/body, suggestion stays approved",
+			loggateway.StepID("skill_intelligence.apply_agent"),
+			loggateway.Str("suggestion_id", suggestion.ID))
+		return nil
+	}
+	agentID := suggestion.TargetID
+	exists, exErr := uc.registrar.SkillExists(ctx, agentID, name)
+	if exErr != nil {
+		return exErr
+	}
+	if !exists {
+		if regErr := uc.registrar.RegisterSkill(ctx, agentID, name, suggestion.DraftSkillBody); regErr != nil {
+			uc.lg.Error("applyAgentCreateSkill: RegisterSkill failed, suggestion stays approved",
+				loggateway.StepID("skill_intelligence.apply_agent"),
+				loggateway.Str("suggestion_id", suggestion.ID),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Str("skill_name", name),
+				loggateway.Err(regErr))
+			return regErr
+		}
+	}
+	ok, err := uc.unifiedStore.UpdateStatusCAS(ctx, suggestion.ID,
+		[]string{string(UnifiedEvolutionStateApproved)}, string(nextStatus), "system", "auto-registered to agent")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		uc.lg.Warn("applyAgentCreateSkill: status changed concurrently, registration already done",
+			loggateway.StepID("skill_intelligence.apply_agent"),
+			loggateway.Str("suggestion_id", suggestion.ID))
+		return nil
+	}
+	uc.lg.Info("applyAgentCreateSkill: suggestion applied (skill registered to agent)",
+		loggateway.StepID("skill_intelligence.apply_agent"),
+		loggateway.Str("suggestion_id", suggestion.ID),
+		loggateway.Str("agent_id", agentID),
+		loggateway.Str("skill_name", name))
+	return nil
+}
+
+// CreateAgentSkillSuggestion creates a pending agent create_skill suggestion
+// (ADR-3): the unified entry point for the skills_butler evolve_skill tool
+// after the legacy SkillProposal view was retired. patternHash/patternDesc
+// land in metadata so the L1 pattern-hash dedup (GetLatestByPatternHash)
+// keeps working.
+func (uc *SkillIntelligenceUsecase) CreateAgentSkillSuggestion(ctx context.Context, agentID, skillName, patternDesc, patternHash string) (*SkillEvolutionSuggestion, error) {
+	if uc.unifiedStore == nil {
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	agentID = strings.TrimSpace(agentID)
+	skillName = strings.TrimSpace(skillName)
+	if agentID == "" || skillName == "" {
+		return nil, apierror.BadRequest("SKILL_INTELLIGENCE", "agent_id and skill_name are required")
+	}
+	metadata, _ := json.Marshal(map[string]string{
+		EvoMetaPatternHash: patternHash,
+		EvoMetaPatternDesc: patternDesc,
+	})
+	row := UnifiedEvolutionSuggestion{
+		ID:              newAgentCatalogID(),
+		TargetType:      EvolutionTargetAgent,
+		TargetID:        agentID,
+		ActionType:      EvolutionActionCreate,
+		TriggerSource:   "skills_butler",
+		TriggerReason:   patternDesc,
+		Status:          string(UnifiedEvolutionStatePending),
+		Priority:        1,
+		DraftName:       skillName,
+		LifecycleStatus: "draft",
+		Metadata:        metadata,
+		CreatedAt:       time.Now().UTC(),
+	}
+	if err := uc.unifiedStore.Create(ctx, row); err != nil {
+		return nil, err
+	}
+	return unifiedToLegacySuggestionPtr(&row), nil
 }
 
 // ── Bridge functions: Unified ↔ Legacy ────────────────────────────────────────
@@ -1057,6 +1195,13 @@ func unifiedToLegacySuggestionPtr(u *UnifiedEvolutionSuggestion) *SkillEvolution
 		ParentVersionID: u.MetaString(EvoMetaParentVersionID),
 		EvolutionReason: u.MetaString(EvoMetaEvolutionReason),
 		DraftOrigin:     u.MetaString(EvoMetaDraftOrigin),
+		// ADR-3: expose the unified target so the service layer can dispatch
+		// IDOR assertions and proto mapping per dimension. SkillID keeps the
+		// legacy TargetID alias for skill rows; agent rows leave SkillID as the
+		// agent id (legacy aliasing) but carry TargetType="agent".
+		TargetType: string(u.TargetType),
+		TargetID:   u.TargetID,
+		DraftName:  u.DraftName,
 	}
 }
 

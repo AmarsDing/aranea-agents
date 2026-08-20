@@ -153,6 +153,9 @@ message ListMemoryFactsResponse {
   // the memory-center knowledge panel statistics row.
   int32 active_count = 5;
   int32 archived_count = 6;
+  // filtered_count matches the returned items' caliber (same WHERE including
+  // the status filter, default 'active') — the server-side pagination total.
+  int32 filtered_count = 7;
 }
 
 message ListConflictingFactsRequest {

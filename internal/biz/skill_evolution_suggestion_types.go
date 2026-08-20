@@ -60,6 +60,12 @@ type SkillEvolutionSuggestion struct {
 	// DraftOrigin records how DraftSkillBody was produced: DraftOriginLLM or
 	// DraftOriginRuleTemplate (F8 — template degradation must be observable).
 	DraftOrigin string
+	// Target 维度（ADR-3）：skill 行 TargetType="skill" 且 TargetID==SkillID；
+	// agent create_skill 行 TargetType="agent"、TargetID=agentID、DraftName 为
+	// 拟注册技能名。空 TargetType 视为 "skill"（历史行兼容）。
+	TargetType string
+	TargetID   string
+	DraftName  string
 }
 
 // Draft origin values for SkillEvolutionSuggestion.DraftOrigin (F8).

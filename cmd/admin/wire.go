@@ -868,7 +868,7 @@ func provideChatServiceDeps(
 	teamStarter biz.TeamStarterPort,
 	graphExec biz.GraphExecutor,
 	taskOrch biz.TaskOrchestratorPort,
-	skillEvo *biz.SkillEvolutionUsecase,
+	skillIntel *biz.SkillIntelligenceUsecase,
 	evolution *biz.EvolutionUsecase,
 	skillStats biz.SkillInvocationStatsReader,
 	outboundRouter *outbound.Router,
@@ -946,8 +946,8 @@ func provideChatServiceDeps(
 			SpiritSynthesis: spiritSynthesis,
 		},
 		Evolution: service.ChatEvolutionDeps{
-			SkillEvo:  skillEvo,
-			Evolution: evolution,
+			SkillIntel: skillIntel,
+			Evolution:  evolution,
 		},
 		Infra: service.ChatInfraDeps{
 			LG:                        lg,
@@ -2195,7 +2195,7 @@ func provideSkillGateVerifier(sandboxRunner biz.SandboxRunner, replayRunner biz.
 	)
 }
 
-func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, orch *biz.SkillEvolutionOrchestrator, evolver biz.SkillDraftEvolver, reloader biz.SkillReloader, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, orch *biz.SkillEvolutionOrchestrator, evolver biz.SkillDraftEvolver, reloader biz.SkillReloader, registrar biz.SkillRegistrationPort, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	reporter.SetUnanalyzedReader(unanalyzedReader)
 	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, unifiedRepo, aggregator, lg,
 		biz.SkillIntelligenceConfig{
@@ -2203,6 +2203,7 @@ func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *
 			Orchestrator:     orch,
 			Evolver:          evolver,
 			Reloader:         reloader,
+			Registrar:        registrar,
 		},
 	)
 	return uc
@@ -4053,7 +4054,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideTaskPlanner,
 		provideAgentAllocator,
 		provideAgentFactory,
-		chatagent.NewAgentMatcher,
 		chatagent.NewProfileResolver,
 		provideTaskOrchestrator,
 		debug.NewRecorderFactory,

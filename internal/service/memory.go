@@ -355,12 +355,26 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	if err != nil {
 		return nil, err
 	}
+	// Rows-caliber count (status filter applied) for server-side pagination —
+	// total above deliberately ignores status for the stats-row breakdown.
+	filtered, err := s.admin.CountFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: scopeType,
+		ScopeID:   scopeID,
+		Kind:      strings.TrimSpace(req.GetKind()),
+		Status:    strings.TrimSpace(req.GetStatus()),
+		Keyword:   strings.TrimSpace(req.GetKeyword()),
+		AgentID:   strings.TrimSpace(req.GetAgentId()),
+	})
+	if err != nil {
+		return nil, err
+	}
 	out := &v1.ListMemoryFactsResponse{
 		Total:         total,
 		Limit:         req.GetLimit(),
 		Offset:        req.GetOffset(),
 		ActiveCount:   active,
 		ArchivedCount: archived,
+		FilteredCount: filtered,
 	}
 	for _, raw := range rows {
 		f, e := pbMemoryFact(raw)

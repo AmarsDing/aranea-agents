@@ -11,43 +11,25 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// skillsButlerSkillUsecaseAdapter bridges skills_butler tools to the ADR-3
+// unified evolution-suggestion API on SkillIntelligenceUsecase (the legacy
+// SkillProposal view on SkillEvolutionUsecase was retired).
 type skillsButlerSkillUsecaseAdapter struct {
-	uc *biz.SkillEvolutionUsecase
+	uc *biz.SkillIntelligenceUsecase
 }
 
-func (a skillsButlerSkillUsecaseAdapter) ListProposals(ctx context.Context, agentID string, status string) ([]biz.SkillProposal, error) {
+func (a skillsButlerSkillUsecaseAdapter) ListAgentSuggestions(ctx context.Context, agentID string, status string) ([]biz.SkillEvolutionSuggestion, error) {
 	if a.uc == nil {
 		return nil, nil
 	}
-	return a.uc.ListProposals(ctx, agentID, status, 0, 0)
+	return a.uc.ListEvolutionSuggestions(ctx, string(biz.EvolutionTargetAgent), agentID, biz.EvolutionSuggestionStatus(status), 0, 0)
 }
 
-func (a skillsButlerSkillUsecaseAdapter) ApproveProposal(ctx context.Context, id string, approvedBy string) (biz.SkillProposal, error) {
+func (a skillsButlerSkillUsecaseAdapter) CreateAgentSkillSuggestion(ctx context.Context, agentID, skillName, patternDesc, patternHash string) (*biz.SkillEvolutionSuggestion, error) {
 	if a.uc == nil {
-		return biz.SkillProposal{}, nil
+		return nil, nil
 	}
-	return a.uc.ApproveProposal(ctx, id, approvedBy)
-}
-
-func (a skillsButlerSkillUsecaseAdapter) RejectProposal(ctx context.Context, id string, rejectedBy string) (biz.SkillProposal, error) {
-	if a.uc == nil {
-		return biz.SkillProposal{}, nil
-	}
-	return a.uc.RejectProposal(ctx, id, rejectedBy)
-}
-
-func (a skillsButlerSkillUsecaseAdapter) RegisterApproved(ctx context.Context, id string) (biz.SkillProposal, error) {
-	if a.uc == nil {
-		return biz.SkillProposal{}, nil
-	}
-	return a.uc.RegisterApproved(ctx, id)
-}
-
-func (a skillsButlerSkillUsecaseAdapter) CreateProposal(ctx context.Context, proposal biz.SkillProposal) (biz.SkillProposal, error) {
-	if a.uc == nil {
-		return biz.SkillProposal{}, nil
-	}
-	return a.uc.CreateProposal(ctx, proposal)
+	return a.uc.CreateAgentSkillSuggestion(ctx, agentID, skillName, patternDesc, patternHash)
 }
 
 type skillsButlerEvolutionAdapter struct {

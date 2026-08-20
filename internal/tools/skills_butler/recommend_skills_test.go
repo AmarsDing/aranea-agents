@@ -14,29 +14,26 @@ import (
 // --- fakes ---
 
 type fakeSkillUsecase struct {
-	proposals    []biz.SkillProposal
-	proposalsErr error
-	gotStatus    string
+	suggestions    []biz.SkillEvolutionSuggestion
+	suggestionsErr error
+	gotStatus      string
 }
 
-func (f *fakeSkillUsecase) ListProposals(_ context.Context, _ string, status string) ([]biz.SkillProposal, error) {
+func (f *fakeSkillUsecase) ListAgentSuggestions(_ context.Context, _ string, status string) ([]biz.SkillEvolutionSuggestion, error) {
 	f.gotStatus = status
-	if f.proposalsErr != nil {
-		return nil, f.proposalsErr
+	if f.suggestionsErr != nil {
+		return nil, f.suggestionsErr
 	}
-	return f.proposals, nil
+	return f.suggestions, nil
 }
-func (f *fakeSkillUsecase) ApproveProposal(_ context.Context, id, _ string) (biz.SkillProposal, error) {
-	return biz.SkillProposal{ID: id}, nil
-}
-func (f *fakeSkillUsecase) RejectProposal(_ context.Context, id, _ string) (biz.SkillProposal, error) {
-	return biz.SkillProposal{ID: id}, nil
-}
-func (f *fakeSkillUsecase) RegisterApproved(_ context.Context, id string) (biz.SkillProposal, error) {
-	return biz.SkillProposal{ID: id}, nil
-}
-func (f *fakeSkillUsecase) CreateProposal(_ context.Context, p biz.SkillProposal) (biz.SkillProposal, error) {
-	return p, nil
+func (f *fakeSkillUsecase) CreateAgentSkillSuggestion(_ context.Context, agentID, skillName, patternDesc, patternHash string) (*biz.SkillEvolutionSuggestion, error) {
+	return &biz.SkillEvolutionSuggestion{
+		ID:         "s1",
+		TargetType: "agent",
+		TargetID:   agentID,
+		DraftName:  skillName,
+		Status:     biz.EvoSuggestionPending,
+	}, nil
 }
 
 type fakeSkillQueries struct {
@@ -105,9 +102,9 @@ func TestRecommendSkills_EmptyAgentID(t *testing.T) {
 
 func TestRecommendSkills_PendingProposalsBecomeRecommendations(t *testing.T) {
 	deps := recommendTestDeps()
-	skills := &fakeSkillUsecase{proposals: []biz.SkillProposal{
-		{ID: "p1", SkillName: "excel-helper", PatternDesc: "read_spreadsheet→write_document 重复 5 次"},
-		{ID: "p2", SkillName: "sql-runner", PatternDesc: "query_db 重复 3 次"},
+	skills := &fakeSkillUsecase{suggestions: []biz.SkillEvolutionSuggestion{
+		{ID: "p1", DraftName: "excel-helper", TriggerReason: "read_spreadsheet→write_document 重复 5 次"},
+		{ID: "p2", DraftName: "sql-runner", TriggerReason: "query_db 重复 3 次"},
 	}}
 	deps.Skills = skills
 	out := callRecommend(t, deps, `{"agent_id":"agent-1"}`)
@@ -115,7 +112,7 @@ func TestRecommendSkills_PendingProposalsBecomeRecommendations(t *testing.T) {
 		t.Fatalf("unexpected agent id: %+v", out)
 	}
 	if skills.gotStatus != "pending" {
-		t.Fatalf("ListProposals must query status=pending, got %q", skills.gotStatus)
+		t.Fatalf("ListAgentSuggestions must query status=pending, got %q", skills.gotStatus)
 	}
 	var pending []skillRecommendation
 	for _, r := range out.Recommendations {
@@ -160,7 +157,7 @@ func TestRecommendSkills_WarningAndCriticalStats(t *testing.T) {
 
 func TestRecommendSkills_ProposalFailureDegradesToUsageOnly(t *testing.T) {
 	deps := recommendTestDeps()
-	deps.Skills = &fakeSkillUsecase{proposalsErr: errors.New("db down")}
+	deps.Skills = &fakeSkillUsecase{suggestionsErr: errors.New("db down")}
 	deps.Queries = &fakeSkillQueries{stats: []SkillInvocationStat{
 		{SkillName: "warning-skill", Count: 26, SuccessRate: 0.7},
 	}}
@@ -172,8 +169,8 @@ func TestRecommendSkills_ProposalFailureDegradesToUsageOnly(t *testing.T) {
 
 func TestRecommendSkills_StatsFailureDegradesToProposalOnly(t *testing.T) {
 	deps := recommendTestDeps()
-	deps.Skills = &fakeSkillUsecase{proposals: []biz.SkillProposal{
-		{ID: "p1", SkillName: "excel-helper", PatternDesc: "pattern"},
+	deps.Skills = &fakeSkillUsecase{suggestions: []biz.SkillEvolutionSuggestion{
+		{ID: "p1", DraftName: "excel-helper", TriggerReason: "pattern"},
 	}}
 	deps.Queries = &fakeSkillQueries{statsErr: errors.New("db down")}
 	out := callRecommend(t, deps, `{"agent_id":"agent-1"}`)

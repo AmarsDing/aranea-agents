@@ -26,6 +26,8 @@ type SkillEvolutionSuggestionService struct {
 	sandbox *SandboxRunner
 	// skillUC 用于 P0-1c IDOR 断言（读取宿主 skill 归属 workspace）。
 	skillUC *biz.SkillUsecase
+	// agentUC 用于 ADR-3 agent 维度建议的 IDOR 断言（读取宿主 agent 归属 workspace）。
+	agentUC *biz.AgentUsecase
 	lg      loggateway.Logger
 }
 
@@ -34,12 +36,13 @@ func NewSkillEvolutionSuggestionService(
 	curator *SkillCuratorService,
 	sandbox *SandboxRunner,
 	skillUC *biz.SkillUsecase,
+	agentUC *biz.AgentUsecase,
 	lg loggateway.Logger,
 ) *SkillEvolutionSuggestionService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SkillEvolutionSuggestionService{uc: uc, curator: curator, sandbox: sandbox, skillUC: skillUC, lg: lg}
+	return &SkillEvolutionSuggestionService{uc: uc, curator: curator, sandbox: sandbox, skillUC: skillUC, agentUC: agentUC, lg: lg}
 }
 
 // assertSkillAccess 校验 caller 是否可访问指定 skill（P0-1c IDOR 防护）。
@@ -67,7 +70,44 @@ func (s *SkillEvolutionSuggestionService) assertSkillAccess(ctx context.Context,
 	return nil
 }
 
-// assertSuggestionAccess 读取建议并断言 caller 可访问其宿主 skill。
+// assertAgentAccess 校验 caller 是否可访问指定 agent（ADR-3 agent 维度 IDOR 防护）。
+// 语义与 AgentService.assertAgentAccess 一致：跨租户访问返回 NotFound；系统
+// caller 绕过；空 workspace_id 的 agent 视为全局共享。agentUC 未注入时（测试
+// 装配）fail-closed 返回 NotFound。
+func (s *SkillEvolutionSuggestionService) assertAgentAccess(ctx context.Context, agentID string) error {
+	if agentID == "" {
+		return nil
+	}
+	if s.agentUC == nil {
+		return apierror.NotFound(apierror.DomainAgent, "agent not found")
+	}
+	a, err := s.agentUC.Get(ctx, agentID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound(apierror.DomainAgent, "agent not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), a.WorkspaceID); err != nil {
+		s.lg.Warn("agent evolution suggestion access denied: workspace mismatch",
+			loggateway.StepID("skill_evo_suggestion.idor"),
+			loggateway.Str("agent_id", agentID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound(apierror.DomainAgent, "agent not found")
+	}
+	return nil
+}
+
+// assertTargetAccess 按建议的 target 维度分派 IDOR 断言（ADR-3）。
+// 空 TargetType（历史行）按 skill 维度处理。
+func (s *SkillEvolutionSuggestionService) assertTargetAccess(ctx context.Context, suggestion *biz.SkillEvolutionSuggestion) error {
+	if suggestion.TargetType == string(biz.EvolutionTargetAgent) {
+		return s.assertAgentAccess(ctx, suggestion.TargetID)
+	}
+	return s.assertSkillAccess(ctx, suggestion.SkillID)
+}
+
+// assertSuggestionAccess 读取建议并断言 caller 可访问其宿主 target。
 // 建议不存在或跨租户均返回 NotFound。
 func (s *SkillEvolutionSuggestionService) assertSuggestionAccess(ctx context.Context, suggestionID string) (*biz.SkillEvolutionSuggestion, error) {
 	suggestion, err := s.uc.GetEvolutionSuggestion(ctx, suggestionID)
@@ -77,23 +117,42 @@ func (s *SkillEvolutionSuggestionService) assertSuggestionAccess(ctx context.Con
 	if suggestion == nil {
 		return nil, apierror.NotFound("SKILL_EVO_SUGGESTION", "suggestion %s not found", suggestionID)
 	}
-	if err := s.assertSkillAccess(ctx, suggestion.SkillID); err != nil {
+	if err := s.assertTargetAccess(ctx, suggestion); err != nil {
 		return nil, err
 	}
 	return suggestion, nil
 }
 
 func (s *SkillEvolutionSuggestionService) ListSkillEvolutionSuggestions(ctx context.Context, req *v1.ListSkillEvolutionSuggestionsRequest) (*v1.ListSkillEvolutionSuggestionsResponse, error) {
-	if err := s.assertSkillAccess(ctx, req.GetSkillId()); err != nil {
+	// ADR-3: target_type/target_id 为泛化入口；skill_id 等价于
+	// target_type=skill + target_id=skill_id（向后兼容）。
+	targetType := req.GetTargetType()
+	targetID := req.GetTargetId()
+	if targetType == "" {
+		targetType = "skill"
+		if req.GetSkillId() != "" && targetID == "" {
+			targetID = req.GetSkillId()
+		}
+	}
+	if targetType != "skill" && targetType != "agent" {
+		return nil, apierror.BadRequest("SKILL_EVO_SUGGESTION", "invalid target_type: %s", targetType)
+	}
+	// IDOR：指定具体 target 时断言其归属；空 targetID（列全部）由 biz 的
+	// workspace 过滤兜底（evolutionCallerWorkspace）。
+	if targetType == "agent" {
+		if err := s.assertAgentAccess(ctx, targetID); err != nil {
+			return nil, err
+		}
+	} else if err := s.assertSkillAccess(ctx, targetID); err != nil {
 		return nil, err
 	}
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	status := biz.EvolutionSuggestionStatus(req.GetStatus())
-	suggestions, err := s.uc.ListEvolutionSuggestions(ctx, req.GetSkillId(), status, limit, offset)
+	suggestions, err := s.uc.ListEvolutionSuggestions(ctx, targetType, targetID, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.uc.CountEvolutionSuggestions(ctx, req.GetSkillId(), status)
+	total, err := s.uc.CountEvolutionSuggestions(ctx, targetType, targetID, status)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +298,9 @@ func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion, lg loggateway.Lo
 		EvolutionReason: s.EvolutionReason,
 		LifecycleStatus: string(s.LifecycleStatus),
 		DraftOrigin:     s.DraftOrigin,
+		TargetType:      s.TargetType,
+		TargetId:        s.TargetID,
+		DraftName:       s.DraftName,
 	}
 	if s.SandboxResult != nil {
 		var m map[string]interface{}

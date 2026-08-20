@@ -187,3 +187,168 @@ func TestApplyApprovedSuggestion_NotFound(t *testing.T) {
 		t.Error("reloader must not be called for a missing suggestion")
 	}
 }
+
+// ── ADR-3: agent create_skill auto-register branch ───────────────────────────
+
+// agentApplyStoreStub serves a single unified row and records CAS writes.
+// Only the methods exercised by applyAgentCreateSkill are implemented; the
+// embedded nil interface panics on unexpected calls (fail-fast in tests).
+type agentApplyStoreStub struct {
+	UnifiedEvolutionStore
+	row    *UnifiedEvolutionSuggestion
+	casTo  string
+	casHit bool
+}
+
+func (s *agentApplyStoreStub) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
+	if s.row != nil && s.row.ID == id {
+		return s.row, nil
+	}
+	return nil, nil
+}
+
+func (s *agentApplyStoreStub) UpdateStatusCAS(_ context.Context, id string, from []string, to string, _, _ string) (bool, error) {
+	if s.row == nil || s.row.ID != id {
+		return false, nil
+	}
+	for _, f := range from {
+		if s.row.Status == f {
+			s.row.Status = to
+			s.casTo = to
+			s.casHit = true
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// fakeRegistrar records RegisterSkill calls and stubs SkillExists.
+type fakeRegistrar struct {
+	exists     bool
+	existsErr  error
+	regErr     error
+	regCalls   int
+	gotAgentID string
+	gotName    string
+	gotBody    string
+}
+
+func (f *fakeRegistrar) SkillExists(_ context.Context, _, _ string) (bool, error) {
+	return f.exists, f.existsErr
+}
+
+func (f *fakeRegistrar) RegisterSkill(_ context.Context, agentID, name, skillMD string) error {
+	f.regCalls++
+	f.gotAgentID = agentID
+	f.gotName = name
+	f.gotBody = skillMD
+	return f.regErr
+}
+
+func newAgentApprovedRow() *UnifiedEvolutionSuggestion {
+	return &UnifiedEvolutionSuggestion{
+		ID:              "sug-agent-1",
+		TargetType:      EvolutionTargetAgent,
+		TargetID:        "agent-1",
+		ActionType:      EvolutionActionCreate,
+		TriggerSource:   "pattern",
+		Status:          string(UnifiedEvolutionStateApproved),
+		DraftName:       "deploy-helper",
+		DraftBody:       "# Deploy Helper\n\n## Guidance\nAutomate deploys.",
+		LifecycleStatus: "draft",
+		CreatedAt:       time.Now().UTC(),
+	}
+}
+
+func newAgentApplyUsecase(store UnifiedEvolutionStore, registrar SkillRegistrationPort) *SkillIntelligenceUsecase {
+	lg := loggateway.NewNoop()
+	return NewSkillIntelligenceUsecase(nil, nil, store, nil, lg, SkillIntelligenceConfig{
+		Registrar: registrar,
+	})
+}
+
+func TestApplyApprovedSuggestion_AgentCreateSkill_Success(t *testing.T) {
+	row := newAgentApprovedRow()
+	store := &agentApplyStoreStub{row: row}
+	reg := &fakeRegistrar{}
+	uc := newAgentApplyUsecase(store, reg)
+
+	if err := uc.ApplyApprovedSuggestion(context.Background(), row.ID); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if reg.regCalls != 1 {
+		t.Fatalf("RegisterSkill calls = %d, want 1", reg.regCalls)
+	}
+	if reg.gotAgentID != "agent-1" || reg.gotName != "deploy-helper" {
+		t.Errorf("RegisterSkill got (agent=%q, name=%q), want (agent-1, deploy-helper)", reg.gotAgentID, reg.gotName)
+	}
+	if !store.casHit || store.casTo != string(UnifiedEvolutionStateApplied) {
+		t.Errorf("CAS = (hit=%v, to=%q), want (true, applied)", store.casHit, store.casTo)
+	}
+}
+
+func TestApplyApprovedSuggestion_AgentCreateSkill_SkipsWhenNotApproved(t *testing.T) {
+	row := newAgentApprovedRow()
+	row.Status = string(UnifiedEvolutionStatePending)
+	store := &agentApplyStoreStub{row: row}
+	reg := &fakeRegistrar{}
+	uc := newAgentApplyUsecase(store, reg)
+
+	if err := uc.ApplyApprovedSuggestion(context.Background(), row.ID); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if reg.regCalls != 0 {
+		t.Error("registrar must not be called for a pending suggestion")
+	}
+	if store.casHit {
+		t.Error("CAS must not run for a pending suggestion")
+	}
+}
+
+func TestApplyApprovedSuggestion_AgentCreateSkill_ExistingSkillIdempotent(t *testing.T) {
+	row := newAgentApprovedRow()
+	store := &agentApplyStoreStub{row: row}
+	reg := &fakeRegistrar{exists: true}
+	uc := newAgentApplyUsecase(store, reg)
+
+	if err := uc.ApplyApprovedSuggestion(context.Background(), row.ID); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if reg.regCalls != 0 {
+		t.Error("RegisterSkill must be skipped when the skill already exists")
+	}
+	if !store.casHit || store.casTo != string(UnifiedEvolutionStateApplied) {
+		t.Errorf("CAS = (hit=%v, to=%q), want (true, applied) — existing skill still settles", store.casHit, store.casTo)
+	}
+}
+
+func TestApplyApprovedSuggestion_AgentCreateSkill_RegisterErrorStaysApproved(t *testing.T) {
+	row := newAgentApprovedRow()
+	store := &agentApplyStoreStub{row: row}
+	reg := &fakeRegistrar{regErr: errors.New("registry unavailable")}
+	uc := newAgentApplyUsecase(store, reg)
+
+	err := uc.ApplyApprovedSuggestion(context.Background(), row.ID)
+	if err == nil {
+		t.Fatal("expected register error to propagate")
+	}
+	if store.casHit {
+		t.Error("CAS must not run when registration fails — suggestion stays approved")
+	}
+	if row.Status != string(UnifiedEvolutionStateApproved) {
+		t.Errorf("status = %q, want approved (unchanged on register failure)", row.Status)
+	}
+}
+
+func TestApplyApprovedSuggestion_AgentCreateSkill_NilRegistrarNoop(t *testing.T) {
+	row := newAgentApprovedRow()
+	store := &agentApplyStoreStub{row: row}
+	uc := newAgentApplyUsecase(store, nil)
+
+	if err := uc.ApplyApprovedSuggestion(context.Background(), row.ID); err != nil {
+		t.Fatalf("expected nil error with nil registrar, got %v", err)
+	}
+	if store.casHit {
+		t.Error("CAS must not run with nil registrar — suggestion stays approved")
+	}
+}

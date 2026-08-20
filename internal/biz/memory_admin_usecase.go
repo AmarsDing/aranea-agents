@@ -180,6 +180,16 @@ func (uc *MemoryAdminUsecase) ListFactRows(ctx context.Context, p ListFactRowsPa
 	return uc.admin.ListFactRows(ctx, p.ScopeType, p.ScopeID, p.Kind, p.Status, p.Keyword, p.AgentID, p.Limit, p.Offset)
 }
 
+// CountFactRows returns the rows-caliber count (status filter applied) — the
+// pagination total for the memory-center browse tab. Limit/Offset in p are
+// not used.
+func (uc *MemoryAdminUsecase) CountFactRows(ctx context.Context, p ListFactRowsParams) (int32, error) {
+	if err := uc.requireAdmin(); err != nil {
+		return 0, err
+	}
+	return uc.admin.CountFactRows(ctx, p.ScopeType, p.ScopeID, p.Kind, p.Status, p.Keyword, p.AgentID)
+}
+
 // ListEntityRowsParams encapsulates parameters for ListEntityRows.
 // Introduced to keep the method signature under the 5-parameter limit (S4/S5 fix).
 type ListEntityRowsParams struct {

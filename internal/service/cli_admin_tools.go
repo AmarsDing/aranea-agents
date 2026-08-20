@@ -225,7 +225,7 @@ func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) 
 		return nil
 	}
 	return skills_butler.RegisterAll(skills_butler.Deps{
-		Skills:    skillsButlerSkillUsecaseAdapter{uc: o.skillEvo()},
+		Skills:    skillsButlerSkillUsecaseAdapter{uc: o.skillIntel()},
 		Evolution: skillsButlerEvolutionAdapter{uc: o.evolution()},
 		Queries:   skillsButlerQueryAdapter{reader: o.skillStats()},
 		Analytics: skillsButlerAnalyticsAdapter{uc: o.expAnalytics(), agentID: ag.ID},

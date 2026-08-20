@@ -151,6 +151,9 @@ export type ListMemoryFactsResponse = {
   // the memory-center knowledge panel statistics row.
   activeCount: number | undefined;
   archivedCount: number | undefined;
+  // filtered_count matches the returned items' caliber (same WHERE including
+  // the status filter, default 'active') — the server-side pagination total.
+  filteredCount: number | undefined;
 };
 
 export type MemoryFact = {

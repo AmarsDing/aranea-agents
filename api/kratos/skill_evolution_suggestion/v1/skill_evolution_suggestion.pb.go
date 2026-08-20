@@ -25,11 +25,17 @@ const (
 )
 
 type ListSkillEvolutionSuggestionsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SkillId       string                 `protobuf:"bytes,1,opt,name=skill_id,json=skillId,proto3" json:"skill_id,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	Page          int32                  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
-	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// skill_id 是 target_type=skill 时的等价快捷字段（ADR-3 后保留兼容）；
+	// 显式传 target_type/target_id 时以二者为准。
+	SkillId  string `protobuf:"bytes,1,opt,name=skill_id,json=skillId,proto3" json:"skill_id,omitempty"`
+	Status   string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Page     int32  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize int32  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// target_type: "skill"（默认）| "agent"；agent 维度返回 create_skill 建议。
+	TargetType string `protobuf:"bytes,5,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`
+	// target_id: 目标过滤；空串列出该 target_type 下全部建议。
+	TargetId      string `protobuf:"bytes,6,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -90,6 +96,20 @@ func (x *ListSkillEvolutionSuggestionsRequest) GetPageSize() int32 {
 		return x.PageSize
 	}
 	return 0
+}
+
+func (x *ListSkillEvolutionSuggestionsRequest) GetTargetType() string {
+	if x != nil {
+		return x.TargetType
+	}
+	return ""
+}
+
+func (x *ListSkillEvolutionSuggestionsRequest) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
 }
 
 type ListSkillEvolutionSuggestionsResponse struct {
@@ -545,7 +565,14 @@ type SkillEvolutionSuggestionMsg struct {
 	// draft_origin records how draft_skill_body was produced: "llm" or
 	// "rule_template" (empty when no draft yet). Makes the evolver=nil template
 	// degradation observable in the API instead of silent.
-	DraftOrigin   string `protobuf:"bytes,20,opt,name=draft_origin,json=draftOrigin,proto3" json:"draft_origin,omitempty"`
+	DraftOrigin string `protobuf:"bytes,20,opt,name=draft_origin,json=draftOrigin,proto3" json:"draft_origin,omitempty"`
+	// target_type/target_id identify the evolution target (ADR-3):
+	// "skill" rows carry skill_id in both skill_id and target_id;
+	// "agent" rows (create_skill suggestions) carry the agent id in target_id.
+	TargetType string `protobuf:"bytes,21,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`
+	TargetId   string `protobuf:"bytes,22,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	// draft_name holds the proposed skill name for agent create_skill rows.
+	DraftName     string `protobuf:"bytes,23,opt,name=draft_name,json=draftName,proto3" json:"draft_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -720,16 +747,40 @@ func (x *SkillEvolutionSuggestionMsg) GetDraftOrigin() string {
 	return ""
 }
 
+func (x *SkillEvolutionSuggestionMsg) GetTargetType() string {
+	if x != nil {
+		return x.TargetType
+	}
+	return ""
+}
+
+func (x *SkillEvolutionSuggestionMsg) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
+}
+
+func (x *SkillEvolutionSuggestionMsg) GetDraftName() string {
+	if x != nil {
+		return x.DraftName
+	}
+	return ""
+}
+
 var File_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto protoreflect.FileDescriptor
 
 const file_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto_rawDesc = "" +
 	"\n" +
-	"Ekratos/skill_evolution_suggestion/v1/skill_evolution_suggestion.proto\x12$kratos.skill_evolution_suggestion.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x8a\x01\n" +
+	"Ekratos/skill_evolution_suggestion/v1/skill_evolution_suggestion.proto\x12$kratos.skill_evolution_suggestion.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xc8\x01\n" +
 	"$ListSkillEvolutionSuggestionsRequest\x12\x19\n" +
 	"\bskill_id\x18\x01 \x01(\tR\askillId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\xc7\x01\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1f\n" +
+	"\vtarget_type\x18\x05 \x01(\tR\n" +
+	"targetType\x12\x1b\n" +
+	"\ttarget_id\x18\x06 \x01(\tR\btargetId\"\xc7\x01\n" +
 	"%ListSkillEvolutionSuggestionsResponse\x12W\n" +
 	"\x05items\x18\x01 \x03(\v2A.kratos.skill_evolution_suggestion.v1.SkillEvolutionSuggestionMsgR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
@@ -757,7 +808,7 @@ const file_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto
 	"\x1aTriggerCuratorFlowResponse\x12a\n" +
 	"\n" +
 	"suggestion\x18\x01 \x01(\v2A.kratos.skill_evolution_suggestion.v1.SkillEvolutionSuggestionMsgR\n" +
-	"suggestion\"\xd1\x06\n" +
+	"suggestion\"\xae\a\n" +
 	"\x1bSkillEvolutionSuggestionMsg\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bskill_id\x18\x02 \x01(\tR\askillId\x12\x12\n" +
@@ -783,7 +834,12 @@ const file_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto
 	"\x11parent_version_id\x18\x11 \x01(\tR\x0fparentVersionId\x12)\n" +
 	"\x10evolution_reason\x18\x12 \x01(\tR\x0fevolutionReason\x12)\n" +
 	"\x10lifecycle_status\x18\x13 \x01(\tR\x0flifecycleStatus\x12!\n" +
-	"\fdraft_origin\x18\x14 \x01(\tR\vdraftOrigin2\xae\t\n" +
+	"\fdraft_origin\x18\x14 \x01(\tR\vdraftOrigin\x12\x1f\n" +
+	"\vtarget_type\x18\x15 \x01(\tR\n" +
+	"targetType\x12\x1b\n" +
+	"\ttarget_id\x18\x16 \x01(\tR\btargetId\x12\x1d\n" +
+	"\n" +
+	"draft_name\x18\x17 \x01(\tR\tdraftName2\xae\t\n" +
 	"\x1fSkillEvolutionSuggestionService\x12\xe1\x01\n" +
 	"\x1dListSkillEvolutionSuggestions\x12J.kratos.skill_evolution_suggestion.v1.ListSkillEvolutionSuggestionsRequest\x1aK.kratos.skill_evolution_suggestion.v1.ListSkillEvolutionSuggestionsResponse\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/skill-evolution-suggestions\x12\xe0\x01\n" +
 	"\x1bGetSkillEvolutionSuggestion\x12H.kratos.skill_evolution_suggestion.v1.GetSkillEvolutionSuggestionRequest\x1aI.kratos.skill_evolution_suggestion.v1.GetSkillEvolutionSuggestionResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/skill-evolution-suggestions/{id}\x12\xf7\x01\n" +

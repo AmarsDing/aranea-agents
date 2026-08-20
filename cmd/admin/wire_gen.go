@@ -431,7 +431,13 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
+	rootCauseEngine := heal.NewRootCauseEngine(loggatewayLogger)
+	rootCauseAnalyzer := provideBizRootCauseAdapter(rootCauseEngine)
+	skillReportUsecase := biz.NewSkillReportUsecase(skillIntelligenceRepo, skillIntelligenceRepo, skillIntelligenceRepo, skillScoringUsecase, rootCauseAnalyzer, loggatewayLogger)
+	skillDraftEvolver := provideLLMSkillEvolver(dynamicLLMCaller, systemSettingUsecase, skillRepo, loggatewayLogger)
+	skillReloader := provideSkillVersionReloader(skillRepo, skillRepo, loggatewayLogger)
+	skillIntelligenceUsecase := provideSkillIntelligenceUsecase(skillScoringUsecase, skillReportUsecase, unifiedEvolutionRepo, skillIntelligenceRepo, skillIntelligenceRepo, skillEvolutionOrchestrator, skillDraftEvolver, skillReloader, skillRegistrationPort, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, graphOrchestrationProjector, mailboxWaker)
@@ -487,7 +493,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	flowlogUsecase := flowlog.NewUsecase(flowlogRepo)
 	flowLogService := service.NewFlowLogService(flowlogUsecase)
 	codeExecutorService := service.NewCodeExecutorService(factory, loggatewayLogger)
-	rootCauseEngine := heal.NewRootCauseEngine(loggatewayLogger)
 	diagBundleGenerator := provideDiagBundleGenerator(eventRepo, traceRepo, rootCauseEngine)
 	healRecordRepo := data.NewHealRecordRepo(dataData)
 	selfHealObserver, err := provideSelfHealObserver(runtime, healRecordRepo, rootCauseEngine, alertNotifier, loggatewayLogger)
@@ -566,11 +571,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	taxonomyService := service.NewTaxonomyService(organizationUsecase)
 	organizationService := service.NewOrganizationService(organizationUsecase)
 	skillEvolutionService := service.NewSkillEvolutionService(skillEvolutionUsecase, loggatewayLogger)
-	rootCauseAnalyzer := provideBizRootCauseAdapter(rootCauseEngine)
-	skillReportUsecase := biz.NewSkillReportUsecase(skillIntelligenceRepo, skillIntelligenceRepo, skillIntelligenceRepo, skillScoringUsecase, rootCauseAnalyzer, loggatewayLogger)
-	skillDraftEvolver := provideLLMSkillEvolver(dynamicLLMCaller, systemSettingUsecase, skillRepo, loggatewayLogger)
-	skillReloader := provideSkillVersionReloader(skillRepo, skillRepo, loggatewayLogger)
-	skillIntelligenceUsecase := provideSkillIntelligenceUsecase(skillScoringUsecase, skillReportUsecase, unifiedEvolutionRepo, skillIntelligenceRepo, skillIntelligenceRepo, skillEvolutionOrchestrator, skillDraftEvolver, skillReloader, loggatewayLogger)
 	skillIntelligenceService := service.NewSkillIntelligenceService(skillIntelligenceUsecase, loggatewayLogger)
 	skillMergeRepo := data.NewSkillMergeRepo(dataData, loggatewayLogger)
 	ruleBasedContentFuser := biz.NewRuleBasedContentFuser()
@@ -583,7 +583,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	packRepoAdapter := data.NewPackRepoAdapter(agentRepository, teamRepo, teamRepo, organizationRepo, graphRepo, skillRepo)
 	packService := service.NewPackService(packRepoAdapter, loggatewayLogger, monitorBus, publishGate)
 	skillCuratorService := service.NewSkillCuratorService(skillIntelligenceUsecase, loggatewayLogger)
-	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, skillUsecase, loggatewayLogger)
+	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, skillUsecase, agentUsecase, loggatewayLogger)
 	serviceEvolutionService := service.NewEvolutionService(unifiedEvolutionRepo, loggatewayLogger)
 	selfImprovementRunRepo := data.NewSelfImprovementRunRepo(dataData, loggatewayLogger)
 	repoSandboxRunner := provideRepoSandboxRunner(selfImprovement, loggatewayLogger)
@@ -1482,7 +1482,7 @@ func provideChatServiceDeps(
 	teamStarter biz.TeamStarterPort,
 	graphExec biz.GraphExecutor,
 	taskOrch biz.TaskOrchestratorPort,
-	skillEvo *biz.SkillEvolutionUsecase, evolution2 *biz.EvolutionUsecase,
+	skillIntel *biz.SkillIntelligenceUsecase, evolution2 *biz.EvolutionUsecase,
 	skillStats biz.SkillInvocationStatsReader,
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagent.Service,
@@ -1553,8 +1553,8 @@ func provideChatServiceDeps(
 			SpiritSynthesis: spiritSynthesis,
 		},
 		Evolution: service.ChatEvolutionDeps{
-			SkillEvo:  skillEvo,
-			Evolution: evolution2,
+			SkillIntel: skillIntel,
+			Evolution:  evolution2,
 		},
 		Infra: service.ChatInfraDeps{
 			LG:                        lg,
@@ -2742,13 +2742,14 @@ func provideSkillGateVerifier(sandboxRunner biz.SandboxRunner, replayRunner biz.
 	return biz.NewGateVerifier(sandboxRunner, nil, biz.WithABReplayRunner(replayRunner), biz.WithSkillLookup(skills), biz.WithTriggerGoldenRunner(goldenRunner))
 }
 
-func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, orch *biz.SkillEvolutionOrchestrator, evolver biz.SkillDraftEvolver, reloader biz.SkillReloader, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, orch *biz.SkillEvolutionOrchestrator, evolver biz.SkillDraftEvolver, reloader biz.SkillReloader, registrar biz.SkillRegistrationPort, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	reporter.SetUnanalyzedReader(unanalyzedReader)
 	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, unifiedRepo, aggregator, lg, biz.SkillIntelligenceConfig{
 		UnanalyzedReader: unanalyzedReader,
 		Orchestrator:     orch,
 		Evolver:          evolver,
 		Reloader:         reloader,
+		Registrar:        registrar,
 	},
 	)
 	return uc
@@ -4104,8 +4105,7 @@ func provideTaskOrchestrator(
 	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
-	// ADR-2（2026-08-20）：Orchestrate 死路径删除后，编排器仅剩 handle 记账 +
-	// 在线学习依赖；assembler 作为 SpiritTeamControllerPort 传入（Cancel/CheckProgress）。
+
 	return agent.NewTaskOrchestratorImpl(assembler, repo, taskPlanRepo, allocPlanRepo, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, lg)
 }
 

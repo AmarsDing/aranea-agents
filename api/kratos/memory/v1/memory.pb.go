@@ -1173,6 +1173,9 @@ type ListMemoryFactsResponse struct {
 	// the memory-center knowledge panel statistics row.
 	ActiveCount   int32 `protobuf:"varint,5,opt,name=active_count,json=activeCount,proto3" json:"active_count,omitempty"`
 	ArchivedCount int32 `protobuf:"varint,6,opt,name=archived_count,json=archivedCount,proto3" json:"archived_count,omitempty"`
+	// filtered_count matches the returned items' caliber (same WHERE including
+	// the status filter, default 'active') — the server-side pagination total.
+	FilteredCount int32 `protobuf:"varint,7,opt,name=filtered_count,json=filteredCount,proto3" json:"filtered_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1245,6 +1248,13 @@ func (x *ListMemoryFactsResponse) GetActiveCount() int32 {
 func (x *ListMemoryFactsResponse) GetArchivedCount() int32 {
 	if x != nil {
 		return x.ArchivedCount
+	}
+	return 0
+}
+
+func (x *ListMemoryFactsResponse) GetFilteredCount() int32 {
+	if x != nil {
+		return x.FilteredCount
 	}
 	return 0
 }
@@ -7674,14 +7684,15 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\akeyword\x18\x05 \x01(\tR\akeyword\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\a \x01(\x05R\x06offset\x12\x19\n" +
-	"\bagent_id\x18\b \x01(\tR\aagentId\"\xdb\x01\n" +
+	"\bagent_id\x18\b \x01(\tR\aagentId\"\x82\x02\n" +
 	"\x17ListMemoryFactsResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.memory.v1.MemoryFactR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x04 \x01(\x05R\x06offset\x12!\n" +
 	"\factive_count\x18\x05 \x01(\x05R\vactiveCount\x12%\n" +
-	"\x0earchived_count\x18\x06 \x01(\x05R\rarchivedCount\"\xa0\x01\n" +
+	"\x0earchived_count\x18\x06 \x01(\x05R\rarchivedCount\x12%\n" +
+	"\x0efiltered_count\x18\a \x01(\x05R\rfilteredCount\"\xa0\x01\n" +
 	"\x1bListConflictingFactsRequest\x12\x1d\n" +
 	"\n" +
 	"scope_type\x18\x01 \x01(\tR\tscopeType\x12\x19\n" +

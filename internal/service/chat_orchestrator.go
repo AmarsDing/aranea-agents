@@ -228,8 +228,8 @@ func (o *ChatOrchestrator) spiritSynthesis() *SpiritSynthesisService {
 func (o *ChatOrchestrator) teamStarter() biz.TeamStarterPort { return o.teamExecDeps.TeamStarter }
 func (o *ChatOrchestrator) graphExec() biz.GraphExecutor     { return o.teamExecDeps.GraphExec }
 
-func (o *ChatOrchestrator) skillEvo() *biz.SkillEvolutionUsecase { return o.evoDeps.SkillEvo }
-func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase     { return o.evoDeps.Evolution }
+func (o *ChatOrchestrator) skillIntel() *biz.SkillIntelligenceUsecase { return o.evoDeps.SkillIntel }
+func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase          { return o.evoDeps.Evolution }
 
 func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase           { return o.infraDeps.A2AUC }
 func (o *ChatOrchestrator) outboundRouter() *outbound.Router { return o.infraDeps.OutboundRouter }
@@ -311,8 +311,11 @@ type ChatTeamDeps struct {
 
 // ChatEvolutionDeps groups skill evolution and agent evolution dependencies.
 type ChatEvolutionDeps struct {
-	SkillEvo  *biz.SkillEvolutionUsecase
-	Evolution *biz.EvolutionUsecase
+	// SkillIntel is the ADR-3 unified evolution-suggestion entry point
+	// (skills_butler tools route here; the legacy SkillEvolutionUsecase
+	// proposal view was retired).
+	SkillIntel *biz.SkillIntelligenceUsecase
+	Evolution  *biz.EvolutionUsecase
 }
 
 // ChatInfraDeps groups cross-cutting infrastructure dependencies: logging,

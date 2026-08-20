@@ -16,7 +16,7 @@
         (entity.store.agents.find((a: Agent) => a.agent_key === '__spirit__') || entity.store.agents[0])?.id
       "
       :is-dark="layout.isDark"
-      :pulse-team-colors="spirit.pulseTeamColors"
+      :pulse-team-colors="pulseTeamColors"
       :spirit-mode="spiritStore.activePanelMode === 'spirit'"
       :orchestration-phase="spiritStore.orchestrationPhase"
       :blocked-status="blockedInfo"
@@ -65,7 +65,7 @@
         :model-provider="composer.modelProvider"
         :panel-mode="spiritStore.activePanelMode"
         :spirit-team="spiritStore.activeTeam"
-        :active-member="spirit.activeMember"
+        :active-member="activeMember"
         :messages="session.displayMessages"
         :attachments="composer.attachments"
         :mode-options="composer.modeOpts"
@@ -81,7 +81,7 @@
         :is-runner-active="composer.isRunnerActive"
         :ws-replaying="session.wsReplaying"
         :spirit-loading-message="session.spiritLoadingMessage"
-        :spirit-status-bar="spirit.spiritStatusBar"
+        :spirit-status-bar="spiritStatusBar"
         :compress-status="session.compressStatus"
         :show-tool-calls="uiConfig.showToolCalls"
         :session-loading="session.sessionLoading"
@@ -192,7 +192,7 @@
     />
 
     <ChatSessionSidebar
-      v-if="!spirit.showSessionTree"
+      v-if="!showSessionTree"
       :open="layout.rightOpen"
       :sessions="session.displaySessions"
       :inbox-sessions="session.inboxSessions"
@@ -310,6 +310,8 @@ const workspace = useChatWorkspace();
 const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock, evalCase } = workspace;
 // Spirit/team 面板编排（状态栏聚合、Agent 卡片动作、成员会话定位）收口于 composable。
 const spirit = useChatSpiritPanel(workspace);
+// 注意：spirit 是普通对象，模板不会自动解包其嵌套 ref，必须解构为顶层绑定。
+const { activeMember, showSessionTree, spiritStatusBar, pulseTeamColors } = spirit;
 const spiritStore = useSpiritTeamStore();
 const runtimeStore = useChatRuntimeStore();
 const llmRetryStore = useLlmRetryStore();

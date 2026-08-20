@@ -208,6 +208,15 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	return out, total, active, archived, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
+// CountFactRows returns the count matching the rows-caliber filter (same WHERE
+// as ListFactRows items, including the status filter with default 'active').
+// ListFactRows' total deliberately ignores status for the stats-row breakdown,
+// so the memory center uses this as the server-side pagination total.
+func (r *l3FactRepo) CountFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string) (int32, error) {
+	clauses, args := buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, agentID, true)
+	return r.countFacts(ctx, clauses, args...)
+}
+
 // buildFactFilterClauses constructs WHERE clause components for fact queries.
 // When withStatusFilter is true, the status parameter is applied; otherwise
 // only scope/kind/keyword/deleted_at filters are included (for total counts).
