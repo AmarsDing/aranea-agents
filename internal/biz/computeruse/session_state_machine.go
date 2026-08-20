@@ -1,6 +1,8 @@
 package computeruse
 
-import "fmt"
+import (
+	"aranea-agents/pkg/apierror"
+)
 
 // SessionEvent 状态机事件。
 type SessionEvent string
@@ -61,7 +63,7 @@ func Transition(from SessionStatus, ev SessionEvent) (SessionStatus, error) {
 			return to, nil
 		}
 	}
-	return "", fmt.Errorf("computeruse: 非法状态转换 %s --%s-->", from, ev)
+	return "", apierror.BadRequest(apierror.DomainComputerUse, "非法状态转换 %s --%s-->", from, ev)
 }
 
 // CanTransition 仅校验不转换。

@@ -8,6 +8,8 @@ import (
 	"image/draw"
 	"image/png"
 
+	"aranea-agents/pkg/apierror"
+
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
@@ -20,7 +22,7 @@ import (
 func DownscalePNG(pngBytes []byte, maxSide int) ([]byte, float64, error) {
 	src, err := png.Decode(bytes.NewReader(pngBytes))
 	if err != nil {
-		return nil, 0, fmt.Errorf("computeruse: 降采样解码失败: %w", err)
+		return nil, 0, apierror.Internal(apierror.DomainComputerUse, "降采样解码失败").WithCause(err)
 	}
 	b := src.Bounds()
 	w, h := b.Dx(), b.Dy()
@@ -34,7 +36,7 @@ func DownscalePNG(pngBytes []byte, maxSide int) ([]byte, float64, error) {
 	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, b, xdraw.Over, nil)
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, dst); err != nil {
-		return nil, 0, fmt.Errorf("computeruse: 降采样编码失败: %w", err)
+		return nil, 0, apierror.Internal(apierror.DomainComputerUse, "降采样编码失败").WithCause(err)
 	}
 	return buf.Bytes(), factor, nil
 }
@@ -52,7 +54,7 @@ var (
 func AnnotateSoM(img Image, candidates []UIElement) ([]byte, error) {
 	src, err := png.Decode(bytes.NewReader(img.PNG))
 	if err != nil {
-		return nil, fmt.Errorf("computeruse: SoM 解码截图失败: %w", err)
+		return nil, apierror.Internal(apierror.DomainComputerUse, "SoM 解码截图失败").WithCause(err)
 	}
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
@@ -69,7 +71,7 @@ func AnnotateSoM(img Image, candidates []UIElement) ([]byte, error) {
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, dst); err != nil {
-		return nil, fmt.Errorf("computeruse: SoM 编码失败: %w", err)
+		return nil, apierror.Internal(apierror.DomainComputerUse, "SoM 编码失败").WithCause(err)
 	}
 	return buf.Bytes(), nil
 }

@@ -1,11 +1,12 @@
 package biz
 
 import (
-	"fmt"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
@@ -216,7 +217,7 @@ func ValidateDiffSize(diff string, maxLines int) error {
 	}
 	stats := ComputeDiffStats(diff)
 	if total := stats.Additions + stats.Deletions; total > maxLines {
-		return fmt.Errorf("diff 规模超限：变更 %d 行（+%d/-%d），上限 %d 行",
+		return apierror.BadRequest(apierror.DomainSkill, "diff 规模超限：变更 %d 行（+%d/-%d），上限 %d 行",
 			total, stats.Additions, stats.Deletions, maxLines)
 	}
 	return nil

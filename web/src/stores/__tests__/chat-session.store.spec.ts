@@ -15,7 +15,7 @@ vi.mock('../../features/session/api', () => ({
   unpinSession: vi.fn(),
 }));
 
-vi.mock('../sessionSync', () => ({
+vi.mock('../sessionMutationBus', () => ({
   emitSessionMutation: vi.fn(),
   onSessionMutation: vi.fn().mockReturnValue(() => {}),
 }));
@@ -109,7 +109,7 @@ describe('useChatSessionStore', () => {
 
   it('addAgentSession prepends and selects created session', async () => {
     const { createSession } = await import('../../features/session/api');
-    const { emitSessionMutation } = await import('../sessionSync');
+    const { emitSessionMutation } = await import('../sessionMutationBus');
     const created = mockSession({ id: 'new-1' });
     (createSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(created);
 
@@ -124,7 +124,7 @@ describe('useChatSessionStore', () => {
 
   it('removeSessionLocal removes session and emits mutation', async () => {
     const { deleteSession } = await import('../../features/session/api');
-    const { emitSessionMutation } = await import('../sessionSync');
+    const { emitSessionMutation } = await import('../sessionMutationBus');
 
     const store = useChatSessionStore();
     store.sessions = [mockSession({ id: 's1' }), mockSession({ id: 's2' })] as any;
@@ -150,7 +150,7 @@ describe('useChatSessionStore', () => {
 
   it('renameSessionLocal updates session and emits mutation', async () => {
     const { updateSessionTitle } = await import('../../features/session/api');
-    const { emitSessionMutation } = await import('../sessionSync');
+    const { emitSessionMutation } = await import('../sessionMutationBus');
     const updated = mockSession({ id: 's1', title: 'Renamed' });
     (updateSessionTitle as ReturnType<typeof vi.fn>).mockResolvedValueOnce(updated);
 
@@ -166,7 +166,7 @@ describe('useChatSessionStore', () => {
 
   it('clearAllAgentSessions clears sessions and emits refresh', async () => {
     const { clearAgentSessions } = await import('../../features/session/api');
-    const { emitSessionMutation } = await import('../sessionSync');
+    const { emitSessionMutation } = await import('../sessionMutationBus');
 
     const store = useChatSessionStore();
     store.sessions = [mockSession({ id: 's1' })] as any;
@@ -182,7 +182,7 @@ describe('useChatSessionStore', () => {
 
   it('setSessionPinnedLocal pins and emits update', async () => {
     const { pinSession } = await import('../../features/session/api');
-    const { emitSessionMutation } = await import('../sessionSync');
+    const { emitSessionMutation } = await import('../sessionMutationBus');
     const pinned = mockSession({ id: 's1', pinned_at: '2025-01-01T00:00:00Z' });
     (pinSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(pinned);
 

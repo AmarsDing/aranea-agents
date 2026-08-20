@@ -2,8 +2,9 @@ package biz
 
 import (
 	"errors"
-	"fmt"
 	"sync"
+
+	"aranea-agents/pkg/apierror"
 )
 
 // ── User intervention control plane (73-self-iteration-v3, T3.6 / D5) ───────
@@ -36,7 +37,7 @@ func ParseSIControlCommand(s string) (SIControlCommand, error) {
 	case SIControlPause, SIControlSkipRetry, SIControlRollback:
 		return cmd, nil
 	default:
-		return "", fmt.Errorf("unknown self-improvement control command %q (want pause|skip_retry|rollback)", s)
+		return "", apierror.BadRequest(apierror.DomainSkill, "unknown self-improvement control command %q (want pause|skip_retry|rollback)", s)
 	}
 }
 

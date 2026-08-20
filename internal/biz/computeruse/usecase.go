@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -126,7 +127,7 @@ func (u *ComputerUseUsecase) nextID() string {
 // StartSession 显式创建会话。
 func (u *ComputerUseUsecase) StartSession(_ context.Context, agentKey string, budget Budget) (Session, error) {
 	if strings.TrimSpace(agentKey) == "" {
-		return Session{}, fmt.Errorf("computeruse: agent_key 必填")
+		return Session{}, apierror.BadRequest(apierror.DomainComputerUse, "agent_key 必填")
 	}
 	if budget.MaxSteps <= 0 {
 		budget.MaxSteps = defaultMaxSteps
@@ -293,7 +294,7 @@ func (u *ComputerUseUsecase) Status(ctx context.Context) map[string]any {
 // Observe 桌面感知（免确认）。
 func (u *ComputerUseUsecase) Observe(ctx context.Context, req ObserveRequest) (ObserveResult, error) {
 	if u.d.Gateway == nil {
-		return ObserveResult{}, fmt.Errorf("computeruse: device gateway 未配置")
+		return ObserveResult{}, apierror.FailedPrecondition(apierror.DomainComputerUse, "device gateway 未配置")
 	}
 	snap, err := u.d.Gateway.Snapshot(ctx, SnapshotOpts{
 		WindowTitle:       req.WindowTitle,
@@ -470,7 +471,7 @@ func (u *ComputerUseUsecase) touchObserve(agentKey, goal string) []string {
 // Screenshot 桌面截图（免确认）。
 func (u *ComputerUseUsecase) Screenshot(ctx context.Context, region *Rect, zoom float64) (Image, error) {
 	if u.d.Gateway == nil {
-		return Image{}, fmt.Errorf("computeruse: device gateway 未配置")
+		return Image{}, apierror.FailedPrecondition(apierror.DomainComputerUse, "device gateway 未配置")
 	}
 	if zoom <= 0 {
 		zoom = 1.0
@@ -490,7 +491,7 @@ func (u *ComputerUseUsecase) MarkReobserved(agentKey string) {
 // req.Actions 非空时走批量路径（按序 fail-fast，逐步计费/审计）。
 func (u *ComputerUseUsecase) Act(ctx context.Context, req ActRequest) (ActResult, error) {
 	if u.d.Gateway == nil || u.d.Match == nil {
-		return ActResult{}, fmt.Errorf("computeruse: gateway/matcher 未配置")
+		return ActResult{}, apierror.FailedPrecondition(apierror.DomainComputerUse, "gateway/matcher 未配置")
 	}
 	if len(req.Actions) > 0 {
 		return u.actBatch(ctx, req)
@@ -684,7 +685,7 @@ func (u *ComputerUseUsecase) resolveSession(req ActRequest) (*Session, error) {
 	}
 	if s == nil {
 		if strings.TrimSpace(req.AgentKey) == "" {
-			return nil, fmt.Errorf("computeruse: agent_key 必填")
+			return nil, apierror.BadRequest(apierror.DomainComputerUse, "agent_key 必填")
 		}
 		now := u.d.Now()
 		s = &Session{
@@ -713,7 +714,7 @@ func (u *ComputerUseUsecase) resolveSession(req ActRequest) (*Session, error) {
 		return nil, ErrSessionTerminal
 	}
 	if s.Status != SessionIdle {
-		return nil, fmt.Errorf("computeruse: 会话忙（%s）", s.Status)
+		return nil, apierror.Conflict(apierror.DomainComputerUse, "会话忙（%s）", s.Status)
 	}
 	return s, nil
 }
@@ -732,7 +733,7 @@ func (u *ComputerUseUsecase) beginStep(s *Session, ev SessionEvent) (int, error)
 		return s.StepsUsed, ErrSessionTerminal
 	}
 	if s.Status != SessionIdle {
-		return s.StepsUsed, fmt.Errorf("computeruse: 会话忙（%s）", s.Status)
+		return s.StepsUsed, apierror.Conflict(apierror.DomainComputerUse, "会话忙（%s）", s.Status)
 	}
 	if s.Budget.MaxSteps > 0 && s.StepsUsed >= s.Budget.MaxSteps {
 		u.transitionLocked(s, EvFail)
@@ -918,14 +919,14 @@ func (u *ComputerUseUsecase) directAction(ctx context.Context, req ActRequest, s
 			title = req.Target
 		}
 		if strings.TrimSpace(title) == "" {
-			return func() error { return fmt.Errorf("computeruse: focus 需要 title_regex 或 target") }, nil, true
+			return func() error { return apierror.BadRequest(apierror.DomainComputerUse, "focus 需要 title_regex 或 target") }, nil, true
 		}
 		step.Path = PathA11y
 		return func() error { return u.d.Gateway.FocusWindow(ctx, title) }, nil, true
 	case ActionWait:
 		ms := intArg(req.Args, "ms", 0)
 		if ms <= 0 {
-			return func() error { return fmt.Errorf("computeruse: wait 动作缺少正数 ms 参数") }, nil, true
+			return func() error { return apierror.BadRequest(apierror.DomainComputerUse, "wait 动作缺少正数 ms 参数") }, nil, true
 		}
 		d := time.Duration(ms) * time.Millisecond
 		if d > maxWait {
@@ -936,7 +937,7 @@ func (u *ComputerUseUsecase) directAction(ctx context.Context, req ActRequest, s
 	case ActionKey:
 		combo, _ := req.Args["combo"].(string)
 		if strings.TrimSpace(combo) == "" {
-			return func() error { return fmt.Errorf("computeruse: key 动作缺少 combo 参数") }, nil, true
+			return func() error { return apierror.BadRequest(apierror.DomainComputerUse, "key 动作缺少 combo 参数") }, nil, true
 		}
 		step.Path = PathA11y // 无 grounding，路径记 a11y（直发）
 		return func() error { return u.d.Gateway.Key(ctx, combo) }, nil, true
@@ -995,11 +996,11 @@ func (u *ComputerUseUsecase) executeOnElement(ctx context.Context, req ActReques
 			tx, tok := asInt(req.Args["to_x"])
 			ty, tyok := asInt(req.Args["to_y"])
 			if !tok || !tyok {
-				return fmt.Errorf("computeruse: drag 需要 to_x/to_y")
+				return apierror.BadRequest(apierror.DomainComputerUse, "drag 需要 to_x/to_y")
 			}
 			return u.d.Gateway.Drag(ctx, el.BBox.Center(), Point{X: tx, Y: ty}, intArg(req.Args, "duration_ms", 300))
 		default:
-			return fmt.Errorf("computeruse: 动作 %s 不支持元素级执行", req.Action)
+			return apierror.BadRequest(apierror.DomainComputerUse, "动作 %s 不支持元素级执行", req.Action)
 		}
 	})
 }
@@ -1114,11 +1115,11 @@ func (u *ComputerUseUsecase) executeAtPoint(ctx context.Context, req ActRequest,
 			tx, tok := asInt(req.Args["to_x"])
 			ty, tyok := asInt(req.Args["to_y"])
 			if !tok || !tyok {
-				return fmt.Errorf("computeruse: drag 需要 to_x/to_y")
+				return apierror.BadRequest(apierror.DomainComputerUse, "drag 需要 to_x/to_y")
 			}
 			return u.d.Gateway.Drag(ctx, pt, Point{X: tx, Y: ty}, intArg(req.Args, "duration_ms", 300))
 		default:
-			return fmt.Errorf("computeruse: 动作 %s 不支持坐标级执行", req.Action)
+			return apierror.BadRequest(apierror.DomainComputerUse, "动作 %s 不支持坐标级执行", req.Action)
 		}
 	})
 }
@@ -1257,7 +1258,7 @@ func (u *ComputerUseUsecase) finishStep(ctx context.Context, s *Session, req Act
 // Launch 启动应用（确认门在工具层）。
 func (u *ComputerUseUsecase) Launch(ctx context.Context, agentKey, target, args, workDir, confirmedBy string) (Step, error) {
 	if u.d.Gateway == nil {
-		return Step{}, fmt.Errorf("computeruse: device gateway 未配置")
+		return Step{}, apierror.FailedPrecondition(apierror.DomainComputerUse, "device gateway 未配置")
 	}
 	started := u.d.Now()
 	s, err := u.resolveSession(ActRequest{AgentKey: agentKey})

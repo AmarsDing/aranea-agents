@@ -1,6 +1,6 @@
 package session
 
-import "fmt"
+import "aranea-agents/pkg/apierror"
 
 // SessionType classifies a session's role in the session tree hierarchy.
 //
@@ -76,14 +76,14 @@ type DepthValidationConfig struct {
 // violated limit. The error is suitable for wrapping with apierror.BadRequest.
 func ValidateDepth(parentSession Session, childDepth int, cfg DepthValidationConfig) error {
 	if childDepth > cfg.SpiritMaxDepth {
-		return fmt.Errorf("session tree depth (%d) exceeds spirit max (%d)",
+		return apierror.BadRequest(apierror.DomainSession, "session tree depth (%d) exceeds spirit max (%d)",
 			childDepth, cfg.SpiritMaxDepth)
 	}
 	// Agent-level relative depth check (only when parent is an agent session).
 	if parentSession.MemberAgentKey != "" && cfg.AgentMaxRelativeDepth > 0 {
 		relativeDepth := childDepth - parentSession.AgentDepth
 		if relativeDepth > cfg.AgentMaxRelativeDepth {
-			return fmt.Errorf("subagent generation depth (%d) exceeds agent max (%d)",
+			return apierror.BadRequest(apierror.DomainSession, "subagent generation depth (%d) exceeds agent max (%d)",
 				relativeDepth, cfg.AgentMaxRelativeDepth)
 		}
 	}

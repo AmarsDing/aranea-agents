@@ -367,7 +367,7 @@ type discardEvents struct{}
 func (discardEvents) OnUpdate(_, _ string) {}
 func (discardEvents) OnPermission(_ context.Context, _ string, opts []PermissionOption) (string, error) {
 	if len(opts) == 0 {
-		return "", fmt.Errorf("no permission options")
+		return "", apierror.Internal(apierror.DomainAgentBridge, "no permission options")
 	}
 	return opts[0].OptionID, nil
 }

@@ -23,7 +23,7 @@ vi.mock('../../features/session/api', () => ({
   exportSession: vi.fn().mockResolvedValue(''),
 }));
 
-vi.mock('../sessionSync', () => ({
+vi.mock('../sessionMutationBus', () => ({
   emitSessionMutation: vi.fn(),
   onSessionMutation: vi.fn(() => vi.fn()),
 }));

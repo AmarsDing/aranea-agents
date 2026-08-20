@@ -536,7 +536,7 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 		}
 		// 文档已不存在（并发已删）视为幂等成功；其余错误上抛（提案停留 pending）。
 		if err := u.DeleteDocument(ctx, docID); err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
-			return fmt.Errorf("orphan disposal: delete document %s: %w", docID, err)
+			return apierror.Internal(apierror.DomainKnowledge, "orphan disposal: delete document %s", docID).WithCause(err)
 		}
 		u.lg.Info("治理：orphan 提案 applied，孤儿词条已删除",
 			loggateway.StepID("knowledge.curate.orphan"),
@@ -562,7 +562,7 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 			return nil
 		}
 		if _, err := u.curate.CloseContradictsEdges(ctx, view.CollectionID, docID, []string{targetID}); err != nil {
-			return fmt.Errorf("conflict disposal: close contradicts %s↔%s: %w", docID, targetID, err)
+			return apierror.Internal(apierror.DomainKnowledge, "conflict disposal: close contradicts %s↔%s", docID, targetID).WithCause(err)
 		}
 		u.lg.Info("治理：conflict 提案 applied，contradicts 边已关闭",
 			loggateway.StepID("knowledge.curate.conflict"),

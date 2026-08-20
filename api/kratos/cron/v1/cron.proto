@@ -72,11 +72,15 @@ message CronTaskRun {
 message ListCronTaskRunsRequest {
   string cron_task_id = 1;
   string status = 2;
+  // Deprecated: kept for CLI compatibility; ignored when page_size > 0.
   int32 limit = 3;
+  int32 page = 4;      // 1-based; <=0 treated as 1
+  int32 page_size = 5; // <=0 falls back to limit/100; >500 capped at 500
 }
 
 message ListCronTaskRunsResponse {
   repeated CronTaskRun items = 1;
+  int64 total = 2;
 }
 
 message TriggerCronTaskRequest {

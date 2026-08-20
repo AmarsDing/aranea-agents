@@ -23,7 +23,7 @@ vi.mock('../avatar', () => ({
   useAvatarCatalogStore: vi.fn().mockReturnValue({ ensureAgentsCatalog: vi.fn().mockResolvedValue(undefined) }),
 }));
 
-vi.mock('../sessionSync', () => ({
+vi.mock('../sessionMutationBus', () => ({
   emitSessionMutation: vi.fn(),
 }));
 
@@ -60,7 +60,7 @@ describe('useAgentsPageStore', () => {
 
   it('toggleAgentFavorite updates list and emits event on success', async () => {
     const { toggleAgentFavorite } = await import('../../features/agents/api');
-    const { emitSessionMutation } = await import('../sessionSync');
+    const { emitSessionMutation } = await import('../sessionMutationBus');
 
     const store = useAgentsPageStore();
     store.agents = [{ id: 'a1', display_name: 'Agent 1', is_favorite: false }] as any;

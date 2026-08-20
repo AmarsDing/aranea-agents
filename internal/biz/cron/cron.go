@@ -64,6 +64,7 @@ type TaskRunQuery struct {
 	TaskID string
 	Status string
 	Limit  int
+	Offset int
 }
 
 // TaskRunInput is the insert payload for a cron task run.
@@ -106,7 +107,7 @@ type Repo interface {
 	UpdateCronTask(ctx context.Context, t Task) (Task, error)
 	DeleteCronTask(ctx context.Context, id string) error
 	GetCronTaskRun(ctx context.Context, id string) (TaskRun, error)
-	ListCronTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, error)
+	ListCronTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, int, error)
 	InsertCronTaskRun(ctx context.Context, in TaskRunInput) error
 	UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
 }
@@ -231,8 +232,8 @@ func (u *Usecase) DeleteTask(ctx context.Context, id string) error {
 	return u.repo.DeleteCronTask(ctx, id)
 }
 
-// ListTaskRuns returns task run records.
-func (u *Usecase) ListTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, error) {
+// ListTaskRuns returns task run records plus the total count under the same filters.
+func (u *Usecase) ListTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, int, error) {
 	return u.repo.ListCronTaskRuns(ctx, q)
 }
 

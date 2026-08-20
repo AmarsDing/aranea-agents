@@ -74,11 +74,15 @@ export type CronTaskRun = {
 export type ListCronTaskRunsRequest = {
   cronTaskId: string | undefined;
   status: string | undefined;
+  // Deprecated: kept for CLI compatibility; ignored when page_size > 0.
   limit: number | undefined;
+  page: number | undefined;
+  pageSize: number | undefined;
 };
 
 export type ListCronTaskRunsResponse = {
   items: CronTaskRun[] | undefined;
+  total: number | undefined;
 };
 
 export type TriggerCronTaskRequest = {
@@ -222,6 +226,12 @@ export function createCronServiceClient(
       }
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

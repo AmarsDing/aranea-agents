@@ -1,6 +1,6 @@
 package biz
 
-import "fmt"
+import "aranea-agents/pkg/apierror"
 
 // planStepTransitions 定义 PlanStep 的合法状态转换表（spec §3.5.4）。
 // key = 源状态，value = 可到达的目标状态列表。
@@ -25,7 +25,7 @@ var planStepTransitions = map[PlanStepStatus][]PlanStepStatus{
 func (s *PlanStep) Transition(to PlanStepStatus) error {
 	allowed, ok := planStepTransitions[s.Status]
 	if !ok {
-		return fmt.Errorf("unknown source status: %s", s.Status)
+		return apierror.BadRequest(apierror.DomainSession, "unknown source status: %s", s.Status)
 	}
 	for _, a := range allowed {
 		if a == to {
@@ -33,7 +33,7 @@ func (s *PlanStep) Transition(to PlanStepStatus) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid transition: %s → %s", s.Status, to)
+	return apierror.BadRequest(apierror.DomainSession, "invalid transition: %s → %s", s.Status, to)
 }
 
 // CanTransition 返回是否可以从当前状态转换到目标状态（不执行转换）。

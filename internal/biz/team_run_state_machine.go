@@ -1,6 +1,6 @@
 package biz
 
-import "fmt"
+import "aranea-agents/pkg/apierror"
 
 // TeamRun status constants for the TeamRun lifecycle state machine.
 // These are intentionally kept as string constants for JSON/DB compatibility.
@@ -107,11 +107,11 @@ func TransitionTeamRunStatus(from string, event TeamRunEvent) (string, error) {
 	}
 	events, ok := teamRunTransitions[from]
 	if !ok {
-		return "", fmt.Errorf("unknown team run status %q", from)
+		return "", apierror.BadRequest(apierror.DomainTeam, "unknown team run status %q", from)
 	}
 	to, ok := events[event]
 	if !ok {
-		return "", fmt.Errorf("invalid team run transition from %q on event %q", from, event)
+		return "", apierror.BadRequest(apierror.DomainTeam, "invalid team run transition from %q on event %q", from, event)
 	}
 	return to, nil
 }
@@ -125,12 +125,12 @@ func ValidateTeamRunStatusTransition(from, to string) error {
 	}
 	events, ok := teamRunTransitions[from]
 	if !ok {
-		return fmt.Errorf("unknown team run status %q", from)
+		return apierror.BadRequest(apierror.DomainTeam, "unknown team run status %q", from)
 	}
 	for _, target := range events {
 		if target == to {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid team run transition from %q to %q", from, to)
+	return apierror.BadRequest(apierror.DomainTeam, "invalid team run transition from %q to %q", from, to)
 }
