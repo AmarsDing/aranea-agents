@@ -38,29 +38,3 @@ type ToolCallRecord struct {
 	Success   bool
 	CalledAt  time.Time
 }
-
-// ── Status mapping between SkillProposal and SkillEvolutionSuggestion ────────
-//
-// Deprecated: These mapping functions are transitional and will be removed
-// once SkillProposal is fully deprecated. Use UnifiedEvolutionSuggestion
-// directly instead of converting between legacy types.
-
-// SuggestionStatusToProposal maps an EvolutionSuggestionStatus to the equivalent
-// SkillProposalStatus. The "applied" status maps to "registered" as both
-// represent "action has been executed".
-//
-// Deprecated: Use UnifiedEvolutionSuggestion.Status (string) directly.
-func SuggestionStatusToProposal(s EvolutionSuggestionStatus) SkillProposalStatus {
-	switch s {
-	case EvoSuggestionPending:
-		return SkillProposalStatusPending
-	case EvoSuggestionApproved:
-		return SkillProposalStatusApproved
-	case EvoSuggestionRejected:
-		return SkillProposalStatusRejected
-	case EvoSuggestionApplied:
-		return SkillProposalStatusRegistered
-	default:
-		return SkillProposalStatusPending
-	}
-}

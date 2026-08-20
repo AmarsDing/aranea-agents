@@ -1047,7 +1047,7 @@ func providePrimaryRawDB(d *data.Data) *sql.DB {
 
 func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
 	pgDSN := d.PostgresDSN()
-	return rt.NewTRPCSessionService(pgDSN, lg, sessiontrpc.SummarizerConfig{
+	return sessiontrpc.NewTRPCSessionService(pgDSN, lg, sessiontrpc.SummarizerConfig{
 		Catalog: catalog,
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
@@ -3628,47 +3628,21 @@ func provideAgentFactory(
 }
 
 func provideTaskOrchestrator(
-	spiritUC *biz.SpiritTeamUsecase,
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
 	taskPlanRepo biz.TaskPlanRepository,
 	allocPlanRepo biz.AllocationPlanRepository,
-	matcher biz.AgentMatcherPort,
-	catalog *biz.LlmProviderModelUsecase,
-	agentUC *biz.AgentUsecase,
-	agents biz.AgentRepository,
-	toolUC *biz.ToolUsecase,
-	sys biz.SystemSettingRepo,
 	synthesis *service.SpiritSynthesisService,
 	checkpointSaver trpcgraph.CheckpointSaver,
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionUC *biz.EvolutionUsecase,
 	eventBus biz.EventBus,
-	nl2graph graph.NL2GraphConverter,
-	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
-	deps := chatagent.TRPCBuilderDeps{
-		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
-			ModelCatalog: catalog,
-			AgentUC:      agentUC,
-			Agents:       agents,
-			Sys:          sys,
-		},
-		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
-			RT: rtTrip,
-		},
-		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
-			ToolUC: toolUC,
-		},
-		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
-			ClientBridge: clientBridge,
-			LG:           lg,
-		},
-	}
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, allocPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
+	// ADR-2（2026-08-20）：Orchestrate 死路径删除后，编排器仅剩 handle 记账 +
+	// 在线学习依赖；assembler 作为 SpiritTeamControllerPort 传入（Cancel/CheckProgress）。
+	return chatagent.NewTaskOrchestratorImpl(assembler, repo, taskPlanRepo, allocPlanRepo, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, lg)
 }
 
 func provideDeptLeadManager(
@@ -3801,7 +3775,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		server.ProviderSet,
 		data.ProviderSet,
 		biz.ProviderSet,
-		event.ProviderSet,
+		event.InfraProviderSet,
 		araneasession.ProviderSet,
 		service.ProviderSet,
 		data.NewPackRepoAdapter,

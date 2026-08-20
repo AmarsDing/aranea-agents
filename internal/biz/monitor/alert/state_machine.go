@@ -8,6 +8,11 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// 保留理由（2026-08-20 P2-2 盘点）：不迁移到 biz/shared.GenericStateMachine——
+// 非法转换须返回 apierror.BadRequest(ALERT_STATE/ALERT_TRANSITION) 保证 400 映射；
+// current=="" 归一化为 idle（MON-OPT-02 迁移前存量数据）与 Must 测试变体为
+// shared 未覆盖特性。AS-FSM-01 合规：显式转换表。
+
 // AlertFiringState is the alert state machine value (MON-OPT-02).
 type AlertFiringState string
 

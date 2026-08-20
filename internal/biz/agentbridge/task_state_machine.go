@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+// 保留理由（2026-08-20 P2-2 盘点）：不迁移到 biz/shared.GenericStateMachine——
+// 本状态机为无事件 from→to 模型，且「同状态转换为幂等 noop（CAS 补丁复用）」
+// 是 shared (from,event)→to 框架不支持的语义。AS-FSM-01 合规：显式转换表。
+
 // ErrInvalidTransition 表示非法状态转换。
 var ErrInvalidTransition = errors.New("agentbridge: invalid task state transition")
 

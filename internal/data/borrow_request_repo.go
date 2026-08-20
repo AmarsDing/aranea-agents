@@ -71,6 +71,46 @@ func (r *borrowRequestRepo) CreateBorrowRequest(ctx context.Context, br biz.Borr
 	return entToBizBorrowRequest(saved), nil
 }
 
+// CreateBorrowRequestsBulk inserts multiple borrow requests with one
+// multi-VALUES INSERT (avoids N+1 on spirit team assembly).
+func (r *borrowRequestRepo) CreateBorrowRequestsBulk(ctx context.Context, brs []biz.BorrowRequest) ([]biz.BorrowRequest, error) {
+	if len(brs) == 0 {
+		return nil, nil
+	}
+	creates := make([]*ent.BorrowRequestCreate, 0, len(brs))
+	for i := range brs {
+		br := brs[i]
+		if br.CreatedAt.IsZero() {
+			br.CreatedAt = time.Now().UTC()
+		}
+		br.UpdatedAt = br.CreatedAt
+		if br.ID == "" {
+			br.ID = uuid.NewString()
+		}
+		creates = append(creates, r.data.RW().Write(ctx).BorrowRequest.Create().
+			SetID(br.ID).
+			SetTeamID(br.TeamID).
+			SetAgentID(br.AgentID).
+			SetFromDeptID(br.FromDeptID).
+			SetToDeptID(br.ToDeptID).
+			SetStatus(br.Status).
+			SetReason(br.Reason).
+			SetReviewedBy(br.ReviewedBy).
+			SetReviewReason(br.ReviewReason).
+			SetCreatedAt(formatTime(br.CreatedAt)).
+			SetUpdatedAt(formatTime(br.UpdatedAt)))
+	}
+	saved, err := r.data.RW().Write(ctx).BorrowRequest.CreateBulk(creates...).Save(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "BORROW_REQUEST")
+	}
+	out := make([]biz.BorrowRequest, 0, len(saved))
+	for _, e := range saved {
+		out = append(out, entToBizBorrowRequest(e))
+	}
+	return out, nil
+}
+
 func (r *borrowRequestRepo) GetBorrowRequest(ctx context.Context, id string) (biz.BorrowRequest, error) {
 	row, err := r.data.RW().Read(ctx).BorrowRequest.Get(ctx, id)
 	if err != nil {

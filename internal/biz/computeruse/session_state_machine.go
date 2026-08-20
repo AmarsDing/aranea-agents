@@ -4,6 +4,11 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// 保留理由（2026-08-20 P2-2 盘点）：不迁移到 biz/shared.GenericStateMachine——
+// 非法转换须返回 apierror.BadRequest(DomainComputerUse) 保证 400 映射（shared 的
+// sentinel 错误会退化为 500）；IsTerminal 与包级函数 API 为 shared 未覆盖形态。
+// AS-FSM-01 合规：显式 from→event→to 转换表。
+
 // SessionEvent 状态机事件。
 type SessionEvent string
 

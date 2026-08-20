@@ -4,6 +4,11 @@ import (
 	"fmt"
 )
 
+// 保留理由（2026-08-20 P2-2 盘点）：不迁移到 biz/shared.GenericStateMachine——
+// 本包为 runtime 层而非 biz 层，依赖方向不允许反向引用 biz/shared 的业务约定；
+// from=="" 归一化为 idle、终态表、ValidateRunStatusTransition/RunStatusFromPhase
+// 变体均为 shared 未覆盖特性。AS-FSM-01 合规：显式转换表。
+
 // Run status constants for the runtime Run lifecycle state machine.
 // These replace the previous inline comment list on RunStatusEntry.Status.
 // Stability:internal

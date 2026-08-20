@@ -2,6 +2,11 @@ package voice
 
 import "fmt"
 
+// 保留理由（2026-08-20 P2-2 盘点）：不迁移到 biz/shared.GenericStateMachine——
+// voice 包为独立领域，不依赖 biz 层；表内含自环（listening --barge_in--> listening
+// 表示忽略）与 interrupted 无出口事件（由会话定时器直接置位）等设计 §16.2 特定
+// 语义，迁移收益仅为形式统一。AS-FSM-01 合规：显式转换表。
+
 // VoiceState 是语音会话状态（设计 §5 + §16.2，7 状态 > 3，AS-FSM-01 显式状态机）。
 type VoiceState string
 

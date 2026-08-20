@@ -95,11 +95,6 @@ type ChannelTurnGateway interface {
 	PendingQueueGateway
 }
 
-// NativeTurnGateway is an alias for ChannelTurnGateway.
-//
-// Deprecated: use ChannelTurnGateway instead.
-type NativeTurnGateway = ChannelTurnGateway
-
 // PendingQueueGateway is the narrow interface for pending message queue operations.
 // Stability:evolving
 type PendingQueueGateway interface {

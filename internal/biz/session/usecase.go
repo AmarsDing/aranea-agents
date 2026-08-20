@@ -496,8 +496,9 @@ type CompressRepo interface {
 
 // SessionRepo aggregates all session sub-repositories for Wire binding only.
 // Consumers should depend on the specific sub-interface they need.
-// TECH-DEBT(COG): interface_methods=17, limit=5; SessionRepo aggregates 17+ methods; should be split into sub-interfaces.
-// New code should depend on narrow interfaces like SessionRuntimeWriter, SessionMetricsReader, etc.
+// 拆分已完成（2026-08-20 注记更正）：子接口（SessionReader / SessionWriter /
+// MessageReader / ContextUpdater / CompressRepo 等）已就绪，新代码一律依赖窄接口；
+// 本聚合接口仅为 Wire 绑定便利保留，不再计入 COG 债务。
 //
 // Deprecated: Use fine-grained sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.)
 // instead of this aggregate. This interface is retained only for Wire binding convenience.

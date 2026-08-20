@@ -412,8 +412,11 @@ type EvalCaseResult struct {
 	AnnotatedAt      string                 `protobuf:"bytes,14,opt,name=annotated_at,json=annotatedAt,proto3" json:"annotated_at,omitempty"`
 	AnnotatedBy      string                 `protobuf:"bytes,15,opt,name=annotated_by,json=annotatedBy,proto3" json:"annotated_by,omitempty"`
 	ScoresJson       string                 `protobuf:"bytes,16,opt,name=scores_json,json=scoresJson,proto3" json:"scores_json,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// input is the case text joined from eval_cases at read time (annotation
+	// UX); empty when the case row no longer exists.
+	Input         string `protobuf:"bytes,17,opt,name=input,proto3" json:"input,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvalCaseResult) Reset() {
@@ -554,6 +557,13 @@ func (x *EvalCaseResult) GetAnnotatedBy() string {
 func (x *EvalCaseResult) GetScoresJson() string {
 	if x != nil {
 		return x.ScoresJson
+	}
+	return ""
+}
+
+func (x *EvalCaseResult) GetInput() string {
+	if x != nil {
+		return x.Input
 	}
 	return ""
 }
@@ -2945,7 +2955,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"pass_hat_k\x18\x12 \x01(\x02R\bpassHatK\x12\x1f\n" +
 	"\vscores_json\x18\x13 \x01(\tR\n" +
 	"scoresJson\x12!\n" +
-	"\fdataset_hash\x18\x14 \x01(\tR\vdatasetHash\"\xcc\x04\n" +
+	"\fdataset_hash\x18\x14 \x01(\tR\vdatasetHash\"\xe2\x04\n" +
 	"\x0eEvalCaseResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
@@ -2968,7 +2978,8 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\fannotated_at\x18\x0e \x01(\tR\vannotatedAt\x12!\n" +
 	"\fannotated_by\x18\x0f \x01(\tR\vannotatedBy\x12\x1f\n" +
 	"\vscores_json\x18\x10 \x01(\tR\n" +
-	"scoresJsonB\r\n" +
+	"scoresJson\x12\x14\n" +
+	"\x05input\x18\x11 \x01(\tR\x05inputB\r\n" +
 	"\v_human_passB\x0e\n" +
 	"\f_human_score\"R\n" +
 	"\x14CreateDatasetRequest\x12\x18\n" +

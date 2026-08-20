@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"fmt"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 
@@ -34,7 +33,7 @@ func (r *knowledgeRepo) LogAccess(ctx context.Context, entries []bizknowledge.Ac
 		hashes = append(hashes, e.QueryHash)
 	}
 	if _, err := r.data.Postgres().ExecContext(ctx, stmt, pq.Array(cols), pq.Array(docs), pq.Array(hashes)); err != nil {
-		return fmt.Errorf("log access: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }
@@ -53,14 +52,14 @@ func (r *knowledgeRepo) BaseLevelScores(ctx context.Context, collectionID string
 		 GROUP BY doc_id`,
 		collectionID, pq.Array(docIDs))
 	if err != nil {
-		return nil, fmt.Errorf("base-level scores: %w", err)
+		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var docID string
 		var score float64
 		if err := rows.Scan(&docID, &score); err != nil {
-			return nil, fmt.Errorf("scan base-level: %w", err)
+			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out[docID] = score
 	}
@@ -90,7 +89,7 @@ ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
 DO UPDATE SET weight_f = knowledge_links.weight_f + EXCLUDED.weight_f, valid_to = NULL`,
 		collectionID, pq.Array(docIDs), eta)
 	if err != nil {
-		return fmt.Errorf("strengthen co-activations: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }

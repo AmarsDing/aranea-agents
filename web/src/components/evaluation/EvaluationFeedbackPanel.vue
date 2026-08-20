@@ -2,7 +2,7 @@
 <!-- P1-2 负反馈待审查列表：读取 monitor_events(chat.user_feedback, status=warning)，
      元数据自包含（input/output 快照），一键转为评估用例。 -->
 <template>
-  <q-card flat class="app-entity-glass-panel evaluation-feedback-panel">
+  <q-card v-bind="$attrs" flat class="app-entity-glass-panel evaluation-feedback-panel">
     <q-card-section class="row items-center justify-between">
       <div>
         <div class="text-h6">{{ $t('evaluationPage.feedbackReviewTitle') }}</div>
@@ -99,6 +99,9 @@ import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AddEvalCaseDialog from './AddEvalCaseDialog.vue';
 import { useAddToEvalDataset } from '../../features/evaluation/useAddToEvalDataset';
 import { useFeedbackReview, type FeedbackReviewRow } from '../../features/evaluation/useFeedbackReview';
+
+// Fragment root (card + dialog): keep parent-passed class (q-mt-md) on the card.
+defineOptions({ inheritAttrs: false });
 
 const { t } = useI18n();
 const $q = useQuasar();

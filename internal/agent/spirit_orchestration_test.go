@@ -141,12 +141,8 @@ func TestCheckpointRestore_RebuildsGraphAgentState(t *testing.T) {
 	lg := loggateway.NewNoop()
 
 	orch := &TaskOrchestratorImpl{
-		spiritUC:        nil,
-		assembler:       nil,
 		controller:      nil,
 		repo:            repo,
-		matcher:         nil,
-		deps:            TRPCBuilderDeps{},
 		synthesis:       nil,
 		checkpointSaver: ckptSaver,
 		orchCache:       nil,

@@ -41,10 +41,14 @@ func NormalizeCancelReason(s string) CancelReason {
 	return CancelReasonUnknown
 }
 
-// TaskOrchestratorPort is the port interface for the TaskOrchestrator (Phase 3 of Spirit orchestration).
-// Single responsibility: build execution graph from TaskPlan + AllocationPlan and execute it.
+// TaskOrchestratorPort is the port interface for the TaskOrchestrator.
+// Single responsibility: track/cancel/recover orchestration handles persisted
+// by the PlanExecutor + RealTeamOrchestrator execution path.
+//
+// ADR-2（2026-08-20）：Orchestrate 方法及其 team 组装死路径已删除——
+// 生产执行路径为 PlanExecutor + RealTeamOrchestrator（严格 DAG 调度），
+// 旧 TaskOrchestratorImpl.Orchestrate 只剩 direct 记账分支，无存活调用方。
 type TaskOrchestratorPort interface {
-	Orchestrate(ctx context.Context, taskPlan *TaskPlan, allocPlan *AllocationPlan) (*OrchestrationHandle, error)
 	CheckProgress(ctx context.Context, orchestrationID string) ([]TaskProgress, error)
 	Cancel(ctx context.Context, orchestrationID string, reason CancelReason) error
 	Synthesize(ctx context.Context, orchestrationID string) (*SynthesisOutput, error)

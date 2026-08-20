@@ -29,6 +29,8 @@ export const EVAL_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
 /** EvaluationPage — Result 列表 */
 export const EVAL_RESULT_TABLE_COLUMNS: QTableColumn<EvalCaseResult>[] = [
   registryCol<EvalCaseResult>('case_id', 'Case', 'case_id', 'left', REGISTRY_COL_W.agent),
+  registryCol<EvalCaseResult>('input', '输入', 'input', 'left', REGISTRY_COL_W.content),
+  registryCol<EvalCaseResult>('actual_output', '实际输出', 'actual_output', 'left', REGISTRY_COL_W.content),
   registryCol<EvalCaseResult>('exact_match', 'Exact', 'exact_match', 'center', REGISTRY_COL_W.narrow),
   registryCol<EvalCaseResult>('contains_match', 'Contains', 'contains_match', 'center', REGISTRY_COL_W.narrow),
   registryCol<EvalCaseResult>('human_pass', '人工', 'human_pass', 'center', REGISTRY_COL_W.narrow),

@@ -77,6 +77,9 @@ type CaseResult struct {
 	ID               string
 	RunID            string
 	CaseID           string
+	// Input is the case text joined from eval_cases at read time (annotation
+	// UX); empty when the case row no longer exists. Not stored on the result.
+	Input            string
 	ActualOutput     string
 	ExactMatch       bool
 	ContainsMatch    bool

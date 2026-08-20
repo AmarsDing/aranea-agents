@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewTRPCSessionServiceNilDB(t *testing.T) {
-	svc := NewTRPCSessionService("", loggateway.NewNoop(), sessiontrpc.SummarizerConfig{})
+	svc := sessiontrpc.NewTRPCSessionService("", loggateway.NewNoop(), sessiontrpc.SummarizerConfig{})
 	if svc == nil {
 		t.Fatal("expected in-memory fallback session service")
 	}

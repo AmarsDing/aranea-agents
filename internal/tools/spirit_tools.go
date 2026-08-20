@@ -381,8 +381,9 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, explicitK
 // 2026-07-05 Step 1 止血修复：不再调用 TaskOrchestratorImpl.Orchestrate 创建 team。
 // team 创建完全交给 PlanExecutor（通过 PlanBoardCreatedEvent 订阅触发）。
 // 设计依据：docs/superpowers/plans/2026-07-05-fix-double-execution-plan-step-agent-keys.md
-// 原因：TaskOrchestratorImpl.orchestrateDAG 会与 PlanExecutor 双重执行，
+// 原因：旧编排器 DAG 建团路径会与 PlanExecutor 双重执行，
 // 且不调用 MarkTeamDispatched，破坏 system-push 模式的 Task 延迟关闭机制。
+// （ADR-2，2026-08-20：旧 Orchestrate 及其建团 helper 已整体删除。）
 //
 // C-18: planBoardID is the canonical orchestration_id (PlanBoard.ID). Must not
 // mint a separate orch_* UUID — cancel_orchestration and PlanExecutor terminal

@@ -2,6 +2,11 @@ package biz
 
 import "aranea-agents/pkg/apierror"
 
+// 保留理由（2026-08-20 P2-2 盘点）：不迁移到 biz/shared.GenericStateMachine——
+// 本状态机为无事件 to-list 模型且转换方法是 PlanStep 实体方法（直接赋值 s.Status），
+// 迁入 (from,event)→to 框架需伪造事件并改实体 API，反而增加复杂度；非法转换须
+// 返回 apierror.BadRequest 保证 400 映射。AS-FSM-01 合规：显式转换表 + 禁止直赋。
+
 // planStepTransitions 定义 PlanStep 的合法状态转换表（spec §3.5.4）。
 // key = 源状态，value = 可到达的目标状态列表。
 var planStepTransitions = map[PlanStepStatus][]PlanStepStatus{

@@ -145,21 +145,6 @@ func isEntryStale(entry *OrchestrationCacheEntry) bool {
 	return time.Since(t) > OrchestrationCacheTTL
 }
 
-// Put adds or replaces a cache entry directly.
-// Deprecated: Use RecordCompletionWithAgents instead, which handles DQ score
-// comparison and agent tracking. Put bypasses these safeguards.
-func (c *OrchestrationCache) Put(entry OrchestrationCacheEntry) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	c.entries[entry.TaskPattern] = &entry
-	c.lg.Info("编排缓存更新",
-		loggateway.StepID("spirit.orchestration_cache"),
-		loggateway.Str("task_pattern", entry.TaskPattern),
-		loggateway.Str("topology", string(entry.Topology)),
-	)
-}
-
 func (c *OrchestrationCache) List() []OrchestrationCacheEntry {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

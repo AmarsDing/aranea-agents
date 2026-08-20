@@ -35,6 +35,8 @@ export type EvalCaseResult = {
   id: string;
   run_id: string;
   case_id: string;
+  /** 用例输入（后端 JOIN eval_cases 读取；用例行已删时为空串） */
+  input: string;
   actual_output: string;
   exact_match: boolean;
   contains_match: boolean;

@@ -573,6 +573,7 @@ func toProtoCaseResult(r biz.EvalCaseResult) *v1.EvalCaseResult {
 		Id:               r.ID,
 		RunId:            r.RunID,
 		CaseId:           r.CaseID,
+		Input:            r.Input,
 		ActualOutput:     r.ActualOutput,
 		ExactMatch:       r.ExactMatch,
 		ContainsMatch:    r.ContainsMatch,

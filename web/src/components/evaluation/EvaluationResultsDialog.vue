@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
+    <q-card class="app-dialog-card app-dialog-card--xl app-glass-dialog">
       <q-card-section class="text-h6">用例结果 · {{ runId }}</q-card-section>
       <q-card-section class="app-dialog-body q-pt-none">
         <AppRegistryTable
@@ -18,6 +18,20 @@
               <AppRegistryHoverTip :text="slotProps.row.error_message">
                 <span class="app-registry-cell-primary ellipsis">{{ slotProps.row.case_id }}</span>
               </AppRegistryHoverTip>
+            </q-td>
+          </template>
+          <template #body-cell-input="slotProps">
+            <q-td :props="slotProps">
+              <div class="app-registry-cell-sub ellipsis" :title="slotProps.row.input">
+                {{ slotProps.row.input || '—' }}
+              </div>
+            </q-td>
+          </template>
+          <template #body-cell-actual_output="slotProps">
+            <q-td :props="slotProps">
+              <div class="app-registry-cell-sub ellipsis" :title="slotProps.row.actual_output">
+                {{ slotProps.row.actual_output || '—' }}
+              </div>
             </q-td>
           </template>
           <template #body-cell-human_pass="slotProps">

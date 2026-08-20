@@ -29,11 +29,6 @@ type Factory struct {
 	lg            loggateway.Logger
 }
 
-// Deprecated: use NewFactoryWithLogger for proper logger injection.
-func NewFactory() *Factory {
-	return &Factory{env: LoadEnvConfig()}
-}
-
 func NewFactoryWithLogger(lg loggateway.Logger) *Factory {
 	return &Factory{env: LoadEnvConfig(), lg: lg}
 }

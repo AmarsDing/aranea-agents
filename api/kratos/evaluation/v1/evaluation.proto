@@ -75,6 +75,9 @@ message EvalCaseResult {
   string annotated_at = 14;
   string annotated_by = 15;
   string scores_json = 16;
+  // input is the case text joined from eval_cases at read time (annotation
+  // UX); empty when the case row no longer exists.
+  string input = 17;
 }
 
 // --- Requests / Responses ---

@@ -362,26 +362,29 @@ func (a *SpiritAssembly) findReusableTeam(
 // This is a best-effort operation: failures are logged but do not fail team creation.
 // Domain: Assembly — cross-department borrow request submission.
 func (a *SpiritAssembly) submitBorrowRequests(ctx context.Context, teamID, homeDeptID string, crossDeptAgentIDs []string) {
+	rs := make([]BorrowRequest, 0, len(crossDeptAgentIDs))
 	for _, agentID := range crossDeptAgentIDs {
 		fromDeptID, err := a.deptLeadMgr.agentDepartment(ctx, agentID)
 		if err != nil || fromDeptID == "" || fromDeptID == homeDeptID {
 			continue // skip agents without a department or already in home dept
 		}
-		_, err = a.deptLeadMgr.SubmitBorrowRequest(ctx, BorrowRequest{
+		rs = append(rs, BorrowRequest{
 			TeamID:     teamID,
 			AgentID:    agentID,
 			FromDeptID: fromDeptID,
 			ToDeptID:   homeDeptID,
 			Reason:     "cross-department member for spirit team",
 		})
-		if err != nil {
-			a.lg.Warn("failed to submit borrow request",
-				loggateway.StepID("spirit.borrow.submit"),
-				loggateway.Str("team_id", teamID),
-				loggateway.Str("agent_id", agentID),
-				loggateway.Err(err),
-			)
-		}
+	}
+	if len(rs) == 0 {
+		return
+	}
+	if _, err := a.deptLeadMgr.SubmitBorrowRequests(ctx, rs); err != nil {
+		a.lg.Warn("failed to submit borrow requests",
+			loggateway.StepID("spirit.borrow.submit"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(err),
+		)
 	}
 }
 

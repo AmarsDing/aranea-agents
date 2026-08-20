@@ -195,31 +195,10 @@ func (uc *ChatUsecase) InterruptAndSendMessage(ctx context.Context, sessionID, p
 	return nil
 }
 
-// SetRunStatus updates the run status with WBPF (Write-Before-Publish-Fire) semantics.
-//
-// Deprecated: This variant swallows the persistence error (S7 fix). New callers
-// should use SetRunStatusWithError to observe DB write / state-machine failures
-// and react appropriately. Retained only for backward compatibility with
-// callers that cannot handle the error.
-//
-// State machine validation (AS-FSM-01): The transition from the current run
-// state to the new state is validated via RunStateMachine. Illegal transitions
-// are rejected and logged. When no prior status record exists (e.g., crash
-// recovery or first call), validation is skipped to allow bootstrap.
-//
-// WBPF ordering (BD1): PersistRunStatus (DB write) must succeed before
-// runs.SetStatus (in-memory) and PublishRunStatus (event) are applied. If the
-// DB write fails, the in-memory and event states are NOT updated, keeping DB
-// and memory consistent. The error is logged for monitoring/retry; callers
-// that need to react to persistence failures should use SetRunStatusWithError.
-func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	_ = uc.SetRunStatusWithError(ctx, sessionID, runID, status, errMsg)
-}
-
-// SetRunStatusWithError is the same as SetRunStatus but returns the
-// persistence error so callers in critical paths can react (e.g., retry or
-// fail the parent operation). State-machine rejection is also surfaced as an
-// error.
+// SetRunStatusWithError updates the run status with WBPF
+// (Write-Before-Publish-Fire) semantics and returns the persistence error so
+// callers in critical paths can react (e.g., retry or fail the parent
+// operation). State-machine rejection is also surfaced as an error.
 //
 // Stability:evolving
 func (uc *ChatUsecase) SetRunStatusWithError(ctx context.Context, sessionID, runID, status, errMsg string) error {

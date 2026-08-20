@@ -67,6 +67,9 @@ export type EvalCaseResult = {
   annotatedAt: string | undefined;
   annotatedBy: string | undefined;
   scoresJson: string | undefined;
+  // input is the case text joined from eval_cases at read time (annotation
+  // UX); empty when the case row no longer exists.
+  input: string | undefined;
 };
 
 export type CreateDatasetRequest = {

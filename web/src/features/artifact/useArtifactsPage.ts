@@ -340,7 +340,9 @@ export function useArtifactsPage() {
     }).onOk(async () => {
       try {
         await artifactStore.removeVersion(meta.id, meta.version);
-        const items = await artifactStore.listVersions(meta.id).catch(() => [] as ArtifactMeta[]);
+        // 被删版本的 meta.id 对应行已物理删除，不能再用作 anchor；换用同逻辑文件下其他版本的 id。
+        const anchor = detailVersions.value.find((v) => v.id !== meta.id)?.id ?? detailArtifactId.value;
+        const items = await artifactStore.listVersions(anchor).catch(() => [] as ArtifactMeta[]);
         detailVersions.value = items;
         if (items.length === 0) {
           detailOpen.value = false;

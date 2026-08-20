@@ -76,6 +76,7 @@ function mapCaseResult(raw: unknown): EvalCaseResult {
     id: pickStr(r, 'id', 'id'),
     run_id: pickStr(r, 'run_id', 'runId'),
     case_id: pickStr(r, 'case_id', 'caseId'),
+    input: pickStr(r, 'input', 'input'),
     actual_output: pickStr(r, 'actual_output', 'actualOutput'),
     exact_match: pickBool(r, 'exact_match', 'exactMatch'),
     contains_match: pickBool(r, 'contains_match', 'containsMatch'),

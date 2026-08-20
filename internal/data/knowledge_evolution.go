@@ -6,7 +6,6 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
@@ -31,7 +30,7 @@ func (r *knowledgeRepo) InsertFactVersion(ctx context.Context, v bizknowledge.Fa
 		 VALUES ($1,$2,$3,$4,$5)`,
 		v.CollectionID, v.DocID, factID, v.OldBody, v.NewBody)
 	if err != nil {
-		return fmt.Errorf("insert fact version: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }
@@ -59,7 +58,7 @@ func (r *knowledgeRepo) InsertProposal(ctx context.Context, p bizknowledge.Gover
 		 VALUES ($1,$2,$3::jsonb,$4,$5, CASE WHEN $5 IN ('applied','rejected') THEN NOW() ELSE NULL END)`,
 		p.CollectionID, p.Kind, string(payload), risk, status)
 	if err != nil {
-		return fmt.Errorf("insert governance proposal: %w", err)
+		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
 }

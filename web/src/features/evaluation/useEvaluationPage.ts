@@ -114,7 +114,8 @@ export function useEvaluationPage() {
     }
     if (agentOptions.value.length && !trendAgentId.value) {
       trendAgentId.value = agentOptions.value[0].value;
-      void loadTrend();
+      // No loadTrend here: onMounted chains it after loadDatasets so the first
+      // trend request is dataset-scoped (avoids a duplicate agent-wide fetch).
     }
   }
 
@@ -190,7 +191,11 @@ export function useEvaluationPage() {
     selectedDatasetId.value = id;
     runsPage.value = 1;
     void loadRuns();
-    void loadDivergence();
+    // Divergence is chained off loadRuns → loadTrend (shared agent filter);
+    // only fire directly when no trend agent exists (chain skips it then).
+    if (!trendAgentId.value) {
+      void loadDivergence();
+    }
     void loadFailureGroups();
     void loadPreferences();
   }
@@ -601,9 +606,13 @@ export function useEvaluationPage() {
     }
   }
 
-  onMounted(() => {
-    void loadAgentOptions();
-    void loadDatasets();
+  onMounted(async () => {
+    await Promise.all([loadAgentOptions(), loadDatasets()]);
+    // No dataset auto-selected (empty workspace) → trend was never chained off
+    // loadRuns; fall back to the agent-wide trend so the panel is not empty.
+    if (!selectedDatasetId.value && trendAgentId.value) {
+      void loadTrend();
+    }
   });
 
   return {

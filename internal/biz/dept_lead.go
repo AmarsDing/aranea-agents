@@ -310,6 +310,8 @@ type BorrowRequestReader interface {
 // BorrowRequestWriter provides write access to borrow requests.
 type BorrowRequestWriter interface {
 	CreateBorrowRequest(ctx context.Context, r BorrowRequest) (BorrowRequest, error)
+	// CreateBorrowRequestsBulk inserts multiple borrow requests in one statement.
+	CreateBorrowRequestsBulk(ctx context.Context, rs []BorrowRequest) ([]BorrowRequest, error)
 	UpdateBorrowRequest(ctx context.Context, r BorrowRequest) (BorrowRequest, error)
 	CancelBorrowRequestsByFromDept(ctx context.Context, deptID string) (int, error)
 }
@@ -345,6 +347,31 @@ func (m *DeptLeadManager) SubmitBorrowRequest(ctx context.Context, r BorrowReque
 	r.CreatedAt = now
 	r.UpdatedAt = now
 	return m.borrowRepo.CreateBorrowRequest(ctx, r)
+}
+
+// SubmitBorrowRequests validates and creates multiple borrow requests in one
+// batch (single INSERT) to avoid N+1 on spirit team assembly.
+func (m *DeptLeadManager) SubmitBorrowRequests(ctx context.Context, rs []BorrowRequest) ([]BorrowRequest, error) {
+	if len(rs) == 0 {
+		return nil, nil
+	}
+	now := time.Now().UTC()
+	for i := range rs {
+		r := &rs[i]
+		if r.TeamID == "" || r.AgentID == "" || r.FromDeptID == "" || r.ToDeptID == "" {
+			return nil, apierror.BadRequest("BORROW", "team_id/agent_id/from_dept_id/to_dept_id are required")
+		}
+		if r.FromDeptID == r.ToDeptID {
+			return nil, apierror.BadRequest("BORROW", "from_dept_id and to_dept_id must be different")
+		}
+		if r.ID == "" {
+			r.ID = newAgentCatalogID()
+		}
+		r.Status = BorrowRequestPending
+		r.CreatedAt = now
+		r.UpdatedAt = now
+	}
+	return m.borrowRepo.CreateBorrowRequestsBulk(ctx, rs)
 }
 
 // ApproveBorrowRequest approves a pending borrow request.

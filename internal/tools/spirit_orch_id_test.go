@@ -56,9 +56,6 @@ type stubOrch struct {
 	cancelErr error
 }
 
-func (s *stubOrch) Orchestrate(context.Context, *biz.TaskPlan, *biz.AllocationPlan) (*biz.OrchestrationHandle, error) {
-	return nil, nil
-}
 func (s *stubOrch) CheckProgress(context.Context, string) ([]biz.TaskProgress, error) {
 	return nil, nil
 }

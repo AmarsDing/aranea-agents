@@ -3,8 +3,7 @@ package biz
 import "context"
 
 // TurnOutcome classifies the result of a turn execution for any entry point
-// (Web, WS, Channel, Cron, A2A). It unifies ChannelTurnOutcome into a single
-// canonical type.
+// (Web, WS, Channel, Cron, A2A). It is the single canonical outcome type.
 type TurnOutcome string
 
 const (

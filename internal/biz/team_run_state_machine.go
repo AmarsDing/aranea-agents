@@ -2,6 +2,12 @@ package biz
 
 import "aranea-agents/pkg/apierror"
 
+// 保留理由（2026-08-20 P2-2 盘点）：本状态机不迁移到 biz/shared.GenericStateMachine，
+// 原因：① 非法转换须返回 apierror.BadRequest(DomainTeam) 以保证 service 层 400 映射，
+// shared 仅返回 sentinel 错误会导致 400→500 回归；② from=="" 归一化为 pending、
+// 终态表、Validate 便捷变体均为 shared 未覆盖特性；③ 与 team_run_v2_state_machine.go
+// 是不同实体（v1 七态含 waiting_human），非重复实现。AS-FSM-01 合规：显式转换表。
+
 // TeamRun status constants for the TeamRun lifecycle state machine.
 // These are intentionally kept as string constants for JSON/DB compatibility.
 // Stability:internal

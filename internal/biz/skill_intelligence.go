@@ -987,31 +987,6 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 	return nil
 }
 
-// ── Bridge: SkillEvolutionSuggestion → SkillProposal ─────────────────────────
-//
-// Deprecated: Transitional bridge function. Will be removed once SkillProposal
-// is fully deprecated. Use UnifiedEvolutionSuggestion directly instead.
-
-// ProposalFromSuggestion converts a SkillEvolutionSuggestion into a
-// SkillProposal for interoperability with the SkillEvolutionUsecase pipeline.
-// Fields that have no direct equivalent are left at their zero values.
-//
-// Deprecated: Use UnifiedEvolutionSuggestion directly. Construct with
-// UnifiedEvolutionSuggestion{TargetType: "skill", ActionType: "improve_skill", TargetID: s.SkillID, DraftBody: s.DraftSkillBody}.
-func (uc *SkillIntelligenceUsecase) ProposalFromSuggestion(s SkillEvolutionSuggestion) SkillProposal {
-	return SkillProposal{
-		ID:         s.ID,
-		AgentID:    "", // no equivalent; SkillEvolutionSuggestion is skill-scoped
-		SkillName:  "", // no direct equivalent; caller should populate from skill lookup
-		SkillMD:    s.DraftSkillBody,
-		Status:     SuggestionStatusToProposal(s.Status),
-		ApprovedBy: s.ApprovedBy,
-		RejectedBy: s.RejectedBy,
-		CreatedAt:  s.CreatedAt,
-		ApprovedAt: s.ResolvedAt,
-	}
-}
-
 // ── Bridge functions: Unified ↔ Legacy ────────────────────────────────────────
 
 // unifiedToLegacySuggestion converts a SkillEvolutionSuggestion to a UnifiedEvolutionSuggestion

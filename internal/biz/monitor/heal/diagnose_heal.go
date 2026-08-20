@@ -48,46 +48,25 @@ type SelfCheckResult struct {
 	Message   string
 }
 
-// DiagnoseAndHeal runs the diagnose-and-heal workflow, preferring the observer
-// (new path) and falling back to the legacy SelfHealUsecase (deprecated).
+// DiagnoseAndHeal runs the diagnose-and-heal workflow via the observer.
 // DEV-05: converted from a monitor.Usecase method to a free function — the
-// receiver was never used; the workflow only needs the two heal components.
-func DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserver, legacy *SelfHealUsecase, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagnoseAndHealResult, error) {
-	// Prefer SelfHealObserver (new path)
-	if observer != nil {
-		rec, err := observer.DiagnoseAndObserve(ctx,
-			traceID, sessionID, stepID,
-			triggerType, contextMinutes,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return &DiagnoseAndHealResult{
-			HealID:              rec.ID,
-			RuleID:              rec.RuleID,
-			Status:              rec.Status,
-			Reason:              rec.Reason,
-			Confidence:          rec.Confidence,
-			FixAction:           rec.FixAction,
-			RuntimeAutoHealed:   rec.RuntimeAutoHealed,
-			RuntimeHealAttempts: rec.RuntimeHealAttempts,
-			CreatedAt:           rec.CreatedAt,
-		}, nil
+// receiver was never used; the workflow only needs the heal observer.
+//
+// ADR-4（2026-08-20）：legacy SelfHealUsecase fallback 已删除，observer 为唯一
+// 路径（运行时负责真正的修复执行，observer 只观测与告警）。runID 不再下传——
+// observer 路径不生成诊断包，无需该参数。
+func DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserver, traceID, sessionID, stepID, triggerType string, contextMinutes int32) (*DiagnoseAndHealResult, error) {
+	if observer == nil {
+		return nil, apierror.Unavailable("MONITOR", "self-heal observer not available")
 	}
-
-	// Deprecated fallback: SelfHealUsecase
-	if legacy == nil {
-		return nil, apierror.Unavailable("MONITOR", "self-heal service not available")
-	}
-	rec, err := legacy.DiagnoseAndHeal(ctx,
-		traceID, sessionID, runID, stepID,
+	rec, err := observer.DiagnoseAndObserve(ctx,
+		traceID, sessionID, stepID,
 		triggerType, contextMinutes,
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	result := &DiagnoseAndHealResult{
+	return &DiagnoseAndHealResult{
 		HealID:              rec.ID,
 		RuleID:              rec.RuleID,
 		Status:              rec.Status,
@@ -97,36 +76,7 @@ func DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserver, legacy *Se
 		RuntimeAutoHealed:   rec.RuntimeAutoHealed,
 		RuntimeHealAttempts: rec.RuntimeHealAttempts,
 		CreatedAt:           rec.CreatedAt,
-	}
-
-	// Populate RootCauseCondition based on heal result.
-	switch rec.Status {
-	case string(HealStatusApplied):
-		result.RootCauseCondition = &RootCauseConditionResult{
-			AutoHealed: &AutoHealedResult{
-				AutoHealed:   true,
-				HealStrategy: rec.FixAction.Type,
-			},
-		}
-	case string(HealStatusSkippedLowConfidence), string(HealStatusSkippedCooldown), string(HealStatusSkippedNoAction):
-		result.RootCauseCondition = &RootCauseConditionResult{
-			HealAttempts: &HealAttemptsResult{
-				Attempts:     0,
-				MaxAttempts:  rec.FixAction.MaxAttempts,
-				LastStrategy: rec.FixAction.Type,
-			},
-		}
-	case string(HealStatusFailed):
-		result.RootCauseCondition = &RootCauseConditionResult{
-			SelfCheck: &SelfCheckResult{
-				CheckName: rec.RuleID,
-				Status:    "failed",
-				Message:   rec.Reason,
-			},
-		}
-	}
-
-	return result, nil
+	}, nil
 }
 
 // DiagnoseAndHealFixParamsJSON returns the JSON encoding of the fix action params.

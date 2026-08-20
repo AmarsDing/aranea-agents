@@ -22,6 +22,8 @@ export function exportEvalRunCsv(run: EvalRun, rows: EvalCaseResult[]): void {
   const header = [
     'run_id',
     'case_id',
+    'input',
+    'actual_output',
     'exact_match',
     'contains_match',
     'llm_judge_score',
@@ -37,6 +39,8 @@ export function exportEvalRunCsv(run: EvalRun, rows: EvalCaseResult[]): void {
       [
         run.id,
         r.case_id,
+        r.input ?? '',
+        r.actual_output ?? '',
         String(r.exact_match),
         String(r.contains_match),
         String(r.llm_judge_score ?? ''),

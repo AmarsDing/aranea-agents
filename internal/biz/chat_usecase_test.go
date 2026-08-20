@@ -372,29 +372,6 @@ func TestChatUsecase_SetRunStatusWithError_NonTerminalStatus_KeepsAwaitChannel(t
 	}
 }
 
-// TestChatUsecase_SetRunStatus_DelegatesToWithError verifies that the
-// legacy SetRunStatus method delegates to SetRunStatusWithError and discards
-// the error (backward compatibility).
-func TestChatUsecase_SetRunStatus_DelegatesToWithError(t *testing.T) {
-	t.Parallel()
-	persistErr := errors.New("persist failed")
-	persist := &stubChatPersister{failWith: persistErr}
-	runs := &stubChatRunGateway{}
-	pub := &stubChatEventPublisher{}
-	uc := newChatUsecaseForTest(runs, persist, pub)
-
-	// SetRunStatus should not panic and should swallow the error
-	uc.SetRunStatus(context.Background(), "sess-1", "run-1", "running", "")
-
-	if persist.persistCnt != 1 {
-		t.Fatalf("expected 1 persist call, got %d", persist.persistCnt)
-	}
-	// Even though persist failed, SetRunStatus swallows the error
-	if runs.setStatusCnt != 0 {
-		t.Fatalf("WBPF violated: SetStatus called %d times after persist failure", runs.setStatusCnt)
-	}
-}
-
 // TestChatUsecase_SetRunStatusWithError_SameState_NoValidation verifies that
 // when fromState == toState (idempotent update), state machine validation is
 // skipped and the update proceeds normally.

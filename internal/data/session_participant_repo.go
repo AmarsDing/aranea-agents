@@ -135,11 +135,11 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 		if err != nil {
 			return entErrToBizErr(err, "SESSION_PARTICIPANT")
 		}
-		// Insert new participants.
+		// Insert new participants (single multi-VALUES INSERT to avoid N+1).
+		creates := make([]*ent.SessionParticipantCreate, 0, len(aggs))
 		for _, row := range aggs {
-			id := uuid.NewString()
-			_, err := client.SessionParticipant.Create().
-				SetID(id).
+			creates = append(creates, client.SessionParticipant.Create().
+				SetID(uuid.NewString()).
 				SetSessionID(sessionID).
 				SetParticipantType(row.participantType).
 				SetParticipantID(row.participantID).
@@ -155,9 +155,10 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 				SetContextUsedRatio(0).
 				SetMetadataJSON("{}").
 				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(txCtx)
-			if err != nil {
+				SetUpdatedAt(now))
+		}
+		if len(creates) > 0 {
+			if _, err := client.SessionParticipant.CreateBulk(creates...).Save(txCtx); err != nil {
 				return entErrToBizErr(err, "SESSION_PARTICIPANT")
 			}
 		}

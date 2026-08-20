@@ -527,9 +527,9 @@ func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRu
 
 // --- Case Results ---
 
-const evalCaseResultSelect = `SELECT id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,
-	human_pass,human_score,human_comment,annotated_at,annotated_by,scores_json
-	FROM eval_case_results`
+const evalCaseResultSelect = `SELECT r.id,r.run_id,r.case_id,r.actual_output,r.exact_match,r.contains_match,r.llm_judge_score,r.tool_call_accuracy,r.error_message,r.created_at,
+	r.human_pass,r.human_score,r.human_comment,r.annotated_at,r.annotated_by,r.scores_json,COALESCE(c.input,'')
+	FROM eval_case_results r LEFT JOIN eval_cases c ON c.id = r.case_id`
 
 func scanEvalCaseResult(row interface {
 	Scan(dest ...any) error
@@ -540,7 +540,8 @@ func scanEvalCaseResult(row interface {
 	var humanScore sql.NullFloat64
 	if err := row.Scan(&res.ID, &res.RunID, &res.CaseID, &res.ActualOutput, &em, &cm,
 		&res.LLMJudgeScore, &res.ToolCallAccuracy, &res.ErrorMessage, &res.CreatedAt,
-		&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy, &res.ScoresJSON); err != nil {
+		&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy, &res.ScoresJSON,
+		&res.Input); err != nil {
 		return biz.EvalCaseResult{}, entErrToBizErr(err, "EVAL")
 	}
 	res.ExactMatch = em == 1
@@ -583,7 +584,7 @@ func (r *evalRepo) ListCaseResults(ctx context.Context, runID string, limit, off
 		return nil, 0, entErrToBizErr(err, "EVAL")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(evalCaseResultSelect+` WHERE run_id=? ORDER BY created_at LIMIT ? OFFSET ?`),
+		r.data.Dialect().RenumberPlaceholders(evalCaseResultSelect+` WHERE r.run_id=? ORDER BY r.created_at LIMIT ? OFFSET ?`),
 		runID, limit, offset)
 	if err != nil {
 		return nil, 0, entErrToBizErr(err, "EVAL")
@@ -601,7 +602,7 @@ func (r *evalRepo) ListCaseResults(ctx context.Context, runID string, limit, off
 }
 
 func (r *evalRepo) GetCaseResult(ctx context.Context, runID, resultID string) (biz.EvalCaseResult, error) {
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(evalCaseResultSelect+` WHERE run_id=? AND id=?`), runID, resultID)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(evalCaseResultSelect+` WHERE r.run_id=? AND r.id=?`), runID, resultID)
 	if err != nil {
 		return biz.EvalCaseResult{}, entErrToBizErr(err, "EVAL")
 	}

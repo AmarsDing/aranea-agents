@@ -417,8 +417,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphTaskRuntime := service.WireGraphTaskRuntime(graphUsecase, taskUsecase, graphOrchestrationProjector, taskLinkRepo, webhookDispatcher, teamGraphRunCoordinator, monitorBus, loggatewayLogger)
 	graphService := service.NewGraphService(graphUsecase, taskUsecase, graphExecutionTelemetry, graphOrchestrationProjector, graphTaskRuntime, monitorBus, loggatewayLogger)
 	orchestrationRepository := data.NewOrchestrationRepo(dataData, loggatewayLogger)
-	agentMatcherPort := agent.NewAgentMatcher(agentRepository, loggatewayLogger)
-	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, allocationPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, toolUsecase, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, bridge, loggatewayLogger)
+	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamAssembler, orchestrationRepository, taskPlanRepository, allocationPlanRepository, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, loggatewayLogger)
 	skillEvolutionUsecase := provideSkillEvolutionUsecase(unifiedEvolutionRepo, patternReadWriter, agentRepository, skillAutoCreator, skillRegistrationPort, skillEvolutionOrchestrator, loggatewayLogger)
 	skillInvocationStatsReader := data.NewSkillInvocationStatsRepo(dataData)
 	experienceAnalyticsUsecase := biz.NewExperienceAnalyticsUsecase(evolutionMetricsRepo, skillRepo, teamRepo, teamRepo, usageRepo, memoryAdminUsecase, sessionRepo, toolRepo, loggatewayLogger)
@@ -1656,7 +1655,7 @@ func providePrimaryRawDB(d *data.Data) *sql.DB {
 
 func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) session3.Service {
 	pgDSN := d.PostgresDSN()
-	return runtime.NewTRPCSessionService(pgDSN, lg, session4.SummarizerConfig{
+	return session4.NewTRPCSessionService(pgDSN, lg, session4.SummarizerConfig{
 		Catalog: catalog,
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
@@ -4099,47 +4098,21 @@ func provideAgentFactory(
 }
 
 func provideTaskOrchestrator(
-	spiritUC *biz.SpiritTeamUsecase,
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
 	taskPlanRepo biz.TaskPlanRepository,
 	allocPlanRepo biz.AllocationPlanRepository,
-	matcher biz.AgentMatcherPort,
-	catalog *biz.LlmProviderModelUsecase,
-	agentUC *biz.AgentUsecase,
-	agents biz.AgentRepository,
-	toolUC *biz.ToolUsecase,
-	sys biz.SystemSettingRepo,
 	synthesis *service.SpiritSynthesisService,
 	checkpointSaver graph2.CheckpointSaver,
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionUC *biz.EvolutionUsecase,
 	eventBus biz.EventBus,
-	nl2graph graph3.NL2GraphConverter,
-	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
-	deps := agent.TRPCBuilderDeps{
-		TRPCModelCatalogDeps: agent.TRPCModelCatalogDeps{
-			ModelCatalog: catalog,
-			AgentUC:      agentUC,
-			Agents:       agents,
-			Sys:          sys,
-		},
-		TRPCModelRouteDeps: agent.TRPCModelRouteDeps{
-			RT: rtTrip,
-		},
-		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
-			ToolUC: toolUC,
-		},
-		TRPCExtensionDeps: agent.TRPCExtensionDeps{
-			ClientBridge: clientBridge,
-			LG:           lg,
-		},
-	}
-	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, allocPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
+	// ADR-2（2026-08-20）：Orchestrate 死路径删除后，编排器仅剩 handle 记账 +
+	// 在线学习依赖；assembler 作为 SpiritTeamControllerPort 传入（Cancel/CheckProgress）。
+	return agent.NewTaskOrchestratorImpl(assembler, repo, taskPlanRepo, allocPlanRepo, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, lg)
 }
 
 func provideDeptLeadManager(
