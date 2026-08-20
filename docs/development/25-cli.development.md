@@ -495,6 +495,8 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 
 回归测试：`internal/orgimport/applier_test.go`（10 用例，含"列表首项为无关记录时不得误更新"与"成员解析失败不得写团队"回归）。
 
+> **ADR-1 结案（2026-08-20，决策：保留下线）**：orgimport 曾被列为下线删除候选，盘点证实其有 4 条活生产链路——`aranea import org`（cli/cmd/import.go）、`aranea pkg install`（cli/cmd/pkg.go → pkginstall.Installer）、cli_admin 工具 `skill_install_from_url`/`pkg_install_from_url`（→ pkginstall → orgimport.NewApplier）。orgimport 属客户端行为包（经 `/v1/agents`、`/v1/teams`、`/v1/organization`、`/v1/ai/refine` HTTP API 操作，无独立 proto/DB 表），予以保留，不做代码变更。
+
 #### CLI-51 已有域子命令补全 ✅
 
 | 域 | 新增子命令 | 代码锚点 |

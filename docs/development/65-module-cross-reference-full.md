@@ -655,27 +655,28 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 
 ---
 
-### 1.18 技能自创建 (`internal/biz/skill_evolution.go` + `internal/service/skill_evolution.go` + `internal/data/skill_evolution.go`)
+### 1.18 技能自创建 (`internal/biz/skill_evolution_triggers.go` + `skill_evolution_unified.go` + `internal/service/skill_evolution_suggestion.go`)
 
 **职责**：检测 Agent 重复工具调用模式，自动提议创建新 Skill，经审批后注册到 Skill 仓库。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（SkillProposal 视图类型（A6 起由 unified 行重建）、UnifiedEvolutionStore/UnifiedEvolutionPatternReader/SkillAutoCreator/SkillRegistrationPort 端口、AgentRepository、PatternReader） |
-| **下游影响** | `service/skill_evolution`（SkillEvolutionService 调用 SkillEvolutionUsecase）、`skill`（注册新 Skill） |
-| **核心导出** | `SkillEvolutionUsecase`、`SkillProposal` 领域模型、`DetectAndPropose`/`ApproveProposal`/`RejectProposal`/`RegisterApproved` 方法 |
+| **上游依赖** | `biz`（UnifiedEvolutionStore/UnifiedEvolutionPatternReader/SkillAutoCreator/SkillRegistrationPort 端口、AgentRepository、PatternReader） |
+| **下游影响** | `service/skill_evolution_suggestion`（SkillEvolutionSuggestionService 调用 SkillIntelligenceUsecase）、`skill`（注册新 Skill） |
+| **核心导出** | `PatternTrigger`、`SkillEvolutionSuggestion` 领域模型；列表/审批/应用统一走 `SkillIntelligenceUsecase`（ADR-3 泛化 target_type/target_id） |
 | **实现接口** | `SkillAutoCreator`（LLM 生成 SKILL.md）、`SkillRegistrationPort`（注册 Skill 到仓库） |
-| **共享类型** | `SkillProposal`（pending/approved/rejected/registered/expired）、`ToolCallRecord` |
+| **共享类型** | `SkillEvolutionSuggestion`（pending/approved/rejected/registered/expired）、`ToolCallRecord` |
 | **事件生产** | 无直接生产（由 Cron 定时任务或 API 触发） |
 | **事件消费** | 无直接消费 |
 | **数据库** | Postgres（unified_evolution_suggestions，A6 物理收敛；legacy skill_proposals 已 DROP，pattern_hash/pattern_desc/approved_at/rejected_by 存 metadata JSON） |
-| **前端对应** | 待集成（后端 API 已就绪，前端 Skill 进化管理界面待开发） |
+| **前端对应** | 进化建议页（`features/skill-evolution/`，agent 分支走统一服务，ADR-3-C4 已切换） |
 
 **⚠️ 开发注意**：
+- **legacy SkillEvolution 服务已下线（ADR-3-C5，2026-08-20）**：`SkillEvolutionUsecase`/`SkillEvolutionService`/`api/kratos/skill_evolution/v1` proto 及 HTTP/gRPC 注册、Wire provider 全部删除；`SkillProposal` 视图与 `DetectAndPropose`/`TriggerSkillDetection` 一并移除。唯一 API 面 = `SkillEvolutionSuggestionService`（target_type=skill/agent 泛化）；agent 建议审批后由 `ApplyApprovedSuggestion` 自动注册（CAS 状态机）
+- `SkillAutoCreator`/`SkillRegistrationPort`/`ToolCallRecord` 符号现居 `biz/skill_evolution_triggers.go`（随 C5 自删除文件回迁）
 - `SkillAutoCreator` 接口由 `internal/skill/auto_creator.go` 实现，调用 LLM 生成 SKILL.md
 - `SkillRegistrationPort` 接口由 SkillUsecase 适配，将审批通过的 Proposal 注册为正式 Skill
 - 定时检测由 `EvolutionOrchestratorWorker` 统一驱动（`PatternTrigger`，A1）；legacy `SkillEvolutionScanner` 已于 A6 清理删除（含 `ScanAndProposeAll` 与 legacy `EvolutionSuggestionStateMachine`）
-- 前端集成时需在 SkillsPage 或 AgentSettingsPage 新增"技能提议"管理界面
 
 ---
 
