@@ -679,11 +679,23 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 		}
 	})
 
-	t.Run("version_zero", func(t *testing.T) {
-		uc := artifact.NewUsecase(&mockRepo{}, loggateway.NewNoop())
-		err := uc.DeleteVersion(context.Background(), "a1", 0)
-		if err == nil {
-			t.Fatal("expected error for version 0")
+	t.Run("version_zero_allowed", func(t *testing.T) {
+		// 版本号 0 基：v0 是合法首版本，应透传到 repo 删除。
+		meta := artifact.Artifact{ID: "a1", SessionID: "s1", Name: "f.csv"}
+		repo := &mockRepo{
+			loadFn: func(_ context.Context, id string, version int) (artifact.Artifact, []byte, error) {
+				return meta, nil, nil
+			},
+			deleteVersionFn: func(_ context.Context, sessionID, name string, version int) error {
+				if version != 0 {
+					t.Errorf("expected version 0 passthrough, got %d", version)
+				}
+				return nil
+			},
+		}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		if err := uc.DeleteVersion(context.Background(), "a1", 0); err != nil {
+			t.Fatal(err)
 		}
 	})
 

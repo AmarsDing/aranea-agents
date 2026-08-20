@@ -171,13 +171,22 @@ func (s *CronService) ListCronTaskRuns(ctx context.Context, req *v1.ListCronTask
 	q := biz.CronTaskRunQuery{
 		TaskID: req.GetCronTaskId(),
 		Status: req.GetStatus(),
-		Limit:  int(req.GetLimit()),
 	}
-	items, err := s.uc.ListTaskRuns(ctx, q)
+	if ps := int(req.GetPageSize()); ps > 0 {
+		page := int(req.GetPage())
+		if page <= 0 {
+			page = 1
+		}
+		q.Limit = ps
+		q.Offset = (page - 1) * ps
+	} else {
+		q.Limit = int(req.GetLimit())
+	}
+	items, total, err := s.uc.ListTaskRuns(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	resp := &v1.ListCronTaskRunsResponse{Items: make([]*v1.CronTaskRun, 0, len(items))}
+	resp := &v1.ListCronTaskRunsResponse{Items: make([]*v1.CronTaskRun, 0, len(items)), Total: int64(total)}
 	for i := range items {
 		resp.Items = append(resp.Items, toProtoCronTaskRun(items[i]))
 	}

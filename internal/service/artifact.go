@@ -300,8 +300,10 @@ func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.Del
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
-	if version <= 0 {
-		return nil, apierror.BadRequest(apierror.DomainArtifact, "version must be > 0")
+	// 版本号为 0 基（首个版本即 v0），删除路径 version 是显式必填路径参数，
+	// 无"0=latest"歧义，仅拒绝负值。
+	if version < 0 {
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "version must be >= 0")
 	}
 	// P1-1: IDOR 防护 — 校验 workspace 所有权后再删除版本。
 	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, version); err != nil {

@@ -72,8 +72,8 @@ func (m *memCronRepoReset) DeleteCronTask(context.Context, string) error { retur
 func (m *memCronRepoReset) GetCronTaskRun(context.Context, string) (CronTaskRun, error) {
 	return CronTaskRun{}, nil
 }
-func (m *memCronRepoReset) ListCronTaskRuns(context.Context, CronTaskRunQuery) ([]CronTaskRun, error) {
-	return nil, nil
+func (m *memCronRepoReset) ListCronTaskRuns(context.Context, CronTaskRunQuery) ([]CronTaskRun, int, error) {
+	return nil, 0, nil
 }
 func (m *memCronRepoReset) InsertCronTaskRun(context.Context, CronTaskRunInput) error { return nil }
 func (m *memCronRepoReset) UpdateCronTaskRun(context.Context, string, string, string, string, string) error {

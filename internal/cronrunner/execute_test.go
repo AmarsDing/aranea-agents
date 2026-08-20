@@ -59,8 +59,8 @@ func (m *memCronExecRepo) GetCronTaskRun(_ context.Context, id string) (biz.Cron
 	defer m.mu.Unlock()
 	return m.runs[id], nil
 }
-func (m *memCronExecRepo) ListCronTaskRuns(context.Context, biz.CronTaskRunQuery) ([]biz.CronTaskRun, error) {
-	return nil, nil
+func (m *memCronExecRepo) ListCronTaskRuns(context.Context, biz.CronTaskRunQuery) ([]biz.CronTaskRun, int, error) {
+	return nil, 0, nil
 }
 func (m *memCronExecRepo) InsertCronTaskRun(_ context.Context, in biz.CronTaskRunInput) error {
 	m.mu.Lock()

@@ -201,7 +201,7 @@ func (r *cronRepo) GetCronTaskRun(ctx context.Context, id string) (biz.CronTaskR
 	return entToBizCronTaskRun(run, taskName), nil
 }
 
-func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery) ([]biz.CronTaskRun, error) {
+func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery) ([]biz.CronTaskRun, int, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = 100
@@ -209,21 +209,31 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 	if limit > 500 {
 		limit = 500
 	}
-	query := r.data.RW().Read(ctx).CronTaskRun.Query().
-		Order(crontaskrun.ByCreatedAt(entsql.OrderDesc())).
-		Limit(limit)
+	offset := q.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	filtered := r.data.RW().Read(ctx).CronTaskRun.Query()
 	if tid := strings.TrimSpace(q.TaskID); tid != "" {
-		query = query.Where(crontaskrun.TaskIDEQ(tid))
+		filtered = filtered.Where(crontaskrun.TaskIDEQ(tid))
 	}
 	if st := strings.TrimSpace(q.Status); st != "" {
-		query = query.Where(crontaskrun.StatusEQ(st))
+		filtered = filtered.Where(crontaskrun.StatusEQ(st))
 	}
-	runs, err := query.All(ctx)
+	total, err := filtered.Clone().Count(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	runs, err := filtered.
+		Order(crontaskrun.ByCreatedAt(entsql.OrderDesc())).
+		Limit(limit).
+		Offset(offset).
+		All(ctx)
+	if err != nil {
+		return nil, 0, err
 	}
 	if len(runs) == 0 {
-		return nil, nil
+		return nil, total, nil
 	}
 	ids := make([]string, 0, len(runs))
 	seen := map[string]struct{}{}
@@ -238,7 +248,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 		Where(crontask.IDIn(ids...)).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	nameByID := make(map[string]string, len(tasks))
 	for _, t := range tasks {
@@ -249,7 +259,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 		name := nameByID[run.TaskID]
 		out = append(out, entToBizCronTaskRun(run, name))
 	}
-	return out, nil
+	return out, total, nil
 }
 
 func (r *cronRepo) InsertCronTaskRun(ctx context.Context, in biz.CronTaskRunInput) error {

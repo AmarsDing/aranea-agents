@@ -287,8 +287,8 @@ func (m *memCronRepoB) DeleteCronTask(_ context.Context, id string) error {
 func (m *memCronRepoB) GetCronTaskRun(_ context.Context, id string) (biz.CronTaskRun, error) {
 	return biz.CronTaskRun{ID: id}, nil
 }
-func (m *memCronRepoB) ListCronTaskRuns(_ context.Context, _ biz.CronTaskRunQuery) ([]biz.CronTaskRun, error) {
-	return nil, nil
+func (m *memCronRepoB) ListCronTaskRuns(_ context.Context, _ biz.CronTaskRunQuery) ([]biz.CronTaskRun, int, error) {
+	return nil, 0, nil
 }
 func (m *memCronRepoB) InsertCronTaskRun(_ context.Context, _ biz.CronTaskRunInput) error {
 	return nil

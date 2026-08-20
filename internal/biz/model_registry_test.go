@@ -48,8 +48,8 @@ func (m *seedCronRepo) GetCronTaskRun(_ context.Context, id string) (CronTaskRun
 	return CronTaskRun{}, nil
 }
 
-func (m *seedCronRepo) ListCronTaskRuns(_ context.Context, _ CronTaskRunQuery) ([]CronTaskRun, error) {
-	return nil, nil
+func (m *seedCronRepo) ListCronTaskRuns(_ context.Context, _ CronTaskRunQuery) ([]CronTaskRun, int, error) {
+	return nil, 0, nil
 }
 
 func (m *seedCronRepo) InsertCronTaskRun(_ context.Context, _ CronTaskRunInput) error {

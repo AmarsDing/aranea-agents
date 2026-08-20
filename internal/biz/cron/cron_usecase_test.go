@@ -15,7 +15,7 @@ type mockRepo struct {
 	updateFn    func(ctx context.Context, t Task) (Task, error)
 	deleteFn    func(ctx context.Context, id string) error
 	getRunFn    func(ctx context.Context, id string) (TaskRun, error)
-	listRunFn   func(ctx context.Context, q TaskRunQuery) ([]TaskRun, error)
+	listRunFn   func(ctx context.Context, q TaskRunQuery) ([]TaskRun, int, error)
 	insertRunFn func(ctx context.Context, in TaskRunInput) error
 	updateRunFn func(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
 }
@@ -38,7 +38,7 @@ func (m *mockRepo) DeleteCronTask(ctx context.Context, id string) error {
 func (m *mockRepo) GetCronTaskRun(ctx context.Context, id string) (TaskRun, error) {
 	return m.getRunFn(ctx, id)
 }
-func (m *mockRepo) ListCronTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, error) {
+func (m *mockRepo) ListCronTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, int, error) {
 	return m.listRunFn(ctx, q)
 }
 func (m *mockRepo) InsertCronTaskRun(ctx context.Context, in TaskRunInput) error {
@@ -66,7 +66,7 @@ func noOpRepo() *mockRepo {
 		updateFn:    func(_ context.Context, t Task) (Task, error) { return t, nil },
 		deleteFn:    func(_ context.Context, _ string) error { return nil },
 		getRunFn:    func(_ context.Context, id string) (TaskRun, error) { return TaskRun{ID: id}, nil },
-		listRunFn:   func(_ context.Context, _ TaskRunQuery) ([]TaskRun, error) { return nil, nil },
+		listRunFn:   func(_ context.Context, _ TaskRunQuery) ([]TaskRun, int, error) { return nil, 0, nil },
 		insertRunFn: func(_ context.Context, _ TaskRunInput) error { return nil },
 		updateRunFn: func(_ context.Context, _, _, _, _, _ string) error { return nil },
 	}

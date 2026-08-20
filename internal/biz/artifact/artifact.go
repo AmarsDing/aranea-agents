@@ -208,14 +208,15 @@ func (uc *Usecase) Delete(ctx context.Context, id string) error {
 
 // DeleteVersion removes exactly one version of a logical artifact.
 // id is any artifact ID belonging to the logical artifact (used to look up
-// session+name). version must be > 0. Returns NotFound when the version does
+// session+name). Versions are 0-based, so version 0 is a legitimate target;
+// only negative values are rejected. Returns NotFound when the version does
 // not exist, so callers can return HTTP 404 cleanly.
 func (uc *Usecase) DeleteVersion(ctx context.Context, id string, version int) error {
 	if strings.TrimSpace(id) == "" {
 		return ErrIDRequired
 	}
-	if version <= 0 {
-		return apierror.BadRequest("ARTIFACT", "version must be > 0")
+	if version < 0 {
+		return apierror.BadRequest("ARTIFACT", "version must be >= 0")
 	}
 	meta, _, err := uc.repo.Load(ctx, id, 0)
 	if err != nil {

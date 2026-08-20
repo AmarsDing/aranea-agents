@@ -53,8 +53,8 @@ func (m *memCronRepo) DeleteCronTask(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *memCronRepo) ListCronTaskRuns(_ context.Context, _ biz.CronTaskRunQuery) ([]biz.CronTaskRun, error) {
-	return m.runs, nil
+func (m *memCronRepo) ListCronTaskRuns(_ context.Context, _ biz.CronTaskRunQuery) ([]biz.CronTaskRun, int, error) {
+	return m.runs, len(m.runs), nil
 }
 
 func (m *memCronRepo) InsertCronTaskRun(_ context.Context, in biz.CronTaskRunInput) error {
