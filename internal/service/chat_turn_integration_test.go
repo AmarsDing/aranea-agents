@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -514,10 +514,10 @@ func TestChatTurnIntegration_SelfHealObserverIntegration(t *testing.T) {
 
 	t.Run("TurnError_ObservedBySelfHeal", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -533,7 +533,7 @@ func TestChatTurnIntegration_SelfHealObserverIntegration(t *testing.T) {
 		})
 
 		// Verify heal record was created
-		result, err := repo.ListHealRecords(ctx, monitor.HealRecordQuery{Limit: 10})
+		result, err := repo.ListHealRecords(ctx, heal.HealRecordQuery{Limit: 10})
 		if err != nil {
 			t.Fatalf("ListHealRecords failed: %v", err)
 		}
@@ -542,9 +542,9 @@ func TestChatTurnIntegration_SelfHealObserverIntegration(t *testing.T) {
 		}
 
 		// Find the observed_failed record
-		var observedRec *monitor.HealRecord
+		var observedRec *heal.HealRecord
 		for i := range result.Items {
-			if result.Items[i].Status == string(monitor.HealStatusObservedFailed) {
+			if result.Items[i].Status == string(heal.HealStatusObservedFailed) {
 				observedRec = &result.Items[i]
 				break
 			}

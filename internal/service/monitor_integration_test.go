@@ -145,8 +145,8 @@ func TestMonitorIntegration_SelfHealLoop_ErrorDetectionAndRCA(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 		// Build a FailureReport for a runtime MCP connection failure
-		report := monitor.NewFailureReport()
-		report.Type = monitor.FailureTypeRuntime
+		report := heal.NewFailureReport()
+		report.Type = heal.FailureTypeRuntime
 		report.Source = "runtime"
 		report.Job = "mcp-server"
 		report.ErrorCode = "CONNECTION_REFUSED"
@@ -208,7 +208,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -250,7 +250,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -290,7 +290,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -328,8 +328,8 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		if observedRec.RuleID != "rc-provider-timeout" {
 			t.Errorf("expected rule rc-provider-timeout, got %q", observedRec.RuleID)
 		}
-		if observedRec.Confidence < monitor.SelfHealMinConfidence {
-			t.Errorf("expected confidence >= %.1f, got %.2f", monitor.SelfHealMinConfidence, observedRec.Confidence)
+		if observedRec.Confidence < selfHealMinConfidenceDefault {
+			t.Errorf("expected confidence >= %.1f, got %.2f", selfHealMinConfidenceDefault, observedRec.Confidence)
 		}
 	})
 
@@ -338,7 +338,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -358,7 +358,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -382,7 +382,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -415,7 +415,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 // and conversion to metadata for root cause analysis.
 func TestMonitorIntegration_FailureReportParsing(t *testing.T) {
 	t.Run("NewFailureReport_HasIDAndMetadata", func(t *testing.T) {
-		report := monitor.NewFailureReport()
+		report := heal.NewFailureReport()
 		if report.ID == "" {
 			t.Error("expected non-empty ID")
 		}
@@ -425,15 +425,15 @@ func TestMonitorIntegration_FailureReportParsing(t *testing.T) {
 	})
 
 	t.Run("FailureReport_Types", func(t *testing.T) {
-		types := []monitor.FailureType{
-			monitor.FailureTypeLint,
-			monitor.FailureTypeTest,
-			monitor.FailureTypeBuild,
-			monitor.FailureTypeProtoSync,
-			monitor.FailureTypeRuntime,
+		types := []heal.FailureType{
+			heal.FailureTypeLint,
+			heal.FailureTypeTest,
+			heal.FailureTypeBuild,
+			heal.FailureTypeProtoSync,
+			heal.FailureTypeRuntime,
 		}
 		for _, ft := range types {
-			report := monitor.NewFailureReport()
+			report := heal.NewFailureReport()
 			report.Type = ft
 			if report.Type != ft {
 				t.Errorf("expected type %q, got %q", ft, report.Type)
@@ -447,18 +447,18 @@ func TestMonitorIntegration_RootCauseEngine_AddRules(t *testing.T) {
 	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 	t.Run("AddCustomRule_Matches", func(t *testing.T) {
-		err := engine.AddRules([]monitor.RootCauseRule{
+		err := engine.AddRules([]heal.RootCauseRule{
 			{
 				ID:   "rc-custom-test",
 				Name: "Custom Test Rule",
-				Condition: monitor.RootCauseCondition{
+				Condition: heal.RootCauseCondition{
 					StepID: "custom*",
 					Phase:  "error",
 				},
 				RootCause:  "Custom step failed",
 				FixSuggest: "Check custom step configuration",
 				Severity:   "low",
-				FixAction: monitor.FixAction{
+				FixAction: heal.FixAction{
 					Type:        "retry",
 					MaxAttempts: 1,
 				},
@@ -481,7 +481,7 @@ func TestMonitorIntegration_RootCauseEngine_AddRules(t *testing.T) {
 	})
 
 	t.Run("AddDuplicateRule_Fails", func(t *testing.T) {
-		err := engine.AddRules([]monitor.RootCauseRule{
+		err := engine.AddRules([]heal.RootCauseRule{
 			{ID: "rc-custom-test", Name: "Duplicate"},
 		})
 		if err == nil {
@@ -490,8 +490,8 @@ func TestMonitorIntegration_RootCauseEngine_AddRules(t *testing.T) {
 	})
 
 	t.Run("AddRuleWithInvalidRegex_Fails", func(t *testing.T) {
-		err := engine.AddRules([]monitor.RootCauseRule{
-			{ID: "rc-bad-regex", Name: "Bad Regex", Condition: monitor.RootCauseCondition{Pattern: "[invalid"}},
+		err := engine.AddRules([]heal.RootCauseRule{
+			{ID: "rc-bad-regex", Name: "Bad Regex", Condition: heal.RootCauseCondition{Pattern: "[invalid"}},
 		})
 		if err == nil {
 			t.Error("expected error for invalid regex, got nil")
@@ -503,22 +503,22 @@ func TestMonitorIntegration_RootCauseEngine_AddRules(t *testing.T) {
 // Stub for FailurePattern integration tests
 // ---------------------------------------------------------------------------
 
-// stubFailurePatternRepo implements monitor.FailurePatternReader and
-// monitor.FailurePatternWriter for integration tests.
+// stubFailurePatternRepo implements heal.FailurePatternReader and
+// heal.FailurePatternWriter for integration tests.
 type stubFailurePatternRepo struct {
 	mu       sync.Mutex
-	patterns map[string]monitor.FailurePattern  // id → pattern
-	byHash   map[string]*monitor.FailurePattern // pattern_hash → pattern
+	patterns map[string]heal.FailurePattern  // id → pattern
+	byHash   map[string]*heal.FailurePattern // pattern_hash → pattern
 }
 
 func newStubFailurePatternRepo() *stubFailurePatternRepo {
 	return &stubFailurePatternRepo{
-		patterns: make(map[string]monitor.FailurePattern),
-		byHash:   make(map[string]*monitor.FailurePattern),
+		patterns: make(map[string]heal.FailurePattern),
+		byHash:   make(map[string]*heal.FailurePattern),
 	}
 }
 
-func (r *stubFailurePatternRepo) Create(_ context.Context, p monitor.FailurePattern) error {
+func (r *stubFailurePatternRepo) Create(_ context.Context, p heal.FailurePattern) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.patterns[p.ID] = p
@@ -526,7 +526,7 @@ func (r *stubFailurePatternRepo) Create(_ context.Context, p monitor.FailurePatt
 	return nil
 }
 
-func (r *stubFailurePatternRepo) Update(_ context.Context, p monitor.FailurePattern) error {
+func (r *stubFailurePatternRepo) Update(_ context.Context, p heal.FailurePattern) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.patterns[p.ID] = p
@@ -573,10 +573,10 @@ func (r *stubFailurePatternRepo) Deactivate(_ context.Context, id string) error 
 	return nil
 }
 
-func (r *stubFailurePatternRepo) ListBySource(_ context.Context, source monitor.FailurePatternSource) ([]monitor.FailurePattern, error) {
+func (r *stubFailurePatternRepo) ListBySource(_ context.Context, source heal.FailurePatternSource) ([]heal.FailurePattern, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var result []monitor.FailurePattern
+	var result []heal.FailurePattern
 	for _, p := range r.patterns {
 		if p.Source == source {
 			result = append(result, p)
@@ -585,7 +585,7 @@ func (r *stubFailurePatternRepo) ListBySource(_ context.Context, source monitor.
 	return result, nil
 }
 
-func (r *stubFailurePatternRepo) GetByPatternHash(_ context.Context, hash string) (*monitor.FailurePattern, error) {
+func (r *stubFailurePatternRepo) GetByPatternHash(_ context.Context, hash string) (*heal.FailurePattern, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p, ok := r.byHash[hash]
@@ -595,10 +595,10 @@ func (r *stubFailurePatternRepo) GetByPatternHash(_ context.Context, hash string
 	return p, nil
 }
 
-func (r *stubFailurePatternRepo) ListActive(_ context.Context) ([]monitor.FailurePattern, error) {
+func (r *stubFailurePatternRepo) ListActive(_ context.Context) ([]heal.FailurePattern, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var result []monitor.FailurePattern
+	var result []heal.FailurePattern
 	for _, p := range r.patterns {
 		if p.IsActive {
 			result = append(result, p)
@@ -618,13 +618,13 @@ func TestMonitorIntegration_FailurePatternCRUD(t *testing.T) {
 	repo := newStubFailurePatternRepo()
 
 	t.Run("CreateAndQueryBySource", func(t *testing.T) {
-		pattern := monitor.FailurePattern{
+		pattern := heal.FailurePattern{
 			ID:           "fp-runtime-001",
-			Source:       monitor.FailurePatternSourceRuntime,
+			Source:       heal.FailurePatternSourceRuntime,
 			Type:         "timeout",
 			PatternHash:  "hash-timeout-001",
 			PatternRegex: `timeout after \d+s`,
-			FixAction: monitor.FixAction{
+			FixAction: heal.FixAction{
 				Type:        "retry",
 				MaxAttempts: 3,
 			},
@@ -640,7 +640,7 @@ func TestMonitorIntegration_FailurePatternCRUD(t *testing.T) {
 			t.Fatalf("Create failed: %v", err)
 		}
 
-		patterns, err := repo.ListBySource(ctx, monitor.FailurePatternSourceRuntime)
+		patterns, err := repo.ListBySource(ctx, heal.FailurePatternSourceRuntime)
 		if err != nil {
 			t.Fatalf("ListBySource failed: %v", err)
 		}
@@ -670,9 +670,9 @@ func TestMonitorIntegration_FailurePatternCRUD(t *testing.T) {
 
 	t.Run("ListActivePatterns", func(t *testing.T) {
 		// Add an inactive pattern
-		repo.Create(ctx, monitor.FailurePattern{
+		repo.Create(ctx, heal.FailurePattern{
 			ID:          "fp-ci-inactive-001",
-			Source:      monitor.FailurePatternSourceCI,
+			Source:      heal.FailurePatternSourceCI,
 			PatternHash: "hash-ci-inactive",
 			IsActive:    false,
 		})
@@ -741,9 +741,9 @@ func TestMonitorIntegration_FailurePatternMining(t *testing.T) {
 		}
 
 		// Convert RootCauseResult to FailurePattern (simulating mining)
-		pattern := monitor.FailurePattern{
+		pattern := heal.FailurePattern{
 			ID:           "fp-mined-" + result.RuleID,
-			Source:       monitor.FailurePatternSourceMined,
+			Source:       heal.FailurePatternSourceMined,
 			Type:         result.FixAction.Type,
 			PatternHash:  result.RuleID + "-v1",
 			PatternRegex: `timeout after \d+s`,
@@ -766,7 +766,7 @@ func TestMonitorIntegration_FailurePatternMining(t *testing.T) {
 		if found == nil {
 			t.Fatal("expected mined pattern to be found")
 		}
-		if found.Source != monitor.FailurePatternSourceMined {
+		if found.Source != heal.FailurePatternSourceMined {
 			t.Errorf("expected source=mined, got %q", found.Source)
 		}
 		if found.FixAction.Type != "retry" {
@@ -787,13 +787,13 @@ func TestMonitorIntegration_SelfHealWithFailurePattern(t *testing.T) {
 		notifier := newStubAlertNotifier()
 
 		// Pre-seed a failure pattern for timeout
-		patternRepo.Create(ctx, monitor.FailurePattern{
+		patternRepo.Create(ctx, heal.FailurePattern{
 			ID:           "fp-timeout-known",
-			Source:       monitor.FailurePatternSourceRuntime,
+			Source:       heal.FailurePatternSourceRuntime,
 			Type:         "timeout",
 			PatternHash:  "rc-provider-timeout-v1",
 			PatternRegex: `timed out after \d+s`,
-			FixAction: monitor.FixAction{
+			FixAction: heal.FixAction{
 				Type:        "retry",
 				MaxAttempts: 2,
 			},
@@ -803,7 +803,7 @@ func TestMonitorIntegration_SelfHealWithFailurePattern(t *testing.T) {
 			IsActive:     true,
 		})
 
-		observer, err := monitor.NewSelfHealObserver(nil, healRepo, engine, notifier, loggateway.NewNoop())
+		observer, err := heal.NewSelfHealObserver(nil, healRepo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}

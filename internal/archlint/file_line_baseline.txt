@@ -145,8 +145,8 @@ internal/service/knowledge_us14_test.go 516
 internal/service/memory.go 1003
 internal/service/memory_decode_test.go 541
 internal/service/model_catalog_test.go 997
-internal/service/monitor.go 600
-internal/service/monitor_integration_test.go 846
+internal/service/monitor.go 547
+internal/service/monitor_integration_test.go 842
 internal/service/monitor_mapping_test.go 565
 internal/service/plan_executor.go 1452
 internal/service/plan_executor_test.go 908

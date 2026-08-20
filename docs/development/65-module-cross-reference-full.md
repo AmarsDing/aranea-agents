@@ -628,6 +628,8 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **数据库** | 通过 biz MonitorUsecase 访问（monitor_events/monitor_traces/monitor_alert_rules） |
 | **前端对应** | MonitorPage（日志 + 告警 + Trace） |
 
+- **SelfHealUsecase 已下线（ADR-4，2026-08-20）**：Phase 1 执行器 `heal.SelfHealUsecase`（含 `DiagnoseAndHeal`/`StartEventDrivenHealing`/`Envelope` 及 `SelfHealMinConfidence` 等包级常量）整体删除；`heal.DiagnoseAndHeal` 自由函数不再带 legacy fallback 与 `RootCauseCondition` 填充（proto 字段保留但不置值）。自愈唯一组件 = `SelfHealObserver`（观测 + 告警），修复执行归 trpc-agent-go runtime；`MonitorService`/`wire` 均已摘除 `selfHeal` 依赖
+
 ---
 
 ### 1.17 学习闭环 (`internal/biz/learning_loop.go` + `internal/service/learning_loop.go` + `internal/data/learning_loop.go`)
