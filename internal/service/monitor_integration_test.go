@@ -10,35 +10,40 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
+
+// selfHealMinConfidenceDefault mirrors the conf.Runtime self-heal default
+// (Runtime.SelfHealConfig() with nil receiver returns MinConfidence 0.7).
+const selfHealMinConfidenceDefault = 0.7
 
 // ---------------------------------------------------------------------------
 // Stubs for Monitor integration tests
 // ---------------------------------------------------------------------------
 
-// stubHealRecordRepo implements monitor.HealRecordRepo for integration tests.
+// stubHealRecordRepo implements heal.HealRecordRepo for integration tests.
 type stubHealRecordRepo struct {
 	mu      sync.Mutex
-	records []monitor.HealRecord
+	records []heal.HealRecord
 }
 
 func newStubHealRecordRepo() *stubHealRecordRepo {
 	return &stubHealRecordRepo{}
 }
 
-func (s *stubHealRecordRepo) InsertHealRecord(_ context.Context, record monitor.HealRecord) error {
+func (s *stubHealRecordRepo) InsertHealRecord(_ context.Context, record heal.HealRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, record)
 	return nil
 }
 
-func (s *stubHealRecordRepo) ListHealRecords(_ context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
+func (s *stubHealRecordRepo) ListHealRecords(_ context.Context, query heal.HealRecordQuery) (heal.HealRecordListResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var filtered []monitor.HealRecord
+	var filtered []heal.HealRecord
 	for _, r := range s.records {
 		if query.RuleID != "" && r.RuleID != query.RuleID {
 			continue
@@ -54,13 +59,13 @@ func (s *stubHealRecordRepo) ListHealRecords(_ context.Context, query monitor.He
 
 	total := len(filtered)
 	if query.Offset >= total {
-		return monitor.HealRecordListResult{Total: total}, nil
+		return heal.HealRecordListResult{Total: total}, nil
 	}
 	end := query.Offset + query.Limit
 	if query.Limit <= 0 || end > total {
 		end = total
 	}
-	return monitor.HealRecordListResult{
+	return heal.HealRecordListResult{
 		Items: filtered[query.Offset:end],
 		Total: total,
 	}, nil
@@ -97,15 +102,6 @@ func (s *stubAlertNotifier) count() int {
 	return len(s.alerts)
 }
 
-// stubEnvelope implements monitor.Envelope for integration tests.
-type stubEnvelope struct {
-	meta map[string]any
-	typ  string
-}
-
-func (e *stubEnvelope) GetMetadata() map[string]any { return e.meta }
-func (e *stubEnvelope) GetType() string             { return e.typ }
-
 // ---------------------------------------------------------------------------
 // Integration Tests: Self-Healing Loop
 // ---------------------------------------------------------------------------
@@ -118,7 +114,7 @@ func TestMonitorIntegration_SelfHealLoop_ErrorDetectionAndRCA(t *testing.T) {
 	_ = loggateway.NewNoop() // ensure loggateway initialized
 
 	t.Run("RootCauseAnalyzer_Analyze_Timeout", func(t *testing.T) {
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 		// Inject an LLM timeout error
 		result, err := engine.Analyze(ctx, "llm-call-1", "error", fmt.Errorf("provider timeout"), map[string]any{
@@ -146,7 +142,7 @@ func TestMonitorIntegration_SelfHealLoop_ErrorDetectionAndRCA(t *testing.T) {
 	})
 
 	t.Run("RootCauseAnalyzer_AnalyzeFromReport", func(t *testing.T) {
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 		// Build a FailureReport for a runtime MCP connection failure
 		report := monitor.NewFailureReport()
@@ -175,7 +171,7 @@ func TestMonitorIntegration_SelfHealLoop_ErrorDetectionAndRCA(t *testing.T) {
 	})
 
 	t.Run("RootCauseAnalyzer_AnalyzeFromReport_NilReport", func(t *testing.T) {
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 		result, err := engine.AnalyzeFromReport(ctx, nil)
 		if err != nil {
@@ -187,7 +183,7 @@ func TestMonitorIntegration_SelfHealLoop_ErrorDetectionAndRCA(t *testing.T) {
 	})
 
 	t.Run("RootCauseAnalyzer_Analyze_NoMatch", func(t *testing.T) {
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 		// Unknown step ID with no matching rule
 		result, err := engine.Analyze(ctx, "unknown-step", "error", fmt.Errorf("some error"), map[string]any{
@@ -209,7 +205,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 
 	t.Run("ObserveFlowLogEvent_RuntimeHealSuccess", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
@@ -230,7 +226,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		})
 
 		// Verify heal record was persisted
-		result, err := repo.ListHealRecords(ctx, monitor.HealRecordQuery{Limit: 10})
+		result, err := repo.ListHealRecords(ctx, heal.HealRecordQuery{Limit: 10})
 		if err != nil {
 			t.Fatalf("ListHealRecords failed: %v", err)
 		}
@@ -238,7 +234,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 			t.Fatalf("expected 1 heal record, got %d", result.Total)
 		}
 		rec := result.Items[0]
-		if rec.Status != string(monitor.HealStatusObservedHealed) {
+		if rec.Status != string(heal.HealStatusObservedHealed) {
 			t.Errorf("expected status observed_healed, got %q", rec.Status)
 		}
 		if rec.StepID != "llm-call-1" {
@@ -251,7 +247,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 
 	t.Run("ObserveFlowLogEvent_RuntimeHealFailed_AlertFired", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
@@ -274,7 +270,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		}
 
 		// Verify heal records were persisted (5 observed_failed + 1 circuit_open alert)
-		result, err := repo.ListHealRecords(ctx, monitor.HealRecordQuery{Limit: 20})
+		result, err := repo.ListHealRecords(ctx, heal.HealRecordQuery{Limit: 20})
 		if err != nil {
 			t.Fatalf("ListHealRecords failed: %v", err)
 		}
@@ -291,7 +287,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 
 	t.Run("ObserveFlowLogEvent_UnhealedError_RootCauseAnalysis", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
@@ -310,7 +306,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		})
 
 		// Verify heal record was persisted with root cause analysis
-		result, err := repo.ListHealRecords(ctx, monitor.HealRecordQuery{Limit: 10})
+		result, err := repo.ListHealRecords(ctx, heal.HealRecordQuery{Limit: 10})
 		if err != nil {
 			t.Fatalf("ListHealRecords failed: %v", err)
 		}
@@ -319,9 +315,9 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		}
 
 		// Find the observed_failed record (not the alert record)
-		var observedRec *monitor.HealRecord
+		var observedRec *heal.HealRecord
 		for i := range result.Items {
-			if result.Items[i].Status == string(monitor.HealStatusObservedFailed) {
+			if result.Items[i].Status == string(heal.HealStatusObservedFailed) {
 				observedRec = &result.Items[i]
 				break
 			}
@@ -339,7 +335,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 
 	t.Run("DiagnoseAndObserve_NoMatchingRule", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
@@ -352,14 +348,14 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("DiagnoseAndObserve failed: %v", err)
 		}
-		if rec.Status != string(monitor.HealStatusSkippedNoAction) {
+		if rec.Status != string(heal.HealStatusSkippedNoAction) {
 			t.Errorf("expected status skipped_no_action, got %q", rec.Status)
 		}
 	})
 
 	t.Run("DiagnoseAndObserve_MatchingRule", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
@@ -383,7 +379,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 
 	t.Run("GetHealStats", func(t *testing.T) {
 		repo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
@@ -448,7 +444,7 @@ func TestMonitorIntegration_FailureReportParsing(t *testing.T) {
 
 // TestMonitorIntegration_RootCauseEngine_AddRules verifies custom rule addition.
 func TestMonitorIntegration_RootCauseEngine_AddRules(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 	t.Run("AddCustomRule_Matches", func(t *testing.T) {
 		err := engine.AddRules([]monitor.RootCauseRule{
@@ -729,7 +725,7 @@ func TestMonitorIntegration_FailurePatternCRUD(t *testing.T) {
 func TestMonitorIntegration_FailurePatternMining(t *testing.T) {
 	ctx := context.Background()
 	repo := newStubFailurePatternRepo()
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 
 	t.Run("RootCauseResult_ToFailurePattern", func(t *testing.T) {
 		// Analyze an error to get a root cause result
@@ -787,7 +783,7 @@ func TestMonitorIntegration_SelfHealWithFailurePattern(t *testing.T) {
 	t.Run("ObserveError_LookupPattern", func(t *testing.T) {
 		patternRepo := newStubFailurePatternRepo()
 		healRepo := newStubHealRecordRepo()
-		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+		engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
 		// Pre-seed a failure pattern for timeout
@@ -823,7 +819,7 @@ func TestMonitorIntegration_SelfHealWithFailurePattern(t *testing.T) {
 		})
 
 		// Verify heal record was created with root cause analysis
-		result, err := healRepo.ListHealRecords(ctx, monitor.HealRecordQuery{Limit: 10})
+		result, err := healRepo.ListHealRecords(ctx, heal.HealRecordQuery{Limit: 10})
 		if err != nil {
 			t.Fatalf("ListHealRecords failed: %v", err)
 		}

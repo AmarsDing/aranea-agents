@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 }
 
 // mockEventTraceRepo implements monitor.EventRepo + monitor.TraceRepo for
-// DiagBundleGenerator / SelfHealUsecase tests. Only the fn fields used by a
+// DiagBundleGenerator tests. Only the fn fields used by a
 // test need to be set; everything else returns nil-safe zero values.
 type mockEventTraceRepo struct {
 	listMonitorEventsFn       func(ctx context.Context, query monitor.EventsQuery) (monitor.ListResult, error)

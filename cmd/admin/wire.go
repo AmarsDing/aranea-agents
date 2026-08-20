@@ -2139,12 +2139,6 @@ func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.Mo
 	return biz.NewDiagBundleGenerator(eventRepo, traceRepo, engine)
 }
 
-func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger) *biz.SelfHealUsecase {
-	// Deprecated: SelfHealUsecase is being replaced by SelfHealObserver.
-	// Provide a nil handler since the runtime now handles healing.
-	return biz.NewSelfHealUsecase(diag, nil, lg)
-}
-
 func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo, engine *heal.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {
 	return heal.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
@@ -4002,7 +3996,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideFlowFileAppender,
 		provideMonitorTraceBackfillWorker,
 		provideDiagBundleGenerator,
-		provideSelfHealUsecase,
 		provideSelfHealObserver,
 		provideSkillIntelligenceUsecase,
 		provideLLMSkillEvolver,

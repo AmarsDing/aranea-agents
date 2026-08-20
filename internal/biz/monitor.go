@@ -42,7 +42,6 @@ type (
 	AlertMetric                 = monitor.AlertMetric
 	DiagBundleGenerator         = heal.DiagBundleGenerator
 	UsecaseOption               = monitor.UsecaseOption
-	SelfHealUsecase             = heal.SelfHealUsecase
 	SelfHealObserver            = heal.SelfHealObserver
 	HealActionHandler           = heal.HealActionHandler
 	HealRecordRepo              = heal.HealRecordRepo
@@ -52,10 +51,6 @@ type (
 	HealStats                   = heal.HealStats
 	FixAction                   = heal.FixAction
 	DiagnoseAndHealResult       = heal.DiagnoseAndHealResult
-	RootCauseConditionResult    = heal.RootCauseConditionResult
-	AutoHealedResult            = heal.AutoHealedResult
-	HealAttemptsResult          = heal.HealAttemptsResult
-	SelfCheckResult             = heal.SelfCheckResult
 )
 
 var (
@@ -74,7 +69,6 @@ var (
 	NewSkillFilesystemMissingMetric = monitor.NewSkillFilesystemMissingMetric
 	NewDiagBundleGenerator          = heal.NewDiagBundleGenerator
 	MergeRunnerCompletionUsagePatch = monitor.MergeRunnerCompletionUsagePatch
-	NewSelfHealUsecase              = heal.NewSelfHealUsecase
 	NewSelfHealObserver             = heal.NewSelfHealObserver
 )
 

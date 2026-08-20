@@ -23,12 +23,13 @@ const observerCleanupInterval = 5 * time.Minute
 // unthrottled, that is one Error log per event for the whole outage.
 const healPersistErrInterval = 10 * time.Second
 
-// SelfHealObserver is the Phase 2 self-healing implementation with circuit breaker.
-// TODO(debt): DEV-06 — After migration, SelfHealObserver will be the sole heal orchestrator.
+// SelfHealObserver is the self-healing implementation with circuit breaker.
 //
 // It observes FlowLog events, tracks auto-heal outcomes,
 // fires alerts for repeated failures, and persists HealRecords.
-// It replaces SelfHealUsecase for the observation role (Phase 2 migration).
+//
+// ADR-4（2026-08-20）：legacy SelfHealUsecase（Phase 1 执行器）已下线，本组件
+// 为唯一自愈组件；真正的修复执行由 trpc-agent-go runtime 承担，本组件只观测与告警。
 type SelfHealObserver struct {
 	repo     HealRecordRepo
 	engine   *RootCauseEngine
@@ -495,8 +496,7 @@ func (o *SelfHealObserver) severityCooldown(severity string) time.Duration {
 }
 
 // DiagnoseAndObserve runs diagnose → root-cause analysis → observe cycle.
-// It replaces SelfHealUsecase.DiagnoseAndHeal for the migration period.
-// Instead of applying fix actions (which the runtime now handles), it observes
+// Instead of applying fix actions (which the runtime handles), it observes
 // the outcome and fires alerts for unhealed errors.
 func (o *SelfHealObserver) DiagnoseAndObserve(ctx context.Context, traceID, sessionID, stepID, triggerType string, contextMinutes int32) (*HealRecord, error) {
 	if o == nil {

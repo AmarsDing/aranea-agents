@@ -489,7 +489,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	codeExecutorService := service.NewCodeExecutorService(factory, loggatewayLogger)
 	rootCauseEngine := heal.NewRootCauseEngine(loggatewayLogger)
 	diagBundleGenerator := provideDiagBundleGenerator(eventRepo, traceRepo, rootCauseEngine)
-	selfHealUsecase := provideSelfHealUsecase(diagBundleGenerator, loggatewayLogger)
 	healRecordRepo := data.NewHealRecordRepo(dataData)
 	selfHealObserver, err := provideSelfHealObserver(runtime, healRecordRepo, rootCauseEngine, alertNotifier, loggatewayLogger)
 	if err != nil {
@@ -513,7 +512,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	selfCheckReportRepo := data.NewSelfCheckReportRepo(dataData)
 	monitorFlowLogWriter := service.ProvideMonitorFlowLogWriter(flowLogWriter)
 	selfCheckScheduler := provideSelfCheckScheduler(v2, v3, selfCheckReportRepo, alertMetricRegistry, loggatewayLogger, monitorFlowLogWriter)
-	monitorService := service.NewMonitorService(monitorUsecase, processLogEnabledProvider, flowLogService, codeExecutorService, diagBundleGenerator, selfHealUsecase, selfHealObserver, selfCheckScheduler, selfCheckReportRepo, loggatewayLogger)
+	monitorService := service.NewMonitorService(monitorUsecase, processLogEnabledProvider, flowLogService, codeExecutorService, diagBundleGenerator, selfHealObserver, selfCheckScheduler, selfCheckReportRepo, loggatewayLogger)
 	l4CascadeUsecase := provideL4CascadeUsecase(dataData, memoryFactIndexSyncer, loggatewayLogger)
 	memoryWorkerStats := biz.NewMemoryWorkerStats()
 	serviceMemoryService := provideMemoryService(persistenceSet, l4CascadeUsecase, systemSettingUsecase, memoryJobDeadLetterRepo, memoryJobQueue, memoryJobQueue, memoryWorkerStats, dataData, loggatewayLogger)
@@ -2689,11 +2688,6 @@ func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCom
 
 func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, engine *heal.RootCauseEngine) *biz.DiagBundleGenerator {
 	return biz.NewDiagBundleGenerator(eventRepo, traceRepo, engine)
-}
-
-func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger) *biz.SelfHealUsecase {
-
-	return biz.NewSelfHealUsecase(diag, nil, lg)
 }
 
 func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo, engine *heal.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {

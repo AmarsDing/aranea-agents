@@ -25,7 +25,6 @@ type MonitorService struct {
 	uc                 *biz.MonitorUsecase
 	processLogEnabled  ProcessLogEnabledProvider
 	diag               *biz.DiagBundleGenerator
-	selfHeal           *biz.SelfHealUsecase
 	selfHealObserver   *biz.SelfHealObserver
 	selfCheckScheduler *monitor.SelfCheckScheduler
 	selfCheckRepo      monitor.SelfCheckReportRepo
@@ -35,8 +34,8 @@ type MonitorService struct {
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, processLogEnabled ProcessLogEnabledProvider, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfHealObserver *biz.SelfHealObserver, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
-	return &MonitorService{uc: uc, processLogEnabled: processLogEnabled, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfHealObserver: selfHealObserver, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
+func NewMonitorService(uc *biz.MonitorUsecase, processLogEnabled ProcessLogEnabledProvider, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHealObserver *biz.SelfHealObserver, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, processLogEnabled: processLogEnabled, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHealObserver: selfHealObserver, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -399,15 +398,15 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 }
 
 func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAndHealRequest) (*v1.DiagnoseAndHealResponse, error) {
-	result, err := heal.DiagnoseAndHeal(ctx, s.selfHealObserver, s.selfHeal,
-		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
+	result, err := heal.DiagnoseAndHeal(ctx, s.selfHealObserver,
+		in.GetTraceId(), in.GetSessionId(), in.GetStepId(),
 		in.GetTriggerType(), in.GetContextMinutes(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &v1.DiagnoseAndHealResponse{
+	return &v1.DiagnoseAndHealResponse{
 		HealId:               result.HealID,
 		RuleId:               result.RuleID,
 		Status:               result.Status,
@@ -419,43 +418,7 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		RuntimeAutoHealed:    result.RuntimeAutoHealed,
 		RuntimeHealAttempts:  int32(result.RuntimeHealAttempts),
 		CreatedAt:            result.CreatedAt,
-	}
-
-	if rc := result.RootCauseCondition; rc != nil {
-		switch {
-		case rc.AutoHealed != nil:
-			resp.RootCauseCondition = &v1.RootCauseCondition{
-				Condition: &v1.RootCauseCondition_AutoHealed{
-					AutoHealed: &v1.AutoHealedCondition{
-						AutoHealed:   rc.AutoHealed.AutoHealed,
-						HealStrategy: rc.AutoHealed.HealStrategy,
-					},
-				},
-			}
-		case rc.HealAttempts != nil:
-			resp.RootCauseCondition = &v1.RootCauseCondition{
-				Condition: &v1.RootCauseCondition_HealAttempts{
-					HealAttempts: &v1.HealAttemptsCondition{
-						Attempts:     int32(rc.HealAttempts.Attempts),
-						MaxAttempts:  int32(rc.HealAttempts.MaxAttempts),
-						LastStrategy: rc.HealAttempts.LastStrategy,
-					},
-				},
-			}
-		case rc.SelfCheck != nil:
-			resp.RootCauseCondition = &v1.RootCauseCondition{
-				Condition: &v1.RootCauseCondition_SelfCheckStatus{
-					SelfCheckStatus: &v1.SelfCheckStatusCondition{
-						CheckName: rc.SelfCheck.CheckName,
-						Status:    rc.SelfCheck.Status,
-						Message:   rc.SelfCheck.Message,
-					},
-				},
-			}
-		}
-	}
-
-	return resp, nil
+	}, nil
 }
 
 func (s *MonitorService) TriggerSelfCheck(ctx context.Context, _ *v1.TriggerSelfCheckRequest) (*v1.TriggerSelfCheckResponse, error) {

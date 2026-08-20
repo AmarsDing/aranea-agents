@@ -7,7 +7,7 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-// DiagnoseAndHealResult is the unified result from either observer or legacy usecase.
+// DiagnoseAndHealResult is the result from the observer diagnose-and-observe path.
 type DiagnoseAndHealResult struct {
 	HealID              string
 	RuleID              string
@@ -18,34 +18,6 @@ type DiagnoseAndHealResult struct {
 	RuntimeAutoHealed   bool
 	RuntimeHealAttempts int
 	CreatedAt           string
-	RootCauseCondition  *RootCauseConditionResult
-}
-
-// RootCauseConditionResult describes the root cause condition for a heal result.
-type RootCauseConditionResult struct {
-	AutoHealed   *AutoHealedResult
-	HealAttempts *HealAttemptsResult
-	SelfCheck    *SelfCheckResult
-}
-
-// AutoHealedResult describes an auto-healed condition.
-type AutoHealedResult struct {
-	AutoHealed   bool
-	HealStrategy string
-}
-
-// HealAttemptsResult describes heal attempts condition.
-type HealAttemptsResult struct {
-	Attempts     int
-	MaxAttempts  int
-	LastStrategy string
-}
-
-// SelfCheckResult describes a self-check condition.
-type SelfCheckResult struct {
-	CheckName string
-	Status    string
-	Message   string
 }
 
 // DiagnoseAndHeal runs the diagnose-and-heal workflow via the observer.
