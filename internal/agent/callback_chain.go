@@ -149,6 +149,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newToolArgsRepairBeforeHook(lg))
 		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
+		// tool-not-found 纠错反馈：错误回执附当前可用工具清单（req.Tools 按
+		// invocation 实际工具面填充），防止模型臆造变体名重试空转。
+		entries = append(entries, newToolNotFoundFeedbackBeforeHook(lg))
 		// 工具循环守卫：同工具+同参数+同结果的连续成功调用判定为无效空转，
 		// 第 3 次起以 CustomResult 纠偏拦截（priority 4，先于熔断器/确认门禁）。
 		loopGuard := newToolLoopGuard(lg)

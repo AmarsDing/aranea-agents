@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"aranea-agents/internal/metrics"
+	"aranea-agents/internal/tools/alias"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -52,6 +53,7 @@ type DeferredToolEntry struct {
 type deferredView struct {
 	catalog       []DeferredToolEntry
 	catalogIndex  map[string]int // name → index into catalog for O(1) lookup
+	baseToRuntime map[string]string // unique BaseName → runtime Name（tool_load 别名解析用）
 	tools         map[string]trpctool.Tool
 	categoryIndex map[string][]string
 	names         map[string]bool // 运行时名集合（ToolFilter 每次调用读取）
@@ -62,6 +64,7 @@ func newView(catalog []DeferredToolEntry) *deferredView {
 	v := &deferredView{
 		catalog:       catalog,
 		catalogIndex:  buildCatalogIndex(catalog),
+		baseToRuntime: buildBaseNameIndex(catalog),
 		tools:         make(map[string]trpctool.Tool),
 		categoryIndex: buildCategoryIndex(catalog),
 		names:         make(map[string]bool, len(catalog)),
@@ -111,6 +114,59 @@ func buildCatalogIndex(catalog []DeferredToolEntry) map[string]int {
 		idx[entry.Name] = i
 	}
 	return idx
+}
+
+// buildBaseNameIndex 构建「唯一基础名 → 运行时名」索引。
+// 仅收录 BaseName != Name 且在目录中唯一的条目——重名基础名（如两个 ToolSet
+// 各有 read_file）无法无歧义解析，不建索引，tool_load 按未找到处理并列出候选。
+func buildBaseNameIndex(catalog []DeferredToolEntry) map[string]string {
+	count := make(map[string]int, len(catalog))
+	for _, entry := range catalog {
+		if entry.BaseName != "" && entry.BaseName != entry.Name {
+			count[entry.BaseName]++
+		}
+	}
+	idx := make(map[string]string, len(count))
+	for _, entry := range catalog {
+		if entry.BaseName != "" && entry.BaseName != entry.Name && count[entry.BaseName] == 1 {
+			idx[entry.BaseName] = entry.Name
+		}
+	}
+	return idx
+}
+
+// resolve 将模型给出的工具名解析为目录运行时名。
+// 依次尝试：目录运行时名精确匹配 → 唯一基础名 → RuntimeToolNameAliases 别名链
+// （如 shell_exec → exec_command → hostexec_exec_command）。解析失败返回 false。
+func (v *deferredView) resolve(name string) (string, bool) {
+	if _, ok := v.catalogIndex[name]; ok {
+		return name, true
+	}
+	if rt, ok := v.baseToRuntime[name]; ok {
+		return rt, true
+	}
+	target, ok := alias.RuntimeToolNameAliases[name]
+	if !ok {
+		return "", false
+	}
+	visited := map[string]bool{name: true}
+	for {
+		if visited[target] {
+			return "", false // 环保护
+		}
+		visited[target] = true
+		if _, ok := v.catalogIndex[target]; ok {
+			return target, true
+		}
+		if rt, ok := v.baseToRuntime[target]; ok {
+			return rt, true
+		}
+		next, ok := alias.RuntimeToolNameAliases[target]
+		if !ok {
+			return "", false
+		}
+		target = next
+	}
 }
 
 func buildCategoryIndex(catalog []DeferredToolEntry) map[string][]string {
@@ -186,6 +242,14 @@ func (m *DeferredToolManager) IsActivated(ctx context.Context, toolName string) 
 func (m *DeferredToolManager) IsInCatalog(toolName string) bool {
 	_, ok := m.view.Load().catalogIndex[toolName]
 	return ok
+}
+
+// ResolveName 将模型给出的工具名解析为目录运行时名。
+// 支持：目录运行时名、唯一基础名（exec_command → hostexec_exec_command）、
+// RuntimeToolNameAliases 别名链（shell_exec → exec_command → hostexec_exec_command）。
+// 返回的第二个值表示是否解析成功。
+func (m *DeferredToolManager) ResolveName(toolName string) (string, bool) {
+	return m.view.Load().resolve(toolName)
 }
 
 // CatalogNames 返回目录中所有工具名称。

@@ -73,6 +73,10 @@ func newPostProcessFixture(reg *rt.RunRegistry) *postProcessFixture {
 }
 
 func (f *postProcessFixture) run() {
+	f.runWithClarifySuspended(false)
+}
+
+func (f *postProcessFixture) runWithClarifySuspended(clarifySuspended bool) {
 	emitter := event.NewTraceEmitter(nil, event.TraceContext{SessionID: "sess-1", RunID: "run-1"}, loggateway.NewNoop())
 	f.orch.postProcessTurn(
 		context.Background(),
@@ -85,6 +89,7 @@ func (f *postProcessFixture) run() {
 		emitter,
 		time.Now(),
 		"ok",
+		clarifySuspended,
 	)
 }
 
@@ -141,6 +146,37 @@ func TestPostProcessTurn_CompletesNormallyWhenNotCancelled(t *testing.T) {
 	}
 	if !sessionCompleted {
 		t.Fatalf("expected session transition to completed, got %+v", f.transitor.calls)
+	}
+	if len(f.publisher.bumps) != 1 {
+		t.Fatalf("expected 1 revision bump, got %+v", f.publisher.bumps)
+	}
+	if f.recorder.sessionTurns != 1 {
+		t.Fatalf("expected 1 RecordSessionTurn call, got %d", f.recorder.sessionTurns)
+	}
+}
+
+// TestPostProcessTurn_SkipsSessionCompletedWhenClarifySuspended P2：后置澄清
+// 已把 session 翻转为 awaiting_confirmation 时，postProcessTurn 不得再落
+// completed（FSM 不允许 awaiting_confirmation→completed）；run 状态 completed、
+// revision bump、用量记账照常（LLM turn 确已完成）。
+func TestPostProcessTurn_SkipsSessionCompletedWhenClarifySuspended(t *testing.T) {
+	f := newPostProcessFixture(rt.NewRunRegistry())
+
+	f.runWithClarifySuspended(true)
+
+	var runCompletedSeen bool
+	for _, c := range f.rs.setCalls {
+		if c.status == "completed" {
+			runCompletedSeen = true
+		}
+	}
+	if !runCompletedSeen {
+		t.Fatalf("expected SetRunStatus(completed), got %+v", f.rs.setCalls)
+	}
+	for _, s := range f.transitor.calls {
+		if s == sessstatus.SessionStatusCompleted {
+			t.Fatalf("clarify-suspended turn must not transition session to completed: %+v", f.transitor.calls)
+		}
 	}
 	if len(f.publisher.bumps) != 1 {
 		t.Fatalf("expected 1 revision bump, got %+v", f.publisher.bumps)

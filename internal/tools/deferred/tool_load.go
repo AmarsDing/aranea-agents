@@ -3,6 +3,7 @@ package deferred
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"aranea-agents/internal/metrics"
 
@@ -85,28 +86,33 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 		}, nil
 	}
 
-	// 检查工具是否在目录中
-	if !t.manager.IsInCatalog(in.ToolName) {
+	// 名称解析：目录运行时名精确匹配 → 唯一基础名 → 别名链（shell_exec →
+	// exec_command → hostexec_exec_command）。模型只知变体名时也能激活正确工具，
+	// 避免「not found → 臆造名重试」空转。
+	canonical, ok := t.manager.ResolveName(in.ToolName)
+	if !ok {
 		// P1-4 漏斗度量（激活段）：未找到目标工具。
 		metrics.DeferredToolActivationTotal.WithLabelValues(in.ToolName, "not_found").Inc()
 		return toolLoadOutput{
 			Success:  false,
 			ToolName: in.ToolName,
-			Error:    fmt.Sprintf("tool %q not found in deferred catalog", in.ToolName),
+			Error: fmt.Sprintf("tool %q not found in deferred catalog. Available deferred tools (%d): %s. "+
+				"Retry tool_load with one of these exact names, or use tool_search to discover tools by capability.",
+				in.ToolName, len(t.manager.CatalogNames()), strings.Join(t.manager.CatalogNames(), ", ")),
 		}, nil
 	}
 
 	// 激活工具（幂等：已激活则直接返回声明）
-	decl, err := t.manager.Activate(ctx, in.ToolName)
+	decl, err := t.manager.Activate(ctx, canonical)
 	if err != nil {
-		metrics.DeferredToolActivationTotal.WithLabelValues(in.ToolName, "failed").Inc()
+		metrics.DeferredToolActivationTotal.WithLabelValues(canonical, "failed").Inc()
 		return toolLoadOutput{
 			Success:  false,
-			ToolName: in.ToolName,
-			Error:    fmt.Sprintf("failed to activate tool %q: %v", in.ToolName, err),
+			ToolName: canonical,
+			Error:    fmt.Sprintf("failed to activate tool %q: %v", canonical, err),
 		}, nil
 	}
-	metrics.DeferredToolActivationTotal.WithLabelValues(in.ToolName, "success").Inc()
+	metrics.DeferredToolActivationTotal.WithLabelValues(canonical, "success").Inc()
 
 	// 触发 LLM 工具快照失效，下一轮请求即能看到新工具
 	toolsnapshot.InvalidateFromContext(ctx)
@@ -117,11 +123,16 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 		desc = decl.Description
 	}
 
+	msg := fmt.Sprintf("Tool %q loaded and activated successfully. You can now call %q directly in subsequent requests.", canonical, canonical)
+	if canonical != in.ToolName {
+		msg = fmt.Sprintf("Tool %q resolved to %q and activated successfully. You must call %q (not %q) in subsequent requests.", in.ToolName, canonical, canonical, in.ToolName)
+	}
+
 	return toolLoadOutput{
 		Success:     true,
-		ToolName:    in.ToolName,
+		ToolName:    canonical,
 		Description: desc,
 		Schema:      decl,
-		Message:     fmt.Sprintf("Tool %q loaded and activated successfully. You can now call %q directly in subsequent requests.", in.ToolName, in.ToolName),
+		Message:     msg,
 	}, nil
 }

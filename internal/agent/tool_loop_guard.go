@@ -13,6 +13,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools/alias"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -96,6 +97,7 @@ const loopGuardMarker = "⚠ 系统拦截（无效重复调用）"
 
 type loopGuardEntry struct {
 	lastSig          string // 上一次调用的签名（tool + 规范化 args 哈希）
+	lastTool         string // 上一次调用的原始工具名（跨名重复时供拦截消息解释）
 	lastResultKey    string // 上一次成功调用的结果哈希
 	lastResultDigest string // 上一次成功调用的结果摘要（供拦截消息回放，防模型「证据丢失感」）
 	sameCount        int    // 连续「签名+结果均相同」的成功调用次数
@@ -157,6 +159,7 @@ type loopGuardVerdict struct {
 	consecutiveCount int
 	emptyStreak      int
 	lastDigest       string
+	lastTool         string // 上一次调用的原始工具名（跨名重复拦截时解释用）
 }
 
 func (e *loopGuardEntry) inflightCount(sig string, now time.Time) int {
@@ -248,6 +251,10 @@ func loopGuardInvocationKey(ctx context.Context) string {
 // 与工具名一起哈希，容忍空白/键序差异造成的伪不同参数。
 // 字符串值再做语义级归一（P2c）：LLM 转写参数时的码点/空白微差异
 // （" poem-a " / 全角 "ｐｏｅｍ－ａ"）不再产生新签名绕过守卫。
+// 工具名先归一到别名家簇定点（P1c）：同一底层能力的名字变体
+// （shell / shell_exec / hostexec_exec_command / exec_command）收敛为同一签名——
+// 17:03 诗歌会话实证模型以三个工具名重发同一条 curl 命令，签名随工具名变化
+// 绕过「签名+结果一致」判定。
 func loopGuardSignature(toolName string, args []byte) string {
 	canonical := strings.TrimSpace(string(args))
 	var payload any
@@ -256,8 +263,55 @@ func loopGuardSignature(toolName string, args []byte) string {
 			canonical = string(b)
 		}
 	}
-	sum := sha1.Sum([]byte(toolName + "\x00" + canonical))
+	sum := sha1.Sum([]byte(loopGuardCanonicalToolName(toolName) + "\x00" + canonical))
 	return hex.EncodeToString(sum[:])
+}
+
+// loopGuardAliasClusterMembers 是 RuntimeToolNameAliases 别名链的源与终点集合
+// （包级预计算）。用于识别「ToolSet 前缀_家簇成员」形态的名字（hostexec_exec_command）。
+var loopGuardAliasClusterMembers = func() map[string]bool {
+	m := make(map[string]bool, len(alias.RuntimeToolNameAliases)*2)
+	for src, dst := range alias.RuntimeToolNameAliases {
+		m[src] = true
+		m[dst] = true
+	}
+	return m
+}()
+
+// loopGuardCanonicalToolName 将同一底层能力的工具名变体归一为家簇定点（2026-08-21 P1c）。
+// 规则：
+//   - 名字在别名链上（shell / shell_exec）→ 链定点（exec_command）；
+//   - ToolSet 前缀形态且后缀是家簇成员（hostexec_exec_command / file_save_file）
+//     → 后缀的链定点（exec_command / save_file）——同一 agent 内同一底层工具
+//     经别名包装后以不同名字暴露，同参数调用属语义重复；
+//   - 其余名字原样返回（不参与跨名去重，避免误伤无关工具）。
+func loopGuardCanonicalToolName(name string) string {
+	if f := loopGuardAliasFixedPoint(name); loopGuardAliasClusterMembers[name] {
+		return f
+	}
+	if i := strings.Index(name, "_"); i > 0 && i < len(name)-1 {
+		suffix := name[i+1:]
+		if loopGuardAliasClusterMembers[suffix] {
+			return loopGuardAliasFixedPoint(suffix)
+		}
+	}
+	return name
+}
+
+// loopGuardAliasFixedPoint 沿 RuntimeToolNameAliases 链走到无出边的定点，带环保护。
+func loopGuardAliasFixedPoint(name string) string {
+	visited := map[string]bool{}
+	for {
+		if visited[name] {
+			return name
+		}
+		visited[name] = true
+		next, ok := alias.RuntimeToolNameAliases[name]
+		if !ok {
+			return name
+		}
+		name = next
+	}
 }
 
 // loopGuardNormalizeArgStrings 递归归一参数中的字符串值（2026-08-21 P2c）。
@@ -408,6 +462,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 		consecutiveCount: e.sameCount,
 		emptyStreak:      e.emptyStreak[toolName],
 		lastDigest:       e.lastResultDigest,
+		lastTool:         e.lastTool,
 		saturated:        e.blockedCount >= loopGuardSaturatedStopThreshold,
 	}
 	if emptyBlocked {
@@ -489,10 +544,14 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 		if digest == "" {
 			digest = "（结果为空）"
 		}
-		msg := fmt.Sprintf("%s：本调用被系统拦截，工具未执行、也非执行失败——%s 此前已成功返回，取证已完成。"+
+		crossName := ""
+		if v.lastTool != "" && v.lastTool != args.ToolName {
+			crossName = fmt.Sprintf("（%s 与 %s 是同一底层工具的不同名字，同参数调用属重复）", args.ToolName, v.lastTool)
+		}
+		msg := fmt.Sprintf("%s：本调用被系统拦截，工具未执行、也非执行失败——%s 此前已成功返回，取证已完成。%s"+
 			"禁止重发本调用，立即按任务指令推进到下一动作（发起下一步指定的工具调用；全部步骤完成则直接输出最终结论）。"+
 			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用；本节点累计被拦 %d 次，满 %d 次将被强制终止）。",
-			loopGuardMarker, args.ToolName, digest, v.consecutiveCount, v.blockedCount, loopGuardSaturatedStopThreshold)
+			loopGuardMarker, args.ToolName, crossName, digest, v.consecutiveCount, v.blockedCount, loopGuardSaturatedStopThreshold)
 		return nil, errors.New(msg)
 	})
 }
@@ -516,6 +575,7 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			// 失败重试归熔断器治理：不累计重复计数，也不触发拦截。
 			// 但调用本身仍进签名窗口——失败不打破轮换循环的模式判定。
 			e.lastSig = sig
+			e.lastTool = args.ToolName
 			e.lastResultKey = ""
 			e.sameCount = 0
 			e.lastFailed = true
@@ -529,6 +589,7 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			e.sameCount = 1
 		}
 		e.lastSig = sig
+		e.lastTool = args.ToolName
 		e.lastResultKey = rk
 		e.lastResultDigest = loopGuardResultDigest(args.Result)
 		e.lastFailed = false

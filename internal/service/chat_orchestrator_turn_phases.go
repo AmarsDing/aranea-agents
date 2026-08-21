@@ -900,6 +900,10 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 // ────────────────────────────────────────────────────────────
 
 // postProcessTurn records metrics, completes status, bumps revision, and fires hooks.
+// clarifySuspended 为 true 表示 P2 后置澄清已把 session 翻转为
+// awaiting_confirmation（running→awaiting_confirmation 合法），此处跳过落
+// completed（FSM 不允许 awaiting_confirmation→completed）；run 状态仍照常
+// 落 completed——LLM turn 确已完成，等待用户是 Session 层语义。
 // Stability:internal
 func (o *ChatOrchestrator) postProcessTurn(
 	ctx context.Context,
@@ -912,6 +916,7 @@ func (o *ChatOrchestrator) postProcessTurn(
 	emitter *event.TraceEmitter,
 	turnStart time.Time,
 	turnStatus string,
+	clarifySuspended bool,
 ) {
 	sessionID := strings.TrimSpace(input.SessionID)
 	runID := admit.runID
@@ -942,7 +947,9 @@ func (o *ChatOrchestrator) postProcessTurn(
 			loggateway.Str("run_id", runID),
 			loggateway.Err(serr))
 	}
-	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
+	if !clarifySuspended {
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
+	}
 	o.bumpSessionRevision(ctx, sessionID)
 	// Synthetic evaluation-case turns must not fire post-turn hooks: the
 	// after_turn auto-eval hook would spawn a new run per case and cascade.

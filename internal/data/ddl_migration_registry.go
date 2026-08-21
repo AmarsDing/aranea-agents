@@ -407,6 +407,17 @@ var ddlMigrations = []ddlMigration{
 	//（同 20261216 twinops 的情形）→ effective keys 查无工具行，工具永不装配。
 	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog UPDATE），重跑安全。
 	{Version: 20261234, Name: "builtin_platform_tools_config_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261235 orchestrations_cancel_reason（2026-08-21 P6 修复）：
+	// cancel_reason 的 ALTER 此前嵌在 EnsureOrchestrationSchema（20260713）中，
+	// 仅在初次建表时执行；存量 PG 库已应用 20260713 后不会重跑 → 列永久缺失，
+	// orchestrator trigger check 持续报 pq: column "cancel_reason" does not exist (42703)。
+	// 幂等 IF NOT EXISTS，重跑安全。
+	{Version: 20261235, Name: "orchestrations_cancel_reason", SQL: "sql/migrations/20261235_orchestrations_cancel_reason.sql"},
+	// 20261236 audit_logs_user_agent（2026-08-21 P6 类审计第二例）：
+	// user_agent 的 ALTER 嵌在 sessionMemoryEnsureMonitorSchemaPatches（20260606）中，
+	// 存量库已应用 20260606 后不会重跑 → 列永久缺失，InsertAuditLog 每次写入必报
+	// pq: column "user_agent" does not exist (42703)。幂等 IF NOT EXISTS，重跑安全。
+	{Version: 20261236, Name: "audit_logs_user_agent", SQL: "sql/migrations/20261236_audit_logs_user_agent.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -467,8 +478,59 @@ func runDDLMigrationsWithDialect(rawDB *sql.DB, entClient *ent.Client, d Dialect
 				return fmt.Errorf("record migration %s: %w", m.Name, err)
 			}
 		}
-		return nil
+		// P6 类问题根治（2026-08-21）：版本化迁移条目是「applied 即跳过」的一次性
+		// 执行，而若干条目（20260601/0606/0616/0617/0702/0710-0713 等）的 Func 只是
+		// 转调幂等 Ensure*Schema 函数。这些函数体在版本发布后被追加 ADD COLUMN 时，
+		// 存量库永不重跑 → 列永久缺失（已实证两例：orchestrations.cancel_reason、
+		// audit_logs.user_agent，分别由 20261235/20261236 显式迁移补救）。
+		// 这里在迁移循环结束后每次启动幂等重跑全部此类 Ensure/补丁函数（均在
+		// advisory lock 内、自带列存在检查或 AlreadyExistsErr 容错），使存量库在
+		// 下一次启动时自动收敛到代码当前确保的列集——今后再向这些函数体追加
+		// ALTER 不再需要补 reseed 迁移。与 EnsureKnowledgeSchema 的启动期 reconcile
+		// 先例（data.go ensurePostgresSchemas）对齐。
+		return reconcileVersionedEnsureSchemas(ctx, rawDB, entClient, d, lg)
 	})
+}
+
+// reconcileVersionedEnsureSchemas 每次启动幂等重跑所有「被版本化迁移条目包装、
+// 且函数体内嵌 ADD COLUMN」的 Ensure/补丁函数。全部满足：nil-safe、幂等
+// （列存在预检或 AlreadyExistsErr 容错）、双方言。失败即报错阻断启动——
+// 与迁移 runner 同等严格，静默发散比失败更危险（EVAL-07 同哲学）。
+func reconcileVersionedEnsureSchemas(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if rawDB != nil {
+		rawEnsures := []struct {
+			name string
+			fn   func() error
+		}{
+			{"orchestration_schema", func() error { return EnsureOrchestrationSchema(ctx, rawDB, d, lg) }},
+			{"eval_schema", func() error { return EnsureEvalSchema(ctx, rawDB, d) }},
+			{"a2a_schema", func() error { return EnsureA2ASchema(ctx, rawDB, d) }},
+			{"task_plan_schema", func() error { return EnsureTaskPlanSchema(ctx, rawDB, lg) }},
+			{"allocation_plan_schema", func() error { return EnsureAllocationPlanSchema(ctx, rawDB, lg) }},
+			{"agent_performance_schema", func() error { return EnsureAgentPerformanceSchema(ctx, rawDB, lg) }},
+			{"compiled_team_schema", func() error { return EnsureCompiledTeamSchema(ctx, rawDB) }},
+			{"channel_inbound_schema", func() error { return EnsureChannelInboundSchema(ctx, rawDB) }},
+			{"channel_turn_job_schema", func() error { return EnsureChannelTurnJobSchema(ctx, rawDB) }},
+			{"channel_runtime_lease_schema", func() error { return EnsureChannelRuntimeLeaseSchema(ctx, rawDB) }},
+		}
+		for _, e := range rawEnsures {
+			if err := e.fn(); err != nil {
+				return fmt.Errorf("reconcile %s: %w", e.name, err)
+			}
+		}
+	}
+	if entClient != nil {
+		if err := sessionMemoryEnsurePatches(ctx, entClient, d); err != nil {
+			return fmt.Errorf("reconcile session_memory_patches: %w", err)
+		}
+		if err := sessionMemoryEnsureMonitorSchemaPatches(ctx, entClient, d); err != nil {
+			return fmt.Errorf("reconcile monitor_schema_patches: %w", err)
+		}
+		if err := EnsureMonitorAlertSchema(ctx, entClient, d); err != nil {
+			return fmt.Errorf("reconcile monitor_alert_schema: %w", err)
+		}
+	}
+	return nil
 }
 
 // ddlMigrationAdvisoryLockKey is a stable int64 key for pg_advisory_lock.

@@ -231,6 +231,72 @@ func TestLoopGuardSemanticDedupCaseSensitive(t *testing.T) {
 	}
 }
 
+// P1c：同一底层能力的工具名变体（hostexec_exec_command / exec_command / shell_exec）
+// 以同参数重发同一命令时收敛为同一签名——17:03 诗歌会话实证模型以三个名字
+// 重发同一条 curl 命令绕过守卫。
+func TestLoopGuardCrossToolNameSemanticDedup(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-crossname")
+	args := `{"command":"curl -s https://hq.sinajs.cn/list=sz300411"}`
+	names := []string{"hostexec_exec_command", "exec_command", "shell_exec"}
+
+	for i, tool := range names {
+		err := runLoopGuardTurn(t, g, ctx, tool, args, "stock data", nil)
+		if i < 2 {
+			if err != nil {
+				t.Fatalf("cross-name call %d (%s) should pass, got blocked: %v", i+1, tool, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("3rd cross-name call (%s) should be blocked", tool)
+		}
+		if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+			t.Fatalf("blocked error should carry loop guard marker, got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "同一底层工具") {
+			t.Fatalf("blocked error should explain cross-name equivalence, got %q", err.Error())
+		}
+	}
+}
+
+// P1c 边界：不同参数（递进式干活）即使换用别名也不拦截。
+func TestLoopGuardCrossToolNameDifferentArgsAllowed(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-crossname-diff")
+
+	calls := []struct{ tool, args string }{
+		{"hostexec_exec_command", `{"command":"curl -s https://a"}`},
+		{"exec_command", `{"command":"curl -s https://b"}`},
+		{"shell_exec", `{"command":"curl -s https://c"}`},
+	}
+	for i, c := range calls {
+		if err := runLoopGuardTurn(t, g, ctx, c.tool, c.args, "ok", nil); err != nil {
+			t.Fatalf("different-args call %d (%s) must NOT be blocked: %v", i+1, c.tool, err)
+		}
+	}
+}
+
+// P1c 单元：工具名归一规则。
+func TestLoopGuardCanonicalToolName(t *testing.T) {
+	cases := map[string]string{
+		"shell":                 "exec_command",
+		"shell_exec":            "exec_command",
+		"exec_command":          "exec_command",
+		"hostexec_exec_command": "exec_command",
+		"write_file":            "save_file",
+		"file_save_file":        "save_file",
+		"gns3_exec":             "gns3_exec",   // 非家簇成员原名返回
+		"working_memory_write":  "working_memory_write", // 后缀非家簇成员原名返回
+		"knowledge_search":      "knowledge_search",
+	}
+	for in, want := range cases {
+		if got := loopGuardCanonicalToolName(in); got != want {
+			t.Errorf("loopGuardCanonicalToolName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestLoopGuardBlockMessageCarriesResultDigest(t *testing.T) {
 	g := newToolLoopGuard(nil)
 	ctx := newTestInvocationContext("inv-loop-7")

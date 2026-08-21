@@ -143,6 +143,9 @@ func newDeliverableStepReader() *deliverableStepReader {
 }
 
 func (m *deliverableStepReader) ListStepsBySessionID(_ context.Context, sessionID string) ([]Step, error) {
+	if m == nil { // typed-nil stub = no step evidence（P7 重构后证据读取前移，需空安全）
+		return nil, nil
+	}
 	return m.stepsBySession[sessionID], nil
 }
 

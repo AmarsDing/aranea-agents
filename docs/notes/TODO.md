@@ -146,3 +146,21 @@
 **方案**：Agent 能力画像（成功率 + 平均耗时 + 擅长任务类型）写入 Agent 元数据，assemble_team 优先选择历史表现好的 Agent。
 - 文件：`internal/agent/profile.go` 能力画像计算
 - 文件：`internal/tools/orchestrator/assemble_team.go` 读取画像排序
+
+---
+
+## P6: orchestrator trigger check — `cancel_reason` 列缺失（2026-08-21 发现）
+
+**问题**：aranea-admin 日志持续告警 `orchestrator: trigger check failed ... pq: column "cancel_reason" does not exist (42703)`，疑为某表缺 `cancel_reason` 列的迁移未注册（ent schema 给存量表加列必须同步 DDL 迁移，参照 2026-08-20 token 审查修复先例）。
+
+**排查方向**：
+- 全局搜 `cancel_reason` 引用点（ent schema / 手写 SQL），确认目标表
+- 按惯例补 `sql/migrations/<版本>_xxx.sql`（`ALTER TABLE ... ADD COLUMN`）+ `ddl_migration_registry.go` 追加条目，版本号受 `TestMigrationVersionsGloballyUnique` 守卫
+
+---
+
+## P7: 质量门禁误判成功成员为失败（P2a 运行时实证，2026-08-21 发现）
+
+**问题**：team_run `0602d792-501e-41ea-a9b9-754e2a41d9dc`（"Create exactly 2 teams" 场景）：成员已产出诗歌并提交结构化交付物（topic `sun-poem`，17 行符合要求），但 step 以 `team step reply/cancelled` 标异常 → 质量门禁以"4 成员异常/任务范围可能未被交付物覆盖"打回 → 整个 team run 判 failed。结果正确但状态错误，与 P2a（tool-not-found 成员自愈后被误判）同源：**成员终态判定与交付物实际产出脱节**。
+
+**方向**（待用户裁定）：质量门禁打回前先核查交付物落库事实（write_deliverables 已有落库日志），成员异常但交付物齐备时不应整体判 failed。

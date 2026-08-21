@@ -563,6 +563,14 @@ func (d *SpiritDelivery) HasRealDeliverable(ctx context.Context, team Team) (boo
 // Read failures count as "no evidence" (conservative): an infra read error
 // must never flip a member to failed — systemic failures are already carried
 // by the team-level status. Returns (false, "") when no failure evidence.
+//
+// P7（2026-08-21 统一修复）：交付事实优先。任一证据源（成员会话 steps ∪
+// 团队会话回扫）确认该成员存在 completed 的 set_deliverable action ⇒
+// 交付物已落库（工具 completed 即 graph 写入成功；契约违规会被工具拒绝 →
+// action failed，不构成事实），其过程性异常（session interrupted、
+// reply/error/action 的 failed|cancelled）一律不作为成员失败证据。
+// 交付物内容是否达标由质量门 J2/J3 独立判定，与成员过程健康解耦。
+// 事实无法确认时保持原有保守语义：interrupted / fatal step 仍判失败。
 func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID string) (bool, string) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -577,16 +585,19 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 		)
 		return false, ""
 	}
-	if sess.Status == string(session.SessionStatusInterrupted) {
-		reason := strings.TrimSpace(sess.StatusReason)
-		if reason == "" {
-			reason = string(session.SessionStatusInterrupted)
-		}
-		return true, "session interrupted: " + reason
+	interrupted := sess.Status == string(session.SessionStatusInterrupted)
+	interruptReason := strings.TrimSpace(sess.StatusReason)
+	if interruptReason == "" {
+		interruptReason = string(session.SessionStatusInterrupted)
 	}
 	if d.stepReader == nil {
+		// 无 step 证据源 → 无法核实交付事实，保持原语义。
+		if interrupted {
+			return true, "session interrupted: " + interruptReason
+		}
 		return false, ""
 	}
+
 	steps, err := d.stepReader.ListStepsBySessionID(ctx, sessionID)
 	if err != nil {
 		d.lg.Warn("成员执行证据：读取成员 steps 失败，按无证据处理",
@@ -594,7 +605,63 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 			loggateway.Str("session_id", sessionID),
 			loggateway.Err(err),
 		)
+		// 读失败 = 事实无法确认：interrupted 仍判失败，其余按无证据。
+		if interrupted {
+			return true, "session interrupted: " + interruptReason
+		}
 		return false, ""
+	}
+
+	// 2026-08-08 修复（stream_error 误报完成）：coordinator 模式下成员的 turn
+	// 级错误 step（kind=error，如 stream_error/context deadline）落在**团队会话**
+	// 而非成员会话（成员会话 0 steps）→ 需回扫父（团队）会话中归属于该成员
+	// （AuthorAgentKey == MemberAgentKey）的 step。可恢复的普通工具错误是
+	// kind=action + ToolErrorCode，不在此列。
+	parentID := strings.TrimSpace(sess.ParentSessionID)
+	memberKey := strings.TrimSpace(sess.MemberAgentKey)
+	backscan := parentID != "" && parentID != sessionID && memberKey != ""
+	var teamSteps []Step
+	if backscan {
+		var terr error
+		teamSteps, terr = d.stepReader.ListStepsBySessionID(ctx, parentID)
+		if terr != nil {
+			// 读失败 = 该证据源不贡献任何内容（事实无法确认 → 保守），
+			// 成员会话自身的 fatal step 证据不受影响，继续走后续扫描。
+			d.lg.Warn("成员执行证据：读取团队会话 steps 失败，团队会话证据按空处理",
+				loggateway.StepID("spirit.member_evidence.team_steps_err"),
+				loggateway.Str("team_session_id", parentID),
+				loggateway.Err(terr),
+			)
+			teamSteps = nil
+		}
+	}
+
+	// P7：交付事实 = 任一证据源中该成员 completed 的 set_deliverable action。
+	delivered := false
+	for _, st := range steps {
+		if st.Kind == StepKindAction && st.Status == StepStatusCompleted && st.ToolName == "set_deliverable" {
+			delivered = true
+			break
+		}
+	}
+	if !delivered {
+		for _, st := range teamSteps {
+			if strings.TrimSpace(st.AuthorAgentKey) != memberKey {
+				continue
+			}
+			if st.Kind == StepKindAction && st.Status == StepStatusCompleted && st.ToolName == "set_deliverable" {
+				delivered = true
+				break
+			}
+		}
+	}
+	if delivered {
+		// 交付事实成立 → 过程性异常不再作为成员失败证据（见函数头注释）。
+		return false, ""
+	}
+
+	if interrupted {
+		return true, "session interrupted: " + interruptReason
 	}
 	for _, st := range steps {
 		if st.Status != StepStatusFailed && st.Status != StepStatusCancelled {
@@ -609,42 +676,22 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 		}
 		return true, fmt.Sprintf("step %s: %s", st.Status, truncateRunes(summary, memberEvidenceSummaryMaxRunes))
 	}
-
-	// 2026-08-08 修复（stream_error 误报完成）：coordinator 模式下成员的 turn
-	// 级错误 step（kind=error，如 stream_error/context deadline）落在**团队会话**
-	// 而非成员会话（成员会话 0 steps），上面按成员会话的扫描永远查不到 → 成员
-	// 失败被吞、误报 completed。这里回扫父（团队）会话中归属于该成员
-	// （AuthorAgentKey == MemberAgentKey）的 error/failed/cancelled step 作为
-	// 失败证据。可恢复的普通工具错误是 kind=action + ToolErrorCode，不在此列。
-	parentID := strings.TrimSpace(sess.ParentSessionID)
-	memberKey := strings.TrimSpace(sess.MemberAgentKey)
-	if parentID != "" && parentID != sessionID && memberKey != "" {
-		teamSteps, terr := d.stepReader.ListStepsBySessionID(ctx, parentID)
-		if terr != nil {
-			d.lg.Warn("成员执行证据：读取团队会话 steps 失败，按无证据处理",
-				loggateway.StepID("spirit.member_evidence.team_steps_err"),
-				loggateway.Str("team_session_id", parentID),
-				loggateway.Err(terr),
-			)
-			return false, ""
+	for _, st := range teamSteps {
+		if strings.TrimSpace(st.AuthorAgentKey) != memberKey {
+			continue
 		}
-		for _, st := range teamSteps {
-			if strings.TrimSpace(st.AuthorAgentKey) != memberKey {
-				continue
-			}
-			fatal := st.Status == StepStatusFailed || st.Status == StepStatusCancelled || st.Kind == StepKindError
-			if !fatal {
-				continue
-			}
-			summary := strings.TrimSpace(st.Content)
-			if summary == "" {
-				summary = strings.TrimSpace(st.ToolErrorCode)
-			}
-			if summary == "" {
-				summary = string(st.Kind)
-			}
-			return true, fmt.Sprintf("team step %s/%s: %s", st.Kind, st.Status, truncateRunes(summary, memberEvidenceSummaryMaxRunes))
+		fatal := st.Status == StepStatusFailed || st.Status == StepStatusCancelled || st.Kind == StepKindError
+		if !fatal {
+			continue
 		}
+		summary := strings.TrimSpace(st.Content)
+		if summary == "" {
+			summary = strings.TrimSpace(st.ToolErrorCode)
+		}
+		if summary == "" {
+			summary = string(st.Kind)
+		}
+		return true, fmt.Sprintf("team step %s/%s: %s", st.Kind, st.Status, truncateRunes(summary, memberEvidenceSummaryMaxRunes))
 	}
 	return false, ""
 }

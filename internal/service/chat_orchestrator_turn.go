@@ -705,8 +705,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	}()
 
+	// ── POST-TURN CLARIFICATION (P2, 2026-08-21) ──
+	// 模型以纯文本阻断性提问收尾但澄清门未命中时，升级为结构化澄清卡片挂起。
+	// 必须先于 postProcessTurn：session FSM 不允许 completed→awaiting_confirmation，
+	// 挂起翻转（running→awaiting_confirmation）要抢在落 completed 之前。
+	clarifySuspended := o.maybeSuspendTurnForClarification(ctx, ag, input, admit.provider, admit.model, persistResult.assistantMsg.ContentMarkdown, emitter)
+
 	// ── POST-PROCESS ──
-	o.postProcessTurn(ctx, sess, ag, input, admit, execResult, persistResult, emitter, turnStart, turnStatus)
+	o.postProcessTurn(ctx, sess, ag, input, admit, execResult, persistResult, emitter, turnStart, turnStatus, clarifySuspended)
 
 	return userMsg, persistResult.assistantMsg, nil
 }

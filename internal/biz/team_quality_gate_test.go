@@ -129,6 +129,170 @@ func TestEvaluateDeliverableQuality_MemberEvidence_Revise(t *testing.T) {
 	}
 }
 
+// P7（2026-08-21 修复）：交付物已提交后的 reply/cancelled 不视为失败证据。
+// 场景：成员先 set_deliverable 成功，后续总结 reply 被 cancelled（doom-loop/
+// 协调器取消等）——任务实际已完成，J4 不应误判为成员失败。
+func TestEvaluateDeliverableQuality_DeliverableSubmitted_ReplyCancelled_Pass(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"report": strings.Repeat("内容充分。", 20),
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	team := seedQualityGateTeam(teams, sessions)
+
+	// 团队会话中：成员先有 set_deliverable completed，后有 reply cancelled。
+	teamSessID := sessions.sessionsByTeam[team.ID].ID
+	memberKey := "agent-m1"
+	steps.stepsBySession[teamSessID] = []Step{
+		{Kind: StepKindAction, Status: StepStatusCompleted, AuthorAgentKey: memberKey, ToolName: "set_deliverable"},
+		{Kind: StepKindReply, Status: StepStatusCancelled, AuthorAgentKey: memberKey, Content: "诗歌创作已完成并提交为结构化交付物"},
+	}
+	// 成员子 session（coordinator 模式下成员会话 0 steps，证据走团队会话回扫）。
+	member := Session{ID: "msess-1", MemberAgentKey: memberKey, ParentSessionID: teamSessID}
+	sessions.sessionsByTeam["member-slot"] = member
+	sessions.children = []Session{member}
+
+	res, err := u.EvaluateDeliverableQuality(context.Background(), team)
+	if err != nil {
+		t.Fatalf("EvaluateDeliverableQuality: %v", err)
+	}
+	if res.Verdict != TeamQualityPass {
+		t.Fatalf("verdict=%q want pass (deliverable submitted, reply cancelled must not flag member failure), hits=%v", res.Verdict, res.RuleHits)
+	}
+}
+
+// P7 对照组：交付物未提交时，reply/cancelled 仍视为失败证据（保持 J4 原有语义）。
+func TestEvaluateDeliverableQuality_NoDeliverable_ReplyCancelled_Revise(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"report": strings.Repeat("内容充分。", 20),
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	team := seedQualityGateTeam(teams, sessions)
+
+	teamSessID := sessions.sessionsByTeam[team.ID].ID
+	memberKey := "agent-m1"
+	// 仅 reply cancelled，无 set_deliverable。
+	steps.stepsBySession[teamSessID] = []Step{
+		{Kind: StepKindReply, Status: StepStatusCancelled, AuthorAgentKey: memberKey, Content: "任务执行中被取消"},
+	}
+	member := Session{ID: "msess-1", MemberAgentKey: memberKey, ParentSessionID: teamSessID}
+	sessions.sessionsByTeam["member-slot"] = member
+	sessions.children = []Session{member}
+
+	res, err := u.EvaluateDeliverableQuality(context.Background(), team)
+	if err != nil {
+		t.Fatalf("EvaluateDeliverableQuality: %v", err)
+	}
+	if res.Verdict != TeamQualityRevise {
+		t.Fatalf("verdict=%q want revise (no deliverable + reply cancelled must still flag member failure)", res.Verdict)
+	}
+	if !strings.Contains(res.Feedback, memberKey) {
+		t.Fatalf("feedback should name the failed member, got %q", res.Feedback)
+	}
+}
+
+// P7 缺口 G3（P2a 自愈场景）：成员先遇 tool-not-found（kind=error step 落在
+// 团队会话），自愈后成功 set_deliverable —— 交付事实成立，过程性 error step
+// 不得再判成员失败。
+func TestEvaluateDeliverableQuality_DeliverableSubmitted_ErrorStep_Pass(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"report": strings.Repeat("内容充分。", 20),
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	team := seedQualityGateTeam(teams, sessions)
+
+	teamSessID := sessions.sessionsByTeam[team.ID].ID
+	memberKey := "agent-m1"
+	steps.stepsBySession[teamSessID] = []Step{
+		{Kind: StepKindError, Status: StepStatusFailed, AuthorAgentKey: memberKey, Content: "tool not found: get_team_deliverable"},
+		{Kind: StepKindAction, Status: StepStatusCompleted, AuthorAgentKey: memberKey, ToolName: "set_deliverable"},
+	}
+	member := Session{ID: "msess-1", MemberAgentKey: memberKey, ParentSessionID: teamSessID}
+	sessions.sessionsByTeam["member-slot"] = member
+	sessions.children = []Session{member}
+
+	res, err := u.EvaluateDeliverableQuality(context.Background(), team)
+	if err != nil {
+		t.Fatalf("EvaluateDeliverableQuality: %v", err)
+	}
+	if res.Verdict != TeamQualityPass {
+		t.Fatalf("verdict=%q want pass (deliverable submitted after self-heal; error step must not flag member), hits=%v", res.Verdict, res.RuleHits)
+	}
+}
+
+// P7 缺口 G2：成员已提交交付物后 session 被中断（超时/清理）——交付事实
+// 成立，interrupted 不得再判成员失败。
+func TestEvaluateDeliverableQuality_DeliverableSubmitted_Interrupted_Pass(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"report": strings.Repeat("内容充分。", 20),
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	team := seedQualityGateTeam(teams, sessions)
+
+	teamSessID := sessions.sessionsByTeam[team.ID].ID
+	memberKey := "agent-m1"
+	steps.stepsBySession[teamSessID] = []Step{
+		{Kind: StepKindAction, Status: StepStatusCompleted, AuthorAgentKey: memberKey, ToolName: "set_deliverable"},
+	}
+	member := Session{
+		ID: "msess-1", MemberAgentKey: memberKey, ParentSessionID: teamSessID,
+		Status: "interrupted", StatusReason: "turn timeout after deliverable submit",
+	}
+	sessions.sessionsByTeam["member-slot"] = member
+	sessions.children = []Session{member}
+
+	res, err := u.EvaluateDeliverableQuality(context.Background(), team)
+	if err != nil {
+		t.Fatalf("EvaluateDeliverableQuality: %v", err)
+	}
+	if res.Verdict != TeamQualityPass {
+		t.Fatalf("verdict=%q want pass (deliverable submitted; later session interrupt must not flag member), hits=%v", res.Verdict, res.RuleHits)
+	}
+}
+
+// P7 缺口 G1（非 coordinator 模式）：成员 steps 落在成员会话自身——
+// set_deliverable completed 之后又有 action failed，交付事实成立，不得误判。
+func TestEvaluateDeliverableQuality_DeliverableInMemberSession_FailedAction_Pass(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"report": strings.Repeat("内容充分。", 20),
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	team := seedQualityGateTeam(teams, sessions)
+
+	teamSessID := sessions.sessionsByTeam[team.ID].ID
+	memberKey := "agent-m1"
+	// 成员会话自带 steps：先提交交付物，后一个无关工具 action 失败。
+	steps.stepsBySession["msess-1"] = []Step{
+		{Kind: StepKindAction, Status: StepStatusCompleted, ToolName: "set_deliverable"},
+		{Kind: StepKindAction, Status: StepStatusFailed, ToolName: "web_search", Content: "rate limited"},
+	}
+	member := Session{ID: "msess-1", MemberAgentKey: memberKey, ParentSessionID: teamSessID}
+	sessions.sessionsByTeam["member-slot"] = member
+	sessions.children = []Session{member}
+
+	res, err := u.EvaluateDeliverableQuality(context.Background(), team)
+	if err != nil {
+		t.Fatalf("EvaluateDeliverableQuality: %v", err)
+	}
+	if res.Verdict != TeamQualityPass {
+		t.Fatalf("verdict=%q want pass (member-session deliverable fact must exempt later failed action), hits=%v", res.Verdict, res.RuleHits)
+	}
+}
+
 func TestEvaluateDeliverableQuality_ReaderError_ReturnsError(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()

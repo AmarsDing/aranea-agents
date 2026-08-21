@@ -3,6 +3,7 @@ package deferred
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -216,6 +217,114 @@ func TestToolLoadTool_EmptyToolName(t *testing.T) {
 	output := result.(toolLoadOutput)
 	if output.Success {
 		t.Error("expected failure for empty tool name")
+	}
+}
+
+// P1b：模型只知基础名（exec_command）时，tool_load 解析到目录运行时名
+// （hostexec_exec_command）并激活，避免「not found → 臆造名重试」空转。
+func TestToolLoadTool_ResolveByBaseName(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "hostexec_exec_command", BaseName: "exec_command", Description: "Execute a command", Category: "runtime"},
+	}
+	tool := NewToolLoadTool(catalog)
+	mgr := tool.Manager()
+	mgr.RegisterTool("hostexec_exec_command", &mockTool{name: "exec_command"})
+
+	ctx := withTestInvocation(context.Background())
+	input := toolLoadInput{ToolName: "exec_command"}
+	args, _ := json.Marshal(input)
+	result, err := tool.Call(ctx, args)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+	output := result.(toolLoadOutput)
+	if !output.Success {
+		t.Fatalf("expected success via base name resolution, got error: %s", output.Error)
+	}
+	if output.ToolName != "hostexec_exec_command" {
+		t.Errorf("expected tool_name=hostexec_exec_command, got %s", output.ToolName)
+	}
+	if output.Schema == nil || output.Schema.Name != "hostexec_exec_command" {
+		t.Fatalf("expected schema name hostexec_exec_command, got %+v", output.Schema)
+	}
+	if !strings.Contains(output.Message, "hostexec_exec_command") {
+		t.Errorf("expected message to state runtime name, got %q", output.Message)
+	}
+	if !mgr.IsActivated(ctx, "hostexec_exec_command") || !mgr.IsActivated(ctx, "exec_command") {
+		t.Error("expected both runtime and base names activated")
+	}
+}
+
+// P1b：legacy 别名链解析（shell_exec → exec_command → hostexec_exec_command）。
+func TestToolLoadTool_ResolveByLegacyAlias(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "hostexec_exec_command", BaseName: "exec_command", Description: "Execute a command", Category: "runtime"},
+	}
+	tool := NewToolLoadTool(catalog)
+	mgr := tool.Manager()
+	mgr.RegisterTool("hostexec_exec_command", &mockTool{name: "exec_command"})
+
+	ctx := withTestInvocation(context.Background())
+	input := toolLoadInput{ToolName: "shell_exec"}
+	args, _ := json.Marshal(input)
+	result, err := tool.Call(ctx, args)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+	output := result.(toolLoadOutput)
+	if !output.Success {
+		t.Fatalf("expected success via legacy alias chain, got error: %s", output.Error)
+	}
+	if output.ToolName != "hostexec_exec_command" {
+		t.Errorf("expected tool_name=hostexec_exec_command, got %s", output.ToolName)
+	}
+	if !mgr.IsActivated(ctx, "hostexec_exec_command") {
+		t.Error("expected hostexec_exec_command activated")
+	}
+}
+
+// P1b：重名基础名无法无歧义解析，不建索引，按未找到处理。
+func TestToolLoadTool_AmbiguousBaseNameNotResolved(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "fsa_read_file", BaseName: "read_file", Description: "Read via A", Category: "filesystem"},
+		{Name: "fsb_read_file", BaseName: "read_file", Description: "Read via B", Category: "filesystem"},
+	}
+	tool := NewToolLoadTool(catalog)
+
+	ctx := withTestInvocation(context.Background())
+	input := toolLoadInput{ToolName: "read_file"}
+	args, _ := json.Marshal(input)
+	result, err := tool.Call(ctx, args)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+	output := result.(toolLoadOutput)
+	if output.Success {
+		t.Error("expected failure for ambiguous base name")
+	}
+}
+
+// P1b：未找到时错误信息列出当前可用目录，引导模型用真实名重试而非臆造。
+func TestToolLoadTool_NotFoundListsAvailable(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "hostexec_exec_command", BaseName: "exec_command", Description: "Execute a command", Category: "runtime"},
+		{Name: "web_fetch", BaseName: "web_fetch", Description: "Fetch web content", Category: "web"},
+	}
+	tool := NewToolLoadTool(catalog)
+
+	ctx := withTestInvocation(context.Background())
+	input := toolLoadInput{ToolName: "run_shell_now"}
+	args, _ := json.Marshal(input)
+	result, err := tool.Call(ctx, args)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+	output := result.(toolLoadOutput)
+	if output.Success {
+		t.Fatal("expected failure for unknown tool")
+	}
+	if !strings.Contains(output.Error, "hostexec_exec_command") || !strings.Contains(output.Error, "web_fetch") {
+		t.Errorf("expected error to list available tools, got %q", output.Error)
 	}
 }
 
