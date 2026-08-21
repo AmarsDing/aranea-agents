@@ -29,7 +29,6 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		Todo:             has("todo_write"),
 		AwaitReply:       has("await_user_reply"),
 		ClaudeCode:       has("claude_code"),
-		WorkspaceExec:    has("workspace_exec"),
 		KnowledgeSearch:  has(biz.ToolKeyKnowledgeSearch),
 		KnowledgeReflect: has(biz.ToolKeyKnowledgeReflect),
 		CallAgent:        has(biz.ToolKeyCallAgent),
@@ -53,7 +52,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch || cfg.WebResearch ||
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
-		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
+		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode ||
 		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
 		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.ReadLints || cfg.DeleteFile || cfg.WorkingMemory || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
 		cfg.ClientBridge || cfg.ComputerUse || cfg.CodingBridge ||

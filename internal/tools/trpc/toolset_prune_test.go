@@ -33,23 +33,6 @@ func TestPruneUnconfiguredToolFlags_googleConfigured(t *testing.T) {
 	}
 }
 
-func TestPruneUnconfiguredToolFlags_workspaceExecForcedOff(t *testing.T) {
-	cfg := &ToolsetConfig{WorkspaceExec: true}
-	skipped := PruneUnconfiguredToolFlags(cfg)
-	if cfg.WorkspaceExec {
-		t.Error("WorkspaceExec should always be pruned (factory returns nil,nil)")
-	}
-	found := false
-	for _, s := range skipped {
-		if s == "workspace_exec" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("workspace_exec should be in skipped list, got %v", skipped)
-	}
-}
-
 func TestPruneUnconfiguredToolFlags_browserMissingConfig(t *testing.T) {
 	cfg := &ToolsetConfig{BrowserEnabled: true}
 	skipped := PruneUnconfiguredToolFlags(cfg)

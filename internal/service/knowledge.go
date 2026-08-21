@@ -209,6 +209,15 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		RootPath:       req.GetRootPath(),
 		VaultBackend:   backend,
 	}
+	// P0-2（2026-08-21）：dim 快照取当前 embedder 实际维度，禁止落入 biz 层
+	// 1536 兜底——运行中建库若快照与 embedder 维度不一致（如 bge-m3=1024），
+	// ingest 会被 data 层 dimension mismatch 全部拒绝，且启动对账
+	// （reconcileEmbeddingDim）只在重启后生效，故障窗口内整库不可写。
+	if model != "" && s.embedderAdmin != nil {
+		if _, _, _, dim, _, _ := s.embedderAdmin.Config(); dim > 0 {
+			in.Dim = dim
+		}
+	}
 	// C-01: stamp caller workspace so collections are tenant-scoped.
 	// System callers create shared collections (empty workspace).
 	if !workspace.IsSystem(ctx) {

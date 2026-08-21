@@ -238,21 +238,8 @@ func Registry() []*ToolRegistration {
 				},
 			},
 			{
-				Name:        "workspace_exec",
-				Description: "Workspace execution tools (exec, write_stdin, kill_session) — NOT YET IMPLEMENTED",
-				Category:    "execution",
-				Tags:        []string{"exec", "workspace", "code"},
-				// NOT YET IMPLEMENTED: the assembly path (BuildToolsets) prunes
-				// this key before it reaches the registry factory.
-				Factory:              placeholderToolFactory,
-				AssembledElsewhere:   true,
-				EnabledByDefault:     false,
-				RiskLevel:            "critical",
-				RequiresConfirmation: true,
-			},
-			{
-				Name:        "openapi",
-				Description: "OpenAPI spec ToolSet (dynamic REST API tools from spec)",
+			Name:        "openapi",
+			Description: "OpenAPI spec ToolSet (dynamic REST API tools from spec)",
 				Category:    "integration",
 				Tags:        []string{"api", "rest", "openapi"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {

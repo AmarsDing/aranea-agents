@@ -110,7 +110,6 @@ package tools
 //	  todo             — Todo management tool (productivity)
 //	  await_user_reply — Mark agent as waiting for user reply (interaction)
 //	  claudecode       — Claude Code ToolSet (coding)
-//	  workspace_exec   — Workspace execution tools (execution, NOT YET IMPLEMENTED)
 //	  openapi          — OpenAPI spec ToolSet (integration)
 //	  agent            — Agent-as-Tool for delegation/composition (composition)
 //	  mcp              — MCP ToolSet: connect to MCP servers (integration)

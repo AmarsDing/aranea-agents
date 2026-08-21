@@ -158,7 +158,7 @@ export function defaultAgentRuntimeConfig() {
       denied_slugs: [] as string[],
       allowed_tags: [] as string[],
     },
-    skill_load_mode: 'turn',
+    skill_load_mode: 'progressive',
     code_executor_type: 'local',
     intent_pass: {
       enabled: false,

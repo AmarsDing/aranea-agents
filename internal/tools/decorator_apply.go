@@ -18,16 +18,16 @@ import (
 // The decorator applies per-call timeout, result budget truncation,
 // argument normalization, and deterministic caching for ConcurrentSafe tools.
 //
-// Limitation (DeferredManager): This function only decorates tools that
-// are present in AssembledToolsets at decoration time. Tools that are
-// lazily loaded by the DeferredManager (internal/tools/deferred) after
-// decoration are NOT wrapped with ToolDecorator. This is acceptable
-// because deferred tools are typically MCP/agent tools whose execution
-// path already has its own timeout/governance via the framework's
-// runner-level controls. If a deferred tool needs decorator-level
-// protection in the future, the DeferredToolManager should be extended
-// to apply decorators when materializing tools, or the decoration should
-// move to the tool retrieval boundary.
+// DeferredManager note (2026-08-21 修正，此前注释误称延迟工具无装饰器):
+// the assembly pipeline runs FinalizeDeferredTools (shard_merge.go) BEFORE
+// ApplyDecorators (tool_assembly.go), so each DeferredToolSet is itself
+// wrapped by decoratedToolSet. tool_load activation only flips the
+// visibility filter — the framework still resolves the callable via
+// Tools(ctx), which returns the ToolDecorator-wrapped DeferredCallableTool.
+// Deferred tools therefore keep decorator protection (timeout / result
+// budget / arg normalization / deterministic cache) after activation.
+// The manager.RegisterTool references collected in FinalizeDeferredTools
+// feed tool_load's schema display only; they are not an execution path.
 func ApplyDecorators(ts *AssembledToolsets, cfg ToolDecoratorConfig) {
 	if ts == nil {
 		return

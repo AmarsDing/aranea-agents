@@ -197,7 +197,7 @@ func TestAssemble_unknownToolIgnored(t *testing.T) {
 
 func TestAssemble_registryToolWithNilFactory(t *testing.T) {
 	out, err := Assemble(context.Background(), AssemblyConfig{
-		EnabledTools: []string{"workspace_exec"},
+		EnabledTools: []string{"read_tool_result"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

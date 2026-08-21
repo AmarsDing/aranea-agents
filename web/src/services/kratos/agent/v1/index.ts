@@ -91,11 +91,11 @@ export type AgentRuntimeSettings = {
   toolResultGateEnabled: boolean | undefined;
   sessionSummaryEnabled: boolean | undefined;
   // skill_load_mode controls how skill content is loaded:
+  // "progressive" - 3-phase progressive loading (default): L0 manifest only in
+  // prompt, L1 body via skill_load tool, L2 refs via skill_select_docs
   // "once"      - load for one model request, then offload
-  // "turn"      - load for the current invocation, offload on next (default)
+  // "turn"      - load for the current invocation, offload on next
   // "session"   - keep loaded across invocations (legacy)
-  // "progressive" - 3-phase progressive loading: L0 manifest only in prompt,
-  // L1 body via skill_load tool, L2 refs via skill_select_docs
   skillLoadMode: string | undefined;
   outputSchemaJson: string | undefined;
   modelSelector: string | undefined;

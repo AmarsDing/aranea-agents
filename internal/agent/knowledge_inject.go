@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -37,17 +38,63 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled, groundedOnly)
+		cue, cited, fresh := resolveKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled, groundedOnly)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryKnowledgeCue, utf8.RuneCountInString(cue))
+		// 引用闭环 notice 仅 fresh 轮发送（与 MemoryInject P2-3 同构）：缓存轮
+		// 复用同一 cue，重复发 notice 会让前端脚注/cited 回采重复计数。
+		if fresh && len(cited) > 0 {
+			// 引用闭环：notice.n 与 cue [n] 同一顺序，前端脚注与 cited 回采共用。
+			knowledgetool.EmitNumberedKnowledgeRecalledNotice(ctx, cited)
+		}
 		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled, groundedOnly bool) string {
+// knowledgeCueTurnCacheStateKey 是 per-turn 知识 cue 缓存在 invocation state
+// 中的键（与 memoryCueTurnCacheStateKey 同构，2026-08-21 全链路审查 B2）。
+// 框架工具循环（llmflow.runOneStep）每轮重进 BeforeModel hook；缓存前每轮
+// 都 ListCollections（DB）并把目录+策略文案重复 append 进请求，既费 DB 又
+// 费 token。首轮构建后缓存，续轮复用重注（cue 保持在上下文内）。
+const knowledgeCueTurnCacheStateKey = "aranea.knowledge_cue.turn_cache"
+
+type knowledgeCueTurnCache struct {
+	query string
+	cue   string
+	cited []biz.KnowledgeChunk
+}
+
+// resolveKnowledgeCue 返回 (cue, cited, fresh)。fresh=true 表示本轮真实构建
+// （结果已写入 per-turn 缓存）；false 表示复用缓存。工具循环续轮
+// （lastUserQuery==""，最新非固定消息是 assistant/tool）直接复用首轮缓存；
+// 无 invocation 上下文时（单测/异常路径）退化为每轮 fresh 构建，保持旧行为。
+func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled, groundedOnly bool) (string, []biz.KnowledgeChunk, bool) {
+	query := lastUserQuery(msgs)
+	if query != "" {
+		// P1-2（2026-08-16）：检索查询与记忆召回同口径清洗（去客套前缀/多句
+		// 切分/120 字预算尾部优先），team 纯词法库（tsvector/trigram）下未清洗
+		// 的整句查询会显著拖低 FTS 命中率。
+		query = cleanRecallQuery(query)
+	}
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
+		cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly)
+		return cue, cited, true
+	}
+	if v, found := inv.GetState(knowledgeCueTurnCacheStateKey); found {
+		if c, ok := v.(*knowledgeCueTurnCache); ok && c != nil && (query == "" || query == c.query) {
+			return c.cue, c.cited, false
+		}
+	}
+	cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly)
+	inv.SetState(knowledgeCueTurnCacheStateKey, &knowledgeCueTurnCache{query: query, cue: cue, cited: cited})
+	return cue, cited, true
+}
+
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, query string, toolsEnabled, groundedOnly bool) (string, []biz.KnowledgeChunk) {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	// C-01 回填：目录枚举按调用方 workspace 过滤（system 见全部）——
@@ -55,27 +102,15 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	collections, _, err := uc.ListCollections(ctx, workspace.ReadableFilterID(ctx), knowledgeCueMaxCollections, 0)
 	if err != nil {
 		lg.Warn("知识库摘要注入失败", loggateway.StepID("agent.knowledge.cue_fail"), loggateway.Err(err))
-		return ""
+		return "", nil
 	}
 
 	filtered := filterCueCollections(collections, scopedIDs)
-	// P1-2（2026-08-16）：检索查询与记忆召回同口径清洗（去客套前缀/多句
-	// 切分/120 字预算尾部优先），team 纯词法库（tsvector/trigram）下未清洗
-	// 的整句查询会显著拖低 FTS 命中率。
-	query := lastUserQuery(msgs)
-	if query != "" {
-		query = cleanRecallQuery(query)
-	}
 	var chunks []biz.KnowledgeChunk
 	if query != "" {
 		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
 	}
-	cue, cited := formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly)
-	if len(cited) > 0 {
-		// 引用闭环：notice.n 与 cue [n] 同一顺序，前端脚注与 cited 回采共用。
-		knowledgetool.EmitNumberedKnowledgeRecalledNotice(ctx, cited)
-	}
-	return cue
+	return formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly)
 }
 
 // cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、

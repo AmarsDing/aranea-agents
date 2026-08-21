@@ -30,11 +30,5 @@ func PruneUnconfiguredToolFlags(cfg *ToolsetConfig) []string {
 		cfg.Message = false
 		skipped = append(skipped, "message")
 	}
-	// workspace_exec factory returns nil,nil (not yet implemented). Force off to avoid
-	// Assemble calling the factory and silently getting no tool back.
-	if cfg.WorkspaceExec {
-		cfg.WorkspaceExec = false
-		skipped = append(skipped, "workspace_exec")
-	}
 	return skipped
 }

@@ -139,7 +139,10 @@ type AgentRuntimeSettings struct {
 	HardTriggerRatio float64
 	// SessionSummaryEnabled enables session summary injection so new sessions can inherit old context.
 	SessionSummaryEnabled bool
-	// SkillLoadMode controls skill loading strategy: "auto" | "manual" | "none".
+	// SkillLoadMode controls skill loading strategy: "progressive" (default,
+	// Aranea composite: framework turn + routed-slug cue + directory hints,
+	// bodies loaded on demand via skill_load) | "turn" | "once" | "session"
+	// (framework modes) | "auto" (legacy alias for framework default).
 	SkillLoadMode string
 	// CodeExecutorType selects the Skill code execution backend: local | docker | e2b | container.
 	CodeExecutorType string

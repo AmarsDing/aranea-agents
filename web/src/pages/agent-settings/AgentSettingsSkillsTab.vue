@@ -43,7 +43,7 @@
             map-options
             :options="skillLoadModeOptions"
             label="skill_load_mode"
-            hint="默认 turn；长上下文 / 多 Skill Agent 建议 progressive"
+            hint="默认 progressive（对齐渐进披露：先 skill_load 再执行）；需 Skill 正文常驻上下文时改 session"
           />
         </div>
 
@@ -324,10 +324,10 @@ const baseExecutorOptions = [
 ];
 
 const skillLoadModeOptions = [
-  { label: 'turn（当前轮次，默认）', value: 'turn' },
+  { label: 'progressive（L0→L1→L2 按需加载，默认）', value: 'progressive' },
+  { label: 'turn（当前轮次）', value: 'turn' },
   { label: 'once（单次请求）', value: 'once' },
   { label: 'session（会话内保持）', value: 'session' },
-  { label: 'progressive（L0→L1→L2 按需加载）', value: 'progressive' },
 ];
 
 const { t } = useI18n();

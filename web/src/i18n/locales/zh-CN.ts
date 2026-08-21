@@ -334,6 +334,7 @@ export default {
     backendUnavailableDev: '后端服务不可用，请确认后端已启动',
     backendUnavailable: '后端服务不可用，请重新登录',
     wsFallbackHttp: 'WebSocket 不可用，正在通过 HTTP 发送…',
+    wsQueueFullDropped: '连接拥塞，消息未能送达，请重新发送',
     toolConfirmUseButtons: '请使用批准或拒绝按钮来确认工具调用',
     enqueueRunEnded: '当前对话已结束，请直接发送新消息',
     enqueueQueueFull: '排队消息已满，请稍后再试',

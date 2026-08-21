@@ -72,8 +72,7 @@ var bizKeyToRegistryName = map[string]string{
 	"await_user_reply": "await_user_reply",
 
 	// coding
-	"claude_code":    "claudecode",
-	"workspace_exec": "workspace_exec",
+	"claude_code": "claudecode",
 
 	// browser
 	"browser": "browser",

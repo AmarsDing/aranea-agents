@@ -156,7 +156,7 @@ func CompositeMemoryCueWithHits(ctx context.Context, composite biz.MemoryComposi
 	if err != nil {
 		hits = nil
 	}
-	merged := mergeCompositeHits(hits, proactiveHits, limit)
+	merged := mergeCompositeHits(hits, proactiveHits, limit, biz.QueryHasNumericIntent(keyword))
 	if len(merged) == 0 {
 		return "", nil
 	}
@@ -210,9 +210,11 @@ func CompositeMemoryCueWithHits(ctx context.Context, composite biz.MemoryComposi
 }
 
 // mergeCompositeHits deduplicates recall and proactive hits by line (case-insensitive)
-// and ranks them by score descending. Proactive hits are appended after recall hits
-// so that explicit keyword recall takes precedence on ties (stable sort).
-func mergeCompositeHits(recallHits, proactiveHits []biz.CompositeRecallHit, limit int) []biz.CompositeRecallHit {
+// and ranks them with the shared tiebreak ordering (biz.CompositeHitTiebreakLess,
+// P0-1): score desc, then numeric/numeric-recency tiebreak within the ε window.
+// Proactive hits are appended after recall hits so that explicit keyword recall
+// takes precedence on full ties (stable sort).
+func mergeCompositeHits(recallHits, proactiveHits []biz.CompositeRecallHit, limit int, numericIntent bool) []biz.CompositeRecallHit {
 	if len(recallHits) == 0 && len(proactiveHits) == 0 {
 		return nil
 	}
@@ -240,8 +242,9 @@ func mergeCompositeHits(recallHits, proactiveHits []biz.CompositeRecallHit, limi
 		seen[key] = true
 		merged = append(merged, h)
 	}
+	less := biz.CompositeHitTiebreakLess(numericIntent)
 	sort.SliceStable(merged, func(i, j int) bool {
-		return merged[i].Score > merged[j].Score
+		return less(merged[i], merged[j])
 	})
 	if limit > 0 && len(merged) > limit {
 		merged = merged[:limit]

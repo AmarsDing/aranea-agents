@@ -82,6 +82,9 @@ func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	defaultInt(&v.EvoPersonaMaxChars, d.EvoPersonaMaxChars)
 	defaultInt(&v.EvoSystemPromptMaxAppends, d.EvoSystemPromptMaxAppends)
 	defaultString(&v.SkillRuntimeJSON, d.SkillRuntimeJSON)
+	// 2026-08-21：空 skill_load_mode 兜底 progressive（对齐 Cursor 硬契约；
+	// 此前空值落框架 turn 且无 routed-slug 提示，等于软合同）。
+	defaultString(&v.SkillLoadMode, d.SkillLoadMode)
 	defaultString(&v.CodeExecutorType, d.CodeExecutorType)
 	defaultString(&v.PlannerConfigJSON, d.PlannerConfigJSON)
 	defaultInt(&v.ToolsRetryMaxAttempts, d.ToolsRetryMaxAttempts)

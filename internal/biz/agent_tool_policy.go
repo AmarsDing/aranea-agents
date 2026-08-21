@@ -24,7 +24,7 @@ var toolGroupsWeb = []string{ToolKeyWebResearch, "web_fetch", "duckduckgo_search
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
 var toolGroupsMedia = []string{"read_image", "read_document", "read_spreadsheet", "create_image", "tts"}
-var toolGroupsRuntime = []string{"shell_exec", "claude_code", "workspace_exec"}
+var toolGroupsRuntime = []string{"shell_exec", "claude_code"}
 var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
 var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"}
@@ -149,7 +149,6 @@ var registryOptInOnlyKeys = map[string]bool{
 	"shell_exec":          true,
 	"send_email":          true,
 	"claude_code":         true,
-	"workspace_exec":      true,
 	"create_image":        true,
 	"tts":                 true,
 	"generate_image":      true,

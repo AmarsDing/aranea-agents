@@ -24,6 +24,79 @@ func TestFormatCompositeRecallLine(t *testing.T) {
 	}
 }
 
+// ── P0-1（2026-08-21）：同实体变体 tiebreak ───────────────────────────────
+
+func TestCompositeHitTiebreakLess(t *testing.T) {
+	t.Parallel()
+	mkL3 := func(line string, score float64, validFrom string, version int) CompositeRecallHit {
+		return CompositeRecallHit{Layer: "L3", Line: line, Score: score, ValidFrom: validFrom, Version: version}
+	}
+
+	t.Run("分差超 ε 严格按分排", func(t *testing.T) {
+		old := mkL3("空调设定为 24℃", 0.50, "2026-08-20T00:00:00Z", 2)
+		newer := mkL3("空调设定为 26℃", 0.40, "2026-08-21T00:00:00Z", 3)
+		less := CompositeHitTiebreakLess(true)
+		if !less(old, newer) {
+			t.Fatal("Δ=0.10 > ε：高分者必须在前，无论新旧")
+		}
+	})
+
+	t.Run("同档数值意图：含数字行优先", func(t *testing.T) {
+		withNum := mkL3("空调设定为 24℃", 0.50, "", 1)
+		noNum := mkL3("空调设有温度告警规则", 0.52, "", 1)
+		less := CompositeHitTiebreakLess(true)
+		if !less(withNum, noNum) {
+			t.Fatal("数值意图下同档含数字行应优先")
+		}
+		// 无数值意图时不做数字优先
+		lessNo := CompositeHitTiebreakLess(false)
+		if lessNo(withNum, noNum) {
+			t.Fatal("无数值意图且同档无新旧差时不应重排")
+		}
+	})
+
+	t.Run("同档双 L3：valid_from 新者优先", func(t *testing.T) {
+		older := mkL3("空调设有 28℃ 告警", 0.50, "2026-08-01T00:00:00Z", 1)
+		newer := mkL3("空调设有温度告警", 0.51, "2026-08-20T00:00:00Z", 2)
+		less := CompositeHitTiebreakLess(false)
+		if !less(newer, older) {
+			t.Fatal("同档变体应最新 valid_from 优先")
+		}
+	})
+
+	t.Run("同档同 valid_from：version 高者优先", func(t *testing.T) {
+		v1 := mkL3("事实 v1", 0.50, "2026-08-20T00:00:00Z", 1)
+		v3 := mkL3("事实 v3", 0.50, "2026-08-20T00:00:00Z", 3)
+		less := CompositeHitTiebreakLess(false)
+		if !less(v3, v1) {
+			t.Fatal("同档同 valid_from 应 version 高者优先")
+		}
+	})
+
+	t.Run("L2 vs L3 同档不做新旧重排", func(t *testing.T) {
+		l2 := CompositeRecallHit{Layer: "L2", Line: "ep", Score: 0.50}
+		l3 := mkL3("fact", 0.50, "2026-08-20T00:00:00Z", 1)
+		less := CompositeHitTiebreakLess(false)
+		if less(l3, l2) || less(l2, l3) {
+			t.Fatal("跨层同档不应触发 L3 专属新旧 tiebreak")
+		}
+	})
+}
+
+func TestQueryHasNumericIntent(t *testing.T) {
+	t.Parallel()
+	for _, q := range []string{"空调现在设定多少度", "服务器价格是多少", "when did we deploy", "how many nodes"} {
+		if !QueryHasNumericIntent(q) {
+			t.Errorf("query %q should be numeric intent", q)
+		}
+	}
+	for _, q := range []string{"空调为什么不能开机", "部署流程讲一下", ""} {
+		if QueryHasNumericIntent(q) {
+			t.Errorf("query %q should not be numeric intent", q)
+		}
+	}
+}
+
 // ── P2-R1: layered composition path ─────────────────────────────────────
 
 type l2RecallerStub struct {

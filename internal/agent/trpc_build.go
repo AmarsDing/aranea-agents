@@ -257,6 +257,14 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			trpcllmagent.WithSkillsLoadedContentInToolResults(true),
 			trpcllmagent.WithSkillToolProfile(skillProfile),
 			trpcllmagent.WithSkillsDirectoryHints(dirHints),
+			// 硬合同（2026-08-21 对齐 Cursor 调用契约）：skill_run/skill_exec
+			// 必须先 skill_load。框架门闩拒绝未加载执行并回灌「requires
+			// skill_load first」，模型一次额外调用即可自愈。安全性：Aranea
+			// 全部 profile 组合下 flags.Load 恒为 true（Full 预设含 Load；
+			// spirit/chat_only 白名单仅 Load），不会触发框架 panic（
+			// requireLoaded && (Run||Exec) && !Load）。该不变式由
+			// skill_run_require_loaded_test.go 钉住。
+			trpcllmagent.WithSkillRunRequireSkillLoaded(true),
 		)
 		if allowed := allowedSkillToolsForAgent(ag); len(allowed) > 0 {
 			opts = append(opts, trpcllmagent.WithAllowedSkillTools(allowed...))
@@ -539,7 +547,14 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 		opts = append(opts, trpcllmagent.WithSessionSummaryInjectionMode(trpcllmagent.SessionSummaryInjectionUser))
 	}
 
-	if s.MemoryEnabled && s.MemoryMaxResults > 0 {
+	// 记忆三路去重（2026-08-21 全链路审查 B1）：框架 preload 默认注入 system
+	// 前缀（PreloadMemoryInjectionSystem），与 Aranea MemoryInject（尾部
+	// user-role cue，L1/L2/L3/L4 + 统一 token 预算，严格超集）及 memory_search
+	// 工具三路重叠——同一 L3 事实最多出现三次，且预载内容随记忆写入变化，
+	// 直接打穿 DeepSeek 前缀缓存。MemoryInject 任一注入层启用时关闭框架
+	// preload；仅在总开关开启但未开任何注入层时保留 preload 作为唯一自动
+	// 记忆面，避免行为回退。
+	if s.MemoryEnabled && s.MemoryMaxResults > 0 && !biz.ResolveMemoryRuntimePolicy(s).AnyInject() {
 		opts = append(opts, trpcllmagent.WithPreloadMemory(s.MemoryMaxResults))
 	}
 

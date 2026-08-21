@@ -341,6 +341,7 @@ export default {
       'Backend service unavailable. Make sure the backend is running',
     backendUnavailable: 'Backend unavailable, please log in again',
     wsFallbackHttp: 'WebSocket unavailable, sending via HTTP…',
+    wsQueueFullDropped: 'Connection congested — message was not delivered, please resend',
     toolConfirmUseButtons: 'Please use the approve or deny buttons to confirm the tool call',
     enqueueRunEnded: 'Current run has ended, please send a new message directly',
     enqueueQueueFull: 'Queue is full, please try again later',

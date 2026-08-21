@@ -1193,6 +1193,18 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 		}
 	}
 
+	// P1-3（2026-08-21）：CJK bigram 重叠分支。中文问句与正文的重叠常落在
+	// 2 字词（夜班/机房/变更），tsvector simple 不分词中文、pg_trgm 需 ≥3 字
+	// 连续重叠——既有两条词法路对此类查询恒空（金标 3/9 失）。按命中 bigram
+	// 数计分，交由 RRF 与既有分支融合。≥2 个 bigram 才启用，单子词交给
+	// substring/针分支，避免单 bigram 噪声。
+	if bigrams := bizknowledge.CJKBigrams(q.Query); len(bigrams) >= 2 {
+		one := q
+		searches = append(searches, func() ([]biz.KnowledgeChunk, error) {
+			return r.searchChunksBigramOverlap(ctx, one, bigrams, extraClauses, extraArgs)
+		})
+	}
+
 	results := make([][]biz.KnowledgeChunk, len(searches))
 	errs := make([]error, len(searches))
 	var wg sync.WaitGroup
@@ -1261,6 +1273,32 @@ ORDER BY score DESC
 LIMIT $%d`, recencyScoreSQL(`word_similarity($1, c.content)`), recencyJoinSQL, extraClauses, 3+len(extraArgs))
 
 	args := []any{q.Query, q.CollectionID}
+	args = append(args, extraArgs...)
+	args = append(args, q.TopK)
+	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer rows.Close()
+	return scanChunks(rows)
+}
+
+// searchChunksBigramOverlap（P1-3）：按命中的 CJK bigram 数计分。
+// 只数 bigram 是否出现于正文（position > 0），不做词频——问句检索里
+// 「命中多少个不同 2 字词」比单字词频更接近语义重叠。
+func (r *knowledgeRepo) searchChunksBigramOverlap(ctx context.Context, q biz.KnowledgeSearchQuery, bigrams []string, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
+	raw := fmt.Sprintf(`
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+       %s AS score
+FROM knowledge_chunks c
+%s
+WHERE c.collection_id = $2
+  AND (SELECT COUNT(*) FROM unnest($1::text[]) bg WHERE position(bg in c.content) > 0) > 0
+  %s
+ORDER BY score DESC
+LIMIT $%d`, recencyScoreSQL(`(SELECT COUNT(*) FROM unnest($1::text[]) bg WHERE position(bg in c.content) > 0)::float4`), recencyJoinSQL, extraClauses, 3+len(extraArgs))
+
+	args := []any{pq.Array(bigrams), q.CollectionID}
 	args = append(args, extraArgs...)
 	args = append(args, q.TopK)
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)

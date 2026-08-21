@@ -457,9 +457,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// 零产出召回直接击穿 ≤2s 停口到首音预算（2026-08-11）。
 	if shouldRunProactiveRecall(input) {
 		eg.Go(func() error {
+			// 2026-08-21 全链路审查 B4：eg.Wait() 以最慢腿收口，recall 实测
+			// 0.3-3.3s 且无界。加 4s 预算兜底异常长尾（embedding/向量库卡顿），
+			// 超时走既有 non-fatal 降级（warn + nil hits），不阻塞首 token。
+			recallCtx, cancel := context.WithTimeout(egCtx, 4*time.Second)
+			defer cancel()
 			proactiveStart := time.Now()
 			o.publishTurnProgress(ctx, sessionID, "recalling", nil)
-			proactiveHits = o.runProactiveRecall(egCtx, sess, ag, content, emitter)
+			proactiveHits = o.runProactiveRecall(recallCtx, sess, ag, content, emitter)
 			o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
 				loggateway.StepID("chat.proactive_recall"),
 				loggateway.Any("elapsed_ms", time.Since(proactiveStart).Milliseconds()),
@@ -495,8 +500,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogSkip("chat.intent.pass", "闲聊/简单轮次跳过意图识别", event.P("reason", "direct_reply_or_simple"))
 	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
+			// 2026-08-21 全链路审查 B4：Intent Pass 实测 0.5-3s 且无界，是
+			// errgroup 最慢腿的常见来源。加 6s 预算兜底模型长尾；超时视同
+			// Intent 失败（non-fatal，artifact=nil，pre-planning 门按无意图
+			// 降级），不允许单轮意图识别无限期阻塞首 token。
+			intentCtx, cancel := context.WithTimeout(egCtx, 6*time.Second)
+			defer cancel()
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
-			intentArtifact = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
+			intentArtifact = o.runIntentPass(intentCtx, ag, sessionID, content, prov, mod, emitter)
 			return nil // Intent Pass failure is non-fatal; it returns empty opts on error
 		})
 	} else if biz.IsA2AProxyAgent(ag) {

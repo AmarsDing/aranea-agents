@@ -42,7 +42,6 @@ func TestToolsetConfigFromEffectiveKeys_allMappings(t *testing.T) {
 		{"todo_write", "Todo", true},
 		{"await_user_reply", "AwaitReply", true},
 		{"claude_code", "ClaudeCode", true},
-		{"workspace_exec", "WorkspaceExec", true},
 		{biz.ToolKeyKanban, "Kanban", true},
 		{biz.ToolKeyWebResearch, "WebResearch", true},
 		{"message", "Message", true},
@@ -96,7 +95,6 @@ func TestToolsetConfigHasAny(t *testing.T) {
 		{"todo", ToolsetConfig{Todo: true}, true},
 		{"await", ToolsetConfig{AwaitReply: true}, true},
 		{"claude", ToolsetConfig{ClaudeCode: true}, true},
-		{"workspace", ToolsetConfig{WorkspaceExec: true}, true},
 		{"knowledge", ToolsetConfig{KnowledgeSearch: true}, true},
 		{"reflect", ToolsetConfig{KnowledgeReflect: true}, true},
 		{"callagent", ToolsetConfig{CallAgent: true}, true},
@@ -161,8 +159,6 @@ func fieldByName(cfg ToolsetConfig, name string) bool {
 		return cfg.AwaitReply
 	case "ClaudeCode":
 		return cfg.ClaudeCode
-	case "WorkspaceExec":
-		return cfg.WorkspaceExec
 	case "KnowledgeSearch":
 		return cfg.KnowledgeSearch
 	case "CallAgent":

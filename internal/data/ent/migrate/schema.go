@@ -271,7 +271,7 @@ var (
 		{Name: "soft_trigger_ratio", Type: field.TypeFloat64, Default: 0.7},
 		{Name: "hard_trigger_ratio", Type: field.TypeFloat64, Default: 0.9},
 		{Name: "session_summary_enabled", Type: field.TypeBool, Default: true},
-		{Name: "skill_load_mode", Type: field.TypeString, Default: "auto"},
+		{Name: "skill_load_mode", Type: field.TypeString, Default: "progressive"},
 		{Name: "code_executor_type", Type: field.TypeString, Default: "local"},
 		{Name: "max_llm_calls", Type: field.TypeInt, Default: 0},
 		{Name: "max_tool_iterations", Type: field.TypeInt, Default: 0},

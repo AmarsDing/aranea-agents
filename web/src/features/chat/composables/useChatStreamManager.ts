@@ -49,6 +49,24 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     }
   }
 
+  /**
+   * F1（2026-08-21 全链路审查）：业务消息因发送队列满被 transport 丢弃时
+   * 的通知接线。此前全链路无人传 onDrop，user_message 会静默丢失——用户
+   * 看到消息已发出但后端从未收到。现在至少明示用户重发，并在下次连接后
+   * 触发 REST 水合以对齐时间线。
+   */
+  function handleUpstreamDrop(sessionId: string) {
+    return (upstream: WsUpstream) => {
+      if (upstream.type === 'user_message') {
+        $q.notify({
+          type: 'warning',
+          message: t('chat.wsQueueFullDropped', '连接拥塞，消息未能送达，请重新发送'),
+        });
+      }
+      needsHydrateAfterReconnect.set(sessionId, true);
+    };
+  }
+
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStreamSessionId === sessionId) {
       // Only sync wsConnected→true when the stream reports connected;
@@ -97,6 +115,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         router.push({ name: 'login' });
       },
       onV2Event: deps.onV2Event,
+      onDrop: handleUpstreamDrop(sessionId),
     });
 
     chatStream.connect();
@@ -147,6 +166,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         needsHydrateAfterReconnect.set(sessionId, true);
       },
       onV2Event: deps.onV2Event,
+      onDrop: handleUpstreamDrop(sessionId),
     });
 
     teamStream.connect();

@@ -21,6 +21,12 @@ type Deps struct {
 	// (e.g. plan_and_execute, cancel_orchestration) that are NOT in the Registry.
 	// The Runtime Cue uses this to produce accurate tool availability hints.
 	CustomToolKeys []string
+	// CachedEffectiveTools 携带 BUILD 期预取的 effective-tools 结果
+	// （2026-08-21 全链路审查 B3）。DynamicRuntimeCapabilityCue 在工具循环
+	// 每轮 BeforeModel 都会执行；无缓存时 GetEffectiveTools 每轮 ≈4 次 DB
+	// 查询（agent + settings + SearchTools(all) + overrides）。非空时优先
+	// 复用，跳过 DB。
+	CachedEffectiveTools *biz.AgentEffectiveTools
 }
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
@@ -197,7 +203,18 @@ func StaticRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) strin
 	if uc == nil && d.Agents != nil && d.ToolRegistry != nil {
 		uc = biz.NewAgentUsecase(biz.AgentUsecaseDeps{Reader: d.Agents, Writer: d.Agents, Settings: d.Agents, Files: d.Agents, Position: d.Agents, Tx: d.Agents, Tools: d.ToolRegistry})
 	}
-	if uc != nil {
+	// B3：BUILD 期缓存优先——static hook 每轮 BeforeModel 都先算 cue 再查重，
+	// 无缓存时 GetEffectiveTools 每轮 ≈4 次 DB 查询纯属浪费。
+	if d.CachedEffectiveTools != nil {
+		eff := *d.CachedEffectiveTools
+		if !eff.ToolsEnabled {
+			if level >= cueLevelCompact {
+				b.WriteString("- Tools: disabled for this agent.\n")
+			}
+		} else {
+			fmt.Fprintf(&b, "- Tools: enabled; profile=%q\n", eff.Profile)
+		}
+	} else if uc != nil {
 		eff, err := uc.GetEffectiveTools(ctx, ag.ID)
 		if err == nil {
 			if !eff.ToolsEnabled {
@@ -241,11 +258,22 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	if uc == nil && d.Agents != nil && d.ToolRegistry != nil {
 		uc = biz.NewAgentUsecase(biz.AgentUsecaseDeps{Reader: d.Agents, Writer: d.Agents, Settings: d.Agents, Files: d.Agents, Position: d.Agents, Tx: d.Agents, Tools: d.ToolRegistry})
 	}
-	if uc == nil {
-		return ""
+	var eff biz.AgentEffectiveTools
+	if d.CachedEffectiveTools != nil {
+		// B3：BUILD 期已预取（chat/team/graph 三条路径均填充），工具循环
+		// 每轮复用，避免每轮 BeforeModel ≈4 次 DB 查询。
+		eff = *d.CachedEffectiveTools
+	} else {
+		if uc == nil {
+			return ""
+		}
+		var err error
+		eff, err = uc.GetEffectiveTools(ctx, ag.ID)
+		if err != nil || !eff.ToolsEnabled {
+			return ""
+		}
 	}
-	eff, err := uc.GetEffectiveTools(ctx, ag.ID)
-	if err != nil || !eff.ToolsEnabled {
+	if !eff.ToolsEnabled {
 		return ""
 	}
 	files := ag.Files

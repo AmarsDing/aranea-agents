@@ -100,7 +100,7 @@ export function buildRuntimeSettingsPayload(
     guardrail_min_data_points: config.evolution_guardrails.min_data_points,
     guardrail_rollback_on_decline_percent: config.evolution_guardrails.rollback_on_decline_percent,
     skill_runtime_json: stringifySkillRuntimeJSON(config.skillRuntime),
-    skill_load_mode: config.skill_load_mode || 'turn',
+    skill_load_mode: config.skill_load_mode || 'progressive',
     code_executor_type: config.code_executor_type || 'local',
     intent_pass_enabled: config.intent_pass.enabled,
     channel_id: advanced.channel_id,

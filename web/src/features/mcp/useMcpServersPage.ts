@@ -51,7 +51,7 @@ export function useMcpServersPage() {
   );
   const usageSummaryText = computed(() => {
     if (usageEnabledAgents.value == null || usageTotalAgents.value == null) return '';
-    return `${usageEnabledAgents.value} / ${usageTotalAgents.value} 个 Agent 已启用 MCP 工具集`;
+    return `${usageEnabledAgents.value} / ${usageTotalAgents.value} 个 Agent 已启用 MCP 能力（broker 或直连）`;
   });
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
   const pagedRows = computed(() => rows.value);

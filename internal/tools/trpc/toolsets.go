@@ -51,7 +51,6 @@ type ToolsetConfig struct {
 	ClaudeCode        bool
 	ClaudeCodeDir     string
 	OpenAPISpecs      []OpenAPISpecConfig
-	WorkspaceExec     bool
 	AgentTools        []AgentToolConfig
 	MCPServers        []MCPServerConfig
 	MCPBroker         *MCPBrokerConfig
@@ -153,9 +152,6 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.ClaudeCode {
 		enabled = append(enabled, "claudecode")
-	}
-	if cfg.WorkspaceExec {
-		enabled = append(enabled, "workspace_exec")
 	}
 	if len(cfg.AgentTools) > 0 {
 		enabled = append(enabled, "agent")

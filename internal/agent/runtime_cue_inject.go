@@ -30,6 +30,8 @@ func newStaticRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks
 			SessionMemoryAvailable: deps.HasMemory,
 			LG:                     deps.Logger(),
 			CustomToolKeys:         customKeys,
+			// B3：static hook 每轮同样先算 cue 再查重，复用缓存避免 DB。
+			CachedEffectiveTools: deps.CachedEffectiveTools,
 		}
 		cue := StaticRuntimeCapabilityCue(ctx, promptDeps, ag)
 		if cue == "" {
@@ -67,6 +69,8 @@ func newDynamicRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callback
 			SessionMemoryAvailable: deps.HasMemory,
 			LG:                     deps.Logger(),
 			CustomToolKeys:         customKeys,
+			// B3：复用 BUILD 期预取的 effective tools，工具循环每轮省 ≈4 次 DB。
+			CachedEffectiveTools: deps.CachedEffectiveTools,
 		}
 		cue := DynamicRuntimeCapabilityCue(ctx, promptDeps, ag)
 		if cue == "" {

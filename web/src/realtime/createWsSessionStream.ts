@@ -9,7 +9,7 @@
  *   - createChatStream / createTeamStream (chat send path)
  */
 import { ref, shallowRef, type Ref } from 'vue';
-import { createWsTransport, type MonitorBackpressurePayload, type WsTransport } from './ws-transport';
+import { createWsTransport, type MonitorBackpressurePayload, type WsTransport, type WsUpstream } from './ws-transport';
 import type { MonitorEvent } from './monitorEvent';
 import type { V2WsEnvelope } from '../features/chat/v2Types';
 import {
@@ -40,6 +40,12 @@ export type WsSessionStreamOptions = {
   onMonitorEvent?: (event: MonitorEvent) => void;
   onBackpressure?: (payload: MonitorBackpressurePayload) => void;
   onV2Event?: (envelope: V2WsEnvelope) => void;
+  /**
+   * 业务消息（user_message/cancel 等）因发送队列满被拒绝入队时触发。
+   * 调用方应提示用户并重试（2026-08-21 全链路审查 F1：此前全链路无人
+   * 接线，user_message 会被静默丢弃）。
+   */
+  onDrop?: (upstream: WsUpstream) => void;
 };
 
 export type WsSessionStream = {
@@ -137,6 +143,7 @@ export function createWsSessionStream(opts: WsSessionStreamOptions): WsSessionSt
       onServerShutdown: (reason) => {
         opts.onServerShutdown?.(reason);
       },
+      onDrop: opts.onDrop ? (upstream) => opts.onDrop!(upstream) : undefined,
     });
 
     transport.value = t;

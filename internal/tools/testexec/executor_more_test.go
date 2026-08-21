@@ -297,7 +297,6 @@ func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 		{name: "call_agent", key: "call_agent", merged: nil, wantOK: false},
 		{name: "mcp_tool_set", key: "mcp_tool_set", merged: nil, wantOK: false},
 		{name: "mcp_broker", key: "mcp_broker", merged: nil, wantOK: false},
-		{name: "workspace_exec", key: "workspace_exec", merged: nil, wantOK: false},
 		{name: "unknown key", key: "nonexistent_tool", merged: nil, wantOK: false},
 		{name: "web_fetch", key: "web_fetch", merged: nil, wantOK: true, wantTool: "httpfetch"},
 		{name: "duckduckgo_search", key: "duckduckgo_search", merged: nil, wantOK: true, wantTool: "duckduckgo"},

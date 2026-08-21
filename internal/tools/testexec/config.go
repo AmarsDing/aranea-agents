@@ -92,8 +92,6 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 			cfg.ClaudeCode.Dir = v
 		}
 		return cfg, true, nil
-	case "workspace_exec":
-		return tools.AssemblyConfig{}, false, nil
 	case "read_document":
 		return tools.AssemblyConfig{EnabledTools: []string{"read_document"}}, true, nil
 	case "read_spreadsheet":

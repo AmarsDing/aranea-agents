@@ -16,6 +16,7 @@ export type {
 
 import { createV2EventStream } from '../../realtime/useV2EventStream';
 import type { WsSessionStream } from '../../realtime/createWsSessionStream';
+import type { WsUpstream } from '../../realtime/ws-transport';
 import type { V2WsEnvelope } from './v2Types';
 
 export type ChatStreamFactoryOpts = {
@@ -25,6 +26,8 @@ export type ChatStreamFactoryOpts = {
   onServerShutdown?: (reason: string) => void;
   /** v2 chat events: called when a v2_event WS envelope arrives. */
   onV2Event?: (envelope: V2WsEnvelope) => void;
+  /** 业务消息发送队列满被丢弃时触发（F1：此前未接线，user_message 静默丢失）。 */
+  onDrop?: (upstream: WsUpstream) => void;
 };
 
 /** Chat session WS stream; use imperatively via {@link createChatStream}. */
@@ -38,6 +41,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onV2Event: streamOpts?.onV2Event ?? (() => undefined),
+    onDrop: streamOpts?.onDrop,
   });
 }
 
@@ -48,6 +52,7 @@ export function createTeamStream(
     onDisconnected?: () => void;
     onServerShutdown?: (reason: string) => void;
     onV2Event?: (envelope: V2WsEnvelope) => void;
+    onDrop?: (upstream: WsUpstream) => void;
   },
 ): WsSessionStream {
   return createV2EventStream({
@@ -58,6 +63,7 @@ export function createTeamStream(
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onV2Event: streamOpts?.onV2Event ?? (() => undefined),
+    onDrop: streamOpts?.onDrop,
   });
 }
 

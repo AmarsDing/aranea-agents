@@ -40,7 +40,7 @@
       <template #avatar>
         <q-icon name="warning_amber" color="warning" />
       </template>
-      当前没有任何 Agent 启用 <code>mcp_tool_set</code>，已配置的「已启用」服务器不会被挂载到运行时。请到「Agent 管理 → 工具设置」为需要的 Agent 开启 MCP 工具集。
+      当前没有任何 Agent 启用 <code>mcp_broker</code> 或 <code>mcp_tool_set</code>，已配置的「已启用」服务器不会被挂载到运行时。请到「Agent 管理 → 工具设置」为需要的 Agent 开启 MCP 能力（默认推荐 <code>mcp_broker</code>）。
     </q-banner>
 
     <q-banner
@@ -52,7 +52,7 @@
       <template #avatar>
         <q-icon name="hub" color="primary" />
       </template>
-      MCP 工具需在各 Agent 的「工具设置」中启用 <code>mcp_tool_set</code> 后才会挂载到运行时；启用后所有「已启用」的服务器都会生效。服务器健康仅代表连通性，不代表已被 Agent 使用。
+      MCP 能力在各 Agent 的「工具设置」中开启：<code>mcp_broker</code>（推荐默认）仅向模型暴露「发现 + 调用」元工具，远程工具 schema 按需获取，不占上下文预算；<code>mcp_tool_set</code> 会把所有已启用服务器的工具全量挂进 tools block，仅适合工具面很小的场景。服务器健康仅代表连通性，不代表已被 Agent 使用。
       <template #action>
         <q-btn flat dense round icon="close" aria-label="关闭提示" @click="dismissMcpGuide" />
       </template>

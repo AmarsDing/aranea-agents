@@ -3,9 +3,12 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -41,6 +44,10 @@ type CompositeRecallHit struct {
 	SourceSession string
 	Confidence    float64
 	Version       int
+	// ValidFrom（2026-08-21 P0-1）：L3 事实的 valid_from（RFC3339，可空）。
+	// 同实体变体 tiebreak 的「最新优先」信号——活跃事实 valid_to 恒 NULL，
+	// 变体间的新旧只能由 valid_from/version 区分。L2 episode 为空。
+	ValidFrom string
 }
 
 // SessionCompositeRecallStore loads fused L2+L3 candidates (implemented by data memory_shim adapters).
@@ -199,6 +206,89 @@ func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q C
 // merged L2+L3 rerank. 0.7 = 70% relevance weight + 30% diversity penalty.
 const compositeMMRLambda = 0.7
 
+// compositeVariantTiebreakEpsilon（2026-08-21 P0-1，up-03 根修）：同实体变体的
+// 「分数接近」窗口。校准分差 ≤ ε 视为同档进入数值/最新 tiebreak；超过 ε 严格
+// 按分排序。注意 ε 窗口比较器不具备传递性（a≈b、b≈c 但 a≉c），对 ≤20 条的
+// 小候选集是可接受的启发式，不要把它当作全序。
+const compositeVariantTiebreakEpsilon = 0.05
+
+// numericIntentRe 命中「问数值/问时间」意图。update 类问题（"空调现在设多少度"）
+// 的正确答案几乎总含数值或时间，而告警/规则类同实体变体常不含——同档候选里
+// 含数字的陈述优先。
+var numericIntentRe = regexp.MustCompile(`多少|几(个|位|岁|点|号|月|年)|多大|多久|多长|温度|湿度|价格|价钱|多少钱|单价|报价|成本|费用|数量|次数|频率|年龄|身高|体重|尺寸|浓度|电压|电流|功率|转速|时速|日期|时间|(?i)how\s+(much|many|old)|price|temperature|humidity|size|age|cost|voltage|current|power|speed|when`)
+
+// QueryHasNumericIntent reports whether the query asks for a numeric/time value.
+func QueryHasNumericIntent(query string) bool {
+	return numericIntentRe.MatchString(query)
+}
+
+func lineHasDigit(s string) bool {
+	for _, r := range s {
+		if unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// compareValidFrom 比较两条事实的 valid_from：都能解析按时间比；都不能解析
+// 退字符串序（RFC3339 定宽时字典序即时间序）；一空一非空时非空者优先（有
+// 时态信息的事实比缺失的更可信为「新」）。返回 +1/0/-1。
+func compareValidFrom(a, b string) int {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		switch {
+		case a == b:
+			return 0
+		case a == "":
+			return -1
+		default:
+			return 1
+		}
+	}
+	ta, ea := time.Parse(time.RFC3339, a)
+	tb, eb := time.Parse(time.RFC3339, b)
+	if ea == nil && eb == nil {
+		switch {
+		case ta.After(tb):
+			return 1
+		case ta.Before(tb):
+			return -1
+		default:
+			return 0
+		}
+	}
+	return strings.Compare(a, b)
+}
+
+// CompositeHitTiebreakLess 是融合召回的统一排序器（P0-1）：校准分降序为主；
+// 同档（Δ≤ε）时 ① 数值意图下含数字行优先 ② 双 L3 时 valid_from 新者优先
+// （再退 version 高者优先）。biz 融合排序与 agent 打包前 mergeCompositeHits
+// 共用，保证「候选 rank-1 即注入 rank-1」不被二次重排破坏。
+func CompositeHitTiebreakLess(numericIntent bool) func(a, b CompositeRecallHit) bool {
+	return func(a, b CompositeRecallHit) bool {
+		if d := a.Score - b.Score; math.Abs(d) > compositeVariantTiebreakEpsilon {
+			return d > 0
+		}
+		if numericIntent {
+			ad, bd := lineHasDigit(a.Line), lineHasDigit(b.Line)
+			if ad != bd {
+				return ad
+			}
+		}
+		if a.Layer == "L3" && b.Layer == "L3" {
+			if c := compareValidFrom(a.ValidFrom, b.ValidFrom); c != 0 {
+				return c > 0
+			}
+			if a.Version != b.Version {
+				return a.Version > b.Version
+			}
+		}
+		return false
+	}
+}
+
 // recallCompositeLayered composes the fused L2/L3 recall usecases (P2-R1).
 // Both layers arrive with calibrated score breakdowns annotated into the raw
 // JSON ("scores" key); the merged set is ranked by scores.total, MMR-reranked
@@ -305,7 +395,9 @@ func (uc *MemoryCompositeRecallUsecase) recallCompositeLayered(ctx context.Conte
 			loggateway.Any("hits", len(all)))
 	}
 
-	sort.Slice(all, func(i, j int) bool { return all[i].Score > all[j].Score })
+	// P0-1（2026-08-21）：同档变体按数值意图/最新优先 tiebreak，不再纯按分排。
+	less := CompositeHitTiebreakLess(QueryHasNumericIntent(query))
+	sort.Slice(all, func(i, j int) bool { return less(all[i], all[j]) })
 
 	// MMR diversity rerank (same policy as the legacy data-adapter path).
 	if len(all) > 1 {
@@ -357,6 +449,7 @@ func compositeHitFromFactJSON(raw []byte) CompositeRecallHit {
 	stmt, _ := row["statement"].(string)
 	factID, _ := row["id"].(string)
 	srcSess, _ := row["source_session_id"].(string)
+	validFrom, _ := row["valid_from"].(string)
 	var confidence float64
 	if v, ok := row["confidence"].(float64); ok {
 		confidence = v
@@ -373,6 +466,7 @@ func compositeHitFromFactJSON(raw []byte) CompositeRecallHit {
 		SourceSession: srcSess,
 		Confidence:    confidence,
 		Version:       version,
+		ValidFrom:     validFrom,
 	}
 }
 

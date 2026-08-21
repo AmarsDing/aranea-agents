@@ -418,6 +418,10 @@ var ddlMigrations = []ddlMigration{
 	// 存量库已应用 20260606 后不会重跑 → 列永久缺失，InsertAuditLog 每次写入必报
 	// pq: column "user_agent" does not exist (42703)。幂等 IF NOT EXISTS，重跑安全。
 	{Version: 20261236, Name: "audit_logs_user_agent", SQL: "sql/migrations/20261236_audit_logs_user_agent.sql"},
+	// 20261237 remove_workspace_exec_tool（2026-08-21 工具契约评审 S5）：workspace_exec
+	// 运行时装配路径从未实现（registry 占位 + prune 强关），目录行「撒谎」。种子已删；
+	// 存量库由版本化迁移 20260610 写入的行永不自动消失，需显式 DELETE。幂等，重跑安全。
+	{Version: 20261237, Name: "remove_workspace_exec_tool", SQL: "sql/migrations/20261237_remove_workspace_exec_tool.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

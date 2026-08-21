@@ -113,6 +113,28 @@ func TestKnowledgeService_CreateCollection_TeamBackend(t *testing.T) {
 	})
 }
 
+// P0-2（2026-08-21）：语义库 dim 快照必须取当前 embedder 实际维度——
+// bge-m3（1024）部署下运行中建库若落入 biz 层 1536 兜底，ingest 会被 data 层
+// dimension mismatch 全部拒绝，且启动对账只在重启后生效。
+func TestKnowledgeService_CreateCollection_DimFromEmbedder(t *testing.T) {
+	repo := newUS14MemRepo()
+	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
+	emb := &us14EmbedderAdmin{model: "bge-m3", dim: 1024}
+	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, nil)
+
+	c, err := svc.CreateCollection(context.Background(), &v1.CreateCollectionRequest{
+		Name:           "语义库",
+		VaultBackend:   "team",
+		EmbeddingModel: "bge-m3",
+	})
+	if err != nil {
+		t.Fatalf("CreateCollection: %v", err)
+	}
+	if c.GetDim() != 1024 {
+		t.Fatalf("dim = %d, want 1024 (from embedder, not 1536 fallback)", c.GetDim())
+	}
+}
+
 type stubVaultSync struct {
 	started int
 }

@@ -124,7 +124,11 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         5,
 
 		// --- Skills ---
-		SkillRuntimeJSON:  "{}",
+		SkillRuntimeJSON: "{}",
+		// 2026-08-21 对齐 Cursor 渐进披露：空值不再落框架 turn，默认
+		// progressive（routed slug 紧凑提示 + skill_load 按需取正文）。
+		// 存量行显式存储的值（如 "turn"）不受影响——defaultString 只兜底空值。
+		SkillLoadMode:     SkillLoadModeProgressive,
 		IntentPassEnabled: true,
 		CodeExecutorType:  "local",
 

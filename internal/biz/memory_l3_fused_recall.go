@@ -16,6 +16,13 @@ const (
 	// When Decay→0+ (fully forgotten), Total retains 70% of its value.
 	decayFuseBase   = 0.7
 	decayFuseWeight = 0.3
+
+	// adaptiveMinScoreTop1Ratio（2026-08-21 P1-2a）：自适应 minScore 的 top1
+	// 比例。查询驱动召回的有效阈值 = max(静态 minScore, top1×ratio)——top1
+	// 很强时（如 0.9）把 0.35~0.54 的弱相关尾部长尾截掉，减少注入噪声；
+	// top1 本身偏弱时退回静态下限，不把本就不多的候选进一步砍光。
+	// 仅查询路径生效（minScoreQuery）；被动召回（空查询）保持静态行为。
+	adaptiveMinScoreTop1Ratio = 0.6
 )
 
 // RecallScoreBreakdown is the component-wise recall ranking for one hit.
@@ -205,10 +212,18 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 		return merged[i].Scores.Total > merged[j].Scores.Total
 	})
 
+	// P1-2a（2026-08-21）自适应阈值：仅查询路径；top1 强时抬高有效 minScore。
+	effMinScore := minScore
+	if query != "" && len(merged) > 0 && merged[0].Scores.Total > 0 {
+		if a := merged[0].Scores.Total * adaptiveMinScoreTop1Ratio; a > effMinScore {
+			effMinScore = a
+		}
+	}
+
 	seen := make(map[string]struct{})
 	out := make([][]byte, 0, lim)
 	for _, hit := range merged {
-		if minScore > 0 && hit.Scores.Total < minScore {
+		if effMinScore > 0 && hit.Scores.Total < effMinScore {
 			continue
 		}
 		key := strings.TrimSpace(hit.ID)

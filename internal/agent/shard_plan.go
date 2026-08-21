@@ -134,7 +134,6 @@ type coreShardFP struct {
 	// （一旦接线，值变化自动反映进指纹）。
 	OpenAPISpecs       []tooltrpc.OpenAPISpecConfig
 	NumAgentTools      int
-	WorkspaceExec      bool
 	CallAgent          bool
 	Kanban             bool
 	HasKanbanBridge    bool
@@ -393,7 +392,6 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 			ClaudeCodeDir:      coreCfg.ClaudeCodeDir,
 			OpenAPISpecs:       coreCfg.OpenAPISpecs,
 			NumAgentTools:      len(coreCfg.AgentTools),
-			WorkspaceExec:      coreCfg.WorkspaceExec,
 			CallAgent:          coreCfg.CallAgent,
 			Kanban:             coreCfg.Kanban,
 			HasKanbanBridge:    coreCfg.KanbanBridge != nil,
@@ -661,7 +659,7 @@ func buildShardViaToolsets(cfg tooltrpc.ToolsetConfig, lg loggateway.Logger) fun
 func coreShardActive(cfg tooltrpc.ToolsetConfig) bool {
 	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch || cfg.WebResearch ||
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
-		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
+		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode ||
 		cfg.CallAgent || cfg.Kanban ||
 		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
 		cfg.ClientBridge || cfg.ComputerUse || cfg.CodingBridge ||

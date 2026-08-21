@@ -23,7 +23,7 @@ func IsRetryableTool(name string) bool {
 		return false
 	}
 	switch ExclusiveMutexKey(name) {
-	case "hostexec", "workspace_exec":
+	case "hostexec":
 		return false
 	}
 	return ClassifyTool(name) == SafetyConcurrentSafe

@@ -147,7 +147,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Float("soft_trigger_ratio").Default(0.70),
 		field.Float("hard_trigger_ratio").Default(0.90),
 		field.Bool("session_summary_enabled").Default(true),
-		field.String("skill_load_mode").Default("auto"),
+		field.String("skill_load_mode").Default("progressive"),
 		field.String("code_executor_type").Default("local"),
 		// MaxLLMCalls limits LLM calls per turn (0 = unlimited); maps to llmagent.WithMaxLLMCalls.
 		field.Int("max_llm_calls").Default(0),

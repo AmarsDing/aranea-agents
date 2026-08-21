@@ -213,7 +213,7 @@ func TestMergeCompositeHits_Deduplication(t *testing.T) {
 		{Layer: "L3", Line: "prefers go", Score: 0.9}, // case-insensitive duplicate
 		{Layer: "L3", Line: "Lives in London", Score: 0.7},
 	}
-	merged := mergeCompositeHits(recallHits, proactiveHits, 10)
+	merged := mergeCompositeHits(recallHits, proactiveHits, 10, false)
 	if len(merged) != 3 {
 		t.Fatalf("expected 3 deduplicated hits, got %d: %+v", len(merged), merged)
 	}
@@ -234,7 +234,7 @@ func TestMergeCompositeHits_Limit(t *testing.T) {
 		{Layer: "L3", Line: "C", Score: 0.9},
 		{Layer: "L3", Line: "D", Score: 0.7},
 	}
-	merged := mergeCompositeHits(recallHits, proactiveHits, 2)
+	merged := mergeCompositeHits(recallHits, proactiveHits, 2, false)
 	if len(merged) != 2 {
 		t.Fatalf("expected 2 hits after limit, got %d: %+v", len(merged), merged)
 	}

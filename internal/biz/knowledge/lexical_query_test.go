@@ -11,6 +11,53 @@ import (
 
 const lexicalGoldDir = "../../../docs/testing/agent-eval-20260818/03-knowledge-rag"
 
+// P1-3（2026-08-21）：CJK bigram 抽取——2 字中文词是问句与正文的核心重叠信号。
+func TestCJKBigrams(t *testing.T) {
+	t.Parallel()
+
+	t.Run("问句提取 2 字词信号", func(t *testing.T) {
+		got := CJKBigrams("夜班需要几个人同时值守？")
+		for _, want := range []string{"夜班", "时值", "值守"} {
+			if !containsString(got, want) {
+				t.Errorf("bigrams %v missing %q", got, want)
+			}
+		}
+		// 「需要」是 filler，清洗后不应残留其 bigram
+		if containsString(got, "需要") {
+			t.Errorf("filler bigram 需要 leaked: %v", got)
+		}
+	})
+
+	t.Run("分隔符切 run 不跨词界", func(t *testing.T) {
+		got := CJKBigrams("生产环境发布变更前必须做什么？")
+		for _, want := range []string{"生产", "变更"} {
+			if !containsString(got, want) {
+				t.Errorf("bigrams %v missing %q", got, want)
+			}
+		}
+		// 「前」是 splitter：不得产生跨 run 的「更前」
+		if containsString(got, "更前") {
+			t.Errorf("splitter boundary crossed: %v", got)
+		}
+	})
+
+	t.Run("stopNeedle bigram 被剔除", func(t *testing.T) {
+		got := CJKBigrams("机房里可以只留一个人吗？")
+		if containsString(got, "可以") {
+			t.Errorf("stopNeedle bigram 可以 leaked: %v", got)
+		}
+		if !containsString(got, "机房") {
+			t.Errorf("bigrams %v missing 机房", got)
+		}
+	})
+
+	t.Run("纯英文查询无 bigram", func(t *testing.T) {
+		if got := CJKBigrams("secondary oncall"); len(got) != 0 {
+			t.Errorf("english query bigrams = %v, want empty", got)
+		}
+	})
+}
+
 func TestLexicalSearchQueries_ShortKeywordUnchanged(t *testing.T) {
 	for _, q := range []string{"斑马线", "TACACS+", "SW-Core-01", "INS-YYYYMMDD-NN", "DUTY-YYYYMMDD-NN"} {
 		got := LexicalSearchQueries(q)

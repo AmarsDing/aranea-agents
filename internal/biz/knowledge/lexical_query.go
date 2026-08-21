@@ -262,6 +262,54 @@ func addCJKNeedles(run string, add func(string)) {
 	}
 }
 
+// CJKBigrams extracts consecutive 2-rune bigrams from CJK runs of the
+// compacted query (P1-3, 2026-08-21). Motivation: 中文问句与正文的核心重叠
+// 常落在 2 字词（夜班/机房/变更/回滚），而 pg_trgm 需 ≥3 字连续重叠、
+// tsvector simple 不分词中文——两条既有词法路对此类查询恒空。bigram 重叠
+// 计数把 2 字词信号带回融合。stopNeedles 中的 bigram（可以/这个…）被剔除。
+func CJKBigrams(raw string) []string {
+	compact := CompactLexicalQuery(raw)
+	if compact == "" {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	var run []rune
+	flush := func() {
+		if len(run) >= 2 {
+			for i := 0; i+2 <= len(run); i++ {
+				bg := string(run[i : i+2])
+				if _, dup := seen[bg]; dup {
+					continue
+				}
+				if _, stop := lexicalStopNeedles[bg]; stop {
+					continue
+				}
+				seen[bg] = struct{}{}
+				out = append(out, bg)
+			}
+		}
+		run = run[:0]
+	}
+	for _, r := range compact {
+		if unicode.Is(unicode.Han, r) {
+			if _, split := lexicalSplitters[r]; split {
+				flush()
+				continue
+			}
+			run = append(run, r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	const maxBigrams = 24
+	if len(out) > maxBigrams {
+		out = out[:maxBigrams]
+	}
+	return out
+}
+
 func sortNeedlesLongestFirst(needles []string) {
 	sort.SliceStable(needles, func(i, j int) bool {
 		li := utf8.RuneCountInString(needles[i])
