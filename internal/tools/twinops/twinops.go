@@ -845,7 +845,121 @@ func normalizePort(p string) (string, error) {
 	return "", fmt.Errorf("port 仅支持 eth0/eth1/eth2/eth3（SW1 演练端口），收到 %q", p)
 }
 
-// NewToolset returns all 17 twinops tools.
+// ---------- 配置自动化工具（Phase B，3 个） ----------
+//
+// 统一经 TwinMonitor 13-aiops MCP 安全层执行（POST /api/v1/monitor/aiops/mcp/call）：
+// 风险分级/审批门禁/调用审计由 MCP 侧兜底。push/rollback 为 destructive，
+// MCP grant_policy=approval 时响应 pending=true + approvalId（审批批准后异步执行，
+// 结果查 call-history trace_id=approval-{id}），本层原样透传给 LLM。
+//
+// 编排耗时较长（前置备份 SSH 抓取 → 会话式下发 → 再备份 → diff），
+// 单工具超时放宽至 300s（与 aiops 侧 opstool client 超时对齐）。
+
+// configToolTimeout 配置自动化三工具专用超时（备份抓取 + 逐行下发 + 再备份）。
+const configToolTimeout = 300 * time.Second
+
+// mcpCall 调 13-aiops MCP 工具执行端点（经 gateway 代签）。
+func (c Config) mcpCall(ctx context.Context, toolName string, params map[string]any) (jsonResult, error) {
+	return c.gatewayPost(ctx, "/api/v1/monitor/aiops/mcp/call", map[string]any{
+		"toolName":   toolName,
+		"params":     params,
+		"callerType": "agent",
+	})
+}
+
+// configToolConfig 返回放宽超时的 Config 副本（仅配置自动化三工具使用）。
+func configToolConfig(cfg Config) Config {
+	cfg.Timeout = configToolTimeout
+	return cfg
+}
+
+type configDiffInput struct {
+	AssetID    int `json:"asset_id" jsonschema:"required,description=目标设备/资产 ID（twin_device_search 返回的 device_id）"`
+	BackupID   int `json:"backup_id,omitempty" jsonschema:"description=模式A：基准备份版本 ID（与 against_id 比对；against_id 空=同设备上一版本）"`
+	AgainstID  int `json:"against_id,omitempty" jsonschema:"description=模式A：比对目标备份版本 ID（空=同设备上一版本）"`
+	TemplateID int `json:"template_id,omitempty" jsonschema:"description=模式B：配置模板 ID（即时抓取设备当前配置与模板渲染结果比对）"`
+}
+
+func newConfigDiffTool(cfg Config) trpctool.CallableTool {
+	cfg = configToolConfig(cfg)
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in configDiffInput) (jsonResult, error) {
+		if in.AssetID <= 0 {
+			return jsonResult{}, fmt.Errorf("asset_id 必填")
+		}
+		if in.BackupID <= 0 && in.TemplateID <= 0 {
+			return jsonResult{}, fmt.Errorf("backup_id（备份版本比对）与 template_id（当前配置 vs 模板）至少其一")
+		}
+		params := map[string]any{"asset_id": in.AssetID}
+		if in.BackupID > 0 {
+			params["backup_id"] = in.BackupID
+			if in.AgainstID > 0 {
+				params["against_id"] = in.AgainstID
+			}
+		} else {
+			params["template_id"] = in.TemplateID
+		}
+		return cfg.mcpCall(ctx, "network.config_diff", params)
+	},
+		trpcfunction.WithName("twin_config_diff"),
+		trpcfunction.WithDescription("配置比对（只读）：模式A 两备份版本比对（传 backup_id）；模式B 设备当前配置与模板渲染结果比对（传 template_id，即时触发一次备份抓取留痕）。返回 unified diff 与增删行数。"),
+	)
+}
+
+type configPushInput struct {
+	AssetID        int      `json:"asset_id" jsonschema:"required,description=目标设备/资产 ID"`
+	Commands       []string `json:"commands" jsonschema:"required,description=配置命令列表（逐行下发，含进入/退出配置模式命令，如 conf t ... end）"`
+	VerifyCommands []string `json:"verify_commands,omitempty" jsonschema:"description=可选下发后验证命令（show 类只读命令，逐条独立会话执行）"`
+	BackupFirst    *bool    `json:"backup_first,omitempty" jsonschema:"description=是否下发前自动备份（默认 true；关闭则设备故障时无回滚基点，需审批人权衡）"`
+}
+
+func newConfigPushTool(cfg Config) trpctool.CallableTool {
+	cfg = configToolConfig(cfg)
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in configPushInput) (jsonResult, error) {
+		if in.AssetID <= 0 {
+			return jsonResult{}, fmt.Errorf("asset_id 必填")
+		}
+		if len(in.Commands) == 0 {
+			return jsonResult{}, fmt.Errorf("commands 必填且非空")
+		}
+		params := map[string]any{"asset_id": in.AssetID, "commands": in.Commands}
+		if len(in.VerifyCommands) > 0 {
+			params["verify_commands"] = in.VerifyCommands
+		}
+		if in.BackupFirst != nil {
+			params["backup_first"] = *in.BackupFirst
+		}
+		return cfg.mcpCall(ctx, "network.config_push", params)
+	},
+		trpcfunction.WithName("twin_config_push"),
+		trpcfunction.WithDescription("【高危·必须审批】配置下发：前置备份 → 单次 SSH 会话逐行下发 → 可选验证命令 → 再备份 → 前后版本 diff 取证。任一环失败返回 stage 标识与 rollback_hint。响应 pending=true 表示已转人工审批，批准后异步执行。"),
+	)
+}
+
+type configRollbackInput struct {
+	AssetID  int `json:"asset_id" jsonschema:"required,description=目标设备/资产 ID"`
+	BackupID int `json:"backup_id" jsonschema:"required,description=回滚目标备份版本 ID（须属于本设备；twin_config_diff 模式A 可发现历史版本）"`
+}
+
+func newConfigRollbackTool(cfg Config) trpctool.CallableTool {
+	cfg = configToolConfig(cfg)
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in configRollbackInput) (jsonResult, error) {
+		if in.AssetID <= 0 {
+			return jsonResult{}, fmt.Errorf("asset_id 必填")
+		}
+		if in.BackupID <= 0 {
+			return jsonResult{}, fmt.Errorf("backup_id 必填")
+		}
+		return cfg.mcpCall(ctx, "network.config_rollback", map[string]any{
+			"asset_id":  in.AssetID,
+			"backup_id": in.BackupID,
+		})
+	},
+		trpcfunction.WithName("twin_config_rollback"),
+		trpcfunction.WithDescription("【高危·必须审批】配置回滚：回滚前即时备份留痕 → 目标版本原文逐行下发 → 再备份 → sha256 校验回滚到位。一期面向仿真/测试设备；生产整份回滚仍应走人工变更窗口。响应 pending=true 表示已转人工审批。"),
+	)
+}
+
+// NewToolset returns all 20 twinops tools.
 func NewToolset(cfg Config) []trpctool.Tool {
 	registerCompensationPairs() // P0-1：补偿对声明（见 compensation.go）
 	return []trpctool.Tool{
@@ -866,6 +980,9 @@ func NewToolset(cfg Config) []trpctool.Tool {
 		newCollectorStatusTool(cfg),
 		newLineProbeTool(cfg),
 		newInspectionQueryTool(cfg),
+		newConfigDiffTool(cfg),
+		newConfigPushTool(cfg),
+		newConfigRollbackTool(cfg),
 	}
 }
 

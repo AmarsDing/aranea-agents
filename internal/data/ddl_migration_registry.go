@@ -401,6 +401,12 @@ var ddlMigrations = []ddlMigration{
 	//（seed 直插 repo 绕过 ID 生成），其 cron_task_run.task_id 亦全为 ''，导致 UI 启停/触发
 	// 禁用碰撞、编辑死胡同、执行历史无法按该任务筛选。统一改为显式 ID 并回填运行记录。
 	{Version: 20261233, Name: "cron_model_registry_sync_id", SQL: "sql/migrations/20261233_cron_model_registry_sync_id.sql"},
+
+	// 20261234 builtin_platform_tools_config_reseed（TwinMonitor × Aranea Phase B 配置自动化）：
+	// twin_config_diff/push/rollback 三工具种子在 20260610 等已应用的存量库中不会插入
+	//（同 20261216 twinops 的情形）→ effective keys 查无工具行，工具永不装配。
+	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog UPDATE），重跑安全。
+	{Version: 20261234, Name: "builtin_platform_tools_config_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
