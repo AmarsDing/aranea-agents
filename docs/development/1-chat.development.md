@@ -1809,3 +1809,26 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 | T2 | `voice_fastpath.go` 共用 BeforeModel 钩子；单测 DirectReply 关思考 | ✅ 2026-08-18 |
 
 改动：`internal/service/chat_orchestrator_turn.go`、`internal/agent/voice_fastpath.go`、`voice_fastpath_test.go`
+
+---
+
+## Intent 保险丝收紧 + skipIntent 覆盖盘点（2026-08-21，全链路审查 C1）
+
+> **背景**：Intent Pass 与 BUILD/Recall 同 errgroup 并行，`eg.Wait()` 以最慢腿收口；Intent 实测 0.5-3s 曾是无界尾。本次保险丝 6s→2.5s（覆盖 P95 正常完成，超时按无意图降级，non-fatal）。
+
+### skipIntent / 免重跑 判定矩阵（chat.intent.pass 决策点全枚举）
+
+| # | 路径 | 条件 | 行为 | 额外 LLM |
+|---|------|------|------|----------|
+| 1 | 澄清回复复用 | `resolveClarificationFreeTextHint` 注入 artifact | `CloneWithoutClarification` 复用，不新跑 | 0 |
+| 2 | 语音投机复用 | `SpeculativeArtifactFromContext`（ASR partial 预跑） | 复用，保留澄清残留，澄清门照常 | 0 |
+| 3 | skipIntent | DirectReply 模式，或非欠规格且 `QuickAssess==simple` | 跳过 + `WithThinkingDisabled` | 0（QuickAssess 纯计算，有 PureComputation 单测钉住） |
+| 4 | A2A 代理 | `IsA2AProxyAgent` | 跳过 | 0 |
+| 5 | 未启用/空内容 | `!intent.ShouldRun`（agent 级开关或空串） | 跳过 | 0 |
+| 6 | 正常执行 | 以上皆非 | errgroup 并行，2.5s 保险丝，失败 non-fatal | 1 次（有界） |
+
+### 结论
+
+- 缺口盘点无遗漏：`runIntentPass` 全局唯一调用点（`chat_orchestrator_turn.go`），team 成员内部步骤不各自付 intent；QuickAssess 出错时 fail-closed 走 #6（保守，保澄清门可用）。
+- 已接受的权衡：语音轮若无投机产物（极短语音 ASR partial 未触发）且属复杂任务，走 #6 内联付 ≤2.5s——投机预跑是设计上的缓解手段，不再加第二道语音专用跳过（避免语音复杂任务失去澄清门）。
+- QuickAssess 前置在 errgroup 之外执行（纯计算），simple/DirectReply 轮不必等 intent LLM。

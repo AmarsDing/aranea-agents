@@ -1207,6 +1207,8 @@ func WithMemoryInjection(ctx, ag, deps) llmagent.Option
 - `l0_inject_l3` → 注入 L3 语义检索
 - `l0_inject_l4` → 注入 L4 身份/策略
 
+**会话接地（2026-08-21 P0）**：L2+L3 fused 块要求模型必须使用已列出的事实作答，禁止在事实已注入时声称「记忆中没有」或改调 `knowledge_search`。本轮有 L3 命中时，知识 cue 不再列出 Available Knowledge Bases；空 `knowledge_search` 回指记忆块并禁止编造。
+
 ---
 
 

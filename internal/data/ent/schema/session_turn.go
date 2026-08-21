@@ -41,6 +41,9 @@ func (SessionTurn) Fields() []ent.Field {
 		field.Int("input_tokens").Default(0),
 		field.Int("output_tokens").Default(0),
 		field.Int("total_tokens").Default(0),
+		// Prompt-cache-hit portion of input_tokens (provider-reported). Powers
+		// turn-level cache hit ratio without joining model_token_usage_events.
+		field.Int("cached_input_tokens").Default(0),
 		field.Int64("total_cost_micro_usd").Default(0),
 		field.String("final_provider").Default(""),
 		field.String("final_model").Default(""),

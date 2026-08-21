@@ -249,7 +249,7 @@ var (
 		{Name: "skill_runtime_json", Type: field.TypeString, Default: "{}"},
 		{Name: "intent_pass_enabled", Type: field.TypeBool, Default: true},
 		{Name: "clarification_enabled", Type: field.TypeBool, Default: true},
-		{Name: "reply_reminder_enabled", Type: field.TypeBool, Default: true},
+		{Name: "reply_reminder_enabled", Type: field.TypeBool, Default: false},
 		{Name: "channel_id", Type: field.TypeString, Default: ""},
 		{Name: "chat_id", Type: field.TypeString, Default: ""},
 		{Name: "workspace", Type: field.TypeString, Default: ""},
@@ -2925,6 +2925,7 @@ var (
 		{Name: "input_tokens", Type: field.TypeInt, Default: 0},
 		{Name: "output_tokens", Type: field.TypeInt, Default: 0},
 		{Name: "total_tokens", Type: field.TypeInt, Default: 0},
+		{Name: "cached_input_tokens", Type: field.TypeInt, Default: 0},
 		{Name: "total_cost_micro_usd", Type: field.TypeInt64, Default: 0},
 		{Name: "final_provider", Type: field.TypeString, Default: ""},
 		{Name: "final_model", Type: field.TypeString, Default: ""},
@@ -2950,7 +2951,7 @@ var (
 			{
 				Name:    "idx_session_turns_session_idem",
 				Unique:  true,
-				Columns: []*schema.Column{SessionTurnsColumns[1], SessionTurnsColumns[28]},
+				Columns: []*schema.Column{SessionTurnsColumns[1], SessionTurnsColumns[29]},
 			},
 			{
 				Name:    "sessionturn_status_started_at",

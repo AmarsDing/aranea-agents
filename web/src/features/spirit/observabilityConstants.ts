@@ -155,6 +155,11 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     icon: 'refresh',
     color: 'orange',
   },
+  reused: {
+    messageKey: 'chat.orchestrationProgress.reused',
+    icon: 'history',
+    color: 'teal',
+  },
   allocating: {
     messageKey: 'chat.orchestrationProgress.allocating',
     icon: 'people',

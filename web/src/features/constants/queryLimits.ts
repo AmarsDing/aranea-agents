@@ -11,6 +11,10 @@ export const SPIRIT_KNOWLEDGE_LIST_LIMIT = 50;
 // ── Session ─────────────────────────────────────────────
 export const SESSION_LIST_LIMIT = 20;
 export const SESSION_TURNS_LIMIT = 20;
+/** 聊天侧边栏会话列表每页条数（滚动分页加载） */
+export const CHAT_SESSION_PAGE_SIZE = 50;
+/** 聊天侧边栏单页上限，与后端 SearchSessions MaxSessionSearchLimit 一致 */
+export const CHAT_SESSION_MAX_LIMIT = 500;
 
 // ── Agent ───────────────────────────────────────────────
 export const AGENT_LIST_LIMIT = 20; // rows per page

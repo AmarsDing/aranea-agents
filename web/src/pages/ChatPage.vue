@@ -210,6 +210,12 @@
       :selected-session-id="session.selectedSessionForUi?.id"
       :is-dark="layout.isDark"
       :favorite-ids="session.favoriteIds"
+      :total-count="session.sessionListTotal"
+      :has-more="session.sessionListHasMore"
+      :loading="session.sessionListLoading"
+      :loading-more="session.sessionListLoadingMore"
+      :search-keyword="session.sessionListKeyword"
+      :searchable="entity.selectedEntityKind === 'agent'"
       @select="session.onSelectSession"
       @new-session="session.onNewSession"
       @rename="session.onRenameSession"
@@ -220,6 +226,8 @@
       @restore="session.onRestoreSession"
       @archive="session.onArchiveSession"
       @detail="session.onSessionDetail"
+      @load-more="session.onSessionListLoadMore"
+      @search="session.onSessionListSearch"
     />
     <SessionTreeSidebar
       v-else

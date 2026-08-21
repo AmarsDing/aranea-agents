@@ -1017,6 +1017,10 @@ func detectTeamCount(message string) int {
 // demand.
 var explicitToolRequestPattern = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}`)
 
+// teamFormationFlexPattern matches team-formation verbs with a short filler
+// (quantity / measure word) before 团队/team, e.g. "组建几个团队".
+var teamFormationFlexPattern = regexp.MustCompile(`(?:组建|创建|成立|编排|调度|分派).{0,8}(?:团队|team)`)
+
 // detectTeamIntent scans the user message for explicit team-formation keywords
 // and returns the recommended mode ("parallel" or "dag"). Returns "" if no
 // team intent is detected.
@@ -1047,6 +1051,7 @@ func detectTeamIntent(message string) string {
 		"三个team", "3个team", "三支team", "3支team",
 		"三个团队", "3个团队", "三支团队", "3支团队",
 		"多个团队", "多个team", "多支团队", "多支team",
+		"几个团队", "几支团队", "几个team", "几支team",
 		"分派两个", "分派2个", "分派三个", "分派3个",
 		"分派团队", "分派team",
 		// Generic team formation keywords
@@ -1058,6 +1063,7 @@ func detectTeamIntent(message string) string {
 		"组建两个团队", "组建两支团队", "组建2个团队", "组建2支团队",
 		"组建三个团队", "组建三支团队", "组建3个团队", "组建3支团队",
 		"组建多个团队", "组建多支团队",
+		"组建几个团队", "组建几支团队",
 		"创建团队", "创建一个团队", "创建一支团队",
 		"成立团队", "成立一个团队",
 		"编排团队", "编排一个团队",
@@ -1067,6 +1073,11 @@ func detectTeamIntent(message string) string {
 		if strings.Contains(lower, kw) {
 			return "dag"
 		}
+	}
+	// "组建几个团队" / "创建若干团队" insert a measure word between the verb and
+	// 团队, so they miss the concatenated keywords above. Flex-match those.
+	if teamFormationFlexPattern.MatchString(lower) {
+		return "dag"
 	}
 	// Parallel keywords: user wants concurrent independent subtasks. parallel
 	// mode creates 1 agent per subtask (no multi-member teams), which is the
@@ -1080,6 +1091,25 @@ func detectTeamIntent(message string) string {
 	return ""
 }
 
+// decomposeCapabilityTags 返回注入分解 prompt 的真实能力标签并集（与校验门
+// R2 同一数据源 capabilityRoleUnion）。capBuilder 缺失 / BuildAll 失败 /
+// 并集为空时返回 nil——调用方回退静态预定义清单（fail-open，与校验门对空
+// 并集跳过 R2 的语义一致；旧测试构造路径行为不变）。
+func (impl *taskPlannerImpl) decomposeCapabilityTags(ctx context.Context) []string {
+	if impl.capBuilder == nil {
+		return nil
+	}
+	caps, err := impl.capBuilder.BuildAll(ctx)
+	if err != nil {
+		impl.lg.Warn("分解 prompt 能力清单构建失败，回退静态标签清单（fail-open）",
+			loggateway.StepID(biz.SpiritStepPlannerDecompose),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+	return capabilityRoleUnion(caps)
+}
+
 // decomposeTask uses LLM to decompose a complex task into subtasks (T1.6).
 // teamCount > 0 时将作为硬约束传给 LLM，要求生成恰好 N 个 subtask（每个
 // subtask 在 orchestrateDAG 中对应一个 team）。teamCount = 0 时使用默认范围。
@@ -1089,7 +1119,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
-	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
+	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount, impl.decomposeCapabilityTags(ctx))
 
 	// Resolve planner model via system setting (specify/inherit) with session
 	// model fallback. Replaces legacy env-var + catalog-first approach.
@@ -1239,7 +1269,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 // llmDecomposeAttempt 是 decomposeTaskStream 的单次尝试实现——负责一次完整的
 // LLM 流式调用 + 解析。任何错误都会被上层重试循环分类处理。
 func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, level biz.ComplexityLevel, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
-	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
+	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount, impl.decomposeCapabilityTags(ctx))
 
 	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
 	if impl.plannerSetting != nil {
@@ -1272,8 +1302,11 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 		{Role: "user", Content: "Decompose the following task:\n\n" + userMessage},
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, tools.DecomposeLLMTimeout)
-	defer cancel()
+	// Stream decompose has no child deadline. Hang detection is the llmcompat
+	// idle timeout (no frames for 45s). Outer budget is PlanAndExecuteTimeout
+	// (3min) plus user cancel. A 60s child timeout previously killed healthy
+	// DeepSeek thinking streams that were still emitting frames.
+	callCtx := ctx
 
 	parser := newStreamSubTaskParser()
 	var subTasks []biz.SubTask
@@ -1539,7 +1572,7 @@ func (impl *taskPlannerImpl) publishV2PlanStep(ctx context.Context, st biz.SubTa
 // 2026-07-04 问题 2 修复：原 prompt 固定 "2-6 subtasks"，未传递用户的数量
 // 约束。当用户说"派出2个team"时，LLM 可能产生 5 个 subtask，orchestrateDAG
 // 为每个 subtask 创建一个 team，导致最终多出 3 个 team。
-func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, teamCount int) string {
+func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, teamCount int, capTags []string) string {
 	intentContext := ""
 	if artifact != nil {
 		intentContext = fmt.Sprintf("\nIntent analysis:\n- Refined goal: %s\n- Intent kind: %s\n- Risk flags: %v",
@@ -1558,13 +1591,22 @@ func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, 
 		}
 	}
 
-	countRule := "Break down complex tasks into 2-6 subtasks."
+	countRule := "Break down complex tasks into 2-6 subtasks. Never produce more than 12 subtasks under any circumstance."
 	if teamCount > 0 {
 		// 用户明确请求 N 个 team：硬约束生成恰好 N 个 subtask。
 		// 每个 subtask 将在 orchestrateDAG 中对应一个独立 team。
 		countRule = fmt.Sprintf(`The user has explicitly requested EXACTLY %d teams.
 You MUST produce EXACTLY %d subtasks — no more, no less.
-Each subtask will be assigned to one dedicated team, so the subtask count MUST equal the requested team count.`, teamCount, teamCount)
+Each subtask will be assigned to one dedicated team, so the subtask count MUST equal the requested team count.
+Before finalizing, COUNT your subtasks; if the count differs from %d, merge or split subtasks until it matches exactly.`, teamCount, teamCount, teamCount)
+	}
+
+	// 能力标签约束：默认静态预定义清单；当调用方注入真实 Agent 角色并集时
+	// 以其为准——校验门 R2 比对的正是该并集，静态清单与业务 roster 发散
+	// 会让 capability_unsatisfiable 违例必发（每次组队白付一次修复重分解）。
+	capRule := "- required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design, system-admin"
+	if len(capTags) > 0 {
+		capRule = fmt.Sprintf("- required_capabilities must ONLY use capability tags from the current agent roster: %s. NEVER invent tags outside this list — a subtask tagged with capabilities no agent possesses cannot be scheduled", strings.Join(capTags, ", "))
 	}
 
 	return fmt.Sprintf(`You are a task decomposition specialist. %s
@@ -1573,7 +1615,7 @@ Rules:
 - Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0), domain_path (domain classification from the lexicon below)
 - The "name" field MUST be a short noun-phrase suitable for displaying as a team name (e.g. "Code Analysis Team", "Data Pipeline Builder"), NOT a sentence-length task description. The "name" will be shown to the user as the team's display name; "id" is internal-only and never shown.
 - Output ONLY a JSON array, no markdown fences, no commentary
-- required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design, system-admin
+%s
 - System administration subtasks (Skill/MCP/package installation, system resource management) MUST be tagged "system-admin", and their "description" MUST be intent-based: state the outcome to achieve (what), the source URL, and the exact cli_admin_* tool name to use (e.g. "使用 cli_admin_skill_install_from_url 从 https://github.com/example/xlsx-skill 安装 xlsx skill，完成后用 cli_admin_skill_get 确认 enabled=true"). NEVER put shell command text (pip install, git clone, etc.) into the description — the system butler has no shell/exec tools and shell text induces hallucinated calls to non-existent tools.
 - domain_path must classify the subtask into this domain lexicon (use the most specific entry that fits; if none fits, use a top-level domain or "其他"): %s
 - depends_on must only reference IDs of other subtasks in the array
@@ -1582,7 +1624,7 @@ Rules:
 - Subtasks should be independently executable where possible
 - CRITICAL: Each subtask "description" must be fully self-contained. The executing team sees ONLY its own description — it cannot see the user message or other subtasks. Every concrete parameter the executor needs (URLs, file paths, branch/tag names, subpaths, skill/agent names, numeric values, flags) MUST be copied verbatim into the description. NEVER use context references such as "the given URL", "the above parameters", "使用给定的/上述的/前文提到的" — always inline the actual values.
 - Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}. The contract "name" becomes the deliverable topic namespace that team members write via set_deliverable — keep it short (letters/digits in any language plus '_'/'-', no spaces or punctuation; a concise slug like "root-cause-report" or "根因报告" works) and NEVER use the reserved names "summary" or "cognition" (writes under them are rejected/overwritten).
-- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, DomainLexiconPromptList()) + intentContext
+- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, capRule, DomainLexiconPromptList()) + intentContext
 }
 
 // resolvePlannerProviderModel and resolveFallbackProviderModelFromCatalog

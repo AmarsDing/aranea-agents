@@ -3,9 +3,34 @@
     <aside v-show="open" class="chat-side chat-side--right column no-wrap">
       <div class="chat-session-header row items-center justify-between no-wrap">
         <div class="text-caption text-cream-muted text-uppercase chat-session-header__label">Session</div>
-        <span class="chat-session-count-badge">{{ sessions.length }}</span>
+        <span class="chat-session-count-badge">{{ displayTotal }}</span>
       </div>
-      <q-scroll-area class="col chat-session-scroll">
+      <div v-if="searchable" class="chat-session-search">
+        <q-input
+          v-model="searchText"
+          dense
+          outlined
+          clearable
+          debounce="300"
+          :placeholder="t('chat.searchSessions')"
+          class="chat-session-search__input"
+          @update:model-value="onSearchInput"
+        >
+          <template #prepend>
+            <q-icon name="search" size="18px" />
+          </template>
+        </q-input>
+      </div>
+      <q-scroll-area class="col chat-session-scroll" @scroll="onListScroll">
+        <div v-if="loading && !sessions.length" class="chat-session-list-status row items-center justify-center">
+          <q-spinner-dots color="accent" size="28px" />
+        </div>
+        <div
+          v-else-if="!sessions.length && !inboxSessions.length && searchText"
+          class="chat-session-list-status chat-session-list-status--empty"
+        >
+          {{ t('chat.noSessionsFound') }}
+        </div>
         <q-list class="chat-session-list" dense>
           <template v-if="inboxSessions.length">
             <q-item-label header class="chat-timeline-label"> 外部消息 </q-item-label>
@@ -180,6 +205,18 @@
             </q-item>
           </template>
         </q-list>
+        <div v-if="loadingMore" class="chat-session-list-status row items-center justify-center">
+          <q-spinner-dots color="accent" size="24px" />
+        </div>
+        <div v-else-if="hasMore" class="chat-session-list-status column items-center">
+          <q-btn flat dense no-caps color="accent" :label="t('chat.loadMoreSessions')" @click="$emit('load-more')" />
+          <div class="chat-session-list-progress">
+            {{ t('chat.sessionListProgress', { loaded: sessions.length, total: displayTotal }) }}
+          </div>
+        </div>
+        <div v-else-if="showProgress" class="chat-session-list-status chat-session-list-status--end">
+          {{ t('chat.sessionListProgress', { loaded: sessions.length, total: displayTotal }) }}
+        </div>
       </q-scroll-area>
       <q-separator class="cream-sep" />
       <div class="chat-session-actions">
@@ -199,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { DeleteKind, SessionView } from './types';
@@ -212,6 +249,7 @@ import {
   toneToQuasarColor,
 } from '../../domain/conversationPresentation';
 import { sortSessionsForDisplay } from '../../features/session/sessionSort';
+import { CHAT_SESSION_PAGE_SIZE } from '../../features/constants/queryLimits';
 
 const props = defineProps<{
   open: boolean;
@@ -220,6 +258,18 @@ const props = defineProps<{
   selectedSessionId?: string | null;
   isDark: boolean;
   favoriteIds?: Set<string>;
+  /** 服务端会话总数（agent 列表）；未提供时回退为已加载条数 */
+  totalCount?: number;
+  /** 是否还有更多会话可加载 */
+  hasMore?: boolean;
+  /** 首页/搜索加载中 */
+  loading?: boolean;
+  /** 分页加载更多中 */
+  loadingMore?: boolean;
+  /** 受控搜索词（store 真源，切换 agent 时会被清空） */
+  searchKeyword?: string;
+  /** 是否展示搜索框（team 列表不支持搜索时分页） */
+  searchable?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -233,12 +283,42 @@ const emit = defineEmits<{
   detail: [id: string];
   'toggle-pin': [payload: { id: string; pinned: boolean }];
   'toggle-favorite': [id: string];
+  'load-more': [];
+  search: [keyword: string];
 }>();
 
 const { t } = useI18n();
 const $q = useQuasar();
 
 const inboxSessions = computed(() => props.inboxSessions ?? []);
+
+const displayTotal = computed(() => Math.max(props.totalCount ?? 0, props.sessions.length));
+const searchable = computed(() => props.searchable ?? true);
+/** 多页列表到底后展示「已加载 X / Y」；单页列表不展示 */
+const showProgress = computed(
+  () => !props.hasMore && !props.loadingMore && displayTotal.value > CHAT_SESSION_PAGE_SIZE,
+);
+
+const searchText = ref(props.searchKeyword ?? '');
+watch(
+  () => props.searchKeyword,
+  (value) => {
+    const next = value ?? '';
+    if (next !== searchText.value) searchText.value = next;
+  },
+);
+
+function onSearchInput(value: string | number | null) {
+  emit('search', String(value ?? '').trim());
+}
+
+/** q-scroll-area 滚动近底部时自动加载下一页 */
+function onListScroll(info: { verticalPercentage?: number }) {
+  if (!props.hasMore || props.loading || props.loadingMore) return;
+  if ((info.verticalPercentage ?? 0) >= 0.85) {
+    emit('load-more');
+  }
+}
 
 const timelineGroups = computed(() => {
   const sorted = sortSessionsForDisplay(props.sessions);
@@ -400,6 +480,51 @@ function sessionTime(session: SessionView) {
   max-width: 100%;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.chat-session-search {
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.chat-session-search__input :deep(.q-field__control) {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+}
+
+.chat-session-search__input :deep(.q-field__control):before {
+  border-color: var(--glass-border);
+}
+
+.chat-session-search__input :deep(.q-field__control):hover:before {
+  border-color: var(--glass-border-hover);
+}
+
+.chat-session-search__input :deep(.q-field--focused .q-field__control):after {
+  border-color: var(--color-accent);
+}
+
+.chat-session-list-status {
+  padding: var(--space-3);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  gap: var(--space-1);
+}
+
+.chat-session-list-status--empty {
+  text-align: center;
+  padding: var(--space-6) var(--space-3);
+}
+
+.chat-session-list-status--end {
+  text-align: center;
+  opacity: 0.8;
+}
+
+.chat-session-list-progress {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
 
 .chat-session-scroll :deep(.q-scrollarea__container) {

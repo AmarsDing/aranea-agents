@@ -70,7 +70,11 @@ import {
 } from '../features/constants/timeouts';
 
 // T1.8 + P1 #2: 队列分级。控制消息（ping/subscribe 等）可丢弃；业务消息
-// （user_message/cancel 等）不丢弃，满时通过 onDrop 回调通知调用方走 HTTP 回退。
+// （user_message/cancel 等）不丢弃，满时通过 onDrop 回调通知调用方。
+// 注意（2026-08-21 评审修正）：onDrop 的契约是「告知未送达」，不是自动 HTTP
+// 重发——WS 可能实际已送达而 ack 丢失，自动重发会产生重复 user_message。
+// 当前调用方（useChatStreamManager.handleUpstreamDrop）的处理是 toast 请用户
+// 重发 + 标记重连后 REST 水合对齐时间线。
 const WS_CONTROL_QUEUE_MAX_LENGTH = 50;
 const WS_BUSINESS_QUEUE_MAX_LENGTH = 200;
 
@@ -406,7 +410,8 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   // P1 #2: 分级入队策略。
   // - control 消息（ping/subscribe 等）：满时丢弃最旧的（重连后会重新订阅）。
   // - business 消息（user_message/cancel 等）：满时不丢弃，通过 onDrop 通知调用方
-  //   走 HTTP 回退，避免用户消息静默丢失而前端仍显示"已发送"。
+  //   消息未送达（调用方 toast 请用户重发 + 重连后 REST 水合），避免用户消息
+  //   静默丢失而前端仍显示"已发送"。不做自动 HTTP 重发，见文件头注释。
   function enqueuePending(upstream: WsUpstream): void {
     const priority = classifyMessagePriority(upstream);
     if (priority === 'control') {
@@ -421,9 +426,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     }
     // business 优先级
     if (businessQueue.length >= WS_BUSINESS_QUEUE_MAX_LENGTH) {
-      // 不丢弃业务消息：通知调用方走 HTTP 回退
+      // 不丢弃业务消息：通知调用方消息未送达（不自动 HTTP 重发，防重复发送）
       console.warn(
-        `ws-transport: businessQueue full (${WS_BUSINESS_QUEUE_MAX_LENGTH}), rejecting business message (caller should HTTP fallback)`,
+        `ws-transport: businessQueue full (${WS_BUSINESS_QUEUE_MAX_LENGTH}), rejecting business message (caller notifies user to resend)`,
       );
       opts.onDrop?.(upstream);
       return;

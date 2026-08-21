@@ -53,7 +53,8 @@ export function useSessionModelTokens(sessionId: Ref<string | undefined | null>)
       data.value = aggregateByModel(items, total);
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
-      data.value = { series: [], totalTurns: 0, turns: [] };
+      // Keep previously loaded series on refresh failures — the popup stays
+      // useful when a transient reload fails (e.g. dev proxy hiccup).
     } finally {
       loading.value = false;
     }

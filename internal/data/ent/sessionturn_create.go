@@ -294,6 +294,20 @@ func (_c *SessionTurnCreate) SetNillableTotalTokens(v *int) *SessionTurnCreate {
 	return _c
 }
 
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (_c *SessionTurnCreate) SetCachedInputTokens(v int) *SessionTurnCreate {
+	_c.mutation.SetCachedInputTokens(v)
+	return _c
+}
+
+// SetNillableCachedInputTokens sets the "cached_input_tokens" field if the given value is not nil.
+func (_c *SessionTurnCreate) SetNillableCachedInputTokens(v *int) *SessionTurnCreate {
+	if v != nil {
+		_c.SetCachedInputTokens(*v)
+	}
+	return _c
+}
+
 // SetTotalCostMicroUsd sets the "total_cost_micro_usd" field.
 func (_c *SessionTurnCreate) SetTotalCostMicroUsd(v int64) *SessionTurnCreate {
 	_c.mutation.SetTotalCostMicroUsd(v)
@@ -551,6 +565,10 @@ func (_c *SessionTurnCreate) defaults() {
 		v := sessionturn.DefaultTotalTokens
 		_c.mutation.SetTotalTokens(v)
 	}
+	if _, ok := _c.mutation.CachedInputTokens(); !ok {
+		v := sessionturn.DefaultCachedInputTokens
+		_c.mutation.SetCachedInputTokens(v)
+	}
 	if _, ok := _c.mutation.TotalCostMicroUsd(); !ok {
 		v := sessionturn.DefaultTotalCostMicroUsd
 		_c.mutation.SetTotalCostMicroUsd(v)
@@ -659,6 +677,9 @@ func (_c *SessionTurnCreate) check() error {
 	}
 	if _, ok := _c.mutation.TotalTokens(); !ok {
 		return &ValidationError{Name: "total_tokens", err: errors.New(`ent: missing required field "SessionTurn.total_tokens"`)}
+	}
+	if _, ok := _c.mutation.CachedInputTokens(); !ok {
+		return &ValidationError{Name: "cached_input_tokens", err: errors.New(`ent: missing required field "SessionTurn.cached_input_tokens"`)}
 	}
 	if _, ok := _c.mutation.TotalCostMicroUsd(); !ok {
 		return &ValidationError{Name: "total_cost_micro_usd", err: errors.New(`ent: missing required field "SessionTurn.total_cost_micro_usd"`)}
@@ -815,6 +836,10 @@ func (_c *SessionTurnCreate) createSpec() (*SessionTurn, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TotalTokens(); ok {
 		_spec.SetField(sessionturn.FieldTotalTokens, field.TypeInt, value)
 		_node.TotalTokens = value
+	}
+	if value, ok := _c.mutation.CachedInputTokens(); ok {
+		_spec.SetField(sessionturn.FieldCachedInputTokens, field.TypeInt, value)
+		_node.CachedInputTokens = value
 	}
 	if value, ok := _c.mutation.TotalCostMicroUsd(); ok {
 		_spec.SetField(sessionturn.FieldTotalCostMicroUsd, field.TypeInt64, value)
@@ -1205,6 +1230,24 @@ func (u *SessionTurnUpsert) UpdateTotalTokens() *SessionTurnUpsert {
 // AddTotalTokens adds v to the "total_tokens" field.
 func (u *SessionTurnUpsert) AddTotalTokens(v int) *SessionTurnUpsert {
 	u.Add(sessionturn.FieldTotalTokens, v)
+	return u
+}
+
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (u *SessionTurnUpsert) SetCachedInputTokens(v int) *SessionTurnUpsert {
+	u.Set(sessionturn.FieldCachedInputTokens, v)
+	return u
+}
+
+// UpdateCachedInputTokens sets the "cached_input_tokens" field to the value that was provided on create.
+func (u *SessionTurnUpsert) UpdateCachedInputTokens() *SessionTurnUpsert {
+	u.SetExcluded(sessionturn.FieldCachedInputTokens)
+	return u
+}
+
+// AddCachedInputTokens adds v to the "cached_input_tokens" field.
+func (u *SessionTurnUpsert) AddCachedInputTokens(v int) *SessionTurnUpsert {
+	u.Add(sessionturn.FieldCachedInputTokens, v)
 	return u
 }
 
@@ -1729,6 +1772,27 @@ func (u *SessionTurnUpsertOne) AddTotalTokens(v int) *SessionTurnUpsertOne {
 func (u *SessionTurnUpsertOne) UpdateTotalTokens() *SessionTurnUpsertOne {
 	return u.Update(func(s *SessionTurnUpsert) {
 		s.UpdateTotalTokens()
+	})
+}
+
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (u *SessionTurnUpsertOne) SetCachedInputTokens(v int) *SessionTurnUpsertOne {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.SetCachedInputTokens(v)
+	})
+}
+
+// AddCachedInputTokens adds v to the "cached_input_tokens" field.
+func (u *SessionTurnUpsertOne) AddCachedInputTokens(v int) *SessionTurnUpsertOne {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.AddCachedInputTokens(v)
+	})
+}
+
+// UpdateCachedInputTokens sets the "cached_input_tokens" field to the value that was provided on create.
+func (u *SessionTurnUpsertOne) UpdateCachedInputTokens() *SessionTurnUpsertOne {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.UpdateCachedInputTokens()
 	})
 }
 
@@ -2441,6 +2505,27 @@ func (u *SessionTurnUpsertBulk) AddTotalTokens(v int) *SessionTurnUpsertBulk {
 func (u *SessionTurnUpsertBulk) UpdateTotalTokens() *SessionTurnUpsertBulk {
 	return u.Update(func(s *SessionTurnUpsert) {
 		s.UpdateTotalTokens()
+	})
+}
+
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (u *SessionTurnUpsertBulk) SetCachedInputTokens(v int) *SessionTurnUpsertBulk {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.SetCachedInputTokens(v)
+	})
+}
+
+// AddCachedInputTokens adds v to the "cached_input_tokens" field.
+func (u *SessionTurnUpsertBulk) AddCachedInputTokens(v int) *SessionTurnUpsertBulk {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.AddCachedInputTokens(v)
+	})
+}
+
+// UpdateCachedInputTokens sets the "cached_input_tokens" field to the value that was provided on create.
+func (u *SessionTurnUpsertBulk) UpdateCachedInputTokens() *SessionTurnUpsertBulk {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.UpdateCachedInputTokens()
 	})
 }
 

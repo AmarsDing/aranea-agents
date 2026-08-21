@@ -450,12 +450,22 @@ func TestNormalizeSessionSearch(t *testing.T) {
 			},
 		},
 		{
-			name: "Limit over 100 defaults to 20",
+			name: "Limit over 100 within max preserved",
 			q: SessionSearchQuery{
 				Limit: 200,
 			},
 			want: SessionSearchQuery{
-				Limit:  20,
+				Limit:  200,
+				Offset: 0,
+			},
+		},
+		{
+			name: "Limit over max clamped to max",
+			q: SessionSearchQuery{
+				Limit: 9999,
+			},
+			want: SessionSearchQuery{
+				Limit:  MaxSessionSearchLimit,
 				Offset: 0,
 			},
 		},

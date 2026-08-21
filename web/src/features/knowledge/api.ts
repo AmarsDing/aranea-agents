@@ -720,6 +720,7 @@ export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<Know
       hybridSearch: query.hybrid_search ?? '',
       // G3-B7：搜索范围选择器（vault 相对目录前缀；空 = 全库）。
       pathPrefix: query.path_prefix ?? '',
+      useEval: query.use_eval,
     }),
   );
   const chunksRaw = res.chunks ?? res.Chunks;

@@ -433,7 +433,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	// QuickAssess is pure computation; run it before the errgroup so simple /
 	// DirectReply turns can skip Intent Pass instead of waiting on that LLM.
-	skipIntent := shouldSkipIntentPass(o, ctx, input, content)
+	skipIntent, assessLevel := shouldSkipIntentPass(o, ctx, input, content)
 	if skipIntent {
 		// 闲聊/simple：per-request 关 thinking（BUILD 缓存不含入口，不能烘进 GenerationConfig）。
 		ctx = chatagent.WithThinkingDisabled(ctx)
@@ -475,15 +475,25 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogSkip("chat.proactive_recall", "跳过主动召回", event.P("reason", proactiveRecallSkipReason(input)))
 	}
 
-	// Goroutine 3: Intent Pass
+	// Goroutine 3: Intent Pass —— 2026-08-21 全链路审查 C2（方案 D 分级时限）：
+	// intent 从 errgroup 拆出，eg 只收 BUILD+Recall；eg.Wait 后按轮次类型
+	// 分级收口（见 awaitIntentArtifact）。注意 intentCtx 必须挂 turn ctx：
+	// egCtx 在 eg.Wait() 返回时即取消（见下方 P0 修复注释），挂 egCtx 会在
+	// rendezvous 开始时就把 intent 杀掉。
 	// 澄清续跑复用：ctx 携带澄清门前的预解析产物时直接复用，跳过重复 LLM 调用
 	// （重写后的输入 = 澄清上下文 + 原始需求，产物语义不变）。复用前剥离
 	// 已作答的澄清残留（问题/歧义/needs_clarification 标记），避免 LLM 重问。
 	// 否则对非 A2A 且启用 intent 的 agent 正常执行 Intent Pass。
 	// 注：产物的 RunOptionInject 统一在澄清门之后执行（自动默认路径会先剥离
 	// 澄清残留），此处只赋值 intentArtifact。
+	intentOutcome := "skipped"
+	intentStart := time.Now()
+	var intentCh chan *intent.Artifact
+	var intentCtx context.Context
+	var intentCancel context.CancelFunc
 	if reusedArt := intent.ArtifactFromContext(ctx); reusedArt != nil {
 		intentArtifact = reusedArt.CloneWithoutClarification()
+		intentOutcome = "reused"
 		emitter.LogDone("chat.intent.pass", "意图识别复用澄清前产物",
 			event.P("outcome", "reused"),
 			event.P("intent_kind", intentArtifact.IntentKind),
@@ -492,6 +502,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// C2 投机复用（语音 L2/L3）：ASR partial 稳定后预跑的产物，fresh 语义——
 		// 未经澄清门评估，保留澄清残留（不剥离），澄清门照常判定。
 		intentArtifact = specArt
+		intentOutcome = "reused_speculative"
 		emitter.LogDone("chat.intent.pass", "意图识别复用投机产物",
 			event.P("outcome", "reused_speculative"),
 			event.P("intent_kind", intentArtifact.IntentKind),
@@ -499,17 +510,16 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	} else if skipIntent {
 		emitter.LogSkip("chat.intent.pass", "闲聊/简单轮次跳过意图识别", event.P("reason", "direct_reply_or_simple"))
 	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
-		eg.Go(func() error {
-			// 2026-08-21 全链路审查 B4：Intent Pass 实测 0.5-3s 且无界，是
-			// errgroup 最慢腿的常见来源。加 6s 预算兜底模型长尾；超时视同
-			// Intent 失败（non-fatal，artifact=nil，pre-planning 门按无意图
-			// 降级），不允许单轮意图识别无限期阻塞首 token。
-			intentCtx, cancel := context.WithTimeout(egCtx, 6*time.Second)
-			defer cancel()
+		// 2026-08-21 全链路审查 B4/C1：Intent Pass 实测 0.5-3s，保险丝 2.5s
+		// 覆盖 P95 正常完成；超时视同 Intent 失败（non-fatal，artifact=nil，
+		// pre-planning 门按无意图降级），不允许单轮意图识别拖住首 token。
+		intentCh = make(chan *intent.Artifact, 1)
+		intentCtx, intentCancel = context.WithTimeout(ctx, 2*time.Second+500*time.Millisecond)
+		intentOutcome = "running"
+		go func() {
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
-			intentArtifact = o.runIntentPass(intentCtx, ag, sessionID, content, prov, mod, emitter)
-			return nil // Intent Pass failure is non-fatal; it returns empty opts on error
-		})
+			intentCh <- o.runIntentPass(intentCtx, ag, sessionID, content, prov, mod, emitter)
+		}()
 	} else if biz.IsA2AProxyAgent(ag) {
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	} else {
@@ -518,12 +528,28 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	buildIntentStart := time.Now()
 	if err := eg.Wait(); err != nil {
+		if intentCancel != nil {
+			intentCancel() // BUILD 失败：停掉在途 intent，省 provider token
+		}
 		return o.failTurn(ctx, sessionID, runID, &turnStatus, &turnErr, &turnErrMsg, err,
 			withBeforePublish(func() { o.runs.Finish(sessionID, runID) }))
 	}
+	// C2 方案 D 分级收口：欠规格（澄清门目标场景）与 complex（长规划轮，
+	// refined goal 影响 Plan 质量）全等至保险丝；moderate 非欠规格限
+	// 500ms rendezvous，超时降级直接 Run，TTFT 净增量 ≤500ms。
+	if intentCh != nil {
+		fullWait := intent.LooksLikeUnderspecifiedTask(content) || assessLevel == biz.ComplexityComplex
+		art, outcome := awaitIntentArtifact(intentCh, intentCtx, intentCancel, fullWait)
+		if art != nil {
+			intentArtifact = art
+		}
+		intentOutcome = outcome
+	}
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BUILD+IntentPass parallel",
 		loggateway.StepID("chat.build_intent_parallel"),
-		loggateway.Any("elapsed_ms", time.Since(buildIntentStart).Milliseconds()))
+		loggateway.Any("elapsed_ms", time.Since(buildIntentStart).Milliseconds()),
+		loggateway.Any("intent_outcome", intentOutcome),
+		loggateway.Any("intent_elapsed_ms", time.Since(intentStart).Milliseconds()))
 	// 并行段收口：recall 命中注入 ctx，供下游 MemoryInject before-model 钩子在
 	// 请求时合并（原串行位置在 errgroup 之前，并行化后语义保持）。
 	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
@@ -732,22 +758,55 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 // LLM: DirectReply patterns (介绍自己 / 不要调用工具 / 请记住 / 现在几点),
 // or QuickAssess==simple when the message is not an underspecified task
 // (帮我做个应用 still needs the clarification gate).
-func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, input biz.TurnInput, content string) bool {
+//
+// 第二返回值携带 QuickAssess 等级（未评估时为空串）：C2 方案 D 分级时限用
+// 其区分 intent 收口策略——complex 全等至保险丝，moderate 走 rendezvous。
+func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, input biz.TurnInput, content string) (bool, biz.ComplexityLevel) {
 	if intent.SkipForDirectReply(content) {
-		return true
+		return true, ""
 	}
 	if intent.LooksLikeUnderspecifiedTask(content) {
-		return false
+		return false, ""
 	}
 	planner := o.team().TaskPlanner
 	if planner == nil {
-		return false
+		return false, ""
 	}
 	level, _, err := planner.QuickAssess(ctx, biz.PlanInput{
 		UserMessage:     content,
 		SpiritSessionID: input.SessionID,
 	})
-	return err == nil && level == biz.ComplexitySimple
+	if err != nil {
+		return false, ""
+	}
+	return level == biz.ComplexitySimple, level
+}
+
+// intentRendezvousWindow C2 方案 D：moderate 非欠规格轮次在 BUILD 收口后
+// 再等 intent 的窗口。窗口内完成则保留完整语义（refined goal + 澄清门）；
+// 超时 cancel intent（省 provider token），按既有无意图路径降级。
+const intentRendezvousWindow = 500 * time.Millisecond
+
+// awaitIntentArtifact C2 方案 D 分级收口：fullWait（欠规格/complex）全等至
+// intentCtx 自带的 2.5s 保险丝；否则限 rendezvous 窗口。artifact 只经
+// channel 传递（容量 1，goroutine 永不阻塞退出），主流程无共享变量竞争。
+// outcome 取值：completed / fused（保险丝熔断）/ raced_out（窗口未命中）。
+func awaitIntentArtifact(intentCh <-chan *intent.Artifact, intentCtx context.Context, intentCancel context.CancelFunc, fullWait bool) (*intent.Artifact, string) {
+	defer intentCancel()
+	if fullWait {
+		select {
+		case art := <-intentCh:
+			return art, "completed"
+		case <-intentCtx.Done():
+			return nil, "fused"
+		}
+	}
+	select {
+	case art := <-intentCh:
+		return art, "completed"
+	case <-time.After(intentRendezvousWindow):
+		return nil, "raced_out"
+	}
 }
 
 // shouldRunProactiveRecall 判定本 turn 是否执行主动召回（P3-11）。

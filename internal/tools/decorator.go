@@ -31,11 +31,12 @@ const DefaultToolTimeout = 60 * time.Second
 // 2026-08-06 P0-3 工具预算治理（20:45 会话 plan_and_execute budget exhaustion
 // 根因）：编排入口工具的子阶段 LLM 预算与外层工具预算。
 //
-//   - DecomposeLLMTimeout：task_planner 分解（decomposeTask / Stream）单次 LLM
-//     调用子超时。
+//   - DecomposeLLMTimeout：仅同步 decomposeTask（seq==nil 回退）单次 LLM 子超时。
+//     流式 decomposeTaskStream 不再套该硬超时——有数据流动即健康，停滞由
+//     llmcompat idle 守卫（45s）中止单次尝试，外层预算由 PlanAndExecuteTimeout 收口。
 //   - AllocateLLMTimeout：agent_allocator 分配单次 LLM 调用子超时。
 //   - PlanAndExecuteTimeout：plan_and_execute 工具外层预算。不变量：外层预算
-//     必须 ≥ 分解 + 分配 + 编排委派余量，否则外层装饰器会在子阶段中途掐断
+//     必须 ≥ 同步分解 + 分配 + 编排委派余量，否则外层装饰器会在子阶段中途掐断
 //     （此前外层套用 DefaultToolTimeout=60s < 60s+60s 子阶段之和，必现超时）。
 //
 // 子超时常量子集中在 tools 包，调用点（internal/agent）引用同一常量，

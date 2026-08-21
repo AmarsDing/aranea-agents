@@ -300,6 +300,11 @@ type SessionTurnRecordParams struct {
 	Model          string
 	PromptTok      int
 	CompletionTok  int
+	// CachedTok is the cache-hit portion of PromptTok (provider-reported).
+	// Persisted to session_turns.cached_input_tokens alongside the other token
+	// counters — zero is a meaningful "no cache hit" observation, so it is
+	// written unconditionally like InputTokens/OutputTokens.
+	CachedTok      int
 	ContentPreview string
 	// DurationMs 是整轮耗时（admission → postProcess）。<=0 表示未测量，不落库。
 	DurationMs int
@@ -332,6 +337,7 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 			InputTokens:         ptrInt(p.PromptTok),
 			OutputTokens:        ptrInt(p.CompletionTok),
 			TotalTokens:         ptrInt(p.PromptTok + p.CompletionTok),
+			CachedInputTokens:   ptrInt(p.CachedTok),
 			FinalProvider:       ptrString(p.Provider),
 			FinalModel:          ptrString(p.Model),
 			FinalContentPreview: ptrString(preview),
@@ -379,6 +385,7 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 		InputTokens:         p.PromptTok,
 		OutputTokens:        p.CompletionTok,
 		TotalTokens:         p.PromptTok + p.CompletionTok,
+		CachedInputTokens:   p.CachedTok,
 		FinalProvider:       p.Provider,
 		FinalModel:          p.Model,
 		FinalContentPreview: preview,

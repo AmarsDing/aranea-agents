@@ -20,7 +20,7 @@ func TestBuildDecompositionPrompt_IncludesSuccessCriteria(t *testing.T) {
 		SuccessCriteria: []string{"imports 10k rows without loss", "duplicates rejected"},
 		SearchHints:     []string{"existing csv parsers", "schema mapping"},
 	}
-	prompt := buildDecompositionPrompt("import users from csv", artifact, 0)
+	prompt := buildDecompositionPrompt("import users from csv", artifact, 0, nil)
 	for _, want := range []string{
 		"imports 10k rows without loss",
 		"duplicates rejected",
@@ -40,11 +40,11 @@ func TestBuildDecompositionPrompt_OmitsEmptyCriteria(t *testing.T) {
 	withEmpty := buildDecompositionPrompt("do something", &biz.IntentArtifact{
 		RefinedGoal: "do something",
 		IntentKind:  "task",
-	}, 0)
+	}, 0, nil)
 	if strings.Contains(withEmpty, "Success criteria") || strings.Contains(withEmpty, "Search hints") {
 		t.Error("empty criteria/hints must not add sections to the prompt")
 	}
-	if nilArtifact := buildDecompositionPrompt("do something", nil, 0); strings.Contains(nilArtifact, "Intent analysis") {
+	if nilArtifact := buildDecompositionPrompt("do something", nil, 0, nil); strings.Contains(nilArtifact, "Intent analysis") {
 		t.Error("nil artifact must not add intent context")
 	}
 }

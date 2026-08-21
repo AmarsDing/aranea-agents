@@ -119,8 +119,11 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 }
 
 func clampSessionLimit(limit int) int {
-	if limit <= 0 || limit > 100 {
+	if limit <= 0 {
 		return 20
+	}
+	if limit > session.MaxSessionSearchLimit {
+		return session.MaxSessionSearchLimit
 	}
 	return limit
 }

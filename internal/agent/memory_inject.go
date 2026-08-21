@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/llmcontext"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -318,6 +319,7 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 					recordContextBudgetOnce(ctx, ContextBudgetCategoryMemoryL1, utf8.RuneCountInString(l1.Cue))
 				}
 			}
+			knowledgetool.MarkMemoryL3Grounded(ctx, memoryCueHasL3(result))
 			return result, false
 		}
 	}
@@ -412,7 +414,23 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		injectedFactIDs:     result.InjectedFactIDs,
 		l4RecalledEntityIDs: result.L4RecalledEntityIDs,
 	})
+	knowledgetool.MarkMemoryL3Grounded(ctx, memoryCueHasL3(result))
 	return result, true
+}
+
+func memoryCueHasL3(r *MemoryCueResult) bool {
+	if r == nil {
+		return false
+	}
+	if len(r.InjectedFactIDs) > 0 {
+		return true
+	}
+	for _, h := range r.RecallHits {
+		if strings.EqualFold(strings.TrimSpace(h.Layer), "L3") {
+			return true
+		}
+	}
+	return false
 }
 
 func lastUserMessageText(messages []trpcmodel.Message) string {

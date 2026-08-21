@@ -384,7 +384,9 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 			b.WriteString("- load_memory/preload_memory: in-process recall only (no SessionMemory store wired to this runner); not durable across restarts.\n")
 		}
 	}
-	if mcpCue && level >= cueLevelStandard && !skipToolCue {
+	// B2（2026-08-21）：broker 与直连同开时装配层只挂 broker（shard_plan
+	// broker 优先），直连 cue 同步抑制，避免引导模型去找未挂载的直连工具。
+	if mcpCue && !mcpBrokerCue && level >= cueLevelStandard && !skipToolCue {
 		b.WriteString("- MCP (mcp_tool_set): tools from enabled platform MCP servers (stdio/sse/streamable_http per row). Optional: include `mcp:<server_key>` in Tools allow/deny JSON to restrict which servers mount; stdio servers respect request context cancellation when the tool runner passes it through.\n")
 	}
 	if mcpBrokerCue && level >= cueLevelStandard && !skipToolCue {

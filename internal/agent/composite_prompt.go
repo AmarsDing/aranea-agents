@@ -162,7 +162,7 @@ func CompositeMemoryCueWithHits(ctx context.Context, composite biz.MemoryComposi
 	}
 	var b strings.Builder
 	header := "## L2+L3 memory (fused recall)\n" +
-		"Episodes and semantic facts ranked together. Use when relevant; do not invent beyond them.\n"
+		"Episodes and semantic facts ranked together. If a listed fact answers the user, you MUST use it — quote the value. Do not say you have no record / 记忆中没有 / 知识库未收录 when the fact is listed. Do not call knowledge_search for a fact already in this block. Do not invent names, report IDs, brands, phone numbers, or personal preferences beyond these lines.\n"
 	b.WriteString(header)
 	// FR-12/P2: pack lines into the recall-block token budget (header counts
 	// against it). Hits arrive score-descended; only kept hits are returned so

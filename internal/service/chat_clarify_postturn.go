@@ -4,7 +4,7 @@
 // 股票代码或交易所…？」），Intent Pass 未标 needs_clarification，澄清门不触发，
 // turn 直接结束——用户面对纯文本干等、无结构化确认面板。
 //
-// 本文件在 PERSIST 之后、POST-PROCESS 之前对「回复以 ?/？ 结尾」的成功 turn 做
+// 本文件在 PERSIST 之后、POST-PROCESS 之前对「回复含 ?/？ 问号」的成功 turn 做
 // 轻量 LLM 判定；判定为阻断性提问时把问题升级为结构化 ClarifyBlock 卡片挂起，
 // 卡片/恢复链路与澄清门完全同构（orphan clarify step + pendingClarification +
 // session→awaiting_confirmation），用户卡片作答或直接自由回复均可续跑。
@@ -55,7 +55,8 @@ func (o *ChatOrchestrator) maybeSuspendTurnForClarification(
 	if replyText == "" || sessionID == "" {
 		return false
 	}
-	// 启发式预筛：仅以 ?/？ 结尾的回复才值得付出一次旁路 LLM 判定。
+	// 启发式预筛：仅含 ?/？ 的回复才值得付出一次旁路 LLM 判定
+	// （含问号即放行，问句不要求在结尾；误放的礼貌收尾由判定器排除）。
 	if !intent.LooksLikeTrailingQuestion(replyText) {
 		return false
 	}

@@ -81,7 +81,7 @@ func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg logga
 	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
 	if !ok || inv == nil {
-		cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly)
+		cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
 		return cue, cited, true
 	}
 	if v, found := inv.GetState(knowledgeCueTurnCacheStateKey); found {
@@ -89,12 +89,12 @@ func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg logga
 			return c.cue, c.cited, false
 		}
 	}
-	cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly)
+	cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
 	inv.SetState(knowledgeCueTurnCacheStateKey, &knowledgeCueTurnCache{query: query, cue: cue, cited: cited})
 	return cue, cited, true
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, query string, toolsEnabled, groundedOnly bool) (string, []biz.KnowledgeChunk) {
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, query string, toolsEnabled, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	// C-01 回填：目录枚举按调用方 workspace 过滤（system 见全部）——
@@ -110,7 +110,7 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	if query != "" {
 		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
 	}
-	return formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly)
+	return formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly, memoryGrounded)
 }
 
 // cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、
@@ -213,8 +213,13 @@ func retrieveCueChunks(ctx context.Context, query string, scoped []string, catal
 // chunks（不输出工具引导文案与目录——agent 无法调用检索工具，列出可搜库
 // 只会误导）；此时若无命中 chunks 则不注入。groundedOnly 时禁止用世界知识，
 // 无命中也注入拒答指令。P3-2：整体预算按块/条目边界截断。
-func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, groundedOnly bool) (string, []biz.KnowledgeChunk) {
+func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {
 	rendered := cueRenderedChunks(chunks)
+	if memoryGrounded {
+		// P0（2026-08-21）：本轮已注入 L3 时不再列出知识库目录——目录+「去搜」
+		// 会把记忆题拐去 knowledge_search（域 B sh-04 / up-03）。
+		filtered = nil
+	}
 	if groundedOnly && len(rendered) == 0 && !toolsEnabled {
 		return "## Retrieved Knowledge\n" +
 			"The knowledge base has no passages for this question. You MUST say you do not have evidence in the knowledge base. Do not use world knowledge.\n", nil
@@ -229,6 +234,10 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 	if groundedOnly {
 		// Grounded：目录与「不够就用常识」会诱导世界知识，一律不列。
 		filtered = nil
+	}
+	if memoryGrounded && len(rendered) == 0 {
+		return "## Retrieved Knowledge\n" +
+			"Matching memory facts were already injected this turn (see ## L2+L3 memory). Answer from those facts. Do not call `knowledge_search` unless they cannot answer the question. If search also returns nothing, say you do not have that record. Do not invent names, report IDs, brands, phone numbers, or personal preferences.\n", nil
 	}
 	if len(filtered) == 0 && len(chunks) == 0 && !groundedOnly {
 		return "", nil
@@ -260,8 +269,10 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 			if toolsEnabled {
 				header += " You may call `knowledge_search` or `knowledge_reflect` for more passages from the knowledge base, then refuse if still insufficient."
 			}
-		} else if toolsEnabled {
+		} else if toolsEnabled && !memoryGrounded {
 			header += " If they are insufficient, call `knowledge_search` or `knowledge_reflect`."
+		} else if toolsEnabled && memoryGrounded {
+			header += " Prefer injected L2+L3 memory over these passages when they conflict. Call `knowledge_search` only if neither answers."
 		}
 		writeBlock(header + "\n\n")
 		for i, ch := range rendered {
@@ -307,7 +318,8 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 			writeBlock("\n**Search strategy tips:**\n" +
 				"- For specific factual questions → `knowledge_search` (omit collection_id to auto-route across all bases)\n" +
 				"- For broad or multi-topic questions → `knowledge_reflect` (omit collection_ids to search all bases and evaluate quality)\n" +
-				"- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
+				"- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n" +
+				"- If search returns no chunks, say you do not have that record. Do not invent names, report IDs, brands, phone numbers, or personal preferences.\n")
 		}
 	}
 

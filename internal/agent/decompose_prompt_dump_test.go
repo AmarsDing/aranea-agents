@@ -17,7 +17,7 @@ func TestDumpDecomposePrompt(t *testing.T) {
 		t.Skip("probe disabled (set ARANEA_DUMP_DECOMPOSE_PROMPT=1)")
 	}
 	msg := "请组建两个团队并行工作：团队一写一首关于春天的短诗，团队二写一首关于秋天的短诗，最后汇总成一份对比赏析。"
-	prompt := buildDecompositionPrompt(msg, nil, 2)
+	prompt := buildDecompositionPrompt(msg, nil, 2, nil)
 	out := filepath.Join("..", "..", "test", "synthesis-idem-probe", "out", "decompose_prompt.txt")
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		t.Fatal(err)

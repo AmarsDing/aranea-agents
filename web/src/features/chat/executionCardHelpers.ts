@@ -16,6 +16,8 @@ export interface ExecutionCollapseControl {
   expandAllSignal: Readonly<Ref<number>>;
   /** Incremented when "Collapse All" is triggered. */
   collapseAllSignal: Readonly<Ref<number>>;
+  /** Live orchestration progress text (decomposing / allocating / …) for running tool cards. */
+  orchestrationProgressText?: Readonly<Ref<string>>;
 }
 
 export const EXECUTION_COLLAPSE_CONTROL_KEY: InjectionKey<ExecutionCollapseControl> =
@@ -75,6 +77,8 @@ export function generateSummaryFallback(event: ToolUseEvent): string {
       const command = payload?.command || '';
       return command ? `> ${truncate(command, 40)}` : '';
     }
+    case 'plan_and_execute':
+      return '正在规划并执行…';
     default:
       return '';
   }

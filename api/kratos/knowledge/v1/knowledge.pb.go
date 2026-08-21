@@ -4150,7 +4150,10 @@ type SearchRequest struct {
 	// path_prefix: optional vault-relative directory scope (G3-B7 search scope
 	// selector). Empty = whole collection. Only chunks whose document rel_path
 	// sits under "<prefix>/" match; leading/trailing slashes are tolerated.
-	PathPrefix    string `protobuf:"bytes,12,opt,name=path_prefix,json=pathPrefix,proto3" json:"path_prefix,omitempty"`
+	PathPrefix string `protobuf:"bytes,12,opt,name=path_prefix,json=pathPrefix,proto3" json:"path_prefix,omitempty"`
+	// use_eval: when true, run RetrievalEvaluator and maybe supplement-search.
+	// unset/false = return hybrid hits as-is (default; eval LLM is ~1.4s).
+	UseEval       *bool `protobuf:"varint,13,opt,name=use_eval,json=useEval,proto3,oneof" json:"use_eval,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4253,6 +4256,13 @@ func (x *SearchRequest) GetPathPrefix() string {
 		return x.PathPrefix
 	}
 	return ""
+}
+
+func (x *SearchRequest) GetUseEval() bool {
+	if x != nil && x.UseEval != nil {
+		return *x.UseEval
+	}
+	return false
 }
 
 type SearchResponse struct {
@@ -4860,7 +4870,7 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\tbase_hash\x18\x03 \x01(\tR\bbaseHash\"\x7f\n" +
 	"\x1dUpdateDocumentContentResponse\x12B\n" +
 	"\bdocument\x18\x01 \x01(\v2&.kratos.knowledge.v1.KnowledgeDocumentR\bdocument\x12\x1a\n" +
-	"\bconflict\x18\x02 \x01(\bR\bconflict\"\xf4\x02\n" +
+	"\bconflict\x18\x02 \x01(\bR\bconflict\"\xa1\x03\n" +
 	"\rSearchRequest\x12#\n" +
 	"\rcollection_id\x18\x01 \x01(\tR\fcollectionId\x12\x1a\n" +
 	"\x05query\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x05query\x12\x13\n" +
@@ -4875,8 +4885,10 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	" \x01(\tR\x0frewriteStrategy\x12#\n" +
 	"\rhybrid_search\x18\v \x01(\tR\fhybridSearch\x12\x1f\n" +
 	"\vpath_prefix\x18\f \x01(\tR\n" +
-	"pathPrefixB\r\n" +
-	"\v_use_rerank\"M\n" +
+	"pathPrefix\x12\x1e\n" +
+	"\buse_eval\x18\r \x01(\bH\x01R\auseEval\x88\x01\x01B\r\n" +
+	"\v_use_rerankB\v\n" +
+	"\t_use_eval\"M\n" +
 	"\x0eSearchResponse\x12;\n" +
 	"\x06chunks\x18\x01 \x03(\v2#.kratos.knowledge.v1.KnowledgeChunkR\x06chunks\"\x1a\n" +
 	"\x18GetEmbedderConfigRequest\"\xaf\x01\n" +

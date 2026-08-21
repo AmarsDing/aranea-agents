@@ -55,15 +55,15 @@ function makeDeps(overrides: Partial<UseAgentSettingsPersistenceDeps> = {}) {
 }
 
 describe('useAgentSettingsPersistence readonly guard', () => {
-  it('blocks saveAgent for readonly (built-in) agents before any request', async () => {
+  it('allows saveAgent for readonly (built-in) agents', async () => {
     const { deps, notify, patch, form } = makeDeps();
     (form as { readonly: boolean }).readonly = true;
     const { saveAgent } = useAgentSettingsPersistence(deps);
 
     await saveAgent();
 
-    expect(patch).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'warning' }));
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'positive' }));
   });
 
   it('allows saveAgent for normal agents', async () => {

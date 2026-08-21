@@ -1,5 +1,6 @@
-﻿﻿﻿﻿# Aranea 指令驱动评测公共库（agent-eval-20260818）
-# 与 realmachine-20260817/_lib.ps1 同口径，TestRoot 指向本评测目录
+# Aranea eval common lib (agent-eval-20260818). PURE ASCII ONLY.
+# PS 5.1 -File reads BOM-less UTF-8 as ANSI/GBK; any CJK comment can mojibake
+# into a trailing backtick and eat the next line. Keep every line ASCII.
 $script:BaseUrl = "http://127.0.0.1:8810"
 $script:TokenFile = "f:\myproject\aranea-agents\docker\.test-token.txt"
 $script:LoginFile = "f:\myproject\aranea-agents\docker\.test-login.json"
@@ -20,12 +21,13 @@ function Renew-Token {
 }
 
 # Api-Call -Method GET -Path "/v1/agents" -Body obj -OutFile path
+# Response body is read back from a temp file as UTF-8 to avoid console
+# codepage mojibake in curl output.
 function Api-Call {
     param([string]$Method = "GET", [Parameter(Mandatory)][string]$Path, $Body = $null, [string]$OutFile = $null, [int]$TimeoutSec = 60)
     $tok = Get-Token
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $respFile = [IO.Path]::GetTempFileName()
-    # 响应体落临时文件按字节读回 UTF-8，避免 curl 经控制台代码页捕获导致中文 mojibake/JSON 解析失败。
     $curlArgLine = @("-s", "-o", "$respFile", "-w", "%{http_code}", "-m", "$TimeoutSec", "-X", $Method, "-H", "Authorization: Bearer $tok", "-H", "Content-Type: application/json")
     $tmp = $null
     if ($null -ne $Body) {
@@ -51,7 +53,7 @@ function Api-Call {
 function Api-Get { param([string]$Path, [string]$OutFile, [int]$TimeoutSec = 60) Api-Call -Method GET -Path $Path -OutFile $OutFile -TimeoutSec $TimeoutSec }
 function Api-Post { param([string]$Path, $Body, [string]$OutFile, [int]$TimeoutSec = 180) Api-Call -Method POST -Path $Path -Body $Body -OutFile $OutFile -TimeoutSec $TimeoutSec }
 function Api-Patch { param([string]$Path, $Body, [int]$TimeoutSec = 60) Api-Call -Method PATCH -Path $Path -Body $Body -TimeoutSec $TimeoutSec }
-function Api-Delete { param([string]$Path, [int]$TimeoutSec = 60) Api-Call -Method DELETE -Path $Path -TimeoutSec $TimeoutSec }
+function Api-Delete { param([string]$Path, [int]$TimeoutSec = 60) Api-Call -Method DELETE -Path $Path -OutFile $OutFile -TimeoutSec $TimeoutSec }
 
 # Record -Module "02" -Id "B02-01" -Name "..." -Result PASS -Detail "..." -Ms 123
 function Record {

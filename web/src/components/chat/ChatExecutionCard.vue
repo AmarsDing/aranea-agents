@@ -17,7 +17,8 @@
         <q-icon v-else :name="activityIcon" :color="statusIconColor" size="20px" />
         <div class="col ellipsis">
           <div class="text-weight-medium ellipsis">{{ title }}</div>
-          <div v-if="memberLabel" class="text-caption text-accent ellipsis">{{ memberLabel }}</div>
+          <div v-if="liveProgressText" class="text-caption text-grey ellipsis">{{ liveProgressText }}</div>
+          <div v-else-if="memberLabel" class="text-caption text-accent ellipsis">{{ memberLabel }}</div>
           <div v-else-if="summaryText" class="text-caption text-grey ellipsis">{{ summaryText }}</div>
         </div>
         <q-chip v-if="isLongRunning" dense size="sm" color="warning" text-color="white" icon="schedule">
@@ -263,6 +264,13 @@ const agentInitials = computed(() => {
 // 空值由 AgentAvatarQ 回退到 smart_toy 图标。
 const agentIcon = computed(() => props.event.icon_key?.trim() ?? '');
 const summaryText = computed(() => props.event.summary?.trim() || generateSummaryFallback(props.event));
+const liveProgressText = computed(() => {
+  if (status.value !== 'running') return '';
+  const name = props.event.tool_name || '';
+  if (name !== 'plan_and_execute' && !name.endsWith('_plan_and_execute')) return '';
+  const live = collapseControl?.orchestrationProgressText?.value?.trim() ?? '';
+  return live || summaryText.value;
+});
 const memberLabel = computed(() => {
   if (props.showMemberLabel === false) return '';
   const key = props.event.agent_key?.trim();

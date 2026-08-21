@@ -85,3 +85,45 @@
 | C-12-rrf | hybrid comparison | INFO | 0ms | hit=30/30 avgMs=1444 |
 | C-15 | cross-collection isolation | PASS | 21ms | code=404 chunks=1 leak=False |
 | C-17 | cascade delete | PASS | 0ms | delCode=200 afterCode=404 docsLeft=0 |
+| C-00 | create collection | PASS | 25ms | id=094d8ccd3d67553f4841 embed=bge-m3 |
+| C-00b | dim correct (BUG-C-01 workaround) | PASS | 0ms | dim=1024 |
+| C-02-sample-doc-inspection.md | ingest doc | PASS | 23ms | docId=e062bd6a627bf6634f5b chunks=0 |
+| C-02-sample-doc-change.md | ingest doc | PASS | 25ms | docId=67d6250231b2df86488a chunks=0 |
+| C-02-sample-doc-emergency.md | ingest doc | PASS | 22ms | docId=a59e4d58b193249ea98c chunks=0 |
+| C-02-sample-doc-duty.md | ingest doc | PASS | 25ms | docId=d7f7136800955ccae61f chunks=0 |
+| C-02-sample-doc-security.md | ingest doc | PASS | 27ms | docId=be9fbc39b805839d3e4c chunks=0 |
+| C-03 | index wait | PASS | 0ms | indexed=5/5 chunks=12 |
+| kb-ins-01 | search top5 | PASS | 1936ms | chunks=5 topScore=0.032786883 |
+| kb-ins-02 | search top5 | PASS | 2254ms | chunks=5 topScore=0.4933039 |
+| kb-ins-03 | search top5 | PASS | 1957ms | chunks=5 topScore=0.5626186 |
+| kb-ins-04 | search top5 | PASS | 1926ms | chunks=5 topScore=0.60316515 |
+| kb-ins-05 | search top5 | PASS | 2296ms | chunks=5 topScore=0.63193333 |
+| kb-ins-06 | search top5 | PASS | 2921ms | chunks=5 topScore=0.652088 |
+| kb-chg-01 | search top5 | PASS | 2175ms | chunks=5 topScore=0.6809383 |
+| kb-chg-02 | search top5 | PASS | 2702ms | chunks=5 topScore=0.6469968 |
+| kb-chg-03 | search top5 | PASS | 3431ms | chunks=5 topScore=0.68575734 |
+| kb-chg-04 | search top5 | PASS | 2141ms | chunks=5 topScore=0.70508325 |
+| kb-chg-05 | search top5 | PASS | 3528ms | chunks=5 topScore=0.7100305 |
+| kb-chg-06 | search top5 | PASS | 2519ms | chunks=5 topScore=0.7251224 |
+| kb-emg-01 | search top5 | PASS | 4093ms | chunks=5 topScore=0.73609227 |
+| kb-emg-02 | search top5 | PASS | 2704ms | chunks=5 topScore=0.74412644 |
+| kb-emg-03 | search top5 | PASS | 3264ms | chunks=5 topScore=0.74743915 |
+| kb-emg-04 | search top5 | PASS | 2599ms | chunks=5 topScore=0.7481546 |
+| kb-emg-05 | search top5 | PASS | 2859ms | chunks=5 topScore=0.7534207 |
+| kb-emg-06 | search top5 | PASS | 3102ms | chunks=5 topScore=0.75613695 |
+| kb-dty-01 | search top5 | PASS | 1896ms | chunks=5 topScore=0.7518489 |
+| kb-dty-02 | search top5 | PASS | 2723ms | chunks=5 topScore=0.64647657 |
+| kb-dty-03 | search top5 | PASS | 2261ms | chunks=5 topScore=0.6789255 |
+| kb-dty-04 | search top5 | PASS | 2396ms | chunks=5 topScore=0.7313201 |
+| kb-dty-05 | search top5 | PASS | 2336ms | chunks=5 topScore=0.7385766 |
+| kb-dty-06 | search top5 | PASS | 3406ms | chunks=5 topScore=0.7446703 |
+| kb-sec-01 | search top5 | PASS | 2184ms | chunks=5 topScore=0.74793047 |
+| kb-sec-02 | search top5 | PASS | 3528ms | chunks=5 topScore=0.7439656 |
+| kb-sec-03 | search top5 | PASS | 2622ms | chunks=5 topScore=0.7448245 |
+| kb-sec-04 | search top5 | PASS | 2175ms | chunks=5 topScore=0.7514804 |
+| kb-sec-05 | search top5 | PASS | 2283ms | chunks=5 topScore=0.75464386 |
+| kb-sec-06 | search top5 | PASS | 2862ms | chunks=5 topScore=0.76882195 |
+| C-12-dense | hybrid comparison | INFO | 0ms | hit=30/30 avgMs=2405 |
+| C-12-sparse | hybrid comparison | INFO | 0ms | hit=30/30 avgMs=2647 |
+| C-12-rrf | hybrid comparison | INFO | 0ms | hit=30/30 avgMs=1987 |
+| C-15 | cross-collection isolation | PASS | 22ms | code=404 chunks=1 leak=False |

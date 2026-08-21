@@ -90214,6 +90214,8 @@ type SessionTurnMutation struct {
 	addoutput_tokens        *int
 	total_tokens            *int
 	addtotal_tokens         *int
+	cached_input_tokens     *int
+	addcached_input_tokens  *int
 	total_cost_micro_usd    *int64
 	addtotal_cost_micro_usd *int64
 	final_provider          *string
@@ -91255,6 +91257,62 @@ func (m *SessionTurnMutation) ResetTotalTokens() {
 	m.addtotal_tokens = nil
 }
 
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (m *SessionTurnMutation) SetCachedInputTokens(i int) {
+	m.cached_input_tokens = &i
+	m.addcached_input_tokens = nil
+}
+
+// CachedInputTokens returns the value of the "cached_input_tokens" field in the mutation.
+func (m *SessionTurnMutation) CachedInputTokens() (r int, exists bool) {
+	v := m.cached_input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCachedInputTokens returns the old "cached_input_tokens" field's value of the SessionTurn entity.
+// If the SessionTurn object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionTurnMutation) OldCachedInputTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCachedInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCachedInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCachedInputTokens: %w", err)
+	}
+	return oldValue.CachedInputTokens, nil
+}
+
+// AddCachedInputTokens adds i to the "cached_input_tokens" field.
+func (m *SessionTurnMutation) AddCachedInputTokens(i int) {
+	if m.addcached_input_tokens != nil {
+		*m.addcached_input_tokens += i
+	} else {
+		m.addcached_input_tokens = &i
+	}
+}
+
+// AddedCachedInputTokens returns the value that was added to the "cached_input_tokens" field in this mutation.
+func (m *SessionTurnMutation) AddedCachedInputTokens() (r int, exists bool) {
+	v := m.addcached_input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCachedInputTokens resets all changes to the "cached_input_tokens" field.
+func (m *SessionTurnMutation) ResetCachedInputTokens() {
+	m.cached_input_tokens = nil
+	m.addcached_input_tokens = nil
+}
+
 // SetTotalCostMicroUsd sets the "total_cost_micro_usd" field.
 func (m *SessionTurnMutation) SetTotalCostMicroUsd(i int64) {
 	m.total_cost_micro_usd = &i
@@ -91669,7 +91727,7 @@ func (m *SessionTurnMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SessionTurnMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 31)
 	if m.session_id != nil {
 		fields = append(fields, sessionturn.FieldSessionID)
 	}
@@ -91729,6 +91787,9 @@ func (m *SessionTurnMutation) Fields() []string {
 	}
 	if m.total_tokens != nil {
 		fields = append(fields, sessionturn.FieldTotalTokens)
+	}
+	if m.cached_input_tokens != nil {
+		fields = append(fields, sessionturn.FieldCachedInputTokens)
 	}
 	if m.total_cost_micro_usd != nil {
 		fields = append(fields, sessionturn.FieldTotalCostMicroUsd)
@@ -91808,6 +91869,8 @@ func (m *SessionTurnMutation) Field(name string) (ent.Value, bool) {
 		return m.OutputTokens()
 	case sessionturn.FieldTotalTokens:
 		return m.TotalTokens()
+	case sessionturn.FieldCachedInputTokens:
+		return m.CachedInputTokens()
 	case sessionturn.FieldTotalCostMicroUsd:
 		return m.TotalCostMicroUsd()
 	case sessionturn.FieldFinalProvider:
@@ -91877,6 +91940,8 @@ func (m *SessionTurnMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldOutputTokens(ctx)
 	case sessionturn.FieldTotalTokens:
 		return m.OldTotalTokens(ctx)
+	case sessionturn.FieldCachedInputTokens:
+		return m.OldCachedInputTokens(ctx)
 	case sessionturn.FieldTotalCostMicroUsd:
 		return m.OldTotalCostMicroUsd(ctx)
 	case sessionturn.FieldFinalProvider:
@@ -92046,6 +92111,13 @@ func (m *SessionTurnMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetTotalTokens(v)
 		return nil
+	case sessionturn.FieldCachedInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCachedInputTokens(v)
+		return nil
 	case sessionturn.FieldTotalCostMicroUsd:
 		v, ok := value.(int64)
 		if !ok {
@@ -92154,6 +92226,9 @@ func (m *SessionTurnMutation) AddedFields() []string {
 	if m.addtotal_tokens != nil {
 		fields = append(fields, sessionturn.FieldTotalTokens)
 	}
+	if m.addcached_input_tokens != nil {
+		fields = append(fields, sessionturn.FieldCachedInputTokens)
+	}
 	if m.addtotal_cost_micro_usd != nil {
 		fields = append(fields, sessionturn.FieldTotalCostMicroUsd)
 	}
@@ -92185,6 +92260,8 @@ func (m *SessionTurnMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedOutputTokens()
 	case sessionturn.FieldTotalTokens:
 		return m.AddedTotalTokens()
+	case sessionturn.FieldCachedInputTokens:
+		return m.AddedCachedInputTokens()
 	case sessionturn.FieldTotalCostMicroUsd:
 		return m.AddedTotalCostMicroUsd()
 	}
@@ -92265,6 +92342,13 @@ func (m *SessionTurnMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddTotalTokens(v)
+		return nil
+	case sessionturn.FieldCachedInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCachedInputTokens(v)
 		return nil
 	case sessionturn.FieldTotalCostMicroUsd:
 		v, ok := value.(int64)
@@ -92359,6 +92443,9 @@ func (m *SessionTurnMutation) ResetField(name string) error {
 		return nil
 	case sessionturn.FieldTotalTokens:
 		m.ResetTotalTokens()
+		return nil
+	case sessionturn.FieldCachedInputTokens:
+		m.ResetCachedInputTokens()
 		return nil
 	case sessionturn.FieldTotalCostMicroUsd:
 		m.ResetTotalCostMicroUsd()

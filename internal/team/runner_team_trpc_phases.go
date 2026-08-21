@@ -220,9 +220,9 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			MemoryFactInjectCounter: r.td.Persist.Memory.FactInjectCounter,
 			MemoryProfileCardReader: r.td.Persist.Memory.ProfileCardReader,
 			MemoryReconsolidator:    r.td.Persist.Memory.Reconsolidator,
-			AgentCaseRecaller:      r.td.Persist.Memory.AgentCaseRecaller,
-			KnowledgeRetriever:     r.cfg.Knowledge.Retriever,
-			KnowledgeUsecase:       r.cfg.KnowledgeUsecase,
+			AgentCaseRecaller:       r.td.Persist.Memory.AgentCaseRecaller,
+			KnowledgeRetriever:      r.cfg.Knowledge.Retriever,
+			KnowledgeUsecase:        r.cfg.KnowledgeUsecase,
 		},
 		TRPCPluginDeps: agent.TRPCPluginDeps{
 			PluginManager: r.cfg.PluginManager,
@@ -283,9 +283,7 @@ func (r *Runner) buildTeamRunContext(ctx context.Context, def Definition, builde
 		if r.cfg.Knowledge.FederatedRetriever != nil {
 			runCtx = knowledgetool.WithFederatedRetriever(runCtx, r.cfg.Knowledge.FederatedRetriever)
 		}
-		if r.cfg.Knowledge.Evaluator != nil {
-			runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, r.cfg.Knowledge.Evaluator)
-		}
+		// P1（2026-08-21）：团队对话同样默认不注入 RetrievalEvaluator。
 	}
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
@@ -452,6 +450,7 @@ func (r *Runner) buildAssistantMessageFromResult(
 		CreatedAt:        agent.RFC3339Now(),
 		TokenIn:          promptTok,
 		TokenOut:         completionTok,
+		TokenCached:      result.CachedTok,
 		AttachmentsCount: assistantAttN,
 	}
 	return assistantBuildResult{msg: msg, promptTok: promptTok, completionTok: completionTok, usageSource: usageSource}, nil

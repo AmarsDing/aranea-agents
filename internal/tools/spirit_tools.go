@@ -32,6 +32,9 @@ type PlanAndExecuteInput struct {
 	// system agents, so explicit routing is the only path to them.
 	// agent_keys[0] executes; remaining keys join as team members in dag mode.
 	AgentKeys []string `json:"agent_keys,omitempty" jsonschema:"description=Explicit agent routing: agent_keys[0] executes the task (e.g. [\"__system_admin__\"] for Skill/MCP/industry management, [\"__memory__\"] for memory tasks, [\"__skills__\"] for skill-evolution tasks). Bypasses heuristic agent matching. Required when delegating to system butlers."`
+	// ForceNew starts a brand-new DAG even when this spirit session already has
+	// overlapping running/completed teams for the same goal. Default false.
+	ForceNew bool `json:"force_new,omitempty" jsonschema:"description=Set true only when the user explicitly asked to start a NEW independent analysis. Default false: if this session already has overlapping teams, reuse them instead of decomposing again."`
 }
 
 // SubTaskSummary is a summary of a subtask in the plan.
@@ -52,6 +55,10 @@ type PlanAndExecuteOutput struct {
 	OrchestrationID string                             `json:"orchestration_id,omitempty"`
 	MemoryHit       bool                               `json:"memory_hit"`
 	Steps           []biztypes.OrchestrationStepRecord `json:"steps,omitempty"`
+	ReuseExisting   bool                               `json:"reuse_existing,omitempty"`
+	ReuseReason     string                             `json:"reuse_reason,omitempty"`
+	ExistingTeams   []ExistingTeamSummary              `json:"existing_teams,omitempty"`
+	NextAction      string                             `json:"next_action,omitempty"`
 }
 
 // planAndExecuteDeps holds the shared dependencies for plan_and_execute phases.
@@ -116,6 +123,13 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				if p, m := deps.sessionModelLookup.GetSessionModel(ctx, spiritSessionID); p != "" && m != "" {
 					ctx = biz.WithPlannerSessionModel(ctx, p, m)
 				}
+			}
+
+			// Same-goal follow-up: if this spirit session already has overlapping
+			// running/completed teams, skip LLM decompose. Caller must pass
+			// force_new / say 「重新组建」 to start a genuinely new analysis.
+			if out, ok := tryReuseExistingOrchestration(ctx, spiritSessionID, taskPrompt, input.ForceNew, deps); ok {
+				return out, nil
 			}
 
 			// Emit ButlerOrchestrationStarted event.
@@ -274,7 +288,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			return out, nil
 		},
 		trpcfunction.WithName("plan_and_execute"),
-		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。简单任务直接回答，复杂任务自动组建团队。"),
+		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。简单任务直接回答，复杂任务自动组建团队。若本会话已有针对同一目标的团队，默认复用（reuse_existing=true）并返回 existing_teams：先 tool_load get_team_deliverable，禁止再开一套 DAG。仅当用户明确要求新的独立分析时传 force_new=true。"),
 	)
 }
 
@@ -289,6 +303,48 @@ func consumeRecoveredPlan(orch biz.TaskOrchestratorPort, spiritSessionID, userMe
 		return nil, nil, false
 	}
 	return c.ConsumeRecoveredPlan(spiritSessionID, userMessage)
+}
+
+func tryReuseExistingOrchestration(ctx context.Context, spiritSessionID, taskPrompt string, forceNew bool, deps planAndExecuteDeps) (PlanAndExecuteOutput, bool) {
+	if wantsForceNewOrchestration(forceNew, taskPrompt) || deps.teamQuery == nil {
+		return PlanAndExecuteOutput{}, false
+	}
+	teams, err := deps.teamQuery.ListAllTeams(ctx, spiritSessionID)
+	if err != nil {
+		if deps.lg != nil {
+			deps.lg.Warn("查询会话团队失败，跳过复用短路",
+				loggateway.StepID("spirit.plan_and_execute.reuse_list_err"),
+				loggateway.Err(err),
+			)
+		}
+		return PlanAndExecuteOutput{}, false
+	}
+	overlap := reusableOverlappingTeams(taskPrompt, teams)
+	if len(overlap) == 0 {
+		return PlanAndExecuteOutput{}, false
+	}
+	cohort := expandToOrchestrationCohort(overlap, teams)
+	if deps.bus != nil {
+		deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "", map[string]any{
+			"phase":      "reused",
+			"team_count": len(cohort),
+		}))
+	}
+	if deps.lg != nil {
+		deps.lg.Info("plan_and_execute: reusing existing session teams",
+			loggateway.StepID("spirit.plan_and_execute.reuse_existing"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Int("team_count", len(cohort)),
+		)
+	}
+	return PlanAndExecuteOutput{
+		Strategy:        reuseStrategy,
+		ComplexityLevel: string(biz.ComplexityModerate),
+		ReuseExisting:   true,
+		ReuseReason:     "session already has overlapping teams; do not start a new DAG",
+		ExistingTeams:   summarizeExistingTeams(cohort),
+		NextAction:      reuseNextAction(cohort),
+	}, true
 }
 
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.

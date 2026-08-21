@@ -225,6 +225,7 @@ func TestTaskPlanner_QuickAssess_TeamIntentForcesPlanning(t *testing.T) {
 		{"同时工作 keyword", "让两个agent同时工作", true},
 		// Team formation keywords
 		{"组建团队 keyword", "请组建团队完成这个项目", true},
+		{"组建几个团队 filler", "组建几个团队，分析金鹏科技行情", true},
 		{"组建team keyword", "Please build a team to handle this", true},
 		{"团队a团队b keyword", "团队A写诗，团队B写代码", true},
 		{"多个团队 keyword", "需要多个团队协作完成", true},
@@ -403,6 +404,8 @@ func TestDetectTeamIntent(t *testing.T) {
 		{"multiple teams", "需要多个团队协作完成", "dag"},
 		{"parallel with team formation", "组建两个团队并行工作：团队A写诗，团队B写诗", "dag"},
 		{"team formation Chinese", "请组建团队完成这个项目", "dag"},
+		{"a few teams Chinese", "组建几个团队，分析金鹏科技行情", "dag"},
+		{"several teams with filler", "请创建若干团队分别调研", "dag"},
 		{"team A and team B", "团队A负责前端，团队B负责后端", "dag"},
 		{"build a team English", "form a team to handle this", "dag"},
 		{"team collaboration", "团队协作完成这个任务", "dag"},

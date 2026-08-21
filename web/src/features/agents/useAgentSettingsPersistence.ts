@@ -125,12 +125,6 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
   }
 
   async function saveAgent() {
-    // Built-in (system) agents are read-only: the backend rejects PATCH with
-    // workspace access errors, so block before any validation/request.
-    if (deps.form.readonly) {
-      deps.$q.notify({ type: 'warning', message: deps.t('agentsPage.actions.builtinTip') });
-      return;
-    }
     if (!deps.selectedProviderModelID.value) {
       // Allow empty model (agent will inherit from chat interface at runtime).
       // Only block if the model was explicitly set but is orphaned/disabled.

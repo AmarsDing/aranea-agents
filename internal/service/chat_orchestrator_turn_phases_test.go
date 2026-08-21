@@ -7,6 +7,7 @@ import (
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -107,15 +108,70 @@ func TestShouldRunProactiveRecall_VoiceTurnSkipped(t *testing.T) {
 
 func TestShouldSkipIntentPass_DirectReplyWithoutPlanner(t *testing.T) {
 	o := &ChatOrchestrator{}
-	if !shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。") {
+	if skip, _ := shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。"); !skip {
 		t.Fatal("direct-reply must skip intent even when planner is nil")
 	}
-	if shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "帮我做个应用") {
+	if skip, _ := shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "帮我做个应用"); skip {
 		t.Fatal("underspecified task must not skip intent")
 	}
-	if shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "请排查杭州滨江机房核心交换机告警") {
+	if skip, _ := shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "请排查杭州滨江机房核心交换机告警"); skip {
 		t.Fatal("without planner, non-direct-reply tasks must still run intent")
 	}
+}
+
+// TestAwaitIntentArtifact 钉住 C2 方案 D 分级收口（2026-08-21）：
+// fullWait（欠规格/complex）全等至 intentCtx 保险丝；其余限 rendezvous
+// 窗口，超时降级 raced_out 且 cancel intent（省 provider token）。
+func TestAwaitIntentArtifact(t *testing.T) {
+	newArtifact := func() *intent.Artifact { return &intent.Artifact{IntentKind: "task"} }
+
+	t.Run("rendezvous 窗口内完成=completed", func(t *testing.T) {
+		ch := make(chan *intent.Artifact, 1)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ch <- newArtifact()
+		art, outcome := awaitIntentArtifact(ch, ctx, cancel, false)
+		if outcome != "completed" || art == nil {
+			t.Fatalf("got outcome=%q art=%v, want completed artifact", outcome, art)
+		}
+	})
+
+	t.Run("窗口未命中=raced_out 且 cancel", func(t *testing.T) {
+		ch := make(chan *intent.Artifact, 1) // 永不投递，模拟慢尾 intent
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		art, outcome := awaitIntentArtifact(ch, ctx, cancel, false)
+		if outcome != "raced_out" || art != nil {
+			t.Fatalf("got outcome=%q art=%v, want raced_out nil", outcome, art)
+		}
+		if ctx.Err() == nil {
+			t.Fatal("raced_out must cancel intent ctx to stop the in-flight LLM call")
+		}
+	})
+
+	t.Run("fullWait 等过 rendezvous 窗口", func(t *testing.T) {
+		ch := make(chan *intent.Artifact, 1)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		go func() {
+			time.Sleep(intentRendezvousWindow + 100*time.Millisecond) // 超过窗口才完成
+			ch <- newArtifact()
+		}()
+		start := time.Now()
+		art, outcome := awaitIntentArtifact(ch, ctx, cancel, true)
+		if outcome != "completed" || art == nil {
+			t.Fatalf("got outcome=%q art=%v, want completed artifact", outcome, art)
+		}
+		if time.Since(start) < intentRendezvousWindow {
+			t.Fatal("fullWait must wait past the rendezvous window")
+		}
+	})
+
+	t.Run("fullWait 保险丝熔断=fused", func(t *testing.T) {
+		ch := make(chan *intent.Artifact, 1) // 永不投递
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		art, outcome := awaitIntentArtifact(ch, ctx, cancel, true)
+		if outcome != "fused" || art != nil {
+			t.Fatalf("got outcome=%q art=%v, want fused nil", outcome, art)
+		}
+	})
 }
 
 // captureNoticeBus extracts SystemNoticeEvents from the shared captureEventBus

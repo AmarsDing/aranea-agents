@@ -181,6 +181,40 @@ func TestProfileAllowSet_codingIncludesShellExec(t *testing.T) {
 	}
 }
 
+// 调用契约 7.4：「启用 MCP」默认形态 = broker。coding（默认 profile）命名
+// mcp_broker（registryOptInOnlyKeys 成员，种子 enabled=false，命名即 allowed）；
+// mcp_tool_set 保持显式 opt-in，不进默认面。
+func TestProfileAllowSet_codingIncludesMCPBroker(t *testing.T) {
+	allowed := profileAllowSet("coding", nil)
+	if !allowed["mcp_broker"] {
+		t.Fatalf("coding allow set must include mcp_broker; got %v", allowed)
+	}
+	if allowed["mcp_tool_set"] {
+		t.Fatalf("coding allow set must not include mcp_tool_set (explicit opt-in only); got %v", allowed)
+	}
+
+	cat := []Tool{
+		{Key: "mcp_broker", DisplayName: "MCP Broker", Category: "integration", Source: "builtin", Enabled: false},
+		{Key: "mcp_tool_set", DisplayName: "MCP 工具集", Category: "integration", Source: "builtin", Enabled: false},
+	}
+	eff := buildAgentEffectiveTools(AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "coding"}, cat, loggateway.NewNoop())
+	var broker, toolset *EffectiveAgentTool
+	for i := range eff.Items {
+		switch eff.Items[i].ToolKey {
+		case "mcp_broker":
+			broker = &eff.Items[i]
+		case "mcp_tool_set":
+			toolset = &eff.Items[i]
+		}
+	}
+	if broker == nil || !broker.Enabled {
+		t.Fatalf("coding agent must effectively enable mcp_broker; got %#v", broker)
+	}
+	if toolset == nil || toolset.Enabled {
+		t.Fatalf("coding agent must not enable mcp_tool_set by default; got %#v", toolset)
+	}
+}
+
 func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}
 	cat := []Tool{{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true}}

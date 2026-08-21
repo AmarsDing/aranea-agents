@@ -4979,7 +4979,7 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 
 | 阶段 | 实现 | LLM 调用 | 期间用户可见 |
 |------|------|---------|-------------|
-| Plan | `taskPlannerImpl.Plan` → 记忆查询（本地）+ 复杂度评估（本地）+ `decomposeTaskStream`（LLM 流式；2026-08-08 起：45s idle 停滞守卫 + 瞬时故障无限重试，取代 60s 硬超时） | 1 次（含重试） | 思考流实时可见（reasoning 增量发布为 thinking step）+ draft TaskPlan 分解前落库 + 5s 心跳进度 |
+| Plan | `taskPlannerImpl.Plan` → 记忆查询（本地）+ 复杂度评估（本地）+ `decomposeTaskStream`（LLM 流式；idle 45s 停滞守卫 + 瞬时故障有界重试。**流式路径不再套 60s 子超时**，外层由 `PlanAndExecuteTimeout=3min` 收口；同步 `decomposeTask` 回退仍用 60s） | 1 次（含重试） | 思考流实时可见（reasoning 增量发布为 thinking step）+ draft TaskPlan 分解前落库 + 5s 心跳进度（含 `elapsed_seconds`，工具卡片与 loading 条同步） |
 | Allocate | `agentAllocatorImpl.Allocate` → 每 subtask 串行走 4 层匹配 | 0~2×N 次 | 仅笼统 loading |
 | Factory | `agentFactoryImpl.EnsureAgent` → LLM 生成定义 → 直接落库 | 1 次/创建 | 无感知、无审批 |
 | Orchestrate | `PlanExecutor` → `RealTeamOrchestrator.Orchestrate` → `AssembleTeam` | 0 | team_stage 事件 |
@@ -4994,10 +4994,11 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 
 | noticeType | meta.phase | meta 其他字段 | 触发点 | 前端文案 |
 |-----------|-----------|--------------|--------|---------|
-| `orchestration_progress` | `decomposing` | `elapsed_seconds`（分解期间每 5s 心跳重发，2026-08-08 起） | `Plan()` decomposeTask 前 + 分解期间心跳 | 正在分解任务… |
+| `orchestration_progress` | `decomposing` | `elapsed_seconds`（分解期间每 5s 心跳重发，2026-08-08 起） | `Plan()` decomposeTask 前 + 分解期间心跳 | 正在分解任务…（心跳带已耗时） |
 | `orchestration_progress` | `decomposed` | `sub_task_count` | `Plan()` decomposeTask 后 | 任务分解完成，共 N 个子任务 |
 | `orchestration_progress` | `decompose_retry` | `attempt`（即将开始的尝试序号）, `reason` | `decomposeTaskStream` 瞬时故障重试前（P3，2026-08-08 起） | 分解遇到网络波动，正在重试… |
 | `orchestration_progress` | `decompose_failed` | `reason`（`error`/`empty`） | `Plan()` 分解报错或产出 0 子任务时（显式降级 direct） | 任务分解未完成，已切换为直接回答… |
+| `orchestration_progress` | `reused` | `team_count` | `plan_and_execute` 发现本会话已有重叠 running/completed 团队，跳过 LLM 分解 | 本会话已有 N 个相关团队，正在复用其结果… |
 | `orchestration_progress` | `allocating` | `index`, `total`, `sub_task` | `Allocate()` 每 subtask 匹配完成 | 正在匹配 Agent…（i/N） |
 | `orchestration_progress` | `allocated` | `total` | `Allocate()` 完成 | Agent 分配完成 |
 | `orchestration_progress` | `creating_agent` | `agent_name` | `EnsureAgent()` LLM 生成前 | 正在创建新 Agent "X"… |

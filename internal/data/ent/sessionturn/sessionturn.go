@@ -51,6 +51,8 @@ const (
 	FieldOutputTokens = "output_tokens"
 	// FieldTotalTokens holds the string denoting the total_tokens field in the database.
 	FieldTotalTokens = "total_tokens"
+	// FieldCachedInputTokens holds the string denoting the cached_input_tokens field in the database.
+	FieldCachedInputTokens = "cached_input_tokens"
 	// FieldTotalCostMicroUsd holds the string denoting the total_cost_micro_usd field in the database.
 	FieldTotalCostMicroUsd = "total_cost_micro_usd"
 	// FieldFinalProvider holds the string denoting the final_provider field in the database.
@@ -98,6 +100,7 @@ var Columns = []string{
 	FieldInputTokens,
 	FieldOutputTokens,
 	FieldTotalTokens,
+	FieldCachedInputTokens,
 	FieldTotalCostMicroUsd,
 	FieldFinalProvider,
 	FieldFinalModel,
@@ -161,6 +164,8 @@ var (
 	DefaultOutputTokens int
 	// DefaultTotalTokens holds the default value on creation for the "total_tokens" field.
 	DefaultTotalTokens int
+	// DefaultCachedInputTokens holds the default value on creation for the "cached_input_tokens" field.
+	DefaultCachedInputTokens int
 	// DefaultTotalCostMicroUsd holds the default value on creation for the "total_cost_micro_usd" field.
 	DefaultTotalCostMicroUsd int64
 	// DefaultFinalProvider holds the default value on creation for the "final_provider" field.
@@ -293,6 +298,11 @@ func ByOutputTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByTotalTokens orders the results by the total_tokens field.
 func ByTotalTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotalTokens, opts...).ToFunc()
+}
+
+// ByCachedInputTokens orders the results by the cached_input_tokens field.
+func ByCachedInputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCachedInputTokens, opts...).ToFunc()
 }
 
 // ByTotalCostMicroUsd orders the results by the total_cost_micro_usd field.

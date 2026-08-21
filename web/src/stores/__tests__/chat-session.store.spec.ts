@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia';
 import { useChatSessionStore } from '../chat/sessionStore';
 
 vi.mock('../../features/session/api', () => ({
-  listSessions: vi.fn().mockResolvedValue([]),
+  searchSessions: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 }),
   listTeamSessions: vi.fn().mockResolvedValue([]),
   createSession: vi.fn(),
   deleteSession: vi.fn().mockResolvedValue(undefined),
@@ -85,26 +85,127 @@ describe('useChatSessionStore', () => {
   });
 
   it('loadAgentSessions populates sessions and auto-selects first', async () => {
-    const { listSessions } = await import('../../features/session/api');
+    const { searchSessions } = await import('../../features/session/api');
     const s1 = mockSession({ id: 's1' });
     const s2 = mockSession({ id: 's2' });
-    (listSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([s1, s2]);
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [s1, s2],
+      total: 2,
+      limit: 50,
+      offset: 0,
+    });
 
     const store = useChatSessionStore();
     await store.loadAgentSessions('agent-1');
 
     expect(store.sessions).toHaveLength(2);
     expect(store.selectedSession).toEqual(s1);
+    expect(store.sessionsTotal).toBe(2);
+    expect(store.sessionsHasMore).toBe(false);
     expect(store.error).toBeNull();
   });
 
   it('loadAgentSessions sets error on failure', async () => {
-    const { listSessions } = await import('../../features/session/api');
-    (listSessions as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('network'));
+    const { searchSessions } = await import('../../features/session/api');
+    (searchSessions as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('network'));
 
     const store = useChatSessionStore();
     await expect(store.loadAgentSessions('agent-1')).rejects.toThrow('network');
     expect(store.error).toBe('network');
+  });
+
+  it('loadMoreAgentSessions appends next page and dedupes', async () => {
+    const { searchSessions } = await import('../../features/session/api');
+    const page1 = Array.from({ length: 50 }, (_, i) => mockSession({ id: `s${i}` }));
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: page1,
+      total: 51,
+      limit: 50,
+      offset: 0,
+    });
+
+    const store = useChatSessionStore();
+    await store.loadAgentSessions('agent-1');
+    expect(store.sessionsHasMore).toBe(true);
+
+    // 第二页包含一个并发新建导致的重复行 s49，应被去重
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [mockSession({ id: 's49' }), mockSession({ id: 's50' })],
+      total: 51,
+      limit: 50,
+      offset: 50,
+    });
+    await store.loadMoreAgentSessions();
+
+    expect(store.sessions).toHaveLength(51);
+    expect(store.sessions.filter((s) => s.id === 's49')).toHaveLength(1);
+    expect(store.sessionsHasMore).toBe(false);
+    expect(searchSessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agent_id: 'agent-1', root_only: true, limit: 50, offset: 50 }),
+    );
+  });
+
+  it('searchAgentSessions filters by keyword and resets paging', async () => {
+    const { searchSessions } = await import('../../features/session/api');
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [mockSession({ id: 's1' })],
+      total: 40,
+      limit: 50,
+      offset: 0,
+    });
+    const store = useChatSessionStore();
+    await store.loadAgentSessions('agent-1');
+
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [mockSession({ id: 's9' })],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
+    await store.searchAgentSessions('告警');
+
+    expect(store.sessionListKeyword).toBe('告警');
+    expect(store.sessions.map((s) => s.id)).toEqual(['s9']);
+    expect(store.sessionsTotal).toBe(1);
+    expect(searchSessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agent_id: 'agent-1', keyword: '告警', offset: 0 }),
+    );
+  });
+
+  it('loadAgentSessions refreshOnly merges instead of truncating loaded pages', async () => {
+    const { searchSessions } = await import('../../features/session/api');
+    const page1 = Array.from({ length: 50 }, (_, i) => mockSession({ id: `s${i}` }));
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: page1,
+      total: 60,
+      limit: 50,
+      offset: 0,
+    });
+    const store = useChatSessionStore();
+    await store.loadAgentSessions('agent-1');
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: Array.from({ length: 10 }, (_, i) => mockSession({ id: `s${50 + i}` })),
+      total: 60,
+      limit: 50,
+      offset: 50,
+    });
+    await store.loadMoreAgentSessions();
+    expect(store.sessions).toHaveLength(60);
+
+    // refresh：服务端返回更新后的首页窗口（60 条），s0 标题已改；合并后仍是 60 条
+    const refreshed = Array.from({ length: 60 }, (_, i) =>
+      mockSession({ id: `s${i}`, title: i === 0 ? 'Renamed' : 'Test Session' }),
+    );
+    (searchSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: refreshed,
+      total: 60,
+      limit: 60,
+      offset: 0,
+    });
+    await store.loadAgentSessions('agent-1', { refreshOnly: true });
+
+    expect(store.sessions).toHaveLength(60);
+    expect(store.sessions.find((s) => s.id === 's0')?.title).toBe('Renamed');
   });
 
   it('addAgentSession prepends and selects created session', async () => {
@@ -244,10 +345,10 @@ describe('useChatSessionStore', () => {
   });
 
   it('loadAgentSessions returns early when agentId is empty', async () => {
-    const { listSessions } = await import('../../features/session/api');
+    const { searchSessions } = await import('../../features/session/api');
     const store = useChatSessionStore();
     await store.loadAgentSessions('');
-    expect(listSessions).not.toHaveBeenCalled();
+    expect(searchSessions).not.toHaveBeenCalled();
   });
 
   it('addAgentSession returns null when agentId is empty', async () => {
@@ -258,10 +359,10 @@ describe('useChatSessionStore', () => {
 
   // P0 #4: 验证快速切换 Agent↔Team 时，旧请求不污染状态
   it('loadAgentSessions is invalidated by resetForTeamSwitch during in-flight request', async () => {
-    const { listSessions } = await import('../../features/session/api');
+    const { searchSessions } = await import('../../features/session/api');
     const s1 = mockSession({ id: 's1' });
-    let resolveList: (rows: any[]) => void = () => {};
-    (listSessions as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+    let resolveList: (result: { items: any[]; total: number }) => void = () => {};
+    (searchSessions as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       new Promise((resolve) => {
         resolveList = resolve;
       }),
@@ -275,7 +376,7 @@ describe('useChatSessionStore', () => {
     expect(store.entityKind).toBe('team');
 
     // 现在 resolve 旧的 loadAgentSessions 请求
-    resolveList([s1]);
+    resolveList({ items: [s1], total: 1 });
     await loadPromise;
 
     // 旧请求不应污染 sessions / selectedSession（已切换到 team 模式）

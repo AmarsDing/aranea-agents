@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import {
   archiveSession,
@@ -8,10 +8,10 @@ import {
   deleteSession,
   getCompressStatus,
   getSession,
-  listSessions,
   listTeamSessions,
   pinSession,
   restoreSession,
+  searchSessions,
   unpinSession,
   updateSessionTitle,
 } from '../../features/session/api';
@@ -22,6 +22,7 @@ import { formatSessionTime } from '../../features/chat/composables/chatWorkspace
 import type { ChatEntityKind } from '../../components/chat/types';
 import { emitSessionMutation, onSessionMutation } from '../sessionMutationBus';
 import { sortSessionsForDisplay } from '../../features/session/sessionSort';
+import { CHAT_SESSION_MAX_LIMIT, CHAT_SESSION_PAGE_SIZE } from '../../features/constants/queryLimits';
 
 export type TeamSessionRow = Session & { at: string };
 
@@ -77,6 +78,16 @@ export const useChatSessionStore = defineStore('chatSession', () => {
   const teamSessions = ref<Record<string, TeamSessionRow[]>>({});
   const error = ref<string | null>(null);
 
+  // ── 会话列表分页（agent 侧栏滚动加载）─────────────────────────────
+  // total 来自服务端；listOffset 追踪已消费的服务端行数（含去重丢弃的），
+  // 与 sessions.length 可能因本地新建/去重而短暂不一致，hasMore 以 offset 为准。
+  const sessionsTotal = ref(0);
+  const sessionsLoading = ref(false);
+  const sessionsLoadingMore = ref(false);
+  const sessionListKeyword = ref('');
+  const listOffset = ref(0);
+  const sessionsHasMore = computed(() => listOffset.value < sessionsTotal.value);
+
   let _currentAgentId: string | null = null;
   // P0 #4: 异步请求代际令牌。每次 resetForXxxSwitch 递增，使在途的
   // loadAgentSessions/loadTeamSessions 在 await 返回后能识别自己已过期，
@@ -128,6 +139,10 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     selectedTeamId.value = teamId;
     selectedSession.value = null;
     teamSelectedSessionId.value = null;
+    // team 列表一次性加载，不展示 agent 列表的分页/搜索状态
+    sessionsTotal.value = 0;
+    listOffset.value = 0;
+    sessionListKeyword.value = '';
   }
 
   // --- Unified entity-kind-aware methods ---
@@ -194,35 +209,115 @@ export const useChatSessionStore = defineStore('chatSession', () => {
 
   async function loadAgentSessions(agentId: string, opts?: { refreshOnly?: boolean }) {
     if (!agentId) return;
+    // 切换 agent 时清空搜索词，避免把上一个 agent 的过滤条件带过来
+    if (agentId !== _currentAgentId) {
+      sessionListKeyword.value = '';
+    }
     _currentAgentId = agentId;
     error.value = null;
     // P0 #4: 捕获当前代际，await 后校验。若用户在请求在途时切换了 entityKind，
     // 该请求视为过期，不修改 selectedSession / sessions，避免竞态污染。
     const myGeneration = _loadGeneration;
+    const keyword = sessionListKeyword.value.trim() || undefined;
     try {
-      const rows = await listSessions(agentId);
-      if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
-      sessions.value = sortSessionsForDisplay(rows);
-
       if (opts?.refreshOnly) {
+        // 刷新已加载窗口：一次性取回覆盖当前已加载条数的首页，按 id 合并，
+        // 保留已分页加载的更旧会话，避免 refresh 事件把列表截回第一页。
+        const windowLimit = Math.min(Math.max(sessions.value.length, CHAT_SESSION_PAGE_SIZE), CHAT_SESSION_MAX_LIMIT);
+        const result = await searchSessions({
+          agent_id: agentId,
+          root_only: true,
+          keyword,
+          limit: windowLimit,
+          offset: 0,
+        });
+        if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
+        const merged = new Map(sessions.value.map((session) => [session.id, session]));
+        for (const row of result.items) merged.set(row.id, row);
+        sessions.value = sortSessionsForDisplay([...merged.values()]);
+        sessionsTotal.value = result.total;
+        listOffset.value = Math.max(listOffset.value, result.items.length);
+
         const currentId = selectedSession.value?.id;
         if (currentId) {
-          const updated = rows.find((session) => session.id === currentId);
+          const updated = sessions.value.find((session) => session.id === currentId);
           if (updated) selectedSession.value = updated;
         }
         return;
       }
 
+      sessionsLoading.value = true;
+      const result = await searchSessions({
+        agent_id: agentId,
+        root_only: true,
+        keyword,
+        limit: CHAT_SESSION_PAGE_SIZE,
+        offset: 0,
+      });
+      if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
+      sessions.value = sortSessionsForDisplay(result.items);
+      sessionsTotal.value = result.total;
+      listOffset.value = result.items.length;
+
       const selectedID = selectedSession.value?.id;
       if (selectedID) {
-        selectedSession.value = rows.find((session) => session.id === selectedID) ?? rows[0] ?? null;
-      } else if (!selectedSession.value && rows.length > 0) {
-        selectedSession.value = rows[0];
+        // 选中项不在首页（较旧的会话）时保留原选中，不强制跳到最新
+        const found = result.items.find((session) => session.id === selectedID);
+        if (found) selectedSession.value = found;
+      } else if (result.items.length > 0) {
+        selectedSession.value = result.items[0];
       }
     } catch (e: unknown) {
       if (myGeneration !== _loadGeneration) return; // 过期请求的错误不污染 error 状态
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
+    } finally {
+      if (myGeneration === _loadGeneration) {
+        sessionsLoading.value = false;
+      }
+    }
+  }
+
+  /** 加载下一页会话（滚动到底触发）。仅 agent 列表分页；team 一次性加载。 */
+  async function loadMoreAgentSessions() {
+    const agentId = _currentAgentId;
+    if (!agentId || entityKind.value !== 'agent') return;
+    if (sessionsLoading.value || sessionsLoadingMore.value || !sessionsHasMore.value) return;
+    error.value = null;
+    const myGeneration = _loadGeneration;
+    sessionsLoadingMore.value = true;
+    try {
+      const result = await searchSessions({
+        agent_id: agentId,
+        root_only: true,
+        keyword: sessionListKeyword.value.trim() || undefined,
+        limit: CHAT_SESSION_PAGE_SIZE,
+        offset: listOffset.value,
+      });
+      if (myGeneration !== _loadGeneration) return;
+      // 并发删除可能导致空页：直接视为已到底，避免反复触发空请求
+      listOffset.value = result.items.length > 0 ? listOffset.value + result.items.length : result.total;
+      sessionsTotal.value = result.total;
+      const existing = new Set(sessions.value.map((session) => session.id));
+      const fresh = result.items.filter((session) => !existing.has(session.id));
+      if (fresh.length > 0) {
+        sessions.value = sortSessionsForDisplay([...sessions.value, ...fresh]);
+      }
+    } catch (e: unknown) {
+      if (myGeneration !== _loadGeneration) return;
+      error.value = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (myGeneration === _loadGeneration) {
+        sessionsLoadingMore.value = false;
+      }
+    }
+  }
+
+  /** 按关键词过滤当前 agent 的会话列表（服务端过滤，重置分页）。 */
+  async function searchAgentSessions(keyword: string) {
+    sessionListKeyword.value = keyword;
+    if (_currentAgentId && entityKind.value === 'agent') {
+      await loadAgentSessions(_currentAgentId);
     }
   }
 
@@ -250,6 +345,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     try {
       const created = await createSession({ agent_id: agentId, title, ...options });
       sessions.value.unshift(created);
+      sessionsTotal.value += 1;
+      listOffset.value += 1;
       selectedSession.value = created;
       emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
@@ -376,6 +473,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     try {
       await clearAgentSessions(agentId);
       sessions.value = [];
+      sessionsTotal.value = 0;
+      listOffset.value = 0;
       selectedSession.value = null;
       emitSessionMutation({ type: 'refresh' });
     } catch (e: unknown) {
@@ -497,7 +596,12 @@ export const useChatSessionStore = defineStore('chatSession', () => {
   }
 
   function removeSessionById(id: string) {
+    const hadAgentSession = sessions.value.some((s) => s.id === id);
     sessions.value = sessions.value.filter((s) => s.id !== id);
+    if (hadAgentSession) {
+      sessionsTotal.value = Math.max(0, sessionsTotal.value - 1);
+      listOffset.value = Math.max(0, listOffset.value - 1);
+    }
     for (const teamId of Object.keys(teamSessions.value)) {
       teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter((session) => session.id !== id);
     }
@@ -588,6 +692,13 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     selectedSession,
     teamSessions,
     error,
+    sessionsTotal,
+    sessionsLoading,
+    sessionsLoadingMore,
+    sessionListKeyword,
+    sessionsHasMore,
+    loadMoreAgentSessions,
+    searchAgentSessions,
     currentSessionId,
     resetForAgentSwitch,
     resetForTeamSwitch,

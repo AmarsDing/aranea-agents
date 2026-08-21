@@ -136,7 +136,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	}
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",
-		assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.ContentMarkdown)
+		assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.TokenCached, assistantMsg.ContentMarkdown)
 	return userMsg, assistantMsg, nil
 }
 

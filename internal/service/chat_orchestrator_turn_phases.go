@@ -512,9 +512,9 @@ func (o *ChatOrchestrator) prepareRunContext(
 	if o.rt().Knowledge.FederatedRetriever != nil {
 		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt().Knowledge.FederatedRetriever)
 	}
-	if o.rt().Knowledge.Evaluator != nil {
-		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt().Knowledge.Evaluator)
-	}
+	// P1（2026-08-21）：对话路径默认不注入 RetrievalEvaluator——评估 LLM
+	// 约 1.4s，且会诱导模型把 knowledge_reflect 当主检索。管理端 Search
+	// 仅在显式评估时走 SearchWithEvaluation。
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
 	}
@@ -929,7 +929,7 @@ func (o *ChatOrchestrator) postProcessTurn(
 		metricsLabel = "timeout_degraded"
 	}
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
-	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, persistResult.assistantMsg.ContentMarkdown,
+	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, execResult.result.CachedTok, persistResult.assistantMsg.ContentMarkdown,
 		int(time.Since(turnStart).Milliseconds()), execResult.result.FirstTokenMs, execResult.result.ModelCallCount, execResult.result.ToolCallCount)
 	// F4 取消竞态：cancelActiveRun 已将 run 置 cancelled（终态）后，EXECUTE/PERSIST
 	// 成功路径才走到这里。cancelled wins——跳过 completed 状态发布 / Session 翻转 /

@@ -88,6 +88,11 @@ type Session struct {
 	ProgressPct    float64
 }
 
+// MaxSessionSearchLimit 是 SearchSessions 单页允许的最大返回条数。
+// 超过上限时截断到该值（历史实现是重置为默认值 20，会把前端 limit=200
+// 的会话列表请求静默截成 20 条，导致侧边栏只能看到最近 20 个会话）。
+const MaxSessionSearchLimit = 500
+
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
 type SessionSearchQuery struct {
 	OwnerType     string
@@ -152,17 +157,21 @@ type MessageListResult struct {
 
 // ChatMessage is one messages row for timeline assembly.
 type ChatMessage struct {
-	ID               string
-	SessionID        string
-	ParentMessageID  string
-	TurnID           string
-	TurnNumber       int
-	SeqInTurn        int
-	Role             string
-	ContentMarkdown  string
-	ModelName        string
-	TokenIn          int
-	TokenOut         int
+	ID              string
+	SessionID       string
+	ParentMessageID string
+	TurnID          string
+	TurnNumber      int
+	SeqInTurn       int
+	Role            string
+	ContentMarkdown string
+	ModelName       string
+	TokenIn         int
+	TokenOut        int
+	// TokenCached is the prompt-cache-hit portion of TokenIn (in-memory only;
+	// carried from the stream result to the session_turn recorder). Zero means
+	// no cache hit or provider without caching.
+	TokenCached      int
 	LatencyMS        int
 	Status           string
 	AttachmentsCount int
@@ -297,6 +306,7 @@ type SessionTurn struct {
 	InputTokens         int
 	OutputTokens        int
 	TotalTokens         int
+	CachedInputTokens   int
 	TotalCostMicroUSD   int64
 	FinalProvider       string
 	FinalModel          string
@@ -331,6 +341,7 @@ type SessionTurnUpdateFields struct {
 	InputTokens         *int
 	OutputTokens        *int
 	TotalTokens         *int
+	CachedInputTokens   *int
 	TotalCostMicroUSD   *int64
 	FinalProvider       *string
 	FinalModel          *string
@@ -967,8 +978,11 @@ func normalizeSessionSearch(q *SessionSearchQuery) {
 			q.Offset = 0
 		}
 	}
-	if q.Limit <= 0 || q.Limit > 100 {
+	if q.Limit <= 0 {
 		q.Limit = 20
+	}
+	if q.Limit > MaxSessionSearchLimit {
+		q.Limit = MaxSessionSearchLimit
 	}
 	if q.Offset < 0 {
 		q.Offset = 0

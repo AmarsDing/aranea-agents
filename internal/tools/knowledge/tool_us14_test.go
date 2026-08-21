@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -144,5 +145,8 @@ func TestSearchTool_EmptyCollection_ZeroCollections_ReturnsEmpty(t *testing.T) {
 	}
 	if len(out.Chunks) != 0 {
 		t.Errorf("expected 0 chunks, got %d", len(out.Chunks))
+	}
+	if out.Note == "" || !strings.Contains(out.Note, "Do not invent") {
+		t.Fatalf("empty search must instruct honesty, note=%q", out.Note)
 	}
 }

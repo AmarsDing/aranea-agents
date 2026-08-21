@@ -95,8 +95,8 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "knowledge_search", displayName: "知识库搜索", description: "在指定知识库集合中检索相关文本片段。", category: "integration", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"collection_id":{"type":"string"},"query":{"type":"string"},"top_k":{"type":"integer"},"min_score":{"type":"number"}},"required":["collection_id","query"]}`},
 	{key: "knowledge_reflect", displayName: "知识库反思", description: "跨多个知识库检索并评估结果质量，判断是否需要补充查询。", category: "integration", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"collection_ids":{"type":"array","items":{"type":"string"}},"query":{"type":"string"},"top_k":{"type":"integer"}},"required":["collection_ids","query"]}`},
 	{key: "knowledge_write", displayName: "知识库写入", description: "把一条高置信事实写入团队知识库词条页（confidence≥0.85 直写，0.6~0.85 进待确认队列由人审核）。", category: "integration", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"statement":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}},"fact_kind":{"type":"string"},"confidence":{"type":"number"},"fact_id":{"type":"string"}},"required":["statement","tags"]}`},
-	{key: "mcp_tool_set", displayName: "MCP 工具集", description: "挂载已配置的 MCP Server 工具。", category: "integration", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{}}`},
-	{key: "mcp_broker", displayName: "MCP Broker", description: "运行时 MCP 发现与调用（mcp_list_servers / mcp_call 等）。", category: "integration", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{}}`, registryName: "mcpbroker"},
+	{key: "mcp_tool_set", displayName: "MCP 工具集（直连）", description: "【仅限小工具面】把已启用 MCP Server 的全部工具 schema 一次性注入 tools block，单轮上下文占用大（治理后总量超 16K 字符自动降级 broker）。仅适合服务器工具面很小的场景；默认推荐使用 mcp_broker。", category: "integration", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{}}`},
+	{key: "mcp_broker", displayName: "MCP Broker（推荐）", description: "【推荐默认】仅向模型暴露「发现 + 调用」元工具（mcp_list_servers / mcp_list_tools / mcp_inspect_tools / mcp_call），远程工具 schema 按需拉取，不占上下文预算。与 mcp_tool_set 同开时仅 broker 生效。", category: "integration", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{}}`, registryName: "mcpbroker"},
 	{key: "working_memory_read", displayName: "工作记忆读取", description: "读取当前任务的结构化工作记忆字段。不传 field_path 时返回整张快照。", category: "memory", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"field_path":{"type":"string","description":"字段路径（可选）"}}}`},
 	{key: "working_memory_list", displayName: "工作记忆列表", description: "列出当前任务下所有可见字段（path、preview、token_estimate、revision）。", category: "memory", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"include_internal":{"type":"boolean","description":"是否包含 visibility=internal 字段"}}}`},
 	{key: "working_memory_write", displayName: "工作记忆写入", description: "向当前任务写入或更新一个结构化字段。", category: "memory", enabled: true, paramsSchema: `{"type":"object","properties":{"field_path":{"type":"string"},"value":{"description":"任意 JSON 值"},"field_kind":{"type":"string","enum":["string","number","boolean","json","reference","markdown","decision","artifact","progress","constraint"],"description":"字段语义类型：decision=决策选择,artifact=文件引用,progress=进度状态,constraint=约束要求"},"visibility":{"type":"string","enum":["prompt","internal","shared"]},"pin_to_prompt":{"type":"boolean"},"reason":{"type":"string"},"if_revision":{"type":"integer","description":"乐观锁，期望的当前 revision"}},"required":["field_path","value"]}`},
@@ -208,6 +208,9 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Diale
 	if err := syncBuiltinComputerUseToolCatalogPatches(ctx, client, d); err != nil {
 		lg.Warn("内置 Computer Use 工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
+	if err := syncBuiltinMCPToolCatalogPatches(ctx, client, d); err != nil {
+		lg.Warn("内置 MCP 工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
+	}
 	if err := syncRemovedBuiltinToolPatches(ctx, client, d); err != nil {
 		lg.Warn("已移除内置工具清理失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
@@ -287,6 +290,29 @@ func syncBuiltinComputerUseToolCatalogPatches(ctx context.Context, client *ent.C
 		applyPlatformToolDefaults(&row)
 		if _, err := client.ExecContext(ctx, updDialect, row.description, row.paramsSchema, now, row.key); err != nil {
 			return fmt.Errorf("sync computeruse tool %q: %w", row.key, err)
+		}
+	}
+	return nil
+}
+
+// syncBuiltinMCPToolCatalogPatches 把 mcp_tool_set / mcp_broker 的 display_name
+// 与 description 刷到存量库（2026-08-21 全链路审查 B2：broker 标注为推荐默认，
+// 直连标注仅限小工具面）。只改展示元数据，不动 enabled（运营显式选择）。
+func syncBuiltinMCPToolCatalogPatches(ctx context.Context, client *ent.Client, d Dialect) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const upd = `UPDATE tools SET
+		display_name = ?, description = ?, updated_at = ?
+		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
+	updDialect := d.RenumberPlaceholders(upd)
+	for _, row := range builtinPlatformToolSeeds {
+		if row.key != "mcp_tool_set" && row.key != "mcp_broker" {
+			continue
+		}
+		if _, err := client.ExecContext(ctx, updDialect, row.displayName, row.description, now, row.key); err != nil {
+			return fmt.Errorf("sync mcp tool %q: %w", row.key, err)
 		}
 	}
 	return nil

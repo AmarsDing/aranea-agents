@@ -63,11 +63,9 @@
         :label="$t('agentSettings.header.save')"
         class="settings-save"
         :loading="saving"
-        :disable="!agent.id || agent.readonly"
+        :disable="!agent.id"
         @click="$emit('save')"
-      >
-        <q-tooltip v-if="agent.readonly">{{ $t('agentsPage.actions.builtinTip') }}</q-tooltip>
-      </q-btn>
+      />
     </div>
   </q-card-section>
 </template>

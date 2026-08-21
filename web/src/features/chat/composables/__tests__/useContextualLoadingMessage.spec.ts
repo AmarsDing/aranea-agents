@@ -540,6 +540,37 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value!.color).toBe('blue');
     });
 
+    it('decomposing heartbeat appends elapsed_seconds', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'decomposing', elapsed_seconds: 45 },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在分解任务…（已 45s）');
+    });
+
+    it('reused phase lists existing team count', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'reused', team_count: 4 },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('本会话已有 4 个相关团队，正在复用其结果…');
+      expect(loadingMessage.value!.icon).toBe('history');
+    });
+
     it('decomposed phase renders sub_task_count placeholder', () => {
       const isReplaying = ref(false);
       const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);

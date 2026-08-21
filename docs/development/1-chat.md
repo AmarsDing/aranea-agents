@@ -243,10 +243,12 @@ interface Activity {
 
 **验收**：
 
-- plan 阶段：显示"正在分解任务…"→"任务分解完成，共 N 个子任务"
+- plan 阶段：显示"正在分解任务…"→ 心跳带已耗时 →"任务分解完成，共 N 个子任务"
 - allocate 阶段：每个子任务匹配时显示"正在匹配 Agent…（i/N）"
 - factory 阶段：需要创建新 Agent 时显示"正在创建新 Agent "X"…"
 - loading 消息为替换式更新（不刷屏），编排完成后消失
+- 运行中的 `plan_and_execute` 工具卡片展示与 loading 条相同的阶段文案（不被成员标签挡住），≥5s 显示耗时
+- 本会话已有同一目标团队时，`plan_and_execute` 复用已有团队（`reuse_existing`），不静默再分解 60s
 
 #### US-ORCH-02 新 Agent 创建需用户确认
 

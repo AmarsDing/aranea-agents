@@ -133,9 +133,13 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		CodeExecutorType:  "local",
 
 		// --- Context / compression ---
-		PlannerConfigJSON:         "{}",
-		ClarificationEnabled:      true,
-		ReplyReminderEnabled:      true,
+		PlannerConfigJSON:    "{}",
+		ClarificationEnabled: true,
+		// 2026-08-21 全链路审查 A3：reply reminder 默认关。多工具任务中每次
+		// 工具调用后 reminder hook 触发额外一轮模型调用（实测约 +3.5s/轮），
+		// 收益场景（长链工具任务防跑偏）由模板/评测显式开启。存量行显式
+		// 存储的值不受影响——bool 默认只作用于新建行。
+		ReplyReminderEnabled:      false,
 		VerificationTruncateChars: 2000,
 		CompressionBufferRatio:    DefaultCompressionBufferRatio,
 		SoftTriggerRatio:          DefaultSoftTriggerRatio,

@@ -711,7 +711,7 @@ func TestSearch(t *testing.T) {
 			wantOffset: 0,
 		},
 		{
-			name: "limit capped at 100",
+			name: "limit within max preserved",
 			query: SessionSearchQuery{
 				Limit: 200,
 			},
@@ -719,7 +719,19 @@ func TestSearch(t *testing.T) {
 				return SessionListResult{Limit: q.Limit, Offset: q.Offset}, nil
 			},
 			wantErr:    false,
-			wantLimit:  20,
+			wantLimit:  200,
+			wantOffset: 0,
+		},
+		{
+			name: "limit above max clamped to max",
+			query: SessionSearchQuery{
+				Limit: 9999,
+			},
+			searchFn: func(_ context.Context, q SessionSearchQuery) (SessionListResult, error) {
+				return SessionListResult{Limit: q.Limit, Offset: q.Offset}, nil
+			},
+			wantErr:    false,
+			wantLimit:  MaxSessionSearchLimit,
 			wantOffset: 0,
 		},
 		{

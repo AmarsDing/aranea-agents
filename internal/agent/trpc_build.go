@@ -348,7 +348,11 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	if ag.Settings != nil {
 		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard, prov, mod, deps.ModelCatalog, deps.RT, lg)...)
 		opts = append(opts, SafetyLimitAdapter(ag, lg)...)
-		opts = append(opts, KnowledgeAdapter(ctx, ag, deps, lg)...)
+		// 2026-08-21 全链路审查 B1：knowledge_search 单源化——不再向框架
+		// WithKnowledge 注册自动 knowledge_search（与目录面自定义工具同名
+		// 双注册）。唯一来源 = 目录工具 internal/tools/knowledge（effective
+		// tools 门禁，shard_plan.go cfg.KnowledgeSearch），检索已是
+		// workspace 路由（retrievalWorkspace + scoped 白名单）。
 
 		if toolFilter := buildToolFilter(ag.Settings, deps.DeferredManager, lg); toolFilter != nil {
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))

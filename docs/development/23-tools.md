@@ -188,7 +188,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `knowledge_reflect` | 知识库反思 | integration | low | 停用 | 跨知识库检索并评估结果质量 |
 | `mcp_tool_set` | MCP 工具集 | integration | medium | 停用 | 挂载已配置的 MCP Server 工具 |
 | `mcp_broker` | MCP Broker | integration | medium | 停用 | 运行时 MCP 发现与调用 |
-| `plan_and_execute` | 规划并执行 | spirit | low | 启用 | 编排式计划与执行 |
+| `plan_and_execute` | 规划并执行 | spirit | low | 启用 | 编排式计划与执行；同一会话同一目标默认复用已有团队 |
 | `cancel_orchestration` | 取消编排 | spirit | medium | 启用 | 取消正在运行的编排 |
 | `synthesize_results` | 合成团队结果 | spirit | low | 启用 | 将所有已完成团队的执行结果合成为综合报告 |
 | `build_orchestration_graph` | 构建编排图 | spirit | low | 启用 | 构建 DAG 编排图，定义子任务依赖关系 |

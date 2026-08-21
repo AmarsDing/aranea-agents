@@ -832,10 +832,15 @@ func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 
 	broker := trpcmcpbroker.New(brokerOpts...)
 	tools := broker.Tools()
-	result := make([]Tool, len(tools))
-	for i, t := range tools {
-		result[i] = t
+	result := make([]Tool, 0, len(tools)+2)
+	for _, t := range tools {
+		result = append(result, t)
 	}
+	// 2026-08-21 调用契约 7.4：broker 工具族补 resources 面（mcp_list_resources /
+	// mcp_read_resource）。业务层实现（mcp_resources.go），共用同一批命名服务器与
+	// HeaderInjector；框架 mcpbroker 元工具不含 resources，此处补齐不动 vendored
+	// 框架。命名服务器为空时 buildMCPResourceTools 返回 nil，不产生死工具。
+	result = append(result, buildMCPResourceTools(cfg)...)
 	return result, nil
 }
 

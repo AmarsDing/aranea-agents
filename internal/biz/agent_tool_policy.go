@@ -221,8 +221,18 @@ func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
 var toolProfiles = map[string][]string{
 	"chat_only": {},
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
-	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime", "shell_exec"},
-	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
+	// 2026-08-21 全链路审查 B1：框架 WithKnowledge 自动面已砍，knowledge_search
+	// 唯一来源是目录工具（effective tools 门禁）。coding/research 显式命名，
+	// 保证默认 profile 下知识检索工具仍可达（种子 enabled=true + 此处命名 =
+	// allowed）；full 经 group:integration 覆盖。其余 profile 用 allow JSON 按需
+	// opt-in。
+	// 2026-08-21 调用契约 7.4：mcp_broker 进 coding 默认面——「启用 MCP」的默认
+	// 形态从直连全量 schema 改为 broker 元工具（schema 按需拉取）。mcp_broker 是
+	// registryOptInOnlyKeys 成员（种子 enabled=false），此处命名即 allowed，无需
+	// seed 翻转与存量库迁移。无 MCP 服务器时 cfg.MCPBroker=nil 不挂任何工具，
+	// 零上下文成本；mcp_tool_set 保持显式 opt-in（小工具面场景）。
+	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime", "shell_exec", "knowledge_search", "mcp_broker"},
+	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "knowledge_search", "todo_write", "datetime"},
 	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:browser", "group:cli_admin", "datetime"},
 
 	"minimal":      {},

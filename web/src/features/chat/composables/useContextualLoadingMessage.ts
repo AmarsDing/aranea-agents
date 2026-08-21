@@ -158,9 +158,14 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const decomposedSubtaskCount = typeof meta.decomposed_subtask_count === 'number' ? meta.decomposed_subtask_count : 0;
       const droppedRaw: unknown = meta.dropped_subtask_names;
       const droppedSubtaskNames = Array.isArray(droppedRaw) ? droppedRaw.filter((n): n is string => typeof n === 'string').join('、') : '';
+      const elapsed = typeof meta.elapsed_seconds === 'number' ? meta.elapsed_seconds : 0;
+      const teamCount = typeof meta.team_count === 'number' ? meta.team_count : 0;
       let messageKey = config.messageKey;
       if (phase === 'team_count_mismatch' && meta.action === 'proceed') {
         messageKey = 'chat.orchestrationProgress.teamCountMismatchProceed';
+      }
+      if (phase === 'decomposing' && elapsed > 0) {
+        messageKey = 'chat.orchestrationProgress.decomposingElapsed';
       }
       const text = t(messageKey, {
         subTaskCount,
@@ -172,6 +177,8 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
         requestedTeamCount,
         decomposedSubtaskCount,
         droppedSubtaskNames,
+        elapsed,
+        teamCount,
       }) as string;
 
       loadingMessage.value = {

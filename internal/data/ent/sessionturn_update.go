@@ -377,6 +377,27 @@ func (_u *SessionTurnUpdate) AddTotalTokens(v int) *SessionTurnUpdate {
 	return _u
 }
 
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (_u *SessionTurnUpdate) SetCachedInputTokens(v int) *SessionTurnUpdate {
+	_u.mutation.ResetCachedInputTokens()
+	_u.mutation.SetCachedInputTokens(v)
+	return _u
+}
+
+// SetNillableCachedInputTokens sets the "cached_input_tokens" field if the given value is not nil.
+func (_u *SessionTurnUpdate) SetNillableCachedInputTokens(v *int) *SessionTurnUpdate {
+	if v != nil {
+		_u.SetCachedInputTokens(*v)
+	}
+	return _u
+}
+
+// AddCachedInputTokens adds value to the "cached_input_tokens" field.
+func (_u *SessionTurnUpdate) AddCachedInputTokens(v int) *SessionTurnUpdate {
+	_u.mutation.AddCachedInputTokens(v)
+	return _u
+}
+
 // SetTotalCostMicroUsd sets the "total_cost_micro_usd" field.
 func (_u *SessionTurnUpdate) SetTotalCostMicroUsd(v int64) *SessionTurnUpdate {
 	_u.mutation.ResetTotalCostMicroUsd()
@@ -672,6 +693,12 @@ func (_u *SessionTurnUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.AddedTotalTokens(); ok {
 		_spec.AddField(sessionturn.FieldTotalTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CachedInputTokens(); ok {
+		_spec.SetField(sessionturn.FieldCachedInputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCachedInputTokens(); ok {
+		_spec.AddField(sessionturn.FieldCachedInputTokens, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.TotalCostMicroUsd(); ok {
 		_spec.SetField(sessionturn.FieldTotalCostMicroUsd, field.TypeInt64, value)
@@ -1076,6 +1103,27 @@ func (_u *SessionTurnUpdateOne) AddTotalTokens(v int) *SessionTurnUpdateOne {
 	return _u
 }
 
+// SetCachedInputTokens sets the "cached_input_tokens" field.
+func (_u *SessionTurnUpdateOne) SetCachedInputTokens(v int) *SessionTurnUpdateOne {
+	_u.mutation.ResetCachedInputTokens()
+	_u.mutation.SetCachedInputTokens(v)
+	return _u
+}
+
+// SetNillableCachedInputTokens sets the "cached_input_tokens" field if the given value is not nil.
+func (_u *SessionTurnUpdateOne) SetNillableCachedInputTokens(v *int) *SessionTurnUpdateOne {
+	if v != nil {
+		_u.SetCachedInputTokens(*v)
+	}
+	return _u
+}
+
+// AddCachedInputTokens adds value to the "cached_input_tokens" field.
+func (_u *SessionTurnUpdateOne) AddCachedInputTokens(v int) *SessionTurnUpdateOne {
+	_u.mutation.AddCachedInputTokens(v)
+	return _u
+}
+
 // SetTotalCostMicroUsd sets the "total_cost_micro_usd" field.
 func (_u *SessionTurnUpdateOne) SetTotalCostMicroUsd(v int64) *SessionTurnUpdateOne {
 	_u.mutation.ResetTotalCostMicroUsd()
@@ -1401,6 +1449,12 @@ func (_u *SessionTurnUpdateOne) sqlSave(ctx context.Context) (_node *SessionTurn
 	}
 	if value, ok := _u.mutation.AddedTotalTokens(); ok {
 		_spec.AddField(sessionturn.FieldTotalTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CachedInputTokens(); ok {
+		_spec.SetField(sessionturn.FieldCachedInputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCachedInputTokens(); ok {
+		_spec.AddField(sessionturn.FieldCachedInputTokens, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.TotalCostMicroUsd(); ok {
 		_spec.SetField(sessionturn.FieldTotalCostMicroUsd, field.TypeInt64, value)

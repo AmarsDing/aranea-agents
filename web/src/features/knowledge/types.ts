@@ -226,6 +226,8 @@ export type SearchKnowledgeQuery = {
   hybrid_search?: string;
   /** G3-B7：搜索范围（vault 相对目录前缀，带尾斜杠）；空 = 全库。 */
   path_prefix?: string;
+  /** 显式打开 RetrievalEvaluator；默认关闭。 */
+  use_eval?: boolean;
 };
 
 export type EmbedderConfig = {

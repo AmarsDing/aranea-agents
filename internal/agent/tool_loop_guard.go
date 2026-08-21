@@ -520,7 +520,8 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loggateway.Int("empty_streak", v.emptyStreak))
 			msg := fmt.Sprintf("%s：%s 已连续 %d 次（含换用不同关键词）返回空结果——知识库中确实没有相关资料。"+
 				"本调用被系统拦截，工具未执行、也非执行失败；继续换词重试不会产生任何新信息，只会消耗你的调用预算。"+
-				"请立即停止调用本工具，直接基于已有信息作答；若问题依赖该资料，在回答中明确说明「知识库未收录相关内容」。"+
+				"请立即停止调用本工具。若本轮已注入 ## L2+L3 memory，必须根据其中匹配事实作答，禁止声称记忆中没有。"+
+				"若记忆与知识库都没有该事实，在回答中明确说明未收录，禁止编造姓名、报告编号、品牌、电话或个人偏好。"+
 				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
 				loopGuardMarker, args.ToolName, v.emptyStreak, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)

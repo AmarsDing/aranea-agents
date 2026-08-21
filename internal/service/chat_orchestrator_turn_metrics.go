@@ -13,7 +13,7 @@ import (
 )
 
 // recordSessionTurn records a completed agent turn.
-func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string, durationMs, firstTokenMs, modelCallCount, toolCallCount int) {
+func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok, cachedTok int, contentPreview string, durationMs, firstTokenMs, modelCallCount, toolCallCount int) {
 	o.turnMetrics().RecordSessionTurn(ctx, SessionTurnRecordParams{
 		SessionID:      sessionID,
 		OwnerType:      "agent",
@@ -24,6 +24,7 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 		Model:          mod,
 		PromptTok:      promptTok,
 		CompletionTok:  completionTok,
+		CachedTok:      cachedTok,
 		ContentPreview: contentPreview,
 		DurationMs:     durationMs,
 		FirstTokenMs:   firstTokenMs,
@@ -33,7 +34,7 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 }
 
 // recordTeamSessionTurn records a completed team turn.
-func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
+func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok, cachedTok int, contentPreview string) {
 	o.turnMetrics().RecordSessionTurn(ctx, SessionTurnRecordParams{
 		SessionID:      sessionID,
 		OwnerType:      "team",
@@ -44,6 +45,7 @@ func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID,
 		Model:          mod,
 		PromptTok:      promptTok,
 		CompletionTok:  completionTok,
+		CachedTok:      cachedTok,
 		ContentPreview: contentPreview,
 	})
 }

@@ -92,7 +92,7 @@
 - 工具接收 `collection_ids`（支持多个集合）、`query`、`top_k` 参数。
 - 返回结构化评估结果：`sufficient`（是否充分）、`confidence`（置信度）、`supplement_query`（补充查询建议）、`chunks`（检索片段）。
 - 当 `FederatedRetriever` 可用时，自动跨多个 Collection 并行搜索。
-- 当 `RetrievalEvaluator` 可用时，自动评估检索质量。
+- 当 `RetrievalEvaluator` 在请求 ctx 中可用时，评估检索质量；对话路径默认不注入评估器。
 
 ### US-10：跨 Collection 联邦搜索
 
@@ -112,7 +112,7 @@
 - Search API 支持 `rewrite_strategy` 参数（hyde / decomposition / multi_query）。
 - Search API 支持 `hybrid_search` 参数（auto / dense / sparse / rrf）。
 - 自适应路由根据查询复杂度自动选择检索模式。
-- 检索质量评估（CRAG）在结果不足时自动触发补充检索。
+- 检索质量评估（CRAG）默认关闭；Search API 显式 `use_eval=true` 时才在结果不足时补充检索。
 
 ### US-12：拖拽上传文档并自动整理入库
 

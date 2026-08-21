@@ -926,13 +926,17 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		return nil, err
 	}
 
-	var assessor knowledge.ChunkAssessor
-	if s.search.Evaluator != nil {
-		assessor = s.search.Evaluator
-	}
-	chunks, err = knowledge.SearchWithEvaluation(ctx, s.search.Retriever, assessor, query, q, chunks, s.lg)
-	if err != nil {
-		return nil, err
+	// P1（2026-08-21）：Search API 默认不跑 RetrievalEvaluator（~1.4s LLM）。
+	// 补充检索仅在调用方显式打开评估时执行。
+	if req.GetUseEval() {
+		var assessor knowledge.ChunkAssessor
+		if s.search.Evaluator != nil {
+			assessor = s.search.Evaluator
+		}
+		chunks, err = knowledge.SearchWithEvaluation(ctx, s.search.Retriever, assessor, query, q, chunks, s.lg)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	out := make([]*v1.KnowledgeChunk, 0, len(chunks))

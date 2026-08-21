@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/knowledge"
@@ -24,6 +25,13 @@ func TestNewSearchTool_ReturnsCallableTool(t *testing.T) {
 	}
 	if decl.Name != "knowledge_search" {
 		t.Fatalf("expected declaration name %q, got %q", "knowledge_search", decl.Name)
+	}
+}
+
+func TestEmptyKnowledgeSearchNote_HonestyAndMemoryFallback(t *testing.T) {
+	note := emptyKnowledgeSearchNote(context.Background())
+	if !strings.Contains(note, "No knowledge chunks") || !strings.Contains(note, "Do not invent") {
+		t.Fatalf("default empty note: %q", note)
 	}
 }
 

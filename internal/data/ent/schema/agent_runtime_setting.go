@@ -121,9 +121,9 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		// paginated clarification questions before planning (P-CLARIFY, B.10.18). Default ON.
 		field.Bool("clarification_enabled").Default(true),
 		// Reply reminder ("已完成/下一步" reminder injected after each tool call).
-		// Default ON preserves legacy behavior; evaluation/single-tool agents set
-		// false to skip the extra LLM summary call.
-		field.Bool("reply_reminder_enabled").Default(true),
+		// Default OFF (2026-08-21 全链路审查 A3)：多工具任务每次工具调用后多一轮
+		// ~3.5s 模型调用；长链防跑偏场景由模板显式开启。存量行不受影响。
+		field.Bool("reply_reminder_enabled").Default(false),
 		field.String("channel_id").Default(""),
 		field.String("chat_id").Default(""),
 		field.String("workspace").Default(""),

@@ -67,7 +67,7 @@
           :content-style="popupContentStyle"
           class="spirit-context-popup"
         >
-          <div class="spirit-context-popup__inner">
+          <div class="spirit-context-popup__inner" @mouseenter="onPopupEnter" @mouseleave="onContextLeave">
             <div class="spirit-context-popup__header">
               <div class="text-weight-medium">{{ t('chat.contextPromptUse') }} {{ contextPctLabel }}</div>
               <div v-if="contextTokenLabel" class="text-caption spirit-context-popup__sub">
@@ -115,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef } from 'vue';
+import { computed, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { COMPLEXITY_CONFIG, dqScoreColor as getDqScoreColor, formatTokenCount } from '../../features/spirit/spiritUi';
 import { formatTokenCount as formatCtxTokens } from '../../features/chat/composerUsageMetrics';
@@ -203,11 +203,28 @@ const hasContextInfo = computed(() => props.contextRatio != null || !!contextTok
 
 // Per-model token usage for the popup chart.
 const sessionIdRef = toRef(props, 'sessionId');
-const { data: modelTokensData, loading: modelTokensLoading } = useSessionModelTokens(sessionIdRef);
+const {
+  data: modelTokensData,
+  loading: modelTokensLoading,
+  reload: reloadModelTokens,
+} = useSessionModelTokens(sessionIdRef);
 
 // Hover-controlled popup for the context item.
 const contextMenuOpen = ref(false);
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Refresh the chart each time the popup opens (turns accumulate while chatting).
+watch(contextMenuOpen, (open) => {
+  if (open) void reloadModelTokens();
+});
+
+// Keep the open popup fresh: new turns surface as token-usage changes.
+watch(
+  () => [props.tokenUsage?.in ?? 0, props.tokenUsage?.out ?? 0],
+  () => {
+    if (contextMenuOpen.value) void reloadModelTokens();
+  },
+);
 
 function onContextEnter() {
   if (hideTimer) {
@@ -223,6 +240,16 @@ function onContextLeave() {
     contextMenuOpen.value = false;
     hideTimer = null;
   }, 200);
+}
+
+// Hover bridge: the q-menu content is teleported to <body>, so the trigger's
+// mouseleave fires while the cursor travels into the popup. Entering the popup
+// must cancel the pending hide; leaving it re-arms the same deferred close.
+function onPopupEnter() {
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
 }
 
 // Theme-consistent popup styling.

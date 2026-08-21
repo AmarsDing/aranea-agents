@@ -229,7 +229,11 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 				loggateway.Err(mcpErr))
 		}
 		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
-		if eff[biz.ToolKeyMCPToolSet] && len(mcpServers) > 0 {
+		// 2026-08-21 全链路审查 B2：broker 优先于直连。两键同开时只挂 broker
+		// 元工具（发现+调用，schema 按需拉取），避免远程工具全量 dump 与
+		// 元工具重复进 tools block。直连仍是显式选择（仅开 mcp_tool_set），
+		// 16K 字符总量治理降级保留兜底。
+		if eff[biz.ToolKeyMCPToolSet] && !eff[biz.ToolKeyMCPBroker] && len(mcpServers) > 0 {
 			cfg.MCPServers = mcpServers
 		}
 		if eff[biz.ToolKeyMCPBroker] {

@@ -491,9 +491,11 @@ const teamMemberLanes = computed((): TeamMemberLane[] => {
 // needs to increment the respective signal.
 const expandAllSignal = ref(0);
 const collapseAllSignal = ref(0);
+const orchestrationProgressText = computed(() => props.spiritLoadingMessage?.text?.trim() ?? '');
 provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
   expandAllSignal: readonly(expandAllSignal),
   collapseAllSignal: readonly(collapseAllSignal),
+  orchestrationProgressText,
 });
 
 // ── TK: Provide tool display config for child components ──

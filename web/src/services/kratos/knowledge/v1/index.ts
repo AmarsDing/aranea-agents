@@ -599,6 +599,8 @@ export type SearchRequest = {
   // selector). Empty = whole collection. Only chunks whose document rel_path
   // sits under "<prefix>/" match; leading/trailing slashes are tolerated.
   pathPrefix: string | undefined;
+  // use_eval: when true, run RetrievalEvaluator. unset/false = hybrid hits only.
+  useEval?: boolean;
 };
 
 export type SearchResponse = {

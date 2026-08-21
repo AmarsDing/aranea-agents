@@ -356,3 +356,7 @@
 | ASK-mem-sh-04 | ask(single_hop) | PASS | 127139ms | kw 1/1 |
 | ASK-mem-up-03 | ask(update) | PASS | 28271ms | kw 1/1 |
 | ASK-mem-ab-04 | ask(abstention) | PASS | 60123ms |  |
+| B-00 | eval agent 已存在复用 | PASS | 0ms | exists |
+| B07-pre | prompt 基线 | PASS | 205ms | len=6225 |
+| PLANT-1 | 植入 mem-sh-01 | PASS | 4275ms | code=200 |
+| PLANT-2 | 植入 mem-sh-02 | PASS | 6487ms | code=200 |

@@ -422,6 +422,16 @@ var ddlMigrations = []ddlMigration{
 	// 运行时装配路径从未实现（registry 占位 + prune 强关），目录行「撒谎」。种子已删；
 	// 存量库由版本化迁移 20260610 写入的行永不自动消失，需显式 DELETE。幂等，重跑安全。
 	{Version: 20261237, Name: "remove_workspace_exec_tool", SQL: "sql/migrations/20261237_remove_workspace_exec_tool.sql"},
+	// 20261238 builtin_platform_tools_mcp_labels_reseed（2026-08-21 全链路审查 B2）：
+	// mcp_broker 标注「推荐默认」、mcp_tool_set 标注「仅限小工具面」。存量库行由
+	// 20260610 等迁移 INSERT（ON CONFLICT DO NOTHING）写入，文案永不刷新 → 需重跑
+	// 种子函数驱动 syncBuiltinMCPToolCatalogPatches 刷 display_name/description。
+	// 幂等（纯 UPDATE 展示元数据，不动 enabled），重跑安全。
+	{Version: 20261238, Name: "builtin_platform_tools_mcp_labels_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261239 session_turn_cached_input: session_turns 加 cached_input_tokens 列
+	// （turn 级 prompt 缓存命中数，与 input_tokens 同语义）。Ent Schema.Create()
+	// 不为存量表 ALTER 补列，存量库必须走此补丁（同 20261236 先例）。幂等。
+	{Version: 20261239, Name: "session_turn_cached_input", SQL: "sql/migrations/20261239_session_turn_cached_input.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

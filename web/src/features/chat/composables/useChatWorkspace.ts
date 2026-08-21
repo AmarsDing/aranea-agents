@@ -1023,6 +1023,17 @@ export function useChatWorkspace() {
     session: reactive({
       displaySessions,
       inboxSessions: conversationStore.inboxSessions,
+      sessionListTotal: computed(() => sessionStore.sessionsTotal),
+      sessionListHasMore: computed(() => sessionStore.sessionsHasMore),
+      sessionListLoading: computed(() => sessionStore.sessionsLoading),
+      sessionListLoadingMore: computed(() => sessionStore.sessionsLoadingMore),
+      sessionListKeyword: computed(() => sessionStore.sessionListKeyword),
+      onSessionListLoadMore: () => {
+        void sessionStore.loadMoreAgentSessions();
+      },
+      onSessionListSearch: (keyword: string) => {
+        void sessionStore.searchAgentSessions(keyword);
+      },
       selectedSessionForUi,
       composerUsageSnapshot,
       contextBreakdown,

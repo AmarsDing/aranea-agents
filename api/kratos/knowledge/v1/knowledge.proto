@@ -536,6 +536,9 @@ message SearchRequest {
   // selector). Empty = whole collection. Only chunks whose document rel_path
   // sits under "<prefix>/" match; leading/trailing slashes are tolerated.
   string path_prefix = 12;
+  // use_eval: when true, run RetrievalEvaluator and maybe supplement-search.
+  // unset/false = return hybrid hits as-is (default; eval LLM is ~1.4s).
+  optional bool use_eval = 13;
 }
 
 message SearchResponse {

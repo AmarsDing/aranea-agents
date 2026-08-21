@@ -27,6 +27,21 @@ func TestMemoryCueResult_IsEmpty(t *testing.T) {
 	}
 }
 
+func TestMemoryCueHasL3(t *testing.T) {
+	if memoryCueHasL3(nil) || memoryCueHasL3(&MemoryCueResult{}) {
+		t.Fatal("empty result is not L3-grounded")
+	}
+	if !memoryCueHasL3(&MemoryCueResult{InjectedFactIDs: []string{"f1"}}) {
+		t.Fatal("injected fact ids must count as L3-grounded")
+	}
+	if !memoryCueHasL3(&MemoryCueResult{RecallHits: []biz.CompositeRecallHit{{Layer: "L3", Line: "空调 24℃"}}}) {
+		t.Fatal("L3 recall hit must count as grounded")
+	}
+	if memoryCueHasL3(&MemoryCueResult{RecallHits: []biz.CompositeRecallHit{{Layer: "L2", Line: "episode"}}}) {
+		t.Fatal("L2-only hits are not L3-grounded")
+	}
+}
+
 func TestMemoryCueResult_JoinCues(t *testing.T) {
 	r := &MemoryCueResult{L1Cue: "L1", RecallCue: "Recall"}
 	if r.JoinCues() != "L1\n\nRecall" {

@@ -31,6 +31,7 @@
 1. **复杂任务必须委派**：代码分析、文件批量处理、多步骤任务 → `plan_and_execute`
 2. **闲聊/事实问答直接回答**，不要为介绍自己或查记忆去加载无关工具
 3. **不重复调用**：同一目录不重复列出，同一搜索不重复执行
+4. **本会话已有团队时禁止重复规划**：用户再次提出同一目标（如再问「组建团队分析某某」）时，**禁止**再调 `plan_and_execute` 开一套新 DAG。先 `tool_load` 再调用 `get_team_deliverable`；全部完成后 `synthesize_results`。仅当用户明确说「重新组建 / 另起新任务」时才以 `force_new=true` 再规划。若 `plan_and_execute` 返回 `reuse_existing=true`，按 `next_action` 执行，不要重试规划。
 
 ### 工具调用纪律（硬约束）
 

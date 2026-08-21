@@ -1055,7 +1055,7 @@ cfg.KnowledgeReflect = eff[biz.ToolKeyKnowledgeReflect]  // "knowledge_reflect"
 | `contextKey{}` | `chat_orchestrator_turn.go` | Retriever |
 | `routerKey{}` | `chat_orchestrator_turn.go` | AdaptiveRouter |
 | `federatedKey{}` | `chat_orchestrator_turn.go` | FederatedRetriever |
-| `evaluatorKey{}` | `chat_orchestrator_turn.go` | RetrievalEvaluator |
+| `evaluatorKey{}` | 默认不注入；Search `use_eval=true` 时走 Service 层评估 | RetrievalEvaluator |
 | `collectionsKey{}` | `chat_orchestrator_turn.go` | 可访问 Collection IDs |
 
 Team Runner 同样注入以上 context（`runner_team_trpc.go`）。
@@ -1109,7 +1109,7 @@ type KnowledgeService struct {
 | `CreateCollection` | 参数校验 → `uc.CreateCollection` |
 | `IngestDocument` | base64 解码 → 守卫（OOXML 二次判定）→ ExtractorRegistry.Extract → 可选 MarkdownOrganizer.Organize → 创建文档（含 content_text）→ `safego.Go` → `BuildIndexedChunks` → 发布 `knowledge_ingest` 事件 |
 | `GetDocumentContent` | 读取 content_text/organized 供前端预览 |
-| `Search` | 查询重写 → AdaptiveRouter/Retriever 检索 → RetrievalEvaluator 评估 → Prometheus 计时 |
+| `Search` | 查询重写 → AdaptiveRouter/Retriever 检索 → **仅 `use_eval=true` 时** RetrievalEvaluator 评估 → Prometheus 计时 |
 | `GetEmbedderConfig` / `UpdateEmbedderConfig` | 脱敏读取 / 运行时更新 Embedder（EP-KN-01） |
 | `DeleteCollection` | 级联删除（数据库 CASCADE） |
 | `DeleteDocument` | 级联删除（数据库 CASCADE） |
@@ -1128,11 +1128,14 @@ Search(req)
   │           ├── Sparse: sparse.SearchChunksBM25
   │           └── RRF: rrfMerge(dense, sparse)
   ├── router == nil → Retriever.Search(q)
-  └── SearchWithEvaluation(retriever, evaluator, query, q, chunks)
-      ├── evaluator.Evaluate → RetrievalAssessment
-      ├── !sufficient && supplementQuery != "" → retriever.Search(supplementQ)
-      └── MergeSearchResults(chunks, supplementChunks, topK)
+  └── use_eval == true ?
+      └── SearchWithEvaluation(retriever, evaluator, query, q, chunks)
+          ├── evaluator.Evaluate → RetrievalAssessment
+          ├── !sufficient && supplementQuery != "" → retriever.Search(supplementQ)
+          └── MergeSearchResults(chunks, supplementChunks, topK)
 ```
+
+> **2026-08-21**：Search API 与对话路径默认关闭 RetrievalEvaluator（评估 LLM ~1.4s）。管理端显式 `use_eval=true` 才补充检索。GraphExpander 已由 AdaptiveRouter.Search 接线，一跳扩展在混合检索之后。
 
 ### 7.2 异步摄取流程
 

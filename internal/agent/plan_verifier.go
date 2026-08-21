@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -83,12 +84,8 @@ func verifyPlanFeasibility(subTasks []biz.SubTask, capabilities []biz.AgentCapab
 	}
 
 	roleUnion := make(map[string]struct{})
-	for _, cap := range capabilities {
-		for _, r := range cap.Roles {
-			if nr := normalizeCapabilityTag(r); nr != "" {
-				roleUnion[nr] = struct{}{}
-			}
-		}
+	for _, tag := range capabilityRoleUnion(capabilities) {
+		roleUnion[tag] = struct{}{}
 	}
 
 	for _, st := range subTasks {
@@ -125,6 +122,26 @@ func verifyPlanFeasibility(subTasks []biz.SubTask, capabilities []biz.AgentCapab
 
 func normalizeCapabilityTag(tag string) string {
 	return strings.ToLower(strings.TrimSpace(tag))
+}
+
+// capabilityRoleUnion 返回能力清单中全部 Agent Roles 的归一化并集（排序后
+// 确定性输出）——校验门 R2 与分解 prompt 能力标签注入共用同一数据源，
+// 保证「prompt 允许用的标签」与「校验门认可的标签」永不发散。
+func capabilityRoleUnion(caps []biz.AgentCapability) []string {
+	set := make(map[string]struct{})
+	for _, cap := range caps {
+		for _, r := range cap.Roles {
+			if nr := normalizeCapabilityTag(r); nr != "" {
+				set[nr] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for tag := range set {
+		out = append(out, tag)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // formatViolationsForRetry 把违例格式化为写回分解 prompt 的反馈文本

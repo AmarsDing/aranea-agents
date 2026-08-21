@@ -40,6 +40,7 @@ func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 		InputTokens:         e.InputTokens,
 		OutputTokens:        e.OutputTokens,
 		TotalTokens:         e.TotalTokens,
+		CachedInputTokens:   e.CachedInputTokens,
 		TotalCostMicroUSD:   e.TotalCostMicroUsd,
 		FinalProvider:       e.FinalProvider,
 		FinalModel:          e.FinalModel,
@@ -102,6 +103,7 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 				SetInputTokens(turn.InputTokens).
 				SetOutputTokens(turn.OutputTokens).
 				SetTotalTokens(turn.TotalTokens).
+				SetCachedInputTokens(turn.CachedInputTokens).
 				SetTotalCostMicroUsd(turn.TotalCostMicroUSD).
 				SetFinalProvider(turn.FinalProvider).
 				SetFinalModel(turn.FinalModel).
@@ -245,6 +247,9 @@ func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields b
 	}
 	if fields.TotalTokens != nil {
 		upd = upd.SetTotalTokens(*fields.TotalTokens)
+	}
+	if fields.CachedInputTokens != nil {
+		upd = upd.SetCachedInputTokens(*fields.CachedInputTokens)
 	}
 	if fields.TotalCostMicroUSD != nil {
 		upd = upd.SetTotalCostMicroUsd(*fields.TotalCostMicroUSD)

@@ -15,6 +15,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -89,6 +90,34 @@ func RetrievalEvaluatorFromContext(ctx context.Context) *knowledge.RetrievalEval
 	return ev
 }
 
+// MemoryL3GroundedStateKey is set on the invocation when this turn already
+// injected L3 facts. knowledge_search / knowledge cue read it so a memory
+// hit is not discarded in favour of an empty catalog search (2026-08-21 P0).
+const MemoryL3GroundedStateKey = "aranea.memory_cue.l3_grounded"
+
+// MarkMemoryL3Grounded records whether L3 facts were injected this turn.
+func MarkMemoryL3Grounded(ctx context.Context, grounded bool) {
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
+		return
+	}
+	inv.SetState(MemoryL3GroundedStateKey, grounded)
+}
+
+// MemoryL3GroundedFromContext reports whether this turn already injected L3 facts.
+func MemoryL3GroundedFromContext(ctx context.Context) bool {
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
+		return false
+	}
+	v, found := inv.GetState(MemoryL3GroundedStateKey)
+	if !found {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
+}
+
 // retrievalWorkspace 推导全库枚举（SearchAll）的租户过滤键（C-01 回填）：
 // 委托 workspace.ReadableFilterID 统一实现。此前 SearchAll 恒传 ""，
 // 未绑定知识库的 agent 可枚举全部租户的集合。
@@ -110,6 +139,8 @@ type searchInput struct {
 // searchOutput is the structured result returned to the model.
 type searchOutput struct {
 	Chunks []chunkSummary `json:"chunks"`
+	// Note is a model-facing instruction when retrieval is empty (P0/P1 2026-08-21).
+	Note string `json:"note,omitempty"`
 }
 
 type chunkSummary struct {
@@ -198,12 +229,15 @@ func NewSearchTool(lg loggateway.Logger) trpctool.CallableTool {
 				DocID:   ch.DocID,
 			})
 		}
+		if len(out.Chunks) == 0 {
+			out.Note = emptyKnowledgeSearchNote(ctx)
+		}
 		return out, nil
 	}
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_search"),
-		function.WithDescription("Search knowledge bases for relevant text chunks using semantic similarity. Omit collection_id to smart-route across all accessible collections. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases. For multi-collection search or quality verification, use knowledge_reflect instead."),
+		function.WithDescription("Search knowledge bases for relevant text chunks using semantic similarity. Omit collection_id to smart-route across all accessible collections. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases that is NOT already in the injected ## L2+L3 memory block. If memory already lists the fact, answer from memory instead of searching. An empty chunks array means the knowledge base has no matching passages — do not retry with rephrased queries, and do not invent facts. For multi-collection search or quality verification, use knowledge_reflect instead."),
 	)
 }
 
@@ -218,6 +252,13 @@ func collectionAllowed(scoped []string, id string) bool {
 		}
 	}
 	return false
+}
+
+func emptyKnowledgeSearchNote(ctx context.Context) string {
+	if MemoryL3GroundedFromContext(ctx) {
+		return "No knowledge chunks. Matching memory facts were already injected this turn (see ## L2+L3 memory). Answer from those facts. Do not retry knowledge_search with a rephrased query. Do not invent names, report IDs, brands, phone numbers, or personal preferences."
+	}
+	return "No knowledge chunks — the knowledge base has no matching passages. Do not retry with a rephrased query. If injected memory also lacks the fact, say you do not have that record. Do not invent names, report IDs, brands, phone numbers, passwords, or personal preferences."
 }
 
 // searchSingleCollection 单库直搜：优先 AdaptiveRouter，退化 Retriever。

@@ -286,7 +286,7 @@ func TestLoopGuardCanonicalToolName(t *testing.T) {
 		"hostexec_exec_command": "exec_command",
 		"write_file":            "save_file",
 		"file_save_file":        "save_file",
-		"gns3_exec":             "gns3_exec",   // 非家簇成员原名返回
+		"gns3_exec":             "gns3_exec",            // 非家簇成员原名返回
 		"working_memory_write":  "working_memory_write", // 后缀非家簇成员原名返回
 		"knowledge_search":      "knowledge_search",
 	}
@@ -582,6 +582,9 @@ func TestLoopGuardBlocksEmptyResultRetryAcrossDifferentQueries(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "空结果") || !strings.Contains(err.Error(), "知识库") {
 			t.Fatalf("empty block should explain knowledge base has no data, got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "L2+L3 memory") || !strings.Contains(err.Error(), "编造") {
+			t.Fatalf("empty block should fall back to memory and forbid invention, got %q", err.Error())
 		}
 		if _, ok := trpcagent.AsStopError(err); ok {
 			t.Fatal("empty block must NOT be a StopError before saturation")

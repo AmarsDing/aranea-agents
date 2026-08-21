@@ -1913,6 +1913,8 @@ Assemble()
 
 **spirit 档闲聊常驻 vs deferred（2026-08-19）**：WP-4 核心集是常驻白名单。`SplitCoreResidentTools("spirit")` 只留 `plan_and_execute` / `datetime` / `memory_search` / `memory_remember`。收口类 `synthesize_results` / `get_team_deliverable` / `cancel_orchestration` 与构图、computer_use、shell、M71 会话考古（`search_messages` / `list_agent_sessions` / `read_session_history`）一律 deferred。catalog `eff` 之外的 MemoryTools / working_memory / 扁平 CustomTool 不再靠手写侧通道名单，而是 `MergeNonCoreMappedDeferred`：所有已映射且不在核心集的 biz key 并进 deferred；`FinalizeDeferredTools` 只包装实际装配到的项。扁平 CustomTool 必须映射到自身 Declaration 名。`ToolFilter` names 同时收录 catalog `Name` 与 `BaseName`。目录 cue 只保留首句且 ≤80 字，避免 deferred 变多后尾部 token 把 schema 节省吃掉。框架 skill 工具在 llmagent 装配之后注入，不能靠 registry 映射包装：spirit/chat_only 用 `WithAllowedSkillTools(skill_load)`，去掉 `skill_select_docs` / `skill_list_docs`。`CAPABILITIES.md` 只描述常驻工具，其余写明先 `tool_load`。
 
+**同一目标禁止重复规划（2026-08-22）**：`plan_and_execute` 在分解前 `ListAllTeams`；若本会话已有与 `task_prompt` 重叠的 running/completed 团队，直接返回 `reuse_existing=true` + `existing_teams` + `next_action`（先 `tool_load get_team_deliverable`），不跑 LLM 分解。用户明确「重新组建」或 `force_new=true` 才开新 DAG。流式分解不再套 `DecomposeLLMTimeout=60s` 子超时（idle 45s + 外层 3min）。
+
 ### 7.10 子代理工具（SubAgent Tools）
 
 子代理工具通过 `SubAgentService` 注入，支持运行时动态生成、列表、查询和取消子代理。

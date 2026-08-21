@@ -21,16 +21,16 @@ import (
 // judgeMaxReplyRunes 是送入判定器的回复文本上限（取尾部——问题在结尾）。
 const judgeMaxReplyRunes = 2000
 
-// LooksLikeTrailingQuestion 报告回复文本是否以疑问句收尾（?/？）。
+// LooksLikeTrailingQuestion 报告回复文本是否含疑问标记（?/？）。
 // 仅作预筛：通过后才走 LLM 判定，避免对每条回复都付出一次旁路调用。
+// 含问号即放行（不要求结尾——问句可能出现在回复中段，后随句号收尾的补充
+// 说明）；误放进来的礼貌性收尾/设问由 LLM 判定器排除。
 func LooksLikeTrailingQuestion(reply string) bool {
 	s := strings.TrimSpace(reply)
 	if s == "" {
 		return false
 	}
-	// 剥离结尾的 markdown 装饰与闭括号/引号（含全角），取最后一个有效字符。
-	s = strings.TrimRight(s, "*_`~>）)]】」』\"'”’“‘「『 \t\r\n")
-	return strings.HasSuffix(s, "?") || strings.HasSuffix(s, "？")
+	return strings.Contains(s, "?") || strings.Contains(s, "？")
 }
 
 const blockingQuestionJudgeSystem = `You judge whether an assistant's reply is a BLOCKING question directed at the user: the assistant cannot make meaningful progress on the user's request until the user answers. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:

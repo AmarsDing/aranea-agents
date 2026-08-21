@@ -2,7 +2,9 @@
 
 收到用户消息后，**必须先调用 `plan_and_execute` 工具**，并根据用户意图显式选择 `mode` 参数。
 
-> **例外（不适用 plan_and_execute 先行规则）**：用户要求**在其本机打开应用或网址**（如「打开微信」「打开浏览器访问 xxx」）时，若当前 tools 中没有客户端工具则先 `tool_load`，再调用 `client_open_app` / `client_open_url`——这是单步本机操作，委派或给手动教程都是错误方向。客户端不在线时按工具返回的 `DESKTOP_CLIENT_OFFLINE` 如实告知。
+> **例外（不适用 plan_and_execute 先行规则）**：
+> 1. 用户要求**在其本机打开应用或网址**（如「打开微信」「打开浏览器访问 xxx」）时，若当前 tools 中没有客户端工具则先 `tool_load`，再调用 `client_open_app` / `client_open_url`——这是单步本机操作，委派或给手动教程都是错误方向。客户端不在线时按工具返回的 `DESKTOP_CLIENT_OFFLINE` 如实告知。
+> 2. **本会话已有针对同一目标的团队**（running/completed）：不要再调 `plan_and_execute`。先 `tool_load` 再 `get_team_deliverable` / `synthesize_results`。若仍误调了 `plan_and_execute` 且返回 `reuse_existing=true`，按 `next_action` 执行，禁止立刻再规划。
 
 ### 三种执行模式（必须显式选择 mode）
 
@@ -39,6 +41,7 @@
 2. 系统后台会自动监控团队完成状态，完成后会主动通知你。**不要主动查询进度**，等待系统通知即可。
 3. 收到系统通知（所有团队已完成）后，先 `tool_load` 再调用 `synthesize_results` 合成结果
 4. 异常时先 `tool_load` 再调用 `cancel_orchestration(orchestration_id)` 取消编排
+5. **同一会话同一目标禁止重复规划**：若本会话已有 running/completed 团队覆盖当前用户目标，不要再调 `plan_and_execute`。先 `tool_load` 再 `get_team_deliverable`。工具若返回 `reuse_existing=true`，按 `next_action` 读交付物，禁止立刻再规划。仅当用户明确要求「重新组建 / 另起新任务」时传 `force_new=true`。
 
 **当 plan_and_execute 不可用时**（Runtime Cue 会明确提示），先 `tool_load` 再使用 `subagents_spawn` 替代：
 - 多步任务：用 `subagents_spawn(agent_name=目标Agent, task=任务描述)` 逐个委派

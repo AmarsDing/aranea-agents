@@ -257,6 +257,17 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
+    // Runner completion (stage=runner_completion): accumulate turn token totals
+    // locally so the status bar updates immediately; the metrics_updated →
+    // fetchAndReconcile path still follows as the server-authoritative reconcile.
+    if (ev.activity.stage === 'runner_completion') {
+      const prev = deps.sessionStore.findSessionById(sessionId);
+      const patch = sessionContextPatchFromActivityEvent(ev, prev);
+      if (patch) {
+        deps.sessionStore.patchSessionMetricsLocal(sessionId, patch);
+      }
+    }
+
     // Session status changed (stage=session_status_changed)
     if (ev.activity.stage === 'session_status_changed' && ev.activity.meta) {
       const md = ev.activity.meta;

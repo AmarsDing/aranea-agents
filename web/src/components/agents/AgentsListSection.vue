@@ -191,7 +191,6 @@
         <q-td :props="slotProps">
           <div class="app-registry-cell-actions">
             <q-btn
-              v-if="!slotProps.row.readonly"
               flat
               dense
               round
@@ -201,18 +200,6 @@
               :to="`/agents/${slotProps.row.id}/settings`"
             >
               <q-tooltip>{{ t('agentsPage.actions.edit') }}</q-tooltip>
-            </q-btn>
-            <q-btn
-              v-if="slotProps.row.readonly"
-              flat
-              dense
-              round
-              color="primary"
-              icon="settings"
-              :aria-label="t('agentsPage.actions.settings')"
-              :to="`/agents/${slotProps.row.id}/settings`"
-            >
-              <q-tooltip>{{ t('agentsPage.actions.settings') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="!slotProps.row.readonly"

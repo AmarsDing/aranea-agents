@@ -56,6 +56,8 @@ type SessionTurn struct {
 	OutputTokens int `json:"output_tokens,omitempty"`
 	// TotalTokens holds the value of the "total_tokens" field.
 	TotalTokens int `json:"total_tokens,omitempty"`
+	// CachedInputTokens holds the value of the "cached_input_tokens" field.
+	CachedInputTokens int `json:"cached_input_tokens,omitempty"`
 	// TotalCostMicroUsd holds the value of the "total_cost_micro_usd" field.
 	TotalCostMicroUsd int64 `json:"total_cost_micro_usd,omitempty"`
 	// FinalProvider holds the value of the "final_provider" field.
@@ -84,7 +86,7 @@ func (*SessionTurn) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case sessionturn.FieldTurnNumber, sessionturn.FieldDurationMs, sessionturn.FieldFirstTokenMs, sessionturn.FieldModelCallCount, sessionturn.FieldToolCallCount, sessionturn.FieldSkillCallCount, sessionturn.FieldMcpCallCount, sessionturn.FieldInputTokens, sessionturn.FieldOutputTokens, sessionturn.FieldTotalTokens, sessionturn.FieldTotalCostMicroUsd:
+		case sessionturn.FieldTurnNumber, sessionturn.FieldDurationMs, sessionturn.FieldFirstTokenMs, sessionturn.FieldModelCallCount, sessionturn.FieldToolCallCount, sessionturn.FieldSkillCallCount, sessionturn.FieldMcpCallCount, sessionturn.FieldInputTokens, sessionturn.FieldOutputTokens, sessionturn.FieldTotalTokens, sessionturn.FieldCachedInputTokens, sessionturn.FieldTotalCostMicroUsd:
 			values[i] = new(sql.NullInt64)
 		case sessionturn.FieldID, sessionturn.FieldSessionID, sessionturn.FieldRunID, sessionturn.FieldUserMessageID, sessionturn.FieldAssistantMessageID, sessionturn.FieldOwnerType, sessionturn.FieldAgentID, sessionturn.FieldTeamID, sessionturn.FieldStatus, sessionturn.FieldStartedAt, sessionturn.FieldEndedAt, sessionturn.FieldFinalProvider, sessionturn.FieldFinalModel, sessionturn.FieldFinalContentPreview, sessionturn.FieldErrorCode, sessionturn.FieldErrorMessage, sessionturn.FieldMetadataJSON, sessionturn.FieldIdempotencyKey, sessionturn.FieldCreatedAt, sessionturn.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
@@ -228,6 +230,12 @@ func (_m *SessionTurn) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field total_tokens", values[i])
 			} else if value.Valid {
 				_m.TotalTokens = int(value.Int64)
+			}
+		case sessionturn.FieldCachedInputTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cached_input_tokens", values[i])
+			} else if value.Valid {
+				_m.CachedInputTokens = int(value.Int64)
 			}
 		case sessionturn.FieldTotalCostMicroUsd:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -384,6 +392,9 @@ func (_m *SessionTurn) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("total_tokens=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TotalTokens))
+	builder.WriteString(", ")
+	builder.WriteString("cached_input_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CachedInputTokens))
 	builder.WriteString(", ")
 	builder.WriteString("total_cost_micro_usd=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TotalCostMicroUsd))

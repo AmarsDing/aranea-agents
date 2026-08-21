@@ -5328,46 +5328,50 @@ func init() {
 	sessionturnDescTotalTokens := sessionturnFields[20].Descriptor()
 	// sessionturn.DefaultTotalTokens holds the default value on creation for the total_tokens field.
 	sessionturn.DefaultTotalTokens = sessionturnDescTotalTokens.Default.(int)
+	// sessionturnDescCachedInputTokens is the schema descriptor for cached_input_tokens field.
+	sessionturnDescCachedInputTokens := sessionturnFields[21].Descriptor()
+	// sessionturn.DefaultCachedInputTokens holds the default value on creation for the cached_input_tokens field.
+	sessionturn.DefaultCachedInputTokens = sessionturnDescCachedInputTokens.Default.(int)
 	// sessionturnDescTotalCostMicroUsd is the schema descriptor for total_cost_micro_usd field.
-	sessionturnDescTotalCostMicroUsd := sessionturnFields[21].Descriptor()
+	sessionturnDescTotalCostMicroUsd := sessionturnFields[22].Descriptor()
 	// sessionturn.DefaultTotalCostMicroUsd holds the default value on creation for the total_cost_micro_usd field.
 	sessionturn.DefaultTotalCostMicroUsd = sessionturnDescTotalCostMicroUsd.Default.(int64)
 	// sessionturnDescFinalProvider is the schema descriptor for final_provider field.
-	sessionturnDescFinalProvider := sessionturnFields[22].Descriptor()
+	sessionturnDescFinalProvider := sessionturnFields[23].Descriptor()
 	// sessionturn.DefaultFinalProvider holds the default value on creation for the final_provider field.
 	sessionturn.DefaultFinalProvider = sessionturnDescFinalProvider.Default.(string)
 	// sessionturnDescFinalModel is the schema descriptor for final_model field.
-	sessionturnDescFinalModel := sessionturnFields[23].Descriptor()
+	sessionturnDescFinalModel := sessionturnFields[24].Descriptor()
 	// sessionturn.DefaultFinalModel holds the default value on creation for the final_model field.
 	sessionturn.DefaultFinalModel = sessionturnDescFinalModel.Default.(string)
 	// sessionturnDescFinalContentPreview is the schema descriptor for final_content_preview field.
-	sessionturnDescFinalContentPreview := sessionturnFields[24].Descriptor()
+	sessionturnDescFinalContentPreview := sessionturnFields[25].Descriptor()
 	// sessionturn.DefaultFinalContentPreview holds the default value on creation for the final_content_preview field.
 	sessionturn.DefaultFinalContentPreview = sessionturnDescFinalContentPreview.Default.(string)
 	// sessionturnDescErrorCode is the schema descriptor for error_code field.
-	sessionturnDescErrorCode := sessionturnFields[25].Descriptor()
+	sessionturnDescErrorCode := sessionturnFields[26].Descriptor()
 	// sessionturn.DefaultErrorCode holds the default value on creation for the error_code field.
 	sessionturn.DefaultErrorCode = sessionturnDescErrorCode.Default.(string)
 	// sessionturnDescErrorMessage is the schema descriptor for error_message field.
-	sessionturnDescErrorMessage := sessionturnFields[26].Descriptor()
+	sessionturnDescErrorMessage := sessionturnFields[27].Descriptor()
 	// sessionturn.DefaultErrorMessage holds the default value on creation for the error_message field.
 	sessionturn.DefaultErrorMessage = sessionturnDescErrorMessage.Default.(string)
 	// sessionturnDescMetadataJSON is the schema descriptor for metadata_json field.
-	sessionturnDescMetadataJSON := sessionturnFields[27].Descriptor()
+	sessionturnDescMetadataJSON := sessionturnFields[28].Descriptor()
 	// sessionturn.DefaultMetadataJSON holds the default value on creation for the metadata_json field.
 	sessionturn.DefaultMetadataJSON = sessionturnDescMetadataJSON.Default.(string)
 	// sessionturnDescIdempotencyKey is the schema descriptor for idempotency_key field.
-	sessionturnDescIdempotencyKey := sessionturnFields[28].Descriptor()
+	sessionturnDescIdempotencyKey := sessionturnFields[29].Descriptor()
 	// sessionturn.DefaultIdempotencyKey holds the default value on creation for the idempotency_key field.
 	sessionturn.DefaultIdempotencyKey = sessionturnDescIdempotencyKey.Default.(string)
 	// sessionturn.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
 	sessionturn.IdempotencyKeyValidator = sessionturnDescIdempotencyKey.Validators[0].(func(string) error)
 	// sessionturnDescCreatedAt is the schema descriptor for created_at field.
-	sessionturnDescCreatedAt := sessionturnFields[29].Descriptor()
+	sessionturnDescCreatedAt := sessionturnFields[30].Descriptor()
 	// sessionturn.DefaultCreatedAt holds the default value on creation for the created_at field.
 	sessionturn.DefaultCreatedAt = sessionturnDescCreatedAt.Default.(string)
 	// sessionturnDescUpdatedAt is the schema descriptor for updated_at field.
-	sessionturnDescUpdatedAt := sessionturnFields[30].Descriptor()
+	sessionturnDescUpdatedAt := sessionturnFields[31].Descriptor()
 	// sessionturn.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	sessionturn.DefaultUpdatedAt = sessionturnDescUpdatedAt.Default.(string)
 	// sessionturnDescID is the schema descriptor for id field.

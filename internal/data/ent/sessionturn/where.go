@@ -163,6 +163,11 @@ func TotalTokens(v int) predicate.SessionTurn {
 	return predicate.SessionTurn(sql.FieldEQ(FieldTotalTokens, v))
 }
 
+// CachedInputTokens applies equality check predicate on the "cached_input_tokens" field. It's identical to CachedInputTokensEQ.
+func CachedInputTokens(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldEQ(FieldCachedInputTokens, v))
+}
+
 // TotalCostMicroUsd applies equality check predicate on the "total_cost_micro_usd" field. It's identical to TotalCostMicroUsdEQ.
 func TotalCostMicroUsd(v int64) predicate.SessionTurn {
 	return predicate.SessionTurn(sql.FieldEQ(FieldTotalCostMicroUsd, v))
@@ -1261,6 +1266,46 @@ func TotalTokensLT(v int) predicate.SessionTurn {
 // TotalTokensLTE applies the LTE predicate on the "total_tokens" field.
 func TotalTokensLTE(v int) predicate.SessionTurn {
 	return predicate.SessionTurn(sql.FieldLTE(FieldTotalTokens, v))
+}
+
+// CachedInputTokensEQ applies the EQ predicate on the "cached_input_tokens" field.
+func CachedInputTokensEQ(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldEQ(FieldCachedInputTokens, v))
+}
+
+// CachedInputTokensNEQ applies the NEQ predicate on the "cached_input_tokens" field.
+func CachedInputTokensNEQ(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldNEQ(FieldCachedInputTokens, v))
+}
+
+// CachedInputTokensIn applies the In predicate on the "cached_input_tokens" field.
+func CachedInputTokensIn(vs ...int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldIn(FieldCachedInputTokens, vs...))
+}
+
+// CachedInputTokensNotIn applies the NotIn predicate on the "cached_input_tokens" field.
+func CachedInputTokensNotIn(vs ...int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldNotIn(FieldCachedInputTokens, vs...))
+}
+
+// CachedInputTokensGT applies the GT predicate on the "cached_input_tokens" field.
+func CachedInputTokensGT(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldGT(FieldCachedInputTokens, v))
+}
+
+// CachedInputTokensGTE applies the GTE predicate on the "cached_input_tokens" field.
+func CachedInputTokensGTE(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldGTE(FieldCachedInputTokens, v))
+}
+
+// CachedInputTokensLT applies the LT predicate on the "cached_input_tokens" field.
+func CachedInputTokensLT(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldLT(FieldCachedInputTokens, v))
+}
+
+// CachedInputTokensLTE applies the LTE predicate on the "cached_input_tokens" field.
+func CachedInputTokensLTE(v int) predicate.SessionTurn {
+	return predicate.SessionTurn(sql.FieldLTE(FieldCachedInputTokens, v))
 }
 
 // TotalCostMicroUsdEQ applies the EQ predicate on the "total_cost_micro_usd" field.
