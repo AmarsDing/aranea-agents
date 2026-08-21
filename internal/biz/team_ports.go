@@ -126,6 +126,12 @@ type TeamQualityGateFunc func(ctx context.Context, team Team) (QualityGateResult
 // current turn ends).
 type TeamRevisionEnqueuerFunc func(ctx context.Context, sessionID, content string) error
 
+// StaleRunHandlerFunc is invoked when the coordinator's reconciler
+// force-fails a lost running team run (P0 终态一致性). The service layer
+// forwards the failure to PlanExecutor.NotifyTeamCompletion so a blocked DAG
+// step unblocks (cascade-fails) instead of waiting forever.
+type StaleRunHandlerFunc func(teamID, teamRunID, reason string)
+
 // TeamGraphCoordPort is the biz-level port for the team graph run coordinator.
 // It abstracts the coordinator that manages graph execution steps.
 //
@@ -133,6 +139,10 @@ type TeamRevisionEnqueuerFunc func(ctx context.Context, sessionID, content strin
 type TeamGraphCoordPort interface {
 	// SetFinisher wires the finisher (typically the mediator) to the coordinator.
 	SetFinisher(finisher TeamMediatorPort)
+
+	// SetStaleRunHandler wires the callback invoked when ReconcileStaleRuns
+	// reaps a lost running team run.
+	SetStaleRunHandler(h StaleRunHandlerFunc)
 
 	// RecoverSessions recovers in-flight graph executions after restart.
 	RecoverSessions(ctx context.Context)
@@ -234,14 +244,12 @@ type TeamTurnOutput struct {
 
 // TeamPersistTurnRecord persists the turn result for a team session.
 // This is the "persist" hook in the TurnExecutor lifecycle for team sessions.
-// Stability:evolving
 type TeamPersistTurnRecord interface {
 	PersistTeamTurn(ctx context.Context, sessionID, teamID string, userMsg, assistantMsg ChatMessage, tokenIn, tokenOut int) error
 }
 
 // TeamProjectRuntimeEvent emits runtime events (envelopes) for a team turn.
 // This is the "project events" hook in the TurnExecutor lifecycle for team sessions.
-// Stability:evolving
 type TeamProjectRuntimeEvent interface {
 	ProjectTeamEvents(ctx context.Context, sessionID, runID string, outcome TurnOutcome, assistantMsg ChatMessage) error
 }

@@ -18,9 +18,11 @@
 
 ### 按需工具（先 `tool_load` 再调用）
 
+> 直调报 `tool not found` 即说明该工具尚未加载：先 `tool_load` 加载成功后再调用，禁止重复直调。
+
 - 合成结果：`synthesize_results`（收到「所有团队已完成」通知后）
 - 取消编排：`cancel_orchestration`；复杂 DAG：`build_orchestration_graph`
-- 团队交付物：`get_team_deliverable`（优先于翻聊天记录）
+- 团队交付物全文：`get_team_deliverable`（完成通知已含摘要，仅核对原文/细节时取全文；优先于翻聊天记录）
 - 打开用户本机应用/网址：`client_open_app` / `client_open_url`。桌面端离线（`DESKTOP_CLIENT_OFFLINE`）必须如实告知，禁止假装已执行，禁止在服务器上用 shell「确认」本机应用。
 - `plan_and_execute` 不可用时再用 `subagents_spawn`
 

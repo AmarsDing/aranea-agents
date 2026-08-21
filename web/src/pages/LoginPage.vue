@@ -121,7 +121,7 @@
               <div v-if="!authBypass" class="text-caption text-grey-7 text-center q-mt-sm">
                 {{ t('auth.defaultAccountHint') }}
               </div>
-              <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t('auth.backendHint') }}</div>
+              <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t('auth.backendHint', { pageUrl: pageUrl }) }}</div>
             </q-card-actions>
           </template>
         </q-card>
@@ -131,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useLoginPage } from '../features/admin/useLoginPage';
 
 const {
@@ -151,6 +152,8 @@ const {
   enterWithoutLogin,
   submit,
 } = useLoginPage();
+
+const pageUrl = computed(() => window.location.origin);
 
 void bootstrapIfAlreadyAuthed();
 </script>

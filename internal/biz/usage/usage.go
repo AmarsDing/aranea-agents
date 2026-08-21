@@ -522,6 +522,10 @@ type AnalyticsRepo interface {
 	// TECH-DEBT(CS-B4): AnalyticsRepo 方法数=11，超出 ≤5 上限（DB-DEBT-02）。
 	// 后续应拆分为 ModelTrendReader / ModelBreakdownReader / AgentBreakdownReader 子接口。
 	ListAllModelsBreakdown(ctx context.Context, query BreakdownQuery) (BreakdownResult, error)
+	// ListAllModelsBreakdownRealtime 与 ListAllModelsBreakdown 同签名，但基于 events
+	// 表实时聚合。用于 range 含今天时与 Overview 摘要/Top 榜保持同源（daily rollup
+	// 为异步消费，含今天必然滞后）。
+	ListAllModelsBreakdownRealtime(ctx context.Context, query BreakdownQuery) (BreakdownResult, error)
 }
 
 // WriteRepo persists usage events and resolves pricing.
@@ -847,8 +851,14 @@ func (u *Usecase) TopAgents(ctx context.Context, query Query) ([]BreakdownRow, e
 // AllModelsBreakdown 返回全模型消耗分页明细（用于「全模型消耗总览表」）。
 // 与 TopModels 不同：支持服务端分页、LIKE 搜索、动态字段排序，且返回 total 用于前端分页 UI。
 // 排序字段与方向由 data 层做白名单校验，避免 SQL 注入。
+// 数据源策略与 Overview 对齐：daily rollup 为事件总线异步消费，range 含今天时 daily
+// 表必然滞后于 events 表，此时改走实时聚合，保证总览页摘要/Top 榜/总览表三块同源。
 func (u *Usecase) AllModelsBreakdown(ctx context.Context, query BreakdownQuery) (BreakdownResult, error) {
-	return u.repo.ListAllModelsBreakdown(ctx, u.normalizeBreakdownQuery(query, u.now()))
+	q := u.normalizeBreakdownQuery(query, u.now())
+	if q.EndDate < dateKey(u.now()) {
+		return u.repo.ListAllModelsBreakdown(ctx, q)
+	}
+	return u.repo.ListAllModelsBreakdownRealtime(ctx, q)
 }
 
 // normalizeBreakdownQuery 将 BreakdownQuery.Range 解析为 StartDate/EndDate，
@@ -961,6 +971,11 @@ func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUs
 	e.Status = NormalizeStatus(e.Status)
 	if e.Status == "" {
 		e.Status = "success"
+	}
+	// Derive tokens_per_second when the caller did not supply it: without this the
+	// overview tables render the throughput column as "—" for every model.
+	if e.TokensPerSecond <= 0 && e.LatencyMS > 0 && e.OutputTokens > 0 {
+		e.TokensPerSecond = float64(e.OutputTokens) * 1000.0 / float64(e.LatencyMS)
 	}
 	if strings.TrimSpace(e.ModelCategoryJSON) == "" {
 		e.ModelCategoryJSON = "[]"

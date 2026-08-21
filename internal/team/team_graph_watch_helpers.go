@@ -54,6 +54,11 @@ func (c *TeamGraphRunCoordinator) recordGraphNodeEnd(ctx context.Context, execID
 // (initial run success/failure) where no graph watch observes a terminal
 // notice, and from finalizeTeamRun on watch-driven paths. Idempotent on the
 // biz side, so duplicate calls (e.g. watch + runner) are safe.
+//
+// 终态同时收口协调会话（2026-08-21 P1b）：runner 驱动路径不走 finalizeTeamRun，
+// 初始运行的 watch 又是 steps-only 模式（永不 finalize/evict），若不在此收口，
+// team_graph_sessions 行将滞留 running 直到过期清理，内存会话同样泄漏
+// （诗歌会话团队图谱状态恒 running 的根因）。
 func (c *TeamGraphRunCoordinator) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
 	if c == nil || c.graphs == nil {
 		return nil
@@ -62,15 +67,39 @@ func (c *TeamGraphRunCoordinator) FinalizeTeamGraphExecution(ctx context.Context
 	if execID == "" {
 		return nil
 	}
-	if err := c.graphs.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg); err != nil {
+	err := c.graphs.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
+	if err != nil {
 		c.lg.Warn("FinalizeTeamGraphExecution failed",
 			loggateway.StepID("team.graph.exec_finalize_fail"),
 			loggateway.Str("exec_id", execID),
 			loggateway.Bool("failed", failed),
 			loggateway.Err(err))
-		return err
 	}
-	return nil
+	// graph 行收敛成败不影响会话收口：run 已到终态是会话收口的充分条件；
+	// 收敛失败多为瞬时故障，滞留会话的代价（状态假活）大于提前摘行的代价。
+	c.concludeSessionOnTerminal(execID)
+	return err
+}
+
+// concludeSessionOnTerminal 在 team run 到达终态后收口协调会话：摘除内存
+// 会话并删除 team_graph_sessions 行（对齐 watch 路径 evictSession 的终局
+// 语义）。HITL 挂起（waiting_human）会话保留——等待 resume 唤醒。
+//
+// 不停止 watch：watch 驱动的 finalizeTeamRun 在本调用之后仍须使用 watchCtx
+// 完成 team run 终态记账，取消 ctx 会中断记账（该路径的 watch 停止由
+// finalizeTeamRun 末尾的 evictSession 负责）；runner 驱动的初始运行路径由
+// observerSetup.stopAll 停止 steps-only watch。
+func (c *TeamGraphRunCoordinator) concludeSessionOnTerminal(execID string) {
+	execID = strings.TrimSpace(execID)
+	c.mu.Lock()
+	sess := c.sessions[execID]
+	if sess == nil || sess.status == biz.TeamRunStatusWaitingHuman {
+		c.mu.Unlock()
+		return
+	}
+	delete(c.sessions, execID)
+	c.mu.Unlock()
+	c.deleteSessionFromDB(execID)
 }
 
 func resumeStepNodeID(meta map[string]any, reg biz.OrchestrationRegistry) string {

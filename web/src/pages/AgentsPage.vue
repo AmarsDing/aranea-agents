@@ -63,6 +63,7 @@
       :checking-model="checkingModel"
       @apply-template="applyTemplate"
       @check-model="checkModel"
+      @create-attempt="onCreateAttempt"
       @create="onCreate"
     />
 
@@ -160,6 +161,7 @@ const {
   statusOptions,
   checkModel,
   onCreate,
+  onCreateAttempt,
   applyTemplate,
   confirmDelete,
   deleteAgentTarget,

@@ -137,6 +137,13 @@ func (a *teamGraphCoordAdapter) SetFinisher(finisher biz.TeamMediatorPort) {
 	}
 }
 
+func (a *teamGraphCoordAdapter) SetStaleRunHandler(h biz.StaleRunHandlerFunc) {
+	if a.inner == nil || h == nil {
+		return
+	}
+	a.inner.SetStaleRunHandler(h)
+}
+
 func (a *teamGraphCoordAdapter) RecoverSessions(ctx context.Context) {
 	a.inner.RecoverSessions(ctx)
 }

@@ -97,6 +97,10 @@ func (s *stubUsageRepo) ListAllModelsBreakdown(context.Context, UsageBreakdownQu
 	return UsageBreakdownResult{}, nil
 }
 
+func (s *stubUsageRepo) ListAllModelsBreakdownRealtime(context.Context, UsageBreakdownQuery) (UsageBreakdownResult, error) {
+	return UsageBreakdownResult{}, nil
+}
+
 func TestCheckQuota_noConfigAllowed(t *testing.T) {
 	uc := NewUsageUsecase(&stubUsageRepo{hasQuota: false}, loggateway.NewNoop())
 	check, err := uc.CheckQuota(context.Background(), "agent", "a1")

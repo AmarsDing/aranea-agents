@@ -301,6 +301,11 @@ body:not(.body--dark) .create-agent-card .q-toggle__inner--truthy .q-toggle__tra
   padding: 0 22px
   font-weight: 700
 
+// ISSUE-005: 深色主题下 Quasar 默认禁用态 opacity 0.7 与可用态几乎无差别，
+// 加深禁用对比，让"创建"按钮的不可用状态一眼可辨。
+.create-agent-card__submit .q-btn.disabled
+  opacity: 0.35 !important
+
 .create-agent-card.create-agent-card--dark .create-agent-card__toolbar
   background: var(--glass-surface)
   border-color: var(--glass-border)

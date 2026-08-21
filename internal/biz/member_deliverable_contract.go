@@ -6,7 +6,30 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/shared"
+
+	"golang.org/x/text/unicode/norm"
 )
+
+// NormalizeDeliverableTopic 归一化 C3 topic 命名空间键：去首尾空白 + NFC +
+// 全角 ASCII 变体（U+FF01–U+FF5E）折叠为对应半角。LLM 依据契约文本转写
+// topic 时可能产生码点差异（全角 Ａ vs 半角 A、组合字符序列、padding 空白），
+// 写入侧（set_deliverable）、读取侧（get/ack_deliverable）与契约条目若不做
+// 同规则归一，写键与读键错位导致 topic 过滤静默失效（2026-08-21 诗歌会话
+// 根因）。不做大小写折叠——topic 是大小写敏感标识符，折叠会把契约声明的
+// 不同 topic 静默合并。
+func NormalizeDeliverableTopic(topic string) string {
+	topic = strings.TrimSpace(topic)
+	if topic == "" {
+		return ""
+	}
+	topic = norm.NFC.String(topic)
+	return strings.Map(func(r rune) rune {
+		if r >= 0xFF01 && r <= 0xFF5E {
+			return r - 0xFEE0
+		}
+		return r
+	}, topic)
+}
 
 // Member-level deliverable contract (MDC): intra-team counterpart of the
 // inter-team DeliverableContract. Declared in team Definition JSON under
@@ -130,6 +153,11 @@ func ParseMemberDeliverableContract(raw string) (*MemberDeliverableContract, err
 	}
 	if len(c.Entries) == 0 {
 		return nil, nil
+	}
+	// 契约条目 topic 与工具读写同规则归一：EntryForTopic/ValidateTopicData
+	// 是精确匹配，条目不归一会让归一化后的写入绕过契约校验。
+	for i := range c.Entries {
+		c.Entries[i].Topic = NormalizeDeliverableTopic(c.Entries[i].Topic)
 	}
 	return &c, nil
 }

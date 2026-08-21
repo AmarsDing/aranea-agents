@@ -61,6 +61,14 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		}
 		// C-18: cancel_orchestration falls back to PlanBoard.ID.
 		cs.orch.SetPlanBoardOrch(planExec)
+		// P0 终态一致性：coordinator reconciler 强制收割的丢失 running run
+		// 转发 PlanExecutor，解除 DAG 步骤阻塞（RealTeamOrchestrator 对未知
+		// teamID 直接忽略，standalone run 安全）。
+		if coord := deps.Team.Team.TeamGraphCoord; coord != nil {
+			coord.SetStaleRunHandler(func(teamID, teamRunID, reason string) {
+				planExec.NotifyTeamCompletion(teamID, teamRunID, false, reason)
+			})
+		}
 		// 2026-07-04 问题 4 修复：注入 EventBus 并启动订阅，
 		// 让 PlanExecutor 自动响应 PlanBoardCreatedEvent 触发 DAG 执行。
 		if v2Bus != nil {

@@ -175,6 +175,13 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     icon: 'check_circle',
     color: 'green',
   },
+  // 2026-08-21 P0：teamCount 截断/放行显式通知（task_planner_impl.go）。
+  // composable 按 meta.action 选择 truncate / proceed 文案。
+  team_count_mismatch: {
+    messageKey: 'chat.orchestrationProgress.teamCountMismatch',
+    icon: 'warning',
+    color: 'orange',
+  },
 };
 
 // --- OBS-05: Sidebar Status Pulse ---

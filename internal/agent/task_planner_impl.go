@@ -387,12 +387,21 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 				// 不符数量的 subtask 时，截取前 N 个或记录警告。这是兜底——
 				// buildDecompositionPrompt 已通过 prompt 硬约束 LLM，但 LLM
 				// 可能不严格遵守。
+				// 2026-08-21 P0 修复：数量不符已先经校验门有界重分解（见
+				// plan_verifier.go R4），走到这里说明修复未果。截取/放行都必须
+				// 显式通知前端——静默截取会整个丢掉团队职责（诗歌会话丢
+				// Team B 根因），用户只能从结果反推异常。
 				if teamCount > 0 && len(subTasks) > teamCount {
+					originalCount := len(subTasks)
+					droppedNames := make([]string, 0, originalCount-teamCount)
+					for _, st := range subTasks[teamCount:] {
+						droppedNames = append(droppedNames, st.Name)
+					}
 					impl.lg.Warn("LLM 分解的 subtask 数量超出用户请求的 team 数量，截取前 N 个",
 						loggateway.StepID(biz.SpiritStepPlannerDecompose),
 						loggateway.Str("trace_id", traceID),
 						loggateway.Int("requested_team_count", teamCount),
-						loggateway.Int("decomposed_subtask_count", len(subTasks)),
+						loggateway.Int("decomposed_subtask_count", originalCount),
 					)
 					subTasks = subTasks[:teamCount]
 					// 清理截取后悬挂的 DependsOn 引用，避免 DAG 执行失败
@@ -411,6 +420,12 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 					}
 					dag = buildDAGFromSubTasks(subTasks)
 					decomposeReason = fmt.Sprintf("分解为 %d 个子任务（按用户请求截取）", len(subTasks))
+					impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "team_count_mismatch", map[string]any{
+						"action":                   "truncate",
+						"requested_team_count":     teamCount,
+						"decomposed_subtask_count": originalCount,
+						"dropped_subtask_names":    droppedNames,
+					})
 				} else if teamCount > 0 && len(subTasks) < teamCount {
 					impl.lg.Warn("LLM 分解的 subtask 数量少于用户请求的 team 数量",
 						loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -418,6 +433,11 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 						loggateway.Int("requested_team_count", teamCount),
 						loggateway.Int("decomposed_subtask_count", len(subTasks)),
 					)
+					impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "team_count_mismatch", map[string]any{
+						"action":                   "proceed",
+						"requested_team_count":     teamCount,
+						"decomposed_subtask_count": len(subTasks),
+					})
 				}
 				// TS9-GAP-1：闭环类任务（事故/告警/故障）由引擎确定性追加复盘节点，
 				// 不再依赖 LLM 分解时自觉产出——流程控制权在引擎。追加发生在
@@ -1558,6 +1578,7 @@ Rules:
 - domain_path must classify the subtask into this domain lexicon (use the most specific entry that fits; if none fits, use a top-level domain or "其他"): %s
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed
+- Dependency discipline: declare depends_on ONLY when a subtask genuinely consumes another subtask's output (its input_contract references the predecessor's deliverables). Parallel same-role teams (e.g. "two teams each write a poem, then a third team judges") MUST have empty depends_on; only the final merging/judging subtask depends on ALL of the parallel subtasks. NEVER chain parallel teams serially, and NEVER make every subtask depend on a "understand the current state / statistics" subtask unless that output is a real input to the work.
 - Subtasks should be independently executable where possible
 - CRITICAL: Each subtask "description" must be fully self-contained. The executing team sees ONLY its own description — it cannot see the user message or other subtasks. Every concrete parameter the executor needs (URLs, file paths, branch/tag names, subpaths, skill/agent names, numeric values, flags) MUST be copied verbatim into the description. NEVER use context references such as "the given URL", "the above parameters", "使用给定的/上述的/前文提到的" — always inline the actual values.
 - Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}. The contract "name" becomes the deliverable topic namespace that team members write via set_deliverable — keep it short (letters/digits in any language plus '_'/'-', no spaces or punctuation; a concise slug like "root-cause-report" or "根因报告" works) and NEVER use the reserved names "summary" or "cognition" (writes under them are rejected/overwritten).

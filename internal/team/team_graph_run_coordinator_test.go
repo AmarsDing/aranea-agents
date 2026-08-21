@@ -266,6 +266,57 @@ func TestTeamGraphRunCoordinator_evictDeletesFromDB(t *testing.T) {
 	}
 }
 
+// P1b（2026-08-21）：runner 驱动终态路径（runner_team_turn/finishRunErr）只调
+// FinalizeTeamGraphExecution 收敛 graph_executions，必须同时收口协调会话——否则
+// team_graph_sessions 行滞留 running（steps-only watch 永不 finalize）。
+func TestTeamGraphRunCoordinator_FinalizeConcludesSession(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning}}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟 runner 终态路径：直接 FinalizeTeamGraphExecution（不走 finalizeTeamRun）。
+	if err := coord.FinalizeTeamGraphExecution(ctx, "exec-1", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessRepo.GetSession(ctx, "exec-1"); err == nil {
+		t.Fatal("session row should be deleted on terminal finalize")
+	}
+	if coord.session("exec-1") != nil {
+		t.Fatal("in-memory session should be evicted on terminal finalize")
+	}
+}
+
+// P1b：HITL 挂起（waiting_human）会话在 FinalizeTeamGraphExecution 时保留——
+// 等待 resume 唤醒，不能随 graph 行收敛被收口。
+func TestTeamGraphRunCoordinator_FinalizeRetainsWaitingHumanSession(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning}}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	coord.updateSessionStatus(ctx, "exec-1", biz.TeamRunStatusWaitingHuman)
+	if err := coord.FinalizeTeamGraphExecution(ctx, "exec-1", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessRepo.GetSession(ctx, "exec-1"); err != nil {
+		t.Fatal("waiting_human session must be retained for resume")
+	}
+	if coord.session("exec-1") == nil {
+		t.Fatal("waiting_human in-memory session must be retained for resume")
+	}
+}
+
 func TestTeamGraphRunCoordinator_RecoverSessions(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{

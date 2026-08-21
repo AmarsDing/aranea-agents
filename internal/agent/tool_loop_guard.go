@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -245,16 +246,43 @@ func loopGuardInvocationKey(ctx context.Context) string {
 
 // loopGuardSignature 规范化参数 JSON（map 键排序由 encoding/json 保证）后
 // 与工具名一起哈希，容忍空白/键序差异造成的伪不同参数。
+// 字符串值再做语义级归一（P2c）：LLM 转写参数时的码点/空白微差异
+// （" poem-a " / 全角 "ｐｏｅｍ－ａ"）不再产生新签名绕过守卫。
 func loopGuardSignature(toolName string, args []byte) string {
 	canonical := strings.TrimSpace(string(args))
 	var payload any
 	if err := json.Unmarshal(args, &payload); err == nil {
-		if b, mErr := json.Marshal(payload); mErr == nil {
+		if b, mErr := json.Marshal(loopGuardNormalizeArgStrings(payload)); mErr == nil {
 			canonical = string(b)
 		}
 	}
 	sum := sha1.Sum([]byte(toolName + "\x00" + canonical))
 	return hex.EncodeToString(sum[:])
+}
+
+// loopGuardNormalizeArgStrings 递归归一参数中的字符串值（2026-08-21 P2c）。
+// 与 deliverable topic 同规则（trim+NFC+全角折叠，biz.NormalizeDeliverableTopic）：
+// 诗歌会话实证模型以 " poem-a " / "ｐｏｅｍ－ａ" 等码点微差异参数重发同一语义
+// 调用，每次都生成新签名绕过「签名+结果一致」判定；归一后语义相同调用收敛为
+// 同一签名。不做大小写折叠——大小写差异可能是合法的不同参数（对齐 topic 的
+// 大小写敏感语义）。只影响签名哈希，不改写下发给工具的真实参数。
+func loopGuardNormalizeArgStrings(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, val := range t {
+			t[k] = loopGuardNormalizeArgStrings(val)
+		}
+		return t
+	case []any:
+		for i, val := range t {
+			t[i] = loopGuardNormalizeArgStrings(val)
+		}
+		return t
+	case string:
+		return biz.NormalizeDeliverableTopic(t)
+	default:
+		return v
+	}
 }
 
 func loopGuardResultKey(result any) string {

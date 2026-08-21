@@ -167,6 +167,70 @@ func TestLoopGuardArgsCanonicalization(t *testing.T) {
 	}
 }
 
+// P2c（2026-08-21 诗歌会话实证缺口）：模型以字符串值的码点/空白微差异
+// （首尾空白、全角变体）重发同一语义调用，旧签名按原文哈希每次都视为新参数，
+// 「签名+结果一致」判定无从触发。归一后这些变体收敛为同一签名，第 3 次起拦截。
+func TestLoopGuardSemanticDedupStringVariants(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-sem")
+
+	// 三次调用语义相同：首尾空白变体 + 全角字母/连字符变体（含嵌套对象与数组）。
+	variants := []string{
+		`{"topic":"poem-a","data":{"text":"hello"}}`,
+		`{"topic":" poem-a ","data":{"text":"hello"}}`,
+		`{"topic":"ｐｏｅｍ－ａ","data":{"text":"hello"}}`,
+	}
+	for i, args := range variants {
+		err := runLoopGuardTurn(t, g, ctx, "set_deliverable", args, "ok", nil)
+		if i < 2 {
+			if err != nil {
+				t.Fatalf("semantic-variant call %d should pass, got blocked: %v", i+1, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatal("3rd semantically identical call should be blocked")
+		}
+		if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+			t.Fatalf("blocked error should carry loop guard marker, got %q", err.Error())
+		}
+	}
+
+	// 数组内字符串值同样归一。
+	g2 := newToolLoopGuard(nil)
+	ctx2 := newTestInvocationContext("inv-loop-sem-arr")
+	arrVariants := []string{
+		`{"tags":["x","y"]}`,
+		`{"tags":[" x ","ｙ"]}`,
+		`{"tags":["x","y"]}`,
+	}
+	for i, args := range arrVariants {
+		err := runLoopGuardTurn(t, g2, ctx2, "some_tool", args, "ok", nil)
+		if i < 2 && err != nil {
+			t.Fatalf("array-variant call %d should pass, got blocked: %v", i+1, err)
+		}
+		if i == 2 && err == nil {
+			t.Fatal("3rd array-normalized identical call should be blocked")
+		}
+	}
+}
+
+// P2c 边界：归一化不做大小写折叠——大小写差异是合法的不同参数，不得误判为重复。
+func TestLoopGuardSemanticDedupCaseSensitive(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-sem-case")
+
+	for i := 1; i <= 3; i++ {
+		args := `{"topic":"Poem-A"}`
+		if i%2 == 0 {
+			args = `{"topic":"poem-a"}`
+		}
+		if err := runLoopGuardTurn(t, g, ctx, "set_deliverable", args, "ok", nil); err != nil {
+			t.Fatalf("case-distinct call %d must NOT be blocked as duplicate: %v", i, err)
+		}
+	}
+}
+
 func TestLoopGuardBlockMessageCarriesResultDigest(t *testing.T) {
 	g := newToolLoopGuard(nil)
 	ctx := newTestInvocationContext("inv-loop-7")

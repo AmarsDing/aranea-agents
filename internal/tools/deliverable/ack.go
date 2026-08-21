@@ -111,7 +111,8 @@ func (t *AckDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 	if err := json.Unmarshal(jsonArgs, &in); err != nil {
 		return nil, err
 	}
-	topic := strings.TrimSpace(in.Topic)
+	// 与 set/get 同规则归一（2026-08-21 P2b），ack 键才能命中对应 topic。
+	topic := biz.NormalizeDeliverableTopic(in.Topic)
 	if topic == "" {
 		return nil, errors.New("topic is required")
 	}

@@ -207,7 +207,7 @@ export function useChatSender(deps: SenderDeps) {
       const msg = import.meta.env.DEV
         ? t(
             'chat.backendUnavailableDev',
-            '后端不可用，请确认 admin 是否在 :8800 运行（页面应使用 http://localhost:9301）',
+            '后端服务不可用，请确认后端已启动',
           )
         : t('chat.backendUnavailable', '后端服务不可用，请重新登录');
       $q.notify({ type: 'negative', message: msg, timeout: import.meta.env.DEV ? 8000 : 0 });

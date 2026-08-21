@@ -108,8 +108,8 @@ export function useAgentsPage() {
   const form = reactive<CreateAgentForm>({
     agent_key: '',
     display_name: '',
-    provider: 'openrouter',
-    model: 'gpt-4.1-mini',
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
     icon: 'smart_toy',
     agent_description: '',
     position_key: '',
@@ -136,7 +136,9 @@ export function useAgentsPage() {
   );
 
   const agentKeyError = computed(() => {
-    if (!form.agent_key) return '';
+    // 空值时也回显 serverError：onCreateAttempt 对空标识写入"请填写"提示，
+    // 输入变化时 watch 会清空 serverError，不会误残留。
+    if (!form.agent_key) return agentKeyServerError.value;
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.agent_key)) {
       return '仅支持小写字母、数字、连字符';
     }
@@ -272,8 +274,8 @@ export function useAgentsPage() {
     Object.assign(form, {
       agent_key: '',
       display_name: '',
-      provider: 'openrouter',
-      model: 'gpt-4.1-mini',
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
       icon: avatars.value[0]?.id ?? 'smart_toy',
       agent_description: '',
       position_key: '',
@@ -287,6 +289,19 @@ export function useAgentsPage() {
     selfEvolve.value = true;
     agentKind.value = 'llm';
     Object.assign(a2aProxy, { remote_url: '', enable_streaming: true, timeout_seconds: 30 });
+  }
+
+  /** ISSUE-005：禁用态点击"创建"时的反馈——必填空字段标红 + toast 说明原因。 */
+  function onCreateAttempt() {
+    if (canCreate.value) return;
+    if (!form.display_name.trim()) displayNameError.value = t('agentsPage.create.requireDisplayName');
+    if (!form.agent_key.trim()) agentKeyServerError.value = t('agentsPage.create.requireAgentKey');
+    if (isA2AProxyCreate.value && !a2aProxy.remote_url.trim()) {
+      remoteUrlError.value = t('agentsPage.create.hintA2aUrl');
+    }
+    if (createDisabledHint.value) {
+      $q.notify({ type: 'warning', message: createDisabledHint.value });
+    }
   }
 
   async function onCreate() {
@@ -450,6 +465,7 @@ export function useAgentsPage() {
     openCreate,
     checkModel,
     onCreate,
+    onCreateAttempt,
     applyTemplate,
     confirmDelete,
     deleteAgentTarget,

@@ -667,6 +667,49 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value!.color).toBe('green');
     });
 
+    it('team_count_mismatch phase (action=truncate) renders truncate message with dropped names', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: {
+            phase: 'team_count_mismatch',
+            action: 'truncate',
+            requested_team_count: 2,
+            decomposed_subtask_count: 3,
+            dropped_subtask_names: ['评审团'],
+          },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('团队数量与请求不符：请求 2 个，实际分解 3 个，已截取前 2 个执行（丢弃：评审团）');
+      expect(loadingMessage.value!.icon).toBe('warning');
+      expect(loadingMessage.value!.color).toBe('orange');
+    });
+
+    it('team_count_mismatch phase (action=proceed) renders proceed message', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: {
+            phase: 'team_count_mismatch',
+            action: 'proceed',
+            requested_team_count: 2,
+            decomposed_subtask_count: 3,
+          },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('团队数量与请求不符：请求 2 个，实际分解 3 个，按实际数量继续执行');
+    });
+
     it('unknown phase does not change loadingMessage', () => {
       const isReplaying = ref(false);
       const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);

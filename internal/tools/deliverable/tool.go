@@ -239,7 +239,9 @@ func (t *SetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 	if in.Data == nil {
 		return nil, errors.New("data is required and must be a JSON object")
 	}
-	topic := strings.TrimSpace(in.Topic)
+	// 归一化（trim+NFC+全角折叠）与读取侧/契约条目同规则——写键与读键
+	// 错位会让 topic 过滤静默失效（2026-08-21 P2b）。
+	topic := biz.NormalizeDeliverableTopic(in.Topic)
 	if topic != "" {
 		if err := validateTopicName(topic); err != nil {
 			return nil, err
@@ -442,7 +444,7 @@ func (t *GetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 	if !found {
 		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
 	}
-	topic := strings.TrimSpace(in.Topic)
+	topic := biz.NormalizeDeliverableTopic(in.Topic)
 	if topic != "" {
 		sub, exists := data[topic]
 		if !exists {

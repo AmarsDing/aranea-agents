@@ -153,13 +153,25 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const agentName = typeof meta.agent_name === 'string' ? meta.agent_name : '';
       // P3（2026-08-08）：decompose_retry 携带的即将开始的尝试序号。
       const attempt = typeof meta.attempt === 'number' ? meta.attempt : 0;
-      const text = t(config.messageKey, {
+      // 2026-08-21 P0：team_count_mismatch 参数（task_planner_impl.go 截断/放行通知）。
+      const requestedTeamCount = typeof meta.requested_team_count === 'number' ? meta.requested_team_count : 0;
+      const decomposedSubtaskCount = typeof meta.decomposed_subtask_count === 'number' ? meta.decomposed_subtask_count : 0;
+      const droppedRaw: unknown = meta.dropped_subtask_names;
+      const droppedSubtaskNames = Array.isArray(droppedRaw) ? droppedRaw.filter((n): n is string => typeof n === 'string').join('、') : '';
+      let messageKey = config.messageKey;
+      if (phase === 'team_count_mismatch' && meta.action === 'proceed') {
+        messageKey = 'chat.orchestrationProgress.teamCountMismatchProceed';
+      }
+      const text = t(messageKey, {
         subTaskCount,
         index,
         total,
         subTask,
         agentName,
         attempt,
+        requestedTeamCount,
+        decomposedSubtaskCount,
+        droppedSubtaskNames,
       }) as string;
 
       loadingMessage.value = {

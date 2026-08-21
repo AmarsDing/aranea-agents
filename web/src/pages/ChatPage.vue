@@ -304,6 +304,7 @@ import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import LlmRetryBanner from '../components/chat/LlmRetryBanner.vue';
+import MemberSessionDialog from '../components/chat/v2/MemberSessionDialog.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
 import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
 import { computed } from 'vue';

@@ -312,7 +312,8 @@ const formattedTime = computed(() => {
   const raw = props.task.CreatedAt;
   if (!raw) return '';
   const d = new Date(raw);
-  if (isNaN(d.getTime())) return '';
+  // Guard against Go zero time / epoch zero rendering as "01-01 08:00".
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return '';
   const now = new Date();
   const sameDay =
     d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();

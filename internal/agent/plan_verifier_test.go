@@ -25,7 +25,7 @@ func TestVerifyPlanFeasibility_AllSatisfiable(t *testing.T) {
 		{ID: "st_1", Name: "后端开发", Description: "实现 API", RequiredCapabilities: []string{"go-backend"}},
 		{ID: "st_2", Name: "前端开发", Description: "实现页面", RequiredCapabilities: []string{"VUE3-Frontend"}}, // 大小写不敏感
 	}
-	if v := verifyPlanFeasibility(subTasks, verifierCaps()); len(v) != 0 {
+	if v := verifyPlanFeasibility(subTasks, verifierCaps(), 0); len(v) != 0 {
 		t.Fatalf("violations = %+v, want none", v)
 	}
 }
@@ -34,7 +34,7 @@ func TestVerifyPlanFeasibility_CapabilityUnsatisfiable(t *testing.T) {
 	subTasks := []biz.SubTask{
 		{ID: "st_1", Name: "硬件维修", Description: "上门修服务器", RequiredCapabilities: []string{"hardware-repair"}},
 	}
-	v := verifyPlanFeasibility(subTasks, verifierCaps())
+	v := verifyPlanFeasibility(subTasks, verifierCaps(), 0)
 	if len(v) != 1 {
 		t.Fatalf("violations = %d, want 1 (%+v)", len(v), v)
 	}
@@ -54,7 +54,7 @@ func TestVerifyPlanFeasibility_EmptyDefinition(t *testing.T) {
 		{ID: "st_1", Name: "  ", Description: "有描述"},
 		{ID: "st_2", Name: "有名字", Description: ""},
 	}
-	v := verifyPlanFeasibility(subTasks, verifierCaps())
+	v := verifyPlanFeasibility(subTasks, verifierCaps(), 0)
 	if len(v) != 2 {
 		t.Fatalf("violations = %d, want 2 (%+v)", len(v), v)
 	}
@@ -70,25 +70,55 @@ func TestVerifyPlanFeasibility_OversizedPlan(t *testing.T) {
 	for i := 0; i < maxVerifiedSubTasks+1; i++ {
 		subTasks = append(subTasks, biz.SubTask{ID: "st_x", Name: "n", Description: "d"})
 	}
-	v := verifyPlanFeasibility(subTasks, verifierCaps())
+	v := verifyPlanFeasibility(subTasks, verifierCaps(), 0)
 	if len(v) != 1 || v[0].Rule != PlanViolationOversizedPlan {
 		t.Fatalf("violations = %+v, want single oversized_plan", v)
+	}
+}
+
+// R4 team_count_mismatch：用户显式请求 N 个团队时子任务数必须恰好为 N。
+func TestVerifyPlanFeasibility_TeamCountMismatch(t *testing.T) {
+	three := []biz.SubTask{
+		{ID: "st_1", Name: "创作A", Description: "写诗 A"},
+		{ID: "st_2", Name: "创作B", Description: "写诗 B"},
+		{ID: "st_3", Name: "测评", Description: "选优"},
+	}
+	// 数量一致 → 无违例
+	if v := verifyPlanFeasibility(three, verifierCaps(), 3); len(v) != 0 {
+		t.Fatalf("matched: violations = %+v, want none", v)
+	}
+	// 超出 → 计划级违例（SubTaskID 为空）
+	four := append(append([]biz.SubTask{}, three...), biz.SubTask{ID: "st_4", Name: "了解现状", Description: "统计"})
+	v := verifyPlanFeasibility(four, verifierCaps(), 3)
+	if len(v) != 1 || v[0].Rule != PlanViolationTeamCountMismatch {
+		t.Fatalf("over: violations = %+v, want single team_count_mismatch", v)
+	}
+	if v[0].SubTaskID != "" {
+		t.Fatalf("team_count_mismatch must be plan-level, got subtask %q", v[0].SubTaskID)
+	}
+	// 不足 → 同样违例
+	if v := verifyPlanFeasibility(three[:2], verifierCaps(), 3); len(v) != 1 || v[0].Rule != PlanViolationTeamCountMismatch {
+		t.Fatalf("under: violations = %+v, want single team_count_mismatch", v)
+	}
+	// teamCount=0（用户未显式请求）→ R4 不适用
+	if v := verifyPlanFeasibility(four, verifierCaps(), 0); len(v) != 0 {
+		t.Fatalf("teamCount=0: violations = %+v, want none", v)
 	}
 }
 
 func TestVerifyPlanFeasibility_EdgeCases(t *testing.T) {
 	// 无 RequiredCapabilities → 不做能力校验（LLM 未声明时信任分配器兜底）。
 	subTasks := []biz.SubTask{{ID: "st_1", Name: "n", Description: "d"}}
-	if v := verifyPlanFeasibility(subTasks, verifierCaps()); len(v) != 0 {
+	if v := verifyPlanFeasibility(subTasks, verifierCaps(), 0); len(v) != 0 {
 		t.Fatalf("no-required-cap: violations = %+v, want none", v)
 	}
 	// 能力清单为空（全系统无业务 agent）→ R2 不适用，不产生误报。
 	subTasks[0].RequiredCapabilities = []string{"go-backend"}
-	if v := verifyPlanFeasibility(subTasks, nil); len(v) != 0 {
+	if v := verifyPlanFeasibility(subTasks, nil, 0); len(v) != 0 {
 		t.Fatalf("empty-capability-inventory: violations = %+v, want none", v)
 	}
 	// 空计划 → 无违例（空结果由 decompose_empty 分支处理，非校验门职责）。
-	if v := verifyPlanFeasibility(nil, verifierCaps()); len(v) != 0 {
+	if v := verifyPlanFeasibility(nil, verifierCaps(), 0); len(v) != 0 {
 		t.Fatalf("nil-plan: violations = %+v, want none", v)
 	}
 }
@@ -201,6 +231,103 @@ func TestPlanVerifyGate_NilCapBuilder_Skips(t *testing.T) {
 	out := impl.applyPlanVerifyGate(context.Background(), bad, buildDAGFromSubTasks(bad), biz.PlanInput{}, 0, biz.ComplexityComplex)
 	if out.degraded {
 		t.Fatal("nil capBuilder must skip the gate (fail-open), not degrade")
+	}
+}
+
+// ─── R4 团队数量不符：校验门集成 ────────────────────────────────────
+
+func teamCountSubTasks(n int) []biz.SubTask {
+	names := []string{"诗歌创作A", "诗歌创作B", "测评选优", "了解现状", "额外任务"}
+	out := make([]biz.SubTask, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, biz.SubTask{ID: "st_" + string(rune('1'+i)), Name: names[i], Description: "d"})
+	}
+	return out
+}
+
+// 数量超出 → 有界重分解修复为恰好 N 个 → 通过且不降级。
+func TestPlanVerifyGate_TeamCountMismatch_RepairSuccess(t *testing.T) {
+	agents := []biz.Agent{
+		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
+	}
+	repaired := teamCountSubTasks(3)
+	impl := gateTestPlanner(agents, func(_ context.Context, msg string, _ *biz.IntentArtifact, teamCount int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		if teamCount != 3 {
+			t.Errorf("repairFn teamCount = %d, want 3", teamCount)
+		}
+		// 修复 prompt 必须携带数量违例反馈与硬约束。
+		if !strings.Contains(msg, "team_count_mismatch") || !strings.Contains(msg, "完全一致") {
+			t.Errorf("repair prompt missing team-count feedback: %q", msg)
+		}
+		return repaired, buildDAGFromSubTasks(repaired), nil
+	})
+
+	over := teamCountSubTasks(4)
+	out := impl.applyPlanVerifyGate(context.Background(), over, buildDAGFromSubTasks(over), biz.PlanInput{UserMessage: "orig"}, 3, biz.ComplexityComplex)
+	if out.degraded {
+		t.Fatalf("degraded = true, want repair success; note=%q", out.note)
+	}
+	if len(out.subTasks) != 3 {
+		t.Fatalf("subTasks = %d, want repaired 3", len(out.subTasks))
+	}
+}
+
+// 修复后数量仍不符 → 不降级 direct，返回修复后产物交数量兜底。
+func TestPlanVerifyGate_TeamCountMismatch_StillMismatch_NoDegrade(t *testing.T) {
+	agents := []biz.Agent{
+		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
+	}
+	stillOver := teamCountSubTasks(4)
+	impl := gateTestPlanner(agents, func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		return stillOver, buildDAGFromSubTasks(stillOver), nil
+	})
+
+	over := teamCountSubTasks(5)
+	out := impl.applyPlanVerifyGate(context.Background(), over, buildDAGFromSubTasks(over), biz.PlanInput{UserMessage: "orig"}, 3, biz.ComplexityComplex)
+	if out.degraded {
+		t.Fatal("degraded = true, want passthrough to count fallback")
+	}
+	if len(out.subTasks) != 4 {
+		t.Fatalf("subTasks = %d, want repaired 4", len(out.subTasks))
+	}
+	if !strings.Contains(out.note, "数量仍不符") {
+		t.Fatalf("note must annotate count fallback, got %q", out.note)
+	}
+}
+
+// 修复调用本身失败且原始违例仅数量不符 → 不降级，返回原计划交数量兜底。
+func TestPlanVerifyGate_TeamCountMismatch_RepairError_NoDegrade(t *testing.T) {
+	agents := []biz.Agent{
+		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
+	}
+	impl := gateTestPlanner(agents, func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		return nil, nil, context.DeadlineExceeded
+	})
+
+	over := teamCountSubTasks(4)
+	out := impl.applyPlanVerifyGate(context.Background(), over, buildDAGFromSubTasks(over), biz.PlanInput{UserMessage: "orig"}, 3, biz.ComplexityComplex)
+	if out.degraded {
+		t.Fatal("degraded = true, want passthrough to count fallback on repair error")
+	}
+	if len(out.subTasks) != 4 {
+		t.Fatalf("subTasks = %d, want original 4", len(out.subTasks))
+	}
+}
+
+// 数量违例叠加能力违例且修复未果 → 维持降级 direct（非数量独例不享受兜底）。
+func TestPlanVerifyGate_MixedViolations_StillDegrade(t *testing.T) {
+	agents := []biz.Agent{
+		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
+	}
+	stillBad := append(teamCountSubTasks(4), biz.SubTask{ID: "st_9", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}})
+	impl := gateTestPlanner(agents, func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		return stillBad, buildDAGFromSubTasks(stillBad), nil
+	})
+
+	mixed := append(teamCountSubTasks(2), biz.SubTask{ID: "st_8", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}})
+	out := impl.applyPlanVerifyGate(context.Background(), mixed, buildDAGFromSubTasks(mixed), biz.PlanInput{UserMessage: "orig"}, 3, biz.ComplexityComplex)
+	if !out.degraded {
+		t.Fatal("degraded = false, want degrade for mixed violations")
 	}
 }
 

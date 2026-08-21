@@ -33,6 +33,11 @@ const (
 	PlanViolationCapabilityUnsatisfiable = "capability_unsatisfiable"
 	// PlanViolationOversizedPlan 子任务数量超过病态阈值。
 	PlanViolationOversizedPlan = "oversized_plan"
+	// PlanViolationTeamCountMismatch 子任务数量与用户显式请求的团队数不一致
+	// （每个子任务对应一个独立团队）。数量不符时若在分解后静默截取，会整个
+	// 丢掉团队的职责（2026-08-21 诗歌会话丢 Team B 根因），必须经校验门
+	// 有界重分解；该规则单独不触发降级 direct（数量问题有兜底路径）。
+	PlanViolationTeamCountMismatch = "team_count_mismatch"
 )
 
 // maxVerifiedSubTasks 计划规模病态阈值。DECISION.md 约定 1-6 个子任务，
@@ -55,7 +60,9 @@ type PlanViolation struct {
 //     任何 Agent 的 Roles 并集中（大小写不敏感）。能力清单为空时不适用
 //     （系统无业务 Agent 是运维态问题，不是计划违例）。
 //   - R3 oversized_plan：子任务数 > maxVerifiedSubTasks。
-func verifyPlanFeasibility(subTasks []biz.SubTask, capabilities []biz.AgentCapability) []PlanViolation {
+//   - R4 team_count_mismatch：teamCount > 0（用户显式请求 N 个团队）且
+//     子任务数 != teamCount。
+func verifyPlanFeasibility(subTasks []biz.SubTask, capabilities []biz.AgentCapability, teamCount int) []PlanViolation {
 	if len(subTasks) == 0 {
 		return nil
 	}
@@ -65,6 +72,13 @@ func verifyPlanFeasibility(subTasks []biz.SubTask, capabilities []biz.AgentCapab
 		violations = append(violations, PlanViolation{
 			Rule:   PlanViolationOversizedPlan,
 			Detail: fmt.Sprintf("子任务数量 %d 超过上限 %d", len(subTasks), maxVerifiedSubTasks),
+		})
+	}
+
+	if teamCount > 0 && len(subTasks) != teamCount {
+		violations = append(violations, PlanViolation{
+			Rule:   PlanViolationTeamCountMismatch,
+			Detail: fmt.Sprintf("子任务数量 %d 与用户显式请求的团队数量 %d 不一致", len(subTasks), teamCount),
 		})
 	}
 
@@ -122,7 +136,28 @@ func formatViolationsForRetry(violations []PlanViolation) string {
 		fmt.Fprintf(&b, "- [%s] subtask %s: %s\n", v.Rule, v.SubTaskID, v.Detail)
 	}
 	b.WriteString("要求：required_capabilities 只能使用现有 Agent 具备的能力标签；每个子任务必须有非空 name 和 description。")
+	for _, v := range violations {
+		if v.Rule == PlanViolationTeamCountMismatch {
+			b.WriteString(" 用户明确请求了固定数量的团队，本次必须输出与该数量完全一致的子任务数——每个子任务对应一个独立团队，禁止多出或缺少；如某个子任务只是准备/了解现状性质，请把它并入对应创作子任务的 description，而不是单独占一个团队名额。")
+			break
+		}
+	}
 	return b.String()
+}
+
+// onlyTeamCountViolations 报告违例集合是否仅含团队数量不符——该规则单独
+// 不触发降级 direct（数量问题由调用方的截取/告警兜底，整体废弃可执行计划
+// 代价更大）。
+func onlyTeamCountViolations(violations []PlanViolation) bool {
+	if len(violations) == 0 {
+		return false
+	}
+	for _, v := range violations {
+		if v.Rule != PlanViolationTeamCountMismatch {
+			return false
+		}
+	}
+	return true
 }
 
 // summarizeViolations 生成降级说明用的违例摘要（含具体标签，便于排障）。
@@ -164,7 +199,7 @@ func (impl *taskPlannerImpl) applyPlanVerifyGate(ctx context.Context, subTasks [
 		)
 		return passthrough
 	}
-	violations := verifyPlanFeasibility(subTasks, caps)
+	violations := verifyPlanFeasibility(subTasks, caps, teamCount)
 	if len(violations) == 0 {
 		return passthrough
 	}
@@ -189,7 +224,8 @@ func (impl *taskPlannerImpl) applyPlanVerifyGate(ctx context.Context, subTasks [
 	feedback := formatViolationsForRetry(violations)
 	repaired, repairedDAG, repErr := repairFn(ctx, input.UserMessage+"\n\n"+feedback, input.IntentArtifact, teamCount, level)
 	if repErr == nil && len(repaired) > 0 {
-		if reViolations := verifyPlanFeasibility(repaired, caps); len(reViolations) == 0 {
+		reViolations := verifyPlanFeasibility(repaired, caps, teamCount)
+		if len(reViolations) == 0 {
 			if em := event.TraceEmitterFromContext(ctx); em != nil {
 				em.LogDone("spirit.planner.verify", "计划校验门修复后通过",
 					event.P("violation_count", len(violations)),
@@ -205,6 +241,35 @@ func (impl *taskPlannerImpl) applyPlanVerifyGate(ctx context.Context, subTasks [
 				dag:      repairedDAG,
 				note:     "（校验门修复后通过）",
 			}
+		}
+		if onlyTeamCountViolations(reViolations) {
+			// 修复后仅余数量不符：不降级 direct（会把可执行计划整体废弃），
+			// 返回修复后产物，由调用方的数量兜底（截取/告警 + 前端通知）处理。
+			impl.lg.Warn("计划校验门：修复后团队数量仍不符，交由数量兜底处理",
+				loggateway.StepID(biz.SpiritStepPlannerDecompose),
+				loggateway.Str("trace_id", input.TraceID),
+				loggateway.Str("violation_summary", summarizeViolations(reViolations)),
+			)
+			return planVerifyOutcome{
+				subTasks: repaired,
+				dag:      repairedDAG,
+				note:     "（校验门修复后团队数量仍不符，已按数量兜底处理）",
+			}
+		}
+	}
+
+	// 修复失败或仍含非数量违例：若原始违例仅数量不符，同样不降级——原样
+	// 返回交调用方数量兜底；否则按分解失败路径降级 direct。
+	if onlyTeamCountViolations(violations) {
+		impl.lg.Warn("计划校验门：团队数量不符且有界修复失败，交由数量兜底处理",
+			loggateway.StepID(biz.SpiritStepPlannerDecompose),
+			loggateway.Str("trace_id", input.TraceID),
+			loggateway.Str("violation_summary", summarizeViolations(violations)),
+		)
+		return planVerifyOutcome{
+			subTasks: subTasks,
+			dag:      dag,
+			note:     "（团队数量不符，校验门修复未果，已按数量兜底处理）",
 		}
 	}
 

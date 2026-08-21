@@ -25,6 +25,7 @@ type mockRepo struct {
 	listTopModelUsageFromDailyFn    func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
 	listTopAgentUsageFromDailyFn    func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
 	listAllModelsBreakdownFn        func(context.Context, usage.BreakdownQuery) (usage.BreakdownResult, error)
+	listAllModelsBreakdownRealtimeFn func(context.Context, usage.BreakdownQuery) (usage.BreakdownResult, error)
 	recordTokenUsageEventFn         func(context.Context, usage.TokenUsageEvent) (usage.TokenUsageEvent, error)
 	getActiveModelPricingFn         func(context.Context, string, string) (usage.ModelPricingSnapshot, bool, error)
 	getQuotaFn                      func(context.Context, string, string) (usage.Quota, error)
@@ -114,6 +115,13 @@ func (m *mockRepo) ListTopAgentUsageFromDaily(ctx context.Context, q usage.Query
 func (m *mockRepo) ListAllModelsBreakdown(ctx context.Context, q usage.BreakdownQuery) (usage.BreakdownResult, error) {
 	if m.listAllModelsBreakdownFn != nil {
 		return m.listAllModelsBreakdownFn(ctx, q)
+	}
+	return usage.BreakdownResult{}, nil
+}
+
+func (m *mockRepo) ListAllModelsBreakdownRealtime(ctx context.Context, q usage.BreakdownQuery) (usage.BreakdownResult, error) {
+	if m.listAllModelsBreakdownRealtimeFn != nil {
+		return m.listAllModelsBreakdownRealtimeFn(ctx, q)
 	}
 	return usage.BreakdownResult{}, nil
 }

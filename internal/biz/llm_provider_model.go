@@ -486,9 +486,9 @@ func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, mo
 		return false, "", err
 	}
 	if ok {
-		return true, "model is available", nil
+		return true, "模型可用", nil
 	}
-	return false, "provider/model is not enabled", nil
+	return false, "提供商/模型组合未启用或未注册", nil
 }
 
 func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (LLMInspectResult, error) {

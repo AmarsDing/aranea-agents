@@ -168,15 +168,20 @@
         <div v-if="createDisabledHint" class="text-caption text-negative">{{ createDisabledHint }}</div>
         <div class="row items-center q-gutter-sm">
           <q-btn v-close-popup flat rounded label="取消" />
-          <q-btn
-            color="primary"
-            rounded
-            unelevated
-            label="创建"
-            :disable="!canCreate"
-            :loading="creating"
-            @click="$emit('create')"
-          />
+          <!-- wrapper 捕获禁用态点击：Quasar disable 按钮不派发事件，点击/悬停均给出原因反馈 -->
+          <div class="create-agent-card__submit" @click="onCreateClick">
+            <q-btn
+              color="primary"
+              rounded
+              unelevated
+              label="创建"
+              :disable="!canCreate"
+              :loading="creating"
+              @click="$emit('create')"
+            >
+              <q-tooltip v-if="!canCreate && createDisabledHint">{{ createDisabledHint }}</q-tooltip>
+            </q-btn>
+          </div>
         </div>
       </q-card-actions>
     </q-card>
@@ -238,6 +243,7 @@ const emit = defineEmits<{
   'update:a2aProxy': [value: A2AProxyConfig];
   'apply-template': [template: AgentTemplatePreset];
   'check-model': [];
+  'create-attempt': [];
   create: [];
 }>();
 
@@ -268,4 +274,11 @@ const agentKindModel = computed({
   get: () => props.agentKind || 'llm',
   set: (value: AgentKind) => emit('update:agentKind', value),
 });
+
+/** 禁用态点击反馈：q-btn disable 时不派发 click，由 wrapper 捕获并上抛，字段级标红与 toast 由页面层统一处理。 */
+function onCreateClick() {
+  if (!props.canCreate) {
+    emit('create-attempt');
+  }
+}
 </script>

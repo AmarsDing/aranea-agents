@@ -24,6 +24,10 @@ func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teamRunReader biz.
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {
+			// P0 终态一致性：先收割丢失的 running run（watch 死亡导致永不收口），
+			// 再做 P3-3 挂起与硬清理——硬清理只驱逐会话不 finalize，必须把
+			// reconcile 排在它前面（阈值 45m < SessionMaxAge 2h 保证先触发）。
+			coord.ReconcileStaleRuns(appctx.Ctx(), time.Now(), 0)
 			// P3-3 (ADR-D): suspend idle waiting_human sessions first (memory
 			// evict, DB retained), then hard-clean sessions stale beyond maxAge.
 			coord.SuspendIdleWaits(time.Now(), coord.cfg.SuspendIdleThreshold)

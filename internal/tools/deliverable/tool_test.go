@@ -475,6 +475,47 @@ func TestGetDeliverableTool_Call_Topic(t *testing.T) {
 	}
 }
 
+// P2b（2026-08-21）：topic 参数归一化——写读两侧同规则（trim+NFC+全角折叠），
+// LLM 转写契约名时的码点差异（全角 Ａ/－、padding 空白）不再让写键与读键错位。
+func TestDeliverableTopicNormalization_WriteReadRoundTrip(t *testing.T) {
+	set := NewSetDeliverableTool()
+	// 全角字母/连字符 + 首尾空白写入 → 归一化为半角键 "poem-a"。
+	out, err := set.Call(ctxWithDeliverableState(t, nil), []byte(`{"data":{"text":"x"},"topic":" ｐｏｅｍ－ａ "}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged := out.(setDeliverableOutput).Data
+	if _, ok := merged["poem-a"]; !ok {
+		t.Fatalf("write key not normalized: %#v", merged)
+	}
+
+	// 读取侧同规则归一：全角/空白读法命中半角写键。
+	get := NewGetDeliverableTool()
+	ctx := ctxWithDeliverableState(t, map[string]any{"poem-a": map[string]any{"text": "x"}})
+	gOut, err := get.Call(ctx, []byte(`{"topic":" ｐｏｅｍ－ａ "}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := gOut.(getDeliverableOutput)
+	if !o.Found || o.Topic != "poem-a" || o.Data["text"] != "x" {
+		t.Fatalf("normalized topic read failed: %#v", o)
+	}
+}
+
+// P2b：归一化不做大小写折叠——大小写差异是不同 topic（防契约声明的
+// case 变体条目被静默合并）。
+func TestDeliverableTopicNormalization_CaseSensitive(t *testing.T) {
+	get := NewGetDeliverableTool()
+	ctx := ctxWithDeliverableState(t, map[string]any{"Poem-A": map[string]any{"v": 1}})
+	out, err := get.Call(ctx, []byte(`{"topic":"poem-a"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.(getDeliverableOutput).Found {
+		t.Fatal("case-distinct topic must NOT match after normalization")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Graph RuntimeState read path (member-to-member handoff inside a graph run)
 // ---------------------------------------------------------------------------

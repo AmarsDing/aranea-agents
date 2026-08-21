@@ -319,7 +319,8 @@ const formattedTime = computed(() => {
   const raw = props.memberSession.StartedAt;
   if (!raw) return '';
   const d = new Date(raw);
-  if (isNaN(d.getTime())) return '';
+  // Guard against Go zero time / epoch zero.
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 });
