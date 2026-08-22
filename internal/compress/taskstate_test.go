@@ -7,16 +7,27 @@ import (
 
 // --- 压缩产物双段化（v4）：叙事摘要 + 结构化任务状态块 ---
 
-func TestPromptVersion_V4(t *testing.T) {
-	if PromptVersion != "v4" {
-		t.Fatalf("got %q want %q", PromptVersion, "v4")
+func TestPromptVersion_V5(t *testing.T) {
+	if PromptVersion != "v5" {
+		t.Fatalf("got %q want %q", PromptVersion, "v5")
+	}
+}
+
+func TestDefaultSystemPrompt_InstructsHandoffCard(t *testing.T) {
+	if !strings.Contains(DefaultSystemPrompt, "## 0. Handoff Card") {
+		t.Fatal("v5 prompt must start with a Handoff Card")
+	}
+	for _, key := range []string{"Done:", "Remaining:", "Constraints:", "Files:"} {
+		if !strings.Contains(DefaultSystemPrompt, key) {
+			t.Fatalf("handoff card missing %q", key)
+		}
 	}
 }
 
 func TestDefaultSystemPrompt_InstructsTaskStateBlock(t *testing.T) {
 	// v4 契约：Section 9 之后必须输出一个 ```json 任务状态块。
 	if !strings.Contains(DefaultSystemPrompt, "task_state") {
-		t.Fatal("v4 prompt must instruct the task_state json block")
+		t.Fatal("v5 prompt must instruct the task_state json block")
 	}
 	if !strings.Contains(DefaultSystemPrompt, `"done"`) || !strings.Contains(DefaultSystemPrompt, `"next"`) {
 		t.Fatal("v4 prompt must document done/next keys")
@@ -27,19 +38,19 @@ func TestExtractTaskState(t *testing.T) {
 	narrative := "## 1. User Intent & Goals\nfix vpn\n\n## 9. Current Work State\nmid-way"
 
 	tests := []struct {
-		name           string
-		in             string
-		wantStripped   string
-		wantStatus     string
-		wantNext       string
-		wantDone       []string
-		wantBlockers   []string
-		wantNilState   bool
-		wantUnchanged  bool
+		name          string
+		in            string
+		wantStripped  string
+		wantStatus    string
+		wantNext      string
+		wantDone      []string
+		wantBlockers  []string
+		wantNilState  bool
+		wantUnchanged bool
 	}{
 		{
-			name: "valid trailing block",
-			in: narrative + "\n\n```json\n{\"status\":\"取证完成\",\"done\":[\"确认告警\",\"定位R2\"],\"next\":\"执行清除\",\"blockers\":[\"等待审批\"]}\n```\n",
+			name:         "valid trailing block",
+			in:           narrative + "\n\n```json\n{\"status\":\"取证完成\",\"done\":[\"确认告警\",\"定位R2\"],\"next\":\"执行清除\",\"blockers\":[\"等待审批\"]}\n```\n",
 			wantStripped: narrative,
 			wantStatus:   "取证完成",
 			wantNext:     "执行清除",
@@ -73,8 +84,8 @@ func TestExtractTaskState(t *testing.T) {
 			wantUnchanged: false,
 		},
 		{
-			name: "block with trailing whitespace only",
-			in:   narrative + "\n```json\n{\"next\":\"继续\"}\n```\n\n  \n",
+			name:         "block with trailing whitespace only",
+			in:           narrative + "\n```json\n{\"next\":\"继续\"}\n```\n\n  \n",
 			wantStripped: narrative,
 			wantNext:     "继续",
 		},

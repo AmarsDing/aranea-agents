@@ -2,63 +2,156 @@ package deferred
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
+	"unicode"
 )
 
-// P1-4：deferred 工具语义预激活。
+// P1-4 + B3（2026-08-22）：deferred 工具语义预激活。
 //
-// 按当前用户 query 对 catalog 做轻量相关度排序，Top-N 以「推荐区」提升进
-// catalog cue，提高模型发现率（命中率），减少「搜索→加载」的 round-trip。
-// 排序器与 tool_search 共享同一打分逻辑（scoreEntryAgainstQuery），保证
-// 「搜索看到的」与「推荐的」一致。
+// 按当前用户 query 对 catalog 做字段化 BM25（name 权重大于 description），
+// Top-N 以「推荐区」提升进 catalog cue。排序器与 tool_search 共享同一打分
+// 逻辑，保证「搜索看到的」与「推荐的」一致。
 //
-// 已知限制：纯关键词/子串匹配，纯中文 query 对英文工具名/描述无效；embedding
-// 语义召回为后续演进方向（见 29-token.development.md §18）。
+// 精度护栏：子串 / BM25 子词要求 token ≥3 runes，防止短虚词噪声命中。
+// 精确等值匹配不限长度。CJK query 仍靠 name 子词回扣（save ⊂ "please save"）。
 
 // CatalogRecommendLimit 是推荐区展示的条目数上限。
 const CatalogRecommendLimit = 3
 
+const (
+	bm25K1            = 1.2
+	bm25B             = 0.75
+	bm25NameWeight    = 4.0
+	bm25BaseWeight    = 2.5
+	bm25CatWeight     = 1.5
+	bm25DescWeight    = 1.0
+	exactNameBonus    = 10.0
+	nameContainsBonus = 5.0
+	catContainsBonus  = 3.0
+	descContainsBonus = 2.0
+	subwordBonus      = 4.0
+)
+
+type catalogStats struct {
+	n      int
+	avgLen float64
+	df     map[string]int
+}
+
 // scoreEntryAgainstQuery 计算单个目录条目与 query 的相关度得分。
 // tokens 为 query 小写后按空白分词的结果；queryLower 为完整小写 query。
-//
-// 打分权重（与 tool_search 历史口径一致 + 子词扩展）：
-//   - token == 工具名：+10
-//   - 工具名包含 token：+5
-//   - 工具名子词（按下划线/连字符拆分）作为子串出现在 query：+4
-//   - 分类包含 token：+3
-//   - 描述包含 token：+2
-//
-// 精度护栏：子串匹配要求 token/子词 ≥3 runes，防止短虚词噪声命中
-// （如 query token "me" 子串命中 category "runtime"）。精确等值匹配不限长度。
-func scoreEntryAgainstQuery(entry DeferredToolEntry, queryLower string, tokens []string) int {
+// stats 为当前 catalog 的 BM25 文档频率；nil 时退回纯加性打分（测试单条）。
+func scoreEntryAgainstQuery(entry DeferredToolEntry, queryLower string, tokens []string, stats catalogStats) float64 {
 	nameLower := strings.ToLower(entry.Name)
+	baseLower := strings.ToLower(entry.BaseName)
 	descLower := strings.ToLower(entry.Description)
 	catLower := strings.ToLower(entry.Category)
-	score := 0
+	score := 0.0
 	for _, token := range tokens {
-		if nameLower == token {
-			score += 10
-		} else if matchableSubstring(token) && strings.Contains(nameLower, token) {
-			score += 5
+		if nameLower == token || baseLower == token {
+			score += exactNameBonus
+		} else if matchableSubstring(token) && (strings.Contains(nameLower, token) || strings.Contains(baseLower, token)) {
+			score += nameContainsBonus
 		}
 		if matchableSubstring(token) {
 			if strings.Contains(catLower, token) {
-				score += 3
+				score += catContainsBonus
 			}
 			if strings.Contains(descLower, token) {
-				score += 2
+				score += descContainsBonus
 			}
 		}
 	}
-	// 子词匹配：CJK/自然语言 query 不会按工具名下划线分词，子词作为子串
-	// 命中 query 也计分（如 "please save this" 命中 file_save_file 的 save）。
 	for _, word := range nameSubwords(entry.Name) {
 		if strings.Contains(queryLower, word) {
-			score += 4
+			score += subwordBonus
 		}
 	}
+	if stats.n > 0 {
+		score += bm25Field(tokenizeToolText(entry.Name), tokens, stats, bm25NameWeight)
+		if entry.BaseName != "" && entry.BaseName != entry.Name {
+			score += bm25Field(tokenizeToolText(entry.BaseName), tokens, stats, bm25BaseWeight)
+		}
+		score += bm25Field(tokenizeToolText(entry.Category), tokens, stats, bm25CatWeight)
+		score += bm25Field(tokenizeToolText(entry.Description), tokens, stats, bm25DescWeight)
+	}
 	return score
+}
+
+func buildCatalogStats(catalog []DeferredToolEntry) catalogStats {
+	st := catalogStats{n: len(catalog), df: map[string]int{}}
+	if st.n == 0 {
+		return st
+	}
+	totalLen := 0
+	for _, entry := range catalog {
+		tokens := fieldTokens(entry)
+		totalLen += len(tokens)
+		seenDoc := make(map[string]struct{}, len(tokens))
+		for _, tok := range tokens {
+			if _, ok := seenDoc[tok]; ok {
+				continue
+			}
+			seenDoc[tok] = struct{}{}
+			st.df[tok]++
+		}
+	}
+	st.avgLen = float64(totalLen) / float64(st.n)
+	if st.avgLen <= 0 {
+		st.avgLen = 1
+	}
+	return st
+}
+
+func fieldTokens(entry DeferredToolEntry) []string {
+	var out []string
+	out = append(out, tokenizeToolText(entry.Name)...)
+	if entry.BaseName != "" && entry.BaseName != entry.Name {
+		out = append(out, tokenizeToolText(entry.BaseName)...)
+	}
+	out = append(out, tokenizeToolText(entry.Category)...)
+	out = append(out, tokenizeToolText(entry.Description)...)
+	return out
+}
+
+func tokenizeToolText(s string) []string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return nil
+	}
+	return strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+}
+
+func bm25Field(docTokens, queryTokens []string, stats catalogStats, weight float64) float64 {
+	if len(docTokens) == 0 || weight == 0 {
+		return 0
+	}
+	tf := map[string]int{}
+	for _, t := range docTokens {
+		tf[t]++
+	}
+	dl := float64(len(docTokens))
+	var score float64
+	seen := map[string]bool{}
+	for _, q := range queryTokens {
+		if !matchableSubstring(q) || seen[q] {
+			continue
+		}
+		seen[q] = true
+		freq := tf[q]
+		if freq == 0 {
+			continue
+		}
+		df := stats.df[q]
+		idf := math.Log(1 + (float64(stats.n)-float64(df)+0.5)/(float64(df)+0.5))
+		denom := float64(freq) + bm25K1*(1-bm25B+bm25B*dl/stats.avgLen)
+		score += idf * (float64(freq) * (bm25K1 + 1) / denom)
+	}
+	return score * weight
 }
 
 // matchableSubstring 报告 token 是否适合子串匹配（≥3 runes）。
@@ -91,13 +184,14 @@ func RankCatalogEntries(catalog []DeferredToolEntry, query string, limit int) []
 		return nil
 	}
 	tokens := strings.Fields(queryLower)
+	stats := buildCatalogStats(catalog)
 	type scored struct {
 		entry DeferredToolEntry
-		score int
+		score float64
 	}
 	var matches []scored
 	for _, entry := range catalog {
-		if s := scoreEntryAgainstQuery(entry, queryLower, tokens); s > 0 {
+		if s := scoreEntryAgainstQuery(entry, queryLower, tokens, stats); s > 0 {
 			matches = append(matches, scored{entry: entry, score: s})
 		}
 	}
@@ -116,6 +210,51 @@ func RankCatalogEntries(catalog []DeferredToolEntry, query string, limit int) []
 	out := make([]DeferredToolEntry, len(matches))
 	for i, m := range matches {
 		out[i] = m.entry
+	}
+	return out
+}
+
+// ResolveToolHints maps LLM / intent slugs onto catalog names (runtime or
+// base), then fills remaining slots from BM25 rank of the goal text.
+func ResolveToolHints(catalog []DeferredToolEntry, goal string, llmHints []string, limit int) []string {
+	if limit <= 0 {
+		limit = 8
+	}
+	seen := map[string]bool{}
+	var out []string
+	index := map[string]string{}
+	for _, e := range catalog {
+		index[strings.ToLower(e.Name)] = e.Name
+		if e.BaseName != "" {
+			if _, ok := index[strings.ToLower(e.BaseName)]; !ok {
+				index[strings.ToLower(e.BaseName)] = e.Name
+			}
+		}
+	}
+	for _, h := range llmHints {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" {
+			continue
+		}
+		name, ok := index[h]
+		if !ok || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+		if len(out) >= limit {
+			return out
+		}
+	}
+	for _, e := range RankCatalogEntries(catalog, goal, limit) {
+		if seen[e.Name] {
+			continue
+		}
+		seen[e.Name] = true
+		out = append(out, e.Name)
+		if len(out) >= limit {
+			break
+		}
 	}
 	return out
 }

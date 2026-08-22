@@ -629,6 +629,8 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 
 两段都烘焙进 instruction（与 `## Runtime capability policy` 同属稳定前缀），禁止放进每轮 user-role 动态 cue。
 
+编码 / 精灵编程桥还会在静态 cue 之后烘焙 `<project_agents_md>`（B1）：从 Agent 可信工作区找 `.git`，root→cwd 每层 `AGENTS.override.md` > `AGENTS.md` > `CLAUDE.md`，总预算 32KiB，超出打日志字段 `agents_md_truncated`。工作区外未登记路径不读。
+
 ---
 
 ## 九、字段映射汇总（UI ↔ 数据模型）

@@ -181,6 +181,13 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			sys = staticCue
 		}
 	}
+	if block := loadProjectAgentsMD(ctx, ag, deps); block != "" {
+		if sys != "" {
+			sys += "\n\n" + block
+		} else {
+			sys = block
+		}
+	}
 	opts := []trpcllmagent.Option{
 		trpcllmagent.WithModel(m),
 	}

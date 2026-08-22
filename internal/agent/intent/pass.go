@@ -33,6 +33,7 @@ type Artifact struct {
 	SuccessCriteria []string                `json:"success_criteria"`
 	Ambiguities     []string                `json:"ambiguities"`
 	SearchHints     []string                `json:"search_hints"`
+	ToolHints       []string                `json:"tool_hints,omitempty"`
 	RiskFlags       []string                `json:"risk_flags"`
 	Clarifications  []ClarificationQuestion `json:"clarifications,omitempty"`
 }
@@ -122,6 +123,7 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - success_criteria (array of strings): measurable checks (e.g. "tests pass").
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short literals useful for codebase search (identifiers, error substrings, file name fragments).
+- tool_hints (array of strings, at most 8): runtime tool slugs likely needed this turn (e.g. search_content, diff_edit, exec_command, web_fetch). Omit tools you are unsure about. Do not invent names.
 - risk_flags (array of strings): e.g. touches_auth, migrations, destructive, irreversible, or []. Include "destructive" when the request would destroy/overwrite data, inject faults, or perform irreversible operations. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
 An entity name that cannot be uniquely resolved IS a blocking ambiguity when the task depends on that entity's data: e.g. a company/brand named only by a colloquial or ambiguous name with no well-known unique referent ("金鹏科技" — which company?), or a stock mentioned without ticker/exchange. Ask for the identifying detail (full official name, ticker, exchange) via clarifications instead of guessing.
@@ -135,6 +137,7 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - success_criteria (array of strings): measurable checks, or [].
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short keywords useful for retrieval or search tools, or [].
+- tool_hints (array of strings, at most 8): runtime tool slugs likely needed this turn (e.g. web_fetch, knowledge_search, memory_search). Omit tools you are unsure about. Do not invent names.
 - risk_flags (array of strings): e.g. sensitive_data, compliance, destructive, irreversible, or []. Include "destructive" when the request would destroy/overwrite data, inject faults, or perform irreversible operations. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
 An entity name that cannot be uniquely resolved IS a blocking ambiguity when the task depends on that entity's data: e.g. a company/brand named only by a colloquial or ambiguous name with no well-known unique referent ("金鹏科技" — which company?), or a stock mentioned without ticker/exchange. Ask for the identifying detail (full official name, ticker, exchange) via clarifications instead of guessing.

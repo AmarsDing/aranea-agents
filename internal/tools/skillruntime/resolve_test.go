@@ -491,6 +491,29 @@ func TestResolveSkillSlugsDetailed_MaxSkillsCap(t *testing.T) {
 	}
 }
 
+func TestResolveSkillSlugsDetailed_UserMention(t *testing.T) {
+	resolver := &mockSkillResolver{
+		candidates: []biz.SkillRuntimeCandidate{
+			makeCandidate("xlsx-review", "XLSX", "review spreadsheets", nil, nil),
+			makeCandidate("other", "Other", "unrelated", nil, nil),
+		},
+	}
+	opts := &SkillToolsetOptions{
+		Runtime:   &mockRuntime{json: `{"intent_routing_enabled":false}`},
+		UserQuery: "please run $xlsx-review on this file",
+	}
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Slugs) == 0 || result.Slugs[0] != "xlsx-review" {
+		t.Fatalf("mention must load first, got %v", result.Slugs)
+	}
+	if result.Reasons["xlsx-review"] != "user mention" {
+		t.Fatalf("reason = %q", result.Reasons["xlsx-review"])
+	}
+}
+
 func TestResolveSkillSlugsDetailed_EmbeddingScoring(t *testing.T) {
 	resolver := &mockSkillResolver{
 		candidates: []biz.SkillRuntimeCandidate{

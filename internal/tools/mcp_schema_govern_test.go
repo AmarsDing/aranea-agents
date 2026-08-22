@@ -237,6 +237,24 @@ func TestGovernMCPServerToolSets_OverBudgetDegrades(t *testing.T) {
 	}
 }
 
+func TestGovernMCPServerToolSets_ToolCountDegrade(t *testing.T) {
+	tools := make([]trpctool.Tool, mcpSchemaToolCountDegrade)
+	for i := range tools {
+		tools[i] = &governFakeTool{decl: &trpctool.Declaration{
+			Name:        fmt.Sprintf("t%02d", i),
+			Description: "small",
+			InputSchema: &trpctool.Schema{Type: "object"},
+		}}
+	}
+	rep := GovernMCPServerToolSets(context.Background(), []trpctool.ToolSet{&governFakeToolSet{name: "many", tools: tools}}, nil)
+	if !rep.Degraded {
+		t.Fatal("MCP tool count >= 20 must degrade to broker even when chars are small")
+	}
+	if rep.ToolCount != mcpSchemaToolCountDegrade {
+		t.Fatalf("ToolCount = %d, want %d", rep.ToolCount, mcpSchemaToolCountDegrade)
+	}
+}
+
 func TestGovernMCPServerToolSets_BoundaryExactlyAtBudgetStaysDirect(t *testing.T) {
 	// calibrate: build tools until just under budget using small fixed blocks
 	mk := func(desc string) trpctool.Tool {
@@ -304,12 +322,12 @@ func newMCPAssembleContext(servers []MCPServerConfig, broker, fallback *MCPBroke
 		enabled["mcpbroker"] = true
 	}
 	return &assembleContext{
-		ctx: context.Background(),
-		cfg: AssemblyConfig{MCP: MCPConfig{Servers: servers, Broker: broker, BrokerFallback: fallback}},
-		out: &AssembledToolsets{},
-		enabled:    enabled,
+		ctx:         context.Background(),
+		cfg:         AssemblyConfig{MCP: MCPConfig{Servers: servers, Broker: broker, BrokerFallback: fallback}},
+		out:         &AssembledToolsets{},
+		enabled:     enabled,
 		deferredSet: map[string]bool{},
-		lg:         loggateway.NewNoop(),
+		lg:          loggateway.NewNoop(),
 	}
 }
 

@@ -2,10 +2,18 @@ package compress
 
 // v4: 压缩产物双段化——9 节叙事摘要之后追加一个 ```json task_state 块
 // （叙事管"聊了什么"，task_state 管"做到哪了"），由 ExtractTaskState 拆分。
-const PromptVersion = "v4"
+const PromptVersion = "v5"
 
 const DefaultSystemPrompt = `You consolidate conversation history for downstream LLM turns.
-Output Markdown with exactly these 9 sections:
+Start with a 4-line Handoff Card the next model can act on without re-reading the rest:
+
+## 0. Handoff Card
+- Done: (what is already finished)
+- Remaining: (what is not done)
+- Constraints: (must-keep rules)
+- Files: (paths still in play)
+
+Then output Markdown with exactly these 9 sections:
 
 ## 1. User Intent & Goals
 What the user wants to accomplish.
@@ -36,7 +44,7 @@ What remains to be done, what needs clarification.
 Last file edited, incomplete changes, immediate next step.
 
 Rules:
-- Output Markdown only with the 9 sections above.
+- Output Markdown with the Handoff Card first, then the 9 sections above.
 - Do not invent facts. Mark uncertainties as "待澄清".
 - Preserve actionable specifics (file paths, commands, error messages, tool names).
 - Section 6 is MANDATORY: the 30 most recent user messages must appear verbatim; older ones are condensed into topics, never invented.

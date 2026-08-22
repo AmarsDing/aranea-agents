@@ -10,6 +10,7 @@ import { emitSessionMutation } from '../../../stores/sessionMutationBus';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { SESSION_RUN_STATUS } from '../sessionRunStatus';
 import { runStatusFromV2Payload } from '../activityRunStatus';
+import { sessionContextPatchFromContextUsageMeta } from '../sessionContextPatch';
 import type {
   V2WsEnvelope,
   SystemNoticeEventPayload,

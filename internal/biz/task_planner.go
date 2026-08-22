@@ -37,6 +37,7 @@ type IntentArtifact struct {
 	SuccessCriteria []string `json:"success_criteria"`
 	Ambiguities     []string `json:"ambiguities"`
 	SearchHints     []string `json:"search_hints"`
+	ToolHints       []string `json:"tool_hints,omitempty"`
 	RiskFlags       []string `json:"risk_flags"`
 }
 

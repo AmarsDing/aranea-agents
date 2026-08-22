@@ -43,6 +43,9 @@ const (
 	// （治理后口径）。≈ 4.6K token：够 8-12 个常规工具，超出说明 server
 	// 工具面过大，直连注入性价比低于 broker 按需拉取。
 	mcpSchemaTotalBudgetChars = 16000
+	// mcpSchemaToolCountDegrade 是直连工具数硬上限（B3）：≥20 个远程工具
+	// 时即使字符预算未满也降级 broker，避免首轮 schema 膨胀。
+	mcpSchemaToolCountDegrade = 20
 )
 
 // MCPSchemaTotalBudgetChars 导出直连 declaration 总量硬预算，供 P0-2 阶段A
@@ -88,7 +91,7 @@ func GovernMCPServerToolSets(ctx context.Context, sets []trpctool.ToolSet, lg lo
 			rep.TotalChars += mcpDeclarationChars(g)
 		}
 	}
-	rep.Degraded = rep.TotalChars > mcpSchemaTotalBudgetChars
+	rep.Degraded = rep.TotalChars > mcpSchemaTotalBudgetChars || rep.ToolCount >= mcpSchemaToolCountDegrade
 	rep.Kept = make([]trpctool.ToolSet, 0, len(sets))
 	for _, ts := range sets {
 		if ts == nil {

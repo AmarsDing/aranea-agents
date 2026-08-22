@@ -106,6 +106,7 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	}
 
 	out := capScoredSlugs(scored, policy.MaxSkillsInToolset, reasons)
+	out = mergeMentionedSlugs(out, query, afterA, reasons, policy.MaxSkillsInToolset)
 	return &ResolveResult{Slugs: out, Reasons: reasons}, nil
 }
 

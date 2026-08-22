@@ -1930,6 +1930,10 @@ Assemble()
 
 **会话阶段提升收口工具（2026-08-22）**：Idle 保持 4 常驻。Orchestrating/Interrupted 本轮 Activate `cancel_orchestration`；Ready Activate `get_team_deliverable` + `synthesize_results`，避免 LLM 直调 not-found 后再走 `plan_and_execute` 分解。`plan_and_execute` 的 `reuse_existing` 是保险丝：阶段非 Idle 且非换标的新任务则跳过 LLM 分解。流式分解不再套 `DecomposeLLMTimeout=60s` 子超时（idle 45s + 外层 3min）。
 
+**B3 字段化 BM25（2026-08-22）**：`scoreEntryAgainstQuery` / `tool_search` 共用 BM25（name 权重 4 × description 1），保留 ≥3 rune 子串护栏与 name 子词回扣。`GovernMCPServerToolSets` 在远程工具数 ≥20 时即使字符预算未满也降级 broker。
+
+**B4 意图 tool_hints 预激活（2026-08-22）**：intent 产物增加 `tool_hints[]`；BeforeAgent 把 hints（不足则用 refined_goal BM25 补齐）`Activate` 进本轮 Request.Tools，仍记 `DeferredToolActivationTotal{outcome=hint}`。
+
 ### 7.10 子代理工具（SubAgent Tools）
 
 子代理工具通过 `SubAgentService` 注入，支持运行时动态生成、列表、查询和取消子代理。

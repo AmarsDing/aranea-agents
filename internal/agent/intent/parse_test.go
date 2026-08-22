@@ -8,6 +8,17 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+func TestParseArtifactJSON_ToolHints(t *testing.T) {
+	text := `{"refined_goal":"patch login","intent_kind":"code_change","tool_hints":["diff_edit","search_content"]}`
+	art, _ := parseArtifactJSON(text)
+	if art == nil {
+		t.Fatal("expected artifact")
+	}
+	if len(art.ToolHints) != 2 || art.ToolHints[0] != "diff_edit" {
+		t.Fatalf("tool_hints = %v", art.ToolHints)
+	}
+}
+
 func TestParseArtifactJSON_Valid(t *testing.T) {
 	text := `{"refined_goal":"fix the login bug","intent_kind":"debug"}`
 	art, raw := parseArtifactJSON(text)

@@ -52,7 +52,7 @@ type DeferredToolEntry struct {
 // API，间接层在产品侧闭环，不碰 vendored 框架）。
 type deferredView struct {
 	catalog       []DeferredToolEntry
-	catalogIndex  map[string]int // name → index into catalog for O(1) lookup
+	catalogIndex  map[string]int    // name → index into catalog for O(1) lookup
 	baseToRuntime map[string]string // unique BaseName → runtime Name（tool_load 别名解析用）
 	tools         map[string]trpctool.Tool
 	categoryIndex map[string][]string
@@ -377,15 +377,17 @@ func (t *ToolSearchTool) Call(ctx context.Context, jsonArgs []byte) (any, error)
 func (t *ToolSearchTool) execute(ctx context.Context, in toolSearchInput) (toolSearchOutput, error) {
 	queryLower := strings.ToLower(in.Query)
 	tokens := strings.Fields(queryLower)
+	catalog := t.manager.view.Load().catalog
+	stats := buildCatalogStats(catalog)
 	type scoredResult struct {
 		result toolSearchResult
-		score  int
+		score  float64
 	}
 	var scored []scoredResult
-	for _, entry := range t.manager.view.Load().catalog {
-		// P1-4：与语义预激活共享同一打分逻辑，保证「搜索看到的」与
+	for _, entry := range catalog {
+		// P1-4 / B3：与语义预激活共享同一 BM25 打分，保证「搜索看到的」与
 		// 「推荐的」一致。
-		if score := scoreEntryAgainstQuery(entry, queryLower, tokens); score > 0 {
+		if score := scoreEntryAgainstQuery(entry, queryLower, tokens, stats); score > 0 {
 			scored = append(scored, scoredResult{
 				result: toolSearchResult{
 					Name:        entry.Name,

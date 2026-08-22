@@ -4,6 +4,8 @@
  * no longer re-exports them to avoid a cross-domain type barrel.
  */
 
+import type { ContextBudgetSnapshot } from '../../features/session/types';
+
 export type TeamRow = {
   id: string;
   team_key?: string;
@@ -34,6 +36,8 @@ export type SessionView = {
   archived_at?: string;
   pinned_at?: string;
   metadata_json?: string;
+  /** Prompt-assembly breakdown pushed via context_usage WS events (WS-only). */
+  context_budget?: ContextBudgetSnapshot | null;
 };
 
 export type ChatAttachment = {

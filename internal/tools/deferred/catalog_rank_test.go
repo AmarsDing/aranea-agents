@@ -72,6 +72,36 @@ func TestRankCatalogEntries_ShortTokenNoiseGuard(t *testing.T) {
 	}
 }
 
+func TestRankCatalogEntries_NameOutranksDescriptionSpam(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "alpha_misc", BaseName: "alpha_misc", Description: "browser browser browser browser", Category: "x"},
+		{Name: "browser_navigate", BaseName: "browser_navigate", Description: "open a page", Category: "browser"},
+	}
+	got := RankCatalogEntries(catalog, "browser navigate", 2)
+	if len(got) == 0 || got[0].Name != "browser_navigate" {
+		t.Fatalf("BM25 name field must beat description spam, got %v", namesOf(got))
+	}
+}
+
+func TestResolveToolHints_PrefersLLMThenRank(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "diff_edit", BaseName: "diff_edit", Description: "patch files", Category: "file"},
+		{Name: "web_fetch", BaseName: "web_fetch", Description: "http get", Category: "web"},
+	}
+	got := ResolveToolHints(catalog, "download a page", []string{"web_fetch", "nope"}, 2)
+	if len(got) < 1 || got[0] != "web_fetch" {
+		t.Fatalf("llm hint must come first, got %v", got)
+	}
+}
+
+func namesOf(entries []DeferredToolEntry) []string {
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.Name
+	}
+	return out
+}
+
 func TestRankCatalogEntries_Limit(t *testing.T) {
 	catalog := []DeferredToolEntry{
 		{Name: "web_a", BaseName: "web_a", Description: "web a", Category: "web"},

@@ -143,6 +143,7 @@ func intentArtifactToBiz(art *intent.Artifact) *biz.IntentArtifact {
 		SuccessCriteria: art.SuccessCriteria,
 		Ambiguities:     art.Ambiguities,
 		SearchHints:     art.SearchHints,
+		ToolHints:       art.ToolHints,
 		RiskFlags:       art.RiskFlags,
 	}
 }

@@ -1510,6 +1510,10 @@ Skill 对模型的成本与召回质量，取决于 **什么时候写什么**，
 
 内置技能管家提示（`internal/scenario/system/prompts/skills/skills.md`）在 evolve/optimize 时复述上述三条。
 
+### `$skill` mention（B5）
+
+用户消息中的 `$slug`（如 `$xlsx-review`）在 `ResolveSkillSlugsDetailed` 与 routed 列表合流：Layer A 通过的 mention **置顶**，reason=`user mention`，不依赖再搜。未发布 / deny 的 mention 不加载。
+
 ---
 
-*文档版本：5.1 — 增补 Skill 编写合同（三级披露 + 正文软阈值）（2026-08-22）。*
+*文档版本：5.2 — 增补 `$skill` mention 与 routed 合流（2026-08-22）。*
