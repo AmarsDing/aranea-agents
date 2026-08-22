@@ -715,6 +715,8 @@ Agent 调用 client_open_app
 | D | eventLoop **三路分流** + task 绑定 + 播报队列 | `internal/voice/session.go` | **评审修正 R3**：`V2Bus.Subscribe` 忽略 `EventSubscribeOptions` 过滤参数（全量广播），eventLoop 现状不过滤 session。必须显式三路分流：① `SpiritSessionID()==s.sessionID` → 现有快答路径；② 命中 delegation registry → 委派路径；③ 其余 → 丢弃。否则精灵执行的流式 delta 会串入语音 TTS（串话）。**评审修正 R10**：`ExecuteTurn` 阻塞且 `TurnResult` 无 TaskID → 登记时 taskID 留空；`TaskCreatedEvent.Task.UserMessage == TurnInput.Content`（projector.go:246）→ 按 (spirit_session_id + 内容精确匹配) 绑定 taskID，先注册后提交无窗口期，内容匹配免疫并发外来 turn 错绑；排队 turn 延迟建 task 天然兼容。终态：`TaskCompletedEvent`（含 cancelled，`Task.Status` 区分）/ `TaskFailedEvent` → 取 reply 全文播报。**播报机制**：listening 态无活跃 turn/chunker  flush 源，须一次性 `ensureTTS→Write→Flush→flush 哨兵`（复用澄清播报注入路径 + handleTurnCompleted 哨兵逻辑）；voice 正忙（thinking/speaking）→ session 内 FIFO 队列，回 listening 时排空 |
 | E | 前端语音入口改绑 | `web/src/pages/CompanionPage.vue` + `useChatWorkspace` | **评审修正 R5**：Turn 执行按 `sess.AgentID` hydrate agent（`chat_orchestrator_turn.go`，忽略 `input.AgentKey`），仅改 voice.start 的 agent_key 无效。Companion 进入语音模式时须选中/创建 **agent_id 属于 `__voice_butler__` 的会话**（复用现有会话选择体系；无则经会话 API 创建） |
 
+本会话 `SystemNoticeEvent`（`coding_task_approval` / `coding_task_cancelled` 且 `speak:true`）走与委派相同的 `enqueueDelegationSpeech`（E2，2026-08-22）：确认卡仍由 ConfirmActivity 渲染，语音侧口播审批文案，正忙时入 FIFO。前端 `spirit/handleSystemNotice` 同步写入 `pendingCodingApproval` 并 toast。
+
 ### 15.4.1 评审结论（2026-08-11 代码级核验）
 
 | # | 核验项 | 结论 |

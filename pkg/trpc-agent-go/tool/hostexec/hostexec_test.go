@@ -53,6 +53,8 @@ func TestNewToolSet_Foreground(t *testing.T) {
 	require.Equal(t, programStatusExited, res["status"])
 	require.Contains(t, outputField(res), "hello")
 	require.EqualValues(t, 0, res["exit_code"])
+	_, hasDuration := res["duration_ms"]
+	require.True(t, hasDuration, "foreground exec must include duration_ms")
 	require.Empty(t, mgr.sessions)
 }
 

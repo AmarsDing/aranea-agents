@@ -433,7 +433,7 @@ func (s *Session) Cancel(reason string) {
 	s.chunker = nil
 	s.scheduler = nil
 	s.ttsStarted = false
-	s.schedGen++ // F6：使该调度器在途 drain 失效（gen 失配跳过状态转换）
+	s.schedGen++              // F6：使该调度器在途 drain 失效（gen 失配跳过状态转换）
 	s.turnT0 = time.Time{}    // E：打断后迟到的音频帧不产生误导性延迟测量
 	s.stopSpeculationLocked() // C2：打断后残余 partial 不再触发投机
 	s.mu.Unlock()
@@ -888,6 +888,8 @@ func (s *Session) routeEvent(e biz.Event) {
 			s.handleTurnCompleted()
 		case *biz.TurnFailedEvent:
 			s.handleTurnFailure(nil)
+		case *biz.SystemNoticeEvent:
+			s.maybeSpeakCodingApproval(ev)
 		}
 		return
 	}
@@ -997,6 +999,52 @@ func (s *Session) enqueueDelegationSpeech(text string) {
 // speakDelegation 自足播报（R15）：委派结果/失败通知（流程日志 voice.delegation.broadcast）。
 func (s *Session) speakDelegation(text string) {
 	s.speakSelfSufficient(text, "voice.delegation.broadcast", "委派结果播报", false)
+}
+
+const (
+	noticeCodingTaskApproval  = "coding_task_approval"
+	noticeCodingTaskCancelled = "coding_task_cancelled"
+)
+
+// maybeSpeakCodingApproval consumes coding-bridge HITL notices that already
+// carry speak:true. The confirm card is a separate ConfirmActivity; without
+// this path a voice session stays silent while the desktop waits for a tap.
+func (s *Session) maybeSpeakCodingApproval(ev *biz.SystemNoticeEvent) {
+	if ev == nil {
+		return
+	}
+	switch ev.NoticeType {
+	case noticeCodingTaskApproval, noticeCodingTaskCancelled:
+	default:
+		return
+	}
+	if !metaSpeakTrue(ev.Meta) {
+		return
+	}
+	text := strings.TrimSpace(ev.Message)
+	if text == "" {
+		if title, _ := ev.Meta["title"].(string); strings.TrimSpace(title) != "" {
+			text = strings.TrimSpace(title)
+		}
+	}
+	if text == "" {
+		return
+	}
+	s.enqueueDelegationSpeech(text)
+}
+
+func metaSpeakTrue(meta map[string]any) bool {
+	if meta == nil {
+		return false
+	}
+	switch v := meta["speak"].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	default:
+		return false
+	}
 }
 
 // drainDelegationOutbox 回 listening 时排空委派播报 FIFO：一次播一条，本次

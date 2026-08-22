@@ -78,6 +78,9 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		retireUnits = append(retireUnits, newShardHoldToolSet(spec.id, releases[i]))
 	}
 
+	if shouldAttachContextRemaining(ag, eff) {
+		ts.Tools = append(ts.Tools, newContextRemainingTool())
+	}
 	toolCount := len(ts.Tools) + len(ts.ToolSets)
 	lg.Info("工具构建完成", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("tool_count", toolCount))
 	phaseStart = time.Now()

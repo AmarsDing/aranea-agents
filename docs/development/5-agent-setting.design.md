@@ -625,7 +625,7 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 | 标签 | 何时注入 | 内容 |
 |------|----------|------|
 | `<working_contract>` | `coding` / `spirit` / `full` profile，或 `__spirit__`，或 allow 含 coding-bridge / computer-use / `shell_exec` / `diff_edit` | preamble、短计划、`search_content`、`diff_edit`/`patch_file`、验证时机。不挂到 `read_only` / `research` / `chat_only` 专项 |
-| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件。运行时由 `workspace_sandbox` BeforeTool（priority 8）强制：只读写工具 `CustomResult` 拒绝；`path`/`file`/`cwd` 必须落在 Agent 工作区根下。OS 级 token/bwrap 未做 |
+| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件。运行时由 `workspace_sandbox` BeforeTool（priority 8）强制：只读写工具 `CustomResult` 拒绝；`path`/`file`/`cwd` 必须落在 Agent 工作区根下。OS 级 token/bwrap 未做（E3）。`needs_approval` 下只读 shell（`go test` / `git status|diff|log` / `rg` / `ls` / linter）免第一张确认卡（E1）；编码面 `save_file` 覆盖已有文件由 `edit_discipline` hook（priority 9）拒绝，须走 `diff_edit`（E5）。coding / spirit / full 另挂 `get_context_remaining`（E6） |
 
 两段都烘焙进 instruction（与 `## Runtime capability policy` 同属稳定前缀），禁止放进每轮 user-role 动态 cue。
 

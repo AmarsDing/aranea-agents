@@ -237,6 +237,12 @@ func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyM
 		bus.Publish(ctx, biz.NewSystemNoticeEvent(step.SessionID, noticeType, "", meta))
 	}
 
+	// Coding-bridge cards are not an in-turn tool await; the ACP session
+	// is unblocked by ConfirmBridgePermission above. Do not resume chat.
+	if IsExternalCodingConfirm(step) {
+		return true, string(nextStatus), nil
+	}
+
 	runID := ""
 	if _, requestID, active := s.orch.ActiveRunner(step.SessionID); active {
 		runID = requestID

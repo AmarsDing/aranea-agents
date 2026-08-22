@@ -370,11 +370,11 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 		b.WriteString("- IMPORTANT: plan_and_execute is NOT available this session. For multi-step tasks, use subagents_spawn to delegate to sub-agents instead. Do NOT attempt to call plan_and_execute.\n")
 	}
 	if hasWorkspaceSearch && level >= cueLevelFull && !skipToolCue {
-		editStep := "replace_content for targeted edits (or save_file for new files / small full rewrites)"
+		editStep := "replace_content for targeted edits (or save_file for new files)"
 		if hasFragmentEdit {
-			editStep = "diff_edit (or patch_file when you have unified diff); use save_file only for new files or small full rewrites; use replace_content for simple single replacements"
+			editStep = "diff_edit (or patch_file when you have unified diff); use save_file only for new files; use replace_content for simple single replacements"
 		} else if hasFileWrite {
-			editStep = "replace_content for targeted edits; use save_file for new files or small full rewrites"
+			editStep = "replace_content for targeted edits; use save_file only for new files"
 		}
 		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; optional after/before/context, type, head_limit/offset. Preferred order: search_content → read_file (use start_line/end_line for large files) → " + editStep + ". Avoid list_file at repo root without a narrowed path or keyword.\n")
 	}
@@ -382,7 +382,7 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 		b.WriteString("- After save_file / diff_edit / replace_content / patch_file / delete_file, call read_lints (omit path to lint recently edited files) before guessing compile status or running tests.\n")
 	}
 	if hasShell && level >= cueLevelFull && !skipToolCue {
-		b.WriteString("- exec_command: long jobs return session_id, output_file, running_for_ms; hung=true means output stalled. write_stdin can wait with notify_pattern / block_until_ms.\n")
+		b.WriteString("- exec_command: results include exit_code and duration_ms; long jobs also return session_id, output_file, running_for_ms; hung=true means output stalled. write_stdin can wait with notify_pattern / block_until_ms.\n")
 	}
 	if hasBrowser && level >= cueLevelStandard && !skipToolCue {
 		b.WriteString("- Browser: after navigate/click/type, call browser_snapshot before the next interaction (mutating tools stamp next_tool). Do not parallelize browser tools.\n")

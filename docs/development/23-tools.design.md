@@ -1860,7 +1860,8 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | 兼容 | `hostexecnorm` 将 `cmd`/`cwd`/`working_dir`/`timeout` 映射为 `command`/`workdir`/`timeout_sec`；`command` 可为字符串数组，并可与 `args` 拼接 |
 | 环境变量 | `ShellExec.Env` 作为 base env 注入命令；单次调用 `env` 可覆盖同名值 |
 | 结果脱敏 | 配置环境变量中的敏感名称/值在结构化结果返回前替换为 redaction marker |
-| 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command`（runtime alias） |
+| 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command`（runtime alias）。E1：命令分类后，只读/lint（`go test`/`go vet`、`git status\|diff\|log`、`rg`、`ls`/`dir`、linter）`decision_reason=shell_safe` 免卡；`rm`/`git push` 等 `shell_danger` 仍确认（可被 session/persisted grant 绕过）；未知命令保持 catalog 确认 |
+| 前台回执 | `hostexec.mapExecResult`：`status` / `output` / `exit_code` / **`duration_ms`（E4）**；长任务另有 `running_for_ms` |
 | Prompt | `RuntimeCapabilityCue` 表述默认 cwd=工作区 |
 
 #### 7.8.5 工具授权决策链
@@ -1871,10 +1872,12 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 
 ```
 1. 默认允许（catalog/plugin 均不需要确认）→ 直接执行
-2. 持久化授权（persisted grant）→ 直接执行（记录 decision_reason）
-3. 会话授权（session grant）→ 直接执行（记录 decision_reason）
-4. catalog 需要确认 → 弹窗提示（记录 decision_reason）
-5. plugin 需要确认 → 弹窗提示（记录 decision_reason）
+2. E1 安全 shell（go test / git status / rg / ls / lint）→ 直接执行（shell_safe）
+3. 持久化授权（persisted grant）→ 直接执行（记录 decision_reason）
+4. 会话授权（session grant）→ 直接执行（记录 decision_reason）
+5. E1 高危 shell（rm / git push …）→ 弹窗提示（shell_danger，确认卡高危徽标）
+6. catalog 需要确认 → 弹窗提示（记录 decision_reason）
+7. plugin 需要确认 → 弹窗提示（记录 decision_reason）
 ```
 
 **授权类型**：

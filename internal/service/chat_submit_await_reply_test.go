@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/agentbridge"
 	rt "aranea-agents/internal/runtime"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
@@ -629,5 +631,60 @@ func TestConfirmToolGateForCard_PlaybookCompletedCannotFlip(t *testing.T) {
 	ok, msg := svc.ConfirmToolGateForCard(context.Background(), "sess-1", step.ID, serviceawaitreply.ReplyDeny)
 	if ok {
 		t.Fatalf("channel path must reject flip, msg=%s", msg)
+	}
+}
+
+func TestConfirmActivity_ExternalCodingSkipsChatAwait(t *testing.T) {
+	step := toolBlockedConfirmStep()
+	step.ToolName = agentbridge.ToolExternalCoding
+	step.TaskID = "task-bridge-1"
+	step.ToolArgs = json.RawMessage(`{"source":"external_coding","task_id":"task-bridge-1"}`)
+	resumed := false
+	coord := stubAwaitCoord{
+		trySendFn:   func(string, biz.AwaitReplyMsg) bool { return false },
+		canResumeFn: func(context.Context, string) (string, bool) { return "", false },
+	}
+	svc, orch, writer := newConfirmActivityTestSvc(coord, step)
+	orch.resumeAwaitFn = func(context.Context, string, string, string) error {
+		resumed = true
+		return nil
+	}
+	bridge := NewAgentBridgeService(AgentBridgeServiceDeps{Logger: loggateway.NewNoop()})
+	pending := &pendingApproval{
+		taskID: "task-bridge-1",
+		options: []agentbridge.PermissionOption{
+			{OptionID: "allow", Kind: "allow_once"},
+			{OptionID: "deny", Kind: "reject_once"},
+		},
+		done: make(chan approvalDecision, 1),
+	}
+	bridge.storePending(pending)
+	svc.BindAgentBridge(bridge)
+
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: step.ID,
+		Approved:   true,
+	})
+	if err != nil {
+		t.Fatalf("ConfirmActivity: %v", err)
+	}
+	if resp == nil || !resp.GetAccepted() {
+		t.Fatal("external_coding confirm must accept without a chat await channel")
+	}
+	if resumed {
+		t.Fatal("must not resume the chat turn for a coding-bridge card")
+	}
+	select {
+	case dec := <-pending.done:
+		if dec.optionID != "allow" {
+			t.Fatalf("option = %q, want allow", dec.optionID)
+		}
+	default:
+		t.Fatal("bridge permission was not unblocked")
+	}
+	if len(writer.updated) != 1 || writer.updated[0].Status != biz.StepStatusCompleted {
+		t.Fatalf("step updates = %+v", writer.updated)
 	}
 }

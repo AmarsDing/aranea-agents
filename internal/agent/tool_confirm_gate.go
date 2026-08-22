@@ -107,11 +107,21 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 	if !needsByCatalog && !needsByPlugin {
 		return confirmDecision{needsConfirm: false, reason: confirmReasonDefaultAllow}
 	}
+	// E1: read-only / lint shell commands skip the first confirmation card.
+	// Unknown commands stay on the catalog path; destructive commands still
+	// confirm unless a session/persisted grant already exists.
+	shellClass, isShell := classifyShellForConfirm(toolName, args)
+	if isShell && shellClass == shellClassSafe {
+		return confirmDecision{needsConfirm: false, reason: confirmReasonShellSafe}
+	}
 	if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
 		return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted}
 	}
 	if g.sessionGrants != nil && g.sessionGrants.HasSession(sessionID, agentID, toolName) {
 		return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession}
+	}
+	if isShell && shellClass == shellClassDanger {
+		return confirmDecision{needsConfirm: true, reason: confirmReasonShellDanger}
 	}
 	if needsByCatalog {
 		return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyCatalog}

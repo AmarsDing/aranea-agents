@@ -166,6 +166,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		entries = append(entries, newWorkspaceSandboxBeforeHook(ag, deps))
+		entries = append(entries, newEditDisciplineBeforeHook(ag, deps))
 		if gate != nil {
 			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
 		}

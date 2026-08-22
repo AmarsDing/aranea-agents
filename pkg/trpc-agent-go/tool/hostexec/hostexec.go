@@ -257,6 +257,10 @@ func (t *execCommandTool) Declaration() *tool.Declaration {
 					Type:        "integer",
 					Description: "OS process id while the command is running.",
 				},
+				"duration_ms": {
+					Type:        "integer",
+					Description: "Wall-clock milliseconds from start until this result.",
+				},
 			},
 		},
 	}
@@ -546,6 +550,9 @@ func mapExecResult(res execResult) map[string]any {
 	}
 	if res.PID > 0 {
 		out["pid"] = res.PID
+	}
+	if res.DurationMS > 0 || res.Status == programStatusExited {
+		out["duration_ms"] = res.DurationMS
 	}
 	return out
 }

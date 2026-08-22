@@ -104,7 +104,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				Content:       confirmContent,
 				// 75 A5: computer-use danger-word hits surface a 高危 badge on
 				// the confirm card.
-				Danger: decision.reason == confirmReasonPolicyDanger,
+				Danger: decision.reason == confirmReasonPolicyDanger || decision.reason == confirmReasonShellDanger,
 				// Attribute the confirm step to the agent whose tool is
 				// gated (team member in graph mode); the projector's base
 				// meta carries the anchor agent key.

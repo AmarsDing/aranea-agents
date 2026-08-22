@@ -60,11 +60,12 @@ type execParams struct {
 }
 
 type execResult struct {
-	Status    string
-	Output    string
-	ExitCode  *int
-	SessionID string
-	PID       int
+	Status     string
+	Output     string
+	ExitCode   *int
+	SessionID  string
+	PID        int
+	DurationMS int
 }
 
 func newManager() *manager {
@@ -85,6 +86,20 @@ func (m *manager) exec(
 	}
 	if strings.TrimSpace(params.Command) == "" {
 		return execResult{}, errors.New(errCommandRequired)
+	}
+
+	now := m.clock
+	if now == nil {
+		now = time.Now
+	}
+	started := now()
+	stamp := func(res execResult) execResult {
+		ms := now().Sub(started).Milliseconds()
+		if ms < 0 {
+			ms = 0
+		}
+		res.DurationMS = int(ms)
+		return res
 	}
 
 	m.cleanupExpired()
@@ -111,11 +126,11 @@ func (m *manager) exec(
 		if err != nil {
 			return execResult{}, err
 		}
-		return execResult{
+		return stamp(execResult{
 			Status:   programStatusExited,
 			Output:   out,
 			ExitCode: intPtr(code),
-		}, nil
+		}), nil
 	}
 
 	sess, err := m.startBackground(params, timeout)
@@ -124,12 +139,12 @@ func (m *manager) exec(
 	}
 
 	if params.Background {
-		return execResult{
+		return stamp(execResult{
 			Status:    programStatusRunning,
 			SessionID: sess.id,
 			Output:    sess.pollTail(defaultLogTail),
 			PID:       sess.pid(),
-		}, nil
+		}), nil
 	}
 
 	if yieldMs == 0 {
@@ -141,11 +156,11 @@ func (m *manager) exec(
 		}
 		out, code := sess.allOutput()
 		_ = m.clearFinished(sess.id)
-		return execResult{
+		return stamp(execResult{
 			Status:   programStatusExited,
 			Output:   out,
 			ExitCode: intPtr(code),
-		}, nil
+		}), nil
 	}
 
 	timer := time.NewTimer(time.Duration(yieldMs) * time.Millisecond)
@@ -158,18 +173,18 @@ func (m *manager) exec(
 	case <-sess.doneCh:
 		out, code := sess.allOutput()
 		_ = m.clearFinished(sess.id)
-		return execResult{
+		return stamp(execResult{
 			Status:   programStatusExited,
 			Output:   out,
 			ExitCode: intPtr(code),
-		}, nil
+		}), nil
 	case <-timer.C:
-		return execResult{
+		return stamp(execResult{
 			Status:    programStatusRunning,
 			SessionID: sess.id,
 			Output:    sess.pollTail(defaultLogTail),
 			PID:       sess.pid(),
-		}, nil
+		}), nil
 	}
 }
 

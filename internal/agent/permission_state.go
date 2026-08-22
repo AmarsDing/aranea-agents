@@ -104,7 +104,7 @@ func PermissionStateBlock(ag biz.Agent) string {
 		body = strings.TrimSpace(`## Current session permissions
 - Mode: workspace-write with approval
 - You MAY read and edit files under the workspace root (ARANEA_WORKSPACE_ROOT / WORKSPACE_ROOT).
-- Destructive or high-risk tools (exec_command, delete_file, computer_use_act, coding_dispatch_task) require user confirmation before they take effect. Do not claim they already succeeded.
+- Destructive or high-risk tools (exec_command, delete_file, computer_use_act, coding_dispatch_task) require user confirmation before they take effect. Read-only shell commands (go test / go vet, git status/diff/log, rg, ls/dir, linters) may run without a card. Do not claim a gated command already succeeded.
 - Do not claim you can change files outside the workspace or bypass confirmation.`)
 	default:
 		return ""

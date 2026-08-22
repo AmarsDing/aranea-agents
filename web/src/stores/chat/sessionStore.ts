@@ -233,7 +233,13 @@ export const useChatSessionStore = defineStore('chatSession', () => {
         });
         if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
         const merged = new Map(sessions.value.map((session) => [session.id, session]));
-        for (const row of result.items) merged.set(row.id, row);
+        for (const row of result.items) {
+          // context_budget is a WS-only push field (context_usage meta, never in
+          // REST rows): keep the locally-patched value so the SpiritStatusBar
+          // breakdown survives the post-turn session reload.
+          const local = merged.get(row.id);
+          merged.set(row.id, local?.context_budget ? { ...row, context_budget: local.context_budget } : row);
+        }
         sessions.value = sortSessionsForDisplay([...merged.values()]);
         sessionsTotal.value = result.total;
         listOffset.value = Math.max(listOffset.value, result.items.length);
@@ -327,7 +333,13 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     try {
       const rows = await listTeamSessions(teamId);
       if (myGeneration !== _loadGeneration) return; // P0 #4: 已被后续切换作废
-      teamSessions.value[teamId] = sortSessionsForDisplay(rows).map(withTeamAt);
+      const prevById = new Map((teamSessions.value[teamId] ?? []).map((s) => [s.id, s]));
+      teamSessions.value[teamId] = sortSessionsForDisplay(rows).map((row) => {
+        // Preserve the WS-only context_budget across list reloads (see
+        // loadAgentSessions refreshOnly merge for the same guard).
+        const local = prevById.get(row.id);
+        return withTeamAt(local?.context_budget ? { ...row, context_budget: local.context_budget } : row);
+      });
     } catch (e: unknown) {
       if (myGeneration !== _loadGeneration) return;
       error.value = e instanceof Error ? e.message : String(e);

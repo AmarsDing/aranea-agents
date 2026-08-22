@@ -265,7 +265,7 @@ UpsertAgent / ListAgents / ProbeAgent / UpsertProject / ListProjects / DeletePro
 
 1. **出站**：ACP `session/request_permission` → 构造与 `ToolConfirmationRequest` 同构的 step 事件（agent 层 `tool_confirm_gate.go` 的事件结构）→ `event.Bus` → WS → 前端精灵确认卡片 `HoloConfirmCard.vue`（companion 域，自带倒计时与队列展示）。卡片扩展字段：`source=external_coding`、agent_key、project_name（前端按 source 展示工具名标题）
 2. **回传**：复用 `ChatService.ConfirmActivity`（[chat_confirm.go](../../internal/service/chat_confirm.go)）的 HTTP/WS 双通道语义，新增 `ConfirmBridgePermission` 用例：校验任务处于 awaiting_approval → 解析 optionID → 写回 ACP response → 状态机转 running
-3. **语音侧**：复用 clarify 链路——审批事件触发 TTS 播报（"Claude Code 想执行 go test，允许吗？"），用户语音作答（允许/拒绝/始终允许）经现有澄清路由解析后调用 `ConfirmBridgePermission`
+3. **语音侧**：复用 clarify 链路——审批事件触发 TTS 播报（"Claude Code 想执行 go test，允许吗？"），用户语音作答（允许/拒绝/始终允许）经现有澄清路由解析后调用 `ConfirmBridgePermission`。**E2（2026-08-22）已接**：`coding_task_approval` / `coding_task_cancelled`（`speak:true`）由 `voice.Session.maybeSpeakCodingApproval` 走委派 FIFO 口播；前端 `spirit/handleSystemNotice` 写 `pendingCodingApproval` 并 toast
 4. **超时**：awaiting_approval 起 5 分钟计时，超时回传 ACP cancelled + 状态机转 cancelled + 语音告知
 5. **选项映射**：ACP permission options（allow_once/allow_always/reject_once 等 kind）→ 卡片按钮；`allow_always` 作用域限定为**本任务内**（内存缓存，不落 tool-grants 库，避免与内部工具授权语义混淆）
 

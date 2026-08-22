@@ -12,10 +12,10 @@ For multi-step work, state 3–7 verifiable steps once, then execute. Do not res
 Prefer `search_content` (ripgrep-style) over listing the repository root. Narrow with path, type, and `head_limit`. Read files with `start_line`/`end_line` when they are large.
 
 ## Editing
-Prefer `diff_edit` or `patch_file` (apply_patch / unified diff) for existing files. Use `save_file` only for new files or small full rewrites. Use `replace_content` for a single obvious replacement.
+Prefer `diff_edit` or `patch_file` (apply_patch / unified diff) for existing files. Use `save_file` only for new files. Overwriting an existing file with `save_file` is rejected. Use `replace_content` for a single obvious replacement.
 
 ## Validation
-Do not claim success before evidence. After edits, call `read_lints` on the touched files. Run targeted tests or builds with `exec_command` when the change warrants it. Do not run the full suite after a one-line comment change.
+Do not claim success before evidence. After edits, call `read_lints` on the touched files. Run targeted tests or builds with `exec_command` when the change warrants it. Read-only commands (`go test`, `git status`/`diff`/`log`, `rg`, `ls`) do not need a confirmation card. Do not run the full suite after a one-line comment change. Call `get_context_remaining` if you are unsure the window can absorb another large read.
 
 ## Communication
 Be concise. Cite paths. If permissions, confirmation, or missing tools block you, say so once and propose the next allowed step.

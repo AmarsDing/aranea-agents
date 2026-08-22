@@ -85,7 +85,10 @@ func TestPermissionStateBlock_ApprovalWording(t *testing.T) {
 	if !strings.Contains(got, "workspace-write with approval") {
 		t.Fatalf("coding profile must mention approval, got %q", got)
 	}
-	if !strings.Contains(got, "Do not claim they already succeeded") {
+	if !strings.Contains(got, "Do not claim a gated command already succeeded") {
 		t.Fatal("approval mode must forbid claiming unconfirmed success")
+	}
+	if !strings.Contains(got, "go test") {
+		t.Fatal("approval mode must mention read-only shell skip")
 	}
 }

@@ -207,6 +207,14 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   /** Team completion breakdown from spirit_teams_all_completed event. */
   const completionStats = ref<CompletionStats | null>(null);
 
+  /** Latest coding-bridge HITL notice (E2). Confirm card is a separate Activity. */
+  const pendingCodingApproval = ref<{
+    taskId: string;
+    agentKey: string;
+    title: string;
+    message: string;
+  } | null>(null);
+
   // ── Observation view state ──
 
   /** Current view mode: 'chat' shows the normal message list, 'observe' shows the observation canvas. */
@@ -347,6 +355,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     lastDqScore.value = null;
     lastEvolutionSuggestion.value = null;
     completionStats.value = null;
+    pendingCodingApproval.value = null;
   }
 
   function selectTeam(teamId: string) {
@@ -682,6 +691,29 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'orchestration_failed':
         envType = 'butler.orchestration.failed';
         break;
+      case 'coding_task_approval': {
+        const title = String(meta.title ?? '');
+        const message = String(meta.message ?? title);
+        pendingCodingApproval.value = {
+          taskId: String(meta.task_id ?? ''),
+          agentKey: String(meta.agent_key ?? ''),
+          title,
+          message,
+        };
+        if (message) {
+          Notify.create({ type: 'warning', message, position: 'top' });
+        }
+        return;
+      }
+      case 'coding_task_cancelled':
+        pendingCodingApproval.value = null;
+        {
+          const cancelled = String(meta.message ?? '编程工具审批已取消');
+          if (cancelled) {
+            Notify.create({ type: 'warning', message: cancelled, position: 'top' });
+          }
+        }
+        return;
       default:
         return;
     }
@@ -1041,6 +1073,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     lastDqScore,
     lastEvolutionSuggestion,
     completionStats,
+    pendingCodingApproval,
     viewMode,
     composerVisible,
     toggleViewMode,

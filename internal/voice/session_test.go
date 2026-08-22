@@ -1029,3 +1029,36 @@ func TestClarificationSpeech(t *testing.T) {
 	require.Contains(t, multi, "第二")
 	require.Contains(t, multi, "风格。") // 无终止标点补句号
 }
+
+func TestRouteEvent_SpeaksCodingTaskApproval(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	fx.sess.mu.Lock()
+	fx.sess.pendingTurns = 1 // busy: enqueue instead of live TTS
+	fx.sess.mu.Unlock()
+
+	fx.sess.routeEvent(biz.NewSystemNoticeEvent("sess-1", noticeCodingTaskApproval, "编码助手请求确认：运行测试", map[string]any{
+		"speak": true,
+		"title": "运行测试",
+	}))
+	fx.sess.mu.Lock()
+	got := append([]string(nil), fx.sess.delegationOutbox...)
+	fx.sess.mu.Unlock()
+	require.Equal(t, []string{"编码助手请求确认：运行测试"}, got)
+}
+
+func TestRouteEvent_IgnoresCodingApprovalWithoutSpeak(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	fx.sess.mu.Lock()
+	fx.sess.pendingTurns = 1
+	fx.sess.mu.Unlock()
+
+	fx.sess.routeEvent(biz.NewSystemNoticeEvent("sess-1", noticeCodingTaskApproval, "不应播报", map[string]any{
+		"speak": false,
+	}))
+	fx.sess.mu.Lock()
+	n := len(fx.sess.delegationOutbox)
+	fx.sess.mu.Unlock()
+	require.Zero(t, n)
+}

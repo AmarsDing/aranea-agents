@@ -4,7 +4,8 @@
 > 类型：analysis  
 > Codex 源码快照：`F:\myproject\openai-codex` @ `4f39251a`  
 > 深挖正文：[2026-08-22-research-openai-codex-deep-dive.md](./2026-08-22-research-openai-codex-deep-dive.md)  
-> Aranea 交叉参考：[65-module-cross-reference-full.md](../development/65-module-cross-reference-full.md)
+> Aranea 交叉参考：[65-module-cross-reference-full.md](../development/65-module-cross-reference-full.md)  
+> A–D 落地后重估：[2026-08-22-analysis-codex-vs-aranea-post-ad.md](./2026-08-22-analysis-codex-vs-aranea-post-ad.md)
 
 ---
 
