@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 )
 
 func assertRatioEqual(t *testing.T, got, want float64, msg string) {
@@ -446,21 +447,21 @@ func TestAtFullContextUsage(t *testing.T) {
 
 	t.Run("tokens_at_window", func(t *testing.T) {
 		sess := biz.Session{
-			ContextUsedTokens:       100000,
+			ContextUsedTokens:       llmcontext.DefaultWindowTokens,
 			LastContextWindowTokens: 100000,
 		}
 		if !atFullContextUsage(sess) {
-			t.Error("used tokens >= window tokens should return true")
+			t.Error("used tokens >= 256K product window should return true")
 		}
 	})
 
 	t.Run("tokens_above_window", func(t *testing.T) {
 		sess := biz.Session{
-			ContextUsedTokens:       120000,
+			ContextUsedTokens:       llmcontext.DefaultWindowTokens + 1000,
 			LastContextWindowTokens: 100000,
 		}
 		if !atFullContextUsage(sess) {
-			t.Error("used tokens > window tokens should return true")
+			t.Error("used tokens > 256K product window should return true")
 		}
 	})
 
@@ -475,14 +476,14 @@ func TestAtFullContextUsage(t *testing.T) {
 		}
 	})
 
-	t.Run("zero_window_tokens", func(t *testing.T) {
+	t.Run("below_product_window", func(t *testing.T) {
 		sess := biz.Session{
 			ContextUsedRatio:        0.9,
 			ContextUsedTokens:       90000,
 			LastContextWindowTokens: 0,
 		}
 		if atFullContextUsage(sess) {
-			t.Error("LastContextWindowTokens = 0 should not trigger token check, should return false")
+			t.Error("used tokens below 256K product window should return false")
 		}
 	})
 }

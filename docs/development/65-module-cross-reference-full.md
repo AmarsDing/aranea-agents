@@ -1110,11 +1110,11 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **核心导出** | 规划中：`OrgPruner`（Evolving，可保持包内）；不新增 RPC |
 | **实现接口** | 扩展既有 `AgentAllocatorPort.Allocate` 行为；不替换 `PlanExecutor` |
 | **共享类型** | `AgentCapability` 增组织字段；`TaskAllocation`/`PlanStep` 透传 `DepartmentID` |
-| **事件生产** | 复用 `orchestration_progress`（allocating 带专题/人/层；collaborating / allocate_failed）；Phase 4 规划增 `upward` / `heartbeat`，仍不新建 bus |
+| **事件生产** | 复用 `orchestration_progress`（allocating 带专题/人/层；collaborating / allocate_failed / heartbeat / upward / playbook_fill_required）；仍不新建 bus |
 | **事件消费** | `PlanBoardCreatedEvent`（既有） |
-| **数据库** | 不强制新表；读 `organizations` + `agents.position_id`；Phase 4 规划公司节点 `company_lead_agent_id` + `metadata_json.playbooks` |
+| **数据库** | 不强制新表；读 `organizations` + `agents.position_id`；公司节点 `company_lead_agent_id`（metadata）+ `metadata_json.playbooks`；总经理岗 `{key}_gm` |
 | **前端对应** | 无独立页；进度条显示专题→人；团队卡片展示花名册绑定 |
-| **测试覆盖** | Phase 0–2 + 花名册闭集已落地；Phase 4 分档/剧本/三管道见 development 📋 |
+| **测试覆盖** | Phase 0–2 + 花名册闭集已落地；Phase 4 分档/挂岗/点名剧本/前缀预算/合成锁已测；三管道发射与 playbook_fill 仍开 |
 
 **⚠️ 开发注意**：
 - **禁止**任务热路径「LLM 找公司 → LLM 找部门 → 主管再分解 → 无则 CreateCompany」。公司 = 当前 workspace 树；创造公司/部门走 M67 管理面

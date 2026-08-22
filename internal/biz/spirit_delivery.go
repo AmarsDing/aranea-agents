@@ -1099,11 +1099,14 @@ func (d *SpiritDelivery) DeliverableProtocolSuffix(t Team) string {
 func (d *SpiritDelivery) BuildTeamTurnInput(ctx context.Context, t Team) string {
 	d.materializeUpstreamInbox(ctx, t)
 	taskDesc := t.TaskDescription
-	if prefix := d.InjectUpstreamDeliverables(ctx, t); prefix != "" {
-		taskDesc = prefix + taskDesc
+	prefix := d.InjectUpstreamDeliverables(ctx, t)
+	protocol := d.DeliverableProtocolSuffix(t)
+	// Knowledge/memory stay on-demand (tools). 6KB is a ceiling on Brief+protocol only.
+	trimmed := TrimPrefixBudget(PrefixBudget{Brief: prefix, Protocol: protocol})
+	if trimmed.Brief != "" {
+		taskDesc = trimmed.Brief + taskDesc
 	}
-	taskDesc += d.DeliverableProtocolSuffix(t)
-	return taskDesc
+	return taskDesc + trimmed.Protocol
 }
 
 // readDeliverableRef reads the persisted DeliverableRef for the team's own

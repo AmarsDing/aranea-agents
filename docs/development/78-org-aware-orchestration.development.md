@@ -1,6 +1,6 @@
 # M78: 组织感知编排（ORG-FAST）— 开发计划
 
-> **版本**：2026-08-22 | **状态**：🟡 Phase 0–2 已落地；Phase 4 重型组织链已设计未实施；Phase 3 跨公司 Brief 仍 YAGNI
+> **版本**：2026-08-22 | **状态**：🟡 Phase 0–2 已落地；Phase 4 核心（分档/总经理挂岗/剧本热路径/前缀预算）已落地；三管道发射与 playbook_fill 仍未接；Phase 3 跨公司 Brief 仍 YAGNI
 > **需求**：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)
 > **设计**：[78-org-aware-orchestration.design.md](./78-org-aware-orchestration.design.md)
 > **ADR**：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md) · [横切](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)
@@ -9,7 +9,7 @@
 
 ## 1. 模块定位
 
-在现有 Plan → Allocate → Orchestrate 上补齐 **组织剪枝 + 主管排除 + 建团挂部门 + 创造分层 + 跨团队 Brief/Bulk 交接**，并规划 **重型档：分档 + 公司剧本 + 三管道**。达到既快又准地获取/组建团队，且交接不撑爆上下文。不新建服务进程。Phase 4 未写代码。
+在现有 Plan → Allocate → Orchestrate 上补齐 **组织剪枝 + 主管排除 + 建团挂部门 + 创造分层 + 跨团队 Brief/Bulk 交接**，并落地 **重型档：分档 + 公司剧本展开 + 前缀预算**。三管道事件发射、总经理补写剧本、确认五档 HITL 仍未接生产路径。不新建服务进程。
 
 **代码锚点（现状）：**
 
@@ -150,12 +150,12 @@
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
 | ORGFAST-40 | 分档器：light/medium/heavy 规则 + 单测 | `internal/agent` 或 gate | 轻不组队；中不叫醒总经理；跨部门 DAG→heavy | ✅ |
-| ORGFAST-41 | M67：`company_lead` 幂等创建/排除出 Assignable | `company_lead.go` + capability | 总经理不得为 Team Lead；创建公司时挂接（id 暂存 metadata） | ✅ |
-| ORGFAST-42 | 流程剧本读写（公司 metadata）+ 预授权 | organization + planner | 已授权剧本展开 0 总经理 LLM | 🟡 解析/展开/指纹已落地；热路径未接 planner |
-| ORGFAST-43 | 精灵粗路由只输出 playbook_id（重型） | planner prompt / 分类 | 不按行业常识拆到岗 | 📋 |
-| ORGFAST-44 | 三管道：上行心跳/例外事件；横向仍 Brief | delivery + progress | 上行 ≤2KB；无源码 | 📋 |
-| ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | 🟡 字段+判定已落地；回放热路径未接 |
-| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | 📋 |
+| ORGFAST-41 | M67：`company_lead` 幂等创建/排除出 Assignable | `company_lead.go` + capability | 总经理不得为 Team Lead；挂「总经理」岗；Tree/List 回填；编制区可见 | ✅ |
+| ORGFAST-42 | 流程剧本读写（公司 metadata）+ 预授权 | organization + planner | 任务点名已授权剧本 → 展开 0 总经理 LLM；组织链无名剧本 fail-closed（`playbook_fill_required`）+ `AuthorizeCompanyPlaybook` 沉淀 | ✅ |
+| ORGFAST-43 | 精灵粗路由只输出 playbook_id（重型） | planner prompt / 分类 | 不按行业常识拆到岗 | ✅ DECISION.md + `next_action=authorize_playbook` |
+| ORGFAST-44 | 三管道：上行心跳/例外事件；横向仍 Brief | delivery + progress | 上行 ≤2KB；无源码 | ✅ PlanExecutor 阶段开工/完成发 heartbeat，失败发 upward；非调度栅栏 |
+| ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | ✅ planner 不合则丢 keys；Allocate 再滤领导 |
+| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | 🟡 payload 已 omitempty；写入路径未接 |
 | ORGFAST-47 | 仲裁：部门→总经理，公司→精灵呈用户 | 门禁/事件 | 禁止总经理互怼循环 | 📋 |
 
 ### Phase 4b — 链路横切（P1，与 Phase 4 同批设计、可并行实施）
@@ -164,16 +164,16 @@
 
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
-| ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | 🟡 TrimPrefixBudget 已落地；装配未接 |
+| ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | ✅ Brief+协议封顶；知识/记忆按需工具，不预灌 |
 | ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | 📋 |
-| ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | 📋 |
+| ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | 🟡 默认 `read_only` + 单测锁死不继承 spirit 工具 |
 | ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | 📋 |
-| ORGFAST-54 | 记忆隔离单测 | memory 边界 | 兄弟不可读对方 L3 | 📋 |
-| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | 📋 |
+| ORGFAST-54 | 记忆隔离单测 | memory 边界 | 兄弟不可读对方 L3 | ✅ 专项成员注入时 `ClampSpecialistL3Scopes`（Spirit 除外） |
+| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | 🟡 `NeedsUserConfirm` 已测；HITL 未接 |
 | ORGFAST-56 | 主对话不订阅成员 token | progress / WS | 用户侧只有芯片/心跳/例外 | 📋 |
-| ORGFAST-57 | 汇总输入收紧 | spirit_synthesis | prompt 仅 Brief+例外+清单 | 📋 |
-| ORGFAST-58 | `deptmail`/`inject` 不得当横向/上行 | 测试锁 | 混用路径编译期或单测拒绝 | 📋 |
-| ORGFAST-59 | 阶段可选 `graph_template_id` | playbook + M53 | 未填走 Team Turn；不新引擎 | 📋 |
+| ORGFAST-57 | 汇总输入收紧 | spirit_synthesis | prompt 仅 Brief+例外+清单 | ✅ |
+| ORGFAST-58 | `deptmail`/`inject` 不得当横向/上行 | 测试锁 | 混用路径编译期或单测拒绝 | ✅ |
+| ORGFAST-59 | 阶段可选 `graph_template_id` | playbook + M53 | 未填走 Team Turn；不新引擎 | 🟡 已写入 SubTask；PlanExecutor 未按模板改道 |
 
 ---
 
@@ -227,7 +227,7 @@
 | `internal/agent/agent_allocator_impl.go` | Phase B 先 staffing 再 Factory |
 | `internal/agent/staffing_test.go` | 采纳 / 超时 / 不改写 DAG |
 
-### Phase 4（规划，未实施）
+### Phase 4（核心已落地，发射/补写/仲裁仍开）
 
 | 文件 | 改动 |
 |------|------|
@@ -242,7 +242,7 @@
 | `orchestration_progress` | `upward` / `heartbeat`；载荷 ≤2KB |
 | 门禁/事件 | 部门争议→总经理；公司争议→精灵呈用户 |
 
-### Phase 4b（规划，未实施）
+### Phase 4b（预算/汇总/锁已落地，装配允许集与 HITL 仍开）
 
 | 文件 | 改动 |
 |------|------|
@@ -272,12 +272,15 @@
 - [x] 高置信路径主管 LLM 计数 `skipped_high_confidence`
 - [x] staffing 超时 fail-closed，不热路径 Factory；不二次分解
 - [x] Allocate 不改写 Plan DAG，跨部只标 CrossDept
-- [x] 分档规则可测（ORGFAST-40）；已授权剧本展开函数已有（热路径未接）
-- [x] `company_lead` 不得为 AssignedKey / 启发式匹配
-- [ ] 重型上行无源码；指纹不合不复用 keys（判定已有，回放未接）
-- [ ] 成员首轮前缀 ≤6KB；员工工具为专项子集（裁剪函数已有，装配未接）
-- [ ] 合成 prompt 无成员会话原文
-- [ ] 默认阶段无开工确认卡；pause/inject 复用现网
+- [x] 分档规则可测（ORGFAST-40）；点名已授权剧本走热路径展开（未点名不套唯一剧本）
+- [x] `company_lead` 不得为 AssignedKey / 启发式匹配；挂「总经理」岗；Tree/List 回填
+- [x] 指纹不合不复用 keys；Allocate 滤掉治理领导
+- [x] 成员首轮 Brief+协议受 6KB 硬顶；知识/记忆按需
+- [x] 合成 prompt 无成员会话原文
+- [x] 默认阶段无开工确认卡（`NeedsUserConfirm` 空输入 = 无卡）
+- [x] DAG 发射 upward/heartbeat（非调度栅栏）；组织链无名剧本 fail-closed + 管理面授权沉淀
+- [x] 专项成员 L3 去掉 team 总线（注入期 clamp）
+- [ ] 确认五档 HITL；花名册 tool/MCP 允许集在 Assemble 收口；PlanExecutor 按 `graph_template_id` 改道 M53
 
 ---
 

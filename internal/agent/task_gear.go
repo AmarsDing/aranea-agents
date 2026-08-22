@@ -1,6 +1,10 @@
 package agent
 
-import "strings"
+import (
+	"strings"
+
+	"aranea-agents/internal/biz"
+)
 
 // TaskGear is the deterministic orchestration gear (R9). No extra LLM.
 type TaskGear string
@@ -61,6 +65,26 @@ func ClassifyTaskGear(in GearInput) TaskGear {
 // downgrades an in-flight heavy run.
 func UpgradeGearAfterPlan(current TaskGear, crossDeptDepends bool) TaskGear {
 	return ClassifyTaskGear(GearInput{Current: current, CrossDeptDepends: crossDeptDepends})
+}
+
+// PlanHasCrossDeptDepends is the late-upgrade signal: 2+ domain roots and a DependsOn.
+func PlanHasCrossDeptDepends(subtasks []biz.SubTask) bool {
+	roots := map[string]struct{}{}
+	hasDep := false
+	for _, st := range subtasks {
+		if len(st.DependsOn) > 0 {
+			hasDep = true
+		}
+		p := strings.TrimSpace(st.DomainPath)
+		if p == "" {
+			continue
+		}
+		if i := strings.Index(p, "/"); i > 0 {
+			p = p[:i]
+		}
+		roots[p] = struct{}{}
+	}
+	return hasDep && len(roots) >= 2
 }
 
 // HasOrgChainIntent is a coarse lexical check for explicit org-chain wording.

@@ -1,0 +1,109 @@
+package agent
+
+import (
+	"context"
+	"testing"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+)
+
+func TestPlanExpandsNamedPlaybookWithoutLLM(t *testing.T) {
+	t.Parallel()
+	repo := &stubTaskPlanRepo{}
+	impl := NewTaskPlanner(repo, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	AttachPlannerOrganizationReader(impl, &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {
+			ID:    "co-1",
+			Key:   "acme",
+			Level: "company",
+			MetadataJSON: `{
+			  "playbooks": [{
+			    "id": "software_delivery",
+			    "authorized_by": "__company_lead_acme__",
+			    "stages": [
+			      {"id": "design", "domain_path": "设计/视觉"},
+			      {"id": "be", "domain_path": "软件/后端", "depends_on": ["design"], "graph_template_id": "tmpl-1"}
+			    ]
+			  }]
+			}`,
+		},
+	}})
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-pb",
+		UserMessage:     "请按 software_delivery 交付本次迭代",
+		Mode:            "direct",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan == nil || len(plan.SubTasks) != 2 {
+		t.Fatalf("playbook stages=%v", plan)
+	}
+	if plan.SubTasks[1].GraphTemplateID != "tmpl-1" {
+		t.Fatalf("graph template lost: %+v", plan.SubTasks[1])
+	}
+	if plan.MemoryHit == nil || plan.MemoryHit.PlaybookID != "software_delivery" {
+		t.Fatalf("playbook hit=%+v", plan.MemoryHit)
+	}
+	if plan.DecomposeReason == "" {
+		t.Fatal("expected playbook reason")
+	}
+}
+
+func TestPlanOrgChainWithoutPlaybookDoesNotDecompose(t *testing.T) {
+	t.Parallel()
+	repo := &stubTaskPlanRepo{}
+	impl := NewTaskPlanner(repo, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	AttachPlannerOrganizationReader(impl, &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {ID: "co-1", Key: "acme", Level: "company", MetadataJSON: `{}`},
+	}})
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-fill",
+		UserMessage:     "这次请按组织链走编制汇报，完成整条软件交付",
+		Mode:            "dag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Strategy != biz.StrategyDirect || plan.StrategyReason != biz.PlaybookFillRequiredReason {
+		t.Fatalf("want fill-required direct, got strategy=%s reason=%s", plan.Strategy, plan.StrategyReason)
+	}
+	if len(plan.SubTasks) != 0 {
+		t.Fatalf("must not invent stages: %+v", plan.SubTasks)
+	}
+}
+
+func TestPlanDoesNotAutoPickSolePlaybookOnLightCopy(t *testing.T) {
+	t.Parallel()
+	repo := &stubTaskPlanRepo{}
+	impl := NewTaskPlanner(repo, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	AttachPlannerOrganizationReader(impl, &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {
+			ID:    "co-1",
+			Key:   "acme",
+			Level: "company",
+			MetadataJSON: `{
+			  "playbooks": [{
+			    "id": "software_delivery",
+			    "authorized_by": "__company_lead_acme__",
+			    "stages": [{"id": "be", "domain_path": "软件/后端"}]
+			  }]
+			}`,
+		},
+	}})
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-light",
+		UserMessage:     "改一句文案",
+		Mode:            "direct",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.SubTasks) != 0 {
+		t.Fatalf("light copy must not expand playbook: %+v", plan.SubTasks)
+	}
+}

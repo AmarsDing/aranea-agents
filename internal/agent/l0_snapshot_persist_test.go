@@ -48,8 +48,8 @@ func TestL0SnapshotPendingForCall(t *testing.T) {
 }
 
 func TestL0GateContextWindow(t *testing.T) {
-	if got := l0GateContextWindow(biz.Agent{ContextWindow: 48000}); got != 48000 {
-		t.Fatalf("agent window: %d", got)
+	if got := l0GateContextWindow(biz.Agent{ContextWindow: 48000}); got != llmcontext.DefaultWindowTokens {
+		t.Fatalf("agent window ignored: %d", got)
 	}
 	if got := l0GateContextWindow(biz.Agent{}); got != llmcontext.DefaultWindowTokens {
 		t.Fatalf("default window: %d", got)

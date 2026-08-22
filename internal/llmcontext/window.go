@@ -5,7 +5,13 @@ import (
 	"strings"
 )
 
-const DefaultWindowTokens = 128000
+// DefaultWindowTokens is the product chat-context budget and compression
+// standard for every model (256K). Vendor-claimed provider windows are
+// informational only and must not drive chat ratio, UI, or compression.
+const DefaultWindowTokens = 256000
+
+// MaxWindowTokens is the hard ceiling for chat context support (256K).
+const MaxWindowTokens = 256000
 
 type ResolveInput struct {
 	ProviderModelConfigJSON string
@@ -13,27 +19,24 @@ type ResolveInput struct {
 	AgentWindow             int
 }
 
-// ResolveWindow picks the effective context window tokens for the active model
-// call. All inputs are treated as candidate ceilings: the provider catalog value
-// states the vendor-claimed maximum, while session/agent values are local
-// operational caps. The smallest positive value wins, so a local cap always
-// constrains an inflated catalog value (a 1M-token catalog entry would otherwise
-// push compression trigger thresholds to ~700K and sessions would never
-// compact). Falls back to DefaultWindowTokens when no input is set.
-func ResolveWindow(in ResolveInput) int {
-	win := 0
-	consider := func(v int) {
-		if v > 0 && (win <= 0 || v < win) {
-			win = v
-		}
-	}
-	consider(contextWindowFromConfigJSON(in.ProviderModelConfigJSON))
-	consider(in.SessionDefaultWindow)
-	consider(in.AgentWindow)
-	if win <= 0 {
+// ResolveWindow returns the product chat-context budget. Provider catalog
+// context_window_k, session defaults, and agent.context_window are not used:
+// those values describe vendor or local model metadata, not Aranea's chat
+// context support. The budget is a fixed 256K for every model.
+func ResolveWindow(_ ResolveInput) int {
+	return DefaultWindowTokens
+}
+
+// ClampWindow caps a token count to the product chat-context ceiling.
+// Non-positive values fall back to DefaultWindowTokens.
+func ClampWindow(tokens int) int {
+	if tokens <= 0 {
 		return DefaultWindowTokens
 	}
-	return win
+	if tokens > MaxWindowTokens {
+		return MaxWindowTokens
+	}
+	return tokens
 }
 
 func contextWindowFromConfigJSON(raw string) int {

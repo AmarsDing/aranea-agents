@@ -424,9 +424,7 @@ func (c *Compressor) CompressStatus(ctx context.Context, sessionID string) (stri
 			return "optimized", nil
 		}
 	}
-	window := llmcontext.ResolveWindow(llmcontext.ResolveInput{
-		SessionDefaultWindow: sess.LastContextWindowTokens,
-	})
+	window := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 	if window <= 0 {
 		return "normal", nil
 	}
@@ -463,10 +461,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 
 	// Calculate effective_budget thresholds.
-	window := llmcontext.ResolveWindow(llmcontext.ResolveInput{
-		SessionDefaultWindow: sess.LastContextWindowTokens,
-		AgentWindow:          ag.ContextWindow,
-	})
+	window := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 
 	usedTokens := sess.ContextUsedTokens
 
@@ -772,10 +767,7 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 			return err
 		}
 
-		win := llmcontext.ResolveWindow(llmcontext.ResolveInput{
-			SessionDefaultWindow: sess.LastContextWindowTokens,
-			AgentWindow:          ag.ContextWindow,
-		})
+		win := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 		est := estimateCompactedPromptTokens(mergedSummary, tailMsgs, calculateReservedSystem(ag))
 		if taskState != nil {
 			// 注入快照的结构化状态块也占 prompt 体积，计入水位估计。
@@ -818,10 +810,7 @@ func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, 
 // postCompressionSync handles post-compression side effects: notice, memory resync, L0 force-snapshot,
 // and framework summary sync.
 func (c *Compressor) postCompressionSync(ctx context.Context, sessionID, trpcUserID string, ag biz.Agent, sess biz.Session, fromTurn, toTurn int, txMerged string, txTail []biz.ChatMessage, cacheHit bool) {
-	win := llmcontext.ResolveWindow(llmcontext.ResolveInput{
-		SessionDefaultWindow: sess.LastContextWindowTokens,
-		AgentWindow:          ag.ContextWindow,
-	})
+	win := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 	est := estimateCompactedPromptTokens(txMerged, txTail, calculateReservedSystem(ag))
 	ratio := llmcontext.ContextRatio(est, win)
 	status := llmcontext.ContextStatusForRatio(ratio)

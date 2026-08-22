@@ -43,6 +43,9 @@ type PlanStep struct {
 	AssignedName string
 	MatchLayer   string
 	MatchReason  string
+	// GraphTemplateID optionally routes this stage through an existing M53
+	// template. Memory field copied from SubTask; empty = ordinary Team Turn.
+	GraphTemplateID string
 }
 
 type PlanStepStatus string

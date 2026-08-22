@@ -215,6 +215,16 @@ func TestProfileAllowSet_codingIncludesMCPBroker(t *testing.T) {
 	}
 }
 
+func TestReadOnlyLeadDoesNotInheritSpiritTools(t *testing.T) {
+	t.Parallel()
+	allowed := profileAllowSet("read_only", nil)
+	for _, key := range []string{"plan_and_execute", "cancel_orchestration", "synthesize_results", "build_orchestration_graph"} {
+		if allowed[key] {
+			t.Fatalf("governance lead profile must not inherit spirit tool %s", key)
+		}
+	}
+}
+
 func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}
 	cat := []Tool{{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true}}

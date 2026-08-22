@@ -24,6 +24,12 @@ type DurableRunCheckpointPayload struct {
 	DialogMode       string `json:"dialog_mode,omitempty"`
 	Provider         string `json:"provider,omitempty"`
 	Model            string `json:"model,omitempty"`
+	// Org-heavy resume fields (R13). omitempty so old checkpoints still Recover.
+	Gear                  string   `json:"gear,omitempty"`
+	PlaybookID            string   `json:"playbook_id,omitempty"`
+	AuthorizedStageIDs    []string `json:"authorized_stage_ids,omitempty"`
+	IssuedBriefIDs        []string `json:"issued_brief_ids,omitempty"`
+	ConstraintFingerprint string   `json:"constraint_fingerprint,omitempty"`
 }
 
 // DurableCheckpointSnapshot captures interactive turn state at escalation (CC-F-02).

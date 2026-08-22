@@ -199,7 +199,7 @@ Aranea-Agents 拥有业界最完整的 Agent 记忆架构：
 **架构锁（给后续开发者 / Agent）**：[组织与专项不变量](docs/development/org-invariants.md) · [M67](docs/development/67-organization-redesign.md) · [M78](docs/development/78-org-aware-orchestration.md)
 
 **功能**：
-- **公司树**：当前 workspace 默认一棵公司；每公司一名总经理（`company_lead`），每部门一名主管（`dept_lead`）
+- **公司树**：当前 workspace 默认一棵公司；每公司一名总经理（`company_lead`，挂「总经理」岗，编制区可见），每部门一名主管（`dept_lead`）
 - **专项 Agent**：每个业务 Agent 自带使命、`domain_path`、工具画像（ToolsProfile/Allow/Deny）、MCP 门禁、技能——**不继承精灵工具箱**
 - **岗位 Prompt 模板**：按岗预置，支持变体（general / technical / management）
 - **职责构建**：BuildResponsibility 根据岗位+部门描述生成 L1 注入内容

@@ -49,6 +49,9 @@ type taskPlannerImpl struct {
 	// P4-G1 测试钩子——校验门违例时的有界重分解函数；生产为 nil 时回退
 	// decomposeTask（同步分解，非流式——修复路径不需要流式中间态）。
 	repairDecomposeFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, level biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error)
+
+	// org is optional; when set, authorized playbooks can expand without LLM.
+	org biz.OrganizationReader
 }
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
@@ -80,6 +83,14 @@ func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUs
 	return impl
 }
 
+// AttachPlannerOrganizationReader wires org lookup so Plan can expand an
+// authorized playbook without changing the TaskPlannerPort constructor.
+func AttachPlannerOrganizationReader(p biz.TaskPlannerPort, org biz.OrganizationReader) {
+	if impl, ok := p.(*taskPlannerImpl); ok {
+		impl.org = org
+	}
+}
+
 // Plan assesses task complexity, optionally decomposes, and outputs a strategy.
 func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*biz.TaskPlan, error) {
 	traceID := input.TraceID
@@ -92,6 +103,17 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		loggateway.Str("trace_id", traceID),
 		loggateway.Str("spirit_session_id", input.SpiritSessionID),
 	)
+
+	if plan, ok := impl.planFromNamedPlaybook(ctx, input, traceID); ok {
+		return plan, nil
+	}
+	if HasOrgChainIntent(input.UserMessage) {
+		if pb, steps, ok := impl.lookupSolePlaybookIfHeavy(ctx, GearHeavy); ok && len(steps) > 0 {
+			if plan, ok := impl.persistPlaybookPlan(ctx, input, traceID, pb, steps); ok {
+				return plan, nil
+			}
+		}
+	}
 
 	// Step 0: Query OrchestrationCache for memory-driven routing
 	memoryHit := impl.queryMemory(ctx, input, traceID)
@@ -142,6 +164,9 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			DomainPath:      memoryHit.DomainPath,
 			Status:          biz.TaskPlanStatusDraft,
 		}
+		if !biz.RecipeKeysReusable(memoryHit.ConstraintFingerprint, impl.currentConstraintFingerprint(ctx, input.UserMessage)) {
+			memoryHit.AgentKeysUsed = nil
+		}
 		if strategy != biz.StrategyDirect && (len(memoryHit.Specialties) > 0 || len(memoryHit.AgentKeysUsed) > 0) {
 			plan.SubTasks = recipeReplaySubTasks(memoryHit, input.UserMessage)
 			plan.StrategyReason = "配方回放：按专题槽位复用历史专项，跳过分解 LLM"
@@ -169,6 +194,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		})
 		impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
 		return saved, nil
+	}
+
+	if HasOrgChainIntent(input.UserMessage) {
+		return impl.planPlaybookFillRequired(ctx, input, traceID)
 	}
 
 	// Fallback: detect team-formation intent from the user message when mode is
@@ -289,9 +318,24 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	var subTasks []biz.SubTask
 	var dag *biz.PlanTaskDAG
 	var decomposeReason string
+	var playbookHit *biz.MemoryHit
 	streamPublished := false
 	planID := "tp_" + uuid.NewString()
-	if effectiveLevel == biz.ComplexityComplex {
+	gear := ClassifyTaskGear(GearInput{
+		UserWantsOrgChain: HasOrgChainIntent(input.UserMessage),
+		LongTask:          effectiveLevel == biz.ComplexityComplex || complexityScore >= 0.6,
+		CompanyNodeCount:  impl.companyNodeCount(ctx),
+	})
+	if pb, steps, ok := impl.lookupSolePlaybookIfHeavy(ctx, gear); ok && len(steps) > 0 {
+		subTasks = steps
+		dag = buildDAGFromSubTasks(steps)
+		decomposeReason = "authorized playbook expand; skip planner LLM"
+		playbookHit = playbookMemoryHit(pb)
+		if len(steps) >= 2 {
+			strategy = biz.StrategyDAG
+			strategyReason = decomposeReason
+		}
+	} else if effectiveLevel == biz.ComplexityComplex {
 		// P2：分解前先落库 draft——持久化与展示同时进行。崩溃后 draft
 		// 可恢复、可观测「正在规划」，不再「先分解 60s、最后一次性落库」。
 		draft := &biz.TaskPlan{
@@ -526,7 +570,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		StrategyReason:     strategyReason,
 		TopologyHint:       topologyHint,
 		DomainPath:         PrimaryDomainPath(subTasks),
-		MemoryHit:          nil, // Memory hit is handled in Step 0; normal path has no cache hit
+		MemoryHit:          playbookHit,
 		Status:             biz.TaskPlanStatusDraft,
 		StreamPublished:    streamPublished,
 	}
@@ -731,12 +775,13 @@ func (impl *taskPlannerImpl) queryMemory(ctx context.Context, input biz.PlanInpu
 	}
 
 	return &biz.MemoryHit{
-		CacheID:       best.TaskPattern,
-		DQScore:       best.DQScore,
-		TopologyUsed:  string(topology),
-		AgentKeysUsed: best.AgentKeys,
-		DomainPath:    best.DomainPath,
-		Specialties:   append([]string(nil), best.Specialties...),
+		CacheID:               best.TaskPattern,
+		DQScore:               best.DQScore,
+		TopologyUsed:          string(topology),
+		AgentKeysUsed:         best.AgentKeys,
+		DomainPath:            best.DomainPath,
+		Specialties:           append([]string(nil), best.Specialties...),
+		ConstraintFingerprint: best.ConstraintFingerprint,
 	}
 }
 
@@ -2292,6 +2337,9 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 		}
 		if st.DomainPath != "" && ps.DomainPath == "" {
 			ps.DomainPath = st.DomainPath
+		}
+		if st.GraphTemplateID != "" {
+			ps.GraphTemplateID = st.GraphTemplateID
 		}
 		ps.Mode = biz.SpiritTeamModeForStep(string(plan.Strategy), len(ps.AgentKeys))
 		planSteps = append(planSteps, ps)

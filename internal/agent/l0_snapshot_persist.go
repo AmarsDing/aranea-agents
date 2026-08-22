@@ -217,10 +217,7 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 	)
 }
 
-func l0GateContextWindow(ag biz.Agent) int {
-	if ag.ContextWindow > 0 {
-		return ag.ContextWindow
-	}
+func l0GateContextWindow(_ biz.Agent) int {
 	return llmcontext.DefaultWindowTokens
 }
 
@@ -344,18 +341,8 @@ func l0SnapshotPendingMap(inv *trpcagent.Invocation) map[int]l0SnapshotPending {
 	return map[int]l0SnapshotPending{}
 }
 
-func resolveL0ContextWindow(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, prov, mod string) int {
-	cfgJSON := ""
-	if deps.ModelCatalog != nil {
-		if row, err := deps.ModelCatalog.GetByProviderAndModel(ctx, prov, mod); err == nil {
-			cfgJSON = row.ConfigJSON
-		}
-	}
-	return llmcontext.ResolveWindow(llmcontext.ResolveInput{
-		ProviderModelConfigJSON: cfgJSON,
-		SessionDefaultWindow:    event.SessionDefaultContextWindowFromContext(ctx),
-		AgentWindow:             ag.ContextWindow,
-	})
+func resolveL0ContextWindow(_ context.Context, _ TRPCBuilderDeps, _ biz.Agent, _, _ string) int {
+	return llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 }
 
 func l0CorrelationRunID(ctx context.Context) string {

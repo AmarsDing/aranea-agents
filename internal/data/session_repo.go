@@ -701,7 +701,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	if contextWindow <= 0 {
-		contextWindow = 128000
+		contextWindow = llmcontext.DefaultWindowTokens
 	}
 	tok := estimatedPromptTokens
 	if tok < 0 {

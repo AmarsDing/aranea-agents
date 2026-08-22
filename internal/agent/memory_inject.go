@@ -203,6 +203,7 @@ func (r *MemoryCueResult) JoinCuesWithTokenBudget(budgetTokens int) string {
 
 func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
+	biz.ClampSpecialistL3Scopes(&policy, ag)
 	if !policy.MasterEnabled || !policy.AnyInject() {
 		return nil
 	}
@@ -292,6 +293,7 @@ type memoryCueTurnCache struct {
 // 把召回副作用（notice/计数/重巩固）限制为 once-per-turn。
 func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, messages []trpcmodel.Message) (*MemoryCueResult, bool) {
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
+	biz.ClampSpecialistL3Scopes(&policy, ag)
 	if !policy.MasterEnabled {
 		return &MemoryCueResult{}, false
 	}

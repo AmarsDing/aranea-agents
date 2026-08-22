@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -346,7 +347,8 @@ func atFullContextUsage(sess biz.Session) bool {
 	if sess.ContextUsedRatio >= 1.0 {
 		return true
 	}
-	if sess.LastContextWindowTokens > 0 && sess.ContextUsedTokens >= sess.LastContextWindowTokens {
+	win := llmcontext.DefaultWindowTokens
+	if sess.ContextUsedTokens >= win {
 		return true
 	}
 	return false

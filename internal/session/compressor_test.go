@@ -545,7 +545,7 @@ func newSuppressTestCompressor(read *stubCompressReadDeps, fake *scriptedLLMComp
 
 func TestRunCompress_suppressedAfterDeterministicFailure(t *testing.T) {
 	read := &stubCompressReadDeps{
-		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000},
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 200000, LastContextWindowTokens: 256000},
 		maxSummarized: 0,
 		msgs:          makeTimeline(6),
 	}
@@ -572,7 +572,7 @@ func TestRunCompress_suppressedAfterDeterministicFailure(t *testing.T) {
 
 func TestRunCompress_forcedBypassesSuppression(t *testing.T) {
 	read := &stubCompressReadDeps{
-		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000},
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 200000, LastContextWindowTokens: 256000},
 		maxSummarized: 0,
 		msgs:          makeTimeline(6),
 	}
@@ -711,7 +711,7 @@ func cacheEnabledAgent() biz.Agent {
 
 func TestRunCompress_CacheEnabledHitsOnRepeat(t *testing.T) {
 	read := &stubCompressReadDeps{
-		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000},
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 200000, LastContextWindowTokens: 256000},
 		maxSummarized: 0,
 		msgs:          makeTimeline(6),
 	}
@@ -738,7 +738,7 @@ func TestRunCompress_CacheEnabledHitsOnRepeat(t *testing.T) {
 
 func TestRunCompress_CacheIsolatesSessions(t *testing.T) {
 	read := &stubCompressReadDeps{
-		sess:          biz.Session{ContextUsedTokens: 100000, LastContextWindowTokens: 1000}, // ID 由 GetSessionByID 按请求填充
+		sess:          biz.Session{ContextUsedTokens: 200000, LastContextWindowTokens: 256000}, // ID 由 GetSessionByID 按请求填充
 		maxSummarized: 0,
 		msgs:          makeTimeline(6),
 	}
@@ -764,7 +764,7 @@ func TestRunCompress_CacheIsolatesSessions(t *testing.T) {
 
 func TestRunCompress_CacheDisabledSkipsCache(t *testing.T) {
 	read := &stubCompressReadDeps{
-		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000},
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 200000, LastContextWindowTokens: 256000},
 		maxSummarized: 0,
 		msgs:          makeTimeline(6),
 	}

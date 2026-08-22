@@ -268,7 +268,7 @@ ConstraintFingerprint
 
 ### 3.1 当前热路径（代码真相）
 
-> Phase 0–2 已补齐主管排除、`DepartmentID`、花名册、Brief/Bulk、配方多槽回放。下表保留落地前断点，便于对照；**现状以 development 验收勾选为准**。Phase 4 在此之上叠加分档 / 剧本 / 三管道，尚未写代码。
+> Phase 0–2 已补齐主管排除、`DepartmentID`、花名册、Brief/Bulk、配方多槽回放。Phase 4 已叠加分档、`company_lead` 挂岗、点名剧本热路径展开、Brief+协议前缀预算。三管道事件发射、`playbook_fill`、确认 HITL 仍开。**现状以 development 验收勾选为准**。
 
 ```
 PrePlanningGate.Evaluate
@@ -760,7 +760,7 @@ sequenceDiagram
 2. 只有重型走完整链；总经理 = 预授权剧本 + 对外口 + 仲裁。
 3. 调度与汇报分离：并行开工；上行走例外。
 4. 对人会话仍是精灵。
-5. `company_lead` 本期只设计，代码在 Phase 4；跨公司发送在 P3。
+5. `company_lead` 已落地：挂「总经理」岗、不可分配、编制区可见；跨公司发送仍在 P3。
 
 ---
 

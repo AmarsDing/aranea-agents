@@ -13,6 +13,7 @@
 - 一棵树：`company` → `department` → `position`（`organizations.level`）。不是「行业分类」。
 - 当前 workspace **默认一棵公司树**。换业务主体 = 换 workspace，不是任务内检索/创建公司。
 - 创建部门时自动挂 `dept_lead`；创建公司时自动挂 `company_lead`（幂等，`__company_lead_{key}__`）。
+- `company_lead` 挂在真实岗位上：公司 → 系统部门「总经理办公室」（`{companyKey}_office`，不另生 `dept_lead`）→ 岗位「总经理」（`{companyKey}_gm`）。打开组织树 / Agent 列表会回填已有公司。编制/预设区可见，不进精灵管家区。
 - 任务路径**禁止** `OrganizationWriter` 创建 company/department。
 
 ## 2. 部门架构
@@ -39,11 +40,11 @@
 
 ## 4. 编排怎么用这张编制表
 
-- 轻：不组队。中：花名册 + 部门门禁。重：已授权剧本展开部门槽 + 三管道。
+- 轻：不组队。中：花名册 + 部门门禁。重：已授权剧本展开部门槽 + 三管道。用户点名组织链但公司无剧本 → fail-closed（`playbook_fill_required`），禁止 TaskPlanner 按行业常识拆岗；授权走管理面 `AuthorizeCompanyPlaybook`。
 - 生产建团唯一路径：`PlanExecutor` + `RealTeamOrchestrator`。
 - 同类班底复用 = 配方槽位 + 新 `AssembleTeam`，禁止复活 completed Team。
 - 交接：Brief/Bulk；知识库引用不复制；记忆 L3 不横向倒给兄弟。
-- 员工首轮前缀合计 ≤6KB；主对话不刷成员 token。
+- 成员首轮：Brief + 协议受 6KB 硬顶；知识/记忆默认按需工具取，不预灌正文。主对话不刷成员 token。
 
 ## 5. 改架构的合法入口
 

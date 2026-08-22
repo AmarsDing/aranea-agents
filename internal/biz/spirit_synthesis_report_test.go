@@ -145,6 +145,9 @@ func TestBuildSynthesisSummaryTrigger_AllCompleted_KeepsSuccessStructure(t *test
 	if strings.Contains(out, "## 未解决问题") {
 		t.Fatalf("success path must not demand an unresolved-questions section, got:\n%s", out)
 	}
+	if !strings.Contains(out, "仅基于") || !strings.Contains(out, "禁止考古成员会话全文") {
+		t.Fatalf("synthesis must stay Brief-only, got:\n%s", out)
+	}
 }
 
 // F7 (Phase 11)：交付物摘要内嵌 trigger —— 成功路径也必须带摘要段，

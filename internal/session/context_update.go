@@ -15,17 +15,10 @@ type ModelConfigCatalog interface {
 	GetModelConfigJSON(ctx context.Context, provider, model string) string
 }
 
-// ResolveContextWindowTokens picks the context window for the active model call.
-func ResolveContextWindowTokens(ctx context.Context, catalog ModelConfigCatalog, sess biz.Session, ag biz.Agent, prov, mod string) int {
-	cfgJSON := ""
-	if catalog != nil {
-		cfgJSON = catalog.GetModelConfigJSON(ctx, prov, mod)
-	}
-	return llmcontext.ResolveWindow(llmcontext.ResolveInput{
-		ProviderModelConfigJSON: cfgJSON,
-		SessionDefaultWindow:    sess.DefaultContextWindowTokens,
-		AgentWindow:             ag.ContextWindow,
-	})
+// ResolveContextWindowTokens returns the product chat-context budget (256K).
+// Provider catalog windows are informational only and are not consulted.
+func ResolveContextWindowTokens(_ context.Context, _ ModelConfigCatalog, _ biz.Session, _ biz.Agent, _, _ string) int {
+	return llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 }
 
 // PatchContextFromLLMUsage updates session context metrics and optionally triggers L0 compression.

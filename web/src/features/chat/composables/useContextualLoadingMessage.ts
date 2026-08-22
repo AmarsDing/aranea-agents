@@ -163,6 +163,7 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const droppedSubtaskNames = Array.isArray(droppedRaw) ? droppedRaw.filter((n): n is string => typeof n === 'string').join('、') : '';
       const elapsed = typeof meta.elapsed_seconds === 'number' ? meta.elapsed_seconds : 0;
       const teamCount = typeof meta.team_count === 'number' ? meta.team_count : 0;
+      const summary = typeof meta.summary === 'string' ? meta.summary : '';
       let messageKey = config.messageKey;
       if (phase === 'team_count_mismatch' && meta.action === 'proceed') {
         messageKey = 'chat.orchestrationProgress.teamCountMismatchProceed';
@@ -188,6 +189,7 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
         droppedSubtaskNames,
         elapsed,
         teamCount,
+        summary,
       }) as string;
 
       loadingMessage.value = {

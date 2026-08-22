@@ -72,19 +72,17 @@ func TestContextWindowFromConfigJSON_Invalid(t *testing.T) {
 	}
 }
 
-func TestResolveWindow_SessionDefault(t *testing.T) {
-	// Both local caps set → smallest wins (agent 32K caps session default 64K).
+func TestResolveWindow_SessionDefaultIgnored(t *testing.T) {
 	win := ResolveWindow(ResolveInput{
 		SessionDefaultWindow: 64000,
 		AgentWindow:          32000,
 	})
-	if win != 32000 {
-		t.Fatalf("got %d want 32000", win)
+	if win != DefaultWindowTokens {
+		t.Fatalf("got %d want %d", win, DefaultWindowTokens)
 	}
-	// Session default alone → used as-is.
 	win = ResolveWindow(ResolveInput{SessionDefaultWindow: 64000})
-	if win != 64000 {
-		t.Fatalf("got %d want 64000", win)
+	if win != DefaultWindowTokens {
+		t.Fatalf("got %d want %d", win, DefaultWindowTokens)
 	}
 }
 
@@ -125,7 +123,10 @@ func TestContextStatusForRatio_BoundaryExceeded(t *testing.T) {
 }
 
 func TestDefaultWindowTokens(t *testing.T) {
-	if DefaultWindowTokens != 128000 {
-		t.Fatalf("got %d want 128000", DefaultWindowTokens)
+	if DefaultWindowTokens != 256000 {
+		t.Fatalf("got %d want 256000", DefaultWindowTokens)
+	}
+	if MaxWindowTokens != 256000 {
+		t.Fatalf("max: got %d want 256000", MaxWindowTokens)
 	}
 }

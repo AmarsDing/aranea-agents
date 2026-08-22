@@ -232,6 +232,9 @@ export default {
       teamCountMismatch: '团队数量与请求不符：请求 {requestedTeamCount} 个，实际分解 {decomposedSubtaskCount} 个，已截取前 {requestedTeamCount} 个执行（丢弃：{droppedSubtaskNames}）',
       teamCountMismatchProceed: '团队数量与请求不符：请求 {requestedTeamCount} 个，实际分解 {decomposedSubtaskCount} 个，按实际数量继续执行',
       reused: '本会话已有 {teamCount} 个相关团队，正在复用其结果…',
+      heartbeat: '阶段心跳：{summary}',
+      upward: '上报例外：{summary}',
+      playbookFillRequired: '需要总经理先授权流程剧本，不能按行业常识拆岗',
     },
     agentSidebar: {
       statusRunning: '执行中',

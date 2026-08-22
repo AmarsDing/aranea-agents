@@ -237,6 +237,9 @@ export default {
       teamCountMismatch: 'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — running the first {requestedTeamCount} (dropped: {droppedSubtaskNames})',
       teamCountMismatchProceed: 'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — proceeding with the decomposed count',
       reused: 'Reusing {teamCount} existing team(s) in this session…',
+      heartbeat: 'Stage heartbeat: {summary}',
+      upward: 'Exception: {summary}',
+      playbookFillRequired: 'Authorize a company playbook first — do not invent jobs from industry guesswork',
     },
     agentSidebar: {
       statusRunning: 'Running',

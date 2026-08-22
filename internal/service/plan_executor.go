@@ -1320,6 +1320,10 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 			loggateway.Str("team_stage_id", ts.ID), loggateway.Err(err))
 	}
 	r.pe.seq.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
+	r.publishUpward(ctx, biz.PipeUpwardHeartbeat, "阶段已开工："+runningStep.Label, map[string]any{
+		"step_id": step.ID,
+		"team_id": result.Team.ID,
+	})
 	// 5. Update GraphNode status + TeamStageID.
 	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusRunning, result.TeamStageID)
 	// 6. Set MappedTeamStageID on the step.
@@ -1363,11 +1367,17 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 	}
 	if ev.Success {
 		r.pe.seq.Publish(ctx, biz.NewPlanStepCompletedEvent(current, r.board.SessionID))
+		r.publishUpward(ctx, biz.PipeUpwardHeartbeat, "阶段完成："+current.Label, map[string]any{
+			"step_id": step.ID,
+		})
 		// 2026-07-04 补齐：GraphNode → Completed
 		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusCompleted, "")
 		r.checkDownstream(ctx, step.ID)
 	} else {
 		r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
+		r.publishUpward(ctx, biz.PipeUpwardException, "阶段例外："+current.Label+" "+ev.ErrorMsg, map[string]any{
+			"step_id": step.ID,
+		})
 		// 2026-07-04 补齐：GraphNode → Failed
 		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
 		r.cascadeSkip(ctx, step.ID)
@@ -1390,9 +1400,19 @@ func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
 			loggateway.Str("step_id", step.ID), loggateway.Err(err))
 	}
 	r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
+	r.publishUpward(ctx, biz.PipeUpwardException, "阶段例外："+current.Label+" "+msg, map[string]any{
+		"step_id": step.ID,
+	})
 	// 2026-07-04 补齐：GraphNode → Failed
 	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
 	r.cascadeSkip(ctx, step.ID)
+}
+
+func (r *dagRun) publishUpward(ctx context.Context, phase, summary string, extra map[string]any) {
+	if r == nil || r.pe == nil {
+		return
+	}
+	biz.PublishUpwardProgress(r.pe.bus, ctx, r.board.SessionID, phase, summary, extra)
 }
 
 // checkDownstream dispatches pending steps whose dependencies are now all

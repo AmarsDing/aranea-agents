@@ -210,6 +210,11 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				})
 			}
 
+			if taskPlan.StrategyReason == biz.PlaybookFillRequiredReason {
+				out.NextAction = "authorize_playbook"
+				out.ReuseReason = biz.PlaybookFillUserHint
+			}
+
 			// For direct strategy, no allocation or orchestration needed.
 			if taskPlan.Strategy == biz.StrategyDirect {
 				// 2026-07-05 Step 3: direct 路径也发布 v2 PlanBoard（如有 SubTasks），
@@ -418,7 +423,7 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, explicitK
 	}()
 	keys := append([]string(nil), explicitKeys...)
 	if len(keys) == 0 && taskPlan != nil && taskPlan.MemoryHit != nil {
-		keys = append([]string(nil), taskPlan.MemoryHit.AgentKeysUsed...)
+		keys = biz.FilterRecipeAgentKeys(taskPlan.MemoryHit.AgentKeysUsed)
 	}
 	if len(keys) > 0 {
 		allocPlan, err = deps.allocator.AllocateExplicit(ctx, taskPlan, keys)

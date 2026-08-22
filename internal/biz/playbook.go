@@ -62,6 +62,50 @@ func FindAuthorizedPlaybook(playbooks []Playbook, id string) (Playbook, bool) {
 	return Playbook{}, false
 }
 
+// TryPlaybookForTask returns an authorized playbook only when the task names
+// its id or name. A sole authorized playbook is NOT auto-picked on every task
+// (that would force every light request onto the heavy chain).
+func TryPlaybookForTask(metadataJSON, taskText string) (Playbook, []SubTask, bool) {
+	pbs := ParseCompanyPlaybooks(metadataJSON)
+	if id := playbookIDMentioned(taskText, pbs); id != "" {
+		if pb, ok := FindAuthorizedPlaybook(pbs, id); ok {
+			return pb, ExpandPlaybook(pb), true
+		}
+	}
+	return Playbook{}, nil, false
+}
+
+// TrySoleAuthorizedPlaybook expands the company's only authorized playbook.
+// Callers must already be on the heavy gear; do not use on light/medium.
+func TrySoleAuthorizedPlaybook(metadataJSON string) (Playbook, []SubTask, bool) {
+	var authorized []Playbook
+	for _, pb := range ParseCompanyPlaybooks(metadataJSON) {
+		if strings.TrimSpace(pb.AuthorizedBy) != "" {
+			authorized = append(authorized, pb)
+		}
+	}
+	if len(authorized) != 1 {
+		return Playbook{}, nil, false
+	}
+	return authorized[0], ExpandPlaybook(authorized[0]), true
+}
+
+func playbookIDMentioned(taskText string, pbs []Playbook) string {
+	s := strings.TrimSpace(taskText)
+	if s == "" {
+		return ""
+	}
+	for _, pb := range pbs {
+		if pb.ID != "" && strings.Contains(s, pb.ID) {
+			return pb.ID
+		}
+		if pb.Name != "" && strings.Contains(s, pb.Name) {
+			return pb.ID
+		}
+	}
+	return ""
+}
+
 // ExpandPlaybook turns authorized stages into department-slot SubTasks.
 // Does not invent specialties beyond what the playbook declared.
 func ExpandPlaybook(pb Playbook) []SubTask {
@@ -91,12 +135,13 @@ func ExpandPlaybook(pb Playbook) []SubTask {
 			contracts = append(contracts, DeliverableContract{Name: dn})
 		}
 		out = append(out, SubTask{
-			ID:           id,
-			Name:         name,
-			Description:  "playbook:" + pb.ID,
-			DependsOn:    append([]string(nil), st.DependsOn...),
-			DomainPath:   domain,
-			Deliverables: contracts,
+			ID:              id,
+			Name:            name,
+			Description:     "playbook:" + pb.ID,
+			DependsOn:       append([]string(nil), st.DependsOn...),
+			DomainPath:      domain,
+			Deliverables:    contracts,
+			GraphTemplateID: strings.TrimSpace(st.GraphTemplateID),
 		})
 	}
 	return out
@@ -123,6 +168,73 @@ func ConstraintFingerprint(playbookID string, constraints map[string]string) str
 	}
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:16])
+}
+
+// PlaybookFillRequiredReason is returned when the user asked for the org chain
+// but the company has no authorized playbook. TaskPlanner must not invent jobs.
+const PlaybookFillRequiredReason = "playbook_fill_required"
+
+// PlaybookFillUserHint is the Spirit-facing next action (Chinese).
+const PlaybookFillUserHint = "该公司还没有已授权的流程剧本。请先让总经理授权一本剧本（或在任务里点名剧本 id），不要按行业常识拆岗。"
+
+// MergePlaybookIntoMetadata upserts a playbook into company metadata_json.
+func MergePlaybookIntoMetadata(raw string, pb Playbook) string {
+	if strings.TrimSpace(pb.ID) == "" {
+		return raw
+	}
+	var m map[string]any
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			m = map[string]any{}
+		}
+	}
+	if m == nil {
+		m = map[string]any{}
+	}
+	existing := ParseCompanyPlaybooks(raw)
+	replaced := false
+	for i, p := range existing {
+		if p.ID == pb.ID {
+			existing[i] = pb
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		existing = append(existing, pb)
+	}
+	m["playbooks"] = existing
+	b, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return string(b)
+}
+
+// AuthorizePlaybookOnCompany stamps authorized_by and writes the playbook into metadata.
+func AuthorizePlaybookOnCompany(n *OrganizationNode, pb Playbook) {
+	if n == nil {
+		return
+	}
+	if strings.TrimSpace(pb.AuthorizedBy) == "" {
+		pb.AuthorizedBy = fmt.Sprintf("%s%s__", CompanyLeadAgentKeyPrefix, n.Key)
+	}
+	if strings.TrimSpace(pb.AuthorizedAt) == "" {
+		pb.AuthorizedAt = "now"
+	}
+	n.MetadataJSON = MergePlaybookIntoMetadata(n.MetadataJSON, pb)
+}
+
+// FilterRecipeAgentKeys drops governance leads from a recipe key list.
+func FilterRecipeAgentKeys(keys []string) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if IsOrgGovernanceAgent(Agent{AgentKey: k}) {
+			continue
+		}
+		out = append(out, k)
+	}
+	return out
 }
 
 // RecipeKeysReusable reports whether historical AgentKeys may be reused.

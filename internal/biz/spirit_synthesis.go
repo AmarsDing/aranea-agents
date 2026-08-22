@@ -119,7 +119,7 @@ func renderSynthesisDigests(digests []TeamDeliverableDigest) string {
 // synthesisSummarySuccessTrigger is the summary-report structure used when
 // every team completed. The LLM reply (a normal reply step, persisted and
 // refresh-safe) IS the summary report — there is no dedicated report UI.
-const synthesisSummarySuccessTrigger = "所有团队已完成。请基于%s会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：\n" +
+const synthesisSummarySuccessTrigger = "所有团队已完成。请仅基于%s下列 Brief 摘要与制品清单输出最终任务总结（Markdown），禁止考古成员会话全文。严格按以下结构：\n" +
 	"## 任务总结\n" +
 	"（一段话概述用户目标与整体完成情况）\n" +
 	"## 各团队结果\n" +
@@ -153,7 +153,7 @@ func BuildSynthesisSummaryTrigger(total, completed, failed int, failures []TeamF
 		return head + "\n" + digestSection
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("所有团队已结束：共 %d 个团队，%d 个完成，%d 个失败。请基于会话中各团队的执行结果与下列失败事实，输出最终任务总结报告（Markdown 格式）。\n",
+	sb.WriteString(fmt.Sprintf("所有团队已结束：共 %d 个团队，%d 个完成，%d 个失败。请仅基于下列 Brief 摘要、例外与失败事实输出总结，禁止考古成员会话全文。\n",
 		total, completed, failed))
 	if digestSection != "" {
 		sb.WriteString(digestSection)

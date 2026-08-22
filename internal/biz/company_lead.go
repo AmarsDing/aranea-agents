@@ -22,6 +22,24 @@ const AgentVariantCompanyLead = "company_lead"
 
 const metaKeyCompanyLeadAgentID = "company_lead_agent_id"
 
+// Company office + 总经理 position keys (company → department → position).
+const (
+	CompanyOfficeDeptSuffix   = "_office"
+	CompanyLeadPositionSuffix = "_gm"
+	CompanyOfficeDeptName     = "总经理办公室"
+	CompanyLeadPositionName   = "总经理"
+)
+
+// CompanyOfficeDeptKey returns the system department key under a company.
+func CompanyOfficeDeptKey(companyKey string) string {
+	return strings.TrimSpace(companyKey) + CompanyOfficeDeptSuffix
+}
+
+// CompanyLeadPositionKey returns the 总经理 position key under that office.
+func CompanyLeadPositionKey(companyKey string) string {
+	return strings.TrimSpace(companyKey) + CompanyLeadPositionSuffix
+}
+
 // HydrateCompanyLeadFromMetadata copies company_lead_agent_id from MetadataJSON.
 func HydrateCompanyLeadFromMetadata(n *OrganizationNode) {
 	if n == nil || strings.TrimSpace(n.CompanyLeadAgentID) != "" {
@@ -82,6 +100,11 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 
 	agentKey := fmt.Sprintf("%s%s__", CompanyLeadAgentKeyPrefix, companyNode.Key)
 
+	pos, posErr := m.ensureCompanyLeadPosition(ctx, companyNode)
+	if posErr != nil {
+		return nil, posErr
+	}
+
 	existing, err := m.agentRepo.GetAgentByAgentKey(ctx, agentKey)
 	if err == nil && existing.ID != "" {
 		HydrateCompanyLeadFromMetadata(&companyNode)
@@ -95,8 +118,15 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 					loggateway.Err(updateErr))
 			}
 		}
-		a, _ := m.agentUC.Get(ctx, existing.ID)
-		return &a, nil
+		if existing.PositionID != pos.ID && m.agentUC != nil {
+			_, _ = m.agentUC.Update(ctx, existing.ID, Agent{PositionID: pos.ID, PositionKey: pos.Key})
+		}
+		if m.agentUC != nil {
+			if a, getErr := m.agentUC.Get(ctx, existing.ID); getErr == nil && a.ID != "" {
+				return &a, nil
+			}
+		}
+		return &existing, nil
 	}
 
 	agent := Agent{
@@ -104,8 +134,8 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 		DisplayName:  fmt.Sprintf("总经理-%s", companyNode.Name),
 		Kind:         "system_builtin",
 		Source:       "system",
-		PositionID:   companyNode.ID,
-		PositionKey:  companyNode.Key,
+		PositionID:   pos.ID,
+		PositionKey:  pos.Key,
 		AgentVariant: AgentVariantCompanyLead,
 		Status:       "active",
 		Readonly:     true,
@@ -141,6 +171,59 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 		return nil, err
 	}
 	return &created, nil
+}
+
+// companyLeadSlotRepo is the narrow org surface used to hang 总经理 on a real position
+// without OrganizationUsecase.Create (which would spawn a dept_lead on the office).
+type companyLeadSlotRepo interface {
+	GetOrgNodeByKey(ctx context.Context, key string) (OrganizationNode, error)
+	CreateOrgNode(ctx context.Context, c OrganizationNode) (OrganizationNode, error)
+}
+
+// ensureCompanyLeadPosition creates 总经理办公室 / 总经理 under the company
+// if missing (via repo, so the office department does not spawn an extra dept_lead).
+func (m *DeptLeadManager) ensureCompanyLeadPosition(ctx context.Context, company OrganizationNode) (OrganizationNode, error) {
+	return ensureCompanyLeadPositionOn(ctx, m.orgRepo, company)
+}
+
+func ensureCompanyLeadPositionOn(ctx context.Context, repo companyLeadSlotRepo, company OrganizationNode) (OrganizationNode, error) {
+	officeKey := CompanyOfficeDeptKey(company.Key)
+	posKey := CompanyLeadPositionKey(company.Key)
+
+	office, err := repo.GetOrgNodeByKey(ctx, officeKey)
+	if err != nil || office.ID == "" {
+		office, err = repo.CreateOrgNode(ctx, OrganizationNode{
+			Key:         officeKey,
+			Name:        CompanyOfficeDeptName,
+			Level:       "department",
+			ParentID:    company.ID,
+			WorkspaceID: company.WorkspaceID,
+			IsSystem:    true,
+			Status:      "active",
+			Enabled:     true,
+		})
+		if err != nil {
+			return OrganizationNode{}, err
+		}
+	}
+
+	pos, err := repo.GetOrgNodeByKey(ctx, posKey)
+	if err != nil || pos.ID == "" {
+		pos, err = repo.CreateOrgNode(ctx, OrganizationNode{
+			Key:         posKey,
+			Name:        CompanyLeadPositionName,
+			Level:       "position",
+			ParentID:    office.ID,
+			WorkspaceID: company.WorkspaceID,
+			IsSystem:    true,
+			Status:      "active",
+			Enabled:     true,
+		})
+		if err != nil {
+			return OrganizationNode{}, err
+		}
+	}
+	return pos, nil
 }
 
 // DeleteCompanyLead deletes the company lead Agent linked on the company node.

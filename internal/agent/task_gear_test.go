@@ -1,6 +1,10 @@
 package agent
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/internal/biz"
+)
 
 func TestClassifyTaskGear(t *testing.T) {
 	t.Parallel()
@@ -34,6 +38,22 @@ func TestUpgradeGearAfterPlanNeverDowngrades(t *testing.T) {
 	}
 	if got := UpgradeGearAfterPlan(GearMedium, true); got != GearHeavy {
 		t.Fatalf("did not upgrade: %s", got)
+	}
+}
+
+func TestPlanHasCrossDeptDepends(t *testing.T) {
+	t.Parallel()
+	if PlanHasCrossDeptDepends([]biz.SubTask{
+		{DomainPath: "软件/后端"},
+		{DomainPath: "设计/视觉"},
+	}) {
+		t.Fatal("no DependsOn must not upgrade")
+	}
+	if !PlanHasCrossDeptDepends([]biz.SubTask{
+		{DomainPath: "软件/后端"},
+		{DomainPath: "设计/视觉", DependsOn: []string{"st1"}},
+	}) {
+		t.Fatal("cross-dept + DependsOn is heavy")
 	}
 }
 

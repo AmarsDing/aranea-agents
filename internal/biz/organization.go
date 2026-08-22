@@ -111,10 +111,12 @@ func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager,
 }
 
 func (u *OrganizationUsecase) List(ctx context.Context) ([]OrganizationNode, error) {
+	u.ensureCompanyLeads(ctx)
 	return u.repo.ListOrgNodes(ctx)
 }
 
 func (u *OrganizationUsecase) Tree(ctx context.Context) ([]OrganizationTreeNode, error) {
+	u.ensureCompanyLeads(ctx)
 	items, err := u.repo.ListOrgNodes(ctx)
 	if err != nil {
 		return nil, err
@@ -195,6 +197,50 @@ func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (
 	}
 	u.publishOrgEvent("organization.created", "Organization created", created)
 	return created, nil
+}
+
+// ensureCompanyLeads backfills 总经理 Agent + 岗位 for every company node.
+func (u *OrganizationUsecase) ensureCompanyLeads(ctx context.Context) {
+	if u == nil || u.deptLeadMgr == nil {
+		return
+	}
+	companies, err := u.repo.ListOrgNodesByLevel(ctx, "company")
+	if err != nil {
+		return
+	}
+	for _, c := range companies {
+		if _, clErr := u.deptLeadMgr.CreateCompanyLead(ctx, c); clErr != nil {
+			u.lg.Warn("ensure company lead failed",
+				loggateway.Str("company_id", c.ID),
+				loggateway.Err(clErr))
+		}
+	}
+}
+
+// AuthorizeCompanyPlaybook persists a GM-signed playbook on the company node.
+// Management path: does not create company/department nodes.
+func (u *OrganizationUsecase) AuthorizeCompanyPlaybook(ctx context.Context, companyID string, pb Playbook) (OrganizationNode, error) {
+	if u == nil || u.repo == nil {
+		return OrganizationNode{}, ErrOrgBadRequest("organization repo is required")
+	}
+	companyID = strings.TrimSpace(companyID)
+	if companyID == "" || strings.TrimSpace(pb.ID) == "" {
+		return OrganizationNode{}, ErrOrgBadRequest("company id and playbook id are required")
+	}
+	node, err := u.repo.GetOrgNode(ctx, companyID)
+	if err != nil {
+		return OrganizationNode{}, err
+	}
+	if node.Level != "company" {
+		return OrganizationNode{}, ErrOrgBadRequest("playbook can only be authorized on a company node")
+	}
+	HydrateCompanyLeadFromMetadata(&node)
+	AuthorizePlaybookOnCompany(&node, pb)
+	updated, err := u.repo.UpdateOrgNode(ctx, node)
+	if err != nil {
+		return OrganizationNode{}, err
+	}
+	return updated, nil
 }
 
 func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch OrganizationNode) (OrganizationNode, error) {

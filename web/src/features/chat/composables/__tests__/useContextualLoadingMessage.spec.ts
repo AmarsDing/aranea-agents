@@ -640,6 +640,36 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value!.text).toContain('创作/文案');
     });
 
+    it('heartbeat phase shows clipped summary', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'heartbeat', summary: '阶段已开工：设计' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toContain('阶段已开工：设计');
+    });
+
+    it('playbook_fill_required tells the user to authorize a playbook', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'playbook_fill_required' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toContain('流程剧本');
+    });
+
     it('allocate_failed phase names the missing specialty', () => {
       const isReplaying = ref(false);
       const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);

@@ -467,7 +467,7 @@ func TestExecuteCompression_CASConflictReportsNotWritten(t *testing.T) {
 // runCompress 级：CAS 冲突后既有的失败抑制记录必须保留（假成功会把它清掉）。
 func TestRunCompress_CASConflictKeepsSuppression(t *testing.T) {
 	read := &stubCompressReadDeps{
-		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000, CompressVersion: 0},
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 200000, LastContextWindowTokens: 256000, CompressVersion: 0},
 		maxSummarized: 0,
 		// 消息体必须足够大以通过减量守卫（stub 摘要 ~214 runes），
 		// 让级联真实成功、走到写入阶段的 CAS 冲突点。

@@ -200,6 +200,21 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     icon: 'warning',
     color: 'orange',
   },
+  heartbeat: {
+    messageKey: 'chat.orchestrationProgress.heartbeat',
+    icon: 'favorite',
+    color: 'teal',
+  },
+  upward: {
+    messageKey: 'chat.orchestrationProgress.upward',
+    icon: 'warning',
+    color: 'orange',
+  },
+  playbook_fill_required: {
+    messageKey: 'chat.orchestrationProgress.playbookFillRequired',
+    icon: 'assignment',
+    color: 'orange',
+  },
 };
 
 // --- OBS-05: Sidebar Status Pulse ---

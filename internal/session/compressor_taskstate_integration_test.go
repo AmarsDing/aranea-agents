@@ -107,7 +107,7 @@ func TestCompressTaskState_Integration_FullFlowRealPG(t *testing.T) {
 	read := &stubCompressReadDeps{
 		sess: biz.Session{
 			ID: "sess-flow", AgentID: "ag-flow",
-			ContextUsedTokens: 100000, LastContextWindowTokens: 1000,
+			ContextUsedTokens: 200000, LastContextWindowTokens: 256000,
 			RunnerSnapshotJSON: `{"state":{}}`,
 		},
 		msgs: flowTimeline(),

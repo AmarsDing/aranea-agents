@@ -112,6 +112,9 @@ type SubTask struct {
 	// DomainPath 是 planner LLM 顺带输出的归一化领域路径（B.10.21.4）。
 	// advisory：空不阻断，匹配管线落回旧行为。
 	DomainPath string `json:"domain_path,omitempty"`
+	// GraphTemplateID optionally routes this stage through an existing M53
+	// template. Empty = ordinary Team Turn. Never invents a second engine.
+	GraphTemplateID string `json:"graph_template_id,omitempty"`
 }
 
 // PlanTaskDAG represents the dependency graph of subtasks within a TaskPlan.
@@ -123,12 +126,14 @@ type PlanTaskDAG struct {
 
 // MemoryHit represents a memory cache hit from OrchestrationCache
 type MemoryHit struct {
-	CacheID       string   `json:"cache_id"`
-	DQScore       float64  `json:"dq_score"`
-	TopologyUsed  string   `json:"topology_used"`
-	AgentKeysUsed []string `json:"agent_keys_used"`
-	DomainPath    string   `json:"domain_path,omitempty"`
-	Specialties   []string `json:"specialties,omitempty"`
+	CacheID               string   `json:"cache_id"`
+	DQScore               float64  `json:"dq_score"`
+	TopologyUsed          string   `json:"topology_used"`
+	AgentKeysUsed         []string `json:"agent_keys_used"`
+	DomainPath            string   `json:"domain_path,omitempty"`
+	Specialties           []string `json:"specialties,omitempty"`
+	ConstraintFingerprint string   `json:"constraint_fingerprint,omitempty"`
+	PlaybookID            string   `json:"playbook_id,omitempty"`
 }
 
 // RecoverableTaskPlanStatuses are non-terminal plan states that may be
