@@ -48,7 +48,7 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id and activity_id are required")
 	}
 
-	if s.planExec != nil && s.planExec.HasPlaybookStageConfirm(sessionID, activityID) {
+	if biz.IsPlaybookConfirmActivityID(activityID) || (s.planExec != nil && s.planExec.HasPlaybookStageConfirm(sessionID, activityID)) {
 		return s.confirmPlaybookStage(ctx, sessionID, activityID, req)
 	}
 
@@ -60,6 +60,10 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	step, err := stepReader.GetStep(ctx, activityID)
 	if err != nil {
 		return nil, err
+	}
+
+	if step.ToolName == biz.ToolPlaybookConfirmBefore || biz.IsPlaybookConfirmActivityID(step.ID) {
+		return s.confirmPlaybookStage(ctx, sessionID, activityID, req)
 	}
 
 	if step.Kind != biz.StepKindConfirm {
@@ -121,17 +125,18 @@ func (s *ChatService) ConfirmToolGateForCard(ctx context.Context, sessionID, ste
 	if s == nil || s.orch == nil {
 		return false, "服务不可用"
 	}
-	if s.planExec != nil && s.planExec.HasPlaybookStageConfirm(sessionID, stepID) {
+	if biz.IsPlaybookConfirmActivityID(stepID) || (s.planExec != nil && s.planExec.HasPlaybookStageConfirm(sessionID, stepID)) {
 		_, approved, err := resolveConfirmReply(true, replyToken)
 		if err != nil {
 			return false, err.Error()
 		}
-		if s.planExec.ResolvePlaybookStageConfirm(sessionID, stepID, approved) {
-			if approved {
-				return true, "已确认剧本阶段"
-			}
-			return true, "已拒绝剧本阶段"
+		if err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved); err != nil {
+			return false, err.Error()
 		}
+		if approved {
+			return true, "已确认剧本阶段"
+		}
+		return true, "已拒绝剧本阶段"
 	}
 	stepReader := s.orch.stepReader()
 	if stepReader == nil {
@@ -143,6 +148,19 @@ func (s *ChatService) ConfirmToolGateForCard(ctx context.Context, sessionID, ste
 	}
 	if step.SessionID != strings.TrimSpace(sessionID) {
 		return false, "确认不属于当前会话"
+	}
+	if step.ToolName == biz.ToolPlaybookConfirmBefore || biz.IsPlaybookConfirmActivityID(step.ID) {
+		_, approved, err := resolveConfirmReply(true, replyToken)
+		if err != nil {
+			return false, err.Error()
+		}
+		if err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved); err != nil {
+			return false, err.Error()
+		}
+		if approved {
+			return true, "已确认剧本阶段"
+		}
+		return true, "已拒绝剧本阶段"
 	}
 	if step.Kind != biz.StepKindConfirm || step.Status != biz.StepStatusToolBlocked {
 		return false, "该确认已被处理或已超时"
@@ -252,14 +270,66 @@ func (s *ChatService) confirmPlaybookStage(ctx context.Context, sessionID, stepI
 	if err != nil {
 		return nil, err
 	}
-	if !s.planExec.ResolvePlaybookStageConfirm(sessionID, stepID, approved) {
-		return nil, apierror.NotFound(apierror.DomainChat, "playbook stage confirm expired")
+	if err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved); err != nil {
+		return nil, err
 	}
 	status := "confirmed"
 	if !approved {
 		status = "rejected"
 	}
 	return &chatv1.ConfirmActivityResponse{Accepted: true, Status: status}, nil
+}
+
+func (s *ChatService) applyPlaybookStageDecision(ctx context.Context, sessionID, activityID string, approved bool) error {
+	if s.planExec != nil {
+		s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
+		_ = s.planExec.ResolvePlaybookStageConfirm(sessionID, activityID, approved)
+	}
+	if err := s.persistPlaybookConfirmCard(ctx, sessionID, activityID, approved); err != nil {
+		s.lg.Warn("persist playbook confirm card failed",
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("activity_id", activityID),
+			loggateway.Err(err))
+	}
+	return nil
+}
+
+func (s *ChatService) persistPlaybookConfirmCard(ctx context.Context, sessionID, activityID string, approved bool) error {
+	if s == nil || s.orch == nil {
+		return nil
+	}
+	writer := s.orch.stepWriter()
+	if writer == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	step := biz.Step{
+		ID:              activityID,
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindConfirm,
+		ToolName:        biz.ToolPlaybookConfirmBefore,
+		Status:          biz.StepStatusCompleted,
+		CompletedAt:     &now,
+		Version:         2,
+	}
+	if !approved {
+		step.Status = biz.StepStatusCancelled
+	}
+	if reader := s.orch.stepReader(); reader != nil {
+		if existing, err := reader.GetStep(ctx, activityID); err == nil && existing.ID != "" {
+			step = existing
+			step.CompletedAt = &now
+			step.Version++
+			if approved {
+				step.Status = biz.StepStatusCompleted
+			} else {
+				step.Status = biz.StepStatusCancelled
+			}
+		}
+	}
+	_, err := writer.UpsertStep(ctx, step)
+	return err
 }
 
 // buildConfirmResumeContent renders the user's tool-confirmation decision as

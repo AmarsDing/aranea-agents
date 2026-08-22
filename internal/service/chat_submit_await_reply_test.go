@@ -502,3 +502,43 @@ func TestConfirmActivity_CrossUserDenied(t *testing.T) {
 		t.Fatalf("cross-user confirm must be Forbidden, got %v", err)
 	}
 }
+
+func TestConfirmActivity_PlaybookCardNeverFallsToToolAwait(t *testing.T) {
+	coord := stubAwaitCoord{
+		trySendFn: func(string, biz.AwaitReplyMsg) bool {
+			t.Fatal("playbook confirm must not use tool await")
+			return false
+		},
+		canResumeFn: func(context.Context, string) (string, bool) { return "run-9", true },
+	}
+	actID := biz.PlaybookConfirmActivityID("sess-1", "st-1")
+	step := biz.Step{
+		ID:        actID,
+		SessionID: "sess-1",
+		Kind:      biz.StepKindConfirm,
+		Status:    biz.StepStatusToolBlocked,
+		ToolName:  biz.ToolPlaybookConfirmBefore,
+	}
+	svc, orch, writer := newConfirmActivityTestSvc(coord, step)
+	svc.planExec = NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	orch.resumeAwaitFn = func(context.Context, string, string, string) error {
+		t.Fatal("playbook confirm must not resume tool turn")
+		return nil
+	}
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: actID,
+		Approved:   true,
+	})
+	if err != nil || resp == nil || !resp.GetAccepted() {
+		t.Fatalf("err=%v resp=%v", err, resp)
+	}
+	if len(writer.created) == 0 || writer.created[len(writer.created)-1].Status != biz.StepStatusCompleted {
+		t.Fatalf("card persist=%v", writer.created)
+	}
+	approved, ok := svc.planExec.lookupPlaybookConfirmDecision("sess-1", "st-1")
+	if !ok || !approved {
+		t.Fatalf("noted decision missing ok=%v approved=%v", ok, approved)
+	}
+}

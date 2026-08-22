@@ -101,6 +101,11 @@ type PlanExecutor struct {
 	// playbookConfirm holds R18 playbook_confirm_before waiters.
 	// key: sessionID + NUL + (plan-step id or card id) → *playbookConfirmWait.
 	playbookConfirm sync.Map
+	// playbookConfirmDecided records approve/deny before or without a waiter
+	// so holdPlaybookConfirm can resume after refresh (same process).
+	playbookConfirmDecided sync.Map
+	// confirmSteps reads persisted ConfirmBlock steps after restart.
+	confirmSteps biz.StepV2Reader
 }
 
 type playbookConfirmWait struct {
@@ -178,6 +183,15 @@ type taskPlanStatusUpdater interface {
 // 后注入风格与 SetCompletionNotifier 一致。
 func (e *PlanExecutor) SetTaskPlanUpdater(u taskPlanStatusUpdater) {
 	e.taskPlans = u
+}
+
+// SetConfirmStepReader lets holdPlaybookConfirm see a persisted ConfirmBlock
+// after process restart (card completed/cancelled = already decided).
+func (e *PlanExecutor) SetConfirmStepReader(r biz.StepV2Reader) {
+	if e == nil {
+		return
+	}
+	e.confirmSteps = r
 }
 
 // taskPlanIDFromBoard 从 PlanBoard ID 还原 TaskPlan ID。PublishV2Board 以
@@ -536,6 +550,7 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 	// publishPlanBoardTerminal's Executing→Complete transition was skipped,
 	// leaving successful DAGs stuck in "executing".
 	board = e.markPlanBoardExecuting(ctx, board)
+	e.hydrateBoardOrgFields(ctx, &board)
 	// 同步创建 GraphStage（与 PlanBoard 一对一）。失败不阻断主流程，
 	// 仅记录日志（GraphStage 是可视化层，缺失不影响 DAG 调度正确性）。
 	e.initGraphStage(ctx, board)
@@ -1227,6 +1242,7 @@ func (r *dagRun) dispatch(ctx context.Context, step *biz.PlanStep) {
 func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	if approved, held := r.holdPlaybookConfirm(ctx, step); held {
 		if ctx.Err() != nil {
+			r.abortPlaybookConfirm(ctx, step)
 			return
 		}
 		if !approved {
@@ -1425,6 +1441,24 @@ func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
 	r.cascadeSkip(ctx, step.ID)
 }
 
+func (e *PlanExecutor) hydrateBoardOrgFields(ctx context.Context, board *biz.PlanBoard) {
+	if e == nil || e.taskPlans == nil || board == nil || len(board.Steps) == 0 {
+		return
+	}
+	planID := taskPlanIDFromBoard(board.ID)
+	if planID == "" && len(board.Steps) > 0 {
+		planID = board.Steps[0].PlanID
+	}
+	if planID == "" {
+		return
+	}
+	plan, err := e.taskPlans.GetByID(ctx, planID)
+	if err != nil || plan == nil {
+		return
+	}
+	biz.HydratePlanStepsFromSubTasks(plan.ID, board.Steps, plan.SubTasks)
+}
+
 func playbookConfirmKey(sessionID, stepID string) string {
 	return strings.TrimSpace(sessionID) + "\x00" + strings.TrimSpace(stepID)
 }
@@ -1515,6 +1549,73 @@ func (e *PlanExecutor) finalizePlaybookConfirmCard(ctx context.Context, step biz
 	e.seq.Publish(ctx, biz.NewStepUpdatedEvent(step))
 }
 
+func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approved bool) {
+	if e == nil {
+		return
+	}
+	for _, keyID := range playbookConfirmLookupIDs(sessionID, id) {
+		e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, keyID), approved)
+	}
+}
+
+func (e *PlanExecutor) lookupPlaybookConfirmDecision(sessionID, stepID string) (approved bool, ok bool) {
+	if e == nil {
+		return false, false
+	}
+	for _, id := range playbookConfirmLookupIDs(sessionID, stepID) {
+		if v, loaded := e.playbookConfirmDecided.Load(playbookConfirmKey(sessionID, id)); loaded {
+			approved, ok = v.(bool)
+			return approved, ok
+		}
+	}
+	if e.confirmSteps == nil {
+		return false, false
+	}
+	actID := biz.PlaybookConfirmActivityID(sessionID, stepID)
+	st, err := e.confirmSteps.GetStep(context.Background(), actID)
+	if err != nil {
+		return false, false
+	}
+	switch st.Status {
+	case biz.StepStatusCompleted:
+		return true, true
+	case biz.StepStatusCancelled:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func (e *PlanExecutor) abortPlaybookConfirmWaiters(ctx context.Context, sessionID, stepID string) {
+	if e == nil {
+		return
+	}
+	w := e.loadPlaybookConfirmWait(sessionID, stepID)
+	for _, id := range playbookConfirmLookupIDs(sessionID, stepID) {
+		e.playbookConfirm.Delete(playbookConfirmKey(sessionID, id))
+	}
+	if w != nil {
+		e.finalizePlaybookConfirmCard(ctx, w.step, false)
+	} else {
+		e.finalizePlaybookConfirmCard(ctx, biz.Step{
+			ID:              biz.PlaybookConfirmActivityID(sessionID, stepID),
+			SessionID:       sessionID,
+			SpiritSessionID: sessionID,
+			Kind:            biz.StepKindConfirm,
+			ToolName:        biz.ToolPlaybookConfirmBefore,
+			Status:          biz.StepStatusToolBlocked,
+			Version:         1,
+		}, false)
+	}
+}
+
+func (r *dagRun) abortPlaybookConfirm(ctx context.Context, step *biz.PlanStep) {
+	if r == nil || r.pe == nil || step == nil {
+		return
+	}
+	r.pe.abortPlaybookConfirmWaiters(ctx, r.board.SessionID, step.ID)
+}
+
 func (r *dagRun) holdPlaybookConfirm(ctx context.Context, step *biz.PlanStep) (approved bool, held bool) {
 	if step == nil || !step.ConfirmBefore {
 		return true, false
@@ -1524,6 +1625,9 @@ func (r *dagRun) holdPlaybookConfirm(ctx context.Context, step *biz.PlanStep) (a
 	}
 	if r == nil || r.pe == nil {
 		return true, false
+	}
+	if decided, ok := r.pe.lookupPlaybookConfirmDecision(r.board.SessionID, step.ID); ok {
+		return decided, true
 	}
 	wait := r.pe.registerPlaybookConfirm(r.board.SessionID, step.ID)
 	r.publishConfirmRequired(ctx, step, wait)
@@ -1558,7 +1662,7 @@ func (r *dagRun) publishConfirmRequired(ctx context.Context, step *biz.PlanStep,
 		Kind:            biz.StepKindConfirm,
 		Version:         1,
 		Content:         summary,
-		ToolName:        "playbook_confirm_before",
+		ToolName:        biz.ToolPlaybookConfirmBefore,
 		Status:          biz.StepStatusToolBlocked,
 		StartedAt:       now,
 	}
@@ -1648,6 +1752,9 @@ func (r *dagRun) sweepNonTerminalSteps(ctx context.Context, reason string) {
 				loggateway.Str("step_id", step.ID), loggateway.Err(err))
 		}
 		r.pe.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(skipped, r.board.SessionID, reason))
+		if skipped.ConfirmBefore {
+			r.abortPlaybookConfirm(ctx, &skipped)
+		}
 		// GraphNode 映射与 cascadeSkip 一致：skipped → interrupted。
 		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusInterrupted, "")
 	}

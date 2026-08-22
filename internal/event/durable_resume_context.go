@@ -10,16 +10,20 @@ type durableResumeKey struct{}
 // DurableResumeSpec tags a turn as trpc checkpoint resume (CC-R-03 / CC-F-02).
 // The orchestrator skips biz user-row persist and reuses the original turn_id.
 type DurableResumeSpec struct {
-	SessionRunID     string
-	TurnID           string
-	UserContent      string
-	AgentID          string
-	RuntimeRunID     string
-	TrpcInvocationID string
-	SessionRevision  int64
-	DialogMode       string
-	Provider         string
-	Model            string
+	SessionRunID          string
+	TurnID                string
+	UserContent           string
+	AgentID               string
+	RuntimeRunID          string
+	TrpcInvocationID      string
+	SessionRevision       int64
+	DialogMode            string
+	Provider              string
+	Model                 string
+	Gear                  string
+	PlaybookID            string
+	AuthorizedStageIDs    []string
+	ConstraintFingerprint string
 }
 
 // WithDurableResume attaches durable resume metadata to ctx.

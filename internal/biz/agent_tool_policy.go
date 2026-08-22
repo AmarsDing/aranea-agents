@@ -226,9 +226,6 @@ func applySpiritReservedDenials(profile string, allowSet, denySet map[string]boo
 		return
 	}
 	for _, k := range SpiritReservedToolKeys() {
-		if allowSet != nil && allowSet[k] {
-			continue
-		}
 		denySet[k] = true
 	}
 }

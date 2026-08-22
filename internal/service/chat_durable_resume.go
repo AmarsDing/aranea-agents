@@ -70,7 +70,7 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 		}()
 		req := biz.TurnInput{
 			SessionID: run.SessionID,
-			Content:   biz.DurableResumePrompt(),
+			Content:   biz.DurableResumePromptFor(payload),
 			EntryConfig: biz.TurnEntryPointConfig{
 				EntryPoint: biz.EntryPointDurable,
 				AllowQueue: false,
@@ -78,16 +78,20 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 		}
 		bgCtx := event.WithSessionRunID(event.WithEnvelopeSource(runCtx, run.Source), sessionRunID)
 		bgCtx = event.WithDurableResume(bgCtx, event.DurableResumeSpec{
-			SessionRunID:     sessionRunID,
-			TurnID:           payload.TurnID,
-			UserContent:      payload.UserContent,
-			AgentID:          payload.AgentID,
-			RuntimeRunID:     payload.RuntimeRunID,
-			TrpcInvocationID: payload.TrpcInvocationID,
-			SessionRevision:  payload.SessionRevision,
-			DialogMode:       payload.DialogMode,
-			Provider:         payload.Provider,
-			Model:            payload.Model,
+			SessionRunID:          sessionRunID,
+			TurnID:                payload.TurnID,
+			UserContent:           payload.UserContent,
+			AgentID:               payload.AgentID,
+			RuntimeRunID:          payload.RuntimeRunID,
+			TrpcInvocationID:      payload.TrpcInvocationID,
+			SessionRevision:       payload.SessionRevision,
+			DialogMode:            payload.DialogMode,
+			Provider:              payload.Provider,
+			Model:                 payload.Model,
+			Gear:                  payload.Gear,
+			PlaybookID:            payload.PlaybookID,
+			AuthorizedStageIDs:    append([]string(nil), payload.AuthorizedStageIDs...),
+			ConstraintFingerprint: payload.ConstraintFingerprint,
 		})
 		_, asst, turnErr := s.RunNativeTurn(bgCtx, req)
 		persistCtx := context.WithoutCancel(runCtx)

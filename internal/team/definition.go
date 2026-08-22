@@ -79,6 +79,8 @@ type Definition struct {
 	// CollectionIDs scope knowledge_search for this stage (playbook). When set
 	// they win over TurnInput.Options.KnowledgeBases. Empty = no pre-scope.
 	CollectionIDs []string `json:"collection_ids,omitempty"`
+	// SpecialistToolFaces is the Assemble deny overlay (spirit reserved tools).
+	SpecialistToolFaces map[string][]string `json:"specialist_tool_faces,omitempty"`
 }
 
 // EvalProfileDef is the team-level evaluation profile (P3-4, ADR-E D1).

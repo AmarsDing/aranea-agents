@@ -45,7 +45,7 @@ type OrgCheckpointFields struct {
 // OrgCheckpointFromPlan copies playbook resume state. IssuedBriefIDs stay
 // empty until a brief registry exists (no invented ids).
 func OrgCheckpointFromPlan(plan *TaskPlan) OrgCheckpointFields {
-	if plan == nil || plan.MemoryHit == nil {
+	if plan == nil || plan.MemoryHit == nil || plan.Status != TaskPlanStatusExecuting {
 		return OrgCheckpointFields{}
 	}
 	pb := strings.TrimSpace(plan.MemoryHit.PlaybookID)
@@ -180,3 +180,16 @@ func ParseDurableCheckpointPayload(raw string) (DurableRunCheckpointPayload, err
 }
 
 func DurableResumePrompt() string { return durableResumeUserContent }
+
+// DurableResumePromptFor adds heavy-chain context when the checkpoint recorded a playbook.
+func DurableResumePromptFor(p DurableRunCheckpointPayload) string {
+	pb := strings.TrimSpace(p.PlaybookID)
+	if pb == "" {
+		return durableResumeUserContent
+	}
+	stages := strings.Join(p.AuthorizedStageIDs, ",")
+	if stages == "" {
+		return durableResumeUserContent + " playbook=" + pb
+	}
+	return durableResumeUserContent + " playbook=" + pb + " authorized_stages=" + stages
+}

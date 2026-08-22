@@ -109,6 +109,9 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 	if planExec != nil && deps.Infra.V2ProjectorFactory != nil {
 		planExec.SetTeamDispatchMarker(deps.Infra.V2ProjectorFactory)
 	}
+	if planExec != nil {
+		planExec.SetConfirmStepReader(cs.orch.stepReader())
+	}
 	return cs
 }
 

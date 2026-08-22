@@ -19,10 +19,18 @@ const (
 
 const playbookConfirmActivityPrefix = "pbconfirm:"
 
+// ToolPlaybookConfirmBefore is the ConfirmBlock tool name for R18 stage hold.
+const ToolPlaybookConfirmBefore = "playbook_confirm_before"
+
 // PlaybookConfirmActivityID is the steps_v2 confirm card id for a plan stage.
 // ConfirmActivity and ConfirmBlock use this as activity_id.
 func PlaybookConfirmActivityID(sessionID, stepID string) string {
 	return playbookConfirmActivityPrefix + strings.TrimSpace(sessionID) + ":" + strings.TrimSpace(stepID)
+}
+
+// IsPlaybookConfirmActivityID reports whether id uses the playbook confirm prefix.
+func IsPlaybookConfirmActivityID(activityID string) bool {
+	return strings.HasPrefix(strings.TrimSpace(activityID), playbookConfirmActivityPrefix)
 }
 
 // ParsePlaybookConfirmActivityID extracts the plan step id from a confirm card id.

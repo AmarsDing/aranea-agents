@@ -30,7 +30,7 @@
 |------|-----------|------|
 | 身份 | `mission_statement`、`domain_path`、`agent_variant`、岗位 Prompt | 这个人是谁、干什么专题 |
 | 能力 | `AgentCapability`（Roles/Skills/Tools 从 config 抽出） | 匹配与花名册绑定 |
-| 工具 | `agent_runtime_settings`：`ToolsProfile` + Allow/Deny | **自己的工具面**，不继承精灵 `spirit` profile。Assemble 盖 `specialist_tool_faces`；effective tools 再拒 `plan_and_execute` 等保留集 |
+| 工具 | `agent_runtime_settings`：`ToolsProfile` + Allow/Deny | **自己的工具面**，不继承精灵 `spirit` profile。Assemble 盖 `specialist_tool_faces`（team build 消费）；effective tools **硬拒** `plan_and_execute` 等保留集（Allow 不能放行） |
 | MCP | 有效工具门禁 + `mcp:` allow/deny | 只连自己声明的服务器；broker 按需拉 schema；员工不因 spirit profile 拿到全家桶 |
 | 技能 | Skill 绑定 + 渐进加载 | 按专项加载，不灌全库 Skill 正文 |
 

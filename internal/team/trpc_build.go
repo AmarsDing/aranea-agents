@@ -60,6 +60,8 @@ func BuildTeamMemberAgents(
 			memberDeps.CustomTools = append(memberDeps.CustomTools, deps.MemberCustomTools(ctx, ag)...)
 		}
 		if eff, err := fetchEffectiveTools(ctx, memberDeps, ag.ID); err == nil {
+			biz.ApplySpecialistToolFaceDenials(eff, ag.AgentKey, def.SpecialistToolFaces)
+			biz.DisableSpiritReservedTools(eff, ag.AgentKey)
 			memberDeps.CachedEffectiveTools = eff
 			memberDeps.ToolVersionHash = chatagent.ComputeToolVersionHash(eff)
 		}

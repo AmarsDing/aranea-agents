@@ -155,7 +155,7 @@
 | ORGFAST-43 | 精灵粗路由只输出 playbook_id（重型） | planner prompt / 分类 | 不按行业常识拆到岗 | ✅ DECISION.md + `next_action=authorize_playbook` |
 | ORGFAST-44 | 三管道：上行心跳/例外事件；横向仍 Brief | delivery + progress | 上行 ≤2KB；无源码 | ✅ PlanExecutor 阶段开工/完成发 heartbeat，失败发 upward；非调度栅栏 |
 | ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | ✅ planner 不合则丢 keys；Allocate 再滤领导 |
-| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | ✅ escalate 写入 `gear`/`playbook_id`/阶段 id；`IssuedBriefIDs` 仍空（无 Brief 登记表）；旧 JSON 缺省可 Parse |
+| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | ✅ 只快照 `executing` 计划；resume 读回 playbook/阶段并写入续跑 prompt；`IssuedBriefIDs` 仍空 |
 | ORGFAST-47 | 仲裁：部门→总经理，公司→精灵呈用户 | 门禁/事件 | 禁止总经理互怼循环 | 📋 |
 
 ### Phase 4b — 链路横切（P1，与 Phase 4 同批设计、可并行实施）
@@ -165,11 +165,11 @@
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
 | ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | ✅ Brief+协议封顶；知识/记忆按需工具，不预灌 |
-| ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | ✅ `ApplyAssembleOrgFaces` + `ClampSpecialistToolFace`；MCP 仍走该员工 allow/`mcp:` |
+| ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | ✅ Assemble 写 `specialist_tool_faces` 并在 team build 消费；effective tools **硬拒** spirit 保留集（Allow 不能放行） |
 | ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | ✅ `read_only` + Assemble `specialist_tool_faces` + effective tools 拒绝 spirit 保留集 |
-| ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | ✅ Expand → PlanStep → Assemble JSON → team run `WithKnowledgeCollections`（胜用户 KnowledgeBases） |
+| ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | ✅ 热路径 Assemble + team run；Subscribe 从 `sub_tasks_json` 回灌（不改 plan_steps_v2 列） |
 | ORGFAST-54 | 记忆隔离单测 | memory 边界 | 兄弟不可读对方 L3 | ✅ 专项成员注入时 `ClampSpecialistL3Scopes`（Spirit 除外） |
-| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | ✅ 等待 + ConfirmActivity + steps_v2 `ConfirmBlock`（`playbook_confirm_before`） |
+| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | ✅ `confirm_before` 卡：`pbconfirm:` 禁止回落工具 await；无 waiter 记决定 + `stepWriter` 关卡；取消清 waiter |
 | ORGFAST-56 | 主对话不订阅成员 token | progress / WS | 用户侧只有芯片/心跳/例外 | ✅ `noticeFilter.ts` 将 `token_usage` 标为系统内部，不渲染 NoticeBlock |
 | ORGFAST-57 | 汇总输入收紧 | spirit_synthesis | prompt 仅 Brief+例外+清单 | ✅ |
 | ORGFAST-58 | `deptmail`/`inject` 不得当横向/上行 | 测试锁 | 混用路径编译期或单测拒绝 | ✅ |

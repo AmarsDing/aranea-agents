@@ -101,6 +101,60 @@ func NormalizeCollectionIDs(ids []string) []string {
 	return out
 }
 
+// SpecialistToolFacesFromDefinition reads the Assemble deny overlay.
+func SpecialistToolFacesFromDefinition(raw string) map[string][]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var body struct {
+		Faces map[string][]string `json:"specialist_tool_faces"`
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return nil
+	}
+	return body.Faces
+}
+
+// ApplySpecialistToolFaceDenials disables Assemble-stamped deny keys on eff.
+func ApplySpecialistToolFaceDenials(eff *AgentEffectiveTools, agentKey string, faces map[string][]string) {
+	if eff == nil || len(faces) == 0 {
+		return
+	}
+	deny := faces[strings.TrimSpace(agentKey)]
+	if len(deny) == 0 {
+		return
+	}
+	set := make(map[string]struct{}, len(deny))
+	for _, k := range deny {
+		if k = strings.TrimSpace(k); k != "" {
+			set[k] = struct{}{}
+		}
+	}
+	for i := range eff.Items {
+		if _, ok := set[eff.Items[i].ToolKey]; ok {
+			eff.Items[i].Enabled = false
+		}
+	}
+}
+
+// DisableSpiritReservedTools force-disables Spirit reserved tools for non-Spirit agents.
+// Explicit ToolsAllowJSON cannot grant these keys (R17).
+func DisableSpiritReservedTools(eff *AgentEffectiveTools, agentKey string) {
+	if eff == nil || strings.TrimSpace(agentKey) == SpiritAgentKey {
+		return
+	}
+	reserved := make(map[string]struct{}, 4)
+	for _, k := range SpiritReservedToolKeys() {
+		reserved[k] = struct{}{}
+	}
+	for i := range eff.Items {
+		if _, ok := reserved[eff.Items[i].ToolKey]; ok {
+			eff.Items[i].Enabled = false
+		}
+	}
+}
+
 // HighRiskVerificationGate reports whether a gate is one of the R18
 // high-risk confirmation tiers (already HITL via existing approval flow).
 func HighRiskVerificationGate(g VerificationGate) bool {

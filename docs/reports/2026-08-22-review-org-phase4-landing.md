@@ -2,7 +2,7 @@
 
 > 日期：2026-08-22
 > 类型：review
-> 状态：Phase 4 未做项第二批已接（ConfirmBlock / checkpoint 写入 / collection_ids）；跨公司 Brief 仍 YAGNI
+> 状态：Phase 4 恢复缺口已收（ConfirmBlock 禁回落 + 回灌 + checkpoint 读回 + 保留集硬拒）；跨公司 Brief 仍 YAGNI
 > 关联：[M78 开发计划](../development/78-org-aware-orchestration.development.md) · [横切评审](./2026-08-22-review-org-heavy-chain-crosscut.md) · [组织不变量](../development/org-invariants.md)
 
 ---
@@ -66,11 +66,12 @@
 - 花名册工具面：Assemble 盖 `specialist_tool_faces`；effective tools 拒绝 spirit 保留集；领导 clamp 到 `read_only`；MCP 仍走该员工自己的 allow/`mcp:` 前缀
 - 确认五档 HITL：造人（Factory）、新剧本（AuthorizeCompanyPlaybook）、高风险门（既有 VerificationGate）、危险工具（既有 hook）、`confirm_before`（PlanExecutor 等待 + ConfirmActivity + steps_v2 ConfirmBlock）。默认阶段交接不弹卡
 
-**未做项第二批（已接）**
+**未做项第二批 + 恢复收口（已接）**
 
-- `confirm_before` 发出 `kind=confirm` / `tool_blocked` 卡（`playbook_confirm_before`），ConfirmActivity 用同一 activity id 闭环
-- escalate 把最新 playbook hit 写入 checkpoint（`gear=heavy`、阶段 id）；`IssuedBriefIDs` 仍空，等 Brief 登记表
-- 剧本 `collection_ids`：Expand → PlanStep → Assemble definition → team run `WithKnowledgeCollections`（胜用户 KnowledgeBases）；Brief 仍无知识正文
+- `confirm_before` 发出 ConfirmBlock；`pbconfirm:` **禁止**回落工具 await；无内存 waiter 时记决定并 `stepWriter` 关卡；`ctx.Done`/sweep 清 waiter
+- PlanStep 内存字段从 `task_plans.sub_tasks_json` 回灌（`collection_ids` / `confirm_before` / `graph_template_id`）
+- checkpoint 只快照 `executing` 计划；resume 读回 playbook/阶段写入 prompt；`IssuedBriefIDs` 仍空
+- 保留集硬拒：Allow 不能授予 `plan_and_execute` 等；Assemble `specialist_tool_faces` 在 team build 消费
 - 主对话不渲染 `token_usage` NoticeBlock（既有 `noticeFilter`）
 
 **仍未接**

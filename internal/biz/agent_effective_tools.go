@@ -85,6 +85,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 		ApplyAgentToolOverrides(&eff, all.Items, overrides)
 	}
 	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, all.Items, platform, overrides)
+	DisableSpiritReservedTools(&eff, ag.AgentKey)
 	return eff, nil
 }
 
@@ -165,6 +166,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 		ApplyAgentToolOverrides(&eff, all.Items, overrides)
 	}
 	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, all.Items, platform, overrides)
+	DisableSpiritReservedTools(&eff, ag.AgentKey)
 	return eff, change, nil
 }
 

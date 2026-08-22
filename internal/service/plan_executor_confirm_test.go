@@ -110,6 +110,45 @@ func TestHoldPlaybookConfirmPublishesConfirmCard(t *testing.T) {
 	}
 }
 
+func TestHoldPlaybookConfirmUsesNotedDecision(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	r := newDagRun(pe, biz.PlanBoard{SessionID: "sp-1", ID: "pb-1"})
+	step := &biz.PlanStep{ID: "st-confirm", Label: "发布", ConfirmBefore: true, Status: biz.PlanStepStatusPending}
+	pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", true)
+	approved, held := r.holdPlaybookConfirm(context.Background(), step)
+	if !held || !approved {
+		t.Fatalf("noted decision must resume without waiter: held=%v approved=%v", held, approved)
+	}
+}
+
+func TestHoldPlaybookConfirmAbortOnCancel(t *testing.T) {
+	t.Parallel()
+	seq := &fakeSeq{}
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), seq, loggateway.NewNoop())
+	r := newDagRun(pe, biz.PlanBoard{SessionID: "sp-1", ID: "pb-1"})
+	step := &biz.PlanStep{ID: "st-confirm", Label: "发布", ConfirmBefore: true, Status: biz.PlanStepStatusPending}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_, _ = r.holdPlaybookConfirm(ctx, step)
+		close(done)
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for !pe.HasPlaybookStageConfirm("sp-1", "st-confirm") {
+		if time.Now().After(deadline) {
+			t.Fatal("waiter not registered")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	r.abortPlaybookConfirm(context.Background(), step)
+	if pe.HasPlaybookStageConfirm("sp-1", "st-confirm") {
+		t.Fatal("waiter must be cleared on abort")
+	}
+}
+
 func TestResolvePlaybookStageConfirmUnknownIsFalse(t *testing.T) {
 	t.Parallel()
 	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())

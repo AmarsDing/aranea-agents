@@ -1,6 +1,57 @@
 package biz
 
-import "time"
+import (
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// DeterministicPlanStepID is the PublishV2Board id for a SubTask
+// (plan + raw stage id). Used to rehydrate memory-only org fields after DB reload.
+func DeterministicPlanStepID(planID, rawID string) string {
+	planID = strings.TrimSpace(planID)
+	rawID = strings.TrimSpace(rawID)
+	if planID == "" || rawID == "" {
+		return ""
+	}
+	return "st_" + uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.plan_step.v2:"+planID+":"+rawID)).String()
+}
+
+// HydratePlanStepsFromSubTasks copies collection_ids / confirm_before /
+// graph_template_id from TaskPlan.SubTasks onto PlanSteps. Empty source
+// fields do not overwrite values already set on the step.
+func HydratePlanStepsFromSubTasks(planID string, steps []PlanStep, subtasks []SubTask) {
+	if len(steps) == 0 || len(subtasks) == 0 {
+		return
+	}
+	byStepID := make(map[string]SubTask, len(subtasks))
+	for _, st := range subtasks {
+		if id := DeterministicPlanStepID(planID, st.ID); id != "" {
+			byStepID[id] = st
+		}
+		if id := strings.TrimSpace(st.ID); id != "" {
+			if _, ok := byStepID[id]; !ok {
+				byStepID[id] = st
+			}
+		}
+	}
+	for i := range steps {
+		st, ok := byStepID[steps[i].ID]
+		if !ok {
+			continue
+		}
+		if steps[i].GraphTemplateID == "" {
+			steps[i].GraphTemplateID = strings.TrimSpace(st.GraphTemplateID)
+		}
+		if !steps[i].ConfirmBefore {
+			steps[i].ConfirmBefore = st.ConfirmBefore
+		}
+		if len(steps[i].CollectionIDs) == 0 {
+			steps[i].CollectionIDs = NormalizeCollectionIDs(st.CollectionIDs)
+		}
+	}
+}
 
 // PlanStep 是计划步骤（v2 模型）。
 // 替代旧 Plan/PlanStep（废弃）+ SubTask 双轨模型。

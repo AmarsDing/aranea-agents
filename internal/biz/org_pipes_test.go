@@ -92,7 +92,15 @@ func TestOrgCheckpointFromPlanCopiesPlaybookStages(t *testing.T) {
 	if got := OrgCheckpointFromPlan(nil); got.PlaybookID != "" {
 		t.Fatalf("nil plan: %+v", got)
 	}
+	if got := OrgCheckpointFromPlan(&TaskPlan{
+		Status:    TaskPlanStatusCompleted,
+		SubTasks:  []SubTask{{ID: "design"}},
+		MemoryHit: &MemoryHit{PlaybookID: "software_delivery"},
+	}); got.PlaybookID != "" {
+		t.Fatalf("completed plan must not snapshot: %+v", got)
+	}
 	got := OrgCheckpointFromPlan(&TaskPlan{
+		Status:   TaskPlanStatusExecuting,
 		SubTasks: []SubTask{{ID: "design"}, {ID: "be"}},
 		MemoryHit: &MemoryHit{
 			PlaybookID:            "software_delivery",
@@ -110,6 +118,33 @@ func TestOrgCheckpointFromPlanCopiesPlaybookStages(t *testing.T) {
 	}
 }
 
+func TestHydratePlanStepsFromSubTasksCopiesOrgFields(t *testing.T) {
+	t.Parallel()
+	planID := "plan-1"
+	raw := "be"
+	steps := []PlanStep{{ID: DeterministicPlanStepID(planID, raw), Label: "后端"}}
+	HydratePlanStepsFromSubTasks(planID, steps, []SubTask{{
+		ID:              raw,
+		GraphTemplateID: "tmpl-1",
+		ConfirmBefore:   true,
+		CollectionIDs:   []string{"kb-1"},
+	}})
+	if steps[0].GraphTemplateID != "tmpl-1" || !steps[0].ConfirmBefore || len(steps[0].CollectionIDs) != 1 {
+		t.Fatalf("%+v", steps[0])
+	}
+}
+
+func TestDurableResumePromptForIncludesPlaybook(t *testing.T) {
+	t.Parallel()
+	if DurableResumePromptFor(DurableRunCheckpointPayload{}) != DurableResumePrompt() {
+		t.Fatal("empty payload must keep generic prompt")
+	}
+	got := DurableResumePromptFor(DurableRunCheckpointPayload{PlaybookID: "software_delivery", AuthorizedStageIDs: []string{"be"}})
+	if !strings.Contains(got, "software_delivery") || !strings.Contains(got, "be") {
+		t.Fatalf("prompt=%q", got)
+	}
+}
+
 func TestPlaybookConfirmActivityIDRoundTrip(t *testing.T) {
 	t.Parallel()
 	id := PlaybookConfirmActivityID("sp-1", "st-confirm")
@@ -119,5 +154,8 @@ func TestPlaybookConfirmActivityIDRoundTrip(t *testing.T) {
 	}
 	if _, ok := ParsePlaybookConfirmActivityID("other", id); ok {
 		t.Fatal("foreign session must not parse")
+	}
+	if !IsPlaybookConfirmActivityID(id) || IsPlaybookConfirmActivityID("step-confirm-1") {
+		t.Fatal("prefix detect")
 	}
 }

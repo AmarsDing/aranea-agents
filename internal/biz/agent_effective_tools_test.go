@@ -230,6 +230,43 @@ func TestCodingProfileDeniesSpiritReservedWithoutExplicitAllow(t *testing.T) {
 	}
 }
 
+func TestCodingProfileExplicitAllowCannotGrantSpiritReserved(t *testing.T) {
+	t.Parallel()
+	settings := AgentRuntimeSettings{
+		ToolsEnabled:   true,
+		ToolsProfile:   "coding",
+		ToolsAllowJSON: `["plan_and_execute"]`,
+	}
+	cat := []Tool{
+		{Key: "plan_and_execute", DisplayName: "编排", Category: "orchestration", Source: "builtin", Enabled: true},
+		{Key: "read_file", DisplayName: "读文件", Category: "filesystem", Source: "builtin", Enabled: true},
+	}
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
+	for _, it := range eff.Items {
+		if it.ToolKey == "plan_and_execute" && it.Enabled {
+			t.Fatalf("explicit allow must not grant spirit reserved tool: %#v", it)
+		}
+	}
+}
+
+func TestApplySpecialistToolFaceDenialsDisablesKeys(t *testing.T) {
+	t.Parallel()
+	eff := AgentEffectiveTools{Items: []EffectiveAgentTool{{ToolKey: "plan_and_execute", Enabled: true}}}
+	ApplySpecialistToolFaceDenials(&eff, "be", map[string][]string{"be": {"plan_and_execute"}})
+	if eff.Items[0].Enabled {
+		t.Fatal("assemble face must disable reserved tool")
+	}
+	DisableSpiritReservedTools(&eff, "be")
+	if eff.Items[0].Enabled {
+		t.Fatal("hard deny")
+	}
+	spirit := AgentEffectiveTools{Items: []EffectiveAgentTool{{ToolKey: "plan_and_execute", Enabled: true}}}
+	DisableSpiritReservedTools(&spirit, SpiritAgentKey)
+	if !spirit.Items[0].Enabled {
+		t.Fatal("spirit must keep reserved tools")
+	}
+}
+
 func TestReadOnlyLeadDoesNotInheritSpiritTools(t *testing.T) {
 	t.Parallel()
 	allowed := profileAllowSet("read_only", nil)
