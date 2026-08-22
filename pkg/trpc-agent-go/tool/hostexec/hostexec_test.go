@@ -55,7 +55,16 @@ func TestNewToolSet_Foreground(t *testing.T) {
 	require.EqualValues(t, 0, res["exit_code"])
 	_, hasDuration := res["duration_ms"]
 	require.True(t, hasDuration, "foreground exec must include duration_ms")
+	require.Contains(t, res, "total_lines", "foreground exec must include total_lines even without truncation")
 	require.Empty(t, mgr.sessions)
+}
+
+func TestCountOutputLines(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 0, countOutputLines(""))
+	require.Equal(t, 1, countOutputLines("hello"))
+	require.Equal(t, 2, countOutputLines("a\nb"))
+	require.Equal(t, 3, countOutputLines("a\nb\n"))
 }
 
 func TestNewToolSet_ForegroundHonorsMaxLines(t *testing.T) {

@@ -276,6 +276,10 @@ func (t *execCommandTool) Declaration() *tool.Declaration {
 					Type:        "integer",
 					Description: "Wall-clock milliseconds from start until this result.",
 				},
+				"total_lines": {
+					Type:        "integer",
+					Description: "Line count of output before any later truncation.",
+				},
 			},
 		},
 	}
@@ -548,14 +552,19 @@ func pollOutputSchema(desc string) *tool.Schema {
 				Type:        "integer",
 				Description: "OS process id while the command is running.",
 			},
+			"total_lines": {
+				Type:        "integer",
+				Description: "Line count of this poll chunk before any later truncation.",
+			},
 		},
 	}
 }
 
 func mapExecResult(res execResult) map[string]any {
 	out := map[string]any{
-		"status": res.Status,
-		"output": res.Output,
+		"status":      res.Status,
+		"output":      res.Output,
+		"total_lines": countOutputLines(res.Output),
 	}
 	if res.ExitCode != nil {
 		out["exit_code"] = *res.ExitCode
@@ -582,6 +591,7 @@ func mapPollResult(
 		"output":      poll.Output,
 		"offset":      poll.Offset,
 		"next_offset": poll.NextOffset,
+		"total_lines": countOutputLines(poll.Output),
 	}
 	if poll.ExitCode != nil {
 		out["exit_code"] = *poll.ExitCode
@@ -590,6 +600,16 @@ func mapPollResult(
 		out["pid"] = poll.PID
 	}
 	return out
+}
+
+// countOutputLines reports how many lines the raw command output occupies
+// so the model can see height even when a later decorator truncates the
+// payload. Empty output is 0.
+func countOutputLines(output string) int {
+	if output == "" {
+		return 0
+	}
+	return strings.Count(output, "\n") + 1
 }
 
 func firstInt(values ...*int) *int {

@@ -98,6 +98,9 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		var confirmActivityID string
 		if emitter != nil {
 			confirmContent := fmt.Sprintf("工具 %s 需要确认后执行", toolKey)
+			if decision.reason == confirmReasonShellOnFailure {
+				confirmContent = fmt.Sprintf("上一条命令失败后，工具 %s 需要再次确认", toolKey)
+			}
 			id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
 				ToolName:      toolKey,
 				ToolArguments: string(args.Arguments),

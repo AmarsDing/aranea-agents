@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -46,6 +47,9 @@ const (
 	// mcpSchemaToolCountDegrade 是直连工具数硬上限（B3）：≥20 个远程工具
 	// 时即使字符预算未满也降级 broker，避免首轮 schema 膨胀。
 	mcpSchemaToolCountDegrade = 20
+	// mcpSchemaToolCountDegradeCoding 是 coding / spirit（及空 profile）
+	// 的更紧上限（F4）：对齐「top-8 ≈ 1.4K token」研究结论，默认走 broker。
+	mcpSchemaToolCountDegradeCoding = 8
 )
 
 // MCPSchemaTotalBudgetChars 导出直连 declaration 总量硬预算，供 P0-2 阶段A
@@ -68,11 +72,44 @@ type MCPSchemaGovernanceReport struct {
 	Kept []trpctool.ToolSet
 }
 
+// MCPSchemaToolCountDegradeForProfile returns the direct-mount tool-count
+// cap used before falling back to broker. coding / spirit / empty follow
+// the tighter top-8 budget; other profiles keep the global 20-tool cap.
+func MCPSchemaToolCountDegradeForProfile(profile string) int {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "coding", "spirit", "":
+		return mcpSchemaToolCountDegradeCoding
+	default:
+		return mcpSchemaToolCountDegrade
+	}
+}
+
+// MCPSchemaPreferBrokerWithoutAllow reports whether a profile should drop
+// direct MCP mounts as soon as any remote tool exists, unless the agent
+// explicitly allow-listed mcp:<server> (F4).
+func MCPSchemaPreferBrokerWithoutAllow(profile string) bool {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "coding", "spirit", "":
+		return true
+	default:
+		return false
+	}
+}
+
 // GovernMCPServerToolSets 对一组 MCP toolset 执行截断+预算治理。
 // lg 可为 nil。调用方获得 Kept 的所有权。
 func GovernMCPServerToolSets(ctx context.Context, sets []trpctool.ToolSet, lg loggateway.Logger) MCPSchemaGovernanceReport {
+	return GovernMCPServerToolSetsAt(ctx, sets, lg, mcpSchemaToolCountDegrade)
+}
+
+// GovernMCPServerToolSetsAt is GovernMCPServerToolSets with an explicit
+// tool-count degrade threshold. maxTools <= 0 falls back to the global cap.
+func GovernMCPServerToolSetsAt(ctx context.Context, sets []trpctool.ToolSet, lg loggateway.Logger, maxTools int) MCPSchemaGovernanceReport {
 	if lg == nil {
 		lg = loggateway.NewNoop()
+	}
+	if maxTools <= 0 {
+		maxTools = mcpSchemaToolCountDegrade
 	}
 	rep := MCPSchemaGovernanceReport{}
 	for _, ts := range sets {
@@ -91,7 +128,7 @@ func GovernMCPServerToolSets(ctx context.Context, sets []trpctool.ToolSet, lg lo
 			rep.TotalChars += mcpDeclarationChars(g)
 		}
 	}
-	rep.Degraded = rep.TotalChars > mcpSchemaTotalBudgetChars || rep.ToolCount >= mcpSchemaToolCountDegrade
+	rep.Degraded = rep.TotalChars > mcpSchemaTotalBudgetChars || rep.ToolCount >= maxTools
 	rep.Kept = make([]trpctool.ToolSet, 0, len(sets))
 	for _, ts := range sets {
 		if ts == nil {

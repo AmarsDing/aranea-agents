@@ -120,11 +120,11 @@ func TestResolveAndWriteSkillState_MemoizedPerInvocation(t *testing.T) {
 	inv := trpcagent.NewInvocation()
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
-	first := resolveAndWriteSkillState(ctx, nil, deps)
+	first := resolveAndWriteSkillState(ctx, biz.Agent{}, deps)
 	if first == nil || len(first.Slugs) != 1 || first.Slugs[0] != "skill-a" {
 		t.Fatalf("first call = %#v, want [skill-a]", first)
 	}
-	second := resolveAndWriteSkillState(ctx, nil, deps)
+	second := resolveAndWriteSkillState(ctx, biz.Agent{}, deps)
 	if second == nil || len(second.Slugs) != 1 || second.Slugs[0] != "skill-a" {
 		t.Fatalf("second call = %#v, want [skill-a]", second)
 	}
@@ -146,11 +146,11 @@ func TestResolveAndWriteSkillState_ErrorNotMemoized(t *testing.T) {
 	inv := trpcagent.NewInvocation()
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
-	if got := resolveAndWriteSkillState(ctx, nil, deps); got != nil {
+	if got := resolveAndWriteSkillState(ctx, biz.Agent{}, deps); got != nil {
 		t.Fatalf("first call should fail, got %#v", got)
 	}
 	// Transient error must not be cached: the next call retries and succeeds.
-	got := resolveAndWriteSkillState(ctx, nil, deps)
+	got := resolveAndWriteSkillState(ctx, biz.Agent{}, deps)
 	if got == nil || len(got.Slugs) != 1 {
 		t.Fatalf("second call should succeed after transient error, got %#v", got)
 	}
@@ -169,7 +169,7 @@ func TestResolveAndWriteSkillState_RoutedSlugsPersistedInFullProfile(t *testing.
 	inv := trpcagent.NewInvocation()
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
-	result := resolveAndWriteSkillState(ctx, nil, deps) // full-profile mode caller
+	result := resolveAndWriteSkillState(ctx, biz.Agent{}, deps) // full-profile mode caller
 	if result == nil || len(result.Slugs) != 1 {
 		t.Fatalf("resolve = %#v, want [skill-a]", result)
 	}
@@ -205,7 +205,7 @@ func TestResolveAndWriteSkillState_WiresHealthProvider(t *testing.T) {
 	inv := trpcagent.NewInvocation()
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
-	result := resolveAndWriteSkillState(ctx, nil, deps)
+	result := resolveAndWriteSkillState(ctx, biz.Agent{}, deps)
 	if result == nil || len(result.Slugs) != 1 {
 		t.Fatalf("resolve = %#v, want [skill-a]", result)
 	}

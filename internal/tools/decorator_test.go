@@ -239,6 +239,46 @@ func TestToolDecorator_TruncateResult_TotalLines(t *testing.T) {
 	}
 }
 
+func TestToolDecorator_TruncateResult_LiftsExecReceipt(t *testing.T) {
+	payload := map[string]any{
+		"status":      "exited",
+		"exit_code":   2,
+		"duration_ms": 15,
+		"total_lines": 80,
+		"output":      strings.Repeat("line\n", 200),
+	}
+	tool := &decoratorMockTool{
+		name: "shell_exec",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			return payload, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		Logger:       loggateway.NewNoop(),
+		ResultBudget: &ResultBudget{MaxBytes: 120, Mode: "tail"},
+	})
+	result, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	envelope, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected envelope, got %T", result)
+	}
+	if truncated, _ := envelope["truncated"].(bool); !truncated {
+		t.Fatal("expected truncation")
+	}
+	if envelope["exit_code"] != 2 {
+		t.Fatalf("exit_code = %v, want 2", envelope["exit_code"])
+	}
+	if envelope["duration_ms"] != 15 {
+		t.Fatalf("duration_ms = %v, want 15", envelope["duration_ms"])
+	}
+	if envelope["total_lines"] != 80 {
+		t.Fatalf("total_lines = %v, want original output height 80", envelope["total_lines"])
+	}
+}
+
 // TestToolDecorator_Cache verifies that ConcurrentSafe tools are cached:
 // repeated calls with identical args hit the cache without invoking the
 // inner tool, while different args trigger a new call.

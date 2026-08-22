@@ -81,6 +81,12 @@ type shardPlan struct {
 	brokerFallback *tooltrpc.MCPBrokerConfig
 	// deferredTools 是合并期 FinalizeDeferredTools 的输入（registry 名）。
 	deferredTools []string
+	// toolsProfile 供合并期 MCP 直连降级阈值（F4：coding/spirit 更早走 broker）。
+	toolsProfile string
+	// mcpAllowExplicit is true when ToolsAllowJSON lists mcp:<server>.
+	// Without it, coding/spirit drop direct mounts as soon as any remote
+	// tool exists (broker fallback / broker shard required).
+	mcpAllowExplicit bool
 }
 
 // shardFingerprint 计算规范化指纹：投影结构体 → canonical JSON → sha256。
@@ -359,7 +365,17 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 
 	// ---------- 切分 ----------
 
-	p := &shardPlan{brokerIdx: -1, brokerFallback: cfg.MCPBrokerFallback, deferredTools: deferredTools}
+	toolsProfile := ""
+	if ag.Settings != nil {
+		toolsProfile = strings.TrimSpace(ag.Settings.ToolsProfile)
+	}
+	p := &shardPlan{
+		brokerIdx:        -1,
+		brokerFallback:   cfg.MCPBrokerFallback,
+		deferredTools:    deferredTools,
+		toolsProfile:     toolsProfile,
+		mcpAllowExplicit: toolsAllowHasMCPServer(ag.Settings),
+	}
 
 	// core：完整 cfg 减去被抽出的组。
 	coreCfg := cfg
@@ -720,4 +736,20 @@ func resolveDeferredToolNames(ag biz.Agent, eff map[string]bool, lg loggateway.L
 			loggateway.Int("deferred_tools", len(out)))
 	}
 	return out
+}
+
+func toolsAllowHasMCPServer(settings *biz.AgentRuntimeSettings) bool {
+	if settings == nil || strings.TrimSpace(settings.ToolsAllowJSON) == "" {
+		return false
+	}
+	var keys []string
+	if json.Unmarshal([]byte(settings.ToolsAllowJSON), &keys) != nil {
+		return false
+	}
+	for _, k := range keys {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(k)), "mcp:") {
+			return true
+		}
+	}
+	return false
 }

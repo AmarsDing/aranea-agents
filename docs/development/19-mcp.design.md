@@ -498,7 +498,7 @@ IDE 能对 **一只已注册专项** 列出并调用其允许工具，不经过 
 ## 子模块：MCP Resource 面与 mid-turn catalog 刷新（E8 评估）
 
 > 日期：2026-08-22。来源：[2026-08-22-analysis-codex-vs-aranea-post-ad.md](../reports/2026-08-22-analysis-codex-vs-aranea-post-ad.md) E8。  
-> **结论：list/read 已落地；templates/subscribe 与 mid-turn 热刷新本期不实现。** 不做 Agent-as-server（见上一子模块）。
+> **结论：list/read 已落地；脏标记 mid-turn catalog 刷新已落地；templates/subscribe 仍不实现。** 不做 Agent-as-server（见上一子模块）。
 
 ### 已有（客户端三件套的 2/3）
 
@@ -533,3 +533,12 @@ Codex `refresh_mcp_if_dirty` 在 step 后热刷新。Aranea **不**打开「每�
 4. 不热替换正在 `Call` 的 Tool 对象；不扫全工作区；配置变更仍走 `MCPVersionHash` 下一请求重建 Agent。
 
 Broker 的 `mcp_list_tools` 本身已是 live list，脏标记主要服务直连 mount。
+
+### coding / spirit 直连更早降级 broker（F4）
+
+`GovernMCPServerToolSets` 全局工具数上限仍是 **≥20**。coding / spirit / 空 profile：
+
+- 未在 `ToolsAllowJSON` 写 `mcp:<server>` 时，**只要有 1 个**直连远程工具就降级 broker（F4：默认按需拉 schema）。
+- 显式 allow 了 `mcp:<server>` 时，阈值回到 **≥8**。
+
+`full` / `research` 等其它 profile 保持 20。无 broker / fallback 时仍保留截断后的直连工具。不默认 Deferred 整组 `mcp_tool_set`。

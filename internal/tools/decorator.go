@@ -568,6 +568,9 @@ func (d *ToolDecorator) truncateResult(ctx context.Context, jsonArgs []byte, res
 		return result
 	}
 	if envelope, ok := d.offloadResult(ctx, jsonArgs, data); ok {
+		if m, isMap := envelope.(map[string]any); isMap {
+			return liftExecReceipt(m, result)
+		}
 		return envelope
 	}
 	mode := budget.Mode
@@ -585,13 +588,35 @@ func (d *ToolDecorator) truncateResult(ctx context.Context, jsonArgs []byte, res
 		loggateway.Int("target_bytes", targetBytes),
 		loggateway.Str("mode", mode),
 	)
-	return map[string]any{
+	return liftExecReceipt(map[string]any{
 		"truncated":     true,
 		"original_size": len(data),
 		"total_lines":   countTotalLines(data),
 		"mode":          mode,
 		"content":       string(truncated),
+	}, result)
+}
+
+// liftExecReceipt copies hostexec-style receipt fields onto a truncation /
+// offload envelope so the model still sees exit_code / duration_ms / the
+// output line count after the payload is wrapped (F1).
+func liftExecReceipt(envelope map[string]any, result any) map[string]any {
+	if envelope == nil {
+		return envelope
 	}
+	src, ok := result.(map[string]any)
+	if !ok || src == nil {
+		return envelope
+	}
+	for _, key := range []string{"exit_code", "duration_ms", "status"} {
+		if v, exists := src[key]; exists && v != nil {
+			envelope[key] = v
+		}
+	}
+	if v, exists := src["total_lines"]; exists && v != nil {
+		envelope["total_lines"] = v
+	}
+	return envelope
 }
 
 // offloadPreviewHeadBytes / offloadPreviewTailBytes bound the dual-end

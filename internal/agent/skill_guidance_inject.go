@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/internal/agent/reposkills"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/skill/render"
@@ -81,7 +82,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 			if args == nil || args.Request == nil {
 				return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 			}
-			resolveAndWriteSkillState(ctx, ag.Settings, deps)
+			resolveAndWriteSkillState(ctx, ag, deps)
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		})
 	}
@@ -93,7 +94,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		result := resolveAndWriteSkillState(ctx, ag.Settings, deps)
+		result := resolveAndWriteSkillState(ctx, ag, deps)
 		if result == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -186,7 +187,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		result := resolveAndWriteSkillState(ctx, ag.Settings, deps)
+		result := resolveAndWriteSkillState(ctx, ag, deps)
 		if result == nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -217,7 +218,8 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 // The result is memoized per invocation (skillResolveMemoStateKey): routing
 // inputs are invariant within one invocation, and errors are NOT memoized so
 // a transient failure does not suppress routing for the rest of the turn.
-func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps) *skillruntime.ResolveResult {
+func resolveAndWriteSkillState(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) *skillruntime.ResolveResult {
+	runtime := ag.Settings
 	inv, invOK := trpcagent.InvocationFromContext(ctx)
 	if invOK && inv != nil {
 		if cached, ok := inv.GetState(skillResolveMemoStateKey); ok {
@@ -249,6 +251,10 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 			loggateway.Err(err))
 		return nil
 	}
+	result = attachWorkspaceSkillMentions(ctx, ag, deps, result)
+	if result == nil {
+		return nil
+	}
 	if !invOK || inv == nil {
 		if len(result.Slugs) == 0 {
 			return nil
@@ -267,6 +273,45 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 
 // writeSkillRouteState records routed slugs (for health-metrics persistence
 // by the invocation recorder) and selection reasons into invocation state.
+func attachWorkspaceSkillMentions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, result *skillruntime.ResolveResult) *skillruntime.ResolveResult {
+	entries := workspaceSkillEntries(ctx, ag, deps)
+	if len(entries) == 0 {
+		return result
+	}
+	mentions := skillruntime.ParseSkillMentions(skillruntime.TurnQueryFromContext(ctx))
+	if len(mentions) == 0 {
+		return result
+	}
+	if result == nil {
+		result = &skillruntime.ResolveResult{Reasons: map[string]string{}}
+	}
+	if result.Reasons == nil {
+		result.Reasons = map[string]string{}
+	}
+	seen := make(map[string]bool, len(result.Slugs)+len(mentions))
+	for _, s := range result.Slugs {
+		seen[strings.ToLower(strings.TrimSpace(s))] = true
+	}
+	var extra []string
+	for _, m := range mentions {
+		e, ok := reposkills.Lookup(entries, m)
+		if !ok {
+			continue
+		}
+		slug := strings.ToLower(strings.TrimSpace(e.Slug))
+		result.Reasons[slug] = "user mention"
+		if seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		extra = append(extra, e.Slug)
+	}
+	if len(extra) > 0 {
+		result.Slugs = append(extra, result.Slugs...)
+	}
+	return result
+}
+
 func writeSkillRouteState(inv *trpcagent.Invocation, result *skillruntime.ResolveResult) {
 	inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
 	inv.SetState(skillSelectionReasonStateKey, result.Reasons)

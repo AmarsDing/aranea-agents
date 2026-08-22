@@ -110,8 +110,10 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 	// E1: read-only / lint shell commands skip the first confirmation card.
 	// Unknown commands stay on the catalog path; destructive commands still
 	// confirm unless a session/persisted grant already exists.
+	// F2: after a non-zero exit (or tool error) in this invocation, the next
+	// safe shell also needs a card unless a grant already exists.
 	shellClass, isShell := classifyShellForConfirm(toolName, args)
-	if isShell && shellClass == shellClassSafe {
+	if isShell && shellClass == shellClassSafe && !shellOnFailureArmed(ctx) {
 		return confirmDecision{needsConfirm: false, reason: confirmReasonShellSafe}
 	}
 	if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
@@ -122,6 +124,9 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 	}
 	if isShell && shellClass == shellClassDanger {
 		return confirmDecision{needsConfirm: true, reason: confirmReasonShellDanger}
+	}
+	if isShell && shellClass == shellClassSafe && shellOnFailureArmed(ctx) {
+		return confirmDecision{needsConfirm: true, reason: confirmReasonShellOnFailure}
 	}
 	if needsByCatalog {
 		return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyCatalog}

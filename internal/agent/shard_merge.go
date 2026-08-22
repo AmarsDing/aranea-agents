@@ -64,7 +64,7 @@ func mergeShardProducts(ctx context.Context, sp *shardPlan, prods []*shardProduc
 		for _, idx := range sp.mcpIdx {
 			direct = append(direct, prods[idx].toolSets...)
 		}
-		gov := tools.GovernMCPServerToolSets(ctx, direct, lg)
+		gov := tools.GovernMCPServerToolSetsAt(ctx, direct, lg, mcpDegradeToolCount(sp))
 		if gov.TruncatedCount > 0 {
 			lg.Info("MCP schema 治理：截断超长 declaration",
 				loggateway.Domain("tools.mcp"),
@@ -145,4 +145,15 @@ func mergeShardProducts(ctx context.Context, sp *shardPlan, prods []*shardProduc
 	tools.ApplyMergeDisambiguationHints(out)
 	tools.ApplyRuntimeNameAliases(ctx, out)
 	return out, nil
+}
+
+func mcpDegradeToolCount(sp *shardPlan) int {
+	if sp == nil {
+		return 0
+	}
+	maxTools := tools.MCPSchemaToolCountDegradeForProfile(sp.toolsProfile)
+	if !sp.mcpAllowExplicit && tools.MCPSchemaPreferBrokerWithoutAllow(sp.toolsProfile) {
+		return 1
+	}
+	return maxTools
 }

@@ -55,6 +55,30 @@ func NewAgentVisibilityFilter(runtime RuntimeSettings) trpcskill.VisibilityFilte
 	return f.allow
 }
 
+// NewAgentVisibilityFilterAllowing is NewAgentVisibilityFilter plus slugs
+// that stay visible even when the agent has a non-empty allowed_slugs list
+// (F3 workspace SKILL.md). Denied slugs still win.
+func NewAgentVisibilityFilterAllowing(runtime RuntimeSettings, extraSlugs []string) trpcskill.VisibilityFilter {
+	raw := "{}"
+	if runtime != nil && strings.TrimSpace(runtime.GetSkillRuntimeJSON()) != "" {
+		raw = runtime.GetSkillRuntimeJSON()
+	}
+	policy := biz.ParseSkillRuntimePolicy(raw)
+	f := &AgentVisibilityFilter{
+		allowed: strutil.SliceToSet(policy.AllowedSlugs),
+		denied:  strutil.SliceToSet(policy.DeniedSlugs),
+	}
+	if len(f.allowed) > 0 {
+		for _, s := range extraSlugs {
+			key := strings.ToLower(strings.TrimSpace(s))
+			if key != "" && !f.denied[key] {
+				f.allowed[key] = true
+			}
+		}
+	}
+	return f.allow
+}
+
 func (f *AgentVisibilityFilter) allow(_ context.Context, summary trpcskill.Summary) bool {
 	if f == nil {
 		return true

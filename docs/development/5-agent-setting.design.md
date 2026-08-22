@@ -625,7 +625,7 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 | 标签 | 何时注入 | 内容 |
 |------|----------|------|
 | `<working_contract>` | `coding` / `spirit` / `full` profile，或 `__spirit__`，或 allow 含 coding-bridge / computer-use / `shell_exec` / `diff_edit` | preamble、短计划、`search_content`、`diff_edit`/`patch_file`、验证时机。不挂到 `read_only` / `research` / `chat_only` 专项 |
-| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件。运行时由 `workspace_sandbox` BeforeTool（priority 8）强制：只读写工具 `CustomResult` 拒绝；`path`/`file`/`cwd` 必须落在 Agent 工作区根下。OS 级：`hostexec` `WithProcessSandbox`（E3：Windows Job Object；Linux 有 `bwrap` 时 `--die-with-parent`）。路径逃逸仍由本 hook 拦。`needs_approval` 下只读 shell（`go test` / `git status|diff|log` / `rg` / `ls` / linter）免第一张确认卡（E1）；编码面 `save_file` 覆盖已有文件由 `edit_discipline` hook（priority 9）拒绝，须走 `diff_edit`（E5）。coding / spirit / full 另挂 `get_context_remaining`（E6） |
+| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件。运行时由 `workspace_sandbox` BeforeTool（priority 8）强制：只读写工具 `CustomResult` 拒绝；`path`/`file`/`cwd` 必须落在 Agent 工作区根下。OS 级：`hostexec` `WithProcessSandbox`（E3：Windows Job Object；Linux 有 `bwrap` 时 `--die-with-parent`）。路径逃逸仍由本 hook 拦。`needs_approval` 下只读 shell（`go test` / `git status|diff|log` / `rg` / `ls` / linter）免第一张确认卡（E1）；同一 invocation 里 shell 非 0 / 启动失败后，下一条安全命令也要确认（F2 `shell_on_failure`，grant 仍可跳过；确认卡文案写明「上一条命令失败后」）。编码面 `save_file` 覆盖已有文件由 `edit_discipline` hook（priority 9）拒绝，须走 `diff_edit`（E5）。coding / spirit / full 另挂 `get_context_remaining`（E6）。前台 `hostexec` 回执始终带 `exit_code` / `duration_ms` / `total_lines`（F1）；decorator 截断/offload 信封会抬升这三项，避免模型只看见 `content` |
 
 两段都烘焙进 instruction（与 `## Runtime capability policy` 同属稳定前缀），禁止放进每轮 user-role 动态 cue。
 
@@ -633,7 +633,7 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 
 动态 runtime cue（`Effective tool keys this turn` 等）仍是 user-role 尾，不进 instruction。E7：同一 invocation 内指纹未变则不再整段重发；行集变化只发 `<world_state_diff>`。E7b：回合中紧急截断若丢掉历史/尾 cue，把上一份 snapshot 插回**最后一条真实 user 消息之前**（`BeforeLastUserMessage`）。
 
-编码 / 精灵编程桥还会在静态 cue 之后烘焙 `<project_agents_md>`（B1）：从 Agent 可信工作区找 `.git`，root→cwd 每层 `AGENTS.override.md` > `AGENTS.md` > `CLAUDE.md`，总预算 32KiB，超出打日志字段 `agents_md_truncated`。工作区外未登记路径不读。
+编码 / 精灵编程桥还会在静态 cue 之后烘焙 `<project_agents_md>`（B1）：从 Agent 可信工作区找 `.git`，root→cwd 每层 `AGENTS.override.md` > `AGENTS.md` > `CLAUDE.md`，总预算 32KiB，超出打日志字段 `agents_md_truncated`。工作区外未登记路径不读。同门再挂仓库技能 cue（F3）：只读 `.agents/skills` / `.codex/skills` 的 `SKILL.md` 目录，注入 `<workspace_skills>`，不写平台 Skill DB。
 
 ---
 

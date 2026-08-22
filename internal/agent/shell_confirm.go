@@ -13,8 +13,9 @@ import (
 // path. Grants still bypass danger (unlike computer-use danger words).
 
 const (
-	confirmReasonShellSafe   = "shell_safe"
-	confirmReasonShellDanger = "shell_danger"
+	confirmReasonShellSafe      = "shell_safe"
+	confirmReasonShellDanger    = "shell_danger"
+	confirmReasonShellOnFailure = "shell_on_failure"
 )
 
 type shellConfirmClass int

@@ -68,6 +68,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newSkillGuidanceBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	if hook := newWorkspaceSkillsBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newMemoryInjectBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
@@ -170,6 +173,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		if hook := newMCPCatalogRefreshAfterHook(deps.MCPCacheInvalidators, lg); hook != nil {
 			entries = append(entries, hook)
 		}
+		entries = append(entries, newShellOnFailureAfterHook())
 		if gate != nil {
 			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
 		}

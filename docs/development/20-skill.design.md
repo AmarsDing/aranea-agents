@@ -1516,4 +1516,19 @@ Skill 对模型的成本与召回质量，取决于 **什么时候写什么**，
 
 ---
 
-*文档版本：5.2 — 增补 `$skill` mention 与 routed 合流（2026-08-22）。*
+## 子模块：仓库 `.agents/skills` 扫描（F3）
+
+> 2026-08-22 Codex 对照。不新开文档编号。平台 Skill 仍以 DB + storage root watcher 为真相源。
+
+编码 / 精灵 / full 面（与 `working_contract` 同门）在 BeforeModel 动态 cue 中**只读**扫描可信工作区：
+
+| 树 | 路径 |
+|----|------|
+| Codex / 社区 | `<project-root|cwd>/.agents/skills/<slug>/SKILL.md` |
+| Codex 兼容 | `<project-root|cwd>/.codex/skills/<slug>/SKILL.md` |
+
+规则：未信任根不读；同 slug 以 cwd 树覆盖 root；最多 24 条；解析 frontmatter 的 name/description，**不入库、不写盘**。注入标签 `<workspace_skills>`，user-role + `aranea.dynamic_cue`，每 invocation 备忘一次。`skill_load` / `$slug` 经 `workspaceSkillRepo` 叠加到平台 Repository：平台同名优先；Layer A allow-list 会并入仓库 slug（deny 仍优先）。
+
+---
+
+*文档版本：5.4 — 仓库技能 `skill_load` overlay（2026-08-22）。*

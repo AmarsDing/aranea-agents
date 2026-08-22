@@ -255,6 +255,39 @@ func TestGovernMCPServerToolSets_ToolCountDegrade(t *testing.T) {
 	}
 }
 
+func TestMCPSchemaToolCountDegradeForProfile(t *testing.T) {
+	if got := MCPSchemaToolCountDegradeForProfile("coding"); got != mcpSchemaToolCountDegradeCoding {
+		t.Fatalf("coding = %d, want %d", got, mcpSchemaToolCountDegradeCoding)
+	}
+	if got := MCPSchemaToolCountDegradeForProfile(""); got != mcpSchemaToolCountDegradeCoding {
+		t.Fatalf("empty = %d, want %d", got, mcpSchemaToolCountDegradeCoding)
+	}
+	if got := MCPSchemaToolCountDegradeForProfile("full"); got != mcpSchemaToolCountDegrade {
+		t.Fatalf("full = %d, want %d", got, mcpSchemaToolCountDegrade)
+	}
+	if !MCPSchemaPreferBrokerWithoutAllow("coding") || MCPSchemaPreferBrokerWithoutAllow("full") {
+		t.Fatal("coding must prefer broker without mcp: allow; full must not")
+	}
+}
+
+func TestGovernMCPServerToolSetsAt_CodingCap(t *testing.T) {
+	tools := make([]trpctool.Tool, mcpSchemaToolCountDegradeCoding)
+	for i := range tools {
+		tools[i] = &governFakeTool{decl: &trpctool.Declaration{
+			Name:        fmt.Sprintf("c%02d", i),
+			Description: "small",
+			InputSchema: &trpctool.Schema{Type: "object"},
+		}}
+	}
+	sets := []trpctool.ToolSet{&governFakeToolSet{name: "coding", tools: tools}}
+	if !GovernMCPServerToolSetsAt(context.Background(), sets, nil, MCPSchemaToolCountDegradeForProfile("coding")).Degraded {
+		t.Fatal("coding profile must degrade at 8 direct MCP tools")
+	}
+	if GovernMCPServerToolSetsAt(context.Background(), sets, nil, MCPSchemaToolCountDegradeForProfile("full")).Degraded {
+		t.Fatal("full profile must stay direct at 8 tools")
+	}
+}
+
 func TestGovernMCPServerToolSets_BoundaryExactlyAtBudgetStaysDirect(t *testing.T) {
 	// calibrate: build tools until just under budget using small fixed blocks
 	mk := func(desc string) trpctool.Tool {

@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/agent/a2ui"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	agentplanner "aranea-agents/internal/agent/planner"
+	"aranea-agents/internal/agent/reposkills"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/skill/storage"
@@ -240,6 +241,9 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		if err != nil {
 			lg.Error("Agent 构建失败：技能依赖", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 			return nil, nil, nil, err
+		}
+		if repo != nil {
+			repo = wrapWorkspaceSkillsRepo(ctx, ag, deps, repo)
 		}
 		skillRepoForBudget, skillFilterForBudget = repo, filter
 		skillMs = time.Since(skillStart).Milliseconds()
@@ -491,7 +495,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	// (system prompt prefix) byte-stable across turns for prompt-cache hits.
 	// Per-turn Layer B routing lives in the progressive guidance injection
 	// path (skill_guidance_inject.go) and never hides skills from the overview.
-	filter := skillruntime.NewAgentVisibilityFilter(runtimeIface)
+	filter := skillruntime.NewAgentVisibilityFilterAllowing(runtimeIface, reposkills.Slugs(workspaceSkillEntries(ctx, ag, deps)))
 
 	execType := ""
 	if runtime != nil {

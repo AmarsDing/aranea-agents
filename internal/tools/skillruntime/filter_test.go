@@ -36,6 +36,20 @@ func TestAgentVisibilityFilter_Allow_SlugNotInAllowList(t *testing.T) {
 	}
 }
 
+func TestAgentVisibilityFilterAllowing_WorkspaceSlug(t *testing.T) {
+	f := NewAgentVisibilityFilterAllowing(&mockRuntime{json: `{"allowed_slugs":["skill-a"]}`}, []string{"xlsx-review"})
+	if !f(context.Background(), trpcskill.Summary{Name: "xlsx-review"}) {
+		t.Error("workspace slug must stay visible beside an allow-list")
+	}
+	if f(context.Background(), trpcskill.Summary{Name: "skill-b"}) {
+		t.Error("unrelated slug must stay hidden")
+	}
+	denied := NewAgentVisibilityFilterAllowing(&mockRuntime{json: `{"denied_slugs":["xlsx-review"]}`}, []string{"xlsx-review"})
+	if denied(context.Background(), trpcskill.Summary{Name: "xlsx-review"}) {
+		t.Error("denied slug must still win")
+	}
+}
+
 func TestAgentVisibilityFilter_Allow_DenyListBlocks(t *testing.T) {
 	f := NewAgentVisibilityFilter(&mockRuntime{json: `{"denied_slugs":["skill-b"]}`})
 	if f(context.Background(), trpcskill.Summary{Name: "skill-b"}) {
