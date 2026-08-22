@@ -140,7 +140,19 @@ func (ts *ToolSet) toolsCacheFresh() bool {
 	}
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	return ts.tools != nil && time.Since(ts.toolsLoadedAt) < ttl
+	return ts.tools != nil && !ts.toolsLoadedAt.IsZero() && time.Since(ts.toolsLoadedAt) < ttl
+}
+
+// InvalidateToolsCache expires the cached tools/list so the next Tools()
+// call refreshes from the server. The last successful list is kept so a
+// failed refresh can still return the previous catalog.
+func (ts *ToolSet) InvalidateToolsCache() {
+	if ts == nil {
+		return
+	}
+	ts.mu.Lock()
+	ts.toolsLoadedAt = time.Time{}
+	ts.mu.Unlock()
 }
 
 // Close implements the ToolSet interface.

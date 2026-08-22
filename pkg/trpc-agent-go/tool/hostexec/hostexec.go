@@ -48,6 +48,7 @@ type config struct {
 	maxLines int
 	jobTTL   time.Duration
 	baseEnv  map[string]string
+	sandbox  bool
 }
 
 // Option configures the hostexec tool set.
@@ -95,6 +96,19 @@ func WithBaseEnv(env map[string]string) Option {
 	}
 }
 
+// WithProcessSandbox enables OS-level containment for spawned commands.
+// Windows assigns a Job Object (kill-on-close, active-process cap,
+// CREATE_NEW_PROCESS_GROUP). Linux wraps the command with bubblewrap
+// `--die-with-parent` when `bwrap` is on PATH; process-group + parent-death
+// signal still apply either way. Default is off so existing callers keep
+// unsandboxed hostexec behavior. This is process containment, not a full
+// filesystem / network policy.
+func WithProcessSandbox(enabled bool) Option {
+	return func(c *config) {
+		c.sandbox = enabled
+	}
+}
+
 func defaultConfig() config {
 	return config{
 		baseDir: defaultBaseDir,
@@ -126,6 +140,7 @@ func NewToolSet(opts ...Option) (tool.ToolSet, error) {
 	if len(cfg.baseEnv) > 0 {
 		mgr.baseEnv = cloneEnvMap(cfg.baseEnv)
 	}
+	mgr.sandbox = cfg.sandbox
 
 	set := &toolSet{
 		name:    strings.TrimSpace(cfg.name),

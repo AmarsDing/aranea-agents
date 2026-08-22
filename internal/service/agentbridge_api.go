@@ -34,9 +34,6 @@ func (a *AgentBridgeAPI) UpsertAgent(ctx context.Context, req *v1.UpsertAgentReq
 	if strings.TrimSpace(req.AgentKey) == "" {
 		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "agent_key is required")
 	}
-	if strings.TrimSpace(req.Command) == "" {
-		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "command is required")
-	}
 	agent := &agentbridge.CodingAgent{
 		Workspace:   agentBridgeWorkspace,
 		AgentKey:    strings.TrimSpace(req.AgentKey),
@@ -45,6 +42,11 @@ func (a *AgentBridgeAPI) UpsertAgent(ctx context.Context, req *v1.UpsertAgentReq
 		Args:        req.Args,
 		Env:         req.Env,
 		Enabled:     req.Enabled,
+	}
+	// E9: known keys (codebuddy / claude_code / codex) fill argv when omitted.
+	agentbridge.ApplyDefaultLaunch(agent)
+	if strings.TrimSpace(agent.Command) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "command is required")
 	}
 	if agent.DisplayName == "" {
 		agent.DisplayName = agent.AgentKey

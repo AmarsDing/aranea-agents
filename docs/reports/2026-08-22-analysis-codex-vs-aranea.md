@@ -461,6 +461,8 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 5. 记忆 `use_count` 与「prompt 里真正出现的条目」相关系数转正（C2）。
 6. 组织/岗位/花名册行为零回归（自动化：现有 org invariant 测试）。
 
+E10 金丝雀（4 / 5 / token 帽）：`internal/agent/section7_canary_test.go`。B1–B4 与组织回归仍走既有测试，不另开 cron。
+
 ---
 
 

@@ -85,7 +85,7 @@ web/src/pages/AgentBridgePage.vue（M3）+ 确认卡片扩展（M2）
 | workspace | string | 工作区（默认 default） |
 | agent_key | string | 唯一标识：`claude_code` / `codex` / `codebuddy` |
 | display_name | string | 显示名 |
-| command | string | 启动命令（如 `codebuddy`、`npx`、`claude-code-acp`） |
+| command | string | 启动命令（如 `codebuddy`、`npx`、`claude-code-acp`）。E9：`codebuddy` / `claude_code` / `codex` 可省略，由 `DefaultACPLaunch` 填 argv |
 | args_json | json | 启动参数（如 `["--acp"]`、`["-y","@zed-industries/claude-code-acp"]`） |
 | env_json | json | 附加环境变量 |
 | enabled | bool | 启用开关 |
@@ -323,3 +323,21 @@ UpsertAgent / ListAgents / ProbeAgent / UpsertProject / ListProjects / DeletePro
 - `service.go`：`NewAgentBridgeService`（注入 repo + ACP client factory + event bus + FlowLogWriter）
 - `tools` registry：`codingbridge.NewToolSet(svc)` 注册
 - 启动钩子：`RecoverActiveTasks`（ListActive → 标记 failed + 清理 pid）
+
+---
+
+## 子模块：ACP 默认启动 adapter（E9 / M2-5）
+
+> 日期：2026-08-22。仍是 **同一套 ACP stdio**，不是第二协议。管理页（M3 `AgentBridgePage`）未做。
+
+`internal/biz/agentbridge/launch.go`：
+
+| `agent_key`（及别名） | command | args |
+|----------------------|---------|------|
+| `codebuddy`（`code_buddy` / `tencent_codebuddy`） | `codebuddy` | `--acp` |
+| `claude_code`（`claude` / `claude-code` / `claudecode`） | `claude-code-acp` | （空） |
+| `codex`（`openai_codex` / `codex_acp`） | `npx` | `-y` `@zed-industries/codex-acp` |
+
+`UpsertAgent` 在 command 为空且 key 已知时调用 `ApplyDefaultLaunch`；显式 argv 不覆盖。未知 key 仍要求 command。
+
+端到端冒烟：`TestClientEndToEndWithFakeAgent`（`internal/agentbridge/acp/client_test.go`）已覆盖 initialize → session → prompt → done。真实 `codebuddy --acp` 本机二进制冒烟仍是人工项（M1-14）。

@@ -181,6 +181,12 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 			loggateway.Int("est_tokens", finalEst),
 			loggateway.Int("target_tokens", target),
 			loggateway.Any("used_ratio", ratio))
+		// E7b: Codex mid-turn compact re-injects world state
+		// BeforeLastUserMessage after eviction. Restore the last snapshot
+		// when history or tail cues were dropped.
+		if len(evictedMsgs) > 0 || droppedCues > 0 {
+			args.Request.Messages = reinjectWorldStateAfterCompact(ctx, args.Request.Messages)
+		}
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

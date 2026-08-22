@@ -620,6 +620,7 @@ func TestRunForeground_ContextCancel(t *testing.T) {
 		5*time.Second,
 		nil,
 		defaultMaxLines,
+		false,
 	)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, output)

@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
+	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
@@ -301,12 +302,13 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		toolsMs = time.Since(toolsStart).Milliseconds()
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
-			// WithRefreshToolSetsOnRun is intentionally set to false (disabled).
-			// Previously this was true, causing 0.2-5s MCP Initialize+ListTools
-			// on every LLM call. Now MCP ToolSets are initialized once during
-			// Agent build and cached. When MCP servers change, the agent cache
-			// is invalidated (via MCPVersionHash change) and a fresh agent is
-			// built with the updated tool list.
+			// RefreshToolSetsOnRun is on only when a direct MCP ToolSet can
+			// expire its tools/list cache. Tools() still hits the 5-minute
+			// TTL (no network) until AfterTool marks the catalog dirty.
+			if invs := tools.CollectMCPCacheInvalidators(ts.ToolSets); len(invs) > 0 {
+				deps.MCPCacheInvalidators = invs
+				opts = append(opts, trpcllmagent.WithRefreshToolSetsOnRun(true))
+			}
 		}
 		// P0-2 阶段A：entry 持有的是分片引用占位符（retire 单元），而非共享
 		// 分片产物本体；entry 换代/驱逐时 graveyard Close 占位符 = 释放分片

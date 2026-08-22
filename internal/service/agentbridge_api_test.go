@@ -16,7 +16,21 @@ func TestAgentBridgeAPI_UpsertAgentValidation(t *testing.T) {
 		t.Fatal("missing agent_key must error")
 	}
 	if _, err := e.api.UpsertAgent(context.Background(), &v1.UpsertAgentRequest{AgentKey: "x"}); err == nil {
-		t.Fatal("missing command must error")
+		t.Fatal("missing command must error for unknown agent_key")
+	}
+}
+
+func TestAgentBridgeAPI_UpsertAgentDefaultLaunch(t *testing.T) {
+	e := newABSvcEnv()
+	agent, err := e.api.UpsertAgent(context.Background(), &v1.UpsertAgentRequest{
+		AgentKey: "codebuddy",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("known key may omit command: %v", err)
+	}
+	if agent.Command != "codebuddy" || len(agent.Args) != 1 || agent.Args[0] != "--acp" {
+		t.Fatalf("codebuddy default launch = %+v", agent)
 	}
 }
 

@@ -237,7 +237,7 @@
 | `WithEndInvocationAfterTransfer()` | ❌ 未使用 | — | — |
 | `WithDefaultTransferMessage()` | ❌ 未使用 | — | — |
 | `WithActivatableToolSets()` | ❌ 未使用 | — | 项目使用自建 DeferredManager 替代 |
-| `WithRefreshToolSetsOnRun()` | ❌ 未使用 | — | 项目显式禁用（注释说明原因：避免每次 LLM 调用刷新 MCP） |
+| `WithRefreshToolSetsOnRun()` | ✅ 条件启用 | ✅ | 仅当存在可失效的 MCP ToolSet；`Tools()` 走 5 分钟 TTL，脏标记后才 `tools/list` |
 | `WithSubAgents()` | ✅ 部分使用 | ✅ | 仅在编排 Agent 中使用，LLM Agent 不使用 |
 | `WithSurfacePatch()` | ❌ 未使用 | — | 项目未使用 Graph 节点级配置差异 |
 
@@ -336,7 +336,7 @@
 | structure.Exporter 未使用 | 认知缺失 — 项目未意识到框架提供静态结构导出能力 | — |
 | WithKnowledge 未使用 | 架构决策 — 项目通过 Callback Chain 注入知识，与框架知识检索生命周期不一致 | `internal/agent/knowledge_inject.go` |
 | WithActivatableToolSets 未使用 | 功能差异 — 项目 DeferredManager 按需激活机制与框架 ActivatableToolSets 激活机制不同 | `internal/agent/tool_assembly.go` |
-| WithRefreshToolSetsOnRun 显式禁用 | 架构决策 — 项目发现每次 LLM 调用刷新 MCP 导致 0.2-5s 开销，改用缓存+失效策略 | `internal/agent/trpc_build.go` |
+| WithRefreshToolSetsOnRun 条件启用 | 有直连 MCP 时打开，靠 TTL + `InvalidateToolsCache` 避免每轮网络 | `internal/agent/trpc_build.go` |
 | 安全限制（MaxLLMCalls/MaxToolIterations）未使用 | 认知缺失 — 项目未启用框架内置安全限制 | — |
 | 时间注入未使用 | 认知缺失 — 项目未启用框架时间注入 | — |
 

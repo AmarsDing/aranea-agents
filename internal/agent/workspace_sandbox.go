@@ -20,7 +20,8 @@ const workspaceSandboxHookPriority = 8 // before tool confirmation (10)
 // newWorkspaceSandboxBeforeHook enforces the session permission posture and
 // workspace path policy before a tool runs. Read-only agents cannot write;
 // any path/file/cwd argument must stay under the agent workspace root.
-// OS-level sandbox (Windows restricted token / bwrap) is out of scope.
+// OS-level process containment for shell is hostexec WithProcessSandbox
+// (Windows Job Object + optional restricted token; Linux bwrap when present).
 func newWorkspaceSandboxBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.BeforeToolHook {
 	lg := deps.Logger()
 	if lg == nil {

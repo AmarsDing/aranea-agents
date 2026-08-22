@@ -38,6 +38,7 @@ type session struct {
 	cancel  context.CancelFunc
 
 	processGroupID int
+	sandbox        processSandbox
 
 	doneCh chan struct{}
 	ioDone chan struct{}
@@ -309,7 +310,12 @@ func (s *session) kill(
 	cmd := s.cmd
 	cancel := s.cancel
 	processGroupID := s.processGroupID
+	box := s.sandbox
 	s.mu.Unlock()
+
+	if box != nil {
+		_ = box.Kill()
+	}
 
 	if cmd == nil || cmd.Process == nil {
 		if cancel != nil {
@@ -335,6 +341,10 @@ func (s *session) close() error {
 	s.closeOnce.Do(func() {
 		if s.closeIO != nil {
 			err = s.closeIO()
+		}
+		if s.sandbox != nil {
+			_ = s.sandbox.Close()
+			s.sandbox = nil
 		}
 	})
 	return err

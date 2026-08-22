@@ -492,3 +492,44 @@ Codex / Claude Desktop 可以把本机 Agent 暴露成 MCP server，让 IDE 不�
 ### 验收（未开工）
 
 IDE 能对 **一只已注册专项** 列出并调用其允许工具，不经过 Chat UI；调用出现在该 Agent 的执行轨迹；越权工具 / 越界路径被拒绝。不验收「把 Aranea 当通用 MCP 网关」。
+
+---
+
+## 子模块：MCP Resource 面与 mid-turn catalog 刷新（E8 评估）
+
+> 日期：2026-08-22。来源：[2026-08-22-analysis-codex-vs-aranea-post-ad.md](../reports/2026-08-22-analysis-codex-vs-aranea-post-ad.md) E8。  
+> **结论：list/read 已落地；templates/subscribe 与 mid-turn 热刷新本期不实现。** 不做 Agent-as-server（见上一子模块）。
+
+### 已有（客户端三件套的 2/3）
+
+| 能力 | 状态 | 锚点 |
+|------|------|------|
+| `resources/list` | ✅ 业务工具 `mcp_list_resources` | `internal/tools/mcp_resources.go` → `tmcp.Connector.ListResources` |
+| `resources/read` | ✅ 业务工具 `mcp_read_resource` | 同上 `ReadResource`；正文 100k runes |
+| 命名 selector + 用户凭证头 | ✅ 与 broker 同语义 | `mcpResourceResolver`；禁止 ad-hoc URL（读面收敛攻击面） |
+| 装配 | ✅ coding/spirit/full 走 broker 时一并挂上 | `buildMCPBrokerTools` + `mcp_schema_govern_test.go` 工具名表 |
+
+Codex 的 Resource 三件套通常还包括 **templates**（URI 模板）和 **subscribe**（资源变更通知）。Aranea 已覆盖模型最常用的 list/read。
+
+### 被客户端挡住的两面
+
+`trpc-mcp-go@v0.0.10`：
+
+| 方法 | Server | Client `Connector` |
+|------|--------|--------------------|
+| `resources/list` / `resources/read` | ✅ | ✅ |
+| `resources/templates/list`（`MethodResourcesTemplatesList`） | ✅ `handler.go` | ❌ 无 `ListResourceTemplates` |
+| `resources/subscribe`（`MethodResourcesSubscribe`） | ✅ | ❌ 无 Subscribe API |
+
+本期 **不** 为 templates/subscribe 改 vendored 框架或手写 JSON-RPC。等客户端升版再评估封装。
+
+### Mid-turn catalog refresh（E8，已落地脏标记）
+
+Codex `refresh_mcp_if_dirty` 在 step 后热刷新。Aranea **不**打开「每轮 LLM 都 Initialize+ListTools」（0.2–5s）。做法：
+
+1. 直连 `mcp_tool_set` 仍用 `WithToolsCacheTTL(5m)`。
+2. 仅当装配结果里有可 `InvalidateToolsCache` 的 MCP ToolSet 时，打开 `WithRefreshToolSetsOnRun(true)`。缓存未失效时 `Tools()` 不打网络。
+3. AfterTool：`mcp_list_tools` / `mcp_inspect_tools` / `mcp_list_servers` / `mcp_list_resources`，或 `unknown tool` / `tool not found`，调用 `InvalidateToolsCache`。下一轮 `FilterTools` → `Tools()` 再 `tools/list`。失败保留上一份目录。
+4. 不热替换正在 `Call` 的 Tool 对象；不扫全工作区；配置变更仍走 `MCPVersionHash` 下一请求重建 Agent。
+
+Broker 的 `mcp_list_tools` 本身已是 live list，脏标记主要服务直连 mount。

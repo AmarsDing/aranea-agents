@@ -44,6 +44,7 @@ type manager struct {
 	maxLines int
 	jobTTL   time.Duration
 	baseEnv  map[string]string
+	sandbox  bool
 
 	clock func() time.Time
 }
@@ -122,6 +123,7 @@ func (m *manager) exec(
 			timeout,
 			m.baseEnv,
 			m.maxLines,
+			m.sandbox,
 		)
 		if err != nil {
 			return execResult{}, err
@@ -194,6 +196,7 @@ func runForeground(
 	timeout time.Duration,
 	baseEnv map[string]string,
 	maxLines int,
+	sandbox bool,
 ) (string, int, error) {
 	sess, err := startSession(
 		"",
@@ -201,6 +204,7 @@ func runForeground(
 		timeout,
 		baseEnv,
 		maxLines,
+		sandbox,
 	)
 	if err != nil {
 		return "", 0, err
@@ -308,6 +312,7 @@ func (m *manager) startBackground(
 		timeout,
 		m.baseEnv,
 		m.maxLines,
+		m.sandbox,
 	)
 	if err != nil {
 		return nil, err
@@ -325,6 +330,7 @@ func startSession(
 	timeout time.Duration,
 	baseEnv map[string]string,
 	maxLines int,
+	sandbox bool,
 ) (*session, error) {
 	runCtx, cancel := context.WithTimeout(
 		context.Background(),
@@ -337,6 +343,10 @@ func startSession(
 	}
 	cmd.Dir = params.Workdir
 	cmd.Env = mergedEnv(baseEnv, params.Env)
+	if sandbox {
+		cmd = wrapLinuxSandbox(cmd, params.Workdir)
+		prepareOSSandbox(cmd)
+	}
 
 	sess := newSession(id, params.Command, maxLines)
 	sess.cancel = cancel
@@ -385,6 +395,16 @@ func startSession(
 			defer sess.ioWG.Done()
 			sess.readFrom(stderr)
 		}()
+	}
+	if sandbox {
+		box, err := attachProcessSandbox(cmd)
+		if err != nil {
+			_ = sess.kill(context.Background(), defaultKillGrace)
+			cancel()
+			_ = sess.close()
+			return nil, err
+		}
+		sess.sandbox = box
 	}
 
 	go func() {

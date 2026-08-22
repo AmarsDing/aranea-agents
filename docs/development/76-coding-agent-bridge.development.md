@@ -1,6 +1,6 @@
 # 76 编程 Agent 桥接（Coding Agent Bridge）开发计划
 
-> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 主体完成；M2 审批中继已落地（adapter 仍待）
+> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 主体完成；M2 审批中继 + 默认启动 adapter 已落地（真实二进制冒烟 / M3 管理页仍待）
 > 需求见 [76-coding-agent-bridge.md](./76-coding-agent-bridge.md) ｜ 设计见 [76-coding-agent-bridge.design.md](./76-coding-agent-bridge.design.md)
 
 ---
@@ -35,8 +35,8 @@
 
 | Phase | 内容 | 状态 |
 |-------|------|------|
-| **M1** | ACP Go 客户端 + 数据模型 + 派发/进度/结果回收 + CodeBuddy 冒烟（审批走 agent 默认策略，无中继） | 🟡 M1-1~12 ✅；冒烟/E2E 📋 |
-| **M2** | 审批中继（确认卡片 + 语音作答 + 超时）+ claude-code-acp / codex-acp adapter 接入 | 🟡 中继 ✅；adapter 📋 |
+| **M1** | ACP Go 客户端 + 数据模型 + 派发/进度/结果回收 + CodeBuddy 冒烟（审批走 agent 默认策略，无中继） | 🟡 M1-1~13 ✅；真实 CodeBuddy 冒烟 📋 |
+| **M2** | 审批中继（确认卡片 + 语音作答 + 超时）+ claude-code-acp / codex-acp adapter 接入 | 🟡 中继 ✅；默认 argv adapter ✅；真实二进制 📋 |
 | **M3** | Trae 拉起 + 管理界面（AgentBridgePage）+ 排队并发控制 | 📋 |
 
 ## 5. M1 任务清单（TDD：每任务先失败测试后实现）
@@ -55,7 +55,7 @@
 | M1-10 | proto + service 管理 API（agent/project CRUD、task 查询/取消） | `make api` 编译 + service 层测试 | ✅ |
 | M1-11 | Wire 装配 + 启动恢复钩子（RecoverActiveTasks） | `make wire && go build ./cmd/admin` | ✅ |
 | M1-12 | 流程日志 step 登记（flow_log.go stepTitleRegistry + 52 文档 §5.1 同步） | 登记检查 | ✅ |
-| M1-13 | fake ACP server 端到端：dispatch → 进度 → done 全链路 | 集成测试绿 | 📋 |
+| M1-13 | fake ACP server 端到端：dispatch → 进度 → done 全链路 | `TestClientEndToEndWithFakeAgent` | ✅ |
 | M1-14 | CodeBuddy 真实冒烟（手动）：`codebuddy --acp` 跑真实任务 | 语音派发→完成播报人工验收 | 📋 |
 | M1-15 | 工具运行时挂载链收尾（M1-14 前置，M1-12 审查发现）：catalog seed（`builtin_tools_seed.go` + coding_dispatch_task/check_task/cancel_task）+ `effective_config.go` key 映射 + `ToolsetConfig.CodingBridge` flag + `TRPCToolAssemblyDeps.CodingBridgeSvc` + `tool_assembly.go` 传递 + `RuntimeTooling` 注入 | agent 启用 coding_* 后 `BuildToolsets` 产出三工具 | ✅ |
 
@@ -72,7 +72,7 @@
 
 **新增**：
 - `internal/agentbridge/acp/{client,conn,process,types}.go` + 测试
-- `internal/biz/agentbridge/{types,repo,task_state_machine,usecase}.go` + 测试
+- `internal/biz/agentbridge/{types,repo,task_state_machine,usecase,launch}.go` + 测试
 - `internal/data/{coding_agent_repo,coding_project_repo,coding_task_repo}.go` + 测试
 - `internal/data/ent/schema/{coding_agent,coding_project,coding_task}.go`
 - `internal/service/agentbridge.go` + 测试
@@ -96,7 +96,7 @@
 | M2-2 | `ConfirmActivity` 路由 `external_coding` → `ConfirmBridgePermission`；`allow_always` 仅本任务内存缓存 | 同测：二次 permission 不发卡 | ✅ |
 | M2-3 | 审批超时 5 分钟 → 任务 `cancelled` + `agentbridge.approval.timeout` | 同测缩短超时 | ✅ |
 | M2-4 | `HoloConfirmCard` 标题 `{agent} · {project}` | `useCompanionConfirms.spec.ts` | ✅ |
-| M2-5 | claude-code-acp / codex-acp adapter | 专项评估 | 📋 |
+| M2-5 | claude-code-acp / codex-acp / codebuddy 默认 argv（E9） | `launch_test.go` + `UpsertAgent` 空 command | ✅ |
 
 **代码锚点**：`internal/service/agentbridge_approval.go`、`internal/biz/agentbridge/approval.go`、`internal/service/chat_confirm.go`、`cmd/admin/app.go` `BindAgentBridge`。
 
@@ -106,5 +106,5 @@
 |------|------|
 | Go 无 ACP SDK，协议理解偏差 | M1-3 fake server 按官方 schema 实现，集成测先行；CodeBuddy 官方文档对照 |
 | Windows 子进程组管理差异 | M1-2 专项验证 taskkill /T 行为 |
-| adapter（claude/codex）滞后 | M1 只做 CodeBuddy 原生，adapter 评估留到 M2 入口 |
+| adapter（claude/codex）滞后 | E9 已给三家默认 argv；真实二进制与 M3 管理页仍待 |
 | 并行会话 GOCACHE 幻影 | 验证以独立 GOCACHE 干净缓存复跑为准 |

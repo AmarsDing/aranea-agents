@@ -211,6 +211,26 @@ func TestStaticRuntimeCueHook_SkipsWhenAlreadyInInstruction(t *testing.T) {
 	}
 }
 
+func TestDynamicRuntimeCueHook_UnchangedFingerprintSkipsRestack(t *testing.T) {
+	ag := biz.Agent{
+		ID:               "ag-1",
+		SystemPromptMode: "complete",
+		Settings:         &biz.AgentRuntimeSettings{ToolsEnabled: true},
+	}
+	deps := TRPCBuilderDeps{TRPCModelCatalogDeps: TRPCModelCatalogDeps{
+		AgentUC: fakeTeamAgentLookup{eff: biz.AgentEffectiveTools{ToolsEnabled: true, Profile: "full"}},
+	}}
+	hook := newDynamicRuntimeCueBeforeHook(ag, deps)
+	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	first := runBeforeModelHook(t, hook, ctx)
+	assertCueAtEnd(t, first, "Effective tool keys")
+	second := runBeforeModelHook(t, hook, ctx)
+	if len(second) != 2 {
+		t.Fatalf("unchanged world state must not restack a cue, got %d messages", len(second))
+	}
+}
+
 func TestDynamicRuntimeCueHook_AppendsCueAtEnd(t *testing.T) {
 	ag := biz.Agent{
 		ID:               "ag-1",

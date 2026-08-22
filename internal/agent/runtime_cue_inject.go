@@ -76,12 +76,17 @@ func newDynamicRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callback
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		payload, kind := resolveWorldStateCue(ctx, cue)
+		if kind == worldStateKindUnchanged || payload == "" {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
-		recordContextBudgetOnce(ctx, ContextBudgetCategoryOtherDynamic, utf8.RuneCountInString(cue))
+		recordContextBudgetOnce(ctx, ContextBudgetCategoryOtherDynamic, utf8.RuneCountInString(payload))
 		// Prefix stabilization (WP-1): content changes when MCP tools reconnect
 		// or tool config flips mid-session. Append as a user-role cue at the
-		// END so it stays out of DeepSeek's system prefix.
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
+		// END so it stays out of DeepSeek's system prefix. Unchanged fingerprints
+		// (E7) skip the append so tool-loop re-entries do not restack the blob.
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, payload)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

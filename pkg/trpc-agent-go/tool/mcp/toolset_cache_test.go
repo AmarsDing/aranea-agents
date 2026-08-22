@@ -101,6 +101,22 @@ func TestToolSet_ToolsCacheTTL(t *testing.T) {
 	})
 }
 
+func TestToolSet_InvalidateToolsCache(t *testing.T) {
+	ctx := context.Background()
+	handler := &recordingMCPHTTPHandler{}
+	ts := newCacheTestToolSet(handler, WithToolsCacheTTL(time.Hour))
+	defer func() { _ = ts.Close() }()
+
+	ts.Tools(ctx)
+	ts.Tools(ctx)
+	require.Equal(t, 1, countRecordedMethod(handler, "tools/list"))
+
+	ts.InvalidateToolsCache()
+	ts.Tools(ctx)
+	require.Equal(t, 2, countRecordedMethod(handler, "tools/list"),
+		"InvalidateToolsCache must force the next Tools() to list again")
+}
+
 // TestWithToolsCacheTTL verifies the option stores the configured TTL.
 func TestWithToolsCacheTTL(t *testing.T) {
 	cfg := &toolSetConfig{}

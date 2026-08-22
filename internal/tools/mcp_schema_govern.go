@@ -231,6 +231,18 @@ var _ trpctool.ToolSet = (*mcpSchemaGovernedToolSet)(nil)
 
 func (s *mcpSchemaGovernedToolSet) Name() string { return s.inner.Name() }
 func (s *mcpSchemaGovernedToolSet) Close() error { return s.inner.Close() }
+
+// InvalidateToolsCache forwards to the inner MCP ToolSet so mid-turn
+// catalog refresh (E8) can expire the 5-minute tools/list cache.
+func (s *mcpSchemaGovernedToolSet) InvalidateToolsCache() {
+	if s == nil {
+		return
+	}
+	if v, ok := s.inner.(MCPCacheInvalidator); ok {
+		v.InvalidateToolsCache()
+	}
+}
+
 func (s *mcpSchemaGovernedToolSet) Tools(ctx context.Context) []trpctool.Tool {
 	raw := s.inner.Tools(ctx)
 	if len(raw) == 0 {

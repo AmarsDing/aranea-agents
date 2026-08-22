@@ -51,6 +51,7 @@
       <div
         v-if="hasContextInfo"
         class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md spirit-status-bar__item--clickable"
+        @mousedown.prevent
         @click.stop="contextMenuOpen = !contextMenuOpen"
       >
         <q-icon name="data_usage" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />

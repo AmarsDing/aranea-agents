@@ -2717,11 +2717,12 @@ type MCPBrokerConfig struct {
 AssemblyConfig.MCP.Broker
   → buildMCPBrokerTools(cfg)
   → trpcmcpbroker.New(opts...)
-  → broker.Tools() → 4 个工具
+  → broker.Tools() → 4 个框架元工具
+  → 业务层追加 mcp_list_resources / mcp_read_resource（`internal/tools/mcp_resources.go`）
   → 追加到 AssembledToolsets.Tools
 ```
 
-**4 个 Broker 工具**：
+**Broker 工具族（6）**：
 
 | 工具 | 说明 |
 |------|------|
@@ -2729,6 +2730,10 @@ AssemblyConfig.MCP.Broker
 | `mcp_list_tools` | 连接 MCP 服务器 → ListTools → 返回工具摘要 |
 | `mcp_inspect_tools` | 连接 MCP 服务器 → ListTools → 过滤 → 返回 Schema |
 | `mcp_call` | 连接 MCP 服务器 → 验证参数 → CallTool → 返回结果 |
+| `mcp_list_resources` | 命名 selector → `Connector.ListResources`（上限 200） |
+| `mcp_read_resource` | 命名 selector + URI → `Connector.ReadResource`（正文上限 100k runes） |
+
+`resources/templates/list` 与 `resources/subscribe` 仅 server 侧有方法常量；`trpc-mcp-go@v0.0.10` 客户端 `Connector` 无对应 API，本期不封装（E8 评估见 [19-mcp.design.md](./19-mcp.design.md) 子模块）。
 
 **Selector 解析**：
 

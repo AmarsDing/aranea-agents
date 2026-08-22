@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cache"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
@@ -73,6 +74,9 @@ type TRPCToolAssemblyDeps struct {
 	// coding_check_task / coding_cancel_task). Optional: when nil, coding tools are
 	// pruned from assembly even if enabled in effective tool keys (76-coding-agent-bridge).
 	CodingBridgeSvc codingbridge.BridgeService
+	// MCPCacheInvalidators expire mcp_tool_set tools/list caches mid-turn
+	// (E8). Optional: when empty, catalog refresh is a no-op.
+	MCPCacheInvalidators []tools.MCPCacheInvalidator
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.

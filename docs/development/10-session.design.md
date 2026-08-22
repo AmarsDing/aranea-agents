@@ -1873,7 +1873,7 @@ context_used_ratio = prompt_tokens / context_window_tokens
 
 **100% 后重新计数（Cursor 式）**：
 
-1. **同 turn 内**：tRPC ContextCompaction（Agent 开启 `context_compaction_enabled`）在 LLM 调用前压缩历史，API 返回的 `prompt_tokens` 已是压缩后值。
+1. **同 turn 内**：tRPC ContextCompaction（Agent 开启 `context_compaction_enabled`）在 LLM 调用前压缩历史，API 返回的 `prompt_tokens` 已是压缩后值。Aranea 另有 intra-turn 紧急截断（`newContextCompressionBeforeHook` priority 9）：驱逐历史或丢掉尾 cue 后，E7b 把上一份 world-state snapshot 插回最后一条真实 user 消息之前，避免模型只剩截断标记、丢了当前工具面。回合前压缩（SessionCompressor）不走这条回注。
 2. **turn 后异步**：L0 `SessionCompressor` 生成摘要并重写 snapshot，调用 `UpdateSessionContextAfterCompression` 将 ratio 重置为压缩后估算值。
 3. **实时 UI**：压缩完成 WS 推送 `text_done`（`metadata.kind=system.session.compress`，携带 `context_used_ratio` / `context_used_tokens` / `context_status`）；前端 `sessionContextPatch` 立即 patch store，无需等待 HTTP 刷新。
 
