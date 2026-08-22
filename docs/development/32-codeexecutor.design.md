@@ -51,6 +51,13 @@ trpc_build.go（deps.SkillUC != nil 时）
   GET /v1/monitor/code-executor-capabilities  → Factory.Capabilities()
   biz.ValidateCodeExecutorType                → API 400
   配置优先级: Agent.CodeExecutorType > CODE_EXECUTOR_BACKEND > local
+
+探测语义（Capabilities，结果缓存 30s TTL，过期自动重探）:
+  local    → 真实执行 python3/bash --version，任一可运行即可用
+             （LookPath 不足以识别 Windows Store stub / WSL bash 假阳性）
+  docker   → docker version 3s 超时探测
+  e2b      → E2B_API_KEY 是否设置（不验证连通性）
+  container→ build tag codeexec_container
 ```
 
 #### 架构图（Mermaid）

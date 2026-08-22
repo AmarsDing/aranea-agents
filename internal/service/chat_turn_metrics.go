@@ -328,6 +328,13 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 			FinalModel:          ptrString(p.Model),
 			FinalContentPreview: ptrString(preview),
 		}
+		// context_budget 台账随 turn 元数据落库：前端会话曲线悬停面板按
+		// session_turns.metadata_json.context_budget 渲染该轮 prompt 构成
+		// （此前只写 model_token_usage_events，悬停恒为回退视图）。无台账时透传
+		// "{}"，保持 nil 不更新，避免覆盖并发写入的既有元数据。
+		if meta := mergeContextBudgetMetadata(ctx, "{}"); meta != "{}" {
+			updates.MetadataJSON = ptrString(meta)
+		}
 		// 实测指标仅在观测到时落库（>0），避免用零值覆盖并发/前序写入。
 		if p.DurationMs > 0 {
 			updates.DurationMs = ptrInt(p.DurationMs)
@@ -375,6 +382,11 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 		FinalProvider:       p.Provider,
 		FinalModel:          p.Model,
 		FinalContentPreview: preview,
+	}
+	// 同 Update 路径：context_budget 台账落 session_turns.metadata_json，
+	// 供前端悬停面板渲染该轮 prompt 构成；无台账则留空。
+	if meta := mergeContextBudgetMetadata(ctx, ""); meta != "" {
+		turn.MetadataJSON = meta
 	}
 	switch p.OwnerType {
 	case "agent":

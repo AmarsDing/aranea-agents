@@ -21,6 +21,9 @@ func (f *Factory) Capabilities() []Capability {
 func (f *Factory) capabilityFor(typ string) Capability {
 	switch typ {
 	case TypeLocal:
+		if ok, reason := LocalAvailable(); !ok {
+			return Capability{Type: TypeLocal, Available: false, Reason: reason}
+		}
 		return Capability{Type: TypeLocal, Available: true}
 	case TypeDocker:
 		if DockerAvailable() {

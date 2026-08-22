@@ -1,12 +1,16 @@
 import { ref, watch, type Ref } from 'vue';
 import { listSessionTurns } from '../session/api';
 import type { SessionTurn } from '../session/types';
+import type { ContextBudgetSnapshot } from '../session/types';
+import { parseContextBudgetMeta } from './contextBudget';
 
 export type ModelTokenPoint = {
   turn: number;
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Per-turn prompt-assembly ledger parsed from metadata_json.context_budget (null when the turn carries no ledger). */
+  budget?: ContextBudgetSnapshot | null;
 };
 
 export type ModelTokenSeries = {
@@ -65,7 +69,19 @@ export function useSessionModelTokens(sessionId: Ref<string | undefined | null>)
   return { data, loading, error, reload: load };
 }
 
-function aggregateByModel(turns: SessionTurn[], total: number): SessionModelTokens {
+/** Extract the context_budget ledger from a turn's metadata_json; null when absent/malformed. */
+function parseTurnBudget(metadataJson: string | undefined): ContextBudgetSnapshot | null {
+  if (!metadataJson) return null;
+  try {
+    const meta = JSON.parse(metadataJson) as Record<string, unknown>;
+    return parseContextBudgetMeta(meta?.context_budget);
+  } catch {
+    return null;
+  }
+}
+
+/** Aggregate turns into per-model series (exported for unit tests). */
+export function aggregateByModel(turns: SessionTurn[], total: number): SessionModelTokens {
   if (!turns.length) return { series: [], totalTurns: total, turns: [] };
 
   // Sort by turn_number ascending so the x-axis is chronological.
@@ -98,6 +114,7 @@ function aggregateByModel(turns: SessionTurn[], total: number): SessionModelToke
       inputTokens: t.input_tokens ?? 0,
       outputTokens: t.output_tokens ?? 0,
       totalTokens: t.total_tokens ?? 0,
+      budget: parseTurnBudget(t.metadata_json),
     });
     series.totalIn += t.input_tokens ?? 0;
     series.totalOut += t.output_tokens ?? 0;

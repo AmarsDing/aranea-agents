@@ -75,5 +75,5 @@ export function useUsageChart(
 
   watch(deps, () => render());
 
-  return { render };
+  return { render, chartRef };
 }

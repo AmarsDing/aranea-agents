@@ -20,22 +20,8 @@ func TestFactoryResolveLocalDefault(t *testing.T) {
 	}
 }
 
-func TestFactoryRegisteredTypes(t *testing.T) {
-	f := newTestFactory()
-	types := f.RegisteredTypes()
-	if len(types) < 1 {
-		t.Fatalf("expected at least local, got %v", types)
-	}
-	foundLocal := false
-	for _, typ := range types {
-		if typ == codeexecutor.TypeLocal {
-			foundLocal = true
-		}
-	}
-	if !foundLocal {
-		t.Fatalf("expected local in %v", types)
-	}
-}
+// Local presence in RegisteredTypes is covered host-independently by the
+// internal TestRegisteredTypesReflectsLocalProbe (probe hooks stubbed).
 
 func TestFactoryDockerFallbackWhenUnavailable(t *testing.T) {
 	codeexecutor.ResetDockerProbe()

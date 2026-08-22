@@ -66,7 +66,6 @@ export function useChatSpiritPanel(workspace: Workspace) {
       contextRatio: sessionTokens?.contextRatio ?? null,
       contextUsedTokens: sessionTokens?.contextUsedTokens ?? null,
       contextWindow: sessionTokens?.contextWindow ?? null,
-      contextBudget: sessionTokens?.contextBudget ?? null,
       complexityLevel: spiritStore.planCreated?.complexity_level ?? null,
       complexityReason: spiritStore.planCreated?.strategy_reason ?? null,
       checkpointStep: spiritStore.lastCheckpoint?.step ?? null,

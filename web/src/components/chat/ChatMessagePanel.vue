@@ -257,7 +257,6 @@
       :context-ratio="spiritStatusBar.contextRatio"
       :context-used-tokens="spiritStatusBar.contextUsedTokens"
       :context-window="spiritStatusBar.contextWindow"
-      :context-budget="spiritStatusBar.contextBudget"
       :session-id="sessionId"
       :complexity-level="spiritStatusBar.complexityLevel"
       :complexity-reason="spiritStatusBar.complexityReason"
@@ -297,11 +296,7 @@ import { useActivityQueries } from '../../features/chat/composables/useActivityQ
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type {
-  Message,
-  ConfirmStepPayload,
-  SubmitClarificationPayload,
-} from '../../features/chat/types';
+import type { Message, ConfirmStepPayload, SubmitClarificationPayload } from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
