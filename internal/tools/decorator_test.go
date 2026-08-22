@@ -198,11 +198,44 @@ func TestToolDecorator_TruncateResult(t *testing.T) {
 			if mode, _ := envelope["mode"].(string); mode != tt.mode {
 				t.Errorf("expected mode=%q, got %q", tt.mode, mode)
 			}
+			if lines, _ := envelope["total_lines"].(int); lines != 1 {
+				t.Errorf("expected total_lines=1 for single-line payload, got %v", envelope["total_lines"])
+			}
 			content, _ := envelope["content"].(string)
 			if content == "" {
 				t.Errorf("expected non-empty content")
 			}
 		})
+	}
+}
+
+func TestToolDecorator_TruncateResult_TotalLines(t *testing.T) {
+	body := "line1\nline2\nline3\n" + strings.Repeat("x\n", 40)
+	tool := &decoratorMockTool{
+		name: "test_tool",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			return body, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		Logger:       loggateway.NewNoop(),
+		ResultBudget: &ResultBudget{MaxBytes: 80, Mode: "tail"},
+	})
+	result, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	envelope, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected envelope, got %T", result)
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want := countTotalLines(data)
+	if got, _ := envelope["total_lines"].(int); got != want {
+		t.Fatalf("total_lines=%v, want %d", envelope["total_lines"], want)
 	}
 }
 

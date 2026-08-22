@@ -145,6 +145,9 @@ func TestToolDecorator_OffloadsLargeResultToArtifact(t *testing.T) {
 	if hint, _ := env["read_hint"].(string); !strings.Contains(hint, "read_file") {
 		t.Fatalf("read_hint must point to read_file paging, got %q", hint)
 	}
+	if _, ok := env["total_lines"].(int); !ok {
+		t.Fatalf("offload envelope must include total_lines, got %v", env["total_lines"])
+	}
 	// The ref must resolve back to the full payload via the artifact service.
 	art, err := svc.LoadArtifact(ctx, trpcartifact.SessionInfo{}, ref[strings.Index(ref, "://")+3:strings.LastIndex(ref, "@")], nil)
 	if err != nil || art == nil {

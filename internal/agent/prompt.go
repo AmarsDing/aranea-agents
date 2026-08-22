@@ -31,6 +31,10 @@ type Deps struct {
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
 //
+// Order: <role_responsibility> → <industry_context> → description →
+// <working_contract> (coding / spirit / computer-use only) →
+// <permission_state> → <internal_config> files → optional memory self-marking.
+//
 // PGO-1-AGENT-01: a new optional categoryResponsibility parameter has been added.
 // When non-empty and PGO_CATEGORY_RESPONSIBILITY_INJECT is enabled, it is prepended
 // as a <role_responsibility source="category"> block BEFORE agent_description.
@@ -60,6 +64,18 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 	}
 	if d := strings.TrimSpace(agent.AgentDescription); d != "" {
 		b.WriteString(d)
+		b.WriteString("\n\n")
+	}
+
+	// A1/A2: coding-bridge working contract + session permission sit after
+	// role/industry (stable prefix) and before <internal_config> files so
+	// DeepSeek prefix cache stays aligned across turns.
+	if block := WorkingContractBlock(agent); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n\n")
+	}
+	if block := PermissionStateBlock(agent); block != "" {
+		b.WriteString(block)
 		b.WriteString("\n\n")
 	}
 

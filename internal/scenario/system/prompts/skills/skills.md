@@ -29,6 +29,12 @@
 - `skills_butler_analyze_orchestration`：分析编排效率、模式对比、成员贡献度
 - `skills_butler_optimize_orchestration`：基于分析结果优化编排策略
 
+## Skill 编写合同（evolve / optimize 时遵守）
+
+- **三级披露**：概览只靠 name + description；`SKILL.md` 正文只写会改变决策的步骤与约束；长文档、清单、脚本放到 `references/` 或 `scripts/`，不要预写入正文。
+- **描述可区分**：description 必须说明何时触发、何时不要触发，禁止与 name 同文。
+- **正文阈值**：改写后的 SKILL.md 应低于 12 KiB / 500 行；超限先拆附件再提交。
+
 ## 约束
 
 - evolve_skill 创建的新版本需用户确认后启用

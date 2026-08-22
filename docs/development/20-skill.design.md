@@ -1486,4 +1486,30 @@ ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL D
 
 ---
 
-*文档版本：5.0 — 三件套重组：整合两个子模块结构；迁入数据模型/API 契约/Quasar 组件清单（从需求文档）；迁出演进路线/测试关注点（到开发计划）；RPC 数量对齐代码现状（22 RPC）（2026-06-17）。*
+---
+
+## 子模块：Skill 编写合同（三级披露）
+
+> 2026-08-22 Codex / skill-creator 对照 Phase A4。不新开文档编号；导入器软警告落在 `internal/skill/importer/validate.go`。
+
+Skill 对模型的成本与召回质量，取决于 **什么时候写什么**，而不是把手册一次性塞进 `SKILL.md`。
+
+### 三级披露
+
+| 层 | 内容 | 何时进入上下文 |
+|----|------|----------------|
+| L1 目录 | `name` + `description`（触发导向，须能和其他 Skill 区分） | 技能概览 / 路由 / mention |
+| L2 正文 | `SKILL.md` 正文：只写 **会改变决策** 的步骤、约束、失败处理 | `use_skill` / preload 命中后 |
+| L3 附件 | `references/`、`scripts/`、示例、长清单 | 正文点名后再读，禁止预注入全文 |
+
+### 编写原则（skill-creator）
+
+1. **描述可区分**：`description` 写清何时触发、何时不要触发；禁止与 `name` 同文、禁止「一个很有用的技能」这类空描述。
+2. **正文只写决策差**：重复常识、可 grep 到的长文档、与 Tool schema 重复的参数说明，放到 `references/`。
+3. **软阈值**：`SKILL.md` 超过 **12 KiB 或 500 行** 时导入 `warning`（`body_too_long`），不 `block`。进化管家改写 Skill 时同样遵守。
+
+内置技能管家提示（`internal/scenario/system/prompts/skills/skills.md`）在 evolve/optimize 时复述上述三条。
+
+---
+
+*文档版本：5.1 — 增补 Skill 编写合同（三级披露 + 正文软阈值）（2026-08-22）。*

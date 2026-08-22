@@ -68,6 +68,16 @@ func BuildPreviewReport(ctx context.Context, ag biz.Agent, mode string, deps Dep
 			Key: "description", Label: "Description (L2 个体)", EstTokens: estTokensFromChars(utf8.RuneCountInString(d)), Source: "build",
 		})
 	}
+	if wc := WorkingContractBlock(agPreview); wc != "" {
+		sections = append(sections, PreviewSection{
+			Key: "working_contract", Label: "Working contract (coding)", EstTokens: estTokensFromChars(utf8.RuneCountInString(wc)), Source: "build",
+		})
+	}
+	if ps := PermissionStateBlock(agPreview); ps != "" {
+		sections = append(sections, PreviewSection{
+			Key: "permission_state", Label: "Permission state", EstTokens: estTokensFromChars(utf8.RuneCountInString(ps)), Source: "build",
+		})
+	}
 	fileTokens := 0
 	for _, f := range biz.FilesForMode(files, mode) {
 		body := strings.TrimSpace(f.Body)

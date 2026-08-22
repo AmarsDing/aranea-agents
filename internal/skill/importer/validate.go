@@ -83,7 +83,38 @@ func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing 
 			}
 		}
 	}
+	appendSkillAuthoringWarnings(&candidate, body)
 	return candidate, tags, triggers
+}
+
+const (
+	// skillBodyWarnMaxBytes is the soft SKILL.md size after which import
+	// warns. Progressive disclosure wants a short decision-only body;
+	// references/ and scripts/ carry the rest.
+	skillBodyWarnMaxBytes = 12 * 1024
+	// skillBodyWarnMaxLines is the soft line budget for SKILL.md.
+	skillBodyWarnMaxLines = 500
+)
+
+func appendSkillAuthoringWarnings(candidate *biz.SkillImportCandidate, body string) {
+	if candidate == nil {
+		return
+	}
+	lines := strings.Count(body, "\n") + 1
+	if len(body) > skillBodyWarnMaxBytes || lines > skillBodyWarnMaxLines {
+		candidate.Warnings = append(candidate.Warnings, biz.SkillImportIssue{
+			Type:    "body_too_long",
+			Message: fmt.Sprintf("SKILL.md is %d bytes / %d lines; keep the body under %d bytes or %d lines and move details to references/ or scripts/ (only write what changes a decision)", len(body), lines, skillBodyWarnMaxBytes, skillBodyWarnMaxLines),
+		})
+	}
+	desc := strings.TrimSpace(candidate.Description)
+	name := strings.TrimSpace(candidate.Name)
+	if desc != "" && name != "" && strings.EqualFold(desc, name) {
+		candidate.Warnings = append(candidate.Warnings, biz.SkillImportIssue{
+			Type:    "description_not_distinct",
+			Message: "description matches name; write a trigger-oriented description that distinguishes this skill from others",
+		})
+	}
 }
 
 // ReadSkillDirFiles reads regular files under dir into a slash-separated relative map.

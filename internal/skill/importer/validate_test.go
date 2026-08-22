@@ -49,6 +49,28 @@ func TestValidateSkillPackage_ValidWithSKILLMD(t *testing.T) {
 	}
 }
 
+func TestValidateSkillPackage_BodyTooLongWarning(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(makeSkillMD("Long Skill", "A distinct trigger-oriented description"))
+	for i := 0; i < skillBodyWarnMaxLines; i++ {
+		b.WriteString("extra line that does not change a decision\n")
+	}
+	files := map[string][]byte{"SKILL.md": []byte(b.String())}
+	candidate, _, _ := ValidateSkillPackage(files, "long-skill", nil, false)
+	if candidate.ValidationStatus != "pass" {
+		t.Fatalf("oversized body must remain pass with warning, got %q", candidate.ValidationStatus)
+	}
+	found := false
+	for _, w := range candidate.Warnings {
+		if w.Type == "body_too_long" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected body_too_long warning, got %+v", candidate.Warnings)
+	}
+}
+
 func TestValidateSkillPackage_LowercaseSkillMD(t *testing.T) {
 	files := map[string][]byte{
 		"skill.md": []byte(makeSkillMD("Lower", "Lowercase filename")),

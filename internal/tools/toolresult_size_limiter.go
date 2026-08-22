@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -18,8 +17,9 @@ const (
 
 // NewOutputSizeLimiterHook creates an AfterToolCallbackStructured that
 // truncates tool result strings exceeding maxChars (measured in UTF-8 runes).
-// When the result is a string that exceeds the limit, it is truncated and a
-// marker is appended indicating the limit and original rune size.
+// Oversized strings become the same truncation envelope as ToolDecorator
+// (truncated / original_size / total_lines / mode / content) so MCP and
+// deferred tools surface a line count to the model.
 //
 // This is a fallback for tools that skip ToolDecorator (deferred / MCP).
 // Decorator-governed results are left alone: truncation/offload envelopes,
@@ -55,19 +55,24 @@ func NewOutputSizeLimiterHook(maxChars int, lg loggateway.Logger) trpctool.After
 
 		originalSize := utf8.RuneCountInString(resultStr)
 		truncated := truncateRunes(resultStr, maxChars)
-		marker := fmt.Sprintf(defaultTruncationMarker, maxChars, originalSize)
-		newResult := truncated + marker
 
 		lg.Info("tool output truncated",
 			loggateway.StepID("tool.output_limiter"),
 			loggateway.Str("tool", args.ToolName),
 			loggateway.Str("tool_call_id", args.ToolCallID),
 			loggateway.Int("original_size", originalSize),
+			loggateway.Int("total_lines", countTotalLines([]byte(resultStr))),
 			loggateway.Int("max_chars", maxChars),
 		)
 
 		return &trpctool.AfterToolResult{
-			CustomResult: newResult,
+			CustomResult: map[string]any{
+				"truncated":     true,
+				"original_size": originalSize,
+				"total_lines":   countTotalLines([]byte(resultStr)),
+				"mode":          "head",
+				"content":       truncated,
+			},
 		}, nil
 	}
 }

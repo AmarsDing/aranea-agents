@@ -46,17 +46,19 @@ func TestNewOutputSizeLimiterHook_ExceedsLimit(t *testing.T) {
 	if result.CustomResult == nil {
 		t.Fatal("expected non-nil CustomResult for exceeded output")
 	}
-	truncated, ok := result.CustomResult.(string)
+	envelope, ok := result.CustomResult.(map[string]any)
 	if !ok {
-		t.Fatalf("expected string CustomResult, got %T", result.CustomResult)
+		t.Fatalf("expected map envelope CustomResult, got %T", result.CustomResult)
 	}
-	// Should contain the truncation marker
-	if !strings.Contains(truncated, "[output truncated:") {
-		t.Error("expected truncation marker in result")
+	if truncated, _ := envelope["truncated"].(bool); !truncated {
+		t.Errorf("expected truncated=true, got %v", envelope["truncated"])
 	}
-	// Should start with the first maxChars of the original
-	if !strings.HasPrefix(truncated, strings.Repeat("a", maxChars)) {
-		t.Error("expected truncated result to start with original content")
+	if lines, _ := envelope["total_lines"].(int); lines != 1 {
+		t.Errorf("expected total_lines=1, got %v", envelope["total_lines"])
+	}
+	content, _ := envelope["content"].(string)
+	if content != strings.Repeat("a", maxChars) {
+		t.Errorf("expected content to be first %d runes, got len=%d", maxChars, len(content))
 	}
 }
 
@@ -180,14 +182,17 @@ func TestNewOutputSizeLimiterHook_UTF8Truncation(t *testing.T) {
 	if result.CustomResult == nil {
 		t.Fatal("expected non-nil CustomResult for exceeded output")
 	}
-	truncated, ok := result.CustomResult.(string)
+	envelope, ok := result.CustomResult.(map[string]any)
 	if !ok {
-		t.Fatalf("expected string CustomResult, got %T", result.CustomResult)
+		t.Fatalf("expected map envelope CustomResult, got %T", result.CustomResult)
 	}
-	// Should start with first 5 characters (你好世界你)
+	content, _ := envelope["content"].(string)
 	expected := "你好世界你"
-	if !strings.HasPrefix(truncated, expected) {
-		t.Errorf("expected prefix %q, got %q", expected, truncated[:len(expected)])
+	if content != expected {
+		t.Errorf("expected content %q, got %q", expected, content)
+	}
+	if lines, _ := envelope["total_lines"].(int); lines != 1 {
+		t.Errorf("expected total_lines=1, got %v", envelope["total_lines"])
 	}
 }
 

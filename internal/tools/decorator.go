@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -142,8 +143,8 @@ func budgetOverrideForTool(name string) *ResultBudget {
 }
 
 // truncationEnvelopeOverhead is the byte budget reserved for the JSON envelope
-// wrapper fields ({"truncated":true,"original_size":N,"mode":"M","content":"..."}).
-const truncationEnvelopeOverhead = 200
+// wrapper fields ({"truncated":true,"original_size":N,"total_lines":L,"mode":"M","content":"..."}).
+const truncationEnvelopeOverhead = 240
 
 // ToolDecoratorConfig configures the ToolDecorator behavior.
 type ToolDecoratorConfig struct {
@@ -587,6 +588,7 @@ func (d *ToolDecorator) truncateResult(ctx context.Context, jsonArgs []byte, res
 	return map[string]any{
 		"truncated":     true,
 		"original_size": len(data),
+		"total_lines":   countTotalLines(data),
 		"mode":          mode,
 		"content":       string(truncated),
 	}
@@ -667,6 +669,7 @@ func (d *ToolDecorator) offloadResult(ctx context.Context, jsonArgs, data []byte
 		"ref":           ref,
 		"tool":          name,
 		"original_size": len(data),
+		"total_lines":   countTotalLines(data),
 		"preview_head":  string(head),
 		"preview_tail":  string(tail),
 		"read_hint": "Result too large for context. Full JSON saved to ref. " +
@@ -700,6 +703,16 @@ func sliceForMode(data []byte, target int, mode string) []byte {
 	// P1-3：切点对齐 rune 边界，避免 CJK 多字节字符被切成非法 UTF-8
 	// （序列化成 JSON envelope 后产生 U+FFFD 污染模型输入）。
 	return strutil.SliceBytesRuneSafe(data, target, mode)
+}
+
+// countTotalLines returns how many lines the original serialized payload
+// occupies so a truncated/offloaded envelope can tell the model the true
+// height (Codex-style total_lines). Empty input is 0.
+func countTotalLines(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+	return bytes.Count(data, []byte("\n")) + 1
 }
 
 func (d *ToolDecorator) toolName() string {

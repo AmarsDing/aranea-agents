@@ -1395,11 +1395,26 @@ Agent 构建请求
   "ref": "artifact://tool_results/<tool>/<sha256(args)[:16]>.json@<version>",
   "tool": "<工具名>",
   "original_size": 28912,
+  "total_lines": 412,
   "preview_head": "<前 2KB>",
   "preview_tail": "<后 512B>",
   "read_hint": "Result too large for context. Full JSON saved to ref. Use read_file with file_name=ref and start_line/num_lines to page through it."
 }
 ```
+
+**截断信封**（卸载不可用时回退；`NewOutputSizeLimiterHook` 对未装饰的 MCP / Deferred 字符串结果使用同一形状）：
+
+```json
+{
+  "truncated": true,
+  "original_size": 28912,
+  "total_lines": 412,
+  "mode": "tail",
+  "content": "<按 mode 切片后的原文>"
+}
+```
+
+`total_lines` 按原始序列化字节中的换行计数（非空则 `\\n` 数 + 1），让模型知道被裁掉的高度，而不是只看到 `original_size` 字节。
 
 **关键设计决策**：
 
@@ -1419,10 +1434,10 @@ Agent 构建请求
 | 层 | 时机 | 对象 | 行为 |
 |----|------|------|------|
 | **主裁** `ToolDecorator.truncateResult` | 工具 `Call` 返回后 | 已装饰工具 | JSON 超 `ResultBudget` → 卸载信封或截断信封（`map`） |
-| **兜底** `NewOutputSizeLimiterHook` | AfterTool priority 60 | **未装饰**字符串结果（Deferred / 部分 MCP） | 超 50k runes 就地截断并追加 `[output truncated:]` |
+| **兜底** `NewOutputSizeLimiterHook` | AfterTool priority 60 | **未装饰**字符串结果（Deferred / 部分 MCP） | 超 50k runes 改为与主裁相同的截断信封（含 `total_lines`） |
 | **入库** `ToolResultGate` | BeforeModel | 即将进模型的 user/tool content | 超限持久化 blob，与上两层独立 |
 
-兜底层跳过：`truncated`/`offloaded` 信封、`builtinResultBudgetOverrides` 命中的工具（如 `browser_snapshot`、`read_upstream_deliverable`）、已含 `[output truncated:` 的字符串。
+兜底层跳过：`truncated`/`offloaded` 信封、`builtinResultBudgetOverrides` 命中的工具（如 `browser_snapshot`、`read_upstream_deliverable`）、已含 `[output truncated:` 的遗留字符串。
 
 ### 7.2 工具注册表
 

@@ -620,6 +620,15 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 - `FilesForMode`（`internal/biz/agent_settings_helpers.go`）已导出，根据模式返回允许的文件子集
 - 每个文件内容用 `<internal_config name="{Name}">` 标签包裹，便于 LLM 区分配置块
 
+`BuildSystemPrompt` 在 description 与 `<internal_config>` 之间插入两段会话级稳定合同（2026-08-22 Codex 对照 Phase A）：
+
+| 标签 | 何时注入 | 内容 |
+|------|----------|------|
+| `<working_contract>` | `coding` / `spirit` / `full` profile，或 `__spirit__`，或 allow 含 coding-bridge / computer-use / `shell_exec` / `diff_edit` | preamble、短计划、`search_content`、`diff_edit`/`patch_file`、验证时机。不挂到 `read_only` / `research` / `chat_only` 专项 |
+| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件 |
+
+两段都烘焙进 instruction（与 `## Runtime capability policy` 同属稳定前缀），禁止放进每轮 user-role 动态 cue。
+
 ---
 
 ## 九、字段映射汇总（UI ↔ 数据模型）

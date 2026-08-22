@@ -148,6 +148,12 @@ func classifySystemSections(text string) map[string]int {
 	if strings.HasPrefix(text, "You are ") {
 		out["identity"] = estTokensFromChars(utf8.RuneCountInString(textPrefixUntilBlankLine(text)))
 	}
+	if strings.Contains(text, "<working_contract>") {
+		out["working_contract"] += sectionTokens(text, "<working_contract>", "<permission_state>")
+	}
+	if strings.Contains(text, "<permission_state>") {
+		out["permission_state"] += sectionTokens(text, "<permission_state>", "<internal_config")
+	}
 	if strings.Contains(text, "<internal_config") {
 		out["instruction"] += sectionTokens(text, "<internal_config", "## Runtime capability policy")
 	}
