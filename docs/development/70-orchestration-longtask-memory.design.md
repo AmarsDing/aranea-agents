@@ -2169,7 +2169,7 @@ archive 双时态失效（valid_until=now）→ 断言从后续召回消失
 
 LLM 复用 §16.3 的 `LLMResolver` 按目标解析（MemoryWorker → L0Compress → agent 默认），nil LLM 或蒸馏失败 → 保留旧卡优雅降级。整个 Phase 3 best-effort 永不返回错误——JobRunner 的重试决策只由 Phase 1 驱动，避免 Phase 3 失败导致整个 job 重试而重复 Phase 1/2 变更。
 
-**注入**（`ProfileCardCue`）：L3 注入开启时，卡片无条件渲染在记忆块**首位**（`## 用户档案（长期记忆摘要，始终生效）` 标题 + 正文，hook 侧硬上限 1200 runes 安全网）；无卡/读卡失败返回空串，best-effort 永不打断 turn。
+**注入**（`MemorySummaryCue` / `ProfileCardCue`）：L3 注入开启时，记忆块**首位**是 `<memory_summary>`（C1，≤800 token）。优先渲染蒸馏卡（`## 用户档案…` + 正文，hook 侧硬上限 1200 runes）；无卡时回退钉住偏好/约束，避免 Spirit 冷启动「用了几千次命中 0」。读卡失败返回空串，best-effort 永不打断 turn。卡存在时钉住块仍单独注入（逐条规则）；回退路径不再重复钉住块。
 
 **依赖装配**（wire）：`NewProfileCardDistiller(data.NewMemoryPreferenceLister, data.NewMemoryProfileCardStore)` → `SetLLMResolver(resolver)` → `SleepTimeService.SetProfileCardDistiller`；注入侧 `TRPCBuilderDeps.MemoryProfileCardReader` = `data.NewMemoryProfileCardStore`。
 

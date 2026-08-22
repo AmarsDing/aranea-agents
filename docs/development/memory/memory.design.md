@@ -2233,3 +2233,33 @@ Chip 无 `fact_id` 时：L3 用 `line` 作 keyword；L2/L1 进 browse 对应层�
 
 图谱 / 扩散激活改经 `useMemoryStore.loadUnifiedGraph` / `fetchSpreadingActivation`。
 
+---
+
+## 子模块：记忆读合同（C1–C4，2026-08-22）
+
+> 需求 [`memory.md`](./memory.md) §24。不新开存储层；读合同叠在现有 profile card / 三阶段计数 / Sleep-time / L1 `task_board` 上。
+
+### C1 `<memory_summary>`
+
+`MemorySummaryCue`（`internal/agent/memory_summary.go`）在 `InjectL3` 时占据记忆块首位：
+
+1. 有 Sleep-time 画像卡 → 包进 `<memory_summary>`（内层仍是 `ProfileCardCue` 标题+正文）。
+2. 无卡 → 用钉住偏好合成同一信封，并标记 `usedPinnedFallback`，注入钩子不再重复钉住块。
+3. 整块硬上限 800 token（`llmcontext.EstimateTokensFromChars`）。
+
+钉住块在「有卡」时仍单独注入（逐条规则通道）。
+
+### C2 用到才计数 + 手册视图
+
+- L3：`injected_count` / `cited_count` 仍是诚实口径；`use_count` 历史列不再维护。
+- L4：`ReconsolidationService.OnRecall` 只做激活提升 + Hebbian，**不再** `IncrementUseCount`。`use_count` 留给 `RecordEntityReinforcement` 等显式信号。
+- 知识投影 `agents/{id}.md` 增加 `MEMORY handbook index` 表（`fact_id` / kind / statement），供 grep / 知识检索，不预注入全文。
+
+### C3 Sleep-time Phase2 合同
+
+`prepareConsolidationMemories` 在 Phase1 LLM 前：脱敏（`biz.ScanPII`）、丢掉问候/密钥-only。无高信号 → 跳过 LLM（Phase 2/3 仍跑）。`executeOperations` 拒绝会写入密钥的 op。系统提示声明：无工具、无网络、不 spawn。
+
+### C4 跨会话任务状态
+
+`L1LatestTaskBoardReader.LatestL1TaskBoard(agentID, excludeSessionID)`：该 Agent 最近 active/paused 且 `task_board` 非空的一行。`L1MemoryCue` 在本会话无 L1 行时 type-assert 后渲染 `## Task status (previous session)`，不带旧会话 pinned fields。
+

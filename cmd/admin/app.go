@@ -111,6 +111,10 @@ func newApp(
 			}
 
 			// Inject vault sync controller into knowledge service (P1-3 production wiring).
+			if chatSvc != nil && agentBridgeSvc != nil {
+				chatSvc.BindAgentBridge(agentBridgeSvc)
+			}
+
 			if knowledgeSvc != nil && vaultSyncSup != nil {
 				knowledgeSvc.SetVaultSyncController(vaultSyncSup)
 			}

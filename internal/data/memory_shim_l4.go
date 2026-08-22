@@ -38,7 +38,7 @@ func NewL4RelationAdminReader(data *Data) biz.L4RelationAdminReader {
 }
 
 // NewL4ReconsolidationStore returns the narrow L4ReconsolidationStore port for
-// memory reconsolidation (activation boost + use_count increment). Exposed so
+// memory reconsolidation (activation boost). Exposed so
 // the wire layer can inject it into ReconsolidationService without depending
 // on the full L4GraphRepo.
 func NewL4ReconsolidationStore(data *Data) biz.L4ReconsolidationStore {

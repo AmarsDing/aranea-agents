@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/working_memory"
+	"aranea-agents/pkg/loggateway"
 )
 
 // --- Test 1: fieldTokenEstimate ---
@@ -495,4 +496,78 @@ func TestTokenEstimateFormula(t *testing.T) {
 			}
 		})
 	}
+}
+
+type stubL1CueReader struct {
+	sessionRows [][]byte
+	latest      []byte
+	latestAgent string
+	exclude     string
+}
+
+func (s *stubL1CueReader) ListL1TaskRows(context.Context, string, string, string, string) ([][]byte, error) {
+	return s.sessionRows, nil
+}
+func (s *stubL1CueReader) ListL1FieldRows(context.Context, string, bool, ...string) ([][]byte, error) {
+	return nil, nil
+}
+func (s *stubL1CueReader) GetL1TaskRow(context.Context, string, string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stubL1CueReader) GetL1FieldRow(context.Context, string, string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stubL1CueReader) LatestL1TaskBoard(_ context.Context, agentID, exclude string) ([]byte, error) {
+	s.latestAgent = agentID
+	s.exclude = exclude
+	return s.latest, nil
+}
+
+func TestL1MemoryCue_CrossSessionBoardWhenCurrentEmpty(t *testing.T) {
+	row, _ := json.Marshal(map[string]any{
+		"id":           "t-old",
+		"task_title":   "机房巡检",
+		"task_goal":    "完成机柜清点",
+		"status":       "paused",
+		"metadata_json": `{"task_board":{"status":"取证完成","done":["拍照"],"next":"执行清除","blockers":["缺钥匙"]}}`,
+	})
+	stub := &stubL1CueReader{latest: row}
+	got := L1MemoryCue(context.Background(), stub, biz.Agent{ID: "ag-1"},
+		biz.MemoryRuntimePolicy{InjectL1: true}, "sess-new", loggateway.NewNoop())
+	if got == nil {
+		t.Fatal("expected cross-session cue")
+	}
+	if stub.latestAgent != "ag-1" || stub.exclude != "sess-new" {
+		t.Fatalf("lookup agent=%q exclude=%q", stub.latestAgent, stub.exclude)
+	}
+	if !strings.Contains(got.Cue, "Task status (previous session)") {
+		t.Fatalf("missing cross-session header: %s", got.Cue)
+	}
+	if !strings.Contains(got.Cue, "机房巡检") || !strings.Contains(got.Cue, "执行清除") {
+		t.Fatalf("missing board fields: %s", got.Cue)
+	}
+}
+
+func TestL1MemoryCue_NoCrossSessionWithoutBoarder(t *testing.T) {
+	reader := sessionOnlyReader{}
+	got := L1MemoryCue(context.Background(), reader, biz.Agent{ID: "ag-1"},
+		biz.MemoryRuntimePolicy{InjectL1: true}, "sess-new", loggateway.NewNoop())
+	if got != nil {
+		t.Fatalf("expected nil without L1LatestTaskBoardReader, got %+v", got)
+	}
+}
+
+type sessionOnlyReader struct{}
+
+func (sessionOnlyReader) ListL1TaskRows(context.Context, string, string, string, string) ([][]byte, error) {
+	return nil, nil
+}
+func (sessionOnlyReader) ListL1FieldRows(context.Context, string, bool, ...string) ([][]byte, error) {
+	return nil, nil
+}
+func (sessionOnlyReader) GetL1TaskRow(context.Context, string, string) ([]byte, error) {
+	return nil, nil
+}
+func (sessionOnlyReader) GetL1FieldRow(context.Context, string, string) ([]byte, error) {
+	return nil, nil
 }

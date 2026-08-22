@@ -688,6 +688,20 @@ internal/cronrunner/jobs/
 | `client_tool.result` | ok / error | 客户端工具执行完成 |
 | `client_tool.timeout` | error | 客户端工具执行超时 |
 
+#### Coding Agent Bridge（`domain=agentbridge`，M76，2026-08-22）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `agentbridge.task.dispatch` | info / — | 派发编程任务 |
+| `agentbridge.task.done` | ok / — | 编程任务完成 |
+| `agentbridge.task.failed` | error | 编程任务失败 |
+| `agentbridge.task.cancelled` | ok / — | 编程任务取消 |
+| `agentbridge.process.spawn` | info / — | 启动编程 Agent 进程 |
+| `agentbridge.process.exit` | ok / error | 编程 Agent 进程退出 |
+| `agentbridge.probe.degraded` | warn | 编程工具探测降级 |
+| `agentbridge.approval.request` | info / — | 编程工具审批请求 |
+| `agentbridge.approval.timeout` | warn | 编程工具审批超时 |
+
 #### 别名（v1 → v2，兼容 1 版本）
 
 | v1 `flow_step` | v2 `step_id` |

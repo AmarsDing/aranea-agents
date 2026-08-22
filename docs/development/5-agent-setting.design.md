@@ -625,9 +625,11 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 | 标签 | 何时注入 | 内容 |
 |------|----------|------|
 | `<working_contract>` | `coding` / `spirit` / `full` profile，或 `__spirit__`，或 allow 含 coding-bridge / computer-use / `shell_exec` / `diff_edit` | preamble、短计划、`search_content`、`diff_edit`/`patch_file`、验证时机。不挂到 `read_only` / `research` / `chat_only` 专项 |
-| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件 |
+| `<permission_state>` | 只要有 `Settings` | 本会话 `tools disabled` / `read-only` / `workspace-write` / `workspace-write with approval`。只读 Agent 不得声称能改文件。运行时由 `workspace_sandbox` BeforeTool（priority 8）强制：只读写工具 `CustomResult` 拒绝；`path`/`file`/`cwd` 必须落在 Agent 工作区根下。OS 级 token/bwrap 未做 |
 
 两段都烘焙进 instruction（与 `## Runtime capability policy` 同属稳定前缀），禁止放进每轮 user-role 动态 cue。
+
+动态记忆块首位是 `<memory_summary>`（C1，user-role 尾）：优先 Sleep-time 画像卡，冷启动无卡时回退钉住偏好；整块 ≤800 token。不进稳定 instruction，以免每用户档案打爆 prefix cache。
 
 编码 / 精灵编程桥还会在静态 cue 之后烘焙 `<project_agents_md>`（B1）：从 Agent 可信工作区找 `.git`，root→cwd 每层 `AGENTS.override.md` > `AGENTS.md` > `CLAUDE.md`，总预算 32KiB，超出打日志字段 `agents_md_truncated`。工作区外未登记路径不读。
 

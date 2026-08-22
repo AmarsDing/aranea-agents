@@ -179,7 +179,7 @@ func FormatAgentMemoryProjection(agentID string, facts []WriteBackFact, now time
 	fmt.Fprintf(&b, "---\nprojection: agent-memory\nagent_id: %s\nupdated: %s\n---\n\n",
 		agentID, now.UTC().Format(time.RFC3339))
 	fmt.Fprintf(&b, "# Agent %s\n\n", agentID)
-	b.WriteString("> 只读投影，来自自动记忆 L3 活动事实。请勿手工编辑；下次会话结束会覆盖。\n\n")
+	b.WriteString("> 只读投影 / MEMORY handbook，来自自动记忆 L3 活动事实。请勿手工编辑；下次会话结束会覆盖。\n\n")
 	if len(facts) == 0 {
 		b.WriteString("_暂无活动事实。_\n")
 		return b.String()
@@ -200,6 +200,20 @@ func FormatAgentMemoryProjection(agentID string, facts []WriteBackFact, now time
 		}
 		byKind[kind] = append(byKind[kind], f)
 	}
+	b.WriteString("## MEMORY handbook index\n\n")
+	b.WriteString("| fact_id | kind | statement |\n|---|---|---|\n")
+	for _, kind := range order {
+		for _, f := range byKind[kind] {
+			id := strings.TrimSpace(f.FactID)
+			if id == "" {
+				id = "-"
+			}
+			stmt := strings.ReplaceAll(strings.TrimSpace(f.Statement), "|", "/")
+			stmt = strings.ReplaceAll(stmt, "\n", " ")
+			fmt.Fprintf(&b, "| `%s` | %s | %s |\n", id, kind, stmt)
+		}
+	}
+	b.WriteByte('\n')
 	for _, kind := range order {
 		fmt.Fprintf(&b, "## %s\n\n", kind)
 		for _, f := range byKind[kind] {

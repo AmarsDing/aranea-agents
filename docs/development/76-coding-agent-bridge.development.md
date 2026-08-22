@@ -1,6 +1,6 @@
 # 76 编程 Agent 桥接（Coding Agent Bridge）开发计划
 
-> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 进行中（M1-1~12 已完成）
+> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 主体完成；M2 审批中继已落地（adapter 仍待）
 > 需求见 [76-coding-agent-bridge.md](./76-coding-agent-bridge.md) ｜ 设计见 [76-coding-agent-bridge.design.md](./76-coding-agent-bridge.design.md)
 
 ---
@@ -35,8 +35,8 @@
 
 | Phase | 内容 | 状态 |
 |-------|------|------|
-| **M1** | ACP Go 客户端 + 数据模型 + 派发/进度/结果回收 + CodeBuddy 冒烟（审批走 agent 默认策略，无中继） | 📋 |
-| **M2** | 审批中继（确认卡片 + 语音作答 + 超时）+ claude-code-acp / codex-acp adapter 接入 | 📋 |
+| **M1** | ACP Go 客户端 + 数据模型 + 派发/进度/结果回收 + CodeBuddy 冒烟（审批走 agent 默认策略，无中继） | 🟡 M1-1~12 ✅；冒烟/E2E 📋 |
+| **M2** | 审批中继（确认卡片 + 语音作答 + 超时）+ claude-code-acp / codex-acp adapter 接入 | 🟡 中继 ✅；adapter 📋 |
 | **M3** | Trae 拉起 + 管理界面（AgentBridgePage）+ 排队并发控制 | 📋 |
 
 ## 5. M1 任务清单（TDD：每任务先失败测试后实现）
@@ -87,6 +87,18 @@
 - `cmd/admin/wire.go` + `wire_gen.go`（装配）
 - `docs/development/52-flow-logger.design.md` §5.1（step 注册表同步）
 - `docs/development/65-module-cross-reference-full.md`（新增模块卡片）
+
+## 7.1 M2 审批中继（2026-08-22）
+
+| # | 任务 | 验证 | 状态 |
+|---|------|------|------|
+| M2-1 | ACP `OnPermission` 不再自动放行；任务 `running → awaiting_approval`；发射 `coding_task_approval` + confirm step（`source=external_coding`） | `agentbridge_approval_test.go` | ✅ |
+| M2-2 | `ConfirmActivity` 路由 `external_coding` → `ConfirmBridgePermission`；`allow_always` 仅本任务内存缓存 | 同测：二次 permission 不发卡 | ✅ |
+| M2-3 | 审批超时 5 分钟 → 任务 `cancelled` + `agentbridge.approval.timeout` | 同测缩短超时 | ✅ |
+| M2-4 | `HoloConfirmCard` 标题 `{agent} · {project}` | `useCompanionConfirms.spec.ts` | ✅ |
+| M2-5 | claude-code-acp / codex-acp adapter | 专项评估 | 📋 |
+
+**代码锚点**：`internal/service/agentbridge_approval.go`、`internal/biz/agentbridge/approval.go`、`internal/service/chat_confirm.go`、`cmd/admin/app.go` `BindAgentBridge`。
 
 ## 8. 风险与缓解
 

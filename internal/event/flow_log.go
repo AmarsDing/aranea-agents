@@ -334,7 +334,9 @@ var stepTitleRegistry = map[string]string{
 	"agentbridge.task.cancelled": "编程任务取消",
 	"agentbridge.process.spawn":  "启动编程 Agent 进程",
 	"agentbridge.process.exit":   "编程 Agent 进程退出",
-	"agentbridge.probe.degraded": "编程工具探测降级",
+	"agentbridge.probe.degraded":     "编程工具探测降级",
+	"agentbridge.approval.request":   "编程工具审批请求",
+	"agentbridge.approval.timeout":   "编程工具审批超时",
 	// computer use（M75）：与 internal/biz/computeruse/usecase.go 实际发射对齐
 	"computeruse.session.start":      "桌面会话已创建",
 	"computeruse.session.done":       "桌面会话已结束",

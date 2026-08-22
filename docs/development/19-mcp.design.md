@@ -460,3 +460,35 @@ web/src/pages/McpServersPage.vue
 ---
 
 *文档版本：5.1 — 2026-08-14 同步深入评审整改：R1 软删除感知部分唯一索引（§5.1/§5.2）、R2 EffectiveServersForAgent 工作区过滤（§4.4）、M1-M6 单次查询守卫/IDOR 拒绝日志/凭据审计/`mcp.server.update` 流程日志/死代码清理（§七）、T1-T2 oauth2_static 守卫 + AuthHeaderName 透传（§6.5/§6.2）、T3-T4 连接池延迟关闭 + Assemble 错误路径清理（§6.2）、T5 refresh token 轮换回写（§4.2/§6.5/§八）、F1-F4 前端类型收紧与测试（§九）。*
+
+---
+
+## 子模块：Agent 作为 MCP Server（D3 评估，不实现）
+
+> 日期：2026-08-22。来源：[2026-08-22-analysis-codex-vs-aranea.md](../reports/2026-08-22-analysis-codex-vs-aranea.md) Phase D3。  
+> **结论：本期不实现。** 本附录只定边界，避免以后把「IDE 调一只 Aranea 专项」做成第二套编排。
+
+### 动机
+
+Codex / Claude Desktop 可以把本机 Agent 暴露成 MCP server，让 IDE 不经过 Chat UI 直接调工具。Aranea 已是 **MCP 客户端**（stdio / SSE / Streamable HTTP + Broker）。反向做 server 是产品能力，不是框架缺口。
+
+### 不该做的事
+
+| 禁止 | 原因 |
+|------|------|
+| 把整只公司 / 精灵工具箱挂成一只 MCP server | 违反组织铁律：专项自带工具面，禁止全员共用精灵工具箱 |
+| 用 MCP 代替花名册 / PlanExecutor / Team Graph | 编排只绑编制，不把员工做成 IDE 精灵分身 |
+| 复用 `spawn_agent` 当主编排 | 与 M67/M78 冲突 |
+| 为了「像 Codex」先做 Code Mode / 去掉 SSE | SSE 已是一等传输；Code Mode 不是本期目标 |
+
+### 若以后做，最小切片
+
+1. **一只专项一个 server**，工具面 = 该 Agent 的 ToolsProfile / Allow / Deny / MCP mount，不并集。
+2. 鉴权：workspace 级 token，禁止匿名 stdio 扫全库。
+3. 会话：每次 MCP 调用对应独立 run，写入现有 Task/Step，不绕过确认门与 `workspace_sandbox`。
+4. 治理岗（`dept_lead` / `company_lead`）不暴露为 MCP 工具。
+5. 传输优先 Streamable HTTP（已有客户端对偶）；stdio 仅本机 IDE。
+
+### 验收（未开工）
+
+IDE 能对 **一只已注册专项** 列出并调用其允许工具，不经过 Chat UI；调用出现在该 Agent 的执行轨迹；越权工具 / 越界路径被拒绝。不验收「把 Aranea 当通用 MCP 网关」。

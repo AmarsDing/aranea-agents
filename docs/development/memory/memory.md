@@ -1028,3 +1028,35 @@ Agent 设置中新增独立 `记忆` Tab，避免把所有记忆配置塞进基�
 | 安全 | 跨租户统一 NotFound，不返回 Forbidden 以免枚举 Agent |
 | 兼容 | 四 Tab 路由与现有治理动作不变；无新表 |
 | 文档 | Sleep-time 已接线（`cmd/admin/workers.go` `memory_sleep_time` + ModelCatalog LLMResolver）；L1 `token_estimate` / `used_tokens` 在 `UpsertL1Field` 写入时计算。历史文档「未接线 / 恒为 0」以代码为准，本子模块不重复施工 |
+
+---
+
+## 24. 子模块：记忆读合同（C1–C4，2026-08-22）
+
+> 设计见 [`memory.design.md`](./memory.design.md) 同名子模块；进度见 [`memory-development.md`](./memory-development.md) Phase 9。  
+> 对照 Codex 读合同叠在现有 L0–L4 上，不新开第六层、不把记忆改成纯文件。
+
+### 24.1 用户故事
+
+| 编号 | 用户故事 |
+|------|----------|
+| US-C1 | 作为用户，隔日打开 Spirit 时它能说出我已经说过的稳定偏好，不必我重申。 |
+| US-C2 | 作为治理者，我能在知识库 `agents/{id}.md` 里按 `fact_id` grep 手册，且 `use_count` 不再把「只是召回」当成「用过」。 |
+| US-C3 | 作为平台，Sleep-time 在没有高信号记忆时不写库，且绝不把密钥写进记忆。 |
+| US-C4 | 作为用户，新开一会话问「做到哪了」时，模型能看到上一会话的任务状态表，而不是回放全文。 |
+
+### 24.2 功能需求
+
+| 编号 | 需求 | 优先级 |
+|------|------|--------|
+| FR-C1 | L3 开启时记忆块首位注入 `<memory_summary>`（≤800 token）；有画像卡用卡，无卡回退钉住偏好 | P1 |
+| FR-C2 | L4 `OnRecall` 不递增 `use_count`；L3 继续只对注入/引用计数；知识投影带 MEMORY handbook index | P1 |
+| FR-C3 | Sleep-time Phase1：无高信号则跳过 LLM；输入脱敏；含密钥的 consolidation op 拒绝落库；prompt 声明无工具/无网络/不 spawn | P2 |
+| FR-C4 | 当前会话无 L1 行时，注入该 Agent 最近一条跨会话 `task_board`（不含旧会话 pinned fields） | P2 |
+
+### 24.3 验收标准
+
+- [x] 无画像卡、仅有钉住偏好时，首轮 cue 含 `<memory_summary>` 且能复述偏好。
+- [x] L4 `OnRecall` 单测断言不调用 `IncrementUseCount`。
+- [x] 仅问候语的 Sleep-time job 不调用 LLM 写路径。
+- [x] 当前会话 L1 为空时 cue 含 `Task status (previous session)`。

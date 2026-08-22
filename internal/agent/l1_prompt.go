@@ -33,7 +33,7 @@ func L1MemoryCue(ctx context.Context, l1Reader biz.L1AdminReader, ag biz.Agent, 
 		return nil
 	}
 	if len(taskRows) == 0 {
-		return nil
+		return crossSessionTaskStatusCue(ctx, l1Reader, ag, sessionID, lg)
 	}
 	var task map[string]any
 	if json.Unmarshal(taskRows[0], &task) != nil {
@@ -142,6 +142,47 @@ func fieldPinnedToPrompt(row map[string]any) bool {
 	default:
 		return fmt.Sprint(v) == "true" || fmt.Sprint(v) == "1"
 	}
+}
+
+// crossSessionTaskStatusCue injects a compact previous-session task board
+// (C4) when the current session has no L1 row. Does not pull pinned fields
+// from the old session — those are scratch, not status.
+func crossSessionTaskStatusCue(ctx context.Context, l1Reader biz.L1AdminReader, ag biz.Agent, excludeSessionID string, lg loggateway.Logger) *L1CueResult {
+	boarder, ok := l1Reader.(biz.L1LatestTaskBoardReader)
+	if !ok || boarder == nil {
+		return nil
+	}
+	raw, err := boarder.LatestL1TaskBoard(ctx, strings.TrimSpace(ag.ID), excludeSessionID)
+	if err != nil {
+		lg.Warn("L1 cross-session task board query failed", loggateway.StepID("agent.memory_query_fail"), loggateway.Err(err))
+		return nil
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	var task map[string]any
+	if json.Unmarshal(raw, &task) != nil {
+		return nil
+	}
+	title := strings.TrimSpace(fmt.Sprint(task["task_title"]))
+	goal := strings.TrimSpace(fmt.Sprint(task["task_goal"]))
+	rowStatus := strings.TrimSpace(fmt.Sprint(task["status"]))
+	board := parseL1TaskBoard(task)
+	if (title == "" || title == "<nil>") && board == nil {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("## Task status (previous session)\n")
+	if title != "" && title != "<nil>" {
+		fmt.Fprintf(&b, "Task: %s\n", title)
+	}
+	if goal != "" && goal != "<nil>" && goal != title {
+		fmt.Fprintf(&b, "Goal: %s\n", goal)
+	}
+	if board != nil {
+		board.appendTo(&b, rowStatus)
+	}
+	return &L1CueResult{Cue: strings.TrimSpace(b.String())}
 }
 
 func formatL1TaskOnlyResult(task map[string]any) *L1CueResult {

@@ -180,6 +180,7 @@ export default {
       'Voice service is not configured — ask an admin to set up ASR/TTS in System Settings → Voice Service',
     webglUnsupported: 'WebGL is not supported in this environment; HUD cannot render',
     confirmTitle: 'Confirm action',
+    confirmExternalTitle: '{who} needs approval',
     confirmApprove: 'Approve',
     confirmReject: 'Reject',
     confirmApproveAlways: 'Always allow',

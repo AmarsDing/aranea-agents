@@ -12,12 +12,14 @@
 
 两套系统 **产品目标不同**，不能用「谁更像 Codex」当总分。
 
-| | Codex CLI | Aranea |
-|--|-----------|--------|
-| 定位 | 本机编码 Agent harness | 多 Agent 公司操作系统（组织/岗位/团队/知识/语音） |
-| 主用户 | 开发者本人 | 开发者 + 业务用户 + 编制内专项 Agent |
-| 默认工作区 | 当前 git 仓库 | Workspace + Agent 工作区 + 知识库 |
-| 编排 | 单线程 + 可选 spawn 子 Agent | 花名册 / PlanExecutor / Team Graph / 组织链 |
+
+|       | Codex CLI              | Aranea                                |
+| ----- | ---------------------- | ------------------------------------- |
+| 定位    | 本机编码 Agent harness     | 多 Agent 公司操作系统（组织/岗位/团队/知识/语音）        |
+| 主用户   | 开发者本人                  | 开发者 + 业务用户 + 编制内专项 Agent              |
+| 默认工作区 | 当前 git 仓库              | Workspace + Agent 工作区 + 知识库           |
+| 编排    | 单线程 + 可选 spawn 子 Agent | 花名册 / PlanExecutor / Team Graph / 组织链 |
+
 
 评分规则：
 
@@ -30,37 +32,47 @@
 
 ---
 
+
+
 ## 1. 总分
 
-| 维度 | Codex | Aranea | 加权差（Aranea − Codex） |
-|------|------:|-------:|------------------------:|
-| 业务循环 / Harness | 9.0 | 7.0 | −0.30 |
-| Context | 8.5 | 7.0 | −0.23 |
-| 工具（执行面） | 9.0 | 7.5 | −0.23 |
-| 工具调研（延迟目录） | 8.5 | 7.0 | −0.15 |
-| Skill | 8.0 | 7.5 | −0.05 |
-| MCP | 8.0 | 8.0 | 0.00 |
-| Prompt | 9.0 | 6.5 | −0.25 |
-| 记忆 | 8.5 | 7.0 | −0.23 |
-| **加权总分** | **8.6** | **7.3** | **−1.3** |
-| 平台 / 组织 / 知识 / 语音（不加权） | 3.5 | 8.5 | — |
+
+| 维度                     | Codex   | Aranea  | 加权差（Aranea − Codex） |
+| ---------------------- | ------- | ------- | ------------------- |
+| 业务循环 / Harness         | 9.0     | 7.0     | −0.30               |
+| Context                | 8.5     | 7.0     | −0.23               |
+| 工具（执行面）                | 9.0     | 7.5     | −0.23               |
+| 工具调研（延迟目录）             | 8.5     | 7.0     | −0.15               |
+| Skill                  | 8.0     | 7.5     | −0.05               |
+| MCP                    | 8.0     | 8.0     | 0.00                |
+| Prompt                 | 9.0     | 6.5     | −0.25               |
+| 记忆                     | 8.5     | 7.0     | −0.23               |
+| **加权总分**               | **8.6** | **7.3** | **−1.3**            |
+| 平台 / 组织 / 知识 / 语音（不加权） | 3.5     | 8.5     | —                   |
+
 
 读法：在「编码 Agent 怎么干活」上 Codex 仍领先约 1.3 分；在「公司怎么运转」上 Aranea 远超。二次源码对照后上调了 Aranea 的工具调研（MCP broker 已是默认 coding profile）和记忆（L0–L4 + profile card + sleep-time **代码已在**，历史断环是运营债不是空白）。优化目标不是追平 8.6，而是把 **编码专项 + 精灵桥接 + 通用 Agent 上下文合同** 拉到 8.0+，同时保住平台分。
 
 ---
 
+
+
 ## 2. 分项对照
+
+
 
 ### 2.1 业务循环
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 主循环 | `submission_loop` 统一 Op：输入/审批/压缩/挂起/子 Agent/MCP 刷新 | ChatOrchestrator 分 phase + Runner；审批/澄清/编排各有入口 |
-| HITL | Exec/Patch/Permissions/UserInput 都是 Op 回传 | 工具确认门 + clarify；编码桥接审批中继 M2 未落地 |
-| 恢复 | RecoverTurn、SuspendTurn、resume/fork thread | Durable Resume、Graph checkpoint；chat 域无「挂起未完成根 turn」 |
-| 子 Agent | 模型工具 spawn/wait/interrupt | Team Graph / 组织链 / PlanExecutor；**不是**模型随手 spawn |
-| 沙箱 | OS 级 Seatbelt / bwrap / Windows token | 工作区路径约束 + 确认门；无 OS sandbox |
-| 编码桥 | 自己就是编码 Agent | M76：**派发/查询/取消工具 + ACP 客户端 + API 已落地**（M1-1~12/15 ✅，默认 `enabled=false`）；M1 冒烟与 M2 审批中继未收口。另有 `trpc-agent-go/agent/codex` 的 `codex exec --json` 与 registry `claudecode` 内置桥 |
+
+| 点       | Codex                                              | Aranea                                                                                                                                                                     |
+| ------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主循环     | `submission_loop` 统一 Op：输入/审批/压缩/挂起/子 Agent/MCP 刷新 | ChatOrchestrator 分 phase + Runner；审批/澄清/编排各有入口                                                                                                                             |
+| HITL    | Exec/Patch/Permissions/UserInput 都是 Op 回传          | 工具确认门 + clarify；编码桥 **M2 审批中继已落地**（卡片 + 本任务 always + 超时）；claude/codex adapter 仍待                                                                                                                                            |
+| 恢复      | RecoverTurn、SuspendTurn、resume/fork thread         | Durable Resume、Graph checkpoint；chat 域无「挂起未完成根 turn」                                                                                                                       |
+| 子 Agent | 模型工具 spawn/wait/interrupt                          | Team Graph / 组织链 / PlanExecutor；**不是**模型随手 spawn                                                                                                                           |
+| 沙箱      | OS 级 Seatbelt / bwrap / Windows token              | 工作区路径约束 + 确认门；无 OS sandbox                                                                                                                                                 |
+| 编码桥     | 自己就是编码 Agent                                       | M76：**派发/查询/取消工具 + ACP 客户端 + API 已落地**（M1-1~12/15 ✅，默认 `enabled=false`）；M1 冒烟与 M2 审批中继未收口。另有 `trpc-agent-go/agent/codex` 的 `codex exec --json` 与 registry `claudecode` 内置桥 |
+
 
 **评分：Codex 9.0 / Aranea 7.0**
 
@@ -75,16 +87,20 @@ Aranea 的编排与状态机（Team/Graph/Run）在平台侧更强；缺的是 *
 
 ---
 
+
+
 ### 2.2 Context
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 项目手册 | `AGENTS.md` 链运行时注入，未信任项目跳过 | 仓库有 `AGENTS.md`，**运行时不按目录树注入到 Agent** |
-| 前缀稳定 | base + developer 分层，动态 cue 靠后 | 三层前缀 + insertAfterLastSystem；方向正确 |
-| 压缩 | LLM 交接摘要（checkpoint compaction） | 默认确定性截断（不调 LLM）；另有 session compressor / L0 |
-| 预算可见 | `get_context_remaining` / `new_context_window` | context_budget 台账 + 指标；模型不可自助开新窗 |
-| 工具输出 | exit/时长/行数 + 截断 | 多数工具摘要/截断，格式不统一 |
-| 知识 | 不预注入代码 chunk，靠 rg | 知识库 JIT 工具 + 目录 cue（已对标正确） |
+
+| 点    | Codex                                          | Aranea                                     |
+| ---- | ---------------------------------------------- | ------------------------------------------ |
+| 项目手册 | `AGENTS.md` 链运行时注入，未信任项目跳过                     | 仓库有 `AGENTS.md`，**运行时不按目录树注入到 Agent**      |
+| 前缀稳定 | base + developer 分层，动态 cue 靠后                  | 三层前缀 + insertAfterLastSystem；方向正确          |
+| 压缩   | LLM 交接摘要（checkpoint compaction）                | 默认确定性截断（不调 LLM）；另有 session compressor / L0 |
+| 预算可见 | `get_context_remaining` / `new_context_window` | context_budget 台账 + 指标；模型不可自助开新窗           |
+| 工具输出 | exit/时长/行数 + 截断                                | 多数工具摘要/截断，格式不统一                            |
+| 知识   | 不预注入代码 chunk，靠 rg                              | 知识库 JIT 工具 + 目录 cue（已对标正确）                 |
+
 
 **评分：Codex 8.5 / Aranea 7.0**
 
@@ -99,16 +115,20 @@ Aranea 的编排与状态机（Team/Graph/Run）在平台侧更强；缺的是 *
 
 ---
 
+
+
 ### 2.3 工具（执行面）
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 核心编辑 | `apply_patch` 一等工具 | `diff_edit` / `patch_file` 已有，种子已启用 |
-| Shell | unified exec + PTY stdin + 多环境 | shell 工作区约束；无跨环境 environment_id |
-| 计划 | `update_plan` 渲染给用户 | 编排规划在平台侧；单 Agent 少「可见 TODO」 |
-| 并行 | registry + MCP 声明 | 工具并行已有 ADR；文件 worktree 隔离在 70 号规划里 |
-| 安全 | 沙箱 + execpolicy + 审批 | 风险级 + confirm_intent + 脱敏审计 |
-| Code Mode | 进程内脚本调工具 | 无对等物（不急） |
+
+| 点         | Codex                          | Aranea                              |
+| --------- | ------------------------------ | ----------------------------------- |
+| 核心编辑      | `apply_patch` 一等工具             | `diff_edit` / `patch_file` 已有，种子已启用 |
+| Shell     | unified exec + PTY stdin + 多环境 | shell 工作区约束；无跨环境 environment_id     |
+| 计划        | `update_plan` 渲染给用户            | 编排规划在平台侧；单 Agent 少「可见 TODO」         |
+| 并行        | registry + MCP 声明              | 工具并行已有 ADR；文件 worktree 隔离在 70 号规划里  |
+| 安全        | 沙箱 + execpolicy + 审批           | 风险级 + confirm_intent + 脱敏审计         |
+| Code Mode | 进程内脚本调工具                       | 无对等物（不急）                            |
+
 
 **评分：Codex 9.0 / Aranea 7.5**
 
@@ -122,19 +142,23 @@ Aranea 管理面（列表、schema、审计、在线测试、allow/deny）比 Co
 
 ---
 
+
+
 ### 2.4 工具调研（延迟目录）
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 发现工具 | `tool_search` + BM25 + `defer_loading` | `tool_search` + `tool_load`（`internal/tools/deferred`） |
-| 索引 | name+description 字段化；cache 按 registry | token 打分 `scoreEntryAgainstQuery`；有漏斗指标 |
-| 协议 | Responses API `defer_loading` | 产品侧 DeferredToolManager + Filter，框架无原生 defer |
-| 预选 | 与 Code Mode / omit_tools_from 联动 | 分片装配 + 延迟名单；意图尚未驱动 topK（08-13 P0） |
-| MCP 长尾 | 默认可进 Deferred | MCP 常随 profile 全量挂上 |
+
+| 点      | Codex                                  | Aranea                                                 |
+| ------ | -------------------------------------- | ------------------------------------------------------ |
+| 发现工具   | `tool_search` + BM25 + `defer_loading` | `tool_search` + `tool_load`（`internal/tools/deferred`） |
+| 索引     | name+description 字段化；cache 按 registry  | token 打分 `scoreEntryAgainstQuery`；有漏斗指标                |
+| 协议     | Responses API `defer_loading`          | 产品侧 DeferredToolManager + Filter，框架无原生 defer           |
+| 预选     | 与 Code Mode / omit_tools_from 联动       | 分片装配 + 延迟名单；意图尚未驱动 topK（08-13 P0）                      |
+| MCP 长尾 | 默认可进 Deferred                          | MCP 常随 profile 全量挂上                                    |
+
 
 **评分：Codex 8.5 / Aranea 7.0**
 
-Aranea **已经有** search/load 双工具，且 coding profile 默认走 **MCP broker**（`mcp_list_*` / `mcp_call`，schema >16K 自动降级），这是和 Codex Deferred 同方向、实现不同的第二条路。差距是：检索质量（BM25 vs 子串打分）、直连 MCP 仍可能全量 schema、意图预选未闭环。
+Aranea **已经有** search/load 双工具，且 coding profile 默认走 **MCP broker**（`mcp_list_`* / `mcp_call`，schema >16K 自动降级），这是和 Codex Deferred 同方向、实现不同的第二条路。差距是：检索质量（BM25 vs 子串打分）、直连 MCP 仍可能全量 schema、意图预选未闭环。
 
 **可做：**
 
@@ -146,15 +170,19 @@ Aranea **已经有** search/load 双工具，且 coding profile 默认走 **MCP 
 
 ---
 
+
+
 ### 2.5 Skill
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 管理面 | 文件 + plugin marketplace | 完整 CRUD / 版本 / 冲突 / 炼化 / 运行记录 |
-| 加载 | 三级披露；`$skill`；隐式调用 | progressive overview + `skill_load`/`skill_run`；routed 标记 |
-| 选择实验 | shadow 选择器族（BM25/LRU/RRF） | 路由命中率可观测（M69） |
-| 依赖 | skill 可声明 MCP | Skill 不直接拉起 MCP（边界正确） |
-| 产出 | 记忆巩固可写出 skill | 无「从会话长出 skill」管线 |
+
+| 点    | Codex                     | Aranea                                                    |
+| ---- | ------------------------- | --------------------------------------------------------- |
+| 管理面  | 文件 + plugin marketplace   | 完整 CRUD / 版本 / 冲突 / 炼化 / 运行记录                             |
+| 加载   | 三级披露；`$skill`；隐式调用        | progressive overview + `skill_load`/`skill_run`；routed 标记 |
+| 选择实验 | shadow 选择器族（BM25/LRU/RRF） | 路由命中率可观测（M69）                                             |
+| 依赖   | skill 可声明 MCP             | Skill 不直接拉起 MCP（边界正确）                                     |
+| 产出   | 记忆巩固可写出 skill             | 无「从会话长出 skill」管线                                          |
+
 
 **评分：Codex 8.0 / Aranea 7.5**
 
@@ -170,15 +198,19 @@ Aranea **已经有** search/load 双工具，且 coding profile 默认走 **MCP 
 
 ---
 
+
+
 ### 2.6 MCP
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 传输 | stdio + streamable HTTP | stdio + SSE + streamable HTTP |
-| 治理 | toml 分层、required、omit 面、per-tool 审批 | CRUD、健康灯、SSRF、OAuth、用户凭据、告警、Broker |
-| 资源 | list/read resource 一等工具 | 以 Tool 为主，Resource 面弱 |
-| 反向 | Codex 可当 MCP server | Agent 暴露为 MCP 弱 |
-| 热更新 | `RefreshMcpServers` | 分片缓存 + 健康探活 |
+
+| 点   | Codex                               | Aranea                             |
+| --- | ----------------------------------- | ---------------------------------- |
+| 传输  | stdio + streamable HTTP             | stdio + SSE + streamable HTTP      |
+| 治理  | toml 分层、required、omit 面、per-tool 审批 | CRUD、健康灯、SSRF、OAuth、用户凭据、告警、Broker |
+| 资源  | list/read resource 一等工具             | 以 Tool 为主，Resource 面弱              |
+| 反向  | Codex 可当 MCP server                 | Agent 暴露为 MCP 弱                    |
+| 热更新 | `RefreshMcpServers`                 | 分片缓存 + 健康探活                        |
+
 
 **评分：Codex 8.0 / Aranea 8.0**
 
@@ -192,14 +224,18 @@ Aranea **已经有** search/load 双工具，且 coding profile 默认走 **MCP 
 
 ---
 
+
+
 ### 2.7 Prompt
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 资产 | 独立 crate + md 模板，业务只渲染 | `BuildSystemPrompt` + 多处 BeforeModel cue |
-| 编码合同 | preamble / plan / 验证时机 / 最终格式写死 | 角色 + 岗位 + 记忆自标记 + runtime cue |
-| 权限说明 | sandbox×approval 模板随配置变 | 确认门在运行时，很少用自然语言告诉模型「你现在的权限是什么」 |
-| 压缩/记忆/review | 各有专用模板 | 压缩无交接合同；记忆 cue 分散 |
+
+| 点            | Codex                            | Aranea                                   |
+| ------------ | -------------------------------- | ---------------------------------------- |
+| 资产           | 独立 crate + md 模板，业务只渲染           | `BuildSystemPrompt` + 多处 BeforeModel cue |
+| 编码合同         | preamble / plan / 验证时机 / 最终格式写死 | 角色 + 岗位 + 记忆自标记 + runtime cue            |
+| 权限说明         | sandbox×approval 模板随配置变          | 确认门在运行时，很少用自然语言告诉模型「你现在的权限是什么」           |
+| 压缩/记忆/review | 各有专用模板                           | 压缩无交接合同；记忆 cue 分散                        |
+
 
 **评分：Codex 9.0 / Aranea 6.5**
 
@@ -216,19 +252,23 @@ Aranea **已经有** search/load 双工具，且 coding profile 默认走 **MCP 
 
 ---
 
+
+
 ### 2.8 记忆
 
-| 点 | Codex | Aranea |
-|----|-------|--------|
-| 读模型 | summary 常驻 + MEMORY.md 按需 + citation | L1/L2/L3/L4 cue + composite recall + 主动召回 |
-| 写模型 | 启动 Phase1 抽 rollout → Phase2 巩固 Agent | 即时 extractor + consolidator；sleep-time 曾未接线 |
-| 污染控制 | 无高信号则空；禁止模型改手册 | 操作语义 ADD/UPDATE/NOOP 在 07-29 重设计里；实现曾多次断环 |
-| 跨会话任务 | rollout 磁带 + 巩固 | Graph checkpoint / 交付物信封强；chat 域缺任务状态表 |
-| 形态 | 文件工作区，对编码模型极友好 | DB 分层，对治理/合规更友好 |
+
+| 点     | Codex                                 | Aranea                                      |
+| ----- | ------------------------------------- | ------------------------------------------- |
+| 读模型   | summary 常驻 + MEMORY.md 按需 + citation  | L1/L2/L3/L4 cue + composite recall + 主动召回   |
+| 写模型   | 启动 Phase1 抽 rollout → Phase2 巩固 Agent | 即时 extractor + consolidator；sleep-time 曾未接线 |
+| 污染控制  | 无高信号则空；禁止模型改手册                        | 操作语义 ADD/UPDATE/NOOP 在 07-29 重设计里；实现曾多次断环   |
+| 跨会话任务 | rollout 磁带 + 巩固                       | Graph checkpoint / 交付物信封强；chat 域缺任务状态表      |
+| 形态    | 文件工作区，对编码模型极友好                        | DB 分层，对治理/合规更友好                             |
+
 
 **评分：Codex 8.5 / Aranea 7.0**
 
-Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双时态）。代码上 L0–L4、profile card、pinned prefs、sleep-time、mid-run（每 100 events）、working memory 归档 **都已接线**。Codex 的读合同仍更干净（summary → grep 手册 → citation；另有 `memories.*` 工具）。07-29 断环是运营/正确性债，不是「没实现」；和 Codex「打开就能用」的差距在 **默认是否真正进 prompt、计数是否诚实**。
+Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双时态）。代码上 L0–L4、profile card、pinned prefs、sleep-time、mid-run（每 100 events）、working memory 归档 **都已接线**。Codex 的读合同仍更干净（summary → grep 手册 → citation；另有 `memories.`* 工具）。07-29 断环是运营/正确性债，不是「没实现」；和 Codex「打开就能用」的差距在 **默认是否真正进 prompt、计数是否诚实**。
 
 **可做（在现有 L0–L4 上叠一层，不推倒）：**
 
@@ -240,18 +280,24 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 
 ---
 
+
+
 ## 3. 不该抄的东西
 
-| Codex 做法 | 为什么不要原样搬 |
-|------------|------------------|
-| 模型 `spawn_agent` 当主编排 | 违反组织铁律；Aranea 已有花名册 / Graph |
-| 记忆只放 `~/.codex/memories` 文件 | 企业要治理台、租户、遗忘；文件只能当 **导出视图** |
-| 去掉知识库改纯 rg | 业务 Agent 不是只改一个 git 仓库 |
-| Code Mode 优先 | 成本高、和现有 tool schema 生态重复 |
-| 放弃 MCP SSE | Aranea 已有客户依赖 |
-| 全员共用一套编码 prompt | 岗位专项各自 mission；只给 coding profile / 精灵桥 |
+
+| Codex 做法                    | 为什么不要原样搬                               |
+| --------------------------- | -------------------------------------- |
+| 模型 `spawn_agent` 当主编排       | 违反组织铁律；Aranea 已有花名册 / Graph            |
+| 记忆只放 `~/.codex/memories` 文件 | 企业要治理台、租户、遗忘；文件只能当 **导出视图**            |
+| 去掉知识库改纯 rg                  | 业务 Agent 不是只改一个 git 仓库                 |
+| Code Mode 优先                | 成本高、和现有 tool schema 生态重复               |
+| 放弃 MCP SSE                  | Aranea 已有客户依赖                          |
+| 全员共用一套编码 prompt             | 岗位专项各自 mission；只给 coding profile / 精灵桥 |
+
 
 ---
+
+
 
 ## 4. 优化计划（按依赖排序）
 
@@ -259,43 +305,61 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 
 ### 阶段 A — 两周内，零架构风险（Prompt + 文档合同）
 
-| ID | 项 | 落点 | 验收 |
-|----|----|------|------|
-| A1 | 编码专项 / 精灵编程桥 增加 Codex 风格工作法 prompt（preamble、plan、验证时机、apply_patch、rg） | `internal/agent` prompt 资产 + 编码 profile | 同源任务：模型先短 preamble 再工具；不复述整份 plan |
-| A2 | 每轮注入当前权限/沙箱一段话 | 动态 cue，插在稳定前缀之后 | 只读 Agent 不再声称「我可以直接改文件」 |
-| A3 | 工具输出统一截断信封 | shell / exec / MCP 适配 | 截断时模型看见 total_lines |
-| A4 | Skill 编写规范吸收三级披露 + 「只写会改变决策的内容」 | `20-skill` 设计附录 + 内置 skill-creator 说明 | 新建 skill 描述可区分，正文 < 阈值 |
+
+| ID  | 项                                                                     | 落点                                      | 验收                                |
+| --- | --------------------------------------------------------------------- | --------------------------------------- | --------------------------------- |
+| A1  | 编码专项 / 精灵编程桥 增加 Codex 风格工作法 prompt（preamble、plan、验证时机、apply_patch、rg） | `internal/agent` prompt 资产 + 编码 profile | 同源任务：模型先短 preamble 再工具；不复述整份 plan |
+| A2  | 每轮注入当前权限/沙箱一段话                                                        | 动态 cue，插在稳定前缀之后                         | 只读 Agent 不再声称「我可以直接改文件」           |
+| A3  | 工具输出统一截断信封                                                            | shell / exec / MCP 适配                   | 截断时模型看见 total_lines               |
+| A4  | Skill 编写规范吸收三级披露 + 「只写会改变决策的内容」                                       | `20-skill` 设计附录 + 内置 skill-creator 说明   | 新建 skill 描述可区分，正文 < 阈值            |
+
+
+
 
 ### 阶段 B — 一个月，Context / 工具调研闭环
 
-| ID | 项 | 落点 | 验收 |
-|----|----|------|------|
-| B1 | 仓库型 Agent 运行时加载 `AGENTS.md` 链 | agent 构建 / workspace | 嵌套目录覆盖生效；超字节截断；未信任根跳过 |
-| B2 | 可选交接压缩（小模型） | compress + L0 | 硬截断前若启用，下一轮能复述「已做/未做/约束」 |
-| B3 | 延迟目录 BM25 + MCP 默认 Deferred | `internal/tools/deferred` + MCP 装配 | MCP≥20 时首轮 schema token 明显下降；tool_load 后可调用 |
-| B4 | Intent → 工具 topK（兑现 08-13 P0-1/P0-2） | intent + tool assembly | 意图产物含 tool slugs；主模型不再默认全量 MCP schema |
-| B5 | `$skill` mention + 与 routed 合流 | skill_guidance_inject | 用户打 `$foo` 即 load，不靠再搜 |
+
+| ID  | 项                                    | 落点                                 | 验收                                          |
+| --- | ------------------------------------ | ---------------------------------- | ------------------------------------------- |
+| B1  | 仓库型 Agent 运行时加载 `AGENTS.md` 链        | agent 构建 / workspace               | 嵌套目录覆盖生效；超字节截断；未信任根跳过                       |
+| B2  | 可选交接压缩（小模型）                          | compress + L0                      | 硬截断前若启用，下一轮能复述「已做/未做/约束」                    |
+| B3  | 延迟目录 BM25 + MCP 默认 Deferred          | `internal/tools/deferred` + MCP 装配 | MCP≥20 时首轮 schema token 明显下降；tool_load 后可调用 |
+| B4  | Intent → 工具 topK（兑现 08-13 P0-1/P0-2） | intent + tool assembly             | 意图产物含 tool slugs；主模型不再默认全量 MCP schema       |
+| B5  | `$skill` mention + 与 routed 合流       | skill_guidance_inject              | 用户打 `$foo` 即 load，不靠再搜                      |
+
+
+
 
 ### 阶段 C — 一季度，记忆读合同 + 巩固
 
-| ID | 项 | 落点 | 验收 |
-|----|----|------|------|
-| C1 | Agent 级 `memory_summary` 常驻（D4） | memory 读路径 + prompt | Spirit 冷启动能说出稳定偏好，不必翻 L3 表 |
-| C2 | 可检索手册层 + 用到才计数 | L3 导出 / 知识一文 + citation | `use_count` 不再对未展示 fact 递增 |
-| C3 | Sleep-time 巩固子 Agent（Phase2 合同） | memory write / 隔离 run | 无高信号则 no-op；不写密钥；不递归 spawn |
-| C4 | Chat 域任务状态表（08-16） | session / orchestration | 跨会话问「做到哪了」不靠回放全文 |
+
+| ID  | 项                               | 落点                      | 验收                         |
+| --- | ------------------------------- | ----------------------- | -------------------------- |
+| C1  | Agent 级 `memory_summary` 常驻（D4） | memory 读路径 + prompt     | ✅ 无卡回退钉住偏好；`<memory_summary>` ≤800 token |
+| C2  | 可检索手册层 + 用到才计数                  | L3 导出 / 知识一文 + citation | ✅ L4 召回不再 `use_count++`；handbook index |
+| C3  | Sleep-time 巩固子 Agent（Phase2 合同） | memory write / 隔离 prompt | ✅ 无高信号 no-op；密钥脱敏+拒写；不 spawn |
+| C4  | Chat 域任务状态表（08-16）              | session / L1 cue        | ✅ 本会话无 L1 时注入上一会话 `task_board` |
+
+
+
 
 ### 阶段 D — 专项，编码桥与沙箱
 
-| ID | 项 | 落点 | 验收 |
-|----|----|------|------|
-| D1 | M76 M2 审批中继 | coding bridge + 确认卡片 | Codex/Claude/CodeBuddy 要权限时 3s 内卡片+语音 |
-| D2 | 工作区沙箱策略（先 Windows 受限 token / 路径策略，再评估 bwrap） | computer-use / shell | 只读策略下写盘失败且模型收到拒绝原因 |
-| D3 | 可选：Agent 暴露为 MCP server | 19-mcp 子能力 | IDE 能调一只 Aranea 专项，不经过 chat UI |
+
+| ID  | 项                                            | 落点                   | 验收                                    |
+| --- | -------------------------------------------- | -------------------- | ------------------------------------- |
+| D1  | M76 M2 审批中继                                  | coding bridge + 确认卡片 | ✅ ACP permission → 确认卡 + `coding_task_approval`；超时 cancelled；`allow_always` 仅本任务。adapter 仍待 |
+| D2  | 工作区沙箱策略（先 Windows 受限 token / 路径策略，再评估 bwrap） | computer-use / shell | ✅ 路径策略 BeforeTool：只读写工具拒绝并回传原因；越界 `path`/`file`/`cwd` 拒绝。OS token/bwrap 未做 |
+| D3  | 可选：Agent 暴露为 MCP server                      | 19-mcp 子能力           | 📋 仅评估（见 19-mcp.design.md 子模块），不实现 |
+
 
 ---
 
+
+
 ## 5. 优化方案（怎么做，避免做成第二套 Codex）
+
+
 
 ### 5.1 Prompt 资产化（A1/A2）
 
@@ -343,6 +407,8 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 2. MCP shard 默认进 deferred catalog；`mcp.required` 或 Agent allow 白名单除外
 3. Intent 输出 `tool_hints[]`，装配期把 hints 预 `tool_load`（仍记 metrics）
 
+
+
 ### 5.5 记忆读合同（C1–C3）
 
 ```
@@ -365,19 +431,25 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 
 ---
 
+
+
 ## 6. 建议排期与负责人向
 
-| 优先级 | ID | 预估 | 依赖 |
-|--------|-----|------|------|
-| P0 | A1 A2 A3 | 3–5 日 | 无 |
-| P0 | B4（intent→topK） | 5–8 日 | 08-13 已设计 |
-| P1 | B1 B3 B5 | 1–2 周 | A1 |
-| P1 | C1 C2 | 1–2 周 | 记忆中心信任环 |
-| P2 | B2 C3 C4 | 2–3 周 | C1 |
-| P2 | D1 | 按 76 M2 | M1 收尾 |
-| P3 | D2 D3 | 专项评估 | 安全评审 |
+
+| 优先级 | ID              | 预估      | 依赖        |
+| --- | --------------- | ------- | --------- |
+| P0  | A1 A2 A3        | 3–5 日   | 无         |
+| P0  | B4（intent→topK） | 5–8 日   | 08-13 已设计 |
+| P1  | B1 B3 B5        | 1–2 周   | A1        |
+| P1  | C1 C2           | 1–2 周   | 记忆中心信任环   |
+| P2  | B2 C3 C4        | 2–3 周   | C1        |
+| P2  | D1              | 按 76 M2 | ✅ 中继已落地；adapter 仍待 |
+| P3  | D2 D3           | 专项评估    | D2 路径策略 ✅；D3 仅评估不实现 |
+
 
 ---
+
+
 
 ## 7. 成功标准（怎么算「学到了」而不是「抄了皮」）
 
@@ -389,6 +461,8 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 6. 组织/岗位/花名册行为零回归（自动化：现有 org invariant 测试）。
 
 ---
+
+
 
 ## 7.1 二次源码对照补记（2026-08-22）
 
@@ -403,14 +477,19 @@ Aranea 的分层与治理目标 **更正确**（企业要审计、遗忘、双�
 
 ---
 
+
+
 ## 8. 源码与文档索引
 
-| 用途 | 路径 |
-|------|------|
-| Codex 克隆 | `F:\myproject\openai-codex`（仓库外，不入库） |
-| 深挖 | [2026-08-22-research-openai-codex-deep-dive.md](./2026-08-22-research-openai-codex-deep-dive.md) |
-| 上下文旧案 | [2026-08-13-research-llm-context-pipeline-optimization.md](./2026-08-13-research-llm-context-pipeline-optimization.md) |
-| 记忆重设计 | [2026-07-29-review-memory-system-redesign.md](./2026-07-29-review-memory-system-redesign.md) |
-| 跨会话任务 | [2026-08-16-research-cross-session-task-memory.md](./2026-08-16-research-cross-session-task-memory.md) |
-| 编码桥 | [76-coding-agent-bridge.md](../development/76-coding-agent-bridge.md) |
-| Skill 渐进 | [69-skill-loading-optimization.design.md](../development/69-skill-loading-optimization.design.md) |
+
+| 用途       | 路径                                                                                                                     |
+| -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Codex 克隆 | `F:\myproject\openai-codex`（仓库外，不入库）                                                                                   |
+| 深挖       | [2026-08-22-research-openai-codex-deep-dive.md](./2026-08-22-research-openai-codex-deep-dive.md)                       |
+| 上下文旧案    | [2026-08-13-research-llm-context-pipeline-optimization.md](./2026-08-13-research-llm-context-pipeline-optimization.md) |
+| 记忆重设计    | [2026-07-29-review-memory-system-redesign.md](./2026-07-29-review-memory-system-redesign.md)                           |
+| 跨会话任务    | [2026-08-16-research-cross-session-task-memory.md](./2026-08-16-research-cross-session-task-memory.md)                 |
+| 编码桥      | [76-coding-agent-bridge.md](../development/76-coding-agent-bridge.md)                                                  |
+| Skill 渐进 | [69-skill-loading-optimization.design.md](../development/69-skill-loading-optimization.design.md)                      |
+
+

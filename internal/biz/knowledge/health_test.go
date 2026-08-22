@@ -62,6 +62,8 @@ func TestFormatAgentMemoryProjection_OverwriteShape(t *testing.T) {
 		"projection: agent-memory",
 		"agent_id: ag-1",
 		"只读投影",
+		"MEMORY handbook index",
+		"| `f1` | preference |",
 		"## preference",
 		"fact_id: `f1`",
 		"agent_id: `ag-1`",

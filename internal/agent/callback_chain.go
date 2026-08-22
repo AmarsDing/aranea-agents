@@ -165,6 +165,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())
+		entries = append(entries, newWorkspaceSandboxBeforeHook(ag, deps))
 		if gate != nil {
 			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
 		}

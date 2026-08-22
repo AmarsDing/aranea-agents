@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -52,6 +51,11 @@ type AgentBridgeService struct {
 
 	mu sync.RWMutex
 	uc *agentbridge.AgentBridgeUsecase
+
+	pending         sync.Map // taskID → *pendingApproval
+	always          sync.Map // taskID → true (本任务 allow_always)
+	confirmSink     ConfirmSink
+	approvalTimeout time.Duration
 }
 
 // NewAgentBridgeService 构造服务。
@@ -366,14 +370,7 @@ func (h *bridgeProgressHandler) OnUpdate(kind, text string) {
 	}))
 }
 
-// OnPermission 实现 agentbridge.EventHandler。M1 审批中继未启用（设计 §8：
-// M2 起中继），取首选项放行，与 biz discardEvents 默认行为一致。
-func (h *bridgeProgressHandler) OnPermission(_ context.Context, _ string, opts []agentbridge.PermissionOption) (string, error) {
-	if len(opts) == 0 {
-		return "", errors.New("agentbridge: permission request without options")
-	}
-	return opts[0].OptionID, nil
-}
+// OnPermission 实现见 agentbridge_approval.go（M2 审批中继）。
 
 // --- interface guards ---
 

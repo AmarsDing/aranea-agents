@@ -29,6 +29,7 @@ export function isConfirmExpired(startedAt: string, nowMs: number): boolean {
 
 /** Step → 确认卡视图模型（纯函数，可单测）。 */
 export function toConfirmCardModel(step: Step): ConfirmCardModel {
+  const args = asArgsRecord(step.ToolArgs);
   return {
     id: step.ID,
     sessionId: step.SessionID,
@@ -37,16 +38,29 @@ export function toConfirmCardModel(step: Step): ConfirmCardModel {
     description: step.Content,
     argsJson: prettyArgs(step.ToolArgs),
     startedAt: step.StartedAt,
+    source: strField(args, 'source'),
+    agentKey: strField(args, 'agent_key'),
+    projectName: strField(args, 'project_name'),
   };
+}
+
+function asArgsRecord(args: unknown): Record<string, unknown> | null {
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) return null;
+  return args as Record<string, unknown>;
+}
+
+function strField(rec: Record<string, unknown> | null, key: string): string {
+  if (!rec) return '';
+  const v = rec[key];
+  return typeof v === 'string' ? v.trim() : '';
 }
 
 /** 从 ToolArgs 提取操作目标：优先 target，其次 url；非字符串/缺失 → ''。 */
 function extractTarget(args: unknown): string {
-  if (args === null || typeof args !== 'object' || Array.isArray(args)) return '';
-  const rec = args as Record<string, unknown>;
+  const rec = asArgsRecord(args);
   for (const key of ['target', 'url']) {
-    const v = rec[key];
-    if (typeof v === 'string' && v.trim() !== '') return v.trim();
+    const v = strField(rec, key);
+    if (v !== '') return v;
   }
   return '';
 }

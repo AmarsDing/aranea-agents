@@ -1,5 +1,5 @@
 <template>
-  <div class="holo-confirm" role="alertdialog" aria-modal="false" :aria-label="t('companion.confirmTitle')">
+  <div class="holo-confirm" role="alertdialog" aria-modal="false" :aria-label="titleText">
     <!-- 全息角框装饰 -->
     <span class="holo-confirm__corner holo-confirm__corner--tl" />
     <span class="holo-confirm__corner holo-confirm__corner--tr" />
@@ -9,7 +9,7 @@
 
     <div class="holo-confirm__header">
       <q-icon name="warning_amber" size="16px" class="holo-confirm__icon" />
-      <span class="holo-confirm__title">{{ t('companion.confirmTitle') }}</span>
+      <span class="holo-confirm__title">{{ titleText }}</span>
       <span v-if="countdownText" class="holo-confirm__countdown">{{ countdownText }}</span>
       <span v-if="queueSize > 1" class="holo-confirm__queue">
         {{ t('companion.confirmQueueMore', { n: queueSize - 1 }) }}
@@ -59,6 +59,14 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const titleText = computed(() => {
+  if (props.card.source === 'external_coding') {
+    const who = [props.card.agentKey, props.card.projectName].filter(Boolean).join(' · ');
+    if (who) return t('companion.confirmExternalTitle', { who });
+  }
+  return t('companion.confirmTitle');
+});
 
 const submitting = ref(false);
 

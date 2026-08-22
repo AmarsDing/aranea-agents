@@ -33,6 +33,12 @@ export type ConfirmCardModel = {
   argsJson: string;
   /** 确认发起时间（ISO；倒计时基准）。 */
   startedAt: string;
+  /** 确认来源：`external_coding` 为 M76 编程桥审批中继。 */
+  source: string;
+  /** 外部编程工具 key（source=external_coding）。 */
+  agentKey: string;
+  /** 项目名（source=external_coding）。 */
+  projectName: string;
 };
 
 /** 确认卡决议（展示组件语义动作；由 Page 层映射为 TOOL_CONFIRM_REPLY 令牌）。 */

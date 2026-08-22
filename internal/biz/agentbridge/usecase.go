@@ -270,6 +270,48 @@ func (u *AgentBridgeUsecase) notifyTerminal(taskID string) {
 	u.listener.OnTaskTerminal(task)
 }
 
+// MarkAwaitingApproval 将 running 任务推进 awaiting_approval（审批中继开始）。
+func (u *AgentBridgeUsecase) MarkAwaitingApproval(taskID string) error {
+	if u == nil {
+		return apierror.Internal(apierror.DomainAgentBridge, "usecase not bound")
+	}
+	task, err := u.tasks.Get(context.Background(), taskID)
+	if err != nil {
+		return err
+	}
+	if task.Status == StatusAwaitingApproval {
+		return nil
+	}
+	return u.transition(taskID, StatusRunning, StatusAwaitingApproval, TaskPatch{})
+}
+
+// ResumeFromApproval 将 awaiting_approval 任务推回 running（用户已决议）。
+func (u *AgentBridgeUsecase) ResumeFromApproval(taskID string) error {
+	if u == nil {
+		return apierror.Internal(apierror.DomainAgentBridge, "usecase not bound")
+	}
+	return u.transition(taskID, StatusAwaitingApproval, StatusRunning, TaskPatch{})
+}
+
+// CancelFromApprovalTimeout 审批超时：awaiting_approval → cancelled。
+func (u *AgentBridgeUsecase) CancelFromApprovalTimeout(taskID string) error {
+	if u == nil {
+		return apierror.Internal(apierror.DomainAgentBridge, "usecase not bound")
+	}
+	now := nowRFC3339()
+	reason := "approval_timeout"
+	if err := u.transition(taskID, StatusAwaitingApproval, StatusCancelled, TaskPatch{
+		Error: &reason, CompletedAt: &now,
+	}); err != nil {
+		return err
+	}
+	if sess := u.sessionOf(taskID); sess != nil {
+		_ = sess.Cancel(context.Background())
+	}
+	u.notifyTerminal(taskID)
+	return nil
+}
+
 // Cancel 推进 running/awaiting_approval → cancelling 并向 ACP 会话发取消。
 func (u *AgentBridgeUsecase) Cancel(ctx context.Context, taskID string) error {
 	task, err := u.tasks.Get(ctx, taskID)

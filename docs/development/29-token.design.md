@@ -1083,7 +1083,7 @@ LIMIT 50;
 | 记忆 L1 字段 | `internal/biz/agent_memory_runtime_policy.go` | `L1FieldMaxChars` 默认 8192 | char |
 | memory_recalled 透明通知行 | `internal/agent/memory_inject.go` | `memoryRecalledMaxLineRunes` 120 | rune |
 | L4 persona | `internal/biz/agent_memory_runtime_policy.go` | `L4PersonaMaxChars` 默认 1500 | char |
-| 复合 prompt | `internal/agent/composite_prompt.go` | profile card 1200 runes；pinned preference item 200 runes | rune |
+| 复合 prompt | `internal/agent/composite_prompt.go` / `memory_summary.go` | profile card 1200 runes；`<memory_summary>` 800 token；pinned preference item 200 runes | rune / token |
 | case 字段 | `internal/agent/case_prompt.go` | `caseFieldMaxRunes` 120 | rune |
 | 知识 cue | `internal/agent/knowledge_inject.go` | `knowledgeCueMaxChars` 1500 | char |
 | MCP 工具 description | `internal/tools/mcp_schema_govern.go` | `mcpToolDescriptionMaxRunes` 300 | rune |

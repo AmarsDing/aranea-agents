@@ -445,9 +445,10 @@ type L4ReconsolidationStore interface {
 //
 // Stability:evolving
 type L4Reconsolidator interface {
-	// OnRecall boosts the recalled node's activation, increments its
-	// use_count, and reinforces connections to recalledWith via the Hebbian
-	// rule. Best-effort semantics live inside the implementation.
+	// OnRecall boosts the recalled node's activation and reinforces
+	// connections to recalledWith via the Hebbian rule. It does not increment
+	// use_count (C2: recall is not usage). Best-effort semantics live inside
+	// the implementation.
 	OnRecall(ctx context.Context, nodeID string, recalledWith []string) error
 }
 

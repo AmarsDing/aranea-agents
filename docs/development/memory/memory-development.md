@@ -375,3 +375,27 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | 前端 | `memoryRecall.ts`、`MemoryRecallChips.vue`、`TurnContainer.vue`、`useMemoryCenterPage.ts`、`MemoryCenterPage.vue` |
 | docs | `memory.md` §23、`memory.design.md` 子模块、本文 Phase 8 |
 
+---
+
+## 13. Phase 9：记忆读合同 C1–C4（2026-08-22）
+
+> 需求 [`memory.md`](./memory.md) §24；设计 [`memory.design.md`](./memory.design.md) 同名子模块。
+
+### 任务清单
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| T9-C1 | `<memory_summary>` + 画像卡 / 钉住回退，≤800 token | ✅ |
+| T9-C2 | L4 OnRecall 不再递增 `use_count`；知识投影 handbook index | ✅ |
+| T9-C3 | Sleep-time 高信号门 + 密钥拒绝 + 隔离 prompt | ✅ |
+| T9-C4 | 跨会话最新 `task_board` 注入 | ✅ |
+
+### 改动文件清单
+
+| 层 | 文件 |
+|----|------|
+| agent | `memory_summary.go`、`memory_inject.go`、`l1_prompt.go` |
+| memory | `reconsolidation.go`、`sleep_time.go`、`sleep_time_gate.go` |
+| biz / data | `memory_l4.go`、`memory_admin_store.go`、`memory_shim_l1.go`、`knowledge/memory_project.go` |
+| docs | `memory.md` §24、`memory.design.md` 子模块、本文 Phase 9、`5-agent-setting.design.md`、`29-token.design.md`、`70-orchestration-longtask-memory.design.md` |
+

@@ -93,8 +93,8 @@ func sessionStateString(state map[string][]byte, key string) string {
 
 // MemoryCueResult holds the structured output of memory cue building.
 type MemoryCueResult struct {
-	// ProfileCue is the resident profile card block (FR-12.7): distilled by
-	// Sleep-time, injected unconditionally at the first memory-block position.
+	// ProfileCue is the resident <memory_summary> block (C1 / FR-12.7):
+	// distilled profile card, or pinned-pref fallback on Spirit cold start.
 	ProfileCue string
 	// L1Cue is the L1 session summary cue (injectable, changes after compression).
 	L1Cue string
@@ -122,7 +122,7 @@ func (r *MemoryCueResult) IsEmpty() bool {
 }
 
 // JoinCues returns the combined cue text for injection. Block order:
-// resident profile card (always-on) → L1 scratchpad summary → recall cues.
+// resident <memory_summary> (always-on) → L1 scratchpad summary → recall cues.
 func (r *MemoryCueResult) JoinCues() string {
 	var parts []string
 	if r.ProfileCue != "" {
@@ -328,11 +328,17 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 
 	result := &MemoryCueResult{}
 
-	// FR-12.7: resident profile card — first memory-block position, no recall
-	// scoring, always injected when L3 injection is enabled.
+	// C1 / FR-12.7: resident <memory_summary> — first memory-block position,
+	// no recall scoring. Prefers the distilled profile card; when the card
+	// is empty (Spirit cold start before Sleep-time), falls back to pinned
+	// prefs so stable constraints are still stated.
+	var pinnedUsedInSummary bool
 	if policy.InjectL3 {
-		if card := ProfileCardCue(ctx, deps.MemoryProfileCardReader, rt.AgentID, rt.UserID); card != "" {
-			result.ProfileCue = card
+		summary, fallbackIDs, usedPinned := MemorySummaryCue(ctx, deps.MemoryProfileCardReader, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID)
+		result.ProfileCue = summary
+		if usedPinned {
+			pinnedUsedInSummary = true
+			result.InjectedFactIDs = append(result.InjectedFactIDs, fallbackIDs...)
 		}
 	}
 
@@ -357,8 +363,10 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		recallParts = append(recallParts, slice)
 	}
 	// FR-M3: pinned preference/constraint block precedes recall blocks — no
-	// vector scoring, always injected when L3 injection is enabled.
-	if policy.InjectL3 && deps.MemoryPreferenceLister != nil {
+	// vector scoring, always injected when L3 injection is enabled. Skipped
+	// when those same facts already filled <memory_summary> (cold-start
+	// fallback) so the model does not see the list twice.
+	if policy.InjectL3 && deps.MemoryPreferenceLister != nil && !pinnedUsedInSummary {
 		if pinned, pinnedIDs := PinnedPreferenceCueWithIDs(ctx, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID); pinned != "" {
 			recallParts = append(recallParts, pinned)
 			result.InjectedFactIDs = append(result.InjectedFactIDs, pinnedIDs...)
@@ -584,8 +592,9 @@ func bumpFactInjectedCounts(ctx context.Context, deps TRPCBuilderDeps, factIDs [
 type l4ReconsolidatedKey struct{}
 
 // triggerL4Reconsolidation asynchronously fires OnRecall for each recalled L4
-// entity, boosting its activation, incrementing use_count, and reinforcing
-// connections to co-recalled entities via the Hebbian rule. Per design §15.7
+// entity, boosting its activation and reinforcing connections to co-recalled
+// entities via the Hebbian rule. use_count is not incremented on recall
+// (C2: count only when the fact is injected/cited). Per design §15.7
 // the trigger must never block the model call, hence safego.Go + background
 // context. At most one trigger per turn: the returned ctx carries a marker so
 // subsequent hook invocations in the same turn (tool loop, multi-round model

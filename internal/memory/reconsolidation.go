@@ -1,11 +1,13 @@
 // Package memory provides memory reconsolidation for the L4 entity graph.
 //
 // Reconsolidation is the process by which recalling a memory updates the
-// memory itself — boosting the recalled neuron's activation, incrementing its
-// use_count, and reinforcing its connections to co-recalled neurons via the
-// Hebbian rule ("fire together, wire together"). This mirrors the
-// reconsolidation theory from neuroscience and is invoked asynchronously
-// after a successful recall so that it never blocks model calls.
+// memory itself — boosting the recalled neuron's activation and reinforcing
+// its connections to co-recalled neurons via the Hebbian rule ("fire
+// together, wire together"). use_count is not incremented here (C2: L3
+// injected_count / cited_count and explicit L4 reinforcement are the honest
+// "used" metrics; recall is not usage). This mirrors reconsolidation theory
+// from neuroscience and is invoked asynchronously after a successful recall
+// so that it never blocks model calls.
 package memory
 
 import (
@@ -22,9 +24,9 @@ import (
 const reconsolidationBoostDelta = 0.2
 
 // ReconsolidationService implements memory reconsolidation: when an entity is
-// recalled, its activation is boosted, its use_count is incremented, and the
-// Hebbian rule is applied to all co-recalled entities to reinforce their
-// connections.
+// recalled, its activation is boosted and the Hebbian rule is applied to all
+// co-recalled entities to reinforce their connections. use_count is left
+// unchanged so it no longer tracks mere recall.
 //
 // It depends on the narrow biz.L4ReconsolidationStore (2 methods) plus a
 // *HebbianUpdater so that mock implementations only need to stub the relevant
@@ -52,9 +54,11 @@ func NewReconsolidationService(store biz.L4ReconsolidationStore, hebbian *Hebbia
 // OnRecall triggers memory reconsolidation for a recalled entity:
 //  1. Boost activation by reconsolidationBoostDelta (0.2), saturated to 1.0
 //     inside the store. Hard-failing step — errors propagate.
-//  2. Increment use_count. Best-effort: errors are logged but do not abort.
-//  3. For each co-recalled entity, apply the Hebbian rule to reinforce the
+//  2. For each co-recalled entity, apply the Hebbian rule to reinforce the
 //     connection. Best-effort: errors are logged but do not abort.
+//
+// use_count is not incremented (C2). IncrementUseCount remains on the store
+// for explicit reinforcement / citation paths.
 //
 // If the entity is not found (BoostActivation returns ok=false), the call is a
 // graceful no-op (returns nil).
@@ -82,14 +86,9 @@ func (s *ReconsolidationService) OnRecall(
 		return nil
 	}
 
-	// Step 2: increment use_count (best-effort).
-	if _, err := s.store.IncrementUseCount(ctx, nodeID); err != nil {
-		s.lg.Warn("reconsolidation: IncrementUseCount failed (best-effort)",
-			loggateway.Str("nodeID", nodeID),
-			loggateway.Err(err))
-	}
-
-	// Step 3: Hebbian reinforcement for co-recalled entities (best-effort).
+	// Step 2: Hebbian reinforcement for co-recalled entities (best-effort).
+	// use_count is not bumped on recall — L3 injected_count/cited_count and
+	// L4 RecordEntityReinforcement are the honest usage counters (C2).
 	if s.hebbian != nil {
 		for _, otherID := range recalledWith {
 			if err := s.hebbian.ReinforceConnection(ctx, nodeID, otherID, biz.RelationRelatedTo); err != nil {

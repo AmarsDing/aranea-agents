@@ -35,6 +35,8 @@ type ChatService struct {
 	lg         loggateway.Logger
 	// planExec 由 ProvideChatService 后注入；Close 时 Stop 订阅 goroutine。
 	planExec *PlanExecutor
+	// bridge 是 M76 审批中继（ConfirmActivity 路由 source=external_coding）。
+	bridge *AgentBridgeService
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
@@ -88,6 +90,17 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 		deps.Turn.RT.Extensions.SubAgentService.Start(context.Background())
 	}
 	return svc
+}
+
+// BindAgentBridge 把编程桥审批中继接到 ConfirmActivity（newApp BeforeStart）。
+func (s *ChatService) BindAgentBridge(bridge *AgentBridgeService) {
+	if s == nil || bridge == nil {
+		return
+	}
+	s.bridge = bridge
+	if s.orch != nil {
+		bridge.SetConfirmSink(s.orch.stepWriter())
+	}
 }
 
 // publishModeBMemberSession projects a background subagent start as an orphan

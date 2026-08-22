@@ -194,6 +194,14 @@ func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyM
 	if stepWriter == nil {
 		return false, "", apierror.Internal(apierror.DomainChat, "step store unavailable")
 	}
+	if IsExternalCodingConfirm(step) {
+		if s.bridge == nil {
+			return false, "", apierror.Internal(apierror.DomainChat, "coding bridge approval not wired")
+		}
+		if err := s.bridge.ConfirmBridgePermissionFromStep(ctx, step, replyMsg, approved); err != nil {
+			return false, "", err
+		}
+	}
 
 	transitionEvent := biz.ActivityTransitionDone
 	if !approved {

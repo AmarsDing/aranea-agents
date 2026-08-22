@@ -327,3 +327,36 @@ func TestL1TaskBoardFlow_StartWritebackCueRead(t *testing.T) {
 		t.Fatalf("cue 读到的 board 与压缩产出不一致: %+v", meta.Board)
 	}
 }
+
+func insertL1BoardTaskSession(t *testing.T, db *sql.DB, id, sessionID, agentID, title, status, metadata, updatedAt string) {
+	t.Helper()
+	_, err := db.ExecContext(context.Background(), `INSERT INTO memory_l1_tasks (
+		id, session_id, agent_id, task_key, task_title, status, metadata_json, started_at, created_at, updated_at
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, '2026-08-16T00:00:00Z', '2026-08-16T00:00:00Z', $8)`,
+		id, sessionID, agentID, id, title, status, metadata, updatedAt)
+	if err != nil {
+		t.Fatalf("insert l1 task %s: %v", id, err)
+	}
+}
+
+func TestLatestL1TaskBoard_SkipsCurrentSessionAndEmptyBoard(t *testing.T) {
+	repo, db := setupL1TaskBoardRepo(t)
+	insertL1BoardTaskSession(t, db, "t-cur", "sess-new", "ag-1", "当前", "active",
+		`{"task_board":{"status":"本会话"}}`, "2026-08-22T12:00:00Z")
+	insertL1BoardTaskSession(t, db, "t-empty", "sess-old-empty", "ag-1", "空板", "active",
+		`{}`, "2026-08-22T11:00:00Z")
+	insertL1BoardTaskSession(t, db, "t-old", "sess-old", "ag-1", "机房巡检", "paused",
+		`{"task_board":{"status":"取证完成","next":"执行清除"}}`, "2026-08-22T10:00:00Z")
+
+	raw, err := repo.LatestL1TaskBoard(context.Background(), "ag-1", "sess-new")
+	if err != nil || raw == nil {
+		t.Fatalf("LatestL1TaskBoard: raw=%s err=%v", raw, err)
+	}
+	var task map[string]any
+	if err := json.Unmarshal(raw, &task); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(task["id"]) != "t-old" {
+		t.Fatalf("want t-old (skip current + empty board), got %v", task["id"])
+	}
+}

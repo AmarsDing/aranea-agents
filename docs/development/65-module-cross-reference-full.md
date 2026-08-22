@@ -1082,7 +1082,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **上游依赖** | `internal/agentbridge/acp`（进程/连接）、Voice/Chat 确认中继 |
 | **下游影响** | `tools/codingbridge`、RuntimeTooling Bridges |
 | **核心导出** | `internal/biz/agentbridge`（`task_state_machine.go`）、`internal/service/agentbridge.go`、`api/kratos/agentbridge/v1` |
-| **事件生产** | `agentbridge.task.*` / `agentbridge.process.*` FlowLog |
+| **事件生产** | `agentbridge.task.*` / `agentbridge.process.*` / `agentbridge.approval.*` FlowLog；`coding_task_approval` SystemNotice |
 | **前端对应** | 管理 API + Chat/Companion 确认卡；无独立 `features/agentbridge` 页面 |
 
 ---

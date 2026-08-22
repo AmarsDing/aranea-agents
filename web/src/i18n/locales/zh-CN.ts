@@ -178,6 +178,7 @@ export default {
     voiceUnavailable: '语音服务未配置，请联系管理员在「系统设置 → 语音服务」中配置 ASR/TTS',
     webglUnsupported: '当前环境不支持 WebGL，无法渲染 HUD',
     confirmTitle: '操作确认',
+    confirmExternalTitle: '{who} 请求确认',
     confirmApprove: '确认执行',
     confirmReject: '拒绝',
     confirmApproveAlways: '始终允许',

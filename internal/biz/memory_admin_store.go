@@ -134,6 +134,16 @@ type L1AdminReader interface {
 	GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error)
 }
 
+// L1LatestTaskBoardReader looks up the most recently updated L1 task that
+// carries a non-empty task_board for an agent, excluding one session (the
+// current chat). Used when this session has no L1 row so a new conversation
+// can still answer "where were we" without replaying the full transcript.
+// Optional: L1MemoryCue type-asserts; missing impl is a graceful no-op.
+// Stability:evolving
+type L1LatestTaskBoardReader interface {
+	LatestL1TaskBoard(ctx context.Context, agentID, excludeSessionID string) ([]byte, error)
+}
+
 // L1TaskInsert is the domain-level DTO for creating L1 tasks.
 type L1TaskInsert struct {
 	ID           string

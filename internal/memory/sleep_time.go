@@ -265,6 +265,15 @@ func (s *SleepTimeService) consolidateMemories(ctx context.Context, uk trpcmemor
 		return nil
 	}
 
+	// C3: redact secrets and skip the LLM when nothing high-signal remains.
+	memories, highSignal := prepareConsolidationMemories(memories)
+	if !highSignal {
+		s.lg.Info("sleep-time skip LLM: no high-signal memories",
+			loggateway.Str("app", uk.AppName),
+			loggateway.Str("user", uk.UserID))
+		return nil
+	}
+
 	// 2. LLM analysis: merge duplicates, extract reflections, update core memory.
 	result, err := s.llmConsolidate(ctx, memories, llm)
 	if err != nil {
@@ -417,6 +426,12 @@ func (s *SleepTimeService) llmConsolidate(ctx context.Context, memories []*trpcm
 // executeOperations applies the consolidation operations to the memory store.
 func (s *SleepTimeService) executeOperations(ctx context.Context, uk trpcmemory.UserKey, ops []ConsolidationOperation) error {
 	for _, op := range ops {
+		if operationContainsSecret(op) {
+			s.lg.Warn("sleep-time refused consolidation op that would persist secrets",
+				loggateway.Str("op_type", op.Type),
+				loggateway.Str("target_id", op.TargetID))
+			continue
+		}
 		switch op.Type {
 		case "merge":
 			if err := s.executeMerge(ctx, uk, op); err != nil {
@@ -515,12 +530,19 @@ func buildConsolidationPrompt(memories []*trpcmemory.Entry) string {
 	return "Memories to consolidate:\n" + string(b)
 }
 
-const consolidationSystemPrompt = `You are a memory consolidation agent. Analyse the provided memories and produce consolidation operations as JSON.
+const consolidationSystemPrompt = `You are an isolated memory consolidation agent. You have no tools, no network, and must not spawn agents, fetch URLs, or collaborate with other agents.
+
+Analyse the provided memories and produce consolidation operations as JSON.
 
 Return a JSON object with an "operations" array. Each operation has a "type" field:
 - "merge": Merge duplicate or highly similar memories. Provide "target_id" (ID of memory to update), "source_ids" (IDs to delete after merge), "merged_content" (new content), and optionally "merged_topics".
 - "reflect": Extract a higher-level reflection or insight. Provide "reflection" (text) and "topics" (array of strings).
 - "update_core": Update core memory (key facts). Provide "updates" (array of {"key": "...", "value": "..."} objects).
+
+Rules:
+- Only emit operations when memories contain durable high-signal facts (preferences, constraints, decisions, corrections). Otherwise return {"operations": []}.
+- Never persist secrets, API keys, passwords, tokens, or raw PII. If a memory only contains those, skip it.
+- Do not invent facts that are not in the input.
 
 Only produce operations when clearly warranted. If no consolidation is needed, return {"operations": []}.`
 

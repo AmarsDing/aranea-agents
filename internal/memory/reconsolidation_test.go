@@ -36,7 +36,7 @@ func (m *mockReconsolidationStore) IncrementUseCount(ctx context.Context, nodeID
 
 // TestReconsolidation_OnRecall verifies the full reconsolidation flow:
 // 1. Boost activation by 0.2 (saturated to 1.0)
-// 2. Increment use_count
+// 2. Do not increment use_count (C2: recall is not usage)
 // 3. Hebbian reinforcement for each co-recalled neuron
 func TestReconsolidation_OnRecall(t *testing.T) {
 	store := &mockReconsolidationStore{
@@ -72,9 +72,9 @@ func TestReconsolidation_OnRecall(t *testing.T) {
 		t.Error("boost timestamp should be non-empty")
 	}
 
-	// Verify use_count increment.
-	if store.incrementNodeID != "A" {
-		t.Errorf("increment nodeID: got %q, want A", store.incrementNodeID)
+	// C2: recall must not increment use_count.
+	if store.incrementNodeID != "" {
+		t.Errorf("use_count must not increment on recall, got node %q", store.incrementNodeID)
 	}
 
 	// Verify Hebbian reinforcement was called for B and C.
@@ -124,20 +124,20 @@ func TestReconsolidation_BoostError(t *testing.T) {
 	}
 }
 
-// TestReconsolidation_IncrementError verifies that IncrementUseCount error
-// is logged but does not abort the flow (best-effort).
-func TestReconsolidation_IncrementError(t *testing.T) {
+// TestReconsolidation_DoesNotIncrementUseCount verifies C2: OnRecall never
+// calls IncrementUseCount, even when the store would accept it.
+func TestReconsolidation_DoesNotIncrementUseCount(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:      true,
-		incrementOK:  true,
-		incrementErr: errors.New("increment failed"),
+		boostOK:     true,
+		incrementOK: true,
 	}
 	svc := NewReconsolidationService(store, NewHebbianUpdater(&mockHebbianStore{}, nil), nil)
 
-	// Should not return error — increment failure is best-effort.
-	err := svc.OnRecall(context.Background(), "A", nil)
-	if err != nil {
-		t.Errorf("expected nil error for increment failure (best-effort), got %v", err)
+	if err := svc.OnRecall(context.Background(), "A", nil); err != nil {
+		t.Errorf("OnRecall: %v", err)
+	}
+	if store.incrementNodeID != "" {
+		t.Fatalf("IncrementUseCount must not be called on recall, got %q", store.incrementNodeID)
 	}
 }
 

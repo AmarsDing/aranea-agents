@@ -40,6 +40,27 @@ describe('toConfirmCardModel', () => {
     expect(m.target).toBe('weixin');
     expect(m.description).toBe('确认打开应用？');
     expect(m.startedAt).toBe('2026-08-08T10:00:00Z');
+    expect(m.source).toBe('');
+    expect(m.agentKey).toBe('');
+    expect(m.projectName).toBe('');
+  });
+
+  it('maps source=external_coding agent and project from ToolArgs', () => {
+    const m = toConfirmCardModel(
+      makeStep({
+        ToolName: 'external_coding',
+        ToolArgs: {
+          source: 'external_coding',
+          agent_key: 'codex',
+          project_name: 'aranea',
+          target: 'go test',
+        },
+      }),
+    );
+    expect(m.source).toBe('external_coding');
+    expect(m.agentKey).toBe('codex');
+    expect(m.projectName).toBe('aranea');
+    expect(m.target).toBe('go test');
   });
 
   it('extracts target from ToolArgs.url when target missing', () => {

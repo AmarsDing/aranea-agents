@@ -24,6 +24,7 @@ var _ biz.L1TaskWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1TaskBoardWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1FieldWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1AdminReader = (*l1WorkingMemoryRepo)(nil)
+var _ biz.L1LatestTaskBoardReader = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1IdleTaskReader = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1ExpiredFieldCleaner = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1SchemaReader = (*l1WorkingMemoryRepo)(nil)
@@ -94,6 +95,71 @@ func (r *l1WorkingMemoryRepo) ListL1TaskRows(ctx context.Context, sessionID, age
 		out = append(out, b)
 	}
 	return out, entErrToBizErr(rows.Err(), "MEMORY_L1")
+}
+
+const latestL1TaskBoardScanLimit = 8
+
+// LatestL1TaskBoard implements biz.L1LatestTaskBoardReader. Scans the newest
+// active/paused tasks for agentID (optionally excluding excludeSessionID) and
+// returns the first row whose metadata_json.task_board is non-empty.
+func (r *l1WorkingMemoryRepo) LatestL1TaskBoard(ctx context.Context, agentID, excludeSessionID string) ([]byte, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	clauses := []string{"agent_id = ?", "status IN ('active','paused')"}
+	args := []any{agentID}
+	if sid := strings.TrimSpace(excludeSessionID); sid != "" {
+		clauses = append(clauses, "session_id <> ?")
+		args = append(args, sid)
+	}
+	q := sqlL1Task + " WHERE " + strings.Join(clauses, " AND ") +
+		" ORDER BY updated_at DESC LIMIT ?"
+	args = append(args, latestL1TaskBoardScanLimit)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L1")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		b, err := scanL1TaskRow(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L1")
+		}
+		if l1TaskRowHasBoard(b) {
+			return b, nil
+		}
+	}
+	return nil, entErrToBizErr(rows.Err(), "MEMORY_L1")
+}
+
+func l1TaskRowHasBoard(raw []byte) bool {
+	var task map[string]any
+	if json.Unmarshal(raw, &task) != nil {
+		return false
+	}
+	meta := strings.TrimSpace(fmt.Sprint(task["metadata_json"]))
+	if meta == "" || meta == "<nil>" || meta == "{}" {
+		return false
+	}
+	var parsed struct {
+		Board json.RawMessage `json:"task_board"`
+	}
+	if json.Unmarshal([]byte(meta), &parsed) != nil || len(parsed.Board) == 0 {
+		return false
+	}
+	var board struct {
+		Status   string   `json:"status"`
+		Done     []string `json:"done"`
+		Next     string   `json:"next"`
+		Blockers []string `json:"blockers"`
+	}
+	if json.Unmarshal(parsed.Board, &board) != nil {
+		return false
+	}
+	return strings.TrimSpace(board.Status) != "" ||
+		strings.TrimSpace(board.Next) != "" ||
+		len(board.Done) > 0 || len(board.Blockers) > 0
 }
 
 func (r *l1WorkingMemoryRepo) ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool, requestingAgentID ...string) ([][]byte, error) {
