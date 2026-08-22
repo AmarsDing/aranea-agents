@@ -9,6 +9,7 @@
 A–D 代码落地后重估：Codex **8.6** / Aranea **7.8**（差 **0.8**）。  
 E1/E2/E4/E5/E6 后再估：Codex **8.6** / Aranea **8.1**（差 **0.5**）。  
 E7/E7b/E8/E9/E10 后再估：Codex **8.6** / Aranea **8.3**（差 **0.3**）。  
+E3 + MCP 脏刷新后再估：Codex **8.6** / Aranea **8.4**（差 **0.2**）。  
 平台分不变：Codex ~3.5 / Aranea ~8.5（不加权）。
 
 读法：合同层、执行回路、增量 world state、OS 进程围栏、MCP 脏刷新、默认 ACP argv 与 §7 金丝雀已补上。剩下的硬差距在 **完整 OS token/Seatbelt 档**、真实编码桥二进制冒烟 / M3 管理页、MCP templates/subscribe。
@@ -73,7 +74,7 @@ E7/E7b/E8/E9/E10 后再估：Codex **8.6** / Aranea **8.3**（差 **0.3**）。
 
 **Codex**：`windows-sandbox-rs` / Seatbelt / bwrap + `FileSystemSandboxPolicy` + `NetworkSandboxPolicy`。
 
-**Aranea**：`workspace_sandbox.go` priority 8（先于确认门 10）。只读拦写工具；`path`/`file`/`cwd` 做 `containPathUnderRoot`。`command` 正文不检查，所以可写模式下 `rm -rf` 仍靠确认门 + command safety。E3：`hostexec` 默认打开进程围栏（Windows Job Object + 可选 restricted token；Linux 有 `bwrap` 时 `--die-with-parent`）。不是 Codex 那套完整 FS/网络策略。
+**Aranea**：`workspace_sandbox.go` priority 8（先于确认门 10）。只读拦写工具；`path`/`file`/`cwd` 做 `containPathUnderRoot`。`command` 正文不检查，所以可写模式下 `rm -rf` 仍靠确认门 + command safety。E3：`hostexec` 默认打开进程围栏（Windows Job Object；Linux 有 `bwrap` 时 `--die-with-parent`）。不是 Codex 那套完整 FS/网络策略。
 
 ### 2.5 记忆
 
@@ -104,7 +105,7 @@ E7/E7b/E8/E9/E10 后再估：Codex **8.6** / Aranea **8.3**（差 **0.3**）。
 |----|--------|----|------|
 | E1 | P0 | coding `shell_exec` 审批降噪（安全命令免卡；高危/未知仍确认） | ✅ 2026-08-22 |
 | E2 | P0 | 语音消费 `coding_task_approval` + spirit store 通知 | ✅ 2026-08-22 |
-| E3 | P1 | Windows Job Object + 可选 restricted token；Linux bwrap `--die-with-parent` | ✅ 2026-08-22（非完整 Seatbelt/文件系统策略） |
+| E3 | P1 | Windows Job Object；Linux bwrap `--die-with-parent` | ✅ 2026-08-22（非完整 Seatbelt/文件系统策略） |
 | E4 | P1 | 前台 shell 回执补 `duration_ms`（`exit_code` 已有） | ✅ 2026-08-22 |
 | E5 | P1 | 编码专项 hook：禁止用 `save_file` 整文件覆盖替代 `diff_edit` | ✅ 2026-08-22 |
 | E6 | P1 | `get_context_remaining`（coding / spirit / full） | ✅ 2026-08-22 |
@@ -123,4 +124,5 @@ E7/E7b/E8/E9/E10 后再估：Codex **8.6** / Aranea **8.3**（差 **0.3**）。
 A–D 把「告诉模型你是谁、能干什么、手册在哪、记忆怎么读」补到可用。  
 E1/E2/E4/E5/E6 把执行回路的噪音、回执、编辑纪律和上下文自助开窗补上。  
 E7–E10 把增量 cue、中途 compact 回注、MCP Resource 边界、默认 ACP argv 和 §7 金丝雀补上。  
-再追 Codex，优先 E3 OS 沙箱与真实编码桥冒烟，不要继续加长 system prompt。
+E3 补了进程围栏（Job Object / bwrap），MCP 脏标记会在下一轮刷新直连 catalog。  
+再追 Codex，优先完整 FS/网络沙箱档与真实编码桥冒烟，不要继续加长 system prompt。

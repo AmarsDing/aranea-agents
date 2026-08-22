@@ -314,7 +314,11 @@ func (s *session) kill(
 	s.mu.Unlock()
 
 	if box != nil {
-		_ = box.Kill()
+		err := box.Kill()
+		if cancel != nil {
+			cancel()
+		}
+		return err
 	}
 
 	if cmd == nil || cmd.Process == nil {

@@ -106,6 +106,25 @@ func TestNewToolSet_ForegroundHonorsMaxLines(t *testing.T) {
 	}
 }
 
+func TestNewToolSet_ProcessSandboxEcho(t *testing.T) {
+	if _, _, err := shellSpec(); err != nil {
+		t.Skip(err.Error())
+	}
+	set, err := NewToolSet(WithProcessSandbox(true))
+	require.NoError(t, err)
+	defer set.Close()
+	execTool, _, _, _ := toolSetTools(t, set)
+	cmd := "echo sandbox-ok"
+	if runtime.GOOS == "windows" {
+		cmd = "echo sandbox-ok"
+	}
+	out, err := execTool.Call(context.Background(), mustJSON(t, map[string]any{
+		"command": cmd,
+	}))
+	require.NoError(t, err)
+	require.Contains(t, fmt.Sprint(out), "sandbox-ok")
+}
+
 func TestNewToolSet_BaseDirAndRelativeWorkdir(t *testing.T) {
 	if _, _, err := shellSpec(); err != nil {
 		t.Skip(err.Error())

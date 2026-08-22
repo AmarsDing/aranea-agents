@@ -9,10 +9,10 @@ import (
 
 type fakeMCPCache struct{ n int }
 
-func (f *fakeMCPCache) Name() string                         { return "mcp" }
+func (f *fakeMCPCache) Name() string                          { return "mcp" }
 func (f *fakeMCPCache) Tools(context.Context) []trpctool.Tool { return nil }
-func (f *fakeMCPCache) Close() error                         { return nil }
-func (f *fakeMCPCache) InvalidateToolsCache()                { f.n++ }
+func (f *fakeMCPCache) Close() error                          { return nil }
+func (f *fakeMCPCache) InvalidateToolsCache()                 { f.n++ }
 
 func TestCollectMCPCacheInvalidators(t *testing.T) {
 	t.Parallel()
