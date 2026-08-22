@@ -12,6 +12,7 @@ import (
 // AgentCapabilityBuilder builds AgentCapability from the agent catalog.
 type AgentCapabilityBuilder struct {
 	agentReader biz.AgentReader
+	org         biz.OrganizationReader
 	lg          loggateway.Logger
 }
 
@@ -21,6 +22,15 @@ func NewAgentCapabilityBuilder(agentReader biz.AgentReader, lg loggateway.Logger
 		agentReader: agentReader,
 		lg:          lg,
 	}
+}
+
+// SetOrganizationReader attaches an org reader used to fill placement fields.
+// Nil is allowed: BuildAll still succeeds and leaves DepartmentID empty.
+func (b *AgentCapabilityBuilder) SetOrganizationReader(org biz.OrganizationReader) {
+	if b == nil {
+		return
+	}
+	b.org = org
 }
 
 // BuildAll builds AgentCapability for all active agents in the catalog.
@@ -45,20 +55,130 @@ func (b *AgentCapabilityBuilder) BuildAll(ctx context.Context) ([]biz.AgentCapab
 			mission = ag.AgentDescription // 不变量 2：存量 Agent Mission 回退 Description
 		}
 		cap := biz.AgentCapability{
-			AgentKey:    ag.AgentKey,
-			DisplayName: ag.DisplayName,
-			Description: ag.AgentDescription,
-			Mission:     mission,
-			DomainPath:  ag.DomainPath,
-			Roles:       ag.Roles,
-			Domains:     extractDomainsFromConfig(ag.ConfigJSON),
-			Tools:       extractToolNamesFromConfig(ag.ConfigJSON),
-			Skills:      extractSkillNamesFromConfig(ag.ConfigJSON),
-			Capacity:    extractCapacityFromConfig(ag.ConfigJSON),
+			AgentKey:     ag.AgentKey,
+			DisplayName:  ag.DisplayName,
+			Description:  ag.AgentDescription,
+			Mission:      mission,
+			DomainPath:   ag.DomainPath,
+			Roles:        ag.Roles,
+			Domains:      extractDomainsFromConfig(ag.ConfigJSON),
+			Tools:        extractToolNamesFromConfig(ag.ConfigJSON),
+			Skills:       extractSkillNamesFromConfig(ag.ConfigJSON),
+			Capacity:     extractCapacityFromConfig(ag.ConfigJSON),
+			PositionID:   ag.PositionID,
+			PositionKey:  ag.PositionKey,
+			AgentVariant: ag.AgentVariant,
 		}
 		capabilities = append(capabilities, cap)
 	}
+	b.fillOrgPlacement(ctx, capabilities)
 	return capabilities, nil
+}
+
+// fillOrgPlacement batch-resolves company/department ancestors for capabilities
+// that have a PositionID. Missing org nodes or a nil reader are non-fatal.
+func (b *AgentCapabilityBuilder) fillOrgPlacement(ctx context.Context, caps []biz.AgentCapability) {
+	if b == nil || b.org == nil || len(caps) == 0 {
+		return
+	}
+	idSet := make(map[string]struct{})
+	for _, cap := range caps {
+		if id := strings.TrimSpace(cap.PositionID); id != "" {
+			idSet[id] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	nodes := loadOrgClosure(ctx, b.org, idSet)
+	if len(nodes) == 0 {
+		return
+	}
+	for i := range caps {
+		place := placementFromNode(nodes, caps[i].PositionID)
+		if place.DepartmentID == "" && place.PositionKey == "" {
+			continue
+		}
+		if caps[i].PositionKey == "" {
+			caps[i].PositionKey = place.PositionKey
+		}
+		caps[i].DepartmentID = place.DepartmentID
+		caps[i].DepartmentName = place.DepartmentName
+		caps[i].CompanyID = place.CompanyID
+		caps[i].CompanyName = place.CompanyName
+	}
+}
+
+type orgPlacement struct {
+	PositionKey    string
+	DepartmentID   string
+	DepartmentName string
+	CompanyID      string
+	CompanyName    string
+}
+
+func loadOrgClosure(ctx context.Context, org biz.OrganizationReader, seed map[string]struct{}) map[string]biz.OrganizationNode {
+	out := make(map[string]biz.OrganizationNode)
+	pending := make([]string, 0, len(seed))
+	for id := range seed {
+		pending = append(pending, id)
+	}
+	for len(pending) > 0 {
+		missing := make([]string, 0, len(pending))
+		for _, id := range pending {
+			if _, ok := out[id]; !ok {
+				missing = append(missing, id)
+			}
+		}
+		pending = pending[:0]
+		if len(missing) == 0 {
+			break
+		}
+		rows, err := org.ListOrgNodesByIDs(ctx, missing)
+		if err != nil {
+			return out
+		}
+		for _, n := range rows {
+			out[n.ID] = n
+			if pid := strings.TrimSpace(n.ParentID); pid != "" {
+				if _, seen := out[pid]; !seen {
+					pending = append(pending, pid)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func placementFromNode(nodes map[string]biz.OrganizationNode, positionID string) orgPlacement {
+	n, ok := nodes[strings.TrimSpace(positionID)]
+	if !ok {
+		return orgPlacement{}
+	}
+	var p orgPlacement
+	switch n.Level {
+	case "position":
+		p.PositionKey = n.Key
+		if dept, ok := nodes[n.ParentID]; ok && dept.Level == "department" {
+			p.DepartmentID = dept.ID
+			p.DepartmentName = dept.Name
+			if co, ok := nodes[dept.ParentID]; ok && co.Level == "company" {
+				p.CompanyID = co.ID
+				p.CompanyName = co.Name
+			}
+		}
+	case "department":
+		p.DepartmentID = n.ID
+		p.DepartmentName = n.Name
+		if co, ok := nodes[n.ParentID]; ok && co.Level == "company" {
+			p.CompanyID = co.ID
+			p.CompanyName = co.Name
+		}
+	case "company":
+		p.CompanyID = n.ID
+		p.CompanyName = n.Name
+	}
+	return p
 }
 
 // extractDomainsFromConfig extracts domain tags from agent config_json.

@@ -36,6 +36,14 @@ func (m *memKnowledgeRepo) GetCollection(_ context.Context, id string) (biz.Know
 	}
 	return c, nil
 }
+func (m *memKnowledgeRepo) GetCollectionByName(_ context.Context, workspace, name string) (biz.KnowledgeCollection, error) {
+	for _, c := range m.collections {
+		if c.Name == name && c.Workspace == workspace {
+			return c, nil
+		}
+	}
+	return biz.KnowledgeCollection{}, biz.ErrNotFound
+}
 func (m *memKnowledgeRepo) ListCollections(_ context.Context, _ string, limit, _ int) ([]biz.KnowledgeCollection, int, error) {
 	var out []biz.KnowledgeCollection
 	for _, c := range m.collections {
@@ -75,6 +83,17 @@ func (m *memKnowledgeRepo) GetDocument(_ context.Context, id string) (biz.Knowle
 func (m *memKnowledgeRepo) GetDocumentByRelPath(_ context.Context, collectionID, relPath string) (biz.KnowledgeDocument, error) {
 	for _, d := range m.documents {
 		if d.CollectionID == collectionID && d.RelPath == relPath {
+			return d, nil
+		}
+	}
+	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+func (m *memKnowledgeRepo) GetDocumentByContentHash(_ context.Context, collectionID, contentHash string) (biz.KnowledgeDocument, error) {
+	if contentHash == "" {
+		return biz.KnowledgeDocument{}, biz.ErrNotFound
+	}
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.ContentHash == contentHash {
 			return d, nil
 		}
 	}
@@ -261,6 +280,25 @@ func (m *memEvalRepo2) InsertCasesWithCountUpdate(_ context.Context, datasetID s
 func (m *memEvalRepo2) ListCases(_ context.Context, _ string) ([]biz.EvalCase, error) {
 	return m.cases, nil
 }
+func (m *memEvalRepo2) UpdateCase(_ context.Context, c biz.EvalCase) (biz.EvalCase, error) {
+	for i := range m.cases {
+		if m.cases[i].ID == c.ID {
+			m.cases[i] = c
+			return c, nil
+		}
+	}
+	return c, nil
+}
+func (m *memEvalRepo2) DeleteCase(_ context.Context, _, caseID string) error {
+	out := m.cases[:0]
+	for _, c := range m.cases {
+		if c.ID != caseID {
+			out = append(out, c)
+		}
+	}
+	m.cases = out
+	return nil
+}
 func (m *memEvalRepo2) CreateRun(_ context.Context, r biz.EvalRun) (biz.EvalRun, error) {
 	m.runs[r.ID] = r
 	return r, nil
@@ -397,7 +435,7 @@ func (m *memEvalRepo2) ListRunPreferences(_ context.Context, _ string, _ int) ([
 	return nil, nil
 }
 
-func (m *memEvalRepo2) GetGateConfig(_ context.Context) (evaluation.GateConfig, error) {
+func (m *memEvalRepo2) GetGateConfig(_ context.Context, _ string) (evaluation.GateConfig, error) {
 	return evaluation.GateConfig{}, nil
 }
 

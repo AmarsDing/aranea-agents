@@ -159,7 +159,35 @@ func TestSIApplyUsecase_SoftKindsHotReload(t *testing.T) {
 			if store.run.Status != RunStatusObserving {
 				t.Fatalf("Status = %s, 期望 observing", store.run.Status)
 			}
+			if got := siApplyEffectiveOn(store.run); got != siApplyEffectiveRead {
+				t.Fatalf("effective_on = %q, want %s (no reloader wired)", got, siApplyEffectiveRead)
+			}
 		})
+	}
+}
+
+type siReloadFn func(ctx context.Context, run *SelfImprovementRun) error
+
+func (f siReloadFn) ReloadAfterWorkingTreeApply(ctx context.Context, run *SelfImprovementRun) error {
+	return f(ctx, run)
+}
+
+func TestSIApplyUsecase_WorkingTreeReloader(t *testing.T) {
+	calls := 0
+	uc, store, _, _ := siApplyFixture(t, siApplyingRun(PatchKindConfig, "configs/x.yaml"), func(d *SelfImprovementApplyUsecaseDeps) {
+		d.Reloader = siReloadFn(func(context.Context, *SelfImprovementRun) error {
+			calls++
+			return nil
+		})
+	})
+	if err := uc.Apply(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("reloader calls = %d, want 1", calls)
+	}
+	if got := siApplyEffectiveOn(store.run); got != siApplyEffectiveLive {
+		t.Fatalf("effective_on = %q, want %s", got, siApplyEffectiveLive)
 	}
 }
 

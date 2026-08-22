@@ -104,11 +104,20 @@ type RepoSandbox interface {
 	ResetWorktree(ctx context.Context, path string) error
 	// ApplyDiff applies a unified diff inside the worktree at path.
 	ApplyDiff(ctx context.Context, path, diff string) error
-	// RunGate executes one verification gate (G1 build / G2 test / G3 lint)
-	// inside the worktree. pkgs carries the affected go package patterns
-	// (DeriveAffectedScopes output); an empty slice means repo-wide default.
+	// RunGate executes one verification gate inside the worktree.
+	// pkgs carries the affected go package patterns (DeriveAffectedScopes).
+	// Empty pkgs: G1 still builds ./... (caller must omit G1 when there is no
+	// Go scope); G2/G3 return Skipped and must NOT fall back to ./....
+	// G3 prefers golangci-lint when on PATH, otherwise go vet.
+	// SandboxGateWebLint runs `pnpm lint` in web/ (skipped if missing).
+	// Gate processes receive a filtered environment (no production DSN).
 	// Output is truncated (64KB) inside the returned SandboxGateResult.
 	RunGate(ctx context.Context, path string, gate SandboxGateKind, pkgs []string) (SandboxGateResult, error)
+	// ProbeTestFailures snapshots failing test names on the current worktree
+	// (intended: clean HEAD, before ApplyDiff). Compile/setup failures yield
+	// an empty list so G2 cannot exempt a broken package. A probe exec error
+	// is returned; the pipeline then applies no exemptions (fail-closed).
+	ProbeTestFailures(ctx context.Context, path string, pkgs []string) (failedTests []string, err error)
 }
 
 // ── Apply & metrics ports (73-self-iteration-v3, design §4.4 / D7) ──────────
@@ -118,21 +127,29 @@ type RepoSandbox interface {
 //
 // Channel semantics (D7):
 //   - ApplyHotReload — config/prompt/docs kinds: patch lands on the working
-//     tree (file-level effective on next read); the returned rollbackRef
-//     locates the pre-apply snapshot for Rollback.
+//     tree (effective on next file read). Optional SIRuntimeReloader may
+//     refresh in-process caches; without it this is NOT a live runtime
+//     reload. The returned rollbackRef locates the pre-apply snapshot.
 //   - ApplyCodeMerge — code/test kinds: patch is committed on a
 //     self-improve/<runID> branch and fast-forward merged into the current
-//     branch; the returned commit SHA is recorded as run.AppliedCommit.
+//     branch; the binary does not hot-swap. Effective on next process restart.
 //     A non-fast-forward / drift situation returns an error wrapping
 //     ErrSIMergeConflict (→ 转人工, design D7).
 //   - Rollback — reverts whatever the matching Apply* call did (git revert
-//     for code, snapshot restore for hot-reload).
+//     for code, snapshot restore for working-tree apply).
 //
 // Stability:evolving
 type SIApplier interface {
 	ApplyHotReload(ctx context.Context, run *SelfImprovementRun) (rollbackRef string, err error)
 	ApplyCodeMerge(ctx context.Context, run *SelfImprovementRun) (commitSHA string, err error)
 	Rollback(ctx context.Context, run *SelfImprovementRun, reason string) error
+}
+
+// SIRuntimeReloader best-effort refreshes in-process caches after a
+// working-tree apply. Nil is allowed — apply then only mutates files.
+// Stability:evolving
+type SIRuntimeReloader interface {
+	ReloadAfterWorkingTreeApply(ctx context.Context, run *SelfImprovementRun) error
 }
 
 // SIMetricsReader captures a sliding-window platform metrics snapshot for the

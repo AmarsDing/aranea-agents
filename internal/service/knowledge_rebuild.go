@@ -9,7 +9,6 @@ import (
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/workspace"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -43,8 +42,10 @@ func (s *KnowledgeService) RebuildKnowledgeIndex(ctx context.Context, req *v1.Re
 // startCollectionIndexJob 同库互斥的后台索引任务。withBackfill=true 时先改写存量
 // 出链再重建块索引（US-38/US-45 显式回填命令）；false 时只重建派生索引（US-29）。
 func (s *KnowledgeService) startCollectionIndexJob(ctx context.Context, col bizknowledge.Collection, withBackfill bool) error {
-	if _, loaded := s.rebuildRuns.LoadOrStore(col.ID, struct{}{}); loaded {
-		return apierror.Conflict("KNOWLEDGE", "block index rebuild already running for collection %s", col.ID)
+	release, err := s.acquireJob(ctx, &s.rebuildRuns, col.ID, knowledgeRebuildJobKey(col.ID),
+		"block index rebuild already running for collection %s", col.ID)
+	if err != nil {
+		return err
 	}
 
 	flow := s.knowledgeFlow(ctx)
@@ -58,7 +59,7 @@ func (s *KnowledgeService) startCollectionIndexJob(ctx context.Context, col bizk
 
 	bgCtx := workspace.WithSystemWorkspace(appctx.Ctx())
 	safego.Go(bgCtx, "knowledge.rebuild_index."+col.ID, func() {
-		defer s.rebuildRuns.Delete(col.ID)
+		defer release()
 		s.publishKnowledgeRebuild(col.ID, "rebuilding", 0, 0, 0, "")
 		lastPub := time.Now()
 		if withBackfill {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,19 @@ import (
 )
 
 // ── SIAnalystAgent ───────────────────────────────────────────────────────────
+
+type siFakeRCA struct {
+	result *heal.RootCauseResult
+	saw    *heal.FailureReport
+}
+
+func (f *siFakeRCA) Analyze(context.Context, string, string, error, map[string]any) (*heal.RootCauseResult, error) {
+	return f.result, nil
+}
+func (f *siFakeRCA) AnalyzeFromReport(_ context.Context, report *heal.FailureReport) (*heal.RootCauseResult, error) {
+	f.saw = report
+	return f.result, nil
+}
 
 func TestSIAnalystAgent_AnalyzeSuccess(t *testing.T) {
 	caller := &fakeLLMCaller{resp: `{"root_cause":"空指针","affected_files":["internal/biz/x.go"],"impact_scope":"local","fix_strategy":"判空","confidence":0.8}`}
@@ -246,6 +260,146 @@ func TestSIPatcherAgent_RetryQuotaExhaustedReturnsParseError(t *testing.T) {
 }
 
 // ── siReadWorktreeFile path safety ───────────────────────────────────────────
+
+func TestSIAnalystAgent_ToolReadThenDiagnose(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "internal", "biz"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "internal", "biz", "x.go"), []byte("package biz\nfunc X() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: `{"tool":"patcher_fs_read","path":"internal/biz/x.go"}`},
+		{resp: `{"root_cause":"空函数","affected_files":["internal/biz/x.go"],"impact_scope":"local","fix_strategy":"补实现","confidence":0.8}`},
+	}}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop(), WithSIAnalystReadRoot(root))
+	d, err := agent.Analyze(context.Background(), &biz.SelfImprovementRun{ID: "run-1"}, nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if d.RootCause != "空函数" {
+		t.Fatalf("RootCause = %q", d.RootCause)
+	}
+	if len(caller.reqs) != 2 {
+		t.Fatalf("reqs = %d, want 2 (tool + final)", len(caller.reqs))
+	}
+	if !strings.Contains(caller.reqs[1].User, "package biz") {
+		t.Error("second prompt must include tool read output")
+	}
+}
+
+func TestSIAnalystAgent_RCAHintInPrompt(t *testing.T) {
+	rca := &siFakeRCA{result: &heal.RootCauseResult{
+		RuleID:     "rc-mcp-connection-failure",
+		RootCause:  "MCP 端口不可达",
+		FixSuggest: "检查监听地址",
+		Confidence: 0.9,
+	}}
+	caller := &fakeLLMCaller{resp: `{"root_cause":"连接被拒","affected_files":[],"impact_scope":"module","fix_strategy":"重连","confidence":0.7}`}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop(), WithSIAnalystRCA(rca))
+	sug := &biz.UnifiedEvolutionSuggestion{
+		TriggerSource: biz.TriggerSourceErrorCluster,
+		TriggerReason: "错误聚类 CONNECTION_REFUSED",
+		Metadata:      []byte(`{"error_code":"CONNECTION_REFUSED","component":"mcp-server","sample_message":"connection refused: dial tcp 127.0.0.1:8080 in internal/mcp/client.go"}`),
+	}
+	d, err := agent.Analyze(context.Background(), &biz.SelfImprovementRun{
+		ID: "run-1", TriggerSource: biz.TriggerSourceErrorCluster,
+	}, sug)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if rca.saw == nil || rca.saw.ErrorCode != "CONNECTION_REFUSED" || rca.saw.Job != "mcp-server" {
+		t.Fatalf("RCA report = %+v", rca.saw)
+	}
+	if rca.saw.File != "internal/mcp/client.go" {
+		t.Fatalf("FailureReport.file = %q, want extracted path", rca.saw.File)
+	}
+	if !strings.Contains(caller.reqs[0].User, "MCP 端口不可达") || !strings.Contains(caller.reqs[0].User, "rc-mcp-connection-failure") {
+		t.Error("user prompt must carry RCA prior")
+	}
+	if len(d.AffectedFiles) != 1 || d.AffectedFiles[0] != "internal/mcp/client.go" {
+		t.Fatalf("empty affected_files must be backfilled from FailureReport.file, got %v", d.AffectedFiles)
+	}
+}
+
+func TestSIFailureReportFromSuggestion_TestFailure(t *testing.T) {
+	sug := &biz.UnifiedEvolutionSuggestion{
+		TriggerSource: biz.TriggerSourceTestFailure,
+		TriggerReason: "测试 internal/biz 连续失败",
+		Metadata:      []byte(`{"package":"aranea-agents/internal/biz","test_name":"TestX","last_error":"boom at internal/biz/x.go:12"}`),
+	}
+	report := siFailureReportFromSuggestion(&biz.SelfImprovementRun{TriggerSource: biz.TriggerSourceTestFailure}, sug)
+	if report == nil || report.Type != heal.FailureTypeTest || report.ErrorCode != "TestX" {
+		t.Fatalf("report = %+v", report)
+	}
+	if report.File != "internal/biz/x.go" {
+		t.Fatalf("file = %q", report.File)
+	}
+}
+
+func TestSIAnalystAgent_WriteToolRejected(t *testing.T) {
+	root := t.TempDir()
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: `{"tool":"patcher_fs_write","path":"internal/biz/x.go","content":"evil"}`},
+		{resp: `{"root_cause":"x","affected_files":[],"impact_scope":"local","fix_strategy":"y","confidence":0.6}`},
+	}}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop(), WithSIAnalystReadRoot(root))
+	if _, err := agent.Analyze(context.Background(), &biz.SelfImprovementRun{ID: "run-1"}, nil); err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if !strings.Contains(caller.reqs[1].User, "not allowed") {
+		t.Error("analyst write must be rejected in the tool result")
+	}
+}
+
+func TestSIPatcherAgent_ToolWriteFillsDiff(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	worktree := t.TempDir()
+	runGitCmd(t, worktree, "init")
+	runGitCmd(t, worktree, "config", "user.email", "si@test.local")
+	runGitCmd(t, worktree, "config", "user.name", "si-test")
+	if err := os.MkdirAll(filepath.Join(worktree, "internal", "biz"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(worktree, "internal", "biz", "x.go"), []byte("package biz\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitCmd(t, worktree, "add", ".")
+	runGitCmd(t, worktree, "commit", "-m", "init")
+
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: `{"tool":"patcher_fs_write","path":"internal/biz/x.go","content":"package biz\n// guard\n"}`},
+		{resp: `{"diff":"","kind":"code"}`},
+	}}
+	agent := NewSIPatcherAgent(caller, "openai", "gpt-x", 20, loggateway.NewNoop())
+	out, err := agent.Patch(context.Background(), siPatchArgs(worktree))
+	if err != nil {
+		t.Fatalf("Patch: %v", err)
+	}
+	if !strings.Contains(out.Diff, "guard") {
+		t.Fatalf("diff should be filled from worktree writes, got %q", out.Diff)
+	}
+	got, err := os.ReadFile(filepath.Join(worktree, "internal", "biz", "x.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "guard") {
+		t.Fatal("worktree must be restored after Patch so pipeline ApplyDiff sees a clean base")
+	}
+}
+
+func runGitCmd(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %s (%v)", strings.Join(args, " "), out, err)
+	}
+}
 
 func TestSIReadWorktreeFile_BlocksTraversal(t *testing.T) {
 	root := t.TempDir()

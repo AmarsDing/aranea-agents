@@ -34,7 +34,7 @@ type PlanAndExecuteInput struct {
 	AgentKeys []string `json:"agent_keys,omitempty" jsonschema:"description=Explicit agent routing: agent_keys[0] executes the task (e.g. [\"__system_admin__\"] for Skill/MCP/industry management, [\"__memory__\"] for memory tasks, [\"__skills__\"] for skill-evolution tasks). Bypasses heuristic agent matching. Required when delegating to system butlers."`
 	// ForceNew starts a brand-new DAG even when this spirit session already has
 	// overlapping running/completed teams for the same goal. Default false.
-	ForceNew bool `json:"force_new,omitempty" jsonschema:"description=Set true only when the user explicitly asked to start a NEW independent analysis. Default false: if this session already has overlapping teams, reuse them instead of decomposing again."`
+	ForceNew bool `json:"force_new,omitempty" jsonschema:"description=Set true only when the user explicitly asked to start a NEW independent analysis. Default false: if this session already has teams, reuse them instead of decomposing again."`
 }
 
 // SubTaskSummary is a summary of a subtask in the plan.
@@ -288,7 +288,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			return out, nil
 		},
 		trpcfunction.WithName("plan_and_execute"),
-		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。简单任务直接回答，复杂任务自动组建团队。若本会话已有针对同一目标的团队，默认复用（reuse_existing=true）并返回 existing_teams：先 tool_load get_team_deliverable，禁止再开一套 DAG。仅当用户明确要求新的独立分析时传 force_new=true。"),
+		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。简单任务直接回答，复杂任务自动组建团队。会话已有编排时默认复用（reuse_existing=true）并返回 existing_teams，禁止再开一套 DAG。仅当用户明确要求新的独立分析时传 force_new=true。"),
 	)
 }
 
@@ -319,11 +319,21 @@ func tryReuseExistingOrchestration(ctx context.Context, spiritSessionID, taskPro
 		}
 		return PlanAndExecuteOutput{}, false
 	}
-	overlap := reusableOverlappingTeams(taskPrompt, teams)
-	if len(overlap) == 0 {
+	phase := biz.ResolveSpiritSessionPhase(teams)
+	if phase == biz.SpiritPhaseIdle {
 		return PlanAndExecuteOutput{}, false
 	}
+	if biz.LooksLikeFreshOrchestrationAsk(taskPrompt) && biz.OrchestrationGoalShifted(taskPrompt, teams) {
+		return PlanAndExecuteOutput{}, false
+	}
+	overlap := reusableOverlappingTeams(taskPrompt, teams)
 	cohort := expandToOrchestrationCohort(overlap, teams)
+	if len(cohort) == 0 {
+		cohort = currentOrchestrationCohort(teams)
+	}
+	if len(cohort) == 0 {
+		return PlanAndExecuteOutput{}, false
+	}
 	if deps.bus != nil {
 		deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "", map[string]any{
 			"phase":      "reused",
@@ -341,7 +351,7 @@ func tryReuseExistingOrchestration(ctx context.Context, spiritSessionID, taskPro
 		Strategy:        reuseStrategy,
 		ComplexityLevel: string(biz.ComplexityModerate),
 		ReuseExisting:   true,
-		ReuseReason:     "session already has overlapping teams; do not start a new DAG",
+		ReuseReason:     "session phase " + string(phase) + "; reuse existing teams instead of starting a new DAG",
 		ExistingTeams:   summarizeExistingTeams(cohort),
 		NextAction:      reuseNextAction(cohort),
 	}, true
@@ -406,8 +416,12 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, explicitK
 	defer func() {
 		metrics.SpiritAllocDuration.Observe(time.Since(start).Seconds())
 	}()
-	if len(explicitKeys) > 0 {
-		allocPlan, err = deps.allocator.AllocateExplicit(ctx, taskPlan, explicitKeys)
+	keys := append([]string(nil), explicitKeys...)
+	if len(keys) == 0 && taskPlan != nil && taskPlan.MemoryHit != nil {
+		keys = append([]string(nil), taskPlan.MemoryHit.AgentKeysUsed...)
+	}
+	if len(keys) > 0 {
+		allocPlan, err = deps.allocator.AllocateExplicit(ctx, taskPlan, keys)
 	} else {
 		allocPlan, err = deps.allocator.Allocate(ctx, taskPlan)
 	}

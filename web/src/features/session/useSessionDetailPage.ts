@@ -3,6 +3,7 @@ import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
 import type { Session } from './types';
 import { downloadTextFile } from './downloadExport';
+import { memoryCenterRoute } from '../chat/memoryRecall';
 import { useSessionStore } from '../../stores/session/index';
 import { useSessionTimelinePanel } from './useSessionTimelinePanel';
 
@@ -25,6 +26,15 @@ export function useSessionDetailPage() {
 
   const sessionId = computed(() => String(route.params.sessionId ?? '').trim());
   const showParticipants = computed(() => session.value?.owner_type === 'team');
+  const memoryCenterLink = computed(() => {
+    const current = session.value;
+    if (!current) return { path: '/memory', query: {} };
+    return memoryCenterRoute({
+      tab: 'browse',
+      sessionId: current.id,
+      agentId: current.agent_id || undefined,
+    });
+  });
 
   const timelinePanel = useSessionTimelinePanel(sessionId);
 
@@ -111,6 +121,7 @@ export function useSessionDetailPage() {
     handleArchive,
     handleRestore,
     handleExport,
+    memoryCenterLink,
     timelinePanel,
   };
 }

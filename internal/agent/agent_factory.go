@@ -54,6 +54,7 @@ type AgentFactoryImpl struct {
 	templateRepo biz.AgentTemplateRepo
 	eventBus     biz.EventBus
 	embedder     knowledge.Embedder // nil → 同域复用检查跳过（仅 key 命中，不变量 3）
+	org          biz.OrganizationReader
 	lg           loggateway.Logger
 }
 
@@ -83,6 +84,15 @@ func NewAgentFactoryImpl(
 		embedder:     embedder,
 		lg:           lg.With(loggateway.Domain("agent_factory")),
 	}
+}
+
+// SetOrganizationReader attaches org lookup so newly created agents occupy a
+// position under TaskProfile.DepartmentID (M78 ORGFAST-12). Nil is allowed.
+func (f *AgentFactoryImpl) SetOrganizationReader(org biz.OrganizationReader) {
+	if f == nil {
+		return
+	}
+	f.org = org
 }
 
 // EnsureAgent returns an agent_key suitable for the given TaskProfile.
@@ -159,6 +169,7 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 		MissionStatement: def.MissionStatement,
 		DomainPath:       def.DomainPath,
 	}
+	agent.PositionID, agent.PositionKey = f.resolveBirthPosition(ctx, profile)
 
 	created, err := f.agentWriter.CreateAgent(ctx, agent)
 	if err != nil {
@@ -576,4 +587,39 @@ func keywordOverlapScore(a, b string) float64 {
 		}
 	}
 	return float64(overlap) / float64(len(aTokens))
+}
+
+// resolveBirthPosition picks an existing position under DepartmentID.
+// Factory never creates company/department/position nodes (ORGFAST-05/12).
+func (f *AgentFactoryImpl) resolveBirthPosition(ctx context.Context, profile biz.TaskProfile) (positionID, positionKey string) {
+	if id := strings.TrimSpace(profile.PositionID); id != "" {
+		return id, ""
+	}
+	deptID := strings.TrimSpace(profile.DepartmentID)
+	if deptID == "" || f.org == nil {
+		return "", ""
+	}
+	children, err := f.org.ListOrgNodesByParentID(ctx, deptID)
+	if err != nil {
+		f.lg.Warn("AgentFactory 查询部门岗位失败，新 Agent 暂不占岗",
+			loggateway.StepID("agent_factory.position"),
+			loggateway.Str("department_id", deptID),
+			loggateway.Err(err),
+		)
+		return "", ""
+	}
+	var fallback biz.OrganizationNode
+	for _, n := range children {
+		if n.Level != "position" || strings.TrimSpace(n.DeletedAt) != "" {
+			continue
+		}
+		if fallback.ID == "" {
+			fallback = n
+		}
+		label := strings.ToLower(n.Name + " " + n.Key)
+		if strings.Contains(label, "其他") || strings.Contains(label, "other") || strings.Contains(label, "general") {
+			return n.ID, n.Key
+		}
+	}
+	return fallback.ID, fallback.Key
 }

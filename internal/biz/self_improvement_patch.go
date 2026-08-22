@@ -115,6 +115,125 @@ func DeriveAffectedScopes(changes []PatchFileChange) (goPkgs []string, webScope 
 	return goPkgs, webScope
 }
 
+// SIVerifyPlan is the kind-aware gate schedule for one patch (P0: never fall
+// back to repo-wide go test ./... when the diff has no Go files).
+type SIVerifyPlan struct {
+	GoPkgs   []string
+	WebScope bool
+	Kind     SelfImprovementPatchKind
+}
+
+// PlanSIVerification derives which sandbox gates must run for a patch.
+func PlanSIVerification(kind SelfImprovementPatchKind, changes []PatchFileChange) SIVerifyPlan {
+	pkgs, web := DeriveAffectedScopes(changes)
+	return SIVerifyPlan{GoPkgs: pkgs, WebScope: web, Kind: kind}
+}
+
+// SoftKind is true for patches that must not pay G2 (config/prompt/docs).
+func (p SIVerifyPlan) SoftKind() bool {
+	switch p.Kind {
+	case PatchKindConfig, PatchKindPrompt, PatchKindDocs:
+		return true
+	default:
+		return false
+	}
+}
+
+// ShouldRun reports whether the pipeline should execute the gate.
+func (p SIVerifyPlan) ShouldRun(gate SandboxGateKind) bool {
+	switch gate {
+	case SandboxGateBuild, SandboxGateLint:
+		return len(p.GoPkgs) > 0
+	case SandboxGateTest:
+		return len(p.GoPkgs) > 0 && !p.SoftKind()
+	case SandboxGateWebLint:
+		return p.WebScope
+	default:
+		return false
+	}
+}
+
+// SkipReason is the console-visible explanation when ShouldRun is false.
+func (p SIVerifyPlan) SkipReason(gate SandboxGateKind) string {
+	switch gate {
+	case SandboxGateTest:
+		if p.SoftKind() {
+			return "skipped: g2_test not required for " + string(p.Kind) + " patches"
+		}
+		return "skipped: no Go files in diff (refusing repo-wide ./...)"
+	case SandboxGateBuild, SandboxGateLint:
+		return "skipped: no Go files in diff"
+	case SandboxGateWebLint:
+		return "skipped: diff does not touch web/"
+	case SandboxGateEvalBase:
+		return "skipped: eval baseline gate not wired (73-self-iteration-v3 design D4)"
+	default:
+		return "skipped"
+	}
+}
+
+// goTestFailName captures `--- FAIL: TestFoo` / `--- FAIL: TestFoo/sub`.
+var goTestFailName = regexp.MustCompile(`(?m)^--- FAIL: (\S+)`)
+
+// ParseGoTestFailures extracts failed test names from `go test` output.
+// setupFailed is true for package compile/setup failures that must never be
+// treated as a known-fail exemption.
+func ParseGoTestFailures(output string) (tests []string, setupFailed bool) {
+	if strings.Contains(output, "[setup failed]") || strings.Contains(output, "[build failed]") {
+		setupFailed = true
+	}
+	seen := map[string]struct{}{}
+	for _, m := range goTestFailName.FindAllStringSubmatch(output, -1) {
+		name := strings.TrimSpace(m[1])
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		tests = append(tests, name)
+	}
+	return tests, setupFailed
+}
+
+// ApplyKnownFailExemption marks a failed G2 result as passed when every
+// named failing test was already red on HEAD. Unknown failure shapes and
+// compile/setup failures are left as failures.
+func ApplyKnownFailExemption(res SandboxGateResult, exempt []string) SandboxGateResult {
+	if res.Gate != SandboxGateTest || res.Passed || res.Skipped || len(exempt) == 0 {
+		return res
+	}
+	names, setup := ParseGoTestFailures(res.Output)
+	if setup || len(names) == 0 {
+		return res
+	}
+	allow := map[string]struct{}{}
+	for _, n := range exempt {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			allow[n] = struct{}{}
+		}
+	}
+	var leftover []string
+	for _, n := range names {
+		if _, ok := allow[n]; !ok {
+			leftover = append(leftover, n)
+		}
+	}
+	if len(leftover) > 0 {
+		return res
+	}
+	res.Passed = true
+	note := "exempted HEAD-known failures: " + strings.Join(names, ", ")
+	if strings.TrimSpace(res.Output) == "" {
+		res.Output = note
+	} else {
+		res.Output = strings.TrimRight(res.Output, "\n") + "\n" + note
+	}
+	return res
+}
+
 // ── Protected file list (design D9) ─────────────────────────────────────────
 
 // ProtectedFileRule blocks patch changes against a doublestar glob. Added

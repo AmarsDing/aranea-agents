@@ -182,7 +182,7 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
-	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
+	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, time.Millisecond, loggateway.NewNoop())
 	w, err := NewAutoMemoryWorker(AutoMemoryWorkerConfig{
 		RuntimeConf:  &conf.Runtime{},
 		Interval:     0,
@@ -239,7 +239,7 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
 	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
-	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
+	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, time.Millisecond, loggateway.NewNoop())
 	w, err := NewAutoMemoryWorker(AutoMemoryWorkerConfig{
 		RuntimeConf:  &conf.Runtime{},
 		Interval:     0,

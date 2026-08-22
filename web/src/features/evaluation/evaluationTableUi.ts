@@ -1,5 +1,6 @@
 import type { QTableColumn } from 'quasar';
 import type {
+  EvalCase,
   EvalCaseResult,
   EvalFailureGroup,
   EvalRun,
@@ -24,6 +25,13 @@ export const EVAL_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
   ),
   registryCol<EvalRun>('exact_match_score', 'Exact', 'exact_match_score', 'right', REGISTRY_COL_W.narrow),
   registryColActions<EvalRun>(REGISTRY_COL_W.actions, ''),
+];
+
+/** EvaluationPage — dataset case list */
+export const EVAL_CASE_TABLE_COLUMNS: QTableColumn<EvalCase>[] = [
+  registryCol<EvalCase>('input', 'Input', 'input', 'left', REGISTRY_COL_W.content),
+  registryCol<EvalCase>('expected_output', 'Expected', 'expected_output', 'left', REGISTRY_COL_W.content),
+  registryColActions<EvalCase>(REGISTRY_COL_W.actions, ''),
 ];
 
 /** EvaluationPage — Result 列表 */

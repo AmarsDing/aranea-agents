@@ -29,6 +29,11 @@ export type EvalRun = {
   started_at: string;
   finished_at: string;
   created_at: string;
+  dataset_hash?: string;
+  dataset_version_id?: string;
+  dataset_version?: number;
+  experiment_id?: string;
+  variant_label?: string;
 };
 
 export type EvalCaseResult = {
@@ -50,6 +55,8 @@ export type EvalCaseResult = {
   human_comment?: string;
   annotated_at?: string;
   annotated_by?: string;
+  session_id?: string;
+  trace_run_id?: string;
 };
 
 export type AnnotateCaseResultInput = {
@@ -63,9 +70,31 @@ export type AnnotateCaseResultInput = {
   clear_human_score?: boolean;
 };
 
+export type EvalCase = {
+  id: string;
+  dataset_id: string;
+  input: string;
+  expected_output: string;
+  metadata_json: string;
+};
+
 export type CreateDatasetInput = {
   name: string;
   description?: string;
+};
+
+export type UpdateDatasetInput = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type UpdateCaseInput = {
+  dataset_id: string;
+  id: string;
+  input: string;
+  expected_output?: string;
+  metadata_json?: string;
 };
 
 export type RunEvaluationInput = {
@@ -134,6 +163,27 @@ export type EvalRunComparison = {
   delta_tool_call_accuracy: number;
   /** P3-5: dataset content hash at run start; differs across runs → not comparable */
   dataset_hash: string;
+  dataset_version_id?: string;
+  dataset_version?: number;
+  experiment_id?: string;
+  variant_label?: string;
+};
+
+export type EvalDatasetVersion = {
+  id: string;
+  dataset_id: string;
+  version: number;
+  hash: string;
+  case_count: number;
+  created_at: string;
+};
+
+export type RunExperimentInput = {
+  dataset_id: string;
+  metrics?: string;
+  num_runs?: number;
+  use_user_simulation?: boolean;
+  variants: { agent_id: string; label?: string }[];
 };
 
 /** P1-3 judge 校准：judge 与人工标注分歧统计 */
@@ -205,6 +255,7 @@ export type EvalGateConfig = {
   metric: string;
   min_score: number;
   max_drop: number;
+  mode: string;
   updated_at: string;
 };
 
@@ -215,4 +266,5 @@ export type UpdateEvalGateInput = {
   metric: string;
   min_score: number;
   max_drop: number;
+  mode: string;
 };

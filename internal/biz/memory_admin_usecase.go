@@ -85,11 +85,11 @@ func (uc *MemoryAdminUsecase) requireAdmin() error {
 	return nil
 }
 
-func (uc *MemoryAdminUsecase) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+func (uc *MemoryAdminUsecase) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, 0, err
 	}
-	return uc.admin.ListPIIFlaggedFacts(ctx, scopeType, scopeID, limit, offset)
+	return uc.admin.ListPIIFlaggedFacts(ctx, scopeType, scopeID, agentID, limit, offset)
 }
 
 func (uc *MemoryAdminUsecase) ApprovePIIFact(ctx context.Context, factID string) error {

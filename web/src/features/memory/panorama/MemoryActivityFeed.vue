@@ -50,6 +50,7 @@ const { t } = useI18n();
 
 const kindIcon: Record<string, string> = {
   fact_extracted: 'psychology',
+  fact_injected: 'input',
   episode_recorded: 'timeline',
   entity_created: 'hub',
 };

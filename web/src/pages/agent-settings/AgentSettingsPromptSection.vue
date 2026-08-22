@@ -8,31 +8,38 @@
         <p class="settings-section__hint">控制运行时注入的提示块体量与人格强度。</p>
       </div>
     </div>
-    <div class="app-form-field-grid prompt-mode-grid">
-      <q-card
+    <div class="prompt-mode-segment" role="radiogroup" aria-label="系统提示模式">
+      <button
         v-for="mode in promptModes"
         :key="mode.value"
-        flat
-        bordered
-        class="prompt-mode-card cursor-pointer"
+        type="button"
+        role="radio"
+        :aria-checked="systemPromptMode === mode.value"
+        class="prompt-mode-segment__item"
         :class="{ 'is-active': systemPromptMode === mode.value }"
         @click="$emit('update:systemPromptMode', mode.value)"
       >
-        <q-card-section>
-          <div class="text-subtitle2 text-weight-bold">{{ mode.label }}</div>
-          <p class="prompt-mode-card__caption q-mt-xs">{{ mode.caption }}</p>
-          <q-chip dense square class="prompt-mode-card__token q-mt-sm">{{ mode.tokens }}</q-chip>
-        </q-card-section>
-      </q-card>
+        <span class="prompt-mode-segment__label">{{ mode.label }}</span>
+        <span class="prompt-mode-segment__tokens">{{ mode.tokens }}</span>
+        <q-tooltip :delay="300">{{ mode.caption }}</q-tooltip>
+      </button>
     </div>
+    <p v-if="activeMode" class="prompt-mode-segment__caption">
+      <q-icon name="info" size="14px" />
+      <span>{{ activeMode.caption }}</span>
+    </p>
   </section>
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue';
+
+const props = defineProps<{
   systemPromptMode: string;
   promptModes: { value: string; label: string; caption: string; tokens: string }[];
 }>();
 
 defineEmits<{ 'update:systemPromptMode': [value: string] }>();
+
+const activeMode = computed(() => props.promptModes.find((m) => m.value === props.systemPromptMode));
 </script>

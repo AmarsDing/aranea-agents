@@ -24,10 +24,12 @@ vi.mock('../../features/knowledge/api', () => ({
   enableCollectionSemantic: vi.fn(),
   searchKnowledge: vi.fn(),
   getEmbedderConfig: vi.fn(),
+  getDocumentContent: vi.fn(),
+  updateDocumentContent: vi.fn(),
   updateEmbedderConfig: vi.fn(),
 }));
 
-import { reembedDocuments, enableCollectionSemantic } from '../../features/knowledge/api';
+import { reembedDocuments, enableCollectionSemantic, listDocuments, ingestDocument } from '../../features/knowledge/api';
 
 describe('useKnowledgeStore reembedDocuments（B1）', () => {
   beforeEach(() => {
@@ -60,5 +62,47 @@ describe('useKnowledgeStore enableCollectionSemantic（B2）', () => {
     const r = await store.enableCollectionSemantic('col-lex');
     expect(enableCollectionSemantic).toHaveBeenCalledWith('col-lex');
     expect(r).toEqual({ enqueued_docs: 7, embedding_model: 'text-embedding-3-small', dim: 1536 });
+  });
+});
+
+describe('useKnowledgeStore documents + ingest', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+  });
+
+  it('loadDocuments marks truncated when total exceeds page', async () => {
+    vi.mocked(listDocuments).mockResolvedValueOnce({
+      items: [{ id: 'd1', collection_id: 'c1' } as never],
+      total: 3,
+    });
+    const store = useKnowledgeStore();
+    await store.loadDocuments('c1', { limit: 1 });
+    expect(store.documentsTruncatedByCollection.c1).toBe(true);
+  });
+
+  it('loadDocuments append merges pages and clears truncated when complete', async () => {
+    vi.mocked(listDocuments)
+      .mockResolvedValueOnce({ items: [{ id: 'd1', collection_id: 'c1' } as never], total: 2 })
+      .mockResolvedValueOnce({ items: [{ id: 'd2', collection_id: 'c1' } as never], total: 2 });
+    const store = useKnowledgeStore();
+    await store.loadDocuments('c1', { limit: 1 });
+    await store.loadDocuments('c1', { limit: 1, offset: 1, append: true });
+    expect(store.documentsByCollection.c1.map((d) => d.id)).toEqual(['d1', 'd2']);
+    expect(store.documentsTruncatedByCollection.c1).toBe(false);
+  });
+
+  it('ingest upserts the same document id instead of duplicating', async () => {
+    vi.mocked(ingestDocument).mockResolvedValue({
+      id: 'd1',
+      collection_id: 'c1',
+      source: 'a.md',
+      summary: 'updated',
+    } as never);
+    const store = useKnowledgeStore();
+    store.documentsByCollection.c1 = [{ id: 'd1', collection_id: 'c1', source: 'a.md', summary: 'old' } as never];
+    await store.ingest({ collection_id: 'c1', source: 'a.md', content_base64: 'eA==' });
+    expect(store.documentsByCollection.c1).toHaveLength(1);
+    expect(store.documentsByCollection.c1[0].summary).toBe('updated');
   });
 });

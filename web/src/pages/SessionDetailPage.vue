@@ -67,6 +67,14 @@
           <q-btn
             outline
             rounded
+            icon="psychology"
+            :label="t('sessionDetail.openMemory')"
+            class="sessions-btn-accent-outline"
+            :to="memoryCenterLink"
+          />
+          <q-btn
+            outline
+            rounded
             icon="chat"
             label="继续会话"
             class="sessions-btn-accent-outline"
@@ -222,6 +230,7 @@ const {
   handleArchive,
   handleRestore,
   handleExport,
+  memoryCenterLink,
   timelinePanel,
 } = useSessionDetailPage();
 </script>

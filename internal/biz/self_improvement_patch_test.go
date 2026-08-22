@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -35,6 +36,10 @@ func (f *fakeRepoSandbox) ApplyDiff(ctx context.Context, path, diff string) erro
 }
 
 func (f *fakeRepoSandbox) ResetWorktree(_ context.Context, _ string) error { return nil }
+
+func (f *fakeRepoSandbox) ProbeTestFailures(context.Context, string, []string) ([]string, error) {
+	return nil, nil
+}
 
 func (f *fakeRepoSandbox) RunGate(ctx context.Context, path string, gate SandboxGateKind, pkgs []string) (SandboxGateResult, error) {
 	f.lastGatePkgs = pkgs
@@ -98,7 +103,7 @@ func TestRepoSandbox_PortContract(t *testing.T) {
 func TestSandboxGateKinds_Distinct(t *testing.T) {
 	kinds := []SandboxGateKind{
 		SandboxGateBuild, SandboxGateTest, SandboxGateLint,
-		SandboxGateCritic, SandboxGateEvalBase,
+		SandboxGateWebLint, SandboxGateCritic, SandboxGateEvalBase,
 	}
 	seen := map[SandboxGateKind]bool{}
 	for _, k := range kinds {
@@ -490,5 +495,40 @@ func TestSensitiveScanDoesNotLeakSecret(t *testing.T) {
 		if h == secret {
 			t.Fatalf("hit descriptor leaked secret material: %q", h)
 		}
+	}
+}
+
+func TestPlanSIVerification_KindAwareGates(t *testing.T) {
+	goChange := []PatchFileChange{{Path: "internal/biz/foo.go", Kind: PatchChangeModified}}
+	cfgChange := []PatchFileChange{{Path: "configs/config.yaml", Kind: PatchChangeModified}}
+	webChange := []PatchFileChange{{Path: "web/src/App.vue", Kind: PatchChangeModified}}
+
+	codeGo := PlanSIVerification(PatchKindCode, goChange)
+	if !codeGo.ShouldRun(SandboxGateBuild) || !codeGo.ShouldRun(SandboxGateTest) || !codeGo.ShouldRun(SandboxGateLint) {
+		t.Fatalf("code+go should run G1-G3, plan=%+v", codeGo)
+	}
+	if codeGo.ShouldRun(SandboxGateWebLint) {
+		t.Error("code+go must not schedule web lint")
+	}
+
+	cfg := PlanSIVerification(PatchKindConfig, cfgChange)
+	if cfg.ShouldRun(SandboxGateBuild) || cfg.ShouldRun(SandboxGateTest) || cfg.ShouldRun(SandboxGateLint) {
+		t.Fatalf("config-only must skip G1-G3, plan=%+v", cfg)
+	}
+	if !strings.Contains(cfg.SkipReason(SandboxGateTest), "not required") {
+		t.Errorf("config G2 skip reason = %q", cfg.SkipReason(SandboxGateTest))
+	}
+
+	cfgWithGo := PlanSIVerification(PatchKindConfig, goChange)
+	if !cfgWithGo.ShouldRun(SandboxGateBuild) || cfgWithGo.ShouldRun(SandboxGateTest) || !cfgWithGo.ShouldRun(SandboxGateLint) {
+		t.Fatalf("config+go runs G1/G3 but not G2, plan=%+v", cfgWithGo)
+	}
+
+	web := PlanSIVerification(PatchKindCode, webChange)
+	if web.ShouldRun(SandboxGateBuild) || web.ShouldRun(SandboxGateTest) {
+		t.Fatalf("web-only must not run go test/build, plan=%+v", web)
+	}
+	if !web.ShouldRun(SandboxGateWebLint) {
+		t.Error("web-only must schedule web lint")
 	}
 }

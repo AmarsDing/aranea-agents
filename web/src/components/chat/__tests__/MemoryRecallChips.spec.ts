@@ -1,9 +1,10 @@
 // web/src/components/chat/__tests__/MemoryRecallChips.spec.ts
 // 记忆召回 chips 折叠行为：默认收起（仅标题行），点击标题展开/收起。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import MemoryRecallChips from '../MemoryRecallChips.vue';
 import zhCN from '../../../i18n/locales/zh-CN';
@@ -31,7 +32,7 @@ function seedRecallHits(store: ReturnType<typeof useChatActivityStore>, turnId: 
     Version: 1,
     Content: JSON.stringify({
       hits: [
-        { layer: 'L3', line: '用户偏好 XX 餐厅', score: 0.91 },
+        { layer: 'L3', line: '用户偏好 XX 餐厅', score: 0.91, fact_id: 'f-1' },
         { layer: 'L2', line: '上次聚餐点了日料', score: 0.72 },
       ],
     }),
@@ -102,5 +103,35 @@ describe('MemoryRecallChips 折叠', () => {
       global: { plugins: [i18n], stubs: quasarStubs },
     });
     expect(second.find('.memory-recall-chips__list').exists()).toBe(true);
+  });
+
+  it('点击 L3 chip 跳转记忆中心并带 factId', async () => {
+    const store = useChatActivityStore();
+    seedRecallHits(store, 'turn1');
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/memory', component: { template: '<div />' } },
+      ],
+    });
+    const wrapper = mount(MemoryRecallChips, {
+      props: { turnId: 'turn1', sessionId: 's1', agentKey: 'spirit' },
+      global: { plugins: [i18n, router], stubs: quasarStubs },
+    });
+    await router.isReady();
+    const push = vi.spyOn(router, 'push');
+    await wrapper.find('.memory-recall-chips__header').trigger('click');
+    await wrapper.find('.memory-recall-chips__chip').trigger('click');
+    expect(push).toHaveBeenCalledWith({
+      path: '/memory',
+      query: {
+        tab: 'browse',
+        layer: 'L3',
+        factId: 'f-1',
+        agentKey: 'spirit',
+        sessionId: 's1',
+      },
+    });
   });
 });

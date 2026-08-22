@@ -17,6 +17,8 @@ export type AddToEvalCasePayload = {
   /** 溯源元数据（写入 case metadata_json.source_*） */
   source_task_id?: string;
   source_session_id?: string;
+  /** Team sessions produce status text, not a replayable single-agent answer. */
+  is_team?: boolean;
 };
 
 export function useAddToEvalDataset() {
@@ -39,6 +41,10 @@ export function useAddToEvalDataset() {
   let sourceMeta: Record<string, string> = {};
 
   async function openWith(payload: AddToEvalCasePayload) {
+    if (payload.is_team) {
+      $q.notify({ type: 'warning', message: t('evaluationPage.addCaseTeamBlocked') });
+      return;
+    }
     input.value = payload.input;
     expectedOutput.value = payload.expected_output;
     sourceMeta = {};

@@ -36,6 +36,8 @@ func NewKnowledgeRepo(data *Data, lg loggateway.Logger) biz.KnowledgeRepo {
 	return &knowledgeRepo{data: data, lg: lg}
 }
 
+var _ bizknowledge.IngestCommitter = (*knowledgeRepo)(nil)
+
 func ivfflatLists(dim int) int {
 	if v := os.Getenv("KRATOS_KNOWLEDGE_IVFFLAT_LISTS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -160,6 +162,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS owner_user_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_visibility_idx
 			ON knowledge_documents (collection_id, visibility, owner_user_id)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_documents_collection_hash_idx
+			ON knowledge_documents (collection_id, content_hash) WHERE content_hash <> ''`,
 		// --- 29-token P2-2 cited 引用计数（fresh 形态；存量库由迁移 20261215 补列/建表） ---
 		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS cited_count INT NOT NULL DEFAULT 0`,
 		`CREATE TABLE IF NOT EXISTS knowledge_chunk_citations (
@@ -301,6 +305,14 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 	if len(lg) > 0 {
 		logger = lg[0]
 	}
+	// Wave 2：默认库按 (workspace, name) 精确复用。存量重复行会使唯一索引创建失败，
+	// 不阻断启动（EnsureDefaultCollection 仍走 GetByName + Conflict 回读）。
+	if _, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS knowledge_collections_workspace_name_uidx
+		ON knowledge_collections (workspace, name)`); err != nil && logger != nil {
+		logger.Warn("knowledge collections (workspace, name) unique index skipped",
+			loggateway.StepID("data.schema.knowledge_ws_name_uidx"),
+			loggateway.Err(err))
+	}
 	return reconcileEmbeddingDim(ctx, db, dim, logger)
 }
 
@@ -392,6 +404,15 @@ func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.Knowl
 		args = append(args, ws)
 	}
 	return scanCollection(r.data.Postgres().QueryRowContext(ctx, q, args...))
+}
+
+func (r *knowledgeRepo) GetCollectionByName(ctx context.Context, workspace, name string) (biz.KnowledgeCollection, error) {
+	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
+		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		  FROM knowledge_collections WHERE workspace = $1 AND name = $2`
+	return scanCollection(r.data.Postgres().QueryRowContext(ctx, q, workspace, name))
 }
 
 func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]biz.KnowledgeCollection, int, error) {
@@ -486,6 +507,35 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 	if err != nil {
 		// DB-R5：翻译 sql.ErrNoRows → CodeNotFound；vault sync applier 依赖
 		// NotFound 判定走「创建新文档」路径，裸 ErrNoRows 会导致同步失败。
+		return doc, entErrToBizErr(err, "KNOWLEDGE")
+	}
+	return doc, nil
+}
+
+// GetDocumentByContentHash 按正文 hash 寻址（入库去重）。空 hash 不查库。
+func (r *knowledgeRepo) GetDocumentByContentHash(ctx context.Context, collectionID, contentHash string) (biz.KnowledgeDocument, error) {
+	if strings.TrimSpace(contentHash) == "" {
+		return biz.KnowledgeDocument{}, apierror.NotFound(apierror.DomainKnowledge, "document hash not found")
+	}
+	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
+		         d.content_text, d.organized, d.asset_uri,
+		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
+		         d.embed_fail_count, d.embed_last_tried,
+		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,'')
+		  FROM knowledge_documents d
+		  JOIN knowledge_collections c ON c.id = d.collection_id
+		  WHERE d.collection_id = $1 AND d.content_hash = $2`
+	args := []any{collectionID, contentHash}
+	if !workspace.IsSystem(ctx) {
+		ws := workspace.IDFromContext(ctx)
+		q += ` AND (c.workspace = $3 OR c.workspace = '')`
+		args = append(args, ws)
+	}
+	q += ` ORDER BY d.created_at ASC LIMIT 1`
+	doc, err := scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	if err != nil {
 		return doc, entErrToBizErr(err, "KNOWLEDGE")
 	}
 	return doc, nil
@@ -821,6 +871,50 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 	if len(chunks) == 0 {
 		return nil
 	}
+	if err := r.assertChunkDimensions(ctx, chunks); err != nil {
+		return err
+	}
+	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		return r.insertChunksTx(ctx, tx, chunks)
+	})
+}
+
+// CommitIndexedDocument inserts chunks, CAS-marks the document indexed, and
+// adjusts collection counts in one transaction.
+func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []biz.KnowledgeChunk, docDelta int) error {
+	if len(chunks) > 0 {
+		if err := r.assertChunkDimensions(ctx, chunks); err != nil {
+			return err
+		}
+	}
+	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if err := r.insertChunksTx(ctx, tx, chunks); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_documents
+			 SET status = 'indexed', error_message = '', chunk_count = $2, updated_at = NOW()
+			 WHERE id = $1 AND status = 'indexing'`, docID, len(chunks))
+		if err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		n, _ := res.RowsAffected()
+		if n != 1 {
+			return bizknowledge.ErrDocumentStatusConflict
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_collections
+			 SET document_count = document_count + $2,
+			     chunk_count    = chunk_count    + $3,
+			     updated_at     = NOW()
+			 WHERE id = $1`, collectionID, docDelta, len(chunks)); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		return nil
+	})
+}
+
+func (r *knowledgeRepo) assertChunkDimensions(ctx context.Context, chunks []biz.KnowledgeChunk) error {
 	var expectedDim int
 	err := r.data.Postgres().QueryRowContext(ctx,
 		"SELECT dim FROM knowledge_collections WHERE id = $1", chunks[0].CollectionID).Scan(&expectedDim)
@@ -832,31 +926,36 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 			return apierror.BadRequest(apierror.DomainKnowledge, "embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding))
 		}
 	}
-	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		stmt, err := tx.PrepareContext(ctx,
-			`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7)`)
-		if err != nil {
+	return nil
+}
+
+func (r *knowledgeRepo) insertChunksTx(ctx context.Context, tx *sql.Tx, chunks []biz.KnowledgeChunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7)`)
+	if err != nil {
+		return entErrToBizErr(err, "knowledge")
+	}
+	defer stmt.Close()
+	for _, ch := range chunks {
+		meta := ch.MetadataJSON
+		if meta == "" {
+			meta = "{}"
+		}
+		// 无语义层 vault（R-4）：空 embedding 写 NULL，pgvector.NewVector(nil) 会生成非法 '[]'。
+		var vec any
+		if len(ch.Embedding) > 0 {
+			vec = pgvector.NewVector(ch.Embedding)
+		}
+		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
+			r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
 			return entErrToBizErr(err, "knowledge")
 		}
-		defer stmt.Close()
-		for _, ch := range chunks {
-			meta := ch.MetadataJSON
-			if meta == "" {
-				meta = "{}"
-			}
-			// 无语义层 vault（R-4）：空 embedding 写 NULL，pgvector.NewVector(nil) 会生成非法 '[]'。
-			var vec any
-			if len(ch.Embedding) > 0 {
-				vec = pgvector.NewVector(ch.Embedding)
-			}
-			if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
-				r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
-				return entErrToBizErr(err, "knowledge")
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {

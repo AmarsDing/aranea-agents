@@ -37,6 +37,8 @@ func (EvalGateConfig) Fields() []ent.Field {
 		// max_drop: allowed drop vs the latest completed baseline run;
 		// 0 disables the relative check.
 		field.Float("max_drop").Default(0),
+		// mode: advisory (default) | blocking.
+		field.String("mode").Default("advisory"),
 		field.String("updated_at").Default(""),
 	}
 }

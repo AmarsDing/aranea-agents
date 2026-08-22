@@ -1611,6 +1611,22 @@ body.body--dark .tool-help-drawer.q-card
     background: color-mix(in srgb, var(--color-accent) 18%, transparent)
     border-radius: 3px
 
+// 自我改进 Run 详情抽屉（RunDetailDrawer.vue）：玻璃外壳 + 遮罩，模板同 .tool-detail-drawer
+// 注意：backdrop-filter 只写无前缀版——构建器会自动补 -webkit 前缀；
+// 手写成对时压缩器只保留 -webkit 版，而 Chrome 151+ 已不支持 -webkit-backdrop-filter 别名
+.si-run-drawer-backdrop
+  position: fixed
+  inset: 0
+  z-index: 1999
+  background: rgba(0, 0, 0, 0.32)
+  backdrop-filter: blur(2px)
+
+.si-run-drawer
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-hover))
+  border-left: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+  box-shadow: -6px 0 32px color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+
 .tool-detail-metrics
   display: grid
   grid-template-columns: repeat(4, 1fr)

@@ -25,17 +25,35 @@ type CollectionMetaFetcher interface {
 }
 
 type FederatedSearchOptions struct {
-	Strategy      FederationStrategy
-	RouteTopN     int
-	RouteMinScore float32
+	Strategy       FederationStrategy
+	RouteTopN      int
+	RouteMinScore  float32
+	EnumerateLimit int // SearchAll 枚举 Collection 上限（默认 64）
+	BroadcastCap   int // 广播/降级扇出 Collection 上限（默认 8）
 }
 
 func DefaultFederatedSearchOptions() FederatedSearchOptions {
 	return FederatedSearchOptions{
-		Strategy:      FederationBroadcast,
-		RouteTopN:     3,
-		RouteMinScore: 0.3,
+		Strategy:       FederationBroadcast,
+		RouteTopN:      3,
+		RouteMinScore:  0.3,
+		EnumerateLimit: 64,
+		BroadcastCap:   8,
 	}
+}
+
+func (o FederatedSearchOptions) enumerateLimit() int {
+	if o.EnumerateLimit <= 0 {
+		return 64
+	}
+	return o.EnumerateLimit
+}
+
+func (o FederatedSearchOptions) broadcastCap() int {
+	if o.BroadcastCap <= 0 {
+		return 8
+	}
+	return o.BroadcastCap
 }
 
 type FederatedRetriever struct {
@@ -65,7 +83,8 @@ func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string,
 		return f.retriever.Search(ctx, q)
 	}
 
-	return f.searchBroadcast(ctx, collectionIDs, q, rewriteResult, modeOverride)
+	opts := DefaultFederatedSearchOptions()
+	return f.searchBroadcast(ctx, capCollectionIDs(collectionIDs, opts.broadcastCap()), q, rewriteResult, modeOverride)
 }
 
 // SearchAll 全库智能路由（US-14 检索免选择）：枚举 Collection → Route 策略
@@ -76,7 +95,9 @@ func (f *FederatedRetriever) SearchAll(ctx context.Context, q biz.KnowledgeSearc
 	if f.meta == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "federated_retriever: collection meta not configured")
 	}
-	cols, _, err := f.meta.ListCollections(ctx, workspace, 1000, 0)
+	opts := DefaultFederatedSearchOptions()
+	opts.Strategy = FederationRoute
+	cols, _, err := f.meta.ListCollections(ctx, workspace, opts.enumerateLimit(), 0)
 	if err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
 	}
@@ -87,9 +108,18 @@ func (f *FederatedRetriever) SearchAll(ctx context.Context, q biz.KnowledgeSearc
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	opts := DefaultFederatedSearchOptions()
-	opts.Strategy = FederationRoute
-	return f.SearchWithOptions(ctx, ids, q, rewriteResult, modeOverride, opts)
+	// 扇出前重写一次（显式策略由调用方传入；空则复杂查询自动 MultiQuery）。
+	rewriteResult = f.prepareRewriteOnce(ctx, q, rewriteResult)
+	routed := rankCollections(cols, ids, q.Query, opts)
+	targets := routed
+	if len(targets) == 0 {
+		targets = capCollectionIDs(ids, opts.broadcastCap())
+	} else {
+		targets = capCollectionIDs(targets, opts.broadcastCap())
+	}
+	// 已在本函数完成 Route，禁止 SearchWithOptions 再 List+Route。
+	opts.Strategy = FederationBroadcast
+	return f.SearchWithOptions(ctx, targets, q, rewriteResult, modeOverride, opts)
 }
 
 func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode, opts FederatedSearchOptions) ([]biz.KnowledgeChunk, error) {
@@ -111,19 +141,33 @@ func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionID
 				loggateway.StepID("knowledge.federated.route_fail"),
 				loggateway.Err(err))
 		} else if len(routed) > 0 {
-			return f.searchBroadcast(ctx, routed, q, rewriteResult, modeOverride)
+			return f.searchBroadcast(ctx, capCollectionIDs(routed, opts.broadcastCap()), q, rewriteResult, modeOverride)
 		}
 	}
 
-	return f.searchBroadcast(ctx, collectionIDs, q, rewriteResult, modeOverride)
+	return f.searchBroadcast(ctx, capCollectionIDs(collectionIDs, opts.broadcastCap()), q, rewriteResult, modeOverride)
+}
+
+func (f *FederatedRetriever) prepareRewriteOnce(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult) *QueryRewriteResult {
+	if rewriteResult != nil || f.router == nil {
+		return rewriteResult
+	}
+	return f.router.PrepareRewrite(ctx, q, nil)
 }
 
 func (f *FederatedRetriever) routeCollections(ctx context.Context, collectionIDs []string, query string, opts FederatedSearchOptions) ([]string, error) {
-	collections, _, err := f.meta.ListCollections(ctx, "", len(collectionIDs), 0)
+	collections, _, err := f.meta.ListCollections(ctx, "", opts.enumerateLimit(), 0)
 	if err != nil {
 		return nil, err
 	}
+	routed := rankCollections(collections, collectionIDs, query, opts)
+	if len(routed) == 0 {
+		return collectionIDs, nil
+	}
+	return routed, nil
+}
 
+func rankCollections(collections []biz.KnowledgeCollection, collectionIDs []string, query string, opts FederatedSearchOptions) []string {
 	idSet := make(map[string]struct{}, len(collectionIDs))
 	for _, id := range collectionIDs {
 		idSet[id] = struct{}{}
@@ -163,12 +207,14 @@ func (f *FederatedRetriever) routeCollections(ctx context.Context, collectionIDs
 	for i := 0; i < topN; i++ {
 		result = append(result, ranked[i].id)
 	}
+	return result
+}
 
-	if len(result) == 0 {
-		return collectionIDs, nil
+func capCollectionIDs(ids []string, limit int) []string {
+	if limit <= 0 || len(ids) <= limit {
+		return ids
 	}
-
-	return result, nil
+	return ids[:limit]
 }
 
 func collectionRelevanceScore(col biz.KnowledgeCollection, queryLower string, queryTerms []string) float32 {

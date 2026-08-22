@@ -991,7 +991,7 @@ func provideSkillCatalogPusher(svc *service.ChatService) server.SkillCatalogPush
 	return svc
 }
 
-func provideMemoryService(persist rt.PersistenceSet, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, workerStats *biz.MemoryWorkerStats, d *data.Data, lg loggateway.Logger) *service.MemoryService {
+func provideMemoryService(persist rt.PersistenceSet, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, workerStats *biz.MemoryWorkerStats, d *data.Data, agentUC *biz.AgentUsecase, lg loggateway.Logger) *service.MemoryService {
 	enqueue := func(ctx context.Context, id int64) error {
 		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
 			queue.Enqueue(memtrpc.AutoMemoryJobRequest{
@@ -1015,6 +1015,7 @@ func provideMemoryService(persist rt.PersistenceSet, cascade *biz.L4CascadeUseca
 		DeadLetterEnqueue:   enqueue,
 		QueueStats:          queueStats,
 		Logger:              lg,
+		AgentUC:             agentUC,
 	})
 }
 
@@ -2365,7 +2366,7 @@ func provideSIControlPlane() *biz.SIControlPlane {
 // provideSIAnalystStage wires the LLM Analyst stage on the platform
 // DefaultRefineLLM (V2 skill_curator pattern). Unconfigured → nil stage;
 // the pipeline then fails runs with a clear "stages not wired" error.
-func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, lg loggateway.Logger) biz.SIAnalystStage {
+func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, sandbox *service.RepoSandboxRunner, rca heal.RootCauseAnalyzer, lg loggateway.Logger) biz.SIAnalystStage {
 	if !siConf.SIEnabled() {
 		return nil
 	}
@@ -2375,7 +2376,16 @@ func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, s
 			loggateway.StepID("si_analyst.init"))
 		return nil
 	}
-	return service.NewSIAnalystAgent(caller, rl.Provider, rl.Model, lg)
+	var opts []service.SIAnalystOption
+	if sandbox != nil {
+		if root := sandbox.RepoRoot(); root != "" {
+			opts = append(opts, service.WithSIAnalystReadRoot(root))
+		}
+	}
+	if rca != nil {
+		opts = append(opts, service.WithSIAnalystRCA(rca))
+	}
+	return service.NewSIAnalystAgent(caller, rl.Provider, rl.Model, lg, opts...)
 }
 
 // provideSIPatcherStage wires the LLM Patcher stage (D10 daily quota default
@@ -2921,7 +2931,7 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 		biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)))
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
@@ -2929,11 +2939,9 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithVerificationGateExecutor(gateExecutor),
 		biz.WithDeptLeadMgr(deptLeadMgr),
 		biz.WithSpiritStepReader(stepReader),
-		// B.10.17 execution report: per-unit duration/error enrichment.
 		biz.WithSpiritTeamRunStatsReader(runStatsReader),
-		// B.10.15.4 Graph StateFields bridge: read graph final-state
-		// deliverables for enable_state_deliverable teams.
 		biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)),
+		biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)),
 	)
 }
 
@@ -3556,9 +3564,11 @@ func provideAgentAllocator(
 	agentFactory biz.AgentFactory,
 	lg loggateway.Logger,
 	sysUC *biz.SystemSettingUsecase,
+	orgReader biz.OrganizationReader,
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
+	capBuilder.SetOrganizationReader(orgReader)
 	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
 }
 
@@ -3577,6 +3587,7 @@ func provideAgentFactory(
 	sysUC *biz.SystemSettingUsecase,
 	embedder knowledge.Embedder,
 	lg loggateway.Logger,
+	orgReader biz.OrganizationReader,
 ) biz.AgentFactory {
 	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 60 * time.Second}}
 
@@ -3603,7 +3614,11 @@ func provideAgentFactory(
 				loggateway.Err(err))
 		}
 	}
-	return chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, eventBus, embedder, lg)
+	factory := chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, eventBus, embedder, lg)
+	if impl, ok := factory.(*chatagent.AgentFactoryImpl); ok {
+		impl.SetOrganizationReader(orgReader)
+	}
+	return factory
 }
 
 func provideTaskOrchestrator(

@@ -31,6 +31,8 @@ type MemoryServiceConfig struct {
 	DeadLetterEnqueue   func(ctx context.Context, id int64) error
 	QueueStats          queueStatsProvider
 	Logger              loggateway.Logger
+	// AgentUC is used for Memory Center / debug-recall IDOR (workspace tenancy).
+	AgentUC agentCatalog
 }
 
 type MemoryService struct {
@@ -47,9 +49,14 @@ type MemoryService struct {
 	deadLetterEnqueue   func(ctx context.Context, id int64) error
 	queueStats          queueStatsProvider
 	lg                  loggateway.Logger
+	agentUC             agentCatalog
 }
 
 func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
+	lg := cfg.Logger
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &MemoryService{
 		admin:               cfg.Admin,
 		cascade:             cfg.Cascade,
@@ -61,11 +68,13 @@ func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
 		spreadingActivation: cfg.SpreadingActivation,
 		deadLetterEnqueue:   cfg.DeadLetterEnqueue,
 		queueStats:          cfg.QueueStats,
-		lg:                  cfg.Logger,
+		lg:                  lg,
+		agentUC:             cfg.AgentUC,
 	}
 }
 
-func (s *MemoryService) requireAdmin() error {
+// requireWired checks that the admin usecase is injected. It is not a role check.
+func (s *MemoryService) requireWired() error {
 	if s.admin == nil {
 		return apierror.Internal(apierror.DomainMemory, "memory admin usecase not wired")
 	}
@@ -73,7 +82,7 @@ func (s *MemoryService) requireAdmin() error {
 }
 
 func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0SnapshotsRequest) (*v1.ListL0SnapshotsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	sid := strings.TrimSpace(req.GetSessionId())
@@ -99,20 +108,31 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 }
 
 func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPIIFlaggedFactsRequest) (*v1.ListPIIFlaggedFactsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
-	if scopeType == "" {
-		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type is required")
+	agentID := memoryHTTPQuery(ctx, "agent_id", "agentId")
+	if scopeType == "" && agentID == "" {
+		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type or agent_id is required")
 	}
-	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
-	if err != nil {
-		return nil, err
+	if agentID != "" {
+		if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
+			return nil, err
+		}
+	}
+	var scopeID string
+	if scopeType != "" {
+		sid, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
+		if err != nil {
+			return nil, err
+		}
+		scopeID = sid
 	}
 	rows, total, err := s.admin.ListPIIFlaggedFacts(ctx,
 		scopeType,
 		scopeID,
+		agentID,
 		req.GetLimit(),
 		req.GetOffset(),
 	)
@@ -136,7 +156,7 @@ func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPII
 }
 
 func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListConflictingFactsRequest) (*v1.ListConflictingFactsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
@@ -179,7 +199,7 @@ func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListCo
 }
 
 func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFactRequest) (*v1.ReviewPIIFactResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	factID := strings.TrimSpace(req.GetFactId())
@@ -215,7 +235,7 @@ func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFact
 // review path — never UpsertMemoryFact, which would silently wipe links/
 // keywords/metadata on feedback-only actions (memory.md §9.4).
 func (s *MemoryService) ReviewMemoryFact(ctx context.Context, req *v1.ReviewMemoryFactRequest) (*v1.ReviewMemoryFactResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	factID := strings.TrimSpace(req.GetFactId())
@@ -252,7 +272,7 @@ func (s *MemoryService) ReviewMemoryFact(ctx context.Context, req *v1.ReviewMemo
 }
 
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	sid := strings.TrimSpace(req.GetSessionId())
@@ -277,7 +297,7 @@ func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequ
 }
 
 func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRequest) (*v1.ListL1FieldsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	tid := strings.TrimSpace(req.GetTaskId())
@@ -330,7 +350,7 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 }
 
 func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryFactsRequest) (*v1.ListMemoryFactsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
@@ -392,7 +412,7 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 }
 
 func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemoryEntitiesRequest) (*v1.ListMemoryEntitiesResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
@@ -438,7 +458,7 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 }
 
 func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMemoryNeighborhoodRequest) (*v1.GraphNeighborhood, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	cid := strings.TrimSpace(req.GetCenterId())
@@ -744,7 +764,7 @@ func pbCascadeProposal(raw []byte) (*v1.CascadeProposal, error) {
 }
 
 func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentIdentityRequest) (*v1.AgentIdentity, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -788,7 +808,7 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 }
 
 func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentStrategyRequest) (*v1.AgentStrategyProfile, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -834,7 +854,7 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 }
 
 func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.ListEvolutionProposalsRequest) (*v1.ListEvolutionProposalsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -871,7 +891,7 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 }
 
 func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvolutionEventsRequest) (*v1.ListEvolutionEventsResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -906,7 +926,7 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 }
 
 func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvolutionMetricsRequest) (*v1.EvolutionMetricsReport, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -960,7 +980,7 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 }
 
 func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemoryFactRequest) (*v1.UpsertMemoryFactResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	f := req.GetFact()
@@ -1032,7 +1052,7 @@ func parsePIITypesJSON(raw string) []string {
 }
 
 func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.AppendEvolutionEventRequest) (*v1.AppendEvolutionEventResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())

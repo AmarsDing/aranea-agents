@@ -34,6 +34,8 @@ import {
   appendEvolutionEvent,
   listPIIFlaggedFacts,
   reviewPIIFact,
+  getMemoryLayerOverview,
+  getMemoryEpisodes,
 } from '../../features/memory/api';
 import {
   MEMORY_SNAPSHOT_LIMIT,
@@ -60,6 +62,8 @@ import type {
   MemoryWorkerStatus,
   MemoryDeadLetterEntry,
   FactReviewPayload,
+  MemoryEpisodeListResult,
+  MemoryLayerOverview,
 } from '../../features/memory/types';
 
 export type MemoryEvolutionBundle = {
@@ -301,12 +305,26 @@ export const useMemoryStore = defineStore('memory', () => {
     scopeId: string,
     limit = 50,
     offset = 0,
+    agentId = '',
   ): Promise<MemoryFact[]> {
-    return listPIIFlaggedFacts(scopeType, scopeId, limit, offset);
+    return listPIIFlaggedFacts(scopeType, scopeId, limit, offset, agentId);
   }
 
   async function reviewPII(factID: string, action: 'approve' | 'reject'): Promise<MemoryFact> {
     return reviewPIIFact(factID, action);
+  }
+
+  async function loadLayerOverview(agentID: string, sessionID = ''): Promise<MemoryLayerOverview> {
+    return getMemoryLayerOverview(agentID, sessionID);
+  }
+
+  async function listEpisodes(
+    agentID: string,
+    sessionID = '',
+    limit = 20,
+    offset = 0,
+  ): Promise<MemoryEpisodeListResult> {
+    return getMemoryEpisodes(agentID, sessionID, limit, offset);
   }
 
   return {
@@ -358,5 +376,7 @@ export const useMemoryStore = defineStore('memory', () => {
     appendEvolution,
     loadPIIFlaggedFacts,
     reviewPII,
+    loadLayerOverview,
+    listEpisodes,
   };
 });

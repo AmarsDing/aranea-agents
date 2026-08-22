@@ -75,4 +75,12 @@ describe('useAddToEvalDataset', () => {
     await c.openWith({ input: 'q2', expected_output: '' });
     expect(c.rubric.value).toBe('');
   });
+
+  it('blocks team tasks from becoming eval cases', async () => {
+    const c = useAddToEvalDataset();
+    await c.openWith({ input: 'q', expected_output: 'a', is_team: true });
+    expect(c.open.value).toBe(false);
+    expect(notify).toHaveBeenCalledWith({ type: 'warning', message: 'evaluationPage.addCaseTeamBlocked' });
+    expect(evaluationStoreMock.loadDatasets).not.toHaveBeenCalled();
+  });
 });

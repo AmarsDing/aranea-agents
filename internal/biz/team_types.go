@@ -369,12 +369,45 @@ type DeliverableRef struct {
 // "format" field; Title/SizeChars are extracted from the payload itself
 // (document paradigm {"title","format","content"} → content rune count;
 // other shapes fall back to JSON serialization size).
+//
+// M78 Bulk channel: Kind/SizeBytes/SHA256/ArtifactID/RelPath/MimeType are
+// Evolving and omitempty. Legacy envelopes without Kind parse as state_key.
 type DeliverableArtifact struct {
-	Key       string `json:"key"`
-	Type      string `json:"type,omitempty"`
-	Format    string `json:"format,omitempty"`
-	Title     string `json:"title,omitempty"`
-	SizeChars int    `json:"size_chars"`
+	Key        string `json:"key"`
+	Kind       string `json:"kind,omitempty"` // state_key (default) | artifact | workspace_rel
+	Type       string `json:"type,omitempty"`
+	Format     string `json:"format,omitempty"`
+	Title      string `json:"title,omitempty"`
+	SizeChars  int    `json:"size_chars"`
+	SizeBytes  int64  `json:"size_bytes,omitempty"`
+	SHA256     string `json:"sha256,omitempty"`
+	ArtifactID string `json:"artifact_id,omitempty"`
+	RelPath    string `json:"rel_path,omitempty"`
+	MimeType   string `json:"mime_type,omitempty"`
+}
+
+const (
+	DeliverableArtifactKindStateKey     = "state_key"
+	DeliverableArtifactKindArtifact     = "artifact"
+	DeliverableArtifactKindWorkspaceRel = "workspace_rel"
+)
+
+// ResolvedKind returns the Bulk/Brief kind, defaulting empty (legacy) to state_key.
+func (a DeliverableArtifact) ResolvedKind() string {
+	switch strings.TrimSpace(a.Kind) {
+	case DeliverableArtifactKindArtifact:
+		return DeliverableArtifactKindArtifact
+	case DeliverableArtifactKindWorkspaceRel:
+		return DeliverableArtifactKindWorkspaceRel
+	default:
+		return DeliverableArtifactKindStateKey
+	}
+}
+
+// IsBulkPointer reports whether this artifact is a file/blob pointer (not graph-state text).
+func (a DeliverableArtifact) IsBulkPointer() bool {
+	k := a.ResolvedKind()
+	return k == DeliverableArtifactKindArtifact || k == DeliverableArtifactKindWorkspaceRel
 }
 
 // ParseDeliverableRefs parses Team.DeliverablesOutput into per-node refs.
@@ -502,21 +535,21 @@ type TeamRunMemberSummaryData struct {
 }
 
 type TeamGraphSession struct {
-	ExecID         string `json:"exec_id"`
-	TeamRunID      string `json:"team_run_id"`
-	TeamID         string `json:"team_id"`
-	SessionID      string `json:"session_id"`
+	ExecID    string `json:"exec_id"`
+	TeamRunID string `json:"team_run_id"`
+	TeamID    string `json:"team_id"`
+	SessionID string `json:"session_id"`
 	// SpiritSessionID is the watch subscription filter key
 	// (EventSubscribeOptions.SpiritSessionID). Persisted (Y5) so
 	// RecoverSessions can rebuild the step watch after a restart.
 	SpiritSessionID string `json:"spirit_session_id"`
-	InputPreview   string `json:"input_preview"`
-	DefinitionJSON string `json:"definition_json"`
-	Status         string `json:"status"`
-	RegisteredAt   string `json:"registered_at"`
-	LastActivityAt string `json:"last_activity_at"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	InputPreview    string `json:"input_preview"`
+	DefinitionJSON  string `json:"definition_json"`
+	Status          string `json:"status"`
+	RegisteredAt    string `json:"registered_at"`
+	LastActivityAt  string `json:"last_activity_at"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 // TeamGraphSessionReader provides read access to team graph sessions.

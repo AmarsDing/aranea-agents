@@ -5,16 +5,19 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -23,11 +26,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// DefaultMaxInFlight caps concurrent evaluation executions (manual + after_turn + gate).
+const DefaultMaxInFlight = 3
+
 var (
 	evalRunsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_eval_runs_total",
 		Help: "Total number of evaluation runs started.",
 	}, []string{"status"})
+	evalRunsInFlight = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "aranea_eval_in_flight",
+		Help: "Number of evaluation runs currently executing.",
+	})
+	evalRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "aranea_eval_run_duration_seconds",
+		Help:    "Wall time of one evaluation run (all cases).",
+		Buckets: prometheus.ExponentialBuckets(1, 2, 10),
+	})
+	evalGateOutcomes = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_eval_gate_outcomes_total",
+		Help: "Publish-gate decisions.",
+	}, []string{"outcome"})
 )
 
 // errEvalRunFailed marks "the evaluation ran and failed" (case errors,
@@ -37,17 +56,49 @@ var (
 // persisted on the row, not an execution error.
 var errEvalRunFailed = errors.New("evaluation run failed")
 
+// errEvalRunCancelled marks a user/admin cancel (distinct from failed).
+var errEvalRunCancelled = errors.New("evaluation run cancelled")
+
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
 	uc          *biz.EvalUsecase
 	framework   *FrameworkBridge
 	monitorBus  contract.MonitorBus
 	dropAlerter *ScoreDropAlerter
+	obs         biz.ObservationRecorder
+	bus         biz.EventBus
 	lg          loggateway.Logger
+	cancelMu    sync.Mutex
+	cancels     map[string]context.CancelFunc
+	slots       chan struct{}
 }
 
 func NewRunner(uc *biz.EvalUsecase, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
-	return &Runner{uc: uc, framework: framework, lg: lg}
+	return &Runner{uc: uc, framework: framework, lg: lg, slots: make(chan struct{}, DefaultMaxInFlight)}
+}
+
+func (r *Runner) tryAcquire() bool {
+	if r == nil || r.slots == nil {
+		return true
+	}
+	select {
+	case r.slots <- struct{}{}:
+		evalRunsInFlight.Inc()
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Runner) release() {
+	if r == nil || r.slots == nil {
+		return
+	}
+	select {
+	case <-r.slots:
+		evalRunsInFlight.Dec()
+	default:
+	}
 }
 
 // WithMonitorBus wires the typed monitor bus for flow-log emission (chainable).
@@ -68,6 +119,29 @@ func (r *Runner) WithDropAlerter(a *ScoreDropAlerter) *Runner {
 	return r
 }
 
+func (r *Runner) WithObservationRecorder(rec biz.ObservationRecorder) *Runner {
+	if r != nil && rec != nil {
+		r.obs = rec
+	}
+	return r
+}
+
+func (r *Runner) WithEventBus(bus biz.EventBus) *Runner {
+	if r != nil && bus != nil {
+		r.bus = bus
+	}
+	return r
+}
+
+func (r *Runner) loadRunCases(ctx context.Context, run biz.EvalRun) ([]biz.EvalCase, error) {
+	if run.DatasetVersionID != "" {
+		if v, err := r.uc.GetDatasetVersion(ctx, run.DatasetVersionID); err == nil && len(v.Cases) > 0 {
+			return v.Cases, nil
+		}
+	}
+	return r.uc.ListCases(ctx, run.DatasetID)
+}
+
 // flowEmitter builds a run-scoped flow-log emitter for evaluation lifecycle events.
 // Returns nil when the monitor bus is not wired (emission skipped).
 func (r *Runner) flowEmitter(ctx context.Context, runID string) *event.TraceEmitter {
@@ -83,7 +157,10 @@ func (r *Runner) flowEmitter(ctx context.Context, runID string) *event.TraceEmit
 	})
 }
 
-func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) {
+func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) error {
+	if r == nil || !r.tryAcquire() {
+		return apierror.Conflict("EVAL", "evaluation concurrency limit reached")
+	}
 	r.lg.Info("evaluation run started",
 		loggateway.StepID("evaluation.run.start"),
 		loggateway.Str("run_id", run.ID),
@@ -101,10 +178,15 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 	// cancels it as soon as the handler returns, which would otherwise abort
 	// all DB writes and leave the run stuck in "pending" forever. Values
 	// (trace IDs etc.) are preserved; cancellation follows appctx only.
-	execCtx := context.WithoutCancel(ctx)
+	execCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	r.trackCancel(run.ID, cancel)
 	safego.Go(appctx.Ctx(), "eval-runner", func() {
+		defer r.release()
+		defer r.untrackCancel(run.ID, cancel)
 		if err := r.execute(execCtx, run, metrics, numRuns, useUserSimulation); err != nil {
-			if errors.Is(err, errEvalRunFailed) {
+			if errors.Is(err, errEvalRunCancelled) {
+				evalRunsTotal.WithLabelValues("cancelled").Inc()
+			} else if errors.Is(err, errEvalRunFailed) {
 				evalRunsTotal.WithLabelValues("failed").Inc()
 			} else {
 				evalRunsTotal.WithLabelValues("error").Inc()
@@ -113,6 +195,46 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 			evalRunsTotal.WithLabelValues("completed").Inc()
 		}
 	})
+	return nil
+}
+
+func (r *Runner) trackCancel(runID string, cancel context.CancelFunc) {
+	if r == nil {
+		return
+	}
+	r.cancelMu.Lock()
+	defer r.cancelMu.Unlock()
+	if r.cancels == nil {
+		r.cancels = make(map[string]context.CancelFunc)
+	}
+	r.cancels[runID] = cancel
+}
+
+func (r *Runner) untrackCancel(runID string, cancel context.CancelFunc) {
+	if r == nil {
+		return
+	}
+	r.cancelMu.Lock()
+	delete(r.cancels, runID)
+	r.cancelMu.Unlock()
+	cancel()
+}
+
+// Cancel signals a running evaluation to stop. Persist the cancelled status
+// via Usecase.CancelRun after (or before) this call; execute writes cancelled
+// if it observes the cancelled context first.
+func (r *Runner) Cancel(runID string) bool {
+	if r == nil {
+		return false
+	}
+	r.cancelMu.Lock()
+	cancel, ok := r.cancels[runID]
+	r.cancelMu.Unlock()
+	if !ok {
+		return false
+	}
+	cancel()
+	return true
 }
 
 // RunSync executes a run inline and returns the final persisted state (P2-1
@@ -123,6 +245,10 @@ func (r *Runner) RunSync(ctx context.Context, run biz.EvalRun, metrics string, n
 	if numRuns <= 0 {
 		numRuns = 1
 	}
+	if !r.tryAcquire() {
+		return run, apierror.Conflict("EVAL", "evaluation concurrency limit reached")
+	}
+	defer r.release()
 	err := r.execute(ctx, run, metrics, numRuns, false)
 	final, gerr := r.uc.GetRun(ctx, run.ID)
 	if gerr != nil {
@@ -137,6 +263,10 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, n
 	// the row would stay active until the next restart's stale-run sweep (Y10),
 	// and the polling UI would spin on it forever. Convert the panic into a
 	// normal failed run — the terminal write keeps every consumer consistent.
+	started := time.Now()
+	defer func() {
+		evalRunDuration.Observe(time.Since(started).Seconds())
+	}()
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.lg.Error("evaluation run panicked",
@@ -148,7 +278,7 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, n
 			err = r.failRun(ctx, run, fmt.Sprintf("evaluation panicked: %v", rec))
 		}
 	}()
-	cases, err := r.uc.ListCases(ctx, run.DatasetID)
+	cases, err := r.loadRunCases(ctx, run)
 	if err != nil {
 		r.lg.Error("evaluation load cases failed",
 			loggateway.StepID("evaluation.run.load_cases_fail"),
@@ -208,6 +338,9 @@ func (r *Runner) executeFramework(
 		UseUserSimulation: useUserSimulation,
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return r.cancelRun(ctx, run)
+		}
 		return r.failRun(ctx, run, err.Error())
 	}
 	caseErrs := make([]string, 0)
@@ -258,6 +391,9 @@ func (r *Runner) executeFramework(
 	// P3-4: red-team attack success rate — computed only when the dataset
 	// carries adversarial cases (metadata_json.redteam_category).
 	mergeAttackSuccessRate(&run, cases, results)
+	if avg, ok := averageFaithfulness(results); ok {
+		mergeRunScores(&run, metricFaithfulness, avg)
+	}
 	// ISSUE-006: partial case failure must fail the run — the framework returns
 	// no global error when individual cases fail, so a silent "completed" would
 	// report a broken evaluation as healthy.
@@ -265,7 +401,11 @@ func (r *Runner) executeFramework(
 		caseErrs = append(caseErrs, fmt.Sprintf("%d case(s) missing from framework result", len(cases)-len(results)))
 	}
 	if len(caseErrs) > 0 {
+		r.recordEvalFailures(ctx, run, results)
 		return r.failRun(ctx, run, fmt.Sprintf("%d case(s) failed: %s", len(caseErrs), strings.Join(caseErrs, "; ")))
+	}
+	if ctx.Err() != nil {
+		return r.cancelRun(ctx, run)
 	}
 	run.Status = "completed"
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
@@ -293,7 +433,29 @@ func (r *Runner) executeFramework(
 	if r.dropAlerter != nil {
 		r.dropAlerter.CheckAfterRun(ctx, run)
 	}
+	r.recordEvalFailures(ctx, run, results)
+	r.publishEvalCompleted(ctx, run)
 	return nil
+}
+
+func (r *Runner) cancelRun(ctx context.Context, run biz.EvalRun) error {
+	persistCtx := context.WithoutCancel(ctx)
+	run.Status = "cancelled"
+	run.ErrorMessage = "cancelled"
+	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	if flow := r.flowEmitter(persistCtx, run.ID); flow != nil {
+		flow.LogDone("evaluation.run", "评测集运行已取消",
+			event.P("run_id", run.ID),
+			event.P("dataset_id", run.DatasetID))
+	}
+	if err := r.uc.UpdateRun(persistCtx, run); err != nil {
+		r.lg.Error("evaluation persist cancelled state failed",
+			loggateway.StepID("evaluation.run.persist_cancelled_fail"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Err(err))
+		return err
+	}
+	return fmt.Errorf("%w", errEvalRunCancelled)
 }
 
 func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error {
@@ -323,6 +485,7 @@ func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error
 	// EVAL-02: surface the failure to callers (gate breach wording, Start
 	// metrics). The reason is already persisted on the row, so the wrapped
 	// sentinel carries no extra payload beyond the message.
+	r.publishEvalCompleted(ctx, run)
 	return fmt.Errorf("%w: %s", errEvalRunFailed, msg)
 }
 
@@ -349,4 +512,63 @@ func newEvalResultID() string {
 		return fmt.Sprintf("er-%s-%d", time.Now().UTC().Format("20060102150405.000000000"), time.Now().UnixNano()%0xffffff)
 	}
 	return "er-" + time.Now().UTC().Format("20060102150405.000000000") + "-" + hex.EncodeToString(b[:])
+}
+
+func (r *Runner) publishEvalCompleted(ctx context.Context, run biz.EvalRun) {
+	if r == nil || r.bus == nil {
+		return
+	}
+	msg := fmt.Sprintf("评估运行 %s 已结束（%s）", run.ID, run.Status)
+	meta := map[string]any{
+		"event_type":  "eval.completed",
+		"run_id":      run.ID,
+		"dataset_id":  run.DatasetID,
+		"agent_id":    run.AgentID,
+		"status":      run.Status,
+		"total_cases": run.TotalCases,
+	}
+	r.bus.Publish(context.WithoutCancel(ctx), biz.NewSystemNoticeEvent("", "eval.completed", msg, meta))
+}
+
+func (r *Runner) recordEvalFailures(ctx context.Context, run biz.EvalRun, results []biz.EvalCaseResult) {
+	if r == nil || r.obs == nil {
+		return
+	}
+	for _, res := range results {
+		if !isEvalFailure(res) {
+			continue
+		}
+		meta, _ := json.Marshal(map[string]string{
+			"run_id":  run.ID,
+			"case_id": res.CaseID,
+		})
+		content := strings.TrimSpace(res.ErrorMessage)
+		if content == "" {
+			content = "evaluation case failed"
+		}
+		if _, err := r.obs.RecordObservation(ctx, biz.Observation{
+			AgentID:    run.AgentID,
+			SessionID:  res.SessionID,
+			Kind:       biz.ObservationKindEvalFailure,
+			Content:    content,
+			Metadata:   string(meta),
+			ObservedAt: time.Now().UTC(),
+		}); err != nil {
+			r.lg.Warn("eval failure observation not recorded",
+				loggateway.StepID("evaluation.run.obs_fail"),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Str("case_id", res.CaseID),
+				loggateway.Err(err))
+		}
+	}
+}
+
+func isEvalFailure(res biz.EvalCaseResult) bool {
+	if strings.TrimSpace(res.ErrorMessage) != "" {
+		return true
+	}
+	if v, ok := biz.ParseEvalScores(res.ScoresJSON)["exact_match"]; ok && v < 1 {
+		return true
+	}
+	return false
 }

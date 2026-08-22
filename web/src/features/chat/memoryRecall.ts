@@ -62,3 +62,59 @@ export function parseMemoryRecallHits(content: string): MemoryRecallHit[] {
     ...(typeof h.version === 'number' ? { version: h.version } : {}),
   }));
 }
+
+export type MemoryCenterRouteQuery = {
+  tab?: string;
+  layer?: string;
+  factId?: string;
+  agentId?: string;
+  agentKey?: string;
+  sessionId?: string;
+  q?: string;
+};
+
+/** Builds the Memory Center deep-link consumed by MemoryCenterPage (FR-T1). */
+export function memoryCenterRoute(opts: MemoryCenterRouteQuery): {
+  path: string;
+  query: Record<string, string>;
+} {
+  const query: Record<string, string> = {};
+  const assign = (key: keyof MemoryCenterRouteQuery) => {
+    const v = opts[key]?.trim();
+    if (v) query[key] = v;
+  };
+  assign('tab');
+  assign('layer');
+  assign('factId');
+  assign('agentId');
+  assign('agentKey');
+  assign('sessionId');
+  assign('q');
+  return { path: '/memory', query };
+}
+
+/** Maps a recall hit + current turn identity to a Memory Center route. */
+export function memoryCenterRouteFromHit(
+  hit: MemoryRecallHit,
+  ctx: { sessionId?: string; agentId?: string; agentKey?: string },
+): { path: string; query: Record<string, string> } {
+  const layer = (hit.layer || '').trim().toUpperCase();
+  const base = {
+    sessionId: ctx.sessionId,
+    agentId: ctx.agentId,
+    agentKey: ctx.agentKey,
+  };
+  if (layer === 'L4') {
+    return memoryCenterRoute({ tab: 'graph', layer: 'L4', ...base });
+  }
+  if (layer === 'L3' && hit.fact_id) {
+    return memoryCenterRoute({ tab: 'browse', layer: 'L3', factId: hit.fact_id, ...base });
+  }
+  if (layer === 'L3') {
+    return memoryCenterRoute({ tab: 'browse', layer: 'L3', q: hit.line, ...base });
+  }
+  if (layer === 'L0' || layer === 'L1' || layer === 'L2') {
+    return memoryCenterRoute({ tab: 'browse', layer, ...base });
+  }
+  return memoryCenterRoute({ tab: 'browse', ...base });
+}

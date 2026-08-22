@@ -310,6 +310,36 @@ export type GetContextBudgetStatsResponse = {
   topTools: ContextBudgetToolSchemaStat[] | undefined;
 };
 
+// GetCacheHitRatioStatsRequest selects the trailing aggregation window
+// (29-token §9.3). The aggregation is global per (provider, model) — usage
+// rows from all workspaces contribute.
+export type GetCacheHitRatioStatsRequest = {
+  // Trailing window in hours. 0 = default 1 (matches the alert window);
+  // clamped to [1, 168].
+  windowHours: number | undefined;
+};
+
+// CacheHitRatioStat is one (provider, model) group's prompt-cache efficiency
+// over the window. Only turns with prompt_tokens >= 1024 (provider minimum
+// cacheable length) count as samples.
+export type CacheHitRatioStat = {
+  provider: string | undefined;
+  model: string | undefined;
+  samples: number | undefined;
+  promptTokens: number | undefined;
+  cachedTokens: number | undefined;
+  // cached_tokens / prompt_tokens. Diagnostic only: a single huge
+  // cache-busted turn (post-compaction history rewrite) dominates it.
+  weightedRatio: number | undefined;
+  // Median per-turn cached/prompt ratio — the llm.cache_hit_ratio_low alert
+  // keys on this; robust to compaction outliers.
+  p50Ratio: number | undefined;
+};
+
+export type GetCacheHitRatioStatsResponse = {
+  stats: CacheHitRatioStat[] | undefined;
+};
+
 export interface UsageService {
   GetUsageOverview(request: UsageQuery): Promise<UsageOverview>;
   ListUsageTrends(request: UsageQuery): Promise<ListUsageTrendsResponse>;
@@ -332,6 +362,10 @@ export interface UsageService {
   // (metadata_json.context_budget) across turns: overall composition, per-agent
   // breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
   GetContextBudgetStats(request: UsageQuery): Promise<GetContextBudgetStatsResponse>;
+  // GetCacheHitRatioStats aggregates prompt-cache hit ratios per
+  // (provider, model) over a trailing window (29-token §9.3). Global
+  // observability metric — same caller rules as budget alerts.
+  GetCacheHitRatioStats(request: GetCacheHitRatioStatsRequest): Promise<GetCacheHitRatioStatsResponse>;
 }
 
 type RequestType = {
@@ -903,6 +937,26 @@ export function createUsageServiceClient(
         service: "UsageService",
         method: "GetContextBudgetStats",
       }) as Promise<GetContextBudgetStatsResponse>;
+    },
+    GetCacheHitRatioStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/usage/cache-hit-ratio-stats`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.windowHours) {
+        queryParams.push(`windowHours=${encodeURIComponent(request.windowHours.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "GetCacheHitRatioStats",
+      }) as Promise<GetCacheHitRatioStatsResponse>;
     },
   };
 }

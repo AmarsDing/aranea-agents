@@ -16,6 +16,7 @@ type Stores struct {
 	RunQueries RunQueryStore
 	Results    ResultStore
 	Governance GovernanceStore
+	Versions   VersionStore
 }
 
 // StoresFrom maps one Repo implementer onto the ISP DTO (same adapter, many
@@ -24,7 +25,7 @@ func StoresFrom(r Repo) Stores {
 	if r == nil {
 		return Stores{}
 	}
-	return Stores{
+	s := Stores{
 		Datasets:   r,
 		Cases:      r,
 		Runs:       r,
@@ -32,6 +33,10 @@ func StoresFrom(r Repo) Stores {
 		Results:    r,
 		Governance: r,
 	}
+	if v, ok := r.(VersionStore); ok {
+		s.Versions = v
+	}
+	return s
 }
 
 // DatasetStore persists evaluation datasets.
@@ -54,6 +59,8 @@ type CaseStore interface {
 	// UpdateDatasetCaseCount pair was removed; it had no production caller).
 	InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []Case) error
 	ListCases(ctx context.Context, datasetID string) ([]Case, error)
+	UpdateCase(ctx context.Context, c Case) (Case, error)
+	DeleteCase(ctx context.Context, datasetID, caseID string) error
 }
 
 // RunStore persists evaluation run lifecycle (CRUD + crash/orphan recovery).
@@ -99,9 +106,10 @@ type GovernanceStore interface {
 	// preferences between two runs of one dataset (P3-3).
 	InsertRunPreference(ctx context.Context, p RunPreference) error
 	ListRunPreferences(ctx context.Context, datasetID string, limit int) ([]RunPreference, error)
-	// GetGateConfig / UpsertGateConfig read/write the publish-gate singleton
-	// (P2-1). GetGateConfig returns a disabled zero config when no row exists.
-	GetGateConfig(ctx context.Context) (GateConfig, error)
+	// GetGateConfig / UpsertGateConfig read/write publish-gate config.
+	// agentID="" is the platform default (legacy singleton). A non-empty
+	// agentID prefers that agent's row and falls back to the default.
+	GetGateConfig(ctx context.Context, agentID string) (GateConfig, error)
 	UpsertGateConfig(ctx context.Context, cfg GateConfig) error
 }
 

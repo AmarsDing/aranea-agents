@@ -191,6 +191,10 @@
           />
         </div>
 
+        <div class="overview-section">
+          <UsageCacheHitRatio />
+        </div>
+
         <div ref="alertStackRef" class="overview-alert-stack">
           <UsageInefficientModels
             v-if="(overview?.inefficient_models?.length ?? 0) > 0"
@@ -217,6 +221,7 @@ import OverviewMonitorQuickLinks from '../components/usage/OverviewMonitorQuickL
 import OverviewRunnerMetrics from '../components/usage/OverviewRunnerMetrics.vue';
 import OverviewProviderHealth from '../components/usage/OverviewProviderHealth.vue';
 import UsageAnomalyList from '../components/usage/UsageAnomalyList.vue';
+import UsageCacheHitRatio from '../components/usage/UsageCacheHitRatio.vue';
 import UsageFallbackEvents from '../components/usage/UsageFallbackEvents.vue';
 import UsageInefficientModels from '../components/usage/UsageInefficientModels.vue';
 import UsageMetricCards from '../components/usage/UsageMetricCards.vue';

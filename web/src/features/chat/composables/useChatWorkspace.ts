@@ -425,11 +425,13 @@ export function useChatWorkspace() {
   // P1-1 对话→用例一键转化：气泡菜单 → 对话框选数据集 → UploadCases 通道。
   const addToEval = useAddToEvalDataset();
   function openAddToEvalCase(task: Task) {
+    const isTeam = sessionStore.entityKind === 'team' || Boolean(sessionStore.selectedTeamId);
     void addToEval.openWith({
       input: task.UserMessage,
       expected_output: activityStore.getTaskFinalReply(task.ID),
       source_task_id: task.ID,
       source_session_id: task.SessionID,
+      is_team: isTeam,
     });
   }
 

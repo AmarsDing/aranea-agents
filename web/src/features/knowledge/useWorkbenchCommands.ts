@@ -148,15 +148,15 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
 
   async function runSearch(q: string) {
     const seq = ++searchSeq;
-    if (!q.trim() || !deps.currentVaultId.value) {
+    if (!q.trim()) {
       searchItems.value = [];
       searchLoading.value = false;
       return;
     }
     searchLoading.value = true;
     try {
+      // US-14：工作台搜索默认全部可见知识库（collection_id 留空走联邦路由）。
       const chunks = await knowledgeStore.search({
-        collection_id: deps.currentVaultId.value,
         query: q.trim(),
         top_k: 12,
       });

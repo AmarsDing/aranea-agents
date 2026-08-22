@@ -24,6 +24,7 @@ type mockRepo struct {
 	judgeAnnotatedErr error
 	preferences       []RunPreference
 	gateCfg           GateConfig
+	staleCutoff       time.Time
 }
 
 func (m *mockRepo) CreateDataset(_ context.Context, d Dataset) (Dataset, error) {
@@ -52,7 +53,28 @@ func (m *mockRepo) InsertCasesWithCountUpdate(_ context.Context, _ string, cases
 }
 
 func (m *mockRepo) ListCases(_ context.Context, _ string) ([]Case, error) {
-	return nil, nil
+	return m.cases, nil
+}
+
+func (m *mockRepo) UpdateCase(_ context.Context, c Case) (Case, error) {
+	for i := range m.cases {
+		if m.cases[i].ID == c.ID {
+			m.cases[i] = c
+			return c, nil
+		}
+	}
+	return Case{}, errors.New("case not found")
+}
+
+func (m *mockRepo) DeleteCase(_ context.Context, _, caseID string) error {
+	out := m.cases[:0]
+	for _, c := range m.cases {
+		if c.ID != caseID {
+			out = append(out, c)
+		}
+	}
+	m.cases = out
+	return nil
 }
 
 func (m *mockRepo) CreateRun(_ context.Context, r Run) (Run, error) {
@@ -60,11 +82,23 @@ func (m *mockRepo) CreateRun(_ context.Context, r Run) (Run, error) {
 	return r, nil
 }
 
-func (m *mockRepo) GetRun(_ context.Context, _ string) (Run, error) {
-	return Run{}, nil
+func (m *mockRepo) GetRun(_ context.Context, id string) (Run, error) {
+	for _, r := range m.runs {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return Run{}, errors.New("run not found")
 }
 
-func (m *mockRepo) UpdateRun(_ context.Context, _ Run) error {
+func (m *mockRepo) UpdateRun(_ context.Context, r Run) error {
+	for i := range m.runs {
+		if m.runs[i].ID == r.ID {
+			m.runs[i] = r
+			return nil
+		}
+	}
+	m.runs = append(m.runs, r)
 	return nil
 }
 
@@ -72,8 +106,14 @@ func (m *mockRepo) DeleteRun(_ context.Context, _ string) error {
 	return nil
 }
 
-func (m *mockRepo) ListRuns(_ context.Context, _, _ string, _, _ int) ([]Run, int, error) {
-	return nil, 0, nil
+func (m *mockRepo) ListRuns(_ context.Context, datasetID, agentID string, _, _ int) ([]Run, int, error) {
+	var out []Run
+	for _, r := range m.runs {
+		if (datasetID == "" || r.DatasetID == datasetID) && (agentID == "" || r.AgentID == agentID) {
+			out = append(out, r)
+		}
+	}
+	return out, len(out), nil
 }
 
 func (m *mockRepo) InsertCaseResult(_ context.Context, r CaseResult) error {
@@ -117,7 +157,7 @@ func (m *mockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]Run
 	return m.preferences, nil
 }
 
-func (m *mockRepo) GetGateConfig(_ context.Context) (GateConfig, error) {
+func (m *mockRepo) GetGateConfig(_ context.Context, _ string) (GateConfig, error) {
 	return m.gateCfg, nil
 }
 
@@ -126,7 +166,10 @@ func (m *mockRepo) UpsertGateConfig(_ context.Context, cfg GateConfig) error {
 	return nil
 }
 
-func (m *mockRepo) FailStaleRuns(_ context.Context, _ time.Time) (int, error) { return 0, nil }
+func (m *mockRepo) FailStaleRuns(_ context.Context, cutoff time.Time) (int, error) {
+	m.staleCutoff = cutoff
+	return 0, nil
+}
 
 func TestUploadCases(t *testing.T) {
 	t.Run("valid JSON array with cases", func(t *testing.T) {
@@ -485,4 +528,85 @@ func TestCompareEvalRuns(t *testing.T) {
 			t.Fatalf("expected 0 delta, got %v", comps[1].DeltaToolAccuracy)
 		}
 	})
+}
+
+func TestFailStaleRunsUsesGrace(t *testing.T) {
+	repo := &mockRepo{}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	before := time.Now().Add(-StaleRunGrace)
+	n, err := uc.FailStaleRuns(context.Background(), 0)
+	after := time.Now().Add(-StaleRunGrace)
+	if err != nil || n != 0 {
+		t.Fatalf("grace sweep: n=%d err=%v", n, err)
+	}
+	if repo.staleCutoff.Before(before.Add(-2*time.Second)) || repo.staleCutoff.After(after.Add(2*time.Second)) {
+		t.Fatalf("cutoff %v not around now-StaleRunGrace", repo.staleCutoff)
+	}
+}
+
+func TestUpdateRunRejectsIllegalTransition(t *testing.T) {
+	repo := &mockRepo{runs: []Run{{ID: "r1", Status: RunStatusCompleted}}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	if err := uc.UpdateRun(context.Background(), Run{ID: "r1", Status: RunStatusRunning}); err == nil {
+		t.Fatal("completed → running must be rejected")
+	}
+}
+
+func TestUpdateCase(t *testing.T) {
+	repo := &mockRepo{cases: []Case{{ID: "c1", DatasetID: "ds-1", Input: "old"}}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	got, err := uc.UpdateCase(context.Background(), Case{ID: "c1", DatasetID: "ds-1", Input: "new", ExpectedOutput: "out"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Input != "new" || got.ExpectedOutput != "out" {
+		t.Fatalf("got %+v", got)
+	}
+	if _, err := uc.UpdateCase(context.Background(), Case{ID: "c1", DatasetID: "ds-1"}); err == nil {
+		t.Fatal("empty input must fail")
+	}
+}
+
+func TestDeleteCase(t *testing.T) {
+	repo := &mockRepo{cases: []Case{{ID: "c1", DatasetID: "ds-1", Input: "q"}}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	if err := uc.DeleteCase(context.Background(), "ds-1", "c1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.cases) != 0 {
+		t.Fatalf("expected empty cases, got %d", len(repo.cases))
+	}
+	if err := uc.DeleteCase(context.Background(), "", "c1"); err == nil {
+		t.Fatal("empty dataset_id must fail")
+	}
+}
+
+func TestFindInFlightRun(t *testing.T) {
+	repo := &mockRepo{runs: []Run{
+		{ID: "done", DatasetID: "ds-1", AgentID: "a1", Status: RunStatusCompleted},
+		{ID: "live", DatasetID: "ds-1", AgentID: "a1", Status: RunStatusRunning},
+	}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	run, ok, err := uc.FindInFlightRun(context.Background(), "ds-1", "a1")
+	if err != nil || !ok || run.ID != "live" {
+		t.Fatalf("got run=%+v ok=%v err=%v", run, ok, err)
+	}
+	if _, ok, err := uc.FindInFlightRun(context.Background(), "ds-1", "other"); err != nil || ok {
+		t.Fatal("other agent must have no in-flight run")
+	}
+}
+
+func TestCancelRun(t *testing.T) {
+	repo := &mockRepo{runs: []Run{{ID: "r1", Status: RunStatusRunning}}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	got, err := uc.CancelRun(context.Background(), "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != RunStatusCancelled {
+		t.Fatalf("status = %q", got.Status)
+	}
+	if _, err := uc.CancelRun(context.Background(), "r1"); err == nil {
+		t.Fatal("second cancel must conflict")
+	}
 }

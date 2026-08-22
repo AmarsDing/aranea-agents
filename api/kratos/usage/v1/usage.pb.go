@@ -2713,6 +2713,198 @@ func (x *GetContextBudgetStatsResponse) GetTopTools() []*ContextBudgetToolSchema
 	return nil
 }
 
+// GetCacheHitRatioStatsRequest selects the trailing aggregation window
+// (29-token §9.3). The aggregation is global per (provider, model) — usage
+// rows from all workspaces contribute.
+type GetCacheHitRatioStatsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Trailing window in hours. 0 = default 1 (matches the alert window);
+	// clamped to [1, 168].
+	WindowHours   int32 `protobuf:"varint,1,opt,name=window_hours,json=windowHours,proto3" json:"window_hours,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCacheHitRatioStatsRequest) Reset() {
+	*x = GetCacheHitRatioStatsRequest{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCacheHitRatioStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCacheHitRatioStatsRequest) ProtoMessage() {}
+
+func (x *GetCacheHitRatioStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCacheHitRatioStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetCacheHitRatioStatsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *GetCacheHitRatioStatsRequest) GetWindowHours() int32 {
+	if x != nil {
+		return x.WindowHours
+	}
+	return 0
+}
+
+// CacheHitRatioStat is one (provider, model) group's prompt-cache efficiency
+// over the window. Only turns with prompt_tokens >= 1024 (provider minimum
+// cacheable length) count as samples.
+type CacheHitRatioStat struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Provider     string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model        string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	Samples      int32                  `protobuf:"varint,3,opt,name=samples,proto3" json:"samples,omitempty"`
+	PromptTokens int64                  `protobuf:"varint,4,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CachedTokens int64                  `protobuf:"varint,5,opt,name=cached_tokens,json=cachedTokens,proto3" json:"cached_tokens,omitempty"`
+	// cached_tokens / prompt_tokens. Diagnostic only: a single huge
+	// cache-busted turn (post-compaction history rewrite) dominates it.
+	WeightedRatio float64 `protobuf:"fixed64,6,opt,name=weighted_ratio,json=weightedRatio,proto3" json:"weighted_ratio,omitempty"`
+	// Median per-turn cached/prompt ratio — the llm.cache_hit_ratio_low alert
+	// keys on this; robust to compaction outliers.
+	P50Ratio      float64 `protobuf:"fixed64,7,opt,name=p50_ratio,json=p50Ratio,proto3" json:"p50_ratio,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CacheHitRatioStat) Reset() {
+	*x = CacheHitRatioStat{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CacheHitRatioStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CacheHitRatioStat) ProtoMessage() {}
+
+func (x *CacheHitRatioStat) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CacheHitRatioStat.ProtoReflect.Descriptor instead.
+func (*CacheHitRatioStat) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *CacheHitRatioStat) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *CacheHitRatioStat) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *CacheHitRatioStat) GetSamples() int32 {
+	if x != nil {
+		return x.Samples
+	}
+	return 0
+}
+
+func (x *CacheHitRatioStat) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *CacheHitRatioStat) GetCachedTokens() int64 {
+	if x != nil {
+		return x.CachedTokens
+	}
+	return 0
+}
+
+func (x *CacheHitRatioStat) GetWeightedRatio() float64 {
+	if x != nil {
+		return x.WeightedRatio
+	}
+	return 0
+}
+
+func (x *CacheHitRatioStat) GetP50Ratio() float64 {
+	if x != nil {
+		return x.P50Ratio
+	}
+	return 0
+}
+
+type GetCacheHitRatioStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stats         []*CacheHitRatioStat   `protobuf:"bytes,1,rep,name=stats,proto3" json:"stats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCacheHitRatioStatsResponse) Reset() {
+	*x = GetCacheHitRatioStatsResponse{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCacheHitRatioStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCacheHitRatioStatsResponse) ProtoMessage() {}
+
+func (x *GetCacheHitRatioStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCacheHitRatioStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetCacheHitRatioStatsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetCacheHitRatioStatsResponse) GetStats() []*CacheHitRatioStat {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
 var File_kratos_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_kratos_usage_v1_usage_proto_rawDesc = "" +
@@ -3000,7 +3192,19 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\aoverall\x18\x01 \x01(\v2).kratos.usage.v1.ContextBudgetCompositionR\aoverall\x12@\n" +
 	"\x06agents\x18\x02 \x03(\v2(.kratos.usage.v1.ContextBudgetAgentStatsR\x06agents\x12@\n" +
 	"\x06trends\x18\x03 \x03(\v2(.kratos.usage.v1.ContextBudgetTrendPointR\x06trends\x12I\n" +
-	"\ttop_tools\x18\x04 \x03(\v2,.kratos.usage.v1.ContextBudgetToolSchemaStatR\btopTools2\xc3\x0f\n" +
+	"\ttop_tools\x18\x04 \x03(\v2,.kratos.usage.v1.ContextBudgetToolSchemaStatR\btopTools\"A\n" +
+	"\x1cGetCacheHitRatioStatsRequest\x12!\n" +
+	"\fwindow_hours\x18\x01 \x01(\x05R\vwindowHours\"\xed\x01\n" +
+	"\x11CacheHitRatioStat\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x12\x18\n" +
+	"\asamples\x18\x03 \x01(\x05R\asamples\x12#\n" +
+	"\rprompt_tokens\x18\x04 \x01(\x03R\fpromptTokens\x12#\n" +
+	"\rcached_tokens\x18\x05 \x01(\x03R\fcachedTokens\x12%\n" +
+	"\x0eweighted_ratio\x18\x06 \x01(\x01R\rweightedRatio\x12\x1b\n" +
+	"\tp50_ratio\x18\a \x01(\x01R\bp50Ratio\"Y\n" +
+	"\x1dGetCacheHitRatioStatsResponse\x128\n" +
+	"\x05stats\x18\x01 \x03(\v2\".kratos.usage.v1.CacheHitRatioStatR\x05stats2\xe5\x10\n" +
 	"\fUsageService\x12k\n" +
 	"\x10GetUsageOverview\x12\x1b.kratos.usage.v1.UsageQuery\x1a\x1e.kratos.usage.v1.UsageOverview\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/usage/overview\x12r\n" +
 	"\x0fListUsageTrends\x12\x1b.kratos.usage.v1.UsageQuery\x1a(.kratos.usage.v1.ListUsageTrendsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/usage/trends\x12r\n" +
@@ -3016,7 +3220,8 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\x11ExportUsageEvents\x12\x1b.kratos.usage.v1.UsageQuery\x1a*.kratos.usage.v1.ExportUsageEventsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/usage/events/export\x12\x8a\x01\n" +
 	"\x10PurgeUsageEvents\x12(.kratos.usage.v1.PurgeUsageEventsRequest\x1a).kratos.usage.v1.PurgeUsageEventsResponse\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/usage/events/purge\x12\xa1\x01\n" +
 	"\x16ListAllModelsBreakdown\x12..kratos.usage.v1.ListAllModelsBreakdownRequest\x1a/.kratos.usage.v1.ListAllModelsBreakdownResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/usage/all-models-breakdown\x12\x8c\x01\n" +
-	"\x15GetContextBudgetStats\x12\x1b.kratos.usage.v1.UsageQuery\x1a..kratos.usage.v1.GetContextBudgetStatsResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/usage/context-budget-statsB=\n" +
+	"\x15GetContextBudgetStats\x12\x1b.kratos.usage.v1.UsageQuery\x1a..kratos.usage.v1.GetContextBudgetStatsResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/usage/context-budget-stats\x12\x9f\x01\n" +
+	"\x15GetCacheHitRatioStats\x12-.kratos.usage.v1.GetCacheHitRatioStatsRequest\x1a..kratos.usage.v1.GetCacheHitRatioStatsResponse\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/usage/cache-hit-ratio-statsB=\n" +
 	"\x13api.kratos.usage.v1P\x01Z$aranea-agents/api/kratos/usage/v1;v1b\x06proto3"
 
 var (
@@ -3031,7 +3236,7 @@ func file_kratos_usage_v1_usage_proto_rawDescGZIP() []byte {
 	return file_kratos_usage_v1_usage_proto_rawDescData
 }
 
-var file_kratos_usage_v1_usage_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_kratos_usage_v1_usage_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_kratos_usage_v1_usage_proto_goTypes = []any{
 	(*UsageQuery)(nil),                     // 0: kratos.usage.v1.UsageQuery
 	(*UsageSummary)(nil),                   // 1: kratos.usage.v1.UsageSummary
@@ -3063,7 +3268,10 @@ var file_kratos_usage_v1_usage_proto_goTypes = []any{
 	(*ContextBudgetTrendPoint)(nil),        // 27: kratos.usage.v1.ContextBudgetTrendPoint
 	(*ContextBudgetToolSchemaStat)(nil),    // 28: kratos.usage.v1.ContextBudgetToolSchemaStat
 	(*GetContextBudgetStatsResponse)(nil),  // 29: kratos.usage.v1.GetContextBudgetStatsResponse
-	nil,                                    // 30: kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntry
+	(*GetCacheHitRatioStatsRequest)(nil),   // 30: kratos.usage.v1.GetCacheHitRatioStatsRequest
+	(*CacheHitRatioStat)(nil),              // 31: kratos.usage.v1.CacheHitRatioStat
+	(*GetCacheHitRatioStatsResponse)(nil),  // 32: kratos.usage.v1.GetCacheHitRatioStatsResponse
+	nil,                                    // 33: kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntry
 }
 var file_kratos_usage_v1_usage_proto_depIdxs = []int32{
 	1,  // 0: kratos.usage.v1.UsageOverview.today:type_name -> kratos.usage.v1.UsageSummary
@@ -3082,48 +3290,51 @@ var file_kratos_usage_v1_usage_proto_depIdxs = []int32{
 	5,  // 13: kratos.usage.v1.ListUsageEventsResponse.items:type_name -> kratos.usage.v1.TokenUsageEvent
 	16, // 14: kratos.usage.v1.CheckUsageQuotaResponse.quota:type_name -> kratos.usage.v1.UsageQuota
 	3,  // 15: kratos.usage.v1.ListAllModelsBreakdownResponse.items:type_name -> kratos.usage.v1.UsageBreakdownRow
-	30, // 16: kratos.usage.v1.ContextBudgetComposition.category_avg_est_tokens:type_name -> kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntry
+	33, // 16: kratos.usage.v1.ContextBudgetComposition.category_avg_est_tokens:type_name -> kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntry
 	25, // 17: kratos.usage.v1.ContextBudgetAgentStats.composition:type_name -> kratos.usage.v1.ContextBudgetComposition
 	25, // 18: kratos.usage.v1.ContextBudgetTrendPoint.composition:type_name -> kratos.usage.v1.ContextBudgetComposition
 	25, // 19: kratos.usage.v1.GetContextBudgetStatsResponse.overall:type_name -> kratos.usage.v1.ContextBudgetComposition
 	26, // 20: kratos.usage.v1.GetContextBudgetStatsResponse.agents:type_name -> kratos.usage.v1.ContextBudgetAgentStats
 	27, // 21: kratos.usage.v1.GetContextBudgetStatsResponse.trends:type_name -> kratos.usage.v1.ContextBudgetTrendPoint
 	28, // 22: kratos.usage.v1.GetContextBudgetStatsResponse.top_tools:type_name -> kratos.usage.v1.ContextBudgetToolSchemaStat
-	0,  // 23: kratos.usage.v1.UsageService.GetUsageOverview:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 24: kratos.usage.v1.UsageService.ListUsageTrends:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 25: kratos.usage.v1.UsageService.ListTopModels:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 26: kratos.usage.v1.UsageService.ListTopAgents:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 27: kratos.usage.v1.UsageService.ListUsageEvents:input_type -> kratos.usage.v1.UsageQuery
-	5,  // 28: kratos.usage.v1.UsageService.RecordTokenUsageEvent:input_type -> kratos.usage.v1.TokenUsageEvent
-	17, // 29: kratos.usage.v1.UsageService.GetUsageQuota:input_type -> kratos.usage.v1.GetUsageQuotaRequest
-	18, // 30: kratos.usage.v1.UsageService.SetUsageQuota:input_type -> kratos.usage.v1.SetUsageQuotaRequest
-	19, // 31: kratos.usage.v1.UsageService.CheckUsageQuota:input_type -> kratos.usage.v1.CheckUsageQuotaRequest
-	9,  // 32: kratos.usage.v1.UsageService.ListBudgetAlerts:input_type -> kratos.usage.v1.ListBudgetAlertsRequest
-	11, // 33: kratos.usage.v1.UsageService.SetBudgetAlert:input_type -> kratos.usage.v1.SetBudgetAlertRequest
-	0,  // 34: kratos.usage.v1.UsageService.ExportUsageEvents:input_type -> kratos.usage.v1.UsageQuery
-	21, // 35: kratos.usage.v1.UsageService.PurgeUsageEvents:input_type -> kratos.usage.v1.PurgeUsageEventsRequest
-	23, // 36: kratos.usage.v1.UsageService.ListAllModelsBreakdown:input_type -> kratos.usage.v1.ListAllModelsBreakdownRequest
-	0,  // 37: kratos.usage.v1.UsageService.GetContextBudgetStats:input_type -> kratos.usage.v1.UsageQuery
-	7,  // 38: kratos.usage.v1.UsageService.GetUsageOverview:output_type -> kratos.usage.v1.UsageOverview
-	13, // 39: kratos.usage.v1.UsageService.ListUsageTrends:output_type -> kratos.usage.v1.ListUsageTrendsResponse
-	14, // 40: kratos.usage.v1.UsageService.ListTopModels:output_type -> kratos.usage.v1.ListBreakdownResponse
-	14, // 41: kratos.usage.v1.UsageService.ListTopAgents:output_type -> kratos.usage.v1.ListBreakdownResponse
-	15, // 42: kratos.usage.v1.UsageService.ListUsageEvents:output_type -> kratos.usage.v1.ListUsageEventsResponse
-	5,  // 43: kratos.usage.v1.UsageService.RecordTokenUsageEvent:output_type -> kratos.usage.v1.TokenUsageEvent
-	16, // 44: kratos.usage.v1.UsageService.GetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
-	16, // 45: kratos.usage.v1.UsageService.SetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
-	20, // 46: kratos.usage.v1.UsageService.CheckUsageQuota:output_type -> kratos.usage.v1.CheckUsageQuotaResponse
-	10, // 47: kratos.usage.v1.UsageService.ListBudgetAlerts:output_type -> kratos.usage.v1.ListBudgetAlertsResponse
-	8,  // 48: kratos.usage.v1.UsageService.SetBudgetAlert:output_type -> kratos.usage.v1.BudgetAlert
-	12, // 49: kratos.usage.v1.UsageService.ExportUsageEvents:output_type -> kratos.usage.v1.ExportUsageEventsResponse
-	22, // 50: kratos.usage.v1.UsageService.PurgeUsageEvents:output_type -> kratos.usage.v1.PurgeUsageEventsResponse
-	24, // 51: kratos.usage.v1.UsageService.ListAllModelsBreakdown:output_type -> kratos.usage.v1.ListAllModelsBreakdownResponse
-	29, // 52: kratos.usage.v1.UsageService.GetContextBudgetStats:output_type -> kratos.usage.v1.GetContextBudgetStatsResponse
-	38, // [38:53] is the sub-list for method output_type
-	23, // [23:38] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	31, // 23: kratos.usage.v1.GetCacheHitRatioStatsResponse.stats:type_name -> kratos.usage.v1.CacheHitRatioStat
+	0,  // 24: kratos.usage.v1.UsageService.GetUsageOverview:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 25: kratos.usage.v1.UsageService.ListUsageTrends:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 26: kratos.usage.v1.UsageService.ListTopModels:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 27: kratos.usage.v1.UsageService.ListTopAgents:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 28: kratos.usage.v1.UsageService.ListUsageEvents:input_type -> kratos.usage.v1.UsageQuery
+	5,  // 29: kratos.usage.v1.UsageService.RecordTokenUsageEvent:input_type -> kratos.usage.v1.TokenUsageEvent
+	17, // 30: kratos.usage.v1.UsageService.GetUsageQuota:input_type -> kratos.usage.v1.GetUsageQuotaRequest
+	18, // 31: kratos.usage.v1.UsageService.SetUsageQuota:input_type -> kratos.usage.v1.SetUsageQuotaRequest
+	19, // 32: kratos.usage.v1.UsageService.CheckUsageQuota:input_type -> kratos.usage.v1.CheckUsageQuotaRequest
+	9,  // 33: kratos.usage.v1.UsageService.ListBudgetAlerts:input_type -> kratos.usage.v1.ListBudgetAlertsRequest
+	11, // 34: kratos.usage.v1.UsageService.SetBudgetAlert:input_type -> kratos.usage.v1.SetBudgetAlertRequest
+	0,  // 35: kratos.usage.v1.UsageService.ExportUsageEvents:input_type -> kratos.usage.v1.UsageQuery
+	21, // 36: kratos.usage.v1.UsageService.PurgeUsageEvents:input_type -> kratos.usage.v1.PurgeUsageEventsRequest
+	23, // 37: kratos.usage.v1.UsageService.ListAllModelsBreakdown:input_type -> kratos.usage.v1.ListAllModelsBreakdownRequest
+	0,  // 38: kratos.usage.v1.UsageService.GetContextBudgetStats:input_type -> kratos.usage.v1.UsageQuery
+	30, // 39: kratos.usage.v1.UsageService.GetCacheHitRatioStats:input_type -> kratos.usage.v1.GetCacheHitRatioStatsRequest
+	7,  // 40: kratos.usage.v1.UsageService.GetUsageOverview:output_type -> kratos.usage.v1.UsageOverview
+	13, // 41: kratos.usage.v1.UsageService.ListUsageTrends:output_type -> kratos.usage.v1.ListUsageTrendsResponse
+	14, // 42: kratos.usage.v1.UsageService.ListTopModels:output_type -> kratos.usage.v1.ListBreakdownResponse
+	14, // 43: kratos.usage.v1.UsageService.ListTopAgents:output_type -> kratos.usage.v1.ListBreakdownResponse
+	15, // 44: kratos.usage.v1.UsageService.ListUsageEvents:output_type -> kratos.usage.v1.ListUsageEventsResponse
+	5,  // 45: kratos.usage.v1.UsageService.RecordTokenUsageEvent:output_type -> kratos.usage.v1.TokenUsageEvent
+	16, // 46: kratos.usage.v1.UsageService.GetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
+	16, // 47: kratos.usage.v1.UsageService.SetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
+	20, // 48: kratos.usage.v1.UsageService.CheckUsageQuota:output_type -> kratos.usage.v1.CheckUsageQuotaResponse
+	10, // 49: kratos.usage.v1.UsageService.ListBudgetAlerts:output_type -> kratos.usage.v1.ListBudgetAlertsResponse
+	8,  // 50: kratos.usage.v1.UsageService.SetBudgetAlert:output_type -> kratos.usage.v1.BudgetAlert
+	12, // 51: kratos.usage.v1.UsageService.ExportUsageEvents:output_type -> kratos.usage.v1.ExportUsageEventsResponse
+	22, // 52: kratos.usage.v1.UsageService.PurgeUsageEvents:output_type -> kratos.usage.v1.PurgeUsageEventsResponse
+	24, // 53: kratos.usage.v1.UsageService.ListAllModelsBreakdown:output_type -> kratos.usage.v1.ListAllModelsBreakdownResponse
+	29, // 54: kratos.usage.v1.UsageService.GetContextBudgetStats:output_type -> kratos.usage.v1.GetContextBudgetStatsResponse
+	32, // 55: kratos.usage.v1.UsageService.GetCacheHitRatioStats:output_type -> kratos.usage.v1.GetCacheHitRatioStatsResponse
+	40, // [40:56] is the sub-list for method output_type
+	24, // [24:40] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_kratos_usage_v1_usage_proto_init() }
@@ -3137,7 +3348,7 @@ func file_kratos_usage_v1_usage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_usage_v1_usage_proto_rawDesc), len(file_kratos_usage_v1_usage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   31,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

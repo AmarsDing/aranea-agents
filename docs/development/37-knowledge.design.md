@@ -14,6 +14,16 @@
 
 RAG 知识库：文档导入、分块、向量化、检索增强。对标 trpc-agent-go `knowledge` 包，当前实现基于 Collection 模型的 RAG 流水线，已升级至 Advanced RAG + 部分 Agentic RAG。
 
+### 产品边界（2026-08-22）
+
+Knowledge = 可引用工作区（文档 / Vault 笔记 / 团队词条）。Memory = 运行时状态。写回（G1/G2）是 Memory→Knowledge 的投影，对话默认以 Knowledge 为引用源、Memory 为「关于此人/此任务」的状态。
+
+用户可见名词是「知识库」。`collection_id` 是内部键：入库/检索留空 = 默认库 / 全库联邦路由（US-14）。
+
+### 文档状态机（AS-FSM-01）
+
+`pending → indexing → indexed | error`；`error/indexed → indexing` 可重试；禁止 `pending → indexed`。摄取提交（chunks + indexed + 计数）走 `Usecase.CommitIndexedDocument` 单事务，indexing→indexed 带 CAS。
+
 ### 核心架构
 
 ```
@@ -375,11 +385,17 @@ type Repo interface {
 
 ### 3.3 Usecase
 
+Wave 3（AS-COG-01）：`Usecase` 是 Wire 装配根，字段分簇为 `vaultFields` / `graphFields` / `writeBackFields` / `curateFields`。方法仍挂在 Usecase 上以保持 nil-safe 兼容；新调用方走域门面 `Vault()` / `Retrieve()` / `Graph()` / `WriteBack()` / `Curate()`（`internal/biz/knowledge/domains.go`）。
+
+Wave 4：`GetDocumentByContentHash` 在同一知识库内按正文 hash 去重重复入库；无 LLM 时 `DeriveSummaryCard` 写一行摘要/类型（frontmatter 受管字段，不覆盖用户正文）。用户创建知识库时 embedding/dim 放在「高级选项」，日常界面不强调向量维度。
+
 ```go
 type Usecase struct {
-    collections CollectionRepo
-    documents   DocumentRepo
-    chunks      ChunkRepo
+    vaultFields
+    graphFields
+    writeBackFields
+    curateFields
+    lg loggateway.Logger
 }
 
 func (uc *Usecase) CreateCollection(ctx context.Context, in Collection) (Collection, error)
@@ -389,7 +405,8 @@ func (uc *Usecase) DeleteCollection(ctx context.Context, id string) error
 func (uc *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
 // EnsureDefaultCollection — US-14：返回「默认知识库」，不存在则懒创建（name=默认知识库，
 // embedding_model/dim 取当前 Embedder 配置）。上传免预选的兜底出口。
-func (uc *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int) (Collection, error)
+func (uc *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int, ws string) (Collection, error)
+func (repo CollectionRepo) GetCollectionByName(ctx context.Context, workspace, name string) (Collection, error)
 
 func (uc *Usecase) CreateDocument(ctx context.Context, d Document) (Document, error)
 func (uc *Usecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
@@ -915,9 +932,11 @@ type CollectionMetaFetcher interface {
 }
 
 type FederatedSearchOptions struct {
-    Strategy       FederationStrategy
-    RouteTopN      int
-    RouteMinScore  float32
+    Strategy        FederationStrategy
+    RouteTopN       int
+    RouteMinScore   float32
+    EnumerateLimit  int // SearchAll 枚举上限，默认 64
+    BroadcastCap    int // 广播/降级扇出上限，默认 8
 }
 
 type FederatedRetriever struct {
@@ -937,6 +956,7 @@ func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionID
 - 两种联邦策略：Broadcast（默认，向所有 Collection 并行广播）和 Route（基于相关性评分筛选 TopN Collection）。
 - `CollectionMetaFetcher` 接口由 `biz.KnowledgeUsecase` 实现，提供 Collection 元数据。
 - Route 策略：`collectionRelevanceScore` 基于 Collection 名称/描述与查询词的匹配度评分，按评分排序取 TopN（默认 3），最低分数阈值（默认 0.3）。
+- Wave 2 预算：`SearchAll` 枚举最多 64 库；无 Route 命中时 Broadcast 最多 8 库（按 List 顺序，通常为最近创建）。扇出前做一次查询重写（API `rewrite_strategy` 或复杂查询自动 MultiQuery），避免每库各打一次 LLM。
 - 路由失败时自动降级为 Broadcast。
 - `Search` 方法默认 Broadcast，`SearchWithOptions` 支持指定策略。
 - 单 Collection 时自动降级为 AdaptiveRouter 或 Retriever 直接搜索。
@@ -1211,13 +1231,13 @@ collection 留空
   ├── scoped > 1 → FederatedRetriever Route（scoped 内）
   └── scoped == 0 → ListCollections 全量 → FederatedRetriever Route（全库）
         ├── 无 Collection → 返回空结果（不报错）
-        ├── Route 无匹配（全部 < 阈值）→ 降级 Broadcast 全库并行
+        ├── Route 无匹配（全部 < 阈值）→ 降级 Broadcast，最多 8 库
         └── 部分库失败 → FlowLog 警告，返回成功库结果（§5.10 现状）
 ```
 
 **关键设计决策**：
 
-- **默认知识库懒创建**：首个免选上传时创建（`name="默认知识库"`，`embedding_model`/`dim` 取当前 Embedder 配置）；按 name 查找复用，不引入 is_default 标记列（避免 Schema 变更 + 多默认库歧义）。
+- **默认知识库懒创建**：首个免选上传时创建（`name="默认知识库"`，`embedding_model`/`dim` 取当前 Embedder 配置）；`GetCollectionByName(workspace, name)` 精确复用，`(workspace, name)` 唯一索引防并发双建；不引入 is_default 标记列。
 - **MoveDocument dim 校验**：目标库 `dim` 与源库不一致时拒绝移动（`CodeConflict`）——pgvector 列维度固定，跨 dim 移动会导致向量不可检索；用户需删除后重新入库。同 dim 移动保留原向量，无需重 embedding。
 - **MoveDocument 事务**：单事务内 `UPDATE knowledge_documents.collection_id` + `UPDATE knowledge_chunks.collection_id` + 源库计数 `-1/-chunkCount` + 目标库计数 `+1/+chunkCount`，失败整体回滚。
 - **工具零库行为**：系统无任何 Collection 时工具返回 `chunks=[]` 空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
@@ -2118,7 +2138,7 @@ UNIQUE(doc_id, ordinal)；UNIQUE(collection_id, anchor) WHERE anchor IS NOT NULL
 
 **可见性投影**：边带 scope（由 src/dst 块所属 collection 的 backend + 租户推导）；查询时按当前用户可见 collection 集过滤。SP1 仅落地 scope 字段与基础过滤，完整片段级权限属 SP5。
 
-**部署约束（N-1，评审修订）**：LinkIndex 为单进程内存图（当前 admin 单进程部署满足）；多副本化时需改事件广播保持副本一致，届时另立 ADR。
+**部署约束（N-1 / [ADR-KN-LINKINDEX](../reports/2026-08-22-review-adr-knowledge-linkindex-replica.md)）**：`LinkIndex` 是本进程可选缓存；跨进程反链/dangling 以 `knowledge_block_refs` 为准（SP1-E 未加载即落库）。禁止副本间广播内存图；`knowledge.graph.delta` 保持 Informational，只服务本进程 WS 客户端。
 
 **事件分级（N-2，评审修订）**：`knowledge.graph.delta` 按 AS-EVT-01 登记为 Informational（可从 `knowledge_block_refs` 全量重放重建，丢失可容忍）。
 
@@ -2608,7 +2628,7 @@ RebuildKnowledgeIndex
 POST .../autolink-backfill
   → BackfillOutgoingAutolinks（显式写路径成链）
   → RebuildCollectionBlockIndex
-  （与重建共用 rebuildRuns 互斥门 + knowledge_rebuild_index 进度）
+  （与重建共用本进程 rebuildRuns + PG advisory lock `knowledge-rebuild:{id}` + knowledge_rebuild_index 进度）
 
 工作台
   → GET autolink-preview → 确认 → POST autolink

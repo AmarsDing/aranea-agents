@@ -1,12 +1,17 @@
 <template>
   <section class="settings-section">
     <div class="section-heading">
-      <div>
-        <div class="text-subtitle1 text-weight-bold">规划模式</div>
-        <div class="text-caption text-grey-7">
-          规划模式为 Agent
-          级配置，保存后长期生效，与聊天页的「对话模式」互不影响。不选择策略时：保存不允许附带规划参数，仅当会话开启「深思考」时才临时启用内置规划。
+      <div class="section-heading__main">
+        <div class="section-title">
+          <span class="section-title__text">规划模式</span>
+          <q-icon name="info_outline" size="16px" class="section-title__info cursor-help">
+            <q-tooltip max-width="360px" anchor="top middle" self="bottom middle">
+              规划模式为 Agent 级配置，保存后长期生效，与聊天页的「对话模式」互不影响。不选择策略时：保存不允许附带规划参数，仅当会话开启「深思考」时才临时启用内置规划；聊天记录仍会根据消息内容展示
+              ReAct / A2UI 步骤标记，与此处配置无关。
+            </q-tooltip>
+          </q-icon>
         </div>
+        <p class="settings-section__hint">Agent 级推理与规划策略，与聊天页对话模式互不影响。</p>
       </div>
     </div>
 
@@ -31,42 +36,43 @@
     </q-select>
 
     <q-banner v-if="form.kind === ''" rounded dense class="q-mt-sm settings-info-banner">
-      <strong>未选择规划策略</strong>：① 保存时不允许附带任何规划参数；② 仅当会话开启「深思考」时才临时使用内置规划；③
-      聊天记录仍会根据消息内容展示 ReAct / A2UI 步骤标记，与此处配置无关。
+      <strong>未选择规划策略</strong>：保存时不允许附带规划参数；仅当会话开启「深思考」时临时使用内置规划。
     </q-banner>
 
-    <div v-if="form.kind === 'builtin'" class="q-mt-md app-form-field-grid">
-      <div class="text-subtitle2">内置规划推理参数</div>
-      <q-select
-        v-model="form.builtin.reasoning_effort"
-        dense
-        outlined
-        emit-value
-        map-options
-        clearable
-        label="推理力度"
-        :options="effortOptions"
-        :hint="effortHint"
-      />
-      <q-select
-        v-model="thinkingEnabledChoice"
-        dense
-        outlined
-        emit-value
-        map-options
-        label="启用思考"
-        :options="thinkingEnabledOptions"
-        hint="未设置 = 不向 API 下发，由模型默认决定"
-      />
-      <q-input
-        v-model.number="form.builtin.thinking_tokens"
-        dense
-        outlined
-        type="number"
-        clearable
-        label="思考 Token 数"
-        hint="Claude / Gemini via OpenAI API；留空表示不下发"
-      />
+    <div v-if="form.kind === 'builtin'" class="q-mt-md">
+      <div class="settings-subsection__title q-mb-sm">内置规划推理参数</div>
+      <div class="app-form-field-grid app-form-field-grid--3col">
+        <q-select
+          v-model="form.builtin.reasoning_effort"
+          dense
+          outlined
+          emit-value
+          map-options
+          clearable
+          label="推理力度"
+          :options="effortOptions"
+          :hint="effortHint"
+        />
+        <q-select
+          v-model="thinkingEnabledChoice"
+          dense
+          outlined
+          emit-value
+          map-options
+          label="启用思考"
+          :options="thinkingEnabledOptions"
+          hint="未设置 = 不向 API 下发，由模型默认决定"
+        />
+        <q-input
+          v-model.number="form.builtin.thinking_tokens"
+          dense
+          outlined
+          type="number"
+          clearable
+          label="思考 Token 数"
+          hint="Claude / Gemini via OpenAI API；留空表示不下发"
+        />
+      </div>
     </div>
 
     <div v-else-if="form.kind === 'react'" class="q-mt-md">
@@ -76,7 +82,7 @@
     </div>
 
     <div v-else-if="form.kind === 'a2ui'" class="q-mt-md q-gutter-sm">
-      <div class="text-subtitle2">A2UI 协议</div>
+      <div class="settings-subsection__title">A2UI 协议</div>
       <q-input
         v-model="form.a2ui.instruction"
         class="app-field-long"

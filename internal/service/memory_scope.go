@@ -5,10 +5,19 @@ import (
 	"strconv"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
+
+	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
+
+// agentCatalog is the narrow Get used for Memory Center / debug-recall IDOR.
+type agentCatalog interface {
+	Get(ctx context.Context, id string) (biz.Agent, error)
+}
 
 // authorizeMemoryScope enforces Memory Center scope ACL for Admin RPCs.
 //
@@ -94,4 +103,52 @@ func authorizeMemoryWorkspaceField(ctx context.Context, workspaceID string) (str
 		return "", err
 	}
 	return ws, nil
+}
+
+// assertAgentMemoryAccess enforces login + agent workspace tenancy for
+// Memory Center aggregation and debug-recall RPCs. Cross-tenant callers
+// receive NotFound (same contract as AgentService.assertAgentAccess).
+func (s *MemoryService) assertAgentMemoryAccess(ctx context.Context, agentID string) error {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	}
+	if _, err := authorizeMemoryScope(ctx, "agent", agentID, false); err != nil {
+		return err
+	}
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	if s.agentUC == nil {
+		return apierror.NotFound(apierror.DomainAgent, "agent not found")
+	}
+	a, err := s.agentUC.Get(ctx, agentID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound(apierror.DomainAgent, "agent not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), a.WorkspaceID); err != nil {
+		s.lg.Warn("memory center access denied: workspace mismatch",
+			loggateway.StepID("memory.idor"),
+			loggateway.Str("agent_id", agentID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound(apierror.DomainAgent, "agent not found")
+	}
+	return nil
+}
+
+func memoryHTTPQuery(ctx context.Context, keys ...string) string {
+	r, ok := khttp.RequestFromServerContext(ctx)
+	if !ok || r == nil {
+		return ""
+	}
+	q := r.URL.Query()
+	for _, k := range keys {
+		if v := strings.TrimSpace(q.Get(k)); v != "" {
+			return v
+		}
+	}
+	return ""
 }

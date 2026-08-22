@@ -19,6 +19,8 @@
 - **新增机制**：交付物契约 + 审批门禁 + 驳回返工流程
 - **Graph 归属**：Graph 可归属 Team 或作为模板
 
+> **热路径断点（2026-08-22）**：`SpiritTeamParams.DepartmentID` 与主管自动加入已实现，但 `RealTeamOrchestrator` 组装 Spirit 团队时未赋值，导致自动编排的 Team 常无部门、主管/借调不触发。路由规则与修复任务见 [M78](./78-org-aware-orchestration.design.md)，本设计不重复展开匹配算法。
+
 ### 1.2 分层与依赖
 
 ```

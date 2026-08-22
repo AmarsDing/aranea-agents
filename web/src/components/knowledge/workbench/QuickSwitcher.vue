@@ -11,6 +11,9 @@
     @update:query="query = $event"
     @keydown="onKeydown"
   >
+    <div v-if="truncated" class="kb-switcher__warn" data-test="switcher-truncated">
+      {{ t('knowledgePage.workbench.switcher.truncated') }}
+    </div>
     <template v-if="flatItems.length">
       <div v-if="!query.trim() && openTabDocs.length" class="kb-switcher__section">
         {{ t('knowledgePage.workbench.switcher.openTabs') }}
@@ -53,6 +56,8 @@ const props = defineProps<{
   /** 已打开 tab（空查询时前置展示） */
   tabs: WorkbenchTab[];
   vaultName: string;
+  /** 文档列表被分页截断时，⌘O 索引不完整。 */
+  truncated?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -145,6 +150,14 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <style lang="sass" scoped>
+.kb-switcher__warn
+  padding: 6px 10px
+  margin-bottom: 4px
+  border-radius: 8px
+  font-size: 12px
+  color: var(--kb-text-primary)
+  background: color-mix(in srgb, #f5a524 16%, transparent)
+
 .kb-switcher__section
   padding: 6px 10px 2px
   font-size: 11px

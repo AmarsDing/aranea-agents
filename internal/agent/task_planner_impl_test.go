@@ -1262,3 +1262,65 @@ func TestMapV1StrategyToV2(t *testing.T) {
 		}
 	}
 }
+
+func TestPlan_MemoryHitRecipeReplaySynthesizesSubtask(t *testing.T) {
+	msg := "再写一篇小红书种草文案"
+	cache := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	cache.RecordCompletionWithAgents(context.Background(), biz.ExtractTaskPattern(msg),
+		biz.TopologyHybrid, 0.91, 1, 0, []string{"copywriter", "editor"})
+	if e, ok := cache.Get(biz.ExtractTaskPattern(msg)); ok {
+		e.DomainPath = "创作/内容运营"
+	}
+	repo := &stubTaskPlanRepo{}
+	impl := &taskPlannerImpl{
+		repo:      repo,
+		orchCache: cache,
+		lg:        loggateway.NewNoop(),
+	}
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		UserMessage:     msg,
+		SpiritSessionID: "sp-replay",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.MemoryHit == nil || len(plan.MemoryHit.AgentKeysUsed) != 2 {
+		t.Fatalf("memory hit keys: %+v", plan.MemoryHit)
+	}
+	if plan.Strategy != biz.StrategyDAG {
+		t.Fatalf("hybrid cache → dag, got %s", plan.Strategy)
+	}
+	if len(plan.SubTasks) != 1 || plan.SubTasks[0].ID != "st_recipe_replay" {
+		t.Fatalf("recipe replay must synthesize one subtask, got %+v", plan.SubTasks)
+	}
+	if plan.SubTasks[0].DomainPath != "创作/内容运营" {
+		t.Fatalf("domain_path %q", plan.SubTasks[0].DomainPath)
+	}
+	if !strings.Contains(plan.StrategyReason, "配方回放") {
+		t.Fatalf("strategy reason %q", plan.StrategyReason)
+	}
+}
+
+func TestPlan_MemoryHitReplaysSpecialtySlots(t *testing.T) {
+	msg := "再做一套种草物料"
+	pat := biz.ExtractTaskPattern(msg)
+	cache := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	cache.RecordCompletionWithAgents(context.Background(), pat,
+		biz.TopologyParallel, 0.92, 2, 0, []string{"spec-copy", "spec-des"})
+	cache.SetEntrySpecialties(context.Background(), pat, []string{"创作/文案", "设计/视觉"})
+	impl := &taskPlannerImpl{
+		repo:      &stubTaskPlanRepo{},
+		orchCache: cache,
+		lg:        loggateway.NewNoop(),
+	}
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{UserMessage: msg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.SubTasks) != 2 {
+		t.Fatalf("slots=%d %+v", len(plan.SubTasks), plan.SubTasks)
+	}
+	if plan.SubTasks[0].DomainPath != "创作/文案" || plan.SubTasks[1].ID != "st_recipe_2" {
+		t.Fatalf("%+v", plan.SubTasks)
+	}
+}

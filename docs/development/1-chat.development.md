@@ -1832,3 +1832,36 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 - 缺口盘点无遗漏：`runIntentPass` 全局唯一调用点（`chat_orchestrator_turn.go`），team 成员内部步骤不各自付 intent；QuickAssess 出错时 fail-closed 走 #6（保守，保澄清门可用）。
 - 已接受的权衡：语音轮若无投机产物（极短语音 ASR partial 未触发）且属复杂任务，走 #6 内联付 ≤2.5s——投机预跑是设计上的缓解手段，不再加第二道语音专用跳过（避免语音复杂任务失去澄清门）。
 - QuickAssess 前置在 errgroup 之外执行（纯计算），simple/DirectReply 轮不必等 intent LLM。
+
+---
+
+## Intent 分级时限（方案 D，2026-08-21，全链路审查 C2 裁定落地）
+
+> **裁定问题**：非复杂轮是否放弃首轮澄清换 TTFT？裁定结论：不放弃澄清门，改为按轮次类型分级 intent 收口时限。
+
+### 设计
+
+Intent goroutine 从 errgroup 拆出（eg 只收 BUILD+Recall），`eg.Wait()` 后分级收口：
+
+| 轮次类型 | 收口策略 | 理由 |
+|---------|---------|------|
+| simple / DirectReply | skipIntent（0 成本，既有） | 已最优 |
+| 欠规格（`LooksLikeUnderspecifiedTask`） | 全等至 2.5s 保险丝 | 澄清门设计目标场景，方向性返工 ≫ 2.5s |
+| complex（QuickAssess） | 全等至 2.5s 保险丝 | 长规划轮，refined goal 影响 Plan 质量，intent 占比可忽略 |
+| moderate 非欠规格 | BUILD 后 500ms rendezvous（`intentRendezvousWindow`） | 输入具体可执行，澄清门极少触发；窗口内完成保留完整语义 |
+
+### 关键实现约束
+
+- `intentCtx` 必须挂 **turn ctx** 而非 egCtx（egCtx 在 `eg.Wait()` 返回即取消，挂错会在 rendezvous 开始时杀掉 intent）。
+- artifact 只经 buffered channel（容量 1）传递，主流程无共享变量竞争；`raced_out`/`fused` 时 cancel intent 省 provider token。
+- BUILD 失败路径先 cancel 在途 intent 再 `failTurn`。
+- 降级路径 = 既有「无意图」路径（pre-planning 门降级有测试钉住，澄清门无 artifact 不触发，non-fatal）。
+
+### 可观测
+
+`chat.build_intent_parallel` 进程日志新增 `intent_outcome`（completed/fused/raced_out/skipped/reused/reused_speculative）+ `intent_elapsed_ms`。若 `raced_out` 占比高，用数据决定调窗口或扩 skip 面。
+
+### 改动与测试
+
+改动：`internal/service/chat_orchestrator_turn.go`（`shouldSkipIntentPass` 增返 QuickAssess 等级、`awaitIntentArtifact` + `intentRendezvousWindow`、并行段重构）。
+测试：`TestAwaitIntentArtifact` 四分支（窗口内 completed / raced_out 且 ctx 已 cancel / fullWait 等过窗口 / 保险丝 fused），`-race` 通过；`TestShouldSkipIntentPass_DirectReplyWithoutPlanner` 适配新签名。

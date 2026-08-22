@@ -173,6 +173,14 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 				loggateway.Err(err))
 			continue
 		}
+		if err := s.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil {
+			failed++
+			s.lg.Warn("晋升目标文档无法进入 indexing",
+				loggateway.StepID("knowledge.block.promote_replay"),
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Err(err))
+			continue
+		}
 		params := knowledge.IngestParams{
 			DocID:        doc.ID,
 			CollectionID: target.ID,

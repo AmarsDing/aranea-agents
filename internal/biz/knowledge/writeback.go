@@ -84,6 +84,11 @@ func (u *Usecase) SetWriteBackReplay(fn WriteBackReplayFunc) {
 	u.writeBackReplay = fn
 }
 
+// HasWriteBackReplay reports whether chunk replay is bound (Wave 2 bootstrap check).
+func (u *Usecase) HasWriteBackReplay() bool {
+	return u != nil && u.writeBackReplay != nil
+}
+
 // WriteBackGraphFunc 写回图谱钩子：touched 词条页触发 M2 实体共现 + typed 关系
 // 抽取（均为 content_hash 幂等、best-effort）。团队库无 vault 同步循环，实体钩子
 // 唯一载体（vault applier）永不触发——写回路径必须自带图谱收口，否则 entries/*

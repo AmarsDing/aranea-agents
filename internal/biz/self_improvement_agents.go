@@ -31,8 +31,12 @@ const (
 const SIAnalystSystemPrompt = `你是 Aranea-Agents 平台的自改进诊断分析师（Analyst）。
 输入：一条 platform 进化建议（trigger_source、标题、描述）及其证据快照。
 任务：定位根因并给出修复策略。只分析，不修改代码。
+需要读源码时，先输出一个工具 JSON（每轮一个）：
+{"tool":"patcher_fs_read","path":"repo 相对路径"}
+{"tool":"patcher_fs_list","path":"相对目录"}
+没有只读根时不要编造文件内容，只根据建议与证据判断。
 
-严格输出一个 JSON 对象（不要输出任何额外文字）：
+最终必须输出一个 Diagnosis JSON（不要带 tool 字段，不要输出任何额外文字）：
 {
   "root_cause": "根因描述（必填，非空）",
   "affected_files": ["repo 相对路径，如 internal/biz/x.go"],
@@ -45,10 +49,16 @@ const SIAnalystSystemPrompt = `你是 Aranea-Agents 平台的自改进诊断分�
 // SIPatcherSystemPrompt instructs the Patcher to produce a unified diff patch
 // inside the sandbox worktree (contract: PatcherOutput struct).
 const SIPatcherSystemPrompt = `你是 Aranea-Agents 平台的自改进补丁工程师（Patcher）。
-输入：Analyst 的 Diagnosis（根因/影响文件/修复策略）。你可使用 worktree 内的
-文件读写与 git diff 工具完成修改。
+输入：Analyst 的 Diagnosis（根因/影响文件/修复策略），以及用户消息中内联的
+相关文件当前内容（若有）。需要核对或改更多文件时，先输出一个工具 JSON：
+{"tool":"patcher_fs_read","path":"相对路径"}
+{"tool":"patcher_fs_list","path":"相对目录"}
+{"tool":"patcher_fs_write","path":"相对路径","content":"完整文件内容"}
+{"tool":"patcher_git_diff","path":"可选路径"}
+写文件后应再调用 patcher_git_diff。官方产物仍是最终 PatcherOutput JSON
+（diff 为 unified diff）；工具写入会在返回前还原，pipeline 按 diff 再 apply。
 
-严格输出一个 JSON 对象（不要输出任何额外文字）：
+最终必须输出一个 JSON 对象（不要带 tool 字段，不要输出任何额外文字）：
 {
   "diff": "标准 unified diff（以 diff --git 开头，必填非空）",
   "files": 变更文件数,

@@ -64,6 +64,9 @@
         >
           <q-icon :name="iconOf(f)" size="16px" class="kb-sidebar__file-icon" />
           <span class="kb-sidebar__file-name ellipsis" :title="f.name">{{ f.name }}</span>
+          <q-tooltip v-if="f.summary || f.doc_type || (f.tags && f.tags.length)" class="kb-portal" :delay="400">
+            <DocumentSummaryCard :summary="f.summary" :tags="f.tags" :doc-type="f.doc_type" />
+          </q-tooltip>
           <q-icon
             v-if="f.status === 'error'"
             name="error_outline"
@@ -145,6 +148,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GlassPanel from '../effects/GlassPanel.vue';
 import KnowledgeVaultTree from '../KnowledgeVaultTree.vue';
+import DocumentSummaryCard from '../DocumentSummaryCard.vue';
 import { isValidDropTarget, type DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
 import type { KnowledgeCollection, VaultTreeNode } from '../../../features/knowledge/types';

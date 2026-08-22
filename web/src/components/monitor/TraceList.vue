@@ -1,79 +1,74 @@
 <!--
-  Pure presentation: all data via props, all actions via emits.
-  No composable / Store access. 筛选/分页状态由父级 useMonitorTraces 持有（v-model 回写），
-  变更后由 composable watcher 统一发起服务端查询。
+  Pure presentation: Runs 列表（APM 风）。
+  筛选/分页状态由父级 useMonitorTraces 持有（v-model 回写），变更后由 composable watcher 统一发起服务端查询。
+  详情弹窗见 TraceDetailDialog.vue（由 MonitorPage 直接接线）。
 -->
 <template>
-  <q-card flat bordered class="monitor-card">
-    <q-card-section class="q-pb-none">
-      <div class="text-h6 text-weight-bold">{{ t('monitorPage.traces.title') }}</div>
-      <div class="text-caption text-grey-7">{{ t('monitorPage.traces.subtitle') }}</div>
+  <q-card flat bordered class="monitor-card trace-list">
+    <q-card-section class="trace-list__head row items-center justify-between no-wrap">
+      <div>
+        <div class="text-h6 text-weight-bold">{{ t('monitorPage.traces.title') }}</div>
+        <div class="text-caption trace-list__subtitle">{{ t('monitorPage.traces.subtitle') }}</div>
+      </div>
+      <div class="row items-center q-gutter-sm no-wrap">
+        <q-input
+          :model-value="keyword"
+          class="trace-list__search"
+          dense
+          outlined
+          clearable
+          debounce="300"
+          :placeholder="t('monitorPage.traces.searchPlaceholder')"
+          @update:model-value="emit('update:keyword', String($event ?? ''))"
+        >
+          <template #prepend><q-icon name="search" size="16px" /></template>
+        </q-input>
+        <span class="trace-live-pill" :class="`trace-live-pill--${liveTone}`">
+          <span class="trace-live-pill__dot" />
+          {{ livePill.label }}
+        </span>
+        <q-btn flat round dense icon="restart_alt" @click="emit('reset')">
+          <q-tooltip>{{ t('monitorPage.traces.reset') }}</q-tooltip>
+        </q-btn>
+        <q-btn flat round dense icon="refresh" :loading="loading" @click="emit('refresh')">
+          <q-tooltip>{{ t('monitorPage.traces.refresh') }}</q-tooltip>
+        </q-btn>
+      </div>
     </q-card-section>
 
-    <AppPageToolbar class="monitor-traces-toolbar">
-      <q-input
-        :model-value="keyword"
-        class="app-page-toolbar__search"
-        dense
-        outlined
-        clearable
-        debounce="300"
-        :label="t('monitorPage.traces.searchPlaceholder')"
-        @update:model-value="emit('update:keyword', String($event ?? ''))"
-      >
-        <template #prepend><q-icon name="search" /></template>
-      </q-input>
-      <template #actions>
-        <q-badge :color="livePill.color" text-color="white" class="monitor-traces-live-pill">
-          <q-icon name="circle" size="7px" class="q-mr-xs" :class="{ 'live-dot': liveState === 'live' || liveState === 'connected' }" />
-          {{ livePill.label }}
-        </q-badge>
-        <q-btn flat rounded no-caps icon="restart_alt" :label="t('monitorPage.traces.reset')" @click="emit('reset')" />
-        <q-btn
-          flat
-          rounded
-          no-caps
-          icon="refresh"
-          :label="t('monitorPage.traces.refresh')"
-          :loading="loading"
-          @click="emit('refresh')"
-        />
-      </template>
-    </AppPageToolbar>
-
-    <!-- 筛选 chips：类型（默认排除内部域）+ 状态；计数来自服务端聚合（忽略自身维度） -->
-    <div class="monitor-traces-filters">
-      <div class="row items-center q-gutter-xs">
-        <span class="monitor-traces-filters__label">{{ t('monitorPage.traces.filterDomain') }}</span>
-        <q-chip
-          v-for="opt in domainOptions"
-          :key="opt.value || 'all'"
-          clickable
-          dense
-          :outline="domain !== opt.value"
-          :color="domain === opt.value ? 'accent' : undefined"
-          :text-color="domain === opt.value ? 'white' : undefined"
-          @click="emit('update:domain', opt.value)"
-        >
-          {{ opt.label }}
-          <span class="monitor-traces-chip-count">{{ formatCompactInt(opt.count) }}</span>
-        </q-chip>
+    <!-- 筛选胶囊组：类型（默认排除内部域）+ 状态；计数来自服务端聚合（忽略自身维度） -->
+    <div class="trace-filters">
+      <div class="trace-filters__row row items-center q-gutter-sm">
+        <span class="trace-filters__label">{{ t('monitorPage.traces.filterDomain') }}</span>
+        <div class="trace-filters__group">
+          <button
+            v-for="opt in domainOptions"
+            :key="opt.value || 'all'"
+            class="trace-filter-pill"
+            :class="{ 'trace-filter-pill--active': domain === opt.value }"
+            type="button"
+            @click="emit('update:domain', opt.value)"
+          >
+            {{ opt.label }}
+            <span class="trace-filter-pill__count">{{ formatCompactInt(opt.count) }}</span>
+          </button>
+        </div>
       </div>
-      <div class="row items-center q-gutter-xs">
-        <span class="monitor-traces-filters__label">{{ t('monitorPage.traces.filterStatus') }}</span>
-        <q-chip
-          v-for="opt in statusOptions"
-          :key="opt.value || 'all'"
-          clickable
-          dense
-          :outline="status !== opt.value"
-          :color="status === opt.value ? 'accent' : undefined"
-          :text-color="status === opt.value ? 'white' : undefined"
-          @click="emit('update:status', opt.value)"
-        >
-          {{ opt.label }}
-          <span class="monitor-traces-chip-count">{{ formatCompactInt(opt.count) }}</span>
-        </q-chip>
+      <div class="trace-filters__row row items-center q-gutter-sm">
+        <span class="trace-filters__label">{{ t('monitorPage.traces.filterStatus') }}</span>
+        <div class="trace-filters__group">
+          <button
+            v-for="opt in statusOptions"
+            :key="opt.value || 'all'"
+            class="trace-filter-pill"
+            :class="{ 'trace-filter-pill--active': status === opt.value }"
+            type="button"
+            @click="emit('update:status', opt.value)"
+          >
+            {{ opt.label }}
+            <span class="trace-filter-pill__count">{{ formatCompactInt(opt.count) }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -135,36 +130,37 @@
         </template>
         <template #body-cell-tokens="slotProps">
           <q-td :props="slotProps">
-            <span class="app-registry-cell-sub">{{ formatTokens(slotProps.row) }}</span>
+            <span class="trace-num">{{ formatTokens(slotProps.row) }}</span>
           </q-td>
         </template>
         <template #body-cell-latency="slotProps">
           <q-td :props="slotProps">
-            <span class="app-registry-cell-sub">{{ formatLatencyRow(slotProps.row) }}</span>
+            <span class="trace-num">{{ formatLatencyRow(slotProps.row) }}</span>
           </q-td>
         </template>
         <template #body-cell-cost="slotProps">
           <q-td :props="slotProps">
-            <span class="app-registry-cell-sub">{{ formatCost(slotProps.row) }}</span>
+            <span class="trace-num">{{ formatCost(slotProps.row) }}</span>
           </q-td>
         </template>
         <template #body-cell-status="slotProps">
           <q-td :props="slotProps">
-            <q-badge dense :color="traceStatusColor(slotProps.row.status)" text-color="white">
+            <span class="trace-status" :class="`trace-status--${statusTone(slotProps.row.status)}`">
+              <span class="trace-status__dot" />
               {{ statusLabel(slotProps.row.status) }}
-            </q-badge>
+            </span>
           </q-td>
         </template>
         <template #body-cell-time="slotProps">
           <q-td :props="slotProps">
-            <span class="app-registry-cell-sub">{{ formatDate(slotProps.row.created_at) }}</span>
+            <span class="trace-num trace-time">{{ formatDate(slotProps.row.created_at) }}</span>
           </q-td>
         </template>
         <template #no-data>
-          <div class="monitor-traces-empty column items-center q-pa-xl">
-            <q-icon name="manage_search" size="40px" class="q-mb-sm text-grey-6" />
+          <div class="trace-list__empty column items-center q-pa-xl">
+            <q-icon name="manage_search" size="40px" class="q-mb-sm" />
             <div class="text-subtitle2">{{ t('monitorPage.traces.emptyTitle') }}</div>
-            <div class="text-caption text-grey-7 q-mb-md">{{ t('monitorPage.traces.emptyHint') }}</div>
+            <div class="text-caption q-mb-md">{{ t('monitorPage.traces.emptyHint') }}</div>
             <q-btn
               v-if="filtersActive"
               flat
@@ -191,163 +187,24 @@
       />
     </div>
   </q-card>
-
-  <q-dialog :model-value="detailOpen" maximized @update:model-value="$emit('update:detailOpen', $event)">
-    <q-card class="app-dialog-card app-glass-dialog monitor-trace-dialog">
-      <q-card-section class="app-glass-dialog__head row items-start justify-between">
-        <div>
-          <div class="app-glass-dialog__title row items-center q-gutter-sm">
-            <span>{{ detail?.name || detail?.key || t('monitorPage.traces.detailFallbackTitle') }}</span>
-            <q-badge v-if="detail?.domain" dense outline :color="domainColor(detail)">
-              {{ domainLabel(detail) }}
-            </q-badge>
-            <q-badge dense :color="traceStatusColor(detail?.status)" text-color="white">
-              {{ statusLabel(detail?.status) }}
-            </q-badge>
-          </div>
-          <div class="app-glass-dialog__subtitle text-mono">
-            trace_id: {{ activeCorrelation.traceId || detail?.key || '-' }}
-            <span v-if="activeCorrelation.runId"> / run_id: {{ activeCorrelation.runId }}</span>
-          </div>
-        </div>
-        <div class="row q-gutter-sm items-center">
-          <q-btn
-            v-if="activeCorrelation.sessionId"
-            flat
-            no-caps
-            icon="chat"
-            :label="t('monitorPage.traces.openSession')"
-            color="accent"
-            @click="$emit('openChatSession', activeCorrelation.sessionId)"
-          />
-          <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" @export="onExportFlow" />
-          <q-btn flat icon="content_copy" :label="t('monitorPage.traces.copyJson')" @click="copyDetail" />
-          <q-btn v-close-popup flat round dense icon="close" />
-        </div>
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-glass-dialog__body">
-          <!-- 指标条：运维一眼看到规模与成本 -->
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div v-for="chip in metricChips" :key="chip.label" class="col-auto">
-              <q-card flat bordered class="monitor-card q-px-md q-py-sm">
-                <div class="text-caption text-grey-7">{{ chip.label }}</div>
-                <div class="text-subtitle1 text-weight-bold" :class="chip.tone">{{ chip.value }}</div>
-              </q-card>
-            </div>
-          </div>
-
-          <!-- 错误面板：失败/超时/中断时置顶可见 -->
-          <q-banner v-if="errorPanel.visible" dense rounded class="bg-negative text-white q-mb-md">
-            <template #avatar><q-icon name="error_outline" /></template>
-            <div class="text-weight-bold">{{ errorPanel.title }}</div>
-            <div v-for="(line, idx) in errorPanel.lines" :key="idx" class="text-caption">{{ line }}</div>
-          </q-banner>
-
-          <!-- 概要条：状态/类型/名称已在头部徽章展示，此处仅保留补充元信息 -->
-          <div class="monitor-trace-meta q-mb-md">
-            <span v-if="detail?.team_name" class="monitor-trace-meta__item">
-              <span class="monitor-trace-meta__label">{{ t('monitorPage.traces.summaryTeam') }}</span>
-              {{ detail.team_name }}
-            </span>
-            <span class="monitor-trace-meta__item">
-              <span class="monitor-trace-meta__label">Agent</span>
-              {{ detail?.agent_name || '-' }}
-              <span v-if="detail?.agent_name && detail?.agent_id" class="text-mono monitor-trace-meta__sub">
-                {{ detail.agent_id }}
-              </span>
-            </span>
-            <span class="monitor-trace-meta__item">
-              <span class="monitor-trace-meta__label">{{ t('monitorPage.traces.summaryProviderModel') }}</span>
-              {{ detail?.provider || '-' }} / {{ detail?.model || '-' }}
-            </span>
-            <span class="monitor-trace-meta__item">
-              <span class="monitor-trace-meta__label">{{ t('monitorPage.traces.summaryCreatedAt') }}</span>
-              {{ formatDate(detail?.created_at || '') }}
-            </span>
-            <span class="monitor-trace-meta__item">
-              <span class="monitor-trace-meta__label">{{ t('monitorPage.traces.summaryUpdatedAt') }}</span>
-              {{ formatDate(detail?.updated_at || '') }}
-            </span>
-          </div>
-
-          <q-card flat bordered class="monitor-card">
-            <q-card-section>
-              <q-tabs v-model="detailTab" dense align="left" active-color="accent">
-                <q-tab name="flow" :label="t('monitorPage.traces.tabFlow')" icon="timeline" />
-                <q-tab name="waterfall" :label="t('monitorPage.traces.tabWaterfall')" icon="waterfall_chart" />
-                <q-tab name="tree" :label="t('monitorPage.traces.tabTree')" icon="account_tree" />
-              </q-tabs>
-              <q-separator class="q-mt-sm" />
-              <q-tab-panels v-model="detailTab" animated class="q-mt-md">
-                <q-tab-panel name="flow" class="q-pa-none">
-                  <div class="row items-center q-mb-sm q-gutter-sm">
-                    <q-badge outline color="teal">
-                      {{ t('monitorPage.traces.flowLinesBadge', { count: flowLines.length }) }}
-                    </q-badge>
-                    <span class="text-caption text-grey-7">{{ t('monitorPage.traces.flowLiveHint') }}</span>
-                  </div>
-                  <flow-trace-panel :lines="flowLines" />
-                </q-tab-panel>
-                <q-tab-panel name="waterfall" class="q-pa-none">
-                  <trace-waterfall :spans="spanList" />
-                </q-tab-panel>
-                <q-tab-panel name="tree" class="q-pa-none">
-                  <q-tree :nodes="spanNodes" node-key="id" default-expand-all />
-                </q-tab-panel>
-              </q-tab-panels>
-            </q-card-section>
-          </q-card>
-
-          <q-card flat bordered class="monitor-card q-mt-md">
-            <q-expansion-item
-              dense-toggle
-              icon="data_object"
-              :label="t('monitorPage.traces.rawJson')"
-              header-class="text-subtitle2"
-            >
-              <q-card-section>
-                <pre class="monitor-json">{{ detailJSON }}</pre>
-              </q-card-section>
-            </q-expansion-item>
-          </q-card>
-        </q-card-section>
-      </div>
-    </q-card>
-  </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { copyToClipboard } from 'quasar';
+import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { MonitorTrace, MonitorLogLine, StreamState } from '../../features/monitor/types';
-import { compactJSON, formatDate, parseJSON } from '../../features/monitor/utils';
-import { downloadFlowDiagnosticJsonl } from '../../features/monitor/flow';
+import type { MonitorTrace, StreamState } from '../../features/monitor/types';
+import { formatDate } from '../../features/monitor/utils';
 import { formatCompactInt, formatCostUsd } from '../../features/monitor/runFormat';
 import { TRACE_DOMAIN_FILTERS, TRACE_STATUS_FILTERS } from '../../features/monitor/tracesQuery';
-import TraceWaterfall from './TraceWaterfall.vue';
-import FlowTracePanel from './FlowTracePanel.vue';
-import FlowLogExportButton from './FlowLogExportButton.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import {
   createMonitorTraceColumns,
   traceDomainColor,
   traceDomainLabel,
   traceRunMetrics,
-  traceStatusColor,
   traceStatusLabel,
 } from './monitorTableUi';
-
-type TreeNode = {
-  id: string;
-  label: string;
-  caption?: string;
-  children?: TreeNode[];
-};
 
 const { t } = useI18n();
 
@@ -355,6 +212,16 @@ const columns = computed(() => createMonitorTraceColumns(t));
 
 function statusLabel(status?: string): string {
   return traceStatusLabel(t, status);
+}
+
+/** 状态 → 展示色调（状态点+文字用，与 Span 树/瀑布一致语义） */
+function statusTone(status?: string): string {
+  const s = String(status ?? '');
+  if (s === 'running') return 'running';
+  if (s === 'ok' || s === 'success') return 'ok';
+  if (s === 'error') return 'error';
+  if (s === 'timeout' || s === 'interrupted') return 'warn';
+  return 'idle';
 }
 
 function formatTokens(row: MonitorTrace): string {
@@ -407,12 +274,6 @@ const props = defineProps<{
   /** WS 实时订阅状态（pill 展示） */
   liveState: StreamState;
   highlightUsageEventId?: string;
-  flowLines: MonitorLogLine[];
-  activeCorrelation: { traceId: string; runId: string; sessionId: string };
-  detail: MonitorTrace | null;
-  /** Persisted spans from the GetMonitorTrace detail API (monitor_trace_spans). */
-  detailSpans?: unknown[];
-  detailOpen: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -423,20 +284,15 @@ const emit = defineEmits<{
   'update:pageSize': [value: number];
   refresh: [];
   reset: [];
-  notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
   openTrace: [row: MonitorTrace];
-  'update:detailOpen': [value: boolean];
-  openChatSession: [sessionId: string];
 }>();
-
-const detailTab = ref<'flow' | 'waterfall' | 'tree'>('flow');
 
 const pageMax = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)));
 
 /** 有任一筛选条件激活（空态展示「重置」引导用） */
 const filtersActive = computed(() => props.keyword.trim() !== '' || props.status !== '' || props.domain !== '');
 
-/** 类型 chips：'' = 默认视图（排除内部域）；计数 = 非内部域合计 */
+/** 类型 pills：'' = 默认视图（排除内部域）；计数 = 非内部域合计 */
 const domainOptions = computed(() => {
   const counts = props.domainCounts;
   const allCount = Object.entries(counts).reduce(
@@ -450,7 +306,7 @@ const domainOptions = computed(() => {
   }));
 });
 
-/** 状态 chips：'' = 全部；计数 = 各状态合计 */
+/** 状态 pills：'' = 全部；计数 = 各状态合计 */
 const statusOptions = computed(() => {
   const counts = props.statusCounts;
   const allCount = Object.values(counts).reduce((sum, value) => sum + value, 0);
@@ -466,90 +322,29 @@ const livePill = computed(() => {
   switch (props.liveState) {
     case 'live':
     case 'connected':
-      return { color: 'positive', label: t('monitorPage.traces.live.live') };
+      return { label: t('monitorPage.traces.live.live') };
     case 'error':
-      return { color: 'negative', label: t('monitorPage.traces.live.error') };
+      return { label: t('monitorPage.traces.live.error') };
     default:
-      return { color: 'grey', label: t('monitorPage.traces.live.connecting') };
+      return { label: t('monitorPage.traces.live.connecting') };
+  }
+});
+
+const liveTone = computed(() => {
+  switch (props.liveState) {
+    case 'live':
+    case 'connected':
+      return 'live';
+    case 'error':
+      return 'error';
+    default:
+      return 'idle';
   }
 });
 
 function onRowClick(_evt: Event, row: MonitorTrace) {
   emit('openTrace', row);
 }
-
-const detailJSON = computed(() => compactJSON(props.detail ?? {}));
-const detailConfig = computed<Record<string, unknown>>(() => parseJSON(props.detail?.config_json || ''));
-const spanList = computed(() => {
-  if (!props.detail) return [];
-  // Prefer persisted spans from the detail API; fall back to legacy metadata.spans.
-  if (props.detailSpans?.length) return props.detailSpans;
-  const metadata = parseJSON(props.detail.metadata_json || '');
-  return Array.isArray(metadata.spans) ? metadata.spans : [];
-});
-const spanNodes = computed<TreeNode[]>(() => {
-  if (!props.detail) return [];
-  const metadataSpans = spanList.value;
-  if (metadataSpans.length) return metadataSpans.map((span: unknown, index: number) => spanToNode(span, index));
-  return [
-    {
-      id: props.detail.id,
-      label: `${props.detail.provider || 'provider'} / ${props.detail.model || 'model'}`,
-      caption: statusLabel(props.detail.status),
-    },
-  ];
-});
-
-/** 指标条：Tokens / 延迟 / 成本 / Span / 错误 */
-const metricChips = computed(() => {
-  const d = props.detail;
-  if (!d) return [];
-  const cfg = detailConfig.value;
-  const spanCount = Number(cfg.span_count ?? 0);
-  const errorCount = Number(cfg.error_count ?? 0);
-  const metrics = traceRunMetrics(d);
-  return [
-    { label: 'Tokens', value: metrics.total_tokens > 0 ? formatCompactInt(metrics.total_tokens) : '-', tone: '' },
-    { label: t('monitorPage.traces.metricLatency'), value: formatLatency(metrics.duration_ms), tone: '' },
-    {
-      label: t('monitorPage.traces.metricCost'),
-      value: metrics.total_cost_usd > 0 ? formatCostUsd(metrics.total_cost_usd) : '-',
-      tone: '',
-    },
-    { label: t('monitorPage.traces.metricSpans'), value: spanCount > 0 ? String(spanCount) : '-', tone: '' },
-    {
-      label: t('monitorPage.traces.metricErrors'),
-      value: String(errorCount),
-      tone: errorCount > 0 ? 'text-negative' : 'text-grey-7',
-    },
-  ];
-});
-
-/** 错误面板：失败/超时/中断状态或存在错误 span 时展示 */
-const errorPanel = computed(() => {
-  const d = props.detail;
-  if (!d) return { visible: false, title: '', lines: [] as string[] };
-  const status = String(d.status || '');
-  const errorCount = Number(detailConfig.value.error_count ?? 0);
-  const errorSpans = spanList.value
-    .filter((s: unknown) => String((s as Record<string, unknown>)?.status ?? '') === 'error')
-    .slice(0, 5)
-    .map((s: unknown) => {
-      const r = s as Record<string, unknown>;
-      return `${String(r.name || r.kind || 'span')} — ${String(r.error || r.message || r.status || 'error')}`;
-    });
-  const statusInError = status === 'error' || status === 'timeout' || status === 'interrupted';
-  if (!statusInError && errorCount <= 0 && errorSpans.length === 0) {
-    return { visible: false, title: '', lines: [] as string[] };
-  }
-  const title =
-    status === 'timeout'
-      ? t('monitorPage.traces.errorTimeout')
-      : status === 'interrupted'
-        ? t('monitorPage.traces.errorInterrupted')
-        : t('monitorPage.traces.errorFailed', { count: errorCount });
-  return { visible: true, title, lines: errorSpans };
-});
 
 function tryOpenHighlightedRun() {
   const hit = (props.highlightUsageEventId || '').trim();
@@ -560,68 +355,58 @@ function tryOpenHighlightedRun() {
 
 watch(() => props.highlightUsageEventId, tryOpenHighlightedRun);
 watch(() => props.rows.length, tryOpenHighlightedRun);
-
-function spanToNode(span: unknown, index: number): TreeNode {
-  const row = (span && typeof span === 'object' ? span : {}) as Record<string, unknown>;
-  const children = Array.isArray(row.children)
-    ? row.children.map((child: unknown, childIndex: number) => spanToNode(child, childIndex))
-    : undefined;
-  return {
-    id: String(row.id || row.name || `span-${index}`),
-    label: String(row.name || row.type || row.kind || `span #${index + 1}`),
-    caption: [row.status, row.duration_ms ? `${row.duration_ms}ms` : '', row.model, row.tool_name]
-      .filter(Boolean)
-      .join(' | '),
-    children,
-  };
-}
-
-async function copyDetail() {
-  await copyToClipboard(detailJSON.value);
-  emit('notify', { message: t('monitorPage.traces.copied'), type: 'positive' });
-}
-
-function onExportFlow() {
-  if (!props.flowLines.length) {
-    emit('notify', { message: t('monitorPage.traces.exportEmpty'), type: 'warning' });
-    return;
-  }
-  downloadFlowDiagnosticJsonl(props.activeCorrelation.traceId, props.flowLines);
-  emit('notify', { message: t('monitorPage.traces.exportDone'), type: 'positive' });
-}
 </script>
 
 <style scoped>
-.monitor-traces-toolbar {
-  padding: 0 16px 8px;
-  border-bottom: none;
+.trace-list__head {
+  padding-bottom: 12px;
 }
 
-.monitor-traces-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 16px 10px;
-}
-
-.monitor-traces-filters__label {
-  min-width: 32px;
-  font-size: 12px;
+.trace-list__subtitle {
   color: var(--color-text-secondary);
 }
 
-.monitor-traces-chip-count {
-  margin-left: 4px;
+.trace-list__search {
+  width: 300px;
+}
+
+/* ── 实时状态 pill ── */
+.trace-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
   font-size: 11px;
-  opacity: 65%;
+  border: 1px solid var(--glass-border);
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--glass-surface) 60%, transparent);
 }
 
-.monitor-traces-live-pill {
-  padding: 4px 8px;
+.trace-live-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-icon-muted);
 }
 
-.live-dot {
+.trace-live-pill--live {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+}
+
+.trace-live-pill--live .trace-live-pill__dot {
+  background: var(--color-success);
   animation: trace-live-pulse 1.6s ease-in-out infinite;
+}
+
+.trace-live-pill--error {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+}
+
+.trace-live-pill--error .trace-live-pill__dot {
+  background: var(--color-danger);
 }
 
 @keyframes trace-live-pulse {
@@ -635,12 +420,136 @@ function onExportFlow() {
   }
 }
 
+/* ── 筛选胶囊组 ── */
+.trace-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.trace-filters__label {
+  min-width: 44px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.trace-filters__group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent);
+}
+
+.trace-filter-pill {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.trace-filter-pill:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.trace-filter-pill--active,
+.trace-filter-pill--active:hover {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.trace-filter-pill__count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 65%;
+}
+
+/* ── 表格单元格 ── */
+.trace-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.trace-time {
+  white-space: nowrap;
+}
+
+.trace-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trace-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-icon-muted);
+}
+
+.trace-status--ok {
+  color: var(--color-success);
+}
+
+.trace-status--ok .trace-status__dot {
+  background: var(--color-success);
+}
+
+.trace-status--error {
+  color: var(--color-danger);
+}
+
+.trace-status--error .trace-status__dot {
+  background: var(--color-danger);
+}
+
+.trace-status--warn {
+  color: var(--color-warning);
+}
+
+.trace-status--warn .trace-status__dot {
+  background: var(--color-warning);
+}
+
+.trace-status--running {
+  color: var(--color-accent);
+}
+
+.trace-status--running .trace-status__dot {
+  background: var(--color-accent);
+  animation: trace-live-pulse 1.4s ease-in-out infinite;
+}
+
 .monitor-traces-table :deep(tbody tr) {
   cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.monitor-traces-table :deep(tbody tr:hover td:first-child) {
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .trace-name-cell {
-  max-width: 20ch;
+  max-width: 24ch;
 }
 
 .text-mono {
@@ -648,24 +557,7 @@ function onExportFlow() {
   font-size: 12px;
 }
 
-.monitor-traces-empty {
+.trace-list__empty {
   color: var(--color-text-secondary);
-}
-
-.monitor-trace-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
-  font-size: 13px;
-}
-
-.monitor-trace-meta__label {
-  color: var(--color-text-secondary);
-  margin-right: 4px;
-}
-
-.monitor-trace-meta__sub {
-  color: var(--color-text-secondary);
-  margin-left: 4px;
 }
 </style>

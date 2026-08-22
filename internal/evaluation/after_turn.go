@@ -83,6 +83,21 @@ func (t *AfterTurnTrigger) AfterNativeTurn(ctx context.Context, ev biz.NativeTur
 		if !workspace.IsSystem(bgCtx) {
 			in.WorkspaceID = workspace.IDFromContext(bgCtx)
 		}
+		if existing, ok, err := t.uc.FindInFlightRun(bgCtx, datasetID, agentID); err != nil {
+			t.lg.Warn("eval after-turn: in-flight check failed",
+				loggateway.StepID("evaluation.after_turn.inflight_fail"),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Str("dataset_id", datasetID),
+				loggateway.Err(err))
+			return
+		} else if ok {
+			t.lg.Info("eval after-turn: run already in flight, skipping",
+				loggateway.StepID("evaluation.after_turn.dedup"),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Str("dataset_id", datasetID),
+				loggateway.Str("run_id", existing.ID))
+			return
+		}
 		run, err := t.uc.CreateRun(bgCtx, in)
 		if err != nil {
 			// K2: a silently dropped trigger looks like "auto-eval never
@@ -94,7 +109,14 @@ func (t *AfterTurnTrigger) AfterNativeTurn(ctx context.Context, ev biz.NativeTur
 				loggateway.Err(err))
 			return
 		}
-		t.runner.Start(bgCtx, run, metrics, numRuns, false)
+		if err := t.runner.Start(bgCtx, run, metrics, numRuns, false); err != nil {
+			t.lg.Warn("eval after-turn: start rejected",
+				loggateway.StepID("evaluation.after_turn.start_fail"),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Err(err))
+			_ = t.uc.DeleteRun(bgCtx, run.ID)
+		}
 	})
 }
 

@@ -1,7 +1,7 @@
 // useKnowledgeWorkbench（SP2 §SP2-4）：工作台唯一状态机——tabs/激活/脏标记/CAS 保存。
 // 数据流纪律：组件全部经该 composable 交互，不各自拉数（MetadataCache 单一真相源哲学的前端映射）。
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
-import { getDocumentContent, updateDocumentContent } from './api';
+import { useKnowledgeStore } from '../../stores/knowledge';
 import type { KnowledgeDocument, KnowledgeDocumentContent } from './types';
 
 export type WorkbenchTab = {
@@ -29,7 +29,13 @@ export type WorkbenchDeps = {
   ) => Promise<{ document: KnowledgeDocument; conflict: boolean }>;
 };
 
-const defaultDeps: WorkbenchDeps = { getDocumentContent, updateDocumentContent };
+function storeWorkbenchDeps(): WorkbenchDeps {
+  const store = useKnowledgeStore();
+  return {
+    getDocumentContent: (id) => store.loadDocumentContent(id),
+    updateDocumentContent: (id, content, baseHash) => store.saveDocumentContent(id, content, baseHash),
+  };
+}
 
 /** 可编辑判定：文本类 markdown 文档才可进编辑器（图片/音视频/PDF 等走预览/下载路径）。 */
 function isEditable(d: KnowledgeDocument): boolean {
@@ -45,7 +51,8 @@ function baseName(relPath: string): string {
 
 export type KnowledgeWorkbench = ReturnType<typeof createKnowledgeWorkbench>;
 
-export function createKnowledgeWorkbench(deps: WorkbenchDeps = defaultDeps) {
+export function createKnowledgeWorkbench(deps?: WorkbenchDeps) {
+  const resolved = deps ?? storeWorkbenchDeps();
   const tabs: Ref<WorkbenchTab[]> = ref([]);
   const activeTabId: Ref<string> = ref('');
   /** 待确认的脏关闭（UI 层弹「保存/放弃/取消」） */
@@ -65,7 +72,7 @@ export function createKnowledgeWorkbench(deps: WorkbenchDeps = defaultDeps) {
       activeTabId.value = existing.docId;
       return;
     }
-    const res = await deps.getDocumentContent(d.id);
+    const res = await resolved.getDocumentContent(d.id);
     const editable = isEditable(d);
     tabs.value.push({
       docId: d.id,
@@ -115,10 +122,10 @@ export function createKnowledgeWorkbench(deps: WorkbenchDeps = defaultDeps) {
     if (!tab || tab.saving || !tab.dirty) return true;
     tab.saving = true;
     try {
-      const res = await deps.updateDocumentContent(docId, tab.content, tab.baseHash);
+      const res = await resolved.updateDocumentContent(docId, tab.content, tab.baseHash);
       if (res.conflict) {
         // CAS 冲突：远端已写入留双份；重新拉取远端 hash 供下次保存，本地内容保留由用户决策
-        const remote = await deps.getDocumentContent(docId);
+        const remote = await resolved.getDocumentContent(docId);
         tab.baseHash = remote.base_hash;
         tab.conflict = true;
         return false;
@@ -126,7 +133,7 @@ export function createKnowledgeWorkbench(deps: WorkbenchDeps = defaultDeps) {
       tab.conflict = false;
       tab.dirty = false;
       // 保存成功后 baseHash 滚动：服务端内容即本地内容，重新取 hash 保证下次 CAS 不过期
-      const fresh = await deps.getDocumentContent(docId);
+      const fresh = await resolved.getDocumentContent(docId);
       tab.baseHash = fresh.base_hash;
       return true;
     } finally {

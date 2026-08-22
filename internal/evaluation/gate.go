@@ -60,11 +60,15 @@ func NewPublishGate(uc *beval.Usecase, runner *Runner, bus biz.EventBus, lg logg
 // first; a gate run is launched in the background so a retry after its
 // completion finds one. All threshold outcomes of the regression run itself
 // are advisory (notification only) and never fail the publish (Y2).
-func (g *PublishGate) Check(ctx context.Context, trigger string) error {
+func (g *PublishGate) Check(ctx context.Context, trigger string, subjectAgentID ...string) error {
 	if g == nil || g.uc == nil || g.runner == nil {
 		return nil
 	}
-	cfg, err := g.uc.GetGateConfig(ctx)
+	agentID := ""
+	if len(subjectAgentID) > 0 {
+		agentID = subjectAgentID[0]
+	}
+	cfg, err := g.uc.GetGateConfig(ctx, agentID)
 	if err != nil {
 		// Config unreadable: fail open with a warning — a storage hiccup must
 		// not block every publish in the system.
@@ -99,29 +103,34 @@ func (g *PublishGate) Check(ctx context.Context, trigger string) error {
 		}
 	}
 
-	run, err := g.launch(ctx, cfg)
+	blocking := beval.NormalizeGateMode(cfg.Mode) == beval.GateModeBlocking
+	run, err := g.launch(ctx, cfg, !blocking || (cfg.MaxDrop > 0 && !hasBaseline))
 	if err != nil {
 		return err
 	}
 	g.lg.Info("eval gate: regression run launched",
 		loggateway.StepID("evaluation.gate.launch"),
 		loggateway.Str("trigger", trigger),
-		loggateway.Str("run_id", run.ID))
+		loggateway.Str("run_id", run.ID),
+		loggateway.Str("mode", beval.NormalizeGateMode(cfg.Mode)))
 
-	// Y12: max_drop without any completed baseline is a hard block — the drop
-	// check would otherwise be silently skipped. The gate run launched above
-	// measures the pre-publish state and becomes the baseline for the retry.
+	// Y12: max_drop without any completed baseline is a hard block.
 	if cfg.MaxDrop > 0 && !hasBaseline {
+		evalGateOutcomes.WithLabelValues("blocked_no_baseline").Inc()
 		return g.block(ctx, trigger, cfg,
 			"无可用基线：已启动基线评估，待其完成后重试发布（或先手动运行一次评估）", nil)
 	}
+	if blocking {
+		return g.evaluateBlocking(ctx, trigger, cfg, run.ID)
+	}
+	evalGateOutcomes.WithLabelValues("advisory_launched").Inc()
 	return nil
 }
 
 // launch creates the gate run and starts the background evaluation. The
 // evaluation runs on a detached context: the publish request's cancellation
 // (client timeout/disconnect) must not abort it.
-func (g *PublishGate) launch(ctx context.Context, cfg beval.GateConfig) (beval.Run, error) {
+func (g *PublishGate) launch(ctx context.Context, cfg beval.GateConfig, async bool) (beval.Run, error) {
 	in := biz.EvalRun{
 		DatasetID:     cfg.DatasetID,
 		AgentID:       cfg.AgentID,
@@ -134,10 +143,12 @@ func (g *PublishGate) launch(ctx context.Context, cfg beval.GateConfig) (beval.R
 	if err != nil {
 		return beval.Run{}, err
 	}
-	execCtx := context.WithoutCancel(ctx)
-	safego.Go(appctx.Ctx(), "eval-gate-run", func() {
-		g.evaluate(execCtx, cfg, run.ID)
-	})
+	if async {
+		execCtx := context.WithoutCancel(ctx)
+		safego.Go(appctx.Ctx(), "eval-gate-run", func() {
+			g.evaluate(execCtx, cfg, run.ID)
+		})
+	}
 	return run, nil
 }
 
@@ -163,31 +174,50 @@ func (g *PublishGate) evaluate(ctx context.Context, cfg beval.GateConfig, runID 
 			loggateway.StepID("evaluation.gate.baseline_fail"),
 			loggateway.Err(err))
 	}
+	reason, cause := g.judgeRun(ctx, cfg, run, baseline, hasBaseline)
+	if reason != "" {
+		evalGateOutcomes.WithLabelValues("advisory_breach").Inc()
+		g.notifyBreach(ctx, cfg, run.ID, reason, cause)
+		return
+	}
+	evalGateOutcomes.WithLabelValues("pass").Inc()
+	g.lg.Info("eval gate passed",
+		loggateway.StepID("evaluation.gate.pass"),
+		loggateway.Str("run_id", run.ID),
+		loggateway.Str("metric", cfg.Metric))
+}
+
+func (g *PublishGate) evaluateBlocking(ctx context.Context, trigger string, cfg beval.GateConfig, runID string) error {
+	run, err := g.uc.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	_, baseline, hasBaseline, _ := g.scanRuns(ctx, cfg, run.CreatedAt, run.ID)
+	reason, cause := g.judgeRun(ctx, cfg, run, baseline, hasBaseline)
+	if reason != "" {
+		evalGateOutcomes.WithLabelValues("blocked").Inc()
+		return g.block(ctx, trigger, cfg, reason, cause)
+	}
+	evalGateOutcomes.WithLabelValues("pass").Inc()
+	return nil
+}
+
+func (g *PublishGate) judgeRun(ctx context.Context, cfg beval.GateConfig, run beval.Run, baseline float32, hasBaseline bool) (reason string, cause error) {
 	final, runErr := g.runner.RunSync(ctx, run, cfg.Metric, 1)
 	if runErr != nil {
-		g.notifyBreach(ctx, cfg, final.ID, fmt.Sprintf("评估回归执行失败：%s", final.ErrorMessage), runErr)
-		return
+		return fmt.Sprintf("评估回归执行失败：%s", final.ErrorMessage), runErr
 	}
 	score, ok := beval.RunMetricScore(final, cfg.Metric)
 	if !ok {
-		g.notifyBreach(ctx, cfg, final.ID, fmt.Sprintf("评估回归缺少指标 %s 得分", cfg.Metric), nil)
-		return
+		return fmt.Sprintf("评估回归缺少指标 %s 得分", cfg.Metric), nil
 	}
 	if cfg.MinScore > 0 && score < cfg.MinScore {
-		g.notifyBreach(ctx, cfg, final.ID,
-			fmt.Sprintf("评估回归得分 %.2f 低于下限 %.2f", score, cfg.MinScore), nil)
-		return
+		return fmt.Sprintf("评估回归得分 %.2f 低于下限 %.2f", score, cfg.MinScore), nil
 	}
 	if cfg.MaxDrop > 0 && hasBaseline && score < baseline-cfg.MaxDrop {
-		g.notifyBreach(ctx, cfg, final.ID,
-			fmt.Sprintf("评估回归得分 %.2f 较基线 %.2f 下跌超过 %.2f", score, baseline, cfg.MaxDrop), nil)
-		return
+		return fmt.Sprintf("评估回归得分 %.2f 较基线 %.2f 下跌超过 %.2f", score, baseline, cfg.MaxDrop), nil
 	}
-	g.lg.Info("eval gate passed",
-		loggateway.StepID("evaluation.gate.pass"),
-		loggateway.Str("run_id", final.ID),
-		loggateway.Str("metric", cfg.Metric),
-		loggateway.Float64("score", float64(score)))
+	return "", nil
 }
 
 // scanRuns lists recent runs for the gated agent+dataset and extracts the

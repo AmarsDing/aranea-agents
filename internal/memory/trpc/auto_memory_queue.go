@@ -28,7 +28,8 @@ const (
 
 	DeadLetterReasonQueueFull     = biz.MemoryDeadLetterReasonQueueFull
 	DeadLetterReasonQuotaExceeded = biz.MemoryDeadLetterReasonQuotaExceeded
-	// P2-03: record debounced jobs for observability and recovery.
+	// R3（2026-08-22）：trailing-edge 合并后不再为 debounced 写死信
+	// （被合并的请求已并入存活请求，不是丢失）。常量保留用于读取存量 DB 行。
 	DeadLetterReasonDebounced = biz.MemoryDeadLetterReasonDebounced
 )
 
@@ -75,11 +76,18 @@ type MemoryJobQueue struct {
 	low    chan AutoMemoryJobRequest
 	out    chan AutoMemoryJobRequest
 
-	recent   sync.Map
-	debounce time.Duration
+	// R3（2026-08-22）：trailing-edge debounce。每个 session 至多一条 pending
+	// 条目，新请求替换旧请求（latest wins）并重置定时器；窗口静默期满后
+	// 才入队。条目只在定时器挂起期间存在， firing/Close 时删除，因此不需要
+	// 独立的 cleanup goroutine（取代旧 leading-edge 的 recent sync.Map +
+	// cleanupRecent）。
+	debounceMu      sync.Mutex
+	debounceEntries map[string]*debounceEntry
+	closed          bool
+	debounce        time.Duration
 
 	dropped   atomic.Int64
-	debounced atomic.Int64
+	debounced atomic.Int64 // 被更新请求合并取代的计数（观测用，不写死信）
 
 	mu             sync.Mutex
 	tenantInFlight map[string]int64
@@ -94,6 +102,13 @@ type MemoryJobQueue struct {
 	lg loggateway.Logger
 }
 
+// debounceEntry 是某 session 的挂起请求：req 始终是该 session 最新一条
+// Enqueue 请求，timer 每次被取代时 Reset（trailing-edge）。
+type debounceEntry struct {
+	req   AutoMemoryJobRequest
+	timer *time.Timer
+}
+
 var _ AutoMemoryQueue = (*MemoryJobQueue)(nil)
 
 // NewMemoryJobQueue creates a priority-aware MemoryJobQueue.
@@ -105,27 +120,47 @@ func NewMemoryJobQueue(runtimeConf *conf.Runtime, size int, debounce time.Durati
 		debounce = memConf.Debounce
 	}
 	q := &MemoryJobQueue{
-		high:           make(chan AutoMemoryJobRequest, memConf.HighCap),
-		normal:         make(chan AutoMemoryJobRequest, memConf.NormalCap),
-		low:            make(chan AutoMemoryJobRequest, memConf.LowCap),
-		out:            make(chan AutoMemoryJobRequest, memConf.NormalCap),
-		debounce:       debounce,
-		tenantInFlight: make(map[string]int64),
-		memConf:        memConf,
-		done:           make(chan struct{}),
-		lg:             lg,
+		high:            make(chan AutoMemoryJobRequest, memConf.HighCap),
+		normal:          make(chan AutoMemoryJobRequest, memConf.NormalCap),
+		low:             make(chan AutoMemoryJobRequest, memConf.LowCap),
+		out:             make(chan AutoMemoryJobRequest, memConf.NormalCap),
+		debounceEntries: make(map[string]*debounceEntry),
+		debounce:        debounce,
+		tenantInFlight:  make(map[string]int64),
+		memConf:         memConf,
+		done:            make(chan struct{}),
+		lg:              lg,
 	}
-	q.wg.Add(2)
+	q.wg.Add(1)
 	safego.Go(appctx.Ctx(), "memory.job_queue.drain", q.drain)
-	safego.Go(appctx.Ctx(), "memory.job_queue.cleanup_recent", q.cleanupRecent)
 	return q
 }
 
-// Close shuts down background goroutines and waits for them to exit.
-// Call during graceful shutdown.
+// Close flushes pending debounce entries (surviving requests are enqueued
+// best-effort into the buffered normal lane; overflow goes to dead-letter),
+// then shuts down background goroutines and waits for them to exit.
+// Flush happens BEFORE signalling done so drain still has a chance to forward
+// the surviving jobs during graceful shutdown. Idempotent. Call during
+// graceful shutdown.
 func (q *MemoryJobQueue) Close() {
 	if q == nil {
 		return
+	}
+	q.debounceMu.Lock()
+	if q.closed {
+		q.debounceMu.Unlock()
+		return
+	}
+	q.closed = true
+	pending := make([]AutoMemoryJobRequest, 0, len(q.debounceEntries))
+	for sid, e := range q.debounceEntries {
+		e.timer.Stop()
+		pending = append(pending, e.req)
+		delete(q.debounceEntries, sid)
+	}
+	q.debounceMu.Unlock()
+	for _, r := range pending {
+		q.enqueueNormalNow(r)
 	}
 	close(q.done)
 	q.wg.Wait()
@@ -180,48 +215,15 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 	if r.EnqueuedAt.IsZero() {
 		r.EnqueuedAt = time.Now()
 	}
-	// Debounce normal-priority runner-turn jobs per session.
+	// R3：normal 优先级且带 session 的请求走 trailing-edge 合并——
+	// 窗口内只留最新一条，静默期满才真正入队。无 session 的请求无法
+	// 按会话合并，保持即时入队。
 	if r.Priority == MemoryJobPriorityNormal {
 		if sid := strings.TrimSpace(r.SessionID); sid != "" {
-			if t, ok := q.recent.Load(sid); ok {
-				if time.Since(t.(time.Time)) < q.debounce {
-					q.debounced.Add(1)
-					// P2-03: record debounced jobs in the dead-letter store
-					// for observability. The surviving job for the same
-					// session should process the session's recent messages,
-					// but if it fails, this entry provides a recovery trail.
-					q.writeDeadLetter(r, DeadLetterReasonDebounced)
-					return
-				}
-			}
-			q.recent.Store(sid, time.Now())
-		}
-	}
-
-	// Tenant quota check on normal queue (C-02: also increment on success below).
-	if r.Priority == MemoryJobPriorityNormal {
-		tid := q.tenantID(r)
-		q.mu.Lock()
-		inFlight := q.tenantInFlight[tid]
-		if inFlight >= int64(q.memConf.MaxTenantNormalSlots) {
-			q.mu.Unlock()
-			q.writeDeadLetter(r, DeadLetterReasonQuotaExceeded)
+			q.coalesceNormal(sid, r)
 			return
 		}
-		// Reserve the slot before releasing the lock to prevent TOCTOU race.
-		q.tenantInFlight[tid]++
-		q.mu.Unlock()
-		select {
-		case q.normal <- r:
-		default:
-			// Queue full: undo the reservation and dead-letter.
-			q.mu.Lock()
-			if q.tenantInFlight[tid] > 0 {
-				q.tenantInFlight[tid]--
-			}
-			q.mu.Unlock()
-			q.writeDeadLetter(r, DeadLetterReasonQueueFull)
-		}
+		q.enqueueNormalNow(r)
 		return
 	}
 
@@ -235,6 +237,76 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 	select {
 	case ch <- r:
 	default:
+		q.writeDeadLetter(r, DeadLetterReasonQueueFull)
+	}
+}
+
+// coalesceNormal 实现 trailing-edge debounce：session 首条请求武装定时器；
+// 窗口内的后续请求替换 pending 请求（latest wins）并重置定时器。每段静默期
+// 恰好入队一条（突发平息之后）。被合并的请求不写死信（R3）：它们已并入
+// 存活请求，不是丢失——旧实现写 debounced 死信会被 replayer 重新入队，
+// 等于去抖失效且徒增重复抽取。
+func (q *MemoryJobQueue) coalesceNormal(sid string, r AutoMemoryJobRequest) {
+	q.debounceMu.Lock()
+	if q.closed {
+		// Close 已 flush 全部 pending 条目；晚到的请求直接走入队路径，
+		// 保留配额/背压语义，而不是武装一个无人观察的定时器。
+		q.debounceMu.Unlock()
+		q.enqueueNormalNow(r)
+		return
+	}
+	if e, ok := q.debounceEntries[sid]; ok {
+		e.req = r
+		e.timer.Reset(q.debounce)
+		q.debounced.Add(1)
+		q.debounceMu.Unlock()
+		return
+	}
+	e := &debounceEntry{req: r}
+	e.timer = time.AfterFunc(q.debounce, func() { q.fireDebounced(sid, e) })
+	q.debounceEntries[sid] = e
+	q.debounceMu.Unlock()
+}
+
+// fireDebounced 在静默窗口期满时入队存活请求。entry 指针守卫使过期定时器
+// 触发（条目已被 Close flush 或 firing 与 Reset 竞争）成为 no-op，
+// 保证一条合并序列至多入队一次。
+func (q *MemoryJobQueue) fireDebounced(sid string, e *debounceEntry) {
+	q.debounceMu.Lock()
+	cur, ok := q.debounceEntries[sid]
+	if !ok || cur != e {
+		q.debounceMu.Unlock()
+		return
+	}
+	delete(q.debounceEntries, sid)
+	req := e.req
+	q.debounceMu.Unlock()
+	q.enqueueNormalNow(req)
+}
+
+// enqueueNormalNow 是 normal 优先级的实际入队路径：租户配额校验（C-02：
+// 成功发送才保留占位）+ 非阻塞发送，溢出写死信。
+func (q *MemoryJobQueue) enqueueNormalNow(r AutoMemoryJobRequest) {
+	tid := q.tenantID(r)
+	q.mu.Lock()
+	inFlight := q.tenantInFlight[tid]
+	if inFlight >= int64(q.memConf.MaxTenantNormalSlots) {
+		q.mu.Unlock()
+		q.writeDeadLetter(r, DeadLetterReasonQuotaExceeded)
+		return
+	}
+	// Reserve the slot before releasing the lock to prevent TOCTOU race.
+	q.tenantInFlight[tid]++
+	q.mu.Unlock()
+	select {
+	case q.normal <- r:
+	default:
+		// Queue full: undo the reservation and dead-letter.
+		q.mu.Lock()
+		if q.tenantInFlight[tid] > 0 {
+			q.tenantInFlight[tid]--
+		}
+		q.mu.Unlock()
 		q.writeDeadLetter(r, DeadLetterReasonQueueFull)
 	}
 }
@@ -265,7 +337,16 @@ func (q *MemoryJobQueue) drain() {
 	const lowBatchMax = 4
 	// sendOut writes to q.out while respecting q.done for graceful shutdown.
 	// Returns false if shutdown was signalled.
+	// R3：先非阻塞投递——done 已关闭但 out 仍有缓冲时也必须把已取出的
+	// 任务送达，否则「从 lane 取出却丢在 sendOut」会在关停期丢任务
+	// （Close flush 路径依赖此语义）。仅当 out 真满（背压）才退回
+	// done 感知的阻塞等待。
 	sendOut := func(r AutoMemoryJobRequest) bool {
+		select {
+		case q.out <- r:
+			return true
+		default:
+		}
 		select {
 		case q.out <- r:
 			return true
@@ -324,28 +405,6 @@ func (q *MemoryJobQueue) drain() {
 			if !sendOut(r) {
 				return
 			}
-		}
-	}
-}
-
-// cleanupRecent periodically removes stale debounce entries to prevent memory
-// accumulation from long-lived sessions (H-05).
-func (q *MemoryJobQueue) cleanupRecent() {
-	defer q.wg.Done()
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-q.done:
-			return
-		case <-ticker.C:
-			cutoff := time.Now().Add(-q.debounce * 2)
-			q.recent.Range(func(key, value any) bool {
-				if t, ok := value.(time.Time); ok && t.Before(cutoff) {
-					q.recent.Delete(key)
-				}
-				return true
-			})
 		}
 	}
 }

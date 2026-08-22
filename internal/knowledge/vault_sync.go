@@ -19,11 +19,11 @@ import (
 // 可靠性契约：content_hash 只在 chunks 索引成功后落库——索引失败时下轮扫描
 // 仍判为变更（DB hash 落后），自动重试自愈。
 type VaultSyncApplier struct {
-	uc          *bizknowledge.Usecase
-	filer       *bizknowledge.VaultFiler
-	embedder    Embedder // nil = 无语义层（R-4）
-	lg          loggateway.Logger
-	summaryHook func(root, relPath string)       // nil = 不触发摘要生成
+	uc           *bizknowledge.Usecase
+	filer        *bizknowledge.VaultFiler
+	embedder     Embedder // nil = 无语义层（R-4）
+	lg           loggateway.Logger
+	summaryHook  func(root, relPath string)       // nil = 不触发摘要生成
 	entityHook   func(collectionID, docID string) // nil = 不触发实体抽取
 	relationHook func(collectionID, docID string) // nil = 不触发 typed 关系抽取
 	compiler     BodyCompiler                     // nil = 二进制文件降级 error（M0）
@@ -205,6 +205,9 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		if err := a.uc.UpdateDocumentContent(ctx, doc.ID, body, true); err != nil {
 			return err
 		}
+	}
+	if err := a.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil {
+		return err
 	}
 
 	// SP2 #9：熔断窗口内跳过 embed 尝试（故障期不打 API，词法索引照常）。

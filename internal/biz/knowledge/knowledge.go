@@ -126,6 +126,9 @@ type SearchQuery struct {
 type CollectionRepo interface {
 	CreateCollection(ctx context.Context, c Collection) (Collection, error)
 	GetCollection(ctx context.Context, id string) (Collection, error)
+	// GetCollectionByName 按 (workspace, name) 精确匹配。不存在返回 NotFound。
+	// workspace 与 CreateCollection 盖章一致（system 共享库传 ""）。
+	GetCollectionByName(ctx context.Context, workspace, name string) (Collection, error)
 	ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 	DeleteCollection(ctx context.Context, id string) error
 	UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
@@ -151,6 +154,8 @@ type DocumentRepo interface {
 	GetDocument(ctx context.Context, id string) (Document, error)
 	// GetDocumentByRelPath 按 vault 相对路径寻址文档（Vault 同步用）。
 	GetDocumentByRelPath(ctx context.Context, collectionID, relPath string) (Document, error)
+	// GetDocumentByContentHash 按正文 hash 寻址（入库去重）。空 hash 实现应返回 NotFound。
+	GetDocumentByContentHash(ctx context.Context, collectionID, contentHash string) (Document, error)
 	// UpdateDocumentRelPath 文件移动/重命名时更新镜像路径（保留文档身份与索引）。
 	UpdateDocumentRelPath(ctx context.Context, id, newRelPath string) error
 	// UpdateDocumentSyncMeta 文件内容变更时回写同步元数据（hash/摘要卡字段）。
@@ -173,6 +178,14 @@ type ChunkRepo interface {
 	InsertChunks(ctx context.Context, chunks []Chunk) error
 	DeleteChunksByDocument(ctx context.Context, docID string) error
 	SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
+}
+
+// IngestCommitter persists chunks + indexed status + collection counts in one
+// transaction (Wave 1). Optional: Usecase falls back to sequential writes when
+// the document repo does not implement it (unit-test fakes).
+// Stability:evolving
+type IngestCommitter interface {
+	CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) error
 }
 
 // Stability:evolving
@@ -227,77 +240,16 @@ var (
 // DefaultCollectionName 是 US-14「上传免预选」的兜底知识库名称（懒创建，按 name 复用）。
 const DefaultCollectionName = "默认知识库"
 
-// Usecase implements collection/document/search operations.
+// Usecase is the Wire coordinator for knowledge domains (AS-COG-01).
+// Fields are grouped into Vault / Graph / WriteBack / Curate clusters so the
+// exported type stays within the 15-field budget; method names stay on Usecase
+// for nil-safe call sites. New code should take a domain facade
+// (Vault / Retrieve / Graph / WriteBack / Curate) instead of growing this type.
 type Usecase struct {
-	collections CollectionRepo
-	documents   DocumentRepo
-	chunks      ChunkRepo
-	// links/entities 为可选关联能力（P2-4），经 SetLinkRepos 接线；nil 时关联方法降级 no-op。
-	links    LinkRepo
-	entities EntityRepo
-	// blockIndex/resolveIndex 为块级双链派生索引（SP1），经 SetBlockIndexRepos 接线；
-	// blockIndex nil 时 RebuildBlockIndex 降级 no-op。
-	blockIndex   BlockIndexRepo
-	resolveIndex ResolveIndex
-	// linkIndex/graphPub 为统一链接索引与图谱增量事件出口（SP1-D），经 SetLinkIndex 接线；
-	// linkIndex nil 时 RebuildBlockIndex 跳过内存图 apply 与 WS 增量（降级安全）。
-	linkIndex *LinkIndex
-	graphPub  GraphDeltaPublisher
-	// blockLinks/docNames 为块级反链读端口（SP1-E），经 SetBacklinkRepos 接线；
-	// blockLinks 为启动窗口 DB 兜底，docNames 为源文档名解析（失败留空降级）。
-	blockLinks BlockLinkReader
-	docNames   DocNameReader
-	// paths/resolvedLinks 为资源管理器能力（P3），经 SetExplorerRepos 接线；
-	// paths nil 时 ListVaultTree 显式报错，resolvedLinks nil 时关联查询降级为空。
-	paths         DocumentPathReader
-	resolvedLinks ResolvedLinkReader
-	// graphLinks 为库级关联读取（G4-B8），经 SetGraphRepo 接线；
-	// nil 时 ListCollectionGraph 降级为仅节点无边。
-	graphLinks CollectionLinkReader
-	// mentionSearch 为 unlinked mentions 内容扫描端口（P2-7），经 SetMentionSearcher 接线；
-	// nil 时 ListUnlinkedMentions 降级为空。
-	mentionSearch DocContentSearcher
-	// filer 为 vault 文件系统边界（G1-B1），经 SetVaultFiler 接线；
-	// nil 时 ListVaultTree 目录退化为纯索引聚合。
-	filer *VaultFiler
-	// applier 为单文档立即应用端口（G1-B2），经 SetVaultApplier 接线；
-	// nil 时 CreateVaultDocument 跳过立即索引（同步轮询兜底）。
-	applier VaultDocApplier
-	// promoteReader/promoteWriter 为晋升端口（SP1-G），经 SetPromoteRepos 接线；
-	// nil 时 PromoteBlocks 返回 ErrUnavailable。
-	promoteReader PromoteBlockReader
-	promoteWriter PromoteLineageWriter
-	// embedCircuit 为 embedding 熔断端口（SP2 #9），经 SetEmbedCircuitRepo 接线；
-	// nil 时熔断读写降级 no-op（embed 失败仍降级词法索引，仅失去熔断记忆）。
-	embedCircuit EmbedCircuitRepo
-	// linkUsage 为 wikilink 落链 recency 端口（B4 #8），经 SetLinkUsageRepo 接线；
-	// nil 时 RecordLinkUse/ListRecentLinkUses 降级 no-op（recency 非正确性依赖）。
-	linkUsage LinkUsageRepo
-	// writeBackReplay 为写回 chunk 重放钩子（2026-08-15），经 SetWriteBackReplay
-	// 接线（生产由 KnowledgeService 注入 replayPromotedDocChunks 同逻辑）；
-	// nil 时写回只落 documents 表不重建 chunks（降级——检索不可见，ReembedDocuments
-	// 手动自愈）。放 biz 层收口：knowledge_write 工具直调 Usecase（不经 service
-	// 包装），重放挂 service 层时该路径绕过，entries/* 永久 pending。
-	writeBackReplay WriteBackReplayFunc
-	// writeBackGraph 为写回图谱钩子（2026-08-16），经 SetWriteBackGraph 接线；
-	// 对 touched 词条页触发 M2 实体共现 + typed 关系抽取。nil 时写回文档只有
-	// explicit 块链，图谱实体/语义轨缺席（降级，不阻断写回）。
-	writeBackGraph WriteBackGraphFunc
-	docACL         DocumentACLStore
-	// factVersions/proposals 为 M3 演化时序持久化（supersedes 版本链 + 治理提案），
-	// 经 SetEvolutionRepos 接线；nil 时留痕跳过（写回主流程语义不变）。
-	factVersions FactVersionRepo
-	proposals    GovernanceProposalRepo
-	// arbiter 为 M3.2 写回冲突仲裁器，经 SetWriteBackArbiter 接线；
-	// nil 时新事实一律追加（不仲裁，与 M3 前行为一致）。
-	arbiter WriteBackArbiter
-	// curate 为 M4 自治理数据端口，经 SetCurateRepo 接线；
-	// nil 时 CurateKnowledge 显式报不可用。
-	curate KnowledgeCurateRepo
-	// hotDocs/distill 为 M4 distill 任务端口（高频词条反向蒸馏 memory_fact），
-	// 经 SetDistillRepos 接线；任一为 nil 时 distill 任务静默跳过（其余治理任务不受影响）。
-	hotDocs HotDocumentLister
-	distill DistillFactWriter
+	vaultFields
+	graphFields
+	writeBackFields
+	curateFields
 	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
 	// 构造默认 Noop，生产经 SetLogger 接线。
 	lg loggateway.Logger
@@ -305,12 +257,18 @@ type Usecase struct {
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.
 func NewUsecase(collections CollectionRepo, documents DocumentRepo, chunks ChunkRepo) *Usecase {
-	return &Usecase{collections: collections, documents: documents, chunks: chunks, lg: loggateway.NewNoop()}
+	return &Usecase{
+		vaultFields: vaultFields{collections: collections, documents: documents, chunks: chunks},
+		lg:          loggateway.NewNoop(),
+	}
 }
 
 // NewUsecaseFromRepo constructs a KnowledgeUsecase from the combined Repo interface.
 func NewUsecaseFromRepo(repo Repo) *Usecase {
-	return &Usecase{collections: repo, documents: repo, chunks: repo, lg: loggateway.NewNoop()}
+	return &Usecase{
+		vaultFields: vaultFields{collections: repo, documents: repo, chunks: repo},
+		lg:          loggateway.NewNoop(),
+	}
 }
 
 // SetLogger 接线域日志器（生产装配调用；nil 保持 Noop）。
@@ -456,6 +414,21 @@ func (u *Usecase) GetDocument(ctx context.Context, id string) (Document, error) 
 	return u.documents.GetDocument(ctx, id)
 }
 
+// GetDocumentByContentHash returns an existing document with the same content hash in a collection.
+func (u *Usecase) GetDocumentByContentHash(ctx context.Context, collectionID, contentHash string) (Document, error) {
+	if err := u.requireRepo(); err != nil {
+		return Document{}, err
+	}
+	if strings.TrimSpace(collectionID) == "" {
+		return Document{}, ErrCollectionIDRequired
+	}
+	contentHash = strings.TrimSpace(contentHash)
+	if contentHash == "" {
+		return Document{}, apierror.NotFound(apierror.DomainKnowledge, "document hash not found")
+	}
+	return u.documents.GetDocumentByContentHash(ctx, collectionID, contentHash)
+}
+
 // ListDocuments returns documents for a collection.
 func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error) {
 	if err := u.requireRepo(); err != nil {
@@ -539,12 +512,68 @@ func (u *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []fl
 	return chunks, nil
 }
 
-// UpdateDocumentStatus marks a document's indexing state.
+// UpdateDocumentStatus marks a document's indexing state after FSM validation.
+// Empty current status is treated as pending. Same-state writes still persist
+// errMsg/chunkCount. pending→indexed is rejected (must pass through indexing).
 func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
 	if err := u.requireRepo(); err != nil {
 		return err
 	}
-	return u.documents.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
+	if strings.TrimSpace(id) == "" {
+		return ErrIDRequired
+	}
+	doc, err := u.documents.GetDocument(ctx, id)
+	if err != nil {
+		return err
+	}
+	from := NormalizeDocumentState(doc.Status)
+	to := DocumentState(strings.TrimSpace(status))
+	if to != DocumentStatePending && to != DocumentStateIndexing && to != DocumentStateIndexed && to != DocumentStateError {
+		return ErrInvalidDocumentStatus
+	}
+	if from != to {
+		ev, ok := documentEventFor(from, to)
+		if !ok {
+			return apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → %s", from, to)
+		}
+		if _, err := defaultDocumentStateMachine.Transition(from, ev); err != nil {
+			return apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → %s", from, to)
+		}
+	}
+	return u.documents.UpdateDocumentStatus(ctx, id, string(to), errMsg, chunkCount)
+}
+
+// CommitIndexedDocument writes chunks, marks the document indexed, and adjusts
+// collection counts. Requires current status indexing. Production repos that
+// implement IngestCommitter do this in one transaction with a status CAS.
+func (u *Usecase) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(docID) == "" {
+		return ErrIDRequired
+	}
+	if strings.TrimSpace(collectionID) == "" {
+		return ErrCollectionIDRequired
+	}
+	doc, err := u.documents.GetDocument(ctx, docID)
+	if err != nil {
+		return err
+	}
+	from := NormalizeDocumentState(doc.Status)
+	if _, err := defaultDocumentStateMachine.Transition(from, DocumentEventComplete); err != nil {
+		return apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → indexed", from)
+	}
+	if c, ok := u.documents.(IngestCommitter); ok {
+		return c.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta)
+	}
+	if err := u.InsertChunks(ctx, chunks); err != nil {
+		return err
+	}
+	if err := u.documents.UpdateDocumentStatus(ctx, docID, string(DocumentStateIndexed), "", len(chunks)); err != nil {
+		return err
+	}
+	return u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, len(chunks))
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
@@ -572,22 +601,28 @@ func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel st
 	if err := u.requireRepo(); err != nil {
 		return Collection{}, err
 	}
-	cols, _, err := u.collections.ListCollections(ctx, ws, 1000, 0)
-	if err != nil {
-		return Collection{}, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
+	existing, err := u.collections.GetCollectionByName(ctx, ws, DefaultCollectionName)
+	if err == nil {
+		return existing, nil
 	}
-	for _, c := range cols {
-		if c.Name == DefaultCollectionName && c.Workspace == ws {
-			return c, nil
-		}
+	if !apierror.IsCode(err, apierror.CodeNotFound) {
+		return Collection{}, err
 	}
-	return u.CreateCollection(ctx, Collection{
+	created, err := u.CreateCollection(ctx, Collection{
 		Name:           DefaultCollectionName,
 		Description:    "未指定知识库的文档自动归入此处",
 		EmbeddingModel: embeddingModel,
 		Dim:            dim,
 		Workspace:      ws,
 	})
+	if err == nil {
+		return created, nil
+	}
+	// 并发懒创建：他请求已插入同名库，(workspace, name) 唯一约束冲突后回读。
+	if apierror.IsCode(err, apierror.CodeConflict) {
+		return u.collections.GetCollectionByName(ctx, ws, DefaultCollectionName)
+	}
+	return Collection{}, err
 }
 
 // MoveDocument 文档跨库移动（US-14 整理归档：默认库收件箱 → 分类库）。

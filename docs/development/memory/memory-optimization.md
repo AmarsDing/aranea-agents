@@ -11,7 +11,7 @@ Memory 系统优化的核心矛盾：**上下文窗口是硬约束，但信息�
 
 1. **L0 写入风暴**：Snapshot 无限流，长会话产生 80~200+ 行写入；`segments_json` 过大
 2. **缓存完全失效**：动态内容与静态内容混在一个 TextBlock 中，Prompt Cache 每轮都 miss
-3. **L1 预算形同虚设**：`token_estimate` 始终为 0，`used_tokens` 永远为 0，选择性注入退化为全量注入
+3. **L1 预算形同虚设**（立项时）：`token_estimate` 始终为 0，`used_tokens` 永远为 0，选择性注入退化为全量注入。**As-built（2026-08）**：`UpsertL1Field` 计算 `token_estimate`（runeCount/2），`syncL1TaskUsedTokens` 写后聚合 `used_tokens`；见 [`memory-optimization.development.md`](./memory-optimization.development.md) 现状表。
 4. **Episode 生成全靠 LLM**：70%~90% 的 Episode 可通过结构化路径零成本生成
 5. **技术债累积**：`consolidation_status` 三值不一致、L2ConsolidateWorker 空转、HMAC ROI 偏低
 

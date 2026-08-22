@@ -6,7 +6,7 @@
       subtitle="EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。"
     >
       <template #actions>
-        <q-btn color="primary" rounded unelevated no-caps icon="add" label="新建数据集" @click="createOpen = true" />
+        <q-btn color="primary" rounded unelevated no-caps icon="add" :label="$t('evaluationPage.createDataset')" @click="createOpen = true" />
         <q-btn
           outline
           rounded
@@ -56,6 +56,22 @@
                 outline
                 no-caps
                 color="primary"
+                icon="list"
+                :label="$t('evaluationPage.manageCases')"
+                @click="openCases"
+              />
+              <q-btn
+                outline
+                no-caps
+                color="primary"
+                icon="edit"
+                :label="$t('evaluationPage.editDataset')"
+                @click="openEditDataset"
+              />
+              <q-btn
+                outline
+                no-caps
+                color="primary"
                 icon="upload_file"
                 :label="$t('evaluationPage.uploadCases')"
                 @click="uploadOpen = true"
@@ -100,6 +116,25 @@
                       color="primary"
                       aria-label="查看结果"
                       @click="openResults(props.row)"
+                    />
+                    <q-btn
+                      v-if="props.row.status === 'pending' || props.row.status === 'running'"
+                      flat
+                      dense
+                      round
+                      icon="stop"
+                      color="warning"
+                      :aria-label="$t('evaluationPage.runCancel')"
+                      @click="cancelEvalRun(props.row)"
+                    />
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      icon="delete"
+                      color="negative"
+                      :aria-label="$t('evaluationPage.runDelete')"
+                      @click="confirmDeleteRun(props.row)"
                     />
                   </div>
                 </q-td>
@@ -159,7 +194,32 @@
       v-model:name="createForm.name"
       v-model:description="createForm.description"
       :loading="createLoading"
+      :title="$t('evaluationPage.createDataset')"
+      :submit-label="$t('evaluationPage.createDatasetSubmit')"
       @submit="submitCreate"
+    />
+    <evaluation-create-dialog
+      v-model:open="editDatasetOpen"
+      v-model:name="createForm.name"
+      v-model:description="createForm.description"
+      :loading="createLoading"
+      :title="$t('evaluationPage.editDataset')"
+      :submit-label="$t('evaluationPage.saveDataset')"
+      @submit="submitEditDataset"
+    />
+    <evaluation-cases-dialog
+      v-model:open="casesOpen"
+      :rows="cases"
+      :columns="caseColumns"
+      :loading="casesLoading"
+      :saving="casesSaving"
+      :edit-id="caseEditId"
+      v-model:edit-input="caseEditInput"
+      v-model:edit-expected="caseEditExpected"
+      @edit="startEditCase"
+      @remove="confirmDeleteCase"
+      @save="saveCase"
+      @cancel-edit="cancelEditCase"
     />
     <evaluation-run-dialog
       v-model:open="runOpen"
@@ -167,6 +227,7 @@
       v-model:metrics="runForm.metrics"
       v-model:num-runs="runForm.num_runs"
       v-model:user-simulation="runForm.use_user_simulation"
+      v-model:extra-agent-ids="runForm.extra_agent_ids"
       :loading="runLoading"
       :agent-options="agentOptions"
       @submit="submitRun"
@@ -186,6 +247,7 @@
       v-model:metric="gateForm.metric"
       v-model:min-score="gateForm.min_score"
       v-model:max-drop="gateForm.max_drop"
+      v-model:mode="gateForm.mode"
       :loading="gateLoading"
       :saving="gateSaving"
       :agent-options="agentOptions"
@@ -210,6 +272,7 @@
       @page-size-change="onResultsPageSize"
       @export-csv="exportResults('csv')"
       @export-json="exportResults('json')"
+      @open-trace="openResultTrace"
     />
   </q-page>
 </template>
@@ -224,6 +287,7 @@ import EvaluationAnalyticsPanel from '../components/evaluation/EvaluationAnalyti
 import EvaluationFeedbackPanel from '../components/evaluation/EvaluationFeedbackPanel.vue';
 import EvaluationDatasetList from '../components/evaluation/EvaluationDatasetList.vue';
 import EvaluationCreateDialog from '../components/evaluation/EvaluationCreateDialog.vue';
+import EvaluationCasesDialog from '../components/evaluation/EvaluationCasesDialog.vue';
 import EvaluationRunDialog from '../components/evaluation/EvaluationRunDialog.vue';
 import EvaluationResultsDialog from '../components/evaluation/EvaluationResultsDialog.vue';
 import EvaluationUploadCasesDialog from '../components/evaluation/EvaluationUploadCasesDialog.vue';
@@ -269,6 +333,24 @@ const {
   selectDataset,
   submitCreate,
   confirmDeleteDataset,
+  editDatasetOpen,
+  openEditDataset,
+  submitEditDataset,
+  casesOpen,
+  casesLoading,
+  casesSaving,
+  cases,
+  caseColumns,
+  caseEditId,
+  caseEditInput,
+  caseEditExpected,
+  openCases,
+  startEditCase,
+  cancelEditCase,
+  saveCase,
+  confirmDeleteCase,
+  cancelEvalRun,
+  confirmDeleteRun,
   submitRun,
   uploadOpen,
   uploadLoading,
@@ -305,6 +387,7 @@ const {
   gateForm,
   openGate,
   saveGate,
+  openResultTrace,
 } = useEvaluationPage();
 
 // Gate dialog needs all datasets as options (gate config is a global singleton,

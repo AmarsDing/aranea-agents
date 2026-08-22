@@ -81,9 +81,9 @@ logging:
 #     batch_size: 10                # rows per flush
 # Platform self-improvement (V3) pipeline (73-self-iteration-v3). Default off;
 # enable only after reviewing the governance model (design §6).
-# 2026-08-09：按默认配置启用（灰度开启，端到端运行时验证）。
+# Default off. Enable only after reviewing the governance model.
 self_improvement:
-  enabled: true                   # master switch (gray rollout)
+  enabled: false                  # master switch (default off)
   observe_interval: 900s          # observe-worker scan interval (15m; proto Duration 仅支持秒单位)
   error_cluster:
     window_days: 7                # error-cluster observation window

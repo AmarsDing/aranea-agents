@@ -34,6 +34,20 @@
           hint="AgentEvaluator 重复运行次数（1–20，与后端 MaxNumRuns 一致）"
           @update:model-value="$emit('update:numRuns', Math.min(Math.max(Number($event) || 1, 1), 20))"
         />
+        <q-select
+          :model-value="extraAgentIds"
+          class="app-field-md"
+          dense
+          outlined
+          multiple
+          emit-value
+          map-options
+          use-chips
+          :label="$t('evaluationPage.experimentAgents')"
+          :hint="$t('evaluationPage.experimentAgentsHint')"
+          :options="agentOptions"
+          @update:model-value="$emit('update:extraAgentIds', (($event as string[]) ?? []).map(String))"
+        />
         <q-toggle
           :model-value="userSimulation"
           :label="$t('evaluationPage.userSimulationLabel')"
@@ -63,6 +77,7 @@ defineProps<{
   metrics: string;
   numRuns: number;
   userSimulation: boolean;
+  extraAgentIds: string[];
   loading: boolean;
   agentOptions: { label: string; value: string }[];
 }>();
@@ -72,6 +87,7 @@ defineEmits<{
   'update:metrics': [value: string];
   'update:numRuns': [value: number];
   'update:userSimulation': [value: boolean];
+  'update:extraAgentIds': [value: string[]];
   submit: [];
 }>();
 </script>

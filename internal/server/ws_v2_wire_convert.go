@@ -221,6 +221,11 @@ func planStepToWire(ps biz.PlanStep) planStepWire {
 		Mode:              ps.Mode,
 		Deliverables:      ps.Deliverables,
 		InputContract:     ps.InputContract,
+		DepartmentID:      ps.DepartmentID,
+		DomainPath:        ps.DomainPath,
+		AssignedName:      ps.AssignedName,
+		MatchLayer:        ps.MatchLayer,
+		MatchReason:       ps.MatchReason,
 	}
 }
 

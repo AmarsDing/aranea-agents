@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSIErrorMessage } from './selfImprovementUi';
+import { resolveSIErrorMessage, siGateColor, siGateIcon } from './selfImprovementUi';
 
 describe('resolveSIErrorMessage', () => {
   it('优先使用后端 Kratos envelope 的 message（如 409 冲突）', () => {
@@ -25,5 +25,14 @@ describe('resolveSIErrorMessage', () => {
   it('非 Error 值字符串化', () => {
     expect(resolveSIErrorMessage('plain failure')).toBe('plain failure');
     expect(resolveSIErrorMessage(42)).toBe('42');
+  });
+});
+
+describe('siGate presentation', () => {
+  it('skipped 门禁用中性图标，不显示通过/失败', () => {
+    expect(siGateIcon(false, true)).toBe('remove_circle_outline');
+    expect(siGateColor(false, true)).toBe('grey-6');
+    expect(siGateIcon(true, false)).toBe('check_circle');
+    expect(siGateIcon(false, false)).toBe('cancel');
   });
 });

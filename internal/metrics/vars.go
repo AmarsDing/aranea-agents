@@ -360,6 +360,18 @@ var (
 		Help: "Total number of agents dynamically created by AgentFactory.",
 	})
 
+	// OrgFastDeptLeadTotal counts department-lead LLM involvement on the
+	// allocate path (M78 ORGFAST-20/21). Labels:
+	//   skipped_high_confidence — L0 recipe / L1 mission; lead LLM not called
+	//   staffing_asked          — staffing consult started
+	//   staffing_timeout        — consult exceeded StaffingLLMTimeout
+	//   staffing_adopted        — lead named an in-pool agent
+	//   staffing_factory        — lead said Factory / empty pick
+	OrgFastDeptLeadTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_orgfast_dept_lead_total",
+		Help: "ORG-FAST department-lead involvement on the allocate path.",
+	}, []string{"outcome"})
+
 	// GraphReplanTotal counts runtime graph replans by type (P2-2 RuntimeReplanner).
 	// Labels: retry / reroute / insert_fallback / rebuild_subgraph.
 	// Used to monitor graph stability and replan loop prevention (max 3 replans).

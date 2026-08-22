@@ -1,6 +1,11 @@
 // web/src/features/chat/__tests__/memoryRecall.spec.ts
 import { describe, it, expect } from 'vitest';
-import { parseMemoryRecallHits, MEMORY_RECALLED_NOTICE_TYPE } from '../memoryRecall';
+import {
+  parseMemoryRecallHits,
+  MEMORY_RECALLED_NOTICE_TYPE,
+  memoryCenterRoute,
+  memoryCenterRouteFromHit,
+} from '../memoryRecall';
 
 describe('memoryRecall', () => {
   it('exposes the backend notice type constant', () => {
@@ -68,5 +73,33 @@ describe('memoryRecall', () => {
     expect(hits[0].score).toBe(0);
     expect(hits[0].confidence).toBeUndefined();
     expect(hits[0].version).toBeUndefined();
+  });
+
+  it('builds a browse deep link for an L3 fact hit', () => {
+    const route = memoryCenterRouteFromHit(
+      { layer: 'L3', line: '喜欢简洁回复', score: 0.9, fact_id: 'f-1' },
+      { sessionId: 's1', agentKey: 'spirit' },
+    );
+    expect(route.path).toBe('/memory');
+    expect(route.query).toEqual({
+      tab: 'browse',
+      layer: 'L3',
+      factId: 'f-1',
+      agentKey: 'spirit',
+      sessionId: 's1',
+    });
+  });
+
+  it('routes L4 hits to the graph tab', () => {
+    const route = memoryCenterRouteFromHit({ layer: 'L4', line: '实体 张三', score: 0.6 }, { sessionId: 's1' });
+    expect(route.query.tab).toBe('graph');
+    expect(route.query.layer).toBe('L4');
+  });
+
+  it('builds a session-detail browse entry', () => {
+    expect(memoryCenterRoute({ tab: 'browse', sessionId: 'sess-1', agentId: 'agent-9' })).toEqual({
+      path: '/memory',
+      query: { tab: 'browse', sessionId: 'sess-1', agentId: 'agent-9' },
+    });
   });
 });

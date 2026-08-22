@@ -21,6 +21,7 @@ const mockStore = {
   embedderConfig: null,
   collections: [],
   documentsByCollection: {},
+  documentsTruncatedByCollection: {},
   loading: false,
   loadCollections: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   loadDocuments: vi.fn().mockResolvedValue({ items: [], total: 0 }),
@@ -34,6 +35,8 @@ const mockStore = {
   search: vi.fn(),
   moveDocToDir: vi.fn(),
   invalidateLinkCaches: vi.fn(),
+  loadDocumentContent: vi.fn(),
+  saveDocumentContent: vi.fn(),
 };
 
 vi.mock('../../../stores/knowledge', () => ({ useKnowledgeStore: () => mockStore }));

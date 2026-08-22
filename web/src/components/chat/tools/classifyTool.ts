@@ -53,9 +53,9 @@ const BROWSER_TOOLS = new Set([
 ]);
 
 /** File read tools. */
-const FILE_READ_TOOLS = new Set(['read_file', 'file_read_file', 'file_read', 'get_file', 'cat_file', 'view_file', 'read_member_file', 'read_lints']);
+const FILE_READ_TOOLS = new Set(['read_file', 'read_multiple_files', 'file_read_file', 'file_read', 'get_file', 'cat_file', 'view_file', 'read_member_file', 'read_lints']);
 
-/** File write/edit tools. */
+/** File write/edit tools. diff_edit/replace_content 为运行时真实工具名。 */
 const FILE_WRITE_TOOLS = new Set([
   'save_file',
   'write_file',
@@ -64,12 +64,15 @@ const FILE_WRITE_TOOLS = new Set([
   'edit_file',
   'create_file',
   'patch_file',
+  'diff_edit',
+  'replace_content',
   'file_write_file',
 ]);
 
-/** File search tools (find / grep / glob). */
+/** File search tools (find / grep / glob). search_file 为运行时真实工具名（单数）。 */
 const FILE_SEARCH_TOOLS = new Set([
   'search_content',
+  'search_file',
   'search_files',
   'grep',
   'glob',

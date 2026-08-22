@@ -217,6 +217,70 @@ func (r *l3FactRepo) CountFactRows(ctx context.Context, scopeType, scopeID, kind
 	return r.countFacts(ctx, clauses, args...)
 }
 
+// AggregateFactOverview returns L3 panorama card stats in one SQL pass
+// (active count, created-today count, summed use_count) for an originating agent.
+func (r *l3FactRepo) AggregateFactOverview(ctx context.Context, agentID, todayStart string) (biz.FactOverviewAgg, error) {
+	var agg biz.FactOverviewAgg
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return agg, nil
+	}
+	todayStart = strings.TrimSpace(todayStart)
+	q := `SELECT
+		COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(use_count), 0)
+		FROM memory_facts WHERE agent_id = ? AND deleted_at = ''`
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(q), []any{todayStart, agentID},
+		&agg.ActiveCount, &agg.TodayAdded, &agg.RecallHits)
+	return agg, entErrToBizErr(err, "MEMORY_L3")
+}
+
+// ListRecentFactActivityRows returns the newest facts by created_at for the
+// panorama activity feed (fact_extracted).
+func (r *l3FactRepo) ListRecentFactActivityRows(ctx context.Context, agentID string, limit int32) ([][]byte, error) {
+	return r.listFactOverviewRows(ctx, agentID, "", "created_at DESC", limit)
+}
+
+// ListRecentlyInjectedFactRows returns facts recently injected into L0
+// (injected_count > 0, last_used_at set) for the panorama activity feed.
+func (r *l3FactRepo) ListRecentlyInjectedFactRows(ctx context.Context, agentID string, limit int32) ([][]byte, error) {
+	return r.listFactOverviewRows(ctx, agentID, "injected_count > 0 AND last_used_at <> ''", "last_used_at DESC", limit)
+}
+
+func (r *l3FactRepo) listFactOverviewRows(ctx context.Context, agentID, extra, orderBy string, limit int32) ([][]byte, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	lim := int(limit)
+	if lim <= 0 {
+		lim = 20
+	}
+	clauses := []string{"agent_id = ?", "deleted_at = ''"}
+	args := []any{agentID}
+	if extra != "" {
+		clauses = append(clauses, extra)
+	}
+	where := " WHERE " + strings.Join(clauses, " AND ")
+	q := sqlFactSelect + where + " ORDER BY " + orderBy + " LIMIT ?"
+	args = append(args, lim)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L3")
+		}
+		out = append(out, b)
+	}
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
+}
+
 // buildFactFilterClauses constructs WHERE clause components for fact queries.
 // When withStatusFilter is true, the status parameter is applied; otherwise
 // only scope/kind/keyword/deleted_at filters are included (for total counts).
@@ -250,8 +314,8 @@ func buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, agentID s
 		}
 	}
 	if keyword != "" {
-		clauses = append(clauses, "statement_normalized LIKE ?")
-		args = append(args, "%"+strings.ToLower(keyword)+"%")
+		clauses = append(clauses, "(statement_normalized LIKE ? OR id = ?)")
+		args = append(args, "%"+strings.ToLower(keyword)+"%", keyword)
 	}
 	clauses = append(clauses, "deleted_at = ''")
 	return clauses, args
@@ -289,8 +353,8 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 		args = append(args, userID)
 	}
 	if keyword != "" {
-		clauses = append(clauses, "statement_normalized LIKE ?")
-		args = append(args, "%"+strings.ToLower(keyword)+"%")
+		clauses = append(clauses, "(statement_normalized LIKE ? OR id = ?)")
+		args = append(args, "%"+strings.ToLower(keyword)+"%", keyword)
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	lim := int(limit)
@@ -338,8 +402,8 @@ func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scop
 		args = append(args, userID)
 	}
 	if keyword != "" {
-		clauses = append(clauses, "statement_normalized LIKE ?")
-		args = append(args, "%"+strings.ToLower(keyword)+"%")
+		clauses = append(clauses, "(statement_normalized LIKE ? OR id = ?)")
+		args = append(args, "%"+strings.ToLower(keyword)+"%", keyword)
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	lim := int(limit)
@@ -1387,7 +1451,7 @@ func (r *l3FactRepo) ListActivePreferenceFacts(ctx context.Context, agentID, use
 
 // --- PIIReviewStore ---
 
-func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error) {
 	clauses := []string{"pii_flag = 1", "status = 'active'", "deleted_at = ''"}
 	args := []any{}
 	if scopeType != "" {
@@ -1397,6 +1461,10 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 	if scopeID != "" {
 		clauses = append(clauses, "scope_id = ?")
 		args = append(args, scopeID)
+	}
+	if agentID != "" {
+		clauses = append(clauses, "agent_id = ?")
+		args = append(args, agentID)
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32

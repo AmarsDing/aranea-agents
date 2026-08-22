@@ -28,7 +28,7 @@
 
 | 类型 | 文档 | 说明 |
 |------|------|------|
-| 需求 | [`memory.md`](./memory.md) | 五层产品定位、Memory Center UX、权限、信息架构 |
+| 需求 | [`memory.md`](./memory.md) | 五层产品定位、Memory Center UX、权限、信息架构；§23 信任闭环 |
 | 需求 | [`neural-memory.md`](./neural-memory.md) | **神经记忆系统**：时间感知、联动更新、仿生生命周期、Memory-Agent |
 | 设计 | [`neural-memory.design.md`](./neural-memory.design.md) | 神经记忆系统设计：数据模型、接口、核心流程、Proto 扩展 |
 | 开发计划 | [`neural-memory-development.md`](./neural-memory-development.md) | 神经记忆系统开发计划：48 项任务、3 Phase、验收标准 |

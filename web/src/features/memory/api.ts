@@ -919,8 +919,15 @@ export async function listPIIFlaggedFacts(
   scopeId: string,
   limit = 50,
   offset = 0,
+  agentId = '',
 ): Promise<MemoryFact[]> {
-  const raw = await memory.ListPIIFlaggedFacts({ scopeType, scopeId, limit, offset });
+  const raw = await memory.ListPIIFlaggedFacts({
+    scopeType: scopeType || undefined,
+    scopeId: scopeId || undefined,
+    limit,
+    offset,
+    agentId: agentId || undefined,
+  });
   const resp = asRecord(raw);
   const items = resp.items ?? [];
   return (Array.isArray(items) ? items : []).map(mapFact);

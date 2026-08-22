@@ -171,7 +171,7 @@ func TestLayerOverview_FiveLayerAssembly(t *testing.T) {
 		},
 		factRows: [][]byte{
 			centerRowJSON(map[string]any{"id": "fact1", "statement": "偏好简洁回复", "use_count": 5, "created_at": today}),
-			centerRowJSON(map[string]any{"id": "fact2", "statement": "住在杭州", "use_count": 6, "created_at": old}),
+			centerRowJSON(map[string]any{"id": "fact2", "statement": "住在杭州", "use_count": 6, "created_at": old, "injected_count": 3, "last_used_at": today}),
 		},
 		factTotal:     2,
 		factActive:    2,
@@ -291,7 +291,7 @@ func TestLayerOverview_FiveLayerAssembly(t *testing.T) {
 	if first.Ts != today {
 		t.Errorf("activity feed first ts: got %q, want %q (newest first)", first.Ts, today)
 	}
-	var sawFact, sawEntity bool
+	var sawFact, sawEntity, sawInjected bool
 	for _, it := range ov.ActivityFeed {
 		switch it.Kind {
 		case "fact_extracted":
@@ -304,10 +304,40 @@ func TestLayerOverview_FiveLayerAssembly(t *testing.T) {
 			if it.LayerTo != "L4" {
 				t.Errorf("entity_created flow: got →%s", it.LayerTo)
 			}
+		case "fact_injected":
+			sawInjected = true
+			if it.LayerFrom != "L3" || it.LayerTo != "L0" {
+				t.Errorf("fact_injected flow: got %s→%s", it.LayerFrom, it.LayerTo)
+			}
+			if it.Summary != "住在杭州" {
+				t.Errorf("fact_injected summary: got %q", it.Summary)
+			}
+			if it.Ts != today {
+				t.Errorf("fact_injected ts: got %q, want last_used_at %q", it.Ts, today)
+			}
 		}
 	}
-	if !sawFact || !sawEntity {
-		t.Errorf("activity feed missing kinds: fact=%v entity=%v", sawFact, sawEntity)
+	if !sawFact || !sawEntity || !sawInjected {
+		t.Errorf("activity feed missing kinds: fact=%v entity=%v injected=%v", sawFact, sawEntity, sawInjected)
+	}
+}
+
+func TestBuildMemoryActivityFeed_SkipsUninjectedFacts(t *testing.T) {
+	feed := buildMemoryActivityFeed(
+		[][]byte{
+			centerRowJSON(map[string]any{"id": "a", "statement": "未注入", "created_at": "2026-08-01T00:00:00Z"}),
+			centerRowJSON(map[string]any{"id": "b", "statement": "已召回未注入", "created_at": "2026-08-02T00:00:00Z", "injected_count": 0, "last_used_at": "2026-08-03T00:00:00Z"}),
+			centerRowJSON(map[string]any{"id": "c", "statement": "已注入无时间", "created_at": "2026-08-04T00:00:00Z", "injected_count": 2}),
+		},
+		nil,
+		nil,
+		nil,
+		10,
+	)
+	for _, it := range feed {
+		if it.Kind == "fact_injected" {
+			t.Fatalf("unexpected fact_injected: %+v", it)
+		}
 	}
 }
 
@@ -470,5 +500,92 @@ func TestListEpisodesAdmin_CapsLimit(t *testing.T) {
 	// 不报错即视为通过：limit 超限被收敛而非拒绝（与 unified graph hops 上限同策略）。
 	if _, _, err := uc.ListEpisodesAdmin(context.Background(), "agent-1", "", 500, -3); err != nil {
 		t.Fatalf("ListEpisodesAdmin with out-of-range limit/offset: %v", err)
+	}
+}
+
+type overviewAggStub struct {
+	fakeCenterAdminDeps
+	agg         FactOverviewAgg
+	factFeed    [][]byte
+	injectFeed  [][]byte
+	entityToday int32
+	aggCalls    int
+}
+
+func (s *overviewAggStub) AggregateFactOverview(context.Context, string, string) (FactOverviewAgg, error) {
+	s.aggCalls++
+	return s.agg, nil
+}
+
+func (s *overviewAggStub) ListRecentFactActivityRows(context.Context, string, int32) ([][]byte, error) {
+	return s.factFeed, nil
+}
+
+func (s *overviewAggStub) ListRecentlyInjectedFactRows(context.Context, string, int32) ([][]byte, error) {
+	return s.injectFeed, nil
+}
+
+func (s *overviewAggStub) CountEntitiesCreatedSince(context.Context, string, string, string) (int32, error) {
+	return s.entityToday, nil
+}
+
+func TestLayerOverview_UsesSQLAggWhenAvailable(t *testing.T) {
+	deps := &overviewAggStub{
+		fakeCenterAdminDeps: fakeCenterAdminDeps{
+			factRows:    [][]byte{centerRowJSON(map[string]any{"id": "stale", "use_count": 1, "created_at": time.Now().UTC().Format(time.RFC3339Nano)})},
+			factActive:  1,
+			entityRows:  [][]byte{},
+			entityTotal: 80,
+		},
+		agg:         FactOverviewAgg{ActiveCount: 999, TodayAdded: 12, RecallHits: 777},
+		entityToday: 9,
+		factFeed: [][]byte{
+			centerRowJSON(map[string]any{"id": "new", "statement": "今日抽取", "created_at": time.Now().UTC().Format(time.RFC3339Nano)}),
+		},
+		injectFeed: [][]byte{
+			centerRowJSON(map[string]any{
+				"id": "inj", "statement": "注入旧事实", "injected_count": 3,
+				"last_used_at": time.Now().UTC().Format(time.RFC3339Nano),
+			}),
+		},
+	}
+	uc := NewMemoryAdminUsecase(deps, nil, nil, nil, loggateway.NewNoop())
+	uc.SetMemoryCenterReaders(&fakeL2AdminReader{}, &fakeL4RelReader{})
+
+	ov, err := uc.GetLayerOverview(context.Background(), "agent-1", "")
+	if err != nil {
+		t.Fatalf("GetLayerOverview: %v", err)
+	}
+	if deps.factCallCount != 0 {
+		t.Fatalf("ListFactRows called %d times; SQL agg path must not scan facts", deps.factCallCount)
+	}
+	if deps.aggCalls != 1 {
+		t.Fatalf("AggregateFactOverview calls = %d, want 1", deps.aggCalls)
+	}
+	l3 := findLayer(ov.Layers, "L3")
+	if l3 == nil {
+		t.Fatal("L3 layer missing")
+	}
+	if l3.ItemCount != 999 || l3.TodayAdded != 12 || l3.RecallHits != 777 {
+		t.Errorf("L3 from agg: item=%d today=%d hits=%d, want 999/12/777", l3.ItemCount, l3.TodayAdded, l3.RecallHits)
+	}
+	l4s := findLayer(ov.Layers, "L4")
+	if l4s == nil {
+		t.Fatal("L4 layer missing")
+	}
+	if l4s.ItemCount != 80 || l4s.TodayAdded != 9 {
+		t.Errorf("L4 from agg: item=%d today=%d, want 80/9", l4s.ItemCount, l4s.TodayAdded)
+	}
+	var sawExtracted, sawInjected bool
+	for _, it := range ov.ActivityFeed {
+		if it.Kind == "fact_extracted" && it.Summary == "今日抽取" {
+			sawExtracted = true
+		}
+		if it.Kind == "fact_injected" && it.Summary == "注入旧事实" {
+			sawInjected = true
+		}
+	}
+	if !sawExtracted || !sawInjected {
+		t.Errorf("activity feed missing dedicated rows: extracted=%v injected=%v feed=%+v", sawExtracted, sawInjected, ov.ActivityFeed)
 	}
 }

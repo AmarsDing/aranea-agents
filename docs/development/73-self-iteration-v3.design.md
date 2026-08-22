@@ -79,7 +79,7 @@
 |--------|----------------------|--------|--------------------------|
 | ErrorClusterTrigger | platform / patch_code | FailurePattern KB + 运行时错误日志 | 同 error_code+相似堆栈 7d ≥5 次 |
 | PerfBottleneckTrigger | platform / patch_code 或 tune_config | monitor trace/usage 指标 | 步骤 P95 超基线 2× 或 token 超基线 50% |
-| EvalRegressionTrigger | platform / patch_code 或 patch_prompt | 33-evaluation 基线 | 基准分数退化 >10% |
+| EvalRegressionTrigger | platform / patch_prompt | 33-evaluation 基线 | 基准分数退化 >10% |
 | TestFailureTrigger | platform / patch_code | 测试运行结果（cron 全量测试） | 同一测试连续 2 轮失败 |
 | OrchestrationTraceTrigger（P3-1） | platform / patch_prompt 或 tune_config | 终态编排（orchestrations）+ flow_log_events 错误聚合 | MAST 14 失败模式规则链标注，24h 窗口聚类（每模式一条建议，签名去重）；FM-1.x/2.x→patch_prompt、FM-3.x→tune_config（P3-2 反哺映射） |
 
@@ -136,9 +136,15 @@ RunGate(ctx, workspaceDir, gate, scope) → GateResult{gate, passed, output, dur
 - **超时与资源**：每 Gate 独立超时（G1 5min / G2 10min / G3 5min），子进程组杀绝，输出截断 64KB 入报告
 - **生产隔离**：沙盒只读配置副本，测试走独立 PG schema（testhelper 模式）；禁止访问生产外部服务（环境变量白名单注入）
 
-> P2 落地注记（2026-07-30）：G3 以 `go vet <pkgs>` 为确定性下限（golangci-lint 包级接线推迟 Phase 3）；web 侧 gate（pnpm）未进 Runner，`DeriveAffectedScopes` 已输出 web 范围标志，Phase 3 随 Meta Team 集成接入；进程组杀绝沿用项目惯例 `exec.CommandContext`（Windows 无进程组语义）。diff 解析/受影响包推导/保护清单（doublestar glob）/500 行规模上限/SEL-08 敏感信息检测实现于 `internal/biz/self_improvement_patch.go`；Patcher 工具集（patcher_fs_read/patcher_fs_write/patcher_git_diff，worktree 作用域限定）实现于 ~~`internal/tools/patcherfs/`~~（已删除 2026-08-14：零生产引用，TEST_ONLY 僵尸实现）。
+> P2 落地注记（2026-07-30）：G3 以 `go vet <pkgs>` 为确定性下限；进程组杀绝沿用 `exec.CommandContext`（Windows 无进程组语义）。diff 解析/受影响包推导/保护清单（doublestar glob）/500 行规模上限/SEL-08 敏感信息检测实现于 `internal/biz/self_improvement_patch.go`。
 >
-> **G5（eval 基线）延期未接线**：Pipeline 实际只执行 G1-G3（+G4 Critic 在治理前）；为保持控制台透明，G1-G3 全过后显式落一条 `g5_eval` passed/skipped 记录（Output 注明 deferred），而非静默缺失。G5 真实执行（eval baseline 对比进沙盒）待后续迭代。
+> **2026-08-22 闭环硬化**：`PlanSIVerification` 按 kind/影响面选 Gate——config/prompt/docs 跳过 G2；无 Go 文件不回退 `go test ./...`；G2/G3 空包在 Runner 层也拒绝全仓。G3 默认 `go vet`；`WithGolangCILint(true)` 或 `ARANEA_SI_GOLANGCI=1` 时才跑包级 golangci-lint。`web/` 补丁跑 `g3_web_lint`（`pnpm lint`，缺工具则 skipped）。Gate 子进程使用环境白名单，剥离生产 DSN/密钥。
+>
+> **2026-08-22 P1 工具回路**：`internal/tools/patcherfs` 恢复 worktree 作用域工具。Analyst 对仓库根只读（`patcher_fs_read` / `patcher_fs_list`）；Patcher 对本次 worktree 读写 + `patcher_git_diff`。LLM 以 `{"tool":...}` JSON 多轮调用，最终仍输出 Diagnosis / PatcherOutput。Patcher 写盘后 Restore，pipeline 按官方 diff ApplyDiff。
+>
+> **2026-08-22 P1 RCA**：Analyst 从建议证据还原 `FailureReport`，调用 `heal.RootCauseAnalyzer.AnalyzeFromReport`。命中规则时把 root_cause / fix_suggest 写入 prompt；`affected_files` 为空时用报告里的 file（或从 sample_message 抽出的仓库相对路径）回填。code/test 且只改 `web/` 时，前端 lint 被 skipped（无 pnpm）改为 fail-closed。
+>
+> **G5（eval 基线）未接线**：恒落 `g5_eval` 且 `Skipped=true` / `Passed=false`，不计入 allPass。控制台按 skipped 中性展示。真实评估基线对比待后续迭代。
 
 ### D5：Meta Team 编排映射（竞赛 AgentTeams 基点）
 
@@ -183,8 +189,8 @@ Observer(代码节点,非LLM) → Analyst(LLM) → Patcher(LLM) → Verifier(代
 
 ### D7：应用与观察窗（Applier + Watchdog）
 
-- **配置/Prompt 类**：复用 58-prompt-governance 的热加载通道（RuntimeProfile reload），应用即生效，回滚=回退快照
-- **代码类**：worktree 内 `git commit`（message 含 `self-improvement: true` + run_id 尾注）→ 合并主分支（fast-forward 优先，冲突则转人工）→ 状态 applied（待重启生效）；**不做运行中热替换**
+- **配置/Prompt 类**：工作树 `git apply` + 预应用快照回滚。可选 `SIRuntimeReloader` 刷新进程内缓存；未接线时 **不是** 运行时热加载，仅下次读文件生效。`run.Metadata.apply_semantics` 记录 `channel` / `effective_on` / `runtime_reloaded`。
+- **代码类**：worktree 内 `git commit`（message 含 `self-improvement: true` + run_id 尾注）→ 合并主分支（fast-forward 优先，冲突则转人工）→ 状态 applied（**下次进程重启**才加载新二进制）；**不做运行中热替换**
 - **观察窗**：applied → observing，Watchdog（cron，5min）对比应用前后各 1h 滑窗指标：错误率 +50% 或 P95 +30%（可配置）→ 自动 `git revert` + 热加载回退 → rolled_back + 管理员通知
 - **手动控制**：管理员可 close（提前确认有效）或 rollback（立即回滚）
 

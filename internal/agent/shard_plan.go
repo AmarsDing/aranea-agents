@@ -203,6 +203,15 @@ type mcpBrokerShardFP struct {
 
 // ---------- computeShardPlan ----------
 
+// mcpDirectMountEnabled 2026-08-21 全链路审查 B2：broker 优先于直连。两键同开
+// 时只挂 broker 元工具（发现+调用，schema 按需拉取），避免远程工具全量 dump
+// 与元工具重复进 tools block。直连仍是显式选择（仅开 mcp_tool_set），
+// 16K 字符总量治理降级保留兜底。prompt.go 的直连 cue 抑制与本判定同构，
+// 改动必须两侧同步。
+func mcpDirectMountEnabled(eff map[string]bool, serverCount int) bool {
+	return eff[biz.ToolKeyMCPToolSet] && !eff[biz.ToolKeyMCPBroker] && serverCount > 0
+}
+
 // computeShardPlan 计算一次 agent 构建的分片计划。配置计算路径完整复刻
 // buildToolsetsForAgent 的原始步骤（行为等价是硬性要求），仅在「组装」处
 // 改道：完整 cfg 算好后按组切成受限 cfg，逐组计算指纹并生成构建闭包。
@@ -229,11 +238,7 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 				loggateway.Err(mcpErr))
 		}
 		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
-		// 2026-08-21 全链路审查 B2：broker 优先于直连。两键同开时只挂 broker
-		// 元工具（发现+调用，schema 按需拉取），避免远程工具全量 dump 与
-		// 元工具重复进 tools block。直连仍是显式选择（仅开 mcp_tool_set），
-		// 16K 字符总量治理降级保留兜底。
-		if eff[biz.ToolKeyMCPToolSet] && !eff[biz.ToolKeyMCPBroker] && len(mcpServers) > 0 {
+		if mcpDirectMountEnabled(eff, len(mcpServers)) {
 			cfg.MCPServers = mcpServers
 		}
 		if eff[biz.ToolKeyMCPBroker] {

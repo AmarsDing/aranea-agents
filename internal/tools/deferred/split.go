@@ -15,8 +15,9 @@ import (
 var coreResidentToolsByProfile = map[string][]string{
 	"spirit": {
 		// 闲聊会话内稳定常驻：编排入口 + 时钟 + 记忆读/写（T2 remember）。
-		// 收口/交付/取消走 deferred——未开团队时不占 Request.Tools；
-		// 开团队后 tool_load 一次即可，不破坏前缀缓存（tools 块仍按 profile 稳定）。
+		// 收口/交付/取消走 deferred——未开团队时不占 Request.Tools。
+		// 开团队后由会话阶段在 BeforeAgent 里 Activate，本 turn 即可直调，
+		// 不改 BUILD 缓存 key、不破坏闲聊前缀缓存。
 		"plan_and_execute",
 		"datetime", "memory_search", "memory_remember",
 	},

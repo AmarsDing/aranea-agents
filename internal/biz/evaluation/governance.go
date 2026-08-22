@@ -114,7 +114,15 @@ func (u *Usecase) ListRunPreferences(ctx context.Context, datasetID string, limi
 
 // ── P2-1: publish regression gate config ────────────────────────────────────
 
-// GateConfig is the singleton publish-gate configuration.
+// Gate modes: advisory notifies after publish; blocking waits for the
+// regression and returns Conflict on threshold breach. Default is advisory.
+const (
+	GateModeAdvisory = "advisory"
+	GateModeBlocking = "blocking"
+)
+
+// GateConfig is a publish-gate configuration. AgentID="" is the platform
+// default; a non-empty AgentID is a per-agent override.
 type GateConfig struct {
 	Enabled   bool
 	AgentID   string
@@ -122,6 +130,7 @@ type GateConfig struct {
 	Metric    string
 	MinScore  float32 // absolute floor; 0 disables
 	MaxDrop   float32 // allowed drop vs latest completed baseline; 0 disables
+	Mode      string  // advisory | blocking; empty = advisory
 	UpdatedAt string
 }
 
@@ -132,17 +141,33 @@ const (
 	GateTriggerPackInstall  = "pack_install"
 )
 
-// GetGateConfig returns the singleton gate config (disabled zero value when
-// never configured).
-func (u *Usecase) GetGateConfig(ctx context.Context) (GateConfig, error) {
-	return u.gov.GetGateConfig(ctx)
+// NormalizeGateMode returns advisory for empty/unknown values.
+func NormalizeGateMode(mode string) string {
+	if strings.TrimSpace(mode) == GateModeBlocking {
+		return GateModeBlocking
+	}
+	return GateModeAdvisory
 }
 
-// UpdateGateConfig validates and persists the gate config.
+// GetGateConfig returns the gate config for agentID (empty = platform default).
+// A missing per-agent row falls back to the default; a missing default is a
+// disabled zero config.
+func (u *Usecase) GetGateConfig(ctx context.Context, agentID string) (GateConfig, error) {
+	cfg, err := u.gov.GetGateConfig(ctx, strings.TrimSpace(agentID))
+	if err != nil {
+		return GateConfig{}, err
+	}
+	cfg.Mode = NormalizeGateMode(cfg.Mode)
+	return cfg, nil
+}
+
+// UpdateGateConfig validates and persists the gate config (per-agent when
+// AgentID is set, otherwise the platform default).
 func (u *Usecase) UpdateGateConfig(ctx context.Context, cfg GateConfig) (GateConfig, error) {
 	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
 	cfg.DatasetID = strings.TrimSpace(cfg.DatasetID)
 	cfg.Metric = strings.TrimSpace(cfg.Metric)
+	cfg.Mode = NormalizeGateMode(cfg.Mode)
 	if cfg.Metric == "" {
 		cfg.Metric = "exact_match"
 	}
@@ -154,7 +179,7 @@ func (u *Usecase) UpdateGateConfig(ctx context.Context, cfg GateConfig) (GateCon
 	if err := u.gov.UpsertGateConfig(ctx, cfg); err != nil {
 		return GateConfig{}, err
 	}
-	return u.gov.GetGateConfig(ctx)
+	return u.GetGateConfig(ctx, cfg.AgentID)
 }
 
 func clamp01(v float32) float32 {

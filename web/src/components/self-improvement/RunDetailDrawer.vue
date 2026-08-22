@@ -193,19 +193,22 @@
               <q-item v-for="gate in run.verificationReport" :key="gate.gate">
                 <q-item-section avatar>
                   <q-icon
-                    :name="gate.passed ? 'check_circle' : 'cancel'"
-                    :color="gate.passed ? 'positive' : 'negative'"
+                    :name="siGateIcon(gate.passed, gate.skipped)"
+                    :color="siGateColor(gate.passed, gate.skipped)"
                     size="sm"
                   />
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ siGateLabel(t, gate.gate) }}</q-item-label>
+                  <q-item-label v-if="gate.skipped" caption>
+                    {{ t('selfImprovementPage.gateSkipped') }}
+                  </q-item-label>
                   <q-item-label v-if="gate.output" caption lines="3" class="si-run-gate-output">
                     {{ gate.output }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  <q-item-label caption>{{ gate.durationMs }}ms</q-item-label>
+                  <q-item-label v-if="!gate.skipped" caption>{{ gate.durationMs }}ms</q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -316,6 +319,8 @@ import {
   canRollback,
   formatSITime,
   siChannelLabel,
+  siGateColor,
+  siGateIcon,
   siGateLabel,
   siKindLabel,
   siRiskColor,

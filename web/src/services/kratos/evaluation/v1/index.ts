@@ -47,6 +47,10 @@ export type EvalRun = {
   // dataset_hash is the dataset content snapshot at run start (P3-5);
   // differing hashes across compared runs mean scores are not directly comparable.
   datasetHash: string | undefined;
+  datasetVersionId: string | undefined;
+  datasetVersion: number | undefined;
+  experimentId: string | undefined;
+  variantLabel: string | undefined;
 };
 
 // EvalCaseResult is the output for one case in a run.
@@ -70,6 +74,8 @@ export type EvalCaseResult = {
   // input is the case text joined from eval_cases at read time (annotation
   // UX); empty when the case row no longer exists.
   input: string | undefined;
+  sessionId: string | undefined;
+  traceRunId: string | undefined;
 };
 
 export type CreateDatasetRequest = {
@@ -125,6 +131,45 @@ export type UploadCasesResponse = {
   imported: number | undefined;
 };
 
+export type ListCasesRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+};
+
+export type ListCasesResponse = {
+  items: EvalCase[] | undefined;
+};
+
+export type UpdateCaseRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  input: string | undefined;
+  expectedOutput: string | undefined;
+  metadataJson: string | undefined;
+};
+
+export type DeleteCaseRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type CancelRunRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
 export type RunEvaluationRequest = {
   //
   // Behaviors: REQUIRED
@@ -138,6 +183,8 @@ export type RunEvaluationRequest = {
   numRuns: number | undefined;
   // use_user_simulation enables scripted user simulation when cases define metadata_json.user_simulation.
   useUserSimulation: boolean | undefined;
+  experimentId: string | undefined;
+  variantLabel: string | undefined;
 };
 
 export type GetRunRequest = {
@@ -242,6 +289,10 @@ export type EvalRunComparison = {
   deltaToolCallAccuracy: number | undefined;
   // dataset_hash enables the dataset-changed comparability warning (P3-5).
   datasetHash: string | undefined;
+  datasetVersionId: string | undefined;
+  datasetVersion: number | undefined;
+  experimentId: string | undefined;
+  variantLabel: string | undefined;
 };
 
 export type CompareEvalRunsResponse = {
@@ -375,9 +426,12 @@ export type EvalGateConfig = {
   // max_drop: allowed drop vs baseline in [0,1]; 0 disables the relative check.
   maxDrop: number | undefined;
   updatedAt: string | undefined;
+  // mode: advisory (default, notify only) | blocking (wait and reject on breach)
+  mode: string | undefined;
 };
 
 export type GetEvalGateRequest = {
+  agentId: string | undefined;
 };
 
 export type UpdateEvalGateRequest = {
@@ -387,6 +441,47 @@ export type UpdateEvalGateRequest = {
   metric: string | undefined;
   minScore: number | undefined;
   maxDrop: number | undefined;
+  mode: string | undefined;
+};
+
+export type EvalDatasetVersion = {
+  id: string | undefined;
+  datasetId: string | undefined;
+  version: number | undefined;
+  hash: string | undefined;
+  caseCount: number | undefined;
+  createdAt: string | undefined;
+};
+
+export type ListDatasetVersionsRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListDatasetVersionsResponse = {
+  items: EvalDatasetVersion[] | undefined;
+};
+
+export type ExperimentVariant = {
+  agentId: string | undefined;
+  label: string | undefined;
+};
+
+export type RunExperimentRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  metrics: string | undefined;
+  numRuns: number | undefined;
+  useUserSimulation: boolean | undefined;
+  variants: ExperimentVariant[] | undefined;
+};
+
+export type RunExperimentResponse = {
+  experimentId: string | undefined;
+  items: EvalRun[] | undefined;
 };
 
 export interface EvaluationService {
@@ -397,10 +492,14 @@ export interface EvaluationService {
   DeleteDataset(request: DeleteDatasetRequest): Promise<wellKnownEmpty>;
   UpdateDataset(request: UpdateDatasetRequest): Promise<EvalDataset>;
   UploadCases(request: UploadCasesRequest): Promise<UploadCasesResponse>;
+  ListCases(request: ListCasesRequest): Promise<ListCasesResponse>;
+  UpdateCase(request: UpdateCaseRequest): Promise<EvalCase>;
+  DeleteCase(request: DeleteCaseRequest): Promise<wellKnownEmpty>;
   // Runs
   RunEvaluation(request: RunEvaluationRequest): Promise<EvalRun>;
   GetRun(request: GetRunRequest): Promise<EvalRun>;
   DeleteRun(request: DeleteRunRequest): Promise<wellKnownEmpty>;
+  CancelRun(request: CancelRunRequest): Promise<EvalRun>;
   ListRuns(request: ListRunsRequest): Promise<ListRunsResponse>;
   GetRunResults(request: GetRunResultsRequest): Promise<GetRunResultsResponse>;
   AnnotateCaseResult(request: AnnotateCaseResultRequest): Promise<EvalCaseResult>;
@@ -412,6 +511,8 @@ export interface EvaluationService {
   ListRunPreferences(request: ListRunPreferencesRequest): Promise<ListRunPreferencesResponse>;
   GetEvalGate(request: GetEvalGateRequest): Promise<EvalGateConfig>;
   UpdateEvalGate(request: UpdateEvalGateRequest): Promise<EvalGateConfig>;
+  ListDatasetVersions(request: ListDatasetVersionsRequest): Promise<ListDatasetVersionsResponse>;
+  RunExperiment(request: RunExperimentRequest): Promise<RunExperimentResponse>;
 }
 
 type RequestType = {
@@ -546,6 +647,72 @@ export function createEvaluationServiceClient(
         method: "UploadCases",
       }) as Promise<UploadCasesResponse>;
     },
+    ListCases(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.datasetId) {
+        throw new Error("missing required field request.dataset_id");
+      }
+      const path = `v1/evaluation/datasets/${request.datasetId}/cases`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "ListCases",
+      }) as Promise<ListCasesResponse>;
+    },
+    UpdateCase(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.datasetId) {
+        throw new Error("missing required field request.dataset_id");
+      }
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/evaluation/datasets/${request.datasetId}/cases/${request.id}`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "UpdateCase",
+      }) as Promise<EvalCase>;
+    },
+    DeleteCase(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.datasetId) {
+        throw new Error("missing required field request.dataset_id");
+      }
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/evaluation/datasets/${request.datasetId}/cases/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "DeleteCase",
+      }) as Promise<wellKnownEmpty>;
+    },
     RunEvaluation(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/runs`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
@@ -602,6 +769,26 @@ export function createEvaluationServiceClient(
         service: "EvaluationService",
         method: "DeleteRun",
       }) as Promise<wellKnownEmpty>;
+    },
+    CancelRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/evaluation/runs/${request.id}/cancel`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "CancelRun",
+      }) as Promise<EvalRun>;
     },
     ListRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/runs`; // eslint-disable-line quotes
@@ -823,6 +1010,9 @@ export function createEvaluationServiceClient(
       const path = `v1/evaluation/gate`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -852,6 +1042,46 @@ export function createEvaluationServiceClient(
         service: "EvaluationService",
         method: "UpdateEvalGate",
       }) as Promise<EvalGateConfig>;
+    },
+    ListDatasetVersions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.datasetId) {
+        throw new Error("missing required field request.dataset_id");
+      }
+      const path = `v1/evaluation/datasets/${request.datasetId}/versions`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "ListDatasetVersions",
+      }) as Promise<ListDatasetVersionsResponse>;
+    },
+    RunExperiment(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/evaluation/experiments`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "RunExperiment",
+      }) as Promise<RunExperimentResponse>;
     },
   };
 }

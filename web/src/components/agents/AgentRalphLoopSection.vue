@@ -1,20 +1,27 @@
 <template>
   <section class="settings-section">
     <div class="section-heading">
-      <div>
-        <div class="text-subtitle1 text-weight-bold">Ralph Loop</div>
-        <div class="text-caption text-grey-7">
-          外层迭代验证：Agent 反复执行直到输出满足完成承诺，且/或验证命令退出码为 0。需配置最大迭代次数与停止条件之一。
+      <div class="section-heading__main">
+        <div class="section-title">
+          <span class="section-title__text">Ralph Loop</span>
+          <q-icon name="info_outline" size="16px" class="section-title__info cursor-help">
+            <q-tooltip max-width="360px" anchor="top middle" self="bottom middle">
+              外层迭代验证：Agent 反复执行直到输出满足完成承诺，且/或验证命令退出码为 0。需配置最大迭代次数与停止条件之一。
+            </q-tooltip>
+          </q-icon>
         </div>
+        <p class="settings-section__hint">迭代执行直到输出满足完成承诺或验证命令通过。</p>
       </div>
-      <q-toggle v-model="form.enabled" color="primary" label="启用" />
+      <div class="settings-section__actions">
+        <q-toggle v-model="form.enabled" dense color="primary" label="启用" />
+      </div>
     </div>
 
     <q-banner v-if="!form.enabled" rounded dense class="settings-info-banner">
       关闭时 Runner 不包装 Ralph Loop；与「规划模式」独立。
     </q-banner>
 
-    <div v-else class="app-form-field-grid q-mt-sm">
+    <div v-else class="app-form-field-grid app-form-field-grid--2col q-mt-sm">
       <q-input
         v-model.number="form.max_iterations"
         dense

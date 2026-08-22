@@ -127,6 +127,8 @@ type MemoryHit struct {
 	DQScore       float64  `json:"dq_score"`
 	TopologyUsed  string   `json:"topology_used"`
 	AgentKeysUsed []string `json:"agent_keys_used"`
+	DomainPath    string   `json:"domain_path,omitempty"`
+	Specialties   []string `json:"specialties,omitempty"`
 }
 
 // RecoverableTaskPlanStatuses are non-terminal plan states that may be

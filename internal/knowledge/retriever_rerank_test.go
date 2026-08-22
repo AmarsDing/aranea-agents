@@ -29,6 +29,9 @@ func (s *stubKnowledgeRepo) GetCollection(context.Context, string) (biz.Knowledg
 	}
 	return biz.KnowledgeCollection{ID: "col", EmbeddingModel: "m", Dim: 3}, nil
 }
+func (s *stubKnowledgeRepo) GetCollectionByName(context.Context, string, string) (biz.KnowledgeCollection, error) {
+	return biz.KnowledgeCollection{}, biz.ErrNotFound
+}
 func (s *stubKnowledgeRepo) ListCollections(context.Context, string, int, int) ([]biz.KnowledgeCollection, int, error) {
 	return nil, 0, nil
 }
@@ -49,6 +52,9 @@ func (s *stubKnowledgeRepo) GetDocument(context.Context, string) (biz.KnowledgeD
 	return biz.KnowledgeDocument{}, nil
 }
 func (s *stubKnowledgeRepo) GetDocumentByRelPath(context.Context, string, string) (biz.KnowledgeDocument, error) {
+	return biz.KnowledgeDocument{}, nil
+}
+func (s *stubKnowledgeRepo) GetDocumentByContentHash(context.Context, string, string) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{}, nil
 }
 func (s *stubKnowledgeRepo) UpdateDocumentRelPath(context.Context, string, string) error {

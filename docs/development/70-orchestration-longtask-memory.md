@@ -259,7 +259,7 @@
 | FR-12.1 | 统一写入管线：所有自动事实写入（会话提取/反馈提取/sleep-time 归档提取）汇入单一管线，具备操作语义（ADD/UPDATE/DELETE/NOOP）与降噪三闸（kind 白名单/置信度下限/去重合并） | P1 |
 | FR-12.2 | 写入决策全量可溯源：每个候选的写入/合并/丢弃均有审计记录（含丢弃原因与目标 fact） | P1 |
 | FR-12.3 | L1→L2 归档原子化：任务结束与 episode 创建同事务；归档失败留在重试集合内并触发死信告警，禁止静默永久失败 | P1 |
-| FR-12.4 | Sleep-time 整理必须接线：LLM 经 ModelCatalog 按目标解析（MemoryWorker → L0Compress → agent 默认模型），禁止 nil LLM 空转 | P1 |
+| FR-12.4 | Sleep-time 整理必须接线：LLM 经 ModelCatalog 按目标解析（MemoryWorker → L0Compress → agent 默认模型），禁止 nil LLM 空转。**As-built（2026-08）**：`provideMemorySleepTimeWorker` + `cmd/admin/workers.go` `memory_sleep_time` 已按小时调度，LLM 走 `SleepTimeLLMResolver` | P1 |
 | FR-12.5 | 记忆金丝雀：周期性走通「写入→召回→失效归档」全链路断言，任一环失败产生告警指标与流程日志 | P0 |
 | FR-12.6 | 计数器三段化：recalled/injected/cited 分离，替换语义错误的 use_count（召回即 +1，与是否注入无关） | P2 |
 | FR-12.7 | Profile 常驻卡：Sleep-time 从 facts 蒸馏常驻画像卡，100% 注入 prompt | P2 |

@@ -216,6 +216,12 @@ export interface PlanStep {
   Version: number;
   Result: StepResult | null;
   Error: StepError | null;
+  AgentKeys?: string[];
+  DepartmentID?: string;
+  DomainPath?: string;
+  AssignedName?: string;
+  MatchLayer?: string;
+  MatchReason?: string;
 }
 
 export interface PlanBoard {

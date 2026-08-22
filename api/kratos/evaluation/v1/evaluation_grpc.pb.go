@@ -26,9 +26,13 @@ const (
 	EvaluationService_DeleteDataset_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/DeleteDataset"
 	EvaluationService_UpdateDataset_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/UpdateDataset"
 	EvaluationService_UploadCases_FullMethodName         = "/kratos.evaluation.v1.EvaluationService/UploadCases"
+	EvaluationService_ListCases_FullMethodName           = "/kratos.evaluation.v1.EvaluationService/ListCases"
+	EvaluationService_UpdateCase_FullMethodName          = "/kratos.evaluation.v1.EvaluationService/UpdateCase"
+	EvaluationService_DeleteCase_FullMethodName          = "/kratos.evaluation.v1.EvaluationService/DeleteCase"
 	EvaluationService_RunEvaluation_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/RunEvaluation"
 	EvaluationService_GetRun_FullMethodName              = "/kratos.evaluation.v1.EvaluationService/GetRun"
 	EvaluationService_DeleteRun_FullMethodName           = "/kratos.evaluation.v1.EvaluationService/DeleteRun"
+	EvaluationService_CancelRun_FullMethodName           = "/kratos.evaluation.v1.EvaluationService/CancelRun"
 	EvaluationService_ListRuns_FullMethodName            = "/kratos.evaluation.v1.EvaluationService/ListRuns"
 	EvaluationService_GetRunResults_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/GetRunResults"
 	EvaluationService_AnnotateCaseResult_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/AnnotateCaseResult"
@@ -40,6 +44,8 @@ const (
 	EvaluationService_ListRunPreferences_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/ListRunPreferences"
 	EvaluationService_GetEvalGate_FullMethodName         = "/kratos.evaluation.v1.EvaluationService/GetEvalGate"
 	EvaluationService_UpdateEvalGate_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/UpdateEvalGate"
+	EvaluationService_ListDatasetVersions_FullMethodName = "/kratos.evaluation.v1.EvaluationService/ListDatasetVersions"
+	EvaluationService_RunExperiment_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/RunExperiment"
 )
 
 // EvaluationServiceClient is the client API for EvaluationService service.
@@ -53,10 +59,14 @@ type EvaluationServiceClient interface {
 	DeleteDataset(ctx context.Context, in *DeleteDatasetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateDataset(ctx context.Context, in *UpdateDatasetRequest, opts ...grpc.CallOption) (*EvalDataset, error)
 	UploadCases(ctx context.Context, in *UploadCasesRequest, opts ...grpc.CallOption) (*UploadCasesResponse, error)
+	ListCases(ctx context.Context, in *ListCasesRequest, opts ...grpc.CallOption) (*ListCasesResponse, error)
+	UpdateCase(ctx context.Context, in *UpdateCaseRequest, opts ...grpc.CallOption) (*EvalCase, error)
+	DeleteCase(ctx context.Context, in *DeleteCaseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Runs
 	RunEvaluation(ctx context.Context, in *RunEvaluationRequest, opts ...grpc.CallOption) (*EvalRun, error)
 	GetRun(ctx context.Context, in *GetRunRequest, opts ...grpc.CallOption) (*EvalRun, error)
 	DeleteRun(ctx context.Context, in *DeleteRunRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CancelRun(ctx context.Context, in *CancelRunRequest, opts ...grpc.CallOption) (*EvalRun, error)
 	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
 	GetRunResults(ctx context.Context, in *GetRunResultsRequest, opts ...grpc.CallOption) (*GetRunResultsResponse, error)
 	AnnotateCaseResult(ctx context.Context, in *AnnotateCaseResultRequest, opts ...grpc.CallOption) (*EvalCaseResult, error)
@@ -68,6 +78,8 @@ type EvaluationServiceClient interface {
 	ListRunPreferences(ctx context.Context, in *ListRunPreferencesRequest, opts ...grpc.CallOption) (*ListRunPreferencesResponse, error)
 	GetEvalGate(ctx context.Context, in *GetEvalGateRequest, opts ...grpc.CallOption) (*EvalGateConfig, error)
 	UpdateEvalGate(ctx context.Context, in *UpdateEvalGateRequest, opts ...grpc.CallOption) (*EvalGateConfig, error)
+	ListDatasetVersions(ctx context.Context, in *ListDatasetVersionsRequest, opts ...grpc.CallOption) (*ListDatasetVersionsResponse, error)
+	RunExperiment(ctx context.Context, in *RunExperimentRequest, opts ...grpc.CallOption) (*RunExperimentResponse, error)
 }
 
 type evaluationServiceClient struct {
@@ -138,6 +150,36 @@ func (c *evaluationServiceClient) UploadCases(ctx context.Context, in *UploadCas
 	return out, nil
 }
 
+func (c *evaluationServiceClient) ListCases(ctx context.Context, in *ListCasesRequest, opts ...grpc.CallOption) (*ListCasesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCasesResponse)
+	err := c.cc.Invoke(ctx, EvaluationService_ListCases_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) UpdateCase(ctx context.Context, in *UpdateCaseRequest, opts ...grpc.CallOption) (*EvalCase, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalCase)
+	err := c.cc.Invoke(ctx, EvaluationService_UpdateCase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) DeleteCase(ctx context.Context, in *DeleteCaseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, EvaluationService_DeleteCase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *evaluationServiceClient) RunEvaluation(ctx context.Context, in *RunEvaluationRequest, opts ...grpc.CallOption) (*EvalRun, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EvalRun)
@@ -162,6 +204,16 @@ func (c *evaluationServiceClient) DeleteRun(ctx context.Context, in *DeleteRunRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, EvaluationService_DeleteRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) CancelRun(ctx context.Context, in *CancelRunRequest, opts ...grpc.CallOption) (*EvalRun, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalRun)
+	err := c.cc.Invoke(ctx, EvaluationService_CancelRun_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -278,6 +330,26 @@ func (c *evaluationServiceClient) UpdateEvalGate(ctx context.Context, in *Update
 	return out, nil
 }
 
+func (c *evaluationServiceClient) ListDatasetVersions(ctx context.Context, in *ListDatasetVersionsRequest, opts ...grpc.CallOption) (*ListDatasetVersionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDatasetVersionsResponse)
+	err := c.cc.Invoke(ctx, EvaluationService_ListDatasetVersions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) RunExperiment(ctx context.Context, in *RunExperimentRequest, opts ...grpc.CallOption) (*RunExperimentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunExperimentResponse)
+	err := c.cc.Invoke(ctx, EvaluationService_RunExperiment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EvaluationServiceServer is the server API for EvaluationService service.
 // All implementations must embed UnimplementedEvaluationServiceServer
 // for forward compatibility.
@@ -289,10 +361,14 @@ type EvaluationServiceServer interface {
 	DeleteDataset(context.Context, *DeleteDatasetRequest) (*emptypb.Empty, error)
 	UpdateDataset(context.Context, *UpdateDatasetRequest) (*EvalDataset, error)
 	UploadCases(context.Context, *UploadCasesRequest) (*UploadCasesResponse, error)
+	ListCases(context.Context, *ListCasesRequest) (*ListCasesResponse, error)
+	UpdateCase(context.Context, *UpdateCaseRequest) (*EvalCase, error)
+	DeleteCase(context.Context, *DeleteCaseRequest) (*emptypb.Empty, error)
 	// Runs
 	RunEvaluation(context.Context, *RunEvaluationRequest) (*EvalRun, error)
 	GetRun(context.Context, *GetRunRequest) (*EvalRun, error)
 	DeleteRun(context.Context, *DeleteRunRequest) (*emptypb.Empty, error)
+	CancelRun(context.Context, *CancelRunRequest) (*EvalRun, error)
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
 	GetRunResults(context.Context, *GetRunResultsRequest) (*GetRunResultsResponse, error)
 	AnnotateCaseResult(context.Context, *AnnotateCaseResultRequest) (*EvalCaseResult, error)
@@ -304,6 +380,8 @@ type EvaluationServiceServer interface {
 	ListRunPreferences(context.Context, *ListRunPreferencesRequest) (*ListRunPreferencesResponse, error)
 	GetEvalGate(context.Context, *GetEvalGateRequest) (*EvalGateConfig, error)
 	UpdateEvalGate(context.Context, *UpdateEvalGateRequest) (*EvalGateConfig, error)
+	ListDatasetVersions(context.Context, *ListDatasetVersionsRequest) (*ListDatasetVersionsResponse, error)
+	RunExperiment(context.Context, *RunExperimentRequest) (*RunExperimentResponse, error)
 	mustEmbedUnimplementedEvaluationServiceServer()
 }
 
@@ -332,6 +410,15 @@ func (UnimplementedEvaluationServiceServer) UpdateDataset(context.Context, *Upda
 func (UnimplementedEvaluationServiceServer) UploadCases(context.Context, *UploadCasesRequest) (*UploadCasesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UploadCases not implemented")
 }
+func (UnimplementedEvaluationServiceServer) ListCases(context.Context, *ListCasesRequest) (*ListCasesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCases not implemented")
+}
+func (UnimplementedEvaluationServiceServer) UpdateCase(context.Context, *UpdateCaseRequest) (*EvalCase, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateCase not implemented")
+}
+func (UnimplementedEvaluationServiceServer) DeleteCase(context.Context, *DeleteCaseRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteCase not implemented")
+}
 func (UnimplementedEvaluationServiceServer) RunEvaluation(context.Context, *RunEvaluationRequest) (*EvalRun, error) {
 	return nil, status.Error(codes.Unimplemented, "method RunEvaluation not implemented")
 }
@@ -340,6 +427,9 @@ func (UnimplementedEvaluationServiceServer) GetRun(context.Context, *GetRunReque
 }
 func (UnimplementedEvaluationServiceServer) DeleteRun(context.Context, *DeleteRunRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteRun not implemented")
+}
+func (UnimplementedEvaluationServiceServer) CancelRun(context.Context, *CancelRunRequest) (*EvalRun, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelRun not implemented")
 }
 func (UnimplementedEvaluationServiceServer) ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRuns not implemented")
@@ -373,6 +463,12 @@ func (UnimplementedEvaluationServiceServer) GetEvalGate(context.Context, *GetEva
 }
 func (UnimplementedEvaluationServiceServer) UpdateEvalGate(context.Context, *UpdateEvalGateRequest) (*EvalGateConfig, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateEvalGate not implemented")
+}
+func (UnimplementedEvaluationServiceServer) ListDatasetVersions(context.Context, *ListDatasetVersionsRequest) (*ListDatasetVersionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDatasetVersions not implemented")
+}
+func (UnimplementedEvaluationServiceServer) RunExperiment(context.Context, *RunExperimentRequest) (*RunExperimentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RunExperiment not implemented")
 }
 func (UnimplementedEvaluationServiceServer) mustEmbedUnimplementedEvaluationServiceServer() {}
 func (UnimplementedEvaluationServiceServer) testEmbeddedByValue()                           {}
@@ -503,6 +599,60 @@ func _EvaluationService_UploadCases_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EvaluationService_ListCases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCasesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).ListCases(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_ListCases_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).ListCases(ctx, req.(*ListCasesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_UpdateCase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateCaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).UpdateCase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_UpdateCase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).UpdateCase(ctx, req.(*UpdateCaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_DeleteCase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteCaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).DeleteCase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_DeleteCase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).DeleteCase(ctx, req.(*DeleteCaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _EvaluationService_RunEvaluation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RunEvaluationRequest)
 	if err := dec(in); err != nil {
@@ -553,6 +703,24 @@ func _EvaluationService_DeleteRun_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(EvaluationServiceServer).DeleteRun(ctx, req.(*DeleteRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_CancelRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).CancelRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_CancelRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).CancelRun(ctx, req.(*CancelRunRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -755,6 +923,42 @@ func _EvaluationService_UpdateEvalGate_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EvaluationService_ListDatasetVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDatasetVersionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).ListDatasetVersions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_ListDatasetVersions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).ListDatasetVersions(ctx, req.(*ListDatasetVersionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_RunExperiment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunExperimentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).RunExperiment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_RunExperiment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).RunExperiment(ctx, req.(*RunExperimentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EvaluationService_ServiceDesc is the grpc.ServiceDesc for EvaluationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -787,6 +991,18 @@ var EvaluationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _EvaluationService_UploadCases_Handler,
 		},
 		{
+			MethodName: "ListCases",
+			Handler:    _EvaluationService_ListCases_Handler,
+		},
+		{
+			MethodName: "UpdateCase",
+			Handler:    _EvaluationService_UpdateCase_Handler,
+		},
+		{
+			MethodName: "DeleteCase",
+			Handler:    _EvaluationService_DeleteCase_Handler,
+		},
+		{
 			MethodName: "RunEvaluation",
 			Handler:    _EvaluationService_RunEvaluation_Handler,
 		},
@@ -797,6 +1013,10 @@ var EvaluationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteRun",
 			Handler:    _EvaluationService_DeleteRun_Handler,
+		},
+		{
+			MethodName: "CancelRun",
+			Handler:    _EvaluationService_CancelRun_Handler,
 		},
 		{
 			MethodName: "ListRuns",
@@ -841,6 +1061,14 @@ var EvaluationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateEvalGate",
 			Handler:    _EvaluationService_UpdateEvalGate_Handler,
+		},
+		{
+			MethodName: "ListDatasetVersions",
+			Handler:    _EvaluationService_ListDatasetVersions_Handler,
+		},
+		{
+			MethodName: "RunExperiment",
+			Handler:    _EvaluationService_RunExperiment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

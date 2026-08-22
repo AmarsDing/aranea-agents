@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	v1 "aranea-agents/api/kratos/evaluation/v1"
 	"aranea-agents/internal/biz"
@@ -26,10 +27,6 @@ type EvaluationService struct {
 func NewEvaluationService(uc *biz.EvalUsecase, runner *evaluation.Runner) *EvaluationService {
 	return &EvaluationService{uc: uc, runner: runner}
 }
-
-// inFlightScanLimit caps the recent-run scan behind the EVAL-08 in-flight
-// dedup check (same order of magnitude as the gate's baseline scan).
-const inFlightScanLimit = 20
 
 // assertSystemCaller returns Forbidden unless the caller is a system
 // principal or an admin. The publish gate is a platform-global singleton —
@@ -154,6 +151,48 @@ func (s *EvaluationService) UploadCases(ctx context.Context, req *v1.UploadCases
 	return &v1.UploadCasesResponse{Imported: int32(n)}, nil
 }
 
+func (s *EvaluationService) ListCases(ctx context.Context, req *v1.ListCasesRequest) (*v1.ListCasesResponse, error) {
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
+	items, err := s.uc.ListCases(ctx, req.GetDatasetId())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.EvalCase, 0, len(items))
+	for _, c := range items {
+		out = append(out, toProtoCase(c))
+	}
+	return &v1.ListCasesResponse{Items: out}, nil
+}
+
+func (s *EvaluationService) UpdateCase(ctx context.Context, req *v1.UpdateCaseRequest) (*v1.EvalCase, error) {
+	if _, err := s.assertEvalDatasetMutate(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
+	updated, err := s.uc.UpdateCase(ctx, biz.EvalCase{
+		ID:             req.GetId(),
+		DatasetID:      req.GetDatasetId(),
+		Input:          req.GetInput(),
+		ExpectedOutput: req.GetExpectedOutput(),
+		MetadataJSON:   req.GetMetadataJson(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoCase(updated), nil
+}
+
+func (s *EvaluationService) DeleteCase(ctx context.Context, req *v1.DeleteCaseRequest) (*emptypb.Empty, error) {
+	if _, err := s.assertEvalDatasetMutate(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
+	if err := s.uc.DeleteCase(ctx, req.GetDatasetId(), req.GetId()); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
 // --- Runs ---
 
 // assertEvalRunAccess loads a run and verifies the caller's workspace owns it.
@@ -206,23 +245,19 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	if s.runner == nil {
 		return nil, apierror.Unavailable("EVAL", "evaluation runner is not available")
 	}
-	// EVAL-08: one in-flight run per (dataset, agent). Each run fans out one
-	// inference (+ judge call) per case, so an unguarded double-click or a
-	// retry loop multiplies LLM cost for an identical result.
-	runs, _, err := s.uc.ListRuns(ctx, req.GetDatasetId(), req.GetAgentId(), inFlightScanLimit, 0)
-	if err != nil {
+	// EVAL-08: one in-flight run per (dataset, agent). Shared with AfterTurn.
+	if existing, ok, err := s.uc.FindInFlightRun(ctx, req.GetDatasetId(), req.GetAgentId()); err != nil {
 		return nil, err
-	}
-	for _, r := range runs {
-		if r.Status == "pending" || r.Status == "running" {
-			return nil, apierror.Conflict("EVAL",
-				fmt.Sprintf("an evaluation run is already in flight for this dataset+agent (run_id=%s)", r.ID))
-		}
+	} else if ok {
+		return nil, apierror.Conflict("EVAL",
+			fmt.Sprintf("an evaluation run is already in flight for this dataset+agent (run_id=%s)", existing.ID))
 	}
 	in := biz.EvalRun{
-		DatasetID: req.GetDatasetId(),
-		AgentID:   req.GetAgentId(),
-		NumRuns:   numRuns,
+		DatasetID:    req.GetDatasetId(),
+		AgentID:      req.GetAgentId(),
+		NumRuns:      numRuns,
+		ExperimentID: req.GetExperimentId(),
+		VariantLabel: req.GetVariantLabel(),
 	}
 	if !workspace.IsSystem(ctx) {
 		in.WorkspaceID = workspace.IDFromContext(ctx)
@@ -234,12 +269,29 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	if numRuns <= 0 {
 		numRuns = 1
 	}
-	s.runner.Start(ctx, run, req.GetMetrics(), numRuns, req.GetUseUserSimulation())
+	if err := s.runner.Start(ctx, run, req.GetMetrics(), numRuns, req.GetUseUserSimulation()); err != nil {
+		_ = s.uc.DeleteRun(ctx, run.ID)
+		return nil, err
+	}
 	return toProtoRun(run), nil
 }
 
 func (s *EvaluationService) GetRun(ctx context.Context, req *v1.GetRunRequest) (*v1.EvalRun, error) {
 	run, err := s.assertEvalRunAccess(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoRun(run), nil
+}
+
+func (s *EvaluationService) CancelRun(ctx context.Context, req *v1.CancelRunRequest) (*v1.EvalRun, error) {
+	if _, err := s.assertEvalRunAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	if s.runner != nil {
+		s.runner.Cancel(req.GetId())
+	}
+	run, err := s.uc.CancelRun(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -365,6 +417,10 @@ func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.Compare
 			DeltaLlmJudge:         c.DeltaLLMJudge,
 			DeltaToolCallAccuracy: c.DeltaToolAccuracy,
 			DatasetHash:           c.DatasetHash,
+			DatasetVersionId:      c.DatasetVersionID,
+			DatasetVersion:        int32(c.DatasetVersion),
+			ExperimentId:          c.ExperimentID,
+			VariantLabel:          c.VariantLabel,
 		})
 	}
 	return &v1.CompareEvalRunsResponse{Items: out}, nil
@@ -470,8 +526,8 @@ func (s *EvaluationService) ListRunPreferences(ctx context.Context, req *v1.List
 }
 
 // GetEvalGate returns the singleton publish-gate config (P2-1).
-func (s *EvaluationService) GetEvalGate(ctx context.Context, _ *v1.GetEvalGateRequest) (*v1.EvalGateConfig, error) {
-	cfg, err := s.uc.GetGateConfig(ctx)
+func (s *EvaluationService) GetEvalGate(ctx context.Context, req *v1.GetEvalGateRequest) (*v1.EvalGateConfig, error) {
+	cfg, err := s.uc.GetGateConfig(ctx, req.GetAgentId())
 	if err != nil {
 		return nil, err
 	}
@@ -497,11 +553,98 @@ func (s *EvaluationService) UpdateEvalGate(ctx context.Context, req *v1.UpdateEv
 		Metric:    req.GetMetric(),
 		MinScore:  req.GetMinScore(),
 		MaxDrop:   req.GetMaxDrop(),
+		Mode:      req.GetMode(),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return toProtoGateConfig(cfg), nil
+}
+
+func (s *EvaluationService) ListDatasetVersions(ctx context.Context, req *v1.ListDatasetVersionsRequest) (*v1.ListDatasetVersionsResponse, error) {
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
+	items, err := s.uc.ListDatasetVersions(ctx, req.GetDatasetId(), int(req.GetLimit()))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.EvalDatasetVersion, 0, len(items))
+	for _, v := range items {
+		out = append(out, &v1.EvalDatasetVersion{
+			Id:        v.ID,
+			DatasetId: v.DatasetID,
+			Version:   int32(v.Version),
+			Hash:      v.Hash,
+			CaseCount: int32(v.CaseCount),
+			CreatedAt: v.CreatedAt,
+		})
+	}
+	return &v1.ListDatasetVersionsResponse{Items: out}, nil
+}
+
+func (s *EvaluationService) RunExperiment(ctx context.Context, req *v1.RunExperimentRequest) (*v1.RunExperimentResponse, error) {
+	if _, err := s.assertEvalDatasetMutate(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
+	if s.runner == nil {
+		return nil, apierror.Unavailable("EVAL", "evaluation runner is not available")
+	}
+	if len(req.GetVariants()) < 2 {
+		return nil, apierror.BadRequest("EVAL", "at least two variants are required")
+	}
+	cases, err := s.uc.ListCases(ctx, req.GetDatasetId())
+	if err != nil {
+		return nil, err
+	}
+	if len(cases) == 0 {
+		return nil, apierror.BadRequest("EVAL", "dataset has no cases")
+	}
+	numRuns := int(req.GetNumRuns())
+	if numRuns <= 0 {
+		numRuns = 1
+	}
+	expID := "exp-" + time.Now().UTC().Format("20060102150405")
+	items := make([]*v1.EvalRun, 0, len(req.GetVariants()))
+	for _, v := range req.GetVariants() {
+		agentID := strings.TrimSpace(v.GetAgentId())
+		if agentID == "" {
+			continue
+		}
+		label := strings.TrimSpace(v.GetLabel())
+		if label == "" {
+			label = agentID
+		}
+		if existing, ok, err := s.uc.FindInFlightRun(ctx, req.GetDatasetId(), agentID); err != nil {
+			return nil, err
+		} else if ok {
+			return nil, apierror.Conflict("EVAL",
+				fmt.Sprintf("an evaluation run is already in flight for this dataset+agent (run_id=%s)", existing.ID))
+		}
+		in := biz.EvalRun{
+			DatasetID:    req.GetDatasetId(),
+			AgentID:      agentID,
+			NumRuns:      numRuns,
+			ExperimentID: expID,
+			VariantLabel: label,
+		}
+		if !workspace.IsSystem(ctx) {
+			in.WorkspaceID = workspace.IDFromContext(ctx)
+		}
+		run, err := s.uc.CreateRun(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.runner.Start(ctx, run, req.GetMetrics(), numRuns, req.GetUseUserSimulation()); err != nil {
+			_ = s.uc.DeleteRun(ctx, run.ID)
+			return nil, err
+		}
+		items = append(items, toProtoRun(run))
+	}
+	if len(items) == 0 {
+		return nil, apierror.BadRequest("EVAL", "no valid experiment variants")
+	}
+	return &v1.RunExperimentResponse{ExperimentId: expID, Items: items}, nil
 }
 
 func toProtoRunPreference(p biz.EvalRunPreference) *v1.EvalRunPreference {
@@ -525,11 +668,22 @@ func toProtoGateConfig(c biz.EvalGateConfig) *v1.EvalGateConfig {
 		Metric:    c.Metric,
 		MinScore:  c.MinScore,
 		MaxDrop:   c.MaxDrop,
+		Mode:      c.Mode,
 		UpdatedAt: c.UpdatedAt,
 	}
 }
 
 // --- proto conversion helpers ---
+
+func toProtoCase(c biz.EvalCase) *v1.EvalCase {
+	return &v1.EvalCase{
+		Id:             c.ID,
+		DatasetId:      c.DatasetID,
+		Input:          c.Input,
+		ExpectedOutput: c.ExpectedOutput,
+		MetadataJson:   c.MetadataJSON,
+	}
+}
 
 func toProtoDataset(d biz.EvalDataset) *v1.EvalDataset {
 	return &v1.EvalDataset{
@@ -564,6 +718,10 @@ func toProtoRun(r biz.EvalRun) *v1.EvalRun {
 		StartedAt:          r.StartedAt,
 		FinishedAt:         r.FinishedAt,
 		DatasetHash:        r.DatasetHash,
+		DatasetVersionId:   r.DatasetVersionID,
+		DatasetVersion:     int32(r.DatasetVersion),
+		ExperimentId:       r.ExperimentID,
+		VariantLabel:       r.VariantLabel,
 		CreatedAt:          r.CreatedAt,
 	}
 }
@@ -585,6 +743,8 @@ func toProtoCaseResult(r biz.EvalCaseResult) *v1.EvalCaseResult {
 		AnnotatedAt:      r.AnnotatedAt,
 		AnnotatedBy:      r.AnnotatedBy,
 		ScoresJson:       r.ScoresJSON,
+		SessionId:        r.SessionID,
+		TraceRunId:       r.TraceRunID,
 	}
 	if r.HumanPass != nil {
 		v := *r.HumanPass

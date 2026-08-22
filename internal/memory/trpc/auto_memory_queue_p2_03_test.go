@@ -36,84 +36,70 @@ func (f *fakeDeadLetterSink) Entries() []fakeDeadLetterEntry {
 	return cp
 }
 
-// TestMemoryJobQueue_DebounceWritesDeadLetter verifies that when a
-// normal-priority job is debounced, a dead-letter entry is written with
-// reason "debounced" (P2-03).
-func TestMemoryJobQueue_DebounceWritesDeadLetter(t *testing.T) {
+// TestMemoryJobQueue_CoalescedJobsSkipDeadLetter R3（2026-08-22）：trailing-edge
+// 合并后被取代的请求不写死信（它们已并入存活请求，不是丢失）。旧 P2-03 行为
+// （写 debounced 死信）会让 replayer 把已合并的请求重新入队，去抖形同虚设。
+func TestMemoryJobQueue_CoalescedJobsSkipDeadLetter(t *testing.T) {
 	sink := &fakeDeadLetterSink{}
-	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 10*time.Second, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 60*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
 	q.SetDeadLetterSink(sink)
 
-	// First job: should be enqueued (not debounced).
-	req1 := AutoMemoryJobRequest{
-		AppName:    "app1",
-		SessionID:  "sess-dlq-debounce",
-		Priority:   MemoryJobPriorityNormal,
-		EnqueuedAt: time.Now(),
+	for i := 0; i < 3; i++ {
+		q.Enqueue(AutoMemoryJobRequest{
+			AppName:    "app1",
+			SessionID:  "sess-dlq-debounce",
+			Priority:   MemoryJobPriorityNormal,
+			EnqueuedAt: time.Now(),
+		})
 	}
-	q.Enqueue(req1)
-	// Drain the first job so the debounce window starts.
-	<-q.Chan()
 
-	// Second job within debounce window: should be debounced.
-	req2 := AutoMemoryJobRequest{
-		AppName:    "app1",
-		SessionID:  "sess-dlq-debounce",
-		Priority:   MemoryJobPriorityNormal,
-		EnqueuedAt: time.Now(),
-	}
-	q.Enqueue(req2)
-
-	// Verify the debounced counter incremented.
+	// 合并计数仍然递增（观测口径保留）。
 	_, debounced := q.Stats()
-	if debounced == 0 {
-		t.Fatal("expected debounced count > 0")
+	if debounced != 2 {
+		t.Fatalf("expected 2 coalesced, got %d", debounced)
 	}
 
-	// Verify the dead-letter sink received an entry with reason "debounced".
-	entries := sink.Entries()
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 dead-letter entry, got %d", len(entries))
+	// 静默期满后恰好交付一条。
+	select {
+	case <-q.Chan():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for coalesced job")
 	}
-	if entries[0].Reason != biz.MemoryDeadLetterReasonDebounced {
-		t.Errorf("expected reason %q, got %q", biz.MemoryDeadLetterReasonDebounced, entries[0].Reason)
-	}
-	if entries[0].Request.SessionID != "sess-dlq-debounce" {
-		t.Errorf("expected session_id %q, got %q", "sess-dlq-debounce", entries[0].Request.SessionID)
+
+	// 死信 sink 不得出现 debounced 条目。
+	for _, e := range sink.Entries() {
+		if e.Reason == biz.MemoryDeadLetterReasonDebounced {
+			t.Fatalf("coalesced jobs must not be dead-lettered (R3), got: %+v", e)
+		}
 	}
 }
 
-// TestMemoryJobQueue_DebounceNoDeadLetterWithoutSink verifies that when
-// no dead-letter sink is wired, debounced jobs are still counted but no
-// DLQ entry is written (no panic).
-func TestMemoryJobQueue_DebounceNoDeadLetterWithoutSink(t *testing.T) {
-	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 10*time.Second, loggateway.NewNoop())
+// TestMemoryJobQueue_CoalesceNoDeadLetterWithoutSink verifies that when
+// no dead-letter sink is wired, coalescing still works and no panic occurs.
+func TestMemoryJobQueue_CoalesceNoDeadLetterWithoutSink(t *testing.T) {
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 60*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
 	// No SetDeadLetterSink — sink is nil.
 
-	req1 := AutoMemoryJobRequest{
-		AppName:    "app1",
-		SessionID:  "sess-no-sink",
-		Priority:   MemoryJobPriorityNormal,
-		EnqueuedAt: time.Now(),
+	for i := 0; i < 2; i++ {
+		q.Enqueue(AutoMemoryJobRequest{
+			AppName:    "app1",
+			SessionID:  "sess-no-sink",
+			Priority:   MemoryJobPriorityNormal,
+			EnqueuedAt: time.Now(),
+		})
 	}
-	q.Enqueue(req1)
-	<-q.Chan()
-
-	req2 := AutoMemoryJobRequest{
-		AppName:    "app1",
-		SessionID:  "sess-no-sink",
-		Priority:   MemoryJobPriorityNormal,
-		EnqueuedAt: time.Now(),
-	}
-	q.Enqueue(req2)
 
 	_, debounced := q.Stats()
 	if debounced == 0 {
 		t.Fatal("expected debounced count > 0 even without sink")
 	}
-	// No panic should occur — writeDeadLetter handles nil sink.
+	select {
+	case <-q.Chan():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for coalesced job")
+	}
 }
 
 // TestMemoryJobQueue_QuotaExceededWritesDeadLetter verifies that the
@@ -131,7 +117,8 @@ func TestMemoryJobQueue_QuotaExceededWritesDeadLetter(t *testing.T) {
 		MaxTenantNormalSlots: 1, // only 1 in-flight normal job per tenant
 	}
 	rc := &conf.Runtime{MemoryQueue: memConf}
-	q := NewMemoryJobQueue(rc, 4, 0, loggateway.NewNoop())
+	// R3：normal 走 trailing-edge 合并，测试用小窗口；配额校验发生在 firing 时。
+	q := NewMemoryJobQueue(rc, 4, 20*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
 	q.SetDeadLetterSink(sink)
 
@@ -146,7 +133,11 @@ func TestMemoryJobQueue_QuotaExceededWritesDeadLetter(t *testing.T) {
 	q.Enqueue(req1)
 	// Drain job 1 to keep the normal queue clear; do NOT call AckDone so
 	// the tenant in-flight counter stays at 1.
-	<-q.Chan()
+	select {
+	case <-q.Chan():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for job 1")
+	}
 
 	// Second job: same tenant (app1), in-flight=1 >= MaxTenantNormalSlots=1 → DLQ.
 	req2 := AutoMemoryJobRequest{
@@ -157,18 +148,20 @@ func TestMemoryJobQueue_QuotaExceededWritesDeadLetter(t *testing.T) {
 	}
 	q.Enqueue(req2)
 
-	entries := sink.Entries()
-	if len(entries) == 0 {
-		t.Fatal("expected at least 1 dead-letter entry for quota_exceeded")
-	}
-	found := false
-	for _, e := range entries {
-		if e.Reason == biz.MemoryDeadLetterReasonQuotaExceeded {
-			found = true
-			break
+	// 配额死信发生在 job2 的 debounce 窗口期满后（异步），轮询等待。
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		found := false
+		for _, e := range sink.Entries() {
+			if e.Reason == biz.MemoryDeadLetterReasonQuotaExceeded {
+				found = true
+				break
+			}
 		}
+		if found {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if !found {
-		t.Errorf("expected quota_exceeded reason, got: %v", entries)
-	}
+	t.Fatalf("expected quota_exceeded dead-letter within 2s, got: %v", sink.Entries())
 }

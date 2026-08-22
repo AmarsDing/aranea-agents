@@ -312,3 +312,57 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | 前端 | `web/src/features/memory/api.ts`（H2 冲突 API 带 agent_id） |
 | tests | `memory_unified_graph_test.go`（H1）、`memory_layer_overview_test.go`（H2）、`memory_ebbinghaus_decay_test.go`（H3）、`link_evolution_test.go`（H4 ×2） |
 
+---
+
+## 12. Phase 8：记忆中心信任闭环（2026-08-22）
+
+> 需求 [`memory.md`](./memory.md) §23；设计 [`memory.design.md`](./memory.design.md) 同名子模块。
+
+### 任务清单
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| T8-1 | 全景/图谱/情景 + Debug/CompositeSearch：`authorizeMemoryScope` + Agent 租户 IDOR（跨租户 NotFound） | ✅ |
+| T8-2 | `memoryCenterRoute` + MemoryRecallChips 深链；记忆中心消费 query 并打开事实 | ✅ |
+| T8-3 | 删除页顶客户端 KPI 与假设置清单；全景 API 为唯一数字源 | ✅ |
+| T8-4 | 浏览 Tab L2 时间线绑定 `selectedSessionId` | ✅ |
+| T8-5 | P1：Trust / Ops 拆分、注入动态、会话详情入口 | ✅ |
+| T8-6 | P2：L0 瀑布、L1 字段树、进化审批、PII 面板 | ✅ |
+| T8-7 | P3：全景 SQL 聚合、页编排拆分、全景/情景走 Store；同步 Sleep-time / L1 预算过时表述 | ✅ |
+
+### 改动文件清单（P3）
+
+| 层 | 文件 |
+|----|------|
+| biz | `memory_admin_store.go`（`MemoryOverviewStatsReader`）、`memory_center.go`（聚合优先 / 扫描兜底）、`memory_layer_overview_test.go` |
+| data | `memory_shim_l3.go`、`memory_shim_l4.go`、`memory_admin_adapter.go` |
+| 前端 | `useMemoryCenterPage.ts` 拆 `useMemoryCenterFacts` / `useMemoryCenterSessionMemory` / `useMemoryCenterTrust`、`memoryCenterDeepLink.ts`、store `loadLayerOverview`/`listEpisodes` |
+| docs | `memory.md` §23、`memory.design.md` I、本文 T8-7、`memory-optimization.md` L1 现状 |
+
+### 改动文件清单（P2）
+
+| 层 | 文件 |
+|----|------|
+| data | `memory_shim_l4.go`（提议改查 `agent_evolution_proposals` + 审批副作用）、`memory_shim_l3.go`（PII `agent_id`）、`memory_helpers.go` |
+| biz / service | `memory_admin_store.go`、`memory_admin_usecase.go`、`memory.go`、`memory_scope.go` |
+| 前端 | `l0Waterfall.ts`、`l1FieldTree.ts`、`MemoryL0Waterfall.vue`、`MemoryL1FieldTree.vue`、`MemoryPIIPanel.vue`、`MemoryEvolutionReviewPanel.vue`、`MemoryCenterPage.vue`、`useMemoryCenterPage.ts`、i18n |
+| docs | `memory.md` §23、`memory.design.md` H、本文 T8-6 |
+
+### 改动文件清单（P1）
+
+| 层 | 文件 |
+|----|------|
+| biz | `memory_center.go`（`fact_injected`）、`memory_layer_overview_test.go` |
+| 前端 | `MemoryCenterPage.vue`、`useMemoryCenterPage.ts`、`memoryCenterTabs.ts`、`MemoryActivityFeed.vue`、`SessionDetailPage.vue`、`useSessionDetailPage.ts`、i18n |
+| docs | `memory.md` §23、`memory.design.md` E–G、本文 T8-5 |
+
+### 改动文件清单（P0）
+
+| 层 | 文件 |
+|----|------|
+| service | `memory.go`（`requireWired` + `assertAgentMemoryAccess`）、`memory_center.go`、`memory_recall.go`、`memory_center_test.go` |
+| data | `memory_shim_l3.go`（keyword 同时匹配 `id`） |
+| wire | `cmd/admin/wire.go`、`wire_gen.go`（注入 `AgentUC`） |
+| 前端 | `memoryRecall.ts`、`MemoryRecallChips.vue`、`TurnContainer.vue`、`useMemoryCenterPage.ts`、`MemoryCenterPage.vue` |
+| docs | `memory.md` §23、`memory.design.md` 子模块、本文 Phase 8 |
+

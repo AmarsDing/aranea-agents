@@ -44,4 +44,11 @@ func TestIsCatalogAgentAssignable(t *testing.T) {
 	if biz.IsCatalogAgentAssignable(biz.Agent{AgentKey: biz.SpiritAgentKey, Status: "active"}) {
 		t.Fatal("system spirit key must not be assignable")
 	}
+	if biz.IsCatalogAgentAssignable(biz.Agent{
+		AgentKey:     biz.DeptLeadAgentKeyPrefix + "media__",
+		AgentVariant: "dept_lead",
+		Status:       "active",
+	}) {
+		t.Fatal("dept_lead must not be heuristically assignable")
+	}
 }

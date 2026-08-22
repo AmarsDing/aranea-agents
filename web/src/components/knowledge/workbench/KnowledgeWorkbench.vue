@@ -87,6 +87,9 @@
           :active-tab="workbench.activeTab.value"
           :collection-id="currentVaultId"
           :refresh-nonce="panelsRefreshNonce"
+          :summary="activeDocument?.summary"
+          :tags="activeDocument?.tags"
+          :doc-type="activeDocument?.doc_type"
           @open-doc-id="openDocById"
           @expand-graph="(docId: string) => $emit('open-graph', docId)"
           @jump-outline="jumpOutline"
@@ -101,6 +104,7 @@
       :documents="vaultDocs"
       :tabs="workbench.tabs.value"
       :vault-name="currentVaultName"
+      :truncated="documentsTruncated"
       @update:open="quickSwitcherOpen = $event"
       @open="(d: KnowledgeDocument) => workbench.openDoc(d)"
     />
@@ -221,6 +225,8 @@ const props = defineProps<{
   panelsRefreshNonce?: number;
   /** C7：性能模式（关粒子/极光，降 blur） */
   performanceMode?: boolean;
+  /** 文档列表被分页截断（⌘O / 图谱索引不完整）。 */
+  documentsTruncated?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -323,6 +329,10 @@ const recentDocs = computed(() =>
 
 const currentVaultName = computed(
   () => props.collections.find((c) => c.id === props.currentVaultId)?.name ?? props.currentVaultId,
+);
+
+const activeDocument = computed(
+  () => props.documents.find((d) => d.id === props.workbench.activeTabId.value) ?? null,
 );
 
 // ---------- 全局快捷键注册（处理器在 commands 层） ----------

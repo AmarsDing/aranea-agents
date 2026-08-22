@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-standard-page monitor-page">
+  <q-page :class="['app-standard-page', 'monitor-page', { 'monitor-page--logs-fill': tab === 'logs' }]">
     <div class="monitor-page-shell">
       <MonitorHeroSection
         kicker="Observability"
@@ -116,7 +116,6 @@
         </q-tab-panel>
         <q-tab-panel name="traces">
           <TraceList
-            v-model:detail-open="traceDetailOpen"
             v-model:keyword="traceKeyword"
             v-model:status="traceStatus"
             v-model:domain="traceDomain"
@@ -129,15 +128,18 @@
             :domain-counts="traceDomainCounts"
             :live-state="runsLiveState"
             :highlight-usage-event-id="highlightUsageEventId"
-            :flow-lines="flowLines"
-            :active-correlation="activeCorrelation"
-            :detail="traceDetail"
-            :detail-spans="detailSpans"
             @refresh="loadTraces"
             @reset="resetTraceFilters"
-            @notify="notify"
             @open-trace="openTraceDetail"
+          />
+          <TraceDetailDialog
+            v-model:open="traceDetailOpen"
+            :detail="traceDetail"
+            :detail-spans="detailSpans"
+            :flow-lines="flowLines"
+            :active-correlation="activeCorrelation"
             @open-chat-session="openChatSession"
+            @notify="notify"
           />
         </q-tab-panel>
         <q-tab-panel name="logs" class="monitor-logs-panel">
@@ -159,6 +161,7 @@ import AuditTable from '../components/monitor/AuditTable.vue';
 import LogStreamPanel from '../components/monitor/LogStreamPanel.vue';
 import RealtimeEvents from '../components/monitor/RealtimeEvents.vue';
 import TraceList from '../components/monitor/TraceList.vue';
+import TraceDetailDialog from '../components/monitor/TraceDetailDialog.vue';
 import MonitorRunnerMetrics from '../components/monitor/MonitorRunnerMetrics.vue';
 import MonitorAlertRules from '../components/monitor/MonitorAlertRules.vue';
 import SelfCheckStatusPanel from '../components/monitor/SelfCheckStatusPanel.vue';

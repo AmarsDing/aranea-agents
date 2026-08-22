@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -83,6 +84,15 @@ func (s *AgentService) checkAgentAccess(ctx context.Context, agentID string, mut
 	callerWS := workspace.IDFromContext(ctx)
 	if mutate {
 		err = workspace.AssertWorkspaceMutate(callerWS, a.WorkspaceID)
+		// 内置 agent（__spirit__ 等 system_builtin）是共享行（workspace_id=""），
+		// P2-B fail-closed 会让 default 工作区的管理员保存设置/收藏/工具策略时
+		// 莫名 404。管理端设置页本就开放内置 agent 编辑，此处对 admin 明确放行；
+		// 租户（非 admin access）调用方仍保持 fail-closed。
+		if err != nil && a.WorkspaceID == "" {
+			if claims, ok := auth.FromContext(ctx); ok && claims.HasAdminAccess() {
+				err = nil
+			}
+		}
 	} else {
 		err = workspace.AssertWorkspaceOrShared(callerWS, a.WorkspaceID)
 	}

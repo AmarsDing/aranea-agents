@@ -12,6 +12,7 @@ const (
 	ObservationKindFeedback   ObservationKind = "feedback"
 	ObservationKindMemoryHit  ObservationKind = "memory_hit"
 	ObservationKindMemoryMiss ObservationKind = "memory_miss"
+	ObservationKindEvalFailure ObservationKind = "eval_failure"
 )
 
 type Observation struct {

@@ -689,6 +689,11 @@ body.body--dark .app-page-error-banner
     min-height: 100%
     padding: var(--space-6)
 
+// Logs Tab：页根给定确定高度，激活 flex 链，日志控制台填满剩余视口并内部滚动，不再无限撑高页面
+.monitor-page--logs-fill
+  height: calc(100dvh - 56px)
+  overflow: hidden
+
 .monitor-page-shell
   width: 100%
   max-width: var(--layout-max-width)

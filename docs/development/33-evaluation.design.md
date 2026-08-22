@@ -11,7 +11,7 @@ Evaluation 模块对 Agent 输出质量进行结构化评估。采用 Dataset �
 
 **核心流程**：创建数据集 → 上传用例 → 启动评估运行 → 异步执行推理 + 评分 → 查看汇总分数和逐用例结果 → 可选人工标注 / 导出报告
 
-**运行时路径**：默认经 `FrameworkBridge` 调用 trpc-agent-go `AgentEvaluator`（含 MultiRun）；`FrameworkBridge` 不可用时回退 legacy 逐用例路径。
+**运行时路径**：经 `FrameworkBridge` 调用 trpc-agent-go `AgentEvaluator`（含 MultiRun）。Framework 未装配时 run 直接失败，不再走 legacy 逐用例路径。
 
 ---
 
@@ -39,7 +39,7 @@ evaluation.Runner (async goroutine)
 
 | 层 | 文件 | 职责 |
 |----|------|------|
-| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（20 RPC + 39 Message） |
+| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（24 RPC：Case CRUD + CancelRun） |
 | Service | `internal/service/evaluation.go` | proto ↔ biz 映射；RunEvaluation 触发 Runner |
 | Service | `internal/service/evaluation_runner.go` | Wire：`NewEvaluationRunner` 装配 AgentRunner + LLMJudge + FrameworkBridge |
 | Service | `internal/service/evaluation_after_turn.go` | Wire：`NewEvaluationAfterTurnTrigger` 创建 AfterTurn 触发器 |
@@ -87,7 +87,7 @@ evaluation.Runner (async goroutine)
 
 **EvalRunPreference**（P3-3）：Pairwise 偏好裁决记录（`dataset_id` / `run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by` / `created_at`）。
 
-**EvalGateConfig**（P2-1）：发布质量门禁单例配置（`enabled` / `agent_id` / `dataset_id` / `metric` / `min_score` / `max_drop` / `updated_at`）。
+**EvalGateConfig**（P2-1 / P1 治理）：发布质量门禁。`agent_id` 为空是平台默认行（id=`singleton`）；非空写入 `id=agent:<agent_id>` 覆盖。字段：`enabled` / `agent_id` / `dataset_id` / `metric` / `min_score` / `max_drop` / `mode`（`advisory`|`blocking`）/ `updated_at`。`GetEvalGate?agent_id=` 先读覆盖再回落默认。
 
 ### 3.2 API 端点
 
@@ -99,9 +99,13 @@ evaluation.Runner (async goroutine)
 | PATCH | `/v1/evaluation/datasets/{id}` | UpdateDataset | 更新名称/描述 |
 | DELETE | `/v1/evaluation/datasets/{id}` | DeleteDataset | 删除数据集（级联 cases） |
 | POST | `/v1/evaluation/datasets/{dataset_id}/cases` | UploadCases | 上传用例（JSON 数组） |
+| GET | `/v1/evaluation/datasets/{dataset_id}/cases` | ListCases | 列出数据集用例 |
+| PATCH | `/v1/evaluation/datasets/{dataset_id}/cases/{id}` | UpdateCase | 更新单条用例 |
+| DELETE | `/v1/evaluation/datasets/{dataset_id}/cases/{id}` | DeleteCase | 删除单条用例（同步 case_count） |
 | POST | `/v1/evaluation/runs` | RunEvaluation | 启动异步评估运行 |
 | GET | `/v1/evaluation/runs/{id}` | GetRun | 获取运行 + 分数 |
 | DELETE | `/v1/evaluation/runs/{id}` | DeleteRun | 删除运行（级联 results） |
+| POST | `/v1/evaluation/runs/{id}/cancel` | CancelRun | 取消 pending/running（终态 cancelled） |
 | GET | `/v1/evaluation/runs` | ListRuns | 列出运行 |
 | GET | `/v1/evaluation/runs/{run_id}/results` | GetRunResults | 逐用例结果 |
 | PATCH | `/v1/evaluation/runs/{run_id}/results/{result_id}/annotation` | AnnotateCaseResult | 人工标注（Phase 8 新增 `clear_human_pass`/`clear_human_score` 显式清除位——proto3 optional 不接收 JSON null，B2） |
@@ -111,8 +115,8 @@ evaluation.Runner (async goroutine)
 | GET | `/v1/evaluation/datasets/{dataset_id}/failure-groups` | GetFailureGroups | 失败用例按 error_message 归组（P2-3，query：limit） |
 | POST | `/v1/evaluation/preferences` | SubmitRunPreference | 提交 Pairwise 偏好裁决（P3-3） |
 | GET | `/v1/evaluation/preferences` | ListRunPreferences | 偏好记录列表（P3-3，query：dataset_id/limit） |
-| GET | `/v1/evaluation/gate` | GetEvalGate | 读取发布质量门禁单例配置（P2-1） |
-| PUT | `/v1/evaluation/gate` | UpdateEvalGate | 更新发布质量门禁单例配置（P2-1） |
+| GET | `/v1/evaluation/gate` | GetEvalGate | 读取门禁（query `agent_id` 选覆盖，空=默认） |
+| PUT | `/v1/evaluation/gate` | UpdateEvalGate | 写入默认或 per-agent 覆盖（含 `mode`） |
 
 ### 3.3 RunEvaluation 请求
 
@@ -173,7 +177,11 @@ evaluation.Runner (async goroutine)
 
 P2/P3 新增 2 张表 + 1 个列：
 
-- `eval_gate_config`（P2-1）：发布门禁单例配置表（单行）；`enabled` 以 INTEGER 0/1 存储（与既有 eval 表 raw SQL INTEGER bool 惯例一致）
+- `eval_gate_config`（P2-1 / P1）：平台默认行 `id=singleton` + per-agent 行 `id=agent:<id>`；`mode` 列 `advisory`|`blocking`；`enabled` 以 INTEGER 0/1 存储
+- `eval_runs` 部分唯一索引 `idx_eval_runs_inflight (workspace_id, dataset_id, agent_id) WHERE status IN ('pending','running')`
+- `eval_dataset_versions`：不可变用例快照（version/hash/cases_json）；run 绑 `dataset_version_id`
+- `eval_runs.experiment_id` / `variant_label`：实验矩阵
+- `eval_case_results.session_id` / `trace_run_id`：推理追踪
 - `eval_run_preference`（P3-3）：Pairwise 偏好记录（`run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by`）
 - `eval_runs.dataset_hash`（P3-5）：运行启动时写入的数据集内容 hash（随 eval 域既有双轨机制落地：Ent Schema L1 自动迁移 + `EnsureEvalSchema` 幂等 ALTER 兜底存量库）
 
@@ -187,7 +195,7 @@ P2/P3 新增 2 张表 + 1 个列：
 | `EvalCase` | `eval_cases` | ← dataset / → results |
 | `EvalRun` | `eval_runs` | ← dataset / → results（P3-5 新增 `dataset_hash` 列） |
 | `EvalCaseResult` | `eval_case_results` | ← run / ← case |
-| `EvalGateConfig` | `eval_gate_config`（P2-1，单例行） | — |
+| `EvalGateConfig` | `eval_gate_config`（默认行 + per-agent 行） | — |
 | `EvalRunPreference` | `eval_run_preference`（P3-3 建 `dataset_id` 索引；Phase 8 补 `run_id_a`/`run_id_b` 索引，Y9） | — |
 
 > Ent Schema 与 Raw SQL `EnsureEvalSchema` 并存：Ent Schema 作为类型映射真相源，运行期建表由 `EnsureEvalSchema` 完成（含 ALTER 兼容旧库）。
@@ -244,12 +252,13 @@ P2/P3 新增 2 张表 + 1 个列：
 
 ### 6.2 执行流程
 
-1. `Start(ctx, run, metrics, numRuns, useUserSimulation)` 派发 async goroutine
-2. 加载数据集用例，status → `running`
+1. `Start` 先占并发槽（默认 3）；满则 Conflict，调用方删除刚创建的 run
+2. 加载数据集用例，status → `running`（FSM：pending→running|cancelled|failed；running→completed|failed|cancelled）
 3. **Framework 路径**（默认）：`FrameworkBridge.Execute` → trpc `AgentEvaluator.Evaluate`；`num_runs>1` 时计算 pass@k/pass^k
 4. **Legacy 路径**（framework nil）：逐用例 AgentRunner + `metrics.go` 计分
 5. 写入 CaseResult，更新 CompletedCases
-6. 聚合分数，status → `completed` / `failed`
+6. 聚合分数，status → `completed` / `failed` / `cancelled`
+7. 启动清扫 `FailStaleRuns`：`olderThan<=0` 使用 15 分钟 grace，禁止扫掉刚启动的 run
 
 ### 6.3 AfterTurn 自动评估（US-5）
 
@@ -314,8 +323,10 @@ Proto：`SystemSettings.eval_llm`；前端 **系统设置** `/settings` 表单�
 
 | 指标 | 类型 | 说明 |
 |------|------|------|
-| `aranea_eval_runs_total{status}` | Counter | started / completed / error |
-| `aranea_eval_case_duration_seconds` | Histogram | 逐用例执行耗时 |
+| `aranea_eval_runs_total{status}` | Counter | started / completed / failed / error / cancelled |
+| `aranea_eval_in_flight` | Gauge | 当前正在执行的 run 数 |
+| `aranea_eval_run_duration_seconds` | Histogram | 单次 run 墙钟时间 |
+| `aranea_eval_gate_outcomes_total{outcome}` | Counter | pass / advisory_launched / advisory_breach / blocked / blocked_no_baseline |
 
 ### 6.8 Judge 分歧统计（P1-3）
 
@@ -349,13 +360,14 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 - 快照写入侧容错：`context_json` 宽容解析，坏 JSON 静默忽略（反馈持久化永不因快照失败）；input/output 快照按 2000 runes 截断（`feedbackContextSnapshotMaxRunes`）
 - 复用的 chat.proto 契约定点见 [1-chat.design.md](./1-chat.design.md)（`SubmitMessageFeedback` RPC + `context_json` 字段）
 
-### 6.10 发布质量门禁（P2-1；Phase 8 重构为异步 advisory）
+### 6.10 发布质量门禁（P2-1；P1 改为 per-agent + advisory|blocking）
 
-- **配置**：`eval_gate_config` 单例表（单行）；biz `GateConfig`（`internal/biz/evaluation/governance.go`），data 实现 `internal/data/evaluation_governance.go`；API `GET/PUT /v1/evaluation/gate`；`PUT` 校验指标名白名单（Y12）
-- **判定流程（2026-08-14 Y2/Y12 重构）**：`PublishGate.Check(ctx, trigger)`（`internal/evaluation/gate.go`）——加载单例配置（未启用直接放行）→ in-flight 去重（已有 pending/running 的 gate run 则直接放行，防发布风暴扇出 N 份全量评估的 LLM 成本）→ **后台异步启动回归运行**（不再随发布请求同步执行——旧实现请求被取消后写成「执行失败」假拦截）→ 阈值越界（低于 `min_score` / 较基线跌幅超 `max_drop`）仅以通知事件 advisory 透出，**不阻断发布**
-- **唯一硬阻断（Y12）**：配置了 `max_drop` 但无任何 completed 基线运行时，返回 Conflict「无可用基线」——drop 检查否则被静默跳过；同时后台已启动的 gate run 即成为重试时的基线
-- **注入点**：`internal/service/chat_wire.go` `ProvidePublishGate` 装配；消费方为 skill 发布（`internal/service/skill.go`）与 pack 安装（`internal/service/pack.go`）——均 nil-safe，门禁不可用时不阻断主流程
-- **前端**：`EvaluationGateDialog.vue` 配置对话框（开关 / Agent / 数据集 / 指标 / min_score / max_drop）+ 评估页入口
+- **配置**：`eval_gate_config` 默认行 `singleton` + per-agent 行；`GetGateConfig(agentID)` 先覆盖后回落；`mode` 默认 `advisory`；`PUT` 校验指标名白名单（Y12）
+- **advisory**：`Check` 后台启动回归，阈值越界只通知（Y2）
+- **blocking**：`Check` 同步跑完回归，不达标返回 Conflict
+- **无基线硬阻断（Y12）**：配置了 `max_drop` 且无 completed 基线时两种模式都 Conflict，并启动基线评估
+- **解析主体**：skill 发布传入 `LastAgentID`；pack 安装用平台默认
+- **前端**：`EvaluationGateDialog` 增加模式选择；趋势面板有得分曲线 + 指标切换
 
 ### 6.11 在线评估：采样率与连跌告警（P2-2）
 

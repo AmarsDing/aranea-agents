@@ -180,6 +180,27 @@ func (a *AdaptiveRouter) applyBaseLevelBoost(ctx context.Context, q biz.Knowledg
 	return chunks
 }
 
+// PrepareRewrite 在调用方未给出 rewriteResult 且查询为复杂时做一次 MultiQuery。
+// 联邦检索在扇出前调用，避免每个 Collection 各打一次 LLM。
+func (a *AdaptiveRouter) PrepareRewrite(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult) *QueryRewriteResult {
+	if a == nil || rewriteResult != nil {
+		return rewriteResult
+	}
+	complexity := a.classify(q, nil)
+	auto := pickAutoRewriteStrategy(complexity, RewriteNone)
+	if auto == RewriteNone || a.rewriter == nil {
+		return nil
+	}
+	rr, err := a.rewriter.Rewrite(ctx, q.Query, auto)
+	if err != nil {
+		a.lg.Warn("复杂查询自动重写失败，使用原查询",
+			loggateway.StepID("knowledge.adaptive.auto_rewrite_fail"),
+			loggateway.Err(err))
+		return nil
+	}
+	return rr
+}
+
 // pickAutoRewriteStrategy 仅在调用方未指定策略且查询判定为复杂时启用 MultiQuery。
 // 简单/中等查询不加 LLM 往返，避免把 Advanced RAG 做成默认税。
 func pickAutoRewriteStrategy(complexity QueryComplexity, already RewriteStrategy) RewriteStrategy {

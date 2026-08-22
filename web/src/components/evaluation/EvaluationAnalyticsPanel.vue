@@ -34,6 +34,11 @@
       <div v-if="trendLoading" class="text-grey-7 q-py-md">加载趋势…</div>
       <div v-else-if="!filteredTrendPoints.length" class="text-grey-7 q-py-md">暂无已完成运行记录</div>
       <template v-else>
+        <evaluation-trend-chart
+          class="q-mb-md"
+          :points="filteredTrendPoints"
+          v-model:metric="trendMetric"
+        />
         <AppRegistryTable
           :shell="false"
           :data-shell="true"
@@ -322,6 +327,7 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import EvaluationTrendChart from './EvaluationTrendChart.vue';
 
 import type {
   EvalFailureGroup,
@@ -384,6 +390,7 @@ const failurePageSize = ref(5);
 
 // P2-2: split the trend series by trigger_source ('' = all).
 const triggerFilter = ref('');
+const trendMetric = ref('exact_match_score');
 
 const trendPageMax = computed(() => Math.max(1, Math.ceil(filteredTrendPoints.value.length / trendPageSize.value)));
 const comparePageMax = computed(() => Math.max(1, Math.ceil(props.runs.length / comparePageSize.value)));

@@ -6,18 +6,22 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/apierror"
 )
 
 type mockRepo struct {
-	collCreateFn  func(ctx context.Context, c Collection) (Collection, error)
-	collGetFn     func(ctx context.Context, id string) (Collection, error)
-	collListFn    func(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
+	collCreateFn    func(ctx context.Context, c Collection) (Collection, error)
+	collGetFn       func(ctx context.Context, id string) (Collection, error)
+	collGetByNameFn func(ctx context.Context, workspace, name string) (Collection, error)
+	collListFn      func(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 	collDeleteFn  func(ctx context.Context, id string) error
 	collUpdateFn  func(ctx context.Context, id string, docDelta, chunkDelta int) error
 	collSyncFn    func(ctx context.Context, id, state string, lastSyncAt time.Time) error
 	docCreateFn   func(ctx context.Context, d Document) (Document, error)
 	docGetFn      func(ctx context.Context, id string) (Document, error)
-	docGetByRelFn func(ctx context.Context, collectionID, relPath string) (Document, error)
+	docGetByRelFn  func(ctx context.Context, collectionID, relPath string) (Document, error)
+	docGetByHashFn func(ctx context.Context, collectionID, contentHash string) (Document, error)
 	docRelPathFn  func(ctx context.Context, id, newRelPath string) error
 	docSyncMetaFn func(ctx context.Context, id string, meta DocumentSyncMeta) error
 	docUpdateFn   func(ctx context.Context, id, status, errMsg string, chunkCount int) error
@@ -41,6 +45,24 @@ func (m *mockRepo) CreateCollection(ctx context.Context, c Collection) (Collecti
 func (m *mockRepo) GetCollection(ctx context.Context, id string) (Collection, error) {
 	return m.collGetFn(ctx, id)
 }
+func (m *mockRepo) GetCollectionByName(ctx context.Context, workspace, name string) (Collection, error) {
+	if m.collGetByNameFn != nil {
+		return m.collGetByNameFn(ctx, workspace, name)
+	}
+	if m.collListFn == nil {
+		return Collection{}, apierror.NotFound(apierror.DomainKnowledge, "collection %q not found", name)
+	}
+	cols, _, err := m.collListFn(ctx, workspace, 1000, 0)
+	if err != nil {
+		return Collection{}, err
+	}
+	for _, c := range cols {
+		if c.Name == name && c.Workspace == workspace {
+			return c, nil
+		}
+	}
+	return Collection{}, apierror.NotFound(apierror.DomainKnowledge, "collection %q not found", name)
+}
 func (m *mockRepo) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error) {
 	return m.collListFn(ctx, workspace, limit, offset)
 }
@@ -61,6 +83,12 @@ func (m *mockRepo) GetDocument(ctx context.Context, id string) (Document, error)
 }
 func (m *mockRepo) GetDocumentByRelPath(ctx context.Context, collectionID, relPath string) (Document, error) {
 	return m.docGetByRelFn(ctx, collectionID, relPath)
+}
+func (m *mockRepo) GetDocumentByContentHash(ctx context.Context, collectionID, contentHash string) (Document, error) {
+	if m.docGetByHashFn != nil {
+		return m.docGetByHashFn(ctx, collectionID, contentHash)
+	}
+	return Document{}, apierror.NotFound(apierror.DomainKnowledge, "document hash %q not found", contentHash)
 }
 func (m *mockRepo) UpdateDocumentRelPath(ctx context.Context, id, newRelPath string) error {
 	return m.docRelPathFn(ctx, id, newRelPath)

@@ -65,7 +65,8 @@ func TestMemoryJobQueue_EnqueueLowPriority(t *testing.T) {
 }
 
 func TestMemoryJobQueue_EnqueueNormalPriority(t *testing.T) {
-	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
+	// R3：normal 带 session 的请求走 trailing-edge 合并，测试用小窗口。
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 20*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
 	q.Enqueue(AutoMemoryJobRequest{
 		AppName:    "app3",
@@ -83,30 +84,123 @@ func TestMemoryJobQueue_EnqueueNormalPriority(t *testing.T) {
 	}
 }
 
+// R3（2026-08-22）：trailing-edge 合并——同 session 突发 N 条只入队一条，
+// 存活的是最新请求；被合并的计数进 debounced，不写死信。
 func TestMemoryJobQueue_DebounceNormal(t *testing.T) {
-	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 10*time.Second, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 60*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
-	q.Enqueue(AutoMemoryJobRequest{
-		AppName:    "app",
-		SessionID:  "sess-dedup",
-		Priority:   MemoryJobPriorityNormal,
-		EnqueuedAt: time.Now(),
-	})
-	<-q.Chan()
-	q.Enqueue(AutoMemoryJobRequest{
-		AppName:    "app",
-		SessionID:  "sess-dedup",
-		Priority:   MemoryJobPriorityNormal,
-		EnqueuedAt: time.Now(),
-	})
+	for _, uid := range []string{"u-a", "u-b", "u-c"} {
+		q.Enqueue(AutoMemoryJobRequest{
+			AppName:    "app",
+			SessionID:  "sess-dedup",
+			UserID:     uid,
+			Priority:   MemoryJobPriorityNormal,
+			EnqueuedAt: time.Now(),
+		})
+	}
 	_, debounced := q.Stats()
-	if debounced == 0 {
-		t.Fatal("expected debounced count > 0")
+	if debounced != 2 {
+		t.Fatalf("expected 2 coalesced, got %d", debounced)
+	}
+	// 静默期满后恰好交付一条，且是最新请求（latest wins）。
+	select {
+	case r := <-q.Chan():
+		if r.UserID != "u-c" {
+			t.Fatalf("expected latest request u-c to survive, got %q", r.UserID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for coalesced job")
+	}
+	// 窗口已过，不应再有第二条。
+	select {
+	case r := <-q.Chan():
+		t.Fatalf("unexpected second delivery: %+v", r)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// R3：trailing-edge 的关键区分点——窗口随新请求顺延。A 入队后半个窗口
+// 再入队 B，则 A 的原定 firing 时刻不应有交付；交付只发生在 B 的窗口后。
+func TestMemoryJobQueue_DebounceWindowExtends(t *testing.T) {
+	const window = 400 * time.Millisecond
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, window, loggateway.NewNoop())
+	defer q.Close()
+	enqueue := func(uid string) {
+		q.Enqueue(AutoMemoryJobRequest{
+			AppName: "app", SessionID: "sess-extend", UserID: uid,
+			Priority: MemoryJobPriorityNormal, EnqueuedAt: time.Now(),
+		})
+	}
+	enqueue("u-a")
+	time.Sleep(window / 2)
+	enqueue("u-b")
+	// 此刻距 A 入队已过 window/2+，再过 window*3/4 即超过 A 的原定 firing
+	// 时刻（t=window），但仍在 B 的窗口（t=window/2+window）内 → 无交付。
+	select {
+	case r := <-q.Chan():
+		t.Fatalf("delivered before B's quiet window elapsed (leading-edge regression): %+v", r)
+	case <-time.After(window * 3 / 4):
+	}
+	// B 的窗口期满后交付且为 B。
+	select {
+	case r := <-q.Chan():
+		if r.UserID != "u-b" {
+			t.Fatalf("expected u-b, got %q", r.UserID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for trailing-edge delivery")
+	}
+}
+
+// R3：Close flush——长窗口内挂起的请求在 Close 时立即转入 normal lane，
+// 不等窗口期满、不写 debounced 死信、不丢失。double-Close 幂等。
+func TestMemoryJobQueue_CloseFlushesPendingDebounce(t *testing.T) {
+	sink := &fakeDeadLetterSink{}
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 30*time.Second, loggateway.NewNoop())
+	q.SetDeadLetterSink(sink)
+	q.Enqueue(AutoMemoryJobRequest{
+		AppName: "app", SessionID: "sess-flush", UserID: "u-flush",
+		Priority: MemoryJobPriorityNormal, EnqueuedAt: time.Now(),
+	})
+	q.Close()
+	q.Close() // 幂等：不 panic
+	// flush 后请求要么已被 drain 转发进 out（Close 后 out 已关闭，可 range
+	// 取出残留），要么仍在 normal lane 缓冲——两者合计恰好一条。
+	var got []AutoMemoryJobRequest
+	for r := range q.out {
+		got = append(got, r)
+	}
+	if n := len(q.normal); n > 0 {
+		for i := 0; i < n; i++ {
+			got = append(got, <-q.normal)
+		}
+	}
+	if len(got) != 1 || got[0].UserID != "u-flush" {
+		t.Fatalf("expected exactly 1 flushed job u-flush, got %+v", got)
+	}
+	for _, e := range sink.Entries() {
+		if e.Reason == biz.MemoryDeadLetterReasonDebounced {
+			t.Fatalf("flush must not write debounced dead-letter: %+v", e)
+		}
+	}
+}
+
+// R3：Close 后晚到的 normal 请求不再武装定时器，直接走入队路径
+// （保留配额语义；drain 已停，落在 normal lane 缓冲）。
+func TestMemoryJobQueue_EnqueueAfterCloseSkipsDebounce(t *testing.T) {
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 30*time.Second, loggateway.NewNoop())
+	q.Close()
+	q.Enqueue(AutoMemoryJobRequest{
+		AppName: "app", SessionID: "sess-late",
+		Priority: MemoryJobPriorityNormal, EnqueuedAt: time.Now(),
+	})
+	if n := len(q.normal); n != 1 {
+		t.Fatalf("expected late job enqueued directly into normal lane, got len=%d", n)
 	}
 }
 
 func TestMemoryJobQueue_AckDone(t *testing.T) {
-	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 20*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
 	r := AutoMemoryJobRequest{
 		AppName:    "app",
@@ -187,7 +281,7 @@ func TestTenantID(t *testing.T) {
 }
 
 func TestNewAutoMemoryEnqueuer(t *testing.T) {
-	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 20*time.Millisecond, loggateway.NewNoop())
 	defer q.Close()
 	fn := NewAutoMemoryEnqueuer(q)
 	fn("app1", "sess1", time.Now())

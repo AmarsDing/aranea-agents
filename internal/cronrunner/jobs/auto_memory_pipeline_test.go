@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	sessionsess "aranea-agents/internal/biz/session"
@@ -100,7 +101,7 @@ func newPipelineTestWorker(t *testing.T, writer biz.MemoryConsolidationWriter, p
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
-	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
+	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, time.Millisecond, loggateway.NewNoop())
 	w, err := NewAutoMemoryWorker(AutoMemoryWorkerConfig{
 		RuntimeConf:  &conf.Runtime{},
 		Sessions:     sessionsUC,

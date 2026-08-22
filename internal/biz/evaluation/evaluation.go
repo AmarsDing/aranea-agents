@@ -66,11 +66,28 @@ type Run struct {
 	// start (P3-5). Trend/compare surfaces a warning when two runs of the
 	// same dataset carry different hashes (scores not directly comparable).
 	DatasetHash string
+	// DatasetVersionID / DatasetVersion bind the run to an immutable snapshot.
+	DatasetVersionID string
+	DatasetVersion   int
+	// ExperimentID groups runs that belong to one matrix sweep.
+	ExperimentID string
+	// VariantLabel is the matrix cell label (agent / model / prompt).
+	VariantLabel string
 	// WorkspaceID scopes this run to a tenant workspace.
 	// empty = legacy (treated as default workspace); non-empty = tenant-private.
 	WorkspaceID string
 	CreatedAt   string
 }
+
+// Run lifecycle statuses. Transitions: pending → running → completed|failed|cancelled;
+// pending → cancelled. Terminal states have no outbound transition.
+const (
+	RunStatusPending   = "pending"
+	RunStatusRunning   = "running"
+	RunStatusCompleted = "completed"
+	RunStatusFailed    = "failed"
+	RunStatusCancelled = "cancelled"
+)
 
 // CaseResult is the outcome for one case in a run.
 type CaseResult struct {
@@ -93,6 +110,8 @@ type CaseResult struct {
 	AnnotatedAt      string
 	AnnotatedBy      string
 	ScoresJSON       string
+	SessionID        string
+	TraceRunID       string
 }
 
 // CaseResultAnnotation is a partial update for human review.
@@ -133,6 +152,10 @@ type RunComparison struct {
 	DatasetID          string
 	CreatedAt          string
 	DatasetHash        string // P3-5: snapshot for dataset-changed warning
+	DatasetVersionID   string
+	DatasetVersion     int
+	ExperimentID       string
+	VariantLabel       string
 	ExactMatchScore    float32
 	ContainsMatchScore float32
 	LLMJudgeScore      float32
@@ -154,6 +177,7 @@ type Usecase struct {
 	runQueries RunQueryStore
 	results    ResultStore
 	gov        GovernanceStore
+	versions   VersionStore
 	lg         loggateway.Logger
 }
 
@@ -166,6 +190,7 @@ func NewUsecase(s Stores, lg loggateway.Logger) *Usecase {
 		runQueries: s.RunQueries,
 		results:    s.Results,
 		gov:        s.Governance,
+		versions:   s.Versions,
 		lg:         lg,
 	}
 }
@@ -262,6 +287,7 @@ func (u *Usecase) UploadCases(ctx context.Context, datasetID, casesJSON string) 
 	if err := u.cases.InsertCasesWithCountUpdate(ctx, datasetID, cases); err != nil {
 		return 0, err
 	}
+	_, _ = u.SnapshotDataset(ctx, datasetID)
 	return len(cases), nil
 }
 
@@ -279,13 +305,21 @@ func (u *Usecase) CreateRun(ctx context.Context, in Run) (Run, error) {
 		in.ID = newEvalID()
 	}
 	if in.Status == "" {
-		in.Status = "pending"
+		in.Status = RunStatusPending
+	}
+	if err := ValidateTransition("", in.Status); err != nil {
+		return Run{}, err
 	}
 	if strings.TrimSpace(in.TriggerSource) == "" {
 		in.TriggerSource = "manual"
 	}
 	if in.NumRuns <= 0 {
 		in.NumRuns = 1
+	}
+	if snap, err := u.SnapshotDataset(ctx, in.DatasetID); err == nil && snap.ID != "" {
+		in.DatasetVersionID = snap.ID
+		in.DatasetVersion = snap.Version
+		in.DatasetHash = snap.Hash
 	}
 	return u.runs.CreateRun(ctx, in)
 }
@@ -306,16 +340,30 @@ func (u *Usecase) ListRuns(ctx context.Context, datasetID, agentID string, limit
 	return u.runs.ListRuns(ctx, datasetID, agentID, limit, offset)
 }
 
-// UpdateRun persists run progress/result changes.
+// UpdateRun persists run progress/result changes after validating the
+// status transition (AS-FSM-01). Same-status writes are allowed.
 func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
+	if r.ID != "" {
+		if cur, err := u.runs.GetRun(ctx, r.ID); err == nil {
+			if err := ValidateTransition(cur.Status, r.Status); err != nil {
+				return err
+			}
+		}
+	}
 	return u.runs.UpdateRun(ctx, r)
 }
 
+// StaleRunGrace is the minimum age before a pending/running row is treated
+// as an orphan. olderThan<=0 uses this grace so a multi-instance or
+// just-started run is never wiped by FailStaleRuns(..., 0).
+const StaleRunGrace = 15 * time.Minute
+
 // FailStaleRuns sweeps non-terminal runs older than olderThan into "failed"
-// (Y10). Called once at startup with olderThan=0: every pending/running row
-// at that point is an orphan from a previous process, because this process
-// has not started any run yet (single-instance deployment).
+// (Y10). olderThan<=0 means StaleRunGrace (not "everything").
 func (u *Usecase) FailStaleRuns(ctx context.Context, olderThan time.Duration) (int, error) {
+	if olderThan <= 0 {
+		olderThan = StaleRunGrace
+	}
 	return u.runs.FailStaleRuns(ctx, time.Now().Add(-olderThan))
 }
 
@@ -353,7 +401,90 @@ func (u *Usecase) AnnotateCaseResult(ctx context.Context, runID, resultID string
 
 // ListCases returns all cases for a dataset.
 func (u *Usecase) ListCases(ctx context.Context, datasetID string) ([]Case, error) {
+	datasetID = strings.TrimSpace(datasetID)
+	if datasetID == "" {
+		return nil, apierror.BadRequest("EVAL", "dataset_id is required")
+	}
 	return u.cases.ListCases(ctx, datasetID)
+}
+
+// UpdateCase updates one case's input / expected output / metadata.
+func (u *Usecase) UpdateCase(ctx context.Context, c Case) (Case, error) {
+	c.DatasetID = strings.TrimSpace(c.DatasetID)
+	c.ID = strings.TrimSpace(c.ID)
+	c.Input = strings.TrimSpace(c.Input)
+	if c.DatasetID == "" || c.ID == "" {
+		return Case{}, apierror.BadRequest("EVAL", "dataset_id and id are required")
+	}
+	if c.Input == "" {
+		return Case{}, apierror.BadRequest("EVAL", "input is required")
+	}
+	out, err := u.cases.UpdateCase(ctx, c)
+	if err != nil {
+		return Case{}, err
+	}
+	_, _ = u.SnapshotDataset(ctx, c.DatasetID)
+	return out, nil
+}
+
+// DeleteCase removes one case and decrements dataset.case_count.
+func (u *Usecase) DeleteCase(ctx context.Context, datasetID, caseID string) error {
+	datasetID = strings.TrimSpace(datasetID)
+	caseID = strings.TrimSpace(caseID)
+	if datasetID == "" || caseID == "" {
+		return apierror.BadRequest("EVAL", "dataset_id and id are required")
+	}
+	if err := u.cases.DeleteCase(ctx, datasetID, caseID); err != nil {
+		return err
+	}
+	_, _ = u.SnapshotDataset(ctx, datasetID)
+	return nil
+}
+
+// inFlightScanLimit bounds the recent-run scan for FindInFlightRun.
+const inFlightScanLimit = 20
+
+// FindInFlightRun reports the newest pending/running run for dataset+agent.
+// Used by manual RunEvaluation and AfterTurn to share one in-flight lock.
+func (u *Usecase) FindInFlightRun(ctx context.Context, datasetID, agentID string) (Run, bool, error) {
+	datasetID = strings.TrimSpace(datasetID)
+	agentID = strings.TrimSpace(agentID)
+	if datasetID == "" || agentID == "" {
+		return Run{}, false, nil
+	}
+	runs, _, err := u.runs.ListRuns(ctx, datasetID, agentID, inFlightScanLimit, 0)
+	if err != nil {
+		return Run{}, false, err
+	}
+	for _, r := range runs {
+		if r.Status == RunStatusPending || r.Status == RunStatusRunning {
+			return r, true, nil
+		}
+	}
+	return Run{}, false, nil
+}
+
+// CancelRun marks a pending/running run cancelled. Callers should also
+// cancel the Runner context so the executor stops promptly.
+func (u *Usecase) CancelRun(ctx context.Context, id string) (Run, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Run{}, apierror.BadRequest("EVAL", "id is required")
+	}
+	run, err := u.runs.GetRun(ctx, id)
+	if err != nil {
+		return Run{}, err
+	}
+	if run.Status != RunStatusPending && run.Status != RunStatusRunning {
+		return Run{}, apierror.Conflict("EVAL", "run is not cancellable")
+	}
+	run.Status = RunStatusCancelled
+	run.ErrorMessage = "cancelled"
+	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	if err := u.runs.UpdateRun(ctx, run); err != nil {
+		return Run{}, err
+	}
+	return run, nil
 }
 
 // GetAgentEvalTrend returns recent completed runs for trend charts.
@@ -393,6 +524,10 @@ func (u *Usecase) CompareEvalRuns(ctx context.Context, runIDs []string) ([]RunCo
 			DatasetID:          r.DatasetID,
 			CreatedAt:          r.CreatedAt,
 			DatasetHash:        r.DatasetHash,
+			DatasetVersionID:   r.DatasetVersionID,
+			DatasetVersion:     r.DatasetVersion,
+			ExperimentID:       r.ExperimentID,
+			VariantLabel:       r.VariantLabel,
 			ExactMatchScore:    r.ExactMatchScore,
 			ContainsMatchScore: r.ContainsMatchScore,
 			LLMJudgeScore:      r.LLMJudgeScore,

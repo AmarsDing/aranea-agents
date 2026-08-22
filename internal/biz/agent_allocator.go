@@ -53,6 +53,12 @@ type TaskAllocation struct {
 	FallbackScore  float64  `json:"fallback_score,omitempty"`
 	TeamMode       string   `json:"team_mode,omitempty"` // coordinator/sequential/parallel
 	TeamMemberKeys []string `json:"team_member_keys,omitempty"`
+	// DepartmentID is the home department for the assembled team (M78).
+	DepartmentID string `json:"department_id,omitempty"`
+	CompanyID    string `json:"company_id,omitempty"`
+	// CrossDeptMemberKeys are team members whose department differs from
+	// DepartmentID (borrow candidates). Empty when all members are in-dept.
+	CrossDeptMemberKeys []string `json:"cross_dept_member_keys,omitempty"`
 }
 
 // AllocationPlanRepository is the repository interface for AllocationPlan persistence
@@ -61,4 +67,26 @@ type AllocationPlanRepository interface {
 	GetByID(ctx context.Context, id string) (*AllocationPlan, error)
 	Update(ctx context.Context, plan *AllocationPlan) (*AllocationPlan, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]*AllocationPlan, error)
+}
+
+// StaffingAdvisor is an optional department-lead consult before AgentFactory
+// (M78 R5 / ORGFAST-21). It must not re-decompose the user's original task.
+// Stability:evolving
+type StaffingAdvisor interface {
+	Suggest(ctx context.Context, in StaffingAsk) (StaffingReply, error)
+}
+
+// StaffingAsk is the single staffing question: pick from candidates or Factory.
+type StaffingAsk struct {
+	DepartmentID  string
+	DomainPath    string
+	SubTaskName   string
+	CandidateKeys []string
+}
+
+// StaffingReply is the lead's suggestion. AgentKeys must be a subset of
+// CandidateKeys; UseFactory means skip to AgentFactory.
+type StaffingReply struct {
+	AgentKeys  []string
+	UseFactory bool
 }

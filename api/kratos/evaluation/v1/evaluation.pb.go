@@ -199,7 +199,7 @@ type EvalRun struct {
 	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	DatasetId          string                 `protobuf:"bytes,2,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
 	AgentId            string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Status             string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"` // pending | running | completed | failed
+	Status             string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"` // pending | running | completed | failed | cancelled
 	TotalCases         int32                  `protobuf:"varint,5,opt,name=total_cases,json=totalCases,proto3" json:"total_cases,omitempty"`
 	CompletedCases     int32                  `protobuf:"varint,6,opt,name=completed_cases,json=completedCases,proto3" json:"completed_cases,omitempty"`
 	ExactMatchScore    float32                `protobuf:"fixed32,7,opt,name=exact_match_score,json=exactMatchScore,proto3" json:"exact_match_score,omitempty"`
@@ -218,9 +218,13 @@ type EvalRun struct {
 	ScoresJson string `protobuf:"bytes,19,opt,name=scores_json,json=scoresJson,proto3" json:"scores_json,omitempty"`
 	// dataset_hash is the dataset content snapshot at run start (P3-5);
 	// differing hashes across compared runs mean scores are not directly comparable.
-	DatasetHash   string `protobuf:"bytes,20,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DatasetHash      string `protobuf:"bytes,20,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
+	DatasetVersionId string `protobuf:"bytes,21,opt,name=dataset_version_id,json=datasetVersionId,proto3" json:"dataset_version_id,omitempty"`
+	DatasetVersion   int32  `protobuf:"varint,22,opt,name=dataset_version,json=datasetVersion,proto3" json:"dataset_version,omitempty"`
+	ExperimentId     string `protobuf:"bytes,23,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
+	VariantLabel     string `protobuf:"bytes,24,opt,name=variant_label,json=variantLabel,proto3" json:"variant_label,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *EvalRun) Reset() {
@@ -393,6 +397,34 @@ func (x *EvalRun) GetDatasetHash() string {
 	return ""
 }
 
+func (x *EvalRun) GetDatasetVersionId() string {
+	if x != nil {
+		return x.DatasetVersionId
+	}
+	return ""
+}
+
+func (x *EvalRun) GetDatasetVersion() int32 {
+	if x != nil {
+		return x.DatasetVersion
+	}
+	return 0
+}
+
+func (x *EvalRun) GetExperimentId() string {
+	if x != nil {
+		return x.ExperimentId
+	}
+	return ""
+}
+
+func (x *EvalRun) GetVariantLabel() string {
+	if x != nil {
+		return x.VariantLabel
+	}
+	return ""
+}
+
 // EvalCaseResult is the output for one case in a run.
 type EvalCaseResult struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
@@ -415,6 +447,8 @@ type EvalCaseResult struct {
 	// input is the case text joined from eval_cases at read time (annotation
 	// UX); empty when the case row no longer exists.
 	Input         string `protobuf:"bytes,17,opt,name=input,proto3" json:"input,omitempty"`
+	SessionId     string `protobuf:"bytes,18,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	TraceRunId    string `protobuf:"bytes,19,opt,name=trace_run_id,json=traceRunId,proto3" json:"trace_run_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -564,6 +598,20 @@ func (x *EvalCaseResult) GetScoresJson() string {
 func (x *EvalCaseResult) GetInput() string {
 	if x != nil {
 		return x.Input
+	}
+	return ""
+}
+
+func (x *EvalCaseResult) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *EvalCaseResult) GetTraceRunId() string {
+	if x != nil {
+		return x.TraceRunId
 	}
 	return ""
 }
@@ -969,6 +1017,266 @@ func (x *UploadCasesResponse) GetImported() int32 {
 	return 0
 }
 
+type ListCasesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId     string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCasesRequest) Reset() {
+	*x = ListCasesRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCasesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCasesRequest) ProtoMessage() {}
+
+func (x *ListCasesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCasesRequest.ProtoReflect.Descriptor instead.
+func (*ListCasesRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListCasesRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+type ListCasesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*EvalCase            `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCasesResponse) Reset() {
+	*x = ListCasesResponse{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCasesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCasesResponse) ProtoMessage() {}
+
+func (x *ListCasesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCasesResponse.ProtoReflect.Descriptor instead.
+func (*ListCasesResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListCasesResponse) GetItems() []*EvalCase {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type UpdateCaseRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId      string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Id             string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Input          string                 `protobuf:"bytes,3,opt,name=input,proto3" json:"input,omitempty"`
+	ExpectedOutput string                 `protobuf:"bytes,4,opt,name=expected_output,json=expectedOutput,proto3" json:"expected_output,omitempty"`
+	MetadataJson   string                 `protobuf:"bytes,5,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpdateCaseRequest) Reset() {
+	*x = UpdateCaseRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCaseRequest) ProtoMessage() {}
+
+func (x *UpdateCaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCaseRequest.ProtoReflect.Descriptor instead.
+func (*UpdateCaseRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *UpdateCaseRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *UpdateCaseRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateCaseRequest) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *UpdateCaseRequest) GetExpectedOutput() string {
+	if x != nil {
+		return x.ExpectedOutput
+	}
+	return ""
+}
+
+func (x *UpdateCaseRequest) GetMetadataJson() string {
+	if x != nil {
+		return x.MetadataJson
+	}
+	return ""
+}
+
+type DeleteCaseRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId     string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteCaseRequest) Reset() {
+	*x = DeleteCaseRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteCaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteCaseRequest) ProtoMessage() {}
+
+func (x *DeleteCaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteCaseRequest.ProtoReflect.Descriptor instead.
+func (*DeleteCaseRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *DeleteCaseRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *DeleteCaseRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type CancelRunRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelRunRequest) Reset() {
+	*x = CancelRunRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelRunRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelRunRequest) ProtoMessage() {}
+
+func (x *CancelRunRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelRunRequest.ProtoReflect.Descriptor instead.
+func (*CancelRunRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *CancelRunRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 type RunEvaluationRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	DatasetId string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
@@ -978,14 +1286,16 @@ type RunEvaluationRequest struct {
 	// num_runs repeats each case N times (AgentEvaluator MultiRun, default 1).
 	NumRuns int32 `protobuf:"varint,4,opt,name=num_runs,json=numRuns,proto3" json:"num_runs,omitempty"`
 	// use_user_simulation enables scripted user simulation when cases define metadata_json.user_simulation.
-	UseUserSimulation bool `protobuf:"varint,5,opt,name=use_user_simulation,json=useUserSimulation,proto3" json:"use_user_simulation,omitempty"`
+	UseUserSimulation bool   `protobuf:"varint,5,opt,name=use_user_simulation,json=useUserSimulation,proto3" json:"use_user_simulation,omitempty"`
+	ExperimentId      string `protobuf:"bytes,6,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
+	VariantLabel      string `protobuf:"bytes,7,opt,name=variant_label,json=variantLabel,proto3" json:"variant_label,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RunEvaluationRequest) Reset() {
 	*x = RunEvaluationRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[12]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -997,7 +1307,7 @@ func (x *RunEvaluationRequest) String() string {
 func (*RunEvaluationRequest) ProtoMessage() {}
 
 func (x *RunEvaluationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[12]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1010,7 +1320,7 @@ func (x *RunEvaluationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunEvaluationRequest.ProtoReflect.Descriptor instead.
 func (*RunEvaluationRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{12}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RunEvaluationRequest) GetDatasetId() string {
@@ -1048,6 +1358,20 @@ func (x *RunEvaluationRequest) GetUseUserSimulation() bool {
 	return false
 }
 
+func (x *RunEvaluationRequest) GetExperimentId() string {
+	if x != nil {
+		return x.ExperimentId
+	}
+	return ""
+}
+
+func (x *RunEvaluationRequest) GetVariantLabel() string {
+	if x != nil {
+		return x.VariantLabel
+	}
+	return ""
+}
+
 type GetRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1057,7 +1381,7 @@ type GetRunRequest struct {
 
 func (x *GetRunRequest) Reset() {
 	*x = GetRunRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[13]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1393,7 @@ func (x *GetRunRequest) String() string {
 func (*GetRunRequest) ProtoMessage() {}
 
 func (x *GetRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[13]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1406,7 @@ func (x *GetRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunRequest.ProtoReflect.Descriptor instead.
 func (*GetRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{13}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetRunRequest) GetId() string {
@@ -1101,7 +1425,7 @@ type DeleteRunRequest struct {
 
 func (x *DeleteRunRequest) Reset() {
 	*x = DeleteRunRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[14]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1113,7 +1437,7 @@ func (x *DeleteRunRequest) String() string {
 func (*DeleteRunRequest) ProtoMessage() {}
 
 func (x *DeleteRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[14]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1126,7 +1450,7 @@ func (x *DeleteRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRunRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{14}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeleteRunRequest) GetId() string {
@@ -1148,7 +1472,7 @@ type ListRunsRequest struct {
 
 func (x *ListRunsRequest) Reset() {
 	*x = ListRunsRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[15]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1484,7 @@ func (x *ListRunsRequest) String() string {
 func (*ListRunsRequest) ProtoMessage() {}
 
 func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[15]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1497,7 @@ func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsRequest.ProtoReflect.Descriptor instead.
 func (*ListRunsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{15}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListRunsRequest) GetDatasetId() string {
@@ -1214,7 +1538,7 @@ type ListRunsResponse struct {
 
 func (x *ListRunsResponse) Reset() {
 	*x = ListRunsResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[16]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1226,7 +1550,7 @@ func (x *ListRunsResponse) String() string {
 func (*ListRunsResponse) ProtoMessage() {}
 
 func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[16]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1239,7 +1563,7 @@ func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsResponse.ProtoReflect.Descriptor instead.
 func (*ListRunsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{16}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListRunsResponse) GetItems() []*EvalRun {
@@ -1267,7 +1591,7 @@ type GetRunResultsRequest struct {
 
 func (x *GetRunResultsRequest) Reset() {
 	*x = GetRunResultsRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[17]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1279,7 +1603,7 @@ func (x *GetRunResultsRequest) String() string {
 func (*GetRunResultsRequest) ProtoMessage() {}
 
 func (x *GetRunResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[17]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1292,7 +1616,7 @@ func (x *GetRunResultsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunResultsRequest.ProtoReflect.Descriptor instead.
 func (*GetRunResultsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{17}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetRunResultsRequest) GetRunId() string {
@@ -1326,7 +1650,7 @@ type GetRunResultsResponse struct {
 
 func (x *GetRunResultsResponse) Reset() {
 	*x = GetRunResultsResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[18]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1338,7 +1662,7 @@ func (x *GetRunResultsResponse) String() string {
 func (*GetRunResultsResponse) ProtoMessage() {}
 
 func (x *GetRunResultsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[18]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1351,7 +1675,7 @@ func (x *GetRunResultsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunResultsResponse.ProtoReflect.Descriptor instead.
 func (*GetRunResultsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{18}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetRunResultsResponse) GetItems() []*EvalCaseResult {
@@ -1387,7 +1711,7 @@ type AnnotateCaseResultRequest struct {
 
 func (x *AnnotateCaseResultRequest) Reset() {
 	*x = AnnotateCaseResultRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[19]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1399,7 +1723,7 @@ func (x *AnnotateCaseResultRequest) String() string {
 func (*AnnotateCaseResultRequest) ProtoMessage() {}
 
 func (x *AnnotateCaseResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[19]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1412,7 +1736,7 @@ func (x *AnnotateCaseResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnotateCaseResultRequest.ProtoReflect.Descriptor instead.
 func (*AnnotateCaseResultRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{19}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AnnotateCaseResultRequest) GetRunId() string {
@@ -1475,7 +1799,7 @@ type GetAgentEvalTrendRequest struct {
 
 func (x *GetAgentEvalTrendRequest) Reset() {
 	*x = GetAgentEvalTrendRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[20]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1487,7 +1811,7 @@ func (x *GetAgentEvalTrendRequest) String() string {
 func (*GetAgentEvalTrendRequest) ProtoMessage() {}
 
 func (x *GetAgentEvalTrendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[20]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1500,7 +1824,7 @@ func (x *GetAgentEvalTrendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAgentEvalTrendRequest.ProtoReflect.Descriptor instead.
 func (*GetAgentEvalTrendRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{20}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetAgentEvalTrendRequest) GetAgentId() string {
@@ -1541,7 +1865,7 @@ type EvalTrendPoint struct {
 
 func (x *EvalTrendPoint) Reset() {
 	*x = EvalTrendPoint{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[21]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1553,7 +1877,7 @@ func (x *EvalTrendPoint) String() string {
 func (*EvalTrendPoint) ProtoMessage() {}
 
 func (x *EvalTrendPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[21]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1566,7 +1890,7 @@ func (x *EvalTrendPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalTrendPoint.ProtoReflect.Descriptor instead.
 func (*EvalTrendPoint) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{21}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *EvalTrendPoint) GetRunId() string {
@@ -1641,7 +1965,7 @@ type GetAgentEvalTrendResponse struct {
 
 func (x *GetAgentEvalTrendResponse) Reset() {
 	*x = GetAgentEvalTrendResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[22]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1653,7 +1977,7 @@ func (x *GetAgentEvalTrendResponse) String() string {
 func (*GetAgentEvalTrendResponse) ProtoMessage() {}
 
 func (x *GetAgentEvalTrendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[22]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1666,7 +1990,7 @@ func (x *GetAgentEvalTrendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAgentEvalTrendResponse.ProtoReflect.Descriptor instead.
 func (*GetAgentEvalTrendResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{22}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetAgentEvalTrendResponse) GetPoints() []*EvalTrendPoint {
@@ -1685,7 +2009,7 @@ type CompareEvalRunsRequest struct {
 
 func (x *CompareEvalRunsRequest) Reset() {
 	*x = CompareEvalRunsRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[23]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1697,7 +2021,7 @@ func (x *CompareEvalRunsRequest) String() string {
 func (*CompareEvalRunsRequest) ProtoMessage() {}
 
 func (x *CompareEvalRunsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[23]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1710,7 +2034,7 @@ func (x *CompareEvalRunsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareEvalRunsRequest.ProtoReflect.Descriptor instead.
 func (*CompareEvalRunsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{23}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CompareEvalRunsRequest) GetRunIds() []string {
@@ -1737,14 +2061,18 @@ type EvalRunComparison struct {
 	DeltaLlmJudge         float32                `protobuf:"fixed32,13,opt,name=delta_llm_judge,json=deltaLlmJudge,proto3" json:"delta_llm_judge,omitempty"`
 	DeltaToolCallAccuracy float32                `protobuf:"fixed32,14,opt,name=delta_tool_call_accuracy,json=deltaToolCallAccuracy,proto3" json:"delta_tool_call_accuracy,omitempty"`
 	// dataset_hash enables the dataset-changed comparability warning (P3-5).
-	DatasetHash   string `protobuf:"bytes,15,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DatasetHash      string `protobuf:"bytes,15,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
+	DatasetVersionId string `protobuf:"bytes,16,opt,name=dataset_version_id,json=datasetVersionId,proto3" json:"dataset_version_id,omitempty"`
+	DatasetVersion   int32  `protobuf:"varint,17,opt,name=dataset_version,json=datasetVersion,proto3" json:"dataset_version,omitempty"`
+	ExperimentId     string `protobuf:"bytes,18,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
+	VariantLabel     string `protobuf:"bytes,19,opt,name=variant_label,json=variantLabel,proto3" json:"variant_label,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *EvalRunComparison) Reset() {
 	*x = EvalRunComparison{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[24]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1756,7 +2084,7 @@ func (x *EvalRunComparison) String() string {
 func (*EvalRunComparison) ProtoMessage() {}
 
 func (x *EvalRunComparison) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[24]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1769,7 +2097,7 @@ func (x *EvalRunComparison) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalRunComparison.ProtoReflect.Descriptor instead.
 func (*EvalRunComparison) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{24}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *EvalRunComparison) GetRunId() string {
@@ -1877,6 +2205,34 @@ func (x *EvalRunComparison) GetDatasetHash() string {
 	return ""
 }
 
+func (x *EvalRunComparison) GetDatasetVersionId() string {
+	if x != nil {
+		return x.DatasetVersionId
+	}
+	return ""
+}
+
+func (x *EvalRunComparison) GetDatasetVersion() int32 {
+	if x != nil {
+		return x.DatasetVersion
+	}
+	return 0
+}
+
+func (x *EvalRunComparison) GetExperimentId() string {
+	if x != nil {
+		return x.ExperimentId
+	}
+	return ""
+}
+
+func (x *EvalRunComparison) GetVariantLabel() string {
+	if x != nil {
+		return x.VariantLabel
+	}
+	return ""
+}
+
 type CompareEvalRunsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*EvalRunComparison   `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -1886,7 +2242,7 @@ type CompareEvalRunsResponse struct {
 
 func (x *CompareEvalRunsResponse) Reset() {
 	*x = CompareEvalRunsResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[25]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1898,7 +2254,7 @@ func (x *CompareEvalRunsResponse) String() string {
 func (*CompareEvalRunsResponse) ProtoMessage() {}
 
 func (x *CompareEvalRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[25]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1911,7 +2267,7 @@ func (x *CompareEvalRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareEvalRunsResponse.ProtoReflect.Descriptor instead.
 func (*CompareEvalRunsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{25}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CompareEvalRunsResponse) GetItems() []*EvalRunComparison {
@@ -1939,7 +2295,7 @@ type GetJudgeDivergenceRequest struct {
 
 func (x *GetJudgeDivergenceRequest) Reset() {
 	*x = GetJudgeDivergenceRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[26]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1951,7 +2307,7 @@ func (x *GetJudgeDivergenceRequest) String() string {
 func (*GetJudgeDivergenceRequest) ProtoMessage() {}
 
 func (x *GetJudgeDivergenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[26]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1964,7 +2320,7 @@ func (x *GetJudgeDivergenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJudgeDivergenceRequest.ProtoReflect.Descriptor instead.
 func (*GetJudgeDivergenceRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{26}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetJudgeDivergenceRequest) GetDatasetId() string {
@@ -2017,7 +2373,7 @@ type JudgeDivergenceCase struct {
 
 func (x *JudgeDivergenceCase) Reset() {
 	*x = JudgeDivergenceCase{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[27]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2029,7 +2385,7 @@ func (x *JudgeDivergenceCase) String() string {
 func (*JudgeDivergenceCase) ProtoMessage() {}
 
 func (x *JudgeDivergenceCase) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[27]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2042,7 +2398,7 @@ func (x *JudgeDivergenceCase) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeDivergenceCase.ProtoReflect.Descriptor instead.
 func (*JudgeDivergenceCase) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{27}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *JudgeDivergenceCase) GetResultId() string {
@@ -2140,7 +2496,7 @@ type GetJudgeDivergenceResponse struct {
 
 func (x *GetJudgeDivergenceResponse) Reset() {
 	*x = GetJudgeDivergenceResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[28]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2152,7 +2508,7 @@ func (x *GetJudgeDivergenceResponse) String() string {
 func (*GetJudgeDivergenceResponse) ProtoMessage() {}
 
 func (x *GetJudgeDivergenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[28]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2165,7 +2521,7 @@ func (x *GetJudgeDivergenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJudgeDivergenceResponse.ProtoReflect.Descriptor instead.
 func (*GetJudgeDivergenceResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{28}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetJudgeDivergenceResponse) GetThreshold() float32 {
@@ -2238,7 +2594,7 @@ type GetFailureGroupsRequest struct {
 
 func (x *GetFailureGroupsRequest) Reset() {
 	*x = GetFailureGroupsRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[29]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2250,7 +2606,7 @@ func (x *GetFailureGroupsRequest) String() string {
 func (*GetFailureGroupsRequest) ProtoMessage() {}
 
 func (x *GetFailureGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[29]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2263,7 +2619,7 @@ func (x *GetFailureGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFailureGroupsRequest.ProtoReflect.Descriptor instead.
 func (*GetFailureGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{29}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetFailureGroupsRequest) GetDatasetId() string {
@@ -2300,7 +2656,7 @@ type EvalFailureGroup struct {
 
 func (x *EvalFailureGroup) Reset() {
 	*x = EvalFailureGroup{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[30]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2312,7 +2668,7 @@ func (x *EvalFailureGroup) String() string {
 func (*EvalFailureGroup) ProtoMessage() {}
 
 func (x *EvalFailureGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[30]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2325,7 +2681,7 @@ func (x *EvalFailureGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalFailureGroup.ProtoReflect.Descriptor instead.
 func (*EvalFailureGroup) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{30}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *EvalFailureGroup) GetErrorMessage() string {
@@ -2366,7 +2722,7 @@ type GetFailureGroupsResponse struct {
 
 func (x *GetFailureGroupsResponse) Reset() {
 	*x = GetFailureGroupsResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[31]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2378,7 +2734,7 @@ func (x *GetFailureGroupsResponse) String() string {
 func (*GetFailureGroupsResponse) ProtoMessage() {}
 
 func (x *GetFailureGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[31]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2391,7 +2747,7 @@ func (x *GetFailureGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFailureGroupsResponse.ProtoReflect.Descriptor instead.
 func (*GetFailureGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{31}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetFailureGroupsResponse) GetTotalFailed() int32 {
@@ -2427,7 +2783,7 @@ type EvalRunPreference struct {
 
 func (x *EvalRunPreference) Reset() {
 	*x = EvalRunPreference{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[32]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2439,7 +2795,7 @@ func (x *EvalRunPreference) String() string {
 func (*EvalRunPreference) ProtoMessage() {}
 
 func (x *EvalRunPreference) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[32]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2452,7 +2808,7 @@ func (x *EvalRunPreference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalRunPreference.ProtoReflect.Descriptor instead.
 func (*EvalRunPreference) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{32}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *EvalRunPreference) GetId() string {
@@ -2524,7 +2880,7 @@ type SubmitRunPreferenceRequest struct {
 
 func (x *SubmitRunPreferenceRequest) Reset() {
 	*x = SubmitRunPreferenceRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[33]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2536,7 +2892,7 @@ func (x *SubmitRunPreferenceRequest) String() string {
 func (*SubmitRunPreferenceRequest) ProtoMessage() {}
 
 func (x *SubmitRunPreferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[33]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2549,7 +2905,7 @@ func (x *SubmitRunPreferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitRunPreferenceRequest.ProtoReflect.Descriptor instead.
 func (*SubmitRunPreferenceRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{33}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SubmitRunPreferenceRequest) GetDatasetId() string {
@@ -2597,7 +2953,7 @@ type ListRunPreferencesRequest struct {
 
 func (x *ListRunPreferencesRequest) Reset() {
 	*x = ListRunPreferencesRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[34]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2609,7 +2965,7 @@ func (x *ListRunPreferencesRequest) String() string {
 func (*ListRunPreferencesRequest) ProtoMessage() {}
 
 func (x *ListRunPreferencesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[34]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2622,7 +2978,7 @@ func (x *ListRunPreferencesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunPreferencesRequest.ProtoReflect.Descriptor instead.
 func (*ListRunPreferencesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{34}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListRunPreferencesRequest) GetDatasetId() string {
@@ -2648,7 +3004,7 @@ type ListRunPreferencesResponse struct {
 
 func (x *ListRunPreferencesResponse) Reset() {
 	*x = ListRunPreferencesResponse{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[35]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2660,7 +3016,7 @@ func (x *ListRunPreferencesResponse) String() string {
 func (*ListRunPreferencesResponse) ProtoMessage() {}
 
 func (x *ListRunPreferencesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[35]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2673,7 +3029,7 @@ func (x *ListRunPreferencesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunPreferencesResponse.ProtoReflect.Descriptor instead.
 func (*ListRunPreferencesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{35}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListRunPreferencesResponse) GetItems() []*EvalRunPreference {
@@ -2699,15 +3055,17 @@ type EvalGateConfig struct {
 	// min_score: absolute floor in [0,1]; 0 disables the absolute check.
 	MinScore float32 `protobuf:"fixed32,5,opt,name=min_score,json=minScore,proto3" json:"min_score,omitempty"`
 	// max_drop: allowed drop vs baseline in [0,1]; 0 disables the relative check.
-	MaxDrop       float32 `protobuf:"fixed32,6,opt,name=max_drop,json=maxDrop,proto3" json:"max_drop,omitempty"`
-	UpdatedAt     string  `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	MaxDrop   float32 `protobuf:"fixed32,6,opt,name=max_drop,json=maxDrop,proto3" json:"max_drop,omitempty"`
+	UpdatedAt string  `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// mode: advisory (default, notify only) | blocking (wait and reject on breach)
+	Mode          string `protobuf:"bytes,8,opt,name=mode,proto3" json:"mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvalGateConfig) Reset() {
 	*x = EvalGateConfig{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[36]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2719,7 +3077,7 @@ func (x *EvalGateConfig) String() string {
 func (*EvalGateConfig) ProtoMessage() {}
 
 func (x *EvalGateConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[36]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2732,7 +3090,7 @@ func (x *EvalGateConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalGateConfig.ProtoReflect.Descriptor instead.
 func (*EvalGateConfig) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{36}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *EvalGateConfig) GetEnabled() bool {
@@ -2784,15 +3142,23 @@ func (x *EvalGateConfig) GetUpdatedAt() string {
 	return ""
 }
 
+func (x *EvalGateConfig) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
 type GetEvalGateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetEvalGateRequest) Reset() {
 	*x = GetEvalGateRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[37]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2804,7 +3170,7 @@ func (x *GetEvalGateRequest) String() string {
 func (*GetEvalGateRequest) ProtoMessage() {}
 
 func (x *GetEvalGateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[37]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2817,7 +3183,14 @@ func (x *GetEvalGateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEvalGateRequest.ProtoReflect.Descriptor instead.
 func (*GetEvalGateRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{37}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *GetEvalGateRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
 }
 
 type UpdateEvalGateRequest struct {
@@ -2828,13 +3201,14 @@ type UpdateEvalGateRequest struct {
 	Metric        string                 `protobuf:"bytes,4,opt,name=metric,proto3" json:"metric,omitempty"`
 	MinScore      float32                `protobuf:"fixed32,5,opt,name=min_score,json=minScore,proto3" json:"min_score,omitempty"`
 	MaxDrop       float32                `protobuf:"fixed32,6,opt,name=max_drop,json=maxDrop,proto3" json:"max_drop,omitempty"`
+	Mode          string                 `protobuf:"bytes,7,opt,name=mode,proto3" json:"mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateEvalGateRequest) Reset() {
 	*x = UpdateEvalGateRequest{}
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[38]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2846,7 +3220,7 @@ func (x *UpdateEvalGateRequest) String() string {
 func (*UpdateEvalGateRequest) ProtoMessage() {}
 
 func (x *UpdateEvalGateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[38]
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2859,7 +3233,7 @@ func (x *UpdateEvalGateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateEvalGateRequest.ProtoReflect.Descriptor instead.
 func (*UpdateEvalGateRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{38}
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *UpdateEvalGateRequest) GetEnabled() bool {
@@ -2904,6 +3278,373 @@ func (x *UpdateEvalGateRequest) GetMaxDrop() float32 {
 	return 0
 }
 
+func (x *UpdateEvalGateRequest) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+type EvalDatasetVersion struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	DatasetId     string                 `protobuf:"bytes,2,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Version       int32                  `protobuf:"varint,3,opt,name=version,proto3" json:"version,omitempty"`
+	Hash          string                 `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
+	CaseCount     int32                  `protobuf:"varint,5,opt,name=case_count,json=caseCount,proto3" json:"case_count,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvalDatasetVersion) Reset() {
+	*x = EvalDatasetVersion{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvalDatasetVersion) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvalDatasetVersion) ProtoMessage() {}
+
+func (x *EvalDatasetVersion) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvalDatasetVersion.ProtoReflect.Descriptor instead.
+func (*EvalDatasetVersion) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *EvalDatasetVersion) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *EvalDatasetVersion) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *EvalDatasetVersion) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *EvalDatasetVersion) GetHash() string {
+	if x != nil {
+		return x.Hash
+	}
+	return ""
+}
+
+func (x *EvalDatasetVersion) GetCaseCount() int32 {
+	if x != nil {
+		return x.CaseCount
+	}
+	return 0
+}
+
+func (x *EvalDatasetVersion) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type ListDatasetVersionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId     string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDatasetVersionsRequest) Reset() {
+	*x = ListDatasetVersionsRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDatasetVersionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDatasetVersionsRequest) ProtoMessage() {}
+
+func (x *ListDatasetVersionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDatasetVersionsRequest.ProtoReflect.Descriptor instead.
+func (*ListDatasetVersionsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *ListDatasetVersionsRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *ListDatasetVersionsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListDatasetVersionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*EvalDatasetVersion  `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDatasetVersionsResponse) Reset() {
+	*x = ListDatasetVersionsResponse{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDatasetVersionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDatasetVersionsResponse) ProtoMessage() {}
+
+func (x *ListDatasetVersionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDatasetVersionsResponse.ProtoReflect.Descriptor instead.
+func (*ListDatasetVersionsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *ListDatasetVersionsResponse) GetItems() []*EvalDatasetVersion {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type ExperimentVariant struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExperimentVariant) Reset() {
+	*x = ExperimentVariant{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExperimentVariant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExperimentVariant) ProtoMessage() {}
+
+func (x *ExperimentVariant) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExperimentVariant.ProtoReflect.Descriptor instead.
+func (*ExperimentVariant) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *ExperimentVariant) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ExperimentVariant) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+type RunExperimentRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId         string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Metrics           string                 `protobuf:"bytes,2,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	NumRuns           int32                  `protobuf:"varint,3,opt,name=num_runs,json=numRuns,proto3" json:"num_runs,omitempty"`
+	UseUserSimulation bool                   `protobuf:"varint,4,opt,name=use_user_simulation,json=useUserSimulation,proto3" json:"use_user_simulation,omitempty"`
+	Variants          []*ExperimentVariant   `protobuf:"bytes,5,rep,name=variants,proto3" json:"variants,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RunExperimentRequest) Reset() {
+	*x = RunExperimentRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunExperimentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunExperimentRequest) ProtoMessage() {}
+
+func (x *RunExperimentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunExperimentRequest.ProtoReflect.Descriptor instead.
+func (*RunExperimentRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *RunExperimentRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *RunExperimentRequest) GetMetrics() string {
+	if x != nil {
+		return x.Metrics
+	}
+	return ""
+}
+
+func (x *RunExperimentRequest) GetNumRuns() int32 {
+	if x != nil {
+		return x.NumRuns
+	}
+	return 0
+}
+
+func (x *RunExperimentRequest) GetUseUserSimulation() bool {
+	if x != nil {
+		return x.UseUserSimulation
+	}
+	return false
+}
+
+func (x *RunExperimentRequest) GetVariants() []*ExperimentVariant {
+	if x != nil {
+		return x.Variants
+	}
+	return nil
+}
+
+type RunExperimentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ExperimentId  string                 `protobuf:"bytes,1,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
+	Items         []*EvalRun             `protobuf:"bytes,2,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunExperimentResponse) Reset() {
+	*x = RunExperimentResponse{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunExperimentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunExperimentResponse) ProtoMessage() {}
+
+func (x *RunExperimentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunExperimentResponse.ProtoReflect.Descriptor instead.
+func (*RunExperimentResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *RunExperimentResponse) GetExperimentId() string {
+	if x != nil {
+		return x.ExperimentId
+	}
+	return ""
+}
+
+func (x *RunExperimentResponse) GetItems() []*EvalRun {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 var File_kratos_evaluation_v1_evaluation_proto protoreflect.FileDescriptor
 
 const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
@@ -2926,7 +3667,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x02 \x01(\tR\tdatasetId\x12\x14\n" +
 	"\x05input\x18\x03 \x01(\tR\x05input\x12'\n" +
 	"\x0fexpected_output\x18\x04 \x01(\tR\x0eexpectedOutput\x12#\n" +
-	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xad\x05\n" +
+	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xce\x06\n" +
 	"\aEvalRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2955,7 +3696,11 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"pass_hat_k\x18\x12 \x01(\x02R\bpassHatK\x12\x1f\n" +
 	"\vscores_json\x18\x13 \x01(\tR\n" +
 	"scoresJson\x12!\n" +
-	"\fdataset_hash\x18\x14 \x01(\tR\vdatasetHash\"\xe2\x04\n" +
+	"\fdataset_hash\x18\x14 \x01(\tR\vdatasetHash\x12,\n" +
+	"\x12dataset_version_id\x18\x15 \x01(\tR\x10datasetVersionId\x12'\n" +
+	"\x0fdataset_version\x18\x16 \x01(\x05R\x0edatasetVersion\x12#\n" +
+	"\rexperiment_id\x18\x17 \x01(\tR\fexperimentId\x12#\n" +
+	"\rvariant_label\x18\x18 \x01(\tR\fvariantLabel\"\xa3\x05\n" +
 	"\x0eEvalCaseResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
@@ -2979,7 +3724,11 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\fannotated_by\x18\x0f \x01(\tR\vannotatedBy\x12\x1f\n" +
 	"\vscores_json\x18\x10 \x01(\tR\n" +
 	"scoresJson\x12\x14\n" +
-	"\x05input\x18\x11 \x01(\tR\x05inputB\r\n" +
+	"\x05input\x18\x11 \x01(\tR\x05input\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x12 \x01(\tR\tsessionId\x12 \n" +
+	"\ftrace_run_id\x18\x13 \x01(\tR\n" +
+	"traceRunIdB\r\n" +
 	"\v_human_passB\x0e\n" +
 	"\f_human_score\"R\n" +
 	"\x14CreateDatasetRequest\x12\x18\n" +
@@ -3005,14 +3754,34 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\n" +
 	"cases_json\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\tcasesJson\"1\n" +
 	"\x13UploadCasesResponse\x12\x1a\n" +
-	"\bimported\x18\x01 \x01(\x05R\bimported\"\xc1\x01\n" +
+	"\bimported\x18\x01 \x01(\x05R\bimported\"7\n" +
+	"\x10ListCasesRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\"I\n" +
+	"\x11ListCasesResponse\x124\n" +
+	"\x05items\x18\x01 \x03(\v2\x1e.kratos.evaluation.v1.EvalCaseR\x05items\"\xb8\x01\n" +
+	"\x11UpdateCaseRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
+	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1a\n" +
+	"\x05input\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x05input\x12'\n" +
+	"\x0fexpected_output\x18\x04 \x01(\tR\x0eexpectedOutput\x12#\n" +
+	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"N\n" +
+	"\x11DeleteCaseRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
+	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id\"(\n" +
+	"\x10CancelRunRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x8b\x02\n" +
 	"\x14RunEvaluationRequest\x12#\n" +
 	"\n" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x1f\n" +
 	"\bagent_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x18\n" +
 	"\ametrics\x18\x03 \x01(\tR\ametrics\x12\x19\n" +
 	"\bnum_runs\x18\x04 \x01(\x05R\anumRuns\x12.\n" +
-	"\x13use_user_simulation\x18\x05 \x01(\bR\x11useUserSimulation\"%\n" +
+	"\x13use_user_simulation\x18\x05 \x01(\bR\x11useUserSimulation\x12#\n" +
+	"\rexperiment_id\x18\x06 \x01(\tR\fexperimentId\x12#\n" +
+	"\rvariant_label\x18\a \x01(\tR\fvariantLabel\"%\n" +
 	"\rGetRunRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"(\n" +
 	"\x10DeleteRunRequest\x12\x14\n" +
@@ -3066,7 +3835,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x19GetAgentEvalTrendResponse\x12<\n" +
 	"\x06points\x18\x01 \x03(\v2$.kratos.evaluation.v1.EvalTrendPointR\x06points\"7\n" +
 	"\x16CompareEvalRunsRequest\x12\x1d\n" +
-	"\arun_ids\x18\x01 \x03(\tB\x04\xe2A\x01\x02R\x06runIds\"\xd3\x04\n" +
+	"\arun_ids\x18\x01 \x03(\tB\x04\xe2A\x01\x02R\x06runIds\"\xf4\x05\n" +
 	"\x11EvalRunComparison\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
@@ -3086,7 +3855,11 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x14delta_contains_match\x18\f \x01(\x02R\x12deltaContainsMatch\x12&\n" +
 	"\x0fdelta_llm_judge\x18\r \x01(\x02R\rdeltaLlmJudge\x127\n" +
 	"\x18delta_tool_call_accuracy\x18\x0e \x01(\x02R\x15deltaToolCallAccuracy\x12!\n" +
-	"\fdataset_hash\x18\x0f \x01(\tR\vdatasetHash\"X\n" +
+	"\fdataset_hash\x18\x0f \x01(\tR\vdatasetHash\x12,\n" +
+	"\x12dataset_version_id\x18\x10 \x01(\tR\x10datasetVersionId\x12'\n" +
+	"\x0fdataset_version\x18\x11 \x01(\x05R\x0edatasetVersion\x12#\n" +
+	"\rexperiment_id\x18\x12 \x01(\tR\fexperimentId\x12#\n" +
+	"\rvariant_label\x18\x13 \x01(\tR\fvariantLabel\"X\n" +
 	"\x17CompareEvalRunsResponse\x12=\n" +
 	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunComparisonR\x05items\"\x8f\x01\n" +
 	"\x19GetJudgeDivergenceRequest\x12#\n" +
@@ -3157,7 +3930,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\"[\n" +
 	"\x1aListRunPreferencesResponse\x12=\n" +
-	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunPreferenceR\x05items\"\xd3\x01\n" +
+	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunPreferenceR\x05items\"\xe7\x01\n" +
 	"\x0eEvalGateConfig\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
@@ -3167,8 +3940,10 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\tmin_score\x18\x05 \x01(\x02R\bminScore\x12\x19\n" +
 	"\bmax_drop\x18\x06 \x01(\x02R\amaxDrop\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\tR\tupdatedAt\"\x14\n" +
-	"\x12GetEvalGateRequest\"\xbb\x01\n" +
+	"updated_at\x18\a \x01(\tR\tupdatedAt\x12\x12\n" +
+	"\x04mode\x18\b \x01(\tR\x04mode\"/\n" +
+	"\x12GetEvalGateRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\xcf\x01\n" +
 	"\x15UpdateEvalGateRequest\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
@@ -3176,7 +3951,37 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x03 \x01(\tR\tdatasetId\x12\x16\n" +
 	"\x06metric\x18\x04 \x01(\tR\x06metric\x12\x1b\n" +
 	"\tmin_score\x18\x05 \x01(\x02R\bminScore\x12\x19\n" +
-	"\bmax_drop\x18\x06 \x01(\x02R\amaxDrop2\xc8\x16\n" +
+	"\bmax_drop\x18\x06 \x01(\x02R\amaxDrop\x12\x12\n" +
+	"\x04mode\x18\a \x01(\tR\x04mode\"\xaf\x01\n" +
+	"\x12EvalDatasetVersion\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"dataset_id\x18\x02 \x01(\tR\tdatasetId\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\x05R\aversion\x12\x12\n" +
+	"\x04hash\x18\x04 \x01(\tR\x04hash\x12\x1d\n" +
+	"\n" +
+	"case_count\x18\x05 \x01(\x05R\tcaseCount\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt\"W\n" +
+	"\x1aListDatasetVersionsRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"]\n" +
+	"\x1bListDatasetVersionsResponse\x12>\n" +
+	"\x05items\x18\x01 \x03(\v2(.kratos.evaluation.v1.EvalDatasetVersionR\x05items\"D\n" +
+	"\x11ExperimentVariant\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\"\xe5\x01\n" +
+	"\x14RunExperimentRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x18\n" +
+	"\ametrics\x18\x02 \x01(\tR\ametrics\x12\x19\n" +
+	"\bnum_runs\x18\x03 \x01(\x05R\anumRuns\x12.\n" +
+	"\x13use_user_simulation\x18\x04 \x01(\bR\x11useUserSimulation\x12C\n" +
+	"\bvariants\x18\x05 \x03(\v2'.kratos.evaluation.v1.ExperimentVariantR\bvariants\"q\n" +
+	"\x15RunExperimentResponse\x12#\n" +
+	"\rexperiment_id\x18\x01 \x01(\tR\fexperimentId\x123\n" +
+	"\x05items\x18\x02 \x03(\v2\x1d.kratos.evaluation.v1.EvalRunR\x05items2\xbe\x1d\n" +
 	"\x11EvaluationService\x12\x82\x01\n" +
 	"\rCreateDataset\x12*.kratos.evaluation.v1.CreateDatasetRequest\x1a!.kratos.evaluation.v1.EvalDataset\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/evaluation/datasets\x12~\n" +
 	"\n" +
@@ -3184,10 +3989,16 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\fListDatasets\x12).kratos.evaluation.v1.ListDatasetsRequest\x1a*.kratos.evaluation.v1.ListDatasetsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/evaluation/datasets\x12y\n" +
 	"\rDeleteDataset\x12*.kratos.evaluation.v1.DeleteDatasetRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/evaluation/datasets/{id}\x12\x87\x01\n" +
 	"\rUpdateDataset\x12*.kratos.evaluation.v1.UpdateDatasetRequest\x1a!.kratos.evaluation.v1.EvalDataset\"'\x82\xd3\xe4\x93\x02!:\x01*2\x1c/v1/evaluation/datasets/{id}\x12\x99\x01\n" +
-	"\vUploadCases\x12(.kratos.evaluation.v1.UploadCasesRequest\x1a).kratos.evaluation.v1.UploadCasesResponse\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/evaluation/datasets/{dataset_id}/cases\x12z\n" +
+	"\vUploadCases\x12(.kratos.evaluation.v1.UploadCasesRequest\x1a).kratos.evaluation.v1.UploadCasesResponse\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/evaluation/datasets/{dataset_id}/cases\x12\x90\x01\n" +
+	"\tListCases\x12&.kratos.evaluation.v1.ListCasesRequest\x1a'.kratos.evaluation.v1.ListCasesResponse\"2\x82\xd3\xe4\x93\x02,\x12*/v1/evaluation/datasets/{dataset_id}/cases\x12\x91\x01\n" +
+	"\n" +
+	"UpdateCase\x12'.kratos.evaluation.v1.UpdateCaseRequest\x1a\x1e.kratos.evaluation.v1.EvalCase\":\x82\xd3\xe4\x93\x024:\x01*2//v1/evaluation/datasets/{dataset_id}/cases/{id}\x12\x86\x01\n" +
+	"\n" +
+	"DeleteCase\x12'.kratos.evaluation.v1.DeleteCaseRequest\x1a\x16.google.protobuf.Empty\"7\x82\xd3\xe4\x93\x021*//v1/evaluation/datasets/{dataset_id}/cases/{id}\x12z\n" +
 	"\rRunEvaluation\x12*.kratos.evaluation.v1.RunEvaluationRequest\x1a\x1d.kratos.evaluation.v1.EvalRun\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/evaluation/runs\x12n\n" +
 	"\x06GetRun\x12#.kratos.evaluation.v1.GetRunRequest\x1a\x1d.kratos.evaluation.v1.EvalRun\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/evaluation/runs/{id}\x12m\n" +
-	"\tDeleteRun\x12&.kratos.evaluation.v1.DeleteRunRequest\x1a\x16.google.protobuf.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/evaluation/runs/{id}\x12v\n" +
+	"\tDeleteRun\x12&.kratos.evaluation.v1.DeleteRunRequest\x1a\x16.google.protobuf.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/evaluation/runs/{id}\x12~\n" +
+	"\tCancelRun\x12&.kratos.evaluation.v1.CancelRunRequest\x1a\x1d.kratos.evaluation.v1.EvalRun\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/evaluation/runs/{id}/cancel\x12v\n" +
 	"\bListRuns\x12%.kratos.evaluation.v1.ListRunsRequest\x1a&.kratos.evaluation.v1.ListRunsResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/evaluation/runs\x12\x96\x01\n" +
 	"\rGetRunResults\x12*.kratos.evaluation.v1.GetRunResultsRequest\x1a+.kratos.evaluation.v1.GetRunResultsResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/evaluation/runs/{run_id}/results\x12\xb3\x01\n" +
 	"\x12AnnotateCaseResult\x12/.kratos.evaluation.v1.AnnotateCaseResultRequest\x1a$.kratos.evaluation.v1.EvalCaseResult\"F\x82\xd3\xe4\x93\x02@:\x01*2;/v1/evaluation/runs/{run_id}/results/{result_id}/annotation\x12\xa4\x01\n" +
@@ -3198,7 +4009,9 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x13SubmitRunPreference\x120.kratos.evaluation.v1.SubmitRunPreferenceRequest\x1a'.kratos.evaluation.v1.EvalRunPreference\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/evaluation/preferences\x12\x9b\x01\n" +
 	"\x12ListRunPreferences\x12/.kratos.evaluation.v1.ListRunPreferencesRequest\x1a0.kratos.evaluation.v1.ListRunPreferencesResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/evaluation/preferences\x12z\n" +
 	"\vGetEvalGate\x12(.kratos.evaluation.v1.GetEvalGateRequest\x1a$.kratos.evaluation.v1.EvalGateConfig\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/evaluation/gate\x12\x83\x01\n" +
-	"\x0eUpdateEvalGate\x12+.kratos.evaluation.v1.UpdateEvalGateRequest\x1a$.kratos.evaluation.v1.EvalGateConfig\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\x1a\x13/v1/evaluation/gateBG\n" +
+	"\x0eUpdateEvalGate\x12+.kratos.evaluation.v1.UpdateEvalGateRequest\x1a$.kratos.evaluation.v1.EvalGateConfig\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\x1a\x13/v1/evaluation/gate\x12\xb1\x01\n" +
+	"\x13ListDatasetVersions\x120.kratos.evaluation.v1.ListDatasetVersionsRequest\x1a1.kratos.evaluation.v1.ListDatasetVersionsResponse\"5\x82\xd3\xe4\x93\x02/\x12-/v1/evaluation/datasets/{dataset_id}/versions\x12\x8f\x01\n" +
+	"\rRunExperiment\x12*.kratos.evaluation.v1.RunExperimentRequest\x1a+.kratos.evaluation.v1.RunExperimentResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/evaluation/experimentsBG\n" +
 	"\x18api.kratos.evaluation.v1P\x01Z)aranea-agents/api/kratos/evaluation/v1;v1b\x06proto3"
 
 var (
@@ -3213,103 +4026,130 @@ func file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP() []byte {
 	return file_kratos_evaluation_v1_evaluation_proto_rawDescData
 }
 
-var file_kratos_evaluation_v1_evaluation_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_kratos_evaluation_v1_evaluation_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_kratos_evaluation_v1_evaluation_proto_goTypes = []any{
-	(*EvalDataset)(nil),                // 0: kratos.evaluation.v1.EvalDataset
-	(*EvalCase)(nil),                   // 1: kratos.evaluation.v1.EvalCase
-	(*EvalRun)(nil),                    // 2: kratos.evaluation.v1.EvalRun
-	(*EvalCaseResult)(nil),             // 3: kratos.evaluation.v1.EvalCaseResult
-	(*CreateDatasetRequest)(nil),       // 4: kratos.evaluation.v1.CreateDatasetRequest
-	(*GetDatasetRequest)(nil),          // 5: kratos.evaluation.v1.GetDatasetRequest
-	(*ListDatasetsRequest)(nil),        // 6: kratos.evaluation.v1.ListDatasetsRequest
-	(*ListDatasetsResponse)(nil),       // 7: kratos.evaluation.v1.ListDatasetsResponse
-	(*DeleteDatasetRequest)(nil),       // 8: kratos.evaluation.v1.DeleteDatasetRequest
-	(*UpdateDatasetRequest)(nil),       // 9: kratos.evaluation.v1.UpdateDatasetRequest
-	(*UploadCasesRequest)(nil),         // 10: kratos.evaluation.v1.UploadCasesRequest
-	(*UploadCasesResponse)(nil),        // 11: kratos.evaluation.v1.UploadCasesResponse
-	(*RunEvaluationRequest)(nil),       // 12: kratos.evaluation.v1.RunEvaluationRequest
-	(*GetRunRequest)(nil),              // 13: kratos.evaluation.v1.GetRunRequest
-	(*DeleteRunRequest)(nil),           // 14: kratos.evaluation.v1.DeleteRunRequest
-	(*ListRunsRequest)(nil),            // 15: kratos.evaluation.v1.ListRunsRequest
-	(*ListRunsResponse)(nil),           // 16: kratos.evaluation.v1.ListRunsResponse
-	(*GetRunResultsRequest)(nil),       // 17: kratos.evaluation.v1.GetRunResultsRequest
-	(*GetRunResultsResponse)(nil),      // 18: kratos.evaluation.v1.GetRunResultsResponse
-	(*AnnotateCaseResultRequest)(nil),  // 19: kratos.evaluation.v1.AnnotateCaseResultRequest
-	(*GetAgentEvalTrendRequest)(nil),   // 20: kratos.evaluation.v1.GetAgentEvalTrendRequest
-	(*EvalTrendPoint)(nil),             // 21: kratos.evaluation.v1.EvalTrendPoint
-	(*GetAgentEvalTrendResponse)(nil),  // 22: kratos.evaluation.v1.GetAgentEvalTrendResponse
-	(*CompareEvalRunsRequest)(nil),     // 23: kratos.evaluation.v1.CompareEvalRunsRequest
-	(*EvalRunComparison)(nil),          // 24: kratos.evaluation.v1.EvalRunComparison
-	(*CompareEvalRunsResponse)(nil),    // 25: kratos.evaluation.v1.CompareEvalRunsResponse
-	(*GetJudgeDivergenceRequest)(nil),  // 26: kratos.evaluation.v1.GetJudgeDivergenceRequest
-	(*JudgeDivergenceCase)(nil),        // 27: kratos.evaluation.v1.JudgeDivergenceCase
-	(*GetJudgeDivergenceResponse)(nil), // 28: kratos.evaluation.v1.GetJudgeDivergenceResponse
-	(*GetFailureGroupsRequest)(nil),    // 29: kratos.evaluation.v1.GetFailureGroupsRequest
-	(*EvalFailureGroup)(nil),           // 30: kratos.evaluation.v1.EvalFailureGroup
-	(*GetFailureGroupsResponse)(nil),   // 31: kratos.evaluation.v1.GetFailureGroupsResponse
-	(*EvalRunPreference)(nil),          // 32: kratos.evaluation.v1.EvalRunPreference
-	(*SubmitRunPreferenceRequest)(nil), // 33: kratos.evaluation.v1.SubmitRunPreferenceRequest
-	(*ListRunPreferencesRequest)(nil),  // 34: kratos.evaluation.v1.ListRunPreferencesRequest
-	(*ListRunPreferencesResponse)(nil), // 35: kratos.evaluation.v1.ListRunPreferencesResponse
-	(*EvalGateConfig)(nil),             // 36: kratos.evaluation.v1.EvalGateConfig
-	(*GetEvalGateRequest)(nil),         // 37: kratos.evaluation.v1.GetEvalGateRequest
-	(*UpdateEvalGateRequest)(nil),      // 38: kratos.evaluation.v1.UpdateEvalGateRequest
-	(*emptypb.Empty)(nil),              // 39: google.protobuf.Empty
+	(*EvalDataset)(nil),                 // 0: kratos.evaluation.v1.EvalDataset
+	(*EvalCase)(nil),                    // 1: kratos.evaluation.v1.EvalCase
+	(*EvalRun)(nil),                     // 2: kratos.evaluation.v1.EvalRun
+	(*EvalCaseResult)(nil),              // 3: kratos.evaluation.v1.EvalCaseResult
+	(*CreateDatasetRequest)(nil),        // 4: kratos.evaluation.v1.CreateDatasetRequest
+	(*GetDatasetRequest)(nil),           // 5: kratos.evaluation.v1.GetDatasetRequest
+	(*ListDatasetsRequest)(nil),         // 6: kratos.evaluation.v1.ListDatasetsRequest
+	(*ListDatasetsResponse)(nil),        // 7: kratos.evaluation.v1.ListDatasetsResponse
+	(*DeleteDatasetRequest)(nil),        // 8: kratos.evaluation.v1.DeleteDatasetRequest
+	(*UpdateDatasetRequest)(nil),        // 9: kratos.evaluation.v1.UpdateDatasetRequest
+	(*UploadCasesRequest)(nil),          // 10: kratos.evaluation.v1.UploadCasesRequest
+	(*UploadCasesResponse)(nil),         // 11: kratos.evaluation.v1.UploadCasesResponse
+	(*ListCasesRequest)(nil),            // 12: kratos.evaluation.v1.ListCasesRequest
+	(*ListCasesResponse)(nil),           // 13: kratos.evaluation.v1.ListCasesResponse
+	(*UpdateCaseRequest)(nil),           // 14: kratos.evaluation.v1.UpdateCaseRequest
+	(*DeleteCaseRequest)(nil),           // 15: kratos.evaluation.v1.DeleteCaseRequest
+	(*CancelRunRequest)(nil),            // 16: kratos.evaluation.v1.CancelRunRequest
+	(*RunEvaluationRequest)(nil),        // 17: kratos.evaluation.v1.RunEvaluationRequest
+	(*GetRunRequest)(nil),               // 18: kratos.evaluation.v1.GetRunRequest
+	(*DeleteRunRequest)(nil),            // 19: kratos.evaluation.v1.DeleteRunRequest
+	(*ListRunsRequest)(nil),             // 20: kratos.evaluation.v1.ListRunsRequest
+	(*ListRunsResponse)(nil),            // 21: kratos.evaluation.v1.ListRunsResponse
+	(*GetRunResultsRequest)(nil),        // 22: kratos.evaluation.v1.GetRunResultsRequest
+	(*GetRunResultsResponse)(nil),       // 23: kratos.evaluation.v1.GetRunResultsResponse
+	(*AnnotateCaseResultRequest)(nil),   // 24: kratos.evaluation.v1.AnnotateCaseResultRequest
+	(*GetAgentEvalTrendRequest)(nil),    // 25: kratos.evaluation.v1.GetAgentEvalTrendRequest
+	(*EvalTrendPoint)(nil),              // 26: kratos.evaluation.v1.EvalTrendPoint
+	(*GetAgentEvalTrendResponse)(nil),   // 27: kratos.evaluation.v1.GetAgentEvalTrendResponse
+	(*CompareEvalRunsRequest)(nil),      // 28: kratos.evaluation.v1.CompareEvalRunsRequest
+	(*EvalRunComparison)(nil),           // 29: kratos.evaluation.v1.EvalRunComparison
+	(*CompareEvalRunsResponse)(nil),     // 30: kratos.evaluation.v1.CompareEvalRunsResponse
+	(*GetJudgeDivergenceRequest)(nil),   // 31: kratos.evaluation.v1.GetJudgeDivergenceRequest
+	(*JudgeDivergenceCase)(nil),         // 32: kratos.evaluation.v1.JudgeDivergenceCase
+	(*GetJudgeDivergenceResponse)(nil),  // 33: kratos.evaluation.v1.GetJudgeDivergenceResponse
+	(*GetFailureGroupsRequest)(nil),     // 34: kratos.evaluation.v1.GetFailureGroupsRequest
+	(*EvalFailureGroup)(nil),            // 35: kratos.evaluation.v1.EvalFailureGroup
+	(*GetFailureGroupsResponse)(nil),    // 36: kratos.evaluation.v1.GetFailureGroupsResponse
+	(*EvalRunPreference)(nil),           // 37: kratos.evaluation.v1.EvalRunPreference
+	(*SubmitRunPreferenceRequest)(nil),  // 38: kratos.evaluation.v1.SubmitRunPreferenceRequest
+	(*ListRunPreferencesRequest)(nil),   // 39: kratos.evaluation.v1.ListRunPreferencesRequest
+	(*ListRunPreferencesResponse)(nil),  // 40: kratos.evaluation.v1.ListRunPreferencesResponse
+	(*EvalGateConfig)(nil),              // 41: kratos.evaluation.v1.EvalGateConfig
+	(*GetEvalGateRequest)(nil),          // 42: kratos.evaluation.v1.GetEvalGateRequest
+	(*UpdateEvalGateRequest)(nil),       // 43: kratos.evaluation.v1.UpdateEvalGateRequest
+	(*EvalDatasetVersion)(nil),          // 44: kratos.evaluation.v1.EvalDatasetVersion
+	(*ListDatasetVersionsRequest)(nil),  // 45: kratos.evaluation.v1.ListDatasetVersionsRequest
+	(*ListDatasetVersionsResponse)(nil), // 46: kratos.evaluation.v1.ListDatasetVersionsResponse
+	(*ExperimentVariant)(nil),           // 47: kratos.evaluation.v1.ExperimentVariant
+	(*RunExperimentRequest)(nil),        // 48: kratos.evaluation.v1.RunExperimentRequest
+	(*RunExperimentResponse)(nil),       // 49: kratos.evaluation.v1.RunExperimentResponse
+	(*emptypb.Empty)(nil),               // 50: google.protobuf.Empty
 }
 var file_kratos_evaluation_v1_evaluation_proto_depIdxs = []int32{
 	0,  // 0: kratos.evaluation.v1.ListDatasetsResponse.items:type_name -> kratos.evaluation.v1.EvalDataset
-	2,  // 1: kratos.evaluation.v1.ListRunsResponse.items:type_name -> kratos.evaluation.v1.EvalRun
-	3,  // 2: kratos.evaluation.v1.GetRunResultsResponse.items:type_name -> kratos.evaluation.v1.EvalCaseResult
-	21, // 3: kratos.evaluation.v1.GetAgentEvalTrendResponse.points:type_name -> kratos.evaluation.v1.EvalTrendPoint
-	24, // 4: kratos.evaluation.v1.CompareEvalRunsResponse.items:type_name -> kratos.evaluation.v1.EvalRunComparison
-	27, // 5: kratos.evaluation.v1.GetJudgeDivergenceResponse.divergent_cases:type_name -> kratos.evaluation.v1.JudgeDivergenceCase
-	30, // 6: kratos.evaluation.v1.GetFailureGroupsResponse.groups:type_name -> kratos.evaluation.v1.EvalFailureGroup
-	32, // 7: kratos.evaluation.v1.ListRunPreferencesResponse.items:type_name -> kratos.evaluation.v1.EvalRunPreference
-	4,  // 8: kratos.evaluation.v1.EvaluationService.CreateDataset:input_type -> kratos.evaluation.v1.CreateDatasetRequest
-	5,  // 9: kratos.evaluation.v1.EvaluationService.GetDataset:input_type -> kratos.evaluation.v1.GetDatasetRequest
-	6,  // 10: kratos.evaluation.v1.EvaluationService.ListDatasets:input_type -> kratos.evaluation.v1.ListDatasetsRequest
-	8,  // 11: kratos.evaluation.v1.EvaluationService.DeleteDataset:input_type -> kratos.evaluation.v1.DeleteDatasetRequest
-	9,  // 12: kratos.evaluation.v1.EvaluationService.UpdateDataset:input_type -> kratos.evaluation.v1.UpdateDatasetRequest
-	10, // 13: kratos.evaluation.v1.EvaluationService.UploadCases:input_type -> kratos.evaluation.v1.UploadCasesRequest
-	12, // 14: kratos.evaluation.v1.EvaluationService.RunEvaluation:input_type -> kratos.evaluation.v1.RunEvaluationRequest
-	13, // 15: kratos.evaluation.v1.EvaluationService.GetRun:input_type -> kratos.evaluation.v1.GetRunRequest
-	14, // 16: kratos.evaluation.v1.EvaluationService.DeleteRun:input_type -> kratos.evaluation.v1.DeleteRunRequest
-	15, // 17: kratos.evaluation.v1.EvaluationService.ListRuns:input_type -> kratos.evaluation.v1.ListRunsRequest
-	17, // 18: kratos.evaluation.v1.EvaluationService.GetRunResults:input_type -> kratos.evaluation.v1.GetRunResultsRequest
-	19, // 19: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:input_type -> kratos.evaluation.v1.AnnotateCaseResultRequest
-	20, // 20: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:input_type -> kratos.evaluation.v1.GetAgentEvalTrendRequest
-	23, // 21: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:input_type -> kratos.evaluation.v1.CompareEvalRunsRequest
-	26, // 22: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:input_type -> kratos.evaluation.v1.GetJudgeDivergenceRequest
-	29, // 23: kratos.evaluation.v1.EvaluationService.GetFailureGroups:input_type -> kratos.evaluation.v1.GetFailureGroupsRequest
-	33, // 24: kratos.evaluation.v1.EvaluationService.SubmitRunPreference:input_type -> kratos.evaluation.v1.SubmitRunPreferenceRequest
-	34, // 25: kratos.evaluation.v1.EvaluationService.ListRunPreferences:input_type -> kratos.evaluation.v1.ListRunPreferencesRequest
-	37, // 26: kratos.evaluation.v1.EvaluationService.GetEvalGate:input_type -> kratos.evaluation.v1.GetEvalGateRequest
-	38, // 27: kratos.evaluation.v1.EvaluationService.UpdateEvalGate:input_type -> kratos.evaluation.v1.UpdateEvalGateRequest
-	0,  // 28: kratos.evaluation.v1.EvaluationService.CreateDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	0,  // 29: kratos.evaluation.v1.EvaluationService.GetDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	7,  // 30: kratos.evaluation.v1.EvaluationService.ListDatasets:output_type -> kratos.evaluation.v1.ListDatasetsResponse
-	39, // 31: kratos.evaluation.v1.EvaluationService.DeleteDataset:output_type -> google.protobuf.Empty
-	0,  // 32: kratos.evaluation.v1.EvaluationService.UpdateDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	11, // 33: kratos.evaluation.v1.EvaluationService.UploadCases:output_type -> kratos.evaluation.v1.UploadCasesResponse
-	2,  // 34: kratos.evaluation.v1.EvaluationService.RunEvaluation:output_type -> kratos.evaluation.v1.EvalRun
-	2,  // 35: kratos.evaluation.v1.EvaluationService.GetRun:output_type -> kratos.evaluation.v1.EvalRun
-	39, // 36: kratos.evaluation.v1.EvaluationService.DeleteRun:output_type -> google.protobuf.Empty
-	16, // 37: kratos.evaluation.v1.EvaluationService.ListRuns:output_type -> kratos.evaluation.v1.ListRunsResponse
-	18, // 38: kratos.evaluation.v1.EvaluationService.GetRunResults:output_type -> kratos.evaluation.v1.GetRunResultsResponse
-	3,  // 39: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:output_type -> kratos.evaluation.v1.EvalCaseResult
-	22, // 40: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:output_type -> kratos.evaluation.v1.GetAgentEvalTrendResponse
-	25, // 41: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:output_type -> kratos.evaluation.v1.CompareEvalRunsResponse
-	28, // 42: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:output_type -> kratos.evaluation.v1.GetJudgeDivergenceResponse
-	31, // 43: kratos.evaluation.v1.EvaluationService.GetFailureGroups:output_type -> kratos.evaluation.v1.GetFailureGroupsResponse
-	32, // 44: kratos.evaluation.v1.EvaluationService.SubmitRunPreference:output_type -> kratos.evaluation.v1.EvalRunPreference
-	35, // 45: kratos.evaluation.v1.EvaluationService.ListRunPreferences:output_type -> kratos.evaluation.v1.ListRunPreferencesResponse
-	36, // 46: kratos.evaluation.v1.EvaluationService.GetEvalGate:output_type -> kratos.evaluation.v1.EvalGateConfig
-	36, // 47: kratos.evaluation.v1.EvaluationService.UpdateEvalGate:output_type -> kratos.evaluation.v1.EvalGateConfig
-	28, // [28:48] is the sub-list for method output_type
-	8,  // [8:28] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	1,  // 1: kratos.evaluation.v1.ListCasesResponse.items:type_name -> kratos.evaluation.v1.EvalCase
+	2,  // 2: kratos.evaluation.v1.ListRunsResponse.items:type_name -> kratos.evaluation.v1.EvalRun
+	3,  // 3: kratos.evaluation.v1.GetRunResultsResponse.items:type_name -> kratos.evaluation.v1.EvalCaseResult
+	26, // 4: kratos.evaluation.v1.GetAgentEvalTrendResponse.points:type_name -> kratos.evaluation.v1.EvalTrendPoint
+	29, // 5: kratos.evaluation.v1.CompareEvalRunsResponse.items:type_name -> kratos.evaluation.v1.EvalRunComparison
+	32, // 6: kratos.evaluation.v1.GetJudgeDivergenceResponse.divergent_cases:type_name -> kratos.evaluation.v1.JudgeDivergenceCase
+	35, // 7: kratos.evaluation.v1.GetFailureGroupsResponse.groups:type_name -> kratos.evaluation.v1.EvalFailureGroup
+	37, // 8: kratos.evaluation.v1.ListRunPreferencesResponse.items:type_name -> kratos.evaluation.v1.EvalRunPreference
+	44, // 9: kratos.evaluation.v1.ListDatasetVersionsResponse.items:type_name -> kratos.evaluation.v1.EvalDatasetVersion
+	47, // 10: kratos.evaluation.v1.RunExperimentRequest.variants:type_name -> kratos.evaluation.v1.ExperimentVariant
+	2,  // 11: kratos.evaluation.v1.RunExperimentResponse.items:type_name -> kratos.evaluation.v1.EvalRun
+	4,  // 12: kratos.evaluation.v1.EvaluationService.CreateDataset:input_type -> kratos.evaluation.v1.CreateDatasetRequest
+	5,  // 13: kratos.evaluation.v1.EvaluationService.GetDataset:input_type -> kratos.evaluation.v1.GetDatasetRequest
+	6,  // 14: kratos.evaluation.v1.EvaluationService.ListDatasets:input_type -> kratos.evaluation.v1.ListDatasetsRequest
+	8,  // 15: kratos.evaluation.v1.EvaluationService.DeleteDataset:input_type -> kratos.evaluation.v1.DeleteDatasetRequest
+	9,  // 16: kratos.evaluation.v1.EvaluationService.UpdateDataset:input_type -> kratos.evaluation.v1.UpdateDatasetRequest
+	10, // 17: kratos.evaluation.v1.EvaluationService.UploadCases:input_type -> kratos.evaluation.v1.UploadCasesRequest
+	12, // 18: kratos.evaluation.v1.EvaluationService.ListCases:input_type -> kratos.evaluation.v1.ListCasesRequest
+	14, // 19: kratos.evaluation.v1.EvaluationService.UpdateCase:input_type -> kratos.evaluation.v1.UpdateCaseRequest
+	15, // 20: kratos.evaluation.v1.EvaluationService.DeleteCase:input_type -> kratos.evaluation.v1.DeleteCaseRequest
+	17, // 21: kratos.evaluation.v1.EvaluationService.RunEvaluation:input_type -> kratos.evaluation.v1.RunEvaluationRequest
+	18, // 22: kratos.evaluation.v1.EvaluationService.GetRun:input_type -> kratos.evaluation.v1.GetRunRequest
+	19, // 23: kratos.evaluation.v1.EvaluationService.DeleteRun:input_type -> kratos.evaluation.v1.DeleteRunRequest
+	16, // 24: kratos.evaluation.v1.EvaluationService.CancelRun:input_type -> kratos.evaluation.v1.CancelRunRequest
+	20, // 25: kratos.evaluation.v1.EvaluationService.ListRuns:input_type -> kratos.evaluation.v1.ListRunsRequest
+	22, // 26: kratos.evaluation.v1.EvaluationService.GetRunResults:input_type -> kratos.evaluation.v1.GetRunResultsRequest
+	24, // 27: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:input_type -> kratos.evaluation.v1.AnnotateCaseResultRequest
+	25, // 28: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:input_type -> kratos.evaluation.v1.GetAgentEvalTrendRequest
+	28, // 29: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:input_type -> kratos.evaluation.v1.CompareEvalRunsRequest
+	31, // 30: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:input_type -> kratos.evaluation.v1.GetJudgeDivergenceRequest
+	34, // 31: kratos.evaluation.v1.EvaluationService.GetFailureGroups:input_type -> kratos.evaluation.v1.GetFailureGroupsRequest
+	38, // 32: kratos.evaluation.v1.EvaluationService.SubmitRunPreference:input_type -> kratos.evaluation.v1.SubmitRunPreferenceRequest
+	39, // 33: kratos.evaluation.v1.EvaluationService.ListRunPreferences:input_type -> kratos.evaluation.v1.ListRunPreferencesRequest
+	42, // 34: kratos.evaluation.v1.EvaluationService.GetEvalGate:input_type -> kratos.evaluation.v1.GetEvalGateRequest
+	43, // 35: kratos.evaluation.v1.EvaluationService.UpdateEvalGate:input_type -> kratos.evaluation.v1.UpdateEvalGateRequest
+	45, // 36: kratos.evaluation.v1.EvaluationService.ListDatasetVersions:input_type -> kratos.evaluation.v1.ListDatasetVersionsRequest
+	48, // 37: kratos.evaluation.v1.EvaluationService.RunExperiment:input_type -> kratos.evaluation.v1.RunExperimentRequest
+	0,  // 38: kratos.evaluation.v1.EvaluationService.CreateDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	0,  // 39: kratos.evaluation.v1.EvaluationService.GetDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	7,  // 40: kratos.evaluation.v1.EvaluationService.ListDatasets:output_type -> kratos.evaluation.v1.ListDatasetsResponse
+	50, // 41: kratos.evaluation.v1.EvaluationService.DeleteDataset:output_type -> google.protobuf.Empty
+	0,  // 42: kratos.evaluation.v1.EvaluationService.UpdateDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	11, // 43: kratos.evaluation.v1.EvaluationService.UploadCases:output_type -> kratos.evaluation.v1.UploadCasesResponse
+	13, // 44: kratos.evaluation.v1.EvaluationService.ListCases:output_type -> kratos.evaluation.v1.ListCasesResponse
+	1,  // 45: kratos.evaluation.v1.EvaluationService.UpdateCase:output_type -> kratos.evaluation.v1.EvalCase
+	50, // 46: kratos.evaluation.v1.EvaluationService.DeleteCase:output_type -> google.protobuf.Empty
+	2,  // 47: kratos.evaluation.v1.EvaluationService.RunEvaluation:output_type -> kratos.evaluation.v1.EvalRun
+	2,  // 48: kratos.evaluation.v1.EvaluationService.GetRun:output_type -> kratos.evaluation.v1.EvalRun
+	50, // 49: kratos.evaluation.v1.EvaluationService.DeleteRun:output_type -> google.protobuf.Empty
+	2,  // 50: kratos.evaluation.v1.EvaluationService.CancelRun:output_type -> kratos.evaluation.v1.EvalRun
+	21, // 51: kratos.evaluation.v1.EvaluationService.ListRuns:output_type -> kratos.evaluation.v1.ListRunsResponse
+	23, // 52: kratos.evaluation.v1.EvaluationService.GetRunResults:output_type -> kratos.evaluation.v1.GetRunResultsResponse
+	3,  // 53: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:output_type -> kratos.evaluation.v1.EvalCaseResult
+	27, // 54: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:output_type -> kratos.evaluation.v1.GetAgentEvalTrendResponse
+	30, // 55: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:output_type -> kratos.evaluation.v1.CompareEvalRunsResponse
+	33, // 56: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:output_type -> kratos.evaluation.v1.GetJudgeDivergenceResponse
+	36, // 57: kratos.evaluation.v1.EvaluationService.GetFailureGroups:output_type -> kratos.evaluation.v1.GetFailureGroupsResponse
+	37, // 58: kratos.evaluation.v1.EvaluationService.SubmitRunPreference:output_type -> kratos.evaluation.v1.EvalRunPreference
+	40, // 59: kratos.evaluation.v1.EvaluationService.ListRunPreferences:output_type -> kratos.evaluation.v1.ListRunPreferencesResponse
+	41, // 60: kratos.evaluation.v1.EvaluationService.GetEvalGate:output_type -> kratos.evaluation.v1.EvalGateConfig
+	41, // 61: kratos.evaluation.v1.EvaluationService.UpdateEvalGate:output_type -> kratos.evaluation.v1.EvalGateConfig
+	46, // 62: kratos.evaluation.v1.EvaluationService.ListDatasetVersions:output_type -> kratos.evaluation.v1.ListDatasetVersionsResponse
+	49, // 63: kratos.evaluation.v1.EvaluationService.RunExperiment:output_type -> kratos.evaluation.v1.RunExperimentResponse
+	38, // [38:64] is the sub-list for method output_type
+	12, // [12:38] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_kratos_evaluation_v1_evaluation_proto_init() }
@@ -3318,14 +4158,14 @@ func file_kratos_evaluation_v1_evaluation_proto_init() {
 		return
 	}
 	file_kratos_evaluation_v1_evaluation_proto_msgTypes[3].OneofWrappers = []any{}
-	file_kratos_evaluation_v1_evaluation_proto_msgTypes[19].OneofWrappers = []any{}
+	file_kratos_evaluation_v1_evaluation_proto_msgTypes[24].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_evaluation_v1_evaluation_proto_rawDesc), len(file_kratos_evaluation_v1_evaluation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

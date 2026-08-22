@@ -4,7 +4,7 @@
 // GraphTeamNode（渲染成员行）与 GraphStageBlock（heightOf 布局 + 成员弹框）共用，
 // 保证卡片内容高度与 DAG 布局高度始终一致。
 import { useActivityQueries } from './useActivityQueries';
-import type { GraphNode, MemberSession, TeamStage } from '../v2Types';
+import type { GraphNode, MemberSession, PlanStep, TeamStage } from '../v2Types';
 
 export function useGraphNodeTeam() {
   const store = useActivityQueries();
@@ -34,5 +34,10 @@ export function useGraphNodeTeam() {
     return out;
   }
 
-  return { teamStageOf, membersOf };
+  function staffingOf(node: GraphNode): PlanStep | undefined {
+    if (!node.DagNodeID) return undefined;
+    return store.planSteps().get(node.DagNodeID);
+  }
+
+  return { teamStageOf, membersOf, staffingOf };
 }

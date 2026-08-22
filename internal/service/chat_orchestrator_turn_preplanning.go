@@ -83,6 +83,53 @@ func (o *ChatOrchestrator) runPrePlanningGate(
 	return decision, nil
 }
 
+// resolveSpiritTurnOrchestration classifies the Spirit session from persisted
+// teams and builds the runtime brief. Fail-soft to Idle when TeamUC is missing
+// or the list query fails.
+func (o *ChatOrchestrator) resolveSpiritTurnOrchestration(ctx context.Context, sessionID string) biz.SpiritTurnOrchestration {
+	out := biz.SpiritTurnOrchestration{Phase: biz.SpiritPhaseIdle}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return out
+	}
+	teamUC := o.team().TeamUC
+	if teamUC == nil {
+		return out
+	}
+	teams, err := teamUC.ListBySpiritSessionID(ctx, sessionID)
+	if err != nil {
+		o.lg().Warn("查询会话团队失败，编排阶段按 idle 处理",
+			loggateway.StepID("chat.orch_phase.resolve"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err),
+		)
+		return out
+	}
+	out.Phase = biz.ResolveSpiritSessionPhase(teams)
+	out.Brief = biz.FormatOrchestrationBrief(out.Phase, teams)
+	return out
+}
+
+func (o *ChatOrchestrator) orchestrationLooksLikeNewTask(ctx context.Context, input biz.TurnInput, intentArt *intent.Artifact) bool {
+	refined := ""
+	if intentArt != nil {
+		refined = intentArt.RefinedGoal
+	}
+	last := latestPlanUserMessage(ctx, o.team().TaskPlanner, input.SessionID)
+	return biz.OrchestrationLooksLikeNewTask(input.Content, last, refined)
+}
+
+func latestPlanUserMessage(ctx context.Context, planner biz.TaskPlannerPort, sessionID string) string {
+	if planner == nil || strings.TrimSpace(sessionID) == "" {
+		return ""
+	}
+	plans, err := planner.ListPlans(ctx, sessionID)
+	if err != nil || len(plans) == 0 || plans[0] == nil {
+		return ""
+	}
+	return strings.TrimSpace(plans[0].UserMessage)
+}
+
 // intentArtifactToBiz converts the intent pass artifact (internal/agent/intent)
 // to the biz-layer mirror (biz.IntentArtifact). Returns nil when the source is nil
 // to preserve the "no intent pass ran" signal downstream.

@@ -171,6 +171,22 @@ func toProtoContextBudgetStats(s biz.ContextBudgetStats) *v1.GetContextBudgetSta
 	return out
 }
 
+func toProtoCacheHitRatioStats(stats []biz.CacheHitRatioStat) *v1.GetCacheHitRatioStatsResponse {
+	out := &v1.GetCacheHitRatioStatsResponse{}
+	for _, s := range stats {
+		out.Stats = append(out.Stats, &v1.CacheHitRatioStat{
+			Provider:      s.Provider,
+			Model:         s.Model,
+			Samples:       int32(s.Samples),
+			PromptTokens:  s.PromptTok,
+			CachedTokens:  s.CachedTok,
+			WeightedRatio: s.WeightedRatio,
+			P50Ratio:      s.P50Ratio,
+		})
+	}
+	return out
+}
+
 func toProtoUsageSummary(s biz.UsageSummary) *v1.UsageSummary {
 	return &v1.UsageSummary{
 		CallCount:          int32(s.CallCount),

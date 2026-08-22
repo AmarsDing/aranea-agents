@@ -117,8 +117,8 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 1. ✅ 审批/通知/活动适配器已接线（`SIMonitorApprovalSink`/`SIMonitorNotifier`/`SIMonitorActivitySink`，Monitor Events 通道）
 2. ✅ pause 恢复入口已落地（drive worker 陈旧恢复：`SIStaleTimeout` 默认 30m，diagnosing/patching/verifying→detected 重驱动）
 3. ✅ applied/observing 强制回滚已落地（Watchdog `ScanOnce` + Admin `Rollback`，经 `SIApplier.Rollback`）
-4. P2 偏差 1（golangci-lint 包级接线）未回收：G3 仍以 `go vet` 为确定性下限
-5. P2 偏差 2（web 侧 gate 进 Runner）未回收：`DeriveAffectedScopes` web 标志已透传，执行接线待后续
+4. ✅ P2 偏差 1（golangci-lint，2026-08-22）：默认 `go vet`；显式 `WithGolangCILint` 或 `ARANEA_SI_GOLANGCI=1` 且 worktree 有配置、PATH 有二进制时才跑 `golangci-lint run <pkgs>`
+5. ✅ P2 偏差 2（web 侧 gate，2026-08-22）：`PlanSIVerification` 消费 `webScope`，执行 `g3_web_lint`（`pnpm lint`；缺 pnpm / 无 web/ 则 skipped）
 
 **W6 接线备注**：
 - `provideSelfImprovementAdminUsecase` 函数已备，但未注册进 wire.Build——T4.3 内部路径暂无消费者，Wire 不允许 unused provider；P5 Proto/控制台落地时注册并暴露 RPC
@@ -171,7 +171,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 **新增（Phase 2 已落地）**：
 - `internal/biz/self_improvement_patch.go`（diff 解析/受影响包推导/保护清单/规模上限/敏感信息检测）+ `_test.go`（含 T2.1 端口契约测试）
 - `internal/service/repo_sandbox_runner.go`（worktree 沙盒 + ApplyDiff + G1-G3）+ `_test.go`（fixture 仓库集成测试）
-- ~~`internal/tools/patcherfs/patcherfs.go`（patcher_fs_read/patcher_fs_write/patcher_git_diff）+ `_test.go`~~（已删除 2026-08-14：零生产引用，TEST_ONLY 僵尸实现）
+- `internal/tools/patcherfs/patcherfs.go`（patcher_fs_read/write/list + patcher_git_diff，worktree 路径监狱；2026-08-22 恢复并接入 Analyst/Patcher 工具回路）+ `_test.go`
 
 **修改（Phase 2 已落地）**：
 - `internal/biz/self_improvement_repo.go`（新增 `RepoSandbox` 端口，T2.1）
@@ -234,7 +234,8 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 ---
 
-*文档版本：2026-08-09 — 运行时端到端冒烟完成（默认配置灰度开启 + 造 error_cluster 信号全链路验证，记录见文首）；遗留：重试 ApplyDiff exit 128 排查、G2 受 HEAD 红测阻塞待治理。*
+*文档版本：2026-08-22 — P1 RCA：Analyst 接 FailureReport + RootCauseAnalyzer；web-only 缺 pnpm fail-closed。遗留：G2 已知失败豁免、真实 G5 eval、代码通道改为 PR/重启编排、Learn few-shot。*
+*历史版本：2026-08-09 — 运行时端到端冒烟完成（默认配置灰度开启 + 造 error_cluster 信号全链路验证，记录见文首）；遗留：重试 ApplyDiff exit 128 排查、G2 受 HEAD 红测阻塞待治理。*
 *历史版本：2026-07-31 — Phase 1–5（T1.1–T5.4）全部完成并验证；竞赛四件套同步实现口径（8 项落地偏差记录于实施进度文档 v2.0）。遗留：运行时端到端冒烟待灰度开启后执行。*
 *历史版本：2026-07-31 — Phase 1–4（T1.1–T4.6）+ W6 全链接线完成并验证，状态标记与文件清单同步；design.md §五/§6 已同步实际接线（24 providers + drive worker + 配置块）。*
 *历史版本：2026-07-30 — Phase 1（T1.1–T1.11）、Phase 2（T2.1–T2.6）、Phase 3（T3.1–T3.6）完成并验证。*

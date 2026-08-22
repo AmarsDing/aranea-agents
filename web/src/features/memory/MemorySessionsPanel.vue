@@ -148,7 +148,14 @@
         </div>
         <template v-else>
           <q-list separator>
-            <q-item v-for="task in taskRows" :key="task.id">
+            <q-item
+              v-for="task in taskRows"
+              :key="task.id"
+              clickable
+              :active="selectedTaskId === task.id"
+              active-class="memory-active-item"
+              @click="$emit('update:selectedTaskId', task.id)"
+            >
               <q-item-section>
                 <q-item-label>{{ task.task_title || task.task_key || t('memory.sessions.defaultTask') }}</q-item-label>
                 <q-item-label caption>{{ task.task_goal || task.id }}</q-item-label>
@@ -171,6 +178,19 @@
             <q-icon name="assignment" size="38px" />
             <div class="q-mt-sm">{{ t('memory.sessions.emptyTasks') }}</div>
           </q-card-section>
+          <q-separator v-if="taskRows.length" />
+          <q-card-section v-if="taskRows.length">
+            <div class="text-subtitle2 q-mb-sm">{{ t('memory.sessions.l1FieldsTitle') }}</div>
+            <div v-if="loadingFields" class="row justify-center q-py-md">
+              <q-spinner-dots size="24px" color="primary" />
+            </div>
+            <memory-l1-field-tree
+              v-else
+              :task="selectedTask"
+              :nodes="fieldTree"
+              :empty-label="t('memory.sessions.emptyFields')"
+            />
+          </q-card-section>
         </template>
       </q-card>
     </div>
@@ -178,16 +198,19 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { QTableProps } from 'quasar';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
+import MemoryL1FieldTree from '../../components/memory/MemoryL1FieldTree.vue';
 import type { Session } from '../../features/session/types';
-import type { L0AssemblySegmentsMap, L0AssemblySnapshot, L1Task } from '../../features/memory/types';
+import type { L0AssemblySegmentsMap, L0AssemblySnapshot, L1Field, L1Task } from '../../features/memory/types';
+import { buildL1FieldTree } from './l1FieldTree';
 import { memorySessionStatusColor as statusColor } from './memoryTableUi';
 
 const { t, te } = useI18n();
 
-defineProps<{
+const props = defineProps<{
   sessionRows: Session[];
   selectedSessionId: string | null;
   loadingSessions: boolean;
@@ -196,14 +219,21 @@ defineProps<{
   loadingSnapshots: boolean;
   taskRows: L1Task[];
   loadingTasks?: boolean;
+  selectedTaskId?: string | null;
+  fieldRows?: L1Field[];
+  loadingFields?: boolean;
 }>();
 
 defineEmits<{
   'update:selectedSessionId': [value: string];
+  'update:selectedTaskId': [value: string];
   refreshSessions: [];
   refreshMemory: [];
   openSnapshot: [snapshot: L0AssemblySnapshot];
 }>();
+
+const selectedTask = computed(() => props.taskRows.find((row) => row.id === props.selectedTaskId) ?? null);
+const fieldTree = computed(() => buildL1FieldTree(props.fieldRows));
 
 function parseSegments(snapshot: L0AssemblySnapshot): L0AssemblySegmentsMap {
   return parseJSON(snapshot.segments_json, {});

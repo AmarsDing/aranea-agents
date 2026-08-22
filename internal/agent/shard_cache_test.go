@@ -191,6 +191,38 @@ func TestShardFingerprint_MCPProjection(t *testing.T) {
 	}
 }
 
+// TestMcpDirectMountEnabled_BrokerPriority 钉死 B2（2026-08-21 全链路审查）
+// 装配矩阵：两键同开只挂 broker（直连不挂载，杜绝远程工具全量 dump 与
+// 元工具重复进 tools block）；仅开 mcp_tool_set 且有 server 才直连挂载。
+func TestMcpDirectMountEnabled_BrokerPriority(t *testing.T) {
+	cases := []struct {
+		name        string
+		toolSet     bool
+		broker      bool
+		serverCount int
+		want        bool
+	}{
+		{"both_off", false, false, 2, false},
+		{"direct_only_with_servers", true, false, 2, true},
+		{"direct_only_no_servers", true, false, 0, false},
+		{"broker_only", false, true, 2, false},
+		{"both_on_broker_wins", true, true, 2, false},
+		{"both_on_no_servers", true, true, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eff := map[string]bool{
+				biz.ToolKeyMCPToolSet: tc.toolSet,
+				biz.ToolKeyMCPBroker:  tc.broker,
+			}
+			if got := mcpDirectMountEnabled(eff, tc.serverCount); got != tc.want {
+				t.Errorf("mcpDirectMountEnabled(toolSet=%v, broker=%v, servers=%d) = %v, want %v",
+					tc.toolSet, tc.broker, tc.serverCount, got, tc.want)
+			}
+		})
+	}
+}
+
 // ---------- C. shardCache 单测 ----------
 
 func TestShardCache_MissThenHit(t *testing.T) {

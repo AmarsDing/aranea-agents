@@ -41,3 +41,15 @@ type CacheHitRatioStatsRepo interface {
 	// reconciliation rows are excluded.
 	CacheHitRatioStats(ctx context.Context, window time.Duration) ([]CacheHitRatioStat, error)
 }
+
+// CacheHitRatioStats serves the RPC/observability read path. The narrow
+// capability is resolved via type assertion (same pattern as ContextBudgetStats)
+// so the composite usage.Repo stays untouched; a repo without the capability
+// yields empty stats.
+func (u *Usecase) CacheHitRatioStats(ctx context.Context, window time.Duration) ([]CacheHitRatioStat, error) {
+	repo, ok := u.repo.(CacheHitRatioStatsRepo)
+	if !ok {
+		return nil, nil
+	}
+	return repo.CacheHitRatioStats(ctx, window)
+}

@@ -9,6 +9,8 @@ const mockStore = {
   loadDocumentLinks: vi.fn(),
   search: vi.fn(),
   moveDocToDir: vi.fn(),
+  loadDocumentContent: vi.fn(),
+  saveDocumentContent: vi.fn(),
 };
 
 vi.mock('../../../stores/knowledge', () => ({

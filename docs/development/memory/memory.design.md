@@ -1842,7 +1842,9 @@ const memoryRoutes = [
   ],
   "activity_feed": [
     { "ts": "2026-07-25T10:32:00+08:00", "kind": "fact_extracted",
-      "layer_from": "L2", "layer_to": "L3", "summary": "从「季度复盘讨论」提炼出 2 条事实" }
+      "layer_from": "L2", "layer_to": "L3", "summary": "从「季度复盘讨论」提炼出 2 条事实" },
+    { "ts": "2026-07-25T11:02:00+08:00", "kind": "fact_injected",
+      "layer_from": "L3", "layer_to": "L0", "summary": "偏好简洁回复" }
   ]
 }
 ```
@@ -2138,4 +2140,86 @@ message ListMemoryEpisodesResponse {
 | `predictable_count` | 每对近重复中的较弱项（更短 statement；同长则更早 `created_at`） | 没有可合并副本 |
 
 不引入新表、不改 L0–L4 存储语义。`ListFactRows` JSON 不含 `embedding_blob`，生产 `memoryButlerTools()` 未注入 `Deps.Embedder`，故本指标与 `selective_remember` / `deduplicate` 均复用既有 trigram 相似度，不接 embedding 管线。
+
+---
+
+## 子模块：记忆中心信任闭环（2026-08-22）
+
+> 需求 [`memory.md`](./memory.md) §23。不新开 RPC 表；补门禁与前端深链。
+
+### A. 全景 RPC 租户门禁
+
+`requireAdmin()`（service / biz）只检查 usecase 是否注入，**不是**角色检查。全景类 RPC 在 service 层增加与 Agent 目录一致的 IDOR：
+
+| 步骤 | 行为 |
+|------|------|
+| 1 | `requireWired()`：admin usecase 未注入 → Internal |
+| 2 | `authorizeMemoryScope(ctx, "agent", agentID, false)`：未登录 → Unauthorized |
+| 3 | `assertAgentMemoryAccess`：`AgentUsecase.Get` + `workspace.AssertWorkspaceOrShared`；跨租户 → `NotFound(agent)`（不返回 Forbidden，避免枚举） |
+| 4 | 系统工作区 caller 跳过步骤 3 |
+
+覆盖：`GetMemoryLayerOverview`、`GetUnifiedMemoryGraph`、`ListMemoryEpisodes`，以及同口径的 `DebugMemoryRecall` / `CompositeSearchMemories`。
+
+`MemoryServiceConfig` 增加 `AgentUC *biz.AgentUsecase`（测试可注入窄 `Get` stub）。
+
+### B. 聊天 → 记忆中心深链
+
+路由（现有 `name: memory`，仅 query）：
+
+```
+/memory?tab=browse&layer=L3&factId=<id>&agentId=<uuid>&agentKey=<key>&sessionId=<sid>
+```
+
+| query | 含义 |
+|-------|------|
+| `tab` | panorama / graph / browse / governance |
+| `layer` | L0–L3 → browse 过滤；L4 → graph |
+| `factId` | L3 打开事实抽屉；`ListMemoryFacts.keyword` 同时匹配 `id` 与 statement |
+| `agentId` / `agentKey` | 锁定 Hero Agent；key 在目录加载后解析为 id |
+| `sessionId` | 锁定会话；Agent 切换 watch 不得清掉深链会话 |
+
+Chip 无 `fact_id` 时：L3 用 `line` 作 keyword；L2/L1 进 browse 对应层；L4 进 graph。
+
+### C. KPI 单源与诚实健康
+
+- 删除页顶 `overviewCards`（客户端聚合会话/任务/快照）。全景 `GetMemoryLayerOverview` 是唯一健康数字。
+- 删除治理区硬编码 `settingChecklist`（`done: true`）。真实探测改到 P1 Trust/Ops 拆分后再做。
+
+### D. 浏览 Tab 会话口径
+
+`MemoryEpisodeTimeline` 的 `session-id` 绑定页级 `selectedSessionId`，禁止写死 `null`。
+
+### E. Trust / Ops 拆分（P1）
+
+四 Tab 壳层保留。`governance` 改名为信任面（冲突 / 级联 / 进化），路由名不变以免打断行动项 `target_tab=governance`。新增 `ops` Tab，仅 `auth.isPlatformAdmin` 可见：平台设置、Worker、死信、召回测试器。非管理员访问 `?tab=ops` 回落到 `governance`。
+
+### F. 注入动态（P1）
+
+`buildMemoryActivityFeed` 在写入类事件之外，对 `injected_count > 0` 且 `last_used_at` 非空的事实追加 `kind=fact_injected`，`layer_from=L3`、`layer_to=L0`，时间戳用 `last_used_at`。与 `fact_extracted` 可并存（创建 vs 注入是两类事件）。
+
+### G. 会话详情入口（P1）
+
+会话详情顶栏「查看记忆」使用既有 `memoryCenterRoute({ tab: browse, sessionId, agentId })`。
+
+### H. L0 瀑布 / L1 字段树 / 进化审批 / PII（P2）
+
+- L0：`buildL0Waterfall(segments_json)` 按 system→L1/L3/L4→user 排序，快照抽屉展示占比条。不新开调试页。
+- L1：`buildL1FieldTree(field_path)` 生成 QTree；任务行显示 used/budget。回滚写 API 仍未对外，叶子展示 revision。
+- 进化：`EvolutionProposalRows` 改查 `agent_evolution_proposals`（不再误用 cascade 表）。批准/拒绝/回滚走既有 `AppendEvolutionEvent`，`event_kind` 为 `proposal_approved` / `proposal_rejected` / `event_reverted`，插入后更新对应行状态。
+- PII：信任 Tab 调 `ListPIIFlaggedFacts`，query `agent_id` 过滤 originating agent，并走 `assertAgentMemoryAccess`。
+
+### I. 全景聚合与页编排拆分（P3）
+
+`GetLayerOverview` 在 admin 实现 `MemoryOverviewStatsReader` 时走 SQL：
+
+| 方法 | 用途 |
+|------|------|
+| `AggregateFactOverview` | `COUNT` active + `created_at >= today` + `SUM(use_count)`，originating `agent_id` |
+| `ListRecentFactActivityRows` | 最近 N 条 `created_at`（`fact_extracted`） |
+| `ListRecentlyInjectedFactRows` | `injected_count > 0 AND last_used_at <> ''`（`fact_injected`） |
+| `CountEntitiesCreatedSince` | L4 今日新增 |
+
+未实现该口的测试 fake 仍走 500 行扫描兜底。实体列表在聚合路径只拉 `activityFeedLimit` 条作动态。
+
+前端：`useMemoryCenterPage` 只做深链 / Agent / 会话编排；facts、L0/L1、Trust 分别在 `useMemoryCenterFacts` / `useMemoryCenterSessionMemory` / `useMemoryCenterTrust`。全景与情景经 `useMemoryStore.loadLayerOverview` / `listEpisodes`。
 

@@ -27,10 +27,11 @@ type MemoryAdminAdapter struct {
 }
 
 var (
-	_ biz.SessionAdminStore = (*MemoryAdminAdapter)(nil)
-	_ biz.MemoryAdminDeps   = (*MemoryAdminAdapter)(nil)
-	_ biz.L1SchemaReader    = (*MemoryAdminAdapter)(nil)
-	_ biz.L3FactWriter      = (*MemoryAdminAdapter)(nil)
+	_ biz.SessionAdminStore         = (*MemoryAdminAdapter)(nil)
+	_ biz.MemoryAdminDeps           = (*MemoryAdminAdapter)(nil)
+	_ biz.L1SchemaReader            = (*MemoryAdminAdapter)(nil)
+	_ biz.L3FactWriter              = (*MemoryAdminAdapter)(nil)
+	_ biz.MemoryOverviewStatsReader = (*MemoryAdminAdapter)(nil)
 )
 
 // NewSessionAdminStoreAdapter creates the L0–L4 shim adapter.

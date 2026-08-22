@@ -316,6 +316,36 @@ message GetContextBudgetStatsResponse {
   repeated ContextBudgetToolSchemaStat top_tools = 4;
 }
 
+// GetCacheHitRatioStatsRequest selects the trailing aggregation window
+// (29-token §9.3). The aggregation is global per (provider, model) — usage
+// rows from all workspaces contribute.
+message GetCacheHitRatioStatsRequest {
+  // Trailing window in hours. 0 = default 1 (matches the alert window);
+  // clamped to [1, 168].
+  int32 window_hours = 1;
+}
+
+// CacheHitRatioStat is one (provider, model) group's prompt-cache efficiency
+// over the window. Only turns with prompt_tokens >= 1024 (provider minimum
+// cacheable length) count as samples.
+message CacheHitRatioStat {
+  string provider = 1;
+  string model = 2;
+  int32 samples = 3;
+  int64 prompt_tokens = 4;
+  int64 cached_tokens = 5;
+  // cached_tokens / prompt_tokens. Diagnostic only: a single huge
+  // cache-busted turn (post-compaction history rewrite) dominates it.
+  double weighted_ratio = 6;
+  // Median per-turn cached/prompt ratio — the llm.cache_hit_ratio_low alert
+  // keys on this; robust to compaction outliers.
+  double p50_ratio = 7;
+}
+
+message GetCacheHitRatioStatsResponse {
+  repeated CacheHitRatioStat stats = 1;
+}
+
 service UsageService {
   rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
     option (google.api.http) = {get: "/v1/usage/overview"};
@@ -379,5 +409,11 @@ service UsageService {
   // breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
   rpc GetContextBudgetStats(UsageQuery) returns (GetContextBudgetStatsResponse) {
     option (google.api.http) = {get: "/v1/usage/context-budget-stats"};
+  }
+  // GetCacheHitRatioStats aggregates prompt-cache hit ratios per
+  // (provider, model) over a trailing window (29-token §9.3). Global
+  // observability metric — same caller rules as budget alerts.
+  rpc GetCacheHitRatioStats(GetCacheHitRatioStatsRequest) returns (GetCacheHitRatioStatsResponse) {
+    option (google.api.http) = {get: "/v1/usage/cache-hit-ratio-stats"};
   }
 }

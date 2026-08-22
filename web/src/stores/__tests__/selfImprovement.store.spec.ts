@@ -79,7 +79,7 @@ function makeDetail(over: Partial<SIRunDetail> = {}): SIRunDetail {
       fixStrategy: 'guard',
       confidence: 0.9,
     },
-    verificationReport: [{ gate: 'G1 build', passed: true, output: 'ok', durationMs: 1200 }],
+    verificationReport: [{ gate: 'G1 build', passed: true, skipped: false, output: 'ok', durationMs: 1200 }],
     criticReport: { isSafe: true, riskLevel: 'low', concerns: [], suggestion: '' },
     governance: { riskLevel: 'high', channel: 'approval', ruleHits: ['R3'] },
     ...over,

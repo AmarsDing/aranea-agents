@@ -29,6 +29,7 @@ type SpiritDelivery struct {
 	stepReader        SpiritStepReader
 	graphDelivReader  SpiritGraphDeliverableReader
 	runStatsReader    SpiritTeamRunStatsReader
+	inboxFS           TeamInboxFS
 	lg                loggateway.Logger
 }
 
@@ -433,7 +434,8 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 	// StructuredJSON and are described in Artifacts.
 	summarySource, _ := stateDeliv[deliverableReservedKeySummary].(string)
 	summarySource = strings.TrimSpace(summarySource)
-	structuredJSON := marshalNonReservedStateKeys(stateDeliv)
+	artifacts := buildDeliverableArtifacts(stateDeliv, t.Deliverables)
+	structuredJSON := marshalEnvelopeStructuredJSON(stateDeliv, artifacts)
 	if summarySource == "" {
 		summarySource = aggregateTopicSummaries(stateDeliv)
 	}
@@ -441,7 +443,6 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		summarySource = structuredJSON
 	}
 	cognition := extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
-	artifacts := buildDeliverableArtifacts(stateDeliv, t.Deliverables)
 
 	// MDC completion-time advisory: required contract topics that were never
 	// written (producer bypassed set_deliverable) surface as a Warn — the run
@@ -972,6 +973,21 @@ func renderArtifactSections(ref DeliverableRef, downstreamTeam Team) string {
 		if format == "" {
 			format = "text"
 		}
+		if art.IsBulkPointer() {
+			dest := art.RelPath
+			if dest == "" {
+				dest = art.Key
+			}
+			sizeHint := ""
+			if art.SizeBytes > 0 {
+				sizeHint = fmt.Sprintf("，%d 字节", art.SizeBytes)
+			} else if art.SizeChars > 0 {
+				sizeHint = fmt.Sprintf("，%d 字", art.SizeChars)
+			}
+			sb.WriteString(fmt.Sprintf("\n- 附件 %s（%s%s）已物化到 inbox/%s/%s，请用文件工具按需读取，禁止把文件正文贴进回复。",
+				label, format, sizeHint, ref.TeamID, dest))
+			continue
+		}
 		if art.SizeChars == 0 {
 			// 空载荷：keyed 读取只会得到「内容为空」的 NotFound，不给读取指令。
 			sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s）：载荷内容为空（上游写入但无正文）。", label, format))
@@ -1070,6 +1086,7 @@ func (d *SpiritDelivery) DeliverableProtocolSuffix(t Team) string {
 	sb.WriteString("样例 2（长文交付物，正文放契约 topic，摘要只写指针。注意顺序：先写摘要、后写 topic 载荷——不带 topic 的写入会整体覆盖本节点本地视图，topic 载荷写在最后可保住本地读回）：\n")
 	sb.WriteString("  set_deliverable(data={\"summary\": \"《云计算十年》已完成并复核。\\n- 观点：云原生进入平台工程阶段\\n- 数据：引用 12 组行业数据\\n载荷：article(markdown, 8234字)\"})\n")
 	sb.WriteString("  set_deliverable(topic=\"article\", data={\"title\": \"云计算十年\", \"format\": \"markdown\", \"content\": \"# 云计算十年\\n……（完整正文，8234 字）\"})\n")
+	sb.WriteString("- Brief：summary 必填（一句话结论 + 要点）。大文件/二进制禁止写入 content 指望下游整段注入；把路径或制品列入同一 topic（rel_path / artifact_id），下游工作区 inbox/<上游团队ID>/ 仅含声明附件。\n")
 	sb.WriteString("未调用 set_deliverable 的 completed 将被判定为 failed，下游团队不会收到输入；信息不足时在 summary 中如实写明阻塞或待澄清事项，禁止虚构交付物。\n")
 	return sb.String()
 }
@@ -1080,6 +1097,7 @@ func (d *SpiritDelivery) DeliverableProtocolSuffix(t Team) string {
 // turn input (both the orchestrator dispatch path and the lazy DAG activation
 // path compose through this single function so the two cannot drift).
 func (d *SpiritDelivery) BuildTeamTurnInput(ctx context.Context, t Team) string {
+	d.materializeUpstreamInbox(ctx, t)
 	taskDesc := t.TaskDescription
 	if prefix := d.InjectUpstreamDeliverables(ctx, t); prefix != "" {
 		taskDesc = prefix + taskDesc
@@ -1766,19 +1784,7 @@ func buildDeliverableArtifacts(stateDeliv map[string]any, deliverablesJSON strin
 		}
 		switch v := stateDeliv[k].(type) {
 		case map[string]any:
-			if title, ok := v["title"].(string); ok {
-				art.Title = strings.TrimSpace(title)
-			}
-			if art.Format == "" {
-				if f, ok := v["format"].(string); ok {
-					art.Format = strings.TrimSpace(f)
-				}
-			}
-			if content, ok := v["content"].(string); ok && strings.TrimSpace(content) != "" {
-				art.SizeChars = utf8.RuneCountInString(content)
-			} else {
-				art.SizeChars = jsonValueRuneLen(v)
-			}
+			fillArtifactFromPayload(&art, v)
 		case string:
 			art.SizeChars = utf8.RuneCountInString(v)
 		default:
@@ -1787,6 +1793,138 @@ func buildDeliverableArtifacts(stateDeliv map[string]any, deliverablesJSON strin
 		out = append(out, art)
 	}
 	return out
+}
+
+func fillArtifactFromPayload(art *DeliverableArtifact, v map[string]any) {
+	if art == nil || v == nil {
+		return
+	}
+	if title, ok := v["title"].(string); ok {
+		art.Title = strings.TrimSpace(title)
+	}
+	if art.Format == "" {
+		if f, ok := v["format"].(string); ok {
+			art.Format = strings.TrimSpace(f)
+		}
+	}
+	if mime, ok := v["mime_type"].(string); ok {
+		art.MimeType = strings.TrimSpace(mime)
+	}
+	if sha, ok := v["sha256"].(string); ok {
+		art.SHA256 = strings.TrimSpace(sha)
+	}
+	if id, ok := v["artifact_id"].(string); ok {
+		art.ArtifactID = strings.TrimSpace(id)
+	}
+	if rel, ok := v["rel_path"].(string); ok {
+		art.RelPath = sanitizeInboxRelPath(rel)
+	} else if rel, ok := v["path"].(string); ok {
+		art.RelPath = sanitizeInboxRelPath(rel)
+	}
+	switch n := v["size_bytes"].(type) {
+	case float64:
+		art.SizeBytes = int64(n)
+	case int:
+		art.SizeBytes = int64(n)
+	case int64:
+		art.SizeBytes = n
+	}
+	if content, ok := v["content"].(string); ok && strings.TrimSpace(content) != "" {
+		art.SizeChars = utf8.RuneCountInString(content)
+	} else if art.SizeChars == 0 {
+		art.SizeChars = jsonValueRuneLen(v)
+	}
+	if strings.TrimSpace(art.ArtifactID) != "" {
+		art.Kind = DeliverableArtifactKindArtifact
+	} else if strings.TrimSpace(art.RelPath) != "" {
+		art.Kind = DeliverableArtifactKindWorkspaceRel
+	}
+}
+
+// marshalEnvelopeStructuredJSON copies non-reserved keys into the envelope.
+// Bulk pointers and oversize text omit the full content (M78 ORGFAST-16).
+func marshalEnvelopeStructuredJSON(stateDeliv map[string]any, artifacts []DeliverableArtifact) string {
+	byKey := make(map[string]DeliverableArtifact, len(artifacts))
+	for _, a := range artifacts {
+		byKey[a.Key] = a
+	}
+	rest := make(map[string]any, len(stateDeliv))
+	for k, v := range stateDeliv {
+		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
+			continue
+		}
+		if strings.HasPrefix(k, deliverableAckKeyPrefix) {
+			continue
+		}
+		art := byKey[k]
+		if art.IsBulkPointer() {
+			rest[k] = bulkPointerStub(v, art)
+			continue
+		}
+		if art.SizeChars > MaxEnvelopeStructuredPayloadChars {
+			rest[k] = oversizedTextStub(v, art)
+			continue
+		}
+		rest[k] = v
+	}
+	if len(rest) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(rest)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func bulkPointerStub(v any, art DeliverableArtifact) map[string]any {
+	stub := map[string]any{
+		"content_omitted": true,
+		"kind":            art.ResolvedKind(),
+	}
+	if art.Title != "" {
+		stub["title"] = art.Title
+	}
+	if art.Format != "" {
+		stub["format"] = art.Format
+	}
+	if art.RelPath != "" {
+		stub["rel_path"] = art.RelPath
+	}
+	if art.ArtifactID != "" {
+		stub["artifact_id"] = art.ArtifactID
+	}
+	if art.SizeBytes > 0 {
+		stub["size_bytes"] = art.SizeBytes
+	}
+	if m, ok := v.(map[string]any); ok {
+		if t, ok := m["title"].(string); ok && stub["title"] == nil {
+			stub["title"] = t
+		}
+	}
+	return stub
+}
+
+func oversizedTextStub(v any, art DeliverableArtifact) map[string]any {
+	stub := map[string]any{
+		"content_omitted": true,
+		"size_chars":      art.SizeChars,
+	}
+	if m, ok := v.(map[string]any); ok {
+		if t, ok := m["title"].(string); ok {
+			stub["title"] = t
+		}
+		if f, ok := m["format"].(string); ok {
+			stub["format"] = f
+		}
+	}
+	if art.Title != "" {
+		stub["title"] = art.Title
+	}
+	if art.Format != "" {
+		stub["format"] = art.Format
+	}
+	return stub
 }
 
 // aggregateTopicSummaries builds a readable summary from topic payloads when

@@ -95,8 +95,10 @@ const (
 	SandboxGateTest   SandboxGateKind = "g2_test"
 	SandboxGateLint   SandboxGateKind = "g3_lint"
 	SandboxGateCritic SandboxGateKind = "g4_critic"
-	// SandboxGateEvalBase（G5 评估基线）当前未真实执行：pipeline 在 G1-G3
-	// 全过后落一条 passed/skipped 记录保持控制台透明（design D4 注记）。
+	// SandboxGateWebLint is the frontend lint gate (pnpm lint in web/).
+	SandboxGateWebLint SandboxGateKind = "g3_web_lint"
+	// SandboxGateEvalBase（G5 评估基线）当前未真实执行：pipeline 恒落一条
+	// Skipped=true 记录（Passed=false，不计入 allPass）。
 	SandboxGateEvalBase SandboxGateKind = "g5_eval"
 )
 
@@ -104,8 +106,19 @@ const (
 type SandboxGateResult struct {
 	Gate       SandboxGateKind `json:"gate"`
 	Passed     bool            `json:"passed"`
+	Skipped    bool            `json:"skipped,omitempty"`
 	Output     string          `json:"output"` // 截断 64KB
 	DurationMS int64           `json:"duration_ms"`
+}
+
+// Failed reports an executed gate that did not pass. Skipped gates are not failures.
+func (r SandboxGateResult) Failed() bool {
+	return !r.Skipped && !r.Passed
+}
+
+// NewSkippedSandboxGate records a gate that was not executed.
+func NewSkippedSandboxGate(gate SandboxGateKind, reason string) SandboxGateResult {
+	return SandboxGateResult{Gate: gate, Passed: false, Skipped: true, Output: reason}
 }
 
 // CriticReport is the Critic Agent structured review (V2 契约复用).

@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -557,26 +558,39 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	preGeneratedTaskID := resolveRootTaskActivityID(input)
 	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)
 
+	// Session orchestration phase is resolved from persisted teams before the
+	// Spirit LLM runs. Idle still uses ForcePlanning; Ready/Orchestrating/
+	// Interrupted keep the current DAG unless the user asked for a new task.
+	var orchTurn biz.SpiritTurnOrchestration
+	if strings.TrimSpace(ag.AgentKey) == biz.SpiritAgentKey {
+		orchTurn = o.resolveSpiritTurnOrchestration(ctx, sessionID)
+		ctx = biz.WithSpiritTurnOrchestration(ctx, orchTurn)
+	}
+
 	// ── PRE-PLANNING GATE (P1-2) ──
-	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
-	// force the planning path by injecting a system instruction.
-	//
-	// P1 fix (2026-06-18): Upgraded from soft gate to hard gate. When
-	// ForcePlanning=true, the Service layer directly calls TaskPlanner.Plan()
-	// to create and persist a plan, rather than relying on the LLM to
-	// voluntarily invoke plan_and_execute. This ensures complex tasks always
-	// go through planning. The forcedPlanningRunOption is still injected as a
-	// hint to the LLM. If Plan() fails, we fall back to the soft gate.
+	// After intent pass, run a quick complexity assessment. If Moderate/Complex
+	// AND the session is Idle (or an explicit new task), force the planning path.
 	gateStart := time.Now()
 	if strings.TrimSpace(input.ParentTaskID) == "" {
-		// 与 runPrePlanningGate 的续跑跳过对齐：仅根 turn 发布评估进度。
 		o.publishTurnProgress(ctx, sessionID, "assessing", nil)
 	}
 	gateDecision, gateErr := o.runPrePlanningGate(ctx, input, intentArtifact)
+	if gateErr == nil && gateDecision.ForcePlanning && strings.TrimSpace(ag.AgentKey) == biz.SpiritAgentKey {
+		looksNew := o.orchestrationLooksLikeNewTask(ctx, input, intentArtifact)
+		if !biz.ShouldForcePlanning(orchTurn.Phase, true, looksNew) {
+			gateDecision.ForcePlanning = false
+			gateDecision.Reason = fmt.Sprintf("会话阶段 %s：沿用已有编排，不强制规划", orchTurn.Phase)
+			o.lg().With(loggateway.SessionID(sessionID)).Info("预规划门控：阶段抑制强制规划",
+				loggateway.StepID("chat.pre_planning_gate"),
+				loggateway.Str("phase", string(orchTurn.Phase)),
+			)
+		}
+	}
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runPrePlanningGate",
 		loggateway.StepID("chat.pre_planning_gate"),
 		loggateway.Any("elapsed_ms", time.Since(gateStart).Milliseconds()),
 		loggateway.Any("force_planning", gateErr == nil && gateDecision.ForcePlanning),
+		loggateway.Str("orch_phase", string(orchTurn.Phase)),
 		loggateway.Any("gate_err", gateErr != nil))
 	if gateErr == nil && gateDecision.ForcePlanning {
 		emitter.LogDone("chat.pre_planning_gate", "强制规划路径", event.P("complexity_level", string(gateDecision.Level)), event.P("complexity_score", gateDecision.Score), event.P("reason", gateDecision.Reason))

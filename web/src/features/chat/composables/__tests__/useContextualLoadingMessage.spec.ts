@@ -601,6 +601,61 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value!.text).toBe('任务分解完成，共 0 个子任务');
     });
 
+    it('allocating phase with specialty renders bound template', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: {
+            phase: 'allocating',
+            index: 1,
+            total: 2,
+            sub_task: '种草',
+            specialty: '创作/文案',
+            agent_name: '文案专项',
+            match_layer: 'roster',
+          },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在匹配（1/2）「创作/文案」→ 文案专项（roster）种草');
+    });
+
+    it('collaborating phase shows protocol unifier', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'collaborating', sketch: '创作/文案 · 设计/视觉' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toContain('结论信封');
+      expect(loadingMessage.value!.text).toContain('创作/文案');
+    });
+
+    it('allocate_failed phase names the missing specialty', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'allocate_failed', specialty: '研究/调研', sub_task: '访谈' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toContain('研究/调研');
+      expect(loadingMessage.value!.icon).toBe('warning');
+    });
+
     it('allocating phase renders index/total/sub_task placeholders', () => {
       const isReplaying = ref(false);
       const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);

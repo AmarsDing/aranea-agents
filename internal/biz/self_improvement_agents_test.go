@@ -27,7 +27,7 @@ func TestSIMetaAgentPrompts_ContainOutputContract(t *testing.T) {
 			mustSubstr: []string{
 				"diff", "files", "additions", "deletions", "kind",
 				"code", "config", "prompt", "docs", "test",
-				"unified diff",
+				"unified diff", "patcher_fs_read", "patcher_git_diff",
 			},
 		},
 		{
@@ -51,6 +51,17 @@ func TestSIMetaAgentPrompts_ContainOutputContract(t *testing.T) {
 				t.Errorf("%s: prompt missing contract token %q", c.name, sub)
 			}
 		}
+	}
+}
+
+func TestSIPrompts_ClaimWiredTools(t *testing.T) {
+	if !strings.Contains(SIPatcherSystemPrompt, "patcher_fs_write") ||
+		!strings.Contains(SIPatcherSystemPrompt, "patcher_git_diff") {
+		t.Error("Patcher prompt must name the wired worktree tools")
+	}
+	if !strings.Contains(SIAnalystSystemPrompt, "patcher_fs_read") ||
+		strings.Contains(SIAnalystSystemPrompt, "patcher_fs_write") {
+		t.Error("Analyst prompt must offer read-only tools only")
 	}
 }
 

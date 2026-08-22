@@ -26,11 +26,14 @@ import (
 
 // mockEmbedder implements knowledge.Embedder for tests. It returns a
 // preconfigured vector slice (one vector per input text) or a fixed error.
+// When fn is set it takes precedence, allowing per-text vector assignment
+// (P3b: agent batch embed and per-subtask taskText embed are separate calls).
 type mockEmbedder struct {
 	mu      sync.Mutex
 	calls   int
 	vectors [][]float32
 	err     error
+	fn      func(texts []string) [][]float32
 }
 
 var _ knowledge.Embedder = (*mockEmbedder)(nil)
@@ -41,6 +44,9 @@ func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 	m.mu.Unlock()
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.fn != nil {
+		return m.fn(texts), nil
 	}
 	// Return preconfigured vectors; tests must set len(vectors) == len(texts).
 	return m.vectors, nil
@@ -67,15 +73,17 @@ func (m *mockEmbedder) Calls() int {
 // 0 for all). The mock embedder returns vectors where agent-a is similar to the
 // task and agent-b is orthogonal. Only the embedding path can produce a match.
 func TestAgentAllocator_Layer2_EmbeddingSuccess_UsesVectorSimilarity(t *testing.T) {
-	// Vectors (3 texts: task + agent-a + agent-b).
+	// P3b: 两次独立嵌入调用——agent 批量（2 文本，与 capabilities 顺序对齐）
+	// 和 taskText 单条。
 	// task   = [1.0, 0.0]
 	// agentA = [0.9, 0.1]  → cosine ≈ 0.994
 	// agentB = [0.0, 1.0]  → cosine = 0.0
 	emb := &mockEmbedder{
-		vectors: [][]float32{
-			{1.0, 0.0},
-			{0.9, 0.1},
-			{0.0, 1.0},
+		fn: func(texts []string) [][]float32 {
+			if len(texts) == 2 { // agent batch: [agent-a, agent-b]
+				return [][]float32{{0.9, 0.1}, {0.0, 1.0}}
+			}
+			return [][]float32{{1.0, 0.0}} // taskText
 		},
 	}
 
@@ -109,8 +117,86 @@ func TestAgentAllocator_Layer2_EmbeddingSuccess_UsesVectorSimilarity(t *testing.
 	if !strings.Contains(reason, "向量") {
 		t.Fatalf("expected reason to indicate vector path, got %q", reason)
 	}
-	if emb.Calls() != 1 {
-		t.Fatalf("expected embedder to be called once, got %d", emb.Calls())
+	if emb.Calls() != 2 {
+		t.Fatalf("expected embedder to be called twice (agent batch + taskText), got %d", emb.Calls())
+	}
+}
+
+// countingPerfRepo wraps memAgentPerformanceRepo and counts Get calls
+// (P3b perf 去重缓存验证）。
+type countingPerfRepo struct {
+	inner *memAgentPerformanceRepo
+	mu    sync.Mutex
+	gets  int
+}
+
+func (c *countingPerfRepo) Get(ctx context.Context, agentKey, taskType string) (*biz.AgentPerformance, error) {
+	c.mu.Lock()
+	c.gets++
+	c.mu.Unlock()
+	return c.inner.Get(ctx, agentKey, taskType)
+}
+
+func (c *countingPerfRepo) GetBestForTaskType(ctx context.Context, taskType string, limit int) ([]*biz.AgentPerformance, error) {
+	return c.inner.GetBestForTaskType(ctx, taskType, limit)
+}
+
+func (c *countingPerfRepo) Upsert(ctx context.Context, perf *biz.AgentPerformance) error {
+	return c.inner.Upsert(ctx, perf)
+}
+
+func (c *countingPerfRepo) Gets() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gets
+}
+
+// TestAgentAllocator_Layer2_SharedState_EmbedsAgentsOnce verifies the P3b
+// shared-state optimization: across multiple subtasks sharing one layer2Shared,
+// the agent capability batch is embedded exactly once (each subtask only embeds
+// its own taskText), and perf lookups are deduplicated per agentKey.
+func TestAgentAllocator_Layer2_SharedState_EmbedsAgentsOnce(t *testing.T) {
+	// All vectors identical → cosine = 1 for every candidate (match always succeeds).
+	emb := &mockEmbedder{
+		fn: func(texts []string) [][]float32 {
+			out := make([][]float32, len(texts))
+			for i := range out {
+				out[i] = []float32{1.0, 0.0}
+			}
+			return out
+		},
+	}
+	perfRepo := &countingPerfRepo{inner: newMemAgentPerformanceRepo()}
+	allocator := &agentAllocatorImpl{
+		embedder: emb,
+		perfRepo: perfRepo,
+		lg:       loggateway.NewNoop(),
+	}
+
+	capabilities := []biz.AgentCapability{
+		{AgentKey: "agent-a", DisplayName: "Alpha", Description: "alpha specialist"},
+		{AgentKey: "agent-b", DisplayName: "Beta", Description: "beta specialist"},
+	}
+	shared := newLayer2Shared()
+
+	for _, id := range []string{"st_shared_1", "st_shared_2"} {
+		cap, score, _ := allocator.matchLayer2(context.Background(), biz.SubTask{
+			ID:          id,
+			Name:        "some task",
+			Description: "some description",
+		}, capabilities, "trace-shared", shared)
+		if cap.AgentKey == "" || score <= 0 {
+			t.Fatalf("subtask %s: expected embedding-path match, got key=%q score=%v", id, cap.AgentKey, score)
+		}
+	}
+
+	// 1 agent batch + 2 taskText = 3（未共享时为 2×(1 batch) + 2 = 4）。
+	if emb.Calls() != 3 {
+		t.Fatalf("expected 3 embed calls with shared state (1 agent batch + 2 taskText), got %d", emb.Calls())
+	}
+	// perf 按 agentKey 去重：2 个 Agent 全周期各查 1 次（未共享时为 2×2=4）。
+	if perfRepo.Gets() != 2 {
+		t.Fatalf("expected 2 perf Get calls with shared cache (one per agent), got %d", perfRepo.Gets())
 	}
 }
 
@@ -363,7 +449,7 @@ func TestAgentAllocator_TryAgentFactory_PassesSpiritSessionID(t *testing.T) {
 		RequiredCapabilities: []string{"data-eng"},
 	}
 
-	alloc, ok := a.tryAgentFactoryForSubTask(context.Background(), subTask, "sess-spirit-9", "trace-1")
+	alloc, ok := a.tryAgentFactoryForSubTask(context.Background(), subTask, "sess-spirit-9", "trace-1", nil)
 	if !ok {
 		t.Fatal("tryAgentFactoryForSubTask returned ok=false")
 	}
@@ -494,11 +580,12 @@ func TestAgentAllocator_Allocate_FactorySerial_OnAllFailed(t *testing.T) {
 	factory := &fakeAllocatorAgentFactory{agentKey: "factory-agent"}
 
 	impl := &agentAllocatorImpl{
-		repo:         repo,
-		agentReader:  reader,
-		capBuilder:   capBuilder,
-		agentFactory: factory,
-		lg:           loggateway.NewNoop(),
+		repo:               repo,
+		agentReader:        reader,
+		capBuilder:         capBuilder,
+		agentFactory:       factory,
+		allowFactoryCreate: true,
+		lg:                 loggateway.NewNoop(),
 	}
 
 	subTasks := []biz.SubTask{
@@ -531,6 +618,41 @@ func TestAgentAllocator_Allocate_FactorySerial_OnAllFailed(t *testing.T) {
 	if saved.Allocations[0].SubTaskID != "st_1" || saved.Allocations[1].SubTaskID != "st_2" {
 		t.Errorf("order not preserved: got %s, %s",
 			saved.Allocations[0].SubTaskID, saved.Allocations[1].SubTaskID)
+	}
+}
+
+func TestAgentAllocator_Allocate_HotPathDoesNotCreateAgents(t *testing.T) {
+	factory := &fakeAllocatorAgentFactory{agentKey: "factory-agent"}
+	impl := &agentAllocatorImpl{
+		repo:         &fakeAllocatorRepo{},
+		agentReader:  &stubAgentReader{agents: nil},
+		capBuilder:   NewAgentCapabilityBuilder(&stubAgentReader{agents: nil}, loggateway.NewNoop()),
+		agentFactory: factory,
+		lg:           loggateway.NewNoop(),
+	}
+	_, err := impl.Allocate(context.Background(), &biz.TaskPlan{
+		ID:       "tp_closed",
+		Strategy: biz.StrategyParallel,
+		SubTasks: []biz.SubTask{{ID: "st_1", Name: "任务1", DomainPath: "创作/文案"}},
+	})
+	if err == nil {
+		t.Fatal("hot path miss must fail closed")
+	}
+	if len(factory.profiles) != 0 {
+		t.Fatalf("factory calls=%d want 0", len(factory.profiles))
+	}
+}
+
+func TestAgentAllocator_MatchSubTask_NoLowScoreAssign(t *testing.T) {
+	impl := &agentAllocatorImpl{lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{{
+		AgentKey: "be", DisplayName: "后端", Roles: []string{"backend"},
+	}}
+	_, err := impl.matchSubTask(context.Background(), biz.SubTask{
+		ID: "st1", Name: "文案", RequiredCapabilities: []string{"unrelated-xyz"},
+	}, caps, "tr")
+	if err == nil {
+		t.Fatal("below-threshold overlap must be a miss")
 	}
 }
 

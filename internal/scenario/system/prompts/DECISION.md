@@ -1,10 +1,17 @@
 ## 决策规则
 
-收到用户消息后，**必须先调用 `plan_and_execute` 工具**，并根据用户意图显式选择 `mode` 参数。
+按**本会话编排阶段**行动，不要无条件先调 `plan_and_execute`。阶段由系统注入的 `## Session orchestration` 提示给出；没有该提示时视为 **idle**。
 
-> **例外（不适用 plan_and_execute 先行规则）**：
-> 1. 用户要求**在其本机打开应用或网址**（如「打开微信」「打开浏览器访问 xxx」）时，若当前 tools 中没有客户端工具则先 `tool_load`，再调用 `client_open_app` / `client_open_url`——这是单步本机操作，委派或给手动教程都是错误方向。客户端不在线时按工具返回的 `DESKTOP_CLIENT_OFFLINE` 如实告知。
-> 2. **本会话已有针对同一目标的团队**（running/completed）：不要再调 `plan_and_execute`。先 `tool_load` 再 `get_team_deliverable` / `synthesize_results`。若仍误调了 `plan_and_execute` 且返回 `reuse_existing=true`，按 `next_action` 执行，禁止立刻再规划。
+| 阶段 | 行为 |
+|------|------|
+| **idle**（尚无团队） | 复杂/组队任务才调用 `plan_and_execute`，并显式选择 `mode` |
+| **orchestrating**（团队 running/pending） | **禁止**再调 `plan_and_execute`。等待系统完成通知。需要中止时直调 `cancel_orchestration`（已在本轮 tools 中） |
+| **ready**（团队均已终态） | **默认用已有结果回答**。`get_team_deliverable` / `synthesize_results` 已在本轮 tools 中，禁止 `tool_load`，禁止再规划。用户重复同一句话 = 回放报告，不是新任务 |
+| **interrupted** | 不要新开 DAG，等待恢复或询问用户是否续跑 |
+
+> **其它例外**：用户要求**在其本机打开应用或网址**时，若当前 tools 中没有客户端工具则先 `tool_load`，再调用 `client_open_app` / `client_open_url`。客户端不在线时按 `DESKTOP_CLIENT_OFFLINE` 如实告知。
+
+**仅当用户明确要求新任务**（「重新组建 / 另起 / 换标的」）时才对非 idle 会话调用 `plan_and_execute(force_new=true)`。若仍误调且返回 `reuse_existing=true`，按 `next_action` 执行，禁止立刻再规划。
 
 ### 三种执行模式（必须显式选择 mode）
 
@@ -32,16 +39,17 @@
 - 用户要求"团队"时使用 parallel（parallel 是单 Agent 并行，不形成团队）
 - 用户要求"并行独立任务"时使用 dag（dag 是多成员团队，过重）
 - **需求不明时组队**（团队无法向用户提问，信息不足只会空转或编造交付物）——必须先向用户澄清
+- **ready/orchestrating 阶段再规划**（除非用户明确要求新的独立任务）
 
 ## 任务编排流程
 
-使用 `plan_and_execute` 工具一步完成复杂度评估 + Agent 分配 + 编排启动：
+**idle 阶段**使用 `plan_and_execute` 一步完成复杂度评估 + Agent 分配 + 编排启动：
 
 1. 调用 `plan_and_execute(task_prompt=用户任务描述, mode=direct|parallel|dag)` → 获取 plan_id、strategy、orchestration_id
 2. 系统后台会自动监控团队完成状态，完成后会主动通知你。**不要主动查询进度**，等待系统通知即可。
-3. 收到系统通知（所有团队已完成）后，先 `tool_load` 再调用 `synthesize_results` 合成结果
-4. 异常时先 `tool_load` 再调用 `cancel_orchestration(orchestration_id)` 取消编排
-5. **同一会话同一目标禁止重复规划**：若本会话已有 running/completed 团队覆盖当前用户目标，不要再调 `plan_and_execute`。先 `tool_load` 再 `get_team_deliverable`。工具若返回 `reuse_existing=true`，按 `next_action` 读交付物，禁止立刻再规划。仅当用户明确要求「重新组建 / 另起新任务」时传 `force_new=true`。
+3. 进入 **ready** 后：`synthesize_results` / `get_team_deliverable` 已在本轮 tools 中，直接调用，不要 `tool_load`
+4. **orchestrating** 异常时直调 `cancel_orchestration(orchestration_id)`
+5. 若误调 `plan_and_execute` 且返回 `reuse_existing=true`，按 `next_action` 执行，禁止立刻再规划
 
 **当 plan_and_execute 不可用时**（Runtime Cue 会明确提示），先 `tool_load` 再使用 `subagents_spawn` 替代：
 - 多步任务：用 `subagents_spawn(agent_name=目标Agent, task=任务描述)` 逐个委派

@@ -14,6 +14,9 @@
           </div>
           <p class="settings-section__hint">身份、状态、分类与对外描述。</p>
         </div>
+        <div class="settings-section__actions">
+          <q-toggle v-model="form.is_default" dense label="默认 Agent" />
+        </div>
       </div>
       <div class="app-form-field-grid app-form-field-grid--2col">
         <q-input v-model="form.display_name" dense outlined label="显示名称" />
@@ -21,7 +24,6 @@
           <template #append><q-btn flat round dense icon="content_copy" @click="$emit('copy-key')" /></template>
         </q-input>
         <q-select v-model="form.status" dense outlined emit-value map-options label="状态" :options="statusOptions" />
-        <q-toggle v-model="form.is_default" label="默认 Agent" />
         <taxonomy-picker
           :model-value="form.taxonomy_position_id || null"
           :tree="taxonomyTree"
@@ -30,22 +32,16 @@
           @update:model-value="form.taxonomy_position_id = $event ?? ''"
         />
         <div class="app-grid-span-full">
-          <q-input
-            v-model="form.agent_description"
-            class="app-field-long"
-            outlined
-            autogrow
-            type="textarea"
-            label="专业摘要 / 能力描述"
-          />
-          <!-- PGO-3-WEB-03: AI Refine button for agent description -->
-          <div class="row justify-end q-mt-xs">
+          <div class="desc-field-head">
+            <span class="desc-field-head__label">专业摘要 / 能力描述</span>
+            <!-- PGO-3-WEB-03: AI Refine button for agent description -->
             <AiRefineButton
               scope="agent.description"
               :resource-id="agentId"
               :text="form.agent_description ?? ''"
               :refine-fn="refinePromptField"
               flat
+              dense
               size="sm"
               label="AI 优化描述"
               @apply="
@@ -56,6 +52,14 @@
               @error="(msg: string) => emit('refine-error', msg)"
             />
           </div>
+          <q-input
+            v-model="form.agent_description"
+            class="app-field-long"
+            outlined
+            autogrow
+            type="textarea"
+            placeholder="描述 Agent 的专业能力、适用场景与限制…"
+          />
         </div>
       </div>
     </section>
@@ -69,7 +73,7 @@
           <p class="settings-section__hint">选择 Provider 管理中已录入的模型；单价在 Provider 管理中维护。</p>
         </div>
       </div>
-      <div class="app-field-md">
+      <div class="model-field-row">
         <q-select
           v-model="selectedProviderModelId"
           dense
@@ -95,7 +99,7 @@
             </q-item>
           </template>
         </q-select>
-        <div v-if="form.provider && form.model" class="row items-center q-gutter-xs q-mt-xs">
+        <div v-if="form.provider && form.model" class="model-field-row__badge">
           <q-chip
             v-if="checkingAgentModel"
             dense
@@ -138,11 +142,11 @@
           <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
         </template>
       </q-banner>
-      <q-banner rounded class="q-mt-md settings-info-banner">
+      <p class="settings-section__hint q-mt-sm">
         月度费用上限请在
-        <q-btn flat dense color="primary" label="「用量配额」" @click="$emit('open-permissions-tab')" />
+        <q-btn flat dense size="sm" color="primary" no-caps label="「用量配额」" @click="$emit('open-permissions-tab')" />
         Tab 配置（Chat Turn 前生效）。
-      </q-banner>
+      </p>
     </section>
 
     <agent-planner-section v-model:form="plannerForm" :model-provider="form.provider" />
@@ -313,11 +317,11 @@
         </div>
       </div>
 
-      <q-banner rounded class="q-mt-md settings-info-banner">
+      <p class="settings-section__hint q-mt-md">
         记忆分层、心跳与语义检索请前往
-        <q-btn flat dense color="primary" label="「记忆」" @click="$emit('open-memory-tab')" />
+        <q-btn flat dense size="sm" color="primary" no-caps label="「记忆」" @click="$emit('open-memory-tab')" />
         Tab 配置。
-      </q-banner>
+      </p>
     </section>
 
     <agent-channel-refs-section :agent-id="agentId" :agent-key="form.agent_key" />

@@ -216,6 +216,29 @@ func WithGraphDeliverableReader(r SpiritGraphDeliverableReader) SpiritTeamUsecas
 	return func(u *SpiritTeamUsecase) { u.delivery.graphDelivReader = r }
 }
 
+// TeamInboxFS copies declared Bulk files into downstream member workspaces.
+// Nil disables materialization (tests / v1-only). Stability:internal
+type TeamInboxFS interface {
+	MaterializeFile(ctx context.Context, spec InboxCopySpec) error
+}
+
+// InboxCopySpec describes one declared bulk file to copy.
+type InboxCopySpec struct {
+	SrcAgentKeys   []string
+	DestAgentKeys  []string
+	UpstreamTeamID string
+	RelPath        string
+	DestName       string
+}
+
+func WithTeamInboxFS(fs TeamInboxFS) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) {
+		if u != nil && u.delivery != nil {
+			u.delivery.inboxFS = fs
+		}
+	}
+}
+
 // SpiritTeamRunStats is the latest-run statistics for one team, used by the
 // execution report (B.10.17) to enrich per-unit duration and error reason.
 type SpiritTeamRunStats struct {
@@ -310,6 +333,12 @@ const (
 	// team); larger payloads render as a pointer plus a keyed
 	// read_upstream_deliverable retrieval instruction.
 	InlineUpstreamPayloadMaxChars = 2000
+
+	// MaxEnvelopeStructuredPayloadChars is the max rune count of a topic's
+	// content that may be copied into DeliverableRef.StructuredJSON (M78).
+	// Larger text stays in graph state and is fetched via
+	// read_upstream_deliverable; file/binary payloads never land here.
+	MaxEnvelopeStructuredPayloadChars = InlineUpstreamPayloadMaxChars
 
 	// InlineUpstreamArtifactMaxCount caps how many payloads of ONE upstream
 	// team may render inline in the injection prefix; the rest degrade to

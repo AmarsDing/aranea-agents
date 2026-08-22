@@ -48,6 +48,17 @@ export function formatMemberDuration(ms: number): string {
 /** 成员/节点状态 → 色调（dot / 边框 / 状态文本共用）。 */
 export type GraphTeamNodeTone = 'accent' | 'success' | 'danger' | 'warning' | 'muted';
 
+export function formatStaffingCaption(step: {
+  DomainPath?: string;
+  AssignedName?: string;
+  MatchLayer?: string;
+} | null | undefined): string {
+  if (!step) return '';
+  const parts = [step.DomainPath, step.AssignedName].filter((s): s is string => Boolean(s && s.trim()));
+  if (parts.length === 0) return '';
+  return step.MatchLayer ? `${parts.join(' · ')} · ${step.MatchLayer}` : parts.join(' · ');
+}
+
 export function graphTeamNodeTone(status: string): GraphTeamNodeTone {
   switch (status) {
     case 'running':

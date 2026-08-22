@@ -116,6 +116,40 @@ func (f *fakeEvalRepo) ListCases(ctx context.Context, datasetID string) ([]beval
 	return append([]beval.Case(nil), f.cases[datasetID]...), nil
 }
 
+func (f *fakeEvalRepo) UpdateCase(ctx context.Context, c beval.Case) (beval.Case, error) {
+	if err := ctx.Err(); err != nil {
+		return beval.Case{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rows := f.cases[c.DatasetID]
+	for i := range rows {
+		if rows[i].ID == c.ID {
+			rows[i] = c
+			f.cases[c.DatasetID] = rows
+			return c, nil
+		}
+	}
+	return beval.Case{}, errors.New("case not found")
+}
+
+func (f *fakeEvalRepo) DeleteCase(ctx context.Context, datasetID, caseID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rows := f.cases[datasetID]
+	out := rows[:0]
+	for _, c := range rows {
+		if c.ID != caseID {
+			out = append(out, c)
+		}
+	}
+	f.cases[datasetID] = out
+	return nil
+}
+
 func (f *fakeEvalRepo) CreateRun(ctx context.Context, r beval.Run) (beval.Run, error) {
 	if err := ctx.Err(); err != nil {
 		return beval.Run{}, err
@@ -223,7 +257,7 @@ func (f *fakeEvalRepo) ListRunPreferences(context.Context, string, int) ([]beval
 	return nil, nil
 }
 
-func (f *fakeEvalRepo) GetGateConfig(context.Context) (beval.GateConfig, error) {
+func (f *fakeEvalRepo) GetGateConfig(context.Context, string) (beval.GateConfig, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.gateCfg, nil
@@ -381,7 +415,7 @@ func waitRunTerminal(t *testing.T, repo *fakeEvalRepo, runID string) beval.Run {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		r, ok := repo.runSnapshot(runID)
-		if ok && (r.Status == "completed" || r.Status == "failed") {
+		if ok && (r.Status == "completed" || r.Status == "failed" || r.Status == "cancelled") {
 			return r
 		}
 		if time.Now().After(deadline) {
@@ -428,7 +462,7 @@ func TestRunnerFrameworkInsertErrorMarksRunFailed(t *testing.T) {
 	)
 	r := NewRunner(uc, bridge, loggateway.NewNoop())
 
-	r.Start(context.Background(), biz.EvalRun{ID: "r5", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
+	_ = r.Start(context.Background(), biz.EvalRun{ID: "r5", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 
 	final := waitRunTerminal(t, repo, "r5")
 	if final.Status != "failed" {
@@ -454,7 +488,7 @@ func TestRunnerStartRequestCtxCancelledStillCompletes(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Kratos cancels the request ctx right after the handler returns
-	r.Start(ctx, biz.EvalRun{ID: "r1", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
+	_ = r.Start(ctx, biz.EvalRun{ID: "r1", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 
 	final := waitRunTerminal(t, repo, "r1")
 	if final.Status != "completed" {
@@ -483,7 +517,7 @@ func TestRunnerFrameworkCaseErrorMarksRunFailed(t *testing.T) {
 	)
 	r := NewRunner(uc, bridge, loggateway.NewNoop())
 
-	r.Start(context.Background(), biz.EvalRun{ID: "r3", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
+	_ = r.Start(context.Background(), biz.EvalRun{ID: "r3", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 
 	final := waitRunTerminal(t, repo, "r3")
 	if final.Status != "failed" {
@@ -513,7 +547,7 @@ func TestRunnerFrameworkHappyPathCompletes(t *testing.T) {
 	)
 	r := NewRunner(uc, bridge, loggateway.NewNoop())
 
-	r.Start(context.Background(), biz.EvalRun{ID: "r4", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
+	_ = r.Start(context.Background(), biz.EvalRun{ID: "r4", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 
 	final := waitRunTerminal(t, repo, "r4")
 	if final.Status != "completed" {
@@ -526,3 +560,69 @@ func TestRunnerFrameworkHappyPathCompletes(t *testing.T) {
 		t.Fatalf("expected exact_match=1, got %v", final.ExactMatchScore)
 	}
 }
+
+func TestRunnerCancelMarksCancelled(t *testing.T) {
+	repo := newFakeEvalRepo()
+	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
+	repo.cases["ds1"] = []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "q", ExpectedOutput: "a"}}
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
+	started := make(chan struct{})
+	bridge := NewFrameworkBridge(
+		func(string) (runner.Runner, error) {
+			return &blockingEvalRunner{started: started}, nil
+		},
+		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
+	)
+	r := NewRunner(uc, bridge, loggateway.NewNoop())
+	if _, err := uc.CreateRun(context.Background(), beval.Run{ID: "r-cancel", DatasetID: "ds1", AgentID: "a1", Status: beval.RunStatusPending}); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	_ = r.Start(context.Background(), biz.EvalRun{ID: "r-cancel", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("inference never started")
+	}
+	if !r.Cancel("r-cancel") {
+		t.Fatal("Cancel should find the in-flight run")
+	}
+	if _, err := uc.CancelRun(context.Background(), "r-cancel"); err != nil {
+		t.Fatalf("CancelRun: %v", err)
+	}
+	final := waitRunTerminal(t, repo, "r-cancel")
+	if final.Status != "cancelled" {
+		t.Fatalf("expected cancelled, got %q err=%q", final.Status, final.ErrorMessage)
+	}
+}
+
+func TestRunnerRejectsWhenSlotsFull(t *testing.T) {
+	repo := newFakeEvalRepo()
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
+	r := NewRunner(uc, echoBridge(), loggateway.NewNoop())
+	for i := 0; i < DefaultMaxInFlight; i++ {
+		r.slots <- struct{}{}
+	}
+	err := r.Start(context.Background(), biz.EvalRun{ID: "busy", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
+	if err == nil {
+		t.Fatal("Start must reject when the concurrency cap is full")
+	}
+}
+
+type blockingEvalRunner struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (b *blockingEvalRunner) Run(ctx context.Context, _, _ string, _ model.Message, _ ...agent.RunOption) (<-chan *event.Event, error) {
+	b.once.Do(func() { close(b.started) })
+	ch := make(chan *event.Event)
+	go func() {
+		defer close(ch)
+		<-ctx.Done()
+	}()
+	return ch, nil
+}
+
+func (b *blockingEvalRunner) Close() error { return nil }
+
+var _ runner.Runner = (*blockingEvalRunner)(nil)

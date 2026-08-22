@@ -1,7 +1,8 @@
 <template>
   <div class="app-flow-trace-panel flow-trace-panel">
-    <div v-if="!sortedLines.length" class="text-caption text-grey-7 q-pa-md">
-      暂无流程日志。保持详情打开并运行一次对话，或在日志 Tab 查看全局流。
+    <div v-if="!sortedLines.length" class="app-flow-trace-empty column items-center q-pa-lg">
+      <q-icon name="timeline" size="32px" class="q-mb-xs" />
+      <span class="text-caption">{{ t('monitorPage.traces.flowEmpty') }}</span>
     </div>
     <div
       v-for="line in sortedLines"
@@ -9,18 +10,21 @@
       class="app-flow-trace-row flow-trace-row"
       :class="rowClass(line)"
     >
-      <div class="app-flow-trace-marker flow-trace-marker" />
+      <div class="app-flow-trace-gutter">
+        <span class="app-flow-trace-dot" />
+        <span class="app-flow-trace-line" />
+      </div>
       <div class="app-flow-trace-body flow-trace-body">
-        <div class="row items-center q-gutter-xs">
-          <span class="text-weight-bold">{{ line.title || line.step_id || 'step' }}</span>
-          <q-badge dense :color="severityColor(line.severity)" :label="line.severity || 'info'" />
+        <div class="row items-center q-gutter-xs no-wrap">
+          <span class="text-weight-medium ellipsis">{{ line.title || line.step_id || 'step' }}</span>
+          <q-badge dense outline :color="severityColor(line.severity)" :label="line.severity || 'info'" />
         </div>
-        <div v-if="showMessage(line)" class="text-body2 q-mt-xs">{{ line.message }}</div>
-        <div class="text-caption text-grey-7 q-mt-xs">
-          {{ line.time }}
-          <span v-if="line.step_id"> / {{ line.step_id }}</span>
+        <div v-if="showMessage(line)" class="text-body2 q-mt-xs app-flow-trace-message">{{ line.message }}</div>
+        <div class="app-flow-trace-meta q-mt-xs">
+          <span class="text-mono">{{ line.time }}</span>
+          <span v-if="line.step_id" class="text-mono">{{ line.step_id }}</span>
         </div>
-        <div v-if="line.hint" class="text-caption text-warning q-mt-xs">hint: {{ line.hint }}</div>
+        <div v-if="line.hint" class="app-flow-trace-hint text-caption q-mt-xs">hint: {{ line.hint }}</div>
       </div>
     </div>
   </div>
@@ -28,8 +32,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { MonitorLogLine } from '../../features/monitor/types';
 import { sortFlowLogLines } from '../../features/monitor/flow';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   lines: MonitorLogLine[];

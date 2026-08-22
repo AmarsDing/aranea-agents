@@ -3,28 +3,38 @@ import { ref } from 'vue';
 import { listAgents } from '../../features/agents/api';
 import {
   annotateCaseResult,
+  cancelRun,
   compareEvalRuns,
   createDataset,
+  deleteCase,
   deleteDataset,
+  deleteRun,
   getAgentEvalTrend,
   getEvalGate,
   getFailureGroups,
   getJudgeDivergence,
   getRun,
   getRunResults,
+  listCases,
   listDatasets,
   listRunPreferences,
   listRuns,
   runEvaluation,
+  runExperiment,
   submitRunPreference,
+  updateCase,
+  updateDataset,
   updateEvalGate,
   uploadCases,
 } from '../../features/evaluation/api';
 import type {
   AnnotateCaseResultInput,
   CreateDatasetInput,
+  EvalCase,
   EvalCaseResult,
   EvalDataset,
+  UpdateCaseInput,
+  UpdateDatasetInput,
   EvalGateConfig,
   EvalRun,
   EvalRunComparison,
@@ -38,6 +48,7 @@ import type {
   ListRunsParams,
   ListRunsResult,
   RunEvaluationInput,
+  RunExperimentInput,
   SubmitRunPreferenceInput,
   UpdateEvalGateInput,
 } from '../../features/evaluation/types';
@@ -85,6 +96,28 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     datasetsTotal.value = Math.max(0, datasetsTotal.value - 1);
   }
 
+  async function editDataset(input: UpdateDatasetInput): Promise<EvalDataset> {
+    const updated = await updateDataset(input);
+    datasets.value = datasets.value.map((d) => (d.id === updated.id ? updated : d));
+    return updated;
+  }
+
+  async function loadCases(datasetId: string): Promise<EvalCase[]> {
+    return listCases(datasetId);
+  }
+
+  async function saveCase(input: UpdateCaseInput): Promise<EvalCase> {
+    return updateCase(input);
+  }
+
+  async function removeCase(datasetId: string, id: string): Promise<void> {
+    await deleteCase(datasetId, id);
+    const ds = datasets.value.find((d) => d.id === datasetId);
+    if (ds && ds.case_count > 0) {
+      ds.case_count -= 1;
+    }
+  }
+
   async function importCases(datasetId: string, casesJson: string): Promise<number> {
     return uploadCases(datasetId, casesJson);
   }
@@ -94,6 +127,13 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     runs.value.unshift(run);
     runsTotal.value += 1;
     return run;
+  }
+
+  async function startExperiment(input: RunExperimentInput): Promise<EvalRun[]> {
+    const res = await runExperiment(input);
+    runs.value.unshift(...res.items);
+    runsTotal.value += res.items.length;
+    return res.items;
   }
 
   // Monotonic request guard for loadRuns: when the user switches datasets or
@@ -114,6 +154,18 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     const updated = await getRun(id);
     runs.value = runs.value.map((r) => (r.id === id ? updated : r));
     return updated;
+  }
+
+  async function stopRun(id: string): Promise<EvalRun> {
+    const updated = await cancelRun(id);
+    runs.value = runs.value.map((r) => (r.id === id ? updated : r));
+    return updated;
+  }
+
+  async function removeRun(id: string): Promise<void> {
+    await deleteRun(id);
+    runs.value = runs.value.filter((r) => r.id !== id);
+    runsTotal.value = Math.max(0, runsTotal.value - 1);
   }
 
   async function loadRunResults(
@@ -161,8 +213,8 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     return listRunPreferences(datasetId, limit);
   }
 
-  async function loadGateConfig(): Promise<EvalGateConfig> {
-    return getEvalGate();
+  async function loadGateConfig(agentId = ''): Promise<EvalGateConfig> {
+    return getEvalGate(agentId);
   }
 
   async function saveGateConfig(input: UpdateEvalGateInput): Promise<EvalGateConfig> {
@@ -180,10 +232,17 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     loadDatasets,
     addDataset,
     removeDataset,
+    editDataset,
+    loadCases,
+    saveCase,
+    removeCase,
     importCases,
     startRun,
+    startExperiment,
     loadRuns,
     refreshRun,
+    stopRun,
+    removeRun,
     loadRunResults,
     annotateResult,
     loadAgentTrend,

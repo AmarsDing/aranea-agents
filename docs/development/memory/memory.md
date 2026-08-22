@@ -949,3 +949,78 @@ Agent 设置中新增独立 `记忆` Tab，避免把所有记忆配置塞进基�
 - [x] 用户修改偏好（先"用 A 工具"后"别用 A 工具"）后，旧值 `status='superseded'` 且不再出现在召回与常驻注入中。（自动化验证：`auto_memory_conflict_test.go` 判决-写后 supersede 链路；`memory_shim_l3_pinned_test.go` superseded 行被过滤）
 - [x] 新会话首轮 prompt 中包含「用户偏好与工作要求」常驻块（Prompt Preview 可见），且只含 active 的 preference/constraint/user_preference/agent_instruction（2026-08-18 G 维 P1 扩展钉住 kinds，agent_instruction 以 `[RULE]` 前缀呈现，块头附合规引导）。（自动化验证：`composite_prompt_test.go` 8 个 PinnedPreferenceCue 用例；Prompt Preview 运行时目视建议下次真实对话抽验）
 - [x] 用户说"记住：xxx"后无需结束会话，即可在 `memory_facts` 查到 `source_kind='explicit'` 的记录。（自动化验证：`remember_test.go` 写入字段断言）
+
+---
+
+## 23. 子模块：记忆中心信任闭环（2026-08-22）
+
+> 设计见 [`memory.design.md`](./memory.design.md) 同名子模块；进度见 [`memory-development.md`](./memory-development.md) Phase 8。  
+> 不改变 §21 四 Tab 信息架构，不新开第六层存储。目标是让记忆中心重新回答 §1.2 的四个用户问题。
+
+### 23.1 背景与问题
+
+五层写入/召回内核已可运行，但记忆中心同时扮演「用户信任产品」和「平台运维台」，出现四类体验与安全缺口：
+
+1. **无法从回答回到记忆**：聊天召回 chips 只展示文本，不能打开对应事实。
+2. **健康数字不可信**：页顶 KPI 与全景 Tab 各算一套；设置清单几乎全部标成已完成。
+3. **会话记忆对不齐**：浏览 Tab 选了会话后，L2 情景时间线仍拉 Agent 全量。
+4. **全景接口缺租户门禁**：任意登录用户只要带上 `agent_id` 就能读他人记忆全景/图谱/情景。
+
+### 23.2 用户故事
+
+| 编号 | 用户故事 |
+|------|----------|
+| US-T1 | 作为用户，我点击聊天里的记忆召回条目，能跳到记忆中心并打开那条事实。 |
+| US-T2 | 作为用户，我在记忆中心只看到一套健康数字，数字来自全景接口。 |
+| US-T3 | 作为用户，我不会被「设置已全部完成」误导；未探测的项不显示为完成。 |
+| US-T4 | 作为用户，我选中某次会话后，情景时间线只显示这次会话。 |
+| US-T5 | 作为租户用户，我不能读取其他工作区 Agent 的记忆全景、图谱和情景列表。 |
+| US-T6 | 作为用户，我在会话详情能一键打开这次会话的记忆浏览。 |
+| US-T7 | 作为普通用户，我只看到冲突/级联/进化；平台设置、Worker、死信仅管理员可见。 |
+| US-T8 | 作为用户，全景「最近动态」能看到记忆被注入回答，而不只是提炼写入。 |
+| US-T9 | 作为用户，我能在快照抽屉看到这次 prompt 各段 token 瀑布。 |
+| US-T10 | 作为用户，我点开 L1 任务能看到字段树和预算占用。 |
+| US-T11 | 作为用户，我能在信任 Tab 批准/拒绝进化提议并回滚事件。 |
+| US-T12 | 作为用户，我能在信任 Tab 审核本 Agent 的 PII 事实。 |
+
+### 23.3 功能需求
+
+| 编号 | 需求 | 优先级 |
+|------|------|--------|
+| FR-T1 | 聊天 `memory_recalled` chip 可点击，跳转 `/memory?tab=&layer=&factId=&agentId=&agentKey=&sessionId=` | P0 |
+| FR-T2 | 记忆中心消费上述 query：切 Tab、锁定 Agent/会话、L3 打开事实抽屉 | P0 |
+| FR-T3 | 页顶不再用客户端聚合 KPI；全景 Tab 的 `GetMemoryLayerOverview` 是唯一健康数字源 | P0 |
+| FR-T4 | 移除硬编码 `done: true` 的设置健康清单 | P0 |
+| FR-T5 | `GetMemoryLayerOverview` / `GetUnifiedMemoryGraph` / `ListMemoryEpisodes` 校验调用方可访问该 Agent（与 Agent 目录同一租户口径） | P0 |
+| FR-T6 | 浏览 Tab 情景时间线尊重当前 `sessionId`；空则按 Agent 全量 | P0 |
+| FR-T7 | 治理拆成 Trust（冲突/级联/进化，默认）与 Ops（平台设置/Worker/死信/召回测试器，仅 `access=admin`） | P1 |
+| FR-T8 | L0 瀑布、L1 字段树、进化审批、PII 面板 | P2 |
+| FR-T9 | 会话详情提供「查看记忆」入口，深链 `/memory?tab=browse&sessionId=&agentId=` | P1 |
+| FR-T10 | 全景 activity_feed 增加 `fact_injected`（L3→L0，时间用 `last_used_at`） | P1 |
+| FR-T11 | 大 Agent 全景 L3/L4 统计走 SQL 聚合（active/today/use_count），动态只拉最近 N 条，禁止扫 500 行算卡 | P3 |
+| FR-T12 | 记忆中心页编排拆为 facts / session / trust 子 composable；全景与情景请求经 memory store | P3 |
+
+### 23.4 验收标准
+
+- [x] 点击带 `fact_id` 的 L3 召回 chip，记忆中心打开该事实抽屉（agent/session 与当前对话一致）。
+- [x] 记忆中心首屏不再出现与全景卡冲突的第二套 KPI 数字。
+- [x] 治理区不再展示全部标绿的虚假设置清单。
+- [x] 选择会话后，L2 情景列表只含该会话；清空会话过滤后恢复 Agent 全量。
+- [x] 跨工作区用户请求他人 `agent_id` 的全景/图谱/情景返回「未找到」（不泄露存在性）。
+- [x] 非管理员看不到 Ops Tab；`tab=ops` 深链回落到 Trust。
+- [x] 全景动态在事实被注入 prompt 后出现 `fact_injected` 条目。
+- [x] 会话详情「查看记忆」打开记忆中心浏览 Tab，并锁定该会话与 Agent。
+- [x] 打开 L0 快照抽屉可见 token 瀑布（按装配段占比）。
+- [x] 浏览 Tab 选中 L1 任务后展示字段树与 used/budget。
+- [x] 信任 Tab 可批准/拒绝 `agent_evolution_proposals`，并回滚未 revert 的事件。
+- [x] 信任 Tab PII 列表按 originating `agent_id` 过滤，可批准脱敏或拒绝。
+- [x] 实现 `MemoryOverviewStatsReader` 时，全景 L3 计数不再调用 `ListFactRows(..., 500)`。
+- [x] 记忆中心页编排按 facts / session / trust 拆分；全景与情景走 store action。
+
+### 23.5 非功能需求
+
+| 类别 | 要求 |
+|------|------|
+| 安全 | 跨租户统一 NotFound，不返回 Forbidden 以免枚举 Agent |
+| 兼容 | 四 Tab 路由与现有治理动作不变；无新表 |
+| 文档 | Sleep-time 已接线（`cmd/admin/workers.go` `memory_sleep_time` + ModelCatalog LLMResolver）；L1 `token_estimate` / `used_tokens` 在 `UpsertL1Field` 写入时计算。历史文档「未接线 / 恒为 0」以代码为准，本子模块不重复施工 |

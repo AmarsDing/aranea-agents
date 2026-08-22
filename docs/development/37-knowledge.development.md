@@ -9,6 +9,11 @@
 > **2026-08-10 检索链路事故根修（TDD，全绿）**：① **向量维度对账**——`EnsureKnowledgeSchema` 尾部新增 `reconcileEmbeddingDim`（`data/knowledge.go`）：embedder 换模型后 PG 列 typmod 不随 `CREATE TABLE IF NOT EXISTS` 修正，新维度插入全被拒（"expected N dimensions"）而应用层按 `collections.dim` 校验反过，语义检索全灭极难定位；对账幂等四步（向量置 NULL + 文档 hash 重置回 pending + 语义层集合 dim 快照同步 + ALTER 列重建 ivfflat），vault 文档下轮 sync 自愈，UX验证库已愈合复验；② **无语义层集合前置降级**（§V5 降级矩阵 #3 落地）——`collectionLacksSemanticLayer`（`search_helpers.go`）判定 `embedding_model` 空时 Retriever/HybridRetriever 直接降级 BM25，消除 dense 恒空静默；③ **中文短查询词法失效根修**——trigram 路 `similarity(content,q)`+`%` 对 2-4 字中文查询相似度稀释永低于阈值，改 `word_similarity(q,content)`+`%>`（`data/knowledge.go`）；新增 `knowledge_dim_reconcile_test.go` + `TestKnowledgeRepo_SearchChunksBM25_ChineseShortQuery` 等回归。详见设计文档 §4.2 维度对账 / §4.3 trigram 选型注 / §5.4、§5.6 降级注。
 > **2026-08-10 新增**：§子模块 编辑器与笔记体验（SP2）Phase 计划（SP2-1~SP2-9）——用户裁决：Obsidian 级笔记能力、UI 推翻 Tab 管理后台为深空液态玻璃工作台、编辑器选型 CodeMirror 6 Live Preview、A1+A2 一轮交付、纯前端重构后端零改动；设计已合入 [37-knowledge.design.md §SP2](./37-knowledge.design.md#sp2-编辑器与笔记体验深空液态玻璃工作台2026-08-10)。
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
+>
+> **2026-08-22 Wave 1**：产品契约冻结（Knowledge≠Memory）+ US-14 文案/粘贴入库/工作台全库搜索 + 文档状态机 + 摄取提交事务。
+> **2026-08-22 Wave 2**：LinkIndex 多副本 ADR（读 DB，不广播内存图）+ 联邦检索重写/预算 + PG advisory lock 重建/重嵌入 + `BindDerivedIndexHooks` + 默认库 `GetCollectionByName`。
+> **2026-08-22 Wave 3**：Usecase 字段按 Vault/Graph/WriteBack/Curate 分簇 + 域门面；前端 `useKnowledgePage` 拆 Upload/VaultOps，工作台 CAS 走 store。
+> **2026-08-22 Wave 4**：入库 content_hash 去重 + 启发式摘要卡；创建库 embedding 收入「高级」；文档列表续载；⌘O 索引不完整提示；store/WS 测试。
 
 ---
 
@@ -19,7 +24,12 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 **代码锚点**：
 - `api/kratos/knowledge/v1/knowledge.proto` — Knowledge CRUD + Search RPC（含 `rewrite_strategy` + `hybrid_search`）
 - `internal/biz/knowledge.go` — 类型别名转发（KnowledgeRepo = knowledge.Repo 等 + ApplyKnowledgeEmbedPatch 等）
-- `internal/biz/knowledge/knowledge.go` — 领域模型 + Repo/Usecase 接口（子接口拆分）+ EmbedSetting patch 合并
+- `internal/biz/knowledge/knowledge.go` — 领域模型 + Repo/Usecase 接口（子接口拆分）+ EmbedSetting patch 合并；`CommitIndexedDocument`；`GetCollectionByName`
+- `internal/biz/knowledge/domains.go` — Vault/Retrieve/Graph/WriteBack/Curate 门面（Usecase 仍是 Wire 根）
+- `internal/biz/knowledge/summary_card.go` — Wave 4 启发式摘要卡（LLM 未就绪时不阻塞入库）
+- `docs/reports/2026-08-22-review-adr-knowledge-linkindex-replica.md` — LinkIndex 多副本读路径 ADR
+- `internal/service/knowledge_job_lock.go` — 重建/重嵌入 PG advisory lock
+- `internal/biz/knowledge/document_state_machine.go` — 文档状态机（pending/indexing/indexed/error）
 - `internal/data/knowledge.go` — KnowledgeRepo（PostgreSQL + pgvector + BM25 双路；问句内容针 RRF）
 - `internal/biz/knowledge/lexical_query.go` — 中文问句压缩与内容针抽取（US-51）
 - `internal/service/knowledge.go` — KnowledgeService（KnowledgeSearchDeps 聚合）
@@ -55,6 +65,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `web/src/components/knowledge/GovernanceReviewDialog.vue` — 治理提案审核对话框
 - `web/src/stores/knowledge/index.ts` — 前端 Store
 - `web/src/features/knowledge/useKnowledgeIngestWs.ts` — 入库 WS 进度
+- `web/src/features/knowledge/useKnowledgeUpload.ts` / `useKnowledgeVaultOps.ts` — Wave 3 页面编排拆分
+- `web/src/features/knowledge/knowledgePageError.ts` / `knowledgeUploadCodec.ts` — 错误映射与入库编解码
 
 **Vault 重设计已新增（P1，✅ 已完成）**：
 - `internal/biz/knowledge/vault_filer.go` — Vault 文件写唯一出口（sanitize/原子写/覆盖备份/回收站）
@@ -266,7 +278,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | 任务 | 涉及文件 | 状态 |
 |------|----------|------|
 | Proto：Ingest/Search collection_id 去 REQUIRED + MoveDocument RPC | `api/kratos/knowledge/v1/knowledge.proto` + `make api` | ✅ |
-| Usecase：EnsureDefaultCollection 懒创建（按 name 查找复用） | `internal/biz/knowledge/knowledge.go` | ✅ |
+| Usecase：EnsureDefaultCollection 懒创建（GetCollectionByName + 唯一索引） | `internal/biz/knowledge/knowledge.go` | ✅ |
 | Service：IngestDocument 留空落默认库；Search 留空走 FederatedRetriever Route 全库 | `internal/service/knowledge.go` | ✅ |
 | 工具：collection_id/collection_ids 改可选；scoped 多库路由；无 scoped 全库路由；零库返回空结果 | `internal/tools/knowledge/tool.go` | ✅ |
 | MoveDocument：Repo 事务（documents+chunks 随迁 + 计数校正）+ dim 兼容校验 | `internal/data/knowledge.go`、`internal/biz/knowledge/knowledge.go`、`internal/service/knowledge.go` | ✅ |
@@ -1144,7 +1156,7 @@ G5-F（后端治理，独立可并行）─────────────�
 
 | # | 任务 | 涉及文件 |
 |---|------|----------|
-| D-1 | `LinkIndex` 进程内内存图：正/反邻接表 + 单调递增版本号；启动时从 `knowledge_block_refs` 全量构建（万级边毫秒级）；解析事务提交后 apply 增量（add/remove 边，版本号+1）；**单进程约束（N-1）**：多副本化需改事件广播，另立 ADR | `internal/biz/knowledge/link_index.go`（新增，TDD） |
+| D-1 | `LinkIndex` 进程内内存图：正/反邻接表 + 单调递增版本号；启动时从 `knowledge_block_refs` 全量构建（万级边毫秒级）；解析事务提交后 apply 增量（add/remove 边，版本号+1）；**N-1 / ADR-KN-LINKINDEX**：多副本读 DB，禁止广播内存图 | `internal/biz/knowledge/link_index.go`；ADR `docs/reports/2026-08-22-review-adr-knowledge-linkindex-replica.md` |
 | D-2 | `knowledge.graph.delta` WS 事件（`{added, removed, version}`，经 `event.Bus` 复用既有 WS 链路）；边带 scope（src/dst 块所属 collection backend + 租户推导），查询按当前用户可见 collection 集过滤（SP1 仅 scope 字段 + 基础过滤，完整片段级权限属 SP5）；**事件分级（N-2）**：按 AS-EVT-01 登记 Informational | `internal/event/`（事件定义）、`internal/biz/knowledge/link_index.go` |
 | D-3 | 内存基准：10 万边 < 100MB（NFR-SP1-4），基准测试落档 | `link_index_bench_test.go`（新增） |
 

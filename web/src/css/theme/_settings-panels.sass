@@ -82,6 +82,15 @@
   color: var(--color-text-heading)
   letter-spacing: -0.01em
 
+.section-title__info
+  color: var(--color-text-secondary)
+  opacity: 0.7
+  transition: opacity 160ms ease, color 160ms ease
+
+.section-title__info:hover
+  opacity: 1
+  color: var(--color-accent)
+
 .settings-subsection-grid
   display: grid
   gap: 12px
@@ -540,46 +549,78 @@ body.body--dark
   @media (width <= 599px)
     padding: 12px
 
-.prompt-mode-grid
-  // auto-fit 折叠多余空轨，4 张卡片拉满整行，消除右侧留白
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))
+.prompt-mode-segment
+  display: flex
+  gap: 4px
+  padding: 4px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-surface) 60%, transparent)
 
-.prompt-mode-card
-  height: 100%
-  min-height: 120px
-  border-color: var(--glass-border)
-  border-radius: 18px
-  background: var(--glass-elevated, rgb(255 255 255 / 72%))
-  backdrop-filter: blur(12px)
-  -webkit-backdrop-filter: blur(12px)
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease
-  overflow: hidden
+.prompt-mode-segment__item
+  flex: 1
+  min-width: 0
+  display: flex
+  flex-direction: column
+  align-items: center
+  gap: 2px
+  padding: 8px 6px
+  border: 1px solid transparent
+  border-radius: 9px
+  background: transparent
+  cursor: pointer
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease
 
-.prompt-mode-card:hover
-  transform: translateY(-2px)
+.prompt-mode-segment__item:hover
   background: var(--glass-surface-hover)
-  border-color: var(--glass-border)
 
-.prompt-mode-card.is-active
+.prompt-mode-segment__item.is-active
   border-color: var(--color-accent)
-  background: var(--interaction-surface-hover, rgb(255 243 228 / 92%))
-  // q-card flat 附带 .no-shadow !important，选中态投影需 !important 才能生效
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 30%, transparent) !important
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent)
 
-.prompt-mode-card__token
-  background: var(--color-accent)
-  color: var(--color-on-accent)
-  font-weight: 700
+.prompt-mode-segment__label
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-heading)
 
-.prompt-mode-card__caption
-  margin: 0
-  font-size: 12px
-  line-height: 1.45
+.prompt-mode-segment__tokens
+  font-size: 11px
   color: var(--color-text-secondary)
-  display: -webkit-box
-  -webkit-line-clamp: 3
-  -webkit-box-orient: vertical
-  overflow: hidden
+
+.prompt-mode-segment__caption
+  margin: 8px 0 0
+  font-size: 12px
+  color: var(--color-text-secondary)
+  display: flex
+  align-items: center
+  gap: 4px
+
+.desc-field-head
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+  margin-bottom: 6px
+
+.desc-field-head__label
+  font-size: 12px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  letter-spacing: 0.01em
+
+.model-field-row
+  display: flex
+  align-items: flex-start
+  gap: 10px
+
+.model-field-row .q-field
+  flex: 1
+  min-width: 0
+
+.model-field-row__badge
+  flex-shrink: 0
+  padding-top: 6px
 
 .prompt-dialog
   width: 860px
@@ -690,18 +731,10 @@ body.body--dark
     color: var(--color-accent)
     background: color-mix(in srgb, var(--color-accent) 16%, transparent)
 
-  .prompt-mode-card
-    border-color: var(--glass-border)
-    background: var(--glass-surface)
-
-  .prompt-mode-card:hover
-    background: var(--glass-surface-hover)
-    border-color: var(--glass-border-hover, var(--glass-border))
-
-  .prompt-mode-card.is-active
+  .prompt-mode-segment__item.is-active
     border-color: var(--color-neon-cyan)
-    background: color-mix(in srgb, var(--color-neon-cyan) 8%, transparent)
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-neon-cyan) 35%, transparent), 0 2px 10px color-mix(in srgb, var(--color-neon-cyan) 22%, transparent) !important
+    background: color-mix(in srgb, var(--color-neon-cyan) 10%, transparent)
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-neon-cyan) 35%, transparent), 0 0 12px color-mix(in srgb, var(--color-neon-cyan) 20%, transparent)
 
   .prompt-dialog
     background: var(--glass-surface)

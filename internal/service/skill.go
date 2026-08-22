@@ -477,7 +477,11 @@ func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillReq
 		loggateway.Str("skill_id", req.GetId()))
 	// P2-1: publish regression gate — blocked publishes return Conflict and
 	// the skill stays unpublished. Nil gate / disabled config = no-op.
-	if err := s.gate.Check(ctx, biz.EvalGateTriggerSkillPublish); err != nil {
+	agentID := ""
+	if sk, gerr := s.uc.Get(ctx, req.GetId()); gerr == nil {
+		agentID = sk.LastAgentID
+	}
+	if err := s.gate.Check(ctx, biz.EvalGateTriggerSkillPublish, agentID); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.Publish(ctx, req.GetId())

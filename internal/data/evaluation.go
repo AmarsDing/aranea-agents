@@ -81,6 +81,10 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB, d Dialect) error {
 			finished_at          TEXT NOT NULL DEFAULT '',
 			workspace_id         TEXT NOT NULL DEFAULT '',
 			dataset_hash         TEXT NOT NULL DEFAULT '',
+			dataset_version_id   TEXT NOT NULL DEFAULT '',
+			dataset_version      INTEGER NOT NULL DEFAULT 0,
+			experiment_id        TEXT NOT NULL DEFAULT '',
+			variant_label        TEXT NOT NULL DEFAULT '',
 			created_at           TEXT NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS eval_case_results (
@@ -99,7 +103,9 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB, d Dialect) error {
 			human_comment     TEXT NOT NULL DEFAULT '',
 			annotated_at      TEXT NOT NULL DEFAULT '',
 			annotated_by      TEXT NOT NULL DEFAULT '',
-			scores_json       TEXT NOT NULL DEFAULT '{}'
+			scores_json       TEXT NOT NULL DEFAULT '{}',
+			session_id        TEXT NOT NULL DEFAULT '',
+			trace_run_id      TEXT NOT NULL DEFAULT ''
 		)`,
 		// P3-3: pairwise human preference between two runs of one dataset.
 		`CREATE TABLE IF NOT EXISTS eval_run_preferences (
@@ -121,7 +127,17 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB, d Dialect) error {
 			metric     TEXT NOT NULL DEFAULT 'exact_match',
 			min_score  REAL NOT NULL DEFAULT 0,
 			max_drop   REAL NOT NULL DEFAULT 0,
+			mode       TEXT NOT NULL DEFAULT 'advisory',
 			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS eval_dataset_versions (
+			id          TEXT PRIMARY KEY,
+			dataset_id  TEXT NOT NULL,
+			version     INTEGER NOT NULL,
+			hash        TEXT NOT NULL DEFAULT '',
+			case_count  INTEGER NOT NULL DEFAULT 0,
+			cases_json  TEXT NOT NULL DEFAULT '[]',
+			created_at  TEXT NOT NULL
 		)`,
 	}
 	for _, s := range stmts {
@@ -144,6 +160,15 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB, d Dialect) error {
 		`ALTER TABLE eval_runs ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`,
 		// P3-5: dataset content hash snapshot.
 		`ALTER TABLE eval_runs ADD COLUMN dataset_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_gate_config ADD COLUMN mode TEXT NOT NULL DEFAULT 'advisory'`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_runs_inflight ON eval_runs (workspace_id, dataset_id, agent_id) WHERE status IN ('pending','running')`,
+		`ALTER TABLE eval_runs ADD COLUMN dataset_version_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_runs ADD COLUMN dataset_version INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE eval_runs ADD COLUMN experiment_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_runs ADD COLUMN variant_label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_case_results ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_case_results ADD COLUMN trace_run_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_dataset_versions_ds_ver ON eval_dataset_versions (dataset_id, version)`,
 	}
 	for _, s := range migrations {
 		// EVAL-07: only "column already exists" is benign on re-run. Any other
@@ -295,6 +320,52 @@ func (r *evalRepo) ListCases(ctx context.Context, datasetID string) ([]biz.EvalC
 	return out, entErrToBizErr(rows.Err(), "EVAL")
 }
 
+func (r *evalRepo) UpdateCase(ctx context.Context, c biz.EvalCase) (biz.EvalCase, error) {
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(
+			`UPDATE eval_cases SET input=?, expected_output=?, metadata_json=? WHERE id=? AND dataset_id=?`),
+		c.Input, c.ExpectedOutput, c.MetadataJSON, c.ID, c.DatasetID)
+	if err != nil {
+		return biz.EvalCase{}, entErrToBizErr(err, "EVAL")
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return biz.EvalCase{}, apierror.NotFound("EVAL", "case not found")
+	}
+	return c, nil
+}
+
+func (r *evalRepo) DeleteCase(ctx context.Context, datasetID, caseID string) error {
+	t := now()
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
+		res, err := e.ExecContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(`DELETE FROM eval_cases WHERE id=? AND dataset_id=?`),
+			caseID, datasetID)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return apierror.NotFound("EVAL", "case not found")
+		}
+		if _, err := e.ExecContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(
+				`UPDATE eval_datasets SET case_count=CASE WHEN case_count>0 THEN case_count-1 ELSE 0 END, updated_at=? WHERE id=?`),
+			t, datasetID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return err
+		}
+		return entErrToBizErr(err, "EVAL")
+	}
+	return nil
+}
+
 // --- Runs ---
 
 func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, error) {
@@ -310,19 +381,25 @@ func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, 
 		 (id,dataset_id,agent_id,status,total_cases,completed_cases,
 		  exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 		  pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
-		  error_message,started_at,finished_at,workspace_id,created_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		  error_message,started_at,finished_at,workspace_id,created_at,
+		  dataset_hash,dataset_version_id,dataset_version,experiment_id,variant_label)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		rn.ID, rn.DatasetID, rn.AgentID, rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
 		rn.PassAtK, rn.PassHatK, rn.TriggerSource, rn.NumRuns, normalizeEvalScoresJSON(rn.ScoresJSON),
-		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.WorkspaceID, rn.CreatedAt)
+		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.WorkspaceID, rn.CreatedAt,
+		rn.DatasetHash, rn.DatasetVersionID, rn.DatasetVersion, rn.ExperimentID, rn.VariantLabel)
+	if err != nil && r.data.Dialect().UniqueConstraintErr(err) {
+		return biz.EvalRun{}, apierror.Conflict("EVAL", "an evaluation run is already in flight for this dataset+agent")
+	}
 	return rn, entErrToBizErr(err, "EVAL")
 }
 
 const evalRunSelect = `SELECT id,dataset_id,agent_id,status,total_cases,completed_cases,
 	exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 	pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
-	error_message,started_at,finished_at,workspace_id,dataset_hash,created_at FROM eval_runs`
+	error_message,started_at,finished_at,workspace_id,dataset_hash,created_at,
+	COALESCE(dataset_version_id,''),COALESCE(dataset_version,0),COALESCE(experiment_id,''),COALESCE(variant_label,'') FROM eval_runs`
 
 func normalizeEvalScoresJSON(raw string) string {
 	if strings.TrimSpace(raw) == "" {
@@ -336,7 +413,8 @@ func scanEvalRun(row interface{ Scan(dest ...any) error }) (biz.EvalRun, error) 
 	err := row.Scan(&rn.ID, &rn.DatasetID, &rn.AgentID, &rn.Status, &rn.TotalCases, &rn.CompletedCases,
 		&rn.ExactMatchScore, &rn.ContainsMatchScore, &rn.LLMJudgeScore, &rn.ToolCallAccuracy,
 		&rn.PassAtK, &rn.PassHatK, &rn.TriggerSource, &rn.NumRuns, &rn.ScoresJSON,
-		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.WorkspaceID, &rn.DatasetHash, &rn.CreatedAt)
+		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.WorkspaceID, &rn.DatasetHash, &rn.CreatedAt,
+		&rn.DatasetVersionID, &rn.DatasetVersion, &rn.ExperimentID, &rn.VariantLabel)
 	return rn, entErrToBizErr(err, "EVAL")
 }
 
@@ -357,12 +435,14 @@ func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 		r.data.Dialect().RenumberPlaceholders(`UPDATE eval_runs SET status=?,total_cases=?,completed_cases=?,
 	        exact_match_score=?,contains_match_score=?,llm_judge_score=?,tool_call_accuracy=?,
 	        pass_at_k=?,pass_hat_k=?,scores_json=?,
-	        error_message=?,started_at=?,finished_at=?,dataset_hash=?
+	        error_message=?,started_at=?,finished_at=?,dataset_hash=?,
+	        dataset_version_id=?,dataset_version=?,experiment_id=?,variant_label=?
 		 WHERE id=?`),
 		rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
 		rn.PassAtK, rn.PassHatK, normalizeEvalScoresJSON(rn.ScoresJSON),
-		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.DatasetHash, rn.ID)
+		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.DatasetHash,
+		rn.DatasetVersionID, rn.DatasetVersion, rn.ExperimentID, rn.VariantLabel, rn.ID)
 	return entErrToBizErr(err, "EVAL")
 }
 
@@ -528,7 +608,8 @@ func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRu
 // --- Case Results ---
 
 const evalCaseResultSelect = `SELECT r.id,r.run_id,r.case_id,r.actual_output,r.exact_match,r.contains_match,r.llm_judge_score,r.tool_call_accuracy,r.error_message,r.created_at,
-	r.human_pass,r.human_score,r.human_comment,r.annotated_at,r.annotated_by,r.scores_json,COALESCE(c.input,'')
+	r.human_pass,r.human_score,r.human_comment,r.annotated_at,r.annotated_by,r.scores_json,COALESCE(c.input,''),
+	COALESCE(r.session_id,''),COALESCE(r.trace_run_id,'')
 	FROM eval_case_results r LEFT JOIN eval_cases c ON c.id = r.case_id`
 
 func scanEvalCaseResult(row interface {
@@ -541,7 +622,7 @@ func scanEvalCaseResult(row interface {
 	if err := row.Scan(&res.ID, &res.RunID, &res.CaseID, &res.ActualOutput, &em, &cm,
 		&res.LLMJudgeScore, &res.ToolCallAccuracy, &res.ErrorMessage, &res.CreatedAt,
 		&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy, &res.ScoresJSON,
-		&res.Input); err != nil {
+		&res.Input, &res.SessionID, &res.TraceRunID); err != nil {
 		return biz.EvalCaseResult{}, entErrToBizErr(err, "EVAL")
 	}
 	res.ExactMatch = em == 1
@@ -569,11 +650,11 @@ func (r *evalRepo) InsertCaseResult(ctx context.Context, res biz.EvalCaseResult)
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`INSERT INTO eval_case_results
-		 (id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,scores_json)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
+		 (id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,scores_json,session_id,trace_run_id)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		res.ID, res.RunID, res.CaseID, res.ActualOutput, em, cm,
 		res.LLMJudgeScore, res.ToolCallAccuracy, res.ErrorMessage, res.CreatedAt,
-		normalizeEvalScoresJSON(res.ScoresJSON))
+		normalizeEvalScoresJSON(res.ScoresJSON), res.SessionID, res.TraceRunID)
 	return entErrToBizErr(err, "EVAL")
 }
 

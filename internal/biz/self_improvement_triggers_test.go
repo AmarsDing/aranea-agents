@@ -317,7 +317,7 @@ func TestEvalRegressionTrigger_Boundaries(t *testing.T) {
 				if len(got) != 1 {
 					t.Fatalf("len = %d, want 1", len(got))
 				}
-				sig := assertPlatformSuggestion(t, got[0], TriggerSourceEvalRegression, EvolutionActionPatchCode)
+				sig := assertPlatformSuggestion(t, got[0], TriggerSourceEvalRegression, EvolutionActionPatchPrompt)
 				if got[0].Priority != 2 {
 					t.Errorf("Priority = %d, want 2 (quality regression)", got[0].Priority)
 				}
@@ -339,6 +339,13 @@ func TestEvalRegressionTrigger_NilBaselines(t *testing.T) {
 	got2, err2 := tr2.Check(context.Background(), "platform")
 	if err2 != nil || got2 != nil {
 		t.Errorf("nil reader: got=%v err=%v", got2, err2)
+	}
+}
+
+func TestEvalRegressionTrigger_ActionTypePatchPrompt(t *testing.T) {
+	tr := NewEvalRegressionTrigger(nil, 0, loggateway.NewNoop())
+	if tr.ActionType() != EvolutionActionPatchPrompt {
+		t.Errorf("ActionType = %q, want patch_prompt", tr.ActionType())
 	}
 }
 

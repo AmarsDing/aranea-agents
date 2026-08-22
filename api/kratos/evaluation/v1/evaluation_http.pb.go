@@ -21,8 +21,10 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationEvaluationServiceAnnotateCaseResult = "/kratos.evaluation.v1.EvaluationService/AnnotateCaseResult"
+const OperationEvaluationServiceCancelRun = "/kratos.evaluation.v1.EvaluationService/CancelRun"
 const OperationEvaluationServiceCompareEvalRuns = "/kratos.evaluation.v1.EvaluationService/CompareEvalRuns"
 const OperationEvaluationServiceCreateDataset = "/kratos.evaluation.v1.EvaluationService/CreateDataset"
+const OperationEvaluationServiceDeleteCase = "/kratos.evaluation.v1.EvaluationService/DeleteCase"
 const OperationEvaluationServiceDeleteDataset = "/kratos.evaluation.v1.EvaluationService/DeleteDataset"
 const OperationEvaluationServiceDeleteRun = "/kratos.evaluation.v1.EvaluationService/DeleteRun"
 const OperationEvaluationServiceGetAgentEvalTrend = "/kratos.evaluation.v1.EvaluationService/GetAgentEvalTrend"
@@ -32,20 +34,26 @@ const OperationEvaluationServiceGetFailureGroups = "/kratos.evaluation.v1.Evalua
 const OperationEvaluationServiceGetJudgeDivergence = "/kratos.evaluation.v1.EvaluationService/GetJudgeDivergence"
 const OperationEvaluationServiceGetRun = "/kratos.evaluation.v1.EvaluationService/GetRun"
 const OperationEvaluationServiceGetRunResults = "/kratos.evaluation.v1.EvaluationService/GetRunResults"
+const OperationEvaluationServiceListCases = "/kratos.evaluation.v1.EvaluationService/ListCases"
+const OperationEvaluationServiceListDatasetVersions = "/kratos.evaluation.v1.EvaluationService/ListDatasetVersions"
 const OperationEvaluationServiceListDatasets = "/kratos.evaluation.v1.EvaluationService/ListDatasets"
 const OperationEvaluationServiceListRunPreferences = "/kratos.evaluation.v1.EvaluationService/ListRunPreferences"
 const OperationEvaluationServiceListRuns = "/kratos.evaluation.v1.EvaluationService/ListRuns"
 const OperationEvaluationServiceRunEvaluation = "/kratos.evaluation.v1.EvaluationService/RunEvaluation"
+const OperationEvaluationServiceRunExperiment = "/kratos.evaluation.v1.EvaluationService/RunExperiment"
 const OperationEvaluationServiceSubmitRunPreference = "/kratos.evaluation.v1.EvaluationService/SubmitRunPreference"
+const OperationEvaluationServiceUpdateCase = "/kratos.evaluation.v1.EvaluationService/UpdateCase"
 const OperationEvaluationServiceUpdateDataset = "/kratos.evaluation.v1.EvaluationService/UpdateDataset"
 const OperationEvaluationServiceUpdateEvalGate = "/kratos.evaluation.v1.EvaluationService/UpdateEvalGate"
 const OperationEvaluationServiceUploadCases = "/kratos.evaluation.v1.EvaluationService/UploadCases"
 
 type EvaluationServiceHTTPServer interface {
 	AnnotateCaseResult(context.Context, *AnnotateCaseResultRequest) (*EvalCaseResult, error)
+	CancelRun(context.Context, *CancelRunRequest) (*EvalRun, error)
 	CompareEvalRuns(context.Context, *CompareEvalRunsRequest) (*CompareEvalRunsResponse, error)
 	// CreateDataset Datasets
 	CreateDataset(context.Context, *CreateDatasetRequest) (*EvalDataset, error)
+	DeleteCase(context.Context, *DeleteCaseRequest) (*emptypb.Empty, error)
 	DeleteDataset(context.Context, *DeleteDatasetRequest) (*emptypb.Empty, error)
 	DeleteRun(context.Context, *DeleteRunRequest) (*emptypb.Empty, error)
 	GetAgentEvalTrend(context.Context, *GetAgentEvalTrendRequest) (*GetAgentEvalTrendResponse, error)
@@ -55,12 +63,16 @@ type EvaluationServiceHTTPServer interface {
 	GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error)
 	GetRun(context.Context, *GetRunRequest) (*EvalRun, error)
 	GetRunResults(context.Context, *GetRunResultsRequest) (*GetRunResultsResponse, error)
+	ListCases(context.Context, *ListCasesRequest) (*ListCasesResponse, error)
+	ListDatasetVersions(context.Context, *ListDatasetVersionsRequest) (*ListDatasetVersionsResponse, error)
 	ListDatasets(context.Context, *ListDatasetsRequest) (*ListDatasetsResponse, error)
 	ListRunPreferences(context.Context, *ListRunPreferencesRequest) (*ListRunPreferencesResponse, error)
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
 	// RunEvaluation Runs
 	RunEvaluation(context.Context, *RunEvaluationRequest) (*EvalRun, error)
+	RunExperiment(context.Context, *RunExperimentRequest) (*RunExperimentResponse, error)
 	SubmitRunPreference(context.Context, *SubmitRunPreferenceRequest) (*EvalRunPreference, error)
+	UpdateCase(context.Context, *UpdateCaseRequest) (*EvalCase, error)
 	UpdateDataset(context.Context, *UpdateDatasetRequest) (*EvalDataset, error)
 	UpdateEvalGate(context.Context, *UpdateEvalGateRequest) (*EvalGateConfig, error)
 	UploadCases(context.Context, *UploadCasesRequest) (*UploadCasesResponse, error)
@@ -74,9 +86,13 @@ func RegisterEvaluationServiceHTTPServer(s *http.Server, srv EvaluationServiceHT
 	r.DELETE("/v1/evaluation/datasets/{id}", _EvaluationService_DeleteDataset0_HTTP_Handler(srv))
 	r.PATCH("/v1/evaluation/datasets/{id}", _EvaluationService_UpdateDataset0_HTTP_Handler(srv))
 	r.POST("/v1/evaluation/datasets/{dataset_id}/cases", _EvaluationService_UploadCases0_HTTP_Handler(srv))
+	r.GET("/v1/evaluation/datasets/{dataset_id}/cases", _EvaluationService_ListCases0_HTTP_Handler(srv))
+	r.PATCH("/v1/evaluation/datasets/{dataset_id}/cases/{id}", _EvaluationService_UpdateCase0_HTTP_Handler(srv))
+	r.DELETE("/v1/evaluation/datasets/{dataset_id}/cases/{id}", _EvaluationService_DeleteCase0_HTTP_Handler(srv))
 	r.POST("/v1/evaluation/runs", _EvaluationService_RunEvaluation0_HTTP_Handler(srv))
 	r.GET("/v1/evaluation/runs/{id}", _EvaluationService_GetRun0_HTTP_Handler(srv))
 	r.DELETE("/v1/evaluation/runs/{id}", _EvaluationService_DeleteRun0_HTTP_Handler(srv))
+	r.POST("/v1/evaluation/runs/{id}/cancel", _EvaluationService_CancelRun0_HTTP_Handler(srv))
 	r.GET("/v1/evaluation/runs", _EvaluationService_ListRuns0_HTTP_Handler(srv))
 	r.GET("/v1/evaluation/runs/{run_id}/results", _EvaluationService_GetRunResults0_HTTP_Handler(srv))
 	r.PATCH("/v1/evaluation/runs/{run_id}/results/{result_id}/annotation", _EvaluationService_AnnotateCaseResult0_HTTP_Handler(srv))
@@ -88,6 +104,8 @@ func RegisterEvaluationServiceHTTPServer(s *http.Server, srv EvaluationServiceHT
 	r.GET("/v1/evaluation/preferences", _EvaluationService_ListRunPreferences0_HTTP_Handler(srv))
 	r.GET("/v1/evaluation/gate", _EvaluationService_GetEvalGate0_HTTP_Handler(srv))
 	r.PUT("/v1/evaluation/gate", _EvaluationService_UpdateEvalGate0_HTTP_Handler(srv))
+	r.GET("/v1/evaluation/datasets/{dataset_id}/versions", _EvaluationService_ListDatasetVersions0_HTTP_Handler(srv))
+	r.POST("/v1/evaluation/experiments", _EvaluationService_RunExperiment0_HTTP_Handler(srv))
 }
 
 func _EvaluationService_CreateDataset0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
@@ -225,6 +243,75 @@ func _EvaluationService_UploadCases0_HTTP_Handler(srv EvaluationServiceHTTPServe
 	}
 }
 
+func _EvaluationService_ListCases0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListCasesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceListCases)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListCases(ctx, req.(*ListCasesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListCasesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_UpdateCase0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateCaseRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceUpdateCase)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateCase(ctx, req.(*UpdateCaseRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EvalCase)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_DeleteCase0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteCaseRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceDeleteCase)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteCase(ctx, req.(*DeleteCaseRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _EvaluationService_RunEvaluation0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in RunEvaluationRequest
@@ -287,6 +374,31 @@ func _EvaluationService_DeleteRun0_HTTP_Handler(srv EvaluationServiceHTTPServer)
 			return err
 		}
 		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_CancelRun0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CancelRunRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceCancelRun)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CancelRun(ctx, req.(*CancelRunRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EvalRun)
 		return ctx.Result(200, reply)
 	}
 }
@@ -527,11 +639,57 @@ func _EvaluationService_UpdateEvalGate0_HTTP_Handler(srv EvaluationServiceHTTPSe
 	}
 }
 
+func _EvaluationService_ListDatasetVersions0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListDatasetVersionsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceListDatasetVersions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListDatasetVersions(ctx, req.(*ListDatasetVersionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListDatasetVersionsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_RunExperiment0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RunExperimentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceRunExperiment)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RunExperiment(ctx, req.(*RunExperimentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RunExperimentResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type EvaluationServiceHTTPClient interface {
 	AnnotateCaseResult(ctx context.Context, req *AnnotateCaseResultRequest, opts ...http.CallOption) (rsp *EvalCaseResult, err error)
+	CancelRun(ctx context.Context, req *CancelRunRequest, opts ...http.CallOption) (rsp *EvalRun, err error)
 	CompareEvalRuns(ctx context.Context, req *CompareEvalRunsRequest, opts ...http.CallOption) (rsp *CompareEvalRunsResponse, err error)
 	// CreateDataset Datasets
 	CreateDataset(ctx context.Context, req *CreateDatasetRequest, opts ...http.CallOption) (rsp *EvalDataset, err error)
+	DeleteCase(ctx context.Context, req *DeleteCaseRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteDataset(ctx context.Context, req *DeleteDatasetRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteRun(ctx context.Context, req *DeleteRunRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetAgentEvalTrend(ctx context.Context, req *GetAgentEvalTrendRequest, opts ...http.CallOption) (rsp *GetAgentEvalTrendResponse, err error)
@@ -541,12 +699,16 @@ type EvaluationServiceHTTPClient interface {
 	GetJudgeDivergence(ctx context.Context, req *GetJudgeDivergenceRequest, opts ...http.CallOption) (rsp *GetJudgeDivergenceResponse, err error)
 	GetRun(ctx context.Context, req *GetRunRequest, opts ...http.CallOption) (rsp *EvalRun, err error)
 	GetRunResults(ctx context.Context, req *GetRunResultsRequest, opts ...http.CallOption) (rsp *GetRunResultsResponse, err error)
+	ListCases(ctx context.Context, req *ListCasesRequest, opts ...http.CallOption) (rsp *ListCasesResponse, err error)
+	ListDatasetVersions(ctx context.Context, req *ListDatasetVersionsRequest, opts ...http.CallOption) (rsp *ListDatasetVersionsResponse, err error)
 	ListDatasets(ctx context.Context, req *ListDatasetsRequest, opts ...http.CallOption) (rsp *ListDatasetsResponse, err error)
 	ListRunPreferences(ctx context.Context, req *ListRunPreferencesRequest, opts ...http.CallOption) (rsp *ListRunPreferencesResponse, err error)
 	ListRuns(ctx context.Context, req *ListRunsRequest, opts ...http.CallOption) (rsp *ListRunsResponse, err error)
 	// RunEvaluation Runs
 	RunEvaluation(ctx context.Context, req *RunEvaluationRequest, opts ...http.CallOption) (rsp *EvalRun, err error)
+	RunExperiment(ctx context.Context, req *RunExperimentRequest, opts ...http.CallOption) (rsp *RunExperimentResponse, err error)
 	SubmitRunPreference(ctx context.Context, req *SubmitRunPreferenceRequest, opts ...http.CallOption) (rsp *EvalRunPreference, err error)
+	UpdateCase(ctx context.Context, req *UpdateCaseRequest, opts ...http.CallOption) (rsp *EvalCase, err error)
 	UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, opts ...http.CallOption) (rsp *EvalDataset, err error)
 	UpdateEvalGate(ctx context.Context, req *UpdateEvalGateRequest, opts ...http.CallOption) (rsp *EvalGateConfig, err error)
 	UploadCases(ctx context.Context, req *UploadCasesRequest, opts ...http.CallOption) (rsp *UploadCasesResponse, err error)
@@ -567,6 +729,19 @@ func (c *EvaluationServiceHTTPClientImpl) AnnotateCaseResult(ctx context.Context
 	opts = append(opts, http.Operation(OperationEvaluationServiceAnnotateCaseResult))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PATCH", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) CancelRun(ctx context.Context, in *CancelRunRequest, opts ...http.CallOption) (*EvalRun, error) {
+	var out EvalRun
+	pattern := "/v1/evaluation/runs/{id}/cancel"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationEvaluationServiceCancelRun))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -594,6 +769,19 @@ func (c *EvaluationServiceHTTPClientImpl) CreateDataset(ctx context.Context, in 
 	opts = append(opts, http.Operation(OperationEvaluationServiceCreateDataset))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) DeleteCase(ctx context.Context, in *DeleteCaseRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/evaluation/datasets/{dataset_id}/cases/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceDeleteCase))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -717,6 +905,32 @@ func (c *EvaluationServiceHTTPClientImpl) GetRunResults(ctx context.Context, in 
 	return &out, nil
 }
 
+func (c *EvaluationServiceHTTPClientImpl) ListCases(ctx context.Context, in *ListCasesRequest, opts ...http.CallOption) (*ListCasesResponse, error) {
+	var out ListCasesResponse
+	pattern := "/v1/evaluation/datasets/{dataset_id}/cases"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceListCases))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) ListDatasetVersions(ctx context.Context, in *ListDatasetVersionsRequest, opts ...http.CallOption) (*ListDatasetVersionsResponse, error) {
+	var out ListDatasetVersionsResponse
+	pattern := "/v1/evaluation/datasets/{dataset_id}/versions"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceListDatasetVersions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *EvaluationServiceHTTPClientImpl) ListDatasets(ctx context.Context, in *ListDatasetsRequest, opts ...http.CallOption) (*ListDatasetsResponse, error) {
 	var out ListDatasetsResponse
 	pattern := "/v1/evaluation/datasets"
@@ -770,6 +984,19 @@ func (c *EvaluationServiceHTTPClientImpl) RunEvaluation(ctx context.Context, in 
 	return &out, nil
 }
 
+func (c *EvaluationServiceHTTPClientImpl) RunExperiment(ctx context.Context, in *RunExperimentRequest, opts ...http.CallOption) (*RunExperimentResponse, error) {
+	var out RunExperimentResponse
+	pattern := "/v1/evaluation/experiments"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationEvaluationServiceRunExperiment))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *EvaluationServiceHTTPClientImpl) SubmitRunPreference(ctx context.Context, in *SubmitRunPreferenceRequest, opts ...http.CallOption) (*EvalRunPreference, error) {
 	var out EvalRunPreference
 	pattern := "/v1/evaluation/preferences"
@@ -777,6 +1004,19 @@ func (c *EvaluationServiceHTTPClientImpl) SubmitRunPreference(ctx context.Contex
 	opts = append(opts, http.Operation(OperationEvaluationServiceSubmitRunPreference))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) UpdateCase(ctx context.Context, in *UpdateCaseRequest, opts ...http.CallOption) (*EvalCase, error) {
+	var out EvalCase
+	pattern := "/v1/evaluation/datasets/{dataset_id}/cases/{id}"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationEvaluationServiceUpdateCase))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PATCH", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

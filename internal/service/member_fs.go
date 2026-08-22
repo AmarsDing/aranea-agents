@@ -74,6 +74,66 @@ func memberWorkspaceBase(ctx context.Context, sys biz.SystemSettingRepo) string 
 	return storage.Absolute(base)
 }
 
+// teamInboxFS copies declared Bulk files into downstream agent workspaces.
+type teamInboxFS struct {
+	sys biz.SystemSettingRepo
+}
+
+var _ biz.TeamInboxFS = (*teamInboxFS)(nil)
+
+// NewTeamInboxFS creates the inbox materializer (M78 ORGFAST-17).
+func NewTeamInboxFS(sys biz.SystemSettingRepo) biz.TeamInboxFS {
+	return &teamInboxFS{sys: sys}
+}
+
+func (f *teamInboxFS) agentDir(ctx context.Context, agentKey string) string {
+	base := memberWorkspaceBase(ctx, f.sys)
+	wsID := workspace.IDFromContext(ctx)
+	if strings.TrimSpace(wsID) == "" {
+		wsID = workspace.DefaultWorkspaceID
+	}
+	return filepath.Join(base, "workspace", wsID, strings.TrimSpace(agentKey))
+}
+
+func (f *teamInboxFS) MaterializeFile(ctx context.Context, spec biz.InboxCopySpec) error {
+	rel := filepath.FromSlash(strings.TrimSpace(spec.RelPath))
+	if rel == "" || filepath.IsAbs(rel) || strings.Contains(rel, "..") {
+		return fmt.Errorf("invalid rel_path")
+	}
+	destName := filepath.Base(strings.TrimSpace(spec.DestName))
+	if destName == "" || destName == "." || destName == string(filepath.Separator) {
+		return fmt.Errorf("invalid dest name")
+	}
+	var data []byte
+	found := false
+	for _, src := range spec.SrcAgentKeys {
+		p := filepath.Join(f.agentDir(ctx, src), rel)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		data, found = b, true
+		break
+	}
+	if !found {
+		return fmt.Errorf("source file not found: %s", spec.RelPath)
+	}
+	upID := strings.TrimSpace(spec.UpstreamTeamID)
+	if upID == "" {
+		return fmt.Errorf("upstream team id is empty")
+	}
+	for _, dest := range spec.DestAgentKeys {
+		dir := filepath.Join(f.agentDir(ctx, dest), "inbox", upID)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, destName), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 
 // memberFileReader implements biz.MemberFileReader (read-only).

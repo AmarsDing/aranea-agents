@@ -512,6 +512,10 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | 0.3 | `CacheHitRatioStats` 聚合查询（biz 窄接口 + data SQL，排除 prompt<1024 样本） | Biz/Data | ✅ | `internal/biz/usage/cache_hit.go`、`internal/data/usage_cache_hit.go`；`TestCacheHitRatioStats_Aggregates`/`_Empty` 真 PG PASS（2026-08-13） |
 | 0.4 | `llm.cache_hit_ratio_low` 告警规则（1h 窗、样本≥20、阈值默认 0.5 可配） | Biz/Monitor | ✅ | `internal/biz/monitor/alert_metric_cache_hit.go`；`go test ./internal/biz/monitor -run TestCacheHitRatio` PASS；Wire 装配入告警注册表（2026-08-13） |
 | 0.5 | 运行时验证：重启后端 → 真实对话 → 台账分量合理 | Service | ✅ | 见 §13.1.2 |
+| 0.6 | turn 级缓存命中落库：`session_turns.cached_input_tokens` 列（方案 B，turn 详情/评测证据免 join 即得命中率） | Ent/Data/Service | ✅ | `internal/data/ent/schema/session_turn.go` + 迁移 `20261239_session_turn_cached_input`（幂等，已在 aranea-postgres 验证重跑跳过）；`RecordSessionTurn` Create/Update 双路径无条件写入（0 是有意义观测）；单聊/团队调用点均传 `CachedTok`；`chat_turn_metrics_session_turn_test.go` 2 用例 PASS（2026-08-22） |
+| 0.7 | `GetCacheHitRatioStats` RPC（`GET /v1/usage/cache-hit-ratio-stats`，`window_hours` 默认 1 clamp [1,168]，平台级门禁同 budget alerts） | API/Service/Biz | ✅ | `api/kratos/usage/v1/usage.proto`；biz `Usecase.CacheHitRatioStats` 窄接口委托（无能力返回空）；service clamp+mapper；biz 3 用例 + service 7 用例 PASS；聚合 SQL 在 aranea-postgres 手工验证（窗口/最小 prompt/team_turn 排除、P50 插值全对）（2026-08-22） |
+| 0.8 | 前端命中率卡片 `UsageCacheHitRatio.vue`（OverviewPage，1h/24h/7d 窗口切换，P50<0.5 红色低水位，403 静默隐藏） | Web | ✅ | 数据流经 `stores/usage.loadCacheHitStats`（R-FE1 分层合规）；`stores/__tests__/usage.spec.ts` 3 用例 PASS；eslint/vue-tsc 干净（2026-08-22） |
+| 0.9 | 方案 B 全量验证收口 | 全栈 | ✅ | `make api`/`make wire` 重跑无新 diff、`make build` exit 0；`go test -race` biz/usage + service + data 三包全过（PG 测试库须 `ARANEA_TEST_PG_DSN` 指向 twinserver-postgres 5432 密码 123456，默认 DSN 的 Hangshan@123 已失效）；前端 vue-tsc/eslint/vitest/i18n 键一致性（4616 zh / 4599 en）全过（2026-08-22）。既有问题不归属本改动：lint R7 `twin_openapi_compat.go` mux.HandleFunc（8-17 提交既有）、`chat_orchestrator_turn.go:722` vet intentCancel（并发会话改动）、`useUsageEventsPage.ts:223` 等 vue-tsc 错误（HEAD 既有） |
 
 ### 13.1.1 运行时基线测量（2026-08-13，68 样本，日志 log-2026-08-11~12）
 

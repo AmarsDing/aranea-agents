@@ -5,11 +5,19 @@ import type { ActivityKind, ToolUseEvent } from './types';
  * same label table when resolving ActionEvent.toolLabel fallbacks. */
 export const builtinLabels: Record<string, string> = {
   read_file: '读取文件',
+  read_multiple_files: '读取文件',
   save_file: '保存文件',
   file_read_file: '读取文件',
   file_edit: '编辑文件',
   file_write: '写入文件',
+  // 运行时 file 工具集真实名（调用契约 7.4 对齐）。
+  diff_edit: '编辑文件',
+  replace_content: '替换内容',
+  patch_file: '应用补丁',
+  search_content: '搜索内容',
+  search_file: '搜索文件',
   exec_command: '执行命令',
+  shell_exec: '执行命令',
   cli_admin_agent_get: '获取 Agent',
   todo_write: '写入待办',
   skill_load: '加载 Skill',

@@ -35,15 +35,22 @@
             :label="t('knowledgePage.createDescLabel')"
             @update:model-value="$emit('update:description', String($event ?? ''))"
           />
-          <q-input
-            :model-value="embeddingModel"
-            class="app-field-md"
+          <q-expansion-item
             dense
-            outlined
-            :label="t('knowledgePage.createEmbeddingLabel')"
-            :hint="t('knowledgePage.createEmbeddingHint')"
-            @update:model-value="$emit('update:embeddingModel', String($event ?? ''))"
-          />
+            switch-toggle-side
+            :label="t('knowledgePage.createAdvanced')"
+            :caption="t('knowledgePage.createEmbeddingHint')"
+          >
+            <q-input
+              :model-value="embeddingModel"
+              class="app-field-md q-mt-sm"
+              dense
+              outlined
+              :label="t('knowledgePage.createEmbeddingLabel')"
+              :hint="t('knowledgePage.createEmbeddingHint')"
+              @update:model-value="$emit('update:embeddingModel', String($event ?? ''))"
+            />
+          </q-expansion-item>
         </q-card-section>
       </div>
       <q-separator />

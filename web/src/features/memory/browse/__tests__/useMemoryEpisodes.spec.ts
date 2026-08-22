@@ -1,5 +1,6 @@
 // web/src/features/memory/browse/__tests__/useMemoryEpisodes.spec.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import { ref } from 'vue';
 import type { MemoryEpisodeListResult } from '../../types';
 
@@ -35,6 +36,7 @@ function sampleResult(offset = 0): MemoryEpisodeListResult {
 
 describe('useMemoryEpisodes', () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     mockApi.mockReset();
   });
 

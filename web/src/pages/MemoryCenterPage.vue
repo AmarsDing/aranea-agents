@@ -14,8 +14,6 @@
       </template>
     </q-banner>
 
-    <memory-metric-cards :cards="overviewCards" />
-
     <q-card flat class="memory-tabs-card">
       <q-tabs
         v-model="tab"
@@ -29,7 +27,8 @@
         <q-tab name="panorama" icon="dashboard" :label="t('memory.tabs.panorama')" />
         <q-tab name="graph" icon="bubble_chart" :label="t('memory.tabs.graph')" />
         <q-tab name="browse" icon="travel_explore" :label="t('memory.tabs.browse')" />
-        <q-tab name="governance" icon="admin_panel_settings" :label="t('memory.tabs.governance')" />
+        <q-tab name="governance" icon="verified_user" :label="t('memory.tabs.governance')" />
+        <q-tab v-if="isPlatformAdmin" name="ops" icon="admin_panel_settings" :label="t('memory.tabs.ops')" />
       </q-tabs>
     </q-card>
 
@@ -53,6 +52,7 @@
             <memory-sessions-panel
               v-if="show('L0') || show('L1')"
               v-model:selected-session-id="selectedSessionId"
+              v-model:selected-task-id="selectedTaskId"
               :session-rows="sessionRows"
               :loading-sessions="loadingSessions"
               :snapshot-rows="snapshotRows"
@@ -60,11 +60,13 @@
               :loading-snapshots="loadingSnapshots"
               :task-rows="taskRows"
               :loading-tasks="loadingTasks"
+              :field-rows="fieldRows"
+              :loading-fields="loadingFields"
               @refresh-sessions="loadSessions"
               @refresh-memory="loadSessionMemory"
               @open-snapshot="openSnapshot"
             />
-            <memory-episode-timeline v-if="show('L2')" :agent-id="selectedAgentId" :session-id="null" />
+            <memory-episode-timeline v-if="show('L2')" :agent-id="selectedAgentId" :session-id="selectedSessionId" />
             <memory-knowledge-panel
               v-if="show('L3')"
               v-model:fact-keyword="factKeyword"
@@ -120,6 +122,27 @@
             @compensate="compensateCascade"
           />
           <memory-evolution-panel :panels="evolutionPanels" />
+          <memory-evolution-review-panel
+            :proposals="evolutionProposals"
+            :events="evolutionEvents"
+            :acting-id="evolutionActingId"
+            @approve="reviewEvolutionProposal($event, 'approve')"
+            @reject="reviewEvolutionProposal($event, 'reject')"
+            @revert="revertEvolutionEvent"
+          />
+          <MemoryPIIPanel
+            :rows="piiFacts"
+            :loading="loadingPII"
+            :acting-id="piiActingId"
+            @refresh="loadPIIFacts"
+            @open-fact="openFact"
+            @review="reviewPIIFactRow"
+          />
+        </div>
+      </q-tab-panel>
+
+      <q-tab-panel v-if="isPlatformAdmin" name="ops">
+        <div class="column q-gutter-md">
           <memory-platform-settings-panel />
           <memory-worker-status-panel
             :status="workerStatus"
@@ -132,7 +155,6 @@
             @abandon="onDeadLetterAbandon"
           />
           <memory-recall-tester-panel :agent-id="selectedAgentId" :session-id="selectedSessionId" />
-          <memory-settings-status-panel :items="settingChecklist" />
         </div>
       </q-tab-panel>
     </q-tab-panels>
@@ -157,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import MemoryDeadLetterPanel from '../features/memory/MemoryDeadLetterPanel.vue';
 import MemoryPlatformSettingsPanel from '../features/memory/MemoryPlatformSettingsPanel.vue';
@@ -168,15 +190,15 @@ import MemoryEpisodeTimeline from '../features/memory/browse/MemoryEpisodeTimeli
 import MemoryCascadePanel from '../features/memory/MemoryCascadePanel.vue';
 import MemoryConflictPanel from '../features/memory/MemoryConflictPanel.vue';
 import MemoryEvolutionPanel from '../components/memory/MemoryEvolutionPanel.vue';
+import MemoryEvolutionReviewPanel from '../features/memory/MemoryEvolutionReviewPanel.vue';
+import MemoryPIIPanel from '../features/memory/MemoryPIIPanel.vue';
 import MemoryFactDrawer from '../features/memory/MemoryFactDrawer.vue';
 import MemoryFactEditDialog from '../components/memory/MemoryFactEditDialog.vue';
 import MemoryHero from '../components/memory/MemoryHero.vue';
 import MemoryKnowledgePanel from '../features/memory/MemoryKnowledgePanel.vue';
-import MemoryMetricCards from '../components/memory/MemoryMetricCards.vue';
 import MemoryPanoramaTab from '../features/memory/panorama/MemoryPanoramaTab.vue';
 import MemorySagaDrawer from '../features/memory/MemorySagaDrawer.vue';
 import MemorySessionsPanel from '../features/memory/MemorySessionsPanel.vue';
-import MemorySettingsStatusPanel from '../components/memory/MemorySettingsStatusPanel.vue';
 import MemorySnapshotDrawer from '../features/memory/MemorySnapshotDrawer.vue';
 import UnifiedMemoryGraph from '../features/memory/graph/UnifiedMemoryGraph.vue';
 import type { UnifiedGraphNode } from '../features/memory/types';
@@ -190,6 +212,8 @@ const browseLayer = ref<BrowseLayer>('all');
 
 const {
   tab,
+  isPlatformAdmin,
+  selectMemoryTab,
   selectedAgentId,
   selectedSessionId,
   selectedSnapshot,
@@ -205,6 +229,19 @@ const {
   conflictFacts,
   loadingConflicts,
   conflictActingId,
+  selectedTaskId,
+  fieldRows,
+  loadingFields,
+  piiFacts,
+  loadingPII,
+  piiActingId,
+  evolutionActingId,
+  evolutionProposals,
+  evolutionEvents,
+  loadPIIFacts,
+  reviewPIIFactRow,
+  reviewEvolutionProposal,
+  revertEvolutionEvent,
   error,
   loading,
   loadingFacts,
@@ -216,7 +253,7 @@ const {
   factRows,
   snapshotRows,
   taskRows,
-  overviewCards,
+  deepLinkLayer,
   evolutionPanels,
   cascadeProposals,
   loadingCascade,
@@ -228,7 +265,6 @@ const {
   cascadeSagaDrawerOpen,
   sagaSteps,
   loadingCascadeSaga,
-  settingChecklist,
   scopeOptions,
   factStatusOptions,
   factColumns,
@@ -268,6 +304,16 @@ const {
   loadWorkerStatus,
 } = useMemoryCenterPage();
 
+watch(
+  deepLinkLayer,
+  (layer) => {
+    if (layer === 'L0' || layer === 'L1' || layer === 'L2' || layer === 'L3') {
+      browseLayer.value = layer;
+    }
+  },
+  { immediate: true },
+);
+
 async function onDeadLetterReplay(id: number) {
   await handleDeadLetterReplay(id);
   deadLetterPanelRef.value?.load();
@@ -294,7 +340,7 @@ function onDrillLayer(layer: string) {
 
 // 需要关注跳转：target_tab 已是终态命名（browse/governance/panorama），直达。
 function onNavigateTab(target: string) {
-  tab.value = ['panorama', 'graph', 'browse', 'governance'].includes(target) ? target : 'panorama';
+  selectMemoryTab(target);
 }
 
 // 图谱节点「在记忆浏览中打开」（FR-R8 终态矩阵）：事实 → browse L3 按完整 statement 过滤（label 已截断，需从 meta 取全文）；情景 → browse L2；实体 → graph 聚焦。

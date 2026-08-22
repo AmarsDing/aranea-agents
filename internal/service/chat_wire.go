@@ -27,7 +27,7 @@ import (
 // 让 PublishGraphTaskStatus 的 system.notice 经过持久化（EventRouter →
 // UpsertActivity），避免刷新后丢失。graphProj 在 wire 中先于 sequencer 创建，
 // 需后注入打破循环。
-func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, graphProj *GraphOrchestrationProjector, mbWaker biz.MailboxWaker) *ChatService {
+func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, orgReader biz.OrganizationReader, graphProj *GraphOrchestrationProjector, mbWaker biz.MailboxWaker) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	cs := NewChatService(deps)
 	cs.planExec = planExec
@@ -90,6 +90,9 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		if agentReader != nil {
 			realOrch.SetAgentReader(agentReader)
 		}
+		if orgReader != nil {
+			realOrch.SetOrganizationReader(orgReader)
+		}
 	}
 	// 2026-07-04 问题 1 修复：从 V2ProjectorFactory 提取 seq，注入到
 	// GraphOrchestrationProjector，让 graph_stage 事件经过 sequencer 持久化。
@@ -118,16 +121,14 @@ func ProvideEvaluationRunner(
 	sys biz.SystemSettingRepo,
 	agents *biz.AgentUsecase,
 	bus biz.EventBus,
+	ll *biz.LearningLoopUsecase,
 	lg loggateway.Logger,
 ) *evaluation.Runner {
 	if chat == nil || turns == nil || evalUC == nil || catalog == nil || sys == nil {
 		return nil
 	}
-	// Y10: one-shot startup sweep for orphan runs. Single-instance deployment:
-	// this provider runs during Wire construction, before the server accepts
-	// traffic, so every pending/running row still in the table belongs to a
-	// dead process (its async executor goroutine died with it). Mark them
-	// failed so the UI stops showing phantom "running" rows.
+	// Y10: startup sweep for orphan runs. olderThan=0 means StaleRunGrace
+	// (15m) so a just-started or other-instance run is not wiped.
 	safego.Go(appctx.Ctx(), "eval-stale-run-sweep", func() {
 		n, err := evalUC.FailStaleRuns(context.Background(), 0)
 		if err != nil {
@@ -146,6 +147,10 @@ func ProvideEvaluationRunner(
 	// P2-2: online score-drop alert — nil-safe when agents/bus are unavailable.
 	if agents != nil && bus != nil {
 		runner.WithDropAlerter(evaluation.NewScoreDropAlerter(evalUC, evalAgentConfigReader{agents: agents}, bus, lg))
+	}
+	runner.WithEventBus(bus)
+	if ll != nil {
+		runner.WithObservationRecorder(ll)
 	}
 	chat.AttachNativeTurnAfterHook(NewEvaluationAfterTurnTrigger(evalUC, runner, lg))
 	return runner

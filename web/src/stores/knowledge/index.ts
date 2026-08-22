@@ -24,6 +24,8 @@ import {
   enableCollectionSemantic as enableCollectionSemanticApi,
   searchKnowledge,
   getEmbedderConfig,
+  getDocumentContent,
+  updateDocumentContent,
   updateEmbedderConfig,
   updateDocumentVisibility,
 } from '../../features/knowledge/api';
@@ -36,6 +38,7 @@ import type {
   KnowledgeChunk,
   KnowledgeCollection,
   KnowledgeDocument,
+  KnowledgeDocumentContent,
   KnowledgeLink,
   ListCollectionsResult,
   ListDocumentsResult,
@@ -224,11 +227,13 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   async function loadDocuments(
     collectionId: string,
-    params: { limit?: number; offset?: number } = {},
+    params: { limit?: number; offset?: number; append?: boolean } = {},
   ): Promise<ListDocumentsResult> {
-    const result = await listDocuments(collectionId, params);
-    documentsByCollection.value[collectionId] = result.items;
-    documentsTruncatedByCollection.value[collectionId] = result.total > result.items.length;
+    const result = await listDocuments(collectionId, { limit: params.limit, offset: params.offset });
+    const prev = params.append ? (documentsByCollection.value[collectionId] ?? []) : [];
+    const merged = params.append ? [...prev, ...result.items] : result.items;
+    documentsByCollection.value[collectionId] = merged;
+    documentsTruncatedByCollection.value[collectionId] = merged.length < result.total;
     return result;
   }
 
@@ -237,7 +242,9 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     // US-14：collection_id 留空时由后端落入默认知识库，缓存键以返回文档的实际归属为准。
     const key = doc.collection_id || input.collection_id;
     const existing = documentsByCollection.value[key] ?? [];
-    documentsByCollection.value[key] = [doc, ...existing];
+    const i = existing.findIndex((d) => d.id === doc.id);
+    if (i >= 0) existing[i] = { ...existing[i], ...doc };
+    else documentsByCollection.value[key] = [doc, ...existing];
     invalidateTree(key);
     return doc;
   }
@@ -342,6 +349,29 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return cfg;
   }
 
+  async function loadDocumentContent(id: string): Promise<KnowledgeDocumentContent> {
+    return getDocumentContent(id);
+  }
+
+  async function saveDocumentContent(
+    id: string,
+    content: string,
+    baseHash: string,
+  ): Promise<{ document: KnowledgeDocument; conflict: boolean }> {
+    const res = await updateDocumentContent(id, content, baseHash);
+    if (res.document?.id) {
+      upsertDocument(res.document);
+    }
+    return res;
+  }
+
+  function upsertDocument(doc: KnowledgeDocument) {
+    const list = documentsByCollection.value[doc.collection_id];
+    if (!list) return;
+    const i = list.findIndex((d) => d.id === doc.id);
+    if (i >= 0) list[i] = { ...list[i], ...doc };
+  }
+
   return {
     collections,
     collectionsTotal,
@@ -383,5 +413,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     search,
     loadEmbedderConfig,
     saveEmbedderConfig,
+    loadDocumentContent,
+    saveDocumentContent,
   };
 });

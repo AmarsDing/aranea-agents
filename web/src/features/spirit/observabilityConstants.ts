@@ -83,8 +83,11 @@ export const AGENT_LOADING_MAP: ContextualLoadingConfig[] = [
  *   - {sub_task_count}  (decomposed)
  *   - {index}           (allocating)
  *   - {total}           (allocating, allocated)
- *   - {sub_task}        (allocating)
- *   - {agent_name}      (creating_agent, agent_created)
+ *   - {sub_task}        (allocating, allocate_failed)
+ *   - {agent_name}      (creating_agent, agent_created, allocating)
+ *   - {specialty}       (allocating, allocate_failed)
+ *   - {match_layer}     (allocating)
+ *   - {sketch}          (collaborating)
  *
  * Phases align with the backend table in docs/development/1-chat.design.md
  * (P-ORCH.1). Loading messages replace (not append) the previous one so the
@@ -169,6 +172,16 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     messageKey: 'chat.orchestrationProgress.allocated',
     icon: 'check_circle',
     color: 'purple',
+  },
+  collaborating: {
+    messageKey: 'chat.orchestrationProgress.collaborating',
+    icon: 'account_tree',
+    color: 'teal',
+  },
+  allocate_failed: {
+    messageKey: 'chat.orchestrationProgress.allocateFailed',
+    icon: 'warning',
+    color: 'orange',
   },
   creating_agent: {
     messageKey: 'chat.orchestrationProgress.creatingAgent',

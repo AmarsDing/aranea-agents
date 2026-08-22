@@ -9,8 +9,11 @@ import { asRecord, pickBool, pickI32, pickNum, pickStr } from '../../shared/wire
 import type {
   AnnotateCaseResultInput,
   CreateDatasetInput,
+  EvalCase,
   EvalCaseResult,
   EvalDataset,
+  UpdateCaseInput,
+  UpdateDatasetInput,
   EvalFailureGroup,
   EvalGateConfig,
   EvalRun,
@@ -24,6 +27,7 @@ import type {
   ListRunsParams,
   ListRunsResult,
   RunEvaluationInput,
+  RunExperimentInput,
   SubmitRunPreferenceInput,
   UpdateEvalGateInput,
   EvalTrendPoint,
@@ -67,6 +71,11 @@ function mapRun(raw: unknown): EvalRun {
     started_at: pickStr(r, 'started_at', 'startedAt'),
     finished_at: pickStr(r, 'finished_at', 'finishedAt'),
     created_at: pickStr(r, 'created_at', 'createdAt'),
+    dataset_hash: pickStr(r, 'dataset_hash', 'datasetHash'),
+    dataset_version_id: pickStr(r, 'dataset_version_id', 'datasetVersionId'),
+    dataset_version: pickI32(r, 'dataset_version', 'datasetVersion'),
+    experiment_id: pickStr(r, 'experiment_id', 'experimentId'),
+    variant_label: pickStr(r, 'variant_label', 'variantLabel'),
   };
 }
 
@@ -88,6 +97,8 @@ function mapCaseResult(raw: unknown): EvalCaseResult {
     human_comment: pickStr(r, 'human_comment', 'humanComment'),
     annotated_at: pickStr(r, 'annotated_at', 'annotatedAt'),
     annotated_by: pickStr(r, 'annotated_by', 'annotatedBy'),
+    session_id: pickStr(r, 'session_id', 'sessionId'),
+    trace_run_id: pickStr(r, 'trace_run_id', 'traceRunId'),
   };
   if ('humanPass' in r || 'human_pass' in r) {
     out.human_pass = pickBool(r, 'human_pass', 'humanPass');
@@ -138,6 +149,47 @@ export async function deleteDataset(id: string): Promise<void> {
   await svc.DeleteDataset({ id });
 }
 
+export async function updateDataset(input: UpdateDatasetInput): Promise<EvalDataset> {
+  const raw = await svc.UpdateDataset({
+    id: input.id,
+    name: input.name,
+    description: input.description ?? '',
+  });
+  return mapDataset(raw);
+}
+
+function mapCase(raw: unknown): EvalCase {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, 'id', 'id'),
+    dataset_id: pickStr(r, 'dataset_id', 'datasetId'),
+    input: pickStr(r, 'input', 'input'),
+    expected_output: pickStr(r, 'expected_output', 'expectedOutput'),
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson'),
+  };
+}
+
+export async function listCases(datasetId: string): Promise<EvalCase[]> {
+  const res = asRecord(await svc.ListCases({ datasetId }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapCase) : [];
+}
+
+export async function updateCase(input: UpdateCaseInput): Promise<EvalCase> {
+  const raw = await svc.UpdateCase({
+    datasetId: input.dataset_id,
+    id: input.id,
+    input: input.input,
+    expectedOutput: input.expected_output ?? '',
+    metadataJson: input.metadata_json ?? '',
+  });
+  return mapCase(raw);
+}
+
+export async function deleteCase(datasetId: string, id: string): Promise<void> {
+  await svc.DeleteCase({ datasetId, id });
+}
+
 /** cases_json 为 JSON 数组，元素格式：`{input, expected_output, metadata_json}` */
 export async function uploadCases(datasetId: string, casesJson: string): Promise<number> {
   const res = asRecord(await svc.UploadCases({ datasetId, casesJson }));
@@ -157,6 +209,23 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
   return mapRun(raw);
 }
 
+export async function runExperiment(input: RunExperimentInput): Promise<{ experiment_id: string; items: EvalRun[] }> {
+  const raw = asRecord(
+    await svc.RunExperiment({
+      datasetId: input.dataset_id,
+      metrics: input.metrics ?? '',
+      numRuns: input.num_runs ?? 1,
+      useUserSimulation: input.use_user_simulation ?? false,
+      variants: input.variants.map((v) => ({ agentId: v.agent_id, label: v.label ?? '' })),
+    }),
+  );
+  const itemsRaw = raw.items ?? raw.Items;
+  return {
+    experiment_id: pickStr(raw, 'experiment_id', 'experimentId'),
+    items: Array.isArray(itemsRaw) ? itemsRaw.map(mapRun) : [],
+  };
+}
+
 export async function listRuns(params: ListRunsParams = {}): Promise<ListRunsResult> {
   const res = asRecord(
     await svc.ListRuns({
@@ -173,6 +242,15 @@ export async function listRuns(params: ListRunsParams = {}): Promise<ListRunsRes
 
 export async function getRun(id: string): Promise<EvalRun> {
   const raw = await svc.GetRun({ id });
+  return mapRun(raw);
+}
+
+export async function deleteRun(id: string): Promise<void> {
+  await svc.DeleteRun({ id });
+}
+
+export async function cancelRun(id: string): Promise<EvalRun> {
+  const raw = await svc.CancelRun({ id });
   return mapRun(raw);
 }
 
@@ -219,6 +297,10 @@ function mapRunComparison(raw: unknown): EvalRunComparison {
     delta_llm_judge: pickNum(r, 'delta_llm_judge', 'deltaLlmJudge'),
     delta_tool_call_accuracy: pickNum(r, 'delta_tool_call_accuracy', 'deltaToolCallAccuracy'),
     dataset_hash: pickStr(r, 'dataset_hash', 'datasetHash'),
+    dataset_version_id: pickStr(r, 'dataset_version_id', 'datasetVersionId'),
+    dataset_version: pickI32(r, 'dataset_version', 'datasetVersion'),
+    experiment_id: pickStr(r, 'experiment_id', 'experimentId'),
+    variant_label: pickStr(r, 'variant_label', 'variantLabel'),
   };
 }
 
@@ -362,12 +444,13 @@ function mapGateConfig(raw: unknown): EvalGateConfig {
     metric: pickStr(r, 'metric', 'metric'),
     min_score: pickNum(r, 'min_score', 'minScore'),
     max_drop: pickNum(r, 'max_drop', 'maxDrop'),
+    mode: pickStr(r, 'mode', 'mode') || 'advisory',
     updated_at: pickStr(r, 'updated_at', 'updatedAt'),
   };
 }
 
-export async function getEvalGate(): Promise<EvalGateConfig> {
-  return mapGateConfig(await svc.GetEvalGate({}));
+export async function getEvalGate(agentId = ''): Promise<EvalGateConfig> {
+  return mapGateConfig(await svc.GetEvalGate({ agentId }));
 }
 
 export async function updateEvalGate(input: UpdateEvalGateInput): Promise<EvalGateConfig> {
@@ -378,6 +461,7 @@ export async function updateEvalGate(input: UpdateEvalGateInput): Promise<EvalGa
     metric: input.metric,
     minScore: input.min_score,
     maxDrop: input.max_drop,
+    mode: input.mode || 'advisory',
   });
   return mapGateConfig(raw);
 }

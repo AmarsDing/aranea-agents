@@ -42,8 +42,8 @@ func (impl *agentAllocatorImpl) tryDomainRecipe(domainPath string, capabilities 
 	}
 	// lead agent 必须仍存在于存活能力列表（已删除的 agent 不复用）。
 	lead, found := findCapabilityByKey(capabilities, entry.AgentKeys[0])
-	if !found {
-		impl.lg.Warn("L0 领域配方 lead agent 已删除，跳过复用",
+	if !found || !lead.IsHeuristicAssignable() {
+		impl.lg.Warn("L0 领域配方 lead agent 已删除或不可分配，跳过复用",
 			loggateway.StepID(biz.SpiritStepAllocatorMatch),
 			loggateway.Str("trace_id", traceID),
 			loggateway.Str("domain_path", domainPath),
@@ -54,7 +54,7 @@ func (impl *agentAllocatorImpl) tryDomainRecipe(domainPath string, capabilities 
 	// 配方成员：AgentKeys[1:] 直接复用，剔除已删除者（缓存可能滞后）。
 	members := make([]string, 0, len(entry.AgentKeys)-1)
 	for _, key := range entry.AgentKeys[1:] {
-		if _, ok := findCapabilityByKey(capabilities, key); ok {
+		if cap, ok := findCapabilityByKey(capabilities, key); ok && cap.IsHeuristicAssignable() {
 			members = append(members, key)
 		}
 	}
@@ -76,6 +76,9 @@ func (impl *agentAllocatorImpl) tryMissionMatch(ctx context.Context, taskText, d
 	// 同域候选收敛：前缀匹配（任一方向）或归并后同一级域。
 	cands := make([]biz.AgentCapability, 0, len(capabilities))
 	for _, cap := range capabilities {
+		if !cap.IsHeuristicAssignable() {
+			continue
+		}
 		if DomainPathRelated(cap.DomainPath, domainPath) {
 			cands = append(cands, cap)
 		}

@@ -90,3 +90,33 @@ func TestSkillGuidance_NilVariables(t *testing.T) {
 		t.Fatalf("unresolved placeholder should remain, got %q", got)
 	}
 }
+
+// 调用契约 7.4 allowed-tools 软约束的 L0 信息面：skill frontmatter 的
+// tools: 声明经 manifest.Parse → AI 优化渲染进路由 cue（"Tools: a, b"），
+// 模型据此优先使用声明工具。full 模式不输出该行（L1 注入的原始 SKILL.md
+// 已含 frontmatter，不重复）。
+func TestSkillGuidance_AIOptimized_ToolsLine(t *testing.T) {
+	m := manifest.Manifest{
+		Name:  "ToolSkill",
+		Tools: []string{"exec_command", "read_file"},
+		Body:  "## 步骤\nDo it",
+	}
+	got := SkillGuidance(m, RenderOptions{Mode: ModeAIOptimized})
+	if !strings.Contains(got, "Tools: exec_command, read_file\n") {
+		t.Fatalf("ai_optimized must surface declared tools, got %q", got)
+	}
+
+	// 未声明 tools 时不输出该行（避免噪音）。
+	m.Tools = nil
+	got = SkillGuidance(m, RenderOptions{Mode: ModeAIOptimized})
+	if strings.Contains(got, "Tools:") {
+		t.Fatalf("no tools line expected when undeclared, got %q", got)
+	}
+
+	// full 模式不渲染 Tools 行。
+	m.Tools = []string{"exec_command"}
+	got = SkillGuidance(m, RenderOptions{Mode: ModeFull})
+	if strings.Contains(got, "Tools:") {
+		t.Fatalf("full mode must not emit tools line, got %q", got)
+	}
+}

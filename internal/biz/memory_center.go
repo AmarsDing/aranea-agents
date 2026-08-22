@@ -58,7 +58,7 @@ type MemoryActionItem struct {
 // MemoryActivityItem is one entry of the recent memory activity feed.
 type MemoryActivityItem struct {
 	Ts        string
-	Kind      string // fact_extracted | episode_recorded | entity_created
+	Kind      string // fact_extracted | episode_recorded | entity_created | fact_injected
 	LayerFrom string
 	LayerTo   string
 	Summary   string
@@ -202,21 +202,9 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 	// consolidated facts to user scope (L3.md §1.3), so a scope-only count
 	// undercounts and showed L3=0 for agents that had actually produced facts.
 	l3 := MemoryLayerStat{Layer: "L3", Health: "ok"}
-	factRows, _, factActive, _, err := uc.admin.ListFactRows(ctx, "", "", "", "", "", agentID, layerOverviewScanLimit, 0)
+	factRows, injectedRows, err := uc.loadL3Overview(ctx, agentID, todayStart, &l3)
 	if err != nil {
 		return nil, err
-	}
-	l3.ItemCount = factActive
-	for _, raw := range factRows {
-		m, _ := jsonutil.ParseMap(raw)
-		if m == nil {
-			continue
-		}
-		// 召回计数：use_count 是召回链路真实递增的计数器；hit_count 全库无递增代码（死计数器，恒 0），不再展示。
-		l3.RecallHits += jsonutil.IfaceI32(m, "use_count")
-		if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
-			l3.TodayAdded++
-		}
 	}
 	// H2: count conflicts by ORIGINATING agent across ALL scopes (same
 	// caliber as the F1 fact count above) — conflicting facts also live in
@@ -233,19 +221,17 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 
 	// --- L4: entities + relations ---
 	l4s := MemoryLayerStat{Layer: "L4", Health: "ok"}
-	entityRows, entityTotal, err := uc.admin.ListEntityRows(ctx, "agent", agentID, "", "", "", "", "", layerOverviewScanLimit, 0)
+	entityScanLimit := int32(layerOverviewScanLimit)
+	if _, ok := uc.admin.(MemoryOverviewStatsReader); ok {
+		entityScanLimit = activityFeedLimit
+	}
+	entityRows, entityTotal, err := uc.admin.ListEntityRows(ctx, "agent", agentID, "", "", "", "", "", entityScanLimit, 0)
 	if err != nil {
 		return nil, err
 	}
 	l4s.ItemCount = entityTotal
-	for _, raw := range entityRows {
-		m, _ := jsonutil.ParseMap(raw)
-		if m == nil {
-			continue
-		}
-		if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
-			l4s.TodayAdded++
-		}
+	if err := uc.fillL4TodayAdded(ctx, agentID, todayStart, entityRows, &l4s); err != nil {
+		return nil, err
 	}
 	var relationCount int32
 	if uc.l4RelReader != nil {
@@ -274,11 +260,72 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 	}
 
 	// --- activity feed: merge latest facts / episodes / entities by created_at ---
-	ov.ActivityFeed = buildMemoryActivityFeed(factRows, episodeFeedRows, entityRows, activityFeedLimit)
+	ov.ActivityFeed = buildMemoryActivityFeed(factRows, injectedRows, episodeFeedRows, entityRows, activityFeedLimit)
 	return ov, nil
 }
 
-func buildMemoryActivityFeed(factRows, episodeRows, entityRows [][]byte, limit int) []MemoryActivityItem {
+func (uc *MemoryAdminUsecase) loadL3Overview(ctx context.Context, agentID string, todayStart time.Time, l3 *MemoryLayerStat) (factRows, injectedRows [][]byte, err error) {
+	todayKey := todayStart.UTC().Format(time.RFC3339Nano)
+	if r, ok := uc.admin.(MemoryOverviewStatsReader); ok {
+		agg, aerr := r.AggregateFactOverview(ctx, agentID, todayKey)
+		if aerr != nil {
+			return nil, nil, aerr
+		}
+		l3.ItemCount = agg.ActiveCount
+		l3.TodayAdded = agg.TodayAdded
+		l3.RecallHits = agg.RecallHits
+		factRows, aerr = r.ListRecentFactActivityRows(ctx, agentID, activityFeedLimit)
+		if aerr != nil {
+			return nil, nil, aerr
+		}
+		injectedRows, aerr = r.ListRecentlyInjectedFactRows(ctx, agentID, activityFeedLimit)
+		if aerr != nil {
+			return nil, nil, aerr
+		}
+		return factRows, injectedRows, nil
+	}
+
+	factRows, _, factActive, _, err := uc.admin.ListFactRows(ctx, "", "", "", "", "", agentID, layerOverviewScanLimit, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	l3.ItemCount = factActive
+	for _, raw := range factRows {
+		m, _ := jsonutil.ParseMap(raw)
+		if m == nil {
+			continue
+		}
+		// 召回计数：use_count 是召回链路真实递增的计数器；hit_count 全库无递增代码（死计数器，恒 0），不再展示。
+		l3.RecallHits += jsonutil.IfaceI32(m, "use_count")
+		if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
+			l3.TodayAdded++
+		}
+	}
+	return factRows, nil, nil
+}
+
+func (uc *MemoryAdminUsecase) fillL4TodayAdded(ctx context.Context, agentID string, todayStart time.Time, entityRows [][]byte, l4s *MemoryLayerStat) error {
+	if r, ok := uc.admin.(MemoryOverviewStatsReader); ok {
+		today, err := r.CountEntitiesCreatedSince(ctx, "agent", agentID, todayStart.UTC().Format(time.RFC3339Nano))
+		if err != nil {
+			return err
+		}
+		l4s.TodayAdded = today
+		return nil
+	}
+	for _, raw := range entityRows {
+		m, _ := jsonutil.ParseMap(raw)
+		if m == nil {
+			continue
+		}
+		if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
+			l4s.TodayAdded++
+		}
+	}
+	return nil
+}
+
+func buildMemoryActivityFeed(factRows, injectedRows, episodeRows, entityRows [][]byte, limit int) []MemoryActivityItem {
 	type timedItem struct {
 		ts   time.Time
 		item MemoryActivityItem
@@ -303,6 +350,27 @@ func buildMemoryActivityFeed(factRows, episodeRows, entityRows [][]byte, limit i
 	collect(factRows, "fact_extracted", "L2", "L3", func(m map[string]any) string { return jsonutil.IfaceStr(m, "statement") })
 	collect(episodeRows, "episode_recorded", "L1", "L2", func(m map[string]any) string { return jsonutil.IfaceStr(m, "title") })
 	collect(entityRows, "entity_created", "L3", "L4", func(m map[string]any) string { return jsonutil.IfaceStr(m, "name") })
+	injectSrc := factRows
+	if injectedRows != nil {
+		injectSrc = injectedRows
+	}
+	for _, raw := range injectSrc {
+		m, _ := jsonutil.ParseMap(raw)
+		if m == nil || jsonutil.IfaceI32(m, "injected_count") <= 0 {
+			continue
+		}
+		tsRaw := jsonutil.IfaceStr(m, "last_used_at")
+		if tsRaw == "" {
+			continue
+		}
+		timed = append(timed, timedItem{
+			ts: parseMemTime(tsRaw),
+			item: MemoryActivityItem{
+				Ts: tsRaw, Kind: "fact_injected", LayerFrom: "L3", LayerTo: "L0",
+				Summary: truncateRunes(jsonutil.IfaceStr(m, "statement"), 60),
+			},
+		})
+	}
 
 	sort.SliceStable(timed, func(i, j int) bool {
 		if timed[i].ts.Equal(timed[j].ts) {

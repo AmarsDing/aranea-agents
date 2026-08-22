@@ -1,9 +1,10 @@
 // web/src/components/chat/__tests__/TurnContainer.spec.ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { setActivePinia, createPinia } from 'pinia';
 import TurnContainer from '../v2/TurnContainer.vue';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useUiConfigStore } from '../../../stores/uiConfig';
 import type { Turn, Step } from '../../../features/chat/v2Types';
 
 function mkTurn(over: Partial<Turn> = {}): Turn {
@@ -155,5 +156,46 @@ describe('TurnContainer — CuStepStream embedding', () => {
     store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'web_search', ToolResult: { session_id: 'x' } }));
     const wrapper = mountWithStream(mkTurn({ Status: 'running' }));
     expect(wrapper.find('.cu-stream-stub').exists()).toBe(false);
+  });
+});
+
+// 2026-08-21 全链路审查 R2：showToolCalls 开关贯通 action steps。
+// 此前只管 TodoKanban，ActionBlock 无条件渲染，开关名不副实。
+describe('TurnContainer.visibleSteps — showToolCalls action filtering', () => {
+  beforeEach(() => {
+    // uiConfig store 在创建时读 localStorage；先清键再建 pinia，保证默认 true。
+    localStorage.removeItem('chat.ui.showToolCalls');
+    setActivePinia(createPinia());
+  });
+  afterEach(() => localStorage.removeItem('chat.ui.showToolCalls'));
+
+  it('renders action step when showToolCalls is true (default)', () => {
+    const store = useChatActivityStore();
+    store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'exec_command' }));
+    const wrapper = mount(TurnContainer, { props: { turn: mkTurn() } });
+    expect(wrapper.findAll('.act-activity')).toHaveLength(1);
+  });
+
+  it('hides action step when showToolCalls is false, keeps reply', () => {
+    const store = useChatActivityStore();
+    store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'exec_command', Seq: 1 }));
+    store.upsertStep(mkStep({ ID: 'r1', Kind: 'reply', Content: 'done', Status: 'completed', Seq: 2, IsFinal: true }));
+    const uiConfig = useUiConfigStore();
+    uiConfig.setShowToolCalls(false);
+    const wrapper = mount(TurnContainer, { props: { turn: mkTurn() } });
+    expect(wrapper.findAll('.act-activity')).toHaveLength(0);
+    expect(wrapper.findAll('.reply-block')).toHaveLength(1);
+  });
+
+  it('re-renders action step when toggled back on (reactive)', async () => {
+    const store = useChatActivityStore();
+    store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'exec_command' }));
+    const uiConfig = useUiConfigStore();
+    uiConfig.setShowToolCalls(false);
+    const wrapper = mount(TurnContainer, { props: { turn: mkTurn() } });
+    expect(wrapper.findAll('.act-activity')).toHaveLength(0);
+    uiConfig.setShowToolCalls(true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll('.act-activity')).toHaveLength(1);
   });
 });

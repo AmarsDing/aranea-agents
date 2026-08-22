@@ -12,7 +12,9 @@ import (
 // 启动时 LoadAll 从 knowledge_block_refs 全量重放构建。
 // 读路径：块级/文档级反链、dangling 聚合直读内存图（O(度数)），落库查询兜底（SP1-E）。
 //
-// 部署约束（N-1）：单进程内存图；多副本化需改事件广播保持副本一致，届时另立 ADR。
+// 部署约束（N-1 / ADR-KN-LINKINDEX）：LinkIndex 是本进程可选缓存，不是跨进程真相源。
+// 多副本读路径以 knowledge_block_refs 为准（SP1-E 未加载即落库）；禁止副本间广播
+// 内存图。knowledge.graph.delta 保持 Informational，只服务本进程 WS 客户端。
 // 一致性镜像（FK 语义）：目标文档重建 → 其入向块边转文档级（dst_block SET NULL 镜像）；
 // 文档删除 → 出向边清除、入向边转 dangling（保 raw_target）。
 

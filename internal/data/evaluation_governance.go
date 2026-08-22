@@ -95,29 +95,60 @@ func (r *evalRepo) ListRunPreferences(ctx context.Context, datasetID string, lim
 	return out, entErrToBizErr(rows.Err(), "EVAL")
 }
 
-// evalGateConfigID is the singleton row key for the publish-gate config.
+// evalGateConfigID is the platform-default row key (legacy singleton).
 const evalGateConfigID = "singleton"
 
-// GetGateConfig returns the publish-gate singleton (P2-1); a missing row
-// yields a disabled zero config.
-func (r *evalRepo) GetGateConfig(ctx context.Context) (biz.EvalGateConfig, error) {
+func evalGateRowID(agentID string) string {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return evalGateConfigID
+	}
+	return "agent:" + agentID
+}
+
+func scanGateConfig(enabled int, cfg biz.EvalGateConfig) biz.EvalGateConfig {
+	cfg.Enabled = enabled != 0
+	if strings.TrimSpace(cfg.Mode) == "" {
+		cfg.Mode = "advisory"
+	}
+	return cfg
+}
+
+// GetGateConfig returns the per-agent gate when agentID is set and a row
+// exists; otherwise the platform default. A missing default is a disabled zero.
+func (r *evalRepo) GetGateConfig(ctx context.Context, agentID string) (biz.EvalGateConfig, error) {
+	if cfg, ok, err := r.loadGateRow(ctx, evalGateRowID(agentID)); err != nil {
+		return biz.EvalGateConfig{}, err
+	} else if ok {
+		return cfg, nil
+	}
+	if strings.TrimSpace(agentID) != "" {
+		if cfg, ok, err := r.loadGateRow(ctx, evalGateConfigID); err != nil {
+			return biz.EvalGateConfig{}, err
+		} else if ok {
+			return cfg, nil
+		}
+	}
+	return biz.EvalGateConfig{Metric: "exact_match", Mode: "advisory"}, nil
+}
+
+func (r *evalRepo) loadGateRow(ctx context.Context, id string) (biz.EvalGateConfig, bool, error) {
 	var cfg biz.EvalGateConfig
 	var enabled int
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		r.data.Dialect().RenumberPlaceholders(`SELECT enabled,agent_id,dataset_id,metric,min_score,max_drop,updated_at
-			FROM eval_gate_config WHERE id=?`), []any{evalGateConfigID},
-		&enabled, &cfg.AgentID, &cfg.DatasetID, &cfg.Metric, &cfg.MinScore, &cfg.MaxDrop, &cfg.UpdatedAt)
+		r.data.Dialect().RenumberPlaceholders(`SELECT enabled,agent_id,dataset_id,metric,min_score,max_drop,COALESCE(mode,''),updated_at
+			FROM eval_gate_config WHERE id=?`), []any{id},
+		&enabled, &cfg.AgentID, &cfg.DatasetID, &cfg.Metric, &cfg.MinScore, &cfg.MaxDrop, &cfg.Mode, &cfg.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows || apierror.IsCode(err, apierror.CodeNotFound) {
-			return biz.EvalGateConfig{Metric: "exact_match"}, nil
+			return biz.EvalGateConfig{}, false, nil
 		}
-		return biz.EvalGateConfig{}, entErrToBizErr(err, "EVAL")
+		return biz.EvalGateConfig{}, false, entErrToBizErr(err, "EVAL")
 	}
-	cfg.Enabled = enabled != 0
-	return cfg, nil
+	return scanGateConfig(enabled, cfg), true, nil
 }
 
-// UpsertGateConfig writes the publish-gate singleton (P2-1).
+// UpsertGateConfig writes the default row (agent_id empty) or a per-agent row.
 func (r *evalRepo) UpsertGateConfig(ctx context.Context, cfg biz.EvalGateConfig) error {
 	enabled := 0
 	if cfg.Enabled {
@@ -128,11 +159,16 @@ func (r *evalRepo) UpsertGateConfig(ctx context.Context, cfg biz.EvalGateConfig)
 	if metric == "" {
 		metric = "exact_match"
 	}
+	mode := strings.TrimSpace(cfg.Mode)
+	if mode == "" {
+		mode = "advisory"
+	}
+	id := evalGateRowID(cfg.AgentID)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`INSERT INTO eval_gate_config (id,enabled,agent_id,dataset_id,metric,min_score,max_drop,updated_at)
-		 VALUES (?,?,?,?,?,?,?,?)
-		 ON CONFLICT(id) DO UPDATE SET enabled=?,agent_id=?,dataset_id=?,metric=?,min_score=?,max_drop=?,updated_at=?`),
-		evalGateConfigID, enabled, cfg.AgentID, cfg.DatasetID, metric, cfg.MinScore, cfg.MaxDrop, t,
-		enabled, cfg.AgentID, cfg.DatasetID, metric, cfg.MinScore, cfg.MaxDrop, t)
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO eval_gate_config (id,enabled,agent_id,dataset_id,metric,min_score,max_drop,mode,updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT(id) DO UPDATE SET enabled=?,agent_id=?,dataset_id=?,metric=?,min_score=?,max_drop=?,mode=?,updated_at=?`),
+		id, enabled, cfg.AgentID, cfg.DatasetID, metric, cfg.MinScore, cfg.MaxDrop, mode, t,
+		enabled, cfg.AgentID, cfg.DatasetID, metric, cfg.MinScore, cfg.MaxDrop, mode, t)
 	return entErrToBizErr(err, "EVAL")
 }

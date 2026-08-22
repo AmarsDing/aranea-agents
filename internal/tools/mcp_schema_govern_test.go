@@ -323,7 +323,9 @@ func toolNames(tools []Tool) map[string]bool {
 	return names
 }
 
-var brokerToolNames = []string{"mcp_list_servers", "mcp_list_tools", "mcp_inspect_tools", "mcp_call"}
+// brokerToolNames 为 broker 工具族全量清单：4 个框架元工具 + 2 个业务层
+// resources 工具（调用契约 7.4，mcp_resources.go，命名服务器非空即随族挂载）。
+var brokerToolNames = []string{"mcp_list_servers", "mcp_list_tools", "mcp_inspect_tools", "mcp_call", "mcp_list_resources", "mcp_read_resource"}
 
 func TestAssembleMCPTools_OverBudgetDegradesToBrokerFallback(t *testing.T) {
 	swapMCPPool(t, &governFakeToolSet{name: "big-srv", tools: overBudgetFakeTools()})

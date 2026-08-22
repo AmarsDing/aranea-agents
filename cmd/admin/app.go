@@ -114,6 +114,13 @@ func newApp(
 			if knowledgeSvc != nil && vaultSyncSup != nil {
 				knowledgeSvc.SetVaultSyncController(vaultSyncSup)
 			}
+			// Wave 2：写回重放双点接线 + 跨进程重建/重嵌入租约。
+			if knowledgeSvc != nil {
+				knowledgeSvc.BindDerivedIndexHooks()
+				if d != nil {
+					knowledgeSvc.SetJobLocker(service.NewPGKnowledgeJobLocker(d.Postgres(), lg))
+				}
+			}
 
 			// Start readiness-dependent initialization in background.
 			// The HTTP server now starts immediately so /healthz can report

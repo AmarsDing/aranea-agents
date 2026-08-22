@@ -249,6 +249,7 @@ interface Activity {
 - loading 消息为替换式更新（不刷屏），编排完成后消失
 - 运行中的 `plan_and_execute` 工具卡片展示与 loading 条相同的阶段文案（不被成员标签挡住），≥5s 显示耗时
 - 本会话已有同一目标团队时，`plan_and_execute` 复用已有团队（`reuse_existing`），不静默再分解 60s
+- 会话编排阶段（idle / orchestrating / ready / interrupted）在 Spirit LLM 之前由系统解析：ready 默认用已有结果回答，不强制再规划；收口工具按阶段进入本轮 tools 列表
 
 #### US-ORCH-02 新 Agent 创建需用户确认
 
@@ -996,6 +997,8 @@ interface Activity {
 - `extractCapabilityHints` 只认 12 个英文关键词，"写诗"等中文创作类任务必然滑向 factory 新建
 
 社会分工的正确抽象：匹配应按**使命（Mission，长期不变的身份）+ 领域树路由 + 履历背书**，而非任务文本字符串。
+
+> **组织剪枝（2026-08-22）**：使命匹配仍是选人算法；「先落到对的部门、主管不当业务 Lead、建团必须挂 department_id」由 [M78 组织感知编排](./78-org-aware-orchestration.md) 补在 L0 之前。二者叠加：组织缩小候选，使命/配方在候选内求准。
 
 ### MM.2 用户故事
 

@@ -335,7 +335,9 @@ func NewEvalRegressionTrigger(reader EvalBaselineReader, threshold float64, lg l
 func (t *EvalRegressionTrigger) TargetType() EvolutionTargetType { return EvolutionTargetPlatform }
 
 // ActionType implements EvolutionTrigger.
-func (t *EvalRegressionTrigger) ActionType() EvolutionActionType { return EvolutionActionPatchCode }
+func (t *EvalRegressionTrigger) ActionType() EvolutionActionType {
+	return EvolutionActionPatchPrompt
+}
 
 // TriggerSource implements EvolutionTrigger.
 func (t *EvalRegressionTrigger) TriggerSource() string { return TriggerSourceEvalRegression }
@@ -367,7 +369,7 @@ func (t *EvalRegressionTrigger) Check(ctx context.Context, _ string) ([]UnifiedE
 	reason := fmt.Sprintf("评估基线综合分 %.2f → %.2f，退化 %.1f%%（阈值 %.0f%%）",
 		previous.Score, latest.Score, drop*100, t.threshold*100)
 	return []UnifiedEvolutionSuggestion{buildPlatformSuggestion(
-		TriggerSourceEvalRegression, EvolutionActionPatchCode, sig, reason, 2,
+		TriggerSourceEvalRegression, EvolutionActionPatchPrompt, sig, reason, 2,
 		map[string]any{
 			"dataset_id":      latest.DatasetID,
 			"agent_id":        latest.AgentID,

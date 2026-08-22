@@ -73,6 +73,19 @@
           :disable="!enabled"
           @update:model-value="$emit('update:maxDrop', Number($event) || 0)"
         />
+        <q-select
+          :model-value="mode"
+          class="app-field-md"
+          dense
+          outlined
+          emit-value
+          map-options
+          :label="$t('evaluationPage.gateMode')"
+          :hint="$t('evaluationPage.gateModeHint')"
+          :options="modeOptions"
+          :disable="!enabled"
+          @update:model-value="$emit('update:mode', String($event ?? 'advisory'))"
+        />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps :label="$t('common.cancel')" @click="$emit('update:open', false)" />
@@ -102,6 +115,7 @@ defineProps<{
   metric: string;
   minScore: number;
   maxDrop: number;
+  mode: string;
   loading: boolean;
   saving: boolean;
   agentOptions: { label: string; value: string }[];
@@ -116,10 +130,16 @@ defineEmits<{
   'update:metric': [value: string];
   'update:minScore': [value: number];
   'update:maxDrop': [value: number];
+  'update:mode': [value: string];
   submit: [];
 }>();
 
 const { t } = useI18n();
+
+const modeOptions = computed(() => [
+  { label: t('evaluationPage.gateModeAdvisory'), value: 'advisory' },
+  { label: t('evaluationPage.gateModeBlocking'), value: 'blocking' },
+]);
 
 const metricOptions = computed(() => [
   { label: 'exact_match', value: 'exact_match' },

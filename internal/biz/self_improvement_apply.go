@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -49,7 +50,9 @@ type SelfImprovementApplyUsecaseDeps struct {
 	// RiskRules supplies the R3 core-path globs for observe-window
 	// serialization (P5 configurable rules); zero → code defaults.
 	RiskRules SIRiskRules
-	Lg        loggateway.Logger
+	// Reloader is optional; nil → working-tree apply only (no in-process reload).
+	Reloader SIRuntimeReloader
+	Lg       loggateway.Logger
 }
 
 // SelfImprovementApplyUsecase orchestrates patch application and observing
@@ -62,6 +65,7 @@ type SelfImprovementApplyUsecase struct {
 	maxObserving  int
 	observeWindow time.Duration
 	corePathGlobs []string
+	reloader      SIRuntimeReloader
 	lg            loggateway.Logger
 
 	// promoteMu serializes the slot-check → transition critical section so
@@ -95,6 +99,7 @@ func NewSelfImprovementApplyUsecase(deps SelfImprovementApplyUsecaseDeps) (*Self
 		maxObserving:  maxObserving,
 		observeWindow: window,
 		corePathGlobs: NormalizeSIRiskRules(deps.RiskRules).CorePathGlobs,
+		reloader:      deps.Reloader,
 		lg:            lg.With(loggateway.Domain("self_improve_apply")),
 	}, nil
 }
@@ -135,7 +140,8 @@ func (uc *SelfImprovementApplyUsecase) Apply(ctx context.Context, runID string) 
 	uc.lg.Info("self-improve run applied",
 		loggateway.StepID("si_apply.applied"),
 		loggateway.Str("run_id", run.ID),
-		loggateway.Str("kind", string(run.PatchKind)))
+		loggateway.Str("kind", string(run.PatchKind)),
+		loggateway.Str("effective_on", siApplyEffectiveOn(run)))
 
 	// 尝试晋升观察窗；槽位满/核心路径冲突停留 applied 由 Watchdog 晋升，非错误。
 	uc.tryObserve(ctx, run)
@@ -152,6 +158,7 @@ func (uc *SelfImprovementApplyUsecase) applyByKind(ctx context.Context, run *Sel
 			return err
 		}
 		run.AppliedCommit = sha
+		uc.annotateApply(run, siApplyChannelCode, siApplyEffectiveRestart, false)
 		return nil
 	case PatchKindConfig, PatchKindPrompt, PatchKindDocs:
 		ref, err := uc.applier.ApplyHotReload(ctx, run)
@@ -159,10 +166,68 @@ func (uc *SelfImprovementApplyUsecase) applyByKind(ctx context.Context, run *Sel
 			return err
 		}
 		run.RollbackPointer = ref
+		reloaded := uc.tryRuntimeReload(ctx, run)
+		effectiveOn := siApplyEffectiveRead
+		if reloaded {
+			effectiveOn = siApplyEffectiveLive
+		}
+		uc.annotateApply(run, siApplyChannelTree, effectiveOn, reloaded)
 		return nil
 	default:
 		return apierror.Internal("SELF_IMPROVEMENT", "run %s unknown patch kind %q", run.ID, run.PatchKind)
 	}
+}
+
+const (
+	siMetaApplySemantics    = "apply_semantics"
+	siApplyChannelCode      = "code_merge"
+	siApplyChannelTree      = "working_tree"
+	siApplyEffectiveRestart = "next_restart"
+	siApplyEffectiveRead    = "next_file_read"
+	siApplyEffectiveLive    = "runtime_reloaded"
+)
+
+func (uc *SelfImprovementApplyUsecase) tryRuntimeReload(ctx context.Context, run *SelfImprovementRun) bool {
+	if uc.reloader == nil {
+		return false
+	}
+	if err := uc.reloader.ReloadAfterWorkingTreeApply(ctx, run); err != nil {
+		uc.lg.Warn("self-improve working-tree apply: runtime reload failed",
+			loggateway.StepID("si_apply.reload"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Err(err))
+		return false
+	}
+	return true
+}
+
+func (uc *SelfImprovementApplyUsecase) annotateApply(run *SelfImprovementRun, channel, effectiveOn string, reloaded bool) {
+	run.Metadata = siWatchMetaMerge(run.Metadata, siMetaApplySemantics, map[string]any{
+		"channel":          channel,
+		"effective_on":     effectiveOn,
+		"runtime_reloaded": reloaded,
+	})
+}
+
+func siApplyEffectiveOn(run *SelfImprovementRun) string {
+	if run == nil || len(run.Metadata) == 0 {
+		return ""
+	}
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(run.Metadata, &meta); err != nil {
+		return ""
+	}
+	raw, ok := meta[siMetaApplySemantics]
+	if !ok {
+		return ""
+	}
+	var sem struct {
+		EffectiveOn string `json:"effective_on"`
+	}
+	if err := json.Unmarshal(raw, &sem); err != nil {
+		return ""
+	}
+	return sem.EffectiveOn
 }
 
 // escalateConflict returns a conflicted run to awaiting_governance with the

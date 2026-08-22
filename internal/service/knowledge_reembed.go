@@ -212,10 +212,16 @@ func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, li
 // BuildIndexedChunks(content_text) → InsertChunks → indexed+WS。失败置 error 由调用方继续下一篇。
 // 不触发 RebuildBlockIndex（content_text 未变，块/边不变——与 IngestDocument 的 SP1-C 钩子区分）。
 func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, flow *event.TraceEmitter) bool {
-	if _, loaded := s.reembedRuns.LoadOrStore(doc.ID, struct{}{}); loaded {
+	release, err := s.acquireJob(ctx, &s.reembedRuns, doc.ID, knowledgeReembedJobKey(doc.ID),
+		"reembed already running for document %s", doc.ID)
+	if err != nil {
+		s.lg.Warn("reembed skipped: job lock not acquired",
+			loggateway.StepID("knowledge.reembed.lock"),
+			loggateway.Str("doc_id", doc.ID),
+			loggateway.Err(err))
 		return false
 	}
-	defer s.reembedRuns.Delete(doc.ID)
+	defer release()
 
 	// fail 置文档 error 终态 + WS 广播 + 流程/进程双轨错误日志（K2/K3），不回滚已删旧块
 	// （重嵌入幂等，下次调用或维度对账后可重试）。

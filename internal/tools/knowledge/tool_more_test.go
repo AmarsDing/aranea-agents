@@ -32,6 +32,9 @@ func (m *mockKnowledgeRepo) CreateCollection(_ context.Context, c biz.KnowledgeC
 func (m *mockKnowledgeRepo) GetCollection(_ context.Context, _ string) (biz.KnowledgeCollection, error) {
 	return biz.KnowledgeCollection{}, biz.ErrNotFound
 }
+func (m *mockKnowledgeRepo) GetCollectionByName(_ context.Context, _, _ string) (biz.KnowledgeCollection, error) {
+	return biz.KnowledgeCollection{}, biz.ErrNotFound
+}
 func (m *mockKnowledgeRepo) ListCollections(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeCollection, int, error) {
 	return nil, 0, nil
 }
@@ -52,6 +55,9 @@ func (m *mockKnowledgeRepo) GetDocument(_ context.Context, _ string) (biz.Knowle
 	return biz.KnowledgeDocument{}, biz.ErrNotFound
 }
 func (m *mockKnowledgeRepo) GetDocumentByRelPath(_ context.Context, _, _ string) (biz.KnowledgeDocument, error) {
+	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+func (m *mockKnowledgeRepo) GetDocumentByContentHash(_ context.Context, _, _ string) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{}, biz.ErrNotFound
 }
 func (m *mockKnowledgeRepo) UpdateDocumentRelPath(_ context.Context, _, _ string) error {

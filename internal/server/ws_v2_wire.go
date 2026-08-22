@@ -188,6 +188,11 @@ type planStepWire struct {
 	// DeliverableContract 自带 snake_case json tag（本身即 wire 定义），直接复用。
 	Deliverables  []biz.DeliverableContract `json:"Deliverables"`
 	InputContract []biz.DeliverableContract `json:"InputContract"`
+	DepartmentID  string                    `json:"DepartmentID,omitempty"`
+	DomainPath    string                    `json:"DomainPath,omitempty"`
+	AssignedName  string                    `json:"AssignedName,omitempty"`
+	MatchLayer    string                    `json:"MatchLayer,omitempty"`
+	MatchReason   string                    `json:"MatchReason,omitempty"`
 }
 
 type planBoardWire struct {

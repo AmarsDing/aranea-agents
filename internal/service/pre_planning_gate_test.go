@@ -14,6 +14,7 @@ type fakePlanner struct {
 	quickLevel biz.ComplexityLevel
 	quickScore float64
 	quickErr   error
+	plans      []*biz.TaskPlan
 }
 
 var _ biz.TaskPlannerPort = (*fakePlanner)(nil)
@@ -28,7 +29,7 @@ func (f *fakePlanner) GetPlan(_ context.Context, _ string) (*biz.TaskPlan, error
 	return nil, nil
 }
 func (f *fakePlanner) ListPlans(_ context.Context, _ string) ([]*biz.TaskPlan, error) {
-	return nil, nil
+	return f.plans, nil
 }
 func (f *fakePlanner) ConfirmPlan(_ context.Context, _ string, _ biz.PlanAdjustments) (*biz.TaskPlan, error) {
 	return nil, nil
@@ -143,6 +144,17 @@ func TestRunPrePlanningGate_SkipsContinuationTurn(t *testing.T) {
 	}
 	if decision.Level != "" {
 		t.Errorf("continuation turn must not assess complexity, got level = %s", decision.Level)
+	}
+}
+
+func TestLatestPlanUserMessage(t *testing.T) {
+	if got := latestPlanUserMessage(context.Background(), nil, "sess-1"); got != "" {
+		t.Fatalf("nil planner = %q", got)
+	}
+	p := &fakePlanner{plans: []*biz.TaskPlan{{UserMessage: "组建几个团队，分析金鹏科技行情"}}}
+	got := latestPlanUserMessage(context.Background(), p, "sess-1")
+	if got != "组建几个团队，分析金鹏科技行情" {
+		t.Fatalf("got %q", got)
 	}
 }
 

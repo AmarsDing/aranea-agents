@@ -22,6 +22,7 @@ const mockStore = {
   embedderConfig: { provider: 'openai', base_url: '', model: 'text-embedding-3-small', dim: 1536, configured: true, has_api_key: true },
   collections: [lexicalCol],
   documentsByCollection: {},
+  documentsTruncatedByCollection: {},
   loading: false,
   enableCollectionSemantic: vi.fn().mockResolvedValue({ enqueued_docs: 7, embedding_model: 'text-embedding-3-small', dim: 1536 }),
   loadCollections: vi.fn().mockResolvedValue({ items: [lexicalCol], total: 1 }),
@@ -35,6 +36,8 @@ const mockStore = {
   search: vi.fn(),
   moveDocToDir: vi.fn(),
   invalidateLinkCaches: vi.fn(),
+  loadDocumentContent: vi.fn(),
+  saveDocumentContent: vi.fn(),
 };
 
 vi.mock('../../../stores/knowledge', () => ({ useKnowledgeStore: () => mockStore }));

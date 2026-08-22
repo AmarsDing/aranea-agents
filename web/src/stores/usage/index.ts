@@ -2,12 +2,14 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   exportUsageEventsCsv,
+  getCacheHitRatioStats,
   getModelUsageOverview,
   listModelUsageEvents,
   listModelUsageTrends,
   purgeUsageEvents,
 } from '../../features/usage/api';
 import type {
+  CacheHitRatioStat,
   ModelTokenUsageEvent,
   ModelUsageOverview,
   ModelUsageQuery,
@@ -83,6 +85,25 @@ export const useUsageStore = defineStore('usage', () => {
     return result.deleted_count;
   }
 
+  // --- 29-token §9.3 prompt 缓存命中率（平台级门禁 RPC） ---
+  const cacheHitStats = ref<CacheHitRatioStat[]>([]);
+  const cacheHitLoading = ref(false);
+  // 非管理员调用 403 时置位，卡片据此静默隐藏（观测性降级，不弹错误）。
+  const cacheHitDenied = ref(false);
+
+  async function loadCacheHitStats(windowHours = 24) {
+    cacheHitLoading.value = true;
+    try {
+      cacheHitStats.value = await getCacheHitRatioStats(windowHours);
+      cacheHitDenied.value = false;
+    } catch {
+      cacheHitDenied.value = true;
+      cacheHitStats.value = [];
+    } finally {
+      cacheHitLoading.value = false;
+    }
+  }
+
   return {
     overview,
     trends,
@@ -93,11 +114,15 @@ export const useUsageStore = defineStore('usage', () => {
     eventsLoading,
     eventsError,
     exporting,
+    cacheHitStats,
+    cacheHitLoading,
+    cacheHitDenied,
     loadOverview,
     fetchOverview,
     loadTrends,
     loadEvents,
     exportEventsCsv,
     purgeEvents,
+    loadCacheHitStats,
   };
 });

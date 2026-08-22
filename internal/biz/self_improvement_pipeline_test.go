@@ -284,8 +284,8 @@ func TestSIPipeline_HappyPath(t *testing.T) {
 	}
 	if len(store.run.VerificationReport) != 4 {
 		t.Errorf("verification report gates = %d, want 4（G1-G3 + G5 skipped 记录）", len(store.run.VerificationReport))
-	} else if last := store.run.VerificationReport[3]; last.Gate != SandboxGateEvalBase || !last.Passed || !strings.Contains(last.Output, "skipped") {
-		t.Errorf("last gate = %+v, want g5_eval skipped（deferred 透明化）", last)
+	} else if last := store.run.VerificationReport[3]; last.Gate != SandboxGateEvalBase || !last.Skipped || last.Passed || !strings.Contains(last.Output, "skipped") {
+		t.Errorf("last gate = %+v, want g5_eval skipped（Passed=false）", last)
 	}
 	if store.run.CriticReport == nil || !store.run.CriticReport.IsSafe {
 		t.Error("critic report not persisted")
@@ -304,6 +304,35 @@ func TestSIPipeline_HappyPath(t *testing.T) {
 	}
 	if store.run.WorktreePath == "" || store.run.Branch != "self-improve/run-1" {
 		t.Errorf("worktree/branch not recorded: %+v", store.run)
+	}
+}
+
+func TestSIPipeline_ConfigKindSkipsGoGates(t *testing.T) {
+	uc, store, sandbox, _ := siPipelineFixture(3, func(d *SelfImprovementPipelineDeps) {
+		d.Patcher = siPatcherFn(func(context.Context, SIPatchRequest) (*PatcherOutput, error) {
+			return &PatcherOutput{
+				Diff:    siRiskDiff("configs/config.yaml", 7),
+				Kind:    PatchKindConfig,
+				Summary: "tune timeout",
+			}, nil
+		})
+	})
+	if err := uc.Execute(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if store.run.Status != RunStatusAwaitingGovernance {
+		t.Fatalf("status = %s, want awaiting_governance", store.run.Status)
+	}
+	if len(sandbox.gateCalls) != 0 {
+		t.Errorf("config-only patch must not execute Go gates, calls=%v", sandbox.gateCalls)
+	}
+	if len(store.run.VerificationReport) != 4 {
+		t.Fatalf("report len = %d, want 4 (G1-G3 skipped + G5 skipped)", len(store.run.VerificationReport))
+	}
+	for _, g := range store.run.VerificationReport {
+		if !g.Skipped || g.Passed {
+			t.Errorf("gate %s = %+v, want skipped Passed=false", g.Gate, g)
+		}
 	}
 }
 
@@ -553,5 +582,41 @@ func TestSIPipeline_EntryGuard(t *testing.T) {
 	}
 	if err := uc.Execute(context.Background(), "missing"); err == nil {
 		t.Fatal("Execute on missing run must error")
+	}
+}
+
+func TestSIPipeline_WebOnlySkippedLintFailsClosed(t *testing.T) {
+	uc, store, sandbox, _ := siPipelineFixture(1, func(d *SelfImprovementPipelineDeps) {
+		d.Patcher = siPatcherFn(func(context.Context, SIPatchRequest) (*PatcherOutput, error) {
+			return &PatcherOutput{Diff: siRiskDiff("web/src/App.vue", 5), Kind: PatchKindCode}, nil
+		})
+	})
+	sandbox.gateFn = func(gate SandboxGateKind, _ int) SandboxGateResult {
+		if gate == SandboxGateWebLint {
+			return NewSkippedSandboxGate(gate, "skipped: pnpm not on PATH")
+		}
+		return SandboxGateResult{Gate: gate, Passed: true}
+	}
+	if err := uc.Execute(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if store.run.Status != RunStatusVerifyFailed {
+		t.Fatalf("status = %s, want verify_failed (web-only + no pnpm is fail-closed)", store.run.Status)
+	}
+	if !strings.Contains(siFailedGateDigest(store.run.VerificationReport), "fail-closed") {
+		t.Fatalf("report = %+v, want fail-closed digest", store.run.VerificationReport)
+	}
+}
+
+func TestSIFailClosedWebLint(t *testing.T) {
+	webPlan := PlanSIVerification(PatchKindCode, []PatchFileChange{{Path: "web/src/App.vue", Kind: PatchChangeModified}})
+	skipped := NewSkippedSandboxGate(SandboxGateWebLint, "skipped: pnpm not on PATH")
+	closed, fail := siFailClosedWebLint(webPlan, skipped)
+	if !closed || fail.Passed || fail.Skipped {
+		t.Fatalf("web-only skip = closed=%v res=%+v", closed, fail)
+	}
+	cfgPlan := PlanSIVerification(PatchKindConfig, []PatchFileChange{{Path: "web/src/i18n.ts", Kind: PatchChangeModified}})
+	if closed, _ = siFailClosedWebLint(cfgPlan, skipped); closed {
+		t.Fatal("config+web skip must not fail-closed")
 	}
 }

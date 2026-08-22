@@ -3,10 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
@@ -20,18 +23,21 @@ import (
 
 // agentAllocatorImpl implements biz.AgentAllocatorPort.
 type agentAllocatorImpl struct {
-	repo           biz.AllocationPlanRepository
-	agentReader    biz.AgentReader
-	perfRepo       biz.AgentPerformanceRepository
-	orchCache      *biz.OrchestrationCache
-	capBuilder     *AgentCapabilityBuilder
-	catalog        *biz.LlmProviderModelUsecase
-	httpClient     *http.Client
-	bus            biz.EventBus // Phase 3b-D: v2 EventBus
-	lg             loggateway.Logger
-	embedder       knowledge.Embedder
-	agentFactory   biz.AgentFactory
-	plannerSetting PlannerModelLookup
+	repo               biz.AllocationPlanRepository
+	agentReader        biz.AgentReader
+	perfRepo           biz.AgentPerformanceRepository
+	orchCache          *biz.OrchestrationCache
+	capBuilder         *AgentCapabilityBuilder
+	catalog            *biz.LlmProviderModelUsecase
+	httpClient         *http.Client
+	bus                biz.EventBus // Phase 3b-D: v2 EventBus
+	lg                 loggateway.Logger
+	embedder           knowledge.Embedder
+	agentFactory       biz.AgentFactory
+	plannerSetting     PlannerModelLookup
+	staffingAdvisor    biz.StaffingAdvisor
+	staffingTimeout    time.Duration
+	allowFactoryCreate bool // opt-in; default hot path never creates agents
 }
 
 var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
@@ -95,13 +101,16 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		return nil, apierror.Internal(apierror.DomainSpirit, "build capabilities").WithCause(err)
 	}
 
+	// Heuristic matching never assigns dept_lead / system agents (M78 ORGFAST-01).
+	assignable := filterHeuristicAssignable(capabilities)
+
 	// Match each subtask
 	isDAG := taskPlan.Strategy == biz.StrategyDAG
 	totalSubTasks := len(taskPlan.SubTasks)
 
 	// P-ORCH.5: two-phase parallelization — Phase A parallel matchSubTask
 	// (Layer 0-3, no factory), Phase B serial factory creation (below).
-	results := impl.runPhaseAMatch(ctx, taskPlan.SubTasks, capabilities, traceID)
+	results := impl.runPhaseAMatch(ctx, taskPlan.SubTasks, assignable, traceID)
 
 	// Phase B — serial factory / fallback for failures, then DAG member
 	// selection, progress publish, and final assembly. Order follows the
@@ -113,31 +122,41 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		if res.matchErr == nil {
 			allocation = res.alloc
 		} else {
-			impl.lg.Warn("子任务匹配失败，尝试 AgentFactory",
+			impl.lg.Warn("子任务匹配失败，尝试主管 staffing（花名册内）",
 				loggateway.StepID(biz.SpiritStepAllocatorMatch),
 				loggateway.Str("trace_id", traceID),
 				loggateway.Str("sub_task_id", subTask.ID),
 				loggateway.Err(res.matchErr),
 			)
-			// Phase B: factory creation (serial — contains user confirmation).
-			if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, taskPlan.SpiritSessionID, traceID); ok {
-				allocation = factoryAlloc
+			pool, prune := impl.matchingPool(subTask.DomainPath, assignable, traceID)
+			if staffed, ok := impl.tryStaffing(ctx, subTask, pool, prune, traceID); ok {
+				allocation = staffed
+			} else if impl.allowFactoryCreate {
+				if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, taskPlan.SpiritSessionID, traceID, assignable); ok {
+					allocation = factoryAlloc
+				} else {
+					return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, subTask)
+				}
 			} else {
-				// AgentFactory unavailable/failed → fallback to first available agent.
-				allocation = impl.fallbackAllocation(subTask, capabilities)
+				return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, subTask)
 			}
 		}
+		pool, prune := impl.matchingPool(subTask.DomainPath, assignable, traceID)
 		// For dag mode: each subtask becomes a multi-member team (≥2 members).
 		// The primary agent (AssignedKey) is the team lead; selectAdditionalMembers
-		// picks additional agents from the capability pool to fill out the team.
+		// prefers same-department complementary roles (M78 ORGFAST-03).
 		if isDAG && allocation.AssignedKey != "" {
-			// L0 配方成员优先（B.10.21.5）；无配方时随机补员（存量行为）。
+			// L0 配方成员优先（B.10.21.5）；无配方时按组织补员。
 			additional := allocation.TeamMemberKeys
+			var crossDept []string
 			if len(additional) == 0 {
-				additional = impl.selectAdditionalMembers(allocation.AssignedKey, capabilities, 1)
+				additional, crossDept = impl.selectAdditionalMembers(allocation.AssignedKey, pool, 1)
+			} else {
+				_, crossDept = classifyCrossDeptMembers(allocation.AssignedKey, additional, pool)
 			}
 			if len(additional) > 0 {
 				allocation.TeamMemberKeys = additional
+				allocation.CrossDeptMemberKeys = crossDept
 				allocation.AssignedType = "team"
 				impl.lg.Info("DAG 模式：为子任务分配多成员团队",
 					loggateway.StepID(biz.SpiritStepAllocatorMatch),
@@ -148,25 +167,34 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 				)
 			}
 		}
+		stampOrgOnAlloc(&allocation, pool, prune)
+		observeOrgFastDeptLead(allocation.MatchLayer)
 		allocations = append(allocations, allocation)
 		// P-ORCH: per-subtask progress (frontend renders replace-style).
-		impl.publishAllocatingProgress(ctx, taskPlan.SpiritSessionID, i+1, totalSubTasks, subTask.Name)
+		impl.publishAllocatingProgress(ctx, taskPlan.SpiritSessionID, i+1, totalSubTasks, subTask, allocation)
 	}
 
 	// If no subtasks (simple/moderate), allocate the whole plan to a single agent
 	if len(taskPlan.SubTasks) == 0 {
-		allocation, err := impl.matchWholePlan(ctx, taskPlan, capabilities, traceID)
+		pool, prune := impl.matchingPool(taskPlan.DomainPath, assignable, traceID)
+		allocation, err := impl.matchWholePlan(ctx, taskPlan, pool, traceID)
 		if err != nil {
-			// P1-4: 4-layer matching failed → try AgentFactory before fallback.
-			if factoryAlloc, ok := impl.tryAgentFactoryForPlan(ctx, taskPlan, traceID); ok {
-				allocations = append(allocations, factoryAlloc)
+			st := biz.SubTask{ID: "whole", Name: taskPlan.UserMessage, DomainPath: taskPlan.DomainPath}
+			if staffed, ok := impl.tryStaffing(ctx, st, pool, prune, traceID); ok {
+				allocation = staffed
+			} else if impl.allowFactoryCreate {
+				if factoryAlloc, ok := impl.tryAgentFactoryForPlan(ctx, taskPlan, traceID, pool); ok {
+					allocation = factoryAlloc
+				} else {
+					return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, st)
+				}
 			} else {
-				allocation = impl.fallbackWholePlanAllocation(taskPlan, capabilities)
-				allocations = append(allocations, allocation)
+				return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, st)
 			}
-		} else {
-			allocations = append(allocations, allocation)
 		}
+		stampOrgOnAlloc(&allocation, pool, prune)
+		observeOrgFastDeptLead(allocation.MatchLayer)
+		allocations = append(allocations, allocation)
 	}
 
 	impl.lg.Info("子任务匹配完成",
@@ -176,9 +204,14 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 	)
 
 	// P-ORCH: allocation finished progress event.
-	impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "allocated", map[string]any{
-		"total": len(allocations),
-	})
+	allocatedMeta := map[string]any{"total": len(allocations)}
+	if len(allocations) > 0 && allocations[0].DepartmentID != "" {
+		allocatedMeta["department_id"] = allocations[0].DepartmentID
+	}
+	impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "allocated", allocatedMeta)
+	if sketch := collaborationSketch(taskPlan); sketch.SlotCount > 1 {
+		impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "collaborating", sketch.meta())
+	}
 
 	// Build and persist AllocationPlan
 	plan := &biz.AllocationPlan{
@@ -313,6 +346,97 @@ type phaseAResult struct {
 	matchErr error
 }
 
+// layer2Shared 是一次 Allocate 调用内 Layer2 匹配的共享状态（P3b，2026-08-21）。
+//
+// Phase A 跨子任务并行（P-ORCH.5）后，Layer2 内部仍有两个串行热点：
+//   - 每个进入 Layer2 的子任务把 N 个 Agent 文本随 taskText 整包重嵌
+//     （4 子任务 = 4×(N+1) 条嵌入、4 次大 RPC；Agent 文本完全相同，纯重复）；
+//   - 候选融合的 perfRepo.Get 对每个子任务的每个候选各点查一次
+//     （N×M 次顺序 DB 往返）。
+//
+// layer2Shared 把二者降为 per-Allocate 一次性：Agent 向量 sync.Once 懒加载
+// 共享（子任务只嵌入自己的 taskText 单条），perf 按 agentKey 去重缓存。
+// 生命周期 per-Allocate（非 impl 字段），跨 Allocate 天然并发安全。
+type layer2Shared struct {
+	embedOnce sync.Once
+	agentCaps []biz.AgentCapability // 与 agentVecs 对齐（已滤系统 Agent）
+	agentVecs [][]float32
+	embedErr  error
+
+	perfMu    sync.Mutex
+	perfCache map[string]*biz.AgentPerformance // key 存在 = 已查过（值可为 nil）
+}
+
+// errLayer2NoCandidates / errLayer2DimMismatch 是 loadAgentVectors 的哨兵错误，
+// 调用方据此区分「无候选静默回退」与「真实失败告警回退」。
+var (
+	errLayer2NoCandidates = errors.New("layer2: no non-system agent candidates")
+	errLayer2DimMismatch  = errors.New("layer2: embedding dimension mismatch")
+)
+
+func newLayer2Shared() *layer2Shared {
+	return &layer2Shared{perfCache: make(map[string]*biz.AgentPerformance)}
+}
+
+// ensureLayer2Shared 容忍 nil（旧测试构造路径直接调 matchLayer2/matchSubTask
+// 时不传共享态）——退化为一次性实例，行为与改造前一致。
+func ensureLayer2Shared(s *layer2Shared) *layer2Shared {
+	if s != nil {
+		return s
+	}
+	return newLayer2Shared()
+}
+
+// loadAgentVectors 懒加载全部非系统 Agent 的能力文本嵌入：仅首次调用真实
+// 发起一次批量 Embed RPC，后续调用与并发 goroutine 共享结果（含共享错误——
+// 嵌入失败时所有子任务一致回退 TF-IDF，与改造前逐子任务失败的语义等价）。
+func (s *layer2Shared) loadAgentVectors(ctx context.Context, embedder knowledge.Embedder, capabilities []biz.AgentCapability) ([]biz.AgentCapability, [][]float32, error) {
+	s.embedOnce.Do(func() {
+		var texts []string
+		for _, cap := range capabilities {
+			if !cap.IsHeuristicAssignable() {
+				continue
+			}
+			s.agentCaps = append(s.agentCaps, cap)
+			texts = append(texts, buildAgentCapabilityText(cap))
+		}
+		if len(s.agentCaps) == 0 {
+			s.embedErr = errLayer2NoCandidates
+			return
+		}
+		vecs, err := embedder.Embed(ctx, texts)
+		if err != nil {
+			s.embedErr = err
+			return
+		}
+		if len(vecs) != len(texts) || len(vecs[0]) == 0 {
+			s.embedErr = errLayer2DimMismatch
+			return
+		}
+		s.agentVecs = vecs
+	})
+	return s.agentCaps, s.agentVecs, s.embedErr
+}
+
+// perfFor 返回 agentKey 的 "general" 履历（按 key 去重缓存：同一 Agent 一次
+// Allocate 只点查一次；查询失败/无记录同样缓存 nil，不重复打 DB）。
+func (s *layer2Shared) perfFor(ctx context.Context, repo biz.AgentPerformanceRepository, agentKey string) *biz.AgentPerformance {
+	if repo == nil {
+		return nil
+	}
+	s.perfMu.Lock()
+	defer s.perfMu.Unlock()
+	if perf, ok := s.perfCache[agentKey]; ok {
+		return perf
+	}
+	perf, err := repo.Get(ctx, agentKey, "general")
+	if err != nil {
+		perf = nil
+	}
+	s.perfCache[agentKey] = perf
+	return perf
+}
+
 // runPhaseAMatch executes Phase A of the two-phase allocation (P-ORCH.5):
 // parallel matchSubTask (Layer 0-3, no factory) across all subtasks.
 // Each goroutine writes its result to a pre-allocated slice slot so the
@@ -323,11 +447,19 @@ func (impl *agentAllocatorImpl) runPhaseAMatch(ctx context.Context, subTasks []b
 	if len(subTasks) == 0 {
 		return results
 	}
+	// P3b: 跨子任务共享 Layer2 状态——Agent 嵌入向量只算一次、perf 按 key 去重。
+	// Preload vectors from the full assignable catalog so per-subtask org
+	// prune cannot race on embedOnce with different candidate sets (M78).
+	shared := newLayer2Shared()
+	if impl.embedder != nil {
+		_, _, _ = shared.loadAgentVectors(ctx, impl.embedder, capabilities)
+	}
 	g, gctx := errgroup.WithContext(ctx)
 	for i, subTask := range subTasks {
 		i, subTask := i, subTask
 		g.Go(func() error {
-			alloc, err := impl.matchSubTask(gctx, subTask, capabilities, traceID)
+			pool, _ := impl.matchingPool(subTask.DomainPath, capabilities, traceID)
+			alloc, err := impl.matchSubTask(gctx, subTask, pool, traceID, shared)
 			results[i] = phaseAResult{alloc: alloc, matchErr: err}
 			return nil // never surface matchSubTask errors; Phase B handles them
 		})
@@ -337,7 +469,14 @@ func (impl *agentAllocatorImpl) runPhaseAMatch(ctx context.Context, subTasks []b
 }
 
 // matchSubTask matches a single subtask to the best agent/team.
-func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.TaskAllocation, error) {
+// shared 为可选的 per-Allocate Layer2 共享态（P3b）；不传时退化为一次性实例。
+func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string, sharedOpt ...*layer2Shared) (biz.TaskAllocation, error) {
+	var shared *layer2Shared
+	if len(sharedOpt) > 0 {
+		shared = ensureLayer2Shared(sharedOpt[0])
+	} else {
+		shared = newLayer2Shared()
+	}
 	// Determine assigned type based on estimated complexity
 	assignedType := "agent"
 	if subTask.EstimatedComplexity >= 0.5 {
@@ -374,6 +513,22 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 				MatchLayer:   "mission",
 				MatchReason:  missionMatchReason(subTask.DomainPath, candCount, score),
 			}, nil
+		}
+		if cap, backup, ok := bindRosterSpecialist(subTask.DomainPath, capabilities); ok {
+			alloc := biz.TaskAllocation{
+				SubTaskID:    subTask.ID,
+				SubTaskName:  subTask.Name,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   1,
+				MatchLayer:   "roster",
+				MatchReason:  "专项花名册绑定 " + NormalizeDomainPath(subTask.DomainPath),
+			}
+			if backup != "" {
+				alloc.FallbackKey = backup
+			}
+			return alloc, nil
 		}
 	}
 
@@ -433,8 +588,14 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		}, nil
 	}
 
+	// Closed roster: a known specialty must bind a pre-built specialist.
+	// Do not L2/L3-pick or low-score-assign a random catalog agent.
+	if strings.TrimSpace(subTask.DomainPath) != "" {
+		return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for subtask %s", subTask.ID)
+	}
+
 	// Layer 2: Semantic match — keyword-based similarity between task and agent capabilities
-	semCap, semScore, semReason := impl.matchLayer2(ctx, subTask, capabilities, traceID)
+	semCap, semScore, semReason := impl.matchLayer2(ctx, subTask, capabilities, traceID, shared)
 	if semScore > 0.3 && semCap.AgentKey != "" {
 		impl.lg.Info("Layer 2 语义匹配命中",
 			loggateway.StepID(biz.SpiritStepAllocatorMatch),
@@ -480,48 +641,119 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		}, nil
 	}
 
-	// If LLM cold start also fails, use the best exact match (even if score < 0.5)
-	if bestMatch.AgentKey != "" {
-		return biz.TaskAllocation{
-			SubTaskID:    subTask.ID,
-			SubTaskName:  subTask.Name,
-			AssignedType: assignedType,
-			AssignedKey:  bestMatch.AgentKey,
-			AssignedName: bestMatch.DisplayName,
-			MatchScore:   bestScore,
-			MatchLayer:   "exact",
-			MatchReason:  matchReason + " (低分匹配)",
-		}, nil
-	}
-
 	return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for subtask %s", subTask.ID)
 }
 
 // selectAdditionalMembers picks `count` additional agent keys from the
-// capability pool, excluding the primary key. Used for dag mode where each
-// team must have ≥2 members. The selection is capability-agnostic — it just
-// picks the first available agents that aren't the primary. This is
-// intentionally simple; smarter matching (e.g., complementary capabilities)
-// can be added later.
-func (impl *agentAllocatorImpl) selectAdditionalMembers(primaryKey string, capabilities []biz.AgentCapability, count int) []string {
-	if count <= 0 || len(capabilities) <= 1 {
-		return nil
+// capability pool, excluding the primary key and non-assignable roles.
+// Preference: same department + complementary roles, then same department,
+// then cross-department (returned separately for borrow marking).
+func (impl *agentAllocatorImpl) selectAdditionalMembers(primaryKey string, capabilities []biz.AgentCapability, count int) (members []string, crossDept []string) {
+	return pickComplementaryMembers(primaryKey, capabilities, count)
+}
+
+func pickComplementaryMembers(primaryKey string, capabilities []biz.AgentCapability, count int) (members []string, crossDept []string) {
+	if count <= 0 || len(capabilities) == 0 {
+		return nil, nil
 	}
-	result := make([]string, 0, count)
-	for _, cap := range capabilities {
-		if cap.AgentKey == "" || cap.AgentKey == primaryKey {
-			continue
-		}
-		// 2026-07-04 问题 3 修复：系统 Agent 不应被选为附加团队成员。
-		if biz.IsSystemAgentKey(cap.AgentKey) {
-			continue
-		}
-		result = append(result, cap.AgentKey)
-		if len(result) >= count {
+	var primary *biz.AgentCapability
+	for i := range capabilities {
+		if capabilities[i].AgentKey == primaryKey {
+			primary = &capabilities[i]
 			break
 		}
 	}
-	return result
+	primaryDept := ""
+	var primaryRoles []string
+	if primary != nil {
+		primaryDept = primary.DepartmentID
+		primaryRoles = primary.Roles
+	}
+
+	used := map[string]struct{}{primaryKey: {}}
+	add := func(cap biz.AgentCapability) bool {
+		if cap.AgentKey == "" {
+			return false
+		}
+		if _, ok := used[cap.AgentKey]; ok {
+			return false
+		}
+		if !cap.IsHeuristicAssignable() {
+			return false
+		}
+		used[cap.AgentKey] = struct{}{}
+		members = append(members, cap.AgentKey)
+		if primaryDept != "" && cap.DepartmentID != "" && cap.DepartmentID != primaryDept {
+			crossDept = append(crossDept, cap.AgentKey)
+		}
+		return len(members) >= count
+	}
+
+	passes := []func(biz.AgentCapability) bool{
+		func(cap biz.AgentCapability) bool {
+			return primaryDept != "" && cap.DepartmentID == primaryDept && hasComplementaryRole(primaryRoles, cap.Roles)
+		},
+		func(cap biz.AgentCapability) bool {
+			return primaryDept != "" && cap.DepartmentID == primaryDept
+		},
+		func(cap biz.AgentCapability) bool {
+			return hasComplementaryRole(primaryRoles, cap.Roles)
+		},
+		func(biz.AgentCapability) bool { return true },
+	}
+	for _, pred := range passes {
+		for _, cap := range capabilities {
+			if !pred(cap) {
+				continue
+			}
+			if add(cap) {
+				return members, crossDept
+			}
+		}
+	}
+	return members, crossDept
+}
+
+func hasComplementaryRole(lead, cand []string) bool {
+	if len(lead) == 0 || len(cand) == 0 {
+		return true
+	}
+	leadSet := make(map[string]struct{}, len(lead))
+	for _, r := range lead {
+		if t := strings.TrimSpace(r); t != "" {
+			leadSet[t] = struct{}{}
+		}
+	}
+	if len(leadSet) == 0 {
+		return true
+	}
+	for _, r := range cand {
+		if _, ok := leadSet[strings.TrimSpace(r)]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyCrossDeptMembers(primaryKey string, memberKeys []string, capabilities []biz.AgentCapability) (homeDept string, crossDept []string) {
+	byKey := make(map[string]biz.AgentCapability, len(capabilities))
+	for _, cap := range capabilities {
+		byKey[cap.AgentKey] = cap
+	}
+	if p, ok := byKey[primaryKey]; ok {
+		homeDept = p.DepartmentID
+	}
+	if homeDept == "" {
+		return "", nil
+	}
+	for _, k := range memberKeys {
+		cap, ok := byKey[k]
+		if !ok || cap.DepartmentID == "" || cap.DepartmentID == homeDept {
+			continue
+		}
+		crossDept = append(crossDept, k)
+	}
+	return homeDept, crossDept
 }
 
 // exactMatch performs Layer 1 matching: overlap between required_capabilities and agent Roles.
@@ -537,8 +769,7 @@ func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabi
 
 	var candidates []scored
 	for _, cap := range capabilities {
-		// 2026-07-04 问题 3 修复：系统 Agent 不参与业务任务匹配。
-		if biz.IsSystemAgentKey(cap.AgentKey) {
+		if !cap.IsHeuristicAssignable() {
 			continue
 		}
 		overlapRatio := computeOverlapRatio(requiredCapabilities, cap.Roles)
@@ -578,66 +809,77 @@ func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabi
 // Note: pgvector SQL similarity (`<=>` operator on the `vector_embeddings` table) is used by the
 // memory domain (internal/data/vector/pgvector_fact.go) for memory retrieval, not by the allocator.
 // The allocator computes cosine in Go memory to avoid a Postgres round-trip on the hot allocation path.
-func (impl *agentAllocatorImpl) matchLayer2(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
+func (impl *agentAllocatorImpl) matchLayer2(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string, sharedOpt ...*layer2Shared) (biz.AgentCapability, float64, string) {
 	if len(capabilities) == 0 {
 		return biz.AgentCapability{}, 0, ""
+	}
+	var shared *layer2Shared
+	if len(sharedOpt) > 0 {
+		shared = ensureLayer2Shared(sharedOpt[0])
+	} else {
+		shared = newLayer2Shared()
 	}
 
 	// Try embedding-based matching first; fall back to TF-IDF on failure or nil embedder.
 	if impl.embedder != nil {
-		if cap, score, reason, ok := impl.matchLayer2Embedding(ctx, subTask, capabilities, traceID); ok {
+		if cap, score, reason, ok := impl.matchLayer2Embedding(ctx, subTask, capabilities, traceID, shared); ok {
 			return cap, score, reason
 		}
 	}
 
-	return impl.matchLayer2TFIDF(ctx, subTask, capabilities, traceID)
+	return impl.matchLayer2TFIDF(ctx, subTask, capabilities, traceID, shared)
 }
 
 // matchLayer2Embedding uses embedding cosine similarity for semantic matching.
 // Returns ok=false when the embedder fails or produces unusable vectors; the caller falls back to TF-IDF.
-func (impl *agentAllocatorImpl) matchLayer2Embedding(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string, bool) {
+//
+// P3b: Agent 侧向量经 shared.loadAgentVectors per-Allocate 一次性批量嵌入共享，
+// 每个子任务只嵌入自己的 taskText 单条；候选融合的 perf 履历经 shared.perfFor
+// 按 agentKey 去重点查，不再 N×M 次顺序打 DB。
+func (impl *agentAllocatorImpl) matchLayer2Embedding(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string, shared *layer2Shared) (biz.AgentCapability, float64, string, bool) {
 	taskText := subTask.Name + " " + subTask.Description
 	for _, cap := range subTask.RequiredCapabilities {
 		taskText += " " + cap
 	}
 
-	// Collect non-system candidates and their capability text for batch embedding.
-	// 2026-07-04 问题 3 修复：过滤所有系统 Agent，不仅是 SpiritAgentKey。
-	var agentCaps []biz.AgentCapability
-	var agentTexts []string
-	for _, cap := range capabilities {
-		if biz.IsSystemAgentKey(cap.AgentKey) {
-			continue
+	agentCaps, agentVecs, err := shared.loadAgentVectors(ctx, impl.embedder, capabilities)
+	if err != nil {
+		if !errors.Is(err, errLayer2NoCandidates) {
+			impl.lg.Warn("Layer 2 embedding 失败，降级为 TF-IDF",
+				loggateway.StepID(biz.SpiritStepAllocatorMatch),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Err(err),
+			)
 		}
-		agentCaps = append(agentCaps, cap)
-		agentTexts = append(agentTexts, buildAgentCapabilityText(cap))
-	}
-	if len(agentCaps) == 0 {
 		return biz.AgentCapability{}, 0, "", false
 	}
 
-	// Batch embed: [taskText, agentText1, agentText2, ...].
-	allTexts := append([]string{taskText}, agentTexts...)
-	vectors, err := impl.embedder.Embed(ctx, allTexts)
+	// 仅嵌入当前子任务的 taskText（Agent 向量已共享）。
+	vectors, err := impl.embedder.Embed(ctx, []string{taskText})
 	if err != nil {
-		impl.lg.Warn("Layer 2 embedding 失败，降级为 TF-IDF",
+		impl.lg.Warn("Layer 2 taskText embedding 失败，降级为 TF-IDF",
 			loggateway.StepID(biz.SpiritStepAllocatorMatch),
 			loggateway.Str("trace_id", traceID),
 			loggateway.Err(err),
 		)
 		return biz.AgentCapability{}, 0, "", false
 	}
-	if len(vectors) != len(allTexts) || len(vectors[0]) == 0 {
+	if len(vectors) != 1 || len(vectors[0]) == 0 {
 		impl.lg.Warn("Layer 2 embedding 维度不匹配，降级为 TF-IDF",
 			loggateway.StepID(biz.SpiritStepAllocatorMatch),
 			loggateway.Str("trace_id", traceID),
-			loggateway.Int("expected", len(allTexts)),
+			loggateway.Int("expected", 1),
 			loggateway.Int("got", len(vectors)),
 		)
 		return biz.AgentCapability{}, 0, "", false
 	}
 
 	taskVec := vectors[0]
+
+	allow := make(map[string]struct{}, len(capabilities))
+	for _, cap := range capabilities {
+		allow[cap.AgentKey] = struct{}{}
+	}
 
 	type scored struct {
 		cap   biz.AgentCapability
@@ -646,17 +888,20 @@ func (impl *agentAllocatorImpl) matchLayer2Embedding(ctx context.Context, subTas
 
 	var candidates []scored
 	for i, cap := range agentCaps {
-		sim := cosineSimilarity32(taskVec, vectors[i+1])
+		if !cap.IsHeuristicAssignable() {
+			continue
+		}
+		if _, ok := allow[cap.AgentKey]; !ok {
+			continue
+		}
+		sim := cosineSimilarity32(taskVec, agentVecs[i])
 		if sim <= 0 {
 			continue
 		}
 		// Blend with historical success rate (same weighting as TF-IDF path).
 		score := sim
-		if impl.perfRepo != nil {
-			perf, err := impl.perfRepo.Get(ctx, cap.AgentKey, "general")
-			if err == nil && perf != nil {
-				score = score*0.6 + perf.SuccessRate*0.4
-			}
+		if perf := shared.perfFor(ctx, impl.perfRepo, cap.AgentKey); perf != nil {
+			score = score*0.6 + perf.SuccessRate*0.4
 		}
 		candidates = append(candidates, scored{cap: cap, score: score})
 	}
@@ -677,7 +922,8 @@ func (impl *agentAllocatorImpl) matchLayer2Embedding(ctx context.Context, subTas
 }
 
 // matchLayer2TFIDF is the TF-IDF keyword-based fallback for Layer 2 matching.
-func (impl *agentAllocatorImpl) matchLayer2TFIDF(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
+// P3b: perf 履历经 shared.perfFor 按 agentKey 去重点查。
+func (impl *agentAllocatorImpl) matchLayer2TFIDF(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string, shared *layer2Shared) (biz.AgentCapability, float64, string) {
 	taskText := subTask.Name + " " + subTask.Description
 	for _, cap := range subTask.RequiredCapabilities {
 		taskText += " " + cap
@@ -690,17 +936,13 @@ func (impl *agentAllocatorImpl) matchLayer2TFIDF(ctx context.Context, subTask bi
 
 	var candidates []scored
 	for _, cap := range capabilities {
-		// 2026-07-04 问题 3 修复：过滤所有系统 Agent，不仅是 SpiritAgentKey。
-		if biz.IsSystemAgentKey(cap.AgentKey) {
+		if !cap.IsHeuristicAssignable() {
 			continue
 		}
 		score := computeSemanticScore(taskText, cap)
 		// Combine with historical success rate if available
-		if impl.perfRepo != nil {
-			perf, err := impl.perfRepo.Get(ctx, cap.AgentKey, "general")
-			if err == nil && perf != nil {
-				score = score*0.6 + perf.SuccessRate*0.4
-			}
+		if perf := shared.perfFor(ctx, impl.perfRepo, cap.AgentKey); perf != nil {
+			score = score*0.6 + perf.SuccessRate*0.4
 		}
 		if score > 0 {
 			candidates = append(candidates, scored{cap: cap, score: score})
@@ -735,8 +977,7 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 
 	var candidates []scored
 	for _, cap := range capabilities {
-		// 2026-07-04 问题 3 修复：过滤所有系统 Agent，不仅是 SpiritAgentKey。
-		if biz.IsSystemAgentKey(cap.AgentKey) {
+		if !cap.IsHeuristicAssignable() {
 			continue
 		}
 		score := computeSemanticScore(taskPlan.UserMessage, cap)
@@ -875,6 +1116,11 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 		return "", apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
+	capabilities = capLLMColdStart(filterHeuristicAssignable(capabilities))
+	if len(capabilities) == 0 {
+		return "", nil
+	}
+
 	prompt := buildAllocatorColdStartPrompt(subTask, capabilities)
 
 	// Resolve planner model via system setting (specify/inherit) with session
@@ -986,6 +1232,22 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 				MatchReason:  missionMatchReason(taskPlan.DomainPath, candCount, score),
 			}, nil
 		}
+		if cap, backup, ok := bindRosterSpecialist(taskPlan.DomainPath, capabilities); ok {
+			alloc := biz.TaskAllocation{
+				SubTaskID:    "whole",
+				SubTaskName:  taskPlan.UserMessage,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   1,
+				MatchLayer:   "roster",
+				MatchReason:  "专项花名册绑定 " + NormalizeDomainPath(taskPlan.DomainPath),
+			}
+			if backup != "" {
+				alloc.FallbackKey = backup
+			}
+			return alloc, nil
+		}
 	}
 
 	// L2 performance: domain 履历优先，回退 capability hint 履历。
@@ -1043,6 +1305,10 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 		}, nil
 	}
 
+	if strings.TrimSpace(taskPlan.DomainPath) != "" {
+		return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for plan")
+	}
+
 	// Layer 2: Semantic match for whole plan
 	semCap, semScore, semReason := impl.matchLayer2ForPlan(ctx, taskPlan, capabilities, traceID)
 	if semScore > 0.3 && semCap.AgentKey != "" {
@@ -1095,6 +1361,11 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability, traceID string) (string, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
 		return "", apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
+	}
+
+	capabilities = capLLMColdStart(filterHeuristicAssignable(capabilities))
+	if len(capabilities) == 0 {
+		return "", nil
 	}
 
 	prompt := buildAllocatorColdStartPromptForPlan(taskPlan, capabilities)
@@ -1165,7 +1436,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 // when 4-layer matching fails for a subtask (P1-4). Returns the allocation
 // and true on success; returns zero value and false when AgentFactory is
 // unavailable or creation fails (caller should fall back).
-func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, subTask biz.SubTask, spiritSessionID, traceID string) (biz.TaskAllocation, bool) {
+func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, subTask biz.SubTask, spiritSessionID, traceID string, pool []biz.AgentCapability) (biz.TaskAllocation, bool) {
 	if impl.agentFactory == nil {
 		return biz.TaskAllocation{}, false
 	}
@@ -1183,6 +1454,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, s
 		DomainPath:           subTask.DomainPath,
 		TaskDescription:      desc,
 		SpiritSessionID:      spiritSessionID,
+		DepartmentID:         departmentIDFromPool(subTask.DomainPath, pool),
 	}
 	agentKey, err := impl.agentFactory.EnsureAgent(ctx, profile)
 	if err != nil {
@@ -1214,7 +1486,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, s
 
 // tryAgentFactoryForPlan calls AgentFactory for a whole-plan allocation when
 // 4-layer matching fails (P1-4). Same contract as tryAgentFactoryForSubTask.
-func (impl *agentAllocatorImpl) tryAgentFactoryForPlan(ctx context.Context, taskPlan *biz.TaskPlan, traceID string) (biz.TaskAllocation, bool) {
+func (impl *agentAllocatorImpl) tryAgentFactoryForPlan(ctx context.Context, taskPlan *biz.TaskPlan, traceID string, pool []biz.AgentCapability) (biz.TaskAllocation, bool) {
 	if impl.agentFactory == nil {
 		return biz.TaskAllocation{}, false
 	}
@@ -1228,6 +1500,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForPlan(ctx context.Context, task
 		DomainPath:           taskPlan.DomainPath,
 		TaskDescription:      taskPlan.UserMessage,
 		SpiritSessionID:      taskPlan.SpiritSessionID,
+		DepartmentID:         departmentIDFromPool(taskPlan.DomainPath, pool),
 	}
 	agentKey, err := impl.agentFactory.EnsureAgent(ctx, profile)
 	if err != nil {
@@ -1431,12 +1704,34 @@ func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, pl
 
 // publishAllocatingProgress emits a per-subtask allocating progress event
 // (P-ORCH). index is 1-based; total is the number of subtasks.
-func (impl *agentAllocatorImpl) publishAllocatingProgress(ctx context.Context, spiritSessionID string, index, total int, subTaskName string) {
-	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocating", map[string]any{
+func (impl *agentAllocatorImpl) publishAllocatingProgress(ctx context.Context, spiritSessionID string, index, total int, subTask biz.SubTask, alloc biz.TaskAllocation) {
+	extra := map[string]any{
 		"index":    index,
 		"total":    total,
-		"sub_task": subTaskName,
+		"sub_task": subTask.Name,
+	}
+	if spec := NormalizeDomainPath(subTask.DomainPath); spec != "" {
+		extra["specialty"] = spec
+	}
+	if alloc.AssignedName != "" {
+		extra["agent_name"] = alloc.AssignedName
+	}
+	if alloc.MatchLayer != "" {
+		extra["match_layer"] = alloc.MatchLayer
+	}
+	if alloc.DepartmentID != "" {
+		extra["department_id"] = alloc.DepartmentID
+	}
+	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocating", extra)
+}
+
+func (impl *agentAllocatorImpl) failRoster(ctx context.Context, spiritSessionID string, subTask biz.SubTask) error {
+	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocate_failed", map[string]any{
+		"sub_task":  subTask.Name,
+		"specialty": NormalizeDomainPath(subTask.DomainPath),
+		"reason":    "no_roster_specialist",
 	})
+	return rosterMissError(subTask)
 }
 
 // publishOrchestrationProgress emits an orchestration_progress

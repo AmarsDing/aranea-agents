@@ -4,7 +4,7 @@
 > **与蓝图的关系**：蓝图描述"模块是什么"，本手册描述"改模块 X 时必须注意谁"。
 > **编码规范**：详见 SKILLs，本文聚焦**跨模块关联**。
 > **与精简版的关系**：本文件是 `module-cross-reference.md` 的扩展版本，新增日志架构相关模块卡片（§1.12a–1.12h）。
-> **最后校准日期**：2026-08-15（P0-7 + P1-15 + P2-20 + P2-22 AS-STA-01 与当前仓库对齐）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
+> **最后校准日期**：2026-08-22（§1.42 增重型组织链 ADR；其余卡片仍以 2026-08-15 校准为准）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
 
 ---
 
@@ -136,7 +136,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` + `memory_shim_*` L0–L4 Store 实现） |
 | **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status）；**2026-08-15**：`AutoMemoryWorker` 过门后 `KnowledgeWriteBack`（G2）+ pending 队列（US-44）+ `ProjectAgentMemory`（G1 只读投影，不改 L3 内核） |
 | **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（6 个 L1 工具，含 P1-2 新增的 complete 任务结束触发）、`service.MemoryService.GetMemoryLayerOverview`/`GetUnifiedMemoryGraph`（记忆中心聚合端点） |
-| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入） |
+| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入）、`biz.MemoryOverviewStatsReader`（全景 SQL 聚合，生产 adapter 实现、测试 fake 可走扫描兜底） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
 | **数据库** | Postgres（memory_facts/memory_entities/memory_l4_graph/memory_episodes/memory_l1_tasks/memory_l1_fields/memory_l1_field_history，embedding 向量走 pgvector 同库） |
@@ -149,7 +149,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - **working_memory 工具**通过 `BeforeToolHook` 注入 L1 依赖（L1TaskWriter/L1FieldWriter/L1AdminReader/sessionID/agentID），不在工具构造时传入
 - 修改记忆层级结构时，需同步更新前端 MemoryCenterPage 的 5 个 Tab
 - **Service 层禁止直接依赖 data 层 store 具体类型**（原 `sessionmemory.Store` 已折叠为 `internal/data/memory_shim_*.go`），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`/`L3FactWriter` 等）+ data 层适配器桥接
-- Memory Admin RPC 须经 `authorizeMemoryScope`（`internal/service/memory_scope.go`）做 scope/workspace ACL；trpc `Add/Update/Delete/Clear` 须经 `assertL3WriteAllowed` 尊重 `WriteL3Facts`
+- Memory Admin RPC 须经 `authorizeMemoryScope`（`internal/service/memory_scope.go`）做 scope/workspace ACL；全景/图谱/情景及 Debug/CompositeSearch 另经 `assertAgentMemoryAccess`（Agent 租户 IDOR，跨租户 NotFound）；trpc `Add/Update/Delete/Clear` 须经 `assertL3WriteAllowed` 尊重 `WriteL3Facts`
 - `L4CascadeUsecase` 构造函数接收 4 个子接口（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`）+ `L4EntityWriter`，不使用聚合接口 `CascadeGraphStore`（已 Deprecated）
 - `SessionAdminStore` 已 Deprecated **并退出生产路径**（Wire / `MemorySet` / agent builder 不再以该聚合类型为依赖字段）。生产注入 `MemoryLayerPorts` 上的 L0–L4 窄接口（`L0AdminStore`/`L1AdminReader`/`L1TaskWriter`/`L1FieldWriter`/`L3FactReader`/`L3FactWriter`/`L4EntityStore`/`L1SchemaReader` 等）；`MemoryAdminUsecase` 依赖 `MemoryAdminDeps`。类型保留供测试与 data 适配器编译期检查。
 - 新增 biz 端口接口时，需同步创建 data 层适配器 + 更新 `cmd/admin/wire.go` 绑定
@@ -217,7 +217,6 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - 新增 Turn 入口点时，必须同步更新 `TurnEntryPointConfig` 和 `ChatOrchestrator.ExecuteTurn` 的准入逻辑
 - **P0-5b（2026-08-14）**：`RuntimeTooling` 为薄分组（6 字段：Knowledge/Skill/Plugin/Bridges/Sharing/Extensions），不再平铺 24 依赖；改工具装配注入时同步 `chat_runtime_tooling.go` + `provideRuntimeTooling` + chat/a2a/openai 三处 `TRPCBuilderDeps` 路径
 - 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
-- 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
 - 崩溃恢复三层机制：L1 `V2RecoveryRepo.FailOrphanedInFlight`（task→interrupted，其余→failed）、L2 `EscalateAllActiveToDurable`（关机批量升级 durable，SessionStatusGuard 调用）、L3 WS 上行 `resume_task` → `ResumeInterruptedTask`（CAS interrupted→running + 轨迹重跑）；新增终态事件必须走 `CompleteTaskTerminal`（版本以 DB 为准），详见 [1-chat.design.md](./1-chat.design.md) §B.10.16
 - 需求澄清门（Clarification Gate，§B.10.18）：Intent Pass 后 `chat_clarify_gate.go` 判定阻塞性歧义 → 发布 orphan clarify Step（awaiting_input，信封含 `original_input`）并挂起 turn（`awaiting_confirmation(reason=clarification)`）；提交端点 `SubmitClarification`（CAS 409）→ `resumeTurnWithClarification` 同 turn 续跑（`resolveResumeInput`：进程内 cache 优先，缺失从信封 `original_input` 惰性重建；缺字段 `FAILED_PRECONDITION`）；自由回复等价路径由 `Execute` → `runNativeAgentTurnBody` 调 `resolveClarificationFreeTextHint`（cache 或会话等待态 + 持久化 Step 重建）；开关 `clarification_enabled` 持久化于 `agent_runtime_settings`（迁移 20261108）；orphan Step 前端由 `TaskCard.vue` 渲染 `ClarifyBlock.vue`
 - 抗过度澄清（§B.10.18.7，2026-08-09）：全部问题含推荐默认且无高风险标记（`intent.Artifact.HasHighRiskFlag`）→ `autoResolveClarification` 假设式前进（completed 审计卡 resolution=auto_default + `ResolvedInput` 注入 + Artifact 剥离澄清残留，不挂起）；chat 路径 intent pass 经 `TurnDeps.MsgHistory`（`biz.SessionRecentMessageLister`）注入近 6 条历史（`intent/history.go`，单条 200 runes 截断）+ prompt 历史消歧规则；改澄清判定/历史注入时同步 `chat_clarify_gate_test.go` 与 `intent/history_test.go`、`clarify_test.go` 的 prompt 纪律守卫
@@ -575,7 +574,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **事件消费** | 无 |
 | **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks）；SP1：`knowledge_blocks`（块物化，`anchor` 部分唯一索引 + `promoted_from/to` 谱系）、`knowledge_block_refs`（块级引用边，dst_* SET NULL / collection CASCADE 镜像内存图）；`vault_backend` 维度（local=文件系统真相源 / team=PG 真相源）；`knowledge_documents.visibility` / `owner_user_id`（collection 默认，private=owner） |
 | **前端对应** | KnowledgePage（资源管理器三栏 + 3D 图谱 + 设置）；SP1-I：`KnowledgeDocDetail` 反链分组/dangling 灰显/晋升按钮、`KnowledgePromoteDialog`、`KnowledgeVaultTree`/`KnowledgeGraph3D` team 徽标、`useKnowledgeGraphDeltaWs`（graph.delta 订阅 → `invalidateLinkCaches` + 详情/图谱重载）；V4：`GraphLegend`（M5 图例过滤 + 透镜）、`FocusCard`（M4 节点详情卡，含重嵌入入口）、`LiquidGlassDefs`（M1 真折射滤镜单例）、`KnowledgeVaultTree`「启用语义检索」菜单（B2，仅词法库）、`WorkbenchSidebar` 文件行「重新向量化」菜单（B1）；**2026-08-17**：命令面板「审核治理提案」+ `GovernanceReviewDialog`（事实冲突 keep_old/keep_new）；对话 `KnowledgeRecallChips`（回答 `[n]` 脚注对齐 chunk_id）；Agent 记忆 Tab `grounded_only`；文件菜单仅自己可见/库内可见 |
-| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；内存图与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本部署需事件广播保持 LinkIndex 一致（另立 ADR） |
+| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；本进程 `LinkIndex` 与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本读路径走 `knowledge_block_refs`（[ADR-KN-LINKINDEX](../reports/2026-08-22-review-adr-knowledge-linkindex-replica.md)），禁止副本间广播内存图。用户语言是「知识库」不是 Collection；文档状态必须经 FSM（禁止 pending→indexed）；首次摄取提交走 `CommitIndexedDocument`；同一库相同 `content_hash` 复用已有文档，不重复建档。Knowledge 是可引用工作区，Memory 写回只是投影。`writeBackReplay` 必须在 Usecase 上绑定（`BindDerivedIndexHooks`）。新业务代码优先走 `Usecase.Vault()/Retrieve()/Graph()/WriteBack()/Curate()` 门面，不要继续给 Usecase 加字段。 |
 
 ---
 
@@ -604,11 +603,11 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 |------|------|
 | **上游依赖** | `biz`（Evaluation 类型）、`agent`（构建评估 Agent）、`pkg/trpc-agent-go`（AgentEvaluator，经 FrameworkBridge） |
 | **下游影响** | `service/evaluation`（Evaluation API）、发布流程（PublishGate 异步 advisory，Phase 8 Y2） |
-| **核心导出** | `Runner`、`FrameworkBridge`、`LLMJudge`、`PublishGate`、`ScoreDropAlerter`、UserSimulator（scripted/LLM） |
-| **共享类型** | `EvalDataset`、`EvalCase`、`EvalRun`、`EvalCaseResult`、`EvalGateConfig`、`EvalRunPreference` |
-| **事件生产** | 无 |
+| **核心导出** | `Runner`（含 Cancel）、`FrameworkBridge`、`PublishGate`、`ScoreDropAlerter`、UserSimulator（scripted/LLM） |
+| **共享类型** | `EvalDataset`、`EvalCase`、`EvalRun`、`EvalCaseResult`、`EvalGateConfig`、`EvalRunPreference`、`EvalDatasetVersion` |
+| **事件生产** | `eval.completed`（Important，SystemNotice）；失败用例 `eval_failure` Observation |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config/eval_run_preferences；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
+| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config（默认行+per-agent）/eval_run_preferences/eval_dataset_versions；`idx_eval_runs_inflight` 部分唯一；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
 | **前端对应** | EvaluationPage（`features/evaluation/` + `stores/evaluation/`） |
 
 ---
@@ -917,7 +916,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 4. 观察窗并发上限 3 + 同核心路径串行：applied→observing 提升前检查 observing 计数与受影响目录重叠。
 5. 指标快照存 `run.Metadata`（`metrics_before`/`metrics_after`），无新列；KB 负面样本以 `FailurePatternSource=self_improvement` 表达（不加 negative 列）。
 6. 触发器降频：Outcome 归因后同 trigger_source 连续 3 次 neutral/regressed → `SkillEvolutionOrchestrator.SetTriggerCooldownMultiplier` ×2（持久化 `system_settings.si_trigger_cooldown_multipliers`，启动 Hydrate，上限 8×）。生产默认 `daily_auto_apply_quota=0`（关闭 auto-apply）；开发配置可显式设 >0。
-7. 沙盒安全：diff 路径校验（拒绝对/反斜杠/`..`）、保护文件 fail-fast 不消耗 Gate、快照回滚指针 `snapshot/<runID>`。
+7. 沙盒安全：diff 路径校验（拒绝对/反斜杠/`..`）、保护文件 fail-fast 不消耗 Gate、快照回滚指针 `snapshot/<runID>`。Gate 子进程环境白名单（剥离生产 DSN/密钥）；G2/G3 空包拒绝回退 `./...`。config/prompt/docs 默认跳过 G2。G5 恒 skipped（Passed=false）。`ApplyHotReload` 是工作树落地，未接 `SIRuntimeReloader` 时不是运行时热加载。Analyst/Patcher 经 `internal/tools/patcherfs` 访问仓库：路径监狱 + 保护清单；Analyst 只读仓库根，Patcher 读写本次 worktree，返回前 Restore。Analyst 将建议证据还原为 `FailureReport` 并调用 `heal.RootCauseAnalyzer`；`affected_files` 必须能回溯到报告 file。code/test 且只改 `web/` 时，前端 lint skipped 改为 fail-closed。
 
 ---
 
@@ -1097,6 +1096,35 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 ### 1.41 TTS / M63 — **SUPERSEDED（能力并入 Voice 74）**
 
 独立 TTS 三件套（文首均已 **SUPERSEDED**）仍保留以免断链：[`63-tts.md`](./63-tts.md) / [`.design.md`](./63-tts.design.md) / [`.development.md`](./63-tts.development.md)。无 `api/kratos/tts`、无 `internal/biz/tts`。流式 TTS 已在 Voice：`internal/voice/tts_scheduler.go`、`internal/data/speech/volcengine_tts.go`。catalog 里停用的 `tts` 工具种子 **不是** 本模块实现入口。禁止新建独立 TTS 服务。去向：[Voice M74](./74-voice-companion.md) / [设计](./74-voice-companion.design.md) / [开发计划](./74-voice-companion.development.md)。
+
+---
+
+### 1.42 组织感知编排 / M78（`internal/agent` Allocator + OrgPruner + `RealTeamOrchestrator`）
+
+**职责**：用户下指令后**又快又准**地获取/组建团队——分档后轻/中走花名册，重型走公司剧本 + 三管道（部门领导横向、总经理对外、例外上行）；Allocator 按花名册绑定已有专项（有 `domain_path` 时不 L3 选人、热路径不 Factory）；建团写入 `DepartmentID`；`dept_lead`/`company_lead` 不当业务 Lead；跨团队 **Brief + Bulk**。ADR：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md)。三件套：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（AgentAllocatorPort、OrganizationReader、DeptLeadManager、TaskPlan/AllocationPlan）、`agent`（TaskPlanner、AgentFactory、domain_lexicon）、Spirit `plan_and_execute` |
+| **下游影响** | `service/team_orchestrator_real.go`（DepartmentID 透传）、`biz/spirit_assembly.go`（主管加入/借调）、M67 审批门禁、M71 memberfs/deptmail |
+| **核心导出** | 规划中：`OrgPruner`（Evolving，可保持包内）；不新增 RPC |
+| **实现接口** | 扩展既有 `AgentAllocatorPort.Allocate` 行为；不替换 `PlanExecutor` |
+| **共享类型** | `AgentCapability` 增组织字段；`TaskAllocation`/`PlanStep` 透传 `DepartmentID` |
+| **事件生产** | 复用 `orchestration_progress`（allocating 带专题/人/层；collaborating / allocate_failed）；不新增 bus |
+| **事件消费** | `PlanBoardCreatedEvent`（既有） |
+| **数据库** | 不强制新表；读 `organizations` + `agents.position_id` |
+| **前端对应** | 无独立页；进度条显示专题→人；团队卡片展示花名册绑定 |
+| **测试覆盖** | Phase 0–2 + 花名册闭集已落地；Phase 4 分档/剧本/三管道见 development 📋 |
+
+**⚠️ 开发注意**：
+- **禁止**任务热路径「LLM 找公司 → LLM 找部门 → 主管再分解 → 无则 CreateCompany」。公司 = 当前 workspace 树；创造公司/部门走 M67 管理面
+- **禁止**把 `dept_lead` 选为业务 AssignedKey / 团队 Lead（除非 `plan_and_execute.agent_keys` 显式指定）
+- 生产建团唯一路径仍是 `PlanExecutor` + `RealTeamOrchestrator`；本模块只补剪枝与 `DepartmentID` 断点
+- `domain_path` 空或组织树空可回退 L2/L3；禁止低分交差与热路径 Factory
+- 缺专项 fail-closed：指定已有 Agent 或去编制表补人，不要在任务路径造人
+- 重型链：预授权剧本并行开工；上行走例外；不复活旧 Team；`company_lead` 同样不可分配
+- 跨团队正式交接走 Brief/Bulk，**禁止**把 M71 memberfs 开放给员工当传文件通道
+- 改 Allocator 时同步验证 B.10.21 L0/L1 配方/使命单测与 Spirit DAG 建团
 
 ---
 

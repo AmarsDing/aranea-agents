@@ -95,7 +95,9 @@ type KnowledgeService struct {
 	// reembedRuns 文档级重嵌入在途门；自动修复、人工重嵌入和语义层启用共用，
 	// 防止同一文档并发执行 delete-old/insert-new。
 	reembedRuns sync.Map
-	agentMem    *bizknowledge.AgentMemoryProjector
+	// jobLock 跨进程重建/重嵌入租约（Postgres advisory lock）；nil 时仅本进程 sync.Map。
+	jobLock  KnowledgeJobLocker
+	agentMem *bizknowledge.AgentMemoryProjector
 	// writeBackGraph 写回/晋升图谱钩子（2026-08-16 装配）：构造参数透传，biz 写回
 	// 管线经 SetWriteBackGraph 收口（词条页实体共现 + typed 关系抽取）；service 晋升
 	// 管线（不经写回）在 chunk 重放后显式触发（P1-a：晋升文档图谱孤立节点根治）。
@@ -171,12 +173,28 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		uc.SetLinkIndex(s.linkIndex, newKnowledgeGraphDeltaPublisher(eventBus))
 		// 写回飞轮 chunk 重放钩子（2026-08-15）：knowledge_write 工具直调 biz
 		// Usecase（不经 service 包装），重放必须在 biz 层收口才能覆盖该路径。
-		uc.SetWriteBackReplay(s.replayWriteBackChunks)
-		// 写回飞轮图谱钩子（2026-08-16）：团队库无 vault 同步循环，M2 实体/关系
-		// 抽取必须随写回收口触发；nil（未接线/环境关闭）时降级跳过。
-		uc.SetWriteBackGraph(writeBackGraph)
+		s.BindDerivedIndexHooks()
 	}
 	return s
+}
+
+// BindDerivedIndexHooks 把 chunk 重放与图谱钩子接到共享 Usecase。
+// NewKnowledgeService 与 app BeforeStart 双点调用：即使未来构造顺序变化，
+// knowledge_write / AutoMemory 直调 Usecase 仍会重放派生索引。
+func (s *KnowledgeService) BindDerivedIndexHooks() {
+	if s == nil || s.uc == nil {
+		return
+	}
+	s.uc.SetWriteBackReplay(s.replayWriteBackChunks)
+	s.uc.SetWriteBackGraph(s.writeBackGraph)
+}
+
+// SetJobLocker 注入跨进程作业锁（装配在 app 层；nil = 仅本进程门）。
+func (s *KnowledgeService) SetJobLocker(l KnowledgeJobLocker) {
+	if s == nil {
+		return
+	}
+	s.jobLock = l
 }
 
 // CreateCollection creates a knowledge collection (Vault V2 / SP1-F team library).
@@ -499,16 +517,26 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		text = s.uc.MaybeAutolinkOutgoing(ctx, col.ID, "", req.GetSource(), text)
 	}
 
+	vaultRel := ""
+	vaultBytes := raw
+	if !isImage && isMarkdownSource(req.GetSource(), req.GetMimeType()) && text != "" {
+		vaultBytes = []byte(text)
+	}
+	contentHash := biz.KnowledgeHashContent(string(raw))
+	if text != "" {
+		contentHash = biz.KnowledgeHashContent(text)
+	}
+	if strings.TrimSpace(req.GetTargetDir()) != "" {
+		contentHash = biz.KnowledgeHashContent(string(vaultBytes))
+	}
+	if existing, findErr := s.uc.GetDocumentByContentHash(ctx, col.ID, contentHash); findErr == nil && existing.ID != "" {
+		return toProtoDocument(existing), nil
+	}
+
 	// G1-B3：上传到 vault 子目录——原始文件先落盘（文件系统为真相源），文档镜像
 	// 带 rel_path + content_hash（同步链视为已应用，不重复处理）。同名冲突
 	// CodeConflict；CreateDocument 失败补偿删除已落盘文件（防孤儿）。
-	vaultRel := ""
-	vaultBytes := raw
 	if dir := strings.TrimSpace(req.GetTargetDir()); dir != "" {
-		// Markdown 落盘与索引正文一致（含编译期成链），避免 watcher 用未成链原文覆盖镜像。
-		if !isImage && isMarkdownSource(req.GetSource(), req.GetMimeType()) && text != "" {
-			vaultBytes = []byte(text)
-		}
 		rel, uploadErr := s.uc.WriteVaultUpload(ctx, col.ID, dir, req.GetSource(), vaultBytes)
 		if uploadErr != nil {
 			return nil, uploadErr
@@ -524,9 +552,13 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		ContentText:  text,
 		Organized:    organized,
 		RelPath:      vaultRel,
+		ContentHash:  contentHash,
 	}
-	if vaultRel != "" {
-		doc.ContentHash = biz.KnowledgeHashContent(string(vaultBytes))
+	if strings.TrimSpace(doc.Summary) == "" {
+		sum, typ, sh := bizknowledge.DeriveSummaryCard(text, vaultRel, req.GetSource())
+		doc.Summary = sum
+		doc.DocType = typ
+		doc.SummaryHash = sh
 	}
 	// Phase 9：原图留存血缘（asset_uri）；asset 文件名依赖 doc ID，故提前生成。
 	if isImage && s.assets != nil {
@@ -606,7 +638,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			md, extractErr := s.extractors.Extract(ingestCtx, raw, doc.Source, doc.MimeType)
 			if extractErr != nil || strings.TrimSpace(md) == "" {
 				if extractErr == nil {
-					extractErr = fmt.Errorf("vision extract %q: empty response", doc.Source)
+					extractErr = apierror.Internal(apierror.DomainKnowledge, "vision extract %q: empty response", doc.Source)
 				}
 				if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", extractErr.Error(), 0); statusErr != nil {
 					s.lg.Error("failed to update document status to error",
@@ -650,7 +682,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			return
 		}
 
-		if err := uc.InsertChunks(ingestCtx, bizChunks); err != nil {
+		if err := uc.CommitIndexedDocument(ingestCtx, col.ID, doc.ID, bizChunks, 1); err != nil {
 			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
 				s.lg.Error("failed to update document status to error",
 					loggateway.StepID("knowledge.ingest.status_fail"),
@@ -664,26 +696,6 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				event.P("doc_id", doc.ID),
 				event.P("error", err.Error()))
 			return
-		}
-		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexed", "", len(bizChunks)); err != nil {
-			s.lg.Error("failed to update document status to indexed",
-				loggateway.StepID("knowledge.ingest.status_fail"),
-				loggateway.Str("doc_id", doc.ID),
-				loggateway.Err(err),
-			)
-			// Document was likely deleted mid-ingest; skip counter update to avoid drift.
-			s.publishKnowledgeIngest(col.ID, doc.ID, "error", "document deleted during ingest", 0)
-			flow.LogError("knowledge.ingest.done", "知识摄取失败",
-				event.P("doc_id", doc.ID),
-				event.P("error", "document deleted during ingest"))
-			return
-		}
-		if err := uc.UpdateCollectionCounts(ingestCtx, col.ID, 1, len(bizChunks)); err != nil {
-			s.lg.Error("failed to update collection counts",
-				loggateway.StepID("knowledge.ingest.counts_fail"),
-				loggateway.Str("col_id", col.ID),
-				loggateway.Err(err),
-			)
 		}
 		// SP1-C：team/上传文档与 local 同管线——块级双链索引（块/refs + explicit 投影）。
 		// 失败降级记日志，不回滚摄取主流程（最终一致，下次重建自愈）。
@@ -892,32 +904,17 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	var chunks []biz.KnowledgeChunk
 	var err error
 
+	rewriteResult := s.rewriteSearchQuery(ctx, query, req.GetRewriteStrategy())
+	modeOverride := knowledge.ParseHybridSearchMode(req.GetHybridSearch())
+
 	if q.CollectionID == "" {
 		// US-14 检索免选择：collection_id 留空 → 全库智能路由（Route 策略，
-		// 名称/描述匹配度 top N=3、阈值 0.3；无匹配自动降级 Broadcast）。
+		// 名称/描述匹配度 top N=3、阈值 0.3；无匹配自动降级 Broadcast，扇出封顶）。
 		if s.search.Federated == nil {
 			return nil, apierror.Unavailable("KNOWLEDGE", "federated retriever not configured for collection-free search")
 		}
-		modeOverride := knowledge.ParseHybridSearchMode(req.GetHybridSearch())
-		chunks, err = s.search.Federated.SearchAll(ctx, q, nil, modeOverride, workspace.ReadableFilterID(ctx))
+		chunks, err = s.search.Federated.SearchAll(ctx, q, rewriteResult, modeOverride, workspace.ReadableFilterID(ctx))
 	} else if s.search.Router != nil {
-		var rewriteResult *knowledge.QueryRewriteResult
-		strategy := knowledge.ParseRewriteStrategy(req.GetRewriteStrategy())
-		if strategy != knowledge.RewriteNone {
-			rewriter := s.search.Router.QueryRewriter()
-			if rewriter != nil {
-				rr, rewriteErr := rewriter.Rewrite(ctx, query, strategy)
-				if rewriteErr != nil {
-					s.lg.Warn("query rewrite failed, using original query",
-						loggateway.StepID("knowledge.search.rewrite_fail"),
-						loggateway.Err(rewriteErr),
-					)
-				} else {
-					rewriteResult = rr
-				}
-			}
-		}
-		modeOverride := knowledge.ParseHybridSearchMode(req.GetHybridSearch())
 		chunks, err = s.search.Router.Search(ctx, q, rewriteResult, modeOverride)
 	} else {
 		chunks, err = s.search.Retriever.Search(ctx, q)
@@ -952,6 +949,29 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		})
 	}
 	return &v1.SearchResponse{Chunks: out}, nil
+}
+
+func (s *KnowledgeService) rewriteSearchQuery(ctx context.Context, query, strategyRaw string) *knowledge.QueryRewriteResult {
+	strategy := knowledge.ParseRewriteStrategy(strategyRaw)
+	if strategy == knowledge.RewriteNone {
+		return nil
+	}
+	if s.search.Router == nil {
+		return nil
+	}
+	rewriter := s.search.Router.QueryRewriter()
+	if rewriter == nil {
+		return nil
+	}
+	rr, err := rewriter.Rewrite(ctx, query, strategy)
+	if err != nil {
+		s.lg.Warn("query rewrite failed, using original query",
+			loggateway.StepID("knowledge.search.rewrite_fail"),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+	return rr
 }
 
 // GetEmbedderConfig returns redacted embedder settings (EP-KN-01).
@@ -1215,10 +1235,10 @@ func mergeIngestMetadata(userJSON, modality, extractor string) (string, error) {
 	merged := map[string]any{}
 	if s := strings.TrimSpace(userJSON); s != "" {
 		if !json.Valid([]byte(s)) {
-			return "", fmt.Errorf("metadata_json must be valid JSON")
+			return "", apierror.BadRequest(apierror.DomainKnowledge, "metadata_json must be valid JSON")
 		}
 		if err := json.Unmarshal([]byte(s), &merged); err != nil {
-			return "", fmt.Errorf("metadata_json must be a JSON object")
+			return "", apierror.BadRequest(apierror.DomainKnowledge, "metadata_json must be a JSON object")
 		}
 	}
 	merged["modality"] = modality

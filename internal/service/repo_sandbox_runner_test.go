@@ -160,7 +160,7 @@ func TestRepoSandboxRunner_PrepareDuplicateRunIDFails(t *testing.T) {
 }
 
 // 回归（2026-08-19 运行时事故）：git 注册 worktree 后、checkout 完成前被杀
-//（exit 255），PrepareWorktree 返回错误但半截 worktree+分支永久泄漏。新增
+// （exit 255），PrepareWorktree 返回错误但半截 worktree+分支永久泄漏。新增
 // purgeRegisteredWorktree 负责摘除该注册态；这里直接对原语做确定性验证。
 func TestRepoSandboxRunner_PurgeRegisteredWorktree(t *testing.T) {
 	repo := initFixtureGoRepo(t)
@@ -472,6 +472,53 @@ func TestRepoSandboxRunner_G3Vet(t *testing.T) {
 	}
 	if !res.Passed {
 		t.Errorf("G3 vet should pass on clean fixture, output: %s", res.Output)
+	}
+}
+
+func TestRepoSandboxRunner_G2G3EmptyPkgsSkipped(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	r := newTestRunner(t, repo)
+	path, cleanup, err := r.PrepareWorktree(context.Background(), "run-empty-pkgs", "")
+	if err != nil {
+		t.Fatalf("PrepareWorktree: %v", err)
+	}
+	defer cleanup()
+
+	for _, gate := range []biz.SandboxGateKind{biz.SandboxGateTest, biz.SandboxGateLint} {
+		res, err := r.RunGate(context.Background(), path, gate, nil)
+		if err != nil {
+			t.Fatalf("RunGate %s: %v", gate, err)
+		}
+		if !res.Skipped || res.Passed {
+			t.Errorf("%s empty pkgs = %+v, want skipped", gate, res)
+		}
+		if !strings.Contains(res.Output, "refusing repo-wide") {
+			t.Errorf("%s skip reason = %q", gate, res.Output)
+		}
+	}
+}
+
+func TestSandboxGateEnv_StripsProductionSecrets(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/aranea")
+	t.Setenv("PGPASSWORD", "secret")
+	t.Setenv("MY_API_KEY", "abc")
+	t.Setenv("CUSTOM_DSN", "postgres://x")
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("CGO_ENABLED", "1")
+	t.Setenv("CC", "gcc")
+
+	env := sandboxGateEnv()
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, "ARANEA_SI_SANDBOX=1") {
+		t.Error("sandbox marker missing")
+	}
+	if !strings.Contains(joined, "CGO_ENABLED=1") || !strings.Contains(joined, "CC=gcc") {
+		t.Error("CGO toolchain env must pass through (go-sqlite3 / cgo packages)")
+	}
+	for _, leak := range []string{"DATABASE_URL=", "PGPASSWORD=", "MY_API_KEY=", "CUSTOM_DSN=", "postgres://"} {
+		if strings.Contains(joined, leak) {
+			t.Errorf("sandbox env leaked %q", leak)
+		}
 	}
 }
 

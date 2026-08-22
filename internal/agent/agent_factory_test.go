@@ -224,6 +224,38 @@ func TestAgentFactory_EnsureAgent_CreateNew(t *testing.T) {
 	}
 }
 
+func TestAgentFactory_EnsureAgent_OccupiesExistingPosition(t *testing.T) {
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	store := newFakeFactoryAgentStore()
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), &factoryCaptureBus{})
+	org := &stubOrgReader{nodes: sampleOrgTree()}
+	factory.SetOrganizationReader(org)
+
+	_, err := factory.EnsureAgent(context.Background(), biz.TaskProfile{
+		Domain:          "engineering",
+		DomainPath:      "软件/后端",
+		TaskDescription: "Write a Go REST API",
+		DepartmentID:    "dept-eng",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created biz.Agent
+	for _, a := range store.agents {
+		created = a
+	}
+	if created.PositionID != "pos-other-eng" {
+		t.Fatalf("PositionID=%q want pos-other-eng (其他岗优先)", created.PositionID)
+	}
+	if org.creates != 0 {
+		t.Fatalf("Factory must not create org nodes, creates=%d", org.creates)
+	}
+}
+
 func TestAgentFactory_EnsureAgent_Idempotent(t *testing.T) {
 	model := &fakeFactoryModel{
 		responses: []*trpcmodel.Response{

@@ -445,7 +445,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 	}
 
 	dqScore := computeDQScoreFromSynthesis(synthesis)
-	primaryDomainPath := o.resolvePrimaryDomainPath(ctx, handle)
+	primaryDomainPath, specialties := o.resolvePlanLearningHint(ctx, handle)
 
 	o.lg.Info("在线学习: 更新编排缓存和 Agent 性能",
 		loggateway.StepID(biz.SpiritStepOrchestratorLearn),
@@ -469,6 +469,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 		if primaryDomainPath != "" {
 			// B.10.21.7: 配方以 domain key 记录，使同类任务可复用。
 			o.orchCache.RecordDomainRecipe(ctx, primaryDomainPath, topology, dqScore, len(handle.TeamIDs), agentKeys)
+			o.orchCache.SetEntrySpecialties(ctx, "domain:"+primaryDomainPath, specialties)
 			o.lg.Info("在线学习: 领域配方已更新",
 				loggateway.StepID(biz.SpiritStepOrchestratorLearn),
 				loggateway.Str("domain_path", primaryDomainPath),
@@ -478,6 +479,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 			// 无域回退：旧 key 行为（orchestration ID 派生，write-only 兼容）。
 			taskPattern := biz.ExtractTaskPattern(handle.ID)
 			o.orchCache.RecordCompletionWithAgents(ctx, taskPattern, topology, dqScore, len(handle.TeamIDs), 0, agentKeys)
+			o.orchCache.SetEntrySpecialties(ctx, taskPattern, specialties)
 			o.lg.Info("在线学习: 编排缓存已更新",
 				loggateway.StepID(biz.SpiritStepOrchestratorLearn),
 				loggateway.Str("task_pattern", taskPattern),
@@ -548,8 +550,13 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 // resolvePrimaryDomainPath 取 handle 对应 plan 的主导域（首个非空 subtask
 // DomainPath）。查询失败或无域返回空——调用方回退旧 key 行为（B.10.21.7）。
 func (o *TaskOrchestratorImpl) resolvePrimaryDomainPath(ctx context.Context, handle *biz.OrchestrationHandle) string {
+	path, _ := o.resolvePlanLearningHint(ctx, handle)
+	return path
+}
+
+func (o *TaskOrchestratorImpl) resolvePlanLearningHint(ctx context.Context, handle *biz.OrchestrationHandle) (string, []string) {
 	if o.plans == nil || handle.TaskPlanID == "" {
-		return ""
+		return "", nil
 	}
 	plan, err := o.plans.getTaskPlan(ctx, handle.TaskPlanID)
 	if err != nil || plan == nil {
@@ -560,9 +567,26 @@ func (o *TaskOrchestratorImpl) resolvePrimaryDomainPath(ctx context.Context, han
 				loggateway.Err(err),
 			)
 		}
-		return ""
+		return "", nil
 	}
-	return PrimaryDomainPath(plan.SubTasks)
+	return PrimaryDomainPath(plan.SubTasks), collectSpecialtySlots(plan.SubTasks)
+}
+
+func collectSpecialtySlots(subtasks []biz.SubTask) []string {
+	out := make([]string, 0, len(subtasks))
+	seen := make(map[string]struct{}, len(subtasks))
+	for _, st := range subtasks {
+		p := NormalizeDomainPath(st.DomainPath)
+		if p == "" || p == domainLexiconOther {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
 }
 
 // maybeCreateEvolutionSuggestion generates an orchestration_optimization evolution suggestion

@@ -15,7 +15,14 @@
       <span class="memory-recall-chips__toggle" aria-hidden="true">{{ collapsed ? '▶' : '▼' }}</span>
     </div>
     <div v-if="!collapsed" class="memory-recall-chips__list">
-      <div v-for="(hit, i) in hits" :key="i" class="memory-recall-chips__chip">
+      <button
+        v-for="(hit, i) in hits"
+        :key="hit.fact_id || `${hit.layer}-${i}`"
+        type="button"
+        class="memory-recall-chips__chip memory-recall-chips__chip--link"
+        :disabled="!router"
+        @click="onOpen(hit)"
+      >
         <span class="memory-recall-chips__layer" :class="`memory-recall-chips__layer--${layerKey(hit.layer)}`">
           {{ hit.layer }}
         </span>
@@ -28,8 +35,9 @@
             <span v-if="hit.confidence">{{ t('chat.memoryRecall.confidence') }} {{ scoreLabel(hit.confidence) }}</span>
             <span v-if="hit.version">v{{ hit.version }}</span>
           </div>
+          <div class="memory-recall-chips__tip-meta">{{ t('chat.memoryRecall.openInCenter') }}</div>
         </q-tooltip>
-      </div>
+      </button>
     </div>
   </div>
 </template>
@@ -37,8 +45,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
+import { memoryCenterRouteFromHit, type MemoryRecallHit } from '../../features/chat/memoryRecall';
 
 // Safe i18n wrapper — falls back to key when the i18n plugin isn't installed
 // (e.g., during unit tests without app.use(i18n)). Project pattern: see
@@ -51,9 +61,16 @@ function useSafeI18n() {
   }
 }
 
-const props = defineProps<{ turnId: string }>();
+const props = defineProps<{ turnId: string; sessionId?: string; agentKey?: string; agentId?: string }>();
 const { t } = useSafeI18n();
 const store = useActivityQueries();
+
+let router: ReturnType<typeof useRouter> | null = null;
+try {
+  router = useRouter();
+} catch {
+  router = null;
+}
 
 const hits = computed(() => store.getTurnRecallHits(props.turnId));
 
@@ -89,6 +106,17 @@ function layerName(layer: string): string {
 function scoreLabel(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
+
+function onOpen(hit: MemoryRecallHit) {
+  if (!router) return;
+  void router.push(
+    memoryCenterRouteFromHit(hit, {
+      sessionId: props.sessionId,
+      agentKey: props.agentKey,
+      agentId: props.agentId,
+    }),
+  );
+}
 </script>
 
 <style lang="sass" scoped>
@@ -122,6 +150,8 @@ function scoreLabel(score: number): string {
     align-items: center
     gap: 6px
     max-width: 100%
+    appearance: none
+    font: inherit
     padding: 2px 8px
     border-radius: 999px
     font-size: 12px
@@ -129,7 +159,11 @@ function scoreLabel(score: number): string {
     background: color-mix(in srgb, var(--color-accent) 6%, transparent)
     border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent)
     color: var(--color-text-secondary)
-    cursor: default
+    cursor: pointer
+
+    &--link:disabled
+      cursor: default
+      opacity: 0.7
 
   &__layer
     flex-shrink: 0

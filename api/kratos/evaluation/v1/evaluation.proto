@@ -35,7 +35,7 @@ message EvalRun {
   string id = 1;
   string dataset_id = 2;
   string agent_id = 3;
-  string status = 4;           // pending | running | completed | failed
+  string status = 4;           // pending | running | completed | failed | cancelled
   int32  total_cases = 5;
   int32  completed_cases = 6;
   float  exact_match_score = 7;
@@ -55,6 +55,10 @@ message EvalRun {
   // dataset_hash is the dataset content snapshot at run start (P3-5);
   // differing hashes across compared runs mean scores are not directly comparable.
   string dataset_hash = 20;
+  string dataset_version_id = 21;
+  int32  dataset_version = 22;
+  string experiment_id = 23;
+  string variant_label = 24;
 }
 
 // EvalCaseResult is the output for one case in a run.
@@ -78,6 +82,8 @@ message EvalCaseResult {
   // input is the case text joined from eval_cases at read time (annotation
   // UX); empty when the case row no longer exists.
   string input = 17;
+  string session_id = 18;
+  string trace_run_id = 19;
 }
 
 // --- Requests / Responses ---
@@ -121,6 +127,31 @@ message UploadCasesResponse {
   int32 imported = 1;
 }
 
+message ListCasesRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListCasesResponse {
+  repeated EvalCase items = 1;
+}
+
+message UpdateCaseRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+  string input = 3 [(google.api.field_behavior) = REQUIRED];
+  string expected_output = 4;
+  string metadata_json = 5;
+}
+
+message DeleteCaseRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CancelRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message RunEvaluationRequest {
   string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
@@ -130,6 +161,8 @@ message RunEvaluationRequest {
   int32 num_runs = 4;
   // use_user_simulation enables scripted user simulation when cases define metadata_json.user_simulation.
   bool use_user_simulation = 5;
+  string experiment_id = 6;
+  string variant_label = 7;
 }
 
 message GetRunRequest {
@@ -219,6 +252,10 @@ message EvalRunComparison {
   float delta_tool_call_accuracy = 14;
   // dataset_hash enables the dataset-changed comparability warning (P3-5).
   string dataset_hash = 15;
+  string dataset_version_id = 16;
+  int32  dataset_version = 17;
+  string experiment_id = 18;
+  string variant_label = 19;
 }
 
 message CompareEvalRunsResponse {
@@ -344,9 +381,13 @@ message EvalGateConfig {
   // max_drop: allowed drop vs baseline in [0,1]; 0 disables the relative check.
   float max_drop = 6;
   string updated_at = 7;
+  // mode: advisory (default, notify only) | blocking (wait and reject on breach)
+  string mode = 8;
 }
 
-message GetEvalGateRequest {}
+message GetEvalGateRequest {
+  string agent_id = 1;
+}
 
 message UpdateEvalGateRequest {
   bool   enabled = 1;
@@ -355,6 +396,7 @@ message UpdateEvalGateRequest {
   string metric = 4;
   float  min_score = 5;
   float  max_drop = 6;
+  string mode = 7;
 }
 
 service EvaluationService {
@@ -392,6 +434,22 @@ service EvaluationService {
       body: "*"
     };
   }
+  rpc ListCases(ListCasesRequest) returns (ListCasesResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/datasets/{dataset_id}/cases"
+    };
+  }
+  rpc UpdateCase(UpdateCaseRequest) returns (EvalCase) {
+    option (google.api.http) = {
+      patch: "/v1/evaluation/datasets/{dataset_id}/cases/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteCase(DeleteCaseRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/evaluation/datasets/{dataset_id}/cases/{id}"
+    };
+  }
 
   // Runs
   rpc RunEvaluation(RunEvaluationRequest) returns (EvalRun) {
@@ -408,6 +466,12 @@ service EvaluationService {
   rpc DeleteRun(DeleteRunRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/evaluation/runs/{id}"
+    };
+  }
+  rpc CancelRun(CancelRunRequest) returns (EvalRun) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/runs/{id}/cancel"
+      body: "*"
     };
   }
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
@@ -469,4 +533,51 @@ service EvaluationService {
       body: "*"
     };
   }
+  rpc ListDatasetVersions(ListDatasetVersionsRequest) returns (ListDatasetVersionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/datasets/{dataset_id}/versions"
+    };
+  }
+  rpc RunExperiment(RunExperimentRequest) returns (RunExperimentResponse) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/experiments"
+      body: "*"
+    };
+  }
+}
+
+message EvalDatasetVersion {
+  string id = 1;
+  string dataset_id = 2;
+  int32  version = 3;
+  string hash = 4;
+  int32  case_count = 5;
+  string created_at = 6;
+}
+
+message ListDatasetVersionsRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32  limit = 2;
+}
+
+message ListDatasetVersionsResponse {
+  repeated EvalDatasetVersion items = 1;
+}
+
+message ExperimentVariant {
+  string agent_id = 1;
+  string label = 2;
+}
+
+message RunExperimentRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string metrics = 2;
+  int32  num_runs = 3;
+  bool   use_user_simulation = 4;
+  repeated ExperimentVariant variants = 5;
+}
+
+message RunExperimentResponse {
+  string experiment_id = 1;
+  repeated EvalRun items = 2;
 }

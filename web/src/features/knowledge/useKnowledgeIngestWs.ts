@@ -4,6 +4,13 @@ import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
 import { debounceTrailing } from './timing';
 
+export function isKnowledgeIngestNotice(envelope: V2WsEnvelope, collectionId: string): boolean {
+  if (envelope.kind !== 'system.notice') return false;
+  const payload = envelope.payload as SystemNoticeEventPayload;
+  if (payload.NoticeType !== 'knowledge_ingest') return false;
+  return String(payload.Meta?.collection_id ?? '') === collectionId;
+}
+
 /** Subscribe to knowledge ingest progress over /v1/ws (EP-KN-02). */
 export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () => void) {
   const connected = ref(false);
@@ -30,11 +37,7 @@ export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () 
     // Backend publishes NewSystemNoticeEvent("", "knowledge_ingest", …).
     // Subscribe via GLOBAL_WS_SESSION_ID and filter by Meta.collection_id.
     function applyV2(envelope: V2WsEnvelope) {
-      if (envelope.kind !== 'system.notice') return;
-      const payload = envelope.payload as SystemNoticeEventPayload;
-      if (payload.NoticeType !== 'knowledge_ingest') return;
-      const meta = payload.Meta ?? {};
-      if (String(meta.collection_id ?? '') !== cid) return;
+      if (!isKnowledgeIngestNotice(envelope, cid)) return;
       debouncedProgress.call();
     }
 

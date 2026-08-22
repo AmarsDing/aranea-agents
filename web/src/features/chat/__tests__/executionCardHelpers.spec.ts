@@ -27,4 +27,26 @@ describe('generateSummaryFallback', () => {
       generateSummaryFallback(event({ tool_name: 'file_read', arguments: { file_name: 'a.go' } })),
     ).toBe('读取 a.go');
   });
+
+  // 调用契约 7.4：前端 summary 必须命中运行时真实工具名（trpc file 工具集
+  // diff_edit/search_content + hostexec exec_command），而非仅历史别名。
+  it('diff_edit uses the file_name arg', () => {
+    expect(
+      generateSummaryFallback(event({ tool_name: 'diff_edit', arguments: { file_name: 'src/main.go' } })),
+    ).toBe('修改 main.go');
+  });
+
+  it('search_content uses content_pattern', () => {
+    expect(
+      generateSummaryFallback(
+        event({ tool_name: 'search_content', arguments: { path: 'src', content_pattern: 'func main' } }),
+      ),
+    ).toBe('搜索 "func main"');
+  });
+
+  it('exec_command uses the command arg', () => {
+    expect(
+      generateSummaryFallback(event({ tool_name: 'exec_command', arguments: { command: 'go build ./...' } })),
+    ).toBe('> go build ./...');
+  });
 });

@@ -5,19 +5,18 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/memory/v1"
-	"aranea-agents/pkg/apierror"
 )
 
 // Memory-center handlers (layer panorama + unified cross-layer graph).
 // Design: docs/development/memory/memory.design.md §10.2.
 
 func (s *MemoryService) GetMemoryLayerOverview(ctx context.Context, req *v1.GetMemoryLayerOverviewRequest) (*v1.GetMemoryLayerOverviewResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
-	if agentID == "" {
-		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
+		return nil, err
 	}
 	ov, err := s.admin.GetLayerOverview(ctx, agentID, strings.TrimSpace(req.GetSessionId()))
 	if err != nil {
@@ -57,12 +56,12 @@ func (s *MemoryService) GetMemoryLayerOverview(ctx context.Context, req *v1.GetM
 // (created_at DESC) for one agent, optionally filtered by session.
 // Design: docs/development/memory/memory.design.md §10.6.
 func (s *MemoryService) ListMemoryEpisodes(ctx context.Context, req *v1.ListMemoryEpisodesRequest) (*v1.ListMemoryEpisodesResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
-	if agentID == "" {
-		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
+		return nil, err
 	}
 	items, total, err := s.admin.ListEpisodesAdmin(ctx, agentID, strings.TrimSpace(req.GetSessionId()), req.GetLimit(), req.GetOffset())
 	if err != nil {
@@ -88,12 +87,12 @@ func (s *MemoryService) ListMemoryEpisodes(ctx context.Context, req *v1.ListMemo
 }
 
 func (s *MemoryService) GetUnifiedMemoryGraph(ctx context.Context, req *v1.GetUnifiedMemoryGraphRequest) (*v1.GetUnifiedMemoryGraphResponse, error) {
-	if err := s.requireAdmin(); err != nil {
+	if err := s.requireWired(); err != nil {
 		return nil, err
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
-	if agentID == "" {
-		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
+		return nil, err
 	}
 	g, err := s.admin.GetUnifiedMemoryGraph(ctx, agentID, strings.TrimSpace(req.GetFocus()), req.GetHops(), req.GetMinWeight(), req.GetLayers())
 	if err != nil {

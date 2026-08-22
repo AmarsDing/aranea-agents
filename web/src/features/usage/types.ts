@@ -191,3 +191,19 @@ export type AllModelsBreakdownResult = {
   page: number;
   page_size: number;
 };
+
+/**
+ * 单组 (provider, model) 的 prompt 缓存命中率聚合（29-token §9.3）。
+ * 仅统计 prompt_tokens >= 1024（provider 最小可缓存长度）的轮次。
+ */
+export type CacheHitRatioStat = {
+  provider: string;
+  model: string;
+  samples: number;
+  prompt_tokens: number;
+  cached_tokens: number;
+  /** cached/prompt 加权值——仅诊断用（压缩离群轮次会主导它）。 */
+  weighted_ratio: number;
+  /** 单轮命中率中位数——llm.cache_hit_ratio_low 告警以此为键。 */
+  p50_ratio: number;
+};

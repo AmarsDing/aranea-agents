@@ -9,6 +9,13 @@
     </GlassPanel>
 
     <template v-else>
+      <DocumentSummaryCard
+        v-if="summary || docType || tags.length"
+        class="kb-side-panels__summary"
+        :summary="summary"
+        :tags="tags"
+        :doc-type="docType"
+      />
       <GlassPanel
         v-for="p in panelDefs"
         :key="p.key"
@@ -68,9 +75,10 @@
 <script setup lang="ts">
 // 右栏五面板（SP2 §SP2-8）：纯展示；联动数据由 useWorkbenchSidePanels 收口（store 缓存 + 竞态守卫 + 防抖解析）。
 // 折叠态持久化 localStorage（纯 UI 状态，不进 composable）。
-import { ref, toRef } from 'vue';
+import { computed, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GlassPanel from '../effects/GlassPanel.vue';
+import DocumentSummaryCard from '../DocumentSummaryCard.vue';
 import PanelBacklinks from '../panels/PanelBacklinks.vue';
 import PanelOutlinks from '../panels/PanelOutlinks.vue';
 import PanelOutline from '../panels/PanelOutline.vue';
@@ -84,6 +92,9 @@ const props = defineProps<{
   collectionId: string;
   /** SP2-8：图谱增量刷新信号（knowledge.graph.delta → 页面失效缓存后 +1，本栏据此重拉）。 */
   refreshNonce?: number;
+  summary?: string;
+  tags?: string[];
+  docType?: string;
 }>();
 
 defineEmits<{
@@ -94,6 +105,9 @@ defineEmits<{
 }>();
 
 const { t } = useI18n();
+const tags = computed(() => props.tags ?? []);
+const summary = computed(() => props.summary ?? '');
+const docType = computed(() => props.docType ?? '');
 
 const { outlinks, mentions, hops, localNodes, localEdges, backlinkGroups, danglingHere, outlineItems, frontmatter } =
   useWorkbenchSidePanels({

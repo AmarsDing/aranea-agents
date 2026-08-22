@@ -81,6 +81,10 @@ func (m *fnMockRepo) ListCases(ctx context.Context, datasetID string) ([]Case, e
 	return nil, nil
 }
 
+func (m *fnMockRepo) UpdateCase(_ context.Context, c Case) (Case, error) { return c, nil }
+
+func (m *fnMockRepo) DeleteCase(_ context.Context, _, _ string) error { return nil }
+
 func (m *fnMockRepo) CreateRun(ctx context.Context, r Run) (Run, error) {
 	if m.createRunFn != nil {
 		return m.createRunFn(ctx, r)
@@ -172,7 +176,9 @@ func (m *fnMockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]R
 	return nil, nil
 }
 
-func (m *fnMockRepo) GetGateConfig(_ context.Context) (GateConfig, error) { return GateConfig{}, nil }
+func (m *fnMockRepo) GetGateConfig(_ context.Context, _ string) (GateConfig, error) {
+	return GateConfig{}, nil
+}
 
 func (m *fnMockRepo) UpsertGateConfig(_ context.Context, _ GateConfig) error { return nil }
 

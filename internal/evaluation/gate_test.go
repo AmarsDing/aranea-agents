@@ -281,6 +281,26 @@ func TestScanRunsExcludesRunsYoungerThanGateRun(t *testing.T) {
 	}
 }
 
+func TestPublishGateBlockingBlocksBelowFloor(t *testing.T) {
+	repo := newFakeEvalRepo()
+	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
+	repo.cases["ds1"] = []beval.Case{
+		{ID: "c1", DatasetID: "ds1", Input: "hello", ExpectedOutput: "world"},
+	}
+	repo.gateCfg = beval.GateConfig{
+		Enabled: true, AgentID: "a1", DatasetID: "ds1",
+		Metric: "exact_match", MinScore: 0.8, Mode: beval.GateModeBlocking,
+	}
+	gate, _ := gateFixture(repo)
+	err := gate.Check(context.Background(), beval.GateTriggerSkillPublish, "a1")
+	if err == nil {
+		t.Fatal("blocking gate must reject a below-floor score")
+	}
+	if !apierror.IsCode(err, apierror.CodeConflict) {
+		t.Fatalf("want Conflict, got %v", err)
+	}
+}
+
 func TestPublishGateUpdateConfigValidation(t *testing.T) {
 	repo := newFakeEvalRepo()
 	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())

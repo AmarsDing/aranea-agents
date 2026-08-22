@@ -19,6 +19,7 @@ type (
 	EvalFailureGroupReport   = evaluation.FailureGroupReport
 	EvalRunPreference        = evaluation.RunPreference
 	EvalGateConfig           = evaluation.GateConfig
+	EvalDatasetVersion       = evaluation.DatasetVersion
 	// EvalRepo is the deprecated composed evaluation persistence port.
 	// Production uses EvalStores (see evaluation.Stores).
 	EvalRepo       = evaluation.Repo

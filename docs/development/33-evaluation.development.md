@@ -11,8 +11,8 @@
 Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动评估（含 LLM-as-Judge）、人工标注与客户端报告导出。
 
 **代码锚点**：
-- `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API（20 RPC + 39 Message）
-- `internal/service/evaluation.go` — EvaluationService（传输桥点，20 方法）
+- `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API（24 RPC，含 Case CRUD + CancelRun）
+- `internal/service/evaluation.go` — EvaluationService（传输桥点）
 - `internal/service/evaluation_runner.go` — NewEvaluationRunner（Wire 装配）
 - `internal/service/evaluation_after_turn.go` — NewEvaluationAfterTurnTrigger
 - `internal/biz/evaluation.go` — 类型重导出（子包 `evaluation/` 的别名）
@@ -20,8 +20,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 - `internal/biz/evaluation/ports.go` — `Stores` + Dataset/Case/Run/RunQuery/Result/Governance 窄口；宽 `Repo` Deprecated
 - `internal/data/evaluation.go` — evalRepo（一身多口）+ EnsureEvalSchema（4 表 + 11 条 ALTER 迁移）
 - `internal/data/ent/schema/eval_*.go` — 4 个 Ent Schema（EvalDataset/EvalCase/EvalRun/EvalCaseResult）
-- `internal/evaluation/runner.go` — 异步调度
-- `internal/evaluation/runner_legacy.go` — Legacy 回退路径
+- `internal/evaluation/runner.go` — 异步调度 + Cancel
 - `internal/evaluation/metrics.go` — 指标解析与 legacy 计分
 - `internal/evaluation/framework.go` — trpc AgentEvaluator 桥接
 - `internal/evaluation/framework_metrics.go` — 扩展指标（JSON/XML/ROUGE/ToolTrajectory）
@@ -131,7 +130,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | US-10 负反馈采集与转化 | ✅ | TaskCard 👍/👎 → `SubmitMessageFeedback(context_json)` → monitor_events(warning) → `EvaluationFeedbackPanel` 一键转用例 |
 | US-11 Judge 校准（分歧统计） | ✅ | `GetJudgeDivergence`（`divergence.go`）+ AnalyticsPanel 分歧卡片 |
 | US-12 用例级 rubric | ✅ | `CaseMetadata.Rubric` → 框架 `EvalCase.Rubrics`；AddEvalCaseDialog 可录入 |
-| US-13 发布质量门禁 | ✅ | `gate.go` PublishGate + `eval_gate_config` 单例表 + `ProvidePublishGate` 注入 skill 发布/pack 安装 + `EvaluationGateDialog.vue` |
+| US-13 发布质量门禁 | ✅ | `gate.go` PublishGate + per-agent `eval_gate_config` + `mode` advisory\|blocking + `ProvidePublishGate` + `EvaluationGateDialog.vue` |
 | US-14 在线评估看板 | ✅ | `AgentEvalAutoConfig.SampleRate` 采样（限流前判定）+ `drop_alert.go` 连跌 SystemNoticeEvent + 趋势按 trigger_source 拆分 |
 | US-15 失败归组 | ✅ | `ListFailureGroups`（GROUP BY error_message）+ `GetFailureGroups` API + AnalyticsPanel 失败归组面板 |
 | US-16 Pairwise 偏好裁决 | ✅ | `eval_run_preference` 表 + Submit/ListRunPreferences API（winner 校验）+ 对比行「更优」按钮 |
@@ -147,7 +146,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | FrameworkBridge 集成测试 | `internal/evaluation/framework_test.go` 不存在 |
 | LLM Judge 测试 | `internal/evaluation/llm_judge_test.go` 不存在 |
 | ChatRunner 适配器测试 | `internal/evaluation/chat_runner_test.go` 不存在 |
-| 前端数据集编辑 | 后端 `UpdateDataset` API 已实现，前端未暴露编辑入口 |
+| 前端数据集编辑 / 用例 CRUD / 取消运行 | P0 运营闭环（2026-08-22）：UpdateDataset/DeleteRun 已接前端；List/Update/DeleteCase + CancelRun 已贯通 |
 
 ---
 
@@ -231,6 +230,8 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | 29 | P1 正确性修复（Y1 UserSim 默认轮次 / Y4 混合模拟器 / Y5 LLM 超时 / Y6 指标名校验 / Y10 启动清扫 / Y7 tool 列确定性 / Y2 门禁异步化 / Y12 gate 严格化） | P1 | ✅ |
 | 30 | P2 质量修复（Y3/Y13 死代码 / Y8 错误翻译 / Y9 索引 / Y11 级联 / Y14 Warn 日志） | P2 | ✅ |
 | 31 | 门禁异步化测试重写（`gate_test.go`：below-floor/drop advisory + 无基线阻断 + in-flight 去重；`runner_test.go` Y7 回归） | P1 | ✅ |
+| 32 | 评估治理 P1：Run FSM、per-agent 门禁 advisory\|blocking、in-flight 部分唯一索引、并发槽、Prometheus、FailStaleRuns grace、趋势曲线 | P1 | ✅ |
+| 33 | 评估平台 P2：数据集版本、实验矩阵、faithfulness、失败 Observation、结果跳 Trace、门禁 composable 拆分 | P2 | ✅ |
 
 ---
 

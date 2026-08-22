@@ -81,9 +81,9 @@ logging:
 #     batch_size: 10                # rows per flush
 # Platform self-improvement (V3) pipeline (73-self-iteration-v3). Default off;
 # enable only after reviewing the governance model (design §6).
-# 2026-08-09：按默认配置启用（灰度开启，端到端运行时验证）。
+# Default off. Enable only in overlay / config.local after reviewing governance.
 self_improvement:
-  enabled: true                   # master switch (gray rollout)
+  enabled: false                  # master switch (default off; gray rollout via overlay)
   observe_interval: 900s          # observe-worker scan interval (15m; proto Duration 仅支持秒单位)
   error_cluster:
     window_days: 7                # error-cluster observation window
@@ -116,5 +116,5 @@ self_improvement:
   stale_timeout: 1800s            # mid-pipeline stale threshold before recover (30m)
 
 # P0-2 运行时冒烟已完成（2026-08-08）：enabled 态 API/UI/动作端点 409 守卫、
-# 风险规则读写回路、disabled 态空态均验证通过。2026-08-09 起默认启用。
+# 风险规则读写回路、disabled 态空态均验证通过。生产默认关闭；灰度用 overlay。
 

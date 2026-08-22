@@ -139,7 +139,12 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			StrategyReason:  "基于历史编排缓存推荐策略",
 			TopologyHint:    topologyHint,
 			MemoryHit:       memoryHit,
+			DomainPath:      memoryHit.DomainPath,
 			Status:          biz.TaskPlanStatusDraft,
+		}
+		if strategy != biz.StrategyDirect && (len(memoryHit.Specialties) > 0 || len(memoryHit.AgentKeysUsed) > 0) {
+			plan.SubTasks = recipeReplaySubTasks(memoryHit, input.UserMessage)
+			plan.StrategyReason = "配方回放：按专题槽位复用历史专项，跳过分解 LLM"
 		}
 
 		saved, err := impl.repo.Create(ctx, plan)
@@ -159,7 +164,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			Strategy:        strategy,
 			ComplexityLevel: biz.ComplexityComplex,
 			ComplexityScore: memoryHit.DQScore,
-			StrategyReason:  "基于历史编排缓存推荐策略",
+			StrategyReason:  plan.StrategyReason,
 			SpiritSessionID: input.SpiritSessionID,
 		})
 		impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
@@ -730,7 +735,43 @@ func (impl *taskPlannerImpl) queryMemory(ctx context.Context, input biz.PlanInpu
 		DQScore:       best.DQScore,
 		TopologyUsed:  string(topology),
 		AgentKeysUsed: best.AgentKeys,
+		DomainPath:    best.DomainPath,
+		Specialties:   append([]string(nil), best.Specialties...),
 	}
+}
+
+func recipeReplaySubTasks(hit *biz.MemoryHit, userMessage string) []biz.SubTask {
+	if hit == nil {
+		return nil
+	}
+	if len(hit.Specialties) > 0 {
+		out := make([]biz.SubTask, 0, len(hit.Specialties))
+		for i, spec := range hit.Specialties {
+			spec = strings.TrimSpace(spec)
+			if spec == "" {
+				continue
+			}
+			out = append(out, biz.SubTask{
+				ID:          fmt.Sprintf("st_recipe_%d", i+1),
+				Name:        spec,
+				Description: userMessage,
+				DomainPath:  spec,
+			})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	label := strings.TrimSpace(userMessage)
+	if rs := []rune(label); len(rs) > 80 {
+		label = string(rs[:80])
+	}
+	return []biz.SubTask{{
+		ID:          "st_recipe_replay",
+		Name:        label,
+		Description: userMessage,
+		DomainPath:  hit.DomainPath,
+	}}
 }
 
 // assessComplexity computes the six-dimension complexity assessment.
@@ -1612,12 +1653,12 @@ Before finalizing, COUNT your subtasks; if the count differs from %d, merge or s
 	return fmt.Sprintf(`You are a task decomposition specialist. %s
 
 Rules:
-- Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0), domain_path (domain classification from the lexicon below)
+- Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0), domain_path (specialty slot from the lexicon — assign topics only, never person names or agent_keys)
 - The "name" field MUST be a short noun-phrase suitable for displaying as a team name (e.g. "Code Analysis Team", "Data Pipeline Builder"), NOT a sentence-length task description. The "name" will be shown to the user as the team's display name; "id" is internal-only and never shown.
 - Output ONLY a JSON array, no markdown fences, no commentary
 %s
 - System administration subtasks (Skill/MCP/package installation, system resource management) MUST be tagged "system-admin", and their "description" MUST be intent-based: state the outcome to achieve (what), the source URL, and the exact cli_admin_* tool name to use (e.g. "使用 cli_admin_skill_install_from_url 从 https://github.com/example/xlsx-skill 安装 xlsx skill，完成后用 cli_admin_skill_get 确认 enabled=true"). NEVER put shell command text (pip install, git clone, etc.) into the description — the system butler has no shell/exec tools and shell text induces hallucinated calls to non-existent tools.
-- domain_path must classify the subtask into this domain lexicon (use the most specific entry that fits; if none fits, use a top-level domain or "其他"): %s
+- domain_path is the specialty slot. Classify into this lexicon (most specific fit; if none fits, use a top-level domain or "其他"). Do NOT pick a person: %s
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed
 - Dependency discipline: declare depends_on ONLY when a subtask genuinely consumes another subtask's output (its input_contract references the predecessor's deliverables). Parallel same-role teams (e.g. "two teams each write a poem, then a third team judges") MUST have empty depends_on; only the final merging/judging subtask depends on ALL of the parallel subtasks. NEVER chain parallel teams serially, and NEVER make every subtask depend on a "understand the current state / statistics" subtask unless that output is a real input to the work.
@@ -2232,7 +2273,25 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 						ps.AgentKeys = append(ps.AgentKeys, mk)
 					}
 				}
+				if alloc.DepartmentID != "" && ps.DepartmentID == "" {
+					ps.DepartmentID = alloc.DepartmentID
+				}
+				if len(alloc.CrossDeptMemberKeys) > 0 {
+					ps.CrossDeptMemberKeys = append(ps.CrossDeptMemberKeys, alloc.CrossDeptMemberKeys...)
+				}
+				if alloc.MatchLayer != "" {
+					ps.MatchLayer = alloc.MatchLayer
+				}
+				if alloc.MatchReason != "" {
+					ps.MatchReason = alloc.MatchReason
+				}
+				if alloc.AssignedName != "" {
+					ps.AssignedName = alloc.AssignedName
+				}
 			}
+		}
+		if st.DomainPath != "" && ps.DomainPath == "" {
+			ps.DomainPath = st.DomainPath
 		}
 		ps.Mode = biz.SpiritTeamModeForStep(string(plan.Strategy), len(ps.AgentKeys))
 		planSteps = append(planSteps, ps)

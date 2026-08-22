@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor/heal"
+	"aranea-agents/internal/tools/patcherfs"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -22,15 +24,12 @@ import (
 // biz.Parse*JSON. provider/model come from SystemSetting.DefaultRefineLLM
 // (wire provider, same pattern as provideSkillAutoCreator).
 //
-// 工具降级说明：design D5 中 Analyst/Patcher 配源码只读/worktree 读写工具，
-// 本实现为单轮调用适配器——Patcher 将 Diagnosis.AffectedFiles 的 worktree
-// 文件内容内联进 user prompt（路径限定 worktree 内，总量 48KB 封顶），
-// 不跑工具回路；工具化升级属后续迭代。
+// 工具回路：Analyst 对仓库根只读（patcher_fs_read/list）；Patcher 对本次
+// worktree 读写 + git diff。官方产物仍是 Diagnosis / PatcherOutput JSON。
+// Patcher 写盘后 Restore，pipeline 按 diff ApplyDiff。
 //
-// 成本控制（D10）：Patcher 日配额 20 次（24h 窗口，与 Critic 同模式，按
-// LLM 调用计——一次 Patch 含 S5 格式纠正重试时最多消耗 2 单位）；配额耗
-// 尽返回 ErrSIPatcherQuotaExceeded，流水线将 run 置 failed（保守制动，
-// Outcome 记 neutral 反哺触发器降频）。
+// 成本控制（D10）：Patcher 日配额 20 次（24h 窗口，按 LLM 调用计——含
+// 工具轮次与一次格式纠正）；配额耗尽返回 ErrSIPatcherQuotaExceeded。
 
 // ErrSIPatcherQuotaExceeded is returned when the Patcher daily LLM quota is
 // exhausted (design D10: 20 次/日).
@@ -53,18 +52,36 @@ type SIAnalystAgent struct {
 	caller   biz.LLMCaller
 	provider string
 	model    string
+	readRoot string
+	rca      heal.RootCauseAnalyzer
 	lg       loggateway.Logger
 }
 
+// SIAnalystOption customizes NewSIAnalystAgent.
+type SIAnalystOption func(*SIAnalystAgent)
+
+// WithSIAnalystReadRoot binds Analyst read-only tools to the repository root.
+func WithSIAnalystReadRoot(root string) SIAnalystOption {
+	return func(a *SIAnalystAgent) {
+		a.readRoot = strings.TrimSpace(root)
+	}
+}
+
 // NewSIAnalystAgent wires the Analyst stage.
-func NewSIAnalystAgent(caller biz.LLMCaller, provider, model string, lg loggateway.Logger) *SIAnalystAgent {
+func NewSIAnalystAgent(caller biz.LLMCaller, provider, model string, lg loggateway.Logger, opts ...SIAnalystOption) *SIAnalystAgent {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SIAnalystAgent{
+	a := &SIAnalystAgent{
 		caller: caller, provider: provider, model: model,
 		lg: lg.With(loggateway.Domain("si_analyst")),
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(a)
+		}
+	}
+	return a
 }
 
 // Analyze runs one Analyst diagnosis of the run's originating suggestion.
@@ -76,34 +93,34 @@ func (a *SIAnalystAgent) Analyze(ctx context.Context, run *biz.SelfImprovementRu
 	if a == nil || a.caller == nil {
 		return nil, apierror.Internal("SELF_IMPROVEMENT", "analyst agent not initialized")
 	}
-	user := siAnalystUserMessage(run, sug)
-	text, _, err := a.caller.Call(ctx, biz.LLMCallRequest{
-		Provider: a.provider,
-		Model:    a.model,
-		System:   biz.SIAnalystSystemPrompt,
-		User:     user,
-	})
+	report, rcaHint := a.rcaPrior(ctx, run, sug)
+	user := siAnalystUserMessage(run, sug) + rcaHint + siAnalystToolsHint(a.readRoot)
+	var ws *patcherfs.Workspace
+	if a.readRoot != "" {
+		bound, werr := patcherfs.New(a.readRoot, patcherfs.ModeRead)
+		if werr != nil {
+			a.lg.Warn("si analyst: read root unavailable, diagnosing without tools",
+				loggateway.StepID("si_analyst.workspace"), loggateway.Err(werr))
+		} else {
+			ws = bound
+		}
+	}
+	diag, err := siRunToolLoop(ctx, func(ctx context.Context, user string) (string, error) {
+		text, _, err := a.caller.Call(ctx, biz.LLMCallRequest{
+			Provider: a.provider,
+			Model:    a.model,
+			System:   biz.SIAnalystSystemPrompt,
+			User:     user,
+		})
+		if err != nil {
+			return "", fmt.Errorf("analyst llm: %w", err)
+		}
+		return text, nil
+	}, ws, user, biz.ParseDiagnosisJSON, siAnalystMaxToolRounds, a.lg, "si_analyst")
 	if err != nil {
-		return nil, fmt.Errorf("analyst llm: %w", err)
+		return nil, err
 	}
-	diag, perr := biz.ParseDiagnosisJSON(text)
-	if perr == nil {
-		return diag, nil
-	}
-	a.lg.Warn("si analyst output parse failed, retrying with format feedback",
-		loggateway.StepID("si_analyst.parse_retry"),
-		loggateway.Str("run_id", siPatcherRunID(run)),
-		loggateway.Err(perr))
-	text, _, err = a.caller.Call(ctx, biz.LLMCallRequest{
-		Provider: a.provider,
-		Model:    a.model,
-		System:   biz.SIAnalystSystemPrompt,
-		User:     siFormatCorrection(user, text, perr),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("analyst llm retry: %w", err)
-	}
-	return biz.ParseDiagnosisJSON(text)
+	return siEnrichDiagnosis(diag, report), nil
 }
 
 // siFormatFeedbackLimit caps the bad-output bytes echoed back to the LLM.
@@ -185,27 +202,38 @@ func (a *SIPatcherAgent) Patch(ctx context.Context, req biz.SIPatchRequest) (*bi
 		return nil, apierror.Internal("SELF_IMPROVEMENT", "patcher agent not initialized")
 	}
 	runID := siPatcherRunID(req.Run)
-	user := siPatcherUserMessage(req, a.lg)
-	text, err := a.callLLM(ctx, runID, user)
+	user := siPatcherUserMessage(req, a.lg) + siPatcherToolsHint(req.WorktreePath)
+	var ws *patcherfs.Workspace
+	if req.WorktreePath != "" {
+		bound, werr := patcherfs.New(req.WorktreePath, patcherfs.ModeReadWrite)
+		if werr != nil {
+			a.lg.Warn("si patcher: worktree unavailable, patching without tools",
+				loggateway.StepID("si_patcher.workspace"),
+				loggateway.Str("run_id", runID), loggateway.Err(werr))
+		} else {
+			ws = bound
+			defer func() {
+				if rerr := ws.Restore(); rerr != nil {
+					a.lg.Warn("si patcher: restore worktree after tools failed",
+						loggateway.StepID("si_patcher.restore"),
+						loggateway.Str("run_id", runID), loggateway.Err(rerr))
+				}
+			}()
+		}
+	}
+	out, err := siRunToolLoop(ctx, func(ctx context.Context, user string) (string, error) {
+		return a.callLLM(ctx, runID, user)
+	}, ws, user, biz.ParsePatcherOutputJSON, siPatcherMaxToolRounds, a.lg, "si_patcher")
 	if err != nil {
+		if filled, ferr := siMaybeFillDiffFromWorktree(ws, "", nil, err); ferr == nil && filled != nil {
+			return filled, nil
+		}
 		return nil, err
 	}
-	out, perr := biz.ParsePatcherOutputJSON(text)
-	if perr == nil {
-		return out, nil
+	if filled, ferr := siMaybeFillDiffFromWorktree(ws, "", out, nil); ferr == nil && filled != nil {
+		return filled, nil
 	}
-	a.lg.Warn("si patcher output parse failed, retrying with format feedback",
-		loggateway.StepID("si_patcher.parse_retry"),
-		loggateway.Str("run_id", runID),
-		loggateway.Err(perr))
-	text, err = a.callLLM(ctx, runID, siFormatCorrection(user, text, perr))
-	if errors.Is(err, ErrSIPatcherQuotaExceeded) {
-		return nil, perr
-	}
-	if err != nil {
-		return nil, err
-	}
-	return biz.ParsePatcherOutputJSON(text)
+	return out, nil
 }
 
 // callLLM consumes one quota unit then performs the Patcher LLM call.

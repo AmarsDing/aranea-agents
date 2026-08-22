@@ -117,6 +117,16 @@ export function siGateLabel(t: Translate, gate: string): string {
   return label === key ? gate || '—' : label;
 }
 
+export function siGateIcon(passed: boolean, skipped: boolean): string {
+  if (skipped) return 'remove_circle_outline';
+  return passed ? 'check_circle' : 'cancel';
+}
+
+export function siGateColor(passed: boolean, skipped: boolean): string {
+  if (skipped) return 'grey-6';
+  return passed ? 'positive' : 'negative';
+}
+
 // ── 可用操作（状态机终态/中间态决定） ────────────────────────────────────────
 
 export function canApprove(status: string): boolean {

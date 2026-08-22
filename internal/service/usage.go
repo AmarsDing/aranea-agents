@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	v1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/biz"
@@ -252,4 +253,30 @@ func (s *UsageService) GetContextBudgetStats(ctx context.Context, req *v1.UsageQ
 		return nil, err
 	}
 	return toProtoContextBudgetStats(stats), nil
+}
+
+// GetCacheHitRatioStats serves the 29-token §9.3 prompt-cache observability
+// read path. Global (provider, model) aggregation with no workspace dimension,
+// so it uses the same platform-level caller rule as budget alerts.
+func (s *UsageService) GetCacheHitRatioStats(ctx context.Context, req *v1.GetCacheHitRatioStatsRequest) (*v1.GetCacheHitRatioStatsResponse, error) {
+	if err := s.assertSystemCaller(ctx); err != nil {
+		return nil, err
+	}
+	stats, err := s.uc.CacheHitRatioStats(ctx, clampCacheHitWindow(req.GetWindowHours()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoCacheHitRatioStats(stats), nil
+}
+
+// clampCacheHitWindow normalizes the trailing aggregation window: 0/negative
+// falls back to the 1h default (matching the alert window), capped at 7 days.
+func clampCacheHitWindow(hours int32) time.Duration {
+	if hours < 1 {
+		hours = 1
+	}
+	if hours > 168 {
+		hours = 168
+	}
+	return time.Duration(hours) * time.Hour
 }

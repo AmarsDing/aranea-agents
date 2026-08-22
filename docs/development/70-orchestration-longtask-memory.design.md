@@ -25,7 +25,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │     Layer 1: 强制任务规划（Always-On Planner）                    │
 │     Intent Pass(强制) → 复杂度评估 → 任务分解 → 策略决策          │
-│     预规划门控：Simple=Direct / Moderate+Complex=强制规划          │
+│     预规划门控：Idle 才对 Moderate/Complex 强制规划；非 Idle 沿用已有编排 │
 ├─────────────────────────────────────────────────────────────────┤
 │     Layer 2: 动态 Agent 供给（Agent Factory）                     │
 │     4层匹配(含向量) → 缺口检测 → AgentFactory(LLM生成)            │
@@ -435,6 +435,8 @@ func (o *ChatOrchestrator) prePlanningGate(ctx, input) (Strategy, error) {
 
 3. **注入 RunOption 而非直接调 `PlanAndExecute`** — 设计稿中门控直接调 `o.planner.PlanAndExecute()`，实际实现通过 `forcedPlanningRunOption()` 注入一条系统消息（`trpcagent.WithInjectedContextMessages`），指示 Spirit LLM 调用 `plan_and_execute` 工具。这保持了正常 turn 流程的完整性（BUILD → EXECUTE → PERSIST → POST-PROCESS），让 plan_and_execute 作为工具在框架内执行，而非绕过 turn 生命周期。
 
+4. **会话阶段抑制强制规划（2026-08-22）** — Moderate/Complex 不再无条件 ForcePlanning。`ResolveSpiritSessionPhase` 在门控前解析 Idle/Orchestrating/Ready/Interrupted；非 Idle 且非明确新任务时 `ShouldForcePlanning=false`，避免 T2 总结后用户重复原句再走 60s 分解。收口工具按阶段 Activate，不改 WP-4 BUILD 常驻集。
+
 **行为契约补充（2026-07-27，会话 d78029b9 孤儿 notice 排查修复）**：
 
 1. **续跑 turn 跳过门控** — `runPrePlanningGate` 对 `ParentTaskID` 非空的续跑 turn（synthesis 总结 turn / 澄清续答 turn）直接放行，与 `runClarificationGate` 同款防循环。复杂度在根 turn 已评估，续跑重评会重复发布门控 notice（单会话实测 7 对重复 = 2 根 turn + 2 澄清续跑 + 3 总结 turn），且 forcedPlanning 系统提示注入 synthesis turn 会强制其再走规划路径。
@@ -444,7 +446,9 @@ func (o *ChatOrchestrator) prePlanningGate(ctx, input) (Strategy, error) {
 
 **代码锚点**：
 - `internal/service/pre_planning_gate.go` — `PrePlanningGate.Evaluate` + `publishPlanningPhase`
-- `internal/service/chat_orchestrator_turn_preplanning.go` — `runPrePlanningGate` + `forcedPlanningRunOption` + `intentArtifactToBiz`
+- `internal/service/chat_orchestrator_turn_preplanning.go` — `runPrePlanningGate` + `forcedPlanningRunOption` + `resolveSpiritTurnOrchestration`
+- `internal/biz/spirit_session_phase.go` — 会话阶段解析 / ForcePlanning 抑制 / orchestration brief
+- `internal/agent/orchestration_phase_hooks.go` — 按阶段 Activate 收口工具 + brief 注入
 - `internal/service/chat_orchestrator_turn.go:354-360` — 门控调用点（eg.Wait 后）
 - `internal/agent/task_planner_impl.go:259-284` — `QuickAssess` 纯计算实现
 - `internal/biz/task_planner.go:14` — `TaskPlannerPort.QuickAssess` 接口（Stability: evolving）

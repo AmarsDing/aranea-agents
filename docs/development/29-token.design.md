@@ -61,6 +61,9 @@ service UsageService {
   rpc GetContextBudgetStats(UsageQuery) returns (GetContextBudgetStatsResponse) {
     option (google.api.http) = { get: "/v1/usage/context-budget-stats" };
   }
+  rpc GetCacheHitRatioStats(GetCacheHitRatioStatsRequest) returns (GetCacheHitRatioStatsResponse) {
+    option (google.api.http) = { get: "/v1/usage/cache-hit-ratio-stats" };
+  }
 }
 ```
 
@@ -990,7 +993,7 @@ LIMIT 50;
 - **聚合粒度**（N7 修订，2026-08-13）：P50 必须在 `(provider, model)` 粒度由 SQL `percentile_cont` 直接计算——按 agent_key 先分组算出的分位数无法在 Go 侧正确合并。
 - 数据源：`model_token_usage_events` 表，纯 SQL 聚合，无新表。
 - **防误报**：`prompt_tokens < 1024`（provider 最小缓存长度）的样本不参与聚合；team_turn 对账行不参与聚合。
-- 阶段 0 只提供 biz 查询 + 进程日志输出，前端指标卡后补。
+- ~~阶段 0 只提供 biz 查询 + 进程日志输出，前端指标卡后补。~~ **已补全（2026-08-22 方案 B）**：`GetCacheHitRatioStats` RPC（平台级门禁，同 budget alerts）+ OverviewPage `UsageCacheHitRatio` 卡片；另 `session_turns.cached_input_tokens` 列落库，turn 详情/评测证据免 join 即得单轮命中率。
 
 ### 9.4 G1-B 告警规则 `llm.cache_hit_ratio_low`
 

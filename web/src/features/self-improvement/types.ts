@@ -44,6 +44,7 @@ export interface SIDiagnosis {
 export interface SIGateResult {
   gate: string;
   passed: boolean;
+  skipped: boolean;
   output: string;
   durationMs: number;
 }

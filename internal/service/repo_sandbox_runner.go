@@ -50,6 +50,23 @@ func WithWorktreeRoot(root string) RepoSandboxOption {
 	}
 }
 
+// WithGolangCILint enables package-level golangci-lint for G3 when the
+// worktree has a config and the binary is on PATH. Default is go vet so
+// historical lint debt cannot re-block the code channel.
+func WithGolangCILint(enabled bool) RepoSandboxOption {
+	return func(r *RepoSandboxRunner) {
+		r.golangciEnabled = enabled
+	}
+}
+
+// RepoRoot returns the absolute repository root the sandbox is anchored at.
+func (r *RepoSandboxRunner) RepoRoot() string {
+	if r == nil {
+		return ""
+	}
+	return r.repoRoot
+}
+
 // WithGateTimeout overrides one gate's execution timeout. d <= 0 is ignored.
 func WithGateTimeout(gate biz.SandboxGateKind, d time.Duration) RepoSandboxOption {
 	return func(r *RepoSandboxRunner) {
@@ -64,11 +81,12 @@ func WithGateTimeout(gate biz.SandboxGateKind, d time.Duration) RepoSandboxOptio
 // commands (go build / go test / go vet) — gate input never becomes shell
 // text.
 type RepoSandboxRunner struct {
-	repoRoot     string
-	worktreeRoot string
-	gateTimeouts map[biz.SandboxGateKind]time.Duration
-	lg           loggateway.Logger
-	mu           sync.Mutex // serialize git worktree add/remove (project convention)
+	repoRoot        string
+	worktreeRoot    string
+	gateTimeouts    map[biz.SandboxGateKind]time.Duration
+	golangciEnabled bool
+	lg              loggateway.Logger
+	mu              sync.Mutex // serialize git worktree add/remove (project convention)
 }
 
 // NewRepoSandboxRunner creates a runner rooted at the repository work dir.
@@ -203,7 +221,14 @@ func (r *RepoSandboxRunner) RunGate(ctx context.Context, path string, gate biz.S
 	if err != nil {
 		return biz.SandboxGateResult{}, err
 	}
-	name, args, err := r.gateCommand(gate, pkgs)
+	if (gate == biz.SandboxGateTest || gate == biz.SandboxGateLint) && len(pkgs) == 0 {
+		return biz.NewSkippedSandboxGate(gate, "skipped: no affected Go packages (refusing repo-wide ./...)"), nil
+	}
+	if gate == biz.SandboxGateWebLint {
+		return r.runWebLint(ctx, wtPath)
+	}
+
+	name, args, err := r.gateCommand(wtPath, gate, pkgs)
 	if err != nil {
 		return biz.SandboxGateResult{}, err
 	}
@@ -218,7 +243,7 @@ func (r *RepoSandboxRunner) RunGate(ctx context.Context, path string, gate biz.S
 	start := time.Now()
 	cmd := exec.CommandContext(gateCtx, name, args...)
 	cmd.Dir = wtPath
-	cmd.Env = os.Environ()
+	cmd.Env = sandboxGateEnv()
 	out, runErr := cmd.CombinedOutput()
 	res := biz.SandboxGateResult{
 		Gate:       gate,
@@ -242,28 +267,139 @@ func (r *RepoSandboxRunner) RunGate(ctx context.Context, path string, gate biz.S
 }
 
 // gateCommand maps a gate kind to its whitelisted command. Package patterns
-// are passed as discrete argv entries (no shell).
-func (r *RepoSandboxRunner) gateCommand(gate biz.SandboxGateKind, pkgs []string) (string, []string, error) {
-	scoped := pkgs
-	if len(scoped) == 0 {
-		scoped = []string{"./..."}
-	}
+// are passed as discrete argv entries (no shell). Empty pkgs must not reach
+// G2/G3 (RunGate returns Skipped first).
+func (r *RepoSandboxRunner) gateCommand(wtPath string, gate biz.SandboxGateKind, pkgs []string) (string, []string, error) {
 	switch gate {
 	case biz.SandboxGateBuild:
 		// Design D4: G1 always builds repo-wide — a patch can break packages
 		// outside its own scope via shared symbols.
 		return "go", []string{"build", "./..."}, nil
 	case biz.SandboxGateTest:
-		return "go", append([]string{"test", "-count=1"}, scoped...), nil
+		return "go", append([]string{"test", "-count=1"}, pkgs...), nil
 	case biz.SandboxGateLint:
-		// P2 uses `go vet` as the deterministic lint floor; golangci-lint
-		// package-scoped wiring is a Phase-3 hardening item (recorded in the
-		// development doc).
-		return "go", append([]string{"vet"}, scoped...), nil
+		if name, args, ok := r.golangciLintCommand(wtPath, pkgs); ok {
+			return name, args, nil
+		}
+		return "go", append([]string{"vet"}, pkgs...), nil
 	default:
 		return "", nil, apierror.BadRequest(apierror.DomainTool,
 			"gate %s is not executed by RepoSandboxRunner (G4=Critic agent, G5=eval baseline)", gate)
 	}
+}
+
+func (r *RepoSandboxRunner) golangciLintCommand(wtPath string, pkgs []string) (string, []string, bool) {
+	if r == nil || (!r.golangciEnabled && os.Getenv("ARANEA_SI_GOLANGCI") != "1") {
+		return "", nil, false
+	}
+	if !hasGolangCIConfig(wtPath) {
+		return "", nil, false
+	}
+	lint, err := exec.LookPath("golangci-lint")
+	if err != nil {
+		return "", nil, false
+	}
+	return lint, append([]string{"run", "--timeout", "4m"}, pkgs...), true
+}
+
+func hasGolangCIConfig(root string) bool {
+	for _, name := range []string{".golangci.yml", ".golangci.yaml", ".golangci.toml", ".golangci.json"} {
+		if st, err := os.Stat(filepath.Join(root, name)); err == nil && !st.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *RepoSandboxRunner) runWebLint(ctx context.Context, wtPath string) (biz.SandboxGateResult, error) {
+	webDir := filepath.Join(wtPath, "web")
+	if st, err := os.Stat(webDir); err != nil || !st.IsDir() {
+		return biz.NewSkippedSandboxGate(biz.SandboxGateWebLint, "skipped: web/ not present in worktree"), nil
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		return biz.NewSkippedSandboxGate(biz.SandboxGateWebLint, "skipped: pnpm not on PATH"), nil
+	}
+	timeout := r.gateTimeouts[biz.SandboxGateLint]
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	gateCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	start := time.Now()
+	cmd := exec.CommandContext(gateCtx, "pnpm", "lint")
+	cmd.Dir = webDir
+	cmd.Env = sandboxGateEnv()
+	out, runErr := cmd.CombinedOutput()
+	res := biz.SandboxGateResult{
+		Gate:       biz.SandboxGateWebLint,
+		Passed:     runErr == nil,
+		Output:     truncateGateOutput(string(out)),
+		DurationMS: time.Since(start).Milliseconds(),
+	}
+	if runErr != nil {
+		if gateCtx.Err() == context.DeadlineExceeded {
+			res.Output = appendGateOutputNote(res.Output, fmt.Sprintf("[gate timeout after %s]", timeout))
+		} else {
+			res.Output = appendGateOutputNote(res.Output, "[exit "+exitCodeString(runErr)+"]")
+		}
+	}
+	return res, nil
+}
+
+// sandboxGateEnv is the allowlisted environment for gate subprocesses.
+// Production DSNs / secrets are stripped so G2 cannot reach the live database.
+func sandboxGateEnv() []string {
+	out := []string{"ARANEA_SI_SANDBOX=1", "GIT_CONFIG_NOSYSTEM=1"}
+	for _, kv := range os.Environ() {
+		key, val, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if !sandboxEnvAllowed(key, val) {
+			continue
+		}
+		out = append(out, key+"="+val)
+	}
+	return out
+}
+
+func sandboxEnvAllowed(key, val string) bool {
+	uk := strings.ToUpper(key)
+	if _, blocked := sandboxEnvBlockExact[uk]; blocked {
+		return false
+	}
+	if strings.Contains(uk, "PASSWORD") || strings.Contains(uk, "SECRET") ||
+		strings.Contains(uk, "API_KEY") || strings.Contains(uk, "ACCESS_TOKEN") ||
+		strings.HasSuffix(uk, "_DSN") || uk == "DSN" || strings.Contains(uk, "DATABASE") {
+		return false
+	}
+	lv := strings.ToLower(val)
+	if strings.Contains(lv, "postgres://") || strings.Contains(lv, "postgresql://") ||
+		strings.Contains(lv, "mysql://") || strings.Contains(lv, "redis://") ||
+		strings.Contains(lv, "mongodb://") {
+		return false
+	}
+	_, allow := sandboxEnvAllow[uk]
+	return allow
+}
+
+var sandboxEnvAllow = map[string]struct{}{
+	"PATH": {}, "PATHEXT": {}, "SYSTEMROOT": {}, "WINDIR": {}, "COMSPEC": {},
+	"TMP": {}, "TEMP": {}, "TMPDIR": {},
+	"GOROOT": {}, "GOPATH": {}, "GOBIN": {}, "GOTOOLCHAIN": {},
+	"GOCACHE": {}, "GOMODCACHE": {}, "GOFLAGS": {}, "GO111MODULE": {},
+	"GOPROXY": {}, "GOSUMDB": {}, "GONOSUMDB": {}, "GOPRIVATE": {}, "GOINSECURE": {},
+	"CGO_ENABLED": {}, "CC": {}, "CXX": {}, "CGO_CFLAGS": {}, "CGO_LDFLAGS": {},
+	"HOME": {}, "USERPROFILE": {}, "HOMEDRIVE": {}, "HOMEPATH": {},
+	"USER": {}, "USERNAME": {}, "LOGNAME": {},
+	"APPDATA": {}, "LOCALAPPDATA": {},
+	"LANG": {}, "LC_ALL": {}, "TZ": {},
+}
+
+var sandboxEnvBlockExact = map[string]struct{}{
+	"DATABASE_URL": {}, "PGHOST": {}, "PGPORT": {}, "PGUSER": {}, "PGPASSWORD": {},
+	"PGDATABASE": {}, "PGDATA": {}, "PGSSLMODE": {},
+	"REDIS_URL": {}, "REDIS_HOST": {},
 }
 
 // checkSandboxPath resolves path and ensures it lives under the configured

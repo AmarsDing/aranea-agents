@@ -140,4 +140,32 @@ func TestTryReuseExistingOrchestration(t *testing.T) {
 	if ok {
 		t.Fatal("重新组建 must skip reuse")
 	}
+
+	out, ok = tryReuseExistingOrchestration(context.Background(), "sess-1", "结果怎么样了", false, deps)
+	if !ok || !out.ReuseExisting {
+		t.Fatal("follow-up without entity must reuse current cohort")
+	}
+
+	_, ok = tryReuseExistingOrchestration(context.Background(), "sess-1", "分析贵州茅台的基本面", false, deps)
+	if ok {
+		t.Fatal("different entity must not reuse 金鹏 teams")
+	}
+}
+
+func TestCurrentOrchestrationCohort_PrefersLatestGraph(t *testing.T) {
+	t.Parallel()
+	teams := []biz.Team{
+		{ID: "old", DisplayName: "茅台", Status: biz.TeamStatusCompleted, LinkedGraphID: "g-old", UpdatedAt: "2026-08-20T00:00:00Z"},
+		{ID: "new1", DisplayName: "金鹏主体", Status: biz.TeamStatusCompleted, LinkedGraphID: "g-new", UpdatedAt: "2026-08-22T00:00:00Z"},
+		{ID: "new2", DisplayName: "基本面", Status: biz.TeamStatusCompleted, LinkedGraphID: "g-new", UpdatedAt: "2026-08-22T00:00:01Z"},
+	}
+	got := currentOrchestrationCohort(teams)
+	if len(got) != 2 {
+		t.Fatalf("latest graph cohort = %d want 2, got %+v", len(got), got)
+	}
+	for _, t0 := range got {
+		if t0.LinkedGraphID != "g-new" {
+			t.Fatalf("unexpected team %+v", t0)
+		}
+	}
 }

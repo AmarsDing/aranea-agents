@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import type {
   AnnotateCaseResultInput,
+  EvalCase,
   EvalCaseResult,
   EvalFailureGroup,
   EvalRun,
@@ -16,7 +17,9 @@ import { useEvaluationStore } from '../../stores/evaluation';
 import { exportEvalRunCsv, exportEvalRunJson } from './exportRunResults';
 import { useEvalRunPolling, hasActiveRuns } from './useEvalRunPolling';
 import { EVAL_RESULTS_PAGE_SIZE_DEFAULT, EVAL_RUNS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
-import { EVAL_RESULT_TABLE_COLUMNS, EVAL_RUN_TABLE_COLUMNS } from './evaluationTableUi';
+import { EVAL_CASE_TABLE_COLUMNS, EVAL_RESULT_TABLE_COLUMNS, EVAL_RUN_TABLE_COLUMNS } from './evaluationTableUi';
+import { useEvaluationGate } from './useEvaluationGate';
+import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
 
 export function useEvaluationPage() {
   const $q = useQuasar();
@@ -74,23 +77,31 @@ export function useEvaluationPage() {
   // P3-5: compared runs recorded different dataset hashes → scores not comparable.
   const datasetChanged = computed(() => {
     const hashes = comparisons.value.map((c) => c.dataset_hash).filter((h) => h);
-    return hashes.length > 1 && new Set(hashes).size > 1;
+    const versions = comparisons.value.map((c) => c.dataset_version).filter((v) => v);
+    return (
+      (hashes.length > 1 && new Set(hashes).size > 1) ||
+      (versions.length > 1 && new Set(versions).size > 1)
+    );
   });
-  // P2-1: publish gate singleton config dialog.
-  const gateOpen = ref(false);
-  const gateLoading = ref(false);
-  const gateSaving = ref(false);
-  const gateForm = ref({
-    enabled: false,
-    agent_id: '',
-    dataset_id: '',
-    metric: 'exact_match',
-    min_score: 0,
-    max_drop: 0,
-  });
+  const { gateOpen, gateLoading, gateSaving, gateForm, openGate, saveGate } = useEvaluationGate();
+  const { openMonitorTab } = useMonitorRunNavigation();
 
+  const editDatasetOpen = ref(false);
+  const casesOpen = ref(false);
+  const casesLoading = ref(false);
+  const casesSaving = ref(false);
+  const cases = ref<EvalCase[]>([]);
+  const caseEditId = ref('');
+  const caseEditInput = ref('');
+  const caseEditExpected = ref('');
   const createForm = ref({ name: '', description: '' });
-  const runForm = ref({ agent_id: '', metrics: '', num_runs: 1, use_user_simulation: false });
+  const runForm = ref({
+    agent_id: '',
+    metrics: '',
+    num_runs: 1,
+    use_user_simulation: false,
+    extra_agent_ids: [] as string[],
+  });
   const uploadOpen = ref(false);
   const uploadLoading = ref(false);
   const uploadText = ref('');
@@ -99,11 +110,13 @@ export function useEvaluationPage() {
 
   const runColumns = EVAL_RUN_TABLE_COLUMNS;
   const resultColumns = EVAL_RESULT_TABLE_COLUMNS;
+  const caseColumns = EVAL_CASE_TABLE_COLUMNS;
 
   function runStatusColor(status: string) {
     if (status === 'completed') return 'positive';
     if (status === 'failed') return 'negative';
     if (status === 'running') return 'warning';
+    if (status === 'cancelled') return 'grey';
     return 'grey';
   }
 
@@ -276,6 +289,115 @@ export function useEvaluationPage() {
     });
   }
 
+  function openEditDataset() {
+    const ds = selectedDataset.value;
+    if (!ds) return;
+    createForm.value = { name: ds.name, description: ds.description };
+    editDatasetOpen.value = true;
+  }
+
+  async function submitEditDataset() {
+    const ds = selectedDataset.value;
+    if (!ds || !createForm.value.name.trim()) return;
+    createLoading.value = true;
+    try {
+      await evaluationStore.editDataset({
+        id: ds.id,
+        name: createForm.value.name.trim(),
+        description: createForm.value.description.trim(),
+      });
+      editDatasetOpen.value = false;
+      $q.notify({ type: 'positive', message: t('evaluationPage.datasetUpdated') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.datasetUpdateFailed') });
+    } finally {
+      createLoading.value = false;
+    }
+  }
+
+  async function openCases() {
+    if (!selectedDatasetId.value) return;
+    casesOpen.value = true;
+    caseEditId.value = '';
+    casesLoading.value = true;
+    try {
+      cases.value = await evaluationStore.loadCases(selectedDatasetId.value);
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.casesLoadFailed') });
+    } finally {
+      casesLoading.value = false;
+    }
+  }
+
+  function startEditCase(row: EvalCase) {
+    caseEditId.value = row.id;
+    caseEditInput.value = row.input;
+    caseEditExpected.value = row.expected_output;
+  }
+
+  function cancelEditCase() {
+    caseEditId.value = '';
+    caseEditInput.value = '';
+    caseEditExpected.value = '';
+  }
+
+  async function saveCase() {
+    if (!selectedDatasetId.value || !caseEditId.value || !caseEditInput.value.trim()) return;
+    casesSaving.value = true;
+    try {
+      const updated = await evaluationStore.saveCase({
+        dataset_id: selectedDatasetId.value,
+        id: caseEditId.value,
+        input: caseEditInput.value.trim(),
+        expected_output: caseEditExpected.value,
+      });
+      cases.value = cases.value.map((c) => (c.id === updated.id ? updated : c));
+      cancelEditCase();
+      $q.notify({ type: 'positive', message: t('evaluationPage.caseSaved') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.caseSaveFailed') });
+    } finally {
+      casesSaving.value = false;
+    }
+  }
+
+  function confirmDeleteCase(row: EvalCase) {
+    $q.dialog({ title: t('evaluationPage.caseDelete'), message: t('evaluationPage.caseDeleteConfirm'), cancel: true }).onOk(
+      async () => {
+        try {
+          await evaluationStore.removeCase(row.dataset_id, row.id);
+          cases.value = cases.value.filter((c) => c.id !== row.id);
+          if (caseEditId.value === row.id) cancelEditCase();
+          $q.notify({ type: 'positive', message: t('evaluationPage.caseDeleted') });
+        } catch (e) {
+          $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.caseDeleteFailed') });
+        }
+      },
+    );
+  }
+
+  async function cancelEvalRun(row: EvalRun) {
+    try {
+      await evaluationStore.stopRun(row.id);
+      $q.notify({ type: 'positive', message: t('evaluationPage.runCancelled') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.runCancelFailed') });
+    }
+  }
+
+  function confirmDeleteRun(row: EvalRun) {
+    $q.dialog({ title: t('evaluationPage.runDelete'), message: t('evaluationPage.runDeleteConfirm'), cancel: true }).onOk(
+      async () => {
+        try {
+          await evaluationStore.removeRun(row.id);
+          $q.notify({ type: 'positive', message: t('evaluationPage.runDeleted') });
+        } catch (e) {
+          $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.runDeleteFailed') });
+        }
+      },
+    );
+  }
+
   async function submitRun() {
     if (!selectedDatasetId.value || !runForm.value.agent_id) {
       $q.notify({ type: 'warning', message: '请选择 Agent' });
@@ -283,13 +405,27 @@ export function useEvaluationPage() {
     }
     runLoading.value = true;
     try {
-      await evaluationStore.startRun({
-        dataset_id: selectedDatasetId.value,
-        agent_id: runForm.value.agent_id,
-        metrics: runForm.value.metrics.trim() || undefined,
-        num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
-        use_user_simulation: runForm.value.use_user_simulation || undefined,
-      });
+      const extras = runForm.value.extra_agent_ids.filter((id) => id && id !== runForm.value.agent_id);
+      if (extras.length) {
+        await evaluationStore.startExperiment({
+          dataset_id: selectedDatasetId.value,
+          metrics: runForm.value.metrics.trim() || undefined,
+          num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
+          use_user_simulation: runForm.value.use_user_simulation || undefined,
+          variants: [
+            { agent_id: runForm.value.agent_id, label: runForm.value.agent_id },
+            ...extras.map((id) => ({ agent_id: id, label: id })),
+          ],
+        });
+      } else {
+        await evaluationStore.startRun({
+          dataset_id: selectedDatasetId.value,
+          agent_id: runForm.value.agent_id,
+          metrics: runForm.value.metrics.trim() || undefined,
+          num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
+          use_user_simulation: runForm.value.use_user_simulation || undefined,
+        });
+      }
       runOpen.value = false;
       await loadRuns();
       $q.notify({ type: 'positive', message: '评估已提交' });
@@ -480,45 +616,11 @@ export function useEvaluationPage() {
     });
   }
 
-  // P2-1: publish gate config — load on open, save via singleton upsert.
-  async function openGate() {
-    gateOpen.value = true;
-    gateLoading.value = true;
-    try {
-      const cfg = await evaluationStore.loadGateConfig();
-      gateForm.value = {
-        enabled: cfg.enabled,
-        agent_id: cfg.agent_id,
-        dataset_id: cfg.dataset_id,
-        metric: cfg.metric || 'exact_match',
-        min_score: cfg.min_score,
-        max_drop: cfg.max_drop,
-      };
-    } catch (e) {
-      console.warn('[evaluation] load gate config failed:', e);
-    } finally {
-      gateLoading.value = false;
-    }
-  }
-
-  async function saveGate() {
-    if (gateForm.value.enabled && (!gateForm.value.agent_id || !gateForm.value.dataset_id)) {
-      $q.notify({ type: 'warning', message: t('evaluationPage.gateNeedTarget') });
-      return;
-    }
-    gateSaving.value = true;
-    try {
-      await evaluationStore.saveGateConfig({ ...gateForm.value });
-      gateOpen.value = false;
-      $q.notify({ type: 'positive', message: t('evaluationPage.gateSaved') });
-    } catch (e) {
-      $q.notify({
-        type: 'negative',
-        message: e instanceof Error ? e.message : t('evaluationPage.gateSaveFailed'),
-      });
-    } finally {
-      gateSaving.value = false;
-    }
+  function openResultTrace(row: EvalCaseResult) {
+    openMonitorTab('traces', {
+      session: row.session_id || undefined,
+      trace: row.trace_run_id || undefined,
+    });
   }
 
   async function loadCaseResults() {
@@ -653,6 +755,24 @@ export function useEvaluationPage() {
     selectDataset,
     submitCreate,
     confirmDeleteDataset,
+    editDatasetOpen,
+    openEditDataset,
+    submitEditDataset,
+    casesOpen,
+    casesLoading,
+    casesSaving,
+    cases,
+    caseColumns,
+    caseEditId,
+    caseEditInput,
+    caseEditExpected,
+    openCases,
+    startEditCase,
+    cancelEditCase,
+    saveCase,
+    confirmDeleteCase,
+    cancelEvalRun,
+    confirmDeleteRun,
     submitRun,
     uploadOpen,
     uploadLoading,
@@ -690,5 +810,6 @@ export function useEvaluationPage() {
     gateForm,
     openGate,
     saveGate,
+    openResultTrace,
   };
 }

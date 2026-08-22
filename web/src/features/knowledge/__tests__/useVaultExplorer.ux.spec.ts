@@ -2,7 +2,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick, ref } from 'vue';
 import type { KnowledgeCollection, KnowledgeDocument, KnowledgeLink } from '../types';
-import { getDocumentContent } from '../api';
 
 const mockStore = {
   loadVaultTree: vi.fn(),
@@ -12,6 +11,8 @@ const mockStore = {
   loadDanglingLinks: vi.fn().mockResolvedValue([]),
   search: vi.fn(),
   moveDocToDir: vi.fn(),
+  loadDocumentContent: vi.fn(),
+  saveDocumentContent: vi.fn(),
 };
 
 vi.mock('../../../stores/knowledge', () => ({
@@ -26,7 +27,7 @@ vi.mock('../api', () => ({
 
 import { useVaultExplorer } from '../useVaultExplorer';
 
-const mockGetContent = vi.mocked(getDocumentContent);
+const mockGetContent = vi.mocked(mockStore.loadDocumentContent);
 
 function makeDoc(id: string, relPath: string): KnowledgeDocument {
   const name = relPath.split('/').pop() ?? relPath;

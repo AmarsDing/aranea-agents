@@ -99,16 +99,23 @@ const headerHint = computed(() => {
 
   const fileOps = new Set([
     'read_file',
+    'read_multiple_files',
     'file_read_file',
     'save_file',
     'write_file',
     'file_write',
     'file_edit',
+    'diff_edit',
+    'replace_content',
+    'patch_file',
     'list_file',
   ]);
   if (fileOps.has(name)) {
     let path = '';
-    if (typeof args?.path === 'string') {
+    // 运行时 file 工具集参数名为 file_name；path 为历史别名/结果字段。
+    if (typeof args?.file_name === 'string') {
+      path = args.file_name;
+    } else if (typeof args?.path === 'string') {
       path = args.path;
     } else if (typeof result?.path === 'string') {
       path = result.path;
@@ -122,10 +129,13 @@ const headerHint = computed(() => {
     if (cmd) return cmd.length > 80 ? `${cmd.slice(0, 80)}…` : cmd;
   }
 
-  const searchOps = new Set(['search_content', 'search_files', 'grep']);
+  const searchOps = new Set(['search_content', 'search_file', 'search_files', 'grep']);
   if (searchOps.has(name)) {
     let q = '';
-    if (typeof args?.query === 'string') {
+    // search_content 的搜索词参数为 content_pattern。
+    if (typeof args?.content_pattern === 'string') {
+      q = args.content_pattern;
+    } else if (typeof args?.query === 'string') {
       q = args.query;
     } else if (typeof args?.pattern === 'string') {
       q = args.pattern;

@@ -13,7 +13,7 @@
  */
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { useKnowledgeStore } from '../../stores/knowledge';
-import { fetchDocumentAsset, getDocumentContent, updateDocumentContent } from './api';
+import { fetchDocumentAsset } from './api';
 import { classifySearchIntent, type SearchIntent } from './searchIntent';
 import { instantFilter } from './instantMatch';
 import { parseKratosApiError } from '../../utils/kratosError';
@@ -327,7 +327,7 @@ export function useVaultExplorer(input: {
     previewError.value = false;
     linksError.value = false;
     try {
-      const res = await getDocumentContent(docId);
+      const res = await knowledgeStore.loadDocumentContent(docId);
       previewContent.value = res.content_text;
       previewOrganized.value = res.organized;
       rawContent.value = res.raw_content;
@@ -419,7 +419,7 @@ export function useVaultExplorer(input: {
     if (!docId || !editing.value) return 'error';
     editSaving.value = true;
     try {
-      const res = await updateDocumentContent(docId, editDraft.value, baseHash.value);
+      const res = await knowledgeStore.saveDocumentContent(docId, editDraft.value, baseHash.value);
       editing.value = false;
       editDraft.value = '';
       await loadDetail(docId);

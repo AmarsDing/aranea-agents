@@ -14,10 +14,7 @@ func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemo
 		return nil, apierror.Internal("MEMORY", "session memory debug recaller not wired")
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
-	if agentID == "" {
-		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
-	}
-	if _, err := authorizeMemoryScope(ctx, "agent", agentID, false); err != nil {
+	if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
 		return nil, err
 	}
 	userID := strings.TrimSpace(req.GetUserId())
@@ -58,10 +55,10 @@ func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.Com
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
 	query := strings.TrimSpace(req.GetQuery())
-	if agentID == "" || query == "" {
+	if query == "" {
 		return nil, apierror.BadRequest("MEMORY", "agent_id and query are required")
 	}
-	if _, err := authorizeMemoryScope(ctx, "agent", agentID, false); err != nil {
+	if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
 		return nil, err
 	}
 	userID := strings.TrimSpace(req.GetUserId())

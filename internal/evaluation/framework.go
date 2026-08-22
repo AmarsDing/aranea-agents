@@ -176,9 +176,20 @@ func (b *FrameworkBridge) Execute(
 				inv := rd.Inference.Inferences[0]
 				if inv.FinalResponse != nil {
 					res.ActualOutput = inv.FinalResponse.Content
+					if strings.TrimSpace(res.ActualOutput) == "" && res.ErrorMessage == "" {
+						res.ErrorMessage = "empty actual output"
+					}
 				}
 				if rd.Inference.ErrorMessage != "" {
 					res.ErrorMessage = normalizeCaseErrorMessage(rd.Inference.ErrorMessage)
+				}
+				applyFaithfulness(&res, inv)
+				if inv.ExecutionTrace != nil {
+					res.SessionID = inv.ExecutionTrace.SessionID
+					res.TraceRunID = inv.ExecutionTrace.RootInvocationID
+				}
+				if res.SessionID == "" {
+					res.SessionID = inv.InvocationID
 				}
 			}
 		}

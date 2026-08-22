@@ -4998,7 +4998,7 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 | `orchestration_progress` | `decomposed` | `sub_task_count` | `Plan()` decomposeTask 后 | 任务分解完成，共 N 个子任务 |
 | `orchestration_progress` | `decompose_retry` | `attempt`（即将开始的尝试序号）, `reason` | `decomposeTaskStream` 瞬时故障重试前（P3，2026-08-08 起） | 分解遇到网络波动，正在重试… |
 | `orchestration_progress` | `decompose_failed` | `reason`（`error`/`empty`） | `Plan()` 分解报错或产出 0 子任务时（显式降级 direct） | 任务分解未完成，已切换为直接回答… |
-| `orchestration_progress` | `reused` | `team_count` | `plan_and_execute` 发现本会话已有重叠 running/completed 团队，跳过 LLM 分解 | 本会话已有 N 个相关团队，正在复用其结果… |
+| `orchestration_progress` | `reused` | `team_count` | `plan_and_execute` 发现本会话已有编排（阶段非 idle，且非换标的新任务），跳过 LLM 分解 | 本会话已有 N 个相关团队，正在复用其结果… |
 | `orchestration_progress` | `allocating` | `index`, `total`, `sub_task` | `Allocate()` 每 subtask 匹配完成 | 正在匹配 Agent…（i/N） |
 | `orchestration_progress` | `allocated` | `total` | `Allocate()` 完成 | Agent 分配完成 |
 | `orchestration_progress` | `creating_agent` | `agent_name` | `EnsureAgent()` LLM 生成前 | 正在创建新 Agent "X"… |
@@ -5017,6 +5017,29 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 sessionID 获取：planner 从 `input.SpiritSessionID`；allocator 从 `taskPlan.SpiritSessionID`；factory 从 `TaskProfile.SpiritSessionID`（新增字段，allocator 调用点填充）。
 
 **nil-safety**：所有组件的 bus 为 nil 时跳过发布（现有模式一致）。
+
+#### 设计一补充：会话编排阶段驱动 Turn 路由（2026-08-22）
+
+T3 事故根因是「DECISION 必须先 plan_and_execute」+ 预规划门控对 moderate/complex **一律 ForcePlanning**，与 system-push 总结、deferred 收口工具冲突。主路径改为系统在 Spirit LLM 之前解析会话阶段：
+
+| 阶段 | 判定 | Turn 行为 |
+|------|------|----------|
+| Idle | 无未删除团队 | 维持 QuickAssess + ForcePlanning + `plan_and_execute` |
+| Orchestrating | 存在 pending/running | **不** ForcePlanning；brief 要求等待；本轮 Activate `cancel_orchestration` |
+| Ready | 团队均终态（含 failed/cancelled/archived） | **默认用已有结果回答**；Activate `get_team_deliverable` + `synthesize_results`；用户重复同一句 = 回放，不是新 DAG |
+| Interrupted | 仅 interrupted、无 running/pending | 不重新分解；brief 提示等待恢复 |
+
+**新任务**才允许非 Idle 再规划：用户说「重新组建 / 另起 / 换标的」，或 Intent `refined_goal` / 当前问句相对上一份 `TaskPlan.UserMessage` 的实体明显偏移。
+
+**实现**：
+
+- `biz.ResolveSpiritSessionPhase` + `FormatOrchestrationBrief`（≤1k 字）
+- `chat_orchestrator_turn.go` 在门控前写入 `WithSpiritTurnOrchestration`；`ShouldForcePlanning` 抑制 Ready/Orchestrating 的强制规划
+- BeforeAgent `Activate` 阶段工具并 `toolsnapshot.InvalidateFromContext`（不改 BUILD 缓存 key，闲聊前缀仍 4 常驻）
+- BeforeModel 注入 orchestration brief
+- `plan_and_execute` 复用短路降为保险丝：阶段非 Idle 且非换标的则 `reuse_existing`，4-gram 只用于「新实体 vs 当前 DAG」
+
+代码锚点：`internal/biz/spirit_session_phase.go`、`internal/agent/orchestration_phase_hooks.go`、`internal/service/chat_orchestrator_turn_preplanning.go`。
 
 #### 设计二：Agent 创建用户确认（P1）
 
@@ -5228,7 +5251,7 @@ type DeliverableRef struct {
 | 全文存储 | 复用 steps_v2 reply step，不新建表 | 全文已持久化；零冗余；随 session 树删除级联清理；无双写一致性问题 |
 | 信封兼容性 | object 优先、string 兜底的双模读取 | 旧数据（纯 string）无需迁移 |
 | KeyFindings 入信封 | 是 | `extractKeyFindings` 已产出但当前被 `WriteDeliverablesToSession` 丢弃（`_`），入信封零成本提升下游信息密度 |
-| 二进制/文件产物 | 本期不支持 | 团队 reply 为文本；文件产物经 file_write 落盘，路径可写入摘要文本；真正的二进制信封属远期 artifact 系统 |
+| 二进制/文件产物 | 不进 prompt；信封指针 + inbox / M27 | 体积通道与结论通道分离；文本全文仍走 `read_upstream_deliverable`。规范见 [M78 §十一](./78-org-aware-orchestration.design.md) |
 
 #### B.10.15.4 Graph StateFields 桥接（团队内 → 团队间）
 
@@ -6185,6 +6208,8 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 5. factory key 变更仅影响新创建 Agent；存量 `factory-*` Agent 继续可用
 6. 复用仅复用配方（agent_keys），Team/Session 实体仍在当前会话新建，不跨会话物理复用
 7. 所有新日志走 `loggateway.Logger` 结构化字段（StepID/AgentKey/Err），无字符串拼接
+
+> **后续（M78，2026-08-22）**：在 L0 之前增加组织剪枝、排除 `dept_lead` 出业务匹配池、AssembleTeam 写入 `DepartmentID`。不改变上述 L0–L3 阈值与配方语义。详见 [78-org-aware-orchestration.design.md](./78-org-aware-orchestration.design.md)。
 
 #### B.10.21.9 测试策略
 

@@ -24,6 +24,7 @@
             @click="$emit('update:modelValue', false)"
           />
         </div>
+        <memory-l0-waterfall :bars="waterfallBars" class="q-mb-md" />
         <AppRegistryTable
           :shell="false"
           :resizable="false"
@@ -83,6 +84,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
+import MemoryL0Waterfall from '../../components/memory/MemoryL0Waterfall.vue';
+import { buildL0Waterfall } from './l0Waterfall';
 import { buildMemorySnapshotSegmentColumns, type MemorySnapshotSegmentRow } from './memoryTableUi';
 import type { L0AssemblySegmentsMap, L0AssemblySnapshot } from './types';
 
@@ -107,6 +110,7 @@ const segmentRows = computed<MemorySnapshotSegmentRow[]>(() =>
   Object.entries(segmentsMap.value).map(([section, stats]) => ({ section, ...stats })),
 );
 
+const waterfallBars = computed(() => buildL0Waterfall(segmentsMap.value));
 const totalTokens = computed(() => segmentRows.value.reduce((sum, r) => sum + (r.token_estimate || 0), 0));
 
 function parseJSON<T>(raw: string, fallback: T): T {

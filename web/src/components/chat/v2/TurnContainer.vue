@@ -7,7 +7,7 @@
     <!-- R4 召回透明度：本轮注入的记忆条目 chips（数据源 memory_recalled notice）。
          渲染在 steps 之前——召回发生在 BeforeModel（turn 最开始），UI 顺序必须与
          实际执行顺序一致：召回 → 思考 → 行动 → 回复。 -->
-    <MemoryRecallChips :turn-id="turn.ID" />
+    <MemoryRecallChips :turn-id="turn.ID" :session-id="turn.SessionID" :agent-key="turn.AgentKey" />
     <KnowledgeRecallChips :turn-id="turn.ID" />
     <template v-for="step in visibleSteps" :key="step.ID">
       <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
@@ -25,6 +25,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
+import { useUiConfigStore } from '../../../stores/uiConfig';
 import type { Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
@@ -44,6 +45,11 @@ defineEmits<{
   'confirm-step': [payload: ConfirmStepPayload];
 }>();
 const store = useActivityQueries();
+// 2026-08-21 全链路审查 R2：showToolCalls 开关此前只管 TodoKanban，action
+// steps（工具调用块）无条件渲染，开关名不副实。uiConfig 是全局 UI 偏好
+// store（localStorage 持久化），叶子组件直读与 useChatMessagePanelBindings
+// 同款，避免 Page→…→TaskCard→TurnList 五层 prop 钻透。
+const uiConfig = useUiConfigStore();
 const visibleSteps = computed(() =>
   store.getTurnSteps(props.turn.ID).filter((s) => {
     // 过滤系统内部通知（context_usage 等）
@@ -52,6 +58,10 @@ const visibleSteps = computed(() =>
     // 防止后端遗漏场景导致空 ReplyBlock 显示。streaming 中的 reply 仍显示。
     // Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.2
     if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
+      return false;
+    }
+    // showToolCalls=false 时隐藏工具调用块（与 TodoKanban 开关语义对齐）。
+    if (s.Kind === 'action' && !uiConfig.showToolCalls) {
       return false;
     }
     return true;

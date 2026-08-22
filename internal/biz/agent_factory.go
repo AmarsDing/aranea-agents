@@ -39,4 +39,11 @@ type TaskProfile struct {
 	DomainPath string
 	// Mission 是任务使命提示文本（用于同域使命相似度复用检查）。空回退 TaskDescription。
 	Mission string
+	// DepartmentID is the org-pruned home department (M78). When set,
+	// EnsureAgent occupies a position under this department. Empty keeps
+	// the pre-M78 factory behavior (no position).
+	DepartmentID string
+	// PositionID optionally pins the birth position. Empty → pick a default
+	// position under DepartmentID.
+	PositionID string
 }

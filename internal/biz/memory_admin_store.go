@@ -323,6 +323,26 @@ type L3FactReader interface {
 	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error)
 }
 
+// FactOverviewAgg is the SQL-level L3 panorama card (active count, today
+// added, summed use_count). Used by GetLayerOverview so large agents are not
+// scanned at layerOverviewScanLimit.
+type FactOverviewAgg struct {
+	ActiveCount int32
+	TodayAdded  int32
+	RecallHits  int32
+}
+
+// MemoryOverviewStatsReader provides SQL aggregates for the memory-center
+// panorama. Not embedded in MemoryAdminDeps: fakes keep the 500-row scan
+// fallback; production MemoryAdminAdapter implements this.
+// Stability:evolving
+type MemoryOverviewStatsReader interface {
+	AggregateFactOverview(ctx context.Context, agentID, todayStart string) (FactOverviewAgg, error)
+	ListRecentFactActivityRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
+	ListRecentlyInjectedFactRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
+	CountEntitiesCreatedSince(ctx context.Context, scopeType, scopeID, todayStart string) (int32, error)
+}
+
 // L3FactWriter exposes write operations for semantic facts.
 // Stability:evolving
 type L3FactWriter interface {
@@ -373,7 +393,7 @@ type L3FactAdminStore interface {
 // PIIReviewStore manages PII-flagged fact review.
 // Stability:evolving
 type PIIReviewStore interface {
-	ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
+	ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error)
 	ApprovePIIFact(ctx context.Context, factID string) error
 	RejectPIIFact(ctx context.Context, factID string) error
 }

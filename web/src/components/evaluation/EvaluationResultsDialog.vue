@@ -89,6 +89,16 @@
                   :loading="savingId === slotProps.row.id"
                   @click="$emit('annotate', slotProps.row)"
                 />
+                <q-btn
+                  v-if="slotProps.row.session_id || slotProps.row.trace_run_id"
+                  dense
+                  flat
+                  round
+                  icon="timeline"
+                  color="primary"
+                  :title="$t('evaluationPage.openTrace')"
+                  @click="$emit('open-trace', slotProps.row)"
+                />
               </div>
             </q-td>
           </template>
@@ -156,6 +166,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean];
   annotate: [row: EvalCaseResult];
+  'open-trace': [row: EvalCaseResult];
   'update-row': [row: EvalCaseResult];
   'page-change': [page: number];
   'page-size-change': [pageSize: number];

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"aranea-agents/pkg/apierror"
 )
 
 func TestUsecase_UpdateDocumentStatus(t *testing.T) {
@@ -19,14 +21,14 @@ func TestUsecase_UpdateDocumentStatus(t *testing.T) {
 		wantErrIs  error
 	}{
 		{
-			"delegates to repo on success",
-			"doc-1", "ready", "", 5,
+			"delegates to repo on pending→indexing",
+			"doc-1", "indexing", "", 5,
 			func(_ context.Context, id, status, errMsg string, chunkCount int) error {
 				if id != "doc-1" {
 					t.Errorf("id = %q, want %q", id, "doc-1")
 				}
-				if status != "ready" {
-					t.Errorf("status = %q, want %q", status, "ready")
+				if status != "indexing" {
+					t.Errorf("status = %q, want %q", status, "indexing")
 				}
 				if chunkCount != 5 {
 					t.Errorf("chunkCount = %d, want 5", chunkCount)
@@ -36,8 +38,14 @@ func TestUsecase_UpdateDocumentStatus(t *testing.T) {
 			false, nil,
 		},
 		{
+			"unknown status rejected",
+			"doc-1", "ready", "", 0,
+			nil,
+			true, ErrInvalidDocumentStatus,
+		},
+		{
 			"repo error propagated",
-			"doc-1", "failed", "parse error", 0,
+			"doc-1", "error", "parse error", 0,
 			func(_ context.Context, _, _, _ string, _ int) error {
 				return fmt.Errorf("knowledge: db error")
 			},
@@ -67,12 +75,65 @@ func TestUsecase_UpdateDocumentStatus(t *testing.T) {
 
 func TestUsecase_UpdateDocumentStatus_NilUsecase(t *testing.T) {
 	var u *Usecase
-	err := u.UpdateDocumentStatus(context.Background(), "doc-1", "ready", "", 0)
+	err := u.UpdateDocumentStatus(context.Background(), "doc-1", "indexing", "", 0)
 	if err == nil {
 		t.Fatal("nil usecase should return error")
 	}
 	if !errors.Is(err, ErrUnavailable) {
 		t.Errorf("expected ErrUnavailable, got %v", err)
+	}
+}
+
+func TestUsecase_UpdateDocumentStatus_RejectsPendingToIndexed(t *testing.T) {
+	mr := noOpMockRepo()
+	var wrote bool
+	mr.docUpdateFn = func(context.Context, string, string, string, int) error {
+		wrote = true
+		return nil
+	}
+	u := NewUsecaseFromRepo(mr)
+	err := u.UpdateDocumentStatus(context.Background(), "doc-1", "indexed", "", 3)
+	if err == nil {
+		t.Fatal("pending→indexed should be rejected")
+	}
+	if wrote {
+		t.Fatal("repo must not be written on illegal transition")
+	}
+}
+
+func TestUsecase_CommitIndexedDocument_RequiresIndexing(t *testing.T) {
+	mr := noOpMockRepo()
+	u := NewUsecaseFromRepo(mr)
+	err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1)
+	if err == nil {
+		t.Fatal("commit from pending should fail")
+	}
+}
+
+func TestUsecase_CommitIndexedDocument_SequentialFallback(t *testing.T) {
+	mr := noOpMockRepo()
+	mr.docGetFn = func(_ context.Context, id string) (Document, error) {
+		return Document{ID: id, Status: "indexing"}, nil
+	}
+	var inserted, status, counts bool
+	mr.chunkInsertFn = func(_ context.Context, chunks []Chunk) error {
+		inserted = len(chunks) == 1
+		return nil
+	}
+	mr.docUpdateFn = func(_ context.Context, _, statusVal, _ string, cc int) error {
+		status = statusVal == "indexed" && cc == 1
+		return nil
+	}
+	mr.collUpdateFn = func(_ context.Context, id string, docDelta, chunkDelta int) error {
+		counts = id == "col-1" && docDelta == 1 && chunkDelta == 1
+		return nil
+	}
+	u := NewUsecaseFromRepo(mr)
+	if err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if !inserted || !status || !counts {
+		t.Fatalf("fallback writes incomplete: insert=%v status=%v counts=%v", inserted, status, counts)
 	}
 }
 
@@ -343,6 +404,32 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 		_, err := u.EnsureDefaultCollection(context.Background(), "m", 1536, "")
 		if !errors.Is(err, ErrUnavailable) {
 			t.Errorf("error = %v, want ErrUnavailable", err)
+		}
+	})
+
+	t.Run("retries GetByName after unique conflict", func(t *testing.T) {
+		mr := noOpMockRepo()
+		lookups := 0
+		mr.collGetByNameFn = func(_ context.Context, _, name string) (Collection, error) {
+			lookups++
+			if lookups == 1 {
+				return Collection{}, apierror.NotFound(apierror.DomainKnowledge, "missing")
+			}
+			return Collection{ID: "col-won", Name: name}, nil
+		}
+		mr.collCreateFn = func(_ context.Context, _ Collection) (Collection, error) {
+			return Collection{}, apierror.Conflict(apierror.DomainKnowledge, "duplicate name")
+		}
+		u := NewUsecaseFromRepo(mr)
+		got, err := u.EnsureDefaultCollection(context.Background(), "m1", 1024, "ws-a")
+		if err != nil {
+			t.Fatalf("EnsureDefaultCollection error: %v", err)
+		}
+		if got.ID != "col-won" {
+			t.Errorf("ID = %q, want col-won", got.ID)
+		}
+		if lookups != 2 {
+			t.Errorf("GetCollectionByName calls = %d, want 2", lookups)
 		}
 	})
 }

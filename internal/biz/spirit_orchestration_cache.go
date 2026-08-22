@@ -22,6 +22,7 @@ type OrchestrationCacheEntry struct {
 	AvgDurationMs int64        `json:"avg_duration_ms"`
 	AgentKeys     []string     `json:"agent_keys,omitempty"`
 	DomainPath    string       `json:"domain_path,omitempty"` // 配方所属领域路径（B.10.21）；旧 JSON 无此字段加载不报错
+	Specialties   []string     `json:"specialties,omitempty"` // 专题槽位骨架（配方回放重建 DAG）
 	UpdatedAt     string       `json:"updated_at"`
 }
 
@@ -294,6 +295,7 @@ func (c *OrchestrationCache) RecordCompletionWithAgents(ctx context.Context, tas
 		TeamCount:     teamCount,
 		AvgDurationMs: avgDurationMs,
 		AgentKeys:     agentKeys,
+		Specialties:   nil,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 	c.entries[taskPattern] = &entry
@@ -418,6 +420,7 @@ func (c *OrchestrationCache) RecordDomainRecipe(ctx context.Context, domainPath 
 		TeamCount:     teamCount,
 		AvgDurationMs: 0,
 		AgentKeys:     agentKeys,
+		Specialties:   nil,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 	c.mu.Unlock()
@@ -428,6 +431,20 @@ func (c *OrchestrationCache) RecordDomainRecipe(ctx context.Context, domainPath 
 		loggateway.Str("topology", string(topology)),
 		loggateway.Float64("dq_score", dqScore),
 	)
+	c.persistToRepo(ctx)
+}
+
+// SetEntrySpecialties stores the specialty-slot skeleton on an existing
+// cache entry so recipe replay can rebuild a multi-subtask DAG.
+func (c *OrchestrationCache) SetEntrySpecialties(ctx context.Context, taskPattern string, specialties []string) {
+	if c == nil || strings.TrimSpace(taskPattern) == "" {
+		return
+	}
+	c.mu.Lock()
+	if e, ok := c.entries[taskPattern]; ok {
+		e.Specialties = append([]string(nil), specialties...)
+	}
+	c.mu.Unlock()
 	c.persistToRepo(ctx)
 }
 

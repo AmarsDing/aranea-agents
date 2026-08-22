@@ -357,10 +357,16 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 		}
 		cursor.stage, cursor.attempt = SIStageVerifying, attempt
 		emitStage(SIStageVerifying, attempt, ActivityStatusRunning, "")
-		goPkgs, _ := DeriveAffectedScopes(changes)
+		plan := PlanSIVerification(patch.Kind, changes)
 		var report []SandboxGateResult
 		allPass := true
-		for _, gate := range []SandboxGateKind{SandboxGateBuild, SandboxGateTest, SandboxGateLint} {
+		for _, gate := range []SandboxGateKind{SandboxGateBuild, SandboxGateTest, SandboxGateLint, SandboxGateWebLint} {
+			if !plan.ShouldRun(gate) {
+				if gate != SandboxGateWebLint {
+					report = append(report, NewSkippedSandboxGate(gate, plan.SkipReason(gate)))
+				}
+				continue
+			}
 			// 用户介入（S4）：G1-G3 各 5-10min 超时上限，每个 Gate 前消费一次，
 			// 避免 pause/rollback 最长延迟整个 verify 段才生效。
 			if cmd, ok := pollControl(); ok {
@@ -368,26 +374,23 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 					return exitErr
 				}
 			}
-			res, gerr := uc.sandbox.RunGate(ctx, worktree, gate, goPkgs)
+			res, gerr := uc.sandbox.RunGate(ctx, worktree, gate, plan.GoPkgs)
 			if gerr != nil {
 				res = SandboxGateResult{Gate: gate, Passed: false, Output: "gate exec error: " + gerr.Error()}
 			}
 			report = append(report, res)
-			if !res.Passed {
+			if res.Failed() {
+				allPass = false
+				break
+			}
+			if closed, fail := siFailClosedWebLint(plan, res); closed {
+				report[len(report)-1] = fail
 				allPass = false
 				break
 			}
 		}
-		// G5（eval 基线）门禁延期未接线（73-self-iteration-v3 P2 偏差，design D4
-		// 注记）：显式落一条 skipped 记录，让控制台详情可见「G5 未执行」，
-		// 而非静默缺失（死枚举）。
-		if allPass {
-			report = append(report, SandboxGateResult{
-				Gate:   SandboxGateEvalBase,
-				Passed: true,
-				Output: "skipped: eval baseline gate deferred (73-self-iteration-v3 design D4 note)",
-			})
-		}
+		// G5 未接线：恒落 Skipped 记录（Passed=false，不计入 allPass）。
+		report = append(report, NewSkippedSandboxGate(SandboxGateEvalBase, plan.SkipReason(SandboxGateEvalBase)))
 		run.VerificationReport = report
 
 		if allPass {
@@ -467,12 +470,34 @@ func (uc *SelfImprovementPipelineUsecase) govern(
 	return uc.runWriter.Update(ctx, run, RunStatusAwaitingGovernance)
 }
 
+// siFailClosedWebLint treats a skipped frontend lint as a verify failure when
+// the patch is code/test and only touches web/ (no Go gates ran).
+func siFailClosedWebLint(plan SIVerifyPlan, res SandboxGateResult) (bool, SandboxGateResult) {
+	if res.Gate != SandboxGateWebLint || !res.Skipped {
+		return false, res
+	}
+	if plan.Kind != PatchKindCode && plan.Kind != PatchKindTest {
+		return false, res
+	}
+	if len(plan.GoPkgs) > 0 {
+		return false, res
+	}
+	res.Skipped = false
+	res.Passed = false
+	if strings.TrimSpace(res.Output) == "" {
+		res.Output = "fail-closed: web-only code patch requires frontend lint"
+	} else if !strings.Contains(res.Output, "fail-closed") {
+		res.Output = res.Output + "\nfail-closed: web-only code patch requires frontend lint"
+	}
+	return true, res
+}
+
 // siFailedGateDigest condenses failed-gate output into a Patcher retry hint.
 func siFailedGateDigest(report []SandboxGateResult) string {
 	const maxOut = 500
 	var b strings.Builder
 	for _, r := range report {
-		if r.Passed {
+		if r.Skipped || r.Passed {
 			continue
 		}
 		out := r.Output

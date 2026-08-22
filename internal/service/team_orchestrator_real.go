@@ -26,6 +26,7 @@ type RealTeamOrchestrator struct {
 	assembler *SpiritTeamAssembler
 	starter   biz.TeamStarterPort
 	agentRdr  biz.AgentReader
+	org       biz.OrganizationReader
 	pending   sync.Map // teamID → pendingTeamCompletion
 	lg        loggateway.Logger
 }
@@ -58,6 +59,12 @@ func (o *RealTeamOrchestrator) SetStarter(s biz.TeamStarterPort) {
 // 用于在 PlanStep 未指定 AgentKeys 时查询可用 agent 列表。
 func (o *RealTeamOrchestrator) SetAgentReader(r biz.AgentReader) {
 	o.agentRdr = r
+}
+
+// SetOrganizationReader injects org lookup for majority-vote DepartmentID
+// when PlanStep.DepartmentID is empty (members have positions).
+func (o *RealTeamOrchestrator) SetOrganizationReader(org biz.OrganizationReader) {
+	o.org = org
 }
 
 // Orchestrate creates a team for the given PlanStep and starts its team_run.
@@ -101,14 +108,17 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	if mode == "" {
 		mode = biz.SpiritTeamModeForStep("", len(agentKeys))
 	}
+	deptID, crossIDs := o.resolveTeamOrg(ctx, step, agentKeys)
 	params := biz.SpiritTeamParams{
-		SpiritSessionID: spiritSessionID,
-		TaskDescription: taskDesc,
-		AgentKeys:       agentKeys,
-		DagNodeID:       step.ID,
-		DependsOn:       step.DependsOn,
-		Mode:            mode,
-		AutoStart:       false,
+		SpiritSessionID:         spiritSessionID,
+		TaskDescription:         taskDesc,
+		AgentKeys:               agentKeys,
+		DagNodeID:               step.ID,
+		DependsOn:               step.DependsOn,
+		Mode:                    mode,
+		AutoStart:               false,
+		DepartmentID:            deptID,
+		CrossDeptMemberAgentIDs: crossIDs,
 		// P1 形式契约（B.10.15.2）：PlanStep → Team 落库，
 		// 供 dagRun advisory 契约验证与下游注入读取。
 		Deliverables:  step.Deliverables,
@@ -233,11 +243,97 @@ func (o *RealTeamOrchestrator) resolveAgentKeys(ctx context.Context) []string {
 	}
 	keys := make([]string, 0, len(result.Items))
 	for _, a := range result.Items {
-		if a.AgentKey != "" {
-			keys = append(keys, a.AgentKey)
+		if a.AgentKey == "" || !biz.IsCatalogAgentAssignable(a) {
+			continue
 		}
+		keys = append(keys, a.AgentKey)
 	}
 	return keys
+}
+
+// resolveTeamOrg picks the team's home department and borrow agent IDs.
+// Preference: PlanStep.DepartmentID; else majority vote of member positions.
+func (o *RealTeamOrchestrator) resolveTeamOrg(ctx context.Context, step biz.PlanStep, agentKeys []string) (departmentID string, crossDeptAgentIDs []string) {
+	departmentID = strings.TrimSpace(step.DepartmentID)
+	type member struct {
+		id   string
+		key  string
+		dept string
+	}
+	members := make([]member, 0, len(agentKeys))
+	if o.agentRdr != nil {
+		for _, k := range agentKeys {
+			ag, err := o.agentRdr.GetAgentByAgentKey(ctx, k)
+			if err != nil {
+				continue
+			}
+			dept := departmentID
+			if o.org != nil {
+				if d := departmentOfAgent(ctx, o.org, ag); d != "" {
+					dept = d
+				}
+			}
+			members = append(members, member{id: ag.ID, key: ag.AgentKey, dept: dept})
+		}
+	}
+	if departmentID == "" {
+		counts := map[string]int{}
+		best, bestN := "", 0
+		for _, m := range members {
+			if m.dept == "" {
+				continue
+			}
+			counts[m.dept]++
+			if counts[m.dept] > bestN {
+				best = m.dept
+				bestN = counts[m.dept]
+			}
+		}
+		departmentID = best
+	}
+	crossWant := make(map[string]struct{}, len(step.CrossDeptMemberKeys))
+	for _, k := range step.CrossDeptMemberKeys {
+		crossWant[k] = struct{}{}
+	}
+	for _, m := range members {
+		if m.id == "" {
+			continue
+		}
+		if _, marked := crossWant[m.key]; marked {
+			crossDeptAgentIDs = append(crossDeptAgentIDs, m.id)
+			continue
+		}
+		if departmentID != "" && m.dept != "" && m.dept != departmentID {
+			crossDeptAgentIDs = append(crossDeptAgentIDs, m.id)
+		}
+	}
+	return departmentID, crossDeptAgentIDs
+}
+
+func departmentOfAgent(ctx context.Context, org biz.OrganizationReader, ag biz.Agent) string {
+	pid := strings.TrimSpace(ag.PositionID)
+	if pid == "" || org == nil {
+		return ""
+	}
+	n, err := org.GetOrgNode(ctx, pid)
+	if err != nil {
+		return ""
+	}
+	switch n.Level {
+	case "department":
+		return n.ID
+	case "position":
+		if strings.TrimSpace(n.ParentID) == "" {
+			return ""
+		}
+		parent, err := org.GetOrgNode(ctx, n.ParentID)
+		if err != nil || parent.Level != "department" {
+			return ""
+		}
+		return parent.ID
+	default:
+		return ""
+	}
 }
 
 // agentKeysSource 返回 AgentKeys 来源标识，用于日志诊断。

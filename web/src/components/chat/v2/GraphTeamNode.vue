@@ -25,7 +25,7 @@
     <!-- 头部：状态点 + 标题 + 状态文本 -->
     <div class="gtn-header" @click="onHeaderClick">
       <span class="gtn-header__dot" :class="`gtn-header__dot--${nodeTone}`" />
-      <span class="gtn-header__label" :title="node.Label">{{ node.Label }}</span>
+      <span class="gtn-header__label" :title="headerTitle">{{ node.Label }}</span>
       <span class="gtn-header__status" :class="`gtn-header__status--${nodeTone}`">{{ nodeStatusLabel }}</span>
     </div>
 
@@ -59,7 +59,7 @@
       </template>
       <div v-else class="gtn-member gtn-member--empty">
         <span class="gtn-member__dot gtn-member__dot--muted" />
-        <span class="gtn-member__name">{{ t('chat.v2.noMembers') }}</span>
+        <span class="gtn-member__name">{{ staffingCaption || t('chat.v2.noMembers') }}</span>
       </div>
     </div>
 
@@ -98,6 +98,7 @@ import {
   graphTeamNodeTone,
   graphTeamNodeStatusText,
   formatMemberDuration,
+  formatStaffingCaption,
   type GraphTeamNodeTone,
 } from './graphTeamNodeUi';
 
@@ -127,10 +128,15 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
-const { membersOf } = useGraphNodeTeam();
+const { membersOf, staffingOf } = useGraphNodeTeam();
 
 // ── 成员解析：GraphNode → TeamStage → TeamRun → MemberSession（共享 composable） ──
 const members = computed<MemberSession[]>(() => membersOf(props.node));
+const staffingCaption = computed(() => formatStaffingCaption(staffingOf(props.node)));
+const headerTitle = computed(() => {
+  const cap = staffingCaption.value;
+  return cap ? `${props.node.Label} · ${cap}` : props.node.Label;
+});
 
 const queries = useActivityQueries();
 

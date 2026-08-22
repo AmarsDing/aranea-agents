@@ -151,6 +151,9 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const total = typeof meta.total === 'number' ? meta.total : 0;
       const subTask = typeof meta.sub_task === 'string' ? meta.sub_task : '';
       const agentName = typeof meta.agent_name === 'string' ? meta.agent_name : '';
+      const specialty = typeof meta.specialty === 'string' ? meta.specialty : '';
+      const matchLayer = typeof meta.match_layer === 'string' ? meta.match_layer : '';
+      const sketch = typeof meta.sketch === 'string' ? meta.sketch : '';
       // P3（2026-08-08）：decompose_retry 携带的即将开始的尝试序号。
       const attempt = typeof meta.attempt === 'number' ? meta.attempt : 0;
       // 2026-08-21 P0：team_count_mismatch 参数（task_planner_impl.go 截断/放行通知）。
@@ -167,12 +170,18 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       if (phase === 'decomposing' && elapsed > 0) {
         messageKey = 'chat.orchestrationProgress.decomposingElapsed';
       }
+      if (phase === 'allocating' && (agentName || specialty)) {
+        messageKey = 'chat.orchestrationProgress.allocatingBound';
+      }
       const text = t(messageKey, {
         subTaskCount,
         index,
         total,
         subTask,
         agentName,
+        specialty,
+        matchLayer,
+        sketch,
         attempt,
         requestedTeamCount,
         decomposedSubtaskCount,

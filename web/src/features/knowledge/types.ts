@@ -176,7 +176,8 @@ export type CreateCollectionInput = {
 };
 
 export type IngestDocumentInput = {
-  collection_id: string;
+  /** US-14：留空 = 后端落入默认知识库。 */
+  collection_id?: string;
   source: string;
   mime_type?: string;
   /** raw document payload encoded in standard base64 */
@@ -215,7 +216,8 @@ export type KnowledgeUploadTask = {
 };
 
 export type SearchKnowledgeQuery = {
-  collection_id: string;
+  /** US-14：留空 = 全部可见知识库联邦检索。 */
+  collection_id?: string;
   query: string;
   top_k?: number;
   min_score?: number;

@@ -100,7 +100,7 @@ func (a *SIRepoApplier) ApplyHotReload(ctx context.Context, run *biz.SelfImprove
 			loggateway.Err(err))
 		return "", err
 	}
-	a.lg.Info("self-improvement hot-reload applied",
+	a.lg.Info("self-improvement working-tree apply landed (runtime reload is best-effort at usecase)",
 		loggateway.StepID("si_apply.hot_reload"),
 		loggateway.Str("run_id", run.ID),
 		loggateway.Int("files", len(paths)))
@@ -150,7 +150,7 @@ func (a *SIRepoApplier) ApplyCodeMerge(ctx context.Context, run *biz.SelfImprove
 			loggateway.Err(err))
 		return "", apierror.Wrap(fmt.Errorf("%w: %s", biz.ErrSIMergeConflict, err), apierror.CodeConflict, siApplierDomain)
 	}
-	a.lg.Info("self-improvement code patch merged",
+	a.lg.Info("self-improvement code patch merged (effective on next process restart)",
 		loggateway.StepID("si_apply.code_merge"),
 		loggateway.Str("run_id", run.ID),
 		loggateway.Str("commit", sha))

@@ -65,12 +65,17 @@ function mapDiagnosis(m: SelfImprovementRunMsg): SIDiagnosis | null {
 }
 
 function mapGates(m: SelfImprovementRunMsg): SIGateResult[] {
-  return (m.verificationReport ?? []).map((g) => ({
-    gate: str(g.gate),
-    passed: g.passed === true,
-    output: str(g.output),
-    durationMs: num(g.durationMs),
-  }));
+  return (m.verificationReport ?? []).map((g) => {
+    const output = str(g.output);
+    const skipped = output.startsWith('skipped:');
+    return {
+      gate: str(g.gate),
+      passed: g.passed === true && !skipped,
+      skipped,
+      output,
+      durationMs: num(g.durationMs),
+    };
+  });
 }
 
 function mapCritic(m: SelfImprovementRunMsg): SICriticReport | null {

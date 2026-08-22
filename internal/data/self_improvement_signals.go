@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -175,8 +176,9 @@ func (r *SelfImprovementSignalRepo) GetLatestBaseline(ctx context.Context) (*biz
 	if r == nil || r.data == nil {
 		return nil, apierror.Internal("SELF_IMPROVE", "database not configured")
 	}
-	runs, err := r.data.RW().Read(ctx).EvalRun.Query().
-		Where(evalrun.StatusEQ("completed")).
+	q := evalBaselineQuery(ctx, r.data).
+		Where(evalrun.StatusEQ("completed"))
+	runs, err := q.
 		Order(ent.Desc(evalrun.FieldCreatedAt)).
 		Limit(1).
 		All(ctx)
@@ -200,7 +202,7 @@ func (r *SelfImprovementSignalRepo) GetPreviousBaseline(ctx context.Context) (*b
 	if err != nil || latest == nil {
 		return nil, err
 	}
-	runs, err := r.data.RW().Read(ctx).EvalRun.Query().
+	runs, err := evalBaselineQuery(ctx, r.data).
 		Where(
 			evalrun.StatusEQ("completed"),
 			evalrun.DatasetIDEQ(latest.DatasetID),
@@ -220,6 +222,15 @@ func (r *SelfImprovementSignalRepo) GetPreviousBaseline(ctx context.Context) (*b
 }
 
 // entEvalRunToBaseline averages the four component scores into one composite.
+func evalBaselineQuery(ctx context.Context, d *Data) *ent.EvalRunQuery {
+	q := d.RW().Read(ctx).EvalRun.Query()
+	if workspace.IsSystem(ctx) {
+		return q
+	}
+	ws := workspace.IDFromContext(ctx)
+	return q.Where(evalrun.Or(evalrun.WorkspaceIDEQ(ws), evalrun.WorkspaceIDEQ("")))
+}
+
 func entEvalRunToBaseline(r *ent.EvalRun) *biz.EvalBaseline {
 	return &biz.EvalBaseline{
 		RunID:     r.ID,

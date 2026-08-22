@@ -1,9 +1,10 @@
 import { computed, ref, watch, type Ref } from 'vue';
 import type { MemoryEpisode } from '../../types';
-import { getMemoryEpisodes } from '../../api';
+import { useMemoryStore } from '../../../../stores/memory';
 
 /** L2 情景时间线数据加载：agent 变化时重置重取，支持「加载更多」分页追加。 */
 export function useMemoryEpisodes(agentId: Ref<string | null>, sessionId: Ref<string | null>, pageSize = 20) {
+  const memoryStore = useMemoryStore();
   const items = ref<MemoryEpisode[]>([]);
   const total = ref(0);
   const loading = ref(false);
@@ -22,7 +23,7 @@ export function useMemoryEpisodes(agentId: Ref<string | null>, sessionId: Ref<st
     loading.value = true;
     error.value = '';
     try {
-      const result = await getMemoryEpisodes(id, sessionId.value ?? '', pageSize, 0);
+      const result = await memoryStore.listEpisodes(id, sessionId.value ?? '', pageSize, 0);
       items.value = result.items;
       total.value = result.total;
     } catch (e) {
@@ -42,7 +43,7 @@ export function useMemoryEpisodes(agentId: Ref<string | null>, sessionId: Ref<st
     loadingMore.value = true;
     error.value = '';
     try {
-      const result = await getMemoryEpisodes(id, sessionId.value ?? '', pageSize, items.value.length);
+      const result = await memoryStore.listEpisodes(id, sessionId.value ?? '', pageSize, items.value.length);
       items.value = [...items.value, ...result.items];
       total.value = result.total;
     } catch (e) {

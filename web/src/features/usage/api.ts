@@ -23,6 +23,7 @@ import type {
   ModelUsageEventsResult,
   AllModelsBreakdownQuery,
   AllModelsBreakdownResult,
+  CacheHitRatioStat,
 } from './types';
 
 export type {
@@ -432,4 +433,25 @@ export async function listAllModelsBreakdown(query: AllModelsBreakdownQuery = {}
     page: num(raw.page),
     page_size: num(raw.pageSize),
   };
+}
+
+/**
+ * `GET /v1/usage/cache-hit-ratio-stats` —— 29-token §9.3 prompt 缓存命中率聚合
+ * （全局 (provider, model) 粒度，平台级门禁：非管理员/系统调用者会 403）。
+ */
+export async function getCacheHitRatioStats(windowHours = 1): Promise<CacheHitRatioStat[]> {
+  const raw = await usage.GetCacheHitRatioStats({ windowHours });
+  const items = Array.isArray(raw.stats) ? raw.stats : [];
+  return items.map((s) => {
+    const r = obj(s);
+    return {
+      provider: String(r.provider ?? ''),
+      model: String(r.model ?? ''),
+      samples: num(r.samples),
+      prompt_tokens: num(r.prompt_tokens ?? r.promptTokens),
+      cached_tokens: num(r.cached_tokens ?? r.cachedTokens),
+      weighted_ratio: num(r.weighted_ratio ?? r.weightedRatio),
+      p50_ratio: num(r.p50_ratio ?? r.p50Ratio),
+    };
+  });
 }

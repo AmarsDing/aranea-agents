@@ -203,6 +203,23 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 	return out, total, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
+// CountEntitiesCreatedSince counts active, non-deleted entities in a scope
+// whose created_at is on or after todayStart (RFC3339 / RFC3339Nano text).
+func (r *l4EntityRepo) CountEntitiesCreatedSince(ctx context.Context, scopeType, scopeID, todayStart string) (int32, error) {
+	scopeType = strings.TrimSpace(scopeType)
+	scopeID = strings.TrimSpace(scopeID)
+	todayStart = strings.TrimSpace(todayStart)
+	if scopeType == "" || scopeID == "" {
+		return 0, nil
+	}
+	q := `SELECT COUNT(*) FROM memory_entities WHERE deleted_at = '' AND status = 'active' AND scope_type = ? AND scope_id = ? AND created_at >= ?`
+	var count int32
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(q), []any{scopeType, scopeID, todayStart}, &count); err != nil {
+		return 0, entErrToBizErr(err, "MEMORY_L4")
+	}
+	return count, nil
+}
+
 func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error) {
 	if centerID == "" {
 		return nil, apierror.BadRequest("MEMORY", "center_id is required")
@@ -483,7 +500,7 @@ func (r *l4EntityRepo) EvolutionProposalRows(ctx context.Context, agentID, statu
 	if len(clauses) > 0 {
 		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
-	q := cascadeProposalSelect + where + ` ORDER BY created_at DESC LIMIT ?`
+	q := evolutionProposalSelect + where + ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, lim)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
@@ -492,7 +509,7 @@ func (r *l4EntityRepo) EvolutionProposalRows(ctx context.Context, agentID, statu
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanCascadeProposalJSON(rows)
+		b, err := scanEvolutionProposalJSON(rows)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
@@ -663,6 +680,9 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
+	if err := applyEvolutionEventSideEffects(ctx, r, in); err != nil {
+		return nil, err
+	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, workspace_id, event_kind, target_field, reason,
 		        trigger_kind, trigger_source, metadata_json, created_at, reverted
@@ -691,6 +711,52 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 		"reverted": reverted != 0,
 	}
 	return json.Marshal(result)
+}
+
+func evolutionReviewTarget(kind, metadataJSON, fallback string, lg loggateway.Logger) string {
+	target := strings.TrimSpace(fallback)
+	meta := decodeJSONObject(metadataJSON, lg)
+	if meta == nil {
+		return target
+	}
+	switch strings.TrimSpace(kind) {
+	case "proposal_approved", "proposal_rejected":
+		if id, _ := meta["proposal_id"].(string); strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
+		}
+	case "event_reverted":
+		if id, _ := meta["event_id"].(string); strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
+		}
+	}
+	return target
+}
+
+func applyEvolutionEventSideEffects(ctx context.Context, r *l4EntityRepo, in biz.EvolutionEventInsert) error {
+	kind := strings.TrimSpace(in.EventKind)
+	target := evolutionReviewTarget(kind, in.MetadataJSON, in.TargetField, r.data.lg)
+	if target == "" {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	switch kind {
+	case "proposal_approved", "proposal_rejected":
+		status := "approved"
+		if kind == "proposal_rejected" {
+			status = "rejected"
+		}
+		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE agent_evolution_proposals SET status = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'`),
+			status, now, now, target)
+		return entErrToBizErr(err, "MEMORY_L4")
+	case "event_reverted":
+		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE agent_evolution_events SET reverted = 1, reverted_at = ? WHERE id = ? AND reverted = 0`),
+			now, target)
+		return entErrToBizErr(err, "MEMORY_L4")
+	default:
+		return nil
+	}
 }
 
 // --- L4GraphTraverser ---

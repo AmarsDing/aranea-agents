@@ -214,3 +214,34 @@ func TestSearchAll_NoRouteMatch_FallsBackToBroadcast(t *testing.T) {
 		t.Errorf("expected broadcast to both collections, searched %v", searched)
 	}
 }
+
+func TestSearchAll_BroadcastCap(t *testing.T) {
+	cols := make([]biz.KnowledgeCollection, 12)
+	for i := range cols {
+		cols[i] = biz.KnowledgeCollection{ID: "col-" + string(rune('a'+i)), Name: "lib-" + string(rune('a'+i))}
+	}
+	meta := &mockMetaFetcher{collections: cols}
+	repo := &stubAllRepo{}
+	ret := NewRetriever(stubAllEmbedder{}, repo, nil, loggateway.NewNoop())
+	fr := NewFederatedRetrieverWithMeta(nil, ret, meta, loggateway.NewNoop())
+
+	_, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "zzz unrelated", TopK: 5}, nil, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	searched := repo.searchedSnapshot()
+	if len(searched) != 8 {
+		t.Errorf("expected broadcast cap 8, searched %d %v", len(searched), searched)
+	}
+}
+
+func TestCapCollectionIDs(t *testing.T) {
+	ids := []string{"a", "b", "c", "d"}
+	got := capCollectionIDs(ids, 2)
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("capCollectionIDs = %v", got)
+	}
+	if capCollectionIDs(ids, 0) == nil || len(capCollectionIDs(ids, 0)) != 4 {
+		t.Fatalf("cap 0 should pass through")
+	}
+}

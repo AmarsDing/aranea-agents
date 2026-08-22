@@ -20,9 +20,11 @@ body:not(.body--dark) .q-drawer.app-sidebar .q-drawer__content
     width: 0
     height: 0
 
-.app-layout-root .q-drawer--standard,
-.app-layout-root .q-drawer--mini,
-.app-layout-root .q-drawer--design-mini
+// 仅侧栏抽屉透明槽：必须带 .app-sidebar 限定，否则会误伤所有 overlay 详情抽屉
+// （Quasar 会给非 mini 抽屉加 q-drawer--standard，overlay 抽屉也渲染在 .app-layout-root 内）
+.app-layout-root .q-drawer--standard.app-sidebar,
+.app-layout-root .q-drawer--mini.app-sidebar,
+.app-layout-root .q-drawer--design-mini.app-sidebar
   background: transparent !important
 
 .app-sidebar-card

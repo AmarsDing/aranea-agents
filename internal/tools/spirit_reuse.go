@@ -32,19 +32,38 @@ var genericOverlapTokens = map[string]bool{
 // wantsForceNewOrchestration reports whether the caller asked to start a brand
 // new DAG even if overlapping teams already exist in the spirit session.
 func wantsForceNewOrchestration(forceNew bool, prompt string) bool {
-	if forceNew {
-		return true
-	}
-	lower := strings.ToLower(prompt)
-	for _, kw := range []string{
-		"重新组建", "再组建", "重新规划", "另组", "另起",
-		"从头再来", "force_new", "start over", "re-plan", "replan",
-	} {
-		if strings.Contains(lower, kw) {
-			return true
+	return forceNew || biz.WantsNewOrchestration(prompt)
+}
+
+// currentOrchestrationCohort returns the live (active/completed) teams of the
+// latest DAG in the session. Used when the user follow-up has no entity overlap
+// (e.g. "结果怎么样") but the session phase already has an orchestration.
+func currentOrchestrationCohort(teams []biz.Team) []biz.Team {
+	live := make([]biz.Team, 0, len(teams))
+	for _, t := range teams {
+		if strings.TrimSpace(t.DeletedAt) != "" {
+			continue
+		}
+		switch t.Status {
+		case biz.TeamStatusFailed, biz.TeamStatusCancelled, biz.TeamStatusArchived:
+			continue
+		case biz.TeamStatusPending, biz.TeamStatusRunning, biz.TeamStatusInterrupted, biz.TeamStatusCompleted:
+			live = append(live, t)
 		}
 	}
-	return false
+	if len(live) == 0 {
+		return nil
+	}
+	latest := live[0]
+	for _, t := range live[1:] {
+		if t.UpdatedAt > latest.UpdatedAt || (t.UpdatedAt == latest.UpdatedAt && t.CreatedAt > latest.CreatedAt) {
+			latest = t
+		}
+	}
+	if g := strings.TrimSpace(latest.LinkedGraphID); g != "" {
+		return expandToOrchestrationCohort([]biz.Team{latest}, teams)
+	}
+	return live
 }
 
 // reusableOverlappingTeams returns session teams that overlap the new prompt
@@ -128,7 +147,7 @@ func reuseNextAction(teams []biz.Team) string {
 		return "Teams are still running. Wait for the system completion notice. Do NOT call get_team_deliverable, synthesize_results, or plan_and_execute again."
 	}
 	if completed > 0 {
-		return "All listed teams completed. Summaries are in existing_teams[].summary. tool_load get_team_deliverable only if you need full text; otherwise synthesize_results or answer the user. Do not call plan_and_execute again unless the user asked for a NEW independent analysis (force_new=true)."
+		return "All listed teams completed. Summaries are in existing_teams[].summary. get_team_deliverable is already in your tool list this turn if you need full text; otherwise synthesize_results or answer the user. Do not call plan_and_execute again unless the user asked for a NEW independent analysis (force_new=true)."
 	}
 	return "Reuse the listed teams. Do not start a new DAG."
 }

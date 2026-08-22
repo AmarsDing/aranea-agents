@@ -71,6 +71,16 @@ func (m *vaultSyncMemRepo) GetCollection(_ context.Context, id string) (bizknowl
 	}
 	return c, nil
 }
+func (m *vaultSyncMemRepo) GetCollectionByName(_ context.Context, workspace, name string) (bizknowledge.Collection, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range m.collections {
+		if c.Name == name && c.Workspace == workspace {
+			return c, nil
+		}
+	}
+	return bizknowledge.Collection{}, errMemNotFound
+}
 func (m *vaultSyncMemRepo) ListCollections(_ context.Context, _ string, _, _ int) ([]bizknowledge.Collection, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -135,6 +145,19 @@ func (m *vaultSyncMemRepo) GetDocumentByRelPath(_ context.Context, collectionID,
 	defer m.mu.Unlock()
 	for _, d := range m.documents {
 		if d.CollectionID == collectionID && d.RelPath == relPath {
+			return d, nil
+		}
+	}
+	return bizknowledge.Document{}, errMemNotFound
+}
+func (m *vaultSyncMemRepo) GetDocumentByContentHash(_ context.Context, collectionID, contentHash string) (bizknowledge.Document, error) {
+	if contentHash == "" {
+		return bizknowledge.Document{}, errMemNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.ContentHash == contentHash {
 			return d, nil
 		}
 	}

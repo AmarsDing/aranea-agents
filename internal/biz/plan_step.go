@@ -32,6 +32,17 @@ type PlanStep struct {
 	// dagRun 启动时做 advisory 契约验证；AssembleTeam 时透传到 Team。
 	Deliverables  []DeliverableContract
 	InputContract []DeliverableContract
+	// DepartmentID is the team's home department (M78). Memory field — crash
+	// recovery infers from member positions when empty (same pattern as Mode).
+	DepartmentID string
+	// CrossDeptMemberKeys are borrow candidates (agent keys). Memory field.
+	CrossDeptMemberKeys []string
+	// Staffing fields are memory-only (WS plan_step payload) so the frontend
+	// can show specialty → person while the team is still assembling.
+	DomainPath   string
+	AssignedName string
+	MatchLayer   string
+	MatchReason  string
 }
 
 type PlanStepStatus string

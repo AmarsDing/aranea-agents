@@ -28,11 +28,10 @@ const (
 	MemoryDeadLetterReasonQuotaExceeded       MemoryDeadLetterReason = "quota_exceeded"
 	MemoryDeadLetterReasonRetryExhausted      MemoryDeadLetterReason = "retry_exhausted"
 	MemoryDeadLetterReasonPendingQueueFailure MemoryDeadLetterReason = "pending_queue_failure"
-	// MemoryDeadLetterReasonDebounced indicates the job was coalesced within
-	// the debounce window. The surviving job for the same session should
-	// process the session's recent messages, but if the process crashes or
-	// the surviving job fails, the debounced job's data may not be extracted.
-	// P2-03: record debounced jobs for observability and recovery.
+	// MemoryDeadLetterReasonDebounced 是旧 leading-edge 去抖的遗产原因：
+	// 窗口内被合并的请求曾写死信供观测/恢复。R3（2026-08-22）起队列改为
+	// trailing-edge 合并，被合并请求并入存活请求、不再写死信。常量保留
+	// 仅用于读取/重放存量 DB 行。
 	MemoryDeadLetterReasonDebounced MemoryDeadLetterReason = "debounced"
 )
 

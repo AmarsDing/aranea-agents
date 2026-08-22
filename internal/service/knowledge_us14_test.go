@@ -50,6 +50,17 @@ func (m *us14MemRepo) GetCollection(_ context.Context, id string) (biz.Knowledge
 	return c, nil
 }
 
+func (m *us14MemRepo) GetCollectionByName(_ context.Context, workspace, name string) (biz.KnowledgeCollection, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range m.collections {
+		if c.Name == name && c.Workspace == workspace {
+			return c, nil
+		}
+	}
+	return biz.KnowledgeCollection{}, biz.ErrNotFound
+}
+
 func (m *us14MemRepo) ListCollections(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeCollection, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -126,6 +137,20 @@ func (m *us14MemRepo) GetDocumentByRelPath(_ context.Context, collectionID, relP
 	defer m.mu.Unlock()
 	for _, d := range m.documents {
 		if d.CollectionID == collectionID && d.RelPath == relPath {
+			return d, nil
+		}
+	}
+	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+
+func (m *us14MemRepo) GetDocumentByContentHash(_ context.Context, collectionID, contentHash string) (biz.KnowledgeDocument, error) {
+	if contentHash == "" {
+		return biz.KnowledgeDocument{}, biz.ErrNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.ContentHash == contentHash {
 			return d, nil
 		}
 	}
@@ -357,6 +382,44 @@ func TestIngestDocument_ExplicitCollection_Unchanged(t *testing.T) {
 	}
 	if doc.GetCollectionId() != col.ID {
 		t.Errorf("document landed in %q, want explicit %q", doc.GetCollectionId(), col.ID)
+	}
+}
+
+func TestIngestDocument_SameContent_Dedups(t *testing.T) {
+	repo := newUS14MemRepo()
+	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	col, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
+		Name: "notes", EmbeddingModel: "m", Dim: 3, Workspace: workspace.DefaultWorkspaceID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewKnowledgeService(uc, &us14EmbedderAdmin{model: "m", dim: 3}, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	raw := base64.StdEncoding.EncodeToString([]byte("# 退款流程\n\n三个工作日到账。"))
+	first, err := svc.IngestDocument(context.Background(), &v1.IngestDocumentRequest{
+		CollectionId: col.ID, Source: "a.md", MimeType: "text/markdown", ContentBase64: raw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.GetSummary() != "退款流程" || first.GetDocType() != "note" {
+		t.Fatalf("summary card = %q/%q", first.GetSummary(), first.GetDocType())
+	}
+	second, err := svc.IngestDocument(context.Background(), &v1.IngestDocumentRequest{
+		CollectionId: col.ID, Source: "copy.md", MimeType: "text/markdown", ContentBase64: raw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.GetId() != first.GetId() {
+		t.Fatalf("dedup id = %q, want %q", second.GetId(), first.GetId())
+	}
+	docs, total, err := uc.ListDocuments(context.Background(), col.ID, 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(docs) != 1 {
+		t.Fatalf("documents = %d total=%d, want 1", len(docs), total)
 	}
 }
 

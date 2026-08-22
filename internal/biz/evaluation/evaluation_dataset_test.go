@@ -58,6 +58,10 @@ func (m *dsMockRepo) ListCases(_ context.Context, _ string) ([]Case, error) {
 	return nil, nil
 }
 
+func (m *dsMockRepo) UpdateCase(_ context.Context, c Case) (Case, error) { return c, nil }
+
+func (m *dsMockRepo) DeleteCase(_ context.Context, _, _ string) error { return nil }
+
 func (m *dsMockRepo) CreateRun(ctx context.Context, r Run) (Run, error) {
 	if m.createRunFn != nil {
 		return m.createRunFn(ctx, r)
@@ -119,7 +123,9 @@ func (m *dsMockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]R
 	return nil, nil
 }
 
-func (m *dsMockRepo) GetGateConfig(_ context.Context) (GateConfig, error) { return GateConfig{}, nil }
+func (m *dsMockRepo) GetGateConfig(_ context.Context, _ string) (GateConfig, error) {
+	return GateConfig{}, nil
+}
 
 func (m *dsMockRepo) UpsertGateConfig(_ context.Context, _ GateConfig) error { return nil }
 

@@ -250,6 +250,9 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
 const sqlEpisodeSelect = `SELECT id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
  consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at FROM memory_episodes`
 
+const evolutionProposalSelect = `SELECT id, agent_id, workspace_id, proposal_kind, target_field, rationale,
+ expected_impact, risk_level, status, created_at FROM agent_evolution_proposals`
+
 const cascadeProposalSelect = `SELECT id, agent_id, workspace_id, trigger_entity_id, trigger_entity_name, trigger_attribute,
  old_value, new_value, affected_json, status, risk_level, rationale, metadata_json,
  reviewed_by, reviewed_at, expires_at, created_at, updated_at FROM memory_cascade_proposals`
@@ -494,6 +497,20 @@ func scanCascadeProposalJSON(rows *sql.Rows) ([]byte, error) {
 		"status": status, "risk_level": risk, "rationale": rationale, "metadata_json": meta,
 		"reviewed_by": reviewedBy, "reviewed_at": reviewedAt, "expires_at": expiresAt,
 		"created_at": ca, "updated_at": ua,
+	}
+	return json.Marshal(m)
+}
+
+func scanEvolutionProposalJSON(rows *sql.Rows) ([]byte, error) {
+	var id, aid, wid, kind, field, rationale, impact, risk, status, ca string
+	if err := rows.Scan(&id, &aid, &wid, &kind, &field, &rationale, &impact, &risk, &status, &ca); err != nil {
+		return nil, err
+	}
+	m := map[string]any{
+		"id": id, "agent_id": aid, "workspace_id": wid,
+		"proposal_kind": kind, "kind": kind, "target_field": field,
+		"rationale": rationale, "expected_impact": impact,
+		"risk_level": risk, "status": status, "created_at": ca,
 	}
 	return json.Marshal(m)
 }
