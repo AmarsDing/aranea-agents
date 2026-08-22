@@ -67,6 +67,10 @@ func (a *planExecutorReposAdapter) ListPlanStepsByPlan(ctx context.Context, plan
 	return a.planStep.ListPlanStepsByPlan(ctx, planID)
 }
 
+func (a *planExecutorReposAdapter) ListPlanBoardsByStatuses(ctx context.Context, statuses []biz.PlanStatus) ([]biz.PlanBoard, error) {
+	return a.planBoard.ListPlanBoardsByStatuses(ctx, statuses)
+}
+
 // UpsertGraphStage delegates to GraphStageV2Repo (2026-07-04 补齐).
 func (a *planExecutorReposAdapter) UpsertGraphStage(ctx context.Context, gs biz.GraphStage) (biz.GraphStage, error) {
 	return a.graphStage.UpsertGraphStage(ctx, gs)

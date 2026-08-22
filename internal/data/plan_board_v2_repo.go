@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -51,6 +52,33 @@ func (r *planBoardV2Repo) ListPlanBoardsByTask(ctx context.Context, taskID strin
 	rows, err := r.data.RW().Read(ctx).PlanBoardV2.Query().
 		Where(planboardv2.TaskIDEQ(taskID)).
 		Order(ent.Asc(planboardv2.FieldSeq)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "PLAN_BOARD_V2")
+	}
+	return entPlanBoardsV2ToBiz(rows), nil
+}
+
+// ListPlanBoardsByStatuses returns boards whose status is in the given set.
+func (r *planBoardV2Repo) ListPlanBoardsByStatuses(ctx context.Context, statuses []biz.PlanStatus) ([]biz.PlanBoard, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("plan board v2 repo: database not configured")
+	}
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	vals := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		if v := strings.TrimSpace(string(s)); v != "" {
+			vals = append(vals, v)
+		}
+	}
+	if len(vals) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).PlanBoardV2.Query().
+		Where(planboardv2.StatusIn(vals...)).
+		Order(ent.Asc(planboardv2.FieldStartedAt)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "PLAN_BOARD_V2")

@@ -114,6 +114,31 @@ func TestPlanBoardV2Repo_ListByTask_SeqOrder(t *testing.T) {
 	}
 }
 
+func TestPlanBoardV2Repo_ListByStatuses(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewPlanBoardV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	for i, st := range []biz.PlanStatus{biz.PlanStatusPlanning, biz.PlanStatusExecuting, biz.PlanStatusCompleted} {
+		if _, err := repo.CreatePlanBoard(ctx, biz.PlanBoard{
+			ID: "st-" + string(rune('a'+i)), TaskID: "t-st", TurnID: "turn-1",
+			SessionID: "s-1", Strategy: biz.PlanStrategySequential,
+			Status: st, StartedAt: now, Seq: int64(i + 1), Version: 1,
+		}); err != nil {
+			t.Fatalf("CreatePlanBoard[%d]: %v", i, err)
+		}
+	}
+	got, err := repo.ListPlanBoardsByStatuses(ctx, []biz.PlanStatus{
+		biz.PlanStatusPlanning, biz.PlanStatusExecuting,
+	})
+	if err != nil {
+		t.Fatalf("ListPlanBoardsByStatuses: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 unfinished boards, got %d", len(got))
+	}
+}
+
 func TestPlanBoardV2Repo_GetPlanBoard_NotFound(t *testing.T) {
 	d := openTestDataWithRWDB(t)
 	repo := NewPlanBoardV2Repo(d, loggateway.NewNoop())

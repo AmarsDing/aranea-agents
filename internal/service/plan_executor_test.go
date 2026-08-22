@@ -108,6 +108,7 @@ type fakeReposForExecutor struct {
 	steps      map[string]biz.PlanStep
 	stages     map[string]biz.TeamStage
 	board      *biz.PlanBoard
+	boards     map[string]biz.PlanBoard
 	graphStage *biz.GraphStage
 	graphNodes map[string]biz.GraphNode
 }
@@ -116,6 +117,7 @@ func newFakeReposForExecutor() *fakeReposForExecutor {
 	return &fakeReposForExecutor{
 		steps:      make(map[string]biz.PlanStep),
 		stages:     make(map[string]biz.TeamStage),
+		boards:     make(map[string]biz.PlanBoard),
 		graphNodes: make(map[string]biz.GraphNode),
 	}
 }
@@ -139,16 +141,46 @@ func (f *fakeReposForExecutor) UpsertPlanBoard(_ context.Context, pb biz.PlanBoa
 	defer f.mu.Unlock()
 	cp := pb
 	f.board = &cp
+	if f.boards == nil {
+		f.boards = make(map[string]biz.PlanBoard)
+	}
+	f.boards[pb.ID] = pb
 	return pb, nil
 }
 
 func (f *fakeReposForExecutor) GetPlanBoard(_ context.Context, id string) (biz.PlanBoard, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.boards != nil {
+		if b, ok := f.boards[id]; ok {
+			return b, nil
+		}
+	}
 	if f.board != nil && f.board.ID == id {
 		return *f.board, nil
 	}
 	return biz.PlanBoard{}, errors.New("not found")
+}
+
+func (f *fakeReposForExecutor) ListPlanBoardsByStatuses(_ context.Context, statuses []biz.PlanStatus) ([]biz.PlanBoard, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	want := make(map[biz.PlanStatus]bool, len(statuses))
+	for _, s := range statuses {
+		want[s] = true
+	}
+	out := make([]biz.PlanBoard, 0)
+	seen := make(map[string]bool)
+	for id, b := range f.boards {
+		if want[b.Status] {
+			out = append(out, b)
+			seen[id] = true
+		}
+	}
+	if f.board != nil && want[f.board.Status] && !seen[f.board.ID] {
+		out = append(out, *f.board)
+	}
+	return out, nil
 }
 
 func (f *fakeReposForExecutor) GetPlanStep(_ context.Context, id string) (biz.PlanStep, error) {

@@ -236,6 +236,8 @@ type V2RecoveryRepo interface {
 type PlanBoardV2Reader interface {
 	GetPlanBoard(ctx context.Context, id string) (PlanBoard, error)
 	ListPlanBoardsByTask(ctx context.Context, taskID string) ([]PlanBoard, error)
+	// ListPlanBoardsByStatuses lists boards in the given statuses (startup DAG recover).
+	ListPlanBoardsByStatuses(ctx context.Context, statuses []PlanStatus) ([]PlanBoard, error)
 }
 
 type PlanBoardV2Writer interface {

@@ -169,6 +169,15 @@ export function useChatV2EventHandlers(deps: {
     if (noticeType === 'metrics_updated') {
       sessionStore.fetchAndReconcileSession(sid);
     }
+    // context_usage carries per-turn token occupancy plus the prompt-assembly
+    // breakdown (meta.context_budget) — patch the session so the SpiritStatusBar
+    // popup renders the composition without a REST round-trip.
+    if (noticeType === 'context_usage') {
+      const patch = sessionContextPatchFromContextUsageMeta(payload.Meta ?? undefined);
+      if (patch) {
+        sessionStore.patchSessionMetricsLocal(sid, patch);
+      }
+    }
     if (noticeType === 'session_status_changed') {
       const status = typeof meta.status === 'string' ? meta.status : '';
       const statusReason = typeof meta.status_reason === 'string' ? meta.status_reason : '';

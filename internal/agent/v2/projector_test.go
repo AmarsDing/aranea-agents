@@ -727,9 +727,10 @@ func TestEmitSystemEvent(t *testing.T) {
 		"prompt_tokens": 1000,
 	})
 
-	// EmitSystemEvent delegates to EmitNotice → 2 events (created + completed)
-	if len(capture.events) != 2 {
-		t.Fatalf("expected 2 events, got %d", len(capture.events))
+	// EmitSystemEvent delegates to EmitNotice → 2 events (created + completed),
+	// plus one meta-preserving SystemNoticeEvent for WS consumers.
+	if len(capture.events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(capture.events))
 	}
 	created, ok := capture.events[0].(*biz.StepCreatedEvent)
 	if !ok {
@@ -743,6 +744,16 @@ func TestEmitSystemEvent(t *testing.T) {
 	}
 	if created.Step.Content != "context_usage" {
 		t.Errorf("expected content=context_usage, got %s", created.Step.Content)
+	}
+	notice, ok := capture.events[2].(*biz.SystemNoticeEvent)
+	if !ok {
+		t.Fatalf("expected SystemNoticeEvent as 3rd event, got %T", capture.events[2])
+	}
+	if notice.NoticeType != "context_window" {
+		t.Errorf("expected notice NoticeType=context_window, got %s", notice.NoticeType)
+	}
+	if notice.Meta["prompt_tokens"] != 1000 {
+		t.Errorf("expected notice meta prompt_tokens=1000, got %v", notice.Meta["prompt_tokens"])
 	}
 }
 

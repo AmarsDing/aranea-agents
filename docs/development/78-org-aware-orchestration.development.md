@@ -169,7 +169,7 @@
 | ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | ✅ `read_only` + Assemble `specialist_tool_faces` + effective tools 拒绝 spirit 保留集 |
 | ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | ✅ 热路径 Assemble + team run；Subscribe 从 `sub_tasks_json` 回灌（不改 plan_steps_v2 列） |
 | ORGFAST-54 | 记忆隔离单测 | memory 边界 | 兄弟不可读对方 L3 | ✅ 专项成员注入时 `ClampSpecialistL3Scopes`（Spirit 除外） |
-| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | ✅ `confirm_before` 卡：`pbconfirm:` 禁止回落工具 await；无 waiter 记决定 + `stepWriter` 关卡；取消清 waiter |
+| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | ✅ `confirm_before` 卡：`pbconfirm:` 禁止回落工具 await；无 waiter 记决定 + `stepWriter` 关卡；取消清 waiter；启动扫 `planning`/`executing` 再 Subscribe；`tool_blocked` 状态机守卫，落库失败不 Accepted |
 | ORGFAST-56 | 主对话不订阅成员 token | progress / WS | 用户侧只有芯片/心跳/例外 | ✅ `noticeFilter.ts` 将 `token_usage` 标为系统内部，不渲染 NoticeBlock |
 | ORGFAST-57 | 汇总输入收紧 | spirit_synthesis | prompt 仅 Brief+例外+清单 | ✅ |
 | ORGFAST-58 | `deptmail`/`inject` 不得当横向/上行 | 测试锁 | 混用路径编译期或单测拒绝 | ✅ |
@@ -249,8 +249,10 @@
 | 成员 Turn 前缀装配 | R14 预算裁剪（知识/记忆） |
 | `specialty_roster` / Assemble | toolset + MCP 允许集 |
 | playbook stage | `collection_ids`、`confirm_before`、可选 `graph_template_id` |
+| `PlanExecutor.RecoverUnfinishedBoards` | 启动扫 `planning`/`executing`，`ListPlanStepsByPlan` 后 `startBoardDAG`；`run()` 派发依赖已完成的 pending |
+| `chat_confirm.go` | 剧本确认：`tool_blocked` 合法转换才落库；同决定幂等；落库失败不 Note/Resolve |
 | `spirit_synthesis.go` | 合成输入去掉会话原文 |
-| 单测 | L3 隔离、deptmail≠Brief、无默认开工确认 |
+| 单测 | L3 隔离、deptmail≠Brief、无默认开工确认；重启恢复 executing 看板；确认卡不可翻转 / 落库失败不成功 |
 
 **禁止顺带**：不改 Graph 运行时内核、不改组织 CRUD UI、不改 DECISION.md 的三种 mode（除非发现与 R1 冲突）；不把 memberfs 开放给员工；Phase 4 不实现跨公司发送（ORGFAST-31）；不复活 ExecutionReportCard。
 
@@ -282,6 +284,7 @@
 - [x] 专项成员 L3 去掉 team 总线（注入期 clamp）
 - [x] 确认五档 HITL；花名册 tool/MCP 允许集在 Assemble 收口；PlanExecutor 按 `graph_template_id` 改道 M53
 - [x] `confirm_before` 发出 ConfirmBlock；checkpoint 写入 playbook/阶段；剧本 `collection_ids` 落到知识检索
+- [x] 进程重启扫未完成 PlanBoard 再 Subscribe；剧本确认 `tool_blocked` 守卫，落库失败不报成功
 
 ---
 

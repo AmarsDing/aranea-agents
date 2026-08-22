@@ -281,26 +281,89 @@ func (s *ChatService) confirmPlaybookStage(ctx context.Context, sessionID, stepI
 }
 
 func (s *ChatService) applyPlaybookStageDecision(ctx context.Context, sessionID, activityID string, approved bool) error {
-	if s.planExec != nil {
-		s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
-		_ = s.planExec.ResolvePlaybookStageConfirm(sessionID, activityID, approved)
+	sessionID = strings.TrimSpace(sessionID)
+	activityID = strings.TrimSpace(activityID)
+	if s == nil || s.orch == nil {
+		return apierror.Internal(apierror.DomainChat, "service unavailable")
 	}
+	writer := s.orch.stepWriter()
+	if writer == nil {
+		return apierror.Internal(apierror.DomainChat, "step store unavailable")
+	}
+
+	existing, hasExisting := s.loadPlaybookConfirmStep(ctx, sessionID, activityID)
+	if hasExisting {
+		if existing.Kind != biz.StepKindConfirm {
+			return apierror.BadRequest(apierror.DomainChat, "expected confirm kind, got %s", existing.Kind)
+		}
+		if playbookConfirmDecisionMatches(existing.Status, approved) {
+			s.signalPlaybookConfirm(sessionID, activityID, approved)
+			return nil
+		}
+		ev := biz.ActivityTransitionDone
+		if !approved {
+			ev = biz.ActivityTransitionCancel
+		}
+		if _, err := biz.TransitionActivityStatus(biz.ActivityStatus(existing.Status), ev); err != nil {
+			return apierror.BadRequest(apierror.DomainChat,
+				"illegal playbook confirm transition from %s via %s: %v",
+				existing.Status, ev, err)
+		}
+	} else if s.planExec == nil || !s.planExec.HasPlaybookStageConfirm(sessionID, activityID) {
+		return apierror.NotFound(apierror.DomainChat, "playbook confirm not found")
+	}
+
 	if err := s.persistPlaybookConfirmCard(ctx, sessionID, activityID, approved); err != nil {
 		s.lg.Warn("persist playbook confirm card failed",
 			loggateway.Str("session_id", sessionID),
 			loggateway.Str("activity_id", activityID),
 			loggateway.Err(err))
+		return err
 	}
+	s.signalPlaybookConfirm(sessionID, activityID, approved)
 	return nil
+}
+
+func (s *ChatService) signalPlaybookConfirm(sessionID, activityID string, approved bool) {
+	if s == nil || s.planExec == nil {
+		return
+	}
+	s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
+	_ = s.planExec.ResolvePlaybookStageConfirm(sessionID, activityID, approved)
+}
+
+func playbookConfirmDecisionMatches(status biz.StepStatus, approved bool) bool {
+	if approved {
+		return status == biz.StepStatusCompleted
+	}
+	return status == biz.StepStatusCancelled
+}
+
+func (s *ChatService) loadPlaybookConfirmStep(ctx context.Context, sessionID, activityID string) (biz.Step, bool) {
+	if s == nil || s.orch == nil {
+		return biz.Step{}, false
+	}
+	reader := s.orch.stepReader()
+	if reader == nil {
+		return biz.Step{}, false
+	}
+	existing, err := reader.GetStep(ctx, activityID)
+	if err != nil || existing.ID == "" {
+		return biz.Step{}, false
+	}
+	if existing.SessionID != "" && existing.SessionID != sessionID {
+		return biz.Step{}, false
+	}
+	return existing, true
 }
 
 func (s *ChatService) persistPlaybookConfirmCard(ctx context.Context, sessionID, activityID string, approved bool) error {
 	if s == nil || s.orch == nil {
-		return nil
+		return apierror.Internal(apierror.DomainChat, "service unavailable")
 	}
 	writer := s.orch.stepWriter()
 	if writer == nil {
-		return nil
+		return apierror.Internal(apierror.DomainChat, "step store unavailable")
 	}
 	now := time.Now().UTC()
 	step := biz.Step{
@@ -316,16 +379,14 @@ func (s *ChatService) persistPlaybookConfirmCard(ctx context.Context, sessionID,
 	if !approved {
 		step.Status = biz.StepStatusCancelled
 	}
-	if reader := s.orch.stepReader(); reader != nil {
-		if existing, err := reader.GetStep(ctx, activityID); err == nil && existing.ID != "" {
-			step = existing
-			step.CompletedAt = &now
-			step.Version++
-			if approved {
-				step.Status = biz.StepStatusCompleted
-			} else {
-				step.Status = biz.StepStatusCancelled
-			}
+	if existing, ok := s.loadPlaybookConfirmStep(ctx, sessionID, activityID); ok {
+		step = existing
+		step.CompletedAt = &now
+		step.Version++
+		if approved {
+			step.Status = biz.StepStatusCompleted
+		} else {
+			step.Status = biz.StepStatusCancelled
 		}
 	}
 	_, err := writer.UpsertStep(ctx, step)

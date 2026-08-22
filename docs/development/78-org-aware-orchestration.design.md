@@ -181,6 +181,7 @@ R18 确认五档
     造人 / 新剧本首次授权 / 高风险门 / 危险工具 / 剧本 confirm_before
     默认阶段交接只认 Brief 闸门，不弹确认
     禁止每人开工点一次
+    confirm_before 重启：StartSubscription 扫 planning/executing 再 Subscribe；卡仅 tool_blocked 可决，落库成功后再唤醒 DAG
 
 R19 可观测与干预
     用户：团队芯片 + 阶段心跳 + 例外（不刷成员 token 流）

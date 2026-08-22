@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -540,5 +541,93 @@ func TestConfirmActivity_PlaybookCardNeverFallsToToolAwait(t *testing.T) {
 	approved, ok := svc.planExec.lookupPlaybookConfirmDecision("sess-1", "st-1")
 	if !ok || !approved {
 		t.Fatalf("noted decision missing ok=%v approved=%v", ok, approved)
+	}
+}
+
+func playbookConfirmBlockedStep() biz.Step {
+	actID := biz.PlaybookConfirmActivityID("sess-1", "st-1")
+	return biz.Step{
+		ID:        actID,
+		SessionID: "sess-1",
+		Kind:      biz.StepKindConfirm,
+		Status:    biz.StepStatusToolBlocked,
+		ToolName:  biz.ToolPlaybookConfirmBefore,
+	}
+}
+
+func TestConfirmActivity_PlaybookReapproveIsIdempotent(t *testing.T) {
+	step := playbookConfirmBlockedStep()
+	step.Status = biz.StepStatusCompleted
+	svc, _, writer := newConfirmActivityTestSvc(stubAwaitCoord{}, step)
+	svc.planExec = NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: step.ID,
+		Approved:   true,
+	})
+	if err != nil || resp == nil || !resp.GetAccepted() {
+		t.Fatalf("re-approve must succeed err=%v resp=%v", err, resp)
+	}
+	if len(writer.created) != 0 {
+		t.Fatalf("idempotent approve must not rewrite card, got %d writes", len(writer.created))
+	}
+	approved, ok := svc.planExec.lookupPlaybookConfirmDecision("sess-1", "st-1")
+	if !ok || !approved {
+		t.Fatalf("idempotent approve must still note decision ok=%v approved=%v", ok, approved)
+	}
+}
+
+func TestConfirmActivity_PlaybookCompletedCannotFlipToDeny(t *testing.T) {
+	step := playbookConfirmBlockedStep()
+	step.Status = biz.StepStatusCompleted
+	svc, _, writer := newConfirmActivityTestSvc(stubAwaitCoord{}, step)
+	svc.planExec = NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	_, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: step.ID,
+		Approved:   false,
+	})
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("completed→deny must be BadRequest, got %v", err)
+	}
+	if len(writer.created) != 0 {
+		t.Fatal("illegal flip must not persist")
+	}
+	if _, ok := svc.planExec.lookupPlaybookConfirmDecision("sess-1", "st-1"); ok {
+		t.Fatal("illegal flip must not note a decision")
+	}
+}
+
+func TestConfirmActivity_PlaybookPersistFailDoesNotAccept(t *testing.T) {
+	step := playbookConfirmBlockedStep()
+	svc, _, writer := newConfirmActivityTestSvc(stubAwaitCoord{}, step)
+	writer.err = errors.New("db down")
+	svc.planExec = NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: step.ID,
+		Approved:   true,
+	})
+	if err == nil {
+		t.Fatal("persist failure must not return success")
+	}
+	if resp != nil && resp.GetAccepted() {
+		t.Fatal("persist failure must not set Accepted")
+	}
+	if _, ok := svc.planExec.lookupPlaybookConfirmDecision("sess-1", "st-1"); ok {
+		t.Fatal("persist failure must not Note/Resolve")
+	}
+}
+
+func TestConfirmToolGateForCard_PlaybookCompletedCannotFlip(t *testing.T) {
+	step := playbookConfirmBlockedStep()
+	step.Status = biz.StepStatusCompleted
+	svc, _, _ := newConfirmActivityTestSvc(stubAwaitCoord{}, step)
+	ok, msg := svc.ConfirmToolGateForCard(context.Background(), "sess-1", step.ID, serviceawaitreply.ReplyDeny)
+	if ok {
+		t.Fatalf("channel path must reject flip, msg=%s", msg)
 	}
 }

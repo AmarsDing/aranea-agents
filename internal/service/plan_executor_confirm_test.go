@@ -156,3 +156,117 @@ func TestResolvePlaybookStageConfirmUnknownIsFalse(t *testing.T) {
 		t.Fatal("unknown waiter must not resolve")
 	}
 }
+
+func seedExecutingConfirmBoard(t *testing.T) (*fakeReposForExecutor, biz.PlanBoard, biz.PlanStep) {
+	t.Helper()
+	repos := newFakeReposForExecutor()
+	board := biz.PlanBoard{
+		ID:        "pb-exec",
+		TaskID:    "task-1",
+		SessionID: "sp-1",
+		Status:    biz.PlanStatusExecuting,
+		Version:   2,
+	}
+	if _, err := repos.UpsertPlanBoard(context.Background(), board); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+	step := biz.PlanStep{
+		ID:            "st-confirm",
+		PlanID:        board.ID,
+		TaskID:        board.TaskID,
+		Label:         "发布",
+		ConfirmBefore: true,
+		Status:        biz.PlanStepStatusPending,
+		Version:       1,
+	}
+	if _, err := repos.UpsertPlanStep(context.Background(), step); err != nil {
+		t.Fatalf("seed step: %v", err)
+	}
+	return repos, board, step
+}
+
+func TestRecoverUnfinishedBoards_ResumesExecutingConfirmWaiter(t *testing.T) {
+	t.Parallel()
+	repos, _, _ := seedExecutingConfirmBoard(t)
+	orch := newFakeOrchestrator()
+	pe := NewPlanExecutor(repos, orch, &fakeSeq{}, loggateway.NewNoop())
+	pe.RecoverUnfinishedBoards(context.Background())
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !pe.HasActiveRunForSession("sp-1") {
+		if time.Now().After(deadline) {
+			t.Fatal("executing board was not re-subscribed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for !pe.HasPlaybookStageConfirm("sp-1", "st-confirm") {
+		if time.Now().After(deadline) {
+			t.Fatal("confirm_before waiter was not re-registered")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !pe.ResolvePlaybookStageConfirm("sp-1", "st-confirm", true) {
+		t.Fatal("resolve after recover failed")
+	}
+	if !orch.waitForCall("st-confirm", 2*time.Second) {
+		t.Fatal("recovered confirm step was not dispatched")
+	}
+	orch.completeStep("st-confirm", true, "")
+	deadline = time.Now().Add(2 * time.Second)
+	for pe.HasActiveRunForSession("sp-1") {
+		if time.Now().After(deadline) {
+			t.Fatal("recovered DAG did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestRecoverUnfinishedBoards_UsesNotedDecision(t *testing.T) {
+	t.Parallel()
+	repos, _, _ := seedExecutingConfirmBoard(t)
+	orch := newFakeOrchestrator()
+	pe := NewPlanExecutor(repos, orch, &fakeSeq{}, loggateway.NewNoop())
+	pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", true)
+	pe.RecoverUnfinishedBoards(context.Background())
+	if !orch.waitForCall("st-confirm", 2*time.Second) {
+		t.Fatal("noted decision must resume recovered confirm_before without a live waiter")
+	}
+	orch.completeStep("st-confirm", true, "")
+}
+
+func TestRecoverUnfinishedBoards_DispatchesReadyPendingAfterCompletedRoot(t *testing.T) {
+	t.Parallel()
+	repos := newFakeReposForExecutor()
+	board := biz.PlanBoard{
+		ID:        "pb-exec",
+		TaskID:    "task-1",
+		SessionID: "sp-1",
+		Status:    biz.PlanStatusExecuting,
+		Version:   2,
+	}
+	if _, err := repos.UpsertPlanBoard(context.Background(), board); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+	if _, err := repos.UpsertPlanStep(context.Background(), biz.PlanStep{
+		ID: "s1", PlanID: board.ID, TaskID: board.TaskID, Label: "done",
+		Status: biz.PlanStepStatusCompleted, Version: 2,
+	}); err != nil {
+		t.Fatalf("seed s1: %v", err)
+	}
+	if _, err := repos.UpsertPlanStep(context.Background(), biz.PlanStep{
+		ID: "s2", PlanID: board.ID, TaskID: board.TaskID, Label: "next",
+		DependsOn: []string{"s1"}, Status: biz.PlanStepStatusPending, Version: 1,
+	}); err != nil {
+		t.Fatalf("seed s2: %v", err)
+	}
+	orch := newFakeOrchestrator()
+	pe := NewPlanExecutor(repos, orch, &fakeSeq{}, loggateway.NewNoop())
+	pe.RecoverUnfinishedBoards(context.Background())
+	if orch.waitForCall("s1", 80*time.Millisecond) {
+		t.Fatal("completed root must not be re-dispatched")
+	}
+	if !orch.waitForCall("s2", 2*time.Second) {
+		t.Fatal("pending child of completed root must resume after recover")
+	}
+	orch.completeStep("s2", true, "")
+}

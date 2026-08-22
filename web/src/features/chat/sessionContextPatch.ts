@@ -223,6 +223,40 @@ export function isSessionCompressNoticeFromActivityEvent(ev: ActivityEvent): boo
 }
 
 /**
+ * Derive a {@link SessionContextPatch} directly from a v2 `system.notice`
+ * context_usage payload Meta (useChatV2EventHandlers channel — the sole live
+ * transport since the v1 activity bridge was removed). Meta keys match the
+ * backend stream_consumer publishContextUsageStep map, with the prompt-assembly
+ * breakdown under `context_budget` (backend ContextBudgetPayload).
+ */
+export function sessionContextPatchFromContextUsageMeta(
+  meta: Record<string, unknown> | undefined,
+): SessionContextPatch | null {
+  if (!meta) return null;
+  const prompt = numField(meta.prompt_tokens);
+  const completion = numField(meta.completion_tokens);
+  const total = numField(meta.total_tokens);
+  const maxTokens = numField(meta.max_tokens);
+  let usage: ActivityUsage | undefined;
+  if (prompt !== 0 || completion !== 0 || total !== 0 || maxTokens !== 0) {
+    usage = { prompt_tokens: prompt, completion_tokens: completion, total_tokens: total };
+    if (maxTokens > 0) usage.max_tokens = maxTokens;
+    if (typeof meta.context_prompt_tokens === 'number' && meta.context_prompt_tokens > 0) {
+      usage.context_prompt_tokens = meta.context_prompt_tokens;
+    }
+    if (typeof meta.turn_total_tokens === 'number' && meta.turn_total_tokens > 0) {
+      usage.turn_total_tokens = meta.turn_total_tokens;
+    }
+  }
+  const patch = sessionContextPatchFromStepUsage(usage);
+  const budget = parseContextBudgetMeta(meta.context_budget);
+  if (budget) {
+    return { ...(patch ?? {}), context_budget: budget };
+  }
+  return patch;
+}
+
+/**
  * Derive a {@link SessionContextPatch} from an ActivityEvent.
  *
  * Field mapping (envelope → activity):

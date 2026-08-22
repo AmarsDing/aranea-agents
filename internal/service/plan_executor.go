@@ -26,7 +26,7 @@ import (
 // 2026-07-05 P1 #9d 补齐：新增 GetTeamStage 用于读取当前 Version 和 Status，
 // 修复 dispatchStep 中 Version=2 硬编码 Bug（改为 current.Version+1）。
 //
-// TECH-DEBT(COG): 接口方法数=8 > 5（CS-B4），但本接口是组合接口（compose 5 个 v2 repo），
+// TECH-DEBT(COG): 接口方法数>5（CS-B4），但本接口是组合接口（compose 5 个 v2 repo），
 // 组合接口的方法数放宽限制是合理的。拆分会引入 5 个独立 adapter，增加复杂度无收益。
 type executorRepos interface {
 	UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (biz.PlanStep, error)
@@ -35,6 +35,7 @@ type executorRepos interface {
 	GetPlanBoard(ctx context.Context, id string) (biz.PlanBoard, error)
 	GetPlanStep(ctx context.Context, id string) (biz.PlanStep, error)
 	ListPlanStepsByPlan(ctx context.Context, planID string) ([]biz.PlanStep, error)
+	ListPlanBoardsByStatuses(ctx context.Context, statuses []biz.PlanStatus) ([]biz.PlanBoard, error)
 	UpsertGraphStage(ctx context.Context, gs biz.GraphStage) (biz.GraphStage, error)
 	UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error)
 	GetGraphStageByPlanBoard(ctx context.Context, planBoardID string) (biz.GraphStage, error)
@@ -382,6 +383,11 @@ func (e *PlanExecutor) StartSubscription() {
 	e.lg.Info("PlanExecutor 开始订阅 PlanBoard 事件")
 	// V2Bus 永不关闭 subscriber channel（cancel 只从 fan-out 摘除），
 	// 必须用 ctx.Done() 退出循环，不能 range ch（红线 #23）。
+	safego.Go(ctx, "plan_executor.recover_boards", func() {
+		rctx, rcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer rcancel()
+		e.RecoverUnfinishedBoards(rctx)
+	})
 	safego.Go(ctx, "plan_executor.subscribe", func() {
 		defer unsub()
 		defer e.lg.Info("PlanExecutor 订阅已退出")
@@ -445,8 +451,57 @@ func (e *PlanExecutor) handleBoardReady(board biz.PlanBoard, isCreated bool) {
 		return
 	}
 	// Updated 事件只允许 planning 状态启动（执行器自身发布的 executing
-	// Updated 不得重入）。
+	// Updated 不得重入）。进程重启的 executing 看板走 RecoverUnfinishedBoards。
 	if !isCreated && board.Status != biz.PlanStatusPlanning {
+		return
+	}
+	e.startBoardDAG(board)
+}
+
+// RecoverUnfinishedBoards re-Subscribes planning/executing boards after process
+// restart. StartSubscription only sees new events; an executing board waiting
+// on confirm_before would otherwise have no holdPlaybookConfirm waiter.
+func (e *PlanExecutor) RecoverUnfinishedBoards(ctx context.Context) {
+	if e == nil || e.repos == nil {
+		return
+	}
+	boards, err := e.repos.ListPlanBoardsByStatuses(ctx, []biz.PlanStatus{
+		biz.PlanStatusPlanning,
+		biz.PlanStatusExecuting,
+	})
+	if err != nil {
+		e.lg.Warn("RecoverUnfinishedBoards: 列出未完成看板失败", loggateway.Err(err))
+		return
+	}
+	for _, board := range boards {
+		if biz.IsPlanBoardTerminal(board.Status) {
+			continue
+		}
+		steps, err := e.repos.ListPlanStepsByPlan(ctx, board.ID)
+		if err != nil {
+			e.lg.Warn("RecoverUnfinishedBoards: 读取步骤失败",
+				loggateway.Str("plan_board_id", board.ID),
+				loggateway.Err(err))
+			continue
+		}
+		if len(steps) == 0 {
+			// 流式空壳仍等 Updated；executing 无步骤也无法派发。
+			continue
+		}
+		board.Steps = steps
+		e.lg.Info("RecoverUnfinishedBoards: 恢复未完成看板",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Str("task_id", board.TaskID),
+			loggateway.Str("status", string(board.Status)),
+			loggateway.Int("steps", len(steps)))
+		e.startBoardDAG(board)
+	}
+}
+
+// startBoardDAG takes the execution lease and runs Subscribe in a goroutine.
+// Idempotent: a second call for the same board ID is ignored.
+func (e *PlanExecutor) startBoardDAG(board biz.PlanBoard) {
+	if e == nil {
 		return
 	}
 	// C-20 + C-18: execution lease for ready boards.
@@ -454,12 +509,12 @@ func (e *PlanExecutor) handleBoardReady(board biz.PlanBoard, isCreated bool) {
 	lease := &boardRunLease{cancel: cancel, sessionID: board.SessionID}
 	if _, loaded := e.running.LoadOrStore(board.ID, lease); loaded {
 		cancel() // unused; an existing run owns this board
-		e.lg.Warn("PlanBoard 已在执行中，跳过重复事件",
+		e.lg.Warn("PlanBoard 已在执行中，跳过重复启动",
 			loggateway.Str("plan_board_id", board.ID),
 			loggateway.Str("task_id", board.TaskID))
 		return
 	}
-	e.lg.Info("PlanExecutor 收到 PlanBoard 就绪事件，启动 DAG 执行",
+	e.lg.Info("PlanExecutor 启动 DAG 执行",
 		loggateway.Str("plan_board_id", board.ID),
 		loggateway.Str("task_id", board.TaskID),
 		loggateway.Int("steps", len(board.Steps)))
@@ -777,15 +832,10 @@ func (r *dagRun) run(ctx context.Context) error {
 			))
 		}
 	}
-	// Dispatch root steps (empty DependsOn). Add to WaitGroup before
-	// starting the goroutine to guarantee Wait sees the correct count.
-	for i := range r.board.Steps {
-		s := &r.board.Steps[i]
-		if len(s.DependsOn) == 0 && s.Status == biz.PlanStepStatusPending {
-			r.wg.Add(1)
-			r.dispatch(ctx, s)
-		}
-	}
+	// Dispatch every pending step whose dependencies are already completed.
+	// Fresh boards: only roots (empty DependsOn). Restart recover: completed
+	// ancestors leave pending confirm_before / downstream ready to resume.
+	r.dispatchReadyPending(ctx)
 	// Wait for all goroutines (root + downstream) to finish.
 	done := make(chan struct{})
 	safego.Go(ctx, "plan_executor.wg_wait."+r.board.ID, func() {
@@ -1694,6 +1744,35 @@ func (r *dagRun) publishUpward(ctx context.Context, phase, summary string, extra
 		return
 	}
 	biz.PublishUpwardProgress(r.pe.bus, ctx, r.board.SessionID, phase, summary, extra)
+}
+
+// dispatchReadyPending starts every pending step whose dependencies are already
+// completed. Called once at run() start (fresh roots + recover-ready steps).
+func (r *dagRun) dispatchReadyPending(ctx context.Context) {
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		if s.Status != biz.PlanStepStatusPending {
+			continue
+		}
+		if !r.dependenciesCompleted(s) {
+			continue
+		}
+		r.wg.Add(1)
+		r.dispatch(ctx, s)
+	}
+}
+
+func (r *dagRun) dependenciesCompleted(s *biz.PlanStep) bool {
+	if s == nil {
+		return false
+	}
+	for _, d := range s.DependsOn {
+		dep := r.stepsByID[d]
+		if dep == nil || dep.Status != biz.PlanStepStatusCompleted {
+			return false
+		}
+	}
+	return true
 }
 
 // checkDownstream dispatches pending steps whose dependencies are now all

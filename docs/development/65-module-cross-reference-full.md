@@ -1114,7 +1114,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **事件消费** | `PlanBoardCreatedEvent`（既有） |
 | **数据库** | 不强制新表；读 `organizations` + `agents.position_id`；公司节点 `company_lead_agent_id`（metadata）+ `metadata_json.playbooks`；总经理岗 `{key}_gm` |
 | **前端对应** | 无独立页；进度条显示专题→人；团队卡片展示花名册绑定 |
-| **测试覆盖** | Phase 0–2 + 花名册闭集已落地；Phase 4 含 ConfirmBlock 恢复（禁工具 await 回落）、`collection_ids` 回灌、checkpoint 读回 executing、保留集硬拒 |
+| **测试覆盖** | Phase 0–2 + 花名册闭集已落地；Phase 4 含 ConfirmBlock 恢复（禁工具 await 回落）、启动扫 executing 看板再 Subscribe、`collection_ids` 回灌、checkpoint 读回 executing、保留集硬拒、剧本确认状态机守卫 |
 
 **⚠️ 开发注意**：
 - **禁止**任务热路径「LLM 找公司 → LLM 找部门 → 主管再分解 → 无则 CreateCompany」。公司 = 当前 workspace 树；创造公司/部门走 M67 管理面

@@ -2,7 +2,7 @@
 
 > 日期：2026-08-22
 > 类型：review
-> 状态：Phase 4 恢复缺口已收（ConfirmBlock 禁回落 + 回灌 + checkpoint 读回 + 保留集硬拒）；跨公司 Brief 仍 YAGNI
+> 状态：Phase 4 恢复缺口已收（ConfirmBlock 禁回落 + 回灌 + checkpoint 读回 + 保留集硬拒 + 启动扫未完成看板 + 确认卡状态机守卫）；跨公司 Brief 仍 YAGNI
 > 关联：[M78 开发计划](../development/78-org-aware-orchestration.development.md) · [横切评审](./2026-08-22-review-org-heavy-chain-crosscut.md) · [组织不变量](../development/org-invariants.md)
 
 ---
@@ -69,6 +69,8 @@
 **未做项第二批 + 恢复收口（已接）**
 
 - `confirm_before` 发出 ConfirmBlock；`pbconfirm:` **禁止**回落工具 await；无内存 waiter 时记决定并 `stepWriter` 关卡；`ctx.Done`/sweep 清 waiter
+- 进程重启：`RecoverUnfinishedBoards` 扫 `planning`/`executing` 再 Subscribe；`run()` 只派发 pending 且依赖已完成的步骤（已完成根不重派）
+- 剧本确认：仅 `tool_blocked` 可转 completed/cancelled；同决定幂等；反向决定 BadRequest；落库失败不 Accepted / 不 Note
 - PlanStep 内存字段从 `task_plans.sub_tasks_json` 回灌（`collection_ids` / `confirm_before` / `graph_template_id`）
 - checkpoint 只快照 `executing` 计划；resume 读回 playbook/阶段写入 prompt；`IssuedBriefIDs` 仍空
 - 保留集硬拒：Allow 不能授予 `plan_and_execute` 等；Assemble `specialist_tool_faces` 在 team build 消费

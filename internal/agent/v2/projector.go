@@ -757,6 +757,10 @@ func (p *ActivityProjector) EmitSystemEvent(ctx context.Context, kind biz.Activi
 		}
 	}
 	_ = p.EmitNotice(ctx, contentText, noticeType)
+	// Fan out a meta-preserving system.notice alongside the notice Step: the
+	// Step carries only plain-text content, while WS consumers (chat UI
+	// context_usage budget breakdown, token metrics) need the structured meta.
+	p.seq.Publish(ctx, biz.NewSystemNoticeEvent(p.meta.SpiritSessionID, noticeType, contentText, meta))
 }
 
 // MemberToolCalls returns per-member tool call counts observed during the
