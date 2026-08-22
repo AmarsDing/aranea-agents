@@ -76,6 +76,7 @@ export function buildSpiritStatusBarModel(input: SpiritStatusBarModelInput): Spi
     contextRatio: usageSnapshot?.contextRatio ?? null,
     contextUsedTokens: usageSnapshot?.contextUsedTokens ?? null,
     contextWindow: usageSnapshot?.contextWindow ?? null,
+    contextBudget: usageSnapshot?.contextBudget ?? null,
     complexityLevel: input.complexityLevel ?? null,
     complexityReason: input.complexityReason ?? null,
     checkpointStep: input.checkpointStep ?? null,

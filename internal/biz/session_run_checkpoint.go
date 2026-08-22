@@ -32,6 +32,51 @@ type DurableRunCheckpointPayload struct {
 	ConstraintFingerprint string   `json:"constraint_fingerprint,omitempty"`
 }
 
+// OrgCheckpointFields are R13 heavy-chain fields written into a durable
+// checkpoint. Empty values stay omitempty so old recover paths still work.
+type OrgCheckpointFields struct {
+	Gear                  string
+	PlaybookID            string
+	AuthorizedStageIDs    []string
+	IssuedBriefIDs        []string
+	ConstraintFingerprint string
+}
+
+// OrgCheckpointFromPlan copies playbook resume state. IssuedBriefIDs stay
+// empty until a brief registry exists (no invented ids).
+func OrgCheckpointFromPlan(plan *TaskPlan) OrgCheckpointFields {
+	if plan == nil || plan.MemoryHit == nil {
+		return OrgCheckpointFields{}
+	}
+	pb := strings.TrimSpace(plan.MemoryHit.PlaybookID)
+	if pb == "" {
+		return OrgCheckpointFields{}
+	}
+	stages := make([]string, 0, len(plan.SubTasks))
+	for _, st := range plan.SubTasks {
+		if id := strings.TrimSpace(st.ID); id != "" {
+			stages = append(stages, id)
+		}
+	}
+	fp := strings.TrimSpace(plan.MemoryHit.ConstraintFingerprint)
+	return OrgCheckpointFields{
+		Gear:                  "heavy",
+		PlaybookID:            pb,
+		AuthorizedStageIDs:    stages,
+		ConstraintFingerprint: fp,
+	}
+}
+
+// OrgCheckpointFromPlans returns the newest playbook hit (ListPlans is newest-first).
+func OrgCheckpointFromPlans(plans []*TaskPlan) OrgCheckpointFields {
+	for _, p := range plans {
+		if f := OrgCheckpointFromPlan(p); f.PlaybookID != "" {
+			return f
+		}
+	}
+	return OrgCheckpointFields{}
+}
+
 // DurableCheckpointSnapshot captures interactive turn state at escalation (CC-F-02).
 type DurableCheckpointSnapshot struct {
 	Run              SessionRun
@@ -42,6 +87,7 @@ type DurableCheckpointSnapshot struct {
 	Provider         string
 	Model            string
 	TrpcInvocationID string
+	Org              OrgCheckpointFields
 }
 
 // CreateDurableCheckpoint snapshots run state before durable worker resume.
@@ -55,16 +101,21 @@ func (u *SessionRunUsecase) CreateDurableCheckpoint(ctx context.Context, snap Du
 		trpcInv = strings.TrimSpace(run.RuntimeRunID)
 	}
 	payload, err := json.Marshal(DurableRunCheckpointPayload{
-		SessionID:        run.SessionID,
-		TurnID:           run.TurnID,
-		AgentID:          strings.TrimSpace(snap.AgentID),
-		RuntimeRunID:     run.RuntimeRunID,
-		TrpcInvocationID: trpcInv,
-		UserContent:      strings.TrimSpace(snap.UserContent),
-		SessionRevision:  snap.SessionRevision,
-		DialogMode:       strings.TrimSpace(snap.DialogMode),
-		Provider:         strings.TrimSpace(snap.Provider),
-		Model:            strings.TrimSpace(snap.Model),
+		SessionID:             run.SessionID,
+		TurnID:                run.TurnID,
+		AgentID:               strings.TrimSpace(snap.AgentID),
+		RuntimeRunID:          run.RuntimeRunID,
+		TrpcInvocationID:      trpcInv,
+		UserContent:           strings.TrimSpace(snap.UserContent),
+		SessionRevision:       snap.SessionRevision,
+		DialogMode:            strings.TrimSpace(snap.DialogMode),
+		Provider:              strings.TrimSpace(snap.Provider),
+		Model:                 strings.TrimSpace(snap.Model),
+		Gear:                  strings.TrimSpace(snap.Org.Gear),
+		PlaybookID:            strings.TrimSpace(snap.Org.PlaybookID),
+		AuthorizedStageIDs:    append([]string(nil), snap.Org.AuthorizedStageIDs...),
+		IssuedBriefIDs:        append([]string(nil), snap.Org.IssuedBriefIDs...),
+		ConstraintFingerprint: strings.TrimSpace(snap.Org.ConstraintFingerprint),
 	})
 	if err != nil {
 		return SessionRunCheckpoint{}, err

@@ -1,6 +1,6 @@
 # M78: 组织感知编排（ORG-FAST）— 开发计划
 
-> **版本**：2026-08-22 | **状态**：🟡 Phase 0–2 已落地；Phase 4 核心（分档/总经理挂岗/剧本热路径/前缀预算）已落地；三管道发射与 playbook_fill 仍未接；Phase 3 跨公司 Brief 仍 YAGNI
+> **版本**：2026-08-22 | **状态**：🟡 Phase 0–2 已落地；Phase 4 核心（分档/总经理挂岗/剧本热路径/前缀预算/三管道/确认五档 HITL/`graph_template_id` 改道）已落地；Phase 3 跨公司 Brief 仍 YAGNI
 > **需求**：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)
 > **设计**：[78-org-aware-orchestration.design.md](./78-org-aware-orchestration.design.md)
 > **ADR**：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md) · [横切](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)
@@ -9,7 +9,7 @@
 
 ## 1. 模块定位
 
-在现有 Plan → Allocate → Orchestrate 上补齐 **组织剪枝 + 主管排除 + 建团挂部门 + 创造分层 + 跨团队 Brief/Bulk 交接**，并落地 **重型档：分档 + 公司剧本展开 + 前缀预算**。三管道事件发射、总经理补写剧本、确认五档 HITL 仍未接生产路径。不新建服务进程。
+在现有 Plan → Allocate → Orchestrate 上补齐 **组织剪枝 + 主管排除 + 建团挂部门 + 创造分层 + 跨团队 Brief/Bulk 交接**，并落地 **重型档：分档 + 公司剧本展开 + 前缀预算**。确认五档、花名册工具面、`graph_template_id` 已接生产路径。不新建服务进程。
 
 **代码锚点（现状）：**
 
@@ -155,7 +155,7 @@
 | ORGFAST-43 | 精灵粗路由只输出 playbook_id（重型） | planner prompt / 分类 | 不按行业常识拆到岗 | ✅ DECISION.md + `next_action=authorize_playbook` |
 | ORGFAST-44 | 三管道：上行心跳/例外事件；横向仍 Brief | delivery + progress | 上行 ≤2KB；无源码 | ✅ PlanExecutor 阶段开工/完成发 heartbeat，失败发 upward；非调度栅栏 |
 | ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | ✅ planner 不合则丢 keys；Allocate 再滤领导 |
-| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | 🟡 payload 已 omitempty；写入路径未接 |
+| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | ✅ escalate 写入 `gear`/`playbook_id`/阶段 id；`IssuedBriefIDs` 仍空（无 Brief 登记表）；旧 JSON 缺省可 Parse |
 | ORGFAST-47 | 仲裁：部门→总经理，公司→精灵呈用户 | 门禁/事件 | 禁止总经理互怼循环 | 📋 |
 
 ### Phase 4b — 链路横切（P1，与 Phase 4 同批设计、可并行实施）
@@ -165,15 +165,15 @@
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
 | ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | ✅ Brief+协议封顶；知识/记忆按需工具，不预灌 |
-| ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | 📋 |
-| ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | 🟡 默认 `read_only` + 单测锁死不继承 spirit 工具 |
-| ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | 📋 |
+| ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | ✅ `ApplyAssembleOrgFaces` + `ClampSpecialistToolFace`；MCP 仍走该员工 allow/`mcp:` |
+| ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | ✅ `read_only` + Assemble `specialist_tool_faces` + effective tools 拒绝 spirit 保留集 |
+| ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | ✅ Expand → PlanStep → Assemble JSON → team run `WithKnowledgeCollections`（胜用户 KnowledgeBases） |
 | ORGFAST-54 | 记忆隔离单测 | memory 边界 | 兄弟不可读对方 L3 | ✅ 专项成员注入时 `ClampSpecialistL3Scopes`（Spirit 除外） |
-| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | 🟡 `NeedsUserConfirm` 已测；HITL 未接 |
-| ORGFAST-56 | 主对话不订阅成员 token | progress / WS | 用户侧只有芯片/心跳/例外 | 📋 |
+| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | ✅ 等待 + ConfirmActivity + steps_v2 `ConfirmBlock`（`playbook_confirm_before`） |
+| ORGFAST-56 | 主对话不订阅成员 token | progress / WS | 用户侧只有芯片/心跳/例外 | ✅ `noticeFilter.ts` 将 `token_usage` 标为系统内部，不渲染 NoticeBlock |
 | ORGFAST-57 | 汇总输入收紧 | spirit_synthesis | prompt 仅 Brief+例外+清单 | ✅ |
 | ORGFAST-58 | `deptmail`/`inject` 不得当横向/上行 | 测试锁 | 混用路径编译期或单测拒绝 | ✅ |
-| ORGFAST-59 | 阶段可选 `graph_template_id` | playbook + M53 | 未填走 Team Turn；不新引擎 | 🟡 已写入 SubTask；PlanExecutor 未按模板改道 |
+| ORGFAST-59 | 阶段可选 `graph_template_id` | playbook + M53 | 未填走 Team Turn；不新引擎 | ✅ Assemble 写入 definition；builtin 改 mode；资产 id 编译期 LoadGraphBuildConfig |
 
 ---
 
@@ -242,7 +242,7 @@
 | `orchestration_progress` | `upward` / `heartbeat`；载荷 ≤2KB |
 | 门禁/事件 | 部门争议→总经理；公司争议→精灵呈用户 |
 
-### Phase 4b（预算/汇总/锁已落地，装配允许集与 HITL 仍开）
+### Phase 4b（预算/汇总/锁/装配允许集/HITL/知识引用已落地）
 
 | 文件 | 改动 |
 |------|------|
@@ -280,7 +280,8 @@
 - [x] 默认阶段无开工确认卡（`NeedsUserConfirm` 空输入 = 无卡）
 - [x] DAG 发射 upward/heartbeat（非调度栅栏）；组织链无名剧本 fail-closed + 管理面授权沉淀
 - [x] 专项成员 L3 去掉 team 总线（注入期 clamp）
-- [ ] 确认五档 HITL；花名册 tool/MCP 允许集在 Assemble 收口；PlanExecutor 按 `graph_template_id` 改道 M53
+- [x] 确认五档 HITL；花名册 tool/MCP 允许集在 Assemble 收口；PlanExecutor 按 `graph_template_id` 改道 M53
+- [x] `confirm_before` 发出 ConfirmBlock；checkpoint 写入 playbook/阶段；剧本 `collection_ids` 落到知识检索
 
 ---
 

@@ -38,6 +38,7 @@ import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlann
 import { parseChannelSessionMeta } from '../channelSessionMeta';
 
 import { useArtifactStore } from '../../../stores/artifact';
+import { CHAT_CONTEXT_WINDOW_TOKENS } from '../../session/contextMetrics';
 import type { ComposerUsageSnapshot } from '../composerUsageMetrics';
 import { useContextBreakdown } from './useContextBreakdown';
 import { mapPreviewToReport, type PromptPreviewReport } from '../contextBreakdown';
@@ -211,11 +212,12 @@ export function useChatWorkspace() {
       contextRatio: s.context_used_ratio ?? 0,
       contextStatus: s.context_status,
       contextUsedTokens: s.context_used_tokens,
-      contextWindow: s.last_context_window_tokens,
+      contextWindow: s.last_context_window_tokens || CHAT_CONTEXT_WINDOW_TOKENS,
       inputTokens: s.input_tokens ?? 0,
       outputTokens: s.output_tokens ?? 0,
       totalTokens: s.total_tokens ?? 0,
       totalCostMicroUsd: s.total_cost_micro_usd ?? 0,
+      contextBudget: s.context_budget ?? null,
     };
   });
 

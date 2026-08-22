@@ -515,6 +515,13 @@ func (c *turnStreamConsumer) publishContextUsageStep() {
 		"team_id":               c.projectMeta.TeamID,
 		"author":                author,
 	}
+	// Per-part prompt-assembly breakdown (29-token §9.6): the BeforeModel
+	// budget hooks have fired by the time streaming usage arrives, so the
+	// snapshot is stable. Lets the chat UI render the Cursor-style
+	// "Context Usage" composition without an extra fetch.
+	if cb := ContextBudgetPayload(c.turnCtx); cb != nil {
+		meta["context_budget"] = cb
+	}
 	c.v2Projector.EmitSystemEvent(c.turnCtx, biz.ActivityKindNotice, "context_usage", meta)
 }
 

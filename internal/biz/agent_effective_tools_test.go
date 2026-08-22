@@ -215,6 +215,21 @@ func TestProfileAllowSet_codingIncludesMCPBroker(t *testing.T) {
 	}
 }
 
+func TestCodingProfileDeniesSpiritReservedWithoutExplicitAllow(t *testing.T) {
+	t.Parallel()
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "coding"}
+	cat := []Tool{
+		{Key: "plan_and_execute", DisplayName: "编排", Category: "orchestration", Source: "builtin", Enabled: true},
+		{Key: "read_file", DisplayName: "读文件", Category: "filesystem", Source: "builtin", Enabled: true},
+	}
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
+	for _, it := range eff.Items {
+		if it.ToolKey == "plan_and_execute" && it.Enabled {
+			t.Fatalf("coding must not inherit spirit tool: %#v", it)
+		}
+	}
+}
+
 func TestReadOnlyLeadDoesNotInheritSpiritTools(t *testing.T) {
 	t.Parallel()
 	allowed := profileAllowSet("read_only", nil)

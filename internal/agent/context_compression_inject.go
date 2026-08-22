@@ -383,9 +383,8 @@ func insertAfterLastSystem(msgs []trpcmodel.Message, marker trpcmodel.Message) [
 	return out
 }
 
-// resolveCompressionContextWindow resolves the context window size for
-// compression threshold computation. Uses the same resolution logic as
-// L0 snapshot persistence for consistency.
+// resolveCompressionContextWindow returns the product 256K chat-context
+// budget (or a test override on ctx). Provider catalog windows are ignored.
 func resolveCompressionContextWindow(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent) int {
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)

@@ -215,6 +215,11 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     icon: 'assignment',
     color: 'orange',
   },
+  confirm_required: {
+    messageKey: 'chat.orchestrationProgress.confirmRequired',
+    icon: 'verified',
+    color: 'orange',
+  },
 };
 
 // --- OBS-05: Sidebar Status Pulse ---

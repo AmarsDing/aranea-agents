@@ -169,6 +169,11 @@ type SpiritTeamParams struct {
 	// AssembleTeam 序列化落库到 Team 记录，供契约验证与下游注入读取。
 	Deliverables  []DeliverableContract
 	InputContract []DeliverableContract
+	// GraphTemplateID optionally routes this team through an existing M53
+	// template (playbook stage). Empty = ordinary Team Turn.
+	GraphTemplateID string
+	// CollectionIDs scope member knowledge tools for this stage.
+	CollectionIDs []string
 }
 
 type SpiritTeamResult struct {

@@ -1857,21 +1857,15 @@ func NewSessionCompressionUsecase(
 context_used_ratio = prompt_tokens / context_window_tokens
 ```
 
-如果 provider 返回精确 token，使用返回值；否则使用本地估算。由于一个 session 可以切换多个模型，`context_window_tokens` 必须按「本次调用的实际模型」计算，而不是只看 session 主表。优先级：
+如果 provider 返回精确 token，使用返回值；否则使用本地估算。**chat context 分母是产品标准，不是厂商窗口**：所有模型统一使用 **256K**（`llmcontext.DefaultWindowTokens` / `MaxWindowTokens`）作为压缩标准与 UI 用量分母，最大支持 256K。Provider catalog 的 `context_window_k` 仅用于模型目录展示与 LLM API token tailoring，不得驱动 `context_used_ratio`、压缩触发或 Chat 左下角标识。
 
-1. 本次调用模型配置中的 `context_window_k * 1000`
-2. 本次消息 options 指定模型的 context window
-3. session 创建时保存的 `default_context_window_tokens`
-4. agent 配置中的 `context_window`
-5. provider preset 的默认值（128000）
+**观测/执行路径对齐**：执行路径仍按 `biz.ResolveProviderModel` 解析实际调用的 provider/model（catalog 缺失时 RefineLLM → 首个启用模型回退）。观测分母不再跟随该模型的宣称窗口，避免 1M catalog 把压缩阈值抬到 ~700K、或 32K catalog 把左下角显示成「已用 / 32K」。
 
-**观测/执行路径对齐**：分母解析（观测）与 LLM 实际调用（执行）必须解析到同一模型。`biz.ResolveProviderModel`（`internal/biz/chat_provider_model.go`）解析时校验 catalog：agent/session 配置的 provider/model **不在 catalog** 时按 RefineLLM → 首个启用模型回退（单 Agent 与 Team 路径共用 `ResolveProviderModelWithFallback`），避免「执行用回退模型、观测用配置模型窗口」导致 ratio 失真（如配置 64K 而实际执行模型为 1M 时显示虚高的 100%+）。
-
-**实现**：`llmcontext.ResolveWindow`（`internal/llmcontext/window.go`）在每次 native turn 与 `runner_completion` 投影时解析分母；`context_used_tokens` **仅**由 `UpdateSessionContextFromLLMUsage` 写入本次 LLM 的 `prompt_tokens`（ReAct 多步取 **turn 内最大 prompt**），消息落库时不再累加。
+**实现**：`llmcontext.ResolveWindow`（`internal/llmcontext/window.go`）在每次 native turn 与 `runner_completion` 投影时返回 256K；`context_used_tokens` **仅**由 `UpdateSessionContextFromLLMUsage` 写入本次 LLM 的 `prompt_tokens`（ReAct 多步取 **turn 内最大 prompt**），消息落库时不再累加。前端 `CHAT_CONTEXT_WINDOW_TOKENS` 与后端常量同步，展示 `used / 256K`。
 
 **真实比例（不钳制）**：`llmcontext.ContextRatio` 返回真实值（可 >1），前端 `contextMetrics.ts` 同步不 clamp；超窗口时 UI 显示真实百分比（如 156%），由 `exceeded` 状态色表达，不再封顶 100%。
 
-**WS 契约**：`context_usage` 在 ReAct 多步 LLM 每次 prompt 峰值上升时推送（仅更新 context 条，不累加 session total）；`runner_completion.usage` 携带 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`。
+**WS 契约**：`context_usage` 在 ReAct 多步 LLM 每次 prompt 峰值上升时推送（仅更新 context 条，不累加 session total）；`runner_completion.usage` 携带 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`。前端用量分母固定为 `CHAT_CONTEXT_WINDOW_TOKENS`（256K），忽略事件里的 provider `max_tokens`。
 
 **状态阈值单一来源**：Go `internal/llmcontext/metrics.go` 与前端 `web/src/features/session/contextMetrics.ts` 保持同步（0.6 / 0.8 / 0.95）。
 

@@ -795,7 +795,7 @@ sequenceDiagram
 
 ### 14.4 编排图
 
-PlanExecutor 仍是唯一前向调度者。剧本 `stages[].graph_template_id` 可选，命中则该阶段走已有 M53 Graph（HITL/checkpoint/重试）。未填则普通 Team Turn。禁止把整条组织链编译成第二套引擎。
+PlanExecutor 仍是唯一前向调度者。剧本 `stages[].graph_template_id` 可选：builtin 改 intra-team mode，其它 id 在 compile/run 按已有 M53 资产加载（HITL/checkpoint/重试）；缺失资产回落普通 Team Turn。禁止把整条组织链编译成第二套引擎。
 
 ### 14.5 最终汇总
 

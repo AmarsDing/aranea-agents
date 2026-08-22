@@ -168,7 +168,7 @@ rpc CreateAgent(CreateAgentRequest) returns (Agent) {
 | | `agent_description` | string | ❌ | Agent 描述/人设 |
 | | `category_position_id` | string | ❌ | 业务分类叶子节点 ID |
 | | `system_prompt_mode` | string | ❌ | 提示词模式：simple/complete |
-| | `context_window` | int32 | ❌ | 上下文窗口大小，默认 128000 |
+| | `context_window` | int32 | ❌ | 模型元数据（厂商窗口）；chat/压缩预算固定 256K，不读此字段 |
 | | `budget_monthly_cents` | int32 | ❌ | 月预算（美分） |
 | | `config_json` | string | ❌ | 兼容旧配置 JSON |
 | | `settings` | AgentRuntimeSettings | ❌ | 运行时设置 |

@@ -76,6 +76,9 @@ type Definition struct {
 	// DefinitionSnapshotJSON 持久化，评测运行自描述、可复现。
 	// 与 ModelCascade 互斥——同时配置时 EvalProfile 胜出（可复现性优先于成本优化）。
 	EvalProfile *EvalProfileDef `json:"eval_profile,omitempty"`
+	// CollectionIDs scope knowledge_search for this stage (playbook). When set
+	// they win over TurnInput.Options.KnowledgeBases. Empty = no pre-scope.
+	CollectionIDs []string `json:"collection_ids,omitempty"`
 }
 
 // EvalProfileDef is the team-level evaluation profile (P3-4, ADR-E D1).

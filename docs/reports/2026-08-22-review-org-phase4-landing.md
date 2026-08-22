@@ -2,7 +2,7 @@
 
 > 日期：2026-08-22
 > 类型：review
-> 状态：部分落地，缺口已列优先级
+> 状态：Phase 4 未做项第二批已接（ConfirmBlock / checkpoint 写入 / collection_ids）；跨公司 Brief 仍 YAGNI
 > 关联：[M78 开发计划](../development/78-org-aware-orchestration.development.md) · [横切评审](./2026-08-22-review-org-heavy-chain-crosscut.md) · [组织不变量](../development/org-invariants.md)
 
 ---
@@ -60,14 +60,25 @@
 - DECISION.md 粗路由：组织链只点名剧本
 - 前端进度文案：heartbeat / upward / playbook_fill_required
 
+**本轮三条并行（已接）**
+
+- `graph_template_id`：Assemble 写入 definition；builtin 改 intra-team mode；非 builtin 当 `graph_definitions.id` 在 compile/run 加载；缺失资产回落普通 Team Turn
+- 花名册工具面：Assemble 盖 `specialist_tool_faces`；effective tools 拒绝 spirit 保留集；领导 clamp 到 `read_only`；MCP 仍走该员工自己的 allow/`mcp:` 前缀
+- 确认五档 HITL：造人（Factory）、新剧本（AuthorizeCompanyPlaybook）、高风险门（既有 VerificationGate）、危险工具（既有 hook）、`confirm_before`（PlanExecutor 等待 + ConfirmActivity + steps_v2 ConfirmBlock）。默认阶段交接不弹卡
+
+**未做项第二批（已接）**
+
+- `confirm_before` 发出 `kind=confirm` / `tool_blocked` 卡（`playbook_confirm_before`），ConfirmActivity 用同一 activity id 闭环
+- escalate 把最新 playbook hit 写入 checkpoint（`gear=heavy`、阶段 id）；`IssuedBriefIDs` 仍空，等 Brief 登记表
+- 剧本 `collection_ids`：Expand → PlanStep → Assemble definition → team run `WithKnowledgeCollections`（胜用户 KnowledgeBases）；Brief 仍无知识正文
+- 主对话不渲染 `token_usage` NoticeBlock（既有 `noticeFilter`）
+
 **仍未接**
 
 | 缺口 | 建议 |
 |------|------|
-| `graph_template_id` 已到 PlanStep，PlanExecutor 未改道 M53 | 命中则复用已有 Graph |
-| 花名册 tool/MCP 允许集未在 Assemble 收口 | ORGFAST-51 |
-| 确认五档未接 HITL | 只接五档，禁止每人开工卡 |
-| 跨公司总经理 Brief | 继续 YAGNI |
+| 跨公司总经理 Brief（ORGFAST-31） | 继续 YAGNI |
+| 仲裁 dept→GM / company→Spirit（ORGFAST-47） | 未列入本批 |
 
 不新造 Graph 引擎、不复活 ExecutionReportCard、不把 deptmail 当横向水管。
 

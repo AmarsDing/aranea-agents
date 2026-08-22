@@ -8,6 +8,7 @@ import {
   sessionContextPatchFromStepUsage,
   sessionContextPatchFromUsage,
 } from '../sessionContextPatch';
+import { CHAT_CONTEXT_WINDOW_TOKENS } from '../../session/contextMetrics';
 import type { ActivityEvent, Activity } from '../../../realtime/activityEvent';
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
@@ -48,41 +49,42 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
 }
 
 describe('sessionContextPatch', () => {
-  it('derives ratio from runner_completion usage', () => {
+  it('derives ratio from the 256K product window, ignoring provider max_tokens', () => {
     expect(
       contextRatioFromUsage({
         prompt_tokens: 50_000,
         completion_tokens: 100,
         total_tokens: 50_100,
-        max_tokens: 128_000,
+        max_tokens: 1_000_000,
       }),
-    ).toBeCloseTo(50_000 / 128_000);
+    ).toBeCloseTo(50_000 / CHAT_CONTEXT_WINDOW_TOKENS);
   });
 
-  it('returns real ratio above 1 when prompt exceeds the window', () => {
+  it('returns real ratio above 1 when prompt exceeds the 256K window', () => {
     expect(
       contextRatioFromUsage({
-        prompt_tokens: 200_000,
+        prompt_tokens: 300_000,
         completion_tokens: 0,
-        total_tokens: 200_000,
+        total_tokens: 300_000,
         max_tokens: 128_000,
       }),
-    ).toBeCloseTo(200_000 / 128_000);
+    ).toBeCloseTo(300_000 / CHAT_CONTEXT_WINDOW_TOKENS);
   });
 
   it('builds patch with turn token increment', () => {
     const patch = sessionContextPatchFromUsage(
       {
-        prompt_tokens: 64_000,
+        prompt_tokens: 128_000,
         completion_tokens: 512,
-        total_tokens: 64_512,
-        max_tokens: 128_000,
+        total_tokens: 128_512,
+        max_tokens: 64_000,
         turn_total_tokens: 64_512,
       },
       { input_tokens: 500, output_tokens: 500, total_tokens: 1000, max_context_used_ratio: 0.3 },
     );
     expect(patch?.context_used_ratio).toBeCloseTo(0.5);
     expect(patch?.context_status).toBe('normal');
+    expect(patch?.last_context_window_tokens).toBe(CHAT_CONTEXT_WINDOW_TOKENS);
     expect(patch?.total_tokens).toBe(1000 + 64_512);
     expect(patch?.max_context_used_ratio).toBeCloseTo(0.5);
   });
@@ -98,6 +100,7 @@ describe('sessionContextPatch', () => {
       context_used_ratio: 0.22,
       context_used_tokens: 28_000,
       context_status: 'normal',
+      last_context_window_tokens: CHAT_CONTEXT_WINDOW_TOKENS,
     });
   });
 
@@ -110,7 +113,8 @@ describe('sessionContextPatch', () => {
       max_tokens: 128_000,
       turn_total_tokens: 70_200,
     });
-    expect(patch?.context_used_ratio).toBeCloseTo(70_000 / 128_000);
+    expect(patch?.context_used_ratio).toBeCloseTo(70_000 / CHAT_CONTEXT_WINDOW_TOKENS);
+    expect(patch?.last_context_window_tokens).toBe(CHAT_CONTEXT_WINDOW_TOKENS);
     expect(patch?.total_tokens).toBeUndefined();
     expect(patch?.input_tokens).toBeUndefined();
   });
@@ -124,7 +128,7 @@ describe('sessionContextPatch', () => {
         total_tokens: 90_100,
         max_tokens: 128_000,
       }),
-    ).toBeCloseTo(50_000 / 128_000);
+    ).toBeCloseTo(50_000 / CHAT_CONTEXT_WINDOW_TOKENS);
   });
 
   it('maps status thresholds', () => {
@@ -177,9 +181,9 @@ describe('sessionContextPatchFromActivityEvent', () => {
       }),
     };
     const patch = sessionContextPatchFromActivityEvent(ev);
-    expect(patch?.context_used_ratio).toBeCloseTo(70_000 / 128_000);
+    expect(patch?.context_used_ratio).toBeCloseTo(70_000 / CHAT_CONTEXT_WINDOW_TOKENS);
     expect(patch?.total_tokens).toBeUndefined();
-    expect(patch?.last_context_window_tokens).toBe(128_000);
+    expect(patch?.last_context_window_tokens).toBe(CHAT_CONTEXT_WINDOW_TOKENS);
   });
 
   it('derives turn usage patch from runner_completion stage with total_tokens increment', () => {
@@ -200,11 +204,12 @@ describe('sessionContextPatchFromActivityEvent', () => {
       input_tokens: 500,
       output_tokens: 500,
       total_tokens: 1000,
-      max_context_used_ratio: 0.3,
+      max_context_used_ratio: 0.1,
     });
-    expect(patch?.context_used_ratio).toBeCloseTo(0.5);
+    expect(patch?.context_used_ratio).toBeCloseTo(64_000 / CHAT_CONTEXT_WINDOW_TOKENS);
+    expect(patch?.last_context_window_tokens).toBe(CHAT_CONTEXT_WINDOW_TOKENS);
     expect(patch?.total_tokens).toBe(1000 + 64_512);
-    expect(patch?.max_context_used_ratio).toBeCloseTo(0.5);
+    expect(patch?.max_context_used_ratio).toBeCloseTo(64_000 / CHAT_CONTEXT_WINDOW_TOKENS);
   });
 
   it('derives patch from compress notice meta', () => {
@@ -225,6 +230,7 @@ describe('sessionContextPatchFromActivityEvent', () => {
       context_used_ratio: 0.22,
       context_used_tokens: 28_000,
       context_status: 'normal',
+      last_context_window_tokens: CHAT_CONTEXT_WINDOW_TOKENS,
     });
   });
 
@@ -257,6 +263,67 @@ describe('sessionContextPatchFromActivityEvent', () => {
       }),
     };
     const patch = sessionContextPatchFromActivityEvent(ev);
-    expect(patch?.context_used_ratio).toBeCloseTo(50_000 / 128_000);
+    expect(patch?.context_used_ratio).toBeCloseTo(50_000 / CHAT_CONTEXT_WINDOW_TOKENS);
+  });
+
+  it('attaches context_budget from context_usage meta to the patch', () => {
+    const ev: ActivityEvent = {
+      event: 'updated',
+      activity: makeActivity({
+        stage: 'context_usage',
+        prompt_tokens: 70_000,
+        meta: {
+          context_prompt_tokens: 70_000,
+          context_budget: {
+            est_tokens: { static_prefix: 909, tools_schema: 10_900, history: 58_000 },
+            est_total_input: 69_809,
+            tools_count: 7,
+            top_tools: [{ name: 'gns3_exec', est_tokens: 3200 }],
+          },
+        },
+      }),
+    };
+    const patch = sessionContextPatchFromActivityEvent(ev);
+    expect(patch?.context_budget).toEqual({
+      est_tokens: { static_prefix: 909, tools_schema: 10_900, history: 58_000 },
+      est_total_input: 69_809,
+      tools_count: 7,
+      top_tools: [{ name: 'gns3_exec', est_tokens: 3200 }],
+    });
+    // Ratio patch still derived alongside the budget.
+    expect(patch?.context_used_ratio).toBeCloseTo(70_000 / CHAT_CONTEXT_WINDOW_TOKENS);
+  });
+
+  it('keeps a budget-only patch when usage fields are absent', () => {
+    const ev: ActivityEvent = {
+      event: 'updated',
+      activity: makeActivity({
+        stage: 'context_usage',
+        meta: {
+          context_budget: {
+            est_tokens: { history: 1000 },
+            est_total_input: 1000,
+            tools_count: 0,
+          },
+        },
+      }),
+    };
+    const patch = sessionContextPatchFromActivityEvent(ev);
+    expect(patch?.context_budget?.est_total_input).toBe(1000);
+    expect(patch?.context_used_ratio).toBeUndefined();
+  });
+
+  it('omits context_budget when the meta payload is malformed', () => {
+    const ev: ActivityEvent = {
+      event: 'updated',
+      activity: makeActivity({
+        stage: 'context_usage',
+        prompt_tokens: 70_000,
+        meta: { context_prompt_tokens: 70_000, context_budget: 'garbage' },
+      }),
+    };
+    const patch = sessionContextPatchFromActivityEvent(ev);
+    expect(patch?.context_budget).toBeUndefined();
+    expect(patch?.context_used_ratio).toBeCloseTo(70_000 / CHAT_CONTEXT_WINDOW_TOKENS);
   });
 });

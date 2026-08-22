@@ -14,7 +14,26 @@ const (
 	PipeDownwardGrant   = "downward"
 	PipeDeptMail        = "deptmail"
 	PipeUserInject      = "inject"
+	PipeConfirmRequired = "confirm_required"
 )
+
+const playbookConfirmActivityPrefix = "pbconfirm:"
+
+// PlaybookConfirmActivityID is the steps_v2 confirm card id for a plan stage.
+// ConfirmActivity and ConfirmBlock use this as activity_id.
+func PlaybookConfirmActivityID(sessionID, stepID string) string {
+	return playbookConfirmActivityPrefix + strings.TrimSpace(sessionID) + ":" + strings.TrimSpace(stepID)
+}
+
+// ParsePlaybookConfirmActivityID extracts the plan step id from a confirm card id.
+func ParsePlaybookConfirmActivityID(sessionID, activityID string) (stepID string, ok bool) {
+	prefix := playbookConfirmActivityPrefix + strings.TrimSpace(sessionID) + ":"
+	if !strings.HasPrefix(activityID, prefix) {
+		return "", false
+	}
+	stepID = strings.TrimSpace(strings.TrimPrefix(activityID, prefix))
+	return stepID, stepID != ""
+}
 
 // UpwardPipeMaxRunes is the R11 ceiling for a single upward payload.
 const UpwardPipeMaxRunes = 2000

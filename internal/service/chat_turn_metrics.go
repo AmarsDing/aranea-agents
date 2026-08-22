@@ -222,29 +222,15 @@ func (m *chatTurnMetrics) recordContextBudgetLog(ctx context.Context, p TurnUsag
 // Passthrough when no budget is mounted (non-chat paths) or nothing was
 // recorded (LLM never reached); existing metadata keys are preserved.
 func mergeContextBudgetMetadata(ctx context.Context, meta string) string {
-	budget := chatagent.ContextBudgetFromContext(ctx)
-	if budget == nil {
-		return meta
-	}
-	snap := budget.Snapshot()
-	if snap.EstTotalInput == 0 && snap.ToolsCount == 0 {
+	// Shared payload shape with the context_usage WS event meta
+	// (chatagent.ContextBudgetPayload) — nil means "no ledger, passthrough".
+	cb := chatagent.ContextBudgetPayload(ctx)
+	if cb == nil {
 		return meta
 	}
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(meta), &payload); err != nil || payload == nil {
 		payload = map[string]any{}
-	}
-	cb := map[string]any{
-		"est_tokens":      snap.EstTokens,
-		"est_total_input": snap.EstTotalInput,
-		"tools_count":     snap.ToolsCount,
-	}
-	if len(snap.TopTools) > 0 {
-		tops := make([]map[string]any, 0, len(snap.TopTools))
-		for _, tt := range snap.TopTools {
-			tops = append(tops, map[string]any{"name": tt.Name, "est_tokens": tt.EstTokens})
-		}
-		cb["top_tools"] = tops
 	}
 	payload["context_budget"] = cb
 	raw, err := json.Marshal(payload)

@@ -142,6 +142,8 @@ func ExpandPlaybook(pb Playbook) []SubTask {
 			DomainPath:      domain,
 			Deliverables:    contracts,
 			GraphTemplateID: strings.TrimSpace(st.GraphTemplateID),
+			ConfirmBefore:   st.ConfirmBefore,
+			CollectionIDs:   append([]string(nil), st.CollectionIDs...),
 		})
 	}
 	return out

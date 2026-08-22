@@ -219,6 +219,7 @@ func (u *OrganizationUsecase) ensureCompanyLeads(ctx context.Context) {
 
 // AuthorizeCompanyPlaybook persists a GM-signed playbook on the company node.
 // Management path: does not create company/department nodes.
+// Calling this API is the R18 new_playbook confirmation (NeedsUserConfirm).
 func (u *OrganizationUsecase) AuthorizeCompanyPlaybook(ctx context.Context, companyID string, pb Playbook) (OrganizationNode, error) {
 	if u == nil || u.repo == nil {
 		return OrganizationNode{}, ErrOrgBadRequest("organization repo is required")
@@ -235,6 +236,9 @@ func (u *OrganizationUsecase) AuthorizeCompanyPlaybook(ctx context.Context, comp
 		return OrganizationNode{}, ErrOrgBadRequest("playbook can only be authorized on a company node")
 	}
 	HydrateCompanyLeadFromMetadata(&node)
+	if NeedsUserConfirm(ConfirmInput{AuthorizingPlaybook: true}) != ConfirmNewPlaybook {
+		return OrganizationNode{}, ErrOrgBadRequest("playbook authorization requires user confirmation")
+	}
 	AuthorizePlaybookOnCompany(&node, pb)
 	updated, err := u.repo.UpdateOrgNode(ctx, node)
 	if err != nil {

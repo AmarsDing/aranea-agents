@@ -115,6 +115,12 @@ type SubTask struct {
 	// GraphTemplateID optionally routes this stage through an existing M53
 	// template. Empty = ordinary Team Turn. Never invents a second engine.
 	GraphTemplateID string `json:"graph_template_id,omitempty"`
+	// ConfirmBefore is R18 playbook_confirm_before: hold dispatch until the
+	// user approves. Default stage handoff stays Brief-only.
+	ConfirmBefore bool `json:"confirm_before,omitempty"`
+	// CollectionIDs are knowledge bases this stage may search. Empty = no
+	// pre-scope (agent tools fall back to department/default routing).
+	CollectionIDs []string `json:"collection_ids,omitempty"`
 }
 
 // PlanTaskDAG represents the dependency graph of subtasks within a TaskPlan.

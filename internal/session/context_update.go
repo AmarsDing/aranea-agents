@@ -10,7 +10,9 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// ModelConfigCatalog resolves provider/model config JSON for context window lookup.
+// ModelConfigCatalog resolves provider/model config JSON.
+// Chat context budget no longer reads catalog windows; the interface remains
+// on PatchContextFromLLMUsage for call-site compatibility.
 type ModelConfigCatalog interface {
 	GetModelConfigJSON(ctx context.Context, provider, model string) string
 }

@@ -50,9 +50,8 @@
       </div>
       <div
         v-if="hasContextInfo"
-        class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--hoverable"
-        @mouseenter="onContextEnter"
-        @mouseleave="onContextLeave"
+        class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md spirit-status-bar__item--clickable"
+        @click="contextMenuOpen = !contextMenuOpen"
       >
         <q-icon name="data_usage" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
         <span>{{ contextLabel }}</span>
@@ -66,20 +65,60 @@
           transition-hide="fade"
           :content-style="popupContentStyle"
           class="spirit-context-popup"
+          @click.stop
         >
-          <div class="spirit-context-popup__inner" @mouseenter="onPopupEnter" @mouseleave="onContextLeave">
+          <div class="spirit-context-popup__inner">
             <div class="spirit-context-popup__header">
-              <div class="text-weight-medium">{{ t('chat.contextPromptUse') }} {{ contextPctLabel }}</div>
-              <div v-if="contextTokenLabel" class="text-caption spirit-context-popup__sub">
-                {{ t('chat.contextTokensHint') }}: {{ contextTokenLabel }}
+              <div class="spirit-context-popup__header-row">
+                <span class="text-weight-medium">{{ t('chat.contextBudgetTitle') }}</span>
+                <q-icon name="close" size="14px" class="spirit-context-popup__close" @click="contextMenuOpen = false" />
               </div>
-              <div v-if="tokenLabel" class="text-caption spirit-context-popup__sub">
-                {{ tokenLabel }}
+              <div class="spirit-context-popup__totals">
+                <span>{{ t('chat.contextBudgetFull', { pct: contextPctLabel }) }}</span>
+                <span v-if="contextTokenLabel" class="spirit-context-popup__sub">~{{ contextTokenLabel }}</span>
               </div>
             </div>
-            <q-separator class="spirit-context-popup__sep" />
-            <div class="spirit-context-popup__title">{{ t('chat.modelTokenChartTitle') }}</div>
-            <ModelTokenChart :data="modelTokensData" :loading="modelTokensLoading" />
+
+            <template v-if="budgetRows.length">
+              <!-- Stacked composition bar: segments sized against the context window. -->
+              <div class="spirit-context-popup__stack" role="img" :aria-label="t('chat.contextBudgetTitle')">
+                <div
+                  v-for="row in budgetRows"
+                  :key="row.key"
+                  class="spirit-context-popup__stack-seg"
+                  :style="{ width: stackSegWidth(row), background: row.color }"
+                />
+              </div>
+              <div class="spirit-context-popup__rows">
+                <div v-for="row in budgetRows" :key="row.key" class="spirit-context-popup__row">
+                  <span class="spirit-context-popup__dot" :style="{ background: row.color }" />
+                  <span class="spirit-context-popup__row-label">
+                    {{ t(`chat.${row.labelKey}`) }}
+                    <span v-if="row.key === toolsSchemaKey && budgetToolsCount > 0" class="spirit-context-popup__sub">
+                      ({{ t('chat.contextBudgetToolsCount', { count: budgetToolsCount }) }})
+                    </span>
+                  </span>
+                  <span class="spirit-context-popup__row-value">{{ formatCtxTokens(row.estTokens) }}</span>
+                </div>
+                <template v-if="budgetTopTools.length">
+                  <div
+                    v-for="tool in budgetTopTools"
+                    :key="tool.name"
+                    class="spirit-context-popup__row spirit-context-popup__row--sub"
+                  >
+                    <span class="spirit-context-popup__row-label ellipsis">{{ tool.name }}</span>
+                    <span class="spirit-context-popup__row-value">{{ formatCtxTokens(tool.est_tokens) }}</span>
+                  </div>
+                </template>
+              </div>
+              <div class="spirit-context-popup__estimate">{{ t('chat.contextBudgetEstimated') }}</div>
+            </template>
+
+            <template v-else>
+              <q-separator class="spirit-context-popup__sep" />
+              <div class="spirit-context-popup__title">{{ t('chat.modelTokenChartTitle') }}</div>
+              <ModelTokenChart :data="modelTokensData" :loading="modelTokensLoading" />
+            </template>
           </div>
         </q-menu>
       </div>
@@ -117,8 +156,15 @@
 <script setup lang="ts">
 import { computed, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { COMPLEXITY_CONFIG, dqScoreColor as getDqScoreColor, formatTokenCount } from '../../features/spirit/spiritUi';
+import { COMPLEXITY_CONFIG, dqScoreColor as getDqScoreColor } from '../../features/spirit/spiritUi';
 import { formatTokenCount as formatCtxTokens } from '../../features/chat/composerUsageMetrics';
+import {
+  CONTEXT_BUDGET_CATEGORY,
+  buildContextBudgetRows,
+  type ContextBudgetRow,
+} from '../../features/chat/contextBudget';
+import type { ContextBudgetSnapshot } from '../../features/session/types';
+import { CHAT_CONTEXT_WINDOW_TOKENS, chatContextRatio } from '../../features/session/contextMetrics';
 import { useSessionModelTokens } from '../../features/chat/useSessionModelTokens';
 import ModelTokenChart from '../chat/ModelTokenChart.vue';
 
@@ -136,8 +182,10 @@ const props = defineProps<{
   contextRatio?: number | null;
   /** Current context tokens used. */
   contextUsedTokens?: number | null;
-  /** Model context window size in tokens. */
+  /** Chat context window size in tokens (product 256K standard). */
   contextWindow?: number | null;
+  /** Latest turn's prompt-assembly breakdown (WS context_usage push only). */
+  contextBudget?: ContextBudgetSnapshot | null;
   /** Current session id — used to fetch per-model token breakdown. */
   sessionId?: string | null;
   /** Complexity level from spirit_plan_created event (simple/moderate/complex). */
@@ -173,8 +221,6 @@ const visible = computed(
     props.dqScore != null,
 );
 
-const tokenLabel = computed(() => formatTokenCount(props.tokenUsage?.in, props.tokenUsage?.out));
-
 // Compact input/output label for the status bar: ↑1.2k ↓0.8k
 const inOutLabel = computed(() => {
   const tin = props.tokenUsage?.in ?? 0;
@@ -184,16 +230,22 @@ const inOutLabel = computed(() => {
   return `↑${fmt(tin)} ↓${fmt(tout)}`;
 });
 
-// 上下文圆环功能（原 ChatComposer 中的圆环）：百分比 + 当前/模型上下文 token 量
-const clampedRatio = computed(() => Math.min(1, Math.max(0, props.contextRatio ?? 0)));
+// 上下文标识：百分比 + 当前 / 产品 256K chat context（不采用 provider 窗口）
+const displayWindow = CHAT_CONTEXT_WINDOW_TOKENS;
+const displayRatio = computed(() => {
+  const used = props.contextUsedTokens;
+  if (used != null && used > 0) {
+    return chatContextRatio(used) ?? 0;
+  }
+  return props.contextRatio ?? 0;
+});
+const clampedRatio = computed(() => Math.min(1, Math.max(0, displayRatio.value)));
 const contextPctLabel = computed(() => `${Math.round(clampedRatio.value * 100)}%`);
 const contextTokenLabel = computed(() => {
   const used = props.contextUsedTokens;
-  const win = props.contextWindow;
   const usedStr = used != null && used > 0 ? formatCtxTokens(used) : '';
-  const winStr = win != null && win > 0 ? formatCtxTokens(win) : '';
-  if (usedStr && winStr) return `${usedStr} / ${winStr}`;
-  return usedStr || winStr;
+  if (!usedStr) return '';
+  return `${usedStr} / ${formatCtxTokens(displayWindow)}`;
 });
 const contextLabel = computed(() => {
   if (!contextTokenLabel.value) return contextPctLabel.value;
@@ -201,7 +253,24 @@ const contextLabel = computed(() => {
 });
 const hasContextInfo = computed(() => props.contextRatio != null || !!contextTokenLabel.value || !!props.tokenUsage);
 
-// Per-model token usage for the popup chart.
+// ── Prompt-assembly breakdown (Cursor 风格分项可观测性) ────────────────
+// Rows come from the backend context_budget ledger pushed with the
+// context_usage WS event. When absent (older backend / no ledger), the popup
+// falls back to the legacy per-model token chart below.
+const budgetRows = computed(() => buildContextBudgetRows(props.contextBudget));
+const budgetToolsCount = computed(() => props.contextBudget?.tools_count ?? 0);
+const budgetTopTools = computed(() => props.contextBudget?.top_tools ?? []);
+const toolsSchemaKey = CONTEXT_BUDGET_CATEGORY.toolsSchema;
+
+// Stacked-bar segment widths are fractions of the chat context window so the
+// bar reads as "how full the window is", matching the header percentage.
+function stackSegWidth(row: ContextBudgetRow): string {
+  const window = displayWindow > 0 ? displayWindow : 1;
+  const pct = Math.min(100, Math.max(0.4, (row.estTokens / window) * 100));
+  return `${pct}%`;
+}
+
+// Per-model token usage for the popup chart (fallback when no budget ledger).
 const sessionIdRef = toRef(props, 'sessionId');
 const {
   data: modelTokensData,
@@ -209,48 +278,14 @@ const {
   reload: reloadModelTokens,
 } = useSessionModelTokens(sessionIdRef);
 
-// Hover-controlled popup for the context item.
+// Click-controlled popup for the context item (点击固定, dismissed via the
+// close icon or q-menu's default outside-click).
 const contextMenuOpen = ref(false);
-let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Refresh the chart each time the popup opens (turns accumulate while chatting).
+// Fallback chart only: refresh when the popup opens without a budget ledger.
 watch(contextMenuOpen, (open) => {
-  if (open) void reloadModelTokens();
+  if (open && !budgetRows.value.length) void reloadModelTokens();
 });
-
-// Keep the open popup fresh: new turns surface as token-usage changes.
-watch(
-  () => [props.tokenUsage?.in ?? 0, props.tokenUsage?.out ?? 0],
-  () => {
-    if (contextMenuOpen.value) void reloadModelTokens();
-  },
-);
-
-function onContextEnter() {
-  if (hideTimer) {
-    clearTimeout(hideTimer);
-    hideTimer = null;
-  }
-  contextMenuOpen.value = true;
-}
-
-function onContextLeave() {
-  // Defer close so moving the cursor into the popup doesn't lose it.
-  hideTimer = setTimeout(() => {
-    contextMenuOpen.value = false;
-    hideTimer = null;
-  }, 200);
-}
-
-// Hover bridge: the q-menu content is teleported to <body>, so the trigger's
-// mouseleave fires while the cursor travels into the popup. Entering the popup
-// must cancel the pending hide; leaving it re-arms the same deferred close.
-function onPopupEnter() {
-  if (hideTimer) {
-    clearTimeout(hideTimer);
-    hideTimer = null;
-  }
-}
 
 // Theme-consistent popup styling.
 const popupContentStyle = {
@@ -328,16 +363,6 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
 .spirit-status-bar__item--shift-md
   transform: translateY(3px)
 
-.spirit-status-bar__item--hoverable
-  cursor: default
-  border-radius: 4px
-  padding: 1px 4px
-  transform: translateY(3px)
-  transition: background 0.15s ease
-
-  &:hover
-    background: color-mix(in srgb, var(--color-accent) 8%, transparent)
-
 .spirit-status-bar__inout
   color: var(--color-text-tertiary)
   font-variant-numeric: tabular-nums
@@ -361,9 +386,87 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
   .spirit-context-popup__header
     display: flex
     flex-direction: column
-    gap: 2px
+    gap: 4px
+    margin-bottom: 8px
+
+  .spirit-context-popup__header-row
+    display: flex
+    align-items: center
+    justify-content: space-between
+    font-size: 13px
+
+  .spirit-context-popup__close
+    color: var(--color-text-tertiary)
+    cursor: pointer
+    border-radius: 4px
+    padding: 2px
+
+    &:hover
+      color: var(--color-text-primary)
+      background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+
+  .spirit-context-popup__totals
+    display: flex
+    align-items: baseline
+    justify-content: space-between
+    font-size: 12px
 
   .spirit-context-popup__sub
+    color: var(--color-text-tertiary)
+
+  .spirit-context-popup__stack
+    display: flex
+    height: 6px
+    border-radius: 3px
+    overflow: hidden
+    background: color-mix(in srgb, var(--color-text-tertiary) 18%, transparent)
+    margin-bottom: 10px
+
+  .spirit-context-popup__stack-seg
+    height: 100%
+    flex-shrink: 0
+
+    & + .spirit-context-popup__stack-seg
+      margin-left: 1px
+
+  .spirit-context-popup__rows
+    display: flex
+    flex-direction: column
+    gap: 5px
+
+  .spirit-context-popup__row
+    display: flex
+    align-items: center
+    gap: 8px
+    font-size: 12px
+
+  .spirit-context-popup__row--sub
+    padding-left: 18px
+    font-size: 11px
+    color: var(--color-text-tertiary)
+
+    .spirit-context-popup__row-value
+      color: var(--color-text-tertiary)
+
+  .spirit-context-popup__dot
+    width: 10px
+    height: 10px
+    border-radius: 3px
+    flex-shrink: 0
+
+  .spirit-context-popup__row-label
+    flex: 1
+    min-width: 0
+    color: var(--color-text-secondary)
+
+  .spirit-context-popup__row-value
+    margin-left: auto
+    font-variant-numeric: tabular-nums
+    color: var(--color-text-primary)
+
+  .spirit-context-popup__estimate
+    margin-top: 8px
+    font-size: 10px
     color: var(--color-text-tertiary)
 
   .spirit-context-popup__sep

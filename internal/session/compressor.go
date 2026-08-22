@@ -123,11 +123,11 @@ type compressDeps struct {
 }
 
 type Compressor struct {
-	deps         compressDeps
-	agents       AgentKeyLookup
-	Runtime      *Runtime
-	Compress     compress.Compressor
-	Memory       MemoryResync
+	deps          compressDeps
+	agents        AgentKeyLookup
+	Runtime       *Runtime
+	Compress      compress.Compressor
+	Memory        MemoryResync
 	monitorBus    contract.MonitorBus
 	memoryReader  biz.MemoryFactReader
 	l1Reader      biz.L1AdminReader
@@ -1023,8 +1023,8 @@ func (c *Compressor) llmSummarize(ctx context.Context, sess biz.Session, ag biz.
 	// v4 双段化：从最终叙事产出末尾拆出 task_state 结构化段（剥块后叙事入库）。
 	narrative, taskState := compress.ExtractTaskState(md)
 	return compressOutcome{
-		level:    compressLevelLLM,
-		markdown: narrative,
+		level:     compressLevelLLM,
+		markdown:  narrative,
 		taskState: taskState,
 		// 仅当 LLM 真实产出摘要时才算吸收（hybrid 兜底标记不含历史内容，删除旧行会丢数据）。
 		absorbedPriors: priorMerged != "" && llmSucceeded,

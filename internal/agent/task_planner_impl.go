@@ -2341,6 +2341,12 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 		if st.GraphTemplateID != "" {
 			ps.GraphTemplateID = st.GraphTemplateID
 		}
+		if st.ConfirmBefore {
+			ps.ConfirmBefore = true
+		}
+		if ids := biz.NormalizeCollectionIDs(st.CollectionIDs); len(ids) > 0 {
+			ps.CollectionIDs = ids
+		}
 		ps.Mode = biz.SpiritTeamModeForStep(string(plan.Strategy), len(ps.AgentKeys))
 		planSteps = append(planSteps, ps)
 	}

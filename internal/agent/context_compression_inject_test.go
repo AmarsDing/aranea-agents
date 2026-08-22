@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -224,8 +225,11 @@ func TestPartitionByTokenBudget_EmptyMessages(t *testing.T) {
 
 // --- Hook tests（终审闸门：注入后计数 + token 口径截断 + 降级链） ---
 
-func runCompressionHook(t *testing.T, hook callbacks0, ctx context.Context, args *trpcmodel.BeforeModelArgs) {
+func runCompressionHook(t *testing.T, hook callbacks0, ctx context.Context, ag biz.Agent, args *trpcmodel.BeforeModelArgs) {
 	t.Helper()
+	if ag.ContextWindow > 0 {
+		ctx = llmcontext.ContextWithWindow(ctx, ag.ContextWindow)
+	}
 	hookFn := hook.(interface {
 		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
 	})
@@ -268,7 +272,7 @@ func TestCompressionHook_SkipsWhenRatioBelowThreshold(t *testing.T) {
 		{Role: trpcmodel.RoleUser, Content: "hello"},
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: originalMsgs}}
-	runCompressionHook(t, hook, context.Background(), args)
+	runCompressionHook(t, hook, context.Background(), ag, args)
 	if len(args.Request.Messages) != len(originalMsgs) {
 		t.Fatalf("expected messages unchanged, got %d messages", len(args.Request.Messages))
 	}
@@ -300,7 +304,7 @@ func TestCompressionHook_TailCuesCountedInRatio(t *testing.T) {
 	}
 	msgs = append(msgs, trpcmodel.Message{Role: trpcmodel.RoleSystem, Content: strings.Repeat("k", 60)}) // injected knowledge cue
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
-	runCompressionHook(t, hook, context.Background(), args)
+	runCompressionHook(t, hook, context.Background(), ag, args)
 
 	hasMarker := false
 	for _, m := range args.Request.Messages {
@@ -335,7 +339,7 @@ func TestCompressionHook_MarkerAtEvictionBoundary(t *testing.T) {
 		{Role: trpcmodel.RoleSystem, Content: "memory cue"},
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
-	runCompressionHook(t, hook, context.Background(), args)
+	runCompressionHook(t, hook, context.Background(), ag, args)
 
 	out := args.Request.Messages
 	markerIdx, memCueIdx, firstConvIdx := -1, -1, -1
@@ -384,7 +388,7 @@ func TestCompressionHook_DegradationDropsTailCues(t *testing.T) {
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
 	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{})
-	runCompressionHook(t, hook, ctx, args)
+	runCompressionHook(t, hook, ctx, ag, args)
 
 	for _, m := range args.Request.Messages {
 		if strings.Contains(m.Content, strings.Repeat("k", 150)) {
@@ -418,7 +422,7 @@ func TestCompressionHook_ReverifiedUnderTarget(t *testing.T) {
 		)
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
-	runCompressionHook(t, hook, context.Background(), args)
+	runCompressionHook(t, hook, context.Background(), ag, args)
 
 	final := analyzePromptRequest(args.Request.Messages)
 	target := int(float64(200) * 0.90 * truncationTargetFactor)
@@ -456,7 +460,7 @@ func TestCompressionHook_DefaultThresholdIsHardRatio(t *testing.T) {
 		{Role: trpcmodel.RoleUser, Content: "msg4"},
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
-	runCompressionHook(t, hook, context.Background(), args)
+	runCompressionHook(t, hook, context.Background(), ag, args)
 	if len(args.Request.Messages) != len(msgs) {
 		t.Fatalf("ratio 0.85 不应触发截断（阈值 0.90）, got %d messages (was %d)", len(args.Request.Messages), len(msgs))
 	}
@@ -484,7 +488,7 @@ func TestCompressionHook_CustomHardTriggerRatio(t *testing.T) {
 		{Role: trpcmodel.RoleUser, Content: "msg3"},
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
-	runCompressionHook(t, hook, context.Background(), args)
+	runCompressionHook(t, hook, context.Background(), ag, args)
 	if len(args.Request.Messages) >= len(msgs) {
 		t.Fatalf("custom HardTriggerRatio=0.10 应触发截断, got %d messages (was %d)", len(args.Request.Messages), len(msgs))
 	}
@@ -537,7 +541,7 @@ func TestCompressionHook_MarkerRecordedInMeta(t *testing.T) {
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
 	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{})
-	runCompressionHook(t, hook, ctx, args)
+	runCompressionHook(t, hook, ctx, ag, args)
 	meta := LoadCompressionMeta(ctx)
 	if !meta.Occurred {
 		t.Fatal("截断后 CompressionMeta.Occurred 应为 true")

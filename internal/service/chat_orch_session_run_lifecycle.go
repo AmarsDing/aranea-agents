@@ -55,6 +55,7 @@ type chatSessionRunLifecycle struct {
 	sessionState sessionStateTransitor
 	runs         *rt.RunRegistry
 	escalation   SessionRunEscalationNotifier
+	plans        biz.TaskPlannerPort
 	lg           loggateway.Logger
 }
 
@@ -69,6 +70,7 @@ type chatSessionRunLifecycleDeps struct {
 	SessionState sessionStateTransitor
 	Runs         *rt.RunRegistry
 	Escalation   SessionRunEscalationNotifier
+	Plans        biz.TaskPlannerPort
 	Logger       loggateway.Logger
 }
 
@@ -81,6 +83,7 @@ func newChatSessionRunLifecycle(d chatSessionRunLifecycleDeps) *chatSessionRunLi
 		sessionState: d.SessionState,
 		runs:         d.Runs,
 		escalation:   d.Escalation,
+		plans:        d.Plans,
 		lg:           d.Logger,
 	}
 }
@@ -204,6 +207,7 @@ func (l *chatSessionRunLifecycle) escalateToDurable(ctx context.Context, session
 		Provider:         provider,
 		Model:            model,
 		TrpcInvocationID: firstNonEmptyString(runtimeRunID, run.RuntimeRunID),
+		Org:              l.orgCheckpointForSession(ctx, sessionID),
 	})
 	if err != nil || cp.ID == "" {
 		l.lg.Warn("durable checkpoint create failed",
@@ -215,6 +219,17 @@ func (l *chatSessionRunLifecycle) escalateToDurable(ctx context.Context, session
 		return
 	}
 	l.applyDurableTransition(ctx, sessionID, sessionRunID, run, cp, reason)
+}
+
+func (l *chatSessionRunLifecycle) orgCheckpointForSession(ctx context.Context, sessionID string) biz.OrgCheckpointFields {
+	if l == nil || l.plans == nil {
+		return biz.OrgCheckpointFields{}
+	}
+	plans, err := l.plans.ListPlans(ctx, sessionID)
+	if err != nil || len(plans) == 0 {
+		return biz.OrgCheckpointFields{}
+	}
+	return biz.OrgCheckpointFromPlans(plans)
 }
 
 // resolveEscalationFields fills in missing escalation fields from checkpoint when binding is absent.

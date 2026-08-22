@@ -86,3 +86,38 @@ func TestParseOldCheckpointWithoutOrgFields(t *testing.T) {
 		t.Fatalf("old payload must recover: %+v", p)
 	}
 }
+
+func TestOrgCheckpointFromPlanCopiesPlaybookStages(t *testing.T) {
+	t.Parallel()
+	if got := OrgCheckpointFromPlan(nil); got.PlaybookID != "" {
+		t.Fatalf("nil plan: %+v", got)
+	}
+	got := OrgCheckpointFromPlan(&TaskPlan{
+		SubTasks: []SubTask{{ID: "design"}, {ID: "be"}},
+		MemoryHit: &MemoryHit{
+			PlaybookID:            "software_delivery",
+			ConstraintFingerprint: "fp-1",
+		},
+	})
+	if got.Gear != "heavy" || got.PlaybookID != "software_delivery" || got.ConstraintFingerprint != "fp-1" {
+		t.Fatalf("%+v", got)
+	}
+	if len(got.AuthorizedStageIDs) != 2 || got.AuthorizedStageIDs[1] != "be" {
+		t.Fatalf("stages=%v", got.AuthorizedStageIDs)
+	}
+	if len(got.IssuedBriefIDs) != 0 {
+		t.Fatalf("briefs must stay empty without a registry: %v", got.IssuedBriefIDs)
+	}
+}
+
+func TestPlaybookConfirmActivityIDRoundTrip(t *testing.T) {
+	t.Parallel()
+	id := PlaybookConfirmActivityID("sp-1", "st-confirm")
+	step, ok := ParsePlaybookConfirmActivityID("sp-1", id)
+	if !ok || step != "st-confirm" {
+		t.Fatalf("id=%q step=%q ok=%v", id, step, ok)
+	}
+	if _, ok := ParsePlaybookConfirmActivityID("other", id); ok {
+		t.Fatal("foreign session must not parse")
+	}
+}

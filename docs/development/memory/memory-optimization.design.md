@@ -243,18 +243,18 @@ compression_buffer = contextWindow * compression_buffer_ratio  (默认 0.15)
 effective_budget = contextWindow - reserved_system - compression_buffer
 ```
 
-示例（coding profile, 128K 窗口）：
+示例（coding profile, 256K 产品窗口）：
 - reserved_system = 15K
-- compression_buffer = 128K * 0.15 = 19.2K
-- effective_budget = 128K - 15K - 19.2K = 93.8K
+- compression_buffer = 256K * 0.15 = 38.4K
+- effective_budget = 256K - 15K - 38.4K = 202.6K
 
 #### 1.3.2 三级触发阈值
 
-| 阈值 | 公式 | 128K 示例 | 行为 | 现有机制 |
+| 阈值 | 公式 | 256K 示例 | 行为 | 现有机制 |
 |------|------|----------|------|---------|
-| soft_trigger | effective_budget * 0.70 | 65.7K | 后台异步压缩 | AfterNativeTurn + safego.Go |
-| hard_trigger | effective_budget * 0.90 | 84.4K | 同步压缩 | BeforeDurableTurn 扩展 |
-| emergency | effective_budget | 93.8K | 截断最老消息 | atFullContextUsage |
+| soft_trigger | effective_budget * 0.70 | 141.8K | 后台异步压缩 | AfterNativeTurn + safego.Go |
+| hard_trigger | effective_budget * 0.90 | 182.3K | 同步压缩 | BeforeDurableTurn 扩展 |
+| emergency | effective_budget | 202.6K | 截断最老消息 | atFullContextUsage |
 
 #### 1.3.3 reserved_system 冷启动 fallback
 

@@ -218,6 +218,21 @@ func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
 	}
 }
 
+func applySpiritReservedDenials(profile string, allowSet, denySet map[string]bool) {
+	if denySet == nil {
+		return
+	}
+	if canonicalToolProfile(profile) == "spirit" {
+		return
+	}
+	for _, k := range SpiritReservedToolKeys() {
+		if allowSet != nil && allowSet[k] {
+			continue
+		}
+		denySet[k] = true
+	}
+}
+
 var toolProfiles = map[string][]string{
 	"chat_only": {},
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
@@ -231,9 +246,9 @@ var toolProfiles = map[string][]string{
 	// registryOptInOnlyKeys 成员（种子 enabled=false），此处命名即 allowed，无需
 	// seed 翻转与存量库迁移。无 MCP 服务器时 cfg.MCPBroker=nil 不挂任何工具，
 	// 零上下文成本；mcp_tool_set 保持显式 opt-in（小工具面场景）。
-	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime", "shell_exec", "knowledge_search", "mcp_broker"},
-	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "knowledge_search", "todo_write", "datetime"},
-	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:browser", "group:cli_admin", "datetime"},
+	"coding":   {"group:filesystem", "group:web", "group:skill", "group:session", "datetime", "shell_exec", "knowledge_search", "mcp_broker"},
+	"research": {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "knowledge_search", "todo_write", "datetime"},
+	"full":     {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:browser", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
@@ -349,6 +364,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 	allowedSet := computePolicyAllowedSet(prof, allow, catalog)
 	denySet := computePolicyDenySet(deny, catalog)
 	applyRegistryAdminDenials(catalog, denySet)
+	applySpiritReservedDenials(prof, allowedSet, denySet)
 
 	registryKeys := make(map[string]bool, len(catalog))
 	for _, tool := range catalog {

@@ -257,6 +257,7 @@
       :context-ratio="spiritStatusBar.contextRatio"
       :context-used-tokens="spiritStatusBar.contextUsedTokens"
       :context-window="spiritStatusBar.contextWindow"
+      :context-budget="spiritStatusBar.contextBudget"
       :session-id="sessionId"
       :complexity-level="spiritStatusBar.complexityLevel"
       :complexity-reason="spiritStatusBar.complexityReason"

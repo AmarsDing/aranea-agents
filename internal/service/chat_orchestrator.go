@@ -449,6 +449,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		SessionState: stateMgr,
 		Runs:         runs,
 		Escalation:   deps.Channel.ChNotify.RunEscalation,
+		Plans:        deps.Team.Team.TaskPlanner,
 		Logger:       deps.Infra.LG,
 	}))
 

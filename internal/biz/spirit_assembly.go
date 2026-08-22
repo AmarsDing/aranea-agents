@@ -94,6 +94,9 @@ func (a *SpiritAssembly) AssembleTeam(ctx context.Context, params SpiritTeamPara
 	if mode == TeamModeCoordinator && len(agentIDs) <= 1 {
 		mode = TeamModeSequential
 	}
+	if route := ResolveGraphTemplateRoute(mode, params.GraphTemplateID); route.Builtin && route.Mode != "" {
+		mode = route.Mode
+	}
 
 	// F9 (Phase 11): a solo system-admin team with a skill-install intent gets
 	// a deterministic tool_assertion gate so "installed" can never be
@@ -103,6 +106,8 @@ func (a *SpiritAssembly) AssembleTeam(ctx context.Context, params SpiritTeamPara
 		gates = append(gates, *g)
 	}
 	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, a.lg, params.DagNodeID != "", params.Deliverables, gates, params.ParallelConfigJSON)
+	faceKeys := append(append([]string{}, params.AgentKeys...), agentIDs...)
+	defJSON = ApplyAssembleOrgFaces(defJSON, faceKeys, params.GraphTemplateID, params.CollectionIDs)
 
 	// Check session tree depth limit before creating team (P1-4: extracted
 	// to session.ValidateDepth for reuse across all child-session creators).

@@ -61,13 +61,15 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	if agentID == "" {
 		return AgentEffectiveTools{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
-	if _, err := u.reader.GetAgentByID(ctx, agentID); err != nil {
+	ag, err := u.reader.GetAgentByID(ctx, agentID)
+	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
 	settings, err := u.runtimeSettingsForEffective(ctx, agentID)
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
+	ClampSpecialistToolFace(&settings, ag)
 	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
 	if err != nil {
 		return AgentEffectiveTools{}, err
@@ -109,7 +111,8 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	if agentID == "" {
 		return AgentEffectiveTools{}, AgentToolPolicyChange{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
-	if _, err := u.reader.GetAgentByID(ctx, agentID); err != nil {
+	ag, err := u.reader.GetAgentByID(ctx, agentID)
+	if err != nil {
 		return AgentEffectiveTools{}, AgentToolPolicyChange{}, err
 	}
 	settings, err := u.runtimeSettingsForEffective(ctx, agentID)
@@ -154,6 +157,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	for i := range all.Items {
 		EnrichToolRuntimeFieldsWithPlatform(&all.Items[i], platform, checkerToReadinessFunc(u.webResearchChecker))
 	}
+	ClampSpecialistToolFace(&settings, ag)
 	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride
 	if o, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {

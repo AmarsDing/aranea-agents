@@ -3,6 +3,8 @@ package team
 import (
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/internal/biz"
 )
 
 // LinkedGraphIDFromDefinition reads linked_graph_id from team definition JSON.
@@ -18,6 +20,50 @@ func LinkedGraphIDFromDefinition(raw string) string {
 		return ""
 	}
 	return strings.TrimSpace(body.LinkedGraphID)
+}
+
+// CollectionIDsFromDefinition reads playbook collection_ids from team definition JSON.
+func CollectionIDsFromDefinition(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var body struct {
+		CollectionIDs []string `json:"collection_ids"`
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return nil
+	}
+	return biz.NormalizeCollectionIDs(body.CollectionIDs)
+}
+
+// GraphTemplateIDFromDefinition reads playbook graph_template_id from team definition JSON.
+func GraphTemplateIDFromDefinition(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var body struct {
+		GraphTemplateID string `json:"graph_template_id"`
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(body.GraphTemplateID)
+}
+
+// StageGraphAssetID is the persisted M53 graph to load for this team.
+// Column / linked_graph_id win; otherwise a non-builtin graph_template_id
+// is treated as graph_definitions.id. Missing assets fall through at compile.
+func StageGraphAssetID(column, definitionJSON string) string {
+	if id := ResolveLinkedGraphID(column, definitionJSON); id != "" {
+		return id
+	}
+	id := GraphTemplateIDFromDefinition(definitionJSON)
+	if id != "" && !biz.IsBuiltinGraphTemplateID(id) {
+		return id
+	}
+	return ""
 }
 
 // ResolveLinkedGraphID returns the team's materialized graph asset ID:

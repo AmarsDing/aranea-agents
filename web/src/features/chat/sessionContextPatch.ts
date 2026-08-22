@@ -1,6 +1,7 @@
 import type { ActivityEvent } from '../../realtime/activityEvent';
 import type { Session } from '../session/types';
-import { contextRatioFromPrompt, contextStatusFromRatio } from '../session/contextMetrics';
+import { parseContextBudgetMeta } from './contextBudget';
+import { CHAT_CONTEXT_WINDOW_TOKENS, chatContextRatio, contextStatusFromRatio } from '../session/contextMetrics';
 
 /** Token-usage payload derived from an ActivityEvent's meta fields. */
 export type ActivityUsage = {
@@ -30,10 +31,9 @@ export type SessionContextPatch = Partial<
     | 'tool_call_count'
     | 'skill_call_count'
     | 'mcp_call_count'
+    | 'context_budget'
   >
-> & {
-  // Reserved for future server-driven prompt breakdown
-};
+>;
 
 /** Prompt tokens used for context-window fill (max in turn), distinct from billing aggregates. */
 export function contextPromptTokensFromUsage(usage: ActivityUsage | undefined): number {
@@ -45,8 +45,7 @@ export function contextPromptTokensFromUsage(usage: ActivityUsage | undefined): 
 
 export function contextRatioFromUsage(usage: ActivityUsage | undefined): number | null {
   const prompt = contextPromptTokensFromUsage(usage);
-  const window = usage?.max_tokens ?? 0;
-  return contextRatioFromPrompt(prompt, window);
+  return chatContextRatio(prompt);
 }
 
 export { contextStatusFromRatio } from '../session/contextMetrics';
@@ -63,9 +62,7 @@ export function sessionContextPatchFromStepUsage(usage: ActivityUsage | undefine
     context_status: contextStatusFromRatio(ratio),
   };
 
-  if (usage.max_tokens != null && usage.max_tokens > 0) {
-    patch.last_context_window_tokens = usage.max_tokens;
-  }
+  patch.last_context_window_tokens = CHAT_CONTEXT_WINDOW_TOKENS;
 
   return patch;
 }
@@ -84,9 +81,7 @@ export function sessionContextPatchFromUsage(
     context_status: contextStatusFromRatio(ratio),
   };
 
-  if (usage.max_tokens != null && usage.max_tokens > 0) {
-    patch.last_context_window_tokens = usage.max_tokens;
-  }
+  patch.last_context_window_tokens = CHAT_CONTEXT_WINDOW_TOKENS;
 
   const turnTok = usage.turn_total_tokens ?? usage.total_tokens ?? 0;
   const prompt = usage.prompt_tokens ?? 0;
@@ -124,9 +119,7 @@ export function sessionContextPatchFromCompressMeta(
   if (typeof meta.context_used_tokens === 'number') {
     patch.context_used_tokens = meta.context_used_tokens;
   }
-  if (typeof meta.context_window === 'number') {
-    patch.last_context_window_tokens = meta.context_window;
-  }
+  patch.last_context_window_tokens = CHAT_CONTEXT_WINDOW_TOKENS;
 
   return patch;
 }
@@ -165,7 +158,7 @@ export function reconcilePatchFromServer(
     input_tokens: Math.max(server.input_tokens ?? 0, local?.input_tokens ?? 0),
     output_tokens: Math.max(server.output_tokens ?? 0, local?.output_tokens ?? 0),
     total_cost_micro_usd: Math.max(server.total_cost_micro_usd ?? 0, local?.total_cost_micro_usd ?? 0),
-    last_context_window_tokens: server.last_context_window_tokens,
+    last_context_window_tokens: CHAT_CONTEXT_WINDOW_TOKENS,
     message_count: Math.max(server.message_count ?? 0, local?.message_count ?? 0),
     model_call_count: Math.max(server.model_call_count ?? 0, local?.model_call_count ?? 0),
     tool_call_count: Math.max(server.tool_call_count ?? 0, local?.tool_call_count ?? 0),
@@ -248,7 +241,15 @@ export function sessionContextPatchFromActivityEvent(
   const stage = ev.activity.stage;
   if (stage === 'context_usage') {
     const usage = usageFromActivityEvent(ev);
-    return sessionContextPatchFromStepUsage(usage);
+    const patch = sessionContextPatchFromStepUsage(usage);
+    // Prompt-assembly breakdown rides the same event (backend
+    // ContextBudgetPayload); attach it so the SpiritStatusBar popup can render
+    // the per-category composition without an extra fetch.
+    const budget = parseContextBudgetMeta(ev.activity.meta?.context_budget);
+    if (budget) {
+      return { ...(patch ?? {}), context_budget: budget };
+    }
+    return patch;
   }
   if (stage === 'runner_completion') {
     const usage = usageFromActivityEvent(ev);

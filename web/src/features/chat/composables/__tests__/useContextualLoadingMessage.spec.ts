@@ -655,6 +655,21 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value!.text).toContain('阶段已开工：设计');
     });
 
+    it('confirm_required shows the clipped summary', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'confirm_required', summary: '请确认后继续阶段：发布' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toContain('请确认后继续阶段：发布');
+    });
+
     it('playbook_fill_required tells the user to authorize a playbook', () => {
       const isReplaying = ref(false);
       const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);

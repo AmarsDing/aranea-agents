@@ -40,7 +40,7 @@ func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def tea
 	agentKey := s.compileAgentKeyResolver(ctx)
 	cfg, taskMeta, compileErr := team.CompileToGraphBuildConfigFromJSON(def, rawDefinitionJSON, agentKey, s.lg)
 	resp := &v1.CompileTeamGraphResponse{
-		TemplateId: team.CompileTemplateID(def.Mode),
+		TemplateId: team.CompileTemplateIDPreferringDefinition(def.Mode, rawDefinitionJSON),
 		Mode:       strings.ToLower(strings.TrimSpace(def.Mode)),
 		Valid:      compileErr == nil,
 		// ADR-08 A2: template path emits the canonical embedded graph spec so

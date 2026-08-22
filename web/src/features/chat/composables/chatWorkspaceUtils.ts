@@ -1,5 +1,10 @@
 import type { TeamRow, SessionView } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
+import {
+  CHAT_CONTEXT_WINDOW_TOKENS,
+  chatContextRatio,
+  contextStatusFromRatio,
+} from '../../session/contextMetrics';
 import type { Session } from '../../session/types';
 
 export const LS_AG_ORDER = 'chat:order:agents';
@@ -16,13 +21,15 @@ export function formatSessionTime(iso: string) {
 }
 
 export function sessionToView(session: Session, t: (key: string) => string): SessionView {
+  const used = session.context_used_tokens ?? 0;
+  const ratio = chatContextRatio(used) ?? 0;
   return {
     id: session.id,
     title: session.title || t('chat.untitledSession'),
-    context_used_ratio: session.context_used_ratio,
-    context_status: session.context_status,
+    context_used_ratio: used > 0 ? ratio : (session.context_used_ratio ?? 0),
+    context_status: used > 0 ? contextStatusFromRatio(ratio) : session.context_status,
     context_used_tokens: session.context_used_tokens,
-    last_context_window_tokens: session.last_context_window_tokens,
+    last_context_window_tokens: CHAT_CONTEXT_WINDOW_TOKENS,
     input_tokens: session.input_tokens,
     output_tokens: session.output_tokens,
     total_tokens: session.total_tokens,

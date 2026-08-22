@@ -15,6 +15,25 @@ export type SessionStatusReason =
   | 'manual_override'
   | '';
 
+/** One tool's marshaled declaration size within a request (top-N ledger). */
+export type ContextBudgetToolSize = {
+  name: string;
+  est_tokens: number;
+};
+
+/**
+ * Per-request prompt-assembly ledger pushed via the `context_usage` WS event
+ * (activity.meta.context_budget, backend ContextBudgetPayload). WS-only — the
+ * REST session entity never carries it. Keys of `est_tokens` are the backend
+ * budget categories (static_prefix / tools_schema / memory_l1 / ...).
+ */
+export type ContextBudgetSnapshot = {
+  est_tokens: Record<string, number>;
+  est_total_input: number;
+  tools_count: number;
+  top_tools?: ContextBudgetToolSize[];
+};
+
 export type Session = {
   id: string;
   owner_type: string;
@@ -51,6 +70,8 @@ export type Session = {
   metadata_json?: string;
   context_used_tokens?: number;
   last_context_window_tokens?: number;
+  /** Latest turn's prompt-assembly breakdown (WS context_usage push only). */
+  context_budget?: ContextBudgetSnapshot | null;
   // Session tree fields (Phase 2: parent-child hierarchy)
   parent_session_id?: string;
   root_session_id?: string;

@@ -48,6 +48,10 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id and activity_id are required")
 	}
 
+	if s.planExec != nil && s.planExec.HasPlaybookStageConfirm(sessionID, activityID) {
+		return s.confirmPlaybookStage(ctx, sessionID, activityID, req)
+	}
+
 	stepReader := s.orch.stepReader()
 	stepWriter := s.orch.stepWriter()
 	if stepReader == nil || stepWriter == nil {
@@ -116,6 +120,18 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 func (s *ChatService) ConfirmToolGateForCard(ctx context.Context, sessionID, stepID, replyToken string) (bool, string) {
 	if s == nil || s.orch == nil {
 		return false, "服务不可用"
+	}
+	if s.planExec != nil && s.planExec.HasPlaybookStageConfirm(sessionID, stepID) {
+		_, approved, err := resolveConfirmReply(true, replyToken)
+		if err != nil {
+			return false, err.Error()
+		}
+		if s.planExec.ResolvePlaybookStageConfirm(sessionID, stepID, approved) {
+			if approved {
+				return true, "已确认剧本阶段"
+			}
+			return true, "已拒绝剧本阶段"
+		}
 	}
 	stepReader := s.orch.stepReader()
 	if stepReader == nil {
@@ -214,6 +230,36 @@ func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyM
 	}
 
 	return outcome != awaitReplyRejected, string(nextStatus), nil
+}
+
+func (s *ChatService) confirmPlaybookStage(ctx context.Context, sessionID, stepID string, req *chatv1.ConfirmActivityRequest) (*chatv1.ConfirmActivityResponse, error) {
+	userID := ctxuser.FromContext(ctx)
+	if userID == ctxuser.DefaultUserID {
+		return nil, apierror.Unauthorized(apierror.DomainChat, "user authentication required for activity confirmation")
+	}
+	sessions := s.orch.td().Sessions
+	if sessions == nil {
+		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
+	}
+	session, err := sessions.Get(ctx, sessionID)
+	if err != nil {
+		return nil, apierror.NotFound(apierror.DomainChat, "session not found")
+	}
+	if session.UserID != "" && session.UserID != userID {
+		return nil, apierror.Forbidden(apierror.DomainChat, "only the session owner can confirm activities")
+	}
+	_, approved, err := resolveConfirmReply(req.GetApproved(), req.GetReply())
+	if err != nil {
+		return nil, err
+	}
+	if !s.planExec.ResolvePlaybookStageConfirm(sessionID, stepID, approved) {
+		return nil, apierror.NotFound(apierror.DomainChat, "playbook stage confirm expired")
+	}
+	status := "confirmed"
+	if !approved {
+		status = "rejected"
+	}
+	return &chatv1.ConfirmActivityResponse{Accepted: true, Status: status}, nil
 }
 
 // buildConfirmResumeContent renders the user's tool-confirmation decision as

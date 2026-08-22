@@ -303,7 +303,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// 落地（Reflexion 重试 / reroute→skip / insert_fallback→HITL）。非 graph
 	// 模式或未配置 replanner 时返回 nil（append nil option 无效，须条件追加）。
 	if opt := r.replanCallbacksRunOption(sess.ID, deriveSpiritSessionID(sess),
-		ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID); opt != nil {
+		StageGraphAssetID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID); opt != nil {
 		runOpts = append(runOpts, opt)
 	}
 	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
@@ -333,7 +333,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			}
 		}
 	}
-	events = teeGraphStageNotices(ctx, events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
+	events = teeGraphStageNotices(ctx, events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), StageGraphAssetID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
 	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
 	// Phase 7: Consume stream (streamOpts already has the pre-created projector)

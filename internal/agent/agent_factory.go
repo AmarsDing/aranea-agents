@@ -148,10 +148,14 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 		return "", err
 	}
 
-	// P-ORCH: user confirmation gate — reuses the tool_confirmation context
-	// pattern (ReplyFunc + ActivityEmitter from ctx). A nil ReplyFunc means
+	// P-ORCH / R18 create_agent: NeedsUserConfirm(CreatingAgent) is
+	// ConfirmCreateAgent. Reuses the tool_confirmation context pattern
+	// (ReplyFunc + ActivityEmitter from ctx). A nil ReplyFunc means
 	// the caller cannot confirm (CLI/tests/non-chat contexts) → legacy
 	// direct creation is preserved.
+	if biz.NeedsUserConfirm(biz.ConfirmInput{CreatingAgent: true}) == biz.ConfirmNone {
+		return "", apierror.Internal(apierror.DomainAgent, "create agent must require user confirmation")
+	}
 	if err := f.confirmAgentCreation(ctx, profile, def); err != nil {
 		return "", err
 	}

@@ -1,5 +1,6 @@
 import { formatUsdCompact } from '../usage/moneyFormat';
 import { contextProgressColor } from '../../components/sessions/sessionUi';
+import type { ContextBudgetSnapshot } from '../session/types';
 
 export type ComposerUsageSnapshot = {
   contextRatio: number;
@@ -10,6 +11,8 @@ export type ComposerUsageSnapshot = {
   outputTokens: number;
   totalTokens: number;
   totalCostMicroUsd: number;
+  /** Latest turn's prompt-assembly breakdown (WS context_usage push only). */
+  contextBudget?: ContextBudgetSnapshot | null;
 };
 
 export function formatTokenCount(value?: number | null): string {

@@ -1,9 +1,33 @@
 package llmcontext
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 )
+
+type windowOverrideKey struct{}
+
+// ContextWithWindow overrides the product chat-context budget on ctx.
+// Production chat/compression paths must not set this; it exists so unit
+// tests can exercise truncation with a miniature window.
+func ContextWithWindow(ctx context.Context, tokens int) context.Context {
+	if ctx == nil || tokens <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, windowOverrideKey{}, tokens)
+}
+
+// WindowFromContext returns the ctx override when set, otherwise the 256K
+// product budget.
+func WindowFromContext(ctx context.Context) int {
+	if ctx != nil {
+		if v, ok := ctx.Value(windowOverrideKey{}).(int); ok && v > 0 {
+			return v
+		}
+	}
+	return DefaultWindowTokens
+}
 
 // DefaultWindowTokens is the product chat-context budget and compression
 // standard for every model (256K). Vendor-claimed provider windows are

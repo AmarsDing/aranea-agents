@@ -255,7 +255,7 @@ func CompileToCompiledTeam(
 	}
 	raw := strings.TrimSpace(rawDefinitionJSON)
 	if raw != "" && linked != nil {
-		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {
+		if linkedID := StageGraphAssetID("", raw); linkedID != "" {
 			if cfg, err := linked.LoadGraphBuildConfig(ctx, linkedID); err == nil {
 				mode := normalizeCompileMode(def.Mode)
 				if mode == "adaptive" {
@@ -367,4 +367,14 @@ func CompileTemplateID(mode string) string {
 	default:
 		return "pipeline"
 	}
+}
+
+// CompileTemplateIDPreferringDefinition uses a builtin graph_template_id
+// when the playbook named one; otherwise falls back to mode.
+func CompileTemplateIDPreferringDefinition(mode, raw string) string {
+	route := biz.ResolveGraphTemplateRoute(mode, GraphTemplateIDFromDefinition(raw))
+	if route.CompileTemplate != "" {
+		return route.CompileTemplate
+	}
+	return CompileTemplateID(mode)
 }

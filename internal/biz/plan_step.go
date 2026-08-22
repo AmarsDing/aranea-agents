@@ -46,6 +46,10 @@ type PlanStep struct {
 	// GraphTemplateID optionally routes this stage through an existing M53
 	// template. Memory field copied from SubTask; empty = ordinary Team Turn.
 	GraphTemplateID string
+	// ConfirmBefore holds dispatch until the user approves (R18).
+	ConfirmBefore bool
+	// CollectionIDs scope knowledge_search for this stage. Memory field.
+	CollectionIDs []string
 }
 
 type PlanStepStatus string

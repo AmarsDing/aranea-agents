@@ -285,7 +285,9 @@ func (r *Runner) buildTeamRunContext(ctx context.Context, def Definition, builde
 		}
 		// P1（2026-08-21）：团队对话同样默认不注入 RetrievalEvaluator。
 	}
-	if len(input.Options.KnowledgeBases) > 0 {
+	if ids := biz.NormalizeCollectionIDs(def.CollectionIDs); len(ids) > 0 {
+		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, ids)
+	} else if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
 	}
 	runCtx, turnArtCollector := artifactbiz.WithTurnCollector(runCtx)

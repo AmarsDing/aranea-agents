@@ -341,8 +341,8 @@ func l0SnapshotPendingMap(inv *trpcagent.Invocation) map[int]l0SnapshotPending {
 	return map[int]l0SnapshotPending{}
 }
 
-func resolveL0ContextWindow(_ context.Context, _ TRPCBuilderDeps, _ biz.Agent, _, _ string) int {
-	return llmcontext.ResolveWindow(llmcontext.ResolveInput{})
+func resolveL0ContextWindow(ctx context.Context, _ TRPCBuilderDeps, _ biz.Agent, _, _ string) int {
+	return llmcontext.WindowFromContext(ctx)
 }
 
 func l0CorrelationRunID(ctx context.Context) string {

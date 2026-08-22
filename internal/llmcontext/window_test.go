@@ -1,6 +1,9 @@
 package llmcontext
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestResolveWindow_ignoresProviderAndLocalCaps(t *testing.T) {
 	// Provider catalog, session, and agent windows must not change the
@@ -17,6 +20,16 @@ func TestResolveWindow_ignoresProviderAndLocalCaps(t *testing.T) {
 		if win := ResolveWindow(in); win != DefaultWindowTokens {
 			t.Fatalf("case %d: got %d want %d", i, win, DefaultWindowTokens)
 		}
+	}
+}
+
+func TestWindowFromContext(t *testing.T) {
+	if got := WindowFromContext(context.Background()); got != DefaultWindowTokens {
+		t.Fatalf("empty ctx: got %d want %d", got, DefaultWindowTokens)
+	}
+	ctx := ContextWithWindow(context.Background(), 120)
+	if got := WindowFromContext(ctx); got != 120 {
+		t.Fatalf("override: got %d want 120", got)
 	}
 }
 

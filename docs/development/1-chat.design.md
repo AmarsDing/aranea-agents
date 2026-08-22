@@ -1234,7 +1234,7 @@ type ToolCallSnapshot struct {
 ### 8.11 上下文管理
 
 - **上下文用量追踪**：每次 turn 后通过 `UpdateSessionContextFromLLMUsage` 更新 `context_used_tokens` / `context_used_ratio`（`prompt_tokens / context_window`）
-- **Context Window 解析**：`llmcontext.ResolveWindow`（provider model `context_window_k` → session default → agent → 128000）；ChatOrchestrator 在 turn 结束与 `runner_completion` 投影时使用
+- **Context Window 解析**：`llmcontext.ResolveWindow` 返回产品 chat context 预算 **256K**（`DefaultWindowTokens`）。Provider catalog 的 `context_window_k`、session/agent 窗口只是厂商或本地元数据，**不得**作为压缩阈值或 UI 分母；ChatOrchestrator 在 turn 结束与 `runner_completion` 投影时写入该 256K 分母
 - **L0 压缩**：当 `context_used_ratio` 超过阈值（默认 0.6）时，`SessionCompressor.AfterNativeTurn()` 异步触发摘要压缩；完成后 WS 推送带新 ratio 的 `system.session.compress` 通知
 - **实时 UI**：`context_usage`（ReAct 子步）与 `runner_completion.usage`（含 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`）及压缩 notice 经 `sessionContextPatch` 乐观更新 Composer；Composer 副行合并展示 ctx/in/out/Σ/费用（与 Usage 大盘口径一致）
 - **记忆服务**：通过 `runtimedeps.Runtime.SessionMemory` 注入 SQLite 适配器，由 trpc Runner 自动管理 L0-L4
@@ -1261,7 +1261,7 @@ type ToolCallSnapshot struct {
 
 - Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
 - 意图识别超时为 45 秒
-- Context Window 默认值：当 Agent 配置的 `context_window` ≤ 0 时，默认使用 128000 tokens
+- Context Window：chat / 压缩 / 左下角用量一律使用产品标准 **256K**（`llmcontext.DefaultWindowTokens`），与 Provider 宣称窗口无关；最大支持 256K
 
 ### 8.13 停止生成与运行中追加消息
 
@@ -1735,7 +1735,7 @@ func MergeRuntimeState(state map[string]interface{}, variables map[string]interf
 
 - Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
 - 意图识别超时为 45 秒
-- Context Window 默认值：当 Agent 配置的 `context_window` ≤ 0 时，默认使用 128000 tokens
+- Context Window：chat / 压缩 / 左下角用量一律使用产品标准 **256K**（`llmcontext.DefaultWindowTokens`），与 Provider 宣称窗口无关；最大支持 256K
 
 ---
 

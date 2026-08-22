@@ -23,7 +23,7 @@ func TestPlanExpandsNamedPlaybookWithoutLLM(t *testing.T) {
 			    "authorized_by": "__company_lead_acme__",
 			    "stages": [
 			      {"id": "design", "domain_path": "设计/视觉"},
-			      {"id": "be", "domain_path": "软件/后端", "depends_on": ["design"], "graph_template_id": "tmpl-1"}
+			      {"id": "be", "domain_path": "软件/后端", "depends_on": ["design"], "graph_template_id": "tmpl-1", "confirm_before": true, "collection_ids": ["kb-legal"]}
 			    ]
 			  }]
 			}`,
@@ -41,8 +41,11 @@ func TestPlanExpandsNamedPlaybookWithoutLLM(t *testing.T) {
 	if plan == nil || len(plan.SubTasks) != 2 {
 		t.Fatalf("playbook stages=%v", plan)
 	}
-	if plan.SubTasks[1].GraphTemplateID != "tmpl-1" {
-		t.Fatalf("graph template lost: %+v", plan.SubTasks[1])
+	if plan.SubTasks[1].GraphTemplateID != "tmpl-1" || !plan.SubTasks[1].ConfirmBefore {
+		t.Fatalf("graph template/confirm lost: %+v", plan.SubTasks[1])
+	}
+	if len(plan.SubTasks[1].CollectionIDs) != 1 || plan.SubTasks[1].CollectionIDs[0] != "kb-legal" {
+		t.Fatalf("collection ids lost: %+v", plan.SubTasks[1])
 	}
 	if plan.MemoryHit == nil || plan.MemoryHit.PlaybookID != "software_delivery" {
 		t.Fatalf("playbook hit=%+v", plan.MemoryHit)

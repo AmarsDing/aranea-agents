@@ -26,7 +26,7 @@ type CompileSnapshot struct {
 func BuildCompileSnapshot(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) CompileSnapshot {
 	mode := normalizeCompileMode(def.Mode)
 	snap := CompileSnapshot{
-		TemplateID: CompileTemplateID(def.Mode),
+		TemplateID: CompileTemplateIDPreferringDefinition(def.Mode, rawDefinitionJSON),
 		Mode:       mode,
 	}
 	cfg, taskMeta, err := compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey, lg)

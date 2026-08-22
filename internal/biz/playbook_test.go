@@ -13,7 +13,7 @@ func TestParseAndExpandAuthorizedPlaybook(t *testing.T) {
 	    "authorized_by": "__company_lead_acme__",
 	    "stages": [
 	      {"id": "design", "department_key": "design", "domain_path": "设计/视觉", "deliverable_names": ["spec"]},
-	      {"id": "be", "department_key": "eng", "domain_path": "软件/后端", "depends_on": ["design"]}
+	      {"id": "be", "department_key": "eng", "domain_path": "软件/后端", "depends_on": ["design"], "confirm_before": true, "graph_template_id": "parallel_review", "collection_ids": ["kb-a"]}
 	    ]
 	  }]
 	}`
@@ -25,6 +25,12 @@ func TestParseAndExpandAuthorizedPlaybook(t *testing.T) {
 	steps := ExpandPlaybook(pb)
 	if len(steps) != 2 || steps[0].DomainPath != "设计/视觉" || steps[1].DependsOn[0] != "design" {
 		t.Fatalf("expand=%+v", steps)
+	}
+	if !steps[1].ConfirmBefore || steps[1].GraphTemplateID != "parallel_review" {
+		t.Fatalf("confirm/template lost: %+v", steps[1])
+	}
+	if len(steps[1].CollectionIDs) != 1 || steps[1].CollectionIDs[0] != "kb-a" {
+		t.Fatalf("collection ids lost: %+v", steps[1])
 	}
 	if _, ok := FindAuthorizedPlaybook(pbs, "missing"); ok {
 		t.Fatal("missing id must not hit")

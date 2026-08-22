@@ -157,6 +157,35 @@ func estimateTokens(chars int) int {
 	return (2*chars + 6) / 7
 }
 
+// ContextBudgetPayload returns the snapshot as a JSON-ready map shared by the
+// usage.metadata_json persistence (chat_turn_metrics) and the context_usage
+// WS event meta (stream_consumer) — one payload shape, two sinks, so the
+// frontend breakdown and the DB ledger never drift. Returns nil when no
+// budget is mounted or nothing was recorded (callers treat nil as "omit").
+func ContextBudgetPayload(ctx context.Context) map[string]any {
+	b := ContextBudgetFromContext(ctx)
+	if b == nil {
+		return nil
+	}
+	snap := b.Snapshot()
+	if snap.EstTotalInput == 0 && snap.ToolsCount == 0 {
+		return nil
+	}
+	cb := map[string]any{
+		"est_tokens":      snap.EstTokens,
+		"est_total_input": snap.EstTotalInput,
+		"tools_count":     snap.ToolsCount,
+	}
+	if len(snap.TopTools) > 0 {
+		tops := make([]map[string]any, 0, len(snap.TopTools))
+		for _, tt := range snap.TopTools {
+			tops = append(tops, map[string]any{"name": tt.Name, "est_tokens": tt.EstTokens})
+		}
+		cb["top_tools"] = tops
+	}
+	return cb
+}
+
 // newContextBudgetToolsBeforeHook meters the tools_schema component. The
 // framework preprocess populates args.Request.Tools (post tool-filter, the
 // set actually sent to the model) before BeforeModel callbacks run, so

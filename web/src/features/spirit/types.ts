@@ -53,6 +53,8 @@ export type SpiritStatusBarData = {
   contextUsedTokens?: number | null;
   /** Model context window size in tokens. */
   contextWindow?: number | null;
+  /** Latest turn's prompt-assembly breakdown (WS context_usage push only). */
+  contextBudget?: import('../session/types').ContextBudgetSnapshot | null;
   complexityLevel?: string | null;
   complexityReason?: string | null;
   checkpointStep?: string | null;
