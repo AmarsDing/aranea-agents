@@ -357,6 +357,20 @@ func IsDeptLeadAgent(a Agent) bool {
 	return strings.HasPrefix(key, DeptLeadAgentKeyPrefix) && strings.HasSuffix(key, "__")
 }
 
+// IsCompanyLeadAgent reports whether the agent is a company general manager.
+func IsCompanyLeadAgent(a Agent) bool {
+	if a.AgentVariant == AgentVariantCompanyLead {
+		return true
+	}
+	key := strings.TrimSpace(a.AgentKey)
+	return strings.HasPrefix(key, CompanyLeadAgentKeyPrefix) && strings.HasSuffix(key, "__")
+}
+
+// IsOrgGovernanceAgent reports whether the agent is a dept or company lead.
+func IsOrgGovernanceAgent(a Agent) bool {
+	return IsDeptLeadAgent(a) || IsCompanyLeadAgent(a)
+}
+
 // crossDeptMemberContains reports whether the JSON array crossDeptMemberIDs
 // contains the given agent ID.
 func crossDeptMemberContains(crossDeptMemberIDsJSON, agentID string) bool {

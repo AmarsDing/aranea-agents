@@ -15,15 +15,17 @@ import (
 )
 
 type OrchestrationCacheEntry struct {
-	TaskPattern   string       `json:"task_pattern"`
-	Topology      TopologyType `json:"topology"`
-	DQScore       float64      `json:"dq_score"`
-	TeamCount     int          `json:"team_count"`
-	AvgDurationMs int64        `json:"avg_duration_ms"`
-	AgentKeys     []string     `json:"agent_keys,omitempty"`
-	DomainPath    string       `json:"domain_path,omitempty"` // 配方所属领域路径（B.10.21）；旧 JSON 无此字段加载不报错
-	Specialties   []string     `json:"specialties,omitempty"` // 专题槽位骨架（配方回放重建 DAG）
-	UpdatedAt     string       `json:"updated_at"`
+	TaskPattern           string       `json:"task_pattern"`
+	Topology              TopologyType `json:"topology"`
+	DQScore               float64      `json:"dq_score"`
+	TeamCount             int          `json:"team_count"`
+	AvgDurationMs         int64        `json:"avg_duration_ms"`
+	AgentKeys             []string     `json:"agent_keys,omitempty"`
+	DomainPath            string       `json:"domain_path,omitempty"` // 配方所属领域路径（B.10.21）；旧 JSON 无此字段加载不报错
+	Specialties           []string     `json:"specialties,omitempty"` // 专题槽位骨架（配方回放重建 DAG）
+	PlaybookID            string       `json:"playbook_id,omitempty"`
+	ConstraintFingerprint string       `json:"constraint_fingerprint,omitempty"`
+	UpdatedAt             string       `json:"updated_at"`
 }
 
 type OrchestrationCacheRepo interface {

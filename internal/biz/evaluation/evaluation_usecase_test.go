@@ -625,3 +625,18 @@ func TestCancelRun(t *testing.T) {
 		t.Fatal("second cancel must conflict")
 	}
 }
+
+func TestUpdateRunRefreshesInFlightLease(t *testing.T) {
+	repo := &mockRepo{runs: []Run{{
+		ID:         "r1",
+		Status:     RunStatusRunning,
+		LeaseUntil: "2000-01-01T00:00:00Z",
+	}}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	if err := uc.UpdateRun(context.Background(), repo.runs[0]); err != nil {
+		t.Fatal(err)
+	}
+	if repo.runs[0].LeaseUntil == "2000-01-01T00:00:00Z" || repo.runs[0].LeaseUntil == "" {
+		t.Fatalf("in-flight UpdateRun must refresh lease, got %q", repo.runs[0].LeaseUntil)
+	}
+}

@@ -186,6 +186,7 @@
           :preferences-loading="preferencesLoading"
           :preference-saving="preferenceSaving"
           :dataset-changed="datasetChanged"
+          :experiment-pivots="experimentPivots"
           @refresh-trend="loadTrend"
           @refresh-divergence="loadDivergence"
           @refresh-failures="loadFailureGroups"
@@ -239,6 +240,8 @@
       v-model:model="runForm.model"
       v-model:extra-models="runForm.extra_models"
       v-model:prompt="runForm.prompt"
+      v-model:tools="runForm.tools"
+      v-model:extra-tools="runForm.extra_tools"
       :version-label="runForm.dataset_version ? String(runForm.dataset_version) : ''"
       :loading="runLoading"
       :agent-options="agentOptions"
@@ -372,6 +375,7 @@ const {
   cancelEvalRun,
   confirmDeleteRun,
   submitRun,
+  experimentPivots,
   versionsOpen,
   versionsLoading,
   versions,

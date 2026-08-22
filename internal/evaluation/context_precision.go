@@ -55,10 +55,10 @@ func retrievedChunks(tools []*evalset.Tool) []string {
 }
 
 func scoreContextPrecision(ctx context.Context, judge runner.Runner, query string, chunks []string) (float32, bool) {
-	if len(chunks) == 0 {
+	if len(chunks) == 0 || strings.TrimSpace(query) == "" {
 		return 0, false
 	}
-	if judge != nil && strings.TrimSpace(query) != "" {
+	if judge != nil {
 		if scored, err := judgeContextPrecision(ctx, judge, query, chunks); err == nil {
 			return scored, true
 		}
@@ -67,7 +67,7 @@ func scoreContextPrecision(ctx context.Context, judge runner.Runner, query strin
 }
 
 func lexicalContextPrecision(query string, chunks []string) float32 {
-	q := tokenizeFaithfulness(query)
+	q := contentTokens(query)
 	if len(q) == 0 || len(chunks) == 0 {
 		return 0
 	}
@@ -84,8 +84,28 @@ func lexicalContextPrecision(query string, chunks []string) float32 {
 	return float32(hit) / float32(len(chunks))
 }
 
+// lexicalStopWords drops function words so a shared "is"/"the" cannot
+// mark an unrelated chunk relevant.
+var lexicalStopWords = map[string]struct{}{
+	"a": {}, "an": {}, "and": {}, "are": {}, "as": {}, "at": {}, "be": {},
+	"by": {}, "for": {}, "from": {}, "in": {}, "is": {}, "it": {}, "of": {},
+	"on": {}, "or": {}, "that": {}, "the": {}, "to": {}, "was": {}, "were": {},
+	"what": {}, "when": {}, "where": {}, "which": {}, "who": {}, "with": {},
+}
+
+func contentTokens(s string) []string {
+	var out []string
+	for _, t := range tokenizeFaithfulness(s) {
+		if _, stop := lexicalStopWords[t]; stop {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 func chunkRelevantToQuery(qset map[string]struct{}, chunk string) bool {
-	toks := tokenizeFaithfulness(chunk)
+	toks := contentTokens(chunk)
 	if len(toks) == 0 {
 		return false
 	}
@@ -95,7 +115,9 @@ func chunkRelevantToQuery(qset map[string]struct{}, chunk string) bool {
 			n++
 		}
 	}
-	return float32(n)/float32(len(toks)) >= 0.15 || n >= 2
+	// Require a real content overlap: two hits, or ≥15% of chunk tokens
+	// with at least one content token in common.
+	return n >= 2 || (n >= 1 && float32(n)/float32(len(toks)) >= 0.15)
 }
 
 func judgeContextPrecision(ctx context.Context, judge runner.Runner, query string, chunks []string) (float32, error) {

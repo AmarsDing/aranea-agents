@@ -574,7 +574,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **事件消费** | 无 |
 | **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks）；SP1：`knowledge_blocks`（块物化，`anchor` 部分唯一索引 + `promoted_from/to` 谱系）、`knowledge_block_refs`（块级引用边，dst_* SET NULL / collection CASCADE 镜像内存图）；`vault_backend` 维度（local=文件系统真相源 / team=PG 真相源）；`knowledge_documents.visibility` / `owner_user_id`（collection 默认，private=owner） |
 | **前端对应** | KnowledgePage（资源管理器三栏 + 3D 图谱 + 设置）；SP1-I：`KnowledgeDocDetail` 反链分组/dangling 灰显/晋升按钮、`KnowledgePromoteDialog`、`KnowledgeVaultTree`/`KnowledgeGraph3D` team 徽标、`useKnowledgeGraphDeltaWs`（graph.delta 订阅 → `invalidateLinkCaches` + 详情/图谱重载）；V4：`GraphLegend`（M5 图例过滤 + 透镜）、`FocusCard`（M4 节点详情卡，含重嵌入入口）、`LiquidGlassDefs`（M1 真折射滤镜单例）、`KnowledgeVaultTree`「启用语义检索」菜单（B2，仅词法库）、`WorkbenchSidebar` 文件行「重新向量化」菜单（B1）；**2026-08-17**：命令面板「审核治理提案」+ `GovernanceReviewDialog`（事实冲突 keep_old/keep_new）；对话 `KnowledgeRecallChips`（回答 `[n]` 脚注对齐 chunk_id）；Agent 记忆 Tab `grounded_only`；文件菜单仅自己可见/库内可见 |
-| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；本进程 `LinkIndex` 与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本读路径走 `knowledge_block_refs`（[ADR-KN-LINKINDEX](../reports/2026-08-22-review-adr-knowledge-linkindex-replica.md)），禁止副本间广播内存图。用户语言是「知识库」不是 Collection；文档状态必须经 FSM（禁止 pending→indexed）；首次摄取提交走 `CommitIndexedDocument`；同一库相同 `content_hash` 复用已有文档，不重复建档。Knowledge 是可引用工作区，Memory 写回只是投影。`writeBackReplay` 必须在 Usecase 上绑定（`BindDerivedIndexHooks`）。新业务代码优先走 `Usecase.Vault()/Retrieve()/Graph()/WriteBack()/Curate()` 门面，不要继续给 Usecase 加字段。创建知识库 / 默认收件箱不要求 `embedding_model`（空 = 词法 team Vault；语义层用 `EnableCollectionSemantic` 升级）。 |
+| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；本进程 `LinkIndex` 与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本读路径走 `knowledge_block_refs`（[ADR-KN-LINKINDEX](../reports/2026-08-22-review-adr-knowledge-linkindex-replica.md)），禁止副本间广播内存图。用户语言是「知识库」不是 Collection；文档状态必须经 FSM（禁止 pending→indexed）；摄取 / vault 同步 / 重嵌入 / 晋升重放提交走 `CommitIndexedDocument`（vault 用 `CommitIndexedDocumentMeta`）；同一库相同 `content_hash` 复用已有文档，不重复建档。Knowledge 是可引用工作区，Memory 写回只是投影。`writeBackReplay` 必须在 Usecase 上绑定（`BindDerivedIndexHooks`）。新业务代码优先走 `Usecase.Vault()/Retrieve()/Graph()/WriteBack()/Curate()` 门面，不要继续给 Usecase 加字段。创建知识库 / 默认收件箱不要求 `embedding_model`（空 = 词法 team Vault；语义层用 `EnableCollectionSemantic` 升级）。 |
 
 ---
 
@@ -607,7 +607,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **共享类型** | `EvalDataset`、`EvalCase`、`EvalRun`、`EvalCaseResult`、`EvalGateConfig`、`EvalRunPreference`、`EvalDatasetVersion` |
 | **事件生产** | `eval.completed`（Important，SystemNotice）；失败用例 `eval_failure` Observation |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config（默认行+per-agent）/eval_run_preferences/eval_dataset_versions；`eval_runs.model`/`prompt`；in-flight 部分唯一分非实验 / 实验细胞两套索引；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
+| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config（默认行+per-agent）/eval_run_preferences/eval_dataset_versions；`eval_runs.model`/`prompt`/`tools`/`lease_until`/`judge_calls`/`judge_tokens`；in-flight 部分唯一分非实验 / 实验细胞两套索引；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
 | **前端对应** | EvaluationPage（`features/evaluation/` + `stores/evaluation/`） |
 
 ---
@@ -1124,6 +1124,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - 缺专项 fail-closed：指定已有 Agent 或去编制表补人，不要在任务路径造人
 - 重型链：预授权剧本并行开工；上行走例外；不复活旧 Team；`company_lead` 同样不可分配
 - 横切：deptmail≠Brief；知识≠记忆；员工不继承精灵全家桶；主对话不刷成员 token；不新造 Graph 引擎/报告卡片
+- **架构锁**：[org-invariants.md](./org-invariants.md) — 专项 Agent 自带工具/身份；领导不可分配；禁止改回海选
 - 跨团队正式交接走 Brief/Bulk，**禁止**把 M71 memberfs 开放给员工当传文件通道
 - 改 Allocator 时同步验证 B.10.21 L0/L1 配方/使命单测与 Spirit DAG 建团
 

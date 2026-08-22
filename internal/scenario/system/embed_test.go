@@ -14,7 +14,7 @@ func TestEmbeddedSpiritPrompts(t *testing.T) {
 	}
 	want := map[string]bool{
 		"IDENTITY.md": true, "CAPABILITIES.md": true, "DECISION.md": true,
-		"orchestrator.md": true, "dept_lead.md": true,
+		"orchestrator.md": true, "dept_lead.md": true, "company_lead.md": true,
 	}
 	for _, n := range names {
 		delete(want, n)

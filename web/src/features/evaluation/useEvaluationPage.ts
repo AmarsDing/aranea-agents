@@ -111,6 +111,8 @@ export function useEvaluationPage() {
     model: '',
     extra_models: [] as string[],
     prompt: '',
+    tools: '',
+    extra_tools: [] as string[],
     dataset_version_id: '',
     dataset_version: 0,
   });
@@ -424,15 +426,43 @@ export function useEvaluationPage() {
       ...runForm.value.extra_models.map((m) => m.trim()).filter(Boolean),
     ].filter((m, i, all) => all.indexOf(m) === i);
     const modelAxis = models.length ? models : [''];
+    const tools = [
+      runForm.value.tools.trim(),
+      ...runForm.value.extra_tools.map((x) => x.trim()).filter(Boolean),
+    ].filter((x, i, all) => all.indexOf(x) === i);
+    const toolAxis = tools.length ? tools : [''];
     const prompt = runForm.value.prompt.trim();
     const out: ExperimentVariant[] = [];
     for (const agent_id of agents) {
       for (const model of modelAxis) {
-        out.push({ agent_id, model: model || undefined, prompt: prompt || undefined });
+        for (const tool of toolAxis) {
+          out.push({
+            agent_id,
+            model: model || undefined,
+            prompt: prompt || undefined,
+            tools: tool || undefined,
+          });
+        }
       }
     }
     return out;
   }
+
+  const experimentPivots = computed(() => {
+    const grouped = new Map<string, EvalRun[]>();
+    for (const run of runs.value) {
+      if (!run.experiment_id) continue;
+      const list = grouped.get(run.experiment_id) ?? [];
+      list.push(run);
+      grouped.set(run.experiment_id, list);
+    }
+    return [...grouped.entries()]
+      .filter(([, items]) => items.length > 1)
+      .map(([experiment_id, items]) => ({
+        experiment_id,
+        items: items.slice().sort((a, b) => (a.variant_label || '').localeCompare(b.variant_label || '')),
+      }));
+  });
 
   async function openVersions() {
     if (!selectedDatasetId.value) return;
@@ -833,6 +863,7 @@ export function useEvaluationPage() {
     cancelEvalRun,
     confirmDeleteRun,
     submitRun,
+    experimentPivots,
     versionsOpen,
     versionsLoading,
     versions,

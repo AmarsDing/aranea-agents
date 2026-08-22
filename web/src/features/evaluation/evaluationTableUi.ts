@@ -29,6 +29,16 @@ export const EVAL_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
   registryColActions<EvalRun>(REGISTRY_COL_W.actions, ''),
 ];
 
+/** EvaluationAnalyticsPanel — experiment matrix pivot */
+export const EVAL_EXPERIMENT_PIVOT_COLUMNS: QTableColumn<EvalRun>[] = [
+  registryCol<EvalRun>('variant_label', '变体', (r) => r.variant_label || r.agent_id, 'left', REGISTRY_COL_W.agent),
+  registryCol<EvalRun>('model', '模型', (r) => r.model || '', 'left', REGISTRY_COL_W.agent),
+  registryCol<EvalRun>('tools', '工具', (r) => r.tools || '', 'left', REGISTRY_COL_W.metric),
+  registryCol<EvalRun>('exact_match_score', 'Exact', 'exact_match_score', 'right', REGISTRY_COL_W.narrow),
+  registryCol<EvalRun>('llm_judge_score', 'LLM', 'llm_judge_score', 'right', REGISTRY_COL_W.narrow),
+  registryCol<EvalRun>('judge_tokens', 'Judge tok', (r) => r.judge_tokens ?? 0, 'right', REGISTRY_COL_W.narrow),
+];
+
 /** EvaluationPage — dataset versions */
 export const EVAL_VERSION_TABLE_COLUMNS: QTableColumn<EvalDatasetVersion>[] = [
   registryCol<EvalDatasetVersion>('version', 'Version', 'version', 'left', REGISTRY_COL_W.narrow),

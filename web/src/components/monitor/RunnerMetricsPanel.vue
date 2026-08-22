@@ -14,11 +14,17 @@
         map-options
         :options="windowOptions"
         :label="t('monitorPage.runner.window')"
-        style="min-width: 120px"
-        class="q-mr-sm"
+        class="apm-select--sm q-mr-sm"
         @update:model-value="emit('update:windowMinutes', $event)"
       />
-      <q-btn flat rounded icon="refresh" :label="t('monitorPage.runner.refresh')" :loading="loading" @click="emit('refresh')" />
+      <q-btn
+        flat
+        rounded
+        icon="refresh"
+        :label="t('monitorPage.runner.refresh')"
+        :loading="loading"
+        @click="emit('refresh')"
+      />
     </q-card-section>
     <q-separator />
     <q-card-section v-if="metrics" :class="{ 'runner-metrics__body--compact': variant === 'overview' }">

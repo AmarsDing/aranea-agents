@@ -205,6 +205,9 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		loggateway.Any("elapsed_ms", time.Since(hydrateStart).Milliseconds()),
 		loggateway.Any("agent_key", ag.AgentKey))
 	flow.LogDone("chat.agent_hydrate", "Agent配置已加载", event.P("agent_key", ag.AgentKey), event.P("provider", ag.Provider), event.P("model", ag.Model))
+	if ov, ok := biz.EvalRunOverrideFrom(ctx); ok {
+		applyEvalOverrideToAgent(&ag, ov)
+	}
 	if err := o.admission().EnforceChatTurnQuotas(ctx, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
 		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, err

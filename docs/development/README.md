@@ -77,6 +77,7 @@ docs/development/
 | [0-system-diagram.md](./0-system-diagram.md) | 系统架构总览 |
 | [0-system.development.md](./0-system.development.md) | 系统级开发计划与入口约定 |
 | [65-module-cross-reference-full.md](./65-module-cross-reference-full.md) | 模块交叉参考手册（开发前必读） |
+| [org-invariants.md](./org-invariants.md) | 公司/部门/专项 Agent 架构锁（禁止改回海选或精灵工具箱） |
 | [66-database-architecture.md](./66-database-architecture.md) / [66-database-architecture.design.md](./66-database-architecture.design.md) | 数据库需求与设计 |
 | [64-logging-framework.md](./64-logging-framework.md) / [64-logging-framework.design.md](./64-logging-framework.design.md) | 日志框架规范 |
 | [../guides/frontend-guide.md](../guides/frontend-guide.md) | 前端开发指南 |

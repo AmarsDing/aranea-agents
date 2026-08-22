@@ -55,6 +55,10 @@ export type EvalRun = {
   model: string | undefined;
   // prompt is an optional extra instruction overlay for this variant.
   prompt: string | undefined;
+  // tools is an optional tool allowlist (comma-separated) or "none".
+  tools: string | undefined;
+  judgeCalls: number | undefined;
+  judgeTokens: number | undefined;
 };
 
 // EvalCaseResult is the output for one case in a run.
@@ -193,6 +197,7 @@ export type RunEvaluationRequest = {
   prompt: string | undefined;
   // dataset_version_id pins the run to an immutable snapshot; empty = latest.
   datasetVersionId: string | undefined;
+  tools: string | undefined;
 };
 
 export type GetRunRequest = {
@@ -479,6 +484,7 @@ export type ExperimentVariant = {
   label: string | undefined;
   model: string | undefined;
   prompt: string | undefined;
+  tools: string | undefined;
 };
 
 export type RunExperimentRequest = {

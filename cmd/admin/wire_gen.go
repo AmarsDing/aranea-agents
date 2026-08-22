@@ -463,7 +463,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	engine := importer.ProvideEngine(skillRepo, llmLister, systemSettingRepo, skillImportJobStore, monitorBus, loggatewayLogger)
 	stores := data.NewEvalStoresFromData(dataData)
 	evaluationUsecase := evaluation.NewUsecase(stores, loggatewayLogger)
-	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, learningLoopUsecase, loggatewayLogger)
+	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, learningLoopUsecase, usageUsecase, loggatewayLogger)
 	publishGate := service.ProvidePublishGate(evaluationUsecase, evaluationRunner, v2Bus, loggatewayLogger)
 	skillServiceDeps := service.SkillServiceDeps{
 		UC:          skillUsecase,

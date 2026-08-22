@@ -29,6 +29,11 @@ func loadEvalLLMSetting(ctx context.Context, sys EvalLLMSettingsReader) biz.Eval
 	return row.EvalLLM
 }
 
+// ResolveJudgeProviderModel exposes judge provider/model for usage attribution.
+func ResolveJudgeProviderModel(ctx context.Context, sys EvalLLMSettingsReader) (string, string) {
+	return resolveJudgeProviderModel(ctx, sys)
+}
+
 func resolveJudgeProviderModel(ctx context.Context, sys EvalLLMSettingsReader) (string, string) {
 	prov := strings.TrimSpace(os.Getenv("KRATOS_EVAL_JUDGE_PROVIDER"))
 	mod := strings.TrimSpace(os.Getenv("KRATOS_EVAL_JUDGE_MODEL"))

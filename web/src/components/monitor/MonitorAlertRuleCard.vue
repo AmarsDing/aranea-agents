@@ -135,7 +135,10 @@ const metricOptions = computed(() => {
   // Legacy rules may target a metric that is no longer registered; keep the
   // raw key selectable so the form never silently drops it.
   if (rule.value.metric_key && !metricsByKey.value.has(rule.value.metric_key)) {
-    options.push({ label: `${rule.value.metric_key}（${t('monitorPage.alerts.rule.unknownMetric')}）`, value: rule.value.metric_key });
+    options.push({
+      label: `${rule.value.metric_key}（${t('monitorPage.alerts.rule.unknownMetric')}）`,
+      value: rule.value.metric_key,
+    });
   }
   return options;
 });

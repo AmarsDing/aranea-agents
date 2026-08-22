@@ -263,7 +263,7 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 		Tools:            strings.TrimSpace(req.GetTools()),
 		DatasetVersionID: strings.TrimSpace(req.GetDatasetVersionId()),
 	}
-	if in.VariantLabel == "" && (in.Model != "" || in.Prompt != "") {
+	if in.VariantLabel == "" && (in.Model != "" || in.Prompt != "" || in.Tools != "") {
 		in.VariantLabel = biz.DefaultEvalVariantLabel(in.AgentID, in.Model, in.Prompt, in.Tools)
 	}
 	if !workspace.IsSystem(ctx) {

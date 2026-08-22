@@ -393,6 +393,11 @@ func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
 			}
 		}
 	}
+	// Progress writes carry the in-memory snapshot; refresh the lease
+	// so a 30s-old LeaseUntil cannot overwrite a live heartbeat.
+	if r.Status == RunStatusPending || r.Status == RunStatusRunning {
+		r.LeaseUntil = NextLeaseUntil()
+	}
 	return u.runs.UpdateRun(ctx, r)
 }
 

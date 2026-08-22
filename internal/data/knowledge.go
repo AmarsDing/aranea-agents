@@ -879,17 +879,30 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 	})
 }
 
-// CommitIndexedDocument inserts chunks, CAS-marks the document indexed, and
-// adjusts collection counts in one transaction.
-func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []biz.KnowledgeChunk, docDelta int) error {
+// CommitIndexedDocument replaces a document's chunks, CAS-marks it indexed,
+// optionally writes vault sync meta, and adjusts collection counts in one TX.
+func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []biz.KnowledgeChunk, docDelta int, syncMeta *biz.KnowledgeDocumentSyncMeta) error {
 	if len(chunks) > 0 {
 		if err := r.assertChunkDimensions(ctx, chunks); err != nil {
 			return err
 		}
 	}
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var oldCount int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id = $1`, docID).Scan(&oldCount); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
 		if err := r.insertChunksTx(ctx, tx, chunks); err != nil {
 			return err
+		}
+		if syncMeta != nil {
+			if err := r.updateDocumentSyncMetaTx(ctx, tx, docID, *syncMeta); err != nil {
+				return err
+			}
 		}
 		res, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_documents
@@ -902,16 +915,29 @@ func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID,
 		if n != 1 {
 			return bizknowledge.ErrDocumentStatusConflict
 		}
+		chunkDelta := len(chunks) - oldCount
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_collections
 			 SET document_count = document_count + $2,
 			     chunk_count    = chunk_count    + $3,
 			     updated_at     = NOW()
-			 WHERE id = $1`, collectionID, docDelta, len(chunks)); err != nil {
+			 WHERE id = $1`, collectionID, docDelta, chunkDelta); err != nil {
 			return entErrToBizErr(err, "knowledge")
 		}
 		return nil
 	})
+}
+
+func (r *knowledgeRepo) updateDocumentSyncMetaTx(ctx context.Context, tx *sql.Tx, id string, meta biz.KnowledgeDocumentSyncMeta) error {
+	tagsJSON, err := marshalTags(meta.Tags)
+	if err != nil {
+		return entErrToBizErr(err, "knowledge")
+	}
+	_, err = tx.ExecContext(ctx,
+		`UPDATE knowledge_documents
+		 SET content_hash = $2, summary = $3, summary_hash = $4, tags = $5, doc_type = $6, stale_at = NULL, updated_at = NOW()
+		 WHERE id = $1`, id, meta.ContentHash, meta.Summary, meta.SummaryHash, tagsJSON, meta.DocType)
+	return entErrToBizErr(err, "knowledge")
 }
 
 func (r *knowledgeRepo) assertChunkDimensions(ctx context.Context, chunks []biz.KnowledgeChunk) error {

@@ -236,6 +236,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | 32 | 评估治理 P1：Run FSM、per-agent 门禁 advisory\|blocking、in-flight 部分唯一索引、并发槽、Prometheus、FailStaleRuns grace、趋势曲线 | P1 | ✅ |
 | 33 | 评估平台 P2：数据集版本、实验矩阵、faithfulness、失败 Observation、结果跳 Trace、门禁 composable 拆分 | P2 | ✅ |
 | 34 | 评估平台加深：实验矩阵 model/prompt、faithfulness LLM judge（词面回落）、钉住版本重跑 + 版本列表 UI | P3 | ✅ |
+| 35 | 剩余项一次做完：context_precision、lease 心跳清扫、aux_eval_judge、工具维矩阵、实验透视 UI | P3 | ✅ |
 
 ---
 

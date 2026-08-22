@@ -79,6 +79,9 @@ function mapRun(raw: unknown): EvalRun {
     variant_label: pickStr(r, 'variant_label', 'variantLabel'),
     model: pickStr(r, 'model', 'model'),
     prompt: pickStr(r, 'prompt', 'prompt'),
+    tools: pickStr(r, 'tools', 'tools'),
+    judge_calls: pickI32(r, 'judge_calls', 'judgeCalls'),
+    judge_tokens: pickI32(r, 'judge_tokens', 'judgeTokens'),
   };
 }
 
@@ -210,6 +213,7 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
     useUserSimulation: input.use_user_simulation ?? false,
     model: input.model ?? '',
     prompt: input.prompt ?? '',
+    tools: input.tools ?? '',
     datasetVersionId: input.dataset_version_id ?? '',
   });
   return mapRun(raw);
@@ -228,6 +232,7 @@ export async function runExperiment(input: RunExperimentInput): Promise<{ experi
         label: v.label ?? '',
         model: v.model ?? '',
         prompt: v.prompt ?? '',
+        tools: v.tools ?? '',
       })),
     }),
   );

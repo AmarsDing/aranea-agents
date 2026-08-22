@@ -185,7 +185,9 @@ P2/P3 新增 2 张表 + 1 个列：
 - `eval_gate_config`（P2-1 / P1）：平台默认行 `id=singleton` + per-agent 行 `id=agent:<id>`；`mode` 列 `advisory`|`blocking`；`enabled` 以 INTEGER 0/1 存储
 - `eval_runs` 部分唯一索引 `idx_eval_runs_inflight (workspace_id, dataset_id, agent_id) WHERE status IN ('pending','running')`
 - `eval_dataset_versions`：不可变用例快照（version/hash/cases_json）；run 绑 `dataset_version_id`
-- `eval_runs.experiment_id` / `variant_label` / `model` / `prompt`：实验矩阵（Agent × 模型，可选提示词覆盖）；in-flight 唯一：非实验 `(workspace,dataset,agent)`，实验细胞 `(workspace,dataset,agent,variant_label)`
+- `eval_runs.experiment_id` / `variant_label` / `model` / `prompt` / `tools`：实验矩阵（Agent × 模型 × 工具白名单/`none`）；in-flight 唯一：非实验 `(workspace,dataset,agent)`，实验细胞 `(workspace,dataset,agent,variant_label)`
+- `eval_runs.lease_until`：执行心跳租约（默认 2min，30s 续约）；`UpdateRun` 在 pending/running 时刷新租约，避免进度落库冲掉心跳；FailStaleRuns 杀过期租约，无租约旧行回落 `created_at+15m`
+- `eval_runs.judge_calls` / `judge_tokens`：本 run 的 judge 调用次数与 token；同时写入 usage `aux_eval_judge`
 - `RunEvaluation` / `RunExperiment` 可传 `dataset_version_id` 钉住快照重跑；空则绑定最新 snapshot
 - `eval_case_results.session_id` / `trace_run_id`：推理追踪
 - `eval_run_preference`（P3-3）：Pairwise 偏好记录（`run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by`）
@@ -427,6 +429,8 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 4. 自定义框架 evaluator 路径（实现 `evaluator.Evaluator` 接口 + `mgr.Add` 注册，类比 tooltrajectory）亦可行，但需动框架层
 
 **排期建议**：faithfulness 先行（工作量中），context_precision 后置。
+
+context_precision 已落地：对 knowledge_search chunks 做相关性判定（judge 优先，词面回落），无检索记 N/A，聚合进 `scores_json.context_precision`。
 
 ### 6.18 第三轮深扫加固（2026-08-14）
 

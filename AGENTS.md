@@ -88,6 +88,19 @@
 - 需求变更时回退到设计阶段，禁止直接改代码适应新需求
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 - **开发前必读模块交叉参考手册**（`docs/development/65-module-cross-reference-full.md`），确认所有关联影响面
+- **组织/专项铁律**（禁止改架构）：[`docs/development/org-invariants.md`](./docs/development/org-invariants.md)。公司→部门→岗位；每个业务 Agent 是挂岗专项，自带身份/工具/MCP/技能；`dept_lead`/`company_lead` 是治理岗不是干活人；编排只绑花名册，不把员工做成精灵分身。细则 [M67](./docs/development/67-organization-redesign.md) + [M78](./docs/development/78-org-aware-orchestration.md)
+
+## 组织与专项铁律（改编排/Agent/组织前必读）
+
+> 完整不变量：[`docs/development/org-invariants.md`](./docs/development/org-invariants.md)。与下文冲突时以该文档 + M67/M78 为准。**禁止**把编制表改回「行业分类海选」或「全员共用精灵工具箱」。
+
+| 层 | 是什么 | 禁止 |
+|----|--------|------|
+| 公司 | workspace 上一棵 `organizations` 树（company→department→position） | 任务路径创建公司/部门；每单 LLM 找公司 |
+| 总经理 `company_lead` | 预授权剧本、对外 Brief、跨部门仲裁 | 当 Team Lead；对用户原话自由拆解 |
+| 部门领导 `dept_lead` | 借调/质量门/缺编建议；重型横向传 Brief | 当业务 Lead；二次全局分解 |
+| 岗位上的 Agent | **专项**：自己的 mission、`domain_path`、ToolsProfile/Allow/Deny、MCP、Skill | 继承精灵 `spirit` 工具面；热路径 Factory 交差 |
+| 编排 | 分档 + 花名册绑定 + PlanExecutor；重型走剧本/三管道 | 四层串行 LLM；复活 completed Team；memberfs 当交接盘 |
 
 ## 根目录规范（红线）
 

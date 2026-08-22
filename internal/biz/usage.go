@@ -3,22 +3,22 @@ package biz
 import "aranea-agents/internal/biz/usage"
 
 type (
-	UsageQuery                = usage.Query
-	UsageSummary              = usage.Summary
-	UsageTrendPoint           = usage.TrendPoint
-	UsageBreakdownRow         = usage.BreakdownRow
-	UsageBreakdownQuery       = usage.BreakdownQuery
-	UsageBreakdownResult      = usage.BreakdownResult
-	TokenUsageEvent           = usage.TokenUsageEvent
-	UsageOverview             = usage.Overview
-	ModelPricingSnapshot      = usage.ModelPricingSnapshot
-	UsageAnalyticsRepo        = usage.AnalyticsRepo
-	UsageWriteRepo            = usage.WriteRepo
-	UsageQuotaRepo            = usage.QuotaRepo
-	UsageRepo                 = usage.Repo
-	UsageUsecase              = usage.Usecase
+	UsageQuery           = usage.Query
+	UsageSummary         = usage.Summary
+	UsageTrendPoint      = usage.TrendPoint
+	UsageBreakdownRow    = usage.BreakdownRow
+	UsageBreakdownQuery  = usage.BreakdownQuery
+	UsageBreakdownResult = usage.BreakdownResult
+	TokenUsageEvent      = usage.TokenUsageEvent
+	UsageOverview        = usage.Overview
+	ModelPricingSnapshot = usage.ModelPricingSnapshot
+	UsageAnalyticsRepo   = usage.AnalyticsRepo
+	UsageWriteRepo       = usage.WriteRepo
+	UsageQuotaRepo       = usage.QuotaRepo
+	UsageRepo            = usage.Repo
+	UsageUsecase         = usage.Usecase
 	// UsageUsecaseRef mirrors usage.UsecaseRef (P1-2 late-binding cell).
-	UsageUsecaseRef = usage.UsecaseRef
+	UsageUsecaseRef           = usage.UsecaseRef
 	UsageQuota                = usage.Quota
 	UsageQuotaCheck           = usage.QuotaCheck
 	BudgetAlert               = usage.BudgetAlert

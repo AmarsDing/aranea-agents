@@ -13,6 +13,7 @@ func TestBindRosterSpecialist_PrimaryAndBackup(t *testing.T) {
 		{AgentKey: "copy-b", DisplayName: "文案B", DomainPath: "创作/文案"},
 		{AgentKey: "copy-a", DisplayName: "文案A", DomainPath: "创作/文案"},
 		{AgentKey: biz.DeptLeadAgentKeyPrefix + "media__", DisplayName: "主管", AgentVariant: "dept_lead", DomainPath: "创作/文案"},
+		{AgentKey: biz.CompanyLeadAgentKeyPrefix + "acme__", DisplayName: "总经理", AgentVariant: biz.AgentVariantCompanyLead, DomainPath: "创作/文案"},
 	}
 	got, backup, ok := bindRosterSpecialist("创作/文案", pool)
 	if !ok || got.AgentKey != "copy-a" {

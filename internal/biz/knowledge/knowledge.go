@@ -180,12 +180,13 @@ type ChunkRepo interface {
 	SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
 }
 
-// IngestCommitter persists chunks + indexed status + collection counts in one
-// transaction (Wave 1). Optional: Usecase falls back to sequential writes when
-// the document repo does not implement it (unit-test fakes).
+// IngestCommitter persists a chunk replace + indexed status + collection
+// counts in one transaction. Optional: Usecase falls back to sequential
+// writes when the document repo does not implement it (unit-test fakes).
+// syncMeta, when non-nil, is written in the same transaction (vault hash/card).
 // Stability:evolving
 type IngestCommitter interface {
-	CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) error
+	CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) error
 }
 
 // Stability:evolving
@@ -546,10 +547,21 @@ func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg s
 	return u.documents.UpdateDocumentStatus(ctx, id, string(to), errMsg, chunkCount)
 }
 
-// CommitIndexedDocument writes chunks, marks the document indexed, and adjusts
-// collection counts. Requires current status indexing. Production repos that
-// implement IngestCommitter do this in one transaction with a status CAS.
+// CommitIndexedDocument replaces chunks, marks the document indexed, and
+// adjusts collection counts. Requires current status indexing. Production
+// repos that implement IngestCommitter do this in one transaction: delete
+// old chunks, insert new ones, CAS status=indexed, apply count deltas.
 func (u *Usecase) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) error {
+	return u.commitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, nil)
+}
+
+// CommitIndexedDocumentMeta is CommitIndexedDocument plus vault sync meta
+// (content hash / summary card) in the same commit.
+func (u *Usecase) CommitIndexedDocumentMeta(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, meta DocumentSyncMeta) error {
+	return u.commitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, &meta)
+}
+
+func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) error {
 	if err := u.requireRepo(); err != nil {
 		return err
 	}
@@ -568,15 +580,23 @@ func (u *Usecase) CommitIndexedDocument(ctx context.Context, collectionID, docID
 		return apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → indexed", from)
 	}
 	if c, ok := u.documents.(IngestCommitter); ok {
-		return c.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta)
+		return c.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, syncMeta)
+	}
+	if err := u.DeleteChunksByDocument(ctx, docID); err != nil {
+		return err
 	}
 	if err := u.InsertChunks(ctx, chunks); err != nil {
 		return err
 	}
+	if syncMeta != nil {
+		if err := u.documents.UpdateDocumentSyncMeta(ctx, docID, *syncMeta); err != nil {
+			return err
+		}
+	}
 	if err := u.documents.UpdateDocumentStatus(ctx, docID, string(DocumentStateIndexed), "", len(chunks)); err != nil {
 		return err
 	}
-	return u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, len(chunks))
+	return u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, len(chunks)-doc.ChunkCount)
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。

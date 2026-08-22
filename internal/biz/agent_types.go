@@ -45,15 +45,15 @@ func IsSystemAgentKey(key string) bool {
 // for matching, allocation, or team assembly. Inactive/archived/system
 // agents stay in the directory but must not be assigned work.
 //
-// Department leads (agent_variant=dept_lead / __dept_lead_*__ keys) are
-// governance roles, not business executors. Heuristic matching must not
-// assign them as Lead or complementary members. Explicit plan_and_execute
-// agent_keys may still name a dept_lead (AllocateExplicit bypasses this).
+// Department and company leads are governance roles, not business
+// executors. Heuristic matching must not assign them as Lead or
+// complementary members. Explicit plan_and_execute agent_keys may still
+// name a lead (AllocateExplicit bypasses this).
 func IsCatalogAgentAssignable(a Agent) bool {
 	if IsSystemAgentKey(a.AgentKey) {
 		return false
 	}
-	if IsDeptLeadAgent(a) {
+	if IsOrgGovernanceAgent(a) {
 		return false
 	}
 	return NormalizeAgentStatus(a.Status) == AgentStatusActive

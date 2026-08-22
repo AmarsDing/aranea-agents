@@ -115,7 +115,11 @@ func TestUsecase_CommitIndexedDocument_SequentialFallback(t *testing.T) {
 	mr.docGetFn = func(_ context.Context, id string) (Document, error) {
 		return Document{ID: id, Status: "indexing"}, nil
 	}
-	var inserted, status, counts bool
+	var deleted, inserted, status, counts bool
+	mr.chunkDeleteFn = func(_ context.Context, docID string) error {
+		deleted = docID == "doc-1"
+		return nil
+	}
 	mr.chunkInsertFn = func(_ context.Context, chunks []Chunk) error {
 		inserted = len(chunks) == 1
 		return nil
@@ -132,8 +136,33 @@ func TestUsecase_CommitIndexedDocument_SequentialFallback(t *testing.T) {
 	if err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
-	if !inserted || !status || !counts {
-		t.Fatalf("fallback writes incomplete: insert=%v status=%v counts=%v", inserted, status, counts)
+	if !deleted || !inserted || !status || !counts {
+		t.Fatalf("fallback writes incomplete: delete=%v insert=%v status=%v counts=%v", deleted, inserted, status, counts)
+	}
+}
+
+func TestUsecase_CommitIndexedDocument_SequentialFallback_ReplacesChunks(t *testing.T) {
+	mr := noOpMockRepo()
+	mr.docGetFn = func(_ context.Context, id string) (Document, error) {
+		return Document{ID: id, Status: "indexing", ChunkCount: 2}, nil
+	}
+	var metaWritten bool
+	mr.docSyncMetaFn = func(_ context.Context, id string, meta DocumentSyncMeta) error {
+		metaWritten = id == "doc-1" && meta.ContentHash == "h1"
+		return nil
+	}
+	mr.collUpdateFn = func(_ context.Context, _ string, docDelta, chunkDelta int) error {
+		if docDelta != 0 || chunkDelta != -1 {
+			t.Fatalf("counts docDelta=%d chunkDelta=%d, want 0/-1", docDelta, chunkDelta)
+		}
+		return nil
+	}
+	u := NewUsecaseFromRepo(mr)
+	if err := u.CommitIndexedDocumentMeta(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1"}}, 0, DocumentSyncMeta{ContentHash: "h1"}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if !metaWritten {
+		t.Fatal("sync meta must be written on the meta commit path")
 	}
 }
 

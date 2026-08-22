@@ -1,5 +1,11 @@
 <template>
-  <q-btn flat icon="download" :label="t('monitorPage.logs.exportJsonl')" :disable="!lines.length" @click="$emit('export')" />
+  <q-btn
+    flat
+    icon="download"
+    :label="t('monitorPage.logs.exportJsonl')"
+    :disable="!lines.length"
+    @click="$emit('export')"
+  />
 </template>
 
 <script setup lang="ts">

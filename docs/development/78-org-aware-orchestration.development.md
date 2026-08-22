@@ -149,12 +149,12 @@
 
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
-| ORGFAST-40 | 分档器：light/medium/heavy 规则 + 单测 | `internal/agent` 或 gate | 轻不组队；中不叫醒总经理；跨部门 DAG→heavy | 📋 |
-| ORGFAST-41 | M67：`company_lead` 幂等创建/排除出 Assignable | `dept_lead.go` 对称 + capability | 总经理不得为 Team Lead | 📋 |
-| ORGFAST-42 | 流程剧本读写（公司 metadata）+ 预授权 | organization + planner | 已授权剧本展开 0 总经理 LLM | 📋 |
+| ORGFAST-40 | 分档器：light/medium/heavy 规则 + 单测 | `internal/agent` 或 gate | 轻不组队；中不叫醒总经理；跨部门 DAG→heavy | ✅ |
+| ORGFAST-41 | M67：`company_lead` 幂等创建/排除出 Assignable | `company_lead.go` + capability | 总经理不得为 Team Lead；创建公司时挂接（id 暂存 metadata） | ✅ |
+| ORGFAST-42 | 流程剧本读写（公司 metadata）+ 预授权 | organization + planner | 已授权剧本展开 0 总经理 LLM | 🟡 解析/展开/指纹已落地；热路径未接 planner |
 | ORGFAST-43 | 精灵粗路由只输出 playbook_id（重型） | planner prompt / 分类 | 不按行业常识拆到岗 | 📋 |
 | ORGFAST-44 | 三管道：上行心跳/例外事件；横向仍 Brief | delivery + progress | 上行 ≤2KB；无源码 | 📋 |
-| ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | 📋 |
+| ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | 🟡 字段+判定已落地；回放热路径未接 |
 | ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | 📋 |
 | ORGFAST-47 | 仲裁：部门→总经理，公司→精灵呈用户 | 门禁/事件 | 禁止总经理互怼循环 | 📋 |
 
@@ -164,7 +164,7 @@
 
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
-| ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | 📋 |
+| ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | 🟡 TrimPrefixBudget 已落地；装配未接 |
 | ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | 📋 |
 | ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | 📋 |
 | ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | 📋 |
@@ -272,10 +272,10 @@
 - [x] 高置信路径主管 LLM 计数 `skipped_high_confidence`
 - [x] staffing 超时 fail-closed，不热路径 Factory；不二次分解
 - [x] Allocate 不改写 Plan DAG，跨部只标 CrossDept
-- [ ] 分档 + 已授权剧本展开时总经理 LLM = 0
-- [ ] `company_lead` 不得为 AssignedKey
-- [ ] 重型上行无源码；指纹不合不复用 keys
-- [ ] 成员首轮前缀 ≤6KB；员工工具为专项子集
+- [x] 分档规则可测（ORGFAST-40）；已授权剧本展开函数已有（热路径未接）
+- [x] `company_lead` 不得为 AssignedKey / 启发式匹配
+- [ ] 重型上行无源码；指纹不合不复用 keys（判定已有，回放未接）
+- [ ] 成员首轮前缀 ≤6KB；员工工具为专项子集（裁剪函数已有，装配未接）
 - [ ] 合成 prompt 无成员会话原文
 - [ ] 默认阶段无开工确认卡；pause/inject 复用现网
 

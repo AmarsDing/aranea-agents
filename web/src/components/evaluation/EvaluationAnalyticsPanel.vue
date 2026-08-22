@@ -62,6 +62,24 @@
 
     <q-separator />
 
+    <q-card-section v-if="experimentPivots.length">
+      <div class="text-subtitle2 text-weight-bold q-mb-sm">{{ $t('evaluationPage.experimentPivotTitle') }}</div>
+      <div v-for="group in experimentPivots" :key="group.experiment_id" class="q-mb-md">
+        <div class="text-caption text-grey-7 q-mb-xs">{{ group.experiment_id }}</div>
+        <AppRegistryTable
+          :shell="false"
+          :data-shell="true"
+          :rows="group.items"
+          :columns="experimentPivotColumns"
+          row-key="id"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
+        />
+      </div>
+    </q-card-section>
+
+    <q-separator v-if="experimentPivots.length" />
+
     <q-card-section>
       <div class="text-caption text-grey-7 q-mb-sm">勾选 2 条以上运行记录进行 A/B 对比（以最早一条为基线）</div>
       <AppRegistryTable
@@ -344,6 +362,7 @@ import {
   EVAL_COMPARE_TABLE_COLUMNS,
   EVAL_RECENT_RUN_TABLE_COLUMNS,
   EVAL_TREND_TABLE_COLUMNS,
+  EVAL_EXPERIMENT_PIVOT_COLUMNS,
 } from '../../features/evaluation/evaluationTableUi';
 
 const props = defineProps<{
@@ -363,6 +382,7 @@ const props = defineProps<{
   preferencesLoading: boolean;
   preferenceSaving: boolean;
   datasetChanged: boolean;
+  experimentPivots?: { experiment_id: string; items: EvalRun[] }[];
 }>();
 
 const emit = defineEmits<{
@@ -494,6 +514,8 @@ watch(
 );
 
 const trendColumns = EVAL_TREND_TABLE_COLUMNS;
+const experimentPivotColumns = EVAL_EXPERIMENT_PIVOT_COLUMNS;
+const experimentPivots = computed(() => props.experimentPivots ?? []);
 const compareSelectColumns = EVAL_RECENT_RUN_TABLE_COLUMNS;
 const comparisonColumns = EVAL_COMPARE_TABLE_COLUMNS;
 const divergenceColumns = computed(() => buildEvalDivergenceColumns(t));

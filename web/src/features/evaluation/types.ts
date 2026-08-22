@@ -36,6 +36,9 @@ export type EvalRun = {
   variant_label?: string;
   model?: string;
   prompt?: string;
+  tools?: string;
+  judge_calls?: number;
+  judge_tokens?: number;
 };
 
 export type EvalCaseResult = {
@@ -109,6 +112,7 @@ export type RunEvaluationInput = {
   use_user_simulation?: boolean;
   model?: string;
   prompt?: string;
+  tools?: string;
   dataset_version_id?: string;
 };
 
@@ -190,6 +194,7 @@ export type ExperimentVariant = {
   label?: string;
   model?: string;
   prompt?: string;
+  tools?: string;
 };
 
 export type RunExperimentInput = {

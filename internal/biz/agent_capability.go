@@ -35,5 +35,5 @@ func (c AgentCapability) IsHeuristicAssignable() bool {
 	if IsSystemAgentKey(c.AgentKey) {
 		return false
 	}
-	return !IsDeptLeadAgent(Agent{AgentKey: c.AgentKey, AgentVariant: c.AgentVariant})
+	return !IsOrgGovernanceAgent(Agent{AgentKey: c.AgentKey, AgentVariant: c.AgentVariant})
 }

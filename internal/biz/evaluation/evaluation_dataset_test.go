@@ -501,6 +501,9 @@ func TestCreateRun(t *testing.T) {
 				if got.ID == "" {
 					t.Fatal("expected auto-generated ID, got empty")
 				}
+				if got.LeaseUntil == "" {
+					t.Fatal("expected CreateRun to stamp LeaseUntil")
+				}
 				if got.Status != "pending" {
 					t.Fatalf("expected Status 'pending', got %q", got.Status)
 				}

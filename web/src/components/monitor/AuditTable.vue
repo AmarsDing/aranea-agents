@@ -252,7 +252,17 @@ const emit = defineEmits<{
 // 事件类型（动词级，后端按 "<verb>.%" 前缀匹配）与实体类型为固定枚举，
 // 与 18-monitor.md §2.1 及后端审计点覆盖范围对齐。
 const ACTION_VERBS = ['create', 'update', 'delete', 'toggle', 'credentials', 'archive', 'sync'] as const;
-const RESOURCE_TYPES = ['agent', 'team', 'channel', 'provider', 'config', 'session', 'tool', 'mcp_server', 'skill'] as const;
+const RESOURCE_TYPES = [
+  'agent',
+  'team',
+  'channel',
+  'provider',
+  'config',
+  'session',
+  'tool',
+  'mcp_server',
+  'skill',
+] as const;
 
 const actionOptions = ACTION_VERBS.map((v) => ({ label: v, value: v }));
 const resourceOptions = RESOURCE_TYPES.map((r) => ({ label: r, value: r }));

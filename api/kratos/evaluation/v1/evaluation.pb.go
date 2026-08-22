@@ -226,7 +226,11 @@ type EvalRun struct {
 	// model is an optional per-run model override (experiment matrix cell).
 	Model string `protobuf:"bytes,25,opt,name=model,proto3" json:"model,omitempty"`
 	// prompt is an optional extra instruction overlay for this variant.
-	Prompt        string `protobuf:"bytes,26,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Prompt string `protobuf:"bytes,26,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	// tools is an optional tool allowlist (comma-separated) or "none".
+	Tools         string `protobuf:"bytes,27,opt,name=tools,proto3" json:"tools,omitempty"`
+	JudgeCalls    int32  `protobuf:"varint,28,opt,name=judge_calls,json=judgeCalls,proto3" json:"judge_calls,omitempty"`
+	JudgeTokens   int32  `protobuf:"varint,29,opt,name=judge_tokens,json=judgeTokens,proto3" json:"judge_tokens,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -441,6 +445,27 @@ func (x *EvalRun) GetPrompt() string {
 		return x.Prompt
 	}
 	return ""
+}
+
+func (x *EvalRun) GetTools() string {
+	if x != nil {
+		return x.Tools
+	}
+	return ""
+}
+
+func (x *EvalRun) GetJudgeCalls() int32 {
+	if x != nil {
+		return x.JudgeCalls
+	}
+	return 0
+}
+
+func (x *EvalRun) GetJudgeTokens() int32 {
+	if x != nil {
+		return x.JudgeTokens
+	}
+	return 0
 }
 
 // EvalCaseResult is the output for one case in a run.
@@ -1311,6 +1336,7 @@ type RunEvaluationRequest struct {
 	Prompt            string `protobuf:"bytes,9,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	// dataset_version_id pins the run to an immutable snapshot; empty = latest.
 	DatasetVersionId string `protobuf:"bytes,10,opt,name=dataset_version_id,json=datasetVersionId,proto3" json:"dataset_version_id,omitempty"`
+	Tools            string `protobuf:"bytes,11,opt,name=tools,proto3" json:"tools,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1411,6 +1437,13 @@ func (x *RunEvaluationRequest) GetPrompt() string {
 func (x *RunEvaluationRequest) GetDatasetVersionId() string {
 	if x != nil {
 		return x.DatasetVersionId
+	}
+	return ""
+}
+
+func (x *RunEvaluationRequest) GetTools() string {
+	if x != nil {
+		return x.Tools
 	}
 	return ""
 }
@@ -3530,6 +3563,7 @@ type ExperimentVariant struct {
 	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
 	Model         string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
 	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Tools         string                 `protobuf:"bytes,5,opt,name=tools,proto3" json:"tools,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3588,6 +3622,13 @@ func (x *ExperimentVariant) GetModel() string {
 func (x *ExperimentVariant) GetPrompt() string {
 	if x != nil {
 		return x.Prompt
+	}
+	return ""
+}
+
+func (x *ExperimentVariant) GetTools() string {
+	if x != nil {
+		return x.Tools
 	}
 	return ""
 }
@@ -3750,7 +3791,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x02 \x01(\tR\tdatasetId\x12\x14\n" +
 	"\x05input\x18\x03 \x01(\tR\x05input\x12'\n" +
 	"\x0fexpected_output\x18\x04 \x01(\tR\x0eexpectedOutput\x12#\n" +
-	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xfc\x06\n" +
+	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xd6\a\n" +
 	"\aEvalRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -3785,7 +3826,11 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\rexperiment_id\x18\x17 \x01(\tR\fexperimentId\x12#\n" +
 	"\rvariant_label\x18\x18 \x01(\tR\fvariantLabel\x12\x14\n" +
 	"\x05model\x18\x19 \x01(\tR\x05model\x12\x16\n" +
-	"\x06prompt\x18\x1a \x01(\tR\x06prompt\"\xa3\x05\n" +
+	"\x06prompt\x18\x1a \x01(\tR\x06prompt\x12\x14\n" +
+	"\x05tools\x18\x1b \x01(\tR\x05tools\x12\x1f\n" +
+	"\vjudge_calls\x18\x1c \x01(\x05R\n" +
+	"judgeCalls\x12!\n" +
+	"\fjudge_tokens\x18\x1d \x01(\x05R\vjudgeTokens\"\xa3\x05\n" +
 	"\x0eEvalCaseResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
@@ -3857,7 +3902,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
 	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id\"(\n" +
 	"\x10CancelRunRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xe7\x02\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xfd\x02\n" +
 	"\x14RunEvaluationRequest\x12#\n" +
 	"\n" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x1f\n" +
@@ -3870,7 +3915,8 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x05model\x18\b \x01(\tR\x05model\x12\x16\n" +
 	"\x06prompt\x18\t \x01(\tR\x06prompt\x12,\n" +
 	"\x12dataset_version_id\x18\n" +
-	" \x01(\tR\x10datasetVersionId\"%\n" +
+	" \x01(\tR\x10datasetVersionId\x12\x14\n" +
+	"\x05tools\x18\v \x01(\tR\x05tools\"%\n" +
 	"\rGetRunRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"(\n" +
 	"\x10DeleteRunRequest\x12\x14\n" +
@@ -4059,12 +4105,13 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\"]\n" +
 	"\x1bListDatasetVersionsResponse\x12>\n" +
-	"\x05items\x18\x01 \x03(\v2(.kratos.evaluation.v1.EvalDatasetVersionR\x05items\"r\n" +
+	"\x05items\x18\x01 \x03(\v2(.kratos.evaluation.v1.EvalDatasetVersionR\x05items\"\x88\x01\n" +
 	"\x11ExperimentVariant\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x14\n" +
 	"\x05model\x18\x03 \x01(\tR\x05model\x12\x16\n" +
-	"\x06prompt\x18\x04 \x01(\tR\x06prompt\"\x93\x02\n" +
+	"\x06prompt\x18\x04 \x01(\tR\x06prompt\x12\x14\n" +
+	"\x05tools\x18\x05 \x01(\tR\x05tools\"\x93\x02\n" +
 	"\x14RunExperimentRequest\x12#\n" +
 	"\n" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x18\n" +

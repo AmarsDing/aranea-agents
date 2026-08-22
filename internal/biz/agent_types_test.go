@@ -51,4 +51,11 @@ func TestIsCatalogAgentAssignable(t *testing.T) {
 	}) {
 		t.Fatal("dept_lead must not be heuristically assignable")
 	}
+	if biz.IsCatalogAgentAssignable(biz.Agent{
+		AgentKey:     biz.CompanyLeadAgentKeyPrefix + "acme__",
+		AgentVariant: biz.AgentVariantCompanyLead,
+		Status:       "active",
+	}) {
+		t.Fatal("company_lead must not be heuristically assignable")
+	}
 }

@@ -243,7 +243,7 @@ func TestReembedDocuments_DefaultSelectsPending(t *testing.T) {
 }
 
 // 管线语义：以已存 content_text 为正文源重建 chunks+embedding（无需原始文件）；
-// DeleteChunksByDocument 先清旧块；禁止触发 RebuildBlockIndex。
+// CommitIndexedDocument 事务内清旧块再插入；禁止触发 RebuildBlockIndex。
 func TestReembedDocuments_PipelineReembedsFromContentText(t *testing.T) {
 	repo := newReembedRepo()
 	seedReembedCollection(t, repo, "c1", "ws-1", "m")

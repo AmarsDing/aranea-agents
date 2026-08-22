@@ -32,7 +32,10 @@
     <q-card-section v-if="latestReport">
       <!-- 总状态 hero：状态点 + 大文案 + 末次运行时间 -->
       <div class="selfcheck-hero q-mb-md" :class="`selfcheck-hero--${toneOf(latestReport.overall_status)}`">
-        <span class="apm-status-dot selfcheck-hero__dot" :class="`apm-status-dot--${toneOf(latestReport.overall_status)}`" />
+        <span
+          class="apm-status-dot selfcheck-hero__dot"
+          :class="`apm-status-dot--${toneOf(latestReport.overall_status)}`"
+        />
         <div class="selfcheck-hero__text">
           <div class="selfcheck-hero__label">{{ t('monitorPage.selfCheck.overallStatus') }}</div>
           <div class="selfcheck-hero__value">{{ statusLabel(latestReport.overall_status) }}</div>
@@ -143,9 +146,7 @@ const emit = defineEmits<{
   trigger: [];
 }>();
 
-const failedCount = computed(
-  () => props.latestReport?.check_results.filter((r) => r.status === 'failed').length ?? 0,
-);
+const failedCount = computed(() => props.latestReport?.check_results.filter((r) => r.status === 'failed').length ?? 0);
 
 function onRefresh() {
   emit('refresh');

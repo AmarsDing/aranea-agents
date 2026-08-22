@@ -69,6 +69,30 @@
           :hint="$t('evaluationPage.experimentPromptHint')"
           @update:model-value="$emit('update:prompt', String($event ?? ''))"
         />
+        <q-input
+          :model-value="tools"
+          class="app-field-md"
+          dense
+          outlined
+          :label="$t('evaluationPage.experimentTools')"
+          :hint="$t('evaluationPage.experimentToolsHint')"
+          @update:model-value="$emit('update:tools', String($event ?? ''))"
+        />
+        <q-select
+          :model-value="extraTools"
+          class="app-field-md"
+          dense
+          outlined
+          multiple
+          use-input
+          use-chips
+          hide-dropdown-icon
+          new-value-mode="add-unique"
+          :options="[]"
+          :label="$t('evaluationPage.experimentExtraTools')"
+          :hint="$t('evaluationPage.experimentExtraToolsHint')"
+          @update:model-value="$emit('update:extraTools', (($event as string[]) ?? []).map(String))"
+        />
         <q-select
           :model-value="extraAgentIds"
           class="app-field-md"
@@ -119,6 +143,8 @@ defineProps<{
   model: string;
   extraModels: string[];
   prompt: string;
+  tools: string;
+  extraTools: string[];
   versionLabel: string;
   loading: boolean;
   agentOptions: { label: string; value: string }[];
@@ -133,6 +159,8 @@ defineEmits<{
   'update:model': [value: string];
   'update:extraModels': [value: string[]];
   'update:prompt': [value: string];
+  'update:tools': [value: string];
+  'update:extraTools': [value: string[]];
   submit: [];
 }>();
 </script>

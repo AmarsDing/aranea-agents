@@ -156,8 +156,9 @@ func (s *KnowledgeService) assertPromoteDocSourceAccess(ctx context.Context, doc
 	return nil
 }
 
-// replayPromotedDocChunks 目标文档 chunk/FTS 重放（与 vault 同步链同哲学：
-// 删旧插新 + status/counts 收尾；目标库无 embedding_model 时纯词法索引）。
+// replayPromotedDocChunks 目标文档 chunk/FTS 重放：indexing → 分块 →
+// CommitIndexedDocument（删旧插新 + indexed + 计数同一提交）。
+// 目标库无 embedding_model 时纯词法索引。
 func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target biz.KnowledgeCollection, touched []bizknowledge.PromoteTouchedDoc) (replayed, failed int) {
 	embedder := s.embedder
 	if strings.TrimSpace(target.EmbeddingModel) == "" {
@@ -173,7 +174,7 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 				loggateway.Err(err))
 			continue
 		}
-		if err := s.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil {
+		if err := s.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", doc.ChunkCount); err != nil {
 			failed++
 			s.lg.Warn("晋升目标文档无法进入 indexing",
 				loggateway.StepID("knowledge.block.promote_replay"),
@@ -190,13 +191,11 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 		params.ApplyDefaults()
 		chunks, err := knowledge.BuildIndexedChunks(ctx, embedder, params, nil)
 		if err == nil {
-			err = s.uc.DeleteChunksByDocument(ctx, doc.ID)
-		}
-		if err == nil {
-			err = s.uc.InsertChunks(ctx, chunks)
-		}
-		if err == nil {
-			err = s.uc.UpdateDocumentStatus(ctx, doc.ID, "indexed", "", len(chunks))
+			docDelta := 0
+			if td.Created || doc.Status != "indexed" {
+				docDelta = 1
+			}
+			err = s.uc.CommitIndexedDocument(ctx, target.ID, doc.ID, chunks, docDelta)
 		}
 		if err != nil {
 			failed++
@@ -211,19 +210,6 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 				loggateway.Str("doc_id", doc.ID),
 				loggateway.Err(err))
 			continue
-		}
-		// 计数：新建/未计入文档 +1；chunk 按差值补齐（同 vault 同步链口径）。
-		docDelta := 0
-		if td.Created || doc.Status != "indexed" {
-			docDelta = 1
-		}
-		if chunkDelta := len(chunks) - doc.ChunkCount; docDelta != 0 || chunkDelta != 0 {
-			if err := s.uc.UpdateCollectionCounts(ctx, target.ID, docDelta, chunkDelta); err != nil {
-				s.lg.Warn("晋升目标库计数更新失败",
-					loggateway.StepID("knowledge.block.promote_replay"),
-					loggateway.Str("collection_id", target.ID),
-					loggateway.Err(err))
-			}
 		}
 		replayed++
 	}

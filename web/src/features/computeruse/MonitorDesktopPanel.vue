@@ -1,19 +1,41 @@
 <template>
-  <div class="cu-monitor">
-    <p class="cu-monitor__hint">{{ t('computeruse.monitor.hint') }}</p>
-    <div class="cu-monitor__row">
-      <input
-        v-model="sessionInput"
-        class="cu-monitor__input"
-        :placeholder="t('computeruse.monitor.sessionPlaceholder')"
-        @keyup.enter="applySession"
-      />
-      <button class="cu-monitor__btn" type="button" @click="applySession">
-        {{ t('computeruse.monitor.load') }}
-      </button>
-    </div>
-    <CuStepStream v-if="sessionId" :session-id="sessionId" readonly />
-  </div>
+  <q-card flat bordered class="monitor-card cu-monitor">
+    <q-card-section class="row items-center no-wrap">
+      <q-icon name="desktop_windows" size="20px" class="cu-monitor__head-icon" />
+      <div class="q-ml-sm">
+        <div class="text-h6 text-weight-bold">{{ t('computeruse.monitor.title') }}</div>
+        <div class="text-caption text-grey-7 q-mt-xs">{{ t('computeruse.monitor.hint') }}</div>
+      </div>
+    </q-card-section>
+    <q-separator />
+    <q-card-section>
+      <div class="cu-monitor__row">
+        <q-input
+          v-model="sessionInput"
+          dense
+          outlined
+          clearable
+          class="cu-monitor__input"
+          :placeholder="t('computeruse.monitor.sessionPlaceholder')"
+          @keyup.enter="applySession"
+        >
+          <template #prepend>
+            <q-icon name="tag" size="16px" />
+          </template>
+        </q-input>
+        <q-btn
+          unelevated
+          rounded
+          no-caps
+          class="app-accent-btn"
+          icon="play_arrow"
+          :label="t('computeruse.monitor.load')"
+          @click="applySession"
+        />
+      </div>
+      <CuStepStream v-if="sessionId" :session-id="sessionId" readonly class="q-mt-md" />
+    </q-card-section>
+  </q-card>
 </template>
 
 <script setup lang="ts">
@@ -33,36 +55,19 @@ function applySession() {
 }
 </script>
 
-<style lang="sass" scoped>
-.cu-monitor
-  display: flex
-  flex-direction: column
-  gap: 12px
+<style scoped>
+.cu-monitor__head-icon {
+  color: var(--color-accent);
+}
 
-  &__hint
-    margin: 0
-    font-size: 13px
-    color: var(--color-text-secondary)
+.cu-monitor__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 
-  &__row
-    display: flex
-    gap: 8px
-
-  &__input
-    flex: 1
-    min-width: 0
-    padding: 8px 10px
-    border-radius: 8px
-    border: 1px solid var(--glass-border)
-    background: var(--glass-surface)
-    color: var(--color-text-primary)
-
-  &__btn
-    padding: 8px 14px
-    border: none
-    border-radius: 8px
-    font-weight: 600
-    cursor: pointer
-    background: var(--color-primary)
-    color: var(--color-on-accent, #fff)
+.cu-monitor__input {
+  flex: 1;
+  min-width: 0;
+}
 </style>

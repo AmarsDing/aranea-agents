@@ -34,6 +34,7 @@ func NewEvaluationRunner(
 	turns EvalTurnGateway,
 	catalog *biz.LlmProviderModelUsecase,
 	sys biz.SystemSettingRepo,
+	usage *biz.UsageUsecase,
 	lg loggateway.Logger,
 ) *evaluation.Runner {
 	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -49,8 +50,10 @@ func NewEvaluationRunner(
 
 	// P1-7: Use framework Judge Runner instead of self-built LLMJudge.
 	var judgeRunner runner.Runner
+	judgeStats := &evaluation.JudgeCallStats{}
 	if jr, err := evaluation.NewJudgeRunner(catalog, rt, sys, lg); err == nil {
-		judgeRunner = jr
+		prov, mod := evaluation.ResolveJudgeProviderModel(context.Background(), sys)
+		judgeRunner = evaluation.WrapJudgeUsage(jr, usage, prov, mod, judgeStats)
 	} else {
 		lg.Warn("eval.judge_runner.init_failed, LLM Judge metrics will be unavailable",
 			loggateway.StepID("evaluation.judge_runner.init_fail"),
@@ -65,5 +68,7 @@ func NewEvaluationRunner(
 		llmUserSim = sim
 	}
 	framework := evaluation.NewFrameworkBridge(runFactory, judgeRunner, callbacks, llmUserSim, evaluation.DefaultMultiRunConfig(), lg)
-	return evaluation.NewRunner(uc, framework, lg)
+	r := evaluation.NewRunner(uc, framework, lg)
+	r.AttachJudgeStats(judgeStats)
+	return r
 }

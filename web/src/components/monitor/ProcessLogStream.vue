@@ -4,7 +4,10 @@
       <div class="monitor-log-stream-toolbar__info">
         <div class="row items-center q-gutter-sm">
           <div class="text-h6 text-weight-bold">进程日志</div>
-          <q-badge :color="stateColor">{{ stateText }}</q-badge>
+          <span class="apm-stream-badge">
+            <span class="apm-status-dot" :class="`apm-status-dot--${stateTone}`" />
+            {{ stateText }}
+          </span>
           <span v-if="hub.processState.value === 'error' && hub.errorHint.value" class="text-caption text-negative">
             {{ hub.errorHint.value }}
           </span>
@@ -156,13 +159,14 @@ const stateText = computed(() => {
   return stateTextMap[hub.processState.value];
 });
 
-const stateColor = computed(() => {
-  if (!configEnabled.value) return 'grey';
+const stateTone = computed(() => {
+  if (!configEnabled.value) return 'idle';
   const s = hub.processState.value;
-  if (s === 'live' || s === 'connected') return 'positive';
-  if (s === 'error') return 'negative';
-  if (s === 'paused') return 'grey';
-  return 'orange';
+  if (s === 'live') return 'running';
+  if (s === 'connected') return 'ok';
+  if (s === 'error') return 'error';
+  if (s === 'paused') return 'idle';
+  return 'info';
 });
 
 const emptyText = computed(() => {

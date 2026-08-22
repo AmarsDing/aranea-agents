@@ -206,7 +206,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 			return err
 		}
 	}
-	if err := a.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil {
+	if err := a.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", doc.ChunkCount); err != nil {
 		return err
 	}
 
@@ -217,26 +217,21 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		a.markError(ctx, doc.ID, err)
 		return err
 	}
-	if err := a.uc.DeleteChunksByDocument(ctx, doc.ID); err != nil {
-		a.markError(ctx, doc.ID, err)
-		return err
-	}
-	if err := a.uc.InsertChunks(ctx, chunks); err != nil {
-		a.markError(ctx, doc.ID, err)
-		return err
-	}
 
-	// 索引成功：落库 hash（此后下轮扫描不再重复处理）+ 摘要卡字段。
-	if err := a.uc.UpdateDocumentSyncMeta(ctx, doc.ID, bizknowledge.DocumentSyncMeta{
+	// 计数：仅「未计入 → indexed」的文档 +1（error/pending 重试不重复计数）。
+	docDelta := 0
+	if notFound || existing.Status != "indexed" {
+		docDelta = 1
+	}
+	// 索引成功：chunks 替换 + hash/摘要卡 + indexed + 集合计数同一提交。
+	if err := a.uc.CommitIndexedDocumentMeta(ctx, vault.ID, doc.ID, chunks, docDelta, bizknowledge.DocumentSyncMeta{
 		ContentHash: ev.Snapshot.Hash,
 		Summary:     fm.Summary,
 		SummaryHash: fm.SummaryHash,
 		Tags:        fm.Tags,
 		DocType:     fm.Type,
 	}); err != nil {
-		return err
-	}
-	if err := a.uc.UpdateDocumentStatus(ctx, doc.ID, "indexed", "", len(chunks)); err != nil {
+		a.markError(ctx, doc.ID, err)
 		return err
 	}
 
@@ -266,17 +261,6 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		}
 	}
 
-	// 计数：仅「未计入 → indexed」的文档 +1（error/pending 重试不重复计数）。
-	docDelta := 0
-	if notFound || existing.Status != "indexed" {
-		docDelta = 1
-	}
-	chunkDelta := len(chunks) - existing.ChunkCount
-	if docDelta != 0 || chunkDelta != 0 {
-		if err := a.uc.UpdateCollectionCounts(ctx, vault.ID, docDelta, chunkDelta); err != nil {
-			return err
-		}
-	}
 	a.lg.Debug("vault doc indexed",
 		loggateway.Str("vault_id", vault.ID),
 		loggateway.Str("rel_path", ev.RelPath),

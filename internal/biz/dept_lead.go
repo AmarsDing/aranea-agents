@@ -113,6 +113,7 @@ func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode Organizat
 	settings := withSettingDefaults(AgentRuntimeSettings{AgentID: agent.ID})
 	settings.MemoryEnabled = true
 	settings.ToolsEnabled = true
+	settings.ToolsProfile = "read_only"
 
 	// Build config_json from settings
 	configJSON, cfgErr := configJSONFromSettings(settings, agent.Files)

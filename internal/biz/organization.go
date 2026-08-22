@@ -33,6 +33,9 @@ type OrganizationNode struct {
 	MetadataJSON       string
 	DeptLeadAgentID    string
 	DeptLeadConfigJSON string
+	// CompanyLeadAgentID is persisted in metadata_json (Evolving; dedicated
+	// column may follow). Empty when the node is not a company or none linked.
+	CompanyLeadAgentID string
 	CreatedAt          string
 	UpdatedAt          string
 	DeletedAt          string
@@ -183,6 +186,13 @@ func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (
 				loggateway.Err(dlErr))
 		}
 	}
+	if created.Level == "company" && u.deptLeadMgr != nil {
+		if _, clErr := u.deptLeadMgr.CreateCompanyLead(ctx, created); clErr != nil {
+			u.lg.Warn("failed to create company lead",
+				loggateway.Str("company_id", created.ID),
+				loggateway.Err(clErr))
+		}
+	}
 	u.publishOrgEvent("organization.created", "Organization created", created)
 	return created, nil
 }
@@ -261,9 +271,15 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	// Non-department nodes: simple delete with dept lead cleanup
+	// Non-department nodes: simple delete with lead cleanup
 	if u.deptLeadMgr != nil {
-		if dlErr := u.deptLeadMgr.DeleteDeptLead(ctx, id); dlErr != nil {
+		if node.Level == "company" {
+			if clErr := u.deptLeadMgr.DeleteCompanyLead(ctx, id); clErr != nil {
+				u.lg.Warn("failed to delete company lead",
+					loggateway.Str("company_id", id),
+					loggateway.Err(clErr))
+			}
+		} else if dlErr := u.deptLeadMgr.DeleteDeptLead(ctx, id); dlErr != nil {
 			u.lg.Warn("failed to delete dept lead",
 				loggateway.Str("dept_id", id),
 				loggateway.Err(dlErr))

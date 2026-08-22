@@ -1020,6 +1020,7 @@ func TestIsDeptLeadAgent(t *testing.T) {
 		{"key prefix+suffix", Agent{AgentKey: "__dept_lead_sales__"}, true},
 		{"prefix only no suffix", Agent{AgentKey: "__dept_lead_sales"}, false},
 		{"regular agent", Agent{AgentKey: "worker_a"}, false},
+		{"company lead is not dept", Agent{AgentVariant: AgentVariantCompanyLead}, false},
 		{"empty", Agent{}, false},
 	}
 	for _, c := range cases {

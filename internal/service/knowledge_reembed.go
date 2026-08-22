@@ -208,9 +208,9 @@ func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, li
 	return repaired, failed, nil
 }
 
-// reembedOneDocument 单文档串行管线：DeleteChunksByDocument → indexing+WS →
-// BuildIndexedChunks(content_text) → InsertChunks → indexed+WS。失败置 error 由调用方继续下一篇。
-// 不触发 RebuildBlockIndex（content_text 未变，块/边不变——与 IngestDocument 的 SP1-C 钩子区分）。
+// reembedOneDocument 单文档串行管线：indexing+WS → BuildIndexedChunks(content_text)
+// → CommitIndexedDocument（同一事务删旧插新 + indexed + 计数）。失败置 error 由调用方继续下一篇。
+// 分块失败时旧 chunks 仍在。不触发 RebuildBlockIndex（content_text 未变）。
 func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, flow *event.TraceEmitter) bool {
 	release, err := s.acquireJob(ctx, &s.reembedRuns, doc.ID, knowledgeReembedJobKey(doc.ID),
 		"reembed already running for document %s", doc.ID)
@@ -223,8 +223,8 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 	}
 	defer release()
 
-	// fail 置文档 error 终态 + WS 广播 + 流程/进程双轨错误日志（K2/K3），不回滚已删旧块
-	// （重嵌入幂等，下次调用或维度对账后可重试）。
+	// fail 置文档 error 终态 + WS 广播 + 流程/进程双轨错误日志（K2/K3）。
+	// 旧块只在 CommitIndexedDocument 成功时被替换；分块失败可重试且不丢索引。
 	fail := func(stage string, err error) {
 		if statusErr := uc.UpdateDocumentStatus(ctx, doc.ID, "error", err.Error(), 0); statusErr != nil {
 			s.lg.Error("failed to update document status to error",
@@ -246,11 +246,7 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 			loggateway.Err(err))
 	}
 
-	if err := uc.DeleteChunksByDocument(ctx, doc.ID); err != nil {
-		fail("delete_chunks", err)
-		return false
-	}
-	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil {
+	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", doc.ChunkCount); err != nil {
 		s.lg.Error("failed to update document status to indexing",
 			loggateway.StepID("knowledge.reembed.status_fail"),
 			loggateway.Str("doc_id", doc.ID),
@@ -271,17 +267,12 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 		fail("build_chunks", err)
 		return false
 	}
-	if err := uc.InsertChunks(ctx, bizChunks); err != nil {
-		fail("insert_chunks", err)
-		return false
+	docDelta := 0
+	if doc.Status != "indexed" {
+		docDelta = 1
 	}
-	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexed", "", len(bizChunks)); err != nil {
-		s.lg.Error("failed to update document status to indexed",
-			loggateway.StepID("knowledge.reembed.status_fail"),
-			loggateway.Str("doc_id", doc.ID),
-			loggateway.Err(err))
-		// Document was likely deleted mid-reembed; broadcast error to avoid stale UI state.
-		s.publishKnowledgeIngest(col.ID, doc.ID, "error", "document deleted during reembed", 0)
+	if err := uc.CommitIndexedDocument(ctx, col.ID, doc.ID, bizChunks, docDelta); err != nil {
+		fail("commit_indexed", err)
 		return false
 	}
 	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))

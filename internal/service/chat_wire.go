@@ -122,6 +122,7 @@ func ProvideEvaluationRunner(
 	agents *biz.AgentUsecase,
 	bus biz.EventBus,
 	ll *biz.LearningLoopUsecase,
+	usage *biz.UsageUsecase,
 	lg loggateway.Logger,
 ) *evaluation.Runner {
 	if chat == nil || turns == nil || evalUC == nil || catalog == nil || sys == nil {
@@ -143,7 +144,7 @@ func ProvideEvaluationRunner(
 				loggateway.Int("swept", n))
 		}
 	})
-	runner := NewEvaluationRunner(evalUC, turns, catalog, sys, lg)
+	runner := NewEvaluationRunner(evalUC, turns, catalog, sys, usage, lg)
 	// P2-2: online score-drop alert — nil-safe when agents/bus are unavailable.
 	if agents != nil && bus != nil {
 		runner.WithDropAlerter(evaluation.NewScoreDropAlerter(evalUC, evalAgentConfigReader{agents: agents}, bus, lg))

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="registry-table-card">
     <!-- ── Pulse：实时事件条（WS，不落库）── -->
     <div class="registry-table-card__header">
@@ -22,13 +22,7 @@
         >
           <q-tooltip>{{ t('monitorPage.pauseHint') }}</q-tooltip>
         </q-btn>
-        <q-btn
-          flat
-          dense
-          icon="delete_sweep"
-          :label="t('monitorPage.events.clearPulse')"
-          @click="emit('clear-pulse')"
-        >
+        <q-btn flat dense icon="delete_sweep" :label="t('monitorPage.events.clearPulse')" @click="emit('clear-pulse')">
           <q-tooltip>{{ t('monitorPage.events.clearPulseConfirm') }}</q-tooltip>
         </q-btn>
       </div>
@@ -77,7 +71,7 @@
           map-options
           :options="typeOptions"
           :label="t('monitorPage.events.typeLabel')"
-          style="min-width: 160px"
+          class="apm-select--md"
           @update:model-value="(v: string) => emit('update:typeFilter', v)"
         />
         <q-select
@@ -88,7 +82,7 @@
           map-options
           :options="severityOptions"
           :label="t('monitorPage.events.severityLabel')"
-          style="min-width: 120px"
+          class="apm-select--sm"
           @update:model-value="(v: string) => emit('update:severityFilter', v)"
         />
         <q-toggle
@@ -114,64 +108,67 @@
         :pagination="{ rowsPerPage: 0 }"
         hide-pagination
       >
-        <template #body-cell-time="props">
+        <template #body-cell-time="slotProps">
           <q-td :props="props">
-            <span class="text-caption">{{ props.row.timeAgo || props.row.time }}</span>
-            <q-tooltip>{{ props.row.time }}</q-tooltip>
+            <span class="text-caption">{{ slotProps.row.timeAgo || slotProps.row.time }}</span>
+            <q-tooltip>{{ slotProps.row.time }}</q-tooltip>
           </q-td>
         </template>
-        <template #body-cell-severity="props">
+        <template #body-cell-severity="slotProps">
           <q-td :props="props">
             <div class="row items-center justify-center no-wrap q-gutter-xs">
-              <span class="apm-status-dot event-severity-dot" :class="`apm-status-dot--${severityTone(props.row.severity)}`" />
-              <span>{{ t(`monitorPage.events.severity.${props.row.severity}`) }}</span>
+              <span
+                class="apm-status-dot event-severity-dot"
+                :class="`apm-status-dot--${severityTone(slotProps.row.severity)}`"
+              />
+              <span>{{ t(`monitorPage.events.severity.${slotProps.row.severity}`) }}</span>
             </div>
           </q-td>
         </template>
-        <template #body-cell-category="props">
+        <template #body-cell-category="slotProps">
           <q-td :props="props">
-            <q-chip dense square size="sm" :color="categoryChipColor(props.row.category)" text-color="white">
-              {{ t(`monitorPage.events.category.${props.row.category}`) }}
-              <q-tooltip>{{ props.row.type }}</q-tooltip>
+            <q-chip dense square size="sm" :color="categoryChipColor(slotProps.row.category)" text-color="white">
+              {{ t(`monitorPage.events.category.${slotProps.row.category}`) }}
+              <q-tooltip>{{ slotProps.row.type }}</q-tooltip>
             </q-chip>
           </q-td>
         </template>
-        <template #body-cell-title="props">
+        <template #body-cell-title="slotProps">
           <q-td :props="props">
-            <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
+            <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.title }}</div>
           </q-td>
         </template>
-        <template #body-cell-subtitle="props">
+        <template #body-cell-subtitle="slotProps">
           <q-td :props="props">
-            <div class="app-registry-cell-sub ellipsis">{{ props.row.subtitle || '—' }}</div>
-            <q-tooltip v-if="props.row.subtitle" max-width="420px">{{ props.row.subtitle }}</q-tooltip>
+            <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.subtitle || '—' }}</div>
+            <q-tooltip v-if="slotProps.row.subtitle" max-width="420px">{{ slotProps.row.subtitle }}</q-tooltip>
           </q-td>
         </template>
-        <template #body-cell-actor="props">
+        <template #body-cell-actor="slotProps">
           <q-td :props="props">
-            <div class="ellipsis">{{ props.row.actor || '—' }}</div>
+            <div class="ellipsis">{{ slotProps.row.actor || '—' }}</div>
           </q-td>
         </template>
-        <template #body-cell-actions="props">
+        <template #body-cell-actions="slotProps">
           <q-td :props="props">
             <div class="row no-wrap q-gutter-xs">
               <q-btn
-                v-if="props.row.canOpenInRuns"
+                v-if="slotProps.row.canOpenInRuns"
                 flat
                 dense
                 size="sm"
                 icon="monitor_heart"
                 :label="t('monitorPage.events.openInRuns')"
-                @click="emit('open-in-runs', props.row)"
+                @click="emit('open-in-runs', slotProps.row)"
               />
               <q-btn
-                v-if="props.row.completionSessionId || props.row.sessionId"
+                v-if="slotProps.row.completionSessionId || slotProps.row.sessionId"
                 flat
                 dense
                 size="sm"
                 icon="chat"
                 :label="t('monitorPage.events.openSession')"
-                @click="emit('open-session', props.row)"
+                @click="emit('open-session', slotProps.row)"
               />
               <q-btn
                 flat
@@ -179,7 +176,7 @@
                 size="sm"
                 icon="visibility"
                 :label="t('monitorPage.detail')"
-                @click="openDetail(props.row)"
+                @click="openDetail(slotProps.row)"
               />
             </div>
           </q-td>
@@ -419,8 +416,25 @@ function categoryChipColor(category: string): string {
   padding: 8px 0;
 }
 
+/* 脉冲事件 chip：玻璃底 + hover 抬升 */
 .pulse-chip {
   cursor: pointer;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-surface) 70%, transparent);
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.pulse-chip:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.pulse-chip__dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
 }
 
 .pulse-chip__title {
@@ -430,17 +444,69 @@ function categoryChipColor(category: string): string {
   white-space: nowrap;
 }
 
-.event-json {
-  max-height: 320px;
-  overflow: auto;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
+/* 历史表格严重度状态点 */
+.event-severity-dot {
+  width: 8px;
+  height: 8px;
 }
 
-.event-detail-list__label {
-  min-width: 64px;
-  color: var(--q-grey-7);
-  font-size: 12px;
+/* 详情弹窗头部 */
+.event-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.event-detail-head__dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+}
+
+.event-detail-head__text {
+  min-width: 0;
+}
+
+.event-detail-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-surface) 70%, transparent);
+}
+
+.event-detail-pill .apm-status-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.event-detail-pill--ok {
+  color: var(--color-success);
+}
+
+.event-detail-pill--warn {
+  color: var(--color-warning);
+}
+
+.event-detail-pill--error {
+  color: var(--color-danger);
+}
+
+.event-detail-pill--info {
+  color: var(--color-accent);
+}
+
+.event-detail-pill--idle {
+  color: var(--color-text-secondary);
+}
+
+.event-detail-type {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--color-text-secondary);
 }
 </style>

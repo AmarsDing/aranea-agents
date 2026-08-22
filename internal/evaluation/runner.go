@@ -71,11 +71,18 @@ type Runner struct {
 	cancelMu    sync.Mutex
 	cancels     map[string]context.CancelFunc
 	slots       chan struct{}
-	judgeStats  *judgeCallStats
+	judgeStats  *JudgeCallStats
 }
 
 func NewRunner(uc *biz.EvalUsecase, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
 	return &Runner{uc: uc, framework: framework, lg: lg, slots: make(chan struct{}, DefaultMaxInFlight)}
+}
+
+// AttachJudgeStats wires per-run judge counters (optional).
+func (r *Runner) AttachJudgeStats(s *JudgeCallStats) {
+	if r != nil {
+		r.judgeStats = s
+	}
 }
 
 func (r *Runner) tryAcquire() bool {
@@ -315,6 +322,7 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, n
 		return err
 	}
 
+	run.LeaseUntil = biz.NextEvalLeaseUntil()
 	wantMetrics := parseMetrics(metrics)
 
 	if r.framework == nil {
@@ -574,6 +582,35 @@ func (r *Runner) recordEvalFailures(ctx context.Context, run biz.EvalRun, result
 				loggateway.Err(err))
 		}
 	}
+}
+
+func (r *Runner) startLeaseHeartbeat(ctx context.Context, runID string) func() {
+	if r == nil || r.uc == nil || strings.TrimSpace(runID) == "" {
+		return func() {}
+	}
+	_ = r.uc.TouchRunLease(ctx, runID)
+	done := make(chan struct{})
+	var once sync.Once
+	safego.Go(ctx, "eval-run-lease", func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := r.uc.TouchRunLease(ctx, runID); err != nil {
+					r.lg.Warn("eval lease touch failed",
+						loggateway.StepID("evaluation.run.lease_touch_fail"),
+						loggateway.Str("run_id", runID),
+						loggateway.Err(err))
+				}
+			}
+		}
+	})
+	return func() { once.Do(func() { close(done) }) }
 }
 
 func isEvalFailure(res biz.EvalCaseResult) bool {

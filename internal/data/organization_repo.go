@@ -28,7 +28,7 @@ func entToBizOrganization(e *ent.Organization) biz.OrganizationNode {
 	if e == nil {
 		return biz.OrganizationNode{}
 	}
-	return biz.OrganizationNode{
+	n := biz.OrganizationNode{
 		ID:                 e.ID,
 		Key:                e.OrgKey,
 		Name:               e.Name,
@@ -50,6 +50,8 @@ func entToBizOrganization(e *ent.Organization) biz.OrganizationNode {
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,
 	}
+	biz.HydrateCompanyLeadFromMetadata(&n)
+	return n
 }
 
 func (r *organizationRepo) ListOrgNodes(ctx context.Context) ([]biz.OrganizationNode, error) {
@@ -184,6 +186,7 @@ func (r *organizationRepo) CreateOrgNode(ctx context.Context, c biz.Organization
 	if c.ID == "" {
 		c.ID = uuid.NewString()
 	}
+	biz.ApplyCompanyLeadToMetadata(&c)
 	saved, err := r.data.RW().Write(ctx).Organization.Create().
 		SetID(c.ID).
 		SetOrgKey(c.Key).
@@ -214,6 +217,7 @@ func (r *organizationRepo) CreateOrgNode(ctx context.Context, c biz.Organization
 
 func (r *organizationRepo) UpdateOrgNode(ctx context.Context, c biz.OrganizationNode) (biz.OrganizationNode, error) {
 	c.UpdatedAt = nowRFC3339()
+	biz.ApplyCompanyLeadToMetadata(&c)
 	update := r.data.RW().Write(ctx).Organization.UpdateOneID(c.ID).
 		SetOrgKey(c.Key).
 		SetName(c.Name).

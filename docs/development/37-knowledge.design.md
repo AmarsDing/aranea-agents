@@ -22,7 +22,7 @@ Knowledge = 可引用工作区（文档 / Vault 笔记 / 团队词条）。Memor
 
 ### 文档状态机（AS-FSM-01）
 
-`pending → indexing → indexed | error`；`error/indexed → indexing` 可重试；禁止 `pending → indexed`。摄取提交（chunks + indexed + 计数）走 `Usecase.CommitIndexedDocument` 单事务，indexing→indexed 带 CAS。
+`pending → indexing → indexed | error`；`error/indexed → indexing` 可重试；禁止 `pending → indexed`。摄取 / vault 同步 / 重嵌入 / 晋升重放的提交（删旧 chunks + 插入 + indexed + 计数，vault 另含 sync meta）走 `Usecase.CommitIndexedDocument` / `CommitIndexedDocumentMeta` 单事务，indexing→indexed 带 CAS。
 
 ### 核心架构
 

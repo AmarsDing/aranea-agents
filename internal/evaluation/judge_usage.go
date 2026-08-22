@@ -34,12 +34,13 @@ func judgeRunIDFrom(ctx context.Context) string {
 	return s
 }
 
-type judgeCallStats struct {
+// JudgeCallStats accumulates per-run judge invocation counts.
+type JudgeCallStats struct {
 	mu    sync.Mutex
 	byRun map[string][2]int
 }
 
-func (s *judgeCallStats) add(runID string, prompt, completion int) {
+func (s *JudgeCallStats) add(runID string, prompt, completion int) {
 	if s == nil || runID == "" {
 		return
 	}
@@ -54,7 +55,7 @@ func (s *judgeCallStats) add(runID string, prompt, completion int) {
 	s.byRun[runID] = cur
 }
 
-func (s *judgeCallStats) take(runID string) (calls, tokens int) {
+func (s *JudgeCallStats) take(runID string) (calls, tokens int) {
 	if s == nil || runID == "" {
 		return 0, 0
 	}
@@ -68,13 +69,13 @@ func (s *judgeCallStats) take(runID string) (calls, tokens int) {
 type judgeUsageRunner struct {
 	inner    runner.Runner
 	usage    *biz.UsageUsecase
-	stats    *judgeCallStats
+	stats    *JudgeCallStats
 	provider string
 	model    string
 }
 
 // WrapJudgeUsage records aux_eval_judge usage and per-run counters.
-func WrapJudgeUsage(inner runner.Runner, usage *biz.UsageUsecase, provider, model string, stats *judgeCallStats) runner.Runner {
+func WrapJudgeUsage(inner runner.Runner, usage *biz.UsageUsecase, provider, model string, stats *JudgeCallStats) runner.Runner {
 	if inner == nil {
 		return nil
 	}

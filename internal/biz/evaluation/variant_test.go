@@ -19,6 +19,9 @@ func TestDefaultVariantLabel(t *testing.T) {
 	if a != b || a == c || a == "a1/gpt-4o" {
 		t.Fatalf("prompt hash must be stable and distinct: %q %q %q", a, b, c)
 	}
+	if got := DefaultVariantLabel("a1", "", "", "none"); got != "a1/tnone" {
+		t.Fatalf("tools cell: %q", got)
+	}
 }
 
 func TestOverlayPrompt(t *testing.T) {
@@ -32,9 +35,9 @@ func TestOverlayPrompt(t *testing.T) {
 }
 
 func TestRunOverrideRoundTrip(t *testing.T) {
-	ctx := WithRunOverride(context.Background(), RunOverride{Model: "m1", Prompt: "p1"})
+	ctx := WithRunOverride(context.Background(), RunOverride{Model: "m1", Prompt: "p1", Tools: "none"})
 	ov, ok := RunOverrideFrom(ctx)
-	if !ok || ov.Model != "m1" || ov.Prompt != "p1" {
+	if !ok || ov.Model != "m1" || ov.Prompt != "p1" || ov.Tools != "none" {
 		t.Fatalf("override round-trip failed: ok=%v %#v", ok, ov)
 	}
 	if _, ok := RunOverrideFrom(context.Background()); ok {

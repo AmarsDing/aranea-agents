@@ -49,4 +49,6 @@ var (
 	EvalRunOverrideFrom     = evaluation.RunOverrideFrom
 	OverlayEvalPrompt       = evaluation.OverlayPrompt
 	DefaultEvalVariantLabel = evaluation.DefaultVariantLabel
+	NextEvalLeaseUntil      = evaluation.NextLeaseUntil
+	ParseEvalToolsOverride  = evaluation.ParseToolsOverride
 )
