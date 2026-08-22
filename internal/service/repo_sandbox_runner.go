@@ -187,6 +187,22 @@ func (r *RepoSandboxRunner) PrepareWorktree(ctx context.Context, runID, baseRef 
 	return wtPath, cleanup, nil
 }
 
+// removeWorktreeKeepBranch drops the worktree directory but leaves the
+// self-improve/<runID> branch so ApplyCodeMerge can persist a reviewable
+// commit without mutating the current HEAD.
+func (r *RepoSandboxRunner) removeWorktreeKeepBranch(ctx context.Context, wtPath string) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sandboxCleanupTimeout)
+	defer cancel()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.runGit(cleanupCtx, r.repoRoot, nil, "worktree", "remove", "--force", wtPath); err != nil {
+		r.lg.Warn("self-improve worktree removal (keep branch) failed",
+			loggateway.StepID("sandbox.worktree.keep_branch"),
+			loggateway.Str("path", wtPath),
+			loggateway.Err(err))
+	}
+}
+
 // ApplyDiff applies a unified diff inside the worktree via `git apply`.
 // The diff travels over stdin, never through shell interpolation.
 func (r *RepoSandboxRunner) ApplyDiff(ctx context.Context, path, diff string) error {
@@ -232,7 +248,39 @@ func (r *RepoSandboxRunner) RunGate(ctx context.Context, path string, gate biz.S
 	if err != nil {
 		return biz.SandboxGateResult{}, err
 	}
+	res := r.execGate(ctx, wtPath, gate, name, args)
+	if !res.Passed {
+		r.lg.Warn("self-improve sandbox gate failed",
+			loggateway.StepID("sandbox.gate"),
+			loggateway.Str("gate", string(gate)),
+			loggateway.Str("worktree", wtPath))
+	}
+	return res, nil
+}
 
+// ProbeTestFailures runs the G2 command on the current worktree and returns
+// named failing tests. Compile/setup failures return an empty list.
+func (r *RepoSandboxRunner) ProbeTestFailures(ctx context.Context, path string, pkgs []string) ([]string, error) {
+	if len(pkgs) == 0 {
+		return nil, nil
+	}
+	wtPath, err := r.checkSandboxPath(path)
+	if err != nil {
+		return nil, err
+	}
+	name, args, err := r.gateCommand(wtPath, biz.SandboxGateTest, pkgs)
+	if err != nil {
+		return nil, err
+	}
+	res := r.execGate(ctx, wtPath, biz.SandboxGateTest, name, args)
+	names, setup := biz.ParseGoTestFailures(res.Output)
+	if setup {
+		return nil, nil
+	}
+	return names, nil
+}
+
+func (r *RepoSandboxRunner) execGate(ctx context.Context, wtPath string, gate biz.SandboxGateKind, name string, args []string) biz.SandboxGateResult {
 	timeout := r.gateTimeouts[gate]
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
@@ -257,13 +305,8 @@ func (r *RepoSandboxRunner) RunGate(ctx context.Context, path string, gate biz.S
 		} else {
 			res.Output = appendGateOutputNote(res.Output, "[exit "+exitCodeString(runErr)+"]")
 		}
-		r.lg.Warn("self-improve sandbox gate failed",
-			loggateway.StepID("sandbox.gate"),
-			loggateway.Str("gate", string(gate)),
-			loggateway.Str("worktree", wtPath),
-			loggateway.Err(runErr))
 	}
-	return res, nil
+	return res
 }
 
 // gateCommand maps a gate kind to its whitelisted command. Package patterns

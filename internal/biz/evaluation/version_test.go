@@ -56,3 +56,34 @@ func TestSnapshotDatasetReusesSameHash(t *testing.T) {
 		t.Fatalf("changed hash must bump version, got %#v err=%v", c, err)
 	}
 }
+
+func TestCreateRunPinsRequestedVersion(t *testing.T) {
+	repo := &mockRepo{cases: []Case{{ID: "c1", DatasetID: "ds1", Input: "live"}}}
+	vs := &memVersionStore{rows: []DatasetVersion{{
+		ID: "ver-old", DatasetID: "ds1", Version: 3, Hash: "abc",
+		Cases: []Case{{ID: "c1", DatasetID: "ds1", Input: "frozen"}},
+	}}}
+	uc := NewUsecase(Stores{Cases: repo, Runs: repo, Versions: vs}, loggateway.NewNoop())
+	run, err := uc.CreateRun(context.Background(), Run{
+		DatasetID: "ds1", AgentID: "a1", DatasetVersionID: "ver-old",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.DatasetVersionID != "ver-old" || run.DatasetVersion != 3 || run.DatasetHash != "abc" {
+		t.Fatalf("pin lost: %#v", run)
+	}
+}
+
+func TestCreateRunRejectsForeignVersion(t *testing.T) {
+	repo := &mockRepo{cases: []Case{{ID: "c1", DatasetID: "ds1", Input: "live"}}}
+	vs := &memVersionStore{rows: []DatasetVersion{{
+		ID: "ver-x", DatasetID: "other", Version: 1, Hash: "x",
+	}}}
+	uc := NewUsecase(Stores{Cases: repo, Runs: repo, Versions: vs}, loggateway.NewNoop())
+	if _, err := uc.CreateRun(context.Background(), Run{
+		DatasetID: "ds1", AgentID: "a1", DatasetVersionID: "ver-x",
+	}); err == nil {
+		t.Fatal("foreign version must be rejected")
+	}
+}

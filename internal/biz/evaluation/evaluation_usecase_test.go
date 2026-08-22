@@ -596,6 +596,21 @@ func TestFindInFlightRun(t *testing.T) {
 	}
 }
 
+func TestFindInFlightExperimentCell(t *testing.T) {
+	repo := &mockRepo{runs: []Run{
+		{ID: "gpt4", DatasetID: "ds-1", AgentID: "a1", Status: RunStatusRunning, VariantLabel: "a1/gpt-4o"},
+		{ID: "mini", DatasetID: "ds-1", AgentID: "a1", Status: RunStatusPending, VariantLabel: "a1/mini"},
+	}}
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
+	got, ok, err := uc.FindInFlightExperimentCell(context.Background(), "ds-1", "a1", "a1/mini")
+	if err != nil || !ok || got.ID != "mini" {
+		t.Fatalf("cell lock: %+v ok=%v err=%v", got, ok, err)
+	}
+	if _, ok, err := uc.FindInFlightExperimentCell(context.Background(), "ds-1", "a1", "a1/other"); err != nil || ok {
+		t.Fatal("unknown cell must not lock")
+	}
+}
+
 func TestCancelRun(t *testing.T) {
 	repo := &mockRepo{runs: []Run{{ID: "r1", Status: RunStatusRunning}}}
 	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())

@@ -160,6 +160,8 @@ type siFakeSandbox struct {
 	gateCalls    []SandboxGateKind
 	resetCalls   int
 	resetErr     error
+	probeFails   []string
+	probeCalls   int
 	callLog      *[]string // 共享调用顺序日志（与 patcher 协同断言 reset 先于 patch）
 	gateFn       func(gate SandboxGateKind, gateCallIdx int) SandboxGateResult
 	prepareErr   error
@@ -186,6 +188,11 @@ func (s *siFakeSandbox) ResetWorktree(_ context.Context, _ string) error {
 	}
 	return s.resetErr
 }
+func (s *siFakeSandbox) ProbeTestFailures(context.Context, string, []string) ([]string, error) {
+	s.probeCalls++
+	return append([]string(nil), s.probeFails...), nil
+}
+
 func (s *siFakeSandbox) RunGate(_ context.Context, _ string, gate SandboxGateKind, _ []string) (SandboxGateResult, error) {
 	s.gateCalls = append(s.gateCalls, gate)
 	if s.gateFn != nil {
@@ -605,6 +612,38 @@ func TestSIPipeline_WebOnlySkippedLintFailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(siFailedGateDigest(store.run.VerificationReport), "fail-closed") {
 		t.Fatalf("report = %+v, want fail-closed digest", store.run.VerificationReport)
+	}
+}
+
+func TestSIPipeline_G2ExemptsHEADKnownFailures(t *testing.T) {
+	uc, store, sandbox, _ := siPipelineFixture(1, nil)
+	sandbox.probeFails = []string{"TestOld"}
+	sandbox.gateFn = func(gate SandboxGateKind, _ int) SandboxGateResult {
+		if gate == SandboxGateTest {
+			return SandboxGateResult{
+				Gate: gate, Passed: false,
+				Output: "--- FAIL: TestOld (0.01s)\nFAIL\taranea-agents/internal/biz\t0.02s\n",
+			}
+		}
+		return SandboxGateResult{Gate: gate, Passed: true}
+	}
+	if err := uc.Execute(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if sandbox.probeCalls == 0 {
+		t.Fatal("G2 must probe HEAD failures before ApplyDiff")
+	}
+	if store.run.Status != RunStatusAwaitingGovernance {
+		t.Fatalf("status = %s, want awaiting_governance after exempting HEAD-known G2 fail", store.run.Status)
+	}
+	var g2 SandboxGateResult
+	for _, r := range store.run.VerificationReport {
+		if r.Gate == SandboxGateTest {
+			g2 = r
+		}
+	}
+	if !g2.Passed || !strings.Contains(g2.Output, "exempted HEAD-known") {
+		t.Fatalf("G2 = %+v, want passed with exemption note", g2)
 	}
 }
 

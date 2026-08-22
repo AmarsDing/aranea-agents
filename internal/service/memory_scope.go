@@ -139,6 +139,22 @@ func (s *MemoryService) assertAgentMemoryAccess(ctx context.Context, agentID str
 	return nil
 }
 
+// assertOptionalAgentMemoryAccess is a no-op when agentID is empty.
+func (s *MemoryService) assertOptionalAgentMemoryAccess(ctx context.Context, agentID string) error {
+	if strings.TrimSpace(agentID) == "" {
+		return nil
+	}
+	return s.assertAgentMemoryAccess(ctx, agentID)
+}
+
+// assertAgentScopeIfAgent runs Agent tenancy IDOR when the memory namespace is agent.
+func (s *MemoryService) assertAgentScopeIfAgent(ctx context.Context, scopeType, scopeID string) error {
+	if !strings.EqualFold(strings.TrimSpace(scopeType), "agent") {
+		return nil
+	}
+	return s.assertOptionalAgentMemoryAccess(ctx, scopeID)
+}
+
 func memoryHTTPQuery(ctx context.Context, keys ...string) string {
 	r, ok := khttp.RequestFromServerContext(ctx)
 	if !ok || r == nil {

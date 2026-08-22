@@ -7,9 +7,9 @@ import (
 )
 
 // ErrSIMergeConflict marks an ApplyCodeMerge failure caused by repository
-// drift (the patch no longer applies, or the main branch is not
-// fast-forwardable). The apply usecase downgrades such runs to the manual
-// approval channel (design D7: 冲突则转人工). Detect with errors.Is.
+// drift (the patch no longer applies on current HEAD). The apply usecase
+// downgrades such runs to the manual approval channel (design D7:
+// 冲突则转人工). Detect with errors.Is.
 var ErrSIMergeConflict = errors.New("self-improvement merge conflict")
 
 // ── Self-improvement run persistence ports (73-self-iteration-v3, design §4.1) ──
@@ -86,8 +86,9 @@ type SIRiskRuleRepo interface {
 // applies the candidate patch, and executes verification gates G1-G3 inside
 // it. Implemented by service.RepoSandboxRunner.
 //
-// Lifecycle: PrepareWorktree → ResetWorktree → ApplyDiff → RunGate(...) →
-// cleanup(). The cleanup func returned by PrepareWorktree must be idempotent
+// Lifecycle: PrepareWorktree → ResetWorktree → ProbeTestFailures (G2 HEAD
+// baseline) → ApplyDiff → RunGate(...) → cleanup(). The cleanup func
+// returned by PrepareWorktree must be idempotent
 // and must release the worktree even when the caller's ctx is already
 // cancelled.
 // Stability:evolving
@@ -131,12 +132,14 @@ type RepoSandbox interface {
 //     refresh in-process caches; without it this is NOT a live runtime
 //     reload. The returned rollbackRef locates the pre-apply snapshot.
 //   - ApplyCodeMerge — code/test kinds: patch is committed on a
-//     self-improve/<runID> branch and fast-forward merged into the current
-//     branch; the binary does not hot-swap. Effective on next process restart.
-//     A non-fast-forward / drift situation returns an error wrapping
-//     ErrSIMergeConflict (→ 转人工, design D7).
-//   - Rollback — reverts whatever the matching Apply* call did (git revert
-//     for code, snapshot restore for working-tree apply).
+//     self-improve/<runID> branch and left there. The current working
+//     branch is not fast-forwarded. Effective only after an explicit
+//     operator merge (and then a process restart). Drift while applying
+//     the diff returns an error wrapping ErrSIMergeConflict (→ 转人工,
+//     design D7).
+//   - Rollback — undoes whatever the matching Apply* call did (delete
+//     the self-improve branch for code, snapshot restore for working-tree
+//     apply). The running HEAD is never reverted.
 //
 // Stability:evolving
 type SIApplier interface {

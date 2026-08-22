@@ -6,7 +6,10 @@
         <div class="registry-table-card__title row items-center q-gutter-sm">
           <span>{{ t('monitorPage.events.panelTitle') }}</span>
           <q-badge outline color="primary">{{ t('monitorPage.events.count', { n: pulseEvents.length }) }}</q-badge>
-          <q-badge :color="streamBadge.color" :label="streamBadge.label" outline />
+          <span class="apm-stream-badge">
+            <span class="apm-status-dot" :class="`apm-status-dot--${streamBadge.tone}`" />
+            {{ streamBadge.label }}
+          </span>
         </div>
       </div>
       <div class="row items-center q-gutter-sm">
@@ -45,7 +48,7 @@
           class="pulse-chip"
           @click="openDetail(evt)"
         >
-          <q-icon name="circle" :color="severityColor(evt.severity)" size="8px" class="q-mr-xs" />
+          <span class="apm-status-dot pulse-chip__dot" :class="`apm-status-dot--${severityTone(evt.severity)}`" />
           <span class="pulse-chip__title">{{ evt.title }}</span>
           <q-tooltip max-width="420px">
             <div>{{ evt.time }}</div>
@@ -120,7 +123,7 @@
         <template #body-cell-severity="props">
           <q-td :props="props">
             <div class="row items-center justify-center no-wrap q-gutter-xs">
-              <q-icon name="circle" :color="severityColor(props.row.severity)" size="8px" />
+              <span class="apm-status-dot event-severity-dot" :class="`apm-status-dot--${severityTone(props.row.severity)}`" />
               <span>{{ t(`monitorPage.events.severity.${props.row.severity}`) }}</span>
             </div>
           </q-td>
@@ -197,64 +200,68 @@
 
     <!-- ── 结构化详情 ── -->
     <q-dialog v-model="detailOpen">
-      <q-card style="min-width: 480px; max-width: 720px">
-        <q-card-section class="row items-center">
-          <div class="text-h6">{{ t('monitorPage.events.dialogTitle') }}</div>
-          <q-space />
+      <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
+        <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
+          <div class="event-detail-head">
+            <span
+              class="apm-status-dot event-detail-head__dot"
+              :class="`apm-status-dot--${severityTone(detailEvent?.severity || '')}`"
+            />
+            <div class="event-detail-head__text">
+              <div class="app-glass-dialog__title">{{ t('monitorPage.events.dialogTitle') }}</div>
+              <div class="app-glass-dialog__subtitle ellipsis">{{ detailEvent?.title }}</div>
+            </div>
+          </div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
-        <q-card-section v-if="detailEvent" class="q-gutter-sm">
-          <div class="row items-center q-gutter-sm">
-            <q-chip dense square :color="severityColor(detailEvent.severity)" text-color="white">
-              {{ t(`monitorPage.events.severity.${detailEvent.severity}`) }}
-            </q-chip>
-            <q-chip dense square :color="categoryChipColor(detailEvent.category)" text-color="white">
-              {{ t(`monitorPage.events.category.${detailEvent.category}`) }}
-            </q-chip>
-            <span class="text-caption text-grey">{{ detailEvent.type }}</span>
-          </div>
-          <div class="text-subtitle2">{{ detailEvent.title }}</div>
-          <div v-if="detailEvent.subtitle" class="text-body2">{{ detailEvent.subtitle }}</div>
-          <q-list dense class="event-detail-list">
-            <q-item v-if="detailEvent.actor">
-              <q-item-section side class="event-detail-list__label">{{
-                t('monitorPage.events.detail.actor')
-              }}</q-item-section>
-              <q-item-section>{{ detailEvent.actor }}</q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section side class="event-detail-list__label">{{
-                t('monitorPage.events.detail.time')
-              }}</q-item-section>
-              <q-item-section>{{ detailEvent.time }}</q-item-section>
-            </q-item>
-            <q-item v-if="detailEvent.completionSessionId || detailEvent.sessionId">
-              <q-item-section side class="event-detail-list__label">{{
-                t('monitorPage.events.detail.session')
-              }}</q-item-section>
-              <q-item-section class="row items-center no-wrap q-gutter-xs">
-                <span class="ellipsis">{{ detailEvent.completionSessionId || detailEvent.sessionId }}</span>
-                <q-btn
-                  flat
-                  dense
-                  size="sm"
-                  icon="chat"
-                  :label="t('monitorPage.events.openSession')"
-                  @click="emit('open-session', detailEvent)"
-                />
-              </q-item-section>
-            </q-item>
-          </q-list>
-          <q-expansion-item dense :label="t('monitorPage.events.detail.rawJson')" class="event-detail-raw">
-            <pre class="event-json">{{ detailJson }}</pre>
-          </q-expansion-item>
-        </q-card-section>
+        <div class="app-glass-dialog__scroll">
+          <q-card-section v-if="detailEvent" class="app-glass-dialog__body">
+            <div class="row items-center q-gutter-sm q-mb-md">
+              <span class="event-detail-pill" :class="`event-detail-pill--${severityTone(detailEvent.severity)}`">
+                <span class="apm-status-dot" :class="`apm-status-dot--${severityTone(detailEvent.severity)}`" />
+                {{ t(`monitorPage.events.severity.${detailEvent.severity}`) }}
+              </span>
+              <q-chip dense square :color="categoryChipColor(detailEvent.category)" text-color="white">
+                {{ t(`monitorPage.events.category.${detailEvent.category}`) }}
+              </q-chip>
+              <span class="text-caption event-detail-type">{{ detailEvent.type }}</span>
+            </div>
+            <div v-if="detailEvent.subtitle" class="text-body2 q-mb-md">{{ detailEvent.subtitle }}</div>
+            <div class="apm-meta-grid q-mb-md">
+              <div v-if="detailEvent.actor" class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.actor') }}</div>
+                <div class="apm-meta-item__value ellipsis">{{ detailEvent.actor }}</div>
+              </div>
+              <div class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.time') }}</div>
+                <div class="apm-meta-item__value">{{ detailEvent.time }}</div>
+              </div>
+              <div v-if="detailEvent.completionSessionId || detailEvent.sessionId" class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.session') }}</div>
+                <div class="apm-meta-item__value row items-center no-wrap q-gutter-xs">
+                  <span class="ellipsis">{{ detailEvent.completionSessionId || detailEvent.sessionId }}</span>
+                  <q-btn
+                    flat
+                    dense
+                    size="sm"
+                    icon="chat"
+                    :label="t('monitorPage.events.openSession')"
+                    @click="emit('open-session', detailEvent)"
+                  />
+                </div>
+              </div>
+            </div>
+            <q-expansion-item dense :label="t('monitorPage.events.detail.rawJson')" class="event-detail-raw">
+              <pre class="monitor-json">{{ detailJson }}</pre>
+            </q-expansion-item>
+          </q-card-section>
+        </div>
         <q-separator />
-        <q-card-actions align="right">
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
           <q-btn
             flat
-            dense
+            no-caps
             icon="content_copy"
             :label="t('monitorPage.events.detail.copyJson')"
             @click="copyDetailJson"
@@ -272,7 +279,7 @@ import { copyToClipboard } from 'quasar';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import { createMonitorEventColumns } from './monitorTableUi';
-import { severityColor, type MonitorViewEvent } from '../../features/monitor/eventView';
+import { type MonitorViewEvent } from '../../features/monitor/eventView';
 import { EVENT_TYPE_FILTERS } from '../../features/monitor/useMonitorRealtimeEvents';
 import type { StreamState } from '../../features/monitor/types';
 
@@ -332,17 +339,33 @@ const severityOptions = computed(() =>
 const streamBadge = computed(() => {
   switch (props.streamState) {
     case 'live':
-      return { color: 'positive', label: t('monitorPage.events.stream.live') };
+      return { tone: 'running', label: t('monitorPage.events.stream.live') };
     case 'connected':
-      return { color: 'positive', label: t('monitorPage.events.stream.connected') };
+      return { tone: 'ok', label: t('monitorPage.events.stream.connected') };
     case 'connecting':
-      return { color: 'info', label: t('monitorPage.events.stream.connecting') };
+      return { tone: 'info', label: t('monitorPage.events.stream.connecting') };
     case 'paused':
-      return { color: 'grey', label: t('monitorPage.events.stream.paused') };
+      return { tone: 'idle', label: t('monitorPage.events.stream.paused') };
     default:
-      return { color: 'negative', label: t('monitorPage.events.stream.error') };
+      return { tone: 'error', label: t('monitorPage.events.stream.error') };
   }
 });
+
+/** 严重度 → APM 状态点色调 */
+function severityTone(severity: string): string {
+  switch (severity) {
+    case 'critical':
+      return 'error';
+    case 'warn':
+      return 'warn';
+    case 'success':
+      return 'ok';
+    case 'info':
+      return 'info';
+    default:
+      return 'idle';
+  }
+}
 
 const pulseEmptyHint = computed(() => {
   if (props.streamState === 'paused') return t('monitorPage.events.stream.paused');

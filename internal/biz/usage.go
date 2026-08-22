@@ -55,6 +55,7 @@ const (
 	UsageKindAuxMemoryExtract = usage.KindAuxMemoryExtract
 	// UsageKindAuxEmbedding mirrors usage.KindAuxEmbedding (P1-3).
 	UsageKindAuxEmbedding = usage.KindAuxEmbedding
+	UsageKindAuxEvalJudge = usage.KindAuxEvalJudge
 	QuotaScopeGlobal      = usage.QuotaScopeGlobal
 	GlobalQuotaScopeID    = usage.GlobalQuotaScopeID
 	// MinCacheablePromptTokens mirrors usage.MinCacheablePromptTokens.

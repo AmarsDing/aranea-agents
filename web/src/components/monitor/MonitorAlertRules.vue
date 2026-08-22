@@ -2,7 +2,8 @@
   <div class="monitor-alert-rules-page">
     <!-- 页头 -->
     <div class="row items-center q-mb-md">
-      <div>
+      <q-icon name="notifications_active" size="20px" class="alerts-head__icon" />
+      <div class="q-ml-sm">
         <div class="text-h6 text-weight-bold">{{ t('monitorPage.alerts.title') }}</div>
         <div class="text-caption text-grey-6">{{ t('monitorPage.alerts.subtitle') }}</div>
       </div>
@@ -181,6 +182,10 @@ function onSave() {
 </script>
 
 <style scoped>
+.alerts-head__icon {
+  color: var(--color-accent);
+}
+
 .monitor-alert-rule-item {
   border-bottom: 1px solid var(--color-border-soft);
 }

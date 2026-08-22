@@ -144,6 +144,8 @@ RunGate(ctx, workspaceDir, gate, scope) → GateResult{gate, passed, output, dur
 >
 > **2026-08-22 P1 RCA**：Analyst 从建议证据还原 `FailureReport`，调用 `heal.RootCauseAnalyzer.AnalyzeFromReport`。命中规则时把 root_cause / fix_suggest 写入 prompt；`affected_files` 为空时用报告里的 file（或从 sample_message 抽出的仓库相对路径）回填。code/test 且只改 `web/` 时，前端 lint 被 skipped（无 pnpm）改为 fail-closed。
 >
+> **2026-08-22 P1 G2 豁免**：ApplyDiff 前对影响包 `ProbeTestFailures`。G2 失败名若全部已在 HEAD 基线中，记为通过并注明 `exempted HEAD-known failures`。编译/setup failed 永不豁免；新失败测试仍挡闭环。
+>
 > **G5（eval 基线）未接线**：恒落 `g5_eval` 且 `Skipped=true` / `Passed=false`，不计入 allPass。控制台按 skipped 中性展示。真实评估基线对比待后续迭代。
 
 ### D5：Meta Team 编排映射（竞赛 AgentTeams 基点）
@@ -190,11 +192,13 @@ Observer(代码节点,非LLM) → Analyst(LLM) → Patcher(LLM) → Verifier(代
 ### D7：应用与观察窗（Applier + Watchdog）
 
 - **配置/Prompt 类**：工作树 `git apply` + 预应用快照回滚。可选 `SIRuntimeReloader` 刷新进程内缓存；未接线时 **不是** 运行时热加载，仅下次读文件生效。`run.Metadata.apply_semantics` 记录 `channel` / `effective_on` / `runtime_reloaded`。
-- **代码类**：worktree 内 `git commit`（message 含 `self-improvement: true` + run_id 尾注）→ 合并主分支（fast-forward 优先，冲突则转人工）→ 状态 applied（**下次进程重启**才加载新二进制）；**不做运行中热替换**
-- **观察窗**：applied → observing，Watchdog（cron，5min）对比应用前后各 1h 滑窗指标：错误率 +50% 或 P95 +30%（可配置）→ 自动 `git revert` + 热加载回退 → rolled_back + 管理员通知
-- **手动控制**：管理员可 close（提前确认有效）或 rollback（立即回滚）
+- **代码类**：worktree 内 `git commit`（message 含 `self-improvement: true` + run_id 尾注）→ **只保留** `self-improve/<runID>` 分支，**不** fast-forward 当前工作分支（运行中的 admin 工作树不变）。`apply_semantics.channel=code_branch`，`effective_on=explicit_merge`（需运维显式 merge 后再重启才进生产）。diff 无法 apply 则转人工。**不做运行中热替换**。
+- **观察窗**：applied → observing，Watchdog（cron，5min）对比应用前后各 1h 滑窗指标：错误率 +50% 或 P95 +30%（可配置）→ 代码通道删 `self-improve/<runID>` 分支 + 热加载快照回退 → rolled_back + 管理员通知。代码落分支不会改变生产指标，观察窗**不能**证明补丁已在生产生效。
+- **手动控制**：管理员可 close（提前确认有效）或 rollback（立即回滚：代码=删分支，软补丁=恢复快照）
 
 > P4 落地注记（2026-07-31，T4.1/T4.5）：Applier 实现于 `internal/service/self_improvement_applier.go`（热加载=工作树补丁+预应用快照，代码=worktree commit+ff 合并，冲突返回 `ErrSIMergeConflict`）；Apply 编排 `SelfImprovementApplyUsecase` 于 `internal/biz/self_improvement_apply.go`——kind 路由（code/test→合并、config/prompt/docs→热加载）、冲突经 `apply_escalate` 回迁 awaiting_governance 并改写 channel=approval、观察窗准入（并发 ≤max_concurrent_observing + 同核心路径区域互斥 `SICoreAreas`）未通过时 run 停留 applied 构成晋升队列，`PromoteEligible`（最老优先）供 Watchdog 每 tick 调用；Router 经 `SIApplyDriver` 端口在 auto/notify 迁移后同步驱动 Apply。
+>
+> P1 修订（2026-08-22）：代码通道改为分支落地——`ApplyCodeMerge` 不再 `git merge --ff-only` 进当前分支；成功后移走 worktree、保留 `self-improve/<runID>`；Rollback 删该分支（幂等，不 `git revert` HEAD）。`applied` ≠ 已进生产。
 
 ### D8：成效学习（Learn）
 
@@ -387,7 +391,7 @@ type Applier interface {
 | 类别 | Provider | 说明 |
 |------|----------|------|
 | 基础设施 | `provideRepoSandboxRunner` | worktree 沙盒；repoRoot=进程工作目录（`os.Getwd()`），启用时 admin 须从仓库根启动 |
-| 基础设施 | `provideSIApplier` | `SIRepoApplier`：热加载快照通道 + 代码 ff 合并 + Rollback |
+| 基础设施 | `provideSIApplier` | `SIRepoApplier`：热加载快照通道 + 代码落 `self-improve/<runID>` 分支（不 ff 当前 HEAD）+ Rollback |
 | LLM stages | `provideSIAnalystStage` / `provideSIPatcherStage` / `provideSICriticStage` | 复用平台 `DefaultRefineLLM`（`SystemSettingUsecase.GetRefineLLM`）；Analyst/Patcher 未配置时 stage=nil，pipeline 报「stages not wired」明确错误（不 panic）；Critic nil 时 G4 降级放行（T3.3 设计）；Patcher 日配额默认 20 / Critic 默认 10（provider 传 0 取 agent 内默认） |
 | 适配器 | `provideSINotifier` / `provideSIApprovalSink` / `provideSIActivitySink` | 统一经 Monitor Events 通道（`biz.MonitorEventRepo`）；Approval 提交按 run 幂等 |
 | 适配器 | `provideSINegativePatternSink` | Learn 负面样本写 FailurePattern KB（按 pattern_hash 去重递增 fail_count） |

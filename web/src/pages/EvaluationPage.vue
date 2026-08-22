@@ -64,6 +64,14 @@
                 outline
                 no-caps
                 color="primary"
+                icon="history"
+                :label="$t('evaluationPage.manageVersions')"
+                @click="openVersions"
+              />
+              <q-btn
+                outline
+                no-caps
+                color="primary"
                 icon="edit"
                 :label="$t('evaluationPage.editDataset')"
                 @click="openEditDataset"
@@ -228,9 +236,20 @@
       v-model:num-runs="runForm.num_runs"
       v-model:user-simulation="runForm.use_user_simulation"
       v-model:extra-agent-ids="runForm.extra_agent_ids"
+      v-model:model="runForm.model"
+      v-model:extra-models="runForm.extra_models"
+      v-model:prompt="runForm.prompt"
+      :version-label="runForm.dataset_version ? String(runForm.dataset_version) : ''"
       :loading="runLoading"
       :agent-options="agentOptions"
       @submit="submitRun"
+    />
+    <evaluation-versions-dialog
+      v-model:open="versionsOpen"
+      :rows="versions"
+      :columns="versionColumns"
+      :loading="versionsLoading"
+      @run="runPinnedVersion"
     />
     <evaluation-upload-cases-dialog
       v-model:open="uploadOpen"
@@ -292,6 +311,7 @@ import EvaluationRunDialog from '../components/evaluation/EvaluationRunDialog.vu
 import EvaluationResultsDialog from '../components/evaluation/EvaluationResultsDialog.vue';
 import EvaluationUploadCasesDialog from '../components/evaluation/EvaluationUploadCasesDialog.vue';
 import EvaluationGateDialog from '../components/evaluation/EvaluationGateDialog.vue';
+import EvaluationVersionsDialog from '../components/evaluation/EvaluationVersionsDialog.vue';
 import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
 
 const { t } = useI18n();
@@ -352,6 +372,12 @@ const {
   cancelEvalRun,
   confirmDeleteRun,
   submitRun,
+  versionsOpen,
+  versionsLoading,
+  versions,
+  versionColumns,
+  openVersions,
+  runPinnedVersion,
   uploadOpen,
   uploadLoading,
   uploadText,

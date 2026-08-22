@@ -5,7 +5,7 @@
 > **关联**：[67 organization-redesign.md](./67-organization-redesign.md) · [1-chat.md](./1-chat.md)（使命匹配 / 交付物） · [11-multi-agent.md](./11-multi-agent.md) · [27-artifact.md](./27-artifact.md) · [70-orchestration-longtask-memory.md](./70-orchestration-longtask-memory.md) · [53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · [71-agent-resource-sharing.md](./71-agent-resource-sharing.md)
 > **技术设计**：[78-org-aware-orchestration.design.md](./78-org-aware-orchestration.design.md)
 > **开发计划**：[78-org-aware-orchestration.development.md](./78-org-aware-orchestration.development.md)
-> **ADR**：[2026-08-22-review-adr-org-aware-orchestration.md](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型组织链](../reports/2026-08-22-review-adr-org-heavy-chain.md)
+> **ADR**：[2026-08-22-review-adr-org-aware-orchestration.md](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型组织链](../reports/2026-08-22-review-adr-org-heavy-chain.md) · [横切评审](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)
 
 ---
 
@@ -180,6 +180,44 @@
 - 指纹不合：只复用专题槽或要求 `force_new`，不复用历史 keys
 - 仍遵守 US-78-10：新 `AssembleTeam`，不复活终态 Team
 
+### US-78-17 成员上下文不被灌爆
+
+**作为** 专项员工
+**我希望** 开工时只看到结论、少量知识摘录和必要工具，而不是精灵的全家桶和整库资料
+**以便** 又快又准地干活，不被 token 拖死
+
+**验收**：
+
+- 首轮前缀：Brief + 知识 + 记忆 + 协议合计 ≤ 6KB（设计 R14）
+- 工具/MCP 来自花名册允许集，不继承精灵全量
+- 领导/精灵窗不出现成员过程全文或源码
+
+### US-78-18 知识按阶段引用，记忆不互相倒
+
+**作为** 部门领导
+**我希望** 员工从本部门允许的知识库检索，而不是把制度贴进交接信封；同事的个人经验不要灌进另一个人窗口
+**以便** 资料有边界、经验不串岗
+
+**验收**：
+
+- 剧本阶段可声明 `collection_ids`；未声明则用部门默认库
+- Brief 不含知识库正文；写回待审
+- 兄弟成员不可读对方 L3；配方/checkpoint/L1/L3 职责不混（设计 R15）
+
+### US-78-19 中间少确认，但能看能管每个成员
+
+**作为** 精灵用户
+**我希望** 不要每个员工开工都点一次；必要时能暂停、加一句、取消某个人，并在结束时看到一份短总结
+**以便** 长任务可跑可干预，不被确认卡打断
+
+**验收**：
+
+- 确认仅五档：造人、新剧本、高风险门、危险工具、剧本 `confirm_before`（R18）
+- 成员运行态沿用已有暂停/注入/取消，不新 API
+- 用户主对话看芯片、心跳、例外，不刷成员 token
+- 换人 = 剩余工作新开 Team
+- 最终汇总只基于 Brief + 例外 + 制品清单；有取消则跳过
+
 ### US-78-06 简单任务不组队
 
 **作为** 精灵用户
@@ -260,6 +298,15 @@
 | FR-78-22 | 三管道 | P0 | 上行例外/心跳；横向 Brief；下行授权；管道不得混用 |
 | FR-78-23 | 配方约束指纹 | P1 | 不合则不复用历史 keys |
 | FR-78-24 | 重型 checkpoint | P1 | 续跑恢复剧本 ID、已授权阶段、已发 Brief（对齐 M70，不改旧 checkpoint 缺省） |
+| FR-78-25 | 成员前缀预算 | P0 | 四段合计 ≤6KB；超限先砍知识再砍记忆 |
+| FR-78-26 | 专项工具/MCP 画像 | P1 | 花名册允许集；领导仅治理工具；不健康 MCP 只降级该工具 |
+| FR-78-27 | 知识阶段绑定 | P1 | `collection_ids`；引用不复制；写回待审 |
+| FR-78-28 | 记忆隔离 | P0 | 兄弟不互读 L3；配方≠checkpoint≠L1≠L3 |
+| FR-78-29 | 确认五档 | P0 | 默认阶段无确认卡；`confirm_before` 仅剧本声明 |
+| FR-78-30 | 成员可观测可干预 | P0 | 复用 pause/inject/cancel；主对话不订阅成员 token |
+| FR-78-31 | 汇总输入契约 | P0 | 只吃 Brief + 例外 + 制品清单；不考古会话全文 |
+| FR-78-32 | 可选阶段 Graph | P2 | `graph_template_id` 挂已有模板；不新引擎 |
+| FR-78-33 | 管道不混用 | P0 | deptmail≠横向；inject≠上行；MCP≠共享盘 |
 
 ---
 
@@ -274,6 +321,8 @@
 5. 无阻塞性信息：先问清楚再组队。
 6. 跨团队：卡片展示「结论」短文 + 「附件清单」；点开附件走制品/文件，不在聊天里展开整份仓库。
 7. 重型档：可见「按本公司剧本展开 / 总经理已预授权」；阶段心跳与例外出现在组织汇报区，不把员工过程贴进用户主对话。
+8. 成员卡片可暂停/加一句/取消（沿用团队与会话底栏）；不要每人开工弹确认。
+9. 全部结束后精灵用普通回复给一份短总结（结论 / 交付清单 / 未决 / 例外），不是独立报告卡片。
 
 ### 4.2 用户不需要做的
 
@@ -300,6 +349,8 @@
 | NFR-78-11 | 体积 | 单制品沿用 M27 上限（当前 10MB/件）；更大文件只指针 + 工作区路径，不经制品 base64 上传 |
 | NFR-78-12 | 快：重型调度 | 已授权剧本或配方命中：总经理 LLM = 0；无依赖部门并行开工，不等上行汇报 |
 | NFR-78-13 | 快：上行体积 | 单次上行摘要 P95 ≤ 2KB；禁止源码/数据集上行 |
+| NFR-78-14 | 快：成员窗 | 首轮前缀合计 P95 ≤ 6KB；工具 schema 为专项子集 |
+| NFR-78-15 | 准：汇总 | 合成 prompt 不含成员会话原文；只含 Brief 摘要与清单 |
 
 ---
 
@@ -317,6 +368,8 @@
 | 澄清优先 | 信息不足禁止组队（DECISION.md） |
 | 传递与监管分离 | 跨团队「交给下一棒的东西」只走结论信封 + 声明的文件指针；memberfs / sessionaccess 只做主管/精灵监管（M71） |
 | 结论只认 set_deliverable | reply 聊天文本不是跨团队产出（B.10.22） |
+| 横切不新造轮子 | 确认/干预/汇总/Graph/知识/记忆走既有模块；组织链只加约束与绑定 |
+| 管道与存储隔离 | deptmail≠Brief；知识≠记忆；MCP≠共享盘；inject≠上行 |
 
 ---
 
@@ -332,3 +385,9 @@
 - 新建独立 blob 表或第二套交付物存储（B.10.15 已否决；文件走 M27 制品 + 工作区 inbox）。
 - 下游团队只读浏览上游 Agent 整个私人工作目录。
 - 把 `read_upstream_deliverable` 扩成二进制下载通道。
+- 为分档或选剧本再开一轮专用 LLM（沿用已有复杂度分与确定性规则）。
+- 已开工的 heavy 静默降回 medium。
+- 为组织链新建 Graph 引擎、第二套共享盘、或复活 ExecutionReportCard。
+- 每人开工弹确认；把成员 token 流刷进精灵主对话。
+- 兄弟成员互读 L3；把知识库正文写入 Brief。
+- 员工继承精灵全量工具/MCP。

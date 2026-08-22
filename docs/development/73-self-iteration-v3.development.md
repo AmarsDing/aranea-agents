@@ -191,7 +191,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 - `internal/biz/self_improvement_control.go`（SIControlCommand/SIControlPlane/ErrSIRunPaused，T3.6）+ `_test.go`
 
 **新增（Phase 4 已落地）**：
-- `internal/service/self_improvement_applier.go`（SIRepoApplier：ApplyHotReload 快照通道 + ApplyCodeMerge 代码 ff 合并 + Rollback revert/快照恢复，T4.1）+ `_test.go`（fixture 仓库集成测试 8 例）
+- `internal/service/self_improvement_applier.go`（SIRepoApplier：ApplyHotReload 快照通道 + ApplyCodeMerge 落 `self-improve/<runID>` 分支（不 ff 当前 HEAD）+ Rollback 删分支/快照恢复，T4.1 / 2026-08-22）+ `_test.go`（fixture 仓库集成测试）
 - `internal/biz/self_improvement_apply.go`（SelfImprovementApplyUsecase：kind 路由 + 冲突 escalate 转人工 + 观察窗并发上限 3 + 核心路径串行 PromoteEligible，T4.5）+ `_test.go`（12 例，含 -race 并发测试）
 - `internal/biz/self_improvement_watchdog.go`（SelfImprovementWatchdogUsecase：基线采集 + 到期滑窗对比 + 自动 revert + 通知，T4.2）+ `_test.go`
 - `internal/biz/self_improvement_admin.go`（SelfImprovementAdminUsecase：手动 approve/reject/close/rollback，签名对齐 design §7——Approve 带 reason、Reject reason 必填，T4.3）+ `_test.go`（10 例，-race 绿）
@@ -219,6 +219,12 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 - `cmd/admin/workers.go`（注册 self_improve_drive/watchdog/outcome 三 worker，`goAfterReady`）
 - `configs/config.yaml`（self_improvement 注释示例补齐 observe_window/watchdog_interval/outcome_interval/drive_interval/stale_timeout/sandbox.repo_root）
 
+**修改（P1 代码落分支，2026-08-22）**：`ApplyCodeMerge` 不再把补丁 ff 进运行中的工作树；commit 留在 `self-improve/<runID>`，worktree 移除、分支保留。Rollback 删分支（幂等），不 `git revert` 当前 HEAD。`apply_semantics`：`channel=code_branch`，`effective_on=explicit_merge`。观察窗指标不会因该通道变化（accepted）。
+- `internal/service/self_improvement_applier.go` + `_test.go`
+- `internal/service/repo_sandbox_runner.go`（`removeWorktreeKeepBranch`）
+- `internal/biz/self_improvement_apply.go` + `_test.go`（语义常量 + Branch 落库）
+- `internal/biz/self_improvement_repo.go`（SIApplier 端口注释）
+
 **修改（P1-14，2026-08-15）**：冷却倍率跨重启持久化 + 生产默认关闭 auto-apply。
 - `internal/biz/skill_evolution_unified.go`（`SITriggerCooldownStore` + Hydrate/persist）
 - `internal/data/si_trigger_cooldown_repo.go` + DDL `20261217_si_trigger_cooldown_multipliers.sql`
@@ -234,7 +240,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 ---
 
-*文档版本：2026-08-22 — P1 RCA：Analyst 接 FailureReport + RootCauseAnalyzer；web-only 缺 pnpm fail-closed。遗留：G2 已知失败豁免、真实 G5 eval、代码通道改为 PR/重启编排、Learn few-shot。*
+*文档版本：2026-08-22 — P1 代码通道改为 `self-improve/<runID>` 分支落地（不 ff 当前工作树）。遗留：真实 G5 eval、Learn few-shot。*
 *历史版本：2026-08-09 — 运行时端到端冒烟完成（默认配置灰度开启 + 造 error_cluster 信号全链路验证，记录见文首）；遗留：重试 ApplyDiff exit 128 排查、G2 受 HEAD 红测阻塞待治理。*
 *历史版本：2026-07-31 — Phase 1–5（T1.1–T5.4）全部完成并验证；竞赛四件套同步实现口径（8 项落地偏差记录于实施进度文档 v2.0）。遗留：运行时端到端冒烟待灰度开启后执行。*
 *历史版本：2026-07-31 — Phase 1–4（T1.1–T4.6）+ W6 全链接线完成并验证，状态标记与文件清单同步；design.md §五/§6 已同步实际接线（24 providers + drive worker + 配置块）。*

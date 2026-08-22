@@ -342,6 +342,19 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 			return rejectWith(fmt.Sprintf("protected_file: %s (%s)", hits[0].Path, hits[0].Reason))
 		}
 
+		plan := PlanSIVerification(patch.Kind, changes)
+		var exemptTests []string
+		if plan.ShouldRun(SandboxGateTest) {
+			names, perr := uc.sandbox.ProbeTestFailures(ctx, worktree, plan.GoPkgs)
+			if perr != nil {
+				uc.lg.Warn("self-improve pipeline: HEAD test probe failed, no G2 exemptions",
+					loggateway.StepID("si_pipeline.g2_probe"),
+					loggateway.Str("run_id", run.ID), loggateway.Err(perr))
+			} else {
+				exemptTests = names
+			}
+		}
+
 		if aerr := uc.sandbox.ApplyDiff(ctx, worktree, patch.Diff); aerr != nil {
 			return failWith(fmt.Errorf("apply diff: %w", aerr))
 		}
@@ -357,7 +370,6 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 		}
 		cursor.stage, cursor.attempt = SIStageVerifying, attempt
 		emitStage(SIStageVerifying, attempt, ActivityStatusRunning, "")
-		plan := PlanSIVerification(patch.Kind, changes)
 		var report []SandboxGateResult
 		allPass := true
 		for _, gate := range []SandboxGateKind{SandboxGateBuild, SandboxGateTest, SandboxGateLint, SandboxGateWebLint} {
@@ -377,6 +389,9 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 			res, gerr := uc.sandbox.RunGate(ctx, worktree, gate, plan.GoPkgs)
 			if gerr != nil {
 				res = SandboxGateResult{Gate: gate, Passed: false, Output: "gate exec error: " + gerr.Error()}
+			}
+			if gate == SandboxGateTest {
+				res = ApplyKnownFailExemption(res, exemptTests)
 			}
 			report = append(report, res)
 			if res.Failed() {

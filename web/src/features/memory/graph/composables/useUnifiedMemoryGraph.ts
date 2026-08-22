@@ -1,6 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue';
 import type { UnifiedGraphEdge, UnifiedGraphNode, UnifiedMemoryGraph } from '../../types';
-import { getUnifiedMemoryGraph } from '../../api';
+import { useMemoryStore } from '../../../../stores/memory';
 
 export const DEFAULT_GRAPH_HOPS = 2;
 export const DEFAULT_GRAPH_MIN_WEIGHT = 0.35;
@@ -8,6 +8,7 @@ export const GRAPH_LAYERS = ['L4', 'L3', 'L2'] as const;
 
 /** 跨层关联图谱数据与过滤状态：focus 留空时后端取关系数最多的活跃实体。 */
 export function useUnifiedMemoryGraph(agentId: Ref<string | null>) {
+  const memoryStore = useMemoryStore();
   const graph = ref<UnifiedMemoryGraph | null>(null);
   const loading = ref(false);
   const error = ref('');
@@ -37,7 +38,7 @@ export function useUnifiedMemoryGraph(agentId: Ref<string | null>) {
     loading.value = true;
     error.value = '';
     try {
-      graph.value = await getUnifiedMemoryGraph(id, {
+      graph.value = await memoryStore.loadUnifiedGraph(id, {
         focus,
         hops: hops.value,
         min_weight: minWeight.value,

@@ -15,24 +15,24 @@ type mockRepo struct {
 	collGetFn       func(ctx context.Context, id string) (Collection, error)
 	collGetByNameFn func(ctx context.Context, workspace, name string) (Collection, error)
 	collListFn      func(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
-	collDeleteFn  func(ctx context.Context, id string) error
-	collUpdateFn  func(ctx context.Context, id string, docDelta, chunkDelta int) error
-	collSyncFn    func(ctx context.Context, id, state string, lastSyncAt time.Time) error
-	docCreateFn   func(ctx context.Context, d Document) (Document, error)
-	docGetFn      func(ctx context.Context, id string) (Document, error)
-	docGetByRelFn  func(ctx context.Context, collectionID, relPath string) (Document, error)
-	docGetByHashFn func(ctx context.Context, collectionID, contentHash string) (Document, error)
-	docRelPathFn  func(ctx context.Context, id, newRelPath string) error
-	docSyncMetaFn func(ctx context.Context, id string, meta DocumentSyncMeta) error
-	docUpdateFn   func(ctx context.Context, id, status, errMsg string, chunkCount int) error
-	docContentFn  func(ctx context.Context, id, contentText string, organized bool) error
-	docListFn     func(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
-	docPendingFn  func(ctx context.Context, collectionID string) ([]Document, error)
-	docDeleteFn   func(ctx context.Context, id string) error
-	docMoveFn     func(ctx context.Context, id, targetCollectionID string) (Document, error)
-	chunkInsertFn func(ctx context.Context, chunks []Chunk) error
-	chunkDeleteFn func(ctx context.Context, docID string) error
-	chunkSearchFn func(ctx context.Context, q SearchQuery, emb []float32) ([]Chunk, error)
+	collDeleteFn    func(ctx context.Context, id string) error
+	collUpdateFn    func(ctx context.Context, id string, docDelta, chunkDelta int) error
+	collSyncFn      func(ctx context.Context, id, state string, lastSyncAt time.Time) error
+	docCreateFn     func(ctx context.Context, d Document) (Document, error)
+	docGetFn        func(ctx context.Context, id string) (Document, error)
+	docGetByRelFn   func(ctx context.Context, collectionID, relPath string) (Document, error)
+	docGetByHashFn  func(ctx context.Context, collectionID, contentHash string) (Document, error)
+	docRelPathFn    func(ctx context.Context, id, newRelPath string) error
+	docSyncMetaFn   func(ctx context.Context, id string, meta DocumentSyncMeta) error
+	docUpdateFn     func(ctx context.Context, id, status, errMsg string, chunkCount int) error
+	docContentFn    func(ctx context.Context, id, contentText string, organized bool) error
+	docListFn       func(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
+	docPendingFn    func(ctx context.Context, collectionID string) ([]Document, error)
+	docDeleteFn     func(ctx context.Context, id string) error
+	docMoveFn       func(ctx context.Context, id, targetCollectionID string) (Document, error)
+	chunkInsertFn   func(ctx context.Context, chunks []Chunk) error
+	chunkDeleteFn   func(ctx context.Context, docID string) error
+	chunkSearchFn   func(ctx context.Context, q SearchQuery, emb []float32) ([]Chunk, error)
 }
 
 func (m *mockRepo) EnableCollectionSemantic(context.Context, string, string, int) (bool, error) {
@@ -173,14 +173,32 @@ func TestUsecase_CreateCollection(t *testing.T) {
 			nil, true, ErrNameRequired, nil,
 		},
 		{
-			"empty embedding model rejected",
+			"empty embedding model creates lexical collection",
 			Collection{Name: "test"},
-			nil, true, ErrEmbeddingModelRequired, nil,
+			func(_ context.Context, c Collection) (Collection, error) { return c, nil },
+			false, nil,
+			func(t *testing.T, got Collection) {
+				if got.EmbeddingModel != "" {
+					t.Errorf("EmbeddingModel = %q, want empty lexical", got.EmbeddingModel)
+				}
+				if got.Dim != 0 {
+					t.Errorf("Dim = %d, want 0 for lexical collection", got.Dim)
+				}
+				if got.Status != "active" {
+					t.Errorf("Status = %q, want %q", got.Status, "active")
+				}
+			},
 		},
 		{
-			"whitespace embedding model rejected",
+			"whitespace embedding model treated as lexical",
 			Collection{Name: "test", EmbeddingModel: "  "},
-			nil, true, ErrEmbeddingModelRequired, nil,
+			func(_ context.Context, c Collection) (Collection, error) { return c, nil },
+			false, nil,
+			func(t *testing.T, got Collection) {
+				if got.EmbeddingModel != "" {
+					t.Errorf("EmbeddingModel = %q, want empty after trim", got.EmbeddingModel)
+				}
+			},
 		},
 		{
 			"defaults applied dim and status",

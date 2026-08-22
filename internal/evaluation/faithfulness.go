@@ -1,17 +1,23 @@
 package evaluation
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"unicode"
 
 	"aranea-agents/internal/biz"
 	evalset "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
+	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
 const metricFaithfulness = "faithfulness"
 
-func applyFaithfulness(res *biz.EvalCaseResult, inv *evalset.Invocation) {
+func applyFaithfulness(ctx context.Context, res *biz.EvalCaseResult, inv *evalset.Invocation, judge runner.Runner) {
+	applyRAGMetrics(ctx, res, inv, "", judge)
+}
+
+func applyRAGMetrics(ctx context.Context, res *biz.EvalCaseResult, inv *evalset.Invocation, query string, judge runner.Runner) {
 	if res == nil || inv == nil {
 		return
 	}
@@ -20,8 +26,16 @@ func applyFaithfulness(res *biz.EvalCaseResult, inv *evalset.Invocation) {
 		return
 	}
 	score := lexicalFaithfulness(res.ActualOutput, ctxText)
+	if judge != nil {
+		if judged, err := judgeFaithfulness(ctx, judge, res.ActualOutput, ctxText); err == nil {
+			score = judged
+		}
+	}
 	scores := biz.ParseEvalScores(res.ScoresJSON)
 	scores[metricFaithfulness] = score
+	if prec, ok := scoreContextPrecision(ctx, judge, query, retrievedChunks(inv.Tools)); ok {
+		scores[metricContextPrecision] = prec
+	}
 	res.ScoresJSON = biz.MarshalEvalScores(scores)
 }
 
@@ -127,10 +141,14 @@ func tokenizeFaithfulness(s string) []string {
 }
 
 func averageFaithfulness(results []biz.EvalCaseResult) (float32, bool) {
+	return averageScoreKey(results, metricFaithfulness)
+}
+
+func averageScoreKey(results []biz.EvalCaseResult, key string) (float32, bool) {
 	var sum float32
 	n := 0
 	for _, r := range results {
-		if v, ok := biz.ParseEvalScores(r.ScoresJSON)[metricFaithfulness]; ok {
+		if v, ok := biz.ParseEvalScores(r.ScoresJSON)[key]; ok {
 			sum += v
 			n++
 		}

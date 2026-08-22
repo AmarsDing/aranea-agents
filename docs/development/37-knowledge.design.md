@@ -398,13 +398,13 @@ type Usecase struct {
     lg loggateway.Logger
 }
 
-func (uc *Usecase) CreateCollection(ctx context.Context, in Collection) (Collection, error)
+func (uc *Usecase) CreateCollection(ctx context.Context, in Collection) (Collection, error) // embedding_model 可选；空 = 词法库
 func (uc *Usecase) GetCollection(ctx context.Context, id string) (Collection, error)
 func (uc *Usecase) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 func (uc *Usecase) DeleteCollection(ctx context.Context, id string) error
 func (uc *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
 // EnsureDefaultCollection — US-14：返回「默认知识库」，不存在则懒创建（name=默认知识库，
-// embedding_model/dim 取当前 Embedder 配置）。上传免预选的兜底出口。
+// team Vault；embedding_model/dim 可空 = 词法收件箱）。上传免预选的兜底出口。
 func (uc *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int, ws string) (Collection, error)
 func (repo CollectionRepo) GetCollectionByName(ctx context.Context, workspace, name string) (Collection, error)
 
@@ -1237,7 +1237,7 @@ collection 留空
 
 **关键设计决策**：
 
-- **默认知识库懒创建**：首个免选上传时创建（`name="默认知识库"`，`embedding_model`/`dim` 取当前 Embedder 配置）；`GetCollectionByName(workspace, name)` 精确复用，`(workspace, name)` 唯一索引防并发双建；不引入 is_default 标记列。
+- **默认知识库懒创建**：首个免选上传时创建（`name="默认知识库"`，`vault_backend=team`，PG 即真相源）。`embedding_model`/`dim` 取当前 Embedder 配置，**未配置则建词法收件箱**；`GetCollectionByName(workspace, name)` 精确复用，`(workspace, name)` 唯一索引防并发双建；不引入 is_default 标记列。语义层是后续 `EnableCollectionSemantic` 升级，不是创建门槛。
 - **MoveDocument dim 校验**：目标库 `dim` 与源库不一致时拒绝移动（`CodeConflict`）——pgvector 列维度固定，跨 dim 移动会导致向量不可检索；用户需删除后重新入库。同 dim 移动保留原向量，无需重 embedding。
 - **MoveDocument 事务**：单事务内 `UPDATE knowledge_documents.collection_id` + `UPDATE knowledge_chunks.collection_id` + 源库计数 `-1/-chunkCount` + 目标库计数 `+1/+chunkCount`，失败整体回滚。
 - **工具零库行为**：系统无任何 Collection 时工具返回 `chunks=[]` 空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
@@ -1768,7 +1768,7 @@ UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──�
 
 1. **现有中文全文检索实际已失效**：[knowledge.go:514-517](../../internal/data/knowledge.go#L514-L517) 的 `ts_rank(to_tsvector('simple', ...))` 双重问题——`ts_rank` 无 IDF/无 TF 饱和（弱 BM25）；更严重的是 PG `simple` 分词对 CJK 不切分（需 zhparser/pg_jieba），连续中文归为单一 token，中文查询几乎只能整串精确命中。**强 BM25 自研栈不是「优化」而是「修复」**。
 2. **FTS5 前车之鉴**：项目曾有 `messages_fts`（SQLite FTS5），因虚拟表+触发器与核心业务表耦合，演进时被整体移除（[20260902_drop_messages_subsystem.sql](../../internal/data/sql/migrations/20260902_drop_messages_subsystem.sql)）。知识库词法索引必须设计为完全独立的派生索引。
-3. **embedding 可选化破坏现有契约**：当前 CreateCollection 校验 `ErrEmbeddingModelRequired`（EmbeddingModel 必填；`Dim<=0` 时缺省 1536，无 dim 合法性校验），必须按 §V5 降级矩阵四条变更（R-4）。
+3. **embedding 可选化（R-4，2026-08-22 已落地）**：`CreateCollection` / `CreateVault` / `EnsureDefaultCollection` 均允许空 `embedding_model`（词法库）。`ErrEmbeddingModelRequired` 仅保留兼容别名，创建路径不再返回。语义层通过 `EnableCollectionSemantic` 升级。
 
 ### V12. 资源管理器 V2 改版（G1~G4，2026-07-29 评审通过）
 

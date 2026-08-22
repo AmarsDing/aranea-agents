@@ -222,8 +222,11 @@ type KnowledgeEmbedder interface {
 
 // Domain errors for knowledge biz layer — the Service layer maps these to apierror.
 var (
-	ErrUnavailable            = apierror.Internal("KNOWLEDGE", "knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
-	ErrNameRequired           = apierror.BadRequest("KNOWLEDGE", "name is required")
+	ErrUnavailable  = apierror.Internal("KNOWLEDGE", "knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
+	ErrNameRequired = apierror.BadRequest("KNOWLEDGE", "name is required")
+	// ErrEmbeddingModelRequired is kept for compatibility. Create paths no longer
+	// return it — an empty embedding_model is a lexical vault; EnableCollectionSemantic
+	// is the upgrade to a semantic layer.
 	ErrEmbeddingModelRequired = apierror.BadRequest("KNOWLEDGE", "embedding_model is required")
 	ErrIDRequired             = apierror.BadRequest("KNOWLEDGE", "id is required")
 	ErrCollectionIDRequired   = apierror.BadRequest("KNOWLEDGE", "collection_id is required")
@@ -300,6 +303,9 @@ func newKnowledgeID() string {
 }
 
 // CreateCollection validates and persists a new collection.
+// EmbeddingModel is optional (empty = lexical-only). Prefer CreateVault for
+// local/team vault semantics; this entry stays for callers that already
+// persist a Collection row without a filesystem root.
 func (u *Usecase) CreateCollection(ctx context.Context, in Collection) (Collection, error) {
 	if err := u.requireRepo(); err != nil {
 		return Collection{}, err
@@ -309,10 +315,7 @@ func (u *Usecase) CreateCollection(ctx context.Context, in Collection) (Collecti
 	if in.Name == "" {
 		return Collection{}, ErrNameRequired
 	}
-	if in.EmbeddingModel == "" {
-		return Collection{}, ErrEmbeddingModelRequired
-	}
-	if in.Dim <= 0 {
+	if in.EmbeddingModel != "" && in.Dim <= 0 {
 		in.Dim = 1536
 	}
 	if in.ID == "" {
@@ -592,7 +595,9 @@ func (u *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelt
 	return u.collections.UpdateCollectionCounts(ctx, id, docDelta, chunkDelta)
 }
 
-// EnsureDefaultCollection 返回「默认知识库」，不存在则按当前 Embedder 配置懒创建（US-14 上传免预选兜底）。
+// EnsureDefaultCollection 返回「默认知识库」，不存在则懒创建（US-14 上传免预选兜底）。
+// 默认收件箱是 team Vault（PG 即真相源，无 root_path / SyncEngine）。
+// embeddingModel 可空：空 = 词法收件箱；有值则同时绑语义层。
 // 按 name + workspace 精确匹配复用——不引入 is_default 标记列，避免多默认库歧义。
 // ws 为调用方 workspace（system 调用传 "" 表示共享库）；创建时盖章到 Collection，
 // 与 service 层 CreateCollection 的 C-01 租户盖章行为一致——否则懒创建的默认库
@@ -608,11 +613,16 @@ func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel st
 	if !apierror.IsCode(err, apierror.CodeNotFound) {
 		return Collection{}, err
 	}
-	created, err := u.CreateCollection(ctx, Collection{
+	model := strings.TrimSpace(embeddingModel)
+	if model == "" {
+		dim = 0
+	}
+	created, err := u.CreateVault(ctx, Collection{
 		Name:           DefaultCollectionName,
 		Description:    "未指定知识库的文档自动归入此处",
-		EmbeddingModel: embeddingModel,
+		EmbeddingModel: model,
 		Dim:            dim,
+		VaultBackend:   VaultBackendTeam,
 		Workspace:      ws,
 	})
 	if err == nil {

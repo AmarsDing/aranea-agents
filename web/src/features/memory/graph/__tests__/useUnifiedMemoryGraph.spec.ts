@@ -1,5 +1,6 @@
 // web/src/features/memory/graph/__tests__/useUnifiedMemoryGraph.spec.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import { ref, nextTick } from 'vue';
 import type { UnifiedMemoryGraph } from '../../types';
 
@@ -37,6 +38,7 @@ function sampleGraph(): UnifiedMemoryGraph {
 
 describe('useUnifiedMemoryGraph', () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     mockApi.mockReset();
   });
 

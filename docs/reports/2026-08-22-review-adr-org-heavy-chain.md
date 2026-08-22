@@ -45,7 +45,9 @@ ORG-FAST 已落地：组织剪枝、花名册绑人、Brief/Bulk、配方回放�
 4. **对人说话**仍是精灵；组织链不替代用户会话。
 5. **班底复用** = 配方槽位 + keys → 新 Team；同会话同目标未结束仍 `reuse_existing`。
 
-**拒绝**：每步员工产出都传到精灵；无剧本时每单让总经理自由拆解用户原话；复活 completed Team。
+**拒绝**：每步员工产出都传到精灵；无剧本时每单让总经理自由拆解用户原话；复活 completed Team；用 TaskPlanner 在重型无剧本时默默拆岗；把上行心跳当成调度栅栏。
+
+细则已写入设计 [§十三](../development/78-org-aware-orchestration.design.md#十三重型组织链2026-08-22-复审后)：早/晚分档、剧本 vs Planner、三管道、checkpoint、冲突表。实施任务见 development Phase 4（ORGFAST-40–47），跨公司发送仍是 ORGFAST-31（P3）。
 
 ## 后果
 
@@ -53,3 +55,7 @@ ORG-FAST 已落地：组织剪枝、花名册绑人、Brief/Bulk、配方回放�
 - M67 需增 `company_lead`（对称 `dept_lead`），本期设计、Phase 4 实施。
 - 跨公司通道与「任务内不检索/不创建公司」不矛盾：有第二棵公司节点才启用，创建仍走管理面。
 - 与 US-78-12 兼容：轻/中仍是协议 + 精灵汇总；重型增加组织横向/上行，精灵仍对人汇总。
+
+## 补记（横切，同日）
+
+组织链仍不接管执行内核。横切决议见 [crosscut 评审](./2026-08-22-review-org-heavy-chain-crosscut.md)：6KB 前缀硬顶、知识引用、记忆隔离、专项工具画像、确认五档、干预复用 Pause/Inject、汇总只吃 Brief。设计落点 §十四 / R14–R20；任务 ORGFAST-50–59。

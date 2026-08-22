@@ -329,6 +329,15 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | T8-5 | P1：Trust / Ops 拆分、注入动态、会话详情入口 | ✅ |
 | T8-6 | P2：L0 瀑布、L1 字段树、进化审批、PII 面板 | ✅ |
 | T8-7 | P3：全景 SQL 聚合、页编排拆分、全景/情景走 Store；同步 Sleep-time / L1 预算过时表述 | ✅ |
+| T8-8 | P4：浏览/进化/画像/L0L1 Agent IDOR；进化文案只记决议；图谱/激活走 Store | ✅ |
+
+### 改动文件清单（P4）
+
+| 层 | 文件 |
+|----|------|
+| service | `memory.go`、`memory_scope.go`、`memory_center_test.go` |
+| 前端 | i18n 进化文案、`useUnifiedMemoryGraph` / `useActivationReplay` 走 store |
+| docs | `memory.md` §23、`memory.design.md` J、本文 T8-8 |
 
 ### 改动文件清单（P3）
 

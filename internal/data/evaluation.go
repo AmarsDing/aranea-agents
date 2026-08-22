@@ -169,6 +169,15 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB, d Dialect) error {
 		`ALTER TABLE eval_case_results ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE eval_case_results ADD COLUMN trace_run_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_dataset_versions_ds_ver ON eval_dataset_versions (dataset_id, version)`,
+		`ALTER TABLE eval_runs ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_runs ADD COLUMN prompt TEXT NOT NULL DEFAULT ''`,
+		`DROP INDEX IF EXISTS idx_eval_runs_inflight`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_runs_inflight ON eval_runs (workspace_id, dataset_id, agent_id) WHERE status IN ('pending','running') AND experiment_id = ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_runs_inflight_exp ON eval_runs (workspace_id, dataset_id, agent_id, variant_label) WHERE status IN ('pending','running') AND experiment_id <> ''`,
+		`ALTER TABLE eval_runs ADD COLUMN tools TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_runs ADD COLUMN lease_until TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_runs ADD COLUMN judge_calls INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE eval_runs ADD COLUMN judge_tokens INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, s := range migrations {
 		// EVAL-07: only "column already exists" is benign on re-run. Any other
@@ -382,13 +391,15 @@ func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, 
 		  exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 		  pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
 		  error_message,started_at,finished_at,workspace_id,created_at,
-		  dataset_hash,dataset_version_id,dataset_version,experiment_id,variant_label)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		  dataset_hash,dataset_version_id,dataset_version,experiment_id,variant_label,model,prompt,
+		  tools,lease_until,judge_calls,judge_tokens)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		rn.ID, rn.DatasetID, rn.AgentID, rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
 		rn.PassAtK, rn.PassHatK, rn.TriggerSource, rn.NumRuns, normalizeEvalScoresJSON(rn.ScoresJSON),
 		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.WorkspaceID, rn.CreatedAt,
-		rn.DatasetHash, rn.DatasetVersionID, rn.DatasetVersion, rn.ExperimentID, rn.VariantLabel)
+		rn.DatasetHash, rn.DatasetVersionID, rn.DatasetVersion, rn.ExperimentID, rn.VariantLabel,
+		rn.Model, rn.Prompt, rn.Tools, rn.LeaseUntil, rn.JudgeCalls, rn.JudgeTokens)
 	if err != nil && r.data.Dialect().UniqueConstraintErr(err) {
 		return biz.EvalRun{}, apierror.Conflict("EVAL", "an evaluation run is already in flight for this dataset+agent")
 	}
@@ -399,7 +410,9 @@ const evalRunSelect = `SELECT id,dataset_id,agent_id,status,total_cases,complete
 	exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 	pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
 	error_message,started_at,finished_at,workspace_id,dataset_hash,created_at,
-	COALESCE(dataset_version_id,''),COALESCE(dataset_version,0),COALESCE(experiment_id,''),COALESCE(variant_label,'') FROM eval_runs`
+	COALESCE(dataset_version_id,''),COALESCE(dataset_version,0),COALESCE(experiment_id,''),COALESCE(variant_label,''),
+	COALESCE(model,''),COALESCE(prompt,''),COALESCE(tools,''),COALESCE(lease_until,''),
+	COALESCE(judge_calls,0),COALESCE(judge_tokens,0) FROM eval_runs`
 
 func normalizeEvalScoresJSON(raw string) string {
 	if strings.TrimSpace(raw) == "" {
@@ -414,7 +427,8 @@ func scanEvalRun(row interface{ Scan(dest ...any) error }) (biz.EvalRun, error) 
 		&rn.ExactMatchScore, &rn.ContainsMatchScore, &rn.LLMJudgeScore, &rn.ToolCallAccuracy,
 		&rn.PassAtK, &rn.PassHatK, &rn.TriggerSource, &rn.NumRuns, &rn.ScoresJSON,
 		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.WorkspaceID, &rn.DatasetHash, &rn.CreatedAt,
-		&rn.DatasetVersionID, &rn.DatasetVersion, &rn.ExperimentID, &rn.VariantLabel)
+		&rn.DatasetVersionID, &rn.DatasetVersion, &rn.ExperimentID, &rn.VariantLabel,
+		&rn.Model, &rn.Prompt, &rn.Tools, &rn.LeaseUntil, &rn.JudgeCalls, &rn.JudgeTokens)
 	return rn, entErrToBizErr(err, "EVAL")
 }
 
@@ -436,13 +450,15 @@ func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 	        exact_match_score=?,contains_match_score=?,llm_judge_score=?,tool_call_accuracy=?,
 	        pass_at_k=?,pass_hat_k=?,scores_json=?,
 	        error_message=?,started_at=?,finished_at=?,dataset_hash=?,
-	        dataset_version_id=?,dataset_version=?,experiment_id=?,variant_label=?
+	        dataset_version_id=?,dataset_version=?,experiment_id=?,variant_label=?,
+	        tools=?,lease_until=?,judge_calls=?,judge_tokens=?
 		 WHERE id=?`),
 		rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
 		rn.PassAtK, rn.PassHatK, normalizeEvalScoresJSON(rn.ScoresJSON),
 		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.DatasetHash,
-		rn.DatasetVersionID, rn.DatasetVersion, rn.ExperimentID, rn.VariantLabel, rn.ID)
+		rn.DatasetVersionID, rn.DatasetVersion, rn.ExperimentID, rn.VariantLabel,
+		rn.Tools, rn.LeaseUntil, rn.JudgeCalls, rn.JudgeTokens, rn.ID)
 	return entErrToBizErr(err, "EVAL")
 }
 
@@ -451,10 +467,14 @@ func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 // goroutine died with it. Mark failed so the UI stops showing phantom
 // "running" rows and trend queries exclude them.
 func (r *evalRepo) FailStaleRuns(ctx context.Context, cutoff time.Time) (int, error) {
+	nowTS := now()
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE eval_runs SET status='failed', error_message=?, finished_at=?
-		 WHERE status IN ('pending','running') AND created_at < ?`),
-		"interrupted: process restarted before run completion", now(), cutoff.UTC().Format(time.RFC3339))
+		 WHERE status IN ('pending','running') AND (
+		   (COALESCE(lease_until,'') <> '' AND lease_until < ?)
+		   OR (COALESCE(lease_until,'') = '' AND created_at < ?)
+		 )`),
+		"interrupted: process restarted before run completion", nowTS, nowTS, cutoff.UTC().Format(time.RFC3339))
 	if err != nil {
 		return 0, entErrToBizErr(err, "EVAL")
 	}

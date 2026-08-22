@@ -1,5 +1,6 @@
 // web/src/features/memory/graph/__tests__/useActivationReplay.spec.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import type { SpreadingActivationResponse } from '../../types';
 
 vi.mock('../../api', () => ({
@@ -45,6 +46,7 @@ function sampleResponse(): SpreadingActivationResponse {
 
 describe('useActivationReplay', () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     mockApi.mockReset();
     vi.useFakeTimers();
   });

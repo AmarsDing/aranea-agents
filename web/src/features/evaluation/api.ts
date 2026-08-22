@@ -32,6 +32,7 @@ import type {
   UpdateEvalGateInput,
   EvalTrendPoint,
   EvalRunComparison,
+  EvalDatasetVersion,
 } from './types';
 
 const svc = createEvaluationService();
@@ -76,6 +77,8 @@ function mapRun(raw: unknown): EvalRun {
     dataset_version: pickI32(r, 'dataset_version', 'datasetVersion'),
     experiment_id: pickStr(r, 'experiment_id', 'experimentId'),
     variant_label: pickStr(r, 'variant_label', 'variantLabel'),
+    model: pickStr(r, 'model', 'model'),
+    prompt: pickStr(r, 'prompt', 'prompt'),
   };
 }
 
@@ -205,6 +208,9 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
     metrics: input.metrics ?? '',
     numRuns: input.num_runs ?? 1,
     useUserSimulation: input.use_user_simulation ?? false,
+    model: input.model ?? '',
+    prompt: input.prompt ?? '',
+    datasetVersionId: input.dataset_version_id ?? '',
   });
   return mapRun(raw);
 }
@@ -216,7 +222,13 @@ export async function runExperiment(input: RunExperimentInput): Promise<{ experi
       metrics: input.metrics ?? '',
       numRuns: input.num_runs ?? 1,
       useUserSimulation: input.use_user_simulation ?? false,
-      variants: input.variants.map((v) => ({ agentId: v.agent_id, label: v.label ?? '' })),
+      datasetVersionId: input.dataset_version_id ?? '',
+      variants: input.variants.map((v) => ({
+        agentId: v.agent_id,
+        label: v.label ?? '',
+        model: v.model ?? '',
+        prompt: v.prompt ?? '',
+      })),
     }),
   );
   const itemsRaw = raw.items ?? raw.Items;
@@ -243,6 +255,23 @@ export async function listRuns(params: ListRunsParams = {}): Promise<ListRunsRes
 export async function getRun(id: string): Promise<EvalRun> {
   const raw = await svc.GetRun({ id });
   return mapRun(raw);
+}
+
+export async function listDatasetVersions(datasetId: string, limit = 50): Promise<EvalDatasetVersion[]> {
+  const res = asRecord(await svc.ListDatasetVersions({ datasetId, limit }));
+  const itemsRaw = res.items ?? res.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  return itemsRaw.map((raw) => {
+    const r = asRecord(raw);
+    return {
+      id: pickStr(r, 'id', 'id'),
+      dataset_id: pickStr(r, 'dataset_id', 'datasetId'),
+      version: pickI32(r, 'version', 'version'),
+      hash: pickStr(r, 'hash', 'hash'),
+      case_count: pickI32(r, 'case_count', 'caseCount'),
+      created_at: pickStr(r, 'created_at', 'createdAt'),
+    };
+  });
 }
 
 export async function deleteRun(id: string): Promise<void> {
@@ -301,6 +330,8 @@ function mapRunComparison(raw: unknown): EvalRunComparison {
     dataset_version: pickI32(r, 'dataset_version', 'datasetVersion'),
     experiment_id: pickStr(r, 'experiment_id', 'experimentId'),
     variant_label: pickStr(r, 'variant_label', 'variantLabel'),
+    model: pickStr(r, 'model', 'model'),
+    prompt: pickStr(r, 'prompt', 'prompt'),
   };
 }
 

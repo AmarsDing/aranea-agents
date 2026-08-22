@@ -36,6 +36,7 @@ import {
   reviewPIIFact,
   getMemoryLayerOverview,
   getMemoryEpisodes,
+  getUnifiedMemoryGraph,
 } from '../../features/memory/api';
 import {
   MEMORY_SNAPSHOT_LIMIT,
@@ -64,6 +65,8 @@ import type {
   FactReviewPayload,
   MemoryEpisodeListResult,
   MemoryLayerOverview,
+  UnifiedMemoryGraph,
+  UnifiedMemoryGraphQuery,
 } from '../../features/memory/types';
 
 export type MemoryEvolutionBundle = {
@@ -327,6 +330,10 @@ export const useMemoryStore = defineStore('memory', () => {
     return getMemoryEpisodes(agentID, sessionID, limit, offset);
   }
 
+  async function loadUnifiedGraph(agentID: string, query: UnifiedMemoryGraphQuery = {}): Promise<UnifiedMemoryGraph> {
+    return getUnifiedMemoryGraph(agentID, query);
+  }
+
   return {
     snapshots,
     facts,
@@ -378,5 +385,6 @@ export const useMemoryStore = defineStore('memory', () => {
     reviewPII,
     loadLayerOverview,
     listEpisodes,
+    loadUnifiedGraph,
   };
 });

@@ -12,11 +12,12 @@
       {{ t('monitorPage.alerts.catalog.empty') }}
     </div>
     <div class="monitor-alert-catalog-grid">
-      <div v-for="m in metrics" :key="m.key" class="monitor-alert-metric-card q-pa-md rounded-borders">
+      <div v-for="m in metrics" :key="m.key" class="catalog-metric-card">
         <div class="row items-center no-wrap">
-          <div class="text-weight-medium ellipsis">{{ metricName(m) }}</div>
+          <q-icon name="speed" size="16px" class="catalog-metric-card__icon" />
+          <div class="text-weight-medium ellipsis q-ml-xs">{{ metricName(m) }}</div>
           <q-space />
-          <div class="text-h6 text-weight-bold monitor-alert-metric-value">
+          <div class="catalog-metric-card__value">
             {{ formatMetricValue(m.unit, m.current_value) }}
           </div>
         </div>
@@ -68,11 +69,34 @@ function metricDescription(m: AlertMetricInfo): string {
   gap: 12px;
 }
 
-.monitor-alert-metric-value {
+.catalog-metric-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent);
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.catalog-metric-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.catalog-metric-card__icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.catalog-metric-card__value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
 .monitor-alert-metric-key {
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 </style>

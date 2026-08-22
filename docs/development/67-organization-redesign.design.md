@@ -77,6 +77,7 @@ web/src/features/platform/                       ← 原 industries/（暂未重
 | `level` | 值变更 | `"industry"` → `"company"`，`"department"` / `"position"` 不变 |
 | `dept_lead_agent_id` | **新增** | string, Default(""), 仅 department 级节点使用 |
 | `dept_lead_config_json` | **新增** | text, 默认 `"{}"`，部门主管配置覆盖 |
+| `company_lead_agent_id` | **规划（M78 Phase 4）** | string, Default("")，仅 company 级节点；对称 `dept_lead`，启发式不可分配。见 [重型组织链 ADR](../reports/2026-08-22-review-adr-org-heavy-chain.md) |
 
 **Ent Schema 关键定义**（与代码一致）：
 

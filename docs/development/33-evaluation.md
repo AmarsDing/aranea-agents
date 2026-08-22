@@ -264,7 +264,7 @@ UserSim 与 LLM-as-Judge 共用 Provider 目录凭证；模型解析优先级：
 14. 用例级 rubric 可录入并注入 judge 准则（US-12）
 15. 发布质量门禁可按 Agent 配置，advisory 通知 / blocking 阻断可选（无基线时硬阻断）（US-13）
 16. 数据集编辑产生不可变版本，run 绑定 version；对比按版本/hash 提示不可比
-17. 同一数据集可对多个 Agent 开实验矩阵；无检索时 faithfulness 记 N/A
+17. 同一数据集可对多个 Agent / 模型开实验矩阵（可选提示词覆盖）；无检索时 faithfulness 记 N/A；可钉住历史版本重跑
 18. 失败用例如写入 Learning Loop；结果可跳监控 Trace
 16. 在线评估采样率可配、趋势按触发来源拆分、分数连跌触发系统通知（US-14）
 17. 失败用例按错误信息归组可查（US-15）

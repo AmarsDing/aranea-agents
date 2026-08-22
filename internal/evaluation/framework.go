@@ -183,7 +183,7 @@ func (b *FrameworkBridge) Execute(
 				if rd.Inference.ErrorMessage != "" {
 					res.ErrorMessage = normalizeCaseErrorMessage(rd.Inference.ErrorMessage)
 				}
-				applyFaithfulness(&res, inv)
+				applyRAGMetrics(ctx, &res, inv, bc.Input, b.judgeRunner)
 				if inv.ExecutionTrace != nil {
 					res.SessionID = inv.ExecutionTrace.SessionID
 					res.TraceRunID = inv.ExecutionTrace.RootInvocationID

@@ -2223,3 +2223,13 @@ Chip 无 `fact_id` 时：L3 用 `line` 作 keyword；L2/L1 进 browse 对应层�
 
 前端：`useMemoryCenterPage` 只做深链 / Agent / 会话编排；facts、L0/L1、Trust 分别在 `useMemoryCenterFacts` / `useMemoryCenterSessionMemory` / `useMemoryCenterTrust`。全景与情景经 `useMemoryStore.loadLayerOverview` / `listEpisodes`。
 
+### J. 浏览/信任口 IDOR 与进化诚实语义（P4）
+
+`assertAgentMemoryAccess` 扩展到带 `agent_id` 的明细 RPC：`ListMemoryFacts`、`ListConflictingFacts`、`ListCascadeProposals`、`GetAgentIdentity`/`GetAgentStrategy`、进化列表/指标/`AppendEvolutionEvent`、`ListL0Snapshots`/`ListL1Tasks`/`ListL1Fields`（有 agent 时）、`UpsertMemoryFact`。`scope_type=agent` 时对 `scope_id` 同样断言。跨租户仍 NotFound。
+
+级联按 proposal id 的写口（Approve/Reject/Retry）本轮不改：需先读出行上的 `agent_id` 再断言，单开后续。
+
+进化批准副作用维持状态机（`pending→approved/rejected`、`reverted=1`），**不**自动 apply identity/strategy。Trust 文案必须写明「只记决议」。
+
+图谱 / 扩散激活改经 `useMemoryStore.loadUnifiedGraph` / `fetchSpreadingActivation`。
+

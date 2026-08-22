@@ -16,7 +16,7 @@ import (
 //
 // SelfImprovementApplyUsecase drives runs from applying to observing:
 //
-//	applying ──kind 路由──► SIApplier（热加载 / 代码合并）
+//	applying ──kind 路由──► SIApplier（热加载 / 代码落分支）
 //	    │ 冲突（ErrSIMergeConflict）──► awaiting_governance + channel=approval（D7 转人工）
 //	    │ 其他错误 ──► failed（终态）
 //	    ▼ 成功
@@ -149,7 +149,7 @@ func (uc *SelfImprovementApplyUsecase) Apply(ctx context.Context, runID string) 
 }
 
 // applyByKind routes the run to the matching applier channel (D7):
-// code/test → git 合并；config/prompt/docs → 热加载。
+// code/test → self-improve/<runID> 分支（不合并当前 HEAD）；config/prompt/docs → 热加载。
 func (uc *SelfImprovementApplyUsecase) applyByKind(ctx context.Context, run *SelfImprovementRun) error {
 	switch run.PatchKind {
 	case PatchKindCode, PatchKindTest:
@@ -158,7 +158,7 @@ func (uc *SelfImprovementApplyUsecase) applyByKind(ctx context.Context, run *Sel
 			return err
 		}
 		run.AppliedCommit = sha
-		uc.annotateApply(run, siApplyChannelCode, siApplyEffectiveRestart, false)
+		uc.annotateApply(run, siApplyChannelCode, siApplyEffectiveMerge, false)
 		return nil
 	case PatchKindConfig, PatchKindPrompt, PatchKindDocs:
 		ref, err := uc.applier.ApplyHotReload(ctx, run)
@@ -180,11 +180,11 @@ func (uc *SelfImprovementApplyUsecase) applyByKind(ctx context.Context, run *Sel
 
 const (
 	siMetaApplySemantics    = "apply_semantics"
-	siApplyChannelCode      = "code_merge"
-	siApplyChannelTree      = "working_tree"
-	siApplyEffectiveRestart = "next_restart"
-	siApplyEffectiveRead    = "next_file_read"
-	siApplyEffectiveLive    = "runtime_reloaded"
+	siApplyChannelCode    = "code_branch"
+	siApplyChannelTree    = "working_tree"
+	siApplyEffectiveMerge = "explicit_merge"
+	siApplyEffectiveRead  = "next_file_read"
+	siApplyEffectiveLive  = "runtime_reloaded"
 )
 
 func (uc *SelfImprovementApplyUsecase) tryRuntimeReload(ctx context.Context, run *SelfImprovementRun) bool {

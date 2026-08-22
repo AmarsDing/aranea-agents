@@ -532,3 +532,38 @@ func TestPlanSIVerification_KindAwareGates(t *testing.T) {
 		t.Error("web-only must schedule web lint")
 	}
 }
+
+func TestParseGoTestFailures(t *testing.T) {
+	names, setup := ParseGoTestFailures("--- FAIL: TestFoo (0.01s)\n--- FAIL: TestBar/sub (0.00s)\nFAIL\tpkg\t0.02s\n")
+	if setup || len(names) != 2 || names[0] != "TestFoo" || names[1] != "TestBar/sub" {
+		t.Fatalf("names=%v setup=%v", names, setup)
+	}
+	_, setup = ParseGoTestFailures("# pkg [pkg.test]\nFAIL\tpkg [setup failed]\n")
+	if !setup {
+		t.Fatal("setup failed must be detected")
+	}
+}
+
+func TestApplyKnownFailExemption(t *testing.T) {
+	failed := SandboxGateResult{
+		Gate: SandboxGateTest, Passed: false,
+		Output: "--- FAIL: TestOld (0.01s)\nFAIL\tpkg\t0.02s\n",
+	}
+	got := ApplyKnownFailExemption(failed, []string{"TestOld"})
+	if !got.Passed || !strings.Contains(got.Output, "exempted HEAD-known") {
+		t.Fatalf("same HEAD failure must be exempted: %+v", got)
+	}
+	mixed := failed
+	mixed.Output = "--- FAIL: TestOld (0.01s)\n--- FAIL: TestNew (0.00s)\n"
+	got = ApplyKnownFailExemption(mixed, []string{"TestOld"})
+	if got.Passed {
+		t.Fatal("new failure must not be exempted")
+	}
+	compile := SandboxGateResult{
+		Gate: SandboxGateTest, Passed: false,
+		Output: "FAIL\tpkg [setup failed]\n",
+	}
+	if ApplyKnownFailExemption(compile, []string{"TestOld"}).Passed {
+		t.Fatal("setup/compile failure must not be exempted")
+	}
+}

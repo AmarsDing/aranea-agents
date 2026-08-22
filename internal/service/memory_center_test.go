@@ -114,3 +114,79 @@ func TestGetMemoryLayerOverview_AgentACL(t *testing.T) {
 		t.Fatalf("expected NOT_FOUND, got %v", err)
 	}
 }
+
+func TestMemoryCenterAgentACL_BrowseAndTrust(t *testing.T) {
+	cross := NewMemoryService(MemoryServiceConfig{
+		Admin:   stubAdminUsecase(),
+		AgentUC: stubAgentCatalog{agent: biz.Agent{ID: "a1", WorkspaceID: "ws-other"}},
+	})
+	same := NewMemoryService(MemoryServiceConfig{
+		Admin:   stubAdminUsecase(),
+		AgentUC: stubAgentCatalog{agent: biz.Agent{ID: "a1", WorkspaceID: "ws-1"}},
+	})
+	ctx := userCtx("ws-1")
+
+	type call func(*MemoryService) error
+	cases := []struct {
+		name string
+		fn   call
+	}{
+		{"ListMemoryFacts", func(s *MemoryService) error {
+			_, err := s.ListMemoryFacts(ctx, &v1.ListMemoryFactsRequest{AgentId: "a1"})
+			return err
+		}},
+		{"ListConflictingFacts", func(s *MemoryService) error {
+			_, err := s.ListConflictingFacts(ctx, &v1.ListConflictingFactsRequest{AgentId: "a1"})
+			return err
+		}},
+		{"GetAgentIdentity", func(s *MemoryService) error {
+			_, err := s.GetAgentIdentity(ctx, &v1.GetAgentIdentityRequest{AgentId: "a1"})
+			return err
+		}},
+		{"GetAgentStrategy", func(s *MemoryService) error {
+			_, err := s.GetAgentStrategy(ctx, &v1.GetAgentStrategyRequest{AgentId: "a1"})
+			return err
+		}},
+		{"ListEvolutionProposals", func(s *MemoryService) error {
+			_, err := s.ListEvolutionProposals(ctx, &v1.ListEvolutionProposalsRequest{AgentId: "a1"})
+			return err
+		}},
+		{"ListEvolutionEvents", func(s *MemoryService) error {
+			_, err := s.ListEvolutionEvents(ctx, &v1.ListEvolutionEventsRequest{AgentId: "a1"})
+			return err
+		}},
+		{"GetEvolutionMetrics", func(s *MemoryService) error {
+			_, err := s.GetEvolutionMetrics(ctx, &v1.GetEvolutionMetricsRequest{AgentId: "a1"})
+			return err
+		}},
+		{"AppendEvolutionEvent", func(s *MemoryService) error {
+			_, err := s.AppendEvolutionEvent(ctx, &v1.AppendEvolutionEventRequest{AgentId: "a1", EventKind: "proposal_approved"})
+			return err
+		}},
+		{"ListL0Snapshots", func(s *MemoryService) error {
+			_, err := s.ListL0Snapshots(ctx, &v1.ListL0SnapshotsRequest{SessionId: "s1", AgentId: "a1"})
+			return err
+		}},
+		{"ListL1Tasks", func(s *MemoryService) error {
+			_, err := s.ListL1Tasks(ctx, &v1.ListL1TasksRequest{SessionId: "s1", AgentId: "a1"})
+			return err
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name+"_cross_tenant", func(t *testing.T) {
+			err := tc.fn(cross)
+			ae, ok := apierror.From(err)
+			if !ok || ae.Code != apierror.CodeNotFound {
+				t.Fatalf("expected NOT_FOUND, got %v", err)
+			}
+		})
+		t.Run(tc.name+"_same_tenant_reaches_biz", func(t *testing.T) {
+			err := tc.fn(same)
+			ae, ok := apierror.From(err)
+			if !ok || ae.Code != apierror.CodeInternal {
+				t.Fatalf("expected INTERNAL from biz wiring guard, got %v", err)
+			}
+		})
+	}
+}

@@ -197,7 +197,7 @@ func TestSIRepoApplier_ApplyRejectsEmptyDiff(t *testing.T) {
 	}
 	run.PatchKind = biz.PatchKindCode
 	if _, err := a.ApplyCodeMerge(context.Background(), run); err == nil {
-		t.Error("empty diff should fail (code merge)")
+		t.Error("empty diff should fail (code branch)")
 	}
 }
 
@@ -221,7 +221,7 @@ index 0000000..2f259b7
 +# note
 `
 
-func TestSIRepoApplier_ApplyCodeMerge_FastForward(t *testing.T) {
+func TestSIRepoApplier_ApplyCodeMerge_LandsOnBranchOnly(t *testing.T) {
 	repo := initFixtureGoRepo(t)
 	a := newApplierFixture(t, repo)
 	headBefore := gitOut(t, repo, "rev-parse", "HEAD")
@@ -234,34 +234,39 @@ func TestSIRepoApplier_ApplyCodeMerge_FastForward(t *testing.T) {
 	if len(sha) != 40 {
 		t.Errorf("commitSHA = %q, want 40-hex", sha)
 	}
-
-	// Main branch fast-forwarded to the patch commit.
-	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != sha {
-		t.Errorf("HEAD = %q, want %q", got, sha)
-	}
-	if gitOut(t, repo, "rev-parse", "HEAD~1") != headBefore {
-		t.Error("merge was not a fast-forward (history rewritten)")
+	if run.Branch != "self-improve/run-cm1" {
+		t.Errorf("run.Branch = %q, want self-improve/run-cm1", run.Branch)
 	}
 
-	// Commit message carries the self-improvement markers (design D7).
-	msg := gitOut(t, repo, "log", "-1", "--format=%B")
+	// Current HEAD / working tree must stay untouched.
+	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != headBefore {
+		t.Errorf("HEAD moved to %q, want still %q", got, headBefore)
+	}
+	if got := readFile(t, repo, "main.go"); !strings.Contains(got, `"hi"`) {
+		t.Errorf("main.go mutated on current branch: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "docs", "note.md")); !os.IsNotExist(err) {
+		t.Error("note.md should not exist on the current working tree")
+	}
+
+	// Commit lives only on the self-improve branch.
+	if !gitBranchExists(t, repo, "self-improve/run-cm1") {
+		t.Fatal("patch branch should be kept")
+	}
+	if got := gitOut(t, repo, "rev-parse", "self-improve/run-cm1"); got != sha {
+		t.Errorf("branch tip = %q, want %q", got, sha)
+	}
+	msg := gitOut(t, repo, "log", "-1", "--format=%B", sha)
 	if !strings.Contains(msg, "self-improvement: true") {
 		t.Errorf("commit message missing self-improvement trailer: %q", msg)
 	}
 	if !strings.Contains(msg, "run-id: run-cm1") {
 		t.Errorf("commit message missing run-id trailer: %q", msg)
 	}
+	if got := gitOut(t, repo, "show", sha+":main.go"); !strings.Contains(got, "applied") {
+		t.Errorf("branch commit main.go = %q", got)
+	}
 
-	// Patch content landed; worktree + branch are gone.
-	if got := readFile(t, repo, "main.go"); !strings.Contains(got, "applied") {
-		t.Errorf("main.go not patched: %q", got)
-	}
-	if got := readFile(t, repo, "docs/note.md"); got != "# note\n" {
-		t.Errorf("note.md = %q", got)
-	}
-	if gitBranchExists(t, repo, "self-improve/run-cm1") {
-		t.Error("patch branch should be deleted after merge")
-	}
 	entries, _ := os.ReadDir(filepath.Join(repo, defaultWorktreeRoot))
 	for _, e := range entries {
 		if e.Name() != "snapshots" {
@@ -301,9 +306,10 @@ func TestSIRepoApplier_ApplyCodeMerge_DriftConflictFailsCleanly(t *testing.T) {
 	}
 }
 
-func TestSIRepoApplier_Rollback_CodeRevert(t *testing.T) {
+func TestSIRepoApplier_Rollback_DropsCodeBranch(t *testing.T) {
 	repo := initFixtureGoRepo(t)
 	a := newApplierFixture(t, repo)
+	headBefore := gitOut(t, repo, "rev-parse", "HEAD")
 
 	run := &biz.SelfImprovementRun{ID: "run-cm3", PatchKind: biz.PatchKindCode, Diff: codeMergeDiff}
 	sha, err := a.ApplyCodeMerge(context.Background(), run)
@@ -315,18 +321,17 @@ func TestSIRepoApplier_Rollback_CodeRevert(t *testing.T) {
 	if err := a.Rollback(context.Background(), run, "watchdog: error rate +80%"); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
-	head := gitOut(t, repo, "rev-parse", "HEAD")
-	if head == sha {
-		t.Error("revert should create a new commit on top")
+	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != headBefore {
+		t.Errorf("HEAD moved after branch-drop rollback: %q", got)
 	}
-	if subj := gitOut(t, repo, "log", "-1", "--format=%s"); !strings.Contains(subj, "Revert") {
-		t.Errorf("revert commit subject = %q", subj)
+	if subj := gitOut(t, repo, "log", "-1", "--format=%s"); strings.Contains(subj, "Revert") {
+		t.Errorf("rollback must not create a revert commit, subject = %q", subj)
+	}
+	if gitBranchExists(t, repo, "self-improve/run-cm3") {
+		t.Error("patch branch should be deleted on rollback")
 	}
 	if got := readFile(t, repo, "main.go"); !strings.Contains(got, `"hi"`) {
-		t.Errorf("main.go not reverted: %q", got)
-	}
-	if _, err := os.Stat(filepath.Join(repo, "docs", "note.md")); !os.IsNotExist(err) {
-		t.Error("added file should be removed by revert")
+		t.Errorf("current tree should stay original: %q", got)
 	}
 }
 
@@ -341,23 +346,24 @@ func TestSIRepoApplier_Rollback_IdempotentDoubleRevert(t *testing.T) {
 	}
 	run.AppliedCommit = sha
 
-	// 第一次 rollback：正常 revert。
+	headBefore := gitOut(t, repo, "rev-parse", "HEAD")
 	if err := a.Rollback(context.Background(), run, "watchdog: regression"); err != nil {
 		t.Fatalf("first Rollback: %v", err)
 	}
-	headAfterFirst := gitOut(t, repo, "rev-parse", "HEAD")
+	if gitBranchExists(t, repo, "self-improve/run-cm5") {
+		t.Fatal("branch should be gone after first rollback")
+	}
 
 	// R3：admin 与 watchdog 基于同一 observing 快照并发进入 Rollback 时，
-	// 第二次调用必须幂等——否则 git revert 一个已 revert 的 commit 会生成
-	// revert-of-revert，已回滚的补丁静默复活（DB 却显示 rolled_back）。
+	// 第二次调用必须幂等——分支已删时不得报错，也不得动当前 HEAD。
 	if err := a.Rollback(context.Background(), run, "admin concurrent"); err != nil {
 		t.Fatalf("second Rollback should be idempotent nil: %v", err)
 	}
-	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != headAfterFirst {
-		t.Errorf("double rollback moved HEAD (%s → %s): revert-of-revert resurrected the patch", headAfterFirst, got)
+	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != headBefore {
+		t.Errorf("double rollback moved HEAD (%s → %s)", headBefore, got)
 	}
 	if got := readFile(t, repo, "main.go"); !strings.Contains(got, `"hi"`) {
-		t.Errorf("main.go should stay reverted: %q", got)
+		t.Errorf("current tree should stay original: %q", got)
 	}
 }
 

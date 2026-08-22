@@ -43,6 +43,9 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 - `internal/evaluation/drop_alert.go` — 在线分数连跌告警 ScoreDropAlerter（P2-2）
 - `internal/evaluation/redteam.go` + `internal/evaluation/testdata/` — 红队攻击成功率指标 + 预制对抗用例集（P3-4）
 - `internal/evaluation/dataset_hash.go` — 数据集版本快照 hash（P3-5）
+- `internal/evaluation/faithfulness.go` / `faithfulness_judge.go` — RAG faithfulness（judge 优先，词面回落）
+- `internal/biz/evaluation/variant.go` — 实验变体标签 / 提示词覆盖 / ctx
+- `web/src/components/evaluation/EvaluationVersionsDialog.vue` — 数据集版本列表 + 钉住重跑
 - `internal/data/ent/schema/eval_gate_config.go` / `eval_run_preference.go` — P2/P3 新增 Ent Schema
 - `web/src/components/evaluation/EvaluationGateDialog.vue` — 发布门禁配置对话框（P2-1）
 - `web/src/pages/EvaluationPage.vue` — 管理页 `/evaluation`
@@ -232,6 +235,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | 31 | 门禁异步化测试重写（`gate_test.go`：below-floor/drop advisory + 无基线阻断 + in-flight 去重；`runner_test.go` Y7 回归） | P1 | ✅ |
 | 32 | 评估治理 P1：Run FSM、per-agent 门禁 advisory\|blocking、in-flight 部分唯一索引、并发槽、Prometheus、FailStaleRuns grace、趋势曲线 | P1 | ✅ |
 | 33 | 评估平台 P2：数据集版本、实验矩阵、faithfulness、失败 Observation、结果跳 Trace、门禁 composable 拆分 | P2 | ✅ |
+| 34 | 评估平台加深：实验矩阵 model/prompt、faithfulness LLM judge（词面回落）、钉住版本重跑 + 版本列表 UI | P3 | ✅ |
 
 ---
 

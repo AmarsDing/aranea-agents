@@ -2,6 +2,7 @@ import type { QTableColumn } from 'quasar';
 import type {
   EvalCase,
   EvalCaseResult,
+  EvalDatasetVersion,
   EvalFailureGroup,
   EvalRun,
   EvalRunComparison,
@@ -15,6 +16,7 @@ import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryT
 export const EVAL_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
   registryCol<EvalRun>('id', 'Run ID', 'id', 'left', REGISTRY_COL_W.agent),
   registryCol<EvalRun>('agent_id', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.agent),
+  registryCol<EvalRun>('variant_label', '变体', (r) => r.variant_label || r.model || '', 'left', REGISTRY_COL_W.agent),
   registryCol<EvalRun>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
   registryCol<EvalRun>(
     'completed_cases',
@@ -25,6 +27,15 @@ export const EVAL_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
   ),
   registryCol<EvalRun>('exact_match_score', 'Exact', 'exact_match_score', 'right', REGISTRY_COL_W.narrow),
   registryColActions<EvalRun>(REGISTRY_COL_W.actions, ''),
+];
+
+/** EvaluationPage — dataset versions */
+export const EVAL_VERSION_TABLE_COLUMNS: QTableColumn<EvalDatasetVersion>[] = [
+  registryCol<EvalDatasetVersion>('version', 'Version', 'version', 'left', REGISTRY_COL_W.narrow),
+  registryCol<EvalDatasetVersion>('hash', 'Hash', 'hash', 'left', REGISTRY_COL_W.agent),
+  registryCol<EvalDatasetVersion>('case_count', 'Cases', 'case_count', 'right', REGISTRY_COL_W.narrow),
+  registryCol<EvalDatasetVersion>('created_at', '时间', 'created_at', 'left', REGISTRY_COL_W.time),
+  registryColActions<EvalDatasetVersion>(REGISTRY_COL_W.actions, ''),
 ];
 
 /** EvaluationPage — dataset case list */

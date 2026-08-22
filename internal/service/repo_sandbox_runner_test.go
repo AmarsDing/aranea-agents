@@ -457,6 +457,51 @@ func TestRepoSandboxRunner_G2TestScopedPkgs(t *testing.T) {
 	}
 }
 
+func TestRepoSandboxRunner_ProbeTestFailures(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	writeFile(t, repo, "pkg/foo/foo_test.go",
+		"package foo\n\nimport \"testing\"\n\nfunc TestAlwaysRed(t *testing.T) {\n\tt.Fatal(\"head red\")\n}\n")
+	cmd := exec.Command("git", "add", ".")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "-m", "red test")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+
+	r := newTestRunner(t, repo)
+	path, cleanup, err := r.PrepareWorktree(context.Background(), "run-probe", "")
+	if err != nil {
+		t.Fatalf("PrepareWorktree: %v", err)
+	}
+	defer cleanup()
+
+	names, err := r.ProbeTestFailures(context.Background(), path, []string{"./pkg/foo/..."})
+	if err != nil {
+		t.Fatalf("ProbeTestFailures: %v", err)
+	}
+	found := false
+	for _, n := range names {
+		if n == "TestAlwaysRed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("probe names = %v, want TestAlwaysRed", names)
+	}
+	res, err := r.RunGate(context.Background(), path, biz.SandboxGateTest, []string{"./pkg/foo/..."})
+	if err != nil {
+		t.Fatalf("RunGate: %v", err)
+	}
+	got := biz.ApplyKnownFailExemption(res, names)
+	if !got.Passed {
+		t.Fatalf("HEAD-known failure should be exempted, output=%s", got.Output)
+	}
+}
+
 func TestRepoSandboxRunner_G3Vet(t *testing.T) {
 	repo := initFixtureGoRepo(t)
 	r := newTestRunner(t, repo)

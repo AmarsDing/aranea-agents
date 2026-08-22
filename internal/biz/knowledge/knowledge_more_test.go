@@ -377,6 +377,9 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 			if c.Dim != 768 {
 				t.Errorf("Dim = %d, want 768", c.Dim)
 			}
+			if c.VaultBackend != VaultBackendTeam {
+				t.Errorf("VaultBackend = %q, want team inbox", c.VaultBackend)
+			}
 			c.ID = "col-new-default"
 			return c, nil
 		}
@@ -390,12 +393,31 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 		}
 	})
 
-	t.Run("empty embedding model rejected on create path", func(t *testing.T) {
+	t.Run("empty embedding model creates lexical team inbox", func(t *testing.T) {
 		mr := noOpMockRepo()
+		mr.collCreateFn = func(_ context.Context, c Collection) (Collection, error) {
+			if c.EmbeddingModel != "" {
+				t.Errorf("EmbeddingModel = %q, want empty", c.EmbeddingModel)
+			}
+			if c.Dim != 0 {
+				t.Errorf("Dim = %d, want 0 when model is empty", c.Dim)
+			}
+			if c.VaultBackend != VaultBackendTeam {
+				t.Errorf("VaultBackend = %q, want team", c.VaultBackend)
+			}
+			if c.RootPath != "" {
+				t.Errorf("RootPath = %q, want empty team inbox", c.RootPath)
+			}
+			c.ID = "col-lex-default"
+			return c, nil
+		}
 		u := NewUsecaseFromRepo(mr)
-		_, err := u.EnsureDefaultCollection(context.Background(), "", 1536, "")
-		if !errors.Is(err, ErrEmbeddingModelRequired) {
-			t.Errorf("error = %v, want ErrEmbeddingModelRequired", err)
+		got, err := u.EnsureDefaultCollection(context.Background(), "", 1536, "")
+		if err != nil {
+			t.Fatalf("EnsureDefaultCollection error: %v", err)
+		}
+		if got.ID != "col-lex-default" {
+			t.Errorf("ID = %q, want col-lex-default", got.ID)
 		}
 	})
 

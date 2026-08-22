@@ -1,7 +1,7 @@
 // Service: 扩散激活回放 — 调 SpreadingActivation API，按 hop_count 分组，定时器逐跳点亮节点/边。
 import { computed, ref, readonly } from 'vue';
-import { getSpreadingActivation } from '../../api';
 import type { SpreadingActivationResult, ActivationPathStep } from '../../types';
+import { useMemoryStore } from '../../../../stores/memory';
 
 export const HOP_INTERVAL_MS = 600;
 const REPLAY_HOPS = 3;
@@ -9,6 +9,7 @@ const REPLAY_TOP_K = 20;
 
 /** 扩散激活回放状态机：replay → playing → done / stop。 */
 export function useActivationReplay() {
+  const memoryStore = useMemoryStore();
   const playing = ref(false);
   const error = ref('');
   const centerId = ref('');
@@ -83,7 +84,7 @@ export function useActivationReplay() {
     centerId.value = id;
 
     try {
-      const res = await getSpreadingActivation(id, { hops: REPLAY_HOPS, top_k: REPLAY_TOP_K });
+      const res = await memoryStore.fetchSpreadingActivation(id, { hops: REPLAY_HOPS, top_k: REPLAY_TOP_K });
       results.value = res.items;
       maxHop = res.items.reduce((max, r) => Math.max(max, r.hop_count), 0);
 

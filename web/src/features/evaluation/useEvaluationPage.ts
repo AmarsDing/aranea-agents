@@ -9,15 +9,22 @@ import type {
   EvalFailureGroup,
   EvalRun,
   EvalRunComparison,
+  EvalDatasetVersion,
   EvalRunPreference,
   EvalTrendPoint,
+  ExperimentVariant,
   JudgeDivergence,
 } from './types';
 import { useEvaluationStore } from '../../stores/evaluation';
 import { exportEvalRunCsv, exportEvalRunJson } from './exportRunResults';
 import { useEvalRunPolling, hasActiveRuns } from './useEvalRunPolling';
 import { EVAL_RESULTS_PAGE_SIZE_DEFAULT, EVAL_RUNS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
-import { EVAL_CASE_TABLE_COLUMNS, EVAL_RESULT_TABLE_COLUMNS, EVAL_RUN_TABLE_COLUMNS } from './evaluationTableUi';
+import {
+  EVAL_CASE_TABLE_COLUMNS,
+  EVAL_RESULT_TABLE_COLUMNS,
+  EVAL_RUN_TABLE_COLUMNS,
+  EVAL_VERSION_TABLE_COLUMNS,
+} from './evaluationTableUi';
 import { useEvaluationGate } from './useEvaluationGate';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
 
@@ -101,7 +108,16 @@ export function useEvaluationPage() {
     num_runs: 1,
     use_user_simulation: false,
     extra_agent_ids: [] as string[],
+    model: '',
+    extra_models: [] as string[],
+    prompt: '',
+    dataset_version_id: '',
+    dataset_version: 0,
   });
+  const versionsOpen = ref(false);
+  const versionsLoading = ref(false);
+  const versions = ref<EvalDatasetVersion[]>([]);
+  const versionColumns = EVAL_VERSION_TABLE_COLUMNS;
   const uploadOpen = ref(false);
   const uploadLoading = ref(false);
   const uploadText = ref('');
@@ -398,6 +414,46 @@ export function useEvaluationPage() {
     );
   }
 
+  function buildExperimentVariants(): ExperimentVariant[] {
+    const agents = [
+      runForm.value.agent_id,
+      ...runForm.value.extra_agent_ids.filter((id) => id && id !== runForm.value.agent_id),
+    ];
+    const models = [
+      runForm.value.model.trim(),
+      ...runForm.value.extra_models.map((m) => m.trim()).filter(Boolean),
+    ].filter((m, i, all) => all.indexOf(m) === i);
+    const modelAxis = models.length ? models : [''];
+    const prompt = runForm.value.prompt.trim();
+    const out: ExperimentVariant[] = [];
+    for (const agent_id of agents) {
+      for (const model of modelAxis) {
+        out.push({ agent_id, model: model || undefined, prompt: prompt || undefined });
+      }
+    }
+    return out;
+  }
+
+  async function openVersions() {
+    if (!selectedDatasetId.value) return;
+    versionsOpen.value = true;
+    versionsLoading.value = true;
+    try {
+      versions.value = await evaluationStore.loadVersions(selectedDatasetId.value);
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.versionsLoadFailed') });
+    } finally {
+      versionsLoading.value = false;
+    }
+  }
+
+  function runPinnedVersion(row: EvalDatasetVersion) {
+    runForm.value.dataset_version_id = row.id;
+    runForm.value.dataset_version = row.version;
+    versionsOpen.value = false;
+    runOpen.value = true;
+  }
+
   async function submitRun() {
     if (!selectedDatasetId.value || !runForm.value.agent_id) {
       $q.notify({ type: 'warning', message: '请选择 Agent' });
@@ -405,28 +461,31 @@ export function useEvaluationPage() {
     }
     runLoading.value = true;
     try {
-      const extras = runForm.value.extra_agent_ids.filter((id) => id && id !== runForm.value.agent_id);
-      if (extras.length) {
+      const variants = buildExperimentVariants();
+      const shared = {
+        dataset_id: selectedDatasetId.value,
+        metrics: runForm.value.metrics.trim() || undefined,
+        num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
+        use_user_simulation: runForm.value.use_user_simulation || undefined,
+        dataset_version_id: runForm.value.dataset_version_id || undefined,
+      };
+      if (variants.length > 1) {
         await evaluationStore.startExperiment({
-          dataset_id: selectedDatasetId.value,
-          metrics: runForm.value.metrics.trim() || undefined,
-          num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
-          use_user_simulation: runForm.value.use_user_simulation || undefined,
-          variants: [
-            { agent_id: runForm.value.agent_id, label: runForm.value.agent_id },
-            ...extras.map((id) => ({ agent_id: id, label: id })),
-          ],
+          ...shared,
+          variants,
         });
       } else {
+        const cell = variants[0];
         await evaluationStore.startRun({
-          dataset_id: selectedDatasetId.value,
-          agent_id: runForm.value.agent_id,
-          metrics: runForm.value.metrics.trim() || undefined,
-          num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
-          use_user_simulation: runForm.value.use_user_simulation || undefined,
+          ...shared,
+          agent_id: cell.agent_id,
+          model: cell.model,
+          prompt: cell.prompt,
         });
       }
       runOpen.value = false;
+      runForm.value.dataset_version_id = '';
+      runForm.value.dataset_version = 0;
       await loadRuns();
       $q.notify({ type: 'positive', message: '评估已提交' });
     } catch (e) {
@@ -774,6 +833,12 @@ export function useEvaluationPage() {
     cancelEvalRun,
     confirmDeleteRun,
     submitRun,
+    versionsOpen,
+    versionsLoading,
+    versions,
+    versionColumns,
+    openVersions,
+    runPinnedVersion,
     uploadOpen,
     uploadLoading,
     uploadText,

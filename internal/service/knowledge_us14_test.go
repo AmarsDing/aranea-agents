@@ -11,6 +11,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
@@ -311,6 +312,43 @@ func TestIngestDocument_EmptyCollection_FallsIntoDefaultCollection(t *testing.T)
 	}
 	if col.Dim != 1536 {
 		t.Errorf("default collection dim = %d, want 1536 (from embedder config)", col.Dim)
+	}
+	if col.VaultBackend != bizknowledge.VaultBackendTeam {
+		t.Errorf("default collection backend = %q, want team inbox", col.VaultBackend)
+	}
+}
+
+// 未配置 embedder 时仍懒创建词法「默认知识库」（I5：US-14 不依赖语义层）。
+func TestIngestDocument_EmptyCollection_LexicalWhenEmbedderMissing(t *testing.T) {
+	repo := newUS14MemRepo()
+	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+
+	raw := base64.StdEncoding.EncodeToString([]byte("lexical inbox without embedder"))
+	doc, err := svc.IngestDocument(context.Background(), &v1.IngestDocumentRequest{
+		CollectionId:  "",
+		Source:        "note.txt",
+		MimeType:      "text/plain",
+		ContentBase64: raw,
+	})
+	if err != nil {
+		t.Fatalf("ingest without embedder must create lexical default inbox, got %v", err)
+	}
+	col, err := repo.GetCollection(context.Background(), doc.GetCollectionId())
+	if err != nil {
+		t.Fatalf("lexical default collection must exist: %v", err)
+	}
+	if col.Name != "默认知识库" {
+		t.Errorf("name = %q, want 默认知识库", col.Name)
+	}
+	if col.EmbeddingModel != "" {
+		t.Errorf("EmbeddingModel = %q, want empty lexical", col.EmbeddingModel)
+	}
+	if col.Dim != 0 {
+		t.Errorf("Dim = %d, want 0", col.Dim)
+	}
+	if col.VaultBackend != bizknowledge.VaultBackendTeam {
+		t.Errorf("VaultBackend = %q, want team", col.VaultBackend)
 	}
 }
 

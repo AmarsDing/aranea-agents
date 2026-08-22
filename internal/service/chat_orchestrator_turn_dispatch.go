@@ -119,14 +119,23 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 			loggateway.Err(err))
 		return "", apierror.Internal(apierror.DomainChat, "eval: create session failed")
 	}
-	_, asst, err := o.RunNativeAgentTurnFromInput(ctx, biz.TurnInput{
+	turnIn := biz.TurnInput{
 		SessionID: sess.ID,
 		Content:   input,
 		EntryConfig: biz.TurnEntryPointConfig{
 			EntryPoint: biz.EntryPointEvaluation,
 			AllowQueue: false,
 		},
-	})
+	}
+	if ov, ok := biz.EvalRunOverrideFrom(ctx); ok {
+		if ov.Model != "" {
+			turnIn.Options.Model = ov.Model
+		}
+		if ov.Prompt != "" {
+			turnIn.Content = biz.OverlayEvalPrompt(ov.Prompt, turnIn.Content)
+		}
+	}
+	_, asst, err := o.RunNativeAgentTurnFromInput(ctx, turnIn)
 	if err != nil {
 		return "", err
 	}

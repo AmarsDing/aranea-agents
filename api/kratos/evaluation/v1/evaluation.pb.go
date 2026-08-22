@@ -223,8 +223,12 @@ type EvalRun struct {
 	DatasetVersion   int32  `protobuf:"varint,22,opt,name=dataset_version,json=datasetVersion,proto3" json:"dataset_version,omitempty"`
 	ExperimentId     string `protobuf:"bytes,23,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
 	VariantLabel     string `protobuf:"bytes,24,opt,name=variant_label,json=variantLabel,proto3" json:"variant_label,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// model is an optional per-run model override (experiment matrix cell).
+	Model string `protobuf:"bytes,25,opt,name=model,proto3" json:"model,omitempty"`
+	// prompt is an optional extra instruction overlay for this variant.
+	Prompt        string `protobuf:"bytes,26,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvalRun) Reset() {
@@ -421,6 +425,20 @@ func (x *EvalRun) GetExperimentId() string {
 func (x *EvalRun) GetVariantLabel() string {
 	if x != nil {
 		return x.VariantLabel
+	}
+	return ""
+}
+
+func (x *EvalRun) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *EvalRun) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
 	}
 	return ""
 }
@@ -1289,8 +1307,12 @@ type RunEvaluationRequest struct {
 	UseUserSimulation bool   `protobuf:"varint,5,opt,name=use_user_simulation,json=useUserSimulation,proto3" json:"use_user_simulation,omitempty"`
 	ExperimentId      string `protobuf:"bytes,6,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
 	VariantLabel      string `protobuf:"bytes,7,opt,name=variant_label,json=variantLabel,proto3" json:"variant_label,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	Model             string `protobuf:"bytes,8,opt,name=model,proto3" json:"model,omitempty"`
+	Prompt            string `protobuf:"bytes,9,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	// dataset_version_id pins the run to an immutable snapshot; empty = latest.
+	DatasetVersionId string `protobuf:"bytes,10,opt,name=dataset_version_id,json=datasetVersionId,proto3" json:"dataset_version_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *RunEvaluationRequest) Reset() {
@@ -1368,6 +1390,27 @@ func (x *RunEvaluationRequest) GetExperimentId() string {
 func (x *RunEvaluationRequest) GetVariantLabel() string {
 	if x != nil {
 		return x.VariantLabel
+	}
+	return ""
+}
+
+func (x *RunEvaluationRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *RunEvaluationRequest) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
+	}
+	return ""
+}
+
+func (x *RunEvaluationRequest) GetDatasetVersionId() string {
+	if x != nil {
+		return x.DatasetVersionId
 	}
 	return ""
 }
@@ -2066,6 +2109,8 @@ type EvalRunComparison struct {
 	DatasetVersion   int32  `protobuf:"varint,17,opt,name=dataset_version,json=datasetVersion,proto3" json:"dataset_version,omitempty"`
 	ExperimentId     string `protobuf:"bytes,18,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
 	VariantLabel     string `protobuf:"bytes,19,opt,name=variant_label,json=variantLabel,proto3" json:"variant_label,omitempty"`
+	Model            string `protobuf:"bytes,20,opt,name=model,proto3" json:"model,omitempty"`
+	Prompt           string `protobuf:"bytes,21,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2229,6 +2274,20 @@ func (x *EvalRunComparison) GetExperimentId() string {
 func (x *EvalRunComparison) GetVariantLabel() string {
 	if x != nil {
 		return x.VariantLabel
+	}
+	return ""
+}
+
+func (x *EvalRunComparison) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *EvalRunComparison) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
 	}
 	return ""
 }
@@ -3469,6 +3528,8 @@ type ExperimentVariant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	Model         string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
+	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3517,6 +3578,20 @@ func (x *ExperimentVariant) GetLabel() string {
 	return ""
 }
 
+func (x *ExperimentVariant) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ExperimentVariant) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
+	}
+	return ""
+}
+
 type RunExperimentRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	DatasetId         string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
@@ -3524,6 +3599,7 @@ type RunExperimentRequest struct {
 	NumRuns           int32                  `protobuf:"varint,3,opt,name=num_runs,json=numRuns,proto3" json:"num_runs,omitempty"`
 	UseUserSimulation bool                   `protobuf:"varint,4,opt,name=use_user_simulation,json=useUserSimulation,proto3" json:"use_user_simulation,omitempty"`
 	Variants          []*ExperimentVariant   `protobuf:"bytes,5,rep,name=variants,proto3" json:"variants,omitempty"`
+	DatasetVersionId  string                 `protobuf:"bytes,6,opt,name=dataset_version_id,json=datasetVersionId,proto3" json:"dataset_version_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -3591,6 +3667,13 @@ func (x *RunExperimentRequest) GetVariants() []*ExperimentVariant {
 		return x.Variants
 	}
 	return nil
+}
+
+func (x *RunExperimentRequest) GetDatasetVersionId() string {
+	if x != nil {
+		return x.DatasetVersionId
+	}
+	return ""
 }
 
 type RunExperimentResponse struct {
@@ -3667,7 +3750,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x02 \x01(\tR\tdatasetId\x12\x14\n" +
 	"\x05input\x18\x03 \x01(\tR\x05input\x12'\n" +
 	"\x0fexpected_output\x18\x04 \x01(\tR\x0eexpectedOutput\x12#\n" +
-	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xce\x06\n" +
+	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xfc\x06\n" +
 	"\aEvalRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -3700,7 +3783,9 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x12dataset_version_id\x18\x15 \x01(\tR\x10datasetVersionId\x12'\n" +
 	"\x0fdataset_version\x18\x16 \x01(\x05R\x0edatasetVersion\x12#\n" +
 	"\rexperiment_id\x18\x17 \x01(\tR\fexperimentId\x12#\n" +
-	"\rvariant_label\x18\x18 \x01(\tR\fvariantLabel\"\xa3\x05\n" +
+	"\rvariant_label\x18\x18 \x01(\tR\fvariantLabel\x12\x14\n" +
+	"\x05model\x18\x19 \x01(\tR\x05model\x12\x16\n" +
+	"\x06prompt\x18\x1a \x01(\tR\x06prompt\"\xa3\x05\n" +
 	"\x0eEvalCaseResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
@@ -3772,7 +3857,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
 	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x02id\"(\n" +
 	"\x10CancelRunRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x8b\x02\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xe7\x02\n" +
 	"\x14RunEvaluationRequest\x12#\n" +
 	"\n" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x1f\n" +
@@ -3781,7 +3866,11 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\bnum_runs\x18\x04 \x01(\x05R\anumRuns\x12.\n" +
 	"\x13use_user_simulation\x18\x05 \x01(\bR\x11useUserSimulation\x12#\n" +
 	"\rexperiment_id\x18\x06 \x01(\tR\fexperimentId\x12#\n" +
-	"\rvariant_label\x18\a \x01(\tR\fvariantLabel\"%\n" +
+	"\rvariant_label\x18\a \x01(\tR\fvariantLabel\x12\x14\n" +
+	"\x05model\x18\b \x01(\tR\x05model\x12\x16\n" +
+	"\x06prompt\x18\t \x01(\tR\x06prompt\x12,\n" +
+	"\x12dataset_version_id\x18\n" +
+	" \x01(\tR\x10datasetVersionId\"%\n" +
 	"\rGetRunRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"(\n" +
 	"\x10DeleteRunRequest\x12\x14\n" +
@@ -3835,7 +3924,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x19GetAgentEvalTrendResponse\x12<\n" +
 	"\x06points\x18\x01 \x03(\v2$.kratos.evaluation.v1.EvalTrendPointR\x06points\"7\n" +
 	"\x16CompareEvalRunsRequest\x12\x1d\n" +
-	"\arun_ids\x18\x01 \x03(\tB\x04\xe2A\x01\x02R\x06runIds\"\xf4\x05\n" +
+	"\arun_ids\x18\x01 \x03(\tB\x04\xe2A\x01\x02R\x06runIds\"\xa2\x06\n" +
 	"\x11EvalRunComparison\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
@@ -3859,7 +3948,9 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x12dataset_version_id\x18\x10 \x01(\tR\x10datasetVersionId\x12'\n" +
 	"\x0fdataset_version\x18\x11 \x01(\x05R\x0edatasetVersion\x12#\n" +
 	"\rexperiment_id\x18\x12 \x01(\tR\fexperimentId\x12#\n" +
-	"\rvariant_label\x18\x13 \x01(\tR\fvariantLabel\"X\n" +
+	"\rvariant_label\x18\x13 \x01(\tR\fvariantLabel\x12\x14\n" +
+	"\x05model\x18\x14 \x01(\tR\x05model\x12\x16\n" +
+	"\x06prompt\x18\x15 \x01(\tR\x06prompt\"X\n" +
 	"\x17CompareEvalRunsResponse\x12=\n" +
 	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunComparisonR\x05items\"\x8f\x01\n" +
 	"\x19GetJudgeDivergenceRequest\x12#\n" +
@@ -3968,17 +4059,20 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\"]\n" +
 	"\x1bListDatasetVersionsResponse\x12>\n" +
-	"\x05items\x18\x01 \x03(\v2(.kratos.evaluation.v1.EvalDatasetVersionR\x05items\"D\n" +
+	"\x05items\x18\x01 \x03(\v2(.kratos.evaluation.v1.EvalDatasetVersionR\x05items\"r\n" +
 	"\x11ExperimentVariant\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x14\n" +
-	"\x05label\x18\x02 \x01(\tR\x05label\"\xe5\x01\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x14\n" +
+	"\x05model\x18\x03 \x01(\tR\x05model\x12\x16\n" +
+	"\x06prompt\x18\x04 \x01(\tR\x06prompt\"\x93\x02\n" +
 	"\x14RunExperimentRequest\x12#\n" +
 	"\n" +
 	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x18\n" +
 	"\ametrics\x18\x02 \x01(\tR\ametrics\x12\x19\n" +
 	"\bnum_runs\x18\x03 \x01(\x05R\anumRuns\x12.\n" +
 	"\x13use_user_simulation\x18\x04 \x01(\bR\x11useUserSimulation\x12C\n" +
-	"\bvariants\x18\x05 \x03(\v2'.kratos.evaluation.v1.ExperimentVariantR\bvariants\"q\n" +
+	"\bvariants\x18\x05 \x03(\v2'.kratos.evaluation.v1.ExperimentVariantR\bvariants\x12,\n" +
+	"\x12dataset_version_id\x18\x06 \x01(\tR\x10datasetVersionId\"q\n" +
 	"\x15RunExperimentResponse\x12#\n" +
 	"\rexperiment_id\x18\x01 \x01(\tR\fexperimentId\x123\n" +
 	"\x05items\x18\x02 \x03(\v2\x1d.kratos.evaluation.v1.EvalRunR\x05items2\xbe\x1d\n" +

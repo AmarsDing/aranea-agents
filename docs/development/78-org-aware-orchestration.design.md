@@ -1,7 +1,7 @@
 # M78: 组织感知编排（ORG-FAST）— 实现设计
 
 > 对应需求：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)
-> **ADR**：[2026-08-22-review-adr-org-aware-orchestration.md](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型组织链](../reports/2026-08-22-review-adr-org-heavy-chain.md)
+> **ADR**：[2026-08-22-review-adr-org-aware-orchestration.md](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型组织链](../reports/2026-08-22-review-adr-org-heavy-chain.md) · [横切评审](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)
 > **开发计划**：[78-org-aware-orchestration.development.md](./78-org-aware-orchestration.development.md)
 
 ---
@@ -36,15 +36,18 @@
 
 ```
 用户指令
-  → ChatOrchestrator 预规划门控（简单/澄清 → 不组队）
+  → ChatOrchestrator 预规划门控（简单/澄清 → light，不组队）
+  → 分档（R9：先早判，Plan/剧本展开后可升级不可静默降级）
   → Spirit plan_and_execute
-       Phase 1 TaskPlanner.Plan          （已有：分解 + domain_path）
+       轻：结束
+       中：配方或 TaskPlanner.Plan → 花名册 → 建团
+       重：已授权剧本展开（或配方指纹命中）→ 花名册
+           无剧本 → 总经理补一次并沉淀；禁止对原话自由拆解
        Phase 2 AgentAllocator.Allocate
-            Org-Prune（本模块）          ← 新增，确定性
-            L0–L3 + Factory（已有，候选集收窄）
+            Org-Prune + 花名册（dept_lead / company_lead 不可分配）
        Phase 3 PlanExecutor + RealTeamOrchestrator
-            AssembleTeam 写入 DepartmentID ← 补齐 M67 断点
-            主管自动加入 / 借调（已有，依赖 DepartmentID）
+            Assemble 新 Team（不复活旧行）+ DepartmentID
+            重型另挂三管道（异步，不挡无依赖开工）
 ```
 
 **红线：**
@@ -53,6 +56,8 @@
 - Org-Prune 禁止 LLM；L3 仍可 LLM，但输入必须是剪枝后的名单
 - 任务路径禁止调用 OrganizationWriter 创建 company/department
 - 生产建团仍只走 `PlanExecutor` + `RealTeamOrchestrator`
+- `dept_lead` / `company_lead` 不得为业务 AssignedKey / Team Lead（显式 `agent_keys` 除外）
+- 已授权重型剧本展开时总经理 LLM = 0；无依赖部门不等上行汇报
 
 ---
 
@@ -151,6 +156,42 @@ R12 仲裁
 R13 重型续跑
     checkpoint 记录 playbook_id、已授权阶段、已发 Brief ID
     旧 checkpoint 缺省字段不阻断恢复（对齐 M70）
+
+R14 上下文预算（成员首轮前缀）
+    Brief ≤2KB + 知识检索 ≤2KB + 记忆 ≤1KB/8 条 + 协议/工具概览 ≤1KB
+    合计硬顶 6KB；超限先砍知识再砍记忆，不砍 Brief
+    禁止把成员过程全文、源码、vault 整库注入任何领导/精灵窗
+
+R15 记忆四槽隔离
+    配方缓存 = 班底槽位（R8）；checkpoint = 续跑状态（R13）
+    L1 = 该成员本任务工作记忆；L3 = 事后个人经验（异步，不横向倒给兄弟）
+    知识写回 ≠ 记忆；禁止用 L3 当跨团队总线
+
+R16 知识引用不复制
+    剧本阶段可绑 collection_ids；开工检索+按需工具
+    不把知识库正文写入 Brief；写回待审（沿用 KnowledgeWriteBack）
+    员工只检索其部门/阶段允许的库
+
+R17 工具/MCP 专项画像
+    花名册条目带允许 toolset / MCP server；员工不继承精灵全家桶
+    dept_lead：memberfs + deptmail + 门禁；company_lead：公司 Brief + 仲裁
+    危险工具走既有 awaiting_user HITL；MCP 不健康只降级该工具
+
+R18 确认五档
+    造人 / 新剧本首次授权 / 高风险门 / 危险工具 / 剧本 confirm_before
+    默认阶段交接只认 Brief 闸门，不弹确认
+    禁止每人开工点一次
+
+R19 可观测与干预
+    用户：团队芯片 + 阶段心跳 + 例外（不刷成员 token 流）
+    成员：既有 pause / inject / cancel（1-chat / team-run API）
+    换人：剩余工作新开 Team，不改已完成行
+    deptmail 不是横向管道；用户 inject 不是上行
+
+R20 汇总与可选图
+    终态汇总只吃 Brief 摘要 + 例外表 + 制品清单（沿用 synthesis trigger）
+    有 cancelled 则跳过（已有）
+    默认 PlanExecutor；阶段可挂已有 graph_template_id；禁止为组织链新引擎
 ```
 
 ### 2.2 借调 vs DAG 判定（确定性）
@@ -211,7 +252,10 @@ Playbook
   id, name, authorized_by (company_lead key), authorized_at
   stages[]:
     id, department_key | domain_path, depends_on[],
-    deliverable_names[], optional specialty
+    deliverable_names[], optional specialty,
+    collection_ids[],           // 知识引用，可空=部门默认库
+    confirm_before bool,        // 默认 false
+    graph_template_id optional  // 挂已有 M53 模板，不新引擎
 ConstraintFingerprint
   playbook_id + 规范化约束（期限档、合规标签等）的稳定哈希
 ```
@@ -223,6 +267,8 @@ ConstraintFingerprint
 ## 三、与现状程序的对照
 
 ### 3.1 当前热路径（代码真相）
+
+> Phase 0–2 已补齐主管排除、`DepartmentID`、花名册、Brief/Bulk、配方多槽回放。下表保留落地前断点，便于对照；**现状以 development 验收勾选为准**。Phase 4 在此之上叠加分档 / 剧本 / 三管道，尚未写代码。
 
 ```
 PrePlanningGate.Evaluate
@@ -257,17 +303,22 @@ PrePlanningGate.Evaluate
 ### 3.2 目标热路径
 
 ```
-Plan（已有）
-  → 每个 SubTask 带 domain_path
+PrePlanningGate
+  → light：精灵自答，停
+  → 早判 heavy（用户显式组织链 / 长任务分 / 2+ 公司且有跨公司信号）
+  → 配方指纹命中：按槽回放，仍新开 Team
+  → 重型 + 已授权剧本：展开部门槽（跳过 TaskPlanner；0 总经理 LLM）
+  → 重型 + 无剧本：总经理 playbook_fill 一次并沉淀；超时 fail-closed / 呈用户，禁止默默用 TaskPlanner 当行业专家
+  → 否则 TaskPlanner.Plan（中档主路径）
+  → 晚升档：Plan/剧本出现跨部门 DependsOn → heavy（已开工禁止静默降回 medium）
 Allocate
-  → OrgIndex.Prune(subtask) → CandidateSet{dept, positions, agents}
-  → 从 CandidateSet 剔除 dept_lead / 系统管家
-  → 现有 L0–L3 只在 CandidateSet 上跑
-  → 若 DAG 需补员：同部门、角色互补；跨部则写入 CrossDeptMemberIDs
-  → 无候选人：Factory（岗位=剪枝部门下最接近岗位）或 staffing 主管建议
+  → Org-Prune → 剔除 dept_lead / company_lead / 系统管家
+  → L0 / L1 / 花名册；有 domain_path 则闭集
+  → 缺编：staffing 或 fail-closed（热路径无 Factory）
 AssembleTeam
-  → DepartmentID = 剪枝主部门（或成员岗位的父部门多数票）
-  → 主管 auto_join（已有代码路径被激活）
+  → 新 Team + DepartmentID；主管 auto_join
+  → 无依赖并行开工；有依赖只等 Brief
+  → 重型：三管道异步挂上（不上行不等待）
 ```
 
 ---
@@ -643,7 +694,110 @@ sequenceDiagram
 
 `IsHeuristicAssignable` 必须同时排除 `dept_lead` 与 `company_lead`。
 
-### 13.3 公司级 Brief（P3 实施）
+### 13.3 分档判定（确定性，禁止为分档再开 LLM）
+
+| 时机 | 升为 heavy 的条件 | 否则 |
+|------|-------------------|------|
+| 门控后早判 | 用户显式「按组织链 / 走编制汇报」；或已有复杂度分为长任务；或树内 2+ 公司且任务含跨公司信号 | 先按中档走配方/Plan |
+| Plan 或剧本展开后晚升 | 2+ 部门且步骤间有 `DependsOn` / 交付契约 | 保持中档 |
+| 已开工 | **禁止**静默降回 medium（会丢汇报契约）；仅 `force_new` 可重开 | — |
+
+轻档只来自既有 R1（简单/澄清）。跨公司通道无 2+ 公司节点时不因「跨公司」升档。
+
+### 13.4 剧本展开 vs TaskPlanner
+
+| 路径 | 谁产出 SubTask | 禁止 |
+|------|----------------|------|
+| 中档 | 配方槽位或 `TaskPlanner.Plan` | 叫醒总经理 |
+| 重型 + 已授权剧本或指纹配方 | **剧本 stages / 配方槽** 展开为部门槽；Allocator 只绑花名册 | 再跑一遍 TaskPlanner 拆原话 |
+| 重型 + 无剧本 | 总经理 `playbook_fill` 一次并沉淀，再按新剧本展开 | 用 TaskPlanner 冒充行业专家默默拆岗；总经理对原话自由拆解 |
+
+生产调度仍只把展开结果交给 `PlanExecutor`。剧本是本公司「这类活怎么过部门」，不是第二套全局 Planner。
+
+### 13.5 三管道
+
+| 管道 | 谁传 | 载荷 | 触发 | 复用 |
+|------|------|------|------|------|
+| 上行 | 员工 → 部门领导 →（例外才到）总经理 → 精灵 | 例外即时；阶段心跳；单次 ≤2KB；无源码/数据集/过程闲聊 | 阻塞立刻；阶段结束或可配间隔 | `orchestration_progress` 增 `upward` / `heartbeat`，不新建 bus |
+| 横向-公司内 | 部门领导 → 部门领导 | 既有 Brief/Bulk | 激活下游前；无 Brief 不开工 | R7 / §十一 |
+| 横向-跨公司 | 总经理 → 总经理 | 公司级 Brief | 树内 2+ 公司节点（P3 / ORGFAST-31） | 见 §13.6 |
+| 下行 | 总经理/部门领导 → 团队 | 目标、约束、放行/驳回 | 借调、质量门、剧本授权 | 既有 VerificationGate；不重写部门内拆解 |
+
+无依赖部门**并行开工**，不等上行心跳。心跳是可观测，不是调度栅栏。
+
+### 13.6 公司级 Brief（P3 实施，Phase 4 不写发送）
 
 字段最少：`from_company_id`、`to_company_id`、`scope`、`interfaces`、`deadline`、`classification`、`brief_ref`。对方总经理只看到声明字段。树内公司节点 < 2 时不发送、不检索。
+
+### 13.7 重型 checkpoint（对齐 M70）
+
+在既有 session/orchestration checkpoint 上 **omitempty** 增补，缺省不阻断旧恢复：
+
+| 字段 | 用途 |
+|------|------|
+| `gear` | light / medium / heavy |
+| `playbook_id` | 本次展开的剧本 |
+| `authorized_stage_ids` | 已授权、已开工阶段 |
+| `issued_brief_ids` | 已发出的横向 Brief |
+| `constraint_fingerprint` | 与配方指纹同一算法 |
+
+禁止因缺这些字段而拒绝 `Recover`。
+
+### 13.8 冲突与所有权
+
+| 冲突 | 裁定 | 禁止 |
+|------|------|------|
+| 部门交付争议 | 本公司 `company_lead` | 部门领导改写对方部门 DAG |
+| 公司接口/范围争议 | 精灵呈用户 | 两公司总经理循环互怼 |
+| 缺专项 | 部门领导 staffing；超时 fail-closed | 热路径 Factory / 低分交差 |
+| 已授权剧本与 TaskPlanner 同时可跑 | **剧本赢** | 双分解 |
+| 配方 keys 与约束指纹不合 | 只复用专题槽或 `force_new` | 复用历史 keys |
+| 已 completed Team | 新 `AssembleTeam` | 改回 running |
+
+### 13.9 复审收口（两轮后不再摇摆）
+
+1. 四层是**所有权**，不是每跳串行 LLM。
+2. 只有重型走完整链；总经理 = 预授权剧本 + 对外口 + 仲裁。
+3. 调度与汇报分离：并行开工；上行走例外。
+4. 对人会话仍是精灵。
+5. `company_lead` 本期只设计，代码在 Phase 4；跨公司发送在 P3。
+
+---
+
+## 十四、链路横切（2026-08-22 复审）
+
+> 评审：[2026-08-22-review-org-heavy-chain-crosscut.md](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)
+
+组织链不接管执行内核。横切约束叠在 §十三 之上，全部 **复用已有模块**，不平行新建。
+
+### 14.1 共享五层（互不冒充）
+
+| 层 | 用途 | 模块 |
+|----|------|------|
+| Brief | 结论进下游窗 | 已有 `DeliverableRef` |
+| Bulk / inbox | 声明文件落盘 | M27 + TeamInboxFS |
+| 同团工作树 | 文件耦合重时借调 | R3 |
+| memberfs / deptmail | 监管与主管异步 | M71；**不是**横向水管 |
+| 知识库引用 | 制度/资料按库检索 | M13；阶段绑 `collection_ids` |
+
+### 14.2 记忆四槽
+
+| 槽 | 写 | 读 | 禁止 |
+|----|----|----|------|
+| 配方 | 成功编排 | 下次同类任务 | 当知识正文 |
+| Checkpoint | 运行时 omitempty | Recover | 复活 completed Team |
+| L1 | 成员 working_memory | 仅该成员会话 | 灌给总经理 |
+| L3 | 终态后异步提取 | 该 Agent 以后的任务 | 兄弟团队互读 |
+
+### 14.3 确认与干预
+
+确认只走 R18 五档。干预只走已有 `PauseSession` / `PauseTeamRun` / `InjectTeamMessage` / `Cancel`。精灵主对话不订阅成员 token。换人 = 取消剩余阶段 + 花名册重绑 + 新 `AssembleTeam`。
+
+### 14.4 编排图
+
+PlanExecutor 仍是唯一前向调度者。剧本 `stages[].graph_template_id` 可选，命中则该阶段走已有 M53 Graph（HITL/checkpoint/重试）。未填则普通 Team Turn。禁止把整条组织链编译成第二套引擎。
+
+### 14.5 最终汇总
+
+`checkAllTeamsCompleted` → `synthesisSummaryTrigger`（已有）。输入契约收紧为：各队 Brief 摘要 + 例外/驳回表 + 制品清单。禁止考古成员会话全文。输出仍是精灵普通 Markdown reply，不复活 ExecutionReportCard。可选：通过后的知识写回待审。
 

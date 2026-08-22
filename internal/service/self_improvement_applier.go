@@ -41,23 +41,23 @@ var siApplierGitIdentity = []string{
 // Channels:
 //   - Hot-reload (config/prompt/docs): the diff lands on the main working
 //     tree after a pre-apply file snapshot; Rollback restores the snapshot.
-//   - Code merge (code/test): the diff is committed inside a fresh worktree
-//     and fast-forward merged into the current branch; Rollback git-reverts
-//     the merge commit.
+//   - Code branch (code/test): the diff is committed on self-improve/<runID>
+//     and left there. The current working branch is not fast-forwarded.
+//     Rollback deletes that branch (the running tree was never changed).
 //
 // All git operations against the main repository are serialized (mu) so
-// concurrent runs cannot interleave merges / working-tree patches.
+// concurrent runs cannot interleave branch apply / working-tree patches.
 type SIRepoApplier struct {
 	sandbox *RepoSandboxRunner
 	lg      loggateway.Logger
 	mu      sync.Mutex
-	// reverted 记录本进程已成功 revert 的 applied commit / 已恢复的 snapshot
+	// reverted 记录本进程已成功丢掉的 code 分支 / 已恢复的 snapshot
 	// 指针（mu 保护）。R3 修复：admin 与 watchdog 可基于同一 observing 快照
-	// 并发进入 Rollback，mu 只串行化执行、不判重——git revert 一个已 revert
-	// 的 commit 会冲突报错或生成 revert-of-revert（补丁静默复活）。集合判重
-	// 使重复 Rollback 幂等返回 nil（已回滚 = 目标状态达成）。
-	// 残余窗口（已注释接受）：revert 成功到 CAS 迁移之间的毫秒级进程崩溃 +
-	// 重启后内存集合丢失，依赖调用方状态守卫（rolled_back 后不再触发）兜底。
+	// 并发进入 Rollback，mu 只串行化执行、不判重。代码通道重复 Rollback
+	// 若再 `branch -D` 已删分支会报错；集合判重使第二次幂等返回 nil。
+	// 残余窗口（已注释接受）：删分支成功到 CAS 迁移之间的毫秒级进程崩溃 +
+	// 重启后内存集合丢失，依赖调用方状态守卫（rolled_back 后不再触发）
+	// 或 siGitRefMissing 兜底。
 	reverted map[string]struct{}
 }
 
@@ -107,10 +107,10 @@ func (a *SIRepoApplier) ApplyHotReload(ctx context.Context, run *biz.SelfImprove
 	return ref, nil
 }
 
-// ApplyCodeMerge commits the diff on a fresh self-improve/<runID> worktree
-// branch (based at current HEAD) and fast-forward merges it into the main
-// branch. Repository drift (context mismatch / non-ff) yields an error
-// wrapping biz.ErrSIMergeConflict; the repository is left untouched.
+// ApplyCodeMerge commits the diff on self-improve/<runID> and leaves that
+// branch in the repository. It does not merge into the current branch, so a
+// running admin process is not mutated. Drift while applying the diff
+// still returns an error wrapping biz.ErrSIMergeConflict.
 func (a *SIRepoApplier) ApplyCodeMerge(ctx context.Context, run *biz.SelfImprovementRun) (string, error) {
 	if _, err := siApplyPrecheck(run); err != nil {
 		return "", err
@@ -122,11 +122,18 @@ func (a *SIRepoApplier) ApplyCodeMerge(ctx context.Context, run *biz.SelfImprove
 	if err != nil {
 		return "", err
 	}
-	defer cleanup()
+	keepBranch := false
+	defer func() {
+		if keepBranch {
+			a.discardWorktreeKeepBranch(ctx, wtPath)
+			return
+		}
+		cleanup()
+	}()
 
 	if err := a.sandbox.ApplyDiff(ctx, wtPath, run.Diff); err != nil {
-		a.lg.Warn("self-improvement code merge: patch no longer applies (drift)",
-			loggateway.StepID("si_apply.code_merge"),
+		a.lg.Warn("self-improvement code branch: patch no longer applies (drift)",
+			loggateway.StepID("si_apply.code_branch"),
 			loggateway.Str("run_id", run.ID),
 			loggateway.Err(err))
 		return "", apierror.Wrap(fmt.Errorf("%w: %s", biz.ErrSIMergeConflict, err), apierror.CodeConflict, siApplierDomain)
@@ -142,24 +149,30 @@ func (a *SIRepoApplier) ApplyCodeMerge(ctx context.Context, run *biz.SelfImprove
 	if err != nil {
 		return "", err
 	}
-	branch := "self-improve/" + sanitizeSandboxRunID(run.ID)
-	if err := a.sandbox.runGit(ctx, a.sandbox.repoRoot, nil, "merge", "--ff-only", branch); err != nil {
-		a.lg.Warn("self-improvement code merge: fast-forward failed",
-			loggateway.StepID("si_apply.code_merge"),
-			loggateway.Str("run_id", run.ID),
-			loggateway.Err(err))
-		return "", apierror.Wrap(fmt.Errorf("%w: %s", biz.ErrSIMergeConflict, err), apierror.CodeConflict, siApplierDomain)
-	}
-	a.lg.Info("self-improvement code patch merged (effective on next process restart)",
-		loggateway.StepID("si_apply.code_merge"),
+	keepBranch = true
+	branch := siCodeBranchName(run.ID)
+	run.Branch = branch
+	a.lg.Info("self-improvement code patch landed on branch (not merged; explicit merge required)",
+		loggateway.StepID("si_apply.code_branch"),
 		loggateway.Str("run_id", run.ID),
+		loggateway.Str("branch", branch),
 		loggateway.Str("commit", sha))
 	return sha, nil
 }
 
-// Rollback undoes whatever the matching Apply* call did: git revert for a
-// merged code commit (run.AppliedCommit), snapshot restore for a hot-reload
-// patch (run.RollbackPointer with the snapshot/ prefix).
+func siCodeBranchName(runID string) string {
+	return "self-improve/" + sanitizeSandboxRunID(runID)
+}
+
+func (a *SIRepoApplier) discardWorktreeKeepBranch(ctx context.Context, wtPath string) {
+	a.sandbox.removeWorktreeKeepBranch(ctx, wtPath)
+}
+
+// Rollback undoes whatever the matching Apply* call did: delete the
+// self-improve/<runID> branch for a code apply (run.AppliedCommit), or
+// snapshot restore for a hot-reload patch (run.RollbackPointer with the
+// snapshot/ prefix). The current HEAD is never reverted.
+
 func (a *SIRepoApplier) Rollback(ctx context.Context, run *biz.SelfImprovementRun, reason string) error {
 	if run == nil || strings.TrimSpace(run.ID) == "" {
 		return apierror.BadRequest(siApplierDomain, "run with id is required")
@@ -171,25 +184,31 @@ func (a *SIRepoApplier) Rollback(ctx context.Context, run *biz.SelfImprovementRu
 	case strings.TrimSpace(run.AppliedCommit) != "":
 		key := "commit:" + run.AppliedCommit
 		if _, done := a.reverted[key]; done {
-			a.lg.Info("self-improvement code patch already reverted, idempotent skip",
+			a.lg.Info("self-improvement code branch already dropped, idempotent skip",
 				loggateway.StepID("si_apply.rollback"),
 				loggateway.Str("run_id", run.ID),
 				loggateway.Str("commit", run.AppliedCommit))
 			return nil
 		}
-		args := append(append([]string{}, siApplierGitIdentity...), "revert", "--no-edit", run.AppliedCommit)
-		if err := a.sandbox.runGit(ctx, a.sandbox.repoRoot, nil, args...); err != nil {
-			a.lg.Warn("self-improvement code revert failed",
-				loggateway.StepID("si_apply.rollback"),
-				loggateway.Str("run_id", run.ID),
-				loggateway.Str("commit", run.AppliedCommit),
-				loggateway.Err(err))
-			return err
+		branch := strings.TrimSpace(run.Branch)
+		if branch == "" {
+			branch = siCodeBranchName(run.ID)
+		}
+		if err := a.sandbox.runGit(ctx, a.sandbox.repoRoot, nil, "branch", "-D", branch); err != nil {
+			if !siGitRefMissing(err) {
+				a.lg.Warn("self-improvement code branch delete failed",
+					loggateway.StepID("si_apply.rollback"),
+					loggateway.Str("run_id", run.ID),
+					loggateway.Str("branch", branch),
+					loggateway.Err(err))
+				return err
+			}
 		}
 		a.reverted[key] = struct{}{}
-		a.lg.Info("self-improvement code patch reverted",
+		a.lg.Info("self-improvement code branch dropped (current HEAD unchanged)",
 			loggateway.StepID("si_apply.rollback"),
 			loggateway.Str("run_id", run.ID),
+			loggateway.Str("branch", branch),
 			loggateway.Str("commit", run.AppliedCommit),
 			loggateway.Str("reason", reason))
 		return nil
@@ -405,4 +424,15 @@ func (a *SIRepoApplier) gitOutput(ctx context.Context, dir string, args ...strin
 		return "", apierror.Wrap(err, apierror.CodeInternal, siApplierDomain)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// siGitRefMissing reports whether a git command failed because the named
+// ref is already gone (idempotent rollback).
+func siGitRefMissing(err error) bool {
+	ae, ok := apierror.From(err)
+	if !ok || ae.Meta == nil {
+		return false
+	}
+	out := strings.ToLower(ae.Meta["git_output"])
+	return strings.Contains(out, "not found") || strings.Contains(out, "does not exist")
 }

@@ -117,6 +117,8 @@ evaluation.Runner (async goroutine)
 | GET | `/v1/evaluation/preferences` | ListRunPreferences | 偏好记录列表（P3-3，query：dataset_id/limit） |
 | GET | `/v1/evaluation/gate` | GetEvalGate | 读取门禁（query `agent_id` 选覆盖，空=默认） |
 | PUT | `/v1/evaluation/gate` | UpdateEvalGate | 写入默认或 per-agent 覆盖（含 `mode`） |
+| GET | `/v1/evaluation/datasets/{dataset_id}/versions` | ListDatasetVersions | 数据集不可变版本列表 |
+| POST | `/v1/evaluation/experiments` | RunExperiment | Agent × 模型实验矩阵 |
 
 ### 3.3 RunEvaluation 请求
 
@@ -127,6 +129,9 @@ evaluation.Runner (async goroutine)
 | metrics | string | 否 | 逗号分隔指标键名，空值运行 4 种核心指标；扩展见 §6.5 |
 | num_runs | int32 | 否 | 每用例重复次数（AgentEvaluator MultiRun，默认 1，上限 `EvalMaxNumRuns=20`，Phase 8 B1：API 值直传框架，原默认值覆盖缺陷已修复） |
 | use_user_simulation | bool | 否 | 启用 UserSimulation（脚本或 LLM） |
+| model | string | 否 | 模型覆盖（空=Agent 默认） |
+| prompt | string | 否 | 实验指令前缀，注入用例输入 |
+| dataset_version_id | string | 否 | 钉住快照重跑；空=绑定最新 snapshot |
 
 ---
 
@@ -180,7 +185,8 @@ P2/P3 新增 2 张表 + 1 个列：
 - `eval_gate_config`（P2-1 / P1）：平台默认行 `id=singleton` + per-agent 行 `id=agent:<id>`；`mode` 列 `advisory`|`blocking`；`enabled` 以 INTEGER 0/1 存储
 - `eval_runs` 部分唯一索引 `idx_eval_runs_inflight (workspace_id, dataset_id, agent_id) WHERE status IN ('pending','running')`
 - `eval_dataset_versions`：不可变用例快照（version/hash/cases_json）；run 绑 `dataset_version_id`
-- `eval_runs.experiment_id` / `variant_label`：实验矩阵
+- `eval_runs.experiment_id` / `variant_label` / `model` / `prompt`：实验矩阵（Agent × 模型，可选提示词覆盖）；in-flight 唯一：非实验 `(workspace,dataset,agent)`，实验细胞 `(workspace,dataset,agent,variant_label)`
+- `RunEvaluation` / `RunExperiment` 可传 `dataset_version_id` 钉住快照重跑；空则绑定最新 snapshot
 - `eval_case_results.session_id` / `trace_run_id`：推理追踪
 - `eval_run_preference`（P3-3）：Pairwise 偏好记录（`run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by`）
 - `eval_runs.dataset_hash`（P3-5）：运行启动时写入的数据集内容 hash（随 eval 域既有双轨机制落地：Ent Schema L1 自动迁移 + `EnsureEvalSchema` 幂等 ALTER 兜底存量库）
@@ -404,7 +410,7 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 
 ### 6.17 Phase 8 可靠性与隔离加固（2026-08-14）
 
-**结论：可行。推荐 Aranea 侧后处理路径**（不改 vendored 框架，与 `redteam.go` 同模式）：executeFramework 提取 knowledge_search chunks → 存 EvalCaseResult 扩展字段 → faithfulness 用既有 judge runner 打分合并进 run scores。
+**结论：可行。推荐 Aranea 侧后处理路径**（不改 vendored 框架，与 `redteam.go` 同模式）：executeFramework 提取 knowledge_search chunks → faithfulness 优先走既有 judge runner 打分，失败回落词面重叠，合并进 `scores_json.faithfulness`。无检索调用记 N/A 并在聚合时排除。
 
 **证据链**：
 

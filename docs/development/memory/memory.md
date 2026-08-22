@@ -999,6 +999,8 @@ Agent 设置中新增独立 `记忆` Tab，避免把所有记忆配置塞进基�
 | FR-T10 | 全景 activity_feed 增加 `fact_injected`（L3→L0，时间用 `last_used_at`） | P1 |
 | FR-T11 | 大 Agent 全景 L3/L4 统计走 SQL 聚合（active/today/use_count），动态只拉最近 N 条，禁止扫 500 行算卡 | P3 |
 | FR-T12 | 记忆中心页编排拆为 facts / session / trust 子 composable；全景与情景请求经 memory store | P3 |
+| FR-T13 | 浏览事实 / 冲突 / 进化读写 / 画像 / L0·L1（带 agent_id）走与全景同一套 Agent IDOR | P4 |
+| FR-T14 | 进化批准/拒绝/回滚的文案标明「只记决议，不自动改画像/策略」 | P4 |
 
 ### 23.4 验收标准
 
@@ -1016,6 +1018,8 @@ Agent 设置中新增独立 `记忆` Tab，避免把所有记忆配置塞进基�
 - [x] 信任 Tab PII 列表按 originating `agent_id` 过滤，可批准脱敏或拒绝。
 - [x] 实现 `MemoryOverviewStatsReader` 时，全景 L3 计数不再调用 `ListFactRows(..., 500)`。
 - [x] 记忆中心页编排按 facts / session / trust 拆分；全景与情景走 store action。
+- [x] 跨工作区用户请求他人 `agent_id` 的事实列表、进化读写、画像、L0/L1 返回「未找到」。
+- [x] 进化审批 UI 写明只记录决议，不自动改写画像或策略。
 
 ### 23.5 非功能需求
 

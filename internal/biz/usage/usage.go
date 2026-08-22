@@ -75,6 +75,9 @@ const (
 	// EmbeddingTokens column and are priced via EmbeddingPrice (P1-3,
 	// 2026-08-19).
 	KindAuxEmbedding = "aux_embedding"
+	// KindAuxEvalJudge marks evaluation LLM-as-judge / faithfulness /
+	// context_precision calls (previously unrecorded).
+	KindAuxEvalJudge = "aux_eval_judge"
 )
 
 // MetadataKeyUsageSource is the metadata_json key recording how a usage row's

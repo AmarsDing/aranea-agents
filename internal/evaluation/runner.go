@@ -71,6 +71,7 @@ type Runner struct {
 	cancelMu    sync.Mutex
 	cancels     map[string]context.CancelFunc
 	slots       chan struct{}
+	judgeStats  *judgeCallStats
 }
 
 func NewRunner(uc *biz.EvalUsecase, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
@@ -331,6 +332,12 @@ func (r *Runner) executeFramework(
 	numRuns int,
 	useUserSimulation bool,
 ) error {
+	stopLease := r.startLeaseHeartbeat(ctx, run.ID)
+	defer stopLease()
+	ctx = WithJudgeRunID(ctx, run.ID)
+	if run.Model != "" || run.Prompt != "" || run.Tools != "" {
+		ctx = biz.WithEvalRunOverride(ctx, biz.EvalRunOverride{Model: run.Model, Prompt: run.Prompt, Tools: run.Tools})
+	}
 	results, scores, passAtK, passHatK, err := r.framework.Execute(ctx, ds, cases, RunConfig{
 		AgentID:           run.AgentID,
 		NumRuns:           numRuns,
@@ -393,6 +400,12 @@ func (r *Runner) executeFramework(
 	mergeAttackSuccessRate(&run, cases, results)
 	if avg, ok := averageFaithfulness(results); ok {
 		mergeRunScores(&run, metricFaithfulness, avg)
+	}
+	if avg, ok := averageScoreKey(results, metricContextPrecision); ok {
+		mergeRunScores(&run, metricContextPrecision, avg)
+	}
+	if r.judgeStats != nil {
+		run.JudgeCalls, run.JudgeTokens = r.judgeStats.take(run.ID)
 	}
 	// ISSUE-006: partial case failure must fail the run — the framework returns
 	// no global error when individual cases fail, so a silent "completed" would

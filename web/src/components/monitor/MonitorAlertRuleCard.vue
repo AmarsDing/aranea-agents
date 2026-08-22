@@ -3,13 +3,19 @@
     <div class="row items-center q-col-gutter-sm q-mb-sm">
       <q-toggle v-model="rule.enabled" :aria-label="t('monitorPage.alerts.rule.enabled')" />
       <q-input v-model="rule.name" dense outlined class="col" :label="t('monitorPage.alerts.rule.name')" />
-      <q-chip dense :color="stateMeta.color" text-color="white" size="sm">{{ stateMeta.label }}</q-chip>
+      <span class="rule-state-pill" :class="`rule-state-pill--${stateMeta.tone}`">
+        <span class="apm-status-dot" :class="`apm-status-dot--${stateMeta.tone}`" />
+        {{ stateMeta.label }}
+      </span>
       <q-btn flat dense round icon="delete_outline" color="negative" @click="$emit('remove')">
         <q-tooltip>{{ t('monitorPage.alerts.rule.delete') }}</q-tooltip>
       </q-btn>
     </div>
 
-    <div class="text-caption text-grey-6 q-mb-xs">{{ t('monitorPage.alerts.rule.monitorSection') }}</div>
+    <div class="apm-section-label q-mb-sm">
+      <q-icon name="monitor_heart" size="14px" />
+      {{ t('monitorPage.alerts.rule.monitorSection') }}
+    </div>
     <div class="app-form-field-grid">
       <q-select
         :model-value="rule.metric_key"
@@ -55,7 +61,10 @@
       />
     </div>
 
-    <div class="text-caption text-grey-6 q-mt-md q-mb-xs">{{ t('monitorPage.alerts.rule.notifySection') }}</div>
+    <div class="apm-section-label q-mt-md q-mb-sm">
+      <q-icon name="notifications" size="14px" />
+      {{ t('monitorPage.alerts.rule.notifySection') }}
+    </div>
     <div class="app-form-field-grid">
       <q-select
         v-model="rule.severity"
@@ -141,13 +150,13 @@ const stateMeta = computed(() => {
   const state = alertRuleStateOf(rule.value, selectedMetric.value);
   switch (state) {
     case 'firing':
-      return { color: 'warning', label: t('monitorPage.alerts.rule.state.firing') };
+      return { tone: 'firing', label: t('monitorPage.alerts.rule.state.firing') };
     case 'disabled':
-      return { color: 'grey', label: t('monitorPage.alerts.rule.state.disabled') };
+      return { tone: 'idle', label: t('monitorPage.alerts.rule.state.disabled') };
     case 'unknown':
-      return { color: 'negative', label: t('monitorPage.alerts.rule.state.unknown') };
+      return { tone: 'error', label: t('monitorPage.alerts.rule.state.unknown') };
     default:
-      return { color: 'positive', label: t('monitorPage.alerts.rule.state.ok') };
+      return { tone: 'ok', label: t('monitorPage.alerts.rule.state.ok') };
   }
 });
 
@@ -201,5 +210,40 @@ function onMetricChange(key: string) {
 
 .monitor-alert-metric-help {
   background: var(--color-status-info-bg-alt);
+}
+
+/* ── 规则状态胶囊（状态点 + 文案）── */
+.rule-state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-surface) 70%, transparent);
+}
+
+.rule-state-pill .apm-status-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.rule-state-pill--ok {
+  color: var(--color-success);
+}
+
+.rule-state-pill--firing {
+  color: var(--color-warning);
+}
+
+.rule-state-pill--error {
+  color: var(--color-danger);
+}
+
+.rule-state-pill--idle {
+  color: var(--color-text-secondary);
 }
 </style>

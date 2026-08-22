@@ -12,7 +12,7 @@
 
 将"行业分类"重塑为"公司架构"，明确公司架构/Agent/Team/Graph 四者边界，新增部门主管和跨部门协作机制。
 
-> **热路径编排（2026-08-22）**：编制表已落地，但 Spirit 自动建团仍常不写 `department_id`，主管加入/借调在编排链上未激活。补齐路由规则与代码任务见 [M78 开发计划](./78-org-aware-orchestration.development.md)，不在本文件重复拆任务。
+> **热路径编排（2026-08-22）**：编制表已落地；M78 Phase 0–2 已接 `department_id` / 主管排除。**`company_lead`（公司总经理）** 由 [M78 Phase 4 / ORGFAST-41](./78-org-aware-orchestration.development.md) 按 `dept_lead` 对称补齐，不在本文件重复拆任务。ADR：[重型组织链](../reports/2026-08-22-review-adr-org-heavy-chain.md)。
 
 **代码锚点**：
 

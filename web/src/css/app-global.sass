@@ -3410,3 +3410,147 @@ body.body--dark .overview-trend-bar__fill
     opacity: 1
   50%
     opacity: 0.35
+
+// ═══════════════════════════════════════════════════════════════
+//  Monitor APM 通用原子（状态点 / stat 卡 / meta grid / 流徽章 / 区块标题）
+//  使用方：Usage / Alerts / Audit / Events / Logs / Desktop 各 tab 组件
+// ═══════════════════════════════════════════════════════════════
+
+.apm-status-dot
+  flex-shrink: 0
+  display: inline-block
+  width: 10px
+  height: 10px
+  border-radius: 50%
+  background: var(--color-text-icon-muted)
+
+.apm-status-dot--ok
+  background: var(--color-success)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 55%, transparent)
+
+.apm-status-dot--warn
+  background: var(--color-warning)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-warning) 45%, transparent)
+
+.apm-status-dot--error
+  background: var(--color-danger)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-danger) 55%, transparent)
+
+.apm-status-dot--info
+  background: var(--color-accent)
+
+.apm-status-dot--running
+  --apm-dot-color: var(--color-accent)
+  background: var(--color-accent)
+  animation: apm-dot-pulse 1.4s ease-in-out infinite
+
+.apm-status-dot--firing
+  --apm-dot-color: var(--color-warning)
+  background: var(--color-warning)
+  animation: apm-dot-pulse 1.4s ease-in-out infinite
+
+@keyframes apm-dot-pulse
+  0%, 100%
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--apm-dot-color, var(--color-accent)) 45%, transparent)
+  50%
+    box-shadow: 0 0 0 6px transparent
+
+// ── stat 卡（图标 + label + 等宽大数值）──
+.apm-stat-grid
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))
+  gap: 10px
+
+.apm-stat-card
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: 12px 14px
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+  transition: border-color 0.18s ease, transform 0.18s ease
+
+.apm-stat-card__icon
+  color: var(--color-accent)
+  flex-shrink: 0
+
+.apm-stat-card__text
+  min-width: 0
+
+.apm-stat-card__label
+  font-size: 11px
+  color: var(--color-text-secondary)
+
+.apm-stat-card__value
+  font-size: 18px
+  font-weight: 700
+  line-height: 1.2
+  font-variant-numeric: tabular-nums
+  color: var(--color-text-primary)
+
+.apm-stat-card--danger
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent)
+
+.apm-stat-card--danger .apm-stat-card__icon,
+.apm-stat-card--danger .apm-stat-card__value
+  color: var(--color-danger)
+
+.apm-stat-card--clickable
+  cursor: pointer
+
+.apm-stat-card--clickable:hover
+  border-color: var(--color-accent)
+  transform: translateY(-1px)
+
+// ── 元信息 definition grid ──
+.apm-meta-grid
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))
+  gap: 10px 24px
+  padding: 12px 16px
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+
+.apm-meta-item
+  min-width: 0
+
+.apm-meta-item__label
+  font-size: 11px
+  color: var(--color-text-secondary)
+  margin-bottom: 2px
+
+.apm-meta-item__value
+  font-size: 13px
+  color: var(--color-text-primary)
+
+// ── 流状态徽章（状态点 + 文案胶囊）──
+.apm-stream-badge
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  padding: 3px 10px
+  border-radius: 999px
+  font-size: 11px
+  font-weight: 600
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 70%, transparent)
+  color: var(--color-text-secondary)
+
+.apm-stream-badge .apm-status-dot
+  width: 8px
+  height: 8px
+
+// ── 区块小标题（图标 + 文案）──
+.apm-section-label
+  display: flex
+  align-items: center
+  gap: 6px
+  font-size: 12px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  margin-bottom: 8px
+
+.apm-section-label .q-icon
+  color: var(--color-accent)

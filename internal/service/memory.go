@@ -89,6 +89,9 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	if sid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "session_id is required")
 	}
+	if err := s.assertOptionalAgentMemoryAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	rows, err := s.admin.ListL0SnapshotRows(ctx, sid, strings.TrimSpace(req.GetAgentId()), req.GetLimit())
 	if err != nil {
 		return nil, err
@@ -163,6 +166,9 @@ func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListCo
 	agentID := strings.TrimSpace(req.GetAgentId())
 	if scopeType == "" && agentID == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type or agent_id is required")
+	}
+	if err := s.assertOptionalAgentMemoryAccess(ctx, agentID); err != nil {
+		return nil, err
 	}
 	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
 	if err != nil {
@@ -279,6 +285,9 @@ func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequ
 	if sid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "session_id is required")
 	}
+	if err := s.assertOptionalAgentMemoryAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	rows, err := s.admin.ListL1TaskRows(ctx, sid,
 		strings.TrimSpace(req.GetAgentId()),
 		strings.TrimSpace(req.GetStatus()),
@@ -306,6 +315,9 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 	}
 	includeInternal := strings.TrimSpace(req.GetIncludeInternal()) == "true"
 	agentID := strings.TrimSpace(req.GetAgentId())
+	if err := s.assertOptionalAgentMemoryAccess(ctx, agentID); err != nil {
+		return nil, err
+	}
 	rows, err := s.admin.ListL1FieldRows(ctx, tid, includeInternal, agentID)
 	if err != nil {
 		return nil, err
@@ -354,6 +366,12 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
+	if err := s.assertOptionalAgentMemoryAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
+	if err := s.assertAgentScopeIfAgent(ctx, scopeType, req.GetScopeId()); err != nil {
+		return nil, err
+	}
 	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
 	if err != nil {
 		return nil, err
@@ -416,6 +434,9 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
+	if err := s.assertAgentScopeIfAgent(ctx, scopeType, req.GetScopeId()); err != nil {
+		return nil, err
+	}
 	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
 	if err != nil {
 		return nil, err
@@ -558,12 +579,15 @@ func (s *MemoryService) SpreadingActivation(ctx context.Context, req *v1.Spreadi
 }
 
 func (s *MemoryService) ListCascadeProposals(ctx context.Context, req *v1.ListCascadeProposalsRequest) (*v1.ListCascadeProposalsResponse, error) {
-	if s.cascade == nil {
-		return nil, apierror.Internal(apierror.DomainMemory, "cascade store not wired")
-	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
+	}
+	if s.cascade == nil {
+		return nil, apierror.Internal(apierror.DomainMemory, "cascade store not wired")
 	}
 	rows, err := s.cascade.ListRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
 	if err != nil {
@@ -771,6 +795,9 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
 	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
+	}
 	body, err := s.admin.AgentIdentityJSON(ctx, aid)
 	if err != nil {
 		return nil, err
@@ -814,6 +841,9 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
 	}
 	body, err := s.admin.AgentStrategyJSON(ctx, aid)
 	if err != nil {
@@ -861,6 +891,9 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
 	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
+	}
 	rows, err := s.admin.EvolutionProposalRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
 	if err != nil {
 		return nil, err
@@ -898,6 +931,9 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
 	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
+	}
 	rows, err := s.admin.EvolutionEventRows(ctx, aid, req.GetLimit())
 	if err != nil {
 		return nil, err
@@ -932,6 +968,9 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
 	}
 	timeRange := strings.TrimSpace(req.GetRange())
 
@@ -988,6 +1027,12 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 		return nil, apierror.BadRequest(apierror.DomainMemory, "fact is required")
 	}
 	scopeType := strings.TrimSpace(f.GetScopeType())
+	if err := s.assertOptionalAgentMemoryAccess(ctx, f.GetAgentId()); err != nil {
+		return nil, err
+	}
+	if err := s.assertAgentScopeIfAgent(ctx, scopeType, f.GetScopeId()); err != nil {
+		return nil, err
+	}
 	scopeID, err := authorizeMemoryScope(ctx, scopeType, f.GetScopeId(), true)
 	if err != nil {
 		return nil, err
@@ -1058,6 +1103,9 @@ func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.Append
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	}
+	if err := s.assertAgentMemoryAccess(ctx, aid); err != nil {
+		return nil, err
 	}
 	raw, err := s.admin.InsertEvolutionEventRow(ctx, biz.EvolutionEventInsert{
 		AgentID:       aid,

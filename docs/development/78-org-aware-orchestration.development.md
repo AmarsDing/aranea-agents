@@ -3,13 +3,13 @@
 > **版本**：2026-08-22 | **状态**：🟡 Phase 0–2 已落地；Phase 4 重型组织链已设计未实施；Phase 3 跨公司 Brief 仍 YAGNI
 > **需求**：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)
 > **设计**：[78-org-aware-orchestration.design.md](./78-org-aware-orchestration.design.md)
-> **ADR**：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md)
+> **ADR**：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md) · [横切](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)
 
 ---
 
 ## 1. 模块定位
 
-在现有 Plan → Allocate → Orchestrate 上补齐 **组织剪枝 + 主管排除 + 建团挂部门 + 创造分层 + 跨团队 Brief/Bulk 交接**，达到既快又准地获取/组建团队，且交接不撑爆上下文。不新建服务进程。
+在现有 Plan → Allocate → Orchestrate 上补齐 **组织剪枝 + 主管排除 + 建团挂部门 + 创造分层 + 跨团队 Brief/Bulk 交接**，并规划 **重型档：分档 + 公司剧本 + 三管道**。达到既快又准地获取/组建团队，且交接不撑爆上下文。不新建服务进程。Phase 4 未写代码。
 
 **代码锚点（现状）：**
 
@@ -120,7 +120,7 @@
 | ORGFAST-17 | 下游 `StartTeamTurn` 前按信封物化 `inbox/<upstream_team_id>/`，前缀只追加清单 | `BuildTeamTurnInput` + `TeamInboxFS` | 磁盘集合 = 声明集合；前缀无文件正文 | ✅ |
 | ORGFAST-18 | 交付协议文案：必须写 summary；大文件列附件 | `DeliverableProtocolSuffix` | DAG 团队 prompt 含 Brief/Bulk 规则 | ✅ |
 | ORGFAST-19 | 回归：无结论仍 fail-closed；`read_upstream_deliverable` 行为不变（文本） | 既有 deliverable 测 | 全绿 | ✅ |
-| ORGFAST-19b | 配方回放：MemoryHit + AgentKeys → 单 SubTask + AllocateExplicit | planner + `plan_and_execute` | 跳过分解/匹配 LLM；仍新建 Team | ✅ |
+| ORGFAST-19b | 配方回放：MemoryHit + AgentKeys → AllocateExplicit（初版单槽；ORGFAST-25 改为专题多槽） | planner + `plan_and_execute` | 跳过分解/匹配 LLM；仍新建 Team | ✅ |
 
 ### Phase 2 — 主管治理（P2）
 
@@ -157,6 +157,23 @@
 | ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | 📋 |
 | ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | 📋 |
 | ORGFAST-47 | 仲裁：部门→总经理，公司→精灵呈用户 | 门禁/事件 | 禁止总经理互怼循环 | 📋 |
+
+### Phase 4b — 链路横切（P1，与 Phase 4 同批设计、可并行实施）
+
+> 目标：速度按 token 算；管道/存储不混用；确认少、干预复用现网。不新造 Graph/共享盘/报告卡片。
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| ORGFAST-50 | 成员首轮前缀预算（R14） | assembly / inject | 四段合计 ≤6KB；超限先砍知识 | 📋 |
+| ORGFAST-51 | 花名册 tool/MCP 允许集 | roster + Assemble | 员工不继承精灵全家桶 | 📋 |
+| ORGFAST-52 | 领导工具白名单 | capability / tools | dept_lead / company_lead 仅治理工具 | 📋 |
+| ORGFAST-53 | 剧本阶段 `collection_ids` | playbook + knowledge | Brief 无知识正文；检索引用 | 📋 |
+| ORGFAST-54 | 记忆隔离单测 | memory 边界 | 兄弟不可读对方 L3 | 📋 |
+| ORGFAST-55 | 确认五档（无默认开工卡） | gate / HITL | 仅造人/新剧本/高风险/危险工具/`confirm_before` | 📋 |
+| ORGFAST-56 | 主对话不订阅成员 token | progress / WS | 用户侧只有芯片/心跳/例外 | 📋 |
+| ORGFAST-57 | 汇总输入收紧 | spirit_synthesis | prompt 仅 Brief+例外+清单 | 📋 |
+| ORGFAST-58 | `deptmail`/`inject` 不得当横向/上行 | 测试锁 | 混用路径编译期或单测拒绝 | 📋 |
+| ORGFAST-59 | 阶段可选 `graph_template_id` | playbook + M53 | 未填走 Team Turn；不新引擎 | 📋 |
 
 ---
 
@@ -210,7 +227,32 @@
 | `internal/agent/agent_allocator_impl.go` | Phase B 先 staffing 再 Factory |
 | `internal/agent/staffing_test.go` | 采纳 / 超时 / 不改写 DAG |
 
-**禁止顺带**：不改 Graph 运行时、不改组织 CRUD UI、不改 DECISION.md 的三种 mode（除非发现与 R1 冲突）；不把 memberfs 开放给员工。
+### Phase 4（规划，未实施）
+
+| 文件 | 改动 |
+|------|------|
+| `internal/agent` 分档器（新，如 `task_gear.go`） | light/medium/heavy 早判 + Plan 后晚升；单测锁死不额外 LLM |
+| `internal/biz/company_lead.go`（新，对称 `dept_lead.go`） | `CompanyLeadAgentKeyPrefix`、幂等挂接公司节点 |
+| `internal/data/ent/schema/organization.go` | 公司节点 `company_lead_agent_id`（Evolving） |
+| `internal/agent/agent_capability_builder.go` | `company_lead` 与 `dept_lead` 一并排除出 Assignable |
+| 公司 `metadata_json.playbooks` + 展开器 | 已授权剧本 → 部门槽 SubTasks；无剧本走 `playbook_fill` |
+| `internal/scenario/system/prompts` / planner | 重型粗路由只出 `playbook_id` |
+| `internal/biz/spirit_orchestration_cache.go` | `ConstraintFingerprint`；不合不复用 keys |
+| checkpoint（对齐 M70，omitempty） | `gear` / `playbook_id` / 已授权阶段 / 已发 Brief |
+| `orchestration_progress` | `upward` / `heartbeat`；载荷 ≤2KB |
+| 门禁/事件 | 部门争议→总经理；公司争议→精灵呈用户 |
+
+### Phase 4b（规划，未实施）
+
+| 文件 | 改动 |
+|------|------|
+| 成员 Turn 前缀装配 | R14 预算裁剪（知识/记忆） |
+| `specialty_roster` / Assemble | toolset + MCP 允许集 |
+| playbook stage | `collection_ids`、`confirm_before`、可选 `graph_template_id` |
+| `spirit_synthesis.go` | 合成输入去掉会话原文 |
+| 单测 | L3 隔离、deptmail≠Brief、无默认开工确认 |
+
+**禁止顺带**：不改 Graph 运行时内核、不改组织 CRUD UI、不改 DECISION.md 的三种 mode（除非发现与 R1 冲突）；不把 memberfs 开放给员工；Phase 4 不实现跨公司发送（ORGFAST-31）；不复活 ExecutionReportCard。
 
 ---
 
@@ -233,6 +275,9 @@
 - [ ] 分档 + 已授权剧本展开时总经理 LLM = 0
 - [ ] `company_lead` 不得为 AssignedKey
 - [ ] 重型上行无源码；指纹不合不复用 keys
+- [ ] 成员首轮前缀 ≤6KB；员工工具为专项子集
+- [ ] 合成 prompt 无成员会话原文
+- [ ] 默认阶段无开工确认卡；pause/inject 复用现网
 
 ---
 
@@ -245,5 +290,9 @@
 | PlanStep 加字段破坏续跑 | 空值兼容；旧 draft 无部门则运行时多数票回填 |
 | 评测集过拟合 | 夹具公开规则（领域词），不写死 AgentKey |
 | inbox 拷贝过大拖慢调度 | 默认同声明文件硬链/拷贝；超阈只指针 + 按需拉；目录型协作改借调同团 |
+| 分档误判把轻活做成重型 | 早判条件收窄；默认中档；升档规则单测锁死 |
+| 无剧本时 TaskPlanner 偷偷拆岗 | 重型无剧本只允许 `playbook_fill` 或 fail-closed |
+| 上行被当成调度栅栏 | 心跳不阻塞无依赖开工；单测锁死 |
+| 旧 checkpoint 缺 Phase 4 字段 | omitempty；缺省仍 Recover |
 
 回滚：Phase 0 的主管排除与 DepartmentID 回填可独立保留（即使剪枝回滚也更准）。OrgPruner 用 `FallbackAll` 开关即可关剪枝。

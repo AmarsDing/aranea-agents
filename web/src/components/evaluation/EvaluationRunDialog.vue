@@ -34,6 +34,41 @@
           hint="AgentEvaluator 重复运行次数（1–20，与后端 MaxNumRuns 一致）"
           @update:model-value="$emit('update:numRuns', Math.min(Math.max(Number($event) || 1, 1), 20))"
         />
+        <q-input
+          :model-value="model"
+          class="app-field-md"
+          dense
+          outlined
+          :label="$t('evaluationPage.experimentModel')"
+          :hint="$t('evaluationPage.experimentModelHint')"
+          @update:model-value="$emit('update:model', String($event ?? ''))"
+        />
+        <q-select
+          :model-value="extraModels"
+          class="app-field-md"
+          dense
+          outlined
+          multiple
+          use-input
+          use-chips
+          hide-dropdown-icon
+          new-value-mode="add-unique"
+          :options="[]"
+          :label="$t('evaluationPage.experimentModels')"
+          :hint="$t('evaluationPage.experimentModelsHint')"
+          @update:model-value="$emit('update:extraModels', (($event as string[]) ?? []).map(String))"
+        />
+        <q-input
+          :model-value="prompt"
+          class="app-field-long"
+          dense
+          outlined
+          type="textarea"
+          autogrow
+          :label="$t('evaluationPage.experimentPrompt')"
+          :hint="$t('evaluationPage.experimentPromptHint')"
+          @update:model-value="$emit('update:prompt', String($event ?? ''))"
+        />
         <q-select
           :model-value="extraAgentIds"
           class="app-field-md"
@@ -48,6 +83,9 @@
           :options="agentOptions"
           @update:model-value="$emit('update:extraAgentIds', (($event as string[]) ?? []).map(String))"
         />
+        <div v-if="versionLabel" class="text-caption text-grey-7">
+          {{ $t('evaluationPage.versionPinned', { version: versionLabel }) }}
+        </div>
         <q-toggle
           :model-value="userSimulation"
           :label="$t('evaluationPage.userSimulationLabel')"
@@ -78,6 +116,10 @@ defineProps<{
   numRuns: number;
   userSimulation: boolean;
   extraAgentIds: string[];
+  model: string;
+  extraModels: string[];
+  prompt: string;
+  versionLabel: string;
   loading: boolean;
   agentOptions: { label: string; value: string }[];
 }>();
@@ -88,6 +130,9 @@ defineEmits<{
   'update:numRuns': [value: number];
   'update:userSimulation': [value: boolean];
   'update:extraAgentIds': [value: string[]];
+  'update:model': [value: string];
+  'update:extraModels': [value: string[]];
+  'update:prompt': [value: string];
   submit: [];
 }>();
 </script>

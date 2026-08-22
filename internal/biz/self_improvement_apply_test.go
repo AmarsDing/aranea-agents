@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func (a *siFakeApplier) ApplyHotReload(_ context.Context, _ *SelfImprovementRun)
 	return a.ref, nil
 }
 
-func (a *siFakeApplier) ApplyCodeMerge(_ context.Context, _ *SelfImprovementRun) (string, error) {
+func (a *siFakeApplier) ApplyCodeMerge(_ context.Context, run *SelfImprovementRun) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.mergeCalls++
@@ -55,6 +56,9 @@ func (a *siFakeApplier) ApplyCodeMerge(_ context.Context, _ *SelfImprovementRun)
 	}
 	if a.sha == "" {
 		a.sha = "sha-fake"
+	}
+	if run != nil && strings.TrimSpace(run.Branch) == "" {
+		run.Branch = "self-improve/" + run.ID
 	}
 	return a.sha, nil
 }
@@ -127,6 +131,12 @@ func TestSIApplyUsecase_CodeKindMergesAndObserves(t *testing.T) {
 	run := store.run
 	if run.AppliedCommit != "sha-fake" {
 		t.Fatalf("AppliedCommit = %q, 期望 sha-fake", run.AppliedCommit)
+	}
+	if run.Branch != "self-improve/run-1" {
+		t.Fatalf("Branch = %q, 期望 self-improve/run-1", run.Branch)
+	}
+	if got := siApplyEffectiveOn(run); got != siApplyEffectiveMerge {
+		t.Fatalf("effective_on = %q, want %s", got, siApplyEffectiveMerge)
 	}
 	if run.Status != RunStatusObserving {
 		t.Fatalf("Status = %s, 期望 observing", run.Status)

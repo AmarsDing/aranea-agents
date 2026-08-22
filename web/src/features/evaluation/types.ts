@@ -34,6 +34,8 @@ export type EvalRun = {
   dataset_version?: number;
   experiment_id?: string;
   variant_label?: string;
+  model?: string;
+  prompt?: string;
 };
 
 export type EvalCaseResult = {
@@ -105,6 +107,9 @@ export type RunEvaluationInput = {
   /** AgentEvaluator MultiRun repeat count (default 1) */
   num_runs?: number;
   use_user_simulation?: boolean;
+  model?: string;
+  prompt?: string;
+  dataset_version_id?: string;
 };
 
 export type ListDatasetsParams = {
@@ -167,6 +172,8 @@ export type EvalRunComparison = {
   dataset_version?: number;
   experiment_id?: string;
   variant_label?: string;
+  model?: string;
+  prompt?: string;
 };
 
 export type EvalDatasetVersion = {
@@ -178,12 +185,20 @@ export type EvalDatasetVersion = {
   created_at: string;
 };
 
+export type ExperimentVariant = {
+  agent_id: string;
+  label?: string;
+  model?: string;
+  prompt?: string;
+};
+
 export type RunExperimentInput = {
   dataset_id: string;
   metrics?: string;
   num_runs?: number;
   use_user_simulation?: boolean;
-  variants: { agent_id: string; label?: string }[];
+  dataset_version_id?: string;
+  variants: ExperimentVariant[];
 };
 
 /** P1-3 judge 校准：judge 与人工标注分歧统计 */

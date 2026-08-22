@@ -59,6 +59,14 @@ message EvalRun {
   int32  dataset_version = 22;
   string experiment_id = 23;
   string variant_label = 24;
+  // model is an optional per-run model override (experiment matrix cell).
+  string model = 25;
+  // prompt is an optional extra instruction overlay for this variant.
+  string prompt = 26;
+  // tools is an optional tool allowlist (comma-separated) or "none".
+  string tools = 27;
+  int32  judge_calls = 28;
+  int32  judge_tokens = 29;
 }
 
 // EvalCaseResult is the output for one case in a run.
@@ -163,6 +171,11 @@ message RunEvaluationRequest {
   bool use_user_simulation = 5;
   string experiment_id = 6;
   string variant_label = 7;
+  string model = 8;
+  string prompt = 9;
+  // dataset_version_id pins the run to an immutable snapshot; empty = latest.
+  string dataset_version_id = 10;
+  string tools = 11;
 }
 
 message GetRunRequest {
@@ -256,6 +269,8 @@ message EvalRunComparison {
   int32  dataset_version = 17;
   string experiment_id = 18;
   string variant_label = 19;
+  string model = 20;
+  string prompt = 21;
 }
 
 message CompareEvalRunsResponse {
@@ -567,6 +582,9 @@ message ListDatasetVersionsResponse {
 message ExperimentVariant {
   string agent_id = 1;
   string label = 2;
+  string model = 3;
+  string prompt = 4;
+  string tools = 5;
 }
 
 message RunExperimentRequest {
@@ -575,6 +593,7 @@ message RunExperimentRequest {
   int32  num_runs = 3;
   bool   use_user_simulation = 4;
   repeated ExperimentVariant variants = 5;
+  string dataset_version_id = 6;
 }
 
 message RunExperimentResponse {

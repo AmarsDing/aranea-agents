@@ -51,6 +51,10 @@ export type EvalRun = {
   datasetVersion: number | undefined;
   experimentId: string | undefined;
   variantLabel: string | undefined;
+  // model is an optional per-run model override (experiment matrix cell).
+  model: string | undefined;
+  // prompt is an optional extra instruction overlay for this variant.
+  prompt: string | undefined;
 };
 
 // EvalCaseResult is the output for one case in a run.
@@ -185,6 +189,10 @@ export type RunEvaluationRequest = {
   useUserSimulation: boolean | undefined;
   experimentId: string | undefined;
   variantLabel: string | undefined;
+  model: string | undefined;
+  prompt: string | undefined;
+  // dataset_version_id pins the run to an immutable snapshot; empty = latest.
+  datasetVersionId: string | undefined;
 };
 
 export type GetRunRequest = {
@@ -293,6 +301,8 @@ export type EvalRunComparison = {
   datasetVersion: number | undefined;
   experimentId: string | undefined;
   variantLabel: string | undefined;
+  model: string | undefined;
+  prompt: string | undefined;
 };
 
 export type CompareEvalRunsResponse = {
@@ -467,6 +477,8 @@ export type ListDatasetVersionsResponse = {
 export type ExperimentVariant = {
   agentId: string | undefined;
   label: string | undefined;
+  model: string | undefined;
+  prompt: string | undefined;
 };
 
 export type RunExperimentRequest = {
@@ -477,6 +489,7 @@ export type RunExperimentRequest = {
   numRuns: number | undefined;
   useUserSimulation: boolean | undefined;
   variants: ExperimentVariant[] | undefined;
+  datasetVersionId: string | undefined;
 };
 
 export type RunExperimentResponse = {

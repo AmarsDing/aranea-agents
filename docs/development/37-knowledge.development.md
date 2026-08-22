@@ -14,6 +14,7 @@
 > **2026-08-22 Wave 2**：LinkIndex 多副本 ADR（读 DB，不广播内存图）+ 联邦检索重写/预算 + PG advisory lock 重建/重嵌入 + `BindDerivedIndexHooks` + 默认库 `GetCollectionByName`。
 > **2026-08-22 Wave 3**：Usecase 字段按 Vault/Graph/WriteBack/Curate 分簇 + 域门面；前端 `useKnowledgePage` 拆 Upload/VaultOps，工作台 CAS 走 store。
 > **2026-08-22 Wave 4**：入库 content_hash 去重 + 启发式摘要卡；创建库 embedding 收入「高级」；文档列表续载；⌘O 索引不完整提示；store/WS 测试。
+> **2026-08-22 I5**：`CreateCollection` / `EnsureDefaultCollection` 不再要求 embedding；默认收件箱走 team Vault；未配置 embedder 时 US-14 仍可粘贴/拖入。
 
 ---
 
@@ -279,6 +280,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 |------|----------|------|
 | Proto：Ingest/Search collection_id 去 REQUIRED + MoveDocument RPC | `api/kratos/knowledge/v1/knowledge.proto` + `make api` | ✅ |
 | Usecase：EnsureDefaultCollection 懒创建（GetCollectionByName + 唯一索引） | `internal/biz/knowledge/knowledge.go` | ✅ |
+| I5：CreateCollection / 默认收件箱 embedding 可选（team Vault，无 embedder 仍可入库） | `internal/biz/knowledge/knowledge.go` + `internal/service/knowledge.go` | ✅ |
 | Service：IngestDocument 留空落默认库；Search 留空走 FederatedRetriever Route 全库 | `internal/service/knowledge.go` | ✅ |
 | 工具：collection_id/collection_ids 改可选；scoped 多库路由；无 scoped 全库路由；零库返回空结果 | `internal/tools/knowledge/tool.go` | ✅ |
 | MoveDocument：Repo 事务（documents+chunks 随迁 + 计数校正）+ dim 兼容校验 | `internal/data/knowledge.go`、`internal/biz/knowledge/knowledge.go`、`internal/service/knowledge.go` | ✅ |

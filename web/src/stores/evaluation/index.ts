@@ -16,6 +16,7 @@ import {
   getRun,
   getRunResults,
   listCases,
+  listDatasetVersions,
   listDatasets,
   listRunPreferences,
   listRuns,
@@ -33,6 +34,7 @@ import type {
   EvalCase,
   EvalCaseResult,
   EvalDataset,
+  EvalDatasetVersion,
   UpdateCaseInput,
   UpdateDatasetInput,
   EvalGateConfig,
@@ -127,6 +129,10 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     runs.value.unshift(run);
     runsTotal.value += 1;
     return run;
+  }
+
+  async function loadVersions(datasetId: string): Promise<EvalDatasetVersion[]> {
+    return listDatasetVersions(datasetId);
   }
 
   async function startExperiment(input: RunExperimentInput): Promise<EvalRun[]> {
@@ -239,6 +245,7 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     importCases,
     startRun,
     startExperiment,
+    loadVersions,
     loadRuns,
     refreshRun,
     stopRun,

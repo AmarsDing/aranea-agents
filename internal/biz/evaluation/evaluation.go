@@ -73,6 +73,17 @@ type Run struct {
 	ExperimentID string
 	// VariantLabel is the matrix cell label (agent / model / prompt).
 	VariantLabel string
+	// Model is an optional model override for this experiment cell.
+	Model string
+	// Prompt is an optional extra instruction overlay for this cell.
+	Prompt string
+	// Tools is an optional tool allowlist ("none" or comma-separated keys).
+	Tools string
+	// LeaseUntil is the RFC3339 heartbeat deadline for in-flight runs.
+	LeaseUntil string
+	// JudgeCalls / JudgeTokens accumulate LLM-judge invocations for this run.
+	JudgeCalls  int
+	JudgeTokens int
 	// WorkspaceID scopes this run to a tenant workspace.
 	// empty = legacy (treated as default workspace); non-empty = tenant-private.
 	WorkspaceID string
@@ -91,9 +102,9 @@ const (
 
 // CaseResult is the outcome for one case in a run.
 type CaseResult struct {
-	ID               string
-	RunID            string
-	CaseID           string
+	ID     string
+	RunID  string
+	CaseID string
 	// Input is the case text joined from eval_cases at read time (annotation
 	// UX); empty when the case row no longer exists. Not stored on the result.
 	Input            string
@@ -156,6 +167,8 @@ type RunComparison struct {
 	DatasetVersion     int
 	ExperimentID       string
 	VariantLabel       string
+	Model              string
+	Prompt             string
 	ExactMatchScore    float32
 	ContainsMatchScore float32
 	LLMJudgeScore      float32
@@ -316,12 +329,42 @@ func (u *Usecase) CreateRun(ctx context.Context, in Run) (Run, error) {
 	if in.NumRuns <= 0 {
 		in.NumRuns = 1
 	}
+	in.Tools = strings.TrimSpace(in.Tools)
+	if in.LeaseUntil == "" {
+		in.LeaseUntil = NextLeaseUntil()
+	}
+	if err := u.bindRunDatasetVersion(ctx, &in); err != nil {
+		return Run{}, err
+	}
+	return u.runs.CreateRun(ctx, in)
+}
+
+func (u *Usecase) bindRunDatasetVersion(ctx context.Context, in *Run) error {
+	if in == nil {
+		return nil
+	}
+	if vid := strings.TrimSpace(in.DatasetVersionID); vid != "" {
+		v, err := u.GetDatasetVersion(ctx, vid)
+		if err != nil {
+			return err
+		}
+		if v.ID == "" {
+			return apierror.NotFound("EVAL", "dataset version not found")
+		}
+		if v.DatasetID != in.DatasetID {
+			return apierror.BadRequest("EVAL", "dataset_version_id does not belong to this dataset")
+		}
+		in.DatasetVersionID = v.ID
+		in.DatasetVersion = v.Version
+		in.DatasetHash = v.Hash
+		return nil
+	}
 	if snap, err := u.SnapshotDataset(ctx, in.DatasetID); err == nil && snap.ID != "" {
 		in.DatasetVersionID = snap.ID
 		in.DatasetVersion = snap.Version
 		in.DatasetHash = snap.Hash
 	}
-	return u.runs.CreateRun(ctx, in)
+	return nil
 }
 
 // GetRun returns one run.
@@ -353,18 +396,46 @@ func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
 	return u.runs.UpdateRun(ctx, r)
 }
 
-// StaleRunGrace is the minimum age before a pending/running row is treated
-// as an orphan. olderThan<=0 uses this grace so a multi-instance or
-// just-started run is never wiped by FailStaleRuns(..., 0).
+// StaleRunGrace is the fallback age for rows that never wrote a lease
+// (pre-lease schema). Live runs refresh LeaseUntil; expired leases are
+// swept regardless of created_at. olderThan<=0 still uses this grace
+// for lease-less rows.
 const StaleRunGrace = 15 * time.Minute
 
-// FailStaleRuns sweeps non-terminal runs older than olderThan into "failed"
-// (Y10). olderThan<=0 means StaleRunGrace (not "everything").
+// LeaseTTL is how long an in-flight run remains immune to stale sweep.
+const LeaseTTL = 2 * time.Minute
+
+// NextLeaseUntil returns now+LeaseTTL in RFC3339 UTC.
+func NextLeaseUntil() string {
+	return time.Now().UTC().Add(LeaseTTL).Format(time.RFC3339)
+}
+
+// FailStaleRuns sweeps non-terminal runs whose lease expired (or, for
+// lease-less rows, created_at older than olderThan). olderThan<=0 means
+// StaleRunGrace for the lease-less fallback.
 func (u *Usecase) FailStaleRuns(ctx context.Context, olderThan time.Duration) (int, error) {
 	if olderThan <= 0 {
 		olderThan = StaleRunGrace
 	}
 	return u.runs.FailStaleRuns(ctx, time.Now().Add(-olderThan))
+}
+
+// TouchRunLease refreshes the in-flight heartbeat so a live executor is
+// not swept by another instance's startup cleaner.
+func (u *Usecase) TouchRunLease(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" || u == nil || u.runs == nil {
+		return nil
+	}
+	run, err := u.runs.GetRun(ctx, id)
+	if err != nil {
+		return err
+	}
+	if run.Status != RunStatusPending && run.Status != RunStatusRunning {
+		return nil
+	}
+	run.LeaseUntil = NextLeaseUntil()
+	return u.runs.UpdateRun(ctx, run)
 }
 
 // DeleteRun removes a run and its case results.
@@ -464,6 +535,30 @@ func (u *Usecase) FindInFlightRun(ctx context.Context, datasetID, agentID string
 	return Run{}, false, nil
 }
 
+// FindInFlightExperimentCell reports an in-flight run for one matrix cell.
+// Same agent may have several cells (model/prompt); the lock key is variant_label.
+func (u *Usecase) FindInFlightExperimentCell(ctx context.Context, datasetID, agentID, variantLabel string) (Run, bool, error) {
+	variantLabel = strings.TrimSpace(variantLabel)
+	if variantLabel == "" {
+		return u.FindInFlightRun(ctx, datasetID, agentID)
+	}
+	datasetID = strings.TrimSpace(datasetID)
+	agentID = strings.TrimSpace(agentID)
+	if datasetID == "" || agentID == "" {
+		return Run{}, false, nil
+	}
+	runs, _, err := u.runs.ListRuns(ctx, datasetID, agentID, inFlightScanLimit, 0)
+	if err != nil {
+		return Run{}, false, err
+	}
+	for _, r := range runs {
+		if (r.Status == RunStatusPending || r.Status == RunStatusRunning) && strings.TrimSpace(r.VariantLabel) == variantLabel {
+			return r, true, nil
+		}
+	}
+	return Run{}, false, nil
+}
+
 // CancelRun marks a pending/running run cancelled. Callers should also
 // cancel the Runner context so the executor stops promptly.
 func (u *Usecase) CancelRun(ctx context.Context, id string) (Run, error) {
@@ -528,6 +623,8 @@ func (u *Usecase) CompareEvalRuns(ctx context.Context, runIDs []string) ([]RunCo
 			DatasetVersion:     r.DatasetVersion,
 			ExperimentID:       r.ExperimentID,
 			VariantLabel:       r.VariantLabel,
+			Model:              r.Model,
+			Prompt:             r.Prompt,
 			ExactMatchScore:    r.ExactMatchScore,
 			ContainsMatchScore: r.ContainsMatchScore,
 			LLMJudgeScore:      r.LLMJudgeScore,

@@ -85,9 +85,10 @@
         >
           <template #body-cell-event="slotProps">
             <q-td :props="slotProps" class="cursor-pointer" @click="openDetail(slotProps.row)">
-              <q-chip dense square :color="eventColor(slotProps.row.action)" text-color="white">
-                {{ slotProps.row.action }}
-              </q-chip>
+              <span class="audit-event-cell">
+                <span class="apm-status-dot" :class="`apm-status-dot--${eventTone(slotProps.row.action)}`" />
+                <span class="audit-event-cell__action">{{ slotProps.row.action }}</span>
+              </span>
             </q-td>
           </template>
           <template #body-cell-resource="slotProps">
@@ -162,45 +163,51 @@
     <q-dialog v-model="detailOpen">
       <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-start justify-between">
-          <div>
-            <div class="app-glass-dialog__title">{{ t('monitorPage.audit.dialogTitle') }}</div>
-            <div class="app-glass-dialog__subtitle">{{ selected?.action }}</div>
+          <div class="audit-detail-head">
+            <span
+              class="apm-status-dot audit-detail-head__dot"
+              :class="`apm-status-dot--${eventTone(selected?.action || '')}`"
+            />
+            <div>
+              <div class="app-glass-dialog__title">{{ t('monitorPage.audit.dialogTitle') }}</div>
+              <div class="app-glass-dialog__subtitle">{{ selected?.action }}</div>
+            </div>
           </div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-glass-dialog__body">
-            <q-list dense>
-              <q-item>
-                <q-item-section>{{ t('monitorPage.audit.labelResource') }}</q-item-section>
-                <q-item-section side>
+            <div class="apm-meta-grid q-mb-md">
+              <div class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelResource') }}</div>
+                <div class="apm-meta-item__value ellipsis">
                   {{ selected?.resource }}<span v-if="selected?.resource_id"> / {{ selected?.resource_id }}</span>
-                </q-item-section>
-              </q-item>
-              <q-item>
-                <q-item-section>{{ t('monitorPage.audit.labelTime') }}</q-item-section>
-                <q-item-section side>{{ formatDate(selected?.created_at) }}</q-item-section>
-              </q-item>
-              <q-item v-if="selected?.actor">
-                <q-item-section>{{ t('monitorPage.audit.labelActor') }}</q-item-section>
-                <q-item-section side>{{ selected?.actor }}</q-item-section>
-              </q-item>
-              <q-item v-if="selected?.ip">
-                <q-item-section>IP</q-item-section>
-                <q-item-section side>{{ selected?.ip }}</q-item-section>
-              </q-item>
-              <q-item v-if="selected?.user_agent">
-                <q-item-section>User Agent</q-item-section>
-                <q-item-section side class="ellipsis">{{ selected?.user_agent }}</q-item-section>
-              </q-item>
-              <q-item v-if="selected?.severity">
-                <q-item-section>{{ t('monitorPage.audit.labelSeverity') }}</q-item-section>
-                <q-item-section side>
+                </div>
+              </div>
+              <div class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelTime') }}</div>
+                <div class="apm-meta-item__value">{{ formatDate(selected?.created_at) }}</div>
+              </div>
+              <div v-if="selected?.actor" class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelActor') }}</div>
+                <div class="apm-meta-item__value ellipsis">{{ selected?.actor }}</div>
+              </div>
+              <div v-if="selected?.ip" class="apm-meta-item">
+                <div class="apm-meta-item__label">IP</div>
+                <div class="apm-meta-item__value">{{ selected?.ip }}</div>
+              </div>
+              <div v-if="selected?.user_agent" class="apm-meta-item">
+                <div class="apm-meta-item__label">User Agent</div>
+                <div class="apm-meta-item__value ellipsis">{{ selected?.user_agent }}</div>
+              </div>
+              <div v-if="selected?.severity" class="apm-meta-item">
+                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelSeverity') }}</div>
+                <div class="apm-meta-item__value">
                   <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
-                </q-item-section>
-              </q-item>
-            </q-list>
+                </div>
+              </div>
+            </div>
             <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
           </q-card-section>
         </div>
@@ -314,13 +321,14 @@ function prettyDetail(detail: string): string {
   return compactJSON(parseJSON(detail));
 }
 
-function eventColor(action: string) {
-  if (action.includes('delete')) return 'negative';
-  if (action.includes('create')) return 'positive';
-  if (action.includes('toggle')) return 'orange';
-  if (action.includes('credentials')) return 'purple';
-  if (action.includes('update')) return 'primary';
-  return 'grey';
+/** 动作 → APM 状态点色调（删除红 / 新建绿 / 开关橙 / 凭据与更新蓝） */
+function eventTone(action: string): string {
+  if (action.includes('delete')) return 'error';
+  if (action.includes('create')) return 'ok';
+  if (action.includes('toggle')) return 'warn';
+  if (action.includes('credentials')) return 'info';
+  if (action.includes('update')) return 'info';
+  return 'idle';
 }
 
 function severityColor(severity: string) {
@@ -339,5 +347,37 @@ async function copyJSON() {
 .monitor-audit-toolbar {
   padding: var(--space-2) var(--space-4) 0;
   border-bottom: none;
+}
+
+/* 事件列：状态点 + 等宽动作名 */
+.audit-event-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audit-event-cell .apm-status-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.audit-event-cell__action {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 详情弹窗头部状态点 */
+.audit-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.audit-detail-head__dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
 }
 </style>

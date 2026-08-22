@@ -20,6 +20,7 @@ type (
 	EvalRunPreference        = evaluation.RunPreference
 	EvalGateConfig           = evaluation.GateConfig
 	EvalDatasetVersion       = evaluation.DatasetVersion
+	EvalRunOverride          = evaluation.RunOverride
 	// EvalRepo is the deprecated composed evaluation persistence port.
 	// Production uses EvalStores (see evaluation.Stores).
 	EvalRepo       = evaluation.Repo
@@ -38,10 +39,14 @@ const (
 
 // Re-export evaluation constructors and helpers for backward compatibility.
 var (
-	NewEvalUsecase     = evaluation.NewUsecase
-	EvalStoresFrom     = evaluation.StoresFrom
-	ParseEvalScores    = evaluation.ParseScores
-	MarshalEvalScores  = evaluation.MarshalScores
-	ApplyEvalLLMPatch  = evaluation.ApplyLLMPatch
-	EvalRunMetricScore = evaluation.RunMetricScore
+	NewEvalUsecase          = evaluation.NewUsecase
+	EvalStoresFrom          = evaluation.StoresFrom
+	ParseEvalScores         = evaluation.ParseScores
+	MarshalEvalScores       = evaluation.MarshalScores
+	ApplyEvalLLMPatch       = evaluation.ApplyLLMPatch
+	EvalRunMetricScore      = evaluation.RunMetricScore
+	WithEvalRunOverride     = evaluation.WithRunOverride
+	EvalRunOverrideFrom     = evaluation.RunOverrideFrom
+	OverlayEvalPrompt       = evaluation.OverlayPrompt
+	DefaultEvalVariantLabel = evaluation.DefaultVariantLabel
 )

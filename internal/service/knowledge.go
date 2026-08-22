@@ -1201,8 +1201,8 @@ func (s *KnowledgeService) extractText(ctx context.Context, raw []byte, source, 
 }
 
 // resolveIngestCollection 解析入库目标 Collection（US-14 上传免预选）：
-// collectionID 非空时按原逻辑校验存在性；为空时按当前 Embedder 配置懒创建
-// 「默认知识库」并返回——用户无需在上传前手动建库。
+// collectionID 非空时按原逻辑校验存在性；为空时懒创建「默认知识库」。
+// Embedder 未配置时仍创建词法收件箱（team Vault），不阻断粘贴/拖入。
 func (s *KnowledgeService) resolveIngestCollection(ctx context.Context, collectionID string) (biz.KnowledgeCollection, error) {
 	if strings.TrimSpace(collectionID) != "" {
 		return s.uc.GetCollection(ctx, collectionID)
@@ -1211,9 +1211,6 @@ func (s *KnowledgeService) resolveIngestCollection(ctx context.Context, collecti
 	if s.embedderAdmin != nil {
 		_, _, m, d, _, _ := s.embedderAdmin.Config()
 		model, dim = m, d
-	}
-	if model == "" {
-		return biz.KnowledgeCollection{}, apierror.BadRequest("KNOWLEDGE", "embedder not configured; cannot ensure default collection")
 	}
 	// C-01: 与 CreateCollection 一致的租户盖章——system 创建共享默认库（ws=""），
 	// 租户创建自有默认库，避免懒创建的库被 mutate 检查视为共享只读。

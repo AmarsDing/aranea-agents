@@ -206,9 +206,12 @@ func TestKnowledgeUsecase_CreateCollectionValidation(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing name")
 	}
-	_, err = uc.CreateCollection(context.Background(), biz.KnowledgeCollection{Name: "x"})
-	if err == nil {
-		t.Error("expected error for missing embedding_model")
+	c, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{Name: "x"})
+	if err != nil {
+		t.Fatalf("empty embedding_model must create lexical collection: %v", err)
+	}
+	if c.EmbeddingModel != "" {
+		t.Errorf("EmbeddingModel = %q, want empty", c.EmbeddingModel)
 	}
 }
 

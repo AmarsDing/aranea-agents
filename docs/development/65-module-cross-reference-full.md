@@ -136,7 +136,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` + `memory_shim_*` L0–L4 Store 实现） |
 | **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status）；**2026-08-15**：`AutoMemoryWorker` 过门后 `KnowledgeWriteBack`（G2）+ pending 队列（US-44）+ `ProjectAgentMemory`（G1 只读投影，不改 L3 内核） |
 | **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（6 个 L1 工具，含 P1-2 新增的 complete 任务结束触发）、`service.MemoryService.GetMemoryLayerOverview`/`GetUnifiedMemoryGraph`（记忆中心聚合端点） |
-| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入）、`biz.MemoryOverviewStatsReader`（全景 SQL 聚合，生产 adapter 实现、测试 fake 可走扫描兜底） |
+| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入）、`biz.MemoryOverviewStatsReader`（全景 SQL 聚合，生产 adapter 实现、测试 fake 可走扫描兜底）；Memory Center 带 `agent_id` 的明细 RPC 与全景共用 `assertAgentMemoryAccess` |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
 | **数据库** | Postgres（memory_facts/memory_entities/memory_l4_graph/memory_episodes/memory_l1_tasks/memory_l1_fields/memory_l1_field_history，embedding 向量走 pgvector 同库） |
@@ -574,7 +574,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **事件消费** | 无 |
 | **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks）；SP1：`knowledge_blocks`（块物化，`anchor` 部分唯一索引 + `promoted_from/to` 谱系）、`knowledge_block_refs`（块级引用边，dst_* SET NULL / collection CASCADE 镜像内存图）；`vault_backend` 维度（local=文件系统真相源 / team=PG 真相源）；`knowledge_documents.visibility` / `owner_user_id`（collection 默认，private=owner） |
 | **前端对应** | KnowledgePage（资源管理器三栏 + 3D 图谱 + 设置）；SP1-I：`KnowledgeDocDetail` 反链分组/dangling 灰显/晋升按钮、`KnowledgePromoteDialog`、`KnowledgeVaultTree`/`KnowledgeGraph3D` team 徽标、`useKnowledgeGraphDeltaWs`（graph.delta 订阅 → `invalidateLinkCaches` + 详情/图谱重载）；V4：`GraphLegend`（M5 图例过滤 + 透镜）、`FocusCard`（M4 节点详情卡，含重嵌入入口）、`LiquidGlassDefs`（M1 真折射滤镜单例）、`KnowledgeVaultTree`「启用语义检索」菜单（B2，仅词法库）、`WorkbenchSidebar` 文件行「重新向量化」菜单（B1）；**2026-08-17**：命令面板「审核治理提案」+ `GovernanceReviewDialog`（事实冲突 keep_old/keep_new）；对话 `KnowledgeRecallChips`（回答 `[n]` 脚注对齐 chunk_id）；Agent 记忆 Tab `grounded_only`；文件菜单仅自己可见/库内可见 |
-| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；本进程 `LinkIndex` 与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本读路径走 `knowledge_block_refs`（[ADR-KN-LINKINDEX](../reports/2026-08-22-review-adr-knowledge-linkindex-replica.md)），禁止副本间广播内存图。用户语言是「知识库」不是 Collection；文档状态必须经 FSM（禁止 pending→indexed）；首次摄取提交走 `CommitIndexedDocument`；同一库相同 `content_hash` 复用已有文档，不重复建档。Knowledge 是可引用工作区，Memory 写回只是投影。`writeBackReplay` 必须在 Usecase 上绑定（`BindDerivedIndexHooks`）。新业务代码优先走 `Usecase.Vault()/Retrieve()/Graph()/WriteBack()/Curate()` 门面，不要继续给 Usecase 加字段。 |
+| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；本进程 `LinkIndex` 与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本读路径走 `knowledge_block_refs`（[ADR-KN-LINKINDEX](../reports/2026-08-22-review-adr-knowledge-linkindex-replica.md)），禁止副本间广播内存图。用户语言是「知识库」不是 Collection；文档状态必须经 FSM（禁止 pending→indexed）；首次摄取提交走 `CommitIndexedDocument`；同一库相同 `content_hash` 复用已有文档，不重复建档。Knowledge 是可引用工作区，Memory 写回只是投影。`writeBackReplay` 必须在 Usecase 上绑定（`BindDerivedIndexHooks`）。新业务代码优先走 `Usecase.Vault()/Retrieve()/Graph()/WriteBack()/Curate()` 门面，不要继续给 Usecase 加字段。创建知识库 / 默认收件箱不要求 `embedding_model`（空 = 词法 team Vault；语义层用 `EnableCollectionSemantic` 升级）。 |
 
 ---
 
@@ -607,7 +607,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **共享类型** | `EvalDataset`、`EvalCase`、`EvalRun`、`EvalCaseResult`、`EvalGateConfig`、`EvalRunPreference`、`EvalDatasetVersion` |
 | **事件生产** | `eval.completed`（Important，SystemNotice）；失败用例 `eval_failure` Observation |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config（默认行+per-agent）/eval_run_preferences/eval_dataset_versions；`idx_eval_runs_inflight` 部分唯一；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
+| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config（默认行+per-agent）/eval_run_preferences/eval_dataset_versions；`eval_runs.model`/`prompt`；in-flight 部分唯一分非实验 / 实验细胞两套索引；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
 | **前端对应** | EvaluationPage（`features/evaluation/` + `stores/evaluation/`） |
 
 ---
@@ -896,7 +896,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 
 ### 1.28 平台自改进 / M73 (`internal/biz/self_improvement_*.go` + `internal/service/{repo_sandbox_runner,self_improvement_applier,self_improvement_critic}.go` + `internal/cronrunner/jobs/self_improve_*.go`)
 
-**职责**：七阶段自闭环（Observe→Diagnose→Patch→Verify→Govern→Apply→Learn）：信号触发器产出 platform 建议 → 物化 SelfImprovementRun → Meta Team（Analyst/Patcher LLM + 沙盒 G1-G3 + Critic G4）→ RiskClassifier 治理路由 → Applier 应用（热加载快照 / 代码 ff 合并）→ Watchdog 观察窗指标对比自动回滚 → Outcome 终态归因反哺 KB。
+**职责**：七阶段自闭环（Observe→Diagnose→Patch→Verify→Govern→Apply→Learn）：信号触发器产出 platform 建议 → 物化 SelfImprovementRun → Meta Team（Analyst/Patcher LLM + 沙盒 G1-G3 + Critic G4）→ RiskClassifier 治理路由 → Applier 应用（热加载快照 / 代码落 `self-improve/<runID>` 分支）→ Watchdog 观察窗指标对比自动回滚 → Outcome 终态归因反哺 KB。
 
 | 维度 | 内容 |
 |------|------|
@@ -916,7 +916,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 4. 观察窗并发上限 3 + 同核心路径串行：applied→observing 提升前检查 observing 计数与受影响目录重叠。
 5. 指标快照存 `run.Metadata`（`metrics_before`/`metrics_after`），无新列；KB 负面样本以 `FailurePatternSource=self_improvement` 表达（不加 negative 列）。
 6. 触发器降频：Outcome 归因后同 trigger_source 连续 3 次 neutral/regressed → `SkillEvolutionOrchestrator.SetTriggerCooldownMultiplier` ×2（持久化 `system_settings.si_trigger_cooldown_multipliers`，启动 Hydrate，上限 8×）。生产默认 `daily_auto_apply_quota=0`（关闭 auto-apply）；开发配置可显式设 >0。
-7. 沙盒安全：diff 路径校验（拒绝对/反斜杠/`..`）、保护文件 fail-fast 不消耗 Gate、快照回滚指针 `snapshot/<runID>`。Gate 子进程环境白名单（剥离生产 DSN/密钥）；G2/G3 空包拒绝回退 `./...`。config/prompt/docs 默认跳过 G2。G5 恒 skipped（Passed=false）。`ApplyHotReload` 是工作树落地，未接 `SIRuntimeReloader` 时不是运行时热加载。Analyst/Patcher 经 `internal/tools/patcherfs` 访问仓库：路径监狱 + 保护清单；Analyst 只读仓库根，Patcher 读写本次 worktree，返回前 Restore。Analyst 将建议证据还原为 `FailureReport` 并调用 `heal.RootCauseAnalyzer`；`affected_files` 必须能回溯到报告 file。code/test 且只改 `web/` 时，前端 lint skipped 改为 fail-closed。
+7. 沙盒安全：diff 路径校验（拒绝对/反斜杠/`..`）、保护文件 fail-fast 不消耗 Gate、快照回滚指针 `snapshot/<runID>`。Gate 子进程环境白名单（剥离生产 DSN/密钥）；G2/G3 空包拒绝回退 `./...`。config/prompt/docs 默认跳过 G2。G5 恒 skipped（Passed=false）。`ApplyHotReload` 是工作树落地，未接 `SIRuntimeReloader` 时不是运行时热加载。Analyst/Patcher 经 `internal/tools/patcherfs` 访问仓库：路径监狱 + 保护清单；Analyst 只读仓库根，Patcher 读写本次 worktree，返回前 Restore。Analyst 将建议证据还原为 `FailureReport` 并调用 `heal.RootCauseAnalyzer`；`affected_files` 必须能回溯到报告 file。code/test 且只改 `web/` 时，前端 lint skipped 改为 fail-closed。G2 在 ApplyDiff 前探测 HEAD 失败用例，仅豁免基线内同名失败。代码通道只在 `self-improve/<runID>` 落 commit，不 ff 当前工作分支；回滚删分支。`applied` ≠ 已进生产（需人工 merge）。观察窗指标不会因该通道变化。
 
 ---
 
@@ -1101,18 +1101,18 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 
 ### 1.42 组织感知编排 / M78（`internal/agent` Allocator + OrgPruner + `RealTeamOrchestrator`）
 
-**职责**：用户下指令后**又快又准**地获取/组建团队——分档后轻/中走花名册，重型走公司剧本 + 三管道（部门领导横向、总经理对外、例外上行）；Allocator 按花名册绑定已有专项（有 `domain_path` 时不 L3 选人、热路径不 Factory）；建团写入 `DepartmentID`；`dept_lead`/`company_lead` 不当业务 Lead；跨团队 **Brief + Bulk**。ADR：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md)。三件套：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)。
+**职责**：用户下指令后**又快又准**地获取/组建团队——分档后轻/中走花名册，重型走公司剧本 + 三管道；横切约束：成员前缀 ≤6KB、专项工具/MCP、知识引用、记忆隔离、确认五档、干预复用 Pause/Inject、汇总只吃 Brief。ADR：[ORG-FAST](../reports/2026-08-22-review-adr-org-aware-orchestration.md) · [重型链](../reports/2026-08-22-review-adr-org-heavy-chain.md) · [横切](../reports/2026-08-22-review-org-heavy-chain-crosscut.md)。三件套：[78-org-aware-orchestration.md](./78-org-aware-orchestration.md)。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（AgentAllocatorPort、OrganizationReader、DeptLeadManager、TaskPlan/AllocationPlan）、`agent`（TaskPlanner、AgentFactory、domain_lexicon）、Spirit `plan_and_execute` |
+| **上游依赖** | `biz`（AgentAllocatorPort、OrganizationReader、DeptLeadManager、规划中的 CompanyLeadManager、TaskPlan/AllocationPlan）、`agent`（TaskPlanner、AgentFactory、domain_lexicon）、Spirit `plan_and_execute`、M70 checkpoint |
 | **下游影响** | `service/team_orchestrator_real.go`（DepartmentID 透传）、`biz/spirit_assembly.go`（主管加入/借调）、M67 审批门禁、M71 memberfs/deptmail |
 | **核心导出** | 规划中：`OrgPruner`（Evolving，可保持包内）；不新增 RPC |
 | **实现接口** | 扩展既有 `AgentAllocatorPort.Allocate` 行为；不替换 `PlanExecutor` |
 | **共享类型** | `AgentCapability` 增组织字段；`TaskAllocation`/`PlanStep` 透传 `DepartmentID` |
-| **事件生产** | 复用 `orchestration_progress`（allocating 带专题/人/层；collaborating / allocate_failed）；不新增 bus |
+| **事件生产** | 复用 `orchestration_progress`（allocating 带专题/人/层；collaborating / allocate_failed）；Phase 4 规划增 `upward` / `heartbeat`，仍不新建 bus |
 | **事件消费** | `PlanBoardCreatedEvent`（既有） |
-| **数据库** | 不强制新表；读 `organizations` + `agents.position_id` |
+| **数据库** | 不强制新表；读 `organizations` + `agents.position_id`；Phase 4 规划公司节点 `company_lead_agent_id` + `metadata_json.playbooks` |
 | **前端对应** | 无独立页；进度条显示专题→人；团队卡片展示花名册绑定 |
 | **测试覆盖** | Phase 0–2 + 花名册闭集已落地；Phase 4 分档/剧本/三管道见 development 📋 |
 
@@ -1123,6 +1123,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - `domain_path` 空或组织树空可回退 L2/L3；禁止低分交差与热路径 Factory
 - 缺专项 fail-closed：指定已有 Agent 或去编制表补人，不要在任务路径造人
 - 重型链：预授权剧本并行开工；上行走例外；不复活旧 Team；`company_lead` 同样不可分配
+- 横切：deptmail≠Brief；知识≠记忆；员工不继承精灵全家桶；主对话不刷成员 token；不新造 Graph 引擎/报告卡片
 - 跨团队正式交接走 Brief/Bulk，**禁止**把 M71 memberfs 开放给员工当传文件通道
 - 改 Allocator 时同步验证 B.10.21 L0/L1 配方/使命单测与 Spirit DAG 建团
 

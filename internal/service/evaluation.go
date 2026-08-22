@@ -253,11 +253,18 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 			fmt.Sprintf("an evaluation run is already in flight for this dataset+agent (run_id=%s)", existing.ID))
 	}
 	in := biz.EvalRun{
-		DatasetID:    req.GetDatasetId(),
-		AgentID:      req.GetAgentId(),
-		NumRuns:      numRuns,
-		ExperimentID: req.GetExperimentId(),
-		VariantLabel: req.GetVariantLabel(),
+		DatasetID:        req.GetDatasetId(),
+		AgentID:          req.GetAgentId(),
+		NumRuns:          numRuns,
+		ExperimentID:     req.GetExperimentId(),
+		VariantLabel:     req.GetVariantLabel(),
+		Model:            strings.TrimSpace(req.GetModel()),
+		Prompt:           strings.TrimSpace(req.GetPrompt()),
+		Tools:            strings.TrimSpace(req.GetTools()),
+		DatasetVersionID: strings.TrimSpace(req.GetDatasetVersionId()),
+	}
+	if in.VariantLabel == "" && (in.Model != "" || in.Prompt != "") {
+		in.VariantLabel = biz.DefaultEvalVariantLabel(in.AgentID, in.Model, in.Prompt, in.Tools)
 	}
 	if !workspace.IsSystem(ctx) {
 		in.WorkspaceID = workspace.IDFromContext(ctx)
@@ -421,6 +428,8 @@ func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.Compare
 			DatasetVersion:        int32(c.DatasetVersion),
 			ExperimentId:          c.ExperimentID,
 			VariantLabel:          c.VariantLabel,
+			Model:                 c.Model,
+			Prompt:                c.Prompt,
 		})
 	}
 	return &v1.CompareEvalRunsResponse{Items: out}, nil
@@ -611,22 +620,29 @@ func (s *EvaluationService) RunExperiment(ctx context.Context, req *v1.RunExperi
 		if agentID == "" {
 			continue
 		}
+		model := strings.TrimSpace(v.GetModel())
+		prompt := strings.TrimSpace(v.GetPrompt())
+		tools := strings.TrimSpace(v.GetTools())
 		label := strings.TrimSpace(v.GetLabel())
 		if label == "" {
-			label = agentID
+			label = biz.DefaultEvalVariantLabel(agentID, model, prompt, tools)
 		}
-		if existing, ok, err := s.uc.FindInFlightRun(ctx, req.GetDatasetId(), agentID); err != nil {
+		if existing, ok, err := s.uc.FindInFlightExperimentCell(ctx, req.GetDatasetId(), agentID, label); err != nil {
 			return nil, err
 		} else if ok {
 			return nil, apierror.Conflict("EVAL",
-				fmt.Sprintf("an evaluation run is already in flight for this dataset+agent (run_id=%s)", existing.ID))
+				fmt.Sprintf("an evaluation run is already in flight for this experiment cell (run_id=%s)", existing.ID))
 		}
 		in := biz.EvalRun{
-			DatasetID:    req.GetDatasetId(),
-			AgentID:      agentID,
-			NumRuns:      numRuns,
-			ExperimentID: expID,
-			VariantLabel: label,
+			DatasetID:        req.GetDatasetId(),
+			AgentID:          agentID,
+			NumRuns:          numRuns,
+			ExperimentID:     expID,
+			VariantLabel:     label,
+			Model:            model,
+			Prompt:           prompt,
+			Tools:            tools,
+			DatasetVersionID: strings.TrimSpace(req.GetDatasetVersionId()),
 		}
 		if !workspace.IsSystem(ctx) {
 			in.WorkspaceID = workspace.IDFromContext(ctx)
@@ -722,6 +738,11 @@ func toProtoRun(r biz.EvalRun) *v1.EvalRun {
 		DatasetVersion:     int32(r.DatasetVersion),
 		ExperimentId:       r.ExperimentID,
 		VariantLabel:       r.VariantLabel,
+		Model:              r.Model,
+		Prompt:             r.Prompt,
+		Tools:              r.Tools,
+		JudgeCalls:         int32(r.JudgeCalls),
+		JudgeTokens:        int32(r.JudgeTokens),
 		CreatedAt:          r.CreatedAt,
 	}
 }
