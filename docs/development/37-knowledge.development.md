@@ -1566,3 +1566,20 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 验证：`go test ./internal/agent -run 'FormatKnowledgeCue|KnowledgeCueHook' -count=1`；`go test ./internal/tools/knowledge ./internal/cronrunner/jobs -run 'EmitNumbered|NumberedBracket|EmitKnowledgeRecalled' -count=1`；前端 `npx vitest run` 覆盖 knowledgeRecall / KnowledgeRecallChips / StepBlocks / activityV2。
 
 本轮不做：插件生态、新检索算法、连接器、为 grounded 加 Ent/proto 列。
+
+## 子模块：知识库 UI 重设计（SP3，2026-08-23）
+
+> **状态**：P1 ✅ 已上线（2026-08-23）/ P2、P3 ⏳ 待实施 | **设计**：[37-knowledge.design.md §SP3](./37-knowledge.design.md#sp3-知识库-ui-重设计深空退役与-tech-night-并轨2026-08-23-用户批准)
+> 决策：风格=A(Tech Night 并轨)+C(扁平编辑区)、深空仅留 3D 图谱全屏；布局=⌘K 三合一 / 右栏图标轨 / 🔔 审查徽章 / 删性能模式（用户全选）。功能零删减。
+
+| Phase | 任务 | 状态 | 代码锚点 |
+|-------|------|------|----------|
+| P1 视觉并轨 | `KnowledgeWorkbench`/`TopBar`/`Sidebar`/`Tabs`/`SidePanels` 去深空特效换 Tech Night 令牌；编辑区扁平化 | ✅（2026-08-23） | `web/src/components/knowledge/workbench/*` |
+| P1 | 删除 `effects/`5 组件 + `deep-space.sass` + `kb-portal` 机制 + 性能模式 | ✅（2026-08-23，5 提交） | `web/src/css/style.sass`、`useKnowledgePage` |
+| P2 搜索三合一 | `CommandCenter.vue`（文档/命令/内容三分段）合并 QuickSwitcher/CommandPalette/SearchPanel；⌘O/Ctrl+Shift+F 别名 | ⏳ | `workbench/CommandCenter.vue`（新） |
+| P2 | 右栏改 32px 图标轨 + 4 标签页（反链+出链合并「链接」） | ⏳ | `WorkbenchSidePanels.vue` |
+| P3 审查可见化 | 顶栏 🔔 徽章（写回+治理待办计数） | ⏳ | `WorkbenchTopBar.vue`、`useWorkbenchCommands` |
+| P3 | 对话框/上传队列/面板换全站玻璃皮肤（审查/设置/确认对话框已随 P1 完成，剩 Create/Ingest/Move/Promote/Conflict 核对） | ⏳ | `components/knowledge/*Dialog.vue` 等 |
+| 全程 | 测试改造：删 effects.spec、改 workbench 断言、新增 CommandCenter/图标轨/徽章用例 | ⏳ | `components/knowledge/__tests__/` |
+
+验收：`pnpm lint && pnpm test && pnpm build` 通过；Docker 后端 + quasar dev(9301) 人工核验明暗双主题、三分段、图标轨、徽章计数、3D 图谱深空保留。

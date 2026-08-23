@@ -2831,4 +2831,43 @@ Agent 预检索与 HTTP Search 的 auto 模式都走 AdaptiveRouter，因此词�
 - 图扩展：`ListChunksByDocuments`、`ListLinks`、`ListActiveLinks` 两端可见性与检索一致，避免公开种子把私密邻居扩进 Agent。
 - 默认上传仍为 collection。不做飞书/SharePoint 连接器。
 
+---
+
+## SP3. 知识库 UI 重设计：深空退役与 Tech Night 并轨（2026-08-23 用户批准）
+
+> 动机（用户四条全选）：视觉太重太炫、功能多但散乱、风格与全站割裂想换、特效性能问题。约束：**功能零删减，只重排重组**。决策过程：brainstorming 可视化对比三方向（A 并入全站 Tech Night / B 克制版深空 / C Linear 式扁平工具风），用户批准「A 为骨架 + 中央编辑区吸收 C + 深空气质仅保留 3D 图谱全屏」；布局四决策点（搜索三合一/右栏默认收起/审查徽章可见化/删除性能模式）用户全选。
+
+### SP3.1 视觉语言
+
+- **框架面板并入全站 Tech Night 令牌**：页底 `var(--gradient-page)`、面板 `--glass-surface` / `--glass-border` / blur 18px 标准玻璃，与 Agents/Skills/Memory 等页同一语言；知识库不再是独立视觉体系。
+- **中央编辑区扁平纯净**（吸收 C 方向）：纯色底、1px hairline 分隔、零发光零模糊，长时间阅读/编辑不晃眼；排版走 `--text-*` 阶梯。
+- **深空气质仅保留在 3D 图谱全屏模式**（`KnowledgeGraph3D` + `graph3d/` 渲染管线不动）——该场景是按需打开的展示型场景。
+- 明暗双主题自动继承 `body.body--dark` 令牌体系（旧深空为暗色单主题，重设计后天然获得浅色主题）；全部颜色/间距走既有 CSS 变量，禁止新增散落 hex。
+
+### SP3.2 布局与信息架构
+
+- **顶栏收敛**：库切换 + 当前路径面包屑｜⌘K 统一搜索框｜🔔 审查徽章（有待办时亮起）+ 图谱 + 设置。删除性能模式开关。
+- **搜索三合一**：`QuickSwitcher`(⌘O) + `CommandPalette`(⌘K) + `SearchPanel`(Ctrl+Shift+F) 合并为新 `CommandCenter.vue`（复用 `PaletteModal`），浮层内分「文档 / 命令 / 内容」三段；⌘O、Ctrl+Shift+F 保留为快捷键别名，打开后自动定位对应分段。
+- **右栏五面板 → 可收纳图标轨**：默认收起为 32px 细图标轨常显，点击展开 300px 面板；反链+出链合并为「链接」→ 大纲/链接/属性/图谱 4 个标签页（局部图谱面板保留「展开全屏」入口）。
+- **审查待办可见化**：顶栏 🔔 徽章显示待办计数（写回 N + 治理 M，复用现有 `writeback-pending` / governance API，进入页面拉一次 + 审查后刷新），点击打开对应审查对话框；无待办时徽章隐藏。原 ⌘K 命令保留（归入命令分段）。
+- **左栏不变**：库树 + 当前目录文件列表 + 上传队列（有任务时出现），仅视觉并轨。
+
+### SP3.3 组件处置清单
+
+| 处置 | 对象 | 说明 |
+|---|---|---|
+| 删除 | `effects/ParticleField.vue`、`LiquidGlassDefs.vue`、`TiltCard.vue`（仅测试引用）、`RingCarousel.vue`、`GlowButton.vue`（仅空态引用） | 空态改为标准空态（图标 + 近期文档平铺列表） |
+| 删除 | `css/deep-space.sass`（`style.sass` 摘除 import）、`kb-portal` 机制 | 对话框/菜单/气泡 teleport 后不再需要重挂深空令牌，统一走全站 `_glass-dialog.sass` |
+| 删除 | 性能模式（`performanceMode` 状态、顶栏开关、`kb-workbench--perf` 分支） | 特效清零后开关失去意义 |
+| 合并 | `QuickSwitcher.vue` + `CommandPalette.vue` + `SearchPanel.vue` → `CommandCenter.vue` | 三分段；`PaletteModal.vue` 保留复用 |
+| 改造 | `KnowledgeWorkbench.vue`、`WorkbenchTopBar.vue`（重排 + 🔔 徽章）、`WorkbenchSidebar.vue`（去 kb-portal/深空类）、`WorkbenchTabs.vue`（空态改造 + 去 RingCarousel/GlowButton）、`WorkbenchSidePanels.vue`（图标轨 + 4 标签页） | 布局与令牌并轨 |
+| 改造 | 9 个对话框 + `KnowledgeUploadQueue` + 各 `panels/*.vue` | 仅换皮肤（去 `kb-portal`/GlassPanel → 全站玻璃对话框），功能逻辑不动 |
+| 不动 | `graph3d/` 全部、`KnowledgeGraph3D.vue`、`NoteEditor.vue` 内核 | 3D 图谱保留深空；编辑器仅外层容器换扁平皮肤 |
+
+### SP3.4 技术要点与验收
+
+- **纯前端改动**：零 Proto/API/DB 变更；🔔 徽章数据复用 `GET /v1/knowledge/collections/{id}/writeback-pending` 与治理提案接口。
+- **性能目标**：知识库页 0 个 rAF 循环、0 个 SVG 折射滤镜、0 个常驻 canvas 粒子（图谱全屏除外）；移除 deep-space.sass 整块样式；编辑区无 backdrop-filter 重绘。
+- **测试**：`effects.spec.ts` 随组件删除；`workbench.spec.ts`/`WorkbenchSidebar.spec.ts` 等按新结构改断言；新增 CommandCenter 三分段与快捷键别名、图标轨展开收起、🔔 徽章计数测试。验收 `pnpm lint && pnpm test && pnpm build`；运行时 Docker 后端 + quasar dev(9301) 人工核验（R3）。
+
 
