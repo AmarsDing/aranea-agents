@@ -1,22 +1,10 @@
 <template>
-  <div class="kb-workbench" :class="{ 'kb-workbench--perf': performanceMode }">
-    <!-- M1：液态玻璃 SVG 滤镜单例（kb-liquid-refract 光纹 / kb-liquid-bg 真折射），全 Workbench 共享 -->
-    <LiquidGlassDefs />
-    <!-- 深空背景：粒子 + 极光光斑（不参与交互）；C7 性能模式下整体移除（停 rAF/动画/blur） -->
-    <template v-if="!performanceMode">
-      <ParticleField class="kb-workbench__particles" />
-      <div class="kb-workbench__aurora kb-workbench__aurora--cyan" />
-      <div class="kb-workbench__aurora kb-workbench__aurora--violet" />
-      <div class="kb-workbench__aurora kb-workbench__aurora--teal" />
-    </template>
-
+  <div class="kb-workbench">
     <div class="kb-workbench__frame">
       <WorkbenchTopBar
         :collections="collections"
         :current-vault-id="currentVaultId"
-        :performance-mode="performanceMode"
         @switch-vault="$emit('switch-vault', $event)"
-        @toggle-performance-mode="$emit('toggle-performance-mode')"
         @open-quick-switcher="openQuickSwitcher"
         @open-command-palette="openCommandPalette"
         @open-search="openSearch"
@@ -150,31 +138,36 @@
       @switch-home="onSwitchGovHome"
     />
 
-    <!-- 脏关闭确认（SP2-8：kb-portal——q-dialog teleport 到 body 后重挂深空令牌） -->
-    <q-dialog :model-value="!!confirmCloseTab" content-class="kb-portal" @update:model-value="onCancelClose">
-      <GlassPanel strong :title="t('knowledgePage.workbench.closeConfirmTitle')" class="kb-workbench__confirm">
-        <div class="kb-workbench__confirm-hint">
-          {{ t('knowledgePage.workbench.closeConfirmHint', { title: confirmCloseTab?.title ?? '' }) }}
-        </div>
-        <div class="kb-workbench__confirm-actions">
-          <q-btn flat no-caps :label="t('common.cancel')" @click="onCancelClose" />
-          <q-btn
-            flat
-            no-caps
-            color="negative"
-            :label="t('knowledgePage.workbench.closeConfirmDiscard')"
-            @click="onDiscardClose"
-          />
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            :label="t('knowledgePage.workbench.closeConfirmSave')"
-            :loading="confirmSaving"
-            @click="onSaveAndClose"
-          />
-        </div>
-      </GlassPanel>
+    <!-- 脏关闭确认（SP3：全站标准玻璃对话框） -->
+    <q-dialog :model-value="!!confirmCloseTab" @update:model-value="onCancelClose">
+      <q-card class="app-dialog-card kb-workbench__confirm">
+        <q-card-section class="app-glass-dialog__head">
+          <div class="app-glass-dialog__title">{{ t('knowledgePage.workbench.closeConfirmTitle') }}</div>
+        </q-card-section>
+        <q-card-section>
+          <div class="kb-workbench__confirm-hint">
+            {{ t('knowledgePage.workbench.closeConfirmHint', { title: confirmCloseTab?.title ?? '' }) }}
+          </div>
+          <div class="kb-workbench__confirm-actions">
+            <q-btn flat no-caps :label="t('common.cancel')" @click="onCancelClose" />
+            <q-btn
+              flat
+              no-caps
+              color="negative"
+              :label="t('knowledgePage.workbench.closeConfirmDiscard')"
+              @click="onDiscardClose"
+            />
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              :label="t('knowledgePage.workbench.closeConfirmSave')"
+              :loading="confirmSaving"
+              @click="onSaveAndClose"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
     </q-dialog>
   </div>
 </template>
@@ -185,9 +178,6 @@
 // 本组件只做布局、wikilink/大纲导航与脏关闭确认，状态经 props 注入的 workbench 状态机与 explorer。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
-import ParticleField from '../effects/ParticleField.vue';
-import LiquidGlassDefs from '../effects/LiquidGlassDefs.vue';
-import GlassPanel from '../effects/GlassPanel.vue';
 import WorkbenchTopBar from './WorkbenchTopBar.vue';
 import WorkbenchSidebar from './WorkbenchSidebar.vue';
 import WorkbenchTabs from './WorkbenchTabs.vue';
@@ -223,15 +213,12 @@ const props = defineProps<{
   currentPrefix: string;
   /** SP2-8：图谱增量刷新信号（+1 → 右栏五面板重拉，缓存已被页面失效） */
   panelsRefreshNonce?: number;
-  /** C7：性能模式（关粒子/极光，降 blur） */
-  performanceMode?: boolean;
   /** 文档列表被分页截断（⌘O / 图谱索引不完整）。 */
   documentsTruncated?: boolean;
 }>();
 
 const emit = defineEmits<{
   'switch-vault': [id: string];
-  'toggle-performance-mode': [];
   'select-node': [key: string];
   'update:expanded-keys': [keys: string[]];
   'lazy-load': [payload: VaultLazyLoadPayload];
@@ -431,52 +418,11 @@ async function onSaveAndClose() {
   height: 100%
   min-height: 0
   overflow: hidden
-  background: var(--kb-bg-deep)
+  background: var(--gradient-page)
   color: var(--kb-text-primary)
-
-  &__particles
-    position: absolute
-    inset: 0
-    pointer-events: none
-
-  // U2 光晕增强：视口相对超大色团（研究 A6：直径 60–120vw、四角分布），慢速漂移
-  &__aurora
-    position: absolute
-    border-radius: 50%
-    filter: blur(120px)
-    pointer-events: none
-
-    &--cyan
-      width: 46vw
-      height: 46vw
-      top: -18vw
-      right: -12vw
-      opacity: 0.14
-      background: radial-gradient(circle, var(--kb-accent-cyan), transparent 65%)
-      animation: kb-aurora-drift 26s ease-in-out infinite alternate
-
-    &--violet
-      width: 40vw
-      height: 40vw
-      bottom: -16vw
-      left: -10vw
-      opacity: 0.12
-      background: radial-gradient(circle, var(--kb-accent-violet), transparent 65%)
-      animation: kb-aurora-drift 32s ease-in-out infinite alternate-reverse
-
-    // 第三团：底部中央微青光，补深空纵深
-    &--teal
-      width: 34vw
-      height: 34vw
-      bottom: -20vw
-      right: 18vw
-      opacity: 0.08
-      background: radial-gradient(circle, var(--kb-accent-cyan), transparent 68%)
-      animation: kb-aurora-drift 38s ease-in-out infinite alternate
 
   &__frame
     position: relative
-    z-index: 1
     display: flex
     flex-direction: column
     gap: 10px
@@ -497,13 +443,14 @@ async function onSaveAndClose() {
     min-height: 0
     min-width: 0
 
+  // 脏关闭确认对话框（teleport 到 body，用全站令牌；!important 压过 app-dialog-card 全局默认宽度）
   &__confirm
-    width: 420px
+    width: 420px !important
     max-width: 90vw
 
   &__confirm-hint
     font-size: 13px
-    color: var(--kb-text-primary)
+    color: var(--color-text-primary)
     margin-bottom: 16px
 
   &__confirm-actions
@@ -517,11 +464,4 @@ async function onSaveAndClose() {
 
   .kb-workbench__right
     display: none
-
-// U2 光晕漂移动画（仅 transform/opacity，GPU 合成层；reduced-motion 由 deep-space.sass 统一降级）
-@keyframes kb-aurora-drift
-  0%
-    transform: translate3d(0, 0, 0) scale(1)
-  100%
-    transform: translate3d(3vw, 2vw, 0) scale(1.08)
 </style>

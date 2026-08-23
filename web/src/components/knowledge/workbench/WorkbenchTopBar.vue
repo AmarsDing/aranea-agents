@@ -75,16 +75,6 @@
       class="kb-topbar__icon"
       @click="$emit('open-graph')"
     />
-    <!-- C7：性能模式开关 -->
-    <q-btn
-      flat
-      dense
-      round
-      icon="speed"
-      :title="t('knowledgePage.workbench.perfModeHint')"
-      :class="performanceMode ? 'kb-topbar__icon--active' : 'kb-topbar__icon'"
-      @click="$emit('toggle-performance-mode')"
-    />
     <q-btn
       flat
       dense
@@ -106,12 +96,10 @@ import type { KnowledgeCollection } from '../../../features/knowledge/types';
 const props = defineProps<{
   collections: KnowledgeCollection[];
   currentVaultId: string;
-  performanceMode?: boolean;
 }>();
 
 defineEmits<{
   'switch-vault': [id: string];
-  'toggle-performance-mode': [];
   'open-quick-switcher': [];
   'open-command-palette': [];
   'open-search': [];
@@ -138,8 +126,8 @@ const currentVaultName = computed(() => props.collections.find((c) => c.id === p
 
   &__vault-list
     min-width: 220px
-    background: var(--kb-bg-deep)
-    border: 1px solid var(--kb-glass-border)
+    background: var(--glass-elevated)
+    border: 1px solid var(--glass-border)
 
   &__vault-count
     font-size: 11px
