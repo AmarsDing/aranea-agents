@@ -309,7 +309,7 @@ const candidates = computed(() =>
 /** 当前库文档（快速切换数据源）。 */
 const vaultDocs = computed(() => props.documents.filter((d) => d.collection_id === props.currentVaultId));
 
-/** 空态 RingCarousel：近期更新文档前 8 条（SP2-7）。 */
+/** 空态近期文档列表：近期更新文档前 8 条（SP3）。 */
 const recentDocs = computed(() =>
   [...vaultDocs.value].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 8),
 );
