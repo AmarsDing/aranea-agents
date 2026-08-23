@@ -54,6 +54,11 @@ func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, re
 		Page:     page,
 		PageSize: pageSize,
 	}
+	if result.Stats != nil {
+		resp.SuccessCount = int64(result.Stats.SuccessCount)
+		resp.FailureCount = int64(result.Stats.FailureCount)
+		resp.AvgScore = result.Stats.AvgScore
+	}
 	for i := range result.Reports {
 		resp.Items = append(resp.Items, toProtoExperienceReport(result.Reports[i]))
 	}

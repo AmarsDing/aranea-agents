@@ -1,6 +1,5 @@
 import type { QTableColumn } from 'quasar';
 import type { Agent } from '../../features/agents/types';
-import type { AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
 import { deriveMemoryToolMode } from './agentUi';
 
@@ -31,22 +30,6 @@ export function buildAgentTableColumns(
     registryColActions<Agent>(),
   ];
 }
-
-/** AgentToolOverridesPanel 列定义 */
-export const AGENT_TOOL_OVERRIDE_TABLE_COLUMNS: QTableColumn<AgentToolOverrideRow>[] = [
-  registryCol<AgentToolOverrideRow>('tool_key', '工具 Key', 'tool_key', 'left', '12%'),
-  registryCol<AgentToolOverrideRow>('display_name', '名称', 'display_name', 'left', REGISTRY_COL_W.name),
-  registryCol<AgentToolOverrideRow>('effective_state', '生效', 'effective_state', 'left', REGISTRY_COL_W.status),
-  registryCol<AgentToolOverrideRow>(
-    'requires_confirmation',
-    '确认',
-    'effective_requires_confirmation',
-    'center',
-    REGISTRY_COL_W.narrow,
-  ),
-  registryCol<AgentToolOverrideRow>('override', '覆盖', 'override', 'left', REGISTRY_COL_W.category),
-  registryColActions<AgentToolOverrideRow>(REGISTRY_COL_W.actions, '', (row) => row.tool_key),
-];
 
 /** AgentSettings — Prompt 组装预览表 */
 export const AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS = [

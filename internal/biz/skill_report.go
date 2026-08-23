@@ -175,6 +175,16 @@ func (uc *SkillReportUsecase) GetExperienceReportsFiltered(ctx context.Context, 
 		} else {
 			result.RootCauseReports = rootCauseReports
 		}
+
+		stats, stErr := uc.statsReader.GetExperienceReportStatsFiltered(ctx, skillID, startTime, endTime)
+		if stErr != nil {
+			uc.lg.Warn("GetExperienceReportsFiltered: GetExperienceReportStatsFiltered failed",
+				loggateway.StepID("skill_intelligence.list_filtered"),
+				loggateway.Str("skill_id", skillID),
+				loggateway.Err(stErr))
+		} else {
+			result.Stats = stats
+		}
 	}
 
 	return result, nil

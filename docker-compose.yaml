@@ -85,6 +85,12 @@ services:
       # 抓取：docker exec aranea-admin wget -qO- http://127.0.0.1:8813/debug/pprof/heap
       # 缺省该环境变量即关闭（cmd/admin/pprof.go）；app 便携部署包不注入此变量。
       ARANEA_PPROF_ADDR: ":8813"
+      # codeexecutor 方案 B（docker.sock 直通）：容器内 docker CLI 经下方挂载的
+      # 宿主机 socket 调 daemon，拉起一次性沙箱容器（python:3.11-slim，镜像需
+      # 预先存在于宿主机 daemon）。沙箱与 aranea-admin 平级（同在宿主机 daemon
+      # 上），非容器套容器；沙箱自身 --network none 隔离，互不影响。
+      CODE_EXECUTOR_BACKEND: "docker"
+      CODE_EXECUTOR_DOCKER_IMAGE: "python:3.11-slim"
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,6 +111,10 @@ services:
       # 不挂载则容器内无任何技能文件，skill.fs.sync 报 filesystem missing、
       # prompt section_skills=0（2026-08-16 fault-execution 缺失实证）。
       - ./docker/volumes/skills:/root/.config/Aranea/skills
+      # codeexecutor 方案 B：直通宿主机 Docker daemon（Docker Desktop on Windows
+      # 的 Linux VM socket 路径，compose 自动桥接）。容器内 root 可直接读写；
+      # 沙箱容器由宿主机 daemon 创建，与 aranea-admin 平级。
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - araneanet
     restart: unless-stopped

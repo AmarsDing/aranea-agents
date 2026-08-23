@@ -1,7 +1,9 @@
 <template>
-  <div class="settings-grid settings-grid--wide">
+  <div class="settings-grid settings-grid--wide skills-tab">
+    <skills-tab-nav :items="navItems" :active-id="activeId" @select="selectSection" />
+
     <!-- Skill 挂载 -->
-    <section class="settings-section">
+    <section :id="SECTION_IDS.mount" class="settings-section">
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
@@ -141,17 +143,17 @@
     </section>
 
     <!-- 平台工具 -->
-    <section class="settings-section">
+    <section :id="SECTION_IDS.policy" class="settings-section">
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
             <span class="section-title__text">平台工具策略</span>
           </div>
-          <p class="settings-section__hint">全局 allow/deny 与 profile；下方可逐工具覆盖启用、模式与确认策略。</p>
+          <p class="settings-section__hint">全局 allow/deny 与 profile；逐工具覆盖见下方「工具覆盖」分区。</p>
         </div>
         <div class="row items-center q-gutter-sm">
           <span v-if="!config.tools.enabled" class="settings-subsection__hint">
-            工具总开关关闭时，下方逐工具覆盖不会生效。
+            工具总开关关闭时，逐工具覆盖不会生效。
           </span>
           <q-toggle v-model="config.tools.enabled" label="启用工具" />
         </div>
@@ -274,13 +276,26 @@
             <q-toggle v-model="config.tools.streaming_enabled" label="流式工具（StreamableCall）" />
           </div>
         </div>
-
-        <agent-tools-section :agent-id="agentId" />
       </template>
     </section>
 
+    <!-- 工具覆盖 -->
+    <section :id="SECTION_IDS.overrides" class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">工具覆盖</span>
+          </div>
+          <p class="settings-section__hint">
+            按工具覆盖启用、模式与确认策略，<strong>更改即时生效</strong>；未覆盖的工具跟随上方全局策略。
+          </p>
+        </div>
+      </div>
+      <agent-tools-section :agent-id="agentId" />
+    </section>
+
     <!-- 代码执行 -->
-    <section class="settings-section">
+    <section :id="SECTION_IDS.executor" class="settings-section">
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
@@ -313,8 +328,18 @@ const config = defineModel<AgentRuntimeConfigForm>('config', { required: true })
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AgentToolsSection from '../../components/agents/AgentToolsSection.vue';
+import SkillsTabNav from '../../components/agents/SkillsTabNav.vue';
+import { useSkillsTabNav } from '../../features/agents/useSkillsTabNav';
 import type { CodeExecutorCapability } from '../../features/monitor/types';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
+
+/** 四分区锚点 id，与 SkillsTabNav 项一一对应。 */
+const SECTION_IDS = {
+  mount: 'skills-section-mount',
+  policy: 'skills-section-policy',
+  overrides: 'skills-section-overrides',
+  executor: 'skills-section-executor',
+} as const;
 
 const baseExecutorOptions = [
   { label: 'Local（子进程，开发用）', value: 'local' },
@@ -331,6 +356,20 @@ const skillLoadModeOptions = [
 ];
 
 const { t } = useI18n();
+
+const { activeId, selectSection } = useSkillsTabNav([
+  SECTION_IDS.mount,
+  SECTION_IDS.policy,
+  SECTION_IDS.overrides,
+  SECTION_IDS.executor,
+]);
+
+const navItems = computed(() => [
+  { id: SECTION_IDS.mount, label: t('agentSettings.skillsNavMount') },
+  { id: SECTION_IDS.policy, label: t('agentSettings.skillsNavPolicy') },
+  { id: SECTION_IDS.overrides, label: t('agentSettings.skillsNavOverrides') },
+  { id: SECTION_IDS.executor, label: t('agentSettings.skillsNavExecutor') },
+]);
 
 const props = withDefaults(
   defineProps<{

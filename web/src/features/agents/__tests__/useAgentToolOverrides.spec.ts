@@ -10,9 +10,11 @@ vi.mock('quasar', () => ({
   useQuasar: () => ({ notify }),
 }));
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
-}));
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>();
+  // 保留 createI18n 等真实导出：被测模块经 toolUi 引用 src/i18n 真实实例
+  return { ...actual, useI18n: () => ({ t: (key: string) => key }) };
+});
 
 const fetchEffectiveTools = vi.fn();
 const fetchOverridesByAgent = vi.fn();

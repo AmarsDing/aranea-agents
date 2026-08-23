@@ -282,6 +282,10 @@ export type ExperienceReportListResult = {
   page_size: number;
   failureTagCounts: FailureTagCountView[];
   rootCauseReports: ExperienceReportView[];
+  /** 筛选条件下的聚合统计（后端 ListExperienceReports 透出） */
+  successCount: number;
+  failureCount: number;
+  avgScore: number;
 };
 
 // ── Experience Report (Skill Intelligence) ──────────────────────

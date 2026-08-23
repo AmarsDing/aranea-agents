@@ -4,6 +4,7 @@ import { REGISTRY_COL_W, registryCol } from '../../features/ui/registryTableColu
 
 /** ExperienceReportTable 列定义 */
 export const EXPERIENCE_REPORT_TABLE_COLUMNS: QTableColumn<ExperienceReportView>[] = [
+  registryCol<ExperienceReportView>('_expand', '', 'id', 'center', '40px', { sortable: false }),
   registryCol<ExperienceReportView>('skillName', 'Skill 名称', 'skillName', 'left', REGISTRY_COL_W.name),
   registryCol<ExperienceReportView>('result', '结果', 'isSuccess', 'center', REGISTRY_COL_W.status),
   registryCol<ExperienceReportView>('score', '评分', 'score', 'center', REGISTRY_COL_W.metric),

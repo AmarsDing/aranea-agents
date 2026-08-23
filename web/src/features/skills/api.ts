@@ -449,6 +449,9 @@ export async function listExperienceReports(params: {
     page_size: Number(res.pageSize ?? params.pageSize ?? 20),
     failureTagCounts: (res.failureTagCounts ?? []).map(mapFailureTagCount),
     rootCauseReports: (res.rootCauseReports ?? []).map(mapExperienceReport),
+    successCount: Number(res.successCount ?? 0),
+    failureCount: Number(res.failureCount ?? 0),
+    avgScore: Number(res.avgScore ?? 0),
   };
 }
 

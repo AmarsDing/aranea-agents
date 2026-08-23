@@ -45,6 +45,15 @@
       </template>
     </q-banner>
 
+    <!-- KPI 概览条：始终展示（筛选条件下为 0 亦是有效信息），数据来自后端全量聚合而非当前页 -->
+    <ExperienceReportStatCards
+      :total="total"
+      :success-count="stats.successCount"
+      :failure-count="stats.failureCount"
+      :avg-score="stats.avgScore"
+      :rca-count="rootCauseReports.length"
+    />
+
     <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="assessment" />
@@ -56,10 +65,10 @@
     <template v-else>
       <div v-if="hasAnalytics" class="row q-col-gutter-md q-mb-md">
         <div class="col-12 col-md-6">
-          <FailureTagsChart :failure-tags="failureTagsDistribution" />
+          <FailureTagsChart class="full-height" :failure-tags="failureTagsDistribution" />
         </div>
         <div class="col-12 col-md-6">
-          <RootCauseAnalysisCards :cards="rootCauseReports" />
+          <RootCauseAnalysisCards class="full-height" :cards="rootCauseReports" />
         </div>
       </div>
 
@@ -84,6 +93,7 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import SkillPagination from '../components/skills/SkillPagination.vue';
 import ExperienceReportTable from '../components/skills/ExperienceReportTable.vue';
+import ExperienceReportStatCards from '../components/skills/ExperienceReportStatCards.vue';
 import FailureTagsChart from '../components/skills/FailureTagsChart.vue';
 import RootCauseAnalysisCards from '../components/skills/RootCauseAnalysisCards.vue';
 import { useExperienceReportListPage } from '../features/skills/useExperienceReportListPage';
@@ -104,6 +114,7 @@ const {
   pageMax,
   failureTagsDistribution,
   rootCauseReports,
+  stats,
   loadRows,
   resetFilters,
 } = useExperienceReportListPage(initialSkillId);

@@ -2,12 +2,17 @@
   <q-card flat class="overview-panel">
     <q-card-section>
       <div class="text-h6 overview-section-title">失败标签分布</div>
-      <div class="text-caption overview-section-caption">基于当前筛选条件下的经验报告统计</div>
+      <div class="text-caption overview-section-caption">仅统计当前筛选条件下的失败记录</div>
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section>
       <div v-if="!slices.length" class="overview-empty">暂无失败标签数据</div>
-      <div v-else ref="chartEl" class="failure-tags-chart" />
+      <template v-else>
+        <div ref="chartEl" class="failure-tags-chart" />
+        <div v-if="unknownOnly" class="failure-tags-chart__hint">
+          {{ unknownCount }} 条失败记录未能自动归因，建议检查归因规则或补充根因分析。
+        </div>
+      </template>
     </q-card-section>
   </q-card>
 </template>
@@ -24,41 +29,82 @@ const props = defineProps<{
 
 const chartEl = ref<HTMLElement | null>(null);
 
+/** 失败标签中文化映射（与 biz/skill_scoring.go 的 FailureTag 常量集对齐；未收录的标签原样展示） */
+const TAG_LABELS: Record<string, string> = {
+  param_mismatch: '参数不匹配',
+  wrong_tool_choice: '工具选择错误',
+  tool_timeout: '工具超时',
+  tool_api_error: '工具 API 错误',
+  context_overflow: '上下文溢出',
+  instruction_ambiguity: '指令歧义',
+  user_cancelled: '用户取消',
+  unknown: '未分类',
+};
+
+const UNKNOWN_TAG = 'unknown';
+
 const slices = computed(() =>
   Object.entries(props.failureTags)
-    .map(([name, value]) => ({ name, value }))
+    .map(([name, value]) => ({ name, label: TAG_LABELS[name] ?? name, value }))
     .sort((a, b) => b.value - a.value),
 );
 
-function pieOption(): EChartsCoreOption {
+const unknownOnly = computed(() => slices.value.length > 0 && slices.value.every((s) => s.name === UNKNOWN_TAG));
+const unknownCount = computed(() => slices.value.find((s) => s.name === UNKNOWN_TAG)?.value ?? 0);
+
+function barOption(): EChartsCoreOption {
   const palette = usageChartPalette();
+  // 未分类用灰色弱化，有效归因标签使用分类色板
+  const knownSlices = slices.value.filter((s) => s.name !== UNKNOWN_TAG);
   return {
     textStyle: { color: palette.text, fontFamily: 'inherit' },
+    grid: { left: 8, right: 40, top: 8, bottom: 8, containLabel: true },
     tooltip: { trigger: 'item', valueFormatter: (v: number) => `${v} 次` },
-    legend: { orient: 'vertical', right: 0, top: 'middle', textStyle: { color: palette.text } },
+    xAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLabel: { color: palette.text },
+      splitLine: { lineStyle: { color: palette.border } },
+    },
+    yAxis: {
+      type: 'category',
+      inverse: true,
+      data: slices.value.map((s) => s.label),
+      axisLabel: { color: palette.text },
+      axisLine: { lineStyle: { color: palette.border } },
+      axisTick: { show: false },
+    },
     series: [
       {
-        type: 'pie',
-        radius: ['42%', '68%'],
-        center: ['38%', '50%'],
-        avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 4 },
-        label: { color: palette.text, formatter: '{b}\n{d}%' },
-        data: slices.value.map((s, i) => ({
-          name: s.name,
+        type: 'bar',
+        barWidth: 16,
+        itemStyle: { borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: 'right', color: palette.text },
+        data: slices.value.map((s) => ({
+          name: s.label,
           value: s.value,
-          itemStyle: { color: palette.series[i % palette.series.length] },
+          itemStyle: {
+            color:
+              s.name === UNKNOWN_TAG
+                ? palette.series[5]
+                : palette.series[knownSlices.findIndex((k) => k.name === s.name) % palette.series.length],
+          },
         })),
       },
     ],
   };
 }
 
-useUsageChart(chartEl, pieOption, () => [slices.value]);
+useUsageChart(chartEl, barOption, () => [slices.value]);
 </script>
 
 <style scoped lang="sass">
 .failure-tags-chart
   width: 100%
   height: 260px
+
+.failure-tags-chart__hint
+  margin-top: 8px
+  font-size: 0.78rem
+  color: var(--color-text-secondary)
 </style>

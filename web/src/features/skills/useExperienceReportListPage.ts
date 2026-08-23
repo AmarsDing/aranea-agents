@@ -100,6 +100,11 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
     pageMax,
     failureTagsDistribution,
     rootCauseReports: computed(() => store.rootCauseReports),
+    stats: computed(() => ({
+      successCount: store.successCount,
+      failureCount: store.failureCount,
+      avgScore: store.avgScore,
+    })),
     loadRows,
     resetFilters,
   };

@@ -193,6 +193,45 @@ func (r *SkillIntelligenceRepo) GetRootCauseReportsFiltered(ctx context.Context,
 	return reports, nil
 }
 
+// GetExperienceReportStatsFiltered aggregates success/failure counts and the overall
+// average score in one GROUP BY query. AvgScore 为全量记录的加权平均（ent 的 Mean
+// 按 is_success 分组计算，需按组计数加权重算总平均）。
+func (r *SkillIntelligenceRepo) GetExperienceReportStatsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time) (*biz.ExperienceReportStats, error) {
+	preds := buildExperienceReportPredicates(skillID, startTime, endTime)
+
+	var aggRows []struct {
+		IsSuccess bool    `json:"is_success"`
+		Count     int     `json:"count"`
+		AvgScore  float64 `json:"avg_score"`
+	}
+	err := r.data.RW().Read(ctx).ExperienceReport.Query().
+		Where(preds...).
+		GroupBy(experiencereport.FieldIsSuccess).
+		Aggregate(
+			ent.Count(),
+			ent.As(ent.Mean(experiencereport.FieldScore), "avg_score"),
+		).
+		Scan(ctx, &aggRows)
+	if err != nil {
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
+	}
+
+	stats := &biz.ExperienceReportStats{}
+	var weightedSum float64
+	for _, row := range aggRows {
+		if row.IsSuccess {
+			stats.SuccessCount = row.Count
+		} else {
+			stats.FailureCount = row.Count
+		}
+		weightedSum += row.AvgScore * float64(row.Count)
+	}
+	if total := stats.SuccessCount + stats.FailureCount; total > 0 {
+		stats.AvgScore = weightedSum / float64(total)
+	}
+	return stats, nil
+}
+
 // ── ExperienceReportWriter ────────────────────────────────────────────────────
 
 // reportToCreateBuilder creates an Ent builder pre-filled with all report fields.

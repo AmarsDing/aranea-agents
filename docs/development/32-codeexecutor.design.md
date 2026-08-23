@@ -355,6 +355,31 @@ func (f *Factory) IsBackendAvailable(typ string) bool           // 探测可用�
 | `CODE_EXECUTOR_TIMEOUT` | 执行超时覆盖 |
 | `CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD` | 生产环境允许 local（`1`/`true`/`yes`） |
 
+#### 5.2.1 容器化部署（方案 B：docker.sock 直通，2026-08-23 落地）
+
+`aranea-admin` 自身运行在容器内时，docker 后端经**直通宿主机 daemon** 工作：
+
+```
+aranea-admin 容器（docker CLI，镜像内 apk docker-cli）
+  → /var/run/docker.sock（compose 挂载宿主机 socket）
+    → 宿主机 Docker daemon
+      → 沙箱容器 codeexec-*（python:3.11-slim，与 admin 平级，非容器套容器）
+```
+
+落地点：
+
+| 位置 | 改动 |
+|------|------|
+| `docker/Dockerfile.runtime` | `apk add --no-cache docker-cli`（仅客户端，无 daemon） |
+| `docker-compose.yaml` admin | 挂载 `/var/run/docker.sock:/var/run/docker.sock`；env `CODE_EXECUTOR_BACKEND=docker` / `CODE_EXECUTOR_DOCKER_IMAGE=python:3.11-slim` |
+
+关键约束：
+
+- **沙箱镜像须预存于宿主机 daemon**（`docker create` 不自动拉取）；Windows Docker Desktop 的 Linux VM socket 路径同为 `/var/run/docker.sock`，compose 直接可挂
+- **代码走 stdin**（`docker start -ai` + `cat > /tmp/main.ext`）：`--read-only` 容器拒绝 `docker cp` 写入
+- **artifact 走匿名卷**（`--volume /workspace/out`）+ `docker cp` 收出：tar 流由 CLI 侧（即 admin 容器内）解包，目标路径为容器内路径，对 daemon 位置无要求；卷随 `docker rm -v` 清理
+- **禁止 bind mount 客户端侧路径**（如把 admin 容器路径挂给沙箱）：daemon 在宿主机上，看不到 admin 容器内路径，bind mount 会静默失效；`DockerConfig.WorkspaceMount` 仅接受 daemon 侧（宿主机）路径
+
 ### 5.3 E2B 后端配置
 
 | 配置项 | 环境变量 | 说明 |

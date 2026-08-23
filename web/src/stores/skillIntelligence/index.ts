@@ -10,6 +10,10 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
   const error = ref('');
   const failureTagCounts = ref<FailureTagCountView[]>([]);
   const rootCauseReports = ref<ExperienceReportView[]>([]);
+  /** 筛选条件下的聚合统计（随 loadExperienceReports 一并返回） */
+  const successCount = ref(0);
+  const failureCount = ref(0);
+  const avgScore = ref(0);
 
   async function loadExperienceReports(params: {
     skillId?: string;
@@ -26,6 +30,9 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
       total.value = res.total;
       failureTagCounts.value = res.failureTagCounts;
       rootCauseReports.value = res.rootCauseReports;
+      successCount.value = res.successCount;
+      failureCount.value = res.failureCount;
+      avgScore.value = res.avgScore;
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载经验报告失败';
     } finally {
@@ -40,6 +47,9 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
     error,
     failureTagCounts,
     rootCauseReports,
+    successCount,
+    failureCount,
+    avgScore,
     loadExperienceReports,
   };
 });

@@ -49,6 +49,10 @@ export type ListExperienceReportsResponse = {
   pageSize: number | undefined;
   failureTagCounts: FailureTagCount[] | undefined;
   rootCauseReports: ExperienceReport[] | undefined;
+  // 筛选条件下的聚合统计（用于经验报告页 KPI 概览）。
+  successCount: number | undefined;
+  failureCount: number | undefined;
+  avgScore: number | undefined;
 };
 
 export type GetExperienceReportRequest = {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -175,26 +176,29 @@ func NewDockerExecutor(cfg DockerConfig) *DockerExecutor {
 }
 
 // Run executes code inside a one-shot Docker container.
-// The container is always removed after execution (--rm).
+//
+// The code is streamed to the container over stdin (`docker start -ai`) and
+// lands on the tmpfs — never the rootfs — because `docker cp` is refused for
+// --read-only containers. Output artifacts go to an anonymous volume so they
+// survive container stop (tmpfs contents would be lost) and are collected via
+// `docker cp` out, then removed with the volume via `docker rm -v`.
+//
+// No client-side path is ever bind-mounted: when the CLI talks to the host
+// daemon over /var/run/docker.sock (e.g. from inside the aranea-admin
+// container), client paths are invisible to the daemon, so bind mounts
+// silently break. stdin/volume-cp work regardless of daemon location.
 func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout time.Duration) (Result, error) {
-	ext, _ := languageRuntime(language)
+	ext, runner := languageRuntime(language)
 	if ext == "" {
 		return Result{}, fmt.Errorf("codeexecutor docker: unsupported language %q", language)
 	}
 
-	// Write code to a temp file that will be bind-mounted into the container.
+	// Prepare local output directory for artifact collection.
 	tmpDir, err := os.MkdirTemp(e.tempDir, "codeexec-*")
 	if err != nil {
 		return Result{}, err
 	}
 	defer os.RemoveAll(tmpDir)
-
-	codeFile := filepath.Join(tmpDir, "main"+ext)
-	if err := os.WriteFile(codeFile, []byte(code), 0644); err != nil {
-		return Result{}, err
-	}
-
-	// Prepare output directory for artifact collection.
 	outDir := filepath.Join(tmpDir, "out")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return Result{}, err
@@ -206,8 +210,21 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	args := e.buildDockerArgs(codeFile, outDir, language, timeout)
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	container := fmt.Sprintf("codeexec-%d", time.Now().UnixNano())
+	// Always remove the sandbox (and its anonymous volume) afterwards, using a
+	// detached context: ctx may already be cancelled by the execution timeout.
+	defer func() {
+		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cleanCancel()
+		_ = exec.CommandContext(cleanCtx, "docker", "rm", "-fv", container).Run()
+	}()
+
+	if out, err := exec.CommandContext(ctx, "docker", e.buildCreateArgs(container, runner, ext, timeout)...).CombinedOutput(); err != nil {
+		return Result{}, fmt.Errorf("docker create %s: %w (%s)", container, err, strings.TrimSpace(string(out)))
+	}
+
+	cmd := exec.CommandContext(ctx, "docker", "start", "-ai", container)
+	cmd.Stdin = strings.NewReader(code)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -221,6 +238,16 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 	}
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()
+	}
+
+	// Collect artifacts best-effort from the anonymous volume (readable while
+	// the container is stopped). Uses a detached context for the same reason
+	// as the cleanup above. Failures surface in Stderr so a lost artifact is
+	// never silent.
+	collectCtx, collectCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer collectCancel()
+	if out, cerr := exec.CommandContext(collectCtx, "docker", "cp", container+":/workspace/out/.", outDir).CombinedOutput(); cerr != nil {
+		res.Stderr += fmt.Sprintf("\n[artifact collect failed: %v (%s)]", cerr, strings.TrimSpace(string(out)))
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
@@ -239,16 +266,19 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 	return res, nil
 }
 
-func (e *DockerExecutor) buildDockerArgs(codeFile, outDir, language string, timeout time.Duration) []string {
-	container := fmt.Sprintf("codeexec-%d", time.Now().UnixNano())
+// buildCreateArgs assembles `docker create` with the same isolation limits as
+// the previous `docker run` form. The container command streams the code from
+// stdin onto the tmpfs, then execs the interpreter; the container is started
+// later via `docker start -ai`.
+func (e *DockerExecutor) buildCreateArgs(container, runner, ext string, timeout time.Duration) []string {
 	stopTimeout := int(timeout.Seconds()) + 5
 	if stopTimeout < 10 {
 		stopTimeout = 10
 	}
 
 	args := []string{
-		"run",
-		"--rm",
+		"create",
+		"--interactive",
 		"--name", container,
 		"--network", e.cfg.Network,
 		fmt.Sprintf("--memory=%d", e.cfg.MemoryBytes),
@@ -257,32 +287,19 @@ func (e *DockerExecutor) buildDockerArgs(codeFile, outDir, language string, time
 		"--read-only",
 		"--tmpfs", "/tmp:size=" + e.cfg.TmpSize,
 		fmt.Sprintf("--stop-timeout=%d", stopTimeout),
-		// Bind-mount code file read-only.
-		"--volume", codeFile + ":/workspace/main" + filepath.Ext(codeFile) + ":ro",
-		// Bind-mount output dir writable.
-		"--volume", outDir + ":/workspace/out:rw",
+		// Anonymous volume for artifact output: writable under --read-only and
+		// preserved after stop for `docker cp` collection; removed by rm -v.
+		"--volume", "/workspace/out",
 	}
 
-	// Optional read-only workspace mount.
+	// Optional read-only workspace mount (daemon-side path).
 	if e.cfg.WorkspaceMount != "" {
 		args = append(args, "--volume", e.cfg.WorkspaceMount+":/data:ro")
 	}
 
-	args = append(args, e.cfg.Image)
-
-	// Build command based on language.
-	switch language {
-	case "python", "python3":
-		args = append(args, "python3", "/workspace/main.py")
-	case "javascript", "js", "node":
-		args = append(args, "node", "/workspace/main.js")
-	case "bash", "sh", "shell":
-		args = append(args, "bash", "/workspace/main.sh")
-	case "ruby":
-		args = append(args, "ruby", "/workspace/main.rb")
-	default:
-		args = append(args, "sh", "-c", "echo 'unsupported language'")
-	}
-
+	// cat reads the code from stdin (EOF when our side closes); exec replaces
+	// the shell so the interpreter is PID 1 and receives stop signals.
+	script := fmt.Sprintf("cat > /tmp/main%s && exec %s /tmp/main%s", ext, runner, ext)
+	args = append(args, e.cfg.Image, "sh", "-c", script)
 	return args
 }

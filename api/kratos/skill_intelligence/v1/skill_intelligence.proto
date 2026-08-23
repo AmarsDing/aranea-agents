@@ -50,6 +50,10 @@ message ListExperienceReportsResponse {
   int32 page_size = 4;
   repeated FailureTagCount failure_tag_counts = 5;
   repeated ExperienceReport root_cause_reports = 6;
+  // 筛选条件下的聚合统计（用于经验报告页 KPI 概览）。
+  int64 success_count = 7;
+  int64 failure_count = 8;
+  double avg_score = 9;
 }
 
 message GetExperienceReportRequest {

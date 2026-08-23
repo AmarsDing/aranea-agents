@@ -27,6 +27,16 @@ type ExperienceReportStatsReader interface {
 	// GetRootCauseReportsFiltered returns experience reports that have root cause analysis,
 	// with optional skillID and time range filters, ordered by created_at desc.
 	GetRootCauseReportsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit int) ([]ExperienceReport, error)
+	// GetExperienceReportStatsFiltered returns success/failure counts and average score
+	// with optional skillID and time range filters.
+	GetExperienceReportStatsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time) (*ExperienceReportStats, error)
+}
+
+// ExperienceReportStats holds aggregate counts for experience reports under a filter scope.
+type ExperienceReportStats struct {
+	SuccessCount int
+	FailureCount int
+	AvgScore     float64
 }
 
 // ExperienceReportWriter writes experience reports.

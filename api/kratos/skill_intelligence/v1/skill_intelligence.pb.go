@@ -324,8 +324,12 @@ type ListExperienceReportsResponse struct {
 	PageSize         int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	FailureTagCounts []*FailureTagCount     `protobuf:"bytes,5,rep,name=failure_tag_counts,json=failureTagCounts,proto3" json:"failure_tag_counts,omitempty"`
 	RootCauseReports []*ExperienceReport    `protobuf:"bytes,6,rep,name=root_cause_reports,json=rootCauseReports,proto3" json:"root_cause_reports,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// 筛选条件下的聚合统计（用于经验报告页 KPI 概览）。
+	SuccessCount  int64   `protobuf:"varint,7,opt,name=success_count,json=successCount,proto3" json:"success_count,omitempty"`
+	FailureCount  int64   `protobuf:"varint,8,opt,name=failure_count,json=failureCount,proto3" json:"failure_count,omitempty"`
+	AvgScore      float64 `protobuf:"fixed64,9,opt,name=avg_score,json=avgScore,proto3" json:"avg_score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListExperienceReportsResponse) Reset() {
@@ -398,6 +402,27 @@ func (x *ListExperienceReportsResponse) GetRootCauseReports() []*ExperienceRepor
 		return x.RootCauseReports
 	}
 	return nil
+}
+
+func (x *ListExperienceReportsResponse) GetSuccessCount() int64 {
+	if x != nil {
+		return x.SuccessCount
+	}
+	return 0
+}
+
+func (x *ListExperienceReportsResponse) GetFailureCount() int64 {
+	if x != nil {
+		return x.FailureCount
+	}
+	return 0
+}
+
+func (x *ListExperienceReportsResponse) GetAvgScore() float64 {
+	if x != nil {
+		return x.AvgScore
+	}
+	return 0
 }
 
 type GetExperienceReportRequest struct {
@@ -524,14 +549,17 @@ const file_kratos_skill_intelligence_v1_skill_intelligence_proto_rawDesc = "" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"9\n" +
 	"\x0fFailureTagCount\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x05R\x05count\"\xe7\x02\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"\xce\x03\n" +
 	"\x1dListExperienceReportsResponse\x12D\n" +
 	"\x05items\x18\x01 \x03(\v2..kratos.skill_intelligence.v1.ExperienceReportR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12[\n" +
 	"\x12failure_tag_counts\x18\x05 \x03(\v2-.kratos.skill_intelligence.v1.FailureTagCountR\x10failureTagCounts\x12\\\n" +
-	"\x12root_cause_reports\x18\x06 \x03(\v2..kratos.skill_intelligence.v1.ExperienceReportR\x10rootCauseReports\"2\n" +
+	"\x12root_cause_reports\x18\x06 \x03(\v2..kratos.skill_intelligence.v1.ExperienceReportR\x10rootCauseReports\x12#\n" +
+	"\rsuccess_count\x18\a \x01(\x03R\fsuccessCount\x12#\n" +
+	"\rfailure_count\x18\b \x01(\x03R\ffailureCount\x12\x1b\n" +
+	"\tavg_score\x18\t \x01(\x01R\bavgScore\"2\n" +
 	"\x1aGetExperienceReportRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"e\n" +
 	"\x1bGetExperienceReportResponse\x12F\n" +

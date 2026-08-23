@@ -136,6 +136,8 @@ type ExperienceReportListResult struct {
 	TotalCount       int
 	FailureTagCounts []FailureTagCount
 	RootCauseReports []ExperienceReport
+	// Stats 为筛选条件下的成功/失败计数与平均评分；聚合失败时为 nil（降级，不阻断列表）。
+	Stats *ExperienceReportStats
 }
 
 // ── Delegated methods (scorer) ────────────────────────────────────────────────

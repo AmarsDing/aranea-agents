@@ -19,7 +19,6 @@
   "components/agents/AgentSettingsA2ATab.vue": 10,
   "components/agents/AgentSettingsHeader.vue": 7,
   "components/agents/AgentToolOverrideEditorDialog.vue": 7,
-  "components/agents/AgentToolOverridesPanel.vue": 12,
   "components/agents/AgentToolsSection.vue": 2,
   "components/agents/AgentUsageQuotaPanel.vue": 19,
   "components/agents/AgentsFiltersCard.vue": 3,

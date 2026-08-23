@@ -6,7 +6,10 @@
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section>
-      <div v-if="!cards.length" class="overview-empty">暂无根因分析数据</div>
+      <div v-if="!cards.length" class="overview-empty overview-empty--compact column items-center justify-center">
+        <q-icon name="psychology" size="28px" class="q-mb-sm overview-empty__icon" />
+        <div>当前筛选下暂无根因分析数据</div>
+      </div>
       <div v-else class="q-gutter-md">
         <q-card v-for="card in cards" :key="card.id" flat bordered class="rca-card">
           <q-card-section class="q-pb-sm">
@@ -53,4 +56,8 @@ function formatDate(value?: string) {
 <style scoped lang="sass">
 .rca-card
   border-radius: 8px
+
+.overview-empty__icon
+  color: var(--color-text-secondary)
+  opacity: 0.6
 </style>

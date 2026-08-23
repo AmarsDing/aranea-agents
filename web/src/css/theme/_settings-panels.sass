@@ -178,15 +178,192 @@
   background: var(--interaction-surface-hover, var(--color-interaction-surface-alt))
   color: var(--color-text-primary)
 
-.agent-tools-section
-  padding-top: 4px
-  border-top: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent)
+// Skill/工具 Tab：页内锚点导航（黏性 pill 条，与外层 q-tabs 层级区分）
+.skills-tab .settings-section
+  // 锚点跳转时避开固定头（52px）+ 黏性导航高度
+  scroll-margin-top: 132px
 
-.agent-tools-section > .row:first-child
-  margin-bottom: 8px
+.skills-tab-nav
+  position: sticky
+  top: 60px
+  z-index: 5
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+  padding: 5px
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+  background: var(--glass-elevated)
+  backdrop-filter: blur(12px)
+  -webkit-backdrop-filter: blur(12px)
+
+.skills-tab-nav__item
+  padding: 6px 14px
+  border: 1px solid transparent
+  border-radius: 999px
+  background: transparent
+  color: var(--color-text-secondary)
+  font-size: 13px
+  font-weight: 600
+  cursor: pointer
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease
+
+.skills-tab-nav__item:hover
+  background: var(--glass-surface-hover)
+  color: var(--color-text-heading)
+
+.skills-tab-nav__item.is-active
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent)
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+  color: var(--color-accent)
+
+// 工具覆盖分区：工具栏 + 分组列表 + 行内快捷操作
+.tool-overrides
+  display: flex
+  flex-direction: column
+  gap: 12px
+
+.tool-overrides__toolbar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 10px
+
+.tool-overrides__search
+  flex: 1 1 220px
+  min-width: 180px
+
+.tool-overrides__filter
+  flex: 0 1 160px
+  min-width: 130px
+
+.tool-overrides__count
+  font-size: 12px
+  font-weight: 700
+  color: var(--color-accent)
+  white-space: nowrap
+
+.tool-overrides__loading,
+.tool-overrides__empty
+  display: flex
+  justify-content: center
+  padding: 24px
+  color: var(--color-text-secondary)
+  font-size: 13px
+
+.tool-overrides__groups
+  display: flex
+  flex-direction: column
+  gap: 8px
+
+.tool-group
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 48%, transparent)
+  overflow: hidden
+
+.tool-group__head
+  display: flex
+  align-items: center
+  gap: 8px
+  width: 100%
+  padding: 10px 14px
+  border: none
+  background: transparent
+  color: var(--color-text-heading)
+  font-size: 13px
+  font-weight: 700
+  cursor: pointer
+  transition: background 160ms ease
+
+.tool-group__head:hover
+  background: var(--glass-surface-hover)
+
+.tool-group__meta
+  font-size: 12px
+  font-weight: 500
+  color: var(--color-text-secondary)
+
+.tool-group__overridden
+  margin-left: auto
+  padding: 2px 8px
+  border-radius: 999px
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+  color: var(--color-accent)
+  font-size: 11px
+  font-weight: 700
+  white-space: nowrap
+
+.tool-group__list
+  display: flex
+  flex-direction: column
+  gap: 2px
+  margin: 0
+  padding: 0 6px 6px
+  list-style: none
+
+.tool-row
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: 6px 10px
+  border-radius: 10px
+  transition: background 160ms ease
+
+.tool-row:hover
+  background: var(--glass-surface-hover)
+
+// 已覆盖行：左侧色条提示，替代逐行重复文字
+.tool-row--overridden
+  box-shadow: inset 3px 0 0 var(--color-accent)
+
+.tool-row__state
+  flex-shrink: 0
+  width: 8px
+  height: 8px
+  border-radius: 50%
+
+.tool-row__state.is-allowed
+  background: var(--color-success)
+
+.tool-row__state.is-denied
+  background: var(--color-danger)
+
+.tool-row__main
+  display: flex
+  flex-direction: column
+  min-width: 0
+
+.tool-row__key
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-heading)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tool-row__name
+  font-size: 12px
+  color: var(--color-text-secondary)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tool-row__controls
+  flex-shrink: 0
+  margin-left: auto
+  display: flex
+  align-items: center
+  gap: 4px
+
+.tool-row__mode
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+
+.tool-row__confirm--off
+  opacity: 0.35
 
 .app-panel-hint,
-.agent-tools-section__hint,
 .agent-hooks-panel__hint
   flex: 1
   min-width: 0
