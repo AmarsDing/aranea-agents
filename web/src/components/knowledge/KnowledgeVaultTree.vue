@@ -76,8 +76,7 @@
               :aria-label="t('knowledgePage.treeNodeMenuAria')"
               @click.stop
             >
-              <!-- SP2-8：菜单 teleport 到 body，kb-portal 重新挂上深空令牌（deep-space.sass） -->
-              <q-menu auto-close content-class="kb-portal">
+              <q-menu auto-close>
                 <q-list dense class="knowledge-vault-tree__menu">
                   <q-item clickable @click="emitAction('new-dir', scope.node)">
                     <q-item-section avatar><q-icon name="create_new_folder" size="18px" /></q-item-section>

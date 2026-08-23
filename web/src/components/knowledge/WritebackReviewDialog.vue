@@ -1,6 +1,11 @@
 <template>
-  <q-dialog :model-value="open" content-class="kb-portal" @update:model-value="$emit('update:open', !!$event)">
-    <GlassPanel strong :title="t('knowledgePage.workbench.commands.review-writeback')" class="kb-writeback-review">
+  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
+    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog kb-writeback-review">
+      <q-card-section class="app-glass-dialog__head row items-center justify-between">
+        <div class="app-glass-dialog__title">{{ t('knowledgePage.workbench.commands.review-writeback') }}</div>
+      </q-card-section>
+      <div class="app-glass-dialog__scroll">
+        <q-card-section class="app-dialog-body app-glass-dialog__body">
       <div v-if="!homeIsCurrent" class="kb-writeback-review__banner">
         {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
         <q-btn
@@ -36,7 +41,9 @@
           </q-item-section>
         </q-item>
       </q-list>
-      <div class="kb-writeback-review__actions">
+        </q-card-section>
+      </div>
+      <q-card-actions align="right" class="app-glass-dialog__actions">
         <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
         <q-btn
           unelevated
@@ -47,15 +54,14 @@
           :loading="loading"
           @click="$emit('submit', selectedIds)"
         />
-      </div>
-    </GlassPanel>
+      </q-card-actions>
+    </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import GlassPanel from './effects/GlassPanel.vue';
 import type { PendingWriteBackItem } from '../../features/knowledge/types';
 
 const props = defineProps<{
@@ -101,12 +107,9 @@ function toggleAll(on: boolean) {
 
 <style lang="sass" scoped>
 .kb-writeback-review
-  width: 520px
-  max-width: 92vw
-
   &__banner
     font-size: 12px
-    color: var(--kb-text-secondary, #9aa4b2)
+    color: var(--color-text-secondary)
     margin-bottom: 12px
 
   &__toolbar
@@ -117,16 +120,10 @@ function toggleAll(on: boolean) {
 
   &__count
     font-size: 12px
-    color: var(--kb-text-secondary, #9aa4b2)
+    color: var(--color-text-secondary)
 
   &__list
     max-height: 360px
     overflow: auto
     margin: 0 -4px
-
-  &__actions
-    display: flex
-    justify-content: flex-end
-    gap: 8px
-    margin-top: 16px
 </style>

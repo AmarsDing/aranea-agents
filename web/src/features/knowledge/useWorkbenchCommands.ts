@@ -248,7 +248,6 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       title: t('knowledgePage.workbench.commands.new-note'),
       prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.noteNamePrompt') },
       cancel: true,
-      class: 'kb-portal',
     }).onOk(async (name: string) => {
       const base = normalizeTargetName(name);
       if (!base) return;
@@ -271,7 +270,6 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       title: t('knowledgePage.workbench.commands.new-folder'),
       prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.folderNamePrompt') },
       cancel: true,
-      class: 'kb-portal',
     }).onOk(async (name: string) => {
       const base = normalizeTargetName(name);
       if (!base) return;
@@ -318,7 +316,6 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
         title: t('knowledgePage.workbench.commands.apply-autolink'),
         message: t('knowledgePage.workbench.autolinkConfirm', { n: prev.replacements }),
         cancel: true,
-        class: 'kb-portal',
       }).onOk(async () => {
         try {
           const res = await applyOutgoingAutolink(active.docId);
@@ -409,7 +406,6 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       $q.dialog({
         title: t('knowledgePage.workbench.commands.list-experts'),
         message,
-        class: 'kb-portal',
       });
       offerSwitchHome(home);
     } catch (e) {
@@ -525,7 +521,6 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       title: t('knowledgePage.workbench.commands.backfill-autolink'),
       message: t('knowledgePage.workbench.backfillAutolinkConfirm'),
       cancel: true,
-      class: 'kb-portal',
     }).onOk(async () => {
       try {
         await backfillAutolinkIndex(deps.currentVaultId.value);

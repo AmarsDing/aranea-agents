@@ -1,6 +1,11 @@
 <template>
-  <q-dialog :model-value="open" content-class="kb-portal" @update:model-value="$emit('update:open', !!$event)">
-    <GlassPanel strong :title="t('knowledgePage.workbench.commands.review-governance')" class="kb-gov-review">
+  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
+    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog kb-gov-review">
+      <q-card-section class="app-glass-dialog__head row items-center justify-between">
+        <div class="app-glass-dialog__title">{{ t('knowledgePage.workbench.commands.review-governance') }}</div>
+      </q-card-section>
+      <div class="app-glass-dialog__scroll">
+        <q-card-section class="app-dialog-body app-glass-dialog__body">
       <div v-if="!homeIsCurrent" class="kb-gov-review__banner">
         {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
         <q-btn
@@ -39,17 +44,18 @@
           </q-item-section>
         </q-item>
       </q-list>
-      <div class="kb-gov-review__actions">
-        <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
+        </q-card-section>
       </div>
-    </GlassPanel>
+      <q-card-actions align="right" class="app-glass-dialog__actions">
+        <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
+      </q-card-actions>
+    </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import GlassPanel from './effects/GlassPanel.vue';
 import type { GovernanceProposalItem } from '../../features/knowledge/types';
 import {
   decisionsForProposal,
@@ -124,12 +130,9 @@ function decisionColor(decision: GovernanceDecision): string {
 
 <style lang="sass" scoped>
 .kb-gov-review
-  width: 640px
-  max-width: 92vw
-
   &__banner
     font-size: 12px
-    color: var(--kb-text-secondary, #9aa4b2)
+    color: var(--color-text-secondary)
     margin-bottom: 12px
 
   &__list
@@ -145,7 +148,7 @@ function decisionColor(decision: GovernanceDecision): string {
   &__kind
     font-size: 11px
     letter-spacing: 0.04em
-    color: var(--kb-text-secondary, #9aa4b2)
+    color: var(--color-text-secondary)
     margin-bottom: 2px
 
   &__btns
@@ -154,9 +157,4 @@ function decisionColor(decision: GovernanceDecision): string {
     gap: 6px
     justify-content: flex-end
     max-width: 280px
-
-  &__actions
-    display: flex
-    justify-content: flex-end
-    margin-top: 16px
 </style>

@@ -64,7 +64,7 @@
         >
           <q-icon :name="iconOf(f)" size="16px" class="kb-sidebar__file-icon" />
           <span class="kb-sidebar__file-name ellipsis" :title="f.name">{{ f.name }}</span>
-          <q-tooltip v-if="f.summary || f.doc_type || (f.tags && f.tags.length)" class="kb-portal" :delay="400">
+          <q-tooltip v-if="f.summary || f.doc_type || (f.tags && f.tags.length)" :delay="400">
             <DocumentSummaryCard :summary="f.summary" :tags="f.tags" :doc-type="f.doc_type" />
           </q-tooltip>
           <q-icon
@@ -84,7 +84,7 @@
             :aria-label="t('knowledgePage.workbench.fileMenuAria')"
             @click.stop
           >
-            <q-menu auto-close content-class="kb-portal">
+            <q-menu auto-close>
               <q-list dense class="kb-sidebar__menu">
                 <q-item clickable @click="$emit('file-action', 'move', f)">
                   <q-item-section avatar><q-icon name="drive_file_move" size="18px" /></q-item-section>
