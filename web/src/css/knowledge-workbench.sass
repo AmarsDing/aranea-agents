@@ -1,0 +1,106 @@
+// 知识库工作台作用域样式（SP3，37-knowledge.design.md §SP3）
+// 取代 deep-space.sass：令牌保留为全站 Tech Night 同源别名（组件零改写），
+// 删除全部装饰层（SVG 折射/渐变边缘光/流体色团/噪点/光环）与 kb-portal 传送门皮肤。
+
+// ── Mixin：设计令牌（全站变量同源别名，跟随明暗主题）────────────
+=kb-tokens
+  --kb-bg-deep: var(--canvas-base)
+  --kb-bg-glass: var(--glass-surface)
+  --kb-bg-glass-strong: var(--glass-elevated)
+  --kb-glass-border: var(--glass-border)
+  --kb-glass-border-strong: var(--glass-border-hover)
+  --kb-glass-highlight: rgba(255, 255, 255, 0.08)
+  --kb-accent-cyan: var(--color-accent)
+  --kb-accent-violet: var(--color-neon-violet)
+  --kb-accent-cyan-dim: color-mix(in srgb, var(--color-accent) 35%, transparent)
+  --kb-text-primary: var(--tech-text-primary)
+  --kb-text-dim: var(--tech-text-muted)
+  --kb-danger: var(--color-danger)
+  --kb-warn: var(--color-warning)
+  --kb-text-secondary: color-mix(in srgb, var(--kb-text-primary) 68%, transparent)
+  --kb-text-faint: color-mix(in srgb, var(--kb-text-primary) 42%, transparent)
+  --kb-text-disabled: color-mix(in srgb, var(--kb-text-primary) 28%, transparent)
+  --kb-line-hairline: color-mix(in srgb, var(--kb-text-primary) 7%, transparent)
+  --kb-line-emphasis: color-mix(in srgb, var(--kb-text-primary) 16%, transparent)
+  --kb-bg-hover: color-mix(in srgb, var(--kb-text-primary) 6%, transparent)
+  --kb-bg-active: color-mix(in srgb, var(--color-accent) 10%, transparent)
+  --kb-accent-glow: color-mix(in srgb, var(--color-accent) 22%, transparent)
+  --kb-radius-glass: 14px
+  --kb-blur: var(--glass-blur-default)
+
+.kb-workbench
+  +kb-tokens
+
+  // ── 通用玻璃表面（标准 Tech Night 单层玻璃：18px blur + 内缘高光，无装饰层）──
+  .kb-glass
+    position: relative
+    background: var(--kb-bg-glass)
+    backdrop-filter: blur(var(--kb-blur)) saturate(1.08)
+    -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.08)
+    border: 1px solid var(--kb-glass-border)
+    border-radius: var(--kb-radius-glass)
+    box-shadow: var(--glass-inner-highlight)
+
+  .kb-glass--strong
+    background: var(--kb-bg-glass-strong)
+
+  // ── 文本阶梯工具类 ──────────────
+  .kb-text-dim
+    color: var(--kb-text-dim)
+
+  .kb-text-secondary
+    color: var(--kb-text-secondary)
+
+  .kb-text-faint
+    color: var(--kb-text-faint)
+
+  // ── 复用组件皮肤褪去：工作台内由面板承载容器 ──
+  .knowledge-vault-tree.app-pane-card
+    border: 0
+    border-radius: 0
+    background: transparent
+    backdrop-filter: none
+    -webkit-backdrop-filter: none
+    box-shadow: none
+    min-height: 0
+
+  .knowledge-upload-queue
+    margin-bottom: 0
+    border: 0
+    border-radius: 0
+    background: transparent
+
+    .text-grey-7
+      color: var(--kb-text-dim) !important
+
+  // ── 滚动条（作用域内）────────────────────
+  ::-webkit-scrollbar
+    width: 8px
+    height: 8px
+
+  ::-webkit-scrollbar-thumb
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent)
+    border-radius: 4px
+
+    &:hover
+      background: color-mix(in srgb, var(--color-accent) 32%, transparent)
+
+  ::-webkit-scrollbar-track
+    background: transparent
+
+  // ── reduced-motion 降级：关闭全部过渡/动画 ──
+  @media (prefers-reduced-motion: reduce)
+    *, *::before, *::after
+      animation-duration: 0.001ms !important
+      animation-iteration-count: 1 !important
+      transition-duration: 0.001ms !important
+
+// ── 焦点环与选区 ────────────────────────────────
+.kb-workbench
+  ::selection
+    background: color-mix(in srgb, var(--color-accent) 32%, transparent)
+    color: var(--kb-text-primary)
+
+  :where(button, a, input, textarea, select, [tabindex]:not([tabindex='-1']), .q-btn, .q-tab, .q-item):focus-visible
+    outline: none
+    box-shadow: 0 0 0 2px var(--canvas-base), 0 0 0 4px color-mix(in srgb, var(--color-accent) 60%, transparent)
