@@ -118,7 +118,7 @@ describe('workbench skeleton', () => {
     expect(w.find('.kb-tabs__empty').exists()).toBe(true);
   });
 
-  // V3：空态主 CTA（新建笔记）——流体 GlowButton，点击冒泡 create-note
+  // SP3：空态主 CTA（新建笔记），点击冒泡 create-note
   it('WorkbenchTabs empty state CTA emits create-note', async () => {
     const w = mount(WorkbenchTabs, {
       props: { tabs: [], activeTabId: '', candidates: [] },
