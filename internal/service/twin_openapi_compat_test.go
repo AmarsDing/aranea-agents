@@ -193,3 +193,50 @@ func TestTwinSubGC(t *testing.T) {
 		t.Fatal("fresh sub should survive gc")
 	}
 }
+
+// TestTwinGraphInNamespace P1 图命名空间隔离：source 标签命中、twin_seed 存量兼容、
+// 无标图/它源图/空 metadata 的排除口径。
+func TestTwinGraphInNamespace(t *testing.T) {
+	cases := []struct {
+		name   string
+		meta   map[string]any
+		source string
+		want   bool
+	}{
+		{"source 标命中", map[string]any{"source": "twinmonitor"}, "twinmonitor", true},
+		{"存量种子戳兼容", map[string]any{"twin_seed": map[string]any{"key": "rca-team", "sha256": "x"}}, "twinmonitor", true},
+		{"source 标+twin_seed 双命中", map[string]any{"source": "twinmonitor", "twin_seed": map[string]any{}}, "twinmonitor", true},
+		{"无标 aranea 原生图排除", map[string]any{"_version": 1, "team_owned": true}, "twinmonitor", false},
+		{"它源标签排除", map[string]any{"source": "other"}, "twinmonitor", false},
+		{"空 metadata 排除", nil, "twinmonitor", false},
+		{"twin_seed 不服务它源查询", map[string]any{"twin_seed": map[string]any{}}, "other", false},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := twinGraphInNamespace(tt.meta, tt.source); got != tt.want {
+				t.Fatalf("twinGraphInNamespace(%v, %q) = %v, want %v", tt.meta, tt.source, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEnsureTwinGraphSource 打标为合并语义：nil 初始化、保留 twin_seed 等既有键、覆写 source。
+func TestEnsureTwinGraphSource(t *testing.T) {
+	def := &biz.GraphDefinition{}
+	ensureTwinGraphSource(def)
+	if def.Metadata["source"] != twinSourceTag {
+		t.Fatalf("nil metadata should be initialized and tagged, got %v", def.Metadata)
+	}
+
+	def = &biz.GraphDefinition{Metadata: map[string]any{
+		"source":    "stale",
+		"twin_seed": map[string]any{"key": "alarm-diagnosis"},
+	}}
+	ensureTwinGraphSource(def)
+	if def.Metadata["source"] != twinSourceTag {
+		t.Fatalf("source should be overwritten, got %v", def.Metadata["source"])
+	}
+	if _, ok := def.Metadata["twin_seed"].(map[string]any); !ok {
+		t.Fatalf("twin_seed should be preserved, got %v", def.Metadata)
+	}
+}

@@ -185,3 +185,70 @@ func TestPostProcessTurn_SkipsSessionCompletedWhenClarifySuspended(t *testing.T)
 		t.Fatalf("expected 1 RecordSessionTurn call, got %d", f.recorder.sessionTurns)
 	}
 }
+
+// TestPostProcessTurn_KeepsSessionRunningWhenSpiritPlanInFlight SM-01: the
+// first plan_and_execute reply must not flip the root session to completed
+// while a non-direct plan is still draft/executing (teams may not exist yet).
+func TestPostProcessTurn_KeepsSessionRunningWhenSpiritPlanInFlight(t *testing.T) {
+	f := newPostProcessFixture(rt.NewRunRegistry())
+	f.orch.teamExecDeps.Team.TaskPlanner = &stubTaskPlanner{plan: &biz.TaskPlan{
+		ID:       "plan-b1",
+		Strategy: biz.StrategyParallel,
+		Status:   biz.TaskPlanStatusDraft,
+	}}
+
+	f.run()
+
+	var runCompletedSeen bool
+	for _, c := range f.rs.setCalls {
+		if c.status == "completed" {
+			runCompletedSeen = true
+		}
+	}
+	if !runCompletedSeen {
+		t.Fatalf("expected SetRunStatus(completed), got %+v", f.rs.setCalls)
+	}
+	for _, s := range f.transitor.calls {
+		if s == sessstatus.SessionStatusCompleted {
+			t.Fatalf("in-flight spirit plan must not transition session to completed: %+v", f.transitor.calls)
+		}
+	}
+	if len(f.publisher.bumps) != 1 {
+		t.Fatalf("expected 1 revision bump, got %+v", f.publisher.bumps)
+	}
+}
+
+// TestPostProcessTurn_CompletesWhenSpiritPlanTerminal SM-01 control: a
+// finished parallel plan is not "work in flight" — session may complete
+// (synthesis already happened or there is nothing left to wait for).
+func TestPostProcessTurn_CompletesWhenSpiritPlanTerminal(t *testing.T) {
+	f := newPostProcessFixture(rt.NewRunRegistry())
+	f.orch.teamExecDeps.Team.TaskPlanner = &stubTaskPlanner{plan: &biz.TaskPlan{
+		ID:       "plan-done",
+		Strategy: biz.StrategyParallel,
+		Status:   biz.TaskPlanStatusCompleted,
+	}}
+
+	f.run()
+
+	var sessionCompleted bool
+	for _, s := range f.transitor.calls {
+		if s == sessstatus.SessionStatusCompleted {
+			sessionCompleted = true
+		}
+	}
+	if !sessionCompleted {
+		t.Fatalf("terminal spirit plan should allow session completed, got %+v", f.transitor.calls)
+	}
+}
+
+func TestPersistRememberIfRequested_NoopWhenWriterNil(t *testing.T) {
+	f := newPostProcessFixture(rt.NewRunRegistry())
+	f.orch.persistRememberIfRequested(
+		context.Background(),
+		biz.Session{ID: "sess-1", UserID: "u1"},
+		biz.Agent{ID: "agent-1"},
+		biz.TurnInput{Content: "记住：以后都用中文回复，结论先行。"},
+		turnExecuteResult{userMsg: biz.ChatMessage{ID: "u-1"}},
+	)
+}

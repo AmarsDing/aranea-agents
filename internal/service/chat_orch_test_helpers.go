@@ -82,6 +82,14 @@ func (noopAwaitCoordinator) LoadAwaitChannel(string) (biz.AwaitChannel, bool) {
 	return nil, false
 }
 func (noopAwaitCoordinator) TrySendAwaitChannel(string, biz.AwaitReplyMsg) bool { return false }
+func (noopAwaitCoordinator) RegisterAwaitChannelForTool(string, string, biz.AwaitChannel) {}
+func (noopAwaitCoordinator) DeleteAwaitChannelForTool(string, string)             {}
+func (noopAwaitCoordinator) LoadAwaitChannelForTool(string, string) (biz.AwaitChannel, bool) {
+	return nil, false
+}
+func (noopAwaitCoordinator) TrySendAwaitChannelForTool(string, string, biz.AwaitReplyMsg) bool {
+	return false
+}
 func (noopAwaitCoordinator) MakeAwaitReplyFunc(context.Context, string, string) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) { return "", nil }
 }

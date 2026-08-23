@@ -1246,6 +1246,37 @@ func TestAppendClosedLoopPostmortem_Skip(t *testing.T) {
 			t.Error("must not duplicate postmortem when LLM already produced one")
 		}
 	})
+
+	t.Run("knowledge question with 故障诊断思路", func(t *testing.T) {
+		msg := "请同时、并行完成：用三句话说明网络巡检指标；用三句话说明日志分析步骤；用三句话说明故障诊断的基本思路。"
+		_, _, appended := appendClosedLoopPostmortem(msg, ts9LikeSubTasks())
+		if appended {
+			t.Error("methodology question must not append a postmortem team")
+		}
+	})
+
+	t.Run("ops how-to document is not an incident", func(t *testing.T) {
+		msg := "组建三人运维专家团队协作完成一份简短的「机房巡检与故障处置」说明文档"
+		_, _, appended := appendClosedLoopPostmortem(msg, ts9LikeSubTasks())
+		if appended {
+			t.Error("inspection how-to document must not append a postmortem team")
+		}
+	})
+}
+
+func TestLooksLikeClosedLoopIncident(t *testing.T) {
+	if !looksLikeClosedLoopIncident("交换机宕机，请按告警处置并复盘") {
+		t.Fatal("real outage must look like a closed-loop incident")
+	}
+	if !looksLikeClosedLoopIncident("电商平台订单服务 P2 生产事故：502 错误率 23%") {
+		t.Fatal("production incident must match")
+	}
+	if looksLikeClosedLoopIncident("用三句话说明故障诊断的基本思路") {
+		t.Fatal("故障诊断思路 is a knowledge question")
+	}
+	if looksLikeClosedLoopIncident("写一份机房巡检与故障处置说明") {
+		t.Fatal("how-to document is not an incident")
+	}
 }
 
 func TestMapV1StrategyToV2(t *testing.T) {

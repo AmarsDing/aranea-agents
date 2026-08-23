@@ -157,8 +157,8 @@ func (uc *SessionMessageUsecase) AppendChatTurn(ctx context.Context, sessionID s
 		uc.metricsUsecase.AccumulateMetricsDelta(delta)
 	}
 	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
-		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
-			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
+		if err := uc.AutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
+			uc.lg.Warn("AutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
 	return nil
@@ -174,8 +174,8 @@ func (uc *SessionMessageUsecase) AppendChatMessage(ctx context.Context, sessionI
 		uc.metricsUsecase.AccumulateMetricsDelta(delta)
 	}
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
-		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
-			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
+		if err := uc.AutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
+			uc.lg.Warn("AutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
 	return nil
@@ -288,7 +288,13 @@ func (uc *SessionMessageUsecase) listAllMessages(ctx context.Context, sessionID 
 	return out, nil
 }
 
-func (uc *SessionMessageUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
+// AutoTitleFromUserMessage renames a still-default session title from the
+// user's first message (snippet synchronously + async LLM refinement).
+// Triggers: (a) legacy AppendChatTurn/AppendChatMessage hooks above;
+// (b) the service-layer task.created subscriber (session_auto_title_subscriber.go)
+// for the v2 native chat path, where messages persist via ActivityProjector
+// and never reach those hooks (BUG-01, chat-e2e-20260823).
+func (uc *SessionMessageUsecase) AutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
 	sess, err := uc.sessionReader.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return err

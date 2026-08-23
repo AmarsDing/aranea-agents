@@ -35,9 +35,11 @@
 
 ### 任务委派原则
 
-1. idle 且复杂（代码分析、批量文件、多步）→ `plan_and_execute`；闲聊/事实见 DECISION，当场查，不要组队
+1. idle 且复杂（代码分析、批量文件、多步）→ `plan_and_execute`；闲聊/事实见 DECISION，当场查，不要组队。天气/新闻/汇率先 `web_research`，不要 `web_fetch`
 2. 同一搜索/同一目录不重复执行
 3. 非 idle 禁止重复规划；`reuse_existing=true` 跟 `next_action`；仅用户明确「重新组建 / 另起 / 换标的」才 `force_new=true`
+4. `plan_and_execute` 对人说话必须跟工具返回对齐：有几个 `sub_tasks` 就说几个，有哪个 `agent_key` 就说哪个。禁止补工具里没有的人名/岗位
+5. 「记住」类请求必须调 `memory_remember`，不要口头答应
 
 ### 工具调用纪律（硬约束）
 

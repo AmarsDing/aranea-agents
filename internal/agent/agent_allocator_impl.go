@@ -149,10 +149,17 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 			// L0 配方成员优先（B.10.21.5）；无配方时按组织补员。
 			additional := allocation.TeamMemberKeys
 			var crossDept []string
+			wantExtra := dagAdditionalMemberCount(taskPlan.UserMessage)
 			if len(additional) == 0 {
-				additional, crossDept = impl.selectAdditionalMembers(allocation.AssignedKey, pool, 1)
+				additional, crossDept = impl.selectAdditionalMembers(allocation.AssignedKey, pool, wantExtra)
 			} else {
 				_, crossDept = classifyCrossDeptMembers(allocation.AssignedKey, additional, pool)
+			}
+			// Domain-filtered pool can be a single specialist (empty
+			// domain_path / one 巡检岗). Retry against the full assignable
+			// roster so dag does not silently collapse to a 1-person team.
+			if len(additional) == 0 {
+				additional, crossDept = impl.selectAdditionalMembers(allocation.AssignedKey, assignable, wantExtra)
 			}
 			if len(additional) > 0 {
 				allocation.TeamMemberKeys = additional
@@ -164,6 +171,13 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 					loggateway.Str("sub_task_id", subTask.ID),
 					loggateway.Str("lead", allocation.AssignedKey),
 					loggateway.Str("members", strings.Join(additional, ",")),
+				)
+			} else {
+				impl.lg.Warn("DAG 模式未能补齐第二名成员，花名册可分配专家不足",
+					loggateway.StepID(biz.SpiritStepAllocatorMatch),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Str("sub_task_id", subTask.ID),
+					loggateway.Str("lead", allocation.AssignedKey),
 				)
 			}
 		}
@@ -518,6 +532,27 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 			}
 			return alloc, nil
 		}
+		// Knowledge-report specialties (研究/调研) are often missing from
+		// it-ops rosters. Fall back to 办公/文档 rather than failing the
+		// whole Team path with "no roster specialist".
+		if spec := NormalizeDomainPath(subTask.DomainPath); spec == "研究/调研" {
+			if cap, backup, ok := bindRosterSpecialist("办公/文档", subTask.Name+" "+subTask.Description, capabilities); ok {
+				alloc := biz.TaskAllocation{
+					SubTaskID:    subTask.ID,
+					SubTaskName:  subTask.Name,
+					AssignedType: assignedType,
+					AssignedKey:  cap.AgentKey,
+					AssignedName: cap.DisplayName,
+					MatchScore:   0.8,
+					MatchLayer:   "roster",
+					MatchReason:  "研究/调研 名册缺失，回退 办公/文档",
+				}
+				if backup != "" {
+					alloc.FallbackKey = backup
+				}
+				return alloc, nil
+			}
+		}
 		taskText := subTask.Name + " " + subTask.Description
 		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskText, subTask.DomainPath, capabilities, traceID); ok {
 			return biz.TaskAllocation{
@@ -651,6 +686,23 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 // then cross-department (returned separately for borrow marking).
 func (impl *agentAllocatorImpl) selectAdditionalMembers(primaryKey string, capabilities []biz.AgentCapability, count int) (members []string, crossDept []string) {
 	return pickComplementaryMembers(primaryKey, capabilities, count)
+}
+
+// dagAdditionalMemberCount is how many extra specialists a dag team should
+// add besides the lead. "三人/三位专家" means one team of three, not three
+// teams — ask for two complements. "三个团队" stays at one complement.
+func dagAdditionalMemberCount(userMessage string) int {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return 1
+	}
+	if strings.Contains(msg, "三个团队") || strings.Contains(msg, "三支团队") || strings.Contains(msg, "3个团队") {
+		return 1
+	}
+	if strings.Contains(msg, "三人") || strings.Contains(msg, "三位") || strings.Contains(msg, "3人") {
+		return 2
+	}
+	return 1
 }
 
 func pickComplementaryMembers(primaryKey string, capabilities []biz.AgentCapability, count int) (members []string, crossDept []string) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -225,6 +226,25 @@ func SeedCompanyLeadPromptFiles(ctx context.Context, client *ent.Client, d Diale
 	}
 	defer rows.Close()
 
+	// 2026-08-24 P4 修复：模板含 {{.CompanyName}}/{{.CompanyDescription}} 占位符，
+	// 运行时无渲染（RenderPromptTemplate 未接入生产路径，TECH-DEBT B-5），
+	// 种子必须按公司渲染后再落库，否则总经理 prompt 出现原始占位符。
+	companies, err := client.Organization.Query().
+		Where(organization.DeletedAtEQ(""), organization.LevelEQ("company")).
+		All(ctx)
+	if err != nil {
+		return entErrToBizErr(err, "SEED")
+	}
+	type companyInfo struct{ name, description string }
+	byKey := make(map[string]companyInfo, len(companies))
+	for _, c := range companies {
+		byKey[c.OrgKey] = companyInfo{name: c.Name, description: c.Description}
+	}
+	tmpl, err := template.New("company_lead_seed").Parse(string(data))
+	if err != nil {
+		return entErrToBizErr(err, "SEED")
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `INSERT INTO agent_prompt_files (
 		id, agent_id, file_name, body, sort_order, created_at, updated_at
@@ -243,8 +263,28 @@ func SeedCompanyLeadPromptFiles(ctx context.Context, client *ent.Client, d Diale
 				loggateway.Err(err))
 			continue
 		}
+		body := string(data)
+		orgKey := strings.TrimSuffix(strings.TrimPrefix(agentKey, "__company_lead_"), "__")
+		if co, ok := byKey[orgKey]; ok {
+			var b strings.Builder
+			if renderErr := tmpl.Execute(&b, map[string]string{
+				"CompanyName":        co.name,
+				"CompanyDescription": co.description,
+			}); renderErr != nil {
+				lg.Warn("company lead prompt render failed, keeping raw template",
+					loggateway.StepID("data.seed.company_lead_prompt_files"),
+					loggateway.Str("agent_key", agentKey),
+					loggateway.Err(renderErr))
+			} else {
+				body = b.String()
+			}
+		} else {
+			lg.Warn("company lead agent has no matching company node, keeping raw template",
+				loggateway.StepID("data.seed.company_lead_prompt_files"),
+				loggateway.Str("agent_key", agentKey))
+		}
 		id := "apf_company_lead_" + strings.ReplaceAll(agentKey, "/", "_")
-		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, "system.md", string(data), 1, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, "system.md", body, 1, now, now); err != nil {
 			lg.Error("seed step failed: seed company lead prompt file",
 				loggateway.StepID("data.seed.company_lead_prompt_files"),
 				loggateway.Str("agent_key", agentKey),

@@ -74,6 +74,33 @@ func SkipForDirectReply(userText string) bool {
 	return false
 }
 
+// rememberRequestPatterns are explicit memory writes (IDENTITY.md).
+var rememberRequestPatterns = []string{
+	"请记住",
+	"记住：",
+	"记住:",
+	"以后都",
+	"我的习惯是",
+	"不要再",
+	"remember that",
+	"remember:",
+}
+
+// LooksLikeRememberRequest reports a user turn that must persist a preference
+// even if the LLM never called memory_remember.
+func LooksLikeRememberRequest(userText string) bool {
+	t := strings.ToLower(strings.TrimSpace(userText))
+	if t == "" {
+		return false
+	}
+	for _, p := range rememberRequestPatterns {
+		if strings.Contains(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // LooksLikeUnderspecifiedTask reports short ambiguous task asks that still
 // need the intent pass so the clarification gate can run.
 func LooksLikeUnderspecifiedTask(userText string) bool {

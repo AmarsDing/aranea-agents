@@ -311,6 +311,37 @@ func TestProfileAllowSet_nonSpiritProfilesExcludeComputerUse(t *testing.T) {
 	}
 }
 
+// system_memory / system_skills 是 __memory__ / __skills__ 的注册 profile：
+// 目录侧最小面（datetime 可生效），核心 butler 工具经 CustomTools 注入绕行目录门禁。
+func TestBuildAgentEffectiveTools_systemButlerProfiles(t *testing.T) {
+	for _, profile := range []string{"system_memory", "system_skills"} {
+		settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: profile}
+		cat := []Tool{
+			{Key: "datetime", DisplayName: "时间", Category: "utility", Source: "builtin", Enabled: true},
+			{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true},
+		}
+		eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
+		if eff.Profile != profile {
+			t.Fatalf("profile %q must stay canonical, got %q", profile, eff.Profile)
+		}
+		var dt, rf *EffectiveAgentTool
+		for i := range eff.Items {
+			switch eff.Items[i].ToolKey {
+			case "datetime":
+				dt = &eff.Items[i]
+			case "read_file":
+				rf = &eff.Items[i]
+			}
+		}
+		if dt == nil || !dt.Enabled {
+			t.Fatalf("profile %q must enable datetime, got %#v", profile, dt)
+		}
+		if rf != nil && rf.Enabled {
+			t.Fatalf("profile %q must not enable read_file, got %#v", profile, rf)
+		}
+	}
+}
+
 func TestApplyRegistryAdminDenials_computerUseOptInNotDenied(t *testing.T) {
 	catalog := []Tool{
 		{Key: "computer_use_act", Enabled: false},

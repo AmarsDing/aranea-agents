@@ -1882,9 +1882,38 @@ func deriveFallbackContracts(subTasks []biz.SubTask) {
 	}
 }
 
-// closedLoopSignalPattern 匹配事故/运维闭环类信号词。刻意不含「修复/恢复」
-// 等泛化词——代码修复类任务不应触发复盘节点追加。
-var closedLoopSignalPattern = regexp.MustCompile(`告警|事故|故障|宕机|停机|复盘|incident|outage|postmortem`)
+// closedLoopStrongIncident 匹配真实事故现场，不含单独的「故障」——
+// 「故障诊断思路 / 巡检与故障处置说明」是知识或文档任务，不是闭环处置。
+var closedLoopStrongIncident = regexp.MustCompile(`本次事故|生产事故|事故处置|告警分诊|告警处置|宕机|停机|outage|incident|postmortem|事故复盘`)
+
+// closedLoopHandlePattern 是较弱的处置用语，仅在非文档/知识问法时生效。
+var closedLoopHandlePattern = regexp.MustCompile(`故障处置|故障处理`)
+
+// closedLoopKnowledgeSkip 排除方法论、说明、三句话要点等知识问答。
+var closedLoopKnowledgeSkip = regexp.MustCompile(`故障诊断的?(基本)?思路|故障排查方法|说明.{0,16}故障|常见故障判断|三句话说明故障|故障诊断思路|巡检与故障`)
+
+// closedLoopDocPattern 把「写说明 / 三句话 / 要点」判成文档任务，避免
+// 「机房巡检与故障处置说明」被当成事故闭环。
+var closedLoopDocPattern = regexp.MustCompile(`说明文档|撰写.{0,12}说明|写一份|三句话|要点清单|基本思路`)
+
+// looksLikeClosedLoopIncident reports whether the user is asking to handle a
+// real incident (alert triage / outage / postmortem), not to explain故障.
+func looksLikeClosedLoopIncident(userMessage string) bool {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return false
+	}
+	if closedLoopKnowledgeSkip.MatchString(msg) {
+		return false
+	}
+	if closedLoopStrongIncident.MatchString(msg) {
+		return true
+	}
+	if closedLoopHandlePattern.MatchString(msg) && !closedLoopDocPattern.MatchString(msg) {
+		return true
+	}
+	return false
+}
 
 // appendClosedLoopPostmortem 实现 TS9-GAP-1：闭环类任务（事故/告警/故障处置）
 // 在 LLM 分解未产出复盘节点时，由引擎确定性追加一个「事故复盘」subtask，
@@ -1897,7 +1926,7 @@ func appendClosedLoopPostmortem(userMessage string, subTasks []biz.SubTask) ([]b
 	if len(subTasks) < 2 {
 		return nil, nil, false
 	}
-	if !closedLoopSignalPattern.MatchString(strings.ToLower(userMessage)) {
+	if !looksLikeClosedLoopIncident(userMessage) {
 		return nil, nil, false
 	}
 	for _, st := range subTasks {

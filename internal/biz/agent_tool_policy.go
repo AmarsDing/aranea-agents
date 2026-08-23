@@ -253,6 +253,13 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
+	// system_memory / system_skills：__memory__ / __skills__ 专属 profile。
+	// 核心 memory_butler_* / skills_butler_* 工具经 CustomTools 按 agent_key 条件注入
+	// （service/cli_admin_tools.go memoryButlerTools/skillsButlerTools），绕行目录门禁，
+	// 不在 tools 表、无需此处命名。此 profile 仅提供目录侧最小面（datetime），
+	// 避免未知 profile 导致 effective-tools 全 denied 的误导性展示。
+	"system_memory": {"datetime"},
+	"system_skills": {"datetime"},
 	"spirit": {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime", "group:computeruse",
 		ToolKeyWebResearch, "duckduckgo_search", "web_fetch"},
 }

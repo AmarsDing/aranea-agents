@@ -213,6 +213,41 @@ func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyM
 			"illegal activity transition from %s via %s: %v",
 			step.Status, transitionEvent, err)
 	}
+
+	// BUG-02 (chat-e2e-20260823): deliver BEFORE persisting. Previously the
+	// step was marked completed first; when delivery was rejected (parallel
+	// confirms racing on the shared await channel), the DB said "completed"
+	// while the gate never received the decision — the accepted:false +
+	// status:completed desync. Now a rejected delivery returns 409 and the
+	// step stays tool_blocked so the caller can retry.
+	var outcome awaitReplyOutcome
+	if !IsExternalCodingConfirm(step) {
+		runID := ""
+		if _, requestID, active := s.orch.ActiveRunner(step.SessionID); active {
+			runID = requestID
+		}
+		// Unified delivery: the live channel receives the machine token (parsed by
+		// the confirmation gate); if the channel is gone (process restart), the
+		// run is resumed with a semantic natural-language statement of the user's
+		// decision so the LLM receives it as meaningful context (P3 fix —
+		// previously the decision was silently dropped on the restart path).
+		// toolCallID routes the token to this exact parallel confirmation.
+		var derr error
+		outcome, derr = s.orch.submitAwaitReply(ctx, step.SessionID, awaitReply{
+			runID:         runID,
+			token:         replyMsg,
+			resumeContent: buildConfirmResumeContent(step, approved),
+			toolCallID:    step.ToolCallID,
+		})
+		if derr != nil {
+			return false, "", derr
+		}
+		if outcome == awaitReplyRejected {
+			return false, "", apierror.Conflict(apierror.DomainChat,
+				"confirmation delivery conflicted with another in-flight reply; the activity is still pending, please retry")
+		}
+	}
+
 	step.Status = biz.StepStatus(nextStatus)
 	now := time.Now().UTC()
 	step.CompletedAt = &now
@@ -241,24 +276,6 @@ func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyM
 	// is unblocked by ConfirmBridgePermission above. Do not resume chat.
 	if IsExternalCodingConfirm(step) {
 		return true, string(nextStatus), nil
-	}
-
-	runID := ""
-	if _, requestID, active := s.orch.ActiveRunner(step.SessionID); active {
-		runID = requestID
-	}
-	// Unified delivery: the live channel receives the machine token (parsed by
-	// the confirmation gate); if the channel is gone (process restart), the
-	// run is resumed with a semantic natural-language statement of the user's
-	// decision so the LLM receives it as meaningful context (P3 fix —
-	// previously the decision was silently dropped on the restart path).
-	outcome, err := s.orch.submitAwaitReply(ctx, step.SessionID, awaitReply{
-		runID:         runID,
-		token:         replyMsg,
-		resumeContent: buildConfirmResumeContent(step, approved),
-	})
-	if err != nil {
-		return false, "", err
 	}
 
 	return outcome != awaitReplyRejected, string(nextStatus), nil

@@ -23,9 +23,11 @@
 
 1. **需求存在阻塞性歧义** → `mode=direct`，先问用户，**禁止组队**。缺只有用户能给的目标/范围/约束/验收，不澄清就会做错。团队无法向用户提问，信息不足只会空转或编造。
 2. 简单任务 → `direct`
-2b. 天气/时间/汇率/新闻/百科 → `direct` + `datetime` + `web_research`；失败再 `tool_load` `duckduckgo_search` / `web_fetch`。禁止 `plan_and_execute`
+2b. 天气/时间/汇率/新闻/百科 → `direct` + `datetime` + `web_research`；**禁止**首轮 `web_fetch` / `duckduckgo_search`（抓搜索页会失败）。仅当 `web_research` 明确失败再 `tool_load` 兜底。禁止 `plan_and_execute`
 3. 「并行独立任务」→ `parallel`；「团队/协作」→ `dag`；不确定 → `direct`
 4. 禁止：不传 mode / `auto`；简单任务用 parallel/dag；把「团队」做成 parallel、把「并行独立」做成 dag；**需求不明时组队**；ready/orchestrating 再规划（除非用户明确要新任务）
+5. `plan_and_execute` 返回后，对人复述**只能引用**工具 JSON 的 `sub_tasks[].name` / `agent_key` 与 `steps[].status`。禁止编造花名册成员、禁止把 `orchestrate=running` 说成「已完成」。团队还在跑就说「已启动，系统完成后会通知」，不要假装交付物已写好。
+6. 用户说「记住 / 以后都 / 我的习惯是」必须立刻调 `memory_remember`；没调工具就不要说「已记住」。
 
 ### 组织链
 

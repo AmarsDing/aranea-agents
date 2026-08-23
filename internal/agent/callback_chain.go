@@ -91,6 +91,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newTeamCompletionGuardBeforeHook(deps.TeamCompletionChecker, lg); hook != nil {
 		entries = append(entries, hook)
 	}
+	if hook := newFactQueryWebGuardBeforeHook(deps.WebResearchReady); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newOrchestrationPhasePromoteBeforeHook(deps.DeferredManager, lg); hook != nil {
 		entries = append(entries, hook)
 	}

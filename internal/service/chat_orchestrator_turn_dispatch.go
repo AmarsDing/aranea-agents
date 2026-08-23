@@ -191,6 +191,9 @@ type awaitReply struct {
 	// self-contained natural-language statement of the user's decision so
 	// the LLM receives it as meaningful context. Falls back to token.
 	resumeContent string
+	// toolCallID routes the reply to one specific parallel tool confirmation
+	// (BUG-02, chat-e2e-20260823). Empty = session-level slot (free-text).
+	toolCallID string
 }
 
 // submitAwaitReply is the single delivery path for user replies to an
@@ -206,10 +209,10 @@ type awaitReply struct {
 // An explicit runID overrides the persisted one. errResumeInFlight maps to
 // awaitReplyRejected without error.
 func (o *ChatOrchestrator) submitAwaitReply(ctx context.Context, sessionID string, msg awaitReply) (awaitReplyOutcome, error) {
-	if o.TrySendAwaitChannel(sessionID, biz.AwaitReplyMsg{RunID: msg.runID, Reply: msg.token}) {
+	if o.TrySendAwaitChannelForTool(sessionID, msg.toolCallID, biz.AwaitReplyMsg{RunID: msg.runID, Reply: msg.token, ToolCallID: msg.toolCallID}) {
 		return awaitReplyDelivered, nil
 	}
-	if _, stillExists := o.LoadAwaitChannel(sessionID); stillExists {
+	if _, stillExists := o.LoadAwaitChannelForTool(sessionID, msg.toolCallID); stillExists {
 		return awaitReplyRejected, nil
 	}
 	persistedRunID, canResume := o.canResumeAwait(ctx, sessionID)

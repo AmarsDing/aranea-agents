@@ -947,9 +947,10 @@ func (o *ChatOrchestrator) postProcessTurn(
 			loggateway.Str("run_id", runID),
 			loggateway.Err(serr))
 	}
-	if !clarifySuspended {
+	if !clarifySuspended && !o.spiritWorkInFlight(ctx, sessionID) {
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	}
+	o.persistRememberIfRequested(ctx, sess, ag, input, execResult)
 	o.bumpSessionRevision(ctx, sessionID)
 	// Synthetic evaluation-case turns must not fire post-turn hooks: the
 	// after_turn auto-eval hook would spawn a new run per case and cascade.
@@ -1076,4 +1077,56 @@ func (o *ChatOrchestrator) buildTurnRunner(
 		runner:           runner,
 		rollbackBoundary: rollbackBoundary,
 	}, nil
+}
+
+// spiritWorkInFlight reports whether this Spirit session still has background
+// orchestration. The root session must stay running until synthesis, instead
+// of flipping to completed after the first plan_and_execute reply.
+//
+// Two signals are required because executeOrchestratePhase returns as soon as
+// the PlanBoard is published — teams may not be persisted yet:
+//  1. persisted teams in orchestrating / interrupted
+//  2. newest non-direct TaskPlan still in a recoverable status (draft/executing)
+func (o *ChatOrchestrator) spiritWorkInFlight(ctx context.Context, sessionID string) bool {
+	if o == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	switch o.resolveSpiritTurnOrchestration(ctx, sessionID).Phase {
+	case biz.SpiritPhaseOrchestrating, biz.SpiritPhaseInterrupted:
+		return true
+	}
+	planner := o.team().TaskPlanner
+	if planner == nil {
+		return false
+	}
+	plans, err := planner.ListPlans(ctx, sessionID)
+	if err != nil || len(plans) == 0 || plans[0] == nil {
+		return false
+	}
+	p := plans[0]
+	if p.Strategy == biz.StrategyDirect {
+		return false
+	}
+	return biz.IsRecoverableTaskPlanStatus(p.Status)
+}
+
+// persistRememberIfRequested writes an explicit preference when the user said
+// 记住/以后都/我的习惯是 but the LLM did not call memory_remember.
+func (o *ChatOrchestrator) persistRememberIfRequested(ctx context.Context, sess biz.Session, ag biz.Agent, input biz.TurnInput, execResult turnExecuteResult) {
+	if o == nil || !intent.LooksLikeRememberRequest(input.Content) {
+		return
+	}
+	w := o.factWriter()
+	if w == nil {
+		return
+	}
+	sourceID := ""
+	if execResult.userMsg.ID != "" {
+		sourceID = execResult.userMsg.ID
+	}
+	w.WriteFacts(ctx, sess.ID, ag.ID, sess.UserID, sourceID, []biz.FactMark{{
+		Type:       "preference",
+		Confidence: "high",
+		Content:    strings.TrimSpace(input.Content),
+	}})
 }

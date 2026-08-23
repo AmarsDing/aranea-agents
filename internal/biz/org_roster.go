@@ -44,10 +44,14 @@ func inferDomainOverride(blob string) string {
 		return "创作/文案"
 	case containsAny(blob, "meeting_notes", "纪要", "document_generator"):
 		return "办公/文档"
-	case containsAny(blob, "alert_handler", "告警", "incident_commander"):
+	case containsAny(blob, "alert_handler", "ops_alarm", "告警", "incident_commander"):
 		return "运维/告警"
-	case containsAny(blob, "fault_diagnostician", "根因", "log_analyst", "metric_analyst"):
+	case containsAny(blob, "fault_diagnostician", "ops_fault", "fault_diagnosis", "根因", "log_analyst", "ops_log_analysis", "metric_analyst"):
 		return "运维/诊断"
+	case containsAny(blob, "ops_network", "ops_auto_inspection", "ops_system_inspection", "network_inspector"):
+		return "运维/巡检"
+	case containsAny(blob, "ops_doc_generation", "document_generator"):
+		return "办公/文档"
 	case containsAny(blob, "book_co_author", "代笔"):
 		return "创作/文学"
 	case containsAny(blob, "ux_researcher", "trend_researcher"):
@@ -221,6 +225,20 @@ var positionDomainPath = map[string]string{
 	"network_inspector":              "运维/巡检",
 	"db_operator":                    "运维/巡检",
 	"postmortem_writer":              "运维/复盘",
+	// Live it-ops pack keys (ops_*). Without these InferDomainPath stays
+	// empty and plan_and_execute cannot bind 运维/* specialists.
+	"ops_network_inspection": "运维/巡检",
+	"ops_auto_inspection":    "运维/巡检",
+	"ops_system_inspection":  "运维/巡检",
+	"ops_fault_diagnosis":    "运维/诊断",
+	"ops_log_analysis":       "运维/诊断",
+	"ops_alarm_handler":      "运维/告警",
+	"ops_change_execution":   "运维/变更",
+	"ops_doc_generation":     "办公/文档",
+	"ops_database":           "运维/巡检",
+	"ops_compliance_check":   "软件/合规",
+	"ops_command_expert":     "软件/运维",
+	"ops_server_command":     "软件/运维",
 	"financial_analyst":              "商务/财务",
 	"fpa_analyst":                    "商务/财务",
 	"outbound_strategist":            "商务/销售",

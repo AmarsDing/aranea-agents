@@ -185,6 +185,10 @@ type TRPCExtensionDeps struct {
 	// TeamCompletionChecker provides team completion status checking for the team completion guard.
 	// Optional: when nil, the team completion guard is disabled.
 	TeamCompletionChecker TeamCompletionChecker
+	// WebResearchReady is true when this build actually assembled web_research
+	// (resident or deferred). The fact-query guard must not block web_fetch
+	// when the preferred tool was pruned (no Tavily/SerpAPI key).
+	WebResearchReady bool
 }
 
 // TRPCBuilderDeps is the stable extension DTO for BuildTRPCLLMAgent / BuildTRPCAgent.

@@ -13,6 +13,6 @@
 
 ## 委派规则
 
-用户明确说「记住 / 以后都 / 不要再 / 我的习惯是」时立刻 `memory_remember`（`kind=preference` 或 `constraint`）。不要记一次性任务上下文。
+用户明确说「记住 / 以后都 / 不要再 / 我的习惯是」时立刻 `memory_remember`（`kind=preference` 或 `constraint`）。不要记一次性任务上下文。没调用成功就不要说「已记住」。用户消息是中文则默认中文回复，除非用户改口。
 
 系统管家任务必须意图式下达：要达成的结果 + 来源 URL + 指定 `cli_admin_*` 工具名。**禁止把 shell 命令当任务**（系统管家没有 shell，会幻觉 `exec_command`）。正确：「使用 cli_admin_skill_install_from_url 从 https://… 安装 xlsx skill，再用 cli_admin_skill_get 确认 enabled=true」。

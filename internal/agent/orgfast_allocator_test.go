@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -249,6 +250,83 @@ func TestAllocate_ExcludesDeptLeadAndKeepsExplicit(t *testing.T) {
 	}
 	if explicit.Allocations[0].AssignedKey != leadKey {
 		t.Fatalf("explicit AssignedKey=%q", explicit.Allocations[0].AssignedKey)
+	}
+}
+
+func TestDagAdditionalMemberCount(t *testing.T) {
+	if got := dagAdditionalMemberCount("组建三人运维专家团队写说明"); got != 2 {
+		t.Fatalf("三人团队 extra=%d want 2", got)
+	}
+	if got := dagAdditionalMemberCount("分派三个团队分别调研"); got != 1 {
+		t.Fatalf("三个团队 extra=%d want 1", got)
+	}
+	if got := dagAdditionalMemberCount("dag 默认补一人"); got != 1 {
+		t.Fatalf("default extra=%d want 1", got)
+	}
+}
+
+func TestAllocate_DAGFallsBackToFullRosterForSecondMember(t *testing.T) {
+	reader := &stubAgentReader{agents: []biz.Agent{
+		{AgentKey: "ops_auto_inspection", DisplayName: "自动巡检", Status: "active", DomainPath: "运维/巡检", PositionKey: "ops_auto_inspection"},
+		{AgentKey: "ops_doc_generation", DisplayName: "文档生成", Status: "active", DomainPath: "办公/文档", PositionKey: "ops_doc_generation"},
+	}}
+	impl := &agentAllocatorImpl{
+		repo:        &fakeAllocatorRepo{},
+		agentReader: reader,
+		capBuilder:  NewAgentCapabilityBuilder(reader, loggateway.NewNoop()),
+		lg:          loggateway.NewNoop(),
+	}
+	saved, err := impl.Allocate(context.Background(), &biz.TaskPlan{
+		ID:          "tp-dag-fallback",
+		Strategy:    biz.StrategyDAG,
+		UserMessage: "组建三人运维专家团队协作完成一份机房巡检说明",
+		SubTasks: []biz.SubTask{
+			{ID: "st1", Name: "写巡检说明", DomainPath: "运维/巡检"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Allocations) != 1 {
+		t.Fatalf("allocations=%d", len(saved.Allocations))
+	}
+	a := saved.Allocations[0]
+	if a.AssignedKey != "ops_auto_inspection" {
+		t.Fatalf("lead=%q", a.AssignedKey)
+	}
+	if len(a.TeamMemberKeys) == 0 {
+		t.Fatal("dag must fall back to the full roster for a second member")
+	}
+	if a.TeamMemberKeys[0] != "ops_doc_generation" {
+		t.Fatalf("members=%v", a.TeamMemberKeys)
+	}
+}
+
+func TestAllocate_ResearchFallsBackToOfficeDocs(t *testing.T) {
+	reader := &stubAgentReader{agents: []biz.Agent{
+		{AgentKey: "ops_doc_generation", DisplayName: "文档生成", Status: "active", DomainPath: "办公/文档", PositionKey: "ops_doc_generation"},
+	}}
+	impl := &agentAllocatorImpl{
+		repo:        &fakeAllocatorRepo{},
+		agentReader: reader,
+		capBuilder:  NewAgentCapabilityBuilder(reader, loggateway.NewNoop()),
+		lg:          loggateway.NewNoop(),
+	}
+	saved, err := impl.Allocate(context.Background(), &biz.TaskPlan{
+		ID:       "tp-research-fallback",
+		Strategy: biz.StrategySingleAgent,
+		SubTasks: []biz.SubTask{
+			{ID: "st1", Name: "对比 HTTP/2 与 HTTP/3", DomainPath: "研究/调研"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Allocations[0].AssignedKey != "ops_doc_generation" {
+		t.Fatalf("research fallback AssignedKey=%q", saved.Allocations[0].AssignedKey)
+	}
+	if !strings.Contains(saved.Allocations[0].MatchReason, "办公/文档") {
+		t.Fatalf("reason=%q", saved.Allocations[0].MatchReason)
 	}
 }
 

@@ -25,6 +25,10 @@ const awaitChanGCInterval = 5 * time.Minute
 type AwaitReplyMsg struct {
 	RunID string
 	Reply string
+	// ToolCallID routes the reply to one specific tool-confirmation await when
+	// parallel tool calls block on the same session (BUG-02, chat-e2e-20260823).
+	// Empty = session-level slot (free-text await_user_reply / clarification).
+	ToolCallID string
 }
 
 // AwaitChannel is the concrete channel type used for await-reply coordination.
@@ -34,6 +38,18 @@ type awaitChanEntry struct {
 	ch        AwaitChannel
 	done      chan struct{}
 	createdAt time.Time
+}
+
+// awaitChanScopeKey builds the awaitChans registry key. An empty toolCallID
+// uses the session-level slot (legacy paths never run in parallel); a non-empty
+// toolCallID gets its own slot so parallel tool-confirmation awaits no longer
+// overwrite each other (previously a single per-session slot was closed and
+// replaced by each new registration, breaking concurrent confirms).
+func awaitChanScopeKey(sessionID, toolCallID string) string {
+	if toolCallID == "" {
+		return sessionID
+	}
+	return sessionID + "\x00" + toolCallID
 }
 
 type ChatRunStatus struct {
@@ -237,12 +253,14 @@ func (uc *ChatUsecase) SetRunStatusWithError(ctx context.Context, sessionID, run
 	uc.runs.SetStatus(sessionID, runID, status, errMsg)
 	uc.publisher.PublishRunStatus(sessionID, runID, status, errMsg)
 
-	// Proactively clean up await channel when run reaches a terminal status.
+	// Proactively clean up await channels when run reaches a terminal status.
 	// This prevents memory leaks when runs end without going through the normal
 	// await reply flow (e.g., hard budget, cancellation, unexpected failure).
+	// Session-wide sweep: parallel tool confirmations each hold a tool-scoped
+	// entry (BUG-02), a single-slot delete would leak them until GC.
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case SessionRunPhaseCompleted, SessionRunPhaseFailed, SessionRunPhaseCancelled:
-		uc.DeleteAwaitChannel(sessionID)
+		uc.DeleteAwaitChannelsForSession(sessionID)
 	}
 	return nil
 }
@@ -360,27 +378,61 @@ func MergeInjectContext(injects []string, content string) string {
 }
 
 func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch AwaitChannel) {
+	uc.RegisterAwaitChannelForTool(sessionID, "", ch)
+}
+
+// RegisterAwaitChannelForTool registers ch under the tool-scoped key.
+// Re-registering the same scope closes the stale entry (interrupt semantics);
+// distinct toolCallIDs coexist for parallel confirmations.
+func (uc *ChatUsecase) RegisterAwaitChannelForTool(sessionID, toolCallID string, ch AwaitChannel) {
+	key := awaitChanScopeKey(sessionID, toolCallID)
 	uc.mu.Lock()
-	if old, ok := uc.awaitChans[sessionID]; ok {
+	if old, ok := uc.awaitChans[key]; ok {
 		close(old.done)
 	}
-	uc.awaitChans[sessionID] = awaitChanEntry{ch: ch, done: make(chan struct{}), createdAt: time.Now()}
+	uc.awaitChans[key] = awaitChanEntry{ch: ch, done: make(chan struct{}), createdAt: time.Now()}
 	uc.mu.Unlock()
 }
 
 func (uc *ChatUsecase) DeleteAwaitChannel(sessionID string) {
+	uc.DeleteAwaitChannelForTool(sessionID, "")
+}
+
+func (uc *ChatUsecase) DeleteAwaitChannelForTool(sessionID, toolCallID string) {
+	key := awaitChanScopeKey(sessionID, toolCallID)
 	uc.mu.Lock()
-	if entry, ok := uc.awaitChans[sessionID]; ok {
+	if entry, ok := uc.awaitChans[key]; ok {
 		close(entry.done)
-		delete(uc.awaitChans, sessionID)
+		delete(uc.awaitChans, key)
+	}
+	uc.mu.Unlock()
+}
+
+// DeleteAwaitChannelsForSession removes every await entry of the session —
+// the session-level slot plus all tool-scoped ones. Used on terminal run
+// status so parallel-confirmation leftovers cannot leak until GC.
+func (uc *ChatUsecase) DeleteAwaitChannelsForSession(sessionID string) {
+	prefix := sessionID + "\x00"
+	uc.mu.Lock()
+	for key, entry := range uc.awaitChans {
+		if key != sessionID && !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		close(entry.done)
+		delete(uc.awaitChans, key)
 	}
 	uc.mu.Unlock()
 }
 
 func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (AwaitChannel, bool) {
-	uc.mu.RLock()
-	entry, ok := uc.awaitChans[sessionID]
-	uc.mu.RUnlock()
+	return uc.LoadAwaitChannelForTool(sessionID, "")
+}
+
+// LoadAwaitChannelForTool loads the entry for the tool-scoped key, falling
+// back to the session-level slot when no tool-scoped entry exists (legacy
+// registration + scoped delivery interop).
+func (uc *ChatUsecase) LoadAwaitChannelForTool(sessionID, toolCallID string) (AwaitChannel, bool) {
+	entry, ok := uc.lookupAwaitEntry(sessionID, toolCallID)
 	if !ok {
 		return nil, false
 	}
@@ -393,29 +445,53 @@ func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (AwaitChannel, bool) {
 	}
 }
 
+// lookupAwaitEntry finds the registry entry: exact tool-scoped key first,
+// then the session-level slot. Caller must NOT hold uc.mu (RLock taken inside).
+func (uc *ChatUsecase) lookupAwaitEntry(sessionID, toolCallID string) (awaitChanEntry, bool) {
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+	if toolCallID != "" {
+		if entry, ok := uc.awaitChans[awaitChanScopeKey(sessionID, toolCallID)]; ok {
+			return entry, true
+		}
+	}
+	entry, ok := uc.awaitChans[sessionID]
+	return entry, ok
+}
+
 // TrySendAwaitChannel attempts to send msg to the await channel for sessionID.
 // It holds a read lock while checking the entry and sending, which prevents
 // the GC goroutine from closing the done channel concurrently.
 func (uc *ChatUsecase) TrySendAwaitChannel(sessionID string, msg AwaitReplyMsg) bool {
+	return uc.TrySendAwaitChannelForTool(sessionID, "", msg)
+}
+
+// TrySendAwaitChannelForTool sends to the tool-scoped channel (falling back
+// to the session-level slot, same lookup as LoadAwaitChannelForTool).
+func (uc *ChatUsecase) TrySendAwaitChannelForTool(sessionID, toolCallID string, msg AwaitReplyMsg) bool {
 	uc.mu.RLock()
-	entry, ok := uc.awaitChans[sessionID]
+	defer uc.mu.RUnlock()
+	var entry awaitChanEntry
+	var ok bool
+	if toolCallID != "" {
+		entry, ok = uc.awaitChans[awaitChanScopeKey(sessionID, toolCallID)]
+	}
 	if !ok {
-		uc.mu.RUnlock()
+		entry, ok = uc.awaitChans[sessionID]
+	}
+	if !ok {
 		return false
 	}
 	// If done is already closed, the entry has been logically deleted.
 	select {
 	case <-entry.done:
-		uc.mu.RUnlock()
 		return false
 	default:
 	}
 	select {
 	case entry.ch <- msg:
-		uc.mu.RUnlock()
 		return true
 	default:
-		uc.mu.RUnlock()
 		return false
 	}
 }
@@ -458,10 +534,15 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 						// 活跃 run 的 await channel 是合法在用（HITL 等待用户回复
 						// 可远超 maxAge），交给 SetRunStatus 终态时的事件驱动清理；
 						// GC 只回收 run 已不存在/已结束的泄漏条目。
-						if uc.runs.HasActive(sid) {
+						// tool 作用域 key（sessionID\x00toolCallID，BUG-02）按会话部分判定。
+						sess := sid
+						if i := strings.IndexByte(sid, 0); i >= 0 {
+							sess = sid[:i]
+						}
+						if uc.runs.HasActive(sess) {
 							continue
 						}
-						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
+						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sess), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
 						close(entry.done)
 						delete(uc.awaitChans, sid)
 					}

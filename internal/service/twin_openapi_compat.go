@@ -206,6 +206,10 @@ func (s *TwinOpenAPICompatService) handleListAgents(w http.ResponseWriter, r *ht
 		writeTwinError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// 注：Agent 清单保持全量返回（不做 ?source= 命名空间过滤）——twin 种子同步
+	// 按名匹配的 12 个预设 Agent 实为 aranea 侧 pkg 预设资产，无 twin 标签载体
+	// （agents 表无 metadata_json 列，config_json 被 tools/skills 投影占用）；
+	// 且 Agent 侧无覆盖写路径，全量可见无正确性风险。命名空间隔离仅落 Graph 侧。
 	items := make([]map[string]any, 0, len(res.Items))
 	for _, a := range res.Items {
 		items = append(items, map[string]any{
@@ -374,11 +378,45 @@ func (s *TwinOpenAPICompatService) handleListGraphs(w http.ResponseWriter, r *ht
 		writeTwinError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
 	items := make([]map[string]any, 0, len(defs))
 	for _, d := range defs {
+		if source != "" && !twinGraphInNamespace(d.Metadata, source) {
+			continue
+		}
 		items = append(items, twinGraphView(d))
 	}
 	writeTwinJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// twinSourceTag P1 图命名空间隔离：经本门面创建/更新的 Graph 强制打标
+// metadata.source=twinmonitor，清单接口支持 ?source= 过滤，
+// 使 twinmonitor 同步/解析只见自己的命名空间（Agent 侧无持久化标签载体，不过滤）。
+const twinSourceTag = "twinmonitor"
+
+// twinGraphInNamespace 判定 Graph 是否属于指定来源命名空间（P1 命名空间隔离）。
+// 命中条件：metadata.source 一致；或查询 twinmonitor 命名空间时带有 twin_seed 种子戳
+// （兼容打标机制上线前已注册的存量种子图，其首次漂移更新会被补打 source 标）。
+func twinGraphInNamespace(meta map[string]any, source string) bool {
+	if meta == nil {
+		return false
+	}
+	if s, _ := meta["source"].(string); s == source {
+		return true
+	}
+	if source == twinSourceTag {
+		_, ok := meta["twin_seed"].(map[string]any)
+		return ok
+	}
+	return false
+}
+
+// ensureTwinGraphSource 强制打标 Graph 命名空间（合并保留 twin_seed 等既有键）。
+func ensureTwinGraphSource(def *biz.GraphDefinition) {
+	if def.Metadata == nil {
+		def.Metadata = map[string]any{}
+	}
+	def.Metadata["source"] = twinSourceTag
 }
 
 func (s *TwinOpenAPICompatService) handleGetGraph(w http.ResponseWriter, r *http.Request) {
@@ -402,6 +440,7 @@ func (s *TwinOpenAPICompatService) handleCreateGraph(w http.ResponseWriter, r *h
 		writeTwinError(w, http.StatusBadRequest, "invalid graph json: "+err.Error())
 		return
 	}
+	ensureTwinGraphSource(&def)
 	created, err := s.graphs.CreateGraph(r.Context(), &def)
 	if err != nil {
 		writeTwinError(w, http.StatusInternalServerError, err.Error())
@@ -435,6 +474,7 @@ func (s *TwinOpenAPICompatService) handleUpdateGraph(w http.ResponseWriter, r *h
 	}
 	def.ID = id
 	def.Name = existing.Name
+	ensureTwinGraphSource(&def)
 	saved, err := s.graphs.UpdateGraph(r.Context(), &def)
 	if err != nil {
 		writeTwinError(w, http.StatusInternalServerError, err.Error())

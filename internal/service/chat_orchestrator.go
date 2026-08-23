@@ -828,6 +828,16 @@ func (o *ChatOrchestrator) TrySendAwaitChannel(sessionID string, msg biz.AwaitRe
 	return o.awaitCoord().TrySendAwaitChannel(sessionID, msg)
 }
 
+// Tool-scoped await channel operations (BUG-02, chat-e2e-20260823): address
+// one specific parallel tool confirmation instead of the shared session slot.
+func (o *ChatOrchestrator) LoadAwaitChannelForTool(sessionID, toolCallID string) (biz.AwaitChannel, bool) {
+	return o.awaitCoord().LoadAwaitChannelForTool(sessionID, toolCallID)
+}
+
+func (o *ChatOrchestrator) TrySendAwaitChannelForTool(sessionID, toolCallID string, msg biz.AwaitReplyMsg) bool {
+	return o.awaitCoord().TrySendAwaitChannelForTool(sessionID, toolCallID, msg)
+}
+
 // hydrateRunStatusFromSession delegates to the runStatus sub-manager.
 func (o *ChatOrchestrator) hydrateRunStatusFromSession(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
 	return o.runStatus().HydrateRunStatusFromSession(ctx, sessionID)

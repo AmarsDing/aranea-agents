@@ -112,6 +112,13 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 	if planExec != nil {
 		planExec.SetConfirmStepReader(cs.orch.stepReader())
 	}
+	// BUG-01 (chat-e2e-20260823): restore session auto-title for the v2 native
+	// chat path — user messages persist via ActivityProjector (task.created),
+	// bypassing the legacy AppendChat* hooks. deps.Turn.Sessions is
+	// *session.SessionUsecase which satisfies autoTitleRunner.
+	if titler, ok := deps.Turn.Sessions.(autoTitleRunner); ok {
+		startSessionAutoTitleSubscriber(appctx.Ctx(), v2Bus, titler, deps.Infra.LG)
+	}
 	return cs
 }
 

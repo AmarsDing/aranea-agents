@@ -30,6 +30,21 @@ func TestSkipForDirectReply(t *testing.T) {
 	}
 }
 
+func TestLooksLikeRememberRequest(t *testing.T) {
+	if !LooksLikeRememberRequest("记住：以后都用中文回复，结论先行，表格呈现。我的习惯是先给结论。") {
+		t.Fatal("explicit 记住 preference must match")
+	}
+	if !LooksLikeRememberRequest("请记住我的工号是 DIAG-1") {
+		t.Fatal("请记住 must match")
+	}
+	if LooksLikeRememberRequest("帮我做一个应用") {
+		t.Fatal("underspecified task is not a remember request")
+	}
+	if LooksLikeRememberRequest("现在几点了") {
+		t.Fatal("clock query is not a remember request")
+	}
+}
+
 func TestLooksLikeUnderspecifiedTask(t *testing.T) {
 	if !LooksLikeUnderspecifiedTask("帮我做个应用") {
 		t.Fatal("帮我做个应用 must keep the clarification gate")

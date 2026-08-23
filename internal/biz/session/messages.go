@@ -80,6 +80,17 @@ func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, session
 	return uc.messageUsecase.UpsertChatActivityMessage(ctx, sessionID, msg)
 }
 
+// AutoTitleFromUserMessage delegates to SessionMessageUsecase (Facade pattern).
+// Consumed by the service-layer task.created subscriber for the v2 native
+// chat path (BUG-01, chat-e2e-20260823); safe to call repeatedly — the
+// default-title gate inside makes repeat calls no-ops.
+func (uc *SessionUsecase) AutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
+	if uc == nil || uc.messageUsecase == nil {
+		return nil
+	}
+	return uc.messageUsecase.AutoTitleFromUserMessage(ctx, sessionID, content)
+}
+
 // UpdateRunnerSnapshotJSON persists the Runner session snapshot.
 func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
 	return uc.compressionUsecase.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)

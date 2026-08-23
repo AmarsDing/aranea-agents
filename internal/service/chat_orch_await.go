@@ -24,12 +24,19 @@ type AwaitResumeGuard interface {
 }
 
 // AwaitChannelRegistry manages await channels.
+// The ForTool variants address one specific tool-confirmation await when
+// parallel tool calls block on the same session (BUG-02, chat-e2e-20260823);
+// the unscoped variants operate on the session-level slot (free-text paths).
 // Stability:evolving
 type AwaitChannelRegistry interface {
 	RegisterAwaitChannel(sessionID string, ch biz.AwaitChannel)
 	DeleteAwaitChannel(sessionID string)
 	LoadAwaitChannel(sessionID string) (biz.AwaitChannel, bool)
 	TrySendAwaitChannel(sessionID string, msg biz.AwaitReplyMsg) bool
+	RegisterAwaitChannelForTool(sessionID, toolCallID string, ch biz.AwaitChannel)
+	DeleteAwaitChannelForTool(sessionID, toolCallID string)
+	LoadAwaitChannelForTool(sessionID, toolCallID string) (biz.AwaitChannel, bool)
+	TrySendAwaitChannelForTool(sessionID, toolCallID string, msg biz.AwaitReplyMsg) bool
 }
 
 // AwaitReplyBuilder creates await_user_reply callback functions.
@@ -242,19 +249,46 @@ func (a *chatAwaitCoordinator) TrySendAwaitChannel(sessionID string, msg biz.Awa
 	return a.chatUC.TrySendAwaitChannel(sessionID, msg)
 }
 
+// RegisterAwaitChannelForTool registers a tool-scoped await channel (BUG-02).
+func (a *chatAwaitCoordinator) RegisterAwaitChannelForTool(sessionID, toolCallID string, ch biz.AwaitChannel) {
+	a.chatUC.RegisterAwaitChannelForTool(sessionID, toolCallID, ch)
+}
+
+// DeleteAwaitChannelForTool removes a tool-scoped await channel (BUG-02).
+func (a *chatAwaitCoordinator) DeleteAwaitChannelForTool(sessionID, toolCallID string) {
+	a.chatUC.DeleteAwaitChannelForTool(sessionID, toolCallID)
+}
+
+// LoadAwaitChannelForTool loads a tool-scoped await channel (BUG-02).
+func (a *chatAwaitCoordinator) LoadAwaitChannelForTool(sessionID, toolCallID string) (biz.AwaitChannel, bool) {
+	return a.chatUC.LoadAwaitChannelForTool(sessionID, toolCallID)
+}
+
+// TrySendAwaitChannelForTool tries to send to a tool-scoped await channel (BUG-02).
+func (a *chatAwaitCoordinator) TrySendAwaitChannelForTool(sessionID, toolCallID string, msg biz.AwaitReplyMsg) bool {
+	return a.chatUC.TrySendAwaitChannelForTool(sessionID, toolCallID, msg)
+}
+
 // MakeAwaitReplyFunc creates the await_user_reply callback function.
 func (a *chatAwaitCoordinator) MakeAwaitReplyFunc(runCtx context.Context, sessionID, runID string) func(context.Context) (string, error) {
 	return func(toolCtx context.Context) (string, error) {
-		ch := make(biz.AwaitChannel, 1)
-		a.chatUC.RegisterAwaitChannel(sessionID, ch)
+		// Tool-confirmation awaits register under a tool-scoped key so that
+		// parallel tool calls blocked on the same session each get their own
+		// channel instead of overwriting one shared slot (BUG-02,
+		// chat-e2e-20260823). Free-text awaits (no confirm request in ctx)
+		// keep the session-level slot.
 		awaitMeta := AwaitStatusMeta{Kind: biz.ChatAwaitKindReply}
+		toolCallID := ""
 		if req, ok := serviceawaitreply.ToolConfirmRequestFromContext(toolCtx); ok {
 			awaitMeta = AwaitStatusMeta{
 				Kind:       biz.ChatAwaitKindToolConfirm,
 				ToolKey:    req.ToolKey,
 				ToolCallID: req.ToolCallID,
 			}
+			toolCallID = req.ToolCallID
 		}
+		ch := make(biz.AwaitChannel, 1)
+		a.chatUC.RegisterAwaitChannelForTool(sessionID, toolCallID, ch)
 		if err := a.runStatus.SetRunStatusWithAwait(toolCtx, sessionID, runID, "awaiting_user", "", &awaitMeta); err != nil {
 			a.lg.Warn("set run status awaiting_user failed",
 				loggateway.StepID("chat.await"),
@@ -269,7 +303,7 @@ func (a *chatAwaitCoordinator) MakeAwaitReplyFunc(runCtx context.Context, sessio
 		}
 		a.runStatus.PersistAwaitMarkers(toolCtx, sessionID, runID, awaitMeta, true)
 		defer func() {
-			a.chatUC.DeleteAwaitChannel(sessionID)
+			a.chatUC.DeleteAwaitChannelForTool(sessionID, toolCallID)
 			a.runStatus.ClearAwaitMetaCache(sessionID)
 			if err := a.runStatus.SetRunStatus(toolCtx, sessionID, runID, "running", ""); err != nil {
 				a.lg.Warn("set run status running on resume failed",

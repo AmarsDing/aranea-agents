@@ -327,6 +327,9 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		if ts.DeferredManager != nil {
 			deps = deps.WithDeferredManager(ts.DeferredManager)
 		}
+		if hasToolByName(ts.Tools, "web_research") || (ts.DeferredManager != nil && ts.DeferredManager.IsInCatalog("web_research")) {
+			deps.WebResearchReady = true
+		}
 		// Enable TodoEnforcer only when the agent already has the todo_write
 		// tool enabled. The enforcer contributes todo_declare_blocker + enforcement
 		// callbacks (BeforeModel/AfterModel) that prevent the agent from declaring
