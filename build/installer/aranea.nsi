@@ -26,7 +26,7 @@ ShowUnInstDetails show
 InstallDir "$LOCALAPPDATA\AraneaAgents"
 RequestExecutionLevel user
 
-VIProductVersion "0.1.33.0"
+VIProductVersion "0.1.36.0"
 VIAddVersionKey "ProductName" "Aranea-Agents"
 VIAddVersionKey "CompanyName" "AmarsDing"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 AmarsDing"
