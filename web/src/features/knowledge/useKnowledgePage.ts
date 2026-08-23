@@ -20,24 +20,6 @@ export function useKnowledgePage() {
   const docsLoading = ref(false);
   const DOCUMENTS_PAGE_LIMIT = 2000;
 
-  const PERF_STORAGE_KEY = 'aranea.knowledge.performanceMode';
-  const performanceMode = ref(false);
-  try {
-    performanceMode.value = localStorage.getItem(PERF_STORAGE_KEY) === '1';
-  } catch {
-    // ignore
-  }
-  watch(performanceMode, (v) => {
-    try {
-      localStorage.setItem(PERF_STORAGE_KEY, v ? '1' : '0');
-    } catch {
-      // ignore
-    }
-  });
-  function togglePerformanceMode() {
-    performanceMode.value = !performanceMode.value;
-  }
-
   const error = ref('');
   const unavailable = ref('');
 
@@ -215,8 +197,6 @@ export function useKnowledgePage() {
     docSourceMap,
     documentsTruncated,
     DOCUMENTS_PAGE_LIMIT,
-    performanceMode,
-    togglePerformanceMode,
     friendlyError,
     loading,
     docsLoading,

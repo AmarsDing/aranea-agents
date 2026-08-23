@@ -1,5 +1,5 @@
 <template>
-  <div class="kb-glass kb-tabs">
+  <div class="kb-tabs">
     <!-- 标签页条 -->
     <div v-if="tabs.length" class="kb-tabs__bar">
       <div
@@ -94,15 +94,31 @@
         />
       </template>
 
-      <!-- 空态（SP2-7）：3D 环形近期笔记 + 提示 + V3 主 CTA（流体 GlowButton） -->
+      <!-- 空态（SP3）：标准空态 + 近期文档平铺列表 + 主 CTA -->
       <div v-else class="kb-tabs__empty">
-        <RingCarousel v-if="ringItems.length" :items="ringItems" @select="(it) => $emit('open-doc-id', it.key)" />
-        <q-icon v-else name="auto_stories" size="48px" class="kb-tabs__empty-icon" />
+        <q-icon name="auto_stories" size="48px" class="kb-tabs__empty-icon" />
         <div class="kb-tabs__empty-title">{{ t('knowledgePage.workbench.emptyTitle') }}</div>
         <div class="kb-tabs__empty-hint">{{ t('knowledgePage.workbench.emptyHint') }}</div>
-        <GlowButton
-          class="kb-tabs__empty-cta"
+        <div v-if="recentDocs?.length" class="kb-tabs__recent">
+          <div class="kb-tabs__recent-title">{{ t('knowledgePage.workbench.emptyRecent') }}</div>
+          <button
+            v-for="d in recentDocs"
+            :key="d.id"
+            type="button"
+            class="kb-tabs__recent-item"
+            @click="$emit('open-doc-id', d.id)"
+          >
+            <q-icon name="description" size="16px" class="kb-tabs__recent-icon" />
+            <span class="kb-tabs__recent-name ellipsis">{{ baseNameOf(d) }}</span>
+            <span class="kb-tabs__recent-path ellipsis">{{ dirOf(d) }}</span>
+          </button>
+        </div>
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
           icon="add"
+          class="kb-tabs__empty-cta"
           :label="t('knowledgePage.workbench.commands.new-note')"
           @click="$emit('create-note')"
         />
@@ -116,8 +132,6 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import NoteEditor from './NoteEditor.vue';
-import RingCarousel, { type RingItem } from '../effects/RingCarousel.vue';
-import GlowButton from '../effects/GlowButton.vue';
 import type { WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { KnowledgeDocument } from '../../../features/knowledge/types';
 
@@ -126,7 +140,7 @@ const props = defineProps<{
   activeTabId: string;
   /** wikilink 补全/存在性判定候选（当前库文档 relPath） */
   candidates: string[];
-  /** 空态 RingCarousel 卡片（近期文档，SP2-7） */
+  /** 空态近期文档列表（SP3） */
   recentDocs?: KnowledgeDocument[];
   /** P2-5：`[[target#` 标题补全数据源 */
   getHeadings?: (target: string) => string[];
@@ -154,6 +168,20 @@ const { t } = useI18n();
 
 const activeTab = computed(() => props.tabs.find((x) => x.docId === props.activeTabId) ?? null);
 
+/** 空态近期文档：取 relPath 末段名。 */
+function baseNameOf(d: KnowledgeDocument): string {
+  const rel = d.rel_path || d.source;
+  const i = rel.lastIndexOf('/');
+  return i >= 0 ? rel.slice(i + 1) : rel;
+}
+
+/** 空态近期文档：所在目录（根目录为空串）。 */
+function dirOf(d: KnowledgeDocument): string {
+  const rel = d.rel_path || d.source;
+  const i = rel.lastIndexOf('/');
+  return i >= 0 ? rel.slice(0, i) : '';
+}
+
 // ---------- 标签页拖拽重排（P1-4，原生 HTML5 DnD，零依赖） ----------
 const dragIndex = ref(-1);
 const dropIndex = ref(-1);
@@ -178,20 +206,6 @@ function onDragEnd() {
   dragIndex.value = -1;
   dropIndex.value = -1;
 }
-
-/** 空态环形卡片：文档名 + 所在目录。 */
-const ringItems = computed<RingItem[]>(() =>
-  (props.recentDocs ?? []).map((d) => {
-    const rel = d.rel_path || d.source;
-    const i = rel.lastIndexOf('/');
-    return {
-      key: d.id,
-      title: i >= 0 ? rel.slice(i + 1) : rel,
-      subtitle: i >= 0 ? rel.slice(0, i) : '',
-      icon: 'description',
-    };
-  }),
-);
 
 /** 右栏大纲跳转透传（SP2-5）：NoteEditor 实例滚动定位。 */
 const editorRef = ref<InstanceType<typeof NoteEditor> | null>(null);
@@ -220,6 +234,10 @@ defineExpose({ scrollToOffset, flushPendingContent });
   flex-direction: column
   min-height: 0
   height: 100%
+  // SP3：编辑区扁平纯净——纯色底 + 发丝边框，零玻璃零模糊
+  background: var(--kb-bg-deep)
+  border: 1px solid var(--kb-line-hairline)
+  border-radius: 10px
 
   &__bar
     display: flex
@@ -273,7 +291,6 @@ defineExpose({ scrollToOffset, flushPendingContent });
     height: 6px
     border-radius: 50%
     background: var(--kb-accent-cyan)
-    box-shadow: 0 0 6px var(--kb-accent-cyan)
 
   &__conflict
     flex: none
@@ -335,4 +352,49 @@ defineExpose({ scrollToOffset, flushPendingContent });
 
   &__empty-cta
     margin-top: 10px
+
+  &__recent
+    display: flex
+    flex-direction: column
+    gap: 2px
+    width: min(320px, 80%)
+    margin-top: 12px
+
+  &__recent-title
+    font-size: 11px
+    letter-spacing: 0.06em
+    text-transform: uppercase
+    color: var(--kb-text-faint)
+    padding: 0 8px 4px
+
+  &__recent-item
+    display: flex
+    align-items: center
+    gap: 8px
+    padding: 6px 8px
+    border: 0
+    border-radius: 8px
+    background: transparent
+    color: var(--kb-text-primary)
+    font-size: 13px
+    text-align: left
+    cursor: pointer
+    transition: background 0.15s ease
+
+    &:hover
+      background: var(--kb-bg-hover)
+
+  &__recent-icon
+    flex: none
+    color: var(--kb-text-dim)
+
+  &__recent-name
+    flex: 1
+    min-width: 0
+
+  &__recent-path
+    flex: none
+    max-width: 40%
+    font-size: 11px
+    color: var(--kb-text-faint)
 </style>

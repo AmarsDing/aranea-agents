@@ -34,7 +34,8 @@ const i18n = createI18n({
 
 const quasarStubs = {
   'q-icon': { template: '<i />' },
-  'q-btn': { template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
+  // q-btn 声明 click emit，与真实 Quasar 行为一致（避免未声明时 onClick 既透传又 $emit 的双触发）
+  'q-btn': { emits: ['click'], template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
   'q-btn-dropdown': { template: '<div><slot /></div>' },
   'q-list': { template: '<div><slot /></div>' },
   'q-item': { template: '<div @click="$emit(\'click\', $event)"><slot /></div>' },
@@ -127,6 +128,27 @@ describe('workbench skeleton', () => {
     expect(cta.exists()).toBe(true);
     await cta.trigger('click');
     expect(w.emitted('create-note')).toHaveLength(1);
+  });
+
+  // SP3：空态近期文档平铺列表（RingCarousel 已退役），点击打开文档
+  it('WorkbenchTabs empty state lists recent docs and opens on click', async () => {
+    const w = mount(WorkbenchTabs, {
+      props: {
+        tabs: [],
+        activeTabId: '',
+        candidates: [],
+        recentDocs: [
+          { id: 'd9', source: 'a/b.md', rel_path: 'a/b.md' },
+          { id: 'd8', source: 'c.md', rel_path: 'c.md' },
+        ] as never,
+      },
+      ...globalOpts(),
+    });
+    const items = w.findAll('.kb-tabs__recent-item');
+    expect(items.length).toBe(2);
+    expect(items[0].text()).toContain('b.md');
+    await items[0].trigger('click');
+    expect(w.emitted('open-doc-id')?.[0]).toEqual(['d9']);
   });
 
   it('WorkbenchSidebar emits open-file on file click', async () => {

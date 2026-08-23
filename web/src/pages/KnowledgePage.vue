@@ -33,10 +33,8 @@
       :files="explorerFiles"
       :current-prefix="explorerPrefix"
       :panels-refresh-nonce="panelsRefreshNonce"
-      :performance-mode="performanceMode"
       :documents-truncated="documentsTruncated"
       @switch-vault="onSwitchVault"
-      @toggle-performance-mode="togglePerformanceMode"
       @select-node="selectExplorerTreeNode"
       @update:expanded-keys="(v: string[]) => (explorerExpandedKeys = v)"
       @lazy-load="onExplorerLazyLoad"
@@ -116,11 +114,18 @@
       @focus-group="onGraphFocusGroup"
     />
 
-    <!-- 设置浮层（SP2-8）：Embedder 配置；kb-portal 在 body 重挂深空令牌 -->
-    <q-dialog v-model="settingsOpen" content-class="kb-portal">
-      <GlassPanel strong icon="tune" :title="t('knowledgePage.tabSettings')" class="knowledge-page-wb__settings">
-        <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
-      </GlassPanel>
+    <!-- 设置浮层（SP3）：Embedder 配置，全站标准玻璃对话框 -->
+    <q-dialog v-model="settingsOpen">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog knowledge-page-wb__settings">
+        <q-card-section class="app-glass-dialog__head row items-center justify-between">
+          <div class="app-glass-dialog__title">{{ t('knowledgePage.tabSettings') }}</div>
+        </q-card-section>
+        <div class="app-glass-dialog__scroll">
+          <q-card-section class="app-dialog-body app-glass-dialog__body">
+            <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
+          </q-card-section>
+        </div>
+      </q-card>
     </q-dialog>
 
     <knowledge-create-dialog
@@ -183,7 +188,6 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
 import KnowledgeWorkbench from '../components/knowledge/workbench/KnowledgeWorkbench.vue';
-import GlassPanel from '../components/knowledge/effects/GlassPanel.vue';
 import KnowledgeGraph3D from '../components/knowledge/KnowledgeGraph3D.vue';
 import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
 import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog.vue';
@@ -206,8 +210,6 @@ const {
   documentsTruncated,
   docsLoading,
   DOCUMENTS_PAGE_LIMIT,
-  performanceMode,
-  togglePerformanceMode,
   error,
   unavailable,
   removedDocId,
