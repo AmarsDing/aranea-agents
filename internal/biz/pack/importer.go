@@ -386,6 +386,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	}
 
 	// 解析 position_key → taxonomy_position_id（可选引用；缺失写警告）。
+	keepExistingRoster := findErr == nil && strategy == ConflictOverwrite
 	if spec.PositionKey != "" {
 		posID, err := mapper.ResolvePositionKey(spec.PositionKey)
 		if err != nil {
@@ -394,9 +395,11 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		} else {
 			agent.PositionID = posID
 		}
-		// 同时设置 position_key（取路径最后一段）
-		_, _, posKey, _ := ParseOrgKeyPath(spec.PositionKey)
+		_, deptKey, posKey, _ := ParseOrgKeyPath(spec.PositionKey)
 		agent.PositionKey = posKey
+		applyImportedRosterFields(&agent, spec, existing, keepExistingRoster, posKey, deptKey)
+	} else {
+		applyImportedRosterFields(&agent, spec, existing, keepExistingRoster, agent.PositionKey, "")
 	}
 
 	// A2A Proxy
@@ -984,8 +987,13 @@ func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz
 
 	// 顶层工具策略独立于 runtime 块生效（此前在 runtime==nil 早退中丢失，
 	// 导致 pack YAML 声明的 tools_deny 从未落库）。
-	if spec.ToolsProfile != "" {
+	if spec.ToolsProfile != "" && spec.ToolsProfile != "general" {
 		s.ToolsProfile = spec.ToolsProfile
+	} else if spec.DomainPath != "" {
+		s.ToolsProfile = biz.InferToolsProfile(spec.DomainPath)
+	} else if spec.PositionKey != "" {
+		_, deptKey, posKey, _ := ParseOrgKeyPath(spec.PositionKey)
+		s.ToolsProfile = biz.InferToolsProfile(biz.InferDomainPath(posKey, deptKey, spec.DisplayName))
 	}
 	if spec.ToolsAllow != nil {
 		s.ToolsAllowJSON = sliceToJSONList(spec.ToolsAllow)
@@ -1051,6 +1059,23 @@ func (im *Importer) upsertOrganizationNode(ctx context.Context, node biz.Organiz
 	node.Status = "active"
 	node.Enabled = true
 	return im.repo.CreateOrganizationNode(ctx, node)
+}
+
+func applyImportedRosterFields(agent *biz.Agent, spec AgentPackSpec, existing biz.Agent, keepExisting bool, posKey, deptKey string) {
+	if spec.DomainPath != "" {
+		agent.DomainPath = spec.DomainPath
+	} else if keepExisting && strings.TrimSpace(existing.DomainPath) != "" {
+		agent.DomainPath = existing.DomainPath
+	} else {
+		agent.DomainPath = biz.InferDomainPath(posKey, deptKey, spec.DisplayName)
+	}
+	if spec.MissionStatement != "" {
+		agent.MissionStatement = spec.MissionStatement
+	} else if keepExisting && strings.TrimSpace(existing.MissionStatement) != "" {
+		agent.MissionStatement = existing.MissionStatement
+	} else {
+		agent.MissionStatement = biz.InferMissionStatement(spec.DisplayName, spec.Description)
+	}
 }
 
 // --- 辅助函数 ---

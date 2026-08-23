@@ -1,6 +1,10 @@
 package intent
 
-import "strings"
+import (
+	"strings"
+
+	"aranea-agents/internal/biz"
+)
 
 // directReplyPatterns are user turns that should answer immediately without an
 // extra intent-classification LLM. Underspecified task phrases are excluded by
@@ -58,6 +62,9 @@ func SkipForDirectReply(userText string) bool {
 	}
 	if LooksLikeUnderspecifiedTask(t) {
 		return false
+	}
+	if biz.LooksLikeFactQuery(t) {
+		return true
 	}
 	for _, p := range directReplyPatterns {
 		if strings.Contains(t, p) {

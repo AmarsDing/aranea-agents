@@ -163,6 +163,9 @@ var registryOptInOnlyKeys = map[string]bool{
 	"model_registry_sync": true,
 	"mcp_tool_set":        true,
 	"mcp_broker":          true,
+	// duckduckgo_search is seeded enabled=false (Instant Answer / fallback
+	// web search). Spirit names it so weather/facts work without Tavily.
+	"duckduckgo_search": true,
 	// cli_admin_* are seeded with enabled=false (seed_system_admin.go) as
 	// opt-in-only admin tools. Without these entries, applyRegistryAdminDenials
 	// hard-denied them for every agent — including __system_admin__ whose
@@ -250,7 +253,8 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
-	"spirit":       {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime", "group:computeruse"},
+	"spirit": {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime", "group:computeruse",
+		ToolKeyWebResearch, "duckduckgo_search", "web_fetch"},
 }
 
 func canonicalToolProfile(profile string) string {
@@ -263,7 +267,7 @@ func canonicalToolProfile(profile string) string {
 		return "chat_only"
 	case "read_only", "safe":
 		return "read_only"
-	case "coding":
+	case "coding", "general":
 		return "coding"
 	case "research":
 		return "research"

@@ -232,6 +232,7 @@ P1（阶段一）
 | SI-13 | Curator Agent 生成的 Skill 草案在 Sandbox Runner 中隔离执行验证 |
 | SI-14 | Curator Agent 每日调用上限 20 次 |
 | SI-15 | 进化建议 7 天未审批自动过期 |
+| SI-16 | 经验报告列表页提供 KPI 概览（报告总数/成功率/平均评分/失败记录，后端按筛选条件全量聚合透出 success_count/failure_count/avg_score）；失败标签以水平条形图展示且标签中文化（unknown→「未分类」弱化）；含根因分析/建议修复/优化建议的报告支持表格行内展开查看 |
 
 ### 8.3 优先级
 

@@ -58,7 +58,7 @@ func TestEval_OriginalTextToSpecialtyToPerson(t *testing.T) {
 			t.Errorf("%q specialty=%q want %q", tc.task, spec, tc.wantSpec)
 			continue
 		}
-		got, _, ok := bindRosterSpecialist(spec, evalRoster)
+		got, _, ok := bindRosterSpecialist(spec, tc.task, evalRoster)
 		if !ok {
 			t.Errorf("%q roster miss for %s", tc.task, spec)
 			continue
@@ -69,5 +69,32 @@ func TestEval_OriginalTextToSpecialtyToPerson(t *testing.T) {
 		if biz.IsDeptLeadAgent(biz.Agent{AgentKey: got.AgentKey, AgentVariant: got.AgentVariant}) {
 			t.Errorf("%q assigned dept_lead", tc.task)
 		}
+	}
+}
+
+func TestBindRosterSpecialist_CopywriterIsNotLiterature(t *testing.T) {
+	pool := []biz.AgentCapability{
+		{AgentKey: "copy", DisplayName: "文案", DomainPath: "创作/文案", PositionKey: "copywriter", Roles: []string{"copy"}},
+	}
+	if _, _, ok := bindRosterSpecialist("创作/文学", "写一篇品牌故事", pool); ok {
+		t.Fatal("copywriter must not bind 创作/文学 via writer substring")
+	}
+}
+
+func TestBindRosterSpecialist_XiaohongshuBeatsGenericCopy(t *testing.T) {
+	pool := []biz.AgentCapability{
+		{AgentKey: "aeo_foundations__general", DisplayName: "AEO 基础架构师", DomainPath: "创作/文案", PositionKey: "aeo_foundations"},
+		{AgentKey: "xiaohongshu_specialist__general", DisplayName: "小红书运营专家", DomainPath: "创作/文案", PositionKey: "xiaohongshu_specialist"},
+		{AgentKey: "content_creator__general", DisplayName: "内容创作者", DomainPath: "创作/文案", PositionKey: "content_creator"},
+	}
+	got, backup, ok := bindRosterSpecialist("创作/文案", "小红书种草文案", pool)
+	if !ok {
+		t.Fatal("expected roster hit")
+	}
+	if got.AgentKey != "xiaohongshu_specialist__general" {
+		t.Fatalf("primary=%s want xiaohongshu_specialist__general", got.AgentKey)
+	}
+	if backup == "" {
+		t.Fatal("expected backup")
 	}
 }

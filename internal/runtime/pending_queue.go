@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -35,6 +36,12 @@ type PendingMessage struct {
 	Kind string `json:"kind,omitempty"`
 }
 
+// PendingQueueStore persists the in-memory follow-up queues (Postgres).
+type PendingQueueStore interface {
+	LoadAll(ctx context.Context) (map[string][]PendingMessage, error)
+	ReplaceAll(ctx context.Context, queues map[string][]PendingMessage) error
+}
+
 // PendingMessageQueue stores per-session follow-up message queues (Follow-up Queue / Cursor-style).
 type PendingMessageQueue struct {
 	mu       sync.Mutex
@@ -42,6 +49,7 @@ type PendingMessageQueue struct {
 	dir      string
 	stopCh   chan struct{}
 	snapshot bool
+	store    PendingQueueStore
 	lg       loggateway.Logger
 }
 
@@ -139,7 +147,6 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 		separator = "\n"
 	}
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	queue := q.queues[sessionID]
 	if len(queue) > 0 {
 		last := len(queue) - 1
@@ -158,9 +165,13 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 			Priority:  queue[last].Priority,
 		}
 		q.queues[sessionID] = append([]PendingMessage(nil), queue...)
-		return queue[last].ID
+		id := queue[last].ID
+		q.mu.Unlock()
+		q.writeThrough()
+		return id
 	}
 	if len(queue) >= MaxPendingPerSession {
+		q.mu.Unlock()
 		return ""
 	}
 	id := uuid.NewString()
@@ -170,6 +181,8 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 		Status:    "pending",
 		CreatedAt: time.Now().Format(time.RFC3339),
 	})
+	q.mu.Unlock()
+	q.writeThrough()
 	return id
 }
 
@@ -228,18 +241,63 @@ func (q *PendingMessageQueue) Remove(sessionID, entryID string) bool {
 	return false
 }
 
-// writeThrough synchronously persists the current snapshot (C-12).
-// Complements the periodic 10s snapshot so Enqueue/Dequeue/Remove survive crashes.
+// writeThrough synchronously persists the current snapshot (C-12) and optional store.
+// Must not be called while holding q.mu.
 func (q *PendingMessageQueue) writeThrough() {
-	if q == nil || !q.snapshot {
+	if q == nil {
 		return
 	}
-	q.saveSnapshot()
+	if q.store != nil {
+		q.persistStore()
+	}
+	if q.snapshot {
+		q.saveSnapshot()
+	}
+}
+
+func (q *PendingMessageQueue) persistStore() {
+	q.mu.Lock()
+	snapshot := make(map[string][]PendingMessage, len(q.queues))
+	for k, v := range q.queues {
+		snapshot[k] = append([]PendingMessage(nil), v...)
+	}
+	q.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := q.store.ReplaceAll(ctx, snapshot); err != nil {
+		q.lg.Warn("pending queue store write failed", loggateway.StepID("runtime.pending_queue.store"), loggateway.Err(err))
+	}
+}
+
+// SetStore attaches a durable store and prefers it over the file snapshot on load.
+func (q *PendingMessageQueue) SetStore(store PendingQueueStore) {
+	if q == nil || store == nil {
+		return
+	}
+	q.store = store
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	loaded, err := store.LoadAll(ctx)
+	if err != nil {
+		q.lg.Warn("pending queue store load failed", loggateway.StepID("runtime.pending_queue.store"), loggateway.Err(err))
+		q.writeThrough()
+		return
+	}
+	if len(loaded) > 0 {
+		q.mu.Lock()
+		q.queues = loaded
+		q.mu.Unlock()
+		if q.snapshot {
+			q.saveSnapshot()
+		}
+		return
+	}
+	q.writeThrough()
 }
 
 func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool {
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	ok := false
 	queue := q.queues[sessionID]
 	for i, e := range queue {
 		if e.ID == entryID {
@@ -252,36 +310,53 @@ func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool
 				Kind:      e.Kind,
 			}
 			q.queues[sessionID] = append([]PendingMessage(nil), queue...)
-			return true
+			ok = true
+			break
 		}
 	}
-	return false
+	q.mu.Unlock()
+	if ok {
+		q.writeThrough()
+	}
+	return ok
 }
 
 // PromoteToFront moves the specified message to the front of the session queue.
 func (q *PendingMessageQueue) PromoteToFront(sessionID, pendingID string) error {
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	var err error
+	moved := false
 	queue := q.queues[sessionID]
+	found := false
 	for i, e := range queue {
 		if e.ID == pendingID {
+			found = true
 			if i == 0 {
-				return nil
+				break
 			}
 			entry := queue[i]
 			queue = append(queue[:i], queue[i+1:]...)
 			queue = append([]PendingMessage{entry}, queue...)
 			q.queues[sessionID] = queue
-			return nil
+			moved = true
+			break
 		}
 	}
-	return fmt.Errorf("pending message %s not found in session %s", pendingID, sessionID)
+	if !found {
+		err = fmt.Errorf("pending message %s not found in session %s", pendingID, sessionID)
+	}
+	q.mu.Unlock()
+	if moved {
+		q.writeThrough()
+	}
+	return err
 }
 
 // SetPriority sets the priority of the specified message (0=normal, 1=high).
 func (q *PendingMessageQueue) SetPriority(sessionID, pendingID string, priority int) error {
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	var err error
+	ok := false
 	queue := q.queues[sessionID]
 	for i, e := range queue {
 		if e.ID == pendingID {
@@ -294,17 +369,25 @@ func (q *PendingMessageQueue) SetPriority(sessionID, pendingID string, priority 
 				Kind:      e.Kind,
 			}
 			q.queues[sessionID] = append([]PendingMessage(nil), queue...)
-			return nil
+			ok = true
+			break
 		}
 	}
-	return fmt.Errorf("pending message %s not found in session %s", pendingID, sessionID)
+	if !ok {
+		err = fmt.Errorf("pending message %s not found in session %s", pendingID, sessionID)
+	}
+	q.mu.Unlock()
+	if ok {
+		q.writeThrough()
+	}
+	return err
 }
 
 func (q *PendingMessageQueue) Close() {
 	if q.snapshot {
 		close(q.stopCh)
-		q.saveSnapshot()
 	}
+	q.writeThrough()
 }
 
 func (q *PendingMessageQueue) snapshotLoop() {

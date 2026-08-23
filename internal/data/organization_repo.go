@@ -24,6 +24,13 @@ func NewOrganizationRepo(d *Data) biz.OrganizationRepo {
 	return &organizationRepo{data: d}
 }
 
+func (r *organizationRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	if r == nil || r.data == nil {
+		return fn(ctx)
+	}
+	return r.data.ExecInTx(ctx, fn)
+}
+
 func entToBizOrganization(e *ent.Organization) biz.OrganizationNode {
 	if e == nil {
 		return biz.OrganizationNode{}

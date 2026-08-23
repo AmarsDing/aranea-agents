@@ -208,13 +208,16 @@ func main() {
 // When headless is true nothing is printed to a console and no MessageBox is
 // shown — the caller decides how to surface the returned error.
 func startStack(root string, ui *statusConsole, log func(string, ...any), headless bool) error {
-	_ = os.Setenv("KRATOS_AUTH_SECRET", "aranea-portable-dev-secret-32chars!!")
+	// Per-install random secret on fresh installs; legacy secret on upgrades so
+	// already-issued JWT/PAT stay valid (see secret.go).
+	_ = os.Setenv("KRATOS_AUTH_SECRET", resolveAuthSecret(root, log))
 	_ = os.Setenv("DEPLOY_ENV", "dev")
 	_ = os.Setenv("DAO_VECTOR_PGVECTOR", "1")
 
 	// Fast path: stack already healthy → skip PG/Redis/backend bring-up.
 	if healthy() {
 		log("fast-path: backend already healthy")
+		applyPendingLLMBootstrap(root, ui, log)
 		return nil
 	}
 
@@ -266,7 +269,28 @@ func startStack(root string, ui *statusConsole, log func(string, ...any), headle
 	}
 	env.add("Backend health", checkOK, healthURL, false)
 	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText())
+	applyPendingLLMBootstrap(root, ui, log)
 	return nil
+}
+
+// applyPendingLLMBootstrap pushes the wizard-collected LLM API key into the
+// seeded provider-model row once the backend is healthy. No-op when the
+// wizard skipped key configuration.
+func applyPendingLLMBootstrap(root string, ui *statusConsole, log func(string, ...any)) {
+	if loadLLMBootstrap(root) == nil {
+		return
+	}
+	if err := applyLLMBootstrap(root, "http://127.0.0.1:8800", log); err != nil {
+		log("llm bootstrap failed: %v", err)
+		if ui != nil {
+			ui.Println("[WARN] LLM API key auto-apply failed: " + err.Error())
+			ui.Println("       Retries on next start; or configure in Settings -> Platform -> Provider Models.")
+		}
+		return
+	}
+	if ui != nil {
+		ui.Println("LLM API key applied to the default deepseek/deepseek-v4-flash channel.")
+	}
 }
 
 func installRoot() (string, error) {
@@ -333,8 +357,9 @@ func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error 
 	cmd.Dir = root
 	cmd.Stdout = stdout
 	cmd.Stderr = stdout
+	// KRATOS_AUTH_SECRET comes from os.Environ() — startStack resolved it via
+	// resolveAuthSecret before reaching here (random per-install or legacy).
 	cmd.Env = append(os.Environ(),
-		"KRATOS_AUTH_SECRET=aranea-portable-dev-secret-32chars!!",
 		"DEPLOY_ENV=dev",
 		"DAO_VECTOR_PGVECTOR=1",
 	)

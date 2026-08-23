@@ -101,11 +101,11 @@ Section "MainSection" SecMain
   ${EndIf}
   ${If} $0 == ""
     DetailPrint "WebView2 Runtime not found; downloading bootstrapper..."
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile $env:TEMP\MicrosoftEdgeWebview2Setup.exe -UseBasicParsing"'
+    nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile '$PLUGINSDIR\MicrosoftEdgeWebview2Setup.exe' -UseBasicParsing"`
     Pop $1
     ${If} $1 == 0
       DetailPrint "Installing WebView2 Runtime (silent)..."
-      nsExec::ExecToLog '"$env:TEMP\MicrosoftEdgeWebview2Setup.exe" /silent /install'
+      nsExec::ExecToLog `"$PLUGINSDIR\MicrosoftEdgeWebview2Setup.exe" /silent /install`
       Pop $1
       ${If} $1 != 0
         MessageBox MB_OK|MB_ICONEXCLAMATION "WebView2 Runtime installation failed (exit $1). The desktop app requires WebView2 - please install it manually from https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -115,6 +115,40 @@ Section "MainSection" SecMain
     ${EndIf}
   ${Else}
     DetailPrint "WebView2 Runtime found (version $0)."
+  ${EndIf}
+
+  ; --- Ollama runtime check (optional; local embedding for knowledge search) ---
+  ; Per-user install: %LOCALAPPDATA%\Programs\Ollama\ollama.exe. The launcher
+  ; auto-starts the daemon and offers to pull the bge-m3 model on first run.
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Ollama" "DisplayVersion"
+  ${If} $0 == ""
+    IfFileExists "$LOCALAPPDATA\Programs\Ollama\ollama.exe" ollama_present 0
+    MessageBox MB_YESNO|MB_ICONQUESTION "Ollama is not installed. It provides local text embeddings for knowledge search (vector search).$\r$\n$\r$\nDownload and install Ollama now (~100MB)? You can also skip and install later from https://ollama.com" IDYES +2
+    Goto ollama_skip
+    DetailPrint "Downloading OllamaSetup.exe..."
+    nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://ollama.com/download/OllamaSetup.exe -OutFile '$PLUGINSDIR\OllamaSetup.exe' -UseBasicParsing"`
+    Pop $1
+    ${If} $1 == 0
+      DetailPrint "Installing Ollama (silent)..."
+      nsExec::ExecToLog `"$PLUGINSDIR\OllamaSetup.exe" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES`
+      Pop $1
+      ${If} $1 == 0
+        DetailPrint "Ollama installed."
+      ${Else}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Ollama installation failed (exit $1). Knowledge search will be degraded. Install later from https://ollama.com"
+      ${EndIf}
+    ${Else}
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Ollama download failed. Knowledge search will be degraded. Install later from https://ollama.com"
+    ${EndIf}
+    Goto ollama_done
+    ollama_present:
+      DetailPrint "Ollama found at $LOCALAPPDATA\Programs\Ollama."
+      Goto ollama_done
+    ollama_skip:
+      DetailPrint "Ollama install skipped by user."
+    ollama_done:
+  ${Else}
+    DetailPrint "Ollama found (version $0)."
   ${EndIf}
 
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"

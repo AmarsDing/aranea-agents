@@ -23,6 +23,7 @@ type AgentCapability struct {
 	PositionID     string
 	PositionKey    string
 	DepartmentID   string
+	DepartmentKey  string
 	DepartmentName string
 	CompanyID      string
 	CompanyName    string

@@ -105,6 +105,15 @@ func (f *Factory) getContainer() trpcagentcodeexec.CodeExecutor {
 // Resolve returns the executor for agentType with env fallback and availability checks.
 func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcagentcodeexec.CodeExecutor {
 	typ := ResolveType(agentType, f.env.Backend)
+	if typ == TypeAuto {
+		if DockerAvailable() {
+			typ = TypeDocker
+		} else {
+			typ = TypeLocal
+		}
+	} else if PreferDockerWhenUnset(agentType, f.env.Backend, DockerAvailable()) {
+		typ = TypeDocker
+	}
 	typ = f.applyAvailabilityFallback(ctx, typ)
 	typ = f.refuseLocalInProd(typ)
 

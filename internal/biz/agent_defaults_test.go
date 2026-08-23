@@ -43,18 +43,27 @@ func TestDefaultAgentRuntimeSettings_L2RecallEnabled(t *testing.T) {
 	}
 }
 
-// P0-3 (2026-08-08): L4 injection must default to ON. The L4 entity graph was
-// never injected into any prompt because l0_inject_l4 defaulted to false and
-// all 55 existing rows kept that default; downstream guards (0.3 confidence
-// gate + maxPaths cap) already bound the risk.
 func TestDefaultAgentRuntimeSettings_L0InjectL4(t *testing.T) {
 	s := DefaultAgentRuntimeSettings()
-	if !s.L0InjectL4 {
-		t.Error("L0InjectL4 should default to true (P0-3)")
+	if s.L0InjectL4 {
+		t.Error("L0InjectL4 should default to false (single-host: on-demand graph tools)")
 	}
 	p := ResolveMemoryRuntimePolicy(&s)
-	if !p.InjectL4 {
-		t.Error("resolved policy should inject L4 by default")
+	if p.InjectL4 {
+		t.Error("resolved policy should not inject L4 by default")
+	}
+}
+
+func TestDefaultAgentRuntimeSettings_SingleHostLight(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if s.SelfEvolve || s.EvolutionSelfEvolve || s.EvolutionSkillEvolve || s.EvolutionMetricsEnabled || s.EvolutionSuggestionsEnabled {
+		t.Fatal("evolution switches must default off on a single host")
+	}
+	if s.SubagentsMaxConcurrency != 5 {
+		t.Fatalf("SubagentsMaxConcurrency = %d, want 5", s.SubagentsMaxConcurrency)
+	}
+	if s.CodeExecutorType != "" {
+		t.Fatalf("CodeExecutorType = %q, want empty auto", s.CodeExecutorType)
 	}
 }
 

@@ -328,6 +328,30 @@ func TestApplyRegistryAdminDenials_computerUseOptInNotDenied(t *testing.T) {
 	}
 }
 
+func TestBuildAgentEffectiveTools_spiritWebResearchEnabled(t *testing.T) {
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit"}
+	cat := []Tool{
+		{Key: ToolKeyWebResearch, DisplayName: "网页研究", Category: "web", Source: "builtin", Enabled: true},
+		{Key: "duckduckgo_search", DisplayName: "DuckDuckGo", Category: "web", Source: "builtin", Enabled: false},
+	}
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
+	want := map[string]bool{ToolKeyWebResearch: false, "duckduckgo_search": false}
+	for _, it := range eff.Items {
+		if _, ok := want[it.ToolKey]; !ok {
+			continue
+		}
+		if !it.Enabled || it.EffectiveState != "allowed" {
+			t.Fatalf("want %s allowed under spirit, got %#v", it.ToolKey, it)
+		}
+		want[it.ToolKey] = true
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Fatalf("missing %s in spirit effective tools", k)
+		}
+	}
+}
+
 func TestBuildAgentEffectiveTools_spiritComputerUseEnabled(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit"}
 	cat := []Tool{

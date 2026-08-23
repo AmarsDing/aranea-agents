@@ -6,9 +6,9 @@ package biz
 func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 	return AgentRuntimeSettings{
 		// --- Subagents (evolution domain) ---
-		SelfEvolve:                   true,
+		SelfEvolve:                   false,
 		SubagentsEnabled:             true,
-		SubagentsMaxConcurrency:      20,
+		SubagentsMaxConcurrency:      5,
 		SubagentsMaxGenerationDepth:  1,
 		SubagentsMaxChildrenPerAgent: 5,
 		SubagentsArchiveAfterMinutes: 60,
@@ -54,9 +54,9 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L0TruncateStrategy:   "summary",
 		L0InjectL1:           true,
 		L0InjectL3:           true,
-		// P0-3 (2026-08-08): L4 注入默认开。下游有 0.3 confidence 门控 +
-		// maxPaths 上限兜底；默认关导致 L4 图谱从未进入任何 prompt。
-		L0InjectL4:        true,
+		// 单机默认不预灌 L4：图路径按需工具取，避免每轮打图谱。
+		// 存量行显式 true 不受影响——defaultBool 只兜底零值。
+		L0InjectL4:        false,
 		L0L3MaxChunks:     5,
 		L0L4MaxPaths:      3,
 		L0SnapshotMode:    "on_warning",
@@ -107,10 +107,10 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L4DecayIntervalHours:   168,
 
 		// --- Evolution: metrics / guardrail / evo loop ---
-		EvolutionSelfEvolve:               true,
-		EvolutionSkillEvolve:              true,
-		EvolutionMetricsEnabled:           true,
-		EvolutionSuggestionsEnabled:       true,
+		EvolutionSelfEvolve:               false,
+		EvolutionSkillEvolve:              false,
+		EvolutionMetricsEnabled:           false,
+		EvolutionSuggestionsEnabled:       false,
 		GuardrailMaxChangePerPeriod:       0.1,
 		GuardrailMinDataPoints:            100,
 		GuardrailRollbackOnDeclinePercent: 20,
@@ -130,7 +130,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		// 存量行显式存储的值（如 "turn"）不受影响——defaultString 只兜底空值。
 		SkillLoadMode:     SkillLoadModeProgressive,
 		IntentPassEnabled: true,
-		CodeExecutorType:  "local",
+		// Empty = auto: Factory prefers docker when the daemon is up.
+		CodeExecutorType: "",
 
 		// --- Context / compression ---
 		PlannerConfigJSON:    "{}",

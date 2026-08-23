@@ -362,19 +362,22 @@ func provideRunHeartbeatEmitter(eventBus biz.EventBus, lg loggateway.Logger) *se
 }
 
 // providePendingMessageQueue builds the Wire-bound PendingMessageQueue with
-// snapshot persistence enabled. The snapshot directory is resolved from (in
+// file snapshot + Postgres store. The snapshot directory is resolved from (in
 // order): PENDING_QUEUE_SNAPSHOT_DIR env var, the loggateway output dir, or
-// empty (disables persistence). When persistence is enabled, the queue is
-// restored on startup and snapshotted every 10s, so queued messages survive
-// process restarts — required by the "no time limit" long-task guarantee.
-func providePendingMessageQueue(lg loggateway.Logger) *rt.PendingMessageQueue {
+// empty (disables the JSON file). The DB store is always attached when Data
+// is available; startup prefers rows in pending_queue_entries over the file.
+func providePendingMessageQueue(lg loggateway.Logger, d *data.Data) *rt.PendingMessageQueue {
 	dir := strings.TrimSpace(os.Getenv("PENDING_QUEUE_SNAPSHOT_DIR"))
 	if dir == "" {
 		if gw, ok := lg.(*loggateway.Gateway); ok {
 			dir = gw.OutputDir()
 		}
 	}
-	return rt.NewPendingMessageQueueWithDirAndLogger(dir, lg)
+	q := rt.NewPendingMessageQueueWithDirAndLogger(dir, lg)
+	if store := newDataPendingQueueStore(d); store != nil {
+		q.SetStore(store)
+	}
+	return q
 }
 
 func provideCodeExecutorFactory(lg loggateway.Logger) *localexec.Factory {

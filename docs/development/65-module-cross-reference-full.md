@@ -4,7 +4,7 @@
 > **与蓝图的关系**：蓝图描述"模块是什么"，本手册描述"改模块 X 时必须注意谁"。
 > **编码规范**：详见 SKILLs，本文聚焦**跨模块关联**。
 > **与精简版的关系**：本文件是 `module-cross-reference.md` 的扩展版本，新增日志架构相关模块卡片（§1.12a–1.12h）。
-> **最后校准日期**：2026-08-22（§1.42 增重型组织链 ADR；其余卡片仍以 2026-08-15 校准为准）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
+> **最后校准日期**：2026-08-23（§1.43 新增经验报告/Skill Intelligence 卡片；§1.42 增重型组织链 ADR；其余卡片仍以 2026-08-15 校准为准）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
 
 ---
 
@@ -1013,6 +1013,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 | **上游依赖** | `internal/runtime.RunRegistry`（实现 `RunGateway`） |
 | **下游影响** | ChatService、WS、Channel、Cron |
 | **核心导出** | `RunGateway` 接口、`PendingMessageQueue` |
+| **数据库** | `pending_queue_entries`（DDL 20261240；启动回放优先于 `pending_queue.json`） |
 | **前端对应** | Chat 待发送队列（`run_status` / `message_queued`） |
 
 ---
@@ -1127,6 +1128,30 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - **架构锁**：[org-invariants.md](./org-invariants.md) — 专项 Agent 自带工具/身份；领导不可分配；禁止改回海选
 - 跨团队正式交接走 Brief/Bulk，**禁止**把 M71 memberfs 开放给员工当传文件通道
 - 改 Allocator 时同步验证 B.10.21 L0/L1 配方/使命单测与 Spirit DAG 建团
+
+---
+
+### 1.43 经验报告 / Skill Intelligence（`internal/biz/skill_intelligence*.go` + `internal/service/skill_intelligence.go` + `internal/data/skill_intelligence.go`）
+
+**职责**：Skill 执行经验报告的生成（评分/失败归因/根因分析/修复建议）与查询聚合 API，驱动经验报告页的 KPI 统计、失败标签分布与根因分析展示。三件套：[`60-self-iteration-v2.md`](./60-self-iteration-v2.md) / [`.design.md`](./60-self-iteration-v2.design.md) / [`.development.md`](./60-self-iteration-v2.development.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（RootCauseAnalyzer 可复用根因分析能力、Skill 查询端口）、`internal/data/ent` |
+| **下游影响** | `service/skill_intelligence`（SkillIntelligenceService）、`cronrunner/jobs/skill_intelligence_worker`（15min 扫描生成报告）、§1.18 技能自创建（SI-11 触发条件判定经 SkillIntelligenceUsecase） |
+| **核心导出** | `SkillIntelligenceUsecase`、`ExperienceReport`/`FailureTagCount`/`ExperienceReportStats` 领域模型；`ExperienceReportReader`/`ExperienceReportStatsReader` 端口 |
+| **实现接口** | `ExperienceReportReader`：ListBySkill / GetByID / ListByTimeRange / ListFiltered（分页列表）；`ExperienceReportStatsReader`：GetFailureTagCountsFiltered / GetRootCauseReportsFiltered / GetExperienceReportStatsFiltered（2026-08-23 新增聚合）；`ExperienceReportWriter`：Create / BatchCreate |
+| **共享类型** | `ExperienceReport`（failure_tags/root_cause_analysis/suggested_fix/optimization_advice）、`FailureTagCount`、`ExperienceReportStats`（SuccessCount/FailureCount/AvgScore） |
+| **事件生产** | 无直接生产（Cron 驱动报告生成） |
+| **事件消费** | 无直接消费 |
+| **数据库** | Postgres `experience_reports`（ent schema；`failure_tags` 为 JSON 列；索引 idx_experience_report_skill_time / idx_experience_report_invocation） |
+| **前端对应** | `pages/ExperienceReportListPage.vue` + `components/skills/{ExperienceReportStatCards,FailureTagsChart,RootCauseAnalysisCards,ExperienceReportTable}.vue` + `features/skills/{api,types,useExperienceReportListPage}.ts` + `stores/skillIntelligence` |
+
+**⚠️ 开发注意**：
+- `ListExperienceReportsResponse` 聚合口径：`items`/`total` 为当前页；`failure_tag_counts`/`root_cause_reports`/`success_count`/`failure_count`/`avg_score` 均为**筛选条件下全量聚合**。`avg_score` 是 ent `Mean` 按 is_success 分组均值后按组计数加权重算的总平均，禁止直接把分组均值当总均值
+- 失败标签中文映射在前端 `FailureTagsChart.vue` 的 `TAG_LABELS`，与 `biz/skill_scoring.go` 的 FailureTag 常量集对齐——新增/改标签须双端同步；`unknown` 前端译为「未分类」并以灰色弱化
+- 表格行内展开以 `hasDetail`（根因分析/建议修复/优化建议任一非空）判定入口；`watch(rows)` 在筛选/翻页时清空 expanded 防止详情错位
+- ent schema 变更（如 experience_reports 加列）须同步 DDL 迁移，存量库 `Schema.Create()` 不会 ALTER 补列（见项目规则）
 
 ---
 

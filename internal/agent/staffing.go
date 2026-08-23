@@ -60,6 +60,7 @@ func (impl *agentAllocatorImpl) tryStaffing(
 		return biz.TaskAllocation{}, false
 	}
 	candidates := make([]string, 0, len(pool))
+	cards := make([]string, 0, len(pool))
 	allowed := make(map[string]biz.AgentCapability, len(pool))
 	for _, cap := range pool {
 		if !cap.IsHeuristicAssignable() {
@@ -67,6 +68,7 @@ func (impl *agentAllocatorImpl) tryStaffing(
 		}
 		candidates = append(candidates, cap.AgentKey)
 		allowed[cap.AgentKey] = cap
+		cards = append(cards, staffingCard(cap))
 	}
 	if len(candidates) == 0 {
 		return biz.TaskAllocation{}, false
@@ -79,10 +81,11 @@ func (impl *agentAllocatorImpl) tryStaffing(
 	defer cancel()
 	metrics.OrgFastDeptLeadTotal.WithLabelValues("staffing_asked").Inc()
 	reply, err := advisor.Suggest(askCtx, biz.StaffingAsk{
-		DepartmentID:  deptID,
-		DomainPath:    subTask.DomainPath,
-		SubTaskName:   strings.TrimSpace(subTask.Name),
-		CandidateKeys: candidates,
+		DepartmentID:   deptID,
+		DomainPath:     subTask.DomainPath,
+		SubTaskName:    strings.TrimSpace(subTask.Name),
+		CandidateKeys:  candidates,
+		CandidateCards: cards,
 	})
 	if err != nil {
 		if askCtx.Err() != nil {
@@ -148,6 +151,9 @@ func (a llmStaffingAdvisor) Suggest(ctx context.Context, in biz.StaffingAsk) (bi
 		"\ndomain_path=" + in.DomainPath +
 		"\nsubtask=" + in.SubTaskName +
 		"\ncandidate_keys=" + strings.Join(in.CandidateKeys, ",")
+	if len(in.CandidateCards) > 0 {
+		user += "\ncandidates=\n" + strings.Join(in.CandidateCards, "\n")
+	}
 	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
 	if a.impl.plannerSetting != nil {
 		if s, err := a.impl.plannerSetting.GetPlannerModel(ctx); err == nil {
@@ -173,6 +179,18 @@ func (a llmStaffingAdvisor) Suggest(ctx context.Context, in biz.StaffingAsk) (bi
 		return biz.StaffingReply{}, err
 	}
 	return parseStaffingReply(text, in.CandidateKeys), nil
+}
+
+func staffingCard(cap biz.AgentCapability) string {
+	mission := strings.TrimSpace(cap.Mission)
+	if mission == "" {
+		mission = strings.TrimSpace(cap.Description)
+	}
+	if runes := []rune(mission); len(runes) > 80 {
+		mission = string(runes[:80])
+	}
+	return cap.AgentKey + "|" + strings.TrimSpace(cap.DisplayName) + "|" +
+		strings.TrimSpace(cap.DomainPath) + "|" + mission
 }
 
 func parseStaffingReply(text string, candidates []string) biz.StaffingReply {

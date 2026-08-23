@@ -124,11 +124,11 @@ func TestTryMissionMatch_PerfBreaksTie(t *testing.T) {
 	}}
 	impl := &agentAllocatorImpl{perfRepo: perf, lg: loggateway.NewNoop()}
 	caps := []biz.AgentCapability{
-		{AgentKey: "agent-a", DisplayName: "诗歌写手", Mission: "中文诗歌创作", DomainPath: "创作/文学"},
-		{AgentKey: "agent-b", DisplayName: "散文写手", Mission: "中文散文创作", DomainPath: "创作/文学"},
+		{AgentKey: "agent-a", DisplayName: "诗歌写手", Mission: "chinese poetry verses", DomainPath: "创作/文学"},
+		{AgentKey: "agent-b", DisplayName: "散文写手", Mission: "chinese poetry essays", DomainPath: "创作/文学"},
 		{AgentKey: "agent-c", DisplayName: "后端专家", Mission: "go backend", DomainPath: "软件/后端"},
 	}
-	cap, score, candCount, ok := impl.tryMissionMatch(context.Background(), "写一首中文诗歌", "创作/文学", caps, "trace-l1-1")
+	cap, score, candCount, ok := impl.tryMissionMatch(context.Background(), "write chinese poetry", "创作/文学", caps, "trace-l1-1")
 	if !ok {
 		t.Fatal("expected L1 hit")
 	}
@@ -182,6 +182,26 @@ func TestTryMissionMatch_NoSameDomainCandidate_Misses(t *testing.T) {
 	}
 }
 
+func TestTryMissionMatch_ZeroOverlapDefaultPerfMisses(t *testing.T) {
+	impl := &agentAllocatorImpl{lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{
+		{AgentKey: "aeo", Mission: "实施 llms.txt 与 robots.txt", DomainPath: "创作/文案"},
+	}
+	if _, _, _, ok := impl.tryMissionMatch(context.Background(), "小红书种草文案", "创作/文案", caps, "trace-l1-floor"); ok {
+		t.Fatal("TF-IDF floor + default 0.5 perf must not pass L1")
+	}
+}
+
+func TestTryMissionMatch_SiblingSpecialtyExcluded(t *testing.T) {
+	impl := &agentAllocatorImpl{lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{
+		{AgentKey: "author", Mission: "中文诗歌创作", DomainPath: "创作/文学"},
+	}
+	if _, _, _, ok := impl.tryMissionMatch(context.Background(), "写诗", "创作/文案", caps, "trace-l1-sib"); ok {
+		t.Fatal("创作/文学 must not enter 创作/文案 L1")
+	}
+}
+
 func TestTryMissionMatch_LowPerfBelowThreshold_Misses(t *testing.T) {
 	// TF-IDF 零重叠（sigmoid 下界 ≈0.047）+ 低履历（0.1）
 	// → score ≈ 0.047×0.4 + 0.1×0.6 ≈ 0.08，阈值 >0.3 不命中。
@@ -201,9 +221,9 @@ func TestTryMissionMatch_EmbedderError_FallsBackToTFIDF(t *testing.T) {
 	emb := &mockEmbedder{err: errors.New("embedder unavailable")}
 	impl := &agentAllocatorImpl{embedder: emb, lg: loggateway.NewNoop()}
 	caps := []biz.AgentCapability{
-		{AgentKey: "agent-a", Mission: "中文诗歌散文创作", DomainPath: "创作/文学"},
+		{AgentKey: "agent-a", Mission: "chinese poetry prose writing", DomainPath: "创作/文学"},
 	}
-	cap, _, _, ok := impl.tryMissionMatch(context.Background(), "中文诗歌创作", "创作/文学", caps, "trace-l1-5")
+	cap, _, _, ok := impl.tryMissionMatch(context.Background(), "chinese poetry writing", "创作/文学", caps, "trace-l1-5")
 	if !ok {
 		t.Fatal("embedding 失败应回退 TF-IDF 并按规则命中")
 	}

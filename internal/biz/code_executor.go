@@ -11,6 +11,7 @@ const (
 	CodeExecutorDocker    = "docker"
 	CodeExecutorE2B       = "e2b"
 	CodeExecutorContainer = "container"
+	CodeExecutorAuto      = "auto"
 )
 
 // ValidCodeExecutorTypes lists allowed AgentRuntimeSettings.CodeExecutorType values.
@@ -20,6 +21,7 @@ func ValidCodeExecutorTypes() []string {
 		CodeExecutorDocker,
 		CodeExecutorE2B,
 		CodeExecutorContainer,
+		CodeExecutorAuto,
 	}
 }
 
@@ -34,5 +36,5 @@ func ValidateCodeExecutorType(raw string) error {
 			return nil
 		}
 	}
-	return apierror.BadRequest("AGENT", "invalid code_executor_type %q; allowed: local, docker, e2b, container", raw)
+	return apierror.BadRequest("AGENT", "invalid code_executor_type %q; allowed: local, docker, e2b, container, auto", raw)
 }

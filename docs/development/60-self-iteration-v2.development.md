@@ -209,6 +209,7 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 |----|------|-----|--------|------|-----|
 | 9.1 | 前端经验报告列表页 `web/src/pages/ExperienceReportListPage.vue`：调用 ListExperienceReports API | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
 | 9.2 | 前端 Skill 进化审批 UI `web/src/pages/EvolutionSuggestionListPage.vue`：进化建议列表 + Approve/Reject + 触发 Curator | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
+| 9.3 | 经验报告页优化（2026-08-23）：后端聚合字段 `success_count`/`failure_count`/`avg_score`（单条 GROUP BY 按 is_success 分组、按组计数加权重算总平均）+ KPI 概览条 + 失败标签水平条形图（中文化、unknown 弱化）+ 根因分析空态压缩 + 表格行内展开 RCA/修复建议/优化建议 | Data+Web | P1 | ✅ | `go test ./internal/biz ./internal/data` + `npx eslint` 通过；docker dev-up 后浏览器运行时验证通过 |
 
 ### Phase 3 — 自我进化闭环：预测性自愈
 

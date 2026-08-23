@@ -24,6 +24,7 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -520,10 +521,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		intentCh = make(chan *intent.Artifact, 1)
 		intentCtx, intentCancel = context.WithTimeout(ctx, 2*time.Second+500*time.Millisecond)
 		intentOutcome = "running"
-		go func() {
+		safego.Go(intentCtx, "chat.intent.pass", func() {
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
 			intentCh <- o.runIntentPass(intentCtx, ag, sessionID, content, prov, mod, emitter)
-		}()
+		})
 	} else if biz.IsA2AProxyAgent(ag) {
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	} else {

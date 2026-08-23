@@ -14,6 +14,8 @@ func TestClassifyTaskGear(t *testing.T) {
 		want TaskGear
 	}{
 		{"simple is light", GearInput{GateSimpleOrClarify: true}, GearLight},
+		{"fact query is light", GearInput{FactQuery: true}, GearLight},
+		{"fact query plus org chain is heavy", GearInput{FactQuery: true, UserWantsOrgChain: true}, GearHeavy},
 		{"user org chain is heavy", GearInput{UserWantsOrgChain: true}, GearHeavy},
 		{"long task is heavy", GearInput{LongTask: true}, GearHeavy},
 		{"cross dept after plan is heavy", GearInput{CrossDeptDepends: true}, GearHeavy},

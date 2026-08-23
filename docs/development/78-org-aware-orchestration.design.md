@@ -91,8 +91,8 @@ R3  部门（Org-Prune）
 
 R4  人（Allocator，在剪枝集上）
     L0 领域配方 DQ≥0.7     → 立即采用（最快最准）
-    L1 同域使命×履历       → 阈值 0.3
-    roster 专题花名册      → specialty → primary（+ backup）
+    roster 专题花名册      → specialty → primary（+ backup）；先于 L1，避免回填使命误中
+    L1 同域使命×履历       → 真实相似（missionSimMin 0.06，过 TF-IDF 下限）
     有 domain_path 时      → 不再 L2/L3 选人、不低分交差
     domain_path 空         → 仍可 L2/L3（兼容）
     仍失败                 → staffing（花名册内）或 fail-closed
@@ -277,7 +277,7 @@ PrePlanningGate.Evaluate
       executePlanPhase  → TaskPlanner.Plan
       executeAllocatePhase → AgentAllocator.Allocate
         BuildAll() 全量 active Agent（Limit 200），只剔除系统管家
-        每 SubTask：L0 recipe → L1 mission → roster；有专题则闭集（无 L3/Factory/低分交差）
+        每 SubTask：L0 recipe → roster → L1 mission；有专题则闭集（无 L3/Factory/低分交差）
         DAG：selectAdditionalMembers = 能力池里「下一个非系统 Agent」（无部门、无角色互补）
       PlanBoard 事件 → PlanExecutor.dispatchStep
         RealTeamOrchestrator.Orchestrate
@@ -502,7 +502,7 @@ P0/P1 **不强制改 UI**。可选：编排进度文案增加「归属部门」�
 
 | 层 | 用例 |
 |----|------|
-| pruner | 一级域映射到部门；无组织树 FallbackAll；空 domain_path 不阻断 |
+| pruner | 部门 `org_key` + `domain_paths` 优先，其次名称别名；无组织树 FallbackAll；空 domain_path 不阻断 |
 | allocator | dept_lead 永不作 AssignedKey（除非 explicit keys）；L3 prompt 候选数 ≤ 剪枝集；补员同部门优先 |
 | orchestrator | AssembleTeam 收到 DepartmentID；跨部成员进入 CrossDeptMemberIDs |
 | factory | 新 Agent 带 position_id；不调用创建 company/department |

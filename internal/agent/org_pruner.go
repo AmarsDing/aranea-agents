@@ -75,7 +75,7 @@ func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) Or
 		if _, seen := matchedDepts[cap.DepartmentID]; seen {
 			continue
 		}
-		if matchDepartmentAlias(cap.DepartmentName, "", aliases) {
+		if departmentMatchesDomain(cap, norm, aliases) {
 			matchedDepts[cap.DepartmentID] = cap.DepartmentName
 		}
 	}
@@ -113,6 +113,19 @@ func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) Or
 		DepartmentName: primaryName,
 		Reason:         OrgPruneReasonMatched,
 	}
+}
+
+func departmentMatchesDomain(cap biz.AgentCapability, domainPath string, aliases []string) bool {
+	if paths := biz.DepartmentDomainPaths(cap.DepartmentKey, cap.DepartmentName); len(paths) > 0 {
+		for _, dp := range paths {
+			norm := NormalizeDomainPath(dp)
+			if specialtyPathCompatible(domainPath, norm) || domainPath == norm {
+				return true
+			}
+		}
+		return false
+	}
+	return matchDepartmentAlias(cap.DepartmentName, cap.DepartmentKey, aliases)
 }
 
 func filterHeuristicAssignable(caps []biz.AgentCapability) []biz.AgentCapability {

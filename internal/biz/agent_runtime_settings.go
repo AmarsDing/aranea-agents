@@ -144,7 +144,7 @@ type AgentRuntimeSettings struct {
 	// bodies loaded on demand via skill_load) | "turn" | "once" | "session"
 	// (framework modes) | "auto" (legacy alias for framework default).
 	SkillLoadMode string
-	// CodeExecutorType selects the Skill code execution backend: local | docker | e2b | container.
+	// CodeExecutorType selects the Skill code execution backend: local | docker | e2b | container | auto (empty = auto).
 	CodeExecutorType string
 	// OutputSchemaJSON is a JSON Schema that forces the LLM to produce structured output.
 	OutputSchemaJSON string

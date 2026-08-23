@@ -11,6 +11,7 @@ const (
 	TypeDocker    = "docker"
 	TypeE2B       = "e2b"
 	TypeContainer = "container"
+	TypeAuto      = "auto"
 	TypeDisabled  = "disabled" // code execution refused (e.g. production without sandbox)
 )
 
@@ -61,10 +62,29 @@ func NormalizeType(raw string) string {
 		return TypeE2B
 	case TypeContainer:
 		return TypeContainer
+	case TypeAuto:
+		return TypeAuto
 	case TypeLocal, "":
 		return TypeLocal
 	default:
 		return TypeLocal
+	}
+}
+
+// PreferDockerWhenUnset is true when the agent/env backend is empty or auto
+// and the Docker daemon is up. Explicit "local" stays local.
+func PreferDockerWhenUnset(agentType, envBackend string, dockerOK bool) bool {
+	if !dockerOK {
+		return false
+	}
+	if strings.TrimSpace(envBackend) != "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(agentType)) {
+	case "", TypeAuto:
+		return true
+	default:
+		return false
 	}
 }
 

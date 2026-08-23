@@ -15,7 +15,7 @@ func TestBindRosterSpecialist_PrimaryAndBackup(t *testing.T) {
 		{AgentKey: biz.DeptLeadAgentKeyPrefix + "media__", DisplayName: "主管", AgentVariant: "dept_lead", DomainPath: "创作/文案"},
 		{AgentKey: biz.CompanyLeadAgentKeyPrefix + "acme__", DisplayName: "总经理", AgentVariant: biz.AgentVariantCompanyLead, DomainPath: "创作/文案"},
 	}
-	got, backup, ok := bindRosterSpecialist("创作/文案", pool)
+	got, backup, ok := bindRosterSpecialist("创作/文案", "", pool)
 	if !ok || got.AgentKey != "copy-a" {
 		t.Fatalf("primary=%q ok=%v", got.AgentKey, ok)
 	}
@@ -28,14 +28,14 @@ func TestBindRosterSpecialist_RoleAlias(t *testing.T) {
 	pool := []biz.AgentCapability{
 		{AgentKey: "cw", DisplayName: "文案", Roles: []string{"copy"}},
 	}
-	got, _, ok := bindRosterSpecialist("创作/文案", pool)
+	got, _, ok := bindRosterSpecialist("创作/文案", "", pool)
 	if !ok || got.AgentKey != "cw" {
 		t.Fatalf("got %+v ok=%v", got, ok)
 	}
 }
 
 func TestBindRosterSpecialist_OtherIsMiss(t *testing.T) {
-	_, _, ok := bindRosterSpecialist("其他", []biz.AgentCapability{
+	_, _, ok := bindRosterSpecialist("其他", "", []biz.AgentCapability{
 		{AgentKey: "x", DomainPath: "其他"},
 	})
 	if ok {

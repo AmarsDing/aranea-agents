@@ -255,7 +255,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionFlowLogWriter := service.ProvideSessionFlowLogWriter(flowLogWriter)
 	sessionUsecase := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)
 	runRegistry := provideRunRegistry(loggatewayLogger)
-	pendingMessageQueue := providePendingMessageQueue(loggatewayLogger)
+	pendingMessageQueue := providePendingMessageQueue(loggatewayLogger, dataData)
 	agentIDExistenceChecker := biz.ProvideAgentIDExistenceChecker(agentRepository)
 	organizationRepo := data.NewOrganizationRepo(dataData)
 	borrowRequestRepo := data.NewBorrowRequestRepo(dataData)
@@ -1001,14 +1001,18 @@ func provideRunHeartbeatEmitter(eventBus biz.EventBus, lg loggateway.Logger) *se
 // empty (disables persistence). When persistence is enabled, the queue is
 // restored on startup and snapshotted every 10s, so queued messages survive
 // process restarts — required by the "no time limit" long-task guarantee.
-func providePendingMessageQueue(lg loggateway.Logger) *runtime.PendingMessageQueue {
+func providePendingMessageQueue(lg loggateway.Logger, d *data.Data) *runtime.PendingMessageQueue {
 	dir := strings.TrimSpace(os.Getenv("PENDING_QUEUE_SNAPSHOT_DIR"))
 	if dir == "" {
 		if gw, ok := lg.(*loggateway.Gateway); ok {
 			dir = gw.OutputDir()
 		}
 	}
-	return runtime.NewPendingMessageQueueWithDirAndLogger(dir, lg)
+	q := runtime.NewPendingMessageQueueWithDirAndLogger(dir, lg)
+	if store := newDataPendingQueueStore(d); store != nil {
+		q.SetStore(store)
+	}
+	return q
 }
 
 func provideCodeExecutorFactory(lg loggateway.Logger) *codeexecutor.Factory {

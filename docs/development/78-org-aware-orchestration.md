@@ -278,7 +278,7 @@
 | FR-78-02 | 部门主管排除出业务匹配池 | P0 | Allocator / 补员不得把 dept_lead 选为 Lead；显式 `agent_keys` 除外 |
 | FR-78-03 | 建团必填主归属部门 | P0 | `RealTeamOrchestrator` 组装时写入 `DepartmentID`（从成员岗位推导或剪枝结果） |
 | FR-78-04 | 同部门优先补员 | P0 | DAG 补员不再「能力池里随便抓下一个」；同部门互补角色优先 |
-| FR-78-05 | Allocator 在剪枝集上跑 L0/L1/花名册 | P1 | 有 `domain_path` 时不 L3 选人；剪枝为空才回退全库（并记 Warn） |
+| FR-78-05 | Allocator 在剪枝集上跑 L0/花名册/L1 | P1 | 花名册先于 L1；有 `domain_path` 时不 L3 选人；剪枝为空才回退全库（并记 Warn） |
 | FR-78-06 | domain_path ↔ 部门映射 | P1 | 词表一级域绑定部门；未映射走「其他」或全库回退 |
 | FR-78-07 | 借调 vs DAG 自动选择 | P1 | 规则表可测，不额外 LLM |
 | FR-78-08 | 主管条件介入 | P2 | 仅缺人/借调/质量门；超时 fail-closed；建议人必须在花名册 |

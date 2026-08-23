@@ -195,7 +195,7 @@ Service 适配器位于 `internal/service/chat_run_gateway.go`。
 // internal/runtime/pending_queue.go
 
 type PendingMessage struct { ID, Content, Status string; CreatedAt time.Time }
-type PendingMessageQueue struct { /* queues map[string][]PendingMessage, optional disk snapshot */ }
+type PendingMessageQueue struct { /* queues map[string][]PendingMessage, optional disk snapshot + PendingQueueStore */ }
 
 const MaxPendingPerSession = 32
 

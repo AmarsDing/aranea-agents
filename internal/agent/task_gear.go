@@ -33,6 +33,9 @@ type GearInput struct {
 	// CrossDeptDepends is set after Plan/playbook expand when 2+ departments
 	// have DependsOn / deliverable contracts.
 	CrossDeptDepends bool
+	// FactQuery is a light-gear lookup (weather, time, FX) that must not
+	// open a team even when QuickAssess scores moderate.
+	FactQuery bool
 	// Current is the gear already chosen (empty = not yet classified).
 	Current TaskGear
 }
@@ -43,7 +46,7 @@ func ClassifyTaskGear(in GearInput) TaskGear {
 	if in.Current == GearHeavy {
 		return GearHeavy
 	}
-	if in.GateSimpleOrClarify && !in.UserWantsOrgChain && !in.LongTask && !in.CrossDeptDepends {
+	if (in.GateSimpleOrClarify || in.FactQuery) && !in.UserWantsOrgChain && !in.LongTask && !in.CrossDeptDepends {
 		return GearLight
 	}
 	if in.UserWantsOrgChain || in.LongTask || in.CrossDeptDepends {

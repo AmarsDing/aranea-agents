@@ -301,3 +301,24 @@ func TestBatchExecuteSpiritTools_InheritsWorktreeIsolator(t *testing.T) {
 		t.Fatalf("untagged call should run via the direct handler, got %+v", got)
 	}
 }
+
+func TestShouldRejectFactQueryPlan(t *testing.T) {
+	if !shouldRejectFactQueryPlan("明天天气怎么样", "direct", false, nil) {
+		t.Fatal("light weather must reject plan_and_execute")
+	}
+	if !shouldRejectFactQueryPlan("明天天气怎么样", "", false, nil) {
+		t.Fatal("empty mode weather must reject")
+	}
+	if shouldRejectFactQueryPlan("明天天气怎么样", "dag", false, nil) {
+		t.Fatal("explicit dag must not reject")
+	}
+	if shouldRejectFactQueryPlan("明天天气怎么样", "direct", true, nil) {
+		t.Fatal("force_new must not reject")
+	}
+	if shouldRejectFactQueryPlan("明天天气怎么样", "direct", false, []string{"__system_admin__"}) {
+		t.Fatal("explicit keys must not reject")
+	}
+	if shouldRejectFactQueryPlan("用 Go 写 REST 接口", "direct", false, nil) {
+		t.Fatal("coding task must not look like a fact query")
+	}
+}

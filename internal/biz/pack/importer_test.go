@@ -285,6 +285,50 @@ func TestBuildRuntimeSettings_ProfileOverlay(t *testing.T) {
 	}
 }
 
+func TestImportAgent_Overwrite_PreservesCuratedDomainPath(t *testing.T) {
+	repo := newStubImporterRepo()
+	repo.agents["copy"] = biz.Agent{
+		ID: "agent-copy", AgentKey: "copy", DisplayName: "文案",
+		DomainPath: "创作/文案", MissionStatement: "运营指定的小红书专题",
+	}
+	im := NewImporter(repo)
+	p := &Pack{
+		Agents: []AgentPackSpec{
+			{Key: "copy", DisplayName: "图书联合作者", Description: "多平台内容", Provider: "deepseek", Model: "deepseek-chat",
+				PositionKey: "digital_content_media/content_creation/book_co_author"},
+		},
+	}
+	if _, err := im.Import(context.Background(), p, ConflictOverwrite); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	got := repo.agents["copy"]
+	if got.DomainPath != "创作/文案" {
+		t.Fatalf("overwrite must keep curated domain_path, got %q", got.DomainPath)
+	}
+	if got.MissionStatement != "运营指定的小红书专题" {
+		t.Fatalf("overwrite must keep curated mission, got %q", got.MissionStatement)
+	}
+}
+
+func TestImportAgent_Overwrite_YAMLDomainPathWins(t *testing.T) {
+	repo := newStubImporterRepo()
+	repo.agents["copy"] = biz.Agent{
+		ID: "agent-copy", AgentKey: "copy", DomainPath: "创作/文案",
+	}
+	im := NewImporter(repo)
+	p := &Pack{
+		Agents: []AgentPackSpec{
+			{Key: "copy", DisplayName: "文案", Provider: "deepseek", Model: "deepseek-chat", DomainPath: "创作/文学"},
+		},
+	}
+	if _, err := im.Import(context.Background(), p, ConflictOverwrite); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if got := repo.agents["copy"].DomainPath; got != "创作/文学" {
+		t.Fatalf("explicit YAML domain_path must win, got %q", got)
+	}
+}
+
 // TS9-BUG-3: on ConflictOverwrite, a spec carrying any runtime-relevant
 // declaration (here: tools_deny only, no runtime block) must pass non-nil
 // settings to UpdateAgentAtomic so the pack re-asserts its policy instead of

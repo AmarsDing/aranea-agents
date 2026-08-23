@@ -113,8 +113,8 @@ func TestOrgCheckpointFromPlanCopiesPlaybookStages(t *testing.T) {
 	if len(got.AuthorizedStageIDs) != 2 || got.AuthorizedStageIDs[1] != "be" {
 		t.Fatalf("stages=%v", got.AuthorizedStageIDs)
 	}
-	if len(got.IssuedBriefIDs) != 0 {
-		t.Fatalf("briefs must stay empty without a registry: %v", got.IssuedBriefIDs)
+	if len(got.IssuedBriefIDs) != 2 || got.IssuedBriefIDs[1] != "be" {
+		t.Fatalf("briefs=%v", got.IssuedBriefIDs)
 	}
 }
 
@@ -139,8 +139,8 @@ func TestDurableResumePromptForIncludesPlaybook(t *testing.T) {
 	if DurableResumePromptFor(DurableRunCheckpointPayload{}) != DurableResumePrompt() {
 		t.Fatal("empty payload must keep generic prompt")
 	}
-	got := DurableResumePromptFor(DurableRunCheckpointPayload{PlaybookID: "software_delivery", AuthorizedStageIDs: []string{"be"}})
-	if !strings.Contains(got, "software_delivery") || !strings.Contains(got, "be") {
+	got := DurableResumePromptFor(DurableRunCheckpointPayload{PlaybookID: "software_delivery", AuthorizedStageIDs: []string{"be"}, IssuedBriefIDs: []string{"be"}})
+	if !strings.Contains(got, "software_delivery") || !strings.Contains(got, "be") || !strings.Contains(got, "issued_briefs=") {
 		t.Fatalf("prompt=%q", got)
 	}
 }

@@ -26,6 +26,9 @@ const (
 	missionPerfWeight = 0.6
 	// missionMatchMinScore is the minimum fused score for an L1 hit.
 	missionMatchMinScore = 0.3
+	// missionSimMin is just above the TF-IDF sigmoid floor (~0.047) so
+	// zero-overlap + default success 0.5 cannot beat missionMatchMinScore.
+	missionSimMin = 0.06
 	// defaultSuccessRate applies when no performance record exists
 	// （与 L2 exactMatch 无履历默认语义一致）。
 	defaultSuccessRate = 0.5
@@ -73,13 +76,14 @@ func (impl *agentAllocatorImpl) tryDomainRecipe(domainPath string, capabilities 
 // capability, fused score, same-domain candidate count (for MatchReason
 // explainability, US-MM-03), and whether the score cleared the threshold.
 func (impl *agentAllocatorImpl) tryMissionMatch(ctx context.Context, taskText, domainPath string, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, int, bool) {
-	// 同域候选收敛：前缀匹配（任一方向）或归并后同一级域。
+	// 同专题候选：精确或路径前缀（创作/文案 不含 创作/文学）。
+	spec := NormalizeDomainPath(domainPath)
 	cands := make([]biz.AgentCapability, 0, len(capabilities))
 	for _, cap := range capabilities {
 		if !cap.IsHeuristicAssignable() {
 			continue
 		}
-		if DomainPathRelated(cap.DomainPath, domainPath) {
+		if specialtyPathCompatible(spec, NormalizeDomainPath(cap.DomainPath)) {
 			cands = append(cands, cap)
 		}
 	}
@@ -142,6 +146,9 @@ func (impl *agentAllocatorImpl) tryMissionMatch(ctx context.Context, taskText, d
 		successRate, ok := successRates[cap.AgentKey]
 		if !ok {
 			successRate = defaultSuccessRate
+		}
+		if sims[i] <= missionSimMin {
+			continue
 		}
 		if score := sims[i]*missionSimWeight + successRate*missionPerfWeight; score > bestScore {
 			bestIdx, bestScore = i, score

@@ -13,7 +13,7 @@ const (
 	DefaultCodeExecutor     = "local"
 	DefaultVariant          = "general"
 	DefaultModelTier        = "fast"
-	DefaultToolsProfile     = "general"
+	DefaultToolsProfile     = "coding"
 )
 
 // DefaultToolsDeny 是 AgentDefaults 缺省拒绝的工具集。

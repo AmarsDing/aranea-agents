@@ -220,7 +220,7 @@ type Data struct {
 	vectorStore vector.VectorStore
 	// reranker is injected (knowledge.NewMemoryReranker). Data does not
 	// construct or import the trpc knowledge reranker (AH-04).
-	reranker biz.Reranker
+	reranker    biz.Reranker
 	readiness   *ReadinessGate
 	lazySeeders map[string]*LazySeeder
 	p1Cancel    context.CancelFunc
@@ -1109,6 +1109,15 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	seedStep("data.seed.dept_lead_prompt_files", func(ctx context.Context) error {
 		return SeedDeptLeadPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
+	seedStep("data.seed.company_lead_agents", func(ctx context.Context) error {
+		return SeedCompanyLeadAgents(ctx, entClient, d.Dialect(), lg)
+	})
+	seedStep("data.seed.company_lead_prompt_files", func(ctx context.Context) error {
+		return SeedCompanyLeadPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
+	})
+	seedStep("data.seed.roster_identity", func(ctx context.Context) error {
+		return SeedRosterIdentity(ctx, entClient, lg)
+	}, 2*time.Minute)
 
 	d.lazySeeders = map[string]*LazySeeder{}
 

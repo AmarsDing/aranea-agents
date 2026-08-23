@@ -345,8 +345,10 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 	}
 
 	// ports that must be free for backend
+	backendHealthy := false
 	if tcpOpen("127.0.0.1", "8800", 200*time.Millisecond) {
-		if healthy() {
+		backendHealthy = healthy()
+		if backendHealthy {
 			env.add("Port 8800", checkInfo, "backend already running and healthy", false)
 		} else {
 			env.add("Port 8800", checkWarn, "in use but /healthz not ready; launcher will try to take over", false)
@@ -354,6 +356,17 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 	} else {
 		env.add("Port 8800", checkOK, "available", false)
 	}
+	for _, p := range []string{"9900", "8802"} {
+		lvl, detail := classifyBackendPort(tcpOpen("127.0.0.1", p, 200*time.Millisecond), backendHealthy)
+		env.add("Port "+p, lvl, detail, false)
+	}
+	if env.PGMode == "bundled" {
+		lvl, detail := classifyBundledPGPort(tcpOpen("127.0.0.1", "5433", 200*time.Millisecond))
+		env.add("Port 5433", lvl, detail, false)
+	}
+
+	// Ollama local embedding runtime (optional; knowledge vector search)
+	env.checkOllama()
 
 	_ = log
 	return env

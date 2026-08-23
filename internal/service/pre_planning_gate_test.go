@@ -111,6 +111,29 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 	}
 }
 
+func TestPrePlanningGate_Evaluate_FactQueryDoesNotForcePlanning(t *testing.T) {
+	bus := &captureEventBus{}
+	gate := NewPrePlanningGate(
+		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
+		bus,
+		nil,
+		loggateway.NewNoop(),
+	)
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
+		UserMessage:     "明天天气怎么样",
+		SpiritSessionID: "sess-weather",
+	})
+	if err != nil {
+		t.Fatalf("Evaluate error: %v", err)
+	}
+	if decision.ForcePlanning {
+		t.Fatalf("fact query must not force planning: %+v", decision)
+	}
+	if decision.Reason != "评估完成：事实查询，不组队" {
+		t.Fatalf("Reason = %q", decision.Reason)
+	}
+}
+
 func TestPrePlanningGate_Evaluate_PropagatesQuickAssessError(t *testing.T) {
 	bus := &captureEventBus{}
 	gate := NewPrePlanningGate(

@@ -317,6 +317,10 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
 <style lang="sass">
 // Global styles for the q-menu popup (scoped styles don't reach q-menu content).
 .spirit-context-popup
+  // q-menu 默认 overflow-y:auto / overflow-x:hidden 会裁剪内容；
+  // 图表悬停浮层需要溢出弹层边界显示，这里放行
+  overflow: visible
+
   .spirit-context-popup__inner
     padding: 10px 12px
     min-width: 320px

@@ -545,6 +545,9 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 			lg.Warn("seed step failed: scan department row", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
 			continue
 		}
+		if strings.HasSuffix(key, biz.CompanyOfficeDeptSuffix) {
+			continue
+		}
 		agentKey := biz.DeptLeadAgentKeyPrefix + key + "__"
 		agentID := "agent___dept_lead_" + key + "__"
 		displayName := "部门主管-" + name

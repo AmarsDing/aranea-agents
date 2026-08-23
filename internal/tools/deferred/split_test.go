@@ -18,14 +18,14 @@ func TestSplitCoreResidentTools_SpiritProfile(t *testing.T) {
 	core, def := SplitCoreResidentTools(enabled, "spirit")
 
 	assertContainsAll(t, core, []string{
-		"plan_and_execute", "datetime", "memory_search",
+		"plan_and_execute", "datetime", "memory_search", "web_fetch",
 	})
 	assertNotContainsAny(t, core, []string{
 		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"build_orchestration_graph",
 	})
 	assertContainsAll(t, def, []string{
-		"web_fetch", "read_file", "save_file",
+		"read_file", "save_file",
 		"build_orchestration_graph",
 		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",

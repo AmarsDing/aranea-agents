@@ -15,6 +15,7 @@ func TestNormalizeType(t *testing.T) {
 		{"e2b", codeexecutor.TypeE2B},
 		{"container", codeexecutor.TypeContainer},
 		{"", codeexecutor.TypeLocal},
+		{"auto", codeexecutor.TypeAuto},
 		{"unknown", codeexecutor.TypeLocal},
 	}
 	for _, tc := range tests {
@@ -36,6 +37,27 @@ func TestResolveType(t *testing.T) {
 	}
 	if got := codeexecutor.ResolveType("", ""); got != codeexecutor.TypeLocal {
 		t.Fatalf("default: got %q", got)
+	}
+	if got := codeexecutor.ResolveType("auto", ""); got != codeexecutor.TypeAuto {
+		t.Fatalf("auto: got %q", got)
+	}
+}
+
+func TestPreferDockerWhenUnset(t *testing.T) {
+	if !codeexecutor.PreferDockerWhenUnset("", "", true) {
+		t.Fatal("empty agent+env should prefer docker when available")
+	}
+	if !codeexecutor.PreferDockerWhenUnset("auto", "", true) {
+		t.Fatal("auto should prefer docker when available")
+	}
+	if codeexecutor.PreferDockerWhenUnset("local", "", true) {
+		t.Fatal("explicit local must stay local")
+	}
+	if codeexecutor.PreferDockerWhenUnset("", "e2b", true) {
+		t.Fatal("explicit env backend must win")
+	}
+	if codeexecutor.PreferDockerWhenUnset("", "", false) {
+		t.Fatal("must not prefer docker when daemon is down")
 	}
 }
 

@@ -82,6 +82,9 @@ type StaffingAsk struct {
 	DomainPath    string
 	SubTaskName   string
 	CandidateKeys []string
+	// CandidateCards is optional "key|name|domain|mission" lines so the
+	// lead can pick by specialty, not opaque keys.
+	CandidateCards []string
 }
 
 // StaffingReply is the lead's suggestion. AgentKeys must be a subset of

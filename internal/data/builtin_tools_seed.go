@@ -52,7 +52,7 @@ func applyPlatformToolDefaults(s *platformToolSeed) {
 var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "datetime", displayName: "当前时间", description: "返回当前时间、日期和时区信息。", category: "system", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{}}`, registryName: "datetime"},
 	{key: "web_research", displayName: "Web 研究", description: "使用 Tavily 或 SerpAPI 搜索网络并返回多源摘要与正文片段。API Key 优先 Agent 工具配置，否则使用系统设置（设置 → Web 研究）或环境变量 TAVILY_API_KEY。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"自然语言搜索问题"}},"required":["query"]}`, configSchema: webResearchConfigSchema, registryName: ""},
-	{key: "duckduckgo_search", displayName: "DuckDuckGo 搜索", description: "DuckDuckGo Instant Answer（百科/定义类查询；非通用网页搜索）。", category: "web", riskLevel: "medium", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`, registryName: "duckduckgo"},
+	{key: "duckduckgo_search", displayName: "DuckDuckGo 搜索", description: "DuckDuckGo 网页搜索（HTML 结果页）。无需密钥，适合天气、新闻、事实查询；Spirit 默认挂载。", category: "web", riskLevel: "medium", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`, registryName: "duckduckgo"},
 	{key: "web_fetch", displayName: "Web 抓取", description: "并行抓取多个 URL 并提取 Markdown/文本。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表"}},"required":["urls"]}`, registryName: "httpfetch"},
 	{key: "gemini_web_fetch", displayName: "Gemini 抓取", description: "使用 Gemini 模型抓取并理解 URL 内容。在 prompt 中写入 URL 与处理说明。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"prompt":{"type":"string","description":"包含要抓取的 URL 与处理说明的提示词。Gemini 会自动检测并抓取 URL，单次最多 20 个。"}},"required":["prompt"]}`, registryName: "geminifetch"},
 	{key: "google_search", displayName: "Google 搜索", description: "使用 Google Custom Search API 搜索网络信息。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`, registryName: "google_search"},
@@ -235,7 +235,7 @@ func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client, d
 	}{
 		{
 			key:    "duckduckgo_search",
-			desc:   "DuckDuckGo Instant Answer（百科/定义类查询；非通用网页搜索）。",
+			desc:   "DuckDuckGo 网页搜索（HTML 结果页）。无需密钥，适合天气、新闻、事实查询；Spirit 默认挂载。",
 			params: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`,
 			config: "{}",
 		},

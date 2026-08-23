@@ -132,7 +132,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `composition` | `call_agent`（Agent-as-Tool） | 中风险 |
 | `knowledge` | `knowledge_search` | 低风险 |
 | `browser` | `browser` | critical |
-| `spirit` | `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph` | 低中风险 |
+| `spirit` | `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`、`datetime`、`web_research`、`duckduckgo_search`、`web_fetch` | 低中风险 |
 
 ### 3.2 内置工具 catalog
 
@@ -142,7 +142,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 |----------|------|------|------|------|------|
 | `datetime` | 当前时间 | system | low | 启用 | 返回当前时间、日期和时区信息 |
 | `web_research` | Web 研究 | web | medium | 启用 | Tavily / SerpAPI 统一搜索；密钥见系统设置 → Web 研究 |
-| `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 停用 | Instant Answer（非通用网页搜索） |
+| `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 停用 | HTML 网页搜索（无需密钥）；catalog 默认停用，Spirit 经 opt-in 挂载，用于天气/新闻 |
 | `web_fetch` | Web 抓取 | web | medium | 启用 | 抓取 URL 并提取页面文本 |
 | `gemini_web_fetch` | Gemini 抓取 | web | medium | 启用 | 在 `prompt` 中写入 URL 与处理说明；兼容别名 `url` |
 | `google_search` | Google 搜索 | web | medium | 启用 | 使用 Google Custom Search API |
@@ -392,7 +392,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `minimal` | 无工具（最简模式） |
 | `safe` | `datetime`、`read_file`、`read_multiple_files`、`list_file`、`search_file`、`search_content`、`todo_write` |
 | `system_admin` | `group:cli_admin`、`web_fetch`、`datetime` |
-| `spirit` | `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`、`memory_search`、`group:subagent`、`shell_exec`、`datetime` |
+| `spirit` | `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`、`memory_search`、`group:subagent`、`shell_exec`、`datetime`、`web_research`、`duckduckgo_search`、`web_fetch` |
 
 ### 6.3 Agent 页 UI
 

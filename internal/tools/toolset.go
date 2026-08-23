@@ -123,7 +123,10 @@ func Registry() []*ToolRegistration {
 				Category:    "search",
 				Tags:        []string{"search", "web"},
 				Factory: func(ctx context.Context) (Tool, error) {
-					return trpcduckduckgo.NewTool(), nil
+					// HTML SERP, not Instant Answer: weather/news have no
+					// abstract on api.duckduckgo.com, so the default backend
+					// returns empty and tells the model it cannot look them up.
+					return trpcduckduckgo.NewTool(trpcduckduckgo.WithBackend("html")), nil
 				},
 				EnabledByDefault:    false,
 				RiskLevel:           "medium",
@@ -238,8 +241,8 @@ func Registry() []*ToolRegistration {
 				},
 			},
 			{
-			Name:        "openapi",
-			Description: "OpenAPI spec ToolSet (dynamic REST API tools from spec)",
+				Name:        "openapi",
+				Description: "OpenAPI spec ToolSet (dynamic REST API tools from spec)",
 				Category:    "integration",
 				Tags:        []string{"api", "rest", "openapi"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {

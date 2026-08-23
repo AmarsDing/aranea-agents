@@ -325,6 +325,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		UserWantsOrgChain: HasOrgChainIntent(input.UserMessage),
 		LongTask:          effectiveLevel == biz.ComplexityComplex || complexityScore >= 0.6,
 		CompanyNodeCount:  impl.companyNodeCount(ctx),
+		FactQuery:         biz.LooksLikeFactQuery(input.UserMessage),
 	})
 	if pb, steps, ok := impl.lookupSolePlaybookIfHeavy(ctx, gear); ok && len(steps) > 0 {
 		subTasks = steps

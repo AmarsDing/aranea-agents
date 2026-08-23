@@ -159,6 +159,29 @@ func runSetupWizard(root string, ui *statusConsole, log func(string, ...any)) *s
 	}
 	out("")
 
+	// --- Ollama embedding runtime (optional) ---
+	runOllamaSetupStep(p, out, log)
+	out("")
+
+	// --- LLM provider API key (optional) ---
+	out("LLM provider API key / 模型渠道密钥:")
+	out("  Agents default to deepseek/deepseek-v4-flash; a key makes chat work out-of-box.")
+	if p.askYesNo("  Configure DeepSeek API key now? 现在配置 DeepSeek 密钥", false) {
+		key := strings.TrimSpace(p.ask("  API key (stored locally; applied after backend starts)", ""))
+		if key != "" {
+			if err := saveLLMBootstrap(root, llmBootstrap{Provider: "deepseek", Model: "deepseek-v4-flash", APIKey: key}); err != nil {
+				out("  [WARN] save failed: " + err.Error())
+			} else {
+				out("  [OK] saved; will be applied to the seeded deepseek/deepseek-v4-flash channel after backend starts")
+			}
+		} else {
+			out("  -> empty key, skipped")
+		}
+	} else {
+		out("  -> skipped; configure later in Settings -> Platform -> Provider Models")
+	}
+	out("")
+
 	// --- auto-start ---
 	out("Auto-start on boot / 开机自启动:")
 	if p.askYesNo("Register backend auto-start? 注册后端开机自启动", true) {

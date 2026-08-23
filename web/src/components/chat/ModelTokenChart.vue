@@ -8,25 +8,24 @@
     </div>
     <template v-else>
       <div ref="chartEl" class="model-token-chart__canvas" />
-      <div class="model-token-chart__hover">
-        <template v-if="hovered">
-          <div class="model-token-chart__hover-head">
-            <span class="model-token-chart__hover-title">#{{ hovered.point.turn }} · {{ hovered.seriesLabel }}</span>
-            <span class="model-token-chart__hover-total">{{ formatTokens(hovered.point.totalTokens) }}</span>
+      <div class="model-token-chart__hint">{{ t('chat.modelTokenHoverHint') }}</div>
+      <!-- 浮动 tooltip：跟随悬停数据点，绝对定位不挤压图例布局 -->
+      <div v-if="hovered" ref="tooltipEl" class="model-token-chart__tooltip" :style="tooltipStyle">
+        <div class="model-token-chart__hover-head">
+          <span class="model-token-chart__hover-title">#{{ hovered.point.turn }} · {{ hovered.seriesLabel }}</span>
+          <span class="model-token-chart__hover-total">{{ formatTokens(hovered.point.totalTokens) }}</span>
+        </div>
+        <ContextBudgetBreakdown v-if="hovered.point.budget" :budget="hovered.point.budget" />
+        <div v-else class="model-token-chart__hover-simple">
+          <div class="model-token-chart__hover-row">
+            <span>{{ t('chat.modelTokenTipTotal') }}</span>
+            <span class="model-token-chart__hover-value">{{ formatTokens(hovered.point.totalTokens) }}</span>
           </div>
-          <ContextBudgetBreakdown v-if="hovered.point.budget" :budget="hovered.point.budget" />
-          <div v-else class="model-token-chart__hover-simple">
-            <div class="model-token-chart__hover-row">
-              <span>{{ t('chat.modelTokenTipTotal') }}</span>
-              <span class="model-token-chart__hover-value">{{ formatTokens(hovered.point.totalTokens) }}</span>
-            </div>
-            <div class="model-token-chart__hover-row">
-              <span>{{ t('chat.modelTokenTipPrompt') }}</span>
-              <span class="model-token-chart__hover-value">{{ formatTokens(hovered.point.inputTokens) }}</span>
-            </div>
+          <div class="model-token-chart__hover-row">
+            <span>{{ t('chat.modelTokenTipPrompt') }}</span>
+            <span class="model-token-chart__hover-value">{{ formatTokens(hovered.point.inputTokens) }}</span>
           </div>
-        </template>
-        <div v-else class="model-token-chart__hint">{{ t('chat.modelTokenHoverHint') }}</div>
+        </div>
       </div>
       <div class="model-token-chart__legend">
         <div v-for="s in data.series" :key="s.key" class="model-token-chart__legend-item">
@@ -40,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { EChartsCoreOption } from 'echarts/core';
 import { baseChartOption, usageChartPalette } from '../../features/usage/usageEcharts';
@@ -97,7 +96,7 @@ function buildOption(): EChartsCoreOption {
 
   return baseChartOption({
     // Native tooltip disabled — per-turn prompt breakdown is rendered as a Vue
-    // panel below the chart (see hover events bound on the chart instance).
+    // floating tooltip near the hovered point (see hover events bound below).
     tooltip: { show: false },
     legend: { show: false },
     grid: { left: 40, right: 12, top: 12, bottom: 24 },
@@ -122,20 +121,67 @@ function buildOption(): EChartsCoreOption {
 
 const { chartRef } = useUsageChart(chartEl, buildOption, () => [props.data]);
 
-// ── Per-point hover: show the turn's prompt breakdown in a Vue panel ─────
+// ── Per-point hover: floating tooltip with the turn's prompt breakdown ────
 const hovered = ref<{ seriesLabel: string; point: ModelTokenPoint } | null>(null);
+const tooltipEl = ref<HTMLElement | null>(null);
+const tooltipPos = ref<{ left: number; top: number } | null>(null);
+
+// Hidden until measured so the tooltip never flashes at a stale position.
+const tooltipStyle = computed(() =>
+  tooltipPos.value
+    ? { left: `${tooltipPos.value.left}px`, top: `${tooltipPos.value.top}px` }
+    : { left: '0px', top: '0px', visibility: 'hidden' as const },
+);
+
+/**
+ * Place the tooltip next to the hovered point. offsetX/offsetY come from the
+ * zrender event and are relative to the chart canvas, which sits at the top of
+ * the (position: relative) root, so they double as root-level coordinates.
+ * Horizontal flip/clamp against the popup width; vertical flip/clamp against
+ * the viewport (the popup sets overflow:visible so the tooltip may extend
+ * beyond the popup box but is never cut off).
+ */
+async function placeTooltip(offsetX: number, offsetY: number) {
+  await nextTick();
+  const tip = tooltipEl.value;
+  const host = chartEl.value?.parentElement;
+  if (!tip || !host) return;
+  const gap = 12;
+  const edge = 4;
+  const hostRect = host.getBoundingClientRect();
+  const tipW = tip.offsetWidth;
+  const tipH = tip.offsetHeight;
+  let left = offsetX + gap;
+  if (left + tipW > hostRect.width - edge) left = offsetX - tipW - gap;
+  left = Math.max(edge, Math.min(left, hostRect.width - tipW - edge));
+  // Vertical flip/clamp against the viewport; the popup itself no longer
+  // clips (spirit-context-popup sets overflow:visible), so a tall breakdown
+  // may float above the popup box but stays fully visible on screen.
+  const pointClientY = hostRect.top + offsetY;
+  let topClient = pointClientY + gap;
+  if (topClient + tipH > window.innerHeight - edge) topClient = pointClientY - tipH - gap;
+  topClient = Math.max(edge, Math.min(topClient, window.innerHeight - tipH - edge));
+  tooltipPos.value = { left, top: topClient - hostRect.top };
+}
 
 watch(
   chartRef,
   (chart, _prev, onCleanup) => {
     if (!chart) return;
     const onOver = (param: unknown) => {
-      const p = param as { componentType?: string; seriesName?: string; data?: { point?: ModelTokenPoint } };
+      const p = param as {
+        componentType?: string;
+        seriesName?: string;
+        data?: { point?: ModelTokenPoint };
+        event?: { offsetX?: number; offsetY?: number };
+      };
       if (p.componentType !== 'series' || !p.data?.point) return;
       hovered.value = { seriesLabel: p.seriesName ?? '', point: p.data.point };
+      void placeTooltip(p.event?.offsetX ?? 0, p.event?.offsetY ?? 0);
     };
     const onOut = () => {
       hovered.value = null;
+      tooltipPos.value = null;
     };
     chart.on('mouseover', onOver);
     chart.on('mouseout', onOut);
@@ -152,6 +198,7 @@ watch(
 
 <style scoped lang="sass">
 .model-token-chart
+  position: relative
   width: 320px
   max-width: 100%
 
@@ -159,11 +206,29 @@ watch(
   width: 100%
   height: 140px
 
-.model-token-chart__hover
-  margin-top: 4px
-  min-height: 20px
+.model-token-chart__tooltip
+  position: absolute
+  z-index: 20
+  width: 260px
+  pointer-events: none
+  padding: 10px 12px
+  border-radius: 12px
+  // 浮层会覆盖聊天正文，背景比常规玻璃更不透明以保证密排文字可读；
+  // 仍基于 canvas-base 昼夜自适应 + 保留玻璃模糊
+  background: color-mix(in srgb, var(--canvas-base) 92%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  border: 1px solid var(--glass-border)
+  box-shadow: 0 4px 16px rgba(20, 24, 32, 0.14)
+
+  // pointer-events:none 使浮层内无法滚动，放开行区高度让构成完整可见；
+  // 超高时由 placeTooltip 的 menu/viewport clamp 兜底
+  :deep(.ctx-budget-breakdown__rows)
+    max-height: none
+    overflow-y: visible
 
 .model-token-chart__hint
+  margin-top: 4px
   font-size: 10px
   color: var(--color-text-tertiary)
   padding: 2px 4px

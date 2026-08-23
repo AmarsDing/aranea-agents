@@ -350,27 +350,24 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 // 5. Delete dept lead agent
 // 6. Delete child position nodes
 // 7. Delete the department node itself
-//
-// Note: This operation is not wrapped in a single DB transaction because:
-// (a) SQLite single-writer model provides implicit serialization for writes,
-// (b) the steps involve multiple tables and cross-service calls (e.g., Agent deletion)
-//
-//	that cannot be rolled back atomically, and
-//
-// (c) each step is idempotent — re-running after partial failure is safe.
-// TODO(debt): wrap steps 3-7 in a transaction when migrating to PostgreSQL.
 func (u *OrganizationUsecase) deleteDepartmentWithCascade(ctx context.Context, dept OrganizationNode) error {
-	// S-06 fix: extracted steps into helper methods for readability
 	if err := u.cascadeBlockActiveTeams(ctx, dept); err != nil {
 		return err
 	}
-	u.cascadeCancelBorrowRequests(ctx, dept)
-	u.cascadeArchiveTeams(ctx, dept)
-	u.cascadeClearAgentPositions(ctx, dept)
-	u.cascadeDeleteDeptLead(ctx, dept)
-	u.cascadeDeleteChildPositions(ctx, dept)
-	// Step 7: Delete the department node itself
-	return u.repo.DeleteOrgNode(ctx, dept.ID)
+	run := func(txCtx context.Context) error {
+		u.cascadeCancelBorrowRequests(txCtx, dept)
+		u.cascadeArchiveTeams(txCtx, dept)
+		u.cascadeClearAgentPositions(txCtx, dept)
+		u.cascadeDeleteDeptLead(txCtx, dept)
+		u.cascadeDeleteChildPositions(txCtx, dept)
+		return u.repo.DeleteOrgNode(txCtx, dept.ID)
+	}
+	if tx, ok := u.repo.(interface {
+		ExecInTx(context.Context, func(context.Context) error) error
+	}); ok {
+		return tx.ExecInTx(ctx, run)
+	}
+	return run(ctx)
 }
 
 // cascadeBlockActiveTeams blocks deletion if there are active teams.

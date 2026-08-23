@@ -79,6 +79,20 @@ type SessionModelLookup interface {
 	GetSessionModel(ctx context.Context, sessionID string) (provider, model string)
 }
 
+// shouldRejectFactQueryPlan blocks light-gear lookups (weather, time, FX)
+// from starting a team. Explicit agent_keys / parallel / dag / force_new
+// still go through so butler routing is unchanged.
+func shouldRejectFactQueryPlan(taskPrompt, mode string, forceNew bool, explicitKeys []string) bool {
+	if forceNew || len(explicitKeys) > 0 {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "parallel", "dag":
+		return false
+	}
+	return biz.LooksLikeFactQuery(taskPrompt)
+}
+
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
 func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus biz.EventBus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
@@ -106,6 +120,10 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 
 			mode := input.Mode
 			explicitKeys := normalizeExplicitAgentKeys(input.AgentKeys)
+			if shouldRejectFactQueryPlan(taskPrompt, mode, input.ForceNew, explicitKeys) {
+				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit,
+					"fact query: answer with datetime / duckduckgo_search / web_research; do not call plan_and_execute")
+			}
 			// Explicit agent routing implies delegation; direct mode skips the
 			// allocation phase entirely, so the keys would be silently ignored.
 			// Upgrade to the weakest delegating mode (parallel) so the routing

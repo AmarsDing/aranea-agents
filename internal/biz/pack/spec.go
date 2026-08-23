@@ -96,6 +96,8 @@ type AgentPackSpec struct {
 	PositionKey        string `yaml:"position_key,omitempty"` // taxonomy 路径格式：industry/dept/pos
 	Variant            string `yaml:"variant,omitempty"`
 	VariantDescription string `yaml:"variant_description,omitempty"`
+	MissionStatement   string `yaml:"mission_statement,omitempty"`
+	DomainPath         string `yaml:"domain_path,omitempty"`
 
 	// 模型配置
 	Provider         string `yaml:"provider,omitempty"`

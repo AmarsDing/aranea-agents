@@ -432,6 +432,8 @@ var ddlMigrations = []ddlMigration{
 	// （turn 级 prompt 缓存命中数，与 input_tokens 同语义）。Ent Schema.Create()
 	// 不为存量表 ALTER 补列，存量库必须走此补丁（同 20261236 先例）。幂等。
 	{Version: 20261239, Name: "session_turn_cached_input", SQL: "sql/migrations/20261239_session_turn_cached_input.sql"},
+	// 20261240 pending_queue_entries: 追问队列落库，启动回放优先于 JSON 快照。
+	{Version: 20261240, Name: "pending_queue_entries", SQL: "sql/migrations/20261240_pending_queue_entries.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

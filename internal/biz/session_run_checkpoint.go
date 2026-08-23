@@ -42,8 +42,8 @@ type OrgCheckpointFields struct {
 	ConstraintFingerprint string
 }
 
-// OrgCheckpointFromPlan copies playbook resume state. IssuedBriefIDs stay
-// empty until a brief registry exists (no invented ids).
+// OrgCheckpointFromPlan copies playbook resume state. IssuedBriefIDs
+// snapshot the authorized stage IDs so resume can skip re-issuing briefs.
 func OrgCheckpointFromPlan(plan *TaskPlan) OrgCheckpointFields {
 	if plan == nil || plan.MemoryHit == nil || plan.Status != TaskPlanStatusExecuting {
 		return OrgCheckpointFields{}
@@ -63,6 +63,7 @@ func OrgCheckpointFromPlan(plan *TaskPlan) OrgCheckpointFields {
 		Gear:                  "heavy",
 		PlaybookID:            pb,
 		AuthorizedStageIDs:    stages,
+		IssuedBriefIDs:        append([]string(nil), stages...),
 		ConstraintFingerprint: fp,
 	}
 }
@@ -188,8 +189,12 @@ func DurableResumePromptFor(p DurableRunCheckpointPayload) string {
 		return durableResumeUserContent
 	}
 	stages := strings.Join(p.AuthorizedStageIDs, ",")
-	if stages == "" {
-		return durableResumeUserContent + " playbook=" + pb
+	out := durableResumeUserContent + " playbook=" + pb
+	if stages != "" {
+		out += " authorized_stages=" + stages
 	}
-	return durableResumeUserContent + " playbook=" + pb + " authorized_stages=" + stages
+	if briefs := strings.Join(p.IssuedBriefIDs, ","); briefs != "" {
+		out += " issued_briefs=" + briefs
+	}
+	return out
 }

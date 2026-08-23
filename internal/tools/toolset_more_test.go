@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +56,29 @@ func TestAssemble_duckduckgoEnabled(t *testing.T) {
 	if !found {
 		t.Fatal("expected duckduckgo_search tool")
 	}
+}
+
+func TestAssemble_duckduckgoUsesHTMLBackend(t *testing.T) {
+	out, err := Assemble(context.Background(), AssemblyConfig{
+		EnabledTools: []string{"duckduckgo"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, tool := range out.Tools {
+		d := tool.Declaration()
+		if d == nil || d.Name != "duckduckgo_search" {
+			continue
+		}
+		if strings.Contains(d.Description, "NOT suitable") {
+			t.Fatalf("spirit weather path needs HTML search, got Instant Answer copy: %s", d.Description)
+		}
+		if !strings.Contains(d.Description, "search result pages") {
+			t.Fatalf("want HTML SERP description, got %s", d.Description)
+		}
+		return
+	}
+	t.Fatal("expected duckduckgo_search tool")
 }
 
 func TestAssemble_awaitUserReplyEnabled(t *testing.T) {

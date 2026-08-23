@@ -483,7 +483,8 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		assignedType = "team"
 	}
 
-	// L0/L1: 使命驱动匹配（domain_path 非空时启用；为空直接落入旧管线，不变量 1）。
+	// L0 / roster / L1（domain_path 非空时启用；为空直接落入旧管线，不变量 1）。
+	// Roster 必须先于 L1：回填使命与任务零重叠仍会过旧阈值。
 	if subTask.DomainPath != "" {
 		if cap, members, dq, ok := impl.tryDomainRecipe(subTask.DomainPath, capabilities, traceID); ok {
 			alloc := biz.TaskAllocation{
@@ -501,20 +502,7 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 			}
 			return alloc, nil
 		}
-		taskText := subTask.Name + " " + subTask.Description
-		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskText, subTask.DomainPath, capabilities, traceID); ok {
-			return biz.TaskAllocation{
-				SubTaskID:    subTask.ID,
-				SubTaskName:  subTask.Name,
-				AssignedType: assignedType,
-				AssignedKey:  cap.AgentKey,
-				AssignedName: cap.DisplayName,
-				MatchScore:   score,
-				MatchLayer:   "mission",
-				MatchReason:  missionMatchReason(subTask.DomainPath, candCount, score),
-			}, nil
-		}
-		if cap, backup, ok := bindRosterSpecialist(subTask.DomainPath, capabilities); ok {
+		if cap, backup, ok := bindRosterSpecialist(subTask.DomainPath, subTask.Name+" "+subTask.Description, capabilities); ok {
 			alloc := biz.TaskAllocation{
 				SubTaskID:    subTask.ID,
 				SubTaskName:  subTask.Name,
@@ -529,6 +517,19 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 				alloc.FallbackKey = backup
 			}
 			return alloc, nil
+		}
+		taskText := subTask.Name + " " + subTask.Description
+		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskText, subTask.DomainPath, capabilities, traceID); ok {
+			return biz.TaskAllocation{
+				SubTaskID:    subTask.ID,
+				SubTaskName:  subTask.Name,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   score,
+				MatchLayer:   "mission",
+				MatchReason:  missionMatchReason(subTask.DomainPath, candCount, score),
+			}, nil
 		}
 	}
 
@@ -1220,19 +1221,7 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 			}
 			return alloc, nil
 		}
-		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskPlan.UserMessage, taskPlan.DomainPath, capabilities, traceID); ok {
-			return biz.TaskAllocation{
-				SubTaskID:    "whole",
-				SubTaskName:  taskPlan.UserMessage,
-				AssignedType: assignedType,
-				AssignedKey:  cap.AgentKey,
-				AssignedName: cap.DisplayName,
-				MatchScore:   score,
-				MatchLayer:   "mission",
-				MatchReason:  missionMatchReason(taskPlan.DomainPath, candCount, score),
-			}, nil
-		}
-		if cap, backup, ok := bindRosterSpecialist(taskPlan.DomainPath, capabilities); ok {
+		if cap, backup, ok := bindRosterSpecialist(taskPlan.DomainPath, taskPlan.UserMessage, capabilities); ok {
 			alloc := biz.TaskAllocation{
 				SubTaskID:    "whole",
 				SubTaskName:  taskPlan.UserMessage,
@@ -1247,6 +1236,18 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 				alloc.FallbackKey = backup
 			}
 			return alloc, nil
+		}
+		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskPlan.UserMessage, taskPlan.DomainPath, capabilities, traceID); ok {
+			return biz.TaskAllocation{
+				SubTaskID:    "whole",
+				SubTaskName:  taskPlan.UserMessage,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   score,
+				MatchLayer:   "mission",
+				MatchReason:  missionMatchReason(taskPlan.DomainPath, candCount, score),
+			}, nil
 		}
 	}
 

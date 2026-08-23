@@ -13,7 +13,7 @@
 - 一棵树：`company` → `department` → `position`（`organizations.level`）。不是「行业分类」。
 - 当前 workspace **默认一棵公司树**。换业务主体 = 换 workspace，不是任务内检索/创建公司。
 - 创建部门时自动挂 `dept_lead`；创建公司时自动挂 `company_lead`（幂等，`__company_lead_{key}__`）。
-- `company_lead` 挂在真实岗位上：公司 → 系统部门「总经理办公室」（`{companyKey}_office`，不另生 `dept_lead`）→ 岗位「总经理」（`{companyKey}_gm`）。打开组织树 / Agent 列表会回填已有公司。编制/预设区可见，不进精灵管家区。
+- `company_lead` 挂在真实岗位上：公司 → 系统部门「总经理办公室」（`{companyKey}_office`，不另生 `dept_lead`）→ 岗位「总经理」（`{companyKey}_gm`）。启动种子（`SeedCompanyLeadAgents`）与打开组织树会回填已有公司。编制/预设区可见，不进精灵管家区。
 - 任务路径**禁止** `OrganizationWriter` 创建 company/department。
 
 ## 2. 部门架构

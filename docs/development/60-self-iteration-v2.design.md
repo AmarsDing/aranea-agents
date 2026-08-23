@@ -579,7 +579,7 @@ service SkillIntelligenceService {
 
 **关键消息**：
 - `ExperienceReport`：包含 `root_cause_analysis`（字段 14）和 `suggested_fix`（字段 15）两个 V2 新增字段
-- `ListExperienceReportsResponse`：包含 `failure_tag_counts` 和 `root_cause_reports` 聚合字段
+- `ListExperienceReportsResponse`：包含 `failure_tag_counts` 和 `root_cause_reports` 聚合字段；另含 `success_count`（字段 7）、`failure_count`（字段 8）、`avg_score`（字段 9）三个筛选条件下全量聚合统计（2026-08-23 新增，供经验报告页 KPI 概览，单条 GROUP BY 查询按 is_success 分组计数加权重算总平均）
 
 ### 9.2 skill_evolution_suggestion.proto
 
@@ -621,7 +621,11 @@ service SkillEvolutionSuggestionService {
 - 调用 `ListExperienceReports` API 展示经验报告列表
 - 支持 Skill ID、开始日期、结束日期筛选
 - 展示成功/失败、评分、失败标签、流程摘要
-- 展示根因分析结果和修复建议（V2 新增）
+- KPI 概览条（`components/skills/ExperienceReportStatCards.vue`）：报告总数/成功率/平均评分/失败记录，数据取自响应的 `success_count`/`failure_count`/`avg_score` 全量聚合字段而非当前页（2026-08-23 新增）
+- 失败标签分布（`components/skills/FailureTagsChart.vue`）：水平条形图，标签中文化映射（与 `biz/skill_scoring.go` FailureTag 常量对齐），`unknown`→「未分类」灰色弱化；全部失败均未归因时展示提示条
+- 根因分析（`components/skills/RootCauseAnalysisCards.vue`）：展示根因分析结果和修复建议（V2 新增）；空态为紧凑图标行
+- 表格行内展开（`components/skills/ExperienceReportTable.vue`）：含根因分析/建议修复/优化建议任一内容的行显示展开按钮，展开行展示三段详情；筛选/翻页导致行集变化时自动收起
+- 数据流：`features/skills/api.ts` → `stores/skillIntelligence` → `features/skills/useExperienceReportListPage.ts` → 页面与子组件
 
 ### 10.2 进化建议列表页
 
@@ -636,4 +640,4 @@ service SkillEvolutionSuggestionService {
 
 ---
 
-*文档版本：2026-06-17 — 按三件套内容边界重组，修正 Proto/接口/字段/注册位置与代码一致。*
+*文档版本：2026-06-17 — 按三件套内容边界重组，修正 Proto/接口/字段/注册位置与代码一致。2026-08-23 — §9.1 补 success_count/failure_count/avg_score 聚合字段，§10.1 同步经验报告页 KPI 概览/条形图/行内展开优化。*

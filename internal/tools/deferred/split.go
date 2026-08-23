@@ -20,6 +20,7 @@ var coreResidentToolsByProfile = map[string][]string{
 		// 不改 BUILD 缓存 key、不破坏闲聊前缀缓存。
 		"plan_and_execute",
 		"datetime", "memory_search", "memory_remember",
+		"web_research", "duckduckgo_search", "web_fetch",
 	},
 	"coding": {
 		// 文件操作（最高频）

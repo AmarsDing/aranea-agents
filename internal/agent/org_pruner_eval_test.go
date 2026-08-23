@@ -71,3 +71,31 @@ func TestOrgPruner_EvalFixture_DepartmentTop1(t *testing.T) {
 		t.Fatalf("department Top-1 ratio=%.2f want >= 0.90 (%d/%d)", ratio, hit, len(cases))
 	}
 }
+
+func TestOrgPruner_RealPackDepartmentKeys(t *testing.T) {
+	caps := []biz.AgentCapability{
+		{AgentKey: "xhs", DepartmentID: "d-media", DepartmentKey: "media_operations", DepartmentName: "媒体运营部", PositionKey: "xiaohongshu_specialist", DomainPath: "创作/文案", DisplayName: "小红书运营专家"},
+		{AgentKey: "be", DepartmentID: "d-be", DepartmentKey: "backend_dev", DepartmentName: "后端开发部", PositionKey: "backend_architect", DomainPath: "软件/后端"},
+		{AgentKey: "ops", DepartmentID: "d-ops", DepartmentKey: "ops", DepartmentName: "运维部", PositionKey: "sre", DomainPath: "软件/运维"},
+		{AgentKey: "alert", DepartmentID: "d-alert", DepartmentKey: "alert_response", DepartmentName: "告警响应部", PositionKey: "alert_handler", DomainPath: "运维/告警"},
+		{AgentKey: "fault", DepartmentID: "d-diag", DepartmentKey: "diagnostics", DepartmentName: "故障诊断部", PositionKey: "fault_diagnostician", DomainPath: "运维/诊断"},
+	}
+	p := OrgPruner{}
+	cases := []struct {
+		domain string
+		dept   string
+	}{
+		{"创作/文案", "媒体运营部"},
+		{"软件/后端", "后端开发部"},
+		{"软件/运维", "运维部"},
+		{"运维/告警", "告警响应部"},
+		{"运维/诊断", "故障诊断部"},
+	}
+	for _, tc := range cases {
+		got := p.Prune(tc.domain, caps)
+		if got.FallbackAll || got.DepartmentName != tc.dept {
+			t.Errorf("domain=%s dept=%q fallback=%v reason=%s want %s",
+				tc.domain, got.DepartmentName, got.FallbackAll, got.Reason, tc.dept)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +87,9 @@ func TestAllocate_StaffingAdoptsInPoolAgent(t *testing.T) {
 	}
 	if len(ask.CandidateKeys) == 0 || ask.CandidateKeys[0] != "copy" {
 		t.Fatalf("candidates=%v", ask.CandidateKeys)
+	}
+	if len(ask.CandidateCards) == 0 || !strings.Contains(ask.CandidateCards[0], "copy|") {
+		t.Fatalf("candidate cards=%v", ask.CandidateCards)
 	}
 }
 

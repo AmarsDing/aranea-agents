@@ -35,43 +35,49 @@ func (b *AgentCapabilityBuilder) SetOrganizationReader(org biz.OrganizationReade
 
 // BuildAll builds AgentCapability for all active agents in the catalog.
 func (b *AgentCapabilityBuilder) BuildAll(ctx context.Context) ([]biz.AgentCapability, error) {
-	result, err := b.agentReader.SearchAgents(ctx, biz.AgentListQuery{
-		Status: "active",
-		Limit:  200,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	var capabilities []biz.AgentCapability
-	for _, ag := range result.Items {
-		// 2026-07-04 问题 3 修复：系统 Agent（精灵助手/系统管家/记忆管家/技能管家）
-		// 是基础设施级 Agent，不参与业务任务团队匹配，从源头过滤掉。
-		if biz.IsSystemAgentKey(ag.AgentKey) {
-			continue
+	for offset := 0; ; offset += 200 {
+		result, err := b.agentReader.SearchAgents(ctx, biz.AgentListQuery{
+			Status: "active",
+			Limit:  200,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, err
 		}
-		mission := ag.MissionStatement
-		if mission == "" {
-			mission = ag.AgentDescription // 不变量 2：存量 Agent Mission 回退 Description
+		for _, ag := range result.Items {
+			// 2026-07-04 问题 3 修复：系统 Agent（精灵助手/系统管家/记忆管家/技能管家）
+			// 是基础设施级 Agent，不参与业务任务团队匹配，从源头过滤掉。
+			if biz.IsSystemAgentKey(ag.AgentKey) {
+				continue
+			}
+			mission := ag.MissionStatement
+			if mission == "" {
+				mission = ag.AgentDescription // 不变量 2：存量 Agent Mission 回退 Description
+			}
+			cap := biz.AgentCapability{
+				AgentKey:     ag.AgentKey,
+				DisplayName:  ag.DisplayName,
+				Description:  ag.AgentDescription,
+				Mission:      mission,
+				DomainPath:   strings.TrimSpace(ag.DomainPath),
+				Roles:        ag.Roles,
+				Domains:      extractDomainsFromConfig(ag.ConfigJSON),
+				Tools:        extractToolNamesFromConfig(ag.ConfigJSON),
+				Skills:       extractSkillNamesFromConfig(ag.ConfigJSON),
+				Capacity:     extractCapacityFromConfig(ag.ConfigJSON),
+				PositionID:   ag.PositionID,
+				PositionKey:  ag.PositionKey,
+				AgentVariant: ag.AgentVariant,
+			}
+			capabilities = append(capabilities, cap)
 		}
-		cap := biz.AgentCapability{
-			AgentKey:     ag.AgentKey,
-			DisplayName:  ag.DisplayName,
-			Description:  ag.AgentDescription,
-			Mission:      mission,
-			DomainPath:   ag.DomainPath,
-			Roles:        ag.Roles,
-			Domains:      extractDomainsFromConfig(ag.ConfigJSON),
-			Tools:        extractToolNamesFromConfig(ag.ConfigJSON),
-			Skills:       extractSkillNamesFromConfig(ag.ConfigJSON),
-			Capacity:     extractCapacityFromConfig(ag.ConfigJSON),
-			PositionID:   ag.PositionID,
-			PositionKey:  ag.PositionKey,
-			AgentVariant: ag.AgentVariant,
+		if len(result.Items) < 200 {
+			break
 		}
-		capabilities = append(capabilities, cap)
 	}
 	b.fillOrgPlacement(ctx, capabilities)
+	b.inferMissingRosterFields(capabilities)
 	return capabilities, nil
 }
 
@@ -103,15 +109,28 @@ func (b *AgentCapabilityBuilder) fillOrgPlacement(ctx context.Context, caps []bi
 			caps[i].PositionKey = place.PositionKey
 		}
 		caps[i].DepartmentID = place.DepartmentID
+		caps[i].DepartmentKey = place.DepartmentKey
 		caps[i].DepartmentName = place.DepartmentName
 		caps[i].CompanyID = place.CompanyID
 		caps[i].CompanyName = place.CompanyName
 	}
 }
 
+func (b *AgentCapabilityBuilder) inferMissingRosterFields(caps []biz.AgentCapability) {
+	for i := range caps {
+		if strings.TrimSpace(caps[i].DomainPath) == "" {
+			caps[i].DomainPath = biz.InferDomainPath(caps[i].PositionKey, caps[i].DepartmentKey, caps[i].DisplayName)
+		}
+		if strings.TrimSpace(caps[i].Mission) == "" {
+			caps[i].Mission = biz.InferMissionStatement(caps[i].DisplayName, caps[i].Description)
+		}
+	}
+}
+
 type orgPlacement struct {
 	PositionKey    string
 	DepartmentID   string
+	DepartmentKey  string
 	DepartmentName string
 	CompanyID      string
 	CompanyName    string
@@ -161,6 +180,7 @@ func placementFromNode(nodes map[string]biz.OrganizationNode, positionID string)
 		p.PositionKey = n.Key
 		if dept, ok := nodes[n.ParentID]; ok && dept.Level == "department" {
 			p.DepartmentID = dept.ID
+			p.DepartmentKey = dept.Key
 			p.DepartmentName = dept.Name
 			if co, ok := nodes[dept.ParentID]; ok && co.Level == "company" {
 				p.CompanyID = co.ID
@@ -169,6 +189,7 @@ func placementFromNode(nodes map[string]biz.OrganizationNode, positionID string)
 		}
 	case "department":
 		p.DepartmentID = n.ID
+		p.DepartmentKey = n.Key
 		p.DepartmentName = n.Name
 		if co, ok := nodes[n.ParentID]; ok && co.Level == "company" {
 			p.CompanyID = co.ID

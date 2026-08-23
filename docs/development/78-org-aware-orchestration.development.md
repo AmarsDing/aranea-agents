@@ -15,10 +15,11 @@
 
 | 层级 | 路径 | 现状 |
 |------|------|------|
-| Allocator | `internal/agent/agent_allocator_impl.go` | L0–L3 + OrgPrune + 主管排除 + 同部门补员；L3 ≤15 |
-| 能力表 | `internal/agent/agent_capability_builder.go` | 填充岗位/部门/公司/variant；系统 Agent 仍过滤 |
+| Allocator | `internal/agent/agent_allocator_impl.go` | L0 → 花名册 → L1（需真实相似）+ OrgPrune；主管排除；L3 ≤15；BuildAll 分页不再卡 200 |
+| 能力表 | `internal/agent/agent_capability_builder.go` | 填充岗位/部门/公司/variant + 空 domain_path/mission 推断；系统 Agent 仍过滤 |
 | 能力 DTO | `internal/biz/agent_capability.go` | 已含组织字段 |
-| 域词表 | `internal/agent/domain_lexicon.go` | 有；部门映射见 `org_domain_map.go` |
+| 域词表 | `internal/agent/domain_lexicon.go` | 软件/运维/商务/医疗等二级域已扩；部门映射见 `org_domain_map.go` |
+| 花名册推断 | `internal/biz/org_roster.go` + `internal/data/seed_roster.go` | 按岗位/部门回填 `domain_path`/`mission`/`tools_profile`；启动 seed `data.seed.roster_identity` |
 | 配方缓存 | `internal/biz/spirit_orchestration_cache.go` | L0 已可用 |
 | 建团 | `internal/service/team_orchestrator_real.go` | 透传 DepartmentID + CrossDeptMemberAgentIDs |
 | 组装 | `internal/biz/spirit_assembly.go` | 有 DepartmentID 时主管加入/借调 |
@@ -129,7 +130,7 @@
 | ORGFAST-20 | 高置信路径主管 LLM = 0（默认已满足，加指标计数） | `metrics.OrgFastDeptLeadTotal` | L0/L1 记 `skipped_high_confidence` | ✅ |
 | ORGFAST-21 | `staffing`：剪枝无人过阈值时可选问主管一次，超时 fail-closed | `staffing.go` + allocator Phase B | 超时不创建 Agent；不二次全局分解 | ✅ |
 | ORGFAST-23 | 热路径关闭 Factory / 低分交差 | `agent_allocator_impl.go` | 默认 miss → error；`allowFactoryCreate` 才创建 | ✅ |
-| ORGFAST-24 | 专项花名册绑定 | `specialty_roster.go` | `domain_path` → primary+backup；dept_lead 不可选 | ✅ |
+| ORGFAST-24 | 专项花名册绑定 | `specialty_roster.go` | `domain_path` → primary+backup；按岗位 token 计分；dept_lead 不可选 | ✅ |
 | ORGFAST-25 | 配方按专题槽位回放 | planner + cache `Specialties` | 多 SubTask，不再压成单 st_recipe_replay | ✅ |
 | ORGFAST-26 | 评测：原话 → 专题 → 人 | `specialty_roster_eval_test.go` | 20 条；人在花名册；无 Factory | ✅ |
 | ORGFAST-27 | 多团队协作可解释（协议统一，非主管 Lead） | `collaboration.go` + progress `collaborating` | 2+ 槽位发出 sketch；Brief+精灵汇总 | ✅ |
@@ -155,7 +156,7 @@
 | ORGFAST-43 | 精灵粗路由只输出 playbook_id（重型） | planner prompt / 分类 | 不按行业常识拆到岗 | ✅ DECISION.md + `next_action=authorize_playbook` |
 | ORGFAST-44 | 三管道：上行心跳/例外事件；横向仍 Brief | delivery + progress | 上行 ≤2KB；无源码 | ✅ PlanExecutor 阶段开工/完成发 heartbeat，失败发 upward；非调度栅栏 |
 | ORGFAST-45 | 配方约束指纹 | orchestration cache | 指纹不合不复用 keys | ✅ planner 不合则丢 keys；Allocate 再滤领导 |
-| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | ✅ 只快照 `executing` 计划；resume 读回 playbook/阶段并写入续跑 prompt；`IssuedBriefIDs` 仍空 |
+| ORGFAST-46 | checkpoint 记 playbook/授权阶段/Brief | 对齐 M70 | 旧 checkpoint 缺省可恢复 | ✅ 只快照 `executing` 计划；resume 读回 playbook/阶段/`IssuedBriefIDs`（= 授权阶段 ID）并写入续跑 prompt |
 | ORGFAST-47 | 仲裁：部门→总经理，公司→精灵呈用户 | 门禁/事件 | 禁止总经理互怼循环 | 📋 |
 
 ### Phase 4b — 链路横切（P1，与 Phase 4 同批设计、可并行实施）

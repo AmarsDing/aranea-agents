@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
@@ -80,6 +81,10 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	reason := fmt.Sprintf("评估完成：%s任务", complexityLevelZh(level))
 	if forcePlanning {
 		reason = fmt.Sprintf("评估完成：%s任务，强制走规划路径", complexityLevelZh(level))
+	}
+	if biz.LooksLikeFactQuery(input.UserMessage) && !chatagent.HasOrgChainIntent(input.UserMessage) {
+		forcePlanning = false
+		reason = "评估完成：事实查询，不组队"
 	}
 
 	decision := GateDecision{
