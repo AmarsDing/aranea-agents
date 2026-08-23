@@ -6,7 +6,6 @@
     icon="bolt"
     :placeholder="t('knowledgePage.workbench.switcher.placeholder')"
     :query="query"
-    refract
     @close="close"
     @update:query="query = $event"
     @keydown="onKeydown"

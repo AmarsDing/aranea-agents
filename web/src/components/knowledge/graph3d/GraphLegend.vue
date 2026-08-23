@@ -1,7 +1,7 @@
 <template>
   <!-- M5 过滤图例：点击切换组隐藏；悬停透镜（临时 dim 其他组）。真折射玻璃（M1）。 -->
   <div class="kg3d-legend">
-    <GlassPanel strong refract :title="t('knowledgePage.graphLegendTitle')" icon="filter_list">
+    <GlassPanel strong :title="t('knowledgePage.graphLegendTitle')" icon="filter_list">
       <div
         v-for="g in groups"
         :key="g.docType"

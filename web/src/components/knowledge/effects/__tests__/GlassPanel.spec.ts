@@ -2,26 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GlassPanel from '../GlassPanel.vue';
 
-describe('GlassPanel（M1 refract）', () => {
-  it('默认不带 refract 修饰类', () => {
+describe('GlassPanel（SP3 标准玻璃）', () => {
+  it('渲染标题 + 图标 + 插槽', () => {
+    const w = mount(GlassPanel, {
+      props: { title: '反向链接', icon: 'link' },
+      slots: { default: '<p class="inner">body</p>' },
+      global: { stubs: { 'q-icon': { template: '<i />' } } },
+    });
+    expect(w.text()).toContain('反向链接');
+    expect(w.find('.inner').exists()).toBe(true);
+  });
+
+  it('strong 修饰类保留', () => {
+    const w = mount(GlassPanel, { props: { strong: true } });
+    expect(w.classes()).toContain('kb-glass--strong');
+  });
+
+  it('装饰层与特效修饰类已退役（无 sheen/highlight/glow/refract）', () => {
     const w = mount(GlassPanel, { props: { title: 'T' } });
+    expect(w.find('.kb-glass-panel__sheen').exists()).toBe(false);
+    expect(w.find('.kb-glass-panel__highlight').exists()).toBe(false);
     expect(w.classes()).not.toContain('kb-glass-panel--refract');
-  });
-
-  it('refract prop → kb-glass-panel--refract 类', () => {
-    const w = mount(GlassPanel, { props: { title: 'T', refract: true } });
-    expect(w.classes()).toContain('kb-glass-panel--refract');
-  });
-
-  it('内联 filter-def 已迁移到 LiquidGlassDefs（防重复 id 回归）', () => {
-    const w = mount(GlassPanel, { props: { title: 'T' } });
-    expect(w.find('.kb-glass-panel__filter-def').exists()).toBe(false);
-    expect(w.find('#kb-liquid-refract').exists()).toBe(false);
-  });
-
-  it('装饰层保留（sheen/highlight）', () => {
-    const w = mount(GlassPanel, { props: { title: 'T', refract: true } });
-    expect(w.find('.kb-glass-panel__sheen').exists()).toBe(true);
-    expect(w.find('.kb-glass-panel__highlight').exists()).toBe(true);
+    expect(w.classes()).not.toContain('kb-glass-panel--glow');
   });
 });

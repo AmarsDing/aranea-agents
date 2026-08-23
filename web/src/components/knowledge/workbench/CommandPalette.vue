@@ -10,7 +10,6 @@
         : t('knowledgePage.workbench.palette.placeholder')
     "
     :query="query"
-    refract
     @close="close"
     @update:query="query = $event"
     @keydown="onKeydown"

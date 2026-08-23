@@ -4,7 +4,6 @@
   <div class="kg3d-focus-card" :style="{ left: `${pos.x}px`, top: `${pos.y}px` }">
     <GlassPanel
       strong
-      refract
       :title="collapsed ? node.name : t('knowledgePage.graphFocusCardTitle')"
       icon="my_location"
     >
