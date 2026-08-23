@@ -33,13 +33,32 @@ func TestShouldAttachWorkingContract(t *testing.T) {
 			ag: biz.Agent{Settings: &biz.AgentRuntimeSettings{
 				ToolsEnabled: true, ToolsProfile: "spirit",
 			}},
-			want: true,
+			want: false,
 		},
 		{
 			name: "spirit agent key",
 			ag: biz.Agent{
 				AgentKey: biz.SpiritAgentKey,
-				Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "research"},
+				Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit"},
+			},
+			want: false,
+		},
+		{
+			name: "spirit empty profile does not inherit coding default",
+			ag: biz.Agent{
+				AgentKey: biz.SpiritAgentKey,
+				Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true},
+			},
+			want: false,
+		},
+		{
+			name: "spirit with computer_use extra",
+			ag: biz.Agent{
+				AgentKey: biz.SpiritAgentKey,
+				Settings: &biz.AgentRuntimeSettings{
+					ToolsEnabled: true, ToolsProfile: "spirit",
+					ToolsAllowJSON: `["computer_use_act"]`,
+				},
 			},
 			want: true,
 		},

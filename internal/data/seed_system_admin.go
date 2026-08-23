@@ -114,8 +114,10 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 		sort_order = excluded.sort_order,
 		updated_at = excluded.updated_at`
 	sortOrder := 0
+	keep := make([]string, 0, len(files))
 	for _, f := range files {
 		fileName := strings.TrimSuffix(f.name, ".md")
+		keep = append(keep, fileName)
 		id := "apf_spirit_" + fileName
 		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, fileName, f.body, sortOrder, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
@@ -123,7 +125,40 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 		}
 		sortOrder++
 	}
+	if err := deleteStaleSpiritPromptFiles(ctx, client, d, agentID, keep); err != nil {
+		return entErrToBizErr(err, "SEED")
+	}
 	return nil
+}
+
+// spiritPromptMarkdownAllow is the only prompt set mounted on __spirit__.
+// company_lead.md / dept_lead.md / orchestrator.md belong on their own agents;
+// seeding them here duplicated Graph rules and made the spirit look like a CEO.
+var spiritPromptMarkdownAllow = map[string]struct{}{
+	"IDENTITY.md":     {},
+	"CAPABILITIES.md": {},
+	"DECISION.md":     {},
+}
+
+func isSpiritPromptMarkdown(name string) bool {
+	_, ok := spiritPromptMarkdownAllow[name]
+	return ok
+}
+
+func deleteStaleSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, agentID string, keep []string) error {
+	if client == nil || len(keep) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(keep))
+	args := make([]any, 0, 1+len(keep))
+	args = append(args, agentID)
+	for i, name := range keep {
+		placeholders[i] = "?"
+		args = append(args, name)
+	}
+	q := `DELETE FROM agent_prompt_files WHERE agent_id = ? AND file_name NOT IN (` + strings.Join(placeholders, ",") + `)`
+	_, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), args...)
+	return err
 }
 
 type promptMDFile struct {
@@ -136,9 +171,9 @@ func loadSpiritPromptMarkdown(scenarioDir string, lg loggateway.Logger) ([]promp
 	promptDir := filepath.Join(scenarioDir, "system", "prompts")
 	entries, err := os.ReadDir(promptDir)
 	if err == nil {
-		out := make([]promptMDFile, 0, len(entries))
+		out := make([]promptMDFile, 0, len(spiritPromptMarkdownAllow))
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			if e.IsDir() || !isSpiritPromptMarkdown(e.Name()) {
 				continue
 			}
 			data, readErr := os.ReadFile(filepath.Join(promptDir, e.Name()))
@@ -160,10 +195,10 @@ func loadSpiritPromptMarkdown(scenarioDir string, lg loggateway.Logger) ([]promp
 	if listErr != nil {
 		return nil, listErr
 	}
-	out := make([]promptMDFile, 0, len(names))
+	out := make([]promptMDFile, 0, len(spiritPromptMarkdownAllow))
 	for _, name := range names {
-		if name == "dept_lead.md" {
-			continue // dept lead is seeded separately onto dept-lead agents
+		if !isSpiritPromptMarkdown(name) {
+			continue
 		}
 		body, readErr := systemprompts.ReadMarkdown(name)
 		if readErr != nil {

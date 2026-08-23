@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Aranea-Agents Windows 安装包自动构建脚本。
 

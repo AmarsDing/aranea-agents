@@ -41,7 +41,7 @@ type GearInput struct {
 }
 
 // ClassifyTaskGear decides light / medium / heavy. Early heavy wins over
-// medium; light only comes from the existing simple/clarify gate.
+// medium; light comes from the simple/clarify gate or a fact-query lookup.
 func ClassifyTaskGear(in GearInput) TaskGear {
 	if in.Current == GearHeavy {
 		return GearHeavy

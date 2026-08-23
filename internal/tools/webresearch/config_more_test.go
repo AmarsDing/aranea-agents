@@ -86,8 +86,8 @@ func TestConfigFromMap_defaults(t *testing.T) {
 	if cfg.MaxResults != 8 {
 		t.Fatalf("MaxResults = %d, want 8", cfg.MaxResults)
 	}
-	if cfg.FetchTop != 5 {
-		t.Fatalf("FetchTop = %d, want 5", cfg.FetchTop)
+	if cfg.FetchTop != 2 {
+		t.Fatalf("FetchTop = %d, want 2", cfg.FetchTop)
 	}
 	if cfg.SearchDepth != "basic" {
 		t.Fatalf("SearchDepth = %q", cfg.SearchDepth)

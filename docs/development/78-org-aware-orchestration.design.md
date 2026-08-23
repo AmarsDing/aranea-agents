@@ -739,7 +739,7 @@ sequenceDiagram
 | `gear` | light / medium / heavy |
 | `playbook_id` | 本次展开的剧本 |
 | `authorized_stage_ids` | 已授权、已开工阶段 |
-| `issued_brief_ids` | 已发出的横向 Brief |
+| `issued_brief_ids` | 已发出的横向 Brief（无独立 registry 时快照为 `authorized_stage_ids`，resume 跳过重发） |
 | `constraint_fingerprint` | 与配方指纹同一算法 |
 
 禁止因缺这些字段而拒绝 `Recover`。

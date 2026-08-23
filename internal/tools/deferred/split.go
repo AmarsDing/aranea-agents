@@ -20,7 +20,10 @@ var coreResidentToolsByProfile = map[string][]string{
 		// 不改 BUILD 缓存 key、不破坏闲聊前缀缓存。
 		"plan_and_execute",
 		"datetime", "memory_search", "memory_remember",
-		"web_research", "duckduckgo_search", "web_fetch",
+		// One web path is enough for fact lookup. duckduckgo_search / web_fetch
+		// stay in the deferred catalog (tool_load) so they do not sit in
+		// Request.Tools on every idle chat turn.
+		"web_research",
 	},
 	"coding": {
 		// 文件操作（最高频）

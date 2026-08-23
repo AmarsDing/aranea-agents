@@ -26,7 +26,7 @@ ShowUnInstDetails show
 InstallDir "$LOCALAPPDATA\AraneaAgents"
 RequestExecutionLevel user
 
-VIProductVersion "0.1.32.0"
+VIProductVersion "0.1.33.0"
 VIAddVersionKey "ProductName" "Aranea-Agents"
 VIAddVersionKey "CompanyName" "AmarsDing"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 AmarsDing"
@@ -202,32 +202,19 @@ Section "Uninstall"
 
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents"
 
-  Delete "$INSTDIR\aranea-server.exe"
-  Delete "$INSTDIR\AraneaLauncher.exe"
-  Delete "$INSTDIR\start.bat"
-  Delete "$INSTDIR\stop.bat"
-  Delete "$INSTDIR\README.md"
-  Delete "$INSTDIR\uninstall.exe"
-  Delete "$INSTDIR\configs\config.yaml"
-  Delete "$INSTDIR\configs\launcher-setup.json"
-  Delete "$INSTDIR\configs\pg.password"
-  RMDir "$INSTDIR\configs"
-
-  RMDir /r "$INSTDIR\frontend"
-  RMDir /r "$INSTDIR\redis"
-  RMDir /r "$INSTDIR\logs"
-
-  RMDir /r "$INSTDIR\postgres\bin"
-  RMDir /r "$INSTDIR\postgres\lib"
-  RMDir /r "$INSTDIR\postgres\share"
-
-  IfFileExists "$INSTDIR\postgres\data" 0 skip_data
-    MessageBox MB_YESNO|MB_ICONQUESTION "Delete database data? This cannot be undone." IDNO skip_data
-    RMDir /r "$INSTDIR\postgres\data"
-  skip_data:
-
-  RMDir "$INSTDIR\postgres"
-  RMDir "$INSTDIR"
+  ; Wipe the whole install dir - itemized delete lists always drift out of sync
+  ; with the payload (2026-08-23: internal/, data/, start-silent.vbs survived).
+  ; Only postgres\data may be kept, via a sibling move (Rename is same-volume).
+  IfFileExists "$INSTDIR\postgres\data" 0 wipe_all
+    MessageBox MB_YESNO|MB_ICONQUESTION "Delete database data? This cannot be undone." IDYES wipe_all
+    Rename "$INSTDIR\postgres\data" "$INSTDIR-pgdata-keep"
+    RMDir /r "$INSTDIR"
+    CreateDirectory "$INSTDIR\postgres"
+    Rename "$INSTDIR-pgdata-keep" "$INSTDIR\postgres\data"
+    Goto uninstall_done
+  wipe_all:
+    RMDir /r "$INSTDIR"
+  uninstall_done:
 
   SetAutoClose True
 SectionEnd

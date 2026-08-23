@@ -142,7 +142,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 |----------|------|------|------|------|------|
 | `datetime` | 当前时间 | system | low | 启用 | 返回当前时间、日期和时区信息 |
 | `web_research` | Web 研究 | web | medium | 启用 | Tavily / SerpAPI 统一搜索；密钥见系统设置 → Web 研究 |
-| `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 停用 | HTML 网页搜索（无需密钥）；catalog 默认停用，Spirit 经 opt-in 挂载，用于天气/新闻 |
+| `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 停用 | HTML 网页搜索（无需密钥）；catalog 默认停用，Spirit 有效面包含但闲聊不常驻，按需 `tool_load` |
 | `web_fetch` | Web 抓取 | web | medium | 启用 | 抓取 URL 并提取页面文本 |
 | `gemini_web_fetch` | Gemini 抓取 | web | medium | 启用 | 在 `prompt` 中写入 URL 与处理说明；兼容别名 `url` |
 | `google_search` | Google 搜索 | web | medium | 启用 | 使用 Google Custom Search API |

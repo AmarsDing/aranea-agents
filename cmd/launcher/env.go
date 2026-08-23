@@ -350,8 +350,10 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 		backendHealthy = healthy()
 		if backendHealthy {
 			env.add("Port 8800", checkInfo, "backend already running and healthy", false)
+		} else if probeBackendOccupant() == occupantOurs {
+			env.add("Port 8800", checkInfo, "backend starting; launcher will wait for readiness", false)
 		} else {
-			env.add("Port 8800", checkWarn, "in use but /healthz not ready; launcher will try to take over", false)
+			env.add("Port 8800", checkWarn, "in use by foreign service (not Aranea); launcher will refuse to start", false)
 		}
 	} else {
 		env.add("Port 8800", checkOK, "available", false)

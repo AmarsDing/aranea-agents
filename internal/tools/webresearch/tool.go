@@ -12,7 +12,9 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-const maxContentBytesPerSource = 12000
+// maxContentBytesPerSource caps each fetched page. 12KB × default FetchTop
+// used to dump tens of KB into the same-turn tool loop (the 250k spike).
+const maxContentBytesPerSource = 2400
 
 // researchInput is the LLM-facing schema for web_research.
 type researchInput struct {

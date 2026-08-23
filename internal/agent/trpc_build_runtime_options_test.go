@@ -37,3 +37,12 @@ func TestBuildTRPCRuntimeOptions_SessionSummaryDisabledNoInjectionMode(t *testin
 	require.False(t, probe.AddSessionSummary)
 	require.Empty(t, probe.SessionSummaryInjectionMode)
 }
+
+func TestOversizedToolResultMaxTokens(t *testing.T) {
+	if got := oversizedToolResultMaxTokens("coding"); got != 8192 {
+		t.Fatalf("coding = %d", got)
+	}
+	if got := oversizedToolResultMaxTokens("spirit"); got != 2048 {
+		t.Fatalf("spirit = %d", got)
+	}
+}

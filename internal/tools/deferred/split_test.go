@@ -13,19 +13,19 @@ func TestSplitCoreResidentTools_SpiritProfile(t *testing.T) {
 		"shell_exec", "datetime",
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
 		"computer_use_launch", "computer_use_session",
-		"web_fetch", "read_file", "save_file",
+		"web_research", "duckduckgo_search", "web_fetch", "read_file", "save_file",
 	}
 	core, def := SplitCoreResidentTools(enabled, "spirit")
 
 	assertContainsAll(t, core, []string{
-		"plan_and_execute", "datetime", "memory_search", "web_fetch",
+		"plan_and_execute", "datetime", "memory_search", "web_research",
 	})
 	assertNotContainsAny(t, core, []string{
 		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
-		"build_orchestration_graph",
+		"build_orchestration_graph", "web_fetch", "duckduckgo_search",
 	})
 	assertContainsAll(t, def, []string{
-		"read_file", "save_file",
+		"read_file", "save_file", "web_fetch", "duckduckgo_search",
 		"build_orchestration_graph",
 		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",

@@ -122,7 +122,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			explicitKeys := normalizeExplicitAgentKeys(input.AgentKeys)
 			if shouldRejectFactQueryPlan(taskPrompt, mode, input.ForceNew, explicitKeys) {
 				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit,
-					"fact query: answer with datetime / duckduckgo_search / web_research; do not call plan_and_execute")
+					"fact query: answer with datetime / web_research; do not call plan_and_execute")
 			}
 			// Explicit agent routing implies delegation; direct mode skips the
 			// allocation phase entirely, so the keys would be silently ignored.

@@ -29,7 +29,7 @@ const (
 	ProviderSerpAPI = "serpapi"
 
 	defaultMaxResults = 8
-	defaultFetchTop   = 5
+	defaultFetchTop   = 2
 	defaultTimeoutSec = 15
 
 	maxSearchResponseBytes = 4 << 20 // 4 MB

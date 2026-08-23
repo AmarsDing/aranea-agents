@@ -58,7 +58,7 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 | Biz 编排 ChatUsecase | ✅ | `NewChatUsecaseFromDeps` 接入 ChatOrchestrator |
 | WebSocket 网关 | ✅ | `ws.go`，双 bus + 三优先级队列 |
 | 认证中间件 | ✅ | JWT + Workspace + Webhook 路径安全（EP-SEC-03） |
-| PendingMessageQueue 下沉 | ✅ | `internal/runtime/pending_queue.go`（`chat_pending.go` 已删除） |
+| PendingMessageQueue 下沉 | ✅ | `internal/runtime/pending_queue.go` + `pending_queue_entries`（DDL 20261240；启动回放优先于 JSON 快照） |
 | 出站 Webhook | ✅ | `GatewayService` + `WebhookDispatcher` + 终态触发，含 `graph.task.status` |
 | API 版本管理策略 | ❌ | 无文档 |
 | API 文档自动生成 | ❌ | 无 Swagger |

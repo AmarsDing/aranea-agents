@@ -51,9 +51,11 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L0SummaryThreshold:   0.6,
 		L0SummaryKeepTurns:   4,
 		L0CompressMinGapSec:  600,
-		L0TruncateStrategy:   "summary",
-		L0InjectL1:           true,
-		L0InjectL3:           true,
+		// hybrid: compress LLM sees user/assistant only — tool dumps stay out
+		// of the rolling summary (drop_tool_results + keep recent turns).
+		L0TruncateStrategy: "hybrid",
+		L0InjectL1:         true,
+		L0InjectL3:         true,
 		// 单机默认不预灌 L4：图路径按需工具取，避免每轮打图谱。
 		// 存量行显式 true 不受影响——defaultBool 只兜底零值。
 		L0InjectL4:        false,

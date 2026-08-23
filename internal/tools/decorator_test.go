@@ -42,6 +42,34 @@ func (m *decoratorMockTool) Call(ctx context.Context, jsonArgs []byte) (any, err
 	return m.call(ctx, jsonArgs)
 }
 
+func TestToolDecorator_DeclarationStripsOutputSchema(t *testing.T) {
+	wrapped := NewToolDecorator(&fatSchemaTool{name: "fat_tool"}, ToolDecoratorConfig{Logger: loggateway.NewNoop()})
+	d := wrapped.Declaration()
+	if d == nil || d.OutputSchema != nil {
+		t.Fatalf("OutputSchema must be stripped for the model: %+v", d)
+	}
+	if d.Name != "fat_tool" {
+		t.Fatalf("name = %q", d.Name)
+	}
+}
+
+type fatSchemaTool struct{ name string }
+
+func (m *fatSchemaTool) Declaration() *trpctool.Declaration {
+	return &trpctool.Declaration{
+		Name:        m.name,
+		Description: "returns a large payload",
+		OutputSchema: &trpctool.Schema{
+			Type: "object",
+			Properties: map[string]*trpctool.Schema{
+				"sources": {Type: "array", Items: &trpctool.Schema{Type: "object"}},
+			},
+		},
+	}
+}
+
+func (m *fatSchemaTool) Call(context.Context, []byte) (any, error) { return nil, nil }
+
 // TestToolDecorator_ExposesOriginal guards the Original() unwrapping
 // convention: framework StateDelta discovery (and toolpipe's framework-tool
 // heuristics) recursively unwrap via Original(). The decorator must expose
@@ -879,8 +907,15 @@ func TestBudgetOverrideForTool_NonBrowserTool(t *testing.T) {
 	if got := budgetOverrideForTool("file_read"); got != nil {
 		t.Fatalf("expected nil for non-browser tool, got %+v", got)
 	}
-	if got := budgetOverrideForTool("web_fetch"); got != nil {
-		t.Fatalf("expected nil for web_fetch, got %+v", got)
+}
+
+func TestBudgetOverrideForTool_WebResearch(t *testing.T) {
+	b := budgetOverrideForTool("web_research")
+	if b == nil || b.MaxBytes != 4*1024 {
+		t.Fatalf("web_research budget = %+v", b)
+	}
+	if got := budgetOverrideForTool("web_fetch"); got == nil || got.MaxBytes != 4*1024 {
+		t.Fatalf("web_fetch budget = %+v", got)
 	}
 }
 

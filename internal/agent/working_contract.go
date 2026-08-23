@@ -33,19 +33,20 @@ var workingContractWriteSignals = map[string]bool{
 
 // ShouldAttachWorkingContract reports whether the Codex-style working
 // contract belongs on this agent's system prompt. It is limited to the
-// coding profile, spirit coding bridge, full kitchen-sink profile, and
-// explicit coding / computer-use allow extras — not finance or CS
-// specialists on read_only / research / chat_only.
+// coding profile, full kitchen-sink profile, and explicit coding /
+// computer-use allow extras — not the spirit orchestrator (no file/shell
+// tools on the idle face) and not finance or CS specialists on
+// read_only / research / chat_only.
 func ShouldAttachWorkingContract(ag biz.Agent) bool {
 	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
 		return false
 	}
-	if strings.TrimSpace(ag.AgentKey) == biz.SpiritAgentKey {
-		return true
-	}
-	switch normalizeAgentToolProfile(ag.Settings.ToolsProfile) {
-	case "coding", "spirit", "full":
-		return true
+	// Spirit's empty/missing profile must not inherit the coding default.
+	if strings.TrimSpace(ag.AgentKey) != biz.SpiritAgentKey {
+		switch normalizeAgentToolProfile(ag.Settings.ToolsProfile) {
+		case "coding", "full":
+			return true
+		}
 	}
 	for _, k := range agentAllowKeys(ag) {
 		if workingContractWriteSignals[k] {

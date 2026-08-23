@@ -167,7 +167,8 @@ Aranea 在 `trpc_build.go` 中启用：
 
 - `WithSkills(repo)` + `WithSkillFilter`（Layer A/B 可见性）
 - **`complete` 模式**：默认 `SkillToolProfileFull`；`tools_profile` 为 `spirit` / `chat_only` 时强制 `SkillToolProfileKnowledgeOnly` 且 `WithAllowedSkillTools(skill_load)`（编排者不常驻 `skill_exec` / `skill_run` / stdin+poll，也不常驻 `skill_select_docs` / `skill_list_docs`）
-- **spirit 闲聊 tools 块**：常驻 `plan_and_execute` / `datetime` / `memory_search` / `memory_remember` / `web_research` / `duckduckgo_search` / `web_fetch` / `skill_load` / `tool_load`；其余已映射工具（含 `working_memory_*`、记忆写、编排收口、会话考古）走 deferred + `tool_load`
+- **spirit 闲聊 tools 块**：常驻 `plan_and_execute` / `datetime` / `memory_search` / `memory_remember` / `web_research` / `skill_load` / `tool_load` / `compact`；`duckduckgo_search` / `web_fetch` 与其余已映射工具（含 `working_memory_*`、记忆写、编排收口、会话考古）走 deferred + `tool_load`。每个 declaration 经 `GovernToolDeclaration` 剥掉 `OutputSchema`（OpenAI/DeepSeek 会把输出 JSON 拼进 description）
+- **spirit 系统头**：只挂 `IDENTITY.md` / `CAPABILITIES.md` / `DECISION.md`。`company_lead.md` / `orchestrator.md` / `dept_lead.md` 挂在对应管家，不再灌进 `__spirit__`。Spirit 默认不注入 coding `working_contract`（没有文件/shell 常驻面）
 - **`task` / `minimized` / `none`**：`SkillToolProfileKnowledgeOnly` + 目录提示关闭
 - `SkillLoadMode`：`once` / `turn`（默认）/ `session`
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -147,6 +148,25 @@ func mcpDeclarationChars(d *trpctool.Declaration) int {
 		return 0
 	}
 	return len(raw)
+}
+
+// GovernToolDeclaration returns a copy safe to send to the model.
+// OutputSchema is always stripped: OpenAI/DeepSeek converters append it to
+// the tool description, which is unused for argument construction and was
+// the main reason 9 resident tools cost ~3.1k tokens.
+func GovernToolDeclaration(d *trpctool.Declaration) *trpctool.Declaration {
+	if d == nil {
+		return nil
+	}
+	out := *d
+	out.OutputSchema = nil
+	if utf8.RuneCountInString(out.Description) > mcpToolDescriptionMaxRunes {
+		out.Description = strutil.TruncateRunesEllipsis(d.Description, mcpToolDescriptionMaxRunes)
+	}
+	if mcpDeclarationChars(&out) > mcpToolDeclSoftCapChars {
+		out.InputSchema = governMCPSchemaNode(d.InputSchema)
+	}
+	return &out
 }
 
 // governMCPToolDeclaration 返回治理后的 declaration。未超软上限时原样

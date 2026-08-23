@@ -124,6 +124,11 @@ var builtinResultBudgetOverrides = map[string]*ResultBudget{
 	// override must exceed that so the decorator never corrupts the tool's
 	// own truncation contract. Defensive only — it should never fire.
 	"read_upstream_deliverable": {MaxBytes: 620 * 1024, Mode: "tail"},
+	// Search / fetch pages are for answering, not for stuffing the next model
+	// call. 4KB keeps titles + the start of excerpts; "tail" mode keeps the head.
+	"web_research":      {MaxBytes: 4 * 1024, Mode: "tail"},
+	"duckduckgo_search": {MaxBytes: 4 * 1024, Mode: "tail"},
+	"web_fetch":         {MaxBytes: 4 * 1024, Mode: "tail"},
 }
 
 // budgetOverrideForTool returns the custom result budget for a tool based on
@@ -178,10 +183,12 @@ type ToolDecoratorConfig struct {
 // reached, the entire cache is cleared (crude but prevents unbounded
 // memory growth from varying arguments on cacheable read-only tools).
 type ToolDecorator struct {
-	inner   trpctool.CallableTool
-	cfg     ToolDecoratorConfig
-	cache   map[string]cacheEntry
-	cacheMu sync.RWMutex
+	inner        trpctool.CallableTool
+	cfg          ToolDecoratorConfig
+	cache        map[string]cacheEntry
+	cacheMu      sync.RWMutex
+	governedOnce sync.Once
+	governedDecl *trpctool.Declaration
 }
 
 type cacheEntry struct {
@@ -417,12 +424,16 @@ func estimateChunkBytes(chunk trpctool.StreamChunk) int {
 	return 0
 }
 
-// Declaration returns the inner tool's declaration unchanged.
+// Declaration returns a governed copy: OutputSchema stripped, long
+// descriptions capped. The inner declaration is never mutated.
 func (d *ToolDecorator) Declaration() *trpctool.Declaration {
 	if d == nil || d.inner == nil {
 		return nil
 	}
-	return d.inner.Declaration()
+	d.governedOnce.Do(func() {
+		d.governedDecl = GovernToolDeclaration(d.inner.Declaration())
+	})
+	return d.governedDecl
 }
 
 // Original exposes the wrapped tool via the framework's Original()

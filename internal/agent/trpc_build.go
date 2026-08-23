@@ -540,7 +540,7 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 		// to prevent large command outputs from overflowing the LLM context window.
 		// Uses the framework's recommended 8192-token threshold, which preserves
 		// head+tail of the output so the model can see both structure and results.
-		opts = append(opts, trpcllmagent.WithContextCompactionOversizedToolResultMaxTokens(8192))
+		opts = append(opts, trpcllmagent.WithContextCompactionOversizedToolResultMaxTokens(oversizedToolResultMaxTokens(s.ToolsProfile)))
 
 		// Use tiktoken-based counter for precise token estimation when
 		// context compaction is enabled. Falls back to SimpleTokenCounter
@@ -768,4 +768,16 @@ func hasToolByName(tools []trpctool.Tool, name string) bool {
 		}
 	}
 	return false
+}
+
+// oversizedToolResultMaxTokens caps a single tool result inside an in-flight
+// request. Spirit/chat turns should not keep 8k page dumps across the tool
+// loop; coding keeps the larger window for file reads.
+func oversizedToolResultMaxTokens(profile string) int {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "coding", "full":
+		return 8192
+	default:
+		return 2048
+	}
 }

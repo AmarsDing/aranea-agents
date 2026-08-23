@@ -221,6 +221,22 @@ func startStack(root string, ui *statusConsole, log func(string, ...any), headle
 		return nil
 	}
 
+	// :8800 occupied but fast-path did not trigger — classify the occupant.
+	switch probeBackendOccupant() {
+	case occupantOurs:
+		// A previous launcher's backend is still booting (or failed). Waiting
+		// beats spawning a duplicate that would die on bind conflict.
+		log("backend already starting on :8800; waiting for readiness")
+		if err := waitHealthy(log); err != nil {
+			return err
+		}
+		applyPendingLLMBootstrap(root, ui, log)
+		return nil
+	case occupantForeign:
+		log("port 8800 held by foreign service; refusing to start")
+		return fmt.Errorf("端口 8800 被其他程序占用（非 Aranea 后端），请关闭后重试。查看占用：netstat -ano | findstr :8800")
+	}
+
 	env := detectRuntime(root, log)
 	if ui != nil {
 		ui.Println(env.reportText())
@@ -397,6 +413,13 @@ func waitHealthy(log func(string, ...any)) error {
 	return fmt.Errorf("healthz not ready within %ds", backendWaitSec)
 }
 
+// healthMarker identifies OUR backend: the /healthz 200 body carries ws_path
+// (pkg/auth.HealthAuth). A bare 200 is NOT enough — a foreign service on :8800
+// must never trigger the fast-path (2026-08-23 incident: phantom 200 made the
+// launcher skip backend bring-up; the desktop app then showed "backend not
+// started").
+const healthMarker = `"ws_path"`
+
 func healthy() bool {
 	ok, _ := healthStatus()
 	return ok
@@ -410,7 +433,43 @@ func healthStatus() (ok bool, body string) {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-	return resp.StatusCode == http.StatusOK, strings.TrimSpace(string(b))
+	body = strings.TrimSpace(string(b))
+	return parseHealthOK(resp.StatusCode, body), body
+}
+
+func parseHealthOK(status int, body string) bool {
+	return status == http.StatusOK && strings.Contains(body, healthMarker)
+}
+
+// looksLikeOurs reports whether a /healthz body is our backend's non-ready
+// payload (starting/failed states always carry auth_mode).
+func looksLikeOurs(body string) bool {
+	return strings.Contains(body, `"auth_mode"`)
+}
+
+type backendOccupant int
+
+const (
+	occupantNone    backendOccupant = iota // port free
+	occupantOurs                           // our backend, still starting or failed
+	occupantForeign                        // something else holds :8800
+)
+
+func probeBackendOccupant() backendOccupant {
+	if !tcpOpen("127.0.0.1", "8800", 300*time.Millisecond) {
+		return occupantNone
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(healthURL)
+	if err != nil {
+		return occupantForeign // TCP open but not answering HTTP /healthz
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	if looksLikeOurs(string(b)) || parseHealthOK(resp.StatusCode, string(b)) {
+		return occupantOurs
+	}
+	return occupantForeign
 }
 
 func trimHealthBody(s string) string {

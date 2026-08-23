@@ -448,3 +448,23 @@ func TestAssembleMCPTools_OverBudgetWithoutBrokerKeepsTruncatedDirect(t *testing
 		t.Fatalf("no broker available: truncated direct toolset must be kept, got %d", len(ac.out.ToolSets))
 	}
 }
+
+func TestGovernToolDeclaration_AlwaysStripsOutputSchema(t *testing.T) {
+	d := &trpctool.Declaration{
+		Name:        "memory_search",
+		Description: "short",
+		OutputSchema: &trpctool.Schema{
+			Type: "object",
+			Properties: map[string]*trpctool.Schema{
+				"results": {Type: "array"},
+			},
+		},
+	}
+	got := GovernToolDeclaration(d)
+	if got.OutputSchema != nil {
+		t.Fatal("OutputSchema must be nil")
+	}
+	if d.OutputSchema == nil {
+		t.Fatal("input must not be mutated")
+	}
+}
