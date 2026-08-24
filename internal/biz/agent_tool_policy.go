@@ -23,7 +23,7 @@ var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_fi
 var toolGroupsWeb = []string{ToolKeyWebResearch, "web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
-var toolGroupsMedia = []string{"read_image", "read_document", "read_spreadsheet", "create_image", "tts"}
+var toolGroupsMedia = []string{"read_document", "read_spreadsheet", "create_image", "tts"}
 var toolGroupsRuntime = []string{"shell_exec", "claude_code"}
 var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
@@ -207,6 +207,14 @@ var registryOptInOnlyKeys = map[string]bool{
 	"gns3_exec":               true,
 	"gns3_fault_inject":       true,
 	"gns3_fault_clear":        true,
+	// officecli_* 有完整工具实现（internal/tools/officecli），种子 enabled=false
+	//（依赖 OfficeCLI 二进制环境配置）。入表使其成为 opt-in-only：agent allow
+	// JSON 显式命名即可启用，不入表则被 applyRegistryAdminDenials 全员硬 deny、
+	// 永远不可装配（2026-08-24 审计 P5）。read_image 无 factory 实现，已从
+	// toolGroupsMedia/种子/存量库清除，不在此列。
+	"officecli_read":   true,
+	"officecli_write":  true,
+	"officecli_render": true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {

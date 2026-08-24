@@ -31,12 +31,19 @@ func newRecordingAutoTitler() *recordingAutoTitler {
 func (r *recordingAutoTitler) AutoTitleFromUserMessage(_ context.Context, sessionID, content string) error {
 	r.mu.Lock()
 	r.calls = append(r.calls, autoTitleCall{sessionID: sessionID, content: content})
+	err := r.err
 	r.mu.Unlock()
 	select {
 	case r.signal <- struct{}{}:
 	default:
 	}
-	return r.err
+	return err
+}
+
+func (r *recordingAutoTitler) setErr(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.err = err
 }
 
 func (r *recordingAutoTitler) count() int {
@@ -103,7 +110,7 @@ func TestSessionAutoTitleSubscriber_FiltersIrrelevantEvents(t *testing.T) {
 func TestSessionAutoTitleSubscriber_ErrorDoesNotStopLoop(t *testing.T) {
 	bus := event.NewV2Bus()
 	titler := newRecordingAutoTitler()
-	titler.err = errors.New("db down")
+	titler.setErr(errors.New("db down"))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startSessionAutoTitleSubscriber(ctx, bus, titler, loggateway.NewNoop())
@@ -115,7 +122,7 @@ func TestSessionAutoTitleSubscriber_ErrorDoesNotStopLoop(t *testing.T) {
 		t.Fatal("first event not processed")
 	}
 
-	titler.err = nil
+	titler.setErr(nil)
 	bus.Publish(ctx, biz.NewTaskCreatedEvent(biz.Task{ID: "task-2", SessionID: "sess-2", UserMessage: "second"}))
 	select {
 	case <-titler.signal:

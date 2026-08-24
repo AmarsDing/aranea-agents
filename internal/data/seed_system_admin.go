@@ -32,7 +32,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, d Dialect, lg
 		'active', FALSE, FALSE, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
 		'', 'complete', 0, 0, '{"tools":{"profile":"system_admin"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
-		'system_admin', ''
+		'', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
 		agent_description = excluded.agent_description,
@@ -69,7 +69,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		'active', TRUE, FALSE, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools":{"profile":"spirit"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
-		'spirit', ''
+		'', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
 		is_default = excluded.is_default,
@@ -226,7 +226,7 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		'active', FALSE, FALSE, '', '基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏',
 		'', 'complete', 0, 0, '{"tools":{"profile":"system_memory"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
-		'memory', ''
+		'', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
 		agent_description = excluded.agent_description,
@@ -263,7 +263,7 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		'active', FALSE, FALSE, '', '基于使用数据的技能进化/消亡决策、工具权重优化、编排分析',
 		'', 'complete', 0, 0, '{"tools":{"profile":"system_skills"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
-		'skills', ''
+		'', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
 		agent_description = excluded.agent_description,
@@ -304,7 +304,7 @@ func SeedVoiceButlerAgent(ctx context.Context, client *ent.Client, d Dialect, lg
 		'active', FALSE, FALSE, '', '系统内置语音前台助手，语音模式对话入口：快答闲聊、复杂任务委派精灵助手后台执行、完成结果实时播报。',
 		'', 'complete', 0, 0, '{"tools":{"profile":"chat_only"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
-		'voice_butler', ''
+		'', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
 		agent_description = excluded.agent_description,
@@ -603,20 +603,20 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 			'active', FALSE, FALSE, '', ?,
 			'', 'complete', 0, 0, '{"tools":{"profile":"dept_lead"},"memory_enabled":true}', '[]', 'system',
 			?, ?, '', TRUE, 'system_builtin', 'system',
-			?, 'dept_lead'
-		) ON CONFLICT(agent_key) DO UPDATE SET
-			status = excluded.status,
-			agent_description = excluded.agent_description,
-			system_prompt_mode = excluded.system_prompt_mode,
-			config_json = excluded.config_json,
-			deleted_at = excluded.deleted_at,
-			readonly = excluded.readonly,
-			kind = excluded.kind,
-			source = excluded.source,
-			position_key = excluded.position_key,
-			agent_variant = excluded.agent_variant,
-			updated_at = excluded.updated_at`
-		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, now, now, key+"_dept_lead"); err != nil {
+		?, 'dept_lead'
+	) ON CONFLICT(agent_key) DO UPDATE SET
+		status = excluded.status,
+		agent_description = excluded.agent_description,
+		system_prompt_mode = excluded.system_prompt_mode,
+		config_json = excluded.config_json,
+		deleted_at = excluded.deleted_at,
+		readonly = excluded.readonly,
+		kind = excluded.kind,
+		source = excluded.source,
+		position_key = excluded.position_key,
+		agent_variant = excluded.agent_variant,
+		updated_at = excluded.updated_at`
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, now, now, ""); err != nil {
 			lg.Warn("seed step failed: create dept lead agent",
 				loggateway.StepID("data.seed.dept_lead_agents"),
 				loggateway.Str("dept_key", key),

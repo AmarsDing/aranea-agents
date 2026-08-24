@@ -142,6 +142,12 @@ type ActivityConfirmParams struct {
 	ToolName      string
 	ToolArguments string
 	Content       string
+	// ToolCallID identifies the specific LLM tool call being confirmed. Stored
+	// on the step so ConfirmActivity can route the decision to the tool-scoped
+	// await channel when multiple tool confirmations run in parallel (BUG-02,
+	// chat-e2e-20260823 — previously empty, so parallel confirms all collapsed
+	// onto the session-level slot).
+	ToolCallID string
 	// AuthorAgentKey overrides the step attribution when the confirmation
 	// originates from an agent other than the projector's base meta agent —
 	// e.g. a team member agent's tool call in graph mode (the projector meta

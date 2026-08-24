@@ -434,6 +434,11 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20261239, Name: "session_turn_cached_input", SQL: "sql/migrations/20261239_session_turn_cached_input.sql"},
 	// 20261240 pending_queue_entries: 追问队列落库，启动回放优先于 JSON 快照。
 	{Version: 20261240, Name: "pending_queue_entries", SQL: "sql/migrations/20261240_pending_queue_entries.sql"},
+	// 20261241 remove_read_image_tool（2026-08-24 agent 配置全面审计 P5）：read_image
+	// 无任何 factory/装配实现，enabled=false 且非 opt-in → 全员硬 deny，目录行「撒谎」。
+	// 种子行与 toolGroupsMedia 引用已删；存量库行需显式 DELETE（同 20261237 先例）。
+	// 幂等，重跑安全。
+	{Version: 20261241, Name: "remove_read_image_tool", SQL: "sql/migrations/20261241_remove_read_image_tool.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

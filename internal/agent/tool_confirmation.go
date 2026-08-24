@@ -105,6 +105,10 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				ToolName:      toolKey,
 				ToolArguments: string(args.Arguments),
 				Content:       confirmContent,
+				// Route the step to this exact tool call's await channel so
+				// parallel confirmations no longer share one session-level
+				// slot (BUG-02, chat-e2e-20260823).
+				ToolCallID: args.ToolCallID,
 				// 75 A5: computer-use danger-word hits surface a 高危 badge on
 				// the confirm card.
 				Danger: decision.reason == confirmReasonPolicyDanger || decision.reason == confirmReasonShellDanger,

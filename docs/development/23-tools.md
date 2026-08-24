@@ -124,7 +124,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `search` | 同 web 分类搜索工具 | 低中风险 |
 | `memory` | `memory_search`、`memory_get`、`working_memory.*` | 低中风险 |
 | `skill` | `skill_search`、`use_skill` | 低中风险 |
-| `media` | `read_image`、`read_document`、`create_image`、`tts`、`read_spreadsheet` | 成本与隐私风险 |
+| `media` | `read_document`、`create_image`、`tts`、`read_spreadsheet` | 成本与隐私风险 |
 | `session` | `await_user_reply` | 低风险 |
 | `runtime` | `shell_exec`、`claude_code`、`workspace_exec` | 高风险 |
 | `messaging` | `send_email` | 高风险 |
@@ -163,7 +163,6 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `use_skill` | 使用 Skill | skill | low | 启用 | 标记本次运行使用某个 Skill |
 | `memory_search` | Memory 搜索 | memory | low | 启用 | 搜索 Agent 长期记忆 |
 | `memory_get` | Memory 读取 | memory | low | 启用 | 读取指定 memory 内容 |
-| `read_image` | 图片理解 | media | medium | 停用 | 分析图片内容 |
 | `read_document` | 文档理解 | media | medium | 启用 | 分析 PDF、Office、CSV 等文档 |
 | `read_spreadsheet` | 表格读取 | media | medium | 启用 | 读取 XLSX、CSV 等表格文件 |
 | `create_image` | 图片生成 | media | medium | 停用 | 根据文本提示生成图片 |

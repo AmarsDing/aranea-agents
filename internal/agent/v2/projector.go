@@ -358,6 +358,10 @@ func (p *ActivityProjector) EmitConfirmRequest(ctx context.Context, params biz.A
 		step.ToolArgs = sanitizeRawJSON([]byte(params.ToolArguments))
 		step.Content = params.Content
 		step.Danger = params.Danger
+		// Stored so ConfirmActivity routes the decision to this specific
+		// tool call's await channel when parallel confirmations are in
+		// flight (BUG-02, chat-e2e-20260823).
+		step.ToolCallID = params.ToolCallID
 		step.Status = biz.StepStatusToolBlocked
 		// Team mode: attribute the confirm step to the member agent that
 		// triggered it (hook passes its own agent key); otherwise the step

@@ -67,3 +67,33 @@ Spirit 收到"分三步、每步一个子代理"任务后发起 3 个 `subagents
 ## 五、结论
 
 会话模块**能完成指定任务**：基础问答、多轮上下文、工具调用、结构化输出、子代理委派、三专家团队编排、停止/排队/状态控制、会话管理、UI 流式渲染全链路验证通过。唯一功能缺陷是 **BUG-01 自动标题不触发**（根因明确、修复点明确）；**BUG-02 并发确认竞态**影响自动化批量审批场景，真实 UI 串行点击不触发。两项 P2 修复方案均已整理，待你决策后实施。
+
+## 六、P2 修复验证（2026-08-23 22:55–23:00 复测，已闭环）
+
+按 [01-fix-plan-p2-bugs.md](file:///f:/myproject/aranea-agents/docs/testing/chat-e2e-20260823/01-fix-plan-p2-bugs.md) 完成修复 + 集成回归，两项均 PASS。
+
+### BUG-01 自动标题 — PASS
+- 修复要点：`AutoTitleFromUserMessage` 导出 + 新增 `task.created` 订阅器（[session_auto_title_subscriber.go](file:///f:/myproject/aranea-agents/internal/service/session_auto_title_subscriber.go)）+ wire 装配启动。
+- 单测：4 个 subscriber 测试 + title.go 原有测试，全部 `go test -race` 通过。
+- 集成（`verify-basic05.log`）：
+  - HTTP 变体：4.4s 后 title => **HTTP协议三大特点简明总结**（changed=True）
+  - WS 变体：turn running 期间 title => **TCP拥塞控制算法及其适用场景**（changed_while_turn_running=True）
+
+### BUG-02 并发确认竞态 — PASS
+- 修复要点：awaitChans 注册表双 key（sessionID+toolCallID）+ `confirmToolGate` 先投递后落库 + 拒发返 409 + 工具级 channel 寻址。
+- **补一个补丁（修复中发现的二级缺陷）**：原 `EmitConfirmRequest` 未把 `args.ToolCallID` 写入 confirm step，导致 3 个并发 confirm 全部落到 session-level channel，第 1 个赢、其他 409。补三处：
+  - [activity.go](file:///f:/myproject/aranea-agents/internal/biz/activity.go)：`ActivityConfirmParams` 加 `ToolCallID` 字段
+  - [tool_confirmation.go](file:///f:/myproject/aranea-agents/internal/agent/tool_confirmation.go)：调用 `EmitConfirmRequest` 时传 `args.ToolCallID`
+  - [projector.go](file:///f:/myproject/aranea-agents/internal/agent/v2/projector.go)：`EmitConfirmRequest` 写入 `step.ToolCallID = params.ToolCallID`
+- 单测：9 个新测试（chat_usecase_test / chat_submit_await_reply_test / session_auto_title_subscriber_test），全部 `go test -race` 通过。
+- 集成（`verify-taskb-parallel.log`）：
+  - **3 个并行 confirm 全部 HTTP 200 accepted=true**（原事故：1 个 200 / 1 个 409 / 1 个 400 desync）
+  - 后续 2 个串行 confirm 也都 200；final_status=completed；approvals=5；desync_count=0
+
+### p3 控制面回归 — PASS（无回归）
+`p3-run.log`：CTRL-01 stop→cancelled；CTRL-02 enqueue→completed messages=5；CTRL-03 run-status running/cancelled 字段齐全。修复未引入控制面回退。
+
+### 测试过程踩坑（留档）
+- 启用 `subagents_spawn` 触发并行 confirm：原事故复现依赖该工具，但 2026-08-23 组织重构后 `enabled=false`，LLM 改走 team orchestration 不再触发 confirm gate → 验证前临时 `UPDATE tools SET enabled=true`，验证后已恢复 `enabled=false`。
+- 测试 stub race：`recordingAutoTitler.err` 字段在订阅器 goroutine 读、主测试写的 race，加 `setErr` 锁保护后通过。
+- 容器中 pre-existing race：`TestPlanExecutor_FailedStepBlocksDownstream` / `TestPlanExecutor_SequentialDAG` 在 `plan_executor.go` DAG dispatch 有 pre-existing race（与本修复无关，未触动）。
