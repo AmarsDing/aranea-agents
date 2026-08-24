@@ -461,20 +461,21 @@ func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([]
 }
 
 func (r *l3FactRepo) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
-	// Check fact count for brute-force threshold.
-	// When the number of active facts for the agent is below the threshold,
-	// use linear scan by importance instead of vector similarity search.
-	if r.shouldUseBruteForce(ctx, scopeType, scopeID, userID, queryEmbedding) {
-		return r.recallL3FactsBruteForce(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
-	}
+	// Semantic path first whenever a query vector exists: typical agents have
+	// fewer than the brute-force threshold, and skipping RRF there used to
+	// disable pgvector on the chat hot path.
 	if r.vectorStore != nil && len(queryEmbedding) > 0 {
 		return r.recallL3WithVectorStore(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
+	}
+	if r.shouldUseBruteForce(ctx, scopeType, scopeID, userID, queryEmbedding) {
+		return r.recallL3FactsBruteForce(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
 	return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 }
 
-// shouldUseBruteForce checks whether the fact count is below the brute-force threshold.
-func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID, userID string, queryEmbedding []float32) bool {
+// shouldUseBruteForce reports that the active fact count is small enough to
+// score in-process. Callers must already have ruled out the vector+RRF path.
+func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID, userID string, _ []float32) bool {
 	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
 	if scopeType != "" {
@@ -498,21 +499,23 @@ func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID
 	if threshold <= 0 {
 		threshold = biz.DefaultFactBruteForceThreshold
 	}
-	return count <= threshold || len(queryEmbedding) == 0
+	// Small scopes are scored in-process. Vector+RRF is chosen before this
+	// helper runs, so empty embeddings no longer force a full scan of large sets.
+	return count <= threshold
 }
 
-// recallL3FactsBruteForce scans the (bounded) active fact set without a
-// vector store and applies the same hybrid scoring as the other recall paths.
-// Candidates are pre-limited in SQL by importance to keep the scan bounded;
-// scoring, minScore filtering, and ranking happen in Go.
+// recallL3FactsBruteForce scores the bounded active fact set in-process
+// (keyword / importance / recency / optional local cosine). SQL LIMIT is the
+// brute-force threshold. embedding_blob is loaded only when the caller
+// supplied a query vector and there is no pgvector path.
 func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
 	lim := int(limit)
 	if lim <= 0 {
 		lim = 10
 	}
-	pool := l3RecallCandidatePool
-	if pool < lim {
-		pool = lim
+	threshold := r.bruteForceThreshold
+	if threshold <= 0 {
+		threshold = biz.DefaultFactBruteForceThreshold
 	}
 	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
@@ -529,33 +532,51 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 		args = append(args, userID)
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
-	q := sqlFactSelect + where + ` ORDER BY importance DESC, updated_at DESC LIMIT ?`
-	args = append(args, pool)
+	includeBlob := len(queryEmbedding) > 0
+	q := sqlFactSelectSQL(includeBlob) + where + ` LIMIT ?`
+	args = append(args, threshold)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, time.Now().UTC())
+	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	// P2-3: inject FTS-ranked candidates missed by the importance pre-limit
 	// (keyword-strong facts with low importance), scored via the same hybrid.
-	extra, err := r.ftsExtraCandidates(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), minScore, time.Now().UTC())
+	now := time.Now().UTC()
+	extra, err := r.ftsExtraCandidates(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), 0, now)
 	if err != nil {
 		return nil, err
 	}
 	scored = append(scored, extra...)
-	return r.finalizeScoredFacts(query, scored, lim), nil
+	trgmExtra, err := r.trgmExtraCandidates(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), 0, now)
+	if err != nil {
+		return nil, err
+	}
+	scored = append(scored, trgmExtra...)
+	return r.finalizeScoredFacts(query, scored, lim, minScore), nil
 }
 
-// finalizeScoredFacts sorts, truncates, reranks, and annotates scored facts
-// into the output JSON rows. Score annotation happens after rerank so the
-// persisted breakdown reflects the final (possibly cross-encoder-adjusted)
-// total.
-func (r *l3FactRepo) finalizeScoredFacts(query string, scored []scoredFact, lim int) [][]byte {
+// finalizeScoredFacts sorts, applies the adaptive minScore floor, truncates,
+// reranks, and annotates scored facts into the output JSON rows. Score
+// annotation happens after rerank so the persisted breakdown reflects the
+// final (possibly cross-encoder-adjusted) total. minScore is not re-applied
+// after rerank.
+func (r *l3FactRepo) finalizeScoredFacts(query string, scored []scoredFact, lim int, minScore float64) [][]byte {
 	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
+	if minScore > 0 && len(scored) > 0 {
+		eff := biz.AdaptiveRecallMinScore(minScore, scored[0].score)
+		kept := make([]scoredFact, 0, len(scored))
+		for _, s := range scored {
+			if s.score >= eff {
+				kept = append(kept, s)
+			}
+		}
+		scored = kept
+	}
 	if len(scored) > lim {
 		scored = scored[:lim]
 	}
@@ -596,25 +617,36 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 		args = append(args, userID)
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
-	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ?`
+	includeBlob := len(queryEmbedding) > 0
+	q := sqlFactSelectSQL(includeBlob) + where + ` ORDER BY COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
 	args = append(args, pool)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, time.Now().UTC())
+	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	// P2-3: inject FTS-ranked candidates missed by the recency pre-limit
-	// (keyword-strong but older facts), scored via the same hybrid.
-	extra, err := r.ftsExtraCandidates(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), minScore, time.Now().UTC())
+	ftsLimit := l3FTSLargeLimit
+	if ftsLimit < lim {
+		ftsLimit = lim
+	}
+	now := time.Now().UTC()
+	// P2-3: FTS is the primary rescue for large no-embed scopes; recency
+	// pre-limit alone cannot see early facts in a long history.
+	extra, err := r.ftsExtraCandidatesAt(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), 0, now, ftsLimit)
 	if err != nil {
 		return nil, err
 	}
 	scored = append(scored, extra...)
-	return r.finalizeScoredFacts(query, scored, lim), nil
+	trgmExtra, err := r.trgmExtraCandidatesAt(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), 0, now, ftsLimit)
+	if err != nil {
+		return nil, err
+	}
+	scored = append(scored, trgmExtra...)
+	return r.finalizeScoredFacts(query, scored, lim, minScore), nil
 }
 
 func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
@@ -639,7 +671,8 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	// keyword-strong facts (codes, names, exact tokens) enter the recall
 	// pool even when embedding similarity misses them.
 	ftsIDs := r.ftsCandidateIDs(ctx, scopeType, scopeID, userID, query, pool)
-	if len(vecHits) == 0 && len(ftsIDs) == 0 {
+	trgmIDs := r.trgmCandidateIDs(ctx, scopeType, scopeID, userID, query, pool)
+	if len(vecHits) == 0 && len(ftsIDs) == 0 && len(trgmIDs) == 0 {
 		return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
 	vecIDs := make([]string, 0, len(vecHits))
@@ -648,15 +681,15 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 		vecIDs = append(vecIDs, h.ID)
 		hitMap[h.ID] = h.Score
 	}
-	rrfScores, fusedOrder := rrfFuseRanked(l3RRFK, vecIDs, ftsIDs)
+	rrfScores, fusedOrder := rrfFuseRanked(l3RRFK, vecIDs, ftsIDs, trgmIDs)
 	if len(fusedOrder) > pool {
 		fusedOrder = fusedOrder[:pool]
 	}
-	rows, err := r.queryFactRowsByIDs(ctx, fusedOrder, scopeType, scopeID, userID)
+	rows, err := r.queryFactRowsByIDs(ctx, fusedOrder, scopeType, scopeID, userID, false)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), nil, hitMap, minScore, time.Now().UTC())
+	scored := scoreFactRows(rows, tokenizeQuery(query), nil, hitMap, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
@@ -666,19 +699,15 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	for i := range scored {
 		scored[i].breakdown.RRF = rrfScores[scored[i].id]
 	}
-	return r.finalizeScoredFacts(query, scored, lim), nil
+	return r.finalizeScoredFacts(query, scored, lim, minScore), nil
 }
 
 // --- L3FactWriter ---
 
-// applyFactPIIGate enforces the M1 PII invariant at the L3 persistence
-// boundary: memory_facts.statement / details_markdown never store plaintext
-// PII. Every write is scanned here, so producers that did not pre-scan
-// (Admin API path) cannot persist plaintext PII; inputs already redacted by
-// upstream producers (trpc tool path) scan clean and pass through unchanged.
-// redacted_statement keeps the ORIGINAL text so ApprovePIIFact can restore it.
-// Must run before fingerprinting so the dedup key derives from redacted text,
-// consistent with the consolidation path (memory_maintenance_adapter.go).
+// applyFactPIIGate scans every L3 write for PII. The default path redacts
+// statement/details before fingerprinting. SkipPIIRedact (eval Add only)
+// still flags PII types but keeps plaintext so benchmark evidence stays
+// searchable. redacted_statement stores the original text for restore.
 func applyFactPIIGate(in biz.FactUpsert) (statement, details string, pii int, redacted, piiTypesJSON string) {
 	statement = strings.TrimSpace(in.Statement)
 	details = strings.TrimSpace(in.DetailsMarkdown)
@@ -700,7 +729,10 @@ func applyFactPIIGate(in biz.FactUpsert) (statement, details string, pii int, re
 	if red.piiFlag == 0 {
 		return statement, details, pii, redacted, piiTypesJSON
 	}
-	statement, details, pii = red.statement, red.details, 1
+	if !in.SkipPIIRedact {
+		statement, details = red.statement, red.details
+	}
+	pii = 1
 	if redacted == "" {
 		redacted = red.original
 	}
@@ -1649,4 +1681,59 @@ func (r *l3FactRepo) RecordFactCitations(ctx context.Context, citations []biz.Fa
 		}
 		return nil
 	})
+}
+
+func (r *l3FactRepo) setFactLinks(ctx context.Context, factID, linksJSON string) error {
+	factID = strings.TrimSpace(factID)
+	if factID == "" {
+		return nil
+	}
+	if strings.TrimSpace(linksJSON) == "" {
+		linksJSON = "[]"
+	}
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET links = ?, updated_at = ? WHERE id = ?`),
+		linksJSON, time.Now().UTC().Format(time.RFC3339Nano), factID)
+	return entErrToBizErr(err, "MEMORY_L3")
+}
+
+func (r *l3FactRepo) listFactsBySourceSession(ctx context.Context, scopeType, scopeID, userID, sessionID string, limit int) ([][]byte, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''", "source_session_id = ?"}
+	args := []any{sessionID}
+	if scopeType != "" {
+		clauses = append(clauses, "scope_type = ?")
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		clauses = append(clauses, "scope_id = ?")
+		args = append(args, scopeID)
+	}
+	if userID != "" {
+		clauses = append(clauses, "user_id = ?")
+		args = append(args, userID)
+	}
+	q := sqlFactSelect + " WHERE " + strings.Join(clauses, " AND ") +
+		` ORDER BY COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, scanErr := scanFactRowJSON(rows)
+		if scanErr != nil {
+			return nil, entErrToBizErr(scanErr, "MEMORY_L3")
+		}
+		out = append(out, b)
+	}
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }

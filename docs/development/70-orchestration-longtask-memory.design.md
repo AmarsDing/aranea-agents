@@ -2197,18 +2197,24 @@ LLM 复用 §16.3 的 `LLMResolver` 按目标解析（MemoryWorker → L0Compres
 **FTS 通道**（`data/memory_l3_fts.go`）：
 
 - DDL 迁移 `20261128 memory_facts_fts_index`（Postgres-only，registry Func 门控，SQLite CLI/测试跳过）：`memory_facts` 上建 GIN 索引 `to_tsvector('simple', statement || ' ' || COALESCE(details_markdown, ''))`。
-- `'simple'` 配置不分词 CJK（连续中文成单 token），故 FTS 定位为**字母数字 token 的补充信号**；中文关键词匹配仍由 Go 子串通道（`keywordOverlapScore`）承担。
+- `'simple'` 配置不分词 CJK（连续中文成单 token），故 FTS 定位为**字母数字 token 的补充信号**；中文短查询由 trigram 通道（`searchL3Trigram` / `word_similarity`）与 Go 子串通道共同承担。
 - `searchL3FTS` 按 `ts_rank` 排序返回候选 ID（遵循 active/未删除/未失效过滤与 scope/user 过滤）；空查询/非 Postgres 返回 nil，调用方自然降级。
 
-**RRF 融合**：`rrfFuseRanked(k=60)` 合并向量排名与 FTS 排名——`fused(id) = Σ 1/(k+rank)`，取并集按融合分降序，截断到候选池后经既有 `scoreFactRow` 校准打分（minScore 语义不变）；融合分仅写入 `recallScoreBreakdown.RRF` 做可观测性注解，不参与 Total。
+**RRF 融合**：`rrfFuseRanked(k=60)` 合并向量、FTS、trigram 三路排名——`fused(id) = Σ 1/(k+rank)`，取并集按融合分降序，截断到候选池后经既有 `scoreFactRow` 校准打分；融合分仅写入 `recallScoreBreakdown.RRF` 做可观测性注解，不参与 Total。
+
+打分完成后 `finalizeScoredFacts` 再套自适应阈值：`effective = AdaptiveRecallMinScore(configured, top1) = max(configured, top1×0.6)`（configured ≤0 关闭过滤），再截断 top_k、可选 CE rerank。融合召回（`RecallL3Hits` 传 minScore=0）仍在 biz 层对合并结果做同一公式。
 
 **三条召回路径全覆盖**（`data/memory_shim_l3.go`）：
 
-| 路径 | 触发 | FTS 接入方式 |
+| 路径 | 触发 | 词法接入方式 |
 |------|------|-------------|
-| 暴力扫描（小数据集 ≤ 阈值或无 embedding） | `recallL3FactsBruteForce` | FTS 候选注入扫描池（`ftsExtraCandidates`），不错过关键词命中 |
-| recency 池（无向量结果降级） | `recallL3Facts` | 同上 |
-| pgvector 主路径 | `recallL3WithVectorStore` | 向量候选 ∪ FTS 候选 RRF 融合 |
+| pgvector + FTS + trigram RRF | **有 query embedding 且 vector store 非空（优先，与事实数无关）** | 向量候选 ∪ FTS ∪ pg_trgm `word_similarity` RRF |
+| 词法扫描（小数据集 ≤ 阈值） | 无向量通道且 count ≤ 阈值 | 扫当前 scope（上限=阈值，**不加载 embedding_blob**）后打分；FTS/trigram 仍注入漏网关键词 |
+| FTS 主召回（大数据集且无向量） | 无向量通道且 count > 阈值 | 事件时间 recency 池 + 内容词 OR tsquery + trigram 最多 200 条 |
+
+打分时间轴拆开：衰减用 `valid_from` → `created_at`（世界状态年龄）；recency 用 `last_used_at` → `updated_at`（刚确认/刚用过）。`preference` 与 `user_preference` 同为常青，不参与衰减。英文/中文问句功能词不进 `tokenizeQuery`；`may`/`will` 保留为人名。中文短查询由 trigram 通道补 `'simple'` FTS 不分词 CJK 的缺口（DDL **20261242** `memory_facts_trgm_index`）。
+
+对话即时抽取：`ImmediateFactWriter.SetSlotGovernor` 在写入后对同槽偏好/住址/姓名 `SupersedeFact`，不经过 `FactWritePipeline` 白名单。
 
 **主聊天链路修复**：`memory_l3_scored_adapter.go` 的 `RecallL3Hits` 原传 `nil` VectorStore（融合路径永不激活），已改为 `a.data.VectorStore()`。
 
@@ -2227,6 +2233,7 @@ LLM 复用 §16.3 的 `LLMResolver` 按目标解析（MemoryWorker → L0Compres
 | 20261126 | memory_profile_cards | DDL | FR-12.7 常驻卡存储 |
 | 20261127 | memory_l2_recall_default_on | 数据迁移 | FR-13.1 存量 L2 召回翻转 |
 | 20261128 | memory_facts_fts_index | DDL（Func 门控） | FR-13.3 FTS GIN 索引（Postgres-only） |
+| 20261242 | memory_facts_trgm_index | DDL（Func 门控） | P1-2 statement pg_trgm GIN（Postgres-only） |
 
 #### 16.7.6 组合召回分层路径与 L2 跨会话候选池（P2-R1/R2 回归修复）
 

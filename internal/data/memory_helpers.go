@@ -247,6 +247,16 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  decay_score, context_note, index_attempts
  FROM memory_facts`
 
+// sqlFactSelectSQL returns the fact row projection. Lexical recall paths omit
+// embedding_blob (NULL placeholder keeps scanFactRowJSON's column count) so a
+// small-scope scan cannot pull megabytes of vectors on every chat turn.
+func sqlFactSelectSQL(includeBlob bool) string {
+	if includeBlob {
+		return sqlFactSelect
+	}
+	return strings.Replace(sqlFactSelect, " embedding_blob,", " NULL AS embedding_blob,", 1)
+}
+
 const sqlEpisodeSelect = `SELECT id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
  consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at FROM memory_episodes`
 
@@ -444,9 +454,9 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"source_session_id": sessID, "source_message_id": msgID, "source_external": ext,
 		"version": ver, "status": st, "superseded_by": sup,
 		"embedding_status": embSt, "embedding_model": embModel, "embedding_dim": embDim,
-		// embedding_blob 必须入 map：brute-force 召回路径（facts < 5000）在
-		// scoreFactRow 中从 JSON 取回该字段解码计算向量分；缺失会导致 vecScore
-		// 恒为 0，L3 事实总分被压低、过不了 minScore 门（2026-08-17 失忆事故根因）。
+		// embedding_blob is required when the lexical path scores cosine
+		// locally (no pgvector hit map). Vector+RRF paths pass vecOverrides
+		// and project NULL here so small-scope scans stay cheap.
 		"embedding_blob":     embBlob,
 		"embedding_norm":     embNorm,
 		"pii_flag":           pii != 0,
@@ -941,7 +951,69 @@ func tokenizeQuery(q string) []string {
 		}
 		out = appendKeywordTokens(out, p)
 	}
+	return filterRecallStopwords(out)
+}
+
+// recallStopwords are function words that dominate question-form queries
+// (What/does/the) and flatten keywordOverlapScore. Content tokens (names,
+// nouns, codes) are kept. CJK bigrams are never dropped here.
+var recallStopwords = map[string]struct{}{
+	"a": {}, "an": {}, "the": {}, "is": {}, "are": {}, "was": {}, "were": {},
+	"be": {}, "been": {}, "being": {}, "am": {}, "do": {}, "does": {}, "did": {},
+	"what": {}, "which": {}, "who": {}, "whom": {}, "when": {}, "where": {},
+	"why": {}, "how": {}, "can": {}, "could": {}, "would": {}, "should": {},
+	"might": {}, "shall": {}, "i": {}, "me": {}, "my": {},
+	"we": {}, "our": {}, "you": {}, "your": {}, "he": {}, "she": {}, "it": {},
+	"they": {}, "them": {}, "their": {}, "this": {}, "that": {}, "these": {},
+	"those": {}, "or": {}, "and": {}, "but": {}, "if": {}, "of": {}, "to": {},
+	"for": {}, "in": {}, "on": {}, "at": {}, "by": {}, "with": {}, "from": {},
+	"as": {}, "into": {}, "about": {}, "please": {}, "tell": {},
+	// High-DF schema words: facts often start with "User likes…"; dropping
+	// them keeps question tokens (names, attributes) from being drowned.
+	"user": {},
+	"的":    {}, "了": {}, "是": {}, "在": {}, "有": {}, "和": {}, "就": {},
+	"不": {}, "都": {}, "也": {}, "很": {}, "到": {}, "要": {}, "去": {},
+	"会": {}, "着": {}, "这": {}, "那": {}, "吗": {}, "呢": {}, "吧": {},
+	"用户": {},
+}
+
+func filterRecallStopwords(tokens []string) []string {
+	if len(tokens) == 0 {
+		return tokens
+	}
+	out := tokens[:0]
+	for _, tok := range tokens {
+		key := strings.ToLower(tok)
+		if _, skip := recallStopwords[key]; skip {
+			continue
+		}
+		out = append(out, tok)
+	}
+	if len(out) == 0 {
+		return tokens
+	}
 	return out
+}
+
+func factEventTime(row map[string]any) string {
+	for _, key := range []string{"valid_from", "created_at", "updated_at"} {
+		if v, _ := row[key].(string); strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// factTouchTime is when the row was last confirmed or used. Recency boost
+// uses this so an in-place upsert (same fingerprint, preserved valid_from)
+// still ranks as recently touched. Decay keeps factEventTime.
+func factTouchTime(row map[string]any) string {
+	for _, key := range []string{"last_used_at", "updated_at"} {
+		if v, _ := row[key].(string); strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return factEventTime(row)
 }
 
 // appendKeywordTokens emits keyword tokens for one punctuation-free part.
@@ -1039,8 +1111,8 @@ func factRecencyDecay(updatedAt string, now time.Time) float64 {
 // Evergreen kinds: user identity, user preference, agent instruction,
 // domain knowledge — these are set once and remain valid.
 func isEvergreenFactKind(kind string) bool {
-	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "user_identity", "user_preference", "agent_instruction", "domain_knowledge":
+	switch biz.CanonicalizeFactKind(kind, "") {
+	case "user_identity", "preference", "agent_instruction", "domain_knowledge":
 		return true
 	default:
 		return false
@@ -1127,7 +1199,8 @@ func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32,
 	details, _ := row["details_markdown"].(string)
 	imp := anyFloat(row, "importance")
 	qScore := anyFloat(row, "quality_score")
-	updatedAt, _ := row["updated_at"].(string)
+	eventAt := factEventTime(row)
+	touchAt := factTouchTime(row)
 	factKind, _ := row["fact_kind"].(string)
 
 	kwScore := keywordOverlapScore(tokens, stmt+" "+details)
@@ -1156,8 +1229,8 @@ func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32,
 			}
 		}
 	}
-	recency := recencyBoost(updatedAt, now)
-	decay := factDecayWithKind(factKind, updatedAt, now)
+	recency := recencyBoost(touchAt, now)
+	decay := factDecayWithKind(factKind, eventAt, now)
 	total := l3ScoreWeightKeyword*kwScore +
 		l3ScoreWeightVector*vecScore +
 		l3ScoreWeightImport*imp*decay +
@@ -1174,8 +1247,9 @@ func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32,
 }
 
 // scoreFactRows scans fact row JSON from rows and computes the hybrid recall
-// score for each, keeping only rows at or above minScore. Shared by all three
-// L3 recall paths (brute-force, candidate-pool fallback, pgvector).
+// score for each, keeping only rows at or above minScore. Callers that apply
+// AdaptiveRecallMinScore after ranking pass minScore=0 here so the candidate
+// distribution is visible to finalizeScoredFacts.
 func scoreFactRows(rows *sql.Rows, tokens []string, queryEmbedding []float32, vecOverrides map[string]float64, minScore float64, now time.Time) []scoredFact {
 	var scored []scoredFact
 	for rows.Next() {

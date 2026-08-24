@@ -24,7 +24,13 @@
 | 冲突检测 | ✅ | `internal/biz/memory_admin_usecase.go`（DetectFactConflicts 子句级否定匹配 + 指纹去重前置 + IncrementConflictCount） |
 | 冲突 API | ✅ | `api/kratos/memory/v1/memory.proto`（ListConflictingFacts RPC） |
 | quality_score 5维评分 | ✅ | `internal/data/memory_shim_l3.go`（keyword(0.25) + vector(0.30) + importance(0.20) + recency(0.15) + quality(0.10)） |
-| 时间衰减（evergreen 豁免） | ✅ | `internal/data/memory_helpers.go`（`isEvergreenFactKind` + `factDecayWithKind`，2026-07-20 Grok 借鉴） |
+| 时间衰减（evergreen 豁免） | ✅ | `internal/data/memory_helpers.go`（`isEvergreenFactKind` 经 `CanonicalizeFactKind`，`preference`/`user_preference` 同为常青） |
+| 向量优先召回 | ✅ | `RecallL3Facts`：有 embedding 则 pgvector+FTS+trigram RRF，不因 count≤5000 改走全表扫描 |
+| recency / decay 时间轴 | ✅ | recency=`last_used_at`/`updated_at`；decay=`valid_from`/`created_at` |
+| 问句词法 | ✅ | 停用词 + FTS 内容词 OR；`may`/`will` 保留为人名 |
+| CJK trigram | ✅ | DDL 20261242 + `searchL3Trigram` 第三路 RRF |
+| 自适应 minScore | ✅ | `AdaptiveRecallMinScore` = max(配置, top1×0.6)；配置 ≤0 关闭 |
+| 即时同槽覆盖 | ✅ | `ImmediateFactWriter.SetSlotGovernor` |
 | MMR 多样性重排 | ✅ | `internal/data/memory_mmr.go`（相关性-多样性平衡重排，2026-07-20 Grok 借鉴） |
 | pgvector HNSW 索引 | ❌ | 仅有 B-tree 索引，无 HNSW 向量近似索引 |
 | Conflict UI | ❌ | 冲突检测前端展示 |

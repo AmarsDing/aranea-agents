@@ -26,7 +26,9 @@ type recordingIndexSyncer struct {
 	err  error
 }
 
-func (r *recordingIndexSyncer) SyncFactIndex(_ context.Context, _, _, _, _ string) error { return r.err }
+func (r *recordingIndexSyncer) SyncFactIndex(_ context.Context, _, _, _, _ string) error {
+	return r.err
+}
 
 func (r *recordingIndexSyncer) SyncFactIndexFromRow(_ context.Context, raw []byte) error {
 	r.mu.Lock()
@@ -168,5 +170,146 @@ func TestImmediateFactWriter_CanonicalizesEmployeeIDAsUserIdentity(t *testing.T)
 	}
 	if fw.writes[1].FactKind != "preference" {
 		t.Fatalf("plain preference must stay preference, got %q", fw.writes[1].FactKind)
+	}
+}
+
+type fakePreferenceLister struct {
+	rows [][]byte
+	err  error
+}
+
+func (f *fakePreferenceLister) ListActivePreferenceFacts(_ context.Context, _, _ string, _ []string, _ int32) ([][]byte, error) {
+	return f.rows, f.err
+}
+
+type recordingConflictStore struct {
+	pairs [][2]string
+	err   error
+}
+
+func (f *recordingConflictStore) IncrementConflictCount(_ context.Context, _ string) (int32, error) {
+	return 0, nil
+}
+func (f *recordingConflictStore) ListConflictingFacts(_ context.Context, _, _, _ string, _, _ int32) ([][]byte, int32, error) {
+	return nil, 0, nil
+}
+func (f *recordingConflictStore) BatchIncrementConflictCounts(_ context.Context, _ []string) error {
+	return nil
+}
+func (f *recordingConflictStore) SupersedeFact(_ context.Context, oldID, newID string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.pairs = append(f.pairs, [2]string{oldID, newID})
+	return nil
+}
+
+func TestImmediateFactWriter_SupersedesSameSlotFavorite(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{
+		FactRows: [][]byte{[]byte(`{"id":"new-1","fact_kind":"preference","statement":"My favorite color is red"}`)},
+	}}
+	lister := &fakePreferenceLister{rows: [][]byte{
+		[]byte(`{"id":"old-1","fact_kind":"preference","statement":"My favorite color is blue"}`),
+		[]byte(`{"id":"new-1","fact_kind":"preference","statement":"My favorite color is red"}`),
+	}}
+	conflict := &recordingConflictStore{}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	w.SetSlotGovernor(lister, conflict)
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "My favorite color is red"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(conflict.pairs) != 1 || conflict.pairs[0] != [2]string{"old-1", "new-1"} {
+		t.Fatalf("supersede pairs = %v, want [[old-1 new-1]]", conflict.pairs)
+	}
+}
+
+func TestImmediateFactWriter_LikeWithoutCueDoesNotSupersede(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{
+		FactRows: [][]byte{[]byte(`{"id":"new-1","fact_kind":"preference","statement":"I like tea"}`)},
+	}}
+	lister := &fakePreferenceLister{rows: [][]byte{
+		[]byte(`{"id":"old-1","fact_kind":"preference","statement":"I like coffee"}`),
+	}}
+	conflict := &recordingConflictStore{}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	w.SetSlotGovernor(lister, conflict)
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "I like tea"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(conflict.pairs) != 0 {
+		t.Fatalf("coffee and tea must coexist without an update cue, got %v", conflict.pairs)
+	}
+}
+
+func TestImmediateFactWriter_LikeWithCueSupersedes(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{
+		FactRows: [][]byte{[]byte(`{"id":"new-1","fact_kind":"preference","statement":"I like tea now"}`)},
+	}}
+	lister := &fakePreferenceLister{rows: [][]byte{
+		[]byte(`{"id":"old-1","fact_kind":"preference","statement":"I like coffee"}`),
+	}}
+	conflict := &recordingConflictStore{}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	w.SetSlotGovernor(lister, conflict)
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "I like tea now"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(conflict.pairs) != 1 || conflict.pairs[0] != [2]string{"old-1", "new-1"} {
+		t.Fatalf("supersede pairs = %v, want [[old-1 new-1]]", conflict.pairs)
+	}
+}
+
+func TestImmediateFactWriter_NilSlotGovernorDegrades(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{
+		FactRows: [][]byte{[]byte(`{"id":"new-1","fact_kind":"preference","statement":"My favorite color is red"}`)},
+	}}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "My favorite color is red"},
+	}); err != nil {
+		t.Fatalf("nil governor must not fail write: %v", err)
+	}
+}
+
+func TestImmediateFactWriter_SupersedeFailureDoesNotFailWrite(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{
+		FactRows: [][]byte{[]byte(`{"id":"new-1","fact_kind":"preference","statement":"My favorite color is red"}`)},
+	}}
+	lister := &fakePreferenceLister{rows: [][]byte{
+		[]byte(`{"id":"old-1","fact_kind":"preference","statement":"My favorite color is blue"}`),
+	}}
+	conflict := &recordingConflictStore{err: errors.New("db down")}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	w.SetSlotGovernor(lister, conflict)
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "My favorite color is red"},
+	}); err != nil {
+		t.Fatalf("supersede failure must not fail write, got %v", err)
+	}
+}
+
+func TestImmediateFactWriter_ChineseFavoriteSlot(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{
+		FactRows: [][]byte{[]byte(`{"id":"new-1","fact_kind":"preference","statement":"我最喜欢的颜色是红色"}`)},
+	}}
+	lister := &fakePreferenceLister{rows: [][]byte{
+		[]byte(`{"id":"old-1","fact_kind":"preference","statement":"我最喜欢的颜色是蓝色"}`),
+	}}
+	conflict := &recordingConflictStore{}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	w.SetSlotGovernor(lister, conflict)
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "preference", Confidence: "high", Content: "我最喜欢的颜色是红色"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(conflict.pairs) != 1 || conflict.pairs[0] != [2]string{"old-1", "new-1"} {
+		t.Fatalf("chinese favorite supersede pairs = %v, want [[old-1 new-1]]", conflict.pairs)
 	}
 }

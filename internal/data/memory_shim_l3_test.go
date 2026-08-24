@@ -3,6 +3,7 @@ package data
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
@@ -26,7 +27,7 @@ func TestBruteForceDecisionLogic(t *testing.T) {
 		wantBruteForce bool
 	}{
 		{
-			name:           "count below threshold uses brute force",
+			name:           "count below threshold with embedding still uses lexical scan when isolated",
 			factCount:      100,
 			queryEmbedding: []float32{0.1, 0.2, 0.3},
 			wantBruteForce: true,
@@ -44,24 +45,22 @@ func TestBruteForceDecisionLogic(t *testing.T) {
 			wantBruteForce: false,
 		},
 		{
-			name:           "count above threshold without embedding uses brute force",
+			name:           "count above threshold without embedding uses FTS-first not brute force",
 			factCount:      10000,
 			queryEmbedding: []float32{},
-			wantBruteForce: true,
+			wantBruteForce: false,
 		},
 		{
-			name:           "count above threshold with nil embedding uses brute force",
+			name:           "count above threshold with nil embedding uses FTS-first not brute force",
 			factCount:      10000,
 			queryEmbedding: nil,
-			wantBruteForce: true,
+			wantBruteForce: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Replicate the decision logic from shouldUseBruteForce:
-			// return count <= biz.DefaultFactBruteForceThreshold || len(queryEmbedding) == 0
-			got := tt.factCount <= threshold || len(tt.queryEmbedding) == 0
+			got := tt.factCount <= threshold
 			if got != tt.wantBruteForce {
 				t.Errorf("factCount=%d, len(embedding)=%d: got %v, want %v",
 					tt.factCount, len(tt.queryEmbedding), got, tt.wantBruteForce)
@@ -102,5 +101,109 @@ func TestKeywordOverlapScore_Chinese(t *testing.T) {
 	score := keywordOverlapScore(tokenizeQuery("网络运维组组长是谁？"), "张伟是网络运维组的组长")
 	if score <= 0 {
 		t.Fatalf("chinese kwScore = %v, want > 0", score)
+	}
+}
+
+func TestTokenizeQuery_DropsEnglishStopwords(t *testing.T) {
+	tokens := tokenizeQuery("What color does Alice like")
+	joined := strings.ToLower(strings.Join(tokens, "|"))
+	for _, keep := range []string{"color", "alice", "like"} {
+		if !strings.Contains(joined, keep) {
+			t.Errorf("tokens %v missing %q", tokens, keep)
+		}
+	}
+	for _, drop := range []string{"what", "does"} {
+		if strings.Contains(joined, drop) {
+			t.Errorf("tokens %v still contain stopword %q", tokens, drop)
+		}
+	}
+}
+
+func TestTokenizeQuery_KeepsMayWillNames(t *testing.T) {
+	joined := strings.ToLower(strings.Join(tokenizeQuery("When is May's birthday"), "|"))
+	if !strings.Contains(joined, "may") {
+		t.Fatalf("tokens dropped name May: %s", joined)
+	}
+	if strings.Contains(joined, "when") {
+		t.Fatalf("tokens still contain stopword when: %s", joined)
+	}
+}
+
+func TestTokenizeQuery_DropsUserNoise(t *testing.T) {
+	joined := strings.ToLower(strings.Join(tokenizeQuery("What does the user prefer"), "|"))
+	if strings.Contains(joined, "user") {
+		t.Fatalf("tokens still contain high-DF user: %s", joined)
+	}
+	if !strings.Contains(joined, "prefer") {
+		t.Fatalf("tokens missing prefer: %s", joined)
+	}
+}
+
+func TestFactTouchTime_PrefersLastUsedThenUpdatedAt(t *testing.T) {
+	got := factTouchTime(map[string]any{
+		"valid_from":    "2026-01-01T00:00:00Z",
+		"created_at":    "2026-01-01T00:00:00Z",
+		"updated_at":    "2026-08-01T00:00:00Z",
+		"last_used_at":  "2026-08-20T00:00:00Z",
+	})
+	if got != "2026-08-20T00:00:00Z" {
+		t.Fatalf("factTouchTime=%q, want last_used_at", got)
+	}
+	got = factTouchTime(map[string]any{
+		"valid_from": "2026-01-01T00:00:00Z",
+		"updated_at": "2026-08-01T00:00:00Z",
+	})
+	if got != "2026-08-01T00:00:00Z" {
+		t.Fatalf("factTouchTime=%q, want updated_at", got)
+	}
+}
+
+func TestScoreFactRow_RecencyUsesTouchTimeNotValidFrom(t *testing.T) {
+	now := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	row := map[string]any{
+		"id":         "f1",
+		"statement":  "Alice likes blue",
+		"importance": 0.5,
+		"quality_score": 0.5,
+		"fact_kind":  "preference",
+		"valid_from": "2025-01-01T00:00:00Z",
+		"created_at": "2025-01-01T00:00:00Z",
+		"updated_at": now.Format(time.RFC3339Nano),
+	}
+	bd := scoreFactRow(row, tokenizeQuery("Alice likes blue"), nil, nil, now)
+	if bd.Recency != 1.0 {
+		t.Fatalf("recency=%v, want 1.0 for just-updated fact", bd.Recency)
+	}
+}
+
+func TestFactEventTime_PrefersValidFromThenCreatedAt(t *testing.T) {
+	got := factEventTime(map[string]any{
+		"updated_at": "2026-08-24T00:00:00Z",
+		"created_at": "2026-01-01T00:00:00Z",
+		"valid_from": "2026-02-01T00:00:00Z",
+	})
+	if got != "2026-02-01T00:00:00Z" {
+		t.Fatalf("factEventTime=%q, want valid_from", got)
+	}
+	got = factEventTime(map[string]any{
+		"updated_at": "2026-08-24T00:00:00Z",
+		"created_at": "2026-01-01T00:00:00Z",
+	})
+	if got != "2026-01-01T00:00:00Z" {
+		t.Fatalf("factEventTime=%q, want created_at", got)
+	}
+}
+
+func TestBuildL3FTSQuery_ORsContentWords(t *testing.T) {
+	q := buildL3FTSQuery("What color does Alice like?")
+	if !strings.Contains(q, "|") {
+		t.Fatalf("FTS query %q is not an OR expression", q)
+	}
+	low := strings.ToLower(q)
+	if !strings.Contains(low, "alice") || !strings.Contains(low, "color") {
+		t.Fatalf("FTS query %q missing content terms", q)
+	}
+	if strings.Contains(low, "what") || strings.Contains(low, "does") {
+		t.Fatalf("FTS query %q still contains stopwords", q)
 	}
 }

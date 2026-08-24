@@ -117,22 +117,23 @@ query ──► Embedding（OpenAI 兼容 API，可降级）──► 向量召�
 
 ```
 Add(request_id, messages[], user_id, session_id)
-  │  service 层：校验 user_id 非空 → 生成 ingest 批次 ID
-  │  ├─ 切块：按 20 条/2000 词切分 messages
-  │  ├─ L2：每块沉淀 episode（session_id 分组，保留消息时序与时间戳）
-  │  ├─ L3：MemoryConsolidator 提取事实/偏好/规则 → PII 扫描 → 冲突检测 → 写库
-  │  └─ 向量：MemoryEmbeddingAdapter（OpenAI 兼容）→ pgvector UpsertFactVector
-  │      ‑ Embedding 不可用 → 记 warn 降级，仅关键词索引（契约行为不变）
-  └─ 同步返回 {success: true, request_id, timestamp: now}
-      ‑ 内部失败可重试部分入异步队列；不可恢复错误返回 5xx（平台重试）
+  │  适配层：校验 user_id 非空
+  │  ├─ 每条消息浅分类 kind（preference / identity / constraint / event）
+  │  ├─ 同槽位偏好更新 → InvalidateFact（valid_until）后写入新行
+  │  ├─ L3 UpsertFactRow（SkipPIIRedact：打标不改检索正文；CreatedAt/ValidFrom=消息时间）
+  │  ├─ 同批 sibling 写入 links（Search 一跳）
+  │  ├─ L2 episode 按 session 幂等更新（agent_id=user_id）
+  │  └─ 向量索引 safego 异步（不阻塞 200）
+  └─ 同步返回 {success: true, request_id, timestamp: now, stored}
 
 Search(query, user_id, top_k=100, options)
-  │  service 层：校验 user_id 非空（空 → 400，不猜测不跨域）
-  │  ├─ Embed(query) → L2/L3 混合评分召回（强制 user scope = user_id）
-  │  ├─ L4 图谱关联扩展（多跳证据，限 1 跳、封顶条数）
-  │  └─ 按 score 排序截断 top_k
-  └─ 返回 {data: [{id: 事实/episode ID, content: 记忆原文, score, timestamp: 记忆事件时间}]}
-      ‑ 无 LLM 调用、无答案生成（红线 R1）
+  │  校验 user_id / query 非空
+  │  ├─ Embed(query) 可选；失败降级关键词
+  │  ├─ L3 RecallL3Facts：小集合（≤5000）全量打分；大集合无向量走 FTS-OR 主召回
+  │  ├─ 会话 hop（top hit 的 source_session_id）+ links 一跳
+  │  ├─ L2 RecallL2Episodes（agent_id=user_id）
+  │  └─ MMR（λ=0.7）截断 top_k
+  └─ 返回 {data: [{id, content, score, timestamp}]}  — 无 LLM、无答案生成
 ```
 
 ### 5.3 代码落位（T1 实际实施：独立入口，主程序零修改）
@@ -140,7 +141,7 @@ Search(query, user_id, top_k=100, options)
 | 层 | 文件 | 说明 |
 |----|------|------|
 | biz | `internal/biz/memory_eval.go`（新增） | `EvalMemoryStore` 窄端口（Stability:internal，2 方法）+ `EvalMessage` / `EvalMemoryItem` |
-| data | `internal/data/memory_eval_store.go`（新增） | 委托现有 `l3FactRepo`：`UpsertFactRow`（`(scope_type,scope_id,fingerprint)` 唯一键幂等 + PII gate）+ `RecallL3Facts`（混合评分召回，空 embedding 自动 brute-force 降级） |
+| data | `internal/data/memory_eval_store.go`（新增） | L3 浅分类写入 + 矛盾 supersede + SkipPIIRedact；L2 session episode；Search = L3 全量/FTS-OR + session/links 一跳 + L2 + MMR；embed 异步 |
 | cmd | `cmd/memoryeval/main.go`、`handler.go`（新增） | 独立 HTTP 入口；net/http 标准库；Bearer/X-Api-Key 鉴权；`make build` 自动产出 `bin/memoryeval`（`go build -o ./bin/ ./...`） |
 | 主程序 | **零修改** | 不动 api proto / cmd/admin wire / internal/service / data 现有文件 |
 

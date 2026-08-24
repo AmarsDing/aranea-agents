@@ -362,7 +362,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			}
 			candidates = append(candidates, biz.FactWriteCandidate{
 				Statement:       stmt,
-				FactKind:        biz.FactKindForSubjectType(p.SubjectType),
+				FactKind:        biz.CanonicalizeFactKind(biz.FactKindForSubjectType(p.SubjectType), stmt),
 				Confidence:      confidence,
 				Importance:      0.6,
 				TagsJSON:        topicsJSON(p.Topics),
@@ -665,7 +665,7 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 		}
 		candidates = append(candidates, biz.FactWriteCandidate{
 			Statement:       stmt,
-			FactKind:        biz.FactKindForSubjectType(p.SubjectType),
+			FactKind:        biz.CanonicalizeFactKind(biz.FactKindForSubjectType(p.SubjectType), stmt),
 			Confidence:      confidence,
 			Importance:      0.6,
 			TagsJSON:        topicsJSON(p.Topics),

@@ -370,6 +370,10 @@ type ChatInfraDeps struct {
 	// MemoryConflictStore applies supersede/mark-conflict decisions for the
 	// memory_remember tool (FR-M4). Optional: nil skips governance application.
 	MemoryConflictStore biz.L3ConflictStore
+	// MemoryPreferenceLister lists active preference/identity facts so
+	// ImmediateFactWriter can supersede same-slot updates in the chat turn
+	// (no Sleep-time wait). Optional: nil skips slot governance.
+	MemoryPreferenceLister biz.MemoryPreferenceLister
 	// VoiceDelegation 是语音委派登记表单例（M74 V9，设计 74 §15.4-C）。
 	// Wire 提供；voiceButlerTools 注入 delegate_to_spirit 工具。
 	// nil = 委派工具不挂载（语音助手退化为纯快答）。
@@ -401,6 +405,14 @@ func coalescePendingQueue(q *rt.PendingMessageQueue) *rt.PendingMessageQueue {
 		return q
 	}
 	return rt.NewPendingMessageQueue()
+}
+
+func newImmediateFactWriterWithSlotGovernor(infra ChatInfraDeps) *biz.ImmediateFactWriter {
+	w := biz.NewImmediateFactWriter(infra.MemoryConsolidationWriter, infra.FactIndexSync, infra.LG)
+	if w != nil {
+		w.SetSlotGovernor(infra.MemoryPreferenceLister, infra.MemoryConflictStore)
+	}
+	return w
 }
 
 func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
@@ -476,7 +488,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		runs:                runs,
 		chatUC:              chatUC,
 		v2Seq:               v2Seq,
-		immediateFactWriter: biz.NewImmediateFactWriter(deps.Infra.MemoryConsolidationWriter, deps.Infra.FactIndexSync, deps.Infra.LG),
+		immediateFactWriter: newImmediateFactWriterWithSlotGovernor(deps.Infra),
 		turnIdem:            newTurnIdemRegistry(),
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,

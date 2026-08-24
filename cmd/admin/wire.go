@@ -970,6 +970,7 @@ func provideChatServiceDeps(
 			SkillEmbedder:             skillEmbedder,
 			MemoryConflictDetector:    memoryConflictDetector,
 			MemoryConflictStore:       memoryConflictStore,
+			MemoryPreferenceLister:    persist.Memory.PreferenceLister,
 			VoiceDelegation:           voiceDelegation,
 		},
 	}

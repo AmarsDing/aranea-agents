@@ -17,13 +17,26 @@ const (
 	decayFuseBase   = 0.7
 	decayFuseWeight = 0.3
 
-	// adaptiveMinScoreTop1Ratio（2026-08-21 P1-2a）：自适应 minScore 的 top1
-	// 比例。查询驱动召回的有效阈值 = max(静态 minScore, top1×ratio)——top1
-	// 很强时（如 0.9）把 0.35~0.54 的弱相关尾部长尾截掉，减少注入噪声；
-	// top1 本身偏弱时退回静态下限，不把本就不多的候选进一步砍光。
-	// 仅查询路径生效（minScoreQuery）；被动召回（空查询）保持静态行为。
+	// AdaptiveRecallMinScore raises the query-path floor when the top hit
+	// is strong: effective = max(configured, top1×ratio). configured <= 0
+	// disables filtering (caller-disabled / passive recall).
 	adaptiveMinScoreTop1Ratio = 0.6
 )
+
+// AdaptiveRecallMinScore returns the effective minScore for a ranked
+// candidate list. configured <= 0 disables filtering. Otherwise
+// effective = max(configured, top1*adaptiveMinScoreTop1Ratio).
+func AdaptiveRecallMinScore(configured, top1 float64) float64 {
+	if configured <= 0 {
+		return 0
+	}
+	if top1 > 0 {
+		if a := top1 * adaptiveMinScoreTop1Ratio; a > configured {
+			return a
+		}
+	}
+	return configured
+}
 
 // RecallScoreBreakdown is the component-wise recall ranking for one hit.
 type RecallScoreBreakdown struct {
@@ -213,11 +226,10 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 	})
 
 	// P1-2a（2026-08-21）自适应阈值：仅查询路径；top1 强时抬高有效 minScore。
-	effMinScore := minScore
-	if query != "" && len(merged) > 0 && merged[0].Scores.Total > 0 {
-		if a := merged[0].Scores.Total * adaptiveMinScoreTop1Ratio; a > effMinScore {
-			effMinScore = a
-		}
+	// 空查询已把 minScore 置 0，AdaptiveRecallMinScore 因此关闭过滤。
+	effMinScore := AdaptiveRecallMinScore(minScore, 0)
+	if len(merged) > 0 {
+		effMinScore = AdaptiveRecallMinScore(minScore, merged[0].Scores.Total)
 	}
 
 	seen := make(map[string]struct{})

@@ -2476,11 +2476,26 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 - **验收**：RED→GREEN 确认；`go test ./internal/data ./internal/biz ./internal/team ./internal/memory` 全过；`go build ./cmd/admin ./internal/...` 通过
 - **顺带修复**（S-3 收尾编译错误）：`internal/team/team_graph_run_coordinator.go` — `teamGraphRunSession` 补 `rootTaskID` 字段，注册时 `RootTaskActivityIDFromCtx(ctx)` 捕获；resume-fail（L309）与 finalize（L633）两处 `TeamStage` ID 派生由 ctx 查找改用 `sess.rootTaskID`（外来 ctx 不携带 RootTaskActivityID，避免派生错误 stage ID 写入第二个 team_stages_v2 行）
 
+#### M-P2-6：按产品能力收口召回（2026-08-24 ✅）
+
+评测只作能力探针，不改评测特判热路径。改动全部落在生产 L3：
+
+- 有 query embedding 时 **优先 pgvector+FTS+trigram RRF**（典型 Agent 事实数 <5000，此前被 brute-force 短路）
+- 词法扫描不再 SELECT `embedding_blob`
+- recency = 触达时间（`last_used_at`/`updated_at`），decay = 事件时间；`preference` 常青
+- 问句停用词 + FTS 内容词 OR；`CanonicalizeFactKind` 对 vague kind 做偏好/规则启发式，AutoMemory 写入走 canonicalize
+- **ImmediateFactWriter 同槽覆盖**：写入后 `ListActivePreferenceFacts` + `ShouldSupersedeSameSlotFact` + `SupersedeFact`（不走 FactWritePipeline 白名单）
+- **自适应 minScore**：`max(配置, top1×0.6)`，配置 ≤0 关闭；CE rerank 后不二次过滤
+- **pg_trgm 第三通道**：DDL 20261242 + `word_similarity` 入 RRF，补 CJK 短查询
+
+详见 [2026-08-24-review-memory-capability-from-eval.md](../reports/2026-08-24-review-memory-capability-from-eval.md)。
+
 ### 18.8 待办项
 
 | 项 | 说明 | 状态 |
 |---|---|---|
-| — | P2 召回升级四项已全部完成，无遗留待办 | ✅ |
+| ImmediateFactWriter 走 FactWritePipeline | 即时抽取已用同槽 governor 覆盖；全量 pipeline 仍会丢掉 identity，不接 | ✅ 同槽覆盖已落地 |
+| SkipPIIRedact 移出公共 FactUpsert | 评测适配层仍挂在写入 DTO 上 | 📋 |
 
 ---
 
@@ -2524,8 +2539,8 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 | 任务 | 内容 | 状态 |
 |------|------|------|
 | R-P1-1 | 中文 bigram 分词：`tokenizeQuery`/`keywordOverlapScore`/`bigramJaccard` CJK rune bigram 化 | ⏳ |
-| R-P1-2 | FTS 中文通道：`memory_facts.statement` pg_trgm GIN 索引 + similarity 第三路候选入 RRF | ⏳ |
-| R-P1-3 | 自适应 minScore：`max(floor, top1×0.6)` 分布阈值，静态值降为 floor | ⏳ |
+| R-P1-2 | FTS 中文通道：`memory_facts.statement` pg_trgm GIN 索引 + word_similarity 第三路候选入 RRF | ✅ |
+| R-P1-3 | 自适应 minScore：`max(floor, top1×0.6)` 分布阈值，静态值降为 floor | ✅ |
 | R-P1-4 | （可选）真实 Cross-Encoder：Ollama bge-reranker-v2-m3 实现 `biz.Reranker` | 📋 |
 
 ### 19.3 阶段三：P2 结构增强

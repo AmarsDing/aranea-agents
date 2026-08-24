@@ -20,6 +20,7 @@ func TestFactDecayWithKind_EvergreenExempt(t *testing.T) {
 	evergreenKinds := []string{
 		"user_identity",
 		"user_preference",
+		"preference",
 		"agent_instruction",
 		"domain_knowledge",
 	}
@@ -77,6 +78,7 @@ func TestIsEvergreenFactKind(t *testing.T) {
 	}{
 		{"user_identity", true},
 		{"user_preference", true},
+		{"preference", true},
 		{"agent_instruction", true},
 		{"domain_knowledge", true},
 		{"general", false},

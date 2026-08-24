@@ -50,7 +50,11 @@ type FactUpsert struct {
 	PIIFlag               bool
 	PIITypes              []string
 	OriginalStatement     string // preserved original when PII redaction replaces Statement
-	MetadataJSON          string
+	// SkipPIIRedact keeps statement/details plaintext after PII detection.
+	// Detectors still set PIIFlag and PIITypes. Eval Add uses this so
+	// PersonaMem-style addresses and emails remain searchable evidence.
+	SkipPIIRedact bool
+	MetadataJSON  string
 	CreatedAt             string
 	UpdatedAt             string
 	// Bi-temporal validity (P3-8). ValidFrom marks when the fact became

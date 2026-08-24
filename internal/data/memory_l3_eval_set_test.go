@@ -100,7 +100,7 @@ func TestMemoryL3OfflineEvalSet(t *testing.T) {
 				}
 				kind := s.Kind
 				if kind == "" {
-					kind = "preference" // non-evergreen: decays (temporal items rely on it)
+					kind = "preference" // durable likes stay evergreen; recency still demotes stale rows
 				}
 				up := biz.FactUpsert{
 					ScopeType: "agent", ScopeID: scope, AgentID: scope,

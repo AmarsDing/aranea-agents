@@ -23,9 +23,10 @@ type EvalMemoryItem struct {
 }
 
 // EvalMemoryStore bridges the Agent Memory Challenge Add/Search contract onto
-// the L3 fact memory store. userID is the sole retrieval-isolation boundary:
-// implementations must never return rows outside the caller's user scope, and
-// Search must return stored memory evidence only (never generated answers).
+// L3 facts plus a user-scoped L2 session episode. userID is the sole
+// retrieval-isolation boundary: implementations must never return rows
+// outside the caller's user scope, and Search must return stored memory
+// evidence only (never generated answers).
 // Stability:internal
 type EvalMemoryStore interface {
 	// AddMessages persists one conversation batch under the user scope and

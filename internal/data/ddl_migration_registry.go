@@ -439,6 +439,11 @@ var ddlMigrations = []ddlMigration{
 	// 种子行与 toolGroupsMedia 引用已删；存量库行需显式 DELETE（同 20261237 先例）。
 	// 幂等，重跑安全。
 	{Version: 20261241, Name: "remove_read_image_tool", SQL: "sql/migrations/20261241_remove_read_image_tool.sql"},
+	// 20261242 memory_facts_trgm_index: P1-2 GIN trigram index on
+	// memory_facts.statement so CJK / short queries enter the L3 candidate
+	// pool via word_similarity (FTS 'simple' does not segment CJK).
+	// Postgres-only; gated by Func so SQLite CLI/tests skip it.
+	{Version: 20261242, Name: "memory_facts_trgm_index", Func: ddlMemoryFactsTrgmIndex},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1380,6 +1385,17 @@ func ddlMemoryFactsFTSIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261128_memory_facts_fts_index.sql", d, lg)
+}
+
+// ddlMemoryFactsTrgmIndex creates the pg_trgm GIN index on memory_facts.statement
+// (P1-2). Postgres-only: gin_trgm_ops does not exist on SQLite.
+func ddlMemoryFactsTrgmIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("memory_facts_trgm_index skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.memory_facts_trgm"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261242_memory_facts_trgm_index.sql", d, lg)
 }
 
 // ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).

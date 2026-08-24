@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -19,7 +20,18 @@ type ImmediateFactWriter struct {
 	// 返回值 → embedding 恒 pending，向量召回要等 reconciler cron 兜底才可见。
 	// nil 时降级跳过（reconciler 仍是最终一致兜底）。
 	indexSync MemoryFactIndexSyncer
+	// lister + conflict are optional same-slot governors. Chat updates such as
+	// "favorite color is red now" must invalidate the previous slot fact in
+	// this turn; Sleep-time FactWritePipeline is too late. Do not route the
+	// writer through FactWritePipeline: gate ① would drop user_identity /
+	// agent_instruction / domain_knowledge.
+	lister   MemoryPreferenceLister
+	conflict L3ConflictStore
 }
+
+var immediateSlotKinds = []string{"preference", "constraint", "user_identity", "user_preference", "profile"}
+
+const immediateSlotLook int32 = 40
 
 // NewImmediateFactWriter creates a new ImmediateFactWriter.
 func NewImmediateFactWriter(factWriter MemoryConsolidationWriter, indexSync MemoryFactIndexSyncer, lg loggateway.Logger) *ImmediateFactWriter {
@@ -31,6 +43,16 @@ func NewImmediateFactWriter(factWriter MemoryConsolidationWriter, indexSync Memo
 		factWriter: factWriter,
 		indexSync:  indexSync,
 	}
+}
+
+// SetSlotGovernor wires same-slot supersede after a successful write.
+// Either argument nil disables governance (safe degradation).
+func (w *ImmediateFactWriter) SetSlotGovernor(lister MemoryPreferenceLister, conflict L3ConflictStore) {
+	if w == nil {
+		return
+	}
+	w.lister = lister
+	w.conflict = conflict
 }
 
 // WriteFacts persists facts asynchronously (fire-and-forget).
@@ -116,7 +138,84 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 			}
 		}
 	}
+	if res != nil {
+		w.applySlotSupersede(ctx, agentID, userID, res.FactRows)
+	}
 	return nil
+}
+
+type factSlotRow struct {
+	id, kind, stmt string
+}
+
+func parseFactSlotRow(raw []byte) (factSlotRow, bool) {
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return factSlotRow{}, false
+	}
+	id, _ := m["id"].(string)
+	kind, _ := m["fact_kind"].(string)
+	stmt, _ := m["statement"].(string)
+	id = strings.TrimSpace(id)
+	if id == "" || strings.TrimSpace(stmt) == "" {
+		return factSlotRow{}, false
+	}
+	return factSlotRow{id: id, kind: kind, stmt: stmt}, true
+}
+
+// applySlotSupersede invalidates older active facts that occupy the same
+// preference / identity / residence slot as a just-written fact. One list
+// call covers the batch (CS-B10); failures are best-effort and never fail
+// the write.
+func (w *ImmediateFactWriter) applySlotSupersede(ctx context.Context, agentID, userID string, written [][]byte) {
+	if w == nil || w.lister == nil || w.conflict == nil || len(written) == 0 {
+		return
+	}
+	keepers := map[string]factSlotRow{}
+	var slots []string
+	for _, raw := range written {
+		row, ok := parseFactSlotRow(raw)
+		if !ok {
+			continue
+		}
+		slot := PreferenceSlotKey(row.stmt)
+		if slot == "" {
+			continue
+		}
+		if _, seen := keepers[slot]; !seen {
+			slots = append(slots, slot)
+		}
+		keepers[slot] = row
+	}
+	if len(keepers) == 0 {
+		return
+	}
+	existing, err := w.lister.ListActivePreferenceFacts(ctx, agentID, userID, immediateSlotKinds, immediateSlotLook)
+	if err != nil {
+		w.lg.Warn("即时事实同槽列举失败",
+			loggateway.StepID("memory.immediate_fact_slot"),
+			loggateway.Err(err))
+		return
+	}
+	for _, slot := range slots {
+		nf := keepers[slot]
+		for _, raw := range existing {
+			old, ok := parseFactSlotRow(raw)
+			if !ok || old.id == nf.id {
+				continue
+			}
+			if !ShouldSupersedeSameSlotFact(old.kind, old.stmt, nf.kind, nf.stmt) {
+				continue
+			}
+			if serr := w.conflict.SupersedeFact(ctx, old.id, nf.id); serr != nil {
+				w.lg.Warn("即时事实同槽覆盖失败",
+					loggateway.StepID("memory.immediate_fact_slot"),
+					loggateway.Err(serr),
+					loggateway.Str("old_fact_id", old.id),
+					loggateway.Str("new_fact_id", nf.id))
+			}
+		}
+	}
 }
 
 // mapFactTypeToKind maps XML fact type to memory_fact fact_kind.

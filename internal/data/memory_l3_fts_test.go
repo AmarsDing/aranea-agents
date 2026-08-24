@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/testhelper"
@@ -17,8 +18,9 @@ import (
 // fakeVectorStore is a test double for vector.VectorStore that returns
 // canned hits (or an error) from Search.
 type fakeVectorStore struct {
-	hits []vector.VectorHit
-	err  error
+	hits   []vector.VectorHit
+	err    error
+	search int
 }
 
 func (f *fakeVectorStore) Upsert(context.Context, string, []float64, map[string]string) error {
@@ -26,6 +28,7 @@ func (f *fakeVectorStore) Upsert(context.Context, string, []float64, map[string]
 }
 
 func (f *fakeVectorStore) Search(context.Context, []float64, int, float64) ([]vector.VectorHit, error) {
+	f.search++
 	return f.hits, f.err
 }
 
@@ -259,6 +262,29 @@ func TestL3Recall_VectorFTSFusion(t *testing.T) {
 	}
 }
 
+// TestL3Recall_VectorPathPreferredOnSmallScope is the production-capability
+// gate: agents with embeddings must use pgvector+RRF even when fact count is
+// well below the brute-force threshold (typical chat scopes).
+func TestL3Recall_VectorPathPreferredOnSmallScope(t *testing.T) {
+	vs := &fakeVectorStore{}
+	r := setupL3FTSTestRepo(t, vs, 5000)
+	ctx := context.Background()
+	scope := "agent-vector-small"
+	target := upsertL3Fact(t, r, scope, "Semantic match about evening routines", 0.5)
+	vs.hits = []vector.VectorHit{{ID: target, Score: 0.88}}
+
+	rows, err := r.RecallL3Facts(ctx, "agent", scope, "", "unrelated-token-zzz", []float32{0.1, 0.2, 0.3}, 10, 0)
+	if err != nil {
+		t.Fatalf("RecallL3Facts: %v", err)
+	}
+	if vs.search == 0 {
+		t.Fatal("vector Search was not called; small-scope path still skipped pgvector")
+	}
+	if len(rows) == 0 || factRowID(t, rows[0]) != target {
+		t.Fatalf("top=%v, want vector hit %s", rows, target)
+	}
+}
+
 // TestL3Recall_VectorStoreErrorDegradesToFTS verifies that a vector-store
 // failure does not fail the recall: the FTS channel still supplies candidates.
 func TestL3Recall_VectorStoreErrorDegradesToFTS(t *testing.T) {
@@ -279,5 +305,147 @@ func TestL3Recall_VectorStoreErrorDegradesToFTS(t *testing.T) {
 	}
 	if got := factRowID(t, rows[0]); got != ftsFactID {
 		t.Fatalf("row id=%s, want FTS candidate %s", got, ftsFactID)
+	}
+}
+
+func TestL3Recall_BruteForceScoresEarlyFactAmongFillers(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	ctx := context.Background()
+	scope := "agent-early-fact"
+	early := time.Date(2025, 1, 2, 15, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	raw, err := r.UpsertFactRow(ctx, biz.FactUpsert{
+		ScopeType: "agent", ScopeID: scope, AgentID: scope,
+		Statement:  "Alice likes blue",
+		FactKind:   "user_preference",
+		Importance: 0.5,
+		CreatedAt:  early,
+		ValidFrom:  early,
+		SourceKind: "manual",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID := factRowID(t, raw)
+	for i := 0; i < 80; i++ {
+		upsertL3Fact(t, r, scope, fmt.Sprintf("Later chatter line %02d about meetings", i), 0.5)
+	}
+	rows, err := r.RecallL3Facts(ctx, "agent", scope, "", "What color does Alice like?", nil, 10, 0)
+	if err != nil {
+		t.Fatalf("RecallL3Facts: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("no rows")
+	}
+	if factRowID(t, rows[0]) != targetID {
+		t.Fatalf("top=%s stmt=%s, want early Alice fact %s", factRowID(t, rows[0]), string(rows[0]), targetID)
+	}
+}
+
+func TestSearchL3FTS_QuestionFormHitsEvidence(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	ctx := context.Background()
+	scope := "agent-fts-question"
+	targetID := upsertL3Fact(t, r, scope, "Alice likes blue", 0.5)
+	upsertL3Fact(t, r, scope, "Deploy token ZXQ4817 belongs to Falcon project", 0.5)
+
+	ids, err := r.searchL3FTS(ctx, "agent", scope, "", "What color does Alice like?", 10)
+	if err != nil {
+		t.Fatalf("searchL3FTS: %v", err)
+	}
+	found := false
+	for _, id := range ids {
+		if id == targetID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("question query ids=%v, want to include %s", ids, targetID)
+	}
+}
+
+func enableL3Trigram(t *testing.T, r *l3FactRepo) {
+	t.Helper()
+	db := r.data.rawDB
+	if db == nil {
+		t.Fatal("rawDB is nil")
+	}
+	db.SetMaxOpenConns(1)
+	var schema string
+	if err := db.QueryRow(`SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatalf("current_schema: %v", err)
+	}
+	if _, err := db.Exec(`SET search_path TO ` + schema + `, public`); err != nil {
+		t.Fatalf("set search_path: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS pg_trgm`); err != nil {
+		t.Fatalf("CREATE EXTENSION pg_trgm: %v", err)
+	}
+}
+
+func TestSearchL3Trigram_ChineseShortQuery(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	enableL3Trigram(t, r)
+	ctx := context.Background()
+	scope := "agent-trgm-direct"
+	targetID := upsertL3Fact(t, r, scope, "Alice 喜欢蓝色", 0.5)
+	upsertL3Fact(t, r, scope, "Deploy token ZXQ4817 belongs to Falcon project", 0.5)
+
+	ids, err := r.searchL3Trigram(ctx, "agent", scope, "", "喜欢蓝色", 10)
+	if err != nil {
+		t.Fatalf("searchL3Trigram: %v", err)
+	}
+	if len(ids) == 0 || ids[0] != targetID {
+		t.Fatalf("ids=%v, want [%s] first", ids, targetID)
+	}
+
+	ids, err = r.searchL3Trigram(ctx, "agent", scope, "", " ", 10)
+	if err != nil || ids != nil {
+		t.Fatalf("blank query: ids=%v err=%v, want nil/nil", ids, err)
+	}
+	ids, err = r.searchL3Trigram(ctx, "agent", scope, "", "蓝", 10)
+	if err != nil || ids != nil {
+		t.Fatalf("single-rune query: ids=%v err=%v, want nil/nil", ids, err)
+	}
+}
+
+func TestL3Recall_VectorTrigramFusion_Chinese(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 1)
+	enableL3Trigram(t, r)
+	ctx := context.Background()
+	scope := "agent-trgm-fusion"
+	cjkID := upsertL3Fact(t, r, scope, "Alice 喜欢蓝色", 0.5)
+	vecID := upsertL3Fact(t, r, scope, "Semantic match about evening routines", 0.5)
+	unrelatedID := upsertL3Fact(t, r, scope, "Unrelated fact about the weather", 0.5)
+
+	r.vectorStore = &fakeVectorStore{hits: []vector.VectorHit{{ID: vecID, Score: 0.9}}}
+
+	rows, err := r.RecallL3Facts(ctx, "agent", scope, "", "喜欢蓝色", []float32{0.1, 0.2, 0.3}, 10, 0)
+	if err != nil {
+		t.Fatalf("RecallL3Facts: %v", err)
+	}
+	got := map[string]struct{}{}
+	for _, raw := range rows {
+		got[factRowID(t, raw)] = struct{}{}
+	}
+	if _, ok := got[cjkID]; !ok {
+		t.Fatalf("trigram-hit CJK fact %s missing from fused recall, rows=%v", cjkID, got)
+	}
+	if _, ok := got[vecID]; !ok {
+		t.Fatalf("vector-hit fact %s missing from fused recall", vecID)
+	}
+	if _, ok := got[unrelatedID]; ok {
+		t.Fatal("unrelated fact entered the fused pool")
+	}
+}
+
+func TestRRFFuseRanked_ThreeLists(t *testing.T) {
+	_, order := rrfFuseRanked(60, []string{"a"}, []string{"b"}, []string{"c", "a"})
+	if len(order) != 3 {
+		t.Fatalf("order=%v, want 3 unique ids", order)
+	}
+	if order[0] != "a" {
+		t.Fatalf("a appears in two lists and must rank first, got %v", order)
 	}
 }

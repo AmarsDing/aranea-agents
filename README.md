@@ -885,7 +885,7 @@ go build -o ./bin/aranea ./cmd/aranea
 ---
 ## Agent Memory Challenge 2026（评测入口）
 
-本仓库参加首届 Agent 记忆挑战赛（[Agent Memory Leaderboard](https://agentmemories.ai/competition/)）学术方法榜。参评实现为独立评测入口 `cmd/memoryeval/`（**不影响主程序**），将平台 Add/Search 契约桥接到本项目的 L0–L4 五层记忆体系（L3 混合评分召回 + PII 写入门禁 + 幂等 upsert）。
+本仓库参加首届 Agent 记忆挑战赛（[Agent Memory Leaderboard](https://agentmemories.ai/competition/)）学术方法榜。参评实现为独立评测入口 `cmd/memoryeval/`（**不影响主程序**），将平台 Add/Search 契约桥接到 L3 浅分类事实 + L2 session 时间线（小集合全量打分、问句 FTS-OR、事件时间、矛盾 supersede、PII 打标不改正文、Search 一跳+MMR；向量索引异步）。
 
 ### 构建与运行（Docker，唯一依赖 Docker）
 

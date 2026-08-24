@@ -14,27 +14,30 @@ import (
 // ──────────────────────────────────────────────────────────
 // L3 FTS candidate search + RRF fusion (P2-3)
 //
-// Design (report §6.4 读取路径): the L3 recall pool is now fed by TWO
-// complementary retrieval signals — pgvector semantic search and PostgreSQL
-// FTS (to_tsvector over statement + details_markdown) — fused with
-// Reciprocal Rank Fusion at the CANDIDATE-SET level. The final ranking still
-// uses the calibrated hybrid score (keyword/vector/importance/recency/
-// quality), so minScore semantics are unchanged; RRF decides WHICH facts get
-// scored, not their final order. The fused RRF score is annotated into the
-// score breakdown for observability only.
+// Design (report §6.4 读取路径): the L3 recall pool is now fed by THREE
+// complementary retrieval signals — pgvector semantic search, PostgreSQL
+// FTS (to_tsvector over statement + details_markdown), and pg_trgm
+// word_similarity on statement — fused with Reciprocal Rank Fusion at the
+// CANDIDATE-SET level. The final ranking still uses the calibrated hybrid
+// score (keyword/vector/importance/recency/quality), so minScore semantics
+// are unchanged; RRF decides WHICH facts get scored, not their final order.
+// The fused RRF score is annotated into the score breakdown for observability
+// only.
 //
-// Known limitation (shared with knowledge module, 37-knowledge.design.md):
-// the 'simple' tsvector config does not segment CJK runs, so continuous
-// Chinese text forms a single token and Chinese queries rarely match. CJK
-// keyword matching stays with the Go substring channel
-// (keywordOverlapScore); FTS covers alphanumeric tokens (codes, names, IDs)
-// that both vector similarity and substring keyword channels handle poorly.
+// FTS 'simple' does not segment CJK runs, so continuous Chinese text forms a
+// single token. CJK keyword matching uses the Go substring channel
+// (keywordOverlapScore) plus the trigram channel (searchL3Trigram). FTS
+// covers alphanumeric tokens (codes, names, IDs) that both vector similarity
+// and substring keyword channels handle poorly.
 // ──────────────────────────────────────────────────────────
 
 const (
 	// l3FTSCandidateLimit caps how many FTS-ranked candidates enter the
 	// recall pool. FTS is a complementary signal; the hybrid score re-ranks.
 	l3FTSCandidateLimit = 40
+	// l3FTSLargeLimit is the FTS pool when the no-embedding path cannot
+	// full-scan (fact count above the brute-force threshold).
+	l3FTSLargeLimit = 200
 	// l3RRFK is the Reciprocal Rank Fusion constant (k=60, same as the
 	// knowledge module's hybrid retriever) — dampens head-of-list dominance.
 	l3RRFK = 60
@@ -53,11 +56,12 @@ func (r *l3FactRepo) searchL3FTS(ctx context.Context, scopeType, scopeID, userID
 		limit = l3FTSCandidateLimit
 	}
 	tsv := `to_tsvector('simple', statement || ' ' || COALESCE(details_markdown, ''))`
+	tsq := buildL3FTSQuery(query)
 	clauses := []string{
 		"status = 'active'", "deleted_at = ''", "valid_until = ''",
-		tsv + ` @@ plainto_tsquery('simple', ?)`,
+		tsv + ` @@ to_tsquery('simple', ?)`,
 	}
-	args := []any{query}
+	args := []any{tsq}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
 		args = append(args, scopeType)
@@ -71,8 +75,8 @@ func (r *l3FactRepo) searchL3FTS(ctx context.Context, scopeType, scopeID, userID
 		args = append(args, userID)
 	}
 	q := `SELECT id FROM memory_facts WHERE ` + strings.Join(clauses, " AND ") +
-		` ORDER BY ts_rank(` + tsv + `, plainto_tsquery('simple', ?)) DESC, updated_at DESC LIMIT ?`
-	args = append(args, query, limit)
+		` ORDER BY ts_rank(` + tsv + `, to_tsquery('simple', ?)) DESC, COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
+	args = append(args, tsq, limit)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
@@ -133,7 +137,7 @@ func rrfFuseRanked(k int, lists ...[]string) (map[string]float64, []string) {
 
 // queryFactRowsByIDs fetches active fact rows by ID with scope filters
 // re-applied in SQL (defense-in-depth; the candidate queries already filter).
-func (r *l3FactRepo) queryFactRowsByIDs(ctx context.Context, ids []string, scopeType, scopeID, userID string) (*sql.Rows, error) {
+func (r *l3FactRepo) queryFactRowsByIDs(ctx context.Context, ids []string, scopeType, scopeID, userID string, includeBlob bool) (*sql.Rows, error) {
 	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := make([]any, 0, len(ids)+3)
 	if scopeType != "" {
@@ -154,7 +158,7 @@ func (r *l3FactRepo) queryFactRowsByIDs(ctx context.Context, ids []string, scope
 		args = append(args, id)
 	}
 	clauses = append(clauses, fmt.Sprintf("id IN (%s)", strings.Join(placeholders, ",")))
-	q := sqlFactSelect + " WHERE " + strings.Join(clauses, " AND ")
+	q := sqlFactSelectSQL(includeBlob) + " WHERE " + strings.Join(clauses, " AND ")
 	return r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 }
 
@@ -163,7 +167,14 @@ func (r *l3FactRepo) queryFactRowsByIDs(ctx context.Context, ids []string, scope
 // recall paths, whose SQL pre-limit (importance/updated_at top-N) can miss
 // keyword-strong facts with low importance or old timestamps.
 func (r *l3FactRepo) ftsExtraCandidates(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, present map[string]struct{}, minScore float64, now time.Time) ([]scoredFact, error) {
-	ftsIDs := r.ftsCandidateIDs(ctx, scopeType, scopeID, userID, query, l3FTSCandidateLimit)
+	return r.ftsExtraCandidatesAt(ctx, scopeType, scopeID, userID, query, queryEmbedding, present, minScore, now, l3FTSCandidateLimit)
+}
+
+func (r *l3FactRepo) ftsExtraCandidatesAt(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, present map[string]struct{}, minScore float64, now time.Time, limit int) ([]scoredFact, error) {
+	if limit <= 0 {
+		limit = l3FTSCandidateLimit
+	}
+	ftsIDs := r.ftsCandidateIDs(ctx, scopeType, scopeID, userID, query, limit)
 	if len(ftsIDs) == 0 {
 		return nil, nil
 	}
@@ -176,7 +187,7 @@ func (r *l3FactRepo) ftsExtraCandidates(ctx context.Context, scopeType, scopeID,
 	if len(missing) == 0 {
 		return nil, nil
 	}
-	rows, err := r.queryFactRowsByIDs(ctx, missing, scopeType, scopeID, userID)
+	rows, err := r.queryFactRowsByIDs(ctx, missing, scopeType, scopeID, userID, len(queryEmbedding) > 0)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
@@ -186,6 +197,52 @@ func (r *l3FactRepo) ftsExtraCandidates(ctx context.Context, scopeType, scopeID,
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	return scored, nil
+}
+
+// buildL3FTSQuery turns a natural-language query into an OR tsquery of
+// content tokens. Chat users ask questions ("Alice 喜欢什么颜色"), not
+// Boolean AND of every word; AND-of-all-terms misses evidence that uses
+// different function words. Ranking still uses ts_rank + hybrid score.
+func buildL3FTSQuery(query string) string {
+	query = strings.TrimSpace(query)
+	tokens := tokenizeQuery(query)
+	var parts []string
+	seen := map[string]struct{}{}
+	for _, tok := range tokens {
+		term := escapeTSQueryTerm(tok)
+		if term == "" {
+			continue
+		}
+		key := strings.ToLower(term)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		parts = append(parts, term)
+	}
+	if len(parts) == 0 {
+		if fallback := escapeTSQueryTerm(query); fallback != "" {
+			return fallback
+		}
+		return "empty"
+	}
+	return strings.Join(parts, " | ")
+}
+
+func escapeTSQueryTerm(tok string) string {
+	var b strings.Builder
+	b.Grow(len(tok))
+	for _, r := range tok {
+		switch r {
+		case '&', '|', '!', '(', ')', ':', '\'', '\\', '<', '>':
+			continue
+		default:
+			if r > 32 {
+				b.WriteRune(r)
+			}
+		}
+	}
+	return b.String()
 }
 
 // scoredFactIDs returns the ID set of an already-scored candidate list.

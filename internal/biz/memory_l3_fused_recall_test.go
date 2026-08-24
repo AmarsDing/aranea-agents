@@ -81,7 +81,7 @@ func TestRecallFactsFused_AdaptiveMinScore(t *testing.T) {
 	t.Run("top1 强时抬高阈值截掉弱长尾", func(t *testing.T) {
 		uc := NewMemoryL3RecallUsecase(recallStoreMock{}, &scoredStoreMock{hits: []RecallHit{
 			mk("top", "空调设定为 24℃", 0.9),
-			mk("mid", "空调维护记录", 0.6),  // > 0.54 = 0.9×0.6，保留
+			mk("mid", "空调维护记录", 0.6),       // > 0.54 = 0.9×0.6，保留
 			mk("tail", "空调 28℃ 告警规则", 0.5), // > 0.35 但 < 0.54，被自适应阈值截掉
 		}}, nil, loggateway.NewNoop())
 		rows, err := uc.RecallFactsFused(context.Background(), q)
@@ -124,6 +124,24 @@ func TestRecallFactsFused_AdaptiveMinScore(t *testing.T) {
 			t.Fatalf("expected 2 rows on passive path, got %d", len(rows))
 		}
 	})
+}
+
+func TestAdaptiveRecallMinScore(t *testing.T) {
+	if got := AdaptiveRecallMinScore(0, 0.9); got != 0 {
+		t.Fatalf("disabled configured: got %v, want 0", got)
+	}
+	if got := AdaptiveRecallMinScore(-1, 0.9); got != 0 {
+		t.Fatalf("negative configured: got %v, want 0", got)
+	}
+	if got := AdaptiveRecallMinScore(0.55, 0.9); got != 0.55 {
+		t.Fatalf("top1*0.6 below floor: got %v, want 0.55", got)
+	}
+	if got := AdaptiveRecallMinScore(0.35, 0.9); got < 0.539 || got > 0.541 {
+		t.Fatalf("top1 strong: got %v, want 0.54", got)
+	}
+	if got := AdaptiveRecallMinScore(0.35, 0); got != 0.35 {
+		t.Fatalf("zero top1: got %v, want configured floor", got)
+	}
 }
 
 type recallStoreMockWithQuery struct {
