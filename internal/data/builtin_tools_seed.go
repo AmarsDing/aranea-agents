@@ -109,6 +109,7 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "cancel_orchestration", displayName: "取消编排", description: "取消正在运行的编排。基于 orchestration_id 取消。", category: "spirit", source: "builtin", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"orchestration_id":{"type":"string","description":"The orchestration ID to cancel"}},"required":["orchestration_id"]}`},
 	{key: "synthesize_results", displayName: "合成团队结果", description: "将所有已完成团队的执行结果合成为综合报告。前置条件：所有并行团队均已完成（系统主动通知后调用）。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"strategy":{"type":"string","description":"合成策略","enum":["template","llm","hybrid"]}}}`},
 	{key: "build_orchestration_graph", displayName: "构建编排图", description: "构建 DAG 编排图，定义子任务依赖关系和执行顺序。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"task_description":{"type":"string","description":"任务描述"},"nodes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"agent_key":{"type":"string"},"depends_on":{"type":"array","items":{"type":"string"}}}}},"verification_gates":{"type":"array","items":{"type":"object"}}},"required":["task_description","nodes"]}`},
+	{key: "get_team_deliverable", displayName: "获取团队交付物", description: "读取指定团队的交付物全文（结构化执行结果）。team_id 留空时列出本会话全部团队（team_id/名称/状态/任务）供选择；指定 team_id 时返回该团队交付物内容。团队未完成或读取失败时 error 字段说明原因。需要团队执行结果时优先调用本工具，不要用 read_session_history 翻聊天记录。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"team_id":{"type":"string","description":"目标团队 ID。留空时返回本会话全部团队清单（team_id/名称/状态/任务），用于定位团队后再次调用。"},"max_chars":{"type":"integer","description":"返回内容最大字符数，留空使用默认预算。"}}}`},
 	// Subagent tools: implementation in internal/tools/subagent/service.go (FrameworkTools).
 	// Registered at runtime via cfg.SubAgent in internal/tools/trpc/toolsets.go.
 	// Seeded as enabled=false; users opt-in per Agent via effective tool keys.
@@ -318,7 +319,8 @@ func syncBuiltinMCPToolCatalogPatches(ctx context.Context, client *ent.Client, d
 }
 
 // syncRemovedBuiltinToolPatches soft-deletes builtin tools whose runtime
-// implementation has been removed (DEAD-1: check_progress). Seed only inserts
+// implementation has been removed (DEAD-1: check_progress；DEAD-3: 6 个已被
+// plan_and_execute / 系统主动推送取代的 legacy spirit 工具). Seed only inserts
 // (ON CONFLICT DO NOTHING), so rows already present in existing DBs would
 // linger in the catalog forever as disabled readonly tombstones. Idempotent.
 func syncRemovedBuiltinToolPatches(ctx context.Context, client *ent.Client, d Dialect) error {
@@ -329,8 +331,21 @@ func syncRemovedBuiltinToolPatches(ctx context.Context, client *ent.Client, d Di
 	const upd = `UPDATE tools SET deleted_at = ?, updated_at = ?
 		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
 	updDialect := d.RenumberPlaceholders(upd)
-	if _, err := client.ExecContext(ctx, updDialect, now, now, "check_progress"); err != nil {
-		return fmt.Errorf("soft-delete removed builtin tool %q: %w", "check_progress", err)
+	removed := []string{
+		"check_progress",
+		// DEAD-3：legacy spirit 工具，实现已并入 plan_and_execute / 系统通知，
+		// 且无任何 profile 命名（永不可达），从目录软删。
+		"assemble_team",
+		"assess_complexity",
+		"cancel_team",
+		"check_team_progress",
+		"list_butlers",
+		"query_butler_status",
+	}
+	for _, key := range removed {
+		if _, err := client.ExecContext(ctx, updDialect, now, now, key); err != nil {
+			return fmt.Errorf("soft-delete removed builtin tool %q: %w", key, err)
+		}
 	}
 	return nil
 }

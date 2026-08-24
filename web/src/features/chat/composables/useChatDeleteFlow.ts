@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { useTeamsStore } from '../../../stores/teams';
 import type { DeleteKind, SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
+import { SPIRIT_AGENT_KEY } from '../../spirit/types';
 import { isAgentWorking, LS_AG_ORDER, LS_TM_ORDER } from './chatWorkspaceUtils';
 import type { useAppStore } from '../../../stores/app';
 import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
@@ -116,7 +117,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
         await deps.appStore.removeAgentFromList(id);
         deps.displayAgents.value = deps.displayAgents.value.filter((agent) => agent.id !== id);
         deps.defaultAgentId.value =
-          (deps.appStore.agents.find((a) => a.agent_key === '__spirit__') || deps.appStore.agents[0])?.id ?? null;
+          (deps.appStore.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY) || deps.appStore.agents[0])?.id ?? null;
         if (deps.sessionStore.entityKind === 'agent') {
           if (deps.appStore.selectedAgent) {
             await deps.sessionStore.loadSessions(deps.appStore.selectedAgent.id);

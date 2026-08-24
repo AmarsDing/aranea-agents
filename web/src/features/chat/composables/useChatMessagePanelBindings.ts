@@ -12,7 +12,9 @@ import type { SpiritMember, SpiritStatusBarData, SpiritTeam } from '../../spirit
 import type { ComposerUsageSnapshot } from '../composerUsageMetrics';
 import type { MemberSession, MemberSessionStatus } from '../v2Types';
 
-export const SPIRIT_AGENT_KEY = '__spirit__';
+// 唯一出处已迁至 features/spirit/types；此处保留 re-export 兼容既有引用。
+import { SPIRIT_AGENT_KEY } from '../../spirit/types';
+export { SPIRIT_AGENT_KEY };
 
 type ChatWorkspace = ReturnType<typeof useChatWorkspace>;
 

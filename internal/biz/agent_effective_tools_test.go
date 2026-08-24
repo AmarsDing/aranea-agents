@@ -288,13 +288,25 @@ func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) 
 	}
 }
 
-// computer_use_* 工具组：spirit profile 显式 opt-in（seed 默认 enabled=false，
-// 走 registryOptInOnlyKeys 白名单而非全局开启）。
-func TestProfileAllowSet_spiritIncludesComputerUseGroup(t *testing.T) {
+// computer_use_* 工具组：seed 默认 enabled=false，走 registryOptInOnlyKeys
+// 白名单按 profile/override opt-in，而非全局开启。
+// 精灵是编排者，不直接执行 shell / 桌面自动化（与 CAPABILITIES.md 契约一致）：
+// shell_exec 与 computer_use_* 一律不得进入 spirit allowed 集。
+func TestProfileAllowSet_spiritExcludesShellAndComputerUse(t *testing.T) {
 	allowed := profileAllowSet("spirit", nil)
 	for _, key := range []string{
+		"shell_exec",
 		"computer_use_observe", "computer_use_screenshot",
 		"computer_use_act", "computer_use_launch", "computer_use_session",
+	} {
+		if allowed[key] {
+			t.Fatalf("expected %s excluded from spirit allowed set", key)
+		}
+	}
+	for _, key := range []string{
+		"plan_and_execute", "cancel_orchestration", "synthesize_results",
+		"get_team_deliverable", "build_orchestration_graph", "memory_search",
+		"subagents_spawn", "datetime", "web_research", "web_fetch",
 	} {
 		if !allowed[key] {
 			t.Fatalf("expected %s in spirit allowed set; got keys %v", key, allowed)
@@ -383,20 +395,19 @@ func TestBuildAgentEffectiveTools_spiritWebResearchEnabled(t *testing.T) {
 	}
 }
 
-func TestBuildAgentEffectiveTools_spiritComputerUseEnabled(t *testing.T) {
+func TestBuildAgentEffectiveTools_spiritComputerUseDenied(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit"}
 	cat := []Tool{
 		{Key: "computer_use_act", DisplayName: "桌面动作", Category: "computeruse", Source: "builtin", Enabled: false},
+		{Key: "shell_exec", DisplayName: "Shell 执行", Category: "runtime", Source: "builtin", Enabled: false},
 	}
 	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
 	for _, it := range eff.Items {
-		if it.ToolKey != "computer_use_act" {
+		if it.ToolKey != "computer_use_act" && it.ToolKey != "shell_exec" {
 			continue
 		}
-		if !it.Enabled || it.EffectiveState != "allowed" {
-			t.Fatalf("want computer_use_act allowed under spirit opt-in, got %#v", it)
+		if it.Enabled || it.EffectiveState != "denied" {
+			t.Fatalf("want %s denied under spirit profile, got %#v", it.ToolKey, it)
 		}
-		return
 	}
-	t.Fatal("computer_use_act missing from effective items")
 }

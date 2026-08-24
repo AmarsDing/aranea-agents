@@ -128,8 +128,58 @@ const (
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
 // 空结果是这些工具的合法终态（库中确无资料），模型换词重试不会产生新信息；
 // 判定谓词按各工具的结果结构识别「空」，非空结果即清零该工具的连续空计数。
+//
+// 覆盖范围（2026-08-24 扩展，sh-04 同类风险收口）：knowledge_search 用专用
+// 谓词（chunks 字段）；其余检索类工具统一用通用集合字段探测，与各工具真实
+// 序列化形态对齐——memory_search=SearchMemoryResponse{results}、
+// duckduckgo_search/web_research/google_search/arxiv_search/wikipedia_search
+// 均为 {results}、skill_search 为 {skills}/{results} 形态。
 var loopGuardEmptyResultTools = map[string]func(result any) bool{
-	"knowledge_search": loopGuardIsEmptySearchResult,
+	"knowledge_search":  loopGuardIsEmptySearchResult,
+	"memory_search":     loopGuardGenericSearchEmpty,
+	"skill_search":      loopGuardGenericSearchEmpty,
+	"duckduckgo_search": loopGuardGenericSearchEmpty,
+	"web_research":      loopGuardGenericSearchEmpty,
+	"google_search":     loopGuardGenericSearchEmpty,
+	"arxiv_search":      loopGuardGenericSearchEmpty,
+	"wikipedia_search":  loopGuardGenericSearchEmpty,
+}
+
+// loopGuardEmptyCollectionKeys 是检索类工具结果中常见的集合字段名。
+var loopGuardEmptyCollectionKeys = []string{
+	"results", "items", "memories", "skills", "hits", "matches", "entries", "documents",
+}
+
+// loopGuardGenericSearchEmpty 检索类工具的通用空判定：结果序列化为 JSON object
+// 后，任一常见集合字段存在且为空数组即判空。含 error 字段时不判空——失败重试
+// 归熔断器治理，不与空结果熔断混淆。无集合字段的结果保守判非空（不误伤）。
+func loopGuardGenericSearchEmpty(result any) bool {
+	if result == nil {
+		return false
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return false
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return false
+	}
+	if _, hasErr := m["error"]; hasErr {
+		return false
+	}
+	for _, k := range loopGuardEmptyCollectionKeys {
+		raw, ok := m[k]
+		if !ok {
+			continue
+		}
+		var arr []json.RawMessage
+		if err := json.Unmarshal(raw, &arr); err != nil {
+			continue
+		}
+		return len(arr) == 0
+	}
+	return false
 }
 
 // loopGuardIsEmptySearchResult 判定 knowledge_search 结果为空：

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,6 +58,9 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	// 模型基线对齐 2026-08-23 治理结论：除 __voice_butler__（语音实时刻意保留
+	// openrouter/gpt-4.1-mini）外全员 deepseek/deepseek-v4-flash。ON CONFLICT 不回写
+	// provider/model，存量库不受此字面量影响，此处仅约束全新安装。
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
@@ -65,7 +69,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
 	) VALUES (
-		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
+		'agent___spirit__', ?, '精灵助手', 'deepseek', 'deepseek-v4-flash',
 		'active', TRUE, FALSE, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools":{"profile":"spirit"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
@@ -103,6 +107,11 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 			loggateway.StepID("data.seed.spirit_prompt_files"))
 		return nil
 	}
+	// 装配顺序 = 身份→能力→决策（agent_repo_prompt.go 按 sort_order 升序组装
+	// 系统提示词）。显式按白名单顺序排序，不依赖 os.ReadDir 字母序。
+	sort.SliceStable(files, func(i, j int) bool {
+		return spiritPromptMarkdownRank(files[i].name) < spiritPromptMarkdownRank(files[j].name)
+	})
 	now := time.Now().UTC().Format(time.RFC3339)
 	const agentID = "agent___spirit__"
 	const q = `INSERT INTO agent_prompt_files (
@@ -134,10 +143,23 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 // spiritPromptMarkdownAllow is the only prompt set mounted on __spirit__.
 // company_lead.md / dept_lead.md / orchestrator.md belong on their own agents;
 // seeding them here duplicated Graph rules and made the spirit look like a CEO.
+// 切片顺序即装配顺序（sort_order 升序）：身份→能力→决策。
 var spiritPromptMarkdownAllow = map[string]struct{}{
 	"IDENTITY.md":     {},
 	"CAPABILITIES.md": {},
 	"DECISION.md":     {},
+}
+
+// spiritPromptMarkdownCanonicalOrder 是白名单文件的规范装配顺序。
+var spiritPromptMarkdownCanonicalOrder = []string{"IDENTITY.md", "CAPABILITIES.md", "DECISION.md"}
+
+func spiritPromptMarkdownRank(name string) int {
+	for i, n := range spiritPromptMarkdownCanonicalOrder {
+		if n == name {
+			return i
+		}
+	}
+	return len(spiritPromptMarkdownCanonicalOrder)
 }
 
 func isSpiritPromptMarkdown(name string) bool {
@@ -357,11 +379,18 @@ func SeedSystemAgentRuntimeSettings(ctx context.Context, client *ent.Client, d D
 	// intent_pass_enabled=false. The DB column defaults to true
 	// (agent_runtime_setting.go), so the minimal insert above would silently
 	// enable IntentPass — the voice fast path must not pay its latency.
-	const qVoice = `INSERT INTO agent_runtime_settings (agent_id, tools_profile, intent_pass_enabled, created_at, updated_at)
-		VALUES (?, 'chat_only', FALSE, ?, ?)
+	// 2026-08-24 快路径收敛（ADR：1-chat.design.md）：subagents_enabled=false
+	// （语音前台不直接编排，复杂任务唯一通道 delegate_to_spirit）、
+	// clarification_enabled=false（语音场景不弹澄清确认卡）、
+	// skill_load_mode='progressive'（与 __spirit__ 一致渐进加载，不预付全量技能提示词）。
+	const qVoice = `INSERT INTO agent_runtime_settings (agent_id, tools_profile, intent_pass_enabled, subagents_enabled, clarification_enabled, skill_load_mode, created_at, updated_at)
+		VALUES (?, 'chat_only', FALSE, FALSE, FALSE, 'progressive', ?, ?)
 		ON CONFLICT (agent_id) DO UPDATE SET
 			tools_profile = excluded.tools_profile,
 			intent_pass_enabled = excluded.intent_pass_enabled,
+			subagents_enabled = excluded.subagents_enabled,
+			clarification_enabled = excluded.clarification_enabled,
+			skill_load_mode = excluded.skill_load_mode,
 			updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(qVoice), "agent___voice_butler__", now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_agent_runtime_settings"), loggateway.Str("agent_id", "agent___voice_butler__"), loggateway.Err(err))
@@ -518,25 +547,30 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggat
 	return nil
 }
 
+// builtinCLIAdminToolSeeds 是 cli_admin_* 管理工具种子（统一 enabled=FALSE 的
+// opt-in-only 目录行，启用路径见 biz registryOptInOnlyKeys）。提取为包级单源，
+// 供种子函数与跨表一致性 fitness 测试（builtin_tools_consistency_test.go）共用。
+var builtinCLIAdminToolSeeds = []struct {
+	key  string
+	name string
+	desc string
+}{
+	{"cli_admin_skill_list", "Skill 列表", "列出系统中所有已安装的 Skill"},
+	{"cli_admin_skill_get", "Skill 详情", "获取指定 Skill 的详细信息"},
+	{"cli_admin_skill_install_from_url", "从 URL 安装 Skill", "从 Git 仓库 URL 安装 Skill"},
+	{"cli_admin_skill_import_status", "Skill 导入状态", "查询 Skill 导入任务状态"},
+	{"cli_admin_skill_import_apply", "应用 Skill 导入", "确认并应用 Skill 导入"},
+	{"cli_admin_agent_list", "Agent 列表", "列出系统中所有 Agent"},
+	{"cli_admin_agent_get", "Agent 详情", "获取指定 Agent 的详细信息"},
+	{"cli_admin_pkg_install_from_url", "从 URL 安装 Package", "从 Git 仓库 URL 安装整个 aranea package（含 MCP/Skill/Agent/Team/Graph）"},
+}
+
 func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	tools := []struct {
-		key  string
-		name string
-		desc string
-	}{
-		{"cli_admin_skill_list", "Skill 列表", "列出系统中所有已安装的 Skill"},
-		{"cli_admin_skill_get", "Skill 详情", "获取指定 Skill 的详细信息"},
-		{"cli_admin_skill_install_from_url", "从 URL 安装 Skill", "从 Git 仓库 URL 安装 Skill"},
-		{"cli_admin_skill_import_status", "Skill 导入状态", "查询 Skill 导入任务状态"},
-		{"cli_admin_skill_import_apply", "应用 Skill 导入", "确认并应用 Skill 导入"},
-		{"cli_admin_agent_list", "Agent 列表", "列出系统中所有 Agent"},
-		{"cli_admin_agent_get", "Agent 详情", "获取指定 Agent 的详细信息"},
-		{"cli_admin_pkg_install_from_url", "从 URL 安装 Package", "从 Git 仓库 URL 安装整个 aranea package（含 MCP/Skill/Agent/Team/Graph）"},
-	}
+	tools := builtinCLIAdminToolSeeds
 	const q = `INSERT INTO tools (
 		id, tool_key, display_name, description, category, source, risk_level, enabled, readonly,
 		requires_confirmation, supports_streaming, supports_concurrency,
@@ -601,7 +635,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 		) VALUES (
 			?, ?, ?, 'openrouter', 'gpt-4.1-mini',
 			'active', FALSE, FALSE, '', ?,
-			'', 'complete', 0, 0, '{"tools":{"profile":"dept_lead"},"memory_enabled":true}', '[]', 'system',
+			'', 'complete', 0, 0, '{"tools":{"profile":"read_only"},"memory_enabled":true}', '[]', 'system',
 			?, ?, '', TRUE, 'system_builtin', 'system',
 		?, 'dept_lead'
 	) ON CONFLICT(agent_key) DO UPDATE SET

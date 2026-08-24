@@ -30,7 +30,7 @@ func ClampSpecialistToolFace(s *AgentRuntimeSettings, a Agent) {
 		s.ToolsProfile = "read_only"
 		return
 	}
-	if canonicalToolProfile(s.ToolsProfile) == "spirit" {
+	if CanonicalToolProfile(s.ToolsProfile) == "spirit" {
 		s.ToolsProfile = "coding"
 	}
 }

@@ -6274,6 +6274,14 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 
 禁止条款同步新增"需求不明时组队"。该约束是组队决策咽喉点的唯一提示层防线（根因链起点 G5）。
 
+**2026-08-24 决策补充（ADR）**：`__spirit__` 的 `clarification_enabled=false` 为刻意决策——精灵的澄清职责由 DECISION.md 规则承担（阻塞性歧义 → mode=direct 先问，禁止组队，有内容守卫测试锁定）。系统级 clarification pass 面向专项 agent 设计；精灵作为默认入口若叠加系统澄清通道，会出现"系统问一遍、DECISION 再问一遍"的双重澄清。实测（chat-e2e-20260823 A4）：模型按 DECISION 规则主动澄清后正确组队。若未来 DECISION 规则被证明不足以覆盖，再评估开启系统通道。
+
+**2026-08-24 精灵系统配置治理第三批（ADR，用户裁定）**：
+
+- **D8 seed 模型基线**：`SeedSpiritAgent` 的 seed 字面量由 `openrouter/gpt-4.1-mini` 改为 `deepseek/deepseek-v4-flash`，对齐 2026-08-23 治理基线（除 `__voice_butler__` 语音实时刻意保留 openrouter 外全员 deepseek）。ON CONFLICT 子句不回写 provider/model，存量库不受影响，此改动仅约束全新安装不再装出背离基线的精灵。
+- **D9 语音管家快路径收敛**（`SeedSystemAgentRuntimeSettings` qVoice）：`subagents_enabled=false`（语音前台不直接编排子代理，复杂任务唯一通道 `delegate_to_spirit`，开启是死开关）、`clarification_enabled=false`（语音场景不弹澄清确认卡，与 intent_pass=false 同为快路径延迟考量）、`skill_load_mode='progressive'`（与 `__spirit__` 一致渐进加载，不预付全量技能提示词）。
+- **D10 运维护栏保持零值**：`__spirit__` 的 `max_llm_calls`/`max_tool_iterations`/`context_window` 保持 0（语义=不限/走框架默认），`heartbeat_enabled` 保持 false。决策理由：精灵是按需响应的对话入口而非常驻轮询体，编排死循环防护由工具循环守卫（同参 2 次拦截）承担，暂不叠加调用次数护栏；后续若出现失控案例再评估设限。
+
 #### B.10.22.6 Fix 5：member_sessions 重复行
 
 - 统一 ID 生成公式（`internal/agent/activity_context.go`）。

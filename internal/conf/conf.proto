@@ -210,7 +210,8 @@ message Runtime {
     int64 pong_wait_ms = 2;            // wait for client pong (0 = 60 s)
     int64 ping_period_ms = 3;          // server ping interval (0 = 30 s)
     int64 write_wait_ms = 4;           // single write deadline (0 = 10 s)
-    int64 turn_timeout_ms = 5;         // WS-initiated turn timeout (0 = 5 min)
+    // field 5 (turn_timeout_ms) removed 2026-08-24: never consumed; chat turns
+    // are intentionally unbounded (No-Timeout principle).
     int32 max_session_conns = 6;       // per-session WS limit (0 = 5)
     int32 max_global_monitor_conns = 7;// global monitor WS limit (0 = 3)
     int32 high_cap = 8;                // high-priority queue capacity (0 = 64)

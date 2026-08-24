@@ -4,12 +4,16 @@ import "time"
 
 // RuntimeWSConfig returns resolved WebSocket config values with zero-value defaults.
 // Zero values in config.yaml fall back to the previous hardcoded constants.
+//
+// Note: chat turns are intentionally unbounded (No-Timeout principle, see
+// chat_orchestrator_turn.go) — turns end on completion or explicit user
+// cancel. The former TurnTimeout field was removed (2026-08-24): it was
+// never consumed anywhere.
 type RuntimeWSConfig struct {
 	ReadLimit             int64
 	PongWait              time.Duration
 	PingPeriod            time.Duration
 	WriteWait             time.Duration
-	TurnTimeout           time.Duration
 	MaxSessionConns       int32
 	MaxGlobalMonitorConns int32
 	HighCap               int32
@@ -24,7 +28,7 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 	if r == nil || r.Ws == nil {
 		return RuntimeWSConfig{
 			ReadLimit: 1 << 20, PongWait: 60 * time.Second, PingPeriod: 30 * time.Second,
-			WriteWait: 10 * time.Second, TurnTimeout: 5 * time.Minute,
+			WriteWait: 10 * time.Second,
 			MaxSessionConns: 5, MaxGlobalMonitorConns: 32,
 			HighCap: 64, NormalCap: 128, LowCap: 256,
 			HighBlockTimeout: 5 * time.Second, BackpressureInterval: 10 * time.Second,
@@ -39,7 +43,6 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 	pongWait := msToDuration(w.PongWaitMs, 60*time.Second)
 	pingPeriod := msToDuration(w.PingPeriodMs, 30*time.Second)
 	writeWait := msToDuration(w.WriteWaitMs, 10*time.Second)
-	turnTimeout := msToDuration(w.TurnTimeoutMs, 5*time.Minute)
 	maxSession := w.MaxSessionConns
 	if maxSession <= 0 {
 		maxSession = 5
@@ -70,7 +73,7 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 	}
 	return RuntimeWSConfig{
 		ReadLimit: readLimit, PongWait: pongWait, PingPeriod: pingPeriod,
-		WriteWait: writeWait, TurnTimeout: turnTimeout,
+		WriteWait: writeWait,
 		MaxSessionConns: maxSession, MaxGlobalMonitorConns: maxMonitor,
 		HighCap: highCap, NormalCap: normalCap, LowCap: lowCap,
 		HighBlockTimeout: highBlock, BackpressureInterval: bpInterval,

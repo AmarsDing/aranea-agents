@@ -444,6 +444,12 @@ var ddlMigrations = []ddlMigration{
 	// pool via word_similarity (FTS 'simple' does not segment CJK).
 	// Postgres-only; gated by Func so SQLite CLI/tests skip it.
 	{Version: 20261242, Name: "memory_facts_trgm_index", Func: ddlMemoryFactsTrgmIndex},
+	// 20261243 builtin_platform_tools_spirit_cleanup_reseed: 精灵工具治理——
+	// 新增 get_team_deliverable 目录行（此前仅在 profile/实现层，catalog 缺失导致
+	// effective-tools 展示与确认门禁覆盖不到），并软删 6 个已被 plan_and_execute
+	// 取代的 legacy spirit 工具（DEAD-3）。种子幂等（ON CONFLICT DO NOTHING +
+	// 条件 UPDATE），重跑安全。
+	{Version: 20261243, Name: "builtin_platform_tools_spirit_cleanup_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

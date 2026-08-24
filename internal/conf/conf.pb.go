@@ -1220,7 +1220,7 @@ func (x *SelfImprovement_Eval) GetRegressionThreshold() float64 {
 type SelfImprovement_Patch struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	MaxDiffLines        int32                  `protobuf:"varint,1,opt,name=max_diff_lines,json=maxDiffLines,proto3" json:"max_diff_lines,omitempty"`                        // diff size cap in changed lines (0 = 500)
-	DailyAutoApplyQuota int32                  `protobuf:"varint,2,opt,name=daily_auto_apply_quota,json=dailyAutoApplyQuota,proto3" json:"daily_auto_apply_quota,omitempty"` // auto-apply daily quota (0 = 5)
+	DailyAutoApplyQuota int32                  `protobuf:"varint,2,opt,name=daily_auto_apply_quota,json=dailyAutoApplyQuota,proto3" json:"daily_auto_apply_quota,omitempty"` // auto-apply daily quota (0 = disabled)
 	MaxAttempts         int32                  `protobuf:"varint,3,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`                             // patch-verify retry cap (0 = 3)
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -1898,20 +1898,21 @@ func (x *Data_Redis) GetWriteTimeout() *durationpb.Duration {
 
 // WebSocket connection and priority-queue tuning.
 type Runtime_WS struct {
-	state                  protoimpl.MessageState `protogen:"open.v1"`
-	ReadLimit              int64                  `protobuf:"varint,1,opt,name=read_limit,json=readLimit,proto3" json:"read_limit,omitempty"`                                           // max message size in bytes (0 = 1 MB)
-	PongWaitMs             int64                  `protobuf:"varint,2,opt,name=pong_wait_ms,json=pongWaitMs,proto3" json:"pong_wait_ms,omitempty"`                                      // wait for client pong (0 = 60 s)
-	PingPeriodMs           int64                  `protobuf:"varint,3,opt,name=ping_period_ms,json=pingPeriodMs,proto3" json:"ping_period_ms,omitempty"`                                // server ping interval (0 = 30 s)
-	WriteWaitMs            int64                  `protobuf:"varint,4,opt,name=write_wait_ms,json=writeWaitMs,proto3" json:"write_wait_ms,omitempty"`                                   // single write deadline (0 = 10 s)
-	TurnTimeoutMs          int64                  `protobuf:"varint,5,opt,name=turn_timeout_ms,json=turnTimeoutMs,proto3" json:"turn_timeout_ms,omitempty"`                             // WS-initiated turn timeout (0 = 5 min)
-	MaxSessionConns        int32                  `protobuf:"varint,6,opt,name=max_session_conns,json=maxSessionConns,proto3" json:"max_session_conns,omitempty"`                       // per-session WS limit (0 = 5)
-	MaxGlobalMonitorConns  int32                  `protobuf:"varint,7,opt,name=max_global_monitor_conns,json=maxGlobalMonitorConns,proto3" json:"max_global_monitor_conns,omitempty"`   // global monitor WS limit (0 = 3)
-	HighCap                int32                  `protobuf:"varint,8,opt,name=high_cap,json=highCap,proto3" json:"high_cap,omitempty"`                                                 // high-priority queue capacity (0 = 64)
-	NormalCap              int32                  `protobuf:"varint,9,opt,name=normal_cap,json=normalCap,proto3" json:"normal_cap,omitempty"`                                           // normal-priority queue capacity (0 = 128)
-	LowCap                 int32                  `protobuf:"varint,10,opt,name=low_cap,json=lowCap,proto3" json:"low_cap,omitempty"`                                                   // low-priority queue capacity (0 = 256)
-	HighBlockTimeoutMs     int64                  `protobuf:"varint,11,opt,name=high_block_timeout_ms,json=highBlockTimeoutMs,proto3" json:"high_block_timeout_ms,omitempty"`           // high queue full block timeout (0 = 5 s)
-	BackpressureIntervalMs int64                  `protobuf:"varint,12,opt,name=backpressure_interval_ms,json=backpressureIntervalMs,proto3" json:"backpressure_interval_ms,omitempty"` // backpressure report interval (0 = 10 s)
-	LowDrainPerLoop        int32                  `protobuf:"varint,13,opt,name=low_drain_per_loop,json=lowDrainPerLoop,proto3" json:"low_drain_per_loop,omitempty"`                    // max low-priority drains per loop (0 = 8)
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	ReadLimit    int64                  `protobuf:"varint,1,opt,name=read_limit,json=readLimit,proto3" json:"read_limit,omitempty"`            // max message size in bytes (0 = 1 MB)
+	PongWaitMs   int64                  `protobuf:"varint,2,opt,name=pong_wait_ms,json=pongWaitMs,proto3" json:"pong_wait_ms,omitempty"`       // wait for client pong (0 = 60 s)
+	PingPeriodMs int64                  `protobuf:"varint,3,opt,name=ping_period_ms,json=pingPeriodMs,proto3" json:"ping_period_ms,omitempty"` // server ping interval (0 = 30 s)
+	WriteWaitMs  int64                  `protobuf:"varint,4,opt,name=write_wait_ms,json=writeWaitMs,proto3" json:"write_wait_ms,omitempty"`    // single write deadline (0 = 10 s)
+	// field 5 (turn_timeout_ms) removed 2026-08-24: never consumed; chat turns
+	// are intentionally unbounded (No-Timeout principle).
+	MaxSessionConns        int32 `protobuf:"varint,6,opt,name=max_session_conns,json=maxSessionConns,proto3" json:"max_session_conns,omitempty"`                       // per-session WS limit (0 = 5)
+	MaxGlobalMonitorConns  int32 `protobuf:"varint,7,opt,name=max_global_monitor_conns,json=maxGlobalMonitorConns,proto3" json:"max_global_monitor_conns,omitempty"`   // global monitor WS limit (0 = 3)
+	HighCap                int32 `protobuf:"varint,8,opt,name=high_cap,json=highCap,proto3" json:"high_cap,omitempty"`                                                 // high-priority queue capacity (0 = 64)
+	NormalCap              int32 `protobuf:"varint,9,opt,name=normal_cap,json=normalCap,proto3" json:"normal_cap,omitempty"`                                           // normal-priority queue capacity (0 = 128)
+	LowCap                 int32 `protobuf:"varint,10,opt,name=low_cap,json=lowCap,proto3" json:"low_cap,omitempty"`                                                   // low-priority queue capacity (0 = 256)
+	HighBlockTimeoutMs     int64 `protobuf:"varint,11,opt,name=high_block_timeout_ms,json=highBlockTimeoutMs,proto3" json:"high_block_timeout_ms,omitempty"`           // high queue full block timeout (0 = 5 s)
+	BackpressureIntervalMs int64 `protobuf:"varint,12,opt,name=backpressure_interval_ms,json=backpressureIntervalMs,proto3" json:"backpressure_interval_ms,omitempty"` // backpressure report interval (0 = 10 s)
+	LowDrainPerLoop        int32 `protobuf:"varint,13,opt,name=low_drain_per_loop,json=lowDrainPerLoop,proto3" json:"low_drain_per_loop,omitempty"`                    // max low-priority drains per loop (0 = 8)
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1970,13 +1971,6 @@ func (x *Runtime_WS) GetPingPeriodMs() int64 {
 func (x *Runtime_WS) GetWriteWaitMs() int64 {
 	if x != nil {
 		return x.WriteWaitMs
-	}
-	return 0
-}
-
-func (x *Runtime_WS) GetTurnTimeoutMs() int64 {
-	if x != nil {
-		return x.TurnTimeoutMs
 	}
 	return 0
 }
@@ -2687,7 +2681,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12<\n" +
 	"\fread_timeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\vreadTimeout\x12>\n" +
-	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xd2\x13\n" +
+	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xaa\x13\n" +
 	"\aRuntime\x12&\n" +
 	"\x02ws\x18\x01 \x01(\v2\x16.kratos.api.Runtime.WSR\x02ws\x12,\n" +
 	"\x04hook\x18\x02 \x01(\v2\x18.kratos.api.Runtime.HookR\x04hook\x129\n" +
@@ -2697,15 +2691,14 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\vauto_memory\x18\x06 \x01(\v2\x1e.kratos.api.Runtime.AutoMemoryR\n" +
 	"autoMemory\x12N\n" +
 	"\x10activity_flusher\x18\a \x01(\v2#.kratos.api.Runtime.ActivityFlusherR\x0factivityFlusher\x122\n" +
-	"\x06plugin\x18\b \x01(\v2\x1a.kratos.api.Runtime.PluginR\x06plugin\x1a\x89\x04\n" +
+	"\x06plugin\x18\b \x01(\v2\x1a.kratos.api.Runtime.PluginR\x06plugin\x1a\xe1\x03\n" +
 	"\x02WS\x12\x1d\n" +
 	"\n" +
 	"read_limit\x18\x01 \x01(\x03R\treadLimit\x12 \n" +
 	"\fpong_wait_ms\x18\x02 \x01(\x03R\n" +
 	"pongWaitMs\x12$\n" +
 	"\x0eping_period_ms\x18\x03 \x01(\x03R\fpingPeriodMs\x12\"\n" +
-	"\rwrite_wait_ms\x18\x04 \x01(\x03R\vwriteWaitMs\x12&\n" +
-	"\x0fturn_timeout_ms\x18\x05 \x01(\x03R\rturnTimeoutMs\x12*\n" +
+	"\rwrite_wait_ms\x18\x04 \x01(\x03R\vwriteWaitMs\x12*\n" +
 	"\x11max_session_conns\x18\x06 \x01(\x05R\x0fmaxSessionConns\x127\n" +
 	"\x18max_global_monitor_conns\x18\a \x01(\x05R\x15maxGlobalMonitorConns\x12\x19\n" +
 	"\bhigh_cap\x18\b \x01(\x05R\ahighCap\x12\x1d\n" +

@@ -19,21 +19,23 @@ func jsonStringList(raw string, lg loggateway.Logger) []string {
 	return list
 }
 
-var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file", "read_lints", "delete_file"}
-var toolGroupsWeb = []string{ToolKeyWebResearch, "web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
-var toolGroupsMemory = []string{"memory_search", "memory_get"}
-var toolGroupsSkill = []string{"skill_search", "use_skill"}
-var toolGroupsMedia = []string{"read_document", "read_spreadsheet", "create_image", "tts"}
-var toolGroupsRuntime = []string{"shell_exec", "claude_code"}
-var toolGroupsMessaging = []string{"send_email"}
-var toolGroupsSession = []string{"await_user_reply", "todo_write"}
-var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"}
-var toolGroupsSubagent = []string{"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"}
-var toolGroupsBrowser = []string{"browser"}
-
-var toolGroupsComputerUse = []string{
-	"computer_use_observe", "computer_use_screenshot",
-	"computer_use_act", "computer_use_launch", "computer_use_session",
+// toolStaticGroups 是静态工具组表单源（组名 → 成员 tool_key）。动态组
+// cli_admin 按目录实时展开（expandToolGroup 特判），不在此表。
+// 成员增删必须与目录种子（internal/data builtinPlatformToolSeeds）同步——
+// 一致性由 internal/data 的工具元数据 fitness 测试强制。
+var toolStaticGroups = map[string][]string{
+	"filesystem":  {"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file", "read_lints", "delete_file"},
+	"web":         {ToolKeyWebResearch, "web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"},
+	"memory":      {"memory_search", "memory_get"},
+	"skill":       {"skill_search", "use_skill"},
+	"media":       {"read_document", "read_spreadsheet", "create_image", "tts"},
+	"runtime":     {"shell_exec", "claude_code"},
+	"messaging":   {"send_email"},
+	"session":     {"await_user_reply", "todo_write"},
+	"integration": {"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"},
+	"subagent":    {"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"},
+	"browser":     {"browser"},
+	"computeruse": {"computer_use_observe", "computer_use_screenshot", "computer_use_act", "computer_use_launch", "computer_use_session"},
 }
 
 // syntheticShellExecTool matches internal/data builtin seeds when the tools table has no shell_exec row.
@@ -90,49 +92,61 @@ func cliAdminKeysFromRegistry(catalog []Tool) []string {
 }
 
 func expandToolGroup(name string, catalog []Tool) []string {
-	switch strings.TrimSpace(name) {
-	case "filesystem":
-		return append([]string{}, toolGroupsFilesystem...)
-	case "web":
-		return append([]string{}, toolGroupsWeb...)
-	case "memory":
-		return append([]string{}, toolGroupsMemory...)
-	case "skill":
-		return append([]string{}, toolGroupsSkill...)
-	case "media":
-		return append([]string{}, toolGroupsMedia...)
-	case "runtime":
-		return append([]string{}, toolGroupsRuntime...)
-	case "messaging":
-		return append([]string{}, toolGroupsMessaging...)
-	case "session":
-		return append([]string{}, toolGroupsSession...)
-	case "integration":
-		return append([]string{}, toolGroupsIntegration...)
-	case "subagent":
-		return append([]string{}, toolGroupsSubagent...)
-	case "browser":
-		return append([]string{}, toolGroupsBrowser...)
-	case "computeruse":
-		return append([]string{}, toolGroupsComputerUse...)
-	case "cli_admin":
+	name = strings.TrimSpace(name)
+	if name == "cli_admin" {
 		return cliAdminKeysFromRegistry(catalog)
-	default:
-		return nil
 	}
+	if members, ok := toolStaticGroups[name]; ok {
+		return append([]string{}, members...)
+	}
+	return nil
+}
+
+// ToolPolicyStaticTables 是工具策略静态元数据快照：静态组表（不含动态组
+// cli_admin）、profile 条目表、registry opt-in 表。供跨包一致性 fitness 测试
+// （internal/data）与诊断使用。
+type ToolPolicyStaticTables struct {
+	Groups    map[string][]string
+	Profiles  map[string][]string
+	OptInOnly map[string]bool
+}
+
+// ExportToolPolicyStaticTables 返回策略静态元数据的拷贝（调用方修改不影响策略计算）。
+func ExportToolPolicyStaticTables() ToolPolicyStaticTables {
+	groups := make(map[string][]string, len(toolStaticGroups))
+	for name, members := range toolStaticGroups {
+		groups[name] = append([]string{}, members...)
+	}
+	profiles := make(map[string][]string, len(toolProfiles))
+	for name, entries := range toolProfiles {
+		profiles[name] = append([]string{}, entries...)
+	}
+	optIn := make(map[string]bool, len(registryOptInOnlyKeys))
+	for key := range registryOptInOnlyKeys {
+		optIn[key] = true
+	}
+	return ToolPolicyStaticTables{Groups: groups, Profiles: profiles, OptInOnly: optIn}
 }
 
 func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 	result := map[string]bool{}
-	for _, key := range toolProfiles[strings.TrimSpace(profile)] {
-		if strings.HasPrefix(key, "group:") {
-			gn := strings.TrimPrefix(key, "group:")
+	key := strings.TrimSpace(profile)
+	if _, ok := toolProfiles[key]; !ok {
+		// 无独立条目的别名/空 profile 回退 canonical 归一（general→coding、
+		// ""→coding），与 CanonicalToolProfile 的展示语义对齐——否则别名
+		// profile 会静默得到空工具面而 API 展示 canonical 名。有独立条目
+		// （system_admin/system_memory 等）时优先原始条目，小工具面不被放大。
+		key = CanonicalToolProfile(key)
+	}
+	for _, k := range toolProfiles[key] {
+		if strings.HasPrefix(k, "group:") {
+			gn := strings.TrimPrefix(k, "group:")
 			for _, member := range expandToolGroup(gn, catalog) {
 				result[member] = true
 			}
 			continue
 		}
-		result[key] = true
+		result[k] = true
 	}
 	return result
 }
@@ -207,6 +221,12 @@ var registryOptInOnlyKeys = map[string]bool{
 	"gns3_exec":               true,
 	"gns3_fault_inject":       true,
 	"gns3_fault_clear":        true,
+	// twin_config_*（Phase B 配置自动化三工具，同 twinops 族）漏登记事故
+	// （2026-08-24 P1-2② fitness 测试捕获）：种子 enabled=false 且本表无条目时
+	// applyRegistryAdminDenials 对全员硬 deny，ops 岗位 allow JSON 授权静默无效。
+	"twin_config_diff":     true,
+	"twin_config_push":     true,
+	"twin_config_rollback": true,
 	// officecli_* 有完整工具实现（internal/tools/officecli），种子 enabled=false
 	//（依赖 OfficeCLI 二进制环境配置）。入表使其成为 opt-in-only：agent allow
 	// JSON 显式命名即可启用，不入表则被 applyRegistryAdminDenials 全员硬 deny、
@@ -233,7 +253,7 @@ func applySpiritReservedDenials(profile string, allowSet, denySet map[string]boo
 	if denySet == nil {
 		return
 	}
-	if canonicalToolProfile(profile) == "spirit" {
+	if CanonicalToolProfile(profile) == "spirit" {
 		return
 	}
 	for _, k := range SpiritReservedToolKeys() {
@@ -268,11 +288,14 @@ var toolProfiles = map[string][]string{
 	// 避免未知 profile 导致 effective-tools 全 denied 的误导性展示。
 	"system_memory": {"datetime"},
 	"system_skills": {"datetime"},
-	"spirit": {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime", "group:computeruse",
-		ToolKeyWebResearch, "duckduckgo_search", "web_fetch"},
+	// Spirit 编排者：只编排与沟通，不直接执行 shell / 桌面自动化（与 CAPABILITIES.md 契约一致）。
+	"spirit": {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "datetime", "web_research", "duckduckgo_search", "web_fetch"},
 }
 
-func canonicalToolProfile(profile string) string {
+// CanonicalToolProfile 归一化 profile 别名/空值到策略桶（general→coding、
+// safe→read_only、system_admin→full 等）。策略计算与装配层（核心/延迟分离）
+// 必须使用同一归一化语义，避免出现「展示 canonical、门禁按原始串」的双轨。
+func CanonicalToolProfile(profile string) string {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
 	case "":
 		// Empty profile falls back to "coding" (the default in DefaultAgentRuntimeSettings).
@@ -447,7 +470,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 
 	return AgentEffectiveTools{
 		ToolsEnabled: settings.ToolsEnabled,
-		Profile:      canonicalToolProfile(settings.ToolsProfile),
+		Profile:      CanonicalToolProfile(settings.ToolsProfile),
 		Allow:        allow,
 		Deny:         deny,
 		Items:        items,

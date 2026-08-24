@@ -1,3 +1,6 @@
+/** 精灵助手（系统内置总管家）的 agent_key，与后端 biz.SpiritAgentKey 对齐。全站唯一出处，禁止再写字面量。 */
+export const SPIRIT_AGENT_KEY = '__spirit__';
+
 export type SpiritTeamStatus =
   | 'pending'
   | 'running'

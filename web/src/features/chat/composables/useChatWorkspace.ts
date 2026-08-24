@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { SpiritPanelMode } from '../../spirit/types';
+import { SPIRIT_AGENT_KEY } from '../../spirit/types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -960,7 +961,7 @@ export function useChatWorkspace() {
 
     await Promise.all([loadChatOptions(), appStore.loadAgents()]);
 
-    const defaultAgent = appStore.agents.find((a) => a.agent_key === '__spirit__') || appStore.agents[0];
+    const defaultAgent = appStore.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY) || appStore.agents[0];
     defaultAgentId.value = defaultAgent?.id ?? null;
     displayAgents.value = loadAgentOrder(appStore.agents, defaultAgentId.value);
     coreReady.value = true;

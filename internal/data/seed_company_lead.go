@@ -89,9 +89,9 @@ func seedOneCompanyLead(ctx context.Context, client *ent.Client, d Dialect, lg l
 			created_at, updated_at, deleted_at, readonly, kind, source,
 			position_key, agent_variant
 		) VALUES (
-			?, ?, ?, 'openrouter', 'gpt-4.1-mini',
+			?, ?, ?, 'deepseek', 'deepseek-v4-flash',
 			'active', FALSE, FALSE, '', ?,
-			?, 'complete', 0, 0, '{"tools":{"profile":"read_only"},"memory_enabled":true}', '[]', 'system',
+			?, 'complete', 0, 0, '{"tools":{"profile":"read_only"},"subagents":{"enabled":true},"memory":{"enabled":true},"intent_pass":{"enabled":true}}', '[]', 'system',
 			?, ?, '', TRUE, 'system_builtin', 'system',
 			?, 'company_lead'
 		) ON CONFLICT(agent_key) DO UPDATE SET

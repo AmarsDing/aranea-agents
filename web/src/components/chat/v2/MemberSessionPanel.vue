@@ -113,6 +113,7 @@ import { useActivityQueries } from '../../../features/chat/composables/useActivi
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import { useFollowScroll } from '../../../features/chat/composables/useFollowScroll';
 import type { MemberSession } from '../../../features/chat/v2Types';
+import { SPIRIT_AGENT_KEY } from '../../../features/spirit/types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
@@ -259,7 +260,7 @@ function submitInput() {
 // 系统 agent 排除：__spirit__ 及 __ 前缀不显示输入栏
 const isSystemAgent = computed(() => {
   const key = props.memberSession.AgentKey || '';
-  return key === '__spirit__' || key.startsWith('__');
+  return key === SPIRIT_AGENT_KEY || key.startsWith('__');
 });
 
 // 输入栏显示状态（2026-07-27 扩展）：

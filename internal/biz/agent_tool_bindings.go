@@ -124,7 +124,7 @@ func (u *AgentUsecase) GetToolAgentBindings(ctx context.Context, toolID, callerW
 			AgentName:    ag.DisplayName,
 			AgentStatus:  ag.Status,
 			ToolsEnabled: settings.ToolsEnabled,
-			Profile:      canonicalToolProfile(settings.ToolsProfile),
+			Profile:      CanonicalToolProfile(settings.ToolsProfile),
 			State:        item.EffectiveState,
 			Reason:       item.Reason,
 			OverrideMode: overrideMode,

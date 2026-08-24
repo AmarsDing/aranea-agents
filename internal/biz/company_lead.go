@@ -153,6 +153,25 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 	settings.MemoryEnabled = true
 	settings.ToolsEnabled = true
 	settings.ToolsProfile = "read_only"
+	// 记忆栈对齐 dept_lead（DB 列默认全 true）：Ent Create 会显式写每个字段，
+	// bool 零值 false 会覆盖列默认，导致 L1-L4/intent/clarify 全关（2026-08-24
+	// 实锤：3 个 GM 记忆栈全关而 32 个 dept_lead 全开）。subagents/heartbeat
+	// 保持 false——总经理不当业务 Team Lead、无自治职责（设计 R10）。
+	settings.L0InjectL1 = true
+	settings.L0InjectL3 = true
+	settings.L0InjectL4 = true
+	settings.L0SnapshotEnabled = true
+	settings.L1Enabled = true
+	settings.L2EpisodeEnabled = true
+	settings.L2IndexEnabled = true
+	settings.L2RecallEnabled = true
+	settings.L3Enabled = true
+	settings.L3InjectProvenance = true
+	settings.L4Enabled = true
+	settings.L4GraphInjectNeighbors = true
+	settings.L4IdentityInject = true
+	settings.IntentPassEnabled = true
+	settings.ClarificationEnabled = true
 
 	configJSON, cfgErr := configJSONFromSettings(settings, agent.Files)
 	if cfgErr != nil {

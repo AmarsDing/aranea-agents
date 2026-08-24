@@ -242,7 +242,7 @@
           </div>
         </div>
 
-        <div v-if="form.agent_key === '__spirit__'" class="settings-subsection settings-subsection--span">
+        <div v-if="form.agent_key === SPIRIT_AGENT_KEY" class="settings-subsection settings-subsection--span">
           <div class="settings-subsection__head">
             <div>
               <div class="settings-subsection__title">精灵并行配置</div>
@@ -332,6 +332,7 @@
 const form = defineModel<Agent>('form', { required: true });
 const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import type { Agent } from '../../features/agents/types';
+import { SPIRIT_AGENT_KEY } from '../../features/spirit/types';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import AgentChannelRefsSection from './AgentChannelRefsSection.vue';
 import AgentSettingsPromptSection from './AgentSettingsPromptSection.vue';

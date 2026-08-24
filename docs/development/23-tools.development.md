@@ -577,6 +577,22 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] DEAD-2：`FilesystemDirWithDir`/`FilesystemDirFromContext` 死代码删除
 - [x] 门禁：`go build ./internal/... ./api/... ./pkg/...` ✅ / `go vet`（tools 相关包）✅ / `go test`（biz/tool、tools/*、data、agent、service、scenario/system）✅
 
+### Round 7（2026-08-24 精灵系统配置治理）✅
+
+背景：精灵系统配置审计发现 prompt 契约与工具策略互相打架、目录死配置、prompt 排序副作用。逐项修复：
+
+- [x] P1-1 `spirit` profile 移除 `shell_exec` + `group:computeruse`（`agent_tool_policy.go`）——CAPABILITIES.md 契约是"编排者不直接执行 shell/桌面自动化"，策略层此前却放行；测试 `TestProfileAllowSet_spiritExcludesShellAndComputerUse` / `TestBuildAgentEffectiveTools_spiritComputerUseDenied` 锁定新契约；`test/agent-audit/audit.py` PROFILES 同步
+- [x] P1-2 DECISION.md 删除不存在的 `subagents_wait` 引用（`subagents_get` 的 `block_until_ms` 覆盖等待语义）
+- [x] P1-3 `get_team_deliverable` 补入 `builtinPlatformToolSeeds`（此前仅有实现 + profile 命名，catalog 缺行导致 effective-tools 展示/确认门禁覆盖不到）
+- [x] P1-4 DEAD-3：软删 6 个 legacy spirit 工具（`assemble_team`/`assess_complexity`/`cancel_team`/`check_team_progress`/`list_butlers`/`query_butler_status`，实现已并入 `plan_and_execute`/系统通知且无任何 profile 命名），照 DEAD-1 先例走 `syncRemovedBuiltinToolPatches`
+- [x] P1-5 迁移 `20261243 builtin_platform_tools_spirit_cleanup_reseed`（`ddlBuiltinPlatformTools`，存量库补目录行 + 软删；`TestMigrationVersionsGloballyUnique` 守卫通过）
+- [x] P2-1 精灵 prompt 装配顺序显式化：IDENTITY(0)→CAPABILITIES(1)→DECISION(2)（`seed_system_admin.go` 按白名单顺序排序，不再依赖 `os.ReadDir` 字母序把身份卡垫到底）
+- [x] P2-2 前端 `__spirit__` 字面量统一为 `SPIRIT_AGENT_KEY`（唯一出处 `web/src/features/spirit/types.ts`，10 处生产代码替换，测试保留字面量）
+- [x] P3-1（D8，用户裁定）`SeedSpiritAgent` seed 模型字面量 openrouter/gpt-4.1-mini → deepseek/deepseek-v4-flash，对齐 8-23 治理基线（ON CONFLICT 不回写 provider/model，仅约束全新安装）
+- [x] P3-2（D9，用户裁定）语音管家快路径收敛：qVoice seed 扩展 `subagents_enabled=false` + `clarification_enabled=false` + `skill_load_mode='progressive'`（ADR 记入 1-chat.design.md B.10.22.5）
+- [x] P3-3（D10，用户裁定）`__spirit__` 运维护栏保持零值（max_llm_calls/max_tool_iterations/context_window=0、heartbeat 关），0 语义=不限/框架默认，决策理由入 ADR
+- [x] 门禁：`go test ./internal/biz/ ./internal/agent/ ./internal/tools/...` ✅ / vitest（spirit/voice 相关 20 例）✅ / eslint 0 error ✅ / Docker dev-up + DB 核验（deliverable 入目录、6 工具软删、DECISION 重 seed、语音管家三项收敛）✅
+
 ---
 
 ## 7. 依赖与风险

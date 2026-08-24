@@ -4,12 +4,11 @@ import { useSpiritTeamStore } from '../../../stores/spirit';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import type { Agent } from '../../agents/types';
+import { SPIRIT_AGENT_KEY } from '../../spirit/types';
 import type { MemberSession } from '../v2Types';
 import { useScrollToActivity } from './useScrollToActivity';
 import { USER_INPUT_HARD_LIMIT_CHARS } from './useChatSender';
 import type { useChatWorkspace } from './useChatWorkspace';
-
-const SPIRIT_AGENT_KEY = '__spirit__';
 
 type Workspace = ReturnType<typeof useChatWorkspace>;
 
@@ -112,7 +111,8 @@ export function useChatSpiritPanel(workspace: Workspace) {
       }
     } else {
       // Fallback: select the spirit/first agent if no spirit agent exists
-      const fallback = entity.store.agents.find((a: Agent) => a.agent_key === '__spirit__') || entity.store.agents[0];
+      const fallback =
+        entity.store.agents.find((a: Agent) => a.agent_key === SPIRIT_AGENT_KEY) || entity.store.agents[0];
       if (fallback && (entity.store.selectedAgent?.id !== fallback.id || entity.selectedEntityKind !== 'agent')) {
         entity.selectAgent(fallback);
       }

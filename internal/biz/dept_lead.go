@@ -61,6 +61,38 @@ func NewDeptLeadManager(opts DeptLeadManagerOpts) *DeptLeadManager {
 	}
 }
 
+// governanceLeadSettings returns the canonical runtime settings for a dept
+// lead: read_only tool face (监管工具由身份注入，org-invariants §3) + 记忆栈
+// 全开。Boolean fields are set explicitly because withSettingDefaults does
+// not backfill zero-value bools, and Ent Create writes every field — a
+// zero-value bool overrides the DB column default (2026-08-24 gov-lead
+// audit F4)。company_lead 在 company_lead.go 有其 R10 变体
+// （subagents/heartbeat 保持 false）。
+// evo_* 保持零值 false：治理岗 prompt 由模板渲染，不进进化候选。
+func governanceLeadSettings(agentID string) AgentRuntimeSettings {
+	settings := withSettingDefaults(AgentRuntimeSettings{AgentID: agentID})
+	settings.MemoryEnabled = true
+	settings.ToolsEnabled = true
+	settings.ToolsProfile = "read_only"
+	settings.L0InjectL1 = true
+	settings.L0InjectL3 = true
+	settings.L0InjectL4 = true
+	settings.L0SnapshotEnabled = true
+	settings.L1Enabled = true
+	settings.L2EpisodeEnabled = true
+	settings.L2IndexEnabled = true
+	settings.L2RecallEnabled = true
+	settings.L3Enabled = true
+	settings.L3InjectProvenance = true
+	settings.L4Enabled = true
+	settings.L4GraphInjectNeighbors = true
+	settings.L4IdentityInject = true
+	settings.SubagentsEnabled = true
+	settings.IntentPassEnabled = true
+	settings.ClarificationEnabled = true
+	return settings
+}
+
 // CreateDeptLead creates a department lead Agent for the given department.
 // Called automatically when a new department is created.
 func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode OrganizationNode) (*Agent, error) {
@@ -110,10 +142,7 @@ func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode Organizat
 	}
 
 	// Default settings for dept lead agent
-	settings := withSettingDefaults(AgentRuntimeSettings{AgentID: agent.ID})
-	settings.MemoryEnabled = true
-	settings.ToolsEnabled = true
-	settings.ToolsProfile = "read_only"
+	settings := governanceLeadSettings(agent.ID)
 
 	// Build config_json from settings
 	configJSON, cfgErr := configJSONFromSettings(settings, agent.Files)

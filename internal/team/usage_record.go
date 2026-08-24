@@ -113,6 +113,29 @@ func (r *Runner) recordMemberUsage(
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
 	}
+	// Run-level token budget gate (2026-08-24): accumulate only genuine member
+	// rows (attribution=="" — mirror rows duplicate the team_turn totals and
+	// would double-count), then cancel the run once on exceed. The cancel
+	// propagates through the run ctx, so no further member steps execute.
+	if strings.TrimSpace(attribution) == "" {
+		if tripped, used, limit := r.accumulateRunTokenBudget(run.ID, recEv.InputTokens); tripped {
+			r.lg.Warn("团队 run 累计 input token 超预算，取消 run",
+				loggateway.StepID("team.token_budget.exceeded"),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Str("team_id", teamID),
+				loggateway.Str("session_id", run.SessionID),
+				loggateway.Int64("budget_used_input_tokens", used),
+				loggateway.Int64("budget_limit_input_tokens", limit),
+			)
+			if em := event.TraceEmitterFromContext(ctx); em != nil {
+				em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",
+					event.P("run_id", run.ID), event.P("used", used), event.P("limit", limit))
+			}
+			if r.cfg.Runs != nil {
+				r.cfg.Runs.Cancel(run.SessionID, "team_token_budget_exceeded")
+			}
+		}
+	}
 	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4) —
 	// publishing here as well would double-emit.
 }

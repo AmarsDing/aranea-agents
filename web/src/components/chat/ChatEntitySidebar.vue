@@ -72,6 +72,7 @@ import { useI18n } from 'vue-i18n';
 import SpiritEntry from '../spirit/SpiritEntry.vue';
 import AgentSidebarCard from './AgentSidebarCard.vue';
 import type { SpiritTeam, SpiritMember, SpiritTeamStatus } from '../../features/spirit/types';
+import { SPIRIT_AGENT_KEY } from '../../features/spirit/types';
 import type { Agent } from '../../features/agents/types';
 import type { BlockedResult } from '../../features/chat/composables/useBlockedStatus';
 import { EMPTY_BLOCKED } from '../../features/chat/composables/useBlockedStatus';
@@ -109,11 +110,11 @@ const collapse = useChatEntityCollapse();
 
 // --- Spirit agent icon ---
 const spiritAgentId = computed(() => {
-  const spirit = props.agents.find((a) => a.agent_key === '__spirit__');
+  const spirit = props.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY);
   return spirit?.id ?? null;
 });
 const spiritAgentIcon = computed(() => {
-  const spirit = props.agents.find((a) => a.agent_key === '__spirit__');
+  const spirit = props.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY);
   return spirit?.icon ?? '';
 });
 

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { createAgent, deleteAgent, listAgents, updateAgent } from '../features/agents/api';
 import type { Agent } from '../features/agents/types';
+import { SPIRIT_AGENT_KEY } from '../features/spirit/types';
 import { emitSessionMutation, onSessionMutation } from './sessionMutationBus';
 
 export const useAppStore = defineStore('app', {
@@ -14,7 +15,7 @@ export const useAppStore = defineStore('app', {
       await deleteAgent(id);
       this.agents = this.agents.filter((a) => a.id !== id);
       if (this.selectedAgent?.id === id) {
-        this.selectedAgent = (this.agents.find((a) => a.agent_key === '__spirit__') || this.agents[0]) ?? null;
+        this.selectedAgent = (this.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY) || this.agents[0]) ?? null;
         emitSessionMutation({ type: 'agent_removed', agentId: id });
       }
     },
@@ -45,7 +46,7 @@ export const useAppStore = defineStore('app', {
       // after agency-pack / large catalogs are seeded.
       this.agents = await listAgents({ limit: 500 });
       if (!this.selectedAgent && this.agents.length > 0) {
-        this.selectedAgent = this.agents.find((a) => a.agent_key === '__spirit__') || this.agents[0];
+        this.selectedAgent = this.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY) || this.agents[0];
       }
     },
     async addAgent(payload: Parameters<typeof createAgent>[0]) {

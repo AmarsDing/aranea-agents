@@ -13,7 +13,7 @@
       :selected-agent-id="entity.store.selectedAgent?.id"
       :selected-team-id="spiritStore.activeTeamId"
       :default-agent-id="
-        (entity.store.agents.find((a: Agent) => a.agent_key === '__spirit__') || entity.store.agents[0])?.id
+        (entity.store.agents.find((a: Agent) => a.agent_key === SPIRIT_AGENT_KEY) || entity.store.agents[0])?.id
       "
       :is-dark="layout.isDark"
       :pulse-team-colors="pulseTeamColors"
@@ -317,6 +317,7 @@ import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue'
 import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { SPIRIT_AGENT_KEY } from '../features/spirit/types';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useChatSpiritPanel } from '../features/chat/composables/useChatSpiritPanel';
 import { useBlockedStatus } from '../features/chat/composables/useBlockedStatus';

@@ -60,7 +60,6 @@ logging:
 #     pong_wait_ms: 60000           # wait for client pong (default 60 s)
 #     ping_period_ms: 30000         # server ping interval (default 30 s)
 #     write_wait_ms: 10000          # single write deadline (default 10 s)
-#     turn_timeout_ms: 300000       # WS-initiated turn timeout (default 5 min)
 #     max_session_conns: 5          # per-session WS limit
 #     max_global_monitor_conns: 32  # global monitor WS limit
 #   hook:

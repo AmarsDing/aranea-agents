@@ -72,6 +72,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
+	// Arm the run-level cumulative input-token budget gate (2026-08-24).
+	// Member rows accumulate into it in recordMemberUsage; on exceed the run
+	// ctx is cancelled so no further member steps are scheduled.
+	r.registerRunTokenBudget(run.ID, resolveRunTokenBudget(def))
+	defer r.releaseRunTokenBudget(run.ID)
+
 	// Phase 3: Setup tracing and event emitter
 	ts := r.setupTeamTracing(ctx, sess, teamRow, run, mode, len(ti.members))
 	ctx = ts.ctx

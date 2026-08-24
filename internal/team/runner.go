@@ -64,7 +64,14 @@ type Runner struct {
 	// (Runner metrics + runner.error_rate alert data source). Optional:
 	// nil skips monitor recording (tests).
 	monitor *biz.MonitorUsecase
-	lg      loggateway.Logger
+	// tokenBudget 是 run 级累计 input-token 预算闸（2026-08-24，见
+	// token_budget.go）。成员行记账时累加，超闸取消 run ctx，防止
+	// 多成员 ReAct 回灌的累计记账无上限（实测单 run 513 万 input tok）。
+	budgetMu      sync.Mutex
+	budgetUsed    map[string]int64
+	budgetLimit   map[string]int64
+	budgetTripped map[string]bool
+	lg            loggateway.Logger
 }
 
 // SetMediator wires the TeamRunMediator that breaks the circular dependency

@@ -180,8 +180,11 @@ func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (
 	if err != nil {
 		return OrganizationNode{}, err
 	}
-	// Auto-create dept lead for department nodes
-	if created.Level == "department" && u.deptLeadMgr != nil {
+	// Auto-create dept lead for department nodes.
+	// 总经理办公室（{companyKey}_office）是 company_lead 的宿主系统部门，
+	// 不另生 dept_lead（org-invariants §1）；办公室由 ensureCompanyLeadPositionOn
+	// 经 repo 窄接口创建，此处仅堵手工/API 创建路径。
+	if created.Level == "department" && u.deptLeadMgr != nil && !strings.HasSuffix(created.Key, CompanyOfficeDeptSuffix) {
 		if _, dlErr := u.deptLeadMgr.CreateDeptLead(ctx, created); dlErr != nil {
 			u.lg.Warn("failed to create dept lead",
 				loggateway.Str("dept_id", created.ID),

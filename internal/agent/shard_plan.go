@@ -722,7 +722,10 @@ func resolveDeferredToolNames(ag biz.Agent, eff map[string]bool, lg loggateway.L
 	// 自动两段式分离（WP-4）：基于 profile 把有效工具分为核心常驻集和延迟加载集。
 	// MemoryTools / working_memory / 扁平 CustomTool 不在 eff 里，
 	// MergeNonCoreMappedDeferred 按「已映射 − 核心集」并入，避免侧通道漏常驻。
-	profile := strings.TrimSpace(ag.Settings.ToolsProfile)
+	// profile 先经 canonical 归一（general→coding 等）：coreResidentToolsByProfile
+	// 只按策略桶建表，别名 profile 不归一会回退 defaultCoreResidentTools，把编码
+	// 核心工具错误降级为 deferred（与 effective-tools 门禁的 canonical 语义对齐）。
+	profile := biz.CanonicalToolProfile(ag.Settings.ToolsProfile)
 	effKeys := effKeysList(eff)
 	_, deferredKeys := deferred.SplitCoreResidentTools(effKeys, profile)
 	deferredKeys = deferred.MergeNonCoreMappedDeferred(deferredKeys, profile)

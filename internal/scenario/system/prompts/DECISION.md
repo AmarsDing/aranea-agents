@@ -35,4 +35,4 @@
 
 ### 编排
 
-idle 调一次 `plan_and_execute(task_prompt, mode)` 即可。完成后系统主动通知，不要轮询。ready 直调收口工具。`plan_and_execute` 不可用时 `tool_load` 再用 `subagents_spawn` / `subagents_get` / `subagents_wait`。4+ Agent 且要精细 DAG 时再 `tool_load` `build_orchestration_graph`。子任务 1–6 个，同一错误不循环超过 2 次。
+idle 调一次 `plan_and_execute(task_prompt, mode)` 即可。完成后系统主动通知，不要轮询。ready 直调收口工具。`plan_and_execute` 不可用时 `tool_load` 再用 `subagents_spawn` / `subagents_get`（`block_until_ms` 可等待终态）。4+ Agent 且要精细 DAG 时再 `tool_load` `build_orchestration_graph`。子任务 1–6 个，同一错误不循环超过 2 次。

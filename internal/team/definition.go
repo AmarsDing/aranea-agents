@@ -79,6 +79,10 @@ type Definition struct {
 	// CollectionIDs scope knowledge_search for this stage (playbook). When set
 	// they win over TurnInput.Options.KnowledgeBases. Empty = no pre-scope.
 	CollectionIDs []string `json:"collection_ids,omitempty"`
+	// TokenBudgetInputTokens overrides the run-level cumulative input-token
+	// budget gate (see token_budget.go). 0 = default
+	// (DefaultTeamRunInputTokenBudget); < 0 = gate disabled for this team.
+	TokenBudgetInputTokens int64 `json:"token_budget_input_tokens,omitempty"`
 	// SpecialistToolFaces is the Assemble deny overlay (spirit reserved tools).
 	SpecialistToolFaces map[string][]string `json:"specialist_tool_faces,omitempty"`
 }
