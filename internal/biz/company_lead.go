@@ -35,6 +35,14 @@ func CompanyOfficeDeptKey(companyKey string) string {
 	return strings.TrimSpace(companyKey) + CompanyOfficeDeptSuffix
 }
 
+// IsCompanyOfficeDept reports whether key is the GM office department of the
+// given parent node. Exact match replaces the former broad _office suffix
+// filter (2026-08-24 review: the suffix also silently matched business
+// departments like regional_office, which then never got a dept_lead).
+func IsCompanyOfficeDept(parent OrganizationNode, key string) bool {
+	return parent.Level == "company" && strings.TrimSpace(key) == CompanyOfficeDeptKey(parent.Key)
+}
+
 // CompanyLeadPositionKey returns the 总经理 position key under that office.
 func CompanyLeadPositionKey(companyKey string) string {
 	return strings.TrimSpace(companyKey) + CompanyLeadPositionSuffix
@@ -155,8 +163,12 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 	settings.ToolsProfile = "read_only"
 	// 记忆栈对齐 dept_lead（DB 列默认全 true）：Ent Create 会显式写每个字段，
 	// bool 零值 false 会覆盖列默认，导致 L1-L4/intent/clarify 全关（2026-08-24
-	// 实锤：3 个 GM 记忆栈全关而 32 个 dept_lead 全开）。subagents/heartbeat
-	// 保持 false——总经理不当业务 Team Lead、无自治职责（设计 R10）。
+	// 实锤：3 个 GM 记忆栈全关而 32 个 dept_lead 全开）。
+	// subagents 显式 true：对齐 DefaultAgentRuntimeSettings 与 seed 字面量
+	// （2026-08-24 三方正齐：默认 true / seed config_json true / DB 实值 t）。
+	// R10 只禁启发式把 GM 分配为业务 Team Lead，不禁 GM 自身编排能力。
+	// heartbeat 保持 false——总经理无自治职责（设计 R10）。
+	settings.SubagentsEnabled = true
 	settings.L0InjectL1 = true
 	settings.L0InjectL3 = true
 	settings.L0InjectL4 = true

@@ -6280,7 +6280,7 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 
 - **D8 seed 模型基线**：`SeedSpiritAgent` 的 seed 字面量由 `openrouter/gpt-4.1-mini` 改为 `deepseek/deepseek-v4-flash`，对齐 2026-08-23 治理基线（除 `__voice_butler__` 语音实时刻意保留 openrouter 外全员 deepseek）。ON CONFLICT 子句不回写 provider/model，存量库不受影响，此改动仅约束全新安装不再装出背离基线的精灵。
 - **D9 语音管家快路径收敛**（`SeedSystemAgentRuntimeSettings` qVoice）：`subagents_enabled=false`（语音前台不直接编排子代理，复杂任务唯一通道 `delegate_to_spirit`，开启是死开关）、`clarification_enabled=false`（语音场景不弹澄清确认卡，与 intent_pass=false 同为快路径延迟考量）、`skill_load_mode='progressive'`（与 `__spirit__` 一致渐进加载，不预付全量技能提示词）。
-- **D10 运维护栏保持零值**：`__spirit__` 的 `max_llm_calls`/`max_tool_iterations`/`context_window` 保持 0（语义=不限/走框架默认），`heartbeat_enabled` 保持 false。决策理由：精灵是按需响应的对话入口而非常驻轮询体，编排死循环防护由工具循环守卫（同参 2 次拦截）承担，暂不叠加调用次数护栏；后续若出现失控案例再评估设限。
+- **D10 运维护栏**：初裁"保持零值"后前提变更——并行治理已在全库铺开分级护栏基线（`max_llm_calls`/`max_tool_iterations` 分 15/10、24/20、32/30、52/50、62/60 五档，97 agent 落 52/50 档），`__spirit__`/`__voice_butler__` 均落 52/50 最高档，与精灵编排枢纽定位相符，终裁**保持该基线值不回退**；`heartbeat_enabled` 保持 false（精灵是按需响应的对话入口而非常驻轮询体）。0 语义=不限/走框架默认。
 
 #### B.10.22.6 Fix 5：member_sessions 重复行
 

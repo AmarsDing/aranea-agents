@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -598,8 +599,16 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 	if client == nil {
 		return nil
 	}
-	// Query all department-level org nodes that don't have a dept_lead_agent_id
-	rows, err := client.QueryContext(ctx, `SELECT id, org_key, name, description FROM organizations WHERE level = 'department' AND deleted_at = ''`)
+	// Query all department-level org nodes that don't have a dept_lead_agent_id.
+	// 总经理办公室精确排除（父为公司且 key=父key||'_office'，2026-08-24 评审：
+	// 取代宽泛 _office 后缀过滤，避免 _office 结尾业务部门永久缺失 dept_lead）。
+	rows, err := client.QueryContext(ctx, `SELECT id, org_key, name, description FROM organizations c
+		WHERE c.level = 'department' AND c.deleted_at = ''
+		AND NOT EXISTS (
+			SELECT 1 FROM organizations p
+			WHERE p.id = c.parent_id AND p.level = 'company' AND p.deleted_at = ''
+			AND c.org_key = p.org_key || '_office'
+		)`)
 	if err != nil {
 		lg.Warn("seed step failed: query departments", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
 		return entErrToBizErr(err, "SEED")
@@ -612,9 +621,6 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 		var id, key, name, desc string
 		if err := rows.Scan(&id, &key, &name, &desc); err != nil {
 			lg.Warn("seed step failed: scan department row", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
-			continue
-		}
-		if strings.HasSuffix(key, biz.CompanyOfficeDeptSuffix) {
 			continue
 		}
 		agentKey := biz.DeptLeadAgentKeyPrefix + key + "__"
@@ -700,12 +706,40 @@ func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, d Dialect,
 	}
 	defer rows.Close()
 
+	// 2026-08-24 gov-lead 审计修复（照 company_lead P4 先例）：模板含
+	// {{.DepartmentName}}/{{.DepartmentDescription}} 占位符，运行时无渲染
+	// （RenderPromptTemplate 未接入生产路径，TECH-DEBT B-5），种子必须按部门
+	// 渲染后再落库，否则部门主管 prompt 出现原始占位符。
+	// 同时 file_name 归位 system.md（对齐 biz.CreateDeptLead 的正常路径），
+	// sort_order 0→1；DO UPDATE 补 file_name 使存量 'dept_lead' 行被改名。
+	deptRows, err := client.QueryContext(ctx, `SELECT org_key, name, description FROM organizations WHERE level = 'department' AND deleted_at = ''`)
+	if err != nil {
+		return entErrToBizErr(err, "SEED")
+	}
+	type deptInfo struct{ name, description string }
+	byKey := make(map[string]deptInfo)
+	for deptRows.Next() {
+		var k, n, d string
+		if err := deptRows.Scan(&k, &n, &d); err != nil {
+			continue
+		}
+		byKey[k] = deptInfo{name: n, description: d}
+	}
+	deptRows.Close()
+	// missingkey=error：模板未来新增 {{.Xxx}} 动作时渲染直接报错（Warn+跳过），
+	// 避免默认行为静默写入 "<no value>"（2026-08-24 评审发现）。
+	tmpl, err := template.New("dept_lead_seed").Option("missingkey=error").Parse(string(data))
+	if err != nil {
+		return entErrToBizErr(err, "SEED")
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `INSERT INTO agent_prompt_files (
 		id, agent_id, file_name, body, sort_order, created_at, updated_at
 	) VALUES (
 		?, ?, ?, ?, ?, ?, ?
 	) ON CONFLICT(id) DO UPDATE SET
+		file_name = excluded.file_name,
 		body = excluded.body,
 		sort_order = excluded.sort_order,
 		updated_at = excluded.updated_at`
@@ -716,8 +750,31 @@ func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, d Dialect,
 			lg.Warn("seed step failed: scan dept lead agent row", loggateway.StepID("data.seed.dept_lead_prompt_files"), loggateway.Err(err))
 			continue
 		}
+		deptKey := strings.TrimSuffix(strings.TrimPrefix(agentKey, biz.DeptLeadAgentKeyPrefix), "__")
+		dept, ok := byKey[deptKey]
+		if !ok {
+			// 跳过而非落库原文：匹配不到部门节点（幽灵 agent）时若照常 UPSERT，
+			// 会把已渲染好的 body 回冲为含占位符的模板原文（2026-08-24 评审实锤）。
+			lg.Warn("dept lead agent has no matching department node, skipping prompt seed",
+				loggateway.StepID("data.seed.dept_lead_prompt_files"),
+				loggateway.Str("agent_key", agentKey))
+			continue
+		}
+		var b strings.Builder
+		if renderErr := tmpl.Execute(&b, map[string]string{
+			"DepartmentName":        dept.name,
+			"DepartmentDescription": dept.description,
+		}); renderErr != nil {
+			// 渲染失败同样跳过：保留库中现有 body 优于落库半成品/原文。
+			lg.Warn("dept lead prompt render failed, skipping prompt seed",
+				loggateway.StepID("data.seed.dept_lead_prompt_files"),
+				loggateway.Str("agent_key", agentKey),
+				loggateway.Err(renderErr))
+			continue
+		}
+		body := b.String()
 		id := "apf_dept_lead_" + agentKey
-		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, "dept_lead", string(data), 0, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, "system.md", body, 1, now, now); err != nil {
 			lg.Warn("seed step failed: seed dept lead prompt file",
 				loggateway.StepID("data.seed.dept_lead_prompt_files"),
 				loggateway.Str("agent_key", agentKey),

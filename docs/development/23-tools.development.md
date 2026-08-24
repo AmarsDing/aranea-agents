@@ -590,7 +590,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] P2-2 前端 `__spirit__` 字面量统一为 `SPIRIT_AGENT_KEY`（唯一出处 `web/src/features/spirit/types.ts`，10 处生产代码替换，测试保留字面量）
 - [x] P3-1（D8，用户裁定）`SeedSpiritAgent` seed 模型字面量 openrouter/gpt-4.1-mini → deepseek/deepseek-v4-flash，对齐 8-23 治理基线（ON CONFLICT 不回写 provider/model，仅约束全新安装）
 - [x] P3-2（D9，用户裁定）语音管家快路径收敛：qVoice seed 扩展 `subagents_enabled=false` + `clarification_enabled=false` + `skill_load_mode='progressive'`（ADR 记入 1-chat.design.md B.10.22.5）
-- [x] P3-3（D10，用户裁定）`__spirit__` 运维护栏保持零值（max_llm_calls/max_tool_iterations/context_window=0、heartbeat 关），0 语义=不限/框架默认，决策理由入 ADR
+- [x] P3-3（D10，用户裁定）`__spirit__`/`__voice_butler__` 运维护栏随全库分级基线落 52/50 档（并行治理铺开，终裁保持不回退）；heartbeat 保持关；0 语义=不限/框架默认，ADR 记入 1-chat.design.md B.10.22.5
 - [x] 门禁：`go test ./internal/biz/ ./internal/agent/ ./internal/tools/...` ✅ / vitest（spirit/voice 相关 20 例）✅ / eslint 0 error ✅ / Docker dev-up + DB 核验（deliverable 入目录、6 工具软删、DECISION 重 seed、语音管家三项收敛）✅
 
 ---

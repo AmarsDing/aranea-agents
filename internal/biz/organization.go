@@ -184,7 +184,15 @@ func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (
 	// 总经理办公室（{companyKey}_office）是 company_lead 的宿主系统部门，
 	// 不另生 dept_lead（org-invariants §1）；办公室由 ensureCompanyLeadPositionOn
 	// 经 repo 窄接口创建，此处仅堵手工/API 创建路径。
-	if created.Level == "department" && u.deptLeadMgr != nil && !strings.HasSuffix(created.Key, CompanyOfficeDeptSuffix) {
+	// 2026-08-24 评审：后缀过滤精确化为父级公司判定，避免误伤 _office 结尾的
+	// 业务部门（其此前会被静默跳过且启动 seed 同样跳过，dept_lead 永久缺失）。
+	skipLead := false
+	if created.ParentID != "" {
+		if parent, pErr := u.repo.GetOrgNode(ctx, created.ParentID); pErr == nil {
+			skipLead = IsCompanyOfficeDept(parent, created.Key)
+		}
+	}
+	if created.Level == "department" && u.deptLeadMgr != nil && !skipLead {
 		if _, dlErr := u.deptLeadMgr.CreateDeptLead(ctx, created); dlErr != nil {
 			u.lg.Warn("failed to create dept lead",
 				loggateway.Str("dept_id", created.ID),
