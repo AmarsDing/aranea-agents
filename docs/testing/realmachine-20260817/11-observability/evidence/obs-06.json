@@ -1,1 +1,0 @@
-{"items":[{"id":"default-runner-errors", "name":"Runner error rate", "metricKey":"runner.error_rate", "threshold":0.25, "windowMinutes":60, "enabled":true, "severity":"warning", "notifyWebhookUrl":"", "notifyChannelId":"", "cooldownMinutes":0}]}

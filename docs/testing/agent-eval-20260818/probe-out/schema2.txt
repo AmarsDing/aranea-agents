@@ -1,4 +1,0 @@
-agent_evolution_proposals
-learning_proposals
-memory_cascade_proposals
-knowledge_governance_proposal

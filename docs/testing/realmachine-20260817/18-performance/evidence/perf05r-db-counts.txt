@@ -1,1 +1,0 @@
-﻿agents=312, sessions_v2=0, turns_v2=751, trpc_session_events=22024

@@ -1,1 +1,0 @@
-{"items":[{"type":"dialog_mode", "key":"default", "label":"标准对话", "enabled":true, "sortOrder":1, "metadataJson":""}, {"type":"dialog_mode", "key":"plan", "label":"深度思考", "enabled":true, "sortOrder":2, "metadataJson":""}, {"type":"dialog_mode", "key":"code", "label":"仅代码", "enabled":true, "sortOrder":3, "metadataJson":""}]}

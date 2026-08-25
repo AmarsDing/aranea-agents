@@ -1,1 +1,0 @@
-{"backends":[{"type":"local", "available":true, "reason":""}, {"type":"docker", "available":false, "reason":"Docker daemon unavailable"}, {"type":"e2b", "available":false, "reason":"E2B_API_KEY not set"}, {"type":"container", "available":false, "reason":"requires build tag codeexec_container"}]}

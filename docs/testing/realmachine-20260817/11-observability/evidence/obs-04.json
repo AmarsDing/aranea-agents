@@ -1,1 +1,0 @@
-{"items":[{"id":"ws-hint", "time":"2026-08-16T23:29:56Z", "level":"INFO", "message":"Live log lines are pushed via WebSocket; flow_log always on, process log gated by config.", "source":"monitor", "createdAt":"2026-08-16T23:29:56Z"}], "enabled":true, "message":"Process logs follow server.monitor.process_log_enabled; subscribe via WebSocket /v1/ws."}

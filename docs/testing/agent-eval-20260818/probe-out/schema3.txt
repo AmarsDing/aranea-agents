@@ -1,1 +1,0 @@
-id:bigint, collection_id:text, kind:text, payload:jsonb, risk:text, status:text, created_at:timestamp with time zone, resolved_at:timestamp with time zone

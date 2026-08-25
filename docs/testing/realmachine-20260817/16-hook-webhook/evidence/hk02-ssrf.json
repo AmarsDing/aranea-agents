@@ -1,1 +1,0 @@
-{"code":400, "reason":"HOOK_BAD_REQUEST", "message":"webhook url: outboundguard: private or local address 127.0.0.1 is not allowed", "metadata":{}}

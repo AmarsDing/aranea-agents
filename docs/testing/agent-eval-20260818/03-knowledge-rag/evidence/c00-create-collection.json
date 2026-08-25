@@ -1,1 +1,0 @@
-{"id":"094d8ccd3d67553f4841","name":"eval-ops-kb","description":"agent-eval-20260818 domain-C, cleanup after run","embeddingModel":"bge-m3","dim":1024,"status":"active","documentCount":0,"chunkCount":0,"workspace":"default","createdAt":"2026-08-21T15:33:40Z","updatedAt":"2026-08-21T15:33:40Z","rootPath":"","syncState":"active","lastSyncAt":"","vaultBackend":"team"}
