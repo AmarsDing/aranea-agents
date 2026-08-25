@@ -1590,6 +1590,34 @@ func (_c *AgentRuntimeSettingCreate) SetNillableHardTriggerRatio(v *float64) *Ag
 	return _c
 }
 
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (_c *AgentRuntimeSettingCreate) SetAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetAssemblyBudgetSoftTokens(v)
+	return _c
+}
+
+// SetNillableAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableAssemblyBudgetSoftTokens(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetAssemblyBudgetSoftTokens(*v)
+	}
+	return _c
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (_c *AgentRuntimeSettingCreate) SetAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetAssemblyBudgetHardTokens(v)
+	return _c
+}
+
+// SetNillableAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableAssemblyBudgetHardTokens(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetAssemblyBudgetHardTokens(*v)
+	}
+	return _c
+}
+
 // SetSessionSummaryEnabled sets the "session_summary_enabled" field.
 func (_c *AgentRuntimeSettingCreate) SetSessionSummaryEnabled(v bool) *AgentRuntimeSettingCreate {
 	_c.mutation.SetSessionSummaryEnabled(v)
@@ -2569,6 +2597,14 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultHardTriggerRatio
 		_c.mutation.SetHardTriggerRatio(v)
 	}
+	if _, ok := _c.mutation.AssemblyBudgetSoftTokens(); !ok {
+		v := agentruntimesetting.DefaultAssemblyBudgetSoftTokens
+		_c.mutation.SetAssemblyBudgetSoftTokens(v)
+	}
+	if _, ok := _c.mutation.AssemblyBudgetHardTokens(); !ok {
+		v := agentruntimesetting.DefaultAssemblyBudgetHardTokens
+		_c.mutation.SetAssemblyBudgetHardTokens(v)
+	}
 	if _, ok := _c.mutation.SessionSummaryEnabled(); !ok {
 		v := agentruntimesetting.DefaultSessionSummaryEnabled
 		_c.mutation.SetSessionSummaryEnabled(v)
@@ -3048,6 +3084,12 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.HardTriggerRatio(); !ok {
 		return &ValidationError{Name: "hard_trigger_ratio", err: errors.New(`ent: missing required field "AgentRuntimeSetting.hard_trigger_ratio"`)}
+	}
+	if _, ok := _c.mutation.AssemblyBudgetSoftTokens(); !ok {
+		return &ValidationError{Name: "assembly_budget_soft_tokens", err: errors.New(`ent: missing required field "AgentRuntimeSetting.assembly_budget_soft_tokens"`)}
+	}
+	if _, ok := _c.mutation.AssemblyBudgetHardTokens(); !ok {
+		return &ValidationError{Name: "assembly_budget_hard_tokens", err: errors.New(`ent: missing required field "AgentRuntimeSetting.assembly_budget_hard_tokens"`)}
 	}
 	if _, ok := _c.mutation.SessionSummaryEnabled(); !ok {
 		return &ValidationError{Name: "session_summary_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.session_summary_enabled"`)}
@@ -3642,6 +3684,14 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.HardTriggerRatio(); ok {
 		_spec.SetField(agentruntimesetting.FieldHardTriggerRatio, field.TypeFloat64, value)
 		_node.HardTriggerRatio = value
+	}
+	if value, ok := _c.mutation.AssemblyBudgetSoftTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldAssemblyBudgetSoftTokens, field.TypeInt, value)
+		_node.AssemblyBudgetSoftTokens = value
+	}
+	if value, ok := _c.mutation.AssemblyBudgetHardTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldAssemblyBudgetHardTokens, field.TypeInt, value)
+		_node.AssemblyBudgetHardTokens = value
 	}
 	if value, ok := _c.mutation.SessionSummaryEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldSessionSummaryEnabled, field.TypeBool, value)
@@ -5482,6 +5532,42 @@ func (u *AgentRuntimeSettingUpsert) UpdateHardTriggerRatio() *AgentRuntimeSettin
 // AddHardTriggerRatio adds v to the "hard_trigger_ratio" field.
 func (u *AgentRuntimeSettingUpsert) AddHardTriggerRatio(v float64) *AgentRuntimeSettingUpsert {
 	u.Add(agentruntimesetting.FieldHardTriggerRatio, v)
+	return u
+}
+
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (u *AgentRuntimeSettingUpsert) SetAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldAssemblyBudgetSoftTokens, v)
+	return u
+}
+
+// UpdateAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateAssemblyBudgetSoftTokens() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldAssemblyBudgetSoftTokens)
+	return u
+}
+
+// AddAssemblyBudgetSoftTokens adds v to the "assembly_budget_soft_tokens" field.
+func (u *AgentRuntimeSettingUpsert) AddAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldAssemblyBudgetSoftTokens, v)
+	return u
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (u *AgentRuntimeSettingUpsert) SetAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldAssemblyBudgetHardTokens, v)
+	return u
+}
+
+// UpdateAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateAssemblyBudgetHardTokens() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldAssemblyBudgetHardTokens)
+	return u
+}
+
+// AddAssemblyBudgetHardTokens adds v to the "assembly_budget_hard_tokens" field.
+func (u *AgentRuntimeSettingUpsert) AddAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldAssemblyBudgetHardTokens, v)
 	return u
 }
 
@@ -7935,6 +8021,48 @@ func (u *AgentRuntimeSettingUpsertOne) AddHardTriggerRatio(v float64) *AgentRunt
 func (u *AgentRuntimeSettingUpsertOne) UpdateHardTriggerRatio() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateHardTriggerRatio()
+	})
+}
+
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) SetAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetAssemblyBudgetSoftTokens(v)
+	})
+}
+
+// AddAssemblyBudgetSoftTokens adds v to the "assembly_budget_soft_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) AddAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddAssemblyBudgetSoftTokens(v)
+	})
+}
+
+// UpdateAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateAssemblyBudgetSoftTokens() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateAssemblyBudgetSoftTokens()
+	})
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) SetAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetAssemblyBudgetHardTokens(v)
+	})
+}
+
+// AddAssemblyBudgetHardTokens adds v to the "assembly_budget_hard_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) AddAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddAssemblyBudgetHardTokens(v)
+	})
+}
+
+// UpdateAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateAssemblyBudgetHardTokens() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateAssemblyBudgetHardTokens()
 	})
 }
 
@@ -10635,6 +10763,48 @@ func (u *AgentRuntimeSettingUpsertBulk) AddHardTriggerRatio(v float64) *AgentRun
 func (u *AgentRuntimeSettingUpsertBulk) UpdateHardTriggerRatio() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateHardTriggerRatio()
+	})
+}
+
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetAssemblyBudgetSoftTokens(v)
+	})
+}
+
+// AddAssemblyBudgetSoftTokens adds v to the "assembly_budget_soft_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddAssemblyBudgetSoftTokens(v)
+	})
+}
+
+// UpdateAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateAssemblyBudgetSoftTokens() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateAssemblyBudgetSoftTokens()
+	})
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetAssemblyBudgetHardTokens(v)
+	})
+}
+
+// AddAssemblyBudgetHardTokens adds v to the "assembly_budget_hard_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddAssemblyBudgetHardTokens(v)
+	})
+}
+
+// UpdateAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateAssemblyBudgetHardTokens() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateAssemblyBudgetHardTokens()
 	})
 }
 

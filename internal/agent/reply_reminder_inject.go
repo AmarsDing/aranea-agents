@@ -70,7 +70,7 @@ func newReplyReminderBeforeHook() callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, replyReminderCue)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, replyReminderCueMarker+replyReminderCue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

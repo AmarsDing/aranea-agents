@@ -67,10 +67,14 @@ func skillOptionsForPromptMode(mode string) (trpcllmagent.SkillToolProfile, bool
 // orchestrators: they must not register skill_exec / skill_run / stdin+poll
 // (those schemas dominated tools_schema ~20k tok). complete prompt mode still
 // keeps IDENTITY files; only the execution tools are dropped.
+// read_only（2026-08-25 A0.5）：profile 契约本就只有读类工具（datetime/
+// read_file/search_*，agent_tool_policy.go toolProfiles），携带技能执行工具
+// 既越权又白烧 ~7.3K schema（session-eval-20260825 实测管理层 tools_schema
+// 10.2-11.2K 中 top4 全是 skill_exec/run/stdin/poll），同样降为 KnowledgeOnly。
 func skillOptionsForAgent(ag biz.Agent) (trpcllmagent.SkillToolProfile, bool) {
 	if ag.Settings != nil {
 		switch strings.ToLower(strings.TrimSpace(ag.Settings.ToolsProfile)) {
-		case "spirit", "chat_only":
+		case "spirit", "chat_only", "read_only":
 			return trpcllmagent.SkillToolProfileKnowledgeOnly, false
 		}
 	}

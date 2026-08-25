@@ -146,6 +146,11 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Bool("compression_buffer_adaptive").Default(true),
 		field.Float("soft_trigger_ratio").Default(0.70),
 		field.Float("hard_trigger_ratio").Default(0.90),
+		// 包A 装配预算（session-eval-20260825 A1/A4）：单轮完全注入请求的绝对
+		// token 上限，与窗口比例压缩闸互补。0=关闭（闸不注册）。存量表补列走
+		// ddl 迁移 20261244（Schema.Create 不为存量表 ALTER 补列）。
+		field.Int("assembly_budget_soft_tokens").Default(0),
+		field.Int("assembly_budget_hard_tokens").Default(0),
 		field.Bool("session_summary_enabled").Default(true),
 		field.String("skill_load_mode").Default("progressive"),
 		field.String("code_executor_type").Default("local"),

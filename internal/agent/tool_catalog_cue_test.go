@@ -71,8 +71,8 @@ func TestToolCatalogCueHook_NoMatchKeepsStatic(t *testing.T) {
 	if strings.Contains(cue, "Recommended") {
 		t.Error("no-match query must not add Recommended section")
 	}
-	if want := deferred.RenderCatalogCue(catalog); cue != want {
-		t.Errorf("no-match cue must equal static render.\nwant:\n%s\ngot:\n%s", want, cue)
+	if want := toolCatalogCueMarker + deferred.RenderCatalogCue(catalog); cue != want {
+		t.Errorf("no-match cue must equal static render（含段标记，包A A1）.\nwant:\n%s\ngot:\n%s", want, cue)
 	}
 }
 

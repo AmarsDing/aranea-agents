@@ -631,32 +631,38 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 			description = "部门主管，负责「" + name + "」的资源协调和跨部门交付审批。" + desc
 		}
 
-		const q = `INSERT INTO agents (
-			id, agent_key, display_name, provider, model, status,
-			is_default, is_favorite, icon, agent_description,
-			position_id, system_prompt_mode, context_window,
-			budget_monthly_cents, config_json, roles_json, created_by,
-			created_at, updated_at, deleted_at, readonly, kind, source,
-			position_key, agent_variant
-		) VALUES (
-			?, ?, ?, 'openrouter', 'gpt-4.1-mini',
-			'active', FALSE, FALSE, '', ?,
-			'', 'complete', 0, 0, '{"tools":{"profile":"read_only"},"memory_enabled":true}', '[]', 'system',
-			?, ?, '', TRUE, 'system_builtin', 'system',
-		?, 'dept_lead'
-	) ON CONFLICT(agent_key) DO UPDATE SET
-		status = excluded.status,
-		agent_description = excluded.agent_description,
-		system_prompt_mode = excluded.system_prompt_mode,
-		config_json = excluded.config_json,
-		deleted_at = excluded.deleted_at,
-		readonly = excluded.readonly,
-		kind = excluded.kind,
-		source = excluded.source,
-		position_key = excluded.position_key,
-		agent_variant = excluded.agent_variant,
-		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, now, now, ""); err != nil {
+		// position_id/position_key 绑定部门节点本身（对齐正常路径 biz.CreateDeptLead
+	// PositionID: deptNode.ID）。2026-08-25 包A-A2'a 实锤：旧种子 position_id 硬
+	// 编码 '' → resolveAgentDepartment 返空 → memberfs/deptmail 7 个专属工具必返
+	// "caller is not attached to a department"，主管会话 10 轮空转烧 80K in。
+	// DO UPDATE 同步 position_id 使存量空挂行随启动种子自愈。
+	const q = `INSERT INTO agents (
+		id, agent_key, display_name, provider, model, status,
+		is_default, is_favorite, icon, agent_description,
+		position_id, system_prompt_mode, context_window,
+		budget_monthly_cents, config_json, roles_json, created_by,
+		created_at, updated_at, deleted_at, readonly, kind, source,
+		position_key, agent_variant
+	) VALUES (
+		?, ?, ?, 'openrouter', 'gpt-4.1-mini',
+		'active', FALSE, FALSE, '', ?,
+		?, 'complete', 0, 0, '{"tools":{"profile":"read_only"},"memory_enabled":true}', '[]', 'system',
+		?, ?, '', TRUE, 'system_builtin', 'system',
+	?, 'dept_lead'
+) ON CONFLICT(agent_key) DO UPDATE SET
+	status = excluded.status,
+	agent_description = excluded.agent_description,
+	position_id = excluded.position_id,
+	system_prompt_mode = excluded.system_prompt_mode,
+	config_json = excluded.config_json,
+	deleted_at = excluded.deleted_at,
+	readonly = excluded.readonly,
+	kind = excluded.kind,
+	source = excluded.source,
+	position_key = excluded.position_key,
+	agent_variant = excluded.agent_variant,
+	updated_at = excluded.updated_at`
+if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, id, now, now, key); err != nil {
 			lg.Warn("seed step failed: create dept lead agent",
 				loggateway.StepID("data.seed.dept_lead_agents"),
 				loggateway.Str("dept_key", key),

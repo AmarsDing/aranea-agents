@@ -132,6 +132,20 @@ func (_u *EvalGateConfigUpdate) AddMaxDrop(v float64) *EvalGateConfigUpdate {
 	return _u
 }
 
+// SetMode sets the "mode" field.
+func (_u *EvalGateConfigUpdate) SetMode(v string) *EvalGateConfigUpdate {
+	_u.mutation.SetMode(v)
+	return _u
+}
+
+// SetNillableMode sets the "mode" field if the given value is not nil.
+func (_u *EvalGateConfigUpdate) SetNillableMode(v *string) *EvalGateConfigUpdate {
+	if v != nil {
+		_u.SetMode(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *EvalGateConfigUpdate) SetUpdatedAt(v string) *EvalGateConfigUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -213,6 +227,9 @@ func (_u *EvalGateConfigUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedMaxDrop(); ok {
 		_spec.AddField(evalgateconfig.FieldMaxDrop, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.Mode(); ok {
+		_spec.SetField(evalgateconfig.FieldMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(evalgateconfig.FieldUpdatedAt, field.TypeString, value)
@@ -342,6 +359,20 @@ func (_u *EvalGateConfigUpdateOne) AddMaxDrop(v float64) *EvalGateConfigUpdateOn
 	return _u
 }
 
+// SetMode sets the "mode" field.
+func (_u *EvalGateConfigUpdateOne) SetMode(v string) *EvalGateConfigUpdateOne {
+	_u.mutation.SetMode(v)
+	return _u
+}
+
+// SetNillableMode sets the "mode" field if the given value is not nil.
+func (_u *EvalGateConfigUpdateOne) SetNillableMode(v *string) *EvalGateConfigUpdateOne {
+	if v != nil {
+		_u.SetMode(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *EvalGateConfigUpdateOne) SetUpdatedAt(v string) *EvalGateConfigUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -453,6 +484,9 @@ func (_u *EvalGateConfigUpdateOne) sqlSave(ctx context.Context) (_node *EvalGate
 	}
 	if value, ok := _u.mutation.AddedMaxDrop(); ok {
 		_spec.AddField(evalgateconfig.FieldMaxDrop, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.Mode(); ok {
+		_spec.SetField(evalgateconfig.FieldMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(evalgateconfig.FieldUpdatedAt, field.TypeString, value)

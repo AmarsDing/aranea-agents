@@ -137,6 +137,17 @@ type AgentRuntimeSettings struct {
 	SoftTriggerRatio float64
 	// HardTriggerRatio is the fraction of effective_budget at which sync compression triggers (default 0.90).
 	HardTriggerRatio float64
+	// AssemblyBudgetSoftTokens / AssemblyBudgetHardTokens are the per-model-call
+	// assembly budget in estimated tokens (包A, session-eval-20260825 A1/A4):
+	// an ABSOLUTE ceiling on the fully-injected request, complementary to the
+	// window-ratio compression gate. 0 = disabled (gate not registered).
+	// Over soft: a once-per-turn capacity-warning cue asks the LLM to actively
+	// preserve state (R2, MemGPT paradigm). Over hard: lowest-protection tail
+	// cues are dropped first, then oldest history evicted; the static head is
+	// never touched (骨架永保). Configured via SQL for management-layer agents
+	// (3 GM + dept leads, 40K/60K); light-path agents stay off.
+	AssemblyBudgetSoftTokens int
+	AssemblyBudgetHardTokens int
 	// SessionSummaryEnabled enables session summary injection so new sessions can inherit old context.
 	SessionSummaryEnabled bool
 	// SkillLoadMode controls skill loading strategy: "progressive" (default,
@@ -408,6 +419,8 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		CompressionBufferAdaptive:  s.CompressionBufferAdaptive,
 		SoftTriggerRatio:           s.SoftTriggerRatio,
 		HardTriggerRatio:           s.HardTriggerRatio,
+		AssemblyBudgetSoftTokens:   s.AssemblyBudgetSoftTokens,
+		AssemblyBudgetHardTokens:   s.AssemblyBudgetHardTokens,
 		SessionSummaryEnabled:      s.SessionSummaryEnabled,
 		OutputSchemaJSON:           s.OutputSchemaJSON,
 		ModelSelector:              s.ModelSelector,

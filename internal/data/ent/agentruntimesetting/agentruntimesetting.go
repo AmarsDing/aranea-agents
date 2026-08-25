@@ -235,6 +235,10 @@ const (
 	FieldSoftTriggerRatio = "soft_trigger_ratio"
 	// FieldHardTriggerRatio holds the string denoting the hard_trigger_ratio field in the database.
 	FieldHardTriggerRatio = "hard_trigger_ratio"
+	// FieldAssemblyBudgetSoftTokens holds the string denoting the assembly_budget_soft_tokens field in the database.
+	FieldAssemblyBudgetSoftTokens = "assembly_budget_soft_tokens"
+	// FieldAssemblyBudgetHardTokens holds the string denoting the assembly_budget_hard_tokens field in the database.
+	FieldAssemblyBudgetHardTokens = "assembly_budget_hard_tokens"
 	// FieldSessionSummaryEnabled holds the string denoting the session_summary_enabled field in the database.
 	FieldSessionSummaryEnabled = "session_summary_enabled"
 	// FieldSkillLoadMode holds the string denoting the skill_load_mode field in the database.
@@ -424,6 +428,8 @@ var Columns = []string{
 	FieldCompressionBufferAdaptive,
 	FieldSoftTriggerRatio,
 	FieldHardTriggerRatio,
+	FieldAssemblyBudgetSoftTokens,
+	FieldAssemblyBudgetHardTokens,
 	FieldSessionSummaryEnabled,
 	FieldSkillLoadMode,
 	FieldCodeExecutorType,
@@ -696,6 +702,10 @@ var (
 	DefaultSoftTriggerRatio float64
 	// DefaultHardTriggerRatio holds the default value on creation for the "hard_trigger_ratio" field.
 	DefaultHardTriggerRatio float64
+	// DefaultAssemblyBudgetSoftTokens holds the default value on creation for the "assembly_budget_soft_tokens" field.
+	DefaultAssemblyBudgetSoftTokens int
+	// DefaultAssemblyBudgetHardTokens holds the default value on creation for the "assembly_budget_hard_tokens" field.
+	DefaultAssemblyBudgetHardTokens int
 	// DefaultSessionSummaryEnabled holds the default value on creation for the "session_summary_enabled" field.
 	DefaultSessionSummaryEnabled bool
 	// DefaultSkillLoadMode holds the default value on creation for the "skill_load_mode" field.
@@ -1336,6 +1346,16 @@ func BySoftTriggerRatio(opts ...sql.OrderTermOption) OrderOption {
 // ByHardTriggerRatio orders the results by the hard_trigger_ratio field.
 func ByHardTriggerRatio(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHardTriggerRatio, opts...).ToFunc()
+}
+
+// ByAssemblyBudgetSoftTokens orders the results by the assembly_budget_soft_tokens field.
+func ByAssemblyBudgetSoftTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAssemblyBudgetSoftTokens, opts...).ToFunc()
+}
+
+// ByAssemblyBudgetHardTokens orders the results by the assembly_budget_hard_tokens field.
+func ByAssemblyBudgetHardTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAssemblyBudgetHardTokens, opts...).ToFunc()
 }
 
 // BySessionSummaryEnabled orders the results by the session_summary_enabled field.

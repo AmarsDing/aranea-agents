@@ -1,6 +1,10 @@
 package agent
 
-import trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+import (
+	"strings"
+
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+)
 
 // dynamicCueToolName is a local sentinel on trailing dynamic-cue messages.
 // Consecutive-message merger skips any message with ToolName set, so a
@@ -21,6 +25,19 @@ func asDynamicCue(content string) trpcmodel.Message {
 // appendDynamicCue appends a per-turn cue at the end of the message list.
 func appendDynamicCue(msgs []trpcmodel.Message, content string) []trpcmodel.Message {
 	return append(msgs, asDynamicCue(content))
+}
+
+// stripDynamicCueByMarker 摘除内容以 marker 开头的 dynamic cue 消息
+// （续轮去重：保证同一类 cue 在请求中只有一条最新文案）。
+func stripDynamicCueByMarker(msgs []trpcmodel.Message, marker string) []trpcmodel.Message {
+	out := make([]trpcmodel.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if isDynamicCueMessage(m) && strings.HasPrefix(m.Content, marker) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // isDynamicCueMessage reports whether msg was injected by appendDynamicCue

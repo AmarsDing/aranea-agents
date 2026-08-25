@@ -85,6 +85,9 @@ services:
       # 抓取：docker exec aranea-admin wget -qO- http://127.0.0.1:8813/debug/pprof/heap
       # 缺省该环境变量即关闭（cmd/admin/pprof.go）；app 便携部署包不注入此变量。
       ARANEA_PPROF_ADDR: ":8813"
+      # 包A装配预算诊断（2026-08-25，临时）：强制每次 model call 落 L0 装配快照
+      # （segments_json 分解），用于 P-CTX-EXPLOSION 定位与 A 包前后对照。验收完成后移除。
+      ARANEA_L0_SNAPSHOT: "force"
       # codeexecutor 方案 B（docker.sock 直通）：容器内 docker CLI 经下方挂载的
       # 宿主机 socket 调 daemon，拉起一次性沙箱容器（python:3.11-slim，镜像需
       # 预先存在于宿主机 daemon）。沙箱与 aranea-admin 平级（同在宿主机 daemon

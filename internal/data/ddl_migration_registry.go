@@ -450,6 +450,10 @@ var ddlMigrations = []ddlMigration{
 	// 取代的 legacy spirit 工具（DEAD-3）。种子幂等（ON CONFLICT DO NOTHING +
 	// 条件 UPDATE），重跑安全。
 	{Version: 20261243, Name: "builtin_platform_tools_spirit_cleanup_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261244 agent_runtime_assembly_budget（2026-08-25 包A A1/A4）：装配预算
+	// soft/hard 两列。Ent Schema.Create 不为存量表 ALTER 补列（同 20261230/
+	// 20261232 先例），INTEGER 兼容双方言。幂等，重跑安全。
+	{Version: 20261244, Name: "agent_runtime_assembly_budget", SQL: "sql/migrations/20261244_agent_runtime_assembly_budget.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

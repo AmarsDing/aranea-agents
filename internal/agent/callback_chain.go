@@ -74,6 +74,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newMemoryInjectBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	// 包A（session-eval-20260825 A1）：管理层装配预算硬闸。priority 8 = 全量
+	// 注入（memory 5 / knowledge 6 / 各 cue ≤6）之后、终审压缩闸（9）与 L0
+	// 快照（10）之前，计量口径=完全注入后的请求。hard<=0（默认）时 hook 为
+	// nil——轻链路零开销，管理层经 SQL 灰度开启（assembly_budget_* 列）。
+	if hook := newAssemblyBudgetBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newWorkingMemoryContextBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
@@ -167,8 +174,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newToolNotFoundFeedbackBeforeHook(lg))
 		// 工具循环守卫：同工具+同参数+同结果的连续成功调用判定为无效空转，
 		// 第 3 次起以 CustomResult 纠偏拦截（priority 4，先于熔断器/确认门禁）。
+		// modelHook（A2'b 空转轮次早停）：BeforeModel 结算上轮工具产出，
+		// 连续零产出轮注入降级引导；满阈值的工具面封锁由 beforeHook 执行。
 		loopGuard := newToolLoopGuard(lg)
-		entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook())
+		entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook(), loopGuard.modelHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		entries = append(entries, newWorkspaceSandboxBeforeHook(ag, deps))

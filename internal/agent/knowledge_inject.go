@@ -49,7 +49,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 			// 引用闭环：notice.n 与 cue [n] 同一顺序，前端脚注与 cited 回采共用。
 			knowledgetool.EmitNumberedKnowledgeRecalledNotice(ctx, cited)
 		}
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, knowledgeCueMarker+cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

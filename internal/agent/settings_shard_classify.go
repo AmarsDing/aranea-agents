@@ -147,6 +147,10 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"CompressionBufferAdaptive":  classFullRebuild,
 	"SoftTriggerRatio":           classFullRebuild,
 	"HardTriggerRatio":           classFullRebuild,
+	// 包A（session-eval-20260825 A1）：装配预算在 newAssemblyBudgetBeforeHook
+	// 构建时读取并决定是否注册闸 hook → 预算变更须触发重建生效。
+	"AssemblyBudgetSoftTokens": classFullRebuild,
+	"AssemblyBudgetHardTokens": classFullRebuild,
 	"SessionSummaryEnabled": classFullRebuild, // trpc_build.go:506 构建路径消费
 	"SkillLoadMode":         classFullRebuild,
 	"CodeExecutorType":      classFullRebuild,

@@ -106,6 +106,20 @@ func (_c *EvalGateConfigCreate) SetNillableMaxDrop(v *float64) *EvalGateConfigCr
 	return _c
 }
 
+// SetMode sets the "mode" field.
+func (_c *EvalGateConfigCreate) SetMode(v string) *EvalGateConfigCreate {
+	_c.mutation.SetMode(v)
+	return _c
+}
+
+// SetNillableMode sets the "mode" field if the given value is not nil.
+func (_c *EvalGateConfigCreate) SetNillableMode(v *string) *EvalGateConfigCreate {
+	if v != nil {
+		_c.SetMode(*v)
+	}
+	return _c
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_c *EvalGateConfigCreate) SetUpdatedAt(v string) *EvalGateConfigCreate {
 	_c.mutation.SetUpdatedAt(v)
@@ -185,6 +199,10 @@ func (_c *EvalGateConfigCreate) defaults() {
 		v := evalgateconfig.DefaultMaxDrop
 		_c.mutation.SetMaxDrop(v)
 	}
+	if _, ok := _c.mutation.Mode(); !ok {
+		v := evalgateconfig.DefaultMode
+		_c.mutation.SetMode(v)
+	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		v := evalgateconfig.DefaultUpdatedAt
 		_c.mutation.SetUpdatedAt(v)
@@ -210,6 +228,9 @@ func (_c *EvalGateConfigCreate) check() error {
 	}
 	if _, ok := _c.mutation.MaxDrop(); !ok {
 		return &ValidationError{Name: "max_drop", err: errors.New(`ent: missing required field "EvalGateConfig.max_drop"`)}
+	}
+	if _, ok := _c.mutation.Mode(); !ok {
+		return &ValidationError{Name: "mode", err: errors.New(`ent: missing required field "EvalGateConfig.mode"`)}
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "EvalGateConfig.updated_at"`)}
@@ -278,6 +299,10 @@ func (_c *EvalGateConfigCreate) createSpec() (*EvalGateConfig, *sqlgraph.CreateS
 	if value, ok := _c.mutation.MaxDrop(); ok {
 		_spec.SetField(evalgateconfig.FieldMaxDrop, field.TypeFloat64, value)
 		_node.MaxDrop = value
+	}
+	if value, ok := _c.mutation.Mode(); ok {
+		_spec.SetField(evalgateconfig.FieldMode, field.TypeString, value)
+		_node.Mode = value
 	}
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(evalgateconfig.FieldUpdatedAt, field.TypeString, value)
@@ -422,6 +447,18 @@ func (u *EvalGateConfigUpsert) UpdateMaxDrop() *EvalGateConfigUpsert {
 // AddMaxDrop adds v to the "max_drop" field.
 func (u *EvalGateConfigUpsert) AddMaxDrop(v float64) *EvalGateConfigUpsert {
 	u.Add(evalgateconfig.FieldMaxDrop, v)
+	return u
+}
+
+// SetMode sets the "mode" field.
+func (u *EvalGateConfigUpsert) SetMode(v string) *EvalGateConfigUpsert {
+	u.Set(evalgateconfig.FieldMode, v)
+	return u
+}
+
+// UpdateMode sets the "mode" field to the value that was provided on create.
+func (u *EvalGateConfigUpsert) UpdateMode() *EvalGateConfigUpsert {
+	u.SetExcluded(evalgateconfig.FieldMode)
 	return u
 }
 
@@ -587,6 +624,20 @@ func (u *EvalGateConfigUpsertOne) AddMaxDrop(v float64) *EvalGateConfigUpsertOne
 func (u *EvalGateConfigUpsertOne) UpdateMaxDrop() *EvalGateConfigUpsertOne {
 	return u.Update(func(s *EvalGateConfigUpsert) {
 		s.UpdateMaxDrop()
+	})
+}
+
+// SetMode sets the "mode" field.
+func (u *EvalGateConfigUpsertOne) SetMode(v string) *EvalGateConfigUpsertOne {
+	return u.Update(func(s *EvalGateConfigUpsert) {
+		s.SetMode(v)
+	})
+}
+
+// UpdateMode sets the "mode" field to the value that was provided on create.
+func (u *EvalGateConfigUpsertOne) UpdateMode() *EvalGateConfigUpsertOne {
+	return u.Update(func(s *EvalGateConfigUpsert) {
+		s.UpdateMode()
 	})
 }
 
@@ -921,6 +972,20 @@ func (u *EvalGateConfigUpsertBulk) AddMaxDrop(v float64) *EvalGateConfigUpsertBu
 func (u *EvalGateConfigUpsertBulk) UpdateMaxDrop() *EvalGateConfigUpsertBulk {
 	return u.Update(func(s *EvalGateConfigUpsert) {
 		s.UpdateMaxDrop()
+	})
+}
+
+// SetMode sets the "mode" field.
+func (u *EvalGateConfigUpsertBulk) SetMode(v string) *EvalGateConfigUpsertBulk {
+	return u.Update(func(s *EvalGateConfigUpsert) {
+		s.SetMode(v)
+	})
+}
+
+// UpdateMode sets the "mode" field to the value that was provided on create.
+func (u *EvalGateConfigUpsertBulk) UpdateMode() *EvalGateConfigUpsertBulk {
+	return u.Update(func(s *EvalGateConfigUpsert) {
+		s.UpdateMode()
 	})
 }
 

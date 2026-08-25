@@ -4492,6 +4492,10 @@ type AgentRuntimeSettingMutation struct {
 	addsoft_trigger_ratio                    *float64
 	hard_trigger_ratio                       *float64
 	addhard_trigger_ratio                    *float64
+	assembly_budget_soft_tokens              *int
+	addassembly_budget_soft_tokens           *int
+	assembly_budget_hard_tokens              *int
+	addassembly_budget_hard_tokens           *int
 	session_summary_enabled                  *bool
 	skill_load_mode                          *string
 	code_executor_type                       *string
@@ -9699,6 +9703,118 @@ func (m *AgentRuntimeSettingMutation) ResetHardTriggerRatio() {
 	m.addhard_trigger_ratio = nil
 }
 
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (m *AgentRuntimeSettingMutation) SetAssemblyBudgetSoftTokens(i int) {
+	m.assembly_budget_soft_tokens = &i
+	m.addassembly_budget_soft_tokens = nil
+}
+
+// AssemblyBudgetSoftTokens returns the value of the "assembly_budget_soft_tokens" field in the mutation.
+func (m *AgentRuntimeSettingMutation) AssemblyBudgetSoftTokens() (r int, exists bool) {
+	v := m.assembly_budget_soft_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAssemblyBudgetSoftTokens returns the old "assembly_budget_soft_tokens" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldAssemblyBudgetSoftTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAssemblyBudgetSoftTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAssemblyBudgetSoftTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAssemblyBudgetSoftTokens: %w", err)
+	}
+	return oldValue.AssemblyBudgetSoftTokens, nil
+}
+
+// AddAssemblyBudgetSoftTokens adds i to the "assembly_budget_soft_tokens" field.
+func (m *AgentRuntimeSettingMutation) AddAssemblyBudgetSoftTokens(i int) {
+	if m.addassembly_budget_soft_tokens != nil {
+		*m.addassembly_budget_soft_tokens += i
+	} else {
+		m.addassembly_budget_soft_tokens = &i
+	}
+}
+
+// AddedAssemblyBudgetSoftTokens returns the value that was added to the "assembly_budget_soft_tokens" field in this mutation.
+func (m *AgentRuntimeSettingMutation) AddedAssemblyBudgetSoftTokens() (r int, exists bool) {
+	v := m.addassembly_budget_soft_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAssemblyBudgetSoftTokens resets all changes to the "assembly_budget_soft_tokens" field.
+func (m *AgentRuntimeSettingMutation) ResetAssemblyBudgetSoftTokens() {
+	m.assembly_budget_soft_tokens = nil
+	m.addassembly_budget_soft_tokens = nil
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (m *AgentRuntimeSettingMutation) SetAssemblyBudgetHardTokens(i int) {
+	m.assembly_budget_hard_tokens = &i
+	m.addassembly_budget_hard_tokens = nil
+}
+
+// AssemblyBudgetHardTokens returns the value of the "assembly_budget_hard_tokens" field in the mutation.
+func (m *AgentRuntimeSettingMutation) AssemblyBudgetHardTokens() (r int, exists bool) {
+	v := m.assembly_budget_hard_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAssemblyBudgetHardTokens returns the old "assembly_budget_hard_tokens" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldAssemblyBudgetHardTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAssemblyBudgetHardTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAssemblyBudgetHardTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAssemblyBudgetHardTokens: %w", err)
+	}
+	return oldValue.AssemblyBudgetHardTokens, nil
+}
+
+// AddAssemblyBudgetHardTokens adds i to the "assembly_budget_hard_tokens" field.
+func (m *AgentRuntimeSettingMutation) AddAssemblyBudgetHardTokens(i int) {
+	if m.addassembly_budget_hard_tokens != nil {
+		*m.addassembly_budget_hard_tokens += i
+	} else {
+		m.addassembly_budget_hard_tokens = &i
+	}
+}
+
+// AddedAssemblyBudgetHardTokens returns the value that was added to the "assembly_budget_hard_tokens" field in this mutation.
+func (m *AgentRuntimeSettingMutation) AddedAssemblyBudgetHardTokens() (r int, exists bool) {
+	v := m.addassembly_budget_hard_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAssemblyBudgetHardTokens resets all changes to the "assembly_budget_hard_tokens" field.
+func (m *AgentRuntimeSettingMutation) ResetAssemblyBudgetHardTokens() {
+	m.assembly_budget_hard_tokens = nil
+	m.addassembly_budget_hard_tokens = nil
+}
+
 // SetSessionSummaryEnabled sets the "session_summary_enabled" field.
 func (m *AgentRuntimeSettingMutation) SetSessionSummaryEnabled(b bool) {
 	m.session_summary_enabled = &b
@@ -11193,7 +11309,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 147)
+	fields := make([]string, 0, 149)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -11529,6 +11645,12 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	}
 	if m.hard_trigger_ratio != nil {
 		fields = append(fields, agentruntimesetting.FieldHardTriggerRatio)
+	}
+	if m.assembly_budget_soft_tokens != nil {
+		fields = append(fields, agentruntimesetting.FieldAssemblyBudgetSoftTokens)
+	}
+	if m.assembly_budget_hard_tokens != nil {
+		fields = append(fields, agentruntimesetting.FieldAssemblyBudgetHardTokens)
 	}
 	if m.session_summary_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldSessionSummaryEnabled)
@@ -11867,6 +11989,10 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.SoftTriggerRatio()
 	case agentruntimesetting.FieldHardTriggerRatio:
 		return m.HardTriggerRatio()
+	case agentruntimesetting.FieldAssemblyBudgetSoftTokens:
+		return m.AssemblyBudgetSoftTokens()
+	case agentruntimesetting.FieldAssemblyBudgetHardTokens:
+		return m.AssemblyBudgetHardTokens()
 	case agentruntimesetting.FieldSessionSummaryEnabled:
 		return m.SessionSummaryEnabled()
 	case agentruntimesetting.FieldSkillLoadMode:
@@ -12170,6 +12296,10 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldSoftTriggerRatio(ctx)
 	case agentruntimesetting.FieldHardTriggerRatio:
 		return m.OldHardTriggerRatio(ctx)
+	case agentruntimesetting.FieldAssemblyBudgetSoftTokens:
+		return m.OldAssemblyBudgetSoftTokens(ctx)
+	case agentruntimesetting.FieldAssemblyBudgetHardTokens:
+		return m.OldAssemblyBudgetHardTokens(ctx)
 	case agentruntimesetting.FieldSessionSummaryEnabled:
 		return m.OldSessionSummaryEnabled(ctx)
 	case agentruntimesetting.FieldSkillLoadMode:
@@ -13033,6 +13163,20 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetHardTriggerRatio(v)
 		return nil
+	case agentruntimesetting.FieldAssemblyBudgetSoftTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAssemblyBudgetSoftTokens(v)
+		return nil
+	case agentruntimesetting.FieldAssemblyBudgetHardTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAssemblyBudgetHardTokens(v)
+		return nil
 	case agentruntimesetting.FieldSessionSummaryEnabled:
 		v, ok := value.(bool)
 		if !ok {
@@ -13439,6 +13583,12 @@ func (m *AgentRuntimeSettingMutation) AddedFields() []string {
 	if m.addhard_trigger_ratio != nil {
 		fields = append(fields, agentruntimesetting.FieldHardTriggerRatio)
 	}
+	if m.addassembly_budget_soft_tokens != nil {
+		fields = append(fields, agentruntimesetting.FieldAssemblyBudgetSoftTokens)
+	}
+	if m.addassembly_budget_hard_tokens != nil {
+		fields = append(fields, agentruntimesetting.FieldAssemblyBudgetHardTokens)
+	}
 	if m.addmax_llm_calls != nil {
 		fields = append(fields, agentruntimesetting.FieldMaxLlmCalls)
 	}
@@ -13579,6 +13729,10 @@ func (m *AgentRuntimeSettingMutation) AddedField(name string) (ent.Value, bool) 
 		return m.AddedSoftTriggerRatio()
 	case agentruntimesetting.FieldHardTriggerRatio:
 		return m.AddedHardTriggerRatio()
+	case agentruntimesetting.FieldAssemblyBudgetSoftTokens:
+		return m.AddedAssemblyBudgetSoftTokens()
+	case agentruntimesetting.FieldAssemblyBudgetHardTokens:
+		return m.AddedAssemblyBudgetHardTokens()
 	case agentruntimesetting.FieldMaxLlmCalls:
 		return m.AddedMaxLlmCalls()
 	case agentruntimesetting.FieldMaxToolIterations:
@@ -13964,6 +14118,20 @@ func (m *AgentRuntimeSettingMutation) AddField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddHardTriggerRatio(v)
+		return nil
+	case agentruntimesetting.FieldAssemblyBudgetSoftTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAssemblyBudgetSoftTokens(v)
+		return nil
+	case agentruntimesetting.FieldAssemblyBudgetHardTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAssemblyBudgetHardTokens(v)
 		return nil
 	case agentruntimesetting.FieldMaxLlmCalls:
 		v, ok := value.(int)
@@ -14397,6 +14565,12 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldHardTriggerRatio:
 		m.ResetHardTriggerRatio()
+		return nil
+	case agentruntimesetting.FieldAssemblyBudgetSoftTokens:
+		m.ResetAssemblyBudgetSoftTokens()
+		return nil
+	case agentruntimesetting.FieldAssemblyBudgetHardTokens:
+		m.ResetAssemblyBudgetHardTokens()
 		return nil
 	case agentruntimesetting.FieldSessionSummaryEnabled:
 		m.ResetSessionSummaryEnabled()
@@ -33424,6 +33598,7 @@ type EvalGateConfigMutation struct {
 	addmin_score  *float64
 	max_drop      *float64
 	addmax_drop   *float64
+	mode          *string
 	updated_at    *string
 	clearedFields map[string]struct{}
 	done          bool
@@ -33811,6 +33986,42 @@ func (m *EvalGateConfigMutation) ResetMaxDrop() {
 	m.addmax_drop = nil
 }
 
+// SetMode sets the "mode" field.
+func (m *EvalGateConfigMutation) SetMode(s string) {
+	m.mode = &s
+}
+
+// Mode returns the value of the "mode" field in the mutation.
+func (m *EvalGateConfigMutation) Mode() (r string, exists bool) {
+	v := m.mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMode returns the old "mode" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMode: %w", err)
+	}
+	return oldValue.Mode, nil
+}
+
+// ResetMode resets all changes to the "mode" field.
+func (m *EvalGateConfigMutation) ResetMode() {
+	m.mode = nil
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (m *EvalGateConfigMutation) SetUpdatedAt(s string) {
 	m.updated_at = &s
@@ -33881,7 +34092,7 @@ func (m *EvalGateConfigMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EvalGateConfigMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.enabled != nil {
 		fields = append(fields, evalgateconfig.FieldEnabled)
 	}
@@ -33899,6 +34110,9 @@ func (m *EvalGateConfigMutation) Fields() []string {
 	}
 	if m.max_drop != nil {
 		fields = append(fields, evalgateconfig.FieldMaxDrop)
+	}
+	if m.mode != nil {
+		fields = append(fields, evalgateconfig.FieldMode)
 	}
 	if m.updated_at != nil {
 		fields = append(fields, evalgateconfig.FieldUpdatedAt)
@@ -33923,6 +34137,8 @@ func (m *EvalGateConfigMutation) Field(name string) (ent.Value, bool) {
 		return m.MinScore()
 	case evalgateconfig.FieldMaxDrop:
 		return m.MaxDrop()
+	case evalgateconfig.FieldMode:
+		return m.Mode()
 	case evalgateconfig.FieldUpdatedAt:
 		return m.UpdatedAt()
 	}
@@ -33946,6 +34162,8 @@ func (m *EvalGateConfigMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldMinScore(ctx)
 	case evalgateconfig.FieldMaxDrop:
 		return m.OldMaxDrop(ctx)
+	case evalgateconfig.FieldMode:
+		return m.OldMode(ctx)
 	case evalgateconfig.FieldUpdatedAt:
 		return m.OldUpdatedAt(ctx)
 	}
@@ -33998,6 +34216,13 @@ func (m *EvalGateConfigMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMaxDrop(v)
+		return nil
+	case evalgateconfig.FieldMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMode(v)
 		return nil
 	case evalgateconfig.FieldUpdatedAt:
 		v, ok := value.(string)
@@ -34111,6 +34336,9 @@ func (m *EvalGateConfigMutation) ResetField(name string) error {
 		return nil
 	case evalgateconfig.FieldMaxDrop:
 		m.ResetMaxDrop()
+		return nil
+	case evalgateconfig.FieldMode:
+		m.ResetMode()
 		return nil
 	case evalgateconfig.FieldUpdatedAt:
 		m.ResetUpdatedAt()

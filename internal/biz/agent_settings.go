@@ -202,7 +202,12 @@ type ContextCfg struct {
 	CompressionBufferAdaptive  bool    `json:"compression_buffer_adaptive,omitempty"`
 	SoftTriggerRatio           float64 `json:"soft_trigger_ratio,omitempty"`
 	HardTriggerRatio           float64 `json:"hard_trigger_ratio,omitempty"`
-	SessionSummaryEnabled      bool    `json:"session_summary_enabled,omitempty"`
+	// AssemblyBudgetSoftTokens / AssemblyBudgetHardTokens: 包A 装配预算（估 token，
+	// 0=关闭）。soft 超线注容量告警 cue（R2 MemGPT），hard 超线按保护序截断
+	// 并落 flowlog prompt.assembly.trimmed。SQL 灰度配置（管理层 40K/60K）。
+	AssemblyBudgetSoftTokens  int    `json:"assembly_budget_soft_tokens,omitempty"`
+	AssemblyBudgetHardTokens  int    `json:"assembly_budget_hard_tokens,omitempty"`
+	SessionSummaryEnabled     bool   `json:"session_summary_enabled,omitempty"`
 	OutputSchemaJSON           string  `json:"output_schema_json,omitempty"`
 	ModelSelector              string  `json:"model_selector,omitempty"`
 	PlannerKind                string  `json:"planner_kind,omitempty"`
@@ -375,6 +380,8 @@ func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.CompressionBufferAdaptive = cfg.CompressionBufferAdaptive
 	s.SoftTriggerRatio = cfg.SoftTriggerRatio
 	s.HardTriggerRatio = cfg.HardTriggerRatio
+	s.AssemblyBudgetSoftTokens = cfg.AssemblyBudgetSoftTokens
+	s.AssemblyBudgetHardTokens = cfg.AssemblyBudgetHardTokens
 	s.SessionSummaryEnabled = cfg.SessionSummaryEnabled
 	s.OutputSchemaJSON = cfg.OutputSchemaJSON
 	s.ModelSelector = cfg.ModelSelector

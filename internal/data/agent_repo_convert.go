@@ -230,6 +230,8 @@ func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 		CompressionBufferRatio:     e.CompressionBufferRatio,
 		SoftTriggerRatio:           e.SoftTriggerRatio,
 		HardTriggerRatio:           e.HardTriggerRatio,
+		AssemblyBudgetSoftTokens:   e.AssemblyBudgetSoftTokens,
+		AssemblyBudgetHardTokens:   e.AssemblyBudgetHardTokens,
 		SessionSummaryEnabled:      e.SessionSummaryEnabled,
 		OutputSchemaJSON:           e.OutputSchemaJSON,
 		ModelSelector:              e.ModelSelector,
@@ -380,6 +382,8 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetCompressionBufferAdaptive(v.CompressionBufferAdaptive).
 		SetSoftTriggerRatio(v.SoftTriggerRatio).
 		SetHardTriggerRatio(v.HardTriggerRatio).
+		SetAssemblyBudgetSoftTokens(v.AssemblyBudgetSoftTokens).
+		SetAssemblyBudgetHardTokens(v.AssemblyBudgetHardTokens).
 		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
 		SetSkillLoadMode(v.SkillLoadMode).
 		SetCodeExecutorType(v.CodeExecutorType).

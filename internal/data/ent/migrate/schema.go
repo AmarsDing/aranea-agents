@@ -270,6 +270,8 @@ var (
 		{Name: "compression_buffer_adaptive", Type: field.TypeBool, Default: true},
 		{Name: "soft_trigger_ratio", Type: field.TypeFloat64, Default: 0.7},
 		{Name: "hard_trigger_ratio", Type: field.TypeFloat64, Default: 0.9},
+		{Name: "assembly_budget_soft_tokens", Type: field.TypeInt, Default: 0},
+		{Name: "assembly_budget_hard_tokens", Type: field.TypeInt, Default: 0},
 		{Name: "session_summary_enabled", Type: field.TypeBool, Default: true},
 		{Name: "skill_load_mode", Type: field.TypeString, Default: "progressive"},
 		{Name: "code_executor_type", Type: field.TypeString, Default: "local"},
@@ -987,6 +989,7 @@ var (
 		{Name: "metric", Type: field.TypeString, Default: "exact_match"},
 		{Name: "min_score", Type: field.TypeFloat64, Default: 0},
 		{Name: "max_drop", Type: field.TypeFloat64, Default: 0},
+		{Name: "mode", Type: field.TypeString, Default: "advisory"},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 	}
 	// EvalGateConfigTable holds the schema information for the "eval_gate_config" table.

@@ -23,6 +23,8 @@ const (
 	FieldMinScore = "min_score"
 	// FieldMaxDrop holds the string denoting the max_drop field in the database.
 	FieldMaxDrop = "max_drop"
+	// FieldMode holds the string denoting the mode field in the database.
+	FieldMode = "mode"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// Table holds the table name of the evalgateconfig in the database.
@@ -38,6 +40,7 @@ var Columns = []string{
 	FieldMetric,
 	FieldMinScore,
 	FieldMaxDrop,
+	FieldMode,
 	FieldUpdatedAt,
 }
 
@@ -64,6 +67,8 @@ var (
 	DefaultMinScore float64
 	// DefaultMaxDrop holds the default value on creation for the "max_drop" field.
 	DefaultMaxDrop float64
+	// DefaultMode holds the default value on creation for the "mode" field.
+	DefaultMode string
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
 	DefaultUpdatedAt string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -106,6 +111,11 @@ func ByMinScore(opts ...sql.OrderTermOption) OrderOption {
 // ByMaxDrop orders the results by the max_drop field.
 func ByMaxDrop(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaxDrop, opts...).ToFunc()
+}
+
+// ByMode orders the results by the mode field.
+func ByMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMode, opts...).ToFunc()
 }
 
 // ByUpdatedAt orders the results by the updated_at field.

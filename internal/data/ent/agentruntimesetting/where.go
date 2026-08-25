@@ -623,6 +623,16 @@ func HardTriggerRatio(v float64) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldHardTriggerRatio, v))
 }
 
+// AssemblyBudgetSoftTokens applies equality check predicate on the "assembly_budget_soft_tokens" field. It's identical to AssemblyBudgetSoftTokensEQ.
+func AssemblyBudgetSoftTokens(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetHardTokens applies equality check predicate on the "assembly_budget_hard_tokens" field. It's identical to AssemblyBudgetHardTokensEQ.
+func AssemblyBudgetHardTokens(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldAssemblyBudgetHardTokens, v))
+}
+
 // SessionSummaryEnabled applies equality check predicate on the "session_summary_enabled" field. It's identical to SessionSummaryEnabledEQ.
 func SessionSummaryEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldSessionSummaryEnabled, v))
@@ -4876,6 +4886,86 @@ func HardTriggerRatioLT(v float64) predicate.AgentRuntimeSetting {
 // HardTriggerRatioLTE applies the LTE predicate on the "hard_trigger_ratio" field.
 func HardTriggerRatioLTE(v float64) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldHardTriggerRatio, v))
+}
+
+// AssemblyBudgetSoftTokensEQ applies the EQ predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetSoftTokensNEQ applies the NEQ predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensNEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetSoftTokensIn applies the In predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldIn(FieldAssemblyBudgetSoftTokens, vs...))
+}
+
+// AssemblyBudgetSoftTokensNotIn applies the NotIn predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensNotIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNotIn(FieldAssemblyBudgetSoftTokens, vs...))
+}
+
+// AssemblyBudgetSoftTokensGT applies the GT predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensGT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGT(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetSoftTokensGTE applies the GTE predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensGTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGTE(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetSoftTokensLT applies the LT predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensLT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLT(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetSoftTokensLTE applies the LTE predicate on the "assembly_budget_soft_tokens" field.
+func AssemblyBudgetSoftTokensLTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldAssemblyBudgetSoftTokens, v))
+}
+
+// AssemblyBudgetHardTokensEQ applies the EQ predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldAssemblyBudgetHardTokens, v))
+}
+
+// AssemblyBudgetHardTokensNEQ applies the NEQ predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensNEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldAssemblyBudgetHardTokens, v))
+}
+
+// AssemblyBudgetHardTokensIn applies the In predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldIn(FieldAssemblyBudgetHardTokens, vs...))
+}
+
+// AssemblyBudgetHardTokensNotIn applies the NotIn predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensNotIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNotIn(FieldAssemblyBudgetHardTokens, vs...))
+}
+
+// AssemblyBudgetHardTokensGT applies the GT predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensGT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGT(FieldAssemblyBudgetHardTokens, v))
+}
+
+// AssemblyBudgetHardTokensGTE applies the GTE predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensGTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGTE(FieldAssemblyBudgetHardTokens, v))
+}
+
+// AssemblyBudgetHardTokensLT applies the LT predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensLT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLT(FieldAssemblyBudgetHardTokens, v))
+}
+
+// AssemblyBudgetHardTokensLTE applies the LTE predicate on the "assembly_budget_hard_tokens" field.
+func AssemblyBudgetHardTokensLTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldAssemblyBudgetHardTokens, v))
 }
 
 // SessionSummaryEnabledEQ applies the EQ predicate on the "session_summary_enabled" field.

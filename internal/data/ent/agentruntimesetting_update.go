@@ -1952,6 +1952,48 @@ func (_u *AgentRuntimeSettingUpdate) AddHardTriggerRatio(v float64) *AgentRuntim
 	return _u
 }
 
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (_u *AgentRuntimeSettingUpdate) SetAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.ResetAssemblyBudgetSoftTokens()
+	_u.mutation.SetAssemblyBudgetSoftTokens(v)
+	return _u
+}
+
+// SetNillableAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableAssemblyBudgetSoftTokens(v *int) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetAssemblyBudgetSoftTokens(*v)
+	}
+	return _u
+}
+
+// AddAssemblyBudgetSoftTokens adds value to the "assembly_budget_soft_tokens" field.
+func (_u *AgentRuntimeSettingUpdate) AddAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.AddAssemblyBudgetSoftTokens(v)
+	return _u
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (_u *AgentRuntimeSettingUpdate) SetAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.ResetAssemblyBudgetHardTokens()
+	_u.mutation.SetAssemblyBudgetHardTokens(v)
+	return _u
+}
+
+// SetNillableAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableAssemblyBudgetHardTokens(v *int) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetAssemblyBudgetHardTokens(*v)
+	}
+	return _u
+}
+
+// AddAssemblyBudgetHardTokens adds value to the "assembly_budget_hard_tokens" field.
+func (_u *AgentRuntimeSettingUpdate) AddAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.AddAssemblyBudgetHardTokens(v)
+	return _u
+}
+
 // SetSessionSummaryEnabled sets the "session_summary_enabled" field.
 func (_u *AgentRuntimeSettingUpdate) SetSessionSummaryEnabled(v bool) *AgentRuntimeSettingUpdate {
 	_u.mutation.SetSessionSummaryEnabled(v)
@@ -3041,6 +3083,18 @@ func (_u *AgentRuntimeSettingUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.AddedHardTriggerRatio(); ok {
 		_spec.AddField(agentruntimesetting.FieldHardTriggerRatio, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AssemblyBudgetSoftTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldAssemblyBudgetSoftTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAssemblyBudgetSoftTokens(); ok {
+		_spec.AddField(agentruntimesetting.FieldAssemblyBudgetSoftTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AssemblyBudgetHardTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldAssemblyBudgetHardTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAssemblyBudgetHardTokens(); ok {
+		_spec.AddField(agentruntimesetting.FieldAssemblyBudgetHardTokens, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.SessionSummaryEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldSessionSummaryEnabled, field.TypeBool, value)
@@ -5122,6 +5176,48 @@ func (_u *AgentRuntimeSettingUpdateOne) AddHardTriggerRatio(v float64) *AgentRun
 	return _u
 }
 
+// SetAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.ResetAssemblyBudgetSoftTokens()
+	_u.mutation.SetAssemblyBudgetSoftTokens(v)
+	return _u
+}
+
+// SetNillableAssemblyBudgetSoftTokens sets the "assembly_budget_soft_tokens" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableAssemblyBudgetSoftTokens(v *int) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetAssemblyBudgetSoftTokens(*v)
+	}
+	return _u
+}
+
+// AddAssemblyBudgetSoftTokens adds value to the "assembly_budget_soft_tokens" field.
+func (_u *AgentRuntimeSettingUpdateOne) AddAssemblyBudgetSoftTokens(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.AddAssemblyBudgetSoftTokens(v)
+	return _u
+}
+
+// SetAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.ResetAssemblyBudgetHardTokens()
+	_u.mutation.SetAssemblyBudgetHardTokens(v)
+	return _u
+}
+
+// SetNillableAssemblyBudgetHardTokens sets the "assembly_budget_hard_tokens" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableAssemblyBudgetHardTokens(v *int) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetAssemblyBudgetHardTokens(*v)
+	}
+	return _u
+}
+
+// AddAssemblyBudgetHardTokens adds value to the "assembly_budget_hard_tokens" field.
+func (_u *AgentRuntimeSettingUpdateOne) AddAssemblyBudgetHardTokens(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.AddAssemblyBudgetHardTokens(v)
+	return _u
+}
+
 // SetSessionSummaryEnabled sets the "session_summary_enabled" field.
 func (_u *AgentRuntimeSettingUpdateOne) SetSessionSummaryEnabled(v bool) *AgentRuntimeSettingUpdateOne {
 	_u.mutation.SetSessionSummaryEnabled(v)
@@ -6241,6 +6337,18 @@ func (_u *AgentRuntimeSettingUpdateOne) sqlSave(ctx context.Context) (_node *Age
 	}
 	if value, ok := _u.mutation.AddedHardTriggerRatio(); ok {
 		_spec.AddField(agentruntimesetting.FieldHardTriggerRatio, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AssemblyBudgetSoftTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldAssemblyBudgetSoftTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAssemblyBudgetSoftTokens(); ok {
+		_spec.AddField(agentruntimesetting.FieldAssemblyBudgetSoftTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AssemblyBudgetHardTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldAssemblyBudgetHardTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAssemblyBudgetHardTokens(); ok {
+		_spec.AddField(agentruntimesetting.FieldAssemblyBudgetHardTokens, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.SessionSummaryEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldSessionSummaryEnabled, field.TypeBool, value)

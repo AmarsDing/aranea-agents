@@ -28,6 +28,8 @@ type EvalGateConfig struct {
 	MinScore float64 `json:"min_score,omitempty"`
 	// MaxDrop holds the value of the "max_drop" field.
 	MaxDrop float64 `json:"max_drop,omitempty"`
+	// Mode holds the value of the "mode" field.
+	Mode string `json:"mode,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt    string `json:"updated_at,omitempty"`
 	selectValues sql.SelectValues
@@ -42,7 +44,7 @@ func (*EvalGateConfig) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case evalgateconfig.FieldEnabled:
 			values[i] = new(sql.NullInt64)
-		case evalgateconfig.FieldID, evalgateconfig.FieldAgentID, evalgateconfig.FieldDatasetID, evalgateconfig.FieldMetric, evalgateconfig.FieldUpdatedAt:
+		case evalgateconfig.FieldID, evalgateconfig.FieldAgentID, evalgateconfig.FieldDatasetID, evalgateconfig.FieldMetric, evalgateconfig.FieldMode, evalgateconfig.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -100,6 +102,12 @@ func (_m *EvalGateConfig) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field max_drop", values[i])
 			} else if value.Valid {
 				_m.MaxDrop = value.Float64
+			}
+		case evalgateconfig.FieldMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field mode", values[i])
+			} else if value.Valid {
+				_m.Mode = value.String
 			}
 		case evalgateconfig.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -160,6 +168,9 @@ func (_m *EvalGateConfig) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("max_drop=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MaxDrop))
+	builder.WriteString(", ")
+	builder.WriteString("mode=")
+	builder.WriteString(_m.Mode)
 	builder.WriteString(", ")
 	builder.WriteString("updated_at=")
 	builder.WriteString(_m.UpdatedAt)

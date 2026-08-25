@@ -17,6 +17,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -84,6 +85,15 @@ const (
 	// 取值与 blockThreshold 对齐：首次空属正常未命中，第二次换词仍空即构成
 	// 「库中确无资料」的足够证据，第三次起拦截。
 	loopGuardEmptyStreakThreshold = 2
+	// 空转轮次早停（2026-08-25 包A-A2'b，session-eval-20260825 取证）：连续 N 轮
+	// 工具调用零有效产出（失败/被拦/检索空结果）→ BeforeModel 注入降级引导；
+	// 满 M 轮 → BeforeTool 拦截一切新调用（todo_declare_blocker 豁免，保留投降
+	// 通道），顽固重发计入 blockedCount 共享饱和 StopError。
+	// 实证：dept lead 会话 10 轮异质空转（memory_search 空 → list_inbox ×2 失败
+	// → tool_load → declare_blocker）烧 80K in——同参/轮换/空结果三重守卫都管
+	// 不到「跨工具异质空转」，按轮维度收口。
+	unproductiveRoundGuideThreshold = 3
+	unproductiveRoundBlockThreshold = 5
 	// If AfterTool never runs (panic / skipped callback), inflight would
 	// otherwise block the same signature for the rest of the invocation.
 	// Must exceed the default tool execution timeout (10 min) so a still-
@@ -94,6 +104,15 @@ const (
 // loopGuardMarker 是拦截消息的可识别前缀；AfterTool 见到携带该标记的结果
 // 时跳过状态更新（被拦调用的"结果"是纠偏文本，不代表真实工具输出）。
 const loopGuardMarker = "⚠ 系统拦截（无效重复调用）"
+
+// unproductiveRoundCueMarker 标识空转早停引导 cue（A2'b）。用于续轮去重——
+// 每轮注入前先摘除历史中的同名 cue，保证只有一条最新轮次文案。无段分类
+// （classifyAssemblyCue default=protected，引导指令宁保勿丢）。
+const unproductiveRoundCueMarker = "<!-- aranea:unproductive_rounds -->\n"
+
+// todoDeclareBlockerToolName 是空转封锁的唯一豁免工具（A2'b）：满 M 轮封锁
+// 一切新调用时仍保留投降通道，模型可声明阻塞原因后收尾，而非被堵死重发。
+const todoDeclareBlockerToolName = "todo_declare_blocker"
 
 type loopGuardEntry struct {
 	lastSig          string // 上一次调用的签名（tool + 规范化 args 哈希）
@@ -107,7 +126,12 @@ type loopGuardEntry struct {
 	emptyStreak      map[string]int          // 检索类工具名 → 连续空结果次数（无视参数差异；非空即清零）
 	blockedCount     int                     // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
 	inflight         map[string]inflightSlot // 签名 → 当前正在执行（已放行、尚未 AfterTool）
-	lastTouch        time.Time
+	// 空转轮次早停状态（A2'b）：roundSawTool/roundProductive 累积当前 LLM 轮的
+	// 工具结果，BeforeModel 续轮时结算进 unprodRounds（任一有产出的调用即清零）。
+	roundSawTool    bool
+	roundProductive bool
+	unprodRounds    int
+	lastTouch       time.Time
 }
 
 type inflightSlot struct {
@@ -507,6 +531,9 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	}
 	// B4 饱和止损：被拦调用不进 AfterTool，计数只能在此累计。
 	e.blockedCount++
+	// A2'b：被拦调用不进 AfterTool，本轮工具活动只能在此记账（被拦=零产出，
+	// roundProductive 保持 false，供 BeforeModel 结算空转轮次）。
+	e.roundSawTool = true
 	v := loopGuardVerdict{
 		blockedCount:     e.blockedCount,
 		consecutiveCount: e.sameCount,
@@ -541,6 +568,31 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 		now := time.Now()
 		g.mu.Lock()
 		e := g.entryLocked(key, now)
+		// A2'b 空转封锁：连续 M 轮零有效产出后，封锁一切新工具调用
+		// （todo_declare_blocker 豁免，保留投降通道）。顽固重发计入
+		// blockedCount，共享 B4 饱和 StopError 止损。
+		if e.unprodRounds >= unproductiveRoundBlockThreshold && args.ToolName != todoDeclareBlockerToolName {
+			e.blockedCount++
+			e.roundSawTool = true
+			blocked := e.blockedCount
+			unprod := e.unprodRounds
+			saturated := blocked >= loopGuardSaturatedStopThreshold
+			g.mu.Unlock()
+			g.lg.Warn("tool loop guard blocked call after unproductive rounds",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("unproductive_rounds", unprod),
+				loggateway.Int("blocked", blocked))
+			if saturated {
+				return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
+					"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
+			}
+			msg := fmt.Sprintf("%s：本节点已连续 %d 轮工具调用零有效产出（失败/被拦/检索空结果），系统已封锁新的工具调用——本调用未执行、也非执行失败。"+
+				"继续调用任何工具都不会产生新信息。请立即基于现有信息输出最终结论；若任务确实无法推进，调用 todo_declare_blocker 说明阻塞原因（该工具不受本封锁限制）。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, unproductiveRoundBlockThreshold, blocked, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
 		v := g.verdictBeforeLocked(e, sig, args.ToolName, now)
 		g.mu.Unlock()
 		switch v.kind {
@@ -622,6 +674,9 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		defer g.mu.Unlock()
 		e := g.entryLocked(key, time.Now())
 		e.endInflight(sig)
+		// A2'b 空转轮记账：本轮发生了真实工具调用。失败/检索空结果均不计
+		// 产出（roundProductive 保持 false），BeforeModel 续轮结算空转轮次。
+		e.roundSawTool = true
 		if args.Error != nil {
 			// 失败重试归熔断器治理：不累计重复计数，也不触发拦截。
 			// 但调用本身仍进签名窗口——失败不打破轮换循环的模式判定。
@@ -646,8 +701,10 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		e.lastFailed = false
 		// 空结果熔断记账（无视参数差异）：检索类工具连续空则累计，一旦拿到
 		// 非空结果立即清零——熔断针对的是「库中确无资料仍换词重试」的空转。
+		productive := true
 		if isEmpty, ok := loopGuardEmptyResultTools[args.ToolName]; ok {
 			if isEmpty(args.Result) {
+				productive = false
 				if e.emptyStreak == nil {
 					e.emptyStreak = map[string]int{}
 				}
@@ -656,7 +713,68 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 				delete(e.emptyStreak, args.ToolName)
 			}
 		}
+		if productive {
+			e.roundProductive = true
+		}
 		e.appendCallLocked(sig, args.ToolName)
 		return &trpctool.AfterToolResult{Context: ctx}, nil
 	})
+}
+
+// modelHook 是空转轮次早停（A2'b）的 BeforeModel 侧：每次模型调用（含工具
+// 循环续轮）先结算上一 LLM 轮的工具产出——
+//   - 上一轮有工具调用且任一有产出 → unprodRounds 清零；
+//   - 上一轮有工具调用但零有效产出（全部失败/被拦/检索空结果）→ unprodRounds+1；
+//   - 上一轮无工具调用（纯文本续轮）→ 不结算，计数保持。
+//
+// 结算后 unprodRounds 满 unproductiveRoundGuideThreshold 即注入降级引导 cue
+// （先摘除历史同名 cue，保证只有一条最新轮次文案）；满
+// unproductiveRoundBlockThreshold 的封锁由 beforeHook 执行（拦截一切新调用，
+// todo_declare_blocker 豁免）。
+func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
+	return callbacks.NewBeforeModelHook(4, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		if args == nil || args.Request == nil {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		key := loopGuardInvocationKey(ctx)
+		if key == "" {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		g.mu.Lock()
+		e := g.entryLocked(key, time.Now())
+		if e.roundSawTool {
+			if e.roundProductive {
+				e.unprodRounds = 0
+			} else {
+				e.unprodRounds++
+			}
+			e.roundSawTool = false
+			e.roundProductive = false
+		}
+		unprod := e.unprodRounds
+		g.mu.Unlock()
+		if unprod < unproductiveRoundGuideThreshold {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		msgs := stripDynamicCueByMarker(args.Request.Messages, unproductiveRoundCueMarker)
+		args.Request.Messages = appendDynamicCue(msgs, unproductiveRoundCueMarker+buildUnproductiveRoundCue(unprod))
+		g.lg.Warn("unproductive tool rounds, degradation guide injected",
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Int("unproductive_rounds", unprod))
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+
+// buildUnproductiveRoundCue 是降级引导 cue 文案（A2'b）：告知模型已连续 N 轮
+// 零有效产出，引导其停止盲目重试、基于已有信息收尾；满封锁阈值时改口告知
+// 工具面已封锁（与 beforeHook 拦截文案口径一致），仅剩 declare_blocker/收尾。
+func buildUnproductiveRoundCue(unprod int) string {
+	if unprod >= unproductiveRoundBlockThreshold {
+		return fmt.Sprintf(`<tool_round_notice>
+你已连续 %d 轮工具调用零有效产出（失败/被系统拦截/检索空结果）。系统现已封锁新的工具调用：除 todo_declare_blocker 外，任何工具调用都会被直接拦截。不要再尝试调用工具——立即基于现有信息输出最终结论；若任务确实无法推进，调用 todo_declare_blocker 说明阻塞原因后收尾。
+</tool_round_notice>`, unprod)
+	}
+	return fmt.Sprintf(`<tool_round_notice>
+你已连续 %d 轮工具调用零有效产出（失败/被系统拦截/检索空结果）。继续用相似方式调用工具大概率仍无收获，只会消耗调用预算。请立即调整策略：基于已拿到的信息直接作答；或换用根本不同的方法（不同工具/不同思路）。若确认任务无法推进，调用 todo_declare_blocker 说明阻塞原因。再连续零产出 %d 轮，系统将封锁一切新的工具调用。
+</tool_round_notice>`, unprod, unproductiveRoundBlockThreshold-unprod)
 }

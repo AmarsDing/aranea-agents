@@ -26,7 +26,7 @@ func newWorkspaceSkillsBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, workspaceSkillsCueMarker+cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

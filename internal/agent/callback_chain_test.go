@@ -117,7 +117,7 @@ func TestCallbackChain_ReplyReminderEnabledByDefault(t *testing.T) {
 	}
 	found := false
 	for _, m := range args.Request.Messages {
-		if m.Content == replyReminderCue {
+		if m.Content == replyReminderCueMarker+replyReminderCue {
 			found = true
 			break
 		}

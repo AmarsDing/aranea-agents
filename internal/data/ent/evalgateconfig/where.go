@@ -93,6 +93,11 @@ func MaxDrop(v float64) predicate.EvalGateConfig {
 	return predicate.EvalGateConfig(sql.FieldEQ(FieldMaxDrop, v))
 }
 
+// Mode applies equality check predicate on the "mode" field. It's identical to ModeEQ.
+func Mode(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldEQ(FieldMode, v))
+}
+
 // UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
 func UpdatedAt(v string) predicate.EvalGateConfig {
 	return predicate.EvalGateConfig(sql.FieldEQ(FieldUpdatedAt, v))
@@ -411,6 +416,71 @@ func MaxDropLT(v float64) predicate.EvalGateConfig {
 // MaxDropLTE applies the LTE predicate on the "max_drop" field.
 func MaxDropLTE(v float64) predicate.EvalGateConfig {
 	return predicate.EvalGateConfig(sql.FieldLTE(FieldMaxDrop, v))
+}
+
+// ModeEQ applies the EQ predicate on the "mode" field.
+func ModeEQ(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldEQ(FieldMode, v))
+}
+
+// ModeNEQ applies the NEQ predicate on the "mode" field.
+func ModeNEQ(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldNEQ(FieldMode, v))
+}
+
+// ModeIn applies the In predicate on the "mode" field.
+func ModeIn(vs ...string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldIn(FieldMode, vs...))
+}
+
+// ModeNotIn applies the NotIn predicate on the "mode" field.
+func ModeNotIn(vs ...string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldNotIn(FieldMode, vs...))
+}
+
+// ModeGT applies the GT predicate on the "mode" field.
+func ModeGT(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldGT(FieldMode, v))
+}
+
+// ModeGTE applies the GTE predicate on the "mode" field.
+func ModeGTE(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldGTE(FieldMode, v))
+}
+
+// ModeLT applies the LT predicate on the "mode" field.
+func ModeLT(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldLT(FieldMode, v))
+}
+
+// ModeLTE applies the LTE predicate on the "mode" field.
+func ModeLTE(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldLTE(FieldMode, v))
+}
+
+// ModeContains applies the Contains predicate on the "mode" field.
+func ModeContains(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldContains(FieldMode, v))
+}
+
+// ModeHasPrefix applies the HasPrefix predicate on the "mode" field.
+func ModeHasPrefix(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldHasPrefix(FieldMode, v))
+}
+
+// ModeHasSuffix applies the HasSuffix predicate on the "mode" field.
+func ModeHasSuffix(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldHasSuffix(FieldMode, v))
+}
+
+// ModeEqualFold applies the EqualFold predicate on the "mode" field.
+func ModeEqualFold(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldEqualFold(FieldMode, v))
+}
+
+// ModeContainsFold applies the ContainsFold predicate on the "mode" field.
+func ModeContainsFold(v string) predicate.EvalGateConfig {
+	return predicate.EvalGateConfig(sql.FieldContainsFold(FieldMode, v))
 }
 
 // UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
