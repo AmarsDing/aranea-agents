@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -108,14 +109,67 @@ func TestShouldRunProactiveRecall_VoiceTurnSkipped(t *testing.T) {
 
 func TestShouldSkipIntentPass_DirectReplyWithoutPlanner(t *testing.T) {
 	o := &ChatOrchestrator{}
-	if skip, _ := shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。"); !skip {
+	if skip, _, _ := shouldSkipIntentPass(o, context.Background(), biz.Agent{}, biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。"); !skip {
 		t.Fatal("direct-reply must skip intent even when planner is nil")
 	}
-	if skip, _ := shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "帮我做个应用"); skip {
+	if skip, _, _ := shouldSkipIntentPass(o, context.Background(), biz.Agent{}, biz.TurnInput{}, "帮我做个应用"); skip {
 		t.Fatal("underspecified task must not skip intent")
 	}
-	if skip, _ := shouldSkipIntentPass(o, context.Background(), biz.TurnInput{}, "请排查杭州滨江机房核心交换机告警"); skip {
+	if skip, _, _ := shouldSkipIntentPass(o, context.Background(), biz.Agent{}, biz.TurnInput{}, "请排查杭州滨江机房核心交换机告警"); skip {
 		t.Fatal("without planner, non-direct-reply tasks must still run intent")
+	}
+}
+
+// TestShouldSkipIntentPass_AgentGate 钉住包B B1（session-eval-20260825）
+// agent 维度闸：IntentSkipEnabled=false（管理层 agent）禁用 QuickAssess
+// simple skip——任务型消息被误判 simple 曾导致 intent pass 跳过、组织路由
+// 失效（P-INTENT-SKIP）。DirectReply 确定性模式匹配不受此闸影响。
+func TestShouldSkipIntentPass_AgentGate(t *testing.T) {
+	o := &ChatOrchestrator{} // planner nil → QuickAssess 不可达，仅验证闸本身
+	mgmt := biz.Agent{Settings: &biz.AgentRuntimeSettings{IntentSkipEnabled: false}}
+	if skip, _, reason := shouldSkipIntentPass(o, context.Background(), mgmt, biz.TurnInput{}, "把这份周报整理成汇报材料"); skip || reason != "agent_skip_disabled" {
+		t.Fatalf("agent with IntentSkipEnabled=false must never take the simple-skip fast path, got skip=%v reason=%q", skip, reason)
+	}
+	// DirectReply 是确定性模式（非误判源），管理层 agent 仍允许 skip。
+	if skip, _, _ := shouldSkipIntentPass(o, context.Background(), mgmt, biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。"); !skip {
+		t.Fatal("direct-reply deterministic patterns must still skip even for management agents")
+	}
+	// Settings=nil（零值 Agent）保持现状行为：闸不生效。
+	if skip, _, _ := shouldSkipIntentPass(o, context.Background(), biz.Agent{}, biz.TurnInput{}, "你好，请介绍你自己。不要调用工具。"); !skip {
+		t.Fatal("nil Settings must preserve default skip behavior")
+	}
+}
+
+// TestShouldSkipIntentPass_LowConfidenceGate 钉住包B B1 R4 低置信闸：
+// QuickAssess 判 simple 但 score 贴 0.3 阈值（[0.2,0.3) 边界带）时不得
+// skip intent pass——评分器对「简单」不确信，宁重勿轻（RouteLLM 非对称
+// 代价）。仅高置信 simple（score<0.2）允许 skip。
+func TestShouldSkipIntentPass_LowConfidenceGate(t *testing.T) {
+	newOrch := func(level biz.ComplexityLevel, score float64) *ChatOrchestrator {
+		orch := &ChatOrchestrator{}
+		orch.teamExecDeps.Team.TaskPlanner = &fakePlanner{quickLevel: level, quickScore: score}
+		return orch
+	}
+	// 纯闲聊文案：避开 DirectReply 模式/LooksLikeFactQuery/欠规格模式，确保走到 QuickAssess。
+	const msg = "嗯嗯，我明白了，那就先这样吧"
+
+	// 高置信 simple（0.15 < 0.2）→ 允许 skip。
+	if skip, level, reason := shouldSkipIntentPass(newOrch(biz.ComplexitySimple, 0.15), context.Background(), biz.Agent{}, biz.TurnInput{}, msg); !skip || level != biz.ComplexitySimple || reason != "confident_simple" {
+		t.Fatalf("confident simple (score=0.15) must skip, got skip=%v level=%q reason=%q", skip, level, reason)
+	}
+	// 边界 simple（0.25 ∈ [0.2,0.3)）→ 低置信，不 skip，但等级仍回传。
+	if skip, level, reason := shouldSkipIntentPass(newOrch(biz.ComplexitySimple, 0.25), context.Background(), biz.Agent{}, biz.TurnInput{}, msg); skip || level != biz.ComplexitySimple || reason != "low_confidence_simple" {
+		t.Fatalf("borderline simple (score=0.25) must not skip, got skip=%v level=%q reason=%q", skip, level, reason)
+	}
+	// moderate/complex 本就不 skip。
+	if skip, level, reason := shouldSkipIntentPass(newOrch(biz.ComplexityModerate, 0.45), context.Background(), biz.Agent{}, biz.TurnInput{}, msg); skip || level != biz.ComplexityModerate || reason != "not_simple" {
+		t.Fatalf("moderate must not skip, got skip=%v level=%q reason=%q", skip, level, reason)
+	}
+	// planner 报错 → 不 skip（现状行为保持）。
+	errOrch := &ChatOrchestrator{}
+	errOrch.teamExecDeps.Team.TaskPlanner = &fakePlanner{quickErr: errors.New("boom")}
+	if skip, _, _ := shouldSkipIntentPass(errOrch, context.Background(), biz.Agent{}, biz.TurnInput{}, msg); skip {
+		t.Fatal("planner error must not skip intent")
 	}
 }
 

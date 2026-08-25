@@ -113,6 +113,12 @@ type AgentRuntimeSettings struct {
 	SkillRuntimeJSON string
 	// IntentPassEnabled runs the optional pre-turn intent classification pass (see intent package); default true for new agents (P1-1).
 	IntentPassEnabled bool
+	// IntentSkipEnabled allows the simple-turn skip fast path in shouldSkipIntentPass
+	// (包B, session-eval-20260825 B1). Default true (现状); management-layer agents
+	// (3 GM + dept leads + spirit) are configured false via SQL — task messages
+	// misjudged as "simple" skipped the intent pass and broke org routing
+	// (P-INTENT-SKIP; 宁重勿轻, R4 RouteLLM asymmetric cost).
+	IntentSkipEnabled bool
 	ChannelID         string
 	ChatID            string
 	Workspace         string
@@ -356,6 +362,7 @@ func (s *AgentRuntimeSettings) GetSkills() SkillsCfg {
 		RuntimeJSON:       s.SkillRuntimeJSON,
 		LoadMode:          s.SkillLoadMode,
 		IntentPassEnabled: s.IntentPassEnabled,
+		IntentSkipEnabled: s.IntentSkipEnabled,
 	}
 }
 

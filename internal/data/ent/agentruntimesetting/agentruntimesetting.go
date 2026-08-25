@@ -191,6 +191,8 @@ const (
 	FieldSkillRuntimeJSON = "skill_runtime_json"
 	// FieldIntentPassEnabled holds the string denoting the intent_pass_enabled field in the database.
 	FieldIntentPassEnabled = "intent_pass_enabled"
+	// FieldIntentSkipEnabled holds the string denoting the intent_skip_enabled field in the database.
+	FieldIntentSkipEnabled = "intent_skip_enabled"
 	// FieldClarificationEnabled holds the string denoting the clarification_enabled field in the database.
 	FieldClarificationEnabled = "clarification_enabled"
 	// FieldReplyReminderEnabled holds the string denoting the reply_reminder_enabled field in the database.
@@ -406,6 +408,7 @@ var Columns = []string{
 	FieldEvoSystemPromptMaxAppends,
 	FieldSkillRuntimeJSON,
 	FieldIntentPassEnabled,
+	FieldIntentSkipEnabled,
 	FieldClarificationEnabled,
 	FieldReplyReminderEnabled,
 	FieldChannelID,
@@ -658,6 +661,8 @@ var (
 	DefaultSkillRuntimeJSON string
 	// DefaultIntentPassEnabled holds the default value on creation for the "intent_pass_enabled" field.
 	DefaultIntentPassEnabled bool
+	// DefaultIntentSkipEnabled holds the default value on creation for the "intent_skip_enabled" field.
+	DefaultIntentSkipEnabled bool
 	// DefaultClarificationEnabled holds the default value on creation for the "clarification_enabled" field.
 	DefaultClarificationEnabled bool
 	// DefaultReplyReminderEnabled holds the default value on creation for the "reply_reminder_enabled" field.
@@ -1236,6 +1241,11 @@ func BySkillRuntimeJSON(opts ...sql.OrderTermOption) OrderOption {
 // ByIntentPassEnabled orders the results by the intent_pass_enabled field.
 func ByIntentPassEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIntentPassEnabled, opts...).ToFunc()
+}
+
+// ByIntentSkipEnabled orders the results by the intent_skip_enabled field.
+func ByIntentSkipEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIntentSkipEnabled, opts...).ToFunc()
 }
 
 // ByClarificationEnabled orders the results by the clarification_enabled field.

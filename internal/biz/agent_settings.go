@@ -139,6 +139,7 @@ type SkillsCfg struct {
 	RuntimeJSON       string `json:"skill_runtime_json,omitempty"`
 	LoadMode          string `json:"skill_load_mode,omitempty"`
 	IntentPassEnabled bool   `json:"intent_pass_enabled,omitempty"`
+	IntentSkipEnabled bool   `json:"intent_skip_enabled,omitempty"`
 }
 
 // CodeExecutorCfg holds per-agent code execution backend selection.
@@ -327,6 +328,7 @@ func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
 	s.SkillRuntimeJSON = cfg.RuntimeJSON
 	s.SkillLoadMode = cfg.LoadMode
 	s.IntentPassEnabled = cfg.IntentPassEnabled
+	s.IntentSkipEnabled = cfg.IntentSkipEnabled
 }
 
 func (s *AgentRuntimeSettings) GetSkillLoadMode() string {

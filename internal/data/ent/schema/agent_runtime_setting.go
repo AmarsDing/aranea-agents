@@ -117,6 +117,13 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		// Pre-main LLM pass to classify/refine user intent (extra latency/cost); persisted per agent; env ARANEA_INTENT_PASS can override.
 		// P1-1 default ON: aligns with DDL migration (sql/migrations/20260607_agent_runtime_patches.sql:8) and DefaultAgentRuntimeSettings.
 		field.Bool("intent_pass_enabled").Default(true),
+		// 包B（session-eval-20260825 B1）：简单轮 skip 快路径开关。default ON 保持
+		// 现状（存量行经 DDL 20261245 DEFAULT 1 零行为变化）；管理层 agent（3 GM +
+		// 部门主管 + spirit）SQL 置 false——任务型消息被 QuickAssess 误判 simple
+		// 导致 intent pass 跳过、组织路由失效（P-INTENT-SKIP），校准原则「宁重勿轻」
+		// （R4 RouteLLM 非对称代价）。消费点 shouldSkipIntentPass 每轮读 DB 加载的
+		// ag.Settings，无需重建（settings_shard_classify: classNoRebuild）。
+		field.Bool("intent_skip_enabled").Default(true),
 		// Clarification gate: when intent pass detects blocking ambiguity, ask the user
 		// paginated clarification questions before planning (P-CLARIFY, B.10.18). Default ON.
 		field.Bool("clarification_enabled").Default(true),

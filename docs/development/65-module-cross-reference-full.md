@@ -54,6 +54,8 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 
 **P0 已修（禁止再当未修债抄进方案）**：裸 goroutine → `safego.Go`；Skill ZIP 导入走 `ImportSkillZip` proto（`skill_import_http.go` 已删）；Channel/Cron `SKIP LOCKED` 多副本；`SessionAdminStore` 已退出生产路径（改 `MemoryLayerPorts`）；Spirit 拆 Assembly/Orchestration/Delivery；`RuntimeTooling` 6 域分组；生产实时通道为 `v2_event` / `monitor_event`（features 禁止 import `realtime/useEnvelopeStream`）。
 
+**最新编号水位（2026-08-25）**：已用至 **81**——79=运行时治理、80=决策智能、81=配置资产图谱（三件套均已备、⚪ 全部未启动；曾发生 79 三号撞车，已按 [2026-08-25-review-three-initiatives.md](../reports/2026-08-25-review-three-initiatives.md) E1 重排）。**新模块从 82 起取号**。
+
 ---
 
 ## 一、后端模块开发上下文卡片
@@ -78,6 +80,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - 修改 `TRPCBuilderDeps` 结构体时，必须同步更新 `service/chat_wire.go` 的 `provideChatServiceDeps` 和 `team/trpc_build.go`
 - 修改 Prompt 层级（L1-L4）时，影响所有 Agent 的系统提示词，需回归测试 Chat + Team
 - 新增 `llmagent.Option` 时，检查 `BuildTRPCLLMAgent` 是否已传递该选项
+- **装配预算闸 + 空转早停（ADR-PkgA，2026-08-25）**：回调链两级 token 治理。`assembly_budget.go` BeforeModel（priority 8，全量注入 memory 5/knowledge 6/cue ≤6 之后、压缩闸 9 与 L0 快照 10 之前）：管理层 agent 配 `assembly_budget_soft/hard_tokens`（biz Settings 新字段 + DDL 20261244，3 GM/23 主管 40K/60K，hard≤0 不装 hook），est≤soft 零开销通过，soft<est≤hard once-per-turn 注容量告警 cue（MemGPT 范式引导主动 evict），est>hard 按段标记两段降级截断至 hard×0.9 滞回（尾部 cue 按保护序丢弃→仍超驱逐最旧历史；静态头/未标记 cue 永保）+ flowlog `prompt.assembly.trimmed`。`tool_loop_guard.go` 空转早停：连续 3 轮零产出 BeforeModel(p4) 注降级引导（strip-then-append 不累积）、满 5 轮 BeforeTool(p4) 封锁新调用（`todo_declare_blocker` 豁免）。归因依据 `docs/testing/session-eval-20260825/rounds-forensics.md`：管理层 token 爆炸为**轮数型放大**（非单轮装配型——`chat_turn` input_tokens 是轮次级聚合，单轮判读必须看 L0 快照），A1 闸兜底历史累积型单轮峰值（513 万事故 86K 类）
 
 ---
 
@@ -1152,6 +1155,39 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - 失败标签中文映射在前端 `FailureTagsChart.vue` 的 `TAG_LABELS`，与 `biz/skill_scoring.go` 的 FailureTag 常量集对齐——新增/改标签须双端同步；`unknown` 前端译为「未分类」并以灰色弱化
 - 表格行内展开以 `hasDetail`（根因分析/建议修复/优化建议任一非空）判定入口；`watch(rows)` 在筛选/翻页时清空 expanded 防止详情错位
 - ent schema 变更（如 experience_reports 加列）须同步 DDL 迁移，存量库 `Schema.Create()` 不会 ALTER 补列（见项目规则）
+
+---
+
+### 1.44 运行时治理 / M79（⚪ 未启动，三件套已备）
+
+**职责**：Cache-First 装配契约（head 稳定/tail 承载动态/顺序固化 + 契约测试 golden）、确定性工具结果剪枝、记忆高风险写审批层、Fact-Driven 验证义务、Run 级 NoProgressAuditor、会话 Fork、run stats/doctor/param_rules 管控面。三件套：[`79-runtime-governance.md`](./79-runtime-governance.md) / [`.design.md`](./79-runtime-governance.design.md) / [`.development.md`](./79-runtime-governance.development.md)；统一排期 Wave 1（评审报告 §6）。
+
+**⚠️ 开发注意**：
+- 分区契约基于既有 `splitPromptZones`（context_compression_inject.go:112-144）固化，非新造分区；hook 链实序含 static/dynamic runtime cue 两 hook（callback_chain.go:55-149）
+- 剪枝取回**复用** `read_tool_result`（E2 裁定，禁新增 `get_pruned_tool_result`）；命中率扩既有 `GetCacheHitRatioStats`（E3，非新建）
+- 记忆审批纪律与工具 HITL 四档对齐（E4 用户裁定）；pending 经 ApprovalSourceGraph 桥写 twinmonitor `ai_approvals`（source=`memory_fact_write`，C7）
+- param_rules 与 M80 审批路由**共享规则求值核心** `internal/biz/policyrule`（C3）；管线序 paramRuleGate→ask 定 approver→HITL
+- 迁移号段 **20261246-49**（统一分配）；禁碰 vendored `pkg/trpc-agent-go`
+
+### 1.45 决策智能 / M80（⚪ 未启动，三件套已备）
+
+**职责**：统一决策记录层（decision_records 五类收录：planner/HITL/系统闸/知识仲裁/进化应用）、决策链 trace（单父链 + 递归 CTE）、审批先例检索（拉取式，零 prompt 注入）、审批路由规则、twinmonitor 审批镜像。三件套：[`80-decision-intelligence.md`](./80-decision-intelligence.md) / [`.design.md`](./80-decision-intelligence.design.md) / [`.development.md`](./80-decision-intelligence.development.md)；统一排期 Wave 3-4。
+
+**⚠️ 开发注意**：
+- outbox **新建** `decision_record_outbox` 表（E5：event_delivery_outbox 是会话域设施，(session_id,seq) 唯一键 + 随会话级联删除，不可共用）
+- 系统闸采集 = S2 `GateDecision` 结构，挂 `recordMemberUsage` 记账点与 paramRuleGate 拦截点（E6：token 跳闸纯内存，**不监听 budget_alerts**）；trigger_rule 五类枚举一次列全（C6）
+- 先例侧栏挂 twinmonitor 统一审批中心（C7）；审批路由求值复用共享核心 `policyrule`（C3，与 M79 R9 同核心）
+- 迁移号段 **20261250-53**；红线：零新增 LLM（NFR-80-02，wire 层物理隔离）
+
+### 1.46 配置资产图谱 / M81（⚪ 未启动，三件套已备）
+
+**职责**：12 类节点 27 类边持久化依赖图（generation 双代幂等重建）、Impact/Dependencies/NodeEdges 查询、Health 分析（god node/环/断边/重复 prompt）、事件驱动增量保鲜。三件套：[`81-config-graph.md`](./81-config-graph.md) / [`.design.md`](./81-config-graph.design.md) / [`.development.md`](./81-config-graph.development.md)；方案/评审：[2026-08-25-analysis-config-graph-blueprint.md](../reports/2026-08-25-analysis-config-graph-blueprint.md)；统一排期 Wave 2（P0/P1）。
+
+**⚠️ 开发注意**：
+- granted_tool 边唯一来源 = `AgentUsecase.GetEffectiveTools`（C2 ADR：effective tools 单源；audit.py 离线复算届时下线改调服务 API，本图谱为单源首个消费者）
+- 事件覆盖 = 11 类写路径全覆盖（**10 类埋点 + skill 域复用 MonitorBus 既有 skill.* 事件转译**，E7 归并不重复埋点）
+- `configgraph.Health` 聚合进 M79 R8 doctor 为一个检查组（C9）；P0-P2 全程只读，不拦截任何业务写路径（NFR-81-04）
+- 迁移号段 **20261260-61**；Indexer 验收判据 = 启动日志 `configgraph indexer started`（防 wire 静默不实例化）
 
 ---
 

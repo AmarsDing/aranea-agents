@@ -130,6 +130,7 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"EvoSystemPromptMaxAppends": classNoRebuild, // evo 子系统 JSON 配置消费，构建路径零引用
 	"SkillRuntimeJSON":    classFullRebuild, // skill runtime 工具装配
 	"IntentPassEnabled":   classNoRebuild,   // intent.ShouldRun 每轮经 DB 加载的 ag 判定
+	"IntentSkipEnabled":   classNoRebuild,   // shouldSkipIntentPass 每轮读 DB 加载的 ag.Settings（包B, session-eval-20260825 B1）
 	"ChannelID":           classNoRebuild,   // channel gateway 消费，构建路径零引用
 	"ChatID":              classNoRebuild,
 	"Workspace":               classFullRebuild, // memory_inject/a2a invoker 构建时固化

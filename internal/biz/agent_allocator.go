@@ -1,6 +1,9 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // AgentAllocatorPort is the port interface for the AgentAllocator (Phase 2 of Spirit orchestration).
 // Single responsibility: match each subtask in a TaskPlan to the best Agent or Team.
@@ -38,6 +41,19 @@ const (
 	AllocationStatusConfirmed AllocationStatus = "confirmed"
 	AllocationStatusExecuting AllocationStatus = "executing"
 )
+
+// ErrRosterMiss 包B B3b（session-eval-20260825）roster miss 哨兵：agent 包
+// rosterMissError 经 WithCause 挂载，plan_and_execute 以 errors.Is 捕获后
+// 降级为结构化 NextAction=build_orchestration_graph，替代裸露 BAD_REQUEST
+// （Plan-and-Act R4：计划失败是正常事件，重规划是一等公民）。
+var ErrRosterMiss = errors.New("roster_miss")
+
+// RosterMissNextAction 是 plan_and_execute 在 roster miss 时回传给 Spirit
+// LLM 的改道指引（authorize_playbook 先例）。
+const RosterMissNextAction = "build_orchestration_graph"
+
+// RosterMissUserHint 是 roster miss 降级时随 NextAction 给出的中文说明。
+const RosterMissUserHint = "花名册中没有匹配该子任务的专家（通用角色名无映射）。请改用 build_orchestration_graph 显式指定 agents/mode 组建团队，或在任务中点名现有 agent_key。"
 
 // TaskAllocation represents the allocation of a subtask to an agent or team
 type TaskAllocation struct {

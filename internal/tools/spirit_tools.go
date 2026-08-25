@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -271,6 +272,16 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				out.Steps = append(out.Steps, allocStep)
 				if allocErr != nil {
 					publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
+					// 包B B3b（session-eval-20260825, P-ROSTER-GAP）：roster miss
+					// 结构化降级——通用角色名在花名册无映射时，返回 NextAction 引导
+					// LLM 改道 build_orchestration_graph 显式组队（authorize_playbook
+					// 先例；Plan-and-Act R4：计划失败是正常事件，重规划是一等公民），
+					// 不再向 LLM 裸露 BAD_REQUEST 导致首选编排路径硬失败。
+					if errors.Is(allocErr, biz.ErrRosterMiss) {
+						out.NextAction = biz.RosterMissNextAction
+						out.ReuseReason = biz.RosterMissUserHint
+						return out, nil
+					}
 					return out, allocErr
 				}
 			}

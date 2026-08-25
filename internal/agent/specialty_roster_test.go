@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -40,6 +42,65 @@ func TestBindRosterSpecialist_OtherIsMiss(t *testing.T) {
 	})
 	if ok {
 		t.Fatal("其他 must not bind")
+	}
+}
+
+// TestBindRosterSpecialist_GenericRoleMapping 钉住包B B3a
+// （session-eval-20260825, P-ROSTER-GAP）：planner LLM 按行业常识产出的
+// 通用角色词（技术/内容/运营）归一化落「其他」，词表匹配失败后走通用角色
+// 映射兜底到一级域，不再直接 roster miss（S07-A BAD_REQUEST）。
+func TestBindRosterSpecialist_GenericRoleMapping(t *testing.T) {
+	pool := []biz.AgentCapability{
+		{AgentKey: "be", DisplayName: "后端工程师", DomainPath: "软件/后端"},
+		{AgentKey: "cw", DisplayName: "文案", DomainPath: "创作/文案"},
+		{AgentKey: "ops", DisplayName: "客服运营", DomainPath: "商务/客服"},
+	}
+	tests := []struct {
+		name       string
+		domainPath string
+		taskText   string
+		wantKey    string
+	}{
+		{"技术→软件一级域", "技术", "", "be"},
+		{"研发→软件一级域", "研发", "", "be"},
+		{"内容→创作一级域", "内容", "", "cw"},
+		{"运营→商务一级域", "运营", "", "ops"},
+		{"domainPath 无命中回退任务文本", "", "接口开发联调", "be"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, _, ok := bindRosterSpecialist(tt.domainPath, tt.taskText, pool)
+			if !ok || got.AgentKey != tt.wantKey {
+				t.Fatalf("domainPath=%q taskText=%q: got key=%q ok=%v, want %q",
+					tt.domainPath, tt.taskText, got.AgentKey, ok, tt.wantKey)
+			}
+		})
+	}
+
+	// 词表内精确路径不受兜底影响（优先精确匹配）。
+	got, _, ok := bindRosterSpecialist("创作/文案", "", pool)
+	if !ok || got.AgentKey != "cw" {
+		t.Fatalf("lexicon path must keep exact binding, got %q ok=%v", got.AgentKey, ok)
+	}
+	// 完全无法归类的仍然 miss（保持 roster miss 语义给 B3b 降级）。
+	if _, _, ok := bindRosterSpecialist("占星", "", pool); ok {
+		t.Fatal("unclassifiable specialty must still miss")
+	}
+}
+
+// TestRosterMissError_Sentinel 钉住包B B3b：rosterMissError 必须挂载
+// biz.ErrRosterMiss 哨兵（errors.Is 可达），plan_and_execute 才能捕获并
+// 降级为结构化 NextAction=build_orchestration_graph。
+func TestRosterMissError_Sentinel(t *testing.T) {
+	err := rosterMissError(biz.SubTask{ID: "st1", Name: "技术开发", DomainPath: "技术"})
+	if err == nil {
+		t.Fatal("expect error")
+	}
+	if !errors.Is(err, biz.ErrRosterMiss) {
+		t.Fatalf("rosterMissError must wrap biz.ErrRosterMiss, got %v", err)
+	}
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("must stay BAD_REQUEST for WS failure event compat, got %v", err)
 	}
 }
 

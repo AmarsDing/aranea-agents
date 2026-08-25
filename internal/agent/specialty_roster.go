@@ -48,8 +48,53 @@ func rosterMissError(subTask biz.SubTask) error {
 	if spec == "" {
 		spec = subTask.ID
 	}
+	// 包B B3b：挂载 biz.ErrRosterMiss 哨兵，plan_and_execute 捕获后降级为
+	// 结构化 NextAction=build_orchestration_graph（authorize_playbook 先例），
+	// 不再裸露 BAD_REQUEST。
 	return apierror.BadRequest(apierror.DomainSpirit,
-		fmt.Sprintf("no roster specialist for %s; specify an existing agent or add one on the org roster", spec))
+		fmt.Sprintf("no roster specialist for %s; specify an existing agent or add one on the org roster", spec)).
+		WithCause(biz.ErrRosterMiss)
+}
+
+// genericRoleDomains 包B B3a（session-eval-20260825, P-ROSTER-GAP）通用角色
+// 映射：planner LLM 按行业常识产出的通用角色词（技术/内容/运营等）经
+// NormalizeDomainPath 归并落入「其他」，花名册零映射直接 roster miss
+// （S07-A `[SPIRIT/BAD_REQUEST] no roster specialist for 其他`）。将通用词
+// 映射到词表一级域，rosterSpecialtyMatch 即可命中该域下任意岗位。仅在词表
+// 路径匹配失败后兜底——误映射代价是分到同域邻近岗位，远低于编排路径裸露
+// 报错。键序即优先级（先行业技术词，后职能词）。
+var genericRoleDomains = []struct {
+	words  []string
+	domain string
+}{
+	{[]string{"技术", "研发", "开发", "工程", "程序员", "编码", "代码"}, "软件"},
+	{[]string{"内容", "文案", "写作", "编辑", "媒体", "公众号"}, "创作"},
+	{[]string{"运营", "推广", "市场", "营销", "增长"}, "商务"},
+	{[]string{"数据", "分析", "报表", "bi"}, "数据"},
+	{[]string{"设计", "视觉", "ui"}, "设计"},
+	{[]string{"运维", "巡检", "值班", "sre"}, "运维"},
+	{[]string{"调研", "研究", "竞品"}, "研究"},
+	{[]string{"行政", "文档", "纪要", "办公"}, "办公"},
+}
+
+// inferGenericRoleDomain 从原始 domainPath（归一化前的 LLM 产出）推断通用
+// 角色对应的一级域；domainPath 无命中时回退扫描任务文本。零命中返回 ""。
+func inferGenericRoleDomain(domainPath, taskText string) string {
+	for _, g := range genericRoleDomains {
+		for _, w := range g.words {
+			if strings.Contains(domainPath, w) {
+				return g.domain
+			}
+		}
+	}
+	for _, g := range genericRoleDomains {
+		for _, w := range g.words {
+			if strings.Contains(taskText, w) {
+				return g.domain
+			}
+		}
+	}
+	return ""
 }
 
 // bindRosterSpecialist picks a pre-built specialist from the pruned pool.
@@ -57,7 +102,12 @@ func rosterMissError(subTask biz.SubTask) error {
 func bindRosterSpecialist(domainPath, taskText string, pool []biz.AgentCapability) (biz.AgentCapability, string, bool) {
 	spec := NormalizeDomainPath(domainPath)
 	if spec == "" || spec == domainLexiconOther {
-		return biz.AgentCapability{}, "", false
+		// 包B B3a：词表归并失败（LLM 按行业常识产出通用角色词）时，走通用
+		// 角色映射兜底到一级域——避免直接 roster miss（P-ROSTER-GAP）。
+		spec = inferGenericRoleDomain(domainPath, taskText)
+		if spec == "" {
+			return biz.AgentCapability{}, "", false
+		}
 	}
 	var hits []biz.AgentCapability
 	for _, cap := range pool {

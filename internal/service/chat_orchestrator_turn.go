@@ -438,7 +438,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	// QuickAssess is pure computation; run it before the errgroup so simple /
 	// DirectReply turns can skip Intent Pass instead of waiting on that LLM.
-	skipIntent, assessLevel := shouldSkipIntentPass(o, ctx, input, content)
+	skipIntent, assessLevel, skipReason := shouldSkipIntentPass(o, ctx, ag, input, content)
 	if skipIntent {
 		// 闲聊/simple：per-request 关 thinking（BUILD 缓存不含入口，不能烘进 GenerationConfig）。
 		ctx = chatagent.WithThinkingDisabled(ctx)
@@ -601,6 +601,34 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
 	}
+	// 包B B4（session-eval-20260825）：编排路由决策落 flowlog——S07 三次执行
+	// 三种路径（直答 / plan_and_execute roster miss / build_orchestration_graph）
+	// 才可审计回放（兼治 P-ORCH-NONDET 审计面）。字段按「可沉淀为路由训练
+	// 语料」设计（R5 RouteLLM 数据飞轮）：query 特征 + skip/gate 决策 + 档位
+	// 与理由；build 结果回标（team_runs 是否成行）离线 join team_runs 表获得；
+	// roster 命中明细由 orchestration_progress allocate 事件 match_layer 承载，
+	// 不在此重复落。
+	orchDecisionP := []event.Pair{
+		event.P("agent_key", ag.AgentKey),
+		event.P("query_len", len(content)),
+		event.P("skip_intent", skipIntent),
+		event.P("skip_reason", skipReason),
+		event.P("assess_level", string(assessLevel)),
+		event.P("intent_outcome", intentOutcome),
+		event.P("intent_kind", intentKindOf(intentArtifact)),
+		event.P("orch_phase", string(orchTurn.Phase)),
+	}
+	if gateErr != nil {
+		orchDecisionP = append(orchDecisionP, event.P("gate_error", gateErr.Error()))
+	} else {
+		orchDecisionP = append(orchDecisionP,
+			event.P("gate_level", string(gateDecision.Level)),
+			event.P("gate_score", gateDecision.Score),
+			event.P("force_planning", gateDecision.ForcePlanning),
+			event.P("gate_reason", gateDecision.Reason),
+		)
+	}
+	emitter.LogDone("chat.orch.decision", "编排路由决策", orchDecisionP...)
 	deps := buildResult.deps
 	// P0 fix: BUILD runs inside the errgroup above, whose derived ctx is
 	// cancelled as soon as eg.Wait() returns. The AwaitHook created during
@@ -779,25 +807,60 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 //
 // 第二返回值携带 QuickAssess 等级（未评估时为空串）：C2 方案 D 分级时限用
 // 其区分 intent 收口策略——complex 全等至保险丝，moderate 走 rendezvous。
-func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, input biz.TurnInput, content string) (bool, biz.ComplexityLevel) {
+// 第三返回值是 skip 判定的机器可读理由（包B B4 路由语料）：direct_reply /
+// underspecified_task / agent_skip_disabled / planner_unavailable /
+// planner_error / not_simple / confident_simple / low_confidence_simple。
+//
+// 包B（session-eval-20260825 B1）两道闸：
+//  1. agent 维度闸：ag.Settings.IntentSkipEnabled=false（管理层 agent：3 GM +
+//     部门主管 + spirit，SQL 置 0）时禁用 QuickAssess==simple skip——任务型
+//     消息被误判 simple 导致 intent pass 跳过、组织路由失效（P-INTENT-SKIP）。
+//     DirectReply 是确定性模式匹配（非误判源），不受此闸影响。
+//  2. R4 低置信不 skip：QuickAssess score 贴近 0.3 阈值的边界 simple 说明
+//     评分器对「简单」不确信——走完整 intent pass（宁重勿轻，RouteLLM
+//     非对称代价：任务型误判为简单 ≫ 闲聊误跑 intent pass）。仅高置信
+//     simple（score < intentSkipConfidentSimpleMaxScore）允许 skip。
+func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, ag biz.Agent, input biz.TurnInput, content string) (bool, biz.ComplexityLevel, string) {
 	if intent.SkipForDirectReply(content) {
-		return true, ""
+		return true, "", "direct_reply"
 	}
 	if intent.LooksLikeUnderspecifiedTask(content) {
-		return false, ""
+		return false, "", "underspecified_task"
+	}
+	if ag.Settings != nil && !ag.Settings.IntentSkipEnabled {
+		return false, "", "agent_skip_disabled"
 	}
 	planner := o.team().TaskPlanner
 	if planner == nil {
-		return false, ""
+		return false, "", "planner_unavailable"
 	}
-	level, _, err := planner.QuickAssess(ctx, biz.PlanInput{
+	level, score, err := planner.QuickAssess(ctx, biz.PlanInput{
 		UserMessage:     content,
 		SpiritSessionID: input.SessionID,
 	})
 	if err != nil {
-		return false, ""
+		return false, "", "planner_error"
 	}
-	return level == biz.ComplexitySimple, level
+	if level != biz.ComplexitySimple {
+		return false, level, "not_simple"
+	}
+	if score < intentSkipConfidentSimpleMaxScore {
+		return true, level, "confident_simple"
+	}
+	return false, level, "low_confidence_simple"
+}
+
+// intentSkipConfidentSimpleMaxScore R4 低置信闸（包B B1）：QuickAssess 判
+// simple 的阈值为 score<0.3，但 [0.2,0.3) 属贴线边界——评分器对「简单」
+// 不确信，不允许 skip intent pass。0.2 = 阈值 0.3 内收 0.1 置信边距。
+const intentSkipConfidentSimpleMaxScore = 0.2
+
+// intentKindOf 安全取 artifact 的 IntentKind（nil → ""），包B B4 路由语料用。
+func intentKindOf(art *intent.Artifact) string {
+	if art == nil {
+		return ""
+	}
+	return art.IntentKind
 }
 
 // intentRendezvousWindow C2 方案 D：moderate 非欠规格轮次在 BUILD 收口后

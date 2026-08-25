@@ -681,6 +681,30 @@ func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput)
 		)
 	}
 
+	// Task-word whitelist override（包B B2, session-eval-20260825）：命中任务
+	// 动词（产出/方案/组织/安排/梳理/汇报/对比/总结/检查/排查）的消息是工作
+	// 请求，不得判 simple。管理层场景实测：「把本周告警整理成汇报材料」被
+	// 评分器判 simple → skip intent pass → GM 越权代答、组织路由失效
+	// （P-INTENT-SKIP）。升级至 Moderate 一处改动同时修正两道门：
+	// shouldSkipIntentPass 的 skip 门 + pre_planning_gate 的 force-planning 门。
+	// 宁重勿轻（R4）：闲聊命中任务词的概率极低，误升代价仅一次 intent pass。
+	if level == biz.ComplexitySimple {
+		for _, w := range taskRequestWords {
+			if strings.Contains(input.UserMessage, w) {
+				level = biz.ComplexityModerate
+				if score < 0.3 {
+					score = 0.3
+				}
+				impl.lg.Info("QuickAssess 命中任务词白名单，升级复杂度以触发规划",
+					loggateway.StepID(biz.SpiritStepPlannerAssess),
+					loggateway.Str("task_word", w),
+					loggateway.Float64("complexity_score", score),
+				)
+				break
+			}
+		}
+	}
+
 	impl.lg.Debug("QuickAssess 完成",
 		loggateway.StepID(biz.SpiritStepPlannerAssess),
 		loggateway.Str("complexity_level", string(level)),
@@ -1103,6 +1127,15 @@ func detectTeamCount(message string) int {
 // not match — mentioning them is a normal direct request, not an orchestration
 // demand.
 var explicitToolRequestPattern = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}`)
+
+// taskRequestWords 包B B2 任务词白名单（session-eval-20260825）：命中即
+// 不得判 simple（QuickAssess 第三档 override）。词表取自管理层路由失效
+// 语料的高频任务动词，宁重勿轻——误升代价仅一次 intent pass，漏判代价
+// 是组织路由失效（P-INTENT-SKIP）。
+var taskRequestWords = []string{
+	"产出", "方案", "组织", "安排", "梳理",
+	"汇报", "对比", "总结", "检查", "排查",
+}
 
 // teamFormationFlexPattern matches team-formation verbs with a short filler
 // (quantity / measure word) before 团队/team, e.g. "组建几个团队".

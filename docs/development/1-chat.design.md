@@ -6505,3 +6505,46 @@ summary 三段式（协议块 L1 重写后注入给每个 DAG 团队成员）：
 - `agent_summary_fallback_test.go`：兜底 content 写入 + 保留 summary key 跨包行为锚定（set_deliverable 必须拒绝以该 key 作 topic）
 - `tool_test.go` / `member_contract_bridge_test.go`：保留 key 值锚定
 - 回归：`internal/service` 41.5s / `internal/agent` 27.7s / `internal/tools/...` / `internal/graph/...` 全绿；`internal/biz` 仅 6 个既有 DB 环境用例失败（`aranea_test` 库密码认证失败，与本次改动无关）
+
+### B.10.26 管理层 Token 治理（包A）：装配预算硬闸 + 空转早停（2026-08-25 已实施）
+
+> **背景**：session-eval-20260825 战役 S02-armB（GM 轮次级 142 万 in）/S08 三臂（96-128K）+ 513 万 token 事故（91 轮 × 全量回灌）。**归因经回归二次修订**（`docs/testing/session-eval-20260825/rounds-forensics.md` 三方对账 + `_verify-pkgA/regress/result.md` L0 快照实锤）：`model_token_usage_events.usage_kind=chat_turn` 的 input_tokens 是**轮次级聚合**（N 次 LLM 调用之和，latency_ms=整轮时长），管理层真实单次调用 ~8-14K——「单轮装配型爆炸」判读证伪，真模式为**轮数型放大**（单轮 ~10K × N 次 ReAct × 每轮全量历史重发）。压缩机制对轮数型天然失明（513 万事故单轮峰值 86K 仅为 128K 窗口 67%，0.7/0.9 阈值从未触线）。
+>
+> **决策记录（用户裁定）**：① A1 装配预算闸照实施——价值定位从「拦慢性单轮爆炸」修正为「兜底历史累积型单轮峰值（86K 类）+ soft 告警引导主动 evict」；② A2（roster/playbook RAG 化）**废弃**——roster/playbook 本就零注入主聊天 prompt，无压缩对象；替换为 A2'a（dept_lead position_id 空挂修复）+ A2'b（空转早停）；③ A3（澄清回灌增量引用）降级观察项——history 仅 3.6K，价值边际，回归后复评。
+
+#### B.10.26.1 A1 装配预算硬闸（`internal/agent/assembly_budget.go`）
+
+| 维度 | 约定 |
+|------|------|
+| 配置 | `agent_runtime_settings.assembly_budget_soft/hard_tokens`（估 token，0=关闭；DDL 20261244 + ent schema + biz convert 同步，照 20261108/20261230 先例）；soft 未配默认 2/3×hard；3 GM + 23 部门主管已灰度 40K/60K（A4 三层校验 SQL） |
+| 挂载 | BeforeModel priority 8（LayerDynamic）——全量注入（memory 5 / knowledge 6 / 各 cue ≤6）之后、终审压缩闸（9）与 L0 快照（10）之前，计量口径=完全注入后的请求；hard≤0 返回 nil（未配 agent 零开销零干预） |
+| 三档行为 | est ≤ soft 通过；soft < est ≤ hard → once-per-turn 容量告警 cue（R2 MemGPT 范式，引导 LLM 主动落盘关键状态；invocation state 标记跨工具循环续轮唯一）；est > hard → 截至 hard×0.9（滞回防下轮重触）两段降级：a. 尾部 cue 按保护序丢弃（保底：L3/L4 记忆 > knowledge > 技能目录/指导 > playbook 全文 > roster 明细 > 工具目录 > reply reminder；未标记 cue 一律 protected）；b. 仍超驱逐最旧历史（复用 `partitionMessagesByTokenBudget` tool-pair 安全边界）；静态头永不触碰，头自身超预算 Warn 放行（绝不阻断模型调用） |
+| 段标记 | 6 处动态 cue 注入点补隐藏 XML 标记（knowledge/skill_guidance/tool_catalog 等），为分级丢弃提供分类依据 |
+| 观测 | flowlog `prompt.assembly.trimmed`（各段截断量）+ 进程 Warn；soft 越线 Info |
+| 读取时机 | 构建期快照（ag.Settings），与 `hardTriggerRatioForAgent` 同先例——预算变更触发 agent 重建生效 |
+
+#### B.10.26.2 A2'b 空转早停（`internal/agent/tool_loop_guard.go` 扩展）
+
+跨工具异质空转（memory_search 空 → list_inbox 失败 → tool_load → declare_blocker，实测 10 轮烧 80K in）非同工具同参数，既有循环守卫（同参 2 次拦截）结构性拦不住。新增**轮次级产出性结算**：
+
+- AfterTool(p4) 标记本轮 `roundSawTool`/`roundProductive`：工具成功且有非空产出 = productive；失败/被拦/检索空结果 = unproductive。
+- BeforeModel(p4, Dynamic) 结算上一轮：纯文本轮（无工具调用）不结算；连续 unproductive 轮累计 `unprodRounds`，任一 productive 清零。
+- **≥3 轮**（`unproductiveRoundGuideThreshold`）：`stripDynamicCueByMarker` 摘历史同名 cue 后注入降级引导（每轮至多一条，不累积）；**≥5 轮**（`unproductiveRoundBlockThreshold`）：BeforeTool(p4) 拦截一切新调用，`todo_declare_blocker` 豁免（留申报出口，防无通道死锁）。
+
+#### B.10.26.3 A2'a dept_lead position_id 回填
+
+`seed_system_admin.go` 部门主管 position_id 原空挂 → memberfs/deptmail 报「caller is not attached to a department」（dept 会话 10 轮异质空转的根源之一）。seed 改绑部门节点 ID；存量 23 行经 `docs/testing/session-eval-20260825/a2a_dept_lead_position_backfill.sql` 三层校验回填（bad=0/healed=23）。回归野外核验：`list_inbox` SUCCESS `{"messages":[],"count":0}`，dept 未再 declare_blocker。
+
+#### B.10.26.4 不变量
+
+1. 未配预算的 agent A1 hook 必须为 nil（零干预零开销）；est ≤ soft 时闸零改写。
+2. 截断必须保骨架（静态头/未标记 cue/工具 schema/用户消息永不可弃），只弃段标记覆盖的动态段与最旧历史。
+3. 空转封锁必须留 `todo_declare_blocker` 出口，不得把 agent 逼入无申报通道的死锁。
+4. 空转引导 cue 每轮至多一条（strip-then-append），不得累积。
+5. 归因口径：`chat_turn` 为轮次级聚合，单轮装配判读必须看 L0 快照或 per-call 拆分（防再犯本次「单轮 96K-1.2M」误读）。
+
+#### B.10.26.5 测试
+
+- `assembly_budget_test.go`：三档行为 / soft 默认 2/3 / 滞回 target / 段保护序丢弃 / 未配 nil。
+- `tool_loop_guard_unproductive_test.go` 6 例：连续失败轮累计 / 有产出清零 / 检索空结果计数 / 纯文本轮不结算 / 5 轮封锁 + blocker 豁免 / 引导 cue 不累积。
+- 野外：`_verify-pkgA/result.md`（S02 双臂 + dept 空转场景 + S09 长上下文 PASS）+ `_verify-pkgA/regress/result.md`（S01/S08 防回归 PASS——A1 全程零触发零误伤、A2'a 野外生效、spirit 直答基线各段在位）。

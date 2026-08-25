@@ -513,6 +513,11 @@ func IntentPassEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldIntentPassEnabled, v))
 }
 
+// IntentSkipEnabled applies equality check predicate on the "intent_skip_enabled" field. It's identical to IntentSkipEnabledEQ.
+func IntentSkipEnabled(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldIntentSkipEnabled, v))
+}
+
 // ClarificationEnabled applies equality check predicate on the "clarification_enabled" field. It's identical to ClarificationEnabledEQ.
 func ClarificationEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldClarificationEnabled, v))
@@ -4046,6 +4051,16 @@ func IntentPassEnabledEQ(v bool) predicate.AgentRuntimeSetting {
 // IntentPassEnabledNEQ applies the NEQ predicate on the "intent_pass_enabled" field.
 func IntentPassEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldIntentPassEnabled, v))
+}
+
+// IntentSkipEnabledEQ applies the EQ predicate on the "intent_skip_enabled" field.
+func IntentSkipEnabledEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldIntentSkipEnabled, v))
+}
+
+// IntentSkipEnabledNEQ applies the NEQ predicate on the "intent_skip_enabled" field.
+func IntentSkipEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldIntentSkipEnabled, v))
 }
 
 // ClarificationEnabledEQ applies the EQ predicate on the "clarification_enabled" field.

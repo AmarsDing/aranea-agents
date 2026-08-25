@@ -248,6 +248,7 @@ var (
 		{Name: "evo_system_prompt_max_appends", Type: field.TypeInt, Default: 5},
 		{Name: "skill_runtime_json", Type: field.TypeString, Default: "{}"},
 		{Name: "intent_pass_enabled", Type: field.TypeBool, Default: true},
+		{Name: "intent_skip_enabled", Type: field.TypeBool, Default: true},
 		{Name: "clarification_enabled", Type: field.TypeBool, Default: true},
 		{Name: "reply_reminder_enabled", Type: field.TypeBool, Default: false},
 		{Name: "channel_id", Type: field.TypeString, Default: ""},

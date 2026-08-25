@@ -4464,6 +4464,7 @@ type AgentRuntimeSettingMutation struct {
 	addevo_system_prompt_max_appends         *int
 	skill_runtime_json                       *string
 	intent_pass_enabled                      *bool
+	intent_skip_enabled                      *bool
 	clarification_enabled                    *bool
 	reply_reminder_enabled                   *bool
 	channel_id                               *string
@@ -8791,6 +8792,42 @@ func (m *AgentRuntimeSettingMutation) ResetIntentPassEnabled() {
 	m.intent_pass_enabled = nil
 }
 
+// SetIntentSkipEnabled sets the "intent_skip_enabled" field.
+func (m *AgentRuntimeSettingMutation) SetIntentSkipEnabled(b bool) {
+	m.intent_skip_enabled = &b
+}
+
+// IntentSkipEnabled returns the value of the "intent_skip_enabled" field in the mutation.
+func (m *AgentRuntimeSettingMutation) IntentSkipEnabled() (r bool, exists bool) {
+	v := m.intent_skip_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIntentSkipEnabled returns the old "intent_skip_enabled" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldIntentSkipEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIntentSkipEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIntentSkipEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIntentSkipEnabled: %w", err)
+	}
+	return oldValue.IntentSkipEnabled, nil
+}
+
+// ResetIntentSkipEnabled resets all changes to the "intent_skip_enabled" field.
+func (m *AgentRuntimeSettingMutation) ResetIntentSkipEnabled() {
+	m.intent_skip_enabled = nil
+}
+
 // SetClarificationEnabled sets the "clarification_enabled" field.
 func (m *AgentRuntimeSettingMutation) SetClarificationEnabled(b bool) {
 	m.clarification_enabled = &b
@@ -11309,7 +11346,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 149)
+	fields := make([]string, 0, 150)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -11579,6 +11616,9 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	}
 	if m.intent_pass_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldIntentPassEnabled)
+	}
+	if m.intent_skip_enabled != nil {
+		fields = append(fields, agentruntimesetting.FieldIntentSkipEnabled)
 	}
 	if m.clarification_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldClarificationEnabled)
@@ -11945,6 +11985,8 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.SkillRuntimeJSON()
 	case agentruntimesetting.FieldIntentPassEnabled:
 		return m.IntentPassEnabled()
+	case agentruntimesetting.FieldIntentSkipEnabled:
+		return m.IntentSkipEnabled()
 	case agentruntimesetting.FieldClarificationEnabled:
 		return m.ClarificationEnabled()
 	case agentruntimesetting.FieldReplyReminderEnabled:
@@ -12252,6 +12294,8 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldSkillRuntimeJSON(ctx)
 	case agentruntimesetting.FieldIntentPassEnabled:
 		return m.OldIntentPassEnabled(ctx)
+	case agentruntimesetting.FieldIntentSkipEnabled:
+		return m.OldIntentSkipEnabled(ctx)
 	case agentruntimesetting.FieldClarificationEnabled:
 		return m.OldClarificationEnabled(ctx)
 	case agentruntimesetting.FieldReplyReminderEnabled:
@@ -13008,6 +13052,13 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIntentPassEnabled(v)
+		return nil
+	case agentruntimesetting.FieldIntentSkipEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIntentSkipEnabled(v)
 		return nil
 	case agentruntimesetting.FieldClarificationEnabled:
 		v, ok := value.(bool)
@@ -14499,6 +14550,9 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldIntentPassEnabled:
 		m.ResetIntentPassEnabled()
+		return nil
+	case agentruntimesetting.FieldIntentSkipEnabled:
+		m.ResetIntentSkipEnabled()
 		return nil
 	case agentruntimesetting.FieldClarificationEnabled:
 		m.ResetClarificationEnabled()

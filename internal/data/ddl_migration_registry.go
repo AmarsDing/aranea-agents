@@ -454,6 +454,10 @@ var ddlMigrations = []ddlMigration{
 	// soft/hard 两列。Ent Schema.Create 不为存量表 ALTER 补列（同 20261230/
 	// 20261232 先例），INTEGER 兼容双方言。幂等，重跑安全。
 	{Version: 20261244, Name: "agent_runtime_assembly_budget", SQL: "sql/migrations/20261244_agent_runtime_assembly_budget.sql"},
+	// 20261245 agent_runtime_intent_skip（2026-08-25 包B B1）：简单轮 skip 快路径
+	// agent 维度开关。DEFAULT 1 存量零行为变化；管理层 agent SQL 置 0（P-INTENT-SKIP，
+	// 宁重勿轻 R4）。INTEGER 兼容双方言，幂等。
+	{Version: 20261245, Name: "agent_runtime_intent_skip", SQL: "sql/migrations/20261245_agent_runtime_intent_skip.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

@@ -132,6 +132,9 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		// 存量行显式存储的值（如 "turn"）不受影响——defaultString 只兜底空值。
 		SkillLoadMode:     SkillLoadModeProgressive,
 		IntentPassEnabled: true,
+		// 包B（session-eval-20260825 B1）：skip 快路径默认开（现状）；管理层
+		// agent 经 SQL 置 false（P-INTENT-SKIP，宁重勿轻 R4）。
+		IntentSkipEnabled: true,
 		// Empty = auto: Factory prefers docker when the daemon is up.
 		CodeExecutorType: "",
 

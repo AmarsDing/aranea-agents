@@ -1282,6 +1282,20 @@ func (_c *AgentRuntimeSettingCreate) SetNillableIntentPassEnabled(v *bool) *Agen
 	return _c
 }
 
+// SetIntentSkipEnabled sets the "intent_skip_enabled" field.
+func (_c *AgentRuntimeSettingCreate) SetIntentSkipEnabled(v bool) *AgentRuntimeSettingCreate {
+	_c.mutation.SetIntentSkipEnabled(v)
+	return _c
+}
+
+// SetNillableIntentSkipEnabled sets the "intent_skip_enabled" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableIntentSkipEnabled(v *bool) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetIntentSkipEnabled(*v)
+	}
+	return _c
+}
+
 // SetClarificationEnabled sets the "clarification_enabled" field.
 func (_c *AgentRuntimeSettingCreate) SetClarificationEnabled(v bool) *AgentRuntimeSettingCreate {
 	_c.mutation.SetClarificationEnabled(v)
@@ -2509,6 +2523,10 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultIntentPassEnabled
 		_c.mutation.SetIntentPassEnabled(v)
 	}
+	if _, ok := _c.mutation.IntentSkipEnabled(); !ok {
+		v := agentruntimesetting.DefaultIntentSkipEnabled
+		_c.mutation.SetIntentSkipEnabled(v)
+	}
 	if _, ok := _c.mutation.ClarificationEnabled(); !ok {
 		v := agentruntimesetting.DefaultClarificationEnabled
 		_c.mutation.SetClarificationEnabled(v)
@@ -3018,6 +3036,9 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.IntentPassEnabled(); !ok {
 		return &ValidationError{Name: "intent_pass_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.intent_pass_enabled"`)}
+	}
+	if _, ok := _c.mutation.IntentSkipEnabled(); !ok {
+		return &ValidationError{Name: "intent_skip_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.intent_skip_enabled"`)}
 	}
 	if _, ok := _c.mutation.ClarificationEnabled(); !ok {
 		return &ValidationError{Name: "clarification_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.clarification_enabled"`)}
@@ -3596,6 +3617,10 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.IntentPassEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldIntentPassEnabled, field.TypeBool, value)
 		_node.IntentPassEnabled = value
+	}
+	if value, ok := _c.mutation.IntentSkipEnabled(); ok {
+		_spec.SetField(agentruntimesetting.FieldIntentSkipEnabled, field.TypeBool, value)
+		_node.IntentSkipEnabled = value
 	}
 	if value, ok := _c.mutation.ClarificationEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldClarificationEnabled, field.TypeBool, value)
@@ -5232,6 +5257,18 @@ func (u *AgentRuntimeSettingUpsert) SetIntentPassEnabled(v bool) *AgentRuntimeSe
 // UpdateIntentPassEnabled sets the "intent_pass_enabled" field to the value that was provided on create.
 func (u *AgentRuntimeSettingUpsert) UpdateIntentPassEnabled() *AgentRuntimeSettingUpsert {
 	u.SetExcluded(agentruntimesetting.FieldIntentPassEnabled)
+	return u
+}
+
+// SetIntentSkipEnabled sets the "intent_skip_enabled" field.
+func (u *AgentRuntimeSettingUpsert) SetIntentSkipEnabled(v bool) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldIntentSkipEnabled, v)
+	return u
+}
+
+// UpdateIntentSkipEnabled sets the "intent_skip_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateIntentSkipEnabled() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldIntentSkipEnabled)
 	return u
 }
 
@@ -7671,6 +7708,20 @@ func (u *AgentRuntimeSettingUpsertOne) SetIntentPassEnabled(v bool) *AgentRuntim
 func (u *AgentRuntimeSettingUpsertOne) UpdateIntentPassEnabled() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateIntentPassEnabled()
+	})
+}
+
+// SetIntentSkipEnabled sets the "intent_skip_enabled" field.
+func (u *AgentRuntimeSettingUpsertOne) SetIntentSkipEnabled(v bool) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetIntentSkipEnabled(v)
+	})
+}
+
+// UpdateIntentSkipEnabled sets the "intent_skip_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateIntentSkipEnabled() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateIntentSkipEnabled()
 	})
 }
 
@@ -10413,6 +10464,20 @@ func (u *AgentRuntimeSettingUpsertBulk) SetIntentPassEnabled(v bool) *AgentRunti
 func (u *AgentRuntimeSettingUpsertBulk) UpdateIntentPassEnabled() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateIntentPassEnabled()
+	})
+}
+
+// SetIntentSkipEnabled sets the "intent_skip_enabled" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetIntentSkipEnabled(v bool) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetIntentSkipEnabled(v)
+	})
+}
+
+// UpdateIntentSkipEnabled sets the "intent_skip_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateIntentSkipEnabled() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateIntentSkipEnabled()
 	})
 }
 

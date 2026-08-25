@@ -186,6 +186,7 @@ func fromEntSkills(e *ent.AgentRuntimeSetting) biz.SkillsCfg {
 		RuntimeJSON:       e.SkillRuntimeJSON,
 		LoadMode:          e.SkillLoadMode,
 		IntentPassEnabled: e.IntentPassEnabled,
+		IntentSkipEnabled: e.IntentSkipEnabled,
 	}
 }
 
@@ -363,6 +364,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolWeightJSON(normalizeJSONObj(v.ToolWeightJSON)).
 		SetDreamSnapshotJSON(v.DreamSnapshotJSON).
 		SetIntentPassEnabled(v.IntentPassEnabled).
+		SetIntentSkipEnabled(v.IntentSkipEnabled).
 		SetClarificationEnabled(v.ClarificationEnabled).
 		SetReplyReminderEnabled(v.ReplyReminderEnabled).
 		SetChannelID(v.ChannelID).
