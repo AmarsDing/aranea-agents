@@ -28,6 +28,11 @@ import (
 //   - cue 注入在消息流尾部（最后一条用户消息之后），本就处于可缓存前缀之外，
 //     每轮动态渲染对前缀缓存零影响
 //   - 模型经 tool_load 元工具按需把完整 schema 加载进消息流尾部
+//
+// 分区说明（79-runtime-governance 附录 A · F-A5 整改 2026-08-25）：本 hook 标
+// LayerSemiStatic 仅控执行序（先于 LayerDynamic 的注入类 hook 执行），不代表
+// 内容会话内稳定——推荐区按当前 query 每轮可变。落区恒为 tail（appendDynamicCue），
+// 不触碰 head/conv，与 Cache-First 装配契约（C1/C2）无冲突；行为不变，仅澄清语义。
 func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 	dm := deps.DeferredManager
 	if dm == nil {

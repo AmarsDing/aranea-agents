@@ -109,6 +109,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
 			Organization:     s.orch.rt().Extensions.Organization,
 			ToolResultGate:   s.orch.rt().Extensions.ToolResultGate,
+			ToolResultPrune:  s.orch.rt().Extensions.ToolResultPrune,
 			SubAgentService:  s.orch.subAgentService(),
 			OutboundRouter:   s.orch.outboundRouter(),
 			A2AEnabled:       s.orch.a2aUC() != nil,

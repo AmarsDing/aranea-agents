@@ -520,6 +520,19 @@ func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistr
 	return uc
 }
 
+// agentToolResultPruneConfig 翻译 runtime 配置为 agent 包消费侧配置
+// （79-runtime-governance R2；agent 包不依赖 internal/conf）。
+// runtimeConf 为 nil 时 ToolResultPruneConfig() 返回默认开阈值配置（nil-safe）。
+func agentToolResultPruneConfig(runtimeConf *conf.Runtime) chatagent.ToolResultPruneConfig {
+	c := runtimeConf.ToolResultPruneConfig()
+	return chatagent.ToolResultPruneConfig{
+		Enabled:     c.Enabled,
+		AfterTurns:  c.AfterTurns,
+		SizeBytes:   c.SizeBytes,
+		ExemptTools: c.ExemptTools,
+	}
+}
+
 func provideRuntimeTooling(
 	pluginRT *plugintrpc.Runtime,
 	pluginMgr *plugintrpc.Manager,
@@ -544,6 +557,7 @@ func provideRuntimeTooling(
 	clientBridge *clientbridge.Bridge,
 	computerUseUC *bizcu.ComputerUseUsecase,
 	codingBridgeSvc codingbridge.BridgeService,
+	runtimeConf *conf.Runtime,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		Knowledge: service.KnowledgeTools{
@@ -580,6 +594,7 @@ func provideRuntimeTooling(
 			SubAgentService:      subAgentSvc,
 			DebugRecorder:        debugRecorder,
 			ParallelToolExecutor: parallelExec,
+			ToolResultPrune:      agentToolResultPruneConfig(runtimeConf),
 		},
 	}
 }
@@ -708,6 +723,7 @@ func provideRunnerConfig(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	teamUC *biz.TeamUsecase,
 	runtimeReplanner graph.RuntimeReplanner,
+	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -730,6 +746,7 @@ func provideRunnerConfig(
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
 		ToolResultGate:  toolResultGate,
+		ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
 		OutboundRouter:  outboundRouter,
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
@@ -1145,6 +1162,7 @@ func provideGraphBuildDeps(
 	a2aUC *biz.A2AUsecase,
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
 	clientBridge *clientbridge.Bridge,
+	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1191,6 +1209,7 @@ func provideGraphBuildDeps(
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
+			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -1229,6 +1248,7 @@ func provideTRPCBuilderDeps(
 	subAgentSvc *subagenttool.Service,
 	a2aUC *biz.A2AUsecase,
 	clientBridge *clientbridge.Bridge,
+	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) *chatagent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1272,6 +1292,7 @@ func provideTRPCBuilderDeps(
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
+			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,

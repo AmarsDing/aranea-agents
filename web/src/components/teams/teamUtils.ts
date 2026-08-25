@@ -520,6 +520,12 @@ export function formatCost(value?: number) {
   return `$${(value / 1_000_000).toFixed(4)}`;
 }
 
+/** 0..1 → 百分比展示；undefined = 无 usage 数据显示占位符（79-runtime-governance 0.1）。 */
+export function formatCacheHitRatio(value?: number) {
+  if (value === undefined) return '—';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 // ── Industry grouping ──
 
 function teamDefinitionExtras(team: Team) {

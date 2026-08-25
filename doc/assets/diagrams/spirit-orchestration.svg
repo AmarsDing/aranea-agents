@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" width="1200" height="830">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5B6B8C"/>
+    </marker>
+    <radialGradient id="glowCyan" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#16223C" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1200" height="830" fill="#0B1220"/>
+    <rect x="0" y="0" width="1200" height="830" fill="url(#grid)"/>
+    <circle cx="1120" cy="60" r="320" fill="url(#glowCyan)"/>
+  </g>
+
+  <g id="containers">
+    <rect x="40" y="190" width="350" height="412" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="430" y="190" width="320" height="412" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="790" y="190" width="370" height="412" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="40" y="740" width="1120" height="56" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+  </g>
+
+  <g id="nodes">
+    <rect x="70" y="92" width="300" height="44" rx="8" fill="#22D3EE" fill-opacity="0.15" stroke="#22D3EE" stroke-opacity="0.9" stroke-width="1.5"/>
+
+    <rect x="70" y="230" width="290" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="292" width="290" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="354" width="290" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="416" width="290" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="478" width="290" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="540" width="290" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="460" y="230" width="260" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="460" y="292" width="260" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="460" y="354" width="260" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="460" y="416" width="260" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="820" y="230" width="310" height="42" rx="8" fill="#FBBF24" fill-opacity="0.12" stroke="#FBBF24" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="820" y="292" width="310" height="42" rx="8" fill="#FBBF24" fill-opacity="0.12" stroke="#FBBF24" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="820" y="354" width="310" height="42" rx="8" fill="#FBBF24" fill-opacity="0.12" stroke="#FBBF24" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="820" y="416" width="310" height="42" rx="8" fill="#FBBF24" fill-opacity="0.12" stroke="#FBBF24" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="820" y="478" width="310" height="42" rx="8" fill="#FBBF24" fill-opacity="0.12" stroke="#FBBF24" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="820" y="540" width="310" height="42" rx="8" fill="#FBBF24" fill-opacity="0.12" stroke="#FBBF24" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="400" y="660" width="400" height="44" rx="8" fill="#34D399" fill-opacity="0.15" stroke="#34D399" stroke-opacity="0.9" stroke-width="1.5"/>
+  </g>
+
+  <g id="labels" font-family="Arial, Helvetica, sans-serif">
+    <text x="40" y="42" font-size="24" font-weight="bold" fill="#E5EAF5">Spirit 精灵动态编排</text>
+    <text x="40" y="66" font-size="13" fill="#8FA3C8">三阶段管线：你只管下达指令，系统完成规划 → 分配 → 编排执行 → 学习进化</text>
+
+    <text x="220" y="119" font-size="14" fill="#E5EAF5" text-anchor="middle">用户指令（Web / CLI / IM / Cron）</text>
+
+    <text x="60" y="216" font-size="13" font-weight="bold" fill="#8B5CF6">① TaskPlanner 任务规划</text>
+    <text x="215" y="256" font-size="13" fill="#E5EAF5" text-anchor="middle">任务评估与路由选择</text>
+    <text x="215" y="318" font-size="13" fill="#E5EAF5" text-anchor="middle">五层记忆召回</text>
+    <text x="215" y="380" font-size="13" fill="#E5EAF5" text-anchor="middle">任务分解（子任务 DAG）</text>
+    <text x="215" y="442" font-size="13" fill="#E5EAF5" text-anchor="middle">计划持久化</text>
+    <text x="215" y="504" font-size="13" fill="#E5EAF5" text-anchor="middle">计划确认（可人工介入）</text>
+    <text x="215" y="566" font-size="13" fill="#E5EAF5" text-anchor="middle">生成执行计划</text>
+
+    <text x="450" y="216" font-size="13" font-weight="bold" fill="#F472B6">② AgentAllocator 人员分配</text>
+    <text x="590" y="256" font-size="13" fill="#E5EAF5" text-anchor="middle">花名册匹配专项 Agent</text>
+    <text x="590" y="318" font-size="13" fill="#E5EAF5" text-anchor="middle">冲突检测</text>
+    <text x="590" y="380" font-size="13" fill="#E5EAF5" text-anchor="middle">分配持久化</text>
+    <text x="590" y="442" font-size="13" fill="#E5EAF5" text-anchor="middle">缺编建议与借调</text>
+
+    <text x="810" y="216" font-size="13" font-weight="bold" fill="#FBBF24">③ TaskOrchestrator 编排执行</text>
+    <text x="975" y="256" font-size="13" fill="#E5EAF5" text-anchor="middle">拓扑策略选择（记忆 + 现状）</text>
+    <text x="975" y="318" font-size="13" fill="#E5EAF5" text-anchor="middle">DAG 图构建（环检测 + 拓扑排序）</text>
+    <text x="975" y="380" font-size="13" fill="#E5EAF5" text-anchor="middle">并行执行（Team 六模式）</text>
+    <text x="975" y="442" font-size="13" fill="#E5EAF5" text-anchor="middle">检查点与中断恢复</text>
+    <text x="975" y="504" font-size="13" fill="#E5EAF5" text-anchor="middle">综合引擎（template/prompt/hybrid）</text>
+    <text x="975" y="566" font-size="13" fill="#E5EAF5" text-anchor="middle">学习记录与 DQ 评分</text>
+
+    <text x="600" y="687" font-size="14" fill="#E5EAF5" text-anchor="middle">综合结果交付（Artifact / 报告 / 回复）</text>
+
+    <text x="60" y="764" font-size="12" font-weight="bold" fill="#22D3EE">拓扑自动推断</text>
+    <text x="60" y="784" font-size="11" fill="#8FA3C8">无节点→coordinator · 全根节点→parallel · 深度&gt;3→coordinator · 宽度&gt;1→hybrid · 否则→sequential ｜ 编排缓存 + DQ 评分：同类任务推荐历史最优拓扑</text>
+  </g>
+
+  <g id="connections">
+    <line x1="220" y1="138" x2="220" y2="188" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="392" y1="396" x2="392" y2="396" stroke="none"/>
+    <line x1="392" y1="396" x2="428" y2="396" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="752" y1="396" x2="788" y2="396" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M 975 604 L 975 640 L 802 640 L 802 658" fill="none" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M 400 682 L 220 682 L 220 606" fill="none" stroke="#5B6B8C" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrowhead)"/>
+    <text x="300" y="672" font-size="11" fill="#8FA3C8" font-family="Arial, Helvetica, sans-serif">学习回灌</text>
+  </g>
+</svg>

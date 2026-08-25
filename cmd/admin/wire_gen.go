@@ -291,7 +291,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	circuitBreakerStateRepo := data.NewCircuitBreakerStateRepo(dataData)
 	nodeCircuitBreakerRegistry := biz.ProvideNodeCircuitBreakerRegistry(circuitBreakerStateRepo, loggatewayLogger)
 	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
-	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, loggatewayLogger)
+	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, runtime, loggatewayLogger)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
 	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger, sessionService)
 	sessionRuntimeReader := data.NewSessionRuntimeReader(dataData)
@@ -356,7 +356,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentbridgeTaskRepo := data.NewCodingTaskRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
 	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, runtime)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -375,7 +375,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, runtime, loggatewayLogger)
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
@@ -529,7 +529,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	modelRegistryUsecase := provideModelRegistryUsecase(systemSettingRepo, applyBackend, loggatewayLogger)
 	modelCatalogService := service.NewModelCatalogService(modelRegistryUsecase)
 	runRegistryPort := service.ProvideRunRegistryPort(runRegistry)
-	teamService := service.NewTeamService(teamUsecase, graphUsecase, agentUsecase, sessionUsecase, runner, runRegistryPort, v2Bus, loggatewayLogger, spiritSynthesisService, teamStageV2Repo, stepV2Repo, stepV2Repo, teamRunV2Repo, memberSessionV2Repo, sequencer, monitorUsecase)
+	teamService := service.NewTeamService(teamUsecase, graphUsecase, agentUsecase, sessionUsecase, runner, runRegistryPort, v2Bus, loggatewayLogger, spiritSynthesisService, teamStageV2Repo, stepV2Repo, stepV2Repo, teamRunV2Repo, memberSessionV2Repo, sequencer, monitorUsecase, usageUsecase)
 	signer := provideArtifactSigner(loggatewayLogger)
 	sessionWorkspaceLookup := service.ProvideSessionWorkspaceLookup(sessionUsecase)
 	sessionWorkspaceSearcher := service.ProvideSessionWorkspaceSearcher(sessionUsecase)
@@ -633,7 +633,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	policyResolver := provideAgentPolicyResolver(agentRepository, loggatewayLogger)
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, evolutionService, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, runtime, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
@@ -996,11 +996,10 @@ func provideRunHeartbeatEmitter(eventBus biz.EventBus, lg loggateway.Logger) *se
 }
 
 // providePendingMessageQueue builds the Wire-bound PendingMessageQueue with
-// snapshot persistence enabled. The snapshot directory is resolved from (in
+// file snapshot + Postgres store. The snapshot directory is resolved from (in
 // order): PENDING_QUEUE_SNAPSHOT_DIR env var, the loggateway output dir, or
-// empty (disables persistence). When persistence is enabled, the queue is
-// restored on startup and snapshotted every 10s, so queued messages survive
-// process restarts — required by the "no time limit" long-task guarantee.
+// empty (disables the JSON file). The DB store is always attached when Data
+// is available; startup prefers rows in pending_queue_entries over the file.
 func providePendingMessageQueue(lg loggateway.Logger, d *data.Data) *runtime.PendingMessageQueue {
 	dir := strings.TrimSpace(os.Getenv("PENDING_QUEUE_SNAPSHOT_DIR"))
 	if dir == "" {
@@ -1146,6 +1145,19 @@ func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistr
 	return uc
 }
 
+// agentToolResultPruneConfig 翻译 runtime 配置为 agent 包消费侧配置
+// （79-runtime-governance R2；agent 包不依赖 internal/conf）。
+// runtimeConf 为 nil 时 ToolResultPruneConfig() 返回默认开阈值配置（nil-safe）。
+func agentToolResultPruneConfig(runtimeConf *conf.Runtime) agent.ToolResultPruneConfig {
+	c := runtimeConf.ToolResultPruneConfig()
+	return agent.ToolResultPruneConfig{
+		Enabled:     c.Enabled,
+		AfterTurns:  c.AfterTurns,
+		SizeBytes:   c.SizeBytes,
+		ExemptTools: c.ExemptTools,
+	}
+}
+
 func provideRuntimeTooling(
 	pluginRT *plugintrpc.Runtime,
 	pluginMgr *plugintrpc.Manager,
@@ -1170,6 +1182,7 @@ func provideRuntimeTooling(
 	clientBridge *clientbridge.Bridge,
 	computerUseUC *computeruse.ComputerUseUsecase,
 	codingBridgeSvc codingbridge.BridgeService,
+	runtimeConf *conf.Runtime,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		Knowledge: service.KnowledgeTools{
@@ -1206,6 +1219,7 @@ func provideRuntimeTooling(
 			SubAgentService:      subAgentSvc,
 			DebugRecorder:        debugRecorder,
 			ParallelToolExecutor: parallelExec,
+			ToolResultPrune:      agentToolResultPruneConfig(runtimeConf),
 		},
 	}
 }
@@ -1329,6 +1343,7 @@ func provideRunnerConfig(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	teamUC *biz.TeamUsecase,
 	runtimeReplanner graph3.RuntimeReplanner,
+	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -1350,6 +1365,7 @@ func provideRunnerConfig(
 		AgentHelper:     &agent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
 		ToolResultGate:  toolResultGate,
+		ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
 		OutboundRouter:  outboundRouter,
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
@@ -1751,6 +1767,7 @@ func provideGraphBuildDeps(
 	a2aUC *biz.A2AUsecase,
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
 	clientBridge *clientbridge.Bridge,
+	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) graph.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1797,6 +1814,7 @@ func provideGraphBuildDeps(
 		TRPCExtensionDeps: agent.TRPCExtensionDeps{
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
+			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -1835,6 +1853,7 @@ func provideTRPCBuilderDeps(
 	subAgentSvc *subagent.Service,
 	a2aUC *biz.A2AUsecase,
 	clientBridge *clientbridge.Bridge,
+	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) *agent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1878,6 +1897,7 @@ func provideTRPCBuilderDeps(
 		TRPCExtensionDeps: agent.TRPCExtensionDeps{
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
+			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,

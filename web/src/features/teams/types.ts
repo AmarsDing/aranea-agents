@@ -145,6 +145,8 @@ export type TeamRun = {
   graph_execution_id: string;
   // Cross-domain trace id (M53 OPS-TRACE-01).
   trace_id?: string;
+  // 79-runtime-governance 0.1：run 级 prompt-cache 命中率（0..1）；undefined = 无 usage 数据，区别于真实 0%
+  cache_hit_ratio?: number;
   started_at: string;
   finished_at: string;
   created_at: string;

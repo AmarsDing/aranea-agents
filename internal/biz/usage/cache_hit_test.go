@@ -59,3 +59,52 @@ func TestCacheHitRatioStats_RepoError(t *testing.T) {
 		t.Fatal("want error propagated from repo")
 	}
 }
+
+type mockRunCacheHitRepo struct {
+	mockUsageRepo
+	hit      RunCacheHitRatio
+	err      error
+	gotRunID string
+}
+
+func (m *mockRunCacheHitRepo) RunCacheHitRatio(_ context.Context, runID string) (RunCacheHitRatio, error) {
+	m.gotRunID = runID
+	return m.hit, m.err
+}
+
+// Usecase.RunCacheHitRatio 委托窄接口 RunCacheHitRatioRepo，透传 runID 与结果。
+func TestRunCacheHitRatio_Delegates(t *testing.T) {
+	repo := &mockRunCacheHitRepo{hit: RunCacheHitRatio{Found: true, PromptTok: 4000, CachedTok: 3000, Ratio: 0.75}}
+	uc := NewUsecase(repo, loggateway.NewNoop())
+
+	hit, err := uc.RunCacheHitRatio(context.Background(), "run-1")
+	if err != nil {
+		t.Fatalf("RunCacheHitRatio: %v", err)
+	}
+	if repo.gotRunID != "run-1" {
+		t.Errorf("repo runID = %q, want run-1", repo.gotRunID)
+	}
+	if !hit.Found || hit.Ratio != 0.75 {
+		t.Errorf("hit = %+v, want found ratio 0.75", hit)
+	}
+}
+
+// repo 未实现窄接口时 Found=false（不报错）——调用方据此区分"无数据"。
+func TestRunCacheHitRatio_RepoWithoutCapability(t *testing.T) {
+	uc := NewUsecase(&mockUsageRepo{}, loggateway.NewNoop())
+	hit, err := uc.RunCacheHitRatio(context.Background(), "run-1")
+	if err != nil {
+		t.Fatalf("RunCacheHitRatio: %v", err)
+	}
+	if hit.Found {
+		t.Errorf("hit = %+v, want Found=false for repo without RunCacheHitRatioRepo", hit)
+	}
+}
+
+func TestRunCacheHitRatio_RepoError(t *testing.T) {
+	repo := &mockRunCacheHitRepo{err: errors.New("db down")}
+	uc := NewUsecase(repo, loggateway.NewNoop())
+	if _, err := uc.RunCacheHitRatio(context.Background(), "run-1"); err == nil {
+		t.Fatal("want error propagated from repo")
+	}
+}

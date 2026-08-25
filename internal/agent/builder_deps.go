@@ -144,6 +144,10 @@ type TRPCExtensionDeps struct {
 	// Optional: when nil, category responsibility injection is skipped.
 	Organization   *biz.OrganizationUsecase
 	ToolResultGate *biz.ToolResultGate
+	// ToolResultPrune 是 R2 确定性剪枝 hook 的消费侧配置（wire 由
+	// conf.Runtime.ToolResultPruneConfig() 翻译）。零值 Enabled=false →
+	// hook 不注册（一键回退）。
+	ToolResultPrune ToolResultPruneConfig
 	// DeferredManager controls lazy tool visibility. Optional: when nil,
 	// deferred tool filtering is skipped and all tools are always visible.
 	DeferredManager *deferred.DeferredToolManager

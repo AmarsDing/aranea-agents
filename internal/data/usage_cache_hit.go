@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	bizusage "aranea-agents/internal/biz/usage"
@@ -45,4 +46,84 @@ func (r *usageRepo) CacheHitRatioStats(ctx context.Context, window time.Duration
 		out = append(out, s)
 	}
 	return out, entErrToBizErr(rows.Err(), apierror.DomainData)
+}
+
+var _ bizusage.RunCacheHitRatioRepo = (*usageRepo)(nil)
+
+// scanUsageSingleRow runs q via QueryContext and scans at most one row into
+// dest. Reports whether a row was present. Execer has no QueryRowContext, so
+// single-row reads go through this helper.
+func scanUsageSingleRow(ctx context.Context, db Execer, q string, args []any, dest ...any) (bool, error) {
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return false, err
+	}
+	found := false
+	if rows.Next() {
+		found = true
+		err = rows.Scan(dest...)
+	}
+	closeErr := rows.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	if err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+// RunCacheHitRatio derives one team run's prompt/cached tokens from the usage
+// event store (79-runtime-governance Phase 0 task 0.1，§2.4 取值源决策：事件面
+// 是 cached tokens 的唯一权威，team_runs 不落 cached 列——避免同一事实双份
+// 持久化的同步发散）。
+//
+// 双分支：
+//  1. team_turn 对账行（成功/HITL 路径，message_id = run id）——run 总账单行，
+//     LIMIT 1 防御性去重（写入路径保证单行，重复行内容恒等）；
+//  2. 回退：genuine team_member 行（usage_attribution 为空）按 step 归属求和——
+//     覆盖预算熔断/失败 run（无 team_turn 行）。attribution 非空的镜像行
+//     （member_level_stream / run_level_anchor_fallback / stream_anchor_remainder）
+//     与 team_turn 总账同额，必须排除以防双计（P2-1 语义）。
+func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusage.RunCacheHitRatio, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return bizusage.RunCacheHitRatio{}, nil
+	}
+	db := r.data.RWDB().ReadDB(ctx)
+
+	var out bizusage.RunCacheHitRatio
+	found, err := scanUsageSingleRow(ctx, db, r.data.Dialect().RenumberPlaceholders(
+		`SELECT input_tokens, cached_input_tokens
+		   FROM model_token_usage_events
+		  WHERE usage_kind = 'team_turn' AND message_id = ?
+		  LIMIT 1`), []any{runID}, &out.PromptTok, &out.CachedTok)
+	if err != nil {
+		return bizusage.RunCacheHitRatio{}, entErrToBizErr(err, apierror.DomainData)
+	}
+	if found {
+		out.Found = true
+	} else {
+		// 失败/取消 run 无 team_turn 行 → 回退 genuine 成员行求和。
+		attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
+		var n int64
+		_, err = scanUsageSingleRow(ctx, db, r.data.Dialect().RenumberPlaceholders(
+			`SELECT COALESCE(SUM(u.input_tokens), 0), COALESCE(SUM(u.cached_input_tokens), 0), COUNT(*)
+			   FROM model_token_usage_events u
+			  WHERE u.usage_kind = 'team_member'
+			    AND COALESCE(`+attribution+`, '') = ''
+			    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)`), []any{runID},
+			&out.PromptTok, &out.CachedTok, &n)
+		if err != nil {
+			return bizusage.RunCacheHitRatio{}, entErrToBizErr(err, apierror.DomainData)
+		}
+		out.Found = n > 0
+	}
+	if out.PromptTok > 0 {
+		out.Ratio = float64(out.CachedTok) / float64(out.PromptTok)
+	}
+	return out, nil
 }

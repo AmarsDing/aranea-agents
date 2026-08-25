@@ -311,7 +311,12 @@ type TeamRun struct {
 	// Frozen OrchestrationSpec JSON captured at run start (M53 TG-API-03).
 	DefinitionSnapshotJson string `protobuf:"bytes,20,opt,name=definition_snapshot_json,json=definitionSnapshotJson,proto3" json:"definition_snapshot_json,omitempty"`
 	// Cross-domain trace id (M53 OPS-TRACE-01).
-	TraceId       string `protobuf:"bytes,21,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	TraceId string `protobuf:"bytes,21,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	// 79-runtime-governance Phase 0 任务 0.1：run 级 prompt-cache 命中率
+	// （cached/prompt，0..1），读时从 usage 事件面派生（team_turn 对账行优先，
+	// 失败 run 回退 genuine 成员行求和）。optional：null = 无 usage 数据，
+	// 区别于真实 0% 命中。
+	CacheHitRatio *float64 `protobuf:"fixed64,22,opt,name=cache_hit_ratio,json=cacheHitRatio,proto3,oneof" json:"cache_hit_ratio,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -491,6 +496,13 @@ func (x *TeamRun) GetTraceId() string {
 		return x.TraceId
 	}
 	return ""
+}
+
+func (x *TeamRun) GetCacheHitRatio() float64 {
+	if x != nil && x.CacheHitRatio != nil {
+		return *x.CacheHitRatio
+	}
+	return 0
 }
 
 type TeamRunStep struct {
@@ -5673,7 +5685,7 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\fdeliverables\x18\x18 \x01(\tR\fdeliverables\x12%\n" +
 	"\x0einput_contract\x18\x19 \x01(\tR\rinputContract\x12+\n" +
 	"\x12dept_lead_agent_id\x18\x1a \x01(\tR\x0fdeptLeadAgentId\x121\n" +
-	"\x15cross_dept_member_ids\x18\x1b \x01(\tR\x12crossDeptMemberIds\"\xb2\x05\n" +
+	"\x15cross_dept_member_ids\x18\x1b \x01(\tR\x12crossDeptMemberIds\"\xf3\x05\n" +
 	"\aTeamRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x1d\n" +
@@ -5703,7 +5715,9 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"updated_at\x18\x12 \x01(\tR\tupdatedAt\x12,\n" +
 	"\x12graph_execution_id\x18\x13 \x01(\tR\x10graphExecutionId\x128\n" +
 	"\x18definition_snapshot_json\x18\x14 \x01(\tR\x16definitionSnapshotJson\x12\x19\n" +
-	"\btrace_id\x18\x15 \x01(\tR\atraceId\"\xe6\x04\n" +
+	"\btrace_id\x18\x15 \x01(\tR\atraceId\x12+\n" +
+	"\x0fcache_hit_ratio\x18\x16 \x01(\x01H\x00R\rcacheHitRatio\x88\x01\x01B\x12\n" +
+	"\x10_cache_hit_ratio\"\xe6\x04\n" +
 	"\vTeamRunStep\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
@@ -6386,6 +6400,7 @@ func file_kratos_team_v1_team_proto_init() {
 	if File_kratos_team_v1_team_proto != nil {
 		return
 	}
+	file_kratos_team_v1_team_proto_msgTypes[1].OneofWrappers = []any{}
 	file_kratos_team_v1_team_proto_msgTypes[11].OneofWrappers = []any{}
 	file_kratos_team_v1_team_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}

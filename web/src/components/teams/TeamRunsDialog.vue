@@ -41,7 +41,12 @@
             </q-banner>
             <div v-if="error" class="text-negative q-mt-sm">{{ error }}</div>
             <q-list v-else class="q-mt-md run-list" separator>
-              <q-expansion-item v-for="run in runs" :key="run.id" group="team-runs" @show="$emit('showSteps', run.id)">
+              <q-expansion-item
+                v-for="run in runs"
+                :key="run.id"
+                group="team-runs"
+                @show="$emit('showSteps', run.id); $emit('loadDetail', run.id)"
+              >
                 <template #header>
                   <q-item-section avatar>
                     <q-avatar
@@ -59,6 +64,9 @@
                   </q-item-section>
                 </template>
                 <div class="run-detail q-pa-md">
+                  <div v-if="detailsByRun[run.id]?.cache_hit_ratio !== undefined" class="text-caption text-grey-7 q-mb-sm">
+                    缓存命中率 {{ formatCacheHitRatio(detailsByRun[run.id].cache_hit_ratio) }}
+                  </div>
                   <div class="text-caption text-grey-7 q-mb-sm">输入</div>
                   <div class="run-preview">{{ run.input_preview || '-' }}</div>
                   <div class="text-caption text-grey-7 q-mt-md q-mb-sm">输出</div>
@@ -170,7 +178,15 @@
 import { ref } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import type { Team, TeamRun, TeamRunStep, TeamRunSummary, TaskDeadLetterRow } from '../../features/teams/types';
-import { agentName, formatCost, formatDate, teamModeLabel, teamRoleLabel, teamRunStatusLabel } from './teamUtils';
+import {
+  agentName,
+  formatCacheHitRatio,
+  formatCost,
+  formatDate,
+  teamModeLabel,
+  teamRoleLabel,
+  teamRunStatusLabel,
+} from './teamUtils';
 
 const tab = ref('runs');
 
@@ -182,6 +198,8 @@ defineProps<{
   stepsLoading: Record<string, boolean>;
   summariesByRun: Record<string, TeamRunSummary>;
   summariesLoading: Record<string, boolean>;
+  detailsByRun: Record<string, TeamRun>;
+  detailsLoading: Record<string, boolean>;
   deadLetters?: TaskDeadLetterRow[];
   deadLettersLoading?: boolean;
   agents: Agent[];
@@ -197,6 +215,7 @@ defineEmits<{
   refresh: [];
   showSteps: [runID: string];
   loadSummary: [runID: string];
+  loadDetail: [runID: string];
   openObservatory: [runID: string];
   refreshDeadLetters: [];
   resolveDeadLetter: [id: string];

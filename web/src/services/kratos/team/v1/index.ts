@@ -159,6 +159,11 @@ export type TeamRun = {
   definitionSnapshotJson: string | undefined;
   // Cross-domain trace id (M53 OPS-TRACE-01).
   traceId: string | undefined;
+  // 79-runtime-governance Phase 0 任务 0.1：run 级 prompt-cache 命中率
+  // （cached/prompt，0..1），读时从 usage 事件面派生（team_turn 对账行优先，
+  // 失败 run 回退 genuine 成员行求和）。optional：null = 无 usage 数据，
+  // 区别于真实 0% 命中。
+  cacheHitRatio?: number;
 };
 
 export type TeamRunStep = {

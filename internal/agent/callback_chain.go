@@ -93,6 +93,12 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newToolResultGateBeforeHook(deps.ToolResultGate, ag, lg); hook != nil {
 		entries = append(entries, hook)
 	}
+	// R2 确定性工具结果剪枝（79-runtime-governance）：priority 7 = 全量注入类
+	// hook（≤6）之后、装配预算（8）与终审压缩（9）之前——剪枝削峰 → 阈值压缩
+	// 兜底。gate 为 nil 或 runtime.tool_result_prune.enabled=false 时不注册。
+	if hook := newToolResultPruneBeforeHook(deps.ToolResultGate, deps.ToolResultPrune, lg); hook != nil {
+		entries = append(entries, hook)
+	}
 	// Team completion guard: prevent Spirit LLM from polling get_team_deliverable
 	// when teams are still running. Enforces system-push pattern over LLM-polling.
 	if hook := newTeamCompletionGuardBeforeHook(deps.TeamCompletionChecker, lg); hook != nil {

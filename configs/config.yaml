@@ -78,6 +78,32 @@ logging:
 #     max_messages: 40              # recent messages to analyze
 #   activity_flusher:
 #     batch_size: 10                # rows per flush
+# M82 agent sandbox (pooled, use-and-destroy isolated execution). Enabled by
+# default; degrades gracefully when no docker daemon is reachable (NFR-04).
+# All numeric/duration fields default per 82-sandbox.design.md §7.
+sandbox:
+  enabled: true
+  engine: docker
+  pool:
+    min_ready: 2                # per-profile warm target
+    max_ready: 8                # per-profile warm ceiling
+    replenish_interval: 5s      # 补水 tick
+    max_pool_age: 600s          # ready-instance rotation age (10m)
+  limits:
+    global_max_active: 32       # global concurrency gate
+    per_agent_max_active: 4     # per-agent concurrency gate
+    per_run_max_create: 16      # per-run creation budget (P2)
+  ttl:
+    default: 1800s              # lease TTL when unspecified (30m)
+    max: 7200s                  # hard cap incl. Renew (2h)
+    idle_timeout: 600s          # leased idle eviction (10m)
+  profiles:
+    codeexec:
+      image: python:3.11-slim   # P1: aranea-sandbox-base
+      cpus: 0.5
+      memory_bytes: 268435456   # 256MiB
+      pids_limit: 256
+      network: none             # none | egress | full
 # Platform self-improvement (V3) pipeline (73-self-iteration-v3). Default off;
 # enable only after reviewing the governance model (design §6).
 # Default off. Enable only in overlay / config.local after reviewing governance.

@@ -235,6 +235,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 		TRPCExtensionDeps: agent.TRPCExtensionDeps{
 			Organization:     r.cfg.OrganizationUC,
 			ToolResultGate:   r.cfg.ToolResultGate,
+			ToolResultPrune:  r.cfg.ToolResultPrune,
 			OutboundRouter:   r.cfg.OutboundRouter,
 			SubAgentService:  r.cfg.SubAgentService,
 			A2AEnabled:       r.cfg.A2AEnabled,

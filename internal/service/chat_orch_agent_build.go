@@ -184,6 +184,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
 			Organization:     d.rt.Extensions.Organization,
 			ToolResultGate:   d.rt.Extensions.ToolResultGate,
+			ToolResultPrune:  d.rt.Extensions.ToolResultPrune,
 			SubAgentService:  d.subAgentSvc,
 			OutboundRouter:   d.outboundRouter,
 			ClientBridge:     d.rt.Bridges.Client,

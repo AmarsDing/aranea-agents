@@ -2,6 +2,9 @@ package callbacks
 
 import (
 	"context"
+	"reflect"
+	"runtime"
+	"strings"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -72,6 +75,7 @@ func (h *AfterAgentHookFunc) HandleAfterAgent(ctx context.Context, args *trpcage
 type BeforeModelHookFunc struct {
 	priority int
 	layer    SystemLayer
+	name     string
 	fn       trpcmodel.BeforeModelCallbackStructured
 }
 
@@ -79,13 +83,40 @@ var _ BeforeModelHook = (*BeforeModelHookFunc)(nil)
 var _ LayeredCallback = (*BeforeModelHookFunc)(nil)
 
 // NewBeforeModelHook creates a BeforeModelHookFunc with a given priority, layer, and handler.
+// The hook name is auto-derived from the handler's enclosing function
+// (e.g. "agent.newMemoryInjectBeforeHook.func1") for the C3 execution-order
+// golden (79-runtime-governance 附录 A.1) and debug logging; it carries no
+// behavioral effect.
 func NewBeforeModelHook(priority int, layer SystemLayer, fn trpcmodel.BeforeModelCallbackStructured) *BeforeModelHookFunc {
-	return &BeforeModelHookFunc{priority: priority, layer: layer, fn: fn}
+	return &BeforeModelHookFunc{priority: priority, layer: layer, name: deriveHookName(fn), fn: fn}
+}
+
+// deriveHookName returns the fully-qualified name of fn's enclosing function,
+// stripping the module path prefix to the last two path segments
+// ("<pkg>.<func>[.funcN]"). Returns "" for nil handlers.
+func deriveHookName(fn trpcmodel.BeforeModelCallbackStructured) string {
+	if fn == nil {
+		return ""
+	}
+	pc := reflect.ValueOf(fn).Pointer()
+	f := runtime.FuncForPC(pc)
+	if f == nil {
+		return ""
+	}
+	name := f.Name()
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	return name
 }
 
 func (h *BeforeModelHookFunc) Point() CallbackPoint { return PointBeforeModel }
 func (h *BeforeModelHookFunc) Priority() int        { return h.priority }
 func (h *BeforeModelHookFunc) Layer() SystemLayer   { return h.layer }
+
+// Name returns the auto-derived handler identity (see NewBeforeModelHook).
+func (h *BeforeModelHookFunc) Name() string { return h.name }
+
 func (h *BeforeModelHookFunc) HandleBeforeModel(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 	return h.fn(ctx, args)
 }

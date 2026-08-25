@@ -3,6 +3,7 @@ package team
 import (
 	"context"
 
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/graph"
@@ -54,6 +55,9 @@ type RunnerConfig struct {
 	// organization taxonomy, kanban, A2A call_agent).
 	OrganizationUC  *biz.OrganizationUsecase
 	ToolResultGate  *biz.ToolResultGate
+	// ToolResultPrune 是 R2 确定性剪枝 hook 的消费侧配置（79-runtime-governance）；
+	// 零值 Enabled=false → 成员构建不注册剪枝 hook（一键回退）。
+	ToolResultPrune agent.ToolResultPruneConfig
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
 	KanbanBridge    kanbanpkg.Bridge

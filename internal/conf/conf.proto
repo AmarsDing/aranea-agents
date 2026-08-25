@@ -13,6 +13,46 @@ message Bootstrap {
   Langfuse langfuse = 5;
   Runtime runtime = 6;
   SelfImprovement self_improvement = 7;
+  Sandbox sandbox = 8;
+}
+
+// Sandbox configures the M82 agent sandbox infrastructure (pooled,
+// use-and-destroy isolated execution environments). Every numeric/duration
+// field maps 0 to its design default (82-sandbox.design.md §7).
+message Sandbox {
+  message Pool {
+    int32 min_ready = 1;                            // per-profile warm target (0 = 2)
+    int32 max_ready = 2;                            // per-profile warm ceiling (0 = 8)
+    google.protobuf.Duration replenish_interval = 3; // 补水 tick (0 = 5s)
+    google.protobuf.Duration max_pool_age = 4;       // ready-instance rotation age (0 = 10m)
+  }
+  message Limits {
+    int32 global_max_active = 1;    // global concurrency gate (0 = 32)
+    int32 per_agent_max_active = 2; // per-agent concurrency gate (0 = 4)
+    int32 per_run_max_create = 3;   // per-run creation budget, P2 (0 = 16)
+  }
+  message TTL {
+    google.protobuf.Duration default = 1;      // lease TTL when unspecified (0 = 30m)
+    google.protobuf.Duration max = 2;          // hard cap incl. Renew (0 = 2h)
+    google.protobuf.Duration idle_timeout = 3; // leased idle eviction (0 = 10m)
+  }
+  // Profile is a static spec portrait; map key is the profile name.
+  // Security baselines (--read-only rootfs, cap-drop, no-new-privileges) are
+  // engine-enforced and intentionally not configurable.
+  message Profile {
+    string image = 1;
+    double cpus = 2;                 // 0 = 0.5
+    int64 memory_bytes = 3;          // 0 = 268435456 (256MiB)
+    int64 pids_limit = 4;            // 0 = 256
+    string network = 5;              // none | egress | full ("" = none)
+    string tmp_size = 6;             // tmpfs /tmp size ("" = 128m)
+  }
+  bool enabled = 1;    // master switch; false → consumers fall back (NFR-04)
+  string engine = 2;   // docker (P0); runsc/e2b reserved ("" = docker)
+  Pool pool = 3;
+  Limits limits = 4;
+  TTL ttl = 5;
+  map<string, Profile> profiles = 6;
 }
 
 // SelfImprovement configures the platform self-improvement (V3) pipeline
@@ -273,6 +313,15 @@ message Runtime {
   message Plugin {
     bool persist_success_runs = 1;    // persist successful plugin runs to plugin_runs table (default false)
   }
+  // Deterministic tool-result pruning (79-runtime-governance R2).
+  // BeforeModel hook prunes old oversized RoleTool results into blob pointers
+  // (archive via ToolResultGate blob store, retrieve via read_tool_result).
+  message ToolResultPrune {
+    optional bool enabled = 1;        // master switch; unset = pruning ON (kill switch: enabled=false, dev plan Phase 1 回退)
+    int32 after_turns = 2;            // K: prune results farther than K turns from current (0 = 8)
+    int64 size_bytes = 3;             // S: min serialized size in bytes to prune (0 = 4096, aligned with loopGuardResultCap)
+    repeated string exempt_tools = 4; // whitelist: tool names never pruned (取证关键类, e.g. gns3 forensics)
+  }
 
   WS ws = 1;
   Hook hook = 2;
@@ -282,4 +331,5 @@ message Runtime {
   AutoMemory auto_memory = 6;
   ActivityFlusher activity_flusher = 7;
   Plugin plugin = 8;
+  ToolResultPrune tool_result_prune = 9;
 }

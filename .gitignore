@@ -180,5 +180,22 @@ docs/promo-videos/**/*.mp4
 docs/promo-videos/**/*.mp3
 # blender 渲染产物（不入库）
 /blender/
+# docs/ 与 competition/ 不提交（2026-08-26 裁定，存量已 untrack）；
+# 后续新建文档统一放 doc/ 目录（入库，不受本规则影响）
 /competition/
 /docs/
+
+# 本地真实配置（含 DSN 密码/管理员密码/token_factor，勿提交；模板见 config.yaml）
+/configs/config.local.yaml
+
+# spirit 运行时工作区产物（agent 执行落盘文件，勿提交）
+/cmd/admin/workspace/
+
+# 前端 lint/test 输出产物
+web/*-out.txt
+web/vitest-result.json
+
+# 根部调试探针残留（排查脚本归 test/<名称>/，勿放根部）
+/agent-browser-out.txt
+/agent-browser-snap.ps1
+/hover-probe.js

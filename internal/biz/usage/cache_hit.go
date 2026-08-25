@@ -53,3 +53,42 @@ func (u *Usecase) CacheHitRatioStats(ctx context.Context, window time.Duration) 
 	}
 	return repo.CacheHitRatioStats(ctx, window)
 }
+
+// RunCacheHitRatio is the per-run prompt-cache efficiency, derived at read
+// time from the usage event store (the single authoritative plane for cached
+// tokens — team_runs has no cached column by design, 79-runtime-governance
+// §2.4 取值源决策 2026-08-25).
+type RunCacheHitRatio struct {
+	// Found reports whether any usage row exists for the run. False ⇒ the
+	// caller must treat the ratio as "no data", not as 0% hit.
+	Found     bool
+	PromptTok int64
+	CachedTok int64
+	// Ratio = CachedTok / PromptTok (0 when PromptTok == 0).
+	Ratio float64
+}
+
+// RunCacheHitRatioRepo reads per-run prompt-cache hit ratios from the usage
+// event store.
+//
+// Stability:evolving
+type RunCacheHitRatioRepo interface {
+	// RunCacheHitRatio aggregates one run's prompt/cached tokens:
+	//  1. the team_turn reconciliation row (success/HITL paths — message_id
+	//     equals run id);
+	//  2. fallback: SUM of genuine team_member rows (attribution empty) whose
+	//     step ids belong to the run — covers failed/cancelled runs that never
+	//     wrote a team_turn row (e.g. token-budget trips).
+	RunCacheHitRatio(ctx context.Context, runID string) (RunCacheHitRatio, error)
+}
+
+// RunCacheHitRatio serves the run-detail read path (79-runtime-governance
+// Phase 0 task 0.1). Same narrow-interface resolution as CacheHitRatioStats;
+// a repo without the capability yields Found=false.
+func (u *Usecase) RunCacheHitRatio(ctx context.Context, runID string) (RunCacheHitRatio, error) {
+	repo, ok := u.repo.(RunCacheHitRatioRepo)
+	if !ok {
+		return RunCacheHitRatio{}, nil
+	}
+	return repo.RunCacheHitRatio(ctx, runID)
+}

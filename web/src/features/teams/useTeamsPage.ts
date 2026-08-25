@@ -53,6 +53,8 @@ export function useTeamsPage() {
     stepsLoading,
     summariesByRun,
     summariesLoading,
+    detailsByRun,
+    detailsLoading,
   } = storeToRefs(store);
 
   // ── List state ──
@@ -460,6 +462,16 @@ export function useTeamsPage() {
     }
   }
 
+  // 79-runtime-governance 0.1：单 run 详情（cache_hit_ratio 载体）。命中率是增强
+  // 字段，加载失败不打断展开交互，仅 notify。
+  async function loadRunDetail(runID: string) {
+    try {
+      await store.loadRunDetail(runID);
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载运行详情失败' });
+    }
+  }
+
   function openRunEvents(teamID: string) {
     closeRunEvents();
     runEventsSource.value = store.subscribeRunEvents(GLOBAL_WS_SESSION_ID, teamID, applyRunEvent);
@@ -586,6 +598,8 @@ export function useTeamsPage() {
     stepsLoading,
     summariesByRun,
     summariesLoading,
+    detailsByRun,
+    detailsLoading,
     deadLetters,
     deadLettersLoading,
     testOpen,
@@ -616,6 +630,7 @@ export function useTeamsPage() {
     openRunTest,
     executeRunTest,
     loadRunSummary,
+    loadRunDetail,
     openRunObservatory,
     openTeamObservatory,
     loadRuns,

@@ -81,6 +81,7 @@ function wireRun(r: WireTeamRun | null | undefined): TeamRun {
     topology_json: r?.topologyJson ?? '',
     graph_execution_id: r?.graphExecutionId ?? '',
     trace_id: r?.traceId ?? '',
+    cache_hit_ratio: r?.cacheHitRatio,
     started_at: r?.startedAt ?? '',
     finished_at: r?.finishedAt ?? '',
     created_at: r?.createdAt ?? '',
@@ -258,6 +259,13 @@ export async function getTeamRunSummary(runID: string): Promise<TeamRunSummary> 
   const svc = createTeamService();
   const res = await svc.GetTeamRunSummary({ id: runID });
   return wireRunSummary(res.summary);
+}
+
+/** 单 run 详情（79-runtime-governance 0.1：携带 cache_hit_ratio）。 */
+export async function getTeamRun(runID: string): Promise<TeamRun> {
+  const svc = createTeamService();
+  const run = await svc.GetTeamRun({ id: runID });
+  return wireRun(run);
 }
 
 export async function resumeTeamRunExecution(

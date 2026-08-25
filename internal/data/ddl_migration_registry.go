@@ -458,6 +458,10 @@ var ddlMigrations = []ddlMigration{
 	// agent 维度开关。DEFAULT 1 存量零行为变化；管理层 agent SQL 置 0（P-INTENT-SKIP，
 	// 宁重勿轻 R4）。INTEGER 兼容双方言，幂等。
 	{Version: 20261245, Name: "agent_runtime_intent_skip", SQL: "sql/migrations/20261245_agent_runtime_intent_skip.sql"},
+	// 20261246 usage_events_kind_message_index（2026-08-25 79-runtime-governance
+	// Phase 0 任务 0.1）：run 级 cache_hit_ratio 读路径按 message_id 查 events，
+	// 无索引会 seq scan 持续增长的事件表。双方言通用，幂等。
+	{Version: 20261246, Name: "usage_events_kind_message_index", SQL: "sql/migrations/20261246_usage_events_kind_message_index.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

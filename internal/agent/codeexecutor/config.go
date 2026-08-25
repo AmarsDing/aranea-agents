@@ -11,6 +11,7 @@ const (
 	TypeDocker    = "docker"
 	TypeE2B       = "e2b"
 	TypeContainer = "container"
+	TypeSandbox   = "sandbox"  // M82 pooled sandbox backend (sandbox→docker→local fallback chain)
 	TypeAuto      = "auto"
 	TypeDisabled  = "disabled" // code execution refused (e.g. production without sandbox)
 )
@@ -50,7 +51,7 @@ func LoadEnvConfig() EnvConfig {
 // TypeDisabled is intentionally excluded: it represents a fallback state
 // (e.g. production without sandbox) rather than a user-configurable backend.
 func ValidTypes() []string {
-	return []string{TypeLocal, TypeDocker, TypeE2B, TypeContainer}
+	return []string{TypeLocal, TypeDocker, TypeE2B, TypeContainer, TypeSandbox}
 }
 
 // NormalizeType returns a canonical backend type or TypeLocal when unknown.
@@ -62,6 +63,8 @@ func NormalizeType(raw string) string {
 		return TypeE2B
 	case TypeContainer:
 		return TypeContainer
+	case TypeSandbox:
+		return TypeSandbox
 	case TypeAuto:
 		return TypeAuto
 	case TypeLocal, "":

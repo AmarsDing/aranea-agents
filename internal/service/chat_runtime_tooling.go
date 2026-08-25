@@ -1,6 +1,7 @@
 package service
 
 import (
+	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
@@ -94,4 +95,7 @@ type TurnExtensions struct {
 	SubAgentService      *subagenttool.Service
 	DebugRecorder        *debug.RecorderFactory
 	ParallelToolExecutor *tools.ParallelToolExecutor
+	// ToolResultPrune 是 R2 确定性剪枝 hook 的消费侧配置（79-runtime-governance），
+	// wire 期由 conf.Runtime.ToolResultPruneConfig() 翻译一次，各 turn 构建点透传。
+	ToolResultPrune chatagent.ToolResultPruneConfig
 }

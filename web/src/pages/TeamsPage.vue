@@ -152,6 +152,8 @@
       :steps-loading="stepsLoading"
       :summaries-by-run="summariesByRun"
       :summaries-loading="summariesLoading"
+      :details-by-run="detailsByRun"
+      :details-loading="detailsLoading"
       :dead-letters="deadLetters"
       :dead-letters-loading="deadLettersLoading"
       :agents="storeAgents"
@@ -162,6 +164,7 @@
       @refresh="loadRuns"
       @show-steps="loadRunSteps"
       @load-summary="loadRunSummary"
+      @load-detail="loadRunDetail"
       @open-observatory="openRunObservatory"
       @refresh-dead-letters="loadDeadLetters"
       @resolve-dead-letter="resolveDeadLetter"
@@ -227,6 +230,8 @@ const {
   stepsLoading,
   summariesByRun,
   summariesLoading,
+  detailsByRun,
+  detailsLoading,
   deadLetters,
   deadLettersLoading,
   testOpen,
@@ -256,6 +261,7 @@ const {
   openRunTest,
   executeRunTest,
   loadRunSummary,
+  loadRunDetail,
   openRunObservatory,
   openTeamObservatory,
   loadRuns,

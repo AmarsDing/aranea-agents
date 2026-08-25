@@ -9,6 +9,7 @@ import {
   retryTeam as retryTeamApi,
   listTeamRuns,
   listTeamRunSteps,
+  getTeamRun,
   getTeamRunSummary,
   runTeamTest,
   subscribeTeamRunEventsWs,
@@ -41,6 +42,10 @@ export const useTeamsStore = defineStore('teams', () => {
   // ── Run summaries ──
   const summariesByRun = ref<Record<string, TeamRunSummary>>({});
   const summariesLoading = ref<Record<string, boolean>>({});
+
+  // ── Run details（79-runtime-governance 0.1：cache_hit_ratio 载体）──
+  const detailsByRun = ref<Record<string, TeamRun>>({});
+  const detailsLoading = ref<Record<string, boolean>>({});
 
   // ── Team CRUD ──
 
@@ -150,6 +155,18 @@ export const useTeamsStore = defineStore('teams', () => {
     }
   }
 
+  async function loadRunDetail(runId: string) {
+    if (detailsByRun.value[runId] || detailsLoading.value[runId]) return detailsByRun.value[runId];
+    detailsLoading.value = { ...detailsLoading.value, [runId]: true };
+    try {
+      const detail = await getTeamRun(runId);
+      detailsByRun.value = { ...detailsByRun.value, [runId]: detail };
+      return detail;
+    } finally {
+      detailsLoading.value = { ...detailsLoading.value, [runId]: false };
+    }
+  }
+
   async function testTeam(teamId: string, content?: string) {
     return runTeamTest(teamId, content);
   }
@@ -180,6 +197,7 @@ export const useTeamsStore = defineStore('teams', () => {
   function clearRunsState() {
     summariesByRun.value = {};
     stepsByRun.value = {};
+    detailsByRun.value = {};
   }
 
   // ── WS events ──
@@ -201,6 +219,8 @@ export const useTeamsStore = defineStore('teams', () => {
     stepsLoading,
     summariesByRun,
     summariesLoading,
+    detailsByRun,
+    detailsLoading,
     loadTeams,
     fetchTeam,
     addTeam,
@@ -213,6 +233,7 @@ export const useTeamsStore = defineStore('teams', () => {
     loadRuns,
     loadRunSteps,
     loadRunSummary,
+    loadRunDetail,
     testTeam,
     findActiveRun,
     upsertRun,

@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
+	bizusage "aranea-agents/internal/biz/usage"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/workspace"
@@ -36,6 +37,7 @@ type TeamService struct {
 	memberSessionV2 biz.MemberSessionV2Repo
 	v2Seq           rt.EventPublisher
 	mon             *biz.MonitorUsecase
+	usageUC         *bizusage.Usecase // 79-runtime-governance 0.1：run 级 cache_hit_ratio
 }
 
 func NewTeamService(
@@ -55,6 +57,7 @@ func NewTeamService(
 	memberSessionV2 biz.MemberSessionV2Repo,
 	v2Seq rt.EventPublisher,
 	mon *biz.MonitorUsecase,
+	usageUC *bizusage.Usecase,
 ) *TeamService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -70,6 +73,7 @@ func NewTeamService(
 		memberSessionV2: memberSessionV2,
 		v2Seq:           v2Seq,
 		mon:             mon,
+		usageUC:         usageUC,
 	}
 }
 
@@ -527,7 +531,17 @@ func (s *TeamService) GetTeamRun(ctx context.Context, req *v1.GetTeamRunRequest)
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}
-	return toProtoTeamRun(r), nil
+	out := toProtoTeamRun(r)
+	// 79-runtime-governance 0.1：run 级 cache_hit_ratio 读时从 usage 事件面派生。
+	// fail-soft：查询失败/无数据不影响 run 详情主返回（命中率是增强字段）。
+	if s.usageUC != nil {
+		if hit, herr := s.usageUC.RunCacheHitRatio(ctx, r.ID); herr != nil {
+			s.lg.Warn("run cache hit ratio query failed", loggateway.Str("run_id", r.ID), loggateway.Err(herr))
+		} else if hit.Found {
+			out.CacheHitRatio = &hit.Ratio
+		}
+	}
+	return out, nil
 }
 
 func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRequest) (*v1.TeamRun, error) {

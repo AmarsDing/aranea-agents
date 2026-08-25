@@ -1,6 +1,9 @@
 package conf
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // RuntimeWSConfig returns resolved WebSocket config values with zero-value defaults.
 // Zero values in config.yaml fall back to the previous hardcoded constants.
@@ -315,4 +318,42 @@ func msToDuration(ms int64, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return time.Duration(ms) * time.Millisecond
+}
+
+// RuntimeToolResultPruneConfig returns resolved ToolResultPrune config values
+// (79-runtime-governance R2) with zero-value defaults: pruning ON, K=8 turns,
+// S=4096 bytes, no exemptions. `enabled: false` is the documented kill switch
+// (dev plan Phase 1 回退项).
+type RuntimeToolResultPruneConfig struct {
+	Enabled     bool
+	AfterTurns  int
+	SizeBytes   int64
+	ExemptTools map[string]bool
+}
+
+func (r *Runtime) ToolResultPruneConfig() RuntimeToolResultPruneConfig {
+	cfg := RuntimeToolResultPruneConfig{Enabled: true, AfterTurns: 8, SizeBytes: 4096}
+	if r == nil || r.ToolResultPrune == nil {
+		return cfg
+	}
+	p := r.ToolResultPrune
+	// proto3 optional: nil = unset → default ON; explicit false = kill switch.
+	if p.Enabled != nil {
+		cfg.Enabled = *p.Enabled
+	}
+	if p.AfterTurns > 0 {
+		cfg.AfterTurns = int(p.AfterTurns)
+	}
+	if p.SizeBytes > 0 {
+		cfg.SizeBytes = p.SizeBytes
+	}
+	if len(p.ExemptTools) > 0 {
+		cfg.ExemptTools = make(map[string]bool, len(p.ExemptTools))
+		for _, name := range p.ExemptTools {
+			if trimmed := strings.TrimSpace(name); trimmed != "" {
+				cfg.ExemptTools[trimmed] = true
+			}
+		}
+	}
+	return cfg
 }
