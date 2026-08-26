@@ -194,13 +194,16 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 	}
 
 	// Prepare local output directory for artifact collection.
+	// Ownership transfers to the caller: Run does NOT remove tmpDir — the
+	// adapter cleans ArtifactDir after CollectOutputDirFiles (deleting it here
+	// via defer made artifacts unreadable after return).
 	tmpDir, err := os.MkdirTemp(e.tempDir, "codeexec-*")
 	if err != nil {
 		return Result{}, err
 	}
-	defer os.RemoveAll(tmpDir)
 	outDir := filepath.Join(tmpDir, "out")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
+		_ = os.RemoveAll(tmpDir)
 		return Result{}, err
 	}
 
@@ -220,6 +223,7 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 	}()
 
 	if out, err := exec.CommandContext(ctx, "docker", e.buildCreateArgs(container, runner, ext, timeout)...).CombinedOutput(); err != nil {
+		_ = os.RemoveAll(tmpDir) // no artifacts to hand out on create failure
 		return Result{}, fmt.Errorf("docker create %s: %w (%s)", container, err, strings.TrimSpace(string(out)))
 	}
 

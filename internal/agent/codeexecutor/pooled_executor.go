@@ -43,14 +43,16 @@ func (e *pooledRuntime) Run(ctx context.Context, language, code string, timeout 
 		timeout = 30 * time.Second
 	}
 
-	// Prepare local artifact collection dir (same lifecycle as DockerExecutor).
+	// Prepare local artifact collection dir. Ownership transfers to the caller
+	// (pooledAdapter removes the temp tree after collection) — same contract
+	// as the fixed DockerExecutor.
 	tmpDir, err := os.MkdirTemp(e.tempDir, "codeexec-*")
 	if err != nil {
 		return Result{}, err
 	}
-	defer os.RemoveAll(tmpDir)
 	outDir := filepath.Join(tmpDir, "out")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		_ = os.RemoveAll(tmpDir)
 		return Result{}, err
 	}
 
@@ -59,6 +61,7 @@ func (e *pooledRuntime) Run(ctx context.Context, language, code string, timeout 
 		TTL:     timeout + time.Minute, // exec window + collection margin
 	})
 	if err != nil {
+		_ = os.RemoveAll(tmpDir) // no artifacts to hand out on acquire failure
 		return Result{}, fmt.Errorf("codeexecutor sandbox acquire: %w", err)
 	}
 	defer func() { _ = lease.Release(context.Background()) }()
@@ -140,6 +143,8 @@ func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec
 		sb.WriteString(formatBlockOutput(res))
 		if res.ArtifactDir != "" {
 			outFiles = append(outFiles, CollectOutputDirFiles(res.ArtifactDir, DefaultMaxOutputFileBytes)...)
+			// Caller-owned artifact temp tree (…/out parent) — remove after collection.
+			_ = os.RemoveAll(filepath.Dir(res.ArtifactDir))
 		}
 	}
 	return trpcagentcodeexec.CodeExecutionResult{Output: sb.String(), OutputFiles: outFiles}, nil

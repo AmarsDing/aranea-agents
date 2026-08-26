@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/runtime/lifecycle"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -58,6 +59,7 @@ func newApp(
 	embedder *knowledge.MultiProviderEmbedder,
 	gateCards *service.ChannelGateCards,
 	agentBridgeSvc *service.AgentBridgeService,
+	sandboxMgr *sandbox.Manager,
 ) *kratos.App {
 	// startupBegin approximates the start of the P1 migration window: NewData
 	// (which launches the P1 goroutine) runs immediately before newApp inside
@@ -184,11 +186,23 @@ func newApp(
 				memoryDataMigration.Start(startCtx)
 				lg.Info("memory data migration worker started", loggateway.StepID("startup.memory_migration"))
 			}
+			// M82: start the sandbox pool replenisher + GC + startup reconcile.
+			// consumerCtx is long-lived (cancelled in AfterStop) and the manager
+			// has no DB dependency, so it starts right after server boot.
+			// No-op (with a warn log) when disabled or the engine is degraded.
+			if sandboxMgr != nil {
+				sandboxMgr.Start(consumerCtx)
+			}
 
 			return nil
 		}),
 		kratos.AfterStop(func(ctx context.Context) error {
 			shutdownFlow := newSystemFlowEmitter(ctx, eventInfra, lg)
+			// M82: stop pool/gc loops. Live sandboxes are intentionally NOT
+			// destroyed here — the next boot's reconcile pass reaps them.
+			if sandboxMgr != nil {
+				sandboxMgr.Close()
+			}
 			if err := guard.OnShutdown(ctx); err != nil {
 				lg.Warn("session status guard shutdown failed", loggateway.StepID("shutdown.guard"), loggateway.Err(err))
 			}

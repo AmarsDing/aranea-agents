@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" width="1200" height="830">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5B6B8C"/>
+    </marker>
+    <radialGradient id="glowViolet" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#16223C" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1200" height="830" fill="#0B1220"/>
+    <rect x="0" y="0" width="1200" height="830" fill="url(#grid)"/>
+    <circle cx="80" cy="760" r="320" fill="url(#glowViolet)"/>
+  </g>
+
+  <g id="containers">
+    <rect x="40" y="100" width="720" height="108" rx="10" fill="#101B30" stroke="#22D3EE" stroke-opacity="0.5" stroke-width="1"/>
+    <rect x="40" y="228" width="720" height="108" rx="10" fill="#101B30" stroke="#60A5FA" stroke-opacity="0.5" stroke-width="1"/>
+    <rect x="40" y="356" width="720" height="108" rx="10" fill="#101B30" stroke="#8B5CF6" stroke-opacity="0.5" stroke-width="1"/>
+    <rect x="40" y="484" width="720" height="108" rx="10" fill="#101B30" stroke="#F472B6" stroke-opacity="0.5" stroke-width="1"/>
+    <rect x="40" y="612" width="720" height="108" rx="10" fill="#101B30" stroke="#FBBF24" stroke-opacity="0.5" stroke-width="1"/>
+
+    <rect x="820" y="100" width="340" height="340" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="820" y="470" width="340" height="332" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+  </g>
+
+  <g id="nodes">
+    <rect x="60" y="126" width="56" height="56" rx="10" fill="#22D3EE" fill-opacity="0.18" stroke="#22D3EE" stroke-width="1.5"/>
+    <rect x="60" y="254" width="56" height="56" rx="10" fill="#60A5FA" fill-opacity="0.18" stroke="#60A5FA" stroke-width="1.5"/>
+    <rect x="60" y="382" width="56" height="56" rx="10" fill="#8B5CF6" fill-opacity="0.18" stroke="#8B5CF6" stroke-width="1.5"/>
+    <rect x="60" y="510" width="56" height="56" rx="10" fill="#F472B6" fill-opacity="0.18" stroke="#F472B6" stroke-width="1.5"/>
+    <rect x="60" y="638" width="56" height="56" rx="10" fill="#FBBF24" fill-opacity="0.18" stroke="#FBBF24" stroke-width="1.5"/>
+
+    <rect x="590" y="136" width="150" height="36" rx="18" fill="#22D3EE" fill-opacity="0.10" stroke="#22D3EE" stroke-opacity="0.6" stroke-width="1"/>
+    <rect x="590" y="264" width="150" height="36" rx="18" fill="#60A5FA" fill-opacity="0.10" stroke="#60A5FA" stroke-opacity="0.6" stroke-width="1"/>
+    <rect x="590" y="392" width="150" height="36" rx="18" fill="#8B5CF6" fill-opacity="0.10" stroke="#8B5CF6" stroke-opacity="0.6" stroke-width="1"/>
+    <rect x="590" y="520" width="150" height="36" rx="18" fill="#F472B6" fill-opacity="0.10" stroke="#F472B6" stroke-opacity="0.6" stroke-width="1"/>
+    <rect x="590" y="648" width="150" height="36" rx="18" fill="#FBBF24" fill-opacity="0.10" stroke="#FBBF24" stroke-opacity="0.6" stroke-width="1"/>
+
+    <rect x="846" y="140" width="288" height="42" rx="8" fill="#34D399" fill-opacity="0.12" stroke="#34D399" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="192" width="288" height="42" rx="8" fill="#34D399" fill-opacity="0.12" stroke="#34D399" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="244" width="288" height="42" rx="8" fill="#34D399" fill-opacity="0.12" stroke="#34D399" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="296" width="288" height="42" rx="8" fill="#34D399" fill-opacity="0.12" stroke="#34D399" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="348" width="288" height="42" rx="8" fill="#34D399" fill-opacity="0.12" stroke="#34D399" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="846" y="510" width="288" height="36" rx="8" fill="#60A5FA" fill-opacity="0.12" stroke="#60A5FA" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="558" width="288" height="36" rx="8" fill="#60A5FA" fill-opacity="0.12" stroke="#60A5FA" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="606" width="288" height="36" rx="8" fill="#60A5FA" fill-opacity="0.12" stroke="#60A5FA" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="654" width="288" height="36" rx="8" fill="#60A5FA" fill-opacity="0.12" stroke="#60A5FA" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="702" width="288" height="36" rx="8" fill="#60A5FA" fill-opacity="0.12" stroke="#60A5FA" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="846" y="750" width="288" height="36" rx="8" fill="#60A5FA" fill-opacity="0.12" stroke="#60A5FA" stroke-opacity="0.8" stroke-width="1.5"/>
+  </g>
+
+  <g id="labels" font-family="Arial, Helvetica, sans-serif">
+    <text x="40" y="42" font-size="24" font-weight="bold" fill="#E5EAF5">五层记忆架构</text>
+    <text x="40" y="66" font-size="13" fill="#8FA3C8">L0~L4 完整覆盖：短期对话 → 工作记忆 → 情景经验 → 语义事实 → 知识图谱</text>
+
+    <text x="88" y="160" font-size="18" font-weight="bold" fill="#22D3EE" text-anchor="middle">L0</text>
+    <text x="140" y="134" font-size="15" font-weight="bold" fill="#E5EAF5">会话上下文窗口</text>
+    <text x="140" y="158" font-size="12" fill="#8FA3C8">最近 N 轮对话 + 摘要压缩注入，控制上下文窗口</text>
+    <text x="665" y="159" font-size="11" fill="#22D3EE" text-anchor="middle">会话快照</text>
+
+    <text x="88" y="288" font-size="18" font-weight="bold" fill="#60A5FA" text-anchor="middle">L1</text>
+    <text x="140" y="262" font-size="15" font-weight="bold" fill="#E5EAF5">工作记忆</text>
+    <text x="140" y="286" font-size="12" fill="#8FA3C8">结构化字段（角色 / 偏好 / 约束），token 预算控制</text>
+    <text x="665" y="287" font-size="11" fill="#60A5FA" text-anchor="middle">内存 + 持久化</text>
+
+    <text x="88" y="416" font-size="18" font-weight="bold" fill="#8B5CF6" text-anchor="middle">L2</text>
+    <text x="140" y="390" font-size="15" font-weight="bold" fill="#E5EAF5">情景记忆</text>
+    <text x="140" y="414" font-size="12" fill="#8FA3C8">对话片段向量索引 + 时间衰减召回，FTS-OR 混合</text>
+    <text x="665" y="415" font-size="11" fill="#8B5CF6" text-anchor="middle">pgvector</text>
+
+    <text x="88" y="544" font-size="18" font-weight="bold" fill="#F472B6" text-anchor="middle">L3</text>
+    <text x="140" y="518" font-size="15" font-weight="bold" fill="#E5EAF5">语义事实</text>
+    <text x="140" y="542" font-size="12" fill="#8FA3C8">结构化 Fact 存储，多 scope 融合召回，五维评分排序</text>
+    <text x="665" y="543" font-size="11" fill="#F472B6" text-anchor="middle">pgvector</text>
+
+    <text x="88" y="672" font-size="18" font-weight="bold" fill="#FBBF24" text-anchor="middle">L4</text>
+    <text x="140" y="646" font-size="15" font-weight="bold" fill="#E5EAF5">知识图谱</text>
+    <text x="140" y="670" font-size="12" fill="#8FA3C8">实体-关系图谱，人设 / 策略注入，Saga 级联更新</text>
+    <text x="665" y="671" font-size="11" fill="#FBBF24" text-anchor="middle">图存储</text>
+
+    <text x="840" y="124" font-size="13" font-weight="bold" fill="#34D399">召回引擎</text>
+    <text x="990" y="166" font-size="12" fill="#E5EAF5" text-anchor="middle">五维评分（L3）</text>
+    <text x="990" y="218" font-size="12" fill="#E5EAF5" text-anchor="middle">Keyword+Vector+Recency…</text>
+    <text x="990" y="270" font-size="12" fill="#E5EAF5" text-anchor="middle">多 scope 融合召回</text>
+    <text x="990" y="322" font-size="12" fill="#E5EAF5" text-anchor="middle">Saga 级联更新（L4）</text>
+    <text x="990" y="374" font-size="12" fill="#E5EAF5" text-anchor="middle">三链整合提取器</text>
+
+    <text x="840" y="494" font-size="13" font-weight="bold" fill="#60A5FA">6 个 Cron Workers</text>
+    <text x="990" y="532" font-size="12" fill="#E5EAF5" text-anchor="middle">L1Archive 归档</text>
+    <text x="990" y="580" font-size="12" fill="#E5EAF5" text-anchor="middle">L2Consolidate 固化</text>
+    <text x="990" y="628" font-size="12" fill="#E5EAF5" text-anchor="middle">L2Decay 衰减</text>
+    <text x="990" y="676" font-size="12" fill="#E5EAF5" text-anchor="middle">L3Decay 衰减</text>
+    <text x="990" y="724" font-size="12" fill="#E5EAF5" text-anchor="middle">L4Decay 衰减</text>
+    <text x="990" y="772" font-size="12" fill="#E5EAF5" text-anchor="middle">FactIndexReconciler</text>
+
+    <text x="20" y="400" font-size="12" fill="#8FA3C8" transform="rotate(-90 20 400)" text-anchor="middle">写入 / 固化 ↓</text>
+    <text x="788" y="400" font-size="12" fill="#8FA3C8" transform="rotate(-90 788 400)" text-anchor="middle">召回 ↑</text>
+  </g>
+
+  <g id="connections">
+    <line x1="30" y1="140" x2="30" y2="680" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="778" y1="680" x2="778" y2="140" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+  </g>
+</svg>

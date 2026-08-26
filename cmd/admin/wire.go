@@ -61,6 +61,7 @@ import (
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/lifecycle"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	araneasession "aranea-agents/internal/session"
@@ -380,8 +381,30 @@ func providePendingMessageQueue(lg loggateway.Logger, d *data.Data) *rt.PendingM
 	return q
 }
 
-func provideCodeExecutorFactory(lg loggateway.Logger) *localexec.Factory {
-	return localexec.NewFactoryWithLogger(lg)
+func provideCodeExecutorFactory(lg loggateway.Logger, sandboxMgr *sandbox.Manager) *localexec.Factory {
+	f := localexec.NewFactoryWithLogger(lg)
+	f.SetSandboxManager(sandboxMgr)
+	return f
+}
+
+// provideSandboxManager builds the M82 sandbox Manager (P0-8 启动探测降级).
+// When the subsystem is disabled or no docker daemon is reachable the engine
+// is nil: the Manager stays constructible (wire graph intact) and Available()
+// reports false so consumers fall back along sandbox→docker→local (NFR-04).
+// The daemon probe has a 30s TTL cache, so a daemon started later becomes
+// visible to cold-create attempts without a restart.
+func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.Manager {
+	cfg := sandbox.ConfigFromProto(sbConf)
+	var engine sandbox.Engine
+	if cfg.Enabled {
+		if sandbox.DockerDaemonAvailable() {
+			engine = sandbox.NewDockerEngine()
+		} else {
+			lg.Warn("sandbox enabled but docker daemon unavailable — pooled backend degraded; code execution falls back to docker/local",
+				loggateway.StepID("sandbox.probe"))
+		}
+	}
+	return sandbox.NewManager(cfg, engine, lg)
 }
 
 func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
@@ -3793,7 +3816,7 @@ func provideEcosystemPresetScenarioDir() string {
 }
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.Sandbox, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -3823,6 +3846,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideRunHeartbeatEmitter,
 		providePendingMessageQueue,
 		provideCodeExecutorFactory,
+		// M82: sandbox Manager + admin service; the admin port binds onto the
+		// Manager (read-only list/metrics surface, ADR-82-3).
+		provideSandboxManager,
+		service.NewSandboxService,
+		wire.Bind(new(biz.SandboxAdminPort), new(*sandbox.Manager)),
 		provideAutoMemoryQueue,
 		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
 		wire.Bind(new(biz.MemoryDeadLetterAdminRepo), new(*data.MemoryJobDeadLetterRepo)),

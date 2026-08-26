@@ -36,6 +36,7 @@ import (
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
+	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -157,6 +158,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	evolutionv1.RegisterEvolutionServiceHTTPServer(srv, s.Evolution)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 	runtimeprofilev1.RegisterRuntimeProfileServiceHTTPServer(srv, s.RuntimeProfile)
+	sandboxv1.RegisterSandboxServiceHTTPServer(srv, s.Sandbox)
 	if s.LearningLoop != nil {
 		learningloopv1.RegisterLearningLoopServiceHTTPServer(srv, s.LearningLoop)
 	}

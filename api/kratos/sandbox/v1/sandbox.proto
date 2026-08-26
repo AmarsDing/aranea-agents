@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package kratos.sandbox.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "aranea-agents/api/kratos/sandbox/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.sandbox.v1";
+
+// Sandbox is the admin-facing snapshot of one live sandbox instance (M82).
+// Timestamps are RFC3339 strings (empty when unset).
+message Sandbox {
+  string id = 1;
+  string profile = 2;
+  string agent_key = 3;
+  string session_id = 4;
+  string run_id = 5;
+  string state = 6;        // ready | leased | destroying
+  string created_at = 7;
+  string deadline = 8;
+  string last_exec_at = 9; // empty when the lease never executed
+  int64 exec_count = 10;
+}
+
+message ListSandboxesRequest {
+}
+
+message ListSandboxesResponse {
+  repeated Sandbox items = 1;
+}
+
+// SandboxProfileMetrics is the per-profile water level.
+message SandboxProfileMetrics {
+  string profile = 1;
+  int32 ready = 2;  // warm-pool ready instances
+  int32 active = 3; // leased instances
+}
+
+// SandboxMetrics is the pool water level + counter snapshot since process
+// boot (82-sandbox.design.md §8.1).
+message SandboxMetrics {
+  repeated SandboxProfileMetrics profiles = 1;
+  int32 global_active = 2;   // leased instances holding a quota slot
+  int64 acquire_warm = 3;    // acquires served from the warm pool
+  int64 acquire_cold = 4;    // acquires served by cold create
+  int64 acquire_fail = 5;    // acquires rejected or failed
+  int64 exec_ok = 6;
+  int64 exec_error = 7;
+  int64 exec_timeout = 8;
+  map<string, int64> destroy = 9;       // reason -> count (release/ttl/idle/pool_evict/reconcile/force_kill)
+  map<string, int64> quota_reject = 10; // scope -> count (global/agent)
+}
+
+message GetSandboxMetricsRequest {
+}
+
+// SandboxService is the M82 sandbox admin API (design §5.3, ADR-82-3:
+// read-only management surface — execution capability is NOT exposed over
+// HTTP). ForceKillSandbox lands with P2-3 (audit requirements).
+service SandboxService {
+  // ListSandboxes returns all live sandboxes (warm-pool ready + leased).
+  rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse) {
+    option (google.api.http) = {get: "/v1/sandboxes"};
+  }
+  // GetSandboxMetrics returns pool water levels and the counter snapshot.
+  rpc GetSandboxMetrics(GetSandboxMetricsRequest) returns (SandboxMetrics) {
+    option (google.api.http) = {get: "/v1/sandboxes/metrics"};
+  }
+}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -26,7 +27,25 @@ type Factory struct {
 	containerOnce sync.Once
 	localWD       string
 	localExec     trpcagentcodeexec.CodeExecutor
+	sandboxMgr    *sandbox.Manager // M82: bound post-construction by the wire provider
 	lg            loggateway.Logger
+}
+
+// SetSandboxManager binds the M82 sandbox manager (warm-pool backend). The
+// manager is constructed after the factory in the wire graph, so binding is a
+// post-construction setter rather than a constructor param.
+func (f *Factory) SetSandboxManager(mgr *sandbox.Manager) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sandboxMgr = mgr
+}
+
+// sandboxAvailable reports whether the pooled sandbox backend can serve runs.
+func (f *Factory) sandboxAvailable() bool {
+	f.mu.RLock()
+	mgr := f.sandboxMgr
+	f.mu.RUnlock()
+	return mgr != nil && mgr.Available()
 }
 
 func NewFactoryWithLogger(lg loggateway.Logger) *Factory {
@@ -120,6 +139,20 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 	switch typ {
 	case TypeDisabled:
 		return nil
+	case TypeSandbox:
+		f.mu.RLock()
+		mgr := f.sandboxMgr
+		f.mu.RUnlock()
+		if mgr != nil && mgr.Available() {
+			return wrapMetrics(newPooledAdapter(mgr, f.env.Timeout), TypeSandbox)
+		}
+		// 防御性二次检查：applyAvailabilityFallback 通常已把 sandbox→docker；
+		// 运行期 Manager 不可用时走与 docker 相同的运行时回退链。
+		lg := f.lg
+		if lg == nil {
+			lg = loggateway.NewNoop()
+		}
+		return wrapMetrics(newDockerRuntimeFallback(f.getDocker(), f, workDir, lg), TypeDocker)
 	case TypeDocker:
 		lg := f.lg
 		if lg == nil {
@@ -163,6 +196,14 @@ func (f *Factory) logger() loggateway.Logger {
 }
 
 func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) string {
+	if typ == TypeSandbox && !f.sandboxAvailable() {
+		// M82 降级链：sandbox 池不可用（禁用/无 daemon）→ docker；docker 再由
+		// 下方检查继续降级 local（NFR-04）。
+		f.logger().Warn("sandbox 池不可用，回退到 docker 执行器",
+			loggateway.StepID("codeexec.sandbox_fallback"),
+			loggateway.Str("requested", TypeSandbox))
+		typ = TypeDocker
+	}
 	if typ == TypeDocker && !DockerAvailable() {
 		if isProductionEnv() && !f.env.AllowLocalInProd {
 			f.logger().Error("生产环境 Docker 不可用且未允许 local 执行器，拒绝代码执行",

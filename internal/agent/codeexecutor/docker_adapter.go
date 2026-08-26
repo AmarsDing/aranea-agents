@@ -3,6 +3,8 @@ package codeexecutor
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,6 +39,10 @@ func (a *dockerAdapter) ExecuteCode(ctx context.Context, input codeexecutor.Code
 		sb.WriteString(formatBlockOutput(res))
 		if res.ArtifactDir != "" {
 			outFiles = append(outFiles, CollectOutputDirFiles(res.ArtifactDir, DefaultMaxOutputFileBytes)...)
+			// Run transfers ArtifactDir ownership to the caller; remove the
+			// whole codeexec-* temp tree (the parent of …/out) after collection
+			// so artifact dirs don't accumulate.
+			_ = os.RemoveAll(filepath.Dir(res.ArtifactDir))
 		}
 	}
 	return codeexecutor.CodeExecutionResult{Output: sb.String(), OutputFiles: outFiles}, nil

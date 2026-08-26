@@ -64,6 +64,8 @@ type ServiceRegistry struct {
 	ComputerUse *service.ComputerUseService
 	// AgentBridge exposes coding-agent bridge management endpoints (76).
 	AgentBridge *service.AgentBridgeAPI
+	// Sandbox exposes the M82 sandbox admin API (read-only list/metrics).
+	Sandbox *service.SandboxService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -117,6 +119,7 @@ func NewServiceRegistry(
 	learningLoop *service.LearningLoopService,
 	computerUse *service.ComputerUseService,
 	agentBridge *service.AgentBridgeAPI,
+	sandbox *service.SandboxService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -167,5 +170,6 @@ func NewServiceRegistry(
 		LearningLoop:       learningLoop,
 		ComputerUse:        computerUse,
 		AgentBridge:        agentBridge,
+		Sandbox:            sandbox,
 	}
 }

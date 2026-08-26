@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="1200" height="700">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5B6B8C"/>
+    </marker>
+    <radialGradient id="glowCyan" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#16223C" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1200" height="700" fill="#0B1220"/>
+    <rect x="0" y="0" width="1200" height="700" fill="url(#grid)"/>
+    <circle cx="1120" cy="60" r="320" fill="url(#glowCyan)"/>
+  </g>
+
+  <g id="containers">
+    <rect x="40" y="140" width="240" height="300" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="320" y="140" width="240" height="300" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="600" y="140" width="240" height="300" rx="10" fill="#101B30" stroke="#FBBF24" stroke-opacity="0.6" stroke-width="1.5"/>
+    <rect x="880" y="140" width="280" height="300" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="40" y="500" width="1120" height="70" rx="10" fill="#101B30" stroke="#22304F" stroke-width="1"/>
+    <rect x="40" y="600" width="1120" height="60" rx="10" fill="#101B30" stroke="#34D399" stroke-opacity="0.5" stroke-width="1"/>
+  </g>
+
+  <g id="nodes">
+    <rect x="70" y="190" width="180" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="252" width="180" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="314" width="180" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="70" y="376" width="180" height="42" rx="8" fill="#8B5CF6" fill-opacity="0.12" stroke="#8B5CF6" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="350" y="190" width="180" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="350" y="252" width="180" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="350" y="314" width="180" height="42" rx="8" fill="#F472B6" fill-opacity="0.12" stroke="#F472B6" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="630" y="190" width="180" height="46" rx="8" fill="#FBBF24" fill-opacity="0.15" stroke="#FBBF24" stroke-opacity="0.9" stroke-width="1.5"/>
+    <rect x="630" y="262" width="180" height="46" rx="8" fill="#34D399" fill-opacity="0.15" stroke="#34D399" stroke-opacity="0.9" stroke-width="1.5"/>
+    <rect x="630" y="334" width="180" height="46" rx="8" fill="#F87171" fill-opacity="0.15" stroke="#F87171" stroke-opacity="0.9" stroke-width="1.5"/>
+
+    <rect x="910" y="190" width="220" height="42" rx="8" fill="#22D3EE" fill-opacity="0.12" stroke="#22D3EE" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="910" y="252" width="220" height="42" rx="8" fill="#22D3EE" fill-opacity="0.12" stroke="#22D3EE" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="910" y="314" width="220" height="42" rx="8" fill="#22D3EE" fill-opacity="0.12" stroke="#22D3EE" stroke-opacity="0.8" stroke-width="1.5"/>
+    <rect x="910" y="376" width="220" height="42" rx="8" fill="#22D3EE" fill-opacity="0.12" stroke="#22D3EE" stroke-opacity="0.8" stroke-width="1.5"/>
+
+    <rect x="380" y="520" width="440" height="44" rx="8" fill="#34D399" fill-opacity="0.15" stroke="#34D399" stroke-opacity="0.9" stroke-width="1.5"/>
+  </g>
+
+  <g id="labels" font-family="Arial, Helvetica, sans-serif">
+    <text x="40" y="42" font-size="24" font-weight="bold" fill="#E5EAF5">可观测性与自动自愈</text>
+    <text x="40" y="66" font-size="13" fill="#8FA3C8">故障检测 → 根因分析 → 置信度分流 → 自动修复 / 人工介入 → 冷却防抖 → 效果验证</text>
+
+    <text x="60" y="166" font-size="13" font-weight="bold" fill="#8B5CF6">① 观测面</text>
+    <text x="160" y="216" font-size="13" fill="#E5EAF5" text-anchor="middle">全链路 Trace</text>
+    <text x="160" y="278" font-size="13" fill="#E5EAF5" text-anchor="middle">Flow Log 流日志</text>
+    <text x="160" y="340" font-size="13" fill="#E5EAF5" text-anchor="middle">Runner 指标</text>
+    <text x="160" y="402" font-size="13" fill="#E5EAF5" text-anchor="middle">告警评估 Worker</text>
+
+    <text x="340" y="166" font-size="13" font-weight="bold" fill="#F472B6">② 根因分析</text>
+    <text x="440" y="216" font-size="13" fill="#E5EAF5" text-anchor="middle">规则引擎匹配</text>
+    <text x="440" y="278" font-size="13" fill="#E5EAF5" text-anchor="middle">正则 + 前置条件</text>
+    <text x="440" y="340" font-size="13" fill="#E5EAF5" text-anchor="middle">RootCause + FixAction</text>
+
+    <text x="620" y="166" font-size="13" font-weight="bold" fill="#FBBF24">③ 置信度分流</text>
+    <text x="720" y="218" font-size="13" fill="#E5EAF5" text-anchor="middle">计算置信度</text>
+    <text x="720" y="290" font-size="13" fill="#E5EAF5" text-anchor="middle">≥ 0.7 自动修复</text>
+    <text x="720" y="362" font-size="13" fill="#E5EAF5" text-anchor="middle">&lt; 0.7 记录待人工</text>
+
+    <text x="900" y="166" font-size="13" font-weight="bold" fill="#22D3EE">④ 修复动作</text>
+    <text x="1020" y="216" font-size="13" fill="#E5EAF5" text-anchor="middle">retry 重试</text>
+    <text x="1020" y="278" font-size="13" fill="#E5EAF5" text-anchor="middle">reconnect 重连</text>
+    <text x="1020" y="340" font-size="13" fill="#E5EAF5" text-anchor="middle">fallback 降级</text>
+    <text x="1020" y="402" font-size="13" fill="#E5EAF5" text-anchor="middle">log_only 仅记录</text>
+
+    <text x="600" y="547" font-size="14" fill="#E5EAF5" text-anchor="middle">修复验证：指标回归正常 → 事件闭环归档</text>
+
+    <text x="60" y="626" font-size="12" font-weight="bold" fill="#34D399">防抖机制</text>
+    <text x="170" y="626" font-size="12" fill="#8FA3C8">冷却期 5 分钟：同一问题在冷却期内不重复触发修复 · 自愈组件唯一：SelfHealObserver · 诊断包一键聚合 trace/session/run/step</text>
+  </g>
+
+  <g id="connections">
+    <line x1="282" y1="290" x2="318" y2="290" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="562" y1="290" x2="598" y2="290" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="842" y1="290" x2="878" y2="290" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M 1020 422 L 1020 470 L 830 470 L 830 516" fill="none" stroke="#5B6B8C" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M 380 542 L 160 542 L 160 444" fill="none" stroke="#5B6B8C" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrowhead)"/>
+    <text x="230" y="532" font-size="11" fill="#8FA3C8" font-family="Arial, Helvetica, sans-serif">持续观测</text>
+  </g>
+</svg>

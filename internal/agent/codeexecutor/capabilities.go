@@ -40,6 +40,11 @@ func (f *Factory) capabilityFor(typ string) Capability {
 			return Capability{Type: TypeContainer, Available: false, Reason: "requires build tag codeexec_container"}
 		}
 		return Capability{Type: TypeContainer, Available: true}
+	case TypeSandbox:
+		if f.sandboxAvailable() {
+			return Capability{Type: TypeSandbox, Available: true}
+		}
+		return Capability{Type: TypeSandbox, Available: false, Reason: "sandbox pool unavailable (disabled or no docker daemon)"}
 	default:
 		return Capability{Type: typ, Available: false, Reason: "unsupported backend"}
 	}

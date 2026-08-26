@@ -98,7 +98,7 @@ func main() {
 	// Initialize service-layer runtime configs before Wire construction.
 	service.InitWebhookRateLimitConfig(bc.Runtime)
 
-	out, cleanup, err := wireApp(bc.Server, bc.Data, bc.Runtime, bc.SelfImprovement, nil, logger, lg, pipeline, loggingSinks)
+	out, cleanup, err := wireApp(bc.Server, bc.Data, bc.Runtime, bc.SelfImprovement, bc.Sandbox, nil, logger, lg, pipeline, loggingSinks)
 	if err != nil {
 		panic(redactConfigError("wire app", err))
 	}

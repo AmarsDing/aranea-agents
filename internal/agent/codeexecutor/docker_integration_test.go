@@ -37,6 +37,10 @@ func TestDockerExecutorRunPythonIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	// Run transfers ArtifactDir ownership to the caller (no auto-cleanup).
+	if res.ArtifactDir != "" {
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(res.ArtifactDir)) })
+	}
 	if !strings.Contains(res.Stdout, "hello-from-sandbox") {
 		t.Fatalf("expected stdout to contain greeting, got %q (stderr %q)", res.Stdout, res.Stderr)
 	}

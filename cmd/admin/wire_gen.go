@@ -61,6 +61,7 @@ import (
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/lifecycle"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	session2 "aranea-agents/internal/session"
@@ -109,7 +110,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp init kratos application.
-func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
 	reranker := knowledge.NewMemoryReranker(loggatewayLogger)
 	dataData, cleanup, err := data.NewData(confData, loggatewayLogger, reranker)
 	if err != nil {
@@ -269,7 +270,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	agentExistenceCheckerFunc := biz.ProvideAgentExistenceChecker(agentRepository)
-	factory := provideCodeExecutorFactory(loggatewayLogger)
+	sandboxManager := provideSandboxManager(sandbox, loggatewayLogger)
+	factory := provideCodeExecutorFactory(loggatewayLogger, sandboxManager)
 	knowledgeRepo := data.NewKnowledgeRepoFromData(dataData)
 	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, knowledgeRepo, loggatewayLogger)
 	vaultFiler := provideKnowledgeVaultFiler(loggatewayLogger)
@@ -614,7 +616,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
 	agentBridgeAPI := service.NewAgentBridgeAPI(agentBridgeService)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI)
+	sandboxService := service.NewSandboxService(sandboxManager, loggatewayLogger)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -635,7 +638,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, runtime, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -1014,8 +1017,29 @@ func providePendingMessageQueue(lg loggateway.Logger, d *data.Data) *runtime.Pen
 	return q
 }
 
-func provideCodeExecutorFactory(lg loggateway.Logger) *codeexecutor.Factory {
-	return codeexecutor.NewFactoryWithLogger(lg)
+func provideCodeExecutorFactory(lg loggateway.Logger, sandboxMgr *sandbox.Manager) *codeexecutor.Factory {
+	f := codeexecutor.NewFactoryWithLogger(lg)
+	f.SetSandboxManager(sandboxMgr)
+	return f
+}
+
+// provideSandboxManager builds the M82 sandbox Manager (P0-8 启动探测降级).
+// When the subsystem is disabled or no docker daemon is reachable the engine
+// is nil: the Manager stays constructible (wire graph intact) and Available()
+// reports false so consumers fall back along sandbox→docker→local (NFR-04).
+// The daemon probe has a 30s TTL cache, so a daemon started later becomes
+// visible to cold-create attempts without a restart.
+func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.Manager {
+	cfg := sandbox.ConfigFromProto(sbConf)
+	var engine sandbox.Engine
+	if cfg.Enabled {
+		if sandbox.DockerDaemonAvailable() {
+			engine = sandbox.NewDockerEngine()
+		} else {
+			lg.Warn("sandbox enabled but docker daemon unavailable — pooled backend degraded; code execution falls back to docker/local", loggateway.StepID("sandbox.probe"))
+		}
+	}
+	return sandbox.NewManager(cfg, engine, lg)
 }
 
 func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
@@ -2916,7 +2940,7 @@ func provideSIControlPlane() *biz.SIControlPlane {
 // provideSIAnalystStage wires the LLM Analyst stage on the platform
 // DefaultRefineLLM (V2 skill_curator pattern). Unconfigured → nil stage;
 // the pipeline then fails runs with a clear "stages not wired" error.
-func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, sandbox *service.RepoSandboxRunner, rca heal.RootCauseAnalyzer, lg loggateway.Logger) biz.SIAnalystStage {
+func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, sandbox2 *service.RepoSandboxRunner, rca heal.RootCauseAnalyzer, lg loggateway.Logger) biz.SIAnalystStage {
 	if !siConf.SIEnabled() {
 		return nil
 	}
@@ -2926,8 +2950,8 @@ func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, s
 		return nil
 	}
 	var opts []service.SIAnalystOption
-	if sandbox != nil {
-		if root := sandbox.RepoRoot(); root != "" {
+	if sandbox2 != nil {
+		if root := sandbox2.RepoRoot(); root != "" {
 			opts = append(opts, service.WithSIAnalystReadRoot(root))
 		}
 	}
@@ -2995,11 +3019,11 @@ func provideSITriggerFeedbackSink(orch *biz.SkillEvolutionOrchestrator) biz.SITr
 
 // provideSIApplier wires the git-backed applier on the repo sandbox. nil
 // sandbox (disabled/init failed) → nil applier; downstream usecases skip.
-func provideSIApplier(sandbox *service.RepoSandboxRunner, lg loggateway.Logger) biz.SIApplier {
-	if sandbox == nil {
+func provideSIApplier(sandbox2 *service.RepoSandboxRunner, lg loggateway.Logger) biz.SIApplier {
+	if sandbox2 == nil {
 		return nil
 	}
-	applier, err := service.NewSIRepoApplier(sandbox, lg)
+	applier, err := service.NewSIRepoApplier(sandbox2, lg)
 	if err != nil {
 		lg.Warn("self-improve applier init failed, apply chain disabled", loggateway.StepID("si_applier.init"), loggateway.Err(err))
 		return nil
@@ -3030,8 +3054,7 @@ func provideSelfImprovementPipelineUsecase(
 	siConf *conf.SelfImprovement,
 	analyst biz.SIAnalystStage,
 	patcher biz.SIPatcherStage,
-	critic biz.SICriticStage,
-	sandbox *service.RepoSandboxRunner,
+	critic biz.SICriticStage, sandbox2 *service.RepoSandboxRunner,
 	unifiedRepo *data.UnifiedEvolutionRepo,
 	runReader biz.SelfImprovementRunReader,
 	runWriter biz.SelfImprovementRunWriter,
@@ -3046,8 +3069,8 @@ func provideSelfImprovementPipelineUsecase(
 	// Guard the nil-interface trap: a failed sandbox init yields a nil
 	// *RepoSandboxRunner which must stay a nil biz.RepoSandbox.
 	var sandboxPort biz.RepoSandbox
-	if sandbox != nil {
-		sandboxPort = sandbox
+	if sandbox2 != nil {
+		sandboxPort = sandbox2
 	}
 	return biz.NewSelfImprovementPipelineUsecase(biz.SelfImprovementPipelineDeps{
 		Analyst:      analyst,
