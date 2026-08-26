@@ -63,6 +63,8 @@ var ProviderSet = wire.NewSet(
 	NewToolRepo,
 	NewToolGrantRepo,
 	wire.Bind(new(biz.ToolGrantStore), new(*toolGrantRepo)),
+	NewToolParamRuleRepo,
+	wire.Bind(new(biz.ToolParamRuleStore), new(*toolParamRuleRepo)),
 	NewChannelRepo,
 	wire.Bind(new(biz.ChannelReader), new(*channelRepo)),
 	wire.Bind(new(biz.ChannelWriter), new(*channelRepo)),

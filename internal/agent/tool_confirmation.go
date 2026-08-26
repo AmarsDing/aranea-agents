@@ -68,7 +68,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 	sessionID := toolConfirmSessionID(ctx)
 	decision := h.gate.decide(ctx, sessionID, h.ag.ID, toolKey, args.Arguments)
 	if !decision.needsConfirm {
-		if decision.reason != confirmReasonDefaultAllow {
+		// param_rule_allow 是参数规则放行（非 grant），不进 grant 日志。
+		if decision.reason != confirmReasonDefaultAllow && decision.reason != confirmReasonParamRuleAllow {
 			h.deps.Logger().Info("tool confirmation skipped by grant",
 				loggateway.StepID("agent.tool_confirm"),
 				loggateway.Str("tool", toolKey),

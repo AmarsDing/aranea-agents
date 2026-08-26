@@ -257,18 +257,6 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		streamOpts = &agent.StreamConsumeOptions{}
 	}
 	streamOpts.AbortOnStall = abortRun
-	// M80 修复（2026-08-26 方案A：流式中途累计）：graph runtime 下成员用量
-	// 行全带 attribution 标记，recordMemberUsage 的预算累计分支永不命中，
-	// run 级 token 预算闸形同虚设。改为每条 usage 事件的增量计费 prompt
-	// token 即入账，超阈即取消 run（中止在途流 + 后续成员调度）。
-	streamOpts.OnPromptTokensAccumulated = func(delta int) {
-		if r.accumulateRunTokenBudgetFromStream(runCtx, run, teamRow.ID, delta) {
-			// 直接中止本 run 执行 ctx：RunTeamTest 等不经 chat orchestrator
-			// 的路径未 StoreCancelable，Runs.Cancel 空转；chat 路径 ctx 已
-			// 被 registry 取消，abort 幂等（双保险）。
-			abortRun()
-		}
-	}
 	if streamOpts.V2Projector != nil {
 		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
 		streamOpts.V2Projector.Configure(v2Meta)

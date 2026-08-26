@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/tool/v1"
 	"aranea-agents/internal/biz"
+	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 
@@ -550,6 +551,63 @@ func (s *ToolService) DeleteToolGrant(ctx context.Context, req *v1.DeleteToolGra
 		return nil, err
 	}
 	if err := s.uc.RevokeToolGrant(ctx, req.GetAgentId(), req.GetToolKey()); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// --- 79-runtime-governance R9：工具参数模式权限（平台级安全策略，无 agent 维度） ---
+
+// ListToolParamRules lists all param rules (incl. disabled) for a tool;
+// tool_key accepts any alias (canonicalized in the biz layer).
+func (s *ToolService) ListToolParamRules(ctx context.Context, req *v1.ListToolParamRulesRequest) (*v1.ListToolParamRulesResponse, error) {
+	rules, err := s.uc.ListToolParamRules(ctx, req.GetToolKey())
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*v1.ToolParamRule, 0, len(rules))
+	for i := range rules {
+		items = append(items, &v1.ToolParamRule{
+			Id:        rules[i].ID,
+			ToolKey:   rules[i].ToolKey,
+			Pattern:   rules[i].Pattern,
+			Effect:    rules[i].Effect,
+			Priority:  int32(rules[i].Priority),
+			Enabled:   rules[i].Enabled,
+			CreatedAt: rules[i].CreatedAt,
+		})
+	}
+	return &v1.ListToolParamRulesResponse{Items: items}, nil
+}
+
+// UpsertToolParamRule creates or updates a rule. The paramRuleGate reads
+// rules per tool call, so changes take effect on the next invocation.
+// builtin-* rules: effect read-only, never deletable (biz enforced).
+func (s *ToolService) UpsertToolParamRule(ctx context.Context, req *v1.UpsertToolParamRuleRequest) (*v1.ToolParamRule, error) {
+	in := biz.ToolParamRule{
+		ID:       req.GetId(),
+		ToolKey:  req.GetToolKey(),
+		Pattern:  req.GetPattern(),
+		Effect:   req.GetEffect(),
+		Priority: int(req.GetPriority()),
+		Enabled:  req.GetEnabled(),
+	}
+	if err := s.uc.UpsertToolParamRule(ctx, in); err != nil {
+		return nil, err
+	}
+	return &v1.ToolParamRule{
+		Id:       req.GetId(),
+		ToolKey:  biztool.CanonicalParamRuleToolKey(req.GetToolKey()),
+		Pattern:  strings.TrimSpace(req.GetPattern()),
+		Effect:   req.GetEffect(),
+		Priority: req.GetPriority(),
+		Enabled:  req.GetEnabled(),
+	}, nil
+}
+
+// DeleteToolParamRule removes a rule. Idempotent; builtin-* ids rejected.
+func (s *ToolService) DeleteToolParamRule(ctx context.Context, req *v1.DeleteToolParamRuleRequest) (*emptypb.Empty, error) {
+	if err := s.uc.DeleteToolParamRule(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil

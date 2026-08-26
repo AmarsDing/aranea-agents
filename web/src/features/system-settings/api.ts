@@ -8,6 +8,7 @@ import type {
   EcosystemLoadResponse,
   EcosystemUnloadResponse,
   EcosystemLoadedStatus,
+  DiagnosticsReport,
 } from './types';
 
 const api = createSystemSettingService();
@@ -114,5 +115,12 @@ export async function unloadEcosystemPreset(industries: string[]): Promise<Ecosy
 
 export async function getEcosystemPresetStatus(): Promise<EcosystemLoadedStatus> {
   const { data } = await kratosApi.get<EcosystemLoadedStatus>('/api/v1/admin/ecosystem/preset/status');
+  return data;
+}
+
+// Runtime diagnostics (79-runtime-governance R8 doctor)
+
+export async function getDiagnostics(): Promise<DiagnosticsReport> {
+  const { data } = await kratosApi.get<DiagnosticsReport>('/api/v1/admin/diagnostics');
   return data;
 }

@@ -136,15 +136,22 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 
 	// 边界定位：fork turn → (task seq, turn seq)。v2 中查无此 turn 说明 UI 记录
 	// 边界无法建立（v2 写入缺失），拒绝复制而非静默产出空历史。
-	var forkTaskID string
+	// 运行中 turn 拒绝分叉（与前端 forkable 条件一致）：复制会把 status='running'
+	// 的 turn 带进新会话，而 fork 会话没有任何 runner 会再写这些复制行——该
+	// turn 将永远转圈；且 boundary 之后继续落盘的同 turn 事件会使 fork 历史
+	// 成为截断的进行中片段。
+	var forkTaskID, forkTurnStatus string
 	var forkTurnSeq int64
 	if err := queryRowScan(ctx, read, d.RenumberPlaceholders(`
-		SELECT task_id, seq FROM turns_v2 WHERE id = ? AND session_id = ?`),
-		[]any{forkTurnID, srcSessionID}, &forkTaskID, &forkTurnSeq); err != nil {
+		SELECT task_id, seq, status FROM turns_v2 WHERE id = ? AND session_id = ?`),
+		[]any{forkTurnID, srcSessionID}, &forkTaskID, &forkTurnSeq, &forkTurnStatus); err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return 0, 0, 0, apierror.NotFound("SESSION", "turn not found in v2 records of source session")
 		}
 		return 0, 0, 0, err
+	}
+	if forkTurnStatus == string(biz.TurnStatusRunning) {
+		return 0, 0, 0, apierror.BadRequest("SESSION", "cannot fork from a running turn; wait for it to finish")
 	}
 	var forkTaskSeq int64
 	if err := queryRowScan(ctx, read, d.RenumberPlaceholders(`

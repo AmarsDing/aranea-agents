@@ -127,7 +127,12 @@
           @click.stop="emit('resume-task', task)"
         />
       </div>
-      <TurnList v-if="prePlanTurns.length" :turns="prePlanTurns" @confirm-step="(p) => emit('confirm-step', p)" />
+      <TurnList
+        v-if="prePlanTurns.length"
+        :turns="prePlanTurns"
+        @confirm-step="(p) => emit('confirm-step', p)"
+        @fork-turn="(t) => emit('fork-turn', t)"
+      />
       <template v-for="pb in planBoards" :key="pb.ID">
         <PlanBoardCard :plan-board="pb" />
         <!-- 窄屏（<600px）降级为分阶段折叠列表；桌面保持 DAG 画布（设计 72 §3.2） -->

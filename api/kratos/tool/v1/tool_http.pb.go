@@ -24,6 +24,7 @@ const OperationToolServiceCreateTool = "/kratos.tool.v1.ToolService/CreateTool"
 const OperationToolServiceDeleteTool = "/kratos.tool.v1.ToolService/DeleteTool"
 const OperationToolServiceDeleteToolAgentOverride = "/kratos.tool.v1.ToolService/DeleteToolAgentOverride"
 const OperationToolServiceDeleteToolGrant = "/kratos.tool.v1.ToolService/DeleteToolGrant"
+const OperationToolServiceDeleteToolParamRule = "/kratos.tool.v1.ToolService/DeleteToolParamRule"
 const OperationToolServiceGetTool = "/kratos.tool.v1.ToolService/GetTool"
 const OperationToolServiceGetToolAgentBindings = "/kratos.tool.v1.ToolService/GetToolAgentBindings"
 const OperationToolServiceGetToolInvocationParams = "/kratos.tool.v1.ToolService/GetToolInvocationParams"
@@ -31,6 +32,7 @@ const OperationToolServiceListToolAgentOverrides = "/kratos.tool.v1.ToolService/
 const OperationToolServiceListToolAgentOverridesByAgent = "/kratos.tool.v1.ToolService/ListToolAgentOverridesByAgent"
 const OperationToolServiceListToolGrants = "/kratos.tool.v1.ToolService/ListToolGrants"
 const OperationToolServiceListToolInvocationAudits = "/kratos.tool.v1.ToolService/ListToolInvocationAudits"
+const OperationToolServiceListToolParamRules = "/kratos.tool.v1.ToolService/ListToolParamRules"
 const OperationToolServiceListToolRuns = "/kratos.tool.v1.ToolService/ListToolRuns"
 const OperationToolServiceListToolRunsForTool = "/kratos.tool.v1.ToolService/ListToolRunsForTool"
 const OperationToolServiceListTools = "/kratos.tool.v1.ToolService/ListTools"
@@ -39,12 +41,14 @@ const OperationToolServiceToggleToolEnabled = "/kratos.tool.v1.ToolService/Toggl
 const OperationToolServiceUpdateTool = "/kratos.tool.v1.ToolService/UpdateTool"
 const OperationToolServiceUpdateToolConfig = "/kratos.tool.v1.ToolService/UpdateToolConfig"
 const OperationToolServiceUpsertToolAgentOverride = "/kratos.tool.v1.ToolService/UpsertToolAgentOverride"
+const OperationToolServiceUpsertToolParamRule = "/kratos.tool.v1.ToolService/UpsertToolParamRule"
 
 type ToolServiceHTTPServer interface {
 	CreateTool(context.Context, *CreateToolRequest) (*Tool, error)
 	DeleteTool(context.Context, *DeleteToolRequest) (*emptypb.Empty, error)
 	DeleteToolAgentOverride(context.Context, *DeleteToolAgentOverrideRequest) (*emptypb.Empty, error)
 	DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error)
+	DeleteToolParamRule(context.Context, *DeleteToolParamRuleRequest) (*emptypb.Empty, error)
 	GetTool(context.Context, *GetToolRequest) (*Tool, error)
 	GetToolAgentBindings(context.Context, *GetToolAgentBindingsRequest) (*ToolAgentBindingsView, error)
 	GetToolInvocationParams(context.Context, *GetToolInvocationParamsRequest) (*ToolInvocationParam, error)
@@ -52,6 +56,7 @@ type ToolServiceHTTPServer interface {
 	ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error)
 	ListToolGrants(context.Context, *ListToolGrantsRequest) (*ListToolGrantsResponse, error)
 	ListToolInvocationAudits(context.Context, *ListToolInvocationAuditsRequest) (*ListToolInvocationAuditsResponse, error)
+	ListToolParamRules(context.Context, *ListToolParamRulesRequest) (*ListToolParamRulesResponse, error)
 	// ListToolRuns Static GET paths MUST be registered before /v1/tools/{id} to avoid
 	// gorilla/mux matching the variable segment first (e.g. "runs" as {id}).
 	ListToolRuns(context.Context, *ListToolRunsRequest) (*ListToolRunsResponse, error)
@@ -62,6 +67,7 @@ type ToolServiceHTTPServer interface {
 	UpdateTool(context.Context, *UpdateToolRequest) (*Tool, error)
 	UpdateToolConfig(context.Context, *UpdateToolConfigRequest) (*Tool, error)
 	UpsertToolAgentOverride(context.Context, *UpsertToolAgentOverrideRequest) (*ToolAgentOverride, error)
+	UpsertToolParamRule(context.Context, *UpsertToolParamRuleRequest) (*ToolParamRule, error)
 }
 
 func RegisterToolServiceHTTPServer(s *http.Server, srv ToolServiceHTTPServer) {
@@ -81,6 +87,9 @@ func RegisterToolServiceHTTPServer(s *http.Server, srv ToolServiceHTTPServer) {
 	r.GET("/v1/agents/{agent_id}/tool-overrides", _ToolService_ListToolAgentOverridesByAgent0_HTTP_Handler(srv))
 	r.GET("/v1/agents/{agent_id}/tool-grants", _ToolService_ListToolGrants0_HTTP_Handler(srv))
 	r.DELETE("/v1/agents/{agent_id}/tool-grants/{tool_key}", _ToolService_DeleteToolGrant0_HTTP_Handler(srv))
+	r.GET("/v1/tool-param-rules", _ToolService_ListToolParamRules0_HTTP_Handler(srv))
+	r.PUT("/v1/tool-param-rules/{id}", _ToolService_UpsertToolParamRule0_HTTP_Handler(srv))
+	r.DELETE("/v1/tool-param-rules/{id}", _ToolService_DeleteToolParamRule0_HTTP_Handler(srv))
 	r.PUT("/v1/tools/{tool_id}/agent-overrides/{agent_id}", _ToolService_UpsertToolAgentOverride0_HTTP_Handler(srv))
 	r.DELETE("/v1/tools/{tool_id}/agent-overrides/{agent_id}", _ToolService_DeleteToolAgentOverride0_HTTP_Handler(srv))
 	r.PUT("/v1/tools/{id}/config", _ToolService_UpdateToolConfig0_HTTP_Handler(srv))
@@ -414,6 +423,72 @@ func _ToolService_DeleteToolGrant0_HTTP_Handler(srv ToolServiceHTTPServer) func(
 	}
 }
 
+func _ToolService_ListToolParamRules0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListToolParamRulesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceListToolParamRules)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListToolParamRules(ctx, req.(*ListToolParamRulesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListToolParamRulesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_UpsertToolParamRule0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpsertToolParamRuleRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceUpsertToolParamRule)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpsertToolParamRule(ctx, req.(*UpsertToolParamRuleRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ToolParamRule)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_DeleteToolParamRule0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteToolParamRuleRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceDeleteToolParamRule)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteToolParamRule(ctx, req.(*DeleteToolParamRuleRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _ToolService_UpsertToolAgentOverride0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in UpsertToolAgentOverrideRequest
@@ -516,6 +591,7 @@ type ToolServiceHTTPClient interface {
 	DeleteTool(ctx context.Context, req *DeleteToolRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolAgentOverride(ctx context.Context, req *DeleteToolAgentOverrideRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolGrant(ctx context.Context, req *DeleteToolGrantRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	DeleteToolParamRule(ctx context.Context, req *DeleteToolParamRuleRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetTool(ctx context.Context, req *GetToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	GetToolAgentBindings(ctx context.Context, req *GetToolAgentBindingsRequest, opts ...http.CallOption) (rsp *ToolAgentBindingsView, err error)
 	GetToolInvocationParams(ctx context.Context, req *GetToolInvocationParamsRequest, opts ...http.CallOption) (rsp *ToolInvocationParam, err error)
@@ -523,6 +599,7 @@ type ToolServiceHTTPClient interface {
 	ListToolAgentOverridesByAgent(ctx context.Context, req *ListToolAgentOverridesByAgentRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesByAgentResponse, err error)
 	ListToolGrants(ctx context.Context, req *ListToolGrantsRequest, opts ...http.CallOption) (rsp *ListToolGrantsResponse, err error)
 	ListToolInvocationAudits(ctx context.Context, req *ListToolInvocationAuditsRequest, opts ...http.CallOption) (rsp *ListToolInvocationAuditsResponse, err error)
+	ListToolParamRules(ctx context.Context, req *ListToolParamRulesRequest, opts ...http.CallOption) (rsp *ListToolParamRulesResponse, err error)
 	// ListToolRuns Static GET paths MUST be registered before /v1/tools/{id} to avoid
 	// gorilla/mux matching the variable segment first (e.g. "runs" as {id}).
 	ListToolRuns(ctx context.Context, req *ListToolRunsRequest, opts ...http.CallOption) (rsp *ListToolRunsResponse, err error)
@@ -533,6 +610,7 @@ type ToolServiceHTTPClient interface {
 	UpdateTool(ctx context.Context, req *UpdateToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	UpdateToolConfig(ctx context.Context, req *UpdateToolConfigRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	UpsertToolAgentOverride(ctx context.Context, req *UpsertToolAgentOverrideRequest, opts ...http.CallOption) (rsp *ToolAgentOverride, err error)
+	UpsertToolParamRule(ctx context.Context, req *UpsertToolParamRuleRequest, opts ...http.CallOption) (rsp *ToolParamRule, err error)
 }
 
 type ToolServiceHTTPClientImpl struct {
@@ -587,6 +665,19 @@ func (c *ToolServiceHTTPClientImpl) DeleteToolGrant(ctx context.Context, in *Del
 	pattern := "/v1/agents/{agent_id}/tool-grants/{tool_key}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationToolServiceDeleteToolGrant))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) DeleteToolParamRule(ctx context.Context, in *DeleteToolParamRuleRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/tool-param-rules/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceDeleteToolParamRule))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
 	if err != nil {
@@ -678,6 +769,19 @@ func (c *ToolServiceHTTPClientImpl) ListToolInvocationAudits(ctx context.Context
 	pattern := "/v1/tools/audits"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationToolServiceListToolInvocationAudits))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) ListToolParamRules(ctx context.Context, in *ListToolParamRulesRequest, opts ...http.CallOption) (*ListToolParamRulesResponse, error) {
+	var out ListToolParamRulesResponse
+	pattern := "/v1/tool-param-rules"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceListToolParamRules))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -784,6 +888,19 @@ func (c *ToolServiceHTTPClientImpl) UpsertToolAgentOverride(ctx context.Context,
 	pattern := "/v1/tools/{tool_id}/agent-overrides/{agent_id}"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationToolServiceUpsertToolAgentOverride))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) UpsertToolParamRule(ctx context.Context, in *UpsertToolParamRuleRequest, opts ...http.CallOption) (*ToolParamRule, error) {
+	var out ToolParamRule
+	pattern := "/v1/tool-param-rules/{id}"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationToolServiceUpsertToolParamRule))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
 	if err != nil {

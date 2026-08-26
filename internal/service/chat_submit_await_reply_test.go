@@ -351,7 +351,7 @@ func TestConfirmActivity_RestartFallbackResumesWithSemanticContent(t *testing.T)
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -401,7 +401,7 @@ func TestConfirmActivity_RestartFallbackDenyContentIsSemantic(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   false,
+		Approved:   boolPtr(false),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -440,7 +440,7 @@ func TestConfirmActivity_DeliveryRejectedReturns409StepStaysBlocked(t *testing.T
 	_, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if !apierror.IsCode(err, apierror.CodeConflict) {
 		t.Fatalf("rejected delivery must return 409 Conflict, got %v", err)
@@ -470,7 +470,7 @@ func TestConfirmActivity_RoutesDecisionToStepToolScope(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: step.ID,
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -521,7 +521,7 @@ func TestConfirmActivity_DeliversBeforePersistingStep(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -577,7 +577,7 @@ func TestConfirmActivity_ParallelToolConfirmsAllAccepted(t *testing.T) {
 			resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 				SessionId:  "sess-1",
 				ActivityId: activityID,
-				Approved:   true,
+				Approved:   boolPtr(true),
 			})
 			errs[i] = err
 			if err == nil {
@@ -626,7 +626,7 @@ func TestConfirmActivity_LiveChannelReceivesToken(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -654,7 +654,7 @@ func TestConfirmActivity_ChannelSessionEmptyUserIDAllowed(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("channel session (empty UserID) must be confirmable by any authenticated user: %v", err)
@@ -676,7 +676,7 @@ func TestConfirmActivity_CrossUserDenied(t *testing.T) {
 	_, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: "step-confirm-1",
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if !apierror.IsCode(err, apierror.CodeForbidden) {
 		t.Fatalf("cross-user confirm must be Forbidden, got %v", err)
@@ -709,7 +709,7 @@ func TestConfirmActivity_PlaybookCardNeverFallsToToolAwait(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: actID,
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil || resp == nil || !resp.GetAccepted() {
 		t.Fatalf("err=%v resp=%v", err, resp)
@@ -743,7 +743,7 @@ func TestConfirmActivity_PlaybookReapproveIsIdempotent(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: step.ID,
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil || resp == nil || !resp.GetAccepted() {
 		t.Fatalf("re-approve must succeed err=%v resp=%v", err, resp)
@@ -766,7 +766,7 @@ func TestConfirmActivity_PlaybookCompletedCannotFlipToDeny(t *testing.T) {
 	_, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: step.ID,
-		Approved:   false,
+		Approved:   boolPtr(false),
 	})
 	if !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("completed→deny must be BadRequest, got %v", err)
@@ -788,7 +788,7 @@ func TestConfirmActivity_PlaybookPersistFailDoesNotAccept(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: step.ID,
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err == nil {
 		t.Fatal("persist failure must not return success")
@@ -842,7 +842,7 @@ func TestConfirmActivity_ExternalCodingSkipsChatAwait(t *testing.T) {
 	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
 		SessionId:  "sess-1",
 		ActivityId: step.ID,
-		Approved:   true,
+		Approved:   boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("ConfirmActivity: %v", err)

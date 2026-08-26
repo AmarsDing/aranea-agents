@@ -98,4 +98,7 @@ const (
 	// ErrorCodeConfirmationTimeout indicates a tool confirmation request expired.
 	// Used by internal/agent/tool_confirmation.go.
 	ErrorCodeConfirmationTimeout = "confirmation_timeout"
+	// ErrorCodeParamRuleDenied indicates a tool call was denied by a
+	// tool_param_rules deny rule (79-runtime-governance R9 paramRuleGate).
+	ErrorCodeParamRuleDenied = "param_rule_denied"
 )

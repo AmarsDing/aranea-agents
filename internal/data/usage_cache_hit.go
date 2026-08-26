@@ -130,24 +130,26 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
 
 var _ bizusage.RunTurnPeakRepo = (*usageRepo)(nil)
 
-// RunTurnPeak 聚合一个 run 的单次调用 input 峰值（79-runtime-governance R7
-// G-2）。口径：genuine team_member 行（usage_attribution 为空，每行=一次
-// 模型调用）的 MAX(input_tokens)；镜像行与 team_turn 对账行均非单次调用
-// 口径，排除（同 RunCacheHitRatio 回退分支语义）。
+// RunTurnPeak 聚合一个 run 的成员级 input 峰值（79-runtime-governance R7
+// G-2）。口径（2026-08-27 修正）：team_member 行的 MAX(input_tokens)——
+// graph runtime 下每行=一个成员的 run 总量（member_level_stream /
+// stream_anchor_remainder）或 anchor 兜底总量（run_level_anchor_fallback，
+// 与 member 行互斥），故峰值语义为「单成员 run 总量峰值」（513 万事故中
+// 单成员单轮即总量，口径等价）。不再过滤 attribution：生产带 token 的
+// member 行全带标记，过滤会使峰值恒 0（Found 恒 false）。attribution 行
+// 与 team_turn 行同额但 kind 过滤已排除 team_turn，无双计。
 func (r *usageRepo) RunTurnPeak(ctx context.Context, runID string) (bizusage.RunTurnPeak, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return bizusage.RunTurnPeak{}, nil
 	}
-	attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
 	var out bizusage.RunTurnPeak
 	var n int64
 	_, err := scanUsageSingleRow(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(
 		`SELECT COALESCE(MAX(u.input_tokens), 0), COUNT(*)
 		   FROM model_token_usage_events u
 		  WHERE u.usage_kind = 'team_member'
-		    AND COALESCE(`+attribution+`, '') = ''
-		    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)`), []any{runID},
+		    AND (u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?) OR u.message_id = ?)`), []any{runID, runID},
 		&out.MaxInputTokens, &n)
 	if err != nil {
 		return bizusage.RunTurnPeak{}, entErrToBizErr(err, apierror.DomainData)
@@ -159,16 +161,17 @@ func (r *usageRepo) RunTurnPeak(ctx context.Context, runID string) (bizusage.Run
 var _ bizusage.RunMemberUsageRepo = (*usageRepo)(nil)
 
 // RunMemberUsageStats 聚合一个 run 的成员维度用量（79-runtime-governance
-// R7 stats API members 段）。口径同 RunTurnPeak：genuine team_member 行
-// （attribution 为空）按 step 归属过滤后 GROUP BY agent_key；镜像行与
-// team_turn 对账行排除（防双计）。空 agent_key 行（记账缺陷）仍保留——
-// 装配层按键合流时落「未知成员」桶，不静默吞掉账单。
+// R7 stats API members 段）。口径（2026-08-27 修正，同 RunTurnPeak）：
+// team_member 行 GROUP BY agent_key——member_level_stream 行即成员 run 总量，
+// stream_anchor_remainder 归 anchor，run_level_anchor_fallback 与二者互斥；
+// 不再过滤 attribution（生产带 token 行全带标记，过滤则 members 段恒空）。
+// 空 agent_key 行（记账缺陷）仍保留——装配层按键合流时落「未知成员」桶，
+// 不静默吞掉账单。
 func (r *usageRepo) RunMemberUsageStats(ctx context.Context, runID string) ([]bizusage.RunMemberUsage, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, nil
 	}
-	attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT u.agent_key,
 		        COALESCE(SUM(u.input_tokens), 0),
@@ -177,10 +180,9 @@ func (r *usageRepo) RunMemberUsageStats(ctx context.Context, runID string) ([]bi
 		        COUNT(*)
 		   FROM model_token_usage_events u
 		  WHERE u.usage_kind = 'team_member'
-		    AND COALESCE(`+attribution+`, '') = ''
-		    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)
+		    AND (u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?) OR u.message_id = ?)
 		  GROUP BY u.agent_key
-		  ORDER BY u.agent_key`), runID)
+		  ORDER BY u.agent_key`), runID, runID)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
 	}

@@ -30,7 +30,8 @@ $t = [IO.File]::ReadAllText($src, [Text.Encoding]::UTF8)
 $t = $t.Replace('0.0.0.0:8800', '0.0.0.0:8810')
 $t = $t.Replace('0.0.0.0:9900', '0.0.0.0:9910')
 $t = $t.Replace('0.0.0.0:8802', '0.0.0.0:8812')
-# 2) 中间件 → compose 服务名
+# 2) 中间件 → compose 服务名（host 侧 PG 经 pg-proxy 55432，2026-08-27 修正；兼容旧 5432）
+$t = $t.Replace('127.0.0.1:55432', 'postgres:5432').Replace('localhost:55432', 'postgres:5432')
 $t = $t.Replace('127.0.0.1:5432', 'postgres:5432').Replace('localhost:5432', 'postgres:5432')
 $t = $t.Replace('127.0.0.1:6379', 'redis:6379').Replace('localhost:6379', 'redis:6379')
 # 3) 日志路径

@@ -188,7 +188,7 @@ func TestConfirmPlan_ApproveInjectsDecisionContext(t *testing.T) {
 	resp, err := svc.ConfirmPlan(ctx, &chatv1.ConfirmPlanRequest{
 		PlanId:    "plan-1",
 		SessionId: "sess-1",
-		Approved:  true,
+		Approved:  boolPtr(true),
 		Reason:    &reason,
 	})
 	if err != nil {
@@ -242,7 +242,7 @@ func TestConfirmPlan_RejectInjectsDecisionContext(t *testing.T) {
 	resp, err := svc.ConfirmPlan(ctx, &chatv1.ConfirmPlanRequest{
 		PlanId:    "plan-1",
 		SessionId: "sess-1",
-		Approved:  false,
+		Approved:  boolPtr(false),
 		Reason:    &reason,
 	})
 	if err != nil {
@@ -291,7 +291,7 @@ func TestConfirmPlan_InjectionNonFatal(t *testing.T) {
 	resp, err := svc.ConfirmPlan(ctx, &chatv1.ConfirmPlanRequest{
 		PlanId:    "plan-1",
 		SessionId: "sess-1",
-		Approved:  true,
+		Approved:  boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("injection failure must not fail ConfirmPlan: %v", err)
@@ -325,7 +325,7 @@ func TestConfirmPlan_EmptyOwnerSessionAllowed(t *testing.T) {
 	resp, err := svc.ConfirmPlan(ctx, &chatv1.ConfirmPlanRequest{
 		PlanId:    "plan-1",
 		SessionId: "sess-1",
-		Approved:  true,
+		Approved:  boolPtr(true),
 	})
 	if err != nil {
 		t.Fatalf("empty-owner session must be allowed: %v", err)
@@ -346,7 +346,7 @@ func TestConfirmPlan_CrossUserDenied(t *testing.T) {
 	_, err := svc.ConfirmPlan(ctx, &chatv1.ConfirmPlanRequest{
 		PlanId:    "plan-1",
 		SessionId: "sess-1",
-		Approved:  true,
+		Approved:  boolPtr(true),
 	})
 	if err == nil {
 		t.Fatal("cross-user access must be denied")

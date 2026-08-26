@@ -308,6 +308,59 @@ export type DeleteToolGrantRequest = {
   toolKey: string | undefined;
 };
 
+// ToolParamRule is a parameter-pattern permission rule (79-runtime-governance
+// R9). The runtime paramRuleGate evaluates enabled rules per tool with
+// precedence deny > ask > allow > fallback (= the tool's own
+// requires_confirmation catalog policy).
+export type ToolParamRule = {
+  id: string | undefined;
+  // tool_key accepts any alias; the server normalizes to the canonical
+  // family key (e.g. shell / shell_exec → exec_command) before persisting.
+  toolKey: string | undefined;
+  // pattern is a glob matched against the flattened string arguments;
+  // an "re:" prefix switches to regular expression (substring semantics).
+  pattern: string | undefined;
+  // effect: deny | ask | allow. builtin-* rule effects are read-only.
+  effect: string | undefined;
+  priority: number | undefined;
+  enabled: boolean | undefined;
+  // created_at is unix seconds (server backfills on create).
+  createdAt: number | undefined;
+};
+
+export type ListToolParamRulesRequest = {
+  //
+  // Behaviors: REQUIRED
+  toolKey: string | undefined;
+};
+
+export type ListToolParamRulesResponse = {
+  items: ToolParamRule[] | undefined;
+};
+
+export type UpsertToolParamRuleRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  toolKey: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  pattern: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  effect: string | undefined;
+  priority: number | undefined;
+  enabled: boolean | undefined;
+};
+
+export type DeleteToolParamRuleRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
 export type UpsertToolAgentOverrideRequest = {
   //
   // Behaviors: REQUIRED
@@ -421,6 +474,9 @@ export interface ToolService {
   ListToolAgentOverridesByAgent(request: ListToolAgentOverridesByAgentRequest): Promise<ListToolAgentOverridesByAgentResponse>;
   ListToolGrants(request: ListToolGrantsRequest): Promise<ListToolGrantsResponse>;
   DeleteToolGrant(request: DeleteToolGrantRequest): Promise<wellKnownEmpty>;
+  ListToolParamRules(request: ListToolParamRulesRequest): Promise<ListToolParamRulesResponse>;
+  UpsertToolParamRule(request: UpsertToolParamRuleRequest): Promise<ToolParamRule>;
+  DeleteToolParamRule(request: DeleteToolParamRuleRequest): Promise<wellKnownEmpty>;
   UpsertToolAgentOverride(request: UpsertToolAgentOverrideRequest): Promise<ToolAgentOverride>;
   DeleteToolAgentOverride(request: DeleteToolAgentOverrideRequest): Promise<wellKnownEmpty>;
   UpdateToolConfig(request: UpdateToolConfigRequest): Promise<Tool>;
@@ -830,6 +886,66 @@ export function createToolServiceClient(
       }, {
         service: "ToolService",
         method: "DeleteToolGrant",
+      }) as Promise<wellKnownEmpty>;
+    },
+    ListToolParamRules(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/tool-param-rules`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.toolKey) {
+        queryParams.push(`toolKey=${encodeURIComponent(request.toolKey.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolParamRules",
+      }) as Promise<ListToolParamRulesResponse>;
+    },
+    UpsertToolParamRule(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/tool-param-rules/${request.id}`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ToolService",
+        method: "UpsertToolParamRule",
+      }) as Promise<ToolParamRule>;
+    },
+    DeleteToolParamRule(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/tool-param-rules/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ToolService",
+        method: "DeleteToolParamRule",
       }) as Promise<wellKnownEmpty>;
     },
     UpsertToolAgentOverride(request) { // eslint-disable-line @typescript-eslint/no-unused-vars

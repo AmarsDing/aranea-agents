@@ -64,6 +64,10 @@ type TeamToolLookup interface {
 	HasToolGrant(ctx context.Context, agentID, toolKey string) bool
 	// GrantTool persists an "always allow" grant. Idempotent.
 	GrantTool(ctx context.Context, agentID, toolKey, grantedBy string) error
+	// ListEnabledParamRulesForGate returns enabled param rules for the
+	// (canonicalized) tool key (79-runtime-governance R9 paramRuleGate).
+	// Store 未装配或无规则均返回 nil, nil；查询错误由 gate fail-open。
+	ListEnabledParamRulesForGate(ctx context.Context, toolKey string) ([]tool.ToolParamRule, error)
 }
 
 // TeamModelCatalog captures the subset of LlmProviderModelUsecase needed by the

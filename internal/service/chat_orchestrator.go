@@ -8,6 +8,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/event/contract"
@@ -378,6 +379,12 @@ type ChatInfraDeps struct {
 	// Wire 提供；voiceButlerTools 注入 delegate_to_spirit 工具。
 	// nil = 委派工具不挂载（语音助手退化为纯快答）。
 	VoiceDelegation *voice.DelegationRegistry
+	// DecisionCollector 是 M80 决策记录入口（HITL 工具确认 hitl_approval 双写）。
+	// 必须经本字段透传到 chatAgentBuildDirector——BuildTRPCDeps 每轮自建
+	// TRPCBuilderDeps，不读 wire 的 provideTRPCBuilderDeps 产物（2026-08-27
+	// 验收3 根修：漏接则 emitToolConfirmDecisionRecord 遇 nil 静默跳过）。
+	// nil 时决策记录静默降级（测试/CLI）。
+	DecisionCollector decision.Collector
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -510,6 +517,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		SubAgentSvc:    deps.Infra.SubAgentService,
 		OutboundRouter: deps.Infra.OutboundRouter,
 		A2AEnabled:     deps.Infra.A2AUC != nil,
+		Decisions:      deps.Infra.DecisionCollector,
 		CustomToolFunc: func(ctx context.Context, ag biz.Agent) []trpctool.Tool {
 			var tools []trpctool.Tool
 			tools = append(tools, o.cliAdminTools(ctx, ag)...)

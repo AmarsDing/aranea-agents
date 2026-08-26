@@ -134,6 +134,7 @@ func TestGateTriggerEnumComplete(t *testing.T) {
 	for _, tr := range []string{
 		TriggerTokenBudgetTripped, TriggerNoProgressTripped, TriggerLoopGuardBlocked,
 		TriggerParamRuleDeny, TriggerTeamCountMismatch,
+		TriggerToolResultPruned, TriggerContextCompacted,
 	} {
 		if tr == "" {
 			t.Fatal("empty trigger rule constant")
@@ -143,7 +144,7 @@ func TestGateTriggerEnumComplete(t *testing.T) {
 		}
 		seen[tr] = true
 	}
-	if len(seen) != 5 {
-		t.Fatalf("trigger enum = %d, want 5 (C6)", len(seen))
+	if len(seen) != 7 {
+		t.Fatalf("trigger enum = %d, want 7 (C6)", len(seen))
 	}
 }

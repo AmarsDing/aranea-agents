@@ -19,8 +19,10 @@ import (
 
 // defaultTestPGDSN mirrors the local dev Postgres in configs/config.yaml but
 // targets a dedicated aranea_test database so tests never touch dev data.
+// Host 侧经 pg-proxy 55432 到 aranea-postgres（5432 被 twinserver-postgres 占用，
+// 2026-08-27 端口漂移修正：密码同步为便携实例实际值）。
 // Override with ARANEA_TEST_PG_DSN for CI or non-default environments.
-const defaultTestPGDSN = "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea_test?sslmode=disable"
+const defaultTestPGDSN = "postgres://postgres:123456@127.0.0.1:55432/aranea_test?sslmode=disable"
 
 // TestPGDSN resolves the Postgres DSN used by the test suite.
 // ARANEA_TEST_PG_DSN wins; otherwise the local dev default is used.

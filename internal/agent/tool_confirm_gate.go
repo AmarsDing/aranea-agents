@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
+	"aranea-agents/internal/biz/policyrule"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/alias"
@@ -75,6 +76,12 @@ const (
 	// danger-word content inspection (75 A5). Grants never bypass it —
 	// a danger-word target prompts every single time.
 	confirmReasonPolicyDanger = "policy_danger"
+	// confirmReasonParamRuleAllow: a tool_param_rules allow rule matched
+	// (79 R9) — catalog/plugin confirmation skipped (danger floor never is).
+	confirmReasonParamRuleAllow = "param_rule_allow"
+	// confirmReasonParamRuleAsk: a tool_param_rules ask rule matched (79 R9)
+	// — confirmation forced; session/persisted grants still satisfy it.
+	confirmReasonParamRuleAsk = "param_rule_ask"
 )
 
 // confirmDecision is the outcome of the confirmation decision chain.
@@ -90,7 +97,8 @@ var defaultToolGrantStore = newToolGrantStore(time.Now)
 
 // decide runs the confirmation decision chain:
 //
-//	policy (catalog/plugin) → persisted grant → session grant → prompt
+//	danger floor → param rule verdict (79 R9) → policy (catalog/plugin) →
+//	persisted grant → session grant → prompt
 //
 // Grants are only consulted for tools that actually require confirmation;
 // other tools short-circuit as default_allow.
@@ -101,6 +109,24 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 	// Grants never bypass it.
 	if g.computerUseForcedConfirm(toolName, args) {
 		return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyDanger}
+	}
+	// 79-runtime-governance R9：paramRuleGate（priority 3，循环守卫前）把命中
+	// 裁定写入 ctx。allow 跳过 catalog/plugin 确认（danger floor 已在上方先行，
+	// 永不被跳过）；ask 强制确认，session/persisted grant 仍可满足——与 catalog
+	// 路径的 grant 语义对齐，approve_always 对 ask 规则同样生效。
+	if v := paramRuleVerdictFromCtx(ctx); v != nil {
+		switch v.effect {
+		case policyrule.EffectAllow:
+			return confirmDecision{needsConfirm: false, reason: confirmReasonParamRuleAllow}
+		case policyrule.EffectAsk:
+			if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
+				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted}
+			}
+			if g.sessionGrants != nil && g.sessionGrants.HasSession(sessionID, agentID, toolName) {
+				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession}
+			}
+			return confirmDecision{needsConfirm: true, reason: confirmReasonParamRuleAsk}
+		}
 	}
 	needsByCatalog := g.catalogCheck(toolName)
 	needsByPlugin := g.hasPlugin && plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args)

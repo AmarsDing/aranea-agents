@@ -19,4 +19,5 @@ const (
 	ErrorCodeConfirmationRequired = contract.ErrorCodeConfirmationRequired
 	ErrorCodeConfirmationDenied   = contract.ErrorCodeConfirmationDenied
 	ErrorCodeConfirmationTimeout  = contract.ErrorCodeConfirmationTimeout
+	ErrorCodeParamRuleDenied      = contract.ErrorCodeParamRuleDenied
 )

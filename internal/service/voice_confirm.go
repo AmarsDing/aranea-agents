@@ -45,7 +45,7 @@ func (r *VoiceConfirmResolver) ResolvePendingConfirm(ctx context.Context, sessio
 		SessionId:  step.SessionID,
 		ActivityId: step.ID,
 		Reply:      reply,
-		Approved:   approved,
+		Approved:   &approved,
 	}); err != nil {
 		return false, err
 	}

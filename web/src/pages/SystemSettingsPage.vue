@@ -452,6 +452,9 @@
           <q-tab-panel name="catalog" class="q-pa-md">
             <SystemSettingsCatalogTab />
           </q-tab-panel>
+          <q-tab-panel name="diagnostics" class="q-pa-md">
+            <RuntimeDiagnosticsPanel />
+          </q-tab-panel>
         </q-tab-panels>
       </q-card>
     </div>
@@ -497,6 +500,7 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import WebResearchFields from '../components/settings/WebResearchFields.vue';
 import SpeechServiceFields from '../components/settings/SpeechServiceFields.vue';
 import SystemSettingsCatalogTab from './SystemSettingsCatalogTab.vue';
+import RuntimeDiagnosticsPanel from '../components/settings/RuntimeDiagnosticsPanel.vue';
 import { useSystemSettingsPage } from '../features/system-settings/useSystemSettingsPage';
 import { useEcosystemPreset } from '../features/system-settings/useEcosystemPreset';
 

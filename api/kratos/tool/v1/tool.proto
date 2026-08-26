@@ -286,6 +286,47 @@ message DeleteToolGrantRequest {
   string tool_key = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
+// ToolParamRule is a parameter-pattern permission rule (79-runtime-governance
+// R9). The runtime paramRuleGate evaluates enabled rules per tool with
+// precedence deny > ask > allow > fallback (= the tool's own
+// requires_confirmation catalog policy).
+message ToolParamRule {
+  string id = 1;
+  // tool_key accepts any alias; the server normalizes to the canonical
+  // family key (e.g. shell / shell_exec → exec_command) before persisting.
+  string tool_key = 2;
+  // pattern is a glob matched against the flattened string arguments;
+  // an "re:" prefix switches to regular expression (substring semantics).
+  string pattern = 3;
+  // effect: deny | ask | allow. builtin-* rule effects are read-only.
+  string effect = 4;
+  int32 priority = 5;
+  bool enabled = 6;
+  // created_at is unix seconds (server backfills on create).
+  int64 created_at = 7;
+}
+
+message ListToolParamRulesRequest {
+  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListToolParamRulesResponse {
+  repeated ToolParamRule items = 1;
+}
+
+message UpsertToolParamRuleRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string tool_key = 2 [(google.api.field_behavior) = REQUIRED];
+  string pattern = 3 [(google.api.field_behavior) = REQUIRED];
+  string effect = 4 [(google.api.field_behavior) = REQUIRED];
+  int32 priority = 5;
+  bool enabled = 6;
+}
+
+message DeleteToolParamRuleRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message UpsertToolAgentOverrideRequest {
   string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
@@ -421,6 +462,18 @@ service ToolService {
   }
   rpc DeleteToolGrant(DeleteToolGrantRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/agents/{agent_id}/tool-grants/{tool_key}"};
+  }
+  rpc ListToolParamRules(ListToolParamRulesRequest) returns (ListToolParamRulesResponse) {
+    option (google.api.http) = {get: "/v1/tool-param-rules"};
+  }
+  rpc UpsertToolParamRule(UpsertToolParamRuleRequest) returns (ToolParamRule) {
+    option (google.api.http) = {
+      put: "/v1/tool-param-rules/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteToolParamRule(DeleteToolParamRuleRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/tool-param-rules/{id}"};
   }
   rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
     option (google.api.http) = {

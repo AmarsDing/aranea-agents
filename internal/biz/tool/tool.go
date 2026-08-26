@@ -440,6 +440,7 @@ type ToolUsecase struct {
 	tester        ToolTester
 	webResChecker WebResearchReadinessChecker
 	grants        ToolGrantStore
+	paramRules    ToolParamRuleStore
 	lg            loggateway.Logger
 }
 

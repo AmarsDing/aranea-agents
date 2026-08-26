@@ -126,7 +126,9 @@ func (uc *SessionForkUsecase) Fork(ctx context.Context, srcID, turnID, title str
 			return err
 		}
 		if !found {
-			return apierror.NotFound("SESSION", "turn not found in source session")
+			// turn 在 v2 中存在但无框架事件（事件 TTL 清理 / 产出任何事件前
+			// 即失败）：前缀复制无从谈起，明确拒绝并给出可排查的消息。
+			return apierror.NotFound("SESSION", "turn has no runtime events to fork from in source session")
 		}
 		if err := uc.fork.CreateFrameworkState(txCtx, srcID, dst.ID); err != nil {
 			return err

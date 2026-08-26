@@ -70,6 +70,9 @@ type ServiceRegistry struct {
 	DecisionRecord *service.DecisionRecordService
 	// ConfigGraph exposes the M81 config-asset graph API (P0: rebuild/status/nodes).
 	ConfigGraph *service.ConfigGraphService
+	// Diagnostics exposes the 79-runtime-governance R8 doctor API
+	// (GET /api/v1/admin/diagnostics).
+	Diagnostics *service.DiagnosticsService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -179,5 +182,6 @@ func NewServiceRegistry(
 		Sandbox:            sandbox,
 		DecisionRecord:     decisionRecord,
 		ConfigGraph:        configGraph,
+		Diagnostics:        diagnostics,
 	}
 }

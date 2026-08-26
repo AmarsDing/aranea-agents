@@ -112,6 +112,7 @@ func toProtoSession(s biz.Session, metrics *biz.SessionMetrics) *v1.Session {
 		StateJson:                  s.StateJSON,
 		ParentSessionId:            s.ParentSessionID,
 		RootSessionId:              s.RootSessionID,
+		ForkFromTurnId:             s.ForkFromTurnID,
 		AgentDepth:                 int32(s.AgentDepth),
 		SessionType:                s.SessionType,
 		MemberAgentKey:             s.MemberAgentKey,

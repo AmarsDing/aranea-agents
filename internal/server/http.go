@@ -105,7 +105,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -182,6 +182,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /api/v1/config-graph/rebuild|status|nodes|nodes/{type}/{ref}/impact|dependencies|edges|health:
 //     M81 config-asset graph (handwritten JSON, generation-scoped reads;
 //     async rebuild trigger must outlive the request ctx)
+//   - /api/v1/admin/diagnostics: 79-runtime-governance R8 doctor API（同
+//     ecosystem preset 先例：/api/v1 子树被 twinOpenAPI 前缀接管，proto
+//     注册次序在其后会被遮蔽，故走 custom route）
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -198,6 +201,7 @@ func registerCustomRoutes(
 	a2aExtension *service.A2AExtensionCompatService,
 	twinOpenAPI *service.TwinOpenAPICompatService,
 	configGraphSvc *service.ConfigGraphService,
+	diagnosticsSvc *service.DiagnosticsService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -315,6 +319,19 @@ func registerCustomRoutes(
 		})
 		srv.Route("/").GET("/api/v1/config-graph/health", func(ctx kratoshttp.Context) error {
 			configGraphSvc.ServeHealth(ctx.Response(), ctx.Request())
+			return nil
+		})
+	}
+	// 79-runtime-governance R8: doctor API。同 config-graph 先例——注册在
+	// twinOpenAPI /api/v1 前缀之前，JWT 保护 + handler 内 admin 校验。
+	if diagnosticsSvc != nil {
+		srv.Route("/").GET("/api/v1/admin/diagnostics", func(ctx kratoshttp.Context) error {
+			diagnosticsSvc.ServeDiagnostics(ctx.Response(), ctx.Request())
+			return nil
+		})
+		// audit.py 服务侧单源取数口（复算下线，design §9.1 ADR C2）。
+		srv.Route("/").GET("/api/v1/admin/tool-assembly/reconcile", func(ctx kratoshttp.Context) error {
+			diagnosticsSvc.ServeToolAssemblyReconcile(ctx.Response(), ctx.Request())
 			return nil
 		})
 	}

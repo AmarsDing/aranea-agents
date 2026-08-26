@@ -236,6 +236,27 @@ func TestSessionForkRepo_BoundaryNotFound(t *testing.T) {
 	}
 }
 
+// 运行中 turn 拒绝分叉（与前端 forkable 条件一致）：复制 status='running'
+// 的 turn 会把它带进新会话，而 fork 会话没有任何 runner 再写这些复制行——
+// 该 turn 永不收敛（永远转圈）。
+func TestSessionForkRepo_RunningTurnRejected(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	setupForkTestTables(t, d)
+	const src = "src-fork-3"
+	forkTurn := seedForkSource(t, d, src)
+
+	ctx := context.Background()
+	if _, err := d.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE turns_v2 SET status = 'running' WHERE id = $1 AND session_id = $2`, forkTurn, src); err != nil {
+		t.Fatalf("mark turn running: %v", err)
+	}
+
+	repo := NewSessionForkRepo(d)
+	if _, _, _, err := repo.CopyV2Records(ctx, src, "dst-fork-3", forkTurn); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("CopyV2Records running turn: err = %v, want BAD_REQUEST", err)
+	}
+}
+
 // 幂等重跑防护：同一 (dst, turn) 重复 fork 第二次必须失败（确定性前缀 id 冲突），
 // 由调用方（biz 每次生成新 dst uuid）保证不触发——此处锁定该前提。
 func TestForkIDPrefix_Deterministic(t *testing.T) {

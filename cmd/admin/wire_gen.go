@@ -25,6 +25,7 @@ import (
 	configgraph2 "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/cron"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/biz/diagnostics"
 	"aranea-agents/internal/biz/ecosystem"
 	"aranea-agents/internal/biz/evaluation"
 	"aranea-agents/internal/biz/flowlog"
@@ -236,7 +237,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolTester := provideToolTester(loggatewayLogger)
 	toolWebResearchReadinessChecker := provideWebResearchReadinessChecker()
 	toolGrantRepo := data.NewToolGrantRepo(dataData)
-	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, loggatewayLogger)
+	toolParamRuleRepo := data.NewToolParamRuleRepo(dataData, loggatewayLogger)
+	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, toolParamRuleRepo, loggatewayLogger)
 	plugintrpcRuntime := providePluginRuntime(statsRecorder, costGuardUsageRepo, toolUsecase, deliveryRepo, monitorBus, loggatewayLogger)
 	resolver := hook.NewResolver(hookUsecase, loggatewayLogger)
 	manager := providePluginManager(plugintrpcRuntime, resolver, agentRepository, loggatewayLogger)
@@ -297,7 +299,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	circuitBreakerStateRepo := data.NewCircuitBreakerStateRepo(dataData)
 	nodeCircuitBreakerRegistry := biz.ProvideNodeCircuitBreakerRegistry(circuitBreakerStateRepo, loggatewayLogger)
 	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
-	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, runtime, loggatewayLogger)
+	decisionRepo := data.NewDecisionRepoFromData(dataData)
+	lifecycle := provideDecisionCollector(decisionRepo, loggatewayLogger)
+	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
 	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger, sessionService)
 	sessionRuntimeReader := data.NewSessionRuntimeReader(dataData)
@@ -381,8 +385,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	decisionRepo := data.NewDecisionRepoFromData(dataData)
-	lifecycle := provideDecisionCollector(decisionRepo, loggatewayLogger)
 	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
@@ -444,7 +446,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, organizationRepo, graphOrchestrationProjector, mailboxWaker)
@@ -635,7 +637,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	rebuilder := provideConfigGraphRebuilder(sourceRepo, configgraphRepo, agentUsecase, monitorFlowLogWriter, loggatewayLogger)
 	indexer := provideConfigGraphIndexer(rebuilder, loggatewayLogger)
 	configGraphService := provideConfigGraphService(indexer, configgraphRepo, loggatewayLogger)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService)
+	diagnosticsUsecase := provideDiagnosticsUsecase(llmProviderModelUsecase, mcpServerUsecase, agentUsecase, dataData, usageRepo, indexer, configgraphRepo, loggatewayLogger)
+	diagnosticsService := provideDiagnosticsService(diagnosticsUsecase, loggatewayLogger)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -654,7 +658,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	policyResolver := provideAgentPolicyResolver(agentRepository, loggatewayLogger)
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, evolutionService, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, runtime, loggatewayLogger)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, runtime, lifecycle, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
@@ -911,8 +915,8 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg, opts...)
 }
 
-func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, grants tool.ToolGrantStore, lg loggateway.Logger) *tool.ToolUsecase {
-	return tool.NewToolUsecase(repo, sys, lg, tool.WithToolTester(tester), tool.WithWebResearchChecker(checker), tool.WithToolGrantStore(grants))
+func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, grants tool.ToolGrantStore, paramRules tool.ToolParamRuleStore, lg loggateway.Logger) *tool.ToolUsecase {
+	return tool.NewToolUsecase(repo, sys, lg, tool.WithToolTester(tester), tool.WithWebResearchChecker(checker), tool.WithToolGrantStore(grants), tool.WithToolParamRuleStore(paramRules))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -1603,6 +1607,7 @@ func provideChatServiceDeps(
 	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
 	voiceDelegation *voice.DelegationRegistry,
+	decisions decision.Lifecycle,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 
@@ -1676,6 +1681,8 @@ func provideChatServiceDeps(
 			MemoryConflictStore:       memoryConflictStore,
 			MemoryPreferenceLister:    persist.Memory.PreferenceLister,
 			VoiceDelegation:           voiceDelegation,
+
+			DecisionCollector: decisions,
 		},
 	}
 }
@@ -1851,6 +1858,7 @@ func provideGraphBuildDeps(
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
 	clientBridge *clientbridge.Bridge,
 	runtimeConf *conf.Runtime,
+	decisions decision.Lifecycle,
 	lg loggateway.Logger,
 ) graph.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1870,6 +1878,8 @@ func provideGraphBuildDeps(
 		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
 			ToolUC:     toolUC,
 			MCPTooling: persist.AgentMCP,
+
+			DecisionCollector: decisions,
 		},
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:               persist.Memory.Available(),
@@ -1937,6 +1947,7 @@ func provideTRPCBuilderDeps(
 	a2aUC *biz.A2AUsecase,
 	clientBridge *clientbridge.Bridge,
 	runtimeConf *conf.Runtime,
+	decisions decision.Lifecycle,
 	lg loggateway.Logger,
 ) *agent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1953,6 +1964,8 @@ func provideTRPCBuilderDeps(
 		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
 			ToolUC:     toolUC,
 			MCPTooling: persist.AgentMCP,
+
+			DecisionCollector: decisions,
 		},
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:               persist.Memory.Available(),
@@ -3660,6 +3673,38 @@ func provideConfigGraphService(indexer *configgraph2.Indexer, repo configgraph2.
 		return nil
 	}
 	return service.NewConfigGraphService(indexer.Rebuilder(), repo, lg)
+}
+
+func provideDiagnosticsUsecase(
+	catalog *biz.LlmProviderModelUsecase,
+	mcpUC *biz.MCPServerUsecase,
+	agentUC *biz.AgentUsecase,
+	d *data.Data,
+	usageRepo biz.UsageRepo,
+	indexer *configgraph2.Indexer,
+	cgRepo configgraph2.Repo,
+	lg loggateway.Logger,
+) *diagnostics.Usecase {
+	deps := diagnostics.UsecaseDeps{
+		ProviderModels: catalog,
+		MCPServers:     mcpUC,
+		ToolAssembly:   agentUC,
+		Lg:             lg,
+	}
+	if d != nil {
+		deps.MemPending = data.NewMemoryFactPendingRepoFromData(d)
+	}
+	if ch, ok := usageRepo.(usage.CacheHitRatioStatsRepo); ok && ch != nil {
+		deps.CacheStats = ch
+	}
+	if indexer != nil {
+		deps.ConfigGraph = configgraph2.NewQuerier(cgRepo, indexer.Rebuilder().Current)
+	}
+	return diagnostics.NewUsecase(deps)
+}
+
+func provideDiagnosticsService(uc *diagnostics.Usecase, lg loggateway.Logger) *service.DiagnosticsService {
+	return service.NewDiagnosticsService(uc, lg)
 }
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).

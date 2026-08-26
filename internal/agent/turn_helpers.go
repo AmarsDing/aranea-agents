@@ -78,16 +78,14 @@ type EventStreamResult struct {
 	// ToolCallCount counts distinct tool calls requested by the model
 	// (deduped by tool-call ID across streaming deltas).
 	ToolCallCount int
-	// Per-round billing accumulators. Within one LLM round, streaming usage
-	// is reported cumulatively (track the max); when a new round is detected
-	// (prompt value changes), the previous round's maxima are locked into
-	// the prevRounds* sums. Exported totals are always prevRounds* + curRound*.
-	prevRoundsPromptTok     int
-	prevRoundsCompletionTok int
-	prevRoundsCachedTok     int
-	curRoundPromptTok       int
-	curRoundCompletionTok   int
-	curRoundCachedTok       int
+	// Per-author round state for NON-member authors (team orchestrator /
+	// planner / single-agent); member authors live in MemberUsage. Splitting
+	// by author is required under parallel member execution (2026-08-27):
+	// interleaved cumulative usage reports from different members would
+	// otherwise trip a shared round-boundary detection and double count
+	// (A(10k)→B(8k)→A(10k same-round re-report) counted A's round twice —
+	// inflating both billing totals and the run token-budget gate).
+	rootUsage map[string]*MemberTokenUsage
 	// MemberUsage maps agent_key → latest usage from member completion events (Team parallel/swarm).
 	MemberUsage map[string]MemberTokenUsage
 	// MemberToolCalls maps agent_key → tool_call envelope count observed during the turn.
@@ -174,6 +172,33 @@ func ConsumeEventStreamWithFirstByte(
 	return consumer.consume(events)
 }
 
+// accumulateRound applies the per-round billing semantics to one author's
+// round state: within one LLM round streaming usage is reported cumulatively
+// (track the max); a prompt value differing from the current round's marks a
+// new billable call (prompt grows across rounds in tool loops; it shrinks
+// after mid-run compaction — both are detected), locking the previous round's
+// maxima into the prev* sums.
+func accumulateRound(u *MemberTokenUsage, promptTok, completionTok, cachedTok int) {
+	if promptTok != u.curPrompt {
+		u.prevPrompt += u.curPrompt
+		u.prevCompletion += u.curCompletion
+		u.prevCached += u.curCached
+		u.curPrompt = promptTok
+		u.curCompletion = completionTok
+		u.curCached = cachedTok
+	} else {
+		if completionTok > u.curCompletion {
+			u.curCompletion = completionTok
+		}
+		if cachedTok > u.curCached {
+			u.curCached = cachedTok
+		}
+	}
+	u.PromptTokens = u.prevPrompt + u.curPrompt
+	u.CompletionTokens = u.prevCompletion + u.curCompletion
+	u.CachedTokens = u.prevCached + u.curCached
+}
+
 func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok, cachedTok int) {
 	if result == nil {
 		return
@@ -182,61 +207,50 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	// API call billed at its FULL prompt, so Prompt/Cached/Completion tokens
 	// are SUMMED across rounds (the previous max-based prompt accumulation
 	// undercounted input cost ~round-count-fold on tool-call-heavy turns).
-	// Within one round, streaming usage is reported cumulatively → per-round
-	// values track the max.
-	// Round boundary: a usage payload whose prompt differs from the current
-	// round's prompt marks a new billable call (prompt grows across rounds in
-	// tool loops; it shrinks after mid-run compaction — both are detected).
-	if promptTok != result.curRoundPromptTok {
-		result.prevRoundsPromptTok += result.curRoundPromptTok
-		result.prevRoundsCompletionTok += result.curRoundCompletionTok
-		result.prevRoundsCachedTok += result.curRoundCachedTok
-		result.curRoundPromptTok = promptTok
-		result.curRoundCompletionTok = completionTok
-		result.curRoundCachedTok = cachedTok
+	//
+	// Round state is tracked PER AUTHOR (2026-08-27): members execute in
+	// parallel and their cumulative usage reports interleave on the single
+	// consume loop — a shared round state would false-detect round boundaries
+	// and double count (see rootUsage field comment).
+	author := strings.TrimSpace(ev.Author)
+	var lastPrompt, lastCompletion int
+	if isTeamMemberAuthor(ev.Author, meta) && author != "" {
+		if result.MemberUsage == nil {
+			result.MemberUsage = make(map[string]MemberTokenUsage)
+		}
+		mu := result.MemberUsage[author]
+		accumulateRound(&mu, promptTok, completionTok, cachedTok)
+		result.MemberUsage[author] = mu
+		lastPrompt, lastCompletion = mu.curPrompt, mu.curCompletion
 	} else {
-		if completionTok > result.curRoundCompletionTok {
-			result.curRoundCompletionTok = completionTok
+		if result.rootUsage == nil {
+			result.rootUsage = make(map[string]*MemberTokenUsage)
 		}
-		if cachedTok > result.curRoundCachedTok {
-			result.curRoundCachedTok = cachedTok
+		ru := result.rootUsage[author]
+		if ru == nil {
+			ru = &MemberTokenUsage{}
+			result.rootUsage[author] = ru
 		}
+		accumulateRound(ru, promptTok, completionTok, cachedTok)
+		lastPrompt, lastCompletion = ru.curPrompt, ru.curCompletion
 	}
-	result.PromptTok = result.prevRoundsPromptTok + result.curRoundPromptTok
-	result.CompletionTok = result.prevRoundsCompletionTok + result.curRoundCompletionTok
-	result.CachedTok = result.prevRoundsCachedTok + result.curRoundCachedTok
-	result.LastRoundPromptTok = result.curRoundPromptTok
-	result.LastRoundCompletionTok = result.curRoundCompletionTok
-	if !isTeamMemberAuthor(ev.Author, meta) {
-		return
+	// Billing totals = sum over every author's billed rounds.
+	p, cpl, cch := 0, 0, 0
+	for _, mu := range result.MemberUsage {
+		p += mu.PromptTokens
+		cpl += mu.CompletionTokens
+		cch += mu.CachedTokens
 	}
-	key := strings.TrimSpace(ev.Author)
-	if key == "" {
-		return
+	for _, ru := range result.rootUsage {
+		p += ru.PromptTokens
+		cpl += ru.CompletionTokens
+		cch += ru.CachedTokens
 	}
-	if result.MemberUsage == nil {
-		result.MemberUsage = make(map[string]MemberTokenUsage)
-	}
-	// Per-member usage follows the same per-round billing semantics as the
-	// root totals above.
-	mu := result.MemberUsage[key]
-	if promptTok != mu.curPrompt {
-		mu.prevPrompt += mu.curPrompt
-		mu.prevCompletion += mu.curCompletion
-		mu.prevCached += mu.curCached
-		mu.curPrompt = promptTok
-		mu.curCompletion = completionTok
-		mu.curCached = cachedTok
-	} else {
-		if completionTok > mu.curCompletion {
-			mu.curCompletion = completionTok
-		}
-		if cachedTok > mu.curCached {
-			mu.curCached = cachedTok
-		}
-	}
-	mu.PromptTokens = mu.prevPrompt + mu.curPrompt
-	mu.CompletionTokens = mu.prevCompletion + mu.curCompletion
-	mu.CachedTokens = mu.prevCached + mu.curCached
-	result.MemberUsage[key] = mu
+	result.PromptTok = p
+	result.CompletionTok = cpl
+	result.CachedTok = cch
+	// Context occupancy = current round of the author that produced this
+	// usage event (last reporter wins; RunnerCompletion may overwrite).
+	result.LastRoundPromptTok = lastPrompt
+	result.LastRoundCompletionTok = lastCompletion
 }

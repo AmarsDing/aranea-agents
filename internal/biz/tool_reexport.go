@@ -45,6 +45,10 @@ type (
 	ToolGrantReader          = tool.ToolGrantReader
 	ToolGrantWriter          = tool.ToolGrantWriter
 	ToolGrantStore           = tool.ToolGrantStore
+	ToolParamRule            = tool.ToolParamRule
+	ToolParamRuleReader      = tool.ToolParamRuleReader
+	ToolParamRuleAdmin       = tool.ToolParamRuleAdmin
+	ToolParamRuleStore       = tool.ToolParamRuleStore
 	WebResearchReadinessFunc = tool.WebResearchReadinessFunc
 )
 

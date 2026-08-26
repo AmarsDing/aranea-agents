@@ -6,6 +6,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
@@ -50,6 +51,7 @@ type chatAgentBuildDirector struct {
 	subAgentSvc    *subagenttool.Service
 	outboundRouter *outbound.Router
 	a2aEnabled     bool
+	decisions      decision.Collector
 	customToolFunc func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 	lg             loggateway.Logger
 }
@@ -64,6 +66,10 @@ type chatAgentBuildDirectorDeps struct {
 	SubAgentSvc    *subagenttool.Service
 	OutboundRouter *outbound.Router
 	A2AEnabled     bool
+	// Decisions 是 M80 决策记录入口（HITL 工具确认 hitl_approval）。本 director
+	// 每轮自建 TRPCBuilderDeps（不走 wire 的 provideTRPCBuilderDeps），必须显式
+	// 透传（2026-08-27 验收3 根修）。nil 时决策记录静默降级（测试/CLI）。
+	Decisions      decision.Collector
 	CustomToolFunc func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 	Logger         loggateway.Logger
 }
@@ -76,6 +82,7 @@ func newChatAgentBuildDirector(d chatAgentBuildDirectorDeps) *chatAgentBuildDire
 		subAgentSvc:    d.SubAgentSvc,
 		outboundRouter: d.OutboundRouter,
 		a2aEnabled:     d.A2AEnabled,
+		decisions:      d.Decisions,
 		customToolFunc: d.CustomToolFunc,
 		lg:             d.Logger,
 	}
@@ -152,6 +159,10 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			MediaProviders:       d.td.ReadDeps.MediaProviders,
 			ArtifactWriter:       d.td.Persist.ArtifactUC,
 			CachedEffectiveTools: cachedEffTools,
+			// M80：HITL 工具确认决策记录入口（2026-08-27 验收3 根修——本函数
+			// 自建 deps，wire 在 provideTRPCBuilderDeps/provideGraphBuildDeps 的
+			// 注入覆盖不到聊天轮次路径，漏接则 hitl_approval 静默不落库）。
+			DecisionCollector: d.decisions,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
 			HasMemory:              d.td.Persist.Memory.Available(),

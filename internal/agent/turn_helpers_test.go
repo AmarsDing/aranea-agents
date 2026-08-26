@@ -116,6 +116,53 @@ func TestAccumulateStreamUsage_memberMultiRoundSums(t *testing.T) {
 	}
 }
 
+// TestAccumulateStreamUsage_parallelMemberInterleave 回归（2026-08-27）：并行
+// 成员的累计 usage 在单条 consume 流上交错时，轮次边界必须按 author 分轨——
+// A(10k)→B(8k)→A(10k 同轮重报） 不得把 A 的第一轮再计一次（虚增 10k 会经
+// OnPromptTokensAccumulated 误触 run 预算闸）。
+func TestAccumulateStreamUsage_parallelMemberInterleave(t *testing.T) {
+	var result EventStreamResult
+	meta := ProjectMeta{
+		TeamID:          "team-1",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}, "worker-b": {}},
+	}
+	usageEv := func(author string, p, c int) *trpcevent.Event {
+		return &trpcevent.Event{
+			Author: author,
+			Response: &trpcmodel.Response{
+				Usage: &trpcmodel.Usage{PromptTokens: p, CompletionTokens: c},
+			},
+		}
+	}
+	accumulateStreamUsage(&result, usageEv("worker-a", 10000, 100), meta, 10000, 100, 0)
+	accumulateStreamUsage(&result, usageEv("worker-b", 8000, 80), meta, 8000, 80, 0)
+	// A 同轮累计重报（provider 流式重发同轮 usage）：不得触发新轮。
+	accumulateStreamUsage(&result, usageEv("worker-a", 10000, 120), meta, 10000, 120, 0)
+	if result.PromptTok != 18000 {
+		t.Fatalf("PromptTok = %d, want 18000 (A 同轮重报不得双计)", result.PromptTok)
+	}
+	if result.CompletionTok != 200 {
+		t.Fatalf("CompletionTok = %d, want 200 (max(100,120) + 80)", result.CompletionTok)
+	}
+	ua := result.MemberUsage["worker-a"]
+	if ua.PromptTokens != 10000 || ua.CompletionTokens != 120 {
+		t.Fatalf("worker-a usage = %+v, want prompt=10000 completion=120", ua)
+	}
+	ub := result.MemberUsage["worker-b"]
+	if ub.PromptTokens != 8000 || ub.CompletionTokens != 80 {
+		t.Fatalf("worker-b usage = %+v, want prompt=8000 completion=80", ub)
+	}
+	// A 进入第二轮（prompt 增长）后再与 B 交错：A 两轮 + B 一轮。
+	accumulateStreamUsage(&result, usageEv("worker-a", 12000, 50), meta, 12000, 50, 0)
+	accumulateStreamUsage(&result, usageEv("worker-b", 8000, 90), meta, 8000, 90, 0)
+	if result.PromptTok != 30000 {
+		t.Fatalf("PromptTok = %d, want 30000 (10000+12000+8000)", result.PromptTok)
+	}
+	if result.CompletionTok != 260 {
+		t.Fatalf("CompletionTok = %d, want 260 (120+50+90)", result.CompletionTok)
+	}
+}
+
 func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
 	events := make(chan *trpcevent.Event, 4)
 	go func() {

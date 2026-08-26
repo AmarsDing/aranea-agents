@@ -56,6 +56,10 @@ func (f *fakeToolLookup) HasToolGrant(_ context.Context, _, _ string) bool { ret
 
 func (f *fakeToolLookup) GrantTool(_ context.Context, _, _, _ string) error { return nil }
 
+func (f *fakeToolLookup) ListEnabledParamRulesForGate(_ context.Context, _ string) ([]biztool.ToolParamRule, error) {
+	return nil, nil
+}
+
 func TestLoadToolBuildCatalog_BatchLoadsOnce(t *testing.T) {
 	fk := &fakeToolLookup{
 		entries: []biztool.ToolCatalogEntry{

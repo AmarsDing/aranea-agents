@@ -35,6 +35,9 @@ const (
 	ToolService_ListToolAgentOverridesByAgent_FullMethodName = "/kratos.tool.v1.ToolService/ListToolAgentOverridesByAgent"
 	ToolService_ListToolGrants_FullMethodName                = "/kratos.tool.v1.ToolService/ListToolGrants"
 	ToolService_DeleteToolGrant_FullMethodName               = "/kratos.tool.v1.ToolService/DeleteToolGrant"
+	ToolService_ListToolParamRules_FullMethodName            = "/kratos.tool.v1.ToolService/ListToolParamRules"
+	ToolService_UpsertToolParamRule_FullMethodName           = "/kratos.tool.v1.ToolService/UpsertToolParamRule"
+	ToolService_DeleteToolParamRule_FullMethodName           = "/kratos.tool.v1.ToolService/DeleteToolParamRule"
 	ToolService_UpsertToolAgentOverride_FullMethodName       = "/kratos.tool.v1.ToolService/UpsertToolAgentOverride"
 	ToolService_DeleteToolAgentOverride_FullMethodName       = "/kratos.tool.v1.ToolService/DeleteToolAgentOverride"
 	ToolService_UpdateToolConfig_FullMethodName              = "/kratos.tool.v1.ToolService/UpdateToolConfig"
@@ -62,6 +65,9 @@ type ToolServiceClient interface {
 	ListToolAgentOverridesByAgent(ctx context.Context, in *ListToolAgentOverridesByAgentRequest, opts ...grpc.CallOption) (*ListToolAgentOverridesByAgentResponse, error)
 	ListToolGrants(ctx context.Context, in *ListToolGrantsRequest, opts ...grpc.CallOption) (*ListToolGrantsResponse, error)
 	DeleteToolGrant(ctx context.Context, in *DeleteToolGrantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListToolParamRules(ctx context.Context, in *ListToolParamRulesRequest, opts ...grpc.CallOption) (*ListToolParamRulesResponse, error)
+	UpsertToolParamRule(ctx context.Context, in *UpsertToolParamRuleRequest, opts ...grpc.CallOption) (*ToolParamRule, error)
+	DeleteToolParamRule(ctx context.Context, in *DeleteToolParamRuleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpsertToolAgentOverride(ctx context.Context, in *UpsertToolAgentOverrideRequest, opts ...grpc.CallOption) (*ToolAgentOverride, error)
 	DeleteToolAgentOverride(ctx context.Context, in *DeleteToolAgentOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateToolConfig(ctx context.Context, in *UpdateToolConfigRequest, opts ...grpc.CallOption) (*Tool, error)
@@ -226,6 +232,36 @@ func (c *toolServiceClient) DeleteToolGrant(ctx context.Context, in *DeleteToolG
 	return out, nil
 }
 
+func (c *toolServiceClient) ListToolParamRules(ctx context.Context, in *ListToolParamRulesRequest, opts ...grpc.CallOption) (*ListToolParamRulesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListToolParamRulesResponse)
+	err := c.cc.Invoke(ctx, ToolService_ListToolParamRules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) UpsertToolParamRule(ctx context.Context, in *UpsertToolParamRuleRequest, opts ...grpc.CallOption) (*ToolParamRule, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ToolParamRule)
+	err := c.cc.Invoke(ctx, ToolService_UpsertToolParamRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) DeleteToolParamRule(ctx context.Context, in *DeleteToolParamRuleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ToolService_DeleteToolParamRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *toolServiceClient) UpsertToolAgentOverride(ctx context.Context, in *UpsertToolAgentOverrideRequest, opts ...grpc.CallOption) (*ToolAgentOverride, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ToolAgentOverride)
@@ -287,6 +323,9 @@ type ToolServiceServer interface {
 	ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error)
 	ListToolGrants(context.Context, *ListToolGrantsRequest) (*ListToolGrantsResponse, error)
 	DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error)
+	ListToolParamRules(context.Context, *ListToolParamRulesRequest) (*ListToolParamRulesResponse, error)
+	UpsertToolParamRule(context.Context, *UpsertToolParamRuleRequest) (*ToolParamRule, error)
+	DeleteToolParamRule(context.Context, *DeleteToolParamRuleRequest) (*emptypb.Empty, error)
 	UpsertToolAgentOverride(context.Context, *UpsertToolAgentOverrideRequest) (*ToolAgentOverride, error)
 	DeleteToolAgentOverride(context.Context, *DeleteToolAgentOverrideRequest) (*emptypb.Empty, error)
 	UpdateToolConfig(context.Context, *UpdateToolConfigRequest) (*Tool, error)
@@ -345,6 +384,15 @@ func (UnimplementedToolServiceServer) ListToolGrants(context.Context, *ListToolG
 }
 func (UnimplementedToolServiceServer) DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteToolGrant not implemented")
+}
+func (UnimplementedToolServiceServer) ListToolParamRules(context.Context, *ListToolParamRulesRequest) (*ListToolParamRulesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListToolParamRules not implemented")
+}
+func (UnimplementedToolServiceServer) UpsertToolParamRule(context.Context, *UpsertToolParamRuleRequest) (*ToolParamRule, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertToolParamRule not implemented")
+}
+func (UnimplementedToolServiceServer) DeleteToolParamRule(context.Context, *DeleteToolParamRuleRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteToolParamRule not implemented")
 }
 func (UnimplementedToolServiceServer) UpsertToolAgentOverride(context.Context, *UpsertToolAgentOverrideRequest) (*ToolAgentOverride, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpsertToolAgentOverride not implemented")
@@ -649,6 +697,60 @@ func _ToolService_DeleteToolGrant_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ToolService_ListToolParamRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListToolParamRulesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).ListToolParamRules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_ListToolParamRules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).ListToolParamRules(ctx, req.(*ListToolParamRulesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_UpsertToolParamRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertToolParamRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).UpsertToolParamRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_UpsertToolParamRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).UpsertToolParamRule(ctx, req.(*UpsertToolParamRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_DeleteToolParamRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteToolParamRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).DeleteToolParamRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_DeleteToolParamRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).DeleteToolParamRule(ctx, req.(*DeleteToolParamRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ToolService_UpsertToolAgentOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpsertToolAgentOverrideRequest)
 	if err := dec(in); err != nil {
@@ -787,6 +889,18 @@ var ToolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteToolGrant",
 			Handler:    _ToolService_DeleteToolGrant_Handler,
+		},
+		{
+			MethodName: "ListToolParamRules",
+			Handler:    _ToolService_ListToolParamRules_Handler,
+		},
+		{
+			MethodName: "UpsertToolParamRule",
+			Handler:    _ToolService_UpsertToolParamRule_Handler,
+		},
+		{
+			MethodName: "DeleteToolParamRule",
+			Handler:    _ToolService_DeleteToolParamRule_Handler,
 		},
 		{
 			MethodName: "UpsertToolAgentOverride",

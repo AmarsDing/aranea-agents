@@ -35,7 +35,7 @@ data:
     password: dev
     access: admin
   postgres:
-    source: "postgres://postgres:123456@127.0.0.1:5432/aranea?sslmode=disable" # app 便携实例（2026-08-12 起，原本机实例已停用）
+    source: "postgres://postgres:123456@127.0.0.1:55432/aranea?sslmode=disable" # app 便携实例（2026-08-12 起，原本机实例已停用）；host 经 pg-proxy 55432（5432 属 twinserver，2026-08-27 修正）
     vector_dim: 1024 # bge-m3 via local Ollama
   redis:
     addr: 127.0.0.1:6379

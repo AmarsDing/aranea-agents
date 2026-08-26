@@ -31,6 +31,7 @@ import (
 	bizcu "aranea-agents/internal/biz/computeruse"
 	bizcg "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/biz/diagnostics"
 	"aranea-agents/internal/biz/evaluation"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
@@ -252,8 +253,8 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg, opts...)
 }
 
-func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, lg loggateway.Logger) *biztool.ToolUsecase {
-	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants))
+func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, paramRules biztool.ToolParamRuleStore, lg loggateway.Logger) *biztool.ToolUsecase {
+	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants), biztool.WithToolParamRuleStore(paramRules))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -1229,6 +1230,7 @@ func provideGraphBuildDeps(
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
 	clientBridge *clientbridge.Bridge,
 	runtimeConf *conf.Runtime,
+	decisions decision.Lifecycle,
 	lg loggateway.Logger,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1248,6 +1250,9 @@ func provideGraphBuildDeps(
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
 			ToolUC:     toolUC,
 			MCPTooling: persist.AgentMCP,
+			// M80：HITL 工具确认决策记录入口（验收3 踩坑——漏装则
+			// emitToolConfirmDecisionRecord 遇 nil 静默跳过，hitl_approval 永不落库）。
+			DecisionCollector: decisions,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
 			HasMemory:               persist.Memory.Available(),
@@ -1315,6 +1320,7 @@ func provideTRPCBuilderDeps(
 	a2aUC *biz.A2AUsecase,
 	clientBridge *clientbridge.Bridge,
 	runtimeConf *conf.Runtime,
+	decisions decision.Lifecycle,
 	lg loggateway.Logger,
 ) *chatagent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1331,6 +1337,8 @@ func provideTRPCBuilderDeps(
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
 			ToolUC:     toolUC,
 			MCPTooling: persist.AgentMCP,
+			// M80：HITL 工具确认决策记录入口（同 provideGraphBuildDeps，两处必须一致）。
+			DecisionCollector: decisions,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
 			HasMemory:               persist.Memory.Available(),
@@ -3161,6 +3169,49 @@ func provideConfigGraphService(indexer *bizcg.Indexer, repo bizcg.Repo, lg logga
 	return service.NewConfigGraphService(indexer.Rebuilder(), repo, lg)
 }
 
+// ────────────────────────────────────────────────────────────
+// 79-runtime-governance R8 运行时体检（diagnostics）providers
+//
+// 聚合六个检查项的数据源（CS-B7 窄接口，由各域 usecase 直接满足）：
+// model_providers=*biz.LlmProviderModelUsecase、mcp_servers=*biz.MCPServerUsecase、
+// tool_assembly=*biz.AgentUsecase、memory_stack=biz.MemoryFactPendingStore、
+// cache_baseline=bizusage.CacheHitRatioStatsRepo（类型断言收窄，与 monitor
+// 的 cache-hit 告警同源）、config_graph=*bizcg.Querier（indexer 缺省时该项
+// 缺席，对未启用部署透明）。
+// ────────────────────────────────────────────────────────────
+
+func provideDiagnosticsUsecase(
+	catalog *biz.LlmProviderModelUsecase,
+	mcpUC *biz.MCPServerUsecase,
+	agentUC *biz.AgentUsecase,
+	d *data.Data,
+	usageRepo biz.UsageRepo,
+	indexer *bizcg.Indexer,
+	cgRepo bizcg.Repo,
+	lg loggateway.Logger,
+) *diagnostics.Usecase {
+	deps := diagnostics.UsecaseDeps{
+		ProviderModels: catalog,
+		MCPServers:     mcpUC,
+		ToolAssembly:   agentUC,
+		Lg:             lg,
+	}
+	if d != nil {
+		deps.MemPending = data.NewMemoryFactPendingRepoFromData(d)
+	}
+	if ch, ok := usageRepo.(bizusage.CacheHitRatioStatsRepo); ok && ch != nil {
+		deps.CacheStats = ch
+	}
+	if indexer != nil {
+		deps.ConfigGraph = bizcg.NewQuerier(cgRepo, indexer.Rebuilder().Current)
+	}
+	return diagnostics.NewUsecase(deps)
+}
+
+func provideDiagnosticsService(uc *diagnostics.Usecase, lg loggateway.Logger) *service.DiagnosticsService {
+	return service.NewDiagnosticsService(uc, lg)
+}
+
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
 	App                         *kratos.App
@@ -3946,6 +3997,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideConfigGraphIndexer,
 		provideConfigGraphService,
 		wire.Bind(new(bizcg.EffectiveToolsProvider), new(*biz.AgentUsecase)),
+		// 79-runtime-governance R8: diagnostics doctor API（依赖 M81 indexer，
+		// 放在 config graph providers 之后）。
+		provideDiagnosticsUsecase,
+		provideDiagnosticsService,
 		provideAutoMemoryQueue,
 		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
 		wire.Bind(new(biz.MemoryDeadLetterAdminRepo), new(*data.MemoryJobDeadLetterRepo)),

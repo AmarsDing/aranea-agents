@@ -70,3 +70,18 @@ export interface EcosystemUnloadResponse {
   results: Record<string, EcosystemUnloadResult>;
   errors?: Record<string, string>;
 }
+
+// Runtime diagnostics (79-runtime-governance R8 doctor, GET /api/v1/admin/diagnostics)
+
+export type DiagnosticsStatus = 'pass' | 'warn' | 'fail';
+
+export interface DiagnosticsItem {
+  key: string;
+  status: DiagnosticsStatus;
+  summary: string;
+  detail_ref: string;
+}
+
+export interface DiagnosticsReport {
+  items: DiagnosticsItem[];
+}

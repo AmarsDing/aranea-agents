@@ -134,10 +134,14 @@ func TestRunCacheHitRatio_FallbackGenuineMemberRows(t *testing.T) {
 	}
 }
 
-// ─── R7（G-2）RunTurnPeak：genuine 成员行 MAX(input_tokens) ───
+// ─── R7（G-2）RunTurnPeak：成员行 MAX(input_tokens) ───
 
-// genuine 行取 MAX；镜像行/他 run/team_turn 对账行均不计入峰值口径。
-func TestRunTurnPeak_GenuineMaxOnly(t *testing.T) {
+// 查询对写路径不可知（2026-08-27 口径修正）：genuine 行（旧路径）与
+// attribution 标记行（graph 路径，每行=成员 run 总量）都计入峰值——生产
+// graph 路径带 token 的 member 行全带标记，排除则峰值恒 0；两类行按 run
+// 互斥（写路径保证，见 team/usage_record.go），测试混合两类证明读侧无
+// attribution 过滤。team_turn 对账行（另一 usage_kind）与他 run 行排除。
+func TestRunTurnPeak_MemberRowsMax(t *testing.T) {
 	r := setupRunCacheHitTestRepo(t)
 	insertRunStep(t, r, "s1", "run-p")
 	insertRunStep(t, r, "s2", "run-p")
@@ -145,11 +149,14 @@ func TestRunTurnPeak_GenuineMaxOnly(t *testing.T) {
 
 	insertRunUsageRow(t, r, "m1", "team_member", "s1", nil, 12000, 0)
 	insertRunUsageRow(t, r, "m2", "team_member", "s2", nil, 47000, 0)
-	// 镜像行（attribution 非空）：与总账同额但非单次调用口径，排除。
+	// graph 路径标记行：成员 run 总量，计入峰值。
 	insertRunUsageRow(t, r, "m3", "team_member", "s1", `{"usage_attribution":"member_level_stream"}`, 9000000, 0)
-	// team_turn 对账行：run 总账非单次调用，排除。
+	// step 归属解析失败时 member 行 keyed 为 run id（与 team_turn 行同约定）：
+	// 必须被 message_id=run id 子句捞到。
+	insertRunUsageRow(t, r, "m6", "team_member", "run-p", `{"usage_attribution":"run_level_anchor_fallback"}`, 50000, 0)
+	// team_turn 对账行：run 总账但属另一 usage_kind，排除。
 	insertRunUsageRow(t, r, "m4", "team_turn", "run-p", nil, 99000000, 0)
-	// 他 run 的 genuine 行：排除。
+	// 他 run 的 member 行：排除。
 	insertRunUsageRow(t, r, "m5", "team_member", "s9", nil, 888888, 0)
 
 	peak, err := r.RunTurnPeak(context.Background(), "run-p")
@@ -159,23 +166,24 @@ func TestRunTurnPeak_GenuineMaxOnly(t *testing.T) {
 	if !peak.Found {
 		t.Fatal("Found = false, want true")
 	}
-	if peak.MaxInputTokens != 47000 {
-		t.Errorf("MaxInputTokens = %d, want 47000（镜像/对账/他 run 行排除）", peak.MaxInputTokens)
+	if peak.MaxInputTokens != 9000000 {
+		t.Errorf("MaxInputTokens = %d, want 9000000（team_turn/他 run 行排除，run-id keyed member 行计入）", peak.MaxInputTokens)
 	}
 }
 
-// 无 genuine 行的 run：Found=false（调用方区分「无数据」与峰值 0）。
+// 无 team_member 行的 run：Found=false。team_turn 对账行 message_id=run id
+// 恰好命中 message_id 匹配，必须被 usage_kind 过滤挡下（防 message_id=run id
+// 子句把对账行泄入成员口径）；调用方据此区分「无数据」与峰值 0。
 func TestRunTurnPeak_NotFound(t *testing.T) {
 	r := setupRunCacheHitTestRepo(t)
-	insertRunStep(t, r, "s1", "run-p")
-	insertRunUsageRow(t, r, "m1", "team_member", "s1", `{"usage_attribution":"member_level_stream"}`, 5000, 0)
+	insertRunUsageRow(t, r, "m1", "team_turn", "run-p", nil, 5000, 0)
 
 	peak, err := r.RunTurnPeak(context.Background(), "run-p")
 	if err != nil {
 		t.Fatalf("RunTurnPeak: %v", err)
 	}
 	if peak.Found {
-		t.Errorf("Found = true, want false（仅镜像行不算数据）: %+v", peak)
+		t.Errorf("Found = true, want false（team_turn 对账行非成员口径）: %+v", peak)
 	}
 	peak, err = r.RunTurnPeak(context.Background(), " ")
 	if err != nil {
@@ -188,7 +196,11 @@ func TestRunTurnPeak_NotFound(t *testing.T) {
 
 // ─── R7 RunMemberUsageStats：GROUP BY agent_key 成员聚合 ───
 
-// 成员分桶求和；镜像行/他 run/chat_turn 排除。
+// 成员分桶求和（2026-08-27 口径修正）：genuine 行（旧路径）与 attribution
+// 标记行（graph 路径，member_level_stream=成员 run 总量、remainder 归 anchor）
+// 都计入——生产 graph 路径带 token 行全带标记，排除则 members 段恒空；两类
+// 按 run 互斥（写路径保证），测试混合两类证明读侧无 attribution 过滤。
+// 他 run/chat_turn（另一 kind）排除。
 func TestRunMemberUsageStats_GroupByAgent(t *testing.T) {
 	r := setupRunCacheHitTestRepo(t)
 	insertRunStep(t, r, "s1", "run-m")
@@ -201,8 +213,11 @@ func TestRunMemberUsageStats_GroupByAgent(t *testing.T) {
 	insertRunUsageRowFull(t, r, "m2", "team_member", "s2", "planner", nil, 2000, 200, 1400)
 	// executor 一次。
 	insertRunUsageRowFull(t, r, "m3", "team_member", "s3", "executor", nil, 500, 50, 0)
-	// 镜像行：排除。
+	// graph 路径标记行：planner 的 anchor remainder，计入 planner 桶。
 	insertRunUsageRowFull(t, r, "m4", "team_member", "s1", "planner", `{"usage_attribution":"stream_anchor_remainder"}`, 77777, 0, 77777)
+	// step 归属解析失败的 member 行 keyed 为 run id：必须被 message_id=run id
+	// 子句捞到，计入 executor 桶。
+	insertRunUsageRowFull(t, r, "m7", "team_member", "run-m", "executor", `{"usage_attribution":"member_level_stream"}`, 100, 10, 10)
 	// 他 run / chat_turn：排除。
 	insertRunUsageRowFull(t, r, "m5", "team_member", "s9", "planner", nil, 8888, 0, 8888)
 	insertRunUsageRowFull(t, r, "m6", "chat_turn", "s1", "planner", nil, 9999, 0, 9999)
@@ -215,11 +230,11 @@ func TestRunMemberUsageStats_GroupByAgent(t *testing.T) {
 		t.Fatalf("members = %d, want 2（executor/planner）: %+v", len(members), members)
 	}
 	// ORDER BY agent_key：executor 在前。
-	if members[0].AgentKey != "executor" || members[0].PromptTok != 500 || members[0].CompletionTok != 50 || members[0].CachedTok != 0 || members[0].Calls != 1 {
-		t.Errorf("executor 桶 = %+v, want {500/50/0/1}", members[0])
+	if members[0].AgentKey != "executor" || members[0].PromptTok != 600 || members[0].CompletionTok != 60 || members[0].CachedTok != 10 || members[0].Calls != 2 {
+		t.Errorf("executor 桶 = %+v, want {600/60/10/2}（含 run-id keyed 标记行）", members[0])
 	}
-	if members[1].AgentKey != "planner" || members[1].PromptTok != 3000 || members[1].CompletionTok != 300 || members[1].CachedTok != 2000 || members[1].Calls != 2 {
-		t.Errorf("planner 桶 = %+v, want {3000/300/2000/2}", members[1])
+	if members[1].AgentKey != "planner" || members[1].PromptTok != 80777 || members[1].CompletionTok != 300 || members[1].CachedTok != 79777 || members[1].Calls != 3 {
+		t.Errorf("planner 桶 = %+v, want {80777/300/79777/3}（含 remainder 标记行）", members[1])
 	}
 }
 

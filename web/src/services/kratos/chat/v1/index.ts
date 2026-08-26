@@ -324,9 +324,12 @@ export type ConfirmActivityRequest = {
   // Behaviors: REQUIRED
   activityId: string | undefined;
   // approved = true → resume tool execution; approved = false → cancel tool
+  // optional 是刻意的（2026-08-26 验收3 踩坑）：field_behavior REQUIRED 会被
+  // kratos validate 当 presence 校验，proto3 值型 bool 的 false 恒被判"缺失"，
+  // 导致拒绝（approved=false）在 HTTP 层 400；optional 赋予 presence，显式 false 合法。
   //
   // Behaviors: REQUIRED
-  approved: boolean | undefined;
+  approved?: boolean;
   // reply is an optional structured confirm token (see
   // internal/tools/serviceawaitreply: __aranea:tool_confirm:approve |
   // deny | approve_session | approve_always). When set, it takes
@@ -380,9 +383,11 @@ export type ConfirmPlanRequest = {
   // Behaviors: REQUIRED
   sessionId: string | undefined;
   // approved = true → confirm plan (draft → confirmed); approved = false → reject plan
+  // optional 原因同 ConfirmActivityRequest.approved：显式 false（拒绝）必须能通过
+  // kratos validate 对 REQUIRED 的 presence 校验。
   //
   // Behaviors: REQUIRED
-  approved: boolean | undefined;
+  approved?: boolean;
   // strategy_override optionally overrides the suggested orchestration strategy.
   // Valid values: direct | single_agent | parallel | dag | coordinator
   strategyOverride?: string;

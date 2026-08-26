@@ -2269,7 +2269,10 @@ type ConfirmActivityRequest struct {
 	SessionId  string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	ActivityId string                 `protobuf:"bytes,2,opt,name=activity_id,json=activityId,proto3" json:"activity_id,omitempty"`
 	// approved = true → resume tool execution; approved = false → cancel tool
-	Approved bool `protobuf:"varint,3,opt,name=approved,proto3" json:"approved,omitempty"`
+	// optional 是刻意的（2026-08-26 验收3 踩坑）：field_behavior REQUIRED 会被
+	// kratos validate 当 presence 校验，proto3 值型 bool 的 false 恒被判"缺失"，
+	// 导致拒绝（approved=false）在 HTTP 层 400；optional 赋予 presence，显式 false 合法。
+	Approved *bool `protobuf:"varint,3,opt,name=approved,proto3,oneof" json:"approved,omitempty"`
 	// reply is an optional structured confirm token (see
 	// internal/tools/serviceawaitreply: __aranea:tool_confirm:approve |
 	// deny | approve_session | approve_always). When set, it takes
@@ -2324,8 +2327,8 @@ func (x *ConfirmActivityRequest) GetActivityId() string {
 }
 
 func (x *ConfirmActivityRequest) GetApproved() bool {
-	if x != nil {
-		return x.Approved
+	if x != nil && x.Approved != nil {
+		return *x.Approved
 	}
 	return false
 }
@@ -2576,7 +2579,9 @@ type ConfirmPlanRequest struct {
 	PlanId    string                 `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
 	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// approved = true → confirm plan (draft → confirmed); approved = false → reject plan
-	Approved bool `protobuf:"varint,3,opt,name=approved,proto3" json:"approved,omitempty"`
+	// optional 原因同 ConfirmActivityRequest.approved：显式 false（拒绝）必须能通过
+	// kratos validate 对 REQUIRED 的 presence 校验。
+	Approved *bool `protobuf:"varint,3,opt,name=approved,proto3,oneof" json:"approved,omitempty"`
 	// strategy_override optionally overrides the suggested orchestration strategy.
 	// Valid values: direct | single_agent | parallel | dag | coordinator
 	StrategyOverride *string `protobuf:"bytes,4,opt,name=strategy_override,json=strategyOverride,proto3,oneof" json:"strategy_override,omitempty"`
@@ -2631,8 +2636,8 @@ func (x *ConfirmPlanRequest) GetSessionId() string {
 }
 
 func (x *ConfirmPlanRequest) GetApproved() bool {
-	if x != nil {
-		return x.Approved
+	if x != nil && x.Approved != nil {
+		return *x.Approved
 	}
 	return false
 }
@@ -3736,14 +3741,15 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\b_commentB\x0f\n" +
 	"\r_context_json\";\n" +
 	"\x1dSubmitMessageFeedbackResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x9c\x01\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"\xae\x01\n" +
 	"\x16ConfirmActivityRequest\x12#\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12%\n" +
 	"\vactivity_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\n" +
-	"activityId\x12 \n" +
-	"\bapproved\x18\x03 \x01(\bB\x04\xe2A\x01\x02R\bapproved\x12\x14\n" +
-	"\x05reply\x18\x04 \x01(\tR\x05reply\"M\n" +
+	"activityId\x12%\n" +
+	"\bapproved\x18\x03 \x01(\bB\x04\xe2A\x01\x02H\x00R\bapproved\x88\x01\x01\x12\x14\n" +
+	"\x05reply\x18\x04 \x01(\tR\x05replyB\v\n" +
+	"\t_approved\"M\n" +
 	"\x17ConfirmActivityResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"\xa5\x01\n" +
@@ -3758,14 +3764,15 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\x1bSubmitClarificationResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12+\n" +
-	"\x11clarified_context\x18\x03 \x01(\tR\x10clarifiedContext\"\xea\x01\n" +
+	"\x11clarified_context\x18\x03 \x01(\tR\x10clarifiedContext\"\xfc\x01\n" +
 	"\x12ConfirmPlanRequest\x12\x1d\n" +
 	"\aplan_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06planId\x12#\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12 \n" +
-	"\bapproved\x18\x03 \x01(\bB\x04\xe2A\x01\x02R\bapproved\x120\n" +
-	"\x11strategy_override\x18\x04 \x01(\tH\x00R\x10strategyOverride\x88\x01\x01\x12\x1b\n" +
-	"\x06reason\x18\x05 \x01(\tH\x01R\x06reason\x88\x01\x01B\x14\n" +
+	"session_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12%\n" +
+	"\bapproved\x18\x03 \x01(\bB\x04\xe2A\x01\x02H\x00R\bapproved\x88\x01\x01\x120\n" +
+	"\x11strategy_override\x18\x04 \x01(\tH\x01R\x10strategyOverride\x88\x01\x01\x12\x1b\n" +
+	"\x06reason\x18\x05 \x01(\tH\x02R\x06reason\x88\x01\x01B\v\n" +
+	"\t_approvedB\x14\n" +
 	"\x12_strategy_overrideB\t\n" +
 	"\a_reason\"\xa3\x01\n" +
 	"\x13ConfirmPlanResponse\x12\x1a\n" +
@@ -4030,6 +4037,7 @@ func file_kratos_chat_v1_chat_proto_init() {
 	file_kratos_chat_v1_chat_proto_msgTypes[31].OneofWrappers = []any{}
 	file_kratos_chat_v1_chat_proto_msgTypes[32].OneofWrappers = []any{}
 	file_kratos_chat_v1_chat_proto_msgTypes[36].OneofWrappers = []any{}
+	file_kratos_chat_v1_chat_proto_msgTypes[38].OneofWrappers = []any{}
 	file_kratos_chat_v1_chat_proto_msgTypes[43].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
