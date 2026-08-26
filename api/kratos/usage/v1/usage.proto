@@ -23,6 +23,9 @@ message UsageQuery {
   string usage_kind = 11; // exact kind filter (detail/export); aggregates always billable (exclude team_turn)
   // Offset for ListUsageEvents server-side pagination (ignored by aggregate RPCs).
   int32 offset = 12;
+  // session_id filters ListUsageEvents to one session (79-runtime-governance 1.5:
+  // per-session cache-hit ratio drill-down, e.g. eval regression scripts).
+  string session_id = 13;
 }
 
 message UsageSummary {

@@ -357,3 +357,20 @@ func (r *Runtime) ToolResultPruneConfig() RuntimeToolResultPruneConfig {
 	}
 	return cfg
 }
+
+// DefaultCacheHitAlertDrift is the default cache-hit-ratio drift alert
+// threshold (79-runtime-governance 1.5): ±10% around the recorded baseline.
+const DefaultCacheHitAlertDrift = 0.10
+
+// CacheHitAlertDriftThreshold returns the drift alert threshold for eval baseline
+// scripts: a run whose weighted cache-hit ratio deviates from the recorded
+// baseline by more than this fraction is flagged. Zero/unset = 0.10;
+// negative values are clamped to the default (alerting cannot be disabled
+// by config — silence by fixing the regression or re-baselining).
+// (Named …Threshold to avoid colliding with the generated struct field.)
+func (r *Runtime) CacheHitAlertDriftThreshold() float64 {
+	if r == nil || r.CacheHitAlertDrift <= 0 {
+		return DefaultCacheHitAlertDrift
+	}
+	return r.CacheHitAlertDrift
+}

@@ -17,6 +17,9 @@ export type UsageQuery = {
   usageKind: string | undefined;
   // Offset for ListUsageEvents server-side pagination (ignored by aggregate RPCs).
   offset: number | undefined;
+  // session_id filters ListUsageEvents to one session (79-runtime-governance 1.5:
+  // per-session cache-hit ratio drill-down, e.g. eval regression scripts).
+  sessionId: string | undefined;
 };
 
 export type UsageSummary = {
@@ -420,6 +423,9 @@ export function createUsageServiceClient(
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -472,6 +478,9 @@ export function createUsageServiceClient(
       }
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -526,6 +535,9 @@ export function createUsageServiceClient(
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -579,6 +591,9 @@ export function createUsageServiceClient(
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -631,6 +646,9 @@ export function createUsageServiceClient(
       }
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -811,6 +829,9 @@ export function createUsageServiceClient(
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -924,6 +945,9 @@ export function createUsageServiceClient(
       }
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

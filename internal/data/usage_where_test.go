@@ -33,3 +33,19 @@ func TestUsageWhere_teamIDFilter(t *testing.T) {
 		t.Fatalf("args: %v", args)
 	}
 }
+
+// 79-runtime-governance 1.5: session drill-down for per-session cache-hit ratio.
+func TestUsageWhere_sessionIDFilter(t *testing.T) {
+	where, args := usageWhere(biz.UsageQuery{SessionID: "sess-1", UsageKind: biz.UsageKindChatTurn}, false)
+	if !strings.Contains(where, "session_id = ?") {
+		t.Fatalf("expected session_id filter: %q", where)
+	}
+	if len(args) != 2 || args[0] != biz.UsageKindChatTurn || args[1] != "sess-1" {
+		t.Fatalf("args order: %v", args)
+	}
+	// Empty SessionID must not constrain the query.
+	whereAll, _ := usageWhere(biz.UsageQuery{}, false)
+	if strings.Contains(whereAll, "session_id") {
+		t.Fatalf("empty session id must not filter: %q", whereAll)
+	}
+}

@@ -22,6 +22,7 @@ func fromProtoUsageQuery(in *v1.UsageQuery) biz.UsageQuery {
 		Limit:        int(in.GetLimit()),
 		Offset:       int(in.GetOffset()),
 		Granularity:  in.GetGranularity(),
+		SessionID:    in.GetSessionId(),
 	}
 }
 

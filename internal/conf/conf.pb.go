@@ -1075,8 +1075,12 @@ type Runtime struct {
 	ActivityFlusher *Runtime_ActivityFlusher `protobuf:"bytes,7,opt,name=activity_flusher,json=activityFlusher,proto3" json:"activity_flusher,omitempty"`
 	Plugin          *Runtime_Plugin          `protobuf:"bytes,8,opt,name=plugin,proto3" json:"plugin,omitempty"`
 	ToolResultPrune *Runtime_ToolResultPrune `protobuf:"bytes,9,opt,name=tool_result_prune,json=toolResultPrune,proto3" json:"tool_result_prune,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Cache-hit-ratio drift alert threshold (79-runtime-governance 1.5): eval
+	// baseline scripts flag a run when its weighted hit ratio deviates from the
+	// recorded baseline by more than this fraction. 0 = 0.10 (±10%).
+	CacheHitAlertDrift float64 `protobuf:"fixed64,10,opt,name=cache_hit_alert_drift,json=cacheHitAlertDrift,proto3" json:"cache_hit_alert_drift,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Runtime) Reset() {
@@ -1170,6 +1174,13 @@ func (x *Runtime) GetToolResultPrune() *Runtime_ToolResultPrune {
 		return x.ToolResultPrune
 	}
 	return nil
+}
+
+func (x *Runtime) GetCacheHitAlertDrift() float64 {
+	if x != nil {
+		return x.CacheHitAlertDrift
+	}
+	return 0
 }
 
 type Sandbox_Pool struct {
@@ -3163,7 +3174,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12<\n" +
 	"\fread_timeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\vreadTimeout\x12>\n" +
-	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\x9d\x15\n" +
+	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xd0\x15\n" +
 	"\aRuntime\x12&\n" +
 	"\x02ws\x18\x01 \x01(\v2\x16.kratos.api.Runtime.WSR\x02ws\x12,\n" +
 	"\x04hook\x18\x02 \x01(\v2\x18.kratos.api.Runtime.HookR\x04hook\x129\n" +
@@ -3174,7 +3185,9 @@ const file_conf_conf_proto_rawDesc = "" +
 	"autoMemory\x12N\n" +
 	"\x10activity_flusher\x18\a \x01(\v2#.kratos.api.Runtime.ActivityFlusherR\x0factivityFlusher\x122\n" +
 	"\x06plugin\x18\b \x01(\v2\x1a.kratos.api.Runtime.PluginR\x06plugin\x12O\n" +
-	"\x11tool_result_prune\x18\t \x01(\v2#.kratos.api.Runtime.ToolResultPruneR\x0ftoolResultPrune\x1a\xe1\x03\n" +
+	"\x11tool_result_prune\x18\t \x01(\v2#.kratos.api.Runtime.ToolResultPruneR\x0ftoolResultPrune\x121\n" +
+	"\x15cache_hit_alert_drift\x18\n" +
+	" \x01(\x01R\x12cacheHitAlertDrift\x1a\xe1\x03\n" +
 	"\x02WS\x12\x1d\n" +
 	"\n" +
 	"read_limit\x18\x01 \x01(\x03R\treadLimit\x12 \n" +

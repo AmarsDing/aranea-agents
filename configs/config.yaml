@@ -78,6 +78,12 @@ logging:
 #     max_messages: 40              # recent messages to analyze
 #   activity_flusher:
 #     batch_size: 10                # rows per flush
+#   tool_result_prune:              # 79-runtime-governance R2 (defaults shown; omit to keep them)
+#     enabled: true                 # kill switch: false disables pruning entirely
+#     after_turns: 8                # K: prune tool results farther than K turns from current
+#     size_bytes: 4096              # S: min serialized result size to prune
+#     exempt_tools: []              # whitelist: tool names never pruned
+#   cache_hit_alert_drift: 0.10     # 79 1.5: eval baseline hit-ratio drift alert threshold (±fraction)
 # M82 agent sandbox (pooled, use-and-destroy isolated execution). Enabled by
 # default; degrades gracefully when no docker daemon is reachable (NFR-04).
 # All numeric/duration fields default per 82-sandbox.design.md §7.

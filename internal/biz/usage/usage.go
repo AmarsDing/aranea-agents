@@ -243,6 +243,9 @@ type Query struct {
 	Limit        int
 	Offset       int
 	Granularity  string
+	// SessionID filters events to one session (79-runtime-governance 1.5:
+	// per-session cache-hit ratio drill-down; consumed by EventsPage/Events).
+	SessionID string
 	// WorkspaceID filters events by workspace. Empty = no filter (system caller
 	// sees all workspaces); non-empty = restrict to that workspace only.
 	// Service layer injects this from ctx; clients cannot forge it.

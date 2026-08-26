@@ -230,6 +230,10 @@ func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 		parts = append(parts, "usage_kind = ?")
 		args = append(args, query.UsageKind)
 	}
+	if query.SessionID != "" {
+		parts = append(parts, "session_id = ?")
+		args = append(args, query.SessionID)
+	}
 	if query.Status != "" {
 		switch query.Status {
 		case "abnormal", "error":

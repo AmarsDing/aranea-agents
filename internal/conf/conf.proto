@@ -332,4 +332,8 @@ message Runtime {
   ActivityFlusher activity_flusher = 7;
   Plugin plugin = 8;
   ToolResultPrune tool_result_prune = 9;
+  // Cache-hit-ratio drift alert threshold (79-runtime-governance 1.5): eval
+  // baseline scripts flag a run when its weighted hit ratio deviates from the
+  // recorded baseline by more than this fraction. 0 = 0.10 (±10%).
+  double cache_hit_alert_drift = 10;
 }

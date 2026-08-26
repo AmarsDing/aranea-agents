@@ -37,7 +37,10 @@ type UsageQuery struct {
 	TeamId       string                 `protobuf:"bytes,10,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	UsageKind    string                 `protobuf:"bytes,11,opt,name=usage_kind,json=usageKind,proto3" json:"usage_kind,omitempty"` // exact kind filter (detail/export); aggregates always billable (exclude team_turn)
 	// Offset for ListUsageEvents server-side pagination (ignored by aggregate RPCs).
-	Offset        int32 `protobuf:"varint,12,opt,name=offset,proto3" json:"offset,omitempty"`
+	Offset int32 `protobuf:"varint,12,opt,name=offset,proto3" json:"offset,omitempty"`
+	// session_id filters ListUsageEvents to one session (79-runtime-governance 1.5:
+	// per-session cache-hit ratio drill-down, e.g. eval regression scripts).
+	SessionId     string `protobuf:"bytes,13,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -154,6 +157,13 @@ func (x *UsageQuery) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *UsageQuery) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
 }
 
 type UsageSummary struct {
@@ -2909,7 +2919,7 @@ var File_kratos_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/usage/v1/usage.proto\x12\x0fkratos.usage.v1\x1a\x1cgoogle/api/annotations.proto\"\xde\x02\n" +
+	"\x1bkratos/usage/v1/usage.proto\x12\x0fkratos.usage.v1\x1a\x1cgoogle/api/annotations.proto\"\xfd\x02\n" +
 	"\n" +
 	"UsageQuery\x12\x14\n" +
 	"\x05range\x18\x01 \x01(\tR\x05range\x12\x1d\n" +
@@ -2927,7 +2937,9 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	" \x01(\tR\x06teamId\x12\x1d\n" +
 	"\n" +
 	"usage_kind\x18\v \x01(\tR\tusageKind\x12\x16\n" +
-	"\x06offset\x18\f \x01(\x05R\x06offset\"\xdb\x03\n" +
+	"\x06offset\x18\f \x01(\x05R\x06offset\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\r \x01(\tR\tsessionId\"\xdb\x03\n" +
 	"\fUsageSummary\x12\x1d\n" +
 	"\n" +
 	"call_count\x18\x01 \x01(\x05R\tcallCount\x12#\n" +
