@@ -46,6 +46,18 @@ message Sandbox {
     int64 pids_limit = 4;            // 0 = 256
     string network = 5;              // none | egress | full ("" = none)
     string tmp_size = 6;             // tmpfs /tmp size ("" = 128m)
+    // requires_confirmation marks high-risk profiles (P2-4): Acquire is
+    // rejected unless the caller proves it passed a confirmation chain.
+    // normalize() force-sets this on network=full profiles (fail-closed).
+    bool requires_confirmation = 7;
+  }
+  // Egress configures the controlled-egress lane (P2-1): profiles with
+  // network=egress are attached to this bridge and receive the CONNECT proxy
+  // address via env. The domain whitelist lives proxy-side only
+  // (EGRESS_ALLOW_HOSTS in compose) — single source of truth.
+  message Egress {
+    string network = 1;    // docker bridge name ("" = "aranea-egress")
+    string proxy_http = 2; // proxy URL injected as HTTP(S)_PROXY ("" = "http://aranea-egress-proxy:3128")
   }
   bool enabled = 1;    // master switch; false → consumers fall back (NFR-04)
   string engine = 2;   // docker (P0); runsc/e2b reserved ("" = docker)
@@ -53,6 +65,7 @@ message Sandbox {
   Limits limits = 4;
   TTL ttl = 5;
   map<string, Profile> profiles = 6;
+  Egress egress = 7;
 }
 
 // SelfImprovement configures the platform self-improvement (V3) pipeline

@@ -29,6 +29,18 @@ type Profile struct {
 	Network        NetworkMode
 	ReadOnlyRootfs bool   // default true
 	TmpSize        string // tmpfs size for /tmp (default 128m)
+
+	// RequiresConfirmation marks high-risk profiles (P2-4): Acquire rejects
+	// with ErrConfirmationRequired unless AcquireReq.Confirmed is true.
+	// normalize force-sets this on NetworkFull profiles (fail-closed).
+	RequiresConfirmation bool
+
+	// EgressNetwork / EgressProxy are resolved from Config.Egress by
+	// ConfigFromProto for NetworkEgress profiles (P2-1): the docker bridge the
+	// instance attaches to and the CONNECT proxy URL injected as HTTP(S)_PROXY.
+	// Empty for none/full.
+	EgressNetwork string
+	EgressProxy   string
 }
 
 func (p Profile) withDefaults() Profile {
@@ -66,6 +78,10 @@ type AcquireReq struct {
 	SessionID string        // attribution
 	RunID     string        // optional: team run attribution (P2 quota)
 	TTL       time.Duration // 0 = default; capped at TTL.Max
+	// Confirmed must be true when acquiring a profile marked
+	// RequiresConfirmation (P2-4); set only by callers that passed a
+	// confirmation chain. Fail-closed: no in-tree consumer sets it yet.
+	Confirmed bool
 }
 
 // LeaseView is a read-only snapshot of a live sandbox.
@@ -122,6 +138,9 @@ var (
 	ErrDisabled = errors.New("sandbox: disabled")
 	// ErrProfileUnknown is returned for an unconfigured profile name.
 	ErrProfileUnknown = errors.New("sandbox: unknown profile")
+	// ErrConfirmationRequired is returned when acquiring a profile marked
+	// RequiresConfirmation without AcquireReq.Confirmed (P2-4 fail-closed).
+	ErrConfirmationRequired = errors.New("sandbox: profile requires confirmation")
 )
 
 // QuotaError reports a quota rejection at one scope.

@@ -366,3 +366,139 @@ func TestUnknownProfile(t *testing.T) {
 		t.Fatalf("want ErrProfileUnknown, got %v", err)
 	}
 }
+
+// --- P2-2: per-run cumulative creation budget ---
+
+func TestPerRunQuotaBudgetAndReleaseRun(t *testing.T) {
+	eng := newFakeEngine()
+	m := newTestManager(t, eng, func(c *Config) {
+		c.Limits.PerRunMaxCreate = 2
+	})
+	ctx := context.Background()
+
+	// Run r1 may create twice; the third hits the run budget.
+	l1, err := m.Acquire(ctx, AcquireReq{AgentKey: "a1", RunID: "r1"})
+	if err != nil {
+		t.Fatalf("r1 acquire 1: %v", err)
+	}
+	l2, err := m.Acquire(ctx, AcquireReq{AgentKey: "a2", RunID: "r1"})
+	if err != nil {
+		t.Fatalf("r1 acquire 2: %v", err)
+	}
+	_, err = m.Acquire(ctx, AcquireReq{AgentKey: "a3", RunID: "r1"})
+	var qe *QuotaError
+	if !errors.As(err, &qe) || qe.Scope != QuotaScopeRun {
+		t.Fatalf("want run quota error, got %v", err)
+	}
+
+	// The budget is cumulative: destroying an instance frees the concurrency
+	// slot but NOT the creation budget.
+	_ = l1.Release(ctx)
+	if _, err = m.Acquire(ctx, AcquireReq{AgentKey: "a3", RunID: "r1"}); !errors.As(err, &qe) || qe.Scope != QuotaScopeRun {
+		t.Fatalf("budget must survive destroy, got %v", err)
+	}
+
+	// A different run has its own counter.
+	if _, err = m.Acquire(ctx, AcquireReq{AgentKey: "a3", RunID: "r2"}); err != nil {
+		t.Fatalf("r2 acquire: %v", err)
+	}
+
+	// Team run end drops the counter; r1 may create again.
+	m.ReleaseRun("r1")
+	if _, err = m.Acquire(ctx, AcquireReq{AgentKey: "a3", RunID: "r1"}); err != nil {
+		t.Fatalf("r1 acquire after ReleaseRun: %v", err)
+	}
+	if got := m.quota.RunSnapshot()["r1"]; got != 1 {
+		t.Fatalf("r1 created=%d after re-acquire, want 1", got)
+	}
+	_ = l2.Release(ctx)
+}
+
+func TestColdCreateFailureDoesNotBurnRunBudget(t *testing.T) {
+	eng := newFakeEngine()
+	eng.createErr = errors.New("daemon exploded")
+	m := newTestManager(t, eng, nil)
+	if _, err := m.Acquire(context.Background(), AcquireReq{AgentKey: "a1", RunID: "r1"}); err == nil {
+		t.Fatal("want create error")
+	}
+	if got := m.quota.RunSnapshot()["r1"]; got != 0 {
+		t.Fatalf("failed create burned run budget: r1=%d, want 0", got)
+	}
+}
+
+// --- P2-4: confirmation-gated profiles ---
+
+func TestConfirmationGateFullProfile(t *testing.T) {
+	eng := newFakeEngine()
+	m := newTestManager(t, eng, func(c *Config) {
+		c.Profiles["netfull"] = Profile{Name: "netfull", Image: "img", Network: NetworkFull}
+		c.Profiles["gated"] = Profile{Name: "gated", Image: "img", RequiresConfirmation: true}
+	})
+	ctx := context.Background()
+
+	// normalize fail-closed: network=full is confirmation-gated even when the
+	// config input did not mark it.
+	if !m.cfg.Profiles["netfull"].RequiresConfirmation {
+		t.Fatal("network=full profile must be force-marked RequiresConfirmation")
+	}
+
+	for _, profile := range []string{"netfull", "gated"} {
+		if _, err := m.Acquire(ctx, AcquireReq{AgentKey: "a1", Profile: profile}); !errors.Is(err, ErrConfirmationRequired) {
+			t.Fatalf("%s unconfirmed: want ErrConfirmationRequired, got %v", profile, err)
+		}
+		lease, err := m.Acquire(ctx, AcquireReq{AgentKey: "a1", Profile: profile, Confirmed: true})
+		if err != nil {
+			t.Fatalf("%s confirmed: %v", profile, err)
+		}
+		_ = lease.Release(ctx)
+	}
+	// The default (ungated) profile never asks for confirmation.
+	if _, err := m.Acquire(ctx, AcquireReq{AgentKey: "a1"}); err != nil {
+		t.Fatalf("default profile acquire: %v", err)
+	}
+}
+
+// --- P2-1: egress lane resolution ---
+
+func TestEgressProfileResolution(t *testing.T) {
+	m := newTestManager(t, newFakeEngine(), func(c *Config) {
+		c.Egress.Network = "lane-x"
+		c.Egress.ProxyHTTP = "http://proxy-x:3128"
+		c.Profiles["eg"] = Profile{Name: "eg", Image: "img", Network: NetworkEgress}
+	})
+	p := m.cfg.Profiles["eg"]
+	if p.EgressNetwork != "lane-x" || p.EgressProxy != "http://proxy-x:3128" {
+		t.Fatalf("egress lane not resolved onto profile: %+v", p)
+	}
+	if got := dockerNetworkFor(p); got != "lane-x" {
+		t.Fatalf("dockerNetworkFor(egress)=%q, want lane-x", got)
+	}
+	if got := dockerNetworkFor(Profile{Network: NetworkFull}); got != "bridge" {
+		t.Fatalf("dockerNetworkFor(full)=%q, want bridge", got)
+	}
+	if got := dockerNetworkFor(Profile{Network: NetworkNone}); got != "none" {
+		t.Fatalf("dockerNetworkFor(none)=%q, want none", got)
+	}
+}
+
+func TestSessionLeasePropagatesRunID(t *testing.T) {
+	eng := newFakeEngine()
+	m := newTestManager(t, eng, nil)
+	store := NewSessionLeases(m)
+
+	ctx := WithRunID(context.Background(), "run-42")
+	lease, err := store.Acquire(ctx, "sess-1")
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	e, ok := m.registry.get(lease.SandboxID())
+	if !ok {
+		t.Fatal("lease not registered")
+	}
+	if e.view.RunID != "run-42" {
+		t.Fatalf("RunID=%q, want run-42", e.view.RunID)
+	}
+	if got := m.quota.RunSnapshot()["run-42"]; got != 1 {
+		t.Fatalf("run-42 created=%d, want 1", got)
+	}
+}

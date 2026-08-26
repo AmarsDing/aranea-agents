@@ -16,7 +16,7 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 | **领域层** | 65+ Usecase，纯业务规则 | 领域模型与业务用例；Repo 窄接口（≤5 方法）便于 mock；不依赖框架运行时 |
 | **运行时适配层** | 把领域对象装配为 trpc-agent-go 运行时 | agent 装配（prompt/记忆/工具注入）、team 执行、graph 适配、tools 挂载、provider/memory 桥接 |
 | **框架层** | Agent 运行时内核（vendored） | trpc-agent-go：Runner / Agent(llm·team·graph) / Session / Memory / Tool / MCP / Event |
-| **数据层** | 持久化与索引 | PostgreSQL + Ent ORM（107 Schema）、pgvector 向量索引、Redis 缓存/队列、文件存储（Artifact/Skill） |
+| **数据层** | 持久化与索引 | PostgreSQL + Ent ORM（106 Schema）、pgvector 向量索引、Redis 缓存/队列、文件存储（Artifact/Skill） |
 
 **横切关注点**（贯穿各层）：全链路可观测与自愈、配额计费（六维定价）、五重安全护栏、9 个内置插件（+框架常驻插件）。
 
@@ -55,7 +55,7 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 
 | 维度 | 数据 |
 |------|------|
-| 后端 | Go 1.26+ / Kratos v2 / Ent / Wire；50+ Service、65+ Usecase、105+ Repo、107 Ent Schema |
+| 后端 | Go 1.26+ / Kratos v2 / Ent / Wire；50+ Service、65+ Usecase、105+ Repo、106 Ent Schema |
 | 前端 | Vue 3 + Quasar + Pinia + TypeScript；48 Store、45+ 页面、ActivityEvent（6 型 × chat/system 域）+ MonitorEvent（13 型）事件体系 |
 | 存储 | PostgreSQL（主）+ pgvector（向量）+ Redis（缓存/队列）+ 文件系统（Skill/Artifact） |
 | 运行时 | trpc-agent-go（vendored，禁止擅改） |

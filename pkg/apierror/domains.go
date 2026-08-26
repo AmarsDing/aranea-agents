@@ -55,4 +55,5 @@ const (
 	DomainChatEnqueueRejected = "CHAT_ENQUEUE_REJECTED"
 	DomainAgentBridge         = "AGENT_BRIDGE"
 	DomainComputerUse         = "COMPUTER_USE"
+	DomainSandbox             = "SANDBOX"
 )

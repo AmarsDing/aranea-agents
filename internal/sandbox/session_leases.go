@@ -43,6 +43,9 @@ func (s *SessionLeases) Acquire(ctx context.Context, key string) (*Lease, error)
 	lease, err := s.mgr.Acquire(ctx, AcquireReq{
 		Profile:   DefaultProfileName,
 		SessionID: key,
+		// P2-2: first-creation is attributed to the owning team run's
+		// cumulative budget when the caller carries a run id (team turn ctx).
+		RunID: RunIDFromContext(ctx),
 	})
 	if err != nil {
 		return nil, err

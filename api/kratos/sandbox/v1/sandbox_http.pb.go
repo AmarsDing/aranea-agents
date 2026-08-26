@@ -19,10 +19,15 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationSandboxServiceForceKillSandbox = "/kratos.sandbox.v1.SandboxService/ForceKillSandbox"
 const OperationSandboxServiceGetSandboxMetrics = "/kratos.sandbox.v1.SandboxService/GetSandboxMetrics"
 const OperationSandboxServiceListSandboxes = "/kratos.sandbox.v1.SandboxService/ListSandboxes"
 
 type SandboxServiceHTTPServer interface {
+	// ForceKillSandbox ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
+	// is taken from the JWT principal; reason is mandatory and both are
+	// written to the audit log (FR-33).
+	ForceKillSandbox(context.Context, *ForceKillSandboxRequest) (*ForceKillSandboxResponse, error)
 	// GetSandboxMetrics GetSandboxMetrics returns pool water levels and the counter snapshot.
 	GetSandboxMetrics(context.Context, *GetSandboxMetricsRequest) (*SandboxMetrics, error)
 	// ListSandboxes ListSandboxes returns all live sandboxes (warm-pool ready + leased).
@@ -33,6 +38,7 @@ func RegisterSandboxServiceHTTPServer(s *http.Server, srv SandboxServiceHTTPServ
 	r := s.Route("/")
 	r.GET("/v1/sandboxes", _SandboxService_ListSandboxes0_HTTP_Handler(srv))
 	r.GET("/v1/sandboxes/metrics", _SandboxService_GetSandboxMetrics0_HTTP_Handler(srv))
+	r.DELETE("/v1/sandboxes/{id}", _SandboxService_ForceKillSandbox0_HTTP_Handler(srv))
 }
 
 func _SandboxService_ListSandboxes0_HTTP_Handler(srv SandboxServiceHTTPServer) func(ctx http.Context) error {
@@ -73,7 +79,33 @@ func _SandboxService_GetSandboxMetrics0_HTTP_Handler(srv SandboxServiceHTTPServe
 	}
 }
 
+func _SandboxService_ForceKillSandbox0_HTTP_Handler(srv SandboxServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ForceKillSandboxRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSandboxServiceForceKillSandbox)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ForceKillSandbox(ctx, req.(*ForceKillSandboxRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ForceKillSandboxResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type SandboxServiceHTTPClient interface {
+	// ForceKillSandbox ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
+	// is taken from the JWT principal; reason is mandatory and both are
+	// written to the audit log (FR-33).
+	ForceKillSandbox(ctx context.Context, req *ForceKillSandboxRequest, opts ...http.CallOption) (rsp *ForceKillSandboxResponse, err error)
 	// GetSandboxMetrics GetSandboxMetrics returns pool water levels and the counter snapshot.
 	GetSandboxMetrics(ctx context.Context, req *GetSandboxMetricsRequest, opts ...http.CallOption) (rsp *SandboxMetrics, err error)
 	// ListSandboxes ListSandboxes returns all live sandboxes (warm-pool ready + leased).
@@ -86,6 +118,22 @@ type SandboxServiceHTTPClientImpl struct {
 
 func NewSandboxServiceHTTPClient(client *http.Client) SandboxServiceHTTPClient {
 	return &SandboxServiceHTTPClientImpl{client}
+}
+
+// ForceKillSandbox ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
+// is taken from the JWT principal; reason is mandatory and both are
+// written to the audit log (FR-33).
+func (c *SandboxServiceHTTPClientImpl) ForceKillSandbox(ctx context.Context, in *ForceKillSandboxRequest, opts ...http.CallOption) (*ForceKillSandboxResponse, error) {
+	var out ForceKillSandboxResponse
+	pattern := "/v1/sandboxes/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationSandboxServiceForceKillSandbox))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // GetSandboxMetrics GetSandboxMetrics returns pool water levels and the counter snapshot.

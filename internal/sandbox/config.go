@@ -11,12 +11,22 @@ type Config struct {
 	Limits   LimitsConfig
 	TTL      TTLConfig
 	Profiles map[string]Profile
+	Egress   EgressConfig
 
 	// DefaultProfile is used when AcquireReq.Profile is empty.
 	DefaultProfile string
 
 	// GCInterval overrides the lifecycle scan tick (0 = 30s).
 	GCInterval time.Duration
+}
+
+// EgressConfig is the controlled-egress lane (P2-1). Profiles with
+// network=egress attach to this bridge and get the CONNECT proxy injected as
+// HTTP(S)_PROXY. The domain whitelist is held proxy-side only
+// (EGRESS_ALLOW_HOSTS in compose) — single source of truth.
+type EgressConfig struct {
+	Network   string // docker bridge name (default "aranea-egress")
+	ProxyHTTP string // proxy URL injected as HTTP(S)_PROXY (default "http://aranea-egress-proxy:3128")
 }
 
 type PoolConfig struct {
@@ -60,6 +70,10 @@ func DefaultConfig() Config {
 			Default:     30 * time.Minute,
 			Max:         2 * time.Hour,
 			IdleTimeout: 10 * time.Minute,
+		},
+		Egress: EgressConfig{
+			Network:   "aranea-egress",
+			ProxyHTTP: "http://aranea-egress-proxy:3128",
 		},
 		DefaultProfile: DefaultProfileName,
 		Profiles: map[string]Profile{
@@ -117,6 +131,12 @@ func (c Config) normalize() Config {
 	if c.GCInterval <= 0 {
 		c.GCInterval = d.GCInterval
 	}
+	if c.Egress.Network == "" {
+		c.Egress.Network = d.Egress.Network
+	}
+	if c.Egress.ProxyHTTP == "" {
+		c.Egress.ProxyHTTP = d.Egress.ProxyHTTP
+	}
 	if len(c.Profiles) == 0 {
 		c.Profiles = d.Profiles
 	} else {
@@ -130,6 +150,26 @@ func (c Config) normalize() Config {
 			out[c.DefaultProfile] = d.Profiles[DefaultProfileName]
 		}
 		c.Profiles = out
+	}
+	// P2 invariants (apply to built-in defaults too):
+	for name, p := range c.Profiles {
+		switch p.Network {
+		case NetworkFull:
+			// P2-4 fail-closed: full-network profiles are always
+			// confirmation-gated, regardless of config input.
+			if !p.RequiresConfirmation {
+				p.RequiresConfirmation = true
+				c.Profiles[name] = p
+			}
+		case NetworkEgress:
+			// P2-1: resolve the egress lane onto the profile (engine consumes
+			// profile fields only).
+			if p.EgressNetwork == "" || p.EgressProxy == "" {
+				p.EgressNetwork = c.Egress.Network
+				p.EgressProxy = c.Egress.ProxyHTTP
+				c.Profiles[name] = p
+			}
+		}
 	}
 	return c
 }

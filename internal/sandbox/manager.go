@@ -47,7 +47,7 @@ func NewManager(cfg Config, engine Engine, lg loggateway.Logger) *Manager {
 		cfg:      cfg,
 		engine:   engine,
 		registry: NewRegistry(),
-		quota:    NewQuota(cfg.Limits.GlobalMaxActive, cfg.Limits.PerAgentMaxActive),
+		quota:    NewQuota(cfg.Limits.GlobalMaxActive, cfg.Limits.PerAgentMaxActive, cfg.Limits.PerRunMaxCreate),
 		lg:       lg,
 		st:       newStats(),
 		now:      time.Now,
@@ -111,7 +111,19 @@ func (m *Manager) Acquire(ctx context.Context, req AcquireReq) (*Lease, error) {
 		return nil, ErrProfileUnknown
 	}
 
-	if err := m.quota.Admit(req.AgentKey); err != nil {
+	// P2-4: confirmation-gated profiles (network=full is force-marked in
+	// normalize) reject unless the caller passed a confirmation chain.
+	if profile.RequiresConfirmation && !req.Confirmed {
+		m.st.acquireFail.Add(1)
+		m.lg.Warn("sandbox acquire rejected: confirmation required",
+			loggateway.StepID("sandbox.confirm_reject"),
+			loggateway.Str("profile", profileName),
+			loggateway.Str("agent_key", req.AgentKey),
+			loggateway.Str("session_id", req.SessionID))
+		return nil, ErrConfirmationRequired
+	}
+
+	if err := m.quota.Admit(req.AgentKey, req.RunID); err != nil {
 		scope := QuotaScopeGlobal
 		if qe, ok2 := err.(*QuotaError); ok2 {
 			scope = qe.Scope
@@ -147,7 +159,7 @@ func (m *Manager) Acquire(ctx context.Context, req AcquireReq) (*Lease, error) {
 	// Cold path: create a fresh instance.
 	lease, err := m.createLeased(ctx, profile, req, deadline)
 	if err != nil {
-		m.quota.Release(req.AgentKey)
+		m.quota.UndoAdmit(req.AgentKey, req.RunID)
 		acquireDuration.WithLabelValues("fail").Observe(m.now().Sub(start).Seconds())
 		m.st.acquireFail.Add(1)
 		return nil, err
@@ -226,6 +238,16 @@ func (m *Manager) destroy(id, reason string) {
 		loggateway.Str("session_id", e.view.SessionID),
 		loggateway.Str("run_id", e.view.RunID),
 		loggateway.Int64("exec_count", e.view.ExecCount))
+}
+
+// ReleaseRun drops the run's cumulative-creation budget counter (P2-2; team
+// run end hook). Live instances are untouched — they still die by
+// Release/TTL/idle.
+func (m *Manager) ReleaseRun(runID string) {
+	if m == nil || m.quota == nil || runID == "" {
+		return
+	}
+	m.quota.ReleaseRun(runID)
 }
 
 // ForceKill destroys a live sandbox on operator request (reason=force).

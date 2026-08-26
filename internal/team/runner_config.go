@@ -69,6 +69,11 @@ type RunnerConfig struct {
 	// sandbox_fs_write/read in team member builds (M82 P1-2). Optional; nil
 	// prunes the toolset.
 	SandboxFSStore *sandbox.SessionLeases
+	// SandboxManager releases the per-run sandbox creation budget when a team
+	// run ends (M82 P2-2; mirrors the run token-budget hook). Optional; nil
+	// disables the budget-release hook (creation still counts, but the counter
+	// is never dropped → run budgets eventually exhaust; keep wired in prod).
+	SandboxManager *sandbox.Manager
 	A2AEnabled     bool
 	// SessionChildLookup resolves member agent session IDs for child_session_id
 	// in session activities. Optional; when nil, falls back to team session ID.

@@ -234,6 +234,7 @@ type Sandbox struct {
 	Limits        *Sandbox_Limits             `protobuf:"bytes,4,opt,name=limits,proto3" json:"limits,omitempty"`
 	Ttl           *Sandbox_TTL                `protobuf:"bytes,5,opt,name=ttl,proto3" json:"ttl,omitempty"`
 	Profiles      map[string]*Sandbox_Profile `protobuf:"bytes,6,rep,name=profiles,proto3" json:"profiles,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Egress        *Sandbox_Egress             `protobuf:"bytes,7,opt,name=egress,proto3" json:"egress,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -306,6 +307,13 @@ func (x *Sandbox) GetTtl() *Sandbox_TTL {
 func (x *Sandbox) GetProfiles() map[string]*Sandbox_Profile {
 	if x != nil {
 		return x.Profiles
+	}
+	return nil
+}
+
+func (x *Sandbox) GetEgress() *Sandbox_Egress {
+	if x != nil {
+		return x.Egress
 	}
 	return nil
 }
@@ -1375,15 +1383,19 @@ func (x *Sandbox_TTL) GetIdleTimeout() *durationpb.Duration {
 // Security baselines (--read-only rootfs, cap-drop, no-new-privileges) are
 // engine-enforced and intentionally not configurable.
 type Sandbox_Profile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Image         string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
-	Cpus          float64                `protobuf:"fixed64,2,opt,name=cpus,proto3" json:"cpus,omitempty"`                                 // 0 = 0.5
-	MemoryBytes   int64                  `protobuf:"varint,3,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"` // 0 = 268435456 (256MiB)
-	PidsLimit     int64                  `protobuf:"varint,4,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`       // 0 = 256
-	Network       string                 `protobuf:"bytes,5,opt,name=network,proto3" json:"network,omitempty"`                             // none | egress | full ("" = none)
-	TmpSize       string                 `protobuf:"bytes,6,opt,name=tmp_size,json=tmpSize,proto3" json:"tmp_size,omitempty"`              // tmpfs /tmp size ("" = 128m)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Image       string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	Cpus        float64                `protobuf:"fixed64,2,opt,name=cpus,proto3" json:"cpus,omitempty"`                                 // 0 = 0.5
+	MemoryBytes int64                  `protobuf:"varint,3,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"` // 0 = 268435456 (256MiB)
+	PidsLimit   int64                  `protobuf:"varint,4,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`       // 0 = 256
+	Network     string                 `protobuf:"bytes,5,opt,name=network,proto3" json:"network,omitempty"`                             // none | egress | full ("" = none)
+	TmpSize     string                 `protobuf:"bytes,6,opt,name=tmp_size,json=tmpSize,proto3" json:"tmp_size,omitempty"`              // tmpfs /tmp size ("" = 128m)
+	// requires_confirmation marks high-risk profiles (P2-4): Acquire is
+	// rejected unless the caller proves it passed a confirmation chain.
+	// normalize() force-sets this on network=full profiles (fail-closed).
+	RequiresConfirmation bool `protobuf:"varint,7,opt,name=requires_confirmation,json=requiresConfirmation,proto3" json:"requires_confirmation,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *Sandbox_Profile) Reset() {
@@ -1458,6 +1470,69 @@ func (x *Sandbox_Profile) GetTmpSize() string {
 	return ""
 }
 
+func (x *Sandbox_Profile) GetRequiresConfirmation() bool {
+	if x != nil {
+		return x.RequiresConfirmation
+	}
+	return false
+}
+
+// Egress configures the controlled-egress lane (P2-1): profiles with
+// network=egress are attached to this bridge and receive the CONNECT proxy
+// address via env. The domain whitelist lives proxy-side only
+// (EGRESS_ALLOW_HOSTS in compose) — single source of truth.
+type Sandbox_Egress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Network       string                 `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`                      // docker bridge name ("" = "aranea-egress")
+	ProxyHttp     string                 `protobuf:"bytes,2,opt,name=proxy_http,json=proxyHttp,proto3" json:"proxy_http,omitempty"` // proxy URL injected as HTTP(S)_PROXY ("" = "http://aranea-egress-proxy:3128")
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Sandbox_Egress) Reset() {
+	*x = Sandbox_Egress{}
+	mi := &file_conf_conf_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Sandbox_Egress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Sandbox_Egress) ProtoMessage() {}
+
+func (x *Sandbox_Egress) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Sandbox_Egress.ProtoReflect.Descriptor instead.
+func (*Sandbox_Egress) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{1, 4}
+}
+
+func (x *Sandbox_Egress) GetNetwork() string {
+	if x != nil {
+		return x.Network
+	}
+	return ""
+}
+
+func (x *Sandbox_Egress) GetProxyHttp() string {
+	if x != nil {
+		return x.ProxyHttp
+	}
+	return ""
+}
+
 type SelfImprovement_ErrorCluster struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WindowDays    int32                  `protobuf:"varint,1,opt,name=window_days,json=windowDays,proto3" json:"window_days,omitempty"` // observation window (0 = 7)
@@ -1468,7 +1543,7 @@ type SelfImprovement_ErrorCluster struct {
 
 func (x *SelfImprovement_ErrorCluster) Reset() {
 	*x = SelfImprovement_ErrorCluster{}
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1480,7 +1555,7 @@ func (x *SelfImprovement_ErrorCluster) String() string {
 func (*SelfImprovement_ErrorCluster) ProtoMessage() {}
 
 func (x *SelfImprovement_ErrorCluster) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1520,7 +1595,7 @@ type SelfImprovement_Perf struct {
 
 func (x *SelfImprovement_Perf) Reset() {
 	*x = SelfImprovement_Perf{}
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1532,7 +1607,7 @@ func (x *SelfImprovement_Perf) String() string {
 func (*SelfImprovement_Perf) ProtoMessage() {}
 
 func (x *SelfImprovement_Perf) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1571,7 +1646,7 @@ type SelfImprovement_Eval struct {
 
 func (x *SelfImprovement_Eval) Reset() {
 	*x = SelfImprovement_Eval{}
-	mi := &file_conf_conf_proto_msgTypes[19]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1583,7 +1658,7 @@ func (x *SelfImprovement_Eval) String() string {
 func (*SelfImprovement_Eval) ProtoMessage() {}
 
 func (x *SelfImprovement_Eval) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[19]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1617,7 +1692,7 @@ type SelfImprovement_Patch struct {
 
 func (x *SelfImprovement_Patch) Reset() {
 	*x = SelfImprovement_Patch{}
-	mi := &file_conf_conf_proto_msgTypes[20]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1629,7 +1704,7 @@ func (x *SelfImprovement_Patch) String() string {
 func (*SelfImprovement_Patch) ProtoMessage() {}
 
 func (x *SelfImprovement_Patch) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[20]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1680,7 +1755,7 @@ type SelfImprovement_Sandbox struct {
 
 func (x *SelfImprovement_Sandbox) Reset() {
 	*x = SelfImprovement_Sandbox{}
-	mi := &file_conf_conf_proto_msgTypes[21]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1692,7 +1767,7 @@ func (x *SelfImprovement_Sandbox) String() string {
 func (*SelfImprovement_Sandbox) ProtoMessage() {}
 
 func (x *SelfImprovement_Sandbox) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[21]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1742,7 +1817,7 @@ type SelfImprovement_ObserveWindow struct {
 
 func (x *SelfImprovement_ObserveWindow) Reset() {
 	*x = SelfImprovement_ObserveWindow{}
-	mi := &file_conf_conf_proto_msgTypes[22]
+	mi := &file_conf_conf_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1754,7 +1829,7 @@ func (x *SelfImprovement_ObserveWindow) String() string {
 func (*SelfImprovement_ObserveWindow) ProtoMessage() {}
 
 func (x *SelfImprovement_ObserveWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[22]
+	mi := &file_conf_conf_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1809,7 +1884,7 @@ type SelfImprovement_Sandbox_GateTimeouts struct {
 
 func (x *SelfImprovement_Sandbox_GateTimeouts) Reset() {
 	*x = SelfImprovement_Sandbox_GateTimeouts{}
-	mi := &file_conf_conf_proto_msgTypes[23]
+	mi := &file_conf_conf_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1821,7 +1896,7 @@ func (x *SelfImprovement_Sandbox_GateTimeouts) String() string {
 func (*SelfImprovement_Sandbox_GateTimeouts) ProtoMessage() {}
 
 func (x *SelfImprovement_Sandbox_GateTimeouts) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[23]
+	mi := &file_conf_conf_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1869,7 +1944,7 @@ type Server_HTTP struct {
 
 func (x *Server_HTTP) Reset() {
 	*x = Server_HTTP{}
-	mi := &file_conf_conf_proto_msgTypes[24]
+	mi := &file_conf_conf_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1881,7 +1956,7 @@ func (x *Server_HTTP) String() string {
 func (*Server_HTTP) ProtoMessage() {}
 
 func (x *Server_HTTP) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[24]
+	mi := &file_conf_conf_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1929,7 +2004,7 @@ type Server_GRPC struct {
 
 func (x *Server_GRPC) Reset() {
 	*x = Server_GRPC{}
-	mi := &file_conf_conf_proto_msgTypes[25]
+	mi := &file_conf_conf_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1941,7 +2016,7 @@ func (x *Server_GRPC) String() string {
 func (*Server_GRPC) ProtoMessage() {}
 
 func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[25]
+	mi := &file_conf_conf_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2064,7 @@ type Server_WS struct {
 
 func (x *Server_WS) Reset() {
 	*x = Server_WS{}
-	mi := &file_conf_conf_proto_msgTypes[26]
+	mi := &file_conf_conf_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2001,7 +2076,7 @@ func (x *Server_WS) String() string {
 func (*Server_WS) ProtoMessage() {}
 
 func (x *Server_WS) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[26]
+	mi := &file_conf_conf_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2048,7 +2123,7 @@ type Data_Database struct {
 
 func (x *Data_Database) Reset() {
 	*x = Data_Database{}
-	mi := &file_conf_conf_proto_msgTypes[28]
+	mi := &file_conf_conf_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2060,7 +2135,7 @@ func (x *Data_Database) String() string {
 func (*Data_Database) ProtoMessage() {}
 
 func (x *Data_Database) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[28]
+	mi := &file_conf_conf_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2102,7 +2177,7 @@ type Data_Postgres struct {
 
 func (x *Data_Postgres) Reset() {
 	*x = Data_Postgres{}
-	mi := &file_conf_conf_proto_msgTypes[29]
+	mi := &file_conf_conf_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2114,7 +2189,7 @@ func (x *Data_Postgres) String() string {
 func (*Data_Postgres) ProtoMessage() {}
 
 func (x *Data_Postgres) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[29]
+	mi := &file_conf_conf_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2161,7 +2236,7 @@ type Data_InitialAdmin struct {
 
 func (x *Data_InitialAdmin) Reset() {
 	*x = Data_InitialAdmin{}
-	mi := &file_conf_conf_proto_msgTypes[30]
+	mi := &file_conf_conf_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2173,7 +2248,7 @@ func (x *Data_InitialAdmin) String() string {
 func (*Data_InitialAdmin) ProtoMessage() {}
 
 func (x *Data_InitialAdmin) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[30]
+	mi := &file_conf_conf_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2229,7 +2304,7 @@ type Data_Redis struct {
 
 func (x *Data_Redis) Reset() {
 	*x = Data_Redis{}
-	mi := &file_conf_conf_proto_msgTypes[31]
+	mi := &file_conf_conf_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2316,7 @@ func (x *Data_Redis) String() string {
 func (*Data_Redis) ProtoMessage() {}
 
 func (x *Data_Redis) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[31]
+	mi := &file_conf_conf_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2308,7 +2383,7 @@ type Runtime_WS struct {
 
 func (x *Runtime_WS) Reset() {
 	*x = Runtime_WS{}
-	mi := &file_conf_conf_proto_msgTypes[32]
+	mi := &file_conf_conf_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2320,7 +2395,7 @@ func (x *Runtime_WS) String() string {
 func (*Runtime_WS) ProtoMessage() {}
 
 func (x *Runtime_WS) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[32]
+	mi := &file_conf_conf_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2436,7 +2511,7 @@ type Runtime_Hook struct {
 
 func (x *Runtime_Hook) Reset() {
 	*x = Runtime_Hook{}
-	mi := &file_conf_conf_proto_msgTypes[33]
+	mi := &file_conf_conf_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2448,7 +2523,7 @@ func (x *Runtime_Hook) String() string {
 func (*Runtime_Hook) ProtoMessage() {}
 
 func (x *Runtime_Hook) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[33]
+	mi := &file_conf_conf_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2531,7 +2606,7 @@ type Runtime_SelfHeal struct {
 
 func (x *Runtime_SelfHeal) Reset() {
 	*x = Runtime_SelfHeal{}
-	mi := &file_conf_conf_proto_msgTypes[34]
+	mi := &file_conf_conf_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2543,7 +2618,7 @@ func (x *Runtime_SelfHeal) String() string {
 func (*Runtime_SelfHeal) ProtoMessage() {}
 
 func (x *Runtime_SelfHeal) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[34]
+	mi := &file_conf_conf_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2636,7 +2711,7 @@ type Runtime_MemoryQueue struct {
 
 func (x *Runtime_MemoryQueue) Reset() {
 	*x = Runtime_MemoryQueue{}
-	mi := &file_conf_conf_proto_msgTypes[35]
+	mi := &file_conf_conf_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2648,7 +2723,7 @@ func (x *Runtime_MemoryQueue) String() string {
 func (*Runtime_MemoryQueue) ProtoMessage() {}
 
 func (x *Runtime_MemoryQueue) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[35]
+	mi := &file_conf_conf_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2710,7 +2785,7 @@ type Runtime_Webhook struct {
 
 func (x *Runtime_Webhook) Reset() {
 	*x = Runtime_Webhook{}
-	mi := &file_conf_conf_proto_msgTypes[36]
+	mi := &file_conf_conf_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2722,7 +2797,7 @@ func (x *Runtime_Webhook) String() string {
 func (*Runtime_Webhook) ProtoMessage() {}
 
 func (x *Runtime_Webhook) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[36]
+	mi := &file_conf_conf_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2764,7 +2839,7 @@ type Runtime_AutoMemory struct {
 
 func (x *Runtime_AutoMemory) Reset() {
 	*x = Runtime_AutoMemory{}
-	mi := &file_conf_conf_proto_msgTypes[37]
+	mi := &file_conf_conf_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2776,7 +2851,7 @@ func (x *Runtime_AutoMemory) String() string {
 func (*Runtime_AutoMemory) ProtoMessage() {}
 
 func (x *Runtime_AutoMemory) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[37]
+	mi := &file_conf_conf_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2826,7 +2901,7 @@ type Runtime_ActivityFlusher struct {
 
 func (x *Runtime_ActivityFlusher) Reset() {
 	*x = Runtime_ActivityFlusher{}
-	mi := &file_conf_conf_proto_msgTypes[38]
+	mi := &file_conf_conf_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2838,7 +2913,7 @@ func (x *Runtime_ActivityFlusher) String() string {
 func (*Runtime_ActivityFlusher) ProtoMessage() {}
 
 func (x *Runtime_ActivityFlusher) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[38]
+	mi := &file_conf_conf_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2892,7 +2967,7 @@ type Runtime_Plugin struct {
 
 func (x *Runtime_Plugin) Reset() {
 	*x = Runtime_Plugin{}
-	mi := &file_conf_conf_proto_msgTypes[39]
+	mi := &file_conf_conf_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2904,7 +2979,7 @@ func (x *Runtime_Plugin) String() string {
 func (*Runtime_Plugin) ProtoMessage() {}
 
 func (x *Runtime_Plugin) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[39]
+	mi := &file_conf_conf_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2942,7 +3017,7 @@ type Runtime_ToolResultPrune struct {
 
 func (x *Runtime_ToolResultPrune) Reset() {
 	*x = Runtime_ToolResultPrune{}
-	mi := &file_conf_conf_proto_msgTypes[40]
+	mi := &file_conf_conf_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2954,7 +3029,7 @@ func (x *Runtime_ToolResultPrune) String() string {
 func (*Runtime_ToolResultPrune) ProtoMessage() {}
 
 func (x *Runtime_ToolResultPrune) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[40]
+	mi := &file_conf_conf_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3012,14 +3087,15 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\blangfuse\x18\x05 \x01(\v2\x14.kratos.api.LangfuseR\blangfuse\x12-\n" +
 	"\aruntime\x18\x06 \x01(\v2\x13.kratos.api.RuntimeR\aruntime\x12F\n" +
 	"\x10self_improvement\x18\a \x01(\v2\x1b.kratos.api.SelfImprovementR\x0fselfImprovement\x12-\n" +
-	"\asandbox\x18\b \x01(\v2\x13.kratos.api.SandboxR\asandbox\"\x95\b\n" +
+	"\asandbox\x18\b \x01(\v2\x13.kratos.api.SandboxR\asandbox\"\xc1\t\n" +
 	"\aSandbox\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x16\n" +
 	"\x06engine\x18\x02 \x01(\tR\x06engine\x12,\n" +
 	"\x04pool\x18\x03 \x01(\v2\x18.kratos.api.Sandbox.PoolR\x04pool\x122\n" +
 	"\x06limits\x18\x04 \x01(\v2\x1a.kratos.api.Sandbox.LimitsR\x06limits\x12)\n" +
 	"\x03ttl\x18\x05 \x01(\v2\x17.kratos.api.Sandbox.TTLR\x03ttl\x12=\n" +
-	"\bprofiles\x18\x06 \x03(\v2!.kratos.api.Sandbox.ProfilesEntryR\bprofiles\x1a\xc7\x01\n" +
+	"\bprofiles\x18\x06 \x03(\v2!.kratos.api.Sandbox.ProfilesEntryR\bprofiles\x122\n" +
+	"\x06egress\x18\a \x01(\v2\x1a.kratos.api.Sandbox.EgressR\x06egress\x1a\xc7\x01\n" +
 	"\x04Pool\x12\x1b\n" +
 	"\tmin_ready\x18\x01 \x01(\x05R\bminReady\x12\x1b\n" +
 	"\tmax_ready\x18\x02 \x01(\x05R\bmaxReady\x12H\n" +
@@ -3033,7 +3109,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x03TTL\x123\n" +
 	"\adefault\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\adefault\x12+\n" +
 	"\x03max\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x03max\x12<\n" +
-	"\fidle_timeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\vidleTimeout\x1a\xaa\x01\n" +
+	"\fidle_timeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\vidleTimeout\x1a\xdf\x01\n" +
 	"\aProfile\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x12\n" +
 	"\x04cpus\x18\x02 \x01(\x01R\x04cpus\x12!\n" +
@@ -3041,7 +3117,12 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\n" +
 	"pids_limit\x18\x04 \x01(\x03R\tpidsLimit\x12\x18\n" +
 	"\anetwork\x18\x05 \x01(\tR\anetwork\x12\x19\n" +
-	"\btmp_size\x18\x06 \x01(\tR\atmpSize\x1aX\n" +
+	"\btmp_size\x18\x06 \x01(\tR\atmpSize\x123\n" +
+	"\x15requires_confirmation\x18\a \x01(\bR\x14requiresConfirmation\x1aA\n" +
+	"\x06Egress\x12\x18\n" +
+	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x1d\n" +
+	"\n" +
+	"proxy_http\x18\x02 \x01(\tR\tproxyHttp\x1aX\n" +
 	"\rProfilesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
 	"\x05value\x18\x02 \x01(\v2\x1b.kratos.api.Sandbox.ProfileR\x05value:\x028\x01\"\x92\r\n" +
@@ -3282,7 +3363,7 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 }
 
 var file_conf_conf_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_conf_conf_proto_goTypes = []any{
 	(SinkType)(0),                                // 0: kratos.api.SinkType
 	(DropPolicy)(0),                              // 1: kratos.api.DropPolicy
@@ -3302,32 +3383,33 @@ var file_conf_conf_proto_goTypes = []any{
 	(*Sandbox_Limits)(nil),                       // 15: kratos.api.Sandbox.Limits
 	(*Sandbox_TTL)(nil),                          // 16: kratos.api.Sandbox.TTL
 	(*Sandbox_Profile)(nil),                      // 17: kratos.api.Sandbox.Profile
-	nil,                                          // 18: kratos.api.Sandbox.ProfilesEntry
-	(*SelfImprovement_ErrorCluster)(nil),         // 19: kratos.api.SelfImprovement.ErrorCluster
-	(*SelfImprovement_Perf)(nil),                 // 20: kratos.api.SelfImprovement.Perf
-	(*SelfImprovement_Eval)(nil),                 // 21: kratos.api.SelfImprovement.Eval
-	(*SelfImprovement_Patch)(nil),                // 22: kratos.api.SelfImprovement.Patch
-	(*SelfImprovement_Sandbox)(nil),              // 23: kratos.api.SelfImprovement.Sandbox
-	(*SelfImprovement_ObserveWindow)(nil),        // 24: kratos.api.SelfImprovement.ObserveWindow
-	(*SelfImprovement_Sandbox_GateTimeouts)(nil), // 25: kratos.api.SelfImprovement.Sandbox.GateTimeouts
-	(*Server_HTTP)(nil),                          // 26: kratos.api.Server.HTTP
-	(*Server_GRPC)(nil),                          // 27: kratos.api.Server.GRPC
-	(*Server_WS)(nil),                            // 28: kratos.api.Server.WS
-	nil,                                          // 29: kratos.api.LoggingSink.ConfigEntry
-	(*Data_Database)(nil),                        // 30: kratos.api.Data.Database
-	(*Data_Postgres)(nil),                        // 31: kratos.api.Data.Postgres
-	(*Data_InitialAdmin)(nil),                    // 32: kratos.api.Data.InitialAdmin
-	(*Data_Redis)(nil),                           // 33: kratos.api.Data.Redis
-	(*Runtime_WS)(nil),                           // 34: kratos.api.Runtime.WS
-	(*Runtime_Hook)(nil),                         // 35: kratos.api.Runtime.Hook
-	(*Runtime_SelfHeal)(nil),                     // 36: kratos.api.Runtime.SelfHeal
-	(*Runtime_MemoryQueue)(nil),                  // 37: kratos.api.Runtime.MemoryQueue
-	(*Runtime_Webhook)(nil),                      // 38: kratos.api.Runtime.Webhook
-	(*Runtime_AutoMemory)(nil),                   // 39: kratos.api.Runtime.AutoMemory
-	(*Runtime_ActivityFlusher)(nil),              // 40: kratos.api.Runtime.ActivityFlusher
-	(*Runtime_Plugin)(nil),                       // 41: kratos.api.Runtime.Plugin
-	(*Runtime_ToolResultPrune)(nil),              // 42: kratos.api.Runtime.ToolResultPrune
-	(*durationpb.Duration)(nil),                  // 43: google.protobuf.Duration
+	(*Sandbox_Egress)(nil),                       // 18: kratos.api.Sandbox.Egress
+	nil,                                          // 19: kratos.api.Sandbox.ProfilesEntry
+	(*SelfImprovement_ErrorCluster)(nil),         // 20: kratos.api.SelfImprovement.ErrorCluster
+	(*SelfImprovement_Perf)(nil),                 // 21: kratos.api.SelfImprovement.Perf
+	(*SelfImprovement_Eval)(nil),                 // 22: kratos.api.SelfImprovement.Eval
+	(*SelfImprovement_Patch)(nil),                // 23: kratos.api.SelfImprovement.Patch
+	(*SelfImprovement_Sandbox)(nil),              // 24: kratos.api.SelfImprovement.Sandbox
+	(*SelfImprovement_ObserveWindow)(nil),        // 25: kratos.api.SelfImprovement.ObserveWindow
+	(*SelfImprovement_Sandbox_GateTimeouts)(nil), // 26: kratos.api.SelfImprovement.Sandbox.GateTimeouts
+	(*Server_HTTP)(nil),                          // 27: kratos.api.Server.HTTP
+	(*Server_GRPC)(nil),                          // 28: kratos.api.Server.GRPC
+	(*Server_WS)(nil),                            // 29: kratos.api.Server.WS
+	nil,                                          // 30: kratos.api.LoggingSink.ConfigEntry
+	(*Data_Database)(nil),                        // 31: kratos.api.Data.Database
+	(*Data_Postgres)(nil),                        // 32: kratos.api.Data.Postgres
+	(*Data_InitialAdmin)(nil),                    // 33: kratos.api.Data.InitialAdmin
+	(*Data_Redis)(nil),                           // 34: kratos.api.Data.Redis
+	(*Runtime_WS)(nil),                           // 35: kratos.api.Runtime.WS
+	(*Runtime_Hook)(nil),                         // 36: kratos.api.Runtime.Hook
+	(*Runtime_SelfHeal)(nil),                     // 37: kratos.api.Runtime.SelfHeal
+	(*Runtime_MemoryQueue)(nil),                  // 38: kratos.api.Runtime.MemoryQueue
+	(*Runtime_Webhook)(nil),                      // 39: kratos.api.Runtime.Webhook
+	(*Runtime_AutoMemory)(nil),                   // 40: kratos.api.Runtime.AutoMemory
+	(*Runtime_ActivityFlusher)(nil),              // 41: kratos.api.Runtime.ActivityFlusher
+	(*Runtime_Plugin)(nil),                       // 42: kratos.api.Runtime.Plugin
+	(*Runtime_ToolResultPrune)(nil),              // 43: kratos.api.Runtime.ToolResultPrune
+	(*durationpb.Duration)(nil),                  // 44: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
 	5,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
@@ -3341,60 +3423,61 @@ var file_conf_conf_proto_depIdxs = []int32{
 	14, // 8: kratos.api.Sandbox.pool:type_name -> kratos.api.Sandbox.Pool
 	15, // 9: kratos.api.Sandbox.limits:type_name -> kratos.api.Sandbox.Limits
 	16, // 10: kratos.api.Sandbox.ttl:type_name -> kratos.api.Sandbox.TTL
-	18, // 11: kratos.api.Sandbox.profiles:type_name -> kratos.api.Sandbox.ProfilesEntry
-	43, // 12: kratos.api.SelfImprovement.observe_interval:type_name -> google.protobuf.Duration
-	19, // 13: kratos.api.SelfImprovement.error_cluster:type_name -> kratos.api.SelfImprovement.ErrorCluster
-	20, // 14: kratos.api.SelfImprovement.perf:type_name -> kratos.api.SelfImprovement.Perf
-	21, // 15: kratos.api.SelfImprovement.eval:type_name -> kratos.api.SelfImprovement.Eval
-	22, // 16: kratos.api.SelfImprovement.patch:type_name -> kratos.api.SelfImprovement.Patch
-	23, // 17: kratos.api.SelfImprovement.sandbox:type_name -> kratos.api.SelfImprovement.Sandbox
-	24, // 18: kratos.api.SelfImprovement.observe_window:type_name -> kratos.api.SelfImprovement.ObserveWindow
-	43, // 19: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
-	43, // 20: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
-	43, // 21: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
-	43, // 22: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
-	26, // 23: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
-	27, // 24: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
-	28, // 25: kratos.api.Server.ws:type_name -> kratos.api.Server.WS
-	7,  // 26: kratos.api.Server.monitor:type_name -> kratos.api.Monitor
-	6,  // 27: kratos.api.Server.openai:type_name -> kratos.api.OpenAI
-	0,  // 28: kratos.api.LoggingSink.type:type_name -> kratos.api.SinkType
-	1,  // 29: kratos.api.LoggingSink.drop_policy:type_name -> kratos.api.DropPolicy
-	29, // 30: kratos.api.LoggingSink.config:type_name -> kratos.api.LoggingSink.ConfigEntry
-	8,  // 31: kratos.api.Logging.sinks:type_name -> kratos.api.LoggingSink
-	30, // 32: kratos.api.Data.database:type_name -> kratos.api.Data.Database
-	33, // 33: kratos.api.Data.redis:type_name -> kratos.api.Data.Redis
-	31, // 34: kratos.api.Data.postgres:type_name -> kratos.api.Data.Postgres
-	32, // 35: kratos.api.Data.initial_admin:type_name -> kratos.api.Data.InitialAdmin
-	34, // 36: kratos.api.Runtime.ws:type_name -> kratos.api.Runtime.WS
-	35, // 37: kratos.api.Runtime.hook:type_name -> kratos.api.Runtime.Hook
-	36, // 38: kratos.api.Runtime.self_heal:type_name -> kratos.api.Runtime.SelfHeal
-	37, // 39: kratos.api.Runtime.memory_queue:type_name -> kratos.api.Runtime.MemoryQueue
-	38, // 40: kratos.api.Runtime.webhook:type_name -> kratos.api.Runtime.Webhook
-	39, // 41: kratos.api.Runtime.auto_memory:type_name -> kratos.api.Runtime.AutoMemory
-	40, // 42: kratos.api.Runtime.activity_flusher:type_name -> kratos.api.Runtime.ActivityFlusher
-	41, // 43: kratos.api.Runtime.plugin:type_name -> kratos.api.Runtime.Plugin
-	42, // 44: kratos.api.Runtime.tool_result_prune:type_name -> kratos.api.Runtime.ToolResultPrune
-	43, // 45: kratos.api.Sandbox.Pool.replenish_interval:type_name -> google.protobuf.Duration
-	43, // 46: kratos.api.Sandbox.Pool.max_pool_age:type_name -> google.protobuf.Duration
-	43, // 47: kratos.api.Sandbox.TTL.default:type_name -> google.protobuf.Duration
-	43, // 48: kratos.api.Sandbox.TTL.max:type_name -> google.protobuf.Duration
-	43, // 49: kratos.api.Sandbox.TTL.idle_timeout:type_name -> google.protobuf.Duration
-	17, // 50: kratos.api.Sandbox.ProfilesEntry.value:type_name -> kratos.api.Sandbox.Profile
-	25, // 51: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
-	43, // 52: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
-	43, // 53: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
-	43, // 54: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
-	43, // 55: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
-	43, // 56: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	43, // 57: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	43, // 58: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
-	43, // 59: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
-	60, // [60:60] is the sub-list for method output_type
-	60, // [60:60] is the sub-list for method input_type
-	60, // [60:60] is the sub-list for extension type_name
-	60, // [60:60] is the sub-list for extension extendee
-	0,  // [0:60] is the sub-list for field type_name
+	19, // 11: kratos.api.Sandbox.profiles:type_name -> kratos.api.Sandbox.ProfilesEntry
+	18, // 12: kratos.api.Sandbox.egress:type_name -> kratos.api.Sandbox.Egress
+	44, // 13: kratos.api.SelfImprovement.observe_interval:type_name -> google.protobuf.Duration
+	20, // 14: kratos.api.SelfImprovement.error_cluster:type_name -> kratos.api.SelfImprovement.ErrorCluster
+	21, // 15: kratos.api.SelfImprovement.perf:type_name -> kratos.api.SelfImprovement.Perf
+	22, // 16: kratos.api.SelfImprovement.eval:type_name -> kratos.api.SelfImprovement.Eval
+	23, // 17: kratos.api.SelfImprovement.patch:type_name -> kratos.api.SelfImprovement.Patch
+	24, // 18: kratos.api.SelfImprovement.sandbox:type_name -> kratos.api.SelfImprovement.Sandbox
+	25, // 19: kratos.api.SelfImprovement.observe_window:type_name -> kratos.api.SelfImprovement.ObserveWindow
+	44, // 20: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
+	44, // 21: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
+	44, // 22: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
+	44, // 23: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
+	27, // 24: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
+	28, // 25: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
+	29, // 26: kratos.api.Server.ws:type_name -> kratos.api.Server.WS
+	7,  // 27: kratos.api.Server.monitor:type_name -> kratos.api.Monitor
+	6,  // 28: kratos.api.Server.openai:type_name -> kratos.api.OpenAI
+	0,  // 29: kratos.api.LoggingSink.type:type_name -> kratos.api.SinkType
+	1,  // 30: kratos.api.LoggingSink.drop_policy:type_name -> kratos.api.DropPolicy
+	30, // 31: kratos.api.LoggingSink.config:type_name -> kratos.api.LoggingSink.ConfigEntry
+	8,  // 32: kratos.api.Logging.sinks:type_name -> kratos.api.LoggingSink
+	31, // 33: kratos.api.Data.database:type_name -> kratos.api.Data.Database
+	34, // 34: kratos.api.Data.redis:type_name -> kratos.api.Data.Redis
+	32, // 35: kratos.api.Data.postgres:type_name -> kratos.api.Data.Postgres
+	33, // 36: kratos.api.Data.initial_admin:type_name -> kratos.api.Data.InitialAdmin
+	35, // 37: kratos.api.Runtime.ws:type_name -> kratos.api.Runtime.WS
+	36, // 38: kratos.api.Runtime.hook:type_name -> kratos.api.Runtime.Hook
+	37, // 39: kratos.api.Runtime.self_heal:type_name -> kratos.api.Runtime.SelfHeal
+	38, // 40: kratos.api.Runtime.memory_queue:type_name -> kratos.api.Runtime.MemoryQueue
+	39, // 41: kratos.api.Runtime.webhook:type_name -> kratos.api.Runtime.Webhook
+	40, // 42: kratos.api.Runtime.auto_memory:type_name -> kratos.api.Runtime.AutoMemory
+	41, // 43: kratos.api.Runtime.activity_flusher:type_name -> kratos.api.Runtime.ActivityFlusher
+	42, // 44: kratos.api.Runtime.plugin:type_name -> kratos.api.Runtime.Plugin
+	43, // 45: kratos.api.Runtime.tool_result_prune:type_name -> kratos.api.Runtime.ToolResultPrune
+	44, // 46: kratos.api.Sandbox.Pool.replenish_interval:type_name -> google.protobuf.Duration
+	44, // 47: kratos.api.Sandbox.Pool.max_pool_age:type_name -> google.protobuf.Duration
+	44, // 48: kratos.api.Sandbox.TTL.default:type_name -> google.protobuf.Duration
+	44, // 49: kratos.api.Sandbox.TTL.max:type_name -> google.protobuf.Duration
+	44, // 50: kratos.api.Sandbox.TTL.idle_timeout:type_name -> google.protobuf.Duration
+	17, // 51: kratos.api.Sandbox.ProfilesEntry.value:type_name -> kratos.api.Sandbox.Profile
+	26, // 52: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
+	44, // 53: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
+	44, // 54: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
+	44, // 55: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
+	44, // 56: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
+	44, // 57: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	44, // 58: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	44, // 59: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
+	44, // 60: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
+	61, // [61:61] is the sub-list for method output_type
+	61, // [61:61] is the sub-list for method input_type
+	61, // [61:61] is the sub-list for extension type_name
+	61, // [61:61] is the sub-list for extension extendee
+	0,  // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -3402,14 +3485,14 @@ func file_conf_conf_proto_init() {
 	if File_conf_conf_proto != nil {
 		return
 	}
-	file_conf_conf_proto_msgTypes[40].OneofWrappers = []any{}
+	file_conf_conf_proto_msgTypes[41].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   41,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

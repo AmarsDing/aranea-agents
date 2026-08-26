@@ -749,6 +749,7 @@ func provideRunnerConfig(
 	kanbanBridge kanbanpkg.Bridge,
 	computerUseUC *bizcu.ComputerUseUsecase,
 	sandboxLeases *sandbox.SessionLeases,
+	sandboxMgr *sandbox.Manager,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
 	skillUC *biz.SkillUsecase,
@@ -786,6 +787,7 @@ func provideRunnerConfig(
 		KanbanBridge:    kanbanBridge,
 		ComputerUseUC:   computerUseUC,
 		SandboxFSStore:  sandboxLeases,
+		SandboxManager:  sandboxMgr,
 		A2AEnabled:      a2aUC != nil,
 		// SessionChildLookup resolves member agent session IDs for child_session_id
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up

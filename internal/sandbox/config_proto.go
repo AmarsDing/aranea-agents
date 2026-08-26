@@ -42,18 +42,23 @@ func ConfigFromProto(pb *conf.Sandbox) Config {
 			cfg.TTL.IdleTimeout = d.AsDuration()
 		}
 	}
+	if e := pb.GetEgress(); e != nil {
+		cfg.Egress.Network = strings.TrimSpace(e.GetNetwork())
+		cfg.Egress.ProxyHTTP = strings.TrimSpace(e.GetProxyHttp())
+	}
 	if len(pb.GetProfiles()) > 0 {
 		profiles := make(map[string]Profile, len(pb.GetProfiles()))
 		for name, pp := range pb.GetProfiles() {
 			profiles[name] = Profile{
-				Name:           name,
-				Image:          pp.GetImage(),
-				CPUs:           pp.GetCpus(),
-				MemoryBytes:    pp.GetMemoryBytes(),
-				PidsLimit:      pp.GetPidsLimit(),
-				Network:        NetworkMode(strings.ToLower(strings.TrimSpace(pp.GetNetwork()))),
-				ReadOnlyRootfs: true, // engine-enforced baseline, not configurable
-				TmpSize:        pp.GetTmpSize(),
+				Name:                 name,
+				Image:                pp.GetImage(),
+				CPUs:                 pp.GetCpus(),
+				MemoryBytes:          pp.GetMemoryBytes(),
+				PidsLimit:            pp.GetPidsLimit(),
+				Network:              NetworkMode(strings.ToLower(strings.TrimSpace(pp.GetNetwork()))),
+				ReadOnlyRootfs:       true, // engine-enforced baseline, not configurable
+				TmpSize:              pp.GetTmpSize(),
+				RequiresConfirmation: pp.GetRequiresConfirmation(),
 			}
 		}
 		cfg.Profiles = profiles

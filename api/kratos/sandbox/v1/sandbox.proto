@@ -48,16 +48,24 @@ message SandboxMetrics {
   int64 exec_ok = 6;
   int64 exec_error = 7;
   int64 exec_timeout = 8;
-  map<string, int64> destroy = 9;       // reason -> count (release/ttl/idle/pool_evict/reconcile/force_kill)
-  map<string, int64> quota_reject = 10; // scope -> count (global/agent)
+  map<string, int64> destroy = 9;       // reason -> count (release/ttl/idle/pool_evict/reconcile/force)
+  map<string, int64> quota_reject = 10; // scope -> count (global/agent/run)
 }
 
 message GetSandboxMetricsRequest {
 }
 
+message ForceKillSandboxRequest {
+  string id = 1;     // path param
+  string reason = 2; // query param, REQUIRED (audit FR-33); empty → BadRequest
+}
+
+message ForceKillSandboxResponse {
+  string id = 1;
+}
+
 // SandboxService is the M82 sandbox admin API (design §5.3, ADR-82-3:
-// read-only management surface — execution capability is NOT exposed over
-// HTTP). ForceKillSandbox lands with P2-3 (audit requirements).
+// no execution capability over HTTP — only lifecycle management).
 service SandboxService {
   // ListSandboxes returns all live sandboxes (warm-pool ready + leased).
   rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse) {
@@ -66,5 +74,11 @@ service SandboxService {
   // GetSandboxMetrics returns pool water levels and the counter snapshot.
   rpc GetSandboxMetrics(GetSandboxMetricsRequest) returns (SandboxMetrics) {
     option (google.api.http) = {get: "/v1/sandboxes/metrics"};
+  }
+  // ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
+  // is taken from the JWT principal; reason is mandatory and both are
+  // written to the audit log (FR-33).
+  rpc ForceKillSandbox(ForceKillSandboxRequest) returns (ForceKillSandboxResponse) {
+    option (google.api.http) = {delete: "/v1/sandboxes/{id}"};
   }
 }

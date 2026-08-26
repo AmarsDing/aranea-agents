@@ -122,6 +122,22 @@ services:
       - araneanet
     restart: unless-stopped
 
+  # M82 P2-1 sandbox egress 代理：沙箱唯一受控出口。双网络接入——
+  # aranea-egress（沙箱侧 internal 桥，暴露 3128 CONNECT）+ araneanet（外网
+  # 上行）。域名白名单见 docker/config/egress/allowed_domains.txt（精确主机
+  # 逐个登记，outboundguard 放行风格）；container_name 须与 config.yaml
+  # sandbox.egress.proxy_http 的主机部分一致（沙箱经 embedded DNS 按名解析）。
+  egress-proxy:
+    image: ubuntu/squid:latest
+    container_name: aranea-egress-proxy
+    volumes:
+      - ./docker/config/egress/squid.conf:/etc/squid/squid.conf:ro
+      - ./docker/config/egress/allowed_domains.txt:/etc/squid/allowed_domains.txt:ro
+    networks:
+      - aranea-egress
+      - araneanet
+    restart: unless-stopped
+
   # G3 压测执行器（agent-eval-20260818）：常驻容器，内网打 http://aranea-admin:8810，
   # 消除宿主机 PowerShell Start-Job 进程开销导致的客户端口径失真（realmachine-20260817 PERF-02 教训）。
   # 用法：docker compose --profile perf up -d k6 && docker exec aranea-k6 k6 run /scripts/baseline.js
@@ -138,6 +154,14 @@ services:
 networks:
   araneanet:
     driver: bridge
+  # M82 P2-1 受控出网车道：沙箱专用 internal 桥（无 NAT 上行路由），唯一
+  # 出口是 egress-proxy 的 CONNECT 白名单隧道。显式固定网络名（去项目前缀），
+  # 与 sandbox 引擎默认 aranea-egress 对齐（config.yaml sandbox.egress.network）；
+  # 沙箱由宿主机 daemon 创建（docker.sock 直通），按名接入本网络。
+  aranea-egress:
+    name: aranea-egress
+    driver: bridge
+    internal: true
 
 volumes:
   postgres-data:

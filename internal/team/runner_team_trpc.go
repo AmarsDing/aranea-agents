@@ -12,6 +12,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/sandbox"
 	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/pkg/loggateway"
@@ -77,6 +78,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// ctx is cancelled so no further member steps are scheduled.
 	r.registerRunTokenBudget(run.ID, resolveRunTokenBudget(def))
 	defer r.releaseRunTokenBudget(run.ID)
+
+	// M82 P2-2: the sandbox per-run creation budget rides the same lifecycle —
+	// the cumulative counter is dropped when the run ends (live instances are
+	// untouched; they still die by Release/TTL/idle).
+	if r.cfg.SandboxManager != nil {
+		defer r.cfg.SandboxManager.ReleaseRun(run.ID)
+	}
 
 	// Phase 3: Setup tracing and event emitter
 	ts := r.setupTeamTracing(ctx, sess, teamRow, run, mode, len(ti.members))
@@ -216,6 +224,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if runCancel != nil {
 		defer runCancel()
 	}
+	// M82 P2-2: tag the run ctx so sandbox acquisitions by team members
+	// (sandbox_fs / codeexecutor via SessionLeases) count against this run's
+	// cumulative creation budget.
+	runCtx = sandbox.WithRunID(runCtx, run.ID)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 	if teamEmitter != nil {

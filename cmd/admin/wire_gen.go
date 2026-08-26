@@ -378,7 +378,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(v33, agentRepository, agentUsecase, v2, v29, llmProviderModelUsecase, v13, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, v35, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, v29, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, v22, v33, v13, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, runtime, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, v35, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, v29, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, v22, v33, v13, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, runtime, loggatewayLogger)
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, v37, v20, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
@@ -1371,6 +1371,7 @@ func provideRunnerConfig(
 	kanbanBridge kanban.Bridge,
 	computerUseUC *computeruse.ComputerUseUsecase,
 	sandboxLeases *sandbox.SessionLeases,
+	sandboxMgr *sandbox.Manager,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
 	skillUC *biz.SkillUsecase,
@@ -1407,6 +1408,7 @@ func provideRunnerConfig(
 		KanbanBridge:    kanbanBridge,
 		ComputerUseUC:   computerUseUC,
 		SandboxFSStore:  sandboxLeases,
+		SandboxManager:  sandboxMgr,
 		A2AEnabled:      a2aUC != nil,
 
 		SessionChildLookup: &sessionChildLookupAdapter{sessions: sessions},

@@ -293,8 +293,8 @@ type SandboxMetrics struct {
 	ExecOk        int64                    `protobuf:"varint,6,opt,name=exec_ok,json=execOk,proto3" json:"exec_ok,omitempty"`
 	ExecError     int64                    `protobuf:"varint,7,opt,name=exec_error,json=execError,proto3" json:"exec_error,omitempty"`
 	ExecTimeout   int64                    `protobuf:"varint,8,opt,name=exec_timeout,json=execTimeout,proto3" json:"exec_timeout,omitempty"`
-	Destroy       map[string]int64         `protobuf:"bytes,9,rep,name=destroy,proto3" json:"destroy,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`                             // reason -> count (release/ttl/idle/pool_evict/reconcile/force_kill)
-	QuotaReject   map[string]int64         `protobuf:"bytes,10,rep,name=quota_reject,json=quotaReject,proto3" json:"quota_reject,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // scope -> count (global/agent)
+	Destroy       map[string]int64         `protobuf:"bytes,9,rep,name=destroy,proto3" json:"destroy,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`                             // reason -> count (release/ttl/idle/pool_evict/reconcile/force)
+	QuotaReject   map[string]int64         `protobuf:"bytes,10,rep,name=quota_reject,json=quotaReject,proto3" json:"quota_reject,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // scope -> count (global/agent/run)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -435,6 +435,102 @@ func (*GetSandboxMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_kratos_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{5}
 }
 
+type ForceKillSandboxRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`         // path param
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // query param, REQUIRED (audit FR-33); empty → BadRequest
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ForceKillSandboxRequest) Reset() {
+	*x = ForceKillSandboxRequest{}
+	mi := &file_kratos_sandbox_v1_sandbox_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForceKillSandboxRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForceKillSandboxRequest) ProtoMessage() {}
+
+func (x *ForceKillSandboxRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_sandbox_v1_sandbox_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForceKillSandboxRequest.ProtoReflect.Descriptor instead.
+func (*ForceKillSandboxRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ForceKillSandboxRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ForceKillSandboxRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type ForceKillSandboxResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ForceKillSandboxResponse) Reset() {
+	*x = ForceKillSandboxResponse{}
+	mi := &file_kratos_sandbox_v1_sandbox_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForceKillSandboxResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForceKillSandboxResponse) ProtoMessage() {}
+
+func (x *ForceKillSandboxResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_sandbox_v1_sandbox_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForceKillSandboxResponse.ProtoReflect.Descriptor instead.
+func (*ForceKillSandboxResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ForceKillSandboxResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 var File_kratos_sandbox_v1_sandbox_proto protoreflect.FileDescriptor
 
 const file_kratos_sandbox_v1_sandbox_proto_rawDesc = "" +
@@ -482,10 +578,16 @@ const file_kratos_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"\x10QuotaRejectEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"\x1a\n" +
-	"\x18GetSandboxMetricsRequest2\x90\x02\n" +
+	"\x18GetSandboxMetricsRequest\"A\n" +
+	"\x17ForceKillSandboxRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"*\n" +
+	"\x18ForceKillSandboxResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id2\x9a\x03\n" +
 	"\x0eSandboxService\x12y\n" +
 	"\rListSandboxes\x12'.kratos.sandbox.v1.ListSandboxesRequest\x1a(.kratos.sandbox.v1.ListSandboxesResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/sandboxes\x12\x82\x01\n" +
-	"\x11GetSandboxMetrics\x12+.kratos.sandbox.v1.GetSandboxMetricsRequest\x1a!.kratos.sandbox.v1.SandboxMetrics\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/sandboxes/metricsBA\n" +
+	"\x11GetSandboxMetrics\x12+.kratos.sandbox.v1.GetSandboxMetricsRequest\x1a!.kratos.sandbox.v1.SandboxMetrics\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/sandboxes/metrics\x12\x87\x01\n" +
+	"\x10ForceKillSandbox\x12*.kratos.sandbox.v1.ForceKillSandboxRequest\x1a+.kratos.sandbox.v1.ForceKillSandboxResponse\"\x1a\x82\xd3\xe4\x93\x02\x14*\x12/v1/sandboxes/{id}BA\n" +
 	"\x15api.kratos.sandbox.v1P\x01Z&aranea-agents/api/kratos/sandbox/v1;v1b\x06proto3"
 
 var (
@@ -500,7 +602,7 @@ func file_kratos_sandbox_v1_sandbox_proto_rawDescGZIP() []byte {
 	return file_kratos_sandbox_v1_sandbox_proto_rawDescData
 }
 
-var file_kratos_sandbox_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kratos_sandbox_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_kratos_sandbox_v1_sandbox_proto_goTypes = []any{
 	(*Sandbox)(nil),                  // 0: kratos.sandbox.v1.Sandbox
 	(*ListSandboxesRequest)(nil),     // 1: kratos.sandbox.v1.ListSandboxesRequest
@@ -508,20 +610,24 @@ var file_kratos_sandbox_v1_sandbox_proto_goTypes = []any{
 	(*SandboxProfileMetrics)(nil),    // 3: kratos.sandbox.v1.SandboxProfileMetrics
 	(*SandboxMetrics)(nil),           // 4: kratos.sandbox.v1.SandboxMetrics
 	(*GetSandboxMetricsRequest)(nil), // 5: kratos.sandbox.v1.GetSandboxMetricsRequest
-	nil,                              // 6: kratos.sandbox.v1.SandboxMetrics.DestroyEntry
-	nil,                              // 7: kratos.sandbox.v1.SandboxMetrics.QuotaRejectEntry
+	(*ForceKillSandboxRequest)(nil),  // 6: kratos.sandbox.v1.ForceKillSandboxRequest
+	(*ForceKillSandboxResponse)(nil), // 7: kratos.sandbox.v1.ForceKillSandboxResponse
+	nil,                              // 8: kratos.sandbox.v1.SandboxMetrics.DestroyEntry
+	nil,                              // 9: kratos.sandbox.v1.SandboxMetrics.QuotaRejectEntry
 }
 var file_kratos_sandbox_v1_sandbox_proto_depIdxs = []int32{
 	0, // 0: kratos.sandbox.v1.ListSandboxesResponse.items:type_name -> kratos.sandbox.v1.Sandbox
 	3, // 1: kratos.sandbox.v1.SandboxMetrics.profiles:type_name -> kratos.sandbox.v1.SandboxProfileMetrics
-	6, // 2: kratos.sandbox.v1.SandboxMetrics.destroy:type_name -> kratos.sandbox.v1.SandboxMetrics.DestroyEntry
-	7, // 3: kratos.sandbox.v1.SandboxMetrics.quota_reject:type_name -> kratos.sandbox.v1.SandboxMetrics.QuotaRejectEntry
+	8, // 2: kratos.sandbox.v1.SandboxMetrics.destroy:type_name -> kratos.sandbox.v1.SandboxMetrics.DestroyEntry
+	9, // 3: kratos.sandbox.v1.SandboxMetrics.quota_reject:type_name -> kratos.sandbox.v1.SandboxMetrics.QuotaRejectEntry
 	1, // 4: kratos.sandbox.v1.SandboxService.ListSandboxes:input_type -> kratos.sandbox.v1.ListSandboxesRequest
 	5, // 5: kratos.sandbox.v1.SandboxService.GetSandboxMetrics:input_type -> kratos.sandbox.v1.GetSandboxMetricsRequest
-	2, // 6: kratos.sandbox.v1.SandboxService.ListSandboxes:output_type -> kratos.sandbox.v1.ListSandboxesResponse
-	4, // 7: kratos.sandbox.v1.SandboxService.GetSandboxMetrics:output_type -> kratos.sandbox.v1.SandboxMetrics
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
+	6, // 6: kratos.sandbox.v1.SandboxService.ForceKillSandbox:input_type -> kratos.sandbox.v1.ForceKillSandboxRequest
+	2, // 7: kratos.sandbox.v1.SandboxService.ListSandboxes:output_type -> kratos.sandbox.v1.ListSandboxesResponse
+	4, // 8: kratos.sandbox.v1.SandboxService.GetSandboxMetrics:output_type -> kratos.sandbox.v1.SandboxMetrics
+	7, // 9: kratos.sandbox.v1.SandboxService.ForceKillSandbox:output_type -> kratos.sandbox.v1.ForceKillSandboxResponse
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
@@ -538,7 +644,7 @@ func file_kratos_sandbox_v1_sandbox_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_sandbox_v1_sandbox_proto_rawDesc), len(file_kratos_sandbox_v1_sandbox_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

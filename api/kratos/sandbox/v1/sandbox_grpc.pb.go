@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	SandboxService_ListSandboxes_FullMethodName     = "/kratos.sandbox.v1.SandboxService/ListSandboxes"
 	SandboxService_GetSandboxMetrics_FullMethodName = "/kratos.sandbox.v1.SandboxService/GetSandboxMetrics"
+	SandboxService_ForceKillSandbox_FullMethodName  = "/kratos.sandbox.v1.SandboxService/ForceKillSandbox"
 )
 
 // SandboxServiceClient is the client API for SandboxService service.
@@ -28,13 +29,16 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // SandboxService is the M82 sandbox admin API (design §5.3, ADR-82-3:
-// read-only management surface — execution capability is NOT exposed over
-// HTTP). ForceKillSandbox lands with P2-3 (audit requirements).
+// no execution capability over HTTP — only lifecycle management).
 type SandboxServiceClient interface {
 	// ListSandboxes returns all live sandboxes (warm-pool ready + leased).
 	ListSandboxes(ctx context.Context, in *ListSandboxesRequest, opts ...grpc.CallOption) (*ListSandboxesResponse, error)
 	// GetSandboxMetrics returns pool water levels and the counter snapshot.
 	GetSandboxMetrics(ctx context.Context, in *GetSandboxMetricsRequest, opts ...grpc.CallOption) (*SandboxMetrics, error)
+	// ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
+	// is taken from the JWT principal; reason is mandatory and both are
+	// written to the audit log (FR-33).
+	ForceKillSandbox(ctx context.Context, in *ForceKillSandboxRequest, opts ...grpc.CallOption) (*ForceKillSandboxResponse, error)
 }
 
 type sandboxServiceClient struct {
@@ -65,18 +69,31 @@ func (c *sandboxServiceClient) GetSandboxMetrics(ctx context.Context, in *GetSan
 	return out, nil
 }
 
+func (c *sandboxServiceClient) ForceKillSandbox(ctx context.Context, in *ForceKillSandboxRequest, opts ...grpc.CallOption) (*ForceKillSandboxResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ForceKillSandboxResponse)
+	err := c.cc.Invoke(ctx, SandboxService_ForceKillSandbox_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SandboxServiceServer is the server API for SandboxService service.
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility.
 //
 // SandboxService is the M82 sandbox admin API (design §5.3, ADR-82-3:
-// read-only management surface — execution capability is NOT exposed over
-// HTTP). ForceKillSandbox lands with P2-3 (audit requirements).
+// no execution capability over HTTP — only lifecycle management).
 type SandboxServiceServer interface {
 	// ListSandboxes returns all live sandboxes (warm-pool ready + leased).
 	ListSandboxes(context.Context, *ListSandboxesRequest) (*ListSandboxesResponse, error)
 	// GetSandboxMetrics returns pool water levels and the counter snapshot.
 	GetSandboxMetrics(context.Context, *GetSandboxMetricsRequest) (*SandboxMetrics, error)
+	// ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
+	// is taken from the JWT principal; reason is mandatory and both are
+	// written to the audit log (FR-33).
+	ForceKillSandbox(context.Context, *ForceKillSandboxRequest) (*ForceKillSandboxResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
 
@@ -92,6 +109,9 @@ func (UnimplementedSandboxServiceServer) ListSandboxes(context.Context, *ListSan
 }
 func (UnimplementedSandboxServiceServer) GetSandboxMetrics(context.Context, *GetSandboxMetricsRequest) (*SandboxMetrics, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSandboxMetrics not implemented")
+}
+func (UnimplementedSandboxServiceServer) ForceKillSandbox(context.Context, *ForceKillSandboxRequest) (*ForceKillSandboxResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ForceKillSandbox not implemented")
 }
 func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 func (UnimplementedSandboxServiceServer) testEmbeddedByValue()                        {}
@@ -150,6 +170,24 @@ func _SandboxService_GetSandboxMetrics_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_ForceKillSandbox_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ForceKillSandboxRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).ForceKillSandbox(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SandboxService_ForceKillSandbox_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).ForceKillSandbox(ctx, req.(*ForceKillSandboxRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -164,6 +202,10 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSandboxMetrics",
 			Handler:    _SandboxService_GetSandboxMetrics_Handler,
+		},
+		{
+			MethodName: "ForceKillSandbox",
+			Handler:    _SandboxService_ForceKillSandbox_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

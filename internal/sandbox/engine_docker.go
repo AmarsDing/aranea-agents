@@ -44,6 +44,23 @@ func (e *DockerEngine) cmd(ctx context.Context, args ...string) *exec.Cmd {
 	return run(ctx, "docker", args...)
 }
 
+// dockerNetworkFor maps the profile network stance onto a docker network
+// argument (P2-1): none/full are daemon built-ins; egress attaches to the
+// no-masquerade lane bridge resolved in normalize().
+func dockerNetworkFor(p Profile) string {
+	switch p.Network {
+	case NetworkFull:
+		return "bridge"
+	case NetworkEgress:
+		if p.EgressNetwork != "" {
+			return p.EgressNetwork
+		}
+		return "aranea-egress"
+	default:
+		return "none"
+	}
+}
+
 // Create assembles `docker create` from the M32 isolation baseline
 // (--network/--memory/--cpus/--read-only/tmpfs) plus the M82 hardening
 // additions (cap-drop ALL, no-new-privileges, pids-limit), then starts the
@@ -55,7 +72,7 @@ func (e *DockerEngine) Create(ctx context.Context, sandboxID string, p Profile, 
 	args := []string{
 		"create",
 		"--name", h.ID,
-		"--network", string(p.Network),
+		"--network", dockerNetworkFor(p),
 		fmt.Sprintf("--memory=%d", p.MemoryBytes),
 		fmt.Sprintf("--memory-swap=%d", p.MemoryBytes), // disable swap
 		fmt.Sprintf("--cpus=%g", p.CPUs),
@@ -67,6 +84,19 @@ func (e *DockerEngine) Create(ctx context.Context, sandboxID string, p Profile, 
 		// preserved for `docker cp` collection; removed by rm -v. Path matches
 		// the M32 agent-facing contract (/workspace/out).
 		"--volume", "/workspace/out",
+	}
+	// P2-1 egress lane: the bridge has no NAT masquerade, so the only way out
+	// is the CONNECT proxy (injected via env; upper+lowercase variants cover
+	// curl/python/node/git conventions). Domain whitelist enforced proxy-side.
+	if p.Network == NetworkEgress && p.EgressProxy != "" {
+		args = append(args,
+			"--env", "HTTP_PROXY="+p.EgressProxy,
+			"--env", "HTTPS_PROXY="+p.EgressProxy,
+			"--env", "http_proxy="+p.EgressProxy,
+			"--env", "https_proxy="+p.EgressProxy,
+			"--env", "NO_PROXY=localhost,127.0.0.1",
+			"--env", "no_proxy=localhost,127.0.0.1",
+		)
 	}
 	if p.ReadOnlyRootfs {
 		args = append(args, "--read-only", "--tmpfs", "/tmp:size="+p.TmpSize)

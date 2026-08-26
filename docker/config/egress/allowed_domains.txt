@@ -1,0 +1,6 @@
+# M82 P2-1 sandbox egress 域名白名单（每行一个主机；dstdomain 语义：含其子域）。
+# 新增主机逐个登记并注明用途（outboundguard 精确放行风格），保持与 app 部署包一致。
+
+# Python 包安装（codeexec 沙箱 pip install）
+pypi.org
+files.pythonhosted.org
