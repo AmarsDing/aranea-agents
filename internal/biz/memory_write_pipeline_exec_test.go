@@ -205,6 +205,7 @@ func TestFactWritePipeline_MergeBumpsAccessCount(t *testing.T) {
 
 func TestFactWritePipeline_ContestedAdjudicatedUpdate(t *testing.T) {
 	writer := &fakeFactWriter{}
+	pending := &fakePendingStore{}
 	adj := &fakeAdjudicator{verdicts: []FactAdjudicationVerdict{
 		{Statement: "用户现在只喝茶", Operation: FactWriteOpUpdate, TargetFactID: "f1"},
 	}}
@@ -216,25 +217,29 @@ func TestFactWritePipeline_ContestedAdjudicatedUpdate(t *testing.T) {
 		Reader:      &fakeFactRowReader{rows: [][]byte{factRowJSON("f1", "用户喜欢咖啡", "preference")}},
 		Writer:      writer,
 		Adjudicator: adj,
+		Pending:     pending,
 		LG:          loggateway.NewNoop(),
 	})
 	res := p.Apply(context.Background(), []FactWriteCandidate{pipelineCandidate("用户现在只喝茶")})
 	if adj.calls != 1 {
 		t.Fatalf("adjudicator calls: got %d want 1", adj.calls)
 	}
-	if res.Updated != 1 {
-		t.Fatalf("updated: got %d want 1", res.Updated)
+	// R3: adjudicated UPDATE no longer writes directly — it pends for approval.
+	if res.Pended != 1 || res.Updated != 0 {
+		t.Fatalf("R3 gate: got Pended=%d Updated=%d, want 1/0", res.Pended, res.Updated)
 	}
-	if len(writer.txOldIDs) != 1 || writer.txOldIDs[0] != "f1" {
-		t.Fatalf("tx invalidate old: got %v want [f1]", writer.txOldIDs)
+	if len(writer.txOldIDs) != 0 || len(writer.txUpserts) != 0 {
+		t.Fatalf("withheld update must not touch storage: %+v", writer)
 	}
-	if len(writer.txUpserts) != 1 || writer.txUpserts[0].Statement != "用户现在只喝茶" {
-		t.Fatalf("tx upsert: got %+v", writer.txUpserts)
+	if len(pending.recs) != 1 || pending.recs[0].Verdict != MemoryFactPendingVerdictUpdate ||
+		pending.recs[0].FactKey != "f1" || pending.recs[0].PriorBody != "用户喜欢咖啡" {
+		t.Fatalf("pending rec mismatch: %+v", pending.recs)
 	}
 }
 
 func TestFactWritePipeline_ContestedAdjudicatedDelete(t *testing.T) {
 	writer := &fakeFactWriter{}
+	pending := &fakePendingStore{}
 	adj := &fakeAdjudicator{verdicts: []FactAdjudicationVerdict{
 		{Statement: "用户不再喝咖啡", Operation: FactWriteOpDelete, TargetFactID: "f1"},
 	}}
@@ -246,16 +251,25 @@ func TestFactWritePipeline_ContestedAdjudicatedDelete(t *testing.T) {
 		Reader:      &fakeFactRowReader{rows: [][]byte{factRowJSON("f1", "用户喜欢咖啡", "preference")}},
 		Writer:      writer,
 		Adjudicator: adj,
+		Pending:     pending,
 		LG:          loggateway.NewNoop(),
 	})
 	res := p.Apply(context.Background(), []FactWriteCandidate{pipelineCandidate("用户不再喝咖啡")})
-	if res.Deleted != 1 || len(writer.invalidations) != 1 || writer.invalidations[0] != "f1" {
-		t.Fatalf("deleted: got %d invalidations %v, want 1/[f1]", res.Deleted, writer.invalidations)
+	// R3: adjudicated DELETE no longer invalidates directly — it pends.
+	if res.Pended != 1 || res.Deleted != 0 || len(writer.invalidations) != 0 {
+		t.Fatalf("R3 gate: got Pended=%d Deleted=%d invalidations=%v, want 1/0/[]",
+			res.Pended, res.Deleted, writer.invalidations)
+	}
+	if len(pending.recs) != 1 || pending.recs[0].Verdict != MemoryFactPendingVerdictDelete || pending.recs[0].FactKey != "f1" {
+		t.Fatalf("pending rec mismatch: %+v", pending.recs)
 	}
 }
 
-func TestFactWritePipeline_AdjudicatorNilFallsBackHeuristic(t *testing.T) {
+// R3：adjudicator 未装配时 contested 候选不再 heuristic 直写——落 pending
+// （CONTESTED）；无 pending 存储则 fail-closed 扣留（记 WriteErrs，绝不直写）。
+func TestFactWritePipeline_AdjudicatorNilPendsContested(t *testing.T) {
 	writer := &fakeFactWriter{}
+	pending := &fakePendingStore{}
 	p := NewFactWritePipeline(FactWritePipelineDeps{
 		Searcher: &fakeNeighborSearcher{neighbors: []MemoryConflictNeighbor{
 			{FactID: "f1", Score: 0.85, FactKind: "preference"},
@@ -263,16 +277,21 @@ func TestFactWritePipeline_AdjudicatorNilFallsBackHeuristic(t *testing.T) {
 		Embedder: &fakeEmbedder{},
 		Reader:   &fakeFactRowReader{rows: [][]byte{factRowJSON("f1", "用户喜欢咖啡", "preference")}},
 		Writer:   writer,
+		Pending:  pending,
 		LG:       loggateway.NewNoop(),
 	})
 	res := p.Apply(context.Background(), []FactWriteCandidate{pipelineCandidate("用户现在只喝茶")})
-	if res.Added != 1 {
-		t.Fatalf("contested without adjudicator must fall back to add, got %+v", res)
+	if res.Pended != 1 || res.Added != 0 || len(writer.upserts) != 0 {
+		t.Fatalf("contested without adjudicator must pend, got %+v", res)
+	}
+	if len(pending.recs) != 1 || pending.recs[0].Verdict != MemoryFactPendingVerdictContested {
+		t.Fatalf("pending rec mismatch: %+v", pending.recs)
 	}
 }
 
-func TestFactWritePipeline_AdjudicatorErrorFallsBackHeuristic(t *testing.T) {
+func TestFactWritePipeline_AdjudicatorErrorPendsContested(t *testing.T) {
 	writer := &fakeFactWriter{}
+	pending := &fakePendingStore{}
 	adj := &fakeAdjudicator{err: errors.New("llm down")}
 	p := NewFactWritePipeline(FactWritePipelineDeps{
 		Searcher: &fakeNeighborSearcher{neighbors: []MemoryConflictNeighbor{
@@ -282,16 +301,21 @@ func TestFactWritePipeline_AdjudicatorErrorFallsBackHeuristic(t *testing.T) {
 		Reader:      &fakeFactRowReader{rows: [][]byte{factRowJSON("f1", "用户喜欢咖啡", "preference")}},
 		Writer:      writer,
 		Adjudicator: adj,
+		Pending:     pending,
 		LG:          loggateway.NewNoop(),
 	})
 	res := p.Apply(context.Background(), []FactWriteCandidate{pipelineCandidate("用户现在只喝茶")})
-	if res.Added != 1 {
-		t.Fatalf("adjudicator error must fall back to add, got %+v", res)
+	if res.Pended != 1 || res.Added != 0 || len(writer.upserts) != 0 {
+		t.Fatalf("adjudicator error must pend CONTESTED, got %+v", res)
+	}
+	if len(pending.recs) != 1 || pending.recs[0].AdjudicatorReason != "adjudicator_error" {
+		t.Fatalf("pending rec mismatch: %+v", pending.recs)
 	}
 }
 
-func TestFactWritePipeline_VerdictTargetNotNeighborDowngradesToAdd(t *testing.T) {
+func TestFactWritePipeline_VerdictTargetNotNeighborPendsContested(t *testing.T) {
 	writer := &fakeFactWriter{}
+	pending := &fakePendingStore{}
 	adj := &fakeAdjudicator{verdicts: []FactAdjudicationVerdict{
 		{Statement: "用户现在只喝茶", Operation: FactWriteOpUpdate, TargetFactID: "stranger"},
 	}}
@@ -303,11 +327,15 @@ func TestFactWritePipeline_VerdictTargetNotNeighborDowngradesToAdd(t *testing.T)
 		Reader:      &fakeFactRowReader{rows: [][]byte{factRowJSON("f1", "用户喜欢咖啡", "preference")}},
 		Writer:      writer,
 		Adjudicator: adj,
+		Pending:     pending,
 		LG:          loggateway.NewNoop(),
 	})
 	res := p.Apply(context.Background(), []FactWriteCandidate{pipelineCandidate("用户现在只喝茶")})
-	if res.Added != 1 || len(writer.upserts) != 1 {
-		t.Fatalf("invalid target must downgrade to add, got %+v", res)
+	if res.Pended != 1 || res.Added != 0 || len(writer.upserts) != 0 {
+		t.Fatalf("invalid target must pend CONTESTED (R3), got %+v", res)
+	}
+	if len(pending.recs) != 1 || pending.recs[0].Verdict != MemoryFactPendingVerdictContested {
+		t.Fatalf("pending rec mismatch: %+v", pending.recs)
 	}
 }
 

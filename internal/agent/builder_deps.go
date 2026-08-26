@@ -4,13 +4,14 @@ import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
+	"aranea-agents/internal/biz/decision"
 	bizmedia "aranea-agents/internal/biz/media"
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
-	"aranea-agents/internal/sandbox"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cache"
 	"aranea-agents/internal/tools/clientbridge"
@@ -85,6 +86,9 @@ type TRPCToolAssemblyDeps struct {
 	// MCPCacheInvalidators expire mcp_tool_set tools/list caches mid-turn
 	// (E8). Optional: when empty, catalog refresh is a no-op.
 	MCPCacheInvalidators []tools.MCPCacheInvalidator
+	// DecisionCollector is the M80 decision-record intake for HITL tool
+	// confirmation outcomes (design §3.2 row 2). Optional: nil skips capture.
+	DecisionCollector decision.Collector
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.

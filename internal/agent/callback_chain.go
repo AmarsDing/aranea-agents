@@ -183,7 +183,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		// modelHook（A2'b 空转轮次早停）：BeforeModel 结算上轮工具产出，
 		// 连续零产出轮注入降级引导；满阈值的工具面封锁由 beforeHook 执行。
 		loopGuard := newToolLoopGuard(lg)
-		entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook(), loopGuard.modelHook())
+	// M80：loop_guard_blocked 决策双写（设计 §3.2 row 3）。
+	loopGuard.setDecisionCollector(deps.DecisionCollector)
+	entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook(), loopGuard.modelHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		entries = append(entries, newWorkspaceSandboxBeforeHook(ag, deps))

@@ -71,7 +71,14 @@ type Runner struct {
 	budgetUsed    map[string]int64
 	budgetLimit   map[string]int64
 	budgetTripped map[string]bool
-	lg            loggateway.Logger
+	// noProgress 是 run 级无进展审计（79-runtime-governance R5，见
+	// no_progress_auditor.go）：成员 step 记账点追踪连续同指纹状态，
+	// 纠偏注记 + 单发 Cancel（reason=no_progress）。
+	noProgMu           sync.Mutex
+	noProgRuns         map[string]map[string]*noProgressMemberState
+	noProgTripped      map[string]bool
+	noProgressEnqueuer func(ctx context.Context, sessionID, content string) error
+	lg                 loggateway.Logger
 }
 
 // SetMediator wires the TeamRunMediator that breaks the circular dependency
@@ -84,6 +91,17 @@ func (r *Runner) SetMediator(m *TeamRunMediator) {
 		return
 	}
 	r.mediator = m
+}
+
+// SetNoProgressEnqueuer wires the correction-note injection channel for the
+// no-progress auditor (79-runtime-governance R5): the note is enqueued as a
+// followup to the team session so members read it in the next turn's history.
+// Optional: nil skips injection (counting/cancel still work).
+func (r *Runner) SetNoProgressEnqueuer(fn func(ctx context.Context, sessionID, content string) error) {
+	if r == nil {
+		return
+	}
+	r.noProgressEnqueuer = fn
 }
 
 func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {

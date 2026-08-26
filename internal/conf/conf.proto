@@ -336,6 +336,16 @@ message Runtime {
     int64 size_bytes = 3;             // S: min serialized size in bytes to prune (0 = 4096, aligned with loopGuardResultCap)
     repeated string exempt_tools = 4; // whitelist: tool names never pruned (取证关键类, e.g. gns3 forensics)
   }
+  // Run-level no-progress auditor (79-runtime-governance R5).
+  // Tracks each member's consecutive identical terminal status fingerprint
+  // (normalized: case-fold + whitespace collapse + fullwidth fold); after N
+  // repeats injects a correction note, after M more cancels the run
+  // (reason=no_progress, single-fire guard).
+  message NoProgressAuditor {
+    optional bool enabled = 1; // master switch; unset = auditor ON (kill switch: enabled=false, dev plan Phase 2 回退)
+    int32 correct_after = 2;   // consecutive same-fingerprint count that triggers correction-note injection (0 = 3)
+    int32 cancel_after = 3;    // additional consecutive count post-correction that cancels the run (0 = 2)
+  }
 
   WS ws = 1;
   Hook hook = 2;
@@ -350,4 +360,5 @@ message Runtime {
   // baseline scripts flag a run when its weighted hit ratio deviates from the
   // recorded baseline by more than this fraction. 0 = 0.10 (±10%).
   double cache_hit_alert_drift = 10;
+  NoProgressAuditor no_progress_auditor = 11;
 }

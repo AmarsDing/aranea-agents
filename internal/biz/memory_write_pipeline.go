@@ -28,6 +28,12 @@ const (
 	FactWriteDropEmptyStatement = "empty_statement"
 	FactWriteDropKindWhitelist  = "kind_whitelist"
 	FactWriteDropConfidence     = "confidence"
+	// FactWriteDropAbsenceMeta drops conversation meta-observations such as
+	// "用户询问 X，但暂无此信息" — not durable facts. Persisted, they outrank
+	// the true fact on recency and seed a recursive "not found" pollution
+	// loop (2026-08-26 domain-B regression). Genuine negative facts
+	// ("原号码已作废") carry no inquiry marker and pass.
+	FactWriteDropAbsenceMeta = "absence_meta_statement"
 )
 
 const (
@@ -122,6 +128,16 @@ type FactWriteDecision struct {
 	Operation    FactWriteOperation
 	TargetFactID string
 	DropReason   string
+	// Contested marks candidates with conflict-band neighbors (R3 gate input).
+	Contested bool
+	// Adjudicated marks decisions taken as-is from an explicit LLM verdict
+	// (add / noop / valid-target update|delete). Heuristic fallbacks —
+	// adjudicator error, missing verdict, unknown op, hallucinated target —
+	// leave this false so the R3 gate pends them as CONTESTED.
+	Adjudicated bool
+	// DecisionReason explains the verdict origin for pending records/audit
+	// (e.g. adjudicator_error, verdict_missing, target_not_neighbor).
+	DecisionReason string
 }
 
 // GateFactWriteCandidate applies gates ① and ② (pure). A passed candidate
@@ -131,6 +147,16 @@ func GateFactWriteCandidate(c FactWriteCandidate) FactWriteDecision {
 	d := FactWriteDecision{Candidate: c}
 	if strings.TrimSpace(c.Statement) == "" {
 		d.DropReason = FactWriteDropEmptyStatement
+		return d
+	}
+	// Absence meta-statements ("用户询问 X，但暂无此信息") are conversation
+	// meta-observations, not durable facts: persisted they outrank the true
+	// fact on recency and seed a recursive "not found" pollution loop
+	// (2026-08-26 domain-B regression). The immediate-fact writer already
+	// drops them at its own gate; this covers the auto_memory / sleep-time
+	// consolidation paths so the loop cannot re-enter through them.
+	if LooksLikeAbsenceMetaStatement(c.Statement) {
+		d.DropReason = FactWriteDropAbsenceMeta
 		return d
 	}
 	if !IsFactKindWhitelisted(c.FactKind) {

@@ -3,10 +3,12 @@ package team
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
@@ -127,10 +129,38 @@ func (r *Runner) recordMemberUsage(
 				loggateway.Int64("budget_used_input_tokens", used),
 				loggateway.Int64("budget_limit_input_tokens", limit),
 			)
+			// M80：系统闸决策双写（设计 §3.2 row 3，与 G-R5 同坐标）。
+			decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
+				TriggerRule:   decision.TriggerTokenBudgetTripped,
+				Outcome:       "tripped",
+				Scenario:      "run 累计 input token 超预算",
+				Reasoning:     fmt.Sprintf("run 累计 input %d 超预算上限 %d，取消 run", used, limit),
+				GuardName:     "token_budget",
+				RunID:         run.ID,
+				Entities:      []decision.EntityRef{{Type: "team", Key: teamID}},
+				ObservedValue: used,
+				Threshold:     limit,
+				Action:        "cancel_run",
+				Extra:         map[string]any{"session_id": run.SessionID},
+			})
 			if em := event.TraceEmitterFromContext(ctx); em != nil {
 				em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",
 					event.P("run_id", run.ID), event.P("used", used), event.P("limit", limit))
 			}
+			// P2.5：守卫终止在事件流分列——与 team_run_no_progress 同型注记，
+			// reason 与 RunRegistry 状态条目/run 终态记录三处口径一致。
+			spiritSID := run.SpiritSessionID
+			if spiritSID == "" {
+				spiritSID = run.SessionID
+			}
+			r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_run_token_budget_exceeded",
+				"团队 run 累计 input token 超预算，run 已终止", map[string]any{
+					"run_id":  run.ID,
+					"team_id": teamID,
+					"used":    used,
+					"limit":   limit,
+					"reason":  "team_token_budget_exceeded",
+				}))
 			if r.cfg.Runs != nil {
 				r.cfg.Runs.Cancel(run.SessionID, "team_token_budget_exceeded")
 			}

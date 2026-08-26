@@ -173,7 +173,7 @@ type stubMemberEvidence struct {
 	reason string
 }
 
-func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string) { s.cancelTimeoutCalls++ }
+func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string)                       { s.cancelTimeoutCalls++ }
 func (s *stubSpiritTeamController) RegisterTeamTimeout(_ context.Context, _ biz.Team) {}
 func (s *stubSpiritTeamController) RecordTeamCompletion(_ context.Context, _ biz.Team, _ int64) (float64, biz.TopologyType) {
 	s.recordCompletionCalls++

@@ -36,6 +36,8 @@ func (s *capturingTeamRunner) SetDeliverableGate(biz.TeamDeliverableGateFunc) {}
 func (s *capturingTeamRunner) SetQualityGate(biz.TeamQualityGateFunc)         {}
 func (s *capturingTeamRunner) SetRevisionEnqueuer(biz.TeamRevisionEnqueuerFunc) {
 }
+func (s *capturingTeamRunner) SetNoProgressEnqueuer(biz.TeamRevisionEnqueuerFunc) {
+}
 func (s *capturingTeamRunner) SetUpstreamDeliverableSeed(biz.TeamUpstreamSeedFunc) {
 }
 

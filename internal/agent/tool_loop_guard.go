@@ -13,6 +13,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/tools/alias"
 	"aranea-agents/pkg/loggateway"
 
@@ -293,6 +294,9 @@ type toolLoopGuard struct {
 	mu      sync.Mutex
 	entries map[string]*loopGuardEntry
 	lg      loggateway.Logger
+	// decisions 是 M80 系统闸决策双写口（设计 §3.2 row 3 loop_guard_blocked）。
+	// 可选：nil 时拦截仅回灌错误消息，不产决策记录。
+	decisions decision.Collector
 }
 
 func newToolLoopGuard(lg loggateway.Logger) *toolLoopGuard {
@@ -300,6 +304,40 @@ func newToolLoopGuard(lg loggateway.Logger) *toolLoopGuard {
 		lg = loggateway.NewNoop()
 	}
 	return &toolLoopGuard{entries: map[string]*loopGuardEntry{}, lg: lg}
+}
+
+// setDecisionCollector wires the M80 decision collector (callback_chain.go
+// 装配点）。保持 newToolLoopGuard(lg) 签名不变，存量测试零改动。
+func (g *toolLoopGuard) setDecisionCollector(c decision.Collector) {
+	if g == nil {
+		return
+	}
+	g.decisions = c
+}
+
+// emitGateDecision 把一次拦截/强停双写为 system_guard 决策记录。
+// observed/threshold/action 由调用点按分支语义给出。
+func (g *toolLoopGuard) emitGateDecision(ctx context.Context, toolName, scenario, reasoning string, observed any, threshold any, action string) {
+	c := g.decisions
+	if c == nil {
+		return
+	}
+	var runID string
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		runID = inv.InvocationID
+	}
+	decision.EmitGate(ctx, c, decision.GateDecision{
+		TriggerRule:   decision.TriggerLoopGuardBlocked,
+		Outcome:       "blocked",
+		Scenario:      scenario,
+		Reasoning:     reasoning,
+		GuardName:     "tool_loop_guard",
+		RunID:         runID,
+		Entities:      []decision.EntityRef{{Type: "tool", Key: toolName}},
+		ObservedValue: observed,
+		Threshold:     threshold,
+		Action:        action,
+	})
 }
 
 // loopGuardInvocationKey 取守卫条目的隔离键：invocation + agent（=图谱节点身份）。
@@ -579,11 +617,18 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			saturated := blocked >= loopGuardSaturatedStopThreshold
 			g.mu.Unlock()
 			g.lg.Warn("tool loop guard blocked call after unproductive rounds",
-				loggateway.StepID("agent.tool_loop_guard"),
-				loggateway.Str("tool", args.ToolName),
-				loggateway.Int("unproductive_rounds", unprod),
-				loggateway.Int("blocked", blocked))
-			if saturated {
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("tool", args.ToolName),
+			loggateway.Int("unproductive_rounds", unprod),
+			loggateway.Int("blocked", blocked))
+		action := "block_call"
+		if saturated {
+			action = "stop_node"
+		}
+		g.emitGateDecision(ctx, args.ToolName, "连续零有效产出轮，工具面封锁",
+			fmt.Sprintf("连续 %d 轮工具调用零有效产出，封锁新调用（%s）", unprod, action),
+			unprod, unproductiveRoundBlockThreshold, action)
+		if saturated {
 				return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
 					"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
 			}
@@ -608,18 +653,24 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, errors.New(msg)
 		}
 		if v.saturated {
-			g.lg.Warn("tool loop guard saturated, stopping node",
-				loggateway.StepID("agent.tool_loop_guard"),
-				loggateway.Str("tool", args.ToolName),
-				loggateway.Int("blocked", loopGuardSaturatedStopThreshold))
-			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
-				"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
-		}
-		if v.kind == loopGuardBlockEmpty {
-			g.lg.Warn("tool loop guard blocked empty-result retry",
-				loggateway.StepID("agent.tool_loop_guard"),
-				loggateway.Str("tool", args.ToolName),
-				loggateway.Int("empty_streak", v.emptyStreak))
+		g.lg.Warn("tool loop guard saturated, stopping node",
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("tool", args.ToolName),
+			loggateway.Int("blocked", loopGuardSaturatedStopThreshold))
+		g.emitGateDecision(ctx, args.ToolName, "拦截饱和，节点强制终止",
+			fmt.Sprintf("节点内累计被拦 %d 次仍重发被拦调用，强制终止节点止损", loopGuardSaturatedStopThreshold),
+			loopGuardSaturatedStopThreshold, loopGuardSaturatedStopThreshold, "stop_node")
+		return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
+			"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
+	}
+	if v.kind == loopGuardBlockEmpty {
+		g.lg.Warn("tool loop guard blocked empty-result retry",
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("tool", args.ToolName),
+			loggateway.Int("empty_streak", v.emptyStreak))
+		g.emitGateDecision(ctx, args.ToolName, "检索连续空结果，拦截换词重试",
+			fmt.Sprintf("%s 连续 %d 次返回空结果（含换词），库中确无资料", args.ToolName, v.emptyStreak),
+			v.emptyStreak, loopGuardEmptyStreakThreshold, "block_call")
 			msg := fmt.Sprintf("%s：%s 已连续 %d 次（含换用不同关键词）返回空结果——知识库中确实没有相关资料。"+
 				"本调用被系统拦截，工具未执行、也非执行失败；继续换词重试不会产生任何新信息，只会消耗你的调用预算。"+
 				"请立即停止调用本工具。若本轮已注入 ## L2+L3 memory，必须根据其中匹配事实作答，禁止声称记忆中没有。"+
@@ -629,10 +680,13 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, errors.New(msg)
 		}
 		if v.kind == loopGuardBlockCycle {
-			g.lg.Warn("tool loop guard blocked rotation cycle call",
-				loggateway.StepID("agent.tool_loop_guard"),
-				loggateway.Str("tool", args.ToolName),
-				loggateway.Str("cycle", v.cycleDesc))
+		g.lg.Warn("tool loop guard blocked rotation cycle call",
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("tool", args.ToolName),
+			loggateway.Str("cycle", v.cycleDesc))
+		g.emitGateDecision(ctx, args.ToolName, "固定调用循环，拦截轮询空转",
+			fmt.Sprintf("检测到固定调用循环（%s），已重复满 %d 轮", v.cycleDesc, loopGuardCycleMinRepeats),
+			v.cycleDesc, loopGuardCycleMinRepeats, "block_call")
 			msg := fmt.Sprintf("%s：检测到固定调用循环（%s），已重复满 %d 轮——本调用被系统拦截，工具未执行、也非执行失败，"+
 				"节点内轮询不会产生新信息。若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。"+
 				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
@@ -640,9 +694,12 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, errors.New(msg)
 		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
-			loggateway.StepID("agent.tool_loop_guard"),
-			loggateway.Str("tool", args.ToolName),
-			loggateway.Int("consecutive", v.consecutiveCount))
+		loggateway.StepID("agent.tool_loop_guard"),
+		loggateway.Str("tool", args.ToolName),
+		loggateway.Int("consecutive", v.consecutiveCount))
+	g.emitGateDecision(ctx, args.ToolName, "同工具同参数同结果连续重发，拦截无效空转",
+		fmt.Sprintf("%s 已连续 %d 次以相同参数调用且结果一致（第 %d 次起拦截）", args.ToolName, v.consecutiveCount, loopGuardBlockThreshold+1),
+		v.consecutiveCount, loopGuardBlockThreshold+1, "block_call")
 		digest := v.lastDigest
 		if digest == "" {
 			digest = "（结果为空）"

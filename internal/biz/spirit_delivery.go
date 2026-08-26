@@ -338,7 +338,7 @@ func (d *SpiritDelivery) ExecuteVerificationGates(ctx context.Context, teamID st
 		if gate.MaxRetries <= 0 {
 			gate.MaxRetries = 3
 		}
-		approved, reason, gateErr := d.gateExecutor.ExecuteGate(ctx, gate, teamOutput, truncateChars)
+		approved, reason, _, gateErr := d.gateExecutor.ExecuteGateScoped(ctx, teamID, gate, teamOutput, truncateChars)
 		if gateErr != nil {
 			return false, allWarnings, gateErr
 		}
@@ -347,6 +347,28 @@ func (d *SpiritDelivery) ExecuteVerificationGates(ctx context.Context, teamID st
 			return false, allWarnings, nil
 		}
 		allWarnings = append(allWarnings, fmt.Sprintf("gate %s approved: %s", gate.GateType, reason))
+	}
+	// ADR-79-V V3 失效重验（2026-08-26）：同 scope 写操作（RecordScopeWrite）
+	// 会使先前门裁决失效——terminal 前发现失效回执时全量重跑一次（对活证据
+	// 全新执行即重验语义；重跑产生的新回执取代失效回执）。只补跑一轮：
+	// 第二轮的裁决本就基于当下活证据，无需递归。
+	if invalidated := d.gateExecutor.InvalidatedReceipts(teamID); len(invalidated) > 0 {
+		d.lg.Warn("验证门回执写后失效，terminal 前全量重验",
+			loggateway.StepID("spirit.verification_gate.revalidate"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Int("invalidated_count", len(invalidated)),
+		)
+		for _, gate := range gates {
+			approved, reason, _, gateErr := d.gateExecutor.ExecuteGateScoped(ctx, teamID, gate, teamOutput, truncateChars)
+			if gateErr != nil {
+				return false, allWarnings, gateErr
+			}
+			if !approved {
+				allWarnings = append(allWarnings, fmt.Sprintf("gate %s rejected on revalidation: %s", gate.GateType, reason))
+				return false, allWarnings, nil
+			}
+			allWarnings = append(allWarnings, fmt.Sprintf("gate %s revalidated: %s", gate.GateType, reason))
+		}
 	}
 	return true, allWarnings, nil
 }
@@ -504,6 +526,11 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 			loggateway.Err(err),
 		)
 		return err
+	}
+	// ADR-79-V V3（2026-08-26）：交付物落库是同 scope 写操作——该团队先前
+	// 通过的验证门回执标记失效，下次 ExecuteVerificationGates 全量重验。
+	if d.gateExecutor != nil {
+		d.gateExecutor.RecordScopeWrite(t.ID, "deliverables_output")
 	}
 	d.lg.Info("团队交付物已落库，可供下游团队消费",
 		loggateway.StepID("spirit.write_deliverables"),

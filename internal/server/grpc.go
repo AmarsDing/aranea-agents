@@ -34,6 +34,7 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
+	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -123,6 +124,9 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	packv1.RegisterPackServiceServer(srv, s.Pack)
 	runtimeprofilev1.RegisterRuntimeProfileServiceServer(srv, s.RuntimeProfile)
 	sandboxv1.RegisterSandboxServiceServer(srv, s.Sandbox)
+	if s.DecisionRecord != nil {
+		decisionv1.RegisterDecisionRecordServiceServer(srv, s.DecisionRecord)
+	}
 	if s.LearningLoop != nil {
 		learningloopv1.RegisterLearningLoopServiceServer(srv, s.LearningLoop)
 	}

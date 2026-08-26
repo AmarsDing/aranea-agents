@@ -166,8 +166,8 @@ func TestASROpenInjectsDefaultHotwords(t *testing.T) {
 	words := readRequestCorpusHotwords(t, f)
 	require.Contains(t, words, "小媛")  // 唤醒词（对应 internal/voice wakeWords）
 	require.Contains(t, words, "休息吧") // 退出词（exitWords）
-	require.Contains(t, words, "好的")   // 确认批准词（approveWords）
-	require.Contains(t, words, "算了")   // 确认否认词（denyWords）
+	require.Contains(t, words, "好的")  // 确认批准词（approveWords）
+	require.Contains(t, words, "算了")  // 确认否认词（denyWords）
 	// 「不用了」同现于 exitWords/denyWords，默认表必须去重（boost 重复无意义）。
 	seen := map[string]int{}
 	for _, w := range words {

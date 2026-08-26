@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package kratos.decision.v1;
+
+option go_package = "aranea-agents/api/kratos/decision/v1;v1";
+option java_package = "api.kratos.decision.v1";
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// DecisionRecordService 是 M80 决策智能 Phase 1 的统一查询面
+//（设计 80-decision-intelligence.design.md §4.1）：五类高价值决策
+//（HITL 人工审批 / planner 策略路由 / 系统闸动作 / 知识仲裁裁决 /
+// 进化建议应用）归一后的只读查询 API。FindSimilarDecisions 属 Phase 2
+// 先例检索，不在本文件（避免预留死代码）。
+service DecisionRecordService {
+  rpc ListDecisionRecords (ListDecisionRecordsRequest) returns (ListDecisionRecordsResponse) {
+    option (google.api.http) = { get: "/v1/decisions" };
+  }
+  rpc GetDecisionRecord (GetDecisionRecordRequest) returns (GetDecisionRecordResponse) {
+    option (google.api.http) = { get: "/v1/decisions/{decision_key}" };
+  }
+  rpc GetDecisionChain (GetDecisionChainRequest) returns (GetDecisionChainResponse) {
+    option (google.api.http) = { get: "/v1/decisions/{decision_key}/chain" };
+  }
+}
+
+message ListDecisionRecordsRequest {
+  // category 过滤：hitl_approval / planner_orchestration / system_guard /
+  // knowledge_arbitration / evolution_applied；空串 = 全部。
+  string category = 1;
+  string actor_key = 2;
+  // 实体过滤：related_entities @> [{"type":..,"key":..}]，二者需同时给。
+  string entity_type = 3;
+  string entity_key = 4;
+  // source_ref.run_id 过滤。
+  string source_run_id = 5;
+  // 时间窗（created_at，含端点）；空 = 不限。
+  google.protobuf.Timestamp time_from = 6;
+  google.protobuf.Timestamp time_to = 7;
+  int32 page = 8;
+  // page_size ≤ 100，0/越界由服务端收敛为默认值。
+  int32 page_size = 9;
+}
+
+message ListDecisionRecordsResponse {
+  repeated DecisionRecord items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetDecisionRecordRequest {
+  string decision_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetDecisionRecordResponse {
+  DecisionRecord record = 1;
+}
+
+message GetDecisionChainRequest {
+  string decision_key = 1 [(google.api.field_behavior) = REQUIRED];
+  // direction: up / down / both（默认 both）。
+  string direction = 2;
+  // max_depth ≤ 20，0/越界由服务端收敛为默认值（设计 §5）。
+  int32 max_depth = 3;
+}
+
+message GetDecisionChainResponse {
+  DecisionRecord root = 1;
+  repeated DecisionRecord upstream = 2;
+  repeated DecisionRecord downstream = 3;
+}
+
+// DecisionRecord 字段与 decision_records 表一一对应（设计 §4.1）；
+// entities/source_ref/metadata 用 Struct 承载双方言 JSON 文本列。
+message DecisionRecord {
+  int64 id = 1;
+  string decision_key = 2;
+  string category = 3;
+  string scenario = 4;
+  string reasoning = 5;
+  string outcome = 6;
+  // optional：confidence 可空（未置置信度的类别）。
+  optional double confidence = 7;
+  string actor_type = 8;
+  string actor_key = 9;
+  // optional：单父链指针（ADR-3）；根节点为空。
+  optional int64 parent_decision_id = 10;
+  // related_entities 是 JSON 数组（[{type,key}]），用 ListValue 承载；
+  // source_ref/metadata 是 JSON 对象，用 Struct 承载。
+  google.protobuf.ListValue related_entities = 11;
+  google.protobuf.Struct source_ref = 12;
+  google.protobuf.Struct metadata = 13;
+  string workspace_id = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+  // virtual_parent：链查询兜底补链标记（设计 §5）——同 run 内时间最近的
+  // 前置 planner 决策作为虚拟父节点返回时不回写，仅此节点置 true。
+  bool virtual_parent = 17;
+}

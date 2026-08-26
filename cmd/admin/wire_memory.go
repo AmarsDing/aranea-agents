@@ -100,6 +100,7 @@ func provideFactWritePipeline(
 		Access:      data.NewL3FactAccessCounter(d),
 		Adjudicator: adjudicator,
 		ActionLog:   data.NewMemoryActionLogWriter(d),
+		Pending:     data.NewMemoryFactPendingRepoFromData(d),
 		LG:          lg,
 	}
 	// Guard against typed-nil interfaces: a nil *MemoryUsecase wrapped in the

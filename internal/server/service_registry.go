@@ -66,6 +66,10 @@ type ServiceRegistry struct {
 	AgentBridge *service.AgentBridgeAPI
 	// Sandbox exposes the M82 sandbox admin API (read-only list/metrics).
 	Sandbox *service.SandboxService
+	// DecisionRecord exposes the M80 unified decision query API (Phase 1).
+	DecisionRecord *service.DecisionRecordService
+	// ConfigGraph exposes the M81 config-asset graph API (P0: rebuild/status/nodes).
+	ConfigGraph *service.ConfigGraphService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -120,6 +124,8 @@ func NewServiceRegistry(
 	computerUse *service.ComputerUseService,
 	agentBridge *service.AgentBridgeAPI,
 	sandbox *service.SandboxService,
+	decisionRecord *service.DecisionRecordService,
+	configGraph *service.ConfigGraphService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -171,5 +177,7 @@ func NewServiceRegistry(
 		ComputerUse:        computerUse,
 		AgentBridge:        agentBridge,
 		Sandbox:            sandbox,
+		DecisionRecord:     decisionRecord,
+		ConfigGraph:        configGraph,
 	}
 }

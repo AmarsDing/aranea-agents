@@ -19,6 +19,12 @@ type EffectiveAgentTool struct {
 	Enabled        bool
 	EffectiveState string
 	Reason         string
+	// Origin marks where an "allowed" grant came from: "profile" (implied by
+	// the tool profile), "allow" (explicit ToolsAllowJSON entry), or
+	// "override" (tool_agent_overrides allow row). Empty for denied rows.
+	// Additive for the M81 config-graph granted_tool edge (grant_origin);
+	// consumed in-process only — not serialized to the API surface.
+	Origin string
 }
 
 // AgentEffectiveTools matches pkg/backend domain.AgentEffectiveTools JSON for API compatibility.

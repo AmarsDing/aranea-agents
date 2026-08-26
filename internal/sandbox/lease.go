@@ -110,11 +110,23 @@ func (l *Lease) WriteFile(ctx context.Context, filePath string, content []byte) 
 	return nil
 }
 
-// ReadFile reads a single regular file from the sandbox, streaming at most
+// ReadFile exit sentinels for the sh wrapper (smoke 2026-08-26 r3 #1): the
+// read runs container-side via exec `cat` because the P0 profile mounts
+// --tmpfs /tmp under --read-only, and tmpfs content is INVISIBLE to
+// `docker cp` (daemon-side archive only sees rootfs/volumes — the old
+// CopyFrom-based ReadFile reported every /tmp file as ErrNotFound).
+const (
+	readFileExitNotFound   = 16 // test -e failed
+	readFileExitNotRegular = 17 // test -d succeeded
+)
+
+// ReadFile reads a single regular file from the sandbox, retaining at most
 // maxBytes (truncated=true when the file is larger; maxBytes<=0 falls back to
 // ReadFileMaxBytesDefault). A directory path returns ErrNotRegular (review
-// 2026-08-26 r2 #6 — previously it surfaced as ErrNotFound or, worse, the
-// first regular child of the directory).
+// 2026-08-26 r2 #6). Reads go through exec stdout with StdoutLimit=maxBytes+1,
+// so host memory stays bounded while the file can live on any mount (tmpfs
+// included). Symlinks are followed by cat — a symlink to a directory still
+// surfaces ErrNotRegular via test -d.
 func (l *Lease) ReadFile(ctx context.Context, filePath string, maxBytes int64) ([]byte, bool, error) {
 	e, err := l.leasedEntry()
 	if err != nil {
@@ -124,27 +136,32 @@ func (l *Lease) ReadFile(ctx context.Context, filePath string, maxBytes int64) (
 	if maxBytes <= 0 {
 		maxBytes = ReadFileMaxBytesDefault
 	}
-	rc, err := l.m.engine.CopyFrom(ctx, e.handle, filePath)
+	res, err := l.m.engine.Exec(ctx, e.handle, ExecSpec{
+		Argv: []string{"sh", "-c",
+			`test -d "$1" && exit 17; test -e "$1" || exit 16; exec cat -- "$1"`,
+			"sh", filePath},
+		// +1 byte distinguishes "exactly maxBytes" from "larger than
+		// maxBytes" without retaining the whole file.
+		StdoutLimit: maxBytes + 1,
+	})
 	if err != nil {
 		return nil, false, err
 	}
-	defer rc.Close()
-	tr := tar.NewReader(rc)
-	hdr, err := tr.Next()
-	if err == io.EOF {
+	if res.TimedOut {
+		// Exec 的超时走 in-band（err==nil），默认分支会报成 "exit -1/124"
+		// 难以诊断（r3 review #2）——显式报 timeout。
+		return nil, false, fmt.Errorf("sandbox read %s: timeout", filePath)
+	}
+	switch res.ExitCode {
+	case 0:
+	case readFileExitNotFound:
 		return nil, false, ErrNotFound
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	if hdr.Typeflag != tar.TypeReg {
+	case readFileExitNotRegular:
 		return nil, false, ErrNotRegular
+	default:
+		return nil, false, fmt.Errorf("sandbox read %s: exit %d: %s", filePath, res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
-	// +1 byte detects truncation without reading the whole file into memory.
-	data, err := io.ReadAll(io.LimitReader(tr, maxBytes+1))
-	if err != nil {
-		return nil, false, err
-	}
+	data := []byte(res.Stdout)
 	if int64(len(data)) > maxBytes {
 		return data[:maxBytes], true, nil
 	}

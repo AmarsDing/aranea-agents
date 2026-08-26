@@ -31,7 +31,7 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 	if r == nil || r.Ws == nil {
 		return RuntimeWSConfig{
 			ReadLimit: 1 << 20, PongWait: 60 * time.Second, PingPeriod: 30 * time.Second,
-			WriteWait: 10 * time.Second,
+			WriteWait:       10 * time.Second,
 			MaxSessionConns: 5, MaxGlobalMonitorConns: 32,
 			HighCap: 64, NormalCap: 128, LowCap: 256,
 			HighBlockTimeout: 5 * time.Second, BackpressureInterval: 10 * time.Second,
@@ -76,7 +76,7 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 	}
 	return RuntimeWSConfig{
 		ReadLimit: readLimit, PongWait: pongWait, PingPeriod: pingPeriod,
-		WriteWait: writeWait,
+		WriteWait:       writeWait,
 		MaxSessionConns: maxSession, MaxGlobalMonitorConns: maxMonitor,
 		HighCap: highCap, NormalCap: normalCap, LowCap: lowCap,
 		HighBlockTimeout: highBlock, BackpressureInterval: bpInterval,
@@ -354,6 +354,35 @@ func (r *Runtime) ToolResultPruneConfig() RuntimeToolResultPruneConfig {
 				cfg.ExemptTools[trimmed] = true
 			}
 		}
+	}
+	return cfg
+}
+
+// RuntimeNoProgressAuditorConfig returns resolved NoProgressAuditor config
+// values (79-runtime-governance R5) with zero-value defaults: auditor ON,
+// correct after 3 consecutive same-fingerprint statuses, cancel after 2 more.
+// `enabled: false` is the documented kill switch (dev plan Phase 2 回退项).
+type RuntimeNoProgressAuditorConfig struct {
+	Enabled      bool
+	CorrectAfter int
+	CancelAfter  int
+}
+
+func (r *Runtime) NoProgressAuditorConfig() RuntimeNoProgressAuditorConfig {
+	cfg := RuntimeNoProgressAuditorConfig{Enabled: true, CorrectAfter: 3, CancelAfter: 2}
+	if r == nil || r.NoProgressAuditor == nil {
+		return cfg
+	}
+	a := r.NoProgressAuditor
+	// proto3 optional: nil = unset → default ON; explicit false = kill switch.
+	if a.Enabled != nil {
+		cfg.Enabled = *a.Enabled
+	}
+	if a.CorrectAfter > 0 {
+		cfg.CorrectAfter = int(a.CorrectAfter)
+	}
+	if a.CancelAfter > 0 {
+		cfg.CancelAfter = int(a.CancelAfter)
 	}
 	return cfg
 }

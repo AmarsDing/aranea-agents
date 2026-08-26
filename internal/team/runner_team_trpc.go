@@ -79,6 +79,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	r.registerRunTokenBudget(run.ID, resolveRunTokenBudget(def))
 	defer r.releaseRunTokenBudget(run.ID)
 
+	// Arm the run-level no-progress auditor (79-runtime-governance R5).
+	// Member step terminal statuses are fingerprinted at the same accounting
+	// point; correction note at N repeats, single-fire Cancel after M more.
+	r.registerNoProgressAudit(run.ID, r.cfg.NoProgressAudit)
+	defer r.releaseNoProgressAudit(run.ID)
+
 	// M82 P2-2: the sandbox per-run creation budget rides the same lifecycle —
 	// the cumulative counter is dropped when the run ends (live instances are
 	// untouched; they still die by Release/TTL/idle).
@@ -377,17 +383,27 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	if runCtx.Err() != nil {
 		hint := ""
+		errMsg := runCtx.Err().Error()
 		switch {
 		case errors.Is(runCtx.Err(), context.DeadlineExceeded):
 			if dur := TurnDeadlineDuration(def); dur > 0 {
 				hint = fmt.Sprintf(" hint=definition_timeout_hit effective=%s", dur)
 			}
 		case errors.Is(runCtx.Err(), context.Canceled):
-			hint = " hint=client_disconnect_or_abort"
+			// P2.5：终止来源分列——RunRegistry.Cancel 记录 reason 到状态条目，
+			// 这里读回把 no_progress / team_token_budget_exceeded /
+			// user_cancel 等写进 run 终态记录（此前一律 client_disconnect_or_abort，
+			// 审计无法区分守卫终止与用户停止）。
+			if reason := r.cancelReason(sess.ID); reason != "" {
+				hint = " hint=cancel_reason:" + reason
+				errMsg += " (cancel_reason=" + reason + ")"
+			} else {
+				hint = " hint=client_disconnect_or_abort"
+			}
 		}
-		logTeamRunError(teamEmitter, "team.run.execute", runCtx.Err().Error()+hint, mode)
+		logTeamRunError(teamEmitter, "team.run.execute", errMsg+hint, mode)
 		turnStatus = biz.TeamMemberStepStatusError
-		r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
+		r.finishRunErr(ctx, &run, t0, errMsg)
 		return userMsg, biz.ChatMessage{}, runCtx.Err()
 	}
 

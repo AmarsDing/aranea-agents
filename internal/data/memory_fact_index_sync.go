@@ -65,6 +65,7 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 	// written, leaving the recall read index permanently empty. Fail-soft:
 	// the embedding_blob fallback in scoreFactRow still covers reads, and the
 	// ARANEA_VECTOR_BACKFILL-gated backfill test repairs existing rows.
+	readIndexFailed := false
 	if s.data != nil && s.data.vectorStore != nil && len(embedding) > 0 {
 		if dim := s.data.VectorDim(); dim > 0 && len(embedding) != dim {
 			s.lg.Warn("skip read-index upsert: embedding dim mismatch with vector store",
@@ -75,10 +76,20 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 			"content":  statement,
 		}); uerr != nil {
 			s.lg.Warn("upsert read-index vector failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(uerr))
+			readIndexFailed = true
 		}
 	}
-	// Mark fresh on full success.
+	// Mark fresh on full success. If the read-index upsert failed, mark stale
+	// instead so the reconciler retries: ListStaleIndexFacts only scans
+	// stale/failed/pending, and a silently-fresh fact missing from
+	// vector_embeddings would never be repaired (2026-08-26 review L1).
 	if s.data != nil {
+		if readIndexFailed {
+			if serr := s.markFactIndexStale(ctx, factID, "read-index upsert failed"); serr != nil {
+				s.lg.Warn("failed to mark fact index stale", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
+			}
+			return nil
+		}
 		if serr := s.markFactIndexSynced(ctx, factID); serr != nil {
 			s.lg.Warn("failed to mark fact index synced", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}

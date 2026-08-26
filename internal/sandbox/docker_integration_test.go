@@ -64,6 +64,11 @@ func TestDockerEngineIntegration(t *testing.T) {
 	if _, _, err := lease.ReadFile(ctx, "/tmp", 0); err != ErrNotRegular {
 		t.Fatalf("ReadFile dir: err=%v, want ErrNotRegular", err)
 	}
+	// Missing file on tmpfs must surface ErrNotFound (r3 review #1: the
+	// exec-based read's sentinel exit 16 gets real-daemon regression cover).
+	if _, _, err := lease.ReadFile(ctx, "/tmp/nope.txt", 0); err != ErrNotFound {
+		t.Fatalf("ReadFile missing: err=%v, want ErrNotFound", err)
+	}
 	sbxID := lease.SandboxID()
 	if err := lease.Release(ctx); err != nil {
 		t.Fatalf("Release: %v", err)

@@ -71,6 +71,7 @@ func applyOverrideToEffectiveItem(item *EffectiveAgentTool, o ToolAgentOverride,
 		item.Enabled = true
 		item.EffectiveState = "allowed"
 		item.Reason = "override_allow"
+		item.Origin = "override" // M81 granted_tool grant_origin
 		return
 	default: // "inherit" mode — preserve original computed state
 		// Inherit means "keep what was computed by profile/catalog policy".

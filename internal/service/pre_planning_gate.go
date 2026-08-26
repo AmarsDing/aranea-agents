@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
@@ -82,10 +81,13 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	if forcePlanning {
 		reason = fmt.Sprintf("评估完成：%s任务，强制走规划路径", complexityLevelZh(level))
 	}
-	if biz.LooksLikeFactQuery(input.UserMessage) && !chatagent.HasOrgChainIntent(input.UserMessage) {
-		forcePlanning = false
-		reason = "评估完成：事实查询，不组队"
-	}
+	// ADR-79-V V2（2026-08-26）：分类器输出只可用于增加义务，不可用于免除
+	// 义务——原「事实查询豁免强制规划」分支已拆除。QuickAssess 判 Moderate/
+	// Complex 即强制规划，即使消息形似事实查询（宁重勿轻）。误判代价仅一次
+	// plan_and_execute 调用，且工具边界 shouldRejectFactQueryPlan 会拦下纯
+	// 事实查询的组队请求并引导直答；漏判代价是任务轮丢失规划义务。
+	// 会话阶段抑制（ShouldForcePlanning，基于已持久化团队的事实证据）在
+	// chat_orchestrator_turn.go 消费侧叠加，不受本拆除影响。
 
 	decision := GateDecision{
 		Level:          level,

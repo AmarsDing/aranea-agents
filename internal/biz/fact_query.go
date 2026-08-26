@@ -4,9 +4,16 @@ import "strings"
 
 // LooksLikeFactQuery reports a light-gear fact lookup the Spirit should
 // answer with datetime / web search — not plan_and_execute.
+//
+// ADR-79-V V2（2026-08-26）：分类只可增加义务、不可免除义务。含任务动作
+// 词的轮次（HasTaskActionSignal）一律返回 false——「核对昨天的天气数据并
+// 生成巡检报告」子串命中「的天气」但它是复合任务，不得走事实查询快路径。
 func LooksLikeFactQuery(userText string) bool {
 	t := strings.ToLower(strings.TrimSpace(userText))
 	if t == "" {
+		return false
+	}
+	if HasTaskActionSignal(t) {
 		return false
 	}
 	for _, p := range factQueryPatterns {

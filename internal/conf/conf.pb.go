@@ -1086,7 +1086,8 @@ type Runtime struct {
 	// Cache-hit-ratio drift alert threshold (79-runtime-governance 1.5): eval
 	// baseline scripts flag a run when its weighted hit ratio deviates from the
 	// recorded baseline by more than this fraction. 0 = 0.10 (±10%).
-	CacheHitAlertDrift float64 `protobuf:"fixed64,10,opt,name=cache_hit_alert_drift,json=cacheHitAlertDrift,proto3" json:"cache_hit_alert_drift,omitempty"`
+	CacheHitAlertDrift float64                    `protobuf:"fixed64,10,opt,name=cache_hit_alert_drift,json=cacheHitAlertDrift,proto3" json:"cache_hit_alert_drift,omitempty"`
+	NoProgressAuditor  *Runtime_NoProgressAuditor `protobuf:"bytes,11,opt,name=no_progress_auditor,json=noProgressAuditor,proto3" json:"no_progress_auditor,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1189,6 +1190,13 @@ func (x *Runtime) GetCacheHitAlertDrift() float64 {
 		return x.CacheHitAlertDrift
 	}
 	return 0
+}
+
+func (x *Runtime) GetNoProgressAuditor() *Runtime_NoProgressAuditor {
+	if x != nil {
+		return x.NoProgressAuditor
+	}
+	return nil
 }
 
 type Sandbox_Pool struct {
@@ -1484,7 +1492,7 @@ func (x *Sandbox_Profile) GetRequiresConfirmation() bool {
 // source of truth.
 type Sandbox_Egress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Network       string                 `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`                      // docker bridge name ("" = "aranea-egress")
+	Network       string                 `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`                      // per-sandbox internal network name prefix ("" = "aranea-egress"; actual networks are <prefix>-<sandboxID>)
 	ProxyHttp     string                 `protobuf:"bytes,2,opt,name=proxy_http,json=proxyHttp,proto3" json:"proxy_http,omitempty"` // proxy URL injected as HTTP(S)_PROXY ("" = "http://aranea-egress-proxy:3128")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3074,6 +3082,71 @@ func (x *Runtime_ToolResultPrune) GetExemptTools() []string {
 	return nil
 }
 
+// Run-level no-progress auditor (79-runtime-governance R5).
+// Tracks each member's consecutive identical terminal status fingerprint
+// (normalized: case-fold + whitespace collapse + fullwidth fold); after N
+// repeats injects a correction note, after M more cancels the run
+// (reason=no_progress, single-fire guard).
+type Runtime_NoProgressAuditor struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       *bool                  `protobuf:"varint,1,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`                         // master switch; unset = auditor ON (kill switch: enabled=false, dev plan Phase 2 回退)
+	CorrectAfter  int32                  `protobuf:"varint,2,opt,name=correct_after,json=correctAfter,proto3" json:"correct_after,omitempty"` // consecutive same-fingerprint count that triggers correction-note injection (0 = 3)
+	CancelAfter   int32                  `protobuf:"varint,3,opt,name=cancel_after,json=cancelAfter,proto3" json:"cancel_after,omitempty"`    // additional consecutive count post-correction that cancels the run (0 = 2)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Runtime_NoProgressAuditor) Reset() {
+	*x = Runtime_NoProgressAuditor{}
+	mi := &file_conf_conf_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Runtime_NoProgressAuditor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Runtime_NoProgressAuditor) ProtoMessage() {}
+
+func (x *Runtime_NoProgressAuditor) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Runtime_NoProgressAuditor.ProtoReflect.Descriptor instead.
+func (*Runtime_NoProgressAuditor) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{11, 9}
+}
+
+func (x *Runtime_NoProgressAuditor) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+func (x *Runtime_NoProgressAuditor) GetCorrectAfter() int32 {
+	if x != nil {
+		return x.CorrectAfter
+	}
+	return 0
+}
+
+func (x *Runtime_NoProgressAuditor) GetCancelAfter() int32 {
+	if x != nil {
+		return x.CancelAfter
+	}
+	return 0
+}
+
 var File_conf_conf_proto protoreflect.FileDescriptor
 
 const file_conf_conf_proto_rawDesc = "" +
@@ -3256,7 +3329,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12<\n" +
 	"\fread_timeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\vreadTimeout\x12>\n" +
-	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xd0\x15\n" +
+	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xb0\x17\n" +
 	"\aRuntime\x12&\n" +
 	"\x02ws\x18\x01 \x01(\v2\x16.kratos.api.Runtime.WSR\x02ws\x12,\n" +
 	"\x04hook\x18\x02 \x01(\v2\x18.kratos.api.Runtime.HookR\x04hook\x129\n" +
@@ -3269,7 +3342,8 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x06plugin\x18\b \x01(\v2\x1a.kratos.api.Runtime.PluginR\x06plugin\x12O\n" +
 	"\x11tool_result_prune\x18\t \x01(\v2#.kratos.api.Runtime.ToolResultPruneR\x0ftoolResultPrune\x121\n" +
 	"\x15cache_hit_alert_drift\x18\n" +
-	" \x01(\x01R\x12cacheHitAlertDrift\x1a\xe1\x03\n" +
+	" \x01(\x01R\x12cacheHitAlertDrift\x12U\n" +
+	"\x13no_progress_auditor\x18\v \x01(\v2%.kratos.api.Runtime.NoProgressAuditorR\x11noProgressAuditor\x1a\xe1\x03\n" +
 	"\x02WS\x12\x1d\n" +
 	"\n" +
 	"read_limit\x18\x01 \x01(\x03R\treadLimit\x12 \n" +
@@ -3339,6 +3413,12 @@ const file_conf_conf_proto_rawDesc = "" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12!\n" +
 	"\fexempt_tools\x18\x04 \x03(\tR\vexemptToolsB\n" +
 	"\n" +
+	"\b_enabled\x1a\x86\x01\n" +
+	"\x11NoProgressAuditor\x12\x1d\n" +
+	"\aenabled\x18\x01 \x01(\bH\x00R\aenabled\x88\x01\x01\x12#\n" +
+	"\rcorrect_after\x18\x02 \x01(\x05R\fcorrectAfter\x12!\n" +
+	"\fcancel_after\x18\x03 \x01(\x05R\vcancelAfterB\n" +
+	"\n" +
 	"\b_enabled*g\n" +
 	"\bSinkType\x12\x19\n" +
 	"\x15SINK_TYPE_UNSPECIFIED\x10\x00\x12\x12\n" +
@@ -3364,7 +3444,7 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 }
 
 var file_conf_conf_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_conf_conf_proto_goTypes = []any{
 	(SinkType)(0),                                // 0: kratos.api.SinkType
 	(DropPolicy)(0),                              // 1: kratos.api.DropPolicy
@@ -3410,7 +3490,8 @@ var file_conf_conf_proto_goTypes = []any{
 	(*Runtime_ActivityFlusher)(nil),              // 41: kratos.api.Runtime.ActivityFlusher
 	(*Runtime_Plugin)(nil),                       // 42: kratos.api.Runtime.Plugin
 	(*Runtime_ToolResultPrune)(nil),              // 43: kratos.api.Runtime.ToolResultPrune
-	(*durationpb.Duration)(nil),                  // 44: google.protobuf.Duration
+	(*Runtime_NoProgressAuditor)(nil),            // 44: kratos.api.Runtime.NoProgressAuditor
+	(*durationpb.Duration)(nil),                  // 45: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
 	5,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
@@ -3426,17 +3507,17 @@ var file_conf_conf_proto_depIdxs = []int32{
 	16, // 10: kratos.api.Sandbox.ttl:type_name -> kratos.api.Sandbox.TTL
 	19, // 11: kratos.api.Sandbox.profiles:type_name -> kratos.api.Sandbox.ProfilesEntry
 	18, // 12: kratos.api.Sandbox.egress:type_name -> kratos.api.Sandbox.Egress
-	44, // 13: kratos.api.SelfImprovement.observe_interval:type_name -> google.protobuf.Duration
+	45, // 13: kratos.api.SelfImprovement.observe_interval:type_name -> google.protobuf.Duration
 	20, // 14: kratos.api.SelfImprovement.error_cluster:type_name -> kratos.api.SelfImprovement.ErrorCluster
 	21, // 15: kratos.api.SelfImprovement.perf:type_name -> kratos.api.SelfImprovement.Perf
 	22, // 16: kratos.api.SelfImprovement.eval:type_name -> kratos.api.SelfImprovement.Eval
 	23, // 17: kratos.api.SelfImprovement.patch:type_name -> kratos.api.SelfImprovement.Patch
 	24, // 18: kratos.api.SelfImprovement.sandbox:type_name -> kratos.api.SelfImprovement.Sandbox
 	25, // 19: kratos.api.SelfImprovement.observe_window:type_name -> kratos.api.SelfImprovement.ObserveWindow
-	44, // 20: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
-	44, // 21: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
-	44, // 22: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
-	44, // 23: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
+	45, // 20: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
+	45, // 21: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
+	45, // 22: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
+	45, // 23: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
 	27, // 24: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
 	28, // 25: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
 	29, // 26: kratos.api.Server.ws:type_name -> kratos.api.Server.WS
@@ -3459,26 +3540,27 @@ var file_conf_conf_proto_depIdxs = []int32{
 	41, // 43: kratos.api.Runtime.activity_flusher:type_name -> kratos.api.Runtime.ActivityFlusher
 	42, // 44: kratos.api.Runtime.plugin:type_name -> kratos.api.Runtime.Plugin
 	43, // 45: kratos.api.Runtime.tool_result_prune:type_name -> kratos.api.Runtime.ToolResultPrune
-	44, // 46: kratos.api.Sandbox.Pool.replenish_interval:type_name -> google.protobuf.Duration
-	44, // 47: kratos.api.Sandbox.Pool.max_pool_age:type_name -> google.protobuf.Duration
-	44, // 48: kratos.api.Sandbox.TTL.default:type_name -> google.protobuf.Duration
-	44, // 49: kratos.api.Sandbox.TTL.max:type_name -> google.protobuf.Duration
-	44, // 50: kratos.api.Sandbox.TTL.idle_timeout:type_name -> google.protobuf.Duration
-	17, // 51: kratos.api.Sandbox.ProfilesEntry.value:type_name -> kratos.api.Sandbox.Profile
-	26, // 52: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
-	44, // 53: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
-	44, // 54: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
-	44, // 55: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
-	44, // 56: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
-	44, // 57: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	44, // 58: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	44, // 59: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
-	44, // 60: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
-	61, // [61:61] is the sub-list for method output_type
-	61, // [61:61] is the sub-list for method input_type
-	61, // [61:61] is the sub-list for extension type_name
-	61, // [61:61] is the sub-list for extension extendee
-	0,  // [0:61] is the sub-list for field type_name
+	44, // 46: kratos.api.Runtime.no_progress_auditor:type_name -> kratos.api.Runtime.NoProgressAuditor
+	45, // 47: kratos.api.Sandbox.Pool.replenish_interval:type_name -> google.protobuf.Duration
+	45, // 48: kratos.api.Sandbox.Pool.max_pool_age:type_name -> google.protobuf.Duration
+	45, // 49: kratos.api.Sandbox.TTL.default:type_name -> google.protobuf.Duration
+	45, // 50: kratos.api.Sandbox.TTL.max:type_name -> google.protobuf.Duration
+	45, // 51: kratos.api.Sandbox.TTL.idle_timeout:type_name -> google.protobuf.Duration
+	17, // 52: kratos.api.Sandbox.ProfilesEntry.value:type_name -> kratos.api.Sandbox.Profile
+	26, // 53: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
+	45, // 54: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
+	45, // 55: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
+	45, // 56: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
+	45, // 57: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
+	45, // 58: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	45, // 59: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	45, // 60: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
+	45, // 61: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
+	62, // [62:62] is the sub-list for method output_type
+	62, // [62:62] is the sub-list for method input_type
+	62, // [62:62] is the sub-list for extension type_name
+	62, // [62:62] is the sub-list for extension extendee
+	0,  // [0:62] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -3487,13 +3569,14 @@ func file_conf_conf_proto_init() {
 		return
 	}
 	file_conf_conf_proto_msgTypes[41].OneofWrappers = []any{}
+	file_conf_conf_proto_msgTypes[42].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   42,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

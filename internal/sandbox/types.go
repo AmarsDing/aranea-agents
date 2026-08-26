@@ -105,6 +105,11 @@ type ExecSpec struct {
 	Argv    []string      // executed directly (no shell wrapping by the engine)
 	Stdin   string        // streamed to the process stdin
 	Timeout time.Duration // 0 = engine default (30s)
+	// StdoutLimit caps how many stdout bytes are retained in ExecResult.Stdout
+	// (0 = unlimited, the historical behavior). Excess output is drained and
+	// discarded so the process never blocks on a full pipe, while host memory
+	// stays bounded regardless of in-sandbox output size (ReadFile contract).
+	StdoutLimit int64
 }
 
 // ExecResult is the outcome of one Exec.

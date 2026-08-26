@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/agentbridge"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -56,6 +57,9 @@ type AgentBridgeService struct {
 	always          sync.Map // taskID → true (本任务 allow_always)
 	confirmSink     ConfirmSink
 	approvalTimeout time.Duration
+	// decisions 是 M80 决策记录采集器（设计 §3.2 row 2 AgentBridge 链）。
+	// 可选：nil 时审批决议不双写 decision_records。
+	decisions decision.Collector
 }
 
 // NewAgentBridgeService 构造服务。

@@ -250,7 +250,10 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	// the old Runner had drained.
 	if run.cancel != nil {
 		run.cancel()
-		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
+		// 79-runtime-governance P2.5：取消原因（user_cancel / no_progress /
+		// team_token_budget_exceeded …）记入状态条目 ErrMsg，终态落库与
+		// 前端轮询可区分终止来源（此前 reason 参数被丢弃）。
+		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, reason)
 		// Mark as cancelling instead of deleting. Use UpdateOrStore to
 		// atomically set the flag without losing concurrent updates.
 		r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
@@ -272,7 +275,7 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	// P1-01 fix: mark as cancelling instead of deleting. The entry is removed
 	// by Finish when the Runner's defer runs.
 	if mr, ok := run.runner.(trpcrunner.ManagedRunner); ok && mr.Cancel(sessionID) {
-		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
+		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, reason)
 		r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
 			if !ok || existing.runID != run.runID {
 				return existing

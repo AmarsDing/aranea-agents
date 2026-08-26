@@ -9,6 +9,7 @@ import (
 
 	a2ahealth "aranea-agents/internal/a2a/health"
 	"aranea-agents/internal/biz"
+	bizcg "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
@@ -74,6 +75,7 @@ type backgroundWorkersConfig struct {
 	MemoryDeadLetterReplayer    BackgroundStarter
 	ModelRegistrySyncAgent      any // presence check only
 	CronRepo                    biz.CronRepo
+	ConfigGraphIndexer          *bizcg.Indexer
 }
 
 // backgroundWorkersConfigFromOutput maps the wire output onto the worker
@@ -132,6 +134,7 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		MemoryDeadLetterReplayer:    out.MemoryDeadLetterReplayer,
 		ModelRegistrySyncAgent:      out.ModelRegistrySyncAgent,
 		CronRepo:                    out.CronRepo,
+		ConfigGraphIndexer:          out.ConfigGraphIndexer,
 	}
 }
 
@@ -421,6 +424,13 @@ func startBackgroundWorkers(
 			}
 		})
 		logger.Log(log.LevelInfo, "msg", "model registry sync agent registered", "schedule", "via CronRunner")
+	}
+
+	// M81 config-asset graph indexer (P0: rebuild capability only). The
+	// acceptance line `configgraph indexer started` is emitted by the indexer
+	// itself (loggateway, design R7); do not duplicate it here.
+	if cfg.ConfigGraphIndexer != nil {
+		goAfterReady("configgraph_indexer", func() { cfg.ConfigGraphIndexer.Start(ctx) })
 	}
 }
 

@@ -37,11 +37,12 @@ func (r *captureTeamRunner) RunTurnFromInput(_ context.Context, _ biz.Session, i
 	return biz.ChatMessage{}, biz.ChatMessage{}, errors.New("team run failed (test stub)")
 }
 
-func (r *captureTeamRunner) SetMediator(biz.TeamMediatorPort)                 {}
-func (r *captureTeamRunner) SetAwaitHookProvider(biz.AwaitHookProvider)       {}
-func (r *captureTeamRunner) SetDeliverableGate(biz.TeamDeliverableGateFunc)   {}
-func (r *captureTeamRunner) SetQualityGate(biz.TeamQualityGateFunc)           {}
-func (r *captureTeamRunner) SetRevisionEnqueuer(biz.TeamRevisionEnqueuerFunc) {}
+func (r *captureTeamRunner) SetMediator(biz.TeamMediatorPort)                    {}
+func (r *captureTeamRunner) SetAwaitHookProvider(biz.AwaitHookProvider)          {}
+func (r *captureTeamRunner) SetDeliverableGate(biz.TeamDeliverableGateFunc)      {}
+func (r *captureTeamRunner) SetQualityGate(biz.TeamQualityGateFunc)              {}
+func (r *captureTeamRunner) SetRevisionEnqueuer(biz.TeamRevisionEnqueuerFunc)    {}
+func (r *captureTeamRunner) SetNoProgressEnqueuer(biz.TeamRevisionEnqueuerFunc)  {}
 func (r *captureTeamRunner) SetUpstreamDeliverableSeed(biz.TeamUpstreamSeedFunc) {}
 
 func (r *captureTeamRunner) count() int {

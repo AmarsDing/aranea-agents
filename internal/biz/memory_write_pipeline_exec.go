@@ -58,6 +58,7 @@ type FactWriteBatchResult struct {
 	Deleted   int
 	Merged    int
 	Dropped   int
+	Pended    int // R3: high-risk verdicts withheld into memory_fact_pending
 	WriteErrs int
 	// FactRows holds the raw JSON rows of newly written facts (add + update),
 	// in decision order. Callers use them for downstream index sync — the
@@ -66,23 +67,24 @@ type FactWriteBatchResult struct {
 }
 
 // FactWritePipelineDeps wires the unified write pipeline (biz struct
-// dependency budget: exactly 8).
+// dependency budget: exactly 9).
 type FactWritePipelineDeps struct {
 	Searcher    MemoryConflictNeighborSearcher // optional: nil → all candidates ADD
 	Embedder    EmbeddingService               // optional: nil → all candidates ADD
 	Reader      conflictFactRowReader          // optional: neighbor kind/statement enrichment
 	Writer      L3FactWriter                   // required
 	Access      FactAccessCounter              // optional: merges become plain noops
-	Adjudicator FactWriteAdjudicator           // optional: contested → heuristic ADD
+	Adjudicator FactWriteAdjudicator           // optional: contested without verdict → pend CONTESTED (R3)
 	ActionLog   MemoryActionLogWriter          // optional: audit trail
+	Pending     MemoryFactPendingStore         // optional: R3 gate withholds fail-closed when nil
 	LG          loggateway.Logger
 }
 
 // FactWritePipeline is the unified write pipeline (P1-3 §6.3): all automatic
 // fact write sources (auto_memory worker, sleep-time episode consolidator)
-// funnel candidates through gates → adjudication → bi-temporal writes →
-// audit. Never blocks callers: every infrastructure failure degrades to the
-// safest write (ADD) or a logged skip.
+// funnel candidates through gates → adjudication → R3 verdict gate →
+// bi-temporal writes → audit. Never blocks callers: every infrastructure
+// failure degrades to the safest write (ADD) or a logged skip.
 type FactWritePipeline struct {
 	searcher    MemoryConflictNeighborSearcher
 	embedder    EmbeddingService
@@ -91,6 +93,7 @@ type FactWritePipeline struct {
 	access      FactAccessCounter
 	adjudicator FactWriteAdjudicator
 	actionLog   MemoryActionLogWriter
+	pending     MemoryFactPendingStore
 	lg          loggateway.Logger
 }
 
@@ -112,6 +115,7 @@ func NewFactWritePipeline(deps FactWritePipelineDeps) *FactWritePipeline {
 		access:      deps.Access,
 		adjudicator: deps.Adjudicator,
 		actionLog:   deps.ActionLog,
+		pending:     deps.Pending,
 		lg:          lg.With(loggateway.Domain("fact_write_pipeline")),
 	}
 }
@@ -148,33 +152,38 @@ func (p *FactWritePipeline) Apply(ctx context.Context, candidates []FactWriteCan
 	}
 
 	// 3. Partition: contested candidates go to the LLM adjudicator (one
-	// batch call); the rest are decided heuristically.
+	// batch call); the rest are decided heuristically. Contested is marked
+	// on every decision — the R3 gate (step 4) pends contested candidates
+	// that never got a definitive adjudication verdict.
 	decisions := make([]FactWriteDecision, len(passed))
 	var contestedIdx []int
 	var adjItems []FactAdjudicationItem
 	for i, c := range passed {
 		neighbors := neighborsByCand[i]
-		if FactWriteIsContested(c.FactKind, neighbors) && p.adjudicator != nil {
+		contested := FactWriteIsContested(c.FactKind, neighbors)
+		if contested && p.adjudicator != nil {
 			contestedIdx = append(contestedIdx, i)
 			adjItems = append(adjItems, FactAdjudicationItem{
 				Candidate: c,
 				Neighbors: adjudicationNeighbors(neighbors, statementsByID),
 			})
+			decisions[i] = FactWriteDecision{Candidate: c, Contested: true}
 			continue
 		}
 		decisions[i] = DecideFactWriteHeuristic(c, neighbors)
+		decisions[i].Contested = contested
 	}
 	if len(contestedIdx) > 0 {
 		p.applyAdjudication(ctx, passed, neighborsByCand, decisions, contestedIdx, adjItems)
 	}
 
-	// 4. Execute decisions (bi-temporal writes; merges batched).
+	// 4. Execute decisions (R3 verdict gate → bi-temporal writes; merges batched).
 	var mergeIDs []string
 	for _, d := range decisions {
 		if d.Operation == "" {
 			continue
 		}
-		p.execute(ctx, d, &res, &mergeIDs)
+		p.execute(ctx, d, statementsByID[d.TargetFactID], &res, &mergeIDs)
 	}
 	if len(mergeIDs) > 0 && p.access != nil {
 		if err := p.access.IncrementFactRecalledCount(ctx, mergeIDs); err != nil {
@@ -241,7 +250,9 @@ func (p *FactWritePipeline) findNeighbors(ctx context.Context, c FactWriteCandid
 
 // applyAdjudication runs the batch LLM adjudication for contested candidates
 // and folds verdicts into decisions. Unknown statements, invalid targets and
-// adjudicator errors all fall back to the heuristic decision.
+// adjudicator errors all fall back to the heuristic decision — flagged
+// Adjudicated=false so the R3 gate pends them as CONTESTED instead of
+// writing past a known conflict neighbor.
 func (p *FactWritePipeline) applyAdjudication(ctx context.Context, passed []FactWriteCandidate, neighborsByCand [][]MemoryConflictNeighbor, decisions []FactWriteDecision, contestedIdx []int, items []FactAdjudicationItem) {
 	agentID, userID := "", ""
 	if len(passed) > 0 {
@@ -252,6 +263,8 @@ func (p *FactWritePipeline) applyAdjudication(ctx context.Context, passed []Fact
 		p.lg.Warn("fact write pipeline: adjudicator failed, heuristic fallback", loggateway.Err(err))
 		for _, i := range contestedIdx {
 			decisions[i] = DecideFactWriteHeuristic(passed[i], neighborsByCand[i])
+			decisions[i].Contested = true
+			decisions[i].DecisionReason = "adjudicator_error"
 		}
 		return
 	}
@@ -264,27 +277,48 @@ func (p *FactWritePipeline) applyAdjudication(ctx context.Context, passed []Fact
 		v, ok := verdictByStmt[strings.TrimSpace(c.Statement)]
 		if !ok {
 			decisions[i] = DecideFactWriteHeuristic(c, neighborsByCand[i])
+			decisions[i].Contested = true
+			decisions[i].DecisionReason = "verdict_missing"
 			continue
 		}
-		d := FactWriteDecision{Candidate: c, Operation: v.Operation, TargetFactID: strings.TrimSpace(v.TargetFactID)}
+		d := FactWriteDecision{Candidate: c, Operation: v.Operation, TargetFactID: strings.TrimSpace(v.TargetFactID), Contested: true}
 		switch v.Operation {
 		case FactWriteOpUpdate, FactWriteOpDelete:
 			if !neighborIDSet(neighborsByCand[i])[d.TargetFactID] {
 				// LLM pointed at a fact that is not among the candidate's
-				// neighbors (hallucinated or stale id) — safest is ADD.
-				d = FactWriteDecision{Candidate: c, Operation: FactWriteOpAdd}
+				// neighbors (hallucinated or stale id). The verdict was
+				// high-risk — withhold as CONTESTED for a human (R3).
+				d.Operation = FactWriteOpAdd
+				d.TargetFactID = ""
+				d.DecisionReason = "target_not_neighbor:" + strings.TrimSpace(v.TargetFactID)
+			} else {
+				d.Adjudicated = true
+				d.DecisionReason = "adjudicated_" + strings.ToLower(string(v.Operation))
 			}
 		case FactWriteOpNoop:
 			// LLM-declared noop: nothing to write, no access bump.
+			d.Adjudicated = true
+			d.DecisionReason = "adjudicated_noop"
+		case FactWriteOpAdd:
+			// LLM looked at the conflict neighbors and declared a genuinely
+			// new fact — definitive verdict, direct write.
+			d.Adjudicated = true
+			d.DecisionReason = "adjudicated_add"
 		default:
-			d = FactWriteDecision{Candidate: c, Operation: FactWriteOpAdd}
+			d = FactWriteDecision{Candidate: c, Operation: FactWriteOpAdd, Contested: true, DecisionReason: "verdict_unknown_op:" + string(v.Operation)}
 		}
 		decisions[i] = d
 	}
 }
 
 // execute applies one decision to storage and updates the batch counters.
-func (p *FactWritePipeline) execute(ctx context.Context, d FactWriteDecision, res *FactWriteBatchResult, mergeIDs *[]string) {
+// The R3 verdict gate runs first: UPDATE / DELETE / contested-unadjudicated
+// decisions are withheld into memory_fact_pending instead of writing.
+func (p *FactWritePipeline) execute(ctx context.Context, d FactWriteDecision, priorBody string, res *FactWriteBatchResult, mergeIDs *[]string) {
+	if verdict, pend := RouteFactWriteDecision(d); pend {
+		p.pend(ctx, d, verdict, priorBody, res)
+		return
+	}
 	switch d.Operation {
 	case FactWriteOpAdd:
 		row, err := p.writer.UpsertFactRow(ctx, buildFactUpsertFromCandidate(d.Candidate))
@@ -327,6 +361,45 @@ func (p *FactWritePipeline) execute(ctx context.Context, d FactWriteDecision, re
 			p.audit(ctx, "fact_write.noop", d.Candidate, "")
 		}
 	}
+}
+
+// pend withholds one high-risk decision into memory_fact_pending (R3). The
+// original write is NOT executed — approval replays it through the normal
+// bi-temporal path. Fail-closed: when the pending store is absent or the
+// insert fails, the write is withheld anyway (never silently direct-written)
+// and counted as a write error for observability.
+func (p *FactWritePipeline) pend(ctx context.Context, d FactWriteDecision, verdict, priorBody string, res *FactWriteBatchResult) {
+	auditReason := "verdict=" + verdict + " target=" + d.TargetFactID
+	if d.DecisionReason != "" {
+		auditReason += " origin=" + d.DecisionReason
+	}
+	if p.pending == nil {
+		res.WriteErrs++
+		p.lg.Warn("fact write pipeline: pending store missing, withholding high-risk write (fail-closed)",
+			loggateway.Str("verdict", verdict), loggateway.Str("target", d.TargetFactID))
+		p.audit(ctx, "fact_write.pending_unstored", d.Candidate, auditReason)
+		return
+	}
+	rec := MemoryFactPendingRecord{
+		ID:                uuid.NewString(),
+		AgentID:           d.Candidate.AgentID,
+		FactKey:           d.TargetFactID,
+		Verdict:           verdict,
+		ProposedBody:      strings.TrimSpace(d.Candidate.Statement),
+		PriorBody:         strings.TrimSpace(priorBody),
+		AdjudicatorReason: d.DecisionReason,
+		Status:            MemoryFactPendingStatusPending,
+		CreatedAt:         time.Now().Unix(),
+	}
+	if err := p.pending.InsertPending(ctx, rec); err != nil {
+		res.WriteErrs++
+		p.lg.Warn("fact write pipeline: pending insert failed, write withheld (fail-closed)",
+			loggateway.Str("verdict", verdict), loggateway.Str("target", d.TargetFactID), loggateway.Err(err))
+		p.audit(ctx, "fact_write.pending_unstored", d.Candidate, auditReason)
+		return
+	}
+	res.Pended++
+	p.audit(ctx, "fact_write.pending", d.Candidate, auditReason)
 }
 
 // audit writes one action-log record per decision (best-effort).

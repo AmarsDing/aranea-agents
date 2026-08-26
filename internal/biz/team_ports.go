@@ -105,6 +105,12 @@ type TeamGraphRunFinisherPort interface {
 	// roadbed: consumed as a new turn after the current turn ends). Nil
 	// degrades revise verdicts to fail-open pass.
 	SetRevisionEnqueuer(fn TeamRevisionEnqueuerFunc)
+
+	// SetNoProgressEnqueuer wires the no-progress correction-note channel
+	// (79-runtime-governance R5): the auditor's nudge is enqueued as a
+	// followup so members read it in the next turn's history. Nil degrades
+	// to log-only (counting/cancel still work).
+	SetNoProgressEnqueuer(fn TeamRevisionEnqueuerFunc)
 }
 
 // TeamDeliverableGateFunc reports whether the team produced a real

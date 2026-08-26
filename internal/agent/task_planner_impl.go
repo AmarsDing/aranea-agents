@@ -14,6 +14,7 @@ import (
 
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
@@ -52,6 +53,11 @@ type taskPlannerImpl struct {
 
 	// org is optional; when set, authorized playbooks can expand without LLM.
 	org biz.OrganizationReader
+
+	// decisions is the M80 decision-record intake (nil = capture skipped,
+	// backwards compatible with old construction paths). Attached at wire
+	// time via AttachPlannerDecisionCollector.
+	decisions decision.Collector
 }
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
@@ -88,6 +94,15 @@ func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUs
 func AttachPlannerOrganizationReader(p biz.TaskPlannerPort, org biz.OrganizationReader) {
 	if impl, ok := p.(*taskPlannerImpl); ok {
 		impl.org = org
+	}
+}
+
+// AttachPlannerDecisionCollector wires the M80 decision collector so
+// emitPlannerDecision double-writes planner_orchestration records (design
+// §3.2 row 1) without changing the TaskPlannerPort constructor.
+func AttachPlannerDecisionCollector(p biz.TaskPlannerPort, c decision.Collector) {
+	if impl, ok := p.(*taskPlannerImpl); ok {
+		impl.decisions = c
 	}
 }
 
@@ -476,6 +491,8 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 						"decomposed_subtask_count": originalCount,
 						"dropped_subtask_names":    droppedNames,
 					})
+					// M80：系统闸决策双写（设计 §3.2 row 3，G-R4 team_count 截断分支）。
+					impl.emitTeamCountMismatchGate(ctx, traceID, input.SpiritSessionID, "truncate", teamCount, originalCount, droppedNames)
 				} else if teamCount > 0 && len(subTasks) < teamCount {
 					impl.lg.Warn("LLM 分解的 subtask 数量少于用户请求的 team 数量",
 						loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -488,6 +505,8 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 						"requested_team_count":     teamCount,
 						"decomposed_subtask_count": len(subTasks),
 					})
+					// M80：系统闸决策双写（设计 §3.2 row 3，G-R4 team_count 放行分支）。
+					impl.emitTeamCountMismatchGate(ctx, traceID, input.SpiritSessionID, "proceed", teamCount, len(subTasks), nil)
 				}
 				// TS9-GAP-1：闭环类任务（事故/告警/故障）由引擎确定性追加复盘节点，
 				// 不再依赖 LLM 分解时自觉产出——流程控制权在引擎。追加发生在
@@ -1062,6 +1081,7 @@ type plannerDecision struct {
 // 无 emitter 的 ctx（后台/测试路径）静默跳过。决策时刻的快照原样落盘——
 // 后续分解失败或校验门降级各有专属事件，不回写本条，保证证据链只读追加。
 func (impl *taskPlannerImpl) emitPlannerDecision(ctx context.Context, d plannerDecision) {
+	impl.emitPlannerDecisionRecord(ctx, d)
 	em := event.TraceEmitterFromContext(ctx)
 	if em == nil {
 		return
@@ -1077,6 +1097,69 @@ func (impl *taskPlannerImpl) emitPlannerDecision(ctx context.Context, d plannerD
 		event.P("strategy_reason", d.StrategyReason),
 		event.P("spirit_session_id", d.SpiritSessionID),
 	)
+}
+
+// emitPlannerDecisionRecord 把策略路由决策双写到 M80 决策记录层
+// (planner_orchestration)。增量旁路：FlowLog 证据链保持原样，collector 为
+// nil（旧构造路径/CLI）时静默跳过。决策映射照设计 §3.2 row 1。
+func (impl *taskPlannerImpl) emitPlannerDecisionRecord(ctx context.Context, d plannerDecision) {
+	if impl.decisions == nil {
+		return
+	}
+	// Mode 为空（用户未显式指定）时策略即生效 mode——outcome 不允许空。
+	mode := d.Mode
+	if mode == "" {
+		mode = string(d.Strategy)
+	}
+	confidence := d.ComplexityScore
+	impl.decisions.Emit(ctx, decision.Record{
+		DecisionKey: uuid.NewString(),
+		Category:    decision.CategoryPlannerOrchestration,
+		Scenario:    fmt.Sprintf("策略路由: %s/%s", mode, d.Strategy),
+		Reasoning:   d.StrategyReason,
+		Outcome:     "selected_" + mode,
+		Confidence:  &confidence,
+		ActorType:   decision.ActorSystem,
+		ActorKey:    "system:task_planner",
+		SourceRef:   decision.SourceRef{FlowTraceID: d.TraceID},
+		Metadata: map[string]any{
+			"decision_source":    d.DecisionSource,
+			"fallback_triggered": d.KeywordFallback,
+			"complexity_level":   string(d.ComplexityLevel),
+			"team_count":         d.TeamCount,
+			"spirit_session_id":  d.SpiritSessionID,
+		},
+	})
+}
+
+// emitTeamCountMismatchGate 把 team_count_mismatch 截断/放行双写为
+// system_guard 决策记录（设计 §3.2 row 3，G-R4）。collector 为 nil 时静默
+// 跳过。action 取 "truncate"（截取前 N 个）或 "proceed"（按实际数量放行），
+// 分别映射 outcome truncated / proceeded。
+func (impl *taskPlannerImpl) emitTeamCountMismatchGate(ctx context.Context, traceID, spiritSessionID, action string, requested, decomposed int, dropped []string) {
+	outcome := "proceeded"
+	verb := "按实际数量放行"
+	if action == "truncate" {
+		outcome = "truncated"
+		verb = fmt.Sprintf("截取前 %d 个", requested)
+	}
+	extra := map[string]any{"spirit_session_id": spiritSessionID}
+	if len(dropped) > 0 {
+		extra["dropped_subtask_names"] = dropped
+	}
+	decision.EmitGate(ctx, impl.decisions, decision.GateDecision{
+		TriggerRule:   decision.TriggerTeamCountMismatch,
+		Outcome:       outcome,
+		Scenario:      fmt.Sprintf("分解子任务数(%d)与用户请求团队数(%d)不符", decomposed, requested),
+		Reasoning:     fmt.Sprintf("用户请求 %d 个团队，LLM 分解 %d 个子任务，校验门有界重分解修复未果，%s", requested, decomposed, verb),
+		GuardName:     "plan_verifier",
+		FlowTraceID:   traceID,
+		Entities:      []decision.EntityRef{{Type: "spirit_session", Key: spiritSessionID}},
+		ObservedValue: decomposed,
+		Threshold:     requested,
+		Action:        action,
+		Extra:         extra,
+	})
 }
 
 // detectTeamCount extracts the user's explicit team count from the message.

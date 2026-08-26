@@ -6,6 +6,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
@@ -60,6 +61,8 @@ func newApp(
 	gateCards *service.ChannelGateCards,
 	agentBridgeSvc *service.AgentBridgeService,
 	sandboxMgr *sandbox.Manager,
+	decisionLC decision.Lifecycle,
+	decisions decision.Collector,
 ) *kratos.App {
 	// startupBegin approximates the start of the P1 migration window: NewData
 	// (which launches the P1 goroutine) runs immediately before newApp inside
@@ -115,6 +118,10 @@ func newApp(
 			// Inject vault sync controller into knowledge service (P1-3 production wiring).
 			if chatSvc != nil && agentBridgeSvc != nil {
 				chatSvc.BindAgentBridge(agentBridgeSvc)
+			}
+			// M80 1.5: AgentBridge 审批链双写 decision_records（hitl_approval）。
+			if agentBridgeSvc != nil && decisions != nil {
+				agentBridgeSvc.SetDecisionCollector(decisions)
 			}
 
 			if knowledgeSvc != nil && vaultSyncSup != nil {
@@ -193,6 +200,13 @@ func newApp(
 			if sandboxMgr != nil {
 				sandboxMgr.Start(consumerCtx)
 			}
+			// M80: start the decision outbox worker (flush + retry-queue replay).
+			// Emits only happen on user turns (readiness-gated), so starting here
+			// races nothing; the startup replay self-heals on the 30s ticker when
+			// the DB is not ready yet. Logs "decision collector started".
+			if decisionLC != nil {
+				decisionLC.Start(consumerCtx)
+			}
 
 			return nil
 		}),
@@ -202,6 +216,11 @@ func newApp(
 			// destroyed here — the next boot's reconcile pass reaps them.
 			if sandboxMgr != nil {
 				sandboxMgr.Close()
+			}
+			// M80: stop the decision worker — Stop drains the buffered batch with
+			// a final flush before the data layer closes.
+			if decisionLC != nil {
+				decisionLC.Stop()
 			}
 			if err := guard.OnShutdown(ctx); err != nil {
 				lg.Warn("session status guard shutdown failed", loggateway.StepID("shutdown.guard"), loggateway.Err(err))

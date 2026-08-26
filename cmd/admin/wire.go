@@ -29,6 +29,8 @@ import (
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
 	bizcu "aranea-agents/internal/biz/computeruse"
+	bizcg "aranea-agents/internal/biz/configgraph"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/biz/evaluation"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
@@ -43,6 +45,7 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
+	datacg "aranea-agents/internal/data/configgraph"
 	speech "aranea-agents/internal/data/speech"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
@@ -421,6 +424,13 @@ func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions 
 	return service.NewChannelRunEscalationNotifier(channels, sessions, lg)
 }
 
+// provideDecisionCollector builds the M80 decision collector (Phase 1).
+// repo is nil only when the data layer is absent (CLI mode); Emit stays
+// non-blocking and worker flushes degrade to no-ops. newApp owns Start/Stop.
+func provideDecisionCollector(repo decision.Repo, lg loggateway.Logger) decision.Lifecycle {
+	return decision.NewOutboxCollector(repo, lg)
+}
+
 func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway, lg loggateway.Logger) *service.SessionRunDurableWorker {
 	return service.NewSessionRunDurableWorker(sessionRuns, runCtrl, resumer, lg)
 }
@@ -563,6 +573,18 @@ func agentToolResultPruneConfig(runtimeConf *conf.Runtime) chatagent.ToolResultP
 		AfterTurns:  c.AfterTurns,
 		SizeBytes:   c.SizeBytes,
 		ExemptTools: c.ExemptTools,
+	}
+}
+
+// teamNoProgressAuditorConfig 翻译 runtime 配置为 team 包消费侧配置
+// （79-runtime-governance R5；team 包不依赖 internal/conf）。
+// runtimeConf 为 nil 时 NoProgressAuditorConfig() 返回默认开阈值配置（nil-safe）。
+func teamNoProgressAuditorConfig(runtimeConf *conf.Runtime) team.NoProgressAuditorConfig {
+	c := runtimeConf.NoProgressAuditorConfig()
+	return team.NoProgressAuditorConfig{
+		Enabled:      c.Enabled,
+		CorrectAfter: c.CorrectAfter,
+		CancelAfter:  c.CancelAfter,
 	}
 }
 
@@ -760,6 +782,7 @@ func provideRunnerConfig(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	teamUC *biz.TeamUsecase,
 	runtimeReplanner graph.RuntimeReplanner,
+	decisions decision.Lifecycle,
 	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
@@ -784,7 +807,10 @@ func provideRunnerConfig(
 		OrganizationUC:  orgUC,
 		ToolResultGate:  toolResultGate,
 		ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
-		OutboundRouter:  outboundRouter,
+		NoProgressAudit: teamNoProgressAuditorConfig(runtimeConf),
+		// M80：token_budget / no_progress 系统闸决策双写（设计 §3.2 row 3）。
+		DecisionCollector: decisions,
+		OutboundRouter:    outboundRouter,
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
 		ComputerUseUC:   computerUseUC,
@@ -3110,6 +3136,30 @@ func agentKeyToID(agents biz.AgentRepository) plugintrpc.AgentKeyResolver {
 	}
 }
 
+// ────────────────────────────────────────────────────────────
+// M81 配置资产图谱（config graph）providers
+//
+// 依赖链：raw-SQL repos（datacg）→ Rebuilder（双代重建）→ Indexer（后台组
+// 件，P0 仅重建能力）→ ConfigGraphService（HTTP，经 indexer.Rebuilder() 满
+// 足窄面 ConfigGraphRebuilderPort）。EffectiveToolsProvider 绑定
+// *biz.AgentUsecase（同进程建图，design R1）。
+// ────────────────────────────────────────────────────────────
+
+func provideConfigGraphRebuilder(src bizcg.SourceRepo, repo bizcg.Repo, provider bizcg.EffectiveToolsProvider, flowLog monitor.FlowLogWriter, lg loggateway.Logger) *bizcg.Rebuilder {
+	return bizcg.NewRebuilder(src, repo, provider, flowLog, lg)
+}
+
+func provideConfigGraphIndexer(rebuilder *bizcg.Rebuilder, lg loggateway.Logger) *bizcg.Indexer {
+	return bizcg.NewIndexer(rebuilder, lg)
+}
+
+func provideConfigGraphService(indexer *bizcg.Indexer, repo bizcg.Repo, lg loggateway.Logger) *service.ConfigGraphService {
+	if indexer == nil {
+		return nil
+	}
+	return service.NewConfigGraphService(indexer.Rebuilder(), repo, lg)
+}
+
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
 	App                         *kratos.App
@@ -3175,6 +3225,9 @@ type wireOut struct {
 	// WSV2Subscriber forwards v2 Events to WS clients. Owned by wireOut so
 	// its lifecycle (Close) is managed alongside the kratos.App shutdown.
 	WSV2Subscriber *server.WSV2Subscriber
+	// ConfigGraphIndexer is the M81 config-asset graph background component
+	// (P0: rebuild capability only; started by startBackgroundWorkers).
+	ConfigGraphIndexer *bizcg.Indexer
 }
 
 func provideWireOut(
@@ -3239,6 +3292,7 @@ func provideWireOut(
 	patternMiningJob *jobs.PatternMiningJob,
 	pathBExtractor *biz.PathBExtractor,
 	wsV2Sub *server.WSV2Subscriber,
+	configGraphIndexer *bizcg.Indexer,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -3285,6 +3339,7 @@ func provideWireOut(
 		PatternMiningJob:            patternMiningJob,
 		PathBExtractor:              pathBExtractor,
 		WSV2Subscriber:              wsV2Sub,
+		ConfigGraphIndexer:          configGraphIndexer,
 	}
 }
 
@@ -3612,10 +3667,12 @@ func provideFederationService(uc *a2abiz.FederationUsecase) *service.FederationS
 	return service.NewFederationService(uc)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader, decisions decision.Collector) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	p := chatagent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq, agentReader)
 	chatagent.AttachPlannerOrganizationReader(p, orgReader)
+	// M80 1.4: planner 双写 — emitPlannerDecision 内增 Emit，4 调用点全覆盖。
+	chatagent.AttachPlannerDecisionCollector(p, decisions)
 	return p
 }
 
@@ -3870,6 +3927,24 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSandboxSessionLeases,
 		service.NewSandboxService,
 		wire.Bind(new(biz.SandboxAdminPort), new(*sandbox.Manager)),
+		// M80: decision record layer — repo + collector (Lifecycle for
+		// newApp Start/Stop; Collector bound for the 1.4 planner adapter).
+		data.NewDecisionRepoFromData,
+		provideDecisionCollector,
+		// M80 Phase 1 查询面：QueryRepo → QueryUsecase → DecisionRecordService。
+		data.NewDecisionQueryRepoFromData,
+		decision.NewQueryUsecase,
+		service.NewDecisionRecordService,
+		wire.Bind(new(decision.Collector), new(decision.Lifecycle)),
+		// M81: config graph — raw-SQL repos → rebuilder → indexer → HTTP API
+		// (P0: rebuild/status/nodes only; querier/health land in P1, event
+		// subscription in P2).
+		datacg.NewSourceRepo,
+		datacg.NewRepo,
+		provideConfigGraphRebuilder,
+		provideConfigGraphIndexer,
+		provideConfigGraphService,
+		wire.Bind(new(bizcg.EffectiveToolsProvider), new(*biz.AgentUsecase)),
 		provideAutoMemoryQueue,
 		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
 		wire.Bind(new(biz.MemoryDeadLetterAdminRepo), new(*data.MemoryJobDeadLetterRepo)),

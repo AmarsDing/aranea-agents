@@ -37,6 +37,7 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
+	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -104,7 +105,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -159,6 +160,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 	runtimeprofilev1.RegisterRuntimeProfileServiceHTTPServer(srv, s.RuntimeProfile)
 	sandboxv1.RegisterSandboxServiceHTTPServer(srv, s.Sandbox)
+	if s.DecisionRecord != nil {
+		decisionv1.RegisterDecisionRecordServiceHTTPServer(srv, s.DecisionRecord)
+	}
 	if s.LearningLoop != nil {
 		learningloopv1.RegisterLearningLoopServiceHTTPServer(srv, s.LearningLoop)
 	}
@@ -175,6 +179,8 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
 //   - /v1/knowledge/documents/{id}/autolink-preview|autolink: confirm-then-apply outgoing wikilinks
 //   - /v1/knowledge/collections/{id}/health|experts|writeback-pending: SP7 G7/G8 + pending gate
+//   - /api/v1/config-graph/rebuild|status|nodes: M81 config-asset graph (handwritten JSON,
+//     generation-scoped reads; async rebuild trigger must outlive the request ctx)
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -190,6 +196,7 @@ func registerCustomRoutes(
 	openaiSession *service.OpenAISessionCompatService,
 	a2aExtension *service.A2AExtensionCompatService,
 	twinOpenAPI *service.TwinOpenAPICompatService,
+	configGraphSvc *service.ConfigGraphService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -275,6 +282,23 @@ func registerCustomRoutes(
 		srv.Route("/").POST("/api/v1/admin/ecosystem/preset/load", ecosystemPresetSvc.HandleLoad())
 		srv.Route("/").POST("/api/v1/admin/ecosystem/preset/unload", ecosystemPresetSvc.HandleUnload())
 		srv.Route("/").GET("/api/v1/admin/ecosystem/preset/status", ecosystemPresetSvc.HandleStatus())
+	}
+	// M81 config-asset graph (design §6): handwritten JSON admin API. Registered
+	// before the twinOpenAPI /api/v1 prefix so exact paths win; JWT-protected
+	// (not in noAuthPaths), admin role enforced inside the handlers.
+	if configGraphSvc != nil {
+		srv.Route("/").POST("/api/v1/config-graph/rebuild", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeRebuild(ctx.Response(), ctx.Request())
+			return nil
+		})
+		srv.Route("/").GET("/api/v1/config-graph/status", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeStatus(ctx.Response(), ctx.Request())
+			return nil
+		})
+		srv.Route("/").GET("/api/v1/config-graph/nodes", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeNodes(ctx.Response(), ctx.Request())
+			return nil
+		})
 	}
 	// Compat server adapter routes. Each service lazily initializes its
 	// underlying framework server on the first request via Handler(ctx).

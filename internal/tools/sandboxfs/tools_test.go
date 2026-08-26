@@ -19,8 +19,9 @@ import (
 
 // memFSEngine 是带内存文件系统的 sandbox.Engine 测试桩：写入走 exec
 // `sh -c 'cat > "$1"'`（stdin 落 map，与 r2 #2 的 Lease.WriteFile 一致），
-// CopyFrom 按 docker cp 语义对缺失路径返回空流（Lease.ReadFile 因此映射为
-// ErrNotFound），Exec 同时记录 argv（mkdir -p 断言用）。
+// 读取走 exec `sh -c 'test/cat …'`（r3 #1 起 Lease.ReadFile 改用 exec+哨兵
+// 退出码：缺失=16，StdoutLimit 截断语义照 cappedBuffer 模拟），Exec 同时
+// 记录 argv（mkdir -p 断言用）。
 type memFSEngine struct {
 	mu      sync.Mutex
 	created []string
@@ -39,9 +40,20 @@ func (e *memFSEngine) Exec(ctx context.Context, h sandbox.Handle, spec sandbox.E
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.execs = append(e.execs, append([]string(nil), spec.Argv...))
-	// Lease.WriteFile: sh -c 'cat > "$1"' sh <path>，stdin 为文件内容。
-	if len(spec.Argv) >= 5 && spec.Argv[0] == "sh" && spec.Argv[1] == "-c" && spec.Argv[2] == `cat > "$1"` {
-		e.files[spec.Argv[4]] = []byte(spec.Stdin)
+	if len(spec.Argv) >= 5 && spec.Argv[0] == "sh" && spec.Argv[1] == "-c" {
+		switch spec.Argv[2] {
+		case `cat > "$1"`: // Lease.WriteFile：stdin 为文件内容。
+			e.files[spec.Argv[4]] = []byte(spec.Stdin)
+		case `test -d "$1" && exit 17; test -e "$1" || exit 16; exec cat -- "$1"`: // Lease.ReadFile
+			b, ok := e.files[spec.Argv[4]]
+			if !ok {
+				return sandbox.ExecResult{ExitCode: 16}, nil
+			}
+			if spec.StdoutLimit > 0 && int64(len(b)) > spec.StdoutLimit {
+				b = b[:spec.StdoutLimit]
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: string(b)}, nil
+		}
 	}
 	return sandbox.ExecResult{ExitCode: 0}, nil
 }
@@ -51,7 +63,7 @@ func (e *memFSEngine) CopyFrom(ctx context.Context, h sandbox.Handle, p string) 
 	defer e.mu.Unlock()
 	b, ok := e.files[p]
 	if !ok {
-		// docker cp 缺失路径：空 stdout 流 → Lease.ReadFile tar EOF → ErrNotFound。
+		// docker cp 缺失路径：空 stdout 流（CopyDirFrom 工件收集语义保留）。
 		return io.NopCloser(bytes.NewReader(nil)), nil
 	}
 	var buf bytes.Buffer

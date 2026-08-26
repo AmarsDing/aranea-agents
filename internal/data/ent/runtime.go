@@ -23,8 +23,12 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
+	"aranea-agents/internal/data/ent/configgraphedge"
+	"aranea-agents/internal/data/ent/configgraphnode"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
+	"aranea-agents/internal/data/ent/decisionrecord"
+	"aranea-agents/internal/data/ent/decisionrecordoutbox"
 	"aranea-agents/internal/data/ent/deptleadmessage"
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
@@ -55,6 +59,7 @@ import (
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
+	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
 	"aranea-agents/internal/data/ent/orchestration"
@@ -1642,6 +1647,136 @@ func init() {
 	computeruseaudit.DefaultScreenshotRef = computeruseauditDescScreenshotRef.Default.(string)
 	// computeruseaudit.ScreenshotRefValidator is a validator for the "screenshot_ref" field. It is called by the builders before save.
 	computeruseaudit.ScreenshotRefValidator = computeruseauditDescScreenshotRef.Validators[0].(func(string) error)
+	configgraphedgeFields := schema.ConfigGraphEdge{}.Fields()
+	_ = configgraphedgeFields
+	// configgraphedgeDescSrcID is the schema descriptor for src_id field.
+	configgraphedgeDescSrcID := configgraphedgeFields[1].Descriptor()
+	// configgraphedge.DefaultSrcID holds the default value on creation for the src_id field.
+	configgraphedge.DefaultSrcID = configgraphedgeDescSrcID.Default.(string)
+	// configgraphedge.SrcIDValidator is a validator for the "src_id" field. It is called by the builders before save.
+	configgraphedge.SrcIDValidator = configgraphedgeDescSrcID.Validators[0].(func(string) error)
+	// configgraphedgeDescDstID is the schema descriptor for dst_id field.
+	configgraphedgeDescDstID := configgraphedgeFields[2].Descriptor()
+	// configgraphedge.DefaultDstID holds the default value on creation for the dst_id field.
+	configgraphedge.DefaultDstID = configgraphedgeDescDstID.Default.(string)
+	// configgraphedge.DstIDValidator is a validator for the "dst_id" field. It is called by the builders before save.
+	configgraphedge.DstIDValidator = configgraphedgeDescDstID.Validators[0].(func(string) error)
+	// configgraphedgeDescEdgeType is the schema descriptor for edge_type field.
+	configgraphedgeDescEdgeType := configgraphedgeFields[3].Descriptor()
+	// configgraphedge.EdgeTypeValidator is a validator for the "edge_type" field. It is called by the builders before save.
+	configgraphedge.EdgeTypeValidator = func() func(string) error {
+		validators := configgraphedgeDescEdgeType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(edge_type string) error {
+			for _, fn := range fns {
+				if err := fn(edge_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// configgraphedgeDescEvidenceJSON is the schema descriptor for evidence_json field.
+	configgraphedgeDescEvidenceJSON := configgraphedgeFields[4].Descriptor()
+	// configgraphedge.DefaultEvidenceJSON holds the default value on creation for the evidence_json field.
+	configgraphedge.DefaultEvidenceJSON = configgraphedgeDescEvidenceJSON.Default.(string)
+	// configgraphedgeDescWorkspaceID is the schema descriptor for workspace_id field.
+	configgraphedgeDescWorkspaceID := configgraphedgeFields[5].Descriptor()
+	// configgraphedge.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	configgraphedge.DefaultWorkspaceID = configgraphedgeDescWorkspaceID.Default.(string)
+	// configgraphedge.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	configgraphedge.WorkspaceIDValidator = configgraphedgeDescWorkspaceID.Validators[0].(func(string) error)
+	// configgraphedgeDescGeneration is the schema descriptor for generation field.
+	configgraphedgeDescGeneration := configgraphedgeFields[6].Descriptor()
+	// configgraphedge.DefaultGeneration holds the default value on creation for the generation field.
+	configgraphedge.DefaultGeneration = configgraphedgeDescGeneration.Default.(int64)
+	// configgraphedgeDescCreatedAt is the schema descriptor for created_at field.
+	configgraphedgeDescCreatedAt := configgraphedgeFields[7].Descriptor()
+	// configgraphedge.DefaultCreatedAt holds the default value on creation for the created_at field.
+	configgraphedge.DefaultCreatedAt = configgraphedgeDescCreatedAt.Default.(string)
+	// configgraphedge.CreatedAtValidator is a validator for the "created_at" field. It is called by the builders before save.
+	configgraphedge.CreatedAtValidator = configgraphedgeDescCreatedAt.Validators[0].(func(string) error)
+	// configgraphedgeDescID is the schema descriptor for id field.
+	configgraphedgeDescID := configgraphedgeFields[0].Descriptor()
+	// configgraphedge.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	configgraphedge.IDValidator = configgraphedgeDescID.Validators[0].(func(string) error)
+	configgraphnodeFields := schema.ConfigGraphNode{}.Fields()
+	_ = configgraphnodeFields
+	// configgraphnodeDescNodeType is the schema descriptor for node_type field.
+	configgraphnodeDescNodeType := configgraphnodeFields[1].Descriptor()
+	// configgraphnode.NodeTypeValidator is a validator for the "node_type" field. It is called by the builders before save.
+	configgraphnode.NodeTypeValidator = func() func(string) error {
+		validators := configgraphnodeDescNodeType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(node_type string) error {
+			for _, fn := range fns {
+				if err := fn(node_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// configgraphnodeDescRefID is the schema descriptor for ref_id field.
+	configgraphnodeDescRefID := configgraphnodeFields[2].Descriptor()
+	// configgraphnode.DefaultRefID holds the default value on creation for the ref_id field.
+	configgraphnode.DefaultRefID = configgraphnodeDescRefID.Default.(string)
+	// configgraphnode.RefIDValidator is a validator for the "ref_id" field. It is called by the builders before save.
+	configgraphnode.RefIDValidator = configgraphnodeDescRefID.Validators[0].(func(string) error)
+	// configgraphnodeDescNodeKey is the schema descriptor for node_key field.
+	configgraphnodeDescNodeKey := configgraphnodeFields[3].Descriptor()
+	// configgraphnode.DefaultNodeKey holds the default value on creation for the node_key field.
+	configgraphnode.DefaultNodeKey = configgraphnodeDescNodeKey.Default.(string)
+	// configgraphnode.NodeKeyValidator is a validator for the "node_key" field. It is called by the builders before save.
+	configgraphnode.NodeKeyValidator = configgraphnodeDescNodeKey.Validators[0].(func(string) error)
+	// configgraphnodeDescDisplayName is the schema descriptor for display_name field.
+	configgraphnodeDescDisplayName := configgraphnodeFields[4].Descriptor()
+	// configgraphnode.DefaultDisplayName holds the default value on creation for the display_name field.
+	configgraphnode.DefaultDisplayName = configgraphnodeDescDisplayName.Default.(string)
+	// configgraphnode.DisplayNameValidator is a validator for the "display_name" field. It is called by the builders before save.
+	configgraphnode.DisplayNameValidator = configgraphnodeDescDisplayName.Validators[0].(func(string) error)
+	// configgraphnodeDescWorkspaceID is the schema descriptor for workspace_id field.
+	configgraphnodeDescWorkspaceID := configgraphnodeFields[5].Descriptor()
+	// configgraphnode.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	configgraphnode.DefaultWorkspaceID = configgraphnodeDescWorkspaceID.Default.(string)
+	// configgraphnode.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	configgraphnode.WorkspaceIDValidator = configgraphnodeDescWorkspaceID.Validators[0].(func(string) error)
+	// configgraphnodeDescStatus is the schema descriptor for status field.
+	configgraphnodeDescStatus := configgraphnodeFields[6].Descriptor()
+	// configgraphnode.DefaultStatus holds the default value on creation for the status field.
+	configgraphnode.DefaultStatus = configgraphnodeDescStatus.Default.(string)
+	// configgraphnode.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	configgraphnode.StatusValidator = configgraphnodeDescStatus.Validators[0].(func(string) error)
+	// configgraphnodeDescAttrsJSON is the schema descriptor for attrs_json field.
+	configgraphnodeDescAttrsJSON := configgraphnodeFields[7].Descriptor()
+	// configgraphnode.DefaultAttrsJSON holds the default value on creation for the attrs_json field.
+	configgraphnode.DefaultAttrsJSON = configgraphnodeDescAttrsJSON.Default.(string)
+	// configgraphnodeDescGeneration is the schema descriptor for generation field.
+	configgraphnodeDescGeneration := configgraphnodeFields[8].Descriptor()
+	// configgraphnode.DefaultGeneration holds the default value on creation for the generation field.
+	configgraphnode.DefaultGeneration = configgraphnodeDescGeneration.Default.(int64)
+	// configgraphnodeDescCreatedAt is the schema descriptor for created_at field.
+	configgraphnodeDescCreatedAt := configgraphnodeFields[9].Descriptor()
+	// configgraphnode.DefaultCreatedAt holds the default value on creation for the created_at field.
+	configgraphnode.DefaultCreatedAt = configgraphnodeDescCreatedAt.Default.(string)
+	// configgraphnode.CreatedAtValidator is a validator for the "created_at" field. It is called by the builders before save.
+	configgraphnode.CreatedAtValidator = configgraphnodeDescCreatedAt.Validators[0].(func(string) error)
+	// configgraphnodeDescUpdatedAt is the schema descriptor for updated_at field.
+	configgraphnodeDescUpdatedAt := configgraphnodeFields[10].Descriptor()
+	// configgraphnode.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	configgraphnode.DefaultUpdatedAt = configgraphnodeDescUpdatedAt.Default.(string)
+	// configgraphnode.UpdatedAtValidator is a validator for the "updated_at" field. It is called by the builders before save.
+	configgraphnode.UpdatedAtValidator = configgraphnodeDescUpdatedAt.Validators[0].(func(string) error)
+	// configgraphnodeDescID is the schema descriptor for id field.
+	configgraphnodeDescID := configgraphnodeFields[0].Descriptor()
+	// configgraphnode.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	configgraphnode.IDValidator = configgraphnodeDescID.Validators[0].(func(string) error)
 	crontaskFields := schema.CronTask{}.Fields()
 	_ = crontaskFields
 	// crontaskDescTaskKey is the schema descriptor for task_key field.
@@ -1738,6 +1873,132 @@ func init() {
 	crontaskrunDescID := crontaskrunFields[0].Descriptor()
 	// crontaskrun.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	crontaskrun.IDValidator = crontaskrunDescID.Validators[0].(func(string) error)
+	decisionrecordFields := schema.DecisionRecord{}.Fields()
+	_ = decisionrecordFields
+	// decisionrecordDescDecisionKey is the schema descriptor for decision_key field.
+	decisionrecordDescDecisionKey := decisionrecordFields[1].Descriptor()
+	// decisionrecord.DecisionKeyValidator is a validator for the "decision_key" field. It is called by the builders before save.
+	decisionrecord.DecisionKeyValidator = func() func(string) error {
+		validators := decisionrecordDescDecisionKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(decision_key string) error {
+			for _, fn := range fns {
+				if err := fn(decision_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// decisionrecordDescCategory is the schema descriptor for category field.
+	decisionrecordDescCategory := decisionrecordFields[2].Descriptor()
+	// decisionrecord.DefaultCategory holds the default value on creation for the category field.
+	decisionrecord.DefaultCategory = decisionrecordDescCategory.Default.(string)
+	// decisionrecord.CategoryValidator is a validator for the "category" field. It is called by the builders before save.
+	decisionrecord.CategoryValidator = decisionrecordDescCategory.Validators[0].(func(string) error)
+	// decisionrecordDescScenario is the schema descriptor for scenario field.
+	decisionrecordDescScenario := decisionrecordFields[3].Descriptor()
+	// decisionrecord.DefaultScenario holds the default value on creation for the scenario field.
+	decisionrecord.DefaultScenario = decisionrecordDescScenario.Default.(string)
+	// decisionrecordDescReasoning is the schema descriptor for reasoning field.
+	decisionrecordDescReasoning := decisionrecordFields[4].Descriptor()
+	// decisionrecord.DefaultReasoning holds the default value on creation for the reasoning field.
+	decisionrecord.DefaultReasoning = decisionrecordDescReasoning.Default.(string)
+	// decisionrecordDescOutcome is the schema descriptor for outcome field.
+	decisionrecordDescOutcome := decisionrecordFields[5].Descriptor()
+	// decisionrecord.DefaultOutcome holds the default value on creation for the outcome field.
+	decisionrecord.DefaultOutcome = decisionrecordDescOutcome.Default.(string)
+	// decisionrecord.OutcomeValidator is a validator for the "outcome" field. It is called by the builders before save.
+	decisionrecord.OutcomeValidator = decisionrecordDescOutcome.Validators[0].(func(string) error)
+	// decisionrecordDescActorType is the schema descriptor for actor_type field.
+	decisionrecordDescActorType := decisionrecordFields[7].Descriptor()
+	// decisionrecord.DefaultActorType holds the default value on creation for the actor_type field.
+	decisionrecord.DefaultActorType = decisionrecordDescActorType.Default.(string)
+	// decisionrecord.ActorTypeValidator is a validator for the "actor_type" field. It is called by the builders before save.
+	decisionrecord.ActorTypeValidator = decisionrecordDescActorType.Validators[0].(func(string) error)
+	// decisionrecordDescActorKey is the schema descriptor for actor_key field.
+	decisionrecordDescActorKey := decisionrecordFields[8].Descriptor()
+	// decisionrecord.DefaultActorKey holds the default value on creation for the actor_key field.
+	decisionrecord.DefaultActorKey = decisionrecordDescActorKey.Default.(string)
+	// decisionrecord.ActorKeyValidator is a validator for the "actor_key" field. It is called by the builders before save.
+	decisionrecord.ActorKeyValidator = decisionrecordDescActorKey.Validators[0].(func(string) error)
+	// decisionrecordDescRelatedEntities is the schema descriptor for related_entities field.
+	decisionrecordDescRelatedEntities := decisionrecordFields[10].Descriptor()
+	// decisionrecord.DefaultRelatedEntities holds the default value on creation for the related_entities field.
+	decisionrecord.DefaultRelatedEntities = decisionrecordDescRelatedEntities.Default.(string)
+	// decisionrecordDescSourceRef is the schema descriptor for source_ref field.
+	decisionrecordDescSourceRef := decisionrecordFields[11].Descriptor()
+	// decisionrecord.DefaultSourceRef holds the default value on creation for the source_ref field.
+	decisionrecord.DefaultSourceRef = decisionrecordDescSourceRef.Default.(string)
+	// decisionrecordDescMetadata is the schema descriptor for metadata field.
+	decisionrecordDescMetadata := decisionrecordFields[12].Descriptor()
+	// decisionrecord.DefaultMetadata holds the default value on creation for the metadata field.
+	decisionrecord.DefaultMetadata = decisionrecordDescMetadata.Default.(string)
+	// decisionrecordDescWorkspaceID is the schema descriptor for workspace_id field.
+	decisionrecordDescWorkspaceID := decisionrecordFields[13].Descriptor()
+	// decisionrecord.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	decisionrecord.DefaultWorkspaceID = decisionrecordDescWorkspaceID.Default.(string)
+	// decisionrecord.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	decisionrecord.WorkspaceIDValidator = decisionrecordDescWorkspaceID.Validators[0].(func(string) error)
+	// decisionrecordDescCreatedAt is the schema descriptor for created_at field.
+	decisionrecordDescCreatedAt := decisionrecordFields[14].Descriptor()
+	// decisionrecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	decisionrecord.DefaultCreatedAt = decisionrecordDescCreatedAt.Default.(string)
+	// decisionrecord.CreatedAtValidator is a validator for the "created_at" field. It is called by the builders before save.
+	decisionrecord.CreatedAtValidator = decisionrecordDescCreatedAt.Validators[0].(func(string) error)
+	// decisionrecordDescUpdatedAt is the schema descriptor for updated_at field.
+	decisionrecordDescUpdatedAt := decisionrecordFields[15].Descriptor()
+	// decisionrecord.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	decisionrecord.DefaultUpdatedAt = decisionrecordDescUpdatedAt.Default.(string)
+	// decisionrecord.UpdatedAtValidator is a validator for the "updated_at" field. It is called by the builders before save.
+	decisionrecord.UpdatedAtValidator = decisionrecordDescUpdatedAt.Validators[0].(func(string) error)
+	decisionrecordoutboxFields := schema.DecisionRecordOutbox{}.Fields()
+	_ = decisionrecordoutboxFields
+	// decisionrecordoutboxDescDecisionKey is the schema descriptor for decision_key field.
+	decisionrecordoutboxDescDecisionKey := decisionrecordoutboxFields[1].Descriptor()
+	// decisionrecordoutbox.DecisionKeyValidator is a validator for the "decision_key" field. It is called by the builders before save.
+	decisionrecordoutbox.DecisionKeyValidator = func() func(string) error {
+		validators := decisionrecordoutboxDescDecisionKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(decision_key string) error {
+			for _, fn := range fns {
+				if err := fn(decision_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// decisionrecordoutboxDescStatus is the schema descriptor for status field.
+	decisionrecordoutboxDescStatus := decisionrecordoutboxFields[3].Descriptor()
+	// decisionrecordoutbox.DefaultStatus holds the default value on creation for the status field.
+	decisionrecordoutbox.DefaultStatus = decisionrecordoutboxDescStatus.Default.(string)
+	// decisionrecordoutbox.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	decisionrecordoutbox.StatusValidator = decisionrecordoutboxDescStatus.Validators[0].(func(string) error)
+	// decisionrecordoutboxDescAttempts is the schema descriptor for attempts field.
+	decisionrecordoutboxDescAttempts := decisionrecordoutboxFields[4].Descriptor()
+	// decisionrecordoutbox.DefaultAttempts holds the default value on creation for the attempts field.
+	decisionrecordoutbox.DefaultAttempts = decisionrecordoutboxDescAttempts.Default.(int)
+	// decisionrecordoutboxDescLastError is the schema descriptor for last_error field.
+	decisionrecordoutboxDescLastError := decisionrecordoutboxFields[5].Descriptor()
+	// decisionrecordoutbox.DefaultLastError holds the default value on creation for the last_error field.
+	decisionrecordoutbox.DefaultLastError = decisionrecordoutboxDescLastError.Default.(string)
+	// decisionrecordoutboxDescCreatedAt is the schema descriptor for created_at field.
+	decisionrecordoutboxDescCreatedAt := decisionrecordoutboxFields[6].Descriptor()
+	// decisionrecordoutbox.DefaultCreatedAt holds the default value on creation for the created_at field.
+	decisionrecordoutbox.DefaultCreatedAt = decisionrecordoutboxDescCreatedAt.Default.(string)
+	// decisionrecordoutbox.CreatedAtValidator is a validator for the "created_at" field. It is called by the builders before save.
+	decisionrecordoutbox.CreatedAtValidator = decisionrecordoutboxDescCreatedAt.Validators[0].(func(string) error)
+	// decisionrecordoutboxDescPublishedAt is the schema descriptor for published_at field.
+	decisionrecordoutboxDescPublishedAt := decisionrecordoutboxFields[7].Descriptor()
+	// decisionrecordoutbox.PublishedAtValidator is a validator for the "published_at" field. It is called by the builders before save.
+	decisionrecordoutbox.PublishedAtValidator = decisionrecordoutboxDescPublishedAt.Validators[0].(func(string) error)
 	deptleadmessageFields := schema.DeptLeadMessage{}.Fields()
 	_ = deptleadmessageFields
 	// deptleadmessageDescFromAgentID is the schema descriptor for from_agent_id field.
@@ -3264,6 +3525,88 @@ func init() {
 	membersessionv2DescID := membersessionv2Fields[0].Descriptor()
 	// membersessionv2.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	membersessionv2.IDValidator = membersessionv2DescID.Validators[0].(func(string) error)
+	memoryfactpendingFields := schema.MemoryFactPending{}.Fields()
+	_ = memoryfactpendingFields
+	// memoryfactpendingDescAgentID is the schema descriptor for agent_id field.
+	memoryfactpendingDescAgentID := memoryfactpendingFields[1].Descriptor()
+	// memoryfactpending.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	memoryfactpending.AgentIDValidator = func() func(string) error {
+		validators := memoryfactpendingDescAgentID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(agent_id string) error {
+			for _, fn := range fns {
+				if err := fn(agent_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// memoryfactpendingDescFactKey is the schema descriptor for fact_key field.
+	memoryfactpendingDescFactKey := memoryfactpendingFields[2].Descriptor()
+	// memoryfactpending.DefaultFactKey holds the default value on creation for the fact_key field.
+	memoryfactpending.DefaultFactKey = memoryfactpendingDescFactKey.Default.(string)
+	// memoryfactpending.FactKeyValidator is a validator for the "fact_key" field. It is called by the builders before save.
+	memoryfactpending.FactKeyValidator = memoryfactpendingDescFactKey.Validators[0].(func(string) error)
+	// memoryfactpendingDescVerdict is the schema descriptor for verdict field.
+	memoryfactpendingDescVerdict := memoryfactpendingFields[3].Descriptor()
+	// memoryfactpending.DefaultVerdict holds the default value on creation for the verdict field.
+	memoryfactpending.DefaultVerdict = memoryfactpendingDescVerdict.Default.(string)
+	// memoryfactpending.VerdictValidator is a validator for the "verdict" field. It is called by the builders before save.
+	memoryfactpending.VerdictValidator = memoryfactpendingDescVerdict.Validators[0].(func(string) error)
+	// memoryfactpendingDescProposedBody is the schema descriptor for proposed_body field.
+	memoryfactpendingDescProposedBody := memoryfactpendingFields[4].Descriptor()
+	// memoryfactpending.DefaultProposedBody holds the default value on creation for the proposed_body field.
+	memoryfactpending.DefaultProposedBody = memoryfactpendingDescProposedBody.Default.(string)
+	// memoryfactpendingDescPriorBody is the schema descriptor for prior_body field.
+	memoryfactpendingDescPriorBody := memoryfactpendingFields[5].Descriptor()
+	// memoryfactpending.DefaultPriorBody holds the default value on creation for the prior_body field.
+	memoryfactpending.DefaultPriorBody = memoryfactpendingDescPriorBody.Default.(string)
+	// memoryfactpendingDescAdjudicatorReason is the schema descriptor for adjudicator_reason field.
+	memoryfactpendingDescAdjudicatorReason := memoryfactpendingFields[6].Descriptor()
+	// memoryfactpending.DefaultAdjudicatorReason holds the default value on creation for the adjudicator_reason field.
+	memoryfactpending.DefaultAdjudicatorReason = memoryfactpendingDescAdjudicatorReason.Default.(string)
+	// memoryfactpendingDescStatus is the schema descriptor for status field.
+	memoryfactpendingDescStatus := memoryfactpendingFields[7].Descriptor()
+	// memoryfactpending.DefaultStatus holds the default value on creation for the status field.
+	memoryfactpending.DefaultStatus = memoryfactpendingDescStatus.Default.(string)
+	// memoryfactpending.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	memoryfactpending.StatusValidator = memoryfactpendingDescStatus.Validators[0].(func(string) error)
+	// memoryfactpendingDescApprover is the schema descriptor for approver field.
+	memoryfactpendingDescApprover := memoryfactpendingFields[8].Descriptor()
+	// memoryfactpending.DefaultApprover holds the default value on creation for the approver field.
+	memoryfactpending.DefaultApprover = memoryfactpendingDescApprover.Default.(string)
+	// memoryfactpending.ApproverValidator is a validator for the "approver" field. It is called by the builders before save.
+	memoryfactpending.ApproverValidator = memoryfactpendingDescApprover.Validators[0].(func(string) error)
+	// memoryfactpendingDescCreatedAt is the schema descriptor for created_at field.
+	memoryfactpendingDescCreatedAt := memoryfactpendingFields[9].Descriptor()
+	// memoryfactpending.DefaultCreatedAt holds the default value on creation for the created_at field.
+	memoryfactpending.DefaultCreatedAt = memoryfactpendingDescCreatedAt.Default.(int64)
+	// memoryfactpendingDescDecidedAt is the schema descriptor for decided_at field.
+	memoryfactpendingDescDecidedAt := memoryfactpendingFields[10].Descriptor()
+	// memoryfactpending.DefaultDecidedAt holds the default value on creation for the decided_at field.
+	memoryfactpending.DefaultDecidedAt = memoryfactpendingDescDecidedAt.Default.(int64)
+	// memoryfactpendingDescID is the schema descriptor for id field.
+	memoryfactpendingDescID := memoryfactpendingFields[0].Descriptor()
+	// memoryfactpending.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	memoryfactpending.IDValidator = func() func(string) error {
+		validators := memoryfactpendingDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	modelpricingruleFields := schema.ModelPricingRule{}.Fields()
 	_ = modelpricingruleFields
 	// modelpricingruleDescProviderCode is the schema descriptor for provider_code field.

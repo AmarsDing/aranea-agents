@@ -23,8 +23,12 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
+	"aranea-agents/internal/data/ent/configgraphedge"
+	"aranea-agents/internal/data/ent/configgraphnode"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
+	"aranea-agents/internal/data/ent/decisionrecord"
+	"aranea-agents/internal/data/ent/decisionrecordoutbox"
 	"aranea-agents/internal/data/ent/deptleadmessage"
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
@@ -55,6 +59,7 @@ import (
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
+	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
 	"aranea-agents/internal/data/ent/orchestration"
@@ -198,8 +203,12 @@ func checkColumn(t, c string) error {
 			codingtask.Table:                 codingtask.ValidColumn,
 			compiledteam.Table:               compiledteam.ValidColumn,
 			computeruseaudit.Table:           computeruseaudit.ValidColumn,
+			configgraphedge.Table:            configgraphedge.ValidColumn,
+			configgraphnode.Table:            configgraphnode.ValidColumn,
 			crontask.Table:                   crontask.ValidColumn,
 			crontaskrun.Table:                crontaskrun.ValidColumn,
+			decisionrecord.Table:             decisionrecord.ValidColumn,
+			decisionrecordoutbox.Table:       decisionrecordoutbox.ValidColumn,
 			deptleadmessage.Table:            deptleadmessage.ValidColumn,
 			evalcase.Table:                   evalcase.ValidColumn,
 			evalcaseresult.Table:             evalcaseresult.ValidColumn,
@@ -230,6 +239,7 @@ func checkColumn(t, c string) error {
 			llmprovidermodel.Table:           llmprovidermodel.ValidColumn,
 			mediaprovider.Table:              mediaprovider.ValidColumn,
 			membersessionv2.Table:            membersessionv2.ValidColumn,
+			memoryfactpending.Table:          memoryfactpending.ValidColumn,
 			modelpricingrule.Table:           modelpricingrule.ValidColumn,
 			modeltokenusagehourly.Table:      modeltokenusagehourly.ValidColumn,
 			orchestration.Table:              orchestration.ValidColumn,

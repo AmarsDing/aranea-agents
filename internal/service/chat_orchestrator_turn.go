@@ -808,8 +808,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 // 第二返回值携带 QuickAssess 等级（未评估时为空串）：C2 方案 D 分级时限用
 // 其区分 intent 收口策略——complex 全等至保险丝，moderate 走 rendezvous。
 // 第三返回值是 skip 判定的机器可读理由（包B B4 路由语料）：direct_reply /
-// underspecified_task / agent_skip_disabled / planner_unavailable /
-// planner_error / not_simple / confident_simple / low_confidence_simple。
+// underspecified_task / agent_skip_disabled / task_action_signal /
+// planner_unavailable / planner_error / not_simple / confident_simple /
+// low_confidence_simple。
 //
 // 包B（session-eval-20260825 B1）两道闸：
 //  1. agent 维度闸：ag.Settings.IntentSkipEnabled=false（管理层 agent：3 GM +
@@ -820,6 +821,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 //     评分器对「简单」不确信——走完整 intent pass（宁重勿轻，RouteLLM
 //     非对称代价：任务型误判为简单 ≫ 闲聊误跑 intent pass）。仅高置信
 //     simple（score < intentSkipConfidentSimpleMaxScore）允许 skip。
+//
+// ADR-79-V V2（2026-08-26）第三道闸：任务信号排除。分类器输出只可用于
+// 增加义务、不可用于免除义务——凡含任务动作词的轮次，即使评分器误判
+// confident simple 也不得 skip（与 QuickAssess 内部 taskRequestWords
+// 升级互为纵深：那里是第一道，这里兜底评分器漏判）。
 func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, ag biz.Agent, input biz.TurnInput, content string) (bool, biz.ComplexityLevel, string) {
 	if intent.SkipForDirectReply(content) {
 		return true, "", "direct_reply"
@@ -829,6 +835,9 @@ func shouldSkipIntentPass(o *ChatOrchestrator, ctx context.Context, ag biz.Agent
 	}
 	if ag.Settings != nil && !ag.Settings.IntentSkipEnabled {
 		return false, "", "agent_skip_disabled"
+	}
+	if biz.HasTaskActionSignal(content) {
+		return false, "", "task_action_signal"
 	}
 	planner := o.team().TaskPlanner
 	if planner == nil {

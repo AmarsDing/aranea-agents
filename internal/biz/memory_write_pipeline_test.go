@@ -63,6 +63,22 @@ func TestGateFactWriteCandidate_Confidence(t *testing.T) {
 	}
 }
 
+func TestGateFactWriteCandidate_AbsenceMeta(t *testing.T) {
+	// Absence meta-statements must be dropped even with a whitelisted kind and
+	// high confidence — this is the auto_memory-path half of the 2026-08-26
+	// domain-B pollution fix (the immediate writer has its own gate).
+	c := gateTestCandidate()
+	c.Statement = "用户询问值班电话，但暂无此信息记录"
+	if d := GateFactWriteCandidate(c); d.DropReason != FactWriteDropAbsenceMeta {
+		t.Fatalf("drop reason: got %q want %q", d.DropReason, FactWriteDropAbsenceMeta)
+	}
+	// Genuine negative fact (no inquiry marker) still passes.
+	c.Statement = "原值班号码 8899-0000 已作废"
+	if d := GateFactWriteCandidate(c); d.DropReason != "" {
+		t.Fatalf("genuine negative fact should pass, got %q", d.DropReason)
+	}
+}
+
 // --- Heuristic adjudication bands (pure) ---
 
 func TestDecideFactWriteHeuristic_NoNeighbors(t *testing.T) {

@@ -15,10 +15,10 @@ import (
 type fakeReviewFactDeps struct {
 	biz.MemoryAdminDeps // nil-embedded; only ReviewFactRow is callable
 
-	calls  int
-	gotIn  biz.FactReview
+	calls   int
+	gotIn   biz.FactReview
 	rowJSON []byte
-	err    error
+	err     error
 }
 
 func (f *fakeReviewFactDeps) ReviewFactRow(_ context.Context, in biz.FactReview) ([]byte, error) {

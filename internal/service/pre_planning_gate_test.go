@@ -111,7 +111,10 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 	}
 }
 
-func TestPrePlanningGate_Evaluate_FactQueryDoesNotForcePlanning(t *testing.T) {
+func TestPrePlanningGate_Evaluate_FactQueryStillForcesPlanning(t *testing.T) {
+	// ADR-79-V V2（2026-08-26）：分类器输出只可用于增加义务，不可用于免除
+	// 义务——事实查询分类不得豁免强制规划。QuickAssess 判 Moderate 即强制，
+	// 纯事实查询的组队由工具边界 shouldRejectFactQueryPlan 拦截（宁重勿轻）。
 	bus := &captureEventBus{}
 	gate := NewPrePlanningGate(
 		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
@@ -126,10 +129,10 @@ func TestPrePlanningGate_Evaluate_FactQueryDoesNotForcePlanning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate error: %v", err)
 	}
-	if decision.ForcePlanning {
-		t.Fatalf("fact query must not force planning: %+v", decision)
+	if !decision.ForcePlanning {
+		t.Fatalf("V2: fact query classified Moderate must still force planning: %+v", decision)
 	}
-	if decision.Reason != "评估完成：事实查询，不组队" {
+	if decision.Reason != "评估完成：中等任务，强制走规划路径" {
 		t.Fatalf("Reason = %q", decision.Reason)
 	}
 }

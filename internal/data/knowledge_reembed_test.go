@@ -15,7 +15,7 @@ import (
 
 // TestKnowledgeRepo_ListDocumentsPendingReembed 覆盖筛选正确性：
 // - 命中：chunks embedding IS NULL 的文档；无任何 chunks 但有 content_text 的文档
-// - 排除：content_text='' 的文档；status='indexing' 的文档；embedding 非 NULL 的正常文档
+// - 排除：content_text=” 的文档；status='indexing' 的文档；embedding 非 NULL 的正常文档
 // - 排序：created_at ASC（先入队先处理）
 func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)

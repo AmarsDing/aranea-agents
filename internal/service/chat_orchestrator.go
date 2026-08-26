@@ -567,6 +567,19 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 				}
 				return nil
 			})
+			// R5 无进展审计纠偏注记（79-runtime-governance）：与修订同一 followup
+			// 通道入队，当前 turn 结束后作为新 turn 输入，成员携历史上下文读到。
+			// 拒收同样转 error——runner 侧仅记日志不阻断审计计数与 Cancel 裁决。
+			deps.Team.Team.TeamsNative.SetNoProgressEnqueuer(func(_ context.Context, sessionID, content string) error {
+				accepted, _, _, reason, err := chatUC.EnqueueUserMessageWithKind(sessionID, content, biz.ChatEnqueueKindFollowup, false)
+				if err != nil {
+					return err
+				}
+				if !accepted {
+					return fmt.Errorf("无进展纠偏注记 followup 入队被拒: %s", reason)
+				}
+				return nil
+			})
 		}
 		if deps.Team.Team.TeamMediator != nil {
 			deps.Team.Team.TeamsNative.SetMediator(deps.Team.Team.TeamMediator)

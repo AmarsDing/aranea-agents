@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/graph"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
@@ -54,12 +55,20 @@ type RunnerConfig struct {
 	// These are threaded into member-agent builds so team agents have the same
 	// capability surface as chat agents (subagent, outbound, tool-result gate,
 	// organization taxonomy, kanban, A2A call_agent).
-	OrganizationUC  *biz.OrganizationUsecase
-	ToolResultGate  *biz.ToolResultGate
+	OrganizationUC *biz.OrganizationUsecase
+	ToolResultGate *biz.ToolResultGate
 	// ToolResultPrune 是 R2 确定性剪枝 hook 的消费侧配置（79-runtime-governance）；
 	// 零值 Enabled=false → 成员构建不注册剪枝 hook（一键回退）。
 	ToolResultPrune agent.ToolResultPruneConfig
-	OutboundRouter  *outbound.Router
+	// NoProgressAudit 是 R5 run 级无进展审计器的消费侧配置
+	// （79-runtime-governance）；Enabled=false 时不装配审计状态、
+	// audit 调用全 no-op（一键回退，dev plan Phase 2 回退项
+	// runtime.no_progress_auditor.enabled=false）。
+	NoProgressAudit NoProgressAuditorConfig
+	// DecisionCollector 是 M80 系统闸决策双写口（token_budget / no_progress
+	// 跳闸，设计 §3.2 row 3）。可选：nil 时闸事件仅走日志/事件总线。
+	DecisionCollector decision.Collector
+	OutboundRouter *outbound.Router
 	SubAgentService *subagenttool.Service
 	KanbanBridge    kanbanpkg.Bridge
 	// ComputerUseUC enables the computer_use_* toolset in team member builds

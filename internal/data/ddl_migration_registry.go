@@ -467,6 +467,25 @@ var ddlMigrations = []ddlMigration{
 	// 20260610，照 20261216/20261243 先例以 reseed 迁移补齐（种子幂等
 	// ON CONFLICT DO NOTHING，重跑安全）。
 	{Version: 20261247, Name: "builtin_platform_tools_sandbox_fs_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261249 memory_fact_pending（79-runtime-governance R3）：记忆高风险写
+	// 人工审批层暂存表——自动管线 UPDATE / DELETE / contested 判决落 pending，
+	// 审批通过执行原 bi-temporal 写，拒绝留痕。原分配 20261246 已被 0.1 索引
+	// 占用，顺延 20261249（65 交叉参考号段统一分配）。双方言通用，幂等。
+	{Version: 20261249, Name: "memory_fact_pending", SQL: "sql/migrations/20261249_memory_fact_pending.sql"},
+	// 20261250/51/52 decision_records（M80 决策智能 Phase 1）：统一决策记录层——
+	// 五类高价值决策（HITL/planner/系统闸/知识仲裁/进化应用）归一为可查询、
+	// 可审计、可追溯的一等资产。20261250 主表（单父链 parent_decision_id，
+	// ADR-3；JSON 列双方言 TEXT 惯例）；20261251 异步落库 outbox（E5 新表，
+	// 模式复用 event_delivery_outbox 但不共用）；20261252 查询索引（常规索引
+	// 双方言 SQL 先行，PG-only GIN 表达式索引由 Func 门控补建，SQLite 跳过）。
+	// 号段经 2026-08-25 三方案统一分配，20261253-59 预留缓冲。幂等，重跑安全。
+	{Version: 20261250, Name: "decision_records", SQL: "sql/migrations/20261250_decision_records.sql"},
+	{Version: 20261251, Name: "decision_record_outbox", SQL: "sql/migrations/20261251_decision_record_outbox.sql"},
+	{Version: 20261252, Name: "decision_records_idx", SQL: "sql/migrations/20261252_decision_records_idx.sql", Func: ddlDecisionRecordsGINIndexes},
+	// 20261260 config_graph（M81 配置资产图谱 P0-0.1）：配置资产依赖图
+	// config_graph_nodes（12 类资产节点）+ config_graph_edges（27 类引用边），
+	// generation 双代切换支撑全量重建无清表窗口。双方言通用，幂等。
+	{Version: 20261260, Name: "config_graph", SQL: "sql/migrations/20261260_config_graph.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1419,6 +1438,19 @@ func ddlMemoryFactsTrgmIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, 
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261242_memory_facts_trgm_index.sql", d, lg)
+}
+
+// ddlDecisionRecordsGINIndexes creates the GIN expression indexes on
+// decision_records source_ref / related_entities (M80 Phase 1, NFR-80-04).
+// Postgres-only: GIN/jsonb cast do not exist on SQLite; columns are TEXT-stored
+// JSON per dual-dialect convention, so the index targets (col::jsonb).
+func ddlDecisionRecordsGINIndexes(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("decision_records_gin_indexes skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.decision_records_gin"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261252_decision_records_gin.sql", d, lg)
 }
 
 // ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).

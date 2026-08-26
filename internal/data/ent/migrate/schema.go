@@ -793,6 +793,82 @@ var (
 			},
 		},
 	}
+	// ConfigGraphEdgesColumns holds the columns for the "config_graph_edges" table.
+	ConfigGraphEdgesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "src_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "dst_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "edge_type", Type: field.TypeString, Size: 32},
+		{Name: "evidence_json", Type: field.TypeString, Default: "{}"},
+		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "generation", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeString, Size: 40, Default: ""},
+	}
+	// ConfigGraphEdgesTable holds the schema information for the "config_graph_edges" table.
+	ConfigGraphEdgesTable = &schema.Table{
+		Name:       "config_graph_edges",
+		Columns:    ConfigGraphEdgesColumns,
+		PrimaryKey: []*schema.Column{ConfigGraphEdgesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "configgraphedge_src_id_dst_id_edge_type_generation",
+				Unique:  true,
+				Columns: []*schema.Column{ConfigGraphEdgesColumns[1], ConfigGraphEdgesColumns[2], ConfigGraphEdgesColumns[3], ConfigGraphEdgesColumns[6]},
+			},
+			{
+				Name:    "configgraphedge_src_id_generation",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigGraphEdgesColumns[1], ConfigGraphEdgesColumns[6]},
+			},
+			{
+				Name:    "configgraphedge_dst_id_generation",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigGraphEdgesColumns[2], ConfigGraphEdgesColumns[6]},
+			},
+		},
+	}
+	// ConfigGraphNodesColumns holds the columns for the "config_graph_nodes" table.
+	ConfigGraphNodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "node_type", Type: field.TypeString, Size: 32},
+		{Name: "ref_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "node_key", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "display_name", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "active"},
+		{Name: "attrs_json", Type: field.TypeString, Default: "{}"},
+		{Name: "generation", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeString, Size: 40, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Size: 40, Default: ""},
+	}
+	// ConfigGraphNodesTable holds the schema information for the "config_graph_nodes" table.
+	ConfigGraphNodesTable = &schema.Table{
+		Name:       "config_graph_nodes",
+		Columns:    ConfigGraphNodesColumns,
+		PrimaryKey: []*schema.Column{ConfigGraphNodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "configgraphnode_node_type_ref_id_generation",
+				Unique:  true,
+				Columns: []*schema.Column{ConfigGraphNodesColumns[1], ConfigGraphNodesColumns[2], ConfigGraphNodesColumns[8]},
+			},
+			{
+				Name:    "configgraphnode_node_type_status_generation",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigGraphNodesColumns[1], ConfigGraphNodesColumns[6], ConfigGraphNodesColumns[8]},
+			},
+			{
+				Name:    "configgraphnode_node_key",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigGraphNodesColumns[3]},
+			},
+			{
+				Name:    "configgraphnode_workspace_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigGraphNodesColumns[5]},
+			},
+		},
+	}
 	// CronTaskColumns holds the columns for the "cron_task" table.
 	CronTaskColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -849,6 +925,77 @@ var (
 				Name:    "idx_cron_run_task",
 				Unique:  false,
 				Columns: []*schema.Column{CronTaskRunColumns[1], CronTaskRunColumns[7]},
+			},
+		},
+	}
+	// DecisionRecordsColumns holds the columns for the "decision_records" table.
+	DecisionRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "decision_key", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "category", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "scenario", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "reasoning", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "outcome", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "confidence", Type: field.TypeFloat64, Nullable: true},
+		{Name: "actor_type", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "actor_key", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "parent_decision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "related_entities", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "source_ref", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "metadata", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Size: 40, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Size: 40, Default: ""},
+	}
+	// DecisionRecordsTable holds the schema information for the "decision_records" table.
+	DecisionRecordsTable = &schema.Table{
+		Name:       "decision_records",
+		Columns:    DecisionRecordsColumns,
+		PrimaryKey: []*schema.Column{DecisionRecordsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_decision_records_category_created",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionRecordsColumns[2], DecisionRecordsColumns[14]},
+			},
+			{
+				Name:    "idx_decision_records_actor",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionRecordsColumns[8]},
+			},
+			{
+				Name:    "idx_decision_records_parent",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionRecordsColumns[9]},
+			},
+			{
+				Name:    "idx_decision_records_ws_category",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionRecordsColumns[13], DecisionRecordsColumns[2]},
+			},
+		},
+	}
+	// DecisionRecordOutboxColumns holds the columns for the "decision_record_outbox" table.
+	DecisionRecordOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "decision_key", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "last_error", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Size: 40, Default: ""},
+		{Name: "published_at", Type: field.TypeString, Nullable: true, Size: 40},
+	}
+	// DecisionRecordOutboxTable holds the schema information for the "decision_record_outbox" table.
+	DecisionRecordOutboxTable = &schema.Table{
+		Name:       "decision_record_outbox",
+		Columns:    DecisionRecordOutboxColumns,
+		PrimaryKey: []*schema.Column{DecisionRecordOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_decision_record_outbox_status_created",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionRecordOutboxColumns[3], DecisionRecordOutboxColumns[6]},
 			},
 		},
 	}
@@ -1848,6 +1995,38 @@ var (
 				Name:    "idx_member_sessions_v2_spirit_orphan",
 				Unique:  false,
 				Columns: []*schema.Column{MemberSessionsV2Columns[5], MemberSessionsV2Columns[1]},
+			},
+		},
+	}
+	// MemoryFactPendingColumns holds the columns for the "memory_fact_pending" table.
+	MemoryFactPendingColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "agent_id", Type: field.TypeString, Size: 64},
+		{Name: "fact_key", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "verdict", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "proposed_body", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "prior_body", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "adjudicator_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "approver", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "created_at", Type: field.TypeInt64, Default: 0},
+		{Name: "decided_at", Type: field.TypeInt64, Default: 0},
+	}
+	// MemoryFactPendingTable holds the schema information for the "memory_fact_pending" table.
+	MemoryFactPendingTable = &schema.Table{
+		Name:       "memory_fact_pending",
+		Columns:    MemoryFactPendingColumns,
+		PrimaryKey: []*schema.Column{MemoryFactPendingColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_mfp_status",
+				Unique:  false,
+				Columns: []*schema.Column{MemoryFactPendingColumns[7], MemoryFactPendingColumns[9]},
+			},
+			{
+				Name:    "idx_mfp_agent_status",
+				Unique:  false,
+				Columns: []*schema.Column{MemoryFactPendingColumns[1], MemoryFactPendingColumns[7]},
 			},
 		},
 	}
@@ -3883,8 +4062,12 @@ var (
 		CodingTasksTable,
 		CompiledTeamsTable,
 		ComputerUseAuditTable,
+		ConfigGraphEdgesTable,
+		ConfigGraphNodesTable,
 		CronTaskTable,
 		CronTaskRunTable,
+		DecisionRecordsTable,
+		DecisionRecordOutboxTable,
 		DeptLeadMessagesTable,
 		EvalCasesTable,
 		EvalCaseResultsTable,
@@ -3915,6 +4098,7 @@ var (
 		LlmProviderModelsTable,
 		MediaProvidersTable,
 		MemberSessionsV2Table,
+		MemoryFactPendingTable,
 		ModelPricingRulesTable,
 		ModelTokenUsageHourlyTable,
 		OrchestrationsTable,
@@ -4030,11 +4214,23 @@ func init() {
 	ComputerUseAuditTable.Annotation = &entsql.Annotation{
 		Table: "computer_use_audit",
 	}
+	ConfigGraphEdgesTable.Annotation = &entsql.Annotation{
+		Table: "config_graph_edges",
+	}
+	ConfigGraphNodesTable.Annotation = &entsql.Annotation{
+		Table: "config_graph_nodes",
+	}
 	CronTaskTable.Annotation = &entsql.Annotation{
 		Table: "cron_task",
 	}
 	CronTaskRunTable.Annotation = &entsql.Annotation{
 		Table: "cron_task_run",
+	}
+	DecisionRecordsTable.Annotation = &entsql.Annotation{
+		Table: "decision_records",
+	}
+	DecisionRecordOutboxTable.Annotation = &entsql.Annotation{
+		Table: "decision_record_outbox",
 	}
 	DeptLeadMessagesTable.Annotation = &entsql.Annotation{
 		Table: "dept_lead_messages",
@@ -4129,6 +4325,9 @@ func init() {
 	}
 	MemberSessionsV2Table.Annotation = &entsql.Annotation{
 		Table: "member_sessions_v2",
+	}
+	MemoryFactPendingTable.Annotation = &entsql.Annotation{
+		Table: "memory_fact_pending",
 	}
 	ModelPricingRulesTable.Annotation = &entsql.Annotation{
 		Table: "model_pricing_rules",

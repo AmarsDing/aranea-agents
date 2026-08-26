@@ -249,7 +249,11 @@ func (e *DockerEngine) Exec(ctx context.Context, h Handle, spec ExecSpec) (ExecR
 	cmd := e.cmd(ctx, args...)
 	cmd.Stdin = strings.NewReader(spec.Stdin)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	if spec.StdoutLimit > 0 {
+		cmd.Stdout = &cappedBuffer{buf: &stdout, limit: spec.StdoutLimit}
+	} else {
+		cmd.Stdout = &stdout
+	}
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
@@ -322,6 +326,25 @@ func (e *DockerEngine) ListByLabels(ctx context.Context, labels map[string]strin
 		hs = append(hs, Handle{ID: name, SandboxID: name})
 	}
 	return hs, nil
+}
+
+// cappedBuffer retains at most limit bytes of a stream and discards the rest
+// without ever failing the write — the producer keeps running (no EPIPE) and
+// host memory stays bounded (ExecSpec.StdoutLimit).
+type cappedBuffer struct {
+	buf   *bytes.Buffer
+	limit int64
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if remaining := c.limit - int64(c.buf.Len()); remaining > 0 {
+		if int64(len(p)) <= remaining {
+			_, _ = c.buf.Write(p)
+		} else {
+			_, _ = c.buf.Write(p[:remaining])
+		}
+	}
+	return len(p), nil
 }
 
 // cmdReadCloser closes the stdout pipe and waits for the CLI to exit.

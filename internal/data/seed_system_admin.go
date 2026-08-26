@@ -632,11 +632,11 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 		}
 
 		// position_id/position_key 绑定部门节点本身（对齐正常路径 biz.CreateDeptLead
-	// PositionID: deptNode.ID）。2026-08-25 包A-A2'a 实锤：旧种子 position_id 硬
-	// 编码 '' → resolveAgentDepartment 返空 → memberfs/deptmail 7 个专属工具必返
-	// "caller is not attached to a department"，主管会话 10 轮空转烧 80K in。
-	// DO UPDATE 同步 position_id 使存量空挂行随启动种子自愈。
-	const q = `INSERT INTO agents (
+		// PositionID: deptNode.ID）。2026-08-25 包A-A2'a 实锤：旧种子 position_id 硬
+		// 编码 '' → resolveAgentDepartment 返空 → memberfs/deptmail 7 个专属工具必返
+		// "caller is not attached to a department"，主管会话 10 轮空转烧 80K in。
+		// DO UPDATE 同步 position_id 使存量空挂行随启动种子自愈。
+		const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
 		position_id, system_prompt_mode, context_window,
@@ -662,7 +662,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 	position_key = excluded.position_key,
 	agent_variant = excluded.agent_variant,
 	updated_at = excluded.updated_at`
-if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, id, now, now, key); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, id, now, now, key); err != nil {
 			lg.Warn("seed step failed: create dept lead agent",
 				loggateway.StepID("data.seed.dept_lead_agents"),
 				loggateway.Str("dept_key", key),

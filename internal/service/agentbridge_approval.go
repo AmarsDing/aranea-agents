@@ -9,8 +9,10 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/agentbridge"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -31,6 +33,7 @@ type pendingApproval struct {
 	taskID    string
 	sessionID string
 	stepID    string
+	agentKey  string
 	title     string
 	options   []agentbridge.PermissionOption
 	done      chan approvalDecision
@@ -52,6 +55,24 @@ func (s *AgentBridgeService) SetConfirmSink(w ConfirmSink) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.confirmSink = w
+}
+
+// SetDecisionCollector wires the M80 decision record collector after the
+// collector exists (newApp BeforeStart, same pattern as SetConfirmSink).
+// Safe to call once; nil collector disables decision dual-write.
+func (s *AgentBridgeService) SetDecisionCollector(c decision.Collector) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.decisions = c
+}
+
+func (s *AgentBridgeService) decisionCollector() decision.Collector {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.decisions
 }
 
 // SetApprovalTimeout overrides the 5-minute default (tests).
@@ -97,6 +118,7 @@ func (h *bridgeProgressHandler) OnPermission(ctx context.Context, title string, 
 	pending := &pendingApproval{
 		taskID:    h.taskID,
 		sessionID: h.sessionID,
+		agentKey:  h.agentKey,
 		title:     strings.TrimSpace(title),
 		options:   opts,
 		done:      make(chan approvalDecision, 1),
@@ -121,6 +143,7 @@ func (h *bridgeProgressHandler) OnPermission(ctx context.Context, title string, 
 	case <-timer.C:
 		h.svc.clearPending(h.taskID)
 		h.svc.emitApprovalTimeout(h.sessionID, h.taskID, h.agentKey)
+		h.svc.emitBridgeDecisionRecord(context.Background(), pending, "timeout", "")
 		if err := uc.CancelFromApprovalTimeout(h.taskID); err != nil {
 			h.svc.lg.Warn("agentbridge approval timeout cancel failed",
 				loggateway.Str("task_id", h.taskID), loggateway.Err(err))
@@ -258,10 +281,58 @@ func (s *AgentBridgeService) ConfirmBridgePermission(ctx context.Context, taskID
 	}
 	select {
 	case p.done <- approvalDecision{optionID: id}:
+		// M80：仅在决议成功交接的分支双写，重复确认（default 冲突）不产生
+		// 第二条记录。grant_scope：approve→once；always（含 approve_session
+		// 归一）→always；deny 无 scope。
+		switch decision {
+		case agentbridge.DecisionApprove:
+			s.emitBridgeDecisionRecord(ctx, p, "approved", "once")
+		case agentbridge.DecisionAlways:
+			s.emitBridgeDecisionRecord(ctx, p, "approved", "always")
+		default:
+			s.emitBridgeDecisionRecord(ctx, p, "rejected", "")
+		}
 		return nil
 	default:
 		return apierror.Conflict(apierror.DomainAgentBridge, "approval already resolved")
 	}
+}
+
+// emitBridgeDecisionRecord 把 AgentBridge 审批决议双写到 M80 决策记录层
+// (hitl_approval，设计 §3.2 row 2 ②)。outcome ∈ approved/rejected/timeout；
+// grantScope 仅 approved 时有值（once/always）。collector 为 nil 时静默跳过。
+func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pendingApproval, outcome, grantScope string) {
+	c := s.decisionCollector()
+	if c == nil || p == nil {
+		return
+	}
+	userID := "unknown"
+	if a, ok := auth.FromContext(ctx); ok && a != nil && a.UserID > 0 {
+		userID = fmt.Sprintf("%d", a.UserID)
+	}
+	scenario := fmt.Sprintf("工具确认: %s (external_coding_permission)", agentbridge.ToolExternalCoding)
+	if t := strings.TrimSpace(p.title); t != "" {
+		scenario += " 目标: " + t
+	}
+	metadata := map[string]any{"decision_reason": "external_coding_permission"}
+	if grantScope != "" {
+		metadata["grant_scope"] = grantScope
+	}
+	entities := []decision.EntityRef{{Type: "tool", Key: agentbridge.ToolExternalCoding}}
+	if p.agentKey != "" {
+		entities = append(entities, decision.EntityRef{Type: "agent", Key: p.agentKey})
+	}
+	c.Emit(ctx, decision.Record{
+		DecisionKey:     uuid.NewString(),
+		Category:        decision.CategoryHITLApproval,
+		Scenario:        scenario,
+		Outcome:         outcome,
+		ActorType:       decision.ActorHuman,
+		ActorKey:        userID,
+		RelatedEntities: entities,
+		SourceRef:       decision.SourceRef{TaskID: p.taskID},
+		Metadata:        metadata,
+	})
 }
 
 // ConfirmBridgePermissionFromStep is the ConfirmActivity adapter.

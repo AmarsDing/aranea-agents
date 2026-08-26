@@ -53,12 +53,12 @@ func (h *ChannelIngress) handleFeishuCardGateConfirm(ctx context.Context, chRow 
 		loggateway.Str("operator_open_id", action.OperatorOpenID),
 	)
 	h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
-		"action":    action.Action,
+		"action":     action.Action,
 		"session_id": sessionID,
-		"step_id":   action.StepID,
-		"reply":     action.Reply,
-		"operator":  action.OperatorOpenID,
-		"result":    reply,
+		"step_id":    action.StepID,
+		"reply":      action.Reply,
+		"operator":   action.OperatorOpenID,
+		"result":     reply,
 	}, "")
 	return lark.NewCardActionToast(reply)
 }

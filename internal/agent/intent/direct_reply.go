@@ -55,12 +55,19 @@ var underspecifiedTaskPatterns = []string{
 
 // SkipForDirectReply reports whether this user turn is chit-chat / identity /
 // remember / clock-query that must not pay an extra intent LLM.
+//
+// ADR-79-V V2（2026-08-26）：分类只可增加义务、不可免除义务。含任务动作
+// 词的轮次不得命中直接回复快路径——「请记住这个拓扑，然后排查核心交换机」
+// 子串命中「请记住」但它是复合任务，skip 会导致组织路由失效（P-INTENT-SKIP）。
 func SkipForDirectReply(userText string) bool {
 	t := strings.ToLower(strings.TrimSpace(userText))
 	if t == "" {
 		return false
 	}
 	if LooksLikeUnderspecifiedTask(t) {
+		return false
+	}
+	if biz.HasTaskActionSignal(t) {
 		return false
 	}
 	if biz.LooksLikeFactQuery(t) {

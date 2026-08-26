@@ -21,10 +21,10 @@ import (
 // twinNoopLogger 测试用 noop 日志。
 type twinNoopLogger struct{}
 
-func (twinNoopLogger) Debug(string, ...loggateway.Field)          {}
-func (twinNoopLogger) Info(string, ...loggateway.Field)           {}
-func (twinNoopLogger) Warn(string, ...loggateway.Field)           {}
-func (twinNoopLogger) Error(string, ...loggateway.Field)          {}
+func (twinNoopLogger) Debug(string, ...loggateway.Field)            {}
+func (twinNoopLogger) Info(string, ...loggateway.Field)             {}
+func (twinNoopLogger) Warn(string, ...loggateway.Field)             {}
+func (twinNoopLogger) Error(string, ...loggateway.Field)            {}
 func (l twinNoopLogger) With(...loggateway.Field) loggateway.Logger { return l }
 
 // newTwinFacadeForTest 构造仅含 token/订阅表的门面（不触达 Usecase 依赖）。

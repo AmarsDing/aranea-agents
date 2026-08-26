@@ -54,10 +54,18 @@ type Tx struct {
 	CompiledTeam *CompiledTeamClient
 	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
 	ComputerUseAudit *ComputerUseAuditClient
+	// ConfigGraphEdge is the client for interacting with the ConfigGraphEdge builders.
+	ConfigGraphEdge *ConfigGraphEdgeClient
+	// ConfigGraphNode is the client for interacting with the ConfigGraphNode builders.
+	ConfigGraphNode *ConfigGraphNodeClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
 	CronTaskRun *CronTaskRunClient
+	// DecisionRecord is the client for interacting with the DecisionRecord builders.
+	DecisionRecord *DecisionRecordClient
+	// DecisionRecordOutbox is the client for interacting with the DecisionRecordOutbox builders.
+	DecisionRecordOutbox *DecisionRecordOutboxClient
 	// DeptLeadMessage is the client for interacting with the DeptLeadMessage builders.
 	DeptLeadMessage *DeptLeadMessageClient
 	// EvalCase is the client for interacting with the EvalCase builders.
@@ -118,6 +126,8 @@ type Tx struct {
 	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
+	// MemoryFactPending is the client for interacting with the MemoryFactPending builders.
+	MemoryFactPending *MemoryFactPendingClient
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
 	ModelPricingRule *ModelPricingRuleClient
 	// ModelTokenUsageHourly is the client for interacting with the ModelTokenUsageHourly builders.
@@ -377,8 +387,12 @@ func (tx *Tx) init() {
 	tx.CodingTask = NewCodingTaskClient(tx.config)
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.ComputerUseAudit = NewComputerUseAuditClient(tx.config)
+	tx.ConfigGraphEdge = NewConfigGraphEdgeClient(tx.config)
+	tx.ConfigGraphNode = NewConfigGraphNodeClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
+	tx.DecisionRecord = NewDecisionRecordClient(tx.config)
+	tx.DecisionRecordOutbox = NewDecisionRecordOutboxClient(tx.config)
 	tx.DeptLeadMessage = NewDeptLeadMessageClient(tx.config)
 	tx.EvalCase = NewEvalCaseClient(tx.config)
 	tx.EvalCaseResult = NewEvalCaseResultClient(tx.config)
@@ -409,6 +423,7 @@ func (tx *Tx) init() {
 	tx.LlmProviderModel = NewLlmProviderModelClient(tx.config)
 	tx.MediaProvider = NewMediaProviderClient(tx.config)
 	tx.MemberSessionV2 = NewMemberSessionV2Client(tx.config)
+	tx.MemoryFactPending = NewMemoryFactPendingClient(tx.config)
 	tx.ModelPricingRule = NewModelPricingRuleClient(tx.config)
 	tx.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(tx.config)
 	tx.Orchestration = NewOrchestrationClient(tx.config)

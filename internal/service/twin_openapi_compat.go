@@ -63,13 +63,13 @@ type twinNodeMeta struct {
 // TwinOpenAPICompatService twinmonitor OpenAPI 兼容门面。
 // 同时实现 biz.GraphRunEventSink（构造时自注册到 GraphExecutionUsecase）。
 type TwinOpenAPICompatService struct {
-	agents     *biz.AgentUsecase
-	graphs     *biz.GraphUsecase
-	memory     *biz.MemoryAdminUsecase
-	usageUC    *usage.Usecase
-	monitorUC  *monitor.Usecase
-	llmModels  *biz.LlmProviderModelUsecase
-	lg         loggateway.Logger
+	agents    *biz.AgentUsecase
+	graphs    *biz.GraphUsecase
+	memory    *biz.MemoryAdminUsecase
+	usageUC   *usage.Usecase
+	monitorUC *monitor.Usecase
+	llmModels *biz.LlmProviderModelUsecase
+	lg        loggateway.Logger
 
 	token   string
 	mux     *http.ServeMux

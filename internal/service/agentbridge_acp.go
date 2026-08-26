@@ -155,7 +155,7 @@ func (c *acpEventCollector) summary() string {
 // --- interface guards ---
 
 var (
-	_ agentbridge.ACPSession      = (*acpSession)(nil)
-	_ agentbridge.SessionFactory  = acpSessionFactory{}
-	_ acp.SessionHandler          = (*acpEventCollector)(nil)
+	_ agentbridge.ACPSession     = (*acpSession)(nil)
+	_ agentbridge.SessionFactory = acpSessionFactory{}
+	_ acp.SessionHandler         = (*acpEventCollector)(nil)
 )

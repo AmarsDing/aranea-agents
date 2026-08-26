@@ -22,7 +22,9 @@ import (
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/backgroundjob"
 	"aranea-agents/internal/biz/computeruse"
+	configgraph2 "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/cron"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/biz/ecosystem"
 	"aranea-agents/internal/biz/evaluation"
 	"aranea-agents/internal/biz/flowlog"
@@ -43,6 +45,7 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/data/configgraph"
 	"aranea-agents/internal/data/speech"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
@@ -378,7 +381,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(v33, agentRepository, agentUsecase, v2, v29, llmProviderModelUsecase, v13, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, v35, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, v29, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, v22, v33, v13, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, runtime, loggatewayLogger)
+	decisionRepo := data.NewDecisionRepoFromData(dataData)
+	lifecycle := provideDecisionCollector(decisionRepo, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, v35, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, v29, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, v22, v33, v13, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, v37, v20, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
@@ -393,7 +398,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	spiritTeamRunStatsReader := data.NewSpiritTeamRunStatsReader(dataData, loggatewayLogger)
 	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, v33, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, systemSettingRepo, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
-	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository, organizationRepo)
+	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository, organizationRepo, lifecycle)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
 	agentPerformanceRepository := data.NewAgentPerformanceRepo(dataData, loggatewayLogger)
 	agentFactory := provideAgentFactory(agentRepository, agentRepository, agentTemplateRepo, v2Bus, llmProviderModelUsecase, systemSettingUsecase, multiProviderEmbedder, loggatewayLogger, organizationRepo)
@@ -618,7 +623,15 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
 	agentBridgeAPI := service.NewAgentBridgeAPI(agentBridgeService)
 	sandboxService := service.NewSandboxService(sandboxManager, loggatewayLogger)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService)
+	queryRepo := data.NewDecisionQueryRepoFromData(dataData)
+	queryUsecase := decision.NewQueryUsecase(queryRepo)
+	decisionRecordService := service.NewDecisionRecordService(queryUsecase, loggatewayLogger)
+	sourceRepo := configgraph.NewSourceRepo(dataData, loggatewayLogger)
+	configgraphRepo := configgraph.NewRepo(dataData, loggatewayLogger)
+	rebuilder := provideConfigGraphRebuilder(sourceRepo, configgraphRepo, agentUsecase, monitorFlowLogWriter, loggatewayLogger)
+	indexer := provideConfigGraphIndexer(rebuilder, loggatewayLogger)
+	configGraphService := provideConfigGraphService(indexer, configgraphRepo, loggatewayLogger)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -639,7 +652,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, v29, agentUsecase, agentRepository, systemSettingRepo, v13, persistenceSet, repository, factory, retriever, v35, manager, organizationUsecase, toolResultGate, router, subagentService, v22, bridge, runtime, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(v35, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, v33, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, v33, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle)
 	watchRunner := provideSkillWatchRunner(v13, v13, systemSettingRepo, monitorBus, v20, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -737,7 +750,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, v49, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, v48, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, v49, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, v48, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -1036,8 +1049,10 @@ func provideSandboxSessionLeases(sandboxMgr *sandbox.Manager) *sandbox.SessionLe
 // When the subsystem is disabled or no docker daemon is reachable the engine
 // is nil: the Manager stays constructible (wire graph intact) and Available()
 // reports false so consumers fall back along sandbox→docker→local (NFR-04).
-// The daemon probe has a 30s TTL cache, so a daemon started later becomes
-// visible to cold-create attempts without a restart.
+// The engine is bound ONCE here at startup: although the daemon probe has a
+// 30s TTL cache, a daemon started later does NOT get picked up — a process
+// restart is required (r2 #7: corrected from the earlier comment that
+// claimed cold-create attempts would see it without a restart).
 func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.Manager {
 	cfg := sandbox.ConfigFromProto(sbConf)
 	var engine sandbox.Engine
@@ -1053,6 +1068,13 @@ func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.
 
 func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
 	return service.NewChannelRunEscalationNotifier(channels, sessions, lg)
+}
+
+// provideDecisionCollector builds the M80 decision collector (Phase 1).
+// repo is nil only when the data layer is absent (CLI mode); Emit stays
+// non-blocking and worker flushes degrade to no-ops. newApp owns Start/Stop.
+func provideDecisionCollector(repo decision.Repo, lg loggateway.Logger) decision.Lifecycle {
+	return decision.NewOutboxCollector(repo, lg)
 }
 
 func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway, lg loggateway.Logger) *service.SessionRunDurableWorker {
@@ -1188,6 +1210,18 @@ func agentToolResultPruneConfig(runtimeConf *conf.Runtime) agent.ToolResultPrune
 		AfterTurns:  c.AfterTurns,
 		SizeBytes:   c.SizeBytes,
 		ExemptTools: c.ExemptTools,
+	}
+}
+
+// teamNoProgressAuditorConfig 翻译 runtime 配置为 team 包消费侧配置
+// （79-runtime-governance R5；team 包不依赖 internal/conf）。
+// runtimeConf 为 nil 时 NoProgressAuditorConfig() 返回默认开阈值配置（nil-safe）。
+func teamNoProgressAuditorConfig(runtimeConf *conf.Runtime) team.NoProgressAuditorConfig {
+	c := runtimeConf.NoProgressAuditorConfig()
+	return team.NoProgressAuditorConfig{
+		Enabled:      c.Enabled,
+		CorrectAfter: c.CorrectAfter,
+		CancelAfter:  c.CancelAfter,
 	}
 }
 
@@ -1380,6 +1414,7 @@ func provideRunnerConfig(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	teamUC *biz.TeamUsecase,
 	runtimeReplanner graph3.RuntimeReplanner,
+	decisions decision.Lifecycle,
 	runtimeConf *conf.Runtime,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
@@ -1403,13 +1438,16 @@ func provideRunnerConfig(
 		OrganizationUC:  orgUC,
 		ToolResultGate:  toolResultGate,
 		ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
-		OutboundRouter:  outboundRouter,
-		SubAgentService: subAgentSvc,
-		KanbanBridge:    kanbanBridge,
-		ComputerUseUC:   computerUseUC,
-		SandboxFSStore:  sandboxLeases,
-		SandboxManager:  sandboxMgr,
-		A2AEnabled:      a2aUC != nil,
+		NoProgressAudit: teamNoProgressAuditorConfig(runtimeConf),
+
+		DecisionCollector: decisions,
+		OutboundRouter:    outboundRouter,
+		SubAgentService:   subAgentSvc,
+		KanbanBridge:      kanbanBridge,
+		ComputerUseUC:     computerUseUC,
+		SandboxFSStore:    sandboxLeases,
+		SandboxManager:    sandboxMgr,
+		A2AEnabled:        a2aUC != nil,
 
 		SessionChildLookup: &sessionChildLookupAdapter{sessions: sessions},
 
@@ -3603,6 +3641,21 @@ func agentKeyToID(agents biz.AgentRepository) plugintrpc.AgentKeyResolver {
 	}
 }
 
+func provideConfigGraphRebuilder(src configgraph2.SourceRepo, repo configgraph2.Repo, provider2 configgraph2.EffectiveToolsProvider, flowLog monitor.FlowLogWriter, lg loggateway.Logger) *configgraph2.Rebuilder {
+	return configgraph2.NewRebuilder(src, repo, provider2, flowLog, lg)
+}
+
+func provideConfigGraphIndexer(rebuilder *configgraph2.Rebuilder, lg loggateway.Logger) *configgraph2.Indexer {
+	return configgraph2.NewIndexer(rebuilder, lg)
+}
+
+func provideConfigGraphService(indexer *configgraph2.Indexer, repo configgraph2.Repo, lg loggateway.Logger) *service.ConfigGraphService {
+	if indexer == nil {
+		return nil
+	}
+	return service.NewConfigGraphService(indexer.Rebuilder(), repo, lg)
+}
+
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
 	App                         *kratos.App
@@ -3668,6 +3721,9 @@ type wireOut struct {
 	// WSV2Subscriber forwards v2 Events to WS clients. Owned by wireOut so
 	// its lifecycle (Close) is managed alongside the kratos.App shutdown.
 	WSV2Subscriber *server.WSV2Subscriber
+	// ConfigGraphIndexer is the M81 config-asset graph background component
+	// (P0: rebuild capability only; started by startBackgroundWorkers).
+	ConfigGraphIndexer *configgraph2.Indexer
 }
 
 func provideWireOut(
@@ -3732,6 +3788,7 @@ func provideWireOut(
 	patternMiningJob *jobs.PatternMiningJob,
 	pathBExtractor *biz.PathBExtractor,
 	wsV2Sub *server.WSV2Subscriber,
+	configGraphIndexer *configgraph2.Indexer,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -3778,6 +3835,7 @@ func provideWireOut(
 		PatternMiningJob:            patternMiningJob,
 		PathBExtractor:              pathBExtractor,
 		WSV2Subscriber:              wsV2Sub,
+		ConfigGraphIndexer:          configGraphIndexer,
 	}
 }
 
@@ -4088,10 +4146,11 @@ func provideFederationService(uc *a2a.FederationUsecase) *service.FederationServ
 	return service.NewFederationService(uc)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader, decisions decision.Collector) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	p := agent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq, agentReader)
 	agent.AttachPlannerOrganizationReader(p, orgReader)
+	agent.AttachPlannerDecisionCollector(p, decisions)
 	return p
 }
 

@@ -37,28 +37,28 @@ type EffectiveMCPPolicy struct {
 	DenyServerKeys  []string
 }
 
+// MCPServerKeysFromPolicyEntries extracts mcp:<server_key> server keys from raw
+// allow/deny policy entries (trimmed, lowercased, deduped). Shared by
+// MCPPolicyFromAgentEffectiveTools and the M81 config-graph enables_mcp
+// extractor so both parse with identical semantics.
+func MCPServerKeysFromPolicyEntries(entries []string) []string {
+	var out []string
+	for _, s := range entries {
+		sTrim := strings.TrimSpace(s)
+		if after, ok := strings.CutPrefix(sTrim, mcpServerAllowPrefix); ok {
+			if k := strings.TrimSpace(after); k != "" {
+				out = append(out, k)
+			}
+		}
+	}
+	return uniqueLowerKeys(out)
+}
+
 // MCPPolicyFromAgentEffectiveTools extracts mcp:<server_key> entries from raw allow/deny lists.
 func MCPPolicyFromAgentEffectiveTools(eff AgentEffectiveTools) EffectiveMCPPolicy {
-	var allow, deny []string
-	for _, s := range eff.Allow {
-		sTrim := strings.TrimSpace(s)
-		if after, ok := strings.CutPrefix(sTrim, mcpServerAllowPrefix); ok {
-			if k := strings.TrimSpace(after); k != "" {
-				allow = append(allow, k)
-			}
-		}
-	}
-	for _, s := range eff.Deny {
-		sTrim := strings.TrimSpace(s)
-		if after, ok := strings.CutPrefix(sTrim, mcpServerAllowPrefix); ok {
-			if k := strings.TrimSpace(after); k != "" {
-				deny = append(deny, k)
-			}
-		}
-	}
 	return EffectiveMCPPolicy{
-		AllowServerKeys: uniqueLowerKeys(allow),
-		DenyServerKeys:  uniqueLowerKeys(deny),
+		AllowServerKeys: MCPServerKeysFromPolicyEntries(eff.Allow),
+		DenyServerKeys:  MCPServerKeysFromPolicyEntries(eff.Deny),
 	}
 }
 

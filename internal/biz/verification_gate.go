@@ -81,10 +81,11 @@ type VerificationGateExecutor struct {
 	llmCaller   LLMCaller
 	lg          loggateway.Logger
 	toolInvoker ToolAssertionInvoker
+	receipts    *verificationReceiptLedger // ADR-79-V V3 证据回执台账
 }
 
 func NewVerificationGateExecutor(deptLeadMgr *DeptLeadManager, llmCaller LLMCaller, lg loggateway.Logger, opts ...VerificationGateExecutorOption) *VerificationGateExecutor {
-	e := &VerificationGateExecutor{deptLeadMgr: deptLeadMgr, llmCaller: llmCaller, lg: lg}
+	e := &VerificationGateExecutor{deptLeadMgr: deptLeadMgr, llmCaller: llmCaller, lg: lg, receipts: newVerificationReceiptLedger()}
 	for _, opt := range opts {
 		opt(e)
 	}

@@ -169,9 +169,9 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			MemoryFactInjectCounter: d.td.Persist.Memory.FactInjectCounter,
 			MemoryProfileCardReader: d.td.Persist.Memory.ProfileCardReader,
 			MemoryReconsolidator:    d.td.Persist.Memory.Reconsolidator,
-			AgentCaseRecaller:      d.td.Persist.Memory.AgentCaseRecaller,
-			KnowledgeRetriever:     d.rt.Knowledge.Retriever,
-			KnowledgeUsecase:       d.rt.Knowledge.Usecase,
+			AgentCaseRecaller:       d.td.Persist.Memory.AgentCaseRecaller,
+			KnowledgeRetriever:      d.rt.Knowledge.Retriever,
+			KnowledgeUsecase:        d.rt.Knowledge.Usecase,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
 			PluginManager: d.rt.Plugin.Manager,

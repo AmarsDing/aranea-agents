@@ -93,7 +93,7 @@ func (s *SandboxService) GetSandboxMetrics(ctx context.Context, _ *v1.GetSandbox
 		return nil, err
 	}
 	out := &v1.SandboxMetrics{
-		Profiles:    make([]*v1.SandboxProfileMetrics, 0, len(m.Profiles)),
+		Profiles:     make([]*v1.SandboxProfileMetrics, 0, len(m.Profiles)),
 		GlobalActive: int32(m.GlobalActive),
 		AcquireWarm:  m.AcquireWarm,
 		AcquireCold:  m.AcquireCold,

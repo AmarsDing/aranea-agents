@@ -102,7 +102,7 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 
 // deriveWorkspaceID 从宿主表派生建议的归属租户（P0-1b）：
 // skill 目标查 skill.workspace_id，agent 目标查 agents.workspace_id；
-// platform 目标 / 宿主不存在 / 查询失败一律降级为 ''（共享可见），
+// platform 目标 / 宿主不存在 / 查询失败一律降级为 ”（共享可见），
 // 与迁移 20261212 的 backfill 语义一致——派生失败不阻塞创建。
 func (r *UnifiedEvolutionRepo) deriveWorkspaceID(ctx context.Context, targetType, targetID string) string {
 	var table string

@@ -15,8 +15,8 @@ import (
 // 迁移 20261212（unified_evolution_workspace，2026-08-14 上线）RLS 回归。
 // 钉住 policy tenant_workspace_isolation 的语义矩阵：
 //   - 租户行仅归属租户可见（GUC app.workspace_id 匹配）
-//   - workspace_id = '' 共享行全员可见
-//   - GUC ∈ ('', '__system__') 全量可见（系统通道）
+//   - workspace_id = ” 共享行全员可见
+//   - GUC ∈ (”, '__system__') 全量可见（系统通道）
 //   - GUC 未设置（NULL）仅共享行可见
 //   - 写路径同策略：跨租户 UPDATE/DELETE 命中 0 行
 //

@@ -138,6 +138,13 @@ services:
     networks:
       - araneanet
     restart: unless-stopped
+    # r3 review #3: bound the tail-forwarded docker logs (in-container files
+    # are bounded by squid's own logfile_rotate + `squid -k rotate`).
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # G3 压测执行器（agent-eval-20260818）：常驻容器，内网打 http://aranea-admin:8810，
   # 消除宿主机 PowerShell Start-Job 进程开销导致的客户端口径失真（realmachine-20260817 PERF-02 教训）。

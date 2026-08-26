@@ -403,6 +403,20 @@ func computeEffectiveToolState(settings AgentRuntimeSettings, tool Tool, prof st
 	return "denied", "global_disabled", false
 }
 
+// grantOrigin derives the M81 grant origin for one computed row: allowed via
+// the profile-implied set → "profile"; allowed only through an explicit
+// ToolsAllowJSON entry → "allow"; denied rows → "" (an override allow is
+// stamped later by ApplyAgentToolOverrides).
+func grantOrigin(state, toolKey string, profileSet map[string]bool) string {
+	if state != "allowed" {
+		return ""
+	}
+	if profileSet[toolKey] {
+		return "profile"
+	}
+	return "allow"
+}
+
 func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg loggateway.Logger) AgentEffectiveTools {
 	allow := jsonStringList(settings.ToolsAllowJSON, lg)
 	deny := jsonStringList(settings.ToolsDenyJSON, lg)
@@ -412,6 +426,10 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 	denySet := computePolicyDenySet(deny, catalog)
 	applyRegistryAdminDenials(catalog, denySet)
 	applySpiritReservedDenials(prof, allowedSet, denySet)
+	// profileSet is the profile-implied subset of allowedSet (same alias
+	// propagation so the key spaces match) — the profile/allow Origin split.
+	profileSet := profileAllowSet(prof, catalog)
+	PropagateAllowAliases(profileSet)
 
 	registryKeys := make(map[string]bool, len(catalog))
 	for _, tool := range catalog {
@@ -429,6 +447,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 			Enabled:        en,
 			EffectiveState: st,
 			Reason:         rsn,
+			Origin:         grantOrigin(st, tool.Key, profileSet),
 		})
 	}
 
@@ -444,6 +463,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 			Enabled:        en,
 			EffectiveState: st,
 			Reason:         rsn,
+			Origin:         grantOrigin(st, shellExecKey, profileSet),
 		})
 	}
 
@@ -459,6 +479,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 			Enabled:        en,
 			EffectiveState: st,
 			Reason:         rsn,
+			Origin:         grantOrigin(st, webSearchKey, profileSet),
 		})
 	}
 	const webFetchKey = "web_fetch"
@@ -473,6 +494,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 			Enabled:        en,
 			EffectiveState: st,
 			Reason:         rsn,
+			Origin:         grantOrigin(st, webFetchKey, profileSet),
 		})
 	}
 

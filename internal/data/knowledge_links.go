@@ -92,24 +92,24 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			}
 			if id, ok := active[l.TargetDocID]; ok {
 				if _, err := tx.ExecContext(ctx,
-				`UPDATE knowledge_links
+					`UPDATE knowledge_links
 				 SET collection_id = $2, context = $3, weight = $4,
 				     weight_f = $5, confidence = 1.0
 				 WHERE id = $1`,
-				id, collectionID, l.Context, weight, float64(weight)); err != nil {
-				return entErrToBizErr(err, "knowledge")
-			}
+					id, collectionID, l.Context, weight, float64(weight)); err != nil {
+					return entErrToBizErr(err, "knowledge")
+				}
 				delete(active, l.TargetDocID)
 				continue
 			}
 			if _, err := tx.ExecContext(ctx,
-			`INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, context, weight, weight_f)
+				`INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, context, weight, weight_f)
 			 VALUES ($1,$2,$3,$4,$5,$6,$7)
 			 ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
 			 DO UPDATE SET weight = EXCLUDED.weight, weight_f = EXCLUDED.weight_f, context = EXCLUDED.context`,
-			collectionID, docID, l.TargetDocID, linkType, l.Context, weight, float64(weight)); err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
+				collectionID, docID, l.TargetDocID, linkType, l.Context, weight, float64(weight)); err != nil {
+				return entErrToBizErr(err, "knowledge")
+			}
 		}
 		if len(active) > 0 {
 			ids := make([]int64, 0, len(active))
@@ -207,9 +207,9 @@ func (r *knowledgeRepo) ReplaceDocEntities(ctx context.Context, collectionID, do
 				continue // 无治理价值名跳过（与迁移垃圾行清理同规）
 			}
 			id, err := resolveKnowledgeEntityID(ctx, tx, collectionID, name, norm, e.EntityType)
-		if err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
+			if err != nil {
+				return entErrToBizErr(err, "knowledge")
+			}
 			mentions := e.Mentions
 			if mentions < 1 {
 				mentions = 1
@@ -226,8 +226,8 @@ func (r *knowledgeRepo) ReplaceDocEntities(ctx context.Context, collectionID, do
 				`INSERT INTO knowledge_doc_entities (collection_id, doc_id, entity_id, mentions)
 				 VALUES ($1,$2,$3,$4)`,
 				collectionID, docID, id, mentionsByID[id]); err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
+				return entErrToBizErr(err, "knowledge")
+			}
 		}
 		// 孤儿实体清理：不再被任何文档引用的实体删除（派生索引无残留；别名随行级联）。
 		if _, err := tx.ExecContext(ctx,

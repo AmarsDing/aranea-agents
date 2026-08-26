@@ -166,6 +166,21 @@ func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string,
 	return string(out), nil
 }
 
+// cancelReason 读回 RunRegistry 记录的 run 取消原因（79-runtime-governance
+// P2.5：Cancel 时 reason 记入状态条目 ErrMsg——no_progress /
+// team_token_budget_exceeded / user_cancel / team_pause …）。仅当条目处于
+// cancelled 且带原因时返回非空；无条目/无原因返回空串（调用方回退通用提示）。
+func (r *Runner) cancelReason(sessionID string) string {
+	if r == nil || r.cfg.Runs == nil {
+		return ""
+	}
+	entry, ok := r.cfg.Runs.GetStatus(sessionID)
+	if !ok || entry.Status != biz.SessionRunPhaseCancelled {
+		return ""
+	}
+	return strings.TrimSpace(entry.ErrMsg)
+}
+
 func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 time.Time, msg string) {
 	if run == nil {
 		return
@@ -321,6 +336,9 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 		return
 	}
 	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok, usageSource, attribution)
+	// R5 无进展审计（79-runtime-governance）：与 recordMemberUsage 同点挂载，
+	// 独立于其 token 早退（失败 step 常 token=0，恰是无进展证据富矿）。
+	r.auditMemberNoProgress(ctx, run, teamID, ag, asst)
 	// 2026-07-28 单写者重设计：此处不再发布成员 completed 事件。step 落库
 	// 即消息生命周期的事实记录；成员终态由 service 终态 outcome pass（哨兵
 	// 权威带）依据完整证据链唯一裁决——成员产出最终文本不代表工作成功（12:33）。

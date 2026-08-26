@@ -22,6 +22,12 @@ func TestSkipForDirectReply(t *testing.T) {
 		{"请排查杭州滨江机房核心交换机告警的根因", false},
 		{"", false},
 		{"  ", false},
+		// ADR-79-V V2（2026-08-26）：复合任务含任务动作词，快路径不得命中——
+		// 以下用例在 V2 前因子串匹配（请记住/的天气）被误判为闲聊。
+		{"请记住这个拓扑结构，然后排查核心交换机", false},
+		{"核对昨天的天气数据并生成巡检报告", false},
+		{"今天天气怎么样，顺便帮我写个周报", false},
+		{"what's the weather tomorrow, then write a report", false},
 	}
 	for _, tc := range cases {
 		if got := SkipForDirectReply(tc.in); got != tc.want {

@@ -9,12 +9,14 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/loggateway"
 
+	"github.com/google/uuid"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -174,6 +176,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					ToolCallID:   args.ToolCallID,
 					ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 				}, nil, h.ag, h.deps)
+				// M80 1.5: 超时是 HITL 决策的一种结果（非用户拒绝），独立 outcome。
+				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, "")
 				// P1-3: 超时是显式 Reject（CustomResult 短路），不是回调错误——
 				// 用户未响应≠拦截器故障，error 路径会触发框架 Errorf 误报。
 				return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 的确认请求在 %s 内未收到用户响应（超时）。这不代表用户拒绝，只是暂时没有回应。不要立即重试该工具；请先询问用户是否仍要执行该操作。", errToolConfirmationRequired, toolKey, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
@@ -187,6 +191,9 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			// invocation is always allowed; a failed grant write only means
 			// the next invocation prompts again (fail-closed).
 			h.applyGrantOutcome(ctx, sessionID, toolKey, reply)
+			// M80 1.5: approve 分支工具尚未执行、无 tool_invocations 行，
+			// decision_record 先行（tool_invocation_id=ToolCallID 允许悬空）。
+			h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "approved", reply, args.Arguments, "")
 			metrics.PluginInvokeTotal.WithLabelValues("confirm_gate", "before_tool", "success").Inc()
 			h.deps.Logger().Info("tool confirmation approved",
 				loggateway.StepID("agent.tool_confirm"),
@@ -212,6 +219,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			ToolCallID:   args.ToolCallID,
 			ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 		}, nil, h.ag, h.deps)
+		// M80 1.5: 用户拒绝。
+		h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", reply, args.Arguments, "")
 		// P1-3: 用户拒绝是显式 Reject 决策（CustomResult 短路），不走 error——error 语义保留给拦截器自身故障，且 error
 		// 路径会触发框架 "Before tool callback failed" Errorf 误报。
 		return callbacks.Reject(fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
@@ -230,6 +239,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		ToolCallID:   args.ToolCallID,
 		ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 	}, nil, h.ag, h.deps)
+	// M80 1.5: 无回复通道按拒绝处理，block_cause 标记环境原因（非用户意愿）。
+	h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", "", args.Arguments, "no_reply_channel")
 	// P1-3: 无回复通道 = 显式 Reject（环境能力不满足，非拦截器故障）。
 	return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
 }
@@ -289,6 +300,62 @@ func toolConfirmUserID(ctx context.Context) string {
 		return inv.Session.UserID
 	}
 	return ""
+}
+
+// emitToolConfirmDecisionRecord 把 HITL 工具确认结果双写到 M80 决策记录层
+// (hitl_approval，设计 §3.2 row 2)。collector 为 nil（旧构造路径）时静默跳过；
+// 与 recordToolInvocationWrite 同坐标调用，四出口分支各一次。
+// blockCause 仅无回复通道分支使用（"no_reply_channel"）。
+func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.Context, toolKey, toolCallID, gateReason, outcome, reply string, arguments []byte, blockCause string) {
+	c := h.deps.DecisionCollector
+	if c == nil {
+		return
+	}
+	userID := toolConfirmUserID(ctx)
+	if userID == "" {
+		userID = "unknown"
+	}
+	scenario := fmt.Sprintf("工具确认: %s (%s)", toolKey, gateReason)
+	if target := strings.TrimSpace(previewFromToolArgs(arguments)); target != "" {
+		scenario += " 目标: " + target
+	}
+	metadata := map[string]any{"decision_reason": gateReason}
+	if blockCause != "" {
+		metadata["block_cause"] = blockCause
+	}
+	// reasoning 只承载自由文本备注；结构化回复（按钮 token）映射 grant_scope，
+	// 不把 "__aranea:tool_confirm:*" 内部令牌写进审计文本。
+	reasoning := ""
+	if outcome == "approved" || outcome == "rejected" {
+		if parsed, structured := serviceawaitreply.ParseToolConfirmOutcome(reply); structured {
+			switch parsed {
+			case serviceawaitreply.ToolConfirmOutcomeApprove:
+				metadata["grant_scope"] = "once"
+			case serviceawaitreply.ToolConfirmOutcomeApproveSession:
+				metadata["grant_scope"] = "session"
+			case serviceawaitreply.ToolConfirmOutcomeApproveAlways:
+				metadata["grant_scope"] = "always"
+			}
+		} else {
+			reasoning = strings.TrimSpace(reply)
+		}
+	}
+	entities := []decision.EntityRef{{Type: "tool", Key: toolKey}}
+	if h.ag.AgentKey != "" {
+		entities = append(entities, decision.EntityRef{Type: "agent", Key: h.ag.AgentKey})
+	}
+	c.Emit(ctx, decision.Record{
+		DecisionKey:     uuid.NewString(),
+		Category:        decision.CategoryHITLApproval,
+		Scenario:        scenario,
+		Reasoning:       reasoning,
+		Outcome:         outcome,
+		ActorType:       decision.ActorHuman,
+		ActorKey:        userID,
+		RelatedEntities: entities,
+		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID},
+		Metadata:        metadata,
+	})
 }
 
 // toolConfirmationBypass reports whether tool confirmation should be

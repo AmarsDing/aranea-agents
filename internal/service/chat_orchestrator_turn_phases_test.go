@@ -173,6 +173,29 @@ func TestShouldSkipIntentPass_LowConfidenceGate(t *testing.T) {
 	}
 }
 
+// TestShouldSkipIntentPass_TaskActionSignal 钉住 ADR-79-V V2（2026-08-26）
+// 任务信号排除：凡含任务动作词的轮次，direct-reply 快路径一律不得命中
+// （复合任务因子串「请记住/的天气」被误判闲聊曾是全场景测试 P0 误判源）。
+// 任务词升级（taskRequestWords→Moderate）在 QuickAssess 内部完成，此处
+// 用 confident-simple 假 planner 验证 SkipForDirectReply 一道闸已足够拦截。
+func TestShouldSkipIntentPass_TaskActionSignal(t *testing.T) {
+	newOrch := func() *ChatOrchestrator {
+		orch := &ChatOrchestrator{}
+		orch.teamExecDeps.Team.TaskPlanner = &fakePlanner{quickLevel: biz.ComplexitySimple, quickScore: 0.1}
+		return orch
+	}
+	cases := []string{
+		"请记住这个拓扑结构，然后排查核心交换机",
+		"核对昨天的天气数据并生成巡检报告",
+		"今天天气怎么样，顺便帮我写个周报",
+	}
+	for _, msg := range cases {
+		if skip, _, reason := shouldSkipIntentPass(newOrch(), context.Background(), biz.Agent{}, biz.TurnInput{}, msg); skip {
+			t.Fatalf("task-action turn %q must not skip intent pass, got reason=%q", msg, reason)
+		}
+	}
+}
+
 // TestAwaitIntentArtifact 钉住 C2 方案 D 分级收口（2026-08-21）：
 // fullWait（欠规格/complex）全等至 intentCtx 保险丝；其余限 rendezvous
 // 窗口，超时降级 raced_out 且 cancel intent（省 provider token）。

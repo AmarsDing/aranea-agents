@@ -61,8 +61,8 @@ func (m *evalOpsRepo) ListCases(_ context.Context, datasetID string) ([]beval.Ca
 	return m.cases[datasetID], nil
 }
 func (m *evalOpsRepo) UpdateCase(_ context.Context, c beval.Case) (beval.Case, error) { return c, nil }
-func (m *evalOpsRepo) DeleteCase(_ context.Context, _, _ string) error                 { return nil }
-func (m *evalOpsRepo) CreateRun(_ context.Context, r beval.Run) (beval.Run, error)     { return r, nil }
+func (m *evalOpsRepo) DeleteCase(_ context.Context, _, _ string) error                { return nil }
+func (m *evalOpsRepo) CreateRun(_ context.Context, r beval.Run) (beval.Run, error)    { return r, nil }
 func (m *evalOpsRepo) GetRun(_ context.Context, id string) (beval.Run, error) {
 	r, ok := m.runs[id]
 	if !ok {

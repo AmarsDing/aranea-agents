@@ -141,10 +141,10 @@ func TestTokenizeQuery_DropsUserNoise(t *testing.T) {
 
 func TestFactTouchTime_PrefersLastUsedThenUpdatedAt(t *testing.T) {
 	got := factTouchTime(map[string]any{
-		"valid_from":    "2026-01-01T00:00:00Z",
-		"created_at":    "2026-01-01T00:00:00Z",
-		"updated_at":    "2026-08-01T00:00:00Z",
-		"last_used_at":  "2026-08-20T00:00:00Z",
+		"valid_from":   "2026-01-01T00:00:00Z",
+		"created_at":   "2026-01-01T00:00:00Z",
+		"updated_at":   "2026-08-01T00:00:00Z",
+		"last_used_at": "2026-08-20T00:00:00Z",
 	})
 	if got != "2026-08-20T00:00:00Z" {
 		t.Fatalf("factTouchTime=%q, want last_used_at", got)
@@ -161,14 +161,14 @@ func TestFactTouchTime_PrefersLastUsedThenUpdatedAt(t *testing.T) {
 func TestScoreFactRow_RecencyUsesTouchTimeNotValidFrom(t *testing.T) {
 	now := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
 	row := map[string]any{
-		"id":         "f1",
-		"statement":  "Alice likes blue",
-		"importance": 0.5,
+		"id":            "f1",
+		"statement":     "Alice likes blue",
+		"importance":    0.5,
 		"quality_score": 0.5,
-		"fact_kind":  "preference",
-		"valid_from": "2025-01-01T00:00:00Z",
-		"created_at": "2025-01-01T00:00:00Z",
-		"updated_at": now.Format(time.RFC3339Nano),
+		"fact_kind":     "preference",
+		"valid_from":    "2025-01-01T00:00:00Z",
+		"created_at":    "2025-01-01T00:00:00Z",
+		"updated_at":    now.Format(time.RFC3339Nano),
 	}
 	bd := scoreFactRow(row, tokenizeQuery("Alice likes blue"), nil, nil, now)
 	if bd.Recency != 1.0 {

@@ -73,6 +73,13 @@ func (a *teamRunnerWireAdapter) SetRevisionEnqueuer(fn biz.TeamRevisionEnqueuerF
 	a.inner.SetRevisionEnqueuer(fn)
 }
 
+func (a *teamRunnerWireAdapter) SetNoProgressEnqueuer(fn biz.TeamRevisionEnqueuerFunc) {
+	if a.inner == nil || fn == nil {
+		return
+	}
+	a.inner.SetNoProgressEnqueuer(fn)
+}
+
 func (a *teamRunnerWireAdapter) SetUpstreamDeliverableSeed(fn biz.TeamUpstreamSeedFunc) {
 	if a.inner == nil || fn == nil {
 		return

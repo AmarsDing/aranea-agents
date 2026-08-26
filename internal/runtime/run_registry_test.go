@@ -105,6 +105,28 @@ func TestRunRegistryCancelableRunUpdatesStatus(t *testing.T) {
 	}
 }
 
+// TestRunRegistryCancel_RecordsReasonInStatus 锁定 79-runtime-governance
+// P2.5：Cancel 的 reason 记入状态条目 ErrMsg，终止来源（no_progress /
+// team_token_budget_exceeded / user_cancel …）可被终态落库与前端轮询分列。
+func TestRunRegistryCancel_RecordsReasonInStatus(t *testing.T) {
+	reg := NewRunRegistry()
+	reg.StoreCancelable("session-1", "run-1", func() {})
+
+	if stopped, _ := reg.Cancel("session-1", "no_progress"); !stopped {
+		t.Fatalf("Cancel() = false, want true")
+	}
+	status, ok := reg.GetStatus("session-1")
+	if !ok {
+		t.Fatalf("GetStatus() missing entry")
+	}
+	if status.Status != biz.SessionRunPhaseCancelled {
+		t.Fatalf("status = %q, want cancelled", status.Status)
+	}
+	if status.ErrMsg != "no_progress" {
+		t.Fatalf("ErrMsg = %q, want no_progress（reason 落入状态条目）", status.ErrMsg)
+	}
+}
+
 func TestRunRegistryEnqueueUserMessage(t *testing.T) {
 	reg := NewRunRegistry()
 	runner := &steerableRegistryRunner{}
