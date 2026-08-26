@@ -204,7 +204,8 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// 白名单豁免：exempt_tools 命中不剪�?func TestToolResultPrune_ExemptToolsWhitelist(t *testing.T) {
+// 白名单豁免：exempt_tools 命中不剪。
+func TestToolResultPrune_ExemptToolsWhitelist(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	cfg := defaultPruneCfg()
 	cfg.ExemptTools = map[string]bool{"big_tool": true}
@@ -216,7 +217,8 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// 错误结果豁免�?Error:" 前缀为失败重试证据，不剪�?func TestToolResultPrune_ErrorResultExempt(t *testing.T) {
+// 错误结果豁免："Error:" 前缀为失败重试证据，不剪。
+func TestToolResultPrune_ErrorResultExempt(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
 	errContent := "Error: connection timeout\n" + strings.Repeat("stack ", 1000)
@@ -226,7 +228,9 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// 轮距口径：尾�?dynamic cue �?user-role 哨兵，不得计入轮距——K=2 �?// 追加 cue 后轮距仍=2（豁免），若误计�?3 将错误剪枝�?func TestToolResultPrune_DynamicCueNotCountedAsTurn(t *testing.T) {
+// 轮距口径：尾部 dynamic cue 是 user-role 哨兵，不得计入轮距——K=2 时
+// 追加 cue 后轮距仍=2（豁免），若误计为 3 将错误剪枝。
+func TestToolResultPrune_DynamicCueNotCountedAsTurn(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	cfg := defaultPruneCfg()
 	cfg.AfterTurns = 2
@@ -239,7 +243,9 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// 跨轮幂等：同一原文每轮重扫（会话存储不动），replacement 钉住 blob id�?// 第二轮归档返回既�?blob——blob 行不翻倍，指针字节跨轮稳定�?func TestToolResultPrune_IdempotentAcrossTurns(t *testing.T) {
+// 跨轮幂等：同一原文每轮重扫（会话存储不动），replacement 钉住 blob id。
+// 第二轮归档返回既有 blob——blob 行不翻倍，指针字节跨轮稳定。
+func TestToolResultPrune_IdempotentAcrossTurns(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	gate := pruneTestGate(blobs, reps)
 	hook := newToolResultPruneBeforeHook(gate, defaultPruneCfg(), loggateway.NewNoop(), nil)
@@ -256,7 +262,8 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// fail-soft：归档失败保留原文，本轮不省但不丢内容�?func TestToolResultPrune_ArchiveFailureKeepsOriginal(t *testing.T) {
+// fail-soft：归档失败保留原文，本轮不省但不丢内容。
+func TestToolResultPrune_ArchiveFailureKeepsOriginal(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	blobs.failSave = true
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
@@ -271,7 +278,8 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// kill switch / 依赖缺失：Enabled=false �?gate=nil �?hook �?nil（零开销回退）�?func TestToolResultPrune_KillSwitchAndNilGate(t *testing.T) {
+// kill switch / 依赖缺失：Enabled=false 或 gate=nil 时 hook 为 nil（零开销回退）。
+func TestToolResultPrune_KillSwitchAndNilGate(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	gate := pruneTestGate(blobs, reps)
 	if hook := newToolResultPruneBeforeHook(nil, defaultPruneCfg(), loggateway.NewNoop(), nil); hook != nil {
@@ -284,7 +292,8 @@ func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	}
 }
 
-// �?invocation 上下文：sessionID 为空 �?零改写零计数（防御路径）�?func TestToolResultPrune_NoInvocationContext(t *testing.T) {
+// 无 invocation 上下文：sessionID 为空 → 零改写零计数（防御路径）。
+func TestToolResultPrune_NoInvocationContext(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
 	big := strings.Repeat("x", pruneTestBigContent)

@@ -655,6 +655,26 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     return result;
   }
 
+  /**
+   * Fork-from-Turn（79 R6）：以 turnId 为分叉点从 srcSessionId 派生新会话，
+   * 插入会话列表头部（fork 会话是根级对话，root_only 谓词已纳入）。
+   * 仅 agent 列表语义；team 子会话不可 fork（后端门禁）。
+   */
+  async function forkSessionAction(srcSessionId: string, turnId: string): Promise<Session> {
+    error.value = null;
+    try {
+      const created = await forkSession(srcSessionId, turnId);
+      sessions.value.unshift(created);
+      sessionsTotal.value += 1;
+      listOffset.value += 1;
+      emitSessionMutation({ type: 'update', id: created.id, session: created });
+      return created;
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
+  }
+
   // --- Compress status ---
   const compressStatus = ref<CompressStatus>('normal');
 

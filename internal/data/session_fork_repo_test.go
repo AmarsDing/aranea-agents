@@ -2,7 +2,10 @@ package data
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 )
@@ -243,5 +246,94 @@ func TestForkIDPrefix_Deterministic(t *testing.T) {
 	}
 	if got := forkIDPrefix("short"); got != "fkshort-" {
 		t.Fatalf("short prefix = %q", got)
+	}
+}
+
+// 79 Phase 4 验收：万级消息会话 fork P95 < 3s。
+// 规模：10,000 框架事件（500 task × 2 turn × 10 event）+ v2 500/1000/5000 行，
+// 分叉点取末 turn（turn-500-2，全量前缀复制——最坏情形）。
+// 1 轮预热（PG 缓存）+ 10 轮测量，最近秩 P95 = 第 10 小值。
+func TestSessionForkRepo_ForkScaleP95(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	setupForkTestTables(t, d)
+	const src = "src-fork-scale"
+	ctx := context.Background()
+	w := d.RWDB().WriteDB(ctx)
+
+	stateJSON := `{"id":"` + src + `","state":{},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}`
+	if _, err := w.ExecContext(ctx, `
+		INSERT INTO trpc_session_states (app_name, user_id, session_id, state)
+		VALUES ('app', 'u1', $1, $2::jsonb)`, src, stateJSON); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	seeds := []string{
+		// 每 task 20 条事件：turn-k-1（g 段前 10）+ turn-k-2（后 10）。
+		`INSERT INTO trpc_session_events (app_name, user_id, session_id, event)
+		 SELECT 'app','u1','` + src + `',
+		   jsonb_build_object('invocationId','turn-'||(((g-1)/20)+1)||'-'||((((g-1)/10)%2)+1),'author','agent','seq',g)
+		 FROM generate_series(1,10000) g`,
+		`INSERT INTO tasks_v2 (id, session_id, user_message, status, seq, version, workspace_id, created_at, updated_at)
+		 SELECT 'task-'||g, '` + src + `', 'm'||g, 'completed', g, 1, '', now(), now()
+		 FROM generate_series(1,500) g`,
+		`INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at)
+		 SELECT 'turn-'||k||'-'||s, 'task-'||k, '` + src + `', '` + src + `', '', 'a', '', '', s, 1, 'completed', now()
+		 FROM generate_series(1,500) k CROSS JOIN generate_series(1,2) s`,
+		`INSERT INTO steps_v2 (id, turn_id, task_id, session_id, spirit_session_id, kind, author_agent_key, seq, content, reasoning, tool_name, tool_call_id, tool_args, tool_result, tool_duration_ms, tool_error_code, notice_type, status, is_final, started_at, version)
+		 SELECT 'turn-'||k||'-'||s||'-st'||st, 'turn-'||k||'-'||s, 'task-'||k, '` + src + `', '` + src + `',
+		   'reply','a', st, 'content', '', '', '', '', '', 0, '', '', 'completed', true, now(), 1
+		 FROM generate_series(1,500) k CROSS JOIN generate_series(1,2) s CROSS JOIN generate_series(1,5) st`,
+	}
+	for _, stmt := range seeds {
+		if _, err := w.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed scale data: %v", err)
+		}
+	}
+
+	repo := NewSessionForkRepo(d)
+	const forkTurn = "turn-500-2"
+	forkOnce := func(dst string) time.Duration {
+		start := time.Now()
+		err := repo.ForkSessionInTx(ctx, func(txCtx context.Context) error {
+			boundary, found, err := repo.FindTurnEventBoundary(txCtx, src, forkTurn)
+			if err != nil || !found {
+				return fmt.Errorf("boundary: found=%v err=%w", found, err)
+			}
+			if err := repo.CreateFrameworkState(txCtx, src, dst); err != nil {
+				return err
+			}
+			events, err := repo.CopyFrameworkEvents(txCtx, src, dst, boundary)
+			if err != nil {
+				return err
+			}
+			if events != 10000 {
+				return fmt.Errorf("events = %d, want 10000", events)
+			}
+			tasks, turns, steps, err := repo.CopyV2Records(txCtx, src, dst, forkTurn)
+			if err != nil {
+				return err
+			}
+			if tasks != 500 || turns != 1000 || steps != 5000 {
+				return fmt.Errorf("v2 = %d/%d/%d, want 500/1000/5000", tasks, turns, steps)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("fork %s: %v", dst, err)
+		}
+		return time.Since(start)
+	}
+
+	forkOnce("a0000000-warm") // 预热：PG 缓存/计划（dst 前 8 位唯一，模拟生产 uuid）
+	const runs = 10
+	durations := make([]time.Duration, 0, runs)
+	for i := 0; i < runs; i++ {
+		durations = append(durations, forkOnce(fmt.Sprintf("b%07d-scale", i)))
+	}
+	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	p95 := durations[(95*runs+99)/100-1] // 最近秩
+	t.Logf("fork scale durations: min=%v p50=%v p95=%v max=%v",
+		durations[0], durations[runs/2], p95, durations[runs-1])
+	if p95 >= 3*time.Second {
+		t.Fatalf("fork P95 = %v, want < 3s", p95)
 	}
 }
