@@ -73,6 +73,25 @@ func (f *fakeRepo) DeleteOutEdges(context.Context, string, int64) error   { retu
 func (f *fakeRepo) ListNodes(context.Context, NodeFilter) ([]Node, error) { return nil, nil }
 func (f *fakeRepo) Counts(context.Context, int64) (Counts, error)         { return Counts{}, nil }
 
+// P1 查询方法 stub（querier 单测用 queryFakeRepo 覆盖行为）。
+func (f *fakeRepo) FindNode(context.Context, int64, string, string) (Node, error) {
+	return Node{}, errFakeNotFound
+}
+func (f *fakeRepo) WalkGraph(context.Context, int64, string, bool, int) ([]WalkRow, error) {
+	return nil, nil
+}
+func (f *fakeRepo) ListNodeEdges(context.Context, int64, string) ([]StoredEdge, []StoredEdge, []StoredEdge, error) {
+	return nil, nil, nil, nil
+}
+func (f *fakeRepo) ListBrokenEdgesTargeting(context.Context, int64, []string) ([]StoredEdge, error) {
+	return nil, nil
+}
+func (f *fakeRepo) CountActiveSessions(context.Context, []string, []string) (int64, error) {
+	return 0, nil
+}
+func (f *fakeRepo) ListAllEdges(context.Context, int64) ([]StoredEdge, error) { return nil, nil }
+func (f *fakeRepo) ListAllNodes(context.Context, int64) ([]Node, error)       { return nil, nil }
+
 type fakeFlowLog struct {
 	mu     sync.Mutex
 	starts []string

@@ -88,20 +88,25 @@ func provideFactWritePipeline(
 	d *data.Data,
 	vec *biz.MemoryUsecase,
 	adjudicator biz.FactWriteAdjudicator,
+	notifier biz.MemoryFactPendingNotifier,
+	sessionGrants *biz.MemoryFactSessionGrants,
 	lg loggateway.Logger,
 ) *biz.FactWritePipeline {
 	if d == nil {
 		return nil
 	}
 	deps := biz.FactWritePipelineDeps{
-		Searcher:    data.NewMemoryConflictNeighborSearcher(d),
-		Reader:      data.NewL3FactReaderForUser(d),
-		Writer:      data.NewL3FactWriterAdapter(d, d.VectorStore()),
-		Access:      data.NewL3FactAccessCounter(d),
-		Adjudicator: adjudicator,
-		ActionLog:   data.NewMemoryActionLogWriter(d),
-		Pending:     data.NewMemoryFactPendingRepoFromData(d),
-		LG:          lg,
+		Searcher:      data.NewMemoryConflictNeighborSearcher(d),
+		Reader:        data.NewL3FactReaderForUser(d),
+		Writer:        data.NewL3FactWriterAdapter(d, d.VectorStore()),
+		Access:        data.NewL3FactAccessCounter(d),
+		Adjudicator:   adjudicator,
+		ActionLog:     data.NewMemoryActionLogWriter(d),
+		Pending:       data.NewMemoryFactPendingRepoFromData(d),
+		Notifier:      notifier,
+		AllowRules:    data.NewMemoryFactAllowRuleRepo(d, lg),
+		SessionGrants: sessionGrants,
+		LG:            lg,
 	}
 	// Guard against typed-nil interfaces: a nil *MemoryUsecase wrapped in the
 	// EmbeddingService interface would pass the pipeline's nil check and
@@ -110,6 +115,37 @@ func provideFactWritePipeline(
 		deps.Embedder = vec
 	}
 	return biz.NewFactWritePipeline(deps)
+}
+
+// provideMemoryFactPendingNotifier wires the R3 3.3 approval-center push
+// bridge. Returns nil when TWIN_WEBHOOK_SECRET is unset — pending rows still
+// land, only the twinmonitor push is disabled.
+func provideMemoryFactPendingNotifier(lg loggateway.Logger) biz.MemoryFactPendingNotifier {
+	return service.NewTwinMemoryFactPendingNotifier(lg)
+}
+
+// provideMemoryFactSessionGrants wires the R3 3.4 (E4) process-local
+// approve_session grant store, shared between the decider (grant) and the
+// write pipeline (bypass check).
+func provideMemoryFactSessionGrants() *biz.MemoryFactSessionGrants {
+	return biz.NewMemoryFactSessionGrants()
+}
+
+// provideMemoryFactPendingDecider wires the R3 3.3/3.4 decision executor
+// (approval-center callback → replay original bi-temporal write; E4 four-tier
+// exemptions). Nil when the DB is absent.
+func provideMemoryFactPendingDecider(d *data.Data, sessionGrants *biz.MemoryFactSessionGrants, lg loggateway.Logger) *biz.MemoryFactPendingDecider {
+	if d == nil {
+		return nil
+	}
+	return biz.NewMemoryFactPendingDecider(
+		data.NewMemoryFactPendingRepoFromData(d),
+		data.NewL3FactWriterAdapter(d, d.VectorStore()),
+		data.NewMemoryActionLogWriter(d),
+		data.NewMemoryFactAllowRuleRepo(d, lg),
+		sessionGrants,
+		lg,
+	)
 }
 
 func provideEpisodeIndexSync(vec *biz.MemoryUsecase, d *data.Data) biz.EpisodeIndexSyncer {

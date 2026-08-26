@@ -98,6 +98,20 @@ func (_c *MemoryFactPendingCreate) SetNillableAdjudicatorReason(v *string) *Memo
 	return _c
 }
 
+// SetPayloadJSON sets the "payload_json" field.
+func (_c *MemoryFactPendingCreate) SetPayloadJSON(v string) *MemoryFactPendingCreate {
+	_c.mutation.SetPayloadJSON(v)
+	return _c
+}
+
+// SetNillablePayloadJSON sets the "payload_json" field if the given value is not nil.
+func (_c *MemoryFactPendingCreate) SetNillablePayloadJSON(v *string) *MemoryFactPendingCreate {
+	if v != nil {
+		_c.SetPayloadJSON(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *MemoryFactPendingCreate) SetStatus(v string) *MemoryFactPendingCreate {
 	_c.mutation.SetStatus(v)
@@ -215,6 +229,10 @@ func (_c *MemoryFactPendingCreate) defaults() {
 		v := memoryfactpending.DefaultAdjudicatorReason
 		_c.mutation.SetAdjudicatorReason(v)
 	}
+	if _, ok := _c.mutation.PayloadJSON(); !ok {
+		v := memoryfactpending.DefaultPayloadJSON
+		_c.mutation.SetPayloadJSON(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := memoryfactpending.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -267,6 +285,9 @@ func (_c *MemoryFactPendingCreate) check() error {
 	}
 	if _, ok := _c.mutation.AdjudicatorReason(); !ok {
 		return &ValidationError{Name: "adjudicator_reason", err: errors.New(`ent: missing required field "MemoryFactPending.adjudicator_reason"`)}
+	}
+	if _, ok := _c.mutation.PayloadJSON(); !ok {
+		return &ValidationError{Name: "payload_json", err: errors.New(`ent: missing required field "MemoryFactPending.payload_json"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "MemoryFactPending.status"`)}
@@ -354,6 +375,10 @@ func (_c *MemoryFactPendingCreate) createSpec() (*MemoryFactPending, *sqlgraph.C
 	if value, ok := _c.mutation.AdjudicatorReason(); ok {
 		_spec.SetField(memoryfactpending.FieldAdjudicatorReason, field.TypeString, value)
 		_node.AdjudicatorReason = value
+	}
+	if value, ok := _c.mutation.PayloadJSON(); ok {
+		_spec.SetField(memoryfactpending.FieldPayloadJSON, field.TypeString, value)
+		_node.PayloadJSON = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(memoryfactpending.FieldStatus, field.TypeString, value)
@@ -492,6 +517,18 @@ func (u *MemoryFactPendingUpsert) SetAdjudicatorReason(v string) *MemoryFactPend
 // UpdateAdjudicatorReason sets the "adjudicator_reason" field to the value that was provided on create.
 func (u *MemoryFactPendingUpsert) UpdateAdjudicatorReason() *MemoryFactPendingUpsert {
 	u.SetExcluded(memoryfactpending.FieldAdjudicatorReason)
+	return u
+}
+
+// SetPayloadJSON sets the "payload_json" field.
+func (u *MemoryFactPendingUpsert) SetPayloadJSON(v string) *MemoryFactPendingUpsert {
+	u.Set(memoryfactpending.FieldPayloadJSON, v)
+	return u
+}
+
+// UpdatePayloadJSON sets the "payload_json" field to the value that was provided on create.
+func (u *MemoryFactPendingUpsert) UpdatePayloadJSON() *MemoryFactPendingUpsert {
+	u.SetExcluded(memoryfactpending.FieldPayloadJSON)
 	return u
 }
 
@@ -684,6 +721,20 @@ func (u *MemoryFactPendingUpsertOne) SetAdjudicatorReason(v string) *MemoryFactP
 func (u *MemoryFactPendingUpsertOne) UpdateAdjudicatorReason() *MemoryFactPendingUpsertOne {
 	return u.Update(func(s *MemoryFactPendingUpsert) {
 		s.UpdateAdjudicatorReason()
+	})
+}
+
+// SetPayloadJSON sets the "payload_json" field.
+func (u *MemoryFactPendingUpsertOne) SetPayloadJSON(v string) *MemoryFactPendingUpsertOne {
+	return u.Update(func(s *MemoryFactPendingUpsert) {
+		s.SetPayloadJSON(v)
+	})
+}
+
+// UpdatePayloadJSON sets the "payload_json" field to the value that was provided on create.
+func (u *MemoryFactPendingUpsertOne) UpdatePayloadJSON() *MemoryFactPendingUpsertOne {
+	return u.Update(func(s *MemoryFactPendingUpsert) {
+		s.UpdatePayloadJSON()
 	})
 }
 
@@ -1053,6 +1104,20 @@ func (u *MemoryFactPendingUpsertBulk) SetAdjudicatorReason(v string) *MemoryFact
 func (u *MemoryFactPendingUpsertBulk) UpdateAdjudicatorReason() *MemoryFactPendingUpsertBulk {
 	return u.Update(func(s *MemoryFactPendingUpsert) {
 		s.UpdateAdjudicatorReason()
+	})
+}
+
+// SetPayloadJSON sets the "payload_json" field.
+func (u *MemoryFactPendingUpsertBulk) SetPayloadJSON(v string) *MemoryFactPendingUpsertBulk {
+	return u.Update(func(s *MemoryFactPendingUpsert) {
+		s.SetPayloadJSON(v)
+	})
+}
+
+// UpdatePayloadJSON sets the "payload_json" field to the value that was provided on create.
+func (u *MemoryFactPendingUpsertBulk) UpdatePayloadJSON() *MemoryFactPendingUpsertBulk {
+	return u.Update(func(s *MemoryFactPendingUpsert) {
+		s.UpdatePayloadJSON()
 	})
 }
 

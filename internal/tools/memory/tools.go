@@ -12,12 +12,15 @@ import (
 // DefaultTools returns the five standard memory tools.
 // The "clear" tool is intentionally omitted from the default set to avoid
 // accidental bulk deletion by the model.
+// memory_search / memory_load are wrapped (search_note.go) so zero-hit
+// responses carry the R3 guidance note; add/update/delete pass through
+// unchanged.
 func DefaultTools() []trpctool.Tool {
 	return []trpctool.Tool{
 		trpcmemtool.NewAddTool(),
 		trpcmemtool.NewUpdateTool(),
-		trpcmemtool.NewLoadTool(),
-		trpcmemtool.NewSearchTool(),
+		&emptyNoteLoadTool{inner: trpcmemtool.NewLoadTool()},
+		&emptyNoteSearchTool{inner: trpcmemtool.NewSearchTool()},
 		trpcmemtool.NewDeleteTool(),
 	}
 }

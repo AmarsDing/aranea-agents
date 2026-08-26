@@ -55,6 +55,7 @@ const (
 	MemoryService_GetMemoryLayerOverview_FullMethodName       = "/kratos.memory.v1.MemoryService/GetMemoryLayerOverview"
 	MemoryService_GetUnifiedMemoryGraph_FullMethodName        = "/kratos.memory.v1.MemoryService/GetUnifiedMemoryGraph"
 	MemoryService_ListMemoryEpisodes_FullMethodName           = "/kratos.memory.v1.MemoryService/ListMemoryEpisodes"
+	MemoryService_ListMemoryFactPendings_FullMethodName       = "/kratos.memory.v1.MemoryService/ListMemoryFactPendings"
 )
 
 // MemoryServiceClient is the client API for MemoryService service.
@@ -97,6 +98,7 @@ type MemoryServiceClient interface {
 	GetMemoryLayerOverview(ctx context.Context, in *GetMemoryLayerOverviewRequest, opts ...grpc.CallOption) (*GetMemoryLayerOverviewResponse, error)
 	GetUnifiedMemoryGraph(ctx context.Context, in *GetUnifiedMemoryGraphRequest, opts ...grpc.CallOption) (*GetUnifiedMemoryGraphResponse, error)
 	ListMemoryEpisodes(ctx context.Context, in *ListMemoryEpisodesRequest, opts ...grpc.CallOption) (*ListMemoryEpisodesResponse, error)
+	ListMemoryFactPendings(ctx context.Context, in *ListMemoryFactPendingsRequest, opts ...grpc.CallOption) (*ListMemoryFactPendingsResponse, error)
 }
 
 type memoryServiceClient struct {
@@ -467,6 +469,16 @@ func (c *memoryServiceClient) ListMemoryEpisodes(ctx context.Context, in *ListMe
 	return out, nil
 }
 
+func (c *memoryServiceClient) ListMemoryFactPendings(ctx context.Context, in *ListMemoryFactPendingsRequest, opts ...grpc.CallOption) (*ListMemoryFactPendingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMemoryFactPendingsResponse)
+	err := c.cc.Invoke(ctx, MemoryService_ListMemoryFactPendings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MemoryServiceServer is the server API for MemoryService service.
 // All implementations must embed UnimplementedMemoryServiceServer
 // for forward compatibility.
@@ -507,6 +519,7 @@ type MemoryServiceServer interface {
 	GetMemoryLayerOverview(context.Context, *GetMemoryLayerOverviewRequest) (*GetMemoryLayerOverviewResponse, error)
 	GetUnifiedMemoryGraph(context.Context, *GetUnifiedMemoryGraphRequest) (*GetUnifiedMemoryGraphResponse, error)
 	ListMemoryEpisodes(context.Context, *ListMemoryEpisodesRequest) (*ListMemoryEpisodesResponse, error)
+	ListMemoryFactPendings(context.Context, *ListMemoryFactPendingsRequest) (*ListMemoryFactPendingsResponse, error)
 	mustEmbedUnimplementedMemoryServiceServer()
 }
 
@@ -624,6 +637,9 @@ func (UnimplementedMemoryServiceServer) GetUnifiedMemoryGraph(context.Context, *
 }
 func (UnimplementedMemoryServiceServer) ListMemoryEpisodes(context.Context, *ListMemoryEpisodesRequest) (*ListMemoryEpisodesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMemoryEpisodes not implemented")
+}
+func (UnimplementedMemoryServiceServer) ListMemoryFactPendings(context.Context, *ListMemoryFactPendingsRequest) (*ListMemoryFactPendingsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMemoryFactPendings not implemented")
 }
 func (UnimplementedMemoryServiceServer) mustEmbedUnimplementedMemoryServiceServer() {}
 func (UnimplementedMemoryServiceServer) testEmbeddedByValue()                       {}
@@ -1294,6 +1310,24 @@ func _MemoryService_ListMemoryEpisodes_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MemoryService_ListMemoryFactPendings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMemoryFactPendingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).ListMemoryFactPendings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_ListMemoryFactPendings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).ListMemoryFactPendings(ctx, req.(*ListMemoryFactPendingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MemoryService_ServiceDesc is the grpc.ServiceDesc for MemoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1444,6 +1478,10 @@ var MemoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMemoryEpisodes",
 			Handler:    _MemoryService_ListMemoryEpisodes_Handler,
+		},
+		{
+			MethodName: "ListMemoryFactPendings",
+			Handler:    _MemoryService_ListMemoryFactPendings_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -111,6 +111,20 @@ func (_u *MemoryFactPendingUpdate) SetNillableAdjudicatorReason(v *string) *Memo
 	return _u
 }
 
+// SetPayloadJSON sets the "payload_json" field.
+func (_u *MemoryFactPendingUpdate) SetPayloadJSON(v string) *MemoryFactPendingUpdate {
+	_u.mutation.SetPayloadJSON(v)
+	return _u
+}
+
+// SetNillablePayloadJSON sets the "payload_json" field if the given value is not nil.
+func (_u *MemoryFactPendingUpdate) SetNillablePayloadJSON(v *string) *MemoryFactPendingUpdate {
+	if v != nil {
+		_u.SetPayloadJSON(*v)
+	}
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *MemoryFactPendingUpdate) SetStatus(v string) *MemoryFactPendingUpdate {
 	_u.mutation.SetStatus(v)
@@ -273,6 +287,9 @@ func (_u *MemoryFactPendingUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if value, ok := _u.mutation.AdjudicatorReason(); ok {
 		_spec.SetField(memoryfactpending.FieldAdjudicatorReason, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PayloadJSON(); ok {
+		_spec.SetField(memoryfactpending.FieldPayloadJSON, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(memoryfactpending.FieldStatus, field.TypeString, value)
 	}
@@ -391,6 +408,20 @@ func (_u *MemoryFactPendingUpdateOne) SetAdjudicatorReason(v string) *MemoryFact
 func (_u *MemoryFactPendingUpdateOne) SetNillableAdjudicatorReason(v *string) *MemoryFactPendingUpdateOne {
 	if v != nil {
 		_u.SetAdjudicatorReason(*v)
+	}
+	return _u
+}
+
+// SetPayloadJSON sets the "payload_json" field.
+func (_u *MemoryFactPendingUpdateOne) SetPayloadJSON(v string) *MemoryFactPendingUpdateOne {
+	_u.mutation.SetPayloadJSON(v)
+	return _u
+}
+
+// SetNillablePayloadJSON sets the "payload_json" field if the given value is not nil.
+func (_u *MemoryFactPendingUpdateOne) SetNillablePayloadJSON(v *string) *MemoryFactPendingUpdateOne {
+	if v != nil {
+		_u.SetPayloadJSON(*v)
 	}
 	return _u
 }
@@ -586,6 +617,9 @@ func (_u *MemoryFactPendingUpdateOne) sqlSave(ctx context.Context) (_node *Memor
 	}
 	if value, ok := _u.mutation.AdjudicatorReason(); ok {
 		_spec.SetField(memoryfactpending.FieldAdjudicatorReason, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PayloadJSON(); ok {
+		_spec.SetField(memoryfactpending.FieldPayloadJSON, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(memoryfactpending.FieldStatus, field.TypeString, value)

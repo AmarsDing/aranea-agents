@@ -840,6 +840,33 @@ message ListMemoryEpisodesResponse {
   int32 total = 2;
 }
 
+// R3 记忆审批层（79-runtime-governance Phase 3）：一条被扣留的高风险事实写。
+// 审批决议在 twinmonitor 审批中心执行；本列表提供 proposed vs prior 对照与
+// adjudicator reason 供人工研判。
+message MemoryFactPendingItem {
+  string id = 1;
+  string agent_id = 2;
+  string fact_key = 3;           // UPDATE/DELETE 目标事实 id；CONTESTED ADD 为空
+  string verdict = 4;            // UPDATE | DELETE | CONTESTED
+  string proposed_body = 5;      // 拟写入的新表述
+  string prior_body = 6;         // 目标事实当前表述（对照；CONTESTED 为空）
+  string adjudicator_reason = 7; // 判决器理由（未裁决的 CONTESTED 为空）
+  string status = 8;             // pending | approved | rejected
+  string approver = 9;           // 决议人（未决议为空）
+  int64 created_at = 10;         // unix seconds
+  int64 decided_at = 11;         // unix seconds；未决议为 0
+}
+
+message ListMemoryFactPendingsRequest {
+  string agent_id = 1; // 必填：工作区访问校验维度（与 l3 facts 列表一致）
+  string status = 2;   // 可选：pending | approved | rejected；空=全部
+  int32 limit = 3;     // 默认 100（repo 上限）
+}
+
+message ListMemoryFactPendingsResponse {
+  repeated MemoryFactPendingItem items = 1;
+}
+
 service MemoryService {
   rpc ListL0Snapshots(ListL0SnapshotsRequest) returns (ListL0SnapshotsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/l0/snapshots"};
@@ -1016,5 +1043,11 @@ service MemoryService {
 
   rpc ListMemoryEpisodes(ListMemoryEpisodesRequest) returns (ListMemoryEpisodesResponse) {
     option (google.api.http) = {get: "/v1/memory/episodes"};
+  }
+
+  // ── R3 记忆审批层（79-runtime-governance Phase 3.5）：高风险写扣留列表 ──
+
+  rpc ListMemoryFactPendings(ListMemoryFactPendingsRequest) returns (ListMemoryFactPendingsResponse) {
+    option (google.api.http) = {get: "/v1/memory/fact-pendings"};
   }
 }

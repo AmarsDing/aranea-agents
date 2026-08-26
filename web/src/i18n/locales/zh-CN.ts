@@ -2337,6 +2337,7 @@ export default {
       graph: '关联图谱',
       browse: '记忆浏览',
       governance: '信任',
+      pending: '待审批',
       ops: '运维',
     },
     error: {
@@ -2689,6 +2690,23 @@ export default {
       },
       revertDone: '已标记回滚（未撤销补丁）',
       reviewFailed: '进化审批失败',
+    },
+    pending: {
+      title: '高风险写审批',
+      caption: '自动记忆管线判定为 UPDATE / DELETE / 争议新增的写入在此扣留，等待审批中心决议。',
+      refreshAria: '刷新待审批列表',
+      emptyTitle: '没有扣留中的记忆写入',
+      emptyCaption: '当自动记忆管线尝试更新、删除或争议性新增事实时，会先进入这里等待审批。',
+      priorLabel: '当前表述（旧）',
+      proposedLabel: '拟写入（新）',
+      targetFact: '目标事实',
+      decideHint: '批准 / 拒绝在审批中心（twinmonitor）执行；批准后系统按原始判决回放写入。',
+      status: {
+        pending: '待审批',
+        approved: '已批准',
+        rejected: '已拒绝',
+        all: '全部',
+      },
     },
     pii: {
       title: 'PII 审核',

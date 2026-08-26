@@ -28,6 +28,8 @@ type MemoryFactPending struct {
 	PriorBody string `json:"prior_body,omitempty"`
 	// AdjudicatorReason holds the value of the "adjudicator_reason" field.
 	AdjudicatorReason string `json:"adjudicator_reason,omitempty"`
+	// PayloadJSON holds the value of the "payload_json" field.
+	PayloadJSON string `json:"payload_json,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Approver holds the value of the "approver" field.
@@ -46,7 +48,7 @@ func (*MemoryFactPending) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case memoryfactpending.FieldCreatedAt, memoryfactpending.FieldDecidedAt:
 			values[i] = new(sql.NullInt64)
-		case memoryfactpending.FieldID, memoryfactpending.FieldAgentID, memoryfactpending.FieldFactKey, memoryfactpending.FieldVerdict, memoryfactpending.FieldProposedBody, memoryfactpending.FieldPriorBody, memoryfactpending.FieldAdjudicatorReason, memoryfactpending.FieldStatus, memoryfactpending.FieldApprover:
+		case memoryfactpending.FieldID, memoryfactpending.FieldAgentID, memoryfactpending.FieldFactKey, memoryfactpending.FieldVerdict, memoryfactpending.FieldProposedBody, memoryfactpending.FieldPriorBody, memoryfactpending.FieldAdjudicatorReason, memoryfactpending.FieldPayloadJSON, memoryfactpending.FieldStatus, memoryfactpending.FieldApprover:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -104,6 +106,12 @@ func (_m *MemoryFactPending) assignValues(columns []string, values []any) error 
 				return fmt.Errorf("unexpected type %T for field adjudicator_reason", values[i])
 			} else if value.Valid {
 				_m.AdjudicatorReason = value.String
+			}
+		case memoryfactpending.FieldPayloadJSON:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_json", values[i])
+			} else if value.Valid {
+				_m.PayloadJSON = value.String
 			}
 		case memoryfactpending.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -182,6 +190,9 @@ func (_m *MemoryFactPending) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("adjudicator_reason=")
 	builder.WriteString(_m.AdjudicatorReason)
+	builder.WriteString(", ")
+	builder.WriteString("payload_json=")
+	builder.WriteString(_m.PayloadJSON)
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

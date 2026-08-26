@@ -7472,6 +7472,237 @@ func (x *ListMemoryEpisodesResponse) GetTotal() int32 {
 	return 0
 }
 
+// R3 记忆审批层（79-runtime-governance Phase 3）：一条被扣留的高风险事实写。
+// 审批决议在 twinmonitor 审批中心执行；本列表提供 proposed vs prior 对照与
+// adjudicator reason 供人工研判。
+type MemoryFactPendingItem struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	AgentId           string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	FactKey           string                 `protobuf:"bytes,3,opt,name=fact_key,json=factKey,proto3" json:"fact_key,omitempty"`                               // UPDATE/DELETE 目标事实 id；CONTESTED ADD 为空
+	Verdict           string                 `protobuf:"bytes,4,opt,name=verdict,proto3" json:"verdict,omitempty"`                                              // UPDATE | DELETE | CONTESTED
+	ProposedBody      string                 `protobuf:"bytes,5,opt,name=proposed_body,json=proposedBody,proto3" json:"proposed_body,omitempty"`                // 拟写入的新表述
+	PriorBody         string                 `protobuf:"bytes,6,opt,name=prior_body,json=priorBody,proto3" json:"prior_body,omitempty"`                         // 目标事实当前表述（对照；CONTESTED 为空）
+	AdjudicatorReason string                 `protobuf:"bytes,7,opt,name=adjudicator_reason,json=adjudicatorReason,proto3" json:"adjudicator_reason,omitempty"` // 判决器理由（未裁决的 CONTESTED 为空）
+	Status            string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`                                                // pending | approved | rejected
+	Approver          string                 `protobuf:"bytes,9,opt,name=approver,proto3" json:"approver,omitempty"`                                            // 决议人（未决议为空）
+	CreatedAt         int64                  `protobuf:"varint,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                       // unix seconds
+	DecidedAt         int64                  `protobuf:"varint,11,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`                       // unix seconds；未决议为 0
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MemoryFactPendingItem) Reset() {
+	*x = MemoryFactPendingItem{}
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MemoryFactPendingItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MemoryFactPendingItem) ProtoMessage() {}
+
+func (x *MemoryFactPendingItem) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MemoryFactPendingItem.ProtoReflect.Descriptor instead.
+func (*MemoryFactPendingItem) Descriptor() ([]byte, []int) {
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{98}
+}
+
+func (x *MemoryFactPendingItem) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetFactKey() string {
+	if x != nil {
+		return x.FactKey
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetVerdict() string {
+	if x != nil {
+		return x.Verdict
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetProposedBody() string {
+	if x != nil {
+		return x.ProposedBody
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetPriorBody() string {
+	if x != nil {
+		return x.PriorBody
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetAdjudicatorReason() string {
+	if x != nil {
+		return x.AdjudicatorReason
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetApprover() string {
+	if x != nil {
+		return x.Approver
+	}
+	return ""
+}
+
+func (x *MemoryFactPendingItem) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *MemoryFactPendingItem) GetDecidedAt() int64 {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return 0
+}
+
+type ListMemoryFactPendingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"` // 必填：工作区访问校验维度（与 l3 facts 列表一致）
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`                  // 可选：pending | approved | rejected；空=全部
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                   // 默认 100（repo 上限）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMemoryFactPendingsRequest) Reset() {
+	*x = ListMemoryFactPendingsRequest{}
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMemoryFactPendingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMemoryFactPendingsRequest) ProtoMessage() {}
+
+func (x *ListMemoryFactPendingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMemoryFactPendingsRequest.ProtoReflect.Descriptor instead.
+func (*ListMemoryFactPendingsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *ListMemoryFactPendingsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ListMemoryFactPendingsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListMemoryFactPendingsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListMemoryFactPendingsResponse struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Items         []*MemoryFactPendingItem `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMemoryFactPendingsResponse) Reset() {
+	*x = ListMemoryFactPendingsResponse{}
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMemoryFactPendingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMemoryFactPendingsResponse) ProtoMessage() {}
+
+func (x *ListMemoryFactPendingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMemoryFactPendingsResponse.ProtoReflect.Descriptor instead.
+func (*ListMemoryFactPendingsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *ListMemoryFactPendingsResponse) GetItems() []*MemoryFactPendingItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 // MEM-OPT-03: queue stats
 type MemoryWorkerStatus_QueueStats struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -7485,7 +7716,7 @@ type MemoryWorkerStatus_QueueStats struct {
 
 func (x *MemoryWorkerStatus_QueueStats) Reset() {
 	*x = MemoryWorkerStatus_QueueStats{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[102]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7497,7 +7728,7 @@ func (x *MemoryWorkerStatus_QueueStats) String() string {
 func (*MemoryWorkerStatus_QueueStats) ProtoMessage() {}
 
 func (x *MemoryWorkerStatus_QueueStats) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[102]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8268,7 +8499,29 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"created_at\x18\v \x01(\tR\tcreatedAt\"i\n" +
 	"\x1aListMemoryEpisodesResponse\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.kratos.memory.v1.MemoryEpisodeR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\x99-\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xdc\x02\n" +
+	"\x15MemoryFactPendingItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x19\n" +
+	"\bfact_key\x18\x03 \x01(\tR\afactKey\x12\x18\n" +
+	"\averdict\x18\x04 \x01(\tR\averdict\x12#\n" +
+	"\rproposed_body\x18\x05 \x01(\tR\fproposedBody\x12\x1d\n" +
+	"\n" +
+	"prior_body\x18\x06 \x01(\tR\tpriorBody\x12-\n" +
+	"\x12adjudicator_reason\x18\a \x01(\tR\x11adjudicatorReason\x12\x16\n" +
+	"\x06status\x18\b \x01(\tR\x06status\x12\x1a\n" +
+	"\bapprover\x18\t \x01(\tR\bapprover\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\x03R\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"decided_at\x18\v \x01(\x03R\tdecidedAt\"h\n" +
+	"\x1dListMemoryFactPendingsRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"_\n" +
+	"\x1eListMemoryFactPendingsResponse\x12=\n" +
+	"\x05items\x18\x01 \x03(\v2'.kratos.memory.v1.MemoryFactPendingItemR\x05items2\xb9.\n" +
 	"\rMemoryService\x12\x96\x01\n" +
 	"\x0fListL0Snapshots\x12(.kratos.memory.v1.ListL0SnapshotsRequest\x1a).kratos.memory.v1.ListL0SnapshotsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/sessions/{session_id}/l0/snapshots\x12\x86\x01\n" +
 	"\vListL1Tasks\x12$.kratos.memory.v1.ListL1TasksRequest\x1a%.kratos.memory.v1.ListL1TasksResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/sessions/{session_id}/l1/tasks\x12\x9a\x01\n" +
@@ -8305,7 +8558,8 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\rReviewPIIFact\x12&.kratos.memory.v1.ReviewPIIFactRequest\x1a'.kratos.memory.v1.ReviewPIIFactResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/memory/l3/facts/pii/review\x12\x9e\x01\n" +
 	"\x16GetMemoryLayerOverview\x12/.kratos.memory.v1.GetMemoryLayerOverviewRequest\x1a0.kratos.memory.v1.GetMemoryLayerOverviewResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/memory/layer-overview\x12\x9a\x01\n" +
 	"\x15GetUnifiedMemoryGraph\x12..kratos.memory.v1.GetUnifiedMemoryGraphRequest\x1a/.kratos.memory.v1.GetUnifiedMemoryGraphResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/memory/graph/unified\x12\x8c\x01\n" +
-	"\x12ListMemoryEpisodes\x12+.kratos.memory.v1.ListMemoryEpisodesRequest\x1a,.kratos.memory.v1.ListMemoryEpisodesResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/memory/episodesB?\n" +
+	"\x12ListMemoryEpisodes\x12+.kratos.memory.v1.ListMemoryEpisodesRequest\x1a,.kratos.memory.v1.ListMemoryEpisodesResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/memory/episodes\x12\x9d\x01\n" +
+	"\x16ListMemoryFactPendings\x12/.kratos.memory.v1.ListMemoryFactPendingsRequest\x1a0.kratos.memory.v1.ListMemoryFactPendingsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/memory/fact-pendingsB?\n" +
 	"\x14api.kratos.memory.v1P\x01Z%aranea-agents/api/kratos/memory/v1;v1b\x06proto3"
 
 var (
@@ -8320,7 +8574,7 @@ func file_kratos_memory_v1_memory_proto_rawDescGZIP() []byte {
 	return file_kratos_memory_v1_memory_proto_rawDescData
 }
 
-var file_kratos_memory_v1_memory_proto_msgTypes = make([]protoimpl.MessageInfo, 103)
+var file_kratos_memory_v1_memory_proto_msgTypes = make([]protoimpl.MessageInfo, 106)
 var file_kratos_memory_v1_memory_proto_goTypes = []any{
 	(*ListL0SnapshotsRequest)(nil),              // 0: kratos.memory.v1.ListL0SnapshotsRequest
 	(*ListL0SnapshotsResponse)(nil),             // 1: kratos.memory.v1.ListL0SnapshotsResponse
@@ -8420,11 +8674,14 @@ var file_kratos_memory_v1_memory_proto_goTypes = []any{
 	(*ListMemoryEpisodesRequest)(nil),           // 95: kratos.memory.v1.ListMemoryEpisodesRequest
 	(*MemoryEpisode)(nil),                       // 96: kratos.memory.v1.MemoryEpisode
 	(*ListMemoryEpisodesResponse)(nil),          // 97: kratos.memory.v1.ListMemoryEpisodesResponse
-	nil,                                         // 98: kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
-	nil,                                         // 99: kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
-	nil,                                         // 100: kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
-	nil,                                         // 101: kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
-	(*MemoryWorkerStatus_QueueStats)(nil),       // 102: kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	(*MemoryFactPendingItem)(nil),               // 98: kratos.memory.v1.MemoryFactPendingItem
+	(*ListMemoryFactPendingsRequest)(nil),       // 99: kratos.memory.v1.ListMemoryFactPendingsRequest
+	(*ListMemoryFactPendingsResponse)(nil),      // 100: kratos.memory.v1.ListMemoryFactPendingsResponse
+	nil,                                         // 101: kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
+	nil,                                         // 102: kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
+	nil,                                         // 103: kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
+	nil,                                         // 104: kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
+	(*MemoryWorkerStatus_QueueStats)(nil),       // 105: kratos.memory.v1.MemoryWorkerStatus.QueueStats
 }
 var file_kratos_memory_v1_memory_proto_depIdxs = []int32{
 	2,   // 0: kratos.memory.v1.ListL0SnapshotsResponse.items:type_name -> kratos.memory.v1.L0AssemblySnapshot
@@ -8438,12 +8695,12 @@ var file_kratos_memory_v1_memory_proto_depIdxs = []int32{
 	17,  // 8: kratos.memory.v1.GraphNeighborhood.relations:type_name -> kratos.memory.v1.MemoryRelation
 	21,  // 9: kratos.memory.v1.ActivationResult.activation_path:type_name -> kratos.memory.v1.ActivationPathStep
 	22,  // 10: kratos.memory.v1.SpreadingActivationResponse.items:type_name -> kratos.memory.v1.ActivationResult
-	98,  // 11: kratos.memory.v1.AgentStrategyProfile.tool_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
-	99,  // 12: kratos.memory.v1.AgentStrategyProfile.provider_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
-	100, // 13: kratos.memory.v1.AgentStrategyProfile.model_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
+	101, // 11: kratos.memory.v1.AgentStrategyProfile.tool_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
+	102, // 12: kratos.memory.v1.AgentStrategyProfile.provider_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
+	103, // 13: kratos.memory.v1.AgentStrategyProfile.model_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
 	30,  // 14: kratos.memory.v1.ListEvolutionProposalsResponse.items:type_name -> kratos.memory.v1.EvolutionProposal
 	33,  // 15: kratos.memory.v1.ListEvolutionEventsResponse.items:type_name -> kratos.memory.v1.EvolutionEvent
-	101, // 16: kratos.memory.v1.EvolutionMetricsReport.proposals_by_status:type_name -> kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
+	104, // 16: kratos.memory.v1.EvolutionMetricsReport.proposals_by_status:type_name -> kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
 	35,  // 17: kratos.memory.v1.EvolutionMetricsReport.skill_stats:type_name -> kratos.memory.v1.AgentSkillStat
 	13,  // 18: kratos.memory.v1.UpsertMemoryFactRequest.fact:type_name -> kratos.memory.v1.MemoryFact
 	13,  // 19: kratos.memory.v1.UpsertMemoryFactResponse.fact:type_name -> kratos.memory.v1.MemoryFact
@@ -8463,9 +8720,9 @@ var file_kratos_memory_v1_memory_proto_depIdxs = []int32{
 	64,  // 33: kratos.memory.v1.DebugMemoryRecallResponse.l2_hits:type_name -> kratos.memory.v1.MemoryRecallHit
 	64,  // 34: kratos.memory.v1.DebugMemoryRecallResponse.l3_hits:type_name -> kratos.memory.v1.MemoryRecallHit
 	67,  // 35: kratos.memory.v1.CompositeSearchMemoriesResponse.items:type_name -> kratos.memory.v1.CompositeSearchHit
-	102, // 36: kratos.memory.v1.MemoryWorkerStatus.queue_high:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
-	102, // 37: kratos.memory.v1.MemoryWorkerStatus.queue_normal:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
-	102, // 38: kratos.memory.v1.MemoryWorkerStatus.queue_low:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	105, // 36: kratos.memory.v1.MemoryWorkerStatus.queue_high:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	105, // 37: kratos.memory.v1.MemoryWorkerStatus.queue_normal:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	105, // 38: kratos.memory.v1.MemoryWorkerStatus.queue_low:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
 	75,  // 39: kratos.memory.v1.ListMemoryDeadLettersResponse.items:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
 	75,  // 40: kratos.memory.v1.ReplayMemoryDeadLetterResponse.entry:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
 	75,  // 41: kratos.memory.v1.AbandonMemoryDeadLetterResponse.entry:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
@@ -8477,83 +8734,86 @@ var file_kratos_memory_v1_memory_proto_depIdxs = []int32{
 	92,  // 47: kratos.memory.v1.GetUnifiedMemoryGraphResponse.nodes:type_name -> kratos.memory.v1.UnifiedGraphNode
 	93,  // 48: kratos.memory.v1.GetUnifiedMemoryGraphResponse.edges:type_name -> kratos.memory.v1.UnifiedGraphEdge
 	96,  // 49: kratos.memory.v1.ListMemoryEpisodesResponse.items:type_name -> kratos.memory.v1.MemoryEpisode
-	0,   // 50: kratos.memory.v1.MemoryService.ListL0Snapshots:input_type -> kratos.memory.v1.ListL0SnapshotsRequest
-	3,   // 51: kratos.memory.v1.MemoryService.ListL1Tasks:input_type -> kratos.memory.v1.ListL1TasksRequest
-	6,   // 52: kratos.memory.v1.MemoryService.ListL1Fields:input_type -> kratos.memory.v1.ListL1FieldsRequest
-	9,   // 53: kratos.memory.v1.MemoryService.ListMemoryFacts:input_type -> kratos.memory.v1.ListMemoryFactsRequest
-	11,  // 54: kratos.memory.v1.MemoryService.ListConflictingFacts:input_type -> kratos.memory.v1.ListConflictingFactsRequest
-	14,  // 55: kratos.memory.v1.MemoryService.ListMemoryEntities:input_type -> kratos.memory.v1.ListMemoryEntitiesRequest
-	18,  // 56: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:input_type -> kratos.memory.v1.GetMemoryNeighborhoodRequest
-	20,  // 57: kratos.memory.v1.MemoryService.SpreadingActivation:input_type -> kratos.memory.v1.SpreadingActivationRequest
-	24,  // 58: kratos.memory.v1.MemoryService.GetAgentIdentity:input_type -> kratos.memory.v1.GetAgentIdentityRequest
-	26,  // 59: kratos.memory.v1.MemoryService.GetAgentStrategy:input_type -> kratos.memory.v1.GetAgentStrategyRequest
-	28,  // 60: kratos.memory.v1.MemoryService.ListEvolutionProposals:input_type -> kratos.memory.v1.ListEvolutionProposalsRequest
-	31,  // 61: kratos.memory.v1.MemoryService.ListEvolutionEvents:input_type -> kratos.memory.v1.ListEvolutionEventsRequest
-	34,  // 62: kratos.memory.v1.MemoryService.GetEvolutionMetrics:input_type -> kratos.memory.v1.GetEvolutionMetricsRequest
-	37,  // 63: kratos.memory.v1.MemoryService.UpsertMemoryFact:input_type -> kratos.memory.v1.UpsertMemoryFactRequest
-	39,  // 64: kratos.memory.v1.MemoryService.ReviewMemoryFact:input_type -> kratos.memory.v1.ReviewMemoryFactRequest
-	41,  // 65: kratos.memory.v1.MemoryService.AppendEvolutionEvent:input_type -> kratos.memory.v1.AppendEvolutionEventRequest
-	45,  // 66: kratos.memory.v1.MemoryService.ListCascadeProposals:input_type -> kratos.memory.v1.ListCascadeProposalsRequest
-	47,  // 67: kratos.memory.v1.MemoryService.ApproveCascadeProposal:input_type -> kratos.memory.v1.ApproveCascadeProposalRequest
-	49,  // 68: kratos.memory.v1.MemoryService.RejectCascadeProposal:input_type -> kratos.memory.v1.RejectCascadeProposalRequest
-	54,  // 69: kratos.memory.v1.MemoryService.PreviewCascadeApprove:input_type -> kratos.memory.v1.PreviewCascadeApproveRequest
-	57,  // 70: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:input_type -> kratos.memory.v1.GetCascadeSagaStepsRequest
-	59,  // 71: kratos.memory.v1.MemoryService.RetryCascadeApprove:input_type -> kratos.memory.v1.RetryCascadeApproveRequest
-	61,  // 72: kratos.memory.v1.MemoryService.CompensateCascadeApprove:input_type -> kratos.memory.v1.CompensateCascadeApproveRequest
-	65,  // 73: kratos.memory.v1.MemoryService.DebugMemoryRecall:input_type -> kratos.memory.v1.DebugMemoryRecallRequest
-	68,  // 74: kratos.memory.v1.MemoryService.CompositeSearchMemories:input_type -> kratos.memory.v1.CompositeSearchMemoriesRequest
-	70,  // 75: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:input_type -> kratos.memory.v1.GetMemoryWorkerStatusRequest
-	73,  // 76: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:input_type -> kratos.memory.v1.GetMemoryPlatformSettingsRequest
-	74,  // 77: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:input_type -> kratos.memory.v1.UpdateMemoryPlatformSettingsRequest
-	76,  // 78: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:input_type -> kratos.memory.v1.ListMemoryDeadLettersRequest
-	78,  // 79: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:input_type -> kratos.memory.v1.ReplayMemoryDeadLetterRequest
-	80,  // 80: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:input_type -> kratos.memory.v1.AbandonMemoryDeadLetterRequest
-	82,  // 81: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:input_type -> kratos.memory.v1.ListPIIFlaggedFactsRequest
-	84,  // 82: kratos.memory.v1.MemoryService.ReviewPIIFact:input_type -> kratos.memory.v1.ReviewPIIFactRequest
-	86,  // 83: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:input_type -> kratos.memory.v1.GetMemoryLayerOverviewRequest
-	91,  // 84: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:input_type -> kratos.memory.v1.GetUnifiedMemoryGraphRequest
-	95,  // 85: kratos.memory.v1.MemoryService.ListMemoryEpisodes:input_type -> kratos.memory.v1.ListMemoryEpisodesRequest
-	1,   // 86: kratos.memory.v1.MemoryService.ListL0Snapshots:output_type -> kratos.memory.v1.ListL0SnapshotsResponse
-	4,   // 87: kratos.memory.v1.MemoryService.ListL1Tasks:output_type -> kratos.memory.v1.ListL1TasksResponse
-	7,   // 88: kratos.memory.v1.MemoryService.ListL1Fields:output_type -> kratos.memory.v1.ListL1FieldsResponse
-	10,  // 89: kratos.memory.v1.MemoryService.ListMemoryFacts:output_type -> kratos.memory.v1.ListMemoryFactsResponse
-	12,  // 90: kratos.memory.v1.MemoryService.ListConflictingFacts:output_type -> kratos.memory.v1.ListConflictingFactsResponse
-	15,  // 91: kratos.memory.v1.MemoryService.ListMemoryEntities:output_type -> kratos.memory.v1.ListMemoryEntitiesResponse
-	19,  // 92: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:output_type -> kratos.memory.v1.GraphNeighborhood
-	23,  // 93: kratos.memory.v1.MemoryService.SpreadingActivation:output_type -> kratos.memory.v1.SpreadingActivationResponse
-	25,  // 94: kratos.memory.v1.MemoryService.GetAgentIdentity:output_type -> kratos.memory.v1.AgentIdentity
-	27,  // 95: kratos.memory.v1.MemoryService.GetAgentStrategy:output_type -> kratos.memory.v1.AgentStrategyProfile
-	29,  // 96: kratos.memory.v1.MemoryService.ListEvolutionProposals:output_type -> kratos.memory.v1.ListEvolutionProposalsResponse
-	32,  // 97: kratos.memory.v1.MemoryService.ListEvolutionEvents:output_type -> kratos.memory.v1.ListEvolutionEventsResponse
-	36,  // 98: kratos.memory.v1.MemoryService.GetEvolutionMetrics:output_type -> kratos.memory.v1.EvolutionMetricsReport
-	38,  // 99: kratos.memory.v1.MemoryService.UpsertMemoryFact:output_type -> kratos.memory.v1.UpsertMemoryFactResponse
-	40,  // 100: kratos.memory.v1.MemoryService.ReviewMemoryFact:output_type -> kratos.memory.v1.ReviewMemoryFactResponse
-	42,  // 101: kratos.memory.v1.MemoryService.AppendEvolutionEvent:output_type -> kratos.memory.v1.AppendEvolutionEventResponse
-	46,  // 102: kratos.memory.v1.MemoryService.ListCascadeProposals:output_type -> kratos.memory.v1.ListCascadeProposalsResponse
-	48,  // 103: kratos.memory.v1.MemoryService.ApproveCascadeProposal:output_type -> kratos.memory.v1.ApproveCascadeProposalResponse
-	50,  // 104: kratos.memory.v1.MemoryService.RejectCascadeProposal:output_type -> kratos.memory.v1.RejectCascadeProposalResponse
-	55,  // 105: kratos.memory.v1.MemoryService.PreviewCascadeApprove:output_type -> kratos.memory.v1.PreviewCascadeApproveResponse
-	58,  // 106: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:output_type -> kratos.memory.v1.GetCascadeSagaStepsResponse
-	60,  // 107: kratos.memory.v1.MemoryService.RetryCascadeApprove:output_type -> kratos.memory.v1.RetryCascadeApproveResponse
-	62,  // 108: kratos.memory.v1.MemoryService.CompensateCascadeApprove:output_type -> kratos.memory.v1.CompensateCascadeApproveResponse
-	66,  // 109: kratos.memory.v1.MemoryService.DebugMemoryRecall:output_type -> kratos.memory.v1.DebugMemoryRecallResponse
-	69,  // 110: kratos.memory.v1.MemoryService.CompositeSearchMemories:output_type -> kratos.memory.v1.CompositeSearchMemoriesResponse
-	71,  // 111: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:output_type -> kratos.memory.v1.MemoryWorkerStatus
-	72,  // 112: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
-	72,  // 113: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
-	77,  // 114: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:output_type -> kratos.memory.v1.ListMemoryDeadLettersResponse
-	79,  // 115: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:output_type -> kratos.memory.v1.ReplayMemoryDeadLetterResponse
-	81,  // 116: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:output_type -> kratos.memory.v1.AbandonMemoryDeadLetterResponse
-	83,  // 117: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:output_type -> kratos.memory.v1.ListPIIFlaggedFactsResponse
-	85,  // 118: kratos.memory.v1.MemoryService.ReviewPIIFact:output_type -> kratos.memory.v1.ReviewPIIFactResponse
-	90,  // 119: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:output_type -> kratos.memory.v1.GetMemoryLayerOverviewResponse
-	94,  // 120: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:output_type -> kratos.memory.v1.GetUnifiedMemoryGraphResponse
-	97,  // 121: kratos.memory.v1.MemoryService.ListMemoryEpisodes:output_type -> kratos.memory.v1.ListMemoryEpisodesResponse
-	86,  // [86:122] is the sub-list for method output_type
-	50,  // [50:86] is the sub-list for method input_type
-	50,  // [50:50] is the sub-list for extension type_name
-	50,  // [50:50] is the sub-list for extension extendee
-	0,   // [0:50] is the sub-list for field type_name
+	98,  // 50: kratos.memory.v1.ListMemoryFactPendingsResponse.items:type_name -> kratos.memory.v1.MemoryFactPendingItem
+	0,   // 51: kratos.memory.v1.MemoryService.ListL0Snapshots:input_type -> kratos.memory.v1.ListL0SnapshotsRequest
+	3,   // 52: kratos.memory.v1.MemoryService.ListL1Tasks:input_type -> kratos.memory.v1.ListL1TasksRequest
+	6,   // 53: kratos.memory.v1.MemoryService.ListL1Fields:input_type -> kratos.memory.v1.ListL1FieldsRequest
+	9,   // 54: kratos.memory.v1.MemoryService.ListMemoryFacts:input_type -> kratos.memory.v1.ListMemoryFactsRequest
+	11,  // 55: kratos.memory.v1.MemoryService.ListConflictingFacts:input_type -> kratos.memory.v1.ListConflictingFactsRequest
+	14,  // 56: kratos.memory.v1.MemoryService.ListMemoryEntities:input_type -> kratos.memory.v1.ListMemoryEntitiesRequest
+	18,  // 57: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:input_type -> kratos.memory.v1.GetMemoryNeighborhoodRequest
+	20,  // 58: kratos.memory.v1.MemoryService.SpreadingActivation:input_type -> kratos.memory.v1.SpreadingActivationRequest
+	24,  // 59: kratos.memory.v1.MemoryService.GetAgentIdentity:input_type -> kratos.memory.v1.GetAgentIdentityRequest
+	26,  // 60: kratos.memory.v1.MemoryService.GetAgentStrategy:input_type -> kratos.memory.v1.GetAgentStrategyRequest
+	28,  // 61: kratos.memory.v1.MemoryService.ListEvolutionProposals:input_type -> kratos.memory.v1.ListEvolutionProposalsRequest
+	31,  // 62: kratos.memory.v1.MemoryService.ListEvolutionEvents:input_type -> kratos.memory.v1.ListEvolutionEventsRequest
+	34,  // 63: kratos.memory.v1.MemoryService.GetEvolutionMetrics:input_type -> kratos.memory.v1.GetEvolutionMetricsRequest
+	37,  // 64: kratos.memory.v1.MemoryService.UpsertMemoryFact:input_type -> kratos.memory.v1.UpsertMemoryFactRequest
+	39,  // 65: kratos.memory.v1.MemoryService.ReviewMemoryFact:input_type -> kratos.memory.v1.ReviewMemoryFactRequest
+	41,  // 66: kratos.memory.v1.MemoryService.AppendEvolutionEvent:input_type -> kratos.memory.v1.AppendEvolutionEventRequest
+	45,  // 67: kratos.memory.v1.MemoryService.ListCascadeProposals:input_type -> kratos.memory.v1.ListCascadeProposalsRequest
+	47,  // 68: kratos.memory.v1.MemoryService.ApproveCascadeProposal:input_type -> kratos.memory.v1.ApproveCascadeProposalRequest
+	49,  // 69: kratos.memory.v1.MemoryService.RejectCascadeProposal:input_type -> kratos.memory.v1.RejectCascadeProposalRequest
+	54,  // 70: kratos.memory.v1.MemoryService.PreviewCascadeApprove:input_type -> kratos.memory.v1.PreviewCascadeApproveRequest
+	57,  // 71: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:input_type -> kratos.memory.v1.GetCascadeSagaStepsRequest
+	59,  // 72: kratos.memory.v1.MemoryService.RetryCascadeApprove:input_type -> kratos.memory.v1.RetryCascadeApproveRequest
+	61,  // 73: kratos.memory.v1.MemoryService.CompensateCascadeApprove:input_type -> kratos.memory.v1.CompensateCascadeApproveRequest
+	65,  // 74: kratos.memory.v1.MemoryService.DebugMemoryRecall:input_type -> kratos.memory.v1.DebugMemoryRecallRequest
+	68,  // 75: kratos.memory.v1.MemoryService.CompositeSearchMemories:input_type -> kratos.memory.v1.CompositeSearchMemoriesRequest
+	70,  // 76: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:input_type -> kratos.memory.v1.GetMemoryWorkerStatusRequest
+	73,  // 77: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:input_type -> kratos.memory.v1.GetMemoryPlatformSettingsRequest
+	74,  // 78: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:input_type -> kratos.memory.v1.UpdateMemoryPlatformSettingsRequest
+	76,  // 79: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:input_type -> kratos.memory.v1.ListMemoryDeadLettersRequest
+	78,  // 80: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:input_type -> kratos.memory.v1.ReplayMemoryDeadLetterRequest
+	80,  // 81: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:input_type -> kratos.memory.v1.AbandonMemoryDeadLetterRequest
+	82,  // 82: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:input_type -> kratos.memory.v1.ListPIIFlaggedFactsRequest
+	84,  // 83: kratos.memory.v1.MemoryService.ReviewPIIFact:input_type -> kratos.memory.v1.ReviewPIIFactRequest
+	86,  // 84: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:input_type -> kratos.memory.v1.GetMemoryLayerOverviewRequest
+	91,  // 85: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:input_type -> kratos.memory.v1.GetUnifiedMemoryGraphRequest
+	95,  // 86: kratos.memory.v1.MemoryService.ListMemoryEpisodes:input_type -> kratos.memory.v1.ListMemoryEpisodesRequest
+	99,  // 87: kratos.memory.v1.MemoryService.ListMemoryFactPendings:input_type -> kratos.memory.v1.ListMemoryFactPendingsRequest
+	1,   // 88: kratos.memory.v1.MemoryService.ListL0Snapshots:output_type -> kratos.memory.v1.ListL0SnapshotsResponse
+	4,   // 89: kratos.memory.v1.MemoryService.ListL1Tasks:output_type -> kratos.memory.v1.ListL1TasksResponse
+	7,   // 90: kratos.memory.v1.MemoryService.ListL1Fields:output_type -> kratos.memory.v1.ListL1FieldsResponse
+	10,  // 91: kratos.memory.v1.MemoryService.ListMemoryFacts:output_type -> kratos.memory.v1.ListMemoryFactsResponse
+	12,  // 92: kratos.memory.v1.MemoryService.ListConflictingFacts:output_type -> kratos.memory.v1.ListConflictingFactsResponse
+	15,  // 93: kratos.memory.v1.MemoryService.ListMemoryEntities:output_type -> kratos.memory.v1.ListMemoryEntitiesResponse
+	19,  // 94: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:output_type -> kratos.memory.v1.GraphNeighborhood
+	23,  // 95: kratos.memory.v1.MemoryService.SpreadingActivation:output_type -> kratos.memory.v1.SpreadingActivationResponse
+	25,  // 96: kratos.memory.v1.MemoryService.GetAgentIdentity:output_type -> kratos.memory.v1.AgentIdentity
+	27,  // 97: kratos.memory.v1.MemoryService.GetAgentStrategy:output_type -> kratos.memory.v1.AgentStrategyProfile
+	29,  // 98: kratos.memory.v1.MemoryService.ListEvolutionProposals:output_type -> kratos.memory.v1.ListEvolutionProposalsResponse
+	32,  // 99: kratos.memory.v1.MemoryService.ListEvolutionEvents:output_type -> kratos.memory.v1.ListEvolutionEventsResponse
+	36,  // 100: kratos.memory.v1.MemoryService.GetEvolutionMetrics:output_type -> kratos.memory.v1.EvolutionMetricsReport
+	38,  // 101: kratos.memory.v1.MemoryService.UpsertMemoryFact:output_type -> kratos.memory.v1.UpsertMemoryFactResponse
+	40,  // 102: kratos.memory.v1.MemoryService.ReviewMemoryFact:output_type -> kratos.memory.v1.ReviewMemoryFactResponse
+	42,  // 103: kratos.memory.v1.MemoryService.AppendEvolutionEvent:output_type -> kratos.memory.v1.AppendEvolutionEventResponse
+	46,  // 104: kratos.memory.v1.MemoryService.ListCascadeProposals:output_type -> kratos.memory.v1.ListCascadeProposalsResponse
+	48,  // 105: kratos.memory.v1.MemoryService.ApproveCascadeProposal:output_type -> kratos.memory.v1.ApproveCascadeProposalResponse
+	50,  // 106: kratos.memory.v1.MemoryService.RejectCascadeProposal:output_type -> kratos.memory.v1.RejectCascadeProposalResponse
+	55,  // 107: kratos.memory.v1.MemoryService.PreviewCascadeApprove:output_type -> kratos.memory.v1.PreviewCascadeApproveResponse
+	58,  // 108: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:output_type -> kratos.memory.v1.GetCascadeSagaStepsResponse
+	60,  // 109: kratos.memory.v1.MemoryService.RetryCascadeApprove:output_type -> kratos.memory.v1.RetryCascadeApproveResponse
+	62,  // 110: kratos.memory.v1.MemoryService.CompensateCascadeApprove:output_type -> kratos.memory.v1.CompensateCascadeApproveResponse
+	66,  // 111: kratos.memory.v1.MemoryService.DebugMemoryRecall:output_type -> kratos.memory.v1.DebugMemoryRecallResponse
+	69,  // 112: kratos.memory.v1.MemoryService.CompositeSearchMemories:output_type -> kratos.memory.v1.CompositeSearchMemoriesResponse
+	71,  // 113: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:output_type -> kratos.memory.v1.MemoryWorkerStatus
+	72,  // 114: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
+	72,  // 115: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
+	77,  // 116: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:output_type -> kratos.memory.v1.ListMemoryDeadLettersResponse
+	79,  // 117: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:output_type -> kratos.memory.v1.ReplayMemoryDeadLetterResponse
+	81,  // 118: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:output_type -> kratos.memory.v1.AbandonMemoryDeadLetterResponse
+	83,  // 119: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:output_type -> kratos.memory.v1.ListPIIFlaggedFactsResponse
+	85,  // 120: kratos.memory.v1.MemoryService.ReviewPIIFact:output_type -> kratos.memory.v1.ReviewPIIFactResponse
+	90,  // 121: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:output_type -> kratos.memory.v1.GetMemoryLayerOverviewResponse
+	94,  // 122: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:output_type -> kratos.memory.v1.GetUnifiedMemoryGraphResponse
+	97,  // 123: kratos.memory.v1.MemoryService.ListMemoryEpisodes:output_type -> kratos.memory.v1.ListMemoryEpisodesResponse
+	100, // 124: kratos.memory.v1.MemoryService.ListMemoryFactPendings:output_type -> kratos.memory.v1.ListMemoryFactPendingsResponse
+	88,  // [88:125] is the sub-list for method output_type
+	51,  // [51:88] is the sub-list for method input_type
+	51,  // [51:51] is the sub-list for extension type_name
+	51,  // [51:51] is the sub-list for extension extendee
+	0,   // [0:51] is the sub-list for field type_name
 }
 
 func init() { file_kratos_memory_v1_memory_proto_init() }
@@ -8567,7 +8827,7 @@ func file_kratos_memory_v1_memory_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_memory_v1_memory_proto_rawDesc), len(file_kratos_memory_v1_memory_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   103,
+			NumMessages:   106,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

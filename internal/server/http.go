@@ -179,8 +179,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
 //   - /v1/knowledge/documents/{id}/autolink-preview|autolink: confirm-then-apply outgoing wikilinks
 //   - /v1/knowledge/collections/{id}/health|experts|writeback-pending: SP7 G7/G8 + pending gate
-//   - /api/v1/config-graph/rebuild|status|nodes: M81 config-asset graph (handwritten JSON,
-//     generation-scoped reads; async rebuild trigger must outlive the request ctx)
+//   - /api/v1/config-graph/rebuild|status|nodes|nodes/{type}/{ref}/impact|dependencies|edges|health:
+//     M81 config-asset graph (handwritten JSON, generation-scoped reads;
+//     async rebuild trigger must outlive the request ctx)
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -297,6 +298,23 @@ func registerCustomRoutes(
 		})
 		srv.Route("/").GET("/api/v1/config-graph/nodes", func(ctx kratoshttp.Context) error {
 			configGraphSvc.ServeNodes(ctx.Response(), ctx.Request())
+			return nil
+		})
+		// P1 查询端点（design §5/§6）：{type}/{ref} 双解（ref_id 或 node_key）。
+		srv.Route("/").GET("/api/v1/config-graph/nodes/{type}/{ref}/impact", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeImpact(ctx.Response(), ctx.Request(), ctx.Vars().Get("type"), ctx.Vars().Get("ref"))
+			return nil
+		})
+		srv.Route("/").GET("/api/v1/config-graph/nodes/{type}/{ref}/dependencies", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeDependencies(ctx.Response(), ctx.Request(), ctx.Vars().Get("type"), ctx.Vars().Get("ref"))
+			return nil
+		})
+		srv.Route("/").GET("/api/v1/config-graph/nodes/{type}/{ref}/edges", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeNodeEdges(ctx.Response(), ctx.Request(), ctx.Vars().Get("type"), ctx.Vars().Get("ref"))
+			return nil
+		})
+		srv.Route("/").GET("/api/v1/config-graph/health", func(ctx kratoshttp.Context) error {
+			configGraphSvc.ServeHealth(ctx.Response(), ctx.Request())
 			return nil
 		})
 	}

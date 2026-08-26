@@ -482,6 +482,20 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20261250, Name: "decision_records", SQL: "sql/migrations/20261250_decision_records.sql"},
 	{Version: 20261251, Name: "decision_record_outbox", SQL: "sql/migrations/20261251_decision_record_outbox.sql"},
 	{Version: 20261252, Name: "decision_records_idx", SQL: "sql/migrations/20261252_decision_records_idx.sql", Func: ddlDecisionRecordsGINIndexes},
+	// 20261254 decision_records_runid_idx（M80 1.10 压测调优）：source_run_id
+	// 等值过滤的 btree 表达式索引（GIN 只服务 @>，实测 1M 行全表扫 P95≈125ms
+	// 虽过门禁但 10 倍量即破；补索引后 <5ms）。PG-only，号段取预留缓冲。
+	{Version: 20261254, Name: "decision_records_runid_idx", Func: ddlDecisionRecordsRunIDIndex},
+	// 20261255 memory_fact_pending_payload（79-runtime-governance R3 Phase 3.3）：
+	// pending 表加 payload_json 存扣留时刻的 FactWriteDecision 快照——approve 回写后
+	// 忠实重放原 bi-temporal 写（候选全字段元数据不丢失）。号段取 20261253-59
+	// 预留缓冲。双方言通用，幂等（duplicate column 视为成功）。
+	{Version: 20261255, Name: "memory_fact_pending_payload", SQL: "sql/migrations/20261255_memory_fact_pending_payload.sql"},
+	// 20261256 memory_fact_allow_rules（79-runtime-governance R3 Phase 3.4，E4）：
+	// approve_always 以 (agent_id, verdict) 维度持久化 allow 规则，命中后同 agent
+	// 同类 verdict 免审直写（仍记 audit）。号段取 20261253-59 预留缓冲。双方言
+	// 通用，幂等（IF NOT EXISTS + 唯一索引防重）。
+	{Version: 20261256, Name: "memory_fact_allow_rules", SQL: "sql/migrations/20261256_memory_fact_allow_rules.sql"},
 	// 20261260 config_graph（M81 配置资产图谱 P0-0.1）：配置资产依赖图
 	// config_graph_nodes（12 类资产节点）+ config_graph_edges（27 类引用边），
 	// generation 双代切换支撑全量重建无清表窗口。双方言通用，幂等。
@@ -1451,6 +1465,18 @@ func ddlDecisionRecordsGINIndexes(ctx context.Context, rawDB *sql.DB, _ *ent.Cli
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261252_decision_records_gin.sql", d, lg)
+}
+
+// ddlDecisionRecordsRunIDIndex creates the btree expression index serving
+// source_run_id equality filters (M80 1.10 perf tuning, NFR-80-04).
+// Postgres-only: the indexed expression casts TEXT->jsonb; SQLite skips.
+func ddlDecisionRecordsRunIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("decision_records_runid_idx skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.decision_records_runid_idx"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261254_decision_records_runid_idx.sql", d, lg)
 }
 
 // ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).

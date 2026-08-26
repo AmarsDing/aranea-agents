@@ -887,6 +887,33 @@ export type ListMemoryEpisodesResponse = {
   total: number | undefined;
 };
 
+// R3 记忆审批层（79-runtime-governance Phase 3）：一条被扣留的高风险事实写。
+// 审批决议在 twinmonitor 审批中心执行；本列表提供 proposed vs prior 对照与
+// adjudicator reason 供人工研判。
+export type MemoryFactPendingItem = {
+  id: string | undefined;
+  agentId: string | undefined;
+  factKey: string | undefined;
+  verdict: string | undefined;
+  proposedBody: string | undefined;
+  priorBody: string | undefined;
+  adjudicatorReason: string | undefined;
+  status: string | undefined;
+  approver: string | undefined;
+  createdAt: number | undefined;
+  decidedAt: number | undefined;
+};
+
+export type ListMemoryFactPendingsRequest = {
+  agentId: string | undefined;
+  status: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListMemoryFactPendingsResponse = {
+  items: MemoryFactPendingItem[] | undefined;
+};
+
 export interface MemoryService {
   ListL0Snapshots(request: ListL0SnapshotsRequest): Promise<ListL0SnapshotsResponse>;
   ListL1Tasks(request: ListL1TasksRequest): Promise<ListL1TasksResponse>;
@@ -924,6 +951,7 @@ export interface MemoryService {
   GetMemoryLayerOverview(request: GetMemoryLayerOverviewRequest): Promise<GetMemoryLayerOverviewResponse>;
   GetUnifiedMemoryGraph(request: GetUnifiedMemoryGraphRequest): Promise<GetUnifiedMemoryGraphResponse>;
   ListMemoryEpisodes(request: ListMemoryEpisodesRequest): Promise<ListMemoryEpisodesResponse>;
+  ListMemoryFactPendings(request: ListMemoryFactPendingsRequest): Promise<ListMemoryFactPendingsResponse>;
 }
 
 type RequestType = {
@@ -1788,6 +1816,32 @@ export function createMemoryServiceClient(
         service: "MemoryService",
         method: "ListMemoryEpisodes",
       }) as Promise<ListMemoryEpisodesResponse>;
+    },
+    ListMemoryFactPendings(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/memory/fact-pendings`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MemoryService",
+        method: "ListMemoryFactPendings",
+      }) as Promise<ListMemoryFactPendingsResponse>;
     },
   };
 }

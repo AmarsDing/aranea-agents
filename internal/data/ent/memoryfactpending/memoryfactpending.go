@@ -23,6 +23,8 @@ const (
 	FieldPriorBody = "prior_body"
 	// FieldAdjudicatorReason holds the string denoting the adjudicator_reason field in the database.
 	FieldAdjudicatorReason = "adjudicator_reason"
+	// FieldPayloadJSON holds the string denoting the payload_json field in the database.
+	FieldPayloadJSON = "payload_json"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldApprover holds the string denoting the approver field in the database.
@@ -44,6 +46,7 @@ var Columns = []string{
 	FieldProposedBody,
 	FieldPriorBody,
 	FieldAdjudicatorReason,
+	FieldPayloadJSON,
 	FieldStatus,
 	FieldApprover,
 	FieldCreatedAt,
@@ -77,6 +80,8 @@ var (
 	DefaultPriorBody string
 	// DefaultAdjudicatorReason holds the default value on creation for the "adjudicator_reason" field.
 	DefaultAdjudicatorReason string
+	// DefaultPayloadJSON holds the default value on creation for the "payload_json" field.
+	DefaultPayloadJSON string
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -129,6 +134,11 @@ func ByPriorBody(opts ...sql.OrderTermOption) OrderOption {
 // ByAdjudicatorReason orders the results by the adjudicator_reason field.
 func ByAdjudicatorReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAdjudicatorReason, opts...).ToFunc()
+}
+
+// ByPayloadJSON orders the results by the payload_json field.
+func ByPayloadJSON(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadJSON, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

@@ -531,3 +531,18 @@ export type MemoryEpisodeListResult = {
   items: MemoryEpisode[];
   total: number;
 };
+
+/** R3 记忆审批层扣留条目（79-runtime-governance Phase 3.5，`GET /v1/memory/fact-pendings`）。 */
+export type MemoryFactPendingItem = {
+  id: string;
+  agent_id: string;
+  fact_key: string; // UPDATE/DELETE 目标事实 id；CONTESTED ADD 为空
+  verdict: string; // UPDATE | DELETE | CONTESTED
+  proposed_body: string;
+  prior_body: string;
+  adjudicator_reason: string;
+  status: string; // pending | approved | rejected
+  approver: string;
+  created_at: number; // unix seconds
+  decided_at: number; // unix seconds；未决议为 0
+};

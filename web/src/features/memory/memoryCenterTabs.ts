@@ -1,5 +1,5 @@
-/** Memory Center top-level tabs. `governance` is the Trust surface; `ops` is admin-only. */
-export const MEMORY_CENTER_TABS = ['panorama', 'graph', 'browse', 'governance', 'ops'] as const;
+/** Memory Center top-level tabs. `governance` is the Trust surface; `pending` is the R3 approval-layer withheld-write list; `ops` is admin-only. */
+export const MEMORY_CENTER_TABS = ['panorama', 'graph', 'browse', 'governance', 'pending', 'ops'] as const;
 
 export type MemoryCenterTab = (typeof MEMORY_CENTER_TABS)[number];
 

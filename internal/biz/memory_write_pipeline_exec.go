@@ -66,8 +66,7 @@ type FactWriteBatchResult struct {
 	FactRows [][]byte
 }
 
-// FactWritePipelineDeps wires the unified write pipeline (biz struct
-// dependency budget: exactly 9).
+// FactWritePipelineDeps wires the unified write pipeline.
 type FactWritePipelineDeps struct {
 	Searcher    MemoryConflictNeighborSearcher // optional: nil → all candidates ADD
 	Embedder    EmbeddingService               // optional: nil → all candidates ADD
@@ -77,7 +76,13 @@ type FactWritePipelineDeps struct {
 	Adjudicator FactWriteAdjudicator           // optional: contested without verdict → pend CONTESTED (R3)
 	ActionLog   MemoryActionLogWriter          // optional: audit trail
 	Pending     MemoryFactPendingStore         // optional: R3 gate withholds fail-closed when nil
-	LG          loggateway.Logger
+	Notifier    MemoryFactPendingNotifier      // optional: approval-center push after withhold (R3 3.3)
+	// AllowRules / SessionGrants (R3 3.4, E4): approve_always / approve_session
+	// exemptions — a gated verdict with a matching grant bypasses the pending
+	// gate and writes directly (still audited).
+	AllowRules    MemoryFactAllowRuleStore
+	SessionGrants *MemoryFactSessionGrants
+	LG            loggateway.Logger
 }
 
 // FactWritePipeline is the unified write pipeline (P1-3 §6.3): all automatic
@@ -86,15 +91,18 @@ type FactWritePipelineDeps struct {
 // bi-temporal writes → audit. Never blocks callers: every infrastructure
 // failure degrades to the safest write (ADD) or a logged skip.
 type FactWritePipeline struct {
-	searcher    MemoryConflictNeighborSearcher
-	embedder    EmbeddingService
-	reader      conflictFactRowReader
-	writer      L3FactWriter
-	access      FactAccessCounter
-	adjudicator FactWriteAdjudicator
-	actionLog   MemoryActionLogWriter
-	pending     MemoryFactPendingStore
-	lg          loggateway.Logger
+	searcher      MemoryConflictNeighborSearcher
+	embedder      EmbeddingService
+	reader        conflictFactRowReader
+	writer        L3FactWriter
+	access        FactAccessCounter
+	adjudicator   FactWriteAdjudicator
+	actionLog     MemoryActionLogWriter
+	pending       MemoryFactPendingStore
+	notifier      MemoryFactPendingNotifier
+	allowRules    MemoryFactAllowRuleStore
+	sessionGrants *MemoryFactSessionGrants
+	lg            loggateway.Logger
 }
 
 // NewFactWritePipeline creates the pipeline. Returns nil when the required
@@ -108,15 +116,18 @@ func NewFactWritePipeline(deps FactWritePipelineDeps) *FactWritePipeline {
 		lg = loggateway.NewNoop()
 	}
 	return &FactWritePipeline{
-		searcher:    deps.Searcher,
-		embedder:    deps.Embedder,
-		reader:      deps.Reader,
-		writer:      deps.Writer,
-		access:      deps.Access,
-		adjudicator: deps.Adjudicator,
-		actionLog:   deps.ActionLog,
-		pending:     deps.Pending,
-		lg:          lg.With(loggateway.Domain("fact_write_pipeline")),
+		searcher:      deps.Searcher,
+		embedder:      deps.Embedder,
+		reader:        deps.Reader,
+		writer:        deps.Writer,
+		access:        deps.Access,
+		adjudicator:   deps.Adjudicator,
+		actionLog:     deps.ActionLog,
+		pending:       deps.Pending,
+		notifier:      deps.Notifier,
+		allowRules:    deps.AllowRules,
+		sessionGrants: deps.SessionGrants,
+		lg:            lg.With(loggateway.Domain("fact_write_pipeline")),
 	}
 }
 
@@ -313,11 +324,17 @@ func (p *FactWritePipeline) applyAdjudication(ctx context.Context, passed []Fact
 
 // execute applies one decision to storage and updates the batch counters.
 // The R3 verdict gate runs first: UPDATE / DELETE / contested-unadjudicated
-// decisions are withheld into memory_fact_pending instead of writing.
+// decisions are withheld into memory_fact_pending instead of writing — unless
+// an E4 exemption (approve_always rule / approve_session grant) matches, in
+// which case the original write executes directly with an allow_bypass audit.
 func (p *FactWritePipeline) execute(ctx context.Context, d FactWriteDecision, priorBody string, res *FactWriteBatchResult, mergeIDs *[]string) {
 	if verdict, pend := RouteFactWriteDecision(d); pend {
-		p.pend(ctx, d, verdict, priorBody, res)
-		return
+		if MemoryFactWriteBypassed(ctx, p.allowRules, p.sessionGrants, d, verdict) {
+			p.audit(ctx, "fact_write.allow_bypass", d.Candidate, "verdict="+verdict+" target="+d.TargetFactID)
+		} else {
+			p.pend(ctx, d, verdict, priorBody, res)
+			return
+		}
 	}
 	switch d.Operation {
 	case FactWriteOpAdd:
@@ -388,6 +405,7 @@ func (p *FactWritePipeline) pend(ctx context.Context, d FactWriteDecision, verdi
 		ProposedBody:      strings.TrimSpace(d.Candidate.Statement),
 		PriorBody:         strings.TrimSpace(priorBody),
 		AdjudicatorReason: d.DecisionReason,
+		PayloadJSON:       MarshalFactWriteDecisionSnapshot(d),
 		Status:            MemoryFactPendingStatusPending,
 		CreatedAt:         time.Now().Unix(),
 	}
@@ -400,6 +418,10 @@ func (p *FactWritePipeline) pend(ctx context.Context, d FactWriteDecision, verdi
 	}
 	res.Pended++
 	p.audit(ctx, "fact_write.pending", d.Candidate, auditReason)
+	// 审批中心推送（R3 3.3）：best-effort，失败不回滚落库（audit.py 积压体检兜底）。
+	if p.notifier != nil {
+		p.notifier.NotifyFactWritePending(ctx, rec)
+	}
 }
 
 // audit writes one action-log record per decision (best-effort).

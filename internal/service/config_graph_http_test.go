@@ -10,6 +10,7 @@ import (
 	"time"
 
 	bizcg "aranea-agents/internal/biz/configgraph"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 )
 
@@ -50,6 +51,15 @@ type fakeCGRepo struct {
 	nodes     []bizcg.Node
 	nodesErr  error
 	lastFilt  bizcg.NodeFilter
+	// P1 查询 fake 行为。
+	target    bizcg.Node
+	targetErr error
+	walkRows  []bizcg.WalkRow
+	outEdges  []bizcg.StoredEdge
+	inEdges   []bizcg.StoredEdge
+	brokenOwn []bizcg.StoredEdge
+	allNodes  []bizcg.Node
+	allEdges  []bizcg.StoredEdge
 }
 
 func (f *fakeCGRepo) UpsertNodes(context.Context, []bizcg.Node) error     { return nil }
@@ -63,6 +73,30 @@ func (f *fakeCGRepo) Counts(context.Context, int64) (bizcg.Counts, error) { retu
 func (f *fakeCGRepo) ListNodes(_ context.Context, filter bizcg.NodeFilter) ([]bizcg.Node, error) {
 	f.lastFilt = filter
 	return f.nodes, f.nodesErr
+}
+func (f *fakeCGRepo) ListBrokenEdgesTargeting(context.Context, int64, []string) ([]bizcg.StoredEdge, error) {
+	return nil, nil
+}
+func (f *fakeCGRepo) CountActiveSessions(context.Context, []string, []string) (int64, error) {
+	return 0, nil
+}
+func (f *fakeCGRepo) FindNode(_ context.Context, _ int64, _, _ string) (bizcg.Node, error) {
+	if f.targetErr != nil {
+		return bizcg.Node{}, f.targetErr
+	}
+	return f.target, nil
+}
+func (f *fakeCGRepo) WalkGraph(context.Context, int64, string, bool, int) ([]bizcg.WalkRow, error) {
+	return f.walkRows, nil
+}
+func (f *fakeCGRepo) ListNodeEdges(context.Context, int64, string) ([]bizcg.StoredEdge, []bizcg.StoredEdge, []bizcg.StoredEdge, error) {
+	return f.outEdges, f.inEdges, f.brokenOwn, nil
+}
+func (f *fakeCGRepo) ListAllNodes(context.Context, int64) ([]bizcg.Node, error) {
+	return f.allNodes, nil
+}
+func (f *fakeCGRepo) ListAllEdges(context.Context, int64) ([]bizcg.StoredEdge, error) {
+	return f.allEdges, nil
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -257,5 +291,178 @@ func TestConfigGraphService_NodesNotReadyAndBadRequest(t *testing.T) {
 	svc.ServeNodes(rec, cgRequest(t, http.MethodGet, "/api/v1/config-graph/nodes?limit=abc", cgAdminCtx()))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-numeric limit = %d, want 400", rec.Code)
+	}
+}
+
+// ── P1 查询端点 ────────────────────────────────────────────────────────────
+
+var cgQueryTarget = bizcg.Node{
+	ID: "n-tool", NodeType: bizcg.NodeTypeTool, RefID: "uuid-tool", NodeKey: "shell",
+	Attrs: map[string]any{"risk_level": "high"},
+}
+
+func TestConfigGraphService_Impact(t *testing.T) {
+	repo := &fakeCGRepo{
+		target: cgQueryTarget,
+		walkRows: []bizcg.WalkRow{
+			{Edge: bizcg.StoredEdge{SrcID: "n-agent-a", DstID: "n-tool", Type: bizcg.EdgeTypeGrantedTool,
+				Evidence: map[string]any{bizcg.EvidenceKeyGrantOrigin: bizcg.GrantOriginOverride}},
+				Node:  bizcg.Node{ID: "n-agent-a", NodeType: bizcg.NodeTypeAgent, RefID: "uuid-agent-a", NodeKey: "agent-a"},
+				Depth: 1, Via: []string{bizcg.EdgeTypeGrantedTool}},
+		},
+	}
+	svc := NewConfigGraphService(&fakeCGRebuilder{current: 7, ready: true}, repo, nil)
+
+	rec := httptest.NewRecorder()
+	svc.ServeImpact(rec, cgRequest(t, http.MethodGet,
+		"/api/v1/config-graph/nodes/tool/shell/impact?depth=3", cgAdminCtx()), "tool", "shell")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("impact = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := cgDecode(t, rec)
+	if body["generation"] != float64(7) {
+		t.Fatalf("generation = %v", body["generation"])
+	}
+	nodes, ok := body["nodes"].([]any)
+	if !ok || len(nodes) != 1 {
+		t.Fatalf("nodes = %v", body["nodes"])
+	}
+	// risk：override 30 + 高危工具目标 20 = 50 → medium。
+	risk, ok := body["risk"].(map[string]any)
+	if !ok || risk["level"] != "medium" || risk["score"] != float64(50) {
+		t.Fatalf("risk = %v", body["risk"])
+	}
+}
+
+func TestConfigGraphService_ImpactErrors(t *testing.T) {
+	svc := NewConfigGraphService(&fakeCGRebuilder{current: 7, ready: true}, &fakeCGRepo{target: cgQueryTarget}, nil)
+
+	// 非 admin → 403。
+	rec := httptest.NewRecorder()
+	svc.ServeImpact(rec, cgRequest(t, http.MethodGet, "/x", cgUserCtx()), "tool", "shell")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("user impact = %d, want 403", rec.Code)
+	}
+	// 非法 type → 400。
+	rec = httptest.NewRecorder()
+	svc.ServeImpact(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()), "bogus", "shell")
+	if rec.Code != http.StatusBadRequest || cgErrorCode(t, rec) != "CONFIG_GRAPH.BAD_REQUEST" {
+		t.Fatalf("bad type = %d %s", rec.Code, cgErrorCode(t, rec))
+	}
+	// 空 ref → 400。
+	rec = httptest.NewRecorder()
+	svc.ServeImpact(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()), "tool", "  ")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty ref = %d, want 400", rec.Code)
+	}
+	// 非整数 depth → 400。
+	rec = httptest.NewRecorder()
+	svc.ServeImpact(rec, cgRequest(t, http.MethodGet, "/x?depth=abc", cgAdminCtx()), "tool", "shell")
+	if rec.Code != http.StatusBadRequest || cgErrorCode(t, rec) != "CONFIG_GRAPH.BAD_REQUEST" {
+		t.Fatalf("bad depth = %d %s", rec.Code, cgErrorCode(t, rec))
+	}
+	// 未建图 → 503 NOT_READY。
+	svcNR := NewConfigGraphService(&fakeCGRebuilder{}, &fakeCGRepo{target: cgQueryTarget}, nil)
+	rec = httptest.NewRecorder()
+	svcNR.ServeImpact(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()), "tool", "shell")
+	if rec.Code != http.StatusServiceUnavailable || cgErrorCode(t, rec) != "CONFIG_GRAPH.NOT_READY" {
+		t.Fatalf("not ready = %d %s", rec.Code, cgErrorCode(t, rec))
+	}
+	// 目标不存在 → 404 NODE_NOT_FOUND。
+	svcNF := NewConfigGraphService(&fakeCGRebuilder{current: 7, ready: true},
+		&fakeCGRepo{targetErr: apierror.NotFound("CONFIG_GRAPH", "node not found")}, nil)
+	rec = httptest.NewRecorder()
+	svcNF.ServeImpact(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()), "tool", "ghost")
+	if rec.Code != http.StatusNotFound || cgErrorCode(t, rec) != "CONFIG_GRAPH.NODE_NOT_FOUND" {
+		t.Fatalf("not found = %d %s", rec.Code, cgErrorCode(t, rec))
+	}
+}
+
+func TestConfigGraphService_Dependencies(t *testing.T) {
+	repo := &fakeCGRepo{
+		target: bizcg.Node{ID: "n-agent-a", NodeType: bizcg.NodeTypeAgent, RefID: "uuid-agent-a", NodeKey: "agent-a"},
+		walkRows: []bizcg.WalkRow{
+			{Edge: bizcg.StoredEdge{SrcID: "n-agent-a", DstID: "n-tool", Type: bizcg.EdgeTypeGrantedTool},
+				Node:  bizcg.Node{ID: "n-tool", NodeType: bizcg.NodeTypeTool, RefID: "uuid-tool", NodeKey: "shell"},
+				Depth: 1, Via: []string{bizcg.EdgeTypeGrantedTool}},
+		},
+	}
+	svc := NewConfigGraphService(&fakeCGRebuilder{current: 7, ready: true}, repo, nil)
+
+	rec := httptest.NewRecorder()
+	svc.ServeDependencies(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()), "agent", "agent-a")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dependencies = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := cgDecode(t, rec)
+	nodes, ok := body["nodes"].([]any)
+	if !ok || len(nodes) != 1 {
+		t.Fatalf("nodes = %v", body["nodes"])
+	}
+}
+
+func TestConfigGraphService_NodeEdges(t *testing.T) {
+	repo := &fakeCGRepo{
+		target:    cgQueryTarget,
+		outEdges:  []bizcg.StoredEdge{{ID: "e1", SrcID: "n-tool", DstID: "n-x", Type: bizcg.EdgeTypeHookRef}},
+		inEdges:   []bizcg.StoredEdge{{ID: "e2", SrcID: "n-agent-a", DstID: "n-tool", Type: bizcg.EdgeTypeGrantedTool}},
+		brokenOwn: []bizcg.StoredEdge{{ID: "e3", SrcID: "n-tool", Type: bizcg.EdgeTypeHookRef,
+			Evidence: map[string]any{bizcg.EvidenceKeyBroken: true}}},
+	}
+	svc := NewConfigGraphService(&fakeCGRebuilder{current: 7, ready: true}, repo, nil)
+
+	rec := httptest.NewRecorder()
+	svc.ServeNodeEdges(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()), "tool", "shell")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edges = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := cgDecode(t, rec)
+	for _, seg := range []string{"out", "in", "broken"} {
+		rows, ok := body[seg].([]any)
+		if !ok || len(rows) != 1 {
+			t.Fatalf("%s = %v", seg, body[seg])
+		}
+	}
+}
+
+func TestConfigGraphService_Health(t *testing.T) {
+	repo := &fakeCGRepo{
+		allNodes: []bizcg.Node{
+			{ID: "n-sa", NodeType: bizcg.NodeTypeSkill, RefID: "r-sa", NodeKey: "skill-a", Status: bizcg.NodeStatusActive},
+			{ID: "n-sb", NodeType: bizcg.NodeTypeSkill, RefID: "r-sb", NodeKey: "skill-b", Status: bizcg.NodeStatusActive},
+		},
+		allEdges: []bizcg.StoredEdge{
+			{ID: "e1", SrcID: "n-sa", DstID: "n-sb", Type: bizcg.EdgeTypeSkillParent, Evidence: map[string]any{}},
+			{ID: "e2", SrcID: "n-sb", DstID: "n-sa", Type: bizcg.EdgeTypeSkillParent, Evidence: map[string]any{}},
+		},
+	}
+	svc := NewConfigGraphService(&fakeCGRebuilder{current: 7, ready: true}, repo, nil)
+
+	rec := httptest.NewRecorder()
+	svc.ServeHealth(rec, cgRequest(t, http.MethodGet, "/api/v1/config-graph/health", cgAdminCtx()))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("health = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := cgDecode(t, rec)
+	if body["generation"] != float64(7) {
+		t.Fatalf("generation = %v", body["generation"])
+	}
+	cycles, ok := body["cycles"].([]any)
+	if !ok || len(cycles) != 1 {
+		t.Fatalf("cycles = %v", body["cycles"])
+	}
+	// 四段键齐全（空段为 [] 而非缺失）。
+	for _, key := range []string{"god_nodes", "broken_by_type", "duplicate_prompts"} {
+		if _, has := body[key]; !has {
+			t.Fatalf("missing key %s in %v", key, body)
+		}
+	}
+
+	// 未建图 → 503。
+	svcNR := NewConfigGraphService(&fakeCGRebuilder{}, &fakeCGRepo{}, nil)
+	rec = httptest.NewRecorder()
+	svcNR.ServeHealth(rec, cgRequest(t, http.MethodGet, "/x", cgAdminCtx()))
+	if rec.Code != http.StatusServiceUnavailable || cgErrorCode(t, rec) != "CONFIG_GRAPH.NOT_READY" {
+		t.Fatalf("health not ready = %d %s", rec.Code, cgErrorCode(t, rec))
 	}
 }

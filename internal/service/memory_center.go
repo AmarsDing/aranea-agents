@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/memory/v1"
+	"aranea-agents/pkg/apierror"
 )
 
 // Memory-center handlers (layer panorama + unified cross-layer graph).
@@ -125,5 +126,43 @@ func (s *MemoryService) GetUnifiedMemoryGraph(ctx context.Context, req *v1.GetUn
 	out.NodeCount = int32(len(out.Nodes))
 	out.EdgeCount = int32(len(out.Edges))
 	out.FilteredEdgeCount = g.FilteredEdgeCount
+	return out, nil
+}
+
+// ListMemoryFactPendings serves the R3 approval-layer pending tab
+// (79-runtime-governance Phase 3.5): withheld high-risk fact writes for one
+// agent, newest first, with proposed vs prior bodies and adjudicator reason.
+// Decisions are made in the twinmonitor approval center — this is read-only.
+func (s *MemoryService) ListMemoryFactPendings(ctx context.Context, req *v1.ListMemoryFactPendingsRequest) (*v1.ListMemoryFactPendingsResponse, error) {
+	if err := s.requireWired(); err != nil {
+		return nil, err
+	}
+	if s.factPendingStore == nil {
+		return nil, apierror.Internal(apierror.DomainMemory, "memory fact pending store not wired")
+	}
+	agentID := strings.TrimSpace(req.GetAgentId())
+	if err := s.assertAgentMemoryAccess(ctx, agentID); err != nil {
+		return nil, err
+	}
+	recs, err := s.factPendingStore.ListPending(ctx, agentID, strings.TrimSpace(req.GetStatus()), int(req.GetLimit()))
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListMemoryFactPendingsResponse{}
+	for _, r := range recs {
+		out.Items = append(out.Items, &v1.MemoryFactPendingItem{
+			Id:                r.ID,
+			AgentId:           r.AgentID,
+			FactKey:           r.FactKey,
+			Verdict:           r.Verdict,
+			ProposedBody:      r.ProposedBody,
+			PriorBody:         r.PriorBody,
+			AdjudicatorReason: r.AdjudicatorReason,
+			Status:            r.Status,
+			Approver:          r.Approver,
+			CreatedAt:         r.CreatedAt,
+			DecidedAt:         r.DecidedAt,
+		})
+	}
 	return out, nil
 }

@@ -313,7 +313,12 @@ func (r *repo) ListNodes(ctx context.Context, filter bizcg.NodeFilter) ([]bizcg.
 		return nil, toBizErr(err)
 	}
 	defer rows.Close()
-	out := make([]bizcg.Node, 0, min(limit, 256))
+	return scanNodeRows(rows, min(limit, 256))
+}
+
+// scanNodeRows scans node rows (column order = nodeSelectCols).
+func scanNodeRows(rows *sql.Rows, capHint int) ([]bizcg.Node, error) {
+	out := make([]bizcg.Node, 0, capHint)
 	for rows.Next() {
 		var n bizcg.Node
 		var attrs string

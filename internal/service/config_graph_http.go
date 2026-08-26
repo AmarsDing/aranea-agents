@@ -2,12 +2,14 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	bizcg "aranea-agents/internal/biz/configgraph"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
@@ -23,20 +25,21 @@ type ConfigGraphRebuilderPort interface {
 }
 
 // ConfigGraphService 是 M81 配置资产图谱管理面 API（design §6，knowledge_http.go
-// 模式：纯 net/http 手写 JSON）。P0 只开放 rebuild / status / nodes 检索；
-// impact / dependencies / edges / health 四个查询端点在 P1 落地。
+// 模式：纯 net/http 手写 JSON）。P0 开放 rebuild / status / nodes 检索；
+// P1 增加 impact / dependencies / edges / health 四个查询端点。
 //
 // 错误体统一 {"error":{"code","message"}}，错误码见 design §6：
 // CONFIG_GRAPH.NOT_READY（503）/ CONFIG_GRAPH.BAD_REQUEST（400）/
-// CONFIG_GRAPH.NODE_NOT_FOUND（404，P1 用）。
+// CONFIG_GRAPH.NODE_NOT_FOUND（404）。
 type ConfigGraphService struct {
 	rebuilder ConfigGraphRebuilderPort
 	repo      bizcg.Repo
+	querier   *bizcg.Querier
 	lg        loggateway.Logger
 }
 
 // NewConfigGraphService 构造服务。rebuilder/repo 任一为空（图未装配）时返回
-// nil，路由侧判空跳过注册。
+// nil，路由侧判空跳过注册。Querier 内部以 rebuilder.Current 为代际来源装配。
 func NewConfigGraphService(rebuilder ConfigGraphRebuilderPort, repo bizcg.Repo, lg loggateway.Logger) *ConfigGraphService {
 	if rebuilder == nil || repo == nil {
 		return nil
@@ -44,7 +47,12 @@ func NewConfigGraphService(rebuilder ConfigGraphRebuilderPort, repo bizcg.Repo, 
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &ConfigGraphService{rebuilder: rebuilder, repo: repo, lg: lg}
+	return &ConfigGraphService{
+		rebuilder: rebuilder,
+		repo:      repo,
+		querier:   bizcg.NewQuerier(repo, rebuilder.Current),
+		lg:        lg,
+	}
 }
 
 func writeConfigGraphJSON(w http.ResponseWriter, status int, v any) {
@@ -194,4 +202,126 @@ func (s *ConfigGraphService) ServeNodes(w http.ResponseWriter, r *http.Request) 
 		"generation": gen,
 		"items":      items,
 	})
+}
+
+// ── P1 查询端点（design §5/§6）─────────────────────────────────────────────
+
+// writeConfigGraphQueryError 映射查询侧错误：ErrNotReady→503、NotFound→404、
+// 其他→500（design §6 错误码）。
+func (s *ConfigGraphService) writeConfigGraphQueryError(w http.ResponseWriter, err error) {
+	s.lg.Warn("configgraph query failed", loggateway.Err(err))
+	switch {
+	case errors.Is(err, bizcg.ErrNotReady):
+		writeConfigGraphError(w, http.StatusServiceUnavailable, "CONFIG_GRAPH.NOT_READY", "graph not built yet; trigger POST /api/v1/config-graph/rebuild first")
+	case apierror.IsCode(err, apierror.CodeNotFound):
+		writeConfigGraphError(w, http.StatusNotFound, "CONFIG_GRAPH.NODE_NOT_FOUND", "node not found")
+	default:
+		writeConfigGraphError(w, http.StatusInternalServerError, "CONFIG_GRAPH.INTERNAL", "internal error")
+	}
+}
+
+// configGraphWalkTarget 校验 {type}/{ref} 路径参数（type 白名单 + ref 非空），
+// 合法时返回 trim 后的值。
+func configGraphWalkTarget(w http.ResponseWriter, nodeType, ref string) (string, string, bool) {
+	t := strings.TrimSpace(nodeType)
+	if !configGraphNodeTypes[t] {
+		writeConfigGraphError(w, http.StatusBadRequest, "CONFIG_GRAPH.BAD_REQUEST", "unknown node type: "+t)
+		return "", "", false
+	}
+	r := strings.TrimSpace(ref)
+	if r == "" {
+		writeConfigGraphError(w, http.StatusBadRequest, "CONFIG_GRAPH.BAD_REQUEST", "ref must not be empty")
+		return "", "", false
+	}
+	return t, r, true
+}
+
+// configGraphDepthParam 解析 depth 查询参数（缺省/0 → biz 默认；非整数 → 400）。
+func configGraphDepthParam(w http.ResponseWriter, r *http.Request) (int, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get("depth"))
+	if raw == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		writeConfigGraphError(w, http.StatusBadRequest, "CONFIG_GRAPH.BAD_REQUEST", "depth must be an integer")
+		return 0, false
+	}
+	return n, true
+}
+
+// ServeImpact GET /api/v1/config-graph/nodes/{type}/{ref}/impact?depth= —
+// 反向闭包 + signals + risk 加权（design §5.1）。
+func (s *ConfigGraphService) ServeImpact(w http.ResponseWriter, r *http.Request, nodeType, ref string) {
+	if !configGraphAdmin(w, r) {
+		return
+	}
+	t, ref, ok := configGraphWalkTarget(w, nodeType, ref)
+	if !ok {
+		return
+	}
+	depth, ok := configGraphDepthParam(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.querier.Impact(r.Context(), t, ref, depth)
+	if err != nil {
+		s.writeConfigGraphQueryError(w, err)
+		return
+	}
+	writeConfigGraphJSON(w, http.StatusOK, res)
+}
+
+// ServeDependencies GET /api/v1/config-graph/nodes/{type}/{ref}/dependencies?depth=
+// — 正向闭包（design §5.2）。
+func (s *ConfigGraphService) ServeDependencies(w http.ResponseWriter, r *http.Request, nodeType, ref string) {
+	if !configGraphAdmin(w, r) {
+		return
+	}
+	t, ref, ok := configGraphWalkTarget(w, nodeType, ref)
+	if !ok {
+		return
+	}
+	depth, ok := configGraphDepthParam(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.querier.Dependencies(r.Context(), t, ref, depth)
+	if err != nil {
+		s.writeConfigGraphQueryError(w, err)
+		return
+	}
+	writeConfigGraphJSON(w, http.StatusOK, res)
+}
+
+// ServeNodeEdges GET /api/v1/config-graph/nodes/{type}/{ref}/edges — 单节点
+// 邻接边（出/入/断三段 + evidence，design §5.3）。
+func (s *ConfigGraphService) ServeNodeEdges(w http.ResponseWriter, r *http.Request, nodeType, ref string) {
+	if !configGraphAdmin(w, r) {
+		return
+	}
+	t, ref, ok := configGraphWalkTarget(w, nodeType, ref)
+	if !ok {
+		return
+	}
+	res, err := s.querier.NodeEdges(r.Context(), t, ref)
+	if err != nil {
+		s.writeConfigGraphQueryError(w, err)
+		return
+	}
+	writeConfigGraphJSON(w, http.StatusOK, res)
+}
+
+// ServeHealth GET /api/v1/config-graph/health — god node/环/断边/重复
+// prompt 四类报告（design §5.4）。
+func (s *ConfigGraphService) ServeHealth(w http.ResponseWriter, r *http.Request) {
+	if !configGraphAdmin(w, r) {
+		return
+	}
+	rep, err := s.querier.Health(r.Context())
+	if err != nil {
+		s.writeConfigGraphQueryError(w, err)
+		return
+	}
+	writeConfigGraphJSON(w, http.StatusOK, rep)
 }

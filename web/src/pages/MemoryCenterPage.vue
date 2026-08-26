@@ -28,6 +28,7 @@
         <q-tab name="graph" icon="bubble_chart" :label="t('memory.tabs.graph')" />
         <q-tab name="browse" icon="travel_explore" :label="t('memory.tabs.browse')" />
         <q-tab name="governance" icon="verified_user" :label="t('memory.tabs.governance')" />
+        <q-tab name="pending" icon="pending_actions" :label="t('memory.tabs.pending')" />
         <q-tab v-if="isPlatformAdmin" name="ops" icon="admin_panel_settings" :label="t('memory.tabs.ops')" />
       </q-tabs>
     </q-card>
@@ -141,6 +142,10 @@
         </div>
       </q-tab-panel>
 
+      <q-tab-panel name="pending">
+        <memory-fact-pending-panel :agent-id="selectedAgentId" />
+      </q-tab-panel>
+
       <q-tab-panel v-if="isPlatformAdmin" name="ops">
         <div class="column q-gutter-md">
           <memory-platform-settings-panel />
@@ -193,6 +198,7 @@ import MemoryEvolutionPanel from '../components/memory/MemoryEvolutionPanel.vue'
 import MemoryEvolutionReviewPanel from '../features/memory/MemoryEvolutionReviewPanel.vue';
 import MemoryPIIPanel from '../features/memory/MemoryPIIPanel.vue';
 import MemoryFactDrawer from '../features/memory/MemoryFactDrawer.vue';
+import MemoryFactPendingPanel from '../features/memory/MemoryFactPendingPanel.vue';
 import MemoryFactEditDialog from '../components/memory/MemoryFactEditDialog.vue';
 import MemoryHero from '../components/memory/MemoryHero.vue';
 import MemoryKnowledgePanel from '../features/memory/MemoryKnowledgePanel.vue';

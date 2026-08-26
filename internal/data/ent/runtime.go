@@ -3569,24 +3569,28 @@ func init() {
 	memoryfactpendingDescAdjudicatorReason := memoryfactpendingFields[6].Descriptor()
 	// memoryfactpending.DefaultAdjudicatorReason holds the default value on creation for the adjudicator_reason field.
 	memoryfactpending.DefaultAdjudicatorReason = memoryfactpendingDescAdjudicatorReason.Default.(string)
+	// memoryfactpendingDescPayloadJSON is the schema descriptor for payload_json field.
+	memoryfactpendingDescPayloadJSON := memoryfactpendingFields[7].Descriptor()
+	// memoryfactpending.DefaultPayloadJSON holds the default value on creation for the payload_json field.
+	memoryfactpending.DefaultPayloadJSON = memoryfactpendingDescPayloadJSON.Default.(string)
 	// memoryfactpendingDescStatus is the schema descriptor for status field.
-	memoryfactpendingDescStatus := memoryfactpendingFields[7].Descriptor()
+	memoryfactpendingDescStatus := memoryfactpendingFields[8].Descriptor()
 	// memoryfactpending.DefaultStatus holds the default value on creation for the status field.
 	memoryfactpending.DefaultStatus = memoryfactpendingDescStatus.Default.(string)
 	// memoryfactpending.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	memoryfactpending.StatusValidator = memoryfactpendingDescStatus.Validators[0].(func(string) error)
 	// memoryfactpendingDescApprover is the schema descriptor for approver field.
-	memoryfactpendingDescApprover := memoryfactpendingFields[8].Descriptor()
+	memoryfactpendingDescApprover := memoryfactpendingFields[9].Descriptor()
 	// memoryfactpending.DefaultApprover holds the default value on creation for the approver field.
 	memoryfactpending.DefaultApprover = memoryfactpendingDescApprover.Default.(string)
 	// memoryfactpending.ApproverValidator is a validator for the "approver" field. It is called by the builders before save.
 	memoryfactpending.ApproverValidator = memoryfactpendingDescApprover.Validators[0].(func(string) error)
 	// memoryfactpendingDescCreatedAt is the schema descriptor for created_at field.
-	memoryfactpendingDescCreatedAt := memoryfactpendingFields[9].Descriptor()
+	memoryfactpendingDescCreatedAt := memoryfactpendingFields[10].Descriptor()
 	// memoryfactpending.DefaultCreatedAt holds the default value on creation for the created_at field.
 	memoryfactpending.DefaultCreatedAt = memoryfactpendingDescCreatedAt.Default.(int64)
 	// memoryfactpendingDescDecidedAt is the schema descriptor for decided_at field.
-	memoryfactpendingDescDecidedAt := memoryfactpendingFields[10].Descriptor()
+	memoryfactpendingDescDecidedAt := memoryfactpendingFields[11].Descriptor()
 	// memoryfactpending.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	memoryfactpending.DefaultDecidedAt = memoryfactpendingDescDecidedAt.Default.(int64)
 	// memoryfactpendingDescID is the schema descriptor for id field.

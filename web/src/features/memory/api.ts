@@ -45,6 +45,7 @@ export type {
   UnifiedMemoryGraph,
   MemoryEpisode,
   MemoryEpisodeListResult,
+  MemoryFactPendingItem,
 } from './types';
 
 export { memoryEndpoints } from './memoryEndpoints';
@@ -92,6 +93,7 @@ import type {
   UnifiedMemoryGraph,
   MemoryEpisode,
   MemoryEpisodeListResult,
+  MemoryFactPendingItem,
 } from './types';
 import {
   asRecord,
@@ -1081,4 +1083,38 @@ export async function getMemoryEpisodes(
     items: Array.isArray(itemsRaw) ? itemsRaw.map(mapEpisode) : [],
     total: pickOptionalI32(res, 'total', 'total') ?? 0,
   };
+}
+
+function mapFactPending(raw: unknown): MemoryFactPendingItem {
+  const p = asRecord(raw);
+  return {
+    id: pickStr(p, 'id', 'id'),
+    agent_id: pickStr(p, 'agent_id', 'agentId'),
+    fact_key: pickStr(p, 'fact_key', 'factKey'),
+    verdict: pickStr(p, 'verdict', 'verdict'),
+    proposed_body: pickStr(p, 'proposed_body', 'proposedBody'),
+    prior_body: pickStr(p, 'prior_body', 'priorBody'),
+    adjudicator_reason: pickStr(p, 'adjudicator_reason', 'adjudicatorReason'),
+    status: pickStr(p, 'status', 'status'),
+    approver: pickStr(p, 'approver', 'approver'),
+    created_at: pickI64(p, 'created_at', 'createdAt'),
+    decided_at: pickI64(p, 'decided_at', 'decidedAt'),
+  };
+}
+
+/** R3 审批层扣留列表（79-runtime-governance Phase 3.5）：高风险事实写，最新优先。status 空=全部。 */
+export async function listMemoryFactPendings(
+  agentID: string,
+  status = '',
+  limit = 100,
+): Promise<MemoryFactPendingItem[]> {
+  const res = asRecord(
+    await memory.ListMemoryFactPendings({
+      agentId: agentID,
+      status: status || undefined,
+      limit,
+    }),
+  );
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapFactPending) : [];
 }

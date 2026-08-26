@@ -2007,6 +2007,7 @@ var (
 		{Name: "proposed_body", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "prior_body", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "adjudicator_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "payload_json", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
 		{Name: "approver", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "created_at", Type: field.TypeInt64, Default: 0},
@@ -2021,12 +2022,12 @@ var (
 			{
 				Name:    "idx_mfp_status",
 				Unique:  false,
-				Columns: []*schema.Column{MemoryFactPendingColumns[7], MemoryFactPendingColumns[9]},
+				Columns: []*schema.Column{MemoryFactPendingColumns[8], MemoryFactPendingColumns[10]},
 			},
 			{
 				Name:    "idx_mfp_agent_status",
 				Unique:  false,
-				Columns: []*schema.Column{MemoryFactPendingColumns[1], MemoryFactPendingColumns[7]},
+				Columns: []*schema.Column{MemoryFactPendingColumns[1], MemoryFactPendingColumns[8]},
 			},
 		},
 	}

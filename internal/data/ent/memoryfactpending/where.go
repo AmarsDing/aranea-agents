@@ -93,6 +93,11 @@ func AdjudicatorReason(v string) predicate.MemoryFactPending {
 	return predicate.MemoryFactPending(sql.FieldEQ(FieldAdjudicatorReason, v))
 }
 
+// PayloadJSON applies equality check predicate on the "payload_json" field. It's identical to PayloadJSONEQ.
+func PayloadJSON(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldEQ(FieldPayloadJSON, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.MemoryFactPending {
 	return predicate.MemoryFactPending(sql.FieldEQ(FieldStatus, v))
@@ -501,6 +506,71 @@ func AdjudicatorReasonEqualFold(v string) predicate.MemoryFactPending {
 // AdjudicatorReasonContainsFold applies the ContainsFold predicate on the "adjudicator_reason" field.
 func AdjudicatorReasonContainsFold(v string) predicate.MemoryFactPending {
 	return predicate.MemoryFactPending(sql.FieldContainsFold(FieldAdjudicatorReason, v))
+}
+
+// PayloadJSONEQ applies the EQ predicate on the "payload_json" field.
+func PayloadJSONEQ(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldEQ(FieldPayloadJSON, v))
+}
+
+// PayloadJSONNEQ applies the NEQ predicate on the "payload_json" field.
+func PayloadJSONNEQ(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldNEQ(FieldPayloadJSON, v))
+}
+
+// PayloadJSONIn applies the In predicate on the "payload_json" field.
+func PayloadJSONIn(vs ...string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldIn(FieldPayloadJSON, vs...))
+}
+
+// PayloadJSONNotIn applies the NotIn predicate on the "payload_json" field.
+func PayloadJSONNotIn(vs ...string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldNotIn(FieldPayloadJSON, vs...))
+}
+
+// PayloadJSONGT applies the GT predicate on the "payload_json" field.
+func PayloadJSONGT(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldGT(FieldPayloadJSON, v))
+}
+
+// PayloadJSONGTE applies the GTE predicate on the "payload_json" field.
+func PayloadJSONGTE(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldGTE(FieldPayloadJSON, v))
+}
+
+// PayloadJSONLT applies the LT predicate on the "payload_json" field.
+func PayloadJSONLT(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldLT(FieldPayloadJSON, v))
+}
+
+// PayloadJSONLTE applies the LTE predicate on the "payload_json" field.
+func PayloadJSONLTE(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldLTE(FieldPayloadJSON, v))
+}
+
+// PayloadJSONContains applies the Contains predicate on the "payload_json" field.
+func PayloadJSONContains(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldContains(FieldPayloadJSON, v))
+}
+
+// PayloadJSONHasPrefix applies the HasPrefix predicate on the "payload_json" field.
+func PayloadJSONHasPrefix(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldHasPrefix(FieldPayloadJSON, v))
+}
+
+// PayloadJSONHasSuffix applies the HasSuffix predicate on the "payload_json" field.
+func PayloadJSONHasSuffix(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldHasSuffix(FieldPayloadJSON, v))
+}
+
+// PayloadJSONEqualFold applies the EqualFold predicate on the "payload_json" field.
+func PayloadJSONEqualFold(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldEqualFold(FieldPayloadJSON, v))
+}
+
+// PayloadJSONContainsFold applies the ContainsFold predicate on the "payload_json" field.
+func PayloadJSONContainsFold(v string) predicate.MemoryFactPending {
+	return predicate.MemoryFactPending(sql.FieldContainsFold(FieldPayloadJSON, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

@@ -1102,6 +1102,7 @@ func provideMemoryService(persist rt.PersistenceSet, cascade *biz.L4CascadeUseca
 		QueueStats:          queueStats,
 		Logger:              lg,
 		AgentUC:             agentUC,
+		FactPendingStore:    data.NewMemoryFactPendingRepoFromData(d),
 	})
 }
 
@@ -3955,6 +3956,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideL3ConflictStore,
 		provideFactWriteAdjudicator,
 		provideFactWritePipeline,
+		provideMemoryFactPendingNotifier,
+		provideMemoryFactPendingDecider,
+		provideMemoryFactSessionGrants,
 		provideMemoryL2Recall,
 		provideMemoryL3Recall,
 		provideMemoryCompositeRecall,

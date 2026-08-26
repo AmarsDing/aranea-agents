@@ -33,6 +33,9 @@ type MemoryServiceConfig struct {
 	Logger              loggateway.Logger
 	// AgentUC is used for Memory Center / debug-recall IDOR (workspace tenancy).
 	AgentUC agentCatalog
+	// FactPendingStore lists R3 withheld high-risk fact writes (79-runtime-governance
+	// Phase 3.5). Nil → ListMemoryFactPendings returns INTERNAL.
+	FactPendingStore biz.MemoryFactPendingStore
 }
 
 type MemoryService struct {
@@ -50,6 +53,7 @@ type MemoryService struct {
 	queueStats          queueStatsProvider
 	lg                  loggateway.Logger
 	agentUC             agentCatalog
+	factPendingStore    biz.MemoryFactPendingStore
 }
 
 func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
@@ -70,6 +74,7 @@ func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
 		queueStats:          cfg.QueueStats,
 		lg:                  lg,
 		agentUC:             cfg.AgentUC,
+		factPendingStore:    cfg.FactPendingStore,
 	}
 }
 

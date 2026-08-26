@@ -54,19 +54,28 @@ func buildDecisionListWhere(d Dialect, f decision.ListFilter) (string, []any) {
 		args = append(args, s)
 	}
 	// 实体过滤：related_entities 数组内对象 {type,key} 成对匹配。
-	// 双方言各自展开数组元素（JSONEach 是 text 变体，此处需对象变体，自组）。
+	// PG 走 @> 包含且表达式必须是裸 related_entities::jsonb——与 20261252
+	// entities GIN 索引表达式精确一致方可命中（COALESCE 防御壳会导致索引
+	// 失配全表扫，1.10 实测 1.28s/276ms 两连踩）；列 NOT NULL DEFAULT '[]'
+	// 且写入侧恒为 json.Marshal 产物，裸转换安全。语义与 jsonb_array_elements
+	// 成对比较等价（数组任一元素含该 type+key 即中）。SQLite 保留 json_each。
 	if strings.TrimSpace(f.EntityType) != "" && strings.TrimSpace(f.EntityKey) != "" {
 		if d.IsPostgres() {
-			conds = append(conds, `EXISTS (SELECT 1 FROM jsonb_array_elements(`+
-				`COALESCE(NULLIF(related_entities::text, '')::jsonb, '[]'::jsonb)) je `+
-				`WHERE je.value->>'type' = ? AND je.value->>'key' = ?)`)
+			conds = append(conds, `related_entities::jsonb @> ?::jsonb`)
+			containment, err := json.Marshal([]decision.EntityRef{
+				{Type: strings.TrimSpace(f.EntityType), Key: strings.TrimSpace(f.EntityKey)},
+			})
+			if err != nil {
+				return "", nil
+			}
+			args = append(args, string(containment))
 		} else {
 			conds = append(conds, `EXISTS (SELECT 1 FROM json_each(related_entities) je `+
 				`WHERE json_extract(je.value, '$.type') = ? AND json_extract(je.value, '$.key') = ?)`)
+			args = append(args, strings.TrimSpace(f.EntityType), strings.TrimSpace(f.EntityKey))
 		}
-		args = append(args, strings.TrimSpace(f.EntityType), strings.TrimSpace(f.EntityKey))
 	}
-	// source_run_id 过滤：source_ref.run_id（20261252 已为该表达式建索引）。
+	// source_run_id 过滤：source_ref.run_id（btree 表达式索引见 20261254）。
 	if s := strings.TrimSpace(f.SourceRunID); s != "" {
 		conds = append(conds, d.JSONExtract("source_ref", "run_id")+" = ?")
 		args = append(args, s)

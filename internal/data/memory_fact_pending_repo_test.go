@@ -10,7 +10,7 @@ import (
 )
 
 // newMemoryFactPendingTestRepo builds the pending repo over an isolated PG
-// schema with the real 20261249 migration DDL applied.
+// schema with the real 20261249 + 20261255 (payload_json) migration DDL applied.
 func newMemoryFactPendingTestRepo(t *testing.T) biz.MemoryFactPendingStore {
 	t.Helper()
 	ctx := context.Background()
@@ -18,6 +18,9 @@ func newMemoryFactPendingTestRepo(t *testing.T) biz.MemoryFactPendingStore {
 	lg := loggateway.NewNoop()
 	if err := executeSQLFileWithDialect(ctx, db, "sql/migrations/20261249_memory_fact_pending.sql", DialectPostgres, lg); err != nil {
 		t.Fatalf("migrate 20261249: %v", err)
+	}
+	if err := executeSQLFileWithDialect(ctx, db, "sql/migrations/20261255_memory_fact_pending_payload.sql", DialectPostgres, lg); err != nil {
+		t.Fatalf("migrate 20261255: %v", err)
 	}
 	d := &Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: lg, dialect: DialectPostgres}
 	repo := NewMemoryFactPendingRepo(d, lg)
@@ -38,6 +41,7 @@ func TestMemoryFactPendingRepo_Roundtrip(t *testing.T) {
 		Verdict: biz.MemoryFactPendingVerdictUpdate,
 		ProposedBody: "用户偏好编辑器为 Neovim", PriorBody: "用户偏好编辑器为 VS Code",
 		AdjudicatorReason: "adjudicated_update",
+		PayloadJSON:       `{"candidate":{"Statement":"用户偏好编辑器为 Neovim","FactKind":"preference"},"target_fact_id":"fact-old"}`,
 		Status:            biz.MemoryFactPendingStatusPending,
 		CreatedAt:         1787702400,
 	}
@@ -55,6 +59,9 @@ func TestMemoryFactPendingRepo_Roundtrip(t *testing.T) {
 	}
 	if got.Verdict != "UPDATE" || got.PriorBody == "" || got.Status != "pending" || got.CreatedAt != 1787702400 {
 		t.Fatalf("get mismatch: %+v", got)
+	}
+	if got.PayloadJSON != rec.PayloadJSON {
+		t.Fatalf("payload_json roundtrip mismatch: got %q", got.PayloadJSON)
 	}
 	if _, found, err := repo.GetPending(ctx, "mfp-absent"); err != nil || found {
 		t.Fatalf("absent get: found=%v err=%v", found, err)

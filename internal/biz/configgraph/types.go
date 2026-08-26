@@ -142,6 +142,19 @@ type NodeFilter struct {
 	Limit       int
 }
 
+// WalkRow is one reached edge in an Impact/Dependencies recursive walk. Node
+// is the reached vertex (impact: the edge's src side; dependencies: dst
+// side); Depth is the hop count from the walk origin along this row's path;
+// Via is the edge-type chain from origin to Node (ordered origin → node).
+// A node may appear in multiple rows (distinct paths); biz-side aggregation
+// keeps the min-depth row per node.
+type WalkRow struct {
+	Edge  StoredEdge
+	Node  Node
+	Depth int
+	Via   []string
+}
+
 // Counts aggregates per-generation statistics for the status API.
 type Counts struct {
 	Nodes  int64

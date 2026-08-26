@@ -44,6 +44,7 @@ const OperationMemoryServiceListL1Tasks = "/kratos.memory.v1.MemoryService/ListL
 const OperationMemoryServiceListMemoryDeadLetters = "/kratos.memory.v1.MemoryService/ListMemoryDeadLetters"
 const OperationMemoryServiceListMemoryEntities = "/kratos.memory.v1.MemoryService/ListMemoryEntities"
 const OperationMemoryServiceListMemoryEpisodes = "/kratos.memory.v1.MemoryService/ListMemoryEpisodes"
+const OperationMemoryServiceListMemoryFactPendings = "/kratos.memory.v1.MemoryService/ListMemoryFactPendings"
 const OperationMemoryServiceListMemoryFacts = "/kratos.memory.v1.MemoryService/ListMemoryFacts"
 const OperationMemoryServiceListPIIFlaggedFacts = "/kratos.memory.v1.MemoryService/ListPIIFlaggedFacts"
 const OperationMemoryServicePreviewCascadeApprove = "/kratos.memory.v1.MemoryService/PreviewCascadeApprove"
@@ -82,6 +83,7 @@ type MemoryServiceHTTPServer interface {
 	ListMemoryDeadLetters(context.Context, *ListMemoryDeadLettersRequest) (*ListMemoryDeadLettersResponse, error)
 	ListMemoryEntities(context.Context, *ListMemoryEntitiesRequest) (*ListMemoryEntitiesResponse, error)
 	ListMemoryEpisodes(context.Context, *ListMemoryEpisodesRequest) (*ListMemoryEpisodesResponse, error)
+	ListMemoryFactPendings(context.Context, *ListMemoryFactPendingsRequest) (*ListMemoryFactPendingsResponse, error)
 	ListMemoryFacts(context.Context, *ListMemoryFactsRequest) (*ListMemoryFactsResponse, error)
 	ListPIIFlaggedFacts(context.Context, *ListPIIFlaggedFactsRequest) (*ListPIIFlaggedFactsResponse, error)
 	PreviewCascadeApprove(context.Context, *PreviewCascadeApproveRequest) (*PreviewCascadeApproveResponse, error)
@@ -133,6 +135,7 @@ func RegisterMemoryServiceHTTPServer(s *http.Server, srv MemoryServiceHTTPServer
 	r.GET("/v1/memory/layer-overview", _MemoryService_GetMemoryLayerOverview0_HTTP_Handler(srv))
 	r.GET("/v1/memory/graph/unified", _MemoryService_GetUnifiedMemoryGraph0_HTTP_Handler(srv))
 	r.GET("/v1/memory/episodes", _MemoryService_ListMemoryEpisodes0_HTTP_Handler(srv))
+	r.GET("/v1/memory/fact-pendings", _MemoryService_ListMemoryFactPendings0_HTTP_Handler(srv))
 }
 
 func _MemoryService_ListL0Snapshots0_HTTP_Handler(srv MemoryServiceHTTPServer) func(ctx http.Context) error {
@@ -915,6 +918,25 @@ func _MemoryService_ListMemoryEpisodes0_HTTP_Handler(srv MemoryServiceHTTPServer
 	}
 }
 
+func _MemoryService_ListMemoryFactPendings0_HTTP_Handler(srv MemoryServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListMemoryFactPendingsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMemoryServiceListMemoryFactPendings)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListMemoryFactPendings(ctx, req.(*ListMemoryFactPendingsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListMemoryFactPendingsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type MemoryServiceHTTPClient interface {
 	AbandonMemoryDeadLetter(ctx context.Context, req *AbandonMemoryDeadLetterRequest, opts ...http.CallOption) (rsp *AbandonMemoryDeadLetterResponse, err error)
 	AppendEvolutionEvent(ctx context.Context, req *AppendEvolutionEventRequest, opts ...http.CallOption) (rsp *AppendEvolutionEventResponse, err error)
@@ -941,6 +963,7 @@ type MemoryServiceHTTPClient interface {
 	ListMemoryDeadLetters(ctx context.Context, req *ListMemoryDeadLettersRequest, opts ...http.CallOption) (rsp *ListMemoryDeadLettersResponse, err error)
 	ListMemoryEntities(ctx context.Context, req *ListMemoryEntitiesRequest, opts ...http.CallOption) (rsp *ListMemoryEntitiesResponse, err error)
 	ListMemoryEpisodes(ctx context.Context, req *ListMemoryEpisodesRequest, opts ...http.CallOption) (rsp *ListMemoryEpisodesResponse, err error)
+	ListMemoryFactPendings(ctx context.Context, req *ListMemoryFactPendingsRequest, opts ...http.CallOption) (rsp *ListMemoryFactPendingsResponse, err error)
 	ListMemoryFacts(ctx context.Context, req *ListMemoryFactsRequest, opts ...http.CallOption) (rsp *ListMemoryFactsResponse, err error)
 	ListPIIFlaggedFacts(ctx context.Context, req *ListPIIFlaggedFactsRequest, opts ...http.CallOption) (rsp *ListPIIFlaggedFactsResponse, err error)
 	PreviewCascadeApprove(ctx context.Context, req *PreviewCascadeApproveRequest, opts ...http.CallOption) (rsp *PreviewCascadeApproveResponse, err error)
@@ -1279,6 +1302,19 @@ func (c *MemoryServiceHTTPClientImpl) ListMemoryEpisodes(ctx context.Context, in
 	pattern := "/v1/memory/episodes"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMemoryServiceListMemoryEpisodes))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *MemoryServiceHTTPClientImpl) ListMemoryFactPendings(ctx context.Context, in *ListMemoryFactPendingsRequest, opts ...http.CallOption) (*ListMemoryFactPendingsResponse, error) {
+	var out ListMemoryFactPendingsResponse
+	pattern := "/v1/memory/fact-pendings"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMemoryServiceListMemoryFactPendings))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

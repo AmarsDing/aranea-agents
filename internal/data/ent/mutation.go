@@ -60123,6 +60123,7 @@ type MemoryFactPendingMutation struct {
 	proposed_body      *string
 	prior_body         *string
 	adjudicator_reason *string
+	payload_json       *string
 	status             *string
 	approver           *string
 	created_at         *int64
@@ -60455,6 +60456,42 @@ func (m *MemoryFactPendingMutation) ResetAdjudicatorReason() {
 	m.adjudicator_reason = nil
 }
 
+// SetPayloadJSON sets the "payload_json" field.
+func (m *MemoryFactPendingMutation) SetPayloadJSON(s string) {
+	m.payload_json = &s
+}
+
+// PayloadJSON returns the value of the "payload_json" field in the mutation.
+func (m *MemoryFactPendingMutation) PayloadJSON() (r string, exists bool) {
+	v := m.payload_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadJSON returns the old "payload_json" field's value of the MemoryFactPending entity.
+// If the MemoryFactPending object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MemoryFactPendingMutation) OldPayloadJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadJSON: %w", err)
+	}
+	return oldValue.PayloadJSON, nil
+}
+
+// ResetPayloadJSON resets all changes to the "payload_json" field.
+func (m *MemoryFactPendingMutation) ResetPayloadJSON() {
+	m.payload_json = nil
+}
+
 // SetStatus sets the "status" field.
 func (m *MemoryFactPendingMutation) SetStatus(s string) {
 	m.status = &s
@@ -60673,7 +60710,7 @@ func (m *MemoryFactPendingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MemoryFactPendingMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.agent_id != nil {
 		fields = append(fields, memoryfactpending.FieldAgentID)
 	}
@@ -60691,6 +60728,9 @@ func (m *MemoryFactPendingMutation) Fields() []string {
 	}
 	if m.adjudicator_reason != nil {
 		fields = append(fields, memoryfactpending.FieldAdjudicatorReason)
+	}
+	if m.payload_json != nil {
+		fields = append(fields, memoryfactpending.FieldPayloadJSON)
 	}
 	if m.status != nil {
 		fields = append(fields, memoryfactpending.FieldStatus)
@@ -60724,6 +60764,8 @@ func (m *MemoryFactPendingMutation) Field(name string) (ent.Value, bool) {
 		return m.PriorBody()
 	case memoryfactpending.FieldAdjudicatorReason:
 		return m.AdjudicatorReason()
+	case memoryfactpending.FieldPayloadJSON:
+		return m.PayloadJSON()
 	case memoryfactpending.FieldStatus:
 		return m.Status()
 	case memoryfactpending.FieldApprover:
@@ -60753,6 +60795,8 @@ func (m *MemoryFactPendingMutation) OldField(ctx context.Context, name string) (
 		return m.OldPriorBody(ctx)
 	case memoryfactpending.FieldAdjudicatorReason:
 		return m.OldAdjudicatorReason(ctx)
+	case memoryfactpending.FieldPayloadJSON:
+		return m.OldPayloadJSON(ctx)
 	case memoryfactpending.FieldStatus:
 		return m.OldStatus(ctx)
 	case memoryfactpending.FieldApprover:
@@ -60811,6 +60855,13 @@ func (m *MemoryFactPendingMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAdjudicatorReason(v)
+		return nil
+	case memoryfactpending.FieldPayloadJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadJSON(v)
 		return nil
 	case memoryfactpending.FieldStatus:
 		v, ok := value.(string)
@@ -60933,6 +60984,9 @@ func (m *MemoryFactPendingMutation) ResetField(name string) error {
 		return nil
 	case memoryfactpending.FieldAdjudicatorReason:
 		m.ResetAdjudicatorReason()
+		return nil
+	case memoryfactpending.FieldPayloadJSON:
+		m.ResetPayloadJSON()
 		return nil
 	case memoryfactpending.FieldStatus:
 		m.ResetStatus()

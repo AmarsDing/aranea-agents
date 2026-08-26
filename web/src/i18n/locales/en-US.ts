@@ -2336,6 +2336,7 @@ export default {
       graph: 'Relation Graph',
       browse: 'Memory Browse',
       governance: 'Trust',
+      pending: 'Pending approval',
       ops: 'Memory Ops',
     },
     error: {
@@ -2691,6 +2692,23 @@ export default {
       },
       revertDone: 'Event marked reverted (patch not undone)',
       reviewFailed: 'Failed to review evolution',
+    },
+    pending: {
+      title: 'High-risk write approvals',
+      caption: 'Writes judged UPDATE / DELETE / contested-ADD by the auto-memory pipeline are withheld here for approval-center decisions.',
+      refreshAria: 'Refresh pending list',
+      emptyTitle: 'No withheld memory writes',
+      emptyCaption: 'When the auto-memory pipeline tries to update, delete, or controversially add a fact, it lands here first.',
+      priorLabel: 'Current statement (old)',
+      proposedLabel: 'Proposed write (new)',
+      targetFact: 'Target fact',
+      decideHint: 'Approve / reject happens in the approval center (twinmonitor); once approved, the original adjudicated write is replayed.',
+      status: {
+        pending: 'Pending',
+        approved: 'Approved',
+        rejected: 'Rejected',
+        all: 'All',
+      },
     },
     pii: {
       title: 'PII review',

@@ -35,6 +35,8 @@ func (MemoryFactPending) Fields() []ent.Field {
 		field.Text("proposed_body").Default(""),
 		field.Text("prior_body").Default(""),
 		field.Text("adjudicator_reason").Default(""),
+		// payload_json: 扣留时刻的 FactWriteDecision 快照（approve 重放用，20261255）。
+		field.Text("payload_json").Default(""),
 		// status: pending | approved | rejected.
 		field.String("status").MaxLen(16).Default("pending"),
 		field.String("approver").MaxLen(128).Default(""),

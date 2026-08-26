@@ -39,7 +39,7 @@ func NewMemoryFactPendingRepoFromData(d *Data) biz.MemoryFactPendingStore {
 }
 
 const memoryFactPendingCols = "id, agent_id, fact_key, verdict, proposed_body, prior_body, " +
-	"adjudicator_reason, status, approver, created_at, decided_at"
+	"adjudicator_reason, payload_json, status, approver, created_at, decided_at"
 
 // InsertPending persists a withheld write (idempotent on id).
 func (r *memoryFactPendingRepo) InsertPending(ctx context.Context, rec biz.MemoryFactPendingRecord) error {
@@ -47,13 +47,13 @@ func (r *memoryFactPendingRepo) InsertPending(ctx context.Context, rec biz.Memor
 		return nil
 	}
 	d := r.data.Dialect()
-	q := d.BuildInsertOrIgnore("memory_fact_pending", memoryFactPendingCols, d.Placeholders(11), "id")
+	q := d.BuildInsertOrIgnore("memory_fact_pending", memoryFactPendingCols, d.Placeholders(12), "id")
 	if rec.Status == "" {
 		rec.Status = biz.MemoryFactPendingStatusPending
 	}
 	_, err := r.data.RWDB().WriteHandle().ExecContext(ctx, q,
 		rec.ID, rec.AgentID, rec.FactKey, rec.Verdict, rec.ProposedBody, rec.PriorBody,
-		rec.AdjudicatorReason, rec.Status, rec.Approver, rec.CreatedAt, rec.DecidedAt,
+		rec.AdjudicatorReason, rec.PayloadJSON, rec.Status, rec.Approver, rec.CreatedAt, rec.DecidedAt,
 	)
 	if err != nil {
 		return entErrToBizErr(err, "MEMORY_FACT_PENDING")
@@ -153,7 +153,7 @@ type memoryFactPendingScanner interface {
 func scanMemoryFactPending(row memoryFactPendingScanner, rec *biz.MemoryFactPendingRecord) error {
 	if err := row.Scan(
 		&rec.ID, &rec.AgentID, &rec.FactKey, &rec.Verdict, &rec.ProposedBody, &rec.PriorBody,
-		&rec.AdjudicatorReason, &rec.Status, &rec.Approver, &rec.CreatedAt, &rec.DecidedAt,
+		&rec.AdjudicatorReason, &rec.PayloadJSON, &rec.Status, &rec.Approver, &rec.CreatedAt, &rec.DecidedAt,
 	); err != nil {
 		return entErrToBizErr(err, "MEMORY_FACT_PENDING")
 	}

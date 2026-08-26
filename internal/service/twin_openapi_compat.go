@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,13 +64,14 @@ type twinNodeMeta struct {
 // TwinOpenAPICompatService twinmonitor OpenAPI 兼容门面。
 // 同时实现 biz.GraphRunEventSink（构造时自注册到 GraphExecutionUsecase）。
 type TwinOpenAPICompatService struct {
-	agents    *biz.AgentUsecase
-	graphs    *biz.GraphUsecase
-	memory    *biz.MemoryAdminUsecase
-	usageUC   *usage.Usecase
-	monitorUC *monitor.Usecase
-	llmModels *biz.LlmProviderModelUsecase
-	lg        loggateway.Logger
+	agents     *biz.AgentUsecase
+	graphs     *biz.GraphUsecase
+	memory     *biz.MemoryAdminUsecase
+	usageUC    *usage.Usecase
+	monitorUC  *monitor.Usecase
+	llmModels  *biz.LlmProviderModelUsecase
+	mfpDecider *biz.MemoryFactPendingDecider
+	lg         loggateway.Logger
 
 	token   string
 	mux     *http.ServeMux
@@ -90,21 +92,23 @@ func NewTwinOpenAPICompatService(
 	usageUC *usage.Usecase,
 	monitorUC *monitor.Usecase,
 	llmModels *biz.LlmProviderModelUsecase,
+	mfpDecider *biz.MemoryFactPendingDecider,
 	lg loggateway.Logger,
 ) *TwinOpenAPICompatService {
 	s := &TwinOpenAPICompatService{
-		agents:    agents,
-		graphs:    graphs,
-		memory:    memory,
-		usageUC:   usageUC,
-		monitorUC: monitorUC,
-		llmModels: llmModels,
-		lg:        lg,
-		token:     strings.TrimSpace(os.Getenv(TwinOpenAPITokenEnv)),
-		startAt:   time.Now(),
-		hc:        &http.Client{Timeout: 10 * time.Second},
-		subs:      make(map[string]*twinRunSub),
-		idempot:   make(map[string]string),
+		agents:     agents,
+		graphs:     graphs,
+		memory:     memory,
+		usageUC:    usageUC,
+		monitorUC:  monitorUC,
+		llmModels:  llmModels,
+		mfpDecider: mfpDecider,
+		lg:         lg,
+		token:      strings.TrimSpace(os.Getenv(TwinOpenAPITokenEnv)),
+		startAt:    time.Now(),
+		hc:         &http.Client{Timeout: 10 * time.Second},
+		subs:       make(map[string]*twinRunSub),
+		idempot:    make(map[string]string),
 	}
 	s.routes()
 	if graphs != nil && graphs.ExecUC() != nil {
@@ -147,6 +151,7 @@ func (s *TwinOpenAPICompatService) routes() {
 	mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.guard(s.handleCancelRun))
 	mux.HandleFunc("POST /api/v1/runs/{id}/interrupts/{interrupt_id}/resume", s.guard(s.handleResumeInterrupt))
 	mux.HandleFunc("POST /api/v1/memory/facts", s.guard(s.handleWriteMemoryFact))
+	mux.HandleFunc("POST /api/v1/memory/fact-pending/{id}/decision", s.guard(s.handleMemoryFactPendingDecision))
 	mux.HandleFunc("GET /api/v1/quota/usage", s.guard(s.handleQuotaUsage))
 	mux.HandleFunc("GET /api/v1/metrics/agents", s.guard(s.handleAgentMetrics))
 	s.mux = mux
@@ -727,6 +732,55 @@ func (s *TwinOpenAPICompatService) handleWriteMemoryFact(w http.ResponseWriter, 
 		return
 	}
 	writeTwinJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// twinMemoryFactPendingDecision 对齐 twinmonitor 审批决议回写（R3 3.3 C7 桥）。
+// Decision 为 E4 四档（approve/deny/approve_session/approve_always，3.4）；
+// 空时按 Approved 布尔兼容映射（旧审批中心两档）。
+type twinMemoryFactPendingDecision struct {
+	Approved   bool   `json:"approved"`
+	Decision   string `json:"decision"`
+	Comment    string `json:"comment"`
+	ApproverID uint32 `json:"approver_id"`
+}
+
+// handleMemoryFactPendingDecision 审批中心决议回写：approve 档回放原 bi-temporal
+// 写，deny 仅置态；approve_session/approve_always 另加 E4 免审授权。Decider
+// 内部 fail-closed（MarkDecided 仅 pending 行可迁），未找到/已决议/非法决议
+// 一律 404，与 twinmonitor 侧 ai_approvals 状态机对齐。
+func (s *TwinOpenAPICompatService) handleMemoryFactPendingDecision(w http.ResponseWriter, r *http.Request) {
+	if s.mfpDecider == nil {
+		writeTwinError(w, http.StatusServiceUnavailable, "memory fact pending decider not wired")
+		return
+	}
+	var in twinMemoryFactPendingDecision
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeTwinError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	decision := in.Decision
+	if _, ok := biz.NormalizeMemoryFactDecision(decision); !ok {
+		// 兼容旧两档调用方：decision 缺省/非法时按 approved 布尔映射。
+		decision = biz.MemoryFactDecisionDeny
+		if in.Approved {
+			decision = biz.MemoryFactDecisionApprove
+		}
+	}
+	approver := "twinmonitor"
+	if in.ApproverID != 0 {
+		approver = "twinmonitor:" + strconv.FormatUint(uint64(in.ApproverID), 10)
+	}
+	applied, replayErr := s.mfpDecider.Decide(r.Context(), r.PathValue("id"), decision, approver, in.Comment)
+	if !applied {
+		writeTwinError(w, http.StatusNotFound, "pending not found or already decided")
+		return
+	}
+	out := map[string]any{"ok": true}
+	if replayErr != nil {
+		// 决议已生效不回滚；回放失败显式透出供审批侧告警/补偿。
+		out["replay_error"] = replayErr.Error()
+	}
+	writeTwinJSON(w, http.StatusOK, out)
 }
 
 func (s *TwinOpenAPICompatService) handleQuotaUsage(w http.ResponseWriter, r *http.Request) {

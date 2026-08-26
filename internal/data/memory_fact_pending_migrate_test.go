@@ -72,4 +72,27 @@ func TestMemoryFactPendingMigration_PG(t *testing.T) {
 	if gotStatus != "approved" || gotApprover != "user-1" || decidedAt == 0 {
 		t.Fatalf("decide mismatch: status=%s approver=%s decided_at=%d", gotStatus, gotApprover, decidedAt)
 	}
+
+	// 20261255 payload_json（R3 3.3）：重放快照列契约——幂等重跑 + 读写回合。
+	const file2 = "sql/migrations/20261255_memory_fact_pending_payload.sql"
+	for round := 0; round < 2; round++ {
+		if err := executeSQLFileWithDialect(ctx, db, file2, DialectPostgres, lg); err != nil {
+			t.Fatalf("round %d %s: %v", round, file2, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx,
+		`UPDATE memory_fact_pending SET payload_json=$1 WHERE id=$2`,
+		`{"candidate":{"statement":"SRV-DB-03 已迁移"},"target_fact_id":"fact-1"}`, "mfp-test-1",
+	); err != nil {
+		t.Fatalf("update payload_json: %v", err)
+	}
+	var gotPayload string
+	if err := db.QueryRowContext(ctx,
+		`SELECT payload_json FROM memory_fact_pending WHERE id=$1`, "mfp-test-1",
+	).Scan(&gotPayload); err != nil {
+		t.Fatalf("select payload_json: %v", err)
+	}
+	if gotPayload == "" {
+		t.Fatal("payload_json roundtrip empty")
+	}
 }
