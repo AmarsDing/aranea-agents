@@ -202,6 +202,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			MCPTooling:     r.td.Persist.AgentMCP,
 			KanbanBridge:   r.cfg.KanbanBridge,
 			ComputerUseUC:  r.cfg.ComputerUseUC,
+			SandboxFSStore: r.cfg.SandboxFSStore,
 			MediaProviders: r.td.ReadDeps.MediaProviders,
 			ArtifactWriter: r.td.Persist.ArtifactUC,
 		},

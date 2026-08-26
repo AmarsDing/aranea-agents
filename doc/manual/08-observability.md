@@ -33,7 +33,7 @@
 
 ### 防抖与验证
 
-- **冷却期 5 分钟**：同一问题在冷却期内不重复触发修复；
+- **按严重度分级冷却**：critical 30 分钟 / high 10 分钟 / medium 5 分钟 / low 2 分钟（可用 `severity_cooldown_*_ms` 配置），同一规则在冷却期内不重复触发修复；
 - 修复后验证指标回归正常 → 事件闭环归档；
 - **自愈组件唯一**：SelfHealObserver（ADR-4，旧 SelfHealUsecase 已下线）。
 
@@ -47,7 +47,7 @@ Graph 执行可回溯任意检查点的状态快照（见 [04 Team 与 Graph](04
 
 ## 设计要点
 
-- **观测不侵入业务**：事件总线（bus_v2 + envelope）异步投影，45 种 Envelope 事件；
+- **观测不侵入业务**：事件总线（bus_v2）异步投影——chat/system 事件走 ActivityEvent（created/streaming/updated/completed/failed/cancelled 六型），监控事件走 MonitorEvent（13 型）；
 - **告警去抖**：MCP 健康探测等场景带重连计数与告警去抖；
 - **pprof 观测**（Docker dev）：独立端口 `:8813`，仅内网可达，缺省环境变量即关闭。
 

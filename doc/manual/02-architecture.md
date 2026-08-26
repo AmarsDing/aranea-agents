@@ -10,13 +10,13 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 
 | 层 | 职责 | 关键组件 |
 |----|------|----------|
-| **接入层** | 用户/系统触达平台的所有入口 | Web UI（Vue3/Quasar）、aranea CLI、13 种 IM Channel、Cron 定时调度、A2A 联邦协议 |
+| **接入层** | 用户/系统触达平台的所有入口 | Web UI（Vue3/Quasar）、aranea CLI、14 种 IM Channel、Cron 定时调度、A2A 联邦协议 |
 | **传输层** | 协议与横切中间件 | Kratos v2：HTTP :8810 / gRPC :9910 / WebSocket :8812；Auth/Trace 中间件链；Wire 编译期 DI |
 | **服务层** | 50+ Service，proto ↔ biz 映射与事件投影 | ChatService（核心编排器）、AgentService、TeamService、GraphService、SkillService、MCPService 等 |
-| **领域层** | 45+ Usecase，纯业务规则 | 领域模型与业务用例；Repo 窄接口（≤5 方法）便于 mock；不依赖框架运行时 |
+| **领域层** | 65+ Usecase，纯业务规则 | 领域模型与业务用例；Repo 窄接口（≤5 方法）便于 mock；不依赖框架运行时 |
 | **运行时适配层** | 把领域对象装配为 trpc-agent-go 运行时 | agent 装配（prompt/记忆/工具注入）、team 执行、graph 适配、tools 挂载、provider/memory 桥接 |
 | **框架层** | Agent 运行时内核（vendored） | trpc-agent-go：Runner / Agent(llm·team·graph) / Session / Memory / Tool / MCP / Event |
-| **数据层** | 持久化与索引 | PostgreSQL + Ent ORM（97 Schema）、pgvector 向量索引、Redis 缓存/队列、文件存储（Artifact/Skill） |
+| **数据层** | 持久化与索引 | PostgreSQL + Ent ORM（107 Schema）、pgvector 向量索引、Redis 缓存/队列、文件存储（Artifact/Skill） |
 
 **横切关注点**（贯穿各层）：全链路可观测与自愈、配额计费（六维定价）、五重安全护栏、9 个内置插件（+框架常驻插件）。
 
@@ -55,8 +55,8 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 
 | 维度 | 数据 |
 |------|------|
-| 后端 | Go 1.26+ / Kratos v2 / Ent / Wire；50+ Service、45+ Usecase、95+ Repo、97 Ent Schema |
-| 前端 | Vue 3 + Quasar + Pinia + TypeScript；35 Store、45+ 页面、45 种 Envelope 事件 |
+| 后端 | Go 1.26+ / Kratos v2 / Ent / Wire；50+ Service、65+ Usecase、105+ Repo、107 Ent Schema |
+| 前端 | Vue 3 + Quasar + Pinia + TypeScript；48 Store、45+ 页面、ActivityEvent（6 型 × chat/system 域）+ MonitorEvent（13 型）事件体系 |
 | 存储 | PostgreSQL（主）+ pgvector（向量）+ Redis（缓存/队列）+ 文件系统（Skill/Artifact） |
 | 运行时 | trpc-agent-go（vendored，禁止擅改） |
 | 桌面 | Tauri（web/src-tauri）+ AraneaLauncher（Windows 便携部署） |

@@ -33,7 +33,7 @@
 ## 设计要点
 
 - **组织不变量**：三级编制、lead 角色、专项独立性等约束见 [org-invariants](../../docs/development/org-invariants.md)，属架构锁；
-- **行业模板**：内置金融（39 个专项 Agent、8 支预置团队，见 `internal/scenario/packs/finance`）、自媒体、软件开发三大行业；通过 scenario 目录添加新行业无需改代码；
+- **行业模板**：内置金融（41 个专项 Agent、10 支预置团队，定义于 `internal/scenario/finance/agents.yaml`）、自媒体（39 Agent、6 支预置团队，见 `internal/scenario/selfmedia`）、软件开发（82 Agent、8 支预置团队，见 `internal/scenario/softwaredev`）三大行业；通过 scenario 目录添加新行业无需改代码；
 - **生态市场**（开发中）：公司/部门/岗位/Agent/Team/Graph/Skill/MCP 全品类模板市场，最佳实践可发布/安装/评分（certified 认证）；
 - **软删级联**：删除组织时级联软删 runtime_settings / prompt_files / sessions / tool_overrides / 无会话 tool_invocations。
 

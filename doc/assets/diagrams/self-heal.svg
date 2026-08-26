@@ -78,7 +78,7 @@
     <text x="600" y="547" font-size="14" fill="#E5EAF5" text-anchor="middle">修复验证：指标回归正常 → 事件闭环归档</text>
 
     <text x="60" y="626" font-size="12" font-weight="bold" fill="#34D399">防抖机制</text>
-    <text x="170" y="626" font-size="12" fill="#8FA3C8">冷却期 5 分钟：同一问题在冷却期内不重复触发修复 · 自愈组件唯一：SelfHealObserver · 诊断包一键聚合 trace/session/run/step</text>
+    <text x="170" y="626" font-size="12" fill="#8FA3C8">按严重度分级冷却：critical 30min / high 10min / medium 5min / low 2min · 自愈组件唯一：SelfHealObserver · 诊断包一键聚合 trace/session/run/step</text>
   </g>
 
   <g id="connections">

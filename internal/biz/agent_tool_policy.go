@@ -36,6 +36,9 @@ var toolStaticGroups = map[string][]string{
 	"subagent":    {"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"},
 	"browser":     {"browser"},
 	"computeruse": {"computer_use_observe", "computer_use_screenshot", "computer_use_act", "computer_use_launch", "computer_use_session"},
+	// sandbox（M82 P1-2）：会话沙箱文件工具族。无 profile 默认引用——沙箱是
+	// 显式 opt-in 能力，agent allow JSON 命名 group:sandbox 或单键授予。
+	"sandbox": {"sandbox_fs_write", "sandbox_fs_read"},
 }
 
 // syntheticShellExecTool matches internal/data builtin seeds when the tools table has no shell_exec row.
@@ -235,6 +238,11 @@ var registryOptInOnlyKeys = map[string]bool{
 	"officecli_read":   true,
 	"officecli_write":  true,
 	"officecli_render": true,
+	// sandbox_fs_*（M82 P1-2 会话沙箱文件工具族）种子 enabled=false：沙箱是
+	// 显式 opt-in 能力，allow JSON 命名 group:sandbox / 单键授予；不入本表将被
+	// applyRegistryAdminDenials 全员硬 deny。沙箱子系统不可用时装配层另行裁剪。
+	"sandbox_fs_write": true,
+	"sandbox_fs_read":  true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {

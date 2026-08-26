@@ -9,7 +9,7 @@
 ### models.dev 同步
 
 - 从 [models.dev](https://models.dev) 拉取全球 AI 模型规格，作为**模型参数和定价的外部真相源**；
-- **定时同步**：每小时自动同步；
+- **定时同步**：默认每 24 小时自动同步（`sync_interval_hours` 可在同步策略中调整）；
 - **Provider 迁移**：旧 provider_code 自动迁移到 models.dev id，支持断点续传；
 - **Runtime Overlay**：models.dev provider id → trpc-agent-go 运行时映射。
 

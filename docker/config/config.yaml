@@ -105,7 +105,7 @@ sandbox:
     idle_timeout: 600s          # leased idle eviction (10m)
   profiles:
     codeexec:
-      image: python:3.11-slim   # P1: aranea-sandbox-base
+      image: aranea-sandbox-base:local   # P1-3 基座镜像（docker/sandbox-base/build-sandbox-base.ps1 构建）
       cpus: 0.5
       memory_bytes: 268435456   # 256MiB
       pids_limit: 256

@@ -381,10 +381,18 @@ func providePendingMessageQueue(lg loggateway.Logger, d *data.Data) *rt.PendingM
 	return q
 }
 
-func provideCodeExecutorFactory(lg loggateway.Logger, sandboxMgr *sandbox.Manager) *localexec.Factory {
+func provideCodeExecutorFactory(lg loggateway.Logger, sandboxMgr *sandbox.Manager, sandboxLeases *sandbox.SessionLeases) *localexec.Factory {
 	f := localexec.NewFactoryWithLogger(lg)
-	f.SetSandboxManager(sandboxMgr)
+	f.SetSandboxManager(sandboxMgr, sandboxLeases)
 	return f
+}
+
+// provideSandboxSessionLeases builds the process-wide shared session-lease
+// store (M82 P1-1/P1-2). The SAME instance is bound to the codeexecutor
+// sandbox backend and carried into every agent build via ToolBridges.SandboxFS,
+// so execute_code and sandbox_fs_write/read share one sandbox per session.
+func provideSandboxSessionLeases(sandboxMgr *sandbox.Manager) *sandbox.SessionLeases {
+	return sandbox.NewSessionLeases(sandboxMgr)
 }
 
 // provideSandboxManager builds the M82 sandbox Manager (P0-8 启动探测降级).
@@ -580,6 +588,7 @@ func provideRuntimeTooling(
 	clientBridge *clientbridge.Bridge,
 	computerUseUC *bizcu.ComputerUseUsecase,
 	codingBridgeSvc codingbridge.BridgeService,
+	sandboxLeases *sandbox.SessionLeases,
 	runtimeConf *conf.Runtime,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
@@ -604,6 +613,7 @@ func provideRuntimeTooling(
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
+			SandboxFS:   sandboxLeases,
 		},
 		Sharing: service.WorkspaceSharing{
 			ResourceAccess: resourceAccess,
@@ -738,6 +748,7 @@ func provideRunnerConfig(
 	subAgentSvc *subagenttool.Service,
 	kanbanBridge kanbanpkg.Bridge,
 	computerUseUC *bizcu.ComputerUseUsecase,
+	sandboxLeases *sandbox.SessionLeases,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
 	skillUC *biz.SkillUsecase,
@@ -774,6 +785,7 @@ func provideRunnerConfig(
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
 		ComputerUseUC:   computerUseUC,
+		SandboxFSStore:  sandboxLeases,
 		A2AEnabled:      a2aUC != nil,
 		// SessionChildLookup resolves member agent session IDs for child_session_id
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up
@@ -3847,8 +3859,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		providePendingMessageQueue,
 		provideCodeExecutorFactory,
 		// M82: sandbox Manager + admin service; the admin port binds onto the
-		// Manager (read-only list/metrics surface, ADR-82-3).
+		// Manager (read-only list/metrics surface, ADR-82-3). SessionLeases is
+		// the P1-1/P1-2 process-wide shared session-lease store, bound to both
+		// the codeexecutor sandbox backend and the sandbox_fs toolset.
 		provideSandboxManager,
+		provideSandboxSessionLeases,
 		service.NewSandboxService,
 		wire.Bind(new(biz.SandboxAdminPort), new(*sandbox.Manager)),
 		provideAutoMemoryQueue,

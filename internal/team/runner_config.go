@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/sandbox"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
@@ -64,7 +65,11 @@ type RunnerConfig struct {
 	// ComputerUseUC enables the computer_use_* toolset in team member builds
 	// (75-computer-use). Optional; nil prunes the toolset.
 	ComputerUseUC *bizcu.ComputerUseUsecase
-	A2AEnabled    bool
+	// SandboxFSStore is the process-wide shared session-lease store backing
+	// sandbox_fs_write/read in team member builds (M82 P1-2). Optional; nil
+	// prunes the toolset.
+	SandboxFSStore *sandbox.SessionLeases
+	A2AEnabled     bool
 	// SessionChildLookup resolves member agent session IDs for child_session_id
 	// in session activities. Optional; when nil, falls back to team session ID.
 	SessionChildLookup SessionChildLookup

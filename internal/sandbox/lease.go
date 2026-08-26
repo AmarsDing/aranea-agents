@@ -26,6 +26,14 @@ func (l *Lease) SandboxID() string { return l.id }
 // Profile returns the profile name this lease was acquired under.
 func (l *Lease) Profile() string { return l.profile }
 
+// Alive reports whether the lease is still registered as leased (false after
+// manager-side idle/TTL/force destroy). Consumers use it to disambiguate
+// ErrNotFound from file-level misses inside a live sandbox.
+func (l *Lease) Alive() bool {
+	_, err := l.leasedEntry()
+	return err == nil
+}
+
 // leasedEntry returns the registry entry if the lease is still live.
 func (l *Lease) leasedEntry() (*entry, error) {
 	e, ok := l.m.registry.get(l.id)

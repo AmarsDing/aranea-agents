@@ -92,7 +92,7 @@
 
     <text x="156" y="145" font-size="14" fill="#E5EAF5" text-anchor="middle">Web UI (Vue3/Quasar)</text>
     <text x="378" y="145" font-size="14" fill="#E5EAF5" text-anchor="middle">aranea CLI</text>
-    <text x="600" y="145" font-size="14" fill="#E5EAF5" text-anchor="middle">IM Channels ×13</text>
+    <text x="600" y="145" font-size="14" fill="#E5EAF5" text-anchor="middle">IM Channels ×14</text>
     <text x="822" y="145" font-size="14" fill="#E5EAF5" text-anchor="middle">Cron 定时调度</text>
     <text x="1044" y="145" font-size="14" fill="#E5EAF5" text-anchor="middle">A2A 联邦协议</text>
 
@@ -121,7 +121,7 @@
     <text x="822" y="745" font-size="14" fill="#E5EAF5" text-anchor="middle">Memory</text>
     <text x="1044" y="745" font-size="14" fill="#E5EAF5" text-anchor="middle">Tool / MCP / Event</text>
 
-    <text x="183" y="865" font-size="14" fill="#E5EAF5" text-anchor="middle">PostgreSQL + Ent（97 Schema）</text>
+    <text x="183" y="865" font-size="14" fill="#E5EAF5" text-anchor="middle">PostgreSQL + Ent（107 Schema）</text>
     <text x="459" y="865" font-size="14" fill="#E5EAF5" text-anchor="middle">pgvector 向量索引</text>
     <text x="735" y="865" font-size="14" fill="#E5EAF5" text-anchor="middle">Redis 缓存 / 队列</text>
     <text x="1011" y="865" font-size="14" fill="#E5EAF5" text-anchor="middle">文件存储（Artifact/Skill）</text>

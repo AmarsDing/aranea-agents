@@ -19,12 +19,14 @@
 | **Parallel** | 并行执行 + Synthesizer 汇总 | 独立子任务并行（如：多维度分析） |
 | **Coordinator** | 协调者分派 Worker，统一调度 | 需要中央决策的复杂任务 |
 | **CriticLoop** | Generator + Critic 生成-批评循环 | 需要反复打磨的产出（文案、方案） |
-| **Swarm** | 成员间 `transfer_to_agent` 自由流转 | 开放式协作，路径不可预知 |
-| **Adaptive** | 运行时动态选择最优策略 | 不确定哪种模式最优时 |
+| **Swarm** | Adaptive 的兼容别名（编译期归一化为 `adaptive`） | 旧配置兼容 |
+| **Adaptive** | 顺序主干 + 成员间 `transfer_to_agent` 自由流转（handoff 上限 `swarm.max_handoffs`，默认 30） | 开放式协作，路径不可预知 |
+
+> 注：模式可配置值共 6 种，编译模板实际 5 个（sequential / parallel / coordinator / critic_loop / adaptive）——`swarm` 在编译期归一化为 `adaptive`。
 
 ### 4.2 Graph 图编排
 
-- **节点类型**：agent / llm / tool / task / review / subgraph（子图嵌套）；
+- **节点类型**：agent / llm / tool / task / review / subgraph（子图嵌套），另有 router（条件路由）与 function（函数节点）；
 - **条件边**：按上游输出决定走向，支持复杂分支逻辑；
 - **状态字段 + Reducer**：default / append / cover / merge 四种聚合策略；
 - **Checkpoint + TimeTravel**：任意检查点的状态快照可回溯；

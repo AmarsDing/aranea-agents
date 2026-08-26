@@ -158,6 +158,8 @@ type coreShardFP struct {
 	Browser            *browser.PlaywrightMCPConfig
 	ComputerUse        bool
 	HasComputerUseUC   bool
+	SandboxFS          bool
+	HasSandboxFSStore  bool
 	HasBlobReader      bool
 }
 
@@ -323,6 +325,7 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 	cfg.ClientBridgeSvc = deps.ClientBridge
 	cfg.ComputerUseUC = deps.ComputerUseUC
 	cfg.CodingBridgeSvc = deps.CodingBridgeSvc
+	cfg.SandboxFSStore = deps.SandboxFSStore
 
 	lg.Info("工具构建：SubAgentService 检查",
 		loggateway.StepID("agent.subagent_check"),
@@ -435,6 +438,8 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 			Browser:            coreCfg.Browser,
 			ComputerUse:        coreCfg.ComputerUse,
 			HasComputerUseUC:   coreCfg.ComputerUseUC != nil,
+			SandboxFS:          coreCfg.SandboxFS,
+			HasSandboxFSStore:  coreCfg.SandboxFSStore != nil,
 			HasBlobReader:      coreCfg.BlobReader != nil,
 		})
 		buildCfg := coreCfg

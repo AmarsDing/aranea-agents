@@ -53,10 +53,11 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			Model:    mod,
 		},
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
-			ToolUC:        s.orch.td().ReadDeps.ToolUC,
-			MCPTooling:    s.orch.td().Persist.AgentMCP,
-			KanbanBridge:  s.orch.rt().Bridges.Kanban,
-			ComputerUseUC: s.orch.rt().Bridges.ComputerUse,
+			ToolUC:         s.orch.td().ReadDeps.ToolUC,
+			MCPTooling:     s.orch.td().Persist.AgentMCP,
+			KanbanBridge:   s.orch.rt().Bridges.Kanban,
+			ComputerUseUC:  s.orch.rt().Bridges.ComputerUse,
+			SandboxFSStore: s.orch.rt().Bridges.SandboxFS,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
 			HasMemory:              s.orch.td().Persist.Memory.Available(),

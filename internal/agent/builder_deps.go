@@ -8,6 +8,7 @@ import (
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
+	"aranea-agents/internal/sandbox"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools"
@@ -74,6 +75,13 @@ type TRPCToolAssemblyDeps struct {
 	// coding_check_task / coding_cancel_task). Optional: when nil, coding tools are
 	// pruned from assembly even if enabled in effective tool keys (76-coding-agent-bridge).
 	CodingBridgeSvc codingbridge.BridgeService
+	// SandboxFSStore is the process-wide shared session-lease store backing the
+	// sandbox_fs_write / sandbox_fs_read tools (M82 P1-2). The SAME instance is
+	// bound to the codeexecutor sandbox backend so code_exec and sandbox_fs
+	// share one sandbox per session. Optional: when nil (sandbox subsystem
+	// disabled / docker daemon unavailable), sandbox_fs tools are pruned from
+	// assembly even if enabled in effective tool keys.
+	SandboxFSStore *sandbox.SessionLeases
 	// MCPCacheInvalidators expire mcp_tool_set tools/list caches mid-turn
 	// (E8). Optional: when empty, catalog refresh is a no-op.
 	MCPCacheInvalidators []tools.MCPCacheInvalidator

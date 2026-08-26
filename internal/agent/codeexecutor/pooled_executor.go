@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/sandbox"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
 
@@ -24,7 +25,7 @@ const sessionRenewExtend = 30 * time.Minute
 
 // pooledRuntime executes code inside a pooled sandbox lease supplied by the
 // caller (pooledAdapter owns lease lifecycle: ephemeral per-call or
-// session-pinned via sessionLeaseStore). It replaces the per-run
+// session-pinned via the shared sandbox.SessionLeases). It replaces the per-run
 // create/start/rm cycle of DockerExecutor with warm-pool acquisition while
 // keeping identical output semantics (Result + artifact dir).
 type pooledRuntime struct {
@@ -116,16 +117,16 @@ func collectSandboxArtifacts(ctx context.Context, lease *sandbox.Lease, outDir s
 }
 
 // pooledAdapter adapts pooledRuntime to the framework CodeExecutor interface.
-// Lease lifecycle (P1-1): a non-empty ExecutionID pins one lease to the
+// Lease lifecycle (P1-1): a non-empty session key pins one lease to the
 // session for its whole lifetime (multi-turn fs/process state, A3); an empty
-// ExecutionID falls back to ephemeral per-call acquire/release.
+// key falls back to ephemeral per-call acquire/release.
 type pooledAdapter struct {
 	runtime *pooledRuntime
 	timeout time.Duration
-	store   *sessionLeaseStore
+	store   *sandbox.SessionLeases
 }
 
-func newPooledAdapter(mgr *sandbox.Manager, timeout time.Duration, store *sessionLeaseStore) *pooledAdapter {
+func newPooledAdapter(mgr *sandbox.Manager, timeout time.Duration, store *sandbox.SessionLeases) *pooledAdapter {
 	return &pooledAdapter{runtime: newPooledRuntime(mgr), timeout: timeout, store: store}
 }
 
@@ -133,8 +134,25 @@ func (a *pooledAdapter) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimite
 	return trpcagentcodeexec.CodeBlockDelimiter{Start: "```", End: "```"}
 }
 
+// sessionKey resolves the lease key: the model-supplied ExecutionID wins
+// (explicit contract); otherwise derive app/user/session from the invocation
+// context (P1-2 — the framework's execution_id arg is optional and models
+// rarely pass it, while the sandbox_fs tool family keys on the invocation
+// session, so this fallback keeps both consumers on ONE shared sandbox).
+func (a *pooledAdapter) sessionKey(ctx context.Context, executionID string) string {
+	if key := strings.TrimSpace(executionID); key != "" {
+		return key
+	}
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil || inv.Session == nil || inv.Session.ID == "" {
+		return ""
+	}
+	s := inv.Session
+	return s.AppName + "/" + s.UserID + "/" + s.ID
+}
+
 func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec.CodeExecutionInput) (trpcagentcodeexec.CodeExecutionResult, error) {
-	key := normalizeSessionKey(input.ExecutionID)
+	key := a.sessionKey(ctx, input.ExecutionID)
 	if key == "" || a.store == nil {
 		return a.executeEphemeral(ctx, input)
 	}
@@ -142,17 +160,17 @@ func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec
 	// lease; the fresh lease starts with empty state per the use-and-destroy
 	// contract.
 	for attempt := 0; attempt < 2; attempt++ {
-		lease, err := a.store.acquire(ctx, key)
+		lease, err := a.store.Acquire(ctx, key)
 		if err != nil {
 			return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor acquire: %w", err)
 		}
 		res, err := a.runBlocks(ctx, lease, input.CodeBlocks)
 		if err == nil {
-			a.store.renew(ctx, key, sessionRenewExtend)
+			a.store.Renew(ctx, key, sessionRenewExtend)
 			return res, nil
 		}
 		if errors.Is(err, sandbox.ErrNotFound) && attempt == 0 {
-			a.store.evict(key, lease)
+			a.store.Evict(key, lease)
 			continue
 		}
 		return trpcagentcodeexec.CodeExecutionResult{}, err

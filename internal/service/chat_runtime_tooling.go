@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
@@ -75,6 +76,11 @@ type ToolBridges struct {
 	ComputerUse *bizcu.ComputerUseUsecase
 	Coding      codingbridge.BridgeService
 	Client      *clientbridge.Bridge
+	// SandboxFS is the process-wide shared session-lease store backing
+	// sandbox_fs_write/read (M82 P1-2); the same instance is bound to the
+	// codeexecutor sandbox backend so code_exec and sandbox_fs share one
+	// sandbox per session. nil prunes the toolset.
+	SandboxFS *sandbox.SessionLeases
 }
 
 // WorkspaceSharing is M71 agent resource sharing, assembled via CustomToolFunc

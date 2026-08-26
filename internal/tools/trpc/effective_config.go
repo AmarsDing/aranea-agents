@@ -3,6 +3,7 @@ package trpc
 import (
 	"aranea-agents/internal/biz"
 	computerusepkg "aranea-agents/internal/tools/computeruse"
+	sandboxfspkg "aranea-agents/internal/tools/sandboxfs"
 )
 
 // ToolsetConfigFromEffectiveKeys maps effective tool_key flags to ToolsetConfig switches.
@@ -44,6 +45,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		ComputerUse: has(computerusepkg.ToolObserve) || has(computerusepkg.ToolScreenshot) ||
 			has(computerusepkg.ToolAct) || has(computerusepkg.ToolLaunch) || has(computerusepkg.ToolSession),
 		CodingBridge: has("coding_dispatch_task") || has("coding_check_task") || has("coding_cancel_task"),
+		SandboxFS:    has(sandboxfspkg.ToolWrite) || has(sandboxfspkg.ToolRead),
 	}
 	return cfg
 }
@@ -55,6 +57,6 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode ||
 		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
 		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.ReadLints || cfg.DeleteFile || cfg.WorkingMemory || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
-		cfg.ClientBridge || cfg.ComputerUse || cfg.CodingBridge ||
+		cfg.ClientBridge || cfg.ComputerUse || cfg.CodingBridge || cfg.SandboxFS ||
 		len(cfg.AgentTools) > 0 || len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

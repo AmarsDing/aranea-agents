@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/outbound"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/clientbridge"
@@ -15,6 +16,7 @@ import (
 	computerusepkg "aranea-agents/internal/tools/computeruse"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
+	sandboxfspkg "aranea-agents/internal/tools/sandboxfs"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
@@ -92,6 +94,13 @@ type ToolsetConfig struct {
 	// the flag is pruned so agents never see a tool with no backend (76-coding-agent-bridge).
 	CodingBridge    bool
 	CodingBridgeSvc codingbridge.BridgeService
+	// SandboxFS enables the session-sandbox file toolset (sandbox_fs_write /
+	// sandbox_fs_read, M82 P1-2). Requires SandboxFSStore (the process-wide
+	// shared session-lease store, also bound to the codeexecutor sandbox
+	// backend); when nil the flag is pruned so agents never see tools whose
+	// sandbox backend is unavailable.
+	SandboxFS      bool
+	SandboxFSStore *sandbox.SessionLeases
 	// SkipMCPGovernance（P0-2 阶段A）：分片构建时跳过片内 MCP schema 治理，
 	// 由合并期对直连 toolset 并集统一执行。仅分片装配路径设置。
 	SkipMCPGovernance bool
@@ -255,6 +264,11 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.ComputerUse && cfg.ComputerUseUC != nil {
 		for _, t := range computerusepkg.NewToolset(cfg.ComputerUseUC) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.SandboxFS && cfg.SandboxFSStore != nil {
+		for _, t := range sandboxfspkg.NewToolset(cfg.SandboxFSStore) {
 			customTools = append(customTools, t)
 		}
 	}

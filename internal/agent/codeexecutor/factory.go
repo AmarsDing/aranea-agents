@@ -28,20 +28,22 @@ type Factory struct {
 	localWD       string
 	localExec     trpcagentcodeexec.CodeExecutor
 	sandboxMgr    *sandbox.Manager // M82: bound post-construction by the wire provider
-	sandboxStore  *sessionLeaseStore
+	sandboxStore  *sandbox.SessionLeases
 	lg            loggateway.Logger
 }
 
-// SetSandboxManager binds the M82 sandbox manager (warm-pool backend). The
-// manager is constructed after the factory in the wire graph, so binding is a
-// post-construction setter rather than a constructor param. The P1-1 session
-// lease store is created here so it shares the manager's lifetime.
-func (f *Factory) SetSandboxManager(mgr *sandbox.Manager) {
+// SetSandboxManager binds the M82 sandbox manager (warm-pool backend) plus
+// the process-wide shared SessionLeases store (P1-1/P1-2: the SAME store is
+// injected into the sandbox_fs toolset so code_exec and sandbox_fs share one
+// sandbox per session). The manager is constructed after the factory in the
+// wire graph, so binding is a post-construction setter rather than a
+// constructor param.
+func (f *Factory) SetSandboxManager(mgr *sandbox.Manager, store *sandbox.SessionLeases) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sandboxMgr = mgr
 	if mgr != nil {
-		f.sandboxStore = newSessionLeaseStore(mgr)
+		f.sandboxStore = store
 	} else {
 		f.sandboxStore = nil
 	}

@@ -10,7 +10,9 @@ import (
 
 	"aranea-agents/internal/sandbox"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 // fakeSandboxEngine is an in-memory sandbox.Engine for adapter tests.
@@ -72,7 +74,7 @@ func newSessionTestAdapter(t *testing.T, eng *fakeSandboxEngine) (*pooledAdapter
 	cfg.Pool.MinReady = 0
 	mgr := sandbox.NewManager(cfg, eng, nil)
 	t.Cleanup(mgr.Close)
-	return newPooledAdapter(mgr, 10*time.Second, newSessionLeaseStore(mgr)), mgr
+	return newPooledAdapter(mgr, 10*time.Second, sandbox.NewSessionLeases(mgr)), mgr
 }
 
 func pythonInput(executionID, code string) trpcagentcodeexec.CodeExecutionInput {
@@ -149,7 +151,48 @@ func TestPooledAdapterStaleLeaseRetry(t *testing.T) {
 	}
 }
 
-// releaseSession destroys the pinned lease (explicit session teardown hook).
+// P1-2: empty model-supplied ExecutionID falls back to the invocation session
+// (app/user/session); an explicit ExecutionID still wins over the invocation.
+func TestPooledAdapterInvocationSessionKeyFallback(t *testing.T) {
+	eng := &fakeSandboxEngine{}
+	adapter, _ := newSessionTestAdapter(t, eng)
+
+	inv := trpcagent.NewInvocation()
+	inv.Session = &trpcsession.Session{ID: "s1", AppName: "app", UserID: "u"}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	// Two calls without execution_id share the invocation-derived sandbox.
+	if _, err := adapter.ExecuteCode(ctx, pythonInput("", "print(1)")); err != nil {
+		t.Fatalf("call 1: %v", err)
+	}
+	if _, err := adapter.ExecuteCode(ctx, pythonInput("", "print(2)")); err != nil {
+		t.Fatalf("call 2: %v", err)
+	}
+	if n := eng.createdCount(); n != 1 {
+		t.Fatalf("invocation-keyed reuse: created=%d, want 1", n)
+	}
+
+	// Explicit execution_id wins over the invocation session.
+	if _, err := adapter.ExecuteCode(ctx, pythonInput("other/u/x9", "print(3)")); err != nil {
+		t.Fatalf("call 3: %v", err)
+	}
+	if n := eng.createdCount(); n != 2 {
+		t.Fatalf("explicit execution_id must get its own sandbox: created=%d, want 2", n)
+	}
+
+	// No execution_id and no invocation → ephemeral (create+destroy per call).
+	if _, err := adapter.ExecuteCode(context.Background(), pythonInput("", "print(4)")); err != nil {
+		t.Fatalf("ephemeral: %v", err)
+	}
+	if n := eng.createdCount(); n != 3 {
+		t.Fatalf("ephemeral: created=%d, want 3", n)
+	}
+	if n := eng.destroyedCount(); n != 1 {
+		t.Fatalf("ephemeral must destroy on return: destroyed=%d, want 1", n)
+	}
+}
+
+// ReleaseSession destroys the pinned lease (explicit session teardown hook).
 func TestSessionLeaseStoreReleaseSession(t *testing.T) {
 	eng := &fakeSandboxEngine{}
 	adapter, _ := newSessionTestAdapter(t, eng)
@@ -158,7 +201,7 @@ func TestSessionLeaseStoreReleaseSession(t *testing.T) {
 	if _, err := adapter.ExecuteCode(ctx, pythonInput("app/u/s1", "print(1)")); err != nil {
 		t.Fatalf("call 1: %v", err)
 	}
-	adapter.store.releaseSession(ctx, "app/u/s1")
+	adapter.store.ReleaseSession(ctx, "app/u/s1")
 	if n := eng.destroyedCount(); n != 1 {
 		t.Fatalf("releaseSession: destroyed=%d, want 1", n)
 	}

@@ -58,11 +58,11 @@ detected pattern → pending → approved → registered
 ```text
 新生：自动检测 / 手动创建 / 导入融合
 成长：渐进加载（L0 清单 → L1 Body → L2 Refs）+ 版本迭代 + 健康度分析
-消亡：30 天无调用 / 成功率 < 60% → 消亡建议；人工停用；软删除
+消亡：长期无调用 / 低成功率 → 消亡建议；人工停用；软删除
 重生：版本回滚 / 重新发布 / 磁盘文件恢复（filesystem_missing 自动清除）
 ```
 
-健康度评估标准：healthy（周均调用>5 且成功率≥80%）/ warning（≥60%）/ critical（周均<2 或成功率<60%）。
+健康度按调用量与成功率五级评估（`skillHealthStatus`）：unused（统计窗口 0 调用 → 建议移除）/ healthy（成功率 ≥90%）/ degraded（≥70%，建议复查错误）/ unstable（≥50%，建议排查失败）/ critical（<50%，建议停用或重写）。
 
 ## 设计要点
 

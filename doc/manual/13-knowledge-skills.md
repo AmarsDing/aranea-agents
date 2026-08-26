@@ -55,7 +55,7 @@ Skill 是带 `SKILL.md` 的能力包：名称 + 描述 + 正文（指令/流程/
 ### 设计要点
 
 - 技能的**新生/成长/消亡/重生**完整生命周期见 [07 自动进化系统](07-evolution.md)；
-- 技能管家工具：`evolve_skill / optimize_skill / recommend_skills / analyze_skill_usage / analyze_skill_health / analyze_tool_weights / analyze_orchestration / optimize_orchestration`。
+- 技能管家工具（`skills_butler_` 前缀）：`skills_butler_evolve_skill / skills_butler_optimize_skill / skills_butler_recommend_skills / skills_butler_analyze_skill_usage / skills_butler_analyze_skill_health / skills_butler_analyze_tool_weights / skills_butler_analyze_orchestration / skills_butler_optimize_orchestration`。
 
 ### 界面配置
 

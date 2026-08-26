@@ -15,7 +15,7 @@
 | [07 自动进化系统](07-evolution.md) | 技能进化、Agent 进化、人工审批、护栏机制 | 所有用户 |
 | [08 可观测性与自愈](08-observability.md) | Trace、Flow Log、根因分析、自动修复、告警 | 运维用户 |
 | [09 成本管控](09-cost.md) | 六维定价、三级配额、预算告警、模型洞察 | 管理者 |
-| [10 外部接入](10-access.md) | 13 种 IM Channel、A2A 联邦、MCP 服务器 | 集成用户 |
+| [10 外部接入](10-access.md) | 14 种 IM Channel、A2A 联邦、MCP 服务器 | 集成用户 |
 | [11 安全与插件](11-security.md) | 9 个内置插件（+框架常驻插件）、五重防护、钩子系统 | 安全/运维 |
 | [12 模型与定价](12-models.md) | Provider 管理、models.dev 同步、六维定价 | 管理员 |
 | [13 知识库与技能](13-knowledge-skills.md) | 知识库、技能 CRUD、渐进式加载 | 进阶用户 |

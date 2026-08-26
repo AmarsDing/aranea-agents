@@ -462,6 +462,11 @@ var ddlMigrations = []ddlMigration{
 	// Phase 0 任务 0.1）：run 级 cache_hit_ratio 读路径按 message_id 查 events，
 	// 无索引会 seq scan 持续增长的事件表。双方言通用，幂等。
 	{Version: 20261246, Name: "usage_events_kind_message_index", SQL: "sql/migrations/20261246_usage_events_kind_message_index.sql"},
+	// 20261247 builtin_platform_tools_sandbox_fs_reseed（M82 P1-2）：种子表新增
+	// sandbox_fs_write / sandbox_fs_read 两行，存量库不会重跑版本化种子迁移
+	// 20260610，照 20261216/20261243 先例以 reseed 迁移补齐（种子幂等
+	// ON CONFLICT DO NOTHING，重跑安全）。
+	{Version: 20261247, Name: "builtin_platform_tools_sandbox_fs_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

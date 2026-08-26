@@ -2,9 +2,9 @@
 
 ## 功能
 
-Agent 一次创建、全平台可用：13 种 IM Channel 统一接入 + A2A 跨组织联邦 + MCP 工具生态。
+Agent 一次创建、全平台可用：14 种 IM Channel 统一接入 + A2A 跨组织联邦 + MCP 工具生态。
 
-## 10.1 多 Channel（13 种 IM 平台）
+## 10.1 多 Channel（14 种 IM 平台）
 
 ### 原理
 
@@ -13,15 +13,17 @@ Agent 一次创建、全平台可用：13 种 IM Channel 统一接入 + A2A 跨�
 | 飞书 / Lark | WebSocket 长连接 |
 | 钉钉 | Webhook / Stream |
 | 企业微信（智能机器人） | Webhook |
-| 企业微信（自建应用） | API |
-| 微信公众号 | API |
-| Slack | WebSocket |
-| Telegram | Long Polling |
-| Discord | WebSocket |
+| 企业微信（自建应用） | Webhook |
+| 微信公众号 | Webhook / 客服 API |
+| 微信（个人号·iLink） | Long Polling |
+| Slack | Events API / Socket Mode |
+| Telegram | Webhook / Long Polling |
+| Discord | Gateway WebSocket |
 | LINE | Webhook |
-| Microsoft Teams | API |
-| Mattermost | WebSocket |
-| QQ / 个人 QQ | OneBot 协议 |
+| Microsoft Teams | Bot Framework Webhook |
+| Mattermost | WebSocket / Webhook |
+| QQ 官方机器人 | Webhook |
+| QQ（OneBot 个人号） | OneBot 协议 |
 
 **统一抽象**：所有平台实现统一 Channel 接口，Agent 无需关心底层差异；新增平台无需改 Agent 代码。
 

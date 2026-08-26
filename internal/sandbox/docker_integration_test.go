@@ -10,7 +10,8 @@ import (
 // TestDockerEngineIntegration exercises the full lifecycle against the real
 // daemon: cold acquire -> exec -> release(destroy) and warm replenish -> warm
 // acquire. Skipped when no daemon is reachable. Uses the default codeexec
-// profile image (python:3.11-slim); pull it beforehand or the test skips.
+// profile image (aranea-sandbox-base:local, P1-3); build it beforehand via
+// docker/sandbox-base/build-sandbox-base.ps1 or the create step fails.
 func TestDockerEngineIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")

@@ -65,7 +65,7 @@ func DefaultConfig() Config {
 		Profiles: map[string]Profile{
 			DefaultProfileName: {
 				Name:           DefaultProfileName,
-				Image:          "python:3.11-slim", // P1: aranea-sandbox-base
+				Image:          "aranea-sandbox-base:local", // P1-3 基座镜像（docker/sandbox-base，build-sandbox-base.ps1 构建）
 				CPUs:           0.5,
 				MemoryBytes:    256 * 1024 * 1024,
 				PidsLimit:      256,
