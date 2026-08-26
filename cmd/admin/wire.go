@@ -399,8 +399,10 @@ func provideSandboxSessionLeases(sandboxMgr *sandbox.Manager) *sandbox.SessionLe
 // When the subsystem is disabled or no docker daemon is reachable the engine
 // is nil: the Manager stays constructible (wire graph intact) and Available()
 // reports false so consumers fall back along sandbox→docker→local (NFR-04).
-// The daemon probe has a 30s TTL cache, so a daemon started later becomes
-// visible to cold-create attempts without a restart.
+// The engine is bound ONCE here at startup: although the daemon probe has a
+// 30s TTL cache, a daemon started later does NOT get picked up — a process
+// restart is required (r2 #7: corrected from the earlier comment that
+// claimed cold-create attempts would see it without a restart).
 func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.Manager {
 	cfg := sandbox.ConfigFromProto(sbConf)
 	var engine sandbox.Engine

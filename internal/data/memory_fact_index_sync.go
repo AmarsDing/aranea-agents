@@ -58,6 +58,25 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 		markStale(err)
 		return entErrToBizErr(err, "MEMORY_L3")
 	}
+	// Dual-write the shared read index (vector_embeddings). L2/L3 recall
+	// searches that table via Data.vectorStore, while UpsertFactVector above
+	// maintains the per-agent agent_memory_<dim> store used by conflict
+	// arbitration and L0/L1 similarity. Historically only the latter was
+	// written, leaving the recall read index permanently empty. Fail-soft:
+	// the embedding_blob fallback in scoreFactRow still covers reads, and the
+	// ARANEA_VECTOR_BACKFILL-gated backfill test repairs existing rows.
+	if s.data != nil && s.data.vectorStore != nil && len(embedding) > 0 {
+		if dim := s.data.VectorDim(); dim > 0 && len(embedding) != dim {
+			s.lg.Warn("skip read-index upsert: embedding dim mismatch with vector store",
+				loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID))
+		} else if uerr := s.data.vectorStore.Upsert(ctx, factID, float32To64(embedding), map[string]string{
+			"agent_id": agentID,
+			"user_id":  userID,
+			"content":  statement,
+		}); uerr != nil {
+			s.lg.Warn("upsert read-index vector failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(uerr))
+		}
+	}
 	// Mark fresh on full success.
 	if s.data != nil {
 		if serr := s.markFactIndexSynced(ctx, factID); serr != nil {

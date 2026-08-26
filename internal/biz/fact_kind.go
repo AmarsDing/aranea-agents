@@ -79,6 +79,40 @@ func LooksLikeUserIdentityStatement(statement string) bool {
 	return nameStatementRe.MatchString(s)
 }
 
+// LooksLikeAbsenceMetaStatement reports statements whose content is "the user
+// asked X but the system has no record of it" — a conversation meta-observation,
+// not a durable fact. Persisting them poisons recall: the absence statement
+// outranks the true fact on recency, the model parrots "not found", and the
+// reply is saved as yet another absence statement (2026-08-26 domain-B
+// regression pollution loop). Genuine negative facts ("原号码已作废") do not
+// carry the inquiry marker and are unaffected.
+func LooksLikeAbsenceMetaStatement(statement string) bool {
+	s := strings.ToLower(strings.TrimSpace(statement))
+	if s == "" {
+		return false
+	}
+	inquiry := false
+	for _, p := range []string{"用户询问", "用户问", "user asked", "user asks", "user inquired", "the user asked"} {
+		if strings.Contains(s, p) {
+			inquiry = true
+			break
+		}
+	}
+	if !inquiry {
+		return false
+	}
+	for _, p := range []string{
+		"暂无", "尚无", "没有相关记录", "无相关记录", "没有记录", "不在记忆", "未找到", "未存储", "没有保存",
+		"需要用户提供", "待用户补充", "需要用户补充",
+		"no record", "not in memory", "not on file", "don't have", "do not have", "no information", "not stored",
+	} {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // LooksLikePreferenceStatement reports durable likes, favorites, and residence.
 func LooksLikePreferenceStatement(statement string) bool {
 	s := strings.TrimSpace(statement)

@@ -173,6 +173,36 @@ func TestImmediateFactWriter_CanonicalizesEmployeeIDAsUserIdentity(t *testing.T)
 	}
 }
 
+// 缺失元陈述（"用户询问 X 但暂无此信息"）在写门禁被丢弃，不进 memory_facts；
+// 同批真实事实照常写入。2026-08-26 domain-B 污染循环根因修复。
+func TestImmediateFactWriter_DropsAbsenceMetaStatement(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{}}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "domain_knowledge", Confidence: "high", Content: "用户询问当前值班电话号码，但系统中暂无此信息"},
+		{Type: "domain_knowledge", Confidence: "high", Content: "值班电话是0571-8899-1234"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(fw.writes) != 1 || fw.writes[0].Statement != "值班电话是0571-8899-1234" {
+		t.Fatalf("absence meta-statement must be dropped, genuine fact kept; got %+v", fw.writes)
+	}
+}
+
+// 整批都是缺失元陈述时不触发空写入。
+func TestImmediateFactWriter_AllAbsenceSkipsWriteCall(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{}}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "general", Confidence: "medium", Content: "用户询问变更窗口安排，系统中尚无相关记录"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(fw.writes) != 0 {
+		t.Fatalf("no write must reach the store, got %+v", fw.writes)
+	}
+}
+
 type fakePreferenceLister struct {
 	rows [][]byte
 	err  error

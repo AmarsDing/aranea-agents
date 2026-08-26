@@ -52,11 +52,12 @@ message Sandbox {
     bool requires_confirmation = 7;
   }
   // Egress configures the controlled-egress lane (P2-1): profiles with
-  // network=egress are attached to this bridge and receive the CONNECT proxy
-  // address via env. The domain whitelist lives proxy-side only
-  // (EGRESS_ALLOW_HOSTS in compose) — single source of truth.
+  // network=egress receive the CONNECT proxy address via env. The domain
+  // whitelist lives proxy-side only: docker/config/egress/{squid.conf,
+  // allowed_domains.txt} mounted into the egress-proxy container — single
+  // source of truth.
   message Egress {
-    string network = 1;    // docker bridge name ("" = "aranea-egress")
+    string network = 1;    // per-sandbox internal network name prefix ("" = "aranea-egress"; actual networks are <prefix>-<sandboxID>)
     string proxy_http = 2; // proxy URL injected as HTTP(S)_PROXY ("" = "http://aranea-egress-proxy:3128")
   }
   bool enabled = 1;    // master switch; false → consumers fall back (NFR-04)

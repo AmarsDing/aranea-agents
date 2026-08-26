@@ -1191,8 +1191,10 @@ func applyCrossEncoderRerankToFactScored(reranker biz.Reranker, query string, sc
 
 // scoreFactRow computes the L3 hybrid recall score for one fact row JSON.
 // vecOverrides, when non-nil, supplies the vector score per fact ID (pgvector
-// path); otherwise the score is decoded from embedding_blob when a query
-// embedding is available.
+// path). An ID missing from vecOverrides (e.g. the vector store lags behind
+// memory_facts, or its table is empty) falls back to the embedding_blob
+// cosine when a query embedding is available, so the vector term never
+// silently zeroes out for otherwise strong candidates.
 func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32, vecOverrides map[string]float64, now time.Time) recallScoreBreakdown {
 	id, _ := row["id"].(string)
 	stmt, _ := row["statement"].(string)
@@ -1205,9 +1207,11 @@ func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32,
 
 	kwScore := keywordOverlapScore(tokens, stmt+" "+details)
 	var vecScore float64
+	vecOK := false
 	if vecOverrides != nil {
-		vecScore = vecOverrides[id]
-	} else if len(queryEmbedding) > 0 {
+		vecScore, vecOK = vecOverrides[id]
+	}
+	if !vecOK && len(queryEmbedding) > 0 {
 		// JSON marshal renders []byte as a base64 string (encoding/json
 		// contract), so the string branch must base64-decode first; falling
 		// back to raw bytes keeps compatibility with non-JSON producers.

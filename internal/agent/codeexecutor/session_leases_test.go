@@ -37,10 +37,6 @@ func (f *fakeSandboxEngine) Exec(ctx context.Context, h sandbox.Handle, spec san
 	return sandbox.ExecResult{Stdout: "ok"}, nil
 }
 
-func (f *fakeSandboxEngine) CopyTo(ctx context.Context, h sandbox.Handle, path string, r io.Reader) error {
-	return nil
-}
-
 func (f *fakeSandboxEngine) CopyFrom(ctx context.Context, h sandbox.Handle, path string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
 }
@@ -151,8 +147,9 @@ func TestPooledAdapterStaleLeaseRetry(t *testing.T) {
 	}
 }
 
-// P1-2: empty model-supplied ExecutionID falls back to the invocation session
-// (app/user/session); an explicit ExecutionID still wins over the invocation.
+// r2-1: invocation session always wins over model-supplied ExecutionID.
+// sandbox_fs keys on the invocation session; both families must land on the
+// same sandbox. ExecutionID is only a no-invocation compatibility fallback.
 func TestPooledAdapterInvocationSessionKeyFallback(t *testing.T) {
 	eng := &fakeSandboxEngine{}
 	adapter, _ := newSessionTestAdapter(t, eng)
@@ -172,16 +169,25 @@ func TestPooledAdapterInvocationSessionKeyFallback(t *testing.T) {
 		t.Fatalf("invocation-keyed reuse: created=%d, want 1", n)
 	}
 
-	// Explicit execution_id wins over the invocation session.
+	// Explicit execution_id does NOT split away when an invocation exists.
 	if _, err := adapter.ExecuteCode(ctx, pythonInput("other/u/x9", "print(3)")); err != nil {
 		t.Fatalf("call 3: %v", err)
 	}
+	if n := eng.createdCount(); n != 1 {
+		t.Fatalf("explicit execution_id with invocation must reuse same sandbox: created=%d, want 1", n)
+	}
+
+	// No invocation → ExecutionID fallback still works.
+	noInvCtx := context.Background()
+	if _, err := adapter.ExecuteCode(noInvCtx, pythonInput("explicit-key", "print(4)")); err != nil {
+		t.Fatalf("fallback: %v", err)
+	}
 	if n := eng.createdCount(); n != 2 {
-		t.Fatalf("explicit execution_id must get its own sandbox: created=%d, want 2", n)
+		t.Fatalf("no-invocation fallback: created=%d, want 2", n)
 	}
 
 	// No execution_id and no invocation → ephemeral (create+destroy per call).
-	if _, err := adapter.ExecuteCode(context.Background(), pythonInput("", "print(4)")); err != nil {
+	if _, err := adapter.ExecuteCode(noInvCtx, pythonInput("", "print(5)")); err != nil {
 		t.Fatalf("ephemeral: %v", err)
 	}
 	if n := eng.createdCount(); n != 3 {

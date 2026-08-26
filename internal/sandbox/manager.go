@@ -33,6 +33,19 @@ type Manager struct {
 
 	startOnce sync.Once
 	cancel    context.CancelFunc
+
+	hooksMu      sync.Mutex
+	destroyHooks []func(sandboxID string)
+}
+
+// RegisterDestroyHook subscribes fn to every successful destroy (any reason).
+// Used by SessionLeases to drop stale map entries at destroy time (review
+// 2026-08-26 #6). Hooks run synchronously after the entry leaves the
+// registry; they must be fast and must not call back into the Manager.
+func (m *Manager) RegisterDestroyHook(fn func(sandboxID string)) {
+	m.hooksMu.Lock()
+	defer m.hooksMu.Unlock()
+	m.destroyHooks = append(m.destroyHooks, fn)
 }
 
 // NewManager builds a Manager. engine may be nil when the daemon is
@@ -221,10 +234,24 @@ func (m *Manager) destroy(id, reason string) {
 	}
 	cleanCtx, cancel := context.WithTimeout(context.Background(), destroyTimeout)
 	defer cancel()
-	_ = m.engine.Destroy(cleanCtx, e.handle)
+	if err := m.engine.Destroy(cleanCtx, e.handle); err != nil {
+		// Teardown stays best-effort (registry/quota bookkeeping below must
+		// still converge), but daemon failures must be visible (r2 #4).
+		m.lg.Warn("sandbox engine destroy failed",
+			loggateway.StepID("sandbox.destroy"),
+			loggateway.Str("sandbox_id", id),
+			loggateway.Str("reason", reason),
+			loggateway.Err(err))
+	}
 	m.registry.remove(id)
 	if e.quotaHeld {
 		m.quota.Release(e.view.AgentKey)
+	}
+	m.hooksMu.Lock()
+	hooks := append([]func(string){}, m.destroyHooks...)
+	m.hooksMu.Unlock()
+	for _, fn := range hooks {
+		fn(id)
 	}
 	destroyTotal.WithLabelValues(reason).Inc()
 	m.st.destroy.inc(reason)

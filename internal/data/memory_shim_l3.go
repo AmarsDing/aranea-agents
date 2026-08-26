@@ -685,11 +685,15 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	if len(fusedOrder) > pool {
 		fusedOrder = fusedOrder[:pool]
 	}
-	rows, err := r.queryFactRowsByIDs(ctx, fusedOrder, scopeType, scopeID, userID, false)
+	// embedding_blob is loaded whenever a query vector exists: fused candidates
+	// missing from hitMap (vector store lagging or empty) fall back to local
+	// cosine in scoreFactRow instead of scoring the vector term as zero.
+	includeBlob := len(queryEmbedding) > 0
+	rows, err := r.queryFactRowsByIDs(ctx, fusedOrder, scopeType, scopeID, userID, includeBlob)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), nil, hitMap, 0, time.Now().UTC())
+	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, hitMap, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")

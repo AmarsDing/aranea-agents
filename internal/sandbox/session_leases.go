@@ -27,12 +27,20 @@ type SessionLeases struct {
 // NewSessionLeases builds the shared store. mgr must outlive the store
 // (wire process singleton).
 func NewSessionLeases(mgr *Manager) *SessionLeases {
-	return &SessionLeases{mgr: mgr, leases: map[string]*Lease{}}
+	s := &SessionLeases{mgr: mgr, leases: map[string]*Lease{}}
+	// Review 2026-08-26 #6: drop map entries the moment the manager destroys
+	// the underlying sandbox (Release/TTL/idle/force) — previously only Evict
+	// (next use) and ReleaseSession (no production caller) removed them, so
+	// one-off sessions leaked stale entries for the process lifetime.
+	mgr.RegisterDestroyHook(s.evictBySandboxID)
+	return s
 }
 
 // Acquire returns the cached lease for key, acquiring a fresh session-scoped
 // one on first use. TTL 0 → manager default; renewed on every successful use.
-func (s *SessionLeases) Acquire(ctx context.Context, key string) (*Lease, error) {
+// agentKey feeds the per-agent concurrency quota (review 2026-08-26 #1);
+// callers derive it from the invocation context ("" skips the per-agent gate).
+func (s *SessionLeases) Acquire(ctx context.Context, key, agentKey string) (*Lease, error) {
 	s.mu.Lock()
 	if l, ok := s.leases[key]; ok {
 		s.mu.Unlock()
@@ -42,6 +50,7 @@ func (s *SessionLeases) Acquire(ctx context.Context, key string) (*Lease, error)
 
 	lease, err := s.mgr.Acquire(ctx, AcquireReq{
 		Profile:   DefaultProfileName,
+		AgentKey:  agentKey,
 		SessionID: key,
 		// P2-2: first-creation is attributed to the owning team run's
 		// cumulative budget when the caller carries a run id (team turn ctx).
@@ -62,8 +71,8 @@ func (s *SessionLeases) Acquire(ctx context.Context, key string) (*Lease, error)
 	return lease, nil
 }
 
-// Renew slides the lease deadline forward after successful use (capped at
-// the manager's max TTL).
+// Renew extends the cached lease's deadline by extend after successful use
+// (added to the current deadline, capped at the manager's max TTL from now).
 func (s *SessionLeases) Renew(ctx context.Context, key string, extend time.Duration) {
 	s.mu.Lock()
 	l, ok := s.leases[key]
@@ -80,6 +89,18 @@ func (s *SessionLeases) Evict(key string, l *Lease) {
 	defer s.mu.Unlock()
 	if cur, ok := s.leases[key]; ok && cur == l {
 		delete(s.leases, key)
+	}
+}
+
+// evictBySandboxID drops every map entry pointing at sandboxID (destroy hook;
+// the manager already destroyed the instance — no Release call here).
+func (s *SessionLeases) evictBySandboxID(sandboxID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, l := range s.leases {
+		if l.id == sandboxID {
+			delete(s.leases, key)
+		}
 	}
 }
 

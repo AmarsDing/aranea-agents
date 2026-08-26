@@ -19,6 +19,11 @@ import (
 // agent code writes output files here; they are collected after the run).
 const sandboxArtifactDir = "/workspace/out"
 
+// sandboxArtifactMaxBytes caps the cumulative artifact payload pulled out of
+// one sandbox run (r2 #5, 64 MiB — generous vs the 10 MiB per-file ceiling
+// applied later by CollectOutputDirFiles).
+const sandboxArtifactMaxBytes = 64 << 20
+
 // sessionRenewExtend slides a session-pinned lease forward after each
 // successful ExecuteCode (capped by the manager's max TTL).
 const sessionRenewExtend = 30 * time.Minute
@@ -37,10 +42,9 @@ func newPooledRuntime(mgr *sandbox.Manager) *pooledRuntime {
 	return &pooledRuntime{mgr: mgr, tempDir: os.TempDir()}
 }
 
-// Run executes one code block on the given lease. Attribution fields are left
-// empty at the manager gate: the per-agent quota is keyed on agent identity
-// which the factory API does not thread; the global gate (32) still bounds
-// total concurrency.
+// Run executes one code block on the given lease. Attribution (agent key /
+// run id) is decided at Acquire time by pooledAdapter — this layer only
+// consumes the already-attributed lease.
 func (e *pooledRuntime) Run(ctx context.Context, lease *sandbox.Lease, language, code string, timeout time.Duration) (Result, error) {
 	ext, runner := languageRuntime(language)
 	if ext == "" {
@@ -96,14 +100,16 @@ func (e *pooledRuntime) Run(ctx context.Context, lease *sandbox.Lease, language,
 }
 
 // collectSandboxArtifacts streams /workspace/out out of the sandbox and
-// untars it into outDir. Path traversal entries are rejected.
+// untars it into outDir. Path traversal entries are rejected. The cumulative
+// payload is capped (r2 #5): a runaway sandbox writing unbounded output must
+// not OOM the host during collection.
 func collectSandboxArtifacts(ctx context.Context, lease *sandbox.Lease, outDir string) error {
 	rc, err := lease.CopyDirFrom(ctx, sandboxArtifactDir)
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
-	return sandbox.UntarFiles(rc, func(relPath string, content []byte) error {
+	return sandbox.UntarFiles(rc, sandboxArtifactMaxBytes, func(relPath string, content []byte) error {
 		clean := filepath.Clean(relPath)
 		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
 			return nil // skip traversal attempts silently
@@ -134,21 +140,31 @@ func (a *pooledAdapter) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimite
 	return trpcagentcodeexec.CodeBlockDelimiter{Start: "```", End: "```"}
 }
 
-// sessionKey resolves the lease key: the model-supplied ExecutionID wins
-// (explicit contract); otherwise derive app/user/session from the invocation
-// context (P1-2 — the framework's execution_id arg is optional and models
-// rarely pass it, while the sandbox_fs tool family keys on the invocation
-// session, so this fallback keeps both consumers on ONE shared sandbox).
+// sessionKey resolves the lease key: the invocation session (app/user/session)
+// always wins — the sandbox_fs tool family keys on it, so code exec must land
+// on the SAME shared sandbox (review 2026-08-26 r2 #1: a model-controlled
+// execution_id could otherwise collide across sessions or split the two
+// consumers apart). The model-supplied ExecutionID is only a no-invocation
+// compatibility fallback (tests / non-session callers).
 func (a *pooledAdapter) sessionKey(ctx context.Context, executionID string) string {
-	if key := strings.TrimSpace(executionID); key != "" {
-		return key
-	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
-	if !ok || inv == nil || inv.Session == nil || inv.Session.ID == "" {
+	if ok && inv != nil && inv.Session != nil && inv.Session.ID != "" {
+		s := inv.Session
+		return s.AppName + "/" + s.UserID + "/" + s.ID
+	}
+	return strings.TrimSpace(executionID)
+}
+
+// agentKeyFromCtx derives the per-agent quota attribution key (review
+// 2026-08-26 #1: Acquire previously never set AgentKey, leaving the per-agent
+// concurrency gate dead in production). "" without an invocation context —
+// the global gate still bounds that case.
+func agentKeyFromCtx(ctx context.Context) string {
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
 		return ""
 	}
-	s := inv.Session
-	return s.AppName + "/" + s.UserID + "/" + s.ID
+	return inv.AgentName
 }
 
 func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec.CodeExecutionInput) (trpcagentcodeexec.CodeExecutionResult, error) {
@@ -160,7 +176,7 @@ func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec
 	// lease; the fresh lease starts with empty state per the use-and-destroy
 	// contract.
 	for attempt := 0; attempt < 2; attempt++ {
-		lease, err := a.store.Acquire(ctx, key)
+		lease, err := a.store.Acquire(ctx, key, agentKeyFromCtx(ctx))
 		if err != nil {
 			return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor acquire: %w", err)
 		}
@@ -182,8 +198,12 @@ func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec
 // session context: one lease per ExecuteCode, destroyed on return.
 func (a *pooledAdapter) executeEphemeral(ctx context.Context, input trpcagentcodeexec.CodeExecutionInput) (trpcagentcodeexec.CodeExecutionResult, error) {
 	lease, err := a.runtime.mgr.Acquire(ctx, sandbox.AcquireReq{
-		Profile: sandbox.DefaultProfileName,
-		TTL:     a.timeout + time.Minute, // exec window + collection margin
+		Profile:  sandbox.DefaultProfileName,
+		TTL:      a.timeout + time.Minute, // exec window + collection margin
+		AgentKey: agentKeyFromCtx(ctx),    // review 2026-08-26 #1: per-agent quota
+		// review 2026-08-26 #4: team runs tag the ctx — ephemeral creations
+		// must count against the run budget exactly like session-pinned ones.
+		RunID: sandbox.RunIDFromContext(ctx),
 	})
 	if err != nil {
 		return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor acquire: %w", err)

@@ -194,6 +194,65 @@ func TestFactEventTime_PrefersValidFromThenCreatedAt(t *testing.T) {
 	}
 }
 
+// embeddedFactRow builds a fact row carrying a real embedding blob so the
+// vector-score paths in scoreFactRow can be exercised without a DB.
+func embeddedFactRow(id string, emb []float32) map[string]any {
+	return map[string]any{
+		"id":             id,
+		"statement":      "值班电话是 8899-1234",
+		"importance":     0.5,
+		"quality_score":  0.5,
+		"fact_kind":      "fact",
+		"created_at":     "2026-08-01T00:00:00Z",
+		"updated_at":     "2026-08-01T00:00:00Z",
+		"embedding_blob": encodeFloat32Blob(emb),
+		"embedding_norm": vectorL2Norm(emb),
+	}
+}
+
+// Regression for the domain-B recall failure: the RRF path passes a non-nil
+// hitMap from pgvector, but candidates absent from it (vector store lagging
+// or its table empty) used to get vector score 0 even when embedding_blob
+// held a perfectly good embedding. The fallback must kick in per-ID.
+func TestScoreFactRow_VecOverrideMissFallsBackToBlob(t *testing.T) {
+	now := time.Date(2026, 8, 26, 0, 0, 0, 0, time.UTC)
+	queryEmb := []float32{1, 0, 0}
+	row := embeddedFactRow("f-duty", []float32{1, 0, 0})
+	// hitMap non-nil but only knows an unrelated fact.
+	overrides := map[string]float64{"f-other": 0.9}
+	bd := scoreFactRow(row, nil, queryEmb, overrides, now)
+	if bd.Vector < 0.99 {
+		t.Fatalf("vec score = %v, want ~1.0 from embedding_blob fallback", bd.Vector)
+	}
+}
+
+func TestScoreFactRow_VecOverrideHitSkipsBlob(t *testing.T) {
+	now := time.Date(2026, 8, 26, 0, 0, 0, 0, time.UTC)
+	queryEmb := []float32{1, 0, 0}
+	row := embeddedFactRow("f-duty", []float32{1, 0, 0}) // blob cosine would be 1.0
+	overrides := map[string]float64{"f-duty": 0.42}      // pgvector is authoritative
+	bd := scoreFactRow(row, nil, queryEmb, overrides, now)
+	if bd.Vector != 0.42 {
+		t.Fatalf("vec score = %v, want 0.42 from hitMap override", bd.Vector)
+	}
+}
+
+func TestScoreFactRow_VecOverrideMissNoBlobNoPanic(t *testing.T) {
+	now := time.Date(2026, 8, 26, 0, 0, 0, 0, time.UTC)
+	row := map[string]any{
+		"id":            "f-plain",
+		"statement":     "no embedding yet",
+		"importance":    0.5,
+		"quality_score": 0.5,
+		"created_at":    "2026-08-01T00:00:00Z",
+		"updated_at":    "2026-08-01T00:00:00Z",
+	}
+	bd := scoreFactRow(row, nil, []float32{1, 0, 0}, map[string]float64{"f-other": 0.9}, now)
+	if bd.Vector != 0 {
+		t.Fatalf("vec score = %v, want 0 when neither override nor blob exists", bd.Vector)
+	}
+}
+
 func TestBuildL3FTSQuery_ORsContentWords(t *testing.T) {
 	q := buildL3FTSQuery("What color does Alice like?")
 	if !strings.Contains(q, "|") {

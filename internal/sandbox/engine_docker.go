@@ -3,8 +3,10 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os/exec"
 	"strings"
 	"sync"
@@ -45,20 +47,108 @@ func (e *DockerEngine) cmd(ctx context.Context, args ...string) *exec.Cmd {
 }
 
 // dockerNetworkFor maps the profile network stance onto a docker network
-// argument (P2-1): none/full are daemon built-ins; egress attaches to the
-// no-masquerade lane bridge resolved in normalize().
+// argument for none/full. Egress is handled separately in Create: each
+// egress sandbox gets a DEDICATED internal network (egressNetName) shared
+// only with the proxy — a shared egress bridge would leave all sandboxes
+// mutually reachable (Docker user-defined bridges default ICC on), breaking
+// inter-sandbox isolation (review 2026-08-26 #3).
 func dockerNetworkFor(p Profile) string {
 	switch p.Network {
 	case NetworkFull:
 		return "bridge"
-	case NetworkEgress:
-		if p.EgressNetwork != "" {
-			return p.EgressNetwork
-		}
-		return "aranea-egress"
 	default:
 		return "none"
 	}
+}
+
+// egressNetName derives the per-sandbox egress network name: the configured
+// lane prefix (default "aranea-egress") + the sandbox id.
+func egressNetName(p Profile, sandboxID string) string {
+	prefix := p.EgressNetwork
+	if prefix == "" {
+		prefix = "aranea-egress"
+	}
+	return prefix + "-" + sandboxID
+}
+
+// egressProxyHost extracts the proxy container name from the proxy URL
+// (embedded DNS resolves connected containers by name).
+func egressProxyHost(proxyURL string) string {
+	if u, err := url.Parse(proxyURL); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return "aranea-egress-proxy"
+}
+
+// createEgressNetwork provisions the per-sandbox internal network and
+// connects the egress proxy to it (the sandbox's only reachable peer and
+// only way out). Labels mirror the container labels so the startup reconcile
+// can sweep orphans (NetworkReaper).
+func (e *DockerEngine) createEgressNetwork(ctx context.Context, netName, sandboxID, proxyHost string) error {
+	args := []string{
+		"network", "create", "--internal",
+		"--label", LabelSandbox + "=1",
+		"--label", LabelID + "=" + sandboxID,
+		netName,
+	}
+	if out, err := e.cmd(ctx, args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("sandbox egress network create %s: %w (%s)", netName, err, strings.TrimSpace(string(out)))
+	}
+	if out, err := e.cmd(ctx, "network", "connect", netName, proxyHost).CombinedOutput(); err != nil {
+		_ = e.removeEgressNetwork(ctx, netName)
+		return fmt.Errorf("sandbox egress network connect proxy %s to %s: %w (%s)", proxyHost, netName, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// removeEgressNetwork force-disconnects remaining endpoints (the long-lived
+// proxy otherwise keeps the network non-removable) and deletes the network.
+// Silent-success when the network does not exist (non-egress sandboxes share
+// the Destroy path); other daemon errors are joined and returned (review
+// 2026-08-26 r2 #4 — teardown failures must not be invisible).
+func (e *DockerEngine) removeEgressNetwork(ctx context.Context, netName string) error {
+	out, err := e.cmd(ctx, "network", "inspect", "-f", "{{range $id, $_ := .Containers}}{{$id}} {{end}}", netName).CombinedOutput()
+	if err != nil {
+		return nil // network absent or daemon error on lookup — nothing to do
+	}
+	var errs []error
+	for _, id := range strings.Fields(string(out)) {
+		if out2, err2 := e.cmd(ctx, "network", "disconnect", "-f", netName, id).CombinedOutput(); err2 != nil {
+			errs = append(errs, fmt.Errorf("sandbox egress network disconnect %s from %s: %w (%s)", id, netName, err2, strings.TrimSpace(string(out2))))
+		}
+	}
+	if out2, err2 := e.cmd(ctx, "network", "rm", netName).CombinedOutput(); err2 != nil {
+		errs = append(errs, fmt.Errorf("sandbox egress network rm %s: %w (%s)", netName, err2, strings.TrimSpace(string(out2))))
+	}
+	return errors.Join(errs...)
+}
+
+// ReapOrphanNetworks implements NetworkReaper (startup reconcile): every
+// network carrying the sandbox labels is an orphan at boot (the registry is
+// empty and all labeled containers are being reaped anyway).
+func (e *DockerEngine) ReapOrphanNetworks(ctx context.Context, labels map[string]string) (int, error) {
+	args := []string{"network", "ls", "--format", "{{.Name}}"}
+	for k, v := range labels {
+		args = append(args, "--filter", "label="+k+"="+v)
+	}
+	out, err := e.cmd(ctx, args...).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("sandbox docker network ls: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	reaped := 0
+	var errs []error
+	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if err := e.removeEgressNetwork(ctx, name); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		reaped++
+	}
+	return reaped, errors.Join(errs...)
 }
 
 // Create assembles `docker create` from the M32 isolation baseline
@@ -69,10 +159,22 @@ func (e *DockerEngine) Create(ctx context.Context, sandboxID string, p Profile, 
 	p = p.withDefaults()
 	h := Handle{ID: sandboxID, SandboxID: sandboxID}
 
+	network := dockerNetworkFor(p)
+	if p.Network == NetworkEgress {
+		// Per-sandbox egress lane: dedicated internal network + proxy as the
+		// only peer (review 2026-08-26 #3 — no shared bridge, no ICC between
+		// sandboxes).
+		network = egressNetName(p, sandboxID)
+		if err := e.createEgressNetwork(ctx, network, sandboxID, egressProxyHost(p.EgressProxy)); err != nil {
+			return Handle{}, err
+		}
+		h.EgressNet = network
+	}
+
 	args := []string{
 		"create",
 		"--name", h.ID,
-		"--network", dockerNetworkFor(p),
+		"--network", network,
 		fmt.Sprintf("--memory=%d", p.MemoryBytes),
 		fmt.Sprintf("--memory-swap=%d", p.MemoryBytes), // disable swap
 		fmt.Sprintf("--cpus=%g", p.CPUs),
@@ -108,12 +210,20 @@ func (e *DockerEngine) Create(ctx context.Context, sandboxID string, p Profile, 
 	args = append(args, "--entrypoint", "sh", p.Image, "-c", "sleep infinity")
 
 	if out, err := e.cmd(ctx, args...).CombinedOutput(); err != nil {
+		if p.Network == NetworkEgress {
+			_ = e.removeEgressNetwork(ctx, network)
+		}
 		return Handle{}, fmt.Errorf("sandbox docker create %s: %w (%s)", h.ID, err, strings.TrimSpace(string(out)))
 	}
 	if out, err := e.cmd(ctx, "start", h.ID).CombinedOutput(); err != nil {
-		cleanCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		_ = e.cmd(cleanCtx, "rm", "-fv", h.ID).Run()
+		// Best-effort cleanup on a fresh context: the cleanCtx from the create
+		// phase may have already expired; start failure is fatal, but leaking
+		// the container or its dedicated egress network is worse.
+		bg := context.Background()
+		_ = e.cmd(bg, "rm", "-fv", h.ID).Run()
+		if p.Network == NetworkEgress {
+			_ = e.removeEgressNetwork(bg, network)
+		}
 		return Handle{}, fmt.Errorf("sandbox docker start %s: %w (%s)", h.ID, err, strings.TrimSpace(string(out)))
 	}
 	return h, nil
@@ -161,16 +271,6 @@ func (e *DockerEngine) Exec(ctx context.Context, h Handle, spec ExecSpec) (ExecR
 	return res, nil
 }
 
-// CopyTo streams a tar archive from r into the instance at path (`docker cp -`).
-func (e *DockerEngine) CopyTo(ctx context.Context, h Handle, path string, r io.Reader) error {
-	cmd := e.cmd(ctx, "cp", "-", h.ID+":"+path)
-	cmd.Stdin = r
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("sandbox docker cp to %s:%s: %w (%s)", h.ID, path, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
 // CopyFrom reads path from the instance as a tar stream (`docker cp ... -`).
 func (e *DockerEngine) CopyFrom(ctx context.Context, h Handle, path string) (io.ReadCloser, error) {
 	cmd := e.cmd(ctx, "cp", h.ID+":"+path, "-")
@@ -184,12 +284,23 @@ func (e *DockerEngine) CopyFrom(ctx context.Context, h Handle, path string) (io.
 	return &cmdReadCloser{ReadCloser: out, cmd: cmd}, nil
 }
 
-// Destroy force-removes the instance and its anonymous volumes. Errors are
-// swallowed: destroy is idempotent and "already gone" is indistinguishable
-// from other daemon errors without extra round-trips.
+// Destroy force-removes the instance and its anonymous volumes, then drops
+// the per-sandbox egress network recorded on the Handle (review 2026-08-26
+// #3; empty for none/full sandboxes). Failures are joined and returned
+// (review 2026-08-26 r2 #4): teardown stays best-effort — the registry CAS
+// makes destroy single-fire, so a returned error means real daemon trouble
+// the manager must log, not routine "already gone".
 func (e *DockerEngine) Destroy(ctx context.Context, h Handle) error {
-	_ = e.cmd(ctx, "rm", "-fv", h.ID).Run()
-	return nil
+	var errs []error
+	if out, err := e.cmd(ctx, "rm", "-fv", h.ID).CombinedOutput(); err != nil {
+		errs = append(errs, fmt.Errorf("sandbox docker rm %s: %w (%s)", h.ID, err, strings.TrimSpace(string(out))))
+	}
+	if h.EgressNet != "" {
+		if err := e.removeEgressNetwork(ctx, h.EgressNet); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // ListByLabels returns all instances (any state) carrying every given label.

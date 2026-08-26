@@ -26,11 +26,32 @@ func (m *Manager) reconcileOnce(ctx context.Context) {
 			continue
 		}
 		cleanCtx, cancel := context.WithTimeout(ctx, destroyTimeout)
-		_ = m.engine.Destroy(cleanCtx, h)
+		if err := m.engine.Destroy(cleanCtx, h); err != nil {
+			// Keep counting the reap attempt (the summary log stays the
+			// headline), but surface daemon failures individually (r2 #4).
+			m.lg.Warn("sandbox reconcile destroy failed",
+				loggateway.StepID("sandbox.reconcile"),
+				loggateway.Str("container", h.ID),
+				loggateway.Err(err))
+		}
 		cancel()
 		destroyTotal.WithLabelValues(ReasonReconcile).Inc()
 		m.st.destroy.inc(ReasonReconcile)
 		reaped++
+	}
+	// Per-sandbox egress networks are engine-side resources outside the
+	// registry (review 2026-08-26 #3): sweep labeled orphans left by a
+	// previous process lifetime.
+	if nr, ok := m.engine.(NetworkReaper); ok {
+		if n, err := nr.ReapOrphanNetworks(ctx, map[string]string{LabelSandbox: "1"}); err != nil {
+			m.lg.Warn("sandbox egress network sweep failed — orphan networks may linger until next restart",
+				loggateway.StepID("sandbox.reconcile"),
+				loggateway.Err(err))
+		} else if n > 0 {
+			m.lg.Warn("sandbox reconcile reaped orphaned egress networks",
+				loggateway.StepID("sandbox.reconcile"),
+				loggateway.Int("reaped", n))
+		}
 	}
 	if reaped > 0 {
 		m.lg.Warn("sandbox reconcile reaped orphaned instances",

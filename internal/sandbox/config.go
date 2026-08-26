@@ -21,11 +21,12 @@ type Config struct {
 }
 
 // EgressConfig is the controlled-egress lane (P2-1). Profiles with
-// network=egress attach to this bridge and get the CONNECT proxy injected as
-// HTTP(S)_PROXY. The domain whitelist is held proxy-side only
-// (EGRESS_ALLOW_HOSTS in compose) — single source of truth.
+// network=egress get the CONNECT proxy injected as HTTP(S)_PROXY. The domain
+// whitelist is held proxy-side only: docker/config/egress/{squid.conf,
+// allowed_domains.txt} mounted into the egress-proxy container — single
+// source of truth.
 type EgressConfig struct {
-	Network   string // docker bridge name (default "aranea-egress")
+	Network   string // per-sandbox internal network name PREFIX (default "aranea-egress"; actual networks are <prefix>-<sandboxID>, created/reaped per sandbox)
 	ProxyHTTP string // proxy URL injected as HTTP(S)_PROXY (default "http://aranea-egress-proxy:3128")
 }
 

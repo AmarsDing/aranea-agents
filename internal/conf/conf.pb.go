@@ -1478,9 +1478,10 @@ func (x *Sandbox_Profile) GetRequiresConfirmation() bool {
 }
 
 // Egress configures the controlled-egress lane (P2-1): profiles with
-// network=egress are attached to this bridge and receive the CONNECT proxy
-// address via env. The domain whitelist lives proxy-side only
-// (EGRESS_ALLOW_HOSTS in compose) — single source of truth.
+// network=egress receive the CONNECT proxy address via env. The domain
+// whitelist lives proxy-side only: docker/config/egress/{squid.conf,
+// allowed_domains.txt} mounted into the egress-proxy container — single
+// source of truth.
 type Sandbox_Egress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Network       string                 `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`                      // docker bridge name ("" = "aranea-egress")

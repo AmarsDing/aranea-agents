@@ -94,6 +94,18 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 	// Convert FactMark to MemoryFactWrite
 	factWrites := make([]MemoryFactWrite, 0, len(facts))
 	for _, f := range facts {
+		// Absence meta-statements ("用户询问 X，但暂无此信息") are conversation
+		// meta-observations, not durable facts: persisted with importance 0.8 they
+		// outrank the true fact on recency, the model parrots "not found", and the
+		// reply is saved as yet another absence statement (2026-08-26 domain-B
+		// regression pollution loop). Drop them at the write gate.
+		if LooksLikeAbsenceMetaStatement(f.Content) {
+			w.lg.Info("即时事实跳过：缺失元陈述",
+				loggateway.StepID("memory.immediate_fact"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("statement_preview", truncateRunes(strings.TrimSpace(f.Content), 60)))
+			continue
+		}
 		// Map fact type to fact_kind, then canonicalize so 工号/我叫/负责
 		// cannot land as preference/profile/domain_knowledge duplicates.
 		factKind := CanonicalizeFactKind(mapFactTypeToKind(f.Type), f.Content)
@@ -120,6 +132,10 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 			SourceMessageID: sourceMessageID,
 			Status:          "active",
 		})
+	}
+
+	if len(factWrites) == 0 {
+		return nil
 	}
 
 	// Use existing consolidation writer with nil episode (facts only, no episode)

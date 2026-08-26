@@ -101,8 +101,11 @@ sandbox:
     per_run_max_create: 16      # per-run creation budget (P2)
   ttl:
     default: 1800s              # lease TTL when unspecified (30m)
-    max: 7200s                  # hard cap incl. Renew (2h)
+    max: 7200s                  # hard cap incl. Renew extensions (2h)
     idle_timeout: 600s          # leased idle eviction (10m)
+  egress:                       # P2-1 受控出网车道（network=egress 的 profile 生效）
+    network: aranea-egress      # per-sandbox internal 网络名前缀；实际为 <prefix>-<sandboxID>，引擎逐沙箱创建/回收
+    proxy_http: http://aranea-egress-proxy:3128  # 注入沙箱的 CONNECT 代理；域名白名单只在代理侧 docker/config/egress/allowed_domains.txt
   profiles:
     codeexec:
       image: aranea-sandbox-base:local   # P1-3 基座镜像（docker/sandbox-base/build-sandbox-base.ps1 构建）

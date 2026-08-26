@@ -17,9 +17,10 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// memFSEngine 是带内存文件系统的 sandbox.Engine 测试桩：CopyTo 解 tar 落
-// map，CopyFrom 按 docker cp 语义对缺失路径返回空流（Lease.ReadFile 因此
-// 映射为 ErrNotFound），Exec 仅记录 argv（mkdir -p 断言用）。
+// memFSEngine 是带内存文件系统的 sandbox.Engine 测试桩：写入走 exec
+// `sh -c 'cat > "$1"'`（stdin 落 map，与 r2 #2 的 Lease.WriteFile 一致），
+// CopyFrom 按 docker cp 语义对缺失路径返回空流（Lease.ReadFile 因此映射为
+// ErrNotFound），Exec 同时记录 argv（mkdir -p 断言用）。
 type memFSEngine struct {
 	mu      sync.Mutex
 	created []string
@@ -38,30 +39,11 @@ func (e *memFSEngine) Exec(ctx context.Context, h sandbox.Handle, spec sandbox.E
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.execs = append(e.execs, append([]string(nil), spec.Argv...))
-	return sandbox.ExecResult{ExitCode: 0}, nil
-}
-
-func (e *memFSEngine) CopyTo(ctx context.Context, h sandbox.Handle, dir string, r io.Reader) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	tr := tar.NewReader(r)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if hdr.Typeflag != tar.TypeReg {
-			continue
-		}
-		b, err := io.ReadAll(tr)
-		if err != nil {
-			return err
-		}
-		e.files[path.Join(dir, hdr.Name)] = b
+	// Lease.WriteFile: sh -c 'cat > "$1"' sh <path>，stdin 为文件内容。
+	if len(spec.Argv) >= 5 && spec.Argv[0] == "sh" && spec.Argv[1] == "-c" && spec.Argv[2] == `cat > "$1"` {
+		e.files[spec.Argv[4]] = []byte(spec.Stdin)
 	}
+	return sandbox.ExecResult{ExitCode: 0}, nil
 }
 
 func (e *memFSEngine) CopyFrom(ctx context.Context, h sandbox.Handle, p string) (io.ReadCloser, error) {
@@ -161,7 +143,7 @@ func TestNewToolsetPrunesOnNilStore(t *testing.T) {
 }
 
 // 同 key 写后读全链路：utf8 文本与 base64 二进制双路回环；全程只创建一个
-// 沙箱（共享 SessionLeases），写入经 mkdir -p + CopyTo。
+// 沙箱（共享 SessionLeases），写入经 mkdir -p + exec stdin（r2 #2）。
 func TestWriteReadRoundtrip(t *testing.T) {
 	store, eng := newTestStore(t)
 	ctx := context.Background()

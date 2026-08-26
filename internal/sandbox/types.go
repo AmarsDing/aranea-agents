@@ -36,8 +36,10 @@ type Profile struct {
 	RequiresConfirmation bool
 
 	// EgressNetwork / EgressProxy are resolved from Config.Egress by
-	// ConfigFromProto for NetworkEgress profiles (P2-1): the docker bridge the
-	// instance attaches to and the CONNECT proxy URL injected as HTTP(S)_PROXY.
+	// ConfigFromProto for NetworkEgress profiles (P2-1): the per-sandbox
+	// egress network name PREFIX (review 2026-08-26 #3: each instance gets a
+	// dedicated internal network "<prefix>-<sandboxID>" shared only with the
+	// proxy) and the CONNECT proxy URL injected as HTTP(S)_PROXY.
 	// Empty for none/full.
 	EgressNetwork string
 	EgressProxy   string
@@ -141,7 +143,17 @@ var (
 	// ErrConfirmationRequired is returned when acquiring a profile marked
 	// RequiresConfirmation without AcquireReq.Confirmed (P2-4 fail-closed).
 	ErrConfirmationRequired = errors.New("sandbox: profile requires confirmation")
+	// ErrNotRegular is returned by Lease.ReadFile when the path is not a
+	// regular file (e.g. a directory).
+	ErrNotRegular = errors.New("sandbox: not a regular file")
+	// ErrTooLarge is returned by UntarFiles when the cumulative payload
+	// exceeds the caller's byte budget.
+	ErrTooLarge = errors.New("sandbox: payload exceeds byte budget")
 )
+
+// ReadFileMaxBytesDefault caps Lease.ReadFile when the caller passes
+// maxBytes<=0 (matches the sandbox_fs read tool's hard ceiling).
+const ReadFileMaxBytesDefault = 256 * 1024
 
 // QuotaError reports a quota rejection at one scope.
 type QuotaError struct {

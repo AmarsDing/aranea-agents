@@ -102,6 +102,17 @@ func sessionKeyFromCtx(ctx context.Context) (string, error) {
 	return s.AppName + "/" + s.UserID + "/" + s.ID, nil
 }
 
+// agentKeyFromCtx 派生 per-agent 配额归因键（review 2026-08-26 #1：
+// SessionLeases.Acquire 此前不传 AgentKey，per-agent 并发闸在生产空转）。
+// 无 invocation 上下文时返回 ""（跳过 per-agent 闸，global 闸仍兜底）。
+func agentKeyFromCtx(ctx context.Context) string {
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
+		return ""
+	}
+	return inv.AgentName
+}
+
 func decode(args []byte, v any) error {
 	if err := json.Unmarshal(args, v); err != nil {
 		return apierror.BadRequest(apierror.DomainTool, "invalid args: "+err.Error())
@@ -140,7 +151,7 @@ func cleanWritablePath(p string) (string, error) {
 // （新租约是全新空状态，符合用完即毁契约）。
 func withLease(ctx context.Context, store *sandbox.SessionLeases, key string, op func(*sandbox.Lease) (any, error)) (any, error) {
 	for attempt := 0; attempt < 2; attempt++ {
-		lease, err := store.Acquire(ctx, key)
+		lease, err := store.Acquire(ctx, key, agentKeyFromCtx(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("sandbox_fs acquire: %w", err)
 		}
@@ -229,8 +240,12 @@ func readFn(ctx context.Context, store *sandbox.SessionLeases, key string, args 
 	}
 
 	return withLease(ctx, store, key, func(lease *sandbox.Lease) (any, error) {
-		content, err := lease.ReadFile(ctx, clean)
+		content, truncated, err := lease.ReadFile(ctx, clean, int64(maxBytes))
 		if err != nil {
+			// 目录路径：模型可纠正（r2 #6），结构化报错，不触发重试。
+			if errors.Is(err, sandbox.ErrNotRegular) {
+				return nil, apierror.BadRequest(apierror.DomainTool, "sandbox_fs: not a regular file: "+clean)
+			}
 			// ErrNotFound 歧义拆分：租约存活 = 文件不存在（模型可纠正，
 			// 结构化错误，不触发 withLease 重试）；租约已毁 = 原样上抛
 			// （withLease Evict 并重试一次）。
@@ -238,11 +253,6 @@ func readFn(ctx context.Context, store *sandbox.SessionLeases, key string, args 
 				return nil, apierror.NotFound(apierror.DomainTool, "sandbox_fs: file not found: "+clean)
 			}
 			return nil, fmt.Errorf("sandbox_fs read: %w", err)
-		}
-		truncated := false
-		if len(content) > maxBytes {
-			content = content[:maxBytes]
-			truncated = true
 		}
 		out := map[string]any{
 			"path":       clean,
