@@ -71,10 +71,9 @@ Graph 执行可回溯任意检查点的状态快照（见 [04 Team 与 Graph](04
 ### CLI 观测
 
 ```bash
-./bin/aranea monitor dashboard   # 运行监控大盘
-./bin/aranea monitor flow-log    # 流日志检索
-./bin/aranea monitor trace       # Trace 查看
-./bin/aranea monitor heal        # 自愈事件
+./bin/aranea monitor audit-logs   # 审计日志检索
+./bin/aranea monitor events       # 运行事件流
+./bin/aranea monitor traces       # Trace 调用链查看
 ```
 
 ## 深入阅读

@@ -35,13 +35,17 @@ Spirit 是 Aranea-Agents 的核心创新——**你只管下达指令，系统�
 
 ### 拓扑自动推断规则
 
+`InferTopologyFromTeam`（[spirit_task_dag.go](../../internal/biz/spirit_task_dag.go)）按团队定义推断执行拓扑，显式指定 `topology` 时优先：
+
 | 条件 | 推断拓扑 |
 |------|----------|
-| 无节点 | coordinator |
-| 所有节点都是根节点 | parallel |
-| 深度 > 3 | coordinator |
-| 宽度 > 1 | hybrid |
-| 否则 | sequential |
+| 显式指定 `topology` 字段 | 直接使用指定值 |
+| 有依赖（`depends_on` 非空）+ 并行配置（`max_concurrent_teams > 1`） | hybrid |
+| 仅有依赖（`depends_on` 非空） | sequential |
+| 仅有并行配置（`max_concurrent_teams > 1`） | parallel |
+| 以上都不是 | coordinator |
+
+推断结果再结合编排缓存的历史 DQ 评分择优调整（学习记录回灌，见上）。
 
 ## 设计要点
 

@@ -24,7 +24,7 @@ Aranea-Agents 就是为解决这些问题而生的**企业级多智能体编排�
 
 ### 2.1 特殊场景应用：一人 N 家虚拟公司
 
-不是通用聊天框，而是**可运营的业务组织**。内置金融、自媒体、软件开发三大行业体系（公司→部门→岗位三级编制，75+ 预置岗位），每个岗位上的专项 Agent 自带使命、工具画像、MCP 门禁与技能。你可以同时运营多家"虚拟公司"，让它们按各自业务特点协作运转。
+不是通用聊天框，而是**可运营的业务组织**。内置金融、自媒体、软件开发三大行业体系（公司→部门→岗位三级编制，160 个预置专项 Agent 定义：金融 39 + 自媒体 39 + 软件开发 82，其中金融另附 8 支预置团队），每个岗位上的专项 Agent 自带使命、工具画像、MCP 门禁与技能。你可以同时运营多家"虚拟公司"，让它们按各自业务特点协作运转。
 
 ![组织架构](doc/assets/screenshots/aranea-organization.png)
 
@@ -56,8 +56,8 @@ Aranea-Agents 就是为解决这些问题而生的**企业级多智能体编排�
 | **精细成本管控** | 六维定价 × 微美元精度 × 三级配额 × 预算告警，每分钱算得清 |
 | **13 通道接入** | 飞书/钉钉/企微/Slack/Discord 等一键接入，一次创建全平台可用 |
 | **A2A 联邦协议** | 基于 Google A2A 标准的跨组织 Agent 互操作，打破孤岛 |
-| **五重安全防护** | confirmation_guard + permission_guard + sensitive_mask + output_policy + cost_guard |
-| **全功能 CLI** | Claude Code 式 REPL，30+ 命令，WebSocket 实时流 |
+| **五重安全防护** | confirmation_guard + permission_guard + sensitive_data_mask + output_policy + cost_guard |
+| **全功能 CLI** | Claude Code 式 REPL，26 命令域 130+ 子命令，WebSocket 实时流 |
 
 ---
 
@@ -90,10 +90,10 @@ Aranea-Agents 就是为解决这些问题而生的**企业级多智能体编排�
 | **可观测** | Trace / Flow Log / 自愈 | 链路追踪、根因分析、自动修复（置信度 0.7+）、告警、诊断包 |
 | **成本** | 用量 / 配额 / 定价 | 六维定价、微美元精度、三级配额、预算告警、低效模型洞察 |
 | **接入** | Channel / A2A / MCP | 13 种 IM 平台、A2A 联邦、MCP 服务器管理与健康监控 |
-| **安全** | 插件 / 钩子 / 护栏 | 11 个内置插件、五重防护、事件驱动 Webhook |
+| **安全** | 插件 / 钩子 / 护栏 | 9 个内置插件（+框架常驻插件）、五重防护、事件驱动 Webhook |
 | **模型** | Provider / 模型目录 | models.dev 同步、12+ Provider、六维定价、能力标记 |
 | **知识** | 知识库 / 技能 | 文档管理、向量检索、渐进式技能加载 |
-| **工具** | CLI / 定时任务 / 沙箱 | 30+ 命令 REPL、Cron 调度、Docker 隔离代码执行 |
+| **工具** | CLI / 定时任务 / 沙箱 | 130+ 子命令 REPL、Cron 调度、Docker 隔离代码执行 |
 
 各模块的**功能原理、设计方案与界面配置详解**见 [用户手册](doc/manual/README.md)。
 
@@ -124,6 +124,12 @@ docker compose up -d
 ```
 
 服务端口：HTTP `8810` / gRPC `9910` / WebSocket `8812`。健康检查：`curl http://localhost:8810/healthz`。
+
+> 📌 **Web 界面**：Docker 编排仅含后端与中间件，**不含前端**。获取界面：
+>
+> - 开发/试用：源码 `cd web && pnpm dev`（访问 `http://localhost:9301`，自动代理 API/WS）；
+> - 生产自用：`cd web && pnpm build` 后用任意静态服务器托管 `dist/spa`，并将 HTTP API 反代到 8810、WS 反代到 8812；
+> - 桌面用户：直接用下方的 Windows 安装包（自带全栈 + 桌面应用）。
 
 ### 方式 B：Windows 桌面安装包（零命令行）
 
@@ -175,11 +181,11 @@ make cli                                        # 构建 aranea CLI
 ./bin/aranea login --base-url http://localhost:8810 --user dev --password dev
 ./bin/aranea agent ls                           # Agent 管理
 ./bin/aranea chat --agent __spirit__            # 交互式对话精灵
-./bin/aranea team run <key> --input "..."       # 触发团队编排
-./bin/aranea monitor dashboard                  # 运行监控
+./bin/aranea team run <team_id> --content "..." # 触发团队编排
+./bin/aranea monitor events                     # 运行事件监控
 ```
 
-CLI 覆盖 Agent / Team / Graph / Skill / MCP / Channel / Tool / Cron / Pack / Monitor 全模块，支持 table / json / kv / text 四种输出格式，脚本友好。
+CLI 覆盖 Agent / Team / Graph / Skill / MCP / Channel / Tool / Cron / Org / Memory / Knowledge / Pack / Monitor 等 26 个命令域、130+ 子命令，支持 text / json 两种输出格式，脚本友好。详见 [CLI 工具手册](doc/manual/14-cli.md)。
 
 ### 6.3 让系统越用越强
 

@@ -32,6 +32,8 @@ aranea compose：
 | `9910` | gRPC |
 | `8812` | WebSocket |
 
+> 📌 **compose 不含前端**。Web 界面三选一：① 源码 `cd web && pnpm dev`（`http://localhost:9301`，自动代理 API/WS）；② `pnpm build` 后用静态服务器托管 `dist/spa` 并反代 8810/8812；③ Windows 安装包（自带全栈）。
+
 ### 操作
 
 ```bash
@@ -85,8 +87,10 @@ curl http://localhost:8810/healthz
 | （默认） | 启动全栈 + 桌面应用（首跑配置向导） |
 | `-stop` | 停止内置服务（不动系统 PG/Redis） |
 | `-check` | 环境检查并输出报告 |
-| `-setup` | 交互式配置向导（PG/Redis/自启动） |
-| `-headless` | 仅启动后端栈（自启动场景） |
+| `-quiet` | 配合 `-check`：报告仅写文件，不弹 UI |
+| `-no-console` | 不打开启动状态控制台 |
+| `-setup` | 交互式配置向导（完成后退出） |
+| `-headless` | 仅启动后端栈（无控制台、无桌面应用，自启动场景） |
 | `-install-autostart` / `-uninstall-autostart` | 注册/移除开机自启 |
 
 自启动两种方式：**Windows 服务**（系统 PG/Redis 模式，开机即启，需管理员）/ **登录计划任务**（内置组件模式，登录后启动）。

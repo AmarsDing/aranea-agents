@@ -2,6 +2,7 @@ package codeexecutor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,8 +18,13 @@ import (
 // agent code writes output files here; they are collected after the run).
 const sandboxArtifactDir = "/workspace/out"
 
-// pooledRuntime executes code inside a pooled sandbox lease: Acquire → exec →
-// collect artifacts → Release (destroy). It replaces the per-run
+// sessionRenewExtend slides a session-pinned lease forward after each
+// successful ExecuteCode (capped by the manager's max TTL).
+const sessionRenewExtend = 30 * time.Minute
+
+// pooledRuntime executes code inside a pooled sandbox lease supplied by the
+// caller (pooledAdapter owns lease lifecycle: ephemeral per-call or
+// session-pinned via sessionLeaseStore). It replaces the per-run
 // create/start/rm cycle of DockerExecutor with warm-pool acquisition while
 // keeping identical output semantics (Result + artifact dir).
 type pooledRuntime struct {
@@ -30,11 +36,11 @@ func newPooledRuntime(mgr *sandbox.Manager) *pooledRuntime {
 	return &pooledRuntime{mgr: mgr, tempDir: os.TempDir()}
 }
 
-// Run executes one code block in a fresh lease. Attribution fields are left
-// empty at P0: the per-agent quota gate is keyed on agent identity which the
-// factory API does not thread yet (P1-1 session stickiness will); the global
-// gate (32) still bounds total concurrency.
-func (e *pooledRuntime) Run(ctx context.Context, language, code string, timeout time.Duration) (Result, error) {
+// Run executes one code block on the given lease. Attribution fields are left
+// empty at the manager gate: the per-agent quota is keyed on agent identity
+// which the factory API does not thread; the global gate (32) still bounds
+// total concurrency.
+func (e *pooledRuntime) Run(ctx context.Context, lease *sandbox.Lease, language, code string, timeout time.Duration) (Result, error) {
 	ext, runner := languageRuntime(language)
 	if ext == "" {
 		return Result{}, fmt.Errorf("codeexecutor sandbox: unsupported language %q", language)
@@ -56,16 +62,6 @@ func (e *pooledRuntime) Run(ctx context.Context, language, code string, timeout 
 		return Result{}, err
 	}
 
-	lease, err := e.mgr.Acquire(ctx, sandbox.AcquireReq{
-		Profile: sandbox.DefaultProfileName,
-		TTL:     timeout + time.Minute, // exec window + collection margin
-	})
-	if err != nil {
-		_ = os.RemoveAll(tmpDir) // no artifacts to hand out on acquire failure
-		return Result{}, fmt.Errorf("codeexecutor sandbox acquire: %w", err)
-	}
-	defer func() { _ = lease.Release(context.Background()) }()
-
 	// Same streaming contract as the docker backend: stdin lands on tmpfs via
 	// cat, then the interpreter replaces the shell (PID signal hygiene).
 	script := fmt.Sprintf("cat > /tmp/main%s && exec %s /tmp/main%s", ext, runner, ext)
@@ -83,7 +79,8 @@ func (e *pooledRuntime) Run(ctx context.Context, language, code string, timeout 
 		ArtifactDir: outDir,
 	}
 	if err != nil {
-		return out, fmt.Errorf("codeexecutor sandbox exec: %w", err)
+		_ = os.RemoveAll(tmpDir) // no artifacts to hand out on exec failure
+		return Result{}, fmt.Errorf("codeexecutor sandbox exec: %w", err)
 	}
 
 	// Collect artifacts best-effort (detached ctx: the caller ctx may already
@@ -119,13 +116,17 @@ func collectSandboxArtifacts(ctx context.Context, lease *sandbox.Lease, outDir s
 }
 
 // pooledAdapter adapts pooledRuntime to the framework CodeExecutor interface.
+// Lease lifecycle (P1-1): a non-empty ExecutionID pins one lease to the
+// session for its whole lifetime (multi-turn fs/process state, A3); an empty
+// ExecutionID falls back to ephemeral per-call acquire/release.
 type pooledAdapter struct {
 	runtime *pooledRuntime
 	timeout time.Duration
+	store   *sessionLeaseStore
 }
 
-func newPooledAdapter(mgr *sandbox.Manager, timeout time.Duration) *pooledAdapter {
-	return &pooledAdapter{runtime: newPooledRuntime(mgr), timeout: timeout}
+func newPooledAdapter(mgr *sandbox.Manager, timeout time.Duration, store *sessionLeaseStore) *pooledAdapter {
+	return &pooledAdapter{runtime: newPooledRuntime(mgr), timeout: timeout, store: store}
 }
 
 func (a *pooledAdapter) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimiter {
@@ -133,10 +134,51 @@ func (a *pooledAdapter) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimite
 }
 
 func (a *pooledAdapter) ExecuteCode(ctx context.Context, input trpcagentcodeexec.CodeExecutionInput) (trpcagentcodeexec.CodeExecutionResult, error) {
+	key := normalizeSessionKey(input.ExecutionID)
+	if key == "" || a.store == nil {
+		return a.executeEphemeral(ctx, input)
+	}
+	// Session-pinned path: one retry after evicting a stale (manager-GC'd)
+	// lease; the fresh lease starts with empty state per the use-and-destroy
+	// contract.
+	for attempt := 0; attempt < 2; attempt++ {
+		lease, err := a.store.acquire(ctx, key)
+		if err != nil {
+			return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor acquire: %w", err)
+		}
+		res, err := a.runBlocks(ctx, lease, input.CodeBlocks)
+		if err == nil {
+			a.store.renew(ctx, key, sessionRenewExtend)
+			return res, nil
+		}
+		if errors.Is(err, sandbox.ErrNotFound) && attempt == 0 {
+			a.store.evict(key, lease)
+			continue
+		}
+		return trpcagentcodeexec.CodeExecutionResult{}, err
+	}
+	return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor: unreachable")
+}
+
+// executeEphemeral keeps the P0 one-shot semantics for callers without a
+// session context: one lease per ExecuteCode, destroyed on return.
+func (a *pooledAdapter) executeEphemeral(ctx context.Context, input trpcagentcodeexec.CodeExecutionInput) (trpcagentcodeexec.CodeExecutionResult, error) {
+	lease, err := a.runtime.mgr.Acquire(ctx, sandbox.AcquireReq{
+		Profile: sandbox.DefaultProfileName,
+		TTL:     a.timeout + time.Minute, // exec window + collection margin
+	})
+	if err != nil {
+		return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor acquire: %w", err)
+	}
+	defer func() { _ = lease.Release(context.Background()) }()
+	return a.runBlocks(ctx, lease, input.CodeBlocks)
+}
+
+func (a *pooledAdapter) runBlocks(ctx context.Context, lease *sandbox.Lease, blocks []trpcagentcodeexec.CodeBlock) (trpcagentcodeexec.CodeExecutionResult, error) {
 	var sb strings.Builder
 	var outFiles []trpcagentcodeexec.File
-	for i, block := range input.CodeBlocks {
-		res, err := a.runtime.Run(ctx, block.Language, block.Code, a.timeout)
+	for i, block := range blocks {
+		res, err := a.runtime.Run(ctx, lease, block.Language, block.Code, a.timeout)
 		if err != nil {
 			return trpcagentcodeexec.CodeExecutionResult{}, fmt.Errorf("sandbox executor block %d: %w", i, err)
 		}

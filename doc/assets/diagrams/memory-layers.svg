@@ -92,13 +92,13 @@
     <text x="990" y="322" font-size="12" fill="#E5EAF5" text-anchor="middle">Saga 级联更新（L4）</text>
     <text x="990" y="374" font-size="12" fill="#E5EAF5" text-anchor="middle">三链整合提取器</text>
 
-    <text x="840" y="494" font-size="13" font-weight="bold" fill="#60A5FA">6 个 Cron Workers</text>
+    <text x="840" y="494" font-size="13" font-weight="bold" fill="#60A5FA">记忆维护 Workers</text>
     <text x="990" y="532" font-size="12" fill="#E5EAF5" text-anchor="middle">L1Archive 归档</text>
-    <text x="990" y="580" font-size="12" fill="#E5EAF5" text-anchor="middle">L2Consolidate 固化</text>
-    <text x="990" y="628" font-size="12" fill="#E5EAF5" text-anchor="middle">L2Decay 衰减</text>
-    <text x="990" y="676" font-size="12" fill="#E5EAF5" text-anchor="middle">L3Decay 衰减</text>
-    <text x="990" y="724" font-size="12" fill="#E5EAF5" text-anchor="middle">L4Decay 衰减</text>
-    <text x="990" y="772" font-size="12" fill="#E5EAF5" text-anchor="middle">FactIndexReconciler</text>
+    <text x="990" y="580" font-size="12" fill="#E5EAF5" text-anchor="middle">SleepTime 固化</text>
+    <text x="990" y="628" font-size="12" fill="#E5EAF5" text-anchor="middle">L2/L3 衰减 + Ebbinghaus</text>
+    <text x="990" y="676" font-size="12" fill="#E5EAF5" text-anchor="middle">L4Decay（Hebbian）</text>
+    <text x="990" y="724" font-size="12" fill="#E5EAF5" text-anchor="middle">FactIndexReconciler</text>
+    <text x="990" y="772" font-size="12" fill="#E5EAF5" text-anchor="middle">回填 / 死信重放 / 金丝雀</text>
 
     <text x="20" y="400" font-size="12" fill="#8FA3C8" transform="rotate(-90 20 400)" text-anchor="middle">写入 / 固化 ↓</text>
     <text x="788" y="400" font-size="12" fill="#8FA3C8" transform="rotate(-90 788 400)" text-anchor="middle">召回 ↑</text>

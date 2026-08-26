@@ -2,25 +2,25 @@
 
 ## 功能
 
-**五重安全防护 + 11 个内置插件 + 事件驱动钩子系统**：让 Agent 的每次工具调用、每分 Token 消耗、每次外部通知都在管控之内。
+**五重安全防护 + 9 个内置插件 + 事件驱动钩子系统**：让 Agent 的每次工具调用、每分 Token 消耗、每次外部通知都在管控之内。
 
 ## 原理
 
-### 11.1 11 个内置插件
+### 11.1 9 个内置插件（DB 管理，插件页可启停/配置）
 
-| 插件 | 功能 |
+| 插件 key | 功能 |
 |------|------|
-| **identity** | 身份注入，自动将 Agent 身份信息注入上下文 |
-| **guardrail** | 安全护栏，防止输出违规内容 |
-| **toolcallid** | 工具调用 ID 追踪，确保调用链完整 |
-| **messagemerger** | 消息合并，优化流式输出 |
-| **confirmation_guard** | 工具调用确认，**高危操作需人工审批**（HITL 门禁） |
-| **permission_guard** | 工具权限控制，deny_list 机制 |
-| **cost_guard** | 成本预算守卫，按 scope 限流 |
+| **confirmation_guard** | 工具确认守卫，**高危操作需人工审批**（HITL 门禁） |
+| **permission_guard** | 权限守卫，工具白名单/黑名单控制 |
+| **cost_guard** | 成本守卫，按 scope 预算限流 |
 | **model_router** | 模型路由，按规则自动切换模型 |
-| **output_policy** | 输出策略控制，限制输出格式和内容 |
-| **sensitive_mask** | 敏感信息脱敏，防止泄露隐私数据 |
-| **skill_tracker** | Skill 调用追踪，记录技能使用情况 |
+| **output_policy** | 输出策略，限制输出格式和内容 |
+| **sensitive_data_mask** | 敏感数据脱敏，防止泄露隐私数据 |
+| **audit_log** | 运行日志和审计，全量调用留痕 |
+| **skill_usage_tracker** | Skill 使用追踪，记录技能调用情况 |
+| **retry_and_reflect** | 重试与反思，失败调用自动重试 |
+
+另有 5 个**框架常驻插件**随 Runner 装配（代码固定挂载，不在插件页管理）：`identity`（身份注入）、`guardrail`（提示注入/危险意图护栏）、`toolcallid`（工具调用 ID 规范化）、`messagemerger`（消息合并）、`aranea_event_bridge`（产品事件桥）。
 
 ### 回调编排边界（三层）
 
@@ -37,7 +37,7 @@
 ```text
 confirmation_guard（人工确认）
   + permission_guard（权限白名单/黑名单）
-  + sensitive_mask（脱敏）
+  + sensitive_data_mask（脱敏）
   + output_policy（输出策略）
   + cost_guard（成本限流）
 ```
@@ -64,7 +64,7 @@ confirmation_guard（人工确认）
 
 ## 界面配置
 
-- **插件页**：查看 11 个内置插件的启用状态与配置（如 cost_guard 的 scope 限流阈值、model_router 的路由规则）；
+- **插件页**：查看 9 个内置插件的启用状态与配置（如 cost_guard 的 scope 限流阈值、model_router 的路由规则）；
 - **Hooks 页**：创建 Hook → 设三维过滤条件 → 配置 Webhook 动作 → 查看投递记录与重试；
 - **Webhooks 页**：管理出站回调端点与签名密钥；
 - **工具页**：查看工具清单，高危工具标记确认门禁状态。

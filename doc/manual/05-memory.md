@@ -33,16 +33,31 @@
   → 任一步失败自动补偿回滚
 ```
 
-### 6 个 Cron Worker（后台维护）
+### 记忆维护 Worker（后台，cronrunner/jobs）
+
+**生命周期（按层）：**
 
 | Worker | 职责 |
 |--------|------|
-| L1Archive | 工作记忆归档 |
-| L2Consolidate | 情景记忆固化（L2→L3 提炼） |
-| L2Decay | 情景记忆时间衰减 |
-| L3Decay | 语义事实衰减 |
-| L4Decay | 图谱衰减 |
-| FactIndexReconciler | 事实索引对账 |
+| MemoryL1ArchiveWorker | L1 空闲任务归档（自动桥接创建 L2 Episode）+ 过期字段清理 |
+| MemoryL2DecayWorker | L2 情景记忆时间衰减 |
+| MemoryL3DecayWorker | L3 语义事实衰减 |
+| MemoryEbbinghausDecayWorker | L3 艾宾浩斯指数衰减（记忆强度评分） |
+| MemoryL4DecayWorker | L4 图谱关系衰减（Hebbian：久未激活的关系降权/归档） |
+| MemorySleepTimeWorker | 睡眠时固化：L2→L3 提炼 / 反思 / merge / update_core |
+
+**回填与运维：**
+
+| Worker | 职责 |
+|--------|------|
+| MemoryEpisodeBackfillWorker | Episode 向量索引回填 |
+| MemoryCitationBackfillWorker | 事实引用回填（回复引用识别，幂等去重） |
+| MemoryFactIndexReconciler | 事实索引对账 |
+| MemoryDataMigrationWorker | 旧版记忆数据迁移 |
+| MemoryCanaryWorker | 固化链路金丝雀自检 |
+| MemoryDeadLetterReplayer | 记忆任务死信重放 |
+
+另有事件驱动的 **AutoMemoryWorker**（非 cron）：Turn 结束后自动提取结构化记忆任务，经 AutoMemoryQueue 异步消费。
 
 ### Token 预算控制
 
@@ -65,7 +80,7 @@ L0 装配受 `MemoryPromptTotalBudgetTokens` 等预算约束（策略层字段�
 2. **关联图谱**：L4 知识图谱浏览器，实体-关系可视化；
 3. **记忆浏览**：逐层查看条目；**召回测试器**可调试 L2/L3 召回质量、查看 score breakdown；
 4. **信任**：PII 审查、级联变更面板（Saga 步骤追踪）；
-5. **运维**：6 个 Worker 运行状态 + 队列统计、死信管理（查看/重试/放弃）、进化面板。
+5. **运维**：各 Worker 运行状态 + 队列统计、死信管理（查看/重试/放弃）、进化面板。
 
 右上角可切换**智能体**，查看任一 Agent 的记忆视图。
 

@@ -18,7 +18,7 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 | **框架层** | Agent 运行时内核（vendored） | trpc-agent-go：Runner / Agent(llm·team·graph) / Session / Memory / Tool / MCP / Event |
 | **数据层** | 持久化与索引 | PostgreSQL + Ent ORM（97 Schema）、pgvector 向量索引、Redis 缓存/队列、文件存储（Artifact/Skill） |
 
-**横切关注点**（贯穿各层）：全链路可观测与自愈、配额计费（六维定价）、五重安全护栏、11 个内置插件。
+**横切关注点**（贯穿各层）：全链路可观测与自愈、配额计费（六维定价）、五重安全护栏、9 个内置插件（+框架常驻插件）。
 
 ## 关键数据流
 

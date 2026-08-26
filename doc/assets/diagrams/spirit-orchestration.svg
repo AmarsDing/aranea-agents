@@ -81,7 +81,7 @@
     <text x="600" y="687" font-size="14" fill="#E5EAF5" text-anchor="middle">综合结果交付（Artifact / 报告 / 回复）</text>
 
     <text x="60" y="764" font-size="12" font-weight="bold" fill="#22D3EE">拓扑自动推断</text>
-    <text x="60" y="784" font-size="11" fill="#8FA3C8">无节点→coordinator · 全根节点→parallel · 深度&gt;3→coordinator · 宽度&gt;1→hybrid · 否则→sequential ｜ 编排缓存 + DQ 评分：同类任务推荐历史最优拓扑</text>
+    <text x="60" y="784" font-size="11" fill="#8FA3C8">拓扑推断：显式指定优先 · 依赖+并行→hybrid · 仅依赖→sequential · 仅并行→parallel · 否则→coordinator ｜ 编排缓存 + DQ 评分：同类任务推荐历史最优拓扑</text>
   </g>
 
   <g id="connections">

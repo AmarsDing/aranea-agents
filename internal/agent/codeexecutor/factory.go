@@ -28,16 +28,23 @@ type Factory struct {
 	localWD       string
 	localExec     trpcagentcodeexec.CodeExecutor
 	sandboxMgr    *sandbox.Manager // M82: bound post-construction by the wire provider
+	sandboxStore  *sessionLeaseStore
 	lg            loggateway.Logger
 }
 
 // SetSandboxManager binds the M82 sandbox manager (warm-pool backend). The
 // manager is constructed after the factory in the wire graph, so binding is a
-// post-construction setter rather than a constructor param.
+// post-construction setter rather than a constructor param. The P1-1 session
+// lease store is created here so it shares the manager's lifetime.
 func (f *Factory) SetSandboxManager(mgr *sandbox.Manager) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sandboxMgr = mgr
+	if mgr != nil {
+		f.sandboxStore = newSessionLeaseStore(mgr)
+	} else {
+		f.sandboxStore = nil
+	}
 }
 
 // sandboxAvailable reports whether the pooled sandbox backend can serve runs.
@@ -142,9 +149,10 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 	case TypeSandbox:
 		f.mu.RLock()
 		mgr := f.sandboxMgr
+		store := f.sandboxStore
 		f.mu.RUnlock()
 		if mgr != nil && mgr.Available() {
-			return wrapMetrics(newPooledAdapter(mgr, f.env.Timeout), TypeSandbox)
+			return wrapMetrics(newPooledAdapter(mgr, f.env.Timeout, store), TypeSandbox)
 		}
 		// 防御性二次检查：applyAvailabilityFallback 通常已把 sandbox→docker；
 		// 运行期 Manager 不可用时走与 docker 相同的运行时回退链。

@@ -7,10 +7,16 @@
 | 方式 | 适用 | 命令 |
 |------|------|------|
 | **Docker 一键** | 服务器 / 开发机（推荐） | `powershell -File docker/dev-up.ps1` 或 `docker compose up -d` |
-| **Windows 安装包** | 零命令行桌面用户 | 双击安装包，Launcher 自动完成全部部署 |
+| **Windows 安装包** | 零命令行桌面用户 | 双击安装包，Launcher 自动完成全部部署（自带前端） |
 | **源码开发** | 二次开发 | 见 [15 部署运维](15-deployment.md) |
 
-验证：浏览器打开 `http://localhost:8810/healthz` 返回健康信息；前端开发模式访问 `http://localhost:9301`。
+验证：浏览器打开 `http://localhost:8810/healthz` 返回健康信息。
+
+> 📌 **Docker 部署后如何打开 Web 界面？** Docker 编排只含后端与中间件，**不含前端**。三条途径任选：
+>
+> - **开发/试用**：源码 `cd web && pnpm dev`，访问 `http://localhost:9301`（自动代理 API/WS 到 8810/8812）；
+> - **生产自用**：`cd web && pnpm build` 后用任意静态服务器托管 `dist/spa`，并将 HTTP API 反代到 8810、WS 反代到 8812；
+> - **零配置**：直接用 Windows 安装包（自带全栈 + 桌面应用）。
 
 ## 2. 首次对话（30 秒）
 
@@ -40,7 +46,7 @@
 | 方式 | 入口 | 适用 |
 |------|------|------|
 | **Spirit 动态编排** | 聊天页直接对话 | 开放式任务，系统自动规划 |
-| **Team 固定团队** | Team 页 → 新增 TEAM → 选模式 |  repeatable 的固定协作流程 |
+| **Team 固定团队** | Team 页 → 新增 TEAM → 选模式 | 可重复的固定协作流程 |
 | **Graph 工作流** | Graph 页 → 新增 GRAPH / 从模板创建 | 需要条件分支、人工审批节点的确定性流程 |
 
 Team 页可以按「公司 / 部门」浏览团队归属，点击运行按钮直接触发：

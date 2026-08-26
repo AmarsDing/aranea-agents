@@ -129,7 +129,7 @@
     <text x="183" y="985" font-size="14" fill="#E5EAF5" text-anchor="middle">全链路可观测 · 自愈</text>
     <text x="459" y="985" font-size="14" fill="#E5EAF5" text-anchor="middle">配额计费 · 六维定价</text>
     <text x="735" y="985" font-size="14" fill="#E5EAF5" text-anchor="middle">五重安全护栏</text>
-    <text x="1011" y="985" font-size="14" fill="#E5EAF5" text-anchor="middle">11 个内置插件</text>
+    <text x="1011" y="985" font-size="14" fill="#E5EAF5" text-anchor="middle">9 内置插件 + 框架插件</text>
   </g>
 
   <g id="connections">
