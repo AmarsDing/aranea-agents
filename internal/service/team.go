@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	bizusage "aranea-agents/internal/biz/usage"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
@@ -38,6 +39,9 @@ type TeamService struct {
 	v2Seq           rt.EventPublisher
 	mon             *biz.MonitorUsecase
 	usageUC         *bizusage.Usecase // 79-runtime-governance 0.1：run 级 cache_hit_ratio
+	// decisionQuery：79-runtime-governance R7 stats 的 system_guard 聚合源
+	// （nil = 闸统计段零值透出，单测/精简装配）。
+	decisionQuery *decision.QueryUsecase
 }
 
 func NewTeamService(
@@ -58,6 +62,7 @@ func NewTeamService(
 	v2Seq rt.EventPublisher,
 	mon *biz.MonitorUsecase,
 	usageUC *bizusage.Usecase,
+	decisionQuery *decision.QueryUsecase,
 ) *TeamService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -74,6 +79,7 @@ func NewTeamService(
 		v2Seq:           v2Seq,
 		mon:             mon,
 		usageUC:         usageUC,
+		decisionQuery:   decisionQuery,
 	}
 }
 

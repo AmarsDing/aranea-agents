@@ -50,6 +50,12 @@ type OrchestrationSpec struct {
 	EnableStateDeliverable bool                       `json:"enable_state_deliverable,omitempty"`
 	DeliverableContract    *MemberDeliverableContract `json:"deliverable_contract,omitempty"`
 	VerificationGates      []VerificationGate         `json:"verification_gates,omitempty"`
+	// TokenBudgetInputTokens 覆盖 run 级累计 input token 预算闸（team
+	// Definition.token_budget_input_tokens，0=默认、<0=关闭）。2026-08-26
+	// M80 验收踩坑：本结构此前缺该字段，create/update 经
+	// OrchestrationSpecToDefinitionJSON 重序列化时将其静默丢弃，API 侧永远
+	// 无法配置预算闸——与上方 C1/C3/F5/F9 同类，字段必须随 spec 往返保留。
+	TokenBudgetInputTokens int64 `json:"token_budget_input_tokens,omitempty"`
 }
 
 // GraphSource returns the effective definition graph source (default preset).

@@ -793,82 +793,6 @@ var (
 			},
 		},
 	}
-	// ConfigGraphEdgesColumns holds the columns for the "config_graph_edges" table.
-	ConfigGraphEdgesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
-		{Name: "src_id", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "dst_id", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "edge_type", Type: field.TypeString, Size: 32},
-		{Name: "evidence_json", Type: field.TypeString, Default: "{}"},
-		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "generation", Type: field.TypeInt64, Default: 0},
-		{Name: "created_at", Type: field.TypeString, Size: 40, Default: ""},
-	}
-	// ConfigGraphEdgesTable holds the schema information for the "config_graph_edges" table.
-	ConfigGraphEdgesTable = &schema.Table{
-		Name:       "config_graph_edges",
-		Columns:    ConfigGraphEdgesColumns,
-		PrimaryKey: []*schema.Column{ConfigGraphEdgesColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "configgraphedge_src_id_dst_id_edge_type_generation",
-				Unique:  true,
-				Columns: []*schema.Column{ConfigGraphEdgesColumns[1], ConfigGraphEdgesColumns[2], ConfigGraphEdgesColumns[3], ConfigGraphEdgesColumns[6]},
-			},
-			{
-				Name:    "configgraphedge_src_id_generation",
-				Unique:  false,
-				Columns: []*schema.Column{ConfigGraphEdgesColumns[1], ConfigGraphEdgesColumns[6]},
-			},
-			{
-				Name:    "configgraphedge_dst_id_generation",
-				Unique:  false,
-				Columns: []*schema.Column{ConfigGraphEdgesColumns[2], ConfigGraphEdgesColumns[6]},
-			},
-		},
-	}
-	// ConfigGraphNodesColumns holds the columns for the "config_graph_nodes" table.
-	ConfigGraphNodesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
-		{Name: "node_type", Type: field.TypeString, Size: 32},
-		{Name: "ref_id", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "node_key", Type: field.TypeString, Size: 256, Default: ""},
-		{Name: "display_name", Type: field.TypeString, Size: 256, Default: ""},
-		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "status", Type: field.TypeString, Size: 16, Default: "active"},
-		{Name: "attrs_json", Type: field.TypeString, Default: "{}"},
-		{Name: "generation", Type: field.TypeInt64, Default: 0},
-		{Name: "created_at", Type: field.TypeString, Size: 40, Default: ""},
-		{Name: "updated_at", Type: field.TypeString, Size: 40, Default: ""},
-	}
-	// ConfigGraphNodesTable holds the schema information for the "config_graph_nodes" table.
-	ConfigGraphNodesTable = &schema.Table{
-		Name:       "config_graph_nodes",
-		Columns:    ConfigGraphNodesColumns,
-		PrimaryKey: []*schema.Column{ConfigGraphNodesColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "configgraphnode_node_type_ref_id_generation",
-				Unique:  true,
-				Columns: []*schema.Column{ConfigGraphNodesColumns[1], ConfigGraphNodesColumns[2], ConfigGraphNodesColumns[8]},
-			},
-			{
-				Name:    "configgraphnode_node_type_status_generation",
-				Unique:  false,
-				Columns: []*schema.Column{ConfigGraphNodesColumns[1], ConfigGraphNodesColumns[6], ConfigGraphNodesColumns[8]},
-			},
-			{
-				Name:    "configgraphnode_node_key",
-				Unique:  false,
-				Columns: []*schema.Column{ConfigGraphNodesColumns[3]},
-			},
-			{
-				Name:    "configgraphnode_workspace_id",
-				Unique:  false,
-				Columns: []*schema.Column{ConfigGraphNodesColumns[5]},
-			},
-		},
-	}
 	// CronTaskColumns holds the columns for the "cron_task" table.
 	CronTaskColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -1998,6 +1922,27 @@ var (
 			},
 		},
 	}
+	// MemoryFactAllowRulesColumns holds the columns for the "memory_fact_allow_rules" table.
+	MemoryFactAllowRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "agent_id", Type: field.TypeString, Size: 64},
+		{Name: "verdict", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "created_by", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "created_at", Type: field.TypeInt64, Default: 0},
+	}
+	// MemoryFactAllowRulesTable holds the schema information for the "memory_fact_allow_rules" table.
+	MemoryFactAllowRulesTable = &schema.Table{
+		Name:       "memory_fact_allow_rules",
+		Columns:    MemoryFactAllowRulesColumns,
+		PrimaryKey: []*schema.Column{MemoryFactAllowRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_mfar_agent_verdict",
+				Unique:  true,
+				Columns: []*schema.Column{MemoryFactAllowRulesColumns[1], MemoryFactAllowRulesColumns[2]},
+			},
+		},
+	}
 	// MemoryFactPendingColumns holds the columns for the "memory_fact_pending" table.
 	MemoryFactPendingColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -2872,6 +2817,7 @@ var (
 		{Name: "parent_session_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "root_session_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "agent_depth", Type: field.TypeInt, Default: 0},
+		{Name: "fork_from_turn_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "session_type", Type: field.TypeString, Size: 32, Default: "standalone"},
 		{Name: "member_agent_key", Type: field.TypeString, Default: ""},
 		{Name: "member_role", Type: field.TypeString, Default: ""},
@@ -4063,8 +4009,6 @@ var (
 		CodingTasksTable,
 		CompiledTeamsTable,
 		ComputerUseAuditTable,
-		ConfigGraphEdgesTable,
-		ConfigGraphNodesTable,
 		CronTaskTable,
 		CronTaskRunTable,
 		DecisionRecordsTable,
@@ -4099,6 +4043,7 @@ var (
 		LlmProviderModelsTable,
 		MediaProvidersTable,
 		MemberSessionsV2Table,
+		MemoryFactAllowRulesTable,
 		MemoryFactPendingTable,
 		ModelPricingRulesTable,
 		ModelTokenUsageHourlyTable,
@@ -4215,12 +4160,6 @@ func init() {
 	ComputerUseAuditTable.Annotation = &entsql.Annotation{
 		Table: "computer_use_audit",
 	}
-	ConfigGraphEdgesTable.Annotation = &entsql.Annotation{
-		Table: "config_graph_edges",
-	}
-	ConfigGraphNodesTable.Annotation = &entsql.Annotation{
-		Table: "config_graph_nodes",
-	}
 	CronTaskTable.Annotation = &entsql.Annotation{
 		Table: "cron_task",
 	}
@@ -4326,6 +4265,9 @@ func init() {
 	}
 	MemberSessionsV2Table.Annotation = &entsql.Annotation{
 		Table: "member_sessions_v2",
+	}
+	MemoryFactAllowRulesTable.Annotation = &entsql.Annotation{
+		Table: "memory_fact_allow_rules",
 	}
 	MemoryFactPendingTable.Annotation = &entsql.Annotation{
 		Table: "memory_fact_pending",

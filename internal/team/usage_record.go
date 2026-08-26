@@ -119,55 +119,72 @@ func (r *Runner) recordMemberUsage(
 	// rows (attribution=="" — mirror rows duplicate the team_turn totals and
 	// would double-count), then cancel the run once on exceed. The cancel
 	// propagates through the run ctx, so no further member steps execute.
+	// NOTE: under graph runtime this branch never fires (all rows carry an
+	// attribution marker); the gate is armed mid-stream instead via
+	// StreamConsumeOptions.OnPromptTokensAccumulated (2026-08-26 M80 fix).
 	if strings.TrimSpace(attribution) == "" {
 		if tripped, used, limit := r.accumulateRunTokenBudget(run.ID, recEv.InputTokens); tripped {
-			r.lg.Warn("团队 run 累计 input token 超预算，取消 run",
-				loggateway.StepID("team.token_budget.exceeded"),
-				loggateway.Str("run_id", run.ID),
-				loggateway.Str("team_id", teamID),
-				loggateway.Str("session_id", run.SessionID),
-				loggateway.Int64("budget_used_input_tokens", used),
-				loggateway.Int64("budget_limit_input_tokens", limit),
-			)
-			// M80：系统闸决策双写（设计 §3.2 row 3，与 G-R5 同坐标）。
-			decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
-				TriggerRule:   decision.TriggerTokenBudgetTripped,
-				Outcome:       "tripped",
-				Scenario:      "run 累计 input token 超预算",
-				Reasoning:     fmt.Sprintf("run 累计 input %d 超预算上限 %d，取消 run", used, limit),
-				GuardName:     "token_budget",
-				RunID:         run.ID,
-				Entities:      []decision.EntityRef{{Type: "team", Key: teamID}},
-				ObservedValue: used,
-				Threshold:     limit,
-				Action:        "cancel_run",
-				Extra:         map[string]any{"session_id": run.SessionID},
-			})
-			if em := event.TraceEmitterFromContext(ctx); em != nil {
-				em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",
-					event.P("run_id", run.ID), event.P("used", used), event.P("limit", limit))
-			}
-			// P2.5：守卫终止在事件流分列——与 team_run_no_progress 同型注记，
-			// reason 与 RunRegistry 状态条目/run 终态记录三处口径一致。
-			spiritSID := run.SpiritSessionID
-			if spiritSID == "" {
-				spiritSID = run.SessionID
-			}
-			r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_run_token_budget_exceeded",
-				"团队 run 累计 input token 超预算，run 已终止", map[string]any{
-					"run_id":  run.ID,
-					"team_id": teamID,
-					"used":    used,
-					"limit":   limit,
-					"reason":  "team_token_budget_exceeded",
-				}))
-			if r.cfg.Runs != nil {
-				r.cfg.Runs.Cancel(run.SessionID, "team_token_budget_exceeded")
-			}
+			r.tripRunTokenBudget(ctx, run, teamID, used, limit)
 		}
 	}
 	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4) —
 	// publishing here as well would double-emit.
+}
+
+// tripRunTokenBudget performs the one-shot budget-exceed sequence: warn log,
+// M80 system-gate decision double-write, trace critical event, session system
+// notice, and run cancel. Callers must fire it only on the first exceed
+// (accumulateRunTokenBudget's single-fire guard).
+func (r *Runner) tripRunTokenBudget(ctx context.Context, run biz.TeamRunRecord, teamID string, used, limit int64) {
+	r.lg.Warn("团队 run 累计 input token 超预算，取消 run",
+		loggateway.StepID("team.token_budget.exceeded"),
+		loggateway.Str("run_id", run.ID),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("session_id", run.SessionID),
+		loggateway.Int64("budget_used_input_tokens", used),
+		loggateway.Int64("budget_limit_input_tokens", limit),
+	)
+	// M80：系统闸决策双写（设计 §3.2 row 3，与 G-R5 同坐标）。
+	decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
+		TriggerRule:   decision.TriggerTokenBudgetTripped,
+		Outcome:       "tripped",
+		Scenario:      "run 累计 input token 超预算",
+		Reasoning:     fmt.Sprintf("run 累计 input %d 超预算上限 %d，取消 run", used, limit),
+		GuardName:     "token_budget",
+		RunID:         run.ID,
+		Entities:      []decision.EntityRef{{Type: "team", Key: teamID}},
+		ObservedValue: used,
+		Threshold:     limit,
+		Action:        "cancel_run",
+		Extra:         map[string]any{"session_id": run.SessionID},
+	})
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",
+			event.P("run_id", run.ID), event.P("used", used), event.P("limit", limit))
+	}
+	// P2.5：守卫终止在事件流分列——与 team_run_no_progress 同型注记，
+	// reason 与 RunRegistry 状态条目/run 终态记录三处口径一致。
+	spiritSID := run.SpiritSessionID
+	if spiritSID == "" {
+		spiritSID = run.SessionID
+	}
+	r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_run_token_budget_exceeded",
+		"团队 run 累计 input token 超预算，run 已终止", map[string]any{
+			"run_id":  run.ID,
+			"team_id": teamID,
+			"used":    used,
+			"limit":   limit,
+			"reason":  "team_token_budget_exceeded",
+		}))
+	if r.cfg.Runs != nil {
+		r.cfg.Runs.Cancel(run.SessionID, "team_token_budget_exceeded")
+		// RunTeamTest 等不经 chat orchestrator 注册的路径没有 activeRun
+		// 条目，Cancel 不会落 reason（P2.5 终态口径三处一致依赖它）；
+		// 此处兜底补记。已被 user_cancel 等占据的 reason 不覆盖。
+		if r.cancelReason(run.SessionID) == "" {
+			r.cfg.Runs.SetStatus(run.SessionID, run.ID, biz.SessionRunPhaseCancelled, "team_token_budget_exceeded")
+		}
+	}
 }
 
 // recordAuxUsage records auxiliary LLM usage for team-side旁路 calls (intent pass).

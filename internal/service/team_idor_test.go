@@ -35,7 +35,7 @@ func newIDORTeamService() *TeamService {
 		{ID: "spirit-shared", WorkspaceID: ""},
 	}}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	bus := event.NewV2Bus()
-	return NewTeamService(uc, nil, nil, sessionUC, nil, &testRunRegistry{}, bus, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return NewTeamService(uc, nil, nil, sessionUC, nil, &testRunRegistry{}, bus, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 // TestTeamService_IDOR covers N5: the previously unguarded TeamService RPCs

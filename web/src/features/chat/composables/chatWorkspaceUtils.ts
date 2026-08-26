@@ -43,6 +43,8 @@ export function sessionToView(session: Session, t: (key: string) => string): Ses
     status: session.status,
     pinned_at: session.pinned_at,
     metadata_json: session.metadata_json,
+    parent_session_id: session.parent_session_id,
+    fork_from_turn_id: session.fork_from_turn_id,
     context_budget: session.context_budget ?? null,
   };
 }

@@ -467,6 +467,11 @@ var ddlMigrations = []ddlMigration{
 	// 20260610，照 20261216/20261243 先例以 reseed 迁移补齐（种子幂等
 	// ON CONFLICT DO NOTHING，重跑安全）。
 	{Version: 20261247, Name: "builtin_platform_tools_sandbox_fs_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261248 sessions_fork_from_turn（79-runtime-governance R6 Phase 4.1）：
+	// 会话 Fork-from-Turn 血缘列——parent_session_id 记来源会话（既有），
+	// fork_from_turn_id 记分叉点 turn id（v2 turn id / invocation id）。
+	// 双方言通用，幂等（DB-N6 duplicate column 视为成功）。
+	{Version: 20261248, Name: "sessions_fork_from_turn", SQL: "sql/migrations/20261248_sessions_fork_from_turn.sql"},
 	// 20261249 memory_fact_pending（79-runtime-governance R3）：记忆高风险写
 	// 人工审批层暂存表——自动管线 UPDATE / DELETE / contested 判决落 pending，
 	// 审批通过执行原 bi-temporal 写，拒绝留痕。原分配 20261246 已被 0.1 索引
@@ -500,6 +505,11 @@ var ddlMigrations = []ddlMigration{
 	// config_graph_nodes（12 类资产节点）+ config_graph_edges（27 类引用边），
 	// generation 双代切换支撑全量重建无清表窗口。双方言通用，幂等。
 	{Version: 20261260, Name: "config_graph", SQL: "sql/migrations/20261260_config_graph.sql"},
+	// 20261261 config_graph_composite_pk（M81 P1-3 回放实测 bugfix）：20261260 的
+	// PRIMARY KEY(id) 与「双代共存」设计冲突——同 id 跨代插入必现 23505，第二次
+	// 全量重建永远失败。主键改 (id, generation)。PG：DROP+ADD 幂等；SQLite：整表
+	// 重建。双方言，幂等。
+	{Version: 20261261, Name: "config_graph_composite_pk", Func: ddlConfigGraphCompositePK},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

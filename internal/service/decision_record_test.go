@@ -38,7 +38,7 @@ func (f *fakeDecisionQueryRepo) ListDownstream(context.Context, int64, int) ([]d
 	return f.downstream, nil
 }
 
-func (f *fakeDecisionQueryRepo) FindLatestPlannerByRun(context.Context, string, string, int64) (*decision.Record, error) {
+func (f *fakeDecisionQueryRepo) FindVirtualParentPlanner(context.Context, decision.SourceRef, string, int64) (*decision.Record, error) {
 	return f.planner, nil
 }
 
@@ -133,7 +133,7 @@ func TestDecisionRecordService_GetChain(t *testing.T) {
 	}
 	repo := &fakeDecisionQueryRepo{
 		items: []decision.Record{root},
-		// root 无父 → biz 走虚拟父兜底（FindLatestPlannerByRun），标记由 biz 置位。
+		// root 无父 → biz 走虚拟父兜底（FindVirtualParentPlanner），标记由 biz 置位。
 		planner:    &decision.Record{ID: 5, DecisionKey: "dk-planner", Category: decision.CategoryPlannerOrchestration, Outcome: "selected_dag", ActorType: decision.ActorSystem, ActorKey: "system:task_planner", Scenario: "s"},
 		downstream: []decision.Record{{ID: 12, DecisionKey: "dk-child", Category: decision.CategorySystemGuard, Outcome: "blocked", ActorType: decision.ActorSystem, ActorKey: "system:loop_guard", Scenario: "s"}},
 	}

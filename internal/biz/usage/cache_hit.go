@@ -64,6 +64,10 @@ type RunCacheHitRatio struct {
 	Found     bool
 	PromptTok int64
 	CachedTok int64
+	// CompletionTok 是 run 级 output tokens 总和（79-runtime-governance R7
+	// stats API 需要 completion 与 prompt 分列；与 PromptTok/CachedTok 同源
+	// 同查询，team_turn 对账行优先、失败 run 回退 genuine 成员行求和）。
+	CompletionTok int64
 	// Ratio = CachedTok / PromptTok (0 when PromptTok == 0).
 	Ratio float64
 }

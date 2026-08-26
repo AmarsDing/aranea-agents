@@ -28,6 +28,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -59,7 +60,11 @@ type PruneMeta struct {
 // newToolResultPruneBeforeHook 创建剪枝 BeforeModel hook。gate 为 nil（无 blob
 // 设施）或配置关闭时返回 nil——轻链路零开销，回退项
 // runtime.tool_result_prune.enabled=false 即走此路。
-func newToolResultPruneBeforeHook(gate *biz.ToolResultGate, cfg ToolResultPruneConfig, lg loggateway.Logger) callbacks.Callback {
+// decisions 是 R7（G-1）剪枝事件的结构化持久化口：每次实际剪枝（pruned>0）
+// 双写一条 system_guard 决策记录（trigger_rule=tool_result_pruned，
+// outcome=truncated），run 统计经 decision_records 聚合回放；nil 时仅跳过
+// 记录（loopGuard 同款可选语义），剪枝主流程不受影响。
+func newToolResultPruneBeforeHook(gate *biz.ToolResultGate, cfg ToolResultPruneConfig, lg loggateway.Logger, decisions decision.Collector) callbacks.Callback {
 	if gate == nil || !cfg.Enabled {
 		return nil
 	}
@@ -138,8 +143,34 @@ func newToolResultPruneBeforeHook(gate *biz.ToolResultGate, cfg ToolResultPruneC
 				loggateway.Str("session_id", sessionID),
 				loggateway.Int("prune_count", pruned),
 				loggateway.Int64("prune_bytes", prunedBytes))
+			emitPruneGateDecision(ctx, decisions, sessionID, pruned, prunedBytes)
 		}
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+
+// emitPruneGateDecision 把一次实际剪枝双写为 system_guard 决策记录（R7 G-1）。
+// run 归属取 invocation.InvocationID——团队图谱执行时全链路共享 run.ID
+// （runner_team_trpc_phases.go ProjectMeta.InvocationID），chat 轮次则为
+// chat invocation id（不 join 任何 team run，stats 聚合自然忽略）。
+func emitPruneGateDecision(ctx context.Context, c decision.Collector, sessionID string, pruned int, prunedBytes int64) {
+	if c == nil {
+		return
+	}
+	var runID string
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		runID = inv.InvocationID
+	}
+	decision.EmitGate(ctx, c, decision.GateDecision{
+		TriggerRule:   decision.TriggerToolResultPruned,
+		Outcome:       "truncated",
+		Scenario:      "工具结果确定性剪枝",
+		Reasoning:     fmt.Sprintf("距当前轮超 K 轮且超尺寸阈值的 tool result 已替换为摘记指针（%d 条 / %d 字节）", pruned, prunedBytes),
+		GuardName:     "tool_result_prune",
+		RunID:         runID,
+		ObservedValue: pruned,
+		Action:        "prune",
+		Extra:         map[string]any{"prune_bytes": prunedBytes, "session_id": sessionID},
 	})
 }
 

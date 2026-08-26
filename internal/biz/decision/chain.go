@@ -52,9 +52,15 @@ type ChainRepo interface {
 	// ListDownstream 返回 startID 的后代集（不含自身），深度升序，
 	// 最多每层递归 maxDepth 层。
 	ListDownstream(ctx context.Context, startID int64, maxDepth int) ([]Record, error)
-	// FindLatestPlannerByRun 找同 run 内 created_at <= before 的最近
-	// planner_orchestration 决策（excludeID 排除自身）；未命中返回 nil, nil。
-	FindLatestPlannerByRun(ctx context.Context, runID, beforeCreatedAt string, excludeID int64) (*Record, error)
+	// FindVirtualParentPlanner 为无父记录解析虚拟父 planner 决策
+	// （created_at <= before 的最近前置 planner_orchestration，excludeID
+	// 排除自身）；未命中返回 nil, nil。解析优先级（2026-08-26 Gap 修复）：
+	// ① ref.FlowTraceID 非空 → 同 trace planner 决策精确匹配（planner 侧闸
+	// team_count_mismatch 与 planner 决策同 trace）；② ref.RunID 非空 →
+	// 桥接 team_runs→teams.spirit_session_id→planner metadata.spirit_session_id
+	// （team run 闸 token_budget/no_progress）。两者皆空或不命中返回 nil——
+	// invocation 级闸（loop_guard）与手动 run 无 planner 前置，落空即语义。
+	FindVirtualParentPlanner(ctx context.Context, ref SourceRef, beforeCreatedAt string, excludeID int64) (*Record, error)
 }
 
 // GetChain 追溯 decisionKey 的决策链。root 未命中返回 nil, nil。
@@ -91,8 +97,9 @@ func (u *QueryUsecase) GetChain(ctx context.Context, decisionKey, direction stri
 	return chain, nil
 }
 
-// chainUpstream 上游：有真实父链走 CTE 追溯；无父但带 run_id 时按设计 §5
-// 兜底补同 run 内最近前置 planner 决策为虚拟父（仅单节点，不回写）。
+// chainUpstream 上游：有真实父链走 CTE 追溯；无父但带可桥接 source_ref
+// （flow_trace_id / run_id）时按设计 §5 兜底补最近前置 planner 决策为
+// 虚拟父（仅单节点，不回写）。桥接规则见 ChainRepo.FindVirtualParentPlanner。
 func (u *QueryUsecase) chainUpstream(ctx context.Context, crepo ChainRepo, root *Record, depth int) ([]Record, error) {
 	if root.ParentDecisionID != nil {
 		up, err := crepo.ListUpstream(ctx, root.ID, depth)
@@ -101,10 +108,10 @@ func (u *QueryUsecase) chainUpstream(ctx context.Context, crepo ChainRepo, root 
 		}
 		return dedupChainRecords(up, root.ID), nil
 	}
-	if root.SourceRef.RunID == "" {
+	if root.SourceRef.RunID == "" && root.SourceRef.FlowTraceID == "" {
 		return nil, nil
 	}
-	vp, err := crepo.FindLatestPlannerByRun(ctx, root.SourceRef.RunID, root.CreatedAt, root.ID)
+	vp, err := crepo.FindVirtualParentPlanner(ctx, root.SourceRef, root.CreatedAt, root.ID)
 	if err != nil || vp == nil {
 		return nil, err
 	}

@@ -22,6 +22,7 @@ type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
 	uc             *biz.SessionUsecase
+	forkUc         *biz.SessionForkUsecase
 	mon            *biz.MonitorUsecase
 	runs           *biz.SessionRunUsecase
 	compress       biz.ManualCompressor
@@ -35,6 +36,7 @@ type SessionService struct {
 
 func NewSessionService(
 	uc *biz.SessionUsecase,
+	forkUc *biz.SessionForkUsecase,
 	mon *biz.MonitorUsecase,
 	runs *biz.SessionRunUsecase,
 	compress biz.ManualCompressor,
@@ -48,6 +50,7 @@ func NewSessionService(
 	}
 	return &SessionService{
 		uc:             uc,
+		forkUc:         forkUc,
 		mon:            mon,
 		runs:           runs,
 		compress:       compress,
@@ -344,6 +347,23 @@ func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionReque
 		return nil, mapSessionErr(err)
 	}
 	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
+}
+
+// ForkSession implements POST /v1/sessions/{id}/fork（79-runtime-governance R6）。
+func (s *SessionService) ForkSession(ctx context.Context, req *v1.ForkSessionRequest) (*v1.Session, error) {
+	if s.forkUc == nil {
+		return nil, apierror.Internal("SESSION", "session fork not available")
+	}
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	out, err := s.forkUc.Fork(ctx, req.GetId(), req.GetTurnId(), req.GetTitle())
+	if err != nil {
+		// 不套 mapSessionErr——fork 的 NotFound 可能是「turn not found」，
+		// 需保留 biz 原始消息以便前端区分。
+		return nil, err
+	}
+	return toProtoSession(out, nil), nil
 }
 
 // UpdateSession implements PATCH /v1/sessions/{id}.

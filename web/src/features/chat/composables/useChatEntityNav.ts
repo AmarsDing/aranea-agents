@@ -340,6 +340,23 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     });
   }
 
+  /**
+   * Fork-from-Turn（79-runtime-governance R6）：以 turn 为分叉点派生新会话
+   * 并跳转。源会话只读零影响；失败（非根会话 / turn 不存在等）提示错误。
+   */
+  async function onForkSessionTurn(turn: { ID: string; SessionID: string }) {
+    const srcId = turn.SessionID?.trim();
+    const turnId = turn.ID?.trim();
+    if (!srcId || !turnId) return;
+    try {
+      const created = await deps.sessionStore.forkSessionAction(srcId, turnId);
+      $q.notify({ type: 'positive', message: deps.t('chat.forkSuccess', '已创建分支会话'), timeout: 1500 });
+      await onSelectSession(created.id);
+    } catch {
+      $q.notify({ type: 'negative', message: deps.t('chat.forkFailed', '创建分支会话失败，请重试') });
+    }
+  }
+
   async function openSettings(kind: ChatEntityKind, id: string) {
     if (kind === 'agent') {
       await router.push(`/agents/${id}/settings`);
@@ -388,6 +405,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     onArchiveSession,
     onSessionDetail,
     onNewSession,
+    onForkSessionTurn,
     openSettings,
     updateTeam: async (id: string, payload: object) => {
       const teamsStore = useTeamsStore();

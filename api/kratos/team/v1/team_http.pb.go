@@ -26,11 +26,13 @@ const OperationTeamServiceCompileTeamGraph = "/kratos.team.v1.TeamService/Compil
 const OperationTeamServiceCreateTeam = "/kratos.team.v1.TeamService/CreateTeam"
 const OperationTeamServiceDeleteTeam = "/kratos.team.v1.TeamService/DeleteTeam"
 const OperationTeamServiceDuplicateTeam = "/kratos.team.v1.TeamService/DuplicateTeam"
+const OperationTeamServiceExportTeamRunStats = "/kratos.team.v1.TeamService/ExportTeamRunStats"
 const OperationTeamServiceExportTeamStructure = "/kratos.team.v1.TeamService/ExportTeamStructure"
 const OperationTeamServiceGetTeam = "/kratos.team.v1.TeamService/GetTeam"
 const OperationTeamServiceGetTeamRun = "/kratos.team.v1.TeamService/GetTeamRun"
 const OperationTeamServiceGetTeamRunObservatory = "/kratos.team.v1.TeamService/GetTeamRunObservatory"
 const OperationTeamServiceGetTeamRunObservatoryTimeline = "/kratos.team.v1.TeamService/GetTeamRunObservatoryTimeline"
+const OperationTeamServiceGetTeamRunStats = "/kratos.team.v1.TeamService/GetTeamRunStats"
 const OperationTeamServiceGetTeamRunSummary = "/kratos.team.v1.TeamService/GetTeamRunSummary"
 const OperationTeamServiceInjectTeamMessage = "/kratos.team.v1.TeamService/InjectTeamMessage"
 const OperationTeamServiceListSpiritTeams = "/kratos.team.v1.TeamService/ListSpiritTeams"
@@ -56,11 +58,18 @@ type TeamServiceHTTPServer interface {
 	CreateTeam(context.Context, *CreateTeamRequest) (*Team, error)
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*emptypb.Empty, error)
 	DuplicateTeam(context.Context, *DuplicateTeamRequest) (*Team, error)
+	// ExportTeamRunStats ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+	// (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+	ExportTeamRunStats(context.Context, *ExportTeamRunStatsRequest) (*ExportTeamRunStatsResponse, error)
 	ExportTeamStructure(context.Context, *ExportTeamStructureRequest) (*ExportTeamStructureResponse, error)
 	GetTeam(context.Context, *GetTeamRequest) (*Team, error)
 	GetTeamRun(context.Context, *GetTeamRunRequest) (*TeamRun, error)
 	GetTeamRunObservatory(context.Context, *GetTeamRunObservatoryRequest) (*GetTeamRunObservatoryResponse, error)
 	GetTeamRunObservatoryTimeline(context.Context, *GetTeamRunObservatoryTimelineRequest) (*GetTeamRunObservatoryTimelineResponse, error)
+	// GetTeamRunStats GetTeamRunStats aggregates one run's token/cache/system-guard stats
+	// (79-runtime-governance R7). Read-only aggregation over existing
+	// accounting points; no new tables.
+	GetTeamRunStats(context.Context, *GetTeamRunStatsRequest) (*GetTeamRunStatsResponse, error)
 	GetTeamRunSummary(context.Context, *GetTeamRunSummaryRequest) (*GetTeamRunSummaryResponse, error)
 	// InjectTeamMessage InjectTeamMessage injects a user message into a team run's pending queue.
 	// The message is processed at the next step boundary during execution.
@@ -117,6 +126,8 @@ func RegisterTeamServiceHTTPServer(s *http.Server, srv TeamServiceHTTPServer) {
 	r.POST("/v1/team-runs/{id}/pause", _TeamService_PauseTeamRun0_HTTP_Handler(srv))
 	r.POST("/v1/team-runs/{id}/unpause", _TeamService_UnpauseTeamRun0_HTTP_Handler(srv))
 	r.POST("/v1/teams/{team_id}/inject", _TeamService_InjectTeamMessage0_HTTP_Handler(srv))
+	r.GET("/v1/team-runs/{id}/stats", _TeamService_GetTeamRunStats0_HTTP_Handler(srv))
+	r.GET("/v1/team-run-stats/export", _TeamService_ExportTeamRunStats0_HTTP_Handler(srv))
 }
 
 func _TeamService_ListTeams0_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx http.Context) error {
@@ -746,6 +757,47 @@ func _TeamService_InjectTeamMessage0_HTTP_Handler(srv TeamServiceHTTPServer) fun
 	}
 }
 
+func _TeamService_GetTeamRunStats0_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetTeamRunStatsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationTeamServiceGetTeamRunStats)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetTeamRunStats(ctx, req.(*GetTeamRunStatsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetTeamRunStatsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _TeamService_ExportTeamRunStats0_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ExportTeamRunStatsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationTeamServiceExportTeamRunStats)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ExportTeamRunStats(ctx, req.(*ExportTeamRunStatsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ExportTeamRunStatsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type TeamServiceHTTPClient interface {
 	// ArchiveTeam ArchiveTeam archives a completed/failed/cancelled team.
 	ArchiveTeam(ctx context.Context, req *ArchiveTeamRequest, opts ...http.CallOption) (rsp *ArchiveTeamResponse, err error)
@@ -754,11 +806,18 @@ type TeamServiceHTTPClient interface {
 	CreateTeam(ctx context.Context, req *CreateTeamRequest, opts ...http.CallOption) (rsp *Team, err error)
 	DeleteTeam(ctx context.Context, req *DeleteTeamRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DuplicateTeam(ctx context.Context, req *DuplicateTeamRequest, opts ...http.CallOption) (rsp *Team, err error)
+	// ExportTeamRunStats ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+	// (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+	ExportTeamRunStats(ctx context.Context, req *ExportTeamRunStatsRequest, opts ...http.CallOption) (rsp *ExportTeamRunStatsResponse, err error)
 	ExportTeamStructure(ctx context.Context, req *ExportTeamStructureRequest, opts ...http.CallOption) (rsp *ExportTeamStructureResponse, err error)
 	GetTeam(ctx context.Context, req *GetTeamRequest, opts ...http.CallOption) (rsp *Team, err error)
 	GetTeamRun(ctx context.Context, req *GetTeamRunRequest, opts ...http.CallOption) (rsp *TeamRun, err error)
 	GetTeamRunObservatory(ctx context.Context, req *GetTeamRunObservatoryRequest, opts ...http.CallOption) (rsp *GetTeamRunObservatoryResponse, err error)
 	GetTeamRunObservatoryTimeline(ctx context.Context, req *GetTeamRunObservatoryTimelineRequest, opts ...http.CallOption) (rsp *GetTeamRunObservatoryTimelineResponse, err error)
+	// GetTeamRunStats GetTeamRunStats aggregates one run's token/cache/system-guard stats
+	// (79-runtime-governance R7). Read-only aggregation over existing
+	// accounting points; no new tables.
+	GetTeamRunStats(ctx context.Context, req *GetTeamRunStatsRequest, opts ...http.CallOption) (rsp *GetTeamRunStatsResponse, err error)
 	GetTeamRunSummary(ctx context.Context, req *GetTeamRunSummaryRequest, opts ...http.CallOption) (rsp *GetTeamRunSummaryResponse, err error)
 	// InjectTeamMessage InjectTeamMessage injects a user message into a team run's pending queue.
 	// The message is processed at the next step boundary during execution.
@@ -873,6 +932,21 @@ func (c *TeamServiceHTTPClientImpl) DuplicateTeam(ctx context.Context, in *Dupli
 	return &out, nil
 }
 
+// ExportTeamRunStats ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+// (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+func (c *TeamServiceHTTPClientImpl) ExportTeamRunStats(ctx context.Context, in *ExportTeamRunStatsRequest, opts ...http.CallOption) (*ExportTeamRunStatsResponse, error) {
+	var out ExportTeamRunStatsResponse
+	pattern := "/v1/team-run-stats/export"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationTeamServiceExportTeamRunStats))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *TeamServiceHTTPClientImpl) ExportTeamStructure(ctx context.Context, in *ExportTeamStructureRequest, opts ...http.CallOption) (*ExportTeamStructureResponse, error) {
 	var out ExportTeamStructureResponse
 	pattern := "/v1/teams/{team_id}/structure"
@@ -930,6 +1004,22 @@ func (c *TeamServiceHTTPClientImpl) GetTeamRunObservatoryTimeline(ctx context.Co
 	pattern := "/v1/team-runs/{run_id}/observatory/timeline"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationTeamServiceGetTeamRunObservatoryTimeline))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetTeamRunStats GetTeamRunStats aggregates one run's token/cache/system-guard stats
+// (79-runtime-governance R7). Read-only aggregation over existing
+// accounting points; no new tables.
+func (c *TeamServiceHTTPClientImpl) GetTeamRunStats(ctx context.Context, in *GetTeamRunStatsRequest, opts ...http.CallOption) (*GetTeamRunStatsResponse, error) {
+	var out GetTeamRunStatsResponse
+	pattern := "/v1/team-runs/{id}/stats"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationTeamServiceGetTeamRunStats))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

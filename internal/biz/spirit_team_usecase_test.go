@@ -213,7 +213,8 @@ func (m *memSpiritSessionRepo) SearchSessions(_ context.Context, q SessionSearch
 		if q.Status != "" && s.Status != q.Status {
 			continue
 		}
-		if q.RootOnly && s.ParentSessionID != "" {
+		// RootOnly 谓词与 data 层一致（79 R6）：fork 会话属根级对话。
+		if q.RootOnly && s.ParentSessionID != "" && s.ForkFromTurnID == "" {
 			continue
 		}
 		items = append(items, s)

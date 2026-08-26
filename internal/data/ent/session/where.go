@@ -318,6 +318,11 @@ func AgentDepth(v int) predicate.Session {
 	return predicate.Session(sql.FieldEQ(FieldAgentDepth, v))
 }
 
+// ForkFromTurnID applies equality check predicate on the "fork_from_turn_id" field. It's identical to ForkFromTurnIDEQ.
+func ForkFromTurnID(v string) predicate.Session {
+	return predicate.Session(sql.FieldEQ(FieldForkFromTurnID, v))
+}
+
 // SessionType applies equality check predicate on the "session_type" field. It's identical to SessionTypeEQ.
 func SessionType(v string) predicate.Session {
 	return predicate.Session(sql.FieldEQ(FieldSessionType, v))
@@ -3166,6 +3171,71 @@ func AgentDepthLT(v int) predicate.Session {
 // AgentDepthLTE applies the LTE predicate on the "agent_depth" field.
 func AgentDepthLTE(v int) predicate.Session {
 	return predicate.Session(sql.FieldLTE(FieldAgentDepth, v))
+}
+
+// ForkFromTurnIDEQ applies the EQ predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDEQ(v string) predicate.Session {
+	return predicate.Session(sql.FieldEQ(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDNEQ applies the NEQ predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDNEQ(v string) predicate.Session {
+	return predicate.Session(sql.FieldNEQ(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDIn applies the In predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDIn(vs ...string) predicate.Session {
+	return predicate.Session(sql.FieldIn(FieldForkFromTurnID, vs...))
+}
+
+// ForkFromTurnIDNotIn applies the NotIn predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDNotIn(vs ...string) predicate.Session {
+	return predicate.Session(sql.FieldNotIn(FieldForkFromTurnID, vs...))
+}
+
+// ForkFromTurnIDGT applies the GT predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDGT(v string) predicate.Session {
+	return predicate.Session(sql.FieldGT(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDGTE applies the GTE predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDGTE(v string) predicate.Session {
+	return predicate.Session(sql.FieldGTE(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDLT applies the LT predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDLT(v string) predicate.Session {
+	return predicate.Session(sql.FieldLT(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDLTE applies the LTE predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDLTE(v string) predicate.Session {
+	return predicate.Session(sql.FieldLTE(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDContains applies the Contains predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDContains(v string) predicate.Session {
+	return predicate.Session(sql.FieldContains(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDHasPrefix applies the HasPrefix predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDHasPrefix(v string) predicate.Session {
+	return predicate.Session(sql.FieldHasPrefix(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDHasSuffix applies the HasSuffix predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDHasSuffix(v string) predicate.Session {
+	return predicate.Session(sql.FieldHasSuffix(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDEqualFold applies the EqualFold predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDEqualFold(v string) predicate.Session {
+	return predicate.Session(sql.FieldEqualFold(FieldForkFromTurnID, v))
+}
+
+// ForkFromTurnIDContainsFold applies the ContainsFold predicate on the "fork_from_turn_id" field.
+func ForkFromTurnIDContainsFold(v string) predicate.Session {
+	return predicate.Session(sql.FieldContainsFold(FieldForkFromTurnID, v))
 }
 
 // SessionTypeEQ applies the EQ predicate on the "session_type" field.

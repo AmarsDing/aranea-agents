@@ -164,6 +164,7 @@
             @update-pending="(id, content) => emit('update-pending', id, content)"
             @confirm="(id, approved) => emit('confirm-activity', id, approved)"
             @confirm-step="(p) => emit('confirm-activity-grant', p)"
+            @fork-turn="(t) => emit('fork-turn', t)"
             @submit-clarification="(p) => emit('submit-clarification', p)"
             @error-retry="(e) => emit('error-retry', e)"
             @error-switch-model="(e) => emit('error-switch-model', e)"
@@ -401,6 +402,7 @@ const emit = defineEmits<{
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
   'add-to-eval': [task: import('../../features/chat/v2Types').Task];
   'resume-task': [task: import('../../features/chat/v2Types').Task];
+  'fork-turn': [turn: import('../../features/chat/v2Types').Turn];
   'cancel-job': [job: { id: string; source: string }];
   'paste-unsupported': [];
   'new-session': [];

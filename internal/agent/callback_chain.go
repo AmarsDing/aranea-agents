@@ -96,7 +96,8 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	// R2 确定性工具结果剪枝（79-runtime-governance）：priority 7 = 全量注入类
 	// hook（≤6）之后、装配预算（8）与终审压缩（9）之前——剪枝削峰 → 阈值压缩
 	// 兜底。gate 为 nil 或 runtime.tool_result_prune.enabled=false 时不注册。
-	if hook := newToolResultPruneBeforeHook(deps.ToolResultGate, deps.ToolResultPrune, lg); hook != nil {
+	// R7（G-1）：实际剪枝双写 system_guard 决策记录，供 run 统计聚合。
+	if hook := newToolResultPruneBeforeHook(deps.ToolResultGate, deps.ToolResultPrune, lg, deps.DecisionCollector); hook != nil {
 		entries = append(entries, hook)
 	}
 	// Team completion guard: prevent Spirit LLM from polling get_team_deliverable

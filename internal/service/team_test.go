@@ -144,7 +144,7 @@ func (m *memTeamRepo) CountTeamsByWorkspace(ctx context.Context, workspaceID str
 
 func newTeamService() *service.TeamService {
 	repo := newMemTeamRepo()
-	return service.NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return service.NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func TestTeamService_CreateListGetDelete(t *testing.T) {

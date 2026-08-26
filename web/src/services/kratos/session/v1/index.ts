@@ -66,6 +66,9 @@ export type Session = {
   completedSteps: number | undefined;
   totalSteps: number | undefined;
   progressPct: number | undefined;
+  // fork_from_turn_id 记录 Fork-from-Turn 分叉点（v2 turn id = 框架 invocation id）；
+  // 空 = 非 fork 会话。血缘徽标「来源会话 + 轮次」展示与审计用。
+  forkFromTurnId: string | undefined;
 };
 
 export type SessionTimelineSummary = {
@@ -148,6 +151,21 @@ export type GetSessionRequest = {
   //
   // Behaviors: REQUIRED
   id: string | undefined;
+};
+
+// ForkSessionRequest 是 Fork-from-Turn 请求（79-runtime-governance R6）。
+export type ForkSessionRequest = {
+  // id 为源会话 id（仅根会话可 fork）。
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  // turn_id 为分叉点：v2 turn id（= 框架 invocation id，即消息列表
+  // ChatMessage.turn_id）。复制该 turn（含）之前的历史。
+  //
+  // Behaviors: REQUIRED
+  turnId: string | undefined;
+  // title 为空时默认「源标题（分支）」。
+  title: string | undefined;
 };
 
 export type UpdateSessionRequest = {
@@ -884,6 +902,11 @@ export interface SessionService {
   CreateSession(request: CreateSessionRequest): Promise<Session>;
   DeleteSessionsByAgent(request: DeleteSessionsByAgentRequest): Promise<wellKnownEmpty>;
   GetSession(request: GetSessionRequest): Promise<Session>;
+  // ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+  // R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+  // parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+  // 历史不闭合，返回 400）；turn 不存在返回 404。
+  ForkSession(request: ForkSessionRequest): Promise<Session>;
   UpdateSession(request: UpdateSessionRequest): Promise<Session>;
   DeleteSession(request: DeleteSessionRequest): Promise<wellKnownEmpty>;
   ArchiveSession(request: ArchiveSessionRequest): Promise<wellKnownEmpty>;
@@ -1036,6 +1059,26 @@ export function createSessionServiceClient(
       }, {
         service: "SessionService",
         method: "GetSession",
+      }) as Promise<Session>;
+    },
+    ForkSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/sessions/${request.id}/fork`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ForkSession",
       }) as Promise<Session>;
     },
     UpdateSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars

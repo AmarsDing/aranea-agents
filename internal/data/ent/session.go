@@ -118,6 +118,8 @@ type Session struct {
 	RootSessionID string `json:"root_session_id,omitempty"`
 	// AgentDepth holds the value of the "agent_depth" field.
 	AgentDepth int `json:"agent_depth,omitempty"`
+	// ForkFromTurnID holds the value of the "fork_from_turn_id" field.
+	ForkFromTurnID string `json:"fork_from_turn_id,omitempty"`
 	// spirit/team/agent/standalone
 	SessionType string `json:"session_type,omitempty"`
 	// Agent key for agent-type sessions
@@ -144,7 +146,7 @@ func (*Session) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case session.FieldDefaultContextWindowTokens, session.FieldLastContextWindowTokens, session.FieldMessageCount, session.FieldRunCount, session.FieldModelCallCount, session.FieldToolCallCount, session.FieldSkillCallCount, session.FieldMcpCallCount, session.FieldInputTokens, session.FieldOutputTokens, session.FieldTotalTokens, session.FieldTotalCostMicroUsd, session.FieldErrorCount, session.FieldContextUsedTokens, session.FieldSessionRevision, session.FieldCompressVersion, session.FieldAgentDepth, session.FieldCompletedSteps, session.FieldTotalSteps:
 			values[i] = new(sql.NullInt64)
-		case session.FieldID, session.FieldWorkspaceID, session.FieldUserID, session.FieldOwnerType, session.FieldAgentID, session.FieldTeamID, session.FieldTitle, session.FieldSummary, session.FieldTagsJSON, session.FieldDialogMode, session.FieldDefaultProvider, session.FieldDefaultModel, session.FieldLastProvider, session.FieldLastModel, session.FieldStatus, session.FieldStatusReason, session.FieldStatusChangedAt, session.FieldVisibility, session.FieldContextStatus, session.FieldFirstMessageAt, session.FieldLastMessageAt, session.FieldLastRunAt, session.FieldCreatedAt, session.FieldUpdatedAt, session.FieldArchivedAt, session.FieldDeletedAt, session.FieldPinnedAt, session.FieldRunnerSnapshotJSON, session.FieldStateJSON, session.FieldMetadataJSON, session.FieldParentSessionID, session.FieldRootSessionID, session.FieldSessionType, session.FieldMemberAgentKey, session.FieldMemberRole, session.FieldExecutionStage:
+		case session.FieldID, session.FieldWorkspaceID, session.FieldUserID, session.FieldOwnerType, session.FieldAgentID, session.FieldTeamID, session.FieldTitle, session.FieldSummary, session.FieldTagsJSON, session.FieldDialogMode, session.FieldDefaultProvider, session.FieldDefaultModel, session.FieldLastProvider, session.FieldLastModel, session.FieldStatus, session.FieldStatusReason, session.FieldStatusChangedAt, session.FieldVisibility, session.FieldContextStatus, session.FieldFirstMessageAt, session.FieldLastMessageAt, session.FieldLastRunAt, session.FieldCreatedAt, session.FieldUpdatedAt, session.FieldArchivedAt, session.FieldDeletedAt, session.FieldPinnedAt, session.FieldRunnerSnapshotJSON, session.FieldStateJSON, session.FieldMetadataJSON, session.FieldParentSessionID, session.FieldRootSessionID, session.FieldForkFromTurnID, session.FieldSessionType, session.FieldMemberAgentKey, session.FieldMemberRole, session.FieldExecutionStage:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -473,6 +475,12 @@ func (_m *Session) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AgentDepth = int(value.Int64)
 			}
+		case session.FieldForkFromTurnID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field fork_from_turn_id", values[i])
+			} else if value.Valid {
+				_m.ForkFromTurnID = value.String
+			}
 		case session.FieldSessionType:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field session_type", values[i])
@@ -703,6 +711,9 @@ func (_m *Session) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("agent_depth=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AgentDepth))
+	builder.WriteString(", ")
+	builder.WriteString("fork_from_turn_id=")
+	builder.WriteString(_m.ForkFromTurnID)
 	builder.WriteString(", ")
 	builder.WriteString("session_type=")
 	builder.WriteString(_m.SessionType)

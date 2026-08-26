@@ -29,6 +29,7 @@ const OperationSessionServiceCreateSession = "/kratos.session.v1.SessionService/
 const OperationSessionServiceDeleteSession = "/kratos.session.v1.SessionService/DeleteSession"
 const OperationSessionServiceDeleteSessionsByAgent = "/kratos.session.v1.SessionService/DeleteSessionsByAgent"
 const OperationSessionServiceExportSession = "/kratos.session.v1.SessionService/ExportSession"
+const OperationSessionServiceForkSession = "/kratos.session.v1.SessionService/ForkSession"
 const OperationSessionServiceGetCompressStatus = "/kratos.session.v1.SessionService/GetCompressStatus"
 const OperationSessionServiceGetSession = "/kratos.session.v1.SessionService/GetSession"
 const OperationSessionServiceGetSessionTimeline = "/kratos.session.v1.SessionService/GetSessionTimeline"
@@ -56,6 +57,11 @@ type SessionServiceHTTPServer interface {
 	DeleteSession(context.Context, *DeleteSessionRequest) (*emptypb.Empty, error)
 	DeleteSessionsByAgent(context.Context, *DeleteSessionsByAgentRequest) (*emptypb.Empty, error)
 	ExportSession(context.Context, *ExportSessionRequest) (*ExportSessionResponse, error)
+	// ForkSession ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+	// R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+	// parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+	// 历史不闭合，返回 400）；turn 不存在返回 404。
+	ForkSession(context.Context, *ForkSessionRequest) (*Session, error)
 	GetCompressStatus(context.Context, *GetCompressStatusRequest) (*GetCompressStatusReply, error)
 	GetSession(context.Context, *GetSessionRequest) (*Session, error)
 	GetSessionTimeline(context.Context, *GetSessionTimelineRequest) (*SessionTimeline, error)
@@ -83,6 +89,7 @@ func RegisterSessionServiceHTTPServer(s *http.Server, srv SessionServiceHTTPServ
 	r.POST("/v1/sessions", _SessionService_CreateSession0_HTTP_Handler(srv))
 	r.DELETE("/v1/sessions", _SessionService_DeleteSessionsByAgent0_HTTP_Handler(srv))
 	r.GET("/v1/sessions/{id}", _SessionService_GetSession0_HTTP_Handler(srv))
+	r.POST("/v1/sessions/{id}/fork", _SessionService_ForkSession0_HTTP_Handler(srv))
 	r.PATCH("/v1/sessions/{id}", _SessionService_UpdateSession0_HTTP_Handler(srv))
 	r.DELETE("/v1/sessions/{id}", _SessionService_DeleteSession0_HTTP_Handler(srv))
 	r.POST("/v1/sessions/{id}/archive", _SessionService_ArchiveSession0_HTTP_Handler(srv))
@@ -178,6 +185,31 @@ func _SessionService_GetSession0_HTTP_Handler(srv SessionServiceHTTPServer) func
 		http.SetOperation(ctx, OperationSessionServiceGetSession)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
 			return srv.GetSession(ctx, req.(*GetSessionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*Session)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _SessionService_ForkSession0_HTTP_Handler(srv SessionServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ForkSessionRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSessionServiceForkSession)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ForkSession(ctx, req.(*ForkSessionRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -672,6 +704,11 @@ type SessionServiceHTTPClient interface {
 	DeleteSession(ctx context.Context, req *DeleteSessionRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteSessionsByAgent(ctx context.Context, req *DeleteSessionsByAgentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	ExportSession(ctx context.Context, req *ExportSessionRequest, opts ...http.CallOption) (rsp *ExportSessionResponse, err error)
+	// ForkSession ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+	// R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+	// parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+	// 历史不闭合，返回 400）；turn 不存在返回 404。
+	ForkSession(ctx context.Context, req *ForkSessionRequest, opts ...http.CallOption) (rsp *Session, err error)
 	GetCompressStatus(ctx context.Context, req *GetCompressStatusRequest, opts ...http.CallOption) (rsp *GetCompressStatusReply, err error)
 	GetSession(ctx context.Context, req *GetSessionRequest, opts ...http.CallOption) (rsp *Session, err error)
 	GetSessionTimeline(ctx context.Context, req *GetSessionTimelineRequest, opts ...http.CallOption) (rsp *SessionTimeline, err error)
@@ -812,6 +849,23 @@ func (c *SessionServiceHTTPClientImpl) ExportSession(ctx context.Context, in *Ex
 	opts = append(opts, http.Operation(OperationSessionServiceExportSession))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ForkSession ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+// R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+// parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+// 历史不闭合，返回 400）；turn 不存在返回 404。
+func (c *SessionServiceHTTPClientImpl) ForkSession(ctx context.Context, in *ForkSessionRequest, opts ...http.CallOption) (*Session, error) {
+	var out Session
+	pattern := "/v1/sessions/{id}/fork"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationSessionServiceForkSession))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

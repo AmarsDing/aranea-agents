@@ -881,6 +881,20 @@ func (_u *SessionUpdate) AddAgentDepth(v int) *SessionUpdate {
 	return _u
 }
 
+// SetForkFromTurnID sets the "fork_from_turn_id" field.
+func (_u *SessionUpdate) SetForkFromTurnID(v string) *SessionUpdate {
+	_u.mutation.SetForkFromTurnID(v)
+	return _u
+}
+
+// SetNillableForkFromTurnID sets the "fork_from_turn_id" field if the given value is not nil.
+func (_u *SessionUpdate) SetNillableForkFromTurnID(v *string) *SessionUpdate {
+	if v != nil {
+		_u.SetForkFromTurnID(*v)
+	}
+	return _u
+}
+
 // SetSessionType sets the "session_type" field.
 func (_u *SessionUpdate) SetSessionType(v string) *SessionUpdate {
 	_u.mutation.SetSessionType(v)
@@ -1042,6 +1056,11 @@ func (_u *SessionUpdate) check() error {
 	if v, ok := _u.mutation.RootSessionID(); ok {
 		if err := session.RootSessionIDValidator(v); err != nil {
 			return &ValidationError{Name: "root_session_id", err: fmt.Errorf(`ent: validator failed for field "Session.root_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ForkFromTurnID(); ok {
+		if err := session.ForkFromTurnIDValidator(v); err != nil {
+			return &ValidationError{Name: "fork_from_turn_id", err: fmt.Errorf(`ent: validator failed for field "Session.fork_from_turn_id": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.SessionType(); ok {
@@ -1276,6 +1295,9 @@ func (_u *SessionUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedAgentDepth(); ok {
 		_spec.AddField(session.FieldAgentDepth, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ForkFromTurnID(); ok {
+		_spec.SetField(session.FieldForkFromTurnID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SessionType(); ok {
 		_spec.SetField(session.FieldSessionType, field.TypeString, value)
@@ -2181,6 +2203,20 @@ func (_u *SessionUpdateOne) AddAgentDepth(v int) *SessionUpdateOne {
 	return _u
 }
 
+// SetForkFromTurnID sets the "fork_from_turn_id" field.
+func (_u *SessionUpdateOne) SetForkFromTurnID(v string) *SessionUpdateOne {
+	_u.mutation.SetForkFromTurnID(v)
+	return _u
+}
+
+// SetNillableForkFromTurnID sets the "fork_from_turn_id" field if the given value is not nil.
+func (_u *SessionUpdateOne) SetNillableForkFromTurnID(v *string) *SessionUpdateOne {
+	if v != nil {
+		_u.SetForkFromTurnID(*v)
+	}
+	return _u
+}
+
 // SetSessionType sets the "session_type" field.
 func (_u *SessionUpdateOne) SetSessionType(v string) *SessionUpdateOne {
 	_u.mutation.SetSessionType(v)
@@ -2355,6 +2391,11 @@ func (_u *SessionUpdateOne) check() error {
 	if v, ok := _u.mutation.RootSessionID(); ok {
 		if err := session.RootSessionIDValidator(v); err != nil {
 			return &ValidationError{Name: "root_session_id", err: fmt.Errorf(`ent: validator failed for field "Session.root_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ForkFromTurnID(); ok {
+		if err := session.ForkFromTurnIDValidator(v); err != nil {
+			return &ValidationError{Name: "fork_from_turn_id", err: fmt.Errorf(`ent: validator failed for field "Session.fork_from_turn_id": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.SessionType(); ok {
@@ -2606,6 +2647,9 @@ func (_u *SessionUpdateOne) sqlSave(ctx context.Context) (_node *Session, err er
 	}
 	if value, ok := _u.mutation.AddedAgentDepth(); ok {
 		_spec.AddField(session.FieldAgentDepth, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ForkFromTurnID(); ok {
+		_spec.SetField(session.FieldForkFromTurnID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SessionType(); ok {
 		_spec.SetField(session.FieldSessionType, field.TypeString, value)

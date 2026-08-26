@@ -69,6 +69,9 @@ type Session struct {
 	ParentSessionID            string
 	RootSessionID              string
 	AgentDepth                 int
+	// ForkFromTurnID 记录 Fork-from-Turn 分叉点（79-runtime-governance R6）：
+	// v2 turn id（= invocation id）。空 = 非 fork 会话。
+	ForkFromTurnID string
 
 	// === Session tree hierarchy (Phase 2 additive) ===
 	// SessionType classifies the session's role in the tree:
@@ -106,8 +109,9 @@ type SessionSearchQuery struct {
 	// (used for system callers that bypass tenancy). Set by service layer
 	// via workspace.IDFromContext(ctx); never trust client-supplied values.
 	WorkspaceID string
-	// RootOnly=true 时只返回 parent_session_id 为空的根会话（侧边栏/管理列表），
-	// 排除团队成员会话等子会话；默认 false 保持兼容（内部调用方按需查询子会话）。
+	// RootOnly=true 时只返回根会话（侧边栏/管理列表）：parent_session_id 为空，
+	// 或 fork 会话（parent_session_id 记来源但属根级对话，79 R6）；
+	// 排除团队成员会话等编排子会话；默认 false 保持兼容（内部调用方按需查询子会话）。
 	RootOnly  bool
 	Limit     int
 	Offset    int

@@ -107,3 +107,85 @@ func TestRecordMemberUsage_BudgetTripCancelsRun(t *testing.T) {
 		t.Fatal("budget exceed must cancel the run via RunRegistry")
 	}
 }
+
+// TestAccumulateRunTokenBudgetFromStream verifies the mid-stream gate entry
+// (2026-08-26 M80 fix): usage deltas fed via the stream-consumer hook
+// accumulate against the armed run budget, the first exceed cancels the run
+// exactly once, and later deltas never re-fire.
+func TestAccumulateRunTokenBudgetFromStream(t *testing.T) {
+	r := &Runner{lg: loggateway.NewNoop()}
+	reg := rt.NewRunRegistry()
+	r.cfg.Runs = reg
+	cancelled := make(chan string, 1)
+	reg.StoreCancelable("sess-1", "run-1", func() { cancelled <- "cancelled" })
+
+	run := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1"}
+	r.registerRunTokenBudget("run-1", 1_000)
+
+	// Under budget: no cancel, tripped=false.
+	if tripped := r.accumulateRunTokenBudgetFromStream(context.Background(), run, "team-1", 600); tripped {
+		t.Fatal("under-budget delta must report tripped=false")
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("under-budget delta must not cancel the run")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// First exceed (600+500=1100 > 1000): cancel fires, tripped=true.
+	if tripped := r.accumulateRunTokenBudgetFromStream(context.Background(), run, "team-1", 500); !tripped {
+		t.Fatal("first exceed must report tripped=true")
+	}
+	select {
+	case got := <-cancelled:
+		if got != "cancelled" {
+			t.Fatalf("cancel func fired with %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("budget exceed must cancel the run via RunRegistry")
+	}
+	// Registered path: Cancel itself records the reason (P2.5 口径).
+	if got := r.cancelReason("sess-1"); got != "team_token_budget_exceeded" {
+		t.Errorf("cancelReason=%q, want team_token_budget_exceeded", got)
+	}
+
+	// Single-fire guard: further deltas accumulate but never re-fire.
+	if tripped := r.accumulateRunTokenBudgetFromStream(context.Background(), run, "team-1", 500); tripped {
+		t.Fatal("second exceed must report tripped=false (single-fire)")
+	}
+	if used := r.budgetUsed["run-1"]; used != 1_600 {
+		t.Errorf("post-trip used=%d, want 1600 (accumulation continues)", used)
+	}
+	if !r.budgetTripped["run-1"] {
+		t.Error("post-trip budgetTripped must stay true")
+	}
+
+	// Ungated run (never registered): hook is a no-op.
+	if tripped := r.accumulateRunTokenBudgetFromStream(context.Background(), biz.TeamRunRecord{ID: "run-x", SessionID: "sess-x"}, "team-1", 1<<40); tripped {
+		t.Fatal("ungated run must report tripped=false")
+	}
+}
+
+// TestTripRunTokenBudget_ReasonFallbackWithoutRegistryEntry covers the
+// RunTeamTest path: no StoreCancelable/activeRun entry exists, so
+// RunRegistry.Cancel cannot record the cancel reason — tripRunTokenBudget
+// must fall back to SetStatus so finishRunErr keeps the P2.5 口径.
+func TestTripRunTokenBudget_ReasonFallbackWithoutRegistryEntry(t *testing.T) {
+	r := &Runner{lg: loggateway.NewNoop()}
+	reg := rt.NewRunRegistry()
+	r.cfg.Runs = reg
+	// NOTE: no StoreCancelable — mirrors RunTeamTest (bypasses orchestrator).
+
+	run := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1"}
+	r.registerRunTokenBudget("run-1", 1)
+	if tripped := r.accumulateRunTokenBudgetFromStream(context.Background(), run, "team-1", 100); !tripped {
+		t.Fatal("exceed must report tripped=true")
+	}
+	if got := r.cancelReason("sess-1"); got != "team_token_budget_exceeded" {
+		t.Errorf("cancelReason=%q, want team_token_budget_exceeded (SetStatus fallback)", got)
+	}
+	entry, ok := reg.GetStatus("sess-1")
+	if !ok || entry.Status != biz.SessionRunPhaseCancelled || entry.RunID != "run-1" {
+		t.Errorf("status entry=%+v ok=%v, want cancelled run-1", entry, ok)
+	}
+}

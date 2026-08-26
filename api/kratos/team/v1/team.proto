@@ -146,6 +146,69 @@ message GetTeamRunSummaryResponse {
   TeamRunSummary summary = 1;
 }
 
+// 79-runtime-governance R7：run 级 stats 聚合（数据源全部是既有记账点：
+// model_token_usage_events / team_run_steps / decision_records system_guard，
+// 不落新表）。
+message TeamRunMemberStats {
+  string agent_key = 1;
+  int64 prompt_tokens = 2;
+  int64 completion_tokens = 3;
+  int64 cached_tokens = 4;
+  // calls 是 genuine 模型调用行数（非 step 数）。
+  int32 calls = 5;
+  // steps 是 team_run_steps 中该成员的行数（装配层按 agent_key 合流）。
+  int32 steps = 6;
+}
+
+message TeamRunStats {
+  string run_id = 1;
+  string team_id = 2;
+  string session_id = 3;
+  string status = 4;
+  string created_at = 5;
+  // turns = team_run_steps 行数；tool_calls = steps.tool_call_count 求和。
+  int32 turns = 6;
+  int32 tool_calls = 7;
+  int64 prompt_tokens = 8;
+  int64 completion_tokens = 9;
+  int64 cached_tokens = 10;
+  double cache_hit_ratio = 11;
+  // G-2：run 内单次模型调用 input tokens 峰值（genuine 成员行 MAX）。
+  int64 max_turn_input_tokens = 12;
+  int32 loop_guard_blocks = 13;
+  int32 prune_count = 14;
+  int64 prune_bytes = 15;
+  // G-1：终审压缩触发次数。
+  int32 compact_count = 16;
+  bool budget_tripped = 17;
+  bool no_progress_tripped = 18;
+  repeated TeamRunMemberStats members = 19;
+}
+
+message GetTeamRunStatsRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetTeamRunStatsResponse {
+  TeamRunStats stats = 1;
+}
+
+message ExportTeamRunStatsRequest {
+  // from/to 为 RFC3339 窗口（created_at，含边界）；空 = 不限。
+  string from = 1;
+  string to = 2;
+  // session_id 空 = 跨会话。
+  string session_id = 3;
+  // limit 上限由服务端收口（默认 500，硬上限 1000）。
+  int32 limit = 4;
+}
+
+message ExportTeamRunStatsResponse {
+  // jsonl 每行一个 TeamRunStats JSON 对象（\n 分隔，行内无换行）。
+  string jsonl = 1;
+  int32 count = 2;
+}
+
 message ActivitySnapshotView {
   string kind = 1;
   string display_label = 2;
@@ -782,5 +845,16 @@ service TeamService {
       post: "/v1/teams/{team_id}/inject"
       body: "*"
     };
+  }
+  // GetTeamRunStats aggregates one run's token/cache/system-guard stats
+  // (79-runtime-governance R7). Read-only aggregation over existing
+  // accounting points; no new tables.
+  rpc GetTeamRunStats(GetTeamRunStatsRequest) returns (GetTeamRunStatsResponse) {
+    option (google.api.http) = {get: "/v1/team-runs/{id}/stats"};
+  }
+  // ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+  // (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+  rpc ExportTeamRunStats(ExportTeamRunStatsRequest) returns (ExportTeamRunStatsResponse) {
+    option (google.api.http) = {get: "/v1/team-run-stats/export"};
   }
 }

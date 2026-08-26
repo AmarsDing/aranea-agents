@@ -3,7 +3,7 @@
 package ent
 
 import (
-	"aranea-agents/internal/data/ent/configgraphnode"
+	"aranea-agents/internal/data/ent/memoryfactallowrule"
 	"aranea-agents/internal/data/ent/predicate"
 	"context"
 	"fmt"
@@ -15,64 +15,64 @@ import (
 	"entgo.io/ent/schema/field"
 )
 
-// ConfigGraphNodeQuery is the builder for querying ConfigGraphNode entities.
-type ConfigGraphNodeQuery struct {
+// MemoryFactAllowRuleQuery is the builder for querying MemoryFactAllowRule entities.
+type MemoryFactAllowRuleQuery struct {
 	config
 	ctx        *QueryContext
-	order      []configgraphnode.OrderOption
+	order      []memoryfactallowrule.OrderOption
 	inters     []Interceptor
-	predicates []predicate.ConfigGraphNode
+	predicates []predicate.MemoryFactAllowRule
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the ConfigGraphNodeQuery builder.
-func (_q *ConfigGraphNodeQuery) Where(ps ...predicate.ConfigGraphNode) *ConfigGraphNodeQuery {
+// Where adds a new predicate for the MemoryFactAllowRuleQuery builder.
+func (_q *MemoryFactAllowRuleQuery) Where(ps ...predicate.MemoryFactAllowRule) *MemoryFactAllowRuleQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *ConfigGraphNodeQuery) Limit(limit int) *ConfigGraphNodeQuery {
+func (_q *MemoryFactAllowRuleQuery) Limit(limit int) *MemoryFactAllowRuleQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *ConfigGraphNodeQuery) Offset(offset int) *ConfigGraphNodeQuery {
+func (_q *MemoryFactAllowRuleQuery) Offset(offset int) *MemoryFactAllowRuleQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *ConfigGraphNodeQuery) Unique(unique bool) *ConfigGraphNodeQuery {
+func (_q *MemoryFactAllowRuleQuery) Unique(unique bool) *MemoryFactAllowRuleQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *ConfigGraphNodeQuery) Order(o ...configgraphnode.OrderOption) *ConfigGraphNodeQuery {
+func (_q *MemoryFactAllowRuleQuery) Order(o ...memoryfactallowrule.OrderOption) *MemoryFactAllowRuleQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
-// First returns the first ConfigGraphNode entity from the query.
-// Returns a *NotFoundError when no ConfigGraphNode was found.
-func (_q *ConfigGraphNodeQuery) First(ctx context.Context) (*ConfigGraphNode, error) {
+// First returns the first MemoryFactAllowRule entity from the query.
+// Returns a *NotFoundError when no MemoryFactAllowRule was found.
+func (_q *MemoryFactAllowRuleQuery) First(ctx context.Context) (*MemoryFactAllowRule, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{configgraphnode.Label}
+		return nil, &NotFoundError{memoryfactallowrule.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) FirstX(ctx context.Context) *ConfigGraphNode {
+func (_q *MemoryFactAllowRuleQuery) FirstX(ctx context.Context) *MemoryFactAllowRule {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -80,22 +80,22 @@ func (_q *ConfigGraphNodeQuery) FirstX(ctx context.Context) *ConfigGraphNode {
 	return node
 }
 
-// FirstID returns the first ConfigGraphNode ID from the query.
-// Returns a *NotFoundError when no ConfigGraphNode ID was found.
-func (_q *ConfigGraphNodeQuery) FirstID(ctx context.Context) (id string, err error) {
+// FirstID returns the first MemoryFactAllowRule ID from the query.
+// Returns a *NotFoundError when no MemoryFactAllowRule ID was found.
+func (_q *MemoryFactAllowRuleQuery) FirstID(ctx context.Context) (id string, err error) {
 	var ids []string
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{configgraphnode.Label}
+		err = &NotFoundError{memoryfactallowrule.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) FirstIDX(ctx context.Context) string {
+func (_q *MemoryFactAllowRuleQuery) FirstIDX(ctx context.Context) string {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -103,10 +103,10 @@ func (_q *ConfigGraphNodeQuery) FirstIDX(ctx context.Context) string {
 	return id
 }
 
-// Only returns a single ConfigGraphNode entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one ConfigGraphNode entity is found.
-// Returns a *NotFoundError when no ConfigGraphNode entities are found.
-func (_q *ConfigGraphNodeQuery) Only(ctx context.Context) (*ConfigGraphNode, error) {
+// Only returns a single MemoryFactAllowRule entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one MemoryFactAllowRule entity is found.
+// Returns a *NotFoundError when no MemoryFactAllowRule entities are found.
+func (_q *MemoryFactAllowRuleQuery) Only(ctx context.Context) (*MemoryFactAllowRule, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -115,14 +115,14 @@ func (_q *ConfigGraphNodeQuery) Only(ctx context.Context) (*ConfigGraphNode, err
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{configgraphnode.Label}
+		return nil, &NotFoundError{memoryfactallowrule.Label}
 	default:
-		return nil, &NotSingularError{configgraphnode.Label}
+		return nil, &NotSingularError{memoryfactallowrule.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) OnlyX(ctx context.Context) *ConfigGraphNode {
+func (_q *MemoryFactAllowRuleQuery) OnlyX(ctx context.Context) *MemoryFactAllowRule {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -130,10 +130,10 @@ func (_q *ConfigGraphNodeQuery) OnlyX(ctx context.Context) *ConfigGraphNode {
 	return node
 }
 
-// OnlyID is like Only, but returns the only ConfigGraphNode ID in the query.
-// Returns a *NotSingularError when more than one ConfigGraphNode ID is found.
+// OnlyID is like Only, but returns the only MemoryFactAllowRule ID in the query.
+// Returns a *NotSingularError when more than one MemoryFactAllowRule ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *ConfigGraphNodeQuery) OnlyID(ctx context.Context) (id string, err error) {
+func (_q *MemoryFactAllowRuleQuery) OnlyID(ctx context.Context) (id string, err error) {
 	var ids []string
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -142,15 +142,15 @@ func (_q *ConfigGraphNodeQuery) OnlyID(ctx context.Context) (id string, err erro
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{configgraphnode.Label}
+		err = &NotFoundError{memoryfactallowrule.Label}
 	default:
-		err = &NotSingularError{configgraphnode.Label}
+		err = &NotSingularError{memoryfactallowrule.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) OnlyIDX(ctx context.Context) string {
+func (_q *MemoryFactAllowRuleQuery) OnlyIDX(ctx context.Context) string {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -158,18 +158,18 @@ func (_q *ConfigGraphNodeQuery) OnlyIDX(ctx context.Context) string {
 	return id
 }
 
-// All executes the query and returns a list of ConfigGraphNodes.
-func (_q *ConfigGraphNodeQuery) All(ctx context.Context) ([]*ConfigGraphNode, error) {
+// All executes the query and returns a list of MemoryFactAllowRules.
+func (_q *MemoryFactAllowRuleQuery) All(ctx context.Context) ([]*MemoryFactAllowRule, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*ConfigGraphNode, *ConfigGraphNodeQuery]()
-	return withInterceptors[[]*ConfigGraphNode](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*MemoryFactAllowRule, *MemoryFactAllowRuleQuery]()
+	return withInterceptors[[]*MemoryFactAllowRule](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) AllX(ctx context.Context) []*ConfigGraphNode {
+func (_q *MemoryFactAllowRuleQuery) AllX(ctx context.Context) []*MemoryFactAllowRule {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -177,20 +177,20 @@ func (_q *ConfigGraphNodeQuery) AllX(ctx context.Context) []*ConfigGraphNode {
 	return nodes
 }
 
-// IDs executes the query and returns a list of ConfigGraphNode IDs.
-func (_q *ConfigGraphNodeQuery) IDs(ctx context.Context) (ids []string, err error) {
+// IDs executes the query and returns a list of MemoryFactAllowRule IDs.
+func (_q *MemoryFactAllowRuleQuery) IDs(ctx context.Context) (ids []string, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(configgraphnode.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(memoryfactallowrule.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) IDsX(ctx context.Context) []string {
+func (_q *MemoryFactAllowRuleQuery) IDsX(ctx context.Context) []string {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -199,16 +199,16 @@ func (_q *ConfigGraphNodeQuery) IDsX(ctx context.Context) []string {
 }
 
 // Count returns the count of the given query.
-func (_q *ConfigGraphNodeQuery) Count(ctx context.Context) (int, error) {
+func (_q *MemoryFactAllowRuleQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*ConfigGraphNodeQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*MemoryFactAllowRuleQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) CountX(ctx context.Context) int {
+func (_q *MemoryFactAllowRuleQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -217,7 +217,7 @@ func (_q *ConfigGraphNodeQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *ConfigGraphNodeQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *MemoryFactAllowRuleQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -230,7 +230,7 @@ func (_q *ConfigGraphNodeQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *ConfigGraphNodeQuery) ExistX(ctx context.Context) bool {
+func (_q *MemoryFactAllowRuleQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -238,18 +238,18 @@ func (_q *ConfigGraphNodeQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the ConfigGraphNodeQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the MemoryFactAllowRuleQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *ConfigGraphNodeQuery) Clone() *ConfigGraphNodeQuery {
+func (_q *MemoryFactAllowRuleQuery) Clone() *MemoryFactAllowRuleQuery {
 	if _q == nil {
 		return nil
 	}
-	return &ConfigGraphNodeQuery{
+	return &MemoryFactAllowRuleQuery{
 		config:     _q.config,
 		ctx:        _q.ctx.Clone(),
-		order:      append([]configgraphnode.OrderOption{}, _q.order...),
+		order:      append([]memoryfactallowrule.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.ConfigGraphNode{}, _q.predicates...),
+		predicates: append([]predicate.MemoryFactAllowRule{}, _q.predicates...),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -262,19 +262,19 @@ func (_q *ConfigGraphNodeQuery) Clone() *ConfigGraphNodeQuery {
 // Example:
 //
 //	var v []struct {
-//		NodeType string `json:"node_type,omitempty"`
+//		AgentID string `json:"agent_id,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.ConfigGraphNode.Query().
-//		GroupBy(configgraphnode.FieldNodeType).
+//	client.MemoryFactAllowRule.Query().
+//		GroupBy(memoryfactallowrule.FieldAgentID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *ConfigGraphNodeQuery) GroupBy(field string, fields ...string) *ConfigGraphNodeGroupBy {
+func (_q *MemoryFactAllowRuleQuery) GroupBy(field string, fields ...string) *MemoryFactAllowRuleGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &ConfigGraphNodeGroupBy{build: _q}
+	grbuild := &MemoryFactAllowRuleGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = configgraphnode.Label
+	grbuild.label = memoryfactallowrule.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -285,26 +285,26 @@ func (_q *ConfigGraphNodeQuery) GroupBy(field string, fields ...string) *ConfigG
 // Example:
 //
 //	var v []struct {
-//		NodeType string `json:"node_type,omitempty"`
+//		AgentID string `json:"agent_id,omitempty"`
 //	}
 //
-//	client.ConfigGraphNode.Query().
-//		Select(configgraphnode.FieldNodeType).
+//	client.MemoryFactAllowRule.Query().
+//		Select(memoryfactallowrule.FieldAgentID).
 //		Scan(ctx, &v)
-func (_q *ConfigGraphNodeQuery) Select(fields ...string) *ConfigGraphNodeSelect {
+func (_q *MemoryFactAllowRuleQuery) Select(fields ...string) *MemoryFactAllowRuleSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &ConfigGraphNodeSelect{ConfigGraphNodeQuery: _q}
-	sbuild.label = configgraphnode.Label
+	sbuild := &MemoryFactAllowRuleSelect{MemoryFactAllowRuleQuery: _q}
+	sbuild.label = memoryfactallowrule.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a ConfigGraphNodeSelect configured with the given aggregations.
-func (_q *ConfigGraphNodeQuery) Aggregate(fns ...AggregateFunc) *ConfigGraphNodeSelect {
+// Aggregate returns a MemoryFactAllowRuleSelect configured with the given aggregations.
+func (_q *MemoryFactAllowRuleQuery) Aggregate(fns ...AggregateFunc) *MemoryFactAllowRuleSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *ConfigGraphNodeQuery) prepareQuery(ctx context.Context) error {
+func (_q *MemoryFactAllowRuleQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -316,7 +316,7 @@ func (_q *ConfigGraphNodeQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !configgraphnode.ValidColumn(f) {
+		if !memoryfactallowrule.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -330,16 +330,16 @@ func (_q *ConfigGraphNodeQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *ConfigGraphNodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*ConfigGraphNode, error) {
+func (_q *MemoryFactAllowRuleQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*MemoryFactAllowRule, error) {
 	var (
-		nodes = []*ConfigGraphNode{}
+		nodes = []*MemoryFactAllowRule{}
 		_spec = _q.querySpec()
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*ConfigGraphNode).scanValues(nil, columns)
+		return (*MemoryFactAllowRule).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &ConfigGraphNode{config: _q.config}
+		node := &MemoryFactAllowRule{config: _q.config}
 		nodes = append(nodes, node)
 		return node.assignValues(columns, values)
 	}
@@ -355,7 +355,7 @@ func (_q *ConfigGraphNodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) 
 	return nodes, nil
 }
 
-func (_q *ConfigGraphNodeQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *MemoryFactAllowRuleQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -364,8 +364,8 @@ func (_q *ConfigGraphNodeQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *ConfigGraphNodeQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(configgraphnode.Table, configgraphnode.Columns, sqlgraph.NewFieldSpec(configgraphnode.FieldID, field.TypeString))
+func (_q *MemoryFactAllowRuleQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(memoryfactallowrule.Table, memoryfactallowrule.Columns, sqlgraph.NewFieldSpec(memoryfactallowrule.FieldID, field.TypeString))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -374,9 +374,9 @@ func (_q *ConfigGraphNodeQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, configgraphnode.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, memoryfactallowrule.FieldID)
 		for i := range fields {
-			if fields[i] != configgraphnode.FieldID {
+			if fields[i] != memoryfactallowrule.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
@@ -404,12 +404,12 @@ func (_q *ConfigGraphNodeQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *ConfigGraphNodeQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *MemoryFactAllowRuleQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(configgraphnode.Table)
+	t1 := builder.Table(memoryfactallowrule.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = configgraphnode.Columns
+		columns = memoryfactallowrule.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -436,28 +436,28 @@ func (_q *ConfigGraphNodeQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// ConfigGraphNodeGroupBy is the group-by builder for ConfigGraphNode entities.
-type ConfigGraphNodeGroupBy struct {
+// MemoryFactAllowRuleGroupBy is the group-by builder for MemoryFactAllowRule entities.
+type MemoryFactAllowRuleGroupBy struct {
 	selector
-	build *ConfigGraphNodeQuery
+	build *MemoryFactAllowRuleQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *ConfigGraphNodeGroupBy) Aggregate(fns ...AggregateFunc) *ConfigGraphNodeGroupBy {
+func (_g *MemoryFactAllowRuleGroupBy) Aggregate(fns ...AggregateFunc) *MemoryFactAllowRuleGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *ConfigGraphNodeGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *MemoryFactAllowRuleGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*ConfigGraphNodeQuery, *ConfigGraphNodeGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*MemoryFactAllowRuleQuery, *MemoryFactAllowRuleGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *ConfigGraphNodeGroupBy) sqlScan(ctx context.Context, root *ConfigGraphNodeQuery, v any) error {
+func (_g *MemoryFactAllowRuleGroupBy) sqlScan(ctx context.Context, root *MemoryFactAllowRuleQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -484,28 +484,28 @@ func (_g *ConfigGraphNodeGroupBy) sqlScan(ctx context.Context, root *ConfigGraph
 	return sql.ScanSlice(rows, v)
 }
 
-// ConfigGraphNodeSelect is the builder for selecting fields of ConfigGraphNode entities.
-type ConfigGraphNodeSelect struct {
-	*ConfigGraphNodeQuery
+// MemoryFactAllowRuleSelect is the builder for selecting fields of MemoryFactAllowRule entities.
+type MemoryFactAllowRuleSelect struct {
+	*MemoryFactAllowRuleQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *ConfigGraphNodeSelect) Aggregate(fns ...AggregateFunc) *ConfigGraphNodeSelect {
+func (_s *MemoryFactAllowRuleSelect) Aggregate(fns ...AggregateFunc) *MemoryFactAllowRuleSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *ConfigGraphNodeSelect) Scan(ctx context.Context, v any) error {
+func (_s *MemoryFactAllowRuleSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*ConfigGraphNodeQuery, *ConfigGraphNodeSelect](ctx, _s.ConfigGraphNodeQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*MemoryFactAllowRuleQuery, *MemoryFactAllowRuleSelect](ctx, _s.MemoryFactAllowRuleQuery, _s, _s.inters, v)
 }
 
-func (_s *ConfigGraphNodeSelect) sqlScan(ctx context.Context, root *ConfigGraphNodeQuery, v any) error {
+func (_s *MemoryFactAllowRuleSelect) sqlScan(ctx context.Context, root *MemoryFactAllowRuleQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

@@ -1,5 +1,11 @@
 package team
 
+import (
+	"context"
+
+	"aranea-agents/internal/biz"
+)
+
 // run 级累计 input-token 预算闸（2026-08-24）。
 //
 // 背景：单成员 ReAct 每轮回灌全量历史，token 记账为 N 轮×历史的二次方
@@ -91,4 +97,28 @@ func (r *Runner) accumulateRunTokenBudget(runID string, inputTokens int) (trippe
 	}
 	r.budgetTripped[runID] = true
 	return true, used, l
+}
+
+// accumulateRunTokenBudgetFromStream is the mid-stream entry point of the
+// gate (2026-08-26 M80 fix, 方案A). The turn stream consumer invokes it via
+// StreamConsumeOptions.OnPromptTokensAccumulated with each usage event's
+// incremental billed prompt tokens, so the run total accumulates WHILE the
+// graph executes — not just at the finish path. Under graph runtime every
+// persisted member usage row carries an attribution marker (mirror of the
+// team_turn totals), so the recordMemberUsage accumulate branch never fires;
+// without this hook the gate was dead code on the graph path. On first
+// exceed it runs the full trip sequence, cancelling the run ctx which aborts
+// the in-flight LLM stream and stops further member scheduling. Finish-path
+// rows keep their attribution markers and never double-accumulate.
+//
+// Returns tripped=true exactly once (on the first exceed) so the caller can
+// additionally abort the run's local execution ctx — RunTeamTest and other
+// paths that bypass the chat orchestrator never StoreCancelable, so
+// Runs.Cancel alone is a no-op there.
+func (r *Runner) accumulateRunTokenBudgetFromStream(ctx context.Context, run biz.TeamRunRecord, teamID string, deltaPromptTokens int) (tripped bool) {
+	if tripped, used, limit := r.accumulateRunTokenBudget(run.ID, deltaPromptTokens); tripped {
+		r.tripRunTokenBudget(ctx, run, teamID, used, limit)
+		return true
+	}
+	return false
 }

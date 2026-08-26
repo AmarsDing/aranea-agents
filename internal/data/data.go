@@ -202,6 +202,8 @@ var ProviderSet = wire.NewSet(
 	NewCodingAgentRepo,
 	NewCodingProjectRepo,
 	NewCodingTaskRepo,
+	// 79-runtime-governance R6：Fork-from-Turn 复制原语（raw-SQL，返回 biz 接口）。
+	NewSessionForkRepo,
 )
 
 // Data: Postgres is the only supported primary database (Ent CRUD + pgvector

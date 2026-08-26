@@ -88,6 +88,9 @@ type Session struct {
 	CompletedSteps int32   `protobuf:"varint,57,opt,name=completed_steps,json=completedSteps,proto3" json:"completed_steps,omitempty"`
 	TotalSteps     int32   `protobuf:"varint,58,opt,name=total_steps,json=totalSteps,proto3" json:"total_steps,omitempty"`
 	ProgressPct    float64 `protobuf:"fixed64,59,opt,name=progress_pct,json=progressPct,proto3" json:"progress_pct,omitempty"`
+	// fork_from_turn_id 记录 Fork-from-Turn 分叉点（v2 turn id = 框架 invocation id）；
+	// 空 = 非 fork 会话。血缘徽标「来源会话 + 轮次」展示与审计用。
+	ForkFromTurnId string `protobuf:"bytes,60,opt,name=fork_from_turn_id,json=forkFromTurnId,proto3" json:"fork_from_turn_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -519,6 +522,13 @@ func (x *Session) GetProgressPct() float64 {
 		return x.ProgressPct
 	}
 	return 0
+}
+
+func (x *Session) GetForkFromTurnId() string {
+	if x != nil {
+		return x.ForkFromTurnId
+	}
+	return ""
 }
 
 type SessionTimelineSummary struct {
@@ -1201,6 +1211,71 @@ func (x *GetSessionRequest) GetId() string {
 	return ""
 }
 
+// ForkSessionRequest 是 Fork-from-Turn 请求（79-runtime-governance R6）。
+type ForkSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// id 为源会话 id（仅根会话可 fork）。
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// turn_id 为分叉点：v2 turn id（= 框架 invocation id，即消息列表
+	// ChatMessage.turn_id）。复制该 turn（含）之前的历史。
+	TurnId string `protobuf:"bytes,2,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"`
+	// title 为空时默认「源标题（分支）」。
+	Title         string `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ForkSessionRequest) Reset() {
+	*x = ForkSessionRequest{}
+	mi := &file_kratos_session_v1_session_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForkSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForkSessionRequest) ProtoMessage() {}
+
+func (x *ForkSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_session_v1_session_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForkSessionRequest.ProtoReflect.Descriptor instead.
+func (*ForkSessionRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ForkSessionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ForkSessionRequest) GetTurnId() string {
+	if x != nil {
+		return x.TurnId
+	}
+	return ""
+}
+
+func (x *ForkSessionRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
 type UpdateSessionRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1217,7 +1292,7 @@ type UpdateSessionRequest struct {
 
 func (x *UpdateSessionRequest) Reset() {
 	*x = UpdateSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[8]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1229,7 +1304,7 @@ func (x *UpdateSessionRequest) String() string {
 func (*UpdateSessionRequest) ProtoMessage() {}
 
 func (x *UpdateSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[8]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1242,7 +1317,7 @@ func (x *UpdateSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSessionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{8}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpdateSessionRequest) GetId() string {
@@ -1310,7 +1385,7 @@ type DeleteSessionRequest struct {
 
 func (x *DeleteSessionRequest) Reset() {
 	*x = DeleteSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[9]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1322,7 +1397,7 @@ func (x *DeleteSessionRequest) String() string {
 func (*DeleteSessionRequest) ProtoMessage() {}
 
 func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[9]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1335,7 +1410,7 @@ func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{9}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteSessionRequest) GetId() string {
@@ -1354,7 +1429,7 @@ type DeleteSessionsByAgentRequest struct {
 
 func (x *DeleteSessionsByAgentRequest) Reset() {
 	*x = DeleteSessionsByAgentRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[10]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1366,7 +1441,7 @@ func (x *DeleteSessionsByAgentRequest) String() string {
 func (*DeleteSessionsByAgentRequest) ProtoMessage() {}
 
 func (x *DeleteSessionsByAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[10]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1379,7 +1454,7 @@ func (x *DeleteSessionsByAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionsByAgentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionsByAgentRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{10}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteSessionsByAgentRequest) GetAgentId() string {
@@ -1398,7 +1473,7 @@ type ArchiveSessionRequest struct {
 
 func (x *ArchiveSessionRequest) Reset() {
 	*x = ArchiveSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[11]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1410,7 +1485,7 @@ func (x *ArchiveSessionRequest) String() string {
 func (*ArchiveSessionRequest) ProtoMessage() {}
 
 func (x *ArchiveSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[11]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1423,7 +1498,7 @@ func (x *ArchiveSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveSessionRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{11}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ArchiveSessionRequest) GetId() string {
@@ -1442,7 +1517,7 @@ type RestoreSessionRequest struct {
 
 func (x *RestoreSessionRequest) Reset() {
 	*x = RestoreSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[12]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1454,7 +1529,7 @@ func (x *RestoreSessionRequest) String() string {
 func (*RestoreSessionRequest) ProtoMessage() {}
 
 func (x *RestoreSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[12]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1467,7 +1542,7 @@ func (x *RestoreSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreSessionRequest.ProtoReflect.Descriptor instead.
 func (*RestoreSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{12}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RestoreSessionRequest) GetId() string {
@@ -1486,7 +1561,7 @@ type PinSessionRequest struct {
 
 func (x *PinSessionRequest) Reset() {
 	*x = PinSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[13]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1498,7 +1573,7 @@ func (x *PinSessionRequest) String() string {
 func (*PinSessionRequest) ProtoMessage() {}
 
 func (x *PinSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[13]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1511,7 +1586,7 @@ func (x *PinSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PinSessionRequest.ProtoReflect.Descriptor instead.
 func (*PinSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{13}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PinSessionRequest) GetId() string {
@@ -1530,7 +1605,7 @@ type UnpinSessionRequest struct {
 
 func (x *UnpinSessionRequest) Reset() {
 	*x = UnpinSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[14]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1542,7 +1617,7 @@ func (x *UnpinSessionRequest) String() string {
 func (*UnpinSessionRequest) ProtoMessage() {}
 
 func (x *UnpinSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[14]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1555,7 +1630,7 @@ func (x *UnpinSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpinSessionRequest.ProtoReflect.Descriptor instead.
 func (*UnpinSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{14}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UnpinSessionRequest) GetId() string {
@@ -1576,7 +1651,7 @@ type ExportSessionRequest struct {
 
 func (x *ExportSessionRequest) Reset() {
 	*x = ExportSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[15]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1588,7 +1663,7 @@ func (x *ExportSessionRequest) String() string {
 func (*ExportSessionRequest) ProtoMessage() {}
 
 func (x *ExportSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[15]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1601,7 +1676,7 @@ func (x *ExportSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportSessionRequest.ProtoReflect.Descriptor instead.
 func (*ExportSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{15}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ExportSessionRequest) GetId() string {
@@ -1629,7 +1704,7 @@ type ExportSessionResponse struct {
 
 func (x *ExportSessionResponse) Reset() {
 	*x = ExportSessionResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[16]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1641,7 +1716,7 @@ func (x *ExportSessionResponse) String() string {
 func (*ExportSessionResponse) ProtoMessage() {}
 
 func (x *ExportSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[16]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1654,7 +1729,7 @@ func (x *ExportSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportSessionResponse.ProtoReflect.Descriptor instead.
 func (*ExportSessionResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{16}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ExportSessionResponse) GetContent() string {
@@ -1703,7 +1778,7 @@ type SessionRunRecord struct {
 
 func (x *SessionRunRecord) Reset() {
 	*x = SessionRunRecord{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[17]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1715,7 +1790,7 @@ func (x *SessionRunRecord) String() string {
 func (*SessionRunRecord) ProtoMessage() {}
 
 func (x *SessionRunRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[17]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1728,7 +1803,7 @@ func (x *SessionRunRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionRunRecord.ProtoReflect.Descriptor instead.
 func (*SessionRunRecord) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{17}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SessionRunRecord) GetId() string {
@@ -1861,7 +1936,7 @@ type ListSessionRunsRequest struct {
 
 func (x *ListSessionRunsRequest) Reset() {
 	*x = ListSessionRunsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[18]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1873,7 +1948,7 @@ func (x *ListSessionRunsRequest) String() string {
 func (*ListSessionRunsRequest) ProtoMessage() {}
 
 func (x *ListSessionRunsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[18]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1886,7 +1961,7 @@ func (x *ListSessionRunsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionRunsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionRunsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{18}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListSessionRunsRequest) GetSessionId() string {
@@ -1920,7 +1995,7 @@ type ListSessionRunsResponse struct {
 
 func (x *ListSessionRunsResponse) Reset() {
 	*x = ListSessionRunsResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[19]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1932,7 +2007,7 @@ func (x *ListSessionRunsResponse) String() string {
 func (*ListSessionRunsResponse) ProtoMessage() {}
 
 func (x *ListSessionRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[19]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1945,7 +2020,7 @@ func (x *ListSessionRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionRunsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionRunsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{19}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListSessionRunsResponse) GetItems() []*SessionRunRecord {
@@ -1987,7 +2062,7 @@ type SessionParticipant struct {
 
 func (x *SessionParticipant) Reset() {
 	*x = SessionParticipant{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[20]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1999,7 +2074,7 @@ func (x *SessionParticipant) String() string {
 func (*SessionParticipant) ProtoMessage() {}
 
 func (x *SessionParticipant) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[20]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2012,7 +2087,7 @@ func (x *SessionParticipant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionParticipant.ProtoReflect.Descriptor instead.
 func (*SessionParticipant) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{20}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SessionParticipant) GetId() string {
@@ -2143,7 +2218,7 @@ type ListSessionParticipantsRequest struct {
 
 func (x *ListSessionParticipantsRequest) Reset() {
 	*x = ListSessionParticipantsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[21]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2155,7 +2230,7 @@ func (x *ListSessionParticipantsRequest) String() string {
 func (*ListSessionParticipantsRequest) ProtoMessage() {}
 
 func (x *ListSessionParticipantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[21]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2168,7 +2243,7 @@ func (x *ListSessionParticipantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionParticipantsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionParticipantsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{21}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListSessionParticipantsRequest) GetSessionId() string {
@@ -2187,7 +2262,7 @@ type ListSessionParticipantsResponse struct {
 
 func (x *ListSessionParticipantsResponse) Reset() {
 	*x = ListSessionParticipantsResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[22]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2199,7 +2274,7 @@ func (x *ListSessionParticipantsResponse) String() string {
 func (*ListSessionParticipantsResponse) ProtoMessage() {}
 
 func (x *ListSessionParticipantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[22]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2212,7 +2287,7 @@ func (x *ListSessionParticipantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionParticipantsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionParticipantsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{22}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListSessionParticipantsResponse) GetItems() []*SessionParticipant {
@@ -2235,7 +2310,7 @@ type GetSessionTimelineRequest struct {
 
 func (x *GetSessionTimelineRequest) Reset() {
 	*x = GetSessionTimelineRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[23]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2247,7 +2322,7 @@ func (x *GetSessionTimelineRequest) String() string {
 func (*GetSessionTimelineRequest) ProtoMessage() {}
 
 func (x *GetSessionTimelineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[23]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2260,7 +2335,7 @@ func (x *GetSessionTimelineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionTimelineRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionTimelineRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{23}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetSessionTimelineRequest) GetId() string {
@@ -2323,7 +2398,7 @@ type ChatMessageRow struct {
 
 func (x *ChatMessageRow) Reset() {
 	*x = ChatMessageRow{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[24]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2335,7 +2410,7 @@ func (x *ChatMessageRow) String() string {
 func (*ChatMessageRow) ProtoMessage() {}
 
 func (x *ChatMessageRow) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[24]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2348,7 +2423,7 @@ func (x *ChatMessageRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatMessageRow.ProtoReflect.Descriptor instead.
 func (*ChatMessageRow) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{24}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ChatMessageRow) GetId() string {
@@ -2482,7 +2557,7 @@ type ListSessionMessagesRequest struct {
 
 func (x *ListSessionMessagesRequest) Reset() {
 	*x = ListSessionMessagesRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[25]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2494,7 +2569,7 @@ func (x *ListSessionMessagesRequest) String() string {
 func (*ListSessionMessagesRequest) ProtoMessage() {}
 
 func (x *ListSessionMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[25]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2507,7 +2582,7 @@ func (x *ListSessionMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{25}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListSessionMessagesRequest) GetId() string {
@@ -2549,7 +2624,7 @@ type ListSessionMessagesResponse struct {
 
 func (x *ListSessionMessagesResponse) Reset() {
 	*x = ListSessionMessagesResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[26]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2561,7 +2636,7 @@ func (x *ListSessionMessagesResponse) String() string {
 func (*ListSessionMessagesResponse) ProtoMessage() {}
 
 func (x *ListSessionMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[26]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2574,7 +2649,7 @@ func (x *ListSessionMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{26}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListSessionMessagesResponse) GetItems() []*ChatMessageRow {
@@ -2610,7 +2685,7 @@ type SearchSessionMessagesRequest struct {
 
 func (x *SearchSessionMessagesRequest) Reset() {
 	*x = SearchSessionMessagesRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[27]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2622,7 +2697,7 @@ func (x *SearchSessionMessagesRequest) String() string {
 func (*SearchSessionMessagesRequest) ProtoMessage() {}
 
 func (x *SearchSessionMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[27]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2635,7 +2710,7 @@ func (x *SearchSessionMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchSessionMessagesRequest.ProtoReflect.Descriptor instead.
 func (*SearchSessionMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{27}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *SearchSessionMessagesRequest) GetSessionId() string {
@@ -2680,7 +2755,7 @@ type MessageSearchHit struct {
 
 func (x *MessageSearchHit) Reset() {
 	*x = MessageSearchHit{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[28]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2692,7 +2767,7 @@ func (x *MessageSearchHit) String() string {
 func (*MessageSearchHit) ProtoMessage() {}
 
 func (x *MessageSearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[28]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2705,7 +2780,7 @@ func (x *MessageSearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageSearchHit.ProtoReflect.Descriptor instead.
 func (*MessageSearchHit) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{28}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *MessageSearchHit) GetId() string {
@@ -2760,7 +2835,7 @@ type SearchSessionMessagesResponse struct {
 
 func (x *SearchSessionMessagesResponse) Reset() {
 	*x = SearchSessionMessagesResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[29]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2772,7 +2847,7 @@ func (x *SearchSessionMessagesResponse) String() string {
 func (*SearchSessionMessagesResponse) ProtoMessage() {}
 
 func (x *SearchSessionMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[29]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2785,7 +2860,7 @@ func (x *SearchSessionMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchSessionMessagesResponse.ProtoReflect.Descriptor instead.
 func (*SearchSessionMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{29}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SearchSessionMessagesResponse) GetItems() []*MessageSearchHit {
@@ -2840,7 +2915,7 @@ type SessionTurn struct {
 
 func (x *SessionTurn) Reset() {
 	*x = SessionTurn{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[30]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2852,7 +2927,7 @@ func (x *SessionTurn) String() string {
 func (*SessionTurn) ProtoMessage() {}
 
 func (x *SessionTurn) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[30]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2865,7 +2940,7 @@ func (x *SessionTurn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionTurn.ProtoReflect.Descriptor instead.
 func (*SessionTurn) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{30}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SessionTurn) GetId() string {
@@ -3089,7 +3164,7 @@ type ListSessionTurnsRequest struct {
 
 func (x *ListSessionTurnsRequest) Reset() {
 	*x = ListSessionTurnsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[31]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3101,7 +3176,7 @@ func (x *ListSessionTurnsRequest) String() string {
 func (*ListSessionTurnsRequest) ProtoMessage() {}
 
 func (x *ListSessionTurnsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[31]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3114,7 +3189,7 @@ func (x *ListSessionTurnsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionTurnsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionTurnsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{31}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListSessionTurnsRequest) GetSessionId() string {
@@ -3148,7 +3223,7 @@ type ListSessionTurnsResponse struct {
 
 func (x *ListSessionTurnsResponse) Reset() {
 	*x = ListSessionTurnsResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[32]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3160,7 +3235,7 @@ func (x *ListSessionTurnsResponse) String() string {
 func (*ListSessionTurnsResponse) ProtoMessage() {}
 
 func (x *ListSessionTurnsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[32]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3173,7 +3248,7 @@ func (x *ListSessionTurnsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionTurnsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionTurnsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{32}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListSessionTurnsResponse) GetItems() []*SessionTurn {
@@ -3205,7 +3280,7 @@ type SessionBatchScope struct {
 
 func (x *SessionBatchScope) Reset() {
 	*x = SessionBatchScope{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[33]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3217,7 +3292,7 @@ func (x *SessionBatchScope) String() string {
 func (*SessionBatchScope) ProtoMessage() {}
 
 func (x *SessionBatchScope) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[33]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3230,7 +3305,7 @@ func (x *SessionBatchScope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionBatchScope.ProtoReflect.Descriptor instead.
 func (*SessionBatchScope) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{33}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *SessionBatchScope) GetOwnerType() string {
@@ -3299,7 +3374,7 @@ type BatchPreviewSessionsRequest struct {
 
 func (x *BatchPreviewSessionsRequest) Reset() {
 	*x = BatchPreviewSessionsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[34]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3311,7 +3386,7 @@ func (x *BatchPreviewSessionsRequest) String() string {
 func (*BatchPreviewSessionsRequest) ProtoMessage() {}
 
 func (x *BatchPreviewSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[34]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3324,7 +3399,7 @@ func (x *BatchPreviewSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchPreviewSessionsRequest.ProtoReflect.Descriptor instead.
 func (*BatchPreviewSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{34}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *BatchPreviewSessionsRequest) GetIds() []string {
@@ -3375,7 +3450,7 @@ type BatchPreviewSessionsResponse struct {
 
 func (x *BatchPreviewSessionsResponse) Reset() {
 	*x = BatchPreviewSessionsResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[35]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3387,7 +3462,7 @@ func (x *BatchPreviewSessionsResponse) String() string {
 func (*BatchPreviewSessionsResponse) ProtoMessage() {}
 
 func (x *BatchPreviewSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[35]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3400,7 +3475,7 @@ func (x *BatchPreviewSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchPreviewSessionsResponse.ProtoReflect.Descriptor instead.
 func (*BatchPreviewSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{35}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *BatchPreviewSessionsResponse) GetMatched() int32 {
@@ -3450,7 +3525,7 @@ type BatchArchiveSessionsRequest struct {
 
 func (x *BatchArchiveSessionsRequest) Reset() {
 	*x = BatchArchiveSessionsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[36]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3462,7 +3537,7 @@ func (x *BatchArchiveSessionsRequest) String() string {
 func (*BatchArchiveSessionsRequest) ProtoMessage() {}
 
 func (x *BatchArchiveSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[36]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3475,7 +3550,7 @@ func (x *BatchArchiveSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchArchiveSessionsRequest.ProtoReflect.Descriptor instead.
 func (*BatchArchiveSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{36}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *BatchArchiveSessionsRequest) GetIds() []string {
@@ -3512,7 +3587,7 @@ type BatchDeleteSessionsRequest struct {
 
 func (x *BatchDeleteSessionsRequest) Reset() {
 	*x = BatchDeleteSessionsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[37]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3524,7 +3599,7 @@ func (x *BatchDeleteSessionsRequest) String() string {
 func (*BatchDeleteSessionsRequest) ProtoMessage() {}
 
 func (x *BatchDeleteSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[37]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3537,7 +3612,7 @@ func (x *BatchDeleteSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchDeleteSessionsRequest.ProtoReflect.Descriptor instead.
 func (*BatchDeleteSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{37}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *BatchDeleteSessionsRequest) GetIds() []string {
@@ -3582,7 +3657,7 @@ type BatchSessionsResponse struct {
 
 func (x *BatchSessionsResponse) Reset() {
 	*x = BatchSessionsResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[38]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3594,7 +3669,7 @@ func (x *BatchSessionsResponse) String() string {
 func (*BatchSessionsResponse) ProtoMessage() {}
 
 func (x *BatchSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[38]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3607,7 +3682,7 @@ func (x *BatchSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchSessionsResponse.ProtoReflect.Descriptor instead.
 func (*BatchSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{38}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *BatchSessionsResponse) GetMatched() int32 {
@@ -3662,7 +3737,7 @@ type CompactSessionRequest struct {
 
 func (x *CompactSessionRequest) Reset() {
 	*x = CompactSessionRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[39]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3674,7 +3749,7 @@ func (x *CompactSessionRequest) String() string {
 func (*CompactSessionRequest) ProtoMessage() {}
 
 func (x *CompactSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[39]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3687,7 +3762,7 @@ func (x *CompactSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactSessionRequest.ProtoReflect.Descriptor instead.
 func (*CompactSessionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{39}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CompactSessionRequest) GetSessionId() string {
@@ -3718,7 +3793,7 @@ type CompactSessionResponse struct {
 
 func (x *CompactSessionResponse) Reset() {
 	*x = CompactSessionResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[40]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3730,7 +3805,7 @@ func (x *CompactSessionResponse) String() string {
 func (*CompactSessionResponse) ProtoMessage() {}
 
 func (x *CompactSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[40]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3743,7 +3818,7 @@ func (x *CompactSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactSessionResponse.ProtoReflect.Descriptor instead.
 func (*CompactSessionResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{40}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *CompactSessionResponse) GetCompacted() bool {
@@ -3797,7 +3872,7 @@ type GetCompressStatusRequest struct {
 
 func (x *GetCompressStatusRequest) Reset() {
 	*x = GetCompressStatusRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[41]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3809,7 +3884,7 @@ func (x *GetCompressStatusRequest) String() string {
 func (*GetCompressStatusRequest) ProtoMessage() {}
 
 func (x *GetCompressStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[41]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3822,7 +3897,7 @@ func (x *GetCompressStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCompressStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetCompressStatusRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{41}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetCompressStatusRequest) GetSessionId() string {
@@ -3841,7 +3916,7 @@ type GetCompressStatusReply struct {
 
 func (x *GetCompressStatusReply) Reset() {
 	*x = GetCompressStatusReply{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[42]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3853,7 +3928,7 @@ func (x *GetCompressStatusReply) String() string {
 func (*GetCompressStatusReply) ProtoMessage() {}
 
 func (x *GetCompressStatusReply) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[42]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3866,7 +3941,7 @@ func (x *GetCompressStatusReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCompressStatusReply.ProtoReflect.Descriptor instead.
 func (*GetCompressStatusReply) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{42}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *GetCompressStatusReply) GetStatus() string {
@@ -3885,7 +3960,7 @@ type ListChildSessionsRequest struct {
 
 func (x *ListChildSessionsRequest) Reset() {
 	*x = ListChildSessionsRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[43]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3897,7 +3972,7 @@ func (x *ListChildSessionsRequest) String() string {
 func (*ListChildSessionsRequest) ProtoMessage() {}
 
 func (x *ListChildSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[43]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3910,7 +3985,7 @@ func (x *ListChildSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChildSessionsRequest.ProtoReflect.Descriptor instead.
 func (*ListChildSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{43}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ListChildSessionsRequest) GetParentSessionId() string {
@@ -3929,7 +4004,7 @@ type ListChildSessionsResponse struct {
 
 func (x *ListChildSessionsResponse) Reset() {
 	*x = ListChildSessionsResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[44]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3941,7 +4016,7 @@ func (x *ListChildSessionsResponse) String() string {
 func (*ListChildSessionsResponse) ProtoMessage() {}
 
 func (x *ListChildSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[44]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3954,7 +4029,7 @@ func (x *ListChildSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChildSessionsResponse.ProtoReflect.Descriptor instead.
 func (*ListChildSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{44}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ListChildSessionsResponse) GetSessions() []*Session {
@@ -3974,7 +4049,7 @@ type SessionTreeNode struct {
 
 func (x *SessionTreeNode) Reset() {
 	*x = SessionTreeNode{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[45]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3986,7 +4061,7 @@ func (x *SessionTreeNode) String() string {
 func (*SessionTreeNode) ProtoMessage() {}
 
 func (x *SessionTreeNode) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[45]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3999,7 +4074,7 @@ func (x *SessionTreeNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionTreeNode.ProtoReflect.Descriptor instead.
 func (*SessionTreeNode) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{45}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SessionTreeNode) GetSession() *Session {
@@ -4025,7 +4100,7 @@ type GetSessionTreeRequest struct {
 
 func (x *GetSessionTreeRequest) Reset() {
 	*x = GetSessionTreeRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[46]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4037,7 +4112,7 @@ func (x *GetSessionTreeRequest) String() string {
 func (*GetSessionTreeRequest) ProtoMessage() {}
 
 func (x *GetSessionTreeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[46]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4050,7 +4125,7 @@ func (x *GetSessionTreeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionTreeRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionTreeRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{46}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *GetSessionTreeRequest) GetSpiritSessionId() string {
@@ -4069,7 +4144,7 @@ type GetSessionTreeResponse struct {
 
 func (x *GetSessionTreeResponse) Reset() {
 	*x = GetSessionTreeResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[47]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4081,7 +4156,7 @@ func (x *GetSessionTreeResponse) String() string {
 func (*GetSessionTreeResponse) ProtoMessage() {}
 
 func (x *GetSessionTreeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[47]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4094,7 +4169,7 @@ func (x *GetSessionTreeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionTreeResponse.ProtoReflect.Descriptor instead.
 func (*GetSessionTreeResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{47}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetSessionTreeResponse) GetRoot() *SessionTreeNode {
@@ -4144,7 +4219,7 @@ type Activity struct {
 
 func (x *Activity) Reset() {
 	*x = Activity{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[48]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4156,7 +4231,7 @@ func (x *Activity) String() string {
 func (*Activity) ProtoMessage() {}
 
 func (x *Activity) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[48]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4169,7 +4244,7 @@ func (x *Activity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Activity.ProtoReflect.Descriptor instead.
 func (*Activity) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{48}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *Activity) GetId() string {
@@ -4385,7 +4460,7 @@ type ListActivitiesRequest struct {
 
 func (x *ListActivitiesRequest) Reset() {
 	*x = ListActivitiesRequest{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[49]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4397,7 +4472,7 @@ func (x *ListActivitiesRequest) String() string {
 func (*ListActivitiesRequest) ProtoMessage() {}
 
 func (x *ListActivitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[49]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4410,7 +4485,7 @@ func (x *ListActivitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActivitiesRequest.ProtoReflect.Descriptor instead.
 func (*ListActivitiesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{49}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListActivitiesRequest) GetSessionId() string {
@@ -4436,7 +4511,7 @@ type ListActivitiesResponse struct {
 
 func (x *ListActivitiesResponse) Reset() {
 	*x = ListActivitiesResponse{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[50]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4448,7 +4523,7 @@ func (x *ListActivitiesResponse) String() string {
 func (*ListActivitiesResponse) ProtoMessage() {}
 
 func (x *ListActivitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[50]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4461,7 +4536,7 @@ func (x *ListActivitiesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActivitiesResponse.ProtoReflect.Descriptor instead.
 func (*ListActivitiesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{50}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ListActivitiesResponse) GetItems() []*Activity {
@@ -4480,7 +4555,7 @@ type ListTasksV2Request struct {
 
 func (x *ListTasksV2Request) Reset() {
 	*x = ListTasksV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[51]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4492,7 +4567,7 @@ func (x *ListTasksV2Request) String() string {
 func (*ListTasksV2Request) ProtoMessage() {}
 
 func (x *ListTasksV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[51]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4505,7 +4580,7 @@ func (x *ListTasksV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksV2Request.ProtoReflect.Descriptor instead.
 func (*ListTasksV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{51}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListTasksV2Request) GetSessionId() string {
@@ -4524,7 +4599,7 @@ type ListTasksV2Response struct {
 
 func (x *ListTasksV2Response) Reset() {
 	*x = ListTasksV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[52]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4536,7 +4611,7 @@ func (x *ListTasksV2Response) String() string {
 func (*ListTasksV2Response) ProtoMessage() {}
 
 func (x *ListTasksV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[52]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4549,7 +4624,7 @@ func (x *ListTasksV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksV2Response.ProtoReflect.Descriptor instead.
 func (*ListTasksV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{52}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListTasksV2Response) GetTasks() []*TaskV2 {
@@ -4568,7 +4643,7 @@ type ListTurnsV2Request struct {
 
 func (x *ListTurnsV2Request) Reset() {
 	*x = ListTurnsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[53]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4580,7 +4655,7 @@ func (x *ListTurnsV2Request) String() string {
 func (*ListTurnsV2Request) ProtoMessage() {}
 
 func (x *ListTurnsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[53]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4593,7 +4668,7 @@ func (x *ListTurnsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTurnsV2Request.ProtoReflect.Descriptor instead.
 func (*ListTurnsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{53}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ListTurnsV2Request) GetTaskId() string {
@@ -4612,7 +4687,7 @@ type ListTurnsV2Response struct {
 
 func (x *ListTurnsV2Response) Reset() {
 	*x = ListTurnsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[54]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4624,7 +4699,7 @@ func (x *ListTurnsV2Response) String() string {
 func (*ListTurnsV2Response) ProtoMessage() {}
 
 func (x *ListTurnsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[54]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4637,7 +4712,7 @@ func (x *ListTurnsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTurnsV2Response.ProtoReflect.Descriptor instead.
 func (*ListTurnsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{54}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ListTurnsV2Response) GetTurns() []*TurnV2 {
@@ -4662,7 +4737,7 @@ type ListStepsV2Request struct {
 
 func (x *ListStepsV2Request) Reset() {
 	*x = ListStepsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[55]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4674,7 +4749,7 @@ func (x *ListStepsV2Request) String() string {
 func (*ListStepsV2Request) ProtoMessage() {}
 
 func (x *ListStepsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[55]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4687,7 +4762,7 @@ func (x *ListStepsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStepsV2Request.ProtoReflect.Descriptor instead.
 func (*ListStepsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{55}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ListStepsV2Request) GetSessionId() string {
@@ -4737,7 +4812,7 @@ type ListStepsV2Response struct {
 
 func (x *ListStepsV2Response) Reset() {
 	*x = ListStepsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[56]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4749,7 +4824,7 @@ func (x *ListStepsV2Response) String() string {
 func (*ListStepsV2Response) ProtoMessage() {}
 
 func (x *ListStepsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[56]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4762,7 +4837,7 @@ func (x *ListStepsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStepsV2Response.ProtoReflect.Descriptor instead.
 func (*ListStepsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{56}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ListStepsV2Response) GetSteps() []*StepV2 {
@@ -4788,7 +4863,7 @@ type GetStepV2Request struct {
 
 func (x *GetStepV2Request) Reset() {
 	*x = GetStepV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[57]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4800,7 +4875,7 @@ func (x *GetStepV2Request) String() string {
 func (*GetStepV2Request) ProtoMessage() {}
 
 func (x *GetStepV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[57]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4813,7 +4888,7 @@ func (x *GetStepV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStepV2Request.ProtoReflect.Descriptor instead.
 func (*GetStepV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{57}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *GetStepV2Request) GetStepId() string {
@@ -4832,7 +4907,7 @@ type GetStepV2Response struct {
 
 func (x *GetStepV2Response) Reset() {
 	*x = GetStepV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[58]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4844,7 +4919,7 @@ func (x *GetStepV2Response) String() string {
 func (*GetStepV2Response) ProtoMessage() {}
 
 func (x *GetStepV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[58]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4857,7 +4932,7 @@ func (x *GetStepV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStepV2Response.ProtoReflect.Descriptor instead.
 func (*GetStepV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{58}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *GetStepV2Response) GetStep() *StepV2 {
@@ -4885,7 +4960,7 @@ type TaskV2 struct {
 
 func (x *TaskV2) Reset() {
 	*x = TaskV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[59]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4897,7 +4972,7 @@ func (x *TaskV2) String() string {
 func (*TaskV2) ProtoMessage() {}
 
 func (x *TaskV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[59]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4910,7 +4985,7 @@ func (x *TaskV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskV2.ProtoReflect.Descriptor instead.
 func (*TaskV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{59}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *TaskV2) GetId() string {
@@ -4998,7 +5073,7 @@ type TurnV2 struct {
 
 func (x *TurnV2) Reset() {
 	*x = TurnV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[60]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5010,7 +5085,7 @@ func (x *TurnV2) String() string {
 func (*TurnV2) ProtoMessage() {}
 
 func (x *TurnV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[60]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5023,7 +5098,7 @@ func (x *TurnV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnV2.ProtoReflect.Descriptor instead.
 func (*TurnV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{60}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *TurnV2) GetId() string {
@@ -5151,7 +5226,7 @@ type StepV2 struct {
 
 func (x *StepV2) Reset() {
 	*x = StepV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[61]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5163,7 +5238,7 @@ func (x *StepV2) String() string {
 func (*StepV2) ProtoMessage() {}
 
 func (x *StepV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[61]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5176,7 +5251,7 @@ func (x *StepV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepV2.ProtoReflect.Descriptor instead.
 func (*StepV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{61}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *StepV2) GetId() string {
@@ -5365,7 +5440,7 @@ type TeamStageV2 struct {
 
 func (x *TeamStageV2) Reset() {
 	*x = TeamStageV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[62]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5377,7 +5452,7 @@ func (x *TeamStageV2) String() string {
 func (*TeamStageV2) ProtoMessage() {}
 
 func (x *TeamStageV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[62]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5390,7 +5465,7 @@ func (x *TeamStageV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeamStageV2.ProtoReflect.Descriptor instead.
 func (*TeamStageV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{62}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *TeamStageV2) GetId() string {
@@ -5518,7 +5593,7 @@ type MemberInfoV2 struct {
 
 func (x *MemberInfoV2) Reset() {
 	*x = MemberInfoV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[63]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5530,7 +5605,7 @@ func (x *MemberInfoV2) String() string {
 func (*MemberInfoV2) ProtoMessage() {}
 
 func (x *MemberInfoV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[63]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5543,7 +5618,7 @@ func (x *MemberInfoV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberInfoV2.ProtoReflect.Descriptor instead.
 func (*MemberInfoV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{63}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *MemberInfoV2) GetAgentKey() string {
@@ -5590,7 +5665,7 @@ type ListTeamStagesV2Request struct {
 
 func (x *ListTeamStagesV2Request) Reset() {
 	*x = ListTeamStagesV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[64]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5602,7 +5677,7 @@ func (x *ListTeamStagesV2Request) String() string {
 func (*ListTeamStagesV2Request) ProtoMessage() {}
 
 func (x *ListTeamStagesV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[64]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5615,7 +5690,7 @@ func (x *ListTeamStagesV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamStagesV2Request.ProtoReflect.Descriptor instead.
 func (*ListTeamStagesV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{64}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *ListTeamStagesV2Request) GetTaskId() string {
@@ -5634,7 +5709,7 @@ type ListTeamStagesV2Response struct {
 
 func (x *ListTeamStagesV2Response) Reset() {
 	*x = ListTeamStagesV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[65]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5646,7 +5721,7 @@ func (x *ListTeamStagesV2Response) String() string {
 func (*ListTeamStagesV2Response) ProtoMessage() {}
 
 func (x *ListTeamStagesV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[65]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5659,7 +5734,7 @@ func (x *ListTeamStagesV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamStagesV2Response.ProtoReflect.Descriptor instead.
 func (*ListTeamStagesV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{65}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ListTeamStagesV2Response) GetTeamStages() []*TeamStageV2 {
@@ -5691,7 +5766,7 @@ type TeamRunV2 struct {
 
 func (x *TeamRunV2) Reset() {
 	*x = TeamRunV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[66]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5703,7 +5778,7 @@ func (x *TeamRunV2) String() string {
 func (*TeamRunV2) ProtoMessage() {}
 
 func (x *TeamRunV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[66]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5716,7 +5791,7 @@ func (x *TeamRunV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeamRunV2.ProtoReflect.Descriptor instead.
 func (*TeamRunV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{66}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *TeamRunV2) GetId() string {
@@ -5819,7 +5894,7 @@ type ListTeamRunsV2Request struct {
 
 func (x *ListTeamRunsV2Request) Reset() {
 	*x = ListTeamRunsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[67]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5831,7 +5906,7 @@ func (x *ListTeamRunsV2Request) String() string {
 func (*ListTeamRunsV2Request) ProtoMessage() {}
 
 func (x *ListTeamRunsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[67]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5844,7 +5919,7 @@ func (x *ListTeamRunsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamRunsV2Request.ProtoReflect.Descriptor instead.
 func (*ListTeamRunsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{67}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ListTeamRunsV2Request) GetStageId() string {
@@ -5863,7 +5938,7 @@ type ListTeamRunsV2Response struct {
 
 func (x *ListTeamRunsV2Response) Reset() {
 	*x = ListTeamRunsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[68]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5875,7 +5950,7 @@ func (x *ListTeamRunsV2Response) String() string {
 func (*ListTeamRunsV2Response) ProtoMessage() {}
 
 func (x *ListTeamRunsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[68]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5888,7 +5963,7 @@ func (x *ListTeamRunsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamRunsV2Response.ProtoReflect.Descriptor instead.
 func (*ListTeamRunsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{68}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ListTeamRunsV2Response) GetTeamRuns() []*TeamRunV2 {
@@ -5922,7 +5997,7 @@ type MemberSessionV2 struct {
 
 func (x *MemberSessionV2) Reset() {
 	*x = MemberSessionV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[69]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5934,7 +6009,7 @@ func (x *MemberSessionV2) String() string {
 func (*MemberSessionV2) ProtoMessage() {}
 
 func (x *MemberSessionV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[69]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5947,7 +6022,7 @@ func (x *MemberSessionV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberSessionV2.ProtoReflect.Descriptor instead.
 func (*MemberSessionV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{69}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *MemberSessionV2) GetId() string {
@@ -6064,7 +6139,7 @@ type ListMemberSessionsV2Request struct {
 
 func (x *ListMemberSessionsV2Request) Reset() {
 	*x = ListMemberSessionsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[70]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6076,7 +6151,7 @@ func (x *ListMemberSessionsV2Request) String() string {
 func (*ListMemberSessionsV2Request) ProtoMessage() {}
 
 func (x *ListMemberSessionsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[70]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6089,7 +6164,7 @@ func (x *ListMemberSessionsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemberSessionsV2Request.ProtoReflect.Descriptor instead.
 func (*ListMemberSessionsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{70}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ListMemberSessionsV2Request) GetRunId() string {
@@ -6108,7 +6183,7 @@ type ListMemberSessionsV2Response struct {
 
 func (x *ListMemberSessionsV2Response) Reset() {
 	*x = ListMemberSessionsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[71]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6120,7 +6195,7 @@ func (x *ListMemberSessionsV2Response) String() string {
 func (*ListMemberSessionsV2Response) ProtoMessage() {}
 
 func (x *ListMemberSessionsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[71]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6133,7 +6208,7 @@ func (x *ListMemberSessionsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemberSessionsV2Response.ProtoReflect.Descriptor instead.
 func (*ListMemberSessionsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{71}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ListMemberSessionsV2Response) GetMemberSessions() []*MemberSessionV2 {
@@ -6153,7 +6228,7 @@ type ListOrphanMemberSessionsV2Request struct {
 
 func (x *ListOrphanMemberSessionsV2Request) Reset() {
 	*x = ListOrphanMemberSessionsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6165,7 +6240,7 @@ func (x *ListOrphanMemberSessionsV2Request) String() string {
 func (*ListOrphanMemberSessionsV2Request) ProtoMessage() {}
 
 func (x *ListOrphanMemberSessionsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6178,7 +6253,7 @@ func (x *ListOrphanMemberSessionsV2Request) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ListOrphanMemberSessionsV2Request.ProtoReflect.Descriptor instead.
 func (*ListOrphanMemberSessionsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{72}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ListOrphanMemberSessionsV2Request) GetSessionId() string {
@@ -6208,7 +6283,7 @@ type PlanBoardV2 struct {
 
 func (x *PlanBoardV2) Reset() {
 	*x = PlanBoardV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6220,7 +6295,7 @@ func (x *PlanBoardV2) String() string {
 func (*PlanBoardV2) ProtoMessage() {}
 
 func (x *PlanBoardV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6233,7 +6308,7 @@ func (x *PlanBoardV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanBoardV2.ProtoReflect.Descriptor instead.
 func (*PlanBoardV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{73}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *PlanBoardV2) GetId() string {
@@ -6322,7 +6397,7 @@ type ListPlanBoardsV2Request struct {
 
 func (x *ListPlanBoardsV2Request) Reset() {
 	*x = ListPlanBoardsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6334,7 +6409,7 @@ func (x *ListPlanBoardsV2Request) String() string {
 func (*ListPlanBoardsV2Request) ProtoMessage() {}
 
 func (x *ListPlanBoardsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6347,7 +6422,7 @@ func (x *ListPlanBoardsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanBoardsV2Request.ProtoReflect.Descriptor instead.
 func (*ListPlanBoardsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{74}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ListPlanBoardsV2Request) GetTaskId() string {
@@ -6366,7 +6441,7 @@ type ListPlanBoardsV2Response struct {
 
 func (x *ListPlanBoardsV2Response) Reset() {
 	*x = ListPlanBoardsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6378,7 +6453,7 @@ func (x *ListPlanBoardsV2Response) String() string {
 func (*ListPlanBoardsV2Response) ProtoMessage() {}
 
 func (x *ListPlanBoardsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6391,7 +6466,7 @@ func (x *ListPlanBoardsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanBoardsV2Response.ProtoReflect.Descriptor instead.
 func (*ListPlanBoardsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{75}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ListPlanBoardsV2Response) GetPlanBoards() []*PlanBoardV2 {
@@ -6425,7 +6500,7 @@ type PlanStepV2 struct {
 
 func (x *PlanStepV2) Reset() {
 	*x = PlanStepV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6437,7 +6512,7 @@ func (x *PlanStepV2) String() string {
 func (*PlanStepV2) ProtoMessage() {}
 
 func (x *PlanStepV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6450,7 +6525,7 @@ func (x *PlanStepV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanStepV2.ProtoReflect.Descriptor instead.
 func (*PlanStepV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{76}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *PlanStepV2) GetId() string {
@@ -6570,7 +6645,7 @@ type StepResultV2 struct {
 
 func (x *StepResultV2) Reset() {
 	*x = StepResultV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6582,7 +6657,7 @@ func (x *StepResultV2) String() string {
 func (*StepResultV2) ProtoMessage() {}
 
 func (x *StepResultV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6595,7 +6670,7 @@ func (x *StepResultV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepResultV2.ProtoReflect.Descriptor instead.
 func (*StepResultV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{77}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *StepResultV2) GetOutput() string {
@@ -6638,7 +6713,7 @@ type StepErrorV2 struct {
 
 func (x *StepErrorV2) Reset() {
 	*x = StepErrorV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6650,7 +6725,7 @@ func (x *StepErrorV2) String() string {
 func (*StepErrorV2) ProtoMessage() {}
 
 func (x *StepErrorV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6663,7 +6738,7 @@ func (x *StepErrorV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepErrorV2.ProtoReflect.Descriptor instead.
 func (*StepErrorV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{78}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *StepErrorV2) GetCode() string {
@@ -6708,7 +6783,7 @@ type MemberReportV2 struct {
 
 func (x *MemberReportV2) Reset() {
 	*x = MemberReportV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6720,7 +6795,7 @@ func (x *MemberReportV2) String() string {
 func (*MemberReportV2) ProtoMessage() {}
 
 func (x *MemberReportV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6733,7 +6808,7 @@ func (x *MemberReportV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberReportV2.ProtoReflect.Descriptor instead.
 func (*MemberReportV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{79}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *MemberReportV2) GetAgentKey() string {
@@ -6789,7 +6864,7 @@ type TokenUsageV2 struct {
 
 func (x *TokenUsageV2) Reset() {
 	*x = TokenUsageV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6801,7 +6876,7 @@ func (x *TokenUsageV2) String() string {
 func (*TokenUsageV2) ProtoMessage() {}
 
 func (x *TokenUsageV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6814,7 +6889,7 @@ func (x *TokenUsageV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenUsageV2.ProtoReflect.Descriptor instead.
 func (*TokenUsageV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{80}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *TokenUsageV2) GetPromptTokens() int64 {
@@ -6847,7 +6922,7 @@ type ListPlanStepsV2Request struct {
 
 func (x *ListPlanStepsV2Request) Reset() {
 	*x = ListPlanStepsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6859,7 +6934,7 @@ func (x *ListPlanStepsV2Request) String() string {
 func (*ListPlanStepsV2Request) ProtoMessage() {}
 
 func (x *ListPlanStepsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6872,7 +6947,7 @@ func (x *ListPlanStepsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanStepsV2Request.ProtoReflect.Descriptor instead.
 func (*ListPlanStepsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{81}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ListPlanStepsV2Request) GetTaskId() string {
@@ -6891,7 +6966,7 @@ type ListPlanStepsV2Response struct {
 
 func (x *ListPlanStepsV2Response) Reset() {
 	*x = ListPlanStepsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6903,7 +6978,7 @@ func (x *ListPlanStepsV2Response) String() string {
 func (*ListPlanStepsV2Response) ProtoMessage() {}
 
 func (x *ListPlanStepsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6916,7 +6991,7 @@ func (x *ListPlanStepsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanStepsV2Response.ProtoReflect.Descriptor instead.
 func (*ListPlanStepsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{82}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ListPlanStepsV2Response) GetPlanSteps() []*PlanStepV2 {
@@ -6946,7 +7021,7 @@ type GraphStageV2 struct {
 
 func (x *GraphStageV2) Reset() {
 	*x = GraphStageV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6958,7 +7033,7 @@ func (x *GraphStageV2) String() string {
 func (*GraphStageV2) ProtoMessage() {}
 
 func (x *GraphStageV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6971,7 +7046,7 @@ func (x *GraphStageV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphStageV2.ProtoReflect.Descriptor instead.
 func (*GraphStageV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{83}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *GraphStageV2) GetId() string {
@@ -7060,7 +7135,7 @@ type ListGraphStagesV2Request struct {
 
 func (x *ListGraphStagesV2Request) Reset() {
 	*x = ListGraphStagesV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7072,7 +7147,7 @@ func (x *ListGraphStagesV2Request) String() string {
 func (*ListGraphStagesV2Request) ProtoMessage() {}
 
 func (x *ListGraphStagesV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7085,7 +7160,7 @@ func (x *ListGraphStagesV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphStagesV2Request.ProtoReflect.Descriptor instead.
 func (*ListGraphStagesV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{84}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ListGraphStagesV2Request) GetTaskId() string {
@@ -7104,7 +7179,7 @@ type ListGraphStagesV2Response struct {
 
 func (x *ListGraphStagesV2Response) Reset() {
 	*x = ListGraphStagesV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7116,7 +7191,7 @@ func (x *ListGraphStagesV2Response) String() string {
 func (*ListGraphStagesV2Response) ProtoMessage() {}
 
 func (x *ListGraphStagesV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7129,7 +7204,7 @@ func (x *ListGraphStagesV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphStagesV2Response.ProtoReflect.Descriptor instead.
 func (*ListGraphStagesV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{85}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ListGraphStagesV2Response) GetGraphStages() []*GraphStageV2 {
@@ -7155,7 +7230,7 @@ type GraphNodeV2 struct {
 
 func (x *GraphNodeV2) Reset() {
 	*x = GraphNodeV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7167,7 +7242,7 @@ func (x *GraphNodeV2) String() string {
 func (*GraphNodeV2) ProtoMessage() {}
 
 func (x *GraphNodeV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7180,7 +7255,7 @@ func (x *GraphNodeV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphNodeV2.ProtoReflect.Descriptor instead.
 func (*GraphNodeV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{86}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *GraphNodeV2) GetId() string {
@@ -7241,7 +7316,7 @@ type ListGraphNodesV2Request struct {
 
 func (x *ListGraphNodesV2Request) Reset() {
 	*x = ListGraphNodesV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7253,7 +7328,7 @@ func (x *ListGraphNodesV2Request) String() string {
 func (*ListGraphNodesV2Request) ProtoMessage() {}
 
 func (x *ListGraphNodesV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7266,7 +7341,7 @@ func (x *ListGraphNodesV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphNodesV2Request.ProtoReflect.Descriptor instead.
 func (*ListGraphNodesV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{87}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ListGraphNodesV2Request) GetStageId() string {
@@ -7285,7 +7360,7 @@ type ListGraphNodesV2Response struct {
 
 func (x *ListGraphNodesV2Response) Reset() {
 	*x = ListGraphNodesV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[88]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7297,7 +7372,7 @@ func (x *ListGraphNodesV2Response) String() string {
 func (*ListGraphNodesV2Response) ProtoMessage() {}
 
 func (x *ListGraphNodesV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[88]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7310,7 +7385,7 @@ func (x *ListGraphNodesV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphNodesV2Response.ProtoReflect.Descriptor instead.
 func (*ListGraphNodesV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{88}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ListGraphNodesV2Response) GetGraphNodes() []*GraphNodeV2 {
@@ -7324,7 +7399,7 @@ var File_kratos_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkratos/session/v1/session.proto\x12\x11kratos.session.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xb0\x10\n" +
+	"\x1fkratos/session/v1/session.proto\x12\x11kratos.session.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xdb\x10\n" +
 	"\aSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fworkspace_id\x18\x1f \x01(\tR\vworkspaceId\x12\x17\n" +
@@ -7397,7 +7472,8 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\x0fcompleted_steps\x189 \x01(\x05R\x0ecompletedSteps\x12\x1f\n" +
 	"\vtotal_steps\x18: \x01(\x05R\n" +
 	"totalSteps\x12!\n" +
-	"\fprogress_pct\x18; \x01(\x01R\vprogressPct\"\xb0\x01\n" +
+	"\fprogress_pct\x18; \x01(\x01R\vprogressPct\x12)\n" +
+	"\x11fork_from_turn_id\x18< \x01(\tR\x0eforkFromTurnId\"\xb0\x01\n" +
 	"\x16SessionTimelineSummary\x12\x14\n" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12#\n" +
 	"\rmessage_count\x18\x02 \x01(\x05R\fmessageCount\x12\x1d\n" +
@@ -7471,7 +7547,11 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	" \x01(\tR\btagsJson\x12#\n" +
 	"\rmetadata_json\x18\v \x01(\tR\fmetadataJson\")\n" +
 	"\x11GetSessionRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x95\x02\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"_\n" +
+	"\x12ForkSessionRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1d\n" +
+	"\aturn_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06turnId\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\"\x95\x02\n" +
 	"\x14UpdateSessionRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1b\n" +
@@ -8051,13 +8131,14 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\bstage_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\astageId\"[\n" +
 	"\x18ListGraphNodesV2Response\x12?\n" +
 	"\vgraph_nodes\x18\x01 \x03(\v2\x1e.kratos.session.v1.GraphNodeV2R\n" +
-	"graphNodes2\x9b\x1b\n" +
+	"graphNodes2\x90\x1c\n" +
 	"\x0eSessionService\x12{\n" +
 	"\x0eSearchSessions\x12(.kratos.session.v1.SearchSessionsRequest\x1a).kratos.session.v1.SearchSessionsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/sessions\x12m\n" +
 	"\rCreateSession\x12'.kratos.session.v1.CreateSessionRequest\x1a\x1a.kratos.session.v1.Session\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1/sessions\x12v\n" +
 	"\x15DeleteSessionsByAgent\x12/.kratos.session.v1.DeleteSessionsByAgentRequest\x1a\x16.google.protobuf.Empty\"\x14\x82\xd3\xe4\x93\x02\x0e*\f/v1/sessions\x12i\n" +
 	"\n" +
-	"GetSession\x12$.kratos.session.v1.GetSessionRequest\x1a\x1a.kratos.session.v1.Session\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/sessions/{id}\x12r\n" +
+	"GetSession\x12$.kratos.session.v1.GetSessionRequest\x1a\x1a.kratos.session.v1.Session\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/sessions/{id}\x12s\n" +
+	"\vForkSession\x12%.kratos.session.v1.ForkSessionRequest\x1a\x1a.kratos.session.v1.Session\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/sessions/{id}/fork\x12r\n" +
 	"\rUpdateSession\x12'.kratos.session.v1.UpdateSessionRequest\x1a\x1a.kratos.session.v1.Session\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*2\x11/v1/sessions/{id}\x12k\n" +
 	"\rDeleteSession\x12'.kratos.session.v1.DeleteSessionRequest\x1a\x16.google.protobuf.Empty\"\x19\x82\xd3\xe4\x93\x02\x13*\x11/v1/sessions/{id}\x12x\n" +
 	"\x0eArchiveSession\x12(.kratos.session.v1.ArchiveSessionRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/sessions/{id}/archive\x12|\n" +
@@ -8107,7 +8188,7 @@ func file_kratos_session_v1_session_proto_rawDescGZIP() []byte {
 	return file_kratos_session_v1_session_proto_rawDescData
 }
 
-var file_kratos_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 89)
+var file_kratos_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 90)
 var file_kratos_session_v1_session_proto_goTypes = []any{
 	(*Session)(nil),                           // 0: kratos.session.v1.Session
 	(*SessionTimelineSummary)(nil),            // 1: kratos.session.v1.SessionTimelineSummary
@@ -8117,202 +8198,205 @@ var file_kratos_session_v1_session_proto_goTypes = []any{
 	(*SearchSessionsResponse)(nil),            // 5: kratos.session.v1.SearchSessionsResponse
 	(*CreateSessionRequest)(nil),              // 6: kratos.session.v1.CreateSessionRequest
 	(*GetSessionRequest)(nil),                 // 7: kratos.session.v1.GetSessionRequest
-	(*UpdateSessionRequest)(nil),              // 8: kratos.session.v1.UpdateSessionRequest
-	(*DeleteSessionRequest)(nil),              // 9: kratos.session.v1.DeleteSessionRequest
-	(*DeleteSessionsByAgentRequest)(nil),      // 10: kratos.session.v1.DeleteSessionsByAgentRequest
-	(*ArchiveSessionRequest)(nil),             // 11: kratos.session.v1.ArchiveSessionRequest
-	(*RestoreSessionRequest)(nil),             // 12: kratos.session.v1.RestoreSessionRequest
-	(*PinSessionRequest)(nil),                 // 13: kratos.session.v1.PinSessionRequest
-	(*UnpinSessionRequest)(nil),               // 14: kratos.session.v1.UnpinSessionRequest
-	(*ExportSessionRequest)(nil),              // 15: kratos.session.v1.ExportSessionRequest
-	(*ExportSessionResponse)(nil),             // 16: kratos.session.v1.ExportSessionResponse
-	(*SessionRunRecord)(nil),                  // 17: kratos.session.v1.SessionRunRecord
-	(*ListSessionRunsRequest)(nil),            // 18: kratos.session.v1.ListSessionRunsRequest
-	(*ListSessionRunsResponse)(nil),           // 19: kratos.session.v1.ListSessionRunsResponse
-	(*SessionParticipant)(nil),                // 20: kratos.session.v1.SessionParticipant
-	(*ListSessionParticipantsRequest)(nil),    // 21: kratos.session.v1.ListSessionParticipantsRequest
-	(*ListSessionParticipantsResponse)(nil),   // 22: kratos.session.v1.ListSessionParticipantsResponse
-	(*GetSessionTimelineRequest)(nil),         // 23: kratos.session.v1.GetSessionTimelineRequest
-	(*ChatMessageRow)(nil),                    // 24: kratos.session.v1.ChatMessageRow
-	(*ListSessionMessagesRequest)(nil),        // 25: kratos.session.v1.ListSessionMessagesRequest
-	(*ListSessionMessagesResponse)(nil),       // 26: kratos.session.v1.ListSessionMessagesResponse
-	(*SearchSessionMessagesRequest)(nil),      // 27: kratos.session.v1.SearchSessionMessagesRequest
-	(*MessageSearchHit)(nil),                  // 28: kratos.session.v1.MessageSearchHit
-	(*SearchSessionMessagesResponse)(nil),     // 29: kratos.session.v1.SearchSessionMessagesResponse
-	(*SessionTurn)(nil),                       // 30: kratos.session.v1.SessionTurn
-	(*ListSessionTurnsRequest)(nil),           // 31: kratos.session.v1.ListSessionTurnsRequest
-	(*ListSessionTurnsResponse)(nil),          // 32: kratos.session.v1.ListSessionTurnsResponse
-	(*SessionBatchScope)(nil),                 // 33: kratos.session.v1.SessionBatchScope
-	(*BatchPreviewSessionsRequest)(nil),       // 34: kratos.session.v1.BatchPreviewSessionsRequest
-	(*BatchPreviewSessionsResponse)(nil),      // 35: kratos.session.v1.BatchPreviewSessionsResponse
-	(*BatchArchiveSessionsRequest)(nil),       // 36: kratos.session.v1.BatchArchiveSessionsRequest
-	(*BatchDeleteSessionsRequest)(nil),        // 37: kratos.session.v1.BatchDeleteSessionsRequest
-	(*BatchSessionsResponse)(nil),             // 38: kratos.session.v1.BatchSessionsResponse
-	(*CompactSessionRequest)(nil),             // 39: kratos.session.v1.CompactSessionRequest
-	(*CompactSessionResponse)(nil),            // 40: kratos.session.v1.CompactSessionResponse
-	(*GetCompressStatusRequest)(nil),          // 41: kratos.session.v1.GetCompressStatusRequest
-	(*GetCompressStatusReply)(nil),            // 42: kratos.session.v1.GetCompressStatusReply
-	(*ListChildSessionsRequest)(nil),          // 43: kratos.session.v1.ListChildSessionsRequest
-	(*ListChildSessionsResponse)(nil),         // 44: kratos.session.v1.ListChildSessionsResponse
-	(*SessionTreeNode)(nil),                   // 45: kratos.session.v1.SessionTreeNode
-	(*GetSessionTreeRequest)(nil),             // 46: kratos.session.v1.GetSessionTreeRequest
-	(*GetSessionTreeResponse)(nil),            // 47: kratos.session.v1.GetSessionTreeResponse
-	(*Activity)(nil),                          // 48: kratos.session.v1.Activity
-	(*ListActivitiesRequest)(nil),             // 49: kratos.session.v1.ListActivitiesRequest
-	(*ListActivitiesResponse)(nil),            // 50: kratos.session.v1.ListActivitiesResponse
-	(*ListTasksV2Request)(nil),                // 51: kratos.session.v1.ListTasksV2Request
-	(*ListTasksV2Response)(nil),               // 52: kratos.session.v1.ListTasksV2Response
-	(*ListTurnsV2Request)(nil),                // 53: kratos.session.v1.ListTurnsV2Request
-	(*ListTurnsV2Response)(nil),               // 54: kratos.session.v1.ListTurnsV2Response
-	(*ListStepsV2Request)(nil),                // 55: kratos.session.v1.ListStepsV2Request
-	(*ListStepsV2Response)(nil),               // 56: kratos.session.v1.ListStepsV2Response
-	(*GetStepV2Request)(nil),                  // 57: kratos.session.v1.GetStepV2Request
-	(*GetStepV2Response)(nil),                 // 58: kratos.session.v1.GetStepV2Response
-	(*TaskV2)(nil),                            // 59: kratos.session.v1.TaskV2
-	(*TurnV2)(nil),                            // 60: kratos.session.v1.TurnV2
-	(*StepV2)(nil),                            // 61: kratos.session.v1.StepV2
-	(*TeamStageV2)(nil),                       // 62: kratos.session.v1.TeamStageV2
-	(*MemberInfoV2)(nil),                      // 63: kratos.session.v1.MemberInfoV2
-	(*ListTeamStagesV2Request)(nil),           // 64: kratos.session.v1.ListTeamStagesV2Request
-	(*ListTeamStagesV2Response)(nil),          // 65: kratos.session.v1.ListTeamStagesV2Response
-	(*TeamRunV2)(nil),                         // 66: kratos.session.v1.TeamRunV2
-	(*ListTeamRunsV2Request)(nil),             // 67: kratos.session.v1.ListTeamRunsV2Request
-	(*ListTeamRunsV2Response)(nil),            // 68: kratos.session.v1.ListTeamRunsV2Response
-	(*MemberSessionV2)(nil),                   // 69: kratos.session.v1.MemberSessionV2
-	(*ListMemberSessionsV2Request)(nil),       // 70: kratos.session.v1.ListMemberSessionsV2Request
-	(*ListMemberSessionsV2Response)(nil),      // 71: kratos.session.v1.ListMemberSessionsV2Response
-	(*ListOrphanMemberSessionsV2Request)(nil), // 72: kratos.session.v1.ListOrphanMemberSessionsV2Request
-	(*PlanBoardV2)(nil),                       // 73: kratos.session.v1.PlanBoardV2
-	(*ListPlanBoardsV2Request)(nil),           // 74: kratos.session.v1.ListPlanBoardsV2Request
-	(*ListPlanBoardsV2Response)(nil),          // 75: kratos.session.v1.ListPlanBoardsV2Response
-	(*PlanStepV2)(nil),                        // 76: kratos.session.v1.PlanStepV2
-	(*StepResultV2)(nil),                      // 77: kratos.session.v1.StepResultV2
-	(*StepErrorV2)(nil),                       // 78: kratos.session.v1.StepErrorV2
-	(*MemberReportV2)(nil),                    // 79: kratos.session.v1.MemberReportV2
-	(*TokenUsageV2)(nil),                      // 80: kratos.session.v1.TokenUsageV2
-	(*ListPlanStepsV2Request)(nil),            // 81: kratos.session.v1.ListPlanStepsV2Request
-	(*ListPlanStepsV2Response)(nil),           // 82: kratos.session.v1.ListPlanStepsV2Response
-	(*GraphStageV2)(nil),                      // 83: kratos.session.v1.GraphStageV2
-	(*ListGraphStagesV2Request)(nil),          // 84: kratos.session.v1.ListGraphStagesV2Request
-	(*ListGraphStagesV2Response)(nil),         // 85: kratos.session.v1.ListGraphStagesV2Response
-	(*GraphNodeV2)(nil),                       // 86: kratos.session.v1.GraphNodeV2
-	(*ListGraphNodesV2Request)(nil),           // 87: kratos.session.v1.ListGraphNodesV2Request
-	(*ListGraphNodesV2Response)(nil),          // 88: kratos.session.v1.ListGraphNodesV2Response
-	(*emptypb.Empty)(nil),                     // 89: google.protobuf.Empty
+	(*ForkSessionRequest)(nil),                // 8: kratos.session.v1.ForkSessionRequest
+	(*UpdateSessionRequest)(nil),              // 9: kratos.session.v1.UpdateSessionRequest
+	(*DeleteSessionRequest)(nil),              // 10: kratos.session.v1.DeleteSessionRequest
+	(*DeleteSessionsByAgentRequest)(nil),      // 11: kratos.session.v1.DeleteSessionsByAgentRequest
+	(*ArchiveSessionRequest)(nil),             // 12: kratos.session.v1.ArchiveSessionRequest
+	(*RestoreSessionRequest)(nil),             // 13: kratos.session.v1.RestoreSessionRequest
+	(*PinSessionRequest)(nil),                 // 14: kratos.session.v1.PinSessionRequest
+	(*UnpinSessionRequest)(nil),               // 15: kratos.session.v1.UnpinSessionRequest
+	(*ExportSessionRequest)(nil),              // 16: kratos.session.v1.ExportSessionRequest
+	(*ExportSessionResponse)(nil),             // 17: kratos.session.v1.ExportSessionResponse
+	(*SessionRunRecord)(nil),                  // 18: kratos.session.v1.SessionRunRecord
+	(*ListSessionRunsRequest)(nil),            // 19: kratos.session.v1.ListSessionRunsRequest
+	(*ListSessionRunsResponse)(nil),           // 20: kratos.session.v1.ListSessionRunsResponse
+	(*SessionParticipant)(nil),                // 21: kratos.session.v1.SessionParticipant
+	(*ListSessionParticipantsRequest)(nil),    // 22: kratos.session.v1.ListSessionParticipantsRequest
+	(*ListSessionParticipantsResponse)(nil),   // 23: kratos.session.v1.ListSessionParticipantsResponse
+	(*GetSessionTimelineRequest)(nil),         // 24: kratos.session.v1.GetSessionTimelineRequest
+	(*ChatMessageRow)(nil),                    // 25: kratos.session.v1.ChatMessageRow
+	(*ListSessionMessagesRequest)(nil),        // 26: kratos.session.v1.ListSessionMessagesRequest
+	(*ListSessionMessagesResponse)(nil),       // 27: kratos.session.v1.ListSessionMessagesResponse
+	(*SearchSessionMessagesRequest)(nil),      // 28: kratos.session.v1.SearchSessionMessagesRequest
+	(*MessageSearchHit)(nil),                  // 29: kratos.session.v1.MessageSearchHit
+	(*SearchSessionMessagesResponse)(nil),     // 30: kratos.session.v1.SearchSessionMessagesResponse
+	(*SessionTurn)(nil),                       // 31: kratos.session.v1.SessionTurn
+	(*ListSessionTurnsRequest)(nil),           // 32: kratos.session.v1.ListSessionTurnsRequest
+	(*ListSessionTurnsResponse)(nil),          // 33: kratos.session.v1.ListSessionTurnsResponse
+	(*SessionBatchScope)(nil),                 // 34: kratos.session.v1.SessionBatchScope
+	(*BatchPreviewSessionsRequest)(nil),       // 35: kratos.session.v1.BatchPreviewSessionsRequest
+	(*BatchPreviewSessionsResponse)(nil),      // 36: kratos.session.v1.BatchPreviewSessionsResponse
+	(*BatchArchiveSessionsRequest)(nil),       // 37: kratos.session.v1.BatchArchiveSessionsRequest
+	(*BatchDeleteSessionsRequest)(nil),        // 38: kratos.session.v1.BatchDeleteSessionsRequest
+	(*BatchSessionsResponse)(nil),             // 39: kratos.session.v1.BatchSessionsResponse
+	(*CompactSessionRequest)(nil),             // 40: kratos.session.v1.CompactSessionRequest
+	(*CompactSessionResponse)(nil),            // 41: kratos.session.v1.CompactSessionResponse
+	(*GetCompressStatusRequest)(nil),          // 42: kratos.session.v1.GetCompressStatusRequest
+	(*GetCompressStatusReply)(nil),            // 43: kratos.session.v1.GetCompressStatusReply
+	(*ListChildSessionsRequest)(nil),          // 44: kratos.session.v1.ListChildSessionsRequest
+	(*ListChildSessionsResponse)(nil),         // 45: kratos.session.v1.ListChildSessionsResponse
+	(*SessionTreeNode)(nil),                   // 46: kratos.session.v1.SessionTreeNode
+	(*GetSessionTreeRequest)(nil),             // 47: kratos.session.v1.GetSessionTreeRequest
+	(*GetSessionTreeResponse)(nil),            // 48: kratos.session.v1.GetSessionTreeResponse
+	(*Activity)(nil),                          // 49: kratos.session.v1.Activity
+	(*ListActivitiesRequest)(nil),             // 50: kratos.session.v1.ListActivitiesRequest
+	(*ListActivitiesResponse)(nil),            // 51: kratos.session.v1.ListActivitiesResponse
+	(*ListTasksV2Request)(nil),                // 52: kratos.session.v1.ListTasksV2Request
+	(*ListTasksV2Response)(nil),               // 53: kratos.session.v1.ListTasksV2Response
+	(*ListTurnsV2Request)(nil),                // 54: kratos.session.v1.ListTurnsV2Request
+	(*ListTurnsV2Response)(nil),               // 55: kratos.session.v1.ListTurnsV2Response
+	(*ListStepsV2Request)(nil),                // 56: kratos.session.v1.ListStepsV2Request
+	(*ListStepsV2Response)(nil),               // 57: kratos.session.v1.ListStepsV2Response
+	(*GetStepV2Request)(nil),                  // 58: kratos.session.v1.GetStepV2Request
+	(*GetStepV2Response)(nil),                 // 59: kratos.session.v1.GetStepV2Response
+	(*TaskV2)(nil),                            // 60: kratos.session.v1.TaskV2
+	(*TurnV2)(nil),                            // 61: kratos.session.v1.TurnV2
+	(*StepV2)(nil),                            // 62: kratos.session.v1.StepV2
+	(*TeamStageV2)(nil),                       // 63: kratos.session.v1.TeamStageV2
+	(*MemberInfoV2)(nil),                      // 64: kratos.session.v1.MemberInfoV2
+	(*ListTeamStagesV2Request)(nil),           // 65: kratos.session.v1.ListTeamStagesV2Request
+	(*ListTeamStagesV2Response)(nil),          // 66: kratos.session.v1.ListTeamStagesV2Response
+	(*TeamRunV2)(nil),                         // 67: kratos.session.v1.TeamRunV2
+	(*ListTeamRunsV2Request)(nil),             // 68: kratos.session.v1.ListTeamRunsV2Request
+	(*ListTeamRunsV2Response)(nil),            // 69: kratos.session.v1.ListTeamRunsV2Response
+	(*MemberSessionV2)(nil),                   // 70: kratos.session.v1.MemberSessionV2
+	(*ListMemberSessionsV2Request)(nil),       // 71: kratos.session.v1.ListMemberSessionsV2Request
+	(*ListMemberSessionsV2Response)(nil),      // 72: kratos.session.v1.ListMemberSessionsV2Response
+	(*ListOrphanMemberSessionsV2Request)(nil), // 73: kratos.session.v1.ListOrphanMemberSessionsV2Request
+	(*PlanBoardV2)(nil),                       // 74: kratos.session.v1.PlanBoardV2
+	(*ListPlanBoardsV2Request)(nil),           // 75: kratos.session.v1.ListPlanBoardsV2Request
+	(*ListPlanBoardsV2Response)(nil),          // 76: kratos.session.v1.ListPlanBoardsV2Response
+	(*PlanStepV2)(nil),                        // 77: kratos.session.v1.PlanStepV2
+	(*StepResultV2)(nil),                      // 78: kratos.session.v1.StepResultV2
+	(*StepErrorV2)(nil),                       // 79: kratos.session.v1.StepErrorV2
+	(*MemberReportV2)(nil),                    // 80: kratos.session.v1.MemberReportV2
+	(*TokenUsageV2)(nil),                      // 81: kratos.session.v1.TokenUsageV2
+	(*ListPlanStepsV2Request)(nil),            // 82: kratos.session.v1.ListPlanStepsV2Request
+	(*ListPlanStepsV2Response)(nil),           // 83: kratos.session.v1.ListPlanStepsV2Response
+	(*GraphStageV2)(nil),                      // 84: kratos.session.v1.GraphStageV2
+	(*ListGraphStagesV2Request)(nil),          // 85: kratos.session.v1.ListGraphStagesV2Request
+	(*ListGraphStagesV2Response)(nil),         // 86: kratos.session.v1.ListGraphStagesV2Response
+	(*GraphNodeV2)(nil),                       // 87: kratos.session.v1.GraphNodeV2
+	(*ListGraphNodesV2Request)(nil),           // 88: kratos.session.v1.ListGraphNodesV2Request
+	(*ListGraphNodesV2Response)(nil),          // 89: kratos.session.v1.ListGraphNodesV2Response
+	(*emptypb.Empty)(nil),                     // 90: google.protobuf.Empty
 }
 var file_kratos_session_v1_session_proto_depIdxs = []int32{
 	2,  // 0: kratos.session.v1.SessionTimeline.items:type_name -> kratos.session.v1.SessionTimelineItem
 	1,  // 1: kratos.session.v1.SessionTimeline.summary:type_name -> kratos.session.v1.SessionTimelineSummary
 	0,  // 2: kratos.session.v1.SearchSessionsResponse.items:type_name -> kratos.session.v1.Session
-	17, // 3: kratos.session.v1.ListSessionRunsResponse.items:type_name -> kratos.session.v1.SessionRunRecord
-	20, // 4: kratos.session.v1.ListSessionParticipantsResponse.items:type_name -> kratos.session.v1.SessionParticipant
-	24, // 5: kratos.session.v1.ListSessionMessagesResponse.items:type_name -> kratos.session.v1.ChatMessageRow
-	28, // 6: kratos.session.v1.SearchSessionMessagesResponse.items:type_name -> kratos.session.v1.MessageSearchHit
-	30, // 7: kratos.session.v1.ListSessionTurnsResponse.items:type_name -> kratos.session.v1.SessionTurn
-	33, // 8: kratos.session.v1.BatchPreviewSessionsRequest.scope:type_name -> kratos.session.v1.SessionBatchScope
-	33, // 9: kratos.session.v1.BatchArchiveSessionsRequest.scope:type_name -> kratos.session.v1.SessionBatchScope
-	33, // 10: kratos.session.v1.BatchDeleteSessionsRequest.scope:type_name -> kratos.session.v1.SessionBatchScope
+	18, // 3: kratos.session.v1.ListSessionRunsResponse.items:type_name -> kratos.session.v1.SessionRunRecord
+	21, // 4: kratos.session.v1.ListSessionParticipantsResponse.items:type_name -> kratos.session.v1.SessionParticipant
+	25, // 5: kratos.session.v1.ListSessionMessagesResponse.items:type_name -> kratos.session.v1.ChatMessageRow
+	29, // 6: kratos.session.v1.SearchSessionMessagesResponse.items:type_name -> kratos.session.v1.MessageSearchHit
+	31, // 7: kratos.session.v1.ListSessionTurnsResponse.items:type_name -> kratos.session.v1.SessionTurn
+	34, // 8: kratos.session.v1.BatchPreviewSessionsRequest.scope:type_name -> kratos.session.v1.SessionBatchScope
+	34, // 9: kratos.session.v1.BatchArchiveSessionsRequest.scope:type_name -> kratos.session.v1.SessionBatchScope
+	34, // 10: kratos.session.v1.BatchDeleteSessionsRequest.scope:type_name -> kratos.session.v1.SessionBatchScope
 	0,  // 11: kratos.session.v1.ListChildSessionsResponse.sessions:type_name -> kratos.session.v1.Session
 	0,  // 12: kratos.session.v1.SessionTreeNode.session:type_name -> kratos.session.v1.Session
-	45, // 13: kratos.session.v1.SessionTreeNode.children:type_name -> kratos.session.v1.SessionTreeNode
-	45, // 14: kratos.session.v1.GetSessionTreeResponse.root:type_name -> kratos.session.v1.SessionTreeNode
-	48, // 15: kratos.session.v1.ListActivitiesResponse.items:type_name -> kratos.session.v1.Activity
-	59, // 16: kratos.session.v1.ListTasksV2Response.tasks:type_name -> kratos.session.v1.TaskV2
-	60, // 17: kratos.session.v1.ListTurnsV2Response.turns:type_name -> kratos.session.v1.TurnV2
-	61, // 18: kratos.session.v1.ListStepsV2Response.steps:type_name -> kratos.session.v1.StepV2
-	61, // 19: kratos.session.v1.GetStepV2Response.step:type_name -> kratos.session.v1.StepV2
-	63, // 20: kratos.session.v1.TeamStageV2.members:type_name -> kratos.session.v1.MemberInfoV2
-	62, // 21: kratos.session.v1.ListTeamStagesV2Response.team_stages:type_name -> kratos.session.v1.TeamStageV2
-	66, // 22: kratos.session.v1.ListTeamRunsV2Response.team_runs:type_name -> kratos.session.v1.TeamRunV2
-	69, // 23: kratos.session.v1.ListMemberSessionsV2Response.member_sessions:type_name -> kratos.session.v1.MemberSessionV2
-	76, // 24: kratos.session.v1.PlanBoardV2.steps:type_name -> kratos.session.v1.PlanStepV2
-	73, // 25: kratos.session.v1.ListPlanBoardsV2Response.plan_boards:type_name -> kratos.session.v1.PlanBoardV2
-	77, // 26: kratos.session.v1.PlanStepV2.result:type_name -> kratos.session.v1.StepResultV2
-	78, // 27: kratos.session.v1.PlanStepV2.error:type_name -> kratos.session.v1.StepErrorV2
-	79, // 28: kratos.session.v1.StepResultV2.member_reports:type_name -> kratos.session.v1.MemberReportV2
-	80, // 29: kratos.session.v1.StepResultV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
-	79, // 30: kratos.session.v1.StepErrorV2.failed_member:type_name -> kratos.session.v1.MemberReportV2
-	80, // 31: kratos.session.v1.MemberReportV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
-	76, // 32: kratos.session.v1.ListPlanStepsV2Response.plan_steps:type_name -> kratos.session.v1.PlanStepV2
-	86, // 33: kratos.session.v1.GraphStageV2.nodes:type_name -> kratos.session.v1.GraphNodeV2
-	83, // 34: kratos.session.v1.ListGraphStagesV2Response.graph_stages:type_name -> kratos.session.v1.GraphStageV2
-	86, // 35: kratos.session.v1.ListGraphNodesV2Response.graph_nodes:type_name -> kratos.session.v1.GraphNodeV2
+	46, // 13: kratos.session.v1.SessionTreeNode.children:type_name -> kratos.session.v1.SessionTreeNode
+	46, // 14: kratos.session.v1.GetSessionTreeResponse.root:type_name -> kratos.session.v1.SessionTreeNode
+	49, // 15: kratos.session.v1.ListActivitiesResponse.items:type_name -> kratos.session.v1.Activity
+	60, // 16: kratos.session.v1.ListTasksV2Response.tasks:type_name -> kratos.session.v1.TaskV2
+	61, // 17: kratos.session.v1.ListTurnsV2Response.turns:type_name -> kratos.session.v1.TurnV2
+	62, // 18: kratos.session.v1.ListStepsV2Response.steps:type_name -> kratos.session.v1.StepV2
+	62, // 19: kratos.session.v1.GetStepV2Response.step:type_name -> kratos.session.v1.StepV2
+	64, // 20: kratos.session.v1.TeamStageV2.members:type_name -> kratos.session.v1.MemberInfoV2
+	63, // 21: kratos.session.v1.ListTeamStagesV2Response.team_stages:type_name -> kratos.session.v1.TeamStageV2
+	67, // 22: kratos.session.v1.ListTeamRunsV2Response.team_runs:type_name -> kratos.session.v1.TeamRunV2
+	70, // 23: kratos.session.v1.ListMemberSessionsV2Response.member_sessions:type_name -> kratos.session.v1.MemberSessionV2
+	77, // 24: kratos.session.v1.PlanBoardV2.steps:type_name -> kratos.session.v1.PlanStepV2
+	74, // 25: kratos.session.v1.ListPlanBoardsV2Response.plan_boards:type_name -> kratos.session.v1.PlanBoardV2
+	78, // 26: kratos.session.v1.PlanStepV2.result:type_name -> kratos.session.v1.StepResultV2
+	79, // 27: kratos.session.v1.PlanStepV2.error:type_name -> kratos.session.v1.StepErrorV2
+	80, // 28: kratos.session.v1.StepResultV2.member_reports:type_name -> kratos.session.v1.MemberReportV2
+	81, // 29: kratos.session.v1.StepResultV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
+	80, // 30: kratos.session.v1.StepErrorV2.failed_member:type_name -> kratos.session.v1.MemberReportV2
+	81, // 31: kratos.session.v1.MemberReportV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
+	77, // 32: kratos.session.v1.ListPlanStepsV2Response.plan_steps:type_name -> kratos.session.v1.PlanStepV2
+	87, // 33: kratos.session.v1.GraphStageV2.nodes:type_name -> kratos.session.v1.GraphNodeV2
+	84, // 34: kratos.session.v1.ListGraphStagesV2Response.graph_stages:type_name -> kratos.session.v1.GraphStageV2
+	87, // 35: kratos.session.v1.ListGraphNodesV2Response.graph_nodes:type_name -> kratos.session.v1.GraphNodeV2
 	4,  // 36: kratos.session.v1.SessionService.SearchSessions:input_type -> kratos.session.v1.SearchSessionsRequest
 	6,  // 37: kratos.session.v1.SessionService.CreateSession:input_type -> kratos.session.v1.CreateSessionRequest
-	10, // 38: kratos.session.v1.SessionService.DeleteSessionsByAgent:input_type -> kratos.session.v1.DeleteSessionsByAgentRequest
+	11, // 38: kratos.session.v1.SessionService.DeleteSessionsByAgent:input_type -> kratos.session.v1.DeleteSessionsByAgentRequest
 	7,  // 39: kratos.session.v1.SessionService.GetSession:input_type -> kratos.session.v1.GetSessionRequest
-	8,  // 40: kratos.session.v1.SessionService.UpdateSession:input_type -> kratos.session.v1.UpdateSessionRequest
-	9,  // 41: kratos.session.v1.SessionService.DeleteSession:input_type -> kratos.session.v1.DeleteSessionRequest
-	11, // 42: kratos.session.v1.SessionService.ArchiveSession:input_type -> kratos.session.v1.ArchiveSessionRequest
-	12, // 43: kratos.session.v1.SessionService.RestoreSession:input_type -> kratos.session.v1.RestoreSessionRequest
-	13, // 44: kratos.session.v1.SessionService.PinSession:input_type -> kratos.session.v1.PinSessionRequest
-	14, // 45: kratos.session.v1.SessionService.UnpinSession:input_type -> kratos.session.v1.UnpinSessionRequest
-	15, // 46: kratos.session.v1.SessionService.ExportSession:input_type -> kratos.session.v1.ExportSessionRequest
-	18, // 47: kratos.session.v1.SessionService.ListSessionRuns:input_type -> kratos.session.v1.ListSessionRunsRequest
-	21, // 48: kratos.session.v1.SessionService.ListSessionParticipants:input_type -> kratos.session.v1.ListSessionParticipantsRequest
-	23, // 49: kratos.session.v1.SessionService.GetSessionTimeline:input_type -> kratos.session.v1.GetSessionTimelineRequest
-	25, // 50: kratos.session.v1.SessionService.ListSessionMessages:input_type -> kratos.session.v1.ListSessionMessagesRequest
-	27, // 51: kratos.session.v1.SessionService.SearchSessionMessages:input_type -> kratos.session.v1.SearchSessionMessagesRequest
-	31, // 52: kratos.session.v1.SessionService.ListSessionTurns:input_type -> kratos.session.v1.ListSessionTurnsRequest
-	34, // 53: kratos.session.v1.SessionService.BatchPreviewSessions:input_type -> kratos.session.v1.BatchPreviewSessionsRequest
-	36, // 54: kratos.session.v1.SessionService.BatchArchiveSessions:input_type -> kratos.session.v1.BatchArchiveSessionsRequest
-	37, // 55: kratos.session.v1.SessionService.BatchDeleteSessions:input_type -> kratos.session.v1.BatchDeleteSessionsRequest
-	39, // 56: kratos.session.v1.SessionService.CompactSession:input_type -> kratos.session.v1.CompactSessionRequest
-	41, // 57: kratos.session.v1.SessionService.GetCompressStatus:input_type -> kratos.session.v1.GetCompressStatusRequest
-	43, // 58: kratos.session.v1.SessionService.ListChildSessions:input_type -> kratos.session.v1.ListChildSessionsRequest
-	46, // 59: kratos.session.v1.SessionService.GetSessionTree:input_type -> kratos.session.v1.GetSessionTreeRequest
-	49, // 60: kratos.session.v1.SessionService.ListActivities:input_type -> kratos.session.v1.ListActivitiesRequest
-	51, // 61: kratos.session.v1.SessionV2Service.ListTasks:input_type -> kratos.session.v1.ListTasksV2Request
-	53, // 62: kratos.session.v1.SessionV2Service.ListTurns:input_type -> kratos.session.v1.ListTurnsV2Request
-	55, // 63: kratos.session.v1.SessionV2Service.ListSteps:input_type -> kratos.session.v1.ListStepsV2Request
-	57, // 64: kratos.session.v1.SessionV2Service.GetStep:input_type -> kratos.session.v1.GetStepV2Request
-	64, // 65: kratos.session.v1.SessionV2Service.ListTeamStages:input_type -> kratos.session.v1.ListTeamStagesV2Request
-	67, // 66: kratos.session.v1.SessionV2Service.ListTeamRuns:input_type -> kratos.session.v1.ListTeamRunsV2Request
-	70, // 67: kratos.session.v1.SessionV2Service.ListMemberSessions:input_type -> kratos.session.v1.ListMemberSessionsV2Request
-	72, // 68: kratos.session.v1.SessionV2Service.ListOrphanMemberSessions:input_type -> kratos.session.v1.ListOrphanMemberSessionsV2Request
-	74, // 69: kratos.session.v1.SessionV2Service.ListPlanBoards:input_type -> kratos.session.v1.ListPlanBoardsV2Request
-	81, // 70: kratos.session.v1.SessionV2Service.ListPlanSteps:input_type -> kratos.session.v1.ListPlanStepsV2Request
-	84, // 71: kratos.session.v1.SessionV2Service.ListGraphStages:input_type -> kratos.session.v1.ListGraphStagesV2Request
-	87, // 72: kratos.session.v1.SessionV2Service.ListGraphNodes:input_type -> kratos.session.v1.ListGraphNodesV2Request
-	5,  // 73: kratos.session.v1.SessionService.SearchSessions:output_type -> kratos.session.v1.SearchSessionsResponse
-	0,  // 74: kratos.session.v1.SessionService.CreateSession:output_type -> kratos.session.v1.Session
-	89, // 75: kratos.session.v1.SessionService.DeleteSessionsByAgent:output_type -> google.protobuf.Empty
-	0,  // 76: kratos.session.v1.SessionService.GetSession:output_type -> kratos.session.v1.Session
-	0,  // 77: kratos.session.v1.SessionService.UpdateSession:output_type -> kratos.session.v1.Session
-	89, // 78: kratos.session.v1.SessionService.DeleteSession:output_type -> google.protobuf.Empty
-	89, // 79: kratos.session.v1.SessionService.ArchiveSession:output_type -> google.protobuf.Empty
-	0,  // 80: kratos.session.v1.SessionService.RestoreSession:output_type -> kratos.session.v1.Session
-	0,  // 81: kratos.session.v1.SessionService.PinSession:output_type -> kratos.session.v1.Session
-	0,  // 82: kratos.session.v1.SessionService.UnpinSession:output_type -> kratos.session.v1.Session
-	16, // 83: kratos.session.v1.SessionService.ExportSession:output_type -> kratos.session.v1.ExportSessionResponse
-	19, // 84: kratos.session.v1.SessionService.ListSessionRuns:output_type -> kratos.session.v1.ListSessionRunsResponse
-	22, // 85: kratos.session.v1.SessionService.ListSessionParticipants:output_type -> kratos.session.v1.ListSessionParticipantsResponse
-	3,  // 86: kratos.session.v1.SessionService.GetSessionTimeline:output_type -> kratos.session.v1.SessionTimeline
-	26, // 87: kratos.session.v1.SessionService.ListSessionMessages:output_type -> kratos.session.v1.ListSessionMessagesResponse
-	29, // 88: kratos.session.v1.SessionService.SearchSessionMessages:output_type -> kratos.session.v1.SearchSessionMessagesResponse
-	32, // 89: kratos.session.v1.SessionService.ListSessionTurns:output_type -> kratos.session.v1.ListSessionTurnsResponse
-	35, // 90: kratos.session.v1.SessionService.BatchPreviewSessions:output_type -> kratos.session.v1.BatchPreviewSessionsResponse
-	38, // 91: kratos.session.v1.SessionService.BatchArchiveSessions:output_type -> kratos.session.v1.BatchSessionsResponse
-	38, // 92: kratos.session.v1.SessionService.BatchDeleteSessions:output_type -> kratos.session.v1.BatchSessionsResponse
-	40, // 93: kratos.session.v1.SessionService.CompactSession:output_type -> kratos.session.v1.CompactSessionResponse
-	42, // 94: kratos.session.v1.SessionService.GetCompressStatus:output_type -> kratos.session.v1.GetCompressStatusReply
-	44, // 95: kratos.session.v1.SessionService.ListChildSessions:output_type -> kratos.session.v1.ListChildSessionsResponse
-	47, // 96: kratos.session.v1.SessionService.GetSessionTree:output_type -> kratos.session.v1.GetSessionTreeResponse
-	50, // 97: kratos.session.v1.SessionService.ListActivities:output_type -> kratos.session.v1.ListActivitiesResponse
-	52, // 98: kratos.session.v1.SessionV2Service.ListTasks:output_type -> kratos.session.v1.ListTasksV2Response
-	54, // 99: kratos.session.v1.SessionV2Service.ListTurns:output_type -> kratos.session.v1.ListTurnsV2Response
-	56, // 100: kratos.session.v1.SessionV2Service.ListSteps:output_type -> kratos.session.v1.ListStepsV2Response
-	58, // 101: kratos.session.v1.SessionV2Service.GetStep:output_type -> kratos.session.v1.GetStepV2Response
-	65, // 102: kratos.session.v1.SessionV2Service.ListTeamStages:output_type -> kratos.session.v1.ListTeamStagesV2Response
-	68, // 103: kratos.session.v1.SessionV2Service.ListTeamRuns:output_type -> kratos.session.v1.ListTeamRunsV2Response
-	71, // 104: kratos.session.v1.SessionV2Service.ListMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
-	71, // 105: kratos.session.v1.SessionV2Service.ListOrphanMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
-	75, // 106: kratos.session.v1.SessionV2Service.ListPlanBoards:output_type -> kratos.session.v1.ListPlanBoardsV2Response
-	82, // 107: kratos.session.v1.SessionV2Service.ListPlanSteps:output_type -> kratos.session.v1.ListPlanStepsV2Response
-	85, // 108: kratos.session.v1.SessionV2Service.ListGraphStages:output_type -> kratos.session.v1.ListGraphStagesV2Response
-	88, // 109: kratos.session.v1.SessionV2Service.ListGraphNodes:output_type -> kratos.session.v1.ListGraphNodesV2Response
-	73, // [73:110] is the sub-list for method output_type
-	36, // [36:73] is the sub-list for method input_type
+	8,  // 40: kratos.session.v1.SessionService.ForkSession:input_type -> kratos.session.v1.ForkSessionRequest
+	9,  // 41: kratos.session.v1.SessionService.UpdateSession:input_type -> kratos.session.v1.UpdateSessionRequest
+	10, // 42: kratos.session.v1.SessionService.DeleteSession:input_type -> kratos.session.v1.DeleteSessionRequest
+	12, // 43: kratos.session.v1.SessionService.ArchiveSession:input_type -> kratos.session.v1.ArchiveSessionRequest
+	13, // 44: kratos.session.v1.SessionService.RestoreSession:input_type -> kratos.session.v1.RestoreSessionRequest
+	14, // 45: kratos.session.v1.SessionService.PinSession:input_type -> kratos.session.v1.PinSessionRequest
+	15, // 46: kratos.session.v1.SessionService.UnpinSession:input_type -> kratos.session.v1.UnpinSessionRequest
+	16, // 47: kratos.session.v1.SessionService.ExportSession:input_type -> kratos.session.v1.ExportSessionRequest
+	19, // 48: kratos.session.v1.SessionService.ListSessionRuns:input_type -> kratos.session.v1.ListSessionRunsRequest
+	22, // 49: kratos.session.v1.SessionService.ListSessionParticipants:input_type -> kratos.session.v1.ListSessionParticipantsRequest
+	24, // 50: kratos.session.v1.SessionService.GetSessionTimeline:input_type -> kratos.session.v1.GetSessionTimelineRequest
+	26, // 51: kratos.session.v1.SessionService.ListSessionMessages:input_type -> kratos.session.v1.ListSessionMessagesRequest
+	28, // 52: kratos.session.v1.SessionService.SearchSessionMessages:input_type -> kratos.session.v1.SearchSessionMessagesRequest
+	32, // 53: kratos.session.v1.SessionService.ListSessionTurns:input_type -> kratos.session.v1.ListSessionTurnsRequest
+	35, // 54: kratos.session.v1.SessionService.BatchPreviewSessions:input_type -> kratos.session.v1.BatchPreviewSessionsRequest
+	37, // 55: kratos.session.v1.SessionService.BatchArchiveSessions:input_type -> kratos.session.v1.BatchArchiveSessionsRequest
+	38, // 56: kratos.session.v1.SessionService.BatchDeleteSessions:input_type -> kratos.session.v1.BatchDeleteSessionsRequest
+	40, // 57: kratos.session.v1.SessionService.CompactSession:input_type -> kratos.session.v1.CompactSessionRequest
+	42, // 58: kratos.session.v1.SessionService.GetCompressStatus:input_type -> kratos.session.v1.GetCompressStatusRequest
+	44, // 59: kratos.session.v1.SessionService.ListChildSessions:input_type -> kratos.session.v1.ListChildSessionsRequest
+	47, // 60: kratos.session.v1.SessionService.GetSessionTree:input_type -> kratos.session.v1.GetSessionTreeRequest
+	50, // 61: kratos.session.v1.SessionService.ListActivities:input_type -> kratos.session.v1.ListActivitiesRequest
+	52, // 62: kratos.session.v1.SessionV2Service.ListTasks:input_type -> kratos.session.v1.ListTasksV2Request
+	54, // 63: kratos.session.v1.SessionV2Service.ListTurns:input_type -> kratos.session.v1.ListTurnsV2Request
+	56, // 64: kratos.session.v1.SessionV2Service.ListSteps:input_type -> kratos.session.v1.ListStepsV2Request
+	58, // 65: kratos.session.v1.SessionV2Service.GetStep:input_type -> kratos.session.v1.GetStepV2Request
+	65, // 66: kratos.session.v1.SessionV2Service.ListTeamStages:input_type -> kratos.session.v1.ListTeamStagesV2Request
+	68, // 67: kratos.session.v1.SessionV2Service.ListTeamRuns:input_type -> kratos.session.v1.ListTeamRunsV2Request
+	71, // 68: kratos.session.v1.SessionV2Service.ListMemberSessions:input_type -> kratos.session.v1.ListMemberSessionsV2Request
+	73, // 69: kratos.session.v1.SessionV2Service.ListOrphanMemberSessions:input_type -> kratos.session.v1.ListOrphanMemberSessionsV2Request
+	75, // 70: kratos.session.v1.SessionV2Service.ListPlanBoards:input_type -> kratos.session.v1.ListPlanBoardsV2Request
+	82, // 71: kratos.session.v1.SessionV2Service.ListPlanSteps:input_type -> kratos.session.v1.ListPlanStepsV2Request
+	85, // 72: kratos.session.v1.SessionV2Service.ListGraphStages:input_type -> kratos.session.v1.ListGraphStagesV2Request
+	88, // 73: kratos.session.v1.SessionV2Service.ListGraphNodes:input_type -> kratos.session.v1.ListGraphNodesV2Request
+	5,  // 74: kratos.session.v1.SessionService.SearchSessions:output_type -> kratos.session.v1.SearchSessionsResponse
+	0,  // 75: kratos.session.v1.SessionService.CreateSession:output_type -> kratos.session.v1.Session
+	90, // 76: kratos.session.v1.SessionService.DeleteSessionsByAgent:output_type -> google.protobuf.Empty
+	0,  // 77: kratos.session.v1.SessionService.GetSession:output_type -> kratos.session.v1.Session
+	0,  // 78: kratos.session.v1.SessionService.ForkSession:output_type -> kratos.session.v1.Session
+	0,  // 79: kratos.session.v1.SessionService.UpdateSession:output_type -> kratos.session.v1.Session
+	90, // 80: kratos.session.v1.SessionService.DeleteSession:output_type -> google.protobuf.Empty
+	90, // 81: kratos.session.v1.SessionService.ArchiveSession:output_type -> google.protobuf.Empty
+	0,  // 82: kratos.session.v1.SessionService.RestoreSession:output_type -> kratos.session.v1.Session
+	0,  // 83: kratos.session.v1.SessionService.PinSession:output_type -> kratos.session.v1.Session
+	0,  // 84: kratos.session.v1.SessionService.UnpinSession:output_type -> kratos.session.v1.Session
+	17, // 85: kratos.session.v1.SessionService.ExportSession:output_type -> kratos.session.v1.ExportSessionResponse
+	20, // 86: kratos.session.v1.SessionService.ListSessionRuns:output_type -> kratos.session.v1.ListSessionRunsResponse
+	23, // 87: kratos.session.v1.SessionService.ListSessionParticipants:output_type -> kratos.session.v1.ListSessionParticipantsResponse
+	3,  // 88: kratos.session.v1.SessionService.GetSessionTimeline:output_type -> kratos.session.v1.SessionTimeline
+	27, // 89: kratos.session.v1.SessionService.ListSessionMessages:output_type -> kratos.session.v1.ListSessionMessagesResponse
+	30, // 90: kratos.session.v1.SessionService.SearchSessionMessages:output_type -> kratos.session.v1.SearchSessionMessagesResponse
+	33, // 91: kratos.session.v1.SessionService.ListSessionTurns:output_type -> kratos.session.v1.ListSessionTurnsResponse
+	36, // 92: kratos.session.v1.SessionService.BatchPreviewSessions:output_type -> kratos.session.v1.BatchPreviewSessionsResponse
+	39, // 93: kratos.session.v1.SessionService.BatchArchiveSessions:output_type -> kratos.session.v1.BatchSessionsResponse
+	39, // 94: kratos.session.v1.SessionService.BatchDeleteSessions:output_type -> kratos.session.v1.BatchSessionsResponse
+	41, // 95: kratos.session.v1.SessionService.CompactSession:output_type -> kratos.session.v1.CompactSessionResponse
+	43, // 96: kratos.session.v1.SessionService.GetCompressStatus:output_type -> kratos.session.v1.GetCompressStatusReply
+	45, // 97: kratos.session.v1.SessionService.ListChildSessions:output_type -> kratos.session.v1.ListChildSessionsResponse
+	48, // 98: kratos.session.v1.SessionService.GetSessionTree:output_type -> kratos.session.v1.GetSessionTreeResponse
+	51, // 99: kratos.session.v1.SessionService.ListActivities:output_type -> kratos.session.v1.ListActivitiesResponse
+	53, // 100: kratos.session.v1.SessionV2Service.ListTasks:output_type -> kratos.session.v1.ListTasksV2Response
+	55, // 101: kratos.session.v1.SessionV2Service.ListTurns:output_type -> kratos.session.v1.ListTurnsV2Response
+	57, // 102: kratos.session.v1.SessionV2Service.ListSteps:output_type -> kratos.session.v1.ListStepsV2Response
+	59, // 103: kratos.session.v1.SessionV2Service.GetStep:output_type -> kratos.session.v1.GetStepV2Response
+	66, // 104: kratos.session.v1.SessionV2Service.ListTeamStages:output_type -> kratos.session.v1.ListTeamStagesV2Response
+	69, // 105: kratos.session.v1.SessionV2Service.ListTeamRuns:output_type -> kratos.session.v1.ListTeamRunsV2Response
+	72, // 106: kratos.session.v1.SessionV2Service.ListMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
+	72, // 107: kratos.session.v1.SessionV2Service.ListOrphanMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
+	76, // 108: kratos.session.v1.SessionV2Service.ListPlanBoards:output_type -> kratos.session.v1.ListPlanBoardsV2Response
+	83, // 109: kratos.session.v1.SessionV2Service.ListPlanSteps:output_type -> kratos.session.v1.ListPlanStepsV2Response
+	86, // 110: kratos.session.v1.SessionV2Service.ListGraphStages:output_type -> kratos.session.v1.ListGraphStagesV2Response
+	89, // 111: kratos.session.v1.SessionV2Service.ListGraphNodes:output_type -> kratos.session.v1.ListGraphNodesV2Response
+	74, // [74:112] is the sub-list for method output_type
+	36, // [36:74] is the sub-list for method input_type
 	36, // [36:36] is the sub-list for extension type_name
 	36, // [36:36] is the sub-list for extension extendee
 	0,  // [0:36] is the sub-list for field type_name
@@ -8323,14 +8407,14 @@ func file_kratos_session_v1_session_proto_init() {
 	if File_kratos_session_v1_session_proto != nil {
 		return
 	}
-	file_kratos_session_v1_session_proto_msgTypes[25].OneofWrappers = []any{}
+	file_kratos_session_v1_session_proto_msgTypes[26].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_session_v1_session_proto_rawDesc), len(file_kratos_session_v1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   89,
+			NumMessages:   90,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

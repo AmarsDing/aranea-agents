@@ -45,9 +45,11 @@ func pgRepo(t *testing.T) bizcg.Repo {
 			t.Fatalf("exec failed: %v\nSQL: %s", err, q)
 		}
 	}
-	// Column layout mirrors sql/migrations/20261260_config_graph.sql.
+	// Column layout mirrors sql/migrations/20261260_config_graph.sql as amended by
+	// migration 20261261 (composite PK (id, generation) — same id must coexist
+	// across generations for dual-generation switchover).
 	mustExec(`CREATE TEMP TABLE config_graph_nodes (
-	  id TEXT PRIMARY KEY,
+	  id TEXT NOT NULL,
 	  node_type TEXT NOT NULL,
 	  ref_id TEXT NOT NULL DEFAULT '',
 	  node_key TEXT NOT NULL DEFAULT '',
@@ -57,18 +59,20 @@ func pgRepo(t *testing.T) bizcg.Repo {
 	  attrs_json TEXT NOT NULL DEFAULT '{}',
 	  generation INTEGER NOT NULL DEFAULT 0,
 	  created_at TEXT NOT NULL DEFAULT '',
-	  updated_at TEXT NOT NULL DEFAULT ''
+	  updated_at TEXT NOT NULL DEFAULT '',
+	  PRIMARY KEY (id, generation)
 	)`)
 	mustExec(`CREATE UNIQUE INDEX uq_config_graph_nodes_ref ON config_graph_nodes(node_type, ref_id, generation)`)
 	mustExec(`CREATE TEMP TABLE config_graph_edges (
-	  id TEXT PRIMARY KEY,
+	  id TEXT NOT NULL,
 	  src_id TEXT NOT NULL DEFAULT '',
 	  dst_id TEXT NOT NULL DEFAULT '',
 	  edge_type TEXT NOT NULL,
 	  evidence_json TEXT NOT NULL DEFAULT '{}',
 	  workspace_id TEXT NOT NULL DEFAULT '',
 	  generation INTEGER NOT NULL DEFAULT 0,
-	  created_at TEXT NOT NULL DEFAULT ''
+	  created_at TEXT NOT NULL DEFAULT '',
+	  PRIMARY KEY (id, generation)
 	)`)
 	mustExec(`CREATE UNIQUE INDEX uq_config_graph_edges ON config_graph_edges(src_id, dst_id, edge_type, generation)`)
 
@@ -177,6 +181,40 @@ func TestRepo_EdgeUpsertBrokenAndCounts(t *testing.T) {
 	c, _ = r.Counts(ctx, 1)
 	if c.Edges != 0 {
 		t.Fatalf("after DeleteOutEdges edges=%d, want 0", c.Edges)
+	}
+}
+
+// TestRepo_SameIDCoexistsAcrossGenerations 是 20261261 复合主键的回归测试：
+// 双代切换期间同一确定性 id 必须能在相邻两代共存（原 PRIMARY KEY(id) 下第二
+// 次全量重建必现 23505）。
+func TestRepo_SameIDCoexistsAcrossGenerations(t *testing.T) {
+	r := pgRepo(t)
+	ctx := context.Background()
+
+	for gen := int64(1); gen <= 2; gen++ {
+		if err := r.UpsertNodes(ctx, []bizcg.Node{
+			node("n1", bizcg.NodeTypeAgent, "uuid-a1", "ops_master", gen),
+		}); err != nil {
+			t.Fatalf("UpsertNodes gen=%d (same id): %v", gen, err)
+		}
+		if err := r.UpsertEdges(ctx, []bizcg.StoredEdge{
+			{ID: "e1", SrcID: "n1", DstID: "", Type: bizcg.EdgeTypeBoundPositionKey,
+				Evidence: map[string]any{"broken": true}, Generation: gen, CreatedAt: ts()},
+		}); err != nil {
+			t.Fatalf("UpsertEdges gen=%d (same id): %v", gen, err)
+		}
+	}
+	gen, err := r.MaxGeneration(ctx)
+	if err != nil || gen != 2 {
+		t.Fatalf("MaxGeneration=%d err=%v, want 2", gen, err)
+	}
+	c1, err := r.Counts(ctx, 1)
+	if err != nil || c1.Nodes != 1 || c1.Edges != 1 {
+		t.Fatalf("gen1 Counts=%+v err=%v, want {1 1 _}", c1, err)
+	}
+	c2, err := r.Counts(ctx, 2)
+	if err != nil || c2.Nodes != 1 || c2.Edges != 1 {
+		t.Fatalf("gen2 Counts=%+v err=%v, want {1 1 _}", c2, err)
 	}
 }
 

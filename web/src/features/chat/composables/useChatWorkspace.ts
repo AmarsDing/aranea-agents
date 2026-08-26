@@ -1089,6 +1089,7 @@ export function useChatWorkspace() {
       onArchiveSession: entityNav.onArchiveSession,
       onSessionDetail: entityNav.onSessionDetail,
       onNewSession: entityNav.onNewSession,
+      onForkSessionTurn: entityNav.onForkSessionTurn,
       openSessionTrace,
       openSessionEvents,
       compactSessionAction: sessionStore.compactSessionAction,

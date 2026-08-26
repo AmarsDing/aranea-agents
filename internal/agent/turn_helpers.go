@@ -140,6 +140,15 @@ type StreamConsumeOptions struct {
 	// fires with no meaningful event. Without this, the 60-minute task HTTP
 	// timeout keeps the stream channel silent and the guard cannot wake.
 	AbortOnStall context.CancelFunc
+	// OnPromptTokensAccumulated, when non-nil, is invoked synchronously from
+	// the consume loop after each usage event with the incremental billed
+	// prompt tokens observed (delta of the running billing total, always >0).
+	// Used by the team run-level token budget gate to accumulate mid-stream
+	// (2026-08-26 M80 fix): under graph runtime every persisted member usage
+	// row carries an attribution marker, so the recordMemberUsage accumulate
+	// branch (attribution=="") never fires and the gate would never trip.
+	// Keep the hook cheap — it runs on the single consume goroutine.
+	OnPromptTokensAccumulated func(deltaPromptTokens int)
 }
 
 func ConsumeEventStream(

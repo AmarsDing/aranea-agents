@@ -1069,6 +1069,498 @@ func (x *GetTeamRunSummaryResponse) GetSummary() *TeamRunSummary {
 	return nil
 }
 
+// 79-runtime-governance R7：run 级 stats 聚合（数据源全部是既有记账点：
+// model_token_usage_events / team_run_steps / decision_records system_guard，
+// 不落新表）。
+type TeamRunMemberStats struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	AgentKey         string                 `protobuf:"bytes,1,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
+	PromptTokens     int64                  `protobuf:"varint,2,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens int64                  `protobuf:"varint,3,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	CachedTokens     int64                  `protobuf:"varint,4,opt,name=cached_tokens,json=cachedTokens,proto3" json:"cached_tokens,omitempty"`
+	// calls 是 genuine 模型调用行数（非 step 数）。
+	Calls int32 `protobuf:"varint,5,opt,name=calls,proto3" json:"calls,omitempty"`
+	// steps 是 team_run_steps 中该成员的行数（装配层按 agent_key 合流）。
+	Steps         int32 `protobuf:"varint,6,opt,name=steps,proto3" json:"steps,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TeamRunMemberStats) Reset() {
+	*x = TeamRunMemberStats{}
+	mi := &file_kratos_team_v1_team_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TeamRunMemberStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TeamRunMemberStats) ProtoMessage() {}
+
+func (x *TeamRunMemberStats) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_team_v1_team_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TeamRunMemberStats.ProtoReflect.Descriptor instead.
+func (*TeamRunMemberStats) Descriptor() ([]byte, []int) {
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *TeamRunMemberStats) GetAgentKey() string {
+	if x != nil {
+		return x.AgentKey
+	}
+	return ""
+}
+
+func (x *TeamRunMemberStats) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *TeamRunMemberStats) GetCompletionTokens() int64 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *TeamRunMemberStats) GetCachedTokens() int64 {
+	if x != nil {
+		return x.CachedTokens
+	}
+	return 0
+}
+
+func (x *TeamRunMemberStats) GetCalls() int32 {
+	if x != nil {
+		return x.Calls
+	}
+	return 0
+}
+
+func (x *TeamRunMemberStats) GetSteps() int32 {
+	if x != nil {
+		return x.Steps
+	}
+	return 0
+}
+
+type TeamRunStats struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	RunId     string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TeamId    string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	SessionId string                 `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Status    string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	CreatedAt string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// turns = team_run_steps 行数；tool_calls = steps.tool_call_count 求和。
+	Turns            int32   `protobuf:"varint,6,opt,name=turns,proto3" json:"turns,omitempty"`
+	ToolCalls        int32   `protobuf:"varint,7,opt,name=tool_calls,json=toolCalls,proto3" json:"tool_calls,omitempty"`
+	PromptTokens     int64   `protobuf:"varint,8,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens int64   `protobuf:"varint,9,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	CachedTokens     int64   `protobuf:"varint,10,opt,name=cached_tokens,json=cachedTokens,proto3" json:"cached_tokens,omitempty"`
+	CacheHitRatio    float64 `protobuf:"fixed64,11,opt,name=cache_hit_ratio,json=cacheHitRatio,proto3" json:"cache_hit_ratio,omitempty"`
+	// G-2：run 内单次模型调用 input tokens 峰值（genuine 成员行 MAX）。
+	MaxTurnInputTokens int64 `protobuf:"varint,12,opt,name=max_turn_input_tokens,json=maxTurnInputTokens,proto3" json:"max_turn_input_tokens,omitempty"`
+	LoopGuardBlocks    int32 `protobuf:"varint,13,opt,name=loop_guard_blocks,json=loopGuardBlocks,proto3" json:"loop_guard_blocks,omitempty"`
+	PruneCount         int32 `protobuf:"varint,14,opt,name=prune_count,json=pruneCount,proto3" json:"prune_count,omitempty"`
+	PruneBytes         int64 `protobuf:"varint,15,opt,name=prune_bytes,json=pruneBytes,proto3" json:"prune_bytes,omitempty"`
+	// G-1：终审压缩触发次数。
+	CompactCount      int32                 `protobuf:"varint,16,opt,name=compact_count,json=compactCount,proto3" json:"compact_count,omitempty"`
+	BudgetTripped     bool                  `protobuf:"varint,17,opt,name=budget_tripped,json=budgetTripped,proto3" json:"budget_tripped,omitempty"`
+	NoProgressTripped bool                  `protobuf:"varint,18,opt,name=no_progress_tripped,json=noProgressTripped,proto3" json:"no_progress_tripped,omitempty"`
+	Members           []*TeamRunMemberStats `protobuf:"bytes,19,rep,name=members,proto3" json:"members,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *TeamRunStats) Reset() {
+	*x = TeamRunStats{}
+	mi := &file_kratos_team_v1_team_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TeamRunStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TeamRunStats) ProtoMessage() {}
+
+func (x *TeamRunStats) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_team_v1_team_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TeamRunStats.ProtoReflect.Descriptor instead.
+func (*TeamRunStats) Descriptor() ([]byte, []int) {
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *TeamRunStats) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *TeamRunStats) GetTeamId() string {
+	if x != nil {
+		return x.TeamId
+	}
+	return ""
+}
+
+func (x *TeamRunStats) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *TeamRunStats) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *TeamRunStats) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *TeamRunStats) GetTurns() int32 {
+	if x != nil {
+		return x.Turns
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetToolCalls() int32 {
+	if x != nil {
+		return x.ToolCalls
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetCompletionTokens() int64 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetCachedTokens() int64 {
+	if x != nil {
+		return x.CachedTokens
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetCacheHitRatio() float64 {
+	if x != nil {
+		return x.CacheHitRatio
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetMaxTurnInputTokens() int64 {
+	if x != nil {
+		return x.MaxTurnInputTokens
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetLoopGuardBlocks() int32 {
+	if x != nil {
+		return x.LoopGuardBlocks
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetPruneCount() int32 {
+	if x != nil {
+		return x.PruneCount
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetPruneBytes() int64 {
+	if x != nil {
+		return x.PruneBytes
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetCompactCount() int32 {
+	if x != nil {
+		return x.CompactCount
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetBudgetTripped() bool {
+	if x != nil {
+		return x.BudgetTripped
+	}
+	return false
+}
+
+func (x *TeamRunStats) GetNoProgressTripped() bool {
+	if x != nil {
+		return x.NoProgressTripped
+	}
+	return false
+}
+
+func (x *TeamRunStats) GetMembers() []*TeamRunMemberStats {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+type GetTeamRunStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTeamRunStatsRequest) Reset() {
+	*x = GetTeamRunStatsRequest{}
+	mi := &file_kratos_team_v1_team_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTeamRunStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTeamRunStatsRequest) ProtoMessage() {}
+
+func (x *GetTeamRunStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_team_v1_team_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTeamRunStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetTeamRunStatsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetTeamRunStatsRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type GetTeamRunStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stats         *TeamRunStats          `protobuf:"bytes,1,opt,name=stats,proto3" json:"stats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTeamRunStatsResponse) Reset() {
+	*x = GetTeamRunStatsResponse{}
+	mi := &file_kratos_team_v1_team_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTeamRunStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTeamRunStatsResponse) ProtoMessage() {}
+
+func (x *GetTeamRunStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_team_v1_team_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTeamRunStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetTeamRunStatsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetTeamRunStatsResponse) GetStats() *TeamRunStats {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
+type ExportTeamRunStatsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// from/to 为 RFC3339 窗口（created_at，含边界）；空 = 不限。
+	From string `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	To   string `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	// session_id 空 = 跨会话。
+	SessionId string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// limit 上限由服务端收口（默认 500，硬上限 1000）。
+	Limit         int32 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportTeamRunStatsRequest) Reset() {
+	*x = ExportTeamRunStatsRequest{}
+	mi := &file_kratos_team_v1_team_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportTeamRunStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportTeamRunStatsRequest) ProtoMessage() {}
+
+func (x *ExportTeamRunStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_team_v1_team_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportTeamRunStatsRequest.ProtoReflect.Descriptor instead.
+func (*ExportTeamRunStatsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ExportTeamRunStatsRequest) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *ExportTeamRunStatsRequest) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+func (x *ExportTeamRunStatsRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *ExportTeamRunStatsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ExportTeamRunStatsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// jsonl 每行一个 TeamRunStats JSON 对象（\n 分隔，行内无换行）。
+	Jsonl         string `protobuf:"bytes,1,opt,name=jsonl,proto3" json:"jsonl,omitempty"`
+	Count         int32  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportTeamRunStatsResponse) Reset() {
+	*x = ExportTeamRunStatsResponse{}
+	mi := &file_kratos_team_v1_team_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportTeamRunStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportTeamRunStatsResponse) ProtoMessage() {}
+
+func (x *ExportTeamRunStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_team_v1_team_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportTeamRunStatsResponse.ProtoReflect.Descriptor instead.
+func (*ExportTeamRunStatsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ExportTeamRunStatsResponse) GetJsonl() string {
+	if x != nil {
+		return x.Jsonl
+	}
+	return ""
+}
+
+func (x *ExportTeamRunStatsResponse) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
 type ActivitySnapshotView struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
@@ -1088,7 +1580,7 @@ type ActivitySnapshotView struct {
 
 func (x *ActivitySnapshotView) Reset() {
 	*x = ActivitySnapshotView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[7]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1100,7 +1592,7 @@ func (x *ActivitySnapshotView) String() string {
 func (*ActivitySnapshotView) ProtoMessage() {}
 
 func (x *ActivitySnapshotView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[7]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1113,7 +1605,7 @@ func (x *ActivitySnapshotView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivitySnapshotView.ProtoReflect.Descriptor instead.
 func (*ActivitySnapshotView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{7}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ActivitySnapshotView) GetKind() string {
@@ -1215,7 +1707,7 @@ type AgentNodeStateView struct {
 
 func (x *AgentNodeStateView) Reset() {
 	*x = AgentNodeStateView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[8]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1719,7 @@ func (x *AgentNodeStateView) String() string {
 func (*AgentNodeStateView) ProtoMessage() {}
 
 func (x *AgentNodeStateView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[8]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1732,7 @@ func (x *AgentNodeStateView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentNodeStateView.ProtoReflect.Descriptor instead.
 func (*AgentNodeStateView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{8}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AgentNodeStateView) GetNodeId() string {
@@ -1350,7 +1842,7 @@ type GetTeamRunObservatoryRequest struct {
 
 func (x *GetTeamRunObservatoryRequest) Reset() {
 	*x = GetTeamRunObservatoryRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[9]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1362,7 +1854,7 @@ func (x *GetTeamRunObservatoryRequest) String() string {
 func (*GetTeamRunObservatoryRequest) ProtoMessage() {}
 
 func (x *GetTeamRunObservatoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[9]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1375,7 +1867,7 @@ func (x *GetTeamRunObservatoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamRunObservatoryRequest.ProtoReflect.Descriptor instead.
 func (*GetTeamRunObservatoryRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{9}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetTeamRunObservatoryRequest) GetRunId() string {
@@ -1407,7 +1899,7 @@ type GetTeamRunObservatoryResponse struct {
 
 func (x *GetTeamRunObservatoryResponse) Reset() {
 	*x = GetTeamRunObservatoryResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[10]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1419,7 +1911,7 @@ func (x *GetTeamRunObservatoryResponse) String() string {
 func (*GetTeamRunObservatoryResponse) ProtoMessage() {}
 
 func (x *GetTeamRunObservatoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[10]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1432,7 +1924,7 @@ func (x *GetTeamRunObservatoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamRunObservatoryResponse.ProtoReflect.Descriptor instead.
 func (*GetTeamRunObservatoryResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{10}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetTeamRunObservatoryResponse) GetRunId() string {
@@ -1516,7 +2008,7 @@ type GetTeamRunObservatoryTimelineRequest struct {
 
 func (x *GetTeamRunObservatoryTimelineRequest) Reset() {
 	*x = GetTeamRunObservatoryTimelineRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[11]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1528,7 +2020,7 @@ func (x *GetTeamRunObservatoryTimelineRequest) String() string {
 func (*GetTeamRunObservatoryTimelineRequest) ProtoMessage() {}
 
 func (x *GetTeamRunObservatoryTimelineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[11]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1541,7 +2033,7 @@ func (x *GetTeamRunObservatoryTimelineRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use GetTeamRunObservatoryTimelineRequest.ProtoReflect.Descriptor instead.
 func (*GetTeamRunObservatoryTimelineRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{11}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetTeamRunObservatoryTimelineRequest) GetRunId() string {
@@ -1581,7 +2073,7 @@ type ActivityTimelineRow struct {
 
 func (x *ActivityTimelineRow) Reset() {
 	*x = ActivityTimelineRow{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[12]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1593,7 +2085,7 @@ func (x *ActivityTimelineRow) String() string {
 func (*ActivityTimelineRow) ProtoMessage() {}
 
 func (x *ActivityTimelineRow) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[12]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1606,7 +2098,7 @@ func (x *ActivityTimelineRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivityTimelineRow.ProtoReflect.Descriptor instead.
 func (*ActivityTimelineRow) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{12}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ActivityTimelineRow) GetNodeId() string {
@@ -1675,7 +2167,7 @@ type GetTeamRunObservatoryTimelineResponse struct {
 
 func (x *GetTeamRunObservatoryTimelineResponse) Reset() {
 	*x = GetTeamRunObservatoryTimelineResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[13]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1687,7 +2179,7 @@ func (x *GetTeamRunObservatoryTimelineResponse) String() string {
 func (*GetTeamRunObservatoryTimelineResponse) ProtoMessage() {}
 
 func (x *GetTeamRunObservatoryTimelineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[13]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1700,7 +2192,7 @@ func (x *GetTeamRunObservatoryTimelineResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use GetTeamRunObservatoryTimelineResponse.ProtoReflect.Descriptor instead.
 func (*GetTeamRunObservatoryTimelineResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{13}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetTeamRunObservatoryTimelineResponse) GetRows() []*ActivityTimelineRow {
@@ -1731,7 +2223,7 @@ type OrchestrationMember struct {
 
 func (x *OrchestrationMember) Reset() {
 	*x = OrchestrationMember{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[14]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1743,7 +2235,7 @@ func (x *OrchestrationMember) String() string {
 func (*OrchestrationMember) ProtoMessage() {}
 
 func (x *OrchestrationMember) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[14]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1756,7 +2248,7 @@ func (x *OrchestrationMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrchestrationMember.ProtoReflect.Descriptor instead.
 func (*OrchestrationMember) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{14}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *OrchestrationMember) GetAgentId() string {
@@ -1825,7 +2317,7 @@ type EmbeddedGraphNode struct {
 
 func (x *EmbeddedGraphNode) Reset() {
 	*x = EmbeddedGraphNode{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[15]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1837,7 +2329,7 @@ func (x *EmbeddedGraphNode) String() string {
 func (*EmbeddedGraphNode) ProtoMessage() {}
 
 func (x *EmbeddedGraphNode) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[15]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1850,7 +2342,7 @@ func (x *EmbeddedGraphNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmbeddedGraphNode.ProtoReflect.Descriptor instead.
 func (*EmbeddedGraphNode) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{15}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *EmbeddedGraphNode) GetId() string {
@@ -1971,7 +2463,7 @@ type EmbeddedGraphEdge struct {
 
 func (x *EmbeddedGraphEdge) Reset() {
 	*x = EmbeddedGraphEdge{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[16]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1983,7 +2475,7 @@ func (x *EmbeddedGraphEdge) String() string {
 func (*EmbeddedGraphEdge) ProtoMessage() {}
 
 func (x *EmbeddedGraphEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[16]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1996,7 +2488,7 @@ func (x *EmbeddedGraphEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmbeddedGraphEdge.ProtoReflect.Descriptor instead.
 func (*EmbeddedGraphEdge) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{16}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EmbeddedGraphEdge) GetId() string {
@@ -2046,7 +2538,7 @@ type EmbeddedGraph struct {
 
 func (x *EmbeddedGraph) Reset() {
 	*x = EmbeddedGraph{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[17]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2058,7 +2550,7 @@ func (x *EmbeddedGraph) String() string {
 func (*EmbeddedGraph) ProtoMessage() {}
 
 func (x *EmbeddedGraph) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[17]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2071,7 +2563,7 @@ func (x *EmbeddedGraph) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmbeddedGraph.ProtoReflect.Descriptor instead.
 func (*EmbeddedGraph) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{17}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *EmbeddedGraph) GetVersion() int32 {
@@ -2114,7 +2606,7 @@ type TeamRetryPolicySpec struct {
 
 func (x *TeamRetryPolicySpec) Reset() {
 	*x = TeamRetryPolicySpec{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[18]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2126,7 +2618,7 @@ func (x *TeamRetryPolicySpec) String() string {
 func (*TeamRetryPolicySpec) ProtoMessage() {}
 
 func (x *TeamRetryPolicySpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[18]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2139,7 +2631,7 @@ func (x *TeamRetryPolicySpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeamRetryPolicySpec.ProtoReflect.Descriptor instead.
 func (*TeamRetryPolicySpec) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{18}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *TeamRetryPolicySpec) GetMaxAttempts() int32 {
@@ -2181,7 +2673,7 @@ type TeamNodeFailureOverrideSpec struct {
 
 func (x *TeamNodeFailureOverrideSpec) Reset() {
 	*x = TeamNodeFailureOverrideSpec{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[19]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2193,7 +2685,7 @@ func (x *TeamNodeFailureOverrideSpec) String() string {
 func (*TeamNodeFailureOverrideSpec) ProtoMessage() {}
 
 func (x *TeamNodeFailureOverrideSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[19]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2206,7 +2698,7 @@ func (x *TeamNodeFailureOverrideSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeamNodeFailureOverrideSpec.ProtoReflect.Descriptor instead.
 func (*TeamNodeFailureOverrideSpec) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{19}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *TeamNodeFailureOverrideSpec) GetPolicy() string {
@@ -2241,7 +2733,7 @@ type CircuitBreakerSpec struct {
 
 func (x *CircuitBreakerSpec) Reset() {
 	*x = CircuitBreakerSpec{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[20]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2253,7 +2745,7 @@ func (x *CircuitBreakerSpec) String() string {
 func (*CircuitBreakerSpec) ProtoMessage() {}
 
 func (x *CircuitBreakerSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[20]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2266,7 +2758,7 @@ func (x *CircuitBreakerSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CircuitBreakerSpec.ProtoReflect.Descriptor instead.
 func (*CircuitBreakerSpec) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{20}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *CircuitBreakerSpec) GetFailureThreshold() int32 {
@@ -2304,7 +2796,7 @@ type FailurePolicySpec struct {
 
 func (x *FailurePolicySpec) Reset() {
 	*x = FailurePolicySpec{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[21]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2316,7 +2808,7 @@ func (x *FailurePolicySpec) String() string {
 func (*FailurePolicySpec) ProtoMessage() {}
 
 func (x *FailurePolicySpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[21]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2329,7 +2821,7 @@ func (x *FailurePolicySpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FailurePolicySpec.ProtoReflect.Descriptor instead.
 func (*FailurePolicySpec) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{21}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *FailurePolicySpec) GetDefaultPolicy() string {
@@ -2400,7 +2892,7 @@ type OrchestrationSpec struct {
 
 func (x *OrchestrationSpec) Reset() {
 	*x = OrchestrationSpec{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[22]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2412,7 +2904,7 @@ func (x *OrchestrationSpec) String() string {
 func (*OrchestrationSpec) ProtoMessage() {}
 
 func (x *OrchestrationSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[22]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2425,7 +2917,7 @@ func (x *OrchestrationSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrchestrationSpec.ProtoReflect.Descriptor instead.
 func (*OrchestrationSpec) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{22}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *OrchestrationSpec) GetVersion() int32 {
@@ -2543,7 +3035,7 @@ type ResumeTeamRunExecutionRequest struct {
 
 func (x *ResumeTeamRunExecutionRequest) Reset() {
 	*x = ResumeTeamRunExecutionRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[23]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2555,7 +3047,7 @@ func (x *ResumeTeamRunExecutionRequest) String() string {
 func (*ResumeTeamRunExecutionRequest) ProtoMessage() {}
 
 func (x *ResumeTeamRunExecutionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[23]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2568,7 +3060,7 @@ func (x *ResumeTeamRunExecutionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeTeamRunExecutionRequest.ProtoReflect.Descriptor instead.
 func (*ResumeTeamRunExecutionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{23}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ResumeTeamRunExecutionRequest) GetRunId() string {
@@ -2596,7 +3088,7 @@ type ResumeTeamRunExecutionResponse struct {
 
 func (x *ResumeTeamRunExecutionResponse) Reset() {
 	*x = ResumeTeamRunExecutionResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[24]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2608,7 +3100,7 @@ func (x *ResumeTeamRunExecutionResponse) String() string {
 func (*ResumeTeamRunExecutionResponse) ProtoMessage() {}
 
 func (x *ResumeTeamRunExecutionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[24]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2621,7 +3113,7 @@ func (x *ResumeTeamRunExecutionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeTeamRunExecutionResponse.ProtoReflect.Descriptor instead.
 func (*ResumeTeamRunExecutionResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{24}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ResumeTeamRunExecutionResponse) GetRunId() string {
@@ -2656,7 +3148,7 @@ type ListTeamsRequest struct {
 
 func (x *ListTeamsRequest) Reset() {
 	*x = ListTeamsRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[25]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2668,7 +3160,7 @@ func (x *ListTeamsRequest) String() string {
 func (*ListTeamsRequest) ProtoMessage() {}
 
 func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[25]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2681,7 +3173,7 @@ func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamsRequest.ProtoReflect.Descriptor instead.
 func (*ListTeamsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{25}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ListTeamsRequest) GetCountOnly() bool {
@@ -2702,7 +3194,7 @@ type ListTeamsResponse struct {
 
 func (x *ListTeamsResponse) Reset() {
 	*x = ListTeamsResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[26]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2714,7 +3206,7 @@ func (x *ListTeamsResponse) String() string {
 func (*ListTeamsResponse) ProtoMessage() {}
 
 func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[26]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2727,7 +3219,7 @@ func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamsResponse.ProtoReflect.Descriptor instead.
 func (*ListTeamsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{26}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListTeamsResponse) GetItems() []*Team {
@@ -2758,7 +3250,7 @@ type CreateTeamRequest struct {
 
 func (x *CreateTeamRequest) Reset() {
 	*x = CreateTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[27]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2770,7 +3262,7 @@ func (x *CreateTeamRequest) String() string {
 func (*CreateTeamRequest) ProtoMessage() {}
 
 func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[27]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2783,7 +3275,7 @@ func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTeamRequest.ProtoReflect.Descriptor instead.
 func (*CreateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{27}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *CreateTeamRequest) GetTeamKey() string {
@@ -2837,7 +3329,7 @@ type GetTeamRequest struct {
 
 func (x *GetTeamRequest) Reset() {
 	*x = GetTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[28]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2849,7 +3341,7 @@ func (x *GetTeamRequest) String() string {
 func (*GetTeamRequest) ProtoMessage() {}
 
 func (x *GetTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[28]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2862,7 +3354,7 @@ func (x *GetTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamRequest.ProtoReflect.Descriptor instead.
 func (*GetTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{28}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetTeamRequest) GetId() string {
@@ -2882,7 +3374,7 @@ type UpdateTeamRequest struct {
 
 func (x *UpdateTeamRequest) Reset() {
 	*x = UpdateTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[29]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2894,7 +3386,7 @@ func (x *UpdateTeamRequest) String() string {
 func (*UpdateTeamRequest) ProtoMessage() {}
 
 func (x *UpdateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[29]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2907,7 +3399,7 @@ func (x *UpdateTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTeamRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{29}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UpdateTeamRequest) GetId() string {
@@ -2933,7 +3425,7 @@ type DeleteTeamRequest struct {
 
 func (x *DeleteTeamRequest) Reset() {
 	*x = DeleteTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[30]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2945,7 +3437,7 @@ func (x *DeleteTeamRequest) String() string {
 func (*DeleteTeamRequest) ProtoMessage() {}
 
 func (x *DeleteTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[30]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2958,7 +3450,7 @@ func (x *DeleteTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTeamRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{30}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DeleteTeamRequest) GetId() string {
@@ -2977,7 +3469,7 @@ type DuplicateTeamRequest struct {
 
 func (x *DuplicateTeamRequest) Reset() {
 	*x = DuplicateTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[31]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2989,7 +3481,7 @@ func (x *DuplicateTeamRequest) String() string {
 func (*DuplicateTeamRequest) ProtoMessage() {}
 
 func (x *DuplicateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[31]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3002,7 +3494,7 @@ func (x *DuplicateTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DuplicateTeamRequest.ProtoReflect.Descriptor instead.
 func (*DuplicateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{31}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DuplicateTeamRequest) GetId() string {
@@ -3022,7 +3514,7 @@ type ListTeamRunsRequest struct {
 
 func (x *ListTeamRunsRequest) Reset() {
 	*x = ListTeamRunsRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[32]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3034,7 +3526,7 @@ func (x *ListTeamRunsRequest) String() string {
 func (*ListTeamRunsRequest) ProtoMessage() {}
 
 func (x *ListTeamRunsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[32]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3047,7 +3539,7 @@ func (x *ListTeamRunsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamRunsRequest.ProtoReflect.Descriptor instead.
 func (*ListTeamRunsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{32}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListTeamRunsRequest) GetTeamId() string {
@@ -3073,7 +3565,7 @@ type ListTeamRunsResponse struct {
 
 func (x *ListTeamRunsResponse) Reset() {
 	*x = ListTeamRunsResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[33]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3085,7 +3577,7 @@ func (x *ListTeamRunsResponse) String() string {
 func (*ListTeamRunsResponse) ProtoMessage() {}
 
 func (x *ListTeamRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[33]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3098,7 +3590,7 @@ func (x *ListTeamRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamRunsResponse.ProtoReflect.Descriptor instead.
 func (*ListTeamRunsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{33}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListTeamRunsResponse) GetItems() []*TeamRun {
@@ -3117,7 +3609,7 @@ type ListTeamRunStepsRequest struct {
 
 func (x *ListTeamRunStepsRequest) Reset() {
 	*x = ListTeamRunStepsRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[34]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3129,7 +3621,7 @@ func (x *ListTeamRunStepsRequest) String() string {
 func (*ListTeamRunStepsRequest) ProtoMessage() {}
 
 func (x *ListTeamRunStepsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[34]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3142,7 +3634,7 @@ func (x *ListTeamRunStepsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamRunStepsRequest.ProtoReflect.Descriptor instead.
 func (*ListTeamRunStepsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{34}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListTeamRunStepsRequest) GetRunId() string {
@@ -3161,7 +3653,7 @@ type ListTeamRunStepsResponse struct {
 
 func (x *ListTeamRunStepsResponse) Reset() {
 	*x = ListTeamRunStepsResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[35]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3173,7 +3665,7 @@ func (x *ListTeamRunStepsResponse) String() string {
 func (*ListTeamRunStepsResponse) ProtoMessage() {}
 
 func (x *ListTeamRunStepsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[35]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3186,7 +3678,7 @@ func (x *ListTeamRunStepsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamRunStepsResponse.ProtoReflect.Descriptor instead.
 func (*ListTeamRunStepsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{35}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListTeamRunStepsResponse) GetItems() []*TeamRunStep {
@@ -3205,7 +3697,7 @@ type GetTeamRunRequest struct {
 
 func (x *GetTeamRunRequest) Reset() {
 	*x = GetTeamRunRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[36]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3217,7 +3709,7 @@ func (x *GetTeamRunRequest) String() string {
 func (*GetTeamRunRequest) ProtoMessage() {}
 
 func (x *GetTeamRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[36]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3230,7 +3722,7 @@ func (x *GetTeamRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamRunRequest.ProtoReflect.Descriptor instead.
 func (*GetTeamRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{36}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetTeamRunRequest) GetId() string {
@@ -3249,7 +3741,7 @@ type CancelTeamRunRequest struct {
 
 func (x *CancelTeamRunRequest) Reset() {
 	*x = CancelTeamRunRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[37]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3261,7 +3753,7 @@ func (x *CancelTeamRunRequest) String() string {
 func (*CancelTeamRunRequest) ProtoMessage() {}
 
 func (x *CancelTeamRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[37]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3274,7 +3766,7 @@ func (x *CancelTeamRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTeamRunRequest.ProtoReflect.Descriptor instead.
 func (*CancelTeamRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{37}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CancelTeamRunRequest) GetId() string {
@@ -3294,7 +3786,7 @@ type RunTeamTestRequest struct {
 
 func (x *RunTeamTestRequest) Reset() {
 	*x = RunTeamTestRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[38]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3306,7 +3798,7 @@ func (x *RunTeamTestRequest) String() string {
 func (*RunTeamTestRequest) ProtoMessage() {}
 
 func (x *RunTeamTestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[38]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3319,7 +3811,7 @@ func (x *RunTeamTestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunTeamTestRequest.ProtoReflect.Descriptor instead.
 func (*RunTeamTestRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{38}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RunTeamTestRequest) GetId() string {
@@ -3346,7 +3838,7 @@ type RunTeamTestResponse struct {
 
 func (x *RunTeamTestResponse) Reset() {
 	*x = RunTeamTestResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[39]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3358,7 +3850,7 @@ func (x *RunTeamTestResponse) String() string {
 func (*RunTeamTestResponse) ProtoMessage() {}
 
 func (x *RunTeamTestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[39]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3371,7 +3863,7 @@ func (x *RunTeamTestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunTeamTestResponse.ProtoReflect.Descriptor instead.
 func (*RunTeamTestResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{39}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *RunTeamTestResponse) GetRun() *TeamRun {
@@ -3399,7 +3891,7 @@ type UpdateSwarmMembersRequest struct {
 
 func (x *UpdateSwarmMembersRequest) Reset() {
 	*x = UpdateSwarmMembersRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[40]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3411,7 +3903,7 @@ func (x *UpdateSwarmMembersRequest) String() string {
 func (*UpdateSwarmMembersRequest) ProtoMessage() {}
 
 func (x *UpdateSwarmMembersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[40]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3424,7 +3916,7 @@ func (x *UpdateSwarmMembersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSwarmMembersRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSwarmMembersRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{40}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *UpdateSwarmMembersRequest) GetTeamId() string {
@@ -3457,7 +3949,7 @@ type UpdateSwarmMembersResponse struct {
 
 func (x *UpdateSwarmMembersResponse) Reset() {
 	*x = UpdateSwarmMembersResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[41]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3469,7 +3961,7 @@ func (x *UpdateSwarmMembersResponse) String() string {
 func (*UpdateSwarmMembersResponse) ProtoMessage() {}
 
 func (x *UpdateSwarmMembersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[41]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3482,7 +3974,7 @@ func (x *UpdateSwarmMembersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSwarmMembersResponse.ProtoReflect.Descriptor instead.
 func (*UpdateSwarmMembersResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{41}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *UpdateSwarmMembersResponse) GetUpdated() bool {
@@ -3501,7 +3993,7 @@ type ExportTeamStructureRequest struct {
 
 func (x *ExportTeamStructureRequest) Reset() {
 	*x = ExportTeamStructureRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[42]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3513,7 +4005,7 @@ func (x *ExportTeamStructureRequest) String() string {
 func (*ExportTeamStructureRequest) ProtoMessage() {}
 
 func (x *ExportTeamStructureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[42]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3526,7 +4018,7 @@ func (x *ExportTeamStructureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportTeamStructureRequest.ProtoReflect.Descriptor instead.
 func (*ExportTeamStructureRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{42}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ExportTeamStructureRequest) GetTeamId() string {
@@ -3548,7 +4040,7 @@ type ExportTeamStructureResponse struct {
 
 func (x *ExportTeamStructureResponse) Reset() {
 	*x = ExportTeamStructureResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[43]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3560,7 +4052,7 @@ func (x *ExportTeamStructureResponse) String() string {
 func (*ExportTeamStructureResponse) ProtoMessage() {}
 
 func (x *ExportTeamStructureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[43]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3573,7 +4065,7 @@ func (x *ExportTeamStructureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportTeamStructureResponse.ProtoReflect.Descriptor instead.
 func (*ExportTeamStructureResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{43}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ExportTeamStructureResponse) GetEntryNodeId() string {
@@ -3615,7 +4107,7 @@ type StructureNode struct {
 
 func (x *StructureNode) Reset() {
 	*x = StructureNode{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[44]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3627,7 +4119,7 @@ func (x *StructureNode) String() string {
 func (*StructureNode) ProtoMessage() {}
 
 func (x *StructureNode) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[44]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3640,7 +4132,7 @@ func (x *StructureNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StructureNode.ProtoReflect.Descriptor instead.
 func (*StructureNode) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{44}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *StructureNode) GetNodeId() string {
@@ -3674,7 +4166,7 @@ type StructureEdge struct {
 
 func (x *StructureEdge) Reset() {
 	*x = StructureEdge{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[45]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3686,7 +4178,7 @@ func (x *StructureEdge) String() string {
 func (*StructureEdge) ProtoMessage() {}
 
 func (x *StructureEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[45]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3699,7 +4191,7 @@ func (x *StructureEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StructureEdge.ProtoReflect.Descriptor instead.
 func (*StructureEdge) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{45}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *StructureEdge) GetFromNodeId() string {
@@ -3726,7 +4218,7 @@ type StructureSurface struct {
 
 func (x *StructureSurface) Reset() {
 	*x = StructureSurface{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[46]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3738,7 +4230,7 @@ func (x *StructureSurface) String() string {
 func (*StructureSurface) ProtoMessage() {}
 
 func (x *StructureSurface) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[46]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3751,7 +4243,7 @@ func (x *StructureSurface) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StructureSurface.ProtoReflect.Descriptor instead.
 func (*StructureSurface) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{46}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *StructureSurface) GetNodeId() string {
@@ -3779,7 +4271,7 @@ type CompileTeamGraphRequest struct {
 
 func (x *CompileTeamGraphRequest) Reset() {
 	*x = CompileTeamGraphRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[47]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3791,7 +4283,7 @@ func (x *CompileTeamGraphRequest) String() string {
 func (*CompileTeamGraphRequest) ProtoMessage() {}
 
 func (x *CompileTeamGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[47]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3804,7 +4296,7 @@ func (x *CompileTeamGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompileTeamGraphRequest.ProtoReflect.Descriptor instead.
 func (*CompileTeamGraphRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{47}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *CompileTeamGraphRequest) GetTeamId() string {
@@ -3834,7 +4326,7 @@ type CompileTeamGraphValidationIssue struct {
 
 func (x *CompileTeamGraphValidationIssue) Reset() {
 	*x = CompileTeamGraphValidationIssue{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[48]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3846,7 +4338,7 @@ func (x *CompileTeamGraphValidationIssue) String() string {
 func (*CompileTeamGraphValidationIssue) ProtoMessage() {}
 
 func (x *CompileTeamGraphValidationIssue) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[48]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3859,7 +4351,7 @@ func (x *CompileTeamGraphValidationIssue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompileTeamGraphValidationIssue.ProtoReflect.Descriptor instead.
 func (*CompileTeamGraphValidationIssue) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{48}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *CompileTeamGraphValidationIssue) GetCode() string {
@@ -3914,7 +4406,7 @@ type CompiledGraphNodeView struct {
 
 func (x *CompiledGraphNodeView) Reset() {
 	*x = CompiledGraphNodeView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[49]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3926,7 +4418,7 @@ func (x *CompiledGraphNodeView) String() string {
 func (*CompiledGraphNodeView) ProtoMessage() {}
 
 func (x *CompiledGraphNodeView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[49]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3939,7 +4431,7 @@ func (x *CompiledGraphNodeView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompiledGraphNodeView.ProtoReflect.Descriptor instead.
 func (*CompiledGraphNodeView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{49}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CompiledGraphNodeView) GetId() string {
@@ -4002,7 +4494,7 @@ type CompiledGraphEdgeView struct {
 
 func (x *CompiledGraphEdgeView) Reset() {
 	*x = CompiledGraphEdgeView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[50]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4014,7 +4506,7 @@ func (x *CompiledGraphEdgeView) String() string {
 func (*CompiledGraphEdgeView) ProtoMessage() {}
 
 func (x *CompiledGraphEdgeView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[50]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4027,7 +4519,7 @@ func (x *CompiledGraphEdgeView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompiledGraphEdgeView.ProtoReflect.Descriptor instead.
 func (*CompiledGraphEdgeView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{50}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CompiledGraphEdgeView) GetFrom() string {
@@ -4061,7 +4553,7 @@ type CompiledGraphConditionalEdgeView struct {
 
 func (x *CompiledGraphConditionalEdgeView) Reset() {
 	*x = CompiledGraphConditionalEdgeView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[51]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4073,7 +4565,7 @@ func (x *CompiledGraphConditionalEdgeView) String() string {
 func (*CompiledGraphConditionalEdgeView) ProtoMessage() {}
 
 func (x *CompiledGraphConditionalEdgeView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[51]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4086,7 +4578,7 @@ func (x *CompiledGraphConditionalEdgeView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompiledGraphConditionalEdgeView.ProtoReflect.Descriptor instead.
 func (*CompiledGraphConditionalEdgeView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{51}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CompiledGraphConditionalEdgeView) GetFrom() string {
@@ -4126,7 +4618,7 @@ type CompileTeamGraphResponse struct {
 
 func (x *CompileTeamGraphResponse) Reset() {
 	*x = CompileTeamGraphResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[52]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4138,7 +4630,7 @@ func (x *CompileTeamGraphResponse) String() string {
 func (*CompileTeamGraphResponse) ProtoMessage() {}
 
 func (x *CompileTeamGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[52]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4151,7 +4643,7 @@ func (x *CompileTeamGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompileTeamGraphResponse.ProtoReflect.Descriptor instead.
 func (*CompileTeamGraphResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{52}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CompileTeamGraphResponse) GetTemplateId() string {
@@ -4251,7 +4743,7 @@ type TaskDeadLetter struct {
 
 func (x *TaskDeadLetter) Reset() {
 	*x = TaskDeadLetter{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[53]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4263,7 +4755,7 @@ func (x *TaskDeadLetter) String() string {
 func (*TaskDeadLetter) ProtoMessage() {}
 
 func (x *TaskDeadLetter) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[53]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4276,7 +4768,7 @@ func (x *TaskDeadLetter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskDeadLetter.ProtoReflect.Descriptor instead.
 func (*TaskDeadLetter) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{53}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *TaskDeadLetter) GetId() string {
@@ -4375,7 +4867,7 @@ type ListTaskDeadLettersRequest struct {
 
 func (x *ListTaskDeadLettersRequest) Reset() {
 	*x = ListTaskDeadLettersRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[54]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4387,7 +4879,7 @@ func (x *ListTaskDeadLettersRequest) String() string {
 func (*ListTaskDeadLettersRequest) ProtoMessage() {}
 
 func (x *ListTaskDeadLettersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[54]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4400,7 +4892,7 @@ func (x *ListTaskDeadLettersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskDeadLettersRequest.ProtoReflect.Descriptor instead.
 func (*ListTaskDeadLettersRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{54}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ListTaskDeadLettersRequest) GetSessionId() string {
@@ -4440,7 +4932,7 @@ type ListTaskDeadLettersResponse struct {
 
 func (x *ListTaskDeadLettersResponse) Reset() {
 	*x = ListTaskDeadLettersResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[55]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4452,7 +4944,7 @@ func (x *ListTaskDeadLettersResponse) String() string {
 func (*ListTaskDeadLettersResponse) ProtoMessage() {}
 
 func (x *ListTaskDeadLettersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[55]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4465,7 +4957,7 @@ func (x *ListTaskDeadLettersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskDeadLettersResponse.ProtoReflect.Descriptor instead.
 func (*ListTaskDeadLettersResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{55}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ListTaskDeadLettersResponse) GetItems() []*TaskDeadLetter {
@@ -4484,7 +4976,7 @@ type ResolveTaskDeadLetterRequest struct {
 
 func (x *ResolveTaskDeadLetterRequest) Reset() {
 	*x = ResolveTaskDeadLetterRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[56]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4496,7 +4988,7 @@ func (x *ResolveTaskDeadLetterRequest) String() string {
 func (*ResolveTaskDeadLetterRequest) ProtoMessage() {}
 
 func (x *ResolveTaskDeadLetterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[56]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4509,7 +5001,7 @@ func (x *ResolveTaskDeadLetterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveTaskDeadLetterRequest.ProtoReflect.Descriptor instead.
 func (*ResolveTaskDeadLetterRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{56}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ResolveTaskDeadLetterRequest) GetId() string {
@@ -4528,7 +5020,7 @@ type ResolveTaskDeadLetterResponse struct {
 
 func (x *ResolveTaskDeadLetterResponse) Reset() {
 	*x = ResolveTaskDeadLetterResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[57]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4540,7 +5032,7 @@ func (x *ResolveTaskDeadLetterResponse) String() string {
 func (*ResolveTaskDeadLetterResponse) ProtoMessage() {}
 
 func (x *ResolveTaskDeadLetterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[57]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4553,7 +5045,7 @@ func (x *ResolveTaskDeadLetterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveTaskDeadLetterResponse.ProtoReflect.Descriptor instead.
 func (*ResolveTaskDeadLetterResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{57}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ResolveTaskDeadLetterResponse) GetItem() *TaskDeadLetter {
@@ -4577,7 +5069,7 @@ type SpiritMemberView struct {
 
 func (x *SpiritMemberView) Reset() {
 	*x = SpiritMemberView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[58]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4589,7 +5081,7 @@ func (x *SpiritMemberView) String() string {
 func (*SpiritMemberView) ProtoMessage() {}
 
 func (x *SpiritMemberView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[58]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4602,7 +5094,7 @@ func (x *SpiritMemberView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpiritMemberView.ProtoReflect.Descriptor instead.
 func (*SpiritMemberView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{58}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *SpiritMemberView) GetAgentId() string {
@@ -4675,7 +5167,7 @@ type SpiritTeamView struct {
 
 func (x *SpiritTeamView) Reset() {
 	*x = SpiritTeamView{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[59]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4687,7 +5179,7 @@ func (x *SpiritTeamView) String() string {
 func (*SpiritTeamView) ProtoMessage() {}
 
 func (x *SpiritTeamView) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[59]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4700,7 +5192,7 @@ func (x *SpiritTeamView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpiritTeamView.ProtoReflect.Descriptor instead.
 func (*SpiritTeamView) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{59}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *SpiritTeamView) GetId() string {
@@ -4852,7 +5344,7 @@ type ListSpiritTeamsRequest struct {
 
 func (x *ListSpiritTeamsRequest) Reset() {
 	*x = ListSpiritTeamsRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[60]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4864,7 +5356,7 @@ func (x *ListSpiritTeamsRequest) String() string {
 func (*ListSpiritTeamsRequest) ProtoMessage() {}
 
 func (x *ListSpiritTeamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[60]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4877,7 +5369,7 @@ func (x *ListSpiritTeamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpiritTeamsRequest.ProtoReflect.Descriptor instead.
 func (*ListSpiritTeamsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{60}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ListSpiritTeamsRequest) GetSpiritSessionId() string {
@@ -4896,7 +5388,7 @@ type ListSpiritTeamsResponse struct {
 
 func (x *ListSpiritTeamsResponse) Reset() {
 	*x = ListSpiritTeamsResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[61]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4908,7 +5400,7 @@ func (x *ListSpiritTeamsResponse) String() string {
 func (*ListSpiritTeamsResponse) ProtoMessage() {}
 
 func (x *ListSpiritTeamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[61]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4921,7 +5413,7 @@ func (x *ListSpiritTeamsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpiritTeamsResponse.ProtoReflect.Descriptor instead.
 func (*ListSpiritTeamsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{61}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ListSpiritTeamsResponse) GetTeams() []*SpiritTeamView {
@@ -4941,7 +5433,7 @@ type SynthesizeResultsRequest struct {
 
 func (x *SynthesizeResultsRequest) Reset() {
 	*x = SynthesizeResultsRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[62]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4953,7 +5445,7 @@ func (x *SynthesizeResultsRequest) String() string {
 func (*SynthesizeResultsRequest) ProtoMessage() {}
 
 func (x *SynthesizeResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[62]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4966,7 +5458,7 @@ func (x *SynthesizeResultsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeResultsRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeResultsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{62}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *SynthesizeResultsRequest) GetSpiritSessionId() string {
@@ -4996,7 +5488,7 @@ type SynthesisTeamResult struct {
 
 func (x *SynthesisTeamResult) Reset() {
 	*x = SynthesisTeamResult{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[63]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5008,7 +5500,7 @@ func (x *SynthesisTeamResult) String() string {
 func (*SynthesisTeamResult) ProtoMessage() {}
 
 func (x *SynthesisTeamResult) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[63]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5021,7 +5513,7 @@ func (x *SynthesisTeamResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesisTeamResult.ProtoReflect.Descriptor instead.
 func (*SynthesisTeamResult) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{63}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *SynthesisTeamResult) GetTeamId() string {
@@ -5073,7 +5565,7 @@ type SynthesizeResultsResponse struct {
 
 func (x *SynthesizeResultsResponse) Reset() {
 	*x = SynthesizeResultsResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[64]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5085,7 +5577,7 @@ func (x *SynthesizeResultsResponse) String() string {
 func (*SynthesizeResultsResponse) ProtoMessage() {}
 
 func (x *SynthesizeResultsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[64]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5098,7 +5590,7 @@ func (x *SynthesizeResultsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeResultsResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeResultsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{64}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *SynthesizeResultsResponse) GetStrategy() string {
@@ -5152,7 +5644,7 @@ type ArchiveTeamRequest struct {
 
 func (x *ArchiveTeamRequest) Reset() {
 	*x = ArchiveTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[65]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5164,7 +5656,7 @@ func (x *ArchiveTeamRequest) String() string {
 func (*ArchiveTeamRequest) ProtoMessage() {}
 
 func (x *ArchiveTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[65]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5177,7 +5669,7 @@ func (x *ArchiveTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveTeamRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{65}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ArchiveTeamRequest) GetTeamId() string {
@@ -5197,7 +5689,7 @@ type ArchiveTeamResponse struct {
 
 func (x *ArchiveTeamResponse) Reset() {
 	*x = ArchiveTeamResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[66]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5209,7 +5701,7 @@ func (x *ArchiveTeamResponse) String() string {
 func (*ArchiveTeamResponse) ProtoMessage() {}
 
 func (x *ArchiveTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[66]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5222,7 +5714,7 @@ func (x *ArchiveTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveTeamResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveTeamResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{66}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ArchiveTeamResponse) GetTeamId() string {
@@ -5248,7 +5740,7 @@ type RetryTeamRequest struct {
 
 func (x *RetryTeamRequest) Reset() {
 	*x = RetryTeamRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[67]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5260,7 +5752,7 @@ func (x *RetryTeamRequest) String() string {
 func (*RetryTeamRequest) ProtoMessage() {}
 
 func (x *RetryTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[67]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5273,7 +5765,7 @@ func (x *RetryTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetryTeamRequest.ProtoReflect.Descriptor instead.
 func (*RetryTeamRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{67}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *RetryTeamRequest) GetTeamId() string {
@@ -5293,7 +5785,7 @@ type RetryTeamResponse struct {
 
 func (x *RetryTeamResponse) Reset() {
 	*x = RetryTeamResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[68]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5305,7 +5797,7 @@ func (x *RetryTeamResponse) String() string {
 func (*RetryTeamResponse) ProtoMessage() {}
 
 func (x *RetryTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[68]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5318,7 +5810,7 @@ func (x *RetryTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetryTeamResponse.ProtoReflect.Descriptor instead.
 func (*RetryTeamResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{68}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *RetryTeamResponse) GetTeamId() string {
@@ -5346,7 +5838,7 @@ type PauseTeamRunRequest struct {
 
 func (x *PauseTeamRunRequest) Reset() {
 	*x = PauseTeamRunRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[69]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5358,7 +5850,7 @@ func (x *PauseTeamRunRequest) String() string {
 func (*PauseTeamRunRequest) ProtoMessage() {}
 
 func (x *PauseTeamRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[69]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5371,7 +5863,7 @@ func (x *PauseTeamRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseTeamRunRequest.ProtoReflect.Descriptor instead.
 func (*PauseTeamRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{69}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *PauseTeamRunRequest) GetId() string {
@@ -5391,7 +5883,7 @@ type PauseTeamRunResponse struct {
 
 func (x *PauseTeamRunResponse) Reset() {
 	*x = PauseTeamRunResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[70]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5403,7 +5895,7 @@ func (x *PauseTeamRunResponse) String() string {
 func (*PauseTeamRunResponse) ProtoMessage() {}
 
 func (x *PauseTeamRunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[70]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5416,7 +5908,7 @@ func (x *PauseTeamRunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseTeamRunResponse.ProtoReflect.Descriptor instead.
 func (*PauseTeamRunResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{70}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *PauseTeamRunResponse) GetRunId() string {
@@ -5445,7 +5937,7 @@ type UnpauseTeamRunRequest struct {
 
 func (x *UnpauseTeamRunRequest) Reset() {
 	*x = UnpauseTeamRunRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[71]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5457,7 +5949,7 @@ func (x *UnpauseTeamRunRequest) String() string {
 func (*UnpauseTeamRunRequest) ProtoMessage() {}
 
 func (x *UnpauseTeamRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[71]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5470,7 +5962,7 @@ func (x *UnpauseTeamRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpauseTeamRunRequest.ProtoReflect.Descriptor instead.
 func (*UnpauseTeamRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{71}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *UnpauseTeamRunRequest) GetId() string {
@@ -5490,7 +5982,7 @@ type UnpauseTeamRunResponse struct {
 
 func (x *UnpauseTeamRunResponse) Reset() {
 	*x = UnpauseTeamRunResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[72]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5502,7 +5994,7 @@ func (x *UnpauseTeamRunResponse) String() string {
 func (*UnpauseTeamRunResponse) ProtoMessage() {}
 
 func (x *UnpauseTeamRunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[72]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5515,7 +6007,7 @@ func (x *UnpauseTeamRunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpauseTeamRunResponse.ProtoReflect.Descriptor instead.
 func (*UnpauseTeamRunResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{72}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *UnpauseTeamRunResponse) GetRunId() string {
@@ -5544,7 +6036,7 @@ type InjectTeamMessageRequest struct {
 
 func (x *InjectTeamMessageRequest) Reset() {
 	*x = InjectTeamMessageRequest{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[73]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5556,7 +6048,7 @@ func (x *InjectTeamMessageRequest) String() string {
 func (*InjectTeamMessageRequest) ProtoMessage() {}
 
 func (x *InjectTeamMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[73]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5569,7 +6061,7 @@ func (x *InjectTeamMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InjectTeamMessageRequest.ProtoReflect.Descriptor instead.
 func (*InjectTeamMessageRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{73}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *InjectTeamMessageRequest) GetTeamId() string {
@@ -5597,7 +6089,7 @@ type InjectTeamMessageResponse struct {
 
 func (x *InjectTeamMessageResponse) Reset() {
 	*x = InjectTeamMessageResponse{}
-	mi := &file_kratos_team_v1_team_proto_msgTypes[74]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5609,7 +6101,7 @@ func (x *InjectTeamMessageResponse) String() string {
 func (*InjectTeamMessageResponse) ProtoMessage() {}
 
 func (x *InjectTeamMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_team_v1_team_proto_msgTypes[74]
+	mi := &file_kratos_team_v1_team_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5622,7 +6114,7 @@ func (x *InjectTeamMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InjectTeamMessageResponse.ProtoReflect.Descriptor instead.
 func (*InjectTeamMessageResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{74}
+	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *InjectTeamMessageResponse) GetAccepted() bool {
@@ -5784,7 +6276,53 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\x18GetTeamRunSummaryRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"U\n" +
 	"\x19GetTeamRunSummaryResponse\x128\n" +
-	"\asummary\x18\x01 \x01(\v2\x1e.kratos.team.v1.TeamRunSummaryR\asummary\"\xe6\x02\n" +
+	"\asummary\x18\x01 \x01(\v2\x1e.kratos.team.v1.TeamRunSummaryR\asummary\"\xd4\x01\n" +
+	"\x12TeamRunMemberStats\x12\x1b\n" +
+	"\tagent_key\x18\x01 \x01(\tR\bagentKey\x12#\n" +
+	"\rprompt_tokens\x18\x02 \x01(\x03R\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\x03 \x01(\x03R\x10completionTokens\x12#\n" +
+	"\rcached_tokens\x18\x04 \x01(\x03R\fcachedTokens\x12\x14\n" +
+	"\x05calls\x18\x05 \x01(\x05R\x05calls\x12\x14\n" +
+	"\x05steps\x18\x06 \x01(\x05R\x05steps\"\xc3\x05\n" +
+	"\fTeamRunStats\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
+	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x03 \x01(\tR\tsessionId\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\tR\tcreatedAt\x12\x14\n" +
+	"\x05turns\x18\x06 \x01(\x05R\x05turns\x12\x1d\n" +
+	"\n" +
+	"tool_calls\x18\a \x01(\x05R\ttoolCalls\x12#\n" +
+	"\rprompt_tokens\x18\b \x01(\x03R\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\t \x01(\x03R\x10completionTokens\x12#\n" +
+	"\rcached_tokens\x18\n" +
+	" \x01(\x03R\fcachedTokens\x12&\n" +
+	"\x0fcache_hit_ratio\x18\v \x01(\x01R\rcacheHitRatio\x121\n" +
+	"\x15max_turn_input_tokens\x18\f \x01(\x03R\x12maxTurnInputTokens\x12*\n" +
+	"\x11loop_guard_blocks\x18\r \x01(\x05R\x0floopGuardBlocks\x12\x1f\n" +
+	"\vprune_count\x18\x0e \x01(\x05R\n" +
+	"pruneCount\x12\x1f\n" +
+	"\vprune_bytes\x18\x0f \x01(\x03R\n" +
+	"pruneBytes\x12#\n" +
+	"\rcompact_count\x18\x10 \x01(\x05R\fcompactCount\x12%\n" +
+	"\x0ebudget_tripped\x18\x11 \x01(\bR\rbudgetTripped\x12.\n" +
+	"\x13no_progress_tripped\x18\x12 \x01(\bR\x11noProgressTripped\x12<\n" +
+	"\amembers\x18\x13 \x03(\v2\".kratos.team.v1.TeamRunMemberStatsR\amembers\".\n" +
+	"\x16GetTeamRunStatsRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"M\n" +
+	"\x17GetTeamRunStatsResponse\x122\n" +
+	"\x05stats\x18\x01 \x01(\v2\x1c.kratos.team.v1.TeamRunStatsR\x05stats\"t\n" +
+	"\x19ExportTeamRunStatsRequest\x12\x12\n" +
+	"\x04from\x18\x01 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x02 \x01(\tR\x02to\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x03 \x01(\tR\tsessionId\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\"H\n" +
+	"\x1aExportTeamRunStatsResponse\x12\x14\n" +
+	"\x05jsonl\x18\x01 \x01(\tR\x05jsonl\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"\xe6\x02\n" +
 	"\x14ActivitySnapshotView\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12#\n" +
 	"\rdisplay_label\x18\x02 \x01(\tR\fdisplayLabel\x12\x1b\n" +
@@ -6167,7 +6705,7 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06queued\x18\x02 \x01(\bR\x06queued\x12\x1d\n" +
 	"\n" +
-	"pending_id\x18\x03 \x01(\tR\tpendingId2\x99\x1c\n" +
+	"pending_id\x18\x03 \x01(\tR\tpendingId2\xb1\x1e\n" +
 	"\vTeamService\x12c\n" +
 	"\tListTeams\x12 .kratos.team.v1.ListTeamsRequest\x1a!.kratos.team.v1.ListTeamsResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/teams\x12[\n" +
 	"\n" +
@@ -6199,7 +6737,9 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\tRetryTeam\x12 .kratos.team.v1.RetryTeamRequest\x1a!.kratos.team.v1.RetryTeamResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/teams/{team_id}/retry\x12~\n" +
 	"\fPauseTeamRun\x12#.kratos.team.v1.PauseTeamRunRequest\x1a$.kratos.team.v1.PauseTeamRunResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/team-runs/{id}/pause\x12\x86\x01\n" +
 	"\x0eUnpauseTeamRun\x12%.kratos.team.v1.UnpauseTeamRunRequest\x1a&.kratos.team.v1.UnpauseTeamRunResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/team-runs/{id}/unpause\x12\x8f\x01\n" +
-	"\x11InjectTeamMessage\x12(.kratos.team.v1.InjectTeamMessageRequest\x1a).kratos.team.v1.InjectTeamMessageResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/teams/{team_id}/injectB;\n" +
+	"\x11InjectTeamMessage\x12(.kratos.team.v1.InjectTeamMessageRequest\x1a).kratos.team.v1.InjectTeamMessageResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/teams/{team_id}/inject\x12\x84\x01\n" +
+	"\x0fGetTeamRunStats\x12&.kratos.team.v1.GetTeamRunStatsRequest\x1a'.kratos.team.v1.GetTeamRunStatsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/team-runs/{id}/stats\x12\x8e\x01\n" +
+	"\x12ExportTeamRunStats\x12).kratos.team.v1.ExportTeamRunStatsRequest\x1a*.kratos.team.v1.ExportTeamRunStatsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/team-run-stats/exportB;\n" +
 	"\x12api.kratos.team.v1P\x01Z#aranea-agents/api/kratos/team/v1;v1b\x06proto3"
 
 var (
@@ -6214,7 +6754,7 @@ func file_kratos_team_v1_team_proto_rawDescGZIP() []byte {
 	return file_kratos_team_v1_team_proto_rawDescData
 }
 
-var file_kratos_team_v1_team_proto_msgTypes = make([]protoimpl.MessageInfo, 77)
+var file_kratos_team_v1_team_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
 var file_kratos_team_v1_team_proto_goTypes = []any{
 	(*Team)(nil),                                  // 0: kratos.team.v1.Team
 	(*TeamRun)(nil),                               // 1: kratos.team.v1.TeamRun
@@ -6223,176 +6763,188 @@ var file_kratos_team_v1_team_proto_goTypes = []any{
 	(*TeamRunSummary)(nil),                        // 4: kratos.team.v1.TeamRunSummary
 	(*GetTeamRunSummaryRequest)(nil),              // 5: kratos.team.v1.GetTeamRunSummaryRequest
 	(*GetTeamRunSummaryResponse)(nil),             // 6: kratos.team.v1.GetTeamRunSummaryResponse
-	(*ActivitySnapshotView)(nil),                  // 7: kratos.team.v1.ActivitySnapshotView
-	(*AgentNodeStateView)(nil),                    // 8: kratos.team.v1.AgentNodeStateView
-	(*GetTeamRunObservatoryRequest)(nil),          // 9: kratos.team.v1.GetTeamRunObservatoryRequest
-	(*GetTeamRunObservatoryResponse)(nil),         // 10: kratos.team.v1.GetTeamRunObservatoryResponse
-	(*GetTeamRunObservatoryTimelineRequest)(nil),  // 11: kratos.team.v1.GetTeamRunObservatoryTimelineRequest
-	(*ActivityTimelineRow)(nil),                   // 12: kratos.team.v1.ActivityTimelineRow
-	(*GetTeamRunObservatoryTimelineResponse)(nil), // 13: kratos.team.v1.GetTeamRunObservatoryTimelineResponse
-	(*OrchestrationMember)(nil),                   // 14: kratos.team.v1.OrchestrationMember
-	(*EmbeddedGraphNode)(nil),                     // 15: kratos.team.v1.EmbeddedGraphNode
-	(*EmbeddedGraphEdge)(nil),                     // 16: kratos.team.v1.EmbeddedGraphEdge
-	(*EmbeddedGraph)(nil),                         // 17: kratos.team.v1.EmbeddedGraph
-	(*TeamRetryPolicySpec)(nil),                   // 18: kratos.team.v1.TeamRetryPolicySpec
-	(*TeamNodeFailureOverrideSpec)(nil),           // 19: kratos.team.v1.TeamNodeFailureOverrideSpec
-	(*CircuitBreakerSpec)(nil),                    // 20: kratos.team.v1.CircuitBreakerSpec
-	(*FailurePolicySpec)(nil),                     // 21: kratos.team.v1.FailurePolicySpec
-	(*OrchestrationSpec)(nil),                     // 22: kratos.team.v1.OrchestrationSpec
-	(*ResumeTeamRunExecutionRequest)(nil),         // 23: kratos.team.v1.ResumeTeamRunExecutionRequest
-	(*ResumeTeamRunExecutionResponse)(nil),        // 24: kratos.team.v1.ResumeTeamRunExecutionResponse
-	(*ListTeamsRequest)(nil),                      // 25: kratos.team.v1.ListTeamsRequest
-	(*ListTeamsResponse)(nil),                     // 26: kratos.team.v1.ListTeamsResponse
-	(*CreateTeamRequest)(nil),                     // 27: kratos.team.v1.CreateTeamRequest
-	(*GetTeamRequest)(nil),                        // 28: kratos.team.v1.GetTeamRequest
-	(*UpdateTeamRequest)(nil),                     // 29: kratos.team.v1.UpdateTeamRequest
-	(*DeleteTeamRequest)(nil),                     // 30: kratos.team.v1.DeleteTeamRequest
-	(*DuplicateTeamRequest)(nil),                  // 31: kratos.team.v1.DuplicateTeamRequest
-	(*ListTeamRunsRequest)(nil),                   // 32: kratos.team.v1.ListTeamRunsRequest
-	(*ListTeamRunsResponse)(nil),                  // 33: kratos.team.v1.ListTeamRunsResponse
-	(*ListTeamRunStepsRequest)(nil),               // 34: kratos.team.v1.ListTeamRunStepsRequest
-	(*ListTeamRunStepsResponse)(nil),              // 35: kratos.team.v1.ListTeamRunStepsResponse
-	(*GetTeamRunRequest)(nil),                     // 36: kratos.team.v1.GetTeamRunRequest
-	(*CancelTeamRunRequest)(nil),                  // 37: kratos.team.v1.CancelTeamRunRequest
-	(*RunTeamTestRequest)(nil),                    // 38: kratos.team.v1.RunTeamTestRequest
-	(*RunTeamTestResponse)(nil),                   // 39: kratos.team.v1.RunTeamTestResponse
-	(*UpdateSwarmMembersRequest)(nil),             // 40: kratos.team.v1.UpdateSwarmMembersRequest
-	(*UpdateSwarmMembersResponse)(nil),            // 41: kratos.team.v1.UpdateSwarmMembersResponse
-	(*ExportTeamStructureRequest)(nil),            // 42: kratos.team.v1.ExportTeamStructureRequest
-	(*ExportTeamStructureResponse)(nil),           // 43: kratos.team.v1.ExportTeamStructureResponse
-	(*StructureNode)(nil),                         // 44: kratos.team.v1.StructureNode
-	(*StructureEdge)(nil),                         // 45: kratos.team.v1.StructureEdge
-	(*StructureSurface)(nil),                      // 46: kratos.team.v1.StructureSurface
-	(*CompileTeamGraphRequest)(nil),               // 47: kratos.team.v1.CompileTeamGraphRequest
-	(*CompileTeamGraphValidationIssue)(nil),       // 48: kratos.team.v1.CompileTeamGraphValidationIssue
-	(*CompiledGraphNodeView)(nil),                 // 49: kratos.team.v1.CompiledGraphNodeView
-	(*CompiledGraphEdgeView)(nil),                 // 50: kratos.team.v1.CompiledGraphEdgeView
-	(*CompiledGraphConditionalEdgeView)(nil),      // 51: kratos.team.v1.CompiledGraphConditionalEdgeView
-	(*CompileTeamGraphResponse)(nil),              // 52: kratos.team.v1.CompileTeamGraphResponse
-	(*TaskDeadLetter)(nil),                        // 53: kratos.team.v1.TaskDeadLetter
-	(*ListTaskDeadLettersRequest)(nil),            // 54: kratos.team.v1.ListTaskDeadLettersRequest
-	(*ListTaskDeadLettersResponse)(nil),           // 55: kratos.team.v1.ListTaskDeadLettersResponse
-	(*ResolveTaskDeadLetterRequest)(nil),          // 56: kratos.team.v1.ResolveTaskDeadLetterRequest
-	(*ResolveTaskDeadLetterResponse)(nil),         // 57: kratos.team.v1.ResolveTaskDeadLetterResponse
-	(*SpiritMemberView)(nil),                      // 58: kratos.team.v1.SpiritMemberView
-	(*SpiritTeamView)(nil),                        // 59: kratos.team.v1.SpiritTeamView
-	(*ListSpiritTeamsRequest)(nil),                // 60: kratos.team.v1.ListSpiritTeamsRequest
-	(*ListSpiritTeamsResponse)(nil),               // 61: kratos.team.v1.ListSpiritTeamsResponse
-	(*SynthesizeResultsRequest)(nil),              // 62: kratos.team.v1.SynthesizeResultsRequest
-	(*SynthesisTeamResult)(nil),                   // 63: kratos.team.v1.SynthesisTeamResult
-	(*SynthesizeResultsResponse)(nil),             // 64: kratos.team.v1.SynthesizeResultsResponse
-	(*ArchiveTeamRequest)(nil),                    // 65: kratos.team.v1.ArchiveTeamRequest
-	(*ArchiveTeamResponse)(nil),                   // 66: kratos.team.v1.ArchiveTeamResponse
-	(*RetryTeamRequest)(nil),                      // 67: kratos.team.v1.RetryTeamRequest
-	(*RetryTeamResponse)(nil),                     // 68: kratos.team.v1.RetryTeamResponse
-	(*PauseTeamRunRequest)(nil),                   // 69: kratos.team.v1.PauseTeamRunRequest
-	(*PauseTeamRunResponse)(nil),                  // 70: kratos.team.v1.PauseTeamRunResponse
-	(*UnpauseTeamRunRequest)(nil),                 // 71: kratos.team.v1.UnpauseTeamRunRequest
-	(*UnpauseTeamRunResponse)(nil),                // 72: kratos.team.v1.UnpauseTeamRunResponse
-	(*InjectTeamMessageRequest)(nil),              // 73: kratos.team.v1.InjectTeamMessageRequest
-	(*InjectTeamMessageResponse)(nil),             // 74: kratos.team.v1.InjectTeamMessageResponse
-	nil,                                           // 75: kratos.team.v1.FailurePolicySpec.NodeOverridesEntry
-	nil,                                           // 76: kratos.team.v1.CompiledGraphConditionalEdgeView.PathMapEntry
-	(*structpb.Struct)(nil),                       // 77: google.protobuf.Struct
-	(*emptypb.Empty)(nil),                         // 78: google.protobuf.Empty
+	(*TeamRunMemberStats)(nil),                    // 7: kratos.team.v1.TeamRunMemberStats
+	(*TeamRunStats)(nil),                          // 8: kratos.team.v1.TeamRunStats
+	(*GetTeamRunStatsRequest)(nil),                // 9: kratos.team.v1.GetTeamRunStatsRequest
+	(*GetTeamRunStatsResponse)(nil),               // 10: kratos.team.v1.GetTeamRunStatsResponse
+	(*ExportTeamRunStatsRequest)(nil),             // 11: kratos.team.v1.ExportTeamRunStatsRequest
+	(*ExportTeamRunStatsResponse)(nil),            // 12: kratos.team.v1.ExportTeamRunStatsResponse
+	(*ActivitySnapshotView)(nil),                  // 13: kratos.team.v1.ActivitySnapshotView
+	(*AgentNodeStateView)(nil),                    // 14: kratos.team.v1.AgentNodeStateView
+	(*GetTeamRunObservatoryRequest)(nil),          // 15: kratos.team.v1.GetTeamRunObservatoryRequest
+	(*GetTeamRunObservatoryResponse)(nil),         // 16: kratos.team.v1.GetTeamRunObservatoryResponse
+	(*GetTeamRunObservatoryTimelineRequest)(nil),  // 17: kratos.team.v1.GetTeamRunObservatoryTimelineRequest
+	(*ActivityTimelineRow)(nil),                   // 18: kratos.team.v1.ActivityTimelineRow
+	(*GetTeamRunObservatoryTimelineResponse)(nil), // 19: kratos.team.v1.GetTeamRunObservatoryTimelineResponse
+	(*OrchestrationMember)(nil),                   // 20: kratos.team.v1.OrchestrationMember
+	(*EmbeddedGraphNode)(nil),                     // 21: kratos.team.v1.EmbeddedGraphNode
+	(*EmbeddedGraphEdge)(nil),                     // 22: kratos.team.v1.EmbeddedGraphEdge
+	(*EmbeddedGraph)(nil),                         // 23: kratos.team.v1.EmbeddedGraph
+	(*TeamRetryPolicySpec)(nil),                   // 24: kratos.team.v1.TeamRetryPolicySpec
+	(*TeamNodeFailureOverrideSpec)(nil),           // 25: kratos.team.v1.TeamNodeFailureOverrideSpec
+	(*CircuitBreakerSpec)(nil),                    // 26: kratos.team.v1.CircuitBreakerSpec
+	(*FailurePolicySpec)(nil),                     // 27: kratos.team.v1.FailurePolicySpec
+	(*OrchestrationSpec)(nil),                     // 28: kratos.team.v1.OrchestrationSpec
+	(*ResumeTeamRunExecutionRequest)(nil),         // 29: kratos.team.v1.ResumeTeamRunExecutionRequest
+	(*ResumeTeamRunExecutionResponse)(nil),        // 30: kratos.team.v1.ResumeTeamRunExecutionResponse
+	(*ListTeamsRequest)(nil),                      // 31: kratos.team.v1.ListTeamsRequest
+	(*ListTeamsResponse)(nil),                     // 32: kratos.team.v1.ListTeamsResponse
+	(*CreateTeamRequest)(nil),                     // 33: kratos.team.v1.CreateTeamRequest
+	(*GetTeamRequest)(nil),                        // 34: kratos.team.v1.GetTeamRequest
+	(*UpdateTeamRequest)(nil),                     // 35: kratos.team.v1.UpdateTeamRequest
+	(*DeleteTeamRequest)(nil),                     // 36: kratos.team.v1.DeleteTeamRequest
+	(*DuplicateTeamRequest)(nil),                  // 37: kratos.team.v1.DuplicateTeamRequest
+	(*ListTeamRunsRequest)(nil),                   // 38: kratos.team.v1.ListTeamRunsRequest
+	(*ListTeamRunsResponse)(nil),                  // 39: kratos.team.v1.ListTeamRunsResponse
+	(*ListTeamRunStepsRequest)(nil),               // 40: kratos.team.v1.ListTeamRunStepsRequest
+	(*ListTeamRunStepsResponse)(nil),              // 41: kratos.team.v1.ListTeamRunStepsResponse
+	(*GetTeamRunRequest)(nil),                     // 42: kratos.team.v1.GetTeamRunRequest
+	(*CancelTeamRunRequest)(nil),                  // 43: kratos.team.v1.CancelTeamRunRequest
+	(*RunTeamTestRequest)(nil),                    // 44: kratos.team.v1.RunTeamTestRequest
+	(*RunTeamTestResponse)(nil),                   // 45: kratos.team.v1.RunTeamTestResponse
+	(*UpdateSwarmMembersRequest)(nil),             // 46: kratos.team.v1.UpdateSwarmMembersRequest
+	(*UpdateSwarmMembersResponse)(nil),            // 47: kratos.team.v1.UpdateSwarmMembersResponse
+	(*ExportTeamStructureRequest)(nil),            // 48: kratos.team.v1.ExportTeamStructureRequest
+	(*ExportTeamStructureResponse)(nil),           // 49: kratos.team.v1.ExportTeamStructureResponse
+	(*StructureNode)(nil),                         // 50: kratos.team.v1.StructureNode
+	(*StructureEdge)(nil),                         // 51: kratos.team.v1.StructureEdge
+	(*StructureSurface)(nil),                      // 52: kratos.team.v1.StructureSurface
+	(*CompileTeamGraphRequest)(nil),               // 53: kratos.team.v1.CompileTeamGraphRequest
+	(*CompileTeamGraphValidationIssue)(nil),       // 54: kratos.team.v1.CompileTeamGraphValidationIssue
+	(*CompiledGraphNodeView)(nil),                 // 55: kratos.team.v1.CompiledGraphNodeView
+	(*CompiledGraphEdgeView)(nil),                 // 56: kratos.team.v1.CompiledGraphEdgeView
+	(*CompiledGraphConditionalEdgeView)(nil),      // 57: kratos.team.v1.CompiledGraphConditionalEdgeView
+	(*CompileTeamGraphResponse)(nil),              // 58: kratos.team.v1.CompileTeamGraphResponse
+	(*TaskDeadLetter)(nil),                        // 59: kratos.team.v1.TaskDeadLetter
+	(*ListTaskDeadLettersRequest)(nil),            // 60: kratos.team.v1.ListTaskDeadLettersRequest
+	(*ListTaskDeadLettersResponse)(nil),           // 61: kratos.team.v1.ListTaskDeadLettersResponse
+	(*ResolveTaskDeadLetterRequest)(nil),          // 62: kratos.team.v1.ResolveTaskDeadLetterRequest
+	(*ResolveTaskDeadLetterResponse)(nil),         // 63: kratos.team.v1.ResolveTaskDeadLetterResponse
+	(*SpiritMemberView)(nil),                      // 64: kratos.team.v1.SpiritMemberView
+	(*SpiritTeamView)(nil),                        // 65: kratos.team.v1.SpiritTeamView
+	(*ListSpiritTeamsRequest)(nil),                // 66: kratos.team.v1.ListSpiritTeamsRequest
+	(*ListSpiritTeamsResponse)(nil),               // 67: kratos.team.v1.ListSpiritTeamsResponse
+	(*SynthesizeResultsRequest)(nil),              // 68: kratos.team.v1.SynthesizeResultsRequest
+	(*SynthesisTeamResult)(nil),                   // 69: kratos.team.v1.SynthesisTeamResult
+	(*SynthesizeResultsResponse)(nil),             // 70: kratos.team.v1.SynthesizeResultsResponse
+	(*ArchiveTeamRequest)(nil),                    // 71: kratos.team.v1.ArchiveTeamRequest
+	(*ArchiveTeamResponse)(nil),                   // 72: kratos.team.v1.ArchiveTeamResponse
+	(*RetryTeamRequest)(nil),                      // 73: kratos.team.v1.RetryTeamRequest
+	(*RetryTeamResponse)(nil),                     // 74: kratos.team.v1.RetryTeamResponse
+	(*PauseTeamRunRequest)(nil),                   // 75: kratos.team.v1.PauseTeamRunRequest
+	(*PauseTeamRunResponse)(nil),                  // 76: kratos.team.v1.PauseTeamRunResponse
+	(*UnpauseTeamRunRequest)(nil),                 // 77: kratos.team.v1.UnpauseTeamRunRequest
+	(*UnpauseTeamRunResponse)(nil),                // 78: kratos.team.v1.UnpauseTeamRunResponse
+	(*InjectTeamMessageRequest)(nil),              // 79: kratos.team.v1.InjectTeamMessageRequest
+	(*InjectTeamMessageResponse)(nil),             // 80: kratos.team.v1.InjectTeamMessageResponse
+	nil,                                           // 81: kratos.team.v1.FailurePolicySpec.NodeOverridesEntry
+	nil,                                           // 82: kratos.team.v1.CompiledGraphConditionalEdgeView.PathMapEntry
+	(*structpb.Struct)(nil),                       // 83: google.protobuf.Struct
+	(*emptypb.Empty)(nil),                         // 84: google.protobuf.Empty
 }
 var file_kratos_team_v1_team_proto_depIdxs = []int32{
-	22, // 0: kratos.team.v1.Team.orchestration_spec:type_name -> kratos.team.v1.OrchestrationSpec
+	28, // 0: kratos.team.v1.Team.orchestration_spec:type_name -> kratos.team.v1.OrchestrationSpec
 	3,  // 1: kratos.team.v1.TeamRunSummary.members:type_name -> kratos.team.v1.TeamRunMemberSummary
 	4,  // 2: kratos.team.v1.GetTeamRunSummaryResponse.summary:type_name -> kratos.team.v1.TeamRunSummary
-	7,  // 3: kratos.team.v1.AgentNodeStateView.current_activity:type_name -> kratos.team.v1.ActivitySnapshotView
-	7,  // 4: kratos.team.v1.AgentNodeStateView.activity_history:type_name -> kratos.team.v1.ActivitySnapshotView
-	8,  // 5: kratos.team.v1.GetTeamRunObservatoryResponse.nodes:type_name -> kratos.team.v1.AgentNodeStateView
-	52, // 6: kratos.team.v1.GetTeamRunObservatoryResponse.compiled_topology:type_name -> kratos.team.v1.CompileTeamGraphResponse
-	12, // 7: kratos.team.v1.GetTeamRunObservatoryTimelineResponse.rows:type_name -> kratos.team.v1.ActivityTimelineRow
-	15, // 8: kratos.team.v1.EmbeddedGraph.nodes:type_name -> kratos.team.v1.EmbeddedGraphNode
-	16, // 9: kratos.team.v1.EmbeddedGraph.edges:type_name -> kratos.team.v1.EmbeddedGraphEdge
-	18, // 10: kratos.team.v1.TeamNodeFailureOverrideSpec.retry:type_name -> kratos.team.v1.TeamRetryPolicySpec
-	18, // 11: kratos.team.v1.FailurePolicySpec.retry:type_name -> kratos.team.v1.TeamRetryPolicySpec
-	75, // 12: kratos.team.v1.FailurePolicySpec.node_overrides:type_name -> kratos.team.v1.FailurePolicySpec.NodeOverridesEntry
-	20, // 13: kratos.team.v1.FailurePolicySpec.circuit_breaker:type_name -> kratos.team.v1.CircuitBreakerSpec
-	14, // 14: kratos.team.v1.OrchestrationSpec.members:type_name -> kratos.team.v1.OrchestrationMember
-	17, // 15: kratos.team.v1.OrchestrationSpec.graph:type_name -> kratos.team.v1.EmbeddedGraph
-	21, // 16: kratos.team.v1.OrchestrationSpec.failure_policy:type_name -> kratos.team.v1.FailurePolicySpec
-	77, // 17: kratos.team.v1.ResumeTeamRunExecutionRequest.resume_value:type_name -> google.protobuf.Struct
-	0,  // 18: kratos.team.v1.ListTeamsResponse.items:type_name -> kratos.team.v1.Team
-	0,  // 19: kratos.team.v1.UpdateTeamRequest.team:type_name -> kratos.team.v1.Team
-	1,  // 20: kratos.team.v1.ListTeamRunsResponse.items:type_name -> kratos.team.v1.TeamRun
-	2,  // 21: kratos.team.v1.ListTeamRunStepsResponse.items:type_name -> kratos.team.v1.TeamRunStep
-	1,  // 22: kratos.team.v1.RunTeamTestResponse.run:type_name -> kratos.team.v1.TeamRun
-	44, // 23: kratos.team.v1.ExportTeamStructureResponse.nodes:type_name -> kratos.team.v1.StructureNode
-	45, // 24: kratos.team.v1.ExportTeamStructureResponse.edges:type_name -> kratos.team.v1.StructureEdge
-	46, // 25: kratos.team.v1.ExportTeamStructureResponse.surfaces:type_name -> kratos.team.v1.StructureSurface
-	76, // 26: kratos.team.v1.CompiledGraphConditionalEdgeView.path_map:type_name -> kratos.team.v1.CompiledGraphConditionalEdgeView.PathMapEntry
-	49, // 27: kratos.team.v1.CompileTeamGraphResponse.nodes:type_name -> kratos.team.v1.CompiledGraphNodeView
-	50, // 28: kratos.team.v1.CompileTeamGraphResponse.edges:type_name -> kratos.team.v1.CompiledGraphEdgeView
-	51, // 29: kratos.team.v1.CompileTeamGraphResponse.conditional_edges:type_name -> kratos.team.v1.CompiledGraphConditionalEdgeView
-	48, // 30: kratos.team.v1.CompileTeamGraphResponse.issues:type_name -> kratos.team.v1.CompileTeamGraphValidationIssue
-	53, // 31: kratos.team.v1.ListTaskDeadLettersResponse.items:type_name -> kratos.team.v1.TaskDeadLetter
-	53, // 32: kratos.team.v1.ResolveTaskDeadLetterResponse.item:type_name -> kratos.team.v1.TaskDeadLetter
-	58, // 33: kratos.team.v1.SpiritTeamView.members:type_name -> kratos.team.v1.SpiritMemberView
-	59, // 34: kratos.team.v1.ListSpiritTeamsResponse.teams:type_name -> kratos.team.v1.SpiritTeamView
-	63, // 35: kratos.team.v1.SynthesizeResultsResponse.team_results:type_name -> kratos.team.v1.SynthesisTeamResult
-	19, // 36: kratos.team.v1.FailurePolicySpec.NodeOverridesEntry.value:type_name -> kratos.team.v1.TeamNodeFailureOverrideSpec
-	25, // 37: kratos.team.v1.TeamService.ListTeams:input_type -> kratos.team.v1.ListTeamsRequest
-	27, // 38: kratos.team.v1.TeamService.CreateTeam:input_type -> kratos.team.v1.CreateTeamRequest
-	28, // 39: kratos.team.v1.TeamService.GetTeam:input_type -> kratos.team.v1.GetTeamRequest
-	29, // 40: kratos.team.v1.TeamService.UpdateTeam:input_type -> kratos.team.v1.UpdateTeamRequest
-	30, // 41: kratos.team.v1.TeamService.DeleteTeam:input_type -> kratos.team.v1.DeleteTeamRequest
-	31, // 42: kratos.team.v1.TeamService.DuplicateTeam:input_type -> kratos.team.v1.DuplicateTeamRequest
-	32, // 43: kratos.team.v1.TeamService.ListTeamRuns:input_type -> kratos.team.v1.ListTeamRunsRequest
-	34, // 44: kratos.team.v1.TeamService.ListTeamRunSteps:input_type -> kratos.team.v1.ListTeamRunStepsRequest
-	36, // 45: kratos.team.v1.TeamService.GetTeamRun:input_type -> kratos.team.v1.GetTeamRunRequest
-	37, // 46: kratos.team.v1.TeamService.CancelTeamRun:input_type -> kratos.team.v1.CancelTeamRunRequest
-	38, // 47: kratos.team.v1.TeamService.RunTeamTest:input_type -> kratos.team.v1.RunTeamTestRequest
-	40, // 48: kratos.team.v1.TeamService.UpdateSwarmMembers:input_type -> kratos.team.v1.UpdateSwarmMembersRequest
-	42, // 49: kratos.team.v1.TeamService.ExportTeamStructure:input_type -> kratos.team.v1.ExportTeamStructureRequest
-	5,  // 50: kratos.team.v1.TeamService.GetTeamRunSummary:input_type -> kratos.team.v1.GetTeamRunSummaryRequest
-	9,  // 51: kratos.team.v1.TeamService.GetTeamRunObservatory:input_type -> kratos.team.v1.GetTeamRunObservatoryRequest
-	11, // 52: kratos.team.v1.TeamService.GetTeamRunObservatoryTimeline:input_type -> kratos.team.v1.GetTeamRunObservatoryTimelineRequest
-	23, // 53: kratos.team.v1.TeamService.ResumeTeamRunExecution:input_type -> kratos.team.v1.ResumeTeamRunExecutionRequest
-	47, // 54: kratos.team.v1.TeamService.CompileTeamGraph:input_type -> kratos.team.v1.CompileTeamGraphRequest
-	54, // 55: kratos.team.v1.TeamService.ListTaskDeadLetters:input_type -> kratos.team.v1.ListTaskDeadLettersRequest
-	56, // 56: kratos.team.v1.TeamService.ResolveTaskDeadLetter:input_type -> kratos.team.v1.ResolveTaskDeadLetterRequest
-	60, // 57: kratos.team.v1.TeamService.ListSpiritTeams:input_type -> kratos.team.v1.ListSpiritTeamsRequest
-	62, // 58: kratos.team.v1.TeamService.SynthesizeResults:input_type -> kratos.team.v1.SynthesizeResultsRequest
-	65, // 59: kratos.team.v1.TeamService.ArchiveTeam:input_type -> kratos.team.v1.ArchiveTeamRequest
-	67, // 60: kratos.team.v1.TeamService.RetryTeam:input_type -> kratos.team.v1.RetryTeamRequest
-	69, // 61: kratos.team.v1.TeamService.PauseTeamRun:input_type -> kratos.team.v1.PauseTeamRunRequest
-	71, // 62: kratos.team.v1.TeamService.UnpauseTeamRun:input_type -> kratos.team.v1.UnpauseTeamRunRequest
-	73, // 63: kratos.team.v1.TeamService.InjectTeamMessage:input_type -> kratos.team.v1.InjectTeamMessageRequest
-	26, // 64: kratos.team.v1.TeamService.ListTeams:output_type -> kratos.team.v1.ListTeamsResponse
-	0,  // 65: kratos.team.v1.TeamService.CreateTeam:output_type -> kratos.team.v1.Team
-	0,  // 66: kratos.team.v1.TeamService.GetTeam:output_type -> kratos.team.v1.Team
-	0,  // 67: kratos.team.v1.TeamService.UpdateTeam:output_type -> kratos.team.v1.Team
-	78, // 68: kratos.team.v1.TeamService.DeleteTeam:output_type -> google.protobuf.Empty
-	0,  // 69: kratos.team.v1.TeamService.DuplicateTeam:output_type -> kratos.team.v1.Team
-	33, // 70: kratos.team.v1.TeamService.ListTeamRuns:output_type -> kratos.team.v1.ListTeamRunsResponse
-	35, // 71: kratos.team.v1.TeamService.ListTeamRunSteps:output_type -> kratos.team.v1.ListTeamRunStepsResponse
-	1,  // 72: kratos.team.v1.TeamService.GetTeamRun:output_type -> kratos.team.v1.TeamRun
-	1,  // 73: kratos.team.v1.TeamService.CancelTeamRun:output_type -> kratos.team.v1.TeamRun
-	39, // 74: kratos.team.v1.TeamService.RunTeamTest:output_type -> kratos.team.v1.RunTeamTestResponse
-	41, // 75: kratos.team.v1.TeamService.UpdateSwarmMembers:output_type -> kratos.team.v1.UpdateSwarmMembersResponse
-	43, // 76: kratos.team.v1.TeamService.ExportTeamStructure:output_type -> kratos.team.v1.ExportTeamStructureResponse
-	6,  // 77: kratos.team.v1.TeamService.GetTeamRunSummary:output_type -> kratos.team.v1.GetTeamRunSummaryResponse
-	10, // 78: kratos.team.v1.TeamService.GetTeamRunObservatory:output_type -> kratos.team.v1.GetTeamRunObservatoryResponse
-	13, // 79: kratos.team.v1.TeamService.GetTeamRunObservatoryTimeline:output_type -> kratos.team.v1.GetTeamRunObservatoryTimelineResponse
-	24, // 80: kratos.team.v1.TeamService.ResumeTeamRunExecution:output_type -> kratos.team.v1.ResumeTeamRunExecutionResponse
-	52, // 81: kratos.team.v1.TeamService.CompileTeamGraph:output_type -> kratos.team.v1.CompileTeamGraphResponse
-	55, // 82: kratos.team.v1.TeamService.ListTaskDeadLetters:output_type -> kratos.team.v1.ListTaskDeadLettersResponse
-	57, // 83: kratos.team.v1.TeamService.ResolveTaskDeadLetter:output_type -> kratos.team.v1.ResolveTaskDeadLetterResponse
-	61, // 84: kratos.team.v1.TeamService.ListSpiritTeams:output_type -> kratos.team.v1.ListSpiritTeamsResponse
-	64, // 85: kratos.team.v1.TeamService.SynthesizeResults:output_type -> kratos.team.v1.SynthesizeResultsResponse
-	66, // 86: kratos.team.v1.TeamService.ArchiveTeam:output_type -> kratos.team.v1.ArchiveTeamResponse
-	68, // 87: kratos.team.v1.TeamService.RetryTeam:output_type -> kratos.team.v1.RetryTeamResponse
-	70, // 88: kratos.team.v1.TeamService.PauseTeamRun:output_type -> kratos.team.v1.PauseTeamRunResponse
-	72, // 89: kratos.team.v1.TeamService.UnpauseTeamRun:output_type -> kratos.team.v1.UnpauseTeamRunResponse
-	74, // 90: kratos.team.v1.TeamService.InjectTeamMessage:output_type -> kratos.team.v1.InjectTeamMessageResponse
-	64, // [64:91] is the sub-list for method output_type
-	37, // [37:64] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	7,  // 3: kratos.team.v1.TeamRunStats.members:type_name -> kratos.team.v1.TeamRunMemberStats
+	8,  // 4: kratos.team.v1.GetTeamRunStatsResponse.stats:type_name -> kratos.team.v1.TeamRunStats
+	13, // 5: kratos.team.v1.AgentNodeStateView.current_activity:type_name -> kratos.team.v1.ActivitySnapshotView
+	13, // 6: kratos.team.v1.AgentNodeStateView.activity_history:type_name -> kratos.team.v1.ActivitySnapshotView
+	14, // 7: kratos.team.v1.GetTeamRunObservatoryResponse.nodes:type_name -> kratos.team.v1.AgentNodeStateView
+	58, // 8: kratos.team.v1.GetTeamRunObservatoryResponse.compiled_topology:type_name -> kratos.team.v1.CompileTeamGraphResponse
+	18, // 9: kratos.team.v1.GetTeamRunObservatoryTimelineResponse.rows:type_name -> kratos.team.v1.ActivityTimelineRow
+	21, // 10: kratos.team.v1.EmbeddedGraph.nodes:type_name -> kratos.team.v1.EmbeddedGraphNode
+	22, // 11: kratos.team.v1.EmbeddedGraph.edges:type_name -> kratos.team.v1.EmbeddedGraphEdge
+	24, // 12: kratos.team.v1.TeamNodeFailureOverrideSpec.retry:type_name -> kratos.team.v1.TeamRetryPolicySpec
+	24, // 13: kratos.team.v1.FailurePolicySpec.retry:type_name -> kratos.team.v1.TeamRetryPolicySpec
+	81, // 14: kratos.team.v1.FailurePolicySpec.node_overrides:type_name -> kratos.team.v1.FailurePolicySpec.NodeOverridesEntry
+	26, // 15: kratos.team.v1.FailurePolicySpec.circuit_breaker:type_name -> kratos.team.v1.CircuitBreakerSpec
+	20, // 16: kratos.team.v1.OrchestrationSpec.members:type_name -> kratos.team.v1.OrchestrationMember
+	23, // 17: kratos.team.v1.OrchestrationSpec.graph:type_name -> kratos.team.v1.EmbeddedGraph
+	27, // 18: kratos.team.v1.OrchestrationSpec.failure_policy:type_name -> kratos.team.v1.FailurePolicySpec
+	83, // 19: kratos.team.v1.ResumeTeamRunExecutionRequest.resume_value:type_name -> google.protobuf.Struct
+	0,  // 20: kratos.team.v1.ListTeamsResponse.items:type_name -> kratos.team.v1.Team
+	0,  // 21: kratos.team.v1.UpdateTeamRequest.team:type_name -> kratos.team.v1.Team
+	1,  // 22: kratos.team.v1.ListTeamRunsResponse.items:type_name -> kratos.team.v1.TeamRun
+	2,  // 23: kratos.team.v1.ListTeamRunStepsResponse.items:type_name -> kratos.team.v1.TeamRunStep
+	1,  // 24: kratos.team.v1.RunTeamTestResponse.run:type_name -> kratos.team.v1.TeamRun
+	50, // 25: kratos.team.v1.ExportTeamStructureResponse.nodes:type_name -> kratos.team.v1.StructureNode
+	51, // 26: kratos.team.v1.ExportTeamStructureResponse.edges:type_name -> kratos.team.v1.StructureEdge
+	52, // 27: kratos.team.v1.ExportTeamStructureResponse.surfaces:type_name -> kratos.team.v1.StructureSurface
+	82, // 28: kratos.team.v1.CompiledGraphConditionalEdgeView.path_map:type_name -> kratos.team.v1.CompiledGraphConditionalEdgeView.PathMapEntry
+	55, // 29: kratos.team.v1.CompileTeamGraphResponse.nodes:type_name -> kratos.team.v1.CompiledGraphNodeView
+	56, // 30: kratos.team.v1.CompileTeamGraphResponse.edges:type_name -> kratos.team.v1.CompiledGraphEdgeView
+	57, // 31: kratos.team.v1.CompileTeamGraphResponse.conditional_edges:type_name -> kratos.team.v1.CompiledGraphConditionalEdgeView
+	54, // 32: kratos.team.v1.CompileTeamGraphResponse.issues:type_name -> kratos.team.v1.CompileTeamGraphValidationIssue
+	59, // 33: kratos.team.v1.ListTaskDeadLettersResponse.items:type_name -> kratos.team.v1.TaskDeadLetter
+	59, // 34: kratos.team.v1.ResolveTaskDeadLetterResponse.item:type_name -> kratos.team.v1.TaskDeadLetter
+	64, // 35: kratos.team.v1.SpiritTeamView.members:type_name -> kratos.team.v1.SpiritMemberView
+	65, // 36: kratos.team.v1.ListSpiritTeamsResponse.teams:type_name -> kratos.team.v1.SpiritTeamView
+	69, // 37: kratos.team.v1.SynthesizeResultsResponse.team_results:type_name -> kratos.team.v1.SynthesisTeamResult
+	25, // 38: kratos.team.v1.FailurePolicySpec.NodeOverridesEntry.value:type_name -> kratos.team.v1.TeamNodeFailureOverrideSpec
+	31, // 39: kratos.team.v1.TeamService.ListTeams:input_type -> kratos.team.v1.ListTeamsRequest
+	33, // 40: kratos.team.v1.TeamService.CreateTeam:input_type -> kratos.team.v1.CreateTeamRequest
+	34, // 41: kratos.team.v1.TeamService.GetTeam:input_type -> kratos.team.v1.GetTeamRequest
+	35, // 42: kratos.team.v1.TeamService.UpdateTeam:input_type -> kratos.team.v1.UpdateTeamRequest
+	36, // 43: kratos.team.v1.TeamService.DeleteTeam:input_type -> kratos.team.v1.DeleteTeamRequest
+	37, // 44: kratos.team.v1.TeamService.DuplicateTeam:input_type -> kratos.team.v1.DuplicateTeamRequest
+	38, // 45: kratos.team.v1.TeamService.ListTeamRuns:input_type -> kratos.team.v1.ListTeamRunsRequest
+	40, // 46: kratos.team.v1.TeamService.ListTeamRunSteps:input_type -> kratos.team.v1.ListTeamRunStepsRequest
+	42, // 47: kratos.team.v1.TeamService.GetTeamRun:input_type -> kratos.team.v1.GetTeamRunRequest
+	43, // 48: kratos.team.v1.TeamService.CancelTeamRun:input_type -> kratos.team.v1.CancelTeamRunRequest
+	44, // 49: kratos.team.v1.TeamService.RunTeamTest:input_type -> kratos.team.v1.RunTeamTestRequest
+	46, // 50: kratos.team.v1.TeamService.UpdateSwarmMembers:input_type -> kratos.team.v1.UpdateSwarmMembersRequest
+	48, // 51: kratos.team.v1.TeamService.ExportTeamStructure:input_type -> kratos.team.v1.ExportTeamStructureRequest
+	5,  // 52: kratos.team.v1.TeamService.GetTeamRunSummary:input_type -> kratos.team.v1.GetTeamRunSummaryRequest
+	15, // 53: kratos.team.v1.TeamService.GetTeamRunObservatory:input_type -> kratos.team.v1.GetTeamRunObservatoryRequest
+	17, // 54: kratos.team.v1.TeamService.GetTeamRunObservatoryTimeline:input_type -> kratos.team.v1.GetTeamRunObservatoryTimelineRequest
+	29, // 55: kratos.team.v1.TeamService.ResumeTeamRunExecution:input_type -> kratos.team.v1.ResumeTeamRunExecutionRequest
+	53, // 56: kratos.team.v1.TeamService.CompileTeamGraph:input_type -> kratos.team.v1.CompileTeamGraphRequest
+	60, // 57: kratos.team.v1.TeamService.ListTaskDeadLetters:input_type -> kratos.team.v1.ListTaskDeadLettersRequest
+	62, // 58: kratos.team.v1.TeamService.ResolveTaskDeadLetter:input_type -> kratos.team.v1.ResolveTaskDeadLetterRequest
+	66, // 59: kratos.team.v1.TeamService.ListSpiritTeams:input_type -> kratos.team.v1.ListSpiritTeamsRequest
+	68, // 60: kratos.team.v1.TeamService.SynthesizeResults:input_type -> kratos.team.v1.SynthesizeResultsRequest
+	71, // 61: kratos.team.v1.TeamService.ArchiveTeam:input_type -> kratos.team.v1.ArchiveTeamRequest
+	73, // 62: kratos.team.v1.TeamService.RetryTeam:input_type -> kratos.team.v1.RetryTeamRequest
+	75, // 63: kratos.team.v1.TeamService.PauseTeamRun:input_type -> kratos.team.v1.PauseTeamRunRequest
+	77, // 64: kratos.team.v1.TeamService.UnpauseTeamRun:input_type -> kratos.team.v1.UnpauseTeamRunRequest
+	79, // 65: kratos.team.v1.TeamService.InjectTeamMessage:input_type -> kratos.team.v1.InjectTeamMessageRequest
+	9,  // 66: kratos.team.v1.TeamService.GetTeamRunStats:input_type -> kratos.team.v1.GetTeamRunStatsRequest
+	11, // 67: kratos.team.v1.TeamService.ExportTeamRunStats:input_type -> kratos.team.v1.ExportTeamRunStatsRequest
+	32, // 68: kratos.team.v1.TeamService.ListTeams:output_type -> kratos.team.v1.ListTeamsResponse
+	0,  // 69: kratos.team.v1.TeamService.CreateTeam:output_type -> kratos.team.v1.Team
+	0,  // 70: kratos.team.v1.TeamService.GetTeam:output_type -> kratos.team.v1.Team
+	0,  // 71: kratos.team.v1.TeamService.UpdateTeam:output_type -> kratos.team.v1.Team
+	84, // 72: kratos.team.v1.TeamService.DeleteTeam:output_type -> google.protobuf.Empty
+	0,  // 73: kratos.team.v1.TeamService.DuplicateTeam:output_type -> kratos.team.v1.Team
+	39, // 74: kratos.team.v1.TeamService.ListTeamRuns:output_type -> kratos.team.v1.ListTeamRunsResponse
+	41, // 75: kratos.team.v1.TeamService.ListTeamRunSteps:output_type -> kratos.team.v1.ListTeamRunStepsResponse
+	1,  // 76: kratos.team.v1.TeamService.GetTeamRun:output_type -> kratos.team.v1.TeamRun
+	1,  // 77: kratos.team.v1.TeamService.CancelTeamRun:output_type -> kratos.team.v1.TeamRun
+	45, // 78: kratos.team.v1.TeamService.RunTeamTest:output_type -> kratos.team.v1.RunTeamTestResponse
+	47, // 79: kratos.team.v1.TeamService.UpdateSwarmMembers:output_type -> kratos.team.v1.UpdateSwarmMembersResponse
+	49, // 80: kratos.team.v1.TeamService.ExportTeamStructure:output_type -> kratos.team.v1.ExportTeamStructureResponse
+	6,  // 81: kratos.team.v1.TeamService.GetTeamRunSummary:output_type -> kratos.team.v1.GetTeamRunSummaryResponse
+	16, // 82: kratos.team.v1.TeamService.GetTeamRunObservatory:output_type -> kratos.team.v1.GetTeamRunObservatoryResponse
+	19, // 83: kratos.team.v1.TeamService.GetTeamRunObservatoryTimeline:output_type -> kratos.team.v1.GetTeamRunObservatoryTimelineResponse
+	30, // 84: kratos.team.v1.TeamService.ResumeTeamRunExecution:output_type -> kratos.team.v1.ResumeTeamRunExecutionResponse
+	58, // 85: kratos.team.v1.TeamService.CompileTeamGraph:output_type -> kratos.team.v1.CompileTeamGraphResponse
+	61, // 86: kratos.team.v1.TeamService.ListTaskDeadLetters:output_type -> kratos.team.v1.ListTaskDeadLettersResponse
+	63, // 87: kratos.team.v1.TeamService.ResolveTaskDeadLetter:output_type -> kratos.team.v1.ResolveTaskDeadLetterResponse
+	67, // 88: kratos.team.v1.TeamService.ListSpiritTeams:output_type -> kratos.team.v1.ListSpiritTeamsResponse
+	70, // 89: kratos.team.v1.TeamService.SynthesizeResults:output_type -> kratos.team.v1.SynthesizeResultsResponse
+	72, // 90: kratos.team.v1.TeamService.ArchiveTeam:output_type -> kratos.team.v1.ArchiveTeamResponse
+	74, // 91: kratos.team.v1.TeamService.RetryTeam:output_type -> kratos.team.v1.RetryTeamResponse
+	76, // 92: kratos.team.v1.TeamService.PauseTeamRun:output_type -> kratos.team.v1.PauseTeamRunResponse
+	78, // 93: kratos.team.v1.TeamService.UnpauseTeamRun:output_type -> kratos.team.v1.UnpauseTeamRunResponse
+	80, // 94: kratos.team.v1.TeamService.InjectTeamMessage:output_type -> kratos.team.v1.InjectTeamMessageResponse
+	10, // 95: kratos.team.v1.TeamService.GetTeamRunStats:output_type -> kratos.team.v1.GetTeamRunStatsResponse
+	12, // 96: kratos.team.v1.TeamService.ExportTeamRunStats:output_type -> kratos.team.v1.ExportTeamRunStatsResponse
+	68, // [68:97] is the sub-list for method output_type
+	39, // [39:68] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_kratos_team_v1_team_proto_init() }
@@ -6401,15 +6953,15 @@ func file_kratos_team_v1_team_proto_init() {
 		return
 	}
 	file_kratos_team_v1_team_proto_msgTypes[1].OneofWrappers = []any{}
-	file_kratos_team_v1_team_proto_msgTypes[11].OneofWrappers = []any{}
-	file_kratos_team_v1_team_proto_msgTypes[15].OneofWrappers = []any{}
+	file_kratos_team_v1_team_proto_msgTypes[17].OneofWrappers = []any{}
+	file_kratos_team_v1_team_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_team_v1_team_proto_rawDesc), len(file_kratos_team_v1_team_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   77,
+			NumMessages:   83,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -115,6 +115,18 @@
                   />
                 </div>
                 <div class="chat-session-meta-row row items-center no-wrap">
+                  <!-- 79 R6 血缘徽标：fork 会话显示来源会话（tooltip 含分叉点 turn） -->
+                  <q-badge
+                    v-if="session.fork_from_turn_id"
+                    dense
+                    outline
+                    color="accent"
+                    class="q-mr-xs chat-session-fork-badge"
+                  >
+                    <q-icon name="call_split" size="12px" class="chat-session-fork-badge__icon" />
+                    {{ t('chat.forkBadge') }}
+                    <q-tooltip>{{ forkTooltip(session) }}</q-tooltip>
+                  </q-badge>
                   <q-badge
                     v-if="sessionChannelLabel(session)"
                     dense
@@ -406,6 +418,16 @@ function sessionChannelLabel(session: SessionView): string {
   return '';
 }
 
+/** 79 R6 血缘徽标 tooltip：来源会话标题（列表内可查）+ 分叉点 turn id 截断。 */
+function forkTooltip(session: SessionView): string {
+  const parentId = session.parent_session_id?.trim() ?? '';
+  const parent = parentId ? props.sessions.find((s) => s.id === parentId) : undefined;
+  const source = parent?.title || parentId || '—';
+  const turn = session.fork_from_turn_id ?? '';
+  const shortTurn = turn.length > 8 ? `${turn.slice(0, 8)}…` : turn;
+  return t('chat.forkedFrom', { source, turn: shortTurn });
+}
+
 function sourceLabel(source: string | undefined): string {
   return presentConversationSource(source);
 }
@@ -650,6 +672,15 @@ function sessionTime(session: SessionView) {
 
 .chat-session-fav {
   flex-shrink: 0;
+}
+
+.chat-session-fork-badge {
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.chat-session-fork-badge__icon {
+  margin-right: 2px;
 }
 
 .chat-session-pin {

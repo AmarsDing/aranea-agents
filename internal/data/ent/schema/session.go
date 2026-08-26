@@ -94,6 +94,9 @@ func (Session) Fields() []ent.Field {
 		field.String("parent_session_id").Default("").MaxLen(256),
 		field.String("root_session_id").Default("").MaxLen(256),
 		field.Int("agent_depth").Default(0),
+		// fork_from_turn_id 记录会话 Fork-from-Turn 的分叉点（79-runtime-governance
+		// R6）：v2 turn id（= invocation id）。空 = 非 fork 会话。血缘展示与审计用。
+		field.String("fork_from_turn_id").Default("").MaxLen(256),
 
 		// === Session tree hierarchy (Phase 2 additive) ===
 		// session_type classifies the session's role in the tree.

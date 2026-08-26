@@ -176,8 +176,13 @@ func sessionSearchWheres(q biz.SessionSearchQuery) []predicate.Session {
 		wheres = append(wheres, entsession.OwnerTypeEQ(q.OwnerType))
 	}
 	// root_only：只列根会话（侧边栏/管理列表），排除团队成员等子会话。
+	// 79-runtime-governance R6：fork 会话 parent_session_id 记来源会话，但它是
+	// 用户发起的根级对话（非编排子会话），必须进侧边栏——血缘徽标的载体。
 	if q.RootOnly {
-		wheres = append(wheres, entsession.ParentSessionIDEQ(""))
+		wheres = append(wheres, entsession.Or(
+			entsession.ParentSessionIDEQ(""),
+			entsession.ForkFromTurnIDNEQ(""),
+		))
 	}
 	if q.AgentID != "" {
 		wheres = append(wheres, entsession.AgentIDEQ(q.AgentID))

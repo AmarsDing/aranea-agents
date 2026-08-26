@@ -728,6 +728,20 @@ func (_c *SessionCreate) SetNillableAgentDepth(v *int) *SessionCreate {
 	return _c
 }
 
+// SetForkFromTurnID sets the "fork_from_turn_id" field.
+func (_c *SessionCreate) SetForkFromTurnID(v string) *SessionCreate {
+	_c.mutation.SetForkFromTurnID(v)
+	return _c
+}
+
+// SetNillableForkFromTurnID sets the "fork_from_turn_id" field if the given value is not nil.
+func (_c *SessionCreate) SetNillableForkFromTurnID(v *string) *SessionCreate {
+	if v != nil {
+		_c.SetForkFromTurnID(*v)
+	}
+	return _c
+}
+
 // SetSessionType sets the "session_type" field.
 func (_c *SessionCreate) SetSessionType(v string) *SessionCreate {
 	_c.mutation.SetSessionType(v)
@@ -1067,6 +1081,10 @@ func (_c *SessionCreate) defaults() {
 		v := session.DefaultAgentDepth
 		_c.mutation.SetAgentDepth(v)
 	}
+	if _, ok := _c.mutation.ForkFromTurnID(); !ok {
+		v := session.DefaultForkFromTurnID
+		_c.mutation.SetForkFromTurnID(v)
+	}
 	if _, ok := _c.mutation.SessionType(); !ok {
 		v := session.DefaultSessionType
 		_c.mutation.SetSessionType(v)
@@ -1261,6 +1279,14 @@ func (_c *SessionCreate) check() error {
 	}
 	if _, ok := _c.mutation.AgentDepth(); !ok {
 		return &ValidationError{Name: "agent_depth", err: errors.New(`ent: missing required field "Session.agent_depth"`)}
+	}
+	if _, ok := _c.mutation.ForkFromTurnID(); !ok {
+		return &ValidationError{Name: "fork_from_turn_id", err: errors.New(`ent: missing required field "Session.fork_from_turn_id"`)}
+	}
+	if v, ok := _c.mutation.ForkFromTurnID(); ok {
+		if err := session.ForkFromTurnIDValidator(v); err != nil {
+			return &ValidationError{Name: "fork_from_turn_id", err: fmt.Errorf(`ent: validator failed for field "Session.fork_from_turn_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.SessionType(); !ok {
 		return &ValidationError{Name: "session_type", err: errors.New(`ent: missing required field "Session.session_type"`)}
@@ -1532,6 +1558,10 @@ func (_c *SessionCreate) createSpec() (*Session, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AgentDepth(); ok {
 		_spec.SetField(session.FieldAgentDepth, field.TypeInt, value)
 		_node.AgentDepth = value
+	}
+	if value, ok := _c.mutation.ForkFromTurnID(); ok {
+		_spec.SetField(session.FieldForkFromTurnID, field.TypeString, value)
+		_node.ForkFromTurnID = value
 	}
 	if value, ok := _c.mutation.SessionType(); ok {
 		_spec.SetField(session.FieldSessionType, field.TypeString, value)
@@ -2342,6 +2372,18 @@ func (u *SessionUpsert) UpdateAgentDepth() *SessionUpsert {
 // AddAgentDepth adds v to the "agent_depth" field.
 func (u *SessionUpsert) AddAgentDepth(v int) *SessionUpsert {
 	u.Add(session.FieldAgentDepth, v)
+	return u
+}
+
+// SetForkFromTurnID sets the "fork_from_turn_id" field.
+func (u *SessionUpsert) SetForkFromTurnID(v string) *SessionUpsert {
+	u.Set(session.FieldForkFromTurnID, v)
+	return u
+}
+
+// UpdateForkFromTurnID sets the "fork_from_turn_id" field to the value that was provided on create.
+func (u *SessionUpsert) UpdateForkFromTurnID() *SessionUpsert {
+	u.SetExcluded(session.FieldForkFromTurnID)
 	return u
 }
 
@@ -3346,6 +3388,20 @@ func (u *SessionUpsertOne) AddAgentDepth(v int) *SessionUpsertOne {
 func (u *SessionUpsertOne) UpdateAgentDepth() *SessionUpsertOne {
 	return u.Update(func(s *SessionUpsert) {
 		s.UpdateAgentDepth()
+	})
+}
+
+// SetForkFromTurnID sets the "fork_from_turn_id" field.
+func (u *SessionUpsertOne) SetForkFromTurnID(v string) *SessionUpsertOne {
+	return u.Update(func(s *SessionUpsert) {
+		s.SetForkFromTurnID(v)
+	})
+}
+
+// UpdateForkFromTurnID sets the "fork_from_turn_id" field to the value that was provided on create.
+func (u *SessionUpsertOne) UpdateForkFromTurnID() *SessionUpsertOne {
+	return u.Update(func(s *SessionUpsert) {
+		s.UpdateForkFromTurnID()
 	})
 }
 
@@ -4534,6 +4590,20 @@ func (u *SessionUpsertBulk) AddAgentDepth(v int) *SessionUpsertBulk {
 func (u *SessionUpsertBulk) UpdateAgentDepth() *SessionUpsertBulk {
 	return u.Update(func(s *SessionUpsert) {
 		s.UpdateAgentDepth()
+	})
+}
+
+// SetForkFromTurnID sets the "fork_from_turn_id" field.
+func (u *SessionUpsertBulk) SetForkFromTurnID(v string) *SessionUpsertBulk {
+	return u.Update(func(s *SessionUpsert) {
+		s.SetForkFromTurnID(v)
+	})
+}
+
+// UpdateForkFromTurnID sets the "fork_from_turn_id" field to the value that was provided on create.
+func (u *SessionUpsertBulk) UpdateForkFromTurnID() *SessionUpsertBulk {
+	return u.Update(func(s *SessionUpsert) {
+		s.UpdateForkFromTurnID()
 	})
 }
 

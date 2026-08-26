@@ -54,10 +54,6 @@ type Tx struct {
 	CompiledTeam *CompiledTeamClient
 	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
 	ComputerUseAudit *ComputerUseAuditClient
-	// ConfigGraphEdge is the client for interacting with the ConfigGraphEdge builders.
-	ConfigGraphEdge *ConfigGraphEdgeClient
-	// ConfigGraphNode is the client for interacting with the ConfigGraphNode builders.
-	ConfigGraphNode *ConfigGraphNodeClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -126,6 +122,8 @@ type Tx struct {
 	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
+	// MemoryFactAllowRule is the client for interacting with the MemoryFactAllowRule builders.
+	MemoryFactAllowRule *MemoryFactAllowRuleClient
 	// MemoryFactPending is the client for interacting with the MemoryFactPending builders.
 	MemoryFactPending *MemoryFactPendingClient
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
@@ -387,8 +385,6 @@ func (tx *Tx) init() {
 	tx.CodingTask = NewCodingTaskClient(tx.config)
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.ComputerUseAudit = NewComputerUseAuditClient(tx.config)
-	tx.ConfigGraphEdge = NewConfigGraphEdgeClient(tx.config)
-	tx.ConfigGraphNode = NewConfigGraphNodeClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
 	tx.DecisionRecord = NewDecisionRecordClient(tx.config)
@@ -423,6 +419,7 @@ func (tx *Tx) init() {
 	tx.LlmProviderModel = NewLlmProviderModelClient(tx.config)
 	tx.MediaProvider = NewMediaProviderClient(tx.config)
 	tx.MemberSessionV2 = NewMemberSessionV2Client(tx.config)
+	tx.MemoryFactAllowRule = NewMemoryFactAllowRuleClient(tx.config)
 	tx.MemoryFactPending = NewMemoryFactPendingClient(tx.config)
 	tx.ModelPricingRule = NewModelPricingRuleClient(tx.config)
 	tx.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(tx.config)

@@ -40,8 +40,10 @@ func pgQueryRepo(t *testing.T) (bizcg.Repo, *sql.DB) {
 			t.Fatalf("exec failed: %v\nSQL: %s", err, q)
 		}
 	}
+	// Composite PK (id, generation) mirrors migration 20261261 — same id must
+	// coexist across generations (dual-generation switchover).
 	mustExec(`CREATE TEMP TABLE config_graph_nodes (
-	  id TEXT PRIMARY KEY,
+	  id TEXT NOT NULL,
 	  node_type TEXT NOT NULL,
 	  ref_id TEXT NOT NULL DEFAULT '',
 	  node_key TEXT NOT NULL DEFAULT '',
@@ -51,18 +53,20 @@ func pgQueryRepo(t *testing.T) (bizcg.Repo, *sql.DB) {
 	  attrs_json TEXT NOT NULL DEFAULT '{}',
 	  generation INTEGER NOT NULL DEFAULT 0,
 	  created_at TEXT NOT NULL DEFAULT '',
-	  updated_at TEXT NOT NULL DEFAULT ''
+	  updated_at TEXT NOT NULL DEFAULT '',
+	  PRIMARY KEY (id, generation)
 	)`)
 	mustExec(`CREATE UNIQUE INDEX uq_config_graph_nodes_ref ON config_graph_nodes(node_type, ref_id, generation)`)
 	mustExec(`CREATE TEMP TABLE config_graph_edges (
-	  id TEXT PRIMARY KEY,
+	  id TEXT NOT NULL,
 	  src_id TEXT NOT NULL DEFAULT '',
 	  dst_id TEXT NOT NULL DEFAULT '',
 	  edge_type TEXT NOT NULL,
 	  evidence_json TEXT NOT NULL DEFAULT '{}',
 	  workspace_id TEXT NOT NULL DEFAULT '',
 	  generation INTEGER NOT NULL DEFAULT 0,
-	  created_at TEXT NOT NULL DEFAULT ''
+	  created_at TEXT NOT NULL DEFAULT '',
+	  PRIMARY KEY (id, generation)
 	)`)
 	mustExec(`CREATE UNIQUE INDEX uq_config_graph_edges ON config_graph_edges(src_id, dst_id, edge_type, generation)`)
 	// sessions 影子表（仅 signals 探针所需列；dialect_integration_test.go 先例）。

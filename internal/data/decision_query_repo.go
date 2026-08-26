@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -136,6 +137,67 @@ func (r *decisionQueryRepo) ListRecords(ctx context.Context, f decision.ListFilt
 		return nil, 0, entErrToBizErr(err, "DECISION")
 	}
 	return items, total, nil
+}
+
+var _ decision.RunGateStatsRepo = (*decisionQueryRepo)(nil)
+
+// RunGateStats 聚合一个 run 的 system_guard 记录（79-runtime-governance R7）。
+// 只取三列 JSON 抽取值、Go 侧计数求和——双方言零分支（SQLite json_extract
+// 数值返回 INTEGER、PG ->> 返回 text，统一扫 NullString 后解析）。单 run 的
+// guard 记录量级小（闸干预/剪枝/压缩事件），全行扫描可接受；过滤走下推的
+// source_ref.run_id 表达式（btree 表达式索引 20261254）。
+func (r *decisionQueryRepo) RunGateStats(ctx context.Context, runID string) (decision.RunGateStats, error) {
+	var out decision.RunGateStats
+	if r == nil || r.data == nil || r.data.RWDB() == nil || strings.TrimSpace(runID) == "" {
+		return out, nil
+	}
+	d := r.data.Dialect()
+	q := d.RenumberPlaceholders(
+		"SELECT " + d.JSONExtract("metadata", "trigger_rule") + ", " +
+			d.JSONExtract("metadata", "observed_value") + ", " +
+			d.JSONExtract("metadata", "prune_bytes") +
+			" FROM decision_records WHERE category = ? AND " + d.JSONExtract("source_ref", "run_id") + " = ?")
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, decision.CategorySystemGuard, runID)
+	if err != nil {
+		return out, entErrToBizErr(err, "DECISION")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var trigger, observed, pruneBytes sql.NullString
+		if err := rows.Scan(&trigger, &observed, &pruneBytes); err != nil {
+			return out, entErrToBizErr(err, "DECISION")
+		}
+		switch trigger.String {
+		case decision.TriggerLoopGuardBlocked:
+			out.LoopGuardBlocks++
+		case decision.TriggerTokenBudgetTripped:
+			out.BudgetTripped = true
+		case decision.TriggerNoProgressTripped:
+			out.NoProgressTripped = true
+		case decision.TriggerToolResultPruned:
+			out.PruneCount += parseMetadataInt(observed.String)
+			out.PruneBytes += int64(parseMetadataInt(pruneBytes.String))
+		case decision.TriggerContextCompacted:
+			out.CompactCount++
+		}
+	}
+	return out, entErrToBizErr(rows.Err(), "DECISION")
+}
+
+// parseMetadataInt 宽容解析 metadata JSON 抽取的数值（"3"/"3.0"/3 三种形态
+// 随方言/驱动出现），失败归 0——统计口径宁可漏计不可报错。
+func parseMetadataInt(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return int(f)
+	}
+	return 0
 }
 
 // GetByKey 按 decision_key 精确查询；未命中返回 nil, nil。

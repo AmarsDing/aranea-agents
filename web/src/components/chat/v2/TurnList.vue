@@ -6,6 +6,7 @@
       :key="turn.ID"
       :turn="turn"
       @confirm-step="(p) => $emit('confirm-step', p)"
+      @fork-turn="(t) => $emit('fork-turn', t)"
     />
   </div>
 </template>
@@ -18,5 +19,6 @@ import TurnContainer from './TurnContainer.vue';
 defineProps<{ turns: Turn[] }>();
 defineEmits<{
   'confirm-step': [payload: ConfirmStepPayload];
+  'fork-turn': [turn: Turn];
 }>();
 </script>

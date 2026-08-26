@@ -159,7 +159,12 @@
         @expand="(ids) => emit('expand', ids)"
         @confirm-step="(p) => emit('confirm-step', p)"
       />
-      <TurnList v-if="postPlanTurns.length" :turns="postPlanTurns" @confirm-step="(p) => emit('confirm-step', p)" />
+      <TurnList
+        v-if="postPlanTurns.length"
+        :turns="postPlanTurns"
+        @confirm-step="(p) => emit('confirm-step', p)"
+        @fork-turn="(t) => emit('fork-turn', t)"
+      />
       <!-- orphan notice steps（TurnID 空，附着到 Task）作为任务 footer 渲染在
            任务卡末尾 — 兜底完成通知（总结 turn 触发失败时的"所有团队已完成"）。
            系统内部通知（context_usage 等）沿用 TurnContainer 同款过滤。
@@ -178,7 +183,7 @@ import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useSafeAuth } from '../../../features/chat/composables/useSafeAuth';
-import type { Task, MemberSession } from '../../../features/chat/v2Types';
+import type { Task, MemberSession, Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TurnList from './TurnList.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
@@ -237,6 +242,7 @@ const emit = defineEmits<{
   'inject-agent': [payload: { sessionId: string; message: string }];
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
+  'fork-turn': [turn: Turn];
   'submit-clarification': [payload: SubmitClarificationPayload];
   hydrate: [task: Task];
   'toggle-collapse': [task: Task];

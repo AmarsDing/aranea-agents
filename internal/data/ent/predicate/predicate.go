@@ -66,12 +66,6 @@ type CompiledTeam func(*sql.Selector)
 // ComputerUseAudit is the predicate function for computeruseaudit builders.
 type ComputerUseAudit func(*sql.Selector)
 
-// ConfigGraphEdge is the predicate function for configgraphedge builders.
-type ConfigGraphEdge func(*sql.Selector)
-
-// ConfigGraphNode is the predicate function for configgraphnode builders.
-type ConfigGraphNode func(*sql.Selector)
-
 // CronTask is the predicate function for crontask builders.
 type CronTask func(*sql.Selector)
 
@@ -173,6 +167,9 @@ type MediaProvider func(*sql.Selector)
 
 // MemberSessionV2 is the predicate function for membersessionv2 builders.
 type MemberSessionV2 func(*sql.Selector)
+
+// MemoryFactAllowRule is the predicate function for memoryfactallowrule builders.
+type MemoryFactAllowRule func(*sql.Selector)
 
 // MemoryFactPending is the predicate function for memoryfactpending builders.
 type MemoryFactPending func(*sql.Selector)

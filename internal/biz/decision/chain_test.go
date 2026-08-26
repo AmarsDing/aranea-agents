@@ -11,6 +11,7 @@ type fakeChainQueryRepo struct {
 	upstream   []Record
 	downstream []Record
 	planner    *Record
+	lastRef    SourceRef
 }
 
 func (f *fakeChainQueryRepo) ListRecords(context.Context, ListFilter) ([]Record, int64, error) {
@@ -29,7 +30,8 @@ func (f *fakeChainQueryRepo) ListDownstream(context.Context, int64, int) ([]Reco
 	return f.downstream, nil
 }
 
-func (f *fakeChainQueryRepo) FindLatestPlannerByRun(context.Context, string, string, int64) (*Record, error) {
+func (f *fakeChainQueryRepo) FindVirtualParentPlanner(_ context.Context, ref SourceRef, _ string, _ int64) (*Record, error) {
+	f.lastRef = ref
 	return f.planner, nil
 }
 

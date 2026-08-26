@@ -113,6 +113,8 @@ const (
 	FieldRootSessionID = "root_session_id"
 	// FieldAgentDepth holds the string denoting the agent_depth field in the database.
 	FieldAgentDepth = "agent_depth"
+	// FieldForkFromTurnID holds the string denoting the fork_from_turn_id field in the database.
+	FieldForkFromTurnID = "fork_from_turn_id"
 	// FieldSessionType holds the string denoting the session_type field in the database.
 	FieldSessionType = "session_type"
 	// FieldMemberAgentKey holds the string denoting the member_agent_key field in the database.
@@ -185,6 +187,7 @@ var Columns = []string{
 	FieldParentSessionID,
 	FieldRootSessionID,
 	FieldAgentDepth,
+	FieldForkFromTurnID,
 	FieldSessionType,
 	FieldMemberAgentKey,
 	FieldMemberRole,
@@ -309,6 +312,10 @@ var (
 	RootSessionIDValidator func(string) error
 	// DefaultAgentDepth holds the default value on creation for the "agent_depth" field.
 	DefaultAgentDepth int
+	// DefaultForkFromTurnID holds the default value on creation for the "fork_from_turn_id" field.
+	DefaultForkFromTurnID string
+	// ForkFromTurnIDValidator is a validator for the "fork_from_turn_id" field. It is called by the builders before save.
+	ForkFromTurnIDValidator func(string) error
 	// DefaultSessionType holds the default value on creation for the "session_type" field.
 	DefaultSessionType string
 	// SessionTypeValidator is a validator for the "session_type" field. It is called by the builders before save.
@@ -590,6 +597,11 @@ func ByRootSessionID(opts ...sql.OrderTermOption) OrderOption {
 // ByAgentDepth orders the results by the agent_depth field.
 func ByAgentDepth(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAgentDepth, opts...).ToFunc()
+}
+
+// ByForkFromTurnID orders the results by the fork_from_turn_id field.
+func ByForkFromTurnID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForkFromTurnID, opts...).ToFunc()
 }
 
 // BySessionType orders the results by the session_type field.

@@ -106,6 +106,7 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		ParentSessionID:            e.ParentSessionID,
 		RootSessionID:              e.RootSessionID,
 		AgentDepth:                 e.AgentDepth,
+		ForkFromTurnID:             e.ForkFromTurnID,
 
 		// Phase 2: Session tree hierarchy
 		SessionType:    e.SessionType,
@@ -235,6 +236,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetParentSessionID(in.ParentSessionID).
 		SetRootSessionID(in.RootSessionID).
 		SetAgentDepth(in.AgentDepth).
+		SetForkFromTurnID(in.ForkFromTurnID).
 		SetSessionType(in.SessionType).
 		SetMemberAgentKey(in.MemberAgentKey).
 		SetMemberRole(in.MemberRole).

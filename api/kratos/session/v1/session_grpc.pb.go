@@ -24,6 +24,7 @@ const (
 	SessionService_CreateSession_FullMethodName           = "/kratos.session.v1.SessionService/CreateSession"
 	SessionService_DeleteSessionsByAgent_FullMethodName   = "/kratos.session.v1.SessionService/DeleteSessionsByAgent"
 	SessionService_GetSession_FullMethodName              = "/kratos.session.v1.SessionService/GetSession"
+	SessionService_ForkSession_FullMethodName             = "/kratos.session.v1.SessionService/ForkSession"
 	SessionService_UpdateSession_FullMethodName           = "/kratos.session.v1.SessionService/UpdateSession"
 	SessionService_DeleteSession_FullMethodName           = "/kratos.session.v1.SessionService/DeleteSession"
 	SessionService_ArchiveSession_FullMethodName          = "/kratos.session.v1.SessionService/ArchiveSession"
@@ -55,6 +56,11 @@ type SessionServiceClient interface {
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*Session, error)
 	DeleteSessionsByAgent(ctx context.Context, in *DeleteSessionsByAgentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*Session, error)
+	// ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+	// R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+	// parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+	// 历史不闭合，返回 400）；turn 不存在返回 404。
+	ForkSession(ctx context.Context, in *ForkSessionRequest, opts ...grpc.CallOption) (*Session, error)
 	UpdateSession(ctx context.Context, in *UpdateSessionRequest, opts ...grpc.CallOption) (*Session, error)
 	DeleteSession(ctx context.Context, in *DeleteSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ArchiveSession(ctx context.Context, in *ArchiveSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -123,6 +129,16 @@ func (c *sessionServiceClient) GetSession(ctx context.Context, in *GetSessionReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Session)
 	err := c.cc.Invoke(ctx, SessionService_GetSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sessionServiceClient) ForkSession(ctx context.Context, in *ForkSessionRequest, opts ...grpc.CallOption) (*Session, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Session)
+	err := c.cc.Invoke(ctx, SessionService_ForkSession_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -347,6 +363,11 @@ type SessionServiceServer interface {
 	CreateSession(context.Context, *CreateSessionRequest) (*Session, error)
 	DeleteSessionsByAgent(context.Context, *DeleteSessionsByAgentRequest) (*emptypb.Empty, error)
 	GetSession(context.Context, *GetSessionRequest) (*Session, error)
+	// ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+	// R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+	// parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+	// 历史不闭合，返回 400）；turn 不存在返回 404。
+	ForkSession(context.Context, *ForkSessionRequest) (*Session, error)
 	UpdateSession(context.Context, *UpdateSessionRequest) (*Session, error)
 	DeleteSession(context.Context, *DeleteSessionRequest) (*emptypb.Empty, error)
 	ArchiveSession(context.Context, *ArchiveSessionRequest) (*emptypb.Empty, error)
@@ -392,6 +413,9 @@ func (UnimplementedSessionServiceServer) DeleteSessionsByAgent(context.Context, 
 }
 func (UnimplementedSessionServiceServer) GetSession(context.Context, *GetSessionRequest) (*Session, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSession not implemented")
+}
+func (UnimplementedSessionServiceServer) ForkSession(context.Context, *ForkSessionRequest) (*Session, error) {
+	return nil, status.Error(codes.Unimplemented, "method ForkSession not implemented")
 }
 func (UnimplementedSessionServiceServer) UpdateSession(context.Context, *UpdateSessionRequest) (*Session, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateSession not implemented")
@@ -545,6 +569,24 @@ func _SessionService_GetSession_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SessionServiceServer).GetSession(ctx, req.(*GetSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SessionService_ForkSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ForkSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SessionServiceServer).ForkSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SessionService_ForkSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SessionServiceServer).ForkSession(ctx, req.(*ForkSessionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -949,6 +991,10 @@ var SessionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSession",
 			Handler:    _SessionService_GetSession_Handler,
+		},
+		{
+			MethodName: "ForkSession",
+			Handler:    _SessionService_ForkSession_Handler,
 		},
 		{
 			MethodName: "UpdateSession",

@@ -31,8 +31,6 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
-	"aranea-agents/internal/data/ent/configgraphedge"
-	"aranea-agents/internal/data/ent/configgraphnode"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -67,6 +65,7 @@ import (
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
+	"aranea-agents/internal/data/ent/memoryfactallowrule"
 	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -176,10 +175,6 @@ type Client struct {
 	CompiledTeam *CompiledTeamClient
 	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
 	ComputerUseAudit *ComputerUseAuditClient
-	// ConfigGraphEdge is the client for interacting with the ConfigGraphEdge builders.
-	ConfigGraphEdge *ConfigGraphEdgeClient
-	// ConfigGraphNode is the client for interacting with the ConfigGraphNode builders.
-	ConfigGraphNode *ConfigGraphNodeClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -248,6 +243,8 @@ type Client struct {
 	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
+	// MemoryFactAllowRule is the client for interacting with the MemoryFactAllowRule builders.
+	MemoryFactAllowRule *MemoryFactAllowRuleClient
 	// MemoryFactPending is the client for interacting with the MemoryFactPending builders.
 	MemoryFactPending *MemoryFactPendingClient
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
@@ -389,8 +386,6 @@ func (c *Client) init() {
 	c.CodingTask = NewCodingTaskClient(c.config)
 	c.CompiledTeam = NewCompiledTeamClient(c.config)
 	c.ComputerUseAudit = NewComputerUseAuditClient(c.config)
-	c.ConfigGraphEdge = NewConfigGraphEdgeClient(c.config)
-	c.ConfigGraphNode = NewConfigGraphNodeClient(c.config)
 	c.CronTask = NewCronTaskClient(c.config)
 	c.CronTaskRun = NewCronTaskRunClient(c.config)
 	c.DecisionRecord = NewDecisionRecordClient(c.config)
@@ -425,6 +420,7 @@ func (c *Client) init() {
 	c.LlmProviderModel = NewLlmProviderModelClient(c.config)
 	c.MediaProvider = NewMediaProviderClient(c.config)
 	c.MemberSessionV2 = NewMemberSessionV2Client(c.config)
+	c.MemoryFactAllowRule = NewMemoryFactAllowRuleClient(c.config)
 	c.MemoryFactPending = NewMemoryFactPendingClient(c.config)
 	c.ModelPricingRule = NewModelPricingRuleClient(c.config)
 	c.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(c.config)
@@ -592,8 +588,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
-		ConfigGraphEdge:            NewConfigGraphEdgeClient(cfg),
-		ConfigGraphNode:            NewConfigGraphNodeClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DecisionRecord:             NewDecisionRecordClient(cfg),
@@ -628,6 +622,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
 		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
+		MemoryFactAllowRule:        NewMemoryFactAllowRuleClient(cfg),
 		MemoryFactPending:          NewMemoryFactPendingClient(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
@@ -722,8 +717,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
-		ConfigGraphEdge:            NewConfigGraphEdgeClient(cfg),
-		ConfigGraphNode:            NewConfigGraphNodeClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DecisionRecord:             NewDecisionRecordClient(cfg),
@@ -758,6 +751,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
 		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
+		MemoryFactAllowRule:        NewMemoryFactAllowRuleClient(cfg),
 		MemoryFactPending:          NewMemoryFactPendingClient(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
@@ -846,19 +840,19 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
-		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.ConfigGraphEdge,
-		c.ConfigGraphNode, c.CronTask, c.CronTaskRun, c.DecisionRecord,
-		c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult,
-		c.EvalDataset, c.EvalGateConfig, c.EvalRun, c.EvalRunPreference,
-		c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
-		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
-		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
-		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
-		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
-		c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
-		c.MemoryFactPending, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.CronTask, c.CronTaskRun,
+		c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase,
+		c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
+		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
+		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
+		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
+		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
 		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
@@ -883,19 +877,19 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
-		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.ConfigGraphEdge,
-		c.ConfigGraphNode, c.CronTask, c.CronTaskRun, c.DecisionRecord,
-		c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult,
-		c.EvalDataset, c.EvalGateConfig, c.EvalRun, c.EvalRunPreference,
-		c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
-		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
-		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
-		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
-		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
-		c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
-		c.MemoryFactPending, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.CronTask, c.CronTaskRun,
+		c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase,
+		c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
+		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
+		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
+		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
+		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
 		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
@@ -955,10 +949,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CompiledTeam.mutate(ctx, m)
 	case *ComputerUseAuditMutation:
 		return c.ComputerUseAudit.mutate(ctx, m)
-	case *ConfigGraphEdgeMutation:
-		return c.ConfigGraphEdge.mutate(ctx, m)
-	case *ConfigGraphNodeMutation:
-		return c.ConfigGraphNode.mutate(ctx, m)
 	case *CronTaskMutation:
 		return c.CronTask.mutate(ctx, m)
 	case *CronTaskRunMutation:
@@ -1027,6 +1017,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.MediaProvider.mutate(ctx, m)
 	case *MemberSessionV2Mutation:
 		return c.MemberSessionV2.mutate(ctx, m)
+	case *MemoryFactAllowRuleMutation:
+		return c.MemoryFactAllowRule.mutate(ctx, m)
 	case *MemoryFactPendingMutation:
 		return c.MemoryFactPending.mutate(ctx, m)
 	case *ModelPricingRuleMutation:
@@ -3799,272 +3791,6 @@ func (c *ComputerUseAuditClient) mutate(ctx context.Context, m *ComputerUseAudit
 		return (&ComputerUseAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ComputerUseAudit mutation op: %q", m.Op())
-	}
-}
-
-// ConfigGraphEdgeClient is a client for the ConfigGraphEdge schema.
-type ConfigGraphEdgeClient struct {
-	config
-}
-
-// NewConfigGraphEdgeClient returns a client for the ConfigGraphEdge from the given config.
-func NewConfigGraphEdgeClient(c config) *ConfigGraphEdgeClient {
-	return &ConfigGraphEdgeClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `configgraphedge.Hooks(f(g(h())))`.
-func (c *ConfigGraphEdgeClient) Use(hooks ...Hook) {
-	c.hooks.ConfigGraphEdge = append(c.hooks.ConfigGraphEdge, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `configgraphedge.Intercept(f(g(h())))`.
-func (c *ConfigGraphEdgeClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ConfigGraphEdge = append(c.inters.ConfigGraphEdge, interceptors...)
-}
-
-// Create returns a builder for creating a ConfigGraphEdge entity.
-func (c *ConfigGraphEdgeClient) Create() *ConfigGraphEdgeCreate {
-	mutation := newConfigGraphEdgeMutation(c.config, OpCreate)
-	return &ConfigGraphEdgeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of ConfigGraphEdge entities.
-func (c *ConfigGraphEdgeClient) CreateBulk(builders ...*ConfigGraphEdgeCreate) *ConfigGraphEdgeCreateBulk {
-	return &ConfigGraphEdgeCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ConfigGraphEdgeClient) MapCreateBulk(slice any, setFunc func(*ConfigGraphEdgeCreate, int)) *ConfigGraphEdgeCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ConfigGraphEdgeCreateBulk{err: fmt.Errorf("calling to ConfigGraphEdgeClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*ConfigGraphEdgeCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &ConfigGraphEdgeCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for ConfigGraphEdge.
-func (c *ConfigGraphEdgeClient) Update() *ConfigGraphEdgeUpdate {
-	mutation := newConfigGraphEdgeMutation(c.config, OpUpdate)
-	return &ConfigGraphEdgeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ConfigGraphEdgeClient) UpdateOne(_m *ConfigGraphEdge) *ConfigGraphEdgeUpdateOne {
-	mutation := newConfigGraphEdgeMutation(c.config, OpUpdateOne, withConfigGraphEdge(_m))
-	return &ConfigGraphEdgeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ConfigGraphEdgeClient) UpdateOneID(id string) *ConfigGraphEdgeUpdateOne {
-	mutation := newConfigGraphEdgeMutation(c.config, OpUpdateOne, withConfigGraphEdgeID(id))
-	return &ConfigGraphEdgeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for ConfigGraphEdge.
-func (c *ConfigGraphEdgeClient) Delete() *ConfigGraphEdgeDelete {
-	mutation := newConfigGraphEdgeMutation(c.config, OpDelete)
-	return &ConfigGraphEdgeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ConfigGraphEdgeClient) DeleteOne(_m *ConfigGraphEdge) *ConfigGraphEdgeDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ConfigGraphEdgeClient) DeleteOneID(id string) *ConfigGraphEdgeDeleteOne {
-	builder := c.Delete().Where(configgraphedge.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ConfigGraphEdgeDeleteOne{builder}
-}
-
-// Query returns a query builder for ConfigGraphEdge.
-func (c *ConfigGraphEdgeClient) Query() *ConfigGraphEdgeQuery {
-	return &ConfigGraphEdgeQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeConfigGraphEdge},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a ConfigGraphEdge entity by its id.
-func (c *ConfigGraphEdgeClient) Get(ctx context.Context, id string) (*ConfigGraphEdge, error) {
-	return c.Query().Where(configgraphedge.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ConfigGraphEdgeClient) GetX(ctx context.Context, id string) *ConfigGraphEdge {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *ConfigGraphEdgeClient) Hooks() []Hook {
-	return c.hooks.ConfigGraphEdge
-}
-
-// Interceptors returns the client interceptors.
-func (c *ConfigGraphEdgeClient) Interceptors() []Interceptor {
-	return c.inters.ConfigGraphEdge
-}
-
-func (c *ConfigGraphEdgeClient) mutate(ctx context.Context, m *ConfigGraphEdgeMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ConfigGraphEdgeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&ConfigGraphEdgeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&ConfigGraphEdgeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ConfigGraphEdgeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ConfigGraphEdge mutation op: %q", m.Op())
-	}
-}
-
-// ConfigGraphNodeClient is a client for the ConfigGraphNode schema.
-type ConfigGraphNodeClient struct {
-	config
-}
-
-// NewConfigGraphNodeClient returns a client for the ConfigGraphNode from the given config.
-func NewConfigGraphNodeClient(c config) *ConfigGraphNodeClient {
-	return &ConfigGraphNodeClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `configgraphnode.Hooks(f(g(h())))`.
-func (c *ConfigGraphNodeClient) Use(hooks ...Hook) {
-	c.hooks.ConfigGraphNode = append(c.hooks.ConfigGraphNode, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `configgraphnode.Intercept(f(g(h())))`.
-func (c *ConfigGraphNodeClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ConfigGraphNode = append(c.inters.ConfigGraphNode, interceptors...)
-}
-
-// Create returns a builder for creating a ConfigGraphNode entity.
-func (c *ConfigGraphNodeClient) Create() *ConfigGraphNodeCreate {
-	mutation := newConfigGraphNodeMutation(c.config, OpCreate)
-	return &ConfigGraphNodeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of ConfigGraphNode entities.
-func (c *ConfigGraphNodeClient) CreateBulk(builders ...*ConfigGraphNodeCreate) *ConfigGraphNodeCreateBulk {
-	return &ConfigGraphNodeCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ConfigGraphNodeClient) MapCreateBulk(slice any, setFunc func(*ConfigGraphNodeCreate, int)) *ConfigGraphNodeCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ConfigGraphNodeCreateBulk{err: fmt.Errorf("calling to ConfigGraphNodeClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*ConfigGraphNodeCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &ConfigGraphNodeCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for ConfigGraphNode.
-func (c *ConfigGraphNodeClient) Update() *ConfigGraphNodeUpdate {
-	mutation := newConfigGraphNodeMutation(c.config, OpUpdate)
-	return &ConfigGraphNodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ConfigGraphNodeClient) UpdateOne(_m *ConfigGraphNode) *ConfigGraphNodeUpdateOne {
-	mutation := newConfigGraphNodeMutation(c.config, OpUpdateOne, withConfigGraphNode(_m))
-	return &ConfigGraphNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ConfigGraphNodeClient) UpdateOneID(id string) *ConfigGraphNodeUpdateOne {
-	mutation := newConfigGraphNodeMutation(c.config, OpUpdateOne, withConfigGraphNodeID(id))
-	return &ConfigGraphNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for ConfigGraphNode.
-func (c *ConfigGraphNodeClient) Delete() *ConfigGraphNodeDelete {
-	mutation := newConfigGraphNodeMutation(c.config, OpDelete)
-	return &ConfigGraphNodeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ConfigGraphNodeClient) DeleteOne(_m *ConfigGraphNode) *ConfigGraphNodeDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ConfigGraphNodeClient) DeleteOneID(id string) *ConfigGraphNodeDeleteOne {
-	builder := c.Delete().Where(configgraphnode.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ConfigGraphNodeDeleteOne{builder}
-}
-
-// Query returns a query builder for ConfigGraphNode.
-func (c *ConfigGraphNodeClient) Query() *ConfigGraphNodeQuery {
-	return &ConfigGraphNodeQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeConfigGraphNode},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a ConfigGraphNode entity by its id.
-func (c *ConfigGraphNodeClient) Get(ctx context.Context, id string) (*ConfigGraphNode, error) {
-	return c.Query().Where(configgraphnode.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ConfigGraphNodeClient) GetX(ctx context.Context, id string) *ConfigGraphNode {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *ConfigGraphNodeClient) Hooks() []Hook {
-	return c.hooks.ConfigGraphNode
-}
-
-// Interceptors returns the client interceptors.
-func (c *ConfigGraphNodeClient) Interceptors() []Interceptor {
-	return c.inters.ConfigGraphNode
-}
-
-func (c *ConfigGraphNodeClient) mutate(ctx context.Context, m *ConfigGraphNodeMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ConfigGraphNodeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&ConfigGraphNodeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&ConfigGraphNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ConfigGraphNodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ConfigGraphNode mutation op: %q", m.Op())
 	}
 }
 
@@ -8715,6 +8441,139 @@ func (c *MemberSessionV2Client) mutate(ctx context.Context, m *MemberSessionV2Mu
 		return (&MemberSessionV2Delete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown MemberSessionV2 mutation op: %q", m.Op())
+	}
+}
+
+// MemoryFactAllowRuleClient is a client for the MemoryFactAllowRule schema.
+type MemoryFactAllowRuleClient struct {
+	config
+}
+
+// NewMemoryFactAllowRuleClient returns a client for the MemoryFactAllowRule from the given config.
+func NewMemoryFactAllowRuleClient(c config) *MemoryFactAllowRuleClient {
+	return &MemoryFactAllowRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `memoryfactallowrule.Hooks(f(g(h())))`.
+func (c *MemoryFactAllowRuleClient) Use(hooks ...Hook) {
+	c.hooks.MemoryFactAllowRule = append(c.hooks.MemoryFactAllowRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `memoryfactallowrule.Intercept(f(g(h())))`.
+func (c *MemoryFactAllowRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MemoryFactAllowRule = append(c.inters.MemoryFactAllowRule, interceptors...)
+}
+
+// Create returns a builder for creating a MemoryFactAllowRule entity.
+func (c *MemoryFactAllowRuleClient) Create() *MemoryFactAllowRuleCreate {
+	mutation := newMemoryFactAllowRuleMutation(c.config, OpCreate)
+	return &MemoryFactAllowRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MemoryFactAllowRule entities.
+func (c *MemoryFactAllowRuleClient) CreateBulk(builders ...*MemoryFactAllowRuleCreate) *MemoryFactAllowRuleCreateBulk {
+	return &MemoryFactAllowRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MemoryFactAllowRuleClient) MapCreateBulk(slice any, setFunc func(*MemoryFactAllowRuleCreate, int)) *MemoryFactAllowRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MemoryFactAllowRuleCreateBulk{err: fmt.Errorf("calling to MemoryFactAllowRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MemoryFactAllowRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MemoryFactAllowRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MemoryFactAllowRule.
+func (c *MemoryFactAllowRuleClient) Update() *MemoryFactAllowRuleUpdate {
+	mutation := newMemoryFactAllowRuleMutation(c.config, OpUpdate)
+	return &MemoryFactAllowRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MemoryFactAllowRuleClient) UpdateOne(_m *MemoryFactAllowRule) *MemoryFactAllowRuleUpdateOne {
+	mutation := newMemoryFactAllowRuleMutation(c.config, OpUpdateOne, withMemoryFactAllowRule(_m))
+	return &MemoryFactAllowRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MemoryFactAllowRuleClient) UpdateOneID(id string) *MemoryFactAllowRuleUpdateOne {
+	mutation := newMemoryFactAllowRuleMutation(c.config, OpUpdateOne, withMemoryFactAllowRuleID(id))
+	return &MemoryFactAllowRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MemoryFactAllowRule.
+func (c *MemoryFactAllowRuleClient) Delete() *MemoryFactAllowRuleDelete {
+	mutation := newMemoryFactAllowRuleMutation(c.config, OpDelete)
+	return &MemoryFactAllowRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MemoryFactAllowRuleClient) DeleteOne(_m *MemoryFactAllowRule) *MemoryFactAllowRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MemoryFactAllowRuleClient) DeleteOneID(id string) *MemoryFactAllowRuleDeleteOne {
+	builder := c.Delete().Where(memoryfactallowrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MemoryFactAllowRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for MemoryFactAllowRule.
+func (c *MemoryFactAllowRuleClient) Query() *MemoryFactAllowRuleQuery {
+	return &MemoryFactAllowRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMemoryFactAllowRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MemoryFactAllowRule entity by its id.
+func (c *MemoryFactAllowRuleClient) Get(ctx context.Context, id string) (*MemoryFactAllowRule, error) {
+	return c.Query().Where(memoryfactallowrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MemoryFactAllowRuleClient) GetX(ctx context.Context, id string) *MemoryFactAllowRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MemoryFactAllowRuleClient) Hooks() []Hook {
+	return c.hooks.MemoryFactAllowRule
+}
+
+// Interceptors returns the client interceptors.
+func (c *MemoryFactAllowRuleClient) Interceptors() []Interceptor {
+	return c.inters.MemoryFactAllowRule
+}
+
+func (c *MemoryFactAllowRuleClient) mutate(ctx context.Context, m *MemoryFactAllowRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MemoryFactAllowRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MemoryFactAllowRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MemoryFactAllowRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MemoryFactAllowRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MemoryFactAllowRule mutation op: %q", m.Op())
 	}
 }
 
@@ -16040,53 +15899,52 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
-		ComputerUseAudit, ConfigGraphEdge, ConfigGraphNode, CronTask, CronTaskRun,
-		DecisionRecord, DecisionRecordOutbox, DeptLeadMessage, EvalCase,
-		EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun, EvalRunPreference,
-		EventDeliveryOutbox, ExperienceReport, FailurePattern, FederationAuditLog,
-		FederationOrg, FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
-		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
-		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
-		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
-		MemoryFactPending, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PatchOutcome, PlanBoardV2, PlanStepV2,
-		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
-		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
-		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
-		ResourceAccessAudit, SchemaMigration, SelfCheckReport, SelfImprovementRun,
-		Session, SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		ComputerUseAudit, CronTask, CronTaskRun, DecisionRecord, DecisionRecordOutbox,
+		DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig,
+		EvalRun, EvalRunPreference, EventDeliveryOutbox, ExperienceReport,
+		FailurePattern, FederationAuditLog, FederationOrg, FederationPolicy,
+		FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2,
+		GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink,
+		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel,
+		MediaProvider, MemberSessionV2, MemoryFactAllowRule, MemoryFactPending,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
-		ComputerUseAudit, ConfigGraphEdge, ConfigGraphNode, CronTask, CronTaskRun,
-		DecisionRecord, DecisionRecordOutbox, DeptLeadMessage, EvalCase,
-		EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun, EvalRunPreference,
-		EventDeliveryOutbox, ExperienceReport, FailurePattern, FederationAuditLog,
-		FederationOrg, FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
-		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
-		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
-		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
-		MemoryFactPending, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PatchOutcome, PlanBoardV2, PlanStepV2,
-		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
-		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
-		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
-		ResourceAccessAudit, SchemaMigration, SelfCheckReport, SelfImprovementRun,
-		Session, SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		ComputerUseAudit, CronTask, CronTaskRun, DecisionRecord, DecisionRecordOutbox,
+		DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig,
+		EvalRun, EvalRunPreference, EventDeliveryOutbox, ExperienceReport,
+		FailurePattern, FederationAuditLog, FederationOrg, FederationPolicy,
+		FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2,
+		GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink,
+		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel,
+		MediaProvider, MemberSessionV2, MemoryFactAllowRule, MemoryFactPending,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

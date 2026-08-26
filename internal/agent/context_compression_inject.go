@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 
@@ -172,6 +173,10 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 			AfterChars:      0,
 			SummaryText:     "",
 		})
+		// R7（G-1）：压缩事件结构化持久化——此前仅运行时日志，run 结束后无法
+		// 回溯「第几轮触发了什么」。双写 system_guard 决策记录（outcome=
+		// truncated），run 统计经 decision_records 聚合回放。
+		emitCompactGateDecision(ctx, deps.DecisionCollector, len(evictedMsgs), droppedCues, beforeChars, report.EstTokens, win)
 		lg.Info("context emergency truncation completed",
 			loggateway.StepID("agent.context.compress"),
 			loggateway.Phase("done"),
@@ -188,6 +193,32 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 			args.Request.Messages = reinjectWorldStateAfterCompact(ctx, args.Request.Messages)
 		}
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+
+// emitCompactGateDecision 把一次实际终审压缩双写为 system_guard 决策记录
+// （R7 G-1）。run 归属同 prune：invocation.InvocationID（图谱执行 = run.ID）。
+// observed_value 记驱逐消息数；before_chars/dropped_cues/est_tokens/window
+// 落 metadata 供取证回放（不进 stats 聚合字段）。
+func emitCompactGateDecision(ctx context.Context, c decision.Collector, evicted, droppedCues, beforeChars, estTokens, window int) {
+	if c == nil {
+		return
+	}
+	var runID string
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		runID = inv.InvocationID
+	}
+	decision.EmitGate(ctx, c, decision.GateDecision{
+		TriggerRule:   decision.TriggerContextCompacted,
+		Outcome:       "truncated",
+		Scenario:      "上下文终审压缩",
+		Reasoning:     fmt.Sprintf("注入后估算 %d tokens 超硬阈值（窗口 %d），驱逐历史 %d 条 / 丢弃尾部 cue %d 条", estTokens, window, evicted, droppedCues),
+		GuardName:     "context_compression",
+		RunID:         runID,
+		ObservedValue: evicted,
+		Threshold:     window,
+		Action:        "truncate",
+		Extra:         map[string]any{"before_chars": beforeChars, "dropped_cues": droppedCues, "est_tokens": estTokens},
 	})
 }
 

@@ -39,6 +39,8 @@ var ProviderSet = wire.NewSet(
 	NewPluginUsecase,
 	NewScopeAgentLookup,
 	NewSessionUsecase,
+	// 79-runtime-governance R6：Fork-from-Turn（repo 缺失时返回 nil，service 503）。
+	ProvideSessionForkUsecase,
 	NewSessionActivityLister,
 	NewSessionAgentLookup,
 	NewSessionTeamLookup,

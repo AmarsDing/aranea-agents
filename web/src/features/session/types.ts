@@ -76,6 +76,8 @@ export type Session = {
   parent_session_id?: string;
   root_session_id?: string;
   agent_depth?: number;
+  /** Fork-from-Turn 分叉点（79-runtime-governance R6）：v2 turn id。空 = 非 fork 会话。 */
+  fork_from_turn_id?: string;
   // Session tree hierarchy (Phase 2 additive).
   // session_type: spirit (root) | team | agent (member or sub-agent) | standalone.
   session_type?: string;

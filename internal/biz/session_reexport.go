@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/pkg/loggateway"
 )
 
 type (
@@ -61,6 +62,10 @@ type (
 	SessionMetrics          = session.SessionMetrics
 	SessionRuntime          = session.SessionRuntime
 
+	// 79-runtime-governance R6：Fork-from-Turn。
+	SessionForkStore   = session.SessionForkStore
+	SessionForkUsecase = session.SessionForkUsecase
+
 	// Phase 2: Session tree hierarchy types
 	SessionType           = session.SessionType
 	SessionTree           = session.SessionTree
@@ -96,6 +101,16 @@ var (
 	NewSessionUsecase            = session.NewSessionUsecase
 	NewNoopSessionTitleGenerator = session.NewNoopSessionTitleGenerator
 )
+
+// ProvideSessionForkUsecase 装配 Fork-from-Turn 用例（79-runtime-governance R6）：
+// SessionRepo 同实例兼作 reader/writer 端口；fork store 缺失时返回 nil，
+// service 层据此 503（与 NewSessionForkUsecase 的 nil 约定一致）。
+func ProvideSessionForkUsecase(repo SessionRepo, fork SessionForkStore, lg loggateway.Logger) *SessionForkUsecase {
+	if repo == nil {
+		return nil
+	}
+	return session.NewSessionForkUsecase(repo, repo, fork, lg)
+}
 
 // agentLookupAdapter adapts biz.AgentRepository to session.AgentLookup.
 type agentLookupAdapter struct {

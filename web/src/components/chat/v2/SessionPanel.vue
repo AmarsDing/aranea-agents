@@ -11,6 +11,7 @@
       @inject-agent="(p) => $emit('inject-agent', p)"
       @expand="(ids) => $emit('expand', ids)"
       @confirm-step="(p) => $emit('confirm-step', p)"
+      @fork-turn="(t) => $emit('fork-turn', t)"
       @submit-clarification="(p) => $emit('submit-clarification', p)"
     />
   </div>
@@ -18,7 +19,7 @@
 
 <script setup lang="ts">
 import TaskList from './TaskList.vue';
-import type { Task } from '../../../features/chat/v2Types';
+import type { Task, Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 
 defineProps<{ sessionId: string }>();
@@ -31,6 +32,7 @@ defineEmits<{
   'inject-agent': [payload: { sessionId: string; message: string }];
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
+  'fork-turn': [turn: Turn];
   'submit-clarification': [payload: SubmitClarificationPayload];
 }>();
 </script>

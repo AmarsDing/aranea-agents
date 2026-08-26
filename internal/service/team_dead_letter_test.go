@@ -126,7 +126,7 @@ func (r *deadLetterTeamRepo) GetTaskDeadLetter(_ context.Context, id string) (bi
 }
 
 func TestTeamService_ListTaskDeadLetters_requiresScope(t *testing.T) {
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: &deadLetterTeamRepo{}, Writer: &deadLetterTeamRepo{}, RunReader: &deadLetterTeamRepo{}, RunWriter: &deadLetterTeamRepo{}, StepRepo: &deadLetterTeamRepo{}, DeadLetter: &deadLetterTeamRepo{}, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: &deadLetterTeamRepo{}, Writer: &deadLetterTeamRepo{}, RunReader: &deadLetterTeamRepo{}, RunWriter: &deadLetterTeamRepo{}, StepRepo: &deadLetterTeamRepo{}, DeadLetter: &deadLetterTeamRepo{}, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{})
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -139,7 +139,7 @@ func TestTeamService_ListAndResolveTaskDeadLetters(t *testing.T) {
 	}}}
 	// N5: ListTaskDeadLetters/ResolveTaskDeadLetter 现在做 IDOR 校验，需要 session 归属信息。
 	sessionUC := biz.NewSessionUsecase(&f10SessionRepo{sessions: []biz.Session{{ID: "sess-1"}}}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, sessionUC, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, sessionUC, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	resp, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{
 		SessionId: "sess-1",
 		Status:    biz.TaskDeadLetterStatusPending,

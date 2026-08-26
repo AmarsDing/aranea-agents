@@ -1,0 +1,26 @@
+diff --git a/internal/biz/biz.go b/internal/biz/biz.go
+index 9fd6119ca..5a1f8ec6a 100644
+--- a/internal/biz/biz.go
++++ b/internal/biz/biz.go
+@@ -39,6 +39,8 @@ var ProviderSet = wire.NewSet(
+ 	NewPluginUsecase,
+ 	NewScopeAgentLookup,
+ 	NewSessionUsecase,
++	// 79-runtime-governance R6：Fork-from-Turn（repo 缺失时返回 nil，service 503）。
++	ProvideSessionForkUsecase,
+ 	NewSessionActivityLister,
+ 	NewSessionAgentLookup,
+ 	NewSessionTeamLookup,
+diff --git a/internal/data/data.go b/internal/data/data.go
+index 286998089..4998dc428 100644
+--- a/internal/data/data.go
++++ b/internal/data/data.go
+@@ -202,6 +202,8 @@ var ProviderSet = wire.NewSet(
+ 	NewCodingAgentRepo,
+ 	NewCodingProjectRepo,
+ 	NewCodingTaskRepo,
++	// 79-runtime-governance R6：Fork-from-Turn 复制原语（raw-SQL，返回 biz 接口）。
++	NewSessionForkRepo,
+ )
+ 
+ // Data: Postgres is the only supported primary database (Ent CRUD + pgvector

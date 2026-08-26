@@ -43,6 +43,7 @@
         @inject-agent="(p) => $emit('inject-agent', p)"
         @expand="(ids) => $emit('expand', ids)"
         @confirm-step="(p) => $emit('confirm-step', p)"
+        @fork-turn="(t) => $emit('fork-turn', t)"
         @submit-clarification="(p) => $emit('submit-clarification', p)"
       />
     </div>
@@ -133,6 +134,7 @@ defineEmits<{
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
   'add-to-eval': [task: import('../../features/chat/v2Types').Task];
   'resume-task': [task: import('../../features/chat/v2Types').Task];
+  'fork-turn': [turn: import('../../features/chat/v2Types').Turn];
 }>();
 
 const { t } = useI18n();

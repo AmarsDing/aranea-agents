@@ -445,8 +445,11 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 	if usage := ev.Response.Usage; usage != nil {
 		prevPrompt := c.result.PromptTok
 		accumulateStreamUsage(&c.result, ev, c.projectMeta, usage.PromptTokens, usage.CompletionTokens, usage.PromptTokensDetails.CachedTokens)
-		if c.result.PromptTok > prevPrompt {
+		if delta := c.result.PromptTok - prevPrompt; delta > 0 {
 			c.publishContextUsageStep()
+			if c.opts != nil && c.opts.OnPromptTokensAccumulated != nil {
+				c.opts.OnPromptTokensAccumulated(delta)
+			}
 		}
 		// Streaming usage is interim; only mark as streaming if RunnerCompletion
 		// hasn't already set the authoritative source.

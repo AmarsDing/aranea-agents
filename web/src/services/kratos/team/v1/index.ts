@@ -231,6 +231,71 @@ export type GetTeamRunSummaryResponse = {
   summary: TeamRunSummary | undefined;
 };
 
+// 79-runtime-governance R7：run 级 stats 聚合（数据源全部是既有记账点：
+// model_token_usage_events / team_run_steps / decision_records system_guard，
+// 不落新表）。
+export type TeamRunMemberStats = {
+  agentKey: string | undefined;
+  promptTokens: number | undefined;
+  completionTokens: number | undefined;
+  cachedTokens: number | undefined;
+  // calls 是 genuine 模型调用行数（非 step 数）。
+  calls: number | undefined;
+  // steps 是 team_run_steps 中该成员的行数（装配层按 agent_key 合流）。
+  steps: number | undefined;
+};
+
+export type TeamRunStats = {
+  runId: string | undefined;
+  teamId: string | undefined;
+  sessionId: string | undefined;
+  status: string | undefined;
+  createdAt: string | undefined;
+  // turns = team_run_steps 行数；tool_calls = steps.tool_call_count 求和。
+  turns: number | undefined;
+  toolCalls: number | undefined;
+  promptTokens: number | undefined;
+  completionTokens: number | undefined;
+  cachedTokens: number | undefined;
+  cacheHitRatio: number | undefined;
+  // G-2：run 内单次模型调用 input tokens 峰值（genuine 成员行 MAX）。
+  maxTurnInputTokens: number | undefined;
+  loopGuardBlocks: number | undefined;
+  pruneCount: number | undefined;
+  pruneBytes: number | undefined;
+  // G-1：终审压缩触发次数。
+  compactCount: number | undefined;
+  budgetTripped: boolean | undefined;
+  noProgressTripped: boolean | undefined;
+  members: TeamRunMemberStats[] | undefined;
+};
+
+export type GetTeamRunStatsRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type GetTeamRunStatsResponse = {
+  stats: TeamRunStats | undefined;
+};
+
+export type ExportTeamRunStatsRequest = {
+  // from/to 为 RFC3339 窗口（created_at，含边界）；空 = 不限。
+  from: string | undefined;
+  to: string | undefined;
+  // session_id 空 = 跨会话。
+  sessionId: string | undefined;
+  // limit 上限由服务端收口（默认 500，硬上限 1000）。
+  limit: number | undefined;
+};
+
+export type ExportTeamRunStatsResponse = {
+  // jsonl 每行一个 TeamRunStats JSON 对象（\n 分隔，行内无换行）。
+  jsonl: string | undefined;
+  count: number | undefined;
+};
+
 export type ActivitySnapshotView = {
   kind: string | undefined;
   displayLabel: string | undefined;
@@ -722,6 +787,13 @@ export interface TeamService {
   // InjectTeamMessage injects a user message into a team run's pending queue.
   // The message is processed at the next step boundary during execution.
   InjectTeamMessage(request: InjectTeamMessageRequest): Promise<InjectTeamMessageResponse>;
+  // GetTeamRunStats aggregates one run's token/cache/system-guard stats
+  // (79-runtime-governance R7). Read-only aggregation over existing
+  // accounting points; no new tables.
+  GetTeamRunStats(request: GetTeamRunStatsRequest): Promise<GetTeamRunStatsResponse>;
+  // ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+  // (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+  ExportTeamRunStats(request: ExportTeamRunStatsRequest): Promise<ExportTeamRunStatsResponse>;
 }
 
 type RequestType = {
@@ -1290,6 +1362,55 @@ export function createTeamServiceClient(
         service: "TeamService",
         method: "InjectTeamMessage",
       }) as Promise<InjectTeamMessageResponse>;
+    },
+    GetTeamRunStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/team-runs/${request.id}/stats`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "GetTeamRunStats",
+      }) as Promise<GetTeamRunStatsResponse>;
+    },
+    ExportTeamRunStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/team-run-stats/export`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.from) {
+        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`)
+      }
+      if (request.to) {
+        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`)
+      }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ExportTeamRunStats",
+      }) as Promise<ExportTeamRunStatsResponse>;
     },
   };
 }

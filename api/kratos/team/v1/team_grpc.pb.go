@@ -47,6 +47,8 @@ const (
 	TeamService_PauseTeamRun_FullMethodName                  = "/kratos.team.v1.TeamService/PauseTeamRun"
 	TeamService_UnpauseTeamRun_FullMethodName                = "/kratos.team.v1.TeamService/UnpauseTeamRun"
 	TeamService_InjectTeamMessage_FullMethodName             = "/kratos.team.v1.TeamService/InjectTeamMessage"
+	TeamService_GetTeamRunStats_FullMethodName               = "/kratos.team.v1.TeamService/GetTeamRunStats"
+	TeamService_ExportTeamRunStats_FullMethodName            = "/kratos.team.v1.TeamService/ExportTeamRunStats"
 )
 
 // TeamServiceClient is the client API for TeamService service.
@@ -90,6 +92,13 @@ type TeamServiceClient interface {
 	// InjectTeamMessage injects a user message into a team run's pending queue.
 	// The message is processed at the next step boundary during execution.
 	InjectTeamMessage(ctx context.Context, in *InjectTeamMessageRequest, opts ...grpc.CallOption) (*InjectTeamMessageResponse, error)
+	// GetTeamRunStats aggregates one run's token/cache/system-guard stats
+	// (79-runtime-governance R7). Read-only aggregation over existing
+	// accounting points; no new tables.
+	GetTeamRunStats(ctx context.Context, in *GetTeamRunStatsRequest, opts ...grpc.CallOption) (*GetTeamRunStatsResponse, error)
+	// ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+	// (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+	ExportTeamRunStats(ctx context.Context, in *ExportTeamRunStatsRequest, opts ...grpc.CallOption) (*ExportTeamRunStatsResponse, error)
 }
 
 type teamServiceClient struct {
@@ -370,6 +379,26 @@ func (c *teamServiceClient) InjectTeamMessage(ctx context.Context, in *InjectTea
 	return out, nil
 }
 
+func (c *teamServiceClient) GetTeamRunStats(ctx context.Context, in *GetTeamRunStatsRequest, opts ...grpc.CallOption) (*GetTeamRunStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTeamRunStatsResponse)
+	err := c.cc.Invoke(ctx, TeamService_GetTeamRunStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *teamServiceClient) ExportTeamRunStats(ctx context.Context, in *ExportTeamRunStatsRequest, opts ...grpc.CallOption) (*ExportTeamRunStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportTeamRunStatsResponse)
+	err := c.cc.Invoke(ctx, TeamService_ExportTeamRunStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TeamServiceServer is the server API for TeamService service.
 // All implementations must embed UnimplementedTeamServiceServer
 // for forward compatibility.
@@ -411,6 +440,13 @@ type TeamServiceServer interface {
 	// InjectTeamMessage injects a user message into a team run's pending queue.
 	// The message is processed at the next step boundary during execution.
 	InjectTeamMessage(context.Context, *InjectTeamMessageRequest) (*InjectTeamMessageResponse, error)
+	// GetTeamRunStats aggregates one run's token/cache/system-guard stats
+	// (79-runtime-governance R7). Read-only aggregation over existing
+	// accounting points; no new tables.
+	GetTeamRunStats(context.Context, *GetTeamRunStatsRequest) (*GetTeamRunStatsResponse, error)
+	// ExportTeamRunStats lists per-run stats over a created_at window as JSONL
+	// (79-runtime-governance R7). Distinct prefix avoids {id} path-param clash.
+	ExportTeamRunStats(context.Context, *ExportTeamRunStatsRequest) (*ExportTeamRunStatsResponse, error)
 	mustEmbedUnimplementedTeamServiceServer()
 }
 
@@ -501,6 +537,12 @@ func (UnimplementedTeamServiceServer) UnpauseTeamRun(context.Context, *UnpauseTe
 }
 func (UnimplementedTeamServiceServer) InjectTeamMessage(context.Context, *InjectTeamMessageRequest) (*InjectTeamMessageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InjectTeamMessage not implemented")
+}
+func (UnimplementedTeamServiceServer) GetTeamRunStats(context.Context, *GetTeamRunStatsRequest) (*GetTeamRunStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTeamRunStats not implemented")
+}
+func (UnimplementedTeamServiceServer) ExportTeamRunStats(context.Context, *ExportTeamRunStatsRequest) (*ExportTeamRunStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExportTeamRunStats not implemented")
 }
 func (UnimplementedTeamServiceServer) mustEmbedUnimplementedTeamServiceServer() {}
 func (UnimplementedTeamServiceServer) testEmbeddedByValue()                     {}
@@ -1009,6 +1051,42 @@ func _TeamService_InjectTeamMessage_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TeamService_GetTeamRunStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTeamRunStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TeamServiceServer).GetTeamRunStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TeamService_GetTeamRunStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TeamServiceServer).GetTeamRunStats(ctx, req.(*GetTeamRunStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TeamService_ExportTeamRunStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportTeamRunStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TeamServiceServer).ExportTeamRunStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TeamService_ExportTeamRunStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TeamServiceServer).ExportTeamRunStats(ctx, req.(*ExportTeamRunStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TeamService_ServiceDesc is the grpc.ServiceDesc for TeamService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1123,6 +1201,14 @@ var TeamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InjectTeamMessage",
 			Handler:    _TeamService_InjectTeamMessage_Handler,
+		},
+		{
+			MethodName: "GetTeamRunStats",
+			Handler:    _TeamService_GetTeamRunStats_Handler,
+		},
+		{
+			MethodName: "ExportTeamRunStats",
+			Handler:    _TeamService_ExportTeamRunStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

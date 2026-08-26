@@ -1,0 +1,209 @@
+diff --git a/internal/data/decision_query_repo.go b/internal/data/decision_query_repo.go
+index c7c0f491b..3311a5588 100644
+--- a/internal/data/decision_query_repo.go
++++ b/internal/data/decision_query_repo.go
+@@ -5,6 +5,7 @@ import (
+ 	"database/sql"
+ 	"encoding/json"
+ 	"fmt"
++	"strconv"
+ 	"strings"
+ 	"time"
+ 
+@@ -138,6 +139,67 @@ func (r *decisionQueryRepo) ListRecords(ctx context.Context, f decision.ListFilt
+ 	return items, total, nil
+ }
+ 
++var _ decision.RunGateStatsRepo = (*decisionQueryRepo)(nil)
++
++// RunGateStats 聚合一个 run 的 system_guard 记录（79-runtime-governance R7）。
++// 只取三列 JSON 抽取值、Go 侧计数求和——双方言零分支（SQLite json_extract
++// 数值返回 INTEGER、PG ->> 返回 text，统一扫 NullString 后解析）。单 run 的
++// guard 记录量级小（闸干预/剪枝/压缩事件），全行扫描可接受；过滤走下推的
++// source_ref.run_id 表达式（btree 表达式索引 20261254）。
++func (r *decisionQueryRepo) RunGateStats(ctx context.Context, runID string) (decision.RunGateStats, error) {
++	var out decision.RunGateStats
++	if r == nil || r.data == nil || r.data.RWDB() == nil || strings.TrimSpace(runID) == "" {
++		return out, nil
++	}
++	d := r.data.Dialect()
++	q := d.RenumberPlaceholders(
++		"SELECT " + d.JSONExtract("metadata", "trigger_rule") + ", " +
++			d.JSONExtract("metadata", "observed_value") + ", " +
++			d.JSONExtract("metadata", "prune_bytes") +
++			" FROM decision_records WHERE category = ? AND " + d.JSONExtract("source_ref", "run_id") + " = ?")
++	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, decision.CategorySystemGuard, runID)
++	if err != nil {
++		return out, entErrToBizErr(err, "DECISION")
++	}
++	defer rows.Close()
++	for rows.Next() {
++		var trigger, observed, pruneBytes sql.NullString
++		if err := rows.Scan(&trigger, &observed, &pruneBytes); err != nil {
++			return out, entErrToBizErr(err, "DECISION")
++		}
++		switch trigger.String {
++		case decision.TriggerLoopGuardBlocked:
++			out.LoopGuardBlocks++
++		case decision.TriggerTokenBudgetTripped:
++			out.BudgetTripped = true
++		case decision.TriggerNoProgressTripped:
++			out.NoProgressTripped = true
++		case decision.TriggerToolResultPruned:
++			out.PruneCount += parseMetadataInt(observed.String)
++			out.PruneBytes += int64(parseMetadataInt(pruneBytes.String))
++		case decision.TriggerContextCompacted:
++			out.CompactCount++
++		}
++	}
++	return out, entErrToBizErr(rows.Err(), "DECISION")
++}
++
++// parseMetadataInt 宽容解析 metadata JSON 抽取的数值（"3"/"3.0"/3 三种形态
++// 随方言/驱动出现），失败归 0——统计口径宁可漏计不可报错。
++func parseMetadataInt(s string) int {
++	s = strings.TrimSpace(s)
++	if s == "" {
++		return 0
++	}
++	if n, err := strconv.Atoi(s); err == nil {
++		return n
++	}
++	if f, err := strconv.ParseFloat(s, 64); err == nil {
++		return int(f)
++	}
++	return 0
++}
++
+ // GetByKey 按 decision_key 精确查询；未命中返回 nil, nil。
+ func (r *decisionQueryRepo) GetByKey(ctx context.Context, decisionKey string) (*decision.Record, error) {
+ 	if r == nil || r.data == nil || r.data.RWDB() == nil || strings.TrimSpace(decisionKey) == "" {
+diff --git a/internal/data/decision_query_repo_test.go b/internal/data/decision_query_repo_test.go
+index 4acc5e63d..25dee4d6a 100644
+--- a/internal/data/decision_query_repo_test.go
++++ b/internal/data/decision_query_repo_test.go
+@@ -2,6 +2,7 @@ package data
+ 
+ import (
+ 	"context"
++	"database/sql"
+ 	"testing"
+ 	"time"
+ 
+@@ -13,6 +14,15 @@ import (
+ // newDecisionQueryTestRepos builds write+query repos over an isolated PG
+ // schema with the real M80 migration DDL applied (Phase 1.7 integration).
+ func newDecisionQueryTestRepos(t *testing.T) (decision.Repo, decision.QueryRepo) {
++	t.Helper()
++	wr, qr, _ := newDecisionQueryTestReposWithDB(t)
++	return wr, qr
++}
++
++// newDecisionQueryTestReposWithDB 与 newDecisionQueryTestRepos 相同，额外
++// 返回 schema 隔离的 raw *sql.DB——链虚拟父测试需要自建 teams/team_runs
++// 最小镜像表（Ent 管理，不在本测试套件的 DDL 迁移清单内）。
++func newDecisionQueryTestReposWithDB(t *testing.T) (decision.Repo, decision.QueryRepo, *sql.DB) {
+ 	t.Helper()
+ 	ctx := context.Background()
+ 	db := testhelper.SetupTestPGRaw(t)
+@@ -32,7 +42,7 @@ func newDecisionQueryTestRepos(t *testing.T) (decision.Repo, decision.QueryRepo)
+ 	if wr == nil || qr == nil {
+ 		t.Fatal("repo constructors returned nil over live DB")
+ 	}
+-	return wr, qr
++	return wr, qr, db
+ }
+ 
+ func seedDecisionRecords(t *testing.T, wr decision.Repo) {
+@@ -74,6 +84,91 @@ func seedDecisionRecords(t *testing.T, wr decision.Repo) {
+ 	}
+ }
+ 
++// TestDecisionQueryRepo_RunGateStats_PG covers 79-runtime-governance R7：
++// 五类 trigger_rule 聚合（loop_guard 计数 / budget·no_progress 布尔 /
++// prune 求和 observed_value+prune_bytes / compact 计数），run 归属隔离，
++// 非 system_guard 类别与无记录 run 返回零值。
++func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
++	ctx := context.Background()
++	wr, qr := newDecisionQueryTestRepos(t)
++	recs := []decision.Record{
++		guardRec("dk-g-1", "run-s", decision.TriggerLoopGuardBlocked, map[string]any{}),
++		guardRec("dk-g-2", "run-s", decision.TriggerLoopGuardBlocked, map[string]any{}),
++		guardRec("dk-g-3", "run-s", decision.TriggerTokenBudgetTripped, map[string]any{}),
++		guardRec("dk-g-4", "run-s", decision.TriggerNoProgressTripped, map[string]any{}),
++		guardRec("dk-g-5", "run-s", decision.TriggerToolResultPruned, map[string]any{"observed_value": 3, "prune_bytes": 12000}),
++		guardRec("dk-g-6", "run-s", decision.TriggerToolResultPruned, map[string]any{"observed_value": 2, "prune_bytes": 8000}),
++		guardRec("dk-g-7", "run-s", decision.TriggerContextCompacted, map[string]any{}),
++		// 他 run 的记录：必须隔离。
++		guardRec("dk-g-8", "run-other", decision.TriggerLoopGuardBlocked, map[string]any{"observed_value": 99}),
++		// 非 system_guard 类别同 run：不计。
++		{
++			DecisionKey: "dk-g-9", Category: decision.CategoryHITLApproval,
++			Scenario: "审批", Reasoning: "-", Outcome: "approved",
++			ActorType: decision.ActorHuman, ActorKey: "user-1",
++			RelatedEntities: []decision.EntityRef{},
++			SourceRef:       decision.SourceRef{RunID: "run-s"},
++			Metadata:        map[string]any{"trigger_rule": decision.TriggerLoopGuardBlocked},
++			CreatedAt:       "2026-08-27T01:00:00Z", UpdatedAt: "2026-08-27T01:00:00Z",
++		},
++	}
++	if err := wr.InsertRecords(ctx, recs); err != nil {
++		t.Fatalf("seed insert: %v", err)
++	}
++
++	statsRepo, ok := qr.(decision.RunGateStatsRepo)
++	if !ok {
++		t.Fatal("decisionQueryRepo 未实现 RunGateStatsRepo 窄接口")
++	}
++	got, err := statsRepo.RunGateStats(ctx, "run-s")
++	if err != nil {
++		t.Fatalf("RunGateStats: %v", err)
++	}
++	if got.LoopGuardBlocks != 2 {
++		t.Errorf("LoopGuardBlocks = %d, want 2", got.LoopGuardBlocks)
++	}
++	if !got.BudgetTripped || !got.NoProgressTripped {
++		t.Errorf("tripped = %v/%v, want true/true", got.BudgetTripped, got.NoProgressTripped)
++	}
++	if got.PruneCount != 5 || got.PruneBytes != 20000 {
++		t.Errorf("prune = %d 条/%d 字节, want 5/20000（observed_value+prune_bytes 求和）", got.PruneCount, got.PruneBytes)
++	}
++	if got.CompactCount != 1 {
++		t.Errorf("CompactCount = %d, want 1", got.CompactCount)
++	}
++
++	// 他 run 只见自己的记录；无记录 run / 空 runID 返回零值, nil。
++	other, err := statsRepo.RunGateStats(ctx, "run-other")
++	if err != nil || other.LoopGuardBlocks != 1 || other.BudgetTripped {
++		t.Errorf("run-other 隔离失败: %+v err=%v", other, err)
++	}
++	zero, err := statsRepo.RunGateStats(ctx, "run-missing")
++	if err != nil || zero != (decision.RunGateStats{}) {
++		t.Errorf("无记录 run 应零值: %+v err=%v", zero, err)
++	}
++	if _, err := statsRepo.RunGateStats(ctx, "  "); err != nil {
++		t.Errorf("空 runID 应 nil error: %v", err)
++	}
++}
++
++// guardRec 造一条 system_guard 记录（trigger_rule 等观测字段落 metadata，
++// run 归属落 source_ref.run_id——与 EmitGate 写入侧契约一致）。
++func guardRec(key, runID, trigger string, extraMeta map[string]any) decision.Record {
++	meta := map[string]any{"trigger_rule": trigger}
++	for k, v := range extraMeta {
++		meta[k] = v
++	}
++	return decision.Record{
++		DecisionKey: key, Category: decision.CategorySystemGuard,
++		Scenario: "系统闸", Reasoning: "-", Outcome: "truncated",
++		ActorType: decision.ActorSystem, ActorKey: "system:guard",
++		RelatedEntities: []decision.EntityRef{},
++		SourceRef:       decision.SourceRef{RunID: runID},
++		Metadata:        meta,
++		CreatedAt:       "2026-08-27T00:00:00Z", UpdatedAt: "2026-08-27T00:00:00Z",
++	}
++}
++
+ // TestDecisionQueryRepo_ListFilters_PG covers the Phase 1.7 query contract:
+ // pagination + total, category/actor/entity/run/time filters, and the
+ // ORDER BY created_at DESC stability — all evaluated DB-side (no full scans).

@@ -36,6 +36,9 @@ export type SessionView = {
   archived_at?: string;
   pinned_at?: string;
   metadata_json?: string;
+  /** Fork-from-Turn 血缘（79 R6）：来源会话 id + 分叉点 turn id。空 = 非 fork 会话。 */
+  parent_session_id?: string;
+  fork_from_turn_id?: string;
   /** Prompt-assembly breakdown pushed via context_usage WS events (WS-only). */
   context_budget?: ContextBudgetSnapshot | null;
 };

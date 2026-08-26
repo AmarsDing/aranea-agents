@@ -23,8 +23,6 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
-	"aranea-agents/internal/data/ent/configgraphedge"
-	"aranea-agents/internal/data/ent/configgraphnode"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -59,6 +57,7 @@ import (
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
+	"aranea-agents/internal/data/ent/memoryfactallowrule"
 	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -1647,136 +1646,6 @@ func init() {
 	computeruseaudit.DefaultScreenshotRef = computeruseauditDescScreenshotRef.Default.(string)
 	// computeruseaudit.ScreenshotRefValidator is a validator for the "screenshot_ref" field. It is called by the builders before save.
 	computeruseaudit.ScreenshotRefValidator = computeruseauditDescScreenshotRef.Validators[0].(func(string) error)
-	configgraphedgeFields := schema.ConfigGraphEdge{}.Fields()
-	_ = configgraphedgeFields
-	// configgraphedgeDescSrcID is the schema descriptor for src_id field.
-	configgraphedgeDescSrcID := configgraphedgeFields[1].Descriptor()
-	// configgraphedge.DefaultSrcID holds the default value on creation for the src_id field.
-	configgraphedge.DefaultSrcID = configgraphedgeDescSrcID.Default.(string)
-	// configgraphedge.SrcIDValidator is a validator for the "src_id" field. It is called by the builders before save.
-	configgraphedge.SrcIDValidator = configgraphedgeDescSrcID.Validators[0].(func(string) error)
-	// configgraphedgeDescDstID is the schema descriptor for dst_id field.
-	configgraphedgeDescDstID := configgraphedgeFields[2].Descriptor()
-	// configgraphedge.DefaultDstID holds the default value on creation for the dst_id field.
-	configgraphedge.DefaultDstID = configgraphedgeDescDstID.Default.(string)
-	// configgraphedge.DstIDValidator is a validator for the "dst_id" field. It is called by the builders before save.
-	configgraphedge.DstIDValidator = configgraphedgeDescDstID.Validators[0].(func(string) error)
-	// configgraphedgeDescEdgeType is the schema descriptor for edge_type field.
-	configgraphedgeDescEdgeType := configgraphedgeFields[3].Descriptor()
-	// configgraphedge.EdgeTypeValidator is a validator for the "edge_type" field. It is called by the builders before save.
-	configgraphedge.EdgeTypeValidator = func() func(string) error {
-		validators := configgraphedgeDescEdgeType.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(edge_type string) error {
-			for _, fn := range fns {
-				if err := fn(edge_type); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// configgraphedgeDescEvidenceJSON is the schema descriptor for evidence_json field.
-	configgraphedgeDescEvidenceJSON := configgraphedgeFields[4].Descriptor()
-	// configgraphedge.DefaultEvidenceJSON holds the default value on creation for the evidence_json field.
-	configgraphedge.DefaultEvidenceJSON = configgraphedgeDescEvidenceJSON.Default.(string)
-	// configgraphedgeDescWorkspaceID is the schema descriptor for workspace_id field.
-	configgraphedgeDescWorkspaceID := configgraphedgeFields[5].Descriptor()
-	// configgraphedge.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
-	configgraphedge.DefaultWorkspaceID = configgraphedgeDescWorkspaceID.Default.(string)
-	// configgraphedge.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
-	configgraphedge.WorkspaceIDValidator = configgraphedgeDescWorkspaceID.Validators[0].(func(string) error)
-	// configgraphedgeDescGeneration is the schema descriptor for generation field.
-	configgraphedgeDescGeneration := configgraphedgeFields[6].Descriptor()
-	// configgraphedge.DefaultGeneration holds the default value on creation for the generation field.
-	configgraphedge.DefaultGeneration = configgraphedgeDescGeneration.Default.(int64)
-	// configgraphedgeDescCreatedAt is the schema descriptor for created_at field.
-	configgraphedgeDescCreatedAt := configgraphedgeFields[7].Descriptor()
-	// configgraphedge.DefaultCreatedAt holds the default value on creation for the created_at field.
-	configgraphedge.DefaultCreatedAt = configgraphedgeDescCreatedAt.Default.(string)
-	// configgraphedge.CreatedAtValidator is a validator for the "created_at" field. It is called by the builders before save.
-	configgraphedge.CreatedAtValidator = configgraphedgeDescCreatedAt.Validators[0].(func(string) error)
-	// configgraphedgeDescID is the schema descriptor for id field.
-	configgraphedgeDescID := configgraphedgeFields[0].Descriptor()
-	// configgraphedge.IDValidator is a validator for the "id" field. It is called by the builders before save.
-	configgraphedge.IDValidator = configgraphedgeDescID.Validators[0].(func(string) error)
-	configgraphnodeFields := schema.ConfigGraphNode{}.Fields()
-	_ = configgraphnodeFields
-	// configgraphnodeDescNodeType is the schema descriptor for node_type field.
-	configgraphnodeDescNodeType := configgraphnodeFields[1].Descriptor()
-	// configgraphnode.NodeTypeValidator is a validator for the "node_type" field. It is called by the builders before save.
-	configgraphnode.NodeTypeValidator = func() func(string) error {
-		validators := configgraphnodeDescNodeType.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(node_type string) error {
-			for _, fn := range fns {
-				if err := fn(node_type); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// configgraphnodeDescRefID is the schema descriptor for ref_id field.
-	configgraphnodeDescRefID := configgraphnodeFields[2].Descriptor()
-	// configgraphnode.DefaultRefID holds the default value on creation for the ref_id field.
-	configgraphnode.DefaultRefID = configgraphnodeDescRefID.Default.(string)
-	// configgraphnode.RefIDValidator is a validator for the "ref_id" field. It is called by the builders before save.
-	configgraphnode.RefIDValidator = configgraphnodeDescRefID.Validators[0].(func(string) error)
-	// configgraphnodeDescNodeKey is the schema descriptor for node_key field.
-	configgraphnodeDescNodeKey := configgraphnodeFields[3].Descriptor()
-	// configgraphnode.DefaultNodeKey holds the default value on creation for the node_key field.
-	configgraphnode.DefaultNodeKey = configgraphnodeDescNodeKey.Default.(string)
-	// configgraphnode.NodeKeyValidator is a validator for the "node_key" field. It is called by the builders before save.
-	configgraphnode.NodeKeyValidator = configgraphnodeDescNodeKey.Validators[0].(func(string) error)
-	// configgraphnodeDescDisplayName is the schema descriptor for display_name field.
-	configgraphnodeDescDisplayName := configgraphnodeFields[4].Descriptor()
-	// configgraphnode.DefaultDisplayName holds the default value on creation for the display_name field.
-	configgraphnode.DefaultDisplayName = configgraphnodeDescDisplayName.Default.(string)
-	// configgraphnode.DisplayNameValidator is a validator for the "display_name" field. It is called by the builders before save.
-	configgraphnode.DisplayNameValidator = configgraphnodeDescDisplayName.Validators[0].(func(string) error)
-	// configgraphnodeDescWorkspaceID is the schema descriptor for workspace_id field.
-	configgraphnodeDescWorkspaceID := configgraphnodeFields[5].Descriptor()
-	// configgraphnode.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
-	configgraphnode.DefaultWorkspaceID = configgraphnodeDescWorkspaceID.Default.(string)
-	// configgraphnode.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
-	configgraphnode.WorkspaceIDValidator = configgraphnodeDescWorkspaceID.Validators[0].(func(string) error)
-	// configgraphnodeDescStatus is the schema descriptor for status field.
-	configgraphnodeDescStatus := configgraphnodeFields[6].Descriptor()
-	// configgraphnode.DefaultStatus holds the default value on creation for the status field.
-	configgraphnode.DefaultStatus = configgraphnodeDescStatus.Default.(string)
-	// configgraphnode.StatusValidator is a validator for the "status" field. It is called by the builders before save.
-	configgraphnode.StatusValidator = configgraphnodeDescStatus.Validators[0].(func(string) error)
-	// configgraphnodeDescAttrsJSON is the schema descriptor for attrs_json field.
-	configgraphnodeDescAttrsJSON := configgraphnodeFields[7].Descriptor()
-	// configgraphnode.DefaultAttrsJSON holds the default value on creation for the attrs_json field.
-	configgraphnode.DefaultAttrsJSON = configgraphnodeDescAttrsJSON.Default.(string)
-	// configgraphnodeDescGeneration is the schema descriptor for generation field.
-	configgraphnodeDescGeneration := configgraphnodeFields[8].Descriptor()
-	// configgraphnode.DefaultGeneration holds the default value on creation for the generation field.
-	configgraphnode.DefaultGeneration = configgraphnodeDescGeneration.Default.(int64)
-	// configgraphnodeDescCreatedAt is the schema descriptor for created_at field.
-	configgraphnodeDescCreatedAt := configgraphnodeFields[9].Descriptor()
-	// configgraphnode.DefaultCreatedAt holds the default value on creation for the created_at field.
-	configgraphnode.DefaultCreatedAt = configgraphnodeDescCreatedAt.Default.(string)
-	// configgraphnode.CreatedAtValidator is a validator for the "created_at" field. It is called by the builders before save.
-	configgraphnode.CreatedAtValidator = configgraphnodeDescCreatedAt.Validators[0].(func(string) error)
-	// configgraphnodeDescUpdatedAt is the schema descriptor for updated_at field.
-	configgraphnodeDescUpdatedAt := configgraphnodeFields[10].Descriptor()
-	// configgraphnode.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	configgraphnode.DefaultUpdatedAt = configgraphnodeDescUpdatedAt.Default.(string)
-	// configgraphnode.UpdatedAtValidator is a validator for the "updated_at" field. It is called by the builders before save.
-	configgraphnode.UpdatedAtValidator = configgraphnodeDescUpdatedAt.Validators[0].(func(string) error)
-	// configgraphnodeDescID is the schema descriptor for id field.
-	configgraphnodeDescID := configgraphnodeFields[0].Descriptor()
-	// configgraphnode.IDValidator is a validator for the "id" field. It is called by the builders before save.
-	configgraphnode.IDValidator = configgraphnodeDescID.Validators[0].(func(string) error)
 	crontaskFields := schema.CronTask{}.Fields()
 	_ = crontaskFields
 	// crontaskDescTaskKey is the schema descriptor for task_key field.
@@ -3525,6 +3394,60 @@ func init() {
 	membersessionv2DescID := membersessionv2Fields[0].Descriptor()
 	// membersessionv2.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	membersessionv2.IDValidator = membersessionv2DescID.Validators[0].(func(string) error)
+	memoryfactallowruleFields := schema.MemoryFactAllowRule{}.Fields()
+	_ = memoryfactallowruleFields
+	// memoryfactallowruleDescAgentID is the schema descriptor for agent_id field.
+	memoryfactallowruleDescAgentID := memoryfactallowruleFields[1].Descriptor()
+	// memoryfactallowrule.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	memoryfactallowrule.AgentIDValidator = func() func(string) error {
+		validators := memoryfactallowruleDescAgentID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(agent_id string) error {
+			for _, fn := range fns {
+				if err := fn(agent_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// memoryfactallowruleDescVerdict is the schema descriptor for verdict field.
+	memoryfactallowruleDescVerdict := memoryfactallowruleFields[2].Descriptor()
+	// memoryfactallowrule.DefaultVerdict holds the default value on creation for the verdict field.
+	memoryfactallowrule.DefaultVerdict = memoryfactallowruleDescVerdict.Default.(string)
+	// memoryfactallowrule.VerdictValidator is a validator for the "verdict" field. It is called by the builders before save.
+	memoryfactallowrule.VerdictValidator = memoryfactallowruleDescVerdict.Validators[0].(func(string) error)
+	// memoryfactallowruleDescCreatedBy is the schema descriptor for created_by field.
+	memoryfactallowruleDescCreatedBy := memoryfactallowruleFields[3].Descriptor()
+	// memoryfactallowrule.DefaultCreatedBy holds the default value on creation for the created_by field.
+	memoryfactallowrule.DefaultCreatedBy = memoryfactallowruleDescCreatedBy.Default.(string)
+	// memoryfactallowrule.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	memoryfactallowrule.CreatedByValidator = memoryfactallowruleDescCreatedBy.Validators[0].(func(string) error)
+	// memoryfactallowruleDescCreatedAt is the schema descriptor for created_at field.
+	memoryfactallowruleDescCreatedAt := memoryfactallowruleFields[4].Descriptor()
+	// memoryfactallowrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	memoryfactallowrule.DefaultCreatedAt = memoryfactallowruleDescCreatedAt.Default.(int64)
+	// memoryfactallowruleDescID is the schema descriptor for id field.
+	memoryfactallowruleDescID := memoryfactallowruleFields[0].Descriptor()
+	// memoryfactallowrule.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	memoryfactallowrule.IDValidator = func() func(string) error {
+		validators := memoryfactallowruleDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	memoryfactpendingFields := schema.MemoryFactPending{}.Fields()
 	_ = memoryfactpendingFields
 	// memoryfactpendingDescAgentID is the schema descriptor for agent_id field.
@@ -5293,34 +5216,40 @@ func init() {
 	sessionDescAgentDepth := sessionFields[51].Descriptor()
 	// session.DefaultAgentDepth holds the default value on creation for the agent_depth field.
 	session.DefaultAgentDepth = sessionDescAgentDepth.Default.(int)
+	// sessionDescForkFromTurnID is the schema descriptor for fork_from_turn_id field.
+	sessionDescForkFromTurnID := sessionFields[52].Descriptor()
+	// session.DefaultForkFromTurnID holds the default value on creation for the fork_from_turn_id field.
+	session.DefaultForkFromTurnID = sessionDescForkFromTurnID.Default.(string)
+	// session.ForkFromTurnIDValidator is a validator for the "fork_from_turn_id" field. It is called by the builders before save.
+	session.ForkFromTurnIDValidator = sessionDescForkFromTurnID.Validators[0].(func(string) error)
 	// sessionDescSessionType is the schema descriptor for session_type field.
-	sessionDescSessionType := sessionFields[52].Descriptor()
+	sessionDescSessionType := sessionFields[53].Descriptor()
 	// session.DefaultSessionType holds the default value on creation for the session_type field.
 	session.DefaultSessionType = sessionDescSessionType.Default.(string)
 	// session.SessionTypeValidator is a validator for the "session_type" field. It is called by the builders before save.
 	session.SessionTypeValidator = sessionDescSessionType.Validators[0].(func(string) error)
 	// sessionDescMemberAgentKey is the schema descriptor for member_agent_key field.
-	sessionDescMemberAgentKey := sessionFields[53].Descriptor()
+	sessionDescMemberAgentKey := sessionFields[54].Descriptor()
 	// session.DefaultMemberAgentKey holds the default value on creation for the member_agent_key field.
 	session.DefaultMemberAgentKey = sessionDescMemberAgentKey.Default.(string)
 	// sessionDescMemberRole is the schema descriptor for member_role field.
-	sessionDescMemberRole := sessionFields[54].Descriptor()
+	sessionDescMemberRole := sessionFields[55].Descriptor()
 	// session.DefaultMemberRole holds the default value on creation for the member_role field.
 	session.DefaultMemberRole = sessionDescMemberRole.Default.(string)
 	// sessionDescExecutionStage is the schema descriptor for execution_stage field.
-	sessionDescExecutionStage := sessionFields[55].Descriptor()
+	sessionDescExecutionStage := sessionFields[56].Descriptor()
 	// session.DefaultExecutionStage holds the default value on creation for the execution_stage field.
 	session.DefaultExecutionStage = sessionDescExecutionStage.Default.(string)
 	// sessionDescCompletedSteps is the schema descriptor for completed_steps field.
-	sessionDescCompletedSteps := sessionFields[56].Descriptor()
+	sessionDescCompletedSteps := sessionFields[57].Descriptor()
 	// session.DefaultCompletedSteps holds the default value on creation for the completed_steps field.
 	session.DefaultCompletedSteps = sessionDescCompletedSteps.Default.(int)
 	// sessionDescTotalSteps is the schema descriptor for total_steps field.
-	sessionDescTotalSteps := sessionFields[57].Descriptor()
+	sessionDescTotalSteps := sessionFields[58].Descriptor()
 	// session.DefaultTotalSteps holds the default value on creation for the total_steps field.
 	session.DefaultTotalSteps = sessionDescTotalSteps.Default.(int)
 	// sessionDescProgressPct is the schema descriptor for progress_pct field.
-	sessionDescProgressPct := sessionFields[58].Descriptor()
+	sessionDescProgressPct := sessionFields[59].Descriptor()
 	// session.DefaultProgressPct holds the default value on creation for the progress_pct field.
 	session.DefaultProgressPct = sessionDescProgressPct.Default.(float64)
 	// sessionDescID is the schema descriptor for id field.

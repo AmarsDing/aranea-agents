@@ -149,6 +149,7 @@
         @regenerate-v2="composer.regenerateV2Task"
         @add-to-eval="evalCase.openFromTask"
         @resume-task="session.resumeTask"
+        @fork-turn="session.onForkSessionTurn"
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
         @confirm-activity="session.onConfirmActivity"

@@ -74,6 +74,9 @@ message Session {
   int32 completed_steps = 57;
   int32 total_steps = 58;
   double progress_pct = 59;
+  // fork_from_turn_id 记录 Fork-from-Turn 分叉点（v2 turn id = 框架 invocation id）；
+  // 空 = 非 fork 会话。血缘徽标「来源会话 + 轮次」展示与审计用。
+  string fork_from_turn_id = 60;
 }
 
 message SessionTimelineSummary {
@@ -152,6 +155,17 @@ message CreateSessionRequest {
 
 message GetSessionRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ForkSessionRequest 是 Fork-from-Turn 请求（79-runtime-governance R6）。
+message ForkSessionRequest {
+  // id 为源会话 id（仅根会话可 fork）。
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // turn_id 为分叉点：v2 turn id（= 框架 invocation id，即消息列表
+  // ChatMessage.turn_id）。复制该 turn（含）之前的历史。
+  string turn_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // title 为空时默认「源标题（分支）」。
+  string title = 3;
 }
 
 message UpdateSessionRequest {
@@ -526,6 +540,16 @@ service SessionService {
   }
   rpc GetSession(GetSessionRequest) returns (Session) {
     option (google.api.http) = {get: "/v1/sessions/{id}"};
+  }
+  // ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
+  // R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
+  // parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
+  // 历史不闭合，返回 400）；turn 不存在返回 404。
+  rpc ForkSession(ForkSessionRequest) returns (Session) {
+    option (google.api.http) = {
+      post: "/v1/sessions/{id}/fork"
+      body: "*"
+    };
   }
   rpc UpdateSession(UpdateSessionRequest) returns (Session) {
     option (google.api.http) = {

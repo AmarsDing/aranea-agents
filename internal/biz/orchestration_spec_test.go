@@ -325,3 +325,42 @@ func TestOrchestrationSpecEmptyContractNormalizedNil(t *testing.T) {
 		t.Fatal("enable_state_deliverable must survive normalization")
 	}
 }
+
+// TestOrchestrationSpecTokenBudgetRoundTrip pins 2026-08-26 M80 验收踩坑：
+// token_budget_input_tokens 必须随 spec 往返（create/update 经
+// OrchestrationSpecToDefinitionJSON 重序列化不得丢弃），且 0 值 omitempty
+// 缺省时不出现。
+func TestOrchestrationSpecTokenBudgetRoundTrip(t *testing.T) {
+	spec, err := ParseOrchestrationSpec(
+		`{"version":2,"mode":"sequential","members":[{"agent_id":"a1","role":"worker","enabled":true,"sort_order":0}],"token_budget_input_tokens":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.TokenBudgetInputTokens != 1 {
+		t.Fatalf("parse lost budget: %+v", spec)
+	}
+	out, err := OrchestrationSpecToDefinitionJSON(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec2, err := ParseOrchestrationSpec(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec2.TokenBudgetInputTokens != 1 {
+		t.Fatalf("canonical re-serialize dropped budget: %s", out)
+	}
+
+	// 零值（含 <0 关闭语义之外的缺省）omitempty 不出现，保持旧 JSON 干净。
+	out, err = OrchestrationSpecToDefinitionJSON(OrchestrationSpec{Mode: "sequential"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["token_budget_input_tokens"]; ok {
+		t.Fatalf("zero budget must be omitted, got %v", body["token_budget_input_tokens"])
+	}
+}

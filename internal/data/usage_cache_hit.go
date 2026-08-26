@@ -97,10 +97,10 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
 
 	var out bizusage.RunCacheHitRatio
 	found, err := scanUsageSingleRow(ctx, db, r.data.Dialect().RenumberPlaceholders(
-		`SELECT input_tokens, cached_input_tokens
+		`SELECT input_tokens, cached_input_tokens, output_tokens
 		   FROM model_token_usage_events
 		  WHERE usage_kind = 'team_turn' AND message_id = ?
-		  LIMIT 1`), []any{runID}, &out.PromptTok, &out.CachedTok)
+		  LIMIT 1`), []any{runID}, &out.PromptTok, &out.CachedTok, &out.CompletionTok)
 	if err != nil {
 		return bizusage.RunCacheHitRatio{}, entErrToBizErr(err, apierror.DomainData)
 	}
@@ -111,12 +111,12 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
 		attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
 		var n int64
 		_, err = scanUsageSingleRow(ctx, db, r.data.Dialect().RenumberPlaceholders(
-			`SELECT COALESCE(SUM(u.input_tokens), 0), COALESCE(SUM(u.cached_input_tokens), 0), COUNT(*)
+			`SELECT COALESCE(SUM(u.input_tokens), 0), COALESCE(SUM(u.cached_input_tokens), 0), COALESCE(SUM(u.output_tokens), 0), COUNT(*)
 			   FROM model_token_usage_events u
 			  WHERE u.usage_kind = 'team_member'
 			    AND COALESCE(`+attribution+`, '') = ''
 			    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)`), []any{runID},
-			&out.PromptTok, &out.CachedTok, &n)
+			&out.PromptTok, &out.CachedTok, &out.CompletionTok, &n)
 		if err != nil {
 			return bizusage.RunCacheHitRatio{}, entErrToBizErr(err, apierror.DomainData)
 		}
@@ -126,4 +126,72 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
 		out.Ratio = float64(out.CachedTok) / float64(out.PromptTok)
 	}
 	return out, nil
+}
+
+var _ bizusage.RunTurnPeakRepo = (*usageRepo)(nil)
+
+// RunTurnPeak 聚合一个 run 的单次调用 input 峰值（79-runtime-governance R7
+// G-2）。口径：genuine team_member 行（usage_attribution 为空，每行=一次
+// 模型调用）的 MAX(input_tokens)；镜像行与 team_turn 对账行均非单次调用
+// 口径，排除（同 RunCacheHitRatio 回退分支语义）。
+func (r *usageRepo) RunTurnPeak(ctx context.Context, runID string) (bizusage.RunTurnPeak, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return bizusage.RunTurnPeak{}, nil
+	}
+	attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
+	var out bizusage.RunTurnPeak
+	var n int64
+	_, err := scanUsageSingleRow(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(
+		`SELECT COALESCE(MAX(u.input_tokens), 0), COUNT(*)
+		   FROM model_token_usage_events u
+		  WHERE u.usage_kind = 'team_member'
+		    AND COALESCE(`+attribution+`, '') = ''
+		    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)`), []any{runID},
+		&out.MaxInputTokens, &n)
+	if err != nil {
+		return bizusage.RunTurnPeak{}, entErrToBizErr(err, apierror.DomainData)
+	}
+	out.Found = n > 0
+	return out, nil
+}
+
+var _ bizusage.RunMemberUsageRepo = (*usageRepo)(nil)
+
+// RunMemberUsageStats 聚合一个 run 的成员维度用量（79-runtime-governance
+// R7 stats API members 段）。口径同 RunTurnPeak：genuine team_member 行
+// （attribution 为空）按 step 归属过滤后 GROUP BY agent_key；镜像行与
+// team_turn 对账行排除（防双计）。空 agent_key 行（记账缺陷）仍保留——
+// 装配层按键合流时落「未知成员」桶，不静默吞掉账单。
+func (r *usageRepo) RunMemberUsageStats(ctx context.Context, runID string) ([]bizusage.RunMemberUsage, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil, nil
+	}
+	attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT u.agent_key,
+		        COALESCE(SUM(u.input_tokens), 0),
+		        COALESCE(SUM(u.output_tokens), 0),
+		        COALESCE(SUM(u.cached_input_tokens), 0),
+		        COUNT(*)
+		   FROM model_token_usage_events u
+		  WHERE u.usage_kind = 'team_member'
+		    AND COALESCE(`+attribution+`, '') = ''
+		    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)
+		  GROUP BY u.agent_key
+		  ORDER BY u.agent_key`), runID)
+	if err != nil {
+		return nil, entErrToBizErr(err, apierror.DomainData)
+	}
+	defer rows.Close()
+	var out []bizusage.RunMemberUsage
+	for rows.Next() {
+		var m bizusage.RunMemberUsage
+		if err := rows.Scan(&m.AgentKey, &m.PromptTok, &m.CompletionTok, &m.CachedTok, &m.Calls); err != nil {
+			return nil, entErrToBizErr(err, apierror.DomainData)
+		}
+		out = append(out, m)
+	}
+	return out, entErrToBizErr(rows.Err(), apierror.DomainData)
 }

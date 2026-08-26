@@ -71,20 +71,73 @@ ORDER BY c.depth ASC, dr.created_at ASC, dr.id ASC`)
 	return r.queryChainRows(ctx, q, startID, maxDepth)
 }
 
-// FindLatestPlannerByRun 找同 run 内 created_at <= before 的最近
-// planner_orchestration 决策（虚拟父兜底，设计 §5）。
-func (r *decisionQueryRepo) FindLatestPlannerByRun(ctx context.Context, runID, beforeCreatedAt string, excludeID int64) (*decision.Record, error) {
-	if r == nil || r.data == nil || r.data.RWDB() == nil || strings.TrimSpace(runID) == "" {
+// FindVirtualParentPlanner 为无父记录解析虚拟父 planner 决策（设计 §5，
+// 2026-08-26 Gap 修复）。旧实现按 source_ref.run_id 直查 planner——但
+// planner 决策只写 flow_trace_id（设计 §3.2 row 1），永落空。两段解析：
+//
+//  1. ref.FlowTraceID 非空：同 trace planner 决策精确匹配。planner 侧闸
+//     （team_count_mismatch）与 planner 决策同 plan_and_execute 作用域
+//     trace，flow_trace_id 是确定性最强的关联键。
+//  2. ref.RunID 非空：team run 闸（token_budget/no_progress）的 RunID 是
+//     team_runs.id；planner 决策 1:N 先于 run 产生、不回写（证据链只读
+//     追加），桥接走 team_runs→teams.spirit_session_id→planner
+//     metadata.spirit_session_id。
+//
+// 两者皆空或不命中返回 nil, nil：invocation 级闸（loop_guard）与手动
+// run（teams.spirit_session_id 为空）本就无 planner 前置，落空即语义。
+func (r *decisionQueryRepo) FindVirtualParentPlanner(ctx context.Context, ref decision.SourceRef, beforeCreatedAt string, excludeID int64) (*decision.Record, error) {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil, nil
 	}
 	d := r.data.Dialect()
+	// 路径①：flow_trace_id 精确匹配。
+	if ft := strings.TrimSpace(ref.FlowTraceID); ft != "" {
+		return r.findLatestPlanner(ctx, d.JSONExtract("source_ref", "flow_trace_id"), ft, beforeCreatedAt, excludeID)
+	}
+	// 路径②：run_id → teams.spirit_session_id 桥接。
+	runID := strings.TrimSpace(ref.RunID)
+	if runID == "" {
+		return nil, nil
+	}
+	sid, err := r.spiritSessionIDByRun(ctx, runID)
+	if err != nil || sid == "" {
+		return nil, err
+	}
+	return r.findLatestPlanner(ctx, d.JSONExtract("metadata", "spirit_session_id"), sid, beforeCreatedAt, excludeID)
+}
+
+// spiritSessionIDByRun 经 team_runs→teams 主键 join 取 run 所属 spirit
+// 会话 id；run 不存在或 team 非 spirit 编排（空串）时返回 ""。
+func (r *decisionQueryRepo) spiritSessionIDByRun(ctx context.Context, runID string) (string, error) {
+	q := r.data.Dialect().RenumberPlaceholders(
+		`SELECT tm.spirit_session_id FROM team_runs t
+		 JOIN teams tm ON tm.id = t.team_id WHERE t.id = ?`)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, runID)
+	if err != nil {
+		return "", entErrToBizErr(err, "DECISION")
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return "", rows.Err()
+	}
+	var sid string
+	if err := rows.Scan(&sid); err != nil {
+		return "", entErrToBizErr(err, "DECISION")
+	}
+	return strings.TrimSpace(sid), rows.Err()
+}
+
+// findLatestPlanner 按单一 JSON 键等值条件查 created_at <= before 的
+// 最近前置 planner_orchestration 决策（稳定序 created_at DESC, id DESC）。
+func (r *decisionQueryRepo) findLatestPlanner(ctx context.Context, keyExpr, keyVal, beforeCreatedAt string, excludeID int64) (*decision.Record, error) {
+	d := r.data.Dialect()
 	q := d.RenumberPlaceholders(
 		`SELECT ` + decisionRecordSelectCols + ` FROM decision_records
-		 WHERE category = ? AND ` + d.JSONExtract("source_ref", "run_id") + ` = ?
+		 WHERE category = ? AND ` + keyExpr + ` = ?
 		   AND id != ? AND created_at <= ?
 		 ORDER BY created_at DESC, id DESC LIMIT 1`)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q,
-		string(decision.CategoryPlannerOrchestration), runID, excludeID, beforeCreatedAt)
+		string(decision.CategoryPlannerOrchestration), keyVal, excludeID, beforeCreatedAt)
 	if err != nil {
 		return nil, entErrToBizErr(err, "DECISION")
 	}

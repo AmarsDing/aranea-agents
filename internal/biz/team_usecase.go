@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -380,6 +381,12 @@ func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) ([]Team, 
 
 func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
 	return u.reader.ListTeams(ctx)
+}
+
+// ListTeamsByWorkspace 服务 79-runtime-governance R7 stats 导出的租户过滤
+// （导出按可见 team 集合收口：own workspace + shared）。
+func (u *TeamUsecase) ListTeamsByWorkspace(ctx context.Context, workspaceID string) ([]Team, error) {
+	return u.reader.ListTeamsByWorkspace(ctx, workspaceID)
 }
 
 func (u *TeamUsecase) ListTeamsByStatus(ctx context.Context, status string) ([]Team, error) {
@@ -804,6 +811,28 @@ func (u *TeamUsecase) ListRunsByTeamIDs(ctx context.Context, teamIDs []string, l
 		return nil, nil
 	}
 	return u.runReader.ListTeamRunsByTeamIDs(ctx, teamIDs, limit)
+}
+
+// TeamRunStatsExportReader 是 run stats JSONL 导出的窗口列举窄读接口
+// （79-runtime-governance R7）：跨 team 按 created_at 窗口 + 可选 session_id
+// 过滤。窄接口 type-assertion 解析（同 decision.RunGateStatsRepo 模式），
+// TeamRunReader 契约不动、测试替身零波及；无该能力的实现导出为空。
+//
+// Stability:evolving
+type TeamRunStatsExportReader interface {
+	// ListTeamRunsForStatsExport 按创建时间窗口列举 run（created_at DESC，
+	// limit 上限截断）。from/to 零值 = 不限；sessionID 空 = 跨会话。
+	ListTeamRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, limit int) ([]TeamRunRecord, error)
+}
+
+// ListRunsForStatsExport 服务 R7 stats JSONL 导出。reader 无窄能力时返回
+// nil（导出空流而非报错——CLI/无库形态降级语义与 stats 聚合一致）。
+func (u *TeamUsecase) ListRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, limit int) ([]TeamRunRecord, error) {
+	reader, ok := u.runReader.(TeamRunStatsExportReader)
+	if !ok {
+		return nil, nil
+	}
+	return reader.ListTeamRunsForStatsExport(ctx, from, to, sessionID, limit)
 }
 
 func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRunRecord, error) {

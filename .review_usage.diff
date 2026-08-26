@@ -1,0 +1,312 @@
+diff --git a/internal/biz/usage/cache_hit.go b/internal/biz/usage/cache_hit.go
+index 1d5c83e4b..fe2969f8f 100644
+--- a/internal/biz/usage/cache_hit.go
++++ b/internal/biz/usage/cache_hit.go
+@@ -64,6 +64,10 @@ type RunCacheHitRatio struct {
+ 	Found     bool
+ 	PromptTok int64
+ 	CachedTok int64
++	// CompletionTok 是 run 级 output tokens 总和（79-runtime-governance R7
++	// stats API 需要 completion 与 prompt 分列；与 PromptTok/CachedTok 同源
++	// 同查询，team_turn 对账行优先、失败 run 回退 genuine 成员行求和）。
++	CompletionTok int64
+ 	// Ratio = CachedTok / PromptTok (0 when PromptTok == 0).
+ 	Ratio float64
+ }
+diff --git a/internal/data/usage_cache_hit.go b/internal/data/usage_cache_hit.go
+index 5edaa0ebe..942adfd02 100644
+--- a/internal/data/usage_cache_hit.go
++++ b/internal/data/usage_cache_hit.go
+@@ -97,10 +97,10 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
+ 
+ 	var out bizusage.RunCacheHitRatio
+ 	found, err := scanUsageSingleRow(ctx, db, r.data.Dialect().RenumberPlaceholders(
+-		`SELECT input_tokens, cached_input_tokens
++		`SELECT input_tokens, cached_input_tokens, output_tokens
+ 		   FROM model_token_usage_events
+ 		  WHERE usage_kind = 'team_turn' AND message_id = ?
+-		  LIMIT 1`), []any{runID}, &out.PromptTok, &out.CachedTok)
++		  LIMIT 1`), []any{runID}, &out.PromptTok, &out.CachedTok, &out.CompletionTok)
+ 	if err != nil {
+ 		return bizusage.RunCacheHitRatio{}, entErrToBizErr(err, apierror.DomainData)
+ 	}
+@@ -111,12 +111,12 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
+ 		attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
+ 		var n int64
+ 		_, err = scanUsageSingleRow(ctx, db, r.data.Dialect().RenumberPlaceholders(
+-			`SELECT COALESCE(SUM(u.input_tokens), 0), COALESCE(SUM(u.cached_input_tokens), 0), COUNT(*)
++			`SELECT COALESCE(SUM(u.input_tokens), 0), COALESCE(SUM(u.cached_input_tokens), 0), COALESCE(SUM(u.output_tokens), 0), COUNT(*)
+ 			   FROM model_token_usage_events u
+ 			  WHERE u.usage_kind = 'team_member'
+ 			    AND COALESCE(`+attribution+`, '') = ''
+ 			    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)`), []any{runID},
+-			&out.PromptTok, &out.CachedTok, &n)
++			&out.PromptTok, &out.CachedTok, &out.CompletionTok, &n)
+ 		if err != nil {
+ 			return bizusage.RunCacheHitRatio{}, entErrToBizErr(err, apierror.DomainData)
+ 		}
+@@ -127,3 +127,71 @@ func (r *usageRepo) RunCacheHitRatio(ctx context.Context, runID string) (bizusag
+ 	}
+ 	return out, nil
+ }
++
++var _ bizusage.RunTurnPeakRepo = (*usageRepo)(nil)
++
++// RunTurnPeak 聚合一个 run 的单次调用 input 峰值（79-runtime-governance R7
++// G-2）。口径：genuine team_member 行（usage_attribution 为空，每行=一次
++// 模型调用）的 MAX(input_tokens)；镜像行与 team_turn 对账行均非单次调用
++// 口径，排除（同 RunCacheHitRatio 回退分支语义）。
++func (r *usageRepo) RunTurnPeak(ctx context.Context, runID string) (bizusage.RunTurnPeak, error) {
++	runID = strings.TrimSpace(runID)
++	if runID == "" {
++		return bizusage.RunTurnPeak{}, nil
++	}
++	attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
++	var out bizusage.RunTurnPeak
++	var n int64
++	_, err := scanUsageSingleRow(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(
++		`SELECT COALESCE(MAX(u.input_tokens), 0), COUNT(*)
++		   FROM model_token_usage_events u
++		  WHERE u.usage_kind = 'team_member'
++		    AND COALESCE(`+attribution+`, '') = ''
++		    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)`), []any{runID},
++		&out.MaxInputTokens, &n)
++	if err != nil {
++		return bizusage.RunTurnPeak{}, entErrToBizErr(err, apierror.DomainData)
++	}
++	out.Found = n > 0
++	return out, nil
++}
++
++var _ bizusage.RunMemberUsageRepo = (*usageRepo)(nil)
++
++// RunMemberUsageStats 聚合一个 run 的成员维度用量（79-runtime-governance
++// R7 stats API members 段）。口径同 RunTurnPeak：genuine team_member 行
++// （attribution 为空）按 step 归属过滤后 GROUP BY agent_key；镜像行与
++// team_turn 对账行排除（防双计）。空 agent_key 行（记账缺陷）仍保留——
++// 装配层按键合流时落「未知成员」桶，不静默吞掉账单。
++func (r *usageRepo) RunMemberUsageStats(ctx context.Context, runID string) ([]bizusage.RunMemberUsage, error) {
++	runID = strings.TrimSpace(runID)
++	if runID == "" {
++		return nil, nil
++	}
++	attribution := r.data.Dialect().JSONExtract("metadata_json", "usage_attribution")
++	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
++		`SELECT u.agent_key,
++		        COALESCE(SUM(u.input_tokens), 0),
++		        COALESCE(SUM(u.output_tokens), 0),
++		        COALESCE(SUM(u.cached_input_tokens), 0),
++		        COUNT(*)
++		   FROM model_token_usage_events u
++		  WHERE u.usage_kind = 'team_member'
++		    AND COALESCE(`+attribution+`, '') = ''
++		    AND u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?)
++		  GROUP BY u.agent_key
++		  ORDER BY u.agent_key`), runID)
++	if err != nil {
++		return nil, entErrToBizErr(err, apierror.DomainData)
++	}
++	defer rows.Close()
++	var out []bizusage.RunMemberUsage
++	for rows.Next() {
++		var m bizusage.RunMemberUsage
++		if err := rows.Scan(&m.AgentKey, &m.PromptTok, &m.CompletionTok, &m.CachedTok, &m.Calls); err != nil {
++			return nil, entErrToBizErr(err, apierror.DomainData)
++		}
++		out = append(out, m)
++	}
++	return out, entErrToBizErr(rows.Err(), apierror.DomainData)
++}
+diff --git a/internal/data/usage_cache_hit_run_test.go b/internal/data/usage_cache_hit_run_test.go
+index 59da0ed34..75a5e1105 100644
+--- a/internal/data/usage_cache_hit_run_test.go
++++ b/internal/data/usage_cache_hit_run_test.go
+@@ -18,18 +18,19 @@ func setupRunCacheHitTestRepo(t *testing.T) *usageRepo {
+ 	rawDB := testhelper.SetupTestPGRaw(t)
+ 	ctx := context.Background()
+ 	if _, err := rawDB.ExecContext(ctx, `CREATE TABLE model_token_usage_events (
+-	  id TEXT PRIMARY KEY,
+-	  occurred_at TEXT NOT NULL,
+-	  provider_code TEXT NOT NULL DEFAULT '',
+-	  model_api_id TEXT NOT NULL DEFAULT '',
+-	  agent_key TEXT NOT NULL DEFAULT '',
+-	  usage_kind TEXT NOT NULL DEFAULT '',
+-	  message_id TEXT NOT NULL DEFAULT '',
+-	  input_tokens INTEGER NOT NULL DEFAULT 0,
+-	  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+-	  metadata_json TEXT,
+-	  created_at TEXT NOT NULL
+-	)`); err != nil {
++  id TEXT PRIMARY KEY,
++  occurred_at TEXT NOT NULL,
++  provider_code TEXT NOT NULL DEFAULT '',
++  model_api_id TEXT NOT NULL DEFAULT '',
++  agent_key TEXT NOT NULL DEFAULT '',
++  usage_kind TEXT NOT NULL DEFAULT '',
++  message_id TEXT NOT NULL DEFAULT '',
++  input_tokens INTEGER NOT NULL DEFAULT 0,
++  output_tokens INTEGER NOT NULL DEFAULT 0,
++  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
++  metadata_json TEXT,
++  created_at TEXT NOT NULL
++)`); err != nil {
+ 		t.Fatalf("create model_token_usage_events: %v", err)
+ 	}
+ 	if _, err := rawDB.ExecContext(ctx, `CREATE TABLE team_run_steps (
+@@ -50,12 +51,19 @@ func setupRunCacheHitTestRepo(t *testing.T) *usageRepo {
+ 
+ // metaJSON 传 nil 落 NULL，传字符串落 TEXT——覆盖 genuine 行的 NULL/无键两形态。
+ func insertRunUsageRow(t *testing.T, r *usageRepo, id, kind, messageID string, metaJSON any, promptTok, cachedTok int64) {
++	t.Helper()
++	insertRunUsageRowFull(t, r, id, kind, messageID, "", metaJSON, promptTok, 0, cachedTok)
++}
++
++// insertRunUsageRowFull 是全字段版插入：agentKey/outputTok 供成员聚合与
++// completion 回读断言使用；旧 helper 保留原位签名，存量调用零改动。
++func insertRunUsageRowFull(t *testing.T, r *usageRepo, id, kind, messageID, agentKey string, metaJSON any, promptTok, outputTok, cachedTok int64) {
+ 	t.Helper()
+ 	ctx := context.Background()
+ 	if _, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+-		`INSERT INTO model_token_usage_events (id, occurred_at, usage_kind, message_id, input_tokens, cached_input_tokens, metadata_json, created_at)
+-		 VALUES ($1, '2026-08-25T00:00:00Z', $2, $3, $4, $5, $6, '2026-08-25T00:00:00Z')`,
+-		id, kind, messageID, promptTok, cachedTok, metaJSON); err != nil {
++		`INSERT INTO model_token_usage_events (id, occurred_at, usage_kind, message_id, agent_key, input_tokens, output_tokens, cached_input_tokens, metadata_json, created_at)
++		 VALUES ($1, '2026-08-25T00:00:00Z', $2, $3, $4, $5, $6, $7, $8, '2026-08-25T00:00:00Z')`,
++		id, kind, messageID, agentKey, promptTok, outputTok, cachedTok, metaJSON); err != nil {
+ 		t.Fatalf("insert %s: %v", id, err)
+ 	}
+ }
+@@ -72,7 +80,7 @@ func insertRunStep(t *testing.T, r *usageRepo, stepID, runID string) {
+ // 主分支：team_turn 对账行（message_id = run id）直取 run 总账。
+ func TestRunCacheHitRatio_TeamTurnRow(t *testing.T) {
+ 	r := setupRunCacheHitTestRepo(t)
+-	insertRunUsageRow(t, r, "tt1", "team_turn", "run-a", nil, 4000, 3000)
++	insertRunUsageRowFull(t, r, "tt1", "team_turn", "run-a", "", nil, 4000, 800, 3000)
+ 
+ 	hit, err := r.RunCacheHitRatio(context.Background(), "run-a")
+ 	if err != nil {
+@@ -84,6 +92,9 @@ func TestRunCacheHitRatio_TeamTurnRow(t *testing.T) {
+ 	if hit.PromptTok != 4000 || hit.CachedTok != 3000 {
+ 		t.Errorf("tokens = %d/%d, want 4000/3000", hit.PromptTok, hit.CachedTok)
+ 	}
++	if hit.CompletionTok != 800 {
++		t.Errorf("CompletionTok = %d, want 800（R7 stats completion 分列）", hit.CompletionTok)
++	}
+ 	if math.Abs(hit.Ratio-0.75) > 1e-9 {
+ 		t.Errorf("Ratio = %v, want 0.75", hit.Ratio)
+ 	}
+@@ -123,6 +134,114 @@ func TestRunCacheHitRatio_FallbackGenuineMemberRows(t *testing.T) {
+ 	}
+ }
+ 
++// ─── R7（G-2）RunTurnPeak：genuine 成员行 MAX(input_tokens) ───
++
++// genuine 行取 MAX；镜像行/他 run/team_turn 对账行均不计入峰值口径。
++func TestRunTurnPeak_GenuineMaxOnly(t *testing.T) {
++	r := setupRunCacheHitTestRepo(t)
++	insertRunStep(t, r, "s1", "run-p")
++	insertRunStep(t, r, "s2", "run-p")
++	insertRunStep(t, r, "s9", "run-other")
++
++	insertRunUsageRow(t, r, "m1", "team_member", "s1", nil, 12000, 0)
++	insertRunUsageRow(t, r, "m2", "team_member", "s2", nil, 47000, 0)
++	// 镜像行（attribution 非空）：与总账同额但非单次调用口径，排除。
++	insertRunUsageRow(t, r, "m3", "team_member", "s1", `{"usage_attribution":"member_level_stream"}`, 9000000, 0)
++	// team_turn 对账行：run 总账非单次调用，排除。
++	insertRunUsageRow(t, r, "m4", "team_turn", "run-p", nil, 99000000, 0)
++	// 他 run 的 genuine 行：排除。
++	insertRunUsageRow(t, r, "m5", "team_member", "s9", nil, 888888, 0)
++
++	peak, err := r.RunTurnPeak(context.Background(), "run-p")
++	if err != nil {
++		t.Fatalf("RunTurnPeak: %v", err)
++	}
++	if !peak.Found {
++		t.Fatal("Found = false, want true")
++	}
++	if peak.MaxInputTokens != 47000 {
++		t.Errorf("MaxInputTokens = %d, want 47000（镜像/对账/他 run 行排除）", peak.MaxInputTokens)
++	}
++}
++
++// 无 genuine 行的 run：Found=false（调用方区分「无数据」与峰值 0）。
++func TestRunTurnPeak_NotFound(t *testing.T) {
++	r := setupRunCacheHitTestRepo(t)
++	insertRunStep(t, r, "s1", "run-p")
++	insertRunUsageRow(t, r, "m1", "team_member", "s1", `{"usage_attribution":"member_level_stream"}`, 5000, 0)
++
++	peak, err := r.RunTurnPeak(context.Background(), "run-p")
++	if err != nil {
++		t.Fatalf("RunTurnPeak: %v", err)
++	}
++	if peak.Found {
++		t.Errorf("Found = true, want false（仅镜像行不算数据）: %+v", peak)
++	}
++	peak, err = r.RunTurnPeak(context.Background(), " ")
++	if err != nil {
++		t.Fatalf("RunTurnPeak blank id: %v", err)
++	}
++	if peak.Found {
++		t.Error("Found = true, want false for blank run id")
++	}
++}
++
++// ─── R7 RunMemberUsageStats：GROUP BY agent_key 成员聚合 ───
++
++// 成员分桶求和；镜像行/他 run/chat_turn 排除。
++func TestRunMemberUsageStats_GroupByAgent(t *testing.T) {
++	r := setupRunCacheHitTestRepo(t)
++	insertRunStep(t, r, "s1", "run-m")
++	insertRunStep(t, r, "s2", "run-m")
++	insertRunStep(t, r, "s3", "run-m")
++	insertRunStep(t, r, "s9", "run-other")
++
++	// planner 两次 genuine 调用（跨 step）。
++	insertRunUsageRowFull(t, r, "m1", "team_member", "s1", "planner", nil, 1000, 100, 600)
++	insertRunUsageRowFull(t, r, "m2", "team_member", "s2", "planner", nil, 2000, 200, 1400)
++	// executor 一次。
++	insertRunUsageRowFull(t, r, "m3", "team_member", "s3", "executor", nil, 500, 50, 0)
++	// 镜像行：排除。
++	insertRunUsageRowFull(t, r, "m4", "team_member", "s1", "planner", `{"usage_attribution":"stream_anchor_remainder"}`, 77777, 0, 77777)
++	// 他 run / chat_turn：排除。
++	insertRunUsageRowFull(t, r, "m5", "team_member", "s9", "planner", nil, 8888, 0, 8888)
++	insertRunUsageRowFull(t, r, "m6", "chat_turn", "s1", "planner", nil, 9999, 0, 9999)
++
++	members, err := r.RunMemberUsageStats(context.Background(), "run-m")
++	if err != nil {
++		t.Fatalf("RunMemberUsageStats: %v", err)
++	}
++	if len(members) != 2 {
++		t.Fatalf("members = %d, want 2（executor/planner）: %+v", len(members), members)
++	}
++	// ORDER BY agent_key：executor 在前。
++	if members[0].AgentKey != "executor" || members[0].PromptTok != 500 || members[0].CompletionTok != 50 || members[0].CachedTok != 0 || members[0].Calls != 1 {
++		t.Errorf("executor 桶 = %+v, want {500/50/0/1}", members[0])
++	}
++	if members[1].AgentKey != "planner" || members[1].PromptTok != 3000 || members[1].CompletionTok != 300 || members[1].CachedTok != 2000 || members[1].Calls != 2 {
++		t.Errorf("planner 桶 = %+v, want {3000/300/2000/2}", members[1])
++	}
++}
++
++// 无命中与空 runID：nil 切片 + nil error（装配层按无成员用量降级）。
++func TestRunMemberUsageStats_Empty(t *testing.T) {
++	r := setupRunCacheHitTestRepo(t)
++	members, err := r.RunMemberUsageStats(context.Background(), "run-missing")
++	if err != nil {
++		t.Fatalf("RunMemberUsageStats: %v", err)
++	}
++	if members != nil {
++		t.Errorf("members = %+v, want nil for unknown run", members)
++	}
++	members, err = r.RunMemberUsageStats(context.Background(), "  ")
++	if err != nil {
++		t.Fatalf("RunMemberUsageStats blank id: %v", err)
++	}
++	if members != nil {
++		t.Errorf("members = %+v, want nil for blank run id", members)
++	}
++}
++
+ // 无任何 usage 行的 run：Found=false（调用方区分"无数据"与真实 0%）。
+ func TestRunCacheHitRatio_NotFound(t *testing.T) {
+ 	r := setupRunCacheHitTestRepo(t)

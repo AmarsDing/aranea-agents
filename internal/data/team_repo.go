@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -461,6 +462,37 @@ func (r *TeamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	q := r.data.RW().Read(ctx).TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
 	if teamID != "" {
 		q = q.Where(teamrun.TeamIDEQ(teamID))
+	}
+	rows, err := q.Limit(limit).All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TEAM")
+	}
+	out := make([]biz.TeamRunRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTeamRunToBiz(row))
+	}
+	return out, nil
+}
+
+var _ biz.TeamRunStatsExportReader = (*TeamRepo)(nil)
+
+// ListTeamRunsForStatsExport 按 created_at 窗口 + 可选 session_id 跨 team
+// 列举 run（79-runtime-governance R7 JSONL 导出）。created_at 是 TEXT 列
+// （RFC3339），UTC 字典序比较与时间序一致；窗口边界统一转 UTC 后下推。
+// limit 由调用方收口（导出处理器硬上限），此处仅防御性兜底。
+func (r *TeamRepo) ListTeamRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, limit int) ([]biz.TeamRunRecord, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	q := r.data.RW().Read(ctx).TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
+	if !from.IsZero() {
+		q = q.Where(teamrun.CreatedAtGTE(from.UTC().Format(time.RFC3339Nano)))
+	}
+	if !to.IsZero() {
+		q = q.Where(teamrun.CreatedAtLTE(to.UTC().Format(time.RFC3339Nano)))
+	}
+	if s := strings.TrimSpace(sessionID); s != "" {
+		q = q.Where(teamrun.SessionIDEQ(s))
 	}
 	rows, err := q.Limit(limit).All(ctx)
 	if err != nil {

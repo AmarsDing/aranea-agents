@@ -4,6 +4,22 @@
 -->
 <template>
   <div class="turn-container" :data-turn-id="turn.ID">
+    <!-- 79 R6 Fork-from-Turn：hover 显示「从此分支」。仅根会话的 spirit turn
+         （SessionID === SpiritSessionID 且非 team stage）且非运行中可分叉——
+         member 子会话事件不在根会话框架事件流内，后端会拒绝。 -->
+    <q-btn
+      v-if="forkable"
+      flat
+      dense
+      round
+      size="sm"
+      icon="call_split"
+      class="turn-container__fork-btn"
+      :aria-label="t('chat.forkFromHere')"
+      @click.stop="$emit('fork-turn', turn)"
+    >
+      <q-tooltip>{{ t('chat.forkFromHere') }}</q-tooltip>
+    </q-btn>
     <!-- R4 召回透明度：本轮注入的记忆条目 chips（数据源 memory_recalled notice）。
          渲染在 steps 之前——召回发生在 BeforeModel（turn 最开始），UI 顺序必须与
          实际执行顺序一致：召回 → 思考 → 行动 → 回复。 -->
@@ -24,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useUiConfigStore } from '../../../stores/uiConfig';
 import type { Turn } from '../../../features/chat/v2Types';
@@ -43,7 +60,26 @@ import CuStepStream from '../../../features/computeruse/CuStepStream.vue';
 const props = defineProps<{ turn: Turn }>();
 defineEmits<{
   'confirm-step': [payload: ConfirmStepPayload];
+  'fork-turn': [turn: Turn];
 }>();
+
+// Safe i18n wrapper — 单测环境未装 i18n 插件时回退为 key。
+const { t } = (() => {
+  try {
+    return useI18n();
+  } catch {
+    return { t: (key: string) => key };
+  }
+})();
+
+// 79 R6：可分叉 = 根会话 spirit turn（SessionID === SpiritSessionID、非 team
+// stage）且非运行中（running turn 事件仍在追加，分叉边界不稳定）。
+const forkable = computed(
+  () =>
+    !props.turn.TeamStageID &&
+    props.turn.SessionID === props.turn.SpiritSessionID &&
+    props.turn.Status !== 'running',
+);
 const store = useActivityQueries();
 // 2026-08-21 全链路审查 R2：showToolCalls 开关此前只管 TodoKanban，action
 // steps（工具调用块）无条件渲染，开关名不副实。uiConfig 是全局 UI 偏好
@@ -72,3 +108,24 @@ const visibleSteps = computed(() =>
 const cuSessionId = computed(() => cuSessionIdFromSteps(visibleSteps.value));
 const isLiveTurn = computed(() => props.turn.Status === 'running');
 </script>
+
+<style lang="sass" scoped>
+.turn-container
+  position: relative
+
+  /* 79 R6「从此分支」：hover 才显现，避免常驻视觉噪音 */
+  &__fork-btn
+    position: absolute
+    top: 0
+    right: 0
+    z-index: 1
+    color: var(--color-text-tertiary)
+    opacity: 0
+    transition: opacity 0.2s, color 0.2s
+
+  &:hover &__fork-btn
+    opacity: 1
+
+  &__fork-btn:hover
+    color: var(--color-accent)
+</style>

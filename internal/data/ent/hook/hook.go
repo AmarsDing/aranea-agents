@@ -248,30 +248,6 @@ func (f ComputerUseAuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComputerUseAuditMutation", m)
 }
 
-// The ConfigGraphEdgeFunc type is an adapter to allow the use of ordinary
-// function as ConfigGraphEdge mutator.
-type ConfigGraphEdgeFunc func(context.Context, *ent.ConfigGraphEdgeMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f ConfigGraphEdgeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.ConfigGraphEdgeMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigGraphEdgeMutation", m)
-}
-
-// The ConfigGraphNodeFunc type is an adapter to allow the use of ordinary
-// function as ConfigGraphNode mutator.
-type ConfigGraphNodeFunc func(context.Context, *ent.ConfigGraphNodeMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f ConfigGraphNodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.ConfigGraphNodeMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigGraphNodeMutation", m)
-}
-
 // The CronTaskFunc type is an adapter to allow the use of ordinary
 // function as CronTask mutator.
 type CronTaskFunc func(context.Context, *ent.CronTaskMutation) (ent.Value, error)
@@ -678,6 +654,18 @@ func (f MemberSessionV2Func) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MemberSessionV2Mutation", m)
+}
+
+// The MemoryFactAllowRuleFunc type is an adapter to allow the use of ordinary
+// function as MemoryFactAllowRule mutator.
+type MemoryFactAllowRuleFunc func(context.Context, *ent.MemoryFactAllowRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MemoryFactAllowRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MemoryFactAllowRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MemoryFactAllowRuleMutation", m)
 }
 
 // The MemoryFactPendingFunc type is an adapter to allow the use of ordinary

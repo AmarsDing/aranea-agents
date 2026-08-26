@@ -96,6 +96,7 @@ function kratosSessionToLegacy(s: KratosSession): Session {
     parent_session_id: s.parentSessionId ?? '',
     root_session_id: s.rootSessionId ?? '',
     agent_depth: s.agentDepth ?? 0,
+    fork_from_turn_id: s.forkFromTurnId ?? '',
     session_type: s.sessionType ?? '',
     member_agent_key: s.memberAgentKey ?? '',
     member_role: s.memberRole ?? '',
@@ -326,6 +327,16 @@ export async function createSession(payload: {
 
 export async function deleteSession(id: string): Promise<void> {
   await sessionApi.DeleteSession({ id });
+}
+
+/**
+ * Fork-from-Turn（79-runtime-governance R6）：以 turnId 为分叉点从会话 id
+ * 派生新会话。仅根会话可 fork。title 为空时后端默认「源标题（分支）」。
+ * Backend: POST /v1/sessions/{id}/fork
+ */
+export async function forkSession(id: string, turnId: string, title?: string): Promise<Session> {
+  const data = await sessionApi.ForkSession({ id, turnId, title: title || undefined });
+  return kratosSessionToLegacy(data);
 }
 
 export async function archiveSession(id: string): Promise<void> {
