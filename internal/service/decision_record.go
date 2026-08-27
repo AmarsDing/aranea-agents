@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/decision/v1"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -41,6 +42,11 @@ func (s *DecisionRecordService) ListDecisionRecords(ctx context.Context, req *v1
 		Page:        int(req.GetPage()),
 		PageSize:    int(req.GetPageSize()),
 	}
+	// workspace 隔离（t-dr-3）：非系统 caller 只见本租户 + 共享（''）记录，
+	// 镜像 AssertWorkspaceOrShared 读语义；系统 caller 不过滤。
+	if callerWS := workspace.IDFromContext(ctx); callerWS != workspace.SystemWorkspaceID {
+		f.VisibleWorkspaces = []string{callerWS, ""}
+	}
 	if req.GetTimeFrom() != nil {
 		f.TimeFrom = req.GetTimeFrom().AsTime()
 	}
@@ -75,7 +81,7 @@ func (s *DecisionRecordService) GetDecisionRecord(ctx context.Context, req *v1.G
 	if err != nil {
 		return nil, err
 	}
-	if rec == nil {
+	if rec == nil || !decisionVisibleTo(ctx, rec.WorkspaceID) {
 		return nil, apierror.NotFound("DECISION", "decision %s not found", req.GetDecisionKey())
 	}
 	msg, err := decisionRecordToProto(rec)
@@ -85,6 +91,13 @@ func (s *DecisionRecordService) GetDecisionRecord(ctx context.Context, req *v1.G
 	return &v1.GetDecisionRecordResponse{Record: msg}, nil
 }
 
+// decisionVisibleTo 校验记录的 workspace 归属对 caller 是否可见（t-dr-3，
+// 与 checkTeamAccess 同款 fail-closed：跨租户按 NotFound 处理，不透出存在
+// 性）。系统 caller 与共享（''）记录恒可见。
+func decisionVisibleTo(ctx context.Context, recWorkspaceID string) bool {
+	return workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), recWorkspaceID) == nil
+}
+
 // GetDecisionChain 追溯决策链（M80 1.8，设计 §5）：root + upstream（[0]=
 // 直接父，虚拟父带 virtual_parent=true）+ downstream（深度升序）。
 func (s *DecisionRecordService) GetDecisionChain(ctx context.Context, req *v1.GetDecisionChainRequest) (*v1.GetDecisionChainResponse, error) {
@@ -92,8 +105,33 @@ func (s *DecisionRecordService) GetDecisionChain(ctx context.Context, req *v1.Ge
 	if err != nil {
 		return nil, err
 	}
-	if chain == nil {
+	// 链记录同属一个因果族（同 run/trace），workspace 与 root 一致——校验
+	// root 即覆盖全链（t-dr-3）。
+	if chain == nil || !decisionVisibleTo(ctx, chain.Root.WorkspaceID) {
 		return nil, apierror.NotFound("DECISION", "decision %s not found", req.GetDecisionKey())
+	}
+	// 节点级可见性兜底（t-dr-5）：「同族同 workspace」是 Emit 回填维持的
+	// 不变量而非 DB 约束——历史共享（''）root 可经虚拟父桥接（spirit 会话
+	// 长存跨部署边界）解析到他租户 planner 记录；链 CTE/虚拟父解析均不带
+	// workspace 谓词。fail-closed：upstream 为线性链（[0]=直接父），遇首
+	// 个不可见节点即截断（更上游经不可见节点桥接，一并隐藏）；downstream
+	// 为扁平后代集，逐节点剔除（各记录独立成立，不透出存在性）。
+	up := chain.Upstream
+	for i := range up {
+		if !decisionVisibleTo(ctx, up[i].WorkspaceID) {
+			up = up[:i]
+			break
+		}
+	}
+	chain.Upstream = up
+	if len(chain.Downstream) > 0 {
+		down := chain.Downstream[:0]
+		for i := range chain.Downstream {
+			if decisionVisibleTo(ctx, chain.Downstream[i].WorkspaceID) {
+				down = append(down, chain.Downstream[i])
+			}
+		}
+		chain.Downstream = down
 	}
 	out := &v1.GetDecisionChainResponse{}
 	if out.Root, err = decisionRecordToProto(chain.Root); err != nil {

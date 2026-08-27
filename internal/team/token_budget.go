@@ -122,3 +122,6 @@ func (r *Runner) accumulateRunTokenBudgetFromStream(ctx context.Context, run biz
 	}
 	return false
 }
+
+// 跳闸序列单源在 usage_record.go（tripRunTokenBudget）：finish-path 记账与
+// mid-stream 钩子两个入口共用，日志/决策/事件/取消四件套完全一致。

@@ -12,16 +12,23 @@ import (
 
 // ListFilter 是 ListDecisionRecords 的过滤条件（零值 = 不过滤）。
 // EntityType/EntityKey 需同时给出才生效（related_entities 数组内对象匹配）。
+//
+// VisibleWorkspaces 是 workspace 隔离过滤（2026-08-27 t-dr-3，N5 IDOR 同
+// 策略）：nil = 不过滤（系统 caller）；非 nil 时 SQL 侧 workspace_id IN
+// (...)。service 层对非系统 caller 填 [callerWS, ""]——空串是共享记录
+// （无租户的旧数据/系统路径产物），镜像 AssertWorkspaceOrShared 的
+// "共享可读"语义；租户记录只对本租户可见。
 type ListFilter struct {
-	Category    string
-	ActorKey    string
-	EntityType  string
-	EntityKey   string
-	SourceRunID string
-	TimeFrom    time.Time
-	TimeTo      time.Time
-	Page        int
-	PageSize    int
+	Category          string
+	ActorKey          string
+	EntityType        string
+	EntityKey         string
+	SourceRunID       string
+	VisibleWorkspaces []string
+	TimeFrom          time.Time
+	TimeTo            time.Time
+	Page              int
+	PageSize          int
 }
 
 // maxListPageSize 是设计 §4.1 的 page_size 上限。

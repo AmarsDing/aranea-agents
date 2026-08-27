@@ -257,6 +257,20 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		streamOpts = &agent.StreamConsumeOptions{}
 	}
 	streamOpts.AbortOnStall = abortRun
+	// M80 方案A 中流预算闸（2026-08-26 设计，08-27 深度审查补接线）：graph
+	// runtime 下 finish-path member 行全带 attribution 镜像标记，
+	// recordMemberUsage 的 genuine 累计分支（attribution==""）永不触发——
+	// 本钩子是 graph 路径 run 预算闸的唯一累计源。usage delta（跨成员逐轮
+	// 计费口径，accumulateStreamUsage 的 result.PromptTok 增量）同步累计，
+	// 首次超闸走 tripRunTokenBudget 四件套并 abortRun 本地中止在飞流——
+	// RunTeamTest 等旁路无 RunRegistry 活动条目，Runs.Cancel 空转，必须
+	// 本地取消。失败路径 partial genuine 行的 finish 累计是同向叠加
+	// （single-fire 防重跳），无双计风险。
+	streamOpts.OnPromptTokensAccumulated = func(delta int) {
+		if r.accumulateRunTokenBudgetFromStream(runCtx, run, teamRow.ID, delta) {
+			abortRun()
+		}
+	}
 	if streamOpts.V2Projector != nil {
 		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
 		streamOpts.V2Projector.Configure(v2Meta)

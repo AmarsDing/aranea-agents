@@ -50,7 +50,16 @@ type OutboxRow struct {
 const (
 	OutboxStatusPending   = "pending"
 	OutboxStatusPublished = "published"
+	// OutboxStatusDead 是重试上限触达后的终态（2026-08-27 t-dr-4）：行不再
+	// 被 replay 扫描，payload 留存供事后排查。此前无 dead 态，永久失败的
+	// 记录（可解码但 InsertRecords 恒败）每 30s 重试一次且按 oldest-first
+	// 占据扫描窗口——积压 ≥100 条即 head-of-line blocking，新失败行永远
+	// 排不到重试。
+	OutboxStatusDead = "dead"
 )
+
+// MaxOutboxAttempts 是 replay 重试上限；触达即翻 dead 终态（见上）。
+const MaxOutboxAttempts = 10
 
 // Repo is the persistence contract the outbox worker needs (implemented by
 // internal/data). Insert methods are idempotent on decision_key so worker
@@ -68,4 +77,10 @@ type Repo interface {
 	MarkOutboxPublished(ctx context.Context, ids []int64, publishedAt time.Time) error
 	// MarkOutboxAttempt records a failed replay attempt for observability.
 	MarkOutboxAttempt(ctx context.Context, id int64, lastError string) error
+	// MarkOutboxDead 把永久失败行直接翻 dead 终态（2026-08-27 t-dr-4）：
+	// 用于 poison 行（payload 不可解码——重试永不会成功）。此前 poison 行
+	// 被标记 published，但记录从未投递到 decision_records——审计语义造假，
+	// 且按 published 对账会漏报丢失。dead 终态退出 replay 扫描，payload
+	// 留存供事后排查。
+	MarkOutboxDead(ctx context.Context, ids []int64, lastError string) error
 }

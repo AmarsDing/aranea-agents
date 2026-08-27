@@ -121,53 +121,108 @@ func (r *Runner) recordMemberUsage(
 	// propagates through the run ctx, so no further member steps execute.
 	if strings.TrimSpace(attribution) == "" {
 		if tripped, used, limit := r.accumulateRunTokenBudget(run.ID, recEv.InputTokens); tripped {
-			r.lg.Warn("团队 run 累计 input token 超预算，取消 run",
-				loggateway.StepID("team.token_budget.exceeded"),
-				loggateway.Str("run_id", run.ID),
-				loggateway.Str("team_id", teamID),
-				loggateway.Str("session_id", run.SessionID),
-				loggateway.Int64("budget_used_input_tokens", used),
-				loggateway.Int64("budget_limit_input_tokens", limit),
-			)
-			// M80：系统闸决策双写（设计 §3.2 row 3，与 G-R5 同坐标）。
-			decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
-				TriggerRule:   decision.TriggerTokenBudgetTripped,
-				Outcome:       "tripped",
-				Scenario:      "run 累计 input token 超预算",
-				Reasoning:     fmt.Sprintf("run 累计 input %d 超预算上限 %d，取消 run", used, limit),
-				GuardName:     "token_budget",
-				RunID:         run.ID,
-				Entities:      []decision.EntityRef{{Type: "team", Key: teamID}},
-				ObservedValue: used,
-				Threshold:     limit,
-				Action:        "cancel_run",
-				Extra:         map[string]any{"session_id": run.SessionID},
-			})
-			if em := event.TraceEmitterFromContext(ctx); em != nil {
-				em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",
-					event.P("run_id", run.ID), event.P("used", used), event.P("limit", limit))
-			}
-			// P2.5：守卫终止在事件流分列——与 team_run_no_progress 同型注记，
-			// reason 与 RunRegistry 状态条目/run 终态记录三处口径一致。
-			spiritSID := run.SpiritSessionID
-			if spiritSID == "" {
-				spiritSID = run.SessionID
-			}
-			r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_run_token_budget_exceeded",
-				"团队 run 累计 input token 超预算，run 已终止", map[string]any{
-					"run_id":  run.ID,
-					"team_id": teamID,
-					"used":    used,
-					"limit":   limit,
-					"reason":  "team_token_budget_exceeded",
-				}))
-			if r.cfg.Runs != nil {
-				r.cfg.Runs.Cancel(run.SessionID, "team_token_budget_exceeded")
-			}
+			r.tripRunTokenBudget(ctx, run, teamID, used, limit)
 		}
 	}
 	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4) —
 	// publishing here as well would double-emit.
+}
+
+// RunCancelReasonTokenBudget 是 token 预算闸跳闸的 run 取消原因（P2.5 口径，
+// 与 RunCancelReasonNoProgress 同族）。写入 RunRegistry 状态条目 ErrMsg 与
+// run 终态记录，审计/前端可区分守卫终止与用户停止。
+const RunCancelReasonTokenBudget = "team_token_budget_exceeded"
+
+// tripRunTokenBudget 是预算跳闸的完整处置序列（2026-08-26 方案A 抽公共）：
+// 告警日志 → M80 系统闸决策双写（设计 §3.2 row 3，与 G-R5 同坐标）→ trace
+// critical → system notice 事件 → RunRegistry.Cancel。finish-path
+// （recordMemberUsage genuine 行累计）与 mid-stream（流式中途累计钩子）
+// 两个入口共用，保证两处跳闸的日志/决策/事件/取消四件套完全一致。
+//
+// SetStatus 兜底：RunTeamTest 等不经 chat orchestrator 的路径从未
+// StoreCancelable，Cancel 找不到活动条目空转、reason 丢失（终态降级为
+// client_disconnect_or_abort）。Cancel 未生效时回退 SetStatus 直接写入
+// cancelled+reason，保住 finishRunErr 的 P2.5 口径。
+func (r *Runner) tripRunTokenBudget(ctx context.Context, run biz.TeamRunRecord, teamID string, used, limit int64) {
+	r.lg.Warn("团队 run 累计 input token 超预算，取消 run",
+		loggateway.StepID("team.token_budget.exceeded"),
+		loggateway.Str("run_id", run.ID),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("session_id", run.SessionID),
+		loggateway.Int64("budget_used_input_tokens", used),
+		loggateway.Int64("budget_limit_input_tokens", limit),
+	)
+	decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
+		TriggerRule:   decision.TriggerTokenBudgetTripped,
+		Outcome:       "tripped",
+		Scenario:      "run 累计 input token 超预算",
+		Reasoning:     fmt.Sprintf("run 累计 input %d 超预算上限 %d，取消 run", used, limit),
+		GuardName:     "token_budget",
+		RunID:         run.ID,
+		Entities:      []decision.EntityRef{{Type: "team", Key: teamID}},
+		ObservedValue: used,
+		Threshold:     limit,
+		Action:        "cancel_run",
+		Extra:         map[string]any{"session_id": run.SessionID},
+	})
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",
+			event.P("run_id", run.ID), event.P("used", used), event.P("limit", limit))
+	}
+	// P2.5：守卫终止在事件流分列——与 team_run_no_progress 同型注记，
+	// reason 与 RunRegistry 状态条目/run 终态记录三处口径一致。
+	spiritSID := run.SpiritSessionID
+	if spiritSID == "" {
+		spiritSID = run.SessionID
+	}
+	r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_run_token_budget_exceeded",
+		"团队 run 累计 input token 超预算，run 已终止", map[string]any{
+			"run_id":  run.ID,
+			"team_id": teamID,
+			"used":    used,
+			"limit":   limit,
+			"reason":  RunCancelReasonTokenBudget,
+		}))
+	if r.cfg.Runs != nil {
+		if cancelled, _ := r.cfg.Runs.Cancel(run.SessionID, RunCancelReasonTokenBudget); !cancelled {
+			// 无活动条目（RunTeamTest 路径）或条目不可取消：Cancel 未记录
+			// reason，SetStatus 兜底写入，cancelReason 读回口径不失真。
+			r.cfg.Runs.SetStatus(run.SessionID, run.ID, biz.SessionRunPhaseCancelled, RunCancelReasonTokenBudget)
+		}
+	}
+	r.backfillTrippedRunTokenIn(ctx, run, used)
+}
+
+// backfillTrippedRunTokenIn 回填被预算中止 run 的 token_in（2026-08-27
+// t-dr-4）。预算中止走 finishRunErr（failed），finalizeTeamRun 的 success
+// 路径 token 写回不执行——run.token_in 恒 0，审计/前端看到的终止 run 像
+// "零消耗"。跳闸观测值 used 是 run 累计 input 的最佳可得口径（与决策记录
+// observed_value 同源），读-改-写回填让终态记录反映中止时真实消耗：
+// 读 fresh 行避免全行覆盖冲掉 graph_execution_id/trace_id 等途中写字段；
+// finishRunErr 的 TransitionRunStatus 重读 DB 行且不触碰 TokenIn，回填
+// 先于终态转换即存活。WithoutCancel：本序列执行后 run ctx 即被取消。
+func (r *Runner) backfillTrippedRunTokenIn(ctx context.Context, run biz.TeamRunRecord, used int64) {
+	if r.runReader == nil || r.runWriter == nil || used <= 0 || run.ID == "" {
+		return
+	}
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	fresh, err := r.runReader.GetTeamRunByID(wctx, run.ID)
+	if err != nil {
+		r.lg.Warn("预算中止 run token_in 回填：读取失败",
+			loggateway.StepID("team.token_budget.backfill"),
+			loggateway.Str("run_id", run.ID), loggateway.Err(err))
+		return
+	}
+	if fresh.TokenIn > 0 {
+		return // 已被并发路径写入（如 success 边界竞态），不覆盖。
+	}
+	fresh.TokenIn = int(used)
+	if err := r.runWriter.UpdateTeamRun(wctx, fresh); err != nil {
+		r.lg.Warn("预算中止 run token_in 回填：写库失败",
+			loggateway.StepID("team.token_budget.backfill"),
+			loggateway.Str("run_id", run.ID), loggateway.Err(err))
+	}
 }
 
 // recordAuxUsage records auxiliary LLM usage for team-side旁路 calls (intent pass).

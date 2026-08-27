@@ -81,6 +81,21 @@ func buildDecisionListWhere(d Dialect, f decision.ListFilter) (string, []any) {
 		conds = append(conds, d.JSONExtract("source_ref", "run_id")+" = ?")
 		args = append(args, s)
 	}
+	// workspace 隔离（t-dr-3）：非 nil 时 workspace_id IN (...)。service 层
+	// 约定非系统 caller 传 [callerWS, ""]（共享记录可读）；系统 caller 传
+	// nil 不过滤。空非 nil 切片 = 可见集为空，fail-closed 恒不命中。
+	if f.VisibleWorkspaces != nil {
+		if len(f.VisibleWorkspaces) == 0 {
+			conds = append(conds, "1 = 0")
+		} else {
+			marks := make([]string, len(f.VisibleWorkspaces))
+			for i, ws := range f.VisibleWorkspaces {
+				marks[i] = "?"
+				args = append(args, ws)
+			}
+			conds = append(conds, "workspace_id IN ("+strings.Join(marks, ",")+")")
+		}
+	}
 	if !f.TimeFrom.IsZero() {
 		conds = append(conds, "created_at >= ?")
 		args = append(args, f.TimeFrom.UTC().Format(time.RFC3339Nano))

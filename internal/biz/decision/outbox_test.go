@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"aranea-agents/internal/workspace"
 )
 
 // fakeRepo records calls for worker behavior assertions.
@@ -23,6 +25,7 @@ type fakeRepo struct {
 	pending      []OutboxRow
 	listErr      error
 	publishedIDs []int64
+	deadIDs      []int64
 	attempts     map[int64]string
 }
 
@@ -77,6 +80,13 @@ func (f *fakeRepo) MarkOutboxAttempt(_ context.Context, id int64, lastError stri
 		f.attempts = map[int64]string{}
 	}
 	f.attempts[id] = lastError
+	return nil
+}
+
+func (f *fakeRepo) MarkOutboxDead(_ context.Context, ids []int64, _ string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deadIDs = append(f.deadIDs, ids...)
 	return nil
 }
 
@@ -222,7 +232,10 @@ func TestOutboxCollector_ReplayPendingOnStart(t *testing.T) {
 		inserted, _, _, _ := repo.snapshot()
 		repo.mu.Lock()
 		defer repo.mu.Unlock()
-		return len(inserted) == 1 && len(repo.publishedIDs) == 2 // 7 replayed + 8 poison-marked
+		// 7 replayed→published；8 poison→dead（t-dr-4：不可解码行重试永不
+		// 成功，标 published 是审计造假——记录从未投递）。
+		return len(inserted) == 1 && len(repo.publishedIDs) == 1 && len(repo.deadIDs) == 1 &&
+			repo.publishedIDs[0] == 7 && repo.deadIDs[0] == 8
 	})
 }
 
@@ -274,4 +287,36 @@ func asOutbox(t *testing.T, c Collector) *outboxCollector {
 		t.Fatalf("NewOutboxCollector returned %T, want *outboxCollector", c)
 	}
 	return oc
+}
+
+// TestOutboxCollector_EmitBackfillsWorkspace pins t-dr-2：emit 方不显式填
+// workspace_id 时，收口点按 caller workspace 声明回填；无声明路径落
+// DefaultWorkspaceID；显式已填不被覆盖（emit 方优先）。
+func TestOutboxCollector_EmitBackfillsWorkspace(t *testing.T) {
+	repo := &fakeRepo{}
+	c := NewOutboxCollector(repo, nil, WithFlushInterval(time.Hour))
+	oc := asOutbox(t, c)
+
+	// ① ctx 带租户声明 → 回填该租户。
+	oc.Emit(workspace.WithContext(context.Background(), "ws-tenant"), validRecord())
+	// ② ctx 无声明 → DefaultWorkspaceID（与团队/代理默认工作区口径一致）。
+	oc.Emit(context.Background(), validRecord())
+	// ③ emit 方显式已填 → 不覆盖。
+	explicit := validRecord()
+	explicit.WorkspaceID = "ws-explicit"
+	oc.Emit(workspace.WithContext(context.Background(), "ws-tenant"), explicit)
+
+	if len(oc.ch) != 3 {
+		t.Fatalf("channel len = %d, want 3", len(oc.ch))
+	}
+	got := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		got = append(got, (<-oc.ch).WorkspaceID)
+	}
+	want := []string{"ws-tenant", workspace.DefaultWorkspaceID, "ws-explicit"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("rec[%d].WorkspaceID = %q, want %q", i, got[i], want[i])
+		}
+	}
 }

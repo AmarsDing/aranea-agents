@@ -175,6 +175,9 @@ func marshalOutboxPayload(rec decision.Record) ([]byte, error) {
 }
 
 // ListPendingOutbox returns pending retry-queue rows oldest-first.
+// 重试上限过滤（t-dr-4）：attempts >= MaxOutboxAttempts 的行已被
+// MarkOutboxAttempt 翻 dead，双保险再挡一层——永久失败行不占用扫描窗口，
+// 避免 head-of-line blocking。
 func (r *decisionRepo) ListPendingOutbox(ctx context.Context, limit int) ([]decision.OutboxRow, error) {
 	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil, nil
@@ -184,8 +187,8 @@ func (r *decisionRepo) ListPendingOutbox(ctx context.Context, limit int) ([]deci
 	}
 	q := r.data.Dialect().RenumberPlaceholders(
 		`SELECT id, decision_key, payload, status, attempts, last_error, created_at, published_at
-		 FROM decision_record_outbox WHERE status=? ORDER BY created_at ASC LIMIT ?`)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, decision.OutboxStatusPending, limit)
+		 FROM decision_record_outbox WHERE status=? AND attempts < ? ORDER BY created_at ASC LIMIT ?`)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, decision.OutboxStatusPending, decision.MaxOutboxAttempts, limit)
 	if err != nil {
 		return nil, entErrToBizErr(err, "DECISION")
 	}
@@ -239,6 +242,9 @@ func (r *decisionRepo) MarkOutboxPublished(ctx context.Context, ids []int64, pub
 }
 
 // MarkOutboxAttempt records one failed replay attempt.
+// 重试上限（t-dr-4）：attempts+1 触达 MaxOutboxAttempts 时同事务内把状态翻
+// dead——行从此退出 replay 扫描（ListPendingOutbox 的 status='pending'
+// 条件不再命中），payload/last_error 留存供事后排查。
 func (r *decisionRepo) MarkOutboxAttempt(ctx context.Context, id int64, lastError string) error {
 	if r == nil || r.data == nil || r.data.RWDB() == nil || id <= 0 {
 		return nil
@@ -247,8 +253,38 @@ func (r *decisionRepo) MarkOutboxAttempt(ctx context.Context, id int64, lastErro
 		lastError = lastError[:2000]
 	}
 	q := r.data.Dialect().RenumberPlaceholders(
-		`UPDATE decision_record_outbox SET attempts=attempts+1, last_error=? WHERE id=?`)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, lastError, id)
+		`UPDATE decision_record_outbox
+		 SET attempts=attempts+1, last_error=?,
+		     status=CASE WHEN attempts+1 >= ? THEN ? ELSE status END
+		 WHERE id=?`)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, lastError, decision.MaxOutboxAttempts, decision.OutboxStatusDead, id)
+	if err != nil {
+		return entErrToBizErr(err, "DECISION")
+	}
+	return nil
+}
+
+// MarkOutboxDead 把永久失败行直接翻 dead 终态（t-dr-4，poison 行专用：
+// payload 不可解码，重试永不会成功）。区别于 MarkOutboxPublished——行从未
+// 投递到 decision_records，published 会是审计造假。payload/last_error 留存。
+func (r *decisionRepo) MarkOutboxDead(ctx context.Context, ids []int64, lastError string) error {
+	if r == nil || r.data == nil || r.data.RWDB() == nil || len(ids) == 0 {
+		return nil
+	}
+	if len(lastError) > 2000 {
+		lastError = lastError[:2000]
+	}
+	marks := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, decision.OutboxStatusDead, lastError)
+	for i, id := range ids {
+		marks[i] = "?"
+		args = append(args, id)
+	}
+	q := r.data.Dialect().RenumberPlaceholders(
+		`UPDATE decision_record_outbox SET status=?, last_error=? WHERE id IN (` +
+			strings.Join(marks, ",") + `)`)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return entErrToBizErr(err, "DECISION")
 	}

@@ -189,3 +189,27 @@ func TestTripRunTokenBudget_ReasonFallbackWithoutRegistryEntry(t *testing.T) {
 		t.Errorf("status entry=%+v ok=%v, want cancelled run-1", entry, ok)
 	}
 }
+
+// TestTripRunTokenBudget_BackfillsTokenIn pins t-dr-4：预算中止的 run 终态
+// 走 finishRunErr（failed），finalizeTeamRun 的 success 路径 token 写回
+// 不执行——跳闸时必须把观测值 used 回填 team_runs.token_in，否则终止 run
+// 在审计/前端看似"零消耗"。已写入（>0）行不覆盖（success 边界竞态防护）。
+func TestTripRunTokenBudget_BackfillsTokenIn(t *testing.T) {
+	repo := &gateRunRepo{runs: map[string]biz.TeamRunRecord{
+		"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning},
+	}}
+	r := &Runner{runReader: repo, runWriter: repo, lg: loggateway.NewNoop()}
+	r.cfg.Runs = rt.NewRunRegistry()
+
+	run := biz.TeamRunRecord{ID: "run-1", TeamID: "team-1", SessionID: "sess-1"}
+	r.tripRunTokenBudget(context.Background(), run, "team-1", 1_100, 1_000)
+
+	if got := repo.runs["run-1"].TokenIn; got != 1_100 {
+		t.Fatalf("token_in = %d, want 1100（跳闸观测值回填）", got)
+	}
+	// 已写入不覆盖：第二次跳闸观测值更大，token_in 保持首次回填值。
+	r.tripRunTokenBudget(context.Background(), run, "team-1", 9_999, 1_000)
+	if got := repo.runs["run-1"].TokenIn; got != 1_100 {
+		t.Fatalf("token_in = %d, want 1100（已写入不覆盖）", got)
+	}
+}

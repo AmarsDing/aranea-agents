@@ -236,6 +236,120 @@ func TestDecisionQueryRepo_ListFilters_PG(t *testing.T) {
 	}
 }
 
+// TestDecisionQueryRepo_WorkspaceFilter_PG covers t-dr-3 租户隔离：非系统
+// caller 的可见集 = [callerWS, ""]（本租户 + 共享记录），他租户记录 fail-closed
+// 不命中；nil = 系统 caller 不过滤；空非 nil 切片 = 恒空。
+func TestDecisionQueryRepo_WorkspaceFilter_PG(t *testing.T) {
+	ctx := context.Background()
+	wr, qr := newDecisionQueryTestRepos(t)
+	mk := func(key, ws string) decision.Record {
+		return decision.Record{
+			DecisionKey: key, Category: decision.CategorySystemGuard,
+			Scenario: "系统闸", Reasoning: "-", Outcome: "tripped",
+			ActorType: decision.ActorSystem, ActorKey: "system:guard",
+			RelatedEntities: []decision.EntityRef{},
+			SourceRef:       decision.SourceRef{RunID: "run-ws"},
+			WorkspaceID:     ws,
+			CreatedAt:       "2026-08-27T00:00:00Z", UpdatedAt: "2026-08-27T00:00:00Z",
+		}
+	}
+	if err := wr.InsertRecords(ctx, []decision.Record{
+		mk("dk-ws-a", "ws-a"),   // 租户 A 私有
+		mk("dk-ws-b", "ws-b"),   // 租户 B 私有
+		mk("dk-ws-shared", ""),  // 共享（legacy/系统产物）
+	}); err != nil {
+		t.Fatalf("seed insert: %v", err)
+	}
+
+	// 租户 A 视角：见 dk-ws-a + dk-ws-shared，不见 dk-ws-b。
+	_, total, err := qr.ListRecords(ctx, decision.ListFilter{
+		VisibleWorkspaces: []string{"ws-a", ""}, Page: 1, PageSize: 10})
+	if err != nil || total != 2 {
+		t.Fatalf("ws-a view: total=%d err=%v, want 2", total, err)
+	}
+	// 租户 B 视角：见 dk-ws-b + dk-ws-shared。
+	_, total, err = qr.ListRecords(ctx, decision.ListFilter{
+		VisibleWorkspaces: []string{"ws-b", ""}, Page: 1, PageSize: 10})
+	if err != nil || total != 2 {
+		t.Fatalf("ws-b view: total=%d err=%v, want 2", total, err)
+	}
+	// 系统 caller（nil）：全量 3 条不过滤。
+	_, total, err = qr.ListRecords(ctx, decision.ListFilter{Page: 1, PageSize: 10})
+	if err != nil || total != 3 {
+		t.Fatalf("system view: total=%d err=%v, want 3", total, err)
+	}
+	// 空非 nil 切片：fail-closed 恒空。
+	_, total, err = qr.ListRecords(ctx, decision.ListFilter{
+		VisibleWorkspaces: []string{}, Page: 1, PageSize: 10})
+	if err != nil || total != 0 {
+		t.Fatalf("empty visible set: total=%d err=%v, want 0", total, err)
+	}
+}
+
+// TestDecisionRepo_OutboxDeadLetter_PG covers t-dr-4 死信生命周期：
+// enqueue → attempts 递增 → 触达 MaxOutboxAttempts 自动翻 dead 退出扫描；
+// MarkOutboxDead 直接翻终态（poison 路径）；dead 行不再被 ListPendingOutbox
+// 命中（head-of-line blocking 防线）。
+func TestDecisionRepo_OutboxDeadLetter_PG(t *testing.T) {
+	ctx := context.Background()
+	wr, _ := newDecisionQueryTestRepos(t)
+	rec := decision.Record{
+		DecisionKey: "dk-dl-1", Category: decision.CategorySystemGuard,
+		Scenario: "系统闸", Reasoning: "-", Outcome: "tripped",
+		ActorType: decision.ActorSystem, ActorKey: "system:guard",
+		RelatedEntities: []decision.EntityRef{},
+		SourceRef:       decision.SourceRef{RunID: "run-dl"},
+		CreatedAt:       "2026-08-27T00:00:00Z", UpdatedAt: "2026-08-27T00:00:00Z",
+	}
+	if err := wr.EnqueueOutbox(ctx, []decision.Record{rec}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	rows, err := wr.ListPendingOutbox(ctx, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("pending after enqueue: len=%d err=%v, want 1", len(rows), err)
+	}
+	id := rows[0].ID
+
+	// attempts 递增到上限-1：仍 pending 可扫描。
+	for i := 1; i < decision.MaxOutboxAttempts; i++ {
+		if err := wr.MarkOutboxAttempt(ctx, id, "boom"); err != nil {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	rows, err = wr.ListPendingOutbox(ctx, 10)
+	if err != nil || len(rows) != 1 || rows[0].Attempts != decision.MaxOutboxAttempts-1 {
+		t.Fatalf("before limit: rows=%+v err=%v", rows, err)
+	}
+
+	// 触达上限的一次：同事务翻 dead → 退出扫描。
+	if err := wr.MarkOutboxAttempt(ctx, id, "boom final"); err != nil {
+		t.Fatalf("final attempt: %v", err)
+	}
+	rows, err = wr.ListPendingOutbox(ctx, 10)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("dead row must leave pending scan: len=%d err=%v", len(rows), err)
+	}
+
+	// MarkOutboxDead 直接翻终态（poison 路径）：第二行入队 → dead → 不命中。
+	rec2 := rec
+	rec2.DecisionKey = "dk-dl-2"
+	if err := wr.EnqueueOutbox(ctx, []decision.Record{rec2}); err != nil {
+		t.Fatalf("enqueue 2: %v", err)
+	}
+	rows, err = wr.ListPendingOutbox(ctx, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("pending 2: len=%d err=%v", len(rows), err)
+	}
+	if err := wr.MarkOutboxDead(ctx, []int64{rows[0].ID}, "poison: payload undecodable"); err != nil {
+		t.Fatalf("mark dead: %v", err)
+	}
+	rows, err = wr.ListPendingOutbox(ctx, 10)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("poison dead row must leave pending scan: len=%d err=%v", len(rows), err)
+	}
+}
+
 // TestDecisionQueryRepo_GetByKey_PG covers the single-record path including
 // JSON column decode and the not-found nil contract.
 func TestDecisionQueryRepo_GetByKey_PG(t *testing.T) {

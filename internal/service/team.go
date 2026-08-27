@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -620,20 +621,24 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 	}
 	_, assistant, err := s.teamRunner.RunTurnFromInput(ctx, sess, testInput)
 	if err != nil {
+		// t-dr-1（2026-08-27）：token 预算闸 / no_progress 等守卫经 abortRun
+		// 取消 run ctx 时 RunTurnFromInput 返回 context.Canceled/DeadlineExceeded，
+		// 但 run 终态（failed + cancel_reason）已同步落库、handler ctx 仍存活
+		// （非客户端断连）。透传裸错误会被渲染成 500 空 body；改为返回结构化
+		// run 记录，调用方从 run.status/error_message 读到终止来源与原因。
+		if ctx.Err() == nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+			if rec, ok := s.findTeamTestRun(ctx, teamID, sess.ID); ok && biz.IsTeamRunTerminalStatus(rec.Status) {
+				return &v1.RunTeamTestResponse{
+					Run:   toProtoTeamRun(rec),
+					Reply: strings.TrimSpace(assistant.ContentMarkdown),
+				}, nil
+			}
+		}
 		return nil, err
 	}
 
-	var run biz.TeamRunRecord
-	runs, listErr := s.uc.ListRuns(ctx, teamID, 10)
-	if listErr == nil {
-		for _, candidate := range runs {
-			if candidate.SessionID == sess.ID {
-				run = candidate
-				break
-			}
-		}
-	}
-	if run.ID == "" {
+	run, found := s.findTeamTestRun(ctx, teamID, sess.ID)
+	if !found {
 		// No persisted run found for this test session; synthesize a
 		// lightweight response so the caller still gets a reply.
 		run = biz.TeamRunRecord{TeamID: teamID, SessionID: sess.ID, Status: biz.TeamRunStatusSuccess}
@@ -643,6 +648,21 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 		Run:   toProtoTeamRun(run),
 		Reply: strings.TrimSpace(assistant.ContentMarkdown),
 	}, nil
+}
+
+// findTeamTestRun 按测试会话 ID 在团队最近 run 列表中定位持久化 run 记录；
+// 未命中或查询失败返回 ok=false（调用方回退合成轻量响应）。
+func (s *TeamService) findTeamTestRun(ctx context.Context, teamID, sessionID string) (biz.TeamRunRecord, bool) {
+	runs, err := s.uc.ListRuns(ctx, teamID, 10)
+	if err != nil {
+		return biz.TeamRunRecord{}, false
+	}
+	for _, candidate := range runs {
+		if candidate.SessionID == sessionID {
+			return candidate, true
+		}
+	}
+	return biz.TeamRunRecord{}, false
 }
 
 func (s *TeamService) ListTeamRunSteps(ctx context.Context, req *v1.ListTeamRunStepsRequest) (*v1.ListTeamRunStepsResponse, error) {

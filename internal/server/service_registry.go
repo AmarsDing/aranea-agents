@@ -129,6 +129,7 @@ func NewServiceRegistry(
 	sandbox *service.SandboxService,
 	decisionRecord *service.DecisionRecordService,
 	configGraph *service.ConfigGraphService,
+	diagnostics *service.DiagnosticsService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,

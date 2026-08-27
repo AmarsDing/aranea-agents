@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/decision/v1"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/workspace"
 )
 
 // fakeDecisionQueryRepo 是 service 层的 QueryRepo 测试替身。
@@ -15,9 +16,11 @@ type fakeDecisionQueryRepo struct {
 	upstream   []decision.Record
 	downstream []decision.Record
 	planner    *decision.Record
+	lastFilter decision.ListFilter
 }
 
-func (f *fakeDecisionQueryRepo) ListRecords(context.Context, decision.ListFilter) ([]decision.Record, int64, error) {
+func (f *fakeDecisionQueryRepo) ListRecords(_ context.Context, filter decision.ListFilter) ([]decision.Record, int64, error) {
+	f.lastFilter = filter
 	return f.items, f.total, nil
 }
 
@@ -157,5 +160,137 @@ func TestDecisionRecordService_GetChain(t *testing.T) {
 	_, err = svc.GetDecisionChain(context.Background(), &v1.GetDecisionChainRequest{DecisionKey: "dk-x"})
 	if err == nil {
 		t.Fatal("expected NotFound for unknown decision_key")
+	}
+}
+
+// TestDecisionRecordService_WorkspaceIsolation pins t-dr-3 租户隔离契约：
+// List 非系统 caller 派生 VisibleWorkspaces=[callerWS, ""]（共享记录可读），
+// 系统 caller 不过滤；Get/GetChain 跨租户 fail-closed 按 NotFound（不透出
+// 存在性），共享（''）记录任何租户可见。
+func TestDecisionRecordService_WorkspaceIsolation(t *testing.T) {
+	mk := func(key, ws string) decision.Record {
+		return decision.Record{
+			ID: 1, DecisionKey: key, Category: decision.CategorySystemGuard,
+			Scenario: "s", Reasoning: "r", Outcome: "tripped",
+			ActorType: decision.ActorSystem, ActorKey: "system:guard",
+			WorkspaceID: ws, CreatedAt: "2026-08-27T00:00:00Z",
+		}
+	}
+	repo := &fakeDecisionQueryRepo{
+		items: []decision.Record{mk("dk-a", "ws-a"), mk("dk-shared", "")},
+		total: 2,
+	}
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil)
+
+	// ① List：租户 caller → VisibleWorkspaces=[callerWS, ""]。
+	tenantCtx := workspace.WithContext(context.Background(), "ws-a")
+	if _, err := svc.ListDecisionRecords(tenantCtx, &v1.ListDecisionRecordsRequest{}); err != nil {
+		t.Fatalf("list tenant: %v", err)
+	}
+	got := repo.lastFilter.VisibleWorkspaces
+	if len(got) != 2 || got[0] != "ws-a" || got[1] != "" {
+		t.Fatalf("tenant VisibleWorkspaces = %v, want [ws-a '']", got)
+	}
+	// ② List：系统 caller → 不过滤（nil）。
+	sysCtx := workspace.WithSystemWorkspace(context.Background())
+	if _, err := svc.ListDecisionRecords(sysCtx, &v1.ListDecisionRecordsRequest{}); err != nil {
+		t.Fatalf("list system: %v", err)
+	}
+	if repo.lastFilter.VisibleWorkspaces != nil {
+		t.Fatalf("system VisibleWorkspaces = %v, want nil", repo.lastFilter.VisibleWorkspaces)
+	}
+
+	// ③ Get：本租户可见；跨租户 NotFound；共享记录任意租户可见。
+	if _, err := svc.GetDecisionRecord(tenantCtx, &v1.GetDecisionRecordRequest{DecisionKey: "dk-a"}); err != nil {
+		t.Fatalf("own tenant get: %v", err)
+	}
+	otherCtx := workspace.WithContext(context.Background(), "ws-b")
+	if _, err := svc.GetDecisionRecord(otherCtx, &v1.GetDecisionRecordRequest{DecisionKey: "dk-a"}); err == nil {
+		t.Fatal("cross-tenant get must be NotFound")
+	}
+	if _, err := svc.GetDecisionRecord(otherCtx, &v1.GetDecisionRecordRequest{DecisionKey: "dk-shared"}); err != nil {
+		t.Fatalf("shared record must be visible to any tenant: %v", err)
+	}
+
+	// ④ GetChain：root 跨租户 → NotFound（链同属一个因果族，校验 root 即覆盖全链）。
+	if _, err := svc.GetDecisionChain(tenantCtx, &v1.GetDecisionChainRequest{DecisionKey: "dk-a"}); err != nil {
+		t.Fatalf("own tenant chain: %v", err)
+	}
+	if _, err := svc.GetDecisionChain(otherCtx, &v1.GetDecisionChainRequest{DecisionKey: "dk-a"}); err == nil {
+		t.Fatal("cross-tenant chain must be NotFound")
+	}
+}
+
+// TestDecisionRecordService_ChainNodeVisibility pins t-dr-5 节点级兜底：
+// 「同族同 workspace」非 DB 约束——共享（''）root 的虚拟父/downstream 可
+// 混入他租户记录（历史数据 + spirit 会话跨部署边界）。upstream 遇首个不
+// 可见节点截断，downstream 逐节点剔除；系统 caller 不过滤。
+func TestDecisionRecordService_ChainNodeVisibility(t *testing.T) {
+	mk := func(id int64, key, ws string) decision.Record {
+		return decision.Record{
+			ID: id, DecisionKey: key, Category: decision.CategorySystemGuard,
+			Scenario: "s", Reasoning: "r", Outcome: "tripped",
+			ActorType: decision.ActorSystem, ActorKey: "system:guard",
+			WorkspaceID: ws, SourceRef: decision.SourceRef{RunID: "run-1"},
+			CreatedAt: "2026-08-27T00:00:00Z",
+		}
+	}
+	repo := &fakeDecisionQueryRepo{
+		items: []decision.Record{mk(1, "dk-shared-root", "")},
+		// 虚拟父：他租户 planner（root 无父 → biz 走 FindVirtualParentPlanner）。
+		planner: &decision.Record{
+			ID: 5, DecisionKey: "dk-planner-a", Category: decision.CategoryPlannerOrchestration,
+			Outcome: "selected_dag", ActorType: decision.ActorSystem, ActorKey: "system:task_planner",
+			Scenario: "s", WorkspaceID: "ws-a", CreatedAt: "2026-08-26T00:00:00Z",
+		},
+		downstream: []decision.Record{
+			mk(2, "dk-down-a", "ws-a"),   // 他租户 → 剔除
+			mk(3, "dk-down-shared", ""),  // 共享 → 保留
+			mk(4, "dk-down-b", "ws-b"),   // 本租户 → 保留
+		},
+	}
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil)
+
+	// ① 租户 caller：虚拟父他租户 → upstream 截断为空；downstream 剔他租户留共享+本租户。
+	bCtx := workspace.WithContext(context.Background(), "ws-b")
+	resp, err := svc.GetDecisionChain(bCtx, &v1.GetDecisionChainRequest{DecisionKey: "dk-shared-root"})
+	if err != nil {
+		t.Fatalf("chain: %v", err)
+	}
+	if len(resp.GetUpstream()) != 0 {
+		t.Fatalf("cross-tenant virtual parent must be truncated: %+v", resp.GetUpstream())
+	}
+	if len(resp.GetDownstream()) != 2 ||
+		resp.GetDownstream()[0].GetDecisionKey() != "dk-down-shared" ||
+		resp.GetDownstream()[1].GetDecisionKey() != "dk-down-b" {
+		t.Fatalf("downstream = %+v, want [dk-down-shared dk-down-b]", resp.GetDownstream())
+	}
+
+	// ② 系统 caller：不过滤，虚拟父 + 全部 downstream 可见。
+	sysResp, err := svc.GetDecisionChain(workspace.WithSystemWorkspace(context.Background()),
+		&v1.GetDecisionChainRequest{DecisionKey: "dk-shared-root"})
+	if err != nil {
+		t.Fatalf("system chain: %v", err)
+	}
+	if len(sysResp.GetUpstream()) != 1 || !sysResp.GetUpstream()[0].GetVirtualParent() {
+		t.Fatalf("system upstream = %+v", sysResp.GetUpstream())
+	}
+	if len(sysResp.GetDownstream()) != 3 {
+		t.Fatalf("system downstream = %+v, want 3", sysResp.GetDownstream())
+	}
+
+	// ③ 本租户 caller（ws-a）：虚拟父可见，downstream 剔除 ws-b。
+	aResp, err := svc.GetDecisionChain(workspace.WithContext(context.Background(), "ws-a"),
+		&v1.GetDecisionChainRequest{DecisionKey: "dk-shared-root"})
+	if err != nil {
+		t.Fatalf("ws-a chain: %v", err)
+	}
+	if len(aResp.GetUpstream()) != 1 {
+		t.Fatalf("own-tenant virtual parent must stay: %+v", aResp.GetUpstream())
+	}
+	if len(aResp.GetDownstream()) != 2 ||
+		aResp.GetDownstream()[0].GetDecisionKey() != "dk-down-a" ||
+		aResp.GetDownstream()[1].GetDecisionKey() != "dk-down-shared" {
+		t.Fatalf("ws-a downstream = %+v, want [dk-down-a dk-down-shared]", aResp.GetDownstream())
 	}
 }

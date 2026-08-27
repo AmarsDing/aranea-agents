@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -145,5 +148,111 @@ func TestRunTeamTest_RequiresRuntime(t *testing.T) {
 	_, err := svc.RunTeamTest(context.Background(), &v1.RunTeamTestRequest{Id: "t1"})
 	if err == nil {
 		t.Fatal("expected error when team runner is nil")
+	}
+}
+
+// ── t-dr-1：守卫 abort → 结构化 run 响应（而非 500 空 body）──────────────────
+
+// teamTestSessionRepo 支撑 RunTeamTest 的临时会话 Create/Delete 全链路。
+type teamTestSessionRepo struct {
+	biz.SessionRepo
+	last biz.Session
+}
+
+func (r *teamTestSessionRepo) CreateSession(_ context.Context, s biz.Session) (biz.Session, error) {
+	r.last = s
+	return s, nil
+}
+
+func (r *teamTestSessionRepo) GetSessionByID(_ context.Context, id string) (biz.Session, error) {
+	if r.last.ID == id {
+		return r.last, nil
+	}
+	return biz.Session{}, biz.ErrNotFound
+}
+
+func (r *teamTestSessionRepo) DeleteSession(_ context.Context, _ string) (int, error) {
+	return 1, nil
+}
+
+// guardAbortTeamRepo 按"已建测试会话"动态回填 run 记录（会话 ID 由
+// SessionUsecase.Create 随机生成，静态预置无法匹配 findTeamTestRun 的
+// SessionID 过滤）。
+type guardAbortTeamRepo struct {
+	*cancelTeamRunRepo
+	sessRepo *teamTestSessionRepo
+}
+
+func (r *guardAbortTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRunRecord, error) {
+	return []biz.TeamRunRecord{{
+		ID:           "run-g1",
+		TeamID:       teamID,
+		SessionID:    r.sessRepo.last.ID,
+		Status:       biz.TeamRunStatusFailed,
+		ErrorMessage: "context canceled (cancel_reason=team_token_budget_exceeded)",
+	}}, nil
+}
+
+// TestRunTeamTest_GuardAbortReturnsStructuredRun 覆盖 t-dr-1（2026-08-27）：
+// token 预算闸等守卫 abort run ctx 时 RunTurnFromInput 返回 context.Canceled，
+// 但 run 终态（failed + cancel_reason）已落库——handler 必须返回结构化
+// run 记录（200），调用方从 run.status/error_message 读到终止来源；修复前
+// 裸错误透传被渲染成 500 空 body。
+func TestRunTeamTest_GuardAbortReturnsStructuredRun(t *testing.T) {
+	sessRepo := &teamTestSessionRepo{}
+	repo := &guardAbortTeamRepo{
+		cancelTeamRunRepo: &cancelTeamRunRepo{
+			teamByID: map[string]biz.Team{"t1": {ID: "t1", TeamKey: "t1"}},
+		},
+		sessRepo: sessRepo,
+	}
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo,
+		StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop(),
+	})
+	sessionUC := biz.NewSessionUsecase(sessRepo, nil, biz.NewSessionTeamLookup(repo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	runner := &capturingTeamRunner{runErr: context.Canceled}
+	svc := NewTeamService(uc, nil, nil, sessionUC, runner, &testRunRegistry{}, event.NewV2Bus(), loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.RunTeamTest(wsCtx(workspace.SystemWorkspaceID), &v1.RunTeamTestRequest{Id: "t1", Content: "hi"})
+	if err != nil {
+		t.Fatalf("guard-aborted run must return structured response, got err: %v", err)
+	}
+	if got := resp.GetRun().GetId(); got != "run-g1" {
+		t.Errorf("run.id = %q, want run-g1", got)
+	}
+	if got := resp.GetRun().GetStatus(); got != biz.TeamRunStatusFailed {
+		t.Errorf("run.status = %q, want %q", got, biz.TeamRunStatusFailed)
+	}
+	if got := resp.GetRun().GetErrorMessage(); !strings.Contains(got, "team_token_budget_exceeded") {
+		t.Errorf("run.error_message = %q, want containing team_token_budget_exceeded", got)
+	}
+}
+
+// TestRunTeamTest_NonGuardErrorPropagates：非守卫类错误（非 context.Canceled/
+// DeadlineExceeded）保持原有透传语义——内部错误必须显式失败而非被结构化
+// 响应掩盖。
+func TestRunTeamTest_NonGuardErrorPropagates(t *testing.T) {
+	sessRepo := &teamTestSessionRepo{}
+	repo := &guardAbortTeamRepo{
+		cancelTeamRunRepo: &cancelTeamRunRepo{
+			teamByID: map[string]biz.Team{"t1": {ID: "t1", TeamKey: "t1"}},
+		},
+		sessRepo: sessRepo,
+	}
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo,
+		StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop(),
+	})
+	sessionUC := biz.NewSessionUsecase(sessRepo, nil, biz.NewSessionTeamLookup(repo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	runner := &capturingTeamRunner{runErr: fmt.Errorf("llm provider boom")}
+	svc := NewTeamService(uc, nil, nil, sessionUC, runner, &testRunRegistry{}, event.NewV2Bus(), loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.RunTeamTest(wsCtx(workspace.SystemWorkspaceID), &v1.RunTeamTestRequest{Id: "t1", Content: "hi"})
+	if err == nil {
+		t.Fatal("non-guard runner error must propagate")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Errorf("err = %v, want containing boom", err)
 	}
 }

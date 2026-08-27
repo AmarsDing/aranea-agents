@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -103,9 +104,18 @@ func NewOutboxCollector(repo Repo, lg loggateway.Logger, opts ...Option) Lifecyc
 // Emit validates and normalizes the record, then offers it to the intake
 // channel without blocking. Invalid records are dropped with a warn (adapter
 // bug); a full channel drops with a warn (NFR-80-01 backpressure policy).
-func (c *outboxCollector) Emit(_ context.Context, rec Record) {
+//
+// WorkspaceID 兜底（2026-08-27 t-dr-2）：emit 方（gate/planner/HITL）均不显
+// 式填 workspace_id，这里在唯一收口点按 caller workspace 声明回填——HTTP
+// 派生 ctx 恒带声明（auth 中间件注入）；无声明路径（cron/CLI）落到
+// IDFromContext 的 DefaultWorkspaceID（"default"），与团队/代理等实体的
+// 默认工作区口径一致。历史空串记录保持"共享可读"（AssertWorkspaceOrShared）。
+func (c *outboxCollector) Emit(ctx context.Context, rec Record) {
 	if c == nil {
 		return
+	}
+	if rec.WorkspaceID == "" {
+		rec.WorkspaceID = workspace.IDFromContext(ctx)
 	}
 	rec.Normalize()
 	// Timestamps are set at intake (not by adapters) so out-of-order flush
@@ -256,17 +266,18 @@ func (c *outboxCollector) replayPending(ctx context.Context) {
 		return
 	}
 	published := make([]int64, 0, len(rows))
+	dead := make([]int64, 0, 1)
 	for _, row := range rows {
 		rec, decErr := decodeRecord(row.Payload)
 		if decErr != nil {
-			// Poison row: payload undecodable — mark published to stop the
-			// poison from blocking the queue forever; payload stays in the
-			// row for forensics.
+			// Poison row: payload undecodable — 重试永不会成功，直接翻 dead
+			// 终态（t-dr-4；此前错误地标 published，记录从未投递却审计造假）。
+			// payload 留存行内供事后排查。
 			c.lg.Error("decision retry-queue poison row",
 				loggateway.StepID("decision.collector.poison"),
 				loggateway.Int64("outbox_id", row.ID),
 				loggateway.Err(decErr))
-			published = append(published, row.ID)
+			dead = append(dead, row.ID)
 			continue
 		}
 		if err := c.repo.InsertRecords(ctx, []Record{rec}); err != nil {
@@ -278,6 +289,13 @@ func (c *outboxCollector) replayPending(ctx context.Context) {
 			continue
 		}
 		published = append(published, row.ID)
+	}
+	if len(dead) > 0 {
+		if err := c.repo.MarkOutboxDead(ctx, dead, "poison: payload undecodable"); err != nil {
+			c.lg.Warn("decision retry-queue dead mark failed",
+				loggateway.StepID("decision.collector.replay_dead"),
+				loggateway.Err(err))
+		}
 	}
 	if len(published) > 0 {
 		if err := c.repo.MarkOutboxPublished(ctx, published, time.Now().UTC()); err != nil {
