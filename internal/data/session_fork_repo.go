@@ -165,8 +165,10 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 	// 边界 task 状态钳制：澄清暂停 / team 派发延迟 completed 等场景下，
 	// fork turn 已终态但 task 仍是 pending/running/interrupted。verbatim
 	// 复制会让 fork 会话留下永久 running 的僵尸 task（没有 runner 会再写
-	// 复制行），重启后还会被全局 sweeper 标 interrupted 变成可 resume 的
-	// 幽灵。fork 历史在分叉点收尾，边界 task 的非终态按 fork turn 终态改写。
+	// 复制行），重启后启动 recovery（v2RecoveryRepo.FailOrphanedInFlight）
+	// 会把所有 pending/running tasks_v2 一律标 interrupted，再经
+	// ResumeInterruptedTask CAS 变成可 resume 的幽灵。fork 历史在分叉点
+	// 收尾，边界 task 的非终态按 fork turn 终态改写。
 	var boundaryTaskStatus string
 	switch forkTurnStatus {
 	case string(biz.TurnStatusFailed):

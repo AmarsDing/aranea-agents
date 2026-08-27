@@ -4,6 +4,8 @@ import (
 	"context"
 
 	v1 "aranea-agents/api/kratos/team/v1"
+	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -27,6 +29,14 @@ func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.Resume
 	if req.GetResumeValue() != nil {
 		resume = req.GetResumeValue().AsMap()
 	}
+	// 79-runtime-governance（2026-08-27 三轮审查根修）：resume 用 handler ctx
+	// 重建 runtime，首次启动 runCtx 上的注入值随原执行终结而丢失，必须重注——
+	// 否则恢复后成员闸事件 run 归属回落一次性 invocation uuid（RunGateStats
+	// 恒漏计）、loop guard 隔离键跨执行清零、沙箱创建预算脱离 run 口径。
+	// context.WithoutCancel（graph_execution_usecase ResumeExecution）保留
+	// values，注入可穿透到成员节点执行。
+	ctx = decision.WithGateRunID(ctx, run.ID)
+	ctx = sandbox.WithRunID(ctx, run.ID)
 	exec, err := s.graphUC.ResumeExecution(ctx, execID, resume)
 	if err != nil {
 		return nil, mapTeamErr(err)

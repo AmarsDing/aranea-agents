@@ -10,8 +10,10 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -287,6 +289,12 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 	if !shouldResumeTeamGraph(exec, task.NodeID) {
 		return true, nil
 	}
+	// 79-runtime-governance（2026-08-27 三轮审查根修，与 team_resume.go 同
+	// 理）：Kanban 驱动的 resume 同样用新 ctx 重建 runtime，必须重注闸事件
+	// run 归属与沙箱预算归属，否则恢复后成员闸事件 RunGateStats 恒漏计、
+	// loop guard 隔离键跨执行清零。
+	ctx = decision.WithGateRunID(ctx, sess.teamRunID)
+	ctx = sandbox.WithRunID(ctx, sess.teamRunID)
 	if _, err := c.graphs.ResumeExecution(ctx, task.ExecutionID, resume); err != nil {
 		if c.teamRunReader != nil {
 			if run, rerr := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); rerr == nil {

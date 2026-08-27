@@ -912,28 +912,40 @@ func init() {
 	agentruntimesettingDescToolsExecutionTimeoutSec := agentruntimesettingFields[144].Descriptor()
 	// agentruntimesetting.DefaultToolsExecutionTimeoutSec holds the default value on creation for the tools_execution_timeout_sec field.
 	agentruntimesetting.DefaultToolsExecutionTimeoutSec = agentruntimesettingDescToolsExecutionTimeoutSec.Default.(int)
+	// agentruntimesettingDescLoopGuardToolLoadMax is the schema descriptor for loop_guard_tool_load_max field.
+	agentruntimesettingDescLoopGuardToolLoadMax := agentruntimesettingFields[145].Descriptor()
+	// agentruntimesetting.DefaultLoopGuardToolLoadMax holds the default value on creation for the loop_guard_tool_load_max field.
+	agentruntimesetting.DefaultLoopGuardToolLoadMax = agentruntimesettingDescLoopGuardToolLoadMax.Default.(int)
+	// agentruntimesettingDescLoopGuardWallSoftSec is the schema descriptor for loop_guard_wall_soft_sec field.
+	agentruntimesettingDescLoopGuardWallSoftSec := agentruntimesettingFields[146].Descriptor()
+	// agentruntimesetting.DefaultLoopGuardWallSoftSec holds the default value on creation for the loop_guard_wall_soft_sec field.
+	agentruntimesetting.DefaultLoopGuardWallSoftSec = agentruntimesettingDescLoopGuardWallSoftSec.Default.(int)
+	// agentruntimesettingDescLoopGuardWallHardSec is the schema descriptor for loop_guard_wall_hard_sec field.
+	agentruntimesettingDescLoopGuardWallHardSec := agentruntimesettingFields[147].Descriptor()
+	// agentruntimesetting.DefaultLoopGuardWallHardSec holds the default value on creation for the loop_guard_wall_hard_sec field.
+	agentruntimesetting.DefaultLoopGuardWallHardSec = agentruntimesettingDescLoopGuardWallHardSec.Default.(int)
 	// agentruntimesettingDescForgetPolicyJSON is the schema descriptor for forget_policy_json field.
-	agentruntimesettingDescForgetPolicyJSON := agentruntimesettingFields[145].Descriptor()
+	agentruntimesettingDescForgetPolicyJSON := agentruntimesettingFields[148].Descriptor()
 	// agentruntimesetting.DefaultForgetPolicyJSON holds the default value on creation for the forget_policy_json field.
 	agentruntimesetting.DefaultForgetPolicyJSON = agentruntimesettingDescForgetPolicyJSON.Default.(string)
 	// agentruntimesettingDescToolWeightJSON is the schema descriptor for tool_weight_json field.
-	agentruntimesettingDescToolWeightJSON := agentruntimesettingFields[146].Descriptor()
+	agentruntimesettingDescToolWeightJSON := agentruntimesettingFields[149].Descriptor()
 	// agentruntimesetting.DefaultToolWeightJSON holds the default value on creation for the tool_weight_json field.
 	agentruntimesetting.DefaultToolWeightJSON = agentruntimesettingDescToolWeightJSON.Default.(string)
 	// agentruntimesettingDescDreamSnapshotJSON is the schema descriptor for dream_snapshot_json field.
-	agentruntimesettingDescDreamSnapshotJSON := agentruntimesettingFields[147].Descriptor()
+	agentruntimesettingDescDreamSnapshotJSON := agentruntimesettingFields[150].Descriptor()
 	// agentruntimesetting.DefaultDreamSnapshotJSON holds the default value on creation for the dream_snapshot_json field.
 	agentruntimesetting.DefaultDreamSnapshotJSON = agentruntimesettingDescDreamSnapshotJSON.Default.(string)
 	// agentruntimesettingDescVerificationTruncateChars is the schema descriptor for verification_truncate_chars field.
-	agentruntimesettingDescVerificationTruncateChars := agentruntimesettingFields[148].Descriptor()
+	agentruntimesettingDescVerificationTruncateChars := agentruntimesettingFields[151].Descriptor()
 	// agentruntimesetting.DefaultVerificationTruncateChars holds the default value on creation for the verification_truncate_chars field.
 	agentruntimesetting.DefaultVerificationTruncateChars = agentruntimesettingDescVerificationTruncateChars.Default.(int)
 	// agentruntimesettingDescCreatedAt is the schema descriptor for created_at field.
-	agentruntimesettingDescCreatedAt := agentruntimesettingFields[149].Descriptor()
+	agentruntimesettingDescCreatedAt := agentruntimesettingFields[152].Descriptor()
 	// agentruntimesetting.DefaultCreatedAt holds the default value on creation for the created_at field.
 	agentruntimesetting.DefaultCreatedAt = agentruntimesettingDescCreatedAt.Default.(string)
 	// agentruntimesettingDescUpdatedAt is the schema descriptor for updated_at field.
-	agentruntimesettingDescUpdatedAt := agentruntimesettingFields[150].Descriptor()
+	agentruntimesettingDescUpdatedAt := agentruntimesettingFields[153].Descriptor()
 	// agentruntimesetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	agentruntimesetting.DefaultUpdatedAt = agentruntimesettingDescUpdatedAt.Default.(string)
 	// agentruntimesettingDescID is the schema descriptor for id field.

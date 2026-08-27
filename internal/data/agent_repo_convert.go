@@ -70,6 +70,9 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	s.CodeExecutorType = e.CodeExecutorType
 	s.MaxLLMCalls = e.MaxLlmCalls
 	s.MaxToolIterations = e.MaxToolIterations
+	s.LoopGuardToolLoadMax = e.LoopGuardToolLoadMax
+	s.LoopGuardWallSoftSec = e.LoopGuardWallSoftSec
+	s.LoopGuardWallHardSec = e.LoopGuardWallHardSec
 	s.CompressionBufferAdaptive = e.CompressionBufferAdaptive
 	s.EnableTokenTailoring = e.EnableTokenTailoring
 	s.TokenTailoringStrategy = e.TokenTailoringStrategy
@@ -418,6 +421,9 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolsDeferredJSON(v.ToolsDeferredJSON).
 		SetToolsCommandSafetyEnabled(v.ToolsCommandSafetyEnabled).
 		SetToolsExecutionTimeoutSec(v.ToolsExecutionTimeoutSec).
+		SetLoopGuardToolLoadMax(v.LoopGuardToolLoadMax).
+		SetLoopGuardWallSoftSec(v.LoopGuardWallSoftSec).
+		SetLoopGuardWallHardSec(v.LoopGuardWallHardSec).
 		SetVerificationTruncateChars(v.VerificationTruncateChars).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)

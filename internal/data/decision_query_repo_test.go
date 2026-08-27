@@ -85,9 +85,10 @@ func seedDecisionRecords(t *testing.T, wr decision.Repo) {
 }
 
 // TestDecisionQueryRepo_RunGateStats_PG covers 79-runtime-governance R7：
-// 五类 trigger_rule 聚合（loop_guard 计数 / budget·no_progress 布尔 /
-// prune 求和 observed_value+prune_bytes / compact 计数），run 归属隔离，
-// 非 system_guard 类别与无记录 run 返回零值。
+// 六类 trigger_rule 聚合（loop_guard 计数 / budget·no_progress 布尔 /
+// prune 求和 observed_value+prune_bytes / compact 计数 / param_rule_deny
+// 计数——2026-08-27 三轮审查补钉），run 归属隔离，非 system_guard 类别与
+// 无记录 run 返回零值。
 func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
 	ctx := context.Background()
 	wr, qr := newDecisionQueryTestRepos(t)
@@ -99,6 +100,9 @@ func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
 		guardRec("dk-g-5", "run-s", decision.TriggerToolResultPruned, map[string]any{"observed_value": 3, "prune_bytes": 12000}),
 		guardRec("dk-g-6", "run-s", decision.TriggerToolResultPruned, map[string]any{"observed_value": 2, "prune_bytes": 8000}),
 		guardRec("dk-g-7", "run-s", decision.TriggerContextCompacted, map[string]any{}),
+		// H7：param_rule_deny 计数（三轮审查补钉——此前 case 改坏测试全绿）。
+		guardRec("dk-g-10", "run-s", decision.TriggerParamRuleDeny, map[string]any{}),
+		guardRec("dk-g-11", "run-s", decision.TriggerParamRuleDeny, map[string]any{}),
 		// 他 run 的记录：必须隔离。
 		guardRec("dk-g-8", "run-other", decision.TriggerLoopGuardBlocked, map[string]any{"observed_value": 99}),
 		// 非 system_guard 类别同 run：不计。
@@ -135,6 +139,9 @@ func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
 	}
 	if got.CompactCount != 1 {
 		t.Errorf("CompactCount = %d, want 1", got.CompactCount)
+	}
+	if got.ParamRuleDenies != 2 {
+		t.Errorf("ParamRuleDenies = %d, want 2（param_rule_deny 计数）", got.ParamRuleDenies)
 	}
 
 	// 他 run 只见自己的记录；无记录 run / 空 runID 返回零值, nil。
@@ -254,9 +261,9 @@ func TestDecisionQueryRepo_WorkspaceFilter_PG(t *testing.T) {
 		}
 	}
 	if err := wr.InsertRecords(ctx, []decision.Record{
-		mk("dk-ws-a", "ws-a"),   // 租户 A 私有
-		mk("dk-ws-b", "ws-b"),   // 租户 B 私有
-		mk("dk-ws-shared", ""),  // 共享（legacy/系统产物）
+		mk("dk-ws-a", "ws-a"),  // 租户 A 私有
+		mk("dk-ws-b", "ws-b"),  // 租户 B 私有
+		mk("dk-ws-shared", ""), // 共享（legacy/系统产物）
 	}); err != nil {
 		t.Fatalf("seed insert: %v", err)
 	}

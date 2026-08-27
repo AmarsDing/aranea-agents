@@ -4543,6 +4543,12 @@ type AgentRuntimeSettingMutation struct {
 	tools_command_safety_enabled             *bool
 	tools_execution_timeout_sec              *int
 	addtools_execution_timeout_sec           *int
+	loop_guard_tool_load_max                 *int
+	addloop_guard_tool_load_max              *int
+	loop_guard_wall_soft_sec                 *int
+	addloop_guard_wall_soft_sec              *int
+	loop_guard_wall_hard_sec                 *int
+	addloop_guard_wall_hard_sec              *int
 	forget_policy_json                       *string
 	tool_weight_json                         *string
 	dream_snapshot_json                      *string
@@ -11084,6 +11090,174 @@ func (m *AgentRuntimeSettingMutation) ResetToolsExecutionTimeoutSec() {
 	m.addtools_execution_timeout_sec = nil
 }
 
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (m *AgentRuntimeSettingMutation) SetLoopGuardToolLoadMax(i int) {
+	m.loop_guard_tool_load_max = &i
+	m.addloop_guard_tool_load_max = nil
+}
+
+// LoopGuardToolLoadMax returns the value of the "loop_guard_tool_load_max" field in the mutation.
+func (m *AgentRuntimeSettingMutation) LoopGuardToolLoadMax() (r int, exists bool) {
+	v := m.loop_guard_tool_load_max
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLoopGuardToolLoadMax returns the old "loop_guard_tool_load_max" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldLoopGuardToolLoadMax(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLoopGuardToolLoadMax is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLoopGuardToolLoadMax requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLoopGuardToolLoadMax: %w", err)
+	}
+	return oldValue.LoopGuardToolLoadMax, nil
+}
+
+// AddLoopGuardToolLoadMax adds i to the "loop_guard_tool_load_max" field.
+func (m *AgentRuntimeSettingMutation) AddLoopGuardToolLoadMax(i int) {
+	if m.addloop_guard_tool_load_max != nil {
+		*m.addloop_guard_tool_load_max += i
+	} else {
+		m.addloop_guard_tool_load_max = &i
+	}
+}
+
+// AddedLoopGuardToolLoadMax returns the value that was added to the "loop_guard_tool_load_max" field in this mutation.
+func (m *AgentRuntimeSettingMutation) AddedLoopGuardToolLoadMax() (r int, exists bool) {
+	v := m.addloop_guard_tool_load_max
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLoopGuardToolLoadMax resets all changes to the "loop_guard_tool_load_max" field.
+func (m *AgentRuntimeSettingMutation) ResetLoopGuardToolLoadMax() {
+	m.loop_guard_tool_load_max = nil
+	m.addloop_guard_tool_load_max = nil
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (m *AgentRuntimeSettingMutation) SetLoopGuardWallSoftSec(i int) {
+	m.loop_guard_wall_soft_sec = &i
+	m.addloop_guard_wall_soft_sec = nil
+}
+
+// LoopGuardWallSoftSec returns the value of the "loop_guard_wall_soft_sec" field in the mutation.
+func (m *AgentRuntimeSettingMutation) LoopGuardWallSoftSec() (r int, exists bool) {
+	v := m.loop_guard_wall_soft_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLoopGuardWallSoftSec returns the old "loop_guard_wall_soft_sec" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldLoopGuardWallSoftSec(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLoopGuardWallSoftSec is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLoopGuardWallSoftSec requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLoopGuardWallSoftSec: %w", err)
+	}
+	return oldValue.LoopGuardWallSoftSec, nil
+}
+
+// AddLoopGuardWallSoftSec adds i to the "loop_guard_wall_soft_sec" field.
+func (m *AgentRuntimeSettingMutation) AddLoopGuardWallSoftSec(i int) {
+	if m.addloop_guard_wall_soft_sec != nil {
+		*m.addloop_guard_wall_soft_sec += i
+	} else {
+		m.addloop_guard_wall_soft_sec = &i
+	}
+}
+
+// AddedLoopGuardWallSoftSec returns the value that was added to the "loop_guard_wall_soft_sec" field in this mutation.
+func (m *AgentRuntimeSettingMutation) AddedLoopGuardWallSoftSec() (r int, exists bool) {
+	v := m.addloop_guard_wall_soft_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLoopGuardWallSoftSec resets all changes to the "loop_guard_wall_soft_sec" field.
+func (m *AgentRuntimeSettingMutation) ResetLoopGuardWallSoftSec() {
+	m.loop_guard_wall_soft_sec = nil
+	m.addloop_guard_wall_soft_sec = nil
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (m *AgentRuntimeSettingMutation) SetLoopGuardWallHardSec(i int) {
+	m.loop_guard_wall_hard_sec = &i
+	m.addloop_guard_wall_hard_sec = nil
+}
+
+// LoopGuardWallHardSec returns the value of the "loop_guard_wall_hard_sec" field in the mutation.
+func (m *AgentRuntimeSettingMutation) LoopGuardWallHardSec() (r int, exists bool) {
+	v := m.loop_guard_wall_hard_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLoopGuardWallHardSec returns the old "loop_guard_wall_hard_sec" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldLoopGuardWallHardSec(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLoopGuardWallHardSec is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLoopGuardWallHardSec requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLoopGuardWallHardSec: %w", err)
+	}
+	return oldValue.LoopGuardWallHardSec, nil
+}
+
+// AddLoopGuardWallHardSec adds i to the "loop_guard_wall_hard_sec" field.
+func (m *AgentRuntimeSettingMutation) AddLoopGuardWallHardSec(i int) {
+	if m.addloop_guard_wall_hard_sec != nil {
+		*m.addloop_guard_wall_hard_sec += i
+	} else {
+		m.addloop_guard_wall_hard_sec = &i
+	}
+}
+
+// AddedLoopGuardWallHardSec returns the value that was added to the "loop_guard_wall_hard_sec" field in this mutation.
+func (m *AgentRuntimeSettingMutation) AddedLoopGuardWallHardSec() (r int, exists bool) {
+	v := m.addloop_guard_wall_hard_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLoopGuardWallHardSec resets all changes to the "loop_guard_wall_hard_sec" field.
+func (m *AgentRuntimeSettingMutation) ResetLoopGuardWallHardSec() {
+	m.loop_guard_wall_hard_sec = nil
+	m.addloop_guard_wall_hard_sec = nil
+}
+
 // SetForgetPolicyJSON sets the "forget_policy_json" field.
 func (m *AgentRuntimeSettingMutation) SetForgetPolicyJSON(s string) {
 	m.forget_policy_json = &s
@@ -11354,7 +11528,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 150)
+	fields := make([]string, 0, 153)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -11787,6 +11961,15 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	if m.tools_execution_timeout_sec != nil {
 		fields = append(fields, agentruntimesetting.FieldToolsExecutionTimeoutSec)
 	}
+	if m.loop_guard_tool_load_max != nil {
+		fields = append(fields, agentruntimesetting.FieldLoopGuardToolLoadMax)
+	}
+	if m.loop_guard_wall_soft_sec != nil {
+		fields = append(fields, agentruntimesetting.FieldLoopGuardWallSoftSec)
+	}
+	if m.loop_guard_wall_hard_sec != nil {
+		fields = append(fields, agentruntimesetting.FieldLoopGuardWallHardSec)
+	}
 	if m.forget_policy_json != nil {
 		fields = append(fields, agentruntimesetting.FieldForgetPolicyJSON)
 	}
@@ -12101,6 +12284,12 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.ToolsCommandSafetyEnabled()
 	case agentruntimesetting.FieldToolsExecutionTimeoutSec:
 		return m.ToolsExecutionTimeoutSec()
+	case agentruntimesetting.FieldLoopGuardToolLoadMax:
+		return m.LoopGuardToolLoadMax()
+	case agentruntimesetting.FieldLoopGuardWallSoftSec:
+		return m.LoopGuardWallSoftSec()
+	case agentruntimesetting.FieldLoopGuardWallHardSec:
+		return m.LoopGuardWallHardSec()
 	case agentruntimesetting.FieldForgetPolicyJSON:
 		return m.ForgetPolicyJSON()
 	case agentruntimesetting.FieldToolWeightJSON:
@@ -12410,6 +12599,12 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldToolsCommandSafetyEnabled(ctx)
 	case agentruntimesetting.FieldToolsExecutionTimeoutSec:
 		return m.OldToolsExecutionTimeoutSec(ctx)
+	case agentruntimesetting.FieldLoopGuardToolLoadMax:
+		return m.OldLoopGuardToolLoadMax(ctx)
+	case agentruntimesetting.FieldLoopGuardWallSoftSec:
+		return m.OldLoopGuardWallSoftSec(ctx)
+	case agentruntimesetting.FieldLoopGuardWallHardSec:
+		return m.OldLoopGuardWallHardSec(ctx)
 	case agentruntimesetting.FieldForgetPolicyJSON:
 		return m.OldForgetPolicyJSON(ctx)
 	case agentruntimesetting.FieldToolWeightJSON:
@@ -13439,6 +13634,27 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetToolsExecutionTimeoutSec(v)
 		return nil
+	case agentruntimesetting.FieldLoopGuardToolLoadMax:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLoopGuardToolLoadMax(v)
+		return nil
+	case agentruntimesetting.FieldLoopGuardWallSoftSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLoopGuardWallSoftSec(v)
+		return nil
+	case agentruntimesetting.FieldLoopGuardWallHardSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLoopGuardWallHardSec(v)
+		return nil
 	case agentruntimesetting.FieldForgetPolicyJSON:
 		v, ok := value.(string)
 		if !ok {
@@ -13675,6 +13891,15 @@ func (m *AgentRuntimeSettingMutation) AddedFields() []string {
 	if m.addtools_execution_timeout_sec != nil {
 		fields = append(fields, agentruntimesetting.FieldToolsExecutionTimeoutSec)
 	}
+	if m.addloop_guard_tool_load_max != nil {
+		fields = append(fields, agentruntimesetting.FieldLoopGuardToolLoadMax)
+	}
+	if m.addloop_guard_wall_soft_sec != nil {
+		fields = append(fields, agentruntimesetting.FieldLoopGuardWallSoftSec)
+	}
+	if m.addloop_guard_wall_hard_sec != nil {
+		fields = append(fields, agentruntimesetting.FieldLoopGuardWallHardSec)
+	}
 	if m.addverification_truncate_chars != nil {
 		fields = append(fields, agentruntimesetting.FieldVerificationTruncateChars)
 	}
@@ -13810,6 +14035,12 @@ func (m *AgentRuntimeSettingMutation) AddedField(name string) (ent.Value, bool) 
 		return m.AddedToolsRetryMaxIntervalMs()
 	case agentruntimesetting.FieldToolsExecutionTimeoutSec:
 		return m.AddedToolsExecutionTimeoutSec()
+	case agentruntimesetting.FieldLoopGuardToolLoadMax:
+		return m.AddedLoopGuardToolLoadMax()
+	case agentruntimesetting.FieldLoopGuardWallSoftSec:
+		return m.AddedLoopGuardWallSoftSec()
+	case agentruntimesetting.FieldLoopGuardWallHardSec:
+		return m.AddedLoopGuardWallHardSec()
 	case agentruntimesetting.FieldVerificationTruncateChars:
 		return m.AddedVerificationTruncateChars()
 	}
@@ -14254,6 +14485,27 @@ func (m *AgentRuntimeSettingMutation) AddField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddToolsExecutionTimeoutSec(v)
+		return nil
+	case agentruntimesetting.FieldLoopGuardToolLoadMax:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLoopGuardToolLoadMax(v)
+		return nil
+	case agentruntimesetting.FieldLoopGuardWallSoftSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLoopGuardWallSoftSec(v)
+		return nil
+	case agentruntimesetting.FieldLoopGuardWallHardSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLoopGuardWallHardSec(v)
 		return nil
 	case agentruntimesetting.FieldVerificationTruncateChars:
 		v, ok := value.(int)
@@ -14720,6 +14972,15 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldToolsExecutionTimeoutSec:
 		m.ResetToolsExecutionTimeoutSec()
+		return nil
+	case agentruntimesetting.FieldLoopGuardToolLoadMax:
+		m.ResetLoopGuardToolLoadMax()
+		return nil
+	case agentruntimesetting.FieldLoopGuardWallSoftSec:
+		m.ResetLoopGuardWallSoftSec()
+		return nil
+	case agentruntimesetting.FieldLoopGuardWallHardSec:
+		m.ResetLoopGuardWallHardSec()
 		return nil
 	case agentruntimesetting.FieldForgetPolicyJSON:
 		m.ResetForgetPolicyJSON()

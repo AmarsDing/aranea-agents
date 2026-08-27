@@ -30,7 +30,14 @@ import (
 // AgentRuntimeSettings 字段名集合。policyStrippedSettings 与
 // TestPolicyStrippedFields_Guard 共同保证：新增 resolver 化字段必须同步
 // 两处，否则守卫测试红（对应 report-05 P0-2 风险①的同型漂移防护）。
-var resolverManagedPolicyFields = []string{"ToolsExecutionTimeoutSec"}
+var resolverManagedPolicyFields = []string{
+	"ToolsExecutionTimeoutSec",
+	// 79-runtime-governance 二轮 Q1（S02「合法失控」根修）：行为模式闸阈值，
+	// 由 tool_loop_guard 每调用经本 resolver 读取（0=内置默认，>0 覆盖）。
+	"LoopGuardToolLoadMax",
+	"LoopGuardWallSoftSec",
+	"LoopGuardWallHardSec",
+}
 
 // PolicyResolver 是工具策略的运行时快照表（进程级单例）。
 type PolicyResolver struct {
@@ -38,8 +45,12 @@ type PolicyResolver struct {
 	// timeoutSec[agentID] = ToolsExecutionTimeoutSec 原始值（0 = 跟随默认，
 	// 规范化在查询出口统一处理，与 buildToolExecutionTimeout 语义一致）。
 	timeoutSec map[string]int
-	repo       biz.AgentRuntimeSettingsRepo
-	lg         loggateway.Logger
+	// 行为模式闸阈值（Q1）：语义同 timeoutSec——0=跟随内置默认，查询出口归一。
+	toolLoadMax map[string]int
+	wallSoftSec map[string]int
+	wallHardSec map[string]int
+	repo        biz.AgentRuntimeSettingsRepo
+	lg          loggateway.Logger
 }
 
 var globalPolicyResolver = &PolicyResolver{lg: loggateway.NewNoop()}
@@ -74,11 +85,20 @@ func (r *PolicyResolver) Reload(ctx context.Context) error {
 		return err
 	}
 	m := make(map[string]int, len(all))
+	loadMax := make(map[string]int, len(all))
+	wallSoft := make(map[string]int, len(all))
+	wallHard := make(map[string]int, len(all))
 	for id, s := range all {
 		m[id] = s.ToolsExecutionTimeoutSec
+		loadMax[id] = s.LoopGuardToolLoadMax
+		wallSoft[id] = s.LoopGuardWallSoftSec
+		wallHard[id] = s.LoopGuardWallHardSec
 	}
 	r.mu.Lock()
 	r.timeoutSec = m
+	r.toolLoadMax = loadMax
+	r.wallSoftSec = wallSoft
+	r.wallHardSec = wallHard
 	r.mu.Unlock()
 	return nil
 }
@@ -116,6 +136,70 @@ func toolExecutionTimeoutFor(agentID string, buildTimeSec int) time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
+// SetLoopGuardGateThresholds 增量更新单 agent 的行为模式闸阈值（Q1；
+// service 层「仅策略字段变化」路径或运维通道调用；空 agentID 忽略）。
+func SetLoopGuardGateThresholds(agentID string, toolLoadMax, wallSoftSec, wallHardSec int) {
+	if agentID == "" {
+		return
+	}
+	r := globalPolicyResolver
+	r.mu.Lock()
+	if r.toolLoadMax == nil {
+		r.toolLoadMax = map[string]int{}
+	}
+	if r.wallSoftSec == nil {
+		r.wallSoftSec = map[string]int{}
+	}
+	if r.wallHardSec == nil {
+		r.wallHardSec = map[string]int{}
+	}
+	r.toolLoadMax[agentID] = toolLoadMax
+	r.wallSoftSec[agentID] = wallSoftSec
+	r.wallHardSec[agentID] = wallHardSec
+	r.mu.Unlock()
+}
+
+// loopGuardToolLoadMaxFor 是装载闸每调用的查询入口：resolver 命中用 resolver
+// 值，miss 回退 buildMax（构建期快照），≤0 归一为内置默认。与
+// toolExecutionTimeoutFor 同语义。
+func loopGuardToolLoadMaxFor(agentID string, buildMax int) int {
+	r := globalPolicyResolver
+	r.mu.RLock()
+	v, ok := r.toolLoadMax[agentID]
+	r.mu.RUnlock()
+	if !ok {
+		v = buildMax
+	}
+	if v <= 0 {
+		return loopGuardToolLoadMaxDefault
+	}
+	return v
+}
+
+// loopGuardWallSecFor 是 wall-time 软/硬闸每调用的查询入口（语义同上）。
+func loopGuardWallSecFor(agentID string, buildSec int, hard bool) int {
+	r := globalPolicyResolver
+	r.mu.RLock()
+	var v int
+	var ok bool
+	if hard {
+		v, ok = r.wallHardSec[agentID]
+	} else {
+		v, ok = r.wallSoftSec[agentID]
+	}
+	r.mu.RUnlock()
+	if !ok {
+		v = buildSec
+	}
+	if v <= 0 {
+		if hard {
+			return loopGuardWallHardSecDefault
+		}
+		return loopGuardWallSoftSecDefault
+	}
+	return v
+}
+
 // policyStrippedSettings 返回 Settings 的浅拷贝，resolver 化字段清零——
 // 用于 BuildCacheKey 指纹计算：这些字段的变更不再改变指纹（由 resolver
 // 运行时接管），其余字段仍全量进指纹（保守默认，未映射字段变更照旧触发
@@ -126,5 +210,8 @@ func policyStrippedSettings(s *biz.AgentRuntimeSettings) *biz.AgentRuntimeSettin
 	}
 	cp := *s
 	cp.ToolsExecutionTimeoutSec = 0
+	cp.LoopGuardToolLoadMax = 0
+	cp.LoopGuardWallSoftSec = 0
+	cp.LoopGuardWallHardSec = 0
 	return &cp
 }

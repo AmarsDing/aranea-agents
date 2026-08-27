@@ -86,6 +86,21 @@ const (
 	// 取值与 blockThreshold 对齐：首次空属正常未命中，第二次换词仍空即构成
 	// 「库中确无资料」的足够证据，第三次起拦截。
 	loopGuardEmptyStreakThreshold = 2
+	// Q1 行为模式闸（2026-08-27 二轮，S02「合法失控」根修）内置默认阈值。
+	// S02 实证：spirit 节点 24 次异质 tool_load 全部"合法"（签名不同/结果成功/
+	// 记有产出），同参/轮换/空结果/空转轮四重守卫均不命中——装载行为本身无闸。
+	// 取值依据（Bansal《Agent Budgets and Runaway Prevention》「limits from
+	// observed runs」）：合法渐进装载 1~4 次/节点，8 给足余量又远低于失控观测 24；
+	// wall 软/硬闸对齐 LangGraph TimeoutPolicy 双超时（idle 软顶 + run 硬顶）与
+	// 既有 A2'b 两段式（先引导后封锁）。三值均可经 agent_runtime_settings DB 列
+	// 覆盖（PolicyResolver 每调用读取，0=跟随本默认）。
+	loopGuardToolLoadMaxDefault = 8
+	loopGuardWallSoftSecDefault = 240
+	loopGuardWallHardSecDefault = 600
+	// plan-execute 漂移观测（首版 record-only，C1-③ 裁定）：plan_and_execute
+	// 声明编排后节点仍持续本地装载工具达此次数 → 写 tripped 决策记录（不拦截）。
+	// 观测阈值非执行阈值，不入 DB——漂移证据标准待决策记录校准后再议拦截形态。
+	loopGuardPlanDriftObserveAt = 3
 	// 空转轮次早停（2026-08-25 包A-A2'b，session-eval-20260825 取证）：连续 N 轮
 	// 工具调用零有效产出（失败/被拦/检索空结果）→ BeforeModel 注入降级引导；
 	// 满 M 轮 → BeforeTool 拦截一切新调用（todo_declare_blocker 豁免，保留投降
@@ -115,6 +130,18 @@ const unproductiveRoundCueMarker = "<!-- aranea:unproductive_rounds -->\n"
 // 一切新调用时仍保留投降通道，模型可声明阻塞原因后收尾，而非被堵死重发。
 const todoDeclareBlockerToolName = "todo_declare_blocker"
 
+// toolLoadToolName / planAndExecuteToolName 是 Q1 行为模式闸观测的两个元工具：
+// 装载闸统计 tool_load 配额与重复装载；plan-execute 漂移观测以 plan_and_execute
+// 的成功调用为「计划已声明」锚点。
+const (
+	toolLoadToolName        = "tool_load"
+	planAndExecuteToolName  = "plan_and_execute"
+)
+
+// wallTimeCueMarker 标识 wall-time 软闸引导 cue（Q1）：与 unproductive cue 同型，
+// 续轮注入前先摘除历史同名 cue，保证只有一条最新文案。
+const wallTimeCueMarker = "<!-- aranea:wall_time -->\n"
+
 type loopGuardEntry struct {
 	lastSig          string // 上一次调用的签名（tool + 规范化 args 哈希）
 	lastTool         string // 上一次调用的原始工具名（跨名重复时供拦截消息解释）
@@ -132,7 +159,19 @@ type loopGuardEntry struct {
 	roundSawTool    bool
 	roundProductive bool
 	unprodRounds    int
-	lastTouch       time.Time
+	// Q1 行为模式闸状态。firstSeen 是条目创建时间（wall-time 闸基准；条目因
+	// 容量清理重建时闸重新计时，与计数类守卫的「重新计数」语义一致）。
+	// loadedTools 记成功装载的目标（归一化名）：激活幂等且无运行时卸载
+	// （deferred 包无 evict/unload 路径），重复装载恒零新信息，第二次起拦截；
+	// loadCount 只计首次装载（被拦/失败/重复均不计），配额只约束异质装载面。
+	firstSeen         time.Time
+	loadCount         int
+	loadedTools       map[string]bool
+	planDeclared      bool // plan_and_execute 已成功（漂移观测锚点）
+	postPlanLoads     int  // 计划声明后的 tool_load 成功次数
+	planDriftRecorded bool // 漂移决策已写（once-per-entry 防刷屏）
+	wallSoftRecorded  bool // 软闸决策已写（once-per-entry；cue 本身按轮刷新）
+	lastTouch         time.Time
 }
 
 type inflightSlot struct {
@@ -548,7 +587,7 @@ func (g *toolLoopGuard) entryLocked(key string, now time.Time) *loopGuardEntry {
 	}
 	e, ok := g.entries[key]
 	if !ok {
-		e = &loopGuardEntry{}
+		e = &loopGuardEntry{firstSeen: now}
 		g.entries[key] = e
 	}
 	e.lastTouch = now

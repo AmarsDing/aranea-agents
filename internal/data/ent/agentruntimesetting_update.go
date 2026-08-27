@@ -2477,6 +2477,69 @@ func (_u *AgentRuntimeSettingUpdate) AddToolsExecutionTimeoutSec(v int) *AgentRu
 	return _u
 }
 
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (_u *AgentRuntimeSettingUpdate) SetLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.ResetLoopGuardToolLoadMax()
+	_u.mutation.SetLoopGuardToolLoadMax(v)
+	return _u
+}
+
+// SetNillableLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableLoopGuardToolLoadMax(v *int) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetLoopGuardToolLoadMax(*v)
+	}
+	return _u
+}
+
+// AddLoopGuardToolLoadMax adds value to the "loop_guard_tool_load_max" field.
+func (_u *AgentRuntimeSettingUpdate) AddLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.AddLoopGuardToolLoadMax(v)
+	return _u
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (_u *AgentRuntimeSettingUpdate) SetLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.ResetLoopGuardWallSoftSec()
+	_u.mutation.SetLoopGuardWallSoftSec(v)
+	return _u
+}
+
+// SetNillableLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableLoopGuardWallSoftSec(v *int) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetLoopGuardWallSoftSec(*v)
+	}
+	return _u
+}
+
+// AddLoopGuardWallSoftSec adds value to the "loop_guard_wall_soft_sec" field.
+func (_u *AgentRuntimeSettingUpdate) AddLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.AddLoopGuardWallSoftSec(v)
+	return _u
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (_u *AgentRuntimeSettingUpdate) SetLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.ResetLoopGuardWallHardSec()
+	_u.mutation.SetLoopGuardWallHardSec(v)
+	return _u
+}
+
+// SetNillableLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableLoopGuardWallHardSec(v *int) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetLoopGuardWallHardSec(*v)
+	}
+	return _u
+}
+
+// AddLoopGuardWallHardSec adds value to the "loop_guard_wall_hard_sec" field.
+func (_u *AgentRuntimeSettingUpdate) AddLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.AddLoopGuardWallHardSec(v)
+	return _u
+}
+
 // SetForgetPolicyJSON sets the "forget_policy_json" field.
 func (_u *AgentRuntimeSettingUpdate) SetForgetPolicyJSON(v string) *AgentRuntimeSettingUpdate {
 	_u.mutation.SetForgetPolicyJSON(v)
@@ -3226,6 +3289,24 @@ func (_u *AgentRuntimeSettingUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.AddedToolsExecutionTimeoutSec(); ok {
 		_spec.AddField(agentruntimesetting.FieldToolsExecutionTimeoutSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LoopGuardToolLoadMax(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardToolLoadMax, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLoopGuardToolLoadMax(); ok {
+		_spec.AddField(agentruntimesetting.FieldLoopGuardToolLoadMax, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LoopGuardWallSoftSec(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardWallSoftSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLoopGuardWallSoftSec(); ok {
+		_spec.AddField(agentruntimesetting.FieldLoopGuardWallSoftSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LoopGuardWallHardSec(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardWallHardSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLoopGuardWallHardSec(); ok {
+		_spec.AddField(agentruntimesetting.FieldLoopGuardWallHardSec, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ForgetPolicyJSON(); ok {
 		_spec.SetField(agentruntimesetting.FieldForgetPolicyJSON, field.TypeString, value)
@@ -5718,6 +5799,69 @@ func (_u *AgentRuntimeSettingUpdateOne) AddToolsExecutionTimeoutSec(v int) *Agen
 	return _u
 }
 
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.ResetLoopGuardToolLoadMax()
+	_u.mutation.SetLoopGuardToolLoadMax(v)
+	return _u
+}
+
+// SetNillableLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableLoopGuardToolLoadMax(v *int) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetLoopGuardToolLoadMax(*v)
+	}
+	return _u
+}
+
+// AddLoopGuardToolLoadMax adds value to the "loop_guard_tool_load_max" field.
+func (_u *AgentRuntimeSettingUpdateOne) AddLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.AddLoopGuardToolLoadMax(v)
+	return _u
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.ResetLoopGuardWallSoftSec()
+	_u.mutation.SetLoopGuardWallSoftSec(v)
+	return _u
+}
+
+// SetNillableLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableLoopGuardWallSoftSec(v *int) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetLoopGuardWallSoftSec(*v)
+	}
+	return _u
+}
+
+// AddLoopGuardWallSoftSec adds value to the "loop_guard_wall_soft_sec" field.
+func (_u *AgentRuntimeSettingUpdateOne) AddLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.AddLoopGuardWallSoftSec(v)
+	return _u
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.ResetLoopGuardWallHardSec()
+	_u.mutation.SetLoopGuardWallHardSec(v)
+	return _u
+}
+
+// SetNillableLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableLoopGuardWallHardSec(v *int) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetLoopGuardWallHardSec(*v)
+	}
+	return _u
+}
+
+// AddLoopGuardWallHardSec adds value to the "loop_guard_wall_hard_sec" field.
+func (_u *AgentRuntimeSettingUpdateOne) AddLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.AddLoopGuardWallHardSec(v)
+	return _u
+}
+
 // SetForgetPolicyJSON sets the "forget_policy_json" field.
 func (_u *AgentRuntimeSettingUpdateOne) SetForgetPolicyJSON(v string) *AgentRuntimeSettingUpdateOne {
 	_u.mutation.SetForgetPolicyJSON(v)
@@ -6497,6 +6641,24 @@ func (_u *AgentRuntimeSettingUpdateOne) sqlSave(ctx context.Context) (_node *Age
 	}
 	if value, ok := _u.mutation.AddedToolsExecutionTimeoutSec(); ok {
 		_spec.AddField(agentruntimesetting.FieldToolsExecutionTimeoutSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LoopGuardToolLoadMax(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardToolLoadMax, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLoopGuardToolLoadMax(); ok {
+		_spec.AddField(agentruntimesetting.FieldLoopGuardToolLoadMax, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LoopGuardWallSoftSec(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardWallSoftSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLoopGuardWallSoftSec(); ok {
+		_spec.AddField(agentruntimesetting.FieldLoopGuardWallSoftSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LoopGuardWallHardSec(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardWallHardSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLoopGuardWallHardSec(); ok {
+		_spec.AddField(agentruntimesetting.FieldLoopGuardWallHardSec, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ForgetPolicyJSON(); ok {
 		_spec.SetField(agentruntimesetting.FieldForgetPolicyJSON, field.TypeString, value)

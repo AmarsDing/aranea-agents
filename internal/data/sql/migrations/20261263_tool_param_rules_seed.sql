@@ -20,13 +20,21 @@
 -- 3) 分隔符类保留 /：/bin/rm、/sbin/reboot 绝对路径执行形态依赖它命中；代价是
 --    ls /tmp/halt 这类「路径片段=命令名」被 fail-safe 误拒——可解释、方向安全，
 --    优于放开 /sbin/reboot 旁路。
+--
+-- 2026-08-27 三轮审查加固（存量库由 20261267 reseed 迁移同步）：rm deny flags
+-- 全覆盖——20261265 的 -(rf|fr|r\s+-f|f\s+-r) 只覆盖短选项排列且 target 必须
+-- 紧跟 flags，rm -rf --no-preserve-root /（GNU coreutils 下真实可删根的唯一
+-- 形态）、rm --recursive --force /、rm -r --force /、rm -rfv / 等变形全部不
+-- 命中。改为「任意多段 flags（含长选项与 -- 分隔）中至少一段短选项簇含 r/R
+-- 或 --recursive，随后落危险 target」；短选项簇限定单 dash 前缀，长选项仅
+-- --recursive 计入递归语义，--verbose/--force 等含 r 字母的长选项不误伤。
 INSERT OR IGNORE INTO tool_param_rules (id, tool_key, pattern, effect, priority, enabled, created_at) VALUES
   ('builtin-gns3-allow-show',       'gns3_exec', 're:(?i)^show [^\n]*$',       'allow', 10,  1, 1787760000),
   ('builtin-gns3-allow-ping',       'gns3_exec', 're:(?i)^ping [^\n]*$',       'allow', 10,  1, 1787760000),
   ('builtin-gns3-allow-traceroute', 'gns3_exec', 're:(?i)^traceroute [^\n]*$', 'allow', 10,  1, 1787760000),
   ('builtin-gns3-fallback-ask',     'gns3_exec', '*',                          'ask',   900, 1, 1787760000),
-  ('builtin-exec-deny-rmrf-abs',    'exec_command', 're:(?i)(^|[;&|/\s"''($`])rm\s+-(rf|fr|r\s+-f|f\s+-r)\s+(/|~|\$HOME|\*)',              'deny', 10, 1, 1787760000),
-  ('builtin-exec-deny-sudo-rmrf',   'exec_command', 're:(?i)(^|[;&|/\s"''($`])sudo\s+(-\S+\s+)*rm\s+-(rf|fr|r\s+-f|f\s+-r)\s+(/|~|\$HOME|\*)', 'deny', 10, 1, 1787760000),
+  ('builtin-exec-deny-rmrf-abs',    'exec_command', 're:(?i)(^|[;&|/\s"''($`])rm(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(/|~|\$HOME|\*)', 'deny', 10, 1, 1787760000),
+  ('builtin-exec-deny-sudo-rmrf',   'exec_command', 're:(?i)(^|[;&|/\s"''($`])sudo\s+(-\S+\s+)*rm(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(/|~|\$HOME|\*)', 'deny', 10, 1, 1787760000),
   ('builtin-exec-deny-mkfs',        'exec_command', 're:(?i)(^|[;&|/\s"''($`])mkfs[\s.]',                             'deny', 10, 1, 1787760000),
   ('builtin-exec-deny-dd-dev',      'exec_command', 're:(?i)(^|[;&|/\s"''($`])dd\s+[^;&|]*of=/dev/',                  'deny', 10, 1, 1787760000),
   ('builtin-exec-deny-shutdown',    'exec_command', 're:(?i)(^|[;&|/\s"''($`])shutdown(\s|$)',                        'deny', 10, 1, 1787760000),

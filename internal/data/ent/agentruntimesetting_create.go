@@ -2038,6 +2038,48 @@ func (_c *AgentRuntimeSettingCreate) SetNillableToolsExecutionTimeoutSec(v *int)
 	return _c
 }
 
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (_c *AgentRuntimeSettingCreate) SetLoopGuardToolLoadMax(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetLoopGuardToolLoadMax(v)
+	return _c
+}
+
+// SetNillableLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableLoopGuardToolLoadMax(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetLoopGuardToolLoadMax(*v)
+	}
+	return _c
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (_c *AgentRuntimeSettingCreate) SetLoopGuardWallSoftSec(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetLoopGuardWallSoftSec(v)
+	return _c
+}
+
+// SetNillableLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableLoopGuardWallSoftSec(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetLoopGuardWallSoftSec(*v)
+	}
+	return _c
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (_c *AgentRuntimeSettingCreate) SetLoopGuardWallHardSec(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetLoopGuardWallHardSec(v)
+	return _c
+}
+
+// SetNillableLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableLoopGuardWallHardSec(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetLoopGuardWallHardSec(*v)
+	}
+	return _c
+}
+
 // SetForgetPolicyJSON sets the "forget_policy_json" field.
 func (_c *AgentRuntimeSettingCreate) SetForgetPolicyJSON(v string) *AgentRuntimeSettingCreate {
 	_c.mutation.SetForgetPolicyJSON(v)
@@ -2739,6 +2781,18 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultToolsExecutionTimeoutSec
 		_c.mutation.SetToolsExecutionTimeoutSec(v)
 	}
+	if _, ok := _c.mutation.LoopGuardToolLoadMax(); !ok {
+		v := agentruntimesetting.DefaultLoopGuardToolLoadMax
+		_c.mutation.SetLoopGuardToolLoadMax(v)
+	}
+	if _, ok := _c.mutation.LoopGuardWallSoftSec(); !ok {
+		v := agentruntimesetting.DefaultLoopGuardWallSoftSec
+		_c.mutation.SetLoopGuardWallSoftSec(v)
+	}
+	if _, ok := _c.mutation.LoopGuardWallHardSec(); !ok {
+		v := agentruntimesetting.DefaultLoopGuardWallHardSec
+		_c.mutation.SetLoopGuardWallHardSec(v)
+	}
 	if _, ok := _c.mutation.ForgetPolicyJSON(); !ok {
 		v := agentruntimesetting.DefaultForgetPolicyJSON
 		_c.mutation.SetForgetPolicyJSON(v)
@@ -3198,6 +3252,15 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.ToolsExecutionTimeoutSec(); !ok {
 		return &ValidationError{Name: "tools_execution_timeout_sec", err: errors.New(`ent: missing required field "AgentRuntimeSetting.tools_execution_timeout_sec"`)}
+	}
+	if _, ok := _c.mutation.LoopGuardToolLoadMax(); !ok {
+		return &ValidationError{Name: "loop_guard_tool_load_max", err: errors.New(`ent: missing required field "AgentRuntimeSetting.loop_guard_tool_load_max"`)}
+	}
+	if _, ok := _c.mutation.LoopGuardWallSoftSec(); !ok {
+		return &ValidationError{Name: "loop_guard_wall_soft_sec", err: errors.New(`ent: missing required field "AgentRuntimeSetting.loop_guard_wall_soft_sec"`)}
+	}
+	if _, ok := _c.mutation.LoopGuardWallHardSec(); !ok {
+		return &ValidationError{Name: "loop_guard_wall_hard_sec", err: errors.New(`ent: missing required field "AgentRuntimeSetting.loop_guard_wall_hard_sec"`)}
 	}
 	if _, ok := _c.mutation.ForgetPolicyJSON(); !ok {
 		return &ValidationError{Name: "forget_policy_json", err: errors.New(`ent: missing required field "AgentRuntimeSetting.forget_policy_json"`)}
@@ -3833,6 +3896,18 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.ToolsExecutionTimeoutSec(); ok {
 		_spec.SetField(agentruntimesetting.FieldToolsExecutionTimeoutSec, field.TypeInt, value)
 		_node.ToolsExecutionTimeoutSec = value
+	}
+	if value, ok := _c.mutation.LoopGuardToolLoadMax(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardToolLoadMax, field.TypeInt, value)
+		_node.LoopGuardToolLoadMax = value
+	}
+	if value, ok := _c.mutation.LoopGuardWallSoftSec(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardWallSoftSec, field.TypeInt, value)
+		_node.LoopGuardWallSoftSec = value
+	}
+	if value, ok := _c.mutation.LoopGuardWallHardSec(); ok {
+		_spec.SetField(agentruntimesetting.FieldLoopGuardWallHardSec, field.TypeInt, value)
+		_node.LoopGuardWallHardSec = value
 	}
 	if value, ok := _c.mutation.ForgetPolicyJSON(); ok {
 		_spec.SetField(agentruntimesetting.FieldForgetPolicyJSON, field.TypeString, value)
@@ -6007,6 +6082,60 @@ func (u *AgentRuntimeSettingUpsert) UpdateToolsExecutionTimeoutSec() *AgentRunti
 // AddToolsExecutionTimeoutSec adds v to the "tools_execution_timeout_sec" field.
 func (u *AgentRuntimeSettingUpsert) AddToolsExecutionTimeoutSec(v int) *AgentRuntimeSettingUpsert {
 	u.Add(agentruntimesetting.FieldToolsExecutionTimeoutSec, v)
+	return u
+}
+
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (u *AgentRuntimeSettingUpsert) SetLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldLoopGuardToolLoadMax, v)
+	return u
+}
+
+// UpdateLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateLoopGuardToolLoadMax() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldLoopGuardToolLoadMax)
+	return u
+}
+
+// AddLoopGuardToolLoadMax adds v to the "loop_guard_tool_load_max" field.
+func (u *AgentRuntimeSettingUpsert) AddLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldLoopGuardToolLoadMax, v)
+	return u
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (u *AgentRuntimeSettingUpsert) SetLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldLoopGuardWallSoftSec, v)
+	return u
+}
+
+// UpdateLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateLoopGuardWallSoftSec() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldLoopGuardWallSoftSec)
+	return u
+}
+
+// AddLoopGuardWallSoftSec adds v to the "loop_guard_wall_soft_sec" field.
+func (u *AgentRuntimeSettingUpsert) AddLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldLoopGuardWallSoftSec, v)
+	return u
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (u *AgentRuntimeSettingUpsert) SetLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldLoopGuardWallHardSec, v)
+	return u
+}
+
+// UpdateLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateLoopGuardWallHardSec() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldLoopGuardWallHardSec)
+	return u
+}
+
+// AddLoopGuardWallHardSec adds v to the "loop_guard_wall_hard_sec" field.
+func (u *AgentRuntimeSettingUpsert) AddLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldLoopGuardWallHardSec, v)
 	return u
 }
 
@@ -8583,6 +8712,69 @@ func (u *AgentRuntimeSettingUpsertOne) AddToolsExecutionTimeoutSec(v int) *Agent
 func (u *AgentRuntimeSettingUpsertOne) UpdateToolsExecutionTimeoutSec() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateToolsExecutionTimeoutSec()
+	})
+}
+
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (u *AgentRuntimeSettingUpsertOne) SetLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetLoopGuardToolLoadMax(v)
+	})
+}
+
+// AddLoopGuardToolLoadMax adds v to the "loop_guard_tool_load_max" field.
+func (u *AgentRuntimeSettingUpsertOne) AddLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddLoopGuardToolLoadMax(v)
+	})
+}
+
+// UpdateLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateLoopGuardToolLoadMax() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateLoopGuardToolLoadMax()
+	})
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (u *AgentRuntimeSettingUpsertOne) SetLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetLoopGuardWallSoftSec(v)
+	})
+}
+
+// AddLoopGuardWallSoftSec adds v to the "loop_guard_wall_soft_sec" field.
+func (u *AgentRuntimeSettingUpsertOne) AddLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddLoopGuardWallSoftSec(v)
+	})
+}
+
+// UpdateLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateLoopGuardWallSoftSec() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateLoopGuardWallSoftSec()
+	})
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (u *AgentRuntimeSettingUpsertOne) SetLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetLoopGuardWallHardSec(v)
+	})
+}
+
+// AddLoopGuardWallHardSec adds v to the "loop_guard_wall_hard_sec" field.
+func (u *AgentRuntimeSettingUpsertOne) AddLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddLoopGuardWallHardSec(v)
+	})
+}
+
+// UpdateLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateLoopGuardWallHardSec() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateLoopGuardWallHardSec()
 	})
 }
 
@@ -11339,6 +11531,69 @@ func (u *AgentRuntimeSettingUpsertBulk) AddToolsExecutionTimeoutSec(v int) *Agen
 func (u *AgentRuntimeSettingUpsertBulk) UpdateToolsExecutionTimeoutSec() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateToolsExecutionTimeoutSec()
+	})
+}
+
+// SetLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetLoopGuardToolLoadMax(v)
+	})
+}
+
+// AddLoopGuardToolLoadMax adds v to the "loop_guard_tool_load_max" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddLoopGuardToolLoadMax(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddLoopGuardToolLoadMax(v)
+	})
+}
+
+// UpdateLoopGuardToolLoadMax sets the "loop_guard_tool_load_max" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateLoopGuardToolLoadMax() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateLoopGuardToolLoadMax()
+	})
+}
+
+// SetLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetLoopGuardWallSoftSec(v)
+	})
+}
+
+// AddLoopGuardWallSoftSec adds v to the "loop_guard_wall_soft_sec" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddLoopGuardWallSoftSec(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddLoopGuardWallSoftSec(v)
+	})
+}
+
+// UpdateLoopGuardWallSoftSec sets the "loop_guard_wall_soft_sec" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateLoopGuardWallSoftSec() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateLoopGuardWallSoftSec()
+	})
+}
+
+// SetLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetLoopGuardWallHardSec(v)
+	})
+}
+
+// AddLoopGuardWallHardSec adds v to the "loop_guard_wall_hard_sec" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddLoopGuardWallHardSec(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddLoopGuardWallHardSec(v)
+	})
+}
+
+// UpdateLoopGuardWallHardSec sets the "loop_guard_wall_hard_sec" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateLoopGuardWallHardSec() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateLoopGuardWallHardSec()
 	})
 }
 

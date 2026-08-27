@@ -192,6 +192,13 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Bool("tools_command_safety_enabled").Default(false),
 		// ToolsExecutionTimeoutSec is the per-tool execution timeout in seconds (0 = use default safety-net).
 		field.Int("tools_execution_timeout_sec").Default(0),
+		// 79-runtime-governance 二轮 Q1（S02「合法失控」根修）：行为模式闸阈值。
+		// 三列均为 0=跟随内置常量默认（tool_load 配额 8 / wall 软闸 240s / 硬闸 600s），
+		// >0 覆盖默认。经 PolicyResolver 每调用读取（classResolverManaged），
+		// 变更零重建生效；SQL 直改需重启或等 Reload（与 tools_execution_timeout_sec 同语义）。
+		field.Int("loop_guard_tool_load_max").Default(0),
+		field.Int("loop_guard_wall_soft_sec").Default(0),
+		field.Int("loop_guard_wall_hard_sec").Default(0),
 		// ForgetPolicyJSON stores the memory butler's forget policy configuration.
 		field.String("forget_policy_json").Default("{}"),
 		// ToolWeightJSON stores tool weight analysis results for prompt priority hints.

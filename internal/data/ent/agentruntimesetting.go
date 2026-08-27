@@ -304,6 +304,12 @@ type AgentRuntimeSetting struct {
 	ToolsCommandSafetyEnabled bool `json:"tools_command_safety_enabled,omitempty"`
 	// ToolsExecutionTimeoutSec holds the value of the "tools_execution_timeout_sec" field.
 	ToolsExecutionTimeoutSec int `json:"tools_execution_timeout_sec,omitempty"`
+	// LoopGuardToolLoadMax holds the value of the "loop_guard_tool_load_max" field.
+	LoopGuardToolLoadMax int `json:"loop_guard_tool_load_max,omitempty"`
+	// LoopGuardWallSoftSec holds the value of the "loop_guard_wall_soft_sec" field.
+	LoopGuardWallSoftSec int `json:"loop_guard_wall_soft_sec,omitempty"`
+	// LoopGuardWallHardSec holds the value of the "loop_guard_wall_hard_sec" field.
+	LoopGuardWallHardSec int `json:"loop_guard_wall_hard_sec,omitempty"`
 	// ForgetPolicyJSON holds the value of the "forget_policy_json" field.
 	ForgetPolicyJSON string `json:"forget_policy_json,omitempty"`
 	// ToolWeightJSON holds the value of the "tool_weight_json" field.
@@ -328,7 +334,7 @@ func (*AgentRuntimeSetting) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case agentruntimesetting.FieldMemoryMinScore, agentruntimesetting.FieldGuardrailMaxChangePerPeriod, agentruntimesetting.FieldL0SummaryThreshold, agentruntimesetting.FieldL2EpisodeMinImportance, agentruntimesetting.FieldL3RecallMinScore, agentruntimesetting.FieldL3ArchiveThreshold, agentruntimesetting.FieldTokenTailoringSafetyMargin, agentruntimesetting.FieldCompressionBufferRatio, agentruntimesetting.FieldSoftTriggerRatio, agentruntimesetting.FieldHardTriggerRatio, agentruntimesetting.FieldToolsRetryBackoffFactor:
 			values[i] = new(sql.NullFloat64)
-		case agentruntimesetting.FieldSubagentsMaxConcurrency, agentruntimesetting.FieldSubagentsMaxGenerationDepth, agentruntimesetting.FieldSubagentsMaxChildrenPerAgent, agentruntimesetting.FieldSubagentsArchiveAfterMinutes, agentruntimesetting.FieldSubagentsMaxRetries, agentruntimesetting.FieldSubagentsStoredResultRunes, agentruntimesetting.FieldSubagentsStoredSummaryRunes, agentruntimesetting.FieldMemoryMaxChunkLength, agentruntimesetting.FieldMemoryMaxResults, agentruntimesetting.FieldHeartbeatIntervalMinutes, agentruntimesetting.FieldGuardrailMinDataPoints, agentruntimesetting.FieldGuardrailRollbackOnDeclinePercent, agentruntimesetting.FieldL0RecentWindowTurns, agentruntimesetting.FieldL0RecentWindowTokens, agentruntimesetting.FieldL0SummaryKeepTurns, agentruntimesetting.FieldL0CompressMinGapSec, agentruntimesetting.FieldL0L3MaxChunks, agentruntimesetting.FieldL0L4MaxPaths, agentruntimesetting.FieldL1BudgetTokens, agentruntimesetting.FieldL1FieldMaxTokens, agentruntimesetting.FieldL1HistoryKeepRevisions, agentruntimesetting.FieldL1ArchiveOnIdleMinutes, agentruntimesetting.FieldL2RecallMax, agentruntimesetting.FieldL2RetentionDays, agentruntimesetting.FieldL2ArchiveAfterDays, agentruntimesetting.FieldL3RecallTopK, agentruntimesetting.FieldL3DecayIntervalHours, agentruntimesetting.FieldL3MaxPerRecallChars, agentruntimesetting.FieldL3RecallBudgetTokens, agentruntimesetting.FieldL2RecallBudgetTokens, agentruntimesetting.FieldL4GraphMaxNeighbors, agentruntimesetting.FieldL4GraphMaxHops, agentruntimesetting.FieldL4DecayIntervalHours, agentruntimesetting.FieldEvoMinEpisodes, agentruntimesetting.FieldEvoMinNegativeFeedback, agentruntimesetting.FieldEvoThrottleHours, agentruntimesetting.FieldEvoProposalTTLDays, agentruntimesetting.FieldEvoPersonaMaxChars, agentruntimesetting.FieldEvoSystemPromptMaxAppends, agentruntimesetting.FieldCompressLlmCacheMaxEntries, agentruntimesetting.FieldCompressLlmCacheTTLSec, agentruntimesetting.FieldAssemblyBudgetSoftTokens, agentruntimesetting.FieldAssemblyBudgetHardTokens, agentruntimesetting.FieldMaxLlmCalls, agentruntimesetting.FieldMaxToolIterations, agentruntimesetting.FieldRalphLoopMaxIterations, agentruntimesetting.FieldRalphLoopVerifyTimeoutSeconds, agentruntimesetting.FieldToolsRetryMaxAttempts, agentruntimesetting.FieldToolsRetryInitialIntervalMs, agentruntimesetting.FieldToolsRetryMaxIntervalMs, agentruntimesetting.FieldToolsExecutionTimeoutSec, agentruntimesetting.FieldVerificationTruncateChars:
+		case agentruntimesetting.FieldSubagentsMaxConcurrency, agentruntimesetting.FieldSubagentsMaxGenerationDepth, agentruntimesetting.FieldSubagentsMaxChildrenPerAgent, agentruntimesetting.FieldSubagentsArchiveAfterMinutes, agentruntimesetting.FieldSubagentsMaxRetries, agentruntimesetting.FieldSubagentsStoredResultRunes, agentruntimesetting.FieldSubagentsStoredSummaryRunes, agentruntimesetting.FieldMemoryMaxChunkLength, agentruntimesetting.FieldMemoryMaxResults, agentruntimesetting.FieldHeartbeatIntervalMinutes, agentruntimesetting.FieldGuardrailMinDataPoints, agentruntimesetting.FieldGuardrailRollbackOnDeclinePercent, agentruntimesetting.FieldL0RecentWindowTurns, agentruntimesetting.FieldL0RecentWindowTokens, agentruntimesetting.FieldL0SummaryKeepTurns, agentruntimesetting.FieldL0CompressMinGapSec, agentruntimesetting.FieldL0L3MaxChunks, agentruntimesetting.FieldL0L4MaxPaths, agentruntimesetting.FieldL1BudgetTokens, agentruntimesetting.FieldL1FieldMaxTokens, agentruntimesetting.FieldL1HistoryKeepRevisions, agentruntimesetting.FieldL1ArchiveOnIdleMinutes, agentruntimesetting.FieldL2RecallMax, agentruntimesetting.FieldL2RetentionDays, agentruntimesetting.FieldL2ArchiveAfterDays, agentruntimesetting.FieldL3RecallTopK, agentruntimesetting.FieldL3DecayIntervalHours, agentruntimesetting.FieldL3MaxPerRecallChars, agentruntimesetting.FieldL3RecallBudgetTokens, agentruntimesetting.FieldL2RecallBudgetTokens, agentruntimesetting.FieldL4GraphMaxNeighbors, agentruntimesetting.FieldL4GraphMaxHops, agentruntimesetting.FieldL4DecayIntervalHours, agentruntimesetting.FieldEvoMinEpisodes, agentruntimesetting.FieldEvoMinNegativeFeedback, agentruntimesetting.FieldEvoThrottleHours, agentruntimesetting.FieldEvoProposalTTLDays, agentruntimesetting.FieldEvoPersonaMaxChars, agentruntimesetting.FieldEvoSystemPromptMaxAppends, agentruntimesetting.FieldCompressLlmCacheMaxEntries, agentruntimesetting.FieldCompressLlmCacheTTLSec, agentruntimesetting.FieldAssemblyBudgetSoftTokens, agentruntimesetting.FieldAssemblyBudgetHardTokens, agentruntimesetting.FieldMaxLlmCalls, agentruntimesetting.FieldMaxToolIterations, agentruntimesetting.FieldRalphLoopMaxIterations, agentruntimesetting.FieldRalphLoopVerifyTimeoutSeconds, agentruntimesetting.FieldToolsRetryMaxAttempts, agentruntimesetting.FieldToolsRetryInitialIntervalMs, agentruntimesetting.FieldToolsRetryMaxIntervalMs, agentruntimesetting.FieldToolsExecutionTimeoutSec, agentruntimesetting.FieldLoopGuardToolLoadMax, agentruntimesetting.FieldLoopGuardWallSoftSec, agentruntimesetting.FieldLoopGuardWallHardSec, agentruntimesetting.FieldVerificationTruncateChars:
 			values[i] = new(sql.NullInt64)
 		case agentruntimesetting.FieldID, agentruntimesetting.FieldSubagentsModelOverride, agentruntimesetting.FieldToolsProfile, agentruntimesetting.FieldToolsToolCallPrefix, agentruntimesetting.FieldToolsAllowJSON, agentruntimesetting.FieldToolsDenyJSON, agentruntimesetting.FieldToolsConcurrentAllowJSON, agentruntimesetting.FieldL0CompressProvider, agentruntimesetting.FieldL0CompressModel, agentruntimesetting.FieldMemoryWorkerProvider, agentruntimesetting.FieldMemoryWorkerModel, agentruntimesetting.FieldL0TruncateStrategy, agentruntimesetting.FieldL0SnapshotMode, agentruntimesetting.FieldL1DefaultSchemaID, agentruntimesetting.FieldL2IndexEmbeddingModel, agentruntimesetting.FieldL3RecallScopesJSON, agentruntimesetting.FieldL3EmbeddingModel, agentruntimesetting.FieldL4DecayOverridesJSON, agentruntimesetting.FieldSkillRuntimeJSON, agentruntimesetting.FieldChannelID, agentruntimesetting.FieldChatID, agentruntimesetting.FieldWorkspace, agentruntimesetting.FieldReasoningMode, agentruntimesetting.FieldReasoningLevel, agentruntimesetting.FieldVariablesJSON, agentruntimesetting.FieldModelInstructionsJSON, agentruntimesetting.FieldTokenTailoringStrategy, agentruntimesetting.FieldSkillLoadMode, agentruntimesetting.FieldCodeExecutorType, agentruntimesetting.FieldPlannerKind, agentruntimesetting.FieldPlannerConfigJSON, agentruntimesetting.FieldRalphLoopCompletionPromise, agentruntimesetting.FieldRalphLoopVerifyCommand, agentruntimesetting.FieldRalphLoopPromiseTagOpen, agentruntimesetting.FieldRalphLoopPromiseTagClose, agentruntimesetting.FieldRalphLoopVerifyWorkDir, agentruntimesetting.FieldOutputSchemaJSON, agentruntimesetting.FieldModelSelector, agentruntimesetting.FieldToolsCircuitBreakerOverridesJSON, agentruntimesetting.FieldToolsDeferredJSON, agentruntimesetting.FieldForgetPolicyJSON, agentruntimesetting.FieldToolWeightJSON, agentruntimesetting.FieldDreamSnapshotJSON, agentruntimesetting.FieldCreatedAt, agentruntimesetting.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
@@ -1217,6 +1223,24 @@ func (_m *AgentRuntimeSetting) assignValues(columns []string, values []any) erro
 			} else if value.Valid {
 				_m.ToolsExecutionTimeoutSec = int(value.Int64)
 			}
+		case agentruntimesetting.FieldLoopGuardToolLoadMax:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field loop_guard_tool_load_max", values[i])
+			} else if value.Valid {
+				_m.LoopGuardToolLoadMax = int(value.Int64)
+			}
+		case agentruntimesetting.FieldLoopGuardWallSoftSec:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field loop_guard_wall_soft_sec", values[i])
+			} else if value.Valid {
+				_m.LoopGuardWallSoftSec = int(value.Int64)
+			}
+		case agentruntimesetting.FieldLoopGuardWallHardSec:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field loop_guard_wall_hard_sec", values[i])
+			} else if value.Valid {
+				_m.LoopGuardWallHardSec = int(value.Int64)
+			}
 		case agentruntimesetting.FieldForgetPolicyJSON:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field forget_policy_json", values[i])
@@ -1720,6 +1744,15 @@ func (_m *AgentRuntimeSetting) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("tools_execution_timeout_sec=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ToolsExecutionTimeoutSec))
+	builder.WriteString(", ")
+	builder.WriteString("loop_guard_tool_load_max=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LoopGuardToolLoadMax))
+	builder.WriteString(", ")
+	builder.WriteString("loop_guard_wall_soft_sec=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LoopGuardWallSoftSec))
+	builder.WriteString(", ")
+	builder.WriteString("loop_guard_wall_hard_sec=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LoopGuardWallHardSec))
 	builder.WriteString(", ")
 	builder.WriteString("forget_policy_json=")
 	builder.WriteString(_m.ForgetPolicyJSON)

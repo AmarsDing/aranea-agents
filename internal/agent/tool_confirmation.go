@@ -86,7 +86,12 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				loggateway.Str("agent_id", h.ag.ID),
 				loggateway.Str("decision_reason", decision.reason))
 		}
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
+		// P1-10 不变量对放行态同样成立（2026-08-27 三轮审查根修）：产品
+		// 门禁已作出「无需确认」裁定，与另两出口（:75 pluginAllow、:218
+		// approve）对齐标记 handled——执行序若如 confirm_policy.go 注释
+		// 所述「插件在链后」，ConfirmationGuardPlugin 不得再硬拦已放行
+		// 的调用（param_rule_allow 走的正是本出口）。
+		return &trpctool.BeforeToolResult{Context: plugintrpc.WithToolConfirmHandled(ctx)}, nil
 	}
 
 	// effectiveConfirmTimeout resolves the confirmation wait budget (test-overridable).

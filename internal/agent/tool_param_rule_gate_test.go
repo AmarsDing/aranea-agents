@@ -5,28 +5,39 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/biz/policyrule"
 	biztool "aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/event"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // gateToolLookup 实现 biz.TeamToolLookup：内嵌 tool_build_catalog_test.go 的
-// fakeToolLookup 复用全部存量方法，仅覆写参数规则读口并捕获查询键。
+// fakeToolLookup 复用全部存量方法，仅覆写参数规则读口并捕获查询键；writes
+// 非 nil 时捕获 RecordToolInvocation 审计写入（三轮审查 A-L2）。
 type gateToolLookup struct {
 	fakeToolLookup
 	rules   []biztool.ToolParamRule
 	err     error
 	gotKeys []string
+	writes  chan biztool.ToolInvocationWrite
 }
 
 func (f *gateToolLookup) ListEnabledParamRulesForGate(_ context.Context, key string) ([]biztool.ToolParamRule, error) {
 	f.gotKeys = append(f.gotKeys, key)
 	return f.rules, f.err
+}
+
+func (f *gateToolLookup) RecordToolInvocation(_ context.Context, w biztool.ToolInvocationWrite) error {
+	if f.writes != nil {
+		f.writes <- w
+	}
+	return nil
 }
 
 func newParamRuleGateTestHook(t *testing.T, lookup biz.TeamToolLookup) (interface {
@@ -64,9 +75,12 @@ func TestParamRuleGate_NilToolUCNotRegistered(t *testing.T) {
 
 func TestParamRuleGate_DenyRejects(t *testing.T) {
 	t.Parallel()
-	hook, _ := newParamRuleGateTestHook(t, &gateToolLookup{rules: []biztool.ToolParamRule{
-		{ID: "builtin-exec-deny-rmrf", Pattern: "rm -rf*", Effect: "deny", Priority: 10, Enabled: true},
-	}})
+	hook, lookup := newParamRuleGateTestHook(t, &gateToolLookup{
+		rules: []biztool.ToolParamRule{
+			{ID: "builtin-exec-deny-rmrf", Pattern: "rm -rf*", Effect: "deny", Priority: 10, Enabled: true},
+		},
+		writes: make(chan biztool.ToolInvocationWrite, 1),
+	})
 	res := callParamRuleGate(hook, "exec_command", `{"command":"rm -rf /tmp/x"}`)
 	if res.CustomResult == nil {
 		t.Fatal("deny should short-circuit with CustomResult")
@@ -82,6 +96,26 @@ func TestParamRuleGate_DenyRejects(t *testing.T) {
 	}
 	if v := paramRuleVerdictFromCtx(res.Context); v != nil {
 		t.Fatalf("deny must not write ctx verdict, got %+v", v)
+	}
+	// 三轮审查（A-L2）补钉：deny 的 tool_invocations 审计字段断言——Status/
+	// ErrorCode/ToolCallID 任一被回退改坏此前测试全绿。写入在后台 goroutine
+	// （recordToolInvocationWrite safego.Go），通道捕获。
+	select {
+	case w := <-lookup.writes:
+		if w.Status != "blocked" {
+			t.Errorf("deny write Status = %q, want blocked", w.Status)
+		}
+		if w.ErrorCode != event.ErrorCodeParamRuleDenied {
+			t.Errorf("deny write ErrorCode = %q, want %q", w.ErrorCode, event.ErrorCodeParamRuleDenied)
+		}
+		if w.ToolCallID != "call-1" {
+			t.Errorf("deny write ToolCallID = %q, want call-1（决策旁车按 ToolCallID upsert 的关联键）", w.ToolCallID)
+		}
+		if !strings.Contains(w.ErrorMessage, "builtin-exec-deny-rmrf") {
+			t.Errorf("deny write ErrorMessage 应含规则 ID 供审计追溯, got %q", w.ErrorMessage)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("deny 后未捕获 tool_invocations blocked 写入")
 	}
 }
 
@@ -267,11 +301,11 @@ func TestCallbackChain_ParamRuleGateRegisteredInOrder(t *testing.T) {
 	deps.ToolUC = &gateToolLookup{rules: []biztool.ToolParamRule{
 		{ID: "builtin-exec-deny-rmrf", Pattern: "rm -rf*", Effect: "deny", Priority: 10, Enabled: true},
 	}}
-	chain := productCallbackChain(context.Background(), ag, deps, nil)
+	chain := productCallbackChain(context.Background(), ag, deps, newTestGate(nil, nil))
 	if chain == nil {
 		t.Fatal("expected chain")
 	}
-	gatePos, prio3Seen, prio4Pos := -1, 0, -1
+	gatePos, prio3Seen, prio4Pos, confirmPos := -1, 0, -1, -1
 	for i, cb := range chain.Entries() {
 		h, ok := cb.(callbacks.BeforeToolHook)
 		if !ok {
@@ -298,6 +332,10 @@ func TestCallbackChain_ParamRuleGateRegisteredInOrder(t *testing.T) {
 			if prio4Pos < 0 {
 				prio4Pos = i
 			}
+		case 10:
+			if confirmPos < 0 {
+				confirmPos = i
+			}
 		}
 	}
 	if gatePos < 0 {
@@ -305,6 +343,15 @@ func TestCallbackChain_ParamRuleGateRegisteredInOrder(t *testing.T) {
 	}
 	if prio4Pos >= 0 && gatePos > prio4Pos {
 		t.Fatalf("param gate (idx %d) must execute before priority-4 hooks (idx %d)", gatePos, prio4Pos)
+	}
+	// 三轮审查（A-L2）补钉：gate(3) < 确认门禁(10) 相对序——若确认门禁
+	// priority 被改到 ≤3，ask verdict 在 decide() 之后才写入 ctx，静默
+	// fail-open 无任何报警。
+	if confirmPos < 0 {
+		t.Fatal("confirmation hook (priority 10) not registered in assembled chain")
+	}
+	if gatePos > confirmPos {
+		t.Fatalf("param gate (idx %d) must execute before confirmation hook (idx %d)——ask verdict 先写后消费", gatePos, confirmPos)
 	}
 }
 

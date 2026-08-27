@@ -170,6 +170,10 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"ToolsDeferredJSON":                classFullRebuild,
 	"ToolsCommandSafetyEnabled":        classFullRebuild,
 	"ToolsExecutionTimeoutSec": classResolverManaged, // P1-2：policyResolver 每调用读取
+	// Q1 行为模式闸阈值（S02 根修）：tool_loop_guard 每调用经 policyResolver 读取。
+	"LoopGuardToolLoadMax": classResolverManaged,
+	"LoopGuardWallSoftSec": classResolverManaged,
+	"LoopGuardWallHardSec": classResolverManaged,
 	"MaxLLMCalls":              classFullRebuild,
 	"MaxToolIterations":        classFullRebuild,
 	"EnableTokenTailoring":          classFullRebuild,

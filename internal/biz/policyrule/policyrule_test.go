@@ -116,17 +116,21 @@ func TestMatchText_GlobCrossesNewline(t *testing.T) {
 	}
 }
 
-// TestBuiltinSeedVectors_Hardened 钉死 20261263/20261265 内置种子 pattern 的
-// 安全语义（pattern 与迁移文件保持一致——改迁移必须同步本表，反之亦然）：
+// TestBuiltinSeedVectors_Hardened 钉死 20261263/20261265/20261267 内置种子
+// pattern 的安全语义（pattern 与迁移文件保持一致——改迁移必须同步本表，反之
+// 亦然）：
 //   - deny 分隔符类含 ( $ 反引号：$(cmd)/`cmd`/(cmd) 命令替换与子 shell 命中；
-//   - rm flags 归一：-rf/-fr/-r -f/-f -r 变形全命中；
+//   - rm flags 全覆盖：任意多段 flags（含长选项与 -- 分隔）中至少一段短选项
+//     簇含 r/R 或 --recursive——-rf/-fr/-r -f/--no-preserve-root 变形/
+//     --recursive --force/-rfv 粘连全命中；短选项簇限定单 dash 前缀，
+//     --verbose/--force 等含 r 字母的长选项不误伤；
 //   - gns3 allow 单行锚定：多行注入（"show version\nwrite erase"）不落 allow，
 //     安全方向落兜底 ask。
 func TestBuiltinSeedVectors_Hardened(t *testing.T) {
 	const sep = "[;&|/\\s\"'($`]"
 	const (
-		denyRmrf     = `re:(?i)(^|` + sep + `)rm\s+-(rf|fr|r\s+-f|f\s+-r)\s+(/|~|\$HOME|\*)`
-		denySudoRmrf = `re:(?i)(^|` + sep + `)sudo\s+(-\S+\s+)*rm\s+-(rf|fr|r\s+-f|f\s+-r)\s+(/|~|\$HOME|\*)`
+		denyRmrf     = `re:(?i)(^|` + sep + `)rm(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(/|~|\$HOME|\*)`
+		denySudoRmrf = `re:(?i)(^|` + sep + `)sudo\s+(-\S+\s+)*rm(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(/|~|\$HOME|\*)`
 		denyMkfs     = `re:(?i)(^|` + sep + `)mkfs[\s.]`
 		denyShutdown = `re:(?i)(^|` + sep + `)shutdown(\s|$)`
 		allowShow    = `re:(?i)^show [^\n]*$`
@@ -145,6 +149,15 @@ func TestBuiltinSeedVectors_Hardened(t *testing.T) {
 		{"家目录 ~", denyRmrf, "rm -rf ~", true},
 		{"$HOME", denyRmrf, "rm -rf $HOME", true},
 		{"通配 *", denyRmrf, "rm -rf *", true},
+		// --- rm flags 变形（20261265 版全部绕过，20261267 根修） ---
+		{"--no-preserve-root 变形", denyRmrf, "rm -rf --no-preserve-root /", true},
+		{"长选项 --recursive --force", denyRmrf, "rm --recursive --force /", true},
+		{"长短混合 -r --force", denyRmrf, "rm -r --force /", true},
+		{"flags 粘连字母 -rfv", denyRmrf, "rm -rfv /", true},
+		{"flags 前置 -v -rf", denyRmrf, "rm -v -rf /", true},
+		{"-- 选项分隔符", denyRmrf, "rm -rf -- /", true},
+		{"大写 -RF", denyRmrf, "rm -RF /", true},
+		{"等值长选项穿插", denyRmrf, "rm --preserve-root=false -rf /", true},
 		// --- 命令替换/子 shell 分隔符（加固前全部绕过） ---
 		{"$() 命令替换", denyRmrf, "$(rm -rf /)", true},
 		{"反引号替换", denyRmrf, "`rm -rf /`", true},
@@ -152,12 +165,17 @@ func TestBuiltinSeedVectors_Hardened(t *testing.T) {
 		{"; 链式", denyRmrf, "echo ok; rm -rf /", true},
 		// --- rm deny 反向：相对路径与非危险命令不误伤 ---
 		{"相对路径不命中", denyRmrf, "rm -rf tmp/build", false},
+		{"相对路径 recursive 长选项不命中", denyRmrf, "rm --recursive --force ./build", false},
+		{"--verbose 无递归语义不误伤", denyRmrf, "rm --verbose /tmp/x", false},
+		{"仅 -f 无递归不误伤", denyRmrf, "rm -f /tmp/x", false},
 		{"普通命令不命中", denyRmrf, "ls -la", false},
 		// --- sudo 包装 ---
 		{"sudo 基本", denySudoRmrf, "sudo rm -rf /", true},
 		{"sudo flags 逆序", denySudoRmrf, "sudo rm -fr /", true},
 		{"sudo 带选项", denySudoRmrf, "sudo -i rm -rf /", true},
 		{"sudo $HOME", denySudoRmrf, "sudo rm -rf $HOME", true},
+		{"sudo --no-preserve-root 变形", denySudoRmrf, "sudo rm -rf --no-preserve-root /", true},
+		{"sudo 长选项", denySudoRmrf, "sudo rm --recursive --force /", true},
 		// --- mkfs ---
 		{"mkfs 点分", denyMkfs, "mkfs.ext4 /dev/sda", true},
 		{"mkfs 空格", denyMkfs, "mkfs /dev/sda", true},

@@ -139,7 +139,7 @@ func TestGetTeamRunStats_AssemblesAllSources(t *testing.T) {
 		},
 		&statsDecisionRepo{gates: decision.RunGateStats{
 			LoopGuardBlocks: 2, BudgetTripped: true, NoProgressTripped: true,
-			PruneCount: 5, PruneBytes: 20000, CompactCount: 1,
+			PruneCount: 5, PruneBytes: 20000, CompactCount: 1, ParamRuleDenies: 3,
 		}})
 
 	resp, err := svc.GetTeamRunStats(context.Background(), &v1.GetTeamRunStatsRequest{Id: "run-1"})
@@ -164,6 +164,9 @@ func TestGetTeamRunStats_AssemblesAllSources(t *testing.T) {
 	}
 	if st.GetPruneCount() != 5 || st.GetPruneBytes() != 20000 || st.GetCompactCount() != 1 {
 		t.Errorf("prune/compact = %d/%d/%d, want 5/20000/1", st.GetPruneCount(), st.GetPruneBytes(), st.GetCompactCount())
+	}
+	if st.GetParamRuleDenies() != 3 {
+		t.Errorf("param_rule_denies = %d, want 3（H7 proto 映射钉死）", st.GetParamRuleDenies())
 	}
 	if len(st.GetMembers()) != 3 {
 		t.Fatalf("members = %+v, want 3（planner + unknown + executor 纯 step 行）", st.GetMembers())

@@ -194,6 +194,16 @@ type AgentRuntimeSettings struct {
 	// This covers BeforeTool callbacks, actual execution, and AfterTool callbacks.
 	// A safety-net default is applied in the agent layer when this is zero.
 	ToolsExecutionTimeoutSec int
+	// 79-runtime-governance 二轮 Q1（S02「合法失控」根修）：行为模式闸阈值。
+	// 0 = 跟随 agent 层内置常量默认（装载配额 8 / 软闸 240s / 硬闸 600s），>0 覆盖。
+	// 经 PolicyResolver 每调用读取（resolverManagedPolicyFields），变更零重建生效。
+	// LoopGuardToolLoadMax limits successful tool_load activations per node (repeat loads
+	// of an already-active tool are blocked independently of this quota).
+	LoopGuardToolLoadMax int
+	// LoopGuardWallSoftSec injects a degradation cue once a node runs longer than this.
+	LoopGuardWallSoftSec int
+	// LoopGuardWallHardSec force-terminates the node (StopError) beyond this elapsed time.
+	LoopGuardWallHardSec int
 	// MaxLLMCalls limits the number of LLM calls per turn (0 = unlimited).
 	// Maps to framework llmagent.WithMaxLLMCalls.
 	MaxLLMCalls int

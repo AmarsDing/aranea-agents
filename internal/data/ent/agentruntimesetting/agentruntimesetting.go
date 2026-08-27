@@ -299,6 +299,12 @@ const (
 	FieldToolsCommandSafetyEnabled = "tools_command_safety_enabled"
 	// FieldToolsExecutionTimeoutSec holds the string denoting the tools_execution_timeout_sec field in the database.
 	FieldToolsExecutionTimeoutSec = "tools_execution_timeout_sec"
+	// FieldLoopGuardToolLoadMax holds the string denoting the loop_guard_tool_load_max field in the database.
+	FieldLoopGuardToolLoadMax = "loop_guard_tool_load_max"
+	// FieldLoopGuardWallSoftSec holds the string denoting the loop_guard_wall_soft_sec field in the database.
+	FieldLoopGuardWallSoftSec = "loop_guard_wall_soft_sec"
+	// FieldLoopGuardWallHardSec holds the string denoting the loop_guard_wall_hard_sec field in the database.
+	FieldLoopGuardWallHardSec = "loop_guard_wall_hard_sec"
 	// FieldForgetPolicyJSON holds the string denoting the forget_policy_json field in the database.
 	FieldForgetPolicyJSON = "forget_policy_json"
 	// FieldToolWeightJSON holds the string denoting the tool_weight_json field in the database.
@@ -462,6 +468,9 @@ var Columns = []string{
 	FieldToolsDeferredJSON,
 	FieldToolsCommandSafetyEnabled,
 	FieldToolsExecutionTimeoutSec,
+	FieldLoopGuardToolLoadMax,
+	FieldLoopGuardWallSoftSec,
+	FieldLoopGuardWallHardSec,
 	FieldForgetPolicyJSON,
 	FieldToolWeightJSON,
 	FieldDreamSnapshotJSON,
@@ -769,6 +778,12 @@ var (
 	DefaultToolsCommandSafetyEnabled bool
 	// DefaultToolsExecutionTimeoutSec holds the default value on creation for the "tools_execution_timeout_sec" field.
 	DefaultToolsExecutionTimeoutSec int
+	// DefaultLoopGuardToolLoadMax holds the default value on creation for the "loop_guard_tool_load_max" field.
+	DefaultLoopGuardToolLoadMax int
+	// DefaultLoopGuardWallSoftSec holds the default value on creation for the "loop_guard_wall_soft_sec" field.
+	DefaultLoopGuardWallSoftSec int
+	// DefaultLoopGuardWallHardSec holds the default value on creation for the "loop_guard_wall_hard_sec" field.
+	DefaultLoopGuardWallHardSec int
 	// DefaultForgetPolicyJSON holds the default value on creation for the "forget_policy_json" field.
 	DefaultForgetPolicyJSON string
 	// DefaultToolWeightJSON holds the default value on creation for the "tool_weight_json" field.
@@ -1511,6 +1526,21 @@ func ByToolsCommandSafetyEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByToolsExecutionTimeoutSec orders the results by the tools_execution_timeout_sec field.
 func ByToolsExecutionTimeoutSec(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldToolsExecutionTimeoutSec, opts...).ToFunc()
+}
+
+// ByLoopGuardToolLoadMax orders the results by the loop_guard_tool_load_max field.
+func ByLoopGuardToolLoadMax(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLoopGuardToolLoadMax, opts...).ToFunc()
+}
+
+// ByLoopGuardWallSoftSec orders the results by the loop_guard_wall_soft_sec field.
+func ByLoopGuardWallSoftSec(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLoopGuardWallSoftSec, opts...).ToFunc()
+}
+
+// ByLoopGuardWallHardSec orders the results by the loop_guard_wall_hard_sec field.
+func ByLoopGuardWallHardSec(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLoopGuardWallHardSec, opts...).ToFunc()
 }
 
 // ByForgetPolicyJSON orders the results by the forget_policy_json field.

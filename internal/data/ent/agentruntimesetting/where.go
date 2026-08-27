@@ -783,6 +783,21 @@ func ToolsExecutionTimeoutSec(v int) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldToolsExecutionTimeoutSec, v))
 }
 
+// LoopGuardToolLoadMax applies equality check predicate on the "loop_guard_tool_load_max" field. It's identical to LoopGuardToolLoadMaxEQ.
+func LoopGuardToolLoadMax(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardWallSoftSec applies equality check predicate on the "loop_guard_wall_soft_sec" field. It's identical to LoopGuardWallSoftSecEQ.
+func LoopGuardWallSoftSec(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallHardSec applies equality check predicate on the "loop_guard_wall_hard_sec" field. It's identical to LoopGuardWallHardSecEQ.
+func LoopGuardWallHardSec(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldLoopGuardWallHardSec, v))
+}
+
 // ForgetPolicyJSON applies equality check predicate on the "forget_policy_json" field. It's identical to ForgetPolicyJSONEQ.
 func ForgetPolicyJSON(v string) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldForgetPolicyJSON, v))
@@ -6256,6 +6271,126 @@ func ToolsExecutionTimeoutSecLT(v int) predicate.AgentRuntimeSetting {
 // ToolsExecutionTimeoutSecLTE applies the LTE predicate on the "tools_execution_timeout_sec" field.
 func ToolsExecutionTimeoutSecLTE(v int) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldToolsExecutionTimeoutSec, v))
+}
+
+// LoopGuardToolLoadMaxEQ applies the EQ predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardToolLoadMaxNEQ applies the NEQ predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxNEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardToolLoadMaxIn applies the In predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldIn(FieldLoopGuardToolLoadMax, vs...))
+}
+
+// LoopGuardToolLoadMaxNotIn applies the NotIn predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxNotIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNotIn(FieldLoopGuardToolLoadMax, vs...))
+}
+
+// LoopGuardToolLoadMaxGT applies the GT predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxGT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGT(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardToolLoadMaxGTE applies the GTE predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxGTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGTE(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardToolLoadMaxLT applies the LT predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxLT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLT(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardToolLoadMaxLTE applies the LTE predicate on the "loop_guard_tool_load_max" field.
+func LoopGuardToolLoadMaxLTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldLoopGuardToolLoadMax, v))
+}
+
+// LoopGuardWallSoftSecEQ applies the EQ predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallSoftSecNEQ applies the NEQ predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecNEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallSoftSecIn applies the In predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldIn(FieldLoopGuardWallSoftSec, vs...))
+}
+
+// LoopGuardWallSoftSecNotIn applies the NotIn predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecNotIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNotIn(FieldLoopGuardWallSoftSec, vs...))
+}
+
+// LoopGuardWallSoftSecGT applies the GT predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecGT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGT(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallSoftSecGTE applies the GTE predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecGTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGTE(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallSoftSecLT applies the LT predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecLT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLT(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallSoftSecLTE applies the LTE predicate on the "loop_guard_wall_soft_sec" field.
+func LoopGuardWallSoftSecLTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldLoopGuardWallSoftSec, v))
+}
+
+// LoopGuardWallHardSecEQ applies the EQ predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldLoopGuardWallHardSec, v))
+}
+
+// LoopGuardWallHardSecNEQ applies the NEQ predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecNEQ(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldLoopGuardWallHardSec, v))
+}
+
+// LoopGuardWallHardSecIn applies the In predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldIn(FieldLoopGuardWallHardSec, vs...))
+}
+
+// LoopGuardWallHardSecNotIn applies the NotIn predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecNotIn(vs ...int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNotIn(FieldLoopGuardWallHardSec, vs...))
+}
+
+// LoopGuardWallHardSecGT applies the GT predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecGT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGT(FieldLoopGuardWallHardSec, v))
+}
+
+// LoopGuardWallHardSecGTE applies the GTE predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecGTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldGTE(FieldLoopGuardWallHardSec, v))
+}
+
+// LoopGuardWallHardSecLT applies the LT predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecLT(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLT(FieldLoopGuardWallHardSec, v))
+}
+
+// LoopGuardWallHardSecLTE applies the LTE predicate on the "loop_guard_wall_hard_sec" field.
+func LoopGuardWallHardSecLTE(v int) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldLTE(FieldLoopGuardWallHardSec, v))
 }
 
 // ForgetPolicyJSONEQ applies the EQ predicate on the "forget_policy_json" field.

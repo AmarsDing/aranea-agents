@@ -531,6 +531,15 @@ var ddlMigrations = []ddlMigration{
 	// 绕过修复）；gns3 allow glob 改单行锚定 regex（glob 跨换行后的多行注入
 	// 修复）。UPDATE WHERE 旧 pattern 幂等，不回冲管理员自定义。
 	{Version: 20261265, Name: "tool_param_rules_reseed_harden", SQL: "sql/migrations/20261265_tool_param_rules_reseed_harden.sql"},
+	// 20261266 agent_runtime_loop_guard_gates（2026-08-27 二轮 Q1，S02「合法失控」
+	// 根修）：agent_runtime_settings 补 loop_guard_tool_load_max / loop_guard_wall_soft_sec
+	// / loop_guard_wall_hard_sec 三列（0=内置默认，>0 覆盖），PolicyResolver 每调用读取。
+	{Version: 20261266, Name: "agent_runtime_loop_guard_gates", SQL: "sql/migrations/20261266_agent_runtime_loop_guard_gates.sql"},
+	// 20261267 tool_param_rules_reseed_rmflags（2026-08-27 三轮审查）：rm deny
+	// flags 全覆盖——--no-preserve-root/长选项 --recursive/粘连字母 -rfv/--
+	// 分隔变形此前全部绕过；顺手修 gns3 allow 三行 created_at=0 占位。
+	// UPDATE WHERE 旧 pattern 幂等，不回冲管理员自定义。
+	{Version: 20261267, Name: "tool_param_rules_reseed_rmflags", SQL: "sql/migrations/20261267_tool_param_rules_reseed_rmflags.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
