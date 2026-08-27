@@ -59,7 +59,11 @@ type EntityRef struct {
 
 // SourceRef points back at the fact source; fields are an on-demand subset.
 type SourceRef struct {
-	RunID            string `json:"run_id,omitempty"`
+	RunID string `json:"run_id,omitempty"`
+	// SessionID 是 chat/team 会话归属（T5，2026-08-27）：chat 侧闸事件聚合
+	// 面（SessionGateStats / source_session_id 过滤）的一等公民键。旧记录
+	// 的 session_id 在 metadata（Extra 注入时期），读侧统一 COALESCE 两路。
+	SessionID        string `json:"session_id,omitempty"`
 	StepID           string `json:"step_id,omitempty"`
 	ToolInvocationID string `json:"tool_invocation_id,omitempty"`
 	TwinApprovalID   string `json:"twin_approval_id,omitempty"`

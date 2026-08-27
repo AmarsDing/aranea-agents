@@ -172,3 +172,71 @@ func TestGateTriggerEnumComplete(t *testing.T) {
 		t.Fatalf("trigger enum = %d, want 7 (C6)", len(seen))
 	}
 }
+
+// TestEmitGate_SessionIDDualWrite 钉死 T5 双写口径（2026-08-27）：
+// GateDecision.SessionID → SourceRef.SessionID（一等公民，索引服务聚合）+
+// metadata.session_id（旧口径，与 Extra 注入时期的存量记录兼容）；trim 归
+// 一；Extra 中的 session_id 不再生效（SessionID 字段优先，防两口径漂移）。
+func TestEmitGate_SessionIDDualWrite(t *testing.T) {
+	cc := &captureGateCollector{}
+	EmitGate(context.Background(), cc, GateDecision{
+		TriggerRule: TriggerParamRuleDeny,
+		Outcome:     "blocked",
+		Scenario:    "工具参数命中 deny 规则",
+		Reasoning:   "-",
+		GuardName:   "param_rule_gate",
+		RunID:       "run-1",
+		SessionID:   "  sess-9  ",
+		Extra:       map[string]any{"session_id": "sess-forged"},
+	})
+	if len(cc.recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(cc.recs))
+	}
+	r := cc.recs[0]
+	if r.SourceRef.SessionID != "sess-9" {
+		t.Errorf("source_ref.session_id = %q, want sess-9 (trimmed)", r.SourceRef.SessionID)
+	}
+	if got := r.Metadata["session_id"]; got != "sess-9" {
+		t.Errorf("metadata.session_id = %v, want sess-9 (SessionID wins over Extra)", got)
+	}
+	if err := r.Validate(); err != nil {
+		t.Errorf("emitted record must pass validation: %v", err)
+	}
+
+	// 空 SessionID：metadata 不带 session_id（Extra 兼容路径除外，见
+	// TestEmitGate_FullMapping 的 Extra 注入）。
+	cc2 := &captureGateCollector{}
+	EmitGate(context.Background(), cc2, GateDecision{
+		TriggerRule: TriggerLoopGuardBlocked,
+		Outcome:     "blocked",
+		GuardName:   "tool_loop_guard",
+	})
+	if _, ok := cc2.recs[0].Metadata["session_id"]; ok {
+		t.Error("metadata.session_id must be omitted when SessionID empty")
+	}
+	if cc2.recs[0].SourceRef.SessionID != "" {
+		t.Errorf("source_ref.session_id = %q, want empty", cc2.recs[0].SourceRef.SessionID)
+	}
+}
+
+// TestWithGateSessionID_Roundtrip 钉死 T5 会话归属通道语义：注入可读回
+// （trim 归一）、空白不注入、未注入/nil ctx 读为 ""。该值是 team 图谱成员
+// 闸事件的会话归属通道（chat 路径钩子回落 invocation.Session.ID）。
+func TestWithGateSessionID_Roundtrip(t *testing.T) {
+	if got := GateSessionIDFromContext(nil); got != "" {
+		t.Fatalf("nil ctx = %q, want empty", got)
+	}
+	if got := GateSessionIDFromContext(context.Background()); got != "" {
+		t.Fatalf("plain ctx = %q, want empty", got)
+	}
+	ctx := WithGateSessionID(context.Background(), "  sess-1  ")
+	if got := GateSessionIDFromContext(ctx); got != "sess-1" {
+		t.Fatalf("injected = %q, want sess-1 (trimmed)", got)
+	}
+	if got := GateSessionIDFromContext(WithGateSessionID(context.Background(), "   ")); got != "" {
+		t.Fatalf("blank sessionID must not inject, got %q", got)
+	}
+	if got := GateSessionIDFromContext(WithGateSessionID(nil, "sess-1")); got != "" {
+		t.Fatalf("nil ctx must not panic/inject, got %q", got)
+	}
+}

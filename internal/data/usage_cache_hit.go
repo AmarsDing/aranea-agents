@@ -138,6 +138,14 @@ var _ bizusage.RunTurnPeakRepo = (*usageRepo)(nil)
 // 单成员单轮即总量，口径等价）。不再过滤 attribution：生产带 token 的
 // member 行全带标记，过滤会使峰值恒 0（Found 恒 false）。attribution 行
 // 与 team_turn 行同额但 kind 过滤已排除 team_turn，无双计。
+//
+// 口径扩展（2026-08-28，包C C4-① subagent 治理补口径）：aux_subagent 行
+// 纳入——subagent run 的 usage 以此 kind 落库、message_id=subagent run id
+// （subagent/service.go recordRunUsage → usage.go RecordAuxLLMUsage），
+// 扩展前 subagent run 的 stats API 恒空（S07 570K 治理盲区）。安全性：
+// aux_subagent 行的 message_id 既不是 team_run_steps.id 也不是 team run
+// id，team run 查询不会误纳 subagent 行；反向 subagent run 查询也碰不到
+// team_member 行（step/team-run  keyed），两族行按 run 隔离。
 func (r *usageRepo) RunTurnPeak(ctx context.Context, runID string) (bizusage.RunTurnPeak, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
@@ -148,7 +156,7 @@ func (r *usageRepo) RunTurnPeak(ctx context.Context, runID string) (bizusage.Run
 	_, err := scanUsageSingleRow(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(
 		`SELECT COALESCE(MAX(u.input_tokens), 0), COUNT(*)
 		   FROM model_token_usage_events u
-		  WHERE u.usage_kind = 'team_member'
+		  WHERE u.usage_kind IN ('team_member', 'aux_subagent')
 		    AND (u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?) OR u.message_id = ?)`), []any{runID, runID},
 		&out.MaxInputTokens, &n)
 	if err != nil {
@@ -167,6 +175,11 @@ var _ bizusage.RunMemberUsageRepo = (*usageRepo)(nil)
 // 不再过滤 attribution（生产带 token 行全带标记，过滤则 members 段恒空）。
 // 空 agent_key 行（记账缺陷）仍保留——装配层按键合流时落「未知成员」桶，
 // 不静默吞掉账单。
+//
+// 口径扩展（2026-08-28，包C C4-①）：aux_subagent 行纳入（同 RunTurnPeak
+// 注释）——subagent run 的 spawn 归属 agent_key 在 spawn 时快照
+// （subagent runAttribution），members 段即「该 subagent run 实际消耗的
+// 归属 agent」。team run 查询不受影响（message_id 隔离，见上）。
 func (r *usageRepo) RunMemberUsageStats(ctx context.Context, runID string) ([]bizusage.RunMemberUsage, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
@@ -179,7 +192,7 @@ func (r *usageRepo) RunMemberUsageStats(ctx context.Context, runID string) ([]bi
 		        COALESCE(SUM(u.cached_input_tokens), 0),
 		        COUNT(*)
 		   FROM model_token_usage_events u
-		  WHERE u.usage_kind = 'team_member'
+		  WHERE u.usage_kind IN ('team_member', 'aux_subagent')
 		    AND (u.message_id IN (SELECT id FROM team_run_steps WHERE run_id = ?) OR u.message_id = ?)
 		  GROUP BY u.agent_key
 		  ORDER BY u.agent_key`), runID, runID)

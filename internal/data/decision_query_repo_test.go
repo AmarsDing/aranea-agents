@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,6 +174,139 @@ func guardRec(key, runID, trigger string, extraMeta map[string]any) decision.Rec
 		SourceRef:       decision.SourceRef{RunID: runID},
 		Metadata:        meta,
 		CreatedAt:       "2026-08-27T00:00:00Z", UpdatedAt: "2026-08-27T00:00:00Z",
+	}
+}
+
+// TestDecisionQueryRepo_SessionGateStats_PG covers T5（2026-08-27 chat 侧闸
+// 事件聚合面）：会话维度六类 trigger 聚合、新旧两口径会话归属兼容（新记录
+// SourceRef.SessionID 一等公民 / 旧记录仅 metadata.session_id）、会话隔离、
+// 非 system_guard 类别与无记录会话返回零值。
+func TestDecisionQueryRepo_SessionGateStats_PG(t *testing.T) {
+	ctx := context.Background()
+	wr, qr := newDecisionQueryTestRepos(t)
+	sessRec := func(key, trigger string, src decision.SourceRef, extraMeta map[string]any) decision.Record {
+		r := guardRec(key, "run-x", trigger, extraMeta)
+		r.SourceRef = src
+		return r
+	}
+	recs := []decision.Record{
+		// 新口径：source_ref.session_id。
+		sessRec("dk-s-1", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-1", SessionID: "sess-a"}, map[string]any{}),
+		sessRec("dk-s-2", decision.TriggerParamRuleDeny, decision.SourceRef{RunID: "run-1", SessionID: "sess-a"}, map[string]any{}),
+		sessRec("dk-s-3", decision.TriggerToolResultPruned, decision.SourceRef{RunID: "run-2", SessionID: "sess-a"}, map[string]any{"observed_value": 4, "prune_bytes": 9000}),
+		sessRec("dk-s-4", decision.TriggerContextCompacted, decision.SourceRef{RunID: "run-2", SessionID: "sess-a"}, map[string]any{}),
+		sessRec("dk-s-5", decision.TriggerTokenBudgetTripped, decision.SourceRef{RunID: "run-3", SessionID: "sess-a"}, map[string]any{}),
+		// 旧口径：仅 metadata.session_id（Extra 注入时期的存量形态）——必须命中。
+		sessRec("dk-s-6", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-4"}, map[string]any{"session_id": "sess-a"}),
+		// 他会话记录：必须隔离（含 metadata 旧口径他会话）。
+		sessRec("dk-s-7", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-5", SessionID: "sess-b"}, map[string]any{}),
+		sessRec("dk-s-8", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-6"}, map[string]any{"session_id": "sess-b"}),
+		// 同会话但非 system_guard 类别：不计。
+		{
+			DecisionKey: "dk-s-9", Category: decision.CategoryHITLApproval,
+			Scenario: "审批", Reasoning: "-", Outcome: "approved",
+			ActorType: decision.ActorHuman, ActorKey: "user-1",
+			RelatedEntities: []decision.EntityRef{},
+			SourceRef:       decision.SourceRef{RunID: "run-1", SessionID: "sess-a"},
+			Metadata:        map[string]any{"trigger_rule": decision.TriggerLoopGuardBlocked},
+			CreatedAt:       "2026-08-27T01:00:00Z", UpdatedAt: "2026-08-27T01:00:00Z",
+		},
+	}
+	if err := wr.InsertRecords(ctx, recs); err != nil {
+		t.Fatalf("seed insert: %v", err)
+	}
+
+	statsRepo, ok := qr.(decision.SessionGateStatsRepo)
+	if !ok {
+		t.Fatal("decisionQueryRepo 未实现 SessionGateStatsRepo 窄接口")
+	}
+	got, err := statsRepo.SessionGateStats(ctx, "sess-a")
+	if err != nil {
+		t.Fatalf("SessionGateStats: %v", err)
+	}
+	if got.LoopGuardBlocks != 2 {
+		t.Errorf("LoopGuardBlocks = %d, want 2（新口径 1 + 旧口径 metadata 1）", got.LoopGuardBlocks)
+	}
+	if got.ParamRuleDenies != 1 {
+		t.Errorf("ParamRuleDenies = %d, want 1", got.ParamRuleDenies)
+	}
+	if got.PruneCount != 4 || got.PruneBytes != 9000 {
+		t.Errorf("prune = %d 条/%d 字节, want 4/9000", got.PruneCount, got.PruneBytes)
+	}
+	if got.CompactCount != 1 {
+		t.Errorf("CompactCount = %d, want 1", got.CompactCount)
+	}
+	if !got.BudgetTripped || got.NoProgressTripped {
+		t.Errorf("tripped = %v/%v, want true/false", got.BudgetTripped, got.NoProgressTripped)
+	}
+
+	// 他会话只见自己的记录；无记录会话 / 空会话 id 返回零值, nil。
+	other, err := statsRepo.SessionGateStats(ctx, "sess-b")
+	if err != nil || other.LoopGuardBlocks != 2 || other.BudgetTripped {
+		t.Errorf("sess-b 隔离失败（新旧口径各 1）: %+v err=%v", other, err)
+	}
+	zero, err := statsRepo.SessionGateStats(ctx, "sess-missing")
+	if err != nil || zero != (decision.RunGateStats{}) {
+		t.Errorf("无记录会话应零值: %+v err=%v", zero, err)
+	}
+	if _, err := statsRepo.SessionGateStats(ctx, "  "); err != nil {
+		t.Errorf("空会话 id 应 nil error: %v", err)
+	}
+
+	// source_session_id 列表过滤同表达式：sess-a 命中 6 条 system_guard +
+	// 1 条 hitl（会话归属不过滤类别），sess-b 2 条。
+	_, total, err := qr.ListRecords(ctx, decision.ListFilter{SourceSessionID: "sess-a", Page: 1, PageSize: 50})
+	if err != nil || total != 7 {
+		t.Errorf("source_session_id filter sess-a: total=%d err=%v, want 7", total, err)
+	}
+	_, total, err = qr.ListRecords(ctx, decision.ListFilter{SourceSessionID: "sess-b", Page: 1, PageSize: 50})
+	if err != nil || total != 2 {
+		t.Errorf("source_session_id filter sess-b: total=%d err=%v, want 2", total, err)
+	}
+}
+
+// TestDecisionRecords_SessionIDIndex_ExplainHit_PG 钉死 T5 索引命中
+// （2026-08-27 四轮审查，20261252/20261254 两度索引失配踩坑后的硬性验证）：
+// 查询侧 gateSessionExpr 生成串必须与 20261268 索引表达式树精确一致——
+// SET enable_seqscan=off 下 EXPLAIN 必须走 idx_decision_records_source_session_id，
+// 失配即回归（全表扫在 1M 行生产表上 P95≈125ms，索引后 <5ms）。
+func TestDecisionRecords_SessionIDIndex_ExplainHit_PG(t *testing.T) {
+	ctx := context.Background()
+	db := testhelper.SetupTestPGRaw(t)
+	lg := loggateway.NewNoop()
+	for _, f := range []string{
+		"sql/migrations/20261250_decision_records.sql",
+		"sql/migrations/20261251_decision_record_outbox.sql",
+		"sql/migrations/20261252_decision_records_idx.sql",
+		"sql/migrations/20261268_decision_records_sessionid_idx.sql",
+	} {
+		if err := executeSQLFileWithDialect(ctx, db, f, DialectPostgres, lg); err != nil {
+			t.Fatalf("migrate %s: %v", f, err)
+		}
+	}
+	// 小表优化器倾向 seq scan；关 seqscan 验证索引「可命中性」（表达式树
+	// 匹配失败时即便 enable_seqscan=off 也只能输出带高 cost 的 Seq Scan）。
+	if _, err := db.ExecContext(ctx, "SET enable_seqscan = off"); err != nil {
+		t.Fatalf("set enable_seqscan: %v", err)
+	}
+	rows, err := db.QueryContext(ctx,
+		"EXPLAIN SELECT count(*) FROM decision_records WHERE category = 'system_guard' AND "+
+			"COALESCE(COALESCE(NULLIF(source_ref::text, '')::jsonb, '{}'::jsonb) ->> 'session_id', "+
+			"COALESCE(NULLIF(metadata::text, '')::jsonb, '{}'::jsonb) ->> 'session_id') = 'sess-a'")
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer rows.Close()
+	plan := ""
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan += line + "\n"
+	}
+	if !strings.Contains(plan, "idx_decision_records_source_session_id") {
+		t.Fatalf("查询表达式未命中 20261268 索引（gateSessionExpr 与索引表达式树失配回归）:\n%s", plan)
 	}
 }
 

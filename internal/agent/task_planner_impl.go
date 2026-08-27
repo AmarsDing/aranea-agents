@@ -276,6 +276,29 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	// "user asks for teams but StrategyDirect short-circuits" bug.
 	explicitMode := strings.ToLower(strings.TrimSpace(input.Mode))
 	modeIsExplicit := explicitMode != "" && explicitMode != "auto"
+	// 组队证据闸（包C Q2-C2，session-eval-20260827 方向二根修）：LLM 在强制
+	// 规划压力下可能为无组队诉求的任务自选 parallel/dag——S09-t1「搭内容
+	// 框架」（单交付物、自我规划、无组织实体）被 llm_mode 组队 → roster_miss
+	// → DAG 缺 FuncRef 失败回退，一轮烧 153K/181s。组队是重资源承诺，
+	// llm_mode 组队要求结构性证据（组队意图词/数量约束/组织链/派发句式/
+	// 模式字面量）或六维评分自然达 Complex；无证据降级 direct 并留痕。
+	// 宁直勿组（RouteLLM 非对称代价的镜像）：直答+计划板成本 ≪ 空组队
+	// roster_miss。豁免：keyword_fallback（detectTeamIntent 命中即证据）、
+	// 显式 agent_keys 路由（用户/系统契约）、force_new、memory/playbook
+	// 路径（本函数前段已 return）。
+	if modeIsExplicit && shouldForceComplex(explicitMode) && decisionSource == "llm_mode" &&
+		complexityLevel != biz.ComplexityComplex && len(input.AgentKeys) == 0 &&
+		!hasTeamModeEvidence(input.UserMessage) {
+		impl.lg.Info("组队模式无结构证据，降级 direct（组队证据闸）",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("original_mode", explicitMode),
+			loggateway.Float64("complexity_score", complexityScore),
+		)
+		input.Mode = "direct"
+		explicitMode = "direct"
+		decisionSource = "evidence_gate_downgrade"
+	}
 	effectiveLevel := complexityLevel
 	if modeIsExplicit && shouldForceComplex(input.Mode) && complexityLevel != biz.ComplexityComplex {
 		effectiveLevel = biz.ComplexityComplex
@@ -399,6 +422,38 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount, complexityLevel)
 		}
 		stopHeartbeat()
+		var clarifyErr *decomposeClarificationError
+		if errors.As(err, &clarifyErr) && len(clarifyErr.questions) > 0 {
+			// Q7 分解层澄清出口（session-eval-20260827 P4 根修）：分解 LLM
+			// 判定存在阻塞性信息缺失（产品名/日期/渠道等），选择提问而非虚构。
+			// 不走 decompose_failed 降级——降级会产出无 SubTasks 的 direct
+			// plan，Spirit 拿到后只能自己圆场再虚构一次（S07 根因）。此处
+			// 终止本次规划，问题经 TaskPlan.ClarificationQuestions 透传给
+			// plan_and_execute 调用方，由 Spirit 向用户提问后带答案重来。
+			impl.lg.Info("任务分解请求用户澄清（阻塞性信息缺失，拒绝虚构参数）",
+				loggateway.StepID(biz.SpiritStepPlannerDecompose),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Int("question_count", len(clarifyErr.questions)),
+			)
+			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "needs_clarification", map[string]any{
+				"questions": clarifyErr.questions,
+			})
+			// v2 壳（流式路径已发布）必须补终态，同 F9/Y4 契约。
+			impl.publishV2BoardFailed(ctx, planID, input)
+			saved.Strategy = biz.StrategyDirect
+			saved.StrategyReason = "任务存在阻塞性信息缺失，等待用户澄清"
+			saved.DecomposeReason = "needs_clarification"
+			if _, uerr := impl.repo.Update(ctx, saved); uerr != nil {
+				// 落库失败不阻断澄清透传——信号本体在内存字段，DB 仅留痕。
+				impl.lg.Warn("澄清计划留痕更新失败（不阻断澄清透传）",
+					loggateway.StepID(biz.SpiritStepPlannerPersist),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Err(uerr),
+				)
+			}
+			saved.ClarificationQuestions = append([]string(nil), clarifyErr.questions...)
+			return saved, nil
+		}
 		if err != nil {
 			impl.lg.Warn("任务分解失败，降级为 direct 策略",
 				loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -700,28 +755,22 @@ func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput)
 		)
 	}
 
-	// Task-word whitelist override（包B B2, session-eval-20260825）：命中任务
-	// 动词（产出/方案/组织/安排/梳理/汇报/对比/总结/检查/排查）的消息是工作
-	// 请求，不得判 simple。管理层场景实测：「把本周告警整理成汇报材料」被
-	// 评分器判 simple → skip intent pass → GM 越权代答、组织路由失效
-	// （P-INTENT-SKIP）。升级至 Moderate 一处改动同时修正两道门：
-	// shouldSkipIntentPass 的 skip 门 + pre_planning_gate 的 force-planning 门。
-	// 宁重勿轻（R4）：闲聊命中任务词的概率极低，误升代价仅一次 intent pass。
-	if level == biz.ComplexitySimple {
-		for _, w := range taskRequestWords {
-			if strings.Contains(input.UserMessage, w) {
-				level = biz.ComplexityModerate
-				if score < 0.3 {
-					score = 0.3
-				}
-				impl.lg.Info("QuickAssess 命中任务词白名单，升级复杂度以触发规划",
-					loggateway.StepID(biz.SpiritStepPlannerAssess),
-					loggateway.Str("task_word", w),
-					loggateway.Float64("complexity_score", score),
-				)
-				break
-			}
+	// Task-action-signal override（包C Q2 统一信号源，session-eval-20260827）：
+	// 含任务动作信号的消息是工作请求，不得判 simple。原包B B2 词表
+	// taskRequestWords 已与 biz.taskActionPatterns 合并并叠加模式族（动词+
+	// 量词/交付物共现/派发句式）——skip 门（shouldSkipIntentPass）与本门
+	// 消费同一 biz.HasTaskActionSignal，根除双词表漂移（S06/S08「出一版/
+	// 出一条…文案/脚本框架」confident_simple 误判即漂移产物）。
+	// 宁重勿轻（R4）：闲聊命中任务信号的概率极低，误升代价仅一次 intent pass。
+	if level == biz.ComplexitySimple && biz.HasTaskActionSignal(input.UserMessage) {
+		level = biz.ComplexityModerate
+		if score < 0.3 {
+			score = 0.3
 		}
+		impl.lg.Info("QuickAssess 命中任务动作信号，升级复杂度以触发规划",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.Float64("complexity_score", score),
+		)
 	}
 
 	impl.lg.Debug("QuickAssess 完成",
@@ -1211,14 +1260,10 @@ func detectTeamCount(message string) int {
 // demand.
 var explicitToolRequestPattern = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}`)
 
-// taskRequestWords 包B B2 任务词白名单（session-eval-20260825）：命中即
-// 不得判 simple（QuickAssess 第三档 override）。词表取自管理层路由失效
-// 语料的高频任务动词，宁重勿轻——误升代价仅一次 intent pass，漏判代价
-// 是组织路由失效（P-INTENT-SKIP）。
-var taskRequestWords = []string{
-	"产出", "方案", "组织", "安排", "梳理",
-	"汇报", "对比", "总结", "检查", "排查",
-}
+// taskRequestWords 已并入 biz.taskActionPatterns（包C Q2 统一信号源，
+// 2026-08-27）——平铺词表无法覆盖能产结构（S06/S08 误判），且与
+// shouldSkipIntentPass 消费的 biz 词表构成漂移双源。QuickAssess 第三
+// override 现消费 biz.HasTaskActionSignal。
 
 // teamFormationFlexPattern matches team-formation verbs with a short filler
 // (quantity / measure word) before 团队/team, e.g. "组建几个团队".
@@ -1294,6 +1339,40 @@ func detectTeamIntent(message string) string {
 	return ""
 }
 
+// hasTeamModeEvidence 报告消息是否携带组队模式（parallel/dag）的结构性
+// 证据（包C Q2-C2 组队证据闸）。证据集：
+//   - 组队意图词（detectTeamIntent：组建团队/并行处理…）
+//   - 团队数量约束（detectTeamCount：两个团队/3 teams…）
+//   - 组织链措辞（HasOrgChainIntent：按组织链/走编制…）
+//   - 组织实体派发句式（biz.HasDispatchSignal：让市场部出方案/技术侧+
+//     内容侧并列——S06/S07 型合法组队诉求）
+//   - 模式字面量（用户显式写「dag 模式/组队模式」）
+//
+// 鉴别边界（战役语料钉住）：S09-t1「我们来规划…渠道、节奏、预算三大块」
+// 是自我规划 + 内容板块枚举，无证据 → 降级 direct；S07「组织一次新产品
+// 上线方案：技术侧…内容侧…运营侧…」多实体派发，有证据 → 放行。
+func hasTeamModeEvidence(msg string) bool {
+	if detectTeamIntent(msg) != "" || detectTeamCount(msg) > 0 || HasOrgChainIntent(msg) {
+		return true
+	}
+	if biz.HasDispatchSignal(msg) {
+		return true
+	}
+	lower := strings.ToLower(msg)
+	for _, lit := range teamModeLiterals {
+		if strings.Contains(lower, lit) {
+			return true
+		}
+	}
+	return false
+}
+
+// teamModeLiterals 用户显式指定组队模式的字面量（证据闸放行用，防误伤
+// 「用 dag 模式跑这个任务」型显式诉求）。
+var teamModeLiterals = []string{
+	"dag模式", "dag 模式", "并行模式", "组队模式", "团队模式", "多智能体模式",
+}
+
 // decomposeCapabilityTags 返回注入分解 prompt 的真实能力标签并集（与校验门
 // R2 同一数据源 capabilityRoleUnion）。capBuilder 缺失 / BuildAll 失败 /
 // 并集为空时返回 nil——调用方回退静态预定义清单（fail-open，与校验门对空
@@ -1366,6 +1445,10 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 	}
 
 	text = stripDecompositionFences(text)
+	// Q7 澄清出口：先于 subtask 解析检测（澄清输出是 object 而非 array）。
+	if qs, ok := parseClarificationRequest(text); ok {
+		return nil, nil, &decomposeClarificationError{questions: qs}
+	}
 	subTasks, err := parseDecompositionOutput(text)
 	if err != nil {
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "parse decomposition").WithCause(err)
@@ -1558,6 +1641,11 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 	// LLM 输出的 JSON 格式与解析器预期不完全匹配）。
 	if len(subTasks) == 0 {
 		text = stripDecompositionFences(text)
+		// Q7 澄清出口：澄清 object 会被流式 parser 当畸形 subtask 丢弃
+		// （empty id or name），落到本分支——先于批量解析检测。
+		if qs, ok := parseClarificationRequest(text); ok {
+			return nil, nil, &decomposeClarificationError{questions: qs}
+		}
 		var batchErr error
 		subTasks, batchErr = parseDecompositionOutput(text)
 		if batchErr != nil {
@@ -1826,6 +1914,7 @@ Rules:
 - Dependency discipline: declare depends_on ONLY when a subtask genuinely consumes another subtask's output (its input_contract references the predecessor's deliverables). Parallel same-role teams (e.g. "two teams each write a poem, then a third team judges") MUST have empty depends_on; only the final merging/judging subtask depends on ALL of the parallel subtasks. NEVER chain parallel teams serially, and NEVER make every subtask depend on a "understand the current state / statistics" subtask unless that output is a real input to the work.
 - Subtasks should be independently executable where possible
 - CRITICAL: Each subtask "description" must be fully self-contained. The executing team sees ONLY its own description — it cannot see the user message or other subtasks. Every concrete parameter the executor needs (URLs, file paths, branch/tag names, subpaths, skill/agent names, numeric values, flags) MUST be copied verbatim into the description. NEVER use context references such as "the given URL", "the above parameters", "使用给定的/上述的/前文提到的" — always inline the actual values.
+- CLARIFICATION EXIT: If the user message is missing BLOCKING concrete parameters whose absence would materially change the plan's direction (e.g. product/brand name, target date or deadline, channel/platform, budget, target system/URL), DO NOT fabricate them. Output a single JSON object instead of the subtask array: {"needs_clarification": true, "questions": ["<short question 1>", "<short question 2>"]} (2-5 questions, each answerable in one line). NEVER invent product names, dates, URLs, channel names, budget figures, or any concrete fact not present in the user message — when such a fact is essential and missing, asking is mandatory and guessing is forbidden. Use this exit ONLY for truly blocking gaps; for non-essential details, proceed and state reasonable generic assumptions explicitly in the description (e.g. "a mainstream social platform") rather than specific invented names.
 - Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}. The contract "name" becomes the deliverable topic namespace that team members write via set_deliverable — keep it short (letters/digits in any language plus '_'/'-', no spaces or punctuation; a concise slug like "root-cause-report" or "根因报告" works) and NEVER use the reserved names "summary" or "cognition" (writes under them are rejected/overwritten).
 - If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, capRule, DomainLexiconPromptList()) + intentContext
 }
@@ -1834,6 +1923,57 @@ Rules:
 // were removed in favor of ResolvePlannerModel (planner_model_resolver.go),
 // which reads the planner_model_mode system setting and falls back to the
 // session's effective model (inherit mode) or the first enabled catalog model.
+
+// parseClarificationRequest 检测分解 LLM 的澄清出口输出（Q7，
+// session-eval-20260827 P4 根修）：{"needs_clarification": true,
+// "questions": [...]}。命中返回清洗后的问题列表；未命中返回 nil,false。
+// 必须先于 parseDecompositionOutput 调用——澄清输出是 JSON object，
+// 走数组解析会得到空结果，误入 decompose_empty 降级。
+func parseClarificationRequest(text string) ([]string, bool) {
+	t := strings.TrimSpace(text)
+	if t == "" || !strings.Contains(t, "needs_clarification") {
+		return nil, false
+	}
+	// 澄清输出是单个 JSON object（subtasks 是 array——此处提取的首尾 {}
+	// 跨多元素时 unmarshal 必失败、单元素时 NeedsClarification=false，均安全
+	// 落到未命中分支）。
+	start := strings.Index(t, "{")
+	end := strings.LastIndex(t, "}")
+	if start < 0 || end <= start {
+		return nil, false
+	}
+	var raw struct {
+		NeedsClarification bool     `json:"needs_clarification"`
+		Questions          []string `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(t[start:end+1]), &raw); err != nil {
+		return nil, false
+	}
+	if !raw.NeedsClarification {
+		return nil, false
+	}
+	qs := make([]string, 0, len(raw.Questions))
+	for _, q := range raw.Questions {
+		if s := strings.TrimSpace(q); s != "" {
+			qs = append(qs, s)
+		}
+	}
+	if len(qs) == 0 {
+		return nil, false
+	}
+	return qs, true
+}
+
+// decomposeClarificationError 是分解 LLM 的澄清出口信号（Q7）——不是故障：
+// 任务存在阻塞性信息缺失，需先向用户澄清。重试分类判为永久性（同一 prompt
+// 重试只会得到同一结论，重试纯粹烧 LLM 调用）。
+type decomposeClarificationError struct {
+	questions []string
+}
+
+func (e *decomposeClarificationError) Error() string {
+	return fmt.Sprintf("decomposition requests user clarification (%d questions)", len(e.questions))
+}
 
 // parseDecompositionOutput parses the LLM output into SubTask slice.
 func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
@@ -2643,6 +2783,12 @@ func isRetriableDecomposeError(err error) bool {
 	// 配置级错误（catalog/http 缺失、provider/model 未配置）——重试无意义。
 	var cfgErr *decomposeConfigError
 	if errors.As(err, &cfgErr) {
+		return false
+	}
+	// Q7 澄清出口：LLM 的有效响应而非故障——同一 prompt 重试只会得到同一
+	// 结论，判永久性立即熔断（由 Plan() 透传澄清问题）。
+	var clarifyErr *decomposeClarificationError
+	if errors.As(err, &clarifyErr) {
 		return false
 	}
 	msg := strings.ToLower(err.Error())

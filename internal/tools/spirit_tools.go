@@ -60,6 +60,11 @@ type PlanAndExecuteOutput struct {
 	ReuseReason     string                             `json:"reuse_reason,omitempty"`
 	ExistingTeams   []ExistingTeamSummary              `json:"existing_teams,omitempty"`
 	NextAction      string                             `json:"next_action,omitempty"`
+	// ClarificationQuestions 分解层澄清出口（Q7, session-eval-20260827 P4）：
+	// planner 判定任务存在阻塞性信息缺失时挂出的问题，NextAction=
+	// await_user_clarification。收到后必须逐条向用户提问，带答案重新调用，
+	// 禁止自行补全答案。
+	ClarificationQuestions []string `json:"clarification_questions,omitempty"`
 }
 
 // planAndExecuteDeps holds the shared dependencies for plan_and_execute phases.
@@ -94,6 +99,25 @@ func shouldRejectFactQueryPlan(taskPrompt, mode string, forceNew bool, explicitK
 	return biz.LooksLikeFactQuery(taskPrompt)
 }
 
+// shouldRejectDirectAnswerPlan blocks obvious direct-answer requests
+// (recommendations / explanations / opinions) from entering plan assembly
+// （包C Q2-C1, session-eval-20260827 S11-t5 根修）。「推荐三本书」被
+// Spirit LLM 自主送入 plan_and_execute，工具自判 simple/direct 仍完成
+// 计划装配（计划板+事件写时间线），单轮 input +120%。与事实查询拦截同
+// 契约：显式 agent_keys / parallel / dag / force_new 一律放行（butler
+// 路由与显式组队诉求不受影响）；任务信号 veto 在 biz.LooksLikeDirectAnswer
+// 内完成（含任务动作词的复合任务不拦截）。
+func shouldRejectDirectAnswerPlan(taskPrompt, mode string, forceNew bool, explicitKeys []string) bool {
+	if forceNew || len(explicitKeys) > 0 {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "parallel", "dag":
+		return false
+	}
+	return biz.LooksLikeDirectAnswer(taskPrompt)
+}
+
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
 func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus biz.EventBus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
@@ -124,6 +148,10 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			if shouldRejectFactQueryPlan(taskPrompt, mode, input.ForceNew, explicitKeys) {
 				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit,
 					"fact query: answer with datetime / web_research; do not call plan_and_execute")
+			}
+			if shouldRejectDirectAnswerPlan(taskPrompt, mode, input.ForceNew, explicitKeys) {
+				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit,
+					"direct-answer request: answer directly in one pass; plan_and_execute is for multi-step deliverable production, not recommendations/explanations")
 			}
 			// Explicit agent routing implies delegation; direct mode skips the
 			// allocation phase entirely, so the keys would be silently ignored.
@@ -205,7 +233,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			} else {
 				var planStep biztypes.OrchestrationStepRecord
 				var err error
-				taskPlan, planStep, err = executePlanPhase(ctx, taskPrompt, spiritSessionID, mode, deps)
+				taskPlan, planStep, err = executePlanPhase(ctx, taskPrompt, spiritSessionID, mode, explicitKeys, deps)
 				steps = append(steps, planStep)
 				if err != nil {
 					publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "plan", err.Error())
@@ -227,6 +255,16 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 					Name:      st.Name,
 					DependsOn: st.DependsOn,
 				})
+			}
+
+			// Q7 分解层澄清出口（session-eval-20260827 P4 根修）：planner 判定
+			// 存在阻塞性信息缺失——不分配、不建板、不编排，问题透传给 Spirit
+			// 逐条向用户提问，带答案重新调用。杜绝 S07 型虚构（分解 LLM 曾自行
+			// 编造产品名/日期/渠道塞进 subtask 描述）。
+			if taskPlan.NeedsClarification() {
+				out.NextAction = "await_user_clarification"
+				out.ClarificationQuestions = append([]string(nil), taskPlan.ClarificationQuestions...)
+				return out, nil
 			}
 
 			if taskPlan.StrategyReason == biz.PlaybookFillRequiredReason {
@@ -392,7 +430,7 @@ func tryReuseExistingOrchestration(ctx context.Context, spiritSessionID, taskPro
 }
 
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.
-func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode string, deps planAndExecuteDeps) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
+func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode string, explicitKeys []string, deps planAndExecuteDeps) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
 	// Start plan phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -412,6 +450,7 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode str
 		UserMessage:     taskPrompt,
 		SpiritSessionID: spiritSessionID,
 		Mode:            mode,
+		AgentKeys:       explicitKeys,
 	}
 	taskPlan, planErr := deps.planner.Plan(ctx, planInput)
 	if planErr != nil {

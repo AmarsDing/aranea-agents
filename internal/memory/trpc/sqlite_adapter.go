@@ -63,7 +63,21 @@ type memoryService struct {
 	consistency     factConsistencyChecker
 	resyncFlight    singleflightGroup
 	linkEvolver     memlink.LinkEvolutionService
+	// fusedRecall is the biz L3 fused recall chain (C3 统一召回层,
+	// session-eval-20260827 P6). When non-nil, SearchMemories delegates
+	// query-aware search to it so the tool path shares the injection path's
+	// algorithm / key space / relevance filtering. Nil → legacy fallback.
+	fusedRecall     biz.MemoryL3Recaller
 	lg              loggateway.Logger
+}
+
+// WireFusedRecall injects the biz L3 fused recall chain into this package's
+// memory service (C3 统一召回层, session-eval-20260827 P6/S02). No-op when
+// svc is another trpcmemory.Service implementation or r is nil.
+func WireFusedRecall(svc trpcmemory.Service, r biz.MemoryL3Recaller) {
+	if s, ok := svc.(*memoryService); ok && s != nil && r != nil {
+		s.fusedRecall = r
+	}
 }
 
 // vectorFactSearcher optional pgvector recall for SearchMemories.
@@ -316,6 +330,25 @@ func (s *memoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKe
 		return nil, nil
 	}
 
+	// C3 统一召回层（session-eval-20260827 P6/S02 恒空根修）：有 query 时走
+	// biz L3 fused recall——与 prompt 注入路径同算法（pgvector+FTS+trgm RRF
+	// 融合 + 分词 + 校准打分 + decay 融合 + 自适应 minScore）、同键空间
+	// （L3ScopeTargets，与写入侧 mapFactKindToScope 对齐）、同相关性过滤
+	// （L3MinScoreQuery）。旧路径（单向量 + 整串 LIKE fallback，中文多词
+	// query 恒空）仅在 fused 未装配/调用失败、或 IncludeInvalidated 考古
+	// 语义（fused 不支持）时兜底。fused 零命中即真实零命中，不回退 LIKE
+	// ——回退会重新引入双路径结果漂移。
+	if s.fusedRecall != nil && q != "" && !searchOpts.IncludeInvalidated {
+		entries, ferr := s.searchViaFusedRecall(ctx, uk, q, topK, minScore)
+		if ferr == nil {
+			return entries, nil
+		}
+		s.lg.Warn("fused recall failed, degrading to legacy search path",
+			loggateway.StepID("memory.search"),
+			loggateway.Str("agent", uk.AppName),
+			loggateway.Err(ferr))
+	}
+
 	if q != "" && s.vector != nil {
 		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, int(topK))
 		if err != nil {
@@ -485,16 +518,102 @@ func (s *memoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, 
 	if limit32 <= 0 {
 		limit32 = defaultListEntriesLimit
 	}
+	// C3 键空间对齐（session-eval-20260827 P6）：读取 scopes 与写入侧
+	// mapFactKindToScope、注入路径 L3ScopeTargets 走同一 policy 解析——agent
+	// 配置 L3RecallScopes 含 user 后，自动提取落 user scope 的
+	// preference/identity 对 memory_search/memory_load 可见。默认配置解析
+	// 结果恒为单 (agent, AppName)，与旧行为逐字节一致。
+	targets := s.recallScopeTargets(ctx, uk)
 	var rows [][]byte
-	var err error
-	if includeInvalidated {
-		rows, err = s.factReader.ListFactRowsForUserAll(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
-	} else {
-		rows, err = s.factReader.ListFactRowsForUser(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
+	var firstErr error
+	for _, t := range targets {
+		var scopeRows [][]byte
+		var err error
+		if includeInvalidated {
+			scopeRows, err = s.factReader.ListFactRowsForUserAll(ctx, t.ScopeType, t.ScopeID, uk.UserID, keyword, limit32, 0)
+		} else {
+			scopeRows, err = s.factReader.ListFactRowsForUser(ctx, t.ScopeType, t.ScopeID, uk.UserID, keyword, limit32, 0)
+		}
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		rows = append(rows, scopeRows...)
 	}
+	if len(rows) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+	out := s.entriesFromFactRows(rows, uk, minImportance)
+	// 多 scope 合并后按 updated_at DESC 重排并截断——与旧单 scope SQL
+	// ORDER BY updated_at DESC LIMIT n 语义一致（单 scope 时 stable sort
+	// 对已有序输入是恒等变换）。
+	sort.SliceStable(out, func(i, j int) bool {
+		return entryLastUpdated(out[i]).After(entryLastUpdated(out[j]))
+	})
+	if len(out) > int(limit32) {
+		out = out[:limit32]
+	}
+	return out, nil
+}
+
+// resolveMemoryPolicy resolves the agent's memory runtime policy, tolerating
+// a nil loader / missing settings (zero policy → callers' own defaults).
+func (s *memoryService) resolveMemoryPolicy(ctx context.Context, agentID string) biz.MemoryRuntimePolicy {
+	policy := biz.ResolveMemoryRuntimePolicy(nil)
+	if s.settingsLoader != nil {
+		if settings, err := s.settingsLoader.GetAgentRuntimeSettings(ctx, agentID); err == nil && settings != nil {
+			policy = biz.ResolveMemoryRuntimePolicy(settings)
+		}
+	}
+	return policy
+}
+
+// recallScopeTargets resolves read-side scopes via the same policy +
+// L3ScopeTargets chain as the prompt-injection recall path (C3 统一召回层).
+// Falls back to the legacy single (agent, AppName) scope when resolution
+// yields nothing.
+func (s *memoryService) recallScopeTargets(ctx context.Context, uk trpcmemory.UserKey) []biz.L3ScopeTarget {
+	policy := s.resolveMemoryPolicy(ctx, uk.AppName)
+	targets := biz.L3ScopeTargets(biz.MemoryRuntimeContext{
+		AgentID: strings.TrimSpace(uk.AppName),
+		UserID:  strings.TrimSpace(uk.UserID),
+	}, policy.L3RecallScopes)
+	if len(targets) == 0 {
+		targets = []biz.L3ScopeTarget{{ScopeType: factScopeTypeAgent, ScopeID: strings.TrimSpace(uk.AppName)}}
+	}
+	return targets
+}
+
+// searchViaFusedRecall runs the biz L3 fused recall chain (C3): same
+// algorithm, key space, and relevance filtering as the prompt-injection path.
+// minImportance keeps the memory-tool-specific MemoryToolMinScore policy as a
+// post-filter (its semantic is an importance floor, distinct from the fused
+// relevance minScore).
+func (s *memoryService) searchViaFusedRecall(ctx context.Context, uk trpcmemory.UserKey, q string, topK int32, minImportance float64) ([]*trpcmemory.Entry, error) {
+	policy := s.resolveMemoryPolicy(ctx, uk.AppName)
+	rows, err := s.fusedRecall.RecallFactsFused(ctx, biz.L3FusedRecallQuery{
+		Runtime: biz.MemoryRuntimeContext{
+			AgentID: strings.TrimSpace(uk.AppName),
+			UserID:  strings.TrimSpace(uk.UserID),
+		},
+		Scopes:          policy.L3RecallScopes,
+		Query:           q,
+		Limit:           topK,
+		MinScoreQuery:   policy.L3MinScoreQuery,
+		MinScorePassive: policy.L3MinScorePassive,
+	})
 	if err != nil {
 		return nil, err
 	}
+	return s.entriesFromFactRows(rows, uk, minImportance), nil
+}
+
+// entriesFromFactRows converts raw fact-row JSON to memory entries, applying
+// the importance post-filter and ID dedup. Shared by the legacy list path and
+// the fused recall path (C3); input order is preserved.
+func (s *memoryService) entriesFromFactRows(rows [][]byte, uk trpcmemory.UserKey, minImportance float64) []*trpcmemory.Entry {
 	seen := make(map[string]struct{}, len(rows))
 	out := make([]*trpcmemory.Entry, 0, len(rows))
 	for _, raw := range rows {
@@ -519,7 +638,18 @@ func (s *memoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, 
 		seen[e.ID] = struct{}{}
 		out = append(out, e)
 	}
-	return out, nil
+	return out
+}
+
+// entryLastUpdated is the sort key for the recency-ordered list path.
+func entryLastUpdated(e *trpcmemory.Entry) time.Time {
+	if e == nil {
+		return time.Time{}
+	}
+	if e.Memory != nil && e.Memory.LastUpdated != nil {
+		return *e.Memory.LastUpdated
+	}
+	return e.UpdatedAt
 }
 
 func (s *memoryService) syncIndexBestEffort(ctx context.Context, raw []byte) {

@@ -242,6 +242,9 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// （decision.GateRunIDFromContext → gateRunID），RunGateStats 聚合
 	// 才可命中；loop guard 隔离键同取此值恢复跨执行累计语义。
 	runCtx = decision.WithGateRunID(runCtx, run.ID)
+	// T5（2026-08-27）：会话归属同坐标注入——成员闸钩子经
+	// decision.GateSessionIDFromContext 取回，SessionGateStats 聚合命中。
+	runCtx = decision.WithGateSessionID(runCtx, run.SessionID)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 	if teamEmitter != nil {

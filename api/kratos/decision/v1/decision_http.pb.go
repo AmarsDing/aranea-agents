@@ -21,11 +21,16 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationDecisionRecordServiceGetDecisionChain = "/kratos.decision.v1.DecisionRecordService/GetDecisionChain"
 const OperationDecisionRecordServiceGetDecisionRecord = "/kratos.decision.v1.DecisionRecordService/GetDecisionRecord"
+const OperationDecisionRecordServiceGetSessionGateStats = "/kratos.decision.v1.DecisionRecordService/GetSessionGateStats"
 const OperationDecisionRecordServiceListDecisionRecords = "/kratos.decision.v1.DecisionRecordService/ListDecisionRecords"
 
 type DecisionRecordServiceHTTPServer interface {
 	GetDecisionChain(context.Context, *GetDecisionChainRequest) (*GetDecisionChainResponse, error)
 	GetDecisionRecord(context.Context, *GetDecisionRecordRequest) (*GetDecisionRecordResponse, error)
+	// GetSessionGateStats GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+	// 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+	// 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+	GetSessionGateStats(context.Context, *GetSessionGateStatsRequest) (*GetSessionGateStatsResponse, error)
 	ListDecisionRecords(context.Context, *ListDecisionRecordsRequest) (*ListDecisionRecordsResponse, error)
 }
 
@@ -34,6 +39,7 @@ func RegisterDecisionRecordServiceHTTPServer(s *http.Server, srv DecisionRecordS
 	r.GET("/v1/decisions", _DecisionRecordService_ListDecisionRecords0_HTTP_Handler(srv))
 	r.GET("/v1/decisions/{decision_key}", _DecisionRecordService_GetDecisionRecord0_HTTP_Handler(srv))
 	r.GET("/v1/decisions/{decision_key}/chain", _DecisionRecordService_GetDecisionChain0_HTTP_Handler(srv))
+	r.GET("/v1/sessions/{session_id}/gate-stats", _DecisionRecordService_GetSessionGateStats0_HTTP_Handler(srv))
 }
 
 func _DecisionRecordService_ListDecisionRecords0_HTTP_Handler(srv DecisionRecordServiceHTTPServer) func(ctx http.Context) error {
@@ -99,9 +105,35 @@ func _DecisionRecordService_GetDecisionChain0_HTTP_Handler(srv DecisionRecordSer
 	}
 }
 
+func _DecisionRecordService_GetSessionGateStats0_HTTP_Handler(srv DecisionRecordServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetSessionGateStatsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationDecisionRecordServiceGetSessionGateStats)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetSessionGateStats(ctx, req.(*GetSessionGateStatsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetSessionGateStatsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type DecisionRecordServiceHTTPClient interface {
 	GetDecisionChain(ctx context.Context, req *GetDecisionChainRequest, opts ...http.CallOption) (rsp *GetDecisionChainResponse, err error)
 	GetDecisionRecord(ctx context.Context, req *GetDecisionRecordRequest, opts ...http.CallOption) (rsp *GetDecisionRecordResponse, err error)
+	// GetSessionGateStats GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+	// 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+	// 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+	GetSessionGateStats(ctx context.Context, req *GetSessionGateStatsRequest, opts ...http.CallOption) (rsp *GetSessionGateStatsResponse, err error)
 	ListDecisionRecords(ctx context.Context, req *ListDecisionRecordsRequest, opts ...http.CallOption) (rsp *ListDecisionRecordsResponse, err error)
 }
 
@@ -131,6 +163,22 @@ func (c *DecisionRecordServiceHTTPClientImpl) GetDecisionRecord(ctx context.Cont
 	pattern := "/v1/decisions/{decision_key}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationDecisionRecordServiceGetDecisionRecord))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetSessionGateStats GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+// 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+// 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+func (c *DecisionRecordServiceHTTPClientImpl) GetSessionGateStats(ctx context.Context, in *GetSessionGateStatsRequest, opts ...http.CallOption) (*GetSessionGateStatsResponse, error) {
+	var out GetSessionGateStatsResponse
+	pattern := "/v1/sessions/{session_id}/gate-stats"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationDecisionRecordServiceGetSessionGateStats))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

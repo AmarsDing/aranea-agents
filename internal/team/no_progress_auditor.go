@@ -300,11 +300,12 @@ func (r *Runner) auditMemberNoProgress(ctx context.Context, run biz.TeamRunRecor
 			Reasoning:     fmt.Sprintf("成员 %s 连续 %d 轮同指纹阻塞（纠偏 %d 轮后仍无进展），取消 run", key, streak, cfg.CorrectAfter),
 			GuardName:     "no_progress_auditor",
 			RunID:         run.ID,
+			SessionID:     run.SessionID,
 			Entities:      []decision.EntityRef{{Type: "team", Key: teamID}, {Type: "agent", Key: key}},
 			ObservedValue: streak,
 			Threshold:     cfg.CorrectAfter + cfg.CancelAfter,
 			Action:        "cancel_run",
-			Extra:         map[string]any{"fingerprint": fp, "session_id": run.SessionID},
+			Extra:         map[string]any{"fingerprint": fp},
 		})
 		if em := event.TraceEmitterFromContext(ctx); em != nil {
 			em.LogCritical("chat.team.no_progress", "成员连续同语义阻塞，纠偏无效，已取消 run",

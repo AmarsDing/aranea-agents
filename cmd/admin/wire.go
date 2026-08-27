@@ -1236,6 +1236,9 @@ func provideGraphBuildDeps(
 	if catalog == nil || toolUC == nil {
 		return graphtrpc.GraphNodeResolverSet{NodeBreakers: nodeBreakers}
 	}
+	// T3 根修（同 provideTRPCBuilderDeps，两处必须一致）：ToolUC 非 nil ⇒
+	// 产品确认门禁机制可用，confirmation_guard runner 插件让位。
+	plugintrpc.SetProductConfirmGateActive(true)
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	builderDeps := chatagent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
@@ -1324,6 +1327,14 @@ func provideTRPCBuilderDeps(
 	lg loggateway.Logger,
 ) *chatagent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	// 79-runtime-governance（2026-08-27 三轮审查 T3 根修）：server 形态 ToolUC
+	// 非 nil ⇒ 产品确认门禁机制可用，confirmation_guard runner 插件让位（框架
+	// 执行序插件先于链，硬拦会遮蔽 param gate 的 deny/ask/allow 语义；插件的
+	// ConfirmTools/Patterns 由产品门禁 decide() 插件分支以同一匹配器升级为
+	// 交互确认）。CLI 无 DB 形态 ToolUC 为 nil，不置位，插件保留遗产硬拦。
+	if toolUC != nil {
+		plugintrpc.SetProductConfirmGateActive(true)
+	}
 	return &chatagent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
 			ModelCatalog: catalog,
@@ -3987,6 +3998,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		data.NewDecisionQueryRepoFromData,
 		decision.NewQueryUsecase,
 		service.NewDecisionRecordService,
+		// T5 四轮审查 IDOR 根修：GetSessionGateStats 会话归属校验的窄接口绑定。
+		wire.Bind(new(service.SessionWorkspaceReader), new(*bizsession.SessionUsecase)),
 		wire.Bind(new(decision.Collector), new(decision.Lifecycle)),
 		// M81: config graph — raw-SQL repos → rebuilder → indexer → HTTP API
 		// (P0: rebuild/status/nodes only; querier/health land in P1, event

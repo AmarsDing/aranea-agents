@@ -280,8 +280,10 @@ func TestTaskPlanner_QuickAssess_ExplicitToolRequestForcesPlanning(t *testing.T)
 		// mentioning them is a normal direct request, not an orchestration demand.
 		{"single underscore exec_command", "用 exec_command 看下当前目录有什么文件", false},
 		{"single underscore web_search", "web_search 一下今天的天气", false},
-		// Hyphenated names and plain text must not match.
-		{"hyphenated skill name only", "安装 slack-gif-creator 技能", false},
+		// Hyphenated names must not match the tool-id override; but 「安装」
+		// 是运维动作词，统一信号源（biz.HasTaskActionSignal）下判 Moderate
+		// 是 V2 正确语义——原 false 期望是双词表漂移产物（包C Q2 改钉）。
+		{"hyphenated skill name only", "安装 slack-gif-creator 技能", true},
 		{"simple greeting", "你好", false},
 	}
 

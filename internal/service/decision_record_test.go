@@ -6,7 +6,9 @@ import (
 
 	v1 "aranea-agents/api/kratos/decision/v1"
 	"aranea-agents/internal/biz/decision"
+	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
 )
 
 // fakeDecisionQueryRepo 是 service 层的 QueryRepo 测试替身。
@@ -45,8 +47,29 @@ func (f *fakeDecisionQueryRepo) FindVirtualParentPlanner(context.Context, decisi
 	return f.planner, nil
 }
 
+// SessionGateStats 实现 SessionGateStatsRepo 窄接口（钉死 handler 聚合映射）。
+func (f *fakeDecisionQueryRepo) SessionGateStats(_ context.Context, sessionID string) (decision.RunGateStats, error) {
+	if sessionID == "sess-a" {
+		return decision.RunGateStats{LoopGuardBlocks: 3, ParamRuleDenies: 1, BudgetTripped: true}, nil
+	}
+	return decision.RunGateStats{}, nil
+}
+
+// fakeSessionWorkspaceReader 是 SessionWorkspaceReader 的测试替身（T5 四轮
+// 审查 IDOR 校验）：按 id 返回预置 session，未预置返回 NotFound 语义错误。
+type fakeSessionWorkspaceReader struct {
+	byID map[string]bizsession.Session
+}
+
+func (f *fakeSessionWorkspaceReader) Get(_ context.Context, id string) (bizsession.Session, error) {
+	if s, ok := f.byID[id]; ok {
+		return s, nil
+	}
+	return bizsession.Session{}, apierror.NotFound("SESSION", "session not found")
+}
+
 func newDecisionTestService(items []decision.Record, total int64) *DecisionRecordService {
-	return NewDecisionRecordService(decision.NewQueryUsecase(&fakeDecisionQueryRepo{items: items, total: total}), nil)
+	return NewDecisionRecordService(decision.NewQueryUsecase(&fakeDecisionQueryRepo{items: items, total: total}), nil, nil)
 }
 
 // TestDecisionRecordService_Get_NotFound：未命中 decision_key 返回 NotFound
@@ -79,7 +102,7 @@ func TestDecisionRecordService_RoundTrip(t *testing.T) {
 		}},
 		total: 1,
 	}
-	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil)
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil, nil)
 
 	getResp, err := svc.GetDecisionRecord(context.Background(), &v1.GetDecisionRecordRequest{DecisionKey: "dk-1"})
 	if err != nil {
@@ -140,7 +163,7 @@ func TestDecisionRecordService_GetChain(t *testing.T) {
 		planner:    &decision.Record{ID: 5, DecisionKey: "dk-planner", Category: decision.CategoryPlannerOrchestration, Outcome: "selected_dag", ActorType: decision.ActorSystem, ActorKey: "system:task_planner", Scenario: "s"},
 		downstream: []decision.Record{{ID: 12, DecisionKey: "dk-child", Category: decision.CategorySystemGuard, Outcome: "blocked", ActorType: decision.ActorSystem, ActorKey: "system:loop_guard", Scenario: "s"}},
 	}
-	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil)
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil, nil)
 
 	resp, err := svc.GetDecisionChain(context.Background(), &v1.GetDecisionChainRequest{DecisionKey: "dk-root"})
 	if err != nil {
@@ -180,7 +203,7 @@ func TestDecisionRecordService_WorkspaceIsolation(t *testing.T) {
 		items: []decision.Record{mk("dk-a", "ws-a"), mk("dk-shared", "")},
 		total: 2,
 	}
-	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil)
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil, nil)
 
 	// ① List：租户 caller → VisibleWorkspaces=[callerWS, ""]。
 	tenantCtx := workspace.WithContext(context.Background(), "ws-a")
@@ -249,7 +272,7 @@ func TestDecisionRecordService_ChainNodeVisibility(t *testing.T) {
 			mk(4, "dk-down-b", "ws-b"),   // 本租户 → 保留
 		},
 	}
-	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil)
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil, nil)
 
 	// ① 租户 caller：虚拟父他租户 → upstream 截断为空；downstream 剔他租户留共享+本租户。
 	bCtx := workspace.WithContext(context.Background(), "ws-b")
@@ -292,5 +315,59 @@ func TestDecisionRecordService_ChainNodeVisibility(t *testing.T) {
 		aResp.GetDownstream()[0].GetDecisionKey() != "dk-down-a" ||
 		aResp.GetDownstream()[1].GetDecisionKey() != "dk-down-shared" {
 		t.Fatalf("ws-a downstream = %+v, want [dk-down-a dk-down-shared]", aResp.GetDownstream())
+	}
+}
+
+// TestDecisionRecordService_SessionGateStats 钉死 T5 聚合映射 + 四轮审查
+// IDOR 校验（2026-08-27）：
+//  ① 本租户 caller 查自己会话 → 聚合透传（六类字段映射）。
+//  ② 系统 caller → 绕过归属校验。
+//  ③ 跨租户 caller → NotFound（不泄露存在性/闸计数侧信道）。
+//  ④ 会话不存在 → NotFound；sessUC 未装配 → NotFound（fail-closed）。
+//  ⑤ 空 session_id → BadRequest。
+func TestDecisionRecordService_SessionGateStats(t *testing.T) {
+	repo := &fakeDecisionQueryRepo{}
+	sessReader := &fakeSessionWorkspaceReader{byID: map[string]bizsession.Session{
+		"sess-a": {ID: "sess-a", WorkspaceID: "ws-a"},
+	}}
+	svc := NewDecisionRecordService(decision.NewQueryUsecase(repo), sessReader, nil)
+
+	// ① 本租户。
+	ownResp, err := svc.GetSessionGateStats(workspace.WithContext(context.Background(), "ws-a"),
+		&v1.GetSessionGateStatsRequest{SessionId: "sess-a"})
+	if err != nil {
+		t.Fatalf("own tenant: %v", err)
+	}
+	st := ownResp.GetStats()
+	if st.GetLoopGuardBlocks() != 3 || st.GetParamRuleDenies() != 1 || !st.GetBudgetTripped() {
+		t.Fatalf("stats mapping = %+v", st)
+	}
+
+	// ② 系统 caller 绕过。
+	if _, err := svc.GetSessionGateStats(workspace.WithSystemWorkspace(context.Background()),
+		&v1.GetSessionGateStatsRequest{SessionId: "sess-a"}); err != nil {
+		t.Fatalf("system caller must bypass: %v", err)
+	}
+
+	// ③ 跨租户 → NotFound。
+	if _, err := svc.GetSessionGateStats(workspace.WithContext(context.Background(), "ws-b"),
+		&v1.GetSessionGateStatsRequest{SessionId: "sess-a"}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("cross-tenant must be NotFound, got %v", err)
+	}
+
+	// ④ 不存在 → NotFound；sessUC nil → NotFound。
+	if _, err := svc.GetSessionGateStats(workspace.WithContext(context.Background(), "ws-a"),
+		&v1.GetSessionGateStatsRequest{SessionId: "sess-missing"}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("missing session must be NotFound, got %v", err)
+	}
+	svcNil := NewDecisionRecordService(decision.NewQueryUsecase(repo), nil, nil)
+	if _, err := svcNil.GetSessionGateStats(workspace.WithContext(context.Background(), "ws-a"),
+		&v1.GetSessionGateStatsRequest{SessionId: "sess-a"}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("nil sessUC must fail-closed NotFound, got %v", err)
+	}
+
+	// ⑤ 空 session_id → BadRequest。
+	if _, err := svc.GetSessionGateStats(context.Background(), &v1.GetSessionGateStatsRequest{}); err == nil {
+		t.Fatal("empty session_id must be rejected")
 	}
 }

@@ -22,6 +22,7 @@ const (
 	DecisionRecordService_ListDecisionRecords_FullMethodName = "/kratos.decision.v1.DecisionRecordService/ListDecisionRecords"
 	DecisionRecordService_GetDecisionRecord_FullMethodName   = "/kratos.decision.v1.DecisionRecordService/GetDecisionRecord"
 	DecisionRecordService_GetDecisionChain_FullMethodName    = "/kratos.decision.v1.DecisionRecordService/GetDecisionChain"
+	DecisionRecordService_GetSessionGateStats_FullMethodName = "/kratos.decision.v1.DecisionRecordService/GetSessionGateStats"
 )
 
 // DecisionRecordServiceClient is the client API for DecisionRecordService service.
@@ -37,6 +38,10 @@ type DecisionRecordServiceClient interface {
 	ListDecisionRecords(ctx context.Context, in *ListDecisionRecordsRequest, opts ...grpc.CallOption) (*ListDecisionRecordsResponse, error)
 	GetDecisionRecord(ctx context.Context, in *GetDecisionRecordRequest, opts ...grpc.CallOption) (*GetDecisionRecordResponse, error)
 	GetDecisionChain(ctx context.Context, in *GetDecisionChainRequest, opts ...grpc.CallOption) (*GetDecisionChainResponse, error)
+	// GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+	// 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+	// 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+	GetSessionGateStats(ctx context.Context, in *GetSessionGateStatsRequest, opts ...grpc.CallOption) (*GetSessionGateStatsResponse, error)
 }
 
 type decisionRecordServiceClient struct {
@@ -77,6 +82,16 @@ func (c *decisionRecordServiceClient) GetDecisionChain(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *decisionRecordServiceClient) GetSessionGateStats(ctx context.Context, in *GetSessionGateStatsRequest, opts ...grpc.CallOption) (*GetSessionGateStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSessionGateStatsResponse)
+	err := c.cc.Invoke(ctx, DecisionRecordService_GetSessionGateStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DecisionRecordServiceServer is the server API for DecisionRecordService service.
 // All implementations must embed UnimplementedDecisionRecordServiceServer
 // for forward compatibility.
@@ -90,6 +105,10 @@ type DecisionRecordServiceServer interface {
 	ListDecisionRecords(context.Context, *ListDecisionRecordsRequest) (*ListDecisionRecordsResponse, error)
 	GetDecisionRecord(context.Context, *GetDecisionRecordRequest) (*GetDecisionRecordResponse, error)
 	GetDecisionChain(context.Context, *GetDecisionChainRequest) (*GetDecisionChainResponse, error)
+	// GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+	// 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+	// 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+	GetSessionGateStats(context.Context, *GetSessionGateStatsRequest) (*GetSessionGateStatsResponse, error)
 	mustEmbedUnimplementedDecisionRecordServiceServer()
 }
 
@@ -108,6 +127,9 @@ func (UnimplementedDecisionRecordServiceServer) GetDecisionRecord(context.Contex
 }
 func (UnimplementedDecisionRecordServiceServer) GetDecisionChain(context.Context, *GetDecisionChainRequest) (*GetDecisionChainResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDecisionChain not implemented")
+}
+func (UnimplementedDecisionRecordServiceServer) GetSessionGateStats(context.Context, *GetSessionGateStatsRequest) (*GetSessionGateStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSessionGateStats not implemented")
 }
 func (UnimplementedDecisionRecordServiceServer) mustEmbedUnimplementedDecisionRecordServiceServer() {}
 func (UnimplementedDecisionRecordServiceServer) testEmbeddedByValue()                               {}
@@ -184,6 +206,24 @@ func _DecisionRecordService_GetDecisionChain_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DecisionRecordService_GetSessionGateStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSessionGateStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DecisionRecordServiceServer).GetSessionGateStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DecisionRecordService_GetSessionGateStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DecisionRecordServiceServer).GetSessionGateStats(ctx, req.(*GetSessionGateStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DecisionRecordService_ServiceDesc is the grpc.ServiceDesc for DecisionRecordService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -202,6 +242,10 @@ var DecisionRecordService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDecisionChain",
 			Handler:    _DecisionRecordService_GetDecisionChain_Handler,
+		},
+		{
+			MethodName: "GetSessionGateStats",
+			Handler:    _DecisionRecordService_GetSessionGateStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

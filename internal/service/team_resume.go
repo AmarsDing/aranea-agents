@@ -36,6 +36,10 @@ func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.Resume
 	// context.WithoutCancel（graph_execution_usecase ResumeExecution）保留
 	// values，注入可穿透到成员节点执行。
 	ctx = decision.WithGateRunID(ctx, run.ID)
+	// T5（2026-08-27 四轮审查根修）：会话归属同坐标重注——resume 后成员闸
+	// 事件经 GateSessionIDFromContext 取回，否则 SessionGateStats 对恢复执行
+	// 段的闸事件恒漏计（team 图谱成员 invocation.Session 不保证 chat 归属）。
+	ctx = decision.WithGateSessionID(ctx, run.SessionID)
 	ctx = sandbox.WithRunID(ctx, run.ID)
 	exec, err := s.graphUC.ResumeExecution(ctx, execID, resume)
 	if err != nil {

@@ -81,6 +81,13 @@ func buildDecisionListWhere(d Dialect, f decision.ListFilter) (string, []any) {
 		conds = append(conds, d.JSONExtract("source_ref", "run_id")+" = ?")
 		args = append(args, s)
 	}
+	// source_session_id 过滤（T5）：COALESCE(source_ref.session_id,
+	// metadata.session_id)——新记录 session_id 是 SourceRef 一等公民，旧记
+	// 录（Extra 注入时期）仅在 metadata；PG 走 20261268 同型表达式索引。
+	if s := strings.TrimSpace(f.SourceSessionID); s != "" {
+		conds = append(conds, gateSessionExpr(d)+" = ?")
+		args = append(args, s)
+	}
 	// workspace 隔离（t-dr-3）：非 nil 时 workspace_id IN (...)。service 层
 	// 约定非系统 caller 传 [callerWS, ""]（共享记录可读）；系统 caller 传
 	// nil 不过滤。空非 nil 切片 = 可见集为空，fail-closed 恒不命中。
@@ -215,6 +222,60 @@ func parseMetadataInt(s string) int {
 		return int(f)
 	}
 	return 0
+}
+
+// gateSessionExpr 是闸事件会话归属的双方言表达式（T5）：SourceRef.SessionID
+// 优先，回落 metadata.session_id（Extra 注入时期的存量记录）。PG 下与
+// 20261268 表达式索引精确一致方可命中。
+func gateSessionExpr(d Dialect) string {
+	return "COALESCE(" + d.JSONExtract("source_ref", "session_id") + ", " +
+		d.JSONExtract("metadata", "session_id") + ")"
+}
+
+var _ decision.SessionGateStatsRepo = (*decisionQueryRepo)(nil)
+
+// SessionGateStats 聚合一个 chat/team 会话的 system_guard 记录（T5，2026-08-27
+// chat 侧闸事件聚合面）。与 RunGateStats 同型：只取 JSON 抽取值、Go 侧计数
+// 求和，双方言零分支；过滤走下推的会话归属表达式（PG 表达式索引 20261268）。
+// 会话的 guard 记录量级小，全行扫描可接受。
+func (r *decisionQueryRepo) SessionGateStats(ctx context.Context, sessionID string) (decision.RunGateStats, error) {
+	var out decision.RunGateStats
+	if r == nil || r.data == nil || r.data.RWDB() == nil || strings.TrimSpace(sessionID) == "" {
+		return out, nil
+	}
+	d := r.data.Dialect()
+	q := d.RenumberPlaceholders(
+		"SELECT " + d.JSONExtract("metadata", "trigger_rule") + ", " +
+			d.JSONExtract("metadata", "observed_value") + ", " +
+			d.JSONExtract("metadata", "prune_bytes") +
+			" FROM decision_records WHERE category = ? AND " + gateSessionExpr(d) + " = ?")
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, decision.CategorySystemGuard, sessionID)
+	if err != nil {
+		return out, entErrToBizErr(err, "DECISION")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var trigger, observed, pruneBytes sql.NullString
+		if err := rows.Scan(&trigger, &observed, &pruneBytes); err != nil {
+			return out, entErrToBizErr(err, "DECISION")
+		}
+		switch trigger.String {
+		case decision.TriggerLoopGuardBlocked:
+			out.LoopGuardBlocks++
+		case decision.TriggerTokenBudgetTripped:
+			out.BudgetTripped = true
+		case decision.TriggerNoProgressTripped:
+			out.NoProgressTripped = true
+		case decision.TriggerToolResultPruned:
+			out.PruneCount += parseMetadataInt(observed.String)
+			out.PruneBytes += int64(parseMetadataInt(pruneBytes.String))
+		case decision.TriggerContextCompacted:
+			out.CompactCount++
+		case decision.TriggerParamRuleDeny:
+			out.ParamRuleDenies++
+		}
+	}
+	return out, entErrToBizErr(rows.Err(), "DECISION")
 }
 
 // GetByKey 按 decision_key 精确查询；未命中返回 nil, nil。

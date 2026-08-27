@@ -37,6 +37,33 @@ func GateRunIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// gateSessionIDCtxKey 是 WithGateSessionID 的 ctx 键（未导出，强制经函数读写）。
+type gateSessionIDCtxKey struct{}
+
+// WithGateSessionID 把 chat/team 会话 id 注入执行 ctx（T5，2026-08-27）。
+// 与 WithGateRunID 同型同理：框架 Clone 后成员子 invocation 的 Session 指针
+// 不一定反映 chat 会话归属，team runner 在注入 run id 的同一坐标注入会话 id，
+// 成员侧闸钩子（param_rule_gate / loop_guard / tool_result_prune /
+// context_compression）经 GateSessionIDFromContext 取回，SessionGateStats
+// 聚合才可命中。chat 路径不注入——钩子回落 invocation.Session.ID。
+func WithGateSessionID(ctx context.Context, sessionID string) context.Context {
+	if ctx == nil || strings.TrimSpace(sessionID) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, gateSessionIDCtxKey{}, strings.TrimSpace(sessionID))
+}
+
+// GateSessionIDFromContext 取 WithGateSessionID 注入的会话 id；未注入返回 ""。
+func GateSessionIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(gateSessionIDCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
 // 系统闸 trigger_rule 枚举（C6，2026-08-26 一次列全）。param_rule_deny
 // 属 79-runtime-governance R9 tool_param_rules，随其 Wave 上线后接通挂点；
 // 其余六类已在生产路径产出。
@@ -49,8 +76,8 @@ const (
 	// 79-runtime-governance R7（G-1）：压缩/剪枝事件结构化持久化——此前仅
 	// 运行时日志与 invocation state（进程即逝），run 结束后无法回溯。两类
 	// 事件 outcome 均为 "truncated"，prune 负载在 metadata.prune_bytes。
-	TriggerToolResultPruned  = "tool_result_pruned"
-	TriggerContextCompacted  = "context_compacted"
+	TriggerToolResultPruned = "tool_result_pruned"
+	TriggerContextCompacted = "context_compacted"
 )
 
 // GateDecision 是 S2 统一闸决策事件结构（设计 §3.2 row 3）：各闸点只填
@@ -67,7 +94,11 @@ type GateDecision struct {
 	// 填 FlowTraceID。
 	RunID       string
 	FlowTraceID string
-	Entities    []EntityRef
+	// SessionID 是 chat/team 会话归属（T5）：写入 SourceRef.SessionID，
+	// 并同步 metadata.session_id（与 Extra 注入时期的旧记录口径一致，
+	// 读侧 COALESCE 两路兼容）。
+	SessionID string
+	Entities  []EntityRef
 	// ObservedValue / Threshold / Action 落入 metadata（observed_value /
 	// threshold / action）；零值省略。
 	ObservedValue any
@@ -93,6 +124,11 @@ func EmitGate(ctx context.Context, c Collector, gd GateDecision) {
 	if gd.Action != "" {
 		metadata["action"] = gd.Action
 	}
+	// session_id 双写：SourceRef 一等公民（索引服务聚合/过滤）+ metadata
+	// 旧口径（Extra 注入时期的存量记录只在 metadata，读侧 COALESCE 两路）。
+	if sid := strings.TrimSpace(gd.SessionID); sid != "" {
+		metadata["session_id"] = sid
+	}
 	for k, v := range gd.Extra {
 		if _, reserved := metadata[k]; !reserved {
 			metadata[k] = v
@@ -107,7 +143,7 @@ func EmitGate(ctx context.Context, c Collector, gd GateDecision) {
 		ActorType:       ActorSystem,
 		ActorKey:        "system:" + gd.GuardName,
 		RelatedEntities: gd.Entities,
-		SourceRef:       SourceRef{RunID: gd.RunID, FlowTraceID: gd.FlowTraceID},
+		SourceRef:       SourceRef{RunID: gd.RunID, FlowTraceID: gd.FlowTraceID, SessionID: strings.TrimSpace(gd.SessionID)},
 		Metadata:        metadata,
 	})
 }

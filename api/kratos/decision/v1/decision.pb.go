@@ -35,6 +35,9 @@ type ListDecisionRecordsRequest struct {
 	EntityKey  string `protobuf:"bytes,4,opt,name=entity_key,json=entityKey,proto3" json:"entity_key,omitempty"`
 	// source_ref.run_id 过滤。
 	SourceRunId string `protobuf:"bytes,5,opt,name=source_run_id,json=sourceRunId,proto3" json:"source_run_id,omitempty"`
+	// source_ref.session_id 过滤（T5）：读侧 COALESCE 兼容旧记录（session_id
+	// 仅在 metadata 的时期）。
+	SourceSessionId string `protobuf:"bytes,10,opt,name=source_session_id,json=sourceSessionId,proto3" json:"source_session_id,omitempty"`
 	// 时间窗（created_at，含端点）；空 = 不限。
 	TimeFrom *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=time_from,json=timeFrom,proto3" json:"time_from,omitempty"`
 	TimeTo   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=time_to,json=timeTo,proto3" json:"time_to,omitempty"`
@@ -106,6 +109,13 @@ func (x *ListDecisionRecordsRequest) GetEntityKey() string {
 func (x *ListDecisionRecordsRequest) GetSourceRunId() string {
 	if x != nil {
 		return x.SourceRunId
+	}
+	return ""
+}
+
+func (x *ListDecisionRecordsRequest) GetSourceSessionId() string {
+	if x != nil {
+		return x.SourceSessionId
 	}
 	return ""
 }
@@ -416,6 +426,195 @@ func (x *GetDecisionChainResponse) GetDownstream() []*DecisionRecord {
 	return nil
 }
 
+type GetSessionGateStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSessionGateStatsRequest) Reset() {
+	*x = GetSessionGateStatsRequest{}
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSessionGateStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSessionGateStatsRequest) ProtoMessage() {}
+
+func (x *GetSessionGateStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSessionGateStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetSessionGateStatsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_decision_v1_decision_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetSessionGateStatsRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+// SessionGateStats 字段与 decision.RunGateStats 一一对应（聚合维度从 run
+// 换成会话，字段语义不变； TeamRunStats 内嵌闸字段同口径）。
+type SessionGateStats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// loop_guard_blocked 记录条数。
+	LoopGuardBlocks int32 `protobuf:"varint,1,opt,name=loop_guard_blocks,json=loopGuardBlocks,proto3" json:"loop_guard_blocks,omitempty"`
+	// 是否触发过 token_budget_tripped。
+	BudgetTripped bool `protobuf:"varint,2,opt,name=budget_tripped,json=budgetTripped,proto3" json:"budget_tripped,omitempty"`
+	// 是否触发过 no_progress_tripped。
+	NoProgressTripped bool `protobuf:"varint,3,opt,name=no_progress_tripped,json=noProgressTripped,proto3" json:"no_progress_tripped,omitempty"`
+	// 被剪枝 tool result 总条数（observed_value 求和）。
+	PruneCount int32 `protobuf:"varint,4,opt,name=prune_count,json=pruneCount,proto3" json:"prune_count,omitempty"`
+	// 被剪枝原文总字节数（metadata.prune_bytes 求和）。
+	PruneBytes int64 `protobuf:"varint,5,opt,name=prune_bytes,json=pruneBytes,proto3" json:"prune_bytes,omitempty"`
+	// 终审压缩触发次数。
+	CompactCount int32 `protobuf:"varint,6,opt,name=compact_count,json=compactCount,proto3" json:"compact_count,omitempty"`
+	// 工具参数门禁 deny 记录条数。
+	ParamRuleDenies int32 `protobuf:"varint,7,opt,name=param_rule_denies,json=paramRuleDenies,proto3" json:"param_rule_denies,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SessionGateStats) Reset() {
+	*x = SessionGateStats{}
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionGateStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionGateStats) ProtoMessage() {}
+
+func (x *SessionGateStats) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionGateStats.ProtoReflect.Descriptor instead.
+func (*SessionGateStats) Descriptor() ([]byte, []int) {
+	return file_kratos_decision_v1_decision_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SessionGateStats) GetLoopGuardBlocks() int32 {
+	if x != nil {
+		return x.LoopGuardBlocks
+	}
+	return 0
+}
+
+func (x *SessionGateStats) GetBudgetTripped() bool {
+	if x != nil {
+		return x.BudgetTripped
+	}
+	return false
+}
+
+func (x *SessionGateStats) GetNoProgressTripped() bool {
+	if x != nil {
+		return x.NoProgressTripped
+	}
+	return false
+}
+
+func (x *SessionGateStats) GetPruneCount() int32 {
+	if x != nil {
+		return x.PruneCount
+	}
+	return 0
+}
+
+func (x *SessionGateStats) GetPruneBytes() int64 {
+	if x != nil {
+		return x.PruneBytes
+	}
+	return 0
+}
+
+func (x *SessionGateStats) GetCompactCount() int32 {
+	if x != nil {
+		return x.CompactCount
+	}
+	return 0
+}
+
+func (x *SessionGateStats) GetParamRuleDenies() int32 {
+	if x != nil {
+		return x.ParamRuleDenies
+	}
+	return 0
+}
+
+type GetSessionGateStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stats         *SessionGateStats      `protobuf:"bytes,1,opt,name=stats,proto3" json:"stats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSessionGateStatsResponse) Reset() {
+	*x = GetSessionGateStatsResponse{}
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSessionGateStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSessionGateStatsResponse) ProtoMessage() {}
+
+func (x *GetSessionGateStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSessionGateStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetSessionGateStatsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_decision_v1_decision_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetSessionGateStatsResponse) GetStats() *SessionGateStats {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
 // DecisionRecord 字段与 decision_records 表一一对应（设计 §4.1）；
 // entities/source_ref/metadata 用 Struct 承载双方言 JSON 文本列。
 type DecisionRecord struct {
@@ -449,7 +648,7 @@ type DecisionRecord struct {
 
 func (x *DecisionRecord) Reset() {
 	*x = DecisionRecord{}
-	mi := &file_kratos_decision_v1_decision_proto_msgTypes[6]
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +660,7 @@ func (x *DecisionRecord) String() string {
 func (*DecisionRecord) ProtoMessage() {}
 
 func (x *DecisionRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_decision_v1_decision_proto_msgTypes[6]
+	mi := &file_kratos_decision_v1_decision_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +673,7 @@ func (x *DecisionRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionRecord.ProtoReflect.Descriptor instead.
 func (*DecisionRecord) Descriptor() ([]byte, []int) {
-	return file_kratos_decision_v1_decision_proto_rawDescGZIP(), []int{6}
+	return file_kratos_decision_v1_decision_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DecisionRecord) GetId() int64 {
@@ -600,7 +799,7 @@ var File_kratos_decision_v1_decision_proto protoreflect.FileDescriptor
 
 const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"\n" +
-	"!kratos/decision/v1/decision.proto\x12\x12kratos.decision.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd8\x02\n" +
+	"!kratos/decision/v1/decision.proto\x12\x12kratos.decision.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x84\x03\n" +
 	"\x1aListDecisionRecordsRequest\x12\x1a\n" +
 	"\bcategory\x18\x01 \x01(\tR\bcategory\x12\x1b\n" +
 	"\tactor_key\x18\x02 \x01(\tR\bactorKey\x12\x1f\n" +
@@ -608,7 +807,9 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"entityType\x12\x1d\n" +
 	"\n" +
 	"entity_key\x18\x04 \x01(\tR\tentityKey\x12\"\n" +
-	"\rsource_run_id\x18\x05 \x01(\tR\vsourceRunId\x127\n" +
+	"\rsource_run_id\x18\x05 \x01(\tR\vsourceRunId\x12*\n" +
+	"\x11source_session_id\x18\n" +
+	" \x01(\tR\x0fsourceSessionId\x127\n" +
 	"\ttime_from\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\btimeFrom\x123\n" +
 	"\atime_to\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x06timeTo\x12\x12\n" +
 	"\x04page\x18\b \x01(\x05R\x04page\x12\x1b\n" +
@@ -631,7 +832,22 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"\bupstream\x18\x02 \x03(\v2\".kratos.decision.v1.DecisionRecordR\bupstream\x12B\n" +
 	"\n" +
 	"downstream\x18\x03 \x03(\v2\".kratos.decision.v1.DecisionRecordR\n" +
-	"downstream\"\xe1\x05\n" +
+	"downstream\"A\n" +
+	"\x1aGetSessionGateStatsRequest\x12#\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\"\xa8\x02\n" +
+	"\x10SessionGateStats\x12*\n" +
+	"\x11loop_guard_blocks\x18\x01 \x01(\x05R\x0floopGuardBlocks\x12%\n" +
+	"\x0ebudget_tripped\x18\x02 \x01(\bR\rbudgetTripped\x12.\n" +
+	"\x13no_progress_tripped\x18\x03 \x01(\bR\x11noProgressTripped\x12\x1f\n" +
+	"\vprune_count\x18\x04 \x01(\x05R\n" +
+	"pruneCount\x12\x1f\n" +
+	"\vprune_bytes\x18\x05 \x01(\x03R\n" +
+	"pruneBytes\x12#\n" +
+	"\rcompact_count\x18\x06 \x01(\x05R\fcompactCount\x12*\n" +
+	"\x11param_rule_denies\x18\a \x01(\x05R\x0fparamRuleDenies\"Y\n" +
+	"\x1bGetSessionGateStatsResponse\x12:\n" +
+	"\x05stats\x18\x01 \x01(\v2$.kratos.decision.v1.SessionGateStatsR\x05stats\"\xe1\x05\n" +
 	"\x0eDecisionRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12!\n" +
 	"\fdecision_key\x18\x02 \x01(\tR\vdecisionKey\x12\x1a\n" +
@@ -658,11 +874,12 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"updated_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12%\n" +
 	"\x0evirtual_parent\x18\x11 \x01(\bR\rvirtualParentB\r\n" +
 	"\v_confidenceB\x15\n" +
-	"\x13_parent_decision_id2\xdc\x03\n" +
+	"\x13_parent_decision_id2\x83\x05\n" +
 	"\x15DecisionRecordService\x12\x8d\x01\n" +
 	"\x13ListDecisionRecords\x12..kratos.decision.v1.ListDecisionRecordsRequest\x1a/.kratos.decision.v1.ListDecisionRecordsResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/decisions\x12\x96\x01\n" +
 	"\x11GetDecisionRecord\x12,.kratos.decision.v1.GetDecisionRecordRequest\x1a-.kratos.decision.v1.GetDecisionRecordResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/decisions/{decision_key}\x12\x99\x01\n" +
-	"\x10GetDecisionChain\x12+.kratos.decision.v1.GetDecisionChainRequest\x1a,.kratos.decision.v1.GetDecisionChainResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/decisions/{decision_key}/chainBA\n" +
+	"\x10GetDecisionChain\x12+.kratos.decision.v1.GetDecisionChainRequest\x1a,.kratos.decision.v1.GetDecisionChainResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/decisions/{decision_key}/chain\x12\xa4\x01\n" +
+	"\x13GetSessionGateStats\x12..kratos.decision.v1.GetSessionGateStatsRequest\x1a/.kratos.decision.v1.GetSessionGateStatsResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/sessions/{session_id}/gate-statsBA\n" +
 	"\x16api.kratos.decision.v1Z'aranea-agents/api/kratos/decision/v1;v1b\x06proto3"
 
 var (
@@ -677,7 +894,7 @@ func file_kratos_decision_v1_decision_proto_rawDescGZIP() []byte {
 	return file_kratos_decision_v1_decision_proto_rawDescData
 }
 
-var file_kratos_decision_v1_decision_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_kratos_decision_v1_decision_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_kratos_decision_v1_decision_proto_goTypes = []any{
 	(*ListDecisionRecordsRequest)(nil),  // 0: kratos.decision.v1.ListDecisionRecordsRequest
 	(*ListDecisionRecordsResponse)(nil), // 1: kratos.decision.v1.ListDecisionRecordsResponse
@@ -685,35 +902,41 @@ var file_kratos_decision_v1_decision_proto_goTypes = []any{
 	(*GetDecisionRecordResponse)(nil),   // 3: kratos.decision.v1.GetDecisionRecordResponse
 	(*GetDecisionChainRequest)(nil),     // 4: kratos.decision.v1.GetDecisionChainRequest
 	(*GetDecisionChainResponse)(nil),    // 5: kratos.decision.v1.GetDecisionChainResponse
-	(*DecisionRecord)(nil),              // 6: kratos.decision.v1.DecisionRecord
-	(*timestamppb.Timestamp)(nil),       // 7: google.protobuf.Timestamp
-	(*structpb.ListValue)(nil),          // 8: google.protobuf.ListValue
-	(*structpb.Struct)(nil),             // 9: google.protobuf.Struct
+	(*GetSessionGateStatsRequest)(nil),  // 6: kratos.decision.v1.GetSessionGateStatsRequest
+	(*SessionGateStats)(nil),            // 7: kratos.decision.v1.SessionGateStats
+	(*GetSessionGateStatsResponse)(nil), // 8: kratos.decision.v1.GetSessionGateStatsResponse
+	(*DecisionRecord)(nil),              // 9: kratos.decision.v1.DecisionRecord
+	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
+	(*structpb.ListValue)(nil),          // 11: google.protobuf.ListValue
+	(*structpb.Struct)(nil),             // 12: google.protobuf.Struct
 }
 var file_kratos_decision_v1_decision_proto_depIdxs = []int32{
-	7,  // 0: kratos.decision.v1.ListDecisionRecordsRequest.time_from:type_name -> google.protobuf.Timestamp
-	7,  // 1: kratos.decision.v1.ListDecisionRecordsRequest.time_to:type_name -> google.protobuf.Timestamp
-	6,  // 2: kratos.decision.v1.ListDecisionRecordsResponse.items:type_name -> kratos.decision.v1.DecisionRecord
-	6,  // 3: kratos.decision.v1.GetDecisionRecordResponse.record:type_name -> kratos.decision.v1.DecisionRecord
-	6,  // 4: kratos.decision.v1.GetDecisionChainResponse.root:type_name -> kratos.decision.v1.DecisionRecord
-	6,  // 5: kratos.decision.v1.GetDecisionChainResponse.upstream:type_name -> kratos.decision.v1.DecisionRecord
-	6,  // 6: kratos.decision.v1.GetDecisionChainResponse.downstream:type_name -> kratos.decision.v1.DecisionRecord
-	8,  // 7: kratos.decision.v1.DecisionRecord.related_entities:type_name -> google.protobuf.ListValue
-	9,  // 8: kratos.decision.v1.DecisionRecord.source_ref:type_name -> google.protobuf.Struct
-	9,  // 9: kratos.decision.v1.DecisionRecord.metadata:type_name -> google.protobuf.Struct
-	7,  // 10: kratos.decision.v1.DecisionRecord.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 11: kratos.decision.v1.DecisionRecord.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 12: kratos.decision.v1.DecisionRecordService.ListDecisionRecords:input_type -> kratos.decision.v1.ListDecisionRecordsRequest
-	2,  // 13: kratos.decision.v1.DecisionRecordService.GetDecisionRecord:input_type -> kratos.decision.v1.GetDecisionRecordRequest
-	4,  // 14: kratos.decision.v1.DecisionRecordService.GetDecisionChain:input_type -> kratos.decision.v1.GetDecisionChainRequest
-	1,  // 15: kratos.decision.v1.DecisionRecordService.ListDecisionRecords:output_type -> kratos.decision.v1.ListDecisionRecordsResponse
-	3,  // 16: kratos.decision.v1.DecisionRecordService.GetDecisionRecord:output_type -> kratos.decision.v1.GetDecisionRecordResponse
-	5,  // 17: kratos.decision.v1.DecisionRecordService.GetDecisionChain:output_type -> kratos.decision.v1.GetDecisionChainResponse
-	15, // [15:18] is the sub-list for method output_type
-	12, // [12:15] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	10, // 0: kratos.decision.v1.ListDecisionRecordsRequest.time_from:type_name -> google.protobuf.Timestamp
+	10, // 1: kratos.decision.v1.ListDecisionRecordsRequest.time_to:type_name -> google.protobuf.Timestamp
+	9,  // 2: kratos.decision.v1.ListDecisionRecordsResponse.items:type_name -> kratos.decision.v1.DecisionRecord
+	9,  // 3: kratos.decision.v1.GetDecisionRecordResponse.record:type_name -> kratos.decision.v1.DecisionRecord
+	9,  // 4: kratos.decision.v1.GetDecisionChainResponse.root:type_name -> kratos.decision.v1.DecisionRecord
+	9,  // 5: kratos.decision.v1.GetDecisionChainResponse.upstream:type_name -> kratos.decision.v1.DecisionRecord
+	9,  // 6: kratos.decision.v1.GetDecisionChainResponse.downstream:type_name -> kratos.decision.v1.DecisionRecord
+	7,  // 7: kratos.decision.v1.GetSessionGateStatsResponse.stats:type_name -> kratos.decision.v1.SessionGateStats
+	11, // 8: kratos.decision.v1.DecisionRecord.related_entities:type_name -> google.protobuf.ListValue
+	12, // 9: kratos.decision.v1.DecisionRecord.source_ref:type_name -> google.protobuf.Struct
+	12, // 10: kratos.decision.v1.DecisionRecord.metadata:type_name -> google.protobuf.Struct
+	10, // 11: kratos.decision.v1.DecisionRecord.created_at:type_name -> google.protobuf.Timestamp
+	10, // 12: kratos.decision.v1.DecisionRecord.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 13: kratos.decision.v1.DecisionRecordService.ListDecisionRecords:input_type -> kratos.decision.v1.ListDecisionRecordsRequest
+	2,  // 14: kratos.decision.v1.DecisionRecordService.GetDecisionRecord:input_type -> kratos.decision.v1.GetDecisionRecordRequest
+	4,  // 15: kratos.decision.v1.DecisionRecordService.GetDecisionChain:input_type -> kratos.decision.v1.GetDecisionChainRequest
+	6,  // 16: kratos.decision.v1.DecisionRecordService.GetSessionGateStats:input_type -> kratos.decision.v1.GetSessionGateStatsRequest
+	1,  // 17: kratos.decision.v1.DecisionRecordService.ListDecisionRecords:output_type -> kratos.decision.v1.ListDecisionRecordsResponse
+	3,  // 18: kratos.decision.v1.DecisionRecordService.GetDecisionRecord:output_type -> kratos.decision.v1.GetDecisionRecordResponse
+	5,  // 19: kratos.decision.v1.DecisionRecordService.GetDecisionChain:output_type -> kratos.decision.v1.GetDecisionChainResponse
+	8,  // 20: kratos.decision.v1.DecisionRecordService.GetSessionGateStats:output_type -> kratos.decision.v1.GetSessionGateStatsResponse
+	17, // [17:21] is the sub-list for method output_type
+	13, // [13:17] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_kratos_decision_v1_decision_proto_init() }
@@ -721,14 +944,14 @@ func file_kratos_decision_v1_decision_proto_init() {
 	if File_kratos_decision_v1_decision_proto != nil {
 		return
 	}
-	file_kratos_decision_v1_decision_proto_msgTypes[6].OneofWrappers = []any{}
+	file_kratos_decision_v1_decision_proto_msgTypes[9].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_decision_v1_decision_proto_rawDesc), len(file_kratos_decision_v1_decision_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

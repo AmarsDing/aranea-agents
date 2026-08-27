@@ -64,6 +64,12 @@ type PlanInput struct {
 	// When set to a team-forming mode (parallel/dag/coordinator), it overrides
 	// complexity-based strategy selection and forces subtask decomposition.
 	Mode string
+	// AgentKeys 是 plan_and_execute 的显式路由键（IDENTITY.md 契约：系统
+	// 管家任务 agent_keys=["__system_admin__"]）。组队证据闸（包C Q2-C2）
+	// 跳过显式路由——键路由本身即用户/系统契约的组队证据，无需 lexical
+	// 证据兜底。仅工具入口在键路由升级 mode=parallel 时透传；其他调用方
+	// 留空，证据闸照常生效。
+	AgentKeys []string
 }
 
 // PlanAdjustments allows Spirit LLM to adjust the plan

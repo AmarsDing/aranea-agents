@@ -85,6 +85,20 @@ type TaskPlan struct {
 	// PublishV2Board 仅做 AgentKeys 更新（PlanStepUpdatedEvent），不重复
 	// 发布 Created 事件。内存字段，不持久化。
 	StreamPublished bool `json:"-"`
+
+	// ClarificationQuestions 是分解层澄清出口的阻塞性问题（Q7，
+	// session-eval-20260827 P4 根修）：分解 LLM 判定任务存在阻塞性信息
+	// 缺失（产品名/日期/渠道等）时选择提问而非虚构。内存字段，不持久化——
+	// 澄清计划不进入执行管线，问题由 plan_and_execute 立即透传给 Spirit
+	// 向用户提问，落库仅留 DecomposeReason=needs_clarification 痕迹。
+	ClarificationQuestions []string `json:"-"`
+}
+
+// NeedsClarification reports whether the plan is parked pending user
+// clarification (decomposition-layer clarification exit, Q7). Such plans
+// must not be allocated/orchestrated — the caller surfaces the questions.
+func (p *TaskPlan) NeedsClarification() bool {
+	return p != nil && len(p.ClarificationQuestions) > 0
 }
 
 // DimensionScores holds the six-dimension complexity assessment

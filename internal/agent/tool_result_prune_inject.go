@@ -40,9 +40,9 @@ import (
 // internal/conf）。零值语义：Enabled=false 时 hook 为 nil（一键回退）。
 type ToolResultPruneConfig struct {
 	Enabled     bool
-	AfterTurns  int               // K：距当前轮超过 K 轮才剪（默认 8）
-	SizeBytes   int64             // S：序列化大小阈值（默认 4096）
-	ExemptTools map[string]bool   // 白名单工具名：永不剪（取证关键类）
+	AfterTurns  int             // K：距当前轮超过 K 轮才剪（默认 8）
+	SizeBytes   int64           // S：序列化大小阈值（默认 4096）
+	ExemptTools map[string]bool // 白名单工具名：永不剪（取证关键类）
 }
 
 // pruneMetaStateKey 是最近一轮剪枝统计的 invocation-state 键，供 R7 run 统计
@@ -166,9 +166,10 @@ func emitPruneGateDecision(ctx context.Context, c decision.Collector, sessionID 
 		Reasoning:     fmt.Sprintf("距当前轮超 K 轮且超尺寸阈值的 tool result 已替换为摘记指针（%d 条 / %d 字节）", pruned, prunedBytes),
 		GuardName:     "tool_result_prune",
 		RunID:         runID,
+		SessionID:     sessionID,
 		ObservedValue: pruned,
 		Action:        "prune",
-		Extra:         map[string]any{"prune_bytes": prunedBytes, "session_id": sessionID},
+		Extra:         map[string]any{"prune_bytes": prunedBytes},
 	})
 }
 

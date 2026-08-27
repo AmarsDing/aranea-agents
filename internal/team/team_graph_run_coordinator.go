@@ -294,6 +294,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 	// run 归属与沙箱预算归属，否则恢复后成员闸事件 RunGateStats 恒漏计、
 	// loop guard 隔离键跨执行清零。
 	ctx = decision.WithGateRunID(ctx, sess.teamRunID)
+	ctx = decision.WithGateSessionID(ctx, sess.sessionID)
 	ctx = sandbox.WithRunID(ctx, sess.teamRunID)
 	if _, err := c.graphs.ResumeExecution(ctx, task.ExecutionID, resume); err != nil {
 		if c.teamRunReader != nil {

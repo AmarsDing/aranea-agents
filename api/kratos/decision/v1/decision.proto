@@ -25,6 +25,12 @@ service DecisionRecordService {
   rpc GetDecisionChain (GetDecisionChainRequest) returns (GetDecisionChainResponse) {
     option (google.api.http) = { get: "/v1/decisions/{decision_key}/chain" };
   }
+  // GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+  // 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+  // 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+  rpc GetSessionGateStats (GetSessionGateStatsRequest) returns (GetSessionGateStatsResponse) {
+    option (google.api.http) = { get: "/v1/sessions/{session_id}/gate-stats" };
+  }
 }
 
 message ListDecisionRecordsRequest {
@@ -37,6 +43,9 @@ message ListDecisionRecordsRequest {
   string entity_key = 4;
   // source_ref.run_id 过滤。
   string source_run_id = 5;
+  // source_ref.session_id 过滤（T5）：读侧 COALESCE 兼容旧记录（session_id
+  // 仅在 metadata 的时期）。
+  string source_session_id = 10;
   // 时间窗（created_at，含端点）；空 = 不限。
   google.protobuf.Timestamp time_from = 6;
   google.protobuf.Timestamp time_to = 7;
@@ -72,6 +81,33 @@ message GetDecisionChainResponse {
   DecisionRecord root = 1;
   repeated DecisionRecord upstream = 2;
   repeated DecisionRecord downstream = 3;
+}
+
+message GetSessionGateStatsRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// SessionGateStats 字段与 decision.RunGateStats 一一对应（聚合维度从 run
+// 换成会话，字段语义不变； TeamRunStats 内嵌闸字段同口径）。
+message SessionGateStats {
+  // loop_guard_blocked 记录条数。
+  int32 loop_guard_blocks = 1;
+  // 是否触发过 token_budget_tripped。
+  bool budget_tripped = 2;
+  // 是否触发过 no_progress_tripped。
+  bool no_progress_tripped = 3;
+  // 被剪枝 tool result 总条数（observed_value 求和）。
+  int32 prune_count = 4;
+  // 被剪枝原文总字节数（metadata.prune_bytes 求和）。
+  int64 prune_bytes = 5;
+  // 终审压缩触发次数。
+  int32 compact_count = 6;
+  // 工具参数门禁 deny 记录条数。
+  int32 param_rule_denies = 7;
+}
+
+message GetSessionGateStatsResponse {
+  SessionGateStats stats = 1;
 }
 
 // DecisionRecord 字段与 decision_records 表一一对应（设计 §4.1）；

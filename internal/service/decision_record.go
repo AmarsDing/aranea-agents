@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/decision/v1"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -14,33 +15,45 @@ import (
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// SessionWorkspaceReader 是 GetSessionGateStats 会话归属校验的窄读接口
+// （T5 四轮审查 IDOR 根修）：*session.SessionUsecase 天然实现；单测可 fake。
+//
+// Stability:evolving
+type SessionWorkspaceReader interface {
+	Get(ctx context.Context, id string) (session.Session, error)
+}
+
 // DecisionRecordService implements the proto-generated
 // DecisionRecordServiceServer (M80 Phase 1 统一查询面，设计 §4.1/§5)。
 type DecisionRecordService struct {
 	v1.UnimplementedDecisionRecordServiceServer
 
-	uc *decision.QueryUsecase
-	lg loggateway.Logger
+	uc     *decision.QueryUsecase
+	sessUC SessionWorkspaceReader
+	lg     loggateway.Logger
 }
 
 // NewDecisionRecordService is the Wire-friendly constructor.
-func NewDecisionRecordService(uc *decision.QueryUsecase, lg loggateway.Logger) *DecisionRecordService {
+// sessUC 服务 GetSessionGateStats 的会话归属校验（T5 四轮审查 IDOR 根修）；
+// 可为 nil（旧装配/单测）——nil 时校验按 NotFound fail-closed 处理。
+func NewDecisionRecordService(uc *decision.QueryUsecase, sessUC SessionWorkspaceReader, lg loggateway.Logger) *DecisionRecordService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &DecisionRecordService{uc: uc, lg: lg.With(loggateway.Domain("decision_record_svc"))}
+	return &DecisionRecordService{uc: uc, sessUC: sessUC, lg: lg.With(loggateway.Domain("decision_record_svc"))}
 }
 
 // ListDecisionRecords 分页查询决策记录（category/actor/entity/run/时间窗过滤）。
 func (s *DecisionRecordService) ListDecisionRecords(ctx context.Context, req *v1.ListDecisionRecordsRequest) (*v1.ListDecisionRecordsResponse, error) {
 	f := decision.ListFilter{
-		Category:    req.GetCategory(),
-		ActorKey:    req.GetActorKey(),
-		EntityType:  req.GetEntityType(),
-		EntityKey:   req.GetEntityKey(),
-		SourceRunID: req.GetSourceRunId(),
-		Page:        int(req.GetPage()),
-		PageSize:    int(req.GetPageSize()),
+		Category:        req.GetCategory(),
+		ActorKey:        req.GetActorKey(),
+		EntityType:      req.GetEntityType(),
+		EntityKey:       req.GetEntityKey(),
+		SourceRunID:     req.GetSourceRunId(),
+		SourceSessionID: req.GetSourceSessionId(),
+		Page:            int(req.GetPage()),
+		PageSize:        int(req.GetPageSize()),
 	}
 	// workspace 隔离（t-dr-3）：非系统 caller 只见本租户 + 共享（''）记录，
 	// 镜像 AssertWorkspaceOrShared 读语义；系统 caller 不过滤。
@@ -155,6 +168,66 @@ func (s *DecisionRecordService) GetDecisionChain(ctx context.Context, req *v1.Ge
 		return nil, apierror.Internal("DECISION", "record encode: %v", err)
 	}
 	return out, nil
+}
+
+// GetSessionGateStats 聚合一个 chat/team 会话的 system_guard 闸事件（T5
+// chat 侧聚合面）。与 team 侧 TeamRunStats 的 run 级闸聚合同型、维度换成
+// 会话。
+//
+// IDOR 防护（2026-08-27 四轮审查根修）：与 SessionService.assertSessionAccess
+// 同语义——非系统 caller 必须对目标会话有 workspace 归属；会话不存在/查询
+// 失败/跨租户一律 NotFound，不泄露存在性（闸计数可侧信道探测他人会话的预
+// 算/无进展/参数门禁触发情况）。不用 VisibleWorkspaces 过滤聚合的原因：异
+// 步 team 执行的闸记录 workspace 兜底落 DefaultWorkspaceID（t-dr-2 口径），
+// 非 default workspace 的本租户会话会被误滤为零——归属校验按会话本体判定，
+// 无此漏计。
+func (s *DecisionRecordService) GetSessionGateStats(ctx context.Context, req *v1.GetSessionGateStatsRequest) (*v1.GetSessionGateStatsResponse, error) {
+	if req.GetSessionId() == "" {
+		return nil, apierror.BadRequest("DECISION", "session_id is required")
+	}
+	if err := s.assertSessionGateAccess(ctx, req.GetSessionId()); err != nil {
+		return nil, err
+	}
+	gates, err := s.uc.SessionGateStats(ctx, req.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GetSessionGateStatsResponse{Stats: &v1.SessionGateStats{
+		LoopGuardBlocks:   int32(gates.LoopGuardBlocks),
+		BudgetTripped:     gates.BudgetTripped,
+		NoProgressTripped: gates.NoProgressTripped,
+		PruneCount:        int32(gates.PruneCount),
+		PruneBytes:        gates.PruneBytes,
+		CompactCount:      int32(gates.CompactCount),
+		ParamRuleDenies:   int32(gates.ParamRuleDenies),
+	}}, nil
+}
+
+// assertSessionGateAccess 校验 caller 对目标会话的 workspace 归属（镜像
+// SessionService.assertSessionAccess：系统 caller 绕过；sessUC 未装配/会话
+// 不存在/跨租户一律 NotFound fail-closed）。
+func (s *DecisionRecordService) assertSessionGateAccess(ctx context.Context, sessionID string) error {
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	if s.sessUC == nil {
+		return apierror.NotFound("DECISION", "session %s not found", sessionID)
+	}
+	sess, err := s.sessUC.Get(ctx, sessionID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("DECISION", "session %s not found", sessionID)
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), sess.WorkspaceID); err != nil {
+		s.lg.Warn("session gate stats access denied: workspace mismatch",
+			loggateway.StepID("decision.session_gate_stats.idor"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("DECISION", "session %s not found", sessionID)
+	}
+	return nil
 }
 
 // decisionRecordToProto maps the biz Record onto the wire message

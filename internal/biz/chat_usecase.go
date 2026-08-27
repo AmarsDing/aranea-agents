@@ -81,6 +81,9 @@ type ChatPendingQueue interface {
 	// EnqueueInject 追加静默上下文条目（P2-3 inject 级）：不单独唤醒 turn，
 	// 仅随下一条 followup 作为上下文前缀合入。
 	EnqueueInject(sessionID, content string) string
+	// FlushLeadingInjects 仅在整队全为 inject 条目时原子清空并返回它们
+	// （N2 满队死锁冲刷）；否则返回 nil、不动队列。
+	FlushLeadingInjects(sessionID string) []PendingQueueEntry
 	Dequeue(sessionID string) (PendingQueueEntry, bool)
 	Peek(sessionID string) (PendingQueueEntry, bool)
 	Remove(sessionID, entryID string) bool
@@ -343,10 +346,50 @@ func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind strin
 		pid = uc.pending.Enqueue(sessionID, content)
 	}
 	if pid == "" {
+		// N2 满队 inject 死锁（session-eval-20260827 S12 / C5-③）：队列被
+		// inject 占满时新 followup 永远入不了队、inject 永远等不到合入载体
+		// （「已接受但永滞留」）。冲刷合入：滞留 inject 全部出队，作为上下文
+		// 前缀并入本条消息入队——内容不丢失、队列恢复流通。
+		if mergedPid, rescued := uc.rescueFullInjectQueue(sessionID, content); rescued {
+			uc.publisher.PublishMessageQueued(sessionID)
+			return true, true, mergedPid, "", nil
+		}
 		return false, false, "", ChatEnqueueRejectQueueFull, nil
 	}
 	uc.publisher.PublishMessageQueued(sessionID)
 	return true, true, pid, "", nil
+}
+
+// rescueFullInjectQueue 处理满队全 inject 死锁（N2）：FlushLeadingInjects
+// 仅在整队全 inject 时原子出队全部条目（含任何 followup 时既有
+// processPendingQueue 循环会正常冲刷，无死锁，不 rescue）。会话锁已持有，
+// 同会话入队串行，冲刷后队列必有空位，重入队不会再次满员。
+func (uc *ChatUsecase) rescueFullInjectQueue(sessionID, content string) (string, bool) {
+	flushed := uc.pending.FlushLeadingInjects(sessionID)
+	if len(flushed) == 0 {
+		return "", false
+	}
+	contents := make([]string, 0, len(flushed))
+	for _, e := range flushed {
+		contents = append(contents, e.Content)
+	}
+	merged := MergeInjectContext(contents, content)
+	pid := uc.pending.Enqueue(sessionID, merged)
+	if pid == "" {
+		// 理论不可达（见上注释）；若发生，inject 内容仅存于本条被拒绝的
+		// 消息中——打 Error 留痕，调用方收到 queue_full 可重试。
+		uc.lg.Error("rescueFullInjectQueue: re-enqueue failed after flush, inject contents stranded",
+			loggateway.StepID("chat.enqueue.rescue_reenqueue_failed"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Int("flushed_count", len(flushed)),
+			loggateway.Str("merged_content", merged))
+		return "", false
+	}
+	uc.lg.Info("full inject queue rescued: stranded injects merged into new message",
+		loggateway.StepID("chat.enqueue.rescue_full_injects"),
+		loggateway.Str("session_id", sessionID),
+		loggateway.Int("flushed_count", len(flushed)))
+	return pid, true
 }
 
 // SplitLeadingInjects 将队列头部连续的 inject 条目与其后的第一条 followup

@@ -193,6 +193,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		loopGuard := newToolLoopGuard(lg)
 	// M80：loop_guard_blocked 决策双写（设计 §3.2 row 3）。
 	loopGuard.setDecisionCollector(deps.DecisionCollector)
+	// 79-runtime-governance 二轮 Q1（S02「合法失控」根修）：行为模式闸阈值
+	// 每调用经 policyResolver 读取——注入 agentID（resolver 键）+ 构建期快照
+	// （resolver miss 兜底），策略变更零重建生效。
+	loopGuard.setGateThresholds(ag.ID, ag.Settings.LoopGuardToolLoadMax, ag.Settings.LoopGuardWallSoftSec, ag.Settings.LoopGuardWallHardSec)
 	entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook(), loopGuard.modelHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())

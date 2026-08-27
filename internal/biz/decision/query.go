@@ -24,6 +24,9 @@ type ListFilter struct {
 	EntityType        string
 	EntityKey         string
 	SourceRunID       string
+	// SourceSessionID 按 chat/team 会话过滤（T5）：匹配 SourceRef.SessionID，
+	// 读侧 COALESCE 兼容旧记录（session_id 仅在 metadata 的时期）。
+	SourceSessionID   string
 	VisibleWorkspaces []string
 	TimeFrom          time.Time
 	TimeTo            time.Time

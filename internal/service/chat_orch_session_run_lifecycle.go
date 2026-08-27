@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -305,10 +306,26 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 		return
 	}
 	l.runStatus.DeleteBinding(sessionID)
+	// N1 取消感知必须在 Detach 前判定（session-eval-20260827 S10）：Detach
+	// 用 context.WithoutCancel 剥离取消信号，之后 ctx.Err() 恒 nil。
+	wasCancelled := l.finishRunWasCancelled(ctx, sessionID, turnErr)
 	// run 终态迁移是计费/恢复语义的一部分：客户端断连时仍须落库，
 	// 否则 run 永远停在 running，被判为中断（P1，2026-08-20）。
 	ctx, cancel := appctx.Detach(ctx)
 	defer cancel()
+	// 取消 run 的行 phase 必须落 cancelled，与 turns_v2/API 三方一致——
+	// 否则取消被下方 Complete/Fail 记成 completed/failed，成功率统计虚高、
+	// 异常扫描漏网（C5-①）。
+	if wasCancelled {
+		l.finishCancelledRun(ctx, sessionID, sessionRunID)
+		return
+	}
+	cur, getErr := l.sessionRuns.Get(ctx, sessionRunID)
+	// 终态幂等：行已被并发路径（取消落库/durable worker/孤儿清扫）写终态时
+	// 不覆写、不打 Error 日志——终态竞态是预期结局，原 Error 日志属误导。
+	if getErr == nil && biz.IsSessionRunPhaseTerminal(biz.ParseSessionRunPhase(cur.Phase)) {
+		return
+	}
 	if turnErr != nil {
 		if err := l.sessionRuns.Fail(ctx, sessionRunID, turnErr.Error()); err != nil {
 			l.lg.Error("session run fail transition failed",
@@ -318,13 +335,68 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 		}
 		return
 	}
-	cur, err := l.sessionRuns.Get(ctx, sessionRunID)
-	if err == nil && cur.Phase == biz.SessionRunPhaseDurable {
+	if getErr == nil && cur.Phase == biz.SessionRunPhaseDurable {
 		return
 	}
 	if err := l.sessionRuns.Complete(ctx, sessionRunID); err != nil {
 		l.lg.Error("session run complete transition failed",
 			loggateway.StepID("chat.session_run_complete"),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Err(err))
+	}
+}
+
+// finishRunWasCancelled 判定 run 是否应按用户取消落库（N1）。与 C-10
+// runWasCancelled 同源三信号：runtime 注册表 cancelled 状态、turnErr 的
+// context.Canceled、原始 ctx 的取消信号（含 cause）。
+func (l *chatSessionRunLifecycle) finishRunWasCancelled(ctx context.Context, sessionID string, turnErr error) bool {
+	if l.runs != nil {
+		if entry, ok := l.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
+			return true
+		}
+	}
+	if turnErr != nil && errors.Is(turnErr, context.Canceled) {
+		return true
+	}
+	if ctx == nil {
+		return false
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return true
+	}
+	if cause := context.Cause(ctx); cause != nil && errors.Is(cause, context.Canceled) {
+		return true
+	}
+	return false
+}
+
+// finishCancelledRun 将取消 run 的行 phase 迁移为 cancelled（状态机校验
+// interactive→cancelled）。行已被并发路径写终态时尊重既有终态，不覆写
+// （CAS 语义：首个终态写入胜出）。
+//
+// durable 行必须跳过：durable 升级路径（applyDurableTransition）自身会
+// runs.Cancel + SetRunStatus(cancelled) 作为「交棒给 durable worker」的
+// 信号——若此处把 durable 行迁 cancelled，长效任务将永不被 resume。取消
+// durable run 另有专用路径，不经过 Finish。
+func (l *chatSessionRunLifecycle) finishCancelledRun(ctx context.Context, sessionID, sessionRunID string) {
+	cur, err := l.sessionRuns.Get(ctx, sessionRunID)
+	if err != nil {
+		l.lg.Warn("cancelled run finish: get session run failed",
+			loggateway.StepID("chat.session_run_cancel"),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Err(err))
+		return
+	}
+	phase := biz.ParseSessionRunPhase(cur.Phase)
+	if biz.IsSessionRunPhaseTerminal(phase) || phase == biz.PhaseDurable {
+		return
+	}
+	if _, err := l.sessionRuns.TransitionPhase(ctx, sessionRunID, biz.PhaseEventCancel); err != nil {
+		// Warn 而非 Error：runtime 状态与 turns_v2 已落 cancelled，行滞留
+		// interactive 会由孤儿清扫（MarkOrphanedRunsCancelled）兜底自愈。
+		l.lg.Warn("cancelled run finish: cancel transition failed",
+			loggateway.StepID("chat.session_run_cancel"),
+			loggateway.Str("session_id", sessionID),
 			loggateway.Str("session_run_id", sessionRunID),
 			loggateway.Err(err))
 	}

@@ -51,6 +51,26 @@ const (
 	// it replaces defaultMaxConcurrentSubAgents. P1 fix (2026-06-18).
 	envSubagentMaxConcurrency = "ARANEA_SUBAGENT_MAX_CONCURRENCY"
 
+	// 包C C4-②（2026-08-28，S07 subagent 治理空白补齐）：subagent token
+	// 预算闸。此前 subagent 路径无任何 token 预算（team runner 的
+	// accumulateRunTokenBudget 只覆盖 team run），runaway run 只能靠
+	// timeout 兜底。两级闸与 team 路径口径对等：
+	//   - run 级：单 subagent run 累计 input token 中流跳闸（默认 50 万，
+	//     健康重型 run 约 27-32K 的 ~15 倍余量，只拦失控）；
+	//   - 父会话级：同一父会话全部 spawn 合计 input 预算（默认 150 万，
+	//     对齐 DefaultTeamRunInputTokenBudget——spawn 集合即 team run 的
+	//     类比物），Spawn 时拒绝。
+	// env 覆盖语义同 team.TokenBudgetInputTokens：>0 覆盖默认、<0 禁用、
+	// 0/未设/非法用默认。
+	defaultRunTokenBudgetInputTokens    int64 = 500_000
+	defaultParentTokenBudgetInputTokens int64 = 1_500_000
+	envSubagentRunTokenBudget                 = "ARANEA_SUBAGENT_RUN_TOKEN_BUDGET"
+	envSubagentParentTokenBudget              = "ARANEA_SUBAGENT_PARENT_TOKEN_BUDGET"
+
+	// BudgetScopeRun / BudgetScopeParentAggregate 标识预算跳闸作用域。
+	BudgetScopeRun             = "run"
+	BudgetScopeParentAggregate = "parent_aggregate"
+
 	// Notification limits for outbound completion messages.
 	notifyMaxSummaryRunes = 200
 	notifyTimeoutSec      = 5
@@ -66,10 +86,12 @@ const (
 	argKind           = "kind"
 	argSubagentType   = "subagent_type"
 	argBlockUntilMS   = "block_until_ms"
+	argFullResult     = "full_result"
 
 	schemaTypeObject  = "object"
 	schemaTypeString  = "string"
 	schemaTypeInteger = "integer"
+	schemaTypeBoolean = "boolean"
 
 	subagentRunPrompt = "You are running as a background " +
 		"subagent. Complete the delegated task once. The parent " +
@@ -118,6 +140,22 @@ type ModeBStartedHook func(ctx context.Context, info ModeBStartedInfo)
 
 // ModeBFinishedHook is invoked after a subagent run finishes.
 type ModeBFinishedHook func(ctx context.Context, info ModeBFinishedInfo)
+
+// BudgetTripInfo 是 subagent token 预算跳闸事件（包C C4-②）。Scope 取
+// BudgetScopeRun（单 run 中流跳闸，run 被取消）或
+// BudgetScopeParentAggregate（父会话 spawn 合计预算，Spawn 被拒绝）。
+type BudgetTripInfo struct {
+	RunID              string
+	ParentSessionID    string
+	Scope              string
+	UsedInputTokens    int64
+	BudgetInputTokens  int64
+}
+
+// BudgetTripHook is invoked once per budget trip (best-effort, non-blocking).
+// Wired at the service layer to emit decision-records gate events, mirroring
+// the team runner's TriggerTokenBudgetTripped double-write.
+type BudgetTripHook func(ctx context.Context, info BudgetTripInfo)
 
 // UsageRecorder records auxiliary (non-chat-turn) LLM usage. Implemented by
 // *biz.UsageUsecase; injected via SetUsageRecorder (P1-2, 2026-08-19).
@@ -176,6 +214,16 @@ type Service struct {
 	// Optional; nil disables Mode B projection.
 	onModeBStarted  ModeBStartedHook
 	onModeBFinished ModeBFinishedHook
+
+	// 包C C4-② 预算闸配置与状态。runBudgetInputTokens 是单 run 累计
+	// input 预算（中流跳闸）；parentBudgetInputTokens 是父会话 spawn
+	// 合计 input 预算（Spawn 拒绝）；<0 各自禁用。
+	runBudgetInputTokens    int64
+	parentBudgetInputTokens int64
+	// parentInputTokens 按父会话累计 spawn 的 input 消耗（流式增量记账）。
+	// 与 team runner 的内存预算表同型：进程级、best-effort，重启清零。
+	parentInputTokens map[string]int64
+	onBudgetTrip      BudgetTripHook
 }
 
 // runesManager manages per-session rune limits for subagent results.
@@ -215,9 +263,12 @@ type runningRun struct {
 	cancel          context.CancelFunc
 	skipNotify      bool
 	cancelRequested bool
-	childSession    string
-	requestID       string
-	startedAt       time.Time
+	// cancelReason 区分取消来源（用户取消 vs 预算跳闸）：预算跳闸时
+	// 写入跳闸说明，finishRun 用它生成 Summary（C4-②）。
+	cancelReason string
+	childSession string
+	requestID    string
+	startedAt    time.Time
 }
 
 type runRecord struct {
@@ -255,14 +306,17 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	}
 
 	svc := &Service{
-		path:          path,
-		runner:        r,
-		lg:            lg,
-		runes:         newRunesManager(),
-		clock:         time.Now,
-		runs:          runs,
-		running:       make(map[string]*runningRun),
-		maxConcurrent: resolveSubagentMaxConcurrency(),
+		path:                  path,
+		runner:                r,
+		lg:                    lg,
+		runes:                 newRunesManager(),
+		clock:                 time.Now,
+		runs:                  runs,
+		running:               make(map[string]*runningRun),
+		maxConcurrent:         resolveSubagentMaxConcurrency(),
+		runBudgetInputTokens:  resolveSubagentTokenBudget(envSubagentRunTokenBudget, defaultRunTokenBudgetInputTokens),
+		parentBudgetInputTokens: resolveSubagentTokenBudget(envSubagentParentTokenBudget, defaultParentTokenBudgetInputTokens),
+		parentInputTokens:     make(map[string]int64),
 	}
 	if normalizeLoadedRuns(svc.runs, svc.clock()) {
 		if err := svc.persist(); err != nil {
@@ -328,6 +382,17 @@ func (s *Service) SetModeBFinishedHook(hook ModeBFinishedHook) {
 	}
 }
 
+// SetBudgetTripHook registers the budget-trip callback (C4-② decision-record
+// wiring). Safe to call before Start; nil disables emission (the gate still
+// cancels/rejects — only the audit double-write is skipped).
+func (s *Service) SetBudgetTripHook(hook BudgetTripHook) {
+	if s != nil {
+		s.mu.Lock()
+		s.onBudgetTrip = hook
+		s.mu.Unlock()
+	}
+}
+
 // WithOutboundRouter sets the outbound router for completion notifications.
 // Must be called before Start(); not safe for concurrent use after startup.
 func (s *Service) WithOutboundRouter(router *outbound.Router) *Service {
@@ -350,6 +415,21 @@ func resolveSubagentMaxConcurrency() int {
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 1 {
 		return defaultMaxConcurrentSubAgents
+	}
+	return n
+}
+
+// resolveSubagentTokenBudget reads an env override for one token-budget gate
+// (C4-②). Semantics mirror team.TokenBudgetInputTokens: unset/invalid/0 →
+// def; >0 → override; <0 → gate disabled.
+func resolveSubagentTokenBudget(env string, def int64) int64 {
+	v := strings.TrimSpace(os.Getenv(env))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n == 0 {
+		return def
 	}
 	return n
 }
@@ -445,6 +525,25 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	if err := validateSpawnRequest(req); err != nil {
 		s.mu.Unlock()
 		return trpcsubagent.Run{}, err
+	}
+
+	// 父会话 spawn 合计预算闸（C4-②）：该会话历史 spawn 的 input 消耗已
+	// 达上限时拒绝新 spawn——否则「每次 spawn 都合法、合计失控」的
+	// S02/S07 型盲区在 subagent 路径重演。RateLimit 与并发闸同型：
+	// retry_reflect 判确定性错误，不烧重试配额。
+	if s.parentBudgetInputTokens > 0 {
+		parentSID := strings.TrimSpace(req.ParentSessionID)
+		if used := s.parentInputTokens[parentSID]; used >= s.parentBudgetInputTokens {
+			trip := BudgetTripInfo{
+				ParentSessionID:   parentSID,
+				Scope:             BudgetScopeParentAggregate,
+				UsedInputTokens:   used,
+				BudgetInputTokens: s.parentBudgetInputTokens,
+			}
+			s.mu.Unlock()
+			s.emitBudgetTrip(context.Background(), trip)
+			return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("parent session subagent input-token budget exhausted (used %d, budget %d) — do NOT spawn more subagents; compose the answer from runs already available via subagents_list/subagents_get", used, s.parentBudgetInputTokens))
+		}
 	}
 
 	record := s.newRunRecord(req)
@@ -673,17 +772,102 @@ func (s *Service) execute(parent context.Context, runID string, timeoutSeconds i
 
 	result := replyAccumulator{}
 	usage := &usageAccum{}
-	runErr := s.runChild(runCtx, record, started, &result, usage)
+	guard := &runBudgetGuard{svc: s, runID: record.ID, parentSID: record.ParentSessionID}
+	runErr := s.runChild(runCtx, record, started, &result, usage, guard)
 	output := sanitizeStoredResult(result.text, record.ResultRunes)
 	s.finishRun(runID, output, runErr, record.SummaryRunes)
-	s.recordRunUsage(record, started, usage, runErr)
+	s.recordRunUsage(record, started, usage, runErr, guard.tripReason)
+}
+
+// runBudgetGuard 是单 run 的流式预算哨兵（C4-②）：每个 usage 事件后
+// 核对累计 input token——超阈则置取消原因并取消 run ctx（只触发一次，
+// 触发后继续排空事件流，避免生产者阻塞），同时把增量记账到父会话合计
+// （供 Spawn 时的 aggregate 闸）。与 team runner
+// accumulateRunTokenBudgetFromStream 同型。
+type runBudgetGuard struct {
+	svc       *Service
+	runID     string
+	parentSID string
+
+	lastPromptTotal int
+	tripped         bool
+	tripReason      string
+}
+
+func (g *runBudgetGuard) observe(a *usageAccum) {
+	if g == nil || g.svc == nil || a == nil {
+		return
+	}
+	prompt, _, _ := a.totals()
+	delta := prompt - g.lastPromptTotal
+	if delta < 0 {
+		delta = 0
+	}
+	g.lastPromptTotal = prompt
+
+	var cancelFn context.CancelFunc
+	var trip *BudgetTripInfo
+	g.svc.mu.Lock()
+	if delta > 0 && g.parentSID != "" {
+		g.svc.parentInputTokens[g.parentSID] += int64(delta)
+	}
+	if !g.tripped && g.svc.runBudgetInputTokens > 0 && int64(prompt) > g.svc.runBudgetInputTokens {
+		g.tripped = true
+		g.tripReason = fmt.Sprintf("subagent input-token budget tripped (used %d, budget %d)", prompt, g.svc.runBudgetInputTokens)
+		if r := g.svc.running[g.runID]; r != nil {
+			r.cancelRequested = true
+			r.cancelReason = g.tripReason
+			cancelFn = r.cancel
+		}
+		trip = &BudgetTripInfo{
+			RunID:             g.runID,
+			ParentSessionID:   g.parentSID,
+			Scope:             BudgetScopeRun,
+			UsedInputTokens:   int64(prompt),
+			BudgetInputTokens: g.svc.runBudgetInputTokens,
+		}
+	}
+	g.svc.mu.Unlock()
+	if cancelFn != nil {
+		cancelFn()
+	}
+	if trip != nil {
+		g.svc.emitBudgetTrip(context.Background(), *trip)
+	}
+}
+
+// emitBudgetTrip 是预算跳闸的审计出口（C4-②）：Warn 日志 + onBudgetTrip
+// 钩子（service 层接线 decision-records 双写，对齐 team
+// tripRunTokenBudget 的 EmitGate 四件套中的决策落账）。best-effort：
+// 钩子 nil 时仅日志，闸本身的取消/拒绝不依赖钩子可用性。
+func (s *Service) emitBudgetTrip(ctx context.Context, info BudgetTripInfo) {
+	if s == nil {
+		return
+	}
+	s.lg.Warn("subagent input-token 预算跳闸",
+		loggateway.StepID("subagent.token_budget.tripped"),
+		loggateway.Str("run_id", info.RunID),
+		loggateway.Str("parent_session_id", info.ParentSessionID),
+		loggateway.Str("scope", info.Scope),
+		loggateway.Int64("budget_used_input_tokens", info.UsedInputTokens),
+		loggateway.Int64("budget_limit_input_tokens", info.BudgetInputTokens),
+	)
+	s.mu.RLock()
+	hook := s.onBudgetTrip
+	s.mu.RUnlock()
+	if hook != nil {
+		hook(ctx, info)
+	}
 }
 
 // recordRunUsage persists the subagent run's LLM token usage as an
 // aux_subagent usage event (P1-2, 2026-08-19). Zero-token runs (spawn
 // failures, provider returned no usage) are skipped: nothing observable was
 // consumed. Best-effort: failures are Warn-logged, never fatal.
-func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *usageAccum, runErr error) {
+// tripReason 非空时写入 usage 行 ErrMsg（预算跳闸留痕，C4-②）——跳闸
+// 路径 runErr=context.Canceled，仅靠 status=cancelled 无法与用户主动
+// 取消区分。
+func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *usageAccum, runErr error, tripReason string) {
 	if s == nil || record == nil || usage == nil {
 		return
 	}
@@ -707,6 +891,9 @@ func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *u
 	case runErr != nil:
 		status = "failed"
 		errMsg = runErr.Error()
+	}
+	if tripReason != "" {
+		errMsg = tripReason
 	}
 	attr := record.Attribution
 	// Prefer the provider-reported model id (authoritative for what actually
@@ -802,6 +989,7 @@ func (s *Service) runChild(
 	started runningRun,
 	result *replyAccumulator,
 	usage *usageAccum,
+	guard *runBudgetGuard,
 ) error {
 	if record == nil {
 		return apierror.Internal(apierror.DomainSubagent, "nil run record")
@@ -837,6 +1025,7 @@ func (s *Service) runChild(
 	for evt := range evts {
 		usage.consume(evt)
 		result.consume(evt)
+		guard.observe(usage)
 	}
 	return result.err
 }
@@ -992,7 +1181,12 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 	case running != nil && running.cancelRequested:
 		record.Status = trpcsubagent.StatusCanceled
 		record.Error = ""
-		record.Summary = summarizeResult("canceled", summaryRunes)
+		// 预算跳闸的取消带跳闸说明（C4-②），与用户主动取消区分。
+		reason := strings.TrimSpace(running.cancelReason)
+		if reason == "" {
+			reason = "canceled"
+		}
+		record.Summary = summarizeResult(reason, summaryRunes)
 	case errors.Is(runErr, context.Canceled):
 		record.Status = trpcsubagent.StatusCanceled
 		record.Error = ""

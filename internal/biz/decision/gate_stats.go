@@ -51,3 +51,26 @@ func (u *QueryUsecase) RunGateStats(ctx context.Context, runID string) (RunGateS
 	}
 	return repo.RunGateStats(ctx, runID)
 }
+
+// SessionGateStatsRepo 是会话级闸统计的窄读接口（T5，2026-08-27 chat 侧闸
+// 事件聚合面）：与 RunGateStatsRepo 同型，复用 RunGateStats 结构承载——聚
+// 合维度从 run 换成会话，字段语义不变。
+//
+// Stability:evolving
+type SessionGateStatsRepo interface {
+	// SessionGateStats 聚合一个 chat/team 会话的 system_guard 记录。
+	// sessionID 为空或未命中任何记录时返回零值, nil。
+	SessionGateStats(ctx context.Context, sessionID string) (RunGateStats, error)
+}
+
+// SessionGateStats 服务 T5 chat 侧聚合面读路径。
+func (u *QueryUsecase) SessionGateStats(ctx context.Context, sessionID string) (RunGateStats, error) {
+	if u == nil || u.repo == nil || strings.TrimSpace(sessionID) == "" {
+		return RunGateStats{}, nil
+	}
+	repo, ok := u.repo.(SessionGateStatsRepo)
+	if !ok {
+		return RunGateStats{}, nil
+	}
+	return repo.SessionGateStats(ctx, sessionID)
+}

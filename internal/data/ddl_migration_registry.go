@@ -540,6 +540,11 @@ var ddlMigrations = []ddlMigration{
 	// 分隔变形此前全部绕过；顺手修 gns3 allow 三行 created_at=0 占位。
 	// UPDATE WHERE 旧 pattern 幂等，不回冲管理员自定义。
 	{Version: 20261267, Name: "tool_param_rules_reseed_rmflags", SQL: "sql/migrations/20261267_tool_param_rules_reseed_rmflags.sql"},
+	// 20261268 decision_records_sessionid_idx（T5 chat 侧闸事件聚合面）：
+	// source_session_id 过滤 / SessionGateStats 聚合的会话归属表达式索引，
+	// 新记录 SourceRef.SessionID 一等公民、旧记录仅 metadata.session_id，
+	// COALESCE 两路兼容；表达式与 gateSessionExpr 生成串精确一致。
+	{Version: 20261268, Name: "decision_records_sessionid_idx", Func: ddlDecisionRecordsSessionIDIndex},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1517,6 +1522,19 @@ func ddlDecisionRecordsRunIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Cli
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261254_decision_records_runid_idx.sql", d, lg)
+}
+
+// ddlDecisionRecordsSessionIDIndex creates the btree expression index serving
+// source_session_id equality filters and SessionGateStats aggregation (T5,
+// 2026-08-27 chat-side gate aggregation surface). Postgres-only: the indexed
+// expression casts TEXT->jsonb; SQLite skips.
+func ddlDecisionRecordsSessionIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("decision_records_sessionid_idx skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.decision_records_sessionid_idx"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261268_decision_records_sessionid_idx.sql", d, lg)
 }
 
 // ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).

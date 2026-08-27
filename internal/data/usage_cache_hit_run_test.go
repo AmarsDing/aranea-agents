@@ -257,6 +257,74 @@ func TestRunMemberUsageStats_Empty(t *testing.T) {
 	}
 }
 
+// ─── 包C C4-①（2026-08-28）subagent 治理补口径：aux_subagent 行纳入 run 维度查询 ───
+
+// 写路径实证：subagent/service.go recordRunUsage → usage.go RecordAuxLLMUsage
+// （Kind=aux_subagent、RunID=record.ID → ev.MessageID=subagent run id、
+// AgentKey=spawn 时 runAttribution 快照）。扩展前 subagent run 的 stats API
+// 恒空（S07 570K 治理盲区）。subagent run 无 team_run_steps，行只靠
+// message_id=run id 子句命中；与 team 族行按 run 隔离互不误纳。
+func TestRunTurnPeak_AuxSubagentRows(t *testing.T) {
+	r := setupRunCacheHitTestRepo(t)
+
+	// subagent run 单行总账（写路径每 run 一行 totals，message_id=run id）。
+	insertRunUsageRowFull(t, r, "a1", "aux_subagent", "sub-run-1", "ops_engineer", nil, 570000, 30000, 400000)
+	// team run 的 member 行：查 subagent run 时不得泄入（message_id 隔离）。
+	insertRunStep(t, r, "s1", "run-t")
+	insertRunUsageRowFull(t, r, "m1", "team_member", "s1", "planner", nil, 999999, 0, 0)
+
+	peak, err := r.RunTurnPeak(context.Background(), "sub-run-1")
+	if err != nil {
+		t.Fatalf("RunTurnPeak: %v", err)
+	}
+	if !peak.Found {
+		t.Fatal("Found = false, want true（aux_subagent 行纳入）")
+	}
+	if peak.MaxInputTokens != 570000 {
+		t.Errorf("MaxInputTokens = %d, want 570000（team_member 行不泄入）", peak.MaxInputTokens)
+	}
+
+	// 反向隔离：team run 查询碰不到 aux_subagent 行（其 message_id 既不是
+	// run-t 的 step id 也不是 run-t 本身）。
+	peak, err = r.RunTurnPeak(context.Background(), "run-t")
+	if err != nil {
+		t.Fatalf("RunTurnPeak team run: %v", err)
+	}
+	if !peak.Found || peak.MaxInputTokens != 999999 {
+		t.Errorf("team run peak = %+v, want Found=true/999999（aux_subagent 行不泄入）", peak)
+	}
+}
+
+// members 段即「该 subagent run 实际消耗的归属 agent」（spawn 时快照的
+// agent_key）；team run 查询不受影响。
+func TestRunMemberUsageStats_AuxSubagentRows(t *testing.T) {
+	r := setupRunCacheHitTestRepo(t)
+
+	insertRunUsageRowFull(t, r, "a1", "aux_subagent", "sub-run-1", "ops_engineer", nil, 570000, 30000, 400000)
+	insertRunStep(t, r, "s1", "run-t")
+	insertRunUsageRowFull(t, r, "m1", "team_member", "s1", "planner", nil, 1000, 100, 600)
+
+	members, err := r.RunMemberUsageStats(context.Background(), "sub-run-1")
+	if err != nil {
+		t.Fatalf("RunMemberUsageStats: %v", err)
+	}
+	if len(members) != 1 {
+		t.Fatalf("members = %d, want 1（ops_engineer）: %+v", len(members), members)
+	}
+	if members[0].AgentKey != "ops_engineer" || members[0].PromptTok != 570000 || members[0].CompletionTok != 30000 || members[0].CachedTok != 400000 || members[0].Calls != 1 {
+		t.Errorf("ops_engineer 桶 = %+v, want {570000/30000/400000/1}", members[0])
+	}
+
+	// 反向隔离：team run 的 members 不含 aux_subagent 行。
+	members, err = r.RunMemberUsageStats(context.Background(), "run-t")
+	if err != nil {
+		t.Fatalf("RunMemberUsageStats team run: %v", err)
+	}
+	if len(members) != 1 || members[0].AgentKey != "planner" {
+		t.Errorf("team run members = %+v, want [{planner}]（aux_subagent 行不泄入）", members)
+	}
+}
+
 // 无任何 usage 行的 run：Found=false（调用方区分"无数据"与真实 0%）。
 func TestRunCacheHitRatio_NotFound(t *testing.T) {
 	r := setupRunCacheHitTestRepo(t)

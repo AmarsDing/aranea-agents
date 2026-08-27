@@ -67,6 +67,25 @@ import (
 // 并行窗口：同一轮响应内相同签名的多次 BeforeTool 在 AfterTool 记账之前
 // 会同时到达。entry.inflight 只放行第一次，其余立即拦截（普通 error，
 // 不计入 blockedCount / 饱和止损），避免首轮扇出直接 StopError。
+//
+// Q1 行为模式闸（2026-08-27 二轮，S02「合法失控」根修）：旧四重守卫
+// （同参/轮换/空结果/空转轮）全部针对「调用内容形态」，管不住 S02 实证的
+// 「合法失控」——spirit 节点 24 次异质 tool_load 每次签名不同、结果成功、
+// 记有产出，四重守卫均不命中，装载行为本身无闸。新增三闸：
+//   - 装载闸（BeforeTool 拦截）：重复装载已激活工具第二次起拦截（激活幂等、
+//     无运行时卸载，重复装载恒零新信息）；异质装载配额（默认 8，DB 列
+//     loop_guard_tool_load_max 可覆盖）耗尽后拦截新装载。被拦计入
+//     blockedCount，共享 B4 饱和 StopError。
+//   - wall-time 软/硬闸：节点存续超软闸（默认 240s，loop_guard_wall_soft_sec）
+//     由 BeforeModel 注入收尾引导 cue（对齐 LangGraph TimeoutPolicy 双超时与
+//     A2'b 先引导后封锁两段式）；超硬闸（默认 600s，loop_guard_wall_hard_sec）
+//     由 BeforeTool 返回 StopError 强制终止节点。计时基准 entry.firstSeen，
+//     跨节点重试累计（反复重跑持续烧预算正是硬闸要拦的形态）。
+//   - plan-execute 漂移观测（record-only，C1-③ 裁定）：plan_and_execute 成功
+//     声明编排后节点仍持续本地装载达 3 次 → 写 outcome=tripped 决策记录
+//     （once-per-entry），不拦截——漂移证据标准待决策记录校准后再议拦截形态。
+//
+// 三阈值经 PolicyResolver 每调用读取（0=内置默认），策略变更零重建生效。
 const (
 	loopGuardBlockThreshold = 2 // 连续相同（签名+结果）成功调用达到此次数后，下一次起拦截
 	loopGuardMaxEntries     = 512
@@ -134,8 +153,8 @@ const todoDeclareBlockerToolName = "todo_declare_blocker"
 // 装载闸统计 tool_load 配额与重复装载；plan-execute 漂移观测以 plan_and_execute
 // 的成功调用为「计划已声明」锚点。
 const (
-	toolLoadToolName        = "tool_load"
-	planAndExecuteToolName  = "plan_and_execute"
+	toolLoadToolName       = "tool_load"
+	planAndExecuteToolName = "plan_and_execute"
 )
 
 // wallTimeCueMarker 标识 wall-time 软闸引导 cue（Q1）：与 unproductive cue 同型，
@@ -187,6 +206,10 @@ const (
 	loopGuardBlockLoop
 	loopGuardBlockCycle
 	loopGuardBlockEmpty
+	// Q1 行为模式闸（S02「合法失控」根修）的两个装载闸拦截形态：
+	// 重复装载已激活工具（零新信息）与异质装载配额耗尽（装载面失控）。
+	loopGuardBlockLoadRepeat
+	loopGuardBlockLoadQuota
 )
 
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
@@ -274,6 +297,11 @@ type loopGuardVerdict struct {
 	emptyStreak      int
 	lastDigest       string
 	lastTool         string // 上一次调用的原始工具名（跨名重复拦截时解释用）
+	// Q1 装载闸消息字段：loadTarget 是被拦 tool_load 的目标工具名；
+	// loadCount/loadMax 是配额拦截时的当前装载数与配额上限。
+	loadTarget string
+	loadCount  int
+	loadMax    int
 }
 
 func (e *loopGuardEntry) inflightCount(sig string, now time.Time) int {
@@ -336,6 +364,14 @@ type toolLoopGuard struct {
 	// decisions 是 M80 系统闸决策双写口（设计 §3.2 row 3 loop_guard_blocked）。
 	// 可选：nil 时拦截仅回灌错误消息，不产决策记录。
 	decisions decision.Collector
+	// Q1 行为模式闸阈值的每调用解析入参：policyAgentID 是 resolver 查询键，
+	// build* 是构建期快照（resolver miss 兜底；≤0 归一内置默认）。装配点
+	// callback_chain.go 经 setGateThresholds 注入（与 setDecisionCollector 同型，
+	// 保持 newToolLoopGuard(lg) 签名不变，存量测试零改动）。
+	policyAgentID string
+	buildLoadMax  int
+	buildWallSoft int
+	buildWallHard int
 }
 
 func newToolLoopGuard(lg loggateway.Logger) *toolLoopGuard {
@@ -354,22 +390,62 @@ func (g *toolLoopGuard) setDecisionCollector(c decision.Collector) {
 	g.decisions = c
 }
 
+// setGateThresholds 注入 Q1 行为模式闸的每调用解析入参（callback_chain.go
+// 装配点）：agentID 作 resolver 查询键，build* 为构建期快照兜底。阈值本体
+// 不固化进守卫——每调用经 loopGuardToolLoadMaxFor / loopGuardWallSecFor 查询
+// （resolver 命中用 resolver 值），策略变更零重建生效。
+func (g *toolLoopGuard) setGateThresholds(agentID string, loadMax, wallSoftSec, wallHardSec int) {
+	if g == nil {
+		return
+	}
+	g.policyAgentID = agentID
+	g.buildLoadMax = loadMax
+	g.buildWallSoft = wallSoftSec
+	g.buildWallHard = wallHardSec
+}
+
+// 每调用阈值解析（Q1）：resolver 优先、构建期快照兜底、≤0 归一内置默认。
+func (g *toolLoopGuard) loadMaxFor() int {
+	return loopGuardToolLoadMaxFor(g.policyAgentID, g.buildLoadMax)
+}
+
+func (g *toolLoopGuard) wallSecFor(hard bool) int {
+	build := g.buildWallSoft
+	if hard {
+		build = g.buildWallHard
+	}
+	return loopGuardWallSecFor(g.policyAgentID, build, hard)
+}
+
 // emitGateDecision 把一次拦截/强停双写为 system_guard 决策记录。
 // observed/threshold/action 由调用点按分支语义给出。
 func (g *toolLoopGuard) emitGateDecision(ctx context.Context, toolName, scenario, reasoning string, observed any, threshold any, action string) {
+	g.emitGateEvent(ctx, "blocked", toolName, scenario, reasoning, observed, threshold, action)
+}
+
+// emitGateEvent 是 emitGateDecision 的 outcome 参数化形态（Q1）：装载/重复
+// 拦截与既有守卫同用 outcome=blocked；wall-time 软闸与 plan-execute 漂移属
+// record-only 观测（C1-③ 裁定），用 outcome=tripped 落决策记录但不干预执行。
+// toolName 为空时省略 tool 实体（wall-time 闸无单一触发工具）。
+func (g *toolLoopGuard) emitGateEvent(ctx context.Context, outcome, toolName, scenario, reasoning string, observed any, threshold any, action string) {
 	c := g.decisions
 	if c == nil {
 		return
 	}
 	runID := gateRunID(ctx)
+	var entities []decision.EntityRef
+	if toolName != "" {
+		entities = []decision.EntityRef{{Type: "tool", Key: toolName}}
+	}
 	decision.EmitGate(ctx, c, decision.GateDecision{
 		TriggerRule:   decision.TriggerLoopGuardBlocked,
-		Outcome:       "blocked",
+		Outcome:       outcome,
 		Scenario:      scenario,
 		Reasoning:     reasoning,
 		GuardName:     "tool_loop_guard",
 		RunID:         runID,
-		Entities:      []decision.EntityRef{{Type: "tool", Key: toolName}},
+		SessionID:     gateSessionID(ctx),
+		Entities:      entities,
 		ObservedValue: observed,
 		Threshold:     threshold,
 		Action:        action,
@@ -518,6 +594,49 @@ func loopGuardResultKey(result any) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// loopGuardToolLoadTarget 从 tool_load 参数中解析目标工具名（Q1 装载闸）。
+// 归一规则与签名归一同级（TrimSpace；工具名为 ASCII 标识符，码点微差异
+// 不产生语义区别）。解析失败返回空串——守卫 fail-open，参数缺失由工具
+// 自身报错，不归循环守卫治理。
+func loopGuardToolLoadTarget(args []byte) string {
+	var in struct {
+		ToolName string `json:"tool_name"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(in.ToolName)
+}
+
+// loopGuardToolLoadResult 解析 tool_load 成功结果（Q1 装载闸记账）：
+// ok=false 表示装载未成功（success:false / 结果不可解析），不计入装载面。
+// name 优先取结果中的归一后规范名（manager.ResolveName 定点），缺失时回退
+// 请求名——规范名与请求名都会记入 loadedTools，覆盖别名变体重复装载。
+func loopGuardToolLoadResult(result any, requested string) (name string, ok bool) {
+	if result == nil {
+		return "", false
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return "", false
+	}
+	var out struct {
+		Success  bool   `json:"success"`
+		ToolName string `json:"tool_name"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil || !out.Success {
+		return "", false
+	}
+	name = strings.TrimSpace(out.ToolName)
+	if name == "" {
+		name = requested
+	}
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
 // loopGuardCyclePeriod 检测 seq 末尾是否由同一 p 长度块连续重复 minRepeats 次构成
 // （如 ABCABCABC）。命中返回周期 p，未命中返回 0。
 // 只认 p∈[2,loopGuardCycleMaxPeriod] 且基块含 ≥2 种签名的异质循环——同质连调
@@ -594,9 +713,31 @@ func (g *toolLoopGuard) entryLocked(key string, now time.Time) *loopGuardEntry {
 	return e
 }
 
-func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName string, now time.Time) loopGuardVerdict {
+func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName string, args []byte, now time.Time) loopGuardVerdict {
 	if e.inflightCount(sig, now) > 0 {
 		return loopGuardVerdict{kind: loopGuardBlockParallel}
+	}
+	// Q1 装载闸（S02「合法失控」根修）：优先于签名/轮换/空结果判定——
+	// tool_load 的异质调用序列对三重旧守卫全部"合法"，必须由装载语义自身收口。
+	//   - 重复装载：目标已在 loadedTools（激活幂等、无运行时卸载，重复装载恒零
+	//     新信息），第二次起拦截，引导模型直接调用已激活工具；
+	//   - 配额：异质装载面 loadCount 达阈值（默认 8，DB 可覆盖）后拦截新装载——
+	//     装载行为本身即失控向量（S02 观测 24 次异质装载），与装载结果成功与否无关。
+	// 参数不可解析时跳过装载闸（fail-open，参数错误归工具自身报错）。
+	var loadTarget string
+	loadRepeat := false
+	loadQuota := false
+	loadMax := 0
+	if toolName == toolLoadToolName {
+		loadTarget = loopGuardToolLoadTarget(args)
+		if loadTarget != "" {
+			loadMax = g.loadMaxFor()
+			if e.loadedTools[loadTarget] {
+				loadRepeat = true
+			} else if e.loadCount >= loadMax {
+				loadQuota = true
+			}
+		}
 	}
 	// 空结果熔断优先于签名/轮换判定：库中确无资料时，任何参数的再调用都无意义，
 	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
@@ -611,7 +752,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 		}
 	}
-	if !emptyBlocked && !loop && cycleDesc == "" {
+	if !loadRepeat && !loadQuota && !emptyBlocked && !loop && cycleDesc == "" {
 		e.beginInflight(sig, now)
 		return loopGuardVerdict{kind: loopGuardBlockNone}
 	}
@@ -626,7 +767,18 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 		emptyStreak:      e.emptyStreak[toolName],
 		lastDigest:       e.lastResultDigest,
 		lastTool:         e.lastTool,
+		loadTarget:       loadTarget,
+		loadCount:        e.loadCount,
+		loadMax:          loadMax,
 		saturated:        e.blockedCount >= loopGuardSaturatedStopThreshold,
+	}
+	if loadRepeat {
+		v.kind = loopGuardBlockLoadRepeat
+		return v
+	}
+	if loadQuota {
+		v.kind = loopGuardBlockLoadQuota
+		return v
 	}
 	if emptyBlocked {
 		v.kind = loopGuardBlockEmpty
@@ -654,6 +806,26 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 		now := time.Now()
 		g.mu.Lock()
 		e := g.entryLocked(key, now)
+		// Q1 wall-time 硬闸：节点存续超过硬时限 → StopError 强制终止（S02
+		// 「合法失控」根修；对齐 LangGraph TimeoutPolicy 的 run 级硬超时）。
+		// 无豁免工具——硬闸语义是节点生命期终结，不同于空转封锁保留投降通道。
+		// 计时基准 firstSeen=条目创建（节点在本 run 内首次活动），跨重试累计：
+		// 节点反复重跑仍持续烧预算正是硬闸要拦的形态。
+		if hardSec := g.wallSecFor(true); now.Sub(e.firstSeen) > time.Duration(hardSec)*time.Second {
+			elapsed := now.Sub(e.firstSeen)
+			g.mu.Unlock()
+			g.lg.Warn("tool loop guard wall-time hard gate tripped, stopping node",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("elapsed_sec", int(elapsed.Seconds())),
+				loggateway.Int("hard_sec", hardSec))
+			g.emitGateEvent(ctx, "blocked", args.ToolName, "节点运行超 wall-time 硬闸，强制终止",
+				fmt.Sprintf("节点已运行 %d 秒，超过 wall-time 硬闸 %d 秒", int(elapsed.Seconds()), hardSec),
+				int(elapsed.Seconds()), hardSec, "stop_node")
+			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已运行约 %d 分钟，超过系统硬时限（%d 秒），"+
+				"节点被强制终止以防止预算耗尽。已取得的结论与本次终止原因将随节点结果上报；后续步骤由编排层接手。",
+				loopGuardMarker, int(elapsed.Minutes()), hardSec))
+		}
 		// A2'b 空转封锁：连续 M 轮零有效产出后，封锁一切新工具调用
 		// （todo_declare_blocker 豁免，保留投降通道）。顽固重发计入
 		// blockedCount，共享 B4 饱和 StopError 止损。
@@ -665,18 +837,18 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			saturated := blocked >= loopGuardSaturatedStopThreshold
 			g.mu.Unlock()
 			g.lg.Warn("tool loop guard blocked call after unproductive rounds",
-			loggateway.StepID("agent.tool_loop_guard"),
-			loggateway.Str("tool", args.ToolName),
-			loggateway.Int("unproductive_rounds", unprod),
-			loggateway.Int("blocked", blocked))
-		action := "block_call"
-		if saturated {
-			action = "stop_node"
-		}
-		g.emitGateDecision(ctx, args.ToolName, "连续零有效产出轮，工具面封锁",
-			fmt.Sprintf("连续 %d 轮工具调用零有效产出，封锁新调用（%s）", unprod, action),
-			unprod, unproductiveRoundBlockThreshold, action)
-		if saturated {
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("unproductive_rounds", unprod),
+				loggateway.Int("blocked", blocked))
+			action := "block_call"
+			if saturated {
+				action = "stop_node"
+			}
+			g.emitGateDecision(ctx, args.ToolName, "连续零有效产出轮，工具面封锁",
+				fmt.Sprintf("连续 %d 轮工具调用零有效产出，封锁新调用（%s）", unprod, action),
+				unprod, unproductiveRoundBlockThreshold, action)
+			if saturated {
 				return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
 					"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
 			}
@@ -686,7 +858,7 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loopGuardMarker, unproductiveRoundBlockThreshold, blocked, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
-		v := g.verdictBeforeLocked(e, sig, args.ToolName, now)
+		v := g.verdictBeforeLocked(e, sig, args.ToolName, args.Arguments, now)
 		g.mu.Unlock()
 		switch v.kind {
 		case loopGuardBlockNone:
@@ -701,24 +873,52 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, errors.New(msg)
 		}
 		if v.saturated {
-		g.lg.Warn("tool loop guard saturated, stopping node",
-			loggateway.StepID("agent.tool_loop_guard"),
-			loggateway.Str("tool", args.ToolName),
-			loggateway.Int("blocked", loopGuardSaturatedStopThreshold))
-		g.emitGateDecision(ctx, args.ToolName, "拦截饱和，节点强制终止",
-			fmt.Sprintf("节点内累计被拦 %d 次仍重发被拦调用，强制终止节点止损", loopGuardSaturatedStopThreshold),
-			loopGuardSaturatedStopThreshold, loopGuardSaturatedStopThreshold, "stop_node")
-		return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
-			"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
-	}
-	if v.kind == loopGuardBlockEmpty {
-		g.lg.Warn("tool loop guard blocked empty-result retry",
-			loggateway.StepID("agent.tool_loop_guard"),
-			loggateway.Str("tool", args.ToolName),
-			loggateway.Int("empty_streak", v.emptyStreak))
-		g.emitGateDecision(ctx, args.ToolName, "检索连续空结果，拦截换词重试",
-			fmt.Sprintf("%s 连续 %d 次返回空结果（含换词），库中确无资料", args.ToolName, v.emptyStreak),
-			v.emptyStreak, loopGuardEmptyStreakThreshold, "block_call")
+			g.lg.Warn("tool loop guard saturated, stopping node",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("blocked", loopGuardSaturatedStopThreshold))
+			g.emitGateDecision(ctx, args.ToolName, "拦截饱和，节点强制终止",
+				fmt.Sprintf("节点内累计被拦 %d 次仍重发被拦调用，强制终止节点止损", loopGuardSaturatedStopThreshold),
+				loopGuardSaturatedStopThreshold, loopGuardSaturatedStopThreshold, "stop_node")
+			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
+				"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
+		}
+		if v.kind == loopGuardBlockLoadRepeat {
+			g.lg.Warn("tool loop guard blocked repeated tool_load",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("target", v.loadTarget))
+			g.emitGateDecision(ctx, args.ToolName, "重复装载已激活工具，拦截零信息调用",
+				fmt.Sprintf("工具 %s 已处于激活状态，重复 tool_load 不产生新信息", v.loadTarget),
+				v.loadTarget, 1, "block_call")
+			msg := fmt.Sprintf("%s：工具 %s 此前已成功装载并处于激活状态——激活是幂等的，本调用被系统拦截，工具未执行、也非执行失败。"+
+				"重复装载不会产生任何新信息（schema 已在历史中，且本会话无卸载机制）。请立即直接调用 %s 本身推进任务，或基于现有信息收尾。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, v.loadTarget, v.loadTarget, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
+		if v.kind == loopGuardBlockLoadQuota {
+			g.lg.Warn("tool loop guard blocked tool_load over quota",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("target", v.loadTarget),
+				loggateway.Int("load_count", v.loadCount),
+				loggateway.Int("load_max", v.loadMax))
+			g.emitGateDecision(ctx, args.ToolName, "工具装载配额耗尽，拦截装载面扩张",
+				fmt.Sprintf("节点已成功装载 %d 个工具，达配额上限 %d，继续装载属失控模式", v.loadCount, v.loadMax),
+				v.loadCount, v.loadMax, "block_call")
+			msg := fmt.Sprintf("%s：本节点已成功装载 %d 个工具，达到单节点装载配额上限（%d）——本调用被系统拦截，工具未执行、也非执行失败。"+
+				"持续装载新工具而不使用是典型的失控模式：请立即停止 tool_load，从已激活的工具中选择能推进任务的直接调用；若现有工具面确实无法完成，基于已有信息说明缺口后收尾。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, v.loadCount, v.loadMax, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
+		if v.kind == loopGuardBlockEmpty {
+			g.lg.Warn("tool loop guard blocked empty-result retry",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("empty_streak", v.emptyStreak))
+			g.emitGateDecision(ctx, args.ToolName, "检索连续空结果，拦截换词重试",
+				fmt.Sprintf("%s 连续 %d 次返回空结果（含换词），库中确无资料", args.ToolName, v.emptyStreak),
+				v.emptyStreak, loopGuardEmptyStreakThreshold, "block_call")
 			msg := fmt.Sprintf("%s：%s 已连续 %d 次（含换用不同关键词）返回空结果——知识库中确实没有相关资料。"+
 				"本调用被系统拦截，工具未执行、也非执行失败；继续换词重试不会产生任何新信息，只会消耗你的调用预算。"+
 				"请立即停止调用本工具。若本轮已注入 ## L2+L3 memory，必须根据其中匹配事实作答，禁止声称记忆中没有。"+
@@ -728,13 +928,13 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, errors.New(msg)
 		}
 		if v.kind == loopGuardBlockCycle {
-		g.lg.Warn("tool loop guard blocked rotation cycle call",
-			loggateway.StepID("agent.tool_loop_guard"),
-			loggateway.Str("tool", args.ToolName),
-			loggateway.Str("cycle", v.cycleDesc))
-		g.emitGateDecision(ctx, args.ToolName, "固定调用循环，拦截轮询空转",
-			fmt.Sprintf("检测到固定调用循环（%s），已重复满 %d 轮", v.cycleDesc, loopGuardCycleMinRepeats),
-			v.cycleDesc, loopGuardCycleMinRepeats, "block_call")
+			g.lg.Warn("tool loop guard blocked rotation cycle call",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Str("cycle", v.cycleDesc))
+			g.emitGateDecision(ctx, args.ToolName, "固定调用循环，拦截轮询空转",
+				fmt.Sprintf("检测到固定调用循环（%s），已重复满 %d 轮", v.cycleDesc, loopGuardCycleMinRepeats),
+				v.cycleDesc, loopGuardCycleMinRepeats, "block_call")
 			msg := fmt.Sprintf("%s：检测到固定调用循环（%s），已重复满 %d 轮——本调用被系统拦截，工具未执行、也非执行失败，"+
 				"节点内轮询不会产生新信息。若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。"+
 				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
@@ -742,12 +942,12 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, errors.New(msg)
 		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
-		loggateway.StepID("agent.tool_loop_guard"),
-		loggateway.Str("tool", args.ToolName),
-		loggateway.Int("consecutive", v.consecutiveCount))
-	g.emitGateDecision(ctx, args.ToolName, "同工具同参数同结果连续重发，拦截无效空转",
-		fmt.Sprintf("%s 已连续 %d 次以相同参数调用且结果一致（第 %d 次起拦截）", args.ToolName, v.consecutiveCount, loopGuardBlockThreshold+1),
-		v.consecutiveCount, loopGuardBlockThreshold+1, "block_call")
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("tool", args.ToolName),
+			loggateway.Int("consecutive", v.consecutiveCount))
+		g.emitGateDecision(ctx, args.ToolName, "同工具同参数同结果连续重发，拦截无效空转",
+			fmt.Sprintf("%s 已连续 %d 次以相同参数调用且结果一致（第 %d 次起拦截）", args.ToolName, v.consecutiveCount, loopGuardBlockThreshold+1),
+			v.consecutiveCount, loopGuardBlockThreshold+1, "block_call")
 		digest := v.lastDigest
 		if digest == "" {
 			digest = "（结果为空）"
@@ -775,8 +975,9 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
 		sig := loopGuardSignature(args.ToolName, args.Arguments)
+		// Q1 plan-execute 漂移观测的锁外发射负载（driftAt>0 且未发过才发射）。
+		driftAt := 0
 		g.mu.Lock()
-		defer g.mu.Unlock()
 		e := g.entryLocked(key, time.Now())
 		e.endInflight(sig)
 		// A2'b 空转轮记账：本轮发生了真实工具调用。失败/检索空结果均不计
@@ -791,6 +992,7 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			e.sameCount = 0
 			e.lastFailed = true
 			e.appendCallLocked(sig, args.ToolName)
+			g.mu.Unlock()
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
 		rk := loopGuardResultKey(args.Result)
@@ -804,6 +1006,37 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		e.lastResultKey = rk
 		e.lastResultDigest = loopGuardResultDigest(args.Result)
 		e.lastFailed = false
+		// Q1 行为模式闸记账（成功路径）：
+		//   - plan_and_execute 成功 → planDeclared 锚点置位；
+		//   - tool_load 成功（result.success=true）→ 记 loadedTools（请求名+规范名，
+		//     覆盖别名变体）；首次装载的目标才计 loadCount（配额只约束异质装载面）；
+		//     锚点已置位时的成功装载累计 postPlanLoads，达观测阈值写一次 tripped
+		//     决策记录（record-only，C1-③ 裁定不拦截）。
+		if args.ToolName == planAndExecuteToolName {
+			e.planDeclared = true
+		}
+		if args.ToolName == toolLoadToolName {
+			requested := loopGuardToolLoadTarget(args.Arguments)
+			if name, ok := loopGuardToolLoadResult(args.Result, requested); ok {
+				if e.loadedTools == nil {
+					e.loadedTools = map[string]bool{}
+				}
+				if !e.loadedTools[name] {
+					e.loadCount++
+				}
+				e.loadedTools[name] = true
+				if requested != "" {
+					e.loadedTools[requested] = true
+				}
+				if e.planDeclared {
+					e.postPlanLoads++
+					if e.postPlanLoads >= loopGuardPlanDriftObserveAt && !e.planDriftRecorded {
+						e.planDriftRecorded = true
+						driftAt = e.postPlanLoads
+					}
+				}
+			}
+		}
 		// 空结果熔断记账（无视参数差异）：检索类工具连续空则累计，一旦拿到
 		// 非空结果立即清零——熔断针对的是「库中确无资料仍换词重试」的空转。
 		productive := true
@@ -822,12 +1055,21 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			e.roundProductive = true
 		}
 		e.appendCallLocked(sig, args.ToolName)
+		g.mu.Unlock()
+		if driftAt > 0 {
+			g.lg.Warn("plan-execute drift observed: tool_load continues after plan declared",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Int("post_plan_loads", driftAt))
+			g.emitGateEvent(ctx, "tripped", toolLoadToolName, "计划声明后仍持续本地装载工具（plan-execute 漂移）",
+				fmt.Sprintf("plan_and_execute 已成功声明编排，节点随后又成功装载 %d 个工具——计划与执行漂移", driftAt),
+				driftAt, loopGuardPlanDriftObserveAt, "record_only")
+		}
 		return &trpctool.AfterToolResult{Context: ctx}, nil
 	})
 }
 
-// modelHook 是空转轮次早停（A2'b）的 BeforeModel 侧：每次模型调用（含工具
-// 循环续轮）先结算上一 LLM 轮的工具产出——
+// modelHook 是空转轮次早停（A2'b）与 wall-time 软闸（Q1）的 BeforeModel 侧：
+// 每次模型调用（含工具循环续轮）先结算上一 LLM 轮的工具产出——
 //   - 上一轮有工具调用且任一有产出 → unprodRounds 清零；
 //   - 上一轮有工具调用但零有效产出（全部失败/被拦/检索空结果）→ unprodRounds+1；
 //   - 上一轮无工具调用（纯文本续轮）→ 不结算，计数保持。
@@ -836,6 +1078,12 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 // （先摘除历史同名 cue，保证只有一条最新轮次文案）；满
 // unproductiveRoundBlockThreshold 的封锁由 beforeHook 执行（拦截一切新调用，
 // todo_declare_blocker 豁免）。
+//
+// Q1 wall-time 软闸：节点存续（entry.firstSeen 起算）超软闸秒数后，每轮注入
+// 收尾引导 cue（与空转 cue 并存、各自按标记去重），并在首次越线时写一条
+// outcome=tripped 决策记录（once-per-entry；cue 本身按轮刷新）。硬闸的
+// StopError 强终止由 beforeHook 执行——模型侧先获引导、工具侧后封锁，与
+// A2'b 两段式同构（对齐 LangGraph TimeoutPolicy idle/run 双超时语义）。
 func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 	return callbacks.NewBeforeModelHook(4, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
@@ -845,8 +1093,9 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 		if key == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		now := time.Now()
 		g.mu.Lock()
-		e := g.entryLocked(key, time.Now())
+		e := g.entryLocked(key, now)
 		if e.roundSawTool {
 			if e.roundProductive {
 				e.unprodRounds = 0
@@ -857,15 +1106,36 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 			e.roundProductive = false
 		}
 		unprod := e.unprodRounds
-		g.mu.Unlock()
-		if unprod < unproductiveRoundGuideThreshold {
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		softSec := g.wallSecFor(false)
+		elapsed := now.Sub(e.firstSeen)
+		wallSoftTripped := elapsed > time.Duration(softSec)*time.Second
+		recordWallSoft := wallSoftTripped && !e.wallSoftRecorded
+		if recordWallSoft {
+			e.wallSoftRecorded = true
 		}
-		msgs := stripDynamicCueByMarker(args.Request.Messages, unproductiveRoundCueMarker)
-		args.Request.Messages = appendDynamicCue(msgs, unproductiveRoundCueMarker+buildUnproductiveRoundCue(unprod))
-		g.lg.Warn("unproductive tool rounds, degradation guide injected",
-			loggateway.StepID("agent.tool_loop_guard"),
-			loggateway.Int("unproductive_rounds", unprod))
+		g.mu.Unlock()
+		msgs := args.Request.Messages
+		if unprod >= unproductiveRoundGuideThreshold {
+			msgs = stripDynamicCueByMarker(msgs, unproductiveRoundCueMarker)
+			msgs = appendDynamicCue(msgs, unproductiveRoundCueMarker+buildUnproductiveRoundCue(unprod))
+			g.lg.Warn("unproductive tool rounds, degradation guide injected",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Int("unproductive_rounds", unprod))
+		}
+		if wallSoftTripped {
+			msgs = stripDynamicCueByMarker(msgs, wallTimeCueMarker)
+			msgs = appendDynamicCue(msgs, wallTimeCueMarker+buildWallTimeCue(elapsed, g.wallSecFor(true)))
+			g.lg.Warn("wall-time soft gate tripped, wrap-up cue injected",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Int("elapsed_sec", int(elapsed.Seconds())),
+				loggateway.Int("soft_sec", softSec))
+			if recordWallSoft {
+				g.emitGateEvent(ctx, "tripped", "", "节点运行超 wall-time 软闸，注入收尾引导",
+					fmt.Sprintf("节点已运行 %d 秒，超过 wall-time 软闸 %d 秒，注入收尾引导 cue", int(elapsed.Seconds()), softSec),
+					int(elapsed.Seconds()), softSec, "inject_cue")
+			}
+		}
+		args.Request.Messages = msgs
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -882,4 +1152,13 @@ func buildUnproductiveRoundCue(unprod int) string {
 	return fmt.Sprintf(`<tool_round_notice>
 你已连续 %d 轮工具调用零有效产出（失败/被系统拦截/检索空结果）。继续用相似方式调用工具大概率仍无收获，只会消耗调用预算。请立即调整策略：基于已拿到的信息直接作答；或换用根本不同的方法（不同工具/不同思路）。若确认任务无法推进，调用 todo_declare_blocker 说明阻塞原因。再连续零产出 %d 轮，系统将封锁一切新的工具调用。
 </tool_round_notice>`, unprod, unproductiveRoundBlockThreshold-unprod)
+}
+
+// buildWallTimeCue 是 wall-time 软闸的收尾引导 cue 文案（Q1）：告知模型节点
+// 已运行时长与硬时限，引导其停止扩张性动作（继续装载/广泛取证）、基于已
+// 有信息收尾。硬闸强终止由 beforeHook 执行，文案口径与 StopError 消息一致。
+func buildWallTimeCue(elapsed time.Duration, hardSec int) string {
+	return fmt.Sprintf(`<runtime_notice>
+本节点已运行约 %d 分钟，超过系统软时限；运行满 %d 秒将被强制终止（不可豁免）。请立即停止扩张性动作（装载新工具/广泛取证/轮询等待），基于已取得的信息输出当前最优结论收尾；若任务确实无法完成，说明缺口后收尾，不要继续消耗预算。
+</runtime_notice>`, int(elapsed.Minutes()), hardSec)
 }

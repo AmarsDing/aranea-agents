@@ -186,6 +186,33 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 	return id
 }
 
+// FlushLeadingInjects atomically removes and returns all entries when the
+// ENTIRE queue for the session consists of inject-kind entries (N2 满队
+// 死锁冲刷，session-eval-20260827 S12 / C5-③)：inject 不单独唤醒 turn，只能
+// 随 followup 合入；满队全 inject 时新 followup 被容量拒绝、inject 永远等
+// 不到合入载体（「已接受但永滞留」）。调用方（enqueue 满员分支）拿到滞留
+// inject 后将其内容并入新消息一并入队。队列含任何 followup（既有出队循环
+// 会正常冲刷）或为空时返回 nil，不动队列。
+func (q *PendingMessageQueue) FlushLeadingInjects(sessionID string) []PendingMessage {
+	q.mu.Lock()
+	queue := q.queues[sessionID]
+	if len(queue) == 0 {
+		q.mu.Unlock()
+		return nil
+	}
+	for _, e := range queue {
+		if e.Kind != "inject" {
+			q.mu.Unlock()
+			return nil
+		}
+	}
+	flushed := append([]PendingMessage(nil), queue...)
+	delete(q.queues, sessionID)
+	q.mu.Unlock()
+	q.writeThrough()
+	return flushed
+}
+
 // Peek returns the head of the session queue without removing it.
 //
 // Used by callers that need to inspect the next pending message before

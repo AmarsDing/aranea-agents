@@ -173,6 +173,11 @@ func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Rec
 	// gets embedding + pgvector/FTS RRF + calibrated scores + recalled_count
 	// bumps (the legacy store path had none of these).
 	uc.SetLayerRecallers(l2Recall, l3Recall)
+	// C3 统一召回层（session-eval-20260827 P6/S02 恒空根修）：memory_search /
+	// memory_load / proactive recall 与 prompt 注入路径共享 biz L3 fused
+	// 链路——同算法（RRF+decay+自适应阈值）、同键空间（L3ScopeTargets）、
+	// 同相关性过滤（L3MinScoreQuery）。
+	memtrpc.WireFusedRecall(memSvc, l3Recall)
 	// P0-C: share one query embedding per turn across L2/L3 recallers
 	// (previously each embedded the same query independently on the LLM
 	// critical path). Guard against typed-nil: vec may be a nil pointer.

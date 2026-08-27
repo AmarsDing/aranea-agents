@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -87,6 +89,31 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	if deps.Turn.RT.Extensions.SubAgentService != nil {
 		deps.Turn.RT.Extensions.SubAgentService.SetModeBStartedHook(svc.publishModeBMemberSession)
 		deps.Turn.RT.Extensions.SubAgentService.SetModeBFinishedHook(svc.finishModeBMemberSession)
+		// 包C C4-②：subagent token 预算跳闸的决策记录双写（对齐 team
+		// tripRunTokenBudget 的 EmitGate 坐标）。闸本身的取消/拒绝在
+		// subagent.Service 内完成，此处仅审计落账；collector nil 时
+		// EmitGate 静默跳过。
+		deps.Turn.RT.Extensions.SubAgentService.SetBudgetTripHook(func(ctx context.Context, info subagenttool.BudgetTripInfo) {
+			action := "cancel_run"
+			scenario := "subagent run 累计 input token 超预算"
+			if info.Scope == subagenttool.BudgetScopeParentAggregate {
+				action = "reject_spawn"
+				scenario = "父会话 subagent spawn 合计 input token 超预算"
+			}
+			decision.EmitGate(ctx, deps.Infra.DecisionCollector, decision.GateDecision{
+				TriggerRule:   decision.TriggerTokenBudgetTripped,
+				Outcome:       "tripped",
+				Scenario:      scenario,
+				Reasoning:     fmt.Sprintf("subagent input token 用量 %d 超预算上限 %d（scope=%s）", info.UsedInputTokens, info.BudgetInputTokens, info.Scope),
+				GuardName:     "token_budget",
+				RunID:         info.RunID,
+				SessionID:     info.ParentSessionID,
+				Entities:      []decision.EntityRef{{Type: "session", Key: info.ParentSessionID}},
+				ObservedValue: info.UsedInputTokens,
+				Threshold:     info.BudgetInputTokens,
+				Action:        action,
+			})
+		})
 		deps.Turn.RT.Extensions.SubAgentService.Start(context.Background())
 	}
 	return svc

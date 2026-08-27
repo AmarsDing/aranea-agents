@@ -69,6 +69,21 @@ func gateRunID(ctx context.Context) string {
 	return ""
 }
 
+// gateSessionID 取闸事件的 chat/team 会话归属（T5，2026-08-27）：team 图谱
+// 成员节点取 ctx 注入值（runner 在 WithGateRunID 同坐标注入，框架 Clone 后
+// 成员 invocation 的 Session 指针不保证反映 chat 会话归属）；chat 路径无注
+// 入，回落 invocation.Session.ID。取不到返回空串——记录仍落库，仅不参与
+// SessionGateStats 聚合。
+func gateSessionID(ctx context.Context) string {
+	if id := decision.GateSessionIDFromContext(ctx); id != "" {
+		return id
+	}
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
+		return inv.Session.ID
+	}
+	return ""
+}
+
 // newParamRuleGateBeforeHook 装配参数规则门禁。deps.ToolUC 未装配（或规则
 // 存储缺失）时返回 nil 不注册——运行时每次调用零开销。
 func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.BeforeToolHook {
@@ -151,6 +166,7 @@ func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Be
 				Reasoning:     "rule " + winner.ID + " pattern " + winner.Pattern,
 				GuardName:     "param_rule_gate",
 				RunID:         runID,
+				SessionID:     gateSessionID(ctx),
 				Entities:      []decision.EntityRef{{Type: "tool", Key: toolName}},
 				ObservedValue: previewFromToolArgs(args.Arguments),
 				Threshold:     winner.Pattern,

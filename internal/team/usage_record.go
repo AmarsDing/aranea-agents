@@ -159,11 +159,11 @@ func (r *Runner) tripRunTokenBudget(ctx context.Context, run biz.TeamRunRecord, 
 		Reasoning:     fmt.Sprintf("run 累计 input %d 超预算上限 %d，取消 run", used, limit),
 		GuardName:     "token_budget",
 		RunID:         run.ID,
+		SessionID:     run.SessionID,
 		Entities:      []decision.EntityRef{{Type: "team", Key: teamID}},
 		ObservedValue: used,
 		Threshold:     limit,
 		Action:        "cancel_run",
-		Extra:         map[string]any{"session_id": run.SessionID},
 	})
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		em.LogCritical("chat.team.token_budget_exceeded", "团队 run 累计 input token 超预算，已取消",

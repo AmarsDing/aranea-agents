@@ -12,6 +12,9 @@ export type ListDecisionRecordsRequest = {
   entityKey: string | undefined;
   // source_ref.run_id 过滤。
   sourceRunId: string | undefined;
+  // source_ref.session_id 过滤（T5）：读侧 COALESCE 兼容旧记录（session_id
+  // 仅在 metadata 的时期）。
+  sourceSessionId: string | undefined;
   // 时间窗（created_at，含端点）；空 = 不限。
   timeFrom: wellKnownTimestamp | undefined;
   timeTo: wellKnownTimestamp | undefined;
@@ -91,6 +94,35 @@ export type GetDecisionChainResponse = {
   downstream: DecisionRecord[] | undefined;
 };
 
+export type GetSessionGateStatsRequest = {
+  //
+  // Behaviors: REQUIRED
+  sessionId: string | undefined;
+};
+
+// SessionGateStats 字段与 decision.RunGateStats 一一对应（聚合维度从 run
+// 换成会话，字段语义不变； TeamRunStats 内嵌闸字段同口径）。
+export type SessionGateStats = {
+  // loop_guard_blocked 记录条数。
+  loopGuardBlocks: number | undefined;
+  // 是否触发过 token_budget_tripped。
+  budgetTripped: boolean | undefined;
+  // 是否触发过 no_progress_tripped。
+  noProgressTripped: boolean | undefined;
+  // 被剪枝 tool result 总条数（observed_value 求和）。
+  pruneCount: number | undefined;
+  // 被剪枝原文总字节数（metadata.prune_bytes 求和）。
+  pruneBytes: number | undefined;
+  // 终审压缩触发次数。
+  compactCount: number | undefined;
+  // 工具参数门禁 deny 记录条数。
+  paramRuleDenies: number | undefined;
+};
+
+export type GetSessionGateStatsResponse = {
+  stats: SessionGateStats | undefined;
+};
+
 // DecisionRecordService 是 M80 决策智能 Phase 1 的统一查询面
 // （设计 80-decision-intelligence.design.md §4.1）：五类高价值决策
 // （HITL 人工审批 / planner 策略路由 / 系统闸动作 / 知识仲裁裁决 /
@@ -100,6 +132,10 @@ export interface DecisionRecordService {
   ListDecisionRecords(request: ListDecisionRecordsRequest): Promise<ListDecisionRecordsResponse>;
   GetDecisionRecord(request: GetDecisionRecordRequest): Promise<GetDecisionRecordResponse>;
   GetDecisionChain(request: GetDecisionChainRequest): Promise<GetDecisionChainResponse>;
+  // GetSessionGateStats 是 T5 chat 侧闸事件聚合面（2026-08-27）：按会话聚
+  // 合 system_guard 记录（loop_guard/param_rule/prune/compact/预算/无进展
+  // 各闸计数），与 team 侧 TeamRunStats 的 run 级聚合同型、维度换成会话。
+  GetSessionGateStats(request: GetSessionGateStatsRequest): Promise<GetSessionGateStatsResponse>;
 }
 
 type RequestType = {
@@ -132,6 +168,9 @@ export function createDecisionRecordServiceClient(
       }
       if (request.sourceRunId) {
         queryParams.push(`sourceRunId=${encodeURIComponent(request.sourceRunId.toString())}`)
+      }
+      if (request.sourceSessionId) {
+        queryParams.push(`sourceSessionId=${encodeURIComponent(request.sourceSessionId.toString())}`)
       }
       if (request.timeFrom) {
         queryParams.push(`timeFrom=${encodeURIComponent(request.timeFrom.toString())}`)
@@ -203,6 +242,26 @@ export function createDecisionRecordServiceClient(
         service: "DecisionRecordService",
         method: "GetDecisionChain",
       }) as Promise<GetDecisionChainResponse>;
+    },
+    GetSessionGateStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.sessionId) {
+        throw new Error("missing required field request.session_id");
+      }
+      const path = `v1/sessions/${request.sessionId}/gate-stats`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "DecisionRecordService",
+        method: "GetSessionGateStats",
+      }) as Promise<GetSessionGateStatsResponse>;
     },
   };
 }

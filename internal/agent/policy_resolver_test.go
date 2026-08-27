@@ -14,16 +14,21 @@ import (
 
 // resetPolicyResolverForTest 保存并清空进程级单例状态，测试结束恢复（与
 // inverse/registry_test.go 的 resetForTest 同模式，防用例间污染）。
+// Q1 行为模式闸三个阈值 map 一并保存/恢复——漏掉任一都会让
+// SetLoopGuardGateThresholds / Reload 的写入泄漏到其他用例。
 func resetPolicyResolverForTest(t *testing.T) {
 	t.Helper()
 	r := globalPolicyResolver
 	r.mu.Lock()
 	oldMap, oldRepo := r.timeoutSec, r.repo
+	oldLoadMax, oldWallSoft, oldWallHard := r.toolLoadMax, r.wallSoftSec, r.wallHardSec
 	r.timeoutSec, r.repo = nil, nil
+	r.toolLoadMax, r.wallSoftSec, r.wallHardSec = nil, nil, nil
 	r.mu.Unlock()
 	t.Cleanup(func() {
 		r.mu.Lock()
 		r.timeoutSec, r.repo = oldMap, oldRepo
+		r.toolLoadMax, r.wallSoftSec, r.wallHardSec = oldLoadMax, oldWallSoft, oldWallHard
 		r.mu.Unlock()
 	})
 }
