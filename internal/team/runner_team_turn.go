@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/apierror"
@@ -150,6 +151,24 @@ func (r *Runner) prepareUserTurnOptions(
 	}
 	var intentRunOpts []trpcagent.RunOption
 	var intRes intent.RunResult
+
+	// 输入级确定性安全扫描（2026-08-28 方案② S3，补 team 路径 risk_flags
+	// 零消费缺口）：与 intent pass 的 LLM 成败无关，命中即发 gate 审计事件
+	// （tripped，观测语义不阻断）。content 是 leader 规划合成的成员指令，
+	// 风险语义继承自用户原始请求。
+	if flags := intent.ScanInputRisk(content); len(flags) > 0 {
+		decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
+			TriggerRule: decision.TriggerInputRiskFlagged,
+			Outcome:     "tripped",
+			Scenario:    "团队成员指令命中确定性风险扫描",
+			Reasoning:   fmt.Sprintf("flags=%v", flags),
+			GuardName:   "input_safety_scan",
+			RunID:       run.ID,
+			SessionID:   run.SessionID,
+			Extra:       map[string]any{"flags": strings.Join(flags, ",")},
+		})
+	}
+
 	shouldRunIntent := intent.ShouldRun(ar.agent, content)
 	if shouldRunIntent {
 		// history 传 nil：成员 turn 的 content 是 leader 规划合成的指令（非用户原始

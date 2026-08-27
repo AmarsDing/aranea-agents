@@ -119,7 +119,7 @@ func TestRecordRunUsage_RecordsAuxSubagent(t *testing.T) {
 	usage.consume(usageEvent(100, 20, 30, "deepseek-chat"))
 	usage.consume(usageEvent(150, 10, 50, "deepseek-chat")) // round 2
 
-	svc.recordRunUsage(record, started, usage, nil)
+	svc.recordRunUsage(record, started, usage, nil, "")
 
 	if len(rec.calls) != 1 {
 		t.Fatalf("calls = %d, want 1", len(rec.calls))
@@ -158,7 +158,7 @@ func TestRecordRunUsage_StreamModelPreferred(t *testing.T) {
 	}
 	usage := &usageAccum{}
 	usage.consume(usageEvent(10, 5, 0, "actual-model"))
-	svc.recordRunUsage(record, runningRun{startedAt: svc.clock()}, usage, nil)
+	svc.recordRunUsage(record, runningRun{startedAt: svc.clock()}, usage, nil, "")
 	if rec.calls[0].Model != "actual-model" {
 		t.Fatalf("Model = %q, want actual-model", rec.calls[0].Model)
 	}
@@ -170,13 +170,13 @@ func TestRecordRunUsage_Skips(t *testing.T) {
 		usage := &usageAccum{}
 		usage.consume(usageEvent(10, 5, 0, "m"))
 		// Must not panic.
-		svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, usage, nil)
+		svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, usage, nil, "")
 	})
 
 	t.Run("zero tokens", func(t *testing.T) {
 		rec := &stubUsageRecorder{}
 		svc := newUsageTestService(t, rec)
-		svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, &usageAccum{}, nil)
+		svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, &usageAccum{}, nil, "")
 		if len(rec.calls) != 0 {
 			t.Fatalf("calls = %d, want 0", len(rec.calls))
 		}
@@ -188,7 +188,7 @@ func TestRecordRunUsage_Skips(t *testing.T) {
 		usage := &usageAccum{}
 		usage.consume(usageEvent(10, 5, 0, "m"))
 		// Must not panic; error is Warn-logged only.
-		svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, usage, nil)
+		svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, usage, nil, "")
 	})
 }
 
@@ -210,7 +210,7 @@ func TestRecordRunUsage_StatusMapping(t *testing.T) {
 			svc := newUsageTestService(t, rec)
 			usage := &usageAccum{}
 			usage.consume(usageEvent(10, 5, 0, "m"))
-			svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, usage, tc.runErr)
+			svc.recordRunUsage(&runRecord{Run: trpcsubagent.Run{ID: "r"}}, runningRun{startedAt: svc.clock()}, usage, tc.runErr, "")
 			if len(rec.calls) != 1 {
 				t.Fatalf("calls = %d, want 1", len(rec.calls))
 			}

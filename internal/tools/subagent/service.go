@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -708,6 +709,36 @@ func enrichRunView(run trpcsubagent.Run, now time.Time) map[string]any {
 		m["running_for_ms"] = ms
 	}
 	return m
+}
+
+// C4-③ 上行交付物压缩（2026-08-28，S07 570K 根修）：subagent 交付物回灌
+// 父 LLM 上下文只经 subagents_get/subagents_list 工具结果——工具结果永久
+// 留在父会话历史、后续每轮 LLM 全量重发（二次累积），是 S07 主上下文
+// 570K 的主因。与 team 路径 ClipUpwardPayload 对齐（biz.UpwardPipeMaxRunes
+// =2000 runes）：
+//   - get 默认返回 ≤2KB 截断视图 + 截断标记（告知模型全量可取，防把截断
+//     误当完整交付物）；full_result=true 返回存储全量（一次性 deliberate
+//     拉取的逃生舱，常量 argFullResult 此前已声明未接线，本次接通）；
+//   - list 剥离 result 只留 summary——list 是跟踪视图，取交付物走 get。
+// 存储层不动：ResultRunes（默认 4000）保持全保真，压缩只发生在回灌边界。
+
+// upwardTruncatedMarker 告知模型结果被截断及取全量的方式。
+const upwardTruncatedMarker = "\n…[truncated: full result %d runes — re-call subagents_get with full_result=true]"
+
+// clipUpwardResultView 把 get 视图的 result 裁剪到 ≤biz.UpwardPipeMaxRunes
+// 并附截断标记与元数据（result_truncated/result_full_runes）。
+func clipUpwardResultView(view map[string]any) {
+	raw, ok := view["result"].(string)
+	if !ok || raw == "" {
+		return
+	}
+	total := utf8.RuneCountInString(raw)
+	if total <= biz.UpwardPipeMaxRunes {
+		return
+	}
+	view["result"] = biz.ClipUpwardPayload(raw) + fmt.Sprintf(upwardTruncatedMarker, total)
+	view["result_truncated"] = true
+	view["result_full_runes"] = total
 }
 
 func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run, bool, error) {
@@ -1535,6 +1566,10 @@ type spawnInput struct {
 type getInput struct {
 	ID           string `json:"id"`
 	BlockUntilMS int    `json:"block_until_ms"`
+	// FullResult 是上行压缩的逃生舱（C4-③）：true 时返回存储全量
+	// result（≤ResultRunes），默认 false 只回 ≤UpwardPipeMaxRunes 的
+	// 截断视图——防轮询路径把完整交付物反复回灌父上下文（S07 570K）。
+	FullResult bool `json:"full_result"`
 }
 
 type runIDInput struct {
@@ -1657,7 +1692,8 @@ func (t *listTool) Declaration() *trpctool.Declaration {
 	return &trpctool.Declaration{
 		Name: toolSubagentsList,
 		Description: "List background subagents created from the " +
-			"current session.",
+			"current session. Returns status and short summary per run " +
+			"(results are omitted — fetch one with subagents_get).",
 		InputSchema: &trpctool.Schema{
 			Type: schemaTypeObject,
 		},
@@ -1693,7 +1729,11 @@ func (t *listTool) Call(ctx context.Context, args []byte) (any, error) {
 	)
 	views := make([]map[string]any, 0, len(raw))
 	for _, r := range raw {
-		views = append(views, enrichRunView(r, now))
+		view := enrichRunView(r, now)
+		// C4-③：list 是跟踪视图——剥离 result（可能数千 runes），只留
+		// summary（≤240 runes）供状态跟踪；取交付物走 subagents_get。
+		delete(view, "result")
+		views = append(views, view)
 	}
 	return listResult{Runs: views}, nil
 }
@@ -1702,7 +1742,9 @@ func (t *getTool) Declaration() *trpctool.Declaration {
 	return &trpctool.Declaration{
 		Name: toolSubagentsGet,
 		Description: "Get the latest status and result for one " +
-			"background subagent run. Optional block_until_ms waits until the run is terminal.",
+			"background subagent run. Optional block_until_ms waits until the run is terminal. " +
+			"The result is truncated to 2000 runes by default; pass full_result=true once " +
+			"if you genuinely need the complete stored result.",
 		InputSchema: &trpctool.Schema{
 			Type:     schemaTypeObject,
 			Required: []string{argID},
@@ -1714,6 +1756,10 @@ func (t *getTool) Declaration() *trpctool.Declaration {
 				argBlockUntilMS: {
 					Type:        schemaTypeInteger,
 					Description: "Wait this many milliseconds for a terminal status before returning.",
+				},
+				argFullResult: {
+					Type:        schemaTypeBoolean,
+					Description: "Return the complete stored result instead of the default 2000-rune truncated view.",
 				},
 			},
 		},
@@ -1751,7 +1797,13 @@ func (t *getTool) Call(ctx context.Context, args []byte) (any, error) {
 	if run == nil {
 		return nil, trpcsubagent.ErrRunNotFound
 	}
-	return enrichRunView(*run, svcNow(t.svc)), nil
+	view := enrichRunView(*run, svcNow(t.svc))
+	// C4-③：默认截断 result 到 ≤2KB（含截断标记）；full_result=true
+	// 时返回存储全量（逃生舱）。
+	if !in.FullResult {
+		clipUpwardResultView(view)
+	}
+	return view, nil
 }
 
 func (t *cancelTool) Declaration() *trpctool.Declaration {

@@ -106,6 +106,31 @@ var bizKeyToRegistryName = map[string]string{
 	// team
 	"set_deliverable": "deliverable",
 	"get_deliverable": "deliverable",
+
+	// twinops 域查询/配置类（包C C6，session-eval-20260827 P11v：S05-t1 岗位
+	// 装配 121K 根修——L0 快照实证单次调用 ~20K 中 ~13K 是 19 件静态工具
+	// schema）。映射到自身，经 auto-split / ToolsDeferredJSON 进延迟目录，
+	// tool_load 按需加载。
+	// 常驻五件故意不映射（= 永不可 defer 的代码层保证）：
+	//   gns3_health_check / gns3_exec / gns3_fault_inject / gns3_fault_clear /
+	//   twin_remediation_status——fixB 图编排定式要求「常驻可见、禁止
+	//   tool_search」（docker/fixb-ops-change-execution-prompt.sql），且为
+	//   S05 实测高频/HITL 高危工具。
+	"twin_alarm_query":      "twin_alarm_query",
+	"twin_alarm_get":        "twin_alarm_get",
+	"twin_alarm_ack":        "twin_alarm_ack",
+	"twin_alarm_rule_get":   "twin_alarm_rule_get",
+	"twin_line_status":      "twin_line_status",
+	"twin_line_events":      "twin_line_events",
+	"twin_line_probe":       "twin_line_probe",
+	"twin_device_get":       "twin_device_get",
+	"twin_device_search":    "twin_device_search",
+	"twin_device_metrics":   "twin_device_metrics",
+	"twin_collector_status": "twin_collector_status",
+	"twin_inspection_query": "twin_inspection_query",
+	"twin_config_diff":      "twin_config_diff",
+	"twin_config_push":      "twin_config_push",
+	"twin_config_rollback":  "twin_config_rollback",
 }
 
 // RegistryNamesForBizKeys 将业务工具键列表转换为 Registry 名称列表（去重、排序）。

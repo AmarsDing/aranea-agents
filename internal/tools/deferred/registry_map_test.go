@@ -142,3 +142,54 @@ func TestBizKeysForRegistryName_Unknown(t *testing.T) {
 		t.Errorf("expected empty for unknown registry name, got %v", keys)
 	}
 }
+
+// 包C C6（session-eval-20260827 P11v）：twinops 查询/配置类 15 件恒等映射
+// （可 defer），常驻五件（fixB 定式 + S05 高频/HITL 高危）必须保持无映射——
+// 无映射即代码层保证任何配置路径（auto-split / 手动 JSON）都无法将其 defer。
+func TestRegistryMap_TwinopsDeferrableAndResidentInvariant(t *testing.T) {
+	deferrable := []string{
+		"twin_alarm_query", "twin_alarm_get", "twin_alarm_ack", "twin_alarm_rule_get",
+		"twin_line_status", "twin_line_events", "twin_line_probe",
+		"twin_device_get", "twin_device_search", "twin_device_metrics",
+		"twin_collector_status", "twin_inspection_query",
+		"twin_config_diff", "twin_config_push", "twin_config_rollback",
+	}
+	names := RegistryNamesForBizKeys(deferrable)
+	if len(names) != len(deferrable) {
+		t.Errorf("expected %d identity mappings, got %d: %v", len(deferrable), len(names), names)
+	}
+	assertContainsAll(t, names, deferrable)
+
+	resident := []string{
+		"gns3_health_check", "gns3_exec", "gns3_fault_inject", "gns3_fault_clear",
+		"twin_remediation_status",
+	}
+	if got := RegistryNamesForBizKeys(resident); len(got) != 0 {
+		t.Errorf("resident five must stay unmapped (never deferrable), got %v", got)
+	}
+}
+
+// C6 全量 ops 岗（11 岗 read_only/minimal profile、无手动 deferred JSON）走
+// auto-split：twin_* 查询/配置件必须全部进 deferred 清单，常驻五件即使不在
+// profile 核心集也不得进（无映射 → RegistryNamesForBizKeys 跳过）。
+func TestAutoSplit_OpsRoleDefersTwinopsKeepsResident(t *testing.T) {
+	enabled := []string{
+		"twin_alarm_query", "twin_alarm_get", "twin_alarm_rule_get",
+		"twin_line_status", "twin_line_events", "twin_line_probe",
+		"twin_device_get", "twin_device_search", "twin_device_metrics",
+		"twin_collector_status", "twin_remediation_status", "twin_inspection_query",
+		"gns3_health_check", "gns3_exec", "gns3_fault_inject", "gns3_fault_clear",
+		"twin_config_diff", "twin_config_push", "twin_config_rollback",
+	}
+	for _, profile := range []string{"minimal", "read_only"} {
+		_, def := SplitCoreResidentTools(enabled, profile)
+		names := RegistryNamesForBizKeys(MergeNonCoreMappedDeferred(def, profile))
+		assertContainsAll(t, names, []string{
+			"twin_alarm_query", "twin_line_status", "twin_device_get", "twin_config_diff",
+		})
+		assertNotContainsAny(t, names, []string{
+			"gns3_health_check", "gns3_exec", "gns3_fault_inject", "gns3_fault_clear",
+			"twin_remediation_status",
+		})
+	}
+}

@@ -78,6 +78,10 @@ const (
 	// 事件 outcome 均为 "truncated"，prune 负载在 metadata.prune_bytes。
 	TriggerToolResultPruned = "tool_result_pruned"
 	TriggerContextCompacted = "context_compacted"
+	// TriggerInputRiskFlagged 是输入级确定性安全扫描命中事件（2026-08-28
+	// 方案② S3）：chat/team turn 入口 ScanInputRisk 命中即发，outcome 恒
+	// tripped（观测/审计语义，不阻断——硬拦截保持在 L3 ParamRuleGate）。
+	TriggerInputRiskFlagged = "input_risk_flagged"
 )
 
 // GateDecision 是 S2 统一闸决策事件结构（设计 §3.2 row 3）：各闸点只填

@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/biz/decision"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
@@ -417,6 +418,24 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// Run BUILD and Intent Pass concurrently since they have no data
 	// dependency on each other. This saves 0.5-3s when Intent Pass is enabled.
 	content := strings.TrimSpace(input.Content)
+
+	// 输入级确定性安全扫描（2026-08-28 方案② S1/S3）：与 intent pass 的 LLM
+	// 成败无关，每条用户输入无条件执行。命中即发 gate 审计事件（tripped，
+	// 观测语义不阻断——硬拦截保持在 L3 ParamRuleGate）；本 turn 无 intent
+	// 产物时另经降级分支注入风险提示（见澄清门后的 intentRunOpts 注入点）。
+	inputRiskFlags := intent.ScanInputRisk(content)
+	if len(inputRiskFlags) > 0 {
+		decision.EmitGate(ctx, o.infraDeps.DecisionCollector, decision.GateDecision{
+			TriggerRule: decision.TriggerInputRiskFlagged,
+			Outcome:     "tripped",
+			Scenario:    "用户输入命中确定性风险扫描",
+			Reasoning:   fmt.Sprintf("flags=%v", inputRiskFlags),
+			GuardName:   "input_safety_scan",
+			SessionID:   sessionID,
+			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
+		})
+	}
+
 	prov = admit.provider
 	mod = admit.model
 
@@ -741,6 +760,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// [inject, forcedPlanning?] 的既有顺序。
 	if intentArtifact != nil {
 		intentRunOpts = append([]trpcagent.RunOption{intent.RunOptionInject(intentArtifact)}, intentRunOpts...)
+	} else if len(inputRiskFlags) > 0 {
+		// 方案② S3-2 降级注入：intent pass 无产物（失败/超时/跳过）但确定性
+		// 扫描命中 → 注入风险提示，提醒主 LLM 对潜在破坏性操作先确认再执行。
+		intentRunOpts = append([]trpcagent.RunOption{intent.RunOptionInjectInputRisk(inputRiskFlags)}, intentRunOpts...)
 	}
 
 	// ── EXECUTE ──

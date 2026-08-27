@@ -145,35 +145,21 @@ Requests to open an app or URL on the user's own machine (e.g. "打开微信", "
 When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
 Write all user-facing strings (refined_goal, ambiguities, clarifications questions and options) in the same language as the user's request.`
 
-// destructivePatterns 是确定性 destructive 打标的关键词列表（L2 兜底）。
-// LLM 可能漏标 destructive（BUG-MON-A，2026-08-17），此处用高置信模式强制补上。
-// 仅匹配明确的基础设施/数据破坏性操作，避免 "delete variable" 等误伤。
-var destructivePatterns = []string{
-	"fault_inject", "fault inject",
-	"故障注入", "注入故障",
-	"gns3_fault_inject",
-	"drop table", "truncate table",
-	"delete from ",
-	"删库", "删除数据库",
-	"格式化磁盘", "format disk",
-	"rm -rf",
-}
-
-// ForceDestructiveFlag checks the original user input against high-confidence
-// destructive patterns and force-adds the "destructive" risk flag when matched.
-// This is the L2 deterministic safety net behind the L1 prompt guidance.
-// No-op when art is nil or the flag is already present.
+// ForceDestructiveFlag checks the original user input against the deterministic
+// input-risk scan and force-adds matched risk flags (currently "destructive").
+// This is the L2 deterministic safety net behind the L1 prompt guidance
+// (BUG-MON-A). No-op when art is nil or a flag is already present.
+//
+// 2026-08-28 起扫描逻辑迁至 scan.go（ScanInputRisk）并加固（rm 族正则对齐 L3
+// 20261267 标准）——扫描独立为 turn 入口通道，不再绑死本 pass 的 LLM 成败
+// （缺口 A/B 根修，见 scan.go 头注释）。
 func ForceDestructiveFlag(userText string, art *Artifact) {
 	if art == nil {
 		return
 	}
-	lower := strings.ToLower(userText)
-	for _, pat := range destructivePatterns {
-		if strings.Contains(lower, pat) {
-			if !art.HasRiskFlag("destructive") {
-				art.RiskFlags = append(art.RiskFlags, "destructive")
-			}
-			return
+	for _, flag := range ScanInputRisk(userText) {
+		if !art.HasRiskFlag(flag) {
+			art.RiskFlags = append(art.RiskFlags, flag)
 		}
 	}
 }
