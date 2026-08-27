@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ type statsUsageRepo struct {
 	hit           bizusage.RunCacheHitRatio
 	peak          bizusage.RunTurnPeak
 	members       []bizusage.RunMemberUsage
+	membersErr    error
 }
 
 func (r *statsUsageRepo) RunCacheHitRatio(_ context.Context, _ string) (bizusage.RunCacheHitRatio, error) {
@@ -33,7 +35,7 @@ func (r *statsUsageRepo) RunTurnPeak(_ context.Context, _ string) (bizusage.RunT
 	return r.peak, nil
 }
 func (r *statsUsageRepo) RunMemberUsageStats(_ context.Context, _ string) ([]bizusage.RunMemberUsage, error) {
-	return r.members, nil
+	return r.members, r.membersErr
 }
 
 type statsDecisionRepo struct {
@@ -51,12 +53,16 @@ func (r *statsDecisionRepo) RunGateStats(_ context.Context, _ string) (decision.
 }
 
 // statsTeamRepo 在 summaryTeamRepo 基础上覆盖 team 查找（带 workspace）并
-// 实现 TeamRunStatsExportReader 窄口。
+// 实现 TeamRunStatsExportReader 窄口。gotTeamIDs/gotTeamIDsN 记录导出的
+// 下推过滤参数（nil=system 全量）；teamIDs 非 nil 时按之模拟 SQL 过滤。
 type statsTeamRepo struct {
 	summaryTeamRepo
-	teams      map[string]biz.Team
-	wsTeams    map[string][]biz.Team
-	exportRuns []biz.TeamRunRecord
+	teams       map[string]biz.Team
+	wsTeams     map[string][]biz.Team
+	exportRuns  []biz.TeamRunRecord
+	gotTeamIDs  []string
+	gotTeamIDsN int
+	exportErr   error
 }
 
 func (r *statsTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
@@ -70,8 +76,27 @@ func (r *statsTeamRepo) ListTeamsByWorkspace(_ context.Context, ws string) ([]bi
 	return r.wsTeams[ws], nil
 }
 
-func (r *statsTeamRepo) ListTeamRunsForStatsExport(_ context.Context, _, _ time.Time, _ string, _ int) ([]biz.TeamRunRecord, error) {
-	return r.exportRuns, nil
+func (r *statsTeamRepo) ListTeamRunsForStatsExport(_ context.Context, _, _ time.Time, _ string, teamIDs []string, _ int) ([]biz.TeamRunRecord, error) {
+	r.gotTeamIDs = teamIDs
+	r.gotTeamIDsN++
+	if r.exportErr != nil {
+		return nil, r.exportErr
+	}
+	if teamIDs == nil {
+		return r.exportRuns, nil
+	}
+	// 模拟 SQL 下推过滤（P5.1 M1：service 不再做 Go 侧过滤）。
+	allowed := make(map[string]bool, len(teamIDs))
+	for _, id := range teamIDs {
+		allowed[id] = true
+	}
+	out := make([]biz.TeamRunRecord, 0, len(r.exportRuns))
+	for _, run := range r.exportRuns {
+		if allowed[run.TeamID] {
+			out = append(out, run)
+		}
+	}
+	return out, nil
 }
 
 func newStatsTeamService(repo *statsTeamRepo, usageRepo *statsUsageRepo, decisionRepo *statsDecisionRepo) *TeamService {
@@ -156,6 +181,52 @@ func TestGetTeamRunStats_AssemblesAllSources(t *testing.T) {
 	if e := byKey["executor"]; e == nil || e.GetSteps() != 1 || e.GetPromptTokens() != 0 {
 		t.Errorf("executor member = %+v, want 纯 step 行 steps 1 / tokens 0", e)
 	}
+	// P5.1 排序稳定：members 输出按 agent_key 升序（executor < planner <
+	// unknown），step 行来自 Go map 随机序，装配后必须统一排序。
+	if got := []string{st.GetMembers()[0].GetAgentKey(), st.GetMembers()[1].GetAgentKey(), st.GetMembers()[2].GetAgentKey()}; got[0] != "executor" || got[1] != "planner" || got[2] != unknownMemberKey {
+		t.Errorf("members order = %v, want [executor planner unknown]", got)
+	}
+}
+
+// P5.1 M3：成员用量源读取失败时 members 段回落 step 维度成员行（不整体
+// 消失），与 usageUC 未装配的降级语义一致；其余 stats 段不受影响。
+func TestGetTeamRunStats_MemberUsageErrorFallback(t *testing.T) {
+	repo := &statsTeamRepo{
+		summaryTeamRepo: summaryTeamRepo{
+			runs: map[string]biz.TeamRunRecord{
+				"run-1": {ID: "run-1", TeamID: "t1", Status: biz.TeamRunStatusSuccess},
+			},
+			steps: map[string][]biz.TeamRunStep{
+				"run-1": {{AgentKey: "b1", ToolCallCount: 1}, {AgentKey: "a1"}, {AgentKey: "b1"}},
+			},
+		},
+		teams: map[string]biz.Team{"t1": {ID: "t1"}},
+	}
+	svc := newStatsTeamService(repo, &statsUsageRepo{
+		hit:        bizusage.RunCacheHitRatio{Found: true, PromptTok: 100, CachedTok: 50, Ratio: 0.5},
+		membersErr: errors.New("usage store down"),
+	}, nil)
+
+	resp, err := svc.GetTeamRunStats(context.Background(), &v1.GetTeamRunStatsRequest{Id: "run-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := resp.GetStats()
+	// hit 段正常透出（错误只影响 members 源）。
+	if st.GetPromptTokens() != 100 || st.GetCacheHitRatio() != 0.5 {
+		t.Errorf("hit 段 = %d/%v, want 100/0.5（不应受 members 源故障影响）", st.GetPromptTokens(), st.GetCacheHitRatio())
+	}
+	// members 回落 step 行：b1 steps=2（toolCalls 不来自 step 行，零值）、
+	// a1 steps=1，按 key 升序。
+	if len(st.GetMembers()) != 2 {
+		t.Fatalf("fallback members = %+v, want 2 纯 step 行", st.GetMembers())
+	}
+	if st.GetMembers()[0].GetAgentKey() != "a1" || st.GetMembers()[0].GetSteps() != 1 {
+		t.Errorf("members[0] = %+v, want a1 steps 1", st.GetMembers()[0])
+	}
+	if st.GetMembers()[1].GetAgentKey() != "b1" || st.GetMembers()[1].GetSteps() != 2 || st.GetMembers()[1].GetPromptTokens() != 0 {
+		t.Errorf("members[1] = %+v, want b1 steps 2 tokens 0", st.GetMembers()[1])
+	}
 }
 
 func TestGetTeamRunStats_DegradedSources(t *testing.T) {
@@ -221,7 +292,7 @@ func TestExportTeamRunStats_TenantFiltering(t *testing.T) {
 	}
 	svc := newStatsTeamService(repo, nil, nil)
 
-	// system 调用方：全量 3 行。
+	// system 调用方：全量 3 行，teamIDs nil 下推（不限）。
 	sysResp, err := svc.ExportTeamRunStats(workspace.WithSystemWorkspace(context.Background()), &v1.ExportTeamRunStatsRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -229,12 +300,15 @@ func TestExportTeamRunStats_TenantFiltering(t *testing.T) {
 	if sysResp.GetCount() != 3 {
 		t.Fatalf("system export count = %d, want 3", sysResp.GetCount())
 	}
+	if repo.gotTeamIDs != nil {
+		t.Errorf("system export teamIDs = %v, want nil（不限）", repo.gotTeamIDs)
+	}
 	lines := strings.Split(strings.TrimSpace(sysResp.GetJsonl()), "\n")
 	if len(lines) != 3 || !strings.Contains(lines[0], `"runId":"run-a1"`) {
 		t.Errorf("system jsonl lines = %v", lines)
 	}
 
-	// 租户 ws-a：过滤到 2 行（run-a1 + run-sh），run-b1 不可见。
+	// 租户 ws-a：可见 team 集 {t-a, t-sh} 下推（M1），过滤后 2 行。
 	tenantResp, err := svc.ExportTeamRunStats(workspace.WithContext(context.Background(), "ws-a"), &v1.ExportTeamRunStatsRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -244,6 +318,34 @@ func TestExportTeamRunStats_TenantFiltering(t *testing.T) {
 	}
 	if strings.Contains(tenantResp.GetJsonl(), "run-b1") {
 		t.Errorf("tenant jsonl 泄露 ws-b run: %s", tenantResp.GetJsonl())
+	}
+	if len(repo.gotTeamIDs) != 2 {
+		t.Fatalf("tenant export 下推 teamIDs = %v, want [t-a t-sh]", repo.gotTeamIDs)
+	}
+	gotSet := map[string]bool{repo.gotTeamIDs[0]: true, repo.gotTeamIDs[1]: true}
+	if !gotSet["t-a"] || !gotSet["t-sh"] {
+		t.Errorf("tenant export 下推 teamIDs = %v, want {t-a, t-sh}", repo.gotTeamIDs)
+	}
+}
+
+// P5.1 M1：租户无任何可见 team 时短路空导出——不触 repo（防止 nil/空
+// 语义混淆导致全量泄露）。
+func TestExportTeamRunStats_TenantNoVisibleTeamsShortCircuits(t *testing.T) {
+	repo := &statsTeamRepo{
+		summaryTeamRepo: summaryTeamRepo{},
+		exportRuns:      []biz.TeamRunRecord{{ID: "run-x", TeamID: "t-x", Status: biz.TeamRunStatusSuccess}},
+		wsTeams:         map[string][]biz.Team{}, // ws-lonely 无任何可见 team
+	}
+	svc := newStatsTeamService(repo, nil, nil)
+	resp, err := svc.ExportTeamRunStats(workspace.WithContext(context.Background(), "ws-lonely"), &v1.ExportTeamRunStatsRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetCount() != 0 || resp.GetJsonl() != "" {
+		t.Errorf("empty export = count %d jsonl %q, want 0/空", resp.GetCount(), resp.GetJsonl())
+	}
+	if repo.gotTeamIDsN != 0 {
+		t.Errorf("repo 被调用 %d 次, want 0（空可见集短路）", repo.gotTeamIDsN)
 	}
 }
 

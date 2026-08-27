@@ -500,6 +500,18 @@ var ddlMigrations = []ddlMigration{
 	// config_graph_nodes（12 类资产节点）+ config_graph_edges（27 类引用边），
 	// generation 双代切换支撑全量重建无清表窗口。双方言通用，幂等。
 	{Version: 20261260, Name: "config_graph", SQL: "sql/migrations/20261260_config_graph.sql"},
+	// 20261262/20261263 tool_param_rules（79-runtime-governance R9 Phase 5.4/5.5）：
+	// 工具参数模式权限表 + 首批 builtin 种子（gns3_exec 白名单+兜底 ask；
+	// exec_command 危险模式 deny）。双方言通用，幂等（IF NOT EXISTS +
+	// INSERT OR IGNORE）。**2026-08-27 审计补注册**：两文件此前已存在但漏登
+	// registry，已部署库的表从未创建（单测直接执行 SQL 文件绕过 registry
+	// 所以全绿）——任何新迁移文件必须同步注册本表。
+	{Version: 20261262, Name: "tool_param_rules", SQL: "sql/migrations/20261262_tool_param_rules.sql"},
+	{Version: 20261263, Name: "tool_param_rules_seed", SQL: "sql/migrations/20261263_tool_param_rules_seed.sql"},
+	// 20261264 tool_param_rules_reseed_regex（R9 P5.4 审计 P5）：builtin deny
+	// 规则从整串锚定 glob 升级为正则子串语义——旧 glob 对多余空白/命令包装
+	// （sudo、sh -c、绝对路径）敏感易绕过。UPDATE 幂等，仅命中旧 glob 文本的行。
+	{Version: 20261264, Name: "tool_param_rules_reseed_regex", SQL: "sql/migrations/20261264_tool_param_rules_reseed_regex.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

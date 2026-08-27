@@ -73,24 +73,52 @@ func execDDLFile(ctx context.Context, client *ent.Client, ddl, label string) err
 }
 
 // splitDDLStatements splits a DDL script into statements on semicolons.
-// `--` line comments are stripped first so semicolons inside comments never
-// fragment statements (fresh-Postgres failure of 20261128_memory_facts_fts_index).
-// Contract: scripts fed here must not use `$$` bodies or `--` inside string
-// literals; complex DDL goes through Func-based migrations instead.
+// Single-quoted string literals are honored: semicolons and `--` inside
+// strings never fragment statements (20261263 tool_param_rules seed 的正则
+// 字符类 `[;&|...]` 含字面量分号）；`''` 视为转义引号。
+// `--` line comments outside strings are stripped first so semicolons inside
+// comments never fragment statements (fresh-Postgres failure of 20261128_memory_facts_fts_index).
+// Contract: scripts fed here must not use `$$` dollar-quoted bodies;
+// complex DDL goes through Func-based migrations instead.
 func splitDDLStatements(ddl string) []string {
-	lines := strings.Split(ddl, "\n")
-	for i, ln := range lines {
-		if idx := strings.Index(ln, "--"); idx >= 0 {
-			lines[i] = ln[:idx]
+	var (
+		stmts []string
+		cur   strings.Builder
+		inStr bool
+	)
+	flush := func() {
+		if stmt := strings.TrimSpace(cur.String()); stmt != "" {
+			stmts = append(stmts, stmt)
+		}
+		cur.Reset()
+	}
+	for i := 0; i < len(ddl); i++ {
+		c := ddl[i]
+		switch {
+		case inStr:
+			cur.WriteByte(c)
+			if c == '\'' {
+				if i+1 < len(ddl) && ddl[i+1] == '\'' {
+					cur.WriteByte('\'')
+					i++
+				} else {
+					inStr = false
+				}
+			}
+		case c == '\'':
+			inStr = true
+			cur.WriteByte(c)
+		case c == '-' && i+1 < len(ddl) && ddl[i+1] == '-':
+			for i < len(ddl) && ddl[i] != '\n' {
+				i++
+			}
+			cur.WriteByte('\n')
+		case c == ';':
+			flush()
+		default:
+			cur.WriteByte(c)
 		}
 	}
-	parts := strings.Split(strings.Join(lines, "\n"), ";")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		stmt := strings.TrimSpace(p)
-		if stmt != "" {
-			out = append(out, stmt)
-		}
-	}
-	return out
+	flush()
+	return stmts
 }

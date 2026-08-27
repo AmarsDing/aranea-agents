@@ -42,3 +42,25 @@ func TestSplitDDLStatements_TrailingCommentWithSemicolon(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+// splitDDLStatements must not fragment on semicolons or `--` inside
+// single-quoted string literals. Regression test for migration
+// 20261263_tool_param_rules_seed.sql, whose regex char class `[;&|...]`
+// contains a literal semicolon — the naive split truncated the INSERT into
+// broken fragments, failing startup migration on fresh DBs.
+func TestSplitDDLStatements_SemicolonInStringLiteral(t *testing.T) {
+	ddl := `INSERT INTO t (id, pattern) VALUES
+  ('a', 're:(?i)(^|[;&|/\s"''])rm\s+-rf'),
+  ('b', 'x;y'); -- tail; comment
+UPDATE t SET pattern = 'p;q' WHERE id = 'a';`
+	want := []string{
+		`INSERT INTO t (id, pattern) VALUES
+  ('a', 're:(?i)(^|[;&|/\s"''])rm\s+-rf'),
+  ('b', 'x;y')`,
+		`UPDATE t SET pattern = 'p;q' WHERE id = 'a'`,
+	}
+	got := splitDDLStatements(ddl)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

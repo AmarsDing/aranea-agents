@@ -175,6 +175,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		}
 		entries = append(entries, newToolArgsRepairBeforeHook(lg))
 		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
+		// 79-runtime-governance R9 参数门禁（P5.4）：priority 3 与 args 守卫同档，
+		// 链为稳定排序（同档先追加先执行），故追加在 args 守卫之前——deny 拦截点
+		// 早于 args 守卫/循环守卫（4）/确认门禁（10）；args repair（1）之后求值，
+		// 匹配的是修复后的真实参数文本。ToolUC 未装配时 hook 为 nil 不注册。
+		if hook := newParamRuleGateBeforeHook(ag, deps); hook != nil {
+			entries = append(entries, hook)
+		}
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
 		// tool-not-found 纠错反馈：错误回执附当前可用工具清单（req.Tools 按
 		// invocation 实际工具面填充），防止模型臆造变体名重试空转。

@@ -121,6 +121,9 @@ export async function getEcosystemPresetStatus(): Promise<EcosystemLoadedStatus>
 // Runtime diagnostics (79-runtime-governance R8 doctor)
 
 export async function getDiagnostics(): Promise<DiagnosticsReport> {
-  const { data } = await kratosApi.get<DiagnosticsReport>('/api/v1/admin/diagnostics');
+  // skipErrorNotify——面板自带错误横幅内联呈现，避免全局 toast 重复告警。
+  const { data } = await kratosApi.get<DiagnosticsReport>('/api/v1/admin/diagnostics', {
+    skipErrorNotify: true,
+  });
   return data;
 }

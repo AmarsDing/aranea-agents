@@ -1579,6 +1579,10 @@ func (inv *Invocation) Clone(invocationOpts ...InvocationOptions) *Invocation {
 	}
 	childRunOptions := inv.RunOptions
 	childRunOptions.SkillLoads = nil
+	// InvocationID is a per-root-run override (see RunOptions.InvocationID):
+	// children must not inherit it, or any path that re-runs with inherited
+	// RunOptions would reuse the parent's id and break id uniqueness.
+	childRunOptions.InvocationID = ""
 	newInv := &Invocation{
 		InvocationID:    uuid.NewString(),
 		ParentMetadata:  inv.ParentMetadata,

@@ -2,10 +2,12 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz/policyrule"
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -40,6 +42,10 @@ type ToolParamRuleReader interface {
 type ToolParamRuleAdmin interface {
 	// ListParamRules 返回该工具全部规则（含 disabled），按 priority 升序。
 	ListParamRules(ctx context.Context, toolKey string) ([]ToolParamRule, error)
+	// GetParamRuleByID 按主键查单条（跨 tool_key 全表）；不存在返回
+	// shared.ErrNotFound。builtin 只读校验必须按 ID 查——按 tool_key 查会被
+	// 「同 Upsert 换 tool_key」绕过（P5.4 审计 H3）。
+	GetParamRuleByID(ctx context.Context, id string) (ToolParamRule, error)
 	// UpsertParamRule：ID 已存在为更新，否则新建（ID 由调用方给定）。
 	UpsertParamRule(ctx context.Context, rule ToolParamRule) error
 	// DeleteParamRule 幂等。
@@ -83,6 +89,13 @@ func (u *ToolUsecase) ListEnabledParamRulesForGate(ctx context.Context, toolKey 
 	return u.paramRules.ListEnabledParamRules(ctx, CanonicalParamRuleToolKey(toolKey))
 }
 
+// HasParamRuleStore 报告 paramRules store 是否已装配。agent 包确认门禁的
+// 保活判定经可选接口断言消费本方法（ask verdict 需要 decide() 消费者），
+// 不扩张 TeamToolLookup 契约。
+func (u *ToolUsecase) HasParamRuleStore() bool {
+	return u != nil && u.paramRules != nil
+}
+
 // ListToolParamRules 返回工具全部规则（管理面）。
 func (u *ToolUsecase) ListToolParamRules(ctx context.Context, toolKey string) ([]ToolParamRule, error) {
 	if u == nil || u.paramRules == nil {
@@ -116,12 +129,17 @@ func (u *ToolUsecase) UpsertToolParamRule(ctx context.Context, rule ToolParamRul
 		return apierror.BadRequest("TOOL", "pattern 不可编译: "+err.Error())
 	}
 	if strings.HasPrefix(rule.ID, BuiltinParamRuleIDPrefix) {
-		existing, err := u.paramRules.ListParamRules(ctx, rule.ToolKey)
-		if err != nil {
+		// 按 ID 全表查（非按新 tool_key 查）——否则 Upsert 同 ID 换 tool_key
+		// 可跳过校验，ON CONFLICT 随即把 builtin 行搬走并改写 effect（H3）。
+		existing, err := u.paramRules.GetParamRuleByID(ctx, rule.ID)
+		if err != nil && !errors.Is(err, shared.ErrNotFound) {
 			return err
 		}
-		for _, ex := range existing {
-			if ex.ID == rule.ID && ex.Effect != rule.Effect {
+		if err == nil {
+			if existing.ToolKey != rule.ToolKey {
+				return apierror.BadRequest("TOOL", "builtin 规则 tool_key 只读（可改 pattern/priority/enabled，或新增自定义规则）")
+			}
+			if existing.Effect != rule.Effect {
 				return apierror.BadRequest("TOOL", "builtin 规则 effect 只读（可改 pattern/priority/enabled，或新增自定义规则）")
 			}
 		}

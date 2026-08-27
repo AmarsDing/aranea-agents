@@ -97,3 +97,53 @@ func TestMemoryFactPendingRepo_Roundtrip(t *testing.T) {
 		t.Fatalf("decided row must leave pending list: n=%d err=%v", len(pend), err)
 	}
 }
+
+// TestMemoryFactPendingRepo_CountPendingByAge pins the P5.2 stale bucketing
+// contract against real PG: staleFail = age > failAgeSec (strict), staleWarn =
+// warnAgeSec < age <= failAgeSec — boundary rows at exactly 24h/72h must land
+// outside/inside respectively, decided rows must not be counted at all.
+func TestMemoryFactPendingRepo_CountPendingByAge(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryFactPendingTestRepo(t)
+	counter, ok := repo.(biz.MemoryFactPendingCounter)
+	if !ok {
+		t.Fatal("repo must expose MemoryFactPendingCounter narrow capability")
+	}
+
+	const (
+		now      = int64(1_800_000_000)
+		warnAge  = int64(86_400)  // 24h
+		failAge  = int64(259_200) // 72h
+	)
+	rows := []biz.MemoryFactPendingRecord{
+		{ID: "mfp-c-fresh", AgentID: "a", FactKey: "k1", Verdict: "ADD", Status: "pending", CreatedAt: now - 3_600},       // age 1h: total only
+		{ID: "mfp-c-warnedge", AgentID: "a", FactKey: "k2", Verdict: "ADD", Status: "pending", CreatedAt: now - warnAge}, // age == 24h: NOT warn (strict >)
+		{ID: "mfp-c-warn", AgentID: "a", FactKey: "k3", Verdict: "ADD", Status: "pending", CreatedAt: now - 90_000},      // age 25h: warn
+		{ID: "mfp-c-failedge", AgentID: "a", FactKey: "k4", Verdict: "ADD", Status: "pending", CreatedAt: now - failAge}, // age == 72h: warn (age <= fail)
+		{ID: "mfp-c-fail", AgentID: "a", FactKey: "k5", Verdict: "ADD", Status: "pending", CreatedAt: now - failAge - 1}, // age 72h+1s: fail
+		{ID: "mfp-c-decided", AgentID: "a", FactKey: "k6", Verdict: "ADD", Status: "approved", CreatedAt: now - 300_000}, // decided: excluded
+	}
+	for _, rec := range rows {
+		if err := repo.InsertPending(ctx, rec); err != nil {
+			t.Fatalf("insert %s: %v", rec.ID, err)
+		}
+	}
+
+	total, staleWarn, staleFail, err := counter.CountPendingByAge(ctx, warnAge, failAge, now)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if total != 5 || staleWarn != 2 || staleFail != 1 {
+		t.Fatalf("want total=5 warn=2 fail=1, got total=%d warn=%d fail=%d", total, staleWarn, staleFail)
+	}
+
+	// now 前移 10^7s 后所有行变为"未来行"（age<0）：不得计入 stale 分档，
+	// total 仍为全量 pending COUNT（与 now 无关）。
+	total, staleWarn, staleFail, err = counter.CountPendingByAge(ctx, warnAge, failAge, now-10_000_000)
+	if err != nil {
+		t.Fatalf("count shifted-now: %v", err)
+	}
+	if total != 5 || staleWarn != 0 || staleFail != 0 {
+		t.Fatalf("future rows: want total=5 warn=0 fail=0, got total=%d warn=%d fail=%d", total, staleWarn, staleFail)
+	}
+}

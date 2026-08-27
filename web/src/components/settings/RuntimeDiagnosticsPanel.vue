@@ -75,67 +75,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { getDiagnostics } from '../../features/system-settings/api';
-import type { DiagnosticsItem, DiagnosticsStatus } from '../../features/system-settings/types';
+import { useRuntimeDiagnostics } from '../../features/system-settings/useRuntimeDiagnostics';
+import type { DiagnosticsItem } from '../../features/system-settings/types';
 
 const { t } = useI18n();
 const router = useRouter();
 
-const items = ref<DiagnosticsItem[]>([]);
-const loading = ref(false);
-const error = ref('');
-const lastRunAt = ref('');
-
-// key → i18n 标签映射；未知 key 回退原文（新检查项后端先上线时前端不破版）。
-const ITEM_LABEL_KEYS: Record<string, string> = {
-  model_providers: 'settingsPage.diagnostics.itemModelProviders',
-  mcp_servers: 'settingsPage.diagnostics.itemMcpServers',
-  tool_assembly: 'settingsPage.diagnostics.itemToolAssembly',
-  memory_stack: 'settingsPage.diagnostics.itemMemoryStack',
-  cache_baseline: 'settingsPage.diagnostics.itemCacheBaseline',
-  config_graph: 'settingsPage.diagnostics.itemConfigGraph',
-};
-
-function itemLabel(key: string): string {
-  const labelKey = ITEM_LABEL_KEYS[key];
-  return labelKey ? t(labelKey) : key;
-}
-
-function statusIcon(status: DiagnosticsStatus): string {
-  switch (status) {
-    case 'fail':
-      return 'error';
-    case 'warn':
-      return 'warning';
-    default:
-      return 'check_circle';
-  }
-}
-
-function statusColor(status: DiagnosticsStatus): string {
-  switch (status) {
-    case 'fail':
-      return 'negative';
-    case 'warn':
-      return 'warning';
-    default:
-      return 'positive';
-  }
-}
-
-function statusText(status: DiagnosticsStatus): string {
-  switch (status) {
-    case 'fail':
-      return t('settingsPage.diagnostics.statusFail');
-    case 'warn':
-      return t('settingsPage.diagnostics.statusWarn');
-    default:
-      return t('settingsPage.diagnostics.statusPass');
-  }
-}
+const { items, loading, error, lastRunAt, load, itemLabel, statusIcon, statusColor, statusText } =
+  useRuntimeDiagnostics();
 
 function goDetail(item: DiagnosticsItem) {
   const ref = (item.detail_ref || '').trim();
@@ -143,22 +92,6 @@ function goDetail(item: DiagnosticsItem) {
     void router.push(ref);
   }
 }
-
-async function load() {
-  loading.value = true;
-  error.value = '';
-  try {
-    const report = await getDiagnostics();
-    items.value = report.items ?? [];
-    lastRunAt.value = new Date().toLocaleString();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(load);
 </script>
 
 <style scoped lang="scss">

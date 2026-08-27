@@ -313,12 +313,25 @@ func (u *Usecase) checkToolAssembly(ctx context.Context) Item {
 	return item
 }
 
-// checkMemoryStack：pending 审批积压（阈值与 audit.py §六同源）。
+// checkMemoryStack：pending 审批积压（阈值与 audit.py §六同源）。计数优先
+// 走独立 COUNT 窄能力（P5.2：ListPending newest-first + limit 截断——超
+// limit 时总数失真、最老 stale 行被截漏成恒 0 假阴性）；store 无该能力时
+// 回落列表口径（截断风险接受，仅旧测试替身/精简装配走到）。
 func (u *Usecase) checkMemoryStack(ctx context.Context) Item {
 	item := Item{Key: KeyMemoryStack, Status: StatusPass, DetailRef: "/memory"}
 	if u.memPending == nil {
 		item.Summary = "记忆审批存储未装配（R3 未启用）"
 		return item
+	}
+	if counter, ok := u.memPending.(biz.MemoryFactPendingCounter); ok {
+		total, staleWarn, staleFail, err := counter.CountPendingByAge(ctx,
+			int64(pendingStaleWarn/time.Second), int64(pendingStaleFail/time.Second), u.now().Unix())
+		if err != nil {
+			item.Status = StatusFail
+			item.Summary = "pending 审批计数失败: " + err.Error()
+			return item
+		}
+		return memoryStackItem(item, total, staleWarn, staleFail)
 	}
 	rows, err := u.memPending.ListPending(ctx, "", biz.MemoryFactPendingStatusPending, pendingListLimit)
 	if err != nil {
@@ -337,18 +350,24 @@ func (u *Usecase) checkMemoryStack(ctx context.Context) Item {
 			staleWarn++
 		}
 	}
+	return memoryStackItem(item, int64(len(rows)), int64(staleWarn), int64(staleFail))
+}
+
+// memoryStackItem 按积压总数与 stale 分档生成检查项（counter/列表两口径
+// 共用同一判定阶梯）。
+func memoryStackItem(item Item, total, staleWarn, staleFail int64) Item {
 	switch {
 	case staleFail > 0:
 		item.Status = StatusFail
-		item.Summary = fmt.Sprintf("%d 条记忆写审批积压超 72h（pending 共 %d 条）", staleFail, len(rows))
-	case len(rows) > pendingBacklogWarn:
+		item.Summary = fmt.Sprintf("%d 条记忆写审批积压超 72h（pending 共 %d 条）", staleFail, total)
+	case total > pendingBacklogWarn:
 		item.Status = StatusWarn
-		item.Summary = fmt.Sprintf("记忆写审批积压 %d 条（>%d）", len(rows), pendingBacklogWarn)
+		item.Summary = fmt.Sprintf("记忆写审批积压 %d 条（>%d）", total, pendingBacklogWarn)
 	case staleWarn > 0:
 		item.Status = StatusWarn
-		item.Summary = fmt.Sprintf("%d 条记忆写审批积压超 24h（pending 共 %d 条）", staleWarn, len(rows))
+		item.Summary = fmt.Sprintf("%d 条记忆写审批积压超 24h（pending 共 %d 条）", staleWarn, total)
 	default:
-		item.Summary = fmt.Sprintf("记忆写审批 pending %d 条，无积压", len(rows))
+		item.Summary = fmt.Sprintf("记忆写审批 pending %d 条，无积压", total)
 	}
 	return item
 }

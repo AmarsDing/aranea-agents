@@ -20,6 +20,7 @@
           <q-tab name="general" :label="t('settingsPage.tabGeneral')" icon="tune" />
           <q-tab name="speech" :label="t('settingsPage.tabSpeech')" icon="record_voice_over" />
           <q-tab name="catalog" :label="t('settingsPage.tabCatalog')" icon="dns" />
+          <q-tab name="diagnostics" :label="t('settingsPage.tabDiagnostics')" icon="health_and_safety" />
         </q-tabs>
         <q-separator />
         <q-tab-panels v-model="settingsTab" animated>

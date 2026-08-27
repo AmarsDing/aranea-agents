@@ -68,8 +68,10 @@ func StepToActivity(s Step) Activity {
 //   - Status: TaskStatus strings match ActivityStatus values, direct cast.
 //     "interrupted" is a recovery placeholder; downstream maps it to ok,
 //     which is correct for a user-authored message.
-//   - TurnID: left empty — a Task spans N turns and no single turn owns the
-//     user message. No consumer keys user messages by turn.
+//   - TurnID: left empty here; sessionActivityLister.ListBySession backfills
+//     it via firstTurnIDByTask (the task's min-seq step's turn). Consumers DO
+//     key user messages by turn: synthesizeTurnNumbers numbers the row with
+//     its turn, and the compression body window filters on that TurnNumber.
 func taskToActivity(t Task) Activity {
 	return Activity{
 		ID:        t.ID,

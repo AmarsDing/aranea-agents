@@ -198,3 +198,59 @@ func TestActivityMessageReader_UserMessagesFromTasks(t *testing.T) {
 		t.Fatalf("role=user messages = %d, want 1", userMsgs)
 	}
 }
+
+// 79-runtime-governance fix2：user(task) 行必须回填首 turn id（空 TurnID 会被
+// synthesizeTurnNumbers 编为 0，压缩 body 窗口恒排除用户消息）。
+func TestFirstTurnIDByTask(t *testing.T) {
+	steps := []Step{
+		// tk1 两个 turn：最小 seq 的 turn-1a 胜出。
+		{ID: "s1", TaskID: "tk1", TurnID: "turn-1a", Seq: 1},
+		{ID: "s2", TaskID: "tk1", TurnID: "turn-1b", Seq: 2},
+		// tk2 仅续跑 turn 有 step（首 turn 崩溃未产出 step）：归属续跑 turn。
+		{ID: "s3", TaskID: "tk2", TurnID: "turn-2b", Seq: 3},
+		// 缺 TaskID/TurnID 的 step 不参与映射。
+		{ID: "s4", TurnID: "turn-x", Seq: 4},
+		{ID: "s5", TaskID: "tk9", Seq: 5},
+	}
+	got := firstTurnIDByTask(steps)
+	want := map[string]string{"tk1": "turn-1a", "tk2": "turn-2b"}
+	if len(got) != len(want) {
+		t.Fatalf("firstTurnIDByTask = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("firstTurn[%s] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+// fix2 接线验证：ListBySession 把回填结果写到 user 行；无 step 的 task 保持空。
+func TestSessionActivityLister_ListBySession_BackfillsTaskTurnID(t *testing.T) {
+	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	lister := NewSessionActivityLister(
+		stubStepReader{steps: []Step{
+			{ID: "st1", Kind: StepKindReply, Status: "completed", SessionID: "s1",
+				TaskID: "tk1", TurnID: "turn-1", Seq: 1, StartedAt: now.Add(time.Second)},
+		}},
+		stubTaskReader{tasks: []Task{
+			{ID: "tk1", SessionID: "s1", UserMessage: "有 step", Status: TaskStatusCompleted, CreatedAt: now},
+			{ID: "tk2", SessionID: "s1", UserMessage: "无 step 残留", Status: TaskStatusInterrupted, CreatedAt: now.Add(2 * time.Second)},
+		}},
+	)
+	entries, err := lister.ListBySession(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("ListBySession: %v", err)
+	}
+	turnOf := map[string]string{}
+	for _, e := range entries {
+		if e.Kind == string(ActivityKindTask) {
+			turnOf[e.ID] = e.TurnID
+		}
+	}
+	if turnOf["tk1"] != "turn-1" {
+		t.Fatalf("tk1 TurnID = %q, want turn-1", turnOf["tk1"])
+	}
+	if turnOf["tk2"] != "" {
+		t.Fatalf("tk2 TurnID = %q, want empty (no steps)", turnOf["tk2"])
+	}
+}

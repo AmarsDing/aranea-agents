@@ -61,6 +61,23 @@ func (f *fakePendingStore) MarkDecided(ctx context.Context, id, status, approver
 	return false, nil
 }
 
+// fakePendingCounter 实现 MemoryFactPendingCounter 窄能力（P5.2）：diagnostics
+// 必须改走独立 COUNT 而非截断列表。listCalled 钉死「不再拉列表」。
+type fakePendingCounter struct {
+	fakePendingStore
+	total, staleWarn, staleFail int64
+	countErr                    error
+	listCalled                  bool
+}
+
+func (f *fakePendingCounter) ListPending(ctx context.Context, agentID, status string, limit int) ([]biz.MemoryFactPendingRecord, error) {
+	f.listCalled = true
+	return f.rows, f.err
+}
+func (f *fakePendingCounter) CountPendingByAge(_ context.Context, _, _, _ int64) (int64, int64, int64, error) {
+	return f.total, f.staleWarn, f.staleFail, f.countErr
+}
+
 type fakeCacheStats struct {
 	stats []usage.CacheHitRatioStat
 	err   error
@@ -328,6 +345,48 @@ func TestCheckMemoryStack(t *testing.T) {
 	d.MemPending = &fakePendingStore{err: errors.New("db down")}
 	if it := itemByKey(t, newTestUsecase(d).Run(context.Background()), KeyMemoryStack); it.Status != StatusFail {
 		t.Fatalf("list error must fail, got %s", it.Status)
+	}
+}
+
+// P5.2 stale 独立计数：store 具备 MemoryFactPendingCounter 窄能力时，
+// 总数与 stale 分档必须来自独立 COUNT——ListPending newest-first + limit
+// 截断会漏最老 stale 行（>72h 恒 0 假阴性）、总数显示被截断。
+func TestCheckMemoryStack_IndependentCount(t *testing.T) {
+	// 场景还原截断事故：列表只能看到 2 条新行，但 COUNT 视角 total=250、
+	// 最老的 3 条 >72h。修复前（列表口径）→ pass 假阴性；修复后 → fail。
+	d := healthyDeps()
+	counter := &fakePendingCounter{
+		fakePendingStore: fakePendingStore{rows: []biz.MemoryFactPendingRecord{
+			{ID: "new1", CreatedAt: testNow.Unix()},
+			{ID: "new2", CreatedAt: testNow.Unix()},
+		}},
+		total: 250, staleWarn: 5, staleFail: 3,
+	}
+	d.MemPending = counter
+	it := itemByKey(t, newTestUsecase(d).Run(context.Background()), KeyMemoryStack)
+	if it.Status != StatusFail {
+		t.Fatalf("counter staleFail=3 want fail, got %s (%s)", it.Status, it.Summary)
+	}
+	if !strings.Contains(it.Summary, "250") || !strings.Contains(it.Summary, "3 条") {
+		t.Fatalf("summary 须用 COUNT 口径（总数 250/stale 3），got %q", it.Summary)
+	}
+	if counter.listCalled {
+		t.Fatal("counter 分支不得再拉取截断列表")
+	}
+
+	// counter 计数错误 → fail（明确失败而非回落列表假 pass）。
+	d = healthyDeps()
+	d.MemPending = &fakePendingCounter{countErr: errors.New("count boom")}
+	if it := itemByKey(t, newTestUsecase(d).Run(context.Background()), KeyMemoryStack); it.Status != StatusFail {
+		t.Fatalf("count error must fail, got %s (%s)", it.Status, it.Summary)
+	}
+
+	// counter 视角 backlog：total>20 无 stale → warn（总数不被 limit 截断）。
+	d = healthyDeps()
+	d.MemPending = &fakePendingCounter{total: 30}
+	if it := itemByKey(t, newTestUsecase(d).Run(context.Background()), KeyMemoryStack); it.Status != StatusWarn ||
+		!strings.Contains(it.Summary, "30 条") {
+		t.Fatalf("counter backlog want warn+30 条, got %s (%s)", it.Status, it.Summary)
 	}
 }
 

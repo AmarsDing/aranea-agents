@@ -7,8 +7,10 @@ import (
 
 	v1 "aranea-agents/api/kratos/tool/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/shared"
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -49,6 +51,14 @@ func (f *fakeParamRuleStore) ListParamRules(ctx context.Context, toolKey string)
 	return f.list(ctx, toolKey, false), nil
 }
 
+func (f *fakeParamRuleStore) GetParamRuleByID(_ context.Context, id string) (biztool.ToolParamRule, error) {
+	r, ok := f.rules[id]
+	if !ok {
+		return biztool.ToolParamRule{}, shared.ErrNotFound
+	}
+	return r, nil
+}
+
 func (f *fakeParamRuleStore) UpsertParamRule(_ context.Context, rule biztool.ToolParamRule) error {
 	f.rules[rule.ID] = rule
 	return nil
@@ -70,6 +80,40 @@ func newParamRuleTestService(store *fakeParamRuleStore) *ToolService {
 	return NewToolService(uc, agents, nil)
 }
 
+// paramRuleAdminCtx 注入 admin claims（P5.4 H4：参数规则端点仅管理员可达）。
+func paramRuleAdminCtx() context.Context {
+	return auth.NewContext(toolGrantCtx(), &auth.Auth{UserID: 1, Access: "admin"})
+}
+
+// TestToolService_ParamRuleRPCs_RequireAdmin 钉死 H4：无 claims → Unauthorized，
+// 非 admin claims → Forbidden；三个端点同标准。
+func TestToolService_ParamRuleRPCs_RequireAdmin(t *testing.T) {
+	svc := newParamRuleTestService(newFakeParamRuleStore())
+	noAuth := toolGrantCtx()
+	userAuth := auth.NewContext(toolGrantCtx(), &auth.Auth{UserID: 2, Access: "user"})
+
+	if _, err := svc.ListToolParamRules(noAuth, &v1.ListToolParamRulesRequest{ToolKey: "shell"}); err != auth.ErrUnauthorized {
+		t.Fatalf("list no-auth err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := svc.ListToolParamRules(userAuth, &v1.ListToolParamRulesRequest{ToolKey: "shell"}); err != auth.ErrForbidden {
+		t.Fatalf("list user err = %v, want ErrForbidden", err)
+	}
+	up := &v1.UpsertToolParamRuleRequest{Id: "r1", ToolKey: "exec_command", Pattern: "ls *", Effect: "allow", Enabled: true}
+	if _, err := svc.UpsertToolParamRule(noAuth, up); err != auth.ErrUnauthorized {
+		t.Fatalf("upsert no-auth err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := svc.UpsertToolParamRule(userAuth, up); err != auth.ErrForbidden {
+		t.Fatalf("upsert user err = %v, want ErrForbidden", err)
+	}
+	del := &v1.DeleteToolParamRuleRequest{Id: "r1"}
+	if _, err := svc.DeleteToolParamRule(noAuth, del); err != auth.ErrUnauthorized {
+		t.Fatalf("delete no-auth err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := svc.DeleteToolParamRule(userAuth, del); err != auth.ErrForbidden {
+		t.Fatalf("delete user err = %v, want ErrForbidden", err)
+	}
+}
+
 func TestToolService_ListToolParamRules_AliasCanonicalized(t *testing.T) {
 	store := newFakeParamRuleStore()
 	if err := store.UpsertParamRule(context.Background(), biztool.ToolParamRule{
@@ -79,7 +123,7 @@ func TestToolService_ListToolParamRules_AliasCanonicalized(t *testing.T) {
 	}
 	svc := newParamRuleTestService(store)
 	// "shell" 经别名链 shell → shell_exec → exec_command 归一，命中同一行集合。
-	resp, err := svc.ListToolParamRules(toolGrantCtx(), &v1.ListToolParamRulesRequest{ToolKey: "shell"})
+	resp, err := svc.ListToolParamRules(paramRuleAdminCtx(), &v1.ListToolParamRulesRequest{ToolKey: "shell"})
 	if err != nil {
 		t.Fatalf("ListToolParamRules err = %v", err)
 	}
@@ -90,7 +134,7 @@ func TestToolService_ListToolParamRules_AliasCanonicalized(t *testing.T) {
 
 func TestToolService_ListToolParamRules_RequiresToolKey(t *testing.T) {
 	svc := newParamRuleTestService(newFakeParamRuleStore())
-	if _, err := svc.ListToolParamRules(toolGrantCtx(), &v1.ListToolParamRulesRequest{}); !apierror.IsCode(err, apierror.CodeBadRequest) {
+	if _, err := svc.ListToolParamRules(paramRuleAdminCtx(), &v1.ListToolParamRulesRequest{}); !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("empty tool_key err = %v, want BadRequest", err)
 	}
 }
@@ -98,7 +142,7 @@ func TestToolService_ListToolParamRules_RequiresToolKey(t *testing.T) {
 func TestToolService_UpsertToolParamRule_SuccessCanonicalizes(t *testing.T) {
 	store := newFakeParamRuleStore()
 	svc := newParamRuleTestService(store)
-	got, err := svc.UpsertToolParamRule(toolGrantCtx(), &v1.UpsertToolParamRuleRequest{
+	got, err := svc.UpsertToolParamRule(paramRuleAdminCtx(), &v1.UpsertToolParamRuleRequest{
 		Id: "r1", ToolKey: "shell", Pattern: "sudo *", Effect: "ask", Priority: 50, Enabled: true,
 	})
 	if err != nil {
@@ -128,7 +172,7 @@ func TestToolService_UpsertToolParamRule_Validation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := svc.UpsertToolParamRule(toolGrantCtx(), tc.req); !apierror.IsCode(err, apierror.CodeBadRequest) {
+			if _, err := svc.UpsertToolParamRule(paramRuleAdminCtx(), tc.req); !apierror.IsCode(err, apierror.CodeBadRequest) {
 				t.Fatalf("err = %v, want BadRequest", err)
 			}
 		})
@@ -144,13 +188,13 @@ func TestToolService_UpsertToolParamRule_BuiltinEffectReadOnly(t *testing.T) {
 	}
 	svc := newParamRuleTestService(store)
 	// effect 变更 → BadRequest。
-	if _, err := svc.UpsertToolParamRule(toolGrantCtx(), &v1.UpsertToolParamRuleRequest{
+	if _, err := svc.UpsertToolParamRule(paramRuleAdminCtx(), &v1.UpsertToolParamRuleRequest{
 		Id: "builtin-exec-deny-rmrf", ToolKey: "exec_command", Pattern: "rm -rf /*", Effect: "allow", Priority: 10, Enabled: true,
 	}); !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("effect change err = %v, want BadRequest", err)
 	}
 	// 同 effect 改 priority/enabled → 允许。
-	if _, err := svc.UpsertToolParamRule(toolGrantCtx(), &v1.UpsertToolParamRuleRequest{
+	if _, err := svc.UpsertToolParamRule(paramRuleAdminCtx(), &v1.UpsertToolParamRuleRequest{
 		Id: "builtin-exec-deny-rmrf", ToolKey: "exec_command", Pattern: "rm -rf /*", Effect: "deny", Priority: 20, Enabled: false,
 	}); err != nil {
 		t.Fatalf("non-effect update err = %v", err)
@@ -174,17 +218,17 @@ func TestToolService_DeleteToolParamRule(t *testing.T) {
 	}
 	svc := newParamRuleTestService(store)
 	// builtin 禁删。
-	if _, err := svc.DeleteToolParamRule(toolGrantCtx(), &v1.DeleteToolParamRuleRequest{Id: "builtin-gns3-allow-show"}); !apierror.IsCode(err, apierror.CodeBadRequest) {
+	if _, err := svc.DeleteToolParamRule(paramRuleAdminCtx(), &v1.DeleteToolParamRuleRequest{Id: "builtin-gns3-allow-show"}); !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("builtin delete err = %v, want BadRequest", err)
 	}
 	// 自定义删除 + 幂等。
-	if _, err := svc.DeleteToolParamRule(toolGrantCtx(), &v1.DeleteToolParamRuleRequest{Id: "r1"}); err != nil {
+	if _, err := svc.DeleteToolParamRule(paramRuleAdminCtx(), &v1.DeleteToolParamRuleRequest{Id: "r1"}); err != nil {
 		t.Fatalf("delete err = %v", err)
 	}
 	if _, ok := store.rules["r1"]; ok {
 		t.Fatal("r1 must be deleted")
 	}
-	if _, err := svc.DeleteToolParamRule(toolGrantCtx(), &v1.DeleteToolParamRuleRequest{Id: "r1"}); err != nil {
+	if _, err := svc.DeleteToolParamRule(paramRuleAdminCtx(), &v1.DeleteToolParamRuleRequest{Id: "r1"}); err != nil {
 		t.Fatalf("second delete err = %v", err)
 	}
 }

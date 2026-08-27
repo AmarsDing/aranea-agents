@@ -820,19 +820,22 @@ func (u *TeamUsecase) ListRunsByTeamIDs(ctx context.Context, teamIDs []string, l
 //
 // Stability:evolving
 type TeamRunStatsExportReader interface {
-	// ListTeamRunsForStatsExport 按创建时间窗口列举 run（created_at DESC，
-	// limit 上限截断）。from/to 零值 = 不限；sessionID 空 = 跨会话。
-	ListTeamRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, limit int) ([]TeamRunRecord, error)
+	// ListTeamRunsForStatsExport 按创建时间窗口列举 run（created_at DESC +
+	// id DESC 稳定序，limit 上限截断）。from/to 零值 = 不限；sessionID 空 =
+	// 跨会话；teamIDs nil = 跨 team 不限（system 调用方），空非 nil =
+	// 不匹配任何 run（租户无可见 team，实现侧短路）——租户可见性过滤必须
+	// 随查询下推，Go 侧后过滤会让 limit 截断先于租户过滤发生（P5.1 M1）。
+	ListTeamRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, teamIDs []string, limit int) ([]TeamRunRecord, error)
 }
 
 // ListRunsForStatsExport 服务 R7 stats JSONL 导出。reader 无窄能力时返回
 // nil（导出空流而非报错——CLI/无库形态降级语义与 stats 聚合一致）。
-func (u *TeamUsecase) ListRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, limit int) ([]TeamRunRecord, error) {
+func (u *TeamUsecase) ListRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, teamIDs []string, limit int) ([]TeamRunRecord, error) {
 	reader, ok := u.runReader.(TeamRunStatsExportReader)
 	if !ok {
 		return nil, nil
 	}
-	return reader.ListTeamRunsForStatsExport(ctx, from, to, sessionID, limit)
+	return reader.ListTeamRunsForStatsExport(ctx, from, to, sessionID, teamIDs, limit)
 }
 
 func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRunRecord, error) {

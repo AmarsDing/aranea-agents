@@ -173,10 +173,20 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 			hasPlugin = true
 		}
 	}
-	if len(catalog) == 0 && !hasPlugin && deps.ComputerUseUC == nil {
+	// 79-runtime-governance R9（P5.4）：paramRules store 已装配时保活确认门禁——
+	// ask verdict（含规则读取失败的 load-error 降级）的唯一消费者是 decide()；
+	// 不保活则 gns3_exec 这类无目录确认要求的工具命中 ask 规则时无人拦截。
+	// 可选接口断言，不改 TeamToolLookup 契约（fake 未实现时等同旧行为）。
+	paramRulesArmed := false
+	if deps.ToolUC != nil {
+		if h, ok := deps.ToolUC.(interface{ HasParamRuleStore() bool }); ok && h.HasParamRuleStore() {
+			paramRulesArmed = true
+		}
+	}
+	if len(catalog) == 0 && !hasPlugin && deps.ComputerUseUC == nil && !paramRulesArmed {
 		return nil
 	}
-	if hasPlugin && len(pluginCfg.ConfirmTools) == 0 && len(pluginCfg.ConfirmPatterns) == 0 && len(catalog) == 0 && deps.ComputerUseUC == nil {
+	if hasPlugin && len(pluginCfg.ConfirmTools) == 0 && len(pluginCfg.ConfirmPatterns) == 0 && len(catalog) == 0 && deps.ComputerUseUC == nil && !paramRulesArmed {
 		return nil
 	}
 	gate := &toolConfirmGate{

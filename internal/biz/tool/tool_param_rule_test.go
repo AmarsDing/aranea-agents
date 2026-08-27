@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -32,6 +33,15 @@ func (f *fakeParamRuleStore) ListParamRules(_ context.Context, toolKey string) (
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeParamRuleStore) GetParamRuleByID(_ context.Context, id string) (ToolParamRule, error) {
+	for _, r := range f.rules {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return ToolParamRule{}, shared.ErrNotFound
 }
 
 func (f *fakeParamRuleStore) UpsertParamRule(_ context.Context, rule ToolParamRule) error {
@@ -146,6 +156,45 @@ func TestUpsertToolParamRule_BuiltinEffectReadonly(t *testing.T) {
 	}
 	if store.rules[0].Pattern != "show ip *" || store.rules[0].Enabled {
 		t.Fatalf("builtin row = %+v, want pattern updated + disabled", store.rules[0])
+	}
+}
+
+// TestUpsertToolParamRule_BuiltinToolKeySwapBlocked 钉死 H3 回归：builtin 行
+// 经「同 Upsert 换 tool_key」搬走并改写 effect 的绕过路径必须被拒绝——
+// 校验按 ID 全表查（非按新 tool_key 查）。
+func TestUpsertToolParamRule_BuiltinToolKeySwapBlocked(t *testing.T) {
+	t.Parallel()
+	store := &fakeParamRuleStore{rules: []ToolParamRule{
+		{ID: "builtin-exec-deny-mkfs", ToolKey: "exec_command", Pattern: "mkfs*", Effect: "deny", Enabled: true},
+	}}
+	u := NewToolUsecase(nil, nil, loggateway.NewNoop(), WithToolParamRuleStore(store))
+	ctx := context.Background()
+
+	// 换 tool_key + 改 effect（审计 H3 的攻击形态）→ 拒绝（tool_key 只读先于 effect 命中）。
+	err := u.UpsertToolParamRule(ctx, ToolParamRule{
+		ID: "builtin-exec-deny-mkfs", ToolKey: "gns3_exec", Pattern: "*", Effect: "allow", Enabled: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "tool_key 只读") {
+		t.Fatalf("tool_key swap err = %v, want builtin tool_key readonly", err)
+	}
+	// 仅换 tool_key（effect 不变）→ 同样拒绝。
+	err = u.UpsertToolParamRule(ctx, ToolParamRule{
+		ID: "builtin-exec-deny-mkfs", ToolKey: "gns3_exec", Pattern: "mkfs*", Effect: "deny", Enabled: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "tool_key 只读") {
+		t.Fatalf("tool_key-only swap err = %v, want builtin tool_key readonly", err)
+	}
+	// 原行未被搬走/改写。
+	row, gerr := store.GetParamRuleByID(ctx, "builtin-exec-deny-mkfs")
+	if gerr != nil || row.ToolKey != "exec_command" || row.Effect != "deny" {
+		t.Fatalf("builtin row = %+v (err %v), want untouched exec_command/deny", row, gerr)
+	}
+	// 新建 builtin-* ID（库中尚不存在）→ 允许（补种场景）。
+	err = u.UpsertToolParamRule(ctx, ToolParamRule{
+		ID: "builtin-new-seed", ToolKey: "gns3_exec", Pattern: "show *", Effect: "allow", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("new builtin id seed: %v", err)
 	}
 }
 

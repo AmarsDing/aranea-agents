@@ -64,5 +64,9 @@ func TestNewRunInvocationInvocationIDOverride(t *testing.T) {
 		child := inv.Clone(agent.WithInvocationAgent(&mockAgent{name: "child"}))
 		require.NotEmpty(t, child.InvocationID)
 		require.NotEqual(t, inv.InvocationID, child.InvocationID)
+		// The per-root-run override must not leak into the child's
+		// RunOptions (Clone clears it) — otherwise a re-run with inherited
+		// RunOptions would reuse the parent's id.
+		require.Empty(t, child.RunOptions.InvocationID)
 	})
 }

@@ -146,6 +146,38 @@ func (r *memoryFactPendingRepo) MarkDecided(ctx context.Context, id, status, app
 	return n > 0, nil
 }
 
+var _ biz.MemoryFactPendingCounter = (*memoryFactPendingRepo)(nil)
+
+// CountPendingByAge 对 status='pending' 行按 age 互斥分档 COUNT
+// （79-runtime-governance R8 P5.2）。SUM(CASE WHEN) 双方言兼容（PG FILTER
+// 语法 SQLite 不支持）。age = nowUnix - created_at（秒）；分档边界与
+// diagnostics/audit.py 的严格 > 语义对齐：
+//
+//	staleFail: age > failAgeSec          → created_at <  now-fail
+//	staleWarn: warnAgeSec < age <= fail  → now-fail <= created_at < now-warn
+func (r *memoryFactPendingRepo) CountPendingByAge(ctx context.Context, warnAgeSec, failAgeSec, nowUnix int64) (int64, int64, int64, error) {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
+		return 0, 0, 0, nil
+	}
+	warnBound := nowUnix - warnAgeSec
+	failBound := nowUnix - failAgeSec
+	q := r.data.Dialect().RenumberPlaceholders(
+		`SELECT COUNT(*),
+		        COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN created_at < ? THEN 1 ELSE 0 END), 0)
+		   FROM memory_fact_pending WHERE status = 'pending'`)
+	var total, staleWarn, staleFail int64
+	found, err := scanUsageSingleRow(ctx, r.data.RWDB().ReadDB(ctx), q,
+		[]any{failBound, warnBound, failBound}, &total, &staleWarn, &staleFail)
+	if err != nil {
+		return 0, 0, 0, entErrToBizErr(err, "MEMORY_FACT_PENDING")
+	}
+	if !found {
+		return 0, 0, 0, nil
+	}
+	return total, staleWarn, staleFail, nil
+}
+
 type memoryFactPendingScanner interface {
 	Scan(dest ...any) error
 }

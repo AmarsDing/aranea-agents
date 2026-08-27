@@ -83,7 +83,8 @@ func pruneTestCtx() context.Context {
 }
 
 // pruneTestMessages 构�?3 轮会话：tool 结果位于�?1 轮（idx 3），其后真实
-// user 消息 = t2/t3 �?2 条（轮距 2）。assistant 消息�?ToolCalls 以验�?// pair 完整（call 侧消息零改动）�?func pruneTestMessages(toolContent string) []trpcmodel.Message {
+// user 消息 = t2/t3 �?2 条（轮距 2）。assistant 消息�?ToolCalls 以验�?// pair 完整（call 侧消息零改动）�?
+func pruneTestMessages(toolContent string) []trpcmodel.Message {
 	return []trpcmodel.Message{
 		trpcmodel.NewSystemMessage("sys"),
 		trpcmodel.NewUserMessage("t1"),
@@ -116,7 +117,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 // tests
 // ---------------------------------------------------------------------------
 
-// 主路径：轮距>K 且超�?�?剪枝；指针含 blob id/工具名；pair 完整；计数正确�?func TestToolResultPrune_PrunesOldOversizedResult(t *testing.T) {
+// 主路径：轮距>K 且超�?�?剪枝；指针含 blob id/工具名；pair 完整；计数正确�?
+func TestToolResultPrune_PrunesOldOversizedResult(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
 	if hook == nil {
@@ -128,7 +130,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 
 	out := runPruneHook(t, hook, ctx, msgs)
 
-	// pair 完整：消息条�?角色序不变；call �?assistant 消息字节不动�?	if len(out) != len(msgs) {
+	// pair 完整：消息条�?角色序不变；call �?assistant 消息字节不动�?
+	if len(out) != len(msgs) {
 		t.Fatalf("message count changed: %d �?%d", len(msgs), len(out))
 	}
 	assistant := out[2]
@@ -147,7 +150,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 		t.Fatal("ContentParts must be cleared after prune")
 	}
 
-	// 归档：恰�?1 blob + 1 replacement，blob 存原文，指针引用 blob id�?	if len(blobs.blobs) != 1 {
+	// 归档：恰�?1 blob + 1 replacement，blob 存原文，指针引用 blob id�?
+	if len(blobs.blobs) != 1 {
 		t.Fatalf("blob count = %d, want 1", len(blobs.blobs))
 	}
 	var blob *biz.ToolResultBlob
@@ -166,13 +170,15 @@ func defaultPruneCfg() ToolResultPruneConfig {
 		t.Fatalf("pointer mismatch:\n got %q\nwant %q", pruned.Content, wantPointer)
 	}
 
-	// 计数：prune_count=1，prune_bytes=原文字节数�?	meta := LoadPruneMeta(ctx)
+	// 计数：prune_count=1，prune_bytes=原文字节数�?
+	meta := LoadPruneMeta(ctx)
 	if meta.Count != 1 || meta.Bytes != pruneTestBigContent {
 		t.Fatalf("prune meta = %+v, want {1 %d}", meta, pruneTestBigContent)
 	}
 }
 
-// 轮距豁免：K=2 时轮�?2 不剪（≤K 豁免）�?func TestToolResultPrune_WithinKTurnsExempt(t *testing.T) {
+// 轮距豁免：K=2 时轮�?2 不剪（≤K 豁免）�?
+func TestToolResultPrune_WithinKTurnsExempt(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	cfg := defaultPruneCfg()
 	cfg.AfterTurns = 2
@@ -187,7 +193,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// 尺寸豁免：未�?S 不剪�?func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
+// 尺寸豁免：未�?S 不剪�?
+func TestToolResultPrune_BelowSizeThresholdExempt(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
 	small := strings.Repeat("y", 1000)
@@ -197,7 +204,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// 白名单豁免：exempt_tools 命中不剪�?func TestToolResultPrune_ExemptToolsWhitelist(t *testing.T) {
+// 白名单豁免：exempt_tools 命中不剪�?
+func TestToolResultPrune_ExemptToolsWhitelist(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	cfg := defaultPruneCfg()
 	cfg.ExemptTools = map[string]bool{"big_tool": true}
@@ -209,7 +217,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// 错误结果豁免�?Error:" 前缀为失败重试证据，不剪�?func TestToolResultPrune_ErrorResultExempt(t *testing.T) {
+// 错误结果豁免�?Error:" 前缀为失败重试证据，不剪�?
+func TestToolResultPrune_ErrorResultExempt(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
 	errContent := "Error: connection timeout\n" + strings.Repeat("stack ", 1000)
@@ -219,7 +228,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// 轮距口径：尾�?dynamic cue �?user-role 哨兵，不得计入轮距——K=2 �?// 追加 cue 后轮距仍=2（豁免），若误计�?3 将错误剪枝�?func TestToolResultPrune_DynamicCueNotCountedAsTurn(t *testing.T) {
+// 轮距口径：尾�?dynamic cue �?user-role 哨兵，不得计入轮距——K=2 �?// 追加 cue 后轮距仍=2（豁免），若误计�?3 将错误剪枝�?
+func TestToolResultPrune_DynamicCueNotCountedAsTurn(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	cfg := defaultPruneCfg()
 	cfg.AfterTurns = 2
@@ -232,14 +242,16 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// 跨轮幂等：同一原文每轮重扫（会话存储不动），replacement 钉住 blob id�?// 第二轮归档返回既�?blob——blob 行不翻倍，指针字节跨轮稳定�?func TestToolResultPrune_IdempotentAcrossTurns(t *testing.T) {
+// 跨轮幂等：同一原文每轮重扫（会话存储不动），replacement 钉住 blob id�?// 第二轮归档返回既�?blob——blob 行不翻倍，指针字节跨轮稳定�?
+func TestToolResultPrune_IdempotentAcrossTurns(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	gate := pruneTestGate(blobs, reps)
 	hook := newToolResultPruneBeforeHook(gate, defaultPruneCfg(), loggateway.NewNoop(), nil)
 	big := strings.Repeat("x", pruneTestBigContent)
 
 	out1 := runPruneHook(t, hook, pruneTestCtx(), pruneTestMessages(big))
-	// 第二轮：会话存储原文不动 �?请求副本再次携带全量原文�?	out2 := runPruneHook(t, hook, pruneTestCtx(), pruneTestMessages(big))
+	// 第二轮：会话存储原文不动 �?请求副本再次携带全量原文�?	
+	out2 := runPruneHook(t, hook, pruneTestCtx(), pruneTestMessages(big))
 
 	if len(blobs.blobs) != 1 {
 		t.Fatalf("re-archive must reuse existing blob, got %d blobs", len(blobs.blobs))
@@ -249,7 +261,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// fail-soft：归档失败保留原文，本轮不省但不丢内容�?func TestToolResultPrune_ArchiveFailureKeepsOriginal(t *testing.T) {
+// fail-soft：归档失败保留原文，本轮不省但不丢内容�?
+func TestToolResultPrune_ArchiveFailureKeepsOriginal(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	blobs.failSave = true
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
@@ -264,7 +277,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// kill switch / 依赖缺失：Enabled=false �?gate=nil �?hook �?nil（零开销回退）�?func TestToolResultPrune_KillSwitchAndNilGate(t *testing.T) {
+// kill switch / 依赖缺失：Enabled=false �?gate=nil �?hook �?nil（零开销回退）�?
+func TestToolResultPrune_KillSwitchAndNilGate(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	gate := pruneTestGate(blobs, reps)
 	if hook := newToolResultPruneBeforeHook(nil, defaultPruneCfg(), loggateway.NewNoop(), nil); hook != nil {
@@ -277,7 +291,8 @@ func defaultPruneCfg() ToolResultPruneConfig {
 	}
 }
 
-// �?invocation 上下文：sessionID 为空 �?零改写零计数（防御路径）�?func TestToolResultPrune_NoInvocationContext(t *testing.T) {
+// �?invocation 上下文：sessionID 为空 �?零改写零计数（防御路径）�?
+func TestToolResultPrune_NoInvocationContext(t *testing.T) {
 	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
 	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
 	big := strings.Repeat("x", pruneTestBigContent)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/policyrule"
 	biztool "aranea-agents/internal/biz/tool"
@@ -71,6 +72,11 @@ func TestParamRuleGate_DenyRejects(t *testing.T) {
 	msg, _ := res.CustomResult.(string)
 	if !strings.Contains(msg, "builtin-exec-deny-rmrf") {
 		t.Fatalf("deny message should name the rule, got %q", msg)
+	}
+	// LLM 可见文案不得泄漏 pattern 明文（防针对性变形绕过）；pattern 全文只留
+	// DB 审计字段 ErrorMessage / 决策记录。
+	if strings.Contains(msg, "rm -rf") {
+		t.Fatalf("deny message must not leak pattern text, got %q", msg)
 	}
 	if v := paramRuleVerdictFromCtx(res.Context); v != nil {
 		t.Fatalf("deny must not write ctx verdict, got %+v", v)
@@ -145,12 +151,18 @@ func TestParamRuleGate_AliasAndToolSetPrefixCanonicalized(t *testing.T) {
 	}
 }
 
-func TestParamRuleGate_ListErrorFailsOpen(t *testing.T) {
+func TestParamRuleGate_ListErrorDegradesToAsk(t *testing.T) {
 	t.Parallel()
+	// 读取失败无法区分有/无规则：按 ask 处理写 verdict，确认门禁人工兜底
+	//（fail-closed 方向折叠，不再 fail-open）。
 	hook, _ := newParamRuleGateTestHook(t, &gateToolLookup{err: errors.New("db down")})
 	res := callParamRuleGate(hook, "gns3_exec", `{"command":"reload"}`)
-	if res.CustomResult != nil || paramRuleVerdictFromCtx(res.Context) != nil {
-		t.Fatal("list error should fail-open")
+	if res.CustomResult != nil {
+		t.Fatalf("load error must not short-circuit, got %v", res.CustomResult)
+	}
+	v := paramRuleVerdictFromCtx(res.Context)
+	if v == nil || v.effect != policyrule.EffectAsk || v.ruleID != "load-error" {
+		t.Fatalf("verdict = %+v, want ask/load-error", v)
 	}
 }
 
@@ -238,5 +250,80 @@ func TestToolConfirmGate_ParamRuleAllowNeverBypassesDangerFloor(t *testing.T) {
 		[]byte(`{"target":"永久删除按钮","action":"click"}`))
 	if !d.needsConfirm || d.reason != confirmReasonPolicyDanger {
 		t.Fatalf("decide = (%v,%q), want (true,%q) — allow 不得跳过 danger floor", d.needsConfirm, d.reason, confirmReasonPolicyDanger)
+	}
+}
+
+// --- 装配链注册与保活（H1/H5 回归） ---
+
+// H1 回归：参数门禁必须出现在装配后的回调链中，且在执行序上早于
+// priority 4（循环守卫/结果缓存）之前的所有 hook；与同档 priority 3 的
+// args 守卫保持「先追加先执行」的稳定序（参数门禁先追加）。
+func TestCallbackChain_ParamRuleGateRegisteredInOrder(t *testing.T) {
+	t.Parallel()
+	ag := biz.Agent{AgentKey: "test", Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true}}
+	deps := TRPCBuilderDeps{}
+	deps.ToolUC = &gateToolLookup{rules: []biztool.ToolParamRule{
+		{ID: "builtin-exec-deny-rmrf", Pattern: "rm -rf*", Effect: "deny", Priority: 10, Enabled: true},
+	}}
+	chain := productCallbackChain(context.Background(), ag, deps, nil)
+	if chain == nil {
+		t.Fatal("expected chain")
+	}
+	gatePos, prio3Seen, prio4Pos := -1, 0, -1
+	for i, cb := range chain.Entries() {
+		h, ok := cb.(callbacks.BeforeToolHook)
+		if !ok {
+			continue
+		}
+		switch cb.Priority() {
+		case paramRuleGatePriority:
+			prio3Seen++
+			if gatePos < 0 {
+				// 行为识别：deny 规则命中时参数门禁短路拒绝（args 守卫不会）。
+				res, err := h.HandleBeforeTool(context.Background(), &trpctool.BeforeToolArgs{
+					ToolName: "exec_command", Arguments: []byte(`{"command":"rm -rf /tmp/x"}`), ToolCallID: "c1",
+				})
+				if err == nil && res != nil && res.CustomResult != nil {
+					if msg, _ := res.CustomResult.(string); strings.Contains(msg, "builtin-exec-deny-rmrf") {
+						gatePos = i
+						if prio3Seen != 1 {
+							t.Fatalf("param gate must be the FIRST priority-3 hook (before args guard), found at %d-th", prio3Seen)
+						}
+					}
+				}
+			}
+		case 4:
+			if prio4Pos < 0 {
+				prio4Pos = i
+			}
+		}
+	}
+	if gatePos < 0 {
+		t.Fatal("param rule gate not registered in assembled chain (H1 regression)")
+	}
+	if prio4Pos >= 0 && gatePos > prio4Pos {
+		t.Fatalf("param gate (idx %d) must execute before priority-4 hooks (idx %d)", gatePos, prio4Pos)
+	}
+}
+
+// H5 回归：paramRules store 已装配时确认门禁保活（ask verdict 的唯一消费者）；
+// 未装配时维持旧的 nil 优化行为。
+type gateToolLookupArmed struct {
+	gateToolLookup
+	armed bool
+}
+
+func (f *gateToolLookupArmed) HasParamRuleStore() bool { return f.armed }
+
+func TestBuildToolConfirmGate_KeepaliveWhenParamRulesArmed(t *testing.T) {
+	t.Parallel()
+	deps := TRPCBuilderDeps{}
+	deps.ToolUC = &gateToolLookupArmed{armed: true}
+	if gate := buildToolConfirmGate(context.Background(), biz.Agent{ID: "a"}, deps, nil); gate == nil {
+		t.Fatal("confirm gate must stay alive when param rule store armed (H5)")
+	}
+	deps.ToolUC = &gateToolLookupArmed{armed: false}
+	if gate := buildToolConfirmGate(context.Background(), biz.Agent{ID: "a"}, deps, nil); gate != nil {
+		t.Fatal("unarmed store + empty catalog/plugin must keep old nil-gate behavior")
 	}
 }

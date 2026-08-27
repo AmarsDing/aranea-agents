@@ -71,6 +71,20 @@ type MemoryFactPendingStore interface {
 	MarkDecided(ctx context.Context, id, status, approver string, decidedAt int64) (applied bool, err error)
 }
 
+// MemoryFactPendingCounter 是 pending 审批的 COUNT 窄能力（79-runtime-governance
+// R8 P5.2）：ListPending 是 newest-first + limit 截断——diagnostics 的积压总数
+// 与 stale 分档计数若取自截断列表，pending 超 limit 时总数显示失真，且最老的
+// stale 行被截漏（>72h 积压恒 0 的假阴性）。diagnostics 经 type-assertion
+// 解析本接口；无该能力的实现回落列表口径（主契约 MemoryFactPendingStore 不动、
+// 测试替身零波及，同 R7 窄口模式）。
+// Stability:evolving
+type MemoryFactPendingCounter interface {
+	// CountPendingByAge 对 status='pending' 行按 age 互斥分档 COUNT：
+	// staleWarn = warnAgeSec < age <= failAgeSec；staleFail = age > failAgeSec
+	// （与 audit.py §六分档语义一致）；total = 全部 pending 数。
+	CountPendingByAge(ctx context.Context, warnAgeSec, failAgeSec, nowUnix int64) (total, staleWarn, staleFail int64, err error)
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3.4 — E4 四档决议（与工具 HITL 对齐）
 // ---------------------------------------------------------------------------

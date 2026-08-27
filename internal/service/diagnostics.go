@@ -39,6 +39,13 @@ func writeDiagnosticsJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeDiagnosticsError 写错误响应（P5.2 错误信封顶层化）：code/message
+// 置 JSON 顶层（与 kratos 错误信封的顶层键惯例一致，前端/脚本错误处理
+// 无需识别私有嵌套结构；此前嵌在 "error" 子对象下是非标形态）。
+func writeDiagnosticsError(w http.ResponseWriter, status int, code, message string) {
+	writeDiagnosticsJSON(w, status, map[string]any{"code": code, "message": message})
+}
+
 // ServeDiagnostics GET /api/v1/admin/diagnostics — 全量体检报告。admin 鉴权
 // 与 config-graph 同标准（JWT + HasAdminAccess）。
 func (s *DiagnosticsService) ServeDiagnostics(w http.ResponseWriter, r *http.Request) {
@@ -57,9 +64,7 @@ func (s *DiagnosticsService) ServeToolAssemblyReconcile(w http.ResponseWriter, r
 	}
 	report, err := s.uc.ToolAssemblyReport(r.Context())
 	if err != nil {
-		writeDiagnosticsJSON(w, http.StatusInternalServerError, map[string]any{
-			"error": map[string]string{"code": "DIAGNOSTICS.RECONCILE_FAILED", "message": err.Error()},
-		})
+		writeDiagnosticsError(w, http.StatusInternalServerError, "DIAGNOSTICS.RECONCILE_FAILED", err.Error())
 		return
 	}
 	writeDiagnosticsJSON(w, http.StatusOK, report)
@@ -68,15 +73,11 @@ func (s *DiagnosticsService) ServeToolAssemblyReconcile(w http.ResponseWriter, r
 func (s *DiagnosticsService) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	a, ok := auth.FromContext(r.Context())
 	if !ok || a == nil {
-		writeDiagnosticsJSON(w, http.StatusUnauthorized, map[string]any{
-			"error": map[string]string{"code": "DIAGNOSTICS.UNAUTHORIZED", "message": "authentication required"},
-		})
+		writeDiagnosticsError(w, http.StatusUnauthorized, "DIAGNOSTICS.UNAUTHORIZED", "authentication required")
 		return false
 	}
 	if !a.HasAdminAccess() {
-		writeDiagnosticsJSON(w, http.StatusForbidden, map[string]any{
-			"error": map[string]string{"code": "DIAGNOSTICS.FORBIDDEN", "message": "admin access required"},
-		})
+		writeDiagnosticsError(w, http.StatusForbidden, "DIAGNOSTICS.FORBIDDEN", "admin access required")
 		return false
 	}
 	return true

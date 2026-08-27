@@ -10,6 +10,7 @@ import (
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -558,9 +559,26 @@ func (s *ToolService) DeleteToolGrant(ctx context.Context, req *v1.DeleteToolGra
 
 // --- 79-runtime-governance R9：工具参数模式权限（平台级安全策略，无 agent 维度） ---
 
+// requireParamRuleAdmin 守护参数规则管理端点（P5.4 审计 H4）：规则即平台安全
+// 策略——普通租户 caller 可读改 deny/ask 规则，等于绕过运行时 paramRuleGate。
+// 与 admin.go CreateAdmin 同标准（JWT + HasAdminAccess）。
+func (s *ToolService) requireParamRuleAdmin(ctx context.Context) error {
+	a, ok := auth.FromContext(ctx)
+	if !ok || a == nil {
+		return auth.ErrUnauthorized
+	}
+	if !a.HasAdminAccess() {
+		return auth.ErrForbidden
+	}
+	return nil
+}
+
 // ListToolParamRules lists all param rules (incl. disabled) for a tool;
-// tool_key accepts any alias (canonicalized in the biz layer).
+// tool_key accepts any alias (canonicalized in the biz layer). Admin only.
 func (s *ToolService) ListToolParamRules(ctx context.Context, req *v1.ListToolParamRulesRequest) (*v1.ListToolParamRulesResponse, error) {
+	if err := s.requireParamRuleAdmin(ctx); err != nil {
+		return nil, err
+	}
 	rules, err := s.uc.ListToolParamRules(ctx, req.GetToolKey())
 	if err != nil {
 		return nil, err
@@ -582,8 +600,11 @@ func (s *ToolService) ListToolParamRules(ctx context.Context, req *v1.ListToolPa
 
 // UpsertToolParamRule creates or updates a rule. The paramRuleGate reads
 // rules per tool call, so changes take effect on the next invocation.
-// builtin-* rules: effect read-only, never deletable (biz enforced).
+// builtin-* rules: effect read-only, never deletable (biz enforced). Admin only.
 func (s *ToolService) UpsertToolParamRule(ctx context.Context, req *v1.UpsertToolParamRuleRequest) (*v1.ToolParamRule, error) {
+	if err := s.requireParamRuleAdmin(ctx); err != nil {
+		return nil, err
+	}
 	in := biz.ToolParamRule{
 		ID:       req.GetId(),
 		ToolKey:  req.GetToolKey(),
@@ -595,6 +616,12 @@ func (s *ToolService) UpsertToolParamRule(ctx context.Context, req *v1.UpsertToo
 	if err := s.uc.UpsertToolParamRule(ctx, in); err != nil {
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "tool_param_rule"),
+		Resource:   "tool_param_rule",
+		ResourceID: req.GetId(),
+		Summary:    fmt.Sprintf("tool_key=%s effect=%s enabled=%v", biztool.CanonicalParamRuleToolKey(req.GetToolKey()), req.GetEffect(), req.GetEnabled()),
+	})
 	return &v1.ToolParamRule{
 		Id:       req.GetId(),
 		ToolKey:  biztool.CanonicalParamRuleToolKey(req.GetToolKey()),
@@ -606,10 +633,19 @@ func (s *ToolService) UpsertToolParamRule(ctx context.Context, req *v1.UpsertToo
 }
 
 // DeleteToolParamRule removes a rule. Idempotent; builtin-* ids rejected.
+// Admin only.
 func (s *ToolService) DeleteToolParamRule(ctx context.Context, req *v1.DeleteToolParamRuleRequest) (*emptypb.Empty, error) {
+	if err := s.requireParamRuleAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.uc.DeleteToolParamRule(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "tool_param_rule"),
+		Resource:   "tool_param_rule",
+		ResourceID: req.GetId(),
+	})
 	return &emptypb.Empty{}, nil
 }
 

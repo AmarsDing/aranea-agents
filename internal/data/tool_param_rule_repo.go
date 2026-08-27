@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	biztool "aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -49,6 +50,30 @@ func scanToolParamRuleRows(rows interface {
 		return nil, entErrToBizErr(err, "TOOL_PARAM_RULE")
 	}
 	return out, nil
+}
+
+// GetParamRuleByID returns one rule by primary key (across all tool_keys).
+// 无行返回 shared.ErrNotFound，供 biz 层 builtin 只读校验区分「不存在」与
+// 「查询失败」（P5.4 H3）。
+func (r *toolParamRuleRepo) GetParamRuleByID(ctx context.Context, id string) (biztool.ToolParamRule, error) {
+	if r == nil || r.data == nil || r.data.RWDB() == nil || strings.TrimSpace(id) == "" {
+		return biztool.ToolParamRule{}, shared.ErrNotFound
+	}
+	q := r.data.Dialect().RenumberPlaceholders(
+		"SELECT " + toolParamRuleCols + " FROM tool_param_rules WHERE id = ?")
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, strings.TrimSpace(id))
+	if err != nil {
+		return biztool.ToolParamRule{}, entErrToBizErr(err, "TOOL_PARAM_RULE")
+	}
+	defer rows.Close()
+	recs, err := scanToolParamRuleRows(rows)
+	if err != nil {
+		return biztool.ToolParamRule{}, err
+	}
+	if len(recs) == 0 {
+		return biztool.ToolParamRule{}, shared.ErrNotFound
+	}
+	return recs[0], nil
 }
 
 // ListEnabledParamRules returns enabled rules for the tool, evaluation order

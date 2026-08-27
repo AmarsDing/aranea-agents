@@ -29,8 +29,10 @@ import (
 //    （computer-use danger floor 永不被跳过）。
 //   - 无命中 → fallback：工具自身 requires_confirmation（目录策略）决定。
 //
-// 规则读取失败 fail-open（记 warn 放行）：目录确认策略仍是基础层，DB 抖动
-// 不扩大故障面。
+// 规则读取失败降级为 ask（写 verdict 走确认门禁人工兜底）：读取失败时无法
+// 区分该工具有无 ask/deny 规则，fail-open 会让 gns3_exec（无目录确认兜底）
+// 的安全保障在 DB 抖动时整体消失——安全闸向 fail-closed 方向折叠。确认门禁
+// 缺失的部署形态（ToolUC 未装配）下 verdict 无消费者，等同 fallback 放行。
 
 // paramRuleGatePriority 必须小于循环守卫的 priority 4。
 const paramRuleGatePriority = 3
@@ -72,11 +74,13 @@ func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Be
 		canonical := loopGuardCanonicalToolName(toolName)
 		rules, err := deps.ToolUC.ListEnabledParamRulesForGate(ctx, canonical)
 		if err != nil {
-			lg.Warn("param rule gate: list rules failed, fail-open",
+			lg.Warn("param rule gate: list rules failed, degrade to ask",
 				loggateway.StepID("agent.param_rule_gate"),
 				loggateway.Str("tool", toolName),
 				loggateway.Err(err))
-			return &trpctool.BeforeToolResult{Context: ctx}, nil
+			// 读取失败无法区分有/无规则：按 ask 处理，确认门禁人工兜底（见文件头注释）。
+			v := &paramRuleVerdict{effect: policyrule.EffectAsk, ruleID: "load-error"}
+			return &trpctool.BeforeToolResult{Context: context.WithValue(ctx, paramRuleVerdictCtxKey{}, v)}, nil
 		}
 		if len(rules) == 0 {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
@@ -138,7 +142,9 @@ func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Be
 				Threshold:     winner.Pattern,
 				Action:        "deny",
 			})
-			return callbacks.Reject("工具 \"" + toolName + "\" 的本次调用被参数权限规则拒绝（规则 " + winner.ID + "，模式 " + winner.Pattern + "）。这是管理员配置的安全策略，不是临时故障。禁止重试相同或等价的调用；请向用户说明该操作被策略禁止，并询问替代方案。").BeforeToolResult(ctx), nil
+			// LLM 可见文案只给规则 ID——pattern 明文回给模型便于针对性变形绕过
+			// （pattern 全文留 DB 审计字段 ErrorMessage / 决策记录，内部可溯）。
+			return callbacks.Reject("工具 \"" + toolName + "\" 的本次调用被参数权限规则拒绝（规则 " + winner.ID + "）。这是管理员配置的安全策略，不是临时故障。禁止重试相同或等价的调用；请向用户说明该操作被策略禁止，并询问替代方案。").BeforeToolResult(ctx), nil
 		case policyrule.EffectAsk, policyrule.EffectAllow:
 			v := &paramRuleVerdict{effect: winner.Effect, ruleID: winner.ID, pattern: winner.Pattern}
 			return &trpctool.BeforeToolResult{Context: context.WithValue(ctx, paramRuleVerdictCtxKey{}, v)}, nil

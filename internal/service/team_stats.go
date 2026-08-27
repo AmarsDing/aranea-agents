@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,7 +60,10 @@ func (s *TeamService) buildRunStats(ctx context.Context, run biz.TeamRunRecord, 
 			stats.MaxTurnInputTokens = peak.MaxInputTokens
 		}
 		if members, err := s.usageUC.RunMemberUsageStats(ctx, run.ID); err != nil {
-			s.lg.Warn("run stats: member usage degraded", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+			// 用量源故障回落到 step 维度成员行（P5.1 M3）——members 段不应
+			// 因旁路读取失败整体消失（与 usageUC 未装配的降级语义一致）。
+			s.lg.Warn("run stats: member usage degraded, fallback to step rows", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+			appendStepOnlyMembers(stats, memberSteps, nil)
 		} else {
 			seen := make(map[string]bool, len(members))
 			for _, m := range members {
@@ -78,18 +82,17 @@ func (s *TeamService) buildRunStats(ctx context.Context, run biz.TeamRunRecord, 
 				})
 			}
 			// 有 step 但无用量行的成员（如全缓存/记账缺失）也要列出。
-			for key, n := range memberSteps {
-				if !seen[key] {
-					stats.Members = append(stats.Members, &v1.TeamRunMemberStats{AgentKey: key, Steps: n})
-				}
-			}
+			appendStepOnlyMembers(stats, memberSteps, seen)
 		}
 	} else {
 		// 无 usage 源（单测/精简装配）：仍透出 step 维度成员行。
-		for key, n := range memberSteps {
-			stats.Members = append(stats.Members, &v1.TeamRunMemberStats{AgentKey: key, Steps: n})
-		}
+		appendStepOnlyMembers(stats, memberSteps, nil)
 	}
+	// members 输出序按 agent_key 排序（P5.1 排序稳定）——step 行来自 Go map
+	// 遍历顺序随机，JSONL 导出对账要求同输入必同字节。
+	sort.Slice(stats.Members, func(i, j int) bool {
+		return stats.Members[i].GetAgentKey() < stats.Members[j].GetAgentKey()
+	})
 
 	if s.decisionQuery != nil {
 		if gates, err := s.decisionQuery.RunGateStats(ctx, run.ID); err != nil {
@@ -104,6 +107,17 @@ func (s *TeamService) buildRunStats(ctx context.Context, run biz.TeamRunRecord, 
 		}
 	}
 	return stats
+}
+
+// appendStepOnlyMembers 把 memberSteps 中不在 seen 的成员按纯 step 行追加
+// （token/calls 零值）。seen nil = 全部追加。调用方负责后续统一排序。
+func appendStepOnlyMembers(stats *v1.TeamRunStats, memberSteps map[string]int32, seen map[string]bool) {
+	for key, n := range memberSteps {
+		if seen[key] {
+			continue
+		}
+		stats.Members = append(stats.Members, &v1.TeamRunMemberStats{AgentKey: key, Steps: n})
+	}
 }
 
 // GetTeamRunStats 返回单 run 的聚合 stats（R7）。读权限同 run 详情
@@ -129,7 +143,9 @@ func (s *TeamService) GetTeamRunStats(ctx context.Context, req *v1.GetTeamRunSta
 
 // ExportTeamRunStats 按 created_at 窗口导出 run stats JSONL（R7）。system
 // 调用方跨全量；租户调用方过滤到本 workspace 可见 team（own + shared，
-// 同 run 读语义）。limit 服务端收口（repo 默认 500 / 硬上限 1000）。
+// 同 run 读语义）——可见性过滤随查询下推 SQL（P5.1 M1：Go 侧后过滤会让
+// limit 截断先于租户过滤发生，导出被他人 run 挤占配额）。limit 服务端
+// 单点收口于 repo（默认 500 / 硬上限 1000）。
 func (s *TeamService) ExportTeamRunStats(ctx context.Context, req *v1.ExportTeamRunStatsRequest) (*v1.ExportTeamRunStatsResponse, error) {
 	from, err := parseStatsExportTime(req.GetFrom(), "from")
 	if err != nil {
@@ -139,27 +155,26 @@ func (s *TeamService) ExportTeamRunStats(ctx context.Context, req *v1.ExportTeam
 	if err != nil {
 		return nil, err
 	}
-	runs, err := s.uc.ListRunsForStatsExport(ctx, from, to, strings.TrimSpace(req.GetSessionId()), int(req.GetLimit()))
-	if err != nil {
-		return nil, err
-	}
 
+	// teamIDs nil = system 全量；空非 nil = 租户无可见 team（短路空导出）。
+	var teamIDs []string
 	if !workspace.IsSystem(ctx) {
 		visible, verr := s.uc.ListTeamsByWorkspace(ctx, workspace.IDFromContext(ctx))
 		if verr != nil {
 			return nil, verr
 		}
-		allowed := make(map[string]bool, len(visible))
+		teamIDs = make([]string, 0, len(visible))
 		for _, t := range visible {
-			allowed[t.ID] = true
+			teamIDs = append(teamIDs, t.ID)
 		}
-		filtered := runs[:0]
-		for _, r := range runs {
-			if allowed[r.TeamID] {
-				filtered = append(filtered, r)
-			}
+		if len(teamIDs) == 0 {
+			return &v1.ExportTeamRunStatsResponse{}, nil
 		}
-		runs = filtered
+	}
+
+	runs, err := s.uc.ListRunsForStatsExport(ctx, from, to, strings.TrimSpace(req.GetSessionId()), teamIDs, int(req.GetLimit()))
+	if err != nil {
+		return nil, err
 	}
 
 	var sb strings.Builder

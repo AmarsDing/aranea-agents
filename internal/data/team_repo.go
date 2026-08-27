@@ -479,20 +479,42 @@ var _ biz.TeamRunStatsExportReader = (*TeamRepo)(nil)
 // ListTeamRunsForStatsExport 按 created_at 窗口 + 可选 session_id 跨 team
 // 列举 run（79-runtime-governance R7 JSONL 导出）。created_at 是 TEXT 列
 // （RFC3339），UTC 字典序比较与时间序一致；窗口边界统一转 UTC 后下推。
-// limit 由调用方收口（导出处理器硬上限），此处仅防御性兜底。
-func (r *TeamRepo) ListTeamRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, limit int) ([]biz.TeamRunRecord, error) {
-	if limit <= 0 || limit > 1000 {
+//
+// 口径（P5.1 审计修订）：
+//   - 边界按存储精度（秒，RFC3339）格式化——写路径 nowRFC3339 秒精度落库，
+//     用 RFC3339Nano 格式化带亚秒的边界会撞字典序陷阱（'.'<'Z'），边界行
+//     被错误包含/排除；亚秒截断后窗口至多向两侧各宽一秒，导出语义可接受。
+//   - 排序 created_at DESC + id DESC 双键——同秒多 run 顺序不确定会让 limit
+//     截断结果不可复现（导出对账要求字节稳定）。
+//   - teamIDs 过滤下推 SQL：nil = 不限（system 调用方）；空非 nil = 不匹配
+//     任何 run（租户无可见 team，短路返回）。在 Go 侧后过滤会让 limit 截断
+//     发生在租户过滤之前，租户导出被他人 run 挤占配额（M1）。
+//   - limit 单点收口于此：<=0 → 默认 500；>1000 → 硬上限 1000（M2）。
+func (r *TeamRepo) ListTeamRunsForStatsExport(ctx context.Context, from, to time.Time, sessionID string, teamIDs []string, limit int) ([]biz.TeamRunRecord, error) {
+	if teamIDs != nil && len(teamIDs) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
 		limit = 500
 	}
-	q := r.data.RW().Read(ctx).TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
+	if limit > 1000 {
+		limit = 1000
+	}
+	q := r.data.RW().Read(ctx).TeamRun.Query().Order(
+		teamrun.ByCreatedAt(entsql.OrderDesc()),
+		teamrun.ByID(entsql.OrderDesc()),
+	)
 	if !from.IsZero() {
-		q = q.Where(teamrun.CreatedAtGTE(from.UTC().Format(time.RFC3339Nano)))
+		q = q.Where(teamrun.CreatedAtGTE(from.UTC().Format(time.RFC3339)))
 	}
 	if !to.IsZero() {
-		q = q.Where(teamrun.CreatedAtLTE(to.UTC().Format(time.RFC3339Nano)))
+		q = q.Where(teamrun.CreatedAtLTE(to.UTC().Format(time.RFC3339)))
 	}
 	if s := strings.TrimSpace(sessionID); s != "" {
 		q = q.Where(teamrun.SessionIDEQ(s))
+	}
+	if teamIDs != nil {
+		q = q.Where(teamrun.TeamIDIn(teamIDs...))
 	}
 	rows, err := q.Limit(limit).All(ctx)
 	if err != nil {
