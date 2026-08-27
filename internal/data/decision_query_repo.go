@@ -194,6 +194,8 @@ func (r *decisionQueryRepo) RunGateStats(ctx context.Context, runID string) (dec
 			out.PruneBytes += int64(parseMetadataInt(pruneBytes.String))
 		case decision.TriggerContextCompacted:
 			out.CompactCount++
+		case decision.TriggerParamRuleDeny:
+			out.ParamRuleDenies++
 		}
 	}
 	return out, entErrToBizErr(rows.Err(), "DECISION")

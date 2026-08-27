@@ -150,17 +150,15 @@ func newToolResultPruneBeforeHook(gate *biz.ToolResultGate, cfg ToolResultPruneC
 }
 
 // emitPruneGateDecision 把一次实际剪枝双写为 system_guard 决策记录（R7 G-1）。
-// run 归属取 invocation.InvocationID——团队图谱执行时全链路共享 run.ID
-// （runner_team_trpc_phases.go ProjectMeta.InvocationID），chat 轮次则为
-// chat invocation id（不 join 任何 team run，stats 聚合自然忽略）。
+// run 归属经 gateRunID（2026-08-27 H5 根修）：team 图谱成员节点取 ctx 注入的
+// team run id——框架 Clone 补丁前成员 invocation 共享 run.ID，补丁后成员获新
+// uuid，InvocationID 不再等于 run 归属；chat 轮次回落 chat invocation id
+// （不 join 任何 team run，stats 聚合自然忽略）。
 func emitPruneGateDecision(ctx context.Context, c decision.Collector, sessionID string, pruned int, prunedBytes int64) {
 	if c == nil {
 		return
 	}
-	var runID string
-	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-		runID = inv.InvocationID
-	}
+	runID := gateRunID(ctx)
 	decision.EmitGate(ctx, c, decision.GateDecision{
 		TriggerRule:   decision.TriggerToolResultPruned,
 		Outcome:       "truncated",

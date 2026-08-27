@@ -197,17 +197,15 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 }
 
 // emitCompactGateDecision 把一次实际终审压缩双写为 system_guard 决策记录
-// （R7 G-1）。run 归属同 prune：invocation.InvocationID（图谱执行 = run.ID）。
+// （R7 G-1）。run 归属经 gateRunID（2026-08-27 H5 根修）：team 图谱成员节点
+// 取 ctx 注入的 team run id（框架 Clone 补丁后 InvocationID 已非 run.ID）。
 // observed_value 记驱逐消息数；before_chars/dropped_cues/est_tokens/window
 // 落 metadata 供取证回放（不进 stats 聚合字段）。
 func emitCompactGateDecision(ctx context.Context, c decision.Collector, evicted, droppedCues, beforeChars, estTokens, window int) {
 	if c == nil {
 		return
 	}
-	var runID string
-	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-		runID = inv.InvocationID
-	}
+	runID := gateRunID(ctx)
 	decision.EmitGate(ctx, c, decision.GateDecision{
 		TriggerRule:   decision.TriggerContextCompacted,
 		Outcome:       "truncated",

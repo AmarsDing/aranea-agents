@@ -6,7 +6,8 @@
   <div class="turn-container" :data-turn-id="turn.ID">
     <!-- 79 R6 Fork-from-Turn：hover 显示「从此分支」。仅根会话的 spirit turn
          （SessionID === SpiritSessionID 且非 team stage）且非运行中可分叉——
-         member 子会话事件不在根会话框架事件流内，后端会拒绝。 -->
+         member 子会话事件不在根会话框架事件流内，后端会拒绝；已分叉会话
+         （链式 fork）同样隐藏，后端对 child session 硬拒绝。 -->
     <q-btn
       v-if="forkable"
       flat
@@ -43,6 +44,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useUiConfigStore } from '../../../stores/uiConfig';
+import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import type { Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
@@ -74,8 +76,19 @@ const { t } = (() => {
 
 // 79 R6：可分叉 = 根会话 spirit turn（SessionID === SpiritSessionID、非 team
 // stage）且非运行中（running turn 事件仍在追加，分叉边界不稳定）。
+// 链式 fork 后端硬拒绝（继承 id 前缀与复制事件 invocationId 无法命中，见
+// biz/session/fork.go）——已分叉会话（parent_session_id 非空）直接隐藏按钮，
+// 不让用户点击后吃 400。findSessionById 覆盖 agent 列表与 team 列表（team 场景
+// selectedSession 为空、仅有 teamSelectedSessionId），未加载到时 fail-open 由
+// 后端门禁兜底。
+const chatSessionStore = useChatSessionStore();
+const isChildSession = computed(() => {
+  const cur = chatSessionStore.findSessionById(props.turn.SessionID);
+  return !!cur?.parent_session_id?.trim();
+});
 const forkable = computed(
   () =>
+    !isChildSession.value &&
     !props.turn.TeamStageID &&
     props.turn.SessionID === props.turn.SpiritSessionID &&
     props.turn.Status !== 'running',

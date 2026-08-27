@@ -173,7 +173,8 @@ message TeamRunStats {
   int64 completion_tokens = 9;
   int64 cached_tokens = 10;
   double cache_hit_ratio = 11;
-  // G-2：run 内单次模型调用 input tokens 峰值（genuine 成员行 MAX）。
+  // G-2：run 内单成员模型用量 input tokens 峰值（2026-08-27 R7 最终裁定：
+  // 纳入 attribution 标记行，语义为「单成员 run 总量峰值」，非单次调用）。
   int64 max_turn_input_tokens = 12;
   int32 loop_guard_blocks = 13;
   int32 prune_count = 14;
@@ -183,6 +184,8 @@ message TeamRunStats {
   bool budget_tripped = 17;
   bool no_progress_tripped = 18;
   repeated TeamRunMemberStats members = 19;
+  // R9：工具参数门禁 deny 记录条数（param_rule_deny）。
+  int32 param_rule_denies = 20;
 }
 
 message GetTeamRunStatsRequest {

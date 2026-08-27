@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"time"
@@ -142,9 +143,10 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 	// 成为截断的进行中片段。
 	var forkTaskID, forkTurnStatus string
 	var forkTurnSeq int64
+	var forkTurnCompletedAt sql.NullTime
 	if err := queryRowScan(ctx, read, d.RenumberPlaceholders(`
-		SELECT task_id, seq, status FROM turns_v2 WHERE id = ? AND session_id = ?`),
-		[]any{forkTurnID, srcSessionID}, &forkTaskID, &forkTurnSeq, &forkTurnStatus); err != nil {
+		SELECT task_id, seq, status, completed_at FROM turns_v2 WHERE id = ? AND session_id = ?`),
+		[]any{forkTurnID, srcSessionID}, &forkTaskID, &forkTurnSeq, &forkTurnStatus, &forkTurnCompletedAt); err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return 0, 0, 0, apierror.NotFound("SESSION", "turn not found in v2 records of source session")
 		}
@@ -160,15 +162,45 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 		return 0, 0, 0, err
 	}
 
+	// 边界 task 状态钳制：澄清暂停 / team 派发延迟 completed 等场景下，
+	// fork turn 已终态但 task 仍是 pending/running/interrupted。verbatim
+	// 复制会让 fork 会话留下永久 running 的僵尸 task（没有 runner 会再写
+	// 复制行），重启后还会被全局 sweeper 标 interrupted 变成可 resume 的
+	// 幽灵。fork 历史在分叉点收尾，边界 task 的非终态按 fork turn 终态改写。
+	var boundaryTaskStatus string
+	switch forkTurnStatus {
+	case string(biz.TurnStatusFailed):
+		boundaryTaskStatus = string(biz.TaskStatusFailed)
+	case string(biz.TurnStatusCancelled):
+		boundaryTaskStatus = string(biz.TaskStatusCancelled)
+	default:
+		boundaryTaskStatus = string(biz.TaskStatusCompleted)
+	}
+	boundaryTaskCompletedAt := time.Now()
+	if forkTurnCompletedAt.Valid {
+		boundaryTaskCompletedAt = forkTurnCompletedAt.Time
+	}
+	nonTerminal := []string{
+		string(biz.TaskStatusPending), string(biz.TaskStatusRunning), string(biz.TaskStatusInterrupted),
+	}
+
 	prefix := forkIDPrefix(dstSessionID)
 
-	// tasks：seq ≤ forkTask.seq 全量复制（边界 task 的后续 turn 在 turns 复制中截断）。
+	// tasks：seq ≤ forkTask.seq 全量复制（边界 task 的后续 turn 在 turns 复制中截断，
+	// 其非终态按上方钳制改写）。
 	taskRes, err := write.ExecContext(ctx, d.RenumberPlaceholders(`
 		INSERT INTO tasks_v2 (id, session_id, user_message, status, seq, version, workspace_id, created_at, updated_at, completed_at)
-		SELECT ? || id, ?, user_message, status, seq, version, workspace_id, created_at, updated_at, completed_at
+		SELECT ? || id, ?, user_message,
+			CASE WHEN seq = ? AND status IN (?, ?, ?) THEN ? ELSE status END,
+			seq, version, workspace_id, created_at, updated_at,
+			CASE WHEN seq = ? AND status IN (?, ?, ?) THEN ? ELSE completed_at END
 		FROM tasks_v2
 		WHERE session_id = ? AND seq <= ?
-		ORDER BY seq`), prefix, dstSessionID, srcSessionID, forkTaskSeq)
+		ORDER BY seq`),
+		prefix, dstSessionID,
+		forkTaskSeq, nonTerminal[0], nonTerminal[1], nonTerminal[2], boundaryTaskStatus,
+		forkTaskSeq, nonTerminal[0], nonTerminal[1], nonTerminal[2], boundaryTaskCompletedAt,
+		srcSessionID, forkTaskSeq)
 	if err != nil {
 		return 0, 0, 0, err
 	}

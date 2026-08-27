@@ -205,6 +205,11 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			SandboxFSStore: r.cfg.SandboxFSStore,
 			MediaProviders: r.td.ReadDeps.MediaProviders,
 			ArtifactWriter: r.td.Persist.ArtifactUC,
+			// M80：成员 agent 决策记录入口（2026-08-27 二轮审查根修——chat 路径
+			// 已在 chat_orch_agent_build.go 补装，本 team 成员路径是镜像漏装；
+			// 漏接则成员 hitl_approval / param_rule_deny / loop_guard /
+			// tool_result_prune 决策全部静默不落库）。
+			DecisionCollector: r.cfg.DecisionCollector,
 		},
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:              r.td.Persist.Memory.Available(),

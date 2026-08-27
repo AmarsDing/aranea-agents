@@ -75,11 +75,13 @@ func MatchText(pattern, text string) (bool, error) {
 	return re.MatchString(strings.ToLower(text)), nil
 }
 
-// globToRegexp 把命令 glob 翻译为锚定整串的正则：'*'→'.*'（跨任意字符）、
-// '?'→'.'，其余字面量转义；整体大小写不敏感（调用方负责折叠 text）。
+// globToRegexp 把命令 glob 翻译为锚定整串的正则：'*'→'.*'（跨任意字符含换行，
+// s 旗标——2026-08-27 二轮审查根修：缺 s 时任何含 \n 的参数文本整体绕过 glob
+// 规则，gns3 '*' ask 兜底与 glob deny 均可内嵌换行规避）、'?'→'.'，其余字面量
+// 转义；整体大小写不敏感（调用方负责折叠 text）。
 func globToRegexp(glob string) string {
 	var b strings.Builder
-	b.WriteString("(?i)^")
+	b.WriteString("(?is)^")
 	for _, r := range glob {
 		switch r {
 		case '*':

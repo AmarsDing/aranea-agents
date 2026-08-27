@@ -54,6 +54,21 @@ func paramRuleVerdictFromCtx(ctx context.Context) *paramRuleVerdict {
 	return v
 }
 
+// gateRunID 统一闸事件 run 归属取值（2026-08-27 二轮审查 H5 根修）：优先
+// team runner 经 decision.WithGateRunID 注入 ctx 的 team run id——成员子
+// invocation 经框架 Clone 获新 uuid，InvocationID 无法回溯 run 归属，直接用
+// 它会让 RunGateStats 按 team run id 过滤恒不命中。chat/非团队路径无注入值，
+// 回落当前 invocation id（不 join 任何 team run，stats 聚合自然忽略）。
+func gateRunID(ctx context.Context) string {
+	if id := decision.GateRunIDFromContext(ctx); id != "" {
+		return id
+	}
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		return inv.InvocationID
+	}
+	return ""
+}
+
 // newParamRuleGateBeforeHook 装配参数规则门禁。deps.ToolUC 未装配（或规则
 // 存储缺失）时返回 nil 不注册——运行时每次调用零开销。
 func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.BeforeToolHook {
@@ -126,10 +141,9 @@ func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Be
 				ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 			}, nil, ag, deps)
 			// M80 决策双写（trigger 枚举 C6 已预留 param_rule_deny 挂点）。
-			var runID string
-			if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-				runID = inv.InvocationID
-			}
+			// run 归属经 gateRunID：team 图谱成员节点取 ctx 注入的 team run id
+			// （框架 Clone 后 InvocationID 已非 run.ID，2026-08-27 H5）。
+			runID := gateRunID(ctx)
 			decision.EmitGate(ctx, deps.DecisionCollector, decision.GateDecision{
 				TriggerRule:   decision.TriggerParamRuleDeny,
 				Outcome:       "blocked",

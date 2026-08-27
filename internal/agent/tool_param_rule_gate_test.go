@@ -8,8 +8,10 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/biz/policyrule"
 	biztool "aranea-agents/internal/biz/tool"
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -303,6 +305,61 @@ func TestCallbackChain_ParamRuleGateRegisteredInOrder(t *testing.T) {
 	}
 	if prio4Pos >= 0 && gatePos > prio4Pos {
 		t.Fatalf("param gate (idx %d) must execute before priority-4 hooks (idx %d)", gatePos, prio4Pos)
+	}
+}
+
+// --- 闸事件 run 归属（2026-08-27 二轮审查 H5 根修钉死） ---
+
+// TestGateRunID_PrefersInjectedTeamRunID 钉死归属取值优先级：ctx 注入的 team
+// run id 优先于 invocation id（成员子 invocation 经框架 Clone 后 InvocationID
+// 已非 run.ID，直接用会让 RunGateStats 按 team run id 过滤恒不命中）；无注入
+// 回落 invocation id（chat/非团队路径，stats 聚合自然忽略）。
+func TestGateRunID_PrefersInjectedTeamRunID(t *testing.T) {
+	t.Parallel()
+	invCtx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{InvocationID: "inv-1"})
+	if got := gateRunID(invCtx); got != "inv-1" {
+		t.Fatalf("fallback to invocation id = %q, want inv-1", got)
+	}
+	teamCtx := decision.WithGateRunID(invCtx, "team-run-1")
+	if got := gateRunID(teamCtx); got != "team-run-1" {
+		t.Fatalf("injected team run id must win = %q, want team-run-1", got)
+	}
+	if got := gateRunID(context.Background()); got != "" {
+		t.Fatalf("empty ctx = %q, want empty", got)
+	}
+}
+
+// TestParamRuleGate_DenyUsesInjectedGateRunID H5 端到端钉死：team 图谱成员路径
+// 下 deny 决策记录的 run 归属取 ctx 注入的 team run id（而非 Clone 后的成员
+// invocation id），RunGateStats 按 team run id 过滤才可命中。
+func TestParamRuleGate_DenyUsesInjectedGateRunID(t *testing.T) {
+	t.Parallel()
+	cc := &captureDecisionCollector{}
+	deps := TRPCBuilderDeps{}
+	deps.ToolUC = &gateToolLookup{rules: []biztool.ToolParamRule{
+		{ID: "builtin-exec-deny-rmrf", Pattern: "rm -rf*", Effect: "deny", Priority: 10, Enabled: true},
+	}}
+	deps.DecisionCollector = cc
+	hook := newParamRuleGateBeforeHook(biz.Agent{ID: "agent-1"}, deps)
+	if hook == nil {
+		t.Fatal("hook should be registered when ToolUC present")
+	}
+	// 模拟 team runner 在图执行起点注入的 run 归属（runner_team_trpc.go）。
+	ctx := decision.WithGateRunID(context.Background(), "team-run-9")
+	if _, err := hook.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "exec_command", Arguments: []byte(`{"command":"rm -rf /tmp/x"}`), ToolCallID: "call-1",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 1 {
+		t.Fatalf("expected 1 gate decision record, got %d", len(cc.recs))
+	}
+	r := cc.recs[0]
+	if got := r.SourceRef.RunID; got != "team-run-9" {
+		t.Fatalf("source_ref.run_id = %q, want team-run-9 (ctx injected)", got)
+	}
+	if got := r.Metadata["trigger_rule"]; got != decision.TriggerParamRuleDeny {
+		t.Fatalf("metadata.trigger_rule = %v, want %q", got, decision.TriggerParamRuleDeny)
 	}
 }
 

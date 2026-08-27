@@ -467,6 +467,13 @@ var ddlMigrations = []ddlMigration{
 	// 20260610，照 20261216/20261243 先例以 reseed 迁移补齐（种子幂等
 	// ON CONFLICT DO NOTHING，重跑安全）。
 	{Version: 20261247, Name: "builtin_platform_tools_sandbox_fs_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261248 sessions_fork_from_turn（79-runtime-governance R6 Phase 4.1）：
+	// 会话 Fork-from-Turn 血缘列——parent_session_id 记来源会话（既有），
+	// fork_from_turn_id 记分叉点 turn id（v2 turn id / invocation id）。
+	// 双方言通用，幂等（DB-N6 duplicate column 视为成功）。
+	// 注：本注册曾在 48ddb3001 提交重写时被误删、2026-08-27 二轮审查恢复；
+	// 迁移 runner 逐版本独立判 applied，存量库下次启动自动补应用。
+	{Version: 20261248, Name: "sessions_fork_from_turn", SQL: "sql/migrations/20261248_sessions_fork_from_turn.sql"},
 	// 20261249 memory_fact_pending（79-runtime-governance R3）：记忆高风险写
 	// 人工审批层暂存表——自动管线 UPDATE / DELETE / contested 判决落 pending，
 	// 审批通过执行原 bi-temporal 写，拒绝留痕。原分配 20261246 已被 0.1 索引
@@ -500,6 +507,13 @@ var ddlMigrations = []ddlMigration{
 	// config_graph_nodes（12 类资产节点）+ config_graph_edges（27 类引用边），
 	// generation 双代切换支撑全量重建无清表窗口。双方言通用，幂等。
 	{Version: 20261260, Name: "config_graph", SQL: "sql/migrations/20261260_config_graph.sql"},
+	// 20261261 config_graph_composite_pk（M81 P1-3 回放实测 bugfix）：20261260 的
+	// PRIMARY KEY(id) 与「双代共存」设计冲突——同 id 跨代插入必现 23505，第二次
+	// 全量重建永远失败。主键改 (id, generation)。PG：DROP+ADD 幂等；SQLite：整表
+	// 重建。双方言，幂等。
+	// 注：本注册曾在 48ddb3001 提交重写时被误删、2026-08-27 二轮审查恢复；
+	// 未应用过的存量库下次启动自动补应用（Func 体全程幂等）。
+	{Version: 20261261, Name: "config_graph_composite_pk", Func: ddlConfigGraphCompositePK},
 	// 20261262/20261263 tool_param_rules（79-runtime-governance R9 Phase 5.4/5.5）：
 	// 工具参数模式权限表 + 首批 builtin 种子（gns3_exec 白名单+兜底 ask；
 	// exec_command 危险模式 deny）。双方言通用，幂等（IF NOT EXISTS +
@@ -512,6 +526,11 @@ var ddlMigrations = []ddlMigration{
 	// 规则从整串锚定 glob 升级为正则子串语义——旧 glob 对多余空白/命令包装
 	// （sudo、sh -c、绝对路径）敏感易绕过。UPDATE 幂等，仅命中旧 glob 文本的行。
 	{Version: 20261264, Name: "tool_param_rules_reseed_regex", SQL: "sql/migrations/20261264_tool_param_rules_reseed_regex.sql"},
+	// 20261265 tool_param_rules_reseed_harden（2026-08-27 二轮审查 H4）：builtin
+	// deny 分隔符类补 ( $ 反引号 + rm flags 归一（命令替换/子 shell/flags 变形
+	// 绕过修复）；gns3 allow glob 改单行锚定 regex（glob 跨换行后的多行注入
+	// 修复）。UPDATE WHERE 旧 pattern 幂等，不回冲管理员自定义。
+	{Version: 20261265, Name: "tool_param_rules_reseed_harden", SQL: "sql/migrations/20261265_tool_param_rules_reseed_harden.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

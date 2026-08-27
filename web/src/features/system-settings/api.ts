@@ -84,6 +84,10 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     speechTtsSpeedRatio: speech?.ttsSpeedRatio,
     speechTtsAppKey: speech?.ttsAppKey,
     speechTtsAccessKey: speech?.ttsAccessKey,
+    // X-Api-Key 鉴权模式（M74）：kratos 契约为必填键，feature 层尚未接线——
+    // 显式 undefined（JSON 序列化时键被省略）保持线上行为不变。
+    speechAsrApiKey: undefined,
+    speechTtsApiKey: undefined,
     // Tri-state: undefined → key omitted from JSON → proto3 optional unset →
     // backend keeps stored value (env fallback preserved).
     speechArchiveUserAudio: speech?.archiveUserAudio,

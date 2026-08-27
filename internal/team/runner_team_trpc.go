@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/sandbox"
@@ -234,6 +235,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// (sandbox_fs / codeexecutor via SessionLeases) count against this run's
 	// cumulative creation budget.
 	runCtx = sandbox.WithRunID(runCtx, run.ID)
+	// 79-runtime-governance（2026-08-27 二轮审查 H5 根修）：成员闸事件 run
+	// 归属通道——成员子 invocation 经框架 Clone 获新 uuid 后无法从
+	// InvocationID 回溯 run.ID，经 ctx 值注入供 param_rule_gate /
+	// loop_guard / tool_result_prune / context_compression 钩子取回
+	// （decision.GateRunIDFromContext → gateRunID），RunGateStats 聚合
+	// 才可命中；loop guard 隔离键同取此值恢复跨执行累计语义。
+	runCtx = decision.WithGateRunID(runCtx, run.ID)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 	if teamEmitter != nil {

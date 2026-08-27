@@ -128,6 +128,30 @@ func TestEmitGate_NilCollector(t *testing.T) {
 	})
 }
 
+// TestWithGateRunID_Roundtrip 钉死 H5 通道语义（2026-08-27 二轮审查）：
+// 注入可读回（trim 归一）、空白 runID 不注入、未注入/nil ctx 读为 ""。
+// 该值是 team 图谱成员闸事件的 run 归属唯一通道——成员子 invocation 经框架
+// Clone 后 InvocationID 已非 run.ID，RunGateStats 按 team run id 过滤依赖它。
+func TestWithGateRunID_Roundtrip(t *testing.T) {
+	if got := GateRunIDFromContext(nil); got != "" {
+		t.Fatalf("nil ctx = %q, want empty", got)
+	}
+	if got := GateRunIDFromContext(context.Background()); got != "" {
+		t.Fatalf("plain ctx = %q, want empty", got)
+	}
+	ctx := WithGateRunID(context.Background(), "  run-1  ")
+	if got := GateRunIDFromContext(ctx); got != "run-1" {
+		t.Fatalf("injected = %q, want run-1 (trimmed)", got)
+	}
+	// 空白 runID 不注入（防覆盖派生链上已有值/写半成品归属）。
+	if got := GateRunIDFromContext(WithGateRunID(context.Background(), "   ")); got != "" {
+		t.Fatalf("blank runID must not inject, got %q", got)
+	}
+	if got := GateRunIDFromContext(WithGateRunID(nil, "run-1")); got != "" {
+		t.Fatalf("nil ctx must not panic/inject, got %q", got)
+	}
+}
+
 // TestGateTriggerEnumComplete C6 枚举一次列全且互异。
 func TestGateTriggerEnumComplete(t *testing.T) {
 	seen := map[string]bool{}

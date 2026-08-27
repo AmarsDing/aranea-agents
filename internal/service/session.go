@@ -364,6 +364,14 @@ func (s *SessionService) ForkSession(ctx context.Context, req *v1.ForkSessionReq
 		// 需保留 biz 原始消息以便前端区分。
 		return nil, err
 	}
+	// 与 CreateSession 同标准：fork 派生新会话（含历史前缀复制）属治理面
+	// 可见的创建行为，审计记录来源会话与分叉点。
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "session"),
+		Resource:   "session",
+		ResourceID: out.ID,
+		Summary:    "fork from session=" + req.GetId() + " turn=" + req.GetTurnId() + " title=" + out.Title,
+	})
 	return toProtoSession(out, nil), nil
 }
 

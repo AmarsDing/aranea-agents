@@ -25,6 +25,9 @@ type RunGateStats struct {
 	PruneBytes int64
 	// CompactCount 是终审压缩触发次数（context_compacted 记录条数）。
 	CompactCount int
+	// ParamRuleDenies 是工具参数门禁 deny 记录条数（param_rule_deny，
+	// 79-runtime-governance R9；2026-08-27 二轮审查 M1 补入契约）。
+	ParamRuleDenies int
 }
 
 // RunGateStatsRepo 是 run 级闸统计的窄读接口（同 RunCacheHitRatioRepo 的

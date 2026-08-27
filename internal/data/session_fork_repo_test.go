@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"testing"
@@ -254,6 +255,142 @@ func TestSessionForkRepo_RunningTurnRejected(t *testing.T) {
 	repo := NewSessionForkRepo(d)
 	if _, _, _, err := repo.CopyV2Records(ctx, src, "dst-fork-3", forkTurn); !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("CopyV2Records running turn: err = %v, want BAD_REQUEST", err)
+	}
+}
+
+// 边界 task 状态钳制：fork turn 已终态但 task 仍 running（澄清暂停 / team 派发
+// 延迟 completed），verbatim 复制会在 fork 会话留下永久 running 的僵尸 task
+// （重启后还会被全局 sweeper 标 interrupted 变成可 resume 的幽灵）——边界 task
+// 的非终态必须按 fork turn 终态改写，非边界 task 与源会话不受影响。
+func TestSessionForkRepo_BoundaryTaskStatusClamped(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	setupForkTestTables(t, d)
+	const src = "src-fork-4"
+	const dst = "dst-fork-4"
+	forkTurn := seedForkSource(t, d, src) // inv-B → task-2(seq2) 的 turn seq1
+
+	ctx := context.Background()
+	// 模拟澄清暂停：fork turn(inv-B) completed，task-2 仍 running、completed_at 为 NULL。
+	if _, err := d.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE tasks_v2 SET status = 'running', completed_at = NULL WHERE id = 'task-2' AND session_id = $1`, src); err != nil {
+		t.Fatalf("mark boundary task running: %v", err)
+	}
+
+	repo := NewSessionForkRepo(d)
+	if _, _, _, err := repo.CopyV2Records(ctx, src, dst, forkTurn); err != nil {
+		t.Fatalf("CopyV2Records: %v", err)
+	}
+
+	r := d.RWDB().ReadDB(ctx)
+	prefix := forkIDPrefix(dst)
+
+	// 边界 task：running → completed，completed_at 补上。
+	var status string
+	var completedAt sql.NullTime
+	if err := queryRowScan(ctx, r,
+		`SELECT status, completed_at FROM tasks_v2 WHERE session_id = $1 AND id = $2`,
+		[]any{dst, prefix + "task-2"}, &status, &completedAt); err != nil {
+		t.Fatalf("read clamped task: %v", err)
+	}
+	if status != "completed" {
+		t.Fatalf("boundary task status = %q, want completed", status)
+	}
+	if !completedAt.Valid {
+		t.Fatalf("boundary task completed_at is NULL, want stamped")
+	}
+
+	// 非边界 task：原本终态，保持原值。
+	if err := queryRowScan(ctx, r,
+		`SELECT status FROM tasks_v2 WHERE session_id = $1 AND id = $2`,
+		[]any{dst, prefix + "task-1"}, &status); err != nil {
+		t.Fatalf("read earlier task: %v", err)
+	}
+	if status != "completed" {
+		t.Fatalf("earlier task status = %q, want completed (unchanged)", status)
+	}
+
+	// 源会话零影响：源 task-2 仍 running。
+	if err := queryRowScan(ctx, r,
+		`SELECT status FROM tasks_v2 WHERE session_id = $1 AND id = 'task-2'`,
+		[]any{src}, &status); err != nil {
+		t.Fatalf("read src task: %v", err)
+	}
+	if status != "running" {
+		t.Fatalf("src task mutated: status = %q, want running", status)
+	}
+}
+
+// 钳制映射全分支：前端 forkable 仅排 running，failed/cancelled turn 均可分叉——
+// 边界 task 非终态必须分别映射 failed/cancelled（default 分支只服务 completed），
+// 且 completed_at 取 fork turn 的完成时间而非 fork 时刻。
+func TestSessionForkRepo_BoundaryTaskClampMapping(t *testing.T) {
+	cases := []struct {
+		name       string
+		turnStatus string
+		taskStatus string
+		want       string
+	}{
+		{"failed turn clamps running task to failed", "failed", "running", "failed"},
+		{"cancelled turn clamps pending task to cancelled", "cancelled", "pending", "cancelled"},
+		{"failed turn clamps interrupted task to failed", "failed", "interrupted", "failed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := openTestDataWithRWDB(t)
+			setupForkTestTables(t, d)
+			src := "src-clamp-" + tc.turnStatus + "-" + tc.taskStatus
+			dst := "dst-clamp-" + tc.turnStatus + "-" + tc.taskStatus
+			forkTurn := seedForkSource(t, d, src) // inv-B → task-2(seq2) 的 turn seq1
+
+			ctx := context.Background()
+			w := d.RWDB().WriteDB(ctx)
+			// fork turn 置为目标终态，completed_at 固定在 1 小时前（区别于 fork 时刻）。
+			if _, err := w.ExecContext(ctx,
+				`UPDATE turns_v2 SET status = $1, completed_at = now() - interval '1 hour' WHERE id = $2 AND session_id = $3`,
+				tc.turnStatus, forkTurn, src); err != nil {
+				t.Fatalf("mark turn %s: %v", tc.turnStatus, err)
+			}
+			// 边界 task 置为非终态、completed_at 为 NULL（澄清暂停/sweeper 残留形态）。
+			if _, err := w.ExecContext(ctx,
+				`UPDATE tasks_v2 SET status = $1, completed_at = NULL WHERE id = 'task-2' AND session_id = $2`,
+				tc.taskStatus, src); err != nil {
+				t.Fatalf("mark task %s: %v", tc.taskStatus, err)
+			}
+
+			repo := NewSessionForkRepo(d)
+			if _, _, _, err := repo.CopyV2Records(ctx, src, dst, forkTurn); err != nil {
+				t.Fatalf("CopyV2Records: %v", err)
+			}
+
+			var status string
+			var completedAt sql.NullTime
+			if err := queryRowScan(ctx, d.RWDB().ReadDB(ctx),
+				`SELECT status, completed_at FROM tasks_v2 WHERE session_id = $1 AND id = $2`,
+				[]any{dst, forkIDPrefix(dst) + "task-2"}, &status, &completedAt); err != nil {
+				t.Fatalf("read clamped task: %v", err)
+			}
+			if status != tc.want {
+				t.Fatalf("boundary task status = %q, want %q", status, tc.want)
+			}
+			// completed_at ≈ 1 小时前 → 取自 turn.completed_at，而非 fork 时刻 time.Now()。
+			if !completedAt.Valid {
+				t.Fatalf("boundary task completed_at is NULL, want stamped from turn")
+			}
+			if age := time.Since(completedAt.Time); age < 59*time.Minute || age > 61*time.Minute {
+				t.Fatalf("boundary task completed_at age = %v, want ≈1h (turn completed_at)", age)
+			}
+
+			// 源会话零影响：源 task-2 仍为非终态。
+			var srcStatus string
+			if err := queryRowScan(ctx, d.RWDB().ReadDB(ctx),
+				`SELECT status FROM tasks_v2 WHERE session_id = $1 AND id = 'task-2'`,
+				[]any{src}, &srcStatus); err != nil {
+				t.Fatalf("read src task: %v", err)
+			}
+			if srcStatus != tc.taskStatus {
+				t.Fatalf("src task mutated: status = %q, want %q", srcStatus, tc.taskStatus)
+			}
+		})
 	}
 }
 

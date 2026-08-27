@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/biz/policyrule"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
@@ -58,7 +59,16 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 	if toolKey == "" || toolConfirmationBypass() {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
-	if h.gate.pluginAllowWithoutChannel(toolKey, args.Arguments) {
+	// 79-runtime-governance R9（2026-08-27 二轮审查根修）：param 规则 ask 裁定
+	// 优先于插件 allow 早退——pluginAllowWithoutChannel 不消费 ctx verdict，
+	// 若不排除 ask（含规则读取失败的降级 ask），命中 ask 的调用会被静默放行。
+	// ask 落入 decide() 走确认（session/persisted grant 仍可满足，语义与
+	// catalog 确认路径一致）。
+	paramAskPending := false
+	if v := paramRuleVerdictFromCtx(ctx); v != nil && v.effect == policyrule.EffectAsk {
+		paramAskPending = true
+	}
+	if !paramAskPending && h.gate.pluginAllowWithoutChannel(toolKey, args.Arguments) {
 		// P1-10: pluginAllowWithoutChannel means the product gate defers to the
 		// plugin's allow policy — mark handled so ConfirmationGuardPlugin does
 		// not hard-block after this allow path.

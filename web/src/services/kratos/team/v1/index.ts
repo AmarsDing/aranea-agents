@@ -258,7 +258,8 @@ export type TeamRunStats = {
   completionTokens: number | undefined;
   cachedTokens: number | undefined;
   cacheHitRatio: number | undefined;
-  // G-2：run 内单次模型调用 input tokens 峰值（genuine 成员行 MAX）。
+  // G-2：run 内单成员模型用量 input tokens 峰值（2026-08-27 R7 最终裁定：
+  // 纳入 attribution 标记行，语义为「单成员 run 总量峰值」，非单次调用）。
   maxTurnInputTokens: number | undefined;
   loopGuardBlocks: number | undefined;
   pruneCount: number | undefined;
@@ -268,6 +269,8 @@ export type TeamRunStats = {
   budgetTripped: boolean | undefined;
   noProgressTripped: boolean | undefined;
   members: TeamRunMemberStats[] | undefined;
+  // R9：工具参数门禁 deny 记录条数（param_rule_deny）。
+  paramRuleDenies: number | undefined;
 };
 
 export type GetTeamRunStatsRequest = {

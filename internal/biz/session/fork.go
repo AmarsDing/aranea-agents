@@ -86,8 +86,12 @@ func (uc *SessionForkUsecase) Fork(ctx context.Context, srcID, turnID, title str
 		return Session{}, err
 	}
 	// 范围门禁：仅根会话可 fork（team/member 子会话历史不闭合，见文件头注释）。
+	// fork 出的会话 ParentSessionID 非空，同样被此门禁拦截——链式 fork 有意
+	// 不支持：继承 turn 的 id 带 fk<dst8>- 前缀，而复制事件的 invocationId 是
+	// 无前缀原 run id，FindTurnEventBoundary 无法命中；若未来放开需先做前缀
+	// 剥离改造。
 	if strings.TrimSpace(src.ParentSessionID) != "" {
-		return Session{}, apierror.BadRequest("SESSION", "only root sessions can be forked (team/member child sessions are not supported)")
+		return Session{}, apierror.BadRequest("SESSION", "only root sessions can be forked (team/member child sessions and already-forked sessions are not supported)")
 	}
 	if strings.TrimSpace(title) == "" {
 		title = src.Title + "（分支）"

@@ -322,10 +322,7 @@ func (g *toolLoopGuard) emitGateDecision(ctx context.Context, toolName, scenario
 	if c == nil {
 		return
 	}
-	var runID string
-	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-		runID = inv.InvocationID
-	}
+	runID := gateRunID(ctx)
 	decision.EmitGate(ctx, c, decision.GateDecision{
 		TriggerRule:   decision.TriggerLoopGuardBlocked,
 		Outcome:       "blocked",
@@ -343,12 +340,24 @@ func (g *toolLoopGuard) emitGateDecision(ctx context.Context, toolName, scenario
 // loopGuardInvocationKey 取守卫条目的隔离键：invocation + agent（=图谱节点身份）。
 // 取不到时返回空串（守卫 fail-open，不影响工具执行）。
 //
-// 为什么带 AgentName（2026-08-16 复验实证「连坐」）：图谱执行全链路共享同一
-// InvocationID，diagnose 第3步的 gns3_exec 取证与 remediate 调用1 同参同结果，
-// 计数跨节点累计 → remediate 首次调用即撞阈值被拦，真实取证额度被压缩，
-// 模型「确认」反射未满足陷入重发死循环。按 AgentName 隔离后，各节点独立享有
-// 完整计数额度；同节点重试轮次间仍共享（InvocationID 不变），跨轮循环仍受控。
+// 为什么带 AgentName（2026-08-16 复验实证「连坐」）：图谱执行时各节点共享
+// run 级身份（彼时 InvocationID 全链路相同；2026-08-27 框架 Clone 补丁后成员
+// 子 invocation 每次节点执行换新 uuid，run 级身份改经 ctx 注入的 team run id
+// 表达，见下方优先取值），diagnose 第3步的 gns3_exec 取证与 remediate 调用1
+// 同参同结果，计数跨节点累计 → remediate 首次调用即撞阈值被拦，真实取证额度
+// 被压缩，模型「确认」反射未满足陷入重发死循环。按 AgentName 隔离后，各节点
+// 独立享有完整计数额度；同节点跨执行仍共享（run id 不变），跨轮循环仍受控。
 func loopGuardInvocationKey(ctx context.Context) string {
+	// 2026-08-27 二轮审查 H5 顺带根修：team 图谱下优先取 ctx 注入的 team
+	// run id——Clone 补丁后以 InvocationID 为键会让跨执行（replanner 重跑
+	// 节点）的循环计数清零，守卫退化为单执行内有效；run id 稳定则恢复
+	// 「按节点隔离、跨执行累计」语义。
+	if id := decision.GateRunIDFromContext(ctx); id != "" {
+		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.AgentName != "" {
+			return id + "|" + inv.AgentName
+		}
+		return id
+	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
 	if !ok || inv == nil {
 		return ""

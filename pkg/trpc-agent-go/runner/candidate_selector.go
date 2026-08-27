@@ -390,13 +390,19 @@ func (a *candidateSelectorAgent) newAttemptInvocation(
 ) *agent.Invocation {
 	readOnlyMemoryService := newReadOnlyMemoryService(base.MemoryService)
 	memoryReader := base.MemoryReader
+	// InvocationID is a per-root-run override (see RunOptions.InvocationID):
+	// attempts are scratch re-runs, not root runs — strip the override so it
+	// can never leak into a future root-run reuse of attempt RunOptions
+	// (same invariant as Invocation.Clone).
+	attemptRunOptions := base.RunOptions
+	attemptRunOptions.InvocationID = ""
 	opts := []agent.InvocationOptions{
 		agent.WithInvocationAgent(a.inner),
 		agent.WithInvocationBranch(base.Branch),
 		agent.WithInvocationSession(attemptSession),
 		agent.WithInvocationSessionService(attemptService),
 		agent.WithInvocationMessage(base.Message),
-		agent.WithInvocationRunOptions(base.RunOptions),
+		agent.WithInvocationRunOptions(attemptRunOptions),
 		agent.WithInvocationModel(base.Model),
 		agent.WithInvocationStructuredOutput(base.StructuredOutput),
 		agent.WithInvocationStructuredOutputType(base.StructuredOutputType),

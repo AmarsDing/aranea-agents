@@ -1172,7 +1172,8 @@ type TeamRunStats struct {
 	CompletionTokens int64   `protobuf:"varint,9,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
 	CachedTokens     int64   `protobuf:"varint,10,opt,name=cached_tokens,json=cachedTokens,proto3" json:"cached_tokens,omitempty"`
 	CacheHitRatio    float64 `protobuf:"fixed64,11,opt,name=cache_hit_ratio,json=cacheHitRatio,proto3" json:"cache_hit_ratio,omitempty"`
-	// G-2：run 内单次模型调用 input tokens 峰值（genuine 成员行 MAX）。
+	// G-2：run 内单成员模型用量 input tokens 峰值（2026-08-27 R7 最终裁定：
+	// 纳入 attribution 标记行，语义为「单成员 run 总量峰值」，非单次调用）。
 	MaxTurnInputTokens int64 `protobuf:"varint,12,opt,name=max_turn_input_tokens,json=maxTurnInputTokens,proto3" json:"max_turn_input_tokens,omitempty"`
 	LoopGuardBlocks    int32 `protobuf:"varint,13,opt,name=loop_guard_blocks,json=loopGuardBlocks,proto3" json:"loop_guard_blocks,omitempty"`
 	PruneCount         int32 `protobuf:"varint,14,opt,name=prune_count,json=pruneCount,proto3" json:"prune_count,omitempty"`
@@ -1182,8 +1183,10 @@ type TeamRunStats struct {
 	BudgetTripped     bool                  `protobuf:"varint,17,opt,name=budget_tripped,json=budgetTripped,proto3" json:"budget_tripped,omitempty"`
 	NoProgressTripped bool                  `protobuf:"varint,18,opt,name=no_progress_tripped,json=noProgressTripped,proto3" json:"no_progress_tripped,omitempty"`
 	Members           []*TeamRunMemberStats `protobuf:"bytes,19,rep,name=members,proto3" json:"members,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// R9：工具参数门禁 deny 记录条数（param_rule_deny）。
+	ParamRuleDenies int32 `protobuf:"varint,20,opt,name=param_rule_denies,json=paramRuleDenies,proto3" json:"param_rule_denies,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *TeamRunStats) Reset() {
@@ -1347,6 +1350,13 @@ func (x *TeamRunStats) GetMembers() []*TeamRunMemberStats {
 		return x.Members
 	}
 	return nil
+}
+
+func (x *TeamRunStats) GetParamRuleDenies() int32 {
+	if x != nil {
+		return x.ParamRuleDenies
+	}
+	return 0
 }
 
 type GetTeamRunStatsRequest struct {
@@ -6283,7 +6293,7 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\x11completion_tokens\x18\x03 \x01(\x03R\x10completionTokens\x12#\n" +
 	"\rcached_tokens\x18\x04 \x01(\x03R\fcachedTokens\x12\x14\n" +
 	"\x05calls\x18\x05 \x01(\x05R\x05calls\x12\x14\n" +
-	"\x05steps\x18\x06 \x01(\x05R\x05steps\"\xc3\x05\n" +
+	"\x05steps\x18\x06 \x01(\x05R\x05steps\"\xef\x05\n" +
 	"\fTeamRunStats\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x1d\n" +
@@ -6309,7 +6319,8 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\rcompact_count\x18\x10 \x01(\x05R\fcompactCount\x12%\n" +
 	"\x0ebudget_tripped\x18\x11 \x01(\bR\rbudgetTripped\x12.\n" +
 	"\x13no_progress_tripped\x18\x12 \x01(\bR\x11noProgressTripped\x12<\n" +
-	"\amembers\x18\x13 \x03(\v2\".kratos.team.v1.TeamRunMemberStatsR\amembers\".\n" +
+	"\amembers\x18\x13 \x03(\v2\".kratos.team.v1.TeamRunMemberStatsR\amembers\x12*\n" +
+	"\x11param_rule_denies\x18\x14 \x01(\x05R\x0fparamRuleDenies\".\n" +
 	"\x16GetTeamRunStatsRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"M\n" +
 	"\x17GetTeamRunStatsResponse\x122\n" +

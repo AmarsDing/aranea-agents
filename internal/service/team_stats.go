@@ -104,6 +104,7 @@ func (s *TeamService) buildRunStats(ctx context.Context, run biz.TeamRunRecord, 
 			stats.CompactCount = int32(gates.CompactCount)
 			stats.BudgetTripped = gates.BudgetTripped
 			stats.NoProgressTripped = gates.NoProgressTripped
+			stats.ParamRuleDenies = int32(gates.ParamRuleDenies)
 		}
 	}
 	return stats
