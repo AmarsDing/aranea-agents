@@ -544,6 +544,12 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 	}
 	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{
 		trpcagent.WithRequestID(sessionID),
+		// R6 fork id 空间统一（79-runtime-governance，路线A 框架补丁
+		// ADR 2026-08-27）：v2 turns_v2.id = admit.runID，框架事件
+		// invocationId 同源对齐，session_fork_repo 的
+		// event->>'invocationId' 边界匹配才命中。缺省会退化为框架
+		// uuid → fork 恒 404 "turn has no runtime events"。
+		trpcagent.WithRunInvocationID(admit.runID),
 		skillruntime.RunOptionWithTurnQuery(content),
 		// 批次 B：按 agent policy 安装概览预算渲染器（显式 0 = 不安装）。
 		skillruntime.RunOptionWithOverviewBudget(skillRuntime),

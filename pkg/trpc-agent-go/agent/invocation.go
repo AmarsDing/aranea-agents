@@ -662,6 +662,15 @@ func WithRequestID(requestID string) RunOption {
 	}
 }
 
+// WithRunInvocationID sets the invocation id override for the RunOptions.
+// Named WithRunInvocationID to avoid clashing with the InvocationOptions
+// variant WithInvocationID. See RunOptions.InvocationID.
+func WithRunInvocationID(id string) RunOption {
+	return func(opts *RunOptions) {
+		opts.InvocationID = id
+	}
+}
+
 // WithEventFilterKey sets the invocation event filter key for this run.
 //
 // This controls the FilterKey injected into emitted events and the default
@@ -1262,6 +1271,14 @@ type RunOptions struct {
 
 	// RequestID is the request id of the request.
 	RequestID string
+
+	// InvocationID overrides the auto-generated invocation id for this run.
+	// When empty (default), the runner generates a fresh uuid per invocation.
+	// Callers that correlate persisted session events with an external
+	// run/turn identity (e.g. event->>'invocationId' lookups) can set this
+	// to their own id so both sides share one id space. Sub-agent/child
+	// invocations created via Clone still receive fresh uuids.
+	InvocationID string
 
 	// DetachedCancel controls whether Runner ignores parent context
 	// cancellation for this run.

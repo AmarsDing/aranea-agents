@@ -64,11 +64,46 @@ func (a *sessionActivityLister) ListBySession(ctx context.Context, sessionID str
 		if err != nil {
 			return nil, err
 		}
+		// 79-runtime-governance fix2：user(task) 行回填首 turn id。
+		// 空 TurnID → synthesizeTurnNumbers 序号 0 → 压缩 body 窗口
+		// （m.TurnNumber > maxSummarized）恒排除用户消息，摘要丢失用户意图。
+		firstTurn := firstTurnIDByTask(steps)
 		for _, t := range tasks {
-			acts = append(acts, taskToActivity(t))
+			act := taskToActivity(t)
+			act.TurnID = firstTurn[t.ID]
+			acts = append(acts, act)
 		}
 	}
 	return activitiesToSessionEntries(acts), nil
+}
+
+// firstTurnIDByTask maps each task to the turn that owns its user message:
+// the turn of the task's minimum-seq step. Step seq is monotonic per spirit
+// session (SeqAssigner), so a task's earliest step belongs to its first
+// (user-input) turn; system-push continuation turns share the task but have
+// larger seqs. Tasks whose turns produced no steps (crash between
+// task.created and the first step) stay unmapped — their user row keeps an
+// empty TurnID, matching prior behavior for unattributed rows.
+func firstTurnIDByTask(steps []Step) map[string]string {
+	type ref struct {
+		seq    int64
+		turnID string
+	}
+	best := make(map[string]ref)
+	for _, s := range steps {
+		if s.TaskID == "" || s.TurnID == "" {
+			continue
+		}
+		cur, ok := best[s.TaskID]
+		if !ok || s.Seq < cur.seq {
+			best[s.TaskID] = ref{seq: s.Seq, turnID: s.TurnID}
+		}
+	}
+	out := make(map[string]string, len(best))
+	for taskID, r := range best {
+		out[taskID] = r.turnID
+	}
+	return out
 }
 
 // activitiesToSessionEntries converts []biz.Activity to []session.ActivityEntry.

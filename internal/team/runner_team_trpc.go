@@ -318,6 +318,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	runOpts := append(teamTurnBaseRunOptions(teamRow.ID, ti.content),
 		skillruntime.RunOptionWithOverviewBudget(anchorSkillRuntime))
+	// R6 fork id 空间统一（79-runtime-governance，路线A 框架补丁 ADR
+	// 2026-08-27）：team 会话 v2 turns_v2.id = run.ID
+	// （buildTeamProjectMeta InvocationID），框架根 invocation id 同源
+	// 对齐后 session_fork_repo 的 event->>'invocationId' 边界匹配才命中。
+	// 成员子 invocation 经 Clone 仍获新 uuid，边界语义不变。
+	runOpts = append(runOpts, trpcagent.WithRunInvocationID(run.ID))
 	runOpts = append(runOpts, utOpts.intentRunOpts...)
 	// 2026-08-08 问题3c：DAG 下游团队把上游已完成团队的交付物种子注入
 	// graph 初始 state（deliverable StateField，MergeReducer）。graph runtime

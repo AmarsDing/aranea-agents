@@ -835,6 +835,16 @@ func (r *runner) newRunInvocation(
 			agent.WithInvocationBranch(awaitUserReplyLookupPath),
 		)
 	}
+	// Caller-provided invocation id override (RunOptions.InvocationID) is
+	// applied last so it wins over the uuid default in NewInvocation.
+	// Empty keeps the framework default. Child invocations created via
+	// Clone are unaffected (they always receive fresh uuids).
+	if ro.InvocationID != "" {
+		invocationOpts = append(
+			invocationOpts,
+			agent.WithInvocationID(ro.InvocationID),
+		)
+	}
 	invocation := agent.NewInvocation(invocationOpts...)
 	invocation.MemoryReader = resolveMemoryReader(r.memoryService, r.ingestor)
 	if rootLookupName := r.selectedRootLookupName(
