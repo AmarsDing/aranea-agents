@@ -32,17 +32,70 @@ func TestOrchestrationBriefBeforeHook_InjectsReadyCue(t *testing.T) {
 	if _, err := hook.HandleBeforeModel(ctx, &trpcmodel.BeforeModelArgs{Request: req}); err != nil {
 		t.Fatal(err)
 	}
-	if len(req.Messages) != 2 {
-		t.Fatalf("messages = %d, want 2", len(req.Messages))
+	if len(req.Messages) != 3 {
+		t.Fatalf("messages = %d, want 3 (user + brief + closeout)", len(req.Messages))
 	}
 	if !strings.Contains(req.Messages[1].Content, "phase: ready") || !strings.Contains(req.Messages[1].Content, "get_team_deliverable") {
 		t.Fatalf("brief not injected: %s", req.Messages[1].Content)
 	}
+	if !strings.Contains(req.Messages[2].Content, "## Closeout rule") {
+		t.Fatalf("ready phase must inject deferred-summary closeout rule: %s", req.Messages[2].Content)
+	}
+	if _, err := hook.HandleBeforeModel(ctx, &trpcmodel.BeforeModelArgs{Request: req}); err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Messages) != 3 {
+		t.Fatal("brief+closeout must be idempotent")
+	}
+}
+
+func TestOrchestrationBriefBeforeHook_IdleInjectsCloseoutOnly(t *testing.T) {
+	t.Parallel()
+	hook, ok := newOrchestrationBriefBeforeHook().(callbacks.BeforeModelHook)
+	if !ok {
+		t.Fatal("expected BeforeModelHook")
+	}
+	ctx := biz.WithSpiritTurnOrchestration(context.Background(), biz.SpiritTurnOrchestration{
+		Phase: biz.SpiritPhaseIdle,
+	})
+	req := &trpcmodel.Request{Messages: []trpcmodel.Message{trpcmodel.NewUserMessage("核对生产并写报告")}}
 	if _, err := hook.HandleBeforeModel(ctx, &trpcmodel.BeforeModelArgs{Request: req}); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.Messages) != 2 {
-		t.Fatal("brief must be idempotent")
+		t.Fatalf("messages = %d, want 2", len(req.Messages))
+	}
+	if !strings.Contains(req.Messages[1].Content, "## Closeout rule") {
+		t.Fatalf("idle must inject closeout rule: %s", req.Messages[1].Content)
+	}
+}
+
+func TestOrchestrationBriefBeforeHook_OrchestratingSkipsCloseout(t *testing.T) {
+	t.Parallel()
+	hook, ok := newOrchestrationBriefBeforeHook().(callbacks.BeforeModelHook)
+	if !ok {
+		t.Fatal("expected BeforeModelHook")
+	}
+	brief := biz.FormatOrchestrationBrief(biz.SpiritPhaseOrchestrating, []biz.Team{
+		{ID: "t1", DisplayName: "核实金鹏科技", Status: biz.TeamStatusRunning},
+	})
+	ctx := biz.WithSpiritTurnOrchestration(context.Background(), biz.SpiritTurnOrchestration{
+		Phase: biz.SpiritPhaseOrchestrating,
+		Brief: brief,
+	})
+	req := &trpcmodel.Request{Messages: []trpcmodel.Message{trpcmodel.NewUserMessage("进度如何")}}
+	if _, err := hook.HandleBeforeModel(ctx, &trpcmodel.BeforeModelArgs{Request: req}); err != nil {
+		t.Fatal(err)
+	}
+	joined := ""
+	for _, m := range req.Messages {
+		joined += m.Content
+	}
+	if !strings.Contains(joined, "phase: orchestrating") {
+		t.Fatalf("orchestrating brief missing: %s", joined)
+	}
+	if strings.Contains(joined, "## Closeout rule") {
+		t.Fatal("orchestrating must not inject deferred-summary closeout")
 	}
 }
 

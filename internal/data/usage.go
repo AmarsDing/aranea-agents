@@ -120,7 +120,7 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 	 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
 	 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0), reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
 	 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
-	 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
+	 latency_ms, time_to_first_token_ms, COALESCE(wait_ms, 0), COALESCE(model_latency_ms, 0), tokens_per_second, status, error_code, error_message, retry_count,
 	 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at` +
 		sqlUsageEventNames + `
 	 FROM model_token_usage_events` + where + ` ORDER BY occurred_at DESC LIMIT ? OFFSET ?`)
@@ -187,7 +187,7 @@ func scanTokenUsageEvent(row scanner) (biz.TokenUsageEvent, error) {
 		&v.InputTokens, &v.OutputTokens, &v.CachedInputTokens, &v.CacheWriteTokens, &v.ReasoningTokens, &v.EmbeddingTokens, &v.TotalTokens,
 		&v.InputPriceMicroUSDPer1K, &v.OutputPriceMicroUSDPer1K, &v.CachedInputPriceMicroUSDPer1K, &v.CacheWritePriceMicroUSDPer1K, &v.ReasoningPriceMicroUSDPer1K, &v.EmbeddingPriceMicroUSDPer1K,
 		&v.InputCostMicroUSD, &v.OutputCostMicroUSD, &v.CachedInputCostMicroUSD, &v.CacheWriteCostMicroUSD, &v.ReasoningCostMicroUSD, &v.EmbeddingCostMicroUSD, &v.TotalCostMicroUSD,
-		&v.LatencyMS, &v.TimeToFirstTokenMS, &v.TokensPerSecond, &v.Status, &v.ErrorCode, &v.ErrorMessage, &v.RetryCount,
+		&v.LatencyMS, &v.TimeToFirstTokenMS, &v.WaitMS, &v.ModelLatencyMS, &v.TokensPerSecond, &v.Status, &v.ErrorCode, &v.ErrorMessage, &v.RetryCount,
 		&v.PromptMode, &v.MaxOutputTokens, &v.ContextWindowK, &streamEnabled, &v.MetadataJSON, &v.CreatedAt,
 		&v.AgentName, &v.SessionTitle, &v.TeamName,
 	)

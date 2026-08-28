@@ -38,23 +38,44 @@ func NewKnowledgeRepo(data *Data, lg loggateway.Logger) biz.KnowledgeRepo {
 
 var _ bizknowledge.IngestCommitter = (*knowledgeRepo)(nil)
 
-func ivfflatLists(dim int) int {
-	if v := os.Getenv("KRATOS_KNOWLEDGE_IVFFLAT_LISTS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
+const (
+	knowledgeEmbeddingIVFFlatIndex = "knowledge_chunks_embedding_idx"
+	knowledgeEmbeddingHNSWIndex    = "knowledge_chunks_embedding_hnsw"
+	defaultHNSWEfSearch            = 40
+)
+
+func knowledgeHNSWIndexSQL() string {
+	return fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s
+			ON knowledge_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`, knowledgeEmbeddingHNSWIndex)
+}
+
+// ensureKnowledgeEmbeddingHNSW drops the legacy IVFFlat ANN index and creates
+// HNSW. Idempotent: DROP IF EXISTS + CREATE IF NOT EXISTS.
+func ensureKnowledgeEmbeddingHNSW(ctx context.Context, db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, "DROP INDEX IF EXISTS "+knowledgeEmbeddingIVFFlatIndex); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, knowledgeHNSWIndexSQL())
+	return err
+}
+
+func hnswEfSearch() int {
+	n := defaultHNSWEfSearch
+	if v := os.Getenv("KRATOS_KNOWLEDGE_HNSW_EF_SEARCH"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			n = parsed
 		}
 	}
-	if dim <= 0 {
-		return 100
+	if n < 10 {
+		n = 10
 	}
-	lists := dim / 4
-	if lists < 10 {
-		lists = 10
+	if n > 400 {
+		n = 400
 	}
-	if lists > 1000 {
-		lists = 1000
-	}
-	return lists
+	return n
 }
 
 var (
@@ -113,8 +134,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 			chunk_index   INT   NOT NULL DEFAULT 0,
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`, dim),
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
-			ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = %d)`, ivfflatLists(dim)),
+		`DROP INDEX IF EXISTS knowledge_chunks_embedding_idx`,
+		knowledgeHNSWIndexSQL(),
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_collection_idx
 			ON knowledge_chunks(collection_id)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_content_tsvector_idx
@@ -330,8 +351,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 //  3. 有语义层集合的 dim 快照同步为新维度——系统是单全局 embedder，集合 dim
 //     只是创建时快照；向量已作废后不同步 = 应用层校验永远拒绝新插入（死库）。
 //     embedding_model 名不动（Ensure 拿不到模型名，且仅作展示）；
-//  4. ALTER 列类型 + 重建 ivfflat 索引（lists 随新维度重算；先 DROP 再 ALTER，
-//     避免 PG 级联重建沿用旧 lists 参数）。
+//  4. ALTER 列类型 + 重建 HNSW 索引（先 DROP ivfflat/hnsw 再 ALTER，
+//     避免 PG 级联重建沿用旧维度）。
 func reconcileEmbeddingDim(ctx context.Context, db *sql.DB, dim int, lg loggateway.Logger) error {
 	if dim <= 0 {
 		return nil
@@ -350,14 +371,14 @@ func reconcileEmbeddingDim(ctx context.Context, db *sql.DB, dim int, lg loggatew
 	}
 	stmts := []string{
 		`DROP INDEX IF EXISTS knowledge_chunks_embedding_idx`,
+		`DROP INDEX IF EXISTS knowledge_chunks_embedding_hnsw`,
 		`UPDATE knowledge_chunks SET embedding = NULL WHERE embedding IS NOT NULL`,
 		`UPDATE knowledge_documents SET content_hash = '', status = 'pending', updated_at = NOW()
 			WHERE content_hash <> '' AND id IN (SELECT DISTINCT doc_id FROM knowledge_chunks)`,
 		fmt.Sprintf(`UPDATE knowledge_collections SET dim = %d, updated_at = NOW()
 			WHERE embedding_model <> '' AND dim <> %d`, dim, dim),
 		fmt.Sprintf(`ALTER TABLE knowledge_chunks ALTER COLUMN embedding TYPE vector(%d)`, dim),
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
-			ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = %d)`, ivfflatLists(dim)),
+		knowledgeHNSWIndexSQL(),
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -1196,7 +1217,7 @@ func annCandidateLimit(topK int) int {
 	return n
 }
 
-// denseANNSearchSQL 内层 ORDER BY embedding <=> $1 走 IVFFlat；外层对候选集
+// denseANNSearchSQL 内层 ORDER BY embedding <=> $1 走 HNSW；外层对候选集
 // 套 recency/stale 表达式再 LIMIT topK。clauses 作用于内层 knowledge_chunks
 // （无表别名），overfetchPH / topKPH 是 LIMIT 占位序号。
 func denseANNSearchSQL(clauses string, overfetchPH, topKPH int) string {
@@ -1255,7 +1276,21 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	args = append(args, q.TopK)
 	raw := denseANNSearchSQL(clauses, overfetchPH, topKPH)
 
-	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
+	tx, err := r.data.Postgres().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "SET LOCAL hnsw.ef_search = "+strconv.Itoa(hnswEfSearch())); err != nil {
+		lg := r.lg
+		if lg == nil {
+			lg = loggateway.NewNoop()
+		}
+		lg.Warn("knowledge hnsw.ef_search unavailable",
+			loggateway.StepID("data.knowledge.hnsw_ef_search"),
+			loggateway.Err(err))
+	}
+	rows, err := tx.QueryContext(ctx, raw, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "knowledge")
 	}
@@ -1269,7 +1304,16 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 		}
 		out = append(out, ch)
 	}
-	return out, entErrToBizErr(rows.Err(), "knowledge")
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	if err := rows.Close(); err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	return out, nil
 }
 
 // SearchChunksBM25 词法召回：原查询的 tsvector + trigram（短针另加 substring），

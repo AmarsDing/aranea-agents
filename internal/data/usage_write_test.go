@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/testhelper"
+	"aranea-agents/pkg/loggateway"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -77,6 +78,8 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 		  total_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
 		  latency_ms INTEGER NOT NULL DEFAULT 0,
 		  time_to_first_token_ms INTEGER NOT NULL DEFAULT 0,
+		  wait_ms INTEGER NOT NULL DEFAULT 0,
+		  model_latency_ms INTEGER NOT NULL DEFAULT 0,
 		  tokens_per_second REAL NOT NULL DEFAULT 0,
 		  status TEXT NOT NULL DEFAULT 'success',
 		  error_code TEXT NOT NULL DEFAULT '',
@@ -164,23 +167,26 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 
 	repo := &usageRepo{data: &Data{entClient: client, rw: NewReadWriteClient(client, client)}}
 	ev := biz.TokenUsageEvent{
-		ID:           "usage-ev-1",
-		SessionID:    "sess-usage-1",
-		AgentID:      "agent-1",
-		AgentKey:     "test-agent",
-		ProviderCode: "openai",
-		ModelAPIID:   "gpt-4o-mini",
-		InputTokens:  10,
-		OutputTokens: 5,
-		TotalTokens:  15,
-		CallCount:    1,
-		Status:       "success",
-		UsageKind:    biz.UsageKindChatTurn,
-		MetadataJSON: "{}",
-		OccurredAt:   now,
-		DateKey:      time.Now().UTC().Format("2006-01-02"),
-		HourKey:      time.Now().UTC().Format("2006-01-02T15"),
-		CreatedAt:    now,
+		ID:             "usage-ev-1",
+		SessionID:      "sess-usage-1",
+		AgentID:        "agent-1",
+		AgentKey:       "test-agent",
+		ProviderCode:   "openai",
+		ModelAPIID:     "gpt-4o-mini",
+		InputTokens:    10,
+		OutputTokens:   5,
+		TotalTokens:    15,
+		CallCount:      1,
+		Status:         "success",
+		UsageKind:      biz.UsageKindChatTurn,
+		WaitMS:         300000,
+		ModelLatencyMS: 20000,
+		LatencyMS:      320000,
+		MetadataJSON:   "{}",
+		OccurredAt:     now,
+		DateKey:        time.Now().UTC().Format("2006-01-02"),
+		HourKey:        time.Now().UTC().Format("2006-01-02T15"),
+		CreatedAt:      now,
 	}
 	if _, err := repo.RecordTokenUsageEvent(ctx, ev); err != nil {
 		t.Fatalf("RecordTokenUsageEvent: %v", err)
@@ -197,6 +203,18 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected 1 usage event row, got %d", count)
+	}
+	var waitMS, modelMS int
+	err = entQueryRowScan(client, ctx,
+		`SELECT wait_ms, model_latency_ms FROM model_token_usage_events WHERE id = $1`,
+		[]any{"usage-ev-1"},
+		&waitMS, &modelMS,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waitMS != 300000 || modelMS != 20000 {
+		t.Fatalf("wait_ms=%d model_latency_ms=%d", waitMS, modelMS)
 	}
 }
 
@@ -249,6 +267,8 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 		  total_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
 		  latency_ms INTEGER NOT NULL DEFAULT 0,
 		  time_to_first_token_ms INTEGER NOT NULL DEFAULT 0,
+		  wait_ms INTEGER NOT NULL DEFAULT 0,
+		  model_latency_ms INTEGER NOT NULL DEFAULT 0,
 		  tokens_per_second REAL NOT NULL DEFAULT 0,
 		  status TEXT NOT NULL DEFAULT 'success',
 		  error_code TEXT NOT NULL DEFAULT '',
@@ -414,5 +434,37 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 	}
 	if got := count("model_token_usage_hourly", "id = $1", "recent-hourly"); got != 1 {
 		t.Fatalf("expected recent hourly rollup retained, got %d", got)
+	}
+}
+
+func TestDDLUsageWaitMSColumnsBackfill(t *testing.T) {
+	rawDB := testhelper.SetupTestPGRaw(t)
+	ctx := context.Background()
+	if _, err := rawDB.ExecContext(ctx, `CREATE TABLE model_token_usage_events (
+		id TEXT PRIMARY KEY,
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rawDB.ExecContext(ctx,
+		`INSERT INTO model_token_usage_events(id, metadata_json) VALUES ($1, $2)`,
+		"u1", `{"wait_ms":300000,"model_latency_ms":20000}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := ddlUsageWaitMSColumns(ctx, rawDB, nil, DialectPostgres, loggateway.NewNoop()); err != nil {
+		t.Fatalf("ddlUsageWaitMSColumns: %v", err)
+	}
+	if err := ddlUsageWaitMSColumns(ctx, rawDB, nil, DialectPostgres, loggateway.NewNoop()); err != nil {
+		t.Fatalf("idempotent re-run: %v", err)
+	}
+	var waitMS, modelMS int
+	if err := rawDB.QueryRowContext(ctx,
+		`SELECT wait_ms, model_latency_ms FROM model_token_usage_events WHERE id = $1`, "u1",
+	).Scan(&waitMS, &modelMS); err != nil {
+		t.Fatal(err)
+	}
+	if waitMS != 300000 || modelMS != 20000 {
+		t.Fatalf("backfill wait_ms=%d model_latency_ms=%d", waitMS, modelMS)
 	}
 }

@@ -78,6 +78,8 @@ const (
 	workspaceSkillsCueMarker = "<!-- aranea:workspace_skills -->\n"
 	// orchBriefCueMarker 标识会话编排阶段简报（orchestration_phase_hooks.go）。
 	orchBriefCueMarker = "<!-- aranea:orch_brief -->\n"
+	// deferredSummaryCueMarker 标识 Idle/Ready 禁止「后台跑完再汇总」承诺。
+	deferredSummaryCueMarker = "<!-- aranea:deferred_summary -->\n"
 	// assemblyBudgetWarnMarker 标识本闸注入的容量告警（豁免丢弃）。
 	assemblyBudgetWarnMarker = "<!-- aranea:assembly_budget_warn -->\n"
 )
@@ -127,6 +129,8 @@ func classifyAssemblyCue(msg trpcmodel.Message) assemblyCueKind {
 	case strings.HasPrefix(c, toolCatalogCueMarker):
 		return cueKindToolCatalog
 	case strings.HasPrefix(c, orchBriefCueMarker):
+		return cueKindOrchBrief
+	case strings.HasPrefix(c, deferredSummaryCueMarker):
 		return cueKindOrchBrief
 	case strings.HasPrefix(c, workspaceSkillsCueMarker):
 		return cueKindWorkspaceSkills

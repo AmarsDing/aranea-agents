@@ -46,6 +46,38 @@ func SpiritTurnOrchestrationFrom(ctx context.Context) (SpiritTurnOrchestration, 
 	return v, ok
 }
 
+// DeferredSummaryGuardCue forbids closing a Spirit turn with a deferred
+// "I'll summarize when the background job finishes" promise unless an
+// aggregation step is actually in this turn's tool list.
+const DeferredSummaryGuardCue = `## Closeout rule
+Do not end this turn by promising a later summary (「后台跑完再汇总」「稍后告诉你」「等做完再回复」「等团队完成后我再告诉你」). Either answer now from what you already know, or call synthesize_results / get_team_deliverable this turn if those tools are in your list. If teams are still running, wait for the system completion notice — do not invent a deferred-summary promise.`
+
+var deferredSummaryPromiseMarkers = []string{
+	"后台跑完再汇总",
+	"稍后告诉你",
+	"等做完再回复",
+	"等团队完成后",
+	"跑完再告诉",
+	"I'll summarize later",
+	"i'll get back to you once",
+}
+
+// LooksLikeDeferredSummaryPromise reports whether model text is the
+// forbidden closeout (promise a summary after background work, with no
+// aggregation call this turn).
+func LooksLikeDeferredSummaryPromise(s string) bool {
+	t := strings.ToLower(strings.TrimSpace(s))
+	if t == "" {
+		return false
+	}
+	for _, m := range deferredSummaryPromiseMarkers {
+		if strings.Contains(t, strings.ToLower(m)) {
+			return true
+		}
+	}
+	return false
+}
+
 // ResolveSpiritSessionPhase classifies a Spirit session from its teams.
 // Deleted rows are ignored. Running/pending wins over interrupted; interrupted
 // with no running work is Interrupted; all remaining live teams terminal → Ready.

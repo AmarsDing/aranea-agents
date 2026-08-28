@@ -552,6 +552,12 @@ var ddlMigrations = []ddlMigration{
 	// simple-turn skip。存量 DEFAULT 1 导致管理层任务被 confident_simple 短路
 	// （S06/S08）。幂等 UPDATE。
 	{Version: 20261270, Name: "intent_skip_governance", SQL: "sql/migrations/20261270_intent_skip_governance.sql"},
+	// 20261271 usage_wait_ms_columns（P2）：HITL wait 从 metadata_json 提升为
+	// 独立列，便于 SQL 分析 latency 不含确认等待。幂等 ADD COLUMN + JSON 回填。
+	{Version: 20261271, Name: "usage_wait_ms_columns", Func: ddlUsageWaitMSColumns},
+	// 20261272 knowledge_chunks_embedding_hnsw（P2）：知识检索 ANN 从 ivfflat
+	// 切 HNSW。存量 DROP ivfflat；fresh 库由 EnsureKnowledgeSchema 直接建 HNSW。
+	{Version: 20261272, Name: "knowledge_chunks_embedding_hnsw", Func: ddlKnowledgeChunksEmbeddingHNSW},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1780,5 +1786,77 @@ func ddlSIRunClosedReasonWiden(ctx context.Context, rawDB *sql.DB, _ *ent.Client
 	}
 	lg.Info("self_improvement_runs.closed_reason widened to 512",
 		loggateway.StepID("data.ddl_migration.si_run_closed_reason_widen"))
+	return nil
+}
+
+func ddlRelationMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist") || strings.Contains(msg, "no such table")
+}
+
+// ddlUsageWaitMSColumns adds wait_ms / model_latency_ms on model_token_usage_events
+// and backfills from metadata_json (HITL wait previously JSON-only).
+func ddlUsageWaitMSColumns(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	for _, col := range []string{"wait_ms", "model_latency_ms"} {
+		stmt := fmt.Sprintf(`ALTER TABLE model_token_usage_events ADD COLUMN IF NOT EXISTS %s INTEGER NOT NULL DEFAULT 0`, col)
+		if _, err := rawDB.ExecContext(ctx, stmt); err != nil {
+			if ddlRelationMissing(err) {
+				lg.Info("usage_wait_ms_columns skipped (table missing)",
+					loggateway.StepID("data.ddl_migration.usage_wait_ms"))
+				return nil
+			}
+			if d.AlreadyExistsErr(err) {
+				continue
+			}
+			return fmt.Errorf("add model_token_usage_events.%s: %w", col, err)
+		}
+	}
+	var backfill string
+	if d.IsPostgres() {
+		backfill = `
+UPDATE model_token_usage_events SET
+  wait_ms = COALESCE((metadata_json::json->>'wait_ms')::int, 0),
+  model_latency_ms = COALESCE((metadata_json::json->>'model_latency_ms')::int, 0)
+WHERE wait_ms = 0 AND model_latency_ms = 0
+  AND metadata_json IS NOT NULL AND metadata_json <> '' AND metadata_json <> '{}'
+  AND (metadata_json::jsonb ? 'wait_ms' OR metadata_json::jsonb ? 'model_latency_ms')`
+	} else {
+		backfill = `
+UPDATE model_token_usage_events SET
+  wait_ms = COALESCE(CAST(json_extract(metadata_json, '$.wait_ms') AS INTEGER), 0),
+  model_latency_ms = COALESCE(CAST(json_extract(metadata_json, '$.model_latency_ms') AS INTEGER), 0)
+WHERE wait_ms = 0 AND model_latency_ms = 0
+  AND (json_extract(metadata_json, '$.wait_ms') IS NOT NULL
+    OR json_extract(metadata_json, '$.model_latency_ms') IS NOT NULL)`
+	}
+	if _, err := rawDB.ExecContext(ctx, backfill); err != nil {
+		return fmt.Errorf("backfill usage wait_ms: %w", err)
+	}
+	return nil
+}
+
+// ddlKnowledgeChunksEmbeddingHNSW converts the knowledge ANN index from
+// ivfflat to HNSW. Skipped when knowledge_chunks is not present yet
+// (EnsureKnowledgeSchema owns the fresh shape).
+func ddlKnowledgeChunksEmbeddingHNSW(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("knowledge_chunks_embedding_hnsw skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.knowledge_hnsw"))
+		return nil
+	}
+	if err := ensureKnowledgeEmbeddingHNSW(ctx, rawDB); err != nil {
+		if ddlRelationMissing(err) {
+			lg.Info("knowledge_chunks_embedding_hnsw skipped (table missing)",
+				loggateway.StepID("data.ddl_migration.knowledge_hnsw"))
+			return nil
+		}
+		return err
+	}
 	return nil
 }

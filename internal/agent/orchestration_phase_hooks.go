@@ -69,15 +69,31 @@ func newOrchestrationBriefBeforeHook() callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		brief := strings.TrimSpace(orch.Brief)
-		if brief == "" {
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		if brief != "" && !orchestrationBriefAlreadyPresent(args.Request.Messages, brief) {
+			args.Request.Messages = replaceDynamicCue(args.Request.Messages, orchBriefCueMarker, orchBriefCueMarker+brief)
 		}
-		if orchestrationBriefAlreadyPresent(args.Request.Messages, brief) {
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		if orch.Phase != biz.SpiritPhaseOrchestrating {
+			args.Request.Messages = injectDeferredSummaryGuard(args.Request.Messages)
 		}
-		args.Request.Messages = replaceDynamicCue(args.Request.Messages, orchBriefCueMarker, orchBriefCueMarker+brief)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
+}
+
+func injectDeferredSummaryGuard(msgs []trpcmodel.Message) []trpcmodel.Message {
+	cue := strings.TrimSpace(biz.DeferredSummaryGuardCue)
+	if cue == "" || deferredSummaryGuardAlreadyPresent(msgs) {
+		return msgs
+	}
+	return replaceDynamicCue(msgs, deferredSummaryCueMarker, deferredSummaryCueMarker+cue)
+}
+
+func deferredSummaryGuardAlreadyPresent(msgs []trpcmodel.Message) bool {
+	for _, m := range msgs {
+		if strings.Contains(m.Content, deferredSummaryCueMarker) || strings.Contains(m.Content, "## Closeout rule") {
+			return true
+		}
+	}
+	return false
 }
 
 func orchestrationBriefAlreadyPresent(msgs []trpcmodel.Message, brief string) bool {

@@ -108,6 +108,19 @@ func TestFormatOrchestrationBrief(t *testing.T) {
 	}
 }
 
+func TestLooksLikeDeferredSummaryPromise(t *testing.T) {
+	t.Parallel()
+	if !LooksLikeDeferredSummaryPromise("我先去调度团队，后台跑完再汇总。") {
+		t.Fatal("want deferred-summary match")
+	}
+	if LooksLikeDeferredSummaryPromise("主体已核实，报告如下。") {
+		t.Fatal("ordinary answer must not match")
+	}
+	if !strings.Contains(DeferredSummaryGuardCue, "后台跑完再汇总") {
+		t.Fatal("guard cue must name the forbidden closeout")
+	}
+}
+
 func TestPhasePromotedToolNames(t *testing.T) {
 	t.Parallel()
 	if names := PhasePromotedToolNames(SpiritPhaseIdle); len(names) != 0 {

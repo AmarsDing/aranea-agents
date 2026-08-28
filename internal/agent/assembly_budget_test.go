@@ -276,6 +276,7 @@ func TestClassifyAssemblyCue(t *testing.T) {
 		{replyReminderCueMarker + "x", cueKindReplyReminder},
 		{toolCatalogCueMarker + "x", cueKindToolCatalog},
 		{orchBriefCueMarker + "x", cueKindOrchBrief},
+		{deferredSummaryCueMarker + "x", cueKindOrchBrief},
 		{workspaceSkillsCueMarker + "x", cueKindWorkspaceSkills},
 		{skillGuidanceCueMarker + "x", cueKindSkillGuidance},
 		{knowledgeCueMarker + "x", cueKindKnowledge},

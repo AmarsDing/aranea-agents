@@ -74,6 +74,18 @@ func TestMergeWaitMSMetadata(t *testing.T) {
 	}
 }
 
+func TestModelLatencyMS(t *testing.T) {
+	if got := ModelLatencyMS(320000, 300000); got != 20000 {
+		t.Fatalf("got %d", got)
+	}
+	if got := ModelLatencyMS(1000, 0); got != 1000 {
+		t.Fatalf("zero wait: %d", got)
+	}
+	if got := ModelLatencyMS(100, 500); got != 0 {
+		t.Fatalf("wait > latency: %d", got)
+	}
+}
+
 func TestNormalizeStatus(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -10,7 +10,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 // fusedRecallerStub implements biz.MemoryL3Recaller, capturing the fused
@@ -32,18 +34,18 @@ func (s *fusedRecallerStub) RecallFactsFused(_ context.Context, q biz.L3FusedRec
 
 func factRowJSON(id, statement string, importance float64, updatedAt time.Time) []byte {
 	b, _ := json.Marshal(map[string]any{
-		"id":         id,
-		"scope_type": "agent",
-		"scope_id":   "agent-x",
-		"user_id":    "user-x",
-		"agent_id":   "agent-x",
-		"statement":  statement,
-		"fact_kind":  "general",
-		"importance": importance,
-		"status":     "active",
-		"created_at": updatedAt.Add(-time.Hour).UTC().Format(time.RFC3339Nano),
-		"updated_at": updatedAt.UTC().Format(time.RFC3339Nano),
-		"valid_from": updatedAt.Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+		"id":          id,
+		"scope_type":  "agent",
+		"scope_id":    "agent-x",
+		"user_id":     "user-x",
+		"agent_id":    "agent-x",
+		"statement":   statement,
+		"fact_kind":   "general",
+		"importance":  importance,
+		"status":      "active",
+		"created_at":  updatedAt.Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+		"updated_at":  updatedAt.UTC().Format(time.RFC3339Nano),
+		"valid_from":  updatedAt.Add(-time.Hour).UTC().Format(time.RFC3339Nano),
 		"valid_until": "",
 		"deleted_at":  "",
 	})
@@ -215,6 +217,93 @@ func TestSearchMemories_FusedImportancePostFilter(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].ID != "high" {
 		t.Fatalf("importance post-filter entries = %+v", entries)
+	}
+}
+
+func fusedInvocationCtx(teamID, workspace string) context.Context {
+	inv := &trpcagent.Invocation{
+		Session: &session.Session{
+			UserID: "user-x",
+			State: session.StateMap{
+				"team_id":   []byte(teamID),
+				"workspace": []byte(workspace),
+			},
+		},
+	}
+	return trpcagent.NewInvocationContext(context.Background(), inv)
+}
+
+// TestSearchMemories_FusedRuntimeCarriesTeamFromInvocation pins C3 key-space
+// alignment: memory_search must pass TeamID/Workspace so L3 team scope is
+// not skipped (inject path already fills these from session state).
+func TestSearchMemories_FusedRuntimeCarriesTeamFromInvocation(t *testing.T) {
+	store := newBitemporalMockStore()
+	fused := &fusedRecallerStub{rows: [][]byte{
+		factRowJSON("fused-1", "Q3 预算口径 80 万", 0.8, time.Now()),
+	}}
+	svc := newFusedService(store, &bitemporalSettingsLoader{}, fused)
+
+	ctx := fusedInvocationCtx("team-99", "ws-1")
+	if _, err := svc.SearchMemories(ctx,
+		trpcmemory.UserKey{AppName: "agent-x", UserID: "user-x"}, "预算 口径"); err != nil {
+		t.Fatalf("SearchMemories: %v", err)
+	}
+	if len(fused.calls) != 1 {
+		t.Fatalf("expected 1 fused call, got %d", len(fused.calls))
+	}
+	rt := fused.calls[0].Runtime
+	if rt.TeamID != "team-99" || rt.Workspace != "ws-1" {
+		t.Fatalf("fused runtime = %+v, want TeamID=team-99 Workspace=ws-1", rt)
+	}
+}
+
+func TestSearchMemories_FusedRuntimeTeamFromRuntimeState(t *testing.T) {
+	store := newBitemporalMockStore()
+	fused := &fusedRecallerStub{rows: [][]byte{
+		factRowJSON("fused-1", "Q3 预算口径 80 万", 0.8, time.Now()),
+	}}
+	svc := newFusedService(store, &bitemporalSettingsLoader{}, fused)
+
+	inv := &trpcagent.Invocation{
+		Session:    &session.Session{UserID: "user-x", State: session.StateMap{}},
+		RunOptions: trpcagent.RunOptions{RuntimeState: map[string]any{"team_id": "team-from-rs"}},
+	}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	if _, err := svc.SearchMemories(ctx,
+		trpcmemory.UserKey{AppName: "agent-x", UserID: "user-x"}, "预算"); err != nil {
+		t.Fatalf("SearchMemories: %v", err)
+	}
+	if len(fused.calls) != 1 || fused.calls[0].Runtime.TeamID != "team-from-rs" {
+		t.Fatalf("RuntimeState team_id not applied: %+v", fused.calls)
+	}
+}
+
+// TestSearchMemories_FusedDropsLifestyleOnTaskQuery mirrors inject-path S05.
+func TestSearchMemories_FusedDropsLifestyleOnTaskQuery(t *testing.T) {
+	store := newBitemporalMockStore()
+	now := time.Now()
+	fused := &fusedRecallerStub{rows: [][]byte{
+		factRowJSON("life", "用户喜欢吃日料和寿司", 0.9, now),
+		factRowJSON("work", "Prefers Go", 0.8, now),
+	}}
+	svc := newFusedService(store, &bitemporalSettingsLoader{}, fused)
+
+	entries, err := svc.SearchMemories(context.Background(),
+		trpcmemory.UserKey{AppName: "agent-x", UserID: "user-x"}, "核对生产环境并生成报告")
+	if err != nil {
+		t.Fatalf("SearchMemories: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ID != "work" {
+		t.Fatalf("task query must drop lifestyle entries, got %+v", entries)
+	}
+
+	kept, err := svc.SearchMemories(context.Background(),
+		trpcmemory.UserKey{AppName: "agent-x", UserID: "user-x"}, "周末去吃日料")
+	if err != nil {
+		t.Fatalf("SearchMemories lifestyle query: %v", err)
+	}
+	if len(kept) != 2 {
+		t.Fatalf("lifestyle query must keep entries, got %+v", kept)
 	}
 }
 

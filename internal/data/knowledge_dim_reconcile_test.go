@@ -48,7 +48,7 @@ func embeddingColumnType(t *testing.T, repo *knowledgeRepo) string {
 }
 
 // 换维度：列类型被 ALTER、旧向量作废置 NULL、受影响文档 content_hash 清空（触发重嵌入）、
-// ivfflat 索引按新维度重建。
+// HNSW 索引按新维度重建。
 func TestEnsureKnowledgeSchema_ReconcilesEmbeddingDim(t *testing.T) {
 	repo, reensure := setupDimReconcileRepo(t, 3)
 	ctx := context.Background()
@@ -151,5 +151,34 @@ func TestEnsureKnowledgeSchema_SameDim_NoOp(t *testing.T) {
 	}
 	if doc.ContentHash != "hash-1" {
 		t.Fatalf("same-dim re-ensure must keep content_hash, got %q", doc.ContentHash)
+	}
+}
+
+func knowledgeEmbeddingIndexAM(t *testing.T, repo *knowledgeRepo, name string) string {
+	t.Helper()
+	var am string
+	err := repo.data.Postgres().QueryRow(`
+		SELECT am.amname
+		FROM pg_class c
+		JOIN pg_am am ON am.oid = c.relam
+		WHERE c.relname = $1`, name).Scan(&am)
+	if err != nil {
+		t.Fatalf("index %s access method: %v", name, err)
+	}
+	return am
+}
+
+func TestEnsureKnowledgeSchema_UsesHNSWIndex(t *testing.T) {
+	repo, _ := setupDimReconcileRepo(t, 3)
+	if got := knowledgeEmbeddingIndexAM(t, repo, knowledgeEmbeddingHNSWIndex); got != "hnsw" {
+		t.Fatalf("embedding index AM = %s, want hnsw", got)
+	}
+	var ivf int
+	if err := repo.data.Postgres().QueryRow(`
+		SELECT COUNT(*) FROM pg_class WHERE relname = $1`, knowledgeEmbeddingIVFFlatIndex).Scan(&ivf); err != nil {
+		t.Fatal(err)
+	}
+	if ivf != 0 {
+		t.Fatal("legacy ivfflat index must be dropped")
 	}
 }

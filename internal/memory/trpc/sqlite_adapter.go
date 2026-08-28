@@ -17,6 +17,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmemtool "trpc.group/trpc-go/trpc-agent-go/memory/tool"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -67,8 +68,8 @@ type memoryService struct {
 	// session-eval-20260827 P6). When non-nil, SearchMemories delegates
 	// query-aware search to it so the tool path shares the injection path's
 	// algorithm / key space / relevance filtering. Nil → legacy fallback.
-	fusedRecall     biz.MemoryL3Recaller
-	lg              loggateway.Logger
+	fusedRecall biz.MemoryL3Recaller
+	lg          loggateway.Logger
 }
 
 // WireFusedRecall injects the biz L3 fused recall chain into this package's
@@ -576,14 +577,48 @@ func (s *memoryService) resolveMemoryPolicy(ctx context.Context, agentID string)
 // yields nothing.
 func (s *memoryService) recallScopeTargets(ctx context.Context, uk trpcmemory.UserKey) []biz.L3ScopeTarget {
 	policy := s.resolveMemoryPolicy(ctx, uk.AppName)
-	targets := biz.L3ScopeTargets(biz.MemoryRuntimeContext{
-		AgentID: strings.TrimSpace(uk.AppName),
-		UserID:  strings.TrimSpace(uk.UserID),
-	}, policy.L3RecallScopes)
+	targets := biz.L3ScopeTargets(memoryRuntimeFromCtx(ctx, uk), policy.L3RecallScopes)
 	if len(targets) == 0 {
 		targets = []biz.L3ScopeTarget{{ScopeType: factScopeTypeAgent, ScopeID: strings.TrimSpace(uk.AppName)}}
 	}
 	return targets
+}
+
+// memoryRuntimeFromCtx fills TeamID/Workspace from the invocation (session
+// state + RuntimeState), matching agent.memoryRuntimeContext so memory_search
+// and prompt injection share L3 team/workspace scopes.
+func memoryRuntimeFromCtx(ctx context.Context, uk trpcmemory.UserKey) biz.MemoryRuntimeContext {
+	rt := biz.MemoryRuntimeContext{
+		AgentID: strings.TrimSpace(uk.AppName),
+		UserID:  strings.TrimSpace(uk.UserID),
+	}
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
+		return rt
+	}
+	if inv.Session != nil {
+		if rt.UserID == "" {
+			rt.UserID = strings.TrimSpace(inv.Session.UserID)
+		}
+		rt.Workspace = sessionStateString(inv.Session.State, "workspace")
+		rt.TeamID = sessionStateString(inv.Session.State, "team_id")
+	}
+	if rt.TeamID == "" && inv.RunOptions.RuntimeState != nil {
+		if teamID, ok := inv.RunOptions.RuntimeState["team_id"].(string); ok {
+			rt.TeamID = strings.TrimSpace(teamID)
+		}
+	}
+	return rt
+}
+
+func sessionStateString(state session.StateMap, key string) string {
+	if state == nil {
+		return ""
+	}
+	if b, ok := state[key]; ok {
+		return strings.TrimSpace(string(b))
+	}
+	return ""
 }
 
 // searchViaFusedRecall runs the biz L3 fused recall chain (C3): same
@@ -594,10 +629,7 @@ func (s *memoryService) recallScopeTargets(ctx context.Context, uk trpcmemory.Us
 func (s *memoryService) searchViaFusedRecall(ctx context.Context, uk trpcmemory.UserKey, q string, topK int32, minImportance float64) ([]*trpcmemory.Entry, error) {
 	policy := s.resolveMemoryPolicy(ctx, uk.AppName)
 	rows, err := s.fusedRecall.RecallFactsFused(ctx, biz.L3FusedRecallQuery{
-		Runtime: biz.MemoryRuntimeContext{
-			AgentID: strings.TrimSpace(uk.AppName),
-			UserID:  strings.TrimSpace(uk.UserID),
-		},
+		Runtime:         memoryRuntimeFromCtx(ctx, uk),
 		Scopes:          policy.L3RecallScopes,
 		Query:           q,
 		Limit:           topK,
@@ -607,7 +639,27 @@ func (s *memoryService) searchViaFusedRecall(ctx context.Context, uk trpcmemory.
 	if err != nil {
 		return nil, err
 	}
-	return s.entriesFromFactRows(rows, uk, minImportance), nil
+	return dropLifestyleMemoryEntries(q, s.entriesFromFactRows(rows, uk, minImportance)), nil
+}
+
+// dropLifestyleMemoryEntries mirrors prompt-injection filtering (S05) so
+// memory_search does not surface lifestyle chatter on a work request.
+func dropLifestyleMemoryEntries(query string, entries []*trpcmemory.Entry) []*trpcmemory.Entry {
+	if len(entries) == 0 || !biz.ShouldDropLifestyleMemories(query) {
+		return entries
+	}
+	out := make([]*trpcmemory.Entry, 0, len(entries))
+	for _, e := range entries {
+		text := ""
+		if e != nil && e.Memory != nil {
+			text = e.Memory.Memory
+		}
+		if biz.LifestyleMemoryText(text) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // entriesFromFactRows converts raw fact-row JSON to memory entries, applying

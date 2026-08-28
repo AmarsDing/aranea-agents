@@ -148,16 +148,24 @@ func MergeWaitMSMetadata(metaJSON string, waitMS, latencyMS int) string {
 		payload = map[string]any{}
 	}
 	payload[MetadataKeyWaitMS] = waitMS
-	modelMS := latencyMS - waitMS
-	if modelMS < 0 {
-		modelMS = 0
-	}
-	payload[MetadataKeyModelLatencyMS] = modelMS
+	payload[MetadataKeyModelLatencyMS] = ModelLatencyMS(latencyMS, waitMS)
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return metaJSON
 	}
 	return string(raw)
+}
+
+// ModelLatencyMS is max(0, wall latency − HITL wait).
+func ModelLatencyMS(latencyMS, waitMS int) int {
+	if waitMS < 0 {
+		waitMS = 0
+	}
+	out := latencyMS - waitMS
+	if out < 0 {
+		return 0
+	}
+	return out
 }
 
 // MetadataKeyUsageAttribution is the metadata_json key recording how a usage
@@ -413,6 +421,8 @@ type TokenUsageEvent struct {
 	TotalCostMicroUSD             int64
 	LatencyMS                     int
 	TimeToFirstTokenMS            int
+	WaitMS                        int
+	ModelLatencyMS                int
 	TokensPerSecond               float64
 	Status                        string
 	ErrorCode                     string
@@ -1492,6 +1502,7 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 	}
 	meta = MergeWaitMSMetadata(meta, in.WaitMS, int(in.Latency.Milliseconds()))
 	usageID := newUsageID()
+	latencyMS := int(in.Latency.Milliseconds())
 	ev := TokenUsageEvent{
 		ID:                 usageID,
 		SessionID:          in.SessionID,
@@ -1504,8 +1515,10 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 		OutputTokens:       in.CompletionTok,
 		CachedInputTokens:  in.CachedTok,
 		TotalTokens:        in.PromptTok + in.CompletionTok,
-		LatencyMS:          int(in.Latency.Milliseconds()),
+		LatencyMS:          latencyMS,
 		TimeToFirstTokenMS: in.TimeToFirstTokenMS,
+		WaitMS:             in.WaitMS,
+		ModelLatencyMS:     ModelLatencyMS(latencyMS, in.WaitMS),
 		Status:             in.Status,
 		UsageKind:          KindChatTurn,
 		MetadataJSON:       meta,
