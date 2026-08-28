@@ -976,6 +976,7 @@ func provideChatServiceDeps(
 	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
 	voiceDelegation *voice.DelegationRegistry,
+	decisions decision.Lifecycle,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -1055,6 +1056,10 @@ func provideChatServiceDeps(
 			MemoryConflictStore:       memoryConflictStore,
 			MemoryPreferenceLister:    persist.Memory.PreferenceLister,
 			VoiceDelegation:           voiceDelegation,
+			// M80/M82：chat 侧决策记录入口（HITL confirm 双写 + 输入安全扫描等
+			// system_guard 事件）。漏接则 collector 恒 nil、EmitGate 静默跳过
+			// （2026-08-28 S14 实测：input_risk_flagged 全不落库）。
+			DecisionCollector: decisions,
 		},
 	}
 }

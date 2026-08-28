@@ -407,9 +407,9 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
     if (!turnComplete) return;
 
-    if (entityMatch || isCurrent) {
-      await refreshSessionsAfterTurn(sessionId);
-    }
+    // 修复延迟问题：始终刷新session列表，不再限制entityMatch || isCurrent
+    // 原逻辑只在session属于当前agent或正在查看时刷新，导致其他agent的session更新延迟
+    await refreshSessionsAfterTurn(sessionId);
 
     if (shouldGlobalHubFinalizeTurnActivity(channelInbound, isCurrent, turnComplete)) {
       await finalizeTurnActivity(sessionId, envRev);

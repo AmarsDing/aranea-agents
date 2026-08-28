@@ -122,15 +122,41 @@ export function useGlobalInboundNotifications() {
 
     if (!isViewingSession(sessionId, agentId) && opts.toast && dedupeOk) {
       toastDedupeBySession.set(sessionId, now);
+
+      // 检查session是否属于当前选中的agent
+      const currentAgentId = appStore.selectedAgent?.id?.trim() ?? '';
+      const belongsToCurrentAgent = currentAgentId === agentId.trim();
+
+      // 构造通知消息，提示用户session所属的agent
+      let notifyMessage = t('chat.channelInboundNotify', '飞书/渠道有新回复');
+      if (!belongsToCurrentAgent && sess?.agent_id) {
+        // 查找agent名称
+        const agent = appStore.agents.find((a) => a.id === agentId);
+        const agentName = agent?.display_name || '其他Agent';
+        notifyMessage = `${agentName}: ${notifyMessage}`;
+      }
+
       $q.notify({
         type: 'info',
-        message: t('chat.channelInboundNotify', '飞书/渠道有新回复'),
+        message: notifyMessage,
         timeout: 5000,
         actions: [
           {
             label: t('chat.channelInboundOpen', '查看'),
             color: 'white',
             handler: () => {
+              // 如果session属于当前agent，先尝试在当前列表中高亮显示
+              if (belongsToCurrentAgent) {
+                // 查找session是否在当前列表中
+                const sessionInList = sessionStore.sessions.find((s) => s.id === sessionId);
+                if (sessionInList) {
+                  // 直接选中session，不切换agent
+                  void router.push({ name: 'chat', query: { session: sessionId, agent: agentId } });
+                  return;
+                }
+              }
+
+              // 如果session不属于当前agent或不在列表中，切换agent并跳转
               void router.push({ name: 'chat', query: { session: sessionId, agent: agentId } });
             },
           },
@@ -166,7 +192,20 @@ export function useGlobalInboundNotifications() {
     }
 
     if (TERMINAL_KINDS.has(envelope.kind)) {
-      await handleInboundSession(sessionId, 'channel', { completed: true, toast: true });
+      // 修复误判问题：不再硬编码 source='channel'，而是从事件中获取真实 source
+      // 如果 source 为空，通过 session metadata 判断是否是渠道会话
+      const payload = envelope.payload as { Meta?: Record<string, unknown> } | undefined;
+      let source = String(payload?.Meta?.source ?? '').trim();
+
+      // 如果事件中没有 source，检查 session metadata
+      if (!source) {
+        const sess = await resolveSession(sessionId);
+        const isChannel = sess && parseChannelSessionMeta(sess.metadata_json) !== null;
+        if (!isChannel) return; // 不是渠道会话，不处理
+        source = 'channel'; // 确认是渠道会话后才设置 source
+      }
+
+      await handleInboundSession(sessionId, source, { completed: true, toast: true });
     }
   }
 
