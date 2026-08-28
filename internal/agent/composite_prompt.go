@@ -157,6 +157,7 @@ func CompositeMemoryCueWithHits(ctx context.Context, composite biz.MemoryComposi
 		hits = nil
 	}
 	merged := mergeCompositeHits(hits, proactiveHits, limit, biz.QueryHasNumericIntent(keyword))
+	merged = dropLifestyleHitsForTaskQuery(keyword, merged)
 	if len(merged) == 0 {
 		return "", nil
 	}
@@ -250,4 +251,43 @@ func mergeCompositeHits(recallHits, proactiveHits []biz.CompositeRecallHit, limi
 		merged = merged[:limit]
 	}
 	return merged
+}
+
+// dropLifestyleHitsForTaskQuery drops lifestyle/preference memories when the
+// user turn is a work request (S05: 高危运维召回「日料/寿司」). If the query
+// itself mentions those terms, keep the hits (the user asked about them).
+func dropLifestyleHitsForTaskQuery(query string, hits []biz.CompositeRecallHit) []biz.CompositeRecallHit {
+	if len(hits) == 0 || !biz.HasTaskActionSignal(query) {
+		return hits
+	}
+	q := strings.ToLower(query)
+	if lifestyleMemoryLine(q) {
+		return hits
+	}
+	out := make([]biz.CompositeRecallHit, 0, len(hits))
+	for _, h := range hits {
+		if lifestyleMemoryLine(strings.ToLower(h.Line)) {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+var lifestyleMemoryMarkers = []string{
+	"日料", "寿司", "聚餐", "火锅", "奶茶",
+	"喜欢吃", "爱吃", "听什么歌", "什么音乐", "追剧",
+	"周末去", "爱好是", "喜欢看",
+}
+
+func lifestyleMemoryLine(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, m := range lifestyleMemoryMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }

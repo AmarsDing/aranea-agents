@@ -3,8 +3,9 @@ package agent
 import "strings"
 
 // orgDomainAliases maps a normalized top-level domain (from DomainLexicon)
-// to department name / org_key aliases used by OrgPruner. Aliases are
-// matched case-insensitively as substrings against department Name and Key.
+// to department name / org_key aliases used by OrgPruner. Aliases match
+// case-insensitively as exact key, exact name, or name == alias+"部".
+// Substring Contains is intentionally not used (误伤「内容运营部」⊃「运营」).
 //
 // Empty / "其他" are not listed: OrgPruner falls back to the full catalog
 // (NFR-78-06) rather than guessing a catch-all department.
@@ -81,15 +82,21 @@ func matchDepartmentAlias(deptName, deptKey string, aliases []string) bool {
 	}
 	name := strings.ToLower(strings.TrimSpace(deptName))
 	key := strings.ToLower(strings.TrimSpace(deptKey))
+	if i := strings.LastIndexAny(key, "/\\"); i >= 0 {
+		key = strings.TrimSpace(key[i+1:])
+	}
 	for _, a := range aliases {
 		a = strings.ToLower(strings.TrimSpace(a))
 		if a == "" {
 			continue
 		}
-		if name != "" && (name == a || strings.Contains(name, a)) {
+		if key != "" && key == a {
 			return true
 		}
-		if key != "" && (key == a || strings.Contains(key, a)) {
+		if name == "" {
+			continue
+		}
+		if name == a || name == a+"部" || name == a+"dept" {
 			return true
 		}
 	}

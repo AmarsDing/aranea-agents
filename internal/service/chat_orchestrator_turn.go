@@ -343,6 +343,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var resultLastRoundPromptTok, resultLastRoundCompletionTok int
 	var resultUsageSource string
 	var resultModelCallCount int
+	var resultFirstTokenMs int
 	var turnErrMsg string
 	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
@@ -357,6 +358,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// ctx 上，随 runCtx/llmCtx 传入 runner → BeforeModel 注入 hook 计量；turn 末
 	// 由下方 defer 中的 recordTurnUsage 出口读回发 chat.context_budget 进程日志。
 	ctx, _ = chatagent.WithContextBudget(ctx)
+	ctx = chatagent.WithConfirmWaitAcc(ctx)
 
 	// P1-7: Start the Wire-injected run heartbeat emitter so the frontend
 	// can detect stale runs within 30s. The stop function is invoked in the
@@ -385,7 +387,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.FinishRoot(turnStatus)
 		endTurnSpan(traceBridge, turnErr)
 		o.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
-			resultPromptTok, resultCompletionTok, resultCachedTok, resultUsageSource, resultModelCallCount, time.Since(turnStart), turnErrMsg)
+			resultPromptTok, resultCompletionTok, resultCachedTok, resultUsageSource, resultModelCallCount, time.Since(turnStart), turnErrMsg,
+			resultFirstTokenMs, chatagent.ConfirmWaitMS(ctx))
 		if turnStatus != "ok" && resultPromptTok > 0 {
 			// Context patching uses the final round's tokens (window occupancy),
 			// not the billing totals summed across rounds.
@@ -770,6 +773,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// ── EXECUTE ──
 	turnPhase.Store("executing")
 	execResult, err := o.phases().executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, intentRunOpts, turnStart)
+	resultModelCallCount = execResult.result.ModelCallCount
+	resultFirstTokenMs = execResult.result.FirstTokenMs
 	if err != nil {
 		// EXECUTE phase error: only markTurnError; the defer block above
 		// (runSingleAgentViaTRPC L477-503) handles publishRunStatus +
@@ -780,9 +785,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	defer func() {
 		o.sessionRunLC().FinishSessionRunLifecycle(ctx, sessionID, execResult.sessionRunID, turnErr)
 	}()
-	// P1-C：LLM 轮次计数来自流内实测（executeTurn 产出的 EventStreamResult），
-	// 即使 PERSIST 失败也已观测，供 defer 中的 usage metadata 记录。
-	resultModelCallCount = execResult.result.ModelCallCount
 
 	// ── PERSIST ──
 	turnPhase.Store("persisting")
@@ -897,9 +899,10 @@ func intentKindOf(art *intent.Artifact) string {
 }
 
 // intentRendezvousWindow C2 方案 D：moderate 非欠规格轮次在 BUILD 收口后
-// 再等 intent 的窗口。窗口内完成则保留完整语义（refined goal + 澄清门）；
-// 超时 cancel intent（省 provider token），按既有无意图路径降级。
-const intentRendezvousWindow = 500 * time.Millisecond
+// 再等 intent 的窗口。Intent Pass 实测 0.5–2.3s，500ms 会合几乎必然
+// raced_out（产物丢弃、2.3s 白烧）。对齐保险丝 2.5s，让中档有机会吃到
+// refined goal / 澄清门。超时 cancel intent，按既有无意图路径降级。
+const intentRendezvousWindow = 2500 * time.Millisecond
 
 // awaitIntentArtifact C2 方案 D 分级收口：fullWait（欠规格/complex）全等至
 // intentCtx 自带的 2.5s 保险丝；否则限 rendezvous 窗口。artifact 只经

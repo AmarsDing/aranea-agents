@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/deptmail"
 	"aranea-agents/internal/tools/memberfs"
+	"aranea-agents/internal/tools/orgquery"
 	"aranea-agents/internal/tools/sessionaccess"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -41,4 +42,16 @@ func (o *ChatOrchestrator) sessionAccessTools(ag biz.Agent) []trpctool.Tool {
 		return nil
 	}
 	return sessionaccess.RegisterAll(o.rt().Sharing.SessionSearch, ag.ID, o.lg())
+}
+
+// orgInspectTools assembles the read-only org snapshot for GM and dept_lead.
+func (o *ChatOrchestrator) orgInspectTools(ag biz.Agent) []trpctool.Tool {
+	if o == nil || !biz.IsOrgGovernanceAgent(ag) {
+		return nil
+	}
+	org := o.rt().Extensions.Organization
+	if org == nil {
+		return nil
+	}
+	return orgquery.RegisterAll(org, ag, o.lg())
 }

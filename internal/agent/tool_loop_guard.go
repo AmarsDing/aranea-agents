@@ -116,6 +116,13 @@ const (
 	loopGuardToolLoadMaxDefault = 8
 	loopGuardWallSoftSecDefault = 240
 	loopGuardWallHardSecDefault = 600
+	// C1 装载循环占比闸（2026-08-28，S02 对症）：窗口内 tool_load/tool_search
+	// 占比 ≥50% 即封锁新的自举调用。次数闸（配额 8）拦不住「每次签名不同
+	// 的合法自举」；占比闸在异质装载耗尽配额前收敛。窗口 10、最少 6 次才
+	// 判定，避免开场 2 次 tool_load 误伤。
+	loopGuardBootstrapWindow       = 10
+	loopGuardBootstrapMinCalls     = 6
+	loopGuardBootstrapRatioDefault = 0.5
 	// plan-execute 漂移观测（首版 record-only，C1-③ 裁定）：plan_and_execute
 	// 声明编排后节点仍持续本地装载工具达此次数 → 写 tripped 决策记录（不拦截）。
 	// 观测阈值非执行阈值，不入 DB——漂移证据标准待决策记录校准后再议拦截形态。
@@ -154,6 +161,7 @@ const todoDeclareBlockerToolName = "todo_declare_blocker"
 // 的成功调用为「计划已声明」锚点。
 const (
 	toolLoadToolName       = "tool_load"
+	toolSearchToolName     = "tool_search"
 	planAndExecuteToolName = "plan_and_execute"
 )
 
@@ -190,7 +198,11 @@ type loopGuardEntry struct {
 	postPlanLoads     int  // 计划声明后的 tool_load 成功次数
 	planDriftRecorded bool // 漂移决策已写（once-per-entry 防刷屏）
 	wallSoftRecorded  bool // 软闸决策已写（once-per-entry；cue 本身按轮刷新）
-	lastTouch         time.Time
+	// inflightLoads：本批并行尚未 AfterTool 的 tool_load 目标（含别名键）。
+	// justLoaded：本 LLM 步内已成功激活、须等下一 model step 才能直调。
+	inflightLoads map[string]int
+	justLoaded    map[string]bool
+	lastTouch     time.Time
 }
 
 type inflightSlot struct {
@@ -210,6 +222,8 @@ const (
 	// 重复装载已激活工具（零新信息）与异质装载配额耗尽（装载面失控）。
 	loopGuardBlockLoadRepeat
 	loopGuardBlockLoadQuota
+	loopGuardBlockLoadRatio
+	loopGuardBlockLoadThenCall
 )
 
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
@@ -372,6 +386,8 @@ type toolLoopGuard struct {
 	buildLoadMax  int
 	buildWallSoft int
 	buildWallHard int
+	// buildBootstrapRatio：<0 测试关闭占比闸；0 用默认 0.5；>0 覆盖。
+	buildBootstrapRatio float64
 }
 
 func newToolLoopGuard(lg loggateway.Logger) *toolLoopGuard {
@@ -415,6 +431,150 @@ func (g *toolLoopGuard) wallSecFor(hard bool) int {
 		build = g.buildWallHard
 	}
 	return loopGuardWallSecFor(g.policyAgentID, build, hard)
+}
+
+// wallElapsedNet is node wall time minus HITL confirmation wait. S05 turns
+// spent 300s of 314s waiting on confirm; counting that toward the 240/600s
+// gates false-kills paused nodes (campaign lesson: wall-time must exclude wait).
+func wallElapsedNet(ctx context.Context, firstSeen, now time.Time) time.Duration {
+	elapsed := now.Sub(firstSeen)
+	if elapsed < 0 {
+		return 0
+	}
+	wait := time.Duration(ConfirmWaitMS(ctx)) * time.Millisecond
+	if wait <= 0 {
+		return elapsed
+	}
+	if wait >= elapsed {
+		return 0
+	}
+	return elapsed - wait
+}
+
+func (g *toolLoopGuard) setBootstrapRatio(r float64) {
+	if g == nil {
+		return
+	}
+	g.buildBootstrapRatio = r
+}
+
+func (g *toolLoopGuard) bootstrapRatioFor() float64 {
+	if g == nil {
+		return loopGuardBootstrapRatioDefault
+	}
+	if g.buildBootstrapRatio < 0 {
+		return 0
+	}
+	if g.buildBootstrapRatio > 0 {
+		return g.buildBootstrapRatio
+	}
+	return loopGuardBootstrapRatioDefault
+}
+
+func loopGuardIsBootstrapTool(name string) bool {
+	return name == toolLoadToolName || name == toolSearchToolName
+}
+
+func loopGuardResolveAlias(name string) string {
+	name = strings.TrimSpace(name)
+	for i := 0; i < 8 && name != ""; i++ {
+		next, ok := alias.RuntimeToolNameAliases[name]
+		if !ok || next == "" || next == name {
+			return name
+		}
+		name = next
+	}
+	return name
+}
+
+func loopGuardNameKeys(name string) []string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	seen := map[string]struct{}{name: {}, loopGuardResolveAlias(name): {}}
+	for aliasName, target := range alias.RuntimeToolNameAliases {
+		if target == name || aliasName == name || loopGuardResolveAlias(aliasName) == loopGuardResolveAlias(name) {
+			seen[aliasName] = struct{}{}
+			seen[target] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		if k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func loopGuardBootstrapRatioTripped(recentTools []string, next string, ratio float64) bool {
+	if ratio <= 0 || !loopGuardIsBootstrapTool(next) {
+		return false
+	}
+	w := append(append([]string(nil), recentTools...), next)
+	if len(w) > loopGuardBootstrapWindow {
+		w = w[len(w)-loopGuardBootstrapWindow:]
+	}
+	if len(w) < loopGuardBootstrapMinCalls {
+		return false
+	}
+	n := 0
+	for _, t := range w {
+		if loopGuardIsBootstrapTool(t) {
+			n++
+		}
+	}
+	return float64(n) >= float64(len(w))*ratio
+}
+
+func (e *loopGuardEntry) beginInflightLoad(target string) {
+	if target == "" {
+		return
+	}
+	if e.inflightLoads == nil {
+		e.inflightLoads = map[string]int{}
+	}
+	for _, k := range loopGuardNameKeys(target) {
+		e.inflightLoads[k]++
+	}
+}
+
+func (e *loopGuardEntry) endInflightLoad(target string) {
+	if e.inflightLoads == nil || target == "" {
+		return
+	}
+	for _, k := range loopGuardNameKeys(target) {
+		if e.inflightLoads[k] <= 1 {
+			delete(e.inflightLoads, k)
+			continue
+		}
+		e.inflightLoads[k]--
+	}
+}
+
+func (e *loopGuardEntry) markJustLoaded(target string) {
+	if target == "" {
+		return
+	}
+	if e.justLoaded == nil {
+		e.justLoaded = map[string]bool{}
+	}
+	for _, k := range loopGuardNameKeys(target) {
+		e.justLoaded[k] = true
+	}
+}
+
+func (e *loopGuardEntry) loadThenCallTarget(toolName string) string {
+	if toolName == "" || loopGuardIsBootstrapTool(toolName) {
+		return ""
+	}
+	for _, k := range loopGuardNameKeys(toolName) {
+		if e.inflightLoads[k] > 0 || e.justLoaded[k] {
+			return k
+		}
+	}
+	return ""
 }
 
 // emitGateDecision 把一次拦截/强停双写为 system_guard 决策记录。
@@ -723,10 +883,15 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	//     新信息），第二次起拦截，引导模型直接调用已激活工具；
 	//   - 配额：异质装载面 loadCount 达阈值（默认 8，DB 可覆盖）后拦截新装载——
 	//     装载行为本身即失控向量（S02 观测 24 次异质装载），与装载结果成功与否无关。
+	//   - 占比闸：窗口内 tool_load/tool_search ≥50% 封锁新自举（C1，异质装载
+	//     在配额耗尽前收敛）。
+	//   - 同批直调：刚 tool_load 的目标不能在同一 model step / 并行批次里立刻 call。
 	// 参数不可解析时跳过装载闸（fail-open，参数错误归工具自身报错）。
 	var loadTarget string
 	loadRepeat := false
 	loadQuota := false
+	loadRatio := false
+	loadThenCall := ""
 	loadMax := 0
 	if toolName == toolLoadToolName {
 		loadTarget = loopGuardToolLoadTarget(args)
@@ -738,6 +903,15 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 				loadQuota = true
 			}
 		}
+	}
+	if !loadRepeat && !loadQuota && loopGuardBootstrapRatioTripped(e.recentTools, toolName, g.bootstrapRatioFor()) {
+		loadRatio = true
+		if loadTarget == "" {
+			loadTarget = toolName
+		}
+	}
+	if !loadRepeat && !loadQuota && !loadRatio {
+		loadThenCall = e.loadThenCallTarget(toolName)
 	}
 	// 空结果熔断优先于签名/轮换判定：库中确无资料时，任何参数的再调用都无意义，
 	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
@@ -752,8 +926,11 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 		}
 	}
-	if !loadRepeat && !loadQuota && !emptyBlocked && !loop && cycleDesc == "" {
+	if !loadRepeat && !loadQuota && !loadRatio && loadThenCall == "" && !emptyBlocked && !loop && cycleDesc == "" {
 		e.beginInflight(sig, now)
+		if toolName == toolLoadToolName && loadTarget != "" {
+			e.beginInflightLoad(loadTarget)
+		}
 		return loopGuardVerdict{kind: loopGuardBlockNone}
 	}
 	// B4 饱和止损：被拦调用不进 AfterTool，计数只能在此累计。
@@ -772,12 +949,21 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 		loadMax:          loadMax,
 		saturated:        e.blockedCount >= loopGuardSaturatedStopThreshold,
 	}
+	if loadThenCall != "" {
+		v.kind = loopGuardBlockLoadThenCall
+		v.loadTarget = loadThenCall
+		return v
+	}
 	if loadRepeat {
 		v.kind = loopGuardBlockLoadRepeat
 		return v
 	}
 	if loadQuota {
 		v.kind = loopGuardBlockLoadQuota
+		return v
+	}
+	if loadRatio {
+		v.kind = loopGuardBlockLoadRatio
 		return v
 	}
 	if emptyBlocked {
@@ -811,8 +997,8 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 		// 无豁免工具——硬闸语义是节点生命期终结，不同于空转封锁保留投降通道。
 		// 计时基准 firstSeen=条目创建（节点在本 run 内首次活动），跨重试累计：
 		// 节点反复重跑仍持续烧预算正是硬闸要拦的形态。
-		if hardSec := g.wallSecFor(true); now.Sub(e.firstSeen) > time.Duration(hardSec)*time.Second {
-			elapsed := now.Sub(e.firstSeen)
+		if hardSec := g.wallSecFor(true); wallElapsedNet(ctx, e.firstSeen, now) > time.Duration(hardSec)*time.Second {
+			elapsed := wallElapsedNet(ctx, e.firstSeen, now)
 			g.mu.Unlock()
 			g.lg.Warn("tool loop guard wall-time hard gate tripped, stopping node",
 				loggateway.StepID("agent.tool_loop_guard"),
@@ -911,6 +1097,34 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loopGuardMarker, v.loadCount, v.loadMax, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
+		if v.kind == loopGuardBlockLoadRatio {
+			g.lg.Warn("tool loop guard blocked bootstrap ratio",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Str("target", v.loadTarget))
+			g.emitGateDecision(ctx, args.ToolName, "装载/搜索占比过高，强制收敛",
+				fmt.Sprintf("窗口内 tool_load/tool_search 占比达到 %.0f%%，继续自举属失控模式", loopGuardBootstrapRatioDefault*100),
+				loopGuardBootstrapWindow, int(loopGuardBootstrapRatioDefault*100), "block_call")
+			msg := fmt.Sprintf("%s：本节点最近工具调用中 tool_load/tool_search 占比已达 50%% 以上——本调用被系统拦截，工具未执行、也非执行失败。"+
+				"持续搜索/装载而不使用是 S02 类失控：请立即停止 tool_load 与 tool_search，直接调用已激活工具推进任务；若工具面不足，基于已有信息说明缺口后收尾。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
+		if v.kind == loopGuardBlockLoadThenCall {
+			g.lg.Warn("tool loop guard blocked same-step call after tool_load",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Str("target", v.loadTarget))
+			g.emitGateDecision(ctx, args.ToolName, "刚激活的工具不能在同一步立刻调用",
+				fmt.Sprintf("工具 %s 刚由 tool_load 激活，须等下一 model step", v.loadTarget),
+				v.loadTarget, 1, "block_call")
+			msg := fmt.Sprintf("%s：工具 %s 刚在本轮由 tool_load 激活（或与 tool_load 处于同一批并行调用）——本调用被系统拦截，工具未执行、也非执行失败。"+
+				"请等待 tool_load 返回后，在下一轮模型请求中调用 %s，不要与 tool_load 放在同一批并行 tool call 里。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, v.loadTarget, v.loadTarget, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
 		if v.kind == loopGuardBlockEmpty {
 			g.lg.Warn("tool loop guard blocked empty-result retry",
 				loggateway.StepID("agent.tool_loop_guard"),
@@ -980,6 +1194,9 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		g.mu.Lock()
 		e := g.entryLocked(key, time.Now())
 		e.endInflight(sig)
+		if args.ToolName == toolLoadToolName {
+			e.endInflightLoad(loopGuardToolLoadTarget(args.Arguments))
+		}
 		// A2'b 空转轮记账：本轮发生了真实工具调用。失败/检索空结果均不计
 		// 产出（roundProductive 保持 false），BeforeModel 续轮结算空转轮次。
 		e.roundSawTool = true
@@ -1027,6 +1244,10 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 				e.loadedTools[name] = true
 				if requested != "" {
 					e.loadedTools[requested] = true
+				}
+				e.markJustLoaded(name)
+				if requested != "" {
+					e.markJustLoaded(requested)
 				}
 				if e.planDeclared {
 					e.postPlanLoads++
@@ -1096,6 +1317,7 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 		now := time.Now()
 		g.mu.Lock()
 		e := g.entryLocked(key, now)
+		e.justLoaded = nil
 		if e.roundSawTool {
 			if e.roundProductive {
 				e.unprodRounds = 0
@@ -1107,7 +1329,7 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 		}
 		unprod := e.unprodRounds
 		softSec := g.wallSecFor(false)
-		elapsed := now.Sub(e.firstSeen)
+		elapsed := wallElapsedNet(ctx, e.firstSeen, now)
 		wallSoftTripped := elapsed > time.Duration(softSec)*time.Second
 		recordWallSoft := wallSoftTripped && !e.wallSoftRecorded
 		if recordWallSoft {

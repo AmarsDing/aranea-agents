@@ -78,7 +78,7 @@ func sampleOrgTree() map[string]biz.OrganizationNode {
 	return map[string]biz.OrganizationNode{
 		"co-1":          {ID: "co-1", Key: "acme", Name: "Acme", Level: "company"},
 		"dept-eng":      {ID: "dept-eng", Key: "eng", Name: "研发部", Level: "department", ParentID: "co-1"},
-		"dept-media":    {ID: "dept-media", Key: "media", Name: "内容运营部", Level: "department", ParentID: "co-1"},
+		"dept-media":    {ID: "dept-media", Key: "content_creation", Name: "内容运营部", Level: "department", ParentID: "co-1"},
 		"pos-be":        {ID: "pos-be", Key: "backend", Name: "后端", Level: "position", ParentID: "dept-eng"},
 		"pos-fe":        {ID: "pos-fe", Key: "frontend", Name: "前端", Level: "position", ParentID: "dept-eng"},
 		"pos-copy":      {ID: "pos-copy", Key: "copywriter", Name: "文案", Level: "position", ParentID: "dept-media"},

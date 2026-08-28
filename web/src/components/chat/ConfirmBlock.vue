@@ -57,6 +57,12 @@
     <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
   </div>
 
+  <div v-else-if="step.Status === 'cancelled' && isConfirmTimeoutRetry" class="confirm-block confirm-block--timeout confirm-block--timeout-retry">
+    <span class="confirm-block__icon">⏱</span>
+    <span class="confirm-block__summary">{{ t('chat.confirm.timedOutRetry') }}</span>
+    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+  </div>
+
   <div v-else-if="step.Status === 'cancelled' && isConfirmTimeout" class="confirm-block confirm-block--timeout">
     <span class="confirm-block__icon">⏱</span>
     <span class="confirm-block__summary">{{ t('chat.confirm.timedOut') }}</span>
@@ -90,6 +96,8 @@ const { t } = useI18n();
  * (agent/v2.ConfirmTimeoutErrorCode) so the UI can render "timed out"
  * instead of "rejected". */
 const CONFIRM_TIMEOUT_ERROR_CODE = 'confirm_timeout';
+const CONFIRM_TIMEOUT_RETRY_ERROR_CODE = 'confirm_timeout_retry';
+const isConfirmTimeoutRetry = computed(() => props.step.ToolErrorCode === CONFIRM_TIMEOUT_RETRY_ERROR_CODE);
 const isConfirmTimeout = computed(() => props.step.ToolErrorCode === CONFIRM_TIMEOUT_ERROR_CODE);
 
 const confirming = ref(false);
@@ -237,6 +245,15 @@ function onConfirm(reply: ToolConfirmReply) {
     padding: 4px 10px
     border-left: 3px solid var(--color-warning)
     background: var(--glass-surface)
+
+  &--timeout-retry
+    align-items: flex-start
+    flex-wrap: wrap
+    padding: 8px 10px
+
+    .confirm-block__summary
+      color: var(--color-text-primary)
+      line-height: 1.4
 
   &__header
     display: flex

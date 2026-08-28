@@ -119,6 +119,7 @@ func TestLoopGuardToolLoadRepeatBlockedSecondTime(t *testing.T) {
 // 装载闸-配额：默认配额（8）内异质装载放行，第 9 个异质目标拦截。
 func TestLoopGuardToolLoadQuotaBlocksNinthDistinct(t *testing.T) {
 	g := newToolLoopGuard(nil)
+	g.setBootstrapRatio(-1) // 本用例专验次数配额，关闭占比闸
 	ctx := newTestInvocationContext("inv-q1-quota")
 
 	for i := 1; i <= loopGuardToolLoadMaxDefault; i++ {
@@ -150,6 +151,7 @@ func TestLoopGuardToolLoadQuotaBlocksNinthDistinct(t *testing.T) {
 // 本用例以交错命名规避，专验装载闸自身语义。）
 func TestLoopGuardToolLoadFailureNotCounted(t *testing.T) {
 	g := newToolLoopGuard(nil)
+	g.setBootstrapRatio(-1)
 	ctx := newTestInvocationContext("inv-q1-failure")
 	notFound := func(name string) any {
 		return map[string]any{"success": false, "tool_name": name, "error": "not found"}
@@ -199,6 +201,17 @@ func TestLoopGuardWallHardGateStopsNode(t *testing.T) {
 	}
 	if got := dc.count("blocked"); got != 2 {
 		t.Fatalf("hard gate should emit one blocked record per stopped call, got %d", got)
+	}
+}
+
+func TestLoopGuardWallHardGateExcludesHITLWait(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := WithConfirmWaitAcc(newTestInvocationContext("inv-q1-wall-hitl"))
+	backdateGuardEntry(t, g, ctx, time.Duration(loopGuardWallHardSecDefault+60)*time.Second)
+	AddConfirmWaitMS(ctx, (loopGuardWallHardSecDefault+60)*1000)
+
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1"}`, "x", nil); err != nil {
+		t.Fatalf("HITL wait must not count toward wall-time hard gate, got %v", err)
 	}
 }
 
@@ -339,5 +352,66 @@ func TestLoopGuardToolLoadParallelWindowUnchanged(t *testing.T) {
 	}()
 	if err == nil || !strings.Contains(err.Error(), "并行") {
 		t.Fatalf("parallel duplicate must hit parallel branch, got %v", err)
+	}
+}
+
+// C1 占比闸：连续 6 次异质 tool_load（窗口满员且 100% 自举）第 6 次拦截。
+func TestLoopGuardBootstrapRatioBlocksSixthConsecutiveLoad(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-c1-ratio")
+	for i := 1; i <= 5; i++ {
+		name := "tool_ratio_" + string(rune('a'+i-1))
+		if err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"`+name+`"}`, toolLoadOK(name), nil); err != nil {
+			t.Fatalf("load %d/5 should pass before ratio window: %v", i, err)
+		}
+	}
+	err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"tool_ratio_over"}`, toolLoadOK("tool_ratio_over"), nil)
+	if err == nil {
+		t.Fatal("6th consecutive bootstrap must be blocked by ratio gate")
+	}
+	if !strings.Contains(err.Error(), "50%") && !strings.Contains(err.Error(), "tool_load/tool_search") {
+		t.Fatalf("ratio block message should mention bootstrap share, got %q", err.Error())
+	}
+	// 非自举工具不受占比闸影响。
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"cmd":"show"}`, "ok", nil); err != nil {
+		t.Fatalf("non-bootstrap call must pass under ratio gate: %v", err)
+	}
+}
+
+// 同批并行：tool_load(X) 尚未 AfterTool 时直接 call X → 拦截。
+func TestLoopGuardLoadThenCallSameBatchBlocked(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-c1-same-batch")
+	before := g.beforeHook()
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "tool_load", Arguments: []byte(`{"tool_name":"exec_command"}`),
+	}); err != nil {
+		t.Fatalf("tool_load should pass: %v", err)
+	}
+	err := func() error {
+		_, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+			ToolName: "exec_command", Arguments: []byte(`{"cmd":"ls"}`),
+		})
+		return err
+	}()
+	if err == nil || !strings.Contains(err.Error(), "tool_load") {
+		t.Fatalf("same-batch call of just-loaded tool must be blocked, got %v", err)
+	}
+}
+
+// 顺序同一步：tool_load AfterTool 后立刻 call，在下一 BeforeModel 之前拦截。
+func TestLoopGuardLoadThenCallSameStepBlockedUntilNextModel(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-c1-same-step")
+	if err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"save_file"}`, toolLoadOK("save_file"), nil); err != nil {
+		t.Fatalf("tool_load should pass: %v", err)
+	}
+	err := runLoopGuardTurn(t, g, ctx, "save_file", `{"path":"a.txt"}`, "ok", nil)
+	if err == nil || !(strings.Contains(err.Error(), "下一轮") || strings.Contains(err.Error(), "tool_load")) {
+		t.Fatalf("same-step call after load must be blocked, got %v", err)
+	}
+	_ = runWallModelHook(t, g, ctx)
+	if err := runLoopGuardTurn(t, g, ctx, "save_file", `{"path":"a.txt"}`, "ok", nil); err != nil {
+		t.Fatalf("next model step must allow the loaded tool: %v", err)
 	}
 }

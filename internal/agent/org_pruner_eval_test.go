@@ -12,14 +12,14 @@ import (
 // CandidateKeys.
 func TestOrgPruner_EvalFixture_DepartmentTop1(t *testing.T) {
 	caps := []biz.AgentCapability{
-		{AgentKey: "be-1", DepartmentID: "d-eng", DepartmentName: "研发部"},
-		{AgentKey: "fe-1", DepartmentID: "d-eng", DepartmentName: "研发部"},
-		{AgentKey: "copy-1", DepartmentID: "d-media", DepartmentName: "内容运营部"},
-		{AgentKey: "writer-1", DepartmentID: "d-media", DepartmentName: "内容运营部"},
-		{AgentKey: "design-1", DepartmentID: "d-design", DepartmentName: "设计部"},
-		{AgentKey: "data-1", DepartmentID: "d-data", DepartmentName: "数据分析部"},
-		{AgentKey: "research-1", DepartmentID: "d-research", DepartmentName: "研究部"},
-		{AgentKey: "admin-1", DepartmentID: "d-admin", DepartmentName: "行政综合部"},
+		{AgentKey: "be-1", DepartmentID: "d-eng", DepartmentKey: "backend_dev", DepartmentName: "研发部", DomainPath: "软件/后端"},
+		{AgentKey: "fe-1", DepartmentID: "d-eng", DepartmentKey: "frontend_dev", DepartmentName: "研发部", DomainPath: "软件/前端"},
+		{AgentKey: "copy-1", DepartmentID: "d-media", DepartmentKey: "media_operations", DepartmentName: "内容运营部", DomainPath: "创作/文案"},
+		{AgentKey: "writer-1", DepartmentID: "d-media", DepartmentKey: "content_creation", DepartmentName: "内容运营部", DomainPath: "创作/文学"},
+		{AgentKey: "design-1", DepartmentID: "d-design", DepartmentKey: "brand_design", DepartmentName: "设计部", DomainPath: "设计/视觉"},
+		{AgentKey: "data-1", DepartmentID: "d-data", DepartmentName: "数据分析部", DomainPath: "数据/分析"},
+		{AgentKey: "research-1", DepartmentID: "d-research", DepartmentName: "研究部", DomainPath: "研究/调研"},
+		{AgentKey: "admin-1", DepartmentID: "d-admin", DepartmentName: "行政综合部", DomainPath: "办公/文档"},
 		{AgentKey: biz.DeptLeadAgentKeyPrefix + "eng__", AgentVariant: "dept_lead", DepartmentID: "d-eng", DepartmentName: "研发部"},
 		{AgentKey: biz.DeptLeadAgentKeyPrefix + "media__", AgentVariant: "dept_lead", DepartmentID: "d-media", DepartmentName: "内容运营部"},
 	}
@@ -69,6 +69,19 @@ func TestOrgPruner_EvalFixture_DepartmentTop1(t *testing.T) {
 	}
 	if ratio := float64(hit) / float64(len(cases)); ratio < 0.90 {
 		t.Fatalf("department Top-1 ratio=%.2f want >= 0.90 (%d/%d)", ratio, hit, len(cases))
+	}
+}
+
+func TestMatchDepartmentAlias_ExactNotContains(t *testing.T) {
+	aliases := []string{"运营", "媒体", "研发"}
+	if matchDepartmentAlias("内容运营部", "", aliases) {
+		t.Fatal("Chinese name Contains must not match 运营 inside 内容运营部")
+	}
+	if !matchDepartmentAlias("研发部", "", aliases) {
+		t.Fatal("研发 + 部 must still match 研发部")
+	}
+	if !matchDepartmentAlias("", "media_operations", []string{"media_operations"}) {
+		t.Fatal("org key exact match must hit")
 	}
 }
 

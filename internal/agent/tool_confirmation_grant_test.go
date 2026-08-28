@@ -336,6 +336,48 @@ func TestToolConfirmationHook_TimeoutMessageIsSemantic(t *testing.T) {
 	if !strings.Contains(msg, "超时") || !strings.Contains(msg, "不代表用户拒绝") {
 		t.Fatalf("timeout message not semantic: %q", msg)
 	}
+	if !strings.Contains(msg, "可随时批准") && !strings.Contains(msg, "可以重试") {
+		t.Fatalf("timeout after retry must stay retryable, not silent cancel: %q", msg)
+	}
+}
+
+func TestToolConfirmationHook_TimeoutReissuesConfirmOnce(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	h.confirmTimeout = 20 * time.Millisecond
+	emitter := &fakeFactoryEmitter{}
+	calls := 0
+	ctx := grantTestCtx("sess-1", func(ctx context.Context) (string, error) {
+		calls++
+		if calls == 1 {
+			<-ctx.Done()
+			return "", ctx.Err()
+		}
+		return "approved", nil
+	})
+	ctx = biz.WithActivityEmitter(ctx, emitter)
+	res, err := h.HandleBeforeTool(ctx, bashToolArgs("call-retry"))
+	if err != nil {
+		t.Fatalf("retry-then-approve must not error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected allow result after retry approval")
+	}
+	if calls != 2 {
+		t.Fatalf("reply waits=%d want 2 (timeout then retry)", calls)
+	}
+	if len(emitter.confirmParams) != 2 {
+		t.Fatalf("confirm cards=%d want 2", len(emitter.confirmParams))
+	}
+	if len(emitter.confirmTimeouts) != 1 {
+		t.Fatalf("timeout emits=%d want 1", len(emitter.confirmTimeouts))
+	}
+	if len(emitter.confirmTimeoutRetrying) != 1 || !emitter.confirmTimeoutRetrying[0] {
+		t.Fatal("first timeout must be tagged retrying so the UI does not look like a silent cancel")
+	}
 }
 
 // TestToolConfirmationHook_ConfirmRequestCarriesAgentKey verifies the confirm

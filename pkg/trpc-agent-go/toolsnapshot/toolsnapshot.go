@@ -8,11 +8,11 @@
 //
 
 // Package toolsnapshot exposes invocation-scoped LLM tool snapshot
-// invalidation for hosts that dynamically change tool visibility mid-run
-// (e.g. a meta-tool that activates deferred tools). The snapshot itself is
-// owned and maintained by the internal flow package; this package only
-// proxies the invalidation operation so module-external code can trigger a
-// rebuild without importing internal packages.
+// invalidation and append for hosts that dynamically change tool visibility
+// mid-run (e.g. a meta-tool that activates deferred tools). The snapshot
+// itself is owned and maintained by the internal flow package; this package
+// only proxies those operations so module-external code can trigger a rebuild
+// or mid-turn append without importing internal packages.
 package toolsnapshot
 
 import (
@@ -20,6 +20,7 @@ import (
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	internalsnapshot "trpc.group/trpc-go/trpc-agent-go/internal/flow/toolsnapshot"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // Invalidate clears the cached LLM tool snapshot for the invocation, forcing
@@ -38,4 +39,21 @@ func InvalidateFromContext(ctx context.Context) bool {
 	}
 	internalsnapshot.Invalidate(inv)
 	return true
+}
+
+// Append adds t to the cached LLM tool snapshot for the invocation so a
+// newly activated deferred tool is visible on the next model request in
+// the same turn. Returns false when inv is nil, t is nil, or no snapshot
+// is cached (callers should then Invalidate).
+func Append(inv *agent.Invocation, t tool.Tool) bool {
+	return internalsnapshot.Append(inv, t)
+}
+
+// AppendFromContext appends t using the invocation carried by ctx.
+func AppendFromContext(ctx context.Context, t tool.Tool) bool {
+	inv, ok := agent.InvocationFromContext(ctx)
+	if !ok || inv == nil {
+		return false
+	}
+	return internalsnapshot.Append(inv, t)
 }

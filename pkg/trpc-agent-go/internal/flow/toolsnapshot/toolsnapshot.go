@@ -75,6 +75,39 @@ func Invalidate(inv *agent.Invocation) {
 	inv.DeleteState(filteredTraceableUserToolNamesKey)
 }
 
+// Append adds t to the cached snapshot for this invocation so a tool
+// activated mid-turn (tool_load) is visible on the next model request
+// without waiting for a full rebuild. Returns false when inv is nil, t is
+// nil, or no snapshot is cached yet (caller should Invalidate instead).
+func Append(inv *agent.Invocation, t tool.Tool) bool {
+	if inv == nil || t == nil {
+		return false
+	}
+	tools, ok := Get(inv)
+	if !ok {
+		return false
+	}
+	name := ""
+	if decl := t.Declaration(); decl != nil {
+		name = decl.Name
+	}
+	if name != "" {
+		for _, existing := range tools {
+			if existing == nil {
+				continue
+			}
+			d := existing.Declaration()
+			if d != nil && d.Name == name {
+				return true
+			}
+		}
+	}
+	hasFiltered, _ := HasFilteredUserTools(inv)
+	traceable, _ := FilteredTraceableUserToolNames(inv)
+	Set(inv, append(tools, t), hasFiltered, traceable)
+	return true
+}
+
 func copyTools(tools []tool.Tool) []tool.Tool {
 	return append([]tool.Tool(nil), tools...)
 }

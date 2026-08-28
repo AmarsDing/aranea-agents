@@ -83,6 +83,8 @@ var (
 	MergeUsageSourceMetadata = usage.MergeUsageSourceMetadata
 	// MergeLLMRoundsMetadata mirrors usage.MergeLLMRoundsMetadata (P1-C).
 	MergeLLMRoundsMetadata = usage.MergeLLMRoundsMetadata
+	// MergeWaitMSMetadata mirrors usage.MergeWaitMSMetadata (包 D D6).
+	MergeWaitMSMetadata = usage.MergeWaitMSMetadata
 	// MergeUsageAttributionMetadata mirrors usage.MergeUsageAttributionMetadata (P2-1).
 	MergeUsageAttributionMetadata = usage.MergeUsageAttributionMetadata
 	// NewUsageUsecaseRef mirrors usage.NewUsecaseRef.

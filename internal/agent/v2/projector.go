@@ -56,11 +56,11 @@ type stepCheckpointState struct {
 // for the same turn concurrently. The mutex only protects the activeStep map
 // (which may be read by ProcessEvent from a different goroutine).
 type ActivityProjector struct {
-	seq         SequencerPublisher
-	seqAsg      SeqAssigner
-	lg          loggateway.Logger
-	mu          sync.Mutex
-	activeStep  map[string]*biz.Step // stepID → step
+	seq        SequencerPublisher
+	seqAsg     SeqAssigner
+	lg         loggateway.Logger
+	mu         sync.Mutex
+	activeStep map[string]*biz.Step // stepID → step
 	// stepCkpt 流式 checkpoint 节流状态（stepID → 节流状态）。
 	// P3-resume（2026-08-20 流式文本空洞修复）：流式期间把 delta 累积进
 	// step 实体并按节流广播 step.updated（携带累积 Content/Reasoning、
@@ -415,6 +415,11 @@ func (p *ActivityProjector) EmitConfirmResult(ctx context.Context, stepID string
 // instead of "已拒绝".
 const ConfirmTimeoutErrorCode = "confirm_timeout"
 
+// ConfirmTimeoutRetryErrorCode is set when the first confirmation wait expired
+// and the runtime is re-issuing the card. The UI must not treat this as a
+// silent cancel of the whole step.
+const ConfirmTimeoutRetryErrorCode = "confirm_timeout_retry"
+
 // EmitConfirmTimeout marks a confirm step as cancelled due to confirmation
 // deadline expiry. Implements biz.ActivityEmitter.
 func (p *ActivityProjector) EmitConfirmTimeout(ctx context.Context, stepID string) error {
@@ -433,7 +438,11 @@ func (p *ActivityProjector) EmitConfirmTimeout(ctx context.Context, stepID strin
 		return fmt.Errorf("expected confirm kind, got %s", step.Kind)
 	}
 	step.Status = biz.StepStatusCancelled
-	step.ToolErrorCode = ConfirmTimeoutErrorCode
+	if biz.ConfirmTimeoutRetrying(ctx) {
+		step.ToolErrorCode = ConfirmTimeoutRetryErrorCode
+	} else {
+		step.ToolErrorCode = ConfirmTimeoutErrorCode
+	}
 	step.CompletedAt = &now
 	step.Version++
 	delete(p.activeStep, stepID)

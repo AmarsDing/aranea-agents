@@ -231,6 +231,25 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
     }
   }
 
+  /** Map run heartbeat current_step to the composer loading line (P2). */
+  function onRunHeartbeat(payload: { Message?: string; Meta?: Record<string, unknown> | null }): void {
+    if (isReplaying.value) return;
+    const step = String(payload?.Meta?.current_step ?? '').trim();
+    const summaryKey =
+      step === 'building'
+        ? 'chat.orchestrationProgress.runStepBuilding'
+        : step === 'executing'
+          ? 'chat.orchestrationProgress.runStepExecuting'
+          : step === 'persisting'
+            ? 'chat.orchestrationProgress.runStepPersisting'
+            : 'chat.orchestrationProgress.runStepWorking';
+    loadingMessage.value = {
+      text: t('chat.orchestrationProgress.heartbeat', { summary: t(summaryKey) }),
+      icon: 'favorite',
+      color: 'teal',
+    };
+  }
+
   function noticeTypeToLoadingType(noticeType: string): string {
     switch (noticeType) {
       case 'plan_created':
@@ -257,6 +276,7 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
     loadingMessage,
     onSpiritActivityEvent,
     onSpiritNoticeType,
+    onRunHeartbeat,
     clearMessage,
   };
 }

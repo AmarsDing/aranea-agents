@@ -234,6 +234,10 @@ export default {
       teamCountMismatchProceed: '团队数量与请求不符：请求 {requestedTeamCount} 个，实际分解 {decomposedSubtaskCount} 个，按实际数量继续执行',
       reused: '本会话已有 {teamCount} 个相关团队，正在复用其结果…',
       heartbeat: '阶段心跳：{summary}',
+      runStepBuilding: '装配运行时',
+      runStepExecuting: '思考 / 调用工具',
+      runStepPersisting: '保存本轮结果',
+      runStepWorking: '仍在处理',
       upward: '上报例外：{summary}',
       playbookFillRequired: '需要总经理先授权流程剧本，不能按行业常识拆岗',
       confirmRequired: '需要确认后继续：{summary}',
@@ -774,6 +778,7 @@ export default {
       approved: '已批准',
       rejected: '已拒绝',
       timedOut: '已超时',
+      timedOutRetry: '已超时，系统已再次发出确认（请在下方新卡片操作，本步未取消）',
     },
     confirmActivity: {
       approveRejected: '批准操作未被接受',

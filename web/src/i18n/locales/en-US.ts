@@ -239,6 +239,10 @@ export default {
       teamCountMismatchProceed: 'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — proceeding with the decomposed count',
       reused: 'Reusing {teamCount} existing team(s) in this session…',
       heartbeat: 'Stage heartbeat: {summary}',
+      runStepBuilding: 'assembling runtime',
+      runStepExecuting: 'thinking / using tools',
+      runStepPersisting: 'saving this turn',
+      runStepWorking: 'still working',
       upward: 'Exception: {summary}',
       playbookFillRequired: 'Authorize a company playbook first — do not invent jobs from industry guesswork',
       confirmRequired: 'Confirm to continue: {summary}',
@@ -760,6 +764,7 @@ export default {
       approved: 'Approved',
       rejected: 'Rejected',
       timedOut: 'Timed out',
+      timedOutRetry: 'Timed out — confirmation was re-issued below; this step was not cancelled',
     },
     confirmActivity: {
       approveRejected: 'Approve action was not accepted',

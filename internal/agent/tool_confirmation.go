@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/agent/callbacks"
@@ -38,6 +40,9 @@ type toolConfirmationBeforeHook struct {
 	// confirmTimeout bounds the wait for a user decision. Zero means
 	// defaultToolConfirmationTimeout; overridable in tests.
 	confirmTimeout time.Duration
+	// confirmRetries is extra confirmation waits after the first timeout.
+	// 0 = default 1 retry (re-issue the card once). Negative = no retry (tests).
+	confirmRetries int
 }
 
 var _ callbacks.BeforeToolHook = (*toolConfirmationBeforeHook)(nil)
@@ -94,97 +99,107 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		return &trpctool.BeforeToolResult{Context: plugintrpc.WithToolConfirmHandled(ctx)}, nil
 	}
 
-	// effectiveConfirmTimeout resolves the confirmation wait budget (test-overridable).
-	effectiveConfirmTimeout := h.confirmTimeout
-	if effectiveConfirmTimeout <= 0 {
-		effectiveConfirmTimeout = defaultToolConfirmationTimeout
-	}
+	// effectiveConfirmTimeout resolves the confirmation wait budget
+	// (test-overridable, otherwise per-tool TTL).
+	effectiveConfirmTimeout := confirmTimeoutForTool(toolKey, h.confirmTimeout)
 
 	if fn := serviceawaitreply.ReplyFuncFromContext(ctx); fn != nil {
 		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
 			if markErr := trpcagent.MarkAwaitingUserReply(inv); markErr != nil {
-				// Non-fatal: the confirmation flow can still proceed, but
-				// the UI may not show the "awaiting reply" indicator.
 				h.deps.Logger().Warn("MarkAwaitingUserReply failed",
 					loggateway.StepID("agent.tool_confirm"),
 					loggateway.Err(markErr))
 			}
 		}
-		// N-21: Emit a confirm Activity so the frontend can render a
-		// confirmation card in the activity timeline.
 		emitter := biz.ActivityEmitterFromContext(ctx)
-		var confirmActivityID string
-		if emitter != nil {
-			confirmContent := fmt.Sprintf("工具 %s 需要确认后执行", toolKey)
-			if decision.reason == confirmReasonShellOnFailure {
-				confirmContent = fmt.Sprintf("上一条命令失败后，工具 %s 需要再次确认", toolKey)
-			}
-			id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
-				ToolName:      toolKey,
-				ToolArguments: string(args.Arguments),
-				Content:       confirmContent,
-				// Route the step to this exact tool call's await channel so
-				// parallel confirmations no longer share one session-level
-				// slot (BUG-02, chat-e2e-20260823).
-				ToolCallID: args.ToolCallID,
-				// 75 A5: computer-use danger-word hits surface a 高危 badge on
-				// the confirm card.
-				Danger: decision.reason == confirmReasonPolicyDanger || decision.reason == confirmReasonShellDanger,
-				// Attribute the confirm step to the agent whose tool is
-				// gated (team member in graph mode); the projector's base
-				// meta carries the anchor agent key.
-				AuthorAgentKey: h.ag.AgentKey,
-			})
-			if emitErr != nil {
-				h.deps.Logger().Warn("EmitConfirmRequest failed",
-					loggateway.StepID("agent.tool_confirm"),
-					loggateway.Err(emitErr))
-			} else {
-				confirmActivityID = id
-			}
+		confirmContent := fmt.Sprintf("工具 %s 需要确认后执行", toolKey)
+		if decision.reason == confirmReasonShellOnFailure {
+			confirmContent = fmt.Sprintf("上一条命令失败后，工具 %s 需要再次确认", toolKey)
 		}
-		confirmCtx := serviceawaitreply.WithToolConfirmRequest(ctx, serviceawaitreply.ToolConfirmRequest{
-			ToolKey:    toolKey,
-			ToolCallID: args.ToolCallID,
-		})
-		// Apply confirmation timeout to prevent indefinite blocking.
-		confirmCtx, confirmCancel := context.WithTimeout(confirmCtx, effectiveConfirmTimeout)
-		defer confirmCancel()
-		reply, err := fn(confirmCtx)
-		// N-21: Update the confirm Activity with the user's response. A deadline
-		// expiry is NOT a user rejection — emit the timeout variant so the UI
-		// renders "已超时" instead of "已拒绝".
-		confirmationTimedOut := err != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
-		if emitter != nil && confirmActivityID != "" {
-			if confirmationTimedOut {
-				if emitErr := emitter.EmitConfirmTimeout(ctx, confirmActivityID); emitErr != nil {
-					h.deps.Logger().Warn("EmitConfirmTimeout failed",
+		attempts := 1 + h.extraConfirmAttempts()
+		var (
+			reply                string
+			err                  error
+			confirmationTimedOut bool
+			confirmActivityID    string
+			follower             bool
+		)
+		waitConfirm := func() (string, error, bool) {
+			var (
+				waitReply    string
+				waitErr      error
+				waitTimedOut bool
+			)
+			for attempt := 0; attempt < attempts; attempt++ {
+			content := confirmContent
+			if attempt > 0 {
+				content = fmt.Sprintf("确认已超时，请再次确认是否执行工具 %s（可重试，不会静默取消）", toolKey)
+			}
+			if emitter != nil {
+				id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
+					ToolName:       toolKey,
+					ToolArguments:  string(args.Arguments),
+					Content:        content,
+					ToolCallID:     args.ToolCallID,
+					Danger:         decision.reason == confirmReasonPolicyDanger || decision.reason == confirmReasonShellDanger,
+					AuthorAgentKey: h.ag.AgentKey,
+				})
+				if emitErr != nil {
+					h.deps.Logger().Warn("EmitConfirmRequest failed",
 						loggateway.StepID("agent.tool_confirm"),
 						loggateway.Err(emitErr))
-				}
-			} else {
-				approved := err == nil && toolConfirmApproved(reply)
-				if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
-					h.deps.Logger().Warn("EmitConfirmResult failed",
-						loggateway.StepID("agent.tool_confirm"),
-						loggateway.Err(emitErr))
+				} else {
+					confirmActivityID = id
 				}
 			}
+			confirmReqCtx := serviceawaitreply.WithToolConfirmRequest(ctx, serviceawaitreply.ToolConfirmRequest{
+				ToolKey:    toolKey,
+				ToolCallID: args.ToolCallID,
+			})
+			waitStart := time.Now()
+			confirmCtx, confirmCancel := context.WithTimeout(confirmReqCtx, effectiveConfirmTimeout)
+			reply, err = fn(confirmCtx)
+			waitMS := int(time.Since(waitStart).Milliseconds())
+			AddConfirmWaitMS(ctx, waitMS)
+			confirmationTimedOut = err != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+			confirmCancel()
+			if emitter != nil && confirmActivityID != "" {
+				if confirmationTimedOut {
+					timeoutCtx := ctx
+					if attempt+1 < attempts {
+						timeoutCtx = biz.WithConfirmTimeoutRetrying(ctx)
+					}
+					if emitErr := emitter.EmitConfirmTimeout(timeoutCtx, confirmActivityID); emitErr != nil {
+						h.deps.Logger().Warn("EmitConfirmTimeout failed",
+							loggateway.StepID("agent.tool_confirm"),
+							loggateway.Err(emitErr))
+					}
+				} else {
+					approved := err == nil && toolConfirmApproved(reply)
+					if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
+						h.deps.Logger().Warn("EmitConfirmResult failed",
+							loggateway.StepID("agent.tool_confirm"),
+							loggateway.Err(emitErr))
+					}
+				}
+			}
+			if confirmationTimedOut && attempt+1 < attempts {
+				h.deps.Logger().Info("tool confirmation timed out, re-issuing",
+					loggateway.StepID("agent.tool_confirm"),
+					loggateway.Str("tool", toolKey),
+					loggateway.Int("attempt", attempt+1))
+				continue
+			}
+			break
 		}
 		if err != nil {
-			// Distinguish between confirmation timeout and other errors.
-			// Only report ErrorCodeConfirmationTimeout when the confirmation
-			// deadline itself expired but the parent context is still alive.
-			// If the parent context (e.g., tool execution timeout) also expired,
-			// the error is not a confirmation timeout — it will be handled by
-			// the execution timeout logic upstream.
 			if confirmationTimedOut {
 				recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 					ToolKey:      toolKey,
 					AgentID:      h.ag.ID,
 					Status:       "blocked",
 					ErrorCode:    event.ErrorCodeConfirmationTimeout,
-					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s (decision_reason=%s)", effectiveConfirmTimeout, decision.reason),
+					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s x%d (decision_reason=%s)", effectiveConfirmTimeout, attempts, decision.reason),
 					InputPreview: previewFromToolArgs(args.Arguments),
 					StartedAt:    time.Now().UTC().Format(time.RFC3339),
 					EndedAt:      time.Now().UTC().Format(time.RFC3339),
@@ -192,14 +207,9 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					ToolCallID:   args.ToolCallID,
 					ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 				}, nil, h.ag, h.deps)
-				// M80 1.5: 超时是 HITL 决策的一种结果（非用户拒绝），独立 outcome。
-				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, "")
-				// P1-3: 超时是显式 Reject（CustomResult 短路），不是回调错误——
-				// 用户未响应≠拦截器故障，error 路径会触发框架 Errorf 误报。
-				return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 的确认请求在 %s 内未收到用户响应（超时）。这不代表用户拒绝，只是暂时没有回应。不要立即重试该工具；请先询问用户是否仍要执行该操作。", errToolConfirmationRequired, toolKey, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
+				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, "retryable_timeout")
+				return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 的确认请求已连续 %d 次超时（每次 %s）。这不代表用户拒绝，也不是整步被静默取消——确认卡仍然有效，用户可随时批准。请告知用户界面上的确认已超时并可以重试，询问是否仍要执行；不要当作本步已取消。", errToolConfirmationRequired, toolKey, attempts, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
 			}
-			// 回复通道自身故障属基础设施错误，保留 error 语义（框架按拦截器
-			// 故障处理）。
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {
@@ -393,4 +403,50 @@ func toolConfirmationBypass() bool {
 		return true
 	}
 	return strings.TrimSpace(os.Getenv("ARANEA_TOOL_AUTO_APPROVE")) == "1"
+}
+
+func (h *toolConfirmationBeforeHook) extraConfirmAttempts() int {
+	if h.confirmRetries < 0 {
+		return 0
+	}
+	if h.confirmRetries == 0 {
+		return 1
+	}
+	return h.confirmRetries
+}
+
+type confirmWaitAccKey struct{}
+
+// WithConfirmWaitAcc attaches a HITL wait accumulator to ctx so turn usage
+// can split wait_ms out of wall latency.
+func WithConfirmWaitAcc(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Value(confirmWaitAccKey{}).(*int64); ok {
+		return ctx
+	}
+	var acc int64
+	return context.WithValue(ctx, confirmWaitAccKey{}, &acc)
+}
+
+// AddConfirmWaitMS records milliseconds spent waiting on HITL confirmation.
+func AddConfirmWaitMS(ctx context.Context, ms int) {
+	if ms <= 0 {
+		return
+	}
+	v, _ := ctx.Value(confirmWaitAccKey{}).(*int64)
+	if v == nil {
+		return
+	}
+	atomic.AddInt64(v, int64(ms))
+}
+
+// ConfirmWaitMS returns accumulated HITL wait milliseconds on ctx.
+func ConfirmWaitMS(ctx context.Context) int {
+	v, _ := ctx.Value(confirmWaitAccKey{}).(*int64)
+	if v == nil {
+		return 0
+	}
+	return int(atomic.LoadInt64(v))
 }

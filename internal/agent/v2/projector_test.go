@@ -318,6 +318,26 @@ func TestEmitConfirmTimeout(t *testing.T) {
 	}
 }
 
+func TestEmitConfirmTimeoutRetrying(t *testing.T) {
+	p, _ := testProjector()
+	stepID, _ := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName: "shell",
+		Content:  "Allow?",
+	})
+	capture := p.seq.(*capturingSequencer)
+	capture.events = nil
+	if err := p.EmitConfirmTimeout(biz.WithConfirmTimeoutRetrying(context.Background()), stepID); err != nil {
+		t.Fatalf("EmitConfirmTimeout retrying: %v", err)
+	}
+	completed, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if completed.Step.ToolErrorCode != ConfirmTimeoutRetryErrorCode {
+		t.Fatalf("ToolErrorCode=%q want %q", completed.Step.ToolErrorCode, ConfirmTimeoutRetryErrorCode)
+	}
+}
+
 func TestOnError(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil // only care about error events

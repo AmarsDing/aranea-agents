@@ -131,6 +131,35 @@ func MergeLLMRoundsMetadata(metaJSON string, rounds int) string {
 	return string(raw)
 }
 
+// MetadataKeyWaitMS / MetadataKeyModelLatencyMS split HITL wait out of
+// wall-clock latency on chat_turn usage rows (包 D D6).
+const (
+	MetadataKeyWaitMS         = "wait_ms"
+	MetadataKeyModelLatencyMS = "model_latency_ms"
+)
+
+// MergeWaitMSMetadata sets wait_ms and model_latency_ms (= max(0, latency-wait)).
+func MergeWaitMSMetadata(metaJSON string, waitMS, latencyMS int) string {
+	if waitMS <= 0 {
+		return metaJSON
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metaJSON), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	payload[MetadataKeyWaitMS] = waitMS
+	modelMS := latencyMS - waitMS
+	if modelMS < 0 {
+		modelMS = 0
+	}
+	payload[MetadataKeyModelLatencyMS] = modelMS
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return metaJSON
+	}
+	return string(raw)
+}
+
 // MetadataKeyUsageAttribution is the metadata_json key recording how a usage
 // row's tokens are attributed. UsageAttributionRunLevelAnchorFallback marks
 // team_member rows that carry RUN-LEVEL totals attributed to the anchor member
@@ -1443,6 +1472,10 @@ type TurnUsageInput struct {
 	ErrMsg       string
 	MetadataJSON string
 	TraceID      string
+	// TimeToFirstTokenMS is stream-observed TTFT; 0 means unobserved.
+	TimeToFirstTokenMS int
+	// WaitMS is HITL confirmation wait accumulated on the turn ctx.
+	WaitMS int
 }
 
 // RecordTurnUsage records token usage for a completed chat turn.
@@ -1457,27 +1490,29 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 	if meta == "" {
 		meta = "{}"
 	}
+	meta = MergeWaitMSMetadata(meta, in.WaitMS, int(in.Latency.Milliseconds()))
 	usageID := newUsageID()
 	ev := TokenUsageEvent{
-		ID:                usageID,
-		SessionID:         in.SessionID,
-		AgentKey:          in.AgentKey,
-		AgentID:           in.AgentID,
-		ModelAPIID:        in.Model,
-		ModelDisplayName:  in.Model,
-		ProviderCode:      in.Provider,
-		InputTokens:       in.PromptTok,
-		OutputTokens:      in.CompletionTok,
-		CachedInputTokens: in.CachedTok,
-		TotalTokens:       in.PromptTok + in.CompletionTok,
-		LatencyMS:         int(in.Latency.Milliseconds()),
-		Status:            in.Status,
-		UsageKind:         KindChatTurn,
-		MetadataJSON:      meta,
-		OccurredAt:        now.Format(time.RFC3339),
-		DateKey:           now.Format("2006-01-02"),
-		HourKey:           now.Format("2006-01-02T15"),
-		ErrorMessage:      in.ErrMsg,
+		ID:                 usageID,
+		SessionID:          in.SessionID,
+		AgentKey:           in.AgentKey,
+		AgentID:            in.AgentID,
+		ModelAPIID:         in.Model,
+		ModelDisplayName:   in.Model,
+		ProviderCode:       in.Provider,
+		InputTokens:        in.PromptTok,
+		OutputTokens:       in.CompletionTok,
+		CachedInputTokens:  in.CachedTok,
+		TotalTokens:        in.PromptTok + in.CompletionTok,
+		LatencyMS:          int(in.Latency.Milliseconds()),
+		TimeToFirstTokenMS: in.TimeToFirstTokenMS,
+		Status:             in.Status,
+		UsageKind:          KindChatTurn,
+		MetadataJSON:       meta,
+		OccurredAt:         now.Format(time.RFC3339),
+		DateKey:            now.Format("2006-01-02"),
+		HourKey:            now.Format("2006-01-02T15"),
+		ErrorMessage:       in.ErrMsg,
 	}
 	if in.RunID != "" {
 		ev.MessageID = in.RunID

@@ -144,4 +144,14 @@ func TestSkillOptionsForAgent_SpiritDropsExecSuite(t *testing.T) {
 	if allowedSkillToolsForAgent(ag) != nil {
 		t.Fatalf("coding must keep profile default skill tools, got %v", allowedSkillToolsForAgent(ag))
 	}
+	ag.Settings.ToolsProfile = "minimal"
+	profile, _ = skillOptionsForAgent(ag)
+	if profile != trpcllmagent.SkillToolProfileKnowledgeOnly {
+		t.Fatalf("minimal must drop skill exec suite, got %v", profile)
+	}
+	ag.Settings = nil
+	profile, _ = skillOptionsForAgent(ag)
+	if profile != trpcllmagent.SkillToolProfileKnowledgeOnly {
+		t.Fatalf("nil settings must not ship skill exec suite, got %v", profile)
+	}
 }

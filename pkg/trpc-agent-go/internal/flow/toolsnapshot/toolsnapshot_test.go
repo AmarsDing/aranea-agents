@@ -58,6 +58,38 @@ func TestSetGetCopiesToolSlice(t *testing.T) {
 	require.Equal(t, "first", cachedAgain[0].Declaration().Name)
 }
 
+func TestAppendAddsToolToExistingSnapshot(t *testing.T) {
+	inv := &agent.Invocation{}
+	first := testTool{name: "first"}
+	second := testTool{name: "second"}
+	Set(inv, []tool.Tool{first}, true, []string{"first"})
+	if ok := Append(inv, second); !ok {
+		t.Fatal("Append must succeed when a snapshot is cached")
+	}
+	cached, ok := Get(inv)
+	require.True(t, ok)
+	require.Equal(t, 2, len(cached))
+	require.Equal(t, "second", cached[1].Declaration().Name)
+	hasFiltered, ok := HasFilteredUserTools(inv)
+	require.True(t, ok)
+	require.True(t, hasFiltered)
+	if ok := Append(inv, second); !ok {
+		t.Fatal("Append of an already-present name is still success")
+	}
+	cachedAgain, _ := Get(inv)
+	require.Equal(t, 2, len(cachedAgain))
+}
+
+func TestAppendWithoutSnapshotReturnsFalse(t *testing.T) {
+	if Append(nil, testTool{name: "x"}) {
+		t.Fatal("nil invocation must return false")
+	}
+	inv := &agent.Invocation{}
+	if Append(inv, testTool{name: "x"}) {
+		t.Fatal("missing snapshot must return false so caller can Invalidate")
+	}
+}
+
 func TestSnapshotMissingAndInvalidate(t *testing.T) {
 	_, ok := Get(nil)
 	require.False(t, ok)

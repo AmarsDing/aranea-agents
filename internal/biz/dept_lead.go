@@ -90,6 +90,7 @@ func governanceLeadSettings(agentID string) AgentRuntimeSettings {
 	settings.SubagentsEnabled = true
 	settings.IntentPassEnabled = true
 	settings.ClarificationEnabled = true
+	settings.IntentSkipEnabled = false
 	return settings
 }
 

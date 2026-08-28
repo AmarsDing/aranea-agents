@@ -60,6 +60,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 	rounds int,
 	latency time.Duration,
 	errMsg string,
+	firstTokenMs, waitMS int,
 ) {
 	o.turnMetrics().RecordTurnUsage(ctx, TurnUsageParams{
 		Emitter:       emitter,
@@ -77,6 +78,8 @@ func (o *ChatOrchestrator) recordTurnUsage(
 		Rounds:        rounds,
 		Latency:       latency,
 		ErrMsg:        errMsg,
+		FirstTokenMs:  firstTokenMs,
+		WaitMS:        waitMS,
 	})
 }
 

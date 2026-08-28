@@ -65,6 +65,10 @@ type TurnUsageParams struct {
 	Rounds  int
 	Latency time.Duration
 	ErrMsg  string
+	// FirstTokenMs is stream-observed TTFT; 0 means unobserved.
+	FirstTokenMs int
+	// WaitMS is HITL confirmation wait accumulated on the turn ctx.
+	WaitMS int
 }
 
 // RecordTurnUsage records token usage for a turn.
@@ -99,25 +103,28 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 	meta = mergeContextBudgetMetadata(ctx, meta)
 	meta = biz.MergeUsageSourceMetadata(meta, p.UsageSource)
 	meta = biz.MergeLLMRoundsMetadata(meta, p.Rounds)
+	meta = biz.MergeWaitMSMetadata(meta, p.WaitMS, int(p.Latency.Milliseconds()))
 	traceID := ""
 	if p.Emitter != nil {
 		traceID = p.Emitter.TraceID()
 	}
 	if err := m.usage.RecordTurnUsage(ctx, biz.TurnUsageInput{
-		SessionID:     p.SessionID,
-		RunID:         p.RunID,
-		AgentKey:      p.AgentKey,
-		AgentID:       p.AgentID,
-		Provider:      p.Provider,
-		Model:         p.Model,
-		Status:        p.Status,
-		PromptTok:     p.PromptTok,
-		CompletionTok: p.CompletionTok,
-		CachedTok:     p.CachedTok,
-		Latency:       p.Latency,
-		ErrMsg:        p.ErrMsg,
-		MetadataJSON:  meta,
-		TraceID:       traceID,
+		SessionID:          p.SessionID,
+		RunID:              p.RunID,
+		AgentKey:           p.AgentKey,
+		AgentID:            p.AgentID,
+		Provider:           p.Provider,
+		Model:              p.Model,
+		Status:             p.Status,
+		PromptTok:          p.PromptTok,
+		CompletionTok:      p.CompletionTok,
+		CachedTok:          p.CachedTok,
+		Latency:            p.Latency,
+		ErrMsg:             p.ErrMsg,
+		MetadataJSON:       meta,
+		TraceID:            traceID,
+		TimeToFirstTokenMS: p.FirstTokenMs,
+		WaitMS:             p.WaitMS,
 	}); err != nil && p.Emitter != nil {
 		p.Emitter.LogError("chat.usage_record", "turn usage record failed",
 			event.P("error", err.Error()),

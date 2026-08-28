@@ -195,6 +195,7 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 	settings.L4IdentityInject = true
 	settings.IntentPassEnabled = true
 	settings.ClarificationEnabled = true
+	settings.IntentSkipEnabled = false
 
 	configJSON, cfgErr := configJSONFromSettings(settings, agent.Files)
 	if cfgErr != nil {

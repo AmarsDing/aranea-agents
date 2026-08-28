@@ -85,3 +85,37 @@ describe('ConfirmBlock danger two-button mode', () => {
     expect(wrapper.find('.confirm-block__btn--approve-always').exists()).toBe(true);
   });
 });
+
+describe('ConfirmBlock timeout copy', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  it('says the step was not cancelled when the first wait re-issues the card', () => {
+    const wrapper = mount(ConfirmBlock, {
+      global: { plugins: [i18n] },
+      props: {
+        step: mkConfirmStep({
+          Status: 'cancelled',
+          ToolErrorCode: 'confirm_timeout_retry',
+        }),
+      },
+    });
+    expect(wrapper.find('.confirm-block--timeout-retry').exists()).toBe(true);
+    expect(wrapper.text()).toContain('已再次发出确认');
+    expect(wrapper.text()).not.toContain('已拒绝');
+  });
+
+  it('renders a compact timed-out summary after the last wait', () => {
+    const wrapper = mount(ConfirmBlock, {
+      global: { plugins: [i18n] },
+      props: {
+        step: mkConfirmStep({
+          Status: 'cancelled',
+          ToolErrorCode: 'confirm_timeout',
+        }),
+      },
+    });
+    expect(wrapper.find('.confirm-block--timeout-retry').exists()).toBe(false);
+    expect(wrapper.find('.confirm-block--timeout').exists()).toBe(true);
+    expect(wrapper.text()).toContain('已超时');
+  });
+});

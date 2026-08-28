@@ -21,8 +21,24 @@
 export const CHAT_RUN_STALL_CHECK_INTERVAL_MS = 30_000; // Stall check polling interval
 export const CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS = 60_000; // Show stall warning after this delay
 export const CHAT_STALL_NOTIFY_DURATION_MS = 8_000; // Stall warning notification display duration
-export const CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS = 30_000; // Notify-only; matches backend DefaultFirstByteTimeout (model pack may wait longer)
+export const CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS = 30_000; // Notify-only fallback; model pack first_byte_timeout_sec may wait longer
+export const CHAT_FIRST_BYTE_NOTIFY_MAX_MS = 90_000;
 export const CHAT_FIRST_BYTE_NOTIFY_DURATION_MS = 8_000; // First byte notice display duration
+
+/** Align the first-byte toast with the selected model pack (e.g. 75s thinking). */
+export function firstByteNotifyThresholdMs(configJson?: string | null): number {
+  const fallback = CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS;
+  if (!configJson) return fallback;
+  try {
+    const parsed = JSON.parse(configJson) as { first_byte_timeout_sec?: unknown };
+    const sec = Number(parsed.first_byte_timeout_sec);
+    if (!Number.isFinite(sec) || sec <= 0) return fallback;
+    const ms = Math.round(sec * 1000);
+    return Math.min(Math.max(ms, fallback), CHAT_FIRST_BYTE_NOTIFY_MAX_MS);
+  } catch {
+    return fallback;
+  }
+}
 
 // ── WebSocket Transport ────────────────────────────────────────────────
 export const WS_MAX_RECONNECT_DELAY_MS = 30_000; // Max reconnect delay

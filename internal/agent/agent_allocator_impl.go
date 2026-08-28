@@ -630,6 +630,14 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for subtask %s", subTask.ID)
 	}
 
+	// Empty domain + clear task words → roster miss, never L3 cold-start
+	// (company-wide 海选). Vague / chit-chat without task signals may still
+	// use Layer 2/3 on the unpruned catalog (NFR-78-06).
+	taskBlob := strings.TrimSpace(subTask.Name + " " + subTask.Description)
+	if biz.HasTaskActionSignal(taskBlob) {
+		return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for subtask %s", subTask.ID)
+	}
+
 	// Layer 2: Semantic match — keyword-based similarity between task and agent capabilities
 	semCap, semScore, semReason := impl.matchLayer2(ctx, subTask, capabilities, traceID, shared)
 	if semScore > 0.3 && semCap.AgentKey != "" {

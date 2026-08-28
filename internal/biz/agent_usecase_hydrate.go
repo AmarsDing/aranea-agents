@@ -37,6 +37,7 @@ func (u *AgentUsecase) hydrateWithExtras(ctx context.Context, agent Agent, skipE
 	agent.Settings = &settings
 	agent.Files = files
 	HydrateAgentKind(&agent)
+	ApplyIntentSkipPolicy(agent.Settings, agent)
 	computed, err := configJSONFromSettings(withSettingDefaults(settings), files)
 	if err != nil {
 		return Agent{}, err

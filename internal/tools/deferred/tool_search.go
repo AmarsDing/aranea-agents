@@ -188,10 +188,16 @@ func (m *DeferredToolManager) RegisterTool(name string, t trpctool.Tool) {
 	m.view.Load().tools[name] = t
 }
 
+// GetTool 返回已注册的延迟工具引用（装配期 RegisterTool 写入）。
+func (m *DeferredToolManager) GetTool(name string) (trpctool.Tool, bool) {
+	t, ok := m.view.Load().tools[name]
+	return t, ok && t != nil
+}
+
 // GetToolDeclaration 返回已注册工具的完整声明。
 // 供 tool_load 在激活成功后返回给模型。
 func (m *DeferredToolManager) GetToolDeclaration(name string) *trpctool.Declaration {
-	if t, ok := m.view.Load().tools[name]; ok && t != nil {
+	if t, ok := m.GetTool(name); ok {
 		return t.Declaration()
 	}
 	return nil

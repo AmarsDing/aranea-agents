@@ -121,6 +121,10 @@ func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) Or
 }
 
 func departmentMatchesDomain(cap biz.AgentCapability, domainPath string, aliases []string) bool {
+	capDomain := NormalizeDomainPath(cap.DomainPath)
+	if capDomain != "" && (specialtyPathCompatible(domainPath, capDomain) || domainPath == capDomain) {
+		return true
+	}
 	if paths := biz.DepartmentDomainPaths(cap.DepartmentKey, cap.DepartmentName); len(paths) > 0 {
 		for _, dp := range paths {
 			norm := NormalizeDomainPath(dp)
@@ -128,7 +132,6 @@ func departmentMatchesDomain(cap biz.AgentCapability, domainPath string, aliases
 				return true
 			}
 		}
-		return false
 	}
 	return matchDepartmentAlias(cap.DepartmentName, cap.DepartmentKey, aliases)
 }

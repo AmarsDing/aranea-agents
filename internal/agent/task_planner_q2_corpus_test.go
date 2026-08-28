@@ -20,11 +20,6 @@ func TestQuickAssess_Q2CampaignCorpus(t *testing.T) {
 
 	forced := map[string]string{
 		"S06-t1": "让数字内容媒体公司市场部出一版 Q3 推广文案框架，含三个渠道。",
-		"S08":   "出一条 30 秒产品宣传短视频的创意脚本框架，下周要用。",
-		// S09-t1 是真实内容规划任务（后续 32 轮直答完成）——判 Moderate
-		// 正确；其 153K 失控根因是下游 llm_mode 组队无证据闸，由
-		// TestPlan_TeamModeEvidenceGate 钉住，不靠压低本门档位解决。
-		"S09-t1": "我们来规划 Q3 的内容运营方案。先搭一个整体框架，包含渠道、节奏、预算三大块，每块简要说明。",
 		"S07-t1": "组织一次新产品上线方案：技术侧给发布计划，内容侧给宣传文案，运营侧给上线 checklist，最后汇总成一份方案。",
 	}
 	simple := map[string]string{
@@ -32,6 +27,12 @@ func TestQuickAssess_Q2CampaignCorpus(t *testing.T) {
 		"S01-问候":   "你好",
 		"S01-天气":   "今天天气怎么样",
 		"S11-漂移":   "对了，你平时喜欢什么音乐",
+		// S08 单交付物直求：有任务信号但不强制组队（组织路由靠管理层
+		// intent_skip=false，不靠 Spirit ForcePlanning）。
+		"S08": "出一条 30 秒产品宣传短视频的创意脚本框架，下周要用。",
+		// S09-t1 自我规划：任务信号走 intent pass；组队证据闸与本门对齐，
+		// 不得 ForcePlanning（153K 失控根因）。
+		"S09-t1": "我们来规划 Q3 的内容运营方案。先搭一个整体框架，包含渠道、节奏、预算三大块，每块简要说明。",
 	}
 	for tag, msg := range forced {
 		level, score, err := impl.QuickAssess(ctx, biz.PlanInput{UserMessage: msg})

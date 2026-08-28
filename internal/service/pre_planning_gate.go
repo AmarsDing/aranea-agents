@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
@@ -89,6 +90,20 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	if forcePlanning && biz.LooksLikeFactQuery(input.UserMessage) {
 		forcePlanning = false
 		reason = fmt.Sprintf("评估完成：%s任务（事实查询，不强制规划）", complexityLevelZh(level))
+	}
+	// 明显直答（荐书/解释/观点）与事实查询同级轻档：即使六维评到
+	// Moderate 也不得强制 plan_and_execute（S11-t5）。任务信号 veto
+	// 已在 LooksLikeDirectAnswer 内完成。
+	if forcePlanning && biz.LooksLikeDirectAnswer(input.UserMessage) {
+		forcePlanning = false
+		reason = fmt.Sprintf("评估完成：%s任务（直答请求，不强制规划）", complexityLevelZh(level))
+	}
+	// 无组队证据的 Moderate 不得强制 plan_and_execute：S09-t1 自我规划、
+	// S08 单交付物会被六维分抬到 Moderate，但组队是重资源承诺。Complex
+	// 仍强制（长研究/多风险）。组队证据由 agent.HasTeamModeEvidence 判断。
+	if forcePlanning && level != biz.ComplexityComplex && !chatagent.HasTeamModeEvidence(input.UserMessage) {
+		forcePlanning = false
+		reason = fmt.Sprintf("评估完成：%s任务（无组队证据，不强制规划）", complexityLevelZh(level))
 	}
 	// 会话阶段抑制（ShouldForcePlanning，基于已持久化团队的事实证据）在
 	// chat_orchestrator_turn.go 消费侧叠加。

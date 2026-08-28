@@ -115,8 +115,13 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 	}
 	metrics.DeferredToolActivationTotal.WithLabelValues(canonical, "success").Inc()
 
-	// 触发 LLM 工具快照失效，下一轮请求即能看到新工具
-	toolsnapshot.InvalidateFromContext(ctx)
+	// 本轮快照已缓存时直接追加，下一次模型请求立刻看见新工具；
+	// 尚无快照则 Invalidate，让下一轮按激活态重建。
+	if live, ok := t.manager.GetTool(canonical); ok && toolsnapshot.AppendFromContext(ctx, live) {
+		// snapshot already carried the new tool
+	} else {
+		toolsnapshot.InvalidateFromContext(ctx)
+	}
 
 	// 构建结果：返回完整声明供模型立即了解 schema
 	desc := ""

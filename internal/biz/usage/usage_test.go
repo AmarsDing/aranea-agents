@@ -57,6 +57,23 @@ func TestMergeUsageSourceMetadata(t *testing.T) {
 	})
 }
 
+func TestMergeWaitMSMetadata(t *testing.T) {
+	if got := MergeWaitMSMetadata(`{"a":1}`, 0, 1000); got != `{"a":1}` {
+		t.Fatalf("zero wait passthrough: %q", got)
+	}
+	got := MergeWaitMSMetadata("{}", 300000, 320000)
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(got), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if payload[MetadataKeyWaitMS] != float64(300000) {
+		t.Fatalf("wait_ms=%v", payload[MetadataKeyWaitMS])
+	}
+	if payload[MetadataKeyModelLatencyMS] != float64(20000) {
+		t.Fatalf("model_latency_ms=%v", payload[MetadataKeyModelLatencyMS])
+	}
+}
+
 func TestNormalizeStatus(t *testing.T) {
 	tests := []struct {
 		name   string

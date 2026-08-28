@@ -83,6 +83,19 @@ func ApplyAssembleOrgFaces(defJSON string, agentKeys []string, graphTemplateID s
 	return string(b)
 }
 
+// ApplyIntentSkipPolicy disables the simple-turn skip fast path for Spirit
+// and governance leads (P-INTENT-SKIP). Task-type messages misclassified as
+// simple must still run intent pass. DirectReply remains a separate
+// deterministic match in shouldSkipIntentPass.
+func ApplyIntentSkipPolicy(s *AgentRuntimeSettings, a Agent) {
+	if s == nil {
+		return
+	}
+	if strings.TrimSpace(a.AgentKey) == SpiritAgentKey || IsOrgGovernanceAgent(a) {
+		s.IntentSkipEnabled = false
+	}
+}
+
 // NormalizeCollectionIDs drops blanks and trims ids.
 func NormalizeCollectionIDs(ids []string) []string {
 	out := make([]string, 0, len(ids))

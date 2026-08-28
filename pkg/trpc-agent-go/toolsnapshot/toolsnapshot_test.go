@@ -17,7 +17,7 @@ func (s *stubTool) Declaration() *tool.Declaration {
 
 func TestInvalidateClearsSnapshot(t *testing.T) {
 	inv := agent.NewInvocation()
-	internalsnapshot.Set(inv, []tool.Tool{&stubTool{name: "a"}}, true)
+	internalsnapshot.Set(inv, []tool.Tool{&stubTool{name: "a"}}, true, []string{"a"})
 	if _, ok := internalsnapshot.Get(inv); !ok {
 		t.Fatal("expected snapshot to be cached before invalidate")
 	}
@@ -34,13 +34,29 @@ func TestInvalidateNilInvocationIsNoop(t *testing.T) {
 	Invalidate(nil) // must not panic
 }
 
+func TestAppendFromContext(t *testing.T) {
+	if AppendFromContext(context.Background(), &stubTool{name: "x"}) {
+		t.Fatal("expected false when ctx carries no invocation")
+	}
+	inv := agent.NewInvocation()
+	internalsnapshot.Set(inv, []tool.Tool{&stubTool{name: "a"}}, true, []string{"a"})
+	ctx := agent.NewInvocationContext(context.Background(), inv)
+	if !AppendFromContext(ctx, &stubTool{name: "b"}) {
+		t.Fatal("expected true when ctx carries an invocation with a snapshot")
+	}
+	got, ok := internalsnapshot.Get(inv)
+	if !ok || len(got) != 2 || got[1].Declaration().Name != "b" {
+		t.Fatalf("expected appended tool in snapshot, got ok=%v n=%d", ok, len(got))
+	}
+}
+
 func TestInvalidateFromContext(t *testing.T) {
 	if InvalidateFromContext(context.Background()) {
 		t.Fatal("expected false when ctx carries no invocation")
 	}
 
 	inv := agent.NewInvocation()
-	internalsnapshot.Set(inv, []tool.Tool{&stubTool{name: "b"}}, false)
+	internalsnapshot.Set(inv, []tool.Tool{&stubTool{name: "b"}}, false, nil)
 	ctx := agent.NewInvocationContext(context.Background(), inv)
 	if !InvalidateFromContext(ctx) {
 		t.Fatal("expected true when ctx carries an invocation")

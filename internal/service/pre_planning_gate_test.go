@@ -56,12 +56,11 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			wantReason: "评估完成：简单任务",
 		},
 		{
-			name:      "moderate forces planning",
+			name:      "moderate without team evidence does not force planning",
 			level:     biz.ComplexityModerate,
 			score:     0.45,
-			wantForce: true,
-			// UI 文案不得泄漏英文枚举值（moderate → 中等）。
-			wantReason: "评估完成：中等任务，强制走规划路径",
+			wantForce: false,
+			wantReason: "评估完成：中等任务（无组队证据，不强制规划）",
 		},
 		{
 			name:       "complex forces planning",
@@ -136,8 +135,9 @@ func TestPrePlanningGate_Evaluate_FactQueryDoesNotForcePlanning(t *testing.T) {
 	}
 }
 
-func TestPrePlanningGate_Evaluate_TaskActionStillForcesPlanning(t *testing.T) {
-	// 含任务动作词的「天气」句 LooksLikeFactQuery=false，Moderate 仍强制规划。
+func TestPrePlanningGate_Evaluate_TaskActionWithoutDispatchDoesNotForcePlanning(t *testing.T) {
+	// 含任务动作词但无组队证据：intent pass 仍跑（shouldSkipIntentPass），
+	// 不得 ForcePlanning（S09-t1 / 单交付物）。
 	bus := &captureEventBus{}
 	gate := NewPrePlanningGate(
 		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
@@ -152,8 +152,48 @@ func TestPrePlanningGate_Evaluate_TaskActionStillForcesPlanning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate error: %v", err)
 	}
+	if decision.ForcePlanning {
+		t.Fatalf("task-action without dispatch must not force planning: %+v", decision)
+	}
+}
+
+func TestPrePlanningGate_Evaluate_DispatchForcesPlanning(t *testing.T) {
+	bus := &captureEventBus{}
+	gate := NewPrePlanningGate(
+		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
+		bus,
+		nil,
+		loggateway.NewNoop(),
+	)
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
+		UserMessage:     "让数字内容媒体公司市场部出一版 Q3 推广文案框架，含三个渠道。",
+		SpiritSessionID: "sess-s06",
+	})
+	if err != nil {
+		t.Fatalf("Evaluate error: %v", err)
+	}
 	if !decision.ForcePlanning {
-		t.Fatalf("task-action weather must still force planning: %+v", decision)
+		t.Fatalf("dispatch signal must force planning: %+v", decision)
+	}
+}
+
+func TestPrePlanningGate_Evaluate_DirectAnswerDoesNotForcePlanning(t *testing.T) {
+	bus := &captureEventBus{}
+	gate := NewPrePlanningGate(
+		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
+		bus,
+		nil,
+		loggateway.NewNoop(),
+	)
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
+		UserMessage:     "推荐三本关于分布式系统的书",
+		SpiritSessionID: "sess-books",
+	})
+	if err != nil {
+		t.Fatalf("Evaluate error: %v", err)
+	}
+	if decision.ForcePlanning {
+		t.Fatalf("direct-answer request must not force planning: %+v", decision)
 	}
 }
 

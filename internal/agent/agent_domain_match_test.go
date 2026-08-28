@@ -274,3 +274,16 @@ func TestMatchSubTask_EmptyDomainPath_LegacyPipeline(t *testing.T) {
 		t.Errorf("AssignedKey = %q, want agent-a", alloc.AssignedKey)
 	}
 }
+
+func TestMatchSubTask_EmptyDomainTaskWords_RosterMiss(t *testing.T) {
+	impl := &agentAllocatorImpl{lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{
+		{AgentKey: "agent-chat", DisplayName: "闲聊助手", Roles: []string{"chat"}},
+	}
+	_, err := impl.matchSubTask(context.Background(), biz.SubTask{
+		ID: "st_miss", Name: "排查告警并生成巡检报告", Description: "核对昨天的数据",
+	}, caps, "trace-empty-task")
+	if err == nil {
+		t.Fatal("empty domain + task words must roster-miss, not L3 cold-start")
+	}
+}

@@ -174,9 +174,28 @@ type ActivityEmitter interface {
 	// EmitConfirmResult updates a confirm Activity with the user's response.
 	EmitConfirmResult(ctx context.Context, activityID string, approved bool) error
 	// EmitConfirmTimeout marks a confirm Activity as timed out (cancelled with
-	// ToolErrorCode=confirm_timeout) so the UI can distinguish "user rejected"
-	// from "no response before the deadline".
+	// ToolErrorCode=confirm_timeout, or confirm_timeout_retry when ctx was
+	// wrapped by WithConfirmTimeoutRetrying). The UI distinguishes "user
+	// rejected" from "no response" and "re-issued, not silently cancelled".
 	EmitConfirmTimeout(ctx context.Context, activityID string) error
+}
+
+type confirmTimeoutRetryKey struct{}
+
+// WithConfirmTimeoutRetrying marks the next EmitConfirmTimeout as a retryable
+// first-wait expiry. The projector sets ToolErrorCode=confirm_timeout_retry so
+// the confirm card can say "re-issued" instead of looking like a silent cancel.
+func WithConfirmTimeoutRetrying(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, confirmTimeoutRetryKey{}, true)
+}
+
+// ConfirmTimeoutRetrying reports whether ctx carries WithConfirmTimeoutRetrying.
+func ConfirmTimeoutRetrying(ctx context.Context) bool {
+	v, _ := ctx.Value(confirmTimeoutRetryKey{}).(bool)
+	return v
 }
 
 // activityEmitterKey is the context key for ActivityEmitter.

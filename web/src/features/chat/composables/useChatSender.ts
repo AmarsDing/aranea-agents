@@ -23,8 +23,8 @@ import {
   CHAT_RUN_STALL_CHECK_INTERVAL_MS,
   CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS,
   CHAT_STALL_NOTIFY_DURATION_MS,
-  CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS,
   CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
+  firstByteNotifyThresholdMs,
 } from '../../constants/timeouts';
 
 import type { RunStatusValue } from '../types';
@@ -67,6 +67,7 @@ export type SenderDeps = {
         provider: string;
         model: string;
         capabilities?: { vision?: boolean; image?: boolean; text_only?: boolean };
+        config_json?: string;
       }
     | undefined
   >;
@@ -166,7 +167,7 @@ export function useChatSender(deps: SenderDeps) {
         });
         clearFirstByteNotice();
       }
-    }, CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS);
+    }, firstByteNotifyThresholdMs(deps.selectedProviderModel.value?.config_json));
   }
 
   function touchRunActivity() {

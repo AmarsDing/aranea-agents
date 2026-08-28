@@ -528,6 +528,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			tools = append(tools, o.memoryRememberTools(ag)...)
 			tools = append(tools, o.deliverableReaderTools()...)
 			tools = append(tools, o.memberFSDeptMailTools(ag)...)
+			tools = append(tools, o.orgInspectTools(ag)...)
 			tools = append(tools, o.sessionAccessTools(ag)...)
 			return tools
 		},

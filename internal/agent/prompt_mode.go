@@ -74,11 +74,15 @@ func skillOptionsForPromptMode(mode string) (trpcllmagent.SkillToolProfile, bool
 func skillOptionsForAgent(ag biz.Agent) (trpcllmagent.SkillToolProfile, bool) {
 	if ag.Settings != nil {
 		switch strings.ToLower(strings.TrimSpace(ag.Settings.ToolsProfile)) {
-		case "spirit", "chat_only", "read_only":
+		case "coding":
+			return skillOptionsForPromptMode(ag.SystemPromptMode)
+		case "spirit", "chat_only", "read_only", "minimal", "research":
 			return trpcllmagent.SkillToolProfileKnowledgeOnly, false
 		}
 	}
-	return skillOptionsForPromptMode(ag.SystemPromptMode)
+	// 岗位默认 complete 模式不再挂载 skill_exec/run/stdin/poll（C6 之后最大
+	// 单次杠杆，~7.3K）。未标 coding 的 profile（含 nil settings）一律只读。
+	return trpcllmagent.SkillToolProfileKnowledgeOnly, false
 }
 
 // allowedSkillToolsForAgent returns an explicit skill-tool allowlist, or nil

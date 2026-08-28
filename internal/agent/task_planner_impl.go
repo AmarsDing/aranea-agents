@@ -597,19 +597,18 @@ func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput)
 		)
 	}
 
-	// Task-action-signal override（包C Q2 统一信号源，session-eval-20260827）：
-	// 含任务动作信号的消息是工作请求，不得判 simple。原包B B2 词表
-	// taskRequestWords 已与 biz.taskActionPatterns 合并并叠加模式族（动词+
-	// 量词/交付物共现/派发句式）——skip 门（shouldSkipIntentPass）与本门
-	// 消费同一 biz.HasTaskActionSignal，根除双词表漂移（S06/S08「出一版/
-	// 出一条…文案/脚本框架」confident_simple 误判即漂移产物）。
-	// 宁重勿轻（R4）：闲聊命中任务信号的概率极低，误升代价仅一次 intent pass。
-	if level == biz.ComplexitySimple && biz.HasTaskActionSignal(input.UserMessage) {
+	// Team-mode-evidence override（P0 档位，session-eval-20260827 F2 纠偏）：
+	// ForcePlanning 会走 plan_and_execute，成本远高于一次 intent pass。
+	// 任务动作词（HasTaskActionSignal）只禁止 skip intent——由
+	// shouldSkipIntentPass 消费；本门只在有组队结构证据时升级 Moderate
+	// （派发句式/组队关键词/组织链）。否则 S09-t1「我们来规划内容框架」
+	// 与 S08「出一条脚本」会被误强制组队（181s / 153K）。
+	if level == biz.ComplexitySimple && hasTeamModeEvidence(input.UserMessage) {
 		level = biz.ComplexityModerate
 		if score < 0.3 {
 			score = 0.3
 		}
-		impl.lg.Info("QuickAssess 命中任务动作信号，升级复杂度以触发规划",
+		impl.lg.Info("QuickAssess 命中组队证据，升级复杂度以触发规划",
 			loggateway.StepID(biz.SpiritStepPlannerAssess),
 			loggateway.Float64("complexity_score", score),
 		)
@@ -1159,10 +1158,9 @@ func detectTeamCount(message string) int {
 // demand.
 var explicitToolRequestPattern = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}`)
 
-// taskRequestWords 已并入 biz.taskActionPatterns（包C Q2 统一信号源，
-// 2026-08-27）——平铺词表无法覆盖能产结构（S06/S08 误判），且与
-// shouldSkipIntentPass 消费的 biz 词表构成漂移双源。QuickAssess 第三
-// override 现消费 biz.HasTaskActionSignal。
+// taskRequestWords 已并入 biz.taskActionPatterns。QuickAssess 第三
+// override 消费 hasTeamModeEvidence（组队才 ForcePlanning）；任务动作词
+// 只进 shouldSkipIntentPass，不再单独抬档。
 
 // teamFormationFlexPattern matches team-formation verbs with a short filler
 // (quantity / measure word) before 团队/team, e.g. "组建几个团队".
@@ -1236,6 +1234,13 @@ func detectTeamIntent(message string) string {
 		}
 	}
 	return ""
+}
+
+// HasTeamModeEvidence reports whether the message carries structural evidence
+// for team-forming modes (parallel/dag). Exported for PrePlanningGate so
+// ForcePlanning and Plan() share one discriminator.
+func HasTeamModeEvidence(msg string) bool {
+	return hasTeamModeEvidence(msg)
 }
 
 // hasTeamModeEvidence 报告消息是否携带组队模式（parallel/dag）的结构性

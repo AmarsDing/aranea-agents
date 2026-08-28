@@ -16,5 +16,5 @@ func (s *ChatService) recordTurnUsage(
 	latency time.Duration,
 	errMsg string,
 ) {
-	s.orch.recordTurnUsage(ctx, emitter, sessionID, runID, agentKey, agentID, prov, mod, status, promptTok, completionTok, cachedTok, usageSource, 0, latency, errMsg)
+	s.orch.recordTurnUsage(ctx, emitter, sessionID, runID, agentKey, agentID, prov, mod, status, promptTok, completionTok, cachedTok, usageSource, 0, latency, errMsg, 0, 0)
 }

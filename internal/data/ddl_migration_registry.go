@@ -548,6 +548,10 @@ var ddlMigrations = []ddlMigration{
 	// 20261269 runtime_cost_defaults（Wave 2）：ReplyReminder 存量 DEFAULT 1
 	// 回填 0（记忆管家除外）；L3 provenance 非 __memory__ 回填关。幂等 UPDATE。
 	{Version: 20261269, Name: "runtime_cost_defaults", SQL: "sql/migrations/20261269_runtime_cost_defaults.sql"},
+	// 20261270 intent_skip_governance（P0 档位）：Spirit + GM + dept_lead 关闭
+	// simple-turn skip。存量 DEFAULT 1 导致管理层任务被 confident_simple 短路
+	// （S06/S08）。幂等 UPDATE。
+	{Version: 20261270, Name: "intent_skip_governance", SQL: "sql/migrations/20261270_intent_skip_governance.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

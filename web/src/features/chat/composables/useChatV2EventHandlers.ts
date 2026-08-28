@@ -15,6 +15,7 @@ import type {
   V2WsEnvelope,
   SystemNoticeEventPayload,
   RunStatusEventPayload,
+  HeartbeatEventPayload,
   SkillCatalogEventPayload,
 } from '../v2Types';
 
@@ -29,7 +30,11 @@ export function useChatV2EventHandlers(deps: {
   sender: { sending: { value: boolean }; markSendingDone: () => void };
   followUp: { onRunStatusV2: (payload: RunStatusEventPayload) => void };
   applyFromV2RunStatus: (payload: RunStatusEventPayload) => void;
-  contextualLoading: { onSpiritNoticeType: (noticeType: string) => void; clearMessage: () => void };
+  contextualLoading: {
+    onSpiritNoticeType: (noticeType: string) => void;
+    onRunHeartbeat: (payload: HeartbeatEventPayload) => void;
+    clearMessage: () => void;
+  };
   streamManager: { ensureTeamStream: (sid: string) => void; ensureChatStream: (sid: string) => void };
 }) {
   const sessionStore = useChatSessionStore();
@@ -62,8 +67,7 @@ export function useChatV2EventHandlers(deps: {
       return;
     }
     if (envelope.kind === 'system.heartbeat') {
-      // Acknowledged but no side-effect routing needed yet.
-      // system.heartbeat carries progress metadata for a future heartbeat display.
+      deps.contextualLoading.onRunHeartbeat(envelope.payload as HeartbeatEventPayload);
       return;
     }
     // Design 69 Phase 3: skill.catalog carries the agent-visible skill list

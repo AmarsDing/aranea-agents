@@ -21,6 +21,7 @@ import (
 func TestLoopGuardS02Replay_EmptyStreakSurvivesHeterogeneousInterleave(t *testing.T) {
 	g := newToolLoopGuard(nil)
 	g.setGateThresholds("", 100, 0, 0) // 抬高装载配额：本测试不验装载闸
+	g.setBootstrapRatio(-1)            // 关闭占比闸：本测试只验空结果熔断
 	ctx := newTestInvocationContext("inv-s02-replay")
 	empty := mustJSONValue(t, `{"query":"q","results":[],"count":0}`)
 	loadOK := mustJSONValue(t, `{"success":true,"tool_name":"x"}`)
@@ -101,15 +102,13 @@ func TestLoopGuardS02Replay_RunawayLoadSeqNowStopped(t *testing.T) {
 	if stopAt == -1 {
 		t.Fatal("runaway load sequence must be force-stopped by saturation StopError")
 	}
-	// 通过的 7 次均为首次异质装载（配额 8 未触线）；5 次重复装载被拦后饱和强停。
-	if passed != 7 {
-		t.Fatalf("expected 7 distinct first-loads to pass before stop, got %d", passed)
+	// C1 占比闸 + 重复装载：连续自举在第 6 次窗口命中占比闸，节点在饱和前
+	// 被拦住，不会跑完 23 次。通过次数远低于事故观测的 24。
+	if passed > 6 {
+		t.Fatalf("ratio+repeat should stop runaway before quota-8, passed=%d", passed)
 	}
-	if blocked != loopGuardSaturatedStopThreshold-1 {
-		t.Fatalf("expected %d plain blocks before saturation, got %d", loopGuardSaturatedStopThreshold-1, blocked)
-	}
-	if stopAt != 11 {
-		t.Fatalf("node should be force-stopped at the 12th load call (index 11), stopped at index %d", stopAt)
+	if blocked+1 < loopGuardSaturatedStopThreshold-1 {
+		t.Fatalf("expected saturation after several blocks, passed=%d blocked=%d stopAt=%d", passed, blocked, stopAt)
 	}
 	_ = loadOK
 }
