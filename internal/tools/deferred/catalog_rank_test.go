@@ -57,6 +57,19 @@ func TestRankCatalogEntries_SubwordMatch(t *testing.T) {
 	}
 }
 
+func TestRankCatalogEntries_IdentifierQueryDoesNotBleedSubword(t *testing.T) {
+	// tool_search("knowledge_search …") must not rank search_messages via the
+	// shared "search" subword inside the identifier token.
+	catalog := []DeferredToolEntry{
+		{Name: "search_messages", BaseName: "search_messages", Description: "Search chat messages", Category: "memory"},
+		{Name: "file_save_file", BaseName: "save_file", Description: "Save content to a file", Category: "file"},
+	}
+	got := RankCatalogEntries(catalog, "knowledge_search 知识库查询", 3)
+	if len(got) != 0 {
+		t.Fatalf("identifier query must not subword-bleed, got %v", got)
+	}
+}
+
 func TestRankCatalogEntries_ShortTokenNoiseGuard(t *testing.T) {
 	// 短虚词（<3 runes）不参与子串匹配："me" 不得子串命中 category
 	// "runtime"，"go" 不得子串命中 name "golang"。精确等值不受限。

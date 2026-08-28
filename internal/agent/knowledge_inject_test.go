@@ -15,6 +15,21 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
+func TestAgentHasKnowledgeSearch(t *testing.T) {
+	if agentHasKnowledgeSearch(biz.Agent{Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit"}}) {
+		t.Fatal("spirit orchestrator must not expose knowledge_search")
+	}
+	if !agentHasKnowledgeSearch(biz.Agent{Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "coding"}}) {
+		t.Fatal("coding profile includes knowledge_search")
+	}
+	if agentHasKnowledgeSearch(biz.Agent{Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}}) {
+		t.Fatal("read_only must not include knowledge_search")
+	}
+	if !agentHasKnowledgeSearch(biz.Agent{Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit", ToolsAllowJSON: `["knowledge_search"]`}}) {
+		t.Fatal("explicit allow JSON must opt in")
+	}
+}
+
 func TestLastUserQuery_SkipsToolLoop(t *testing.T) {
 	if got := lastUserQuery([]trpcmodel.Message{
 		trpcmodel.NewSystemMessage("sys"),
@@ -40,6 +55,7 @@ func TestFormatKnowledgeCue_RetrievedPassages(t *testing.T) {
 	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
+		true,
 		true,
 		false,
 		false,
@@ -70,6 +86,7 @@ func TestFormatKnowledgeCue_CitationNumbersSkipEmpty(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 	)
 	if !strings.Contains(got, "[1] (doc=d1") || !strings.Contains(got, "[2] (doc=d3") {
 		t.Fatalf("cue numbering: %s", got)
@@ -87,11 +104,41 @@ func TestFormatKnowledgeCue_CatalogOnly(t *testing.T) {
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", Description: "手册", DocumentCount: 1, ChunkCount: 2}},
 		nil,
 		true,
+		true,
 		false,
 		false,
 	)
-	if got != "" {
-		t.Fatalf("empty retrieval must not inject catalog/search tips, got %s", got)
+	if !strings.Contains(got, "knowledge_search") || !strings.Contains(got, "knowledge_reflect") {
+		t.Fatalf("empty retrieval + KB tools must name resident tools, got %s", got)
+	}
+	if !strings.Contains(got, "already on your tool face") {
+		t.Fatalf("KB-tool face must say tools are already available, got %s", got)
+	}
+	if strings.Contains(got, "Available Knowledge Bases") || strings.Contains(got, "产品手册") {
+		t.Fatalf("empty retrieval must not dump catalog, got %s", got)
+	}
+	if strings.Contains(got, "Search strategy tips") || strings.Contains(got, "For specific factual") {
+		t.Fatalf("empty retrieval must not inject strategy tips, got %s", got)
+	}
+	spirit, _ := formatKnowledgeCue(
+		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", Description: "手册", DocumentCount: 1, ChunkCount: 2}},
+		nil,
+		true,
+		false,
+		false,
+		false,
+	)
+	if !strings.Contains(spirit, "not on your tool face") {
+		t.Fatalf("Spirit empty retrieval must not-hunt, got %s", spirit)
+	}
+	if strings.Contains(spirit, "Call `knowledge_search`") {
+		t.Fatalf("Spirit must not be told to call knowledge_search, got %s", spirit)
+	}
+	if strings.Contains(spirit, "web_fetch") == false {
+		t.Fatalf("Spirit empty retrieval must forbid web_fetch substitute, got %s", spirit)
+	}
+	if got, _ := formatKnowledgeCue(nil, nil, true, true, false, false); got != "" {
+		t.Fatalf("no collections must stay empty, got %q", got)
 	}
 }
 
@@ -101,6 +148,7 @@ func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
 	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
+		false,
 		false,
 		false,
 		false,
@@ -121,6 +169,7 @@ func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 	); got != "" {
 		t.Fatalf("tools-off + no chunks must yield empty cue, got %q", got)
 	}
@@ -130,6 +179,7 @@ func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
 	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
+		true,
 		true,
 		true,
 		false,
@@ -145,6 +195,7 @@ func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
 		nil,
 		true,
 		true,
+		true,
 		false,
 	)
 	if !strings.Contains(emptyTools, "Do not use world knowledge") {
@@ -156,6 +207,7 @@ func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
 	emptyNoTools, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
 		nil,
+		false,
 		false,
 		true,
 		false,
@@ -172,6 +224,7 @@ func TestFormatKnowledgeCue_MemoryGroundedSuppressesCatalog(t *testing.T) {
 	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "eval-ops-kb", DocumentCount: 5, ChunkCount: 12}},
 		nil,
+		true,
 		true,
 		false,
 		true,
@@ -191,6 +244,7 @@ func TestFormatKnowledgeCue_MemoryGroundedKeepsPassagesWithoutCatalog(t *testing
 	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "eval-ops-kb", DocumentCount: 5, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9%。", Score: 0.9}},
+		true,
 		true,
 		false,
 		true,
@@ -346,7 +400,7 @@ func TestResolveKnowledgeCue_TurnCache(t *testing.T) {
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
 	msgs := []trpcmodel.Message{trpcmodel.NewUserMessage("什么是 SLA")}
-	cue1, _, fresh := resolveKnowledgeCue(ctx, uc, lg, msgs, true, false)
+	cue1, _, fresh := resolveKnowledgeCue(ctx, uc, lg, msgs, true, true, false)
 	if !fresh {
 		t.Fatal("first call in a turn must build fresh")
 	}
@@ -356,7 +410,7 @@ func TestResolveKnowledgeCue_TurnCache(t *testing.T) {
 
 	// 工具循环续轮：尾部 assistant 消息 → lastUserQuery=="" → 命中缓存。
 	loopMsgs := append(msgs, trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "calling tool"})
-	cue2, _, fresh := resolveKnowledgeCue(ctx, uc, lg, loopMsgs, true, false)
+	cue2, _, fresh := resolveKnowledgeCue(ctx, uc, lg, loopMsgs, true, true, false)
 	if fresh {
 		t.Fatal("tool-loop continuation must reuse the turn cache")
 	}
@@ -369,7 +423,7 @@ func TestResolveKnowledgeCue_TurnCache(t *testing.T) {
 
 	// 查询变化（新 user 消息）→ 缓存失效，重新构建。
 	changed := append(loopMsgs, trpcmodel.NewUserMessage("换个话题"))
-	if _, _, fresh = resolveKnowledgeCue(ctx, uc, lg, changed, true, false); !fresh {
+	if _, _, fresh = resolveKnowledgeCue(ctx, uc, lg, changed, true, true, false); !fresh {
 		t.Fatal("query change must trigger a fresh build")
 	}
 	if repo.listCalls != 2 {
@@ -377,7 +431,7 @@ func TestResolveKnowledgeCue_TurnCache(t *testing.T) {
 	}
 
 	// 无 invocation（单测/异常路径）→ 每次 fresh，保持旧行为。
-	if _, _, fresh = resolveKnowledgeCue(context.Background(), uc, lg, msgs, true, false); !fresh {
+	if _, _, fresh = resolveKnowledgeCue(context.Background(), uc, lg, msgs, true, true, false); !fresh {
 		t.Fatal("no invocation context must stay fresh (legacy behavior)")
 	}
 }
@@ -389,7 +443,7 @@ func TestResolveKnowledgeCue_UsesPrefetch(t *testing.T) {
 		cue:   "## Retrieved Knowledge\nprefetched",
 	}}
 	ctx := WithTurnCuePrefetch(context.Background(), prefetch)
-	cue, _, fresh := resolveKnowledgeCue(ctx, nil, loggateway.NewNoop(), []trpcmodel.Message{trpcmodel.NewUserMessage("什么是 SLA")}, true, false)
+	cue, _, fresh := resolveKnowledgeCue(ctx, nil, loggateway.NewNoop(), []trpcmodel.Message{trpcmodel.NewUserMessage("什么是 SLA")}, true, true, false)
 	if !fresh {
 		t.Fatal("prefetch consume is the first real inject")
 	}

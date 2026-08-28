@@ -23,6 +23,18 @@ const (
 	knowledgeCueChunkChars     = 280
 	knowledgeCueTopK           = 4
 	knowledgeCueSearchTimeout  = 2 * time.Second
+
+	// emptyRetrievalToolPointer is for agents that actually have knowledge_search
+	// (coding/research/full). Catalog + strategy tips caused 157+ empty loops;
+	// returning "" then made Spirit tool_search and load search_messages
+	// (session-eval-0828-docker S03-t2).
+	emptyRetrievalToolPointer = "## Retrieved Knowledge\n" +
+		"Pre-retrieval found no passages. Call `knowledge_search` (omit collection_id) or `knowledge_reflect` for multi-collection. Do not use `tool_search` or `tool_load` to discover those tools — they are already on your tool face. If search also returns nothing, say the knowledge base has no evidence. Do not retry empty searches with rephrased queries.\n"
+
+	// emptyRetrievalNoHuntPointer is for Spirit / faces without knowledge_search.
+	// Naming the tool here recreates the tool_search hunt; web_fetch is not a KB.
+	emptyRetrievalNoHuntPointer = "## Retrieved Knowledge\n" +
+		"Pre-retrieval found no passages. `knowledge_search` is not on your tool face this turn. Do not use `tool_search` or `tool_load` to look for it. Do not use `web_fetch` as a substitute for the knowledge base. If injected memory does not answer, say the knowledge base has no matching evidence. Do not invent SOP or procedure content.\n"
 )
 
 func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
@@ -33,12 +45,13 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	// agent 仍可获得预检索命中的 chunks；仅"调用 knowledge_search 继续检索"
 	// 的引导文案依赖工具开关（见 buildKnowledgeCue/formatKnowledgeCue）。
 	toolsEnabled := ag.Settings != nil && ag.Settings.ToolsEnabled
+	kbTools := agentHasKnowledgeSearch(ag)
 	groundedOnly := biz.ParseAgentKnowledgeConfig(ag.ConfigJSON).GroundedOnly
 	return callbacks.NewBeforeModelHook(6, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue, cited, fresh := resolveKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled, groundedOnly)
+		cue, cited, fresh := resolveKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled, kbTools, groundedOnly)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -71,7 +84,7 @@ type knowledgeCueTurnCache struct {
 // （结果已写入 per-turn 缓存）；false 表示复用缓存。工具循环续轮
 // （lastUserQuery==""，最新非固定消息是 assistant/tool）直接复用首轮缓存；
 // 无 invocation 上下文时（单测/异常路径）退化为每轮 fresh 构建，保持旧行为。
-func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled, groundedOnly bool) (string, []biz.KnowledgeChunk, bool) {
+func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled, kbTools, groundedOnly bool) (string, []biz.KnowledgeChunk, bool) {
 	query := lastUserQuery(msgs)
 	if query != "" {
 		// P1-2（2026-08-16）：检索查询与记忆召回同口径清洗（去客套前缀/多句
@@ -94,10 +107,10 @@ func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg logga
 		return cue, cited, true
 	}
 	if !ok || inv == nil {
-		cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
+		cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, kbTools, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
 		return cue, cited, true
 	}
-	cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
+	cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, kbTools, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
 	inv.SetState(knowledgeCueTurnCacheStateKey, &knowledgeCueTurnCache{query: query, cue: cue, cited: cited})
 	return cue, cited, true
 }
@@ -113,7 +126,7 @@ func knowledgeCueFromPrefetch(ctx context.Context, query string) (string, []biz.
 	return p.knowledge.cue, p.knowledge.cited, true
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, query string, toolsEnabled, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, query string, toolsEnabled, kbTools, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	// C-01 回填：目录枚举按调用方 workspace 过滤（system 见全部）——
@@ -129,7 +142,7 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	if query != "" {
 		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
 	}
-	return formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly, memoryGrounded)
+	return formatKnowledgeCue(filtered, chunks, toolsEnabled, kbTools, groundedOnly, memoryGrounded)
 }
 
 // cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、
@@ -230,9 +243,11 @@ func retrieveCueChunks(ctx context.Context, query string, scoped []string, catal
 
 // formatKnowledgeCue 渲染知识 cue。toolsEnabled=false 时只渲染预检索命中的
 // chunks（不输出工具引导文案与目录——agent 无法调用检索工具，列出可搜库
-// 只会误导）；此时若无命中 chunks 则不注入。groundedOnly 时禁止用世界知识，
-// 无命中也注入拒答指令。P3-2：整体预算按块/条目边界截断。
-func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {
+// 只会误导）；此时若无命中 chunks 则不注入。kbTools 表示本轮工具面含
+// knowledge_search（coding/research/full）；Spirit 编排面不含该工具，点名
+// 会诱发 tool_search 猎取。groundedOnly 时禁止用世界知识，无命中也注入拒答
+// 指令。P3-2：整体预算按块/条目边界截断。
+func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, kbTools, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {
 	rendered := cueRenderedChunks(chunks)
 	if memoryGrounded {
 		// P0（2026-08-21）：本轮已注入 L3 时不再列出知识库目录——目录+「去搜」
@@ -255,19 +270,34 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		filtered = nil
 	}
 	if memoryGrounded && len(rendered) == 0 {
-		return "## Retrieved Knowledge\n" +
-			"Matching memory facts were already injected this turn (see ## L2+L3 memory). Answer from those facts. Do not call `knowledge_search` unless they cannot answer the question. If search also returns nothing, say you do not have that record. Do not invent names, report IDs, brands, phone numbers, or personal preferences.\n", nil
+		note := "## Retrieved Knowledge\n" +
+			"Matching memory facts were already injected this turn (see ## L2+L3 memory). Answer from those facts."
+		if kbTools {
+			note += " Do not call `knowledge_search` unless they cannot answer the question. If search also returns nothing, say you do not have that record."
+		} else {
+			note += " Do not use `tool_search` to look for `knowledge_search`. If memory cannot answer, say you do not have that record."
+		}
+		note += " Do not invent names, report IDs, brands, phone numbers, or personal preferences.\n"
+		return note, nil
 	}
 	if len(filtered) == 0 && len(chunks) == 0 && !groundedOnly {
 		return "", nil
 	}
 	if groundedOnly && len(rendered) == 0 && toolsEnabled {
+		if kbTools {
+			return "## Retrieved Knowledge\n" +
+				"Pre-retrieval found no passages. You may call `knowledge_search` or `knowledge_reflect`. If those also return nothing, say the knowledge base has no evidence. Do not use world knowledge.\n", nil
+		}
 		return "## Retrieved Knowledge\n" +
-			"Pre-retrieval found no passages. You may call `knowledge_search` or `knowledge_reflect`. If those also return nothing, say the knowledge base has no evidence. Do not use world knowledge.\n", nil
+			"Pre-retrieval found no passages. Say the knowledge base has no evidence. Do not use `tool_search` to look for `knowledge_search`. Do not use world knowledge.\n", nil
 	}
 	if len(rendered) == 0 && !groundedOnly {
-		// Empty retrieval must not advertise knowledge_search — catalog +
-		// "go search" fed 157+ empty-result model calls (tool_loop_guard).
+		if toolsEnabled && len(filtered) > 0 {
+			if kbTools {
+				return emptyRetrievalToolPointer, nil
+			}
+			return emptyRetrievalNoHuntPointer, nil
+		}
 		return "", nil
 	}
 
@@ -290,13 +320,15 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 			"The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge."
 		if groundedOnly {
 			header += " Use ONLY these passages. If they do not answer the question, say the knowledge base has no evidence. Do not use world knowledge."
-			if toolsEnabled {
+			if kbTools {
 				header += " You may call `knowledge_search` or `knowledge_reflect` for more passages from the knowledge base, then refuse if still insufficient."
 			}
-		} else if toolsEnabled && !memoryGrounded {
+		} else if kbTools && !memoryGrounded {
 			header += " If they are insufficient, call `knowledge_search` or `knowledge_reflect`."
-		} else if toolsEnabled && memoryGrounded {
+		} else if kbTools && memoryGrounded {
 			header += " Prefer injected L2+L3 memory over these passages when they conflict. Call `knowledge_search` only if neither answers."
+		} else if toolsEnabled && !kbTools {
+			header += " If they are insufficient, say the knowledge base has no further evidence. Do not use `tool_search` to look for `knowledge_search`."
 		}
 		writeBlock(header + "\n\n")
 		for i, ch := range rendered {
@@ -311,7 +343,7 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		}
 	}
 
-	if len(filtered) > 0 {
+	if len(filtered) > 0 && kbTools {
 		writeBlock("## Available Knowledge Bases\n")
 		if len(chunks) == 0 {
 			writeBlock("The following knowledge bases are available for search. Use `knowledge_search` to search a specific collection, or `knowledge_reflect` to search across multiple collections and evaluate result quality.\n\n")
@@ -348,4 +380,27 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 	}
 
 	return b.String(), cited
+}
+
+// agentHasKnowledgeSearch reports whether this agent's tool face includes
+// knowledge_search. Spirit is orchestrator-only (org invariant) and must not
+// be told to call a specialist tool.
+func agentHasKnowledgeSearch(ag biz.Agent) bool {
+	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
+		return false
+	}
+	deny := strings.ToLower(ag.Settings.ToolsDenyJSON)
+	if strings.Contains(deny, "knowledge_search") {
+		return false
+	}
+	allow := strings.ToLower(ag.Settings.ToolsAllowJSON)
+	if strings.Contains(allow, "knowledge_search") || strings.Contains(allow, "knowledge_reflect") {
+		return true
+	}
+	switch biz.CanonicalToolProfile(ag.Settings.ToolsProfile) {
+	case "coding", "research", "full":
+		return true
+	default:
+		return false
+	}
 }

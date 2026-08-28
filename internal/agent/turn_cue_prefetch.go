@@ -65,6 +65,7 @@ func PrefetchTurnCues(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, u
 		query = cleanRecallQuery(query)
 	}
 	toolsEnabled := ag.Settings != nil && ag.Settings.ToolsEnabled
+	kbTools := agentHasKnowledgeSearch(ag)
 	groundedOnly := biz.ParseAgentKnowledgeConfig(ag.ConfigJSON).GroundedOnly
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	biz.ClampSpecialistL3Scopes(&policy, ag)
@@ -76,7 +77,7 @@ func PrefetchTurnCues(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, u
 			if lg == nil {
 				lg = loggateway.NewNoop()
 			}
-			cue, cited := buildKnowledgeCue(egCtx, deps.KnowledgeUsecase, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(egCtx))
+			cue, cited := buildKnowledgeCue(egCtx, deps.KnowledgeUsecase, lg, query, toolsEnabled, kbTools, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(egCtx))
 			if cue != "" {
 				out.knowledge = &prefetchedKnowledgeCue{query: query, cue: cue, cited: cited}
 			}

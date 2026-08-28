@@ -1,10 +1,11 @@
 -- Version 20261270: intent_skip_enabled=false for Spirit + governance leads
--- (P0 P-INTENT-SKIP). Column default remains 1 for ordinary agents; management
+-- (P0 P-INTENT-SKIP). Column default remains true for ordinary agents; management
 -- agents must not skip intent pass when QuickAssess mis-labels a task simple.
--- INTEGER 0/1. Idempotent UPDATE.
+-- Boolean column: TRUE/FALSE (Postgres bool cannot compare to integer 0/1).
+-- Idempotent UPDATE.
 UPDATE agent_runtime_settings
-SET intent_skip_enabled = 0
-WHERE intent_skip_enabled != 0
+SET intent_skip_enabled = FALSE
+WHERE intent_skip_enabled IS TRUE
   AND agent_id IN (
     SELECT id FROM agents
     WHERE deleted_at = ''

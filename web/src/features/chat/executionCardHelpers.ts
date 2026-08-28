@@ -20,6 +20,9 @@ export interface ExecutionCollapseControl {
   orchestrationProgressText?: Readonly<Ref<string>>;
 }
 
+export const EXECUTION_COLLAPSE_CONTROL_KEY: InjectionKey<ExecutionCollapseControl> =
+  Symbol('ExecutionCollapseControl');
+
 export function isPlanAndExecuteTool(toolName: string | undefined | null): boolean {
   const name = toolName?.trim() ?? '';
   return name === 'plan_and_execute' || name.endsWith('_plan_and_execute');

@@ -64,9 +64,14 @@ func scoreEntryAgainstQuery(entry DeferredToolEntry, queryLower string, tokens [
 			}
 		}
 	}
-	for _, word := range nameSubwords(entry.Name) {
-		if strings.Contains(queryLower, word) {
-			score += subwordBonus
+	// Subword back-ref is for natural language ("please save this" → file_save_file).
+	// Identifier queries must not bleed: "knowledge_search" contains "search" and
+	// otherwise ranks search_messages (session-eval-0828-docker S03-t2).
+	if !queryHasIdentifierToken(tokens) {
+		for _, word := range nameSubwords(entry.Name) {
+			if strings.Contains(queryLower, word) {
+				score += subwordBonus
+			}
 		}
 	}
 	if stats.n > 0 {
@@ -157,6 +162,17 @@ func bm25Field(docTokens, queryTokens []string, stats catalogStats, weight float
 // matchableSubstring 报告 token 是否适合子串匹配（≥3 runes）。
 func matchableSubstring(token string) bool {
 	return len([]rune(token)) >= 3
+}
+
+// queryHasIdentifierToken reports a snake/kebab tool-name in the query
+// (tool_search("knowledge_search …") must not subword-match search_messages).
+func queryHasIdentifierToken(tokens []string) bool {
+	for _, tok := range tokens {
+		if strings.Contains(tok, "_") || strings.Contains(tok, "-") {
+			return true
+		}
+	}
+	return false
 }
 
 // nameSubwords 将工具名按非字母数字拆分为子词，过滤短词（防误命中）。

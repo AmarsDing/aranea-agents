@@ -70,6 +70,9 @@ func SkipForDirectReply(userText string) bool {
 	if biz.HasTaskActionSignal(t) {
 		return false
 	}
+	if looksLikeBareGreeting(t) {
+		return true
+	}
 	if biz.LooksLikeFactQuery(t) {
 		return true
 	}
@@ -77,6 +80,18 @@ func SkipForDirectReply(userText string) bool {
 		if strings.Contains(t, p) {
 			return true
 		}
+	}
+	return false
+}
+
+// looksLikeBareGreeting reports a turn that is only a hello — not "你好，帮我写周报".
+// Contains("你好") would skip almost every polite task opener.
+func looksLikeBareGreeting(t string) bool {
+	t = strings.Trim(t, "。.!！?？~～、,， ")
+	switch t {
+	case "你好", "您好", "嗨", "哈喽", "早上好", "晚上好", "下午好", "在吗", "在么", "在不在",
+		"hi", "hello", "hey", "yo", "good morning", "good evening", "good afternoon":
+		return true
 	}
 	return false
 }
