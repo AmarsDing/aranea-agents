@@ -238,10 +238,18 @@ func contextCompressionEnabledForAgent(ag biz.Agent) bool {
 // hardTriggerRatioForAgent resolves the emergency-truncation threshold from
 // per-agent settings, mirroring CompressPolicy.Threshold.HardTriggerRatio.
 func hardTriggerRatioForAgent(ag biz.Agent) float64 {
+	ratio := biz.DefaultHardTriggerRatio
 	if ag.Settings != nil && ag.Settings.HardTriggerRatio > 0 {
-		return ag.Settings.HardTriggerRatio
+		ratio = ag.Settings.HardTriggerRatio
 	}
-	return biz.DefaultHardTriggerRatio
+	if usesConversationalContextBudget(ag) {
+		// Absolute soft top ~32K on a 64K conversational window, not 90%×256K.
+		chat := float64(conversationalCompressSoftTopTokens) / float64(conversationalCompressWindowTokens)
+		if chat < ratio {
+			ratio = chat
+		}
+	}
+	return ratio
 }
 
 // splitPromptZones splits the message list into three zones:
@@ -424,7 +432,11 @@ func insertAfterLastSystem(msgs []trpcmodel.Message, marker trpcmodel.Message) [
 func resolveCompressionContextWindow(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent) int {
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
-	return resolveL0ContextWindow(ctx, deps, ag, prov, mod)
+	win := resolveL0ContextWindow(ctx, deps, ag, prov, mod)
+	if usesConversationalContextBudget(ag) && win > conversationalCompressWindowTokens {
+		return conversationalCompressWindowTokens
+	}
+	return win
 }
 
 // storeCompressionMeta writes compression metadata to the invocation state

@@ -27,6 +27,16 @@ func appendDynamicCue(msgs []trpcmodel.Message, content string) []trpcmodel.Mess
 	return append(msgs, asDynamicCue(content))
 }
 
+// replaceDynamicCue drops any existing dynamic cue whose content starts with
+// marker, then appends content (which should itself start with marker). Tool
+// loops re-enter BeforeModel; without the strip, the same cue restacks.
+func replaceDynamicCue(msgs []trpcmodel.Message, marker, content string) []trpcmodel.Message {
+	if marker != "" {
+		msgs = stripDynamicCueByMarker(msgs, marker)
+	}
+	return appendDynamicCue(msgs, content)
+}
+
 // stripDynamicCueByMarker 摘除内容以 marker 开头的 dynamic cue 消息
 // （续轮去重：保证同一类 cue 在请求中只有一条最新文案）。
 func stripDynamicCueByMarker(msgs []trpcmodel.Message, marker string) []trpcmodel.Message {

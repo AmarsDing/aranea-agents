@@ -29,16 +29,25 @@ type TaskPlannerPort interface {
 	PublishV2Board(ctx context.Context, plan *TaskPlan, allocPlan *AllocationPlan, chatSessionID string) (PlanBoard, error)
 }
 
+// SubIntent is one independent deliverable action inside a composite request.
+// Empty when the user asked for a single action (backward compatible).
+type SubIntent struct {
+	Goal       string   `json:"goal"`
+	IntentKind string   `json:"intent_kind"`
+	ToolHints  []string `json:"tool_hints,omitempty"`
+}
+
 // IntentArtifact mirrors the intent pass output fields consumed by TaskPlanner.
 // Defined in biz to avoid import cycles (internal/agent/intent → internal/agent → internal/biz).
 type IntentArtifact struct {
-	RefinedGoal     string   `json:"refined_goal"`
-	IntentKind      string   `json:"intent_kind"`
-	SuccessCriteria []string `json:"success_criteria"`
-	Ambiguities     []string `json:"ambiguities"`
-	SearchHints     []string `json:"search_hints"`
-	ToolHints       []string `json:"tool_hints,omitempty"`
-	RiskFlags       []string `json:"risk_flags"`
+	RefinedGoal     string      `json:"refined_goal"`
+	IntentKind      string      `json:"intent_kind"`
+	SuccessCriteria []string    `json:"success_criteria"`
+	Ambiguities     []string    `json:"ambiguities"`
+	SearchHints     []string    `json:"search_hints"`
+	ToolHints       []string    `json:"tool_hints,omitempty"`
+	RiskFlags       []string    `json:"risk_flags"`
+	SubIntents      []SubIntent `json:"sub_intents,omitempty"`
 }
 
 // PlanInput is the input to TaskPlanner.Plan
@@ -70,6 +79,12 @@ type PlanInput struct {
 	// 证据兜底。仅工具入口在键路由升级 mode=parallel 时透传；其他调用方
 	// 留空，证据闸照常生效。
 	AgentKeys []string
+	// DeferLLMDecompose asks Plan to persist the complex draft and return
+	// before the planner LLM (plan_and_execute ACK path). Resume with
+	// ResumePlanID on the same Plan() entry.
+	DeferLLMDecompose bool
+	// ResumePlanID continues a draft that returned DecomposeReasonDeferred.
+	ResumePlanID string
 }
 
 // PlanAdjustments allows Spirit LLM to adjust the plan

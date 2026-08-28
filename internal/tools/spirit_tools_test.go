@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -422,5 +423,96 @@ func TestPlanAndExecute_NeedsClarification_ShortCircuits(t *testing.T) {
 	}
 	if out.OrchestrationID != "" {
 		t.Fatalf("OrchestrationID = %q, want empty（澄清计划不得进入编排）", out.OrchestrationID)
+	}
+}
+
+func TestPlanAndExecute_DecomposeFailed_ShortCircuits(t *testing.T) {
+	planner := &clarifyPlanStub{plan: &biz.TaskPlan{
+		ID:              "tp_fail",
+		SpiritSessionID: "spirit-1",
+		Strategy:        biz.StrategyParallel,
+		ComplexityLevel: biz.ComplexityComplex,
+		DecomposeReason: biz.DecomposeReasonFailed,
+	}}
+	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{
+		Session: &trpcsession.Session{ID: "spirit-1"},
+	})
+	res, err := tool.Call(ctx, []byte(`{"task_prompt":"组建两个团队调研","mode":"parallel"}`))
+	if err != nil {
+		t.Fatalf("Call err: %v", err)
+	}
+	out, ok := res.(PlanAndExecuteOutput)
+	if !ok {
+		t.Fatalf("result type = %T", res)
+	}
+	if out.NextAction != biz.DecomposeFailedNextAction {
+		t.Fatalf("NextAction = %q, want %s", out.NextAction, biz.DecomposeFailedNextAction)
+	}
+	if out.ReuseReason != biz.DecomposeFailedUserHint {
+		t.Fatalf("ReuseReason = %q", out.ReuseReason)
+	}
+	if out.OrchestrationID != "" {
+		t.Fatalf("OrchestrationID = %q, want empty", out.OrchestrationID)
+	}
+}
+
+type resumePlanStub struct {
+	clarifyPlanStub
+	resumeSeen chan string
+}
+
+func (s *resumePlanStub) Plan(_ context.Context, in biz.PlanInput) (*biz.TaskPlan, error) {
+	if in.ResumePlanID != "" {
+		select {
+		case s.resumeSeen <- in.ResumePlanID:
+		default:
+		}
+		return &biz.TaskPlan{
+			ID:              in.ResumePlanID,
+			Strategy:        biz.StrategyDirect,
+			ComplexityLevel: biz.ComplexitySimple,
+		}, nil
+	}
+	if !in.DeferLLMDecompose {
+		return nil, errors.New("plan_and_execute must set DeferLLMDecompose")
+	}
+	return s.plan, nil
+}
+
+func TestPlanAndExecute_DeferredDecompose_ReturnsPlanningInProgress(t *testing.T) {
+	resumeSeen := make(chan string, 1)
+	planner := &resumePlanStub{
+		clarifyPlanStub: clarifyPlanStub{plan: &biz.TaskPlan{
+			ID:              "tp_deferred",
+			SpiritSessionID: "spirit-1",
+			Strategy:        biz.StrategyDAG,
+			ComplexityLevel: biz.ComplexityComplex,
+			DecomposeReason: biz.DecomposeReasonDeferred,
+		}},
+		resumeSeen: resumeSeen,
+	}
+	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{
+		Session: &trpcsession.Session{ID: "spirit-1"},
+	})
+	res, err := tool.Call(ctx, []byte(`{"task_prompt":"组建两个团队做跨部门交付","mode":"dag"}`))
+	if err != nil {
+		t.Fatalf("Call err: %v", err)
+	}
+	out, ok := res.(PlanAndExecuteOutput)
+	if !ok {
+		t.Fatalf("result type = %T", res)
+	}
+	if out.NextAction != biz.PlanningInProgressNextAction {
+		t.Fatalf("NextAction = %q, want %s", out.NextAction, biz.PlanningInProgressNextAction)
+	}
+	select {
+	case id := <-resumeSeen:
+		if id != "tp_deferred" {
+			t.Fatalf("ResumePlanID = %q, want tp_deferred", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("background Plan(ResumePlanID) was not called")
 	}
 }

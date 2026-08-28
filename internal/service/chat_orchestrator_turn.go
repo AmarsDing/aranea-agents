@@ -471,7 +471,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	eg.Go(func() error {
 		o.publishTurnProgress(ctx, sessionID, "preparing_tools", nil)
 		var buildErr error
-		buildResult, buildErr = o.buildTurnRunner(egCtx, sess, ag, admit, emitter)
+		buildResult, buildErr = o.buildTurnRunner(egCtx, sess, ag, admit, emitter, content)
 		return buildErr
 	})
 
@@ -577,6 +577,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// 并行段收口：recall 命中注入 ctx，供下游 MemoryInject before-model 钩子在
 	// 请求时合并（原串行位置在 errgroup 之前，并行化后语义保持）。
 	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
+	ctx = chatagent.WithTurnCuePrefetch(ctx, buildResult.prefetch)
 
 	preGeneratedTaskID := resolveRootTaskActivityID(input)
 	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)

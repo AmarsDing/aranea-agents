@@ -110,3 +110,50 @@ func TestPlanDoesNotAutoPickSolePlaybookOnLightCopy(t *testing.T) {
 		t.Fatalf("light copy must not expand playbook: %+v", plan.SubTasks)
 	}
 }
+
+func TestPlan_CrossDeptSubIntentsExpandSolePlaybook(t *testing.T) {
+	t.Parallel()
+	repo := &stubTaskPlanRepo{}
+	impl := NewTaskPlanner(repo, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	AttachPlannerOrganizationReader(impl, &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {
+			ID:    "co-1",
+			Key:   "acme",
+			Level: "company",
+			MetadataJSON: `{
+			  "playbooks": [{
+			    "id": "software_delivery",
+			    "authorized_by": "__company_lead_acme__",
+			    "stages": [
+			      {"id": "design", "domain_path": "设计/视觉"},
+			      {"id": "be", "domain_path": "软件/后端", "depends_on": ["design"]}
+			    ]
+			  }]
+			}`,
+		},
+	}})
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-cross",
+		UserMessage:     "先调研竞品再出视觉方案",
+		IntentArtifact: &biz.IntentArtifact{
+			RefinedGoal: "调研竞品并出视觉方案",
+			SubIntents: []biz.SubIntent{
+				{Goal: "调研竞品", IntentKind: "research"},
+				{Goal: "出视觉方案", IntentKind: "creative"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.MemoryHit == nil || plan.MemoryHit.PlaybookID != "software_delivery" {
+		t.Fatalf("cross-dept upgrade must expand sole playbook, hit=%+v", plan.MemoryHit)
+	}
+	if len(plan.SubTasks) != 2 || plan.SubTasks[0].DomainPath != "设计/视觉" {
+		t.Fatalf("playbook stages=%+v", plan.SubTasks)
+	}
+	if plan.Strategy != biz.StrategyDAG {
+		t.Fatalf("strategy=%s", plan.Strategy)
+	}
+}

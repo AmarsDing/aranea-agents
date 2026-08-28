@@ -81,13 +81,17 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	if forcePlanning {
 		reason = fmt.Sprintf("评估完成：%s任务，强制走规划路径", complexityLevelZh(level))
 	}
-	// ADR-79-V V2（2026-08-26）：分类器输出只可用于增加义务，不可用于免除
-	// 义务——原「事实查询豁免强制规划」分支已拆除。QuickAssess 判 Moderate/
-	// Complex 即强制规划，即使消息形似事实查询（宁重勿轻）。误判代价仅一次
-	// plan_and_execute 调用，且工具边界 shouldRejectFactQueryPlan 会拦下纯
-	// 事实查询的组队请求并引导直答；漏判代价是任务轮丢失规划义务。
+	// 词法事实查询（LooksLikeFactQuery）是轻档路由信号，不是 LLM/QuickAssess
+	// 分类豁免：该函数已对 HasTaskActionSignal 一票否决（「核对天气并生成报告」
+	// 仍强制规划）。ADR-79-V V2 约束的是评分器/意图分类器不得免除义务；此处
+	// 与 ClassifyTaskGear.FactQuery 同源，避免天气/时点问询空跑一轮
+	// plan_and_execute。工具边界 shouldRejectFactQueryPlan 仍作纵深拦截。
+	if forcePlanning && biz.LooksLikeFactQuery(input.UserMessage) {
+		forcePlanning = false
+		reason = fmt.Sprintf("评估完成：%s任务（事实查询，不强制规划）", complexityLevelZh(level))
+	}
 	// 会话阶段抑制（ShouldForcePlanning，基于已持久化团队的事实证据）在
-	// chat_orchestrator_turn.go 消费侧叠加，不受本拆除影响。
+	// chat_orchestrator_turn.go 消费侧叠加。
 
 	decision := GateDecision{
 		Level:          level,

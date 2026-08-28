@@ -119,6 +119,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		loggateway.Str("spirit_session_id", input.SpiritSessionID),
 	)
 
+	if id := strings.TrimSpace(input.ResumePlanID); id != "" {
+		return impl.finishDeferredComplexDecompose(ctx, input, id)
+	}
+
 	if plan, ok := impl.planFromNamedPlaybook(ctx, input, traceID); ok {
 		return plan, nil
 	}
@@ -374,6 +378,11 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			strategy = biz.StrategyDAG
 			strategyReason = decomposeReason
 		}
+	} else if slots := subTasksFromSubIntents(input.IntentArtifact); len(slots) >= 2 {
+		subTasks = slots
+		dag = buildDAGFromSubTasks(slots)
+		decomposeReason = "composite sub_intents; skip planner LLM"
+		strategy, strategyReason, topologyHint = promoteStrategyForSubTasks(strategy, strategyReason, topologyHint, complexityLevel, input.Mode, true)
 	} else if effectiveLevel == biz.ComplexityComplex {
 		// P2：分解前先落库 draft——持久化与展示同时进行。崩溃后 draft
 		// 可恢复、可观测「正在规划」，不再「先分解 60s、最后一次性落库」。
@@ -401,231 +410,23 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			return nil, apierror.Internal(apierror.DomainSpirit, "persist draft plan: "+err.Error())
 		}
 
-		// P2：分解期间周期性心跳进度（用户可见存活信号），分解结束即停。
-		stopHeartbeat := impl.startDecomposeHeartbeat(ctx, input.SpiritSessionID, 5*time.Second)
-
-		// P-ORCH: notify the user that decomposition (LLM call, up to 60s) started.
-		impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposing", nil)
-
-		// 流式分解：当 v2 Sequencer 可用时，边生成边发布 PlanStep/GraphNode，
-		// 前端可看到级联动画效果。否则回退到同步分解。
-		if impl.seq != nil {
-			impl.publishV2BoardShell(ctx, planID, strategy, input)
-			onSubTask := func(st biz.SubTask, index int) {
-				impl.publishV2PlanStep(ctx, st, planID, index, input)
+		if input.DeferLLMDecompose {
+			saved.DecomposeReason = biz.DecomposeReasonDeferred
+			if updated, uerr := impl.repo.Update(ctx, saved); uerr == nil {
+				saved = updated
 			}
-			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, input.SpiritSessionID, planID, complexityLevel, onSubTask)
-			if err == nil && len(subTasks) > 0 {
-				streamPublished = true
-			}
-		} else {
-			subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount, complexityLevel)
-		}
-		stopHeartbeat()
-		var clarifyErr *decomposeClarificationError
-		if errors.As(err, &clarifyErr) && len(clarifyErr.questions) > 0 {
-			// Q7 分解层澄清出口（session-eval-20260827 P4 根修）：分解 LLM
-			// 判定存在阻塞性信息缺失（产品名/日期/渠道等），选择提问而非虚构。
-			// 不走 decompose_failed 降级——降级会产出无 SubTasks 的 direct
-			// plan，Spirit 拿到后只能自己圆场再虚构一次（S07 根因）。此处
-			// 终止本次规划，问题经 TaskPlan.ClarificationQuestions 透传给
-			// plan_and_execute 调用方，由 Spirit 向用户提问后带答案重来。
-			impl.lg.Info("任务分解请求用户澄清（阻塞性信息缺失，拒绝虚构参数）",
-				loggateway.StepID(biz.SpiritStepPlannerDecompose),
-				loggateway.Str("trace_id", traceID),
-				loggateway.Int("question_count", len(clarifyErr.questions)),
-			)
-			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "needs_clarification", map[string]any{
-				"questions": clarifyErr.questions,
+			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposing", map[string]any{
+				"plan_id":  planID,
+				"deferred": true,
 			})
-			// v2 壳（流式路径已发布）必须补终态，同 F9/Y4 契约。
-			impl.publishV2BoardFailed(ctx, planID, input)
-			saved.Strategy = biz.StrategyDirect
-			saved.StrategyReason = "任务存在阻塞性信息缺失，等待用户澄清"
-			saved.DecomposeReason = "needs_clarification"
-			if _, uerr := impl.repo.Update(ctx, saved); uerr != nil {
-				// 落库失败不阻断澄清透传——信号本体在内存字段，DB 仅留痕。
-				impl.lg.Warn("澄清计划留痕更新失败（不阻断澄清透传）",
-					loggateway.StepID(biz.SpiritStepPlannerPersist),
-					loggateway.Str("trace_id", traceID),
-					loggateway.Err(uerr),
-				)
-			}
-			saved.ClarificationQuestions = append([]string(nil), clarifyErr.questions...)
 			return saved, nil
 		}
-		if err != nil {
-			impl.lg.Warn("任务分解失败，降级为 direct 策略",
-				loggateway.StepID(biz.SpiritStepPlannerDecompose),
-				loggateway.Str("trace_id", traceID),
-				loggateway.Err(err),
-			)
-			strategy = biz.StrategyDirect
-			strategyReason = "任务分解失败，降级为 direct"
-			decomposeReason = "decompose_failed"
-			// P-ORCH: 分解失败必须通知前端——用户已看着「正在分解」等了至多 60s，
-			// 静默降级会让用户认为系统卡死（00:52 会话根因 B3）。
-			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
-				"reason": "error",
-			})
-			// F9/Y4：v2 壳已发布（Status=planning/running）时必须补终态，
-			// 否则前端计划面板永远停在「规划中」。
-			impl.publishV2BoardFailed(ctx, planID, input)
-		} else if len(subTasks) > 0 {
-			// P4-G1 计划校验门：分解成功后、进度上报前做可行性校验。
-			// 违例时有界重分解 1 次；仍违例按分解失败路径降级 direct。
-			// 注意（已知折衷）：流式路径下原始子任务的 PlanStep 已边生成边
-			// 发布，校验门修复后的计划不会重发中间步骤——终态 Board 由
-			// PublishV2Board/失败补发保证一致，中间动画可能保留旧步骤。
-			gate := impl.applyPlanVerifyGate(ctx, subTasks, dag, input, teamCount, complexityLevel)
-			if gate.degraded {
-				impl.lg.Warn("计划校验门未通过，降级为 direct 策略",
-					loggateway.StepID(biz.SpiritStepPlannerDecompose),
-					loggateway.Str("trace_id", traceID),
-					loggateway.Str("note", gate.note),
-				)
-				strategy = biz.StrategyDirect
-				strategyReason = gate.note
-				decomposeReason = "verify_failed"
-				subTasks = nil
-				dag = nil
-				impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
-					"reason": "verify_failed",
-					"note":   gate.note,
-				})
-				impl.publishV2BoardFailed(ctx, planID, input)
-			} else {
-				subTasks = gate.subTasks
-				dag = gate.dag
-				gateNote := gate.note
-				// P-ORCH: decomposition finished — report the subtask count.
-				impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposed", map[string]any{
-					"sub_task_count": len(subTasks),
-				})
-				decomposeReason = fmt.Sprintf("分解为 %d 个子任务%s", len(subTasks), gateNote)
-				// 2026-07-04 问题 2 修复：当用户明确请求 N 个 team 但 LLM 产生
-				// 不符数量的 subtask 时，截取前 N 个或记录警告。这是兜底——
-				// buildDecompositionPrompt 已通过 prompt 硬约束 LLM，但 LLM
-				// 可能不严格遵守。
-				// 2026-08-21 P0 修复：数量不符已先经校验门有界重分解（见
-				// plan_verifier.go R4），走到这里说明修复未果。截取/放行都必须
-				// 显式通知前端——静默截取会整个丢掉团队职责（诗歌会话丢
-				// Team B 根因），用户只能从结果反推异常。
-				if teamCount > 0 && len(subTasks) > teamCount {
-					originalCount := len(subTasks)
-					droppedNames := make([]string, 0, originalCount-teamCount)
-					for _, st := range subTasks[teamCount:] {
-						droppedNames = append(droppedNames, st.Name)
-					}
-					impl.lg.Warn("LLM 分解的 subtask 数量超出用户请求的 team 数量，截取前 N 个",
-						loggateway.StepID(biz.SpiritStepPlannerDecompose),
-						loggateway.Str("trace_id", traceID),
-						loggateway.Int("requested_team_count", teamCount),
-						loggateway.Int("decomposed_subtask_count", originalCount),
-					)
-					subTasks = subTasks[:teamCount]
-					// 清理截取后悬挂的 DependsOn 引用，避免 DAG 执行失败
-					validIDs := make(map[string]bool, len(subTasks))
-					for _, st := range subTasks {
-						validIDs[st.ID] = true
-					}
-					for i := range subTasks {
-						filtered := subTasks[i].DependsOn[:0]
-						for _, depID := range subTasks[i].DependsOn {
-							if validIDs[depID] {
-								filtered = append(filtered, depID)
-							}
-						}
-						subTasks[i].DependsOn = filtered
-					}
-					dag = buildDAGFromSubTasks(subTasks)
-					decomposeReason = fmt.Sprintf("分解为 %d 个子任务（按用户请求截取）", len(subTasks))
-					impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "team_count_mismatch", map[string]any{
-						"action":                   "truncate",
-						"requested_team_count":     teamCount,
-						"decomposed_subtask_count": originalCount,
-						"dropped_subtask_names":    droppedNames,
-					})
-					// M80：系统闸决策双写（设计 §3.2 row 3，G-R4 team_count 截断分支）。
-					impl.emitTeamCountMismatchGate(ctx, traceID, input.SpiritSessionID, "truncate", teamCount, originalCount, droppedNames)
-				} else if teamCount > 0 && len(subTasks) < teamCount {
-					impl.lg.Warn("LLM 分解的 subtask 数量少于用户请求的 team 数量",
-						loggateway.StepID(biz.SpiritStepPlannerDecompose),
-						loggateway.Str("trace_id", traceID),
-						loggateway.Int("requested_team_count", teamCount),
-						loggateway.Int("decomposed_subtask_count", len(subTasks)),
-					)
-					impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "team_count_mismatch", map[string]any{
-						"action":                   "proceed",
-						"requested_team_count":     teamCount,
-						"decomposed_subtask_count": len(subTasks),
-					})
-					// M80：系统闸决策双写（设计 §3.2 row 3，G-R4 team_count 放行分支）。
-					impl.emitTeamCountMismatchGate(ctx, traceID, input.SpiritSessionID, "proceed", teamCount, len(subTasks), nil)
-				}
-				// TS9-GAP-1：闭环类任务（事故/告警/故障）由引擎确定性追加复盘节点，
-				// 不再依赖 LLM 分解时自觉产出——流程控制权在引擎。追加发生在
-				// teamCount 截取之后，避免被截取丢弃；追加后重建 DAG，流式路径
-				// 补发该节点的 PlanStep/GraphNode 事件。
-				if updated, pm, appended := appendClosedLoopPostmortem(input.UserMessage, subTasks); appended {
-					subTasks = updated
-					dag = buildDAGFromSubTasks(subTasks)
-					if streamPublished {
-						impl.publishV2PlanStep(ctx, *pm, planID, len(subTasks)-1, input)
-					}
-					impl.lg.Info("闭环任务自动追加复盘节点",
-						loggateway.StepID(biz.SpiritStepPlannerDecompose),
-						loggateway.Str("trace_id", traceID),
-						loggateway.Str("postmortem_subtask_id", pm.ID),
-					)
-				}
-				// Strategy is determined solely by the explicit mode (or detected
-				// team intent). We no longer auto-refine based on DAG shape — the
-				// LLM is the decision authority. When mode is empty (no explicit
-				// request and no detected intent), strategy stays "direct" even if
-				// decomposition produced subtasks; the subtasks are logged for
-				// analysis but not executed by the orchestrator.
-			}
-		} else {
-			// 分解调用成功但产出 0 个子任务（典型成因：LLM 流式超时静默返回空，
-			// 由 llmcompat ctx 校验修复兜底）：与失败等价，显式降级 direct 并
-			// 通知前端，避免 plan 带着 parallel/dag 策略却无 subtasks 的悬空态。
-			impl.lg.Warn("任务分解产出空结果，降级为 direct 策略",
-				loggateway.StepID(biz.SpiritStepPlannerDecompose),
-				loggateway.Str("trace_id", traceID),
-			)
-			strategy = biz.StrategyDirect
-			strategyReason = "任务分解结果为空，降级为 direct"
-			decomposeReason = "decompose_empty"
-			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
-				"reason": "empty",
-			})
-			// F9/Y4：同失败路径——v2 壳必须收到终态更新。
-			impl.publishV2BoardFailed(ctx, planID, input)
-		}
+		return impl.runComplexLLMDecompose(ctx, saved, input, teamCount, complexityLevel, strategy, strategyReason, topologyHint, gear, playbookHit)
+	}
 
-		// P2：分解完成后增量 Update——填充 subtasks/dag 与最终策略（含降级结果），
-		// Status 保持 draft（ConfirmPlan 才推进到 confirmed，语义不变）。
-		saved.SubTasks = subTasks
-		saved.TaskDAG = dag
-		saved.DecomposeReason = decomposeReason
-		saved.Strategy = strategy
-		saved.StrategyReason = strategyReason
-		saved.DomainPath = PrimaryDomainPath(subTasks)
-		saved, err = impl.repo.Update(ctx, saved)
-		if err != nil {
-			impl.lg.Warn("TaskPlan 更新失败",
-				loggateway.StepID(biz.SpiritStepPlannerPersist),
-				loggateway.Str("trace_id", traceID),
-				loggateway.Err(err),
-			)
-			return nil, apierror.Internal(apierror.DomainSpirit, "update plan: "+err.Error())
-		}
-		// repo.Update 经 GetByID 重读，内存字段 StreamPublished 不在 DB 列中会
-		// 丢失——重设，保证 PublishV2Board 走流式分支（不重复发 Created 事件）。
-		saved.StreamPublished = streamPublished
-		impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
-		return saved, nil
+	if len(subTasks) > 0 {
+		gear, playbookHit, subTasks, dag, strategy, strategyReason, decomposeReason = impl.applyCrossDeptGearUpgrade(
+			ctx, input, gear, playbookHit, subTasks, dag, strategy, strategyReason, decomposeReason, streamPublished)
 	}
 
 	// 非分解路径（direct 策略）：单次 Create，无 draft 中间态。
@@ -670,6 +471,47 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
 
 	return saved, nil
+}
+
+// applyCrossDeptGearUpgrade raises medium → heavy when the expanded plan has
+// cross-department deliverable dependencies (R9 late upgrade). If the upgrade
+// lands on heavy and no playbook was already expanded, look up the company's
+// sole authorized playbook. Streamed LLM boards keep their published steps
+// (replacing them would desync the v2 board). Cross-dept DAG without a
+// playbook stays as-is: that is the correct medium 借调/DAG path.
+func (impl *taskPlannerImpl) applyCrossDeptGearUpgrade(
+	ctx context.Context,
+	input biz.PlanInput,
+	gear TaskGear,
+	playbookHit *biz.MemoryHit,
+	subTasks []biz.SubTask,
+	dag *biz.PlanTaskDAG,
+	strategy biz.OrchestrationStrategy,
+	strategyReason, decomposeReason string,
+	streamPublished bool,
+) (TaskGear, *biz.MemoryHit, []biz.SubTask, *biz.PlanTaskDAG, biz.OrchestrationStrategy, string, string) {
+	if len(subTasks) == 0 || !PlanHasCrossDeptDepends(subTasks) {
+		return gear, playbookHit, subTasks, dag, strategy, strategyReason, decomposeReason
+	}
+	upgraded := UpgradeGearAfterPlan(gear, true)
+	if upgraded != gear {
+		impl.lg.Info("跨部门交付依赖，分档升重",
+			loggateway.StepID(biz.SpiritStepPlannerRoute),
+			loggateway.Str("from_gear", string(gear)),
+			loggateway.Str("to_gear", string(upgraded)),
+			loggateway.Str("spirit_session_id", input.SpiritSessionID),
+		)
+	}
+	gear = upgraded
+	if gear != GearHeavy || playbookHit != nil || streamPublished {
+		return gear, playbookHit, subTasks, dag, strategy, strategyReason, decomposeReason
+	}
+	pb, steps, ok := impl.lookupSolePlaybookIfHeavy(ctx, gear)
+	if !ok || len(steps) == 0 {
+		return gear, playbookHit, subTasks, dag, strategy, strategyReason, decomposeReason
+	}
+	reason := "authorized playbook expand after cross-dept upgrade"
+	return gear, playbookMemoryHit(pb), steps, buildDAGFromSubTasks(steps), biz.StrategyDAG, reason, reason
 }
 
 // GetPlan retrieves a plan by ID.
@@ -1110,6 +952,63 @@ func shouldForceComplex(mode string) bool {
 		return true
 	}
 	return false
+}
+
+// shouldFailClosedOnDecompose is true when a failed/empty/verify-failed
+// decompose must not silently become StrategyDirect (medium+ or explicit
+// team-forming mode). Simple unforced turns may still degrade to direct.
+func shouldFailClosedOnDecompose(level biz.ComplexityLevel, mode string) bool {
+	if shouldForceComplex(mode) {
+		return true
+	}
+	switch level {
+	case biz.ComplexityModerate, biz.ComplexityComplex:
+		return true
+	}
+	return false
+}
+
+func applyDecomposeDowngrade(
+	strategy biz.OrchestrationStrategy,
+	topology biz.TopologyType,
+	level biz.ComplexityLevel,
+	mode, reason, directNote string,
+) (biz.OrchestrationStrategy, string, biz.TopologyType, string) {
+	if shouldFailClosedOnDecompose(level, mode) {
+		if strategy == biz.StrategyDirect || strategy == biz.StrategySingleAgent {
+			strategy = biz.StrategyParallel
+			topology = biz.TopologyParallel
+		}
+		return strategy, "任务分解失败，禁止降级为 direct", topology, reason
+	}
+	return biz.StrategyDirect, directNote, biz.TopologyDirect, reason
+}
+
+// promoteStrategyForSubTasks upgrades an empty/auto Direct strategy to a
+// team-forming strategy when decomposition (or sub_intents) produced slots
+// and complexity is at least moderate. Explicit mode=direct is preserved.
+func promoteStrategyForSubTasks(
+	strategy biz.OrchestrationStrategy,
+	reason string,
+	topology biz.TopologyType,
+	level biz.ComplexityLevel,
+	mode string,
+	linearDepends bool,
+) (biz.OrchestrationStrategy, string, biz.TopologyType) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "direct" || mode == "single" || mode == "single_agent" {
+		return strategy, reason, topology
+	}
+	if strategy != biz.StrategyDirect {
+		return strategy, reason, topology
+	}
+	if linearDepends {
+		return biz.StrategyDAG, "复合意图按执行顺序出槽，默认 dag", biz.TopologyHybrid
+	}
+	if level != biz.ComplexityModerate && level != biz.ComplexityComplex {
+		return strategy, reason, topology
+	}
+	return biz.StrategyParallel, "分解产出子任务且复杂度≥moderate，默认 parallel", biz.TopologyParallel
 }
 
 // plannerDecision 是 P4-G5 策略决策证据链的记录单元。

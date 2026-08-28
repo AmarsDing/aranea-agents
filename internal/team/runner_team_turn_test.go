@@ -28,7 +28,7 @@ func TestPrepareUserTurnOptions_InputRiskDegradedInject(t *testing.T) {
 		run := newRun()
 		opts, status, err := r.prepareUserTurnOptions(
 			context.Background(), ar, "rm -rf /tmp/data",
-			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now())
+			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now(), pendingTeamIntent{})
 		if err != nil || status != biz.TeamMemberStepStatusOK {
 			t.Fatalf("prepareUserTurnOptions: status=%s err=%v", status, err)
 		}
@@ -47,7 +47,7 @@ func TestPrepareUserTurnOptions_InputRiskDegradedInject(t *testing.T) {
 		run := newRun()
 		opts, status, err := r.prepareUserTurnOptions(
 			context.Background(), ar, "帮我查一下 sw1 的端口状态",
-			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now())
+			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now(), pendingTeamIntent{})
 		if err != nil || status != biz.TeamMemberStepStatusOK {
 			t.Fatalf("prepareUserTurnOptions: status=%s err=%v", status, err)
 		}
@@ -55,4 +55,25 @@ func TestPrepareUserTurnOptions_InputRiskDegradedInject(t *testing.T) {
 			t.Errorf("intentRunOpts len = %d, want 0（安全输入不注入）", len(opts.intentRunOpts))
 		}
 	})
+
+	t.Run("direct reply skips intent", func(t *testing.T) {
+		run := newRun()
+		opts, status, err := r.prepareUserTurnOptions(
+			context.Background(), ar, "你好，请介绍你自己。不要调用工具。",
+			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now(), pendingTeamIntent{skip: true})
+		if err != nil || status != biz.TeamMemberStepStatusOK {
+			t.Fatalf("prepareUserTurnOptions: status=%s err=%v", status, err)
+		}
+		if len(opts.intentRunOpts) != 0 {
+			t.Errorf("direct-reply skip must not inject intent, got %d opts", len(opts.intentRunOpts))
+		}
+	})
+}
+
+func TestStartTeamIntentPass_SkipDirectReply(t *testing.T) {
+	r := &Runner{lg: loggateway.NewNoop()}
+	p := r.startTeamIntentPass(context.Background(), anchorResolution{agent: biz.Agent{ID: "ag-1"}}, "你好，请介绍你自己。不要调用工具。")
+	if !p.skip || p.ch != nil {
+		t.Fatalf("direct reply must skip intent, skip=%v ch=%v", p.skip, p.ch)
+	}
 }

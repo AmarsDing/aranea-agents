@@ -63,7 +63,7 @@ func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 		// 上下文预算台账（29-token §9.6）：目录 cue 与 Request.Tools schema 分列，
 		// 避免先写入 tools_schema 导致计量 hook 跳过、tools_count 恒为 0。
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryToolCatalogCue, utf8.RuneCountInString(cue))
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, toolCatalogCueMarker+cue)
+		args.Request.Messages = replaceDynamicCue(args.Request.Messages, toolCatalogCueMarker, toolCatalogCueMarker+cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

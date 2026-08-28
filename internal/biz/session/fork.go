@@ -23,9 +23,12 @@ import (
 //   - runner_snapshot_json / session_summaries / trpc_session_summaries（派生产物，按需重建）；
 //   - session_turns 准入/指标记录（fork 会话指标自零累计，不回填源会话用量）。
 //
-// 范围门禁：仅根会话（parent_session_id 为空）可 fork——team/member 子会话的
-// 历史与 spirit 根交织（member steps 挂在根 spirit_session_id 下），复制语义
-// 不闭合，明确拒绝而非产出半成品。
+// 范围门禁（2026-08-28 T5 裁定：多代 fork 放开）：根会话与 fork 会话
+// （parent_session_id + fork_from_turn_id 双非空）可 fork；team/member
+// 子会话（仅 parent_session_id 非空）的历史与 spirit 根交织（member steps
+// 挂在根 spirit_session_id 下），复制语义不闭合，明确拒绝而非产出半成品。
+// 多代 fork 依赖 data 层的前缀剥离（继承 turn id 的 fk<dst8>- 前缀可还原为
+// 复制事件里的原 invocationId）与 id 归一（重映射恒为单层新前缀）。
 
 // SessionForkStore 是 Fork-from-Turn 复制原语的持久化端口
 // （internal/data raw-SQL 双方言实现，框架表无前缀配置——trpc_ 为现网固定前缀）。
@@ -85,13 +88,11 @@ func (uc *SessionForkUsecase) Fork(ctx context.Context, srcID, turnID, title str
 	if err != nil {
 		return Session{}, err
 	}
-	// 范围门禁：仅根会话可 fork（team/member 子会话历史不闭合，见文件头注释）。
-	// fork 出的会话 ParentSessionID 非空，同样被此门禁拦截——链式 fork 有意
-	// 不支持：继承 turn 的 id 带 fk<dst8>- 前缀，而复制事件的 invocationId 是
-	// 无前缀原 run id，FindTurnEventBoundary 无法命中；若未来放开需先做前缀
-	// 剥离改造。
-	if strings.TrimSpace(src.ParentSessionID) != "" {
-		return Session{}, apierror.BadRequest("SESSION", "only root sessions can be forked (team/member child sessions and already-forked sessions are not supported)")
+	// 范围门禁（见文件头注释）：team/member 子会话（parent 非空且非 fork
+	// 血统，即 ForkFromTurnID 为空）拒绝；根会话与 fork 会话放行——多代
+	// fork 的前缀剥离/归一由 data 层保证（T5）。
+	if strings.TrimSpace(src.ParentSessionID) != "" && strings.TrimSpace(src.ForkFromTurnID) == "" {
+		return Session{}, apierror.BadRequest("SESSION", "team/member child sessions cannot be forked (only root or forked sessions are supported)")
 	}
 	if strings.TrimSpace(title) == "" {
 		title = src.Title + "（分支）"

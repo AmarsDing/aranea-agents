@@ -11,12 +11,12 @@ import (
 	biztypes "aranea-agents/internal/biz/types"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
-
-	"aranea-agents/pkg/apierror"
 )
 
 // ---------------------------------------------------------------------------
@@ -267,6 +267,19 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				return out, nil
 			}
 
+			if taskPlan.DecomposeFailed() && taskPlan.Strategy != biz.StrategyDirect {
+				out.NextAction = biz.DecomposeFailedNextAction
+				out.ReuseReason = biz.DecomposeFailedUserHint
+				return out, nil
+			}
+
+			if taskPlan.DecomposeReason == biz.DecomposeReasonDeferred {
+				out.NextAction = biz.PlanningInProgressNextAction
+				out.ReuseReason = biz.PlanningInProgressUserHint
+				startBackgroundPlanCompletion(ctx, taskPlan, taskPrompt, spiritSessionID, mode, explicitKeys, deps)
+				return out, nil
+			}
+
 			if taskPlan.StrategyReason == biz.PlaybookFillRequiredReason {
 				out.NextAction = "authorize_playbook"
 				out.ReuseReason = biz.PlaybookFillUserHint
@@ -401,7 +414,11 @@ func tryReuseExistingOrchestration(ctx context.Context, spiritSessionID, taskPro
 	overlap := reusableOverlappingTeams(taskPrompt, teams)
 	cohort := expandToOrchestrationCohort(overlap, teams)
 	if len(cohort) == 0 {
-		cohort = currentOrchestrationCohort(teams)
+		fallback := currentOrchestrationCohort(teams)
+		if !reuseFallbackAllowed(taskPrompt, fallback) {
+			return PlanAndExecuteOutput{}, false
+		}
+		cohort = fallback
 	}
 	if len(cohort) == 0 {
 		return PlanAndExecuteOutput{}, false
@@ -446,11 +463,17 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode str
 	defer func() {
 		metrics.SpiritPlanDuration.Observe(time.Since(start).Seconds())
 	}()
+	if deps.bus != nil {
+		deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "", map[string]any{
+			"phase": "planning",
+		}))
+	}
 	planInput := biz.PlanInput{
-		UserMessage:     taskPrompt,
-		SpiritSessionID: spiritSessionID,
-		Mode:            mode,
-		AgentKeys:       explicitKeys,
+		UserMessage:       taskPrompt,
+		SpiritSessionID:   spiritSessionID,
+		Mode:              mode,
+		AgentKeys:         explicitKeys,
+		DeferLLMDecompose: true,
 	}
 	taskPlan, planErr := deps.planner.Plan(ctx, planInput)
 	if planErr != nil {
@@ -468,6 +491,63 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode str
 		StartedAt:  start,
 		FinishedAt: time.Now().UTC(),
 	}, nil
+}
+
+const backgroundPlanCompleteTimeout = 90 * time.Second
+
+// startBackgroundPlanCompletion resumes LLM decompose + allocate + board
+// after plan_and_execute returned planning_in_progress so Spirit can speak.
+func startBackgroundPlanCompletion(ctx context.Context, draft *biz.TaskPlan, taskPrompt, spiritSessionID, mode string, explicitKeys []string, deps planAndExecuteDeps) {
+	if draft == nil || deps.planner == nil {
+		return
+	}
+	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), backgroundPlanCompleteTimeout)
+	safego.Go(bgCtx, "spirit.plan.complete_decompose", func() {
+		defer cancel()
+		finished, err := deps.planner.Plan(bgCtx, biz.PlanInput{
+			UserMessage:     taskPrompt,
+			SpiritSessionID: spiritSessionID,
+			Mode:            mode,
+			AgentKeys:       explicitKeys,
+			ResumePlanID:    draft.ID,
+		})
+		if err != nil {
+			publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "plan", err.Error())
+			return
+		}
+		if finished.NeedsClarification() {
+			if deps.bus != nil {
+				deps.bus.Publish(bgCtx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "", map[string]any{
+					"phase":     "needs_clarification",
+					"questions": finished.ClarificationQuestions,
+				}))
+			}
+			return
+		}
+		if finished.DecomposeFailed() && finished.Strategy != biz.StrategyDirect {
+			publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "decompose", biz.DecomposeFailedUserHint)
+			return
+		}
+		if finished.Strategy == biz.StrategyDirect {
+			if _, pubErr := deps.planner.PublishV2Board(bgCtx, finished, nil, ""); pubErr != nil {
+				publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "publish_board", pubErr.Error())
+			}
+			return
+		}
+		allocPlan, _, allocErr := executeAllocatePhase(bgCtx, finished, explicitKeys, deps)
+		if allocErr != nil {
+			publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "allocate", allocErr.Error())
+			return
+		}
+		board, pubErr := deps.planner.PublishV2Board(bgCtx, finished, allocPlan, "")
+		if pubErr != nil {
+			publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "publish_board", pubErr.Error())
+			return
+		}
+		if _, _, orchErr := executeOrchestratePhase(bgCtx, finished, allocPlan, board.ID, deps); orchErr != nil {
+			publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "orchestrate", orchErr.Error())
+		}
+	})
 }
 
 // executeAllocatePhase runs Phase 2 of plan_and_execute: agent allocation.

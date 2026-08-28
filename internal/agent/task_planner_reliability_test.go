@@ -151,10 +151,13 @@ func TestPlan_DecomposeFailure_PublishesBoardTerminal(t *testing.T) {
 		Mode:            "dag",
 	})
 	if err != nil {
-		t.Fatalf("Plan should downgrade to direct instead of failing: %v", err)
+		t.Fatalf("Plan should not fail: %v", err)
 	}
-	if plan.Strategy != biz.StrategyDirect {
-		t.Fatalf("strategy = %q, want direct (decompose failed)", plan.Strategy)
+	if plan.Strategy != biz.StrategyDAG {
+		t.Fatalf("strategy = %q, want dag (fail-closed, keep explicit team mode)", plan.Strategy)
+	}
+	if plan.DecomposeReason != biz.DecomposeReasonFailed {
+		t.Fatalf("DecomposeReason = %q", plan.DecomposeReason)
 	}
 
 	var boardTerminal *biz.PlanBoardUpdatedEvent

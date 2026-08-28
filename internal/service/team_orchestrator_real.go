@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -56,7 +57,7 @@ func (o *RealTeamOrchestrator) SetStarter(s biz.TeamStarterPort) {
 }
 
 // SetAgentReader injects the AgentReader after construction.
-// 用于在 PlanStep 未指定 AgentKeys 时查询可用 agent 列表。
+// Used by resolveTeamOrg to map member keys to department / borrow IDs.
 func (o *RealTeamOrchestrator) SetAgentReader(r biz.AgentReader) {
 	o.agentRdr = r
 }
@@ -80,16 +81,15 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	if taskDesc == "" {
 		taskDesc = step.Label
 	}
-	// 2026-07-05 Step 4 修复：优先使用 PlanStep.AgentKeys（来自 LLM 分配），
-	// 仅在 PlanStep 未携带 AgentKeys 时 fallback 到查 DB 取 active agent。
-	// 原先所有 team 都走 resolveAgentKeys 查 DB，导致所有 team 拿到同一批
-	// active agent（按 updated_at 降序前 3 个），与 LLM 分配意图不符。
+	// Allocator must fill PlanStep.AgentKeys. A SearchAgents(limit:3) fallback
+	// previously bound every empty step to the same three recently-updated
+	// agents and silently assembled the wrong roster.
 	agentKeys := step.AgentKeys
 	if len(agentKeys) == 0 {
-		o.lg.Info("PlanStep.AgentKeys 为空，fallback 到查 DB 取 active agent",
+		o.lg.Warn("PlanStep.AgentKeys 为空，拒绝编排",
 			loggateway.Str("step_id", step.ID),
 			loggateway.Str("spirit_session_id", spiritSessionID))
-		agentKeys = o.resolveAgentKeys(ctx)
+		return nil, fmt.Errorf("plan step %s has empty agent keys", step.ID)
 	}
 	o.lg.Info("Orchestrate 解析 AgentKeys",
 		loggateway.Str("step_id", step.ID),
@@ -223,36 +223,6 @@ func (o *RealTeamOrchestrator) NotifyTeamCompletion(teamID, teamRunID string, su
 		loggateway.Bool("success", success))
 }
 
-// resolveAgentKeys 是 fallback 路径：当 PlanStep.AgentKeys 为空时查询可用
-// active agent 列表作为团队成员。最多返回 3 个 agent，按 updated_at 降序。
-// 如果 agentRdr 为 nil 或查询失败，返回空列表（会导致 AssembleTeam 失败，
-// 但这比硬编码 agent_key 更安全）。
-//
-// 2026-07-05 Step 4：原先所有 team 都走此方法查 DB，导致所有 team 拿到同一批
-// active agent。现在主路径使用 PlanStep.AgentKeys（来自 LLM 分配），此方法仅作 fallback。
-func (o *RealTeamOrchestrator) resolveAgentKeys(ctx context.Context) []string {
-	if o.agentRdr == nil {
-		return nil
-	}
-	result, err := o.agentRdr.SearchAgents(ctx, biz.AgentListQuery{
-		Status: "active",
-		Limit:  3,
-	})
-	if err != nil {
-		o.lg.Warn("查询可用 agent 列表失败",
-			loggateway.Err(err))
-		return nil
-	}
-	keys := make([]string, 0, len(result.Items))
-	for _, a := range result.Items {
-		if a.AgentKey == "" || !biz.IsCatalogAgentAssignable(a) {
-			continue
-		}
-		keys = append(keys, a.AgentKey)
-	}
-	return keys
-}
-
 // resolveTeamOrg picks the team's home department and borrow agent IDs.
 // Preference: PlanStep.DepartmentID; else majority vote of member positions.
 func (o *RealTeamOrchestrator) resolveTeamOrg(ctx context.Context, step biz.PlanStep, agentKeys []string) (departmentID string, crossDeptAgentIDs []string) {
@@ -343,7 +313,7 @@ func agentKeysSource(stepKeys []string) string {
 	if len(stepKeys) > 0 {
 		return "plan_step"
 	}
-	return "db_fallback"
+	return "empty"
 }
 
 // errOrchestratorNotReady is returned when Orchestrate is called before

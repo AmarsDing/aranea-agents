@@ -49,7 +49,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 			// 引用闭环：notice.n 与 cue [n] 同一顺序，前端脚注与 cited 回采共用。
 			knowledgetool.EmitNumberedKnowledgeRecalledNotice(ctx, cited)
 		}
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, knowledgeCueMarker+cue)
+		args.Request.Messages = replaceDynamicCue(args.Request.Messages, knowledgeCueMarker, knowledgeCueMarker+cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -80,18 +80,37 @@ func resolveKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg logga
 		query = cleanRecallQuery(query)
 	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if ok && inv != nil {
+		if v, found := inv.GetState(knowledgeCueTurnCacheStateKey); found {
+			if c, cached := v.(*knowledgeCueTurnCache); cached && c != nil && (query == "" || query == c.query) {
+				return c.cue, c.cited, false
+			}
+		}
+	}
+	if cue, cited, hit := knowledgeCueFromPrefetch(ctx, query); hit {
+		if ok && inv != nil {
+			inv.SetState(knowledgeCueTurnCacheStateKey, &knowledgeCueTurnCache{query: query, cue: cue, cited: cited})
+		}
+		return cue, cited, true
+	}
 	if !ok || inv == nil {
 		cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
 		return cue, cited, true
 	}
-	if v, found := inv.GetState(knowledgeCueTurnCacheStateKey); found {
-		if c, ok := v.(*knowledgeCueTurnCache); ok && c != nil && (query == "" || query == c.query) {
-			return c.cue, c.cited, false
-		}
-	}
 	cue, cited := buildKnowledgeCue(ctx, uc, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
 	inv.SetState(knowledgeCueTurnCacheStateKey, &knowledgeCueTurnCache{query: query, cue: cue, cited: cited})
 	return cue, cited, true
+}
+
+func knowledgeCueFromPrefetch(ctx context.Context, query string) (string, []biz.KnowledgeChunk, bool) {
+	p := turnCuePrefetchFromContext(ctx)
+	if p == nil || p.knowledge == nil {
+		return "", nil, false
+	}
+	if query != "" && p.knowledge.query != "" && query != p.knowledge.query {
+		return "", nil, false
+	}
+	return p.knowledge.cue, p.knowledge.cited, true
 }
 
 func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, query string, toolsEnabled, groundedOnly, memoryGrounded bool) (string, []biz.KnowledgeChunk) {

@@ -116,6 +116,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
+	// Intent Pass overlaps compileTeamRuntime (chat C2). 2.5s fuse; DirectReply skips.
+	pendingIntent := r.startTeamIntentPass(ctx, ar, ti.content)
+	defer pendingIntent.stop()
+
 	// Phase 5: Build TRPC dependencies and compile team runtime
 	builderDeps := r.buildTeamBuilderDeps(ctx, sess, run, ar, ti.dialogMode)
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true, MemberCustomTools: r.cfg.MemberCustomTools}
@@ -202,7 +206,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		runner.Close()
 	}()
 
-	utOpts, turnStatus, err := r.prepareUserTurnOptions(ctx, ar, ti.content, sess, &run, teamRow, ti.dialogMode, t0)
+	utOpts, turnStatus, err := r.prepareUserTurnOptions(ctx, ar, ti.content, sess, &run, teamRow, ti.dialogMode, t0, pendingIntent)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -402,7 +406,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, projectMeta, streamOpts, r.lg)
+	firstByteTimeout := agent.ResolveFirstByteTimeout(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
+	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, projectMeta, streamOpts, r.lg)
 	streamLastRoundPromptTok = result.LastRoundPromptTok
 	streamLastRoundCompletionTok = result.LastRoundCompletionTok
 	if streamErr != nil {

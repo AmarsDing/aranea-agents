@@ -137,16 +137,27 @@ func intentArtifactToBiz(art *intent.Artifact) *biz.IntentArtifact {
 	if art == nil {
 		return nil
 	}
-	return &biz.IntentArtifact{
+	out := &biz.IntentArtifact{
 		RefinedGoal:     art.RefinedGoal,
 		IntentKind:      art.IntentKind,
 		SuccessCriteria: art.SuccessCriteria,
 		Ambiguities:     art.Ambiguities,
 		SearchHints:     art.SearchHints,
 		// 2026-08-28 方案①：顶层与子意图 hints 并集透传 task planner。
-		ToolHints:       art.AllToolHints(),
-		RiskFlags:       art.RiskFlags,
+		ToolHints: art.AllToolHints(),
+		RiskFlags: art.RiskFlags,
 	}
+	if n := len(art.SubIntents); n >= 2 {
+		out.SubIntents = make([]biz.SubIntent, n)
+		for i, s := range art.SubIntents {
+			out.SubIntents[i] = biz.SubIntent{
+				Goal:       s.Goal,
+				IntentKind: s.IntentKind,
+				ToolHints:  append([]string(nil), s.ToolHints...),
+			}
+		}
+	}
+	return out
 }
 
 // forcedPlanningRunOption returns a trpc-agent RunOption that injects a system

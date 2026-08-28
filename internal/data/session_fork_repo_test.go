@@ -495,3 +495,186 @@ func TestSessionForkRepo_ForkScaleP95(t *testing.T) {
 		t.Fatalf("fork P95 = %v, want < 3s", p95)
 	}
 }
+
+// 多代 fork（2026-08-28 T5 裁定放开）：继承 id 的 fk<dst8>- 前缀必须可剥离——
+// FindTurnEventBoundary 以剥离后的原 turn id 匹配复制事件的 invocationId。
+func TestStripForkIDPrefixes(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"inv-A", "inv-A"},                                               // 无前缀原样
+		{"fk11111111-inv-A", "inv-A"},                                    // 单段剥离
+		{"fk22222222-fk11111111-inv-A", "inv-A"},                         // 世代叠加全剥
+		{"fkzzzzzzzz-inv-A", "fkzzzzzzzz-inv-A"},                         // 非 hex 段不剥
+		{"fk1234-inv-A", "fk1234-inv-A"},                                 // 长度不足不剥
+		{"fk11111111", "fk11111111"},                                     // 无尾横线不剥
+		{"12345678-abcd-ef00-0000-000000000000", "12345678-abcd-ef00-0000-000000000000"}, // uuid 原样
+	}
+	for _, tc := range cases {
+		if got := stripForkIDPrefixes(tc.in); got != tc.want {
+			t.Fatalf("stripForkIDPrefixes(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// fork 会话内分叉后的新增活动：新 task(seq3) + turn inv-D + step + 事件。
+func seedForkPostActivity(t *testing.T, d *Data, session string) {
+	t.Helper()
+	ctx := context.Background()
+	w := d.RWDB().WriteDB(ctx)
+	stmts := []string{
+		`INSERT INTO tasks_v2 (id, session_id, user_message, status, seq, version, workspace_id, created_at, updated_at)
+		 VALUES ('task-d', '` + session + `', 'md', 'completed', 3, 1, '', now(), now())`,
+		`INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at)
+		 VALUES ('inv-D', 'task-d', '` + session + `', '` + session + `', '', 'a', '', '', 1, 1, 'completed', now())`,
+		`INSERT INTO steps_v2 (id, turn_id, task_id, session_id, spirit_session_id, kind, author_agent_key, seq, content, reasoning, tool_name, tool_call_id, tool_args, tool_result, tool_duration_ms, tool_error_code, notice_type, status, is_final, started_at, version)
+		 VALUES ('inv-D-s1', 'inv-D', 'task-d', '` + session + `', '` + session + `', 'reply', 'a', 1, 'post fork', '', '', '', '', '', 0, '', '', 'completed', true, now(), 1)`,
+		`INSERT INTO trpc_session_events (app_name, user_id, session_id, event)
+		 VALUES ('app', 'u1', '` + session + `', '{"invocationId":"inv-D","author":"agent"}'::jsonb)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := w.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed post activity: %v\nSQL: %s", err, stmt)
+		}
+	}
+}
+
+// 多代 fork（T5）：fork 会话可再 fork。
+// ① 分叉点为继承 turn（fk 前缀 id）——边界经前缀剥离命中复制事件；
+// ② 分叉点为 fork 后新增 turn（原 id）——直接命中；
+// ③ 重映射 id 归一为单层新前缀（世代叠加不超限）；④ 各级源会话零影响。
+func TestSessionForkRepo_ChainedFork(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	setupForkTestTables(t, d)
+	const src = "src-chain-0"
+	// dst 用 uuid 形态——生产前缀 fk<8hex>- 由 uuid 派生，剥离正则按 hex 锚定。
+	const dst1 = "11111111-1111-4111-8111-111111111111"
+	const dst2a = "22222222-2222-4222-8222-222222222222"
+	const dst2b = "33333333-3333-4333-8333-333333333333"
+	forkTurn := seedForkSource(t, d, src) // inv-B
+	repo := NewSessionForkRepo(d)
+	ctx := context.Background()
+
+	// 第一代 fork（与 ForkCopy 同构）。
+	err := repo.ForkSessionInTx(ctx, func(txCtx context.Context) error {
+		boundary, found, err := repo.FindTurnEventBoundary(txCtx, src, forkTurn)
+		if err != nil || !found {
+			return fmt.Errorf("gen1 boundary: found=%v err=%w", found, err)
+		}
+		if err := repo.CreateFrameworkState(txCtx, src, dst1); err != nil {
+			return err
+		}
+		if _, err := repo.CopyFrameworkEvents(txCtx, src, dst1, boundary); err != nil {
+			return err
+		}
+		_, _, _, err = repo.CopyV2Records(txCtx, src, dst1, forkTurn)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("gen1 fork: %v", err)
+	}
+	// fork 会话续聊产生新活动（task-d / inv-D）。
+	seedForkPostActivity(t, d, dst1)
+
+	p1 := forkIDPrefix(dst1) // fk11111111-
+	p2a := forkIDPrefix(dst2a)
+	p2b := forkIDPrefix(dst2b)
+
+	// ① 第二代：分叉点为继承 turn（p1+"inv-B"）——前缀剥离后命中 inv-B 复制事件。
+	err = repo.ForkSessionInTx(ctx, func(txCtx context.Context) error {
+		boundary, found, err := repo.FindTurnEventBoundary(txCtx, dst1, p1+"inv-B")
+		if err != nil || !found {
+			return fmt.Errorf("gen2a boundary (inherited turn): found=%v err=%w", found, err)
+		}
+		if err := repo.CreateFrameworkState(txCtx, dst1, dst2a); err != nil {
+			return err
+		}
+		events, err := repo.CopyFrameworkEvents(txCtx, dst1, dst2a, boundary)
+		if err != nil {
+			return err
+		}
+		if events != 5 { // inv-A×3 + inv-B×2；分叉点后的 inv-D 不复制
+			return fmt.Errorf("gen2a events = %d, want 5", events)
+		}
+		tasks, turns, steps, err := repo.CopyV2Records(txCtx, dst1, dst2a, p1+"inv-B")
+		if err != nil {
+			return err
+		}
+		if tasks != 2 || turns != 2 || steps != 2 {
+			return fmt.Errorf("gen2a v2 = %d/%d/%d, want 2/2/2", tasks, turns, steps)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("gen2a fork: %v", err)
+	}
+
+	r := d.RWDB().ReadDB(ctx)
+	// id 归一单层前缀：fk22222222-inv-B 存在；世代叠加 fk22222222-fk11111111-* 不存在。
+	var n int
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM turns_v2 WHERE session_id = $1 AND id = $2 AND task_id = $3`,
+		[]any{dst2a, p2a + "inv-B", p2a + "task-2"}, &n); err != nil || n != 1 {
+		t.Fatalf("gen2a normalized turn missing: n=%d err=%v", n, err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM turns_v2 WHERE session_id = $1 AND id LIKE $2`,
+		[]any{dst2a, p2a + "fk%"}, &n); err != nil || n != 0 {
+		t.Fatalf("gen2a accumulated prefix leaked: n=%d err=%v", n, err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM steps_v2 WHERE session_id = $1 AND id LIKE $2`,
+		[]any{dst2a, p2a + "fk%"}, &n); err != nil || n != 0 {
+		t.Fatalf("gen2a accumulated step prefix leaked: n=%d err=%v", n, err)
+	}
+
+	// ② 第二代：分叉点为 fork 后新增 turn（原 id inv-D）——全量前缀复制。
+	err = repo.ForkSessionInTx(ctx, func(txCtx context.Context) error {
+		boundary, found, err := repo.FindTurnEventBoundary(txCtx, dst1, "inv-D")
+		if err != nil || !found {
+			return fmt.Errorf("gen2b boundary (new turn): found=%v err=%w", found, err)
+		}
+		if err := repo.CreateFrameworkState(txCtx, dst1, dst2b); err != nil {
+			return err
+		}
+		events, err := repo.CopyFrameworkEvents(txCtx, dst1, dst2b, boundary)
+		if err != nil {
+			return err
+		}
+		if events != 6 { // inv-A×3 + inv-B×2 + inv-D×1
+			return fmt.Errorf("gen2b events = %d, want 6", events)
+		}
+		tasks, turns, steps, err := repo.CopyV2Records(txCtx, dst1, dst2b, "inv-D")
+		if err != nil {
+			return err
+		}
+		if tasks != 3 || turns != 3 || steps != 3 {
+			return fmt.Errorf("gen2b v2 = %d/%d/%d, want 3/3/3", tasks, turns, steps)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("gen2b fork: %v", err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM turns_v2 WHERE session_id = $1 AND id = $2`,
+		[]any{dst2b, p2b + "inv-D"}, &n); err != nil || n != 1 {
+		t.Fatalf("gen2b new turn missing: n=%d err=%v", n, err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM turns_v2 WHERE session_id = $1 AND id = $2`,
+		[]any{dst2b, p2b + "inv-B"}, &n); err != nil || n != 1 {
+		t.Fatalf("gen2b inherited turn not normalized: n=%d err=%v", n, err)
+	}
+
+	// ④ 中间代源会话零影响：dst1 计数不变（events 6 / turns 3 / tasks 3 / steps 3）。
+	var ev, tn, tk, st int
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM trpc_session_events WHERE session_id = $1`, []any{dst1}, &ev); err != nil {
+		t.Fatalf("count dst1 events: %v", err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM turns_v2 WHERE session_id = $1`, []any{dst1}, &tn); err != nil {
+		t.Fatalf("count dst1 turns: %v", err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM tasks_v2 WHERE session_id = $1`, []any{dst1}, &tk); err != nil {
+		t.Fatalf("count dst1 tasks: %v", err)
+	}
+	if err := queryRowScan(ctx, r, `SELECT COUNT(1) FROM steps_v2 WHERE session_id = $1`, []any{dst1}, &st); err != nil {
+		t.Fatalf("count dst1 steps: %v", err)
+	}
+	if ev != 6 || tn != 3 || tk != 3 || st != 3 {
+		t.Fatalf("dst1 mutated: events=%d turns=%d tasks=%d steps=%d, want 6/3/3/3", ev, tn, tk, st)
+	}
+}

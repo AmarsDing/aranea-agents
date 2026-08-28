@@ -30,10 +30,14 @@ func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg logg
 		}
 
 		turnNumber := estimateTurnNumber(args.Request.Messages)
+		exemptLast := lastNToolResultIndexes(args.Request.Messages, toolResultGateExemptLastN)
 
 		for i := range args.Request.Messages {
 			msg := &args.Request.Messages[i]
 			if msg.Role != trpcmodel.RoleTool {
+				continue
+			}
+			if exemptLast[i] {
 				continue
 			}
 			content := extractTextContent(msg)
@@ -95,6 +99,32 @@ func extractTextContent(msg *trpcmodel.Message) string {
 		return fmt.Sprintf("[unserializable content parts: %v]", msg.ContentParts)
 	}
 	return string(b)
+}
+
+// toolResultGateExemptLastN keeps the most recent RoleTool results in this
+// request (typically this turn's last N tool payloads) so the model can
+// still read what it just got. Older oversized results still persist+pointer.
+const toolResultGateExemptLastN = 3
+
+func lastNToolResultIndexes(messages []trpcmodel.Message, n int) map[int]bool {
+	exempt := make(map[int]bool)
+	if n <= 0 {
+		return exempt
+	}
+	idxs := make([]int, 0, 8)
+	for i, m := range messages {
+		if m.Role == trpcmodel.RoleTool {
+			idxs = append(idxs, i)
+		}
+	}
+	start := len(idxs) - n
+	if start < 0 {
+		start = 0
+	}
+	for _, i := range idxs[start:] {
+		exempt[i] = true
+	}
+	return exempt
 }
 
 func estimateTurnNumber(messages []trpcmodel.Message) int {

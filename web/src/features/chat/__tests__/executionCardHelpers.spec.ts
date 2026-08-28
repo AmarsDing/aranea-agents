@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateSummaryFallback } from '../executionCardHelpers';
+import { generateSummaryFallback, isPlanAndExecuteTool } from '../executionCardHelpers';
 import type { ToolUseEvent } from '../types';
 
 function event(partial: Partial<ToolUseEvent>): ToolUseEvent {
@@ -18,8 +18,10 @@ function event(partial: Partial<ToolUseEvent>): ToolUseEvent {
 }
 
 describe('generateSummaryFallback', () => {
-  it('plan_and_execute shows planning copy while the tool is running', () => {
-    expect(generateSummaryFallback(event({ tool_name: 'plan_and_execute' }))).toBe('正在规划并执行…');
+  it('isPlanAndExecuteTool matches canonical and suffixed names', () => {
+    expect(isPlanAndExecuteTool('plan_and_execute')).toBe(true);
+    expect(isPlanAndExecuteTool('spirit_plan_and_execute')).toBe(true);
+    expect(isPlanAndExecuteTool('exec_command')).toBe(false);
   });
 
   it('file_read uses the filename', () => {

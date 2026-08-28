@@ -44,9 +44,9 @@ import (
 //  4. 截断落 flowlog `prompt.assembly.trimmed`（各段截断量）+ 进程 Warn。
 //
 // 配置：agent_runtime_settings.assembly_budget_soft/hard_tokens（估 token，
-// 0=关闭）。默认全关，轻链路零开销；管理层（3 GM + 部门主管）经 SQL 灰度
-// 40K/60K（A4）。读取为构建期快照（ag.Settings），与 hardTriggerRatioForAgent
-// 同先例——预算变更触发 agent 重建生效。
+// 0=关闭）。专项 hard=0 仍关闸；Spirit / chat profile 在 hard<=0 时默认
+// 40K/60K。est 含 messages + tools_schema（与 context_budget 同源 marshal）。
+// 读取为构建期快照（ag.Settings），与 hardTriggerRatioForAgent 同先例。
 
 // assemblyBudgetHookPriority 8：全量注入（memory 5 / knowledge 6 / 各 cue ≤6）
 // 之后、终审压缩闸（9）与 L0 快照（10）之前，计量口径=完全注入后的请求。
@@ -159,19 +159,12 @@ type assemblyTrimStats struct {
 	HeadOverBudget bool
 }
 
-// newAssemblyBudgetBeforeHook 构建装配预算闸；hard<=0（默认）返回 nil。
+// newAssemblyBudgetBeforeHook 构建装配预算闸；专项 hard<=0 返回 nil，
+// Spirit/chat 在 hard<=0 时打开 40K/60K 默认。
 func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	if ag.Settings == nil || ag.Settings.AssemblyBudgetHardTokens <= 0 {
+	soft, hard, enabled := resolveAssemblyBudget(ag)
+	if !enabled {
 		return nil
-	}
-	hard := ag.Settings.AssemblyBudgetHardTokens
-	soft := ag.Settings.AssemblyBudgetSoftTokens
-	if soft <= 0 {
-		// soft 未配时默认 2/3 hard（60K hard → 40K soft，对齐计划值）。
-		soft = hard * 2 / 3
-	}
-	if soft > hard {
-		soft = hard
 	}
 	target := int(float64(hard) * assemblyBudgetTargetFactor)
 	lg := deps.Logger()
@@ -181,7 +174,7 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		msgs := args.Request.Messages
-		est := analyzePromptRequest(msgs).EstTokens
+		est := analyzePromptRequest(msgs).EstTokens + toolsSchemaEstTokens(args.Request)
 		if est <= soft {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -190,9 +183,9 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 		// true=已告过（跳过），false=本 turn 首次（注入）。
 		if !markAssemblyBudgetWarned(ctx) {
 			warn := buildAssemblyBudgetWarning(est, soft, hard)
-			msgs = appendDynamicCue(msgs, assemblyBudgetWarnMarker+warn)
+			msgs = replaceDynamicCue(msgs, assemblyBudgetWarnMarker, assemblyBudgetWarnMarker+warn)
 			args.Request.Messages = msgs
-			est = analyzePromptRequest(msgs).EstTokens
+			est = analyzePromptRequest(msgs).EstTokens + toolsSchemaEstTokens(args.Request)
 			lg.Info("assembly soft budget crossed, capacity warning injected",
 				loggateway.StepID("agent.assembly_budget"),
 				loggateway.AgentKey(agentKey),
@@ -340,4 +333,26 @@ func emitAssemblyTrimmedFlowLog(ctx context.Context, agentKey string, stats asse
 		event.P("evicted_chars", stats.EvictedChars),
 		event.P("head_over_budget", stats.HeadOverBudget),
 	)
+}
+
+// toolsSchemaEstTokens estimates Request.Tools declaration tokens on the
+// same chars/token scale as message assembly so the gate is not blind to
+// static schema (S05: ~13K of a 20K call was twin_*/gns3_* schema).
+func toolsSchemaEstTokens(req *trpcmodel.Request) int {
+	if req == nil || len(req.Tools) == 0 {
+		return 0
+	}
+	totalChars := 0
+	for _, t := range req.Tools {
+		d := t.Declaration()
+		if d == nil {
+			continue
+		}
+		raw, err := json.Marshal(d)
+		if err != nil {
+			continue
+		}
+		totalChars += len(raw)
+	}
+	return estTokensFromChars(totalChars)
 }

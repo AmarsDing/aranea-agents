@@ -9,6 +9,7 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // 包A（session-eval-20260825 A1）装配预算硬闸单测。
@@ -54,14 +55,21 @@ func countMarker(msgs []trpcmodel.Message, marker string) int {
 	return n
 }
 
-// TestAssemblyBudgetHook_NilWhenDisabled pins the zero-cost light path:
-// hard<=0（含 settings 为 nil）时闸不注册，管理层以外 agent 零开销。
+// TestAssemblyBudgetHook_NilWhenDisabled pins the zero-cost specialist path:
+// hard<=0（含 settings 为 nil）时闸不注册。Spirit 在 hard=0 时走 40K/60K 默认（见 TestResolveAssemblyBudget）。
 func TestAssemblyBudgetHook_NilWhenDisabled(t *testing.T) {
 	if hook := newAssemblyBudgetBeforeHook(biz.Agent{}, TRPCBuilderDeps{}); hook != nil {
 		t.Fatalf("settings=nil must yield nil hook")
 	}
 	if hook := newAssemblyBudgetBeforeHook(assemblyTestAgent(0, 0), TRPCBuilderDeps{}); hook != nil {
-		t.Fatalf("hard=0 must yield nil hook")
+		t.Fatalf("hard=0 specialist must yield nil hook")
+	}
+}
+
+func TestAssemblyBudgetHook_SpiritDefaultsWhenHardZero(t *testing.T) {
+	hook := newAssemblyBudgetBeforeHook(biz.Agent{AgentKey: biz.SpiritAgentKey}, TRPCBuilderDeps{})
+	if hook == nil {
+		t.Fatal("Spirit hard=0 must install 40K/60K assembly gate")
 	}
 }
 
@@ -279,5 +287,30 @@ func TestClassifyAssemblyCue(t *testing.T) {
 		if got := classifyAssemblyCue(trpcmodel.Message{Content: tc.content}); got != tc.want {
 			t.Errorf("classifyAssemblyCue(%q) = %s, want %s", tc.content[:30], got, tc.want)
 		}
+	}
+}
+
+func TestAssemblyBudgetHook_ToolsSchemaCountsTowardSoft(t *testing.T) {
+	hook := newAssemblyBudgetBeforeHook(assemblyTestAgent(80, 10000), TRPCBuilderDeps{})
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	args := &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{
+			Messages: []trpcmodel.Message{
+				{Role: trpcmodel.RoleSystem, Content: "sys"},
+				{Role: trpcmodel.RoleUser, Content: "hi"},
+			},
+			Tools: map[string]trpctool.Tool{
+				"huge": sizedDeclTool{name: "huge", desc: strings.Repeat("x", 2500)},
+			},
+		},
+	}
+	msgsOnly := analyzePromptRequest(args.Request.Messages).EstTokens
+	if msgsOnly > 80 {
+		t.Fatalf("fixture messages must be under soft, got %d", msgsOnly)
+	}
+	runAssemblyBudgetHook(t, hook, ctx, args)
+	if !findMarker(args.Request.Messages, assemblyBudgetWarnMarker) {
+		t.Fatalf("tools_schema must count toward assembly est; messages=%d schema=%d", msgsOnly, toolsSchemaEstTokens(args.Request))
 	}
 }

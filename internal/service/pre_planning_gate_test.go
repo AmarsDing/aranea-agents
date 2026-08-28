@@ -111,10 +111,9 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 	}
 }
 
-func TestPrePlanningGate_Evaluate_FactQueryStillForcesPlanning(t *testing.T) {
-	// ADR-79-V V2（2026-08-26）：分类器输出只可用于增加义务，不可用于免除
-	// 义务——事实查询分类不得豁免强制规划。QuickAssess 判 Moderate 即强制，
-	// 纯事实查询的组队由工具边界 shouldRejectFactQueryPlan 拦截（宁重勿轻）。
+func TestPrePlanningGate_Evaluate_FactQueryDoesNotForcePlanning(t *testing.T) {
+	// 词法 LooksLikeFactQuery（已对任务动作词否决）是轻档路由，不是评分器豁免。
+	// Moderate 天气问询不得 ForcePlanning，避免空跑 plan_and_execute。
 	bus := &captureEventBus{}
 	gate := NewPrePlanningGate(
 		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
@@ -129,11 +128,32 @@ func TestPrePlanningGate_Evaluate_FactQueryStillForcesPlanning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate error: %v", err)
 	}
-	if !decision.ForcePlanning {
-		t.Fatalf("V2: fact query classified Moderate must still force planning: %+v", decision)
+	if decision.ForcePlanning {
+		t.Fatalf("lexical fact query must not force planning: %+v", decision)
 	}
-	if decision.Reason != "评估完成：中等任务，强制走规划路径" {
+	if decision.Reason != "评估完成：中等任务（事实查询，不强制规划）" {
 		t.Fatalf("Reason = %q", decision.Reason)
+	}
+}
+
+func TestPrePlanningGate_Evaluate_TaskActionStillForcesPlanning(t *testing.T) {
+	// 含任务动作词的「天气」句 LooksLikeFactQuery=false，Moderate 仍强制规划。
+	bus := &captureEventBus{}
+	gate := NewPrePlanningGate(
+		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.45},
+		bus,
+		nil,
+		loggateway.NewNoop(),
+	)
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
+		UserMessage:     "核对昨天的天气数据并生成巡检报告",
+		SpiritSessionID: "sess-weather-report",
+	})
+	if err != nil {
+		t.Fatalf("Evaluate error: %v", err)
+	}
+	if !decision.ForcePlanning {
+		t.Fatalf("task-action weather must still force planning: %+v", decision)
 	}
 }
 

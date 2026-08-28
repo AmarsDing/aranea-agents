@@ -5,10 +5,13 @@ import (
 	"testing"
 )
 
-func TestDefaultAgentRuntimeSettings_L1HistoryEnabled(t *testing.T) {
+func TestDefaultAgentRuntimeSettings_L3InjectProvenanceOff(t *testing.T) {
 	s := DefaultAgentRuntimeSettings()
-	if s.L1HistoryEnabled {
-		t.Error("L1HistoryEnabled should default to false")
+	if s.L3InjectProvenance {
+		t.Error("L3InjectProvenance should default to false")
+	}
+	if s.ReplyReminderEnabled {
+		t.Error("ReplyReminderEnabled should default to false")
 	}
 }
 

@@ -221,7 +221,7 @@ export default {
       decomposing: '正在分解任务…',
       decomposingElapsed: '正在分解任务…（已 {elapsed}s）',
       decomposed: '任务分解完成，共 {subTaskCount} 个子任务',
-      decomposeFailed: '任务分解未完成，已切换为直接回答…',
+      decomposeFailed: '任务分解未完成，请重试或显式组队…',
       decomposeRetry: '任务分解遇到波动，正在重试（第 {attempt} 次）…',
       allocating: '正在匹配 Agent…（{index}/{total}）{subTask}',
       allocatingBound: '正在匹配（{index}/{total}）「{specialty}」→ {agentName}（{matchLayer}）{subTask}',

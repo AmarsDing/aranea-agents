@@ -101,6 +101,43 @@ func (p *TaskPlan) NeedsClarification() bool {
 	return p != nil && len(p.ClarificationQuestions) > 0
 }
 
+// Decompose reason values persisted on TaskPlan.DecomposeReason.
+const (
+	DecomposeReasonFailed       = "decompose_failed"
+	DecomposeReasonEmpty        = "decompose_empty"
+	DecomposeReasonVerifyFailed = "verify_failed"
+	// DecomposeReasonDeferred means assess+draft finished; LLM decompose
+	// continues on ResumePlanID so Spirit can speak during planning.
+	DecomposeReasonDeferred = "deferred_decompose"
+)
+
+// PlanningInProgressNextAction is returned by plan_and_execute when the
+// planner LLM is still running in the background after the tool ACK.
+const PlanningInProgressNextAction = "planning_in_progress"
+
+// PlanningInProgressUserHint tells Spirit not to re-enter plan_and_execute.
+const PlanningInProgressUserHint = "任务正在分解规划中，请向用户说明正在组建方案，等待编排进度事件后再汇报结果。不要立刻再次调用 plan_and_execute。"
+
+// DecomposeFailedNextAction is returned by plan_and_execute when medium+
+// decomposition fails. Spirit must not treat StrategyDirect as success.
+const DecomposeFailedNextAction = "decompose_failed"
+
+// DecomposeFailedUserHint explains the fail-closed decompose path to Spirit.
+const DecomposeFailedUserHint = "任务分解未完成，不能改为单人直接作答。请向用户说明后重试 plan_and_execute（可指定 mode=parallel/dag），或改用 build_orchestration_graph 显式组队。"
+
+// DecomposeFailed reports whether decomposition was attempted and did not
+// produce an executable plan. Callers must not silently run StrategyDirect.
+func (p *TaskPlan) DecomposeFailed() bool {
+	if p == nil {
+		return false
+	}
+	switch p.DecomposeReason {
+	case DecomposeReasonFailed, DecomposeReasonEmpty, DecomposeReasonVerifyFailed:
+		return true
+	}
+	return false
+}
+
 // DimensionScores holds the six-dimension complexity assessment
 type DimensionScores struct {
 	Semantic   float64 `json:"semantic"`   // 0.25 weight

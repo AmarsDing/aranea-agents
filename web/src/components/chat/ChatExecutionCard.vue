@@ -102,7 +102,7 @@ import {
   resolveDisplayLabel,
 } from '../../features/chat/activityPresentation';
 import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
-import { EXECUTION_COLLAPSE_CONTROL_KEY, generateSummaryFallback } from '../../features/chat/executionCardHelpers';
+import { EXECUTION_COLLAPSE_CONTROL_KEY, generateSummaryFallback, isPlanAndExecuteTool } from '../../features/chat/executionCardHelpers';
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
@@ -266,8 +266,7 @@ const agentIcon = computed(() => props.event.icon_key?.trim() ?? '');
 const summaryText = computed(() => props.event.summary?.trim() || generateSummaryFallback(props.event));
 const liveProgressText = computed(() => {
   if (status.value !== 'running') return '';
-  const name = props.event.tool_name || '';
-  if (name !== 'plan_and_execute' && !name.endsWith('_plan_and_execute')) return '';
+  if (!isPlanAndExecuteTool(props.event.tool_name)) return '';
   const live = collapseControl?.orchestrationProgressText?.value?.trim() ?? '';
   return live || summaryText.value;
 });

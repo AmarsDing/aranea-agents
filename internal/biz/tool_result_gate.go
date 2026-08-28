@@ -179,7 +179,7 @@ func (g *ToolResultGate) Archive(ctx context.Context, sessionID, messageID, tool
 // function of (byteSize, toolName, blobID) — stable across turns for a fixed
 // blob id, so the post-prune prefix re-stabilizes after the first pruned turn.
 func ToolResultPrunePointer(byteSize int, toolName, blobID string) string {
-	return fmt.Sprintf("[已剪枝 tool_result｜原 %d 字节｜tool=%s｜blob=%s｜取回: read_tool_result]", byteSize, toolName, blobID)
+	return fmt.Sprintf("[已剪枝 tool_result｜原 %d 字节｜tool=%s｜blob=%s｜取回: 调用 read_tool_result(blob_id=%s)]", byteSize, toolName, blobID, blobID)
 }
 
 func freezePreview(fullContent, blobID string) string {

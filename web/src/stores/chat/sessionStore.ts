@@ -661,7 +661,7 @@ export const useChatSessionStore = defineStore('chatSession', () => {
    * 归桶按归属分流：team 根会话 fork 出的副本带 team_id，进 teamSessions 桶
    * （与 createSessionByKind 同模式）；spirit/agent 会话进 sessions。插错桶会
    * 导致 team 场景侧边栏刷新前看不到新会话、agent 列表被 team 会话污染。
-   * team/member 子会话与已分叉会话不可 fork（后端门禁）。
+   * team/member 子会话不可 fork（后端门禁）；多代 fork 已放开（T5）。
    */
   async function forkSessionAction(srcSessionId: string, turnId: string): Promise<Session> {
     error.value = null;

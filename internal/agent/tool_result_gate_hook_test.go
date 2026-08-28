@@ -83,9 +83,20 @@ func TestToolResultGateEnabled_WithSettings(t *testing.T) {
 	}
 }
 
-func TestToolResultGateEnabled_Disabled(t *testing.T) {
-	ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{ToolResultGateEnabled: false}}
-	if toolResultGateEnabled(ag) {
-		t.Fatal("explicitly disabled should return false")
+func TestLastNToolResultIndexes(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleUser},
+		{Role: trpcmodel.RoleTool, Content: "old"},
+		{Role: trpcmodel.RoleAssistant},
+		{Role: trpcmodel.RoleTool, Content: "a"},
+		{Role: trpcmodel.RoleTool, Content: "b"},
+		{Role: trpcmodel.RoleTool, Content: "c"},
+	}
+	got := lastNToolResultIndexes(msgs, 3)
+	if got[1] {
+		t.Fatal("older tool result must not be exempt")
+	}
+	if !got[3] || !got[4] || !got[5] {
+		t.Fatalf("last 3 tool results must be exempt, got %v", got)
 	}
 }

@@ -4,10 +4,10 @@
 -->
 <template>
   <div class="turn-container" :data-turn-id="turn.ID">
-    <!-- 79 R6 Fork-from-Turn：hover 显示「从此分支」。仅根会话的 spirit turn
-         （SessionID === SpiritSessionID 且非 team stage）且非运行中可分叉——
-         member 子会话事件不在根会话框架事件流内，后端会拒绝；已分叉会话
-         （链式 fork）同样隐藏，后端对 child session 硬拒绝。 -->
+    <!-- 79 R6 Fork-from-Turn：hover 显示「从此分支」。根会话与 fork 会话的
+         spirit turn（SessionID === SpiritSessionID 且非 team stage）且非运行中
+         可分叉——多代 fork 已放开（2026-08-28 T5，后端前缀剥离/归一保证）；
+         team/member 子会话历史不闭合，隐藏按钮且后端门禁兜底。 -->
     <q-btn
       v-if="forkable"
       flat
@@ -48,6 +48,7 @@ import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import type { Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
+import { isPlanAndExecuteTool } from '../../../features/chat/executionCardHelpers';
 import { cuSessionIdFromSteps } from '../../../features/computeruse/useCuStepStream';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
@@ -73,18 +74,17 @@ const { t } = (() => {
     return { t: (key: string) => key };
   }
 })();
-
-// 79 R6：可分叉 = 根会话 spirit turn（SessionID === SpiritSessionID、非 team
-// stage）且非运行中（running turn 事件仍在追加，分叉边界不稳定）。
-// 链式 fork 后端硬拒绝（继承 id 前缀与复制事件 invocationId 无法命中，见
-// biz/session/fork.go）——已分叉会话（parent_session_id 非空）直接隐藏按钮，
-// 不让用户点击后吃 400。findSessionById 覆盖 agent 列表与 team 列表（team 场景
-// selectedSession 为空、仅有 teamSelectedSessionId），未加载到时 fail-open 由
-// 后端门禁兜底。
+// 79 R6：可分叉 = 根会话或 fork 会话的 spirit turn（SessionID ===
+// SpiritSessionID、非 team stage）且非运行中（running turn 事件仍在追加，
+// 分叉边界不稳定）。多代 fork 已放开（T5：后端对继承 id 做前缀剥离/归一，
+// 见 biz/session/fork.go）；仅 team/member 子会话（parent 非空且非 fork 血统，
+// 即 fork_from_turn_id 为空）历史不闭合隐藏按钮，不让用户点击后吃 400。
+// findSessionById 覆盖 agent 列表与 team 列表（team 场景 selectedSession 为空、
+// 仅有 teamSelectedSessionId），未加载到时 fail-open 由后端门禁兜底。
 const chatSessionStore = useChatSessionStore();
 const isChildSession = computed(() => {
   const cur = chatSessionStore.findSessionById(props.turn.SessionID);
-  return !!cur?.parent_session_id?.trim();
+  return !!cur?.parent_session_id?.trim() && !cur?.fork_from_turn_id?.trim();
 });
 const forkable = computed(
   () =>
@@ -109,8 +109,8 @@ const visibleSteps = computed(() =>
     if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
       return false;
     }
-    // showToolCalls=false 时隐藏工具调用块（与 TodoKanban 开关语义对齐）。
-    if (s.Kind === 'action' && !uiConfig.showToolCalls) {
+    // showToolCalls=false 时隐藏普通工具卡；plan_and_execute 是编排进度，常驻。
+    if (s.Kind === 'action' && !uiConfig.showToolCalls && !isPlanAndExecuteTool(s.ToolName)) {
       return false;
     }
     return true;

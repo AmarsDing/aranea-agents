@@ -73,6 +73,9 @@ func TestToolLoadTool_LoadExistingTool(t *testing.T) {
 	if output.Schema == nil {
 		t.Error("expected full schema in response")
 	}
+	if !strings.Contains(output.Message, "next model step") {
+		t.Errorf("expected same-turn next-step contract in message, got %q", output.Message)
+	}
 
 	// 激活后：IsActivated 返回 true
 	if !mgr.IsActivated(ctx, "web_fetch") {

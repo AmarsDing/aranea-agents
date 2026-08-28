@@ -37,7 +37,10 @@ type OrgPruneResult struct {
 type OrgPruner struct{}
 
 // Prune returns the assignable agents whose department matches the task
-// domain. Empty domain, missing org placement, or no alias hit → FallbackAll.
+// domain. Empty domain, "其他", or missing org placement → FallbackAll.
+// A known specialty with no department hit fails closed (FallbackAll=false,
+// empty CandidateKeys) so Allocate can surface roster miss instead of
+// company-wide wrong-person assignment.
 func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) OrgPruneResult {
 	assignable := filterHeuristicAssignable(capabilities)
 	if len(assignable) == 0 {
@@ -64,7 +67,9 @@ func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) Or
 
 	aliases := DomainDepartmentAliases(norm)
 	if len(aliases) == 0 {
-		return OrgPruneResult{FallbackAll: true, Reason: OrgPruneReasonNoMatch}
+		// Known specialty, no department alias — fail-closed (roster miss),
+		// not FallbackAll. Empty / 其他 / no-org still fail-open above.
+		return OrgPruneResult{Reason: OrgPruneReasonNoMatch}
 	}
 
 	matchedDepts := make(map[string]string) // id → name
@@ -80,7 +85,7 @@ func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) Or
 		}
 	}
 	if len(matchedDepts) == 0 {
-		return OrgPruneResult{FallbackAll: true, Reason: OrgPruneReasonNoMatch}
+		return OrgPruneResult{Reason: OrgPruneReasonNoMatch}
 	}
 
 	deptIDs := make([]string, 0, len(matchedDepts))
@@ -105,7 +110,7 @@ func (OrgPruner) Prune(domainPath string, capabilities []biz.AgentCapability) Or
 		keys = append(keys, cap.AgentKey)
 	}
 	if len(keys) == 0 {
-		return OrgPruneResult{FallbackAll: true, Reason: OrgPruneReasonEmptyPool}
+		return OrgPruneResult{Reason: OrgPruneReasonEmptyPool}
 	}
 	return OrgPruneResult{
 		CandidateKeys:  keys,
@@ -163,34 +168,35 @@ func capLLMColdStart(caps []biz.AgentCapability) []biz.AgentCapability {
 }
 
 // matchingPool returns the heuristic-assignable catalog pruned to the
-// departments that match domainPath. Empty prune / missing org → full
-// assignable pool (NFR-78-06). Allocate never creates company/department
-// nodes (ORGFAST-05).
+// departments that match domainPath. Empty domain / 其他 / missing org →
+// full assignable pool (NFR-78-06). Known specialty with no department hit
+// returns an empty pool (fail-closed roster miss). Allocate never creates
+// company/department nodes (ORGFAST-05).
 func (impl *agentAllocatorImpl) matchingPool(domainPath string, capabilities []biz.AgentCapability, traceID string) ([]biz.AgentCapability, OrgPruneResult) {
 	assignable := filterHeuristicAssignable(capabilities)
 	prune := OrgPruner{}.Prune(domainPath, capabilities)
 	if prune.FallbackAll {
-		if prune.Reason == OrgPruneReasonNoMatch || prune.Reason == OrgPruneReasonEmptyPool {
-			impl.lg.Warn("组织剪枝未命中，回退全量可分配池",
-				loggateway.StepID(biz.SpiritStepAllocatorMatch),
-				loggateway.Str("trace_id", traceID),
-				loggateway.Str("domain_path", domainPath),
-				loggateway.Str("reason", prune.Reason),
-			)
-		}
 		return assignable, prune
+	}
+	if len(prune.CandidateKeys) == 0 {
+		impl.lg.Warn("组织剪枝未命中，不回退全量可分配池",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("domain_path", domainPath),
+			loggateway.Str("reason", prune.Reason),
+		)
+		return nil, prune
 	}
 	pool := restrictCapabilities(assignable, prune.CandidateKeys)
 	if len(pool) == 0 {
-		impl.lg.Warn("组织剪枝结果为空，回退全量可分配池",
+		impl.lg.Warn("组织剪枝结果为空，不回退全量可分配池",
 			loggateway.StepID(biz.SpiritStepAllocatorMatch),
 			loggateway.Str("trace_id", traceID),
 			loggateway.Str("domain_path", domainPath),
 			loggateway.Str("reason", OrgPruneReasonEmptyPool),
 		)
-		prune.FallbackAll = true
 		prune.Reason = OrgPruneReasonEmptyPool
-		return assignable, prune
+		return nil, prune
 	}
 	deptID := ""
 	if len(prune.DepartmentIDs) > 0 {

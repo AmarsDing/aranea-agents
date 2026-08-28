@@ -21,7 +21,7 @@
 export const CHAT_RUN_STALL_CHECK_INTERVAL_MS = 30_000; // Stall check polling interval
 export const CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS = 60_000; // Show stall warning after this delay
 export const CHAT_STALL_NOTIFY_DURATION_MS = 8_000; // Stall warning notification display duration
-export const CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS = 30_000; // Show "model thinking" notice after this delay
+export const CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS = 30_000; // Notify-only; matches backend DefaultFirstByteTimeout (model pack may wait longer)
 export const CHAT_FIRST_BYTE_NOTIFY_DURATION_MS = 8_000; // First byte notice display duration
 
 // ── WebSocket Transport ────────────────────────────────────────────────

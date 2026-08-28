@@ -104,7 +104,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(cue))
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, skillGuidanceCueMarker+cue)
+		args.Request.Messages = replaceDynamicCue(args.Request.Messages, skillGuidanceCueMarker, skillGuidanceCueMarker+cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -204,7 +204,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(b.String()))
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, skillGuidanceCueMarker+b.String())
+		args.Request.Messages = replaceDynamicCue(args.Request.Messages, skillGuidanceCueMarker, skillGuidanceCueMarker+b.String())
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

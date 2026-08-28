@@ -387,3 +387,19 @@ func TestResolveKnowledgeCue_TurnCache(t *testing.T) {
 		t.Fatal("no invocation context must stay fresh (legacy behavior)")
 	}
 }
+
+func TestResolveKnowledgeCue_UsesPrefetch(t *testing.T) {
+	t.Parallel()
+	prefetch := &TurnCuePrefetch{knowledge: &prefetchedKnowledgeCue{
+		query: cleanRecallQuery("什么是 SLA"),
+		cue:   "## Retrieved Knowledge\nprefetched",
+	}}
+	ctx := WithTurnCuePrefetch(context.Background(), prefetch)
+	cue, _, fresh := resolveKnowledgeCue(ctx, nil, loggateway.NewNoop(), []trpcmodel.Message{trpcmodel.NewUserMessage("什么是 SLA")}, true, false)
+	if !fresh {
+		t.Fatal("prefetch consume is the first real inject")
+	}
+	if cue != prefetch.knowledge.cue {
+		t.Fatalf("cue=%q", cue)
+	}
+}

@@ -7,7 +7,7 @@ package agent
 //
 // 语义（§3.2）：扫描会话历史中的 RoleTool 结果消息，同时满足「距当前轮 > K 轮」
 // 且「序列化大小 > S 字节」时，内容替换为摘记指针
-//   [已剪枝 tool_result｜原 N 字节｜tool=<name>｜blob=<id>｜取回: read_tool_result]
+//   [已剪枝 tool_result｜原 N 字节｜tool=<name>｜blob=<id>｜取回: 调用 read_tool_result(blob_id=...)]
 // 原文经 ToolResultGate.Archive 写入既有 blob 设施（不新造存储），取回复用
 // read_tool_result 工具（E2 裁定）。
 //

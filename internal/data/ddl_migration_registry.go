@@ -545,6 +545,9 @@ var ddlMigrations = []ddlMigration{
 	// 新记录 SourceRef.SessionID 一等公民、旧记录仅 metadata.session_id，
 	// COALESCE 两路兼容；表达式与 gateSessionExpr 生成串精确一致。
 	{Version: 20261268, Name: "decision_records_sessionid_idx", Func: ddlDecisionRecordsSessionIDIndex},
+	// 20261269 runtime_cost_defaults（Wave 2）：ReplyReminder 存量 DEFAULT 1
+	// 回填 0（记忆管家除外）；L3 provenance 非 __memory__ 回填关。幂等 UPDATE。
+	{Version: 20261269, Name: "runtime_cost_defaults", SQL: "sql/migrations/20261269_runtime_cost_defaults.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -127,6 +128,39 @@ type userTurnOptions struct {
 	attN          int
 }
 
+// teamIntentTimeout matches the chat C2 fuse (2.5s). Team intent used to
+// wait up to 45s serially after compileTeamRuntime.
+const teamIntentTimeout = 2*time.Second + 500*time.Millisecond
+
+// pendingTeamIntent is an in-flight team intent pass started before graph
+// compile so the LLM hop overlaps compileTeamRuntime.
+type pendingTeamIntent struct {
+	ch     chan intent.RunResult
+	cancel context.CancelFunc
+	skip   bool
+}
+
+func (p pendingTeamIntent) stop() {
+	if p.cancel != nil {
+		p.cancel()
+	}
+}
+
+func (r *Runner) startTeamIntentPass(ctx context.Context, ar anchorResolution, content string) pendingTeamIntent {
+	if intent.SkipForDirectReply(content) {
+		return pendingTeamIntent{skip: true}
+	}
+	if !intent.ShouldRun(ar.agent, content) {
+		return pendingTeamIntent{}
+	}
+	ch := make(chan intent.RunResult, 1)
+	ictx, cancel := context.WithTimeout(ctx, teamIntentTimeout)
+	safego.Go(ictx, "team.intent.pass", func() {
+		ch <- intent.RunForAgent(ictx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
+	})
+	return pendingTeamIntent{ch: ch, cancel: cancel}
+}
+
 func (r *Runner) prepareUserTurnOptions(
 	ctx context.Context,
 	ar anchorResolution,
@@ -136,6 +170,7 @@ func (r *Runner) prepareUserTurnOptions(
 	teamRow biz.Team,
 	dialogMode string,
 	t0 time.Time,
+	pending pendingTeamIntent,
 ) (opts userTurnOptions, turnStatus string, err error) {
 	turnStatus = biz.TeamMemberStepStatusOK
 	anchor := &agent.TeamMemberAnchor{
@@ -170,13 +205,18 @@ func (r *Runner) prepareUserTurnOptions(
 		})
 	}
 
-	shouldRunIntent := intent.ShouldRun(ar.agent, content)
+	shouldRunIntent := !pending.skip && intent.ShouldRun(ar.agent, content)
 	artifactInjected := false
+	if pending.ch != nil {
+		intRes = <-pending.ch
+		pending.stop()
+		shouldRunIntent = true
+	} else if shouldRunIntent {
+		intentCtx, cancel := context.WithTimeout(ctx, teamIntentTimeout)
+		intRes = intent.RunForAgent(intentCtx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
+		cancel()
+	}
 	if shouldRunIntent {
-		// history 传 nil：既有行为（2026-08-28 审查勘正：content 实为团队 turn
-		// 用户原始输入，非 leader 合成指令；是否补 history 提升追问解析另案
-		// 评估，本改动不动既有行为）。
-		intRes = intent.RunForAgent(ctx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
 		// P1-2 (2026-08-19): 记录团队 intent pass 旁路用量（此前完全漏记）。
 		r.recordAuxUsage(ctx, biz.AuxLLMUsageInput{
 			Kind:          biz.UsageKindAuxIntent,

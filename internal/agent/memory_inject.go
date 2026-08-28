@@ -264,7 +264,7 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		// P2 TTFT + DeepSeek system-prefix: append as a user-role cue at the
 		// END so the [system block + history + user] prefix stays cacheable
 		// and the cue does not enter the provider's system prefix.
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, memoryInjectCueContent(cue))
+		args.Request.Messages = replaceDynamicCue(args.Request.Messages, memoryInjectMarker, memoryInjectCueContent(cue))
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -324,6 +324,37 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 			knowledgetool.MarkMemoryL3Grounded(ctx, memoryCueHasL3(result))
 			return result, false
 		}
+	}
+
+	if p := turnCuePrefetchFromContext(ctx); p != nil && p.memory != nil {
+		result := &MemoryCueResult{
+			ProfileCue:      p.memory.profileCue,
+			RecallCue:       p.memory.recallCue,
+			RecallHits:      p.memory.recallHits,
+			InjectedFactIDs: append([]string(nil), p.memory.injectedFactIDs...),
+		}
+		if policy.InjectL1 {
+			if l1 := L1MemoryCue(ctx, deps.L1Reader, ag, policy, sessionID, deps.LG); l1 != nil {
+				result.L1Cue = l1.Cue
+				recordContextBudgetOnce(ctx, ContextBudgetCategoryMemoryL1, utf8.RuneCountInString(l1.Cue))
+			}
+		}
+		if slice := ProjectStateCueFromInvocation(inv, projectStateCueBudgetRunes); slice != "" {
+			if result.RecallCue == "" {
+				result.RecallCue = slice
+			} else {
+				result.RecallCue = slice + "\n\n" + result.RecallCue
+			}
+		}
+		inv.SetState(memoryCueTurnCacheStateKey, &memoryCueTurnCache{
+			keyword:         keyword,
+			profileCue:      result.ProfileCue,
+			recallCue:       result.RecallCue,
+			recallHits:      result.RecallHits,
+			injectedFactIDs: result.InjectedFactIDs,
+		})
+		knowledgetool.MarkMemoryL3Grounded(ctx, memoryCueHasL3(result))
+		return result, true
 	}
 
 	result := &MemoryCueResult{}

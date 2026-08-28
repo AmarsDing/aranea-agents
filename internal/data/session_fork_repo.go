@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,10 +25,13 @@ import (
 //   - v2 记录：turns_v2.seq 在 task 内单调、tasks_v2.seq 在 session 内单调，
 //     边界 = (forkTask.seq, forkTurn.seq)；复制 task.seq < forkTask.seq 的全部，
 //     及边界 task 内 turn.seq ≤ forkTurn.seq 的部分。仅复制 session_id = 源会话
-//     的行（biz 层已限定根会话）；team 成员 turn（session_id = 成员会话）不在
-//     复制面，fork 出的 team 根会话呈现协调者视角历史。
+//     的行（biz 层已排除 team/member 子会话）；team 成员 turn（session_id =
+//     成员会话）不在复制面，fork 出的 team 根会话呈现协调者视角历史。
 //   - id 重映射：确定性前缀 fk<dst8>-（dst8 = 新会话 uuid 去横线前 8 位）。
 //     源 id 最长约 43（step id = turnUUID+"-s"+n），加前缀 ≤ 54 < 64 列上限。
+//     多代 fork（2026-08-28 T5）：重映射前先剥离源 id 上的全部继承前缀
+//     （stripForkIDPrefixes / stripForkPrefixSQL），新 id 恒为单层新前缀——
+//     世代叠加不超限，且任意会话内 v2 行 id 至多一层前缀（归一不变量）。
 //
 // 全部写操作经 ForkSessionInTx 的 ent.Tx（RWDB.WriteDB 从事务 ctx 取
 // execer），与 sessions 行的 ent 写入同事务。
@@ -57,7 +61,33 @@ func forkIDPrefix(dstSessionID string) string {
 	return "fk" + compact + "-"
 }
 
+// forkIDPrefixRe 锚定 fk<8hex>- 世代前缀（多代 fork 时可叠加多层）。
+var forkIDPrefixRe = regexp.MustCompile(`^(?:fk[0-9a-fA-F]{8}-)+`)
+
+// stripForkIDPrefixes 剥离 id 上的全部 fk<dst8>- 继承前缀，还原为源会话内
+// 的原始 id（复制事件的 invocationId 是无前缀原 run id）。非前缀形态
+// （长度不足 / 非 hex / 无尾横线）原样返回。
+func stripForkIDPrefixes(id string) string {
+	return forkIDPrefixRe.ReplaceAllString(id, "")
+}
+
+// stripForkPrefixSQL 双方言的 SQL 侧前缀剥离表达式（与 stripForkIDPrefixes
+// 同语义）。PG regexp_replace 支持多层叠加；SQLite 无内建正则，用定长
+// GLOB + substr 剥单层——归一不变量（每次 fork 重映射为单层新前缀）保证
+// 源会话 v2 行 id 至多一层前缀，单层剥离闭合。
+func stripForkPrefixSQL(d Dialect, col string) string {
+	if d.IsPostgres() {
+		return "regexp_replace(" + col + ", '^(fk[0-9a-fA-F]{8}-)+', '')"
+	}
+	const h = "[0-9a-fA-F]"
+	return "CASE WHEN " + col + " GLOB 'fk" + h + h + h + h + h + h + h + h + "-*' " +
+		"THEN substr(" + col + ", 12) ELSE " + col + " END"
+}
+
 func (r *sessionForkRepo) FindTurnEventBoundary(ctx context.Context, sessionID, turnID string) (int64, bool, error) {
+	// 多代 fork：分叉点为继承 turn 时 id 带 fk 前缀，剥离后匹配复制事件的
+	// 无前缀 invocationId（根会话 turn id 无前缀，剥离为恒等）。
+	turnID = stripForkIDPrefixes(turnID)
 	// JSONExtract 双方言：PG COALESCE(...::jsonb)->>'invocationId'；SQLite json_extract。
 	invExpr := r.data.Dialect().JSONExtract("event", "invocationId")
 	q := r.data.Dialect().RenumberPlaceholders(`
@@ -187,12 +217,14 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 	}
 
 	prefix := forkIDPrefix(dstSessionID)
+	// 多代 fork id 归一：重映射 = 新单层前缀 + 剥离继承前缀后的原 id（见类型注释）。
+	stripID := stripForkPrefixSQL(d, "id")
 
 	// tasks：seq ≤ forkTask.seq 全量复制（边界 task 的后续 turn 在 turns 复制中截断，
 	// 其非终态按上方钳制改写）。
 	taskRes, err := write.ExecContext(ctx, d.RenumberPlaceholders(`
 		INSERT INTO tasks_v2 (id, session_id, user_message, status, seq, version, workspace_id, created_at, updated_at, completed_at)
-		SELECT ? || id, ?, user_message,
+		SELECT ? || `+stripID+`, ?, user_message,
 			CASE WHEN seq = ? AND status IN (?, ?, ?) THEN ? ELSE status END,
 			seq, version, workspace_id, created_at, updated_at,
 			CASE WHEN seq = ? AND status IN (?, ?, ?) THEN ? ELSE completed_at END
@@ -209,11 +241,11 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 	tasks, _ := taskRes.RowsAffected()
 
 	// turns：边界 task 之前全量 + 边界 task 内 seq ≤ forkTurn.seq。
-	// JOIN 命中的是源行（复制行 id 带前缀，不会被 t.task_id = k.id 匹配）。
+	// JOIN 命中的是源行（复制行 id 带新前缀，不会被 t.task_id = k.id 匹配）。
 	turnRes, err := write.ExecContext(ctx, d.RenumberPlaceholders(`
 		INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at, completed_at)
-		SELECT ? || t.id, ? || t.task_id, ?, ?,
-			CASE WHEN t.parent_turn_id = '' THEN '' ELSE ? || t.parent_turn_id END,
+		SELECT ? || `+stripForkPrefixSQL(d, "t.id")+`, ? || `+stripForkPrefixSQL(d, "t.task_id")+`, ?, ?,
+			CASE WHEN t.parent_turn_id = '' THEN '' ELSE ? || `+stripForkPrefixSQL(d, "t.parent_turn_id")+` END,
 			t.agent_key, t.team_id, t.team_stage_id, t.seq, t.version, t.status, t.started_at, t.completed_at
 		FROM turns_v2 t JOIN tasks_v2 k ON k.id = t.task_id
 		WHERE t.session_id = ? AND (k.seq < ? OR (k.seq = ? AND t.seq <= ?))
@@ -229,7 +261,7 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 		INSERT INTO steps_v2 (id, turn_id, task_id, session_id, spirit_session_id, kind, author_agent_key, seq,
 			content, reasoning, tool_name, tool_call_id, tool_args, tool_result, tool_duration_ms, tool_error_code,
 			notice_type, status, is_final, started_at, completed_at, version)
-		SELECT ? || s.id, ? || s.turn_id, ? || s.task_id, ?, ?,
+		SELECT ? || `+stripForkPrefixSQL(d, "s.id")+`, ? || `+stripForkPrefixSQL(d, "s.turn_id")+`, ? || `+stripForkPrefixSQL(d, "s.task_id")+`, ?, ?,
 			s.kind, s.author_agent_key, s.seq, s.content, s.reasoning, s.tool_name, s.tool_call_id,
 			s.tool_args, s.tool_result, s.tool_duration_ms, s.tool_error_code,
 			s.notice_type, s.status, s.is_final, s.started_at, s.completed_at, s.version

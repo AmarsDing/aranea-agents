@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -95,5 +96,17 @@ func TestResolveTeamOrg_EmptyDepartmentStillAssembles(t *testing.T) {
 	dept, cross := o.resolveTeamOrg(context.Background(), biz.PlanStep{}, []string{"solo"})
 	if dept != "" || len(cross) != 0 {
 		t.Fatalf("empty org must not block: dept=%q cross=%v", dept, cross)
+	}
+}
+
+func TestOrchestrate_EmptyAgentKeysFails(t *testing.T) {
+	o := NewRealTeamOrchestrator(loggateway.NewNoop())
+	o.SetAssembler(&SpiritTeamAssembler{})
+	_, err := o.Orchestrate(context.Background(), biz.PlanStep{ID: "st-empty", Label: "调研"}, biz.TeamStage{SessionID: "sess-1"})
+	if err == nil {
+		t.Fatal("empty AgentKeys must fail closed")
+	}
+	if !strings.Contains(err.Error(), "empty agent keys") {
+		t.Fatalf("err=%v", err)
 	}
 }

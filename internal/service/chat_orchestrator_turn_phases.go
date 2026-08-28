@@ -284,7 +284,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 
 	// Build run options + prepare run context
 	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, deps, intentRunOpts)
-	firstByteTimeout := chatagent.DefaultFirstByteTimeout
+	firstByteTimeout := chatagent.ResolveFirstByteTimeout(ctx, deps.ModelCatalog, ag.Provider, ag.Model)
 	if custom, ok := firstByteTimeoutFromContext(ctx); ok {
 		firstByteTimeout = custom
 	}
@@ -981,6 +981,7 @@ type turnBuildResult struct {
 	deps             chatagent.TRPCBuilderDeps
 	runner           trpcrunner.ManagedRunner
 	rollbackBoundary rt.RunnerRollbackBoundary
+	prefetch         *chatagent.TurnCuePrefetch
 }
 
 // buildTurnRunner constructs the agent deps, builds the agent, creates the runner,
@@ -992,6 +993,7 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	ag biz.Agent,
 	admit turnAdmissionResult,
 	emitter *event.TraceEmitter,
+	content string,
 ) (turnBuildResult, error) {
 	sessionID := strings.TrimSpace(sess.ID)
 	runID := admit.runID
@@ -1011,6 +1013,14 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BuildTRPCDeps",
 		loggateway.StepID("chat.build_deps"),
 		loggateway.Any("elapsed_ms", time.Since(depsStart).Milliseconds()))
+
+	prefetchCh := make(chan *chatagent.TurnCuePrefetch, 1)
+	safego.Go(ctx, "chat.cue.prefetch", func() {
+		pctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+		prefetchCh <- chatagent.PrefetchTurnCues(pctx, deps, ag, content, sess.ID, chatagent.UserIDFromCtx(ctx))
+	})
+
 	agentStart := time.Now()
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg())
 	if err != nil {
@@ -1078,10 +1088,16 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	if rbErr != nil {
 		emitter.LogWarn("chat.runner.rollback_boundary", "Runner 回滚边界记录失败", "", event.P("error", rbErr.Error()))
 	}
+	var prefetch *chatagent.TurnCuePrefetch
+	select {
+	case prefetch = <-prefetchCh:
+	case <-ctx.Done():
+	}
 	return turnBuildResult{
 		deps:             deps,
 		runner:           runner,
 		rollbackBoundary: rollbackBoundary,
+		prefetch:         prefetch,
 	}, nil
 }
 

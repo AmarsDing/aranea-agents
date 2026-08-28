@@ -226,7 +226,7 @@ export default {
       decomposing: 'Decomposing task…',
       decomposingElapsed: 'Decomposing task… ({elapsed}s elapsed)',
       decomposed: 'Task decomposed into {subTaskCount} subtasks',
-      decomposeFailed: 'Task decomposition unavailable — answering directly…',
+      decomposeFailed: 'Task decomposition failed — retry or form a team explicitly…',
       decomposeRetry: 'Decomposition hit a transient issue — retrying (attempt {attempt})…',
       allocating: 'Matching agents… ({index}/{total}) {subTask}',
       allocatingBound: 'Matching ({index}/{total}) "{specialty}" → {agentName} ({matchLayer}) {subTask}',

@@ -66,6 +66,33 @@ func currentOrchestrationCohort(teams []biz.Team) []biz.Team {
 	return live
 }
 
+// reuseFallbackAllowed reports whether a follow-up with no distinctive entity
+// overlap may attach to the current orchestration cohort. Active teams may
+// always be followed ("还在跑吗"). Completed-only cohorts require a status
+// follow-up — a fresh analysis/team-formation ask without entity overlap
+// must open a new DAG instead of replaying the last completed run.
+func reuseFallbackAllowed(prompt string, fallback []biz.Team) bool {
+	if len(fallback) == 0 {
+		return false
+	}
+	if !cohortAllCompleted(fallback) {
+		return true
+	}
+	return !biz.LooksLikeFreshOrchestrationAsk(prompt)
+}
+
+func cohortAllCompleted(teams []biz.Team) bool {
+	if len(teams) == 0 {
+		return false
+	}
+	for _, t := range teams {
+		if biz.IsTeamStatusActive(t.Status) {
+			return false
+		}
+	}
+	return true
+}
+
 // reusableOverlappingTeams returns session teams that overlap the new prompt
 // and are still usable (active or completed). Failed/cancelled/archived teams
 // do not block a fresh plan.

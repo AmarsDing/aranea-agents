@@ -150,6 +150,11 @@ func TestTryReuseExistingOrchestration(t *testing.T) {
 	if ok {
 		t.Fatal("different entity must not reuse 金鹏 teams")
 	}
+
+	_, ok = tryReuseExistingOrchestration(context.Background(), "sess-1", "组建几个团队做个应用", false, deps)
+	if ok {
+		t.Fatal("fresh ask without entity overlap must not reuse completed teams")
+	}
 }
 
 func TestCurrentOrchestrationCohort_PrefersLatestGraph(t *testing.T) {
@@ -167,5 +172,20 @@ func TestCurrentOrchestrationCohort_PrefersLatestGraph(t *testing.T) {
 		if t0.LinkedGraphID != "g-new" {
 			t.Fatalf("unexpected team %+v", t0)
 		}
+	}
+}
+
+func TestReuseFallbackAllowed_CompletedFreshAskRejected(t *testing.T) {
+	t.Parallel()
+	completed := []biz.Team{{ID: "t1", Status: biz.TeamStatusCompleted}}
+	if reuseFallbackAllowed("组建几个团队做个应用", completed) {
+		t.Fatal("fresh ask must not attach to completed-only cohort")
+	}
+	if !reuseFallbackAllowed("结果怎么样了", completed) {
+		t.Fatal("status follow-up must reuse completed cohort")
+	}
+	running := []biz.Team{{ID: "t1", Status: biz.TeamStatusRunning}}
+	if !reuseFallbackAllowed("组建几个团队做个应用", running) {
+		t.Fatal("active teams may be followed without entity overlap")
 	}
 }

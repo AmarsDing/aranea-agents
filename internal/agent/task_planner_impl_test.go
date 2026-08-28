@@ -67,7 +67,7 @@ func (b *captureNoticeBus) noticePhases() []string {
 
 // 00:52 会话根因（B3）：分解失败时 planner 只写进程日志、不发任何前端进度
 // 事件，用户在 60s 超时期间看不到「正在分解」之后的任何反馈。修复：分解
-// 失败必须发布 decompose_failed 进度事件并显式降级 direct。
+// 失败必须发布 decompose_failed 进度事件；中档/显式组队禁止静默降级 direct。
 func TestTaskPlanner_Plan_DecomposeFailurePublishesFallback(t *testing.T) {
 	repo := &stubTaskPlanRepo{}
 	bus := &captureNoticeBus{}
@@ -82,10 +82,10 @@ func TestTaskPlanner_Plan_DecomposeFailurePublishesFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan should not fail on decompose error (must degrade), got %v", err)
 	}
-	if plan.Strategy != biz.StrategyDirect {
-		t.Fatalf("expected strategy direct after decompose failure, got %s", plan.Strategy)
+	if plan.Strategy != biz.StrategyParallel {
+		t.Fatalf("expected strategy parallel after fail-closed decompose, got %s", plan.Strategy)
 	}
-	if plan.DecomposeReason != "decompose_failed" {
+	if plan.DecomposeReason != biz.DecomposeReasonFailed {
 		t.Fatalf("expected decompose_reason decompose_failed, got %q", plan.DecomposeReason)
 	}
 	phases := bus.noticePhases()
@@ -710,11 +710,11 @@ func TestPlan_PersistsDraftBeforeDecompose(t *testing.T) {
 	if repo.updated == nil {
 		t.Fatal("missing updated snapshot")
 	}
-	// catalog=nil → 分解失败降级 direct。
-	if repo.updated.Strategy != biz.StrategyDirect {
-		t.Errorf("updated.Strategy = %q, want direct（分解失败降级）", repo.updated.Strategy)
+	// catalog=nil → 分解失败；中档/显式组队禁止降级 direct。
+	if repo.updated.Strategy != biz.StrategyParallel {
+		t.Errorf("updated.Strategy = %q, want parallel（分解失败 fail-closed）", repo.updated.Strategy)
 	}
-	if repo.updated.DecomposeReason != "decompose_failed" {
+	if repo.updated.DecomposeReason != biz.DecomposeReasonFailed {
 		t.Errorf("updated.DecomposeReason = %q, want decompose_failed", repo.updated.DecomposeReason)
 	}
 	if repo.updated.ID != repo.created.ID {
@@ -1406,5 +1406,39 @@ func TestPlan_MemoryHitReplaysSpecialtySlots(t *testing.T) {
 	}
 	if plan.SubTasks[0].DomainPath != "创作/文案" || plan.SubTasks[1].ID != "st_recipe_2" {
 		t.Fatalf("%+v", plan.SubTasks)
+	}
+}
+
+func TestPlan_SubIntents_EmitsOrderedSlots(t *testing.T) {
+	impl := NewTaskPlanner(&stubTaskPlanRepo{}, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-sub",
+		UserMessage:     "查金鹏科技最近行情并整理成邮件发给运维",
+		IntentArtifact: &biz.IntentArtifact{
+			RefinedGoal: "查金鹏科技最近行情",
+			IntentKind:  "research",
+			SubIntents: []biz.SubIntent{
+				{Goal: "查金鹏科技最近行情", IntentKind: "research", ToolHints: []string{"web_research"}},
+				{Goal: "整理成邮件发给运维", IntentKind: "task", ToolHints: []string{"email_send"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DecomposeReason != "composite sub_intents; skip planner LLM" {
+		t.Fatalf("DecomposeReason=%q", plan.DecomposeReason)
+	}
+	if plan.Strategy != biz.StrategyDAG {
+		t.Fatalf("Strategy=%s want dag", plan.Strategy)
+	}
+	if len(plan.SubTasks) != 2 {
+		t.Fatalf("subtasks=%d", len(plan.SubTasks))
+	}
+	if plan.SubTasks[0].DomainPath != "研究/调研" {
+		t.Fatalf("slot0 domain=%q", plan.SubTasks[0].DomainPath)
+	}
+	if len(plan.SubTasks[1].DependsOn) != 1 || plan.SubTasks[1].DependsOn[0] != plan.SubTasks[0].ID {
+		t.Fatalf("slot1 depends=%v", plan.SubTasks[1].DependsOn)
 	}
 }

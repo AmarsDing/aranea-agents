@@ -904,8 +904,8 @@ export interface SessionService {
   GetSession(request: GetSessionRequest): Promise<Session>;
   // ForkSession 以 turn_id 为分叉点从会话 {id} 派生新会话（79-runtime-governance
   // R6）：单事务复制 ≤ 分叉点的框架事件前缀 + v2 消息记录，血缘写入
-  // parent_session_id / fork_from_turn_id。仅根会话可 fork（team/member 子会话
-  // 历史不闭合，返回 400）；turn 不存在返回 404。
+  // parent_session_id / fork_from_turn_id。根会话与 fork 会话可 fork（多代
+  // fork，T5）；team/member 子会话历史不闭合返回 400；turn 不存在返回 404。
   ForkSession(request: ForkSessionRequest): Promise<Session>;
   UpdateSession(request: UpdateSessionRequest): Promise<Session>;
   DeleteSession(request: DeleteSessionRequest): Promise<wellKnownEmpty>;

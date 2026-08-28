@@ -96,8 +96,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L3RecallBudgetTokens: MemoryRecallBudgetStandard,
 		// 2026-08-20：L2 独立召回预算，默认与 L3 同档（800）。
 		L2RecallBudgetTokens: MemoryRecallBudgetStandard,
-		// 2026-08-20：provenance 默认开（此前硬编码 true，保持行为一致）。
-		L3InjectProvenance: true,
+		// 2026-08-28 Wave 2：L3 provenance 默认关（token 噪声）；记忆管家/评测显式开启。
+		L3InjectProvenance: false,
 
 		// --- Memory L4 ---
 		L4Enabled:              true,

@@ -75,7 +75,7 @@ func newOrchestrationBriefBeforeHook() callbacks.Callback {
 		if orchestrationBriefAlreadyPresent(args.Request.Messages, brief) {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		args.Request.Messages = appendDynamicCue(args.Request.Messages, orchBriefCueMarker+brief)
+		args.Request.Messages = replaceDynamicCue(args.Request.Messages, orchBriefCueMarker, orchBriefCueMarker+brief)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

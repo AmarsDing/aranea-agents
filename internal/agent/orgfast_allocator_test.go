@@ -167,8 +167,11 @@ func TestOrgPruner_MatchFallbackAndEmptyDomain(t *testing.T) {
 	}
 
 	miss := p.Prune("研究/调研", caps)
-	if !miss.FallbackAll || miss.Reason != OrgPruneReasonNoMatch {
-		t.Fatalf("no match: %+v", miss)
+	if miss.FallbackAll || miss.Reason != OrgPruneReasonNoMatch {
+		t.Fatalf("known specialty miss must fail-closed: %+v", miss)
+	}
+	if len(miss.CandidateKeys) != 0 {
+		t.Fatalf("known specialty miss candidates=%v want empty", miss.CandidateKeys)
 	}
 }
 

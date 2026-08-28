@@ -187,6 +187,15 @@ describe('TurnContainer.visibleSteps — showToolCalls action filtering', () => 
     expect(wrapper.findAll('.reply-block')).toHaveLength(1);
   });
 
+  it('keeps plan_and_execute action visible when showToolCalls is false', () => {
+    const store = useChatActivityStore();
+    store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'plan_and_execute', Seq: 1 }));
+    const uiConfig = useUiConfigStore();
+    uiConfig.setShowToolCalls(false);
+    const wrapper = mount(TurnContainer, { props: { turn: mkTurn() } });
+    expect(wrapper.findAll('.act-activity')).toHaveLength(1);
+  });
+
   it('re-renders action step when toggled back on (reactive)', async () => {
     const store = useChatActivityStore();
     store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'exec_command' }));
