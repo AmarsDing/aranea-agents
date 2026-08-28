@@ -9,7 +9,7 @@ import type {
 type RawOptions = {
   schema?: string;
   agent?: { id?: string; agent_key?: string; name?: string; display_name?: string; icon?: string };
-  team_member?: { agent_id?: string; name?: string; role?: string; icon?: string };
+  team_member?: { agent_id?: string; name?: string; role?: string; icon?: string; team_id?: string };
   member_agent_key?: string;
   display_name?: string;
   author?: string;

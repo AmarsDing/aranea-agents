@@ -196,6 +196,6 @@ export type TaskRow = {
 export type DagFlowNode = {
   id: string;
   name: string;
-  state: 'done' | 'running' | 'waiting' | 'failed' | 'interrupted';
+  state: 'done' | 'running' | 'waiting' | 'failed' | 'interrupted' | 'partial_failure';
   depLabels: string[];
 };

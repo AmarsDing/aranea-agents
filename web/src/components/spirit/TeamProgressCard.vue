@@ -98,6 +98,12 @@
       <span class="text-caption ellipsis">{{ failedSummary }}</span>
     </div>
 
+    <!-- 新增：成员失败警告（当团队整体完成但有成员失败时显示） -->
+    <div v-if="hasFailedMember && team.status === 'completed'" class="team-progress-card__warning q-mt-xs">
+      <q-icon name="warning" size="12px" class="q-mr-xs" />
+      <span class="text-caption">{{ t('spirit.partialMemberFailure', { count: failedMemberCount }) }}</span>
+    </div>
+
     <div v-if="team.members.length > 0" class="team-progress-card__avatars row items-center q-gutter-xs q-mt-xs">
       <div v-for="(m, idx) in team.members.slice(0, 4)" :key="idx" class="team-progress-card__avatar-initial">
         {{ nameInitial(m.displayName) }}
@@ -232,6 +238,12 @@ const failedSummary = computed(() => {
   if (props.team.status === 'interrupted') return props.team.interruptReason || t('spirit.interrupted');
   return '';
 });
+
+/** 检查是否有成员失败（用于显示部分失败警告） */
+const hasFailedMember = computed(() => props.team.members.some((m) => m.status === 'failed'));
+
+/** 失败的成员数量 */
+const failedMemberCount = computed(() => props.team.members.filter((m) => m.status === 'failed').length);
 </script>
 
 <style scoped lang="sass">
@@ -363,6 +375,15 @@ const failedSummary = computed(() => {
   border-radius: 4px
   color: var(--color-danger)
   background: color-mix(in srgb, var(--color-danger) 6%, transparent)
+
+.team-progress-card__warning
+  display: flex
+  align-items: center
+  margin-left: 32px
+  padding: 2px 6px
+  border-radius: 4px
+  color: var(--color-warning)
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent)
 
 .team-progress-card__avatars
   margin-left: 32px

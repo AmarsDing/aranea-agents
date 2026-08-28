@@ -28,6 +28,7 @@ type anchorResolution struct {
 	mod     string
 	attRefs []artifactbiz.Ref
 	attN    int
+	teamID  string // 新增：标识消息属于哪个团队
 }
 
 // resolveTeamProviderModel resolves the effective provider/model for a team
@@ -118,6 +119,7 @@ func (r *Runner) resolveAnchorAndAttachments(
 		mod:     mod0,
 		attRefs: attachmentRefs,
 		attN:    attN,
+		teamID:  run.TeamID, // 新增：透传 team_id 供 assistant 消息锚点使用
 	}
 	return
 }
@@ -177,6 +179,7 @@ func (r *Runner) prepareUserTurnOptions(
 		AgentID: ar.agent.ID,
 		Name:    strutil.FirstNonEmpty(ar.agent.DisplayName, ar.agent.AgentKey),
 		Role:    ar.member.Role,
+		TeamID:  teamRow.ID, // 新增：传递 team_id
 	}
 	userOpts, err := agent.UserOptionsJSON(ar.agent, dialogMode, ar.prov, ar.mod, sess.ContextUsedRatio, anchor)
 	if err != nil {

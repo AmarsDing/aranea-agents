@@ -94,6 +94,7 @@ type TeamMemberAnchorRef struct {
 	AgentID string
 	Name    string
 	Role    string
+	TeamID  string // 新增：标识消息属于哪个团队
 }
 
 // RalphLoopResult carries the resolved Ralph Loop configuration.

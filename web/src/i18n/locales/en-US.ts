@@ -4655,6 +4655,7 @@ export default {
     estimated: 'Est. {time}',
     executionFailed: 'Execution failed',
     interrupted: 'Interrupted',
+    partialMemberFailure: '{count} member(s) failed',
     runningCount: '{count} running',
     interruptedCount: '{count} interrupted',
     teamProgressLabel: 'Done {done}/{total}',

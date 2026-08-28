@@ -424,6 +424,7 @@ func (r *Runner) buildAssistantMessageFromResult(
 		AgentID: ar.agent.ID,
 		Name:    strutil.FirstNonEmpty(ar.agent.DisplayName, ar.agent.AgentKey),
 		Role:    ar.member.Role,
+		TeamID:  ar.teamID, // 新增：传递 team_id
 	})
 	if err != nil {
 		return assistantBuildResult{}, err

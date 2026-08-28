@@ -4623,6 +4623,7 @@ export default {
     estimated: '预计 {time}',
     executionFailed: '执行失败',
     interrupted: '已中断',
+    partialMemberFailure: '{count} 个成员失败',
     runningCount: '{count} 运行中',
     interruptedCount: '{count} 已中断',
     teamProgressLabel: '完成 {done}/{total}',

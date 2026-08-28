@@ -465,9 +465,32 @@ const isChatView = computed(() => (props.viewMode ?? 'chat') === 'chat');
 // ── Team member lanes ──
 const teamMemberLanes = computed((): TeamMemberLane[] => {
   if (!props.isTeamSession) return [];
+
+  // 修复：只显示当前团队的成员，不是所有团队的成员混合。
+  // 原逻辑遍历所有消息提取所有 team_member，导致 spirit 编排会话中所有子团队成员混在顶部。
+  // 过滤策略：
+  // 1. 已选中团队（team/member 视图）→ 严格按该 team_id 过滤；
+  // 2. 未选中团队（spirit 根视图 / standalone 团队会话）→ 从消息推导：
+  //    消息只涉及一个 team_id 时显示该团队成员（standalone 场景）；
+  //    涉及多个团队时无法确定"当前团队"，不显示成员条（避免回退到混合 bug）。
+  let filterTeamId = props.spiritTeam?.id ?? null;
+  if (!filterTeamId) {
+    const ids = new Set<string>();
+    for (const message of props.messages) {
+      const tid = message.team_member?.team_id;
+      if (tid) ids.add(tid);
+      if (ids.size > 1) break;
+    }
+    if (ids.size !== 1) return [];
+    filterTeamId = [...ids][0];
+  }
+
   const lanes = new Map<string, TeamMemberLane>();
   for (const message of props.messages) {
     if (!message.team_member) continue;
+    // 只显示属于当前团队的成员；无 team_id 的历史消息在有过滤上下文时跳过
+    if (message.team_member.team_id !== filterTeamId) continue;
+
     const key = message.team_member.agent_id || message.id;
     const label = message.agent_ref?.name || message.team_member.name || key;
     const streaming = message.status === 'streaming' || message.status === 'tool_running';

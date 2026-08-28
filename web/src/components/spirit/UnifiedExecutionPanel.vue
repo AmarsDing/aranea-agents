@@ -305,8 +305,12 @@ const dagLayers = computed<DagLayer[]>(() => {
         const team = teamByDagNode.get(tn.id);
         let state: DagFlowNode['state'] = 'waiting';
         if (team) {
+          // 修复：检查是否有成员失败，如果有则显示为 partial_failure（黄色警告）
+          const hasFailedMember = team.members?.some((m) => m.status === 'failed');
+
           if (team.status === 'completed' || team.status === 'archived') {
-            state = 'done';
+            // 如果团队整体完成但有成员失败，显示为 partial_failure
+            state = hasFailedMember ? 'partial_failure' : 'done';
           } else if (team.status === 'running' || team.status === 'pending') {
             state = 'running';
           } else if (team.status === 'failed' || team.status === 'cancelled') {
@@ -504,6 +508,10 @@ const dagLayers = computed<DagLayer[]>(() => {
     background: color-mix(in srgb, var(--color-warning) 10%, transparent)
     color: var(--color-warning)
 
+  &--partial_failure
+    background: color-mix(in srgb, var(--color-warning) 12%, transparent)
+    color: var(--color-warning)
+
   &__dot
     width: 6px
     height: 6px
@@ -526,6 +534,9 @@ const dagLayers = computed<DagLayer[]>(() => {
       background: var(--color-danger)
 
     &--interrupted
+      background: var(--color-warning)
+
+    &--partial_failure
       background: var(--color-warning)
 
 // ── Team Progress List ──

@@ -26,6 +26,7 @@ type TeamMemberAnchor struct {
 	AgentID string `json:"agent_id"`
 	Name    string `json:"name"`
 	Role    string `json:"role"`
+	TeamID  string `json:"team_id"` // 新增：标识消息属于哪个团队
 }
 
 func mathRoundCtxRatio(r float64) float64 {
@@ -64,6 +65,7 @@ func UserOptionsJSON(agent biz.Agent, dialogMode, provider, model string, ctxRat
 			"agent_id": team.AgentID,
 			"name":     team.Name,
 			"role":     team.Role,
+			"team_id":  team.TeamID, // 新增：传递 team_id
 		}
 	}
 	raw, err := json.Marshal(opts)
@@ -89,6 +91,7 @@ func AssistantOptionsJSON(agent biz.Agent, team *TeamMemberAnchor) (string, erro
 			"agent_id": team.AgentID,
 			"name":     team.Name,
 			"role":     team.Role,
+			"team_id":  team.TeamID, // 新增：传递 team_id
 		}
 	}
 	raw, err := json.Marshal(opts)

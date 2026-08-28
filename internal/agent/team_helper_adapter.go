@@ -71,5 +71,6 @@ func agentAnchorFromRef(ref *biz.TeamMemberAnchorRef) *TeamMemberAnchor {
 		AgentID: ref.AgentID,
 		Name:    ref.Name,
 		Role:    ref.Role,
+		TeamID:  ref.TeamID, // 新增：传递 team_id
 	}
 }
