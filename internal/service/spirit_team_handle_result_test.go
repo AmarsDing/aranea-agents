@@ -1363,6 +1363,168 @@ func TestPublishV2TeamRunCompletion_F10_Cancelled_StaysSkipped(t *testing.T) {
 	}
 }
 
+// ── F10 部分失败收敛（partial_failure）─────────────────────────────────────
+
+// completed 回调 + ≥1 成员有失败证据（与 resolveMemberOutcomeStatus 同源）→
+// 团队状态从 completed 收敛为 partial_failure：
+//   - teams 表 CAS 目标态 = partial_failure（调度语义保持成功：记录完成 + 级联调度照常）
+//   - 终态 TeamStage 事件 Status = partial_failure（Stage 归一 completed）
+//   - TeamRunV2 Status = partial_failure
+//   - 失败证据成员逐成员覆盖 failed，其余成员保持 completed
+func TestHandleTeamTurnResult_CompletedWithFailedMemberEvidence_ConvergesPartialFailure(t *testing.T) {
+	teamID := "team-pf"
+	spiritSessionID := "spirit-pf"
+	tsID := "ts-" + teamID
+
+	team := biz.Team{
+		ID: teamID, DisplayName: "部分失败团队", SpiritSessionID: spiritSessionID,
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: teamID, SessionType: "team"},
+		{ID: "sess-a", TeamID: teamID, SessionType: "agent", MemberAgentKey: "agent-a"},
+		{ID: "sess-b", TeamID: teamID, SessionType: "agent", MemberAgentKey: "agent-b"},
+	}
+	ctrl := &stubSpiritTeamController{
+		hasRealDeliverable: true,
+		memberEvidence: map[string]stubMemberEvidence{
+			"sess-a": {failed: true, reason: "step failed: 安装失败"},
+		},
+	}
+	writer := &stubTeamWriter{}
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader:    &stubTeamReader{teams: map[string]biz.Team{teamID: team}},
+		Writer:    writer,
+		RunReader: &stubTeamRunReader{},
+		Lg:        loggateway.NewNoop(),
+	})
+	seq := &capturingSeq{}
+	s := &TeamStarter{
+		sessions: biz.NewSessionUsecase(&f10SessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil),
+		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: ctrl},
+		seq:      seq,
+		lg:       loggateway.NewNoop(),
+		teamStageR: &stubTeamStageV2Reader{stages: map[string]biz.TeamStage{
+			tsID: {ID: tsID, TeamID: teamID, SessionID: spiritSessionID,
+				Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, Version: 1},
+		}},
+		tsSM:     biz.NewTeamStageStateMachine(),
+		teamRunR: &stubTeamRunV2Reader{runs: map[string]biz.TeamRun{}},
+		trSM:     biz.NewTeamRunV2StateMachine(),
+	}
+
+	s.HandleTeamTurnResult(context.Background(), spiritSessionID, teamID, biz.TeamStatusCompleted, "", "")
+
+	// 1) teams 表收敛为 partial_failure（不是 completed）。
+	var transitioned bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == teamID && tr.newStatus == biz.TeamStatusPartialFailure {
+			transitioned = true
+		}
+		if tr.id == teamID && tr.newStatus == biz.TeamStatusCompleted {
+			t.Errorf("teams 表不应收敛为 completed（存在失败成员证据）")
+		}
+	}
+	if !transitioned {
+		t.Fatalf("teams 表未收敛为 partial_failure, transitions = %+v", writer.snapshotTransitions())
+	}
+
+	// 2) 调度语义保持成功：记录完成 + 级联调度照常执行。
+	if ctrl.recordCompletionCalls == 0 {
+		t.Errorf("RecordTeamCompletion 应照常调用（partial_failure 调度语义 = 成功）")
+	}
+	if ctrl.scheduleDependentsCalls == 0 {
+		t.Errorf("ScheduleDependentTeams 应照常调用（下游照常激活）")
+	}
+
+	// 3) v2 事件：TeamStage 终态 Status=partial_failure；TeamRunV2=partial_failure；
+	//    失败证据成员 failed，其余 completed。
+	var stageFound, runFound bool
+	for _, ev := range seq.snapshot() {
+		switch e := ev.(type) {
+		case *biz.TeamStageCompletedEvent:
+			if e.TeamStage.TeamID != teamID {
+				continue
+			}
+			stageFound = true
+			if e.TeamStage.Status != biz.TeamStageStatusPartialFailure {
+				t.Errorf("TeamStage 终态 Status = %s, want partial_failure", e.TeamStage.Status)
+			}
+			if e.TeamStage.Stage != biz.TeamStageStageCompleted {
+				t.Errorf("TeamStage Stage = %s, want completed（partial_failure 是 Status 维度）", e.TeamStage.Stage)
+			}
+		case *biz.TeamRunCompletedEvent:
+			runFound = true
+			if e.TeamRun.Status != biz.TeamRunV2StatusPartialFailure {
+				t.Errorf("TeamRunV2 Status = %s, want partial_failure", e.TeamRun.Status)
+			}
+		}
+	}
+	if !stageFound {
+		t.Errorf("未发布终态 TeamStage 事件")
+	}
+	if !runFound {
+		t.Errorf("未发布 TeamRun 完成事件")
+	}
+	got := memberSessionsByAgentKey(seq)
+	if ms := got["agent-a"]; ms.Status != biz.MemberSessionStatusFailed {
+		t.Errorf("agent-a status = %s, want failed（失败证据覆盖）", ms.Status)
+	}
+	if ms := got["agent-b"]; ms.Status != biz.MemberSessionStatusCompleted {
+		t.Errorf("agent-b status = %s, want completed（无证据）", ms.Status)
+	}
+}
+
+// 无失败证据时不得误收敛：completed 回调保持 completed。
+func TestHandleTeamTurnResult_CompletedWithoutFailedEvidence_StaysCompleted(t *testing.T) {
+	teamID := "team-clean"
+	spiritSessionID := "spirit-clean"
+
+	team := biz.Team{
+		ID: teamID, DisplayName: "干净团队", SpiritSessionID: spiritSessionID,
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-a", TeamID: teamID, SessionType: "agent", MemberAgentKey: "agent-a"},
+	}
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: true}
+	writer := &stubTeamWriter{}
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader:    &stubTeamReader{teams: map[string]biz.Team{teamID: team}},
+		Writer:    writer,
+		RunReader: &stubTeamRunReader{},
+		Lg:        loggateway.NewNoop(),
+	})
+	s := &TeamStarter{
+		sessions: biz.NewSessionUsecase(&f10SessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil),
+		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: ctrl},
+		seq:      &capturingSeq{},
+		lg:       loggateway.NewNoop(),
+		teamStageR: &stubTeamStageV2Reader{stages: map[string]biz.TeamStage{
+			"ts-" + teamID: {ID: "ts-" + teamID, TeamID: teamID, SessionID: spiritSessionID,
+				Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, Version: 1},
+		}},
+		tsSM:     biz.NewTeamStageStateMachine(),
+		teamRunR: &stubTeamRunV2Reader{runs: map[string]biz.TeamRun{}},
+		trSM:     biz.NewTeamRunV2StateMachine(),
+	}
+
+	s.HandleTeamTurnResult(context.Background(), spiritSessionID, teamID, biz.TeamStatusCompleted, "", "")
+
+	var transitioned bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == teamID && tr.newStatus == biz.TeamStatusCompleted {
+			transitioned = true
+		}
+		if tr.id == teamID && tr.newStatus == biz.TeamStatusPartialFailure {
+			t.Errorf("无失败证据不得收敛 partial_failure")
+		}
+	}
+	if !transitioned {
+		t.Fatalf("teams 表应收敛为 completed, transitions = %+v", writer.snapshotTransitions())
+	}
+}
+
 // 总结 turn 触发失败 → 兜底通知同样诚实：warning 级别 + 真实完成/失败计数，
 // 不得发布「所有团队已完成」成功通知。
 func TestCheckAllTeamsCompleted_TurnFails_PublishesHonestFallbackNotice(t *testing.T) {

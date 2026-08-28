@@ -84,6 +84,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		traceID, _ = biz.SpiritTraceIDFromContext(ctx)
 	}
 
+	allocStart := time.Now()
 	impl.lg.Info("AgentAllocator.Allocate 开始",
 		loggateway.StepID(biz.SpiritStepAllocatorMatch),
 		loggateway.Str("trace_id", traceID),
@@ -91,6 +92,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 	)
 
 	// Build agent capabilities from catalog
+	capStart := time.Now()
 	capabilities, err := impl.capBuilder.BuildAll(ctx)
 	if err != nil {
 		impl.lg.Warn("构建 Agent 能力列表失败",
@@ -100,6 +102,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		)
 		return nil, apierror.Internal(apierror.DomainSpirit, "build capabilities").WithCause(err)
 	}
+	capMs := time.Since(capStart).Milliseconds()
 
 	// Heuristic matching never assigns dept_lead / system agents (M78 ORGFAST-01).
 	assignable := filterHeuristicAssignable(capabilities)
@@ -110,7 +113,10 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 
 	// P-ORCH.5: two-phase parallelization — Phase A parallel matchSubTask
 	// (Layer 0-3, no factory), Phase B serial factory creation (below).
+	matchStart := time.Now()
 	results := impl.runPhaseAMatch(ctx, taskPlan.SubTasks, assignable, traceID)
+	matchMs := time.Since(matchStart).Milliseconds()
+	staffStart := time.Now()
 
 	// Phase B — serial factory / fallback for failures, then DAG member
 	// selection, progress publish, and final assembly. Order follows the
@@ -215,6 +221,10 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		loggateway.StepID(biz.SpiritStepAllocatorMatch),
 		loggateway.Str("trace_id", traceID),
 		loggateway.Int("allocation_count", len(allocations)),
+		loggateway.Int64("cap_ms", capMs),
+		loggateway.Int64("match_ms", matchMs),
+		loggateway.Int64("staff_ms", time.Since(staffStart).Milliseconds()),
+		loggateway.Int64("total_ms", time.Since(allocStart).Milliseconds()),
 	)
 
 	// P-ORCH: allocation finished progress event.
@@ -1205,6 +1215,7 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 
 	// P2-5：按子任务预估复杂度路由 thinking effort。
 	// EstimatedComplexity >= 0.6 → complex, >= 0.3 → moderate, else simple
@@ -1452,6 +1463,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 
 	// P2-5：按计划复杂度路由 thinking effort（来自外层 Plan() 的六维评估）。
 	if eff := biz.ResolveThinkingEffort(cfg.ThinkingEffort, taskPlan.ComplexityLevel); eff != "" {

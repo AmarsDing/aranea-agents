@@ -215,6 +215,14 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
   /** Apply contextual loading from a v2 system.notice NoticeType. */
   function onSpiritNoticeType(noticeType: string): void {
     if (isReplaying.value) return;
+    if (noticeType === 'hitl_wait') {
+      loadingMessage.value = {
+        text: t('chat.hitlWaitNotice'),
+        icon: 'hourglass_top',
+        color: 'orange',
+      };
+      return;
+    }
     const envType = noticeTypeToLoadingType(noticeType);
     if (!envType) return;
     const orchestrationConfig = ORCHESTRATION_LOADING_MAP.find((c) => c.eventPattern === envType);

@@ -142,6 +142,17 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	if !force && !notFound && existing.Status == "indexed" && existing.ContentHash == ev.Snapshot.Hash {
 		return nil
 	}
+	// 编译失败退避（S14-image n_ctx 溢出）：hash 未落库导致每 tick 重试。
+	// 复用 embed 熔断计数——图片在编译成功前不会走 embed。
+	if !force && !notFound && existing.Status == "error" && bizknowledge.NeedsExtraction(ev.RelPath) &&
+		!bizknowledge.EmbedCircuitAllow(existing.EmbedFailCount, existing.EmbedLastTried, time.Now()) {
+		a.lg.Warn("vault extract backoff; skip compile this tick",
+			loggateway.Str("vault_id", vault.ID),
+			loggateway.Str("rel_path", ev.RelPath),
+			loggateway.Int("fail_count", existing.EmbedFailCount),
+		)
+		return nil
+	}
 
 	// M0 摄取编译：需抽取文件（office/图片）经编译端口得 Markdown；文本直读走 ReadDoc（保留 frontmatter）。
 	var body, mimeType string
@@ -168,9 +179,36 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 				return derr
 			}
 			a.markError(ctx, doc.ID, cerr)
+			failCount := existing.EmbedFailCount + 1
+			if notFound {
+				failCount = 1
+			}
+			if uerr := a.uc.UpdateDocumentEmbedCircuit(ctx, doc.ID, failCount, time.Now()); uerr != nil {
+				a.lg.Warn("vault sync: record extract circuit failure failed",
+					loggateway.Str("doc_id", doc.ID),
+					loggateway.Err(uerr),
+				)
+			}
+			if isContextOverflow(cerr) {
+				a.lg.Warn("vault vision extract context overflow; raise OLLAMA_CONTEXT_LENGTH and wait for backoff",
+					loggateway.Str("vault_id", vault.ID),
+					loggateway.Str("rel_path", ev.RelPath),
+					loggateway.Int("fail_count", failCount),
+					loggateway.Err(cerr),
+				)
+			}
 			return cerr
 		}
 		body, mimeType = md, mt
+		if !notFound && existing.EmbedFailCount > 0 {
+			if uerr := a.uc.UpdateDocumentEmbedCircuit(ctx, existing.ID, 0, time.Time{}); uerr != nil {
+				a.lg.Warn("vault sync: reset extract circuit failed",
+					loggateway.Str("doc_id", existing.ID),
+					loggateway.Err(uerr),
+				)
+			}
+			existing.EmbedFailCount = 0
+		}
 	} else {
 		vdoc, err := a.filer.ReadDoc(vault.RootPath, ev.RelPath)
 		if err != nil {
@@ -407,6 +445,14 @@ func (a *VaultSyncApplier) markError(ctx context.Context, docID string, cause er
 			loggateway.Err(err),
 		)
 	}
+}
+
+func isContextOverflow(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "n_ctx") || strings.Contains(msg, "context length") || strings.Contains(msg, "context window")
 }
 
 // readRawBytes 读 vault 内文件的原始字节（M0：供二进制编译，绕过 parseVaultDoc）。

@@ -138,6 +138,7 @@ func (c *DynamicLLMCaller) decryptedCatalogConfig(ctx context.Context, providerN
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 	cfg.ProviderType = row.Provider
+	ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 	if strings.TrimSpace(cfg.APIBaseURL) == "" {
 		return ProviderAPIConfig{}, false
 	}

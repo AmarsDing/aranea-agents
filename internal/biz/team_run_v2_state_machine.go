@@ -35,11 +35,12 @@ import (
 type TeamRunV2Event string
 
 const (
-	TeamRunV2EventComplete TeamRunV2Event = "complete"
-	TeamRunV2EventFail     TeamRunV2Event = "fail"
-	TeamRunV2EventCancel   TeamRunV2Event = "cancel"
-	TeamRunV2EventPause    TeamRunV2Event = "pause"
-	TeamRunV2EventUnpause  TeamRunV2Event = "unpause"
+	TeamRunV2EventComplete        TeamRunV2Event = "complete"
+	TeamRunV2EventCompletePartial TeamRunV2Event = "complete_partial" // 完成但 ≥1 成员失败（F10）
+	TeamRunV2EventFail            TeamRunV2Event = "fail"
+	TeamRunV2EventCancel          TeamRunV2Event = "cancel"
+	TeamRunV2EventPause           TeamRunV2Event = "pause"
+	TeamRunV2EventUnpause         TeamRunV2Event = "unpause"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ const (
 // Pause/unpause are non-terminal (MVP cancel+marker semantics).
 var teamRunV2TransitionRules = []shared.TransitionRule[TeamRunV2Status, TeamRunV2Event]{
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventComplete, To: TeamRunV2StatusCompleted},
+	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventCompletePartial, To: TeamRunV2StatusPartialFailure},
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventFail, To: TeamRunV2StatusFailed},
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventCancel, To: TeamRunV2StatusCancelled},
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventPause, To: TeamRunV2StatusPaused},
@@ -95,7 +97,7 @@ func (sm *TeamRunV2StateMachine) ValidTargets(from TeamRunV2Status) []TeamRunV2S
 // IsTeamRunV2Terminal returns true for terminal states that have no outgoing transitions.
 func IsTeamRunV2Terminal(status TeamRunV2Status) bool {
 	switch status {
-	case TeamRunV2StatusCompleted, TeamRunV2StatusFailed, TeamRunV2StatusCancelled:
+	case TeamRunV2StatusCompleted, TeamRunV2StatusFailed, TeamRunV2StatusCancelled, TeamRunV2StatusPartialFailure:
 		return true
 	default:
 		return false

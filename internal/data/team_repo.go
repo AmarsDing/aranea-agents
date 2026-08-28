@@ -405,7 +405,7 @@ func (r *TeamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, er
 	n, err := r.data.RW().Write(ctx).Team.Update().
 		Where(
 			team.IDIn(ids...),
-			team.StatusIn(biz.TeamStatusCompleted, biz.TeamStatusFailed, biz.TeamStatusCancelled),
+			team.StatusIn(biz.TeamStatusCompleted, biz.TeamStatusFailed, biz.TeamStatusCancelled, biz.TeamStatusPartialFailure),
 			team.DeletedAtEQ(""),
 		).
 		SetStatus(biz.TeamStatusArchived).

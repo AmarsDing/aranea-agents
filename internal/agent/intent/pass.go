@@ -402,8 +402,10 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 	}
 	var cfg llmcompat.ProviderAPIConfig
 	llmcompat.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	llmcompat.ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 	// Voice Fast-Path（2026-08-09）：意图识别是分类任务，思考段对 JSON 分类无收益
 	// 却贡献 3.7-26.6s 延迟（真机实测），callsite 强制关闭——不依赖 catalog 行配置。
+	// Ollama 等 capability_thinking=false 的模型 skipThinkingKey，不注入 thinking。
 	cfg.ThinkingDisabled = true
 
 	msgs := []llmcompat.OpenAICompatMessage{

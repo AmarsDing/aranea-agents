@@ -413,6 +413,21 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		}
 	}
 
+	// F10 部分失败收敛：completed 回调且交付物门已通过（DAG 团队）时，若 ≥1
+	// 成员有执行失败证据（与 resolveMemberOutcomeStatus 同源），团队状态从
+	// completed 收敛为 partial_failure。调度语义保持成功（下游照常激活、
+	// 可归档、可重试），仅状态展示区分「部分失败」。
+	if status == biz.TeamStatusCompleted {
+		if failedN := s.countFailedEvidenceMembers(ctx, teamID); failedN > 0 {
+			status = biz.TeamStatusPartialFailure
+			s.lg.Info("团队完成但存在失败成员，收敛为 partial_failure",
+				loggateway.StepID("spirit.team.partial_failure"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Int("failed_members", failedN),
+			)
+		}
+	}
+
 	// Cancel timeout timer for any terminal status to prevent stale callbacks.
 	s.team.SpiritUC.CancelTimeoutTimer(teamID)
 
@@ -430,11 +445,12 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	// (InputTokens/OutputTokens) and via recordTeamCompletion. Removing the
 	// session Search call also eliminates a DB query per team turn completion.
 
-	if status == biz.TeamStatusCompleted {
-		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCompleted); updateErr != nil {
-			s.lg.Warn("更新团队状态为 completed 失败",
+	if status == biz.TeamStatusCompleted || status == biz.TeamStatusPartialFailure {
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, status); updateErr != nil {
+			s.lg.Warn("更新团队状态为 completed/partial_failure 失败",
 				loggateway.StepID("spirit.team.completed_err"),
 				loggateway.Str("team_id", teamID),
+				loggateway.Str("target_status", status),
 				loggateway.Err(updateErr),
 			)
 		}
@@ -477,6 +493,8 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	switch status {
 	case biz.TeamStatusCompleted:
 		primaryStatus = biz.TeamStageStatusCompleted
+	case biz.TeamStatusPartialFailure:
+		primaryStatus = biz.TeamStageStatusPartialFailure
 	case biz.TeamStatusCancelled:
 		primaryStatus = biz.TeamStageStatusCancelled
 	default:
@@ -540,7 +558,8 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	// 让等待的 dispatchStep 能继续执行（通过 TeamOrchestrator 转发 channel 事件）。
 	// 必须在 checkAllTeamsCompleted 之后调用，确保 synthesis 逻辑先执行。
 	if s.planExecutor != nil && teamID != "" {
-		success := status == biz.TeamStatusCompleted
+		// partial_failure 交付物门已通过，对下游 PlanExecutor 等同成功。
+		success := status == biz.TeamStatusCompleted || status == biz.TeamStatusPartialFailure
 		s.planExecutor.NotifyTeamCompletion(teamID, teamRunID, success, errMsg)
 	}
 
@@ -566,6 +585,8 @@ func (s *TeamStarter) publishTerminalTeamStage(
 	switch primaryStatus {
 	case biz.TeamStageStatusCompleted:
 		tsEvent = biz.TeamStageEventComplete
+	case biz.TeamStageStatusPartialFailure:
+		tsEvent = biz.TeamStageEventCompletePartial
 	case biz.TeamStageStatusFailed:
 		tsEvent = biz.TeamStageEventFail
 	case biz.TeamStageStatusCancelled:
@@ -578,13 +599,19 @@ func (s *TeamStarter) publishTerminalTeamStage(
 	if !tsOK {
 		return
 	}
+	// Stage 是阶段枚举（assembled/planning/executing/completed/failed），
+	// partial_failure 是 Status 维度而非阶段 → 归一到 completed 阶段。
+	stage := biz.TeamStageStage(primaryStatus)
+	if primaryStatus == biz.TeamStageStatusPartialFailure {
+		stage = biz.TeamStageStageCompleted
+	}
 	ts := biz.TeamStage{
 		ID:        terminalTsID,
 		TeamID:    team.ID,
 		TeamName:  team.DisplayName,
 		SessionID: spiritSessionID,
 		Status:    newStatus,
-		Stage:     biz.TeamStageStage(primaryStatus),
+		Stage:     stage,
 		DependsOn: team.DependsOn,
 		StartedAt: time.Now().UTC(),
 		Version:   newVersion,
@@ -594,7 +621,9 @@ func (s *TeamStarter) publishTerminalTeamStage(
 	// dropped. The duration/token metrics are still recorded via
 	// recordTeamCompletion and are available in the TeamRun DB record.
 	switch primaryStatus {
-	case biz.TeamStageStatusCompleted:
+	case biz.TeamStageStatusCompleted, biz.TeamStageStatusPartialFailure:
+		// partial_failure 复用 CompletedEvent 工厂：事件类型仅影响路由/日志，
+		// 持久化以 ts.Status（partial_failure）为准。
 		s.publishV2Event(ctx, biz.NewTeamStageCompletedEvent(ts))
 	case biz.TeamStageStatusFailed:
 		s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
@@ -660,13 +689,27 @@ func (s *TeamStarter) handleStandaloneTeamTurnResult(
 	teamID := team.ID
 	s.team.SpiritUC.CancelTimeoutTimer(teamID)
 
+	// F10 部分失败收敛（与 AutoCreated 路径同一语义）：completed 且 ≥1 成员
+	// 有执行失败证据 → partial_failure。
+	if status == biz.TeamStatusCompleted {
+		if failedN := s.countFailedEvidenceMembers(ctx, teamID); failedN > 0 {
+			status = biz.TeamStatusPartialFailure
+			s.lg.Info("standalone 团队完成但存在失败成员，收敛为 partial_failure",
+				loggateway.StepID("spirit.standalone.partial_failure"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Int("failed_members", failedN),
+			)
+		}
+	}
+
 	// teams 表状态转换（cancelled 由调用方已转换，与 AutoCreated 路径同一姿态）。
 	switch status {
-	case biz.TeamStatusCompleted:
-		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCompleted); updateErr != nil {
-			s.lg.Warn("standalone 团队状态转换到 completed 失败",
+	case biz.TeamStatusCompleted, biz.TeamStatusPartialFailure:
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, status); updateErr != nil {
+			s.lg.Warn("standalone 团队状态转换到 completed/partial_failure 失败",
 				loggateway.StepID("spirit.standalone.completed_err"),
 				loggateway.Str("team_id", teamID),
+				loggateway.Str("target_status", status),
 				loggateway.Err(updateErr),
 			)
 		}
@@ -684,6 +727,8 @@ func (s *TeamStarter) handleStandaloneTeamTurnResult(
 	switch status {
 	case biz.TeamStatusCompleted:
 		primaryStatus = biz.TeamStageStatusCompleted
+	case biz.TeamStatusPartialFailure:
+		primaryStatus = biz.TeamStageStatusPartialFailure
 	case biz.TeamStatusCancelled:
 		primaryStatus = biz.TeamStageStatusCancelled
 	}
@@ -1647,6 +1692,36 @@ func resolveMemberOutcomeStatus(
 	return base, ""
 }
 
+// countFailedEvidenceMembers 统计团队下有执行失败证据（F10
+// MemberExecutionEvidence）的成员数，用于 partial_failure 收敛判定。与
+// publishV2TeamRunCompletion 的逐成员覆盖同源同口径（SessionType=agent 且
+// MemberAgentKey 非空的成员会话）。查询失败按 0 处理（fail-open：不阻断
+// completed 收敛，与 F10 证据覆盖的降级姿态一致）。
+func (s *TeamStarter) countFailedEvidenceMembers(ctx context.Context, teamID string) int {
+	if s.team.SpiritUC == nil || s.sessions == nil || teamID == "" {
+		return 0
+	}
+	result, err := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 100})
+	if err != nil {
+		s.lg.Warn("countFailedEvidenceMembers: 查询团队成员会话失败，按 0 处理",
+			loggateway.StepID("spirit.team.partial_failure.probe_err"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(err),
+		)
+		return 0
+	}
+	failedN := 0
+	for _, sess := range result.Items {
+		if sess.SessionType != "agent" || sess.MemberAgentKey == "" {
+			continue
+		}
+		if failed, _ := s.team.SpiritUC.MemberExecutionEvidence(ctx, sess.ID); failed {
+			failedN++
+		}
+	}
+	return failedN
+}
+
 // publishV2TeamRunCompletion 发布 v2 TeamRun 完成事件 + MemberSession 更新事件。
 // 由 HandleTeamTurnResult 在团队状态变为 completed/failed/cancelled 时调用。
 //
@@ -1676,6 +1751,11 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 	switch primaryStatus {
 	case biz.TeamStageStatusCompleted:
 		teamRunStatus = biz.TeamRunV2StatusCompleted
+		memberStatus = biz.MemberSessionStatusCompleted
+	case biz.TeamStageStatusPartialFailure:
+		// 成员 base 仍取 completed，由 resolveMemberOutcomeStatus 按 F10 证据
+		// 逐成员覆盖为 failed——与 completed 路径同一机制。
+		teamRunStatus = biz.TeamRunV2StatusPartialFailure
 		memberStatus = biz.MemberSessionStatusCompleted
 	case biz.TeamStageStatusCancelled:
 		teamRunStatus = biz.TeamRunV2StatusCancelled
@@ -1719,6 +1799,8 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 	switch teamRunStatus {
 	case biz.TeamRunV2StatusCompleted:
 		trEvent = biz.TeamRunV2EventComplete
+	case biz.TeamRunV2StatusPartialFailure:
+		trEvent = biz.TeamRunV2EventCompletePartial
 	case biz.TeamRunV2StatusFailed:
 		trEvent = biz.TeamRunV2EventFail
 	case biz.TeamRunV2StatusCancelled:
@@ -1760,7 +1842,8 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		Version:         newVersion,
 	}
 	switch newStatus {
-	case biz.TeamRunV2StatusCompleted:
+	case biz.TeamRunV2StatusCompleted, biz.TeamRunV2StatusPartialFailure:
+		// partial_failure 复用 CompletedEvent 工厂：持久化以 tr.Status 为准。
 		s.seq.Publish(ctx, biz.NewTeamRunCompletedEvent(tr))
 	case biz.TeamRunV2StatusFailed:
 		s.seq.Publish(ctx, biz.NewTeamRunFailedEvent(tr))

@@ -142,3 +142,46 @@ func TestVaultSyncApplier_NoCompiler_BinaryDegrades(t *testing.T) {
 		t.Errorf("Status = %q, want error（无编译端口降级）", doc.Status)
 	}
 }
+
+func TestIsContextOverflow(t *testing.T) {
+	if !isContextOverflow(fmt.Errorf("prompt too long: 4173 > n_ctx 4096")) {
+		t.Fatal("n_ctx overflow must be detected")
+	}
+	if isContextOverflow(fmt.Errorf("vision llm timeout")) {
+		t.Fatal("generic timeout is not context overflow")
+	}
+}
+
+func TestVaultSyncApplier_CompileFailure_BackoffSkipsNextTick(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "shot.png", "fake-png")
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, SyncState: "active"}
+	repo.collections[vault.ID] = vault
+
+	compiler := &stubCompiler{returnErr: fmt.Errorf("4173 > n_ctx 4096")}
+	applier := newTestApplier(repo, nil)
+	applier.SetCompiler(compiler)
+
+	ev := createdEvent("shot.png", "fake-png")
+	_ = applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{ev})
+	if len(compiler.calls) != 1 {
+		t.Fatalf("first tick compile calls = %d, want 1", len(compiler.calls))
+	}
+	var doc bizknowledge.Document
+	for _, d := range repo.documents {
+		if d.RelPath == "shot.png" {
+			doc = d
+			break
+		}
+	}
+	if doc.Status != "error" || doc.EmbedFailCount != 1 {
+		t.Fatalf("after fail status=%q failCount=%d, want error/1", doc.Status, doc.EmbedFailCount)
+	}
+
+	_ = applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{ev})
+	if len(compiler.calls) != 1 {
+		t.Fatalf("backoff tick must skip compile, calls = %d", len(compiler.calls))
+	}
+}

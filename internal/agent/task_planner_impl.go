@@ -1328,6 +1328,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 
 	// P2-5：按任务复杂度路由 thinking effort（显式复杂度覆盖静态配置）。
 	// 任务分解本身是规划类工作，复杂度来自外层 Plan() 的六维评估。
@@ -1480,6 +1481,7 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 
 	// P2-5：按任务复杂度路由 thinking effort（显式复杂度覆盖静态配置）。
 	// 任务分解本身是规划类工作，复杂度来自外层 Plan() 的六维评估。

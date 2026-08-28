@@ -491,6 +491,7 @@ type fakeFactoryEmitter struct {
 	confirmResults         []factoryConfirmResult
 	confirmTimeouts        []string
 	confirmTimeoutRetrying []bool
+	notices                []string
 	idCounter              int
 }
 
@@ -499,7 +500,12 @@ type factoryConfirmResult struct {
 	approved   bool
 }
 
-func (e *fakeFactoryEmitter) EmitNotice(_ context.Context, _, _ string) error { return nil }
+func (e *fakeFactoryEmitter) EmitNotice(_ context.Context, _, noticeType string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.notices = append(e.notices, noticeType)
+	return nil
+}
 
 func (e *fakeFactoryEmitter) EmitConfirmRequest(_ context.Context, p biz.ActivityConfirmParams) (string, error) {
 	e.mu.Lock()

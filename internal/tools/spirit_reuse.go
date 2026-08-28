@@ -47,7 +47,8 @@ func currentOrchestrationCohort(teams []biz.Team) []biz.Team {
 		switch t.Status {
 		case biz.TeamStatusFailed, biz.TeamStatusCancelled, biz.TeamStatusArchived:
 			continue
-		case biz.TeamStatusPending, biz.TeamStatusRunning, biz.TeamStatusInterrupted, biz.TeamStatusCompleted:
+		case biz.TeamStatusPending, biz.TeamStatusRunning, biz.TeamStatusInterrupted, biz.TeamStatusCompleted, biz.TeamStatusPartialFailure:
+			// partial_failure 交付物已产出，与 completed 同属可跟进/可复用队列。
 			live = append(live, t)
 		}
 	}
@@ -166,7 +167,7 @@ func reuseNextAction(teams []biz.Team) string {
 		if biz.IsTeamStatusActive(t.Status) {
 			active++
 		}
-		if t.Status == biz.TeamStatusCompleted {
+		if t.Status == biz.TeamStatusCompleted || t.Status == biz.TeamStatusPartialFailure {
 			completed++
 		}
 	}

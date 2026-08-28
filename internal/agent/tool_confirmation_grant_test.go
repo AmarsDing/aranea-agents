@@ -424,6 +424,26 @@ func TestConfirmTimeoutForTool(t *testing.T) {
 	}
 }
 
+func TestHITLWaitVisibilityEmitsNotice(t *testing.T) {
+	h := newToolConfirmationBeforeHook(nil, biz.Agent{ID: "a"}, TRPCBuilderDeps{})
+	h.hitlVisibleAfter = 20 * time.Millisecond
+	emitter := &fakeFactoryEmitter{}
+	stop := h.startHITLWaitVisibility(context.Background(), "subagents_spawn", emitter)
+	time.Sleep(80 * time.Millisecond)
+	stop()
+	emitter.mu.Lock()
+	defer emitter.mu.Unlock()
+	found := false
+	for _, n := range emitter.notices {
+		if n == hitlWaitNoticeType {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected hitl_wait notice, got %v", emitter.notices)
+	}
+}
+
 func TestToolConfirmationHook_SpawnCoalescesParallelCards(t *testing.T) {
 	gate := &toolConfirmGate{
 		catalog:       map[string]confirmCatalogEntry{"subagents_spawn": {requiresConfirm: true}},

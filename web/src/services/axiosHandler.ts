@@ -95,6 +95,15 @@ kratosApi.interceptors.response.use(
 
     // 429 → back-off notification (do not auto-retry here; caller handles retry logic)
     if (status === 429) {
+      const path = String(err.config?.url || '');
+      if (path.includes('v1/chat/enqueue')) {
+        // EnqueueUserMessage sets skipErrorNotify so the caller (chat send /
+        // spirit inject) owns the toast. Global notify here would double-fire.
+        if (!err.config?.skipErrorNotify) {
+          Notify.create({ type: 'warning', message: '排队消息已满，请稍后再试', timeout: 4000 });
+        }
+        return Promise.reject(humanizeAxiosError(err));
+      }
       const retryAfter = err.response?.headers?.['retry-after'];
       const hint = retryAfter ? ` (retry after ${retryAfter}s)` : '';
       Notify.create({ type: 'warning', message: `请求过于频繁，请稍后再试${hint}`, timeout: 4000 });
@@ -209,6 +218,7 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
   // 未启用结构化信号），全局 toast 均属重复。
   const skipErrorNotify =
     (meta?.skipErrorNotify ?? meta?.method === 'CreateAgent') ||
+    meta?.method === 'EnqueueUserMessage' ||
     meta?.service === 'SelfImprovementService' ||
     isSelfPresentedToolWrite(meta) ||
     isSelfPresentedChannelWrite(meta);

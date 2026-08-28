@@ -11,6 +11,9 @@ export function mapSpiritStatusToSession(status: SpiritTeamStatus): SessionStatu
     running: 'running',
     paused: 'interrupted',
     completed: 'completed',
+    // partial_failure 调度语义等同 completed（交付物门已通过）；部分失败警示由
+    // TeamProgressCard 的 partialMemberFailure 提示承担，会话徽标不另设状态。
+    partial_failure: 'completed',
     failed: 'interrupted',
     cancelled: 'interrupted',
     interrupted: 'interrupted',
@@ -36,7 +39,7 @@ export function spiritModeLabel(mode: SpiritTeamMode | string): string {
   return labels[mode] ?? mode;
 }
 
-/** 9 aggregate display labels for AgentNode status */
+/** 10 aggregate display labels for AgentNode status */
 export type AgentNodeStatusLabel =
   | 'queued'
   | 'active'
@@ -44,6 +47,7 @@ export type AgentNodeStatusLabel =
   | 'tool_blocked'
   | 'interrupted'
   | 'done'
+  | 'partial_failure'
   | 'failed'
   | 'skipped'
   | 'cancelled';
@@ -108,6 +112,13 @@ export const STATUS_LABEL_CONFIG: Record<
     dotColor: 'orange',
   },
   done: { text: '已完成', color: 'var(--color-success)', icon: 'check_circle', animated: false, dotColor: 'green' },
+  partial_failure: {
+    text: '部分失败',
+    color: 'var(--color-warning)',
+    icon: 'warning',
+    animated: false,
+    dotColor: 'orange',
+  },
   failed: { text: '失败', color: 'var(--color-danger)', icon: 'error', animated: false, dotColor: 'red' },
   skipped: {
     text: '已跳过',
@@ -144,6 +155,7 @@ export function spiritTeamStatusToLabel(status: SpiritTeamStatus): AgentNodeStat
     running: 'active',
     paused: 'suspended',
     completed: 'done',
+    partial_failure: 'partial_failure',
     failed: 'failed',
     cancelled: 'cancelled',
     interrupted: 'interrupted',

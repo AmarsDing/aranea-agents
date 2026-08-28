@@ -21,6 +21,9 @@ type ProviderAPIConfig = llmcompat.ProviderAPIConfig
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
 var MergeProviderConfigJSON = llmcompat.MergeProviderConfigJSON
 
+// ApplyThinkingCapability copies catalog capability_thinking onto ProviderAPIConfig.
+var ApplyThinkingCapability = llmcompat.ApplyThinkingCapability
+
 // TeamMemberAnchor is embedded into message options_json for team timelines.
 type TeamMemberAnchor struct {
 	AgentID string `json:"agent_id"`

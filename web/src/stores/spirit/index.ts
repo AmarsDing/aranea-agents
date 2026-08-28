@@ -15,6 +15,7 @@ import {
   resumeAgentSession,
   retryAgentSession,
 } from '../../features/spirit/api';
+import { isChatQueueFullError } from '../../features/chat/api';
 import { i18n } from '../../i18n';
 import type {
   SpiritTeam,
@@ -239,11 +240,19 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   const activeTeams = computed(() =>
     teams.value.filter(
-      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
+      (t) =>
+        t.status !== 'completed' &&
+        t.status !== 'partial_failure' &&
+        t.status !== 'failed' &&
+        t.status !== 'cancelled' &&
+        t.status !== 'archived',
     ),
   );
 
-  const completedTeams = computed(() => teams.value.filter((t) => t.status === 'completed'));
+  // partial_failure 交付物门已通过，与后端 checkAllTeamsCompleted 同口径计入完成列表。
+  const completedTeams = computed(() =>
+    teams.value.filter((t) => t.status === 'completed' || t.status === 'partial_failure'),
+  );
 
   const runningTeamCount = computed(
     () => teams.value.filter((t) => t.status === 'running' || t.status === 'pending').length,
@@ -486,8 +495,14 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       await injectAgentSession(sessionId, message);
       Notify.create({ type: 'positive', message: i18n.global.t('chat.teamStage.injectSent'), position: 'top' });
       return true;
-    } catch {
-      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.injectFailed'), position: 'top' });
+    } catch (err: unknown) {
+      Notify.create({
+        type: 'warning',
+        message: isChatQueueFullError(err)
+          ? i18n.global.t('chat.enqueueQueueFull')
+          : i18n.global.t('chat.teamStage.injectFailed'),
+        position: 'top',
+      });
       return false;
     }
   }
@@ -531,16 +546,18 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     const team = teams.value.find((t) => t.id === teamId);
     if (!team) return;
 
-    // Terminal state protection: completed/failed/cancelled cannot be overridden
-    // by lower-priority events. This prevents race conditions where
+    // Terminal state protection: completed/partial_failure/failed/cancelled cannot
+    // be overridden by lower-priority events. This prevents race conditions where
     // spirit_team_failed arrives after spirit_team_completed.
-    const terminalStates: SpiritTeamStatus[] = ['completed', 'failed', 'cancelled'];
+    const terminalStates: SpiritTeamStatus[] = ['completed', 'partial_failure', 'failed', 'cancelled'];
     if (terminalStates.includes(team.status) && !terminalStates.includes(status)) {
       return; // Block non-terminal → terminal regression
     }
     // Same-level terminal override: only allow if new status has equal or higher priority
-    // Priority: completed > failed > cancelled (completed should not be overridden by failed)
-    const terminalPriority: Record<string, number> = { completed: 3, failed: 2, cancelled: 1 };
+    // Priority: partial_failure > completed > failed > cancelled
+    // (partial_failure 是 completed 的精化收敛态：允许 completed → partial_failure，
+    // 但 partial_failure 不得被 failed/cancelled/completed 覆盖)
+    const terminalPriority: Record<string, number> = { partial_failure: 4, completed: 3, failed: 2, cancelled: 1 };
     if (terminalStates.includes(team.status) && terminalStates.includes(status)) {
       if ((terminalPriority[status] ?? 0) <= (terminalPriority[team.status] ?? 0)) {
         return; // Don't downgrade terminal status (e.g. completed → failed)
@@ -654,7 +671,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'butler.orchestration.failed':
         if (teamId) {
           const existing = teams.value.find((t) => t.id === teamId);
-          if (existing && !['completed', 'failed', 'cancelled'].includes(existing.status)) {
+          if (existing && !['completed', 'partial_failure', 'failed', 'cancelled'].includes(existing.status)) {
             updateTeamStatus(teamId, 'failed');
           }
         }
@@ -743,7 +760,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'butler.orchestration.failed':
         if (teamId) {
           const existing = teams.value.find((t) => t.id === teamId);
-          if (existing && !['completed', 'failed', 'cancelled'].includes(existing.status)) {
+          if (existing && !['completed', 'partial_failure', 'failed', 'cancelled'].includes(existing.status)) {
             updateTeamStatus(teamId, 'failed');
           }
         }
@@ -860,9 +877,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   function handleTeamFailed(teamId: string, md: Record<string, unknown>) {
     if (!teamId) return;
-    // Don't override completed/cancelled with failed (terminal state protection)
+    // Don't override completed/partial_failure/cancelled with failed (terminal state protection)
     const existing = teams.value.find((t) => t.id === teamId);
-    if (existing?.status === 'completed' || existing?.status === 'cancelled') return;
+    if (existing?.status === 'completed' || existing?.status === 'partial_failure' || existing?.status === 'cancelled')
+      return;
     updateTeamStatus(teamId, 'failed');
     const team = teams.value.find((t) => t.id === teamId);
     if (!team) return;

@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -176,9 +177,17 @@ func capLLMColdStart(caps []biz.AgentCapability) []biz.AgentCapability {
 // returns an empty pool (fail-closed roster miss). Allocate never creates
 // company/department nodes (ORGFAST-05).
 func (impl *agentAllocatorImpl) matchingPool(domainPath string, capabilities []biz.AgentCapability, traceID string) ([]biz.AgentCapability, OrgPruneResult) {
+	pruneStart := time.Now()
 	assignable := filterHeuristicAssignable(capabilities)
 	prune := OrgPruner{}.Prune(domainPath, capabilities)
 	if prune.FallbackAll {
+		impl.lg.Info("组织剪枝回退全量可分配池",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("domain_path", domainPath),
+			loggateway.Str("reason", prune.Reason),
+			loggateway.Int64("prune_ms", time.Since(pruneStart).Milliseconds()),
+		)
 		return assignable, prune
 	}
 	if len(prune.CandidateKeys) == 0 {
@@ -187,6 +196,7 @@ func (impl *agentAllocatorImpl) matchingPool(domainPath string, capabilities []b
 			loggateway.Str("trace_id", traceID),
 			loggateway.Str("domain_path", domainPath),
 			loggateway.Str("reason", prune.Reason),
+			loggateway.Int64("prune_ms", time.Since(pruneStart).Milliseconds()),
 		)
 		return nil, prune
 	}
@@ -197,6 +207,7 @@ func (impl *agentAllocatorImpl) matchingPool(domainPath string, capabilities []b
 			loggateway.Str("trace_id", traceID),
 			loggateway.Str("domain_path", domainPath),
 			loggateway.Str("reason", OrgPruneReasonEmptyPool),
+			loggateway.Int64("prune_ms", time.Since(pruneStart).Milliseconds()),
 		)
 		prune.Reason = OrgPruneReasonEmptyPool
 		return nil, prune
@@ -211,6 +222,7 @@ func (impl *agentAllocatorImpl) matchingPool(domainPath string, capabilities []b
 		loggateway.Str("domain_path", domainPath),
 		loggateway.Str("department_id", deptID),
 		loggateway.Int("candidates", len(pool)),
+		loggateway.Int64("prune_ms", time.Since(pruneStart).Milliseconds()),
 	)
 	return pool, prune
 }

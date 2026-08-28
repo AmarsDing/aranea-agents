@@ -924,24 +924,16 @@ describe('useContextualLoadingMessage', () => {
     });
   });
 
-  describe('run heartbeat (system.heartbeat)', () => {
-    it('maps executing current_step to heartbeat loading text', () => {
+  describe('hitl_wait notice (P-03)', () => {
+    it('surfaces a visible waiting-for-confirmation loading line', () => {
       const isReplaying = ref(false);
-      const { loadingMessage, onRunHeartbeat } = useContextualLoadingMessage(isReplaying);
+      const { loadingMessage, onSpiritNoticeType } = useContextualLoadingMessage(isReplaying);
 
-      onRunHeartbeat({ Message: 'run still executing', Meta: { current_step: 'executing' } });
+      onSpiritNoticeType('hitl_wait');
 
       expect(loadingMessage.value).not.toBeNull();
-      expect(loadingMessage.value!.text).toContain('思考');
-      expect(loadingMessage.value!.icon).toBe('favorite');
-    });
-
-    it('isReplaying suppresses heartbeat messages', () => {
-      const isReplaying = ref(true);
-      const { loadingMessage, onRunHeartbeat } = useContextualLoadingMessage(isReplaying);
-
-      onRunHeartbeat({ Message: 'run still executing', Meta: { current_step: 'executing' } });
-      expect(loadingMessage.value).toBeNull();
+      expect(loadingMessage.value!.text).toBe('仍在等待你确认工具调用');
+      expect(loadingMessage.value!.icon).toBe('hourglass_top');
     });
   });
 });

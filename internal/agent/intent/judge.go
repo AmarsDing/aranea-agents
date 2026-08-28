@@ -73,6 +73,7 @@ func JudgeBlockingQuestion(ctx context.Context, catalog biz.TeamModelCatalog, ht
 	}
 	var cfg llmcompat.ProviderAPIConfig
 	llmcompat.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	llmcompat.ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 	// 与 intent pass 同理：分类任务强制关闭思考段，压旁路延迟。
 	cfg.ThinkingDisabled = true
 

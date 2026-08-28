@@ -662,8 +662,10 @@ func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string,
 	return u.reader.GetTeamByID(ctx, id)
 }
 
-// RetryTeam resets a failed or cancelled team to pending so it can be re-started.
-// Only failed/cancelled teams are eligible; other states return BadRequest.
+// RetryTeam resets a failed, cancelled or partial_failure team to pending so it
+// can be re-started. Eligibility is enforced by the team state machine
+// (partial_failure/failed/cancelled → pending via recover); other states are
+// rejected as invalid transitions.
 func (u *TeamUsecase) RetryTeam(ctx context.Context, id string) (Team, error) {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {

@@ -308,8 +308,11 @@ const dagLayers = computed<DagLayer[]>(() => {
           // 修复：检查是否有成员失败，如果有则显示为 partial_failure（黄色警告）
           const hasFailedMember = team.members?.some((m) => m.status === 'failed');
 
-          if (team.status === 'completed' || team.status === 'archived') {
-            // 如果团队整体完成但有成员失败，显示为 partial_failure
+          if (team.status === 'partial_failure') {
+            // 后端持久态：交付物门通过但 ≥1 成员失败
+            state = 'partial_failure';
+          } else if (team.status === 'completed' || team.status === 'archived') {
+            // 旧数据回退：completed 但有成员失败时也显示 partial_failure
             state = hasFailedMember ? 'partial_failure' : 'done';
           } else if (team.status === 'running' || team.status === 'pending') {
             state = 'running';

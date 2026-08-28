@@ -54,6 +54,8 @@ func TestScanInputRisk_Keywords(t *testing.T) {
 		"删除数据库再重建",
 		"格式化磁盘 /dev/sda",
 		"format disk D:",
+		"把核心交换机 core-sw1 的 BGP 邻居断了模拟故障。",
+		"对核心交换机做 BGP 故障注入",
 		// 新增正则族：mkfs / dd
 		"mkfs /dev/sda",
 		"mkfs.ext4 /dev/sda1",
@@ -71,15 +73,15 @@ func TestScanInputRisk_Keywords(t *testing.T) {
 // TestScanInputRisk_NoFalsePositive 误报纪律：讨论性/正常运维输入不得命中。
 func TestScanInputRisk_NoFalsePositive(t *testing.T) {
 	misses := []string{
-		"如何防范 rm -rf 误删",       // CJK target：讨论性输入
-		"rm -rf 命令的原理是什么",     // 无路径 target
-		"帮我写一个 landing page",     // 正常请求
+		"如何防范 rm -rf 误删",             // CJK target：讨论性输入
+		"rm -rf 命令的原理是什么",            // 无路径 target
+		"帮我写一个 landing page",         // 正常请求
 		"delete the unused variable", // 英文普通 delete
-		"重启服务器",                 // 可逆系统管理操作（不入表，L3 兜底）
+		"重启服务器",                      // 可逆系统管理操作（不入表，L3 兜底）
 		"reboot the server",          // 同上
-		"shutdown 和 poweroff 的区别", // 讨论性
-		"rm 命令怎么用",              // 无递归标志无 target
-		"帮我清理一下磁盘空间",        // 正常运维
+		"shutdown 和 poweroff 的区别",    // 讨论性
+		"rm 命令怎么用",                   // 无递归标志无 target
+		"帮我清理一下磁盘空间",                 // 正常运维
 		"",
 	}
 	for _, v := range misses {
@@ -93,7 +95,7 @@ func TestScanInputRisk_NoFalsePositive(t *testing.T) {
 // /tmp 场景）输入级仍打标——分层差异：宽检测（审计/澄清门）→ 窄拦截（L3）。
 func TestScanInputRisk_WideDetection(t *testing.T) {
 	hits := []string{
-		"rm -rf /tmp/data",   // L3 deny 不命中（target 非根），输入级打标
+		"rm -rf /tmp/data",    // L3 deny 不命中（target 非根），输入级打标
 		"rm -rf node_modules", // 裸词 target（非 CJK 起头）
 		"rm -rf ./dist",
 	}
@@ -121,5 +123,19 @@ func TestRunOptionInjectInputRisk(t *testing.T) {
 	RunOptionInjectInputRisk(nil)(&empty)
 	if len(empty.InjectedContextMessages) != 0 {
 		t.Errorf("empty flags should be no-op, got %d messages", len(empty.InjectedContextMessages))
+	}
+}
+
+func TestScanInputRisk_ShadowNearMiss(t *testing.T) {
+	soft := "把 core-sw1 的 BGP 邻居断了做演练"
+	if got := ScanInputRisk(soft); len(got) != 0 {
+		t.Fatalf("hard scan must miss %q, got %v", soft, got)
+	}
+	shadow := ScanInputRiskShadowHits(soft)
+	if len(shadow) == 0 {
+		t.Fatalf("shadow scan must hit BGP/邻居断 near-miss, got %v", shadow)
+	}
+	if hits := ScanInputRiskShadowHits("对 sw1 执行故障注入"); len(hits) != 0 {
+		t.Fatalf("hard-hit must not also shadow, got %v", hits)
 	}
 }

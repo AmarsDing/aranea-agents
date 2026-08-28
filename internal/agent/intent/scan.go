@@ -30,9 +30,17 @@ import (
 // 补 drop database。"rm -rf" 已由下方 rm 族正则覆盖（更强），不再单列。
 var inputRiskKeywords = []string{
 	"fault_inject", "fault inject", "故障注入", "注入故障", "gns3_fault_inject",
+	"模拟故障", "故障模拟",
 	"drop table", "truncate table", "delete from ", "drop database",
 	"删库", "删除数据库",
 	"格式化磁盘", "format disk",
+}
+
+// inputRiskSoftKeywords 是词表未命中时的近误影子标记（只记录、不 flag）。
+// S14 自然语言「把 BGP 邻居断了模拟故障」原先漏标；补「模拟故障」后硬扫描
+// 已覆盖。影子表用于尚未入硬表的语义近邻，避免误报直接生效。
+var inputRiskSoftKeywords = []string{
+	"bgp", "邻居断", "断邻居", "port down", "link down",
 }
 
 // inputRiskSep 是命令/路径前缀分隔符类（对齐 L3 20261267 口径 + 自然语言空格）。
@@ -70,4 +78,20 @@ func ScanInputRisk(userText string) []string {
 		}
 	}
 	return nil
+}
+
+// ScanInputRiskShadowHits returns soft near-miss tokens when the hard scan
+// missed. Callers log-only (shadow mode); do not treat as a flag.
+func ScanInputRiskShadowHits(userText string) []string {
+	if len(ScanInputRisk(userText)) > 0 {
+		return nil
+	}
+	lower := strings.ToLower(userText)
+	var hits []string
+	for _, kw := range inputRiskSoftKeywords {
+		if strings.Contains(lower, kw) {
+			hits = append(hits, kw)
+		}
+	}
+	return hits
 }

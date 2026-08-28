@@ -435,7 +435,8 @@ func (a *SpiritAssembly) ListCompletedAndFailedTeams(ctx context.Context, spirit
 	}
 	var out []Team
 	for i := range teams {
-		if teams[i].Status == TeamStatusCompleted || teams[i].Status == TeamStatusFailed {
+		// partial_failure 交付物已产出，与 completed 同列入综合/交付物收集范围。
+		if teams[i].Status == TeamStatusCompleted || teams[i].Status == TeamStatusFailed || teams[i].Status == TeamStatusPartialFailure {
 			out = append(out, teams[i])
 		}
 	}

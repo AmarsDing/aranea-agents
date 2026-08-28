@@ -98,8 +98,11 @@
       <span class="text-caption ellipsis">{{ failedSummary }}</span>
     </div>
 
-    <!-- 新增：成员失败警告（当团队整体完成但有成员失败时显示） -->
-    <div v-if="hasFailedMember && team.status === 'completed'" class="team-progress-card__warning q-mt-xs">
+    <!-- 成员失败警告：partial_failure 持久态或旧数据 completed+失败成员时显示 -->
+    <div
+      v-if="hasFailedMember && (team.status === 'completed' || team.status === 'partial_failure')"
+      class="team-progress-card__warning q-mt-xs"
+    >
       <q-icon name="warning" size="12px" class="q-mr-xs" />
       <span class="text-caption">{{ t('spirit.partialMemberFailure', { count: failedMemberCount }) }}</span>
     </div>
@@ -184,16 +187,23 @@ const isWaitingDeps = computed(
 
 const canCancel = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
-const canRetry = computed(() => props.team.status === 'failed');
+// partial_failure 调度语义等同 completed：可重试（recover→pending）、可归档。
+const canRetry = computed(() => props.team.status === 'failed' || props.team.status === 'partial_failure');
 
 const canArchive = computed(
-  () => props.team.status === 'completed' || props.team.status === 'failed' || props.team.status === 'cancelled',
+  () =>
+    props.team.status === 'completed' ||
+    props.team.status === 'partial_failure' ||
+    props.team.status === 'failed' ||
+    props.team.status === 'cancelled',
 );
 
 const statusClass = computed(() => {
   switch (props.team.status) {
     case 'completed':
       return 'completed';
+    case 'partial_failure':
+      return 'partial_failure';
     case 'failed':
       return 'failed';
     case 'cancelled':
@@ -215,6 +225,7 @@ const progressValue = computed(() =>
 
 const progressColor = computed(() => {
   if (props.team.status === 'completed') return 'positive';
+  if (props.team.status === 'partial_failure') return 'warning';
   if (props.team.status === 'failed') return 'negative';
   return 'accent';
 });
@@ -313,6 +324,8 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
   background: var(--color-accent)
 .team-progress-card__avatar-status--completed
   background: var(--color-success)
+.team-progress-card__avatar-status--partial_failure
+  background: var(--color-warning)
 .team-progress-card__avatar-status--failed
   background: var(--color-danger)
 .team-progress-card__avatar-status--interrupted

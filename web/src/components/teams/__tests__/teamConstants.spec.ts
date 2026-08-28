@@ -17,7 +17,17 @@ import {
 
 describe('teamConstants', () => {
   it('teamStatusMap covers all known statuses', () => {
-    const expected = ['pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived', 'active'];
+    const expected = [
+      'pending',
+      'running',
+      'completed',
+      'partial_failure',
+      'failed',
+      'cancelled',
+      'interrupted',
+      'archived',
+      'active',
+    ];
     for (const status of expected) {
       expect(teamStatusMap[status]).toBeDefined();
       expect(teamStatusMap[status].label).toBeTruthy();
@@ -43,6 +53,7 @@ describe('teamConstants', () => {
       'pending',
       'running',
       'completed',
+      'partial_failure',
       'failed',
       'cancelled',
       'interrupted',
@@ -84,11 +95,20 @@ describe('teamConstants', () => {
 
   it('validStatusTransitions mirrors backend state machine', () => {
     // Mirrors teamTransitionRules in internal/biz/team_state_machine.go,
-    // including rework (running→pending) and recover (failed/cancelled→pending).
+    // including rework (running→pending), recover (failed/cancelled/partial_failure→pending)
+    // and complete_partial (running→partial_failure).
     expect(validStatusTransitions.pending).toEqual(['running', 'cancelled', 'failed']);
-    expect(validStatusTransitions.running).toEqual(['completed', 'failed', 'cancelled', 'interrupted', 'pending']);
+    expect(validStatusTransitions.running).toEqual([
+      'completed',
+      'partial_failure',
+      'failed',
+      'cancelled',
+      'interrupted',
+      'pending',
+    ]);
     expect(validStatusTransitions.interrupted).toEqual(['running']);
     expect(validStatusTransitions.completed).toEqual(['archived']);
+    expect(validStatusTransitions.partial_failure).toEqual(['archived', 'pending']);
     expect(validStatusTransitions.failed).toEqual(['archived', 'pending']);
     expect(validStatusTransitions.cancelled).toEqual(['archived', 'pending']);
     expect(validStatusTransitions.archived).toEqual([]);
@@ -98,6 +118,10 @@ describe('teamConstants', () => {
     expect(isValidStatusTransition('pending', 'running')).toBe(true);
     expect(isValidStatusTransition('pending', 'completed')).toBe(false);
     expect(isValidStatusTransition('running', 'completed')).toBe(true);
+    expect(isValidStatusTransition('running', 'partial_failure')).toBe(true);
+    expect(isValidStatusTransition('partial_failure', 'archived')).toBe(true);
+    expect(isValidStatusTransition('partial_failure', 'pending')).toBe(true);
+    expect(isValidStatusTransition('partial_failure', 'failed')).toBe(false);
     expect(isValidStatusTransition('running', 'archived')).toBe(false);
     expect(isValidStatusTransition('completed', 'archived')).toBe(true);
     expect(isValidStatusTransition('pending', 'pending')).toBe(true);

@@ -56,6 +56,20 @@ type ProviderAPIConfig struct {
 	// 显式 effort 优先于 ThinkingDisabled；"off" 映射 ThinkingEnabled=false，其余
 	// 档位注入 reasoning_effort 且不动 thinking 开关。
 	ThinkingEffort string `json:"-"`
+	// ThinkingCapExplicit / SupportsThinking 来自模型目录 capability_thinking。
+	// 显式 false（Ollama qwen2.5vl 等）时不得下发 thinking key，否则 400。
+	ThinkingCapExplicit bool `json:"-"`
+	SupportsThinking    bool `json:"-"`
+}
+
+// ApplyThinkingCapability copies catalog capability_thinking onto cfg so
+// thinkingFieldsFromConfig can skip the thinking key for models that reject it.
+func ApplyThinkingCapability(cfg *ProviderAPIConfig, explicit, thinking bool) {
+	if cfg == nil || !explicit {
+		return
+	}
+	cfg.ThinkingCapExplicit = true
+	cfg.SupportsThinking = thinking
 }
 
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
@@ -317,6 +331,13 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 	return provider.WrapModelWithMetrics(m, providerName, modelName), nil
 }
 
+func skipThinkingKey(cfg ProviderAPIConfig) bool {
+	if cfg.ThinkingCapExplicit {
+		return !cfg.SupportsThinking
+	}
+	return strings.EqualFold(strings.TrimSpace(cfg.ProviderType), "ollama")
+}
+
 // thinkingFieldsFromConfig 将（cfg.ThinkingEffort, cfg.ThinkingDisabled）映射为
 // 框架 GenerationConfig 的（ThinkingEnabled, ReasoningEffort）：
 //   - 显式 effort="off"        → ThinkingEnabled=*false（等价 thinking_disabled）
@@ -327,7 +348,11 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 //   - 两者皆无                 → (nil, nil)，请求体不携带 thinking 相关字段
 //
 // 显式 effort 优先于 ThinkingDisabled（与 P2-1「显式路由策略覆盖静态配置」同约）。
+// capability_thinking=false / Ollama 默认跳过 thinking key（P-01）。
 func thinkingFieldsFromConfig(cfg ProviderAPIConfig) (thinkingEnabled *bool, reasoningEffort *string) {
+	if skipThinkingKey(cfg) {
+		return nil, nil
+	}
 	switch strings.ToLower(strings.TrimSpace(cfg.ThinkingEffort)) {
 	case "off":
 		disabled := false

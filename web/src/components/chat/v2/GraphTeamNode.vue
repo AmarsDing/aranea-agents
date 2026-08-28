@@ -288,14 +288,12 @@ function memberMeta(ms: MemberSession): string {
 }
 
 // ── 进度：到达终态的成员 / 总成员；无成员时由节点状态推导 ──
-// 修复：包括所有终态成员（completed + failed + cancelled + skipped），不仅限于 completed
-// 原逻辑只统计 completed，导致有成员失败时进度显示不准确（如 1/2 而不是 2/2）
+// 修复：包括所有终态成员（completed + failed + skipped，与后端 MemberSessionStatus 对齐），
+// 不仅限于 completed。原逻辑只统计 completed，导致有成员失败时进度显示不准确（如 1/2 而不是 2/2）
 const progressCompleted = computed(
   () =>
-    members.value.filter(
-      (ms) =>
-        ms.Status === 'completed' || ms.Status === 'failed' || ms.Status === 'cancelled' || ms.Status === 'skipped',
-    ).length,
+    members.value.filter((ms) => ms.Status === 'completed' || ms.Status === 'failed' || ms.Status === 'skipped')
+      .length,
 );
 const progressPct = computed(() => {
   const total = members.value.length;

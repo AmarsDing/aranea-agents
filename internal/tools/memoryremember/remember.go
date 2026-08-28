@@ -84,6 +84,13 @@ func NewRememberTool(deps Deps) trpctool.CallableTool {
 			return rememberOutput{}, apierror.BadRequest("MEMORY", "user identity unavailable in this context")
 		}
 
+		scopeType, scopeID := "user", userID
+		if biz.ForkMemoryPrivateFromContext(ctx) && sessionID != "" {
+			// Fork sessions keep explicit remembers in the session domain so
+			// they do not leak into the shared user memory library (S13).
+			scopeType, scopeID = "session", sessionID
+		}
+
 		// FR-M2 conflict governance: best-effort, never blocks the write.
 		decision := biz.MemoryConflictDecision{Action: biz.ConflictActionNone}
 		if deps.Detector != nil {
@@ -93,8 +100,8 @@ func NewRememberTool(deps Deps) trpctool.CallableTool {
 		}
 
 		result, err := deps.Writer.UpsertFactsAndEpisodeBatch(ctx, []biz.MemoryFactWrite{{
-			ScopeType:       "user",
-			ScopeID:         userID,
+			ScopeType:       scopeType,
+			ScopeID:         scopeID,
 			UserID:          userID,
 			AgentID:         agentID,
 			Statement:       stmt,

@@ -370,11 +370,11 @@ func TestMergeProviderConfigJSON_ThinkingDisabled(t *testing.T) {
 
 func TestThinkingFieldsFromConfig(t *testing.T) {
 	cases := []struct {
-		name          string
-		effort        string
-		disabled      bool
-		wantEnabled   *bool
-		wantEffort    string // "" = 不注入 reasoning_effort
+		name        string
+		effort      string
+		disabled    bool
+		wantEnabled *bool
+		wantEffort  string // "" = 不注入 reasoning_effort
 	}{
 		{"empty_default", "", false, nil, ""},
 		{"empty_disabled", "", true, boolPtrForTest(false), ""},
@@ -408,10 +408,29 @@ func TestThinkingFieldsFromConfig(t *testing.T) {
 				}
 			} else {
 				if effort == nil || *effort != tc.wantEffort {
-					t.Fatalf("reasoningEffort = %v, want %q", effort, tc.wantEffort)
+					t.Fatalf("reasoningEffort = %q, want %q", *effort, tc.wantEffort)
 				}
 			}
 		})
+	}
+}
+
+func TestThinkingFieldsFromConfig_OllamaOmitsThinkingKey(t *testing.T) {
+	cfg := ProviderAPIConfig{ProviderType: "ollama", ThinkingDisabled: true}
+	enabled, effort := thinkingFieldsFromConfig(cfg)
+	if enabled != nil || effort != nil {
+		t.Fatalf("ollama must not inject thinking fields, enabled=%v effort=%v", enabled, effort)
+	}
+	ApplyThinkingCapability(&cfg, true, false)
+	enabled, effort = thinkingFieldsFromConfig(cfg)
+	if enabled != nil || effort != nil {
+		t.Fatalf("explicit capability_thinking=false must omit thinking key")
+	}
+	deep := ProviderAPIConfig{ProviderType: "ollama", ThinkingDisabled: true}
+	ApplyThinkingCapability(&deep, true, true)
+	enabled, _ = thinkingFieldsFromConfig(deep)
+	if enabled == nil || *enabled {
+		t.Fatalf("ollama with explicit thinking=true still honors ThinkingDisabled, got %v", enabled)
 	}
 }
 

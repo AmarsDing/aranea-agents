@@ -19,6 +19,7 @@ import (
 	"aranea-agents/internal/biz/decision"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
 	"aranea-agents/internal/telemetry/turntrace"
@@ -437,6 +438,12 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			SessionID:   sessionID,
 			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
 		})
+	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
+		o.lg().Info("input risk shadow hit (not flagged)",
+			loggateway.StepID("chat.input_risk.shadow"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("shadow_hits", strings.Join(shadow, ",")),
+		)
 	}
 
 	prov = admit.provider
@@ -463,7 +470,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	skipIntent, assessLevel, skipReason := shouldSkipIntentPass(o, ctx, ag, input, content)
 	if skipIntent {
 		// 闲聊/simple：per-request 关 thinking（BUILD 缓存不含入口，不能烘进 GenerationConfig）。
-		ctx = chatagent.WithThinkingDisabled(ctx)
+		// capability_thinking=false 的模型（Ollama qwen2.5vl 等）不得注入 thinking key。
+		if provider.ModelSupportsThinking(ctx, o.td().ReadDeps.LLM, prov, mod, o.lg()) {
+			ctx = chatagent.WithThinkingDisabled(ctx)
+		}
+	}
+	if strings.TrimSpace(sess.ForkFromTurnID) != "" {
+		ctx = biz.WithForkMemoryPrivate(ctx)
 	}
 
 	// Goroutine 1: BUILD

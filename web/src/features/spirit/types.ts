@@ -6,6 +6,7 @@ export type SpiritTeamStatus =
   | 'running'
   | 'paused'
   | 'completed'
+  | 'partial_failure'
   | 'failed'
   | 'cancelled'
   | 'interrupted'
@@ -17,6 +18,7 @@ const VALID_TEAM_STATUSES: ReadonlySet<string> = new Set<string>([
   'running',
   'paused',
   'completed',
+  'partial_failure',
   'failed',
   'cancelled',
   'interrupted',

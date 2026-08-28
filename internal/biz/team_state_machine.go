@@ -45,13 +45,14 @@ import (
 type TeamState string
 
 const (
-	TeamStatePending     TeamState = "pending"
-	TeamStateRunning     TeamState = "running"
-	TeamStateCompleted   TeamState = "completed"
-	TeamStateFailed      TeamState = "failed"
-	TeamStateCancelled   TeamState = "cancelled"
-	TeamStateInterrupted TeamState = "interrupted"
-	TeamStateArchived    TeamState = "archived"
+	TeamStatePending        TeamState = "pending"
+	TeamStateRunning        TeamState = "running"
+	TeamStateCompleted      TeamState = "completed"
+	TeamStateFailed         TeamState = "failed"
+	TeamStateCancelled      TeamState = "cancelled"
+	TeamStateInterrupted    TeamState = "interrupted"
+	TeamStateArchived       TeamState = "archived"
+	TeamStatePartialFailure TeamState = "partial_failure"
 
 	// TeamStateBlocked is a virtual state used only in cascade blocked results.
 	// It is never persisted and has no transitions.
@@ -63,14 +64,15 @@ const (
 type TeamEvent string
 
 const (
-	TeamEventStart     TeamEvent = "start"
-	TeamEventComplete  TeamEvent = "complete"
-	TeamEventFail      TeamEvent = "fail"
-	TeamEventCancel    TeamEvent = "cancel"
-	TeamEventInterrupt TeamEvent = "interrupt"
-	TeamEventRecover   TeamEvent = "recover"
-	TeamEventArchive   TeamEvent = "archive"
-	TeamEventRework    TeamEvent = "rework"
+	TeamEventStart           TeamEvent = "start"
+	TeamEventComplete        TeamEvent = "complete"
+	TeamEventCompletePartial TeamEvent = "complete_partial" // 完成但 ≥1 成员失败（F10）
+	TeamEventFail            TeamEvent = "fail"
+	TeamEventCancel          TeamEvent = "cancel"
+	TeamEventInterrupt       TeamEvent = "interrupt"
+	TeamEventRecover         TeamEvent = "recover"
+	TeamEventArchive         TeamEvent = "archive"
+	TeamEventRework          TeamEvent = "rework"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -82,12 +84,15 @@ var teamTransitionRules = []shared.TransitionRule[TeamState, TeamEvent]{
 	{From: TeamStatePending, Event: TeamEventCancel, To: TeamStateCancelled},
 	{From: TeamStatePending, Event: TeamEventFail, To: TeamStateFailed},
 	{From: TeamStateRunning, Event: TeamEventComplete, To: TeamStateCompleted},
+	{From: TeamStateRunning, Event: TeamEventCompletePartial, To: TeamStatePartialFailure},
 	{From: TeamStateRunning, Event: TeamEventFail, To: TeamStateFailed},
 	{From: TeamStateRunning, Event: TeamEventCancel, To: TeamStateCancelled},
 	{From: TeamStateRunning, Event: TeamEventInterrupt, To: TeamStateInterrupted},
 	{From: TeamStateRunning, Event: TeamEventRework, To: TeamStatePending},
 	{From: TeamStateInterrupted, Event: TeamEventRecover, To: TeamStateRunning},
 	{From: TeamStateCompleted, Event: TeamEventArchive, To: TeamStateArchived},
+	{From: TeamStatePartialFailure, Event: TeamEventArchive, To: TeamStateArchived},
+	{From: TeamStatePartialFailure, Event: TeamEventRecover, To: TeamStatePending},
 	{From: TeamStateFailed, Event: TeamEventArchive, To: TeamStateArchived},
 	{From: TeamStateFailed, Event: TeamEventRecover, To: TeamStatePending},
 	{From: TeamStateCancelled, Event: TeamEventArchive, To: TeamStateArchived},

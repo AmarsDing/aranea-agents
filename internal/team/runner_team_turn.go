@@ -206,6 +206,12 @@ func (r *Runner) prepareUserTurnOptions(
 			SessionID:   run.SessionID,
 			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
 		})
+	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
+		r.lg.Info("input risk shadow hit (not flagged)",
+			loggateway.StepID("team.input_risk.shadow"),
+			loggateway.Str("session_id", run.SessionID),
+			loggateway.Str("shadow_hits", strings.Join(shadow, ",")),
+		)
 	}
 
 	shouldRunIntent := !pending.skip && intent.ShouldRun(ar.agent, content)

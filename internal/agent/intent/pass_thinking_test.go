@@ -51,3 +51,31 @@ func TestRunForAgent_ForcesThinkingDisabled(t *testing.T) {
 		t.Fatalf("intent pass must force thinking disabled in request body: %s", string(body))
 	}
 }
+
+func TestRunForAgent_OllamaOmitsThinkingKey(t *testing.T) {
+	var body []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"c1","object":"chat.completion","created":0,"model":"m",` +
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"{\"intent_kind\":\"question\",\"refined_goal\":\"看图\"}"},"finish_reason":"stop"}],` +
+			`"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	cat := stubCatalog{row: biz.ProviderModel{
+		Provider:             "ollama",
+		Model:                "qwen2.5vl:7b",
+		CapabilitiesExplicit: true,
+		Capabilities:         biz.ModelCapabilities{Vision: true, Thinking: false},
+		ConfigJSON:           `{"provider_type":"openai","api_base_url":"` + srv.URL + `","api_key":"k"}`,
+	}}
+	ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{IntentPassEnabled: true}}
+	res := RunForAgent(context.Background(), ag, cat, srv.Client(), "ollama", "qwen2.5vl:7b", "描述这张图", nil, loggateway.NewNoop())
+	if res.Outcome != "completed" {
+		t.Fatalf("outcome = %q, want completed", res.Outcome)
+	}
+	if strings.Contains(string(body), `"thinking"`) {
+		t.Fatalf("ollama simple/intent request must not contain thinking key: %s", string(body))
+	}
+}

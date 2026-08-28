@@ -55,9 +55,9 @@ func TestEnqueueRejectError(t *testing.T) {
 		wantMessage string
 	}{
 		{
-			name:        "queue_full_bad_request",
+			name:        "queue_full_rate_limited",
 			reason:      biz.ChatEnqueueRejectQueueFull,
-			wantCode:    apierror.CodeBadRequest,
+			wantCode:    apierror.CodeRateLimit,
 			wantMessage: "pending queue is full for this session",
 		},
 		{

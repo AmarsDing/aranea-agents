@@ -261,7 +261,7 @@ export function createSpiritService() {
     // (POST /v1/chat/enqueue). Used by MemberSessionPanel input bar to inject
     // messages to individual sub-agent sessions.
     enqueueUserMessage(sessionId: string, content: string, kind?: 'steer' | 'followup' | 'inject') {
-      return kratosApi.post('/v1/chat/enqueue', { session_id: sessionId, content, kind });
+      return kratosApi.post('/v1/chat/enqueue', { session_id: sessionId, content, kind }, { skipErrorNotify: true });
     },
   };
 }

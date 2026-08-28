@@ -42,12 +42,13 @@ import (
 type TeamStageEvent string
 
 const (
-	TeamStageEventStart     TeamStageEvent = "start"
-	TeamStageEventComplete  TeamStageEvent = "complete"
-	TeamStageEventFail      TeamStageEvent = "fail"
-	TeamStageEventCancel    TeamStageEvent = "cancel"
-	TeamStageEventInterrupt TeamStageEvent = "interrupt"
-	TeamStageEventResume    TeamStageEvent = "resume"
+	TeamStageEventStart           TeamStageEvent = "start"
+	TeamStageEventComplete        TeamStageEvent = "complete"
+	TeamStageEventCompletePartial TeamStageEvent = "complete_partial" // 完成但 ≥1 成员失败（F10）
+	TeamStageEventFail            TeamStageEvent = "fail"
+	TeamStageEventCancel          TeamStageEvent = "cancel"
+	TeamStageEventInterrupt       TeamStageEvent = "interrupt"
+	TeamStageEventResume          TeamStageEvent = "resume"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ var teamStageTransitionRules = []shared.TransitionRule[TeamStageStatus, TeamStag
 	{From: TeamStageStatusPending, Event: TeamStageEventFail, To: TeamStageStatusFailed},
 	{From: TeamStageStatusPending, Event: TeamStageEventCancel, To: TeamStageStatusCancelled},
 	{From: TeamStageStatusRunning, Event: TeamStageEventComplete, To: TeamStageStatusCompleted},
+	{From: TeamStageStatusRunning, Event: TeamStageEventCompletePartial, To: TeamStageStatusPartialFailure},
 	{From: TeamStageStatusRunning, Event: TeamStageEventFail, To: TeamStageStatusFailed},
 	{From: TeamStageStatusRunning, Event: TeamStageEventCancel, To: TeamStageStatusCancelled},
 	{From: TeamStageStatusRunning, Event: TeamStageEventInterrupt, To: TeamStageStatusWaitingHuman},
@@ -107,7 +109,7 @@ func (sm *TeamStageStateMachine) ValidTargets(from TeamStageStatus) []TeamStageS
 // WaitingHuman is NOT terminal (can resume or terminate).
 func IsTeamStageTerminal(status TeamStageStatus) bool {
 	switch status {
-	case TeamStageStatusCompleted, TeamStageStatusFailed, TeamStageStatusCancelled:
+	case TeamStageStatusCompleted, TeamStageStatusFailed, TeamStageStatusCancelled, TeamStageStatusPartialFailure:
 		return true
 	default:
 		return false

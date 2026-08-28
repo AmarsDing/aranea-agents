@@ -148,6 +148,24 @@ func TestRemember_CreatesPreferenceFactByDefault(t *testing.T) {
 	}
 }
 
+func TestRemember_ForkSessionWritesPrivateScope(t *testing.T) {
+	w := &fakeWriter{}
+	deps := baseDeps()
+	deps.Writer = w
+	ctx := biz.WithForkMemoryPrivate(ctxWithSession("user-1", "fork-sess"))
+	callTool(t, deps, ctx, `{"statement":"只在这个分支记住"}`)
+	if len(w.writes) != 1 {
+		t.Fatalf("expected 1 write, got %d", len(w.writes))
+	}
+	fw := w.writes[0]
+	if fw.ScopeType != "session" || fw.ScopeID != "fork-sess" {
+		t.Fatalf("fork remember must write session scope, got type=%q id=%q", fw.ScopeType, fw.ScopeID)
+	}
+	if fw.UserID != "user-1" || fw.SourceSessionID != "fork-sess" {
+		t.Fatalf("user/source still required: %+v", fw)
+	}
+}
+
 func TestRemember_ConstraintKindPassesThrough(t *testing.T) {
 	w := &fakeWriter{}
 	deps := baseDeps()

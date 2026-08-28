@@ -205,7 +205,8 @@ func (o *SpiritOrchestration) registerTeamTimeout(ctx context.Context, cfg Paral
 			if err != nil {
 				return
 			}
-			if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled {
+			if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled || team.Status == TeamStatusPartialFailure {
+				// partial_failure 同为终态（超时回调可能是残留定时器），不得干预。
 				return
 			}
 			if team.Status == TeamStatusPending {
@@ -596,7 +597,8 @@ func (o *SpiritOrchestration) ScheduleDependentTeams(ctx context.Context, spirit
 				}
 				found = true
 				switch allTeams[j].Status {
-				case TeamStatusCompleted:
+				case TeamStatusCompleted, TeamStatusPartialFailure:
+					// partial_failure 交付物门已通过，依赖视为满足（下游照常激活）。
 				case TeamStatusFailed, TeamStatusCancelled:
 					anyDepFailed = true
 				default:
@@ -674,13 +676,14 @@ func (o *SpiritOrchestration) CheckAllTeamsCompleted(ctx context.Context, spirit
 			return AllTeamsCompletedResult{}
 		}
 	}
-	// All teams are in a terminal state (completed, failed, cancelled, or archived).
+	// All teams are in a terminal state (completed, partial_failure, failed, cancelled, or archived).
 	var teamIDs []string
 	var completedTeams, failedTeams, cancelledTeams int
 	for _, t := range teams {
 		teamIDs = append(teamIDs, t.ID)
 		switch t.Status {
-		case TeamStatusCompleted:
+		case TeamStatusCompleted, TeamStatusPartialFailure:
+			// partial_failure 计入 completed：交付物已产出，综合报告按成功团队处理。
 			completedTeams++
 		case TeamStatusFailed:
 			failedTeams++

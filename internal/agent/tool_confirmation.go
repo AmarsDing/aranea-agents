@@ -18,6 +18,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -31,6 +32,13 @@ const errToolConfirmationRequired = "TOOL_CONFIRMATION_REQUIRED"
 // tool invocation is rejected with ErrorCodeConfirmationTimeout.
 const defaultToolConfirmationTimeout = 5 * time.Minute
 
+// hitlWaitVisibleAfter is the threshold after which a waiting confirmation
+// becomes session-visible (notice + log). Timeout retry/reject actions stay
+// opt-in; this round only closes the silent-wait gap (S7 ~8.5min).
+const hitlWaitVisibleAfter = 60 * time.Second
+
+const hitlWaitNoticeType = "hitl_wait"
+
 type toolCallStartKey struct{}
 
 type toolConfirmationBeforeHook struct {
@@ -43,6 +51,8 @@ type toolConfirmationBeforeHook struct {
 	// confirmRetries is extra confirmation waits after the first timeout.
 	// 0 = default 1 retry (re-issue the card once). Negative = no retry (tests).
 	confirmRetries int
+	// hitlVisibleAfter overrides hitlWaitVisibleAfter in tests. Zero = default.
+	hitlVisibleAfter time.Duration
 }
 
 var _ callbacks.BeforeToolHook = (*toolConfirmationBeforeHook)(nil)
@@ -151,10 +161,18 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					ToolCallID: args.ToolCallID,
 				})
 				waitStart := time.Now()
+				stopVisible := h.startHITLWaitVisibility(ctx, toolKey, emitter)
 				confirmCtx, confirmCancel := context.WithTimeout(confirmReqCtx, effectiveConfirmTimeout)
 				waitReply, waitErr = fn(confirmCtx)
+				stopVisible()
 				waitMS := int(time.Since(waitStart).Milliseconds())
 				AddConfirmWaitMS(ctx, waitMS)
+				h.deps.Logger().Info("HITL confirmation wait finished",
+					loggateway.StepID("agent.hitl_wait"),
+					loggateway.Str("tool", toolKey),
+					loggateway.Int("hitl_wait_ms", waitMS),
+					loggateway.Int("attempt", attempt+1),
+				)
 				waitTimedOut = waitErr != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
 				confirmCancel()
 				if emitter != nil && confirmActivityID != "" {
@@ -472,6 +490,56 @@ func (h *toolConfirmationBeforeHook) extraConfirmAttempts() int {
 		return 1
 	}
 	return h.confirmRetries
+}
+
+func (h *toolConfirmationBeforeHook) visibleWaitAfter() time.Duration {
+	if h != nil && h.hitlVisibleAfter > 0 {
+		return h.hitlVisibleAfter
+	}
+	return hitlWaitVisibleAfter
+}
+
+// startHITLWaitVisibility emits a session-visible notice after the wait
+// threshold so unattended confirmations are not a silent stall. Returns a
+// stop func that must be called when the wait returns (approve/timeout).
+func (h *toolConfirmationBeforeHook) startHITLWaitVisibility(ctx context.Context, toolKey string, emitter biz.ActivityEmitter) func() {
+	stop := make(chan struct{})
+	after := h.visibleWaitAfter()
+	lg := h.deps.Logger()
+	safego.Go(ctx, "hitl-wait-visible", func() {
+		timer := time.NewTimer(after)
+		defer timer.Stop()
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			if lg != nil {
+				lg.Info("HITL confirmation still waiting",
+					loggateway.StepID("agent.hitl_wait"),
+					loggateway.Str("tool", toolKey),
+					loggateway.Int64("waited_ms", after.Milliseconds()),
+				)
+			}
+			if emitter == nil {
+				return
+			}
+			content := fmt.Sprintf("仍在等待你确认工具 %s（已等待超过 %s）", toolKey, after.Truncate(time.Second))
+			if err := emitter.EmitNotice(ctx, content, hitlWaitNoticeType); err != nil && lg != nil {
+				lg.Warn("EmitNotice hitl_wait failed",
+					loggateway.StepID("agent.hitl_wait"),
+					loggateway.Err(err))
+			}
+		}
+	})
+	return func() {
+		select {
+		case <-stop:
+		default:
+			close(stop)
+		}
+	}
 }
 
 type confirmWaitAccKey struct{}

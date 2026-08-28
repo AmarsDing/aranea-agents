@@ -36,7 +36,7 @@ func TestEnqueueRejectError(t *testing.T) {
 		wantCode    apierror.Code
 		wantBizCode string
 	}{
-		{"queue_full", biz.ChatEnqueueRejectQueueFull, apierror.CodeBadRequest, "CHAT_QUEUE_FULL"},
+		{"queue_full", biz.ChatEnqueueRejectQueueFull, apierror.CodeRateLimit, "CHAT_QUEUE_FULL"},
 		{"no_active_run", biz.ChatEnqueueRejectNoActiveRun, apierror.CodeConflict, "CHAT_RUN_ENDED"},
 		{"unknown", "unknown_reason", apierror.CodeBadRequest, "CHAT_ENQUEUE_REJECTED"},
 		{"empty", "", apierror.CodeBadRequest, "CHAT_ENQUEUE_REJECTED"},

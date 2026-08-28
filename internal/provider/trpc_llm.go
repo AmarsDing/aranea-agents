@@ -65,7 +65,14 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 	}
 	lg.Info("模型配置已解析", loggateway.StepID("provider.config_resolved"), loggateway.Phase("done"),
 		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HA.Mode), loggateway.Int("ha_candidates", len(cfg.HA.Candidates)))
-	return trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
+	m, err := trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
+	if err != nil {
+		return nil, err
+	}
+	if omitThinkingKey(pm, cfg) {
+		m = wrapOmitThinking(m)
+	}
+	return m, nil
 }
 
 func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {

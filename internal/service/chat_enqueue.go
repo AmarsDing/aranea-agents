@@ -19,7 +19,7 @@ func enqueueRejectMessage(reason string) string {
 func enqueueRejectError(reason string) error {
 	switch reason {
 	case biz.ChatEnqueueRejectQueueFull:
-		return apierror.BadRequest(apierror.DomainChatQueueFull, enqueueRejectMessage(reason))
+		return apierror.RateLimit(apierror.DomainChatQueueFull, enqueueRejectMessage(reason))
 	case biz.ChatEnqueueRejectNoActiveRun:
 		return apierror.Conflict(apierror.DomainChatRunEnded, enqueueRejectMessage(reason))
 	default:

@@ -7,6 +7,7 @@ export const teamStatusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待执行', color: 'warning' },
   running: { label: '执行中', color: 'positive' },
   completed: { label: '已完成', color: 'blue' },
+  partial_failure: { label: '部分失败', color: 'orange' },
   failed: { label: '失败', color: 'negative' },
   cancelled: { label: '已取消', color: 'grey' },
   interrupted: { label: '已中断', color: 'orange' },
@@ -97,19 +98,20 @@ export const modeOptions = [
 
 /**
  * Team 可选状态选项，对齐后端 team_graph_constants.go 状态机。
- * - pending/running/completed/failed/cancelled/interrupted/archived 为后端持久化状态
+ * - pending/running/completed/partial_failure/failed/cancelled/interrupted/archived 为后端持久化状态
  * - 编辑时仅允许合法转换（参考 validStatusTransitions）
  */
 export const statusOptions = (
-  ['pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived'] as const
+  ['pending', 'running', 'completed', 'partial_failure', 'failed', 'cancelled', 'interrupted', 'archived'] as const
 ).map((value) => ({ label: teamStatusMap[value]?.label ?? value, value }));
 
 /** 后端 team_state_machine.go 的前端镜像（recover/rework 转换已同步） */
 export const validStatusTransitions: Record<string, string[]> = {
   pending: ['running', 'cancelled', 'failed'],
-  running: ['completed', 'failed', 'cancelled', 'interrupted', 'pending'],
+  running: ['completed', 'partial_failure', 'failed', 'cancelled', 'interrupted', 'pending'],
   interrupted: ['running'],
   completed: ['archived'],
+  partial_failure: ['archived', 'pending'],
   failed: ['archived', 'pending'],
   cancelled: ['archived', 'pending'],
   archived: [],

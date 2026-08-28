@@ -44,7 +44,8 @@ export function useChatSpiritPanel(workspace: Workspace) {
     const activeTeam = spiritStore.activeTeam;
     const running = teams.filter((t) => t.status === 'running' || t.status === 'pending').length;
     const interrupted = teams.filter((t) => t.status === 'interrupted').length;
-    const completedTeams = teams.filter((t) => t.status === 'completed');
+    // partial_failure 交付物门已通过，与后端 checkAllTeamsCompleted 同口径计入完成数。
+    const completedTeams = teams.filter((t) => t.status === 'completed' || t.status === 'partial_failure');
     // Prefer active team token usage; fall back to current session composer snapshot.
     // Do not sum all teams in the store — that mixes unrelated runs.
     const totalTokenIn = activeTeam?.tokenIn ?? 0;

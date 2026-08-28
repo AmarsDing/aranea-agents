@@ -61,6 +61,7 @@ function extractTeamMember(opts: RawOptions): MessageTeamMemberRef | null {
       name: tm.name?.trim() || tm.agent_id,
       role: tm.role?.trim() ?? '',
       icon: tm.icon?.trim() || undefined,
+      team_id: tm.team_id?.trim() || undefined,
     };
   }
   if (opts.member_agent_key?.trim()) {

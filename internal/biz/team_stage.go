@@ -32,6 +32,9 @@ const (
 	TeamStageStatusFailed       TeamStageStatus = "failed"
 	TeamStageStatusCancelled    TeamStageStatus = "cancelled"
 	TeamStageStatusWaitingHuman TeamStageStatus = "waiting_human" // HITL
+	// TeamStageStatusPartialFailure：与 TeamStatusPartialFailure 对齐——团队
+	// 完成但 ≥1 成员失败。终态。
+	TeamStageStatusPartialFailure TeamStageStatus = "partial_failure"
 )
 
 type TeamStageStage string

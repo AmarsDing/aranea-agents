@@ -18,6 +18,7 @@ import type { WsSessionStream } from '../../../realtime/createWsSessionStream';
 import type { WsUpstream } from '../../../realtime/ws-transport';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
+import { isChatQueueFullError } from '../api';
 import { sendCommand } from '../../../realtime/command_channel';
 import {
   CHAT_RUN_STALL_CHECK_INTERVAL_MS,
@@ -321,7 +322,7 @@ export function useChatSender(deps: SenderDeps) {
         });
       } catch (err: unknown) {
         const errMessage = err instanceof Error ? err.message : '';
-        if (errMessage.includes('CHAT_QUEUE_FULL')) {
+        if (isChatQueueFullError(err)) {
           $q.notify({ type: 'warning', message: t('chat.enqueueQueueFull', '排队消息已满，请稍后再试') });
         } else {
           $q.notify({
@@ -376,7 +377,7 @@ export function useChatSender(deps: SenderDeps) {
       if (errMessage.includes('CHAT_RUN_ENDED')) {
         deps.setRunStatus('idle');
         await sendUserContent(deps.sessionStore.entityKind, content);
-      } else if (errMessage.includes('CHAT_QUEUE_FULL')) {
+      } else if (isChatQueueFullError(err)) {
         $q.notify({ type: 'warning', message: t('chat.enqueueQueueFull', '排队消息已满，请稍后再试') });
       } else {
         $q.notify({

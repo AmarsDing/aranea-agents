@@ -172,6 +172,7 @@ func TestTeamStageStateMachine_ValidTransitions(t *testing.T) {
 		{TeamStageStatusPending, TeamStageEventFail, TeamStageStatusFailed},
 		{TeamStageStatusPending, TeamStageEventCancel, TeamStageStatusCancelled},
 		{TeamStageStatusRunning, TeamStageEventComplete, TeamStageStatusCompleted},
+		{TeamStageStatusRunning, TeamStageEventCompletePartial, TeamStageStatusPartialFailure},
 		{TeamStageStatusRunning, TeamStageEventFail, TeamStageStatusFailed},
 		{TeamStageStatusRunning, TeamStageEventCancel, TeamStageStatusCancelled},
 		{TeamStageStatusRunning, TeamStageEventInterrupt, TeamStageStatusWaitingHuman},
@@ -196,9 +197,11 @@ func TestTeamStageStateMachine_InvalidTransitions(t *testing.T) {
 	sm := NewTeamStageStateMachine()
 
 	// Terminal states reject all events
-	terminalStates := []TeamStageStatus{TeamStageStatusCompleted, TeamStageStatusFailed, TeamStageStatusCancelled}
+	terminalStates := []TeamStageStatus{
+		TeamStageStatusCompleted, TeamStageStatusFailed, TeamStageStatusCancelled, TeamStageStatusPartialFailure,
+	}
 	allEvents := []TeamStageEvent{
-		TeamStageEventStart, TeamStageEventComplete, TeamStageEventFail,
+		TeamStageEventStart, TeamStageEventComplete, TeamStageEventCompletePartial, TeamStageEventFail,
 		TeamStageEventCancel, TeamStageEventInterrupt, TeamStageEventResume,
 	}
 	for _, state := range terminalStates {
@@ -218,6 +221,7 @@ func TestTeamStageStateMachine_InvalidTransitions(t *testing.T) {
 		name  string
 	}{
 		{TeamStageEventComplete, "pending→complete"},
+		{TeamStageEventCompletePartial, "pending→complete_partial"},
 		{TeamStageEventInterrupt, "pending→interrupt"},
 		{TeamStageEventResume, "pending→resume"},
 	}
@@ -280,6 +284,7 @@ func TestIsTeamStageTerminal(t *testing.T) {
 		{TeamStageStatusCompleted, true},
 		{TeamStageStatusFailed, true},
 		{TeamStageStatusCancelled, true},
+		{TeamStageStatusPartialFailure, true},
 		{TeamStageStatusPending, false},
 		{TeamStageStatusRunning, false},
 		{TeamStageStatusWaitingHuman, false},
@@ -303,6 +308,7 @@ func TestTeamRunV2StateMachine_ValidTransitions(t *testing.T) {
 		want  TeamRunV2Status
 	}{
 		{TeamRunV2StatusRunning, TeamRunV2EventComplete, TeamRunV2StatusCompleted},
+		{TeamRunV2StatusRunning, TeamRunV2EventCompletePartial, TeamRunV2StatusPartialFailure},
 		{TeamRunV2StatusRunning, TeamRunV2EventFail, TeamRunV2StatusFailed},
 		{TeamRunV2StatusRunning, TeamRunV2EventCancel, TeamRunV2StatusCancelled},
 	}
@@ -322,8 +328,12 @@ func TestTeamRunV2StateMachine_ValidTransitions(t *testing.T) {
 func TestTeamRunV2StateMachine_TerminalStatesNoOutgoing(t *testing.T) {
 	sm := NewTeamRunV2StateMachine()
 
-	terminalStates := []TeamRunV2Status{TeamRunV2StatusCompleted, TeamRunV2StatusFailed, TeamRunV2StatusCancelled}
-	allEvents := []TeamRunV2Event{TeamRunV2EventComplete, TeamRunV2EventFail, TeamRunV2EventCancel}
+	terminalStates := []TeamRunV2Status{
+		TeamRunV2StatusCompleted, TeamRunV2StatusFailed, TeamRunV2StatusCancelled, TeamRunV2StatusPartialFailure,
+	}
+	allEvents := []TeamRunV2Event{
+		TeamRunV2EventComplete, TeamRunV2EventCompletePartial, TeamRunV2EventFail, TeamRunV2EventCancel,
+	}
 
 	for _, state := range terminalStates {
 		for _, event := range allEvents {
@@ -343,6 +353,7 @@ func TestIsTeamRunV2Terminal(t *testing.T) {
 		{TeamRunV2StatusCompleted, true},
 		{TeamRunV2StatusFailed, true},
 		{TeamRunV2StatusCancelled, true},
+		{TeamRunV2StatusPartialFailure, true},
 		{TeamRunV2StatusRunning, false},
 	}
 	for _, tc := range cases {

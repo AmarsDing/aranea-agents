@@ -22,6 +22,11 @@ const (
 	TeamStatusArchived    = "archived"    // Auto-archived after completion
 	TeamStatusDeleted     = "deleted"     // Soft-deleted (only in data layer, not a valid state machine state)
 
+	// TeamStatusPartialFailure：交付物门通过、团队整体完成，但 ≥1 成员有执行
+	// 失败证据（F10 MemberExecutionEvidence）。调度语义等同 completed（下游
+	// 照常激活、可归档、可重试），展示语义区分「部分失败」。
+	TeamStatusPartialFailure = "partial_failure"
+
 	// TeamStatusBlocked is a virtual status used only in cascade blocked results
 	// to indicate a team was blocked by a failed dependency. It is never persisted.
 	TeamStatusBlocked = "blocked"

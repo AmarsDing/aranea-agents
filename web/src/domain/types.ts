@@ -21,6 +21,8 @@ export type MessageTeamMemberRef = {
   name: string;
   role: string;
   icon?: string;
+  /** Owning team ID — used to scope member lists to the current team. */
+  team_id?: string;
 };
 
 /** Message source metadata for UserBubble badges (M55 CC-B-07). */

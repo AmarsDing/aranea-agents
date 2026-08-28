@@ -386,6 +386,7 @@ export default {
     toolConfirmUseButtons: 'Please use the approve or deny buttons to confirm the tool call',
     enqueueRunEnded: 'Current run has ended, please send a new message directly',
     enqueueQueueFull: 'Queue is full, please try again later',
+    hitlWaitNotice: 'Still waiting for your tool confirmation',
     retryQueuedDuringRun: 'A run is in progress, message queued',
     retryEnqueueRejected: 'Retry failed, please try again later',
     teamSendFailed: 'Team send failed',

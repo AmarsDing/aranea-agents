@@ -43,6 +43,21 @@ export class ChatApiError extends Error {
   }
 }
 
+export function isChatQueueFullError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  if (/CHAT_QUEUE_FULL|pending queue is full|排队消息已满/.test(msg)) return true;
+  const nested = err instanceof ChatApiError ? err.cause : err;
+  if (typeof nested === 'object' && nested !== null && 'response' in nested) {
+    const resp = (nested as { response?: { status?: number; data?: { reason?: unknown } } }).response;
+    const reason = String(resp?.data?.reason ?? '');
+    if (reason.includes('CHAT_QUEUE_FULL')) return true;
+    if (resp?.status === 429 && /chat\/enqueue/.test(String((nested as { config?: { url?: string } }).config?.url ?? ''))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function wrapChatError(err: unknown, fallback: string): never {
   if (err instanceof ChatApiError) throw err;
   const message = err instanceof Error ? err.message : fallback;

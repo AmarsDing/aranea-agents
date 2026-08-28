@@ -28,12 +28,15 @@ func TestTeamStateMachine_ValidTransitions(t *testing.T) {
 		{TeamStatePending, TeamEventCancel, TeamStateCancelled},
 		{TeamStatePending, TeamEventFail, TeamStateFailed},
 		{TeamStateRunning, TeamEventComplete, TeamStateCompleted},
+		{TeamStateRunning, TeamEventCompletePartial, TeamStatePartialFailure},
 		{TeamStateRunning, TeamEventFail, TeamStateFailed},
 		{TeamStateRunning, TeamEventCancel, TeamStateCancelled},
 		{TeamStateRunning, TeamEventInterrupt, TeamStateInterrupted},
 		{TeamStateRunning, TeamEventRework, TeamStatePending},
 		{TeamStateInterrupted, TeamEventRecover, TeamStateRunning},
 		{TeamStateCompleted, TeamEventArchive, TeamStateArchived},
+		{TeamStatePartialFailure, TeamEventArchive, TeamStateArchived},
+		{TeamStatePartialFailure, TeamEventRecover, TeamStatePending},
 		{TeamStateFailed, TeamEventArchive, TeamStateArchived},
 		{TeamStateFailed, TeamEventRecover, TeamStatePending},
 		{TeamStateCancelled, TeamEventArchive, TeamStateArchived},
@@ -72,6 +75,15 @@ func TestTeamStateMachine_InvalidTransitions(t *testing.T) {
 		{"completed→fail", TeamStateCompleted, TeamEventFail},
 		{"completed→cancel", TeamStateCompleted, TeamEventCancel},
 		{"completed→recover", TeamStateCompleted, TeamEventRecover},
+		{"completed→complete_partial", TeamStateCompleted, TeamEventCompletePartial},
+
+		// PartialFailure can only archive / recover
+		{"partial_failure→start", TeamStatePartialFailure, TeamEventStart},
+		{"partial_failure→complete", TeamStatePartialFailure, TeamEventComplete},
+		{"partial_failure→complete_partial", TeamStatePartialFailure, TeamEventCompletePartial},
+		{"partial_failure→fail", TeamStatePartialFailure, TeamEventFail},
+		{"partial_failure→cancel", TeamStatePartialFailure, TeamEventCancel},
+		{"partial_failure→interrupt", TeamStatePartialFailure, TeamEventInterrupt},
 
 		// Running cannot recover (only interrupted can)
 		{"running→recover", TeamStateRunning, TeamEventRecover},
@@ -79,6 +91,7 @@ func TestTeamStateMachine_InvalidTransitions(t *testing.T) {
 
 		// Pending cannot complete/interrupt directly (can fail via B-01 fix)
 		{"pending→complete", TeamStatePending, TeamEventComplete},
+		{"pending→complete_partial", TeamStatePending, TeamEventCompletePartial},
 		{"pending→interrupt", TeamStatePending, TeamEventInterrupt},
 		{"pending→archive", TeamStatePending, TeamEventArchive},
 		{"pending→recover", TeamStatePending, TeamEventRecover},
@@ -118,12 +131,15 @@ func TestTeamStateMachine_CanTransition(t *testing.T) {
 		{TeamStatePending, TeamStateCancelled, true},
 		{TeamStatePending, TeamStateFailed, true},
 		{TeamStateRunning, TeamStateCompleted, true},
+		{TeamStateRunning, TeamStatePartialFailure, true},
 		{TeamStateRunning, TeamStateFailed, true},
 		{TeamStateRunning, TeamStateCancelled, true},
 		{TeamStateRunning, TeamStateInterrupted, true},
 		{TeamStateRunning, TeamStatePending, true},
 		{TeamStateInterrupted, TeamStateRunning, true},
 		{TeamStateCompleted, TeamStateArchived, true},
+		{TeamStatePartialFailure, TeamStateArchived, true},
+		{TeamStatePartialFailure, TeamStatePending, true},
 		{TeamStateFailed, TeamStateArchived, true},
 		{TeamStateFailed, TeamStatePending, true},
 		{TeamStateCancelled, TeamStateArchived, true},
@@ -134,6 +150,10 @@ func TestTeamStateMachine_CanTransition(t *testing.T) {
 		{TeamStateArchived, TeamStateRunning, false},
 		{TeamStateCompleted, TeamStateRunning, false},
 		{TeamStateCompleted, TeamStateFailed, false},
+		{TeamStateCompleted, TeamStatePartialFailure, false},
+		{TeamStatePartialFailure, TeamStateCompleted, false},
+		{TeamStatePartialFailure, TeamStateFailed, false},
+		{TeamStatePartialFailure, TeamStateRunning, false},
 
 		// No self-transitions
 		{TeamStateRunning, TeamStateRunning, false},
@@ -158,9 +178,10 @@ func TestTeamStateMachine_ValidTargets(t *testing.T) {
 		want []TeamState
 	}{
 		{TeamStatePending, []TeamState{TeamStateCancelled, TeamStateFailed, TeamStateRunning}},
-		{TeamStateRunning, []TeamState{TeamStateCancelled, TeamStateCompleted, TeamStateFailed, TeamStateInterrupted, TeamStatePending}},
+		{TeamStateRunning, []TeamState{TeamStateCancelled, TeamStateCompleted, TeamStateFailed, TeamStateInterrupted, TeamStatePartialFailure, TeamStatePending}},
 		{TeamStateInterrupted, []TeamState{TeamStateRunning}},
 		{TeamStateCompleted, []TeamState{TeamStateArchived}},
+		{TeamStatePartialFailure, []TeamState{TeamStateArchived, TeamStatePending}},
 		{TeamStateFailed, []TeamState{TeamStateArchived, TeamStatePending}},
 		{TeamStateCancelled, []TeamState{TeamStateArchived, TeamStatePending}},
 		{TeamStateArchived, nil},
@@ -191,6 +212,7 @@ func TestParseTeamState(t *testing.T) {
 		{"pending", TeamStatePending},
 		{"running", TeamStateRunning},
 		{"completed", TeamStateCompleted},
+		{"partial_failure", TeamStatePartialFailure},
 		{"failed", TeamStateFailed},
 		{"cancelled", TeamStateCancelled},
 		{"interrupted", TeamStateInterrupted},
@@ -216,6 +238,7 @@ func TestIsTeamTerminal(t *testing.T) {
 	}{
 		{TeamStateArchived, true},
 		{TeamStateCompleted, false},
+		{TeamStatePartialFailure, false},
 		{TeamStateFailed, false},
 		{TeamStateCancelled, false},
 		{TeamStatePending, false},

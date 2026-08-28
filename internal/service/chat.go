@@ -280,7 +280,7 @@ const retryRecentMessagesLimit = 50
 //
 // Lookup flow: ListMessagesRecent → reverse-iterate to last Role=="user" →
 // EnqueueUserMessage. Returns retried=true on success; returns an error
-// (BAD_REQUEST / INTERNAL / NOT_FOUND / CONFLICT) on validation or lookup
+// (BAD_REQUEST / INTERNAL / NOT_FOUND / RATE_LIMITED / CONFLICT) on validation or lookup
 // failures.
 func (s *ChatService) RetrySession(ctx context.Context, req *chatv1.RetrySessionRequest) (*chatv1.RetrySessionResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
@@ -311,7 +311,7 @@ func (s *ChatService) RetrySession(ctx context.Context, req *chatv1.RetrySession
 		return nil, apierror.Internal(apierror.DomainChat, "enqueue retry failed").WithCause(err)
 	}
 	if !accepted {
-		return nil, apierror.Conflict(apierror.DomainChat, "retry rejected: %s", rejectReason)
+		return nil, enqueueRejectError(rejectReason)
 	}
 	return &chatv1.RetrySessionResponse{Retried: true}, nil
 }
@@ -336,8 +336,14 @@ func (s *ChatService) TryEnqueueUserMessage(sessionID, content string) (bool, er
 	if s == nil || s.orch == nil {
 		return false, nil
 	}
-	accepted, _, _, _, err := s.orch.EnqueueUserMessage(sessionID, content)
-	return accepted, err
+	accepted, _, _, rejectReason, err := s.orch.EnqueueUserMessage(sessionID, content)
+	if err != nil {
+		return false, err
+	}
+	if !accepted {
+		return false, enqueueRejectError(rejectReason)
+	}
+	return true, nil
 }
 
 // SetSessionPendingMergeFollowup implements biz.ChannelTurnGateway — delegates to ChatOrchestrator.
@@ -475,12 +481,12 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 		return nil, apierror.BadRequest(apierror.DomainChat, "invalid kind: must be steer|followup|inject")
 	}
 
-	accepted, queued, pendingID, _, err := s.orch.EnqueueUserMessageWithKind(sessionID, content, kind)
+	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessageWithKind(sessionID, content, kind)
 	if err != nil {
 		return nil, err
 	}
 	if !accepted {
-		return &chatv1.EnqueueUserMessageResponse{Accepted: false}, nil
+		return nil, enqueueRejectError(rejectReason)
 	}
 	if queued {
 		if pendingID == "" {

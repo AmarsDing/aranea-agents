@@ -78,6 +78,7 @@ func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) 
 	}
 	var cfg chatagent.ProviderAPIConfig
 	chatagent.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	chatagent.ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 
 	sys := strings.TrimSpace(req.SystemPrompt)
 	if sys == "" {

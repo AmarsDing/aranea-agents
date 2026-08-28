@@ -379,6 +379,7 @@ export default {
     toolConfirmUseButtons: '请使用批准或拒绝按钮来确认工具调用',
     enqueueRunEnded: '当前对话已结束，请直接发送新消息',
     enqueueQueueFull: '排队消息已满，请稍后再试',
+    hitlWaitNotice: '仍在等待你确认工具调用',
     retryQueuedDuringRun: '当前有任务执行中，已加入队列',
     retryEnqueueRejected: '重试失败，请稍后再试',
     teamSendFailed: 'Team 发送失败',

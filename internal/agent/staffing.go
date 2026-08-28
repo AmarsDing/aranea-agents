@@ -171,6 +171,7 @@ func (a llmStaffingAdvisor) Suggest(ctx context.Context, in biz.StaffingAsk) (bi
 	}
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	ApplyThinkingCapability(&cfg, row.CapabilitiesExplicit, row.Capabilities.Thinking)
 	text, _, _, _, err := CallOpenAICompatChat(ctx, a.impl.httpClient, cfg, model, []OpenAICompatMessage{
 		{Role: "system", Content: prompt},
 		{Role: "user", Content: user},

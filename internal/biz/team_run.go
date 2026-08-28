@@ -32,4 +32,6 @@ const (
 	TeamRunV2StatusCompleted TeamRunV2Status = "completed"
 	TeamRunV2StatusFailed    TeamRunV2Status = "failed"
 	TeamRunV2StatusCancelled TeamRunV2Status = "cancelled"
+	// TeamRunV2StatusPartialFailure：run 完成但 ≥1 成员失败（F10）。终态。
+	TeamRunV2StatusPartialFailure TeamRunV2Status = "partial_failure"
 )
