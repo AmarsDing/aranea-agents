@@ -200,7 +200,8 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 		if est <= hard {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		trimmed, stats := trimAssemblyToBudget(msgs, target)
+		schemaEst := toolsSchemaEstTokens(args.Request)
+		trimmed, stats := trimAssemblyToBudget(msgs, target, schemaEst)
 		args.Request.Messages = trimmed
 		lg.Warn("assembly over hard budget, trimmed",
 			loggateway.StepID("agent.assembly_budget"),
@@ -240,11 +241,20 @@ This request is using approximately %d tokens, above the soft assembly budget (%
 </context_budget_notice>`, est, soft, hard)
 }
 
-// trimAssemblyToBudget 把完全注入的请求截断到 target（估 token）。两段降级：
-// 先按保护序丢尾部 cue（参考资料先于对话历史牺牲——R1：高价值头尾保留），
-// 再驱逐最旧历史（tool-pair 安全）。静态头骨架永保。
-func trimAssemblyToBudget(msgs []trpcmodel.Message, target int) ([]trpcmodel.Message, assemblyTrimStats) {
-	stats := assemblyTrimStats{EstBefore: analyzePromptRequest(msgs).EstTokens}
+// trimAssemblyToBudget 把完全注入的请求截断到 target（估 token，含 schema）。
+// 触发口径是 messages+tools_schema；裁剪必须把 schema 从 messages 预算里扣掉，
+// 否则 13K 静态工具块会让 hard 越线而 messages 仍低于 target（闸空转）。
+// 两段降级：先按保护序丢尾部 cue，再驱逐最旧历史。静态头骨架永保。
+func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) ([]trpcmodel.Message, assemblyTrimStats) {
+	if schemaEst < 0 {
+		schemaEst = 0
+	}
+	msgEst := analyzePromptRequest(msgs).EstTokens
+	stats := assemblyTrimStats{EstBefore: msgEst + schemaEst}
+	msgTarget := target - schemaEst
+	if msgTarget < 0 {
+		msgTarget = 0
+	}
 
 	// 段 1：尾部 cue 降级链。按 drop rank 降序逐段丢弃直至达标；
 	// protected（未标记）段永不进候选。
@@ -266,9 +276,9 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int) ([]trpcmodel.Mes
 	}
 	sort.SliceStable(cands, func(a, b int) bool { return cands[a].rank > cands[b].rank })
 	dropped := make(map[int]bool, len(cands))
-	est := stats.EstBefore
+	est := msgEst
 	for _, c := range cands {
-		if est <= target {
+		if est <= msgTarget {
 			break
 		}
 		dropped[c.idx] = true
@@ -290,12 +300,12 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int) ([]trpcmodel.Mes
 		est = analyzePromptRequest(msgs).EstTokens
 	}
 
-	// 段 2：仍超 target 才驱逐最旧历史（与压缩闸同构：token 口径 + 标记
+	// 段 2：仍超 messages 预算才驱逐最旧历史（与压缩闸同构：token 口径 + 标记
 	// 预留 + tool-pair 安全 + 标记落点在静态头之后）。
-	if est > target {
+	if est > msgTarget {
 		head2, _, _ := splitPromptZones(msgs)
 		markerReserve := estTokensFromChars(utf8.RuneCountInString(buildTruncationMarker(0)))
-		keep, evicted := partitionMessagesByTokenBudget(msgs, target-markerReserve)
+		keep, evicted := partitionMessagesByTokenBudget(msgs, msgTarget-markerReserve)
 		if len(evicted) > 0 {
 			for _, m := range evicted {
 				stats.EvictedChars += len(m.Content)
@@ -307,8 +317,8 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int) ([]trpcmodel.Mes
 		est = analyzePromptRequest(msgs).EstTokens
 	}
 
-	stats.EstAfter = est
-	stats.HeadOverBudget = est > target
+	stats.EstAfter = est + schemaEst
+	stats.HeadOverBudget = stats.EstAfter > target
 	return msgs, stats
 }
 

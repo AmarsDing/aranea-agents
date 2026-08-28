@@ -28,6 +28,9 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/knowledge"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -302,14 +305,20 @@ func TestKnowledgeCueHook_AppendsCueAtEnd(t *testing.T) {
 		ID:       "ag-1",
 		Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true},
 	}
-	repo := fakeKnowledgeRepos{
-		collections: []biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
+	repo := cueSearchRepo{
+		fakeKnowledgeRepos: fakeKnowledgeRepos{
+			collections: []biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 1, ChunkCount: 1}},
+		},
+		chunks: []biz.KnowledgeChunk{{ID: "k1", DocID: "d1", CollectionID: "c1", Content: "SLA 承诺 99.9%。", Score: 0.88}},
 	}
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
 	deps := TRPCBuilderDeps{TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{KnowledgeUsecase: uc}}
 	hook := newKnowledgeCueBeforeHook(ag, deps)
-	msgs := runBeforeModelHook(t, hook, context.Background())
-	assertCueAtEnd(t, msgs, "Available Knowledge Bases")
+	ret := knowledge.NewRetriever(cueEmbedder{}, repo, nil, loggateway.NewNoop())
+	ctx := knowledgetool.WithRetriever(context.Background(), ret)
+	ctx = knowledgetool.WithKnowledgeCollections(ctx, []string{"c1"})
+	msgs := runBeforeModelHook(t, hook, ctx)
+	assertCueAtEnd(t, msgs, "Retrieved Knowledge")
 }
 
 func TestReplyReminderHook_AppendsCueAtEnd(t *testing.T) {

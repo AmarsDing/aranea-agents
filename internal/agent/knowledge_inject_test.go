@@ -90,11 +90,8 @@ func TestFormatKnowledgeCue_CatalogOnly(t *testing.T) {
 		false,
 		false,
 	)
-	if !strings.Contains(got, "Available Knowledge Bases") {
-		t.Fatalf("catalog cue missing: %s", got)
-	}
-	if strings.Contains(got, "Retrieved Knowledge") {
-		t.Fatal("empty chunks must not emit retrieved section")
+	if got != "" {
+		t.Fatalf("empty retrieval must not inject catalog/search tips, got %s", got)
 	}
 }
 
@@ -352,9 +349,6 @@ func TestResolveKnowledgeCue_TurnCache(t *testing.T) {
 	cue1, _, fresh := resolveKnowledgeCue(ctx, uc, lg, msgs, true, false)
 	if !fresh {
 		t.Fatal("first call in a turn must build fresh")
-	}
-	if cue1 == "" {
-		t.Fatal("expected catalog cue from first build")
 	}
 	if repo.listCalls != 1 {
 		t.Fatalf("ListCollections calls = %d, want 1", repo.listCalls)

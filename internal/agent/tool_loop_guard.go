@@ -81,9 +81,10 @@ import (
 //     A2'b 先引导后封锁两段式）；超硬闸（默认 600s，loop_guard_wall_hard_sec）
 //     由 BeforeTool 返回 StopError 强制终止节点。计时基准 entry.firstSeen，
 //     跨节点重试累计（反复重跑持续烧预算正是硬闸要拦的形态）。
-//   - plan-execute 漂移观测（record-only，C1-③ 裁定）：plan_and_execute 成功
-//     声明编排后节点仍持续本地装载达 3 次 → 写 outcome=tripped 决策记录
-//     （once-per-entry），不拦截——漂移证据标准待决策记录校准后再议拦截形态。
+//   - plan-execute 漂移拦截：plan_and_execute 成功声明编排后节点仍持续本地
+//     装载达 3 次 → 第 4 次 tool_load 拦截（测试用 setPlanDrift(-1) 关闭）。
+//   - 轮数×单轮积闸：BeforeModel 累计 modelRounds×lastEst；软阈注入收尾 cue，
+//     硬阈封锁新工具（todo_declare_blocker 豁免）。HITL 等待不加轮数。
 //
 // 三阈值经 PolicyResolver 每调用读取（0=内置默认），策略变更零重建生效。
 const (
@@ -123,10 +124,15 @@ const (
 	loopGuardBootstrapWindow       = 10
 	loopGuardBootstrapMinCalls     = 6
 	loopGuardBootstrapRatioDefault = 0.5
-	// plan-execute 漂移观测（首版 record-only，C1-③ 裁定）：plan_and_execute
-	// 声明编排后节点仍持续本地装载工具达此次数 → 写 tripped 决策记录（不拦截）。
-	// 观测阈值非执行阈值，不入 DB——漂移证据标准待决策记录校准后再议拦截形态。
+	// plan-execute 漂移（2026-08-28 由 record-only 升级为拦截）：plan_and_execute
+	// 声明编排后节点仍持续本地 tool_load 达此次数 → 第 N+1 次装载拦截。观测
+	// 阈值同时是执行阈值；测试用 setPlanDrift(-1) 关闭。
 	loopGuardPlanDriftObserveAt = 3
+	// 轮数×单轮积（2026-08-28）：计费 input ≈ llm_rounds × per-call assembly。
+	// 50 轮闸与 1.5M run 闸都拦不住 32×17K≈544K 的合法失控。软闸注收尾 cue，
+	// 硬闸封锁新工具（todo_declare_blocker 豁免）。HITL 等待不加轮数。
+	loopGuardRoundProductSoftDefault = 350_000
+	loopGuardRoundProductHardDefault = 500_000
 	// 空转轮次早停（2026-08-25 包A-A2'b，session-eval-20260825 取证）：连续 N 轮
 	// 工具调用零有效产出（失败/被拦/检索空结果）→ BeforeModel 注入降级引导；
 	// 满 M 轮 → BeforeTool 拦截一切新调用（todo_declare_blocker 豁免，保留投降
@@ -151,6 +157,9 @@ const loopGuardMarker = "⚠ 系统拦截（无效重复调用）"
 // 每轮注入前先摘除历史中的同名 cue，保证只有一条最新轮次文案。无段分类
 // （classifyAssemblyCue default=protected，引导指令宁保勿丢）。
 const unproductiveRoundCueMarker = "<!-- aranea:unproductive_rounds -->\n"
+
+// roundProductCueMarker 标识轮数×单轮积软闸 cue。
+const roundProductCueMarker = "<!-- aranea:round_product -->\n"
 
 // todoDeclareBlockerToolName 是空转封锁的唯一豁免工具（A2'b）：满 M 轮封锁
 // 一切新调用时仍保留投降通道，模型可声明阻塞原因后收尾，而非被堵死重发。
@@ -198,6 +207,9 @@ type loopGuardEntry struct {
 	postPlanLoads     int  // 计划声明后的 tool_load 成功次数
 	planDriftRecorded bool // 漂移决策已写（once-per-entry 防刷屏）
 	wallSoftRecorded  bool // 软闸决策已写（once-per-entry；cue 本身按轮刷新）
+	roundProdRecorded bool // 轮数积软闸决策已写
+	modelRounds       int  // BeforeModel 进入次数（含续轮）
+	lastEst           int  // 最近一次 messages+schema 估 token
 	// inflightLoads：本批并行尚未 AfterTool 的 tool_load 目标（含别名键）。
 	// justLoaded：本 LLM 步内已成功激活、须等下一 model step 才能直调。
 	inflightLoads map[string]int
@@ -224,6 +236,7 @@ const (
 	loopGuardBlockLoadQuota
 	loopGuardBlockLoadRatio
 	loopGuardBlockLoadThenCall
+	loopGuardBlockPlanDrift
 )
 
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
@@ -388,6 +401,10 @@ type toolLoopGuard struct {
 	buildWallHard int
 	// buildBootstrapRatio：<0 测试关闭占比闸；0 用默认 0.5；>0 覆盖。
 	buildBootstrapRatio float64
+	// buildPlanDrift：<0 测试关闭漂移拦截；0 用默认观察阈值并拦截；>0 覆盖阈值。
+	buildPlanDrift int
+	// buildRoundProduct：<0 关闭轮数积闸；0 用默认 350K/500K；>0 覆盖硬阈（软=70%）。
+	buildRoundProduct int
 }
 
 func newToolLoopGuard(lg loggateway.Logger) *toolLoopGuard {
@@ -456,6 +473,54 @@ func (g *toolLoopGuard) setBootstrapRatio(r float64) {
 		return
 	}
 	g.buildBootstrapRatio = r
+}
+
+func (g *toolLoopGuard) setPlanDrift(n int) {
+	if g == nil {
+		return
+	}
+	g.buildPlanDrift = n
+}
+
+func (g *toolLoopGuard) planDriftAt() int {
+	if g == nil {
+		return loopGuardPlanDriftObserveAt
+	}
+	if g.buildPlanDrift < 0 {
+		return 0
+	}
+	if g.buildPlanDrift > 0 {
+		return g.buildPlanDrift
+	}
+	return loopGuardPlanDriftObserveAt
+}
+
+func (g *toolLoopGuard) setRoundProduct(hard int) {
+	if g == nil {
+		return
+	}
+	g.buildRoundProduct = hard
+}
+
+func (g *toolLoopGuard) roundProductHard() int {
+	if g == nil {
+		return loopGuardRoundProductHardDefault
+	}
+	if g.buildRoundProduct < 0 {
+		return 0
+	}
+	if g.buildRoundProduct > 0 {
+		return g.buildRoundProduct
+	}
+	return loopGuardRoundProductHardDefault
+}
+
+func (g *toolLoopGuard) roundProductSoft() int {
+	hard := g.roundProductHard()
+	if hard <= 0 {
+		return 0
+	}
+	return int(float64(hard) * 0.7)
 }
 
 func (g *toolLoopGuard) bootstrapRatioFor() float64 {
@@ -584,9 +649,10 @@ func (g *toolLoopGuard) emitGateDecision(ctx context.Context, toolName, scenario
 }
 
 // emitGateEvent 是 emitGateDecision 的 outcome 参数化形态（Q1）：装载/重复
-// 拦截与既有守卫同用 outcome=blocked；wall-time 软闸与 plan-execute 漂移属
-// record-only 观测（C1-③ 裁定），用 outcome=tripped 落决策记录但不干预执行。
-// toolName 为空时省略 tool 实体（wall-time 闸无单一触发工具）。
+// 拦截与既有守卫同用 outcome=blocked；wall-time / 轮数积软闸用
+// outcome=tripped 落决策记录（once-per-entry）但不在该钩子拦截。
+// plan-execute 漂移达阈值后由 BeforeTool 拦截（blocked）。
+// toolName 为空时省略 tool 实体（软闸无单一触发工具）。
 func (g *toolLoopGuard) emitGateEvent(ctx context.Context, outcome, toolName, scenario, reasoning string, observed any, threshold any, action string) {
 	c := g.decisions
 	if c == nil {
@@ -910,6 +976,15 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			loadTarget = toolName
 		}
 	}
+	planDrift := false
+	if !loadRepeat && !loadQuota && !loadRatio {
+		if at := g.planDriftAt(); at > 0 && e.planDeclared && e.postPlanLoads >= at && toolName == toolLoadToolName {
+			planDrift = true
+			if loadTarget == "" {
+				loadTarget = loopGuardToolLoadTarget(args)
+			}
+		}
+	}
 	if !loadRepeat && !loadQuota && !loadRatio {
 		loadThenCall = e.loadThenCallTarget(toolName)
 	}
@@ -926,7 +1001,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 		}
 	}
-	if !loadRepeat && !loadQuota && !loadRatio && loadThenCall == "" && !emptyBlocked && !loop && cycleDesc == "" {
+	if !loadRepeat && !loadQuota && !loadRatio && !planDrift && loadThenCall == "" && !emptyBlocked && !loop && cycleDesc == "" {
 		e.beginInflight(sig, now)
 		if toolName == toolLoadToolName && loadTarget != "" {
 			e.beginInflightLoad(loadTarget)
@@ -964,6 +1039,11 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	}
 	if loadRatio {
 		v.kind = loopGuardBlockLoadRatio
+		return v
+	}
+	if planDrift {
+		v.kind = loopGuardBlockPlanDrift
+		v.loadCount = e.postPlanLoads
 		return v
 	}
 	if emptyBlocked {
@@ -1011,6 +1091,37 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已运行约 %d 分钟，超过系统硬时限（%d 秒），"+
 				"节点被强制终止以防止预算耗尽。已取得的结论与本次终止原因将随节点结果上报；后续步骤由编排层接手。",
 				loopGuardMarker, int(elapsed.Minutes()), hardSec))
+		}
+		if hard := g.roundProductHard(); hard > 0 {
+			prod := e.modelRounds * e.lastEst
+			if prod >= hard && args.ToolName != todoDeclareBlockerToolName {
+				e.blockedCount++
+				e.roundSawTool = true
+				blocked := e.blockedCount
+				rounds := e.modelRounds
+				est := e.lastEst
+				saturated := blocked >= loopGuardSaturatedStopThreshold
+				g.mu.Unlock()
+				g.lg.Warn("tool loop guard blocked call after round×est product hard gate",
+					loggateway.StepID("agent.tool_loop_guard"),
+					loggateway.Str("tool", args.ToolName),
+					loggateway.Int("model_rounds", rounds),
+					loggateway.Int("last_est", est),
+					loggateway.Int("product", prod),
+					loggateway.Int("hard", hard))
+				g.emitGateDecision(ctx, args.ToolName, "轮数×单轮积越硬闸，工具面封锁",
+					fmt.Sprintf("%d 轮 × %d tok = %d，超过硬阈 %d", rounds, est, prod, hard),
+					prod, hard, "block_call")
+				if saturated {
+					return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
+						"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
+				}
+				msg := fmt.Sprintf("%s：本节点已进行 %d 次模型调用，最近一轮约 %d tokens（积 %d，硬阈 %d）——本调用被系统拦截，工具未执行、也非执行失败。"+
+					"继续调用只会按轮数平方放大计费。请立即基于现有信息输出最终结论；若任务无法推进，调用 todo_declare_blocker 说明阻塞原因。"+
+					"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+					loopGuardMarker, rounds, est, prod, hard, blocked, loopGuardSaturatedStopThreshold)
+				return nil, errors.New(msg)
+			}
 		}
 		// A2'b 空转封锁：连续 M 轮零有效产出后，封锁一切新工具调用
 		// （todo_declare_blocker 豁免，保留投降通道）。顽固重发计入
@@ -1109,6 +1220,20 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				"持续搜索/装载而不使用是 S02 类失控：请立即停止 tool_load 与 tool_search，直接调用已激活工具推进任务；若工具面不足，基于已有信息说明缺口后收尾。"+
 				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
 				loopGuardMarker, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
+		if v.kind == loopGuardBlockPlanDrift {
+			g.lg.Warn("tool loop guard blocked plan-execute drift tool_load",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("target", v.loadTarget),
+				loggateway.Int("post_plan_loads", v.loadCount))
+			g.emitGateDecision(ctx, args.ToolName, "计划声明后持续本地装载，拦截漂移",
+				fmt.Sprintf("plan_and_execute 已声明编排后仍装载 %d 个工具", v.loadCount),
+				v.loadCount, g.planDriftAt(), "block_call")
+			msg := fmt.Sprintf("%s：本节点已通过 plan_and_execute 声明编排，随后又本地装载了 %d 个工具——本调用被系统拦截，工具未执行、也非执行失败。"+
+				"计划与执行漂移：编排既已声明，应等待成员结果或基于已有信息收尾，不要继续 tool_load。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, v.loadCount, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
 		if v.kind == loopGuardBlockLoadThenCall {
@@ -1227,8 +1352,8 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		//   - plan_and_execute 成功 → planDeclared 锚点置位；
 		//   - tool_load 成功（result.success=true）→ 记 loadedTools（请求名+规范名，
 		//     覆盖别名变体）；首次装载的目标才计 loadCount（配额只约束异质装载面）；
-		//     锚点已置位时的成功装载累计 postPlanLoads，达观测阈值写一次 tripped
-		//     决策记录（record-only，C1-③ 裁定不拦截）。
+		//     锚点已置位时的成功装载累计 postPlanLoads，达阈值后 BeforeTool
+		//     拦截下一次 tool_load；AfterTool 在达阈值当次写一次 tripped 记录。
 		if args.ToolName == planAndExecuteToolName {
 			e.planDeclared = true
 		}
@@ -1335,6 +1460,18 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 		if recordWallSoft {
 			e.wallSoftRecorded = true
 		}
+		e.modelRounds++
+		e.lastEst = analyzePromptRequest(args.Request.Messages).EstTokens + toolsSchemaEstTokens(args.Request)
+		prod := e.modelRounds * e.lastEst
+		softProd := g.roundProductSoft()
+		hardProd := g.roundProductHard()
+		prodSoftTripped := hardProd > 0 && prod >= softProd
+		recordProdSoft := prodSoftTripped && !e.roundProdRecorded
+		if recordProdSoft {
+			e.roundProdRecorded = true
+		}
+		rounds := e.modelRounds
+		est := e.lastEst
 		g.mu.Unlock()
 		msgs := args.Request.Messages
 		if unprod >= unproductiveRoundGuideThreshold {
@@ -1355,6 +1492,22 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 				g.emitGateEvent(ctx, "tripped", "", "节点运行超 wall-time 软闸，注入收尾引导",
 					fmt.Sprintf("节点已运行 %d 秒，超过 wall-time 软闸 %d 秒，注入收尾引导 cue", int(elapsed.Seconds()), softSec),
 					int(elapsed.Seconds()), softSec, "inject_cue")
+			}
+		}
+		if prodSoftTripped {
+			msgs = stripDynamicCueByMarker(msgs, roundProductCueMarker)
+			msgs = appendDynamicCue(msgs, roundProductCueMarker+buildRoundProductCue(rounds, est, prod, hardProd))
+			g.lg.Warn("round×est product soft gate tripped, wrap-up cue injected",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Int("model_rounds", rounds),
+				loggateway.Int("last_est", est),
+				loggateway.Int("product", prod),
+				loggateway.Int("soft", softProd),
+				loggateway.Int("hard", hardProd))
+			if recordProdSoft {
+				g.emitGateEvent(ctx, "tripped", "", "轮数×单轮积越软闸，注入收尾引导",
+					fmt.Sprintf("%d 轮 × %d tok = %d，软阈 %d / 硬阈 %d", rounds, est, prod, softProd, hardProd),
+					prod, softProd, "inject_cue")
 			}
 		}
 		args.Request.Messages = msgs
@@ -1383,4 +1536,10 @@ func buildWallTimeCue(elapsed time.Duration, hardSec int) string {
 	return fmt.Sprintf(`<runtime_notice>
 本节点已运行约 %d 分钟，超过系统软时限；运行满 %d 秒将被强制终止（不可豁免）。请立即停止扩张性动作（装载新工具/广泛取证/轮询等待），基于已取得的信息输出当前最优结论收尾；若任务确实无法完成，说明缺口后收尾，不要继续消耗预算。
 </runtime_notice>`, int(elapsed.Minutes()), hardSec)
+}
+
+func buildRoundProductCue(rounds, est, prod, hard int) string {
+	return fmt.Sprintf(`<runtime_notice>
+本节点已进行 %d 次模型调用，最近一轮约 %d tokens（轮数×单轮积 %d）。继续调用工具会按轮数平方放大计费；积达到 %d 后系统将封锁新的工具调用。请立即停止扩张性装载/检索，基于已有信息输出结论；若任务无法完成，调用 todo_declare_blocker 说明缺口后收尾。
+</runtime_notice>`, rounds, est, prod, hard)
 }

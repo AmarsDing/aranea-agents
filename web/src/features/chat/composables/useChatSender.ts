@@ -625,6 +625,7 @@ export function useChatSender(deps: SenderDeps) {
               model,
               attachments: deps.attachments.value,
             },
+            pendingUserId,
           );
           // B2: HTTP command channel returns ACK only — no loadMessages.
           // The WS data channel pushes the persisted message and subsequent

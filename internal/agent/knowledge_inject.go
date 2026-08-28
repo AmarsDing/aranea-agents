@@ -265,6 +265,11 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		return "## Retrieved Knowledge\n" +
 			"Pre-retrieval found no passages. You may call `knowledge_search` or `knowledge_reflect`. If those also return nothing, say the knowledge base has no evidence. Do not use world knowledge.\n", nil
 	}
+	if len(rendered) == 0 && !groundedOnly {
+		// Empty retrieval must not advertise knowledge_search — catalog +
+		// "go search" fed 157+ empty-result model calls (tool_loop_guard).
+		return "", nil
+	}
 
 	var b strings.Builder
 	used := 0

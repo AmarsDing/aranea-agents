@@ -315,3 +315,34 @@ func TestAssemblyBudgetHook_ToolsSchemaCountsTowardSoft(t *testing.T) {
 		t.Fatalf("tools_schema must count toward assembly est; messages=%d schema=%d", msgsOnly, toolsSchemaEstTokens(args.Request))
 	}
 }
+
+// TestAssemblyBudgetHook_HardTrimSubtractsSchema pins the schema-aware hard
+// trim: a large Request.Tools block must shrink the messages budget, so cues
+// drop even when messages alone sit under hard (S05 ~13K schema blindness).
+func TestAssemblyBudgetHook_HardTrimSubtractsSchema(t *testing.T) {
+	hook := newAssemblyBudgetBeforeHook(assemblyTestAgent(80, 300), TRPCBuilderDeps{})
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: strings.Repeat("s", 50)},
+		{Role: trpcmodel.RoleUser, Content: "hi"},
+		asDynamicCue(replyReminderCueMarker + strings.Repeat("r", 400)),
+		asDynamicCue(knowledgeCueMarker + strings.Repeat("k", 100)),
+	}
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{
+		Messages: msgs,
+		Tools: map[string]trpctool.Tool{
+			"huge": sizedDeclTool{name: "huge", desc: strings.Repeat("x", 2500)},
+		},
+	}}
+	msgsOnly := analyzePromptRequest(msgs).EstTokens
+	schema := toolsSchemaEstTokens(args.Request)
+	if msgsOnly > 300 {
+		t.Fatalf("fixture messages must be under hard without schema, got %d", msgsOnly)
+	}
+	if msgsOnly+schema <= 300 {
+		t.Fatalf("messages+schema must exceed hard, msgs=%d schema=%d", msgsOnly, schema)
+	}
+	runAssemblyBudgetHook(t, hook, context.Background(), args)
+	if findMarker(args.Request.Messages, replyReminderCueMarker) {
+		t.Fatal("schema-aware trim must drop reply reminder when tools schema consumes the budget")
+	}
+}

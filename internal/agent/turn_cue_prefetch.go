@@ -8,6 +8,7 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/pkg/loggateway"
 
+	"golang.org/x/sync/errgroup"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -53,9 +54,10 @@ func turnCuePrefetchFromContext(ctx context.Context) *TurnCuePrefetch {
 	return p
 }
 
-// PrefetchTurnCues runs the expensive knowledge ListCollections+search and
-// memory profile/composite recall without an invocation. Failures are
-// non-fatal: the BeforeModel hooks rebuild on cache miss.
+// PrefetchTurnCues runs knowledge ListCollections+search and memory
+// profile/composite recall in parallel so a 2s knowledge miss cannot starve
+// the 4s BUILD prefetch budget. Failures are non-fatal: BeforeModel hooks
+// rebuild on cache miss.
 func PrefetchTurnCues(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, userContent, sessionID, userID string) *TurnCuePrefetch {
 	out := &TurnCuePrefetch{}
 	query := strings.TrimSpace(userContent)
@@ -64,49 +66,56 @@ func PrefetchTurnCues(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, u
 	}
 	toolsEnabled := ag.Settings != nil && ag.Settings.ToolsEnabled
 	groundedOnly := biz.ParseAgentKnowledgeConfig(ag.ConfigJSON).GroundedOnly
-	if deps.KnowledgeUsecase != nil {
-		lg := deps.Logger()
-		if lg == nil {
-			lg = loggateway.NewNoop()
-		}
-		cue, cited := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(ctx))
-		if cue != "" {
-			out.knowledge = &prefetchedKnowledgeCue{query: query, cue: cue, cited: cited}
-		}
-	}
-
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	biz.ClampSpecialistL3Scopes(&policy, ag)
-	if !policy.MasterEnabled {
-		return out
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	if deps.KnowledgeUsecase != nil {
+		eg.Go(func() error {
+			lg := deps.Logger()
+			if lg == nil {
+				lg = loggateway.NewNoop()
+			}
+			cue, cited := buildKnowledgeCue(egCtx, deps.KnowledgeUsecase, lg, query, toolsEnabled, groundedOnly, knowledgetool.MemoryL3GroundedFromContext(egCtx))
+			if cue != "" {
+				out.knowledge = &prefetchedKnowledgeCue{query: query, cue: cue, cited: cited}
+			}
+			return nil
+		})
 	}
-	keyword := RecallKeywordFromMessages([]trpcmodel.Message{trpcmodel.NewUserMessage(userContent)})
-	mem := &prefetchedMemoryCue{keyword: keyword}
-	rt := biz.MemoryRuntimeContext{
-		AgentID: strings.TrimSpace(ag.ID),
-		UserID:  strings.TrimSpace(userID),
-	}
-	if ag.Settings != nil {
-		rt.Workspace = strings.TrimSpace(ag.Settings.Workspace)
-	}
-	if policy.InjectL3 {
-		summary, fallbackIDs, _ := MemorySummaryCue(ctx, deps.MemoryProfileCardReader, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID)
-		mem.profileCue = summary
-		mem.injectedFactIDs = append(mem.injectedFactIDs, fallbackIDs...)
-	}
-	if policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
-		if composite, hits := CompositeMemoryCueWithHits(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0, ProactiveHitsFromContext(ctx)); composite != "" {
-			mem.recallCue = composite
-			mem.recallHits = hits
-			for _, h := range hits {
-				if h.Layer == "L3" && strings.TrimSpace(h.FactID) != "" {
-					mem.injectedFactIDs = append(mem.injectedFactIDs, strings.TrimSpace(h.FactID))
+	if policy.MasterEnabled {
+		eg.Go(func() error {
+			keyword := RecallKeywordFromMessages([]trpcmodel.Message{trpcmodel.NewUserMessage(userContent)})
+			mem := &prefetchedMemoryCue{keyword: keyword}
+			rt := biz.MemoryRuntimeContext{
+				AgentID: strings.TrimSpace(ag.ID),
+				UserID:  strings.TrimSpace(userID),
+			}
+			if ag.Settings != nil {
+				rt.Workspace = strings.TrimSpace(ag.Settings.Workspace)
+			}
+			if policy.InjectL3 {
+				summary, fallbackIDs, _ := MemorySummaryCue(egCtx, deps.MemoryProfileCardReader, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID)
+				mem.profileCue = summary
+				mem.injectedFactIDs = append(mem.injectedFactIDs, fallbackIDs...)
+			}
+			if policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
+				if composite, hits := CompositeMemoryCueWithHits(egCtx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0, ProactiveHitsFromContext(egCtx)); composite != "" {
+					mem.recallCue = composite
+					mem.recallHits = hits
+					for _, h := range hits {
+						if h.Layer == "L3" && strings.TrimSpace(h.FactID) != "" {
+							mem.injectedFactIDs = append(mem.injectedFactIDs, strings.TrimSpace(h.FactID))
+						}
+					}
 				}
 			}
-		}
+			if mem.profileCue != "" || mem.recallCue != "" {
+				out.memory = mem
+			}
+			return nil
+		})
 	}
-	if mem.profileCue != "" || mem.recallCue != "" {
-		out.memory = mem
-	}
+	_ = eg.Wait()
 	return out
 }

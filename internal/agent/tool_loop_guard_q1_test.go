@@ -241,9 +241,8 @@ func TestLoopGuardWallSoftCueInjectedOnce(t *testing.T) {
 	}
 }
 
-// plan-execute 漂移观测（record-only）：plan_and_execute 成功后持续装载达
-// 观测阈值 → 写一次 tripped 记录；不拦截、不重复记录。
-func TestLoopGuardPlanDriftRecordOnly(t *testing.T) {
+// plan-execute 漂移拦截：plan_and_execute 成功后持续装载达阈值，下一次 tool_load 被拦。
+func TestLoopGuardPlanDriftIntercepts(t *testing.T) {
 	g := newToolLoopGuard(nil)
 	dc := &stubGateDecisionCollector{}
 	g.setDecisionCollector(dc)
@@ -252,33 +251,15 @@ func TestLoopGuardPlanDriftRecordOnly(t *testing.T) {
 	if err := runLoopGuardTurn(t, g, ctx, "plan_and_execute", `{"task_prompt":"t"}`, map[string]any{"plan_id": "tp_1"}, nil); err != nil {
 		t.Fatalf("plan call: %v", err)
 	}
-	// 阈值前两次装载：无记录、不拦截。
-	for i, name := range []string{"tool_p1", "tool_p2"} {
+	for i, name := range []string{"tool_p1", "tool_p2", "tool_p3"} {
 		if err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"`+name+`"}`, toolLoadOK(name), nil); err != nil {
 			t.Fatalf("post-plan load %d should pass: %v", i, err)
 		}
 	}
-	if got := dc.count("tripped"); got != 0 {
-		t.Fatalf("drift record must wait for threshold %d, got %d", loopGuardPlanDriftObserveAt, got)
+	if err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"tool_p4"}`, toolLoadOK("tool_p4"), nil); err == nil {
+		t.Fatal("4th post-plan tool_load must be blocked as plan-execute drift")
 	}
-	// 第 3 次（达阈值）：写记录但仍放行（record-only）。
-	if err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"tool_p3"}`, toolLoadOK("tool_p3"), nil); err != nil {
-		t.Fatalf("drift-observing load must still pass (record-only): %v", err)
-	}
-	if got := dc.count("tripped"); got != 1 {
-		t.Fatalf("drift at threshold must emit exactly one tripped record, got %d", got)
-	}
-	// 第 4 次：不再重复记录（once-per-entry），仍不拦截。
-	if err := runLoopGuardTurn(t, g, ctx, "tool_load", `{"tool_name":"tool_p4"}`, toolLoadOK("tool_p4"), nil); err != nil {
-		t.Fatalf("post-drift load should pass: %v", err)
-	}
-	if got := dc.count("tripped"); got != 1 {
-		t.Fatalf("drift record must be once-per-entry, got %d", got)
-	}
-	// plan 之前的装载不计入漂移（另起节点验证：先装载后声明计划）。
 	g2 := newToolLoopGuard(nil)
-	dc2 := &stubGateDecisionCollector{}
-	g2.setDecisionCollector(dc2)
 	ctx2 := newTestInvocationContext("inv-q1-drift-pre")
 	if err := runLoopGuardTurn(t, g2, ctx2, "tool_load", `{"tool_name":"tool_pre"}`, toolLoadOK("tool_pre"), nil); err != nil {
 		t.Fatalf("pre-plan load: %v", err)
@@ -290,10 +271,6 @@ func TestLoopGuardPlanDriftRecordOnly(t *testing.T) {
 		if err := runLoopGuardTurn(t, g2, ctx2, "tool_load", `{"tool_name":"`+name+`"}`, toolLoadOK(name), nil); err != nil {
 			t.Fatalf("post-plan load %d: %v", i, err)
 		}
-	}
-	if got := dc2.count("tripped"); got != 0 {
-		t.Fatalf("pre-plan load must not count toward drift (post-plan=%d < %d), got %d records",
-			2, loopGuardPlanDriftObserveAt, got)
 	}
 }
 
@@ -413,5 +390,65 @@ func TestLoopGuardLoadThenCallSameStepBlockedUntilNextModel(t *testing.T) {
 	_ = runWallModelHook(t, g, ctx)
 	if err := runLoopGuardTurn(t, g, ctx, "save_file", `{"path":"a.txt"}`, "ok", nil); err != nil {
 		t.Fatalf("next model step must allow the loaded tool: %v", err)
+	}
+}
+
+func runFatModelHook(t *testing.T, g *toolLoopGuard, ctx context.Context, body string) []trpcmodel.Message {
+	t.Helper()
+	hook := g.modelHook()
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: []trpcmodel.Message{
+		trpcmodel.NewSystemMessage(body),
+		trpcmodel.NewUserMessage("hi"),
+	}}}
+	if _, err := hook.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("model hook error: %v", err)
+	}
+	return args.Request.Messages
+}
+
+// 轮数×单轮积：软闸注入收尾 cue，硬闸封锁新工具（todo_declare_blocker 豁免）。
+func TestLoopGuardRoundProductSoftCueAndHardBlock(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	dc := &stubGateDecisionCollector{}
+	g.setDecisionCollector(dc)
+	g.setRoundProduct(500) // 软=350，硬=500
+	ctx := newTestInvocationContext("inv-round-prod")
+	fat := strings.Repeat("x", 500) // ≈200 tok @ 2.5 chars/token
+
+	round1 := runFatModelHook(t, g, ctx, fat)
+	if findMarker(round1, roundProductCueMarker) {
+		t.Fatal("round 1 product must stay under soft")
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "datetime", `{}`, "ok", nil); err != nil {
+		t.Fatalf("under hard must still allow tools: %v", err)
+	}
+
+	round2 := runFatModelHook(t, g, ctx, fat)
+	if !findMarker(round2, roundProductCueMarker) {
+		t.Fatal("round 2 product must inject soft wrap-up cue")
+	}
+	if got := dc.count("tripped"); got != 1 {
+		t.Fatalf("soft gate must emit one tripped record, got %d", got)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "datetime", `{}`, "ok", nil); err != nil {
+		t.Fatalf("between soft and hard must still allow tools: %v", err)
+	}
+
+	_ = runFatModelHook(t, g, ctx, fat)
+	if err := runLoopGuardTurn(t, g, ctx, "datetime", `{}`, "ok", nil); err == nil {
+		t.Fatal("over hard product must block new tools")
+	}
+	if err := runLoopGuardTurn(t, g, ctx, todoDeclareBlockerToolName, `{"reason":"budget"}`, "ok", nil); err != nil {
+		t.Fatalf("todo_declare_blocker must remain exempt: %v", err)
+	}
+
+	gOff := newToolLoopGuard(nil)
+	gOff.setRoundProduct(-1)
+	ctxOff := newTestInvocationContext("inv-round-prod-off")
+	for i := 0; i < 5; i++ {
+		_ = runFatModelHook(t, gOff, ctxOff, fat)
+	}
+	if err := runLoopGuardTurn(t, gOff, ctxOff, "datetime", `{}`, "ok", nil); err != nil {
+		t.Fatalf("disabled product gate must not block: %v", err)
 	}
 }

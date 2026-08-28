@@ -22,6 +22,7 @@ func TestLoopGuardS02Replay_EmptyStreakSurvivesHeterogeneousInterleave(t *testin
 	g := newToolLoopGuard(nil)
 	g.setGateThresholds("", 100, 0, 0) // 抬高装载配额：本测试不验装载闸
 	g.setBootstrapRatio(-1)            // 关闭占比闸：本测试只验空结果熔断
+	g.setPlanDrift(-1)                 // 关闭计划漂移拦截：本测试要跑完 23 次装载
 	ctx := newTestInvocationContext("inv-s02-replay")
 	empty := mustJSONValue(t, `{"query":"q","results":[],"count":0}`)
 	loadOK := mustJSONValue(t, `{"success":true,"tool_name":"x"}`)

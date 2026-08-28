@@ -26,6 +26,9 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/knowledge"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -37,7 +40,7 @@ const prefixStabilityBaseSystem = "PREFIX-STABILITY-BASE-SYSTEM"
 // prefixStabilityFixture builds the fixed agent + stub deps used by every
 // turn. All DB/LLM-facing collaborators are package-local fakes shared with
 // prompt_prefix_position_test.go.
-func prefixStabilityFixture() (biz.Agent, TRPCBuilderDeps) {
+func prefixStabilityFixture() (biz.Agent, TRPCBuilderDeps, func(context.Context) context.Context) {
 	ag := biz.Agent{
 		ID:               "ag-prefix",
 		SystemPromptMode: "complete",
@@ -49,9 +52,13 @@ func prefixStabilityFixture() (biz.Agent, TRPCBuilderDeps) {
 			ReplyReminderEnabled: true,
 		},
 	}
-	repo := fakeKnowledgeRepos{
-		collections: []biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
+	repo := cueSearchRepo{
+		fakeKnowledgeRepos: fakeKnowledgeRepos{
+			collections: []biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 1, ChunkCount: 1}},
+		},
+		chunks: []biz.KnowledgeChunk{{ID: "k1", DocID: "d1", CollectionID: "c1", Content: "天气晴，25 度。", Score: 0.9}},
 	}
+	ret := knowledge.NewRetriever(cueEmbedder{}, repo, nil, loggateway.NewNoop())
 	deps := TRPCBuilderDeps{
 		TRPCModelCatalogDeps: TRPCModelCatalogDeps{
 			AgentUC: fakeTeamAgentLookup{eff: biz.AgentEffectiveTools{ToolsEnabled: true, Profile: "full"}},
@@ -61,16 +68,24 @@ func prefixStabilityFixture() (biz.Agent, TRPCBuilderDeps) {
 			KnowledgeUsecase:        biz.NewKnowledgeUsecase(repo, repo, repo),
 		},
 	}
-	return ag, deps
+	return ag, deps, func(ctx context.Context) context.Context {
+		ctx = knowledgetool.WithRetriever(ctx, ret)
+		return knowledgetool.WithKnowledgeCollections(ctx, []string{"c1"})
+	}
 }
 
 // prefixStabilityInvocation returns a fresh invocation context for one turn of
 // the same session, with the reply-reminder state armed (as the AfterTool hook
-// would have left it after a tool call).
-func prefixStabilityInvocation() context.Context {
+// would have left it after a tool call). attach 接入预检索 Retriever，使
+// 知识 cue 在空目录不再广告时仍有命中块可钉尾部位置。
+func prefixStabilityInvocation(attach func(context.Context) context.Context) context.Context {
 	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
 	inv.SetState(replyReminderStateKey, true)
-	return trpcagent.NewInvocationContext(context.Background(), inv)
+	var ctx context.Context = trpcagent.NewInvocationContext(context.Background(), inv)
+	if attach != nil {
+		ctx = attach(ctx)
+	}
+	return ctx
 }
 
 // runProductBeforeModelChain executes every BeforeModel hook of the real
@@ -159,17 +174,17 @@ func first100Runes(s string) string {
 // (one assistant+user exchange of history, different intent + user query).
 func buildTwoAdjacentTurns(t *testing.T) (turn1, turn2 []trpcmodel.Message) {
 	t.Helper()
-	ag, deps := prefixStabilityFixture()
+	ag, deps, attach := prefixStabilityFixture()
 	chain := productCallbackChain(context.Background(), ag, deps, nil)
 
-	turn1 = runProductBeforeModelChain(t, chain, prefixStabilityInvocation(),
+	turn1 = runProductBeforeModelChain(t, chain, prefixStabilityInvocation(attach),
 		buildTurnMessages(t, "查天气", nil, "今天天气怎么样"))
 
 	history := []trpcmodel.Message{
 		trpcmodel.NewUserMessage("今天天气怎么样"),
 		trpcmodel.NewAssistantMessage("今天晴，25 度。"),
 	}
-	turn2 = runProductBeforeModelChain(t, chain, prefixStabilityInvocation(),
+	turn2 = runProductBeforeModelChain(t, chain, prefixStabilityInvocation(attach),
 		buildTurnMessages(t, "订机票", history, "帮我订明天去北京的机票"))
 	return turn1, turn2
 }
@@ -243,7 +258,7 @@ func TestPromptPrefixStability_DynamicCuesOnlyInTail(t *testing.T) {
 	if !contains(func(c string) bool { return strings.Contains(c, "用户档案") }) {
 		t.Fatal("memory cue missing from dynamic tail")
 	}
-	if !contains(func(c string) bool { return strings.Contains(c, "Available Knowledge Bases") }) {
+	if !contains(func(c string) bool { return strings.Contains(c, "Retrieved Knowledge") }) {
 		t.Fatal("knowledge cue missing from dynamic tail")
 	}
 	if !contains(intent.IsIntentContextContent) {
