@@ -488,8 +488,10 @@ type SessionGateStats struct {
 	CompactCount int32 `protobuf:"varint,6,opt,name=compact_count,json=compactCount,proto3" json:"compact_count,omitempty"`
 	// 工具参数门禁 deny 记录条数。
 	ParamRuleDenies int32 `protobuf:"varint,7,opt,name=param_rule_denies,json=paramRuleDenies,proto3" json:"param_rule_denies,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 输入级确定性安全扫描命中记录条数（input_risk_flagged，2026-08-28 方案② S3）。
+	InputRiskFlagged int32 `protobuf:"varint,8,opt,name=input_risk_flagged,json=inputRiskFlagged,proto3" json:"input_risk_flagged,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SessionGateStats) Reset() {
@@ -567,6 +569,13 @@ func (x *SessionGateStats) GetCompactCount() int32 {
 func (x *SessionGateStats) GetParamRuleDenies() int32 {
 	if x != nil {
 		return x.ParamRuleDenies
+	}
+	return 0
+}
+
+func (x *SessionGateStats) GetInputRiskFlagged() int32 {
+	if x != nil {
+		return x.InputRiskFlagged
 	}
 	return 0
 }
@@ -835,7 +844,7 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"downstream\"A\n" +
 	"\x1aGetSessionGateStatsRequest\x12#\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\"\xa8\x02\n" +
+	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\"\xd6\x02\n" +
 	"\x10SessionGateStats\x12*\n" +
 	"\x11loop_guard_blocks\x18\x01 \x01(\x05R\x0floopGuardBlocks\x12%\n" +
 	"\x0ebudget_tripped\x18\x02 \x01(\bR\rbudgetTripped\x12.\n" +
@@ -845,7 +854,8 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"\vprune_bytes\x18\x05 \x01(\x03R\n" +
 	"pruneBytes\x12#\n" +
 	"\rcompact_count\x18\x06 \x01(\x05R\fcompactCount\x12*\n" +
-	"\x11param_rule_denies\x18\a \x01(\x05R\x0fparamRuleDenies\"Y\n" +
+	"\x11param_rule_denies\x18\a \x01(\x05R\x0fparamRuleDenies\x12,\n" +
+	"\x12input_risk_flagged\x18\b \x01(\x05R\x10inputRiskFlagged\"Y\n" +
 	"\x1bGetSessionGateStatsResponse\x12:\n" +
 	"\x05stats\x18\x01 \x01(\v2$.kratos.decision.v1.SessionGateStatsR\x05stats\"\xe1\x05\n" +
 	"\x0eDecisionRecord\x12\x0e\n" +

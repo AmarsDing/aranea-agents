@@ -50,7 +50,7 @@ func (f *fakeDecisionQueryRepo) FindVirtualParentPlanner(context.Context, decisi
 // SessionGateStats 实现 SessionGateStatsRepo 窄接口（钉死 handler 聚合映射）。
 func (f *fakeDecisionQueryRepo) SessionGateStats(_ context.Context, sessionID string) (decision.RunGateStats, error) {
 	if sessionID == "sess-a" {
-		return decision.RunGateStats{LoopGuardBlocks: 3, ParamRuleDenies: 1, BudgetTripped: true}, nil
+		return decision.RunGateStats{LoopGuardBlocks: 3, ParamRuleDenies: 1, BudgetTripped: true, InputRiskFlagged: 2}, nil
 	}
 	return decision.RunGateStats{}, nil
 }
@@ -339,7 +339,7 @@ func TestDecisionRecordService_SessionGateStats(t *testing.T) {
 		t.Fatalf("own tenant: %v", err)
 	}
 	st := ownResp.GetStats()
-	if st.GetLoopGuardBlocks() != 3 || st.GetParamRuleDenies() != 1 || !st.GetBudgetTripped() {
+	if st.GetLoopGuardBlocks() != 3 || st.GetParamRuleDenies() != 1 || !st.GetBudgetTripped() || st.GetInputRiskFlagged() != 2 {
 		t.Fatalf("stats mapping = %+v", st)
 	}
 

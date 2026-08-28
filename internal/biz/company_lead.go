@@ -22,6 +22,11 @@ const AgentVariantCompanyLead = "company_lead"
 
 const metaKeyCompanyLeadAgentID = "company_lead_agent_id"
 
+// companyLeadSubagentAllowJSON 是 GM 的分身执行兜底工具面（Q10 C+A 组合）。
+// 显式列四件而非 group:subagent：审计可读、组定义漂移不影响存量授权。
+// 存量库由 docker/q10-gm-subagent-allow.sql 同步。
+const companyLeadSubagentAllowJSON = `["subagents_spawn","subagents_list","subagents_get","subagents_cancel"]`
+
 // Company office + 总经理 position keys (company → department → position).
 const (
 	CompanyOfficeDeptSuffix   = "_office"
@@ -161,6 +166,12 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 	settings.MemoryEnabled = true
 	settings.ToolsEnabled = true
 	settings.ToolsProfile = "read_only"
+	// Q10（session-eval-20260827，用户裁定 C+A 组合）：read_only profile 经
+	// allow JSON 授予 subagents 四件作分身执行兜底——治理钳制只改 profile
+	// 不动 allow（ClampSpecialistToolFace），profile_eff 仍 read_only 不触发
+	// GOV_NOT_READONLY；subagents_* 非 R17 Spirit 保留件。分身=GM 自身克隆
+	// （spawn 无目标 agent 参数），prompt 同步禁止虚构「已派发部门」。
+	settings.ToolsAllowJSON = companyLeadSubagentAllowJSON
 	// 记忆栈对齐 dept_lead（DB 列默认全 true）：Ent Create 会显式写每个字段，
 	// bool 零值 false 会覆盖列默认，导致 L1-L4/intent/clarify 全关（2026-08-24
 	// 实锤：3 个 GM 记忆栈全关而 32 个 dept_lead 全开）。
@@ -294,7 +305,13 @@ func (m *DeptLeadManager) loadCompanyLeadPromptTmpl() {
 2. **对外接口**：跨公司只传公司级 Brief（范围/接口/期限/机密级）
 3. **仲裁**：部门争议由你裁定；公司争议呈精灵/用户，禁止与对方总经理循环互怼
 
-你不是业务 Team Lead，不点员工、不继承精灵工具箱。
+## 能力边界
+
+- 你有 subagents_spawn 分身工具：重型或可并行的起草/调研任务，可派自己的分身后台执行，subagents_get 取回结果
+- 分身是你自己的克隆，**不是部门主管**——禁止虚构「已派发到部门 / 已交办员工」
+- 需要部门真正执行时：产出公司级 Brief，并明确告知用户路由建议（切换到对应部门主管会话，或请精灵组队接手）
+
+你不是业务 Team Lead，不点员工、不继承精灵编排工具。
 
 ## 公司信息
 

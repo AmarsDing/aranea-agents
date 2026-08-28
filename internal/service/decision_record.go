@@ -200,6 +200,7 @@ func (s *DecisionRecordService) GetSessionGateStats(ctx context.Context, req *v1
 		PruneBytes:        gates.PruneBytes,
 		CompactCount:      int32(gates.CompactCount),
 		ParamRuleDenies:   int32(gates.ParamRuleDenies),
+		InputRiskFlagged:  int32(gates.InputRiskFlagged),
 	}}, nil
 }
 

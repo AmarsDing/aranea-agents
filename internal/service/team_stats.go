@@ -105,6 +105,7 @@ func (s *TeamService) buildRunStats(ctx context.Context, run biz.TeamRunRecord, 
 			stats.BudgetTripped = gates.BudgetTripped
 			stats.NoProgressTripped = gates.NoProgressTripped
 			stats.ParamRuleDenies = int32(gates.ParamRuleDenies)
+			stats.InputRiskFlagged = int32(gates.InputRiskFlagged)
 		}
 	}
 	return stats

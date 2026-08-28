@@ -86,10 +86,10 @@ func seedDecisionRecords(t *testing.T, wr decision.Repo) {
 }
 
 // TestDecisionQueryRepo_RunGateStats_PG covers 79-runtime-governance R7：
-// 六类 trigger_rule 聚合（loop_guard 计数 / budget·no_progress 布尔 /
+// 七类 trigger_rule 聚合（loop_guard 计数 / budget·no_progress 布尔 /
 // prune 求和 observed_value+prune_bytes / compact 计数 / param_rule_deny
-// 计数——2026-08-27 三轮审查补钉），run 归属隔离，非 system_guard 类别与
-// 无记录 run 返回零值。
+// 计数——2026-08-27 三轮审查补钉 / input_risk_flagged 计数——2026-08-28
+// 方案② S3 补钉），run 归属隔离，非 system_guard 类别与无记录 run 返回零值。
 func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
 	ctx := context.Background()
 	wr, qr := newDecisionQueryTestRepos(t)
@@ -104,6 +104,8 @@ func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
 		// H7：param_rule_deny 计数（三轮审查补钉——此前 case 改坏测试全绿）。
 		guardRec("dk-g-10", "run-s", decision.TriggerParamRuleDeny, map[string]any{}),
 		guardRec("dk-g-11", "run-s", decision.TriggerParamRuleDeny, map[string]any{}),
+		// S3：input_risk_flagged 计数（2026-08-28 方案②补钉）。
+		guardRec("dk-g-12", "run-s", decision.TriggerInputRiskFlagged, map[string]any{}),
 		// 他 run 的记录：必须隔离。
 		guardRec("dk-g-8", "run-other", decision.TriggerLoopGuardBlocked, map[string]any{"observed_value": 99}),
 		// 非 system_guard 类别同 run：不计。
@@ -143,6 +145,9 @@ func TestDecisionQueryRepo_RunGateStats_PG(t *testing.T) {
 	}
 	if got.ParamRuleDenies != 2 {
 		t.Errorf("ParamRuleDenies = %d, want 2（param_rule_deny 计数）", got.ParamRuleDenies)
+	}
+	if got.InputRiskFlagged != 1 {
+		t.Errorf("InputRiskFlagged = %d, want 1（input_risk_flagged 计数）", got.InputRiskFlagged)
 	}
 
 	// 他 run 只见自己的记录；无记录 run / 空 runID 返回零值, nil。
@@ -198,6 +203,8 @@ func TestDecisionQueryRepo_SessionGateStats_PG(t *testing.T) {
 		sessRec("dk-s-5", decision.TriggerTokenBudgetTripped, decision.SourceRef{RunID: "run-3", SessionID: "sess-a"}, map[string]any{}),
 		// 旧口径：仅 metadata.session_id（Extra 注入时期的存量形态）——必须命中。
 		sessRec("dk-s-6", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-4"}, map[string]any{"session_id": "sess-a"}),
+		// S3：input_risk_flagged 计数（2026-08-28 方案②补钉）。
+		sessRec("dk-s-10", decision.TriggerInputRiskFlagged, decision.SourceRef{RunID: "run-1", SessionID: "sess-a"}, map[string]any{}),
 		// 他会话记录：必须隔离（含 metadata 旧口径他会话）。
 		sessRec("dk-s-7", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-5", SessionID: "sess-b"}, map[string]any{}),
 		sessRec("dk-s-8", decision.TriggerLoopGuardBlocked, decision.SourceRef{RunID: "run-6"}, map[string]any{"session_id": "sess-b"}),
@@ -239,6 +246,9 @@ func TestDecisionQueryRepo_SessionGateStats_PG(t *testing.T) {
 	if !got.BudgetTripped || got.NoProgressTripped {
 		t.Errorf("tripped = %v/%v, want true/false", got.BudgetTripped, got.NoProgressTripped)
 	}
+	if got.InputRiskFlagged != 1 {
+		t.Errorf("InputRiskFlagged = %d, want 1（input_risk_flagged 计数）", got.InputRiskFlagged)
+	}
 
 	// 他会话只见自己的记录；无记录会话 / 空会话 id 返回零值, nil。
 	other, err := statsRepo.SessionGateStats(ctx, "sess-b")
@@ -253,11 +263,11 @@ func TestDecisionQueryRepo_SessionGateStats_PG(t *testing.T) {
 		t.Errorf("空会话 id 应 nil error: %v", err)
 	}
 
-	// source_session_id 列表过滤同表达式：sess-a 命中 6 条 system_guard +
+	// source_session_id 列表过滤同表达式：sess-a 命中 7 条 system_guard +
 	// 1 条 hitl（会话归属不过滤类别），sess-b 2 条。
 	_, total, err := qr.ListRecords(ctx, decision.ListFilter{SourceSessionID: "sess-a", Page: 1, PageSize: 50})
-	if err != nil || total != 7 {
-		t.Errorf("source_session_id filter sess-a: total=%d err=%v, want 7", total, err)
+	if err != nil || total != 8 {
+		t.Errorf("source_session_id filter sess-a: total=%d err=%v, want 8", total, err)
 	}
 	_, total, err = qr.ListRecords(ctx, decision.ListFilter{SourceSessionID: "sess-b", Page: 1, PageSize: 50})
 	if err != nil || total != 2 {

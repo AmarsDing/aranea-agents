@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"fmt"
@@ -90,6 +91,39 @@ func TestCompanyLeadMetadataRoundTrip(t *testing.T) {
 	HydrateCompanyLeadFromMetadata(&n)
 	if n.CompanyLeadAgentID != "lead-1" {
 		t.Fatalf("id=%q", n.CompanyLeadAgentID)
+	}
+}
+
+// Q10（session-eval-20260827，C+A 组合）：GM 种子 allow 字面量的不变式——
+// 恰好命名 subagents 四件、JSON 合法、且四件全部在 registryOptInOnlyKeys
+// （种子 enabled=false 时 allow 授予唯一生效通道；出表即被 applyRegistryAdminDenials
+// 全员硬 deny，授权静默无效——2026-08-24 twin_config_* 漏登记事故的同款防线）。
+// 存量库由 docker/q10-gm-subagent-allow.sql 同步，字面量必须与脚本一致。
+func TestCompanyLeadSubagentAllowJSON(t *testing.T) {
+	t.Parallel()
+	var keys []string
+	if err := json.Unmarshal([]byte(companyLeadSubagentAllowJSON), &keys); err != nil {
+		t.Fatalf("allow JSON malformed: %v", err)
+	}
+	want := []string{"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"}
+	if len(keys) != len(want) {
+		t.Fatalf("allow = %v, want exactly %v", keys, want)
+	}
+	for i, k := range want {
+		if keys[i] != k {
+			t.Fatalf("allow[%d] = %s, want %s（与 docker/q10-gm-subagent-allow.sql 保持一致）", i, keys[i], k)
+		}
+		if !registryOptInOnlyKeys[k] {
+			t.Fatalf("%s 不在 registryOptInOnlyKeys——allow 授予将被硬 deny 静默无效", k)
+		}
+	}
+	// R17 边界：GM allow 不得含 Spirit 保留件。
+	for _, k := range keys {
+		for _, reserved := range SpiritReservedToolKeys() {
+			if k == reserved {
+				t.Fatalf("GM allow 不得命名 Spirit 保留件 %s", k)
+			}
+		}
 	}
 }
 

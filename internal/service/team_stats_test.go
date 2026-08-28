@@ -140,6 +140,7 @@ func TestGetTeamRunStats_AssemblesAllSources(t *testing.T) {
 		&statsDecisionRepo{gates: decision.RunGateStats{
 			LoopGuardBlocks: 2, BudgetTripped: true, NoProgressTripped: true,
 			PruneCount: 5, PruneBytes: 20000, CompactCount: 1, ParamRuleDenies: 3,
+			InputRiskFlagged: 4,
 		}})
 
 	resp, err := svc.GetTeamRunStats(context.Background(), &v1.GetTeamRunStatsRequest{Id: "run-1"})
@@ -167,6 +168,9 @@ func TestGetTeamRunStats_AssemblesAllSources(t *testing.T) {
 	}
 	if st.GetParamRuleDenies() != 3 {
 		t.Errorf("param_rule_denies = %d, want 3（H7 proto 映射钉死）", st.GetParamRuleDenies())
+	}
+	if st.GetInputRiskFlagged() != 4 {
+		t.Errorf("input_risk_flagged = %d, want 4（2026-08-28 方案② S3 proto 映射钉死）", st.GetInputRiskFlagged())
 	}
 	if len(st.GetMembers()) != 3 {
 		t.Fatalf("members = %+v, want 3（planner + unknown + executor 纯 step 行）", st.GetMembers())

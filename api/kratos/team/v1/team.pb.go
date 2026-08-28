@@ -1185,8 +1185,10 @@ type TeamRunStats struct {
 	Members           []*TeamRunMemberStats `protobuf:"bytes,19,rep,name=members,proto3" json:"members,omitempty"`
 	// R9：工具参数门禁 deny 记录条数（param_rule_deny）。
 	ParamRuleDenies int32 `protobuf:"varint,20,opt,name=param_rule_denies,json=paramRuleDenies,proto3" json:"param_rule_denies,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 输入级确定性安全扫描命中记录条数（input_risk_flagged，2026-08-28 方案② S3）。
+	InputRiskFlagged int32 `protobuf:"varint,21,opt,name=input_risk_flagged,json=inputRiskFlagged,proto3" json:"input_risk_flagged,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *TeamRunStats) Reset() {
@@ -1355,6 +1357,13 @@ func (x *TeamRunStats) GetMembers() []*TeamRunMemberStats {
 func (x *TeamRunStats) GetParamRuleDenies() int32 {
 	if x != nil {
 		return x.ParamRuleDenies
+	}
+	return 0
+}
+
+func (x *TeamRunStats) GetInputRiskFlagged() int32 {
+	if x != nil {
+		return x.InputRiskFlagged
 	}
 	return 0
 }
@@ -6293,7 +6302,7 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\x11completion_tokens\x18\x03 \x01(\x03R\x10completionTokens\x12#\n" +
 	"\rcached_tokens\x18\x04 \x01(\x03R\fcachedTokens\x12\x14\n" +
 	"\x05calls\x18\x05 \x01(\x05R\x05calls\x12\x14\n" +
-	"\x05steps\x18\x06 \x01(\x05R\x05steps\"\xef\x05\n" +
+	"\x05steps\x18\x06 \x01(\x05R\x05steps\"\x9d\x06\n" +
 	"\fTeamRunStats\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x1d\n" +
@@ -6320,7 +6329,8 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\x0ebudget_tripped\x18\x11 \x01(\bR\rbudgetTripped\x12.\n" +
 	"\x13no_progress_tripped\x18\x12 \x01(\bR\x11noProgressTripped\x12<\n" +
 	"\amembers\x18\x13 \x03(\v2\".kratos.team.v1.TeamRunMemberStatsR\amembers\x12*\n" +
-	"\x11param_rule_denies\x18\x14 \x01(\x05R\x0fparamRuleDenies\".\n" +
+	"\x11param_rule_denies\x18\x14 \x01(\x05R\x0fparamRuleDenies\x12,\n" +
+	"\x12input_risk_flagged\x18\x15 \x01(\x05R\x10inputRiskFlagged\".\n" +
 	"\x16GetTeamRunStatsRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"M\n" +
 	"\x17GetTeamRunStatsResponse\x122\n" +

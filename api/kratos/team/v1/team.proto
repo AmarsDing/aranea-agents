@@ -186,6 +186,8 @@ message TeamRunStats {
   repeated TeamRunMemberStats members = 19;
   // R9：工具参数门禁 deny 记录条数（param_rule_deny）。
   int32 param_rule_denies = 20;
+  // 输入级确定性安全扫描命中记录条数（input_risk_flagged，2026-08-28 方案② S3）。
+  int32 input_risk_flagged = 21;
 }
 
 message GetTeamRunStatsRequest {

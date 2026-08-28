@@ -39,7 +39,9 @@ func newIntentToolHintPromoteBeforeHook(dm *deferred.DeferredToolManager, lg log
 			if len(art.SearchHints) > 0 {
 				goal = strings.TrimSpace(goal + " " + strings.Join(art.SearchHints, " "))
 			}
-			llmHints = art.ToolHints
+			// 2026-08-28 方案①：顶层与子意图 hints 并集——复合意图第二动作
+			// 的工具（如「查数据+发邮件」的邮件工具）首轮即可见。
+			llmHints = art.AllToolHints()
 		}
 		if goal == "" && len(llmHints) == 0 {
 			return &trpcagent.BeforeAgentResult{Context: ctx}, nil

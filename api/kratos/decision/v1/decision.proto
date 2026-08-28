@@ -104,6 +104,8 @@ message SessionGateStats {
   int32 compact_count = 6;
   // 工具参数门禁 deny 记录条数。
   int32 param_rule_denies = 7;
+  // 输入级确定性安全扫描命中记录条数（input_risk_flagged，2026-08-28 方案② S3）。
+  int32 input_risk_flagged = 8;
 }
 
 message GetSessionGateStatsResponse {

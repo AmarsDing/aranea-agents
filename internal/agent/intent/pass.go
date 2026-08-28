@@ -24,7 +24,18 @@ const (
 	RiskFlagNeedsClarification = "needs_clarification"
 	// MaxClarificationQuestions 澄清问题数上限（防 LLM 过度生成）。
 	MaxClarificationQuestions = 5
+	// MaxSubIntents 子意图数上限（2026-08-28 方案①，防 LLM 过度拆分）。
+	MaxSubIntents = 4
 )
+
+// SubIntent 是复合请求中识别出的一个独立可执行动作（2026-08-28 方案①多意图）。
+// 仅当用户消息含 ≥2 个独立可交付动作时由 intent pass 输出；单意图请求为空，
+// 全部下游行为与此前一致（向后兼容）。
+type SubIntent struct {
+	Goal       string   `json:"goal"`
+	IntentKind string   `json:"intent_kind"`
+	ToolHints  []string `json:"tool_hints,omitempty"`
+}
 
 // Artifact is the structured output of the intent pass (subset of design doc).
 type Artifact struct {
@@ -36,6 +47,10 @@ type Artifact struct {
 	ToolHints       []string                `json:"tool_hints,omitempty"`
 	RiskFlags       []string                `json:"risk_flags"`
 	Clarifications  []ClarificationQuestion `json:"clarifications,omitempty"`
+	// SubIntents 复合意图的全部动作清单（含首要动作，按执行顺序）。顶层
+	// refined_goal/intent_kind 始终描述首要动作——复合任务的第二动作不再
+	// 依赖主 LLM 读文字的自觉（P-INTENT-SKIP 事故的识别层根修）。
+	SubIntents []SubIntent `json:"sub_intents,omitempty"`
 }
 
 // HasRiskFlag reports whether the artifact carries the given risk flag.
@@ -92,6 +107,36 @@ func (a *Artifact) ClarificationQuestions() []ClarificationQuestion {
 	return a.Clarifications
 }
 
+// AllToolHints 返回顶层与子意图 tool_hints 的并集（去重、保序：顶层优先，再按
+// 子意图顺序）。复合意图的第二动作工具（如「查数据+发邮件」的邮件工具）常进
+// 不了顶层 hints（围绕单一目标产出），并集保证预激活/task planner 覆盖全部
+// 动作（2026-08-28 方案①消费侧根修）。
+func (a *Artifact) AllToolHints() []string {
+	if a == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(a.ToolHints)+4)
+	out := make([]string, 0, len(a.ToolHints)+4)
+	add := func(hints []string) {
+		for _, h := range hints {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				continue
+			}
+			if _, dup := seen[h]; dup {
+				continue
+			}
+			seen[h] = struct{}{}
+			out = append(out, h)
+		}
+	}
+	add(a.ToolHints)
+	for _, s := range a.SubIntents {
+		add(s.ToolHints)
+	}
+	return out
+}
+
 // CloneWithoutClarification returns a copy of the artifact with the
 // clarification residue stripped (questions, ambiguities, and the
 // needs_clarification risk flag). Used by the clarification-resume path:
@@ -126,6 +171,7 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - tool_hints (array of strings, at most 8): runtime tool slugs likely needed this turn (e.g. search_content, diff_edit, exec_command, web_fetch). Omit tools you are unsure about. Do not invent names.
 - risk_flags (array of strings): e.g. touches_auth, migrations, destructive, irreversible, or []. Include "destructive" when the request would destroy/overwrite data, inject faults, or perform irreversible operations. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
+- sub_intents (array of objects, at most 4, omit entirely when the request is a single action): when the message contains 2 or more INDEPENDENT deliverable actions (each produces its own deliverable or state change, e.g. "check the metrics of X then email a summary to ops", "fix the bug and update the docs"), list ALL actions in execution order. Each object: {"goal": string (one sentence), "intent_kind": string (same enum as intent_kind above), "tool_hints": array of strings (same rules as tool_hints above)}. Do NOT split modifiers, methods or formats of one action ("write a REST API in Go" and "query the data and render it as a table" are each ONE action). When sub_intents is present, the top-level refined_goal/intent_kind/tool_hints still describe the primary (first) action.
 An entity name that cannot be uniquely resolved IS a blocking ambiguity when the task depends on that entity's data: e.g. a company/brand named only by a colloquial or ambiguous name with no well-known unique referent ("金鹏科技" — which company?), or a stock mentioned without ticker/exchange. Ask for the identifying detail (full official name, ticker, exchange) via clarifications instead of guessing.
 Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
 When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
@@ -140,6 +186,7 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - tool_hints (array of strings, at most 8): runtime tool slugs likely needed this turn (e.g. web_fetch, knowledge_search, memory_search). Omit tools you are unsure about. Do not invent names.
 - risk_flags (array of strings): e.g. sensitive_data, compliance, destructive, irreversible, or []. Include "destructive" when the request would destroy/overwrite data, inject faults, or perform irreversible operations. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
+- sub_intents (array of objects, at most 4, omit entirely when the request is a single action): when the message contains 2 or more INDEPENDENT deliverable actions (each produces its own deliverable or state change, e.g. "check the metrics of X then email a summary to ops", "fix the bug and update the docs"), list ALL actions in execution order. Each object: {"goal": string (one sentence), "intent_kind": string (same enum as intent_kind above), "tool_hints": array of strings (same rules as tool_hints above)}. Do NOT split modifiers, methods or formats of one action ("write a REST API in Go" and "query the data and render it as a table" are each ONE action). When sub_intents is present, the top-level refined_goal/intent_kind/tool_hints still describe the primary (first) action.
 An entity name that cannot be uniquely resolved IS a blocking ambiguity when the task depends on that entity's data: e.g. a company/brand named only by a colloquial or ambiguous name with no well-known unique referent ("金鹏科技" — which company?), or a stock mentioned without ticker/exchange. Ask for the identifying detail (full official name, ticker, exchange) via clarifications instead of guessing.
 Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
 When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
@@ -282,6 +329,8 @@ func BuildIntentPassPayload(r RunResult, meta RunMeta) map[string]any {
 		out["intent_kind"] = strings.TrimSpace(r.Artifact.IntentKind)
 		out["refined_goal_len"] = len(strings.TrimSpace(r.Artifact.RefinedGoal))
 		out["search_hints_count"] = len(r.Artifact.SearchHints)
+		// 复合意图占比可观测（2026-08-28 方案①）：0/缺省 = 单意图。
+		out["sub_intents_count"] = len(r.Artifact.SubIntents)
 	}
 	return out
 }
@@ -403,13 +452,64 @@ func parseArtifactJSON(text string) (*Artifact, string) {
 		}
 	}
 	var art Artifact
-	if json.Unmarshal([]byte(text), &art) != nil {
-		return nil, ""
+	if err := json.Unmarshal([]byte(text), &art); err != nil {
+		// sub_intents 坏条目（如 goal 写成数字）不拖垮主 artifact：剥离该键
+		// 重试一次；仍失败才按 parse 失败降级（2026-08-28 方案①容错）。
+		if retry, ok := stripJSONTopKey(text, "sub_intents"); ok {
+			if json.Unmarshal([]byte(retry), &art) != nil {
+				return nil, ""
+			}
+			art.SubIntents = nil
+		} else {
+			return nil, ""
+		}
 	}
 	if strings.TrimSpace(art.RefinedGoal) == "" {
 		return nil, ""
 	}
+	art.SubIntents = sanitizeSubIntents(art.SubIntents)
 	return &art, text
+}
+
+// stripJSONTopKey 删除顶层 JSON 对象的指定键（经 map[RawMessage] 往返，不依赖
+// 脆弱的正则切括号）。输入非法 JSON 时返回 ok=false。
+func stripJSONTopKey(text, key string) (string, bool) {
+	var m map[string]json.RawMessage
+	if json.Unmarshal([]byte(text), &m) != nil {
+		return "", false
+	}
+	if _, exists := m[key]; !exists {
+		return "", false
+	}
+	delete(m, key)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
+}
+
+// sanitizeSubIntents 条目级清洗：空 goal 条目丢弃；<2 条视为非复合（置 nil，
+// 防 sub_intents_count 监控口径失真）；超出 MaxSubIntents 截断。
+func sanitizeSubIntents(subs []SubIntent) []SubIntent {
+	if len(subs) == 0 {
+		return nil
+	}
+	out := make([]SubIntent, 0, len(subs))
+	for _, s := range subs {
+		if strings.TrimSpace(s.Goal) == "" {
+			continue
+		}
+		s.IntentKind = strings.TrimSpace(s.IntentKind)
+		out = append(out, s)
+	}
+	if len(out) < 2 {
+		return nil
+	}
+	if len(out) > MaxSubIntents {
+		out = out[:MaxSubIntents]
+	}
+	return out
 }
 
 // WrapUserMessage embeds the artifact for the main model (design: extend user turn without replacing).

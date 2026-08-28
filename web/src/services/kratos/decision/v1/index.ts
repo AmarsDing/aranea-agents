@@ -117,6 +117,8 @@ export type SessionGateStats = {
   compactCount: number | undefined;
   // 工具参数门禁 deny 记录条数。
   paramRuleDenies: number | undefined;
+  // 输入级确定性安全扫描命中记录条数（input_risk_flagged，2026-08-28 方案② S3）。
+  inputRiskFlagged: number | undefined;
 };
 
 export type GetSessionGateStatsResponse = {

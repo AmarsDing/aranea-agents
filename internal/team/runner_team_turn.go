@@ -154,25 +154,28 @@ func (r *Runner) prepareUserTurnOptions(
 
 	// 输入级确定性安全扫描（2026-08-28 方案② S3，补 team 路径 risk_flags
 	// 零消费缺口）：与 intent pass 的 LLM 成败无关，命中即发 gate 审计事件
-	// （tripped，观测语义不阻断）。content 是 leader 规划合成的成员指令，
-	// 风险语义继承自用户原始请求。
-	if flags := intent.ScanInputRisk(content); len(flags) > 0 {
+	// （tripped，观测语义不阻断——硬拦截保持在 L3 ParamRuleGate）。content
+	// 是团队 turn 的用户原始输入（validateTeamTurnInput 自 input.Content）。
+	inputRiskFlags := intent.ScanInputRisk(content)
+	if len(inputRiskFlags) > 0 {
 		decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
 			TriggerRule: decision.TriggerInputRiskFlagged,
 			Outcome:     "tripped",
-			Scenario:    "团队成员指令命中确定性风险扫描",
-			Reasoning:   fmt.Sprintf("flags=%v", flags),
+			Scenario:    "团队会话用户输入命中确定性风险扫描",
+			Reasoning:   fmt.Sprintf("flags=%v", inputRiskFlags),
 			GuardName:   "input_safety_scan",
 			RunID:       run.ID,
 			SessionID:   run.SessionID,
-			Extra:       map[string]any{"flags": strings.Join(flags, ",")},
+			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
 		})
 	}
 
 	shouldRunIntent := intent.ShouldRun(ar.agent, content)
+	artifactInjected := false
 	if shouldRunIntent {
-		// history 传 nil：成员 turn 的 content 是 leader 规划合成的指令（非用户原始
-		// 追问），无指代/省略需解析；注入会话历史反而可能干扰成员对指令的判定。
+		// history 传 nil：既有行为（2026-08-28 审查勘正：content 实为团队 turn
+		// 用户原始输入，非 leader 合成指令；是否补 history 提升追问解析另案
+		// 评估，本改动不动既有行为）。
 		intRes = intent.RunForAgent(ctx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
 		// P1-2 (2026-08-19): 记录团队 intent pass 旁路用量（此前完全漏记）。
 		r.recordAuxUsage(ctx, biz.AuxLLMUsageInput{
@@ -199,7 +202,14 @@ func (r *Runner) prepareUserTurnOptions(
 				}
 			}
 			intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
+			artifactInjected = true
 		}
+	}
+	if !artifactInjected && len(inputRiskFlags) > 0 {
+		// 方案② S3-2 降级注入（对齐 chat 路径）：intent pass 无产物（未运行/失败/
+		// 超时/parse 失败）但确定性扫描命中 → 注入风险提示，提醒主 LLM 对潜在
+		// 破坏性操作先确认再执行；不改变流程、不挂起。
+		intentRunOpts = append(intentRunOpts, intent.RunOptionInjectInputRisk(inputRiskFlags))
 	}
 	if len(ar.attRefs) > 0 {
 		var merr error

@@ -77,14 +77,49 @@ func InferPermissionMode(ag biz.Agent) PermissionMode {
 	return PermissionWorkspaceWrite
 }
 
+// permissionStateSkipProfiles are canonical profiles whose actual tool domain
+// the block text (workspace files / shell / desktop) does not describe:
+//   - spirit: orchestrator-only tools (plan_and_execute etc.), no FS/desktop —
+//     the hardcoded writes/approval inference would print a factually wrong
+//     "workspace-write with approval" claim.
+//   - system_memory / system_skills: custom butler toolsets injected outside
+//     the catalog; neither read-only nor workspace-write wording applies.
+var permissionStateSkipProfiles = map[string]bool{
+	"spirit":        true,
+	"system_memory": true,
+	"system_skills": true,
+}
+
 // PermissionStateBlock returns the tagged permission paragraph, or
-// empty when the agent has no runtime settings.
+// empty when the agent has no runtime settings, or when the block's
+// workspace-files/shell/desktop wording does not match the agent's
+// actual tool domain (see permissionStateSkipProfiles and the chat_only
+// business-minimal case below).
 func PermissionStateBlock(ag biz.Agent) string {
 	if ag.Settings == nil {
 		return ""
 	}
+	mode := InferPermissionMode(ag)
+	if mode != PermissionToolsOff {
+		canonical := biz.CanonicalToolProfile(ag.Settings.ToolsProfile)
+		if permissionStateSkipProfiles[canonical] {
+			return ""
+		}
+		if canonical == "chat_only" && mode == PermissionReadOnly {
+			// Business-domain minimal agents (e.g. ops_change_execution): the
+			// allow list holds only business tools (twin_*/gns3_*) with no
+			// coding write signal, so inference lands on read-only and the
+			// block would tell the model to refuse writes and "switch tool
+			// profile" — the exact hallucination behind the S05 high-risk
+			// tool refusal (session-eval-20260827 T2). Their real posture
+			// (HITL-gated high-risk calls) is documented in their own prompt
+			// files. chat_only agents with genuine write signals
+			// (WorkspaceWrite/NeedsApproval) keep the accurate block.
+			return ""
+		}
+	}
 	var body string
-	switch InferPermissionMode(ag) {
+	switch mode {
 	case PermissionToolsOff:
 		body = strings.TrimSpace(`## Current session permissions
 - Mode: tools disabled

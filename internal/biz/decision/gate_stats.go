@@ -28,6 +28,9 @@ type RunGateStats struct {
 	// ParamRuleDenies 是工具参数门禁 deny 记录条数（param_rule_deny，
 	// 79-runtime-governance R9；2026-08-27 二轮审查 H7 补入契约）。
 	ParamRuleDenies int
+	// InputRiskFlagged 是输入级确定性安全扫描命中记录条数
+	// （input_risk_flagged，2026-08-28 方案② S3）。
+	InputRiskFlagged int
 }
 
 // RunGateStatsRepo 是 run 级闸统计的窄读接口（同 RunCacheHitRatioRepo 的

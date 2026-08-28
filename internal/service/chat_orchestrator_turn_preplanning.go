@@ -143,7 +143,8 @@ func intentArtifactToBiz(art *intent.Artifact) *biz.IntentArtifact {
 		SuccessCriteria: art.SuccessCriteria,
 		Ambiguities:     art.Ambiguities,
 		SearchHints:     art.SearchHints,
-		ToolHints:       art.ToolHints,
+		// 2026-08-28 方案①：顶层与子意图 hints 并集透传 task planner。
+		ToolHints:       art.AllToolHints(),
 		RiskFlags:       art.RiskFlags,
 	}
 }

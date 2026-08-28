@@ -299,6 +299,53 @@ func TestReconcileToolAssembly_govClampedToReadOnly(t *testing.T) {
 	}
 }
 
+// Q10（session-eval-20260827，C+A 组合）：治理岗经 allow JSON 授 subagents 四件
+// 作分身执行兜底。不变式：profile_eff 仍 read_only（钳制不动 allow）、不报
+// GOV_NOT_READONLY、四件全部进有效工具面（种子 enabled=false 但属
+// registryOptInOnlyKeys，allow 命名即生效，不被 applyRegistryAdminDenials 硬 deny）。
+func TestReconcileToolAssembly_govSubagentAllowKeepsReadOnly(t *testing.T) {
+	ag := Agent{ID: "gm1", AgentKey: CompanyLeadAgentKeyPrefix + "acme__", AgentVariant: AgentVariantCompanyLead}
+	settings := map[string]AgentRuntimeSettings{
+		"gm1": {AgentID: "gm1", ToolsEnabled: true, ToolsProfile: "read_only",
+			ToolsAllowJSON: companyLeadSubagentAllowJSON, ToolsDenyJSON: "[]"},
+	}
+	catalog := append(reconcileHealthyCatalog(),
+		Tool{Key: "subagents_spawn", Category: "composition", Source: "builtin", Enabled: false},
+		Tool{Key: "subagents_list", Category: "composition", Source: "builtin", Enabled: false},
+		Tool{Key: "subagents_get", Category: "composition", Source: "builtin", Enabled: false},
+		Tool{Key: "subagents_cancel", Category: "composition", Source: "builtin", Enabled: false},
+	)
+	u := newReconcileTestUsecase([]Agent{ag}, catalog, settings)
+
+	report, err := u.ReconcileToolAssembly(context.Background())
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	row := reconcileFindRow(report, CompanyLeadAgentKeyPrefix+"acme__")
+	if row.ProfileEff != "read_only" {
+		t.Fatalf("gov with subagent allow must keep read_only effective profile, got %+v", row)
+	}
+	codes := reconcileIssueCodes(report, CompanyLeadAgentKeyPrefix+"acme__")
+	if _, ok := codes[ToolAssemblyCodeGovNotReadonly]; ok {
+		t.Fatalf("subagent allow must not trip GOV_NOT_READONLY, got %v", codes)
+	}
+	got := map[string]bool{}
+	for _, k := range row.EffectiveKeys {
+		got[k] = true
+	}
+	for _, want := range []string{"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"} {
+		if !got[want] {
+			t.Fatalf("effective keys missing %s: %v", want, row.EffectiveKeys)
+		}
+	}
+	// R17 边界：allow 不命名 Spirit 保留件时四件不得漏入有效面。
+	for _, reserved := range SpiritReservedToolKeys() {
+		if got[reserved] {
+			t.Fatalf("spirit reserved %s must stay disabled for gov agent", reserved)
+		}
+	}
+}
+
 // profile 非注册值：LOW UNDEFINED_PROFILE（归一化兜底仍按 coding 计算工具面）。
 func TestReconcileToolAssembly_undefinedProfile(t *testing.T) {
 	ag := Agent{ID: "a1", AgentKey: "worker"}

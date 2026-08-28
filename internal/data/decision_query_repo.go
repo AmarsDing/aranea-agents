@@ -203,6 +203,8 @@ func (r *decisionQueryRepo) RunGateStats(ctx context.Context, runID string) (dec
 			out.CompactCount++
 		case decision.TriggerParamRuleDeny:
 			out.ParamRuleDenies++
+		case decision.TriggerInputRiskFlagged:
+			out.InputRiskFlagged++
 		}
 	}
 	return out, entErrToBizErr(rows.Err(), "DECISION")
@@ -273,6 +275,8 @@ func (r *decisionQueryRepo) SessionGateStats(ctx context.Context, sessionID stri
 			out.CompactCount++
 		case decision.TriggerParamRuleDeny:
 			out.ParamRuleDenies++
+		case decision.TriggerInputRiskFlagged:
+			out.InputRiskFlagged++
 		}
 	}
 	return out, entErrToBizErr(rows.Err(), "DECISION")
