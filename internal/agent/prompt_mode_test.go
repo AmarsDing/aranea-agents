@@ -125,16 +125,15 @@ func TestSkillOptionsForAgent_SpiritDropsExecSuite(t *testing.T) {
 	if len(allowed) != 1 || allowed[0] != trpcllmagent.SkillToolLoad {
 		t.Fatalf("chat_only must allow only skill_load, got %v", allowed)
 	}
-	// A0.5 (2026-08-25): read_only 契约只有读类工具，技能执行套件必须降为
-	// KnowledgeOnly（管理层 agents tools_schema 立省 ~7.3K）；doc helpers
-	// （load/list/select 均为读操作）保留 profile 默认，不加白名单。
+	// P1: read_only 只挂 skill_load。list/select_docs 是框架注入，deferred
+	// 包装盖不住；管理层用 load 按需取正文即可。
 	ag.Settings.ToolsProfile = "read_only"
 	profile, hints = skillOptionsForAgent(ag)
 	if profile != trpcllmagent.SkillToolProfileKnowledgeOnly || hints {
 		t.Fatalf("read_only must be knowledge_only, got profile=%v hints=%v", profile, hints)
 	}
-	if allowedSkillToolsForAgent(ag) != nil {
-		t.Fatalf("read_only must keep profile default skill tools, got %v", allowedSkillToolsForAgent(ag))
+	if got := allowedSkillToolsForAgent(ag); len(got) != 1 || got[0] != trpcllmagent.SkillToolLoad {
+		t.Fatalf("read_only must allow only skill_load, got %v", got)
 	}
 	ag.Settings.ToolsProfile = "coding"
 	profile, _ = skillOptionsForAgent(ag)

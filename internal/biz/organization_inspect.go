@@ -18,8 +18,8 @@ type OrgInspectEntry struct {
 
 // OrgInspectView is the read-only org snapshot for GM / dept_lead.
 type OrgInspectView struct {
-	ScopeKey  string           `json:"scope_key"`
-	ScopeName string           `json:"scope_name"`
+	ScopeKey  string            `json:"scope_key"`
+	ScopeName string            `json:"scope_name"`
 	Entries   []OrgInspectEntry `json:"entries"`
 }
 

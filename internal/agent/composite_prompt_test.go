@@ -272,6 +272,21 @@ func TestCompositeMemoryCueWithHits_ReturnsMergedHits(t *testing.T) {
 	}
 }
 
+func TestDropLifestyleHitsForTaskQuery(t *testing.T) {
+	hits := []biz.CompositeRecallHit{
+		{Layer: "L3", Line: "用户喜欢吃日料和寿司", Score: 0.9},
+		{Layer: "L3", Line: "Prefers Go", Score: 0.8},
+	}
+	got := dropLifestyleHitsForTaskQuery("核对生产环境并生成报告", hits)
+	if len(got) != 1 || got[0].Line != "Prefers Go" {
+		t.Fatalf("task query must drop lifestyle hits, got %+v", got)
+	}
+	kept := dropLifestyleHitsForTaskQuery("周末去吃日料", hits)
+	if len(kept) != 2 {
+		t.Fatalf("lifestyle query must keep hits, got %+v", kept)
+	}
+}
+
 // TestCompositeMemoryCueWithHits_NoHits verifies empty recall yields no hits.
 func TestCompositeMemoryCueWithHits_NoHits(t *testing.T) {
 	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{

@@ -117,13 +117,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			confirmContent = fmt.Sprintf("上一条命令失败后，工具 %s 需要再次确认", toolKey)
 		}
 		attempts := 1 + h.extraConfirmAttempts()
-		var (
-			reply                string
-			err                  error
-			confirmationTimedOut bool
-			confirmActivityID    string
-			follower             bool
-		)
+		var confirmActivityID string
 		waitConfirm := func() (string, error, bool) {
 			var (
 				waitReply    string
@@ -131,124 +125,122 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				waitTimedOut bool
 			)
 			for attempt := 0; attempt < attempts; attempt++ {
-			content := confirmContent
-			if attempt > 0 {
-				content = fmt.Sprintf("确认已超时，请再次确认是否执行工具 %s（可重试，不会静默取消）", toolKey)
-			}
-			if emitter != nil {
-				id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
-					ToolName:       toolKey,
-					ToolArguments:  string(args.Arguments),
-					Content:        content,
-					ToolCallID:     args.ToolCallID,
-					Danger:         decision.reason == confirmReasonPolicyDanger || decision.reason == confirmReasonShellDanger,
-					AuthorAgentKey: h.ag.AgentKey,
+				content := confirmContent
+				if attempt > 0 {
+					content = fmt.Sprintf("确认已超时，请再次确认是否执行工具 %s（可重试，不会静默取消）", toolKey)
+				}
+				if emitter != nil {
+					id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
+						ToolName:       toolKey,
+						ToolArguments:  string(args.Arguments),
+						Content:        content,
+						ToolCallID:     args.ToolCallID,
+						Danger:         decision.reason == confirmReasonPolicyDanger || decision.reason == confirmReasonShellDanger,
+						AuthorAgentKey: h.ag.AgentKey,
+					})
+					if emitErr != nil {
+						h.deps.Logger().Warn("EmitConfirmRequest failed",
+							loggateway.StepID("agent.tool_confirm"),
+							loggateway.Err(emitErr))
+					} else {
+						confirmActivityID = id
+					}
+				}
+				confirmReqCtx := serviceawaitreply.WithToolConfirmRequest(ctx, serviceawaitreply.ToolConfirmRequest{
+					ToolKey:    toolKey,
+					ToolCallID: args.ToolCallID,
 				})
-				if emitErr != nil {
-					h.deps.Logger().Warn("EmitConfirmRequest failed",
+				waitStart := time.Now()
+				confirmCtx, confirmCancel := context.WithTimeout(confirmReqCtx, effectiveConfirmTimeout)
+				waitReply, waitErr = fn(confirmCtx)
+				waitMS := int(time.Since(waitStart).Milliseconds())
+				AddConfirmWaitMS(ctx, waitMS)
+				waitTimedOut = waitErr != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+				confirmCancel()
+				if emitter != nil && confirmActivityID != "" {
+					if waitTimedOut {
+						timeoutCtx := ctx
+						if attempt+1 < attempts {
+							timeoutCtx = biz.WithConfirmTimeoutRetrying(ctx)
+						}
+						if emitErr := emitter.EmitConfirmTimeout(timeoutCtx, confirmActivityID); emitErr != nil {
+							h.deps.Logger().Warn("EmitConfirmTimeout failed",
+								loggateway.StepID("agent.tool_confirm"),
+								loggateway.Err(emitErr))
+						}
+					} else {
+						approved := waitErr == nil && toolConfirmApproved(waitReply)
+						if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
+							h.deps.Logger().Warn("EmitConfirmResult failed",
+								loggateway.StepID("agent.tool_confirm"),
+								loggateway.Err(emitErr))
+						}
+					}
+				}
+				if waitTimedOut && attempt+1 < attempts {
+					h.deps.Logger().Info("tool confirmation timed out, re-issuing",
 						loggateway.StepID("agent.tool_confirm"),
-						loggateway.Err(emitErr))
-				} else {
-					confirmActivityID = id
+						loggateway.Str("tool", toolKey),
+						loggateway.Int("attempt", attempt+1))
+					continue
 				}
+				break
 			}
-			confirmReqCtx := serviceawaitreply.WithToolConfirmRequest(ctx, serviceawaitreply.ToolConfirmRequest{
-				ToolKey:    toolKey,
-				ToolCallID: args.ToolCallID,
-			})
-			waitStart := time.Now()
-			confirmCtx, confirmCancel := context.WithTimeout(confirmReqCtx, effectiveConfirmTimeout)
-			reply, err = fn(confirmCtx)
-			waitMS := int(time.Since(waitStart).Milliseconds())
-			AddConfirmWaitMS(ctx, waitMS)
-			confirmationTimedOut = err != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
-			confirmCancel()
-			if emitter != nil && confirmActivityID != "" {
-				if confirmationTimedOut {
-					timeoutCtx := ctx
-					if attempt+1 < attempts {
-						timeoutCtx = biz.WithConfirmTimeoutRetrying(ctx)
-					}
-					if emitErr := emitter.EmitConfirmTimeout(timeoutCtx, confirmActivityID); emitErr != nil {
-						h.deps.Logger().Warn("EmitConfirmTimeout failed",
-							loggateway.StepID("agent.tool_confirm"),
-							loggateway.Err(emitErr))
-					}
-				} else {
-					approved := err == nil && toolConfirmApproved(reply)
-					if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
-						h.deps.Logger().Warn("EmitConfirmResult failed",
-							loggateway.StepID("agent.tool_confirm"),
-							loggateway.Err(emitErr))
-					}
-				}
-			}
-			if confirmationTimedOut && attempt+1 < attempts {
-				h.deps.Logger().Info("tool confirmation timed out, re-issuing",
-					loggateway.StepID("agent.tool_confirm"),
-					loggateway.Str("tool", toolKey),
-					loggateway.Int("attempt", attempt+1))
-				continue
-			}
-			break
+			return waitReply, waitErr, waitTimedOut
 		}
+		reply, err, confirmationTimedOut, follower := waitConfirmCoalesced(sessionID, h.ag.ID, toolKey, ctx, waitConfirm)
 		if err != nil {
 			if confirmationTimedOut {
-				recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
-					ToolKey:      toolKey,
-					AgentID:      h.ag.ID,
-					Status:       "blocked",
-					ErrorCode:    event.ErrorCodeConfirmationTimeout,
-					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s x%d (decision_reason=%s)", effectiveConfirmTimeout, attempts, decision.reason),
-					InputPreview: previewFromToolArgs(args.Arguments),
-					StartedAt:    time.Now().UTC().Format(time.RFC3339),
-					EndedAt:      time.Now().UTC().Format(time.RFC3339),
-					Source:       biz.ToolInvocationSourceRuntime,
-					ToolCallID:   args.ToolCallID,
-					ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
-				}, nil, h.ag, h.deps)
-				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, "retryable_timeout")
+				if !follower {
+					recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
+						ToolKey:      toolKey,
+						AgentID:      h.ag.ID,
+						Status:       "blocked",
+						ErrorCode:    event.ErrorCodeConfirmationTimeout,
+						ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s x%d (decision_reason=%s)", effectiveConfirmTimeout, attempts, decision.reason),
+						InputPreview: previewFromToolArgs(args.Arguments),
+						StartedAt:    time.Now().UTC().Format(time.RFC3339),
+						EndedAt:      time.Now().UTC().Format(time.RFC3339),
+						Source:       biz.ToolInvocationSourceRuntime,
+						ToolCallID:   args.ToolCallID,
+						ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
+					}, nil, h.ag, h.deps)
+					h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, "retryable_timeout")
+				}
 				return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 的确认请求已连续 %d 次超时（每次 %s）。这不代表用户拒绝，也不是整步被静默取消——确认卡仍然有效，用户可随时批准。请告知用户界面上的确认已超时并可以重试，询问是否仍要执行；不要当作本步已取消。", errToolConfirmationRequired, toolKey, attempts, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
 			}
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {
-			// Grant side effects for grant-scoped approvals. The current
-			// invocation is always allowed; a failed grant write only means
-			// the next invocation prompts again (fail-closed).
 			h.applyGrantOutcome(ctx, sessionID, toolKey, reply)
-			// M80 1.5: approve 分支工具尚未执行、无 tool_invocations 行，
-			// decision_record 先行（tool_invocation_id=ToolCallID 允许悬空）。
-			h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "approved", reply, args.Arguments, "")
-			metrics.PluginInvokeTotal.WithLabelValues("confirm_gate", "before_tool", "success").Inc()
-			h.deps.Logger().Info("tool confirmation approved",
-				loggateway.StepID("agent.tool_confirm"),
-				loggateway.Str("tool", toolKey),
-				loggateway.Str("agent_id", h.ag.ID),
-				loggateway.Str("decision_reason", decision.reason))
-			// P1-10: mark context so ConfirmationGuardPlugin skips its own
-			// check. Without this, the plugin (which runs after Chain
-			// callbacks via mergeToolCallbacks) would re-block the tool that
-			// the user just approved. See E2E-P1-10.
+			h.maybeSessionGrantBatchTool(sessionID, toolKey)
+			if !follower {
+				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "approved", reply, args.Arguments, "")
+				metrics.PluginInvokeTotal.WithLabelValues("confirm_gate", "before_tool", "success").Inc()
+				h.deps.Logger().Info("tool confirmation approved",
+					loggateway.StepID("agent.tool_confirm"),
+					loggateway.Str("tool", toolKey),
+					loggateway.Str("agent_id", h.ag.ID),
+					loggateway.Str("decision_reason", decision.reason))
+			}
 			return &trpctool.BeforeToolResult{Context: plugintrpc.WithToolConfirmHandled(ctx)}, nil
 		}
-		recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
-			ToolKey:      toolKey,
-			AgentID:      h.ag.ID,
-			Status:       "blocked",
-			ErrorCode:    event.ErrorCodeConfirmationDenied,
-			ErrorMessage: fmt.Sprintf("user denied tool confirmation (decision_reason=%s)", decision.reason),
-			InputPreview: previewFromToolArgs(args.Arguments),
-			StartedAt:    time.Now().UTC().Format(time.RFC3339),
-			EndedAt:      time.Now().UTC().Format(time.RFC3339),
-			Source:       biz.ToolInvocationSourceRuntime,
-			ToolCallID:   args.ToolCallID,
-			ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
-		}, nil, h.ag, h.deps)
-		// M80 1.5: 用户拒绝。
-		h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", reply, args.Arguments, "")
-		// P1-3: 用户拒绝是显式 Reject 决策（CustomResult 短路），不走 error——error 语义保留给拦截器自身故障，且 error
-		// 路径会触发框架 "Before tool callback failed" Errorf 误报。
+		if !follower {
+			recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
+				ToolKey:      toolKey,
+				AgentID:      h.ag.ID,
+				Status:       "blocked",
+				ErrorCode:    event.ErrorCodeConfirmationDenied,
+				ErrorMessage: fmt.Sprintf("user denied tool confirmation (decision_reason=%s)", decision.reason),
+				InputPreview: previewFromToolArgs(args.Arguments),
+				StartedAt:    time.Now().UTC().Format(time.RFC3339),
+				EndedAt:      time.Now().UTC().Format(time.RFC3339),
+				Source:       biz.ToolInvocationSourceRuntime,
+				ToolCallID:   args.ToolCallID,
+				ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
+			}, nil, h.ag, h.deps)
+			h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", reply, args.Arguments, "")
+		}
 		return callbacks.Reject(fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
 	}
 
@@ -265,10 +257,77 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		ToolCallID:   args.ToolCallID,
 		ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 	}, nil, h.ag, h.deps)
-	// M80 1.5: 无回复通道按拒绝处理，block_cause 标记环境原因（非用户意愿）。
 	h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", "", args.Arguments, "no_reply_channel")
-	// P1-3: 无回复通道 = 显式 Reject（环境能力不满足，非拦截器故障）。
 	return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
+}
+
+// confirmTimeoutForTool returns the HITL wait budget. Tests may override via
+// hook.confirmTimeout. Spawn cards are shorter (2m) so a burst does not pin
+// the UI for 5m x N; shell/default stay at 5m.
+func confirmTimeoutForTool(toolKey string, override time.Duration) time.Duration {
+	if override > 0 {
+		return override
+	}
+	switch toolKey {
+	case "subagents_spawn":
+		return 2 * time.Minute
+	case "send_email", "message":
+		return 3 * time.Minute
+	default:
+		return defaultToolConfirmationTimeout
+	}
+}
+
+// sessionBatchGrantTool is confirmed once per session after the first approve
+// (spawn 7→1: remaining parallel/follow-up spawns reuse the grant).
+func sessionBatchGrantTool(toolKey string) bool {
+	return toolKey == "subagents_spawn"
+}
+
+func (h *toolConfirmationBeforeHook) maybeSessionGrantBatchTool(sessionID, toolKey string) {
+	if h == nil || h.gate == nil || h.gate.sessionGrants == nil {
+		return
+	}
+	if !sessionBatchGrantTool(toolKey) {
+		return
+	}
+	h.gate.sessionGrants.GrantSession(sessionID, h.ag.ID, toolKey)
+}
+
+type confirmCoalesceSlot struct {
+	done     chan struct{}
+	reply    string
+	err      error
+	timedOut bool
+}
+
+var confirmCoalesce sync.Map
+
+// waitConfirmCoalesced lets parallel subagents_spawn share one confirm card.
+// The first waiter is the leader and runs wait(); followers block on the
+// same result. Non-spawn tools always run wait() themselves.
+func waitConfirmCoalesced(sessionID, agentID, toolKey string, ctx context.Context, wait func() (string, error, bool)) (reply string, err error, timedOut, follower bool) {
+	if !sessionBatchGrantTool(toolKey) || sessionID == "" || agentID == "" {
+		reply, err, timedOut = wait()
+		return
+	}
+	key := sessionID + "\x00" + agentID + "\x00" + toolKey
+	slot := &confirmCoalesceSlot{done: make(chan struct{})}
+	actual, loaded := confirmCoalesce.LoadOrStore(key, slot)
+	s := actual.(*confirmCoalesceSlot)
+	if loaded {
+		select {
+		case <-s.done:
+			return s.reply, s.err, s.timedOut, true
+		case <-ctx.Done():
+			return "", ctx.Err(), false, true
+		}
+	}
+	reply, err, timedOut = wait()
+	s.reply, s.err, s.timedOut = reply, err, timedOut
+	close(s.done)
+	confirmCoalesce.Delete(key)
+	return reply, err, timedOut, false
 }
 
 // toolConfirmSessionID extracts the session ID from the invocation context.

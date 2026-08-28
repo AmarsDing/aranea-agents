@@ -923,4 +923,25 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value).toBeNull();
     });
   });
+
+  describe('run heartbeat (system.heartbeat)', () => {
+    it('maps executing current_step to heartbeat loading text', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onRunHeartbeat } = useContextualLoadingMessage(isReplaying);
+
+      onRunHeartbeat({ Message: 'run still executing', Meta: { current_step: 'executing' } });
+
+      expect(loadingMessage.value).not.toBeNull();
+      expect(loadingMessage.value!.text).toContain('思考');
+      expect(loadingMessage.value!.icon).toBe('favorite');
+    });
+
+    it('isReplaying suppresses heartbeat messages', () => {
+      const isReplaying = ref(true);
+      const { loadingMessage, onRunHeartbeat } = useContextualLoadingMessage(isReplaying);
+
+      onRunHeartbeat({ Message: 'run still executing', Meta: { current_step: 'executing' } });
+      expect(loadingMessage.value).toBeNull();
+    });
+  });
 });

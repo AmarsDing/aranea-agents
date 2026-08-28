@@ -301,13 +301,11 @@ func TestTaskPlanner_QuickAssess_ExplicitToolRequestForcesPlanning(t *testing.T)
 	}
 }
 
-// TestTaskPlanner_QuickAssess_TaskWordWhitelistForcesPlanning 钉住包B B2
-// （session-eval-20260825）任务词白名单 override：命中产出/方案/组织/安排/
-// 梳理/汇报/对比/总结/检查/排查 的消息是工作请求，不得判 simple。管理层
-// 路由失效语料（P-INTENT-SKIP）：任务型消息被评分器判 simple → skip
-// intent pass → GM 越权代答。升级至 Moderate 同时修正 skip 门与
-// force-planning 门。反向风险钉住：闲聊/漂移消息不得误升（S01/S11 防回归）。
-func TestTaskPlanner_QuickAssess_TaskWordWhitelistForcesPlanning(t *testing.T) {
+// TestTaskPlanner_QuickAssess_TaskWordDoesNotForceTeamPlanning 钉住 P0 档位：
+// 任务词只禁止 skip intent（HasTaskActionSignal），不得把 QuickAssess 抬到
+// Moderate 从而 ForcePlanning。S08「出一条脚本」、运维排查、单交付物仍走
+// 本 Agent 工具面；组队只看 HasTeamModeEvidence（本测负例 + 派发正例）。
+func TestTaskPlanner_QuickAssess_TaskWordDoesNotForceTeamPlanning(t *testing.T) {
 	impl := &taskPlannerImpl{lg: loggateway.NewNoop()}
 	ctx := context.Background()
 
@@ -316,23 +314,21 @@ func TestTaskPlanner_QuickAssess_TaskWordWhitelistForcesPlanning(t *testing.T) {
 		message    string
 		wantForced bool // expect level >= Moderate
 	}{
-		// 管理层路由失效语料（战役 S08）
-		{"汇报 task word", "把本周告警数据整理成汇报材料", true},
-		{"排查 task word", "请排查杭州滨江机房核心交换机最近一次告警的根因", true},
-		// 词表逐词覆盖
-		{"产出", "本季度收益产出情况如何", true},
-		{"方案", "给我一个容灾方案", true},
-		{"组织", "组织一次季度复盘会", true},
-		{"安排", "安排下周的值班表", true},
-		{"梳理", "梳理一下现有的接口依赖", true},
-		{"对比", "对比两个版本的性能差异", true},
-		{"总结", "总结这次故障的教训", true},
-		{"检查", "检查一下备份任务是否正常", true},
-		// 反向：闲聊/漂移消息不得误升（P2 编排过度防回归）
+		{"汇报 task word", "把本周告警数据整理成汇报材料", false},
+		{"排查 task word", "请排查杭州滨江机房核心交换机最近一次告警的根因", false},
+		{"产出", "本季度收益产出情况如何", false},
+		{"方案", "给我一个容灾方案", false},
+		{"组织会议", "组织一次季度复盘会", false},
+		{"安排", "安排下周的值班表", false},
+		{"梳理", "梳理一下现有的接口依赖", false},
+		{"对比", "对比两个版本的性能差异", false},
+		{"总结", "总结这次故障的教训", false},
+		{"检查", "检查一下备份任务是否正常", false},
 		{"simple greeting", "你好", false},
 		{"simple chitchat", "嗯嗯，我明白了，那就先这样吧", false},
 		{"simple question", "今天天气怎么样", false},
 		{"topic drift", "对了，你平时喜欢什么音乐", false},
+		{"dispatch S06", "让市场部出一版 Q3 推广文案框架", true},
 	}
 
 	for _, tt := range tests {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -408,5 +409,65 @@ func TestToolConfirmationHook_ConfirmRequestCarriesAgentKey(t *testing.T) {
 	}
 	if got := emitter.confirmParams[0].AuthorAgentKey; got != "spirit-worker-a" {
 		t.Fatalf("AuthorAgentKey=%q want %q", got, "spirit-worker-a")
+	}
+}
+
+func TestConfirmTimeoutForTool(t *testing.T) {
+	if confirmTimeoutForTool("subagents_spawn", 0) != 2*time.Minute {
+		t.Fatal("spawn ttl")
+	}
+	if confirmTimeoutForTool("shell_exec", 0) != defaultToolConfirmationTimeout {
+		t.Fatal("shell default ttl")
+	}
+	if confirmTimeoutForTool("subagents_spawn", 50*time.Millisecond) != 50*time.Millisecond {
+		t.Fatal("override wins")
+	}
+}
+
+func TestToolConfirmationHook_SpawnCoalescesParallelCards(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"subagents_spawn": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	emitter := &fakeFactoryEmitter{}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	ctx := grantTestCtx("sess-1", func(ctx context.Context) (string, error) {
+		close(started)
+		<-release
+		return "approved", nil
+	})
+	ctx = biz.WithActivityEmitter(ctx, emitter)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "subagents_spawn", ToolCallID: "c1"})
+		errCh <- err
+	}()
+	<-started
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "subagents_spawn", ToolCallID: "c2"})
+		errCh <- err
+	}()
+	time.Sleep(30 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("coalesced spawn confirm err: %v", err)
+		}
+	}
+	if n := len(emitter.confirmParams); n != 1 {
+		t.Fatalf("confirm cards=%d want 1", n)
+	}
+	if !gate.sessionGrants.HasSession("sess-1", "agent-1", "subagents_spawn") {
+		t.Fatal("first spawn approve must session-grant remaining spawns")
 	}
 }

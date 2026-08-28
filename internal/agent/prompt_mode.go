@@ -90,12 +90,13 @@ func skillOptionsForAgent(ag biz.Agent) (trpcllmagent.SkillToolProfile, bool) {
 // entry; docs can ride on skill_load args) and drop skill_select_docs /
 // skill_list_docs — those are framework-injected after deferred wrapping, so
 // identity-mapping them in the catalog cannot hide their schema.
+// read_only / minimal / research also keep skill_load only (P1 schema ~7.3K).
 func allowedSkillToolsForAgent(ag biz.Agent) []trpcllmagent.SkillTool {
 	if ag.Settings == nil {
 		return nil
 	}
 	switch strings.ToLower(strings.TrimSpace(ag.Settings.ToolsProfile)) {
-	case "spirit", "chat_only":
+	case "spirit", "chat_only", "read_only", "minimal", "research":
 		return []trpcllmagent.SkillTool{trpcllmagent.SkillToolLoad}
 	}
 	return nil
