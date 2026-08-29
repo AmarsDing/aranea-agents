@@ -274,7 +274,7 @@ function onConfirm(reply: ToolConfirmReply) {
     font-weight: 600
     padding: 1px 6px
     border-radius: 4px
-    color: var(--color-on-accent, #fff)
+    color: var(--color-on-accent)
     background: var(--color-danger)
 
   &__countdown
@@ -345,19 +345,19 @@ function onConfirm(reply: ToolConfirmReply) {
 
     &--approve
       background: var(--color-success)
-      color: var(--color-on-accent, #fff)
+      color: var(--color-on-accent)
 
     &--reject
       background: var(--color-danger)
-      color: var(--color-on-accent, #fff)
+      color: var(--color-on-accent)
 
     &--approve-session
       background: var(--color-primary)
-      color: var(--color-on-accent, #fff)
+      color: var(--color-on-accent)
 
     &--approve-always
       background: var(--color-accent)
-      color: var(--color-on-accent, #fff)
+      color: var(--color-on-accent)
 
   &__summary
     color: var(--color-text-secondary)

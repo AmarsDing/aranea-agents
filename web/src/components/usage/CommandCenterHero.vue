@@ -161,8 +161,8 @@ onUnmounted(() => {
     padding: 18px 16px
     min-height: 88px
     border-radius: 14px
-    background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-    border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.08))
+    background: var(--color-background-elevated)
+    border: 1px solid var(--glass-border)
     transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease
     text-decoration: none
     cursor: pointer
@@ -181,17 +181,17 @@ onUnmounted(() => {
     color: white
     flex-shrink: 0
     &--agent
-      background: var(--color-accent-indigo, #4F46E5)
+      background: var(--color-accent-indigo)
     &--provider
-      background: var(--color-accent-blue, #2563EB)
+      background: var(--color-accent-blue)
     &--category
-      background: var(--color-accent-indigo-dark, #7C3AED)
+      background: var(--color-accent-indigo-dark)
     &--team
-      background: var(--color-accent-cyan, #0891B2)
+      background: var(--color-accent-cyan)
     &--session
-      background: var(--color-accent-green, #059669)
+      background: var(--color-accent-green)
     &--token
-      background: var(--color-accent, #D4891A)
+      background: var(--color-accent)
 
   &__stat-body
     display: flex
@@ -209,7 +209,7 @@ onUnmounted(() => {
     font-variant-numeric: tabular-nums
 
     &--tech
-      background: linear-gradient(135deg, var(--color-accent-indigo, #4F46E5), var(--color-accent-blue, #2563EB))
+      background: linear-gradient(135deg, var(--color-accent-indigo), var(--color-accent-blue))
       -webkit-background-clip: text
       -webkit-text-fill-color: transparent
       background-clip: text
@@ -225,8 +225,8 @@ onUnmounted(() => {
 
 body.body--dark
   .command-center-hero__stat
-    background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
-    border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
+    background: var(--color-background-elevated)
+    border-color: var(--glass-border)
     &--link:hover
       border-color: rgba(255, 255, 255, 0.14)
 

@@ -122,7 +122,7 @@ const shapeStyle = computed(() => {
 }
 
 .ug-node--focus .ug-node__shape {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ug-color, #9e9e9e) 35%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ug-color) 35%, transparent);
 }
 
 .ug-node--selected .ug-node__shape {

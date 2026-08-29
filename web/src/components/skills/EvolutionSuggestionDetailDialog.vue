@@ -132,12 +132,12 @@ function formatJson(obj: Record<string, unknown>): string {
 
 <style scoped lang="sass">
 .evolution-detail-section
-  border: 1px solid var(--glass-border, rgba(0,0,0,0.08))
+  border: 1px solid var(--glass-border)
   border-radius: 8px
   margin-bottom: 8px
 
 .evolution-detail-pre
-  background: var(--glass-elevated, rgba(0,0,0,0.03))
+  background: var(--glass-elevated)
   border-radius: 6px
   padding: 12px
   font-size: 13px

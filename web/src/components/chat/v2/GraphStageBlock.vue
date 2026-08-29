@@ -480,7 +480,7 @@ const derivedStatus = computed<GraphStageStatus>(() => {
 
 .graph-edge
   fill: none
-  stroke: var(--color-text-tertiary, rgba(150, 150, 150, 0.6))
+  stroke: var(--color-text-tertiary)
   stroke-width: 1.8
   transition: opacity 0.2s ease, stroke 0.2s ease, stroke-width 0.2s ease
 
@@ -509,7 +509,7 @@ const derivedStatus = computed<GraphStageStatus>(() => {
 
 /* hover 节点时高亮上下游依赖路径 */
 .graph-edge--highlighted
-  stroke: var(--q-primary, #00bcd4)
+  stroke: var(--q-primary)
   stroke-width: 2.4
 
 .graph-edge--dimmed

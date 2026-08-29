@@ -22,7 +22,7 @@
             <polyline
               :points="sparklinePoints"
               fill="none"
-              stroke="var(--color-accent-blue, #2563EB)"
+              stroke="var(--color-accent-blue)"
               stroke-width="1.5"
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -68,7 +68,7 @@ const sparklinePoints = computed(() => {
 
 <style lang="sass">
 .command-center-stat-panel__icon--session
-  color: var(--color-accent-blue, #2563EB)
+  color: var(--color-accent-blue)
 
 body.body--dark .command-center-stat-panel__icon--session
   color: var(--color-accent-blue)

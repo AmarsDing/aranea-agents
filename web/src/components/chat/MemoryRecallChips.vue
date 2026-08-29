@@ -174,8 +174,8 @@ function onOpen(hit: MemoryRecallHit) {
     border-radius: 4px
 
     &--l1
-      color: var(--color-info, #5aa7ff)
-      background: color-mix(in srgb, var(--color-info, #5aa7ff) 14%, transparent)
+      color: var(--color-info)
+      background: color-mix(in srgb, var(--color-info) 14%, transparent)
 
     &--l2
       color: var(--color-accent)

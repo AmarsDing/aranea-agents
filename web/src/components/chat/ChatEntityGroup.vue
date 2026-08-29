@@ -158,7 +158,7 @@ function onDragEnd() {
 }
 
 .chat-entity-item--chosen {
-  box-shadow: 0 4px 12px var(--glass-border, rgb(0 0 0 / 15%));
+  box-shadow: 0 4px 12px var(--glass-border);
   transform: translateY(-2px);
 }
 

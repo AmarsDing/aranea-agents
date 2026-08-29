@@ -144,19 +144,19 @@ const { t } = useI18n();
   padding: 4px 2px;
   border-radius: 999px;
   background: rgba(5, 8, 16, 0.72);
-  border: 1px solid var(--kg-edge, #1a3a4a);
+  border: 1px solid var(--kg-edge);
   backdrop-filter: blur(6px);
 
   :deep(.q-btn) {
-    color: var(--kg-text-dim, #7fa3b8);
+    color: var(--kg-text-dim);
 
     &:hover {
-      color: var(--kg-cyan, #00d4ff);
+      color: var(--kg-cyan);
     }
   }
 
   &__btn--on {
-    color: var(--kg-cyan, #00d4ff) !important;
+    color: var(--kg-cyan) !important;
     text-shadow: 0 0 6px rgba(0, 212, 255, 0.35);
   }
 
@@ -164,23 +164,23 @@ const { t } = useI18n();
     min-width: 180px;
     max-width: 240px;
     padding: 10px 12px;
-    background: var(--kg-panel, rgba(5, 8, 16, 0.88));
-    border: 1px solid var(--kg-edge, #1a3a4a);
+    background: var(--kg-panel);
+    border: 1px solid var(--kg-edge);
     box-shadow: 0 0 15px rgba(0, 212, 255, 0.13);
-    color: var(--kg-text, #cfe8f5);
+    color: var(--kg-text);
   }
 
   &__legend-section + &__legend-section {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid var(--kg-edge, #1a3a4a);
+    border-top: 1px solid var(--kg-edge);
   }
 
   &__legend-title {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: var(--kg-text, #cfe8f5);
+    color: var(--kg-text);
     margin-bottom: 6px;
   }
 
@@ -196,7 +196,7 @@ const { t } = useI18n();
   &__legend-count {
     margin-left: auto;
     font-size: 11px;
-    color: var(--kg-text-dim, #7fa3b8);
+    color: var(--kg-text-dim);
     font-variant-numeric: tabular-nums;
   }
 

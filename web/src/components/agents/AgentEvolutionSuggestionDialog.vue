@@ -86,8 +86,8 @@ function formatDate(iso: string): string {
   word-break: break-word
 
 .evolution-suggestion-detail__pre
-  background: var(--glass-elevated, rgba(0, 0, 0, 0.03))
-  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08))
+  background: var(--glass-elevated)
+  border: 1px solid var(--glass-border)
   border-radius: 6px
   padding: 12px
   font-size: 13px

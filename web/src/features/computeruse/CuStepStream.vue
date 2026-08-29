@@ -140,7 +140,7 @@ onMounted(async () => {
     font-weight: 600
     cursor: pointer
     background: var(--color-danger)
-    color: var(--color-on-accent, #fff)
+    color: var(--color-on-accent)
     transition: opacity 0.15s ease
 
     &:hover
@@ -239,7 +239,7 @@ onMounted(async () => {
     border-radius: 4px
     flex-shrink: 0
     background: var(--color-danger)
-    color: var(--color-on-accent, #fff)
+    color: var(--color-on-accent)
 
   &__duration
     margin-left: auto

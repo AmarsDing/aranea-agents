@@ -518,6 +518,16 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 		resp.ErrorMessage = errMsg
 		resp.UpdatedAt = updatedAt
 	} else if snap, ok := s.orch.hydrateRunStatusFromSession(ctx, sessionID); ok {
+		// SP-1e（R3-Q13）：终态持久化会清除 run_id（chat_run_gateway.go
+		// terminalRunStatus 分支），hydration 得到 RunID="" 的残留快照——
+		// 对其返回 200 + 过期 status/updatedAt 即"脏数据"（S05/S10 实证：
+		// 前一天已取消的 run 仍返回 cancelled）。run 不存在时返回 404；
+		// 前端 hydrateFromHttpIfNeeded 静默忽略错误，WS 事件仍是状态主源。
+		// 非终态（running/awaiting_user）run_id 持久化保留，崩溃恢复 hydration
+		// 不受影响。
+		if strings.TrimSpace(snap.RunID) == "" {
+			return nil, apierror.NotFound(apierror.DomainChat, "no run found for session")
+		}
 		resp.RunId = snap.RunID
 		resp.Status = snap.Status
 		resp.ErrorMessage = snap.ErrorMessage

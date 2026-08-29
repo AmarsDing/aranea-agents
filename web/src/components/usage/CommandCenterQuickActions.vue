@@ -65,8 +65,8 @@ const actions = [
   gap: 12px
   padding: 14px 16px
   border-radius: 14px
-  background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-  border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.08))
+  background: var(--color-background-elevated)
+  border: 1px solid var(--glass-border)
   text-decoration: none
   color: inherit
   transition: border-color 0.2s ease, background 0.2s ease
@@ -85,9 +85,9 @@ const actions = [
     color: white
     flex-shrink: 0
     &--chat
-      background: var(--color-accent-blue, #2563EB)
+      background: var(--color-accent-blue)
     &--agent
-      background: var(--color-accent-indigo, #4F46E5)
+      background: var(--color-accent-indigo)
     &--cron
       background: var(--color-accent)
     &--settings
@@ -114,16 +114,16 @@ const actions = [
 
 body.body--dark
   .command-center-quick-action
-    background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
-    border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
+    background: var(--color-background-elevated)
+    border-color: var(--glass-border)
     &:hover
       border-color: var(--glass-border-hover)
 
   .command-center-quick-action__icon--chat
-    background: var(--color-accent-blue, #3B82F6)
+    background: var(--color-accent-blue)
 
   .command-center-quick-action__icon--agent
-    background: var(--color-accent-indigo, #818CF8)
+    background: var(--color-accent-indigo)
 
   .command-center-quick-action__icon--cron
     background: var(--color-accent)

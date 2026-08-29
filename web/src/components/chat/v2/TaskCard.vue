@@ -382,11 +382,11 @@ function copyMessage() {
   margin: 4px 0 8px
   padding: 8px 12px
   border-radius: 10px
-  border: 1px solid var(--color-warning, #ed6c02)
-  background: color-mix(in srgb, var(--color-warning, #ed6c02) 8%, transparent)
+  border: 1px solid var(--color-warning)
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent)
 
   &__icon
-    color: var(--color-warning, #ed6c02)
+    color: var(--color-warning)
     flex-shrink: 0
 
   &__label
@@ -426,7 +426,7 @@ function copyMessage() {
     justify-content: center
     font-size: 12px
     font-weight: 600
-    color: var(--color-on-accent, #fff)
+    color: var(--color-on-accent)
     background: var(--color-accent)
     user-select: none
 
@@ -447,12 +447,12 @@ function copyMessage() {
     white-space: nowrap
 
     &--success
-      color: var(--color-success, #2e7d32)
-      background: color-mix(in srgb, var(--color-success, #2e7d32) 10%, transparent)
+      color: var(--color-success)
+      background: color-mix(in srgb, var(--color-success) 10%, transparent)
 
     &--danger
-      color: var(--color-danger, #d32f2f)
-      background: color-mix(in srgb, var(--color-danger, #d32f2f) 10%, transparent)
+      color: var(--color-danger)
+      background: color-mix(in srgb, var(--color-danger) 10%, transparent)
 
     &--neutral
       color: var(--color-text-secondary)
@@ -515,10 +515,10 @@ function copyMessage() {
   background: var(--glass-surface)
 
   &--error
-    border-color: var(--color-danger, #d32f2f)
+    border-color: var(--color-danger)
 
   &__error-text
-    color: var(--color-danger, #d32f2f)
+    color: var(--color-danger)
 
 /* 水合中 shimmer 骨架（thinking/action/reply 三条） */
 .task-card__skeleton

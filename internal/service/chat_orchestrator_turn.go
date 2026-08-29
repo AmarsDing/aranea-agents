@@ -300,6 +300,31 @@ func resolveRootTaskActivityID(input biz.TurnInput) chatagent.RootTaskActivityID
 	return chatagent.RootTaskActivityID(uuid.NewString())
 }
 
+// preAssignedMessageIDKey 是 submit 同步 ACK 预分配消息 ID 的 ctx 键（SP-1e）。
+// submitChatMessageAsync 在异步执行前生成 UUID 并注入 bgCtx，
+// runSingleAgentViaTRPC 优先复用为 RootTaskActivityID，保证 HTTP ACK 的
+// messageId/turnId 与最终持久化的用户消息 ID（userMsg.ID == userMsg.TurnID）
+// 一致。刻意独立于 RootTaskActivityID ctx 键：pending-queue dequeue 路径的
+// loopCtx 携带父 turn 的 RootTaskActivityID，若复用同键会让出队消息继承父 ID
+// 撞 tasks_v2/messages 主键。
+type preAssignedMessageIDKey struct{}
+
+func contextWithPreAssignedMessageID(ctx context.Context, id string) context.Context {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, preAssignedMessageIDKey{}, id)
+}
+
+func preAssignedMessageIDFromCtx(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(preAssignedMessageIDKey{}).(string)
+	return strings.TrimSpace(v)
+}
+
 // runSingleAgentViaTRPC runs a single agent turn via the trpc-agent-go framework.
 func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	ctx context.Context,
@@ -603,7 +628,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
 	ctx = chatagent.WithTurnCuePrefetch(ctx, buildResult.prefetch)
 
-	preGeneratedTaskID := resolveRootTaskActivityID(input)
+	// SP-1e：submit 路径预分配的 message ID（同步 ACK 已返回给客户端）优先，
+	// 保证 ACK 的 messageId/turnId 与落库的用户消息 ID 一致；其余入口
+	// （WS/pending-dequeue/channel/cron）无预分配，走原解析逻辑。
+	preGeneratedTaskID := chatagent.RootTaskActivityID(preAssignedMessageIDFromCtx(ctx))
+	if preGeneratedTaskID == "" {
+		preGeneratedTaskID = resolveRootTaskActivityID(input)
+	}
 	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)
 
 	// Session orchestration phase is resolved from persisted teams before the

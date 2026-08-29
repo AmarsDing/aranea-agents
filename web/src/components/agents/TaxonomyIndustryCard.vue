@@ -264,7 +264,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
     box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), var(--glass-inner-highlight)
 
   &.is-disabled
-    background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-page-tint, #FBFCFF))
+    background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-page-tint))
 
     .taxonomy-industry-card__name,
     .taxonomy-industry-card__metric-value
@@ -295,7 +295,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   font-weight: 700
   font-size: 14px
   letter-spacing: 0.02em
-  color: var(--color-on-accent, #fff)
+  color: var(--color-on-accent)
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06)
   user-select: none
 
@@ -332,12 +332,12 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   white-space: nowrap
 
   &.is-on
-    background: var(--color-success-soft, #ECFDF3)
-    color: var(--color-accent-green, #2D6A4F)
+    background: var(--color-success-soft)
+    color: var(--color-accent-green)
 
   &.is-off
     background: rgba(229, 92, 92, 0.1)
-    color: var(--color-danger, #B13939)
+    color: var(--color-danger)
 
 .taxonomy-industry-card__status-dot
   width: 6px
@@ -360,7 +360,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
 /* ── Divider ── */
 .taxonomy-industry-card__divider
   border: 0
-  border-top: 1px solid var(--color-border-soft, rgba(141, 110, 99, 0.12))
+  border-top: 1px solid var(--color-border-soft)
   margin: 0 0 12px
 
 /* ── Metrics ── */
@@ -406,7 +406,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   transition: background 0.12s, color 0.12s
 
   &:hover
-    background: var(--interaction-surface-hover, #FDF6E8)
+    background: var(--interaction-surface-hover)
     color: var(--color-text-primary)
 
 .taxonomy-industry-card__depts-list
@@ -418,7 +418,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
 .taxonomy-industry-card__dept
   border: 1px solid var(--glass-border)
   border-radius: 12px
-  background: color-mix(in srgb, var(--color-page-tint, #FEF3E4) 20%, var(--glass-surface))
+  background: color-mix(in srgb, var(--color-page-tint) 20%, var(--glass-surface))
   overflow: hidden
 
 .taxonomy-industry-card__dept-head
@@ -462,7 +462,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   align-items: center
   justify-content: space-between
   padding-top: 10px
-  border-top: 1px solid var(--color-border-soft, rgba(141, 110, 99, 0.12))
+  border-top: 1px solid var(--color-border-soft)
 
 .taxonomy-industry-card__action-group
   display: flex
@@ -474,7 +474,7 @@ body.body--dark .taxonomy-industry-card
   background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
 
   .taxonomy-industry-card__dept
-    background: color-mix(in srgb, var(--color-page-tint, #1a1f2e) 20%, var(--glass-elevated))
+    background: color-mix(in srgb, var(--color-page-tint) 20%, var(--glass-elevated))
 
   .taxonomy-industry-card__status.is-on
     background: rgba(63, 224, 160, 0.12)

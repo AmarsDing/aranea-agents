@@ -415,7 +415,7 @@ body.body--dark
 // ── QMenu / QSelect 下拉面板滚动条 ──
 .q-menu
   scrollbar-width: thin
-  scrollbar-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18)) transparent
+  scrollbar-color: var(--table-scrollbar-thumb) transparent
 
   &::-webkit-scrollbar
     width: 5px
@@ -427,15 +427,15 @@ body.body--dark
     border-radius: 4px
     border: 1px solid transparent
     background-clip: content-box
-    background-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18))
+    background-color: var(--table-scrollbar-thumb)
 
   &::-webkit-scrollbar-thumb:hover
-    background-color: var(--table-scrollbar-thumb-hover, rgba(100, 116, 139, 0.35))
+    background-color: var(--table-scrollbar-thumb-hover)
 
 // ── QTable 全局滚动条主题 ──
 .q-table__middle
   scrollbar-width: thin
-  scrollbar-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18)) transparent
+  scrollbar-color: var(--table-scrollbar-thumb) transparent
 
   &::-webkit-scrollbar
     height: 6px
@@ -448,10 +448,10 @@ body.body--dark
     border-radius: 4px
     border: 1px solid transparent
     background-clip: content-box
-    background-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18))
+    background-color: var(--table-scrollbar-thumb)
 
   &::-webkit-scrollbar-thumb:hover
-    background-color: var(--table-scrollbar-thumb-hover, rgba(100, 116, 139, 0.35))
+    background-color: var(--table-scrollbar-thumb-hover)
 
 // 与旧类名兼容
 .panel-scroll

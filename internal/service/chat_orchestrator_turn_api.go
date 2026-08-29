@@ -13,6 +13,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -102,9 +103,11 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 //     WS-connected clients see the failure inline. Queued messages are not
 //     treated as errors — the pending queue tracks them and the WS data
 //     channel delivers updates when the turn eventually runs.
-//   - The response intentionally carries no message content; message_id and
-//     turn_id are empty on accept and delivered via WS events
-//     (`message.persisted`, `run_status=running`).
+//   - SP-1e（R3-Q13）：ACK 同步返回 message_id/turn_id。ID 在受理时预生成
+//     并注入后台 turn 的 ctx，runSingleAgentViaTRPC 复用为
+//     RootTaskActivityID（== userMsg.ID == userMsg.TurnID），客户端无需等
+//     WS `message.persisted` 即可关联占位消息。消息排队（活跃 run）时实际
+//     落库 ID 以 dequeue 后新 turn 为准，由 WS message_queued 事件投递。
 func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
 	if strings.TrimSpace(req.GetSessionId()) == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
@@ -127,12 +130,17 @@ func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chat
 		}, nil
 	}
 
+	// SP-1e：同步预生成用户消息 ID（即 RootTaskActivityID，前端消息模型的
+	// turn_id），注入后台 turn ctx 供持久化复用，并随 ACK 返回。
+	preMsgID := uuid.NewString()
+
 	// Derive from appctx.Ctx() so the turn outlives the HTTP request.
 	// StopGeneration cancels via the RunRegistry, not via this context.
 	// P0-02 fix: extract the authenticated userID from the HTTP context and
 	// propagate it into the background context so the Runner session key,
 	// memory tools, and quota checks use the real user scope.
 	bgCtx := ctxuser.WithUserID(appctx.Ctx(), ctxuser.FromContext(ctx))
+	bgCtx = contextWithPreAssignedMessageID(bgCtx, preMsgID)
 	safego.Go(bgCtx, "chat-submit-async", func() {
 		if _, err := o.Execute(bgCtx, input); err != nil {
 			if isTurnMessageQueued(err) {
@@ -151,8 +159,10 @@ func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chat
 	})
 
 	return &chatv1.SubmitChatMessageResponse{
-		Accepted: true,
-		Status:   "accepted",
+		Accepted:  true,
+		Status:    "accepted",
+		MessageId: preMsgID,
+		TurnId:    preMsgID,
 	}, nil
 }
 

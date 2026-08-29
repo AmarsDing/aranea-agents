@@ -454,7 +454,7 @@ const { refreshingIcons, refreshPlatformIcons } = useChannelIconRefresh();
 <style scoped>
 .channel-wechat-ilink {
   padding: var(--space-3, 12px);
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
 }
 

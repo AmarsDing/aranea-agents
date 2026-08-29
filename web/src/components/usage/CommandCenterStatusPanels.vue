@@ -55,12 +55,12 @@ defineProps<{
 
 .command-center-stat-panel
   border-radius: 14px
-  background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-  border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.08))
+  background: var(--color-background-elevated)
+  border: 1px solid var(--glass-border)
   transition: border-color 0.2s ease, background 0.2s ease
 
   &:hover
-    border-color: var(--glass-border-hover, rgba(128, 128, 128, 0.18))
+    border-color: var(--glass-border-hover)
 
   &__header
     display: flex
@@ -125,7 +125,7 @@ defineProps<{
     font-weight: 800
     line-height: 1.1
     text-align: center
-    background: linear-gradient(135deg, var(--color-accent-cyan, #2563EB), var(--color-accent-indigo-light, #818CF8))
+    background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-indigo-light))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
@@ -237,11 +237,11 @@ defineProps<{
 
 body.body--dark
   .command-center-stat-panel
-    background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
+    background: var(--color-background-elevated)
     border-color: var(--glass-border)
     &:hover
-      border-color: var(--glass-border-hover, rgba(255, 255, 255, 0.12))
+      border-color: var(--glass-border-hover)
 
   .command-center-stat-panel__gauge-bar
-    background: var(--color-background-elevated, rgba(255, 255, 255, 0.06))
+    background: var(--color-background-elevated)
 </style>

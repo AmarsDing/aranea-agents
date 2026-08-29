@@ -238,7 +238,7 @@ body.app-registry-col-resizing
   .q-table__middle
     overflow-x: auto
     scrollbar-width: thin
-    scrollbar-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18)) transparent
+    scrollbar-color: var(--table-scrollbar-thumb) transparent
 
     &::-webkit-scrollbar
       height: 6px
@@ -250,10 +250,10 @@ body.app-registry-col-resizing
       border-radius: 4px
       border: 1px solid transparent
       background-clip: content-box
-      background-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18))
+      background-color: var(--table-scrollbar-thumb)
 
     &::-webkit-scrollbar-thumb:hover
-      background-color: var(--table-scrollbar-thumb-hover, rgba(100, 116, 139, 0.35))
+      background-color: var(--table-scrollbar-thumb-hover)
 
   .q-table__middle > table
     width: 100%
@@ -286,7 +286,7 @@ body.app-registry-col-resizing
     right: 0
     z-index: 2
     background: color-mix(in srgb, var(--glass-surface) 96%, transparent)
-    box-shadow: -8px 0 12px color-mix(in srgb, var(--color-shadow, #000) 8%, transparent)
+    box-shadow: -8px 0 12px color-mix(in srgb, var(--color-shadow) 8%, transparent)
 
   thead .app-registry-col-actions
     z-index: 3
@@ -708,9 +708,9 @@ body.body--dark .channel-icon-btn:hover
   border-color: color-mix(in srgb, var(--color-accent) 24%, var(--glass-border))
 
 .provider-tag--capability
-  background: color-mix(in srgb, var(--color-positive, #21ba45) 10%, var(--glass-elevated))
-  color: var(--color-positive, #21ba45)
-  border-color: color-mix(in srgb, var(--color-positive, #21ba45) 22%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-success) 10%, var(--glass-elevated))
+  color: var(--color-success)
+  border-color: color-mix(in srgb, var(--color-success) 22%, var(--glass-border))
 
 .provider-tag--more
   border-style: dashed
@@ -1050,9 +1050,9 @@ body.body--dark .mcp-server-item
   background: color-mix(in srgb, var(--glass-elevated) 80%, transparent)
 
 .plugin-tag--risk-low
-  border-color: color-mix(in srgb, var(--color-positive, #21ba45) 24%, var(--glass-border))
-  background: color-mix(in srgb, var(--color-positive, #21ba45) 10%, var(--glass-surface))
-  color: var(--color-positive, #21ba45)
+  border-color: color-mix(in srgb, var(--color-success) 24%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-success) 10%, var(--glass-surface))
+  color: var(--color-success)
 
 .plugin-tag--risk-medium
   border-color: color-mix(in srgb, var(--color-warning) 28%, var(--glass-border))
@@ -1181,9 +1181,9 @@ body.body--dark .plugin-tag--category
 .app-registry-hover-tip__popup
   border: 1px solid var(--glass-border) !important
   border-radius: 14px !important
-  background: color-mix(in srgb, var(--glass-surface) 92%, var(--glass-elevated, #fff)) !important
+  background: color-mix(in srgb, var(--glass-surface) 92%, var(--glass-elevated)) !important
   backdrop-filter: blur(var(--glass-blur-default)) !important
-  box-shadow: var(--glass-inner-highlight), 0 12px 32px color-mix(in srgb, var(--color-shadow, #000) 18%, transparent) !important
+  box-shadow: var(--glass-inner-highlight), 0 12px 32px color-mix(in srgb, var(--color-shadow) 18%, transparent) !important
   color: var(--color-text-primary) !important
   font-size: var(--text-base, 15px) !important
   line-height: 1.55 !important
@@ -1391,13 +1391,13 @@ body.body--dark .app-registry-hover-tip__popup
   max-height: 96vh
   border-radius: 16px 0 0 16px
   border: 1px solid var(--glass-border)
-  background: var(--color-surface-elevated, #fff) !important
+  background: var(--color-surface-elevated) !important
   backdrop-filter: none !important
   box-shadow: -8px 0 32px color-mix(in srgb, var(--color-text-primary) 12%, transparent)
   color: var(--color-text-primary)
 
 body.body--dark .tool-help-drawer.q-card
-  background: var(--color-surface-elevated, #121a28) !important
+  background: var(--color-surface-elevated) !important
 
 .tool-help-drawer__head
   padding: var(--space-3) var(--space-4) var(--space-2)

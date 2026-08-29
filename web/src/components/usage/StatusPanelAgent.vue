@@ -69,16 +69,16 @@ const activePercent = computed(() => {
 
 <style lang="sass">
 .command-center-stat-panel__icon--agent
-  color: var(--color-accent-indigo, #4F46E5)
+  color: var(--color-accent-indigo)
 
 body.body--dark .command-center-stat-panel__icon--agent
-  color: var(--color-accent-indigo, #818CF8)
+  color: var(--color-accent-indigo)
 
 .command-center-stat-panel__ring-fill
-  stroke: var(--color-accent-indigo, #4F46E5)
+  stroke: var(--color-accent-indigo)
 
 body.body--dark .command-center-stat-panel__ring-fill
-  stroke: var(--color-accent-indigo, #818CF8)
+  stroke: var(--color-accent-indigo)
 
 .command-center-stat-panel__ring-track
   stroke: rgba(128, 128, 128, 0.12)

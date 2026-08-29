@@ -501,7 +501,7 @@ function onInputKeydown(event: KeyboardEvent) {
   overflow-y: auto !important
   /* Firefox */
   scrollbar-width: thin
-  scrollbar-color: var(--chat-scrollbar-thumb, rgba(100, 116, 139, 0.28)) transparent
+  scrollbar-color: var(--chat-scrollbar-thumb) transparent
 
 /* WebKit 滚动条：日间 */
 .composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar
@@ -514,20 +514,20 @@ function onInputKeydown(event: KeyboardEvent) {
   border-radius: 6px
   border: 2px solid transparent
   background-clip: content-box
-  background-color: var(--chat-scrollbar-thumb, rgba(100, 116, 139, 0.28))
+  background-color: var(--chat-scrollbar-thumb)
 
 .composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb:hover
-  background-color: var(--chat-scrollbar-thumb-hover, rgba(100, 116, 139, 0.55))
+  background-color: var(--chat-scrollbar-thumb-hover)
 
 /* WebKit 滚动条：夜间 */
 body.body--dark .composer-card :deep(.composer-input .q-field__native)
-  scrollbar-color: var(--chat-scrollbar-thumb-dark, rgba(148, 163, 184, 0.22)) transparent
+  scrollbar-color: var(--chat-scrollbar-thumb-dark) transparent
 
 body.body--dark .composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb
-  background-color: var(--chat-scrollbar-thumb-dark, rgba(148, 163, 184, 0.22))
+  background-color: var(--chat-scrollbar-thumb-dark)
 
 body.body--dark .composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb:hover
-  background-color: var(--chat-scrollbar-thumb-hover-dark, rgba(148, 163, 184, 0.45))
+  background-color: var(--chat-scrollbar-thumb-hover-dark)
 
 /* 底部工具条 */
 .composer-bottom-bar
