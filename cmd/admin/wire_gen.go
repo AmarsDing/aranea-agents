@@ -329,7 +329,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryFactReader := data.NewMemoryFactReader(dataData)
 	l1AdminReader := provideL1AdminReader(memoryAdminDeps)
 	l1TaskBoardWriter := provideL1TaskBoardWriter(memoryAdminDeps)
-	compressorConfig := session2.ProvideCompressorConfig(compressReadDeps, compressWriteDeps, sessionRepo, agentRepository, sessionRuntime, memoryResync, compressor, monitorBus, memoryFactReader, l1AdminReader, l1TaskBoardWriter, loggatewayLogger)
+	compressorConfig := session2.ProvideCompressorConfig(compressReadDeps, compressWriteDeps, sessionRepo, agentRepository, sessionRuntime, memoryResync, compressor, monitorBus, memoryFactReader, l1AdminReader, l1TaskBoardWriter, loggatewayLogger, lifecycle)
 	sessionCompressor := session2.NewCompressor(compressorConfig)
 	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
 	skillHealthMetricsAdapter := service.NewSkillHealthMetricsAdapter(skillIntelligenceRepo)

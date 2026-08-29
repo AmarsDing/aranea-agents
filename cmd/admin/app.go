@@ -120,13 +120,25 @@ func newApp(
 				chatSvc.BindAgentBridge(agentBridgeSvc)
 			}
 			// M80 1.5: AgentBridge 审批链双写 decision_records（hitl_approval）。
-			if agentBridgeSvc != nil && decisions != nil {
-				agentBridgeSvc.SetDecisionCollector(decisions)
+		if agentBridgeSvc != nil && decisions != nil {
+			agentBridgeSvc.SetDecisionCollector(decisions)
+		}
+		// P1-④（2026-08-30）：team run 恢复（hitl_approval 留痕）与
+		// output_policy 输出拦截（system_guard 留痕）的证据通道接线。
+		if teamSvc != nil {
+			var monBus contract.MonitorBus
+			if eventInfra != nil {
+				monBus = eventInfra.MonitorEventBus
 			}
+			teamSvc.SetDecisionEvidence(decisions, monBus)
+		}
+		if pluginRT != nil && decisions != nil {
+			pluginRT.SetDecisionCollector(decisions)
+		}
 
-			if knowledgeSvc != nil && vaultSyncSup != nil {
-				knowledgeSvc.SetVaultSyncController(vaultSyncSup)
-			}
+		if knowledgeSvc != nil && vaultSyncSup != nil {
+			knowledgeSvc.SetVaultSyncController(vaultSyncSup)
+		}
 			// Wave 2：写回重放双点接线 + 跨进程重建/重嵌入租约。
 			if knowledgeSvc != nil {
 				knowledgeSvc.BindDerivedIndexHooks()

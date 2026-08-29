@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
@@ -42,6 +43,11 @@ type Runtime struct {
 	resolveAgent   AgentKeyResolver
 	catalogConfirm CatalogConfirmChecker
 	lg             loggateway.Logger
+	// decisions 是 M80 决策记录入口（P1-④，2026-08-30）：output_policy 等
+	// 插件的阻断事件需写 system_guard 决策记录。经 SetDecisionCollector
+	// 后置注入（插件 Apply 可能早于 app BeforeStart，故插件侧经
+	// decisionCollector() 每次现取而非构造期快照）。
+	decisions decision.Collector
 
 	// R-3：Apply 纪元。并发热重载（系统全量 vs 租户增量、慢 DB List vs
 	// 快 List）可能乱序提交；提交时若已有更新纪元落盘则丢弃陈旧快照。
@@ -70,6 +76,28 @@ func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	if repo != nil {
 		rt.retryWorker = NewHookDeliveryRetryWorker(nil, repo, rt.notifier, rt.lg)
 	}
+}
+
+// SetDecisionCollector 注入 M80 决策记录 collector（P1-④）。由 newApp
+// BeforeStart 接线；插件在事件发射点经 decisionCollector() 现取，对
+// Apply/注入的先后序免疫。
+func (rt *Runtime) SetDecisionCollector(c decision.Collector) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.decisions = c
+}
+
+// decisionCollector 返回当前注入的决策 collector（nil = 决策记录降级）。
+func (rt *Runtime) decisionCollector() decision.Collector {
+	if rt == nil {
+		return nil
+	}
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	return rt.decisions
 }
 
 func (rt *Runtime) StartBackgroundWorkers() {

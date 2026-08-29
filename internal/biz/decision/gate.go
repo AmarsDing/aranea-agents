@@ -82,6 +82,11 @@ const (
 	// 方案② S3）：chat/team turn 入口 ScanInputRisk 命中即发，outcome 恒
 	// tripped（观测/审计语义，不阻断——硬拦截保持在 L3 ParamRuleGate）。
 	TriggerInputRiskFlagged = "input_risk_flagged"
+	// TriggerOutputPolicyBlocked 是输出侧安全策略拦截事件（P1-④，
+	// 2026-08-30）：output_policy 插件 afterModel/onEvent 命中阻断时发，
+	// outcome 恒 blocked。此前仅有 plugin_runs 统计与进程日志，run 结束后
+	// 无三方互证证据链（S14 实测 decision_records 零行）。
+	TriggerOutputPolicyBlocked = "output_policy_blocked"
 )
 
 // GateDecision 是 S2 统一闸决策事件结构（设计 §3.2 row 3）：各闸点只填

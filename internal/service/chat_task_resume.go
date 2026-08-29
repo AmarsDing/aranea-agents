@@ -36,8 +36,49 @@ func (s *ChatService) ResumeInterruptedTask(ctx context.Context, sessionID, task
 	if err != nil {
 		return err
 	}
+	s.emitInterruptedResumeDecision(ctx, task)
 	s.startInterruptedResume(task, content)
 	return nil
+}
+
+// emitInterruptedResumeDecision 把「用户触发中断任务续跑」双写到决策层
+// （P1-④，2026-08-30）：hitl_approval 决策记录 + flowlog。WS resume 入口
+// ctx 不带 turn TraceEmitter，flowlog 走 service 级 emitter（monitorBus
+// 取自 orchestrator turn deps；nil 时仅进程日志）。此前续跑事件无任何
+// 留痕，三方互证在 HITL 重放段断链（R4-Q6）。
+func (s *ChatService) emitInterruptedResumeDecision(ctx context.Context, task biz.Task) {
+	var bus contract.MonitorBus
+	var collector decision.Collector
+	if s.orch != nil {
+		bus = s.orch.td().Pipeline.MonitorEventBus
+		collector = s.orch.infraDeps.DecisionCollector
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: task.SessionID,
+		Domain:    event.TraceDomainChat,
+		LG:        s.lg,
+		Infra:     event.NewInfraFromBus(bus),
+	})
+	flowCtx := event.WithTraceEmitter(ctx, flow)
+	userID := "unknown"
+	if a, ok := auth.FromContext(ctx); ok && a != nil && a.UserID > 0 {
+		userID = fmt.Sprintf("%d", a.UserID)
+	}
+	event.EmitDecision(flowCtx, collector, decision.Record{
+		DecisionKey: uuid.NewString(),
+		Category:    decision.CategoryHITLApproval,
+		Scenario:    "中断任务续跑",
+		Reasoning:   "用户触发 interrupted 任务的显式续跑（CAS 认领成功，携带持久化执行轨迹重跑）",
+		Outcome:     "resumed",
+		ActorType:   decision.ActorHuman,
+		ActorKey:    userID,
+		SourceRef:   decision.SourceRef{SessionID: task.SessionID, TaskID: task.ID},
+		Metadata:    map[string]any{"session_id": task.SessionID, "task_id": task.ID},
+	}, "chat.interrupted_resume", "中断任务续跑",
+		event.P("trigger", "hitl_resume"),
+		event.P("outcome", "resumed"),
+		event.P("task_id", task.ID))
 }
 
 // prepareInterruptedResume validates the request and atomically claims the

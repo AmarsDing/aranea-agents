@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
@@ -39,6 +40,7 @@ func ProvideCompressorConfig(
 	l1Reader biz.L1AdminReader,
 	l1BoardWriter biz.L1TaskBoardWriter,
 	lg loggateway.Logger,
+	decisions decision.Collector,
 ) CompressorConfig {
 	return CompressorConfig{
 		ReadDeps:      readDeps,
@@ -53,6 +55,7 @@ func ProvideCompressorConfig(
 		L1Reader:      l1Reader,
 		L1BoardWriter: l1BoardWriter,
 		Logger:        lg,
+		Collector:     decisions,
 	}
 }
 

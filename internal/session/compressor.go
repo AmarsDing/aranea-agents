@@ -3,6 +3,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -67,6 +69,10 @@ type CompressorConfig struct {
 	// 使 L1 prompt cue 与快照注入渲染同一份进度（单一权威源）。
 	L1BoardWriter biz.L1TaskBoardWriter
 	Logger        loggateway.Logger
+	// Collector 是 M80 决策记录入口（P1-④，2026-08-30）：每次真实压缩
+	// 尝试（成功/失败）写 system_guard 决策记录（trigger=context_compacted）。
+	// nil = 决策记录静默降级（单测/精简装配）。
+	Collector decision.Collector
 }
 
 // compressLevel identifies which compression tier was used.
@@ -133,6 +139,9 @@ type Compressor struct {
 	l1Reader      biz.L1AdminReader
 	l1BoardWriter biz.L1TaskBoardWriter
 	lg            loggateway.Logger
+	// collector 是 M80 决策记录入口（P1-④）：emitCompressDecision 经此写
+	// system_guard 决策记录；nil 时静默降级。
+	collector decision.Collector
 
 	flight   *compressFlightManager
 	buf      *compressBufferManager
@@ -294,6 +303,7 @@ func NewCompressor(cfg CompressorConfig) *Compressor {
 		l1Reader:      cfg.L1Reader,
 		l1BoardWriter: cfg.L1BoardWriter,
 		lg:            cfg.Logger,
+		collector:     cfg.Collector,
 		flight:        newCompressFlightManager(),
 		buf:           newCompressBufferManager(),
 		suppress:      newCompressSuppressManager(),
@@ -527,6 +537,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 					event.P("tokens_before", tokensBefore),
 					event.P("messages_before", messagesBefore))
 			}
+			c.emitCompressDecision(sessionID, "tripped", hardTok, tokensBefore, messagesBefore, 0, outcome, forced,
+				fmt.Sprintf("压缩级联失败（fail_kind=%d）", outcome.fail), "compress_failed")
 			return apierror.Internal(apierror.DomainSession, "compression cascade failed")
 		}
 		return nil
@@ -541,6 +553,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 				event.P("tokens_before", tokensBefore),
 				event.P("messages_before", messagesBefore))
 		}
+		c.emitCompressDecision(sessionID, "tripped", hardTok, tokensBefore, messagesBefore, 0, outcome, forced,
+			"压缩写入失败: "+err.Error(), "compress_failed")
 		return err
 	}
 	if !wrote {
@@ -548,6 +562,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 	c.suppress.clear(sessionID)
+	tokensAfter := 0
 	if flow != nil {
 		pairs := []event.Pair{
 			event.P("tokens_before", tokensBefore),
@@ -558,11 +573,52 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		}
 		// 压缩后的 context_used_tokens 已在事务内更新，尽力而为重读一次供对比展示。
 		if sessAfter, e := c.deps.sessionReader.GetSessionByID(ctx, sessionID); e == nil {
-			pairs = append(pairs, event.P("tokens_after", sessAfter.ContextUsedTokens))
+			tokensAfter = sessAfter.ContextUsedTokens
+			pairs = append(pairs, event.P("tokens_after", tokensAfter))
 		}
 		flow.LogDone("system.session.compress", "会话上下文压缩完成", pairs...)
 	}
+	// P1-④（2026-08-30）：压缩成功强制写 system_guard 决策记录——此前仅
+	// flowlog + 进程日志，run 结束后 decision_records 无三方互证证据
+	// （R4-Q4「压缩事件无 decisions 留痕」）。flowlog 不在此重复发：
+	// 压缩走自带 newFlowEmitter（turn 外异步 ctx 无 TraceEmitter）。
+	c.emitCompressDecision(sessionID, "truncated", hardTok, tokensBefore, messagesBefore, tokensAfter, outcome, forced,
+		fmt.Sprintf("会话上下文水位 %d tokens 触线（硬阈 %d），%s 压缩产出 %d rune 摘要", tokensBefore, hardTok, outcome.level, utf8.RuneCountInString(outcome.markdown)), "compress")
 	return nil
+}
+
+// emitCompressDecision 把一次真实压缩尝试（成功/失败）写为 system_guard
+// 决策记录（trigger=context_compacted，GuardName=session_compressor 与
+// turn 内终审闸 context_compression 区分）。collector 为 nil 时静默降级。
+// tokensAfter 为 0 表示未观测到（失败路径）。
+func (c *Compressor) emitCompressDecision(sessionID, outcome string, hardTok, tokensBefore, messagesBefore, tokensAfter int, oc compressOutcome, forced bool, reasoning, action string) {
+	if c.collector == nil {
+		return
+	}
+	extra := map[string]any{
+		"compress_level":  string(oc.level),
+		"messages_before": messagesBefore,
+		"cache_hit":       oc.cacheHit,
+		"forced":          forced,
+	}
+	if tokensAfter > 0 {
+		extra["tokens_after"] = tokensAfter
+	}
+	if oc.fail != compressFailureNone {
+		extra["fail_kind"] = int(oc.fail)
+	}
+	decision.EmitGate(context.Background(), c.collector, decision.GateDecision{
+		TriggerRule:   decision.TriggerContextCompacted,
+		Outcome:       outcome,
+		Scenario:      "会话上下文持久压缩",
+		Reasoning:     reasoning,
+		GuardName:     "session_compressor",
+		SessionID:     sessionID,
+		ObservedValue: tokensBefore,
+		Threshold:     hardTok,
+		Action:        action,
+		Extra:         extra,
+	})
 }
 
 // newFlowEmitter builds a system-domain flow emitter for compression events.

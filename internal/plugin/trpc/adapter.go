@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
@@ -43,7 +44,13 @@ func builtin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, 
 		}
 		return NewPermissionGuardPlugin(p, stats, monitorBus, resolve, lg)
 	case "output_policy":
-		return NewOutputPolicyPlugin(p, stats, monitorBus, lg)
+		// P1-④：决策 collector 经 getter 现取（Runtime.SetDecisionCollector
+		// 由 newApp BeforeStart 后置注入，插件 Apply 可能更早）。
+		var decisions func() decision.Collector
+		if rt != nil {
+			decisions = rt.decisionCollector
+		}
+		return NewOutputPolicyPlugin(p, stats, monitorBus, lg, decisions)
 	default:
 		return nil
 	}

@@ -46,6 +46,11 @@ func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.Resume
 		return nil, mapTeamErr(err)
 	}
 
+	// P1-④（2026-08-30）：HITL 恢复执行强制写 hitl_approval 决策记录 +
+	// flowlog。HTTP/gRPC 恢复入口 ctx 不带 turn TraceEmitter，flowlog 走
+	// service 级 emitter（SetDecisionEvidence 注入的 monitorBus）。
+	s.emitResumeDecision(ctx, run.ID, run.SessionID, execID)
+
 	// Delegate team status transition to biz layer.
 	if run.TeamID != "" {
 		if transErr := s.uc.ResumeTeamIfInterrupted(ctx, run.TeamID); transErr != nil {
@@ -62,4 +67,38 @@ func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.Resume
 		GraphExecutionId: execID,
 		Status:           exec.Status,
 	}, nil
+}
+
+// emitResumeDecision 把「用户触发 team run 恢复执行」双写到决策层
+// （P1-④）：hitl_approval 决策记录（SourceRef 带 run/session 归属）+
+// flowlog（service 级 emitter，monitorBus 由 SetDecisionEvidence 注入，
+// nil 时仅进程日志；collector nil 时 EmitDecision 内部记 collector_nil）。
+func (s *TeamService) emitResumeDecision(ctx context.Context, runID, sessionID, execID string) {
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		RunID:     runID,
+		Domain:    event.TraceDomainChat,
+		LG:        s.lg,
+		Infra:     event.NewInfraFromBus(s.decisionBus),
+	})
+	flowCtx := event.WithTraceEmitter(ctx, flow)
+	userID := "unknown"
+	if a, ok := auth.FromContext(ctx); ok && a != nil && a.UserID > 0 {
+		userID = fmt.Sprintf("%d", a.UserID)
+	}
+	event.EmitDecision(flowCtx, s.decisions, decision.Record{
+		DecisionKey: uuid.NewString(),
+		Category:    decision.CategoryHITLApproval,
+		Scenario:    "团队运行恢复执行",
+		Reasoning:   "用户触发中断/挂起 team run 的恢复执行（graph runtime resume 成功）",
+		Outcome:     "resumed",
+		ActorType:   decision.ActorHuman,
+		ActorKey:    userID,
+		SourceRef:   decision.SourceRef{RunID: runID, SessionID: sessionID},
+		Metadata:    map[string]any{"session_id": sessionID, "run_id": runID, "graph_execution_id": execID},
+	}, "team.run.resume", "团队运行恢复执行",
+		event.P("trigger", "hitl_resume"),
+		event.P("outcome", "resumed"),
+		event.P("run_id", runID))
 }

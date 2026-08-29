@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
 	bizusage "aranea-agents/internal/biz/usage"
+	"aranea-agents/internal/event/contract"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/workspace"
@@ -43,6 +44,12 @@ type TeamService struct {
 	// decisionQuery：79-runtime-governance R7 stats 的 system_guard 聚合源
 	// （nil = 闸统计段零值透出，单测/精简装配）。
 	decisionQuery *decision.QueryUsecase
+	// decisions/decisionBus 是 P1-④（2026-08-30）HITL 恢复留痕通道：
+	// ResumeTeamRunExecution 成功后双写 hitl_approval 决策记录 + flowlog。
+	// 经 SetDecisionEvidence 后置注入（对齐 AgentBridgeService 先例），
+	// 避免拉长 NewTeamService 参数表。nil = 决策记录静默降级。
+	decisions    decision.Collector
+	decisionBus  contract.MonitorBus
 }
 
 func NewTeamService(
@@ -82,6 +89,17 @@ func NewTeamService(
 		usageUC:         usageUC,
 		decisionQuery:   decisionQuery,
 	}
+}
+
+// SetDecisionEvidence 注入 P1-④ HITL 恢复留痕通道（决策 collector +
+// monitor 总线）。对齐 AgentBridgeService.SetDecisionCollector 后置注入
+// 先例，由 newApp BeforeStart 接线。
+func (s *TeamService) SetDecisionEvidence(c decision.Collector, bus contract.MonitorBus) {
+	if s == nil {
+		return
+	}
+	s.decisions = c
+	s.decisionBus = bus
 }
 
 // assertTeamAccess 验证 caller 是否可读取目标 team（P2-B IDOR 防护）。

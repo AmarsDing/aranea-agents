@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
@@ -31,18 +33,30 @@ type OutputPolicyPlugin struct {
 	cfg  outputPolicyConfig
 	// eventCounts 按采样 key 计数（key 集合有界），用于高频 chunk 日志节流。
 	eventCounts sync.Map // string -> *atomic.Int64
+	// blockEmitted 是决策记录去重表（P1-④）：流式路径每个违规 chunk 都
+	// 回调 emitBlockGate，同一 invocation 同一 pattern 只写一条
+	// decision_records。key=invocationID|pattern，流结束由
+	// clearBlockGateDedup 清理，防无界增长。
+	blockEmitted sync.Map // string -> struct{}
+	// decisions 是 M80 决策 collector 的 getter（P1-④）：每次发射现取，
+	// 免疫注入时序。nil = 决策记录降级。monitorBus 供 flowlog 兜底 emitter
+	// （插件回调 ctx 不带 turn TraceEmitter 时系统域补发）。
+	decisions  func() decision.Collector
+	monitorBus contract.MonitorBus
 }
 
 var _ trpcplugin.Plugin = (*OutputPolicyPlugin)(nil)
 
-func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) *OutputPolicyPlugin {
+func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger, decisions func() decision.Collector) *OutputPolicyPlugin {
 	var cfg outputPolicyConfig
 	cfg.DangerousCommandCheck = true
 	cfg.BlockOnViolation = true
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &OutputPolicyPlugin{
-		base: newBasePlugin(p.Key, stats, monitorBus, lg),
-		cfg:  cfg,
+		base:       newBasePlugin(p.Key, stats, monitorBus, lg),
+		cfg:        cfg,
+		decisions:  decisions,
+		monitorBus: monitorBus,
 	}
 }
 
@@ -62,6 +76,7 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 		o.base.logger.Info("plugin.output_policy.after_model", "status", "blocked", "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
 		o.base.recordEvent(ctx, "after_model", "blocked",
 			fmt.Sprintf("模型输出命中阻断策略（pattern=%s）", pat))
+		o.emitBlockGate(ctx, "after_model", pat)
 		if o.cfg.BlockOnViolation {
 			msg := strings.TrimSpace(o.cfg.ReplacementMessage)
 			if msg == "" {
@@ -96,6 +111,7 @@ func (o *OutputPolicyPlugin) onEvent(
 	if e == nil || e.Response == nil {
 		return e, nil
 	}
+	defer o.clearBlockGateDedup(ctx, e.Response)
 	text := eventText(e)
 	if text == "" {
 		return e, nil
@@ -145,6 +161,86 @@ func (o *OutputPolicyPlugin) violation(text string) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+// emitBlockGate 把一次输出安全拦截双写为 system_guard 决策记录 + flowlog
+// （P1-④，2026-08-30）：此前仅 plugin_runs 统计 + 进程日志，run 结束后
+// decision_records 零行、三方互证断链（S14 实测）。流式路径每个违规 chunk
+// 都回调，决策记录按 invocation|pattern 去重；flowlog 优先用 ctx 自带
+// turn emitter，缺失时经 monitorBus 建系统域兜底（run 外 ctx 不断链）。
+func (o *OutputPolicyPlugin) emitBlockGate(ctx context.Context, phase, pat string) {
+	var inv *trpcagent.Invocation
+	if i, ok := trpcagent.InvocationFromContext(ctx); ok {
+		inv = i
+	}
+	if inv != nil && inv.InvocationID != "" {
+		if _, loaded := o.blockEmitted.LoadOrStore(inv.InvocationID+"|"+pat, struct{}{}); loaded {
+			return
+		}
+	}
+	sessionID := decision.GateSessionIDFromContext(ctx)
+	if sessionID == "" {
+		sessionID, _ = sessionAgentKey(ctx, inv)
+	}
+	gd := decision.GateDecision{
+		TriggerRule: decision.TriggerOutputPolicyBlocked,
+		Outcome:     "blocked",
+		Scenario:    "模型输出命中输出安全策略",
+		Reasoning:   fmt.Sprintf("phase=%s pattern=%s block_on_violation=%v", phase, pat, o.cfg.BlockOnViolation),
+		GuardName:   "output_policy",
+		RunID:       decision.GateRunIDFromContext(ctx),
+		SessionID:   sessionID,
+		Action:      "block",
+		Extra:       map[string]any{"phase": phase, "pattern": pat},
+	}
+	var collector decision.Collector
+	if o.decisions != nil {
+		collector = o.decisions()
+	}
+	if collector != nil {
+		decision.EmitGate(ctx, collector, gd)
+	}
+	if event.TraceEmitterFromContext(ctx) != nil {
+		event.LogGateFlow(ctx, gd.TriggerRule, gd.Outcome, gd.Scenario, gd.Reasoning)
+		return
+	}
+	if o.monitorBus == nil {
+		return
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    event.TraceDomainSystem,
+		LG:        o.base.lg,
+		Infra:     event.NewInfraFromBus(o.monitorBus),
+	})
+	event.LogGateFlow(event.WithTraceEmitter(ctx, flow), gd.TriggerRule, gd.Outcome, gd.Scenario, gd.Reasoning)
+}
+
+// clearBlockGateDedup 在流结束（任一 choice 带 FinishReason）时清理该
+// invocation 的去重键，防 blockEmitted 随调用数无界增长。
+func (o *OutputPolicyPlugin) clearBlockGateDedup(ctx context.Context, resp *trpcmodel.Response) {
+	if resp == nil {
+		return
+	}
+	finished := false
+	for _, ch := range resp.Choices {
+		if ch.FinishReason != nil {
+			finished = true
+			break
+		}
+	}
+	if !finished {
+		return
+	}
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.InvocationID != "" {
+		o.blockEmitted.Range(func(k, _ any) bool {
+			if ks, ok := k.(string); ok && strings.HasPrefix(ks, inv.InvocationID+"|") {
+				o.blockEmitted.Delete(k)
+			}
+			return true
+		})
+	}
 }
 
 func eventText(e *trpcevent.Event) string {
