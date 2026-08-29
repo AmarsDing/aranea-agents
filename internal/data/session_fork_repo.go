@@ -278,3 +278,55 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 
 	return int(tasks), int(turns), int(steps), nil
 }
+
+// InitForkedSessionMetrics 初始化 fork 子会话的展示级指标（R4-Q10）：
+// message_count = 2×继承 turn 数（user+assistant 对），context_used_* /
+// context_status / last_message_at 从源会话继承（fork 复制了等长历史，
+// 上下文水位必须立刻正确，否则压缩判读与上下文面板以 0 起步失真）。
+// run/token/cost/latency 等用量计数不回填——fork 会话的用量自零累计
+// （fork.go 头注释既有裁定保持）。sessions 行与 session_metrics 行同值写入，
+// 保证 consistency-check 双表对账不漂移。全程在 fork 事务内。
+func (r *sessionForkRepo) InitForkedSessionMetrics(ctx context.Context, srcSessionID, dstSessionID string, turnsCopied int) error {
+	if turnsCopied < 0 {
+		turnsCopied = 0
+	}
+	msgCount := 2 * turnsCopied
+	read := r.data.RWDB().ReadDB(ctx)
+	write := r.data.RWDB().WriteDB(ctx)
+	d := r.data.Dialect()
+	var ctxTokens int
+	var ctxRatio, maxRatio float64
+	var ctxStatus, lastMsgAt string
+	// sessions 行恒存在（默认模式下仍是真相源），直接读源会话。
+	if err := queryRowScan(ctx, read, d.RenumberPlaceholders(`
+		SELECT context_used_tokens, context_used_ratio, max_context_used_ratio, context_status, last_message_at
+		FROM sessions WHERE id = ? AND deleted_at = ''`),
+		[]any{srcSessionID}, &ctxTokens, &ctxRatio, &maxRatio, &ctxStatus, &lastMsgAt); err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := write.ExecContext(ctx, d.RenumberPlaceholders(`
+		UPDATE sessions
+		SET message_count = ?, context_used_tokens = ?, context_used_ratio = ?,
+		    max_context_used_ratio = ?, context_status = ?, last_message_at = CASE WHEN ? <> '' THEN ? ELSE last_message_at END,
+		    updated_at = ?
+		WHERE id = ? AND deleted_at = ''`),
+		msgCount, ctxTokens, ctxRatio, maxRatio, ctxStatus, lastMsgAt, lastMsgAt, now, dstSessionID); err != nil {
+		return err
+	}
+	// session_metrics 行尚不存在（fork 前无 delta），ON CONFLICT 兜底幂等。
+	_, err := write.ExecContext(ctx, d.RenumberPlaceholders(`
+		INSERT INTO session_metrics
+		    (session_id, message_count, context_used_tokens, context_used_ratio, max_context_used_ratio, context_status, last_message_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (session_id) DO UPDATE SET
+		    message_count = excluded.message_count,
+		    context_used_tokens = excluded.context_used_tokens,
+		    context_used_ratio = excluded.context_used_ratio,
+		    max_context_used_ratio = excluded.max_context_used_ratio,
+		    context_status = excluded.context_status,
+		    last_message_at = excluded.last_message_at,
+		    updated_at = excluded.updated_at`),
+		dstSessionID, msgCount, ctxTokens, ctxRatio, maxRatio, ctxStatus, lastMsgAt, now)
+	return err
+}

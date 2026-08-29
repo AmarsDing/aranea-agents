@@ -99,27 +99,28 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
 
-	// INSERT with zero values; ON CONFLICT adds the delta.
-	// This ensures first-time rows start at 0 and deltas accumulate correctly.
+	// INSERT 直接应用 delta 值（R4-Q10 修复：此前 INSERT 写全零、delta 仅
+	// 在 ON CONFLICT 分支生效，导致每个 session 首个 delta 批次整体丢失——
+	// S01 实测 2 轮只记 1）。ON CONFLICT 分支对已存在行做增量累加。
 	builder := c.SessionMetrics.Create().
 		SetID(sessionID).
-		SetMessageCount(0).
-		SetRunCount(0).
-		SetModelCallCount(0).
-		SetToolCallCount(0).
-		SetSkillCallCount(0).
-		SetMcpCallCount(0).
-		SetInputTokens(0).
-		SetOutputTokens(0).
-		SetTotalTokens(0).
-		SetTotalCostMicroUsd(0).
+		SetMessageCount(delta.MessageCount).
+		SetRunCount(delta.RunCount).
+		SetModelCallCount(delta.ModelCallCount).
+		SetToolCallCount(delta.ToolCallCount).
+		SetSkillCallCount(delta.SkillCallCount).
+		SetMcpCallCount(delta.McpCallCount).
+		SetInputTokens(int(delta.InputTokens)).
+		SetOutputTokens(int(delta.OutputTokens)).
+		SetTotalTokens(int(delta.TotalTokens)).
+		SetTotalCostMicroUsd(delta.TotalCostMicroUsd).
 		SetAvgLatencyMs(0).
 		SetErrorCount(0).
-		SetContextUsedTokens(0).
-		SetContextUsedRatio(0).
-		SetMaxContextUsedRatio(0).
+		SetContextUsedTokens(delta.ContextUsedTokens).
+		SetContextUsedRatio(delta.ContextUsedRatio).
+		SetMaxContextUsedRatio(delta.MaxContextUsedRatio).
 		SetContextStatus("").
-		SetLastMessageAt("").
+		SetLastMessageAt(delta.LastMessageAt).
 		SetUpdatedAt(now)
 
 	err := builder.
@@ -172,8 +173,24 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 		Exec(ctx)
 	if err != nil {
 		r.data.lg.Warn("upsert session metrics failed", loggateway.StepID("data.session_metrics.upsert"), loggateway.Err(err))
+		return entErrToBizErr(err, "SESSION_METRICS")
 	}
-	return entErrToBizErr(err, "SESSION_METRICS")
+	// R4-Q10：avg_latency_ms 滚动平均。样本基数 = run_count（每个 run 记账时
+	// 同批携带墙钟耗时之和 LatencySumMs，未观测计 0）。ent upsert 不支持
+	// 跨列表达式，故在 upsert 后用单条 raw UPDATE 折叠：式中 run_count 已是
+	// 本批次累加后的新值，旧样本数 = run_count - delta.RunCount。
+	if delta.RunCount > 0 {
+		if _, uerr := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+			r.data.Dialect().RenumberPlaceholders(`
+				UPDATE session_metrics
+				SET avg_latency_ms = (avg_latency_ms * (run_count - ?) + ?) / run_count,
+				    updated_at = ?
+				WHERE session_id = ? AND run_count >= ?`),
+			delta.RunCount, delta.LatencySumMs, nowRFC3339(), sessionID, delta.RunCount); uerr != nil {
+			r.data.lg.Warn("update avg latency failed", loggateway.StepID("data.session_metrics.avg_latency"), loggateway.Err(uerr))
+		}
+	}
+	return nil
 }
 
 func (r *sessionMetricsRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionMetricsDelta) error {

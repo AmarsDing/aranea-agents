@@ -669,32 +669,39 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 		return entErrToBizErr(err, "SESSION")
 	}
 
-	// dual_write: also update session_metrics table
-	if conf.DAOSessionDualWrite() || conf.DAOSessionMetricsTable() {
-		if r.metricsWriter != nil {
-			delta := &session.SessionMetricsDelta{
-				SessionID:           sessionID,
-				ContextUsedTokens:   promptTokens,
-				ContextUsedRatio:    ratio,
-				MaxContextUsedRatio: ratio,
-			}
-			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil {
-				if conf.DAOSessionDualWrite() {
-					// dual_write: new table failure is non-blocking, old table is truth source
-					r.data.lg.Warn("dual_write: new table context write failed",
-						loggateway.StepID("data.session.dual_write_context"),
-						loggateway.SessionID(sessionID),
-						loggateway.Err(e))
-				} else {
-					err = e
-				}
-			}
-		}
-		if r.metricsCache != nil {
-			r.metricsCache.Invalidate(sessionID)
-		}
-	}
+	// R4-Q10：context 水位无条件镜像进 session_metrics（此前受
+	// DAOSessionDualWrite/DAOSessionMetricsTable 开关门控，默认关闭导致
+	// session_metrics.context_used_* 恒 0）。sessions 表仍是真相源。
+	r.upsertSessionMetricsContext(ctx, sessionID, promptTokens, ratio)
 	return entErrToBizErr(err, "SESSION")
+}
+
+// upsertSessionMetricsContext mirrors context-usage writes into
+// session_metrics（R4-Q10）。tokens<=0 时保留旧值（与 sessions 表的
+// CASE WHEN 语义一致）；max 取 GREATEST/MAX 历史峰值。写失败仅告警——
+// sessions 表仍是真相源，metrics 表为聚合快查。
+func (r *sessionRepo) upsertSessionMetricsContext(ctx context.Context, sessionID string, tokens int, ratio float64) {
+	d := r.data.Dialect()
+	maxExpr := d.Greatest("session_metrics.max_context_used_ratio", "excluded.max_context_used_ratio")
+	sqlText := `INSERT INTO session_metrics
+		(session_id, context_used_tokens, context_used_ratio, max_context_used_ratio, context_status, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (session_id) DO UPDATE SET
+		context_used_tokens = CASE WHEN excluded.context_used_tokens > 0 THEN excluded.context_used_tokens ELSE session_metrics.context_used_tokens END,
+		context_used_ratio = excluded.context_used_ratio,
+		max_context_used_ratio = ` + maxExpr + `,
+		context_status = excluded.context_status,
+		updated_at = excluded.updated_at`
+	if _, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, d.RenumberPlaceholders(sqlText),
+		sessionID, tokens, ratio, ratio, llmcontext.ContextStatusForRatio(ratio), nowRFC3339()); err != nil {
+		r.data.lg.Warn("session_metrics context upsert failed",
+			loggateway.StepID("data.session_metrics.context_upsert"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err))
+	}
+	if r.metricsCache != nil {
+		r.metricsCache.Invalidate(sessionID)
+	}
 }
 
 func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {

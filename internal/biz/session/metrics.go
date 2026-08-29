@@ -50,6 +50,7 @@ func (uc *SessionMetricsUsecase) AccumulateMetricsDelta(delta SessionMetricsDelt
 		existing.OutputTokens += delta.OutputTokens
 		existing.TotalTokens += delta.TotalTokens
 		existing.TotalCostMicroUsd += delta.TotalCostMicroUsd
+		existing.LatencySumMs += delta.LatencySumMs
 		if delta.LastMessageAt != "" && delta.LastMessageAt > existing.LastMessageAt {
 			existing.LastMessageAt = delta.LastMessageAt
 		}

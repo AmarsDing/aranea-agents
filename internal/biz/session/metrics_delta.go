@@ -18,6 +18,11 @@ type SessionMetricsDelta struct {
 	ContextUsedTokens   int
 	ContextUsedRatio    float64
 	MaxContextUsedRatio float64
+	// LatencySumMs 是本批次内各 run 的墙钟耗时之和（ms）。样本基数 = RunCount
+	// （每个 run 记账时必须同批携带其耗时，未观测到则计 0），落库端据此做
+	// 滚动平均：avg = (avg*(run_count-RunCount) + LatencySumMs) / run_count。
+	// R4-Q10：avg_latency_ms 此前无任何写入方，恒 0。
+	LatencySumMs        int64
 	AccumulatedCount    int
 	FirstAccumulatedAt  time.Time
 	// FlushFailCount 记录连续 flush 失败次数（SP-1c）。失败回炉时 +1，

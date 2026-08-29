@@ -336,6 +336,7 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 			SessionID:     sid,
 			MessageCount:  msgCount,
 			RunCount:      1,
+			LatencySumMs:  int64(max(p.DurationMs, 0)),
 			LastMessageAt: now,
 		})
 		// SP-1d：turn（run）结束点强刷该 session 的累积 delta，不等 200ms
