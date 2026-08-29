@@ -38,6 +38,8 @@ func (s *stubSessionTurnRecorder) AccumulateMetricsDelta(d bizsession.SessionMet
 	s.deltas = append(s.deltas, d)
 }
 
+func (s *stubSessionTurnRecorder) FlushSessionMetrics(_ string) {}
+
 // CachedTok must land in session_turns.cached_input_tokens on the Create path
 // (no admitted turn id in ctx) so turn-level cache hit ratio is computable
 // without joining model_token_usage_events.

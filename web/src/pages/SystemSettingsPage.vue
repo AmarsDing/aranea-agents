@@ -125,8 +125,16 @@
                     dense
                     type="number"
                     min="0"
+                    max="1000000"
                     step="0.01"
                     prefix="$"
+                    :rules="[
+                      (v) =>
+                        v === null ||
+                        v === '' ||
+                        (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1000000) ||
+                        t('settingsPage.globalQuotaInvalid'),
+                    ]"
                   />
                 </section>
 

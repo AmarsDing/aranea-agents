@@ -42,6 +42,8 @@ func (f *fakeMetricSessions) AccumulateMetricsDelta(d session.SessionMetricsDelt
 	f.deltas = append(f.deltas, d)
 }
 
+func (f *fakeMetricSessions) FlushSessionMetrics(_ string) {}
+
 func newUsageTestRunner(usage biz.TeamUsageQuerier, sessions biz.SessionTurnManager) *Runner {
 	return &Runner{
 		usage:     usage,

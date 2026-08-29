@@ -338,6 +338,10 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 			RunCount:      1,
 			LastMessageAt: now,
 		})
+		// SP-1d：turn（run）结束点强刷该 session 的累积 delta，不等 200ms
+		// ticker——run 结束后 session_metrics 立即可查（此前观测查询在
+		// ticker 落库前读到 message_count=0/run_count=0 的恒空假影）。
+		m.sessions.FlushSessionMetrics(sid)
 	}
 	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {
 		updates := biz.SessionTurnUpdateFields{

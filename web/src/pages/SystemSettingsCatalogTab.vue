@@ -60,9 +60,16 @@
           v-model.number="policyForm.syncIntervalHours"
           type="number"
           min="1"
+          max="168"
+          step="1"
           :label="t('catalogTab.syncInterval')"
           outlined
           dense
+          :rules="[
+            (v) =>
+              (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 168) ||
+              t('catalogTab.syncIntervalInvalid'),
+          ]"
         />
         <q-select
           v-model="policyForm.autoApply"

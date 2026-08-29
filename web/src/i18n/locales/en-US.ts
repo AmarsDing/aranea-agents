@@ -3011,6 +3011,7 @@ export default {
     globalQuotaHint:
       'Platform-wide LLM spend cap (USD); 0 = unlimited. Synced to usage_quotas (global). Enforced before each chat turn.',
     globalQuotaUsd: 'Monthly budget (USD)',
+    globalQuotaInvalid: 'Enter a value between 0 and 1,000,000 (0 = unlimited)',
     a2aPublicBaseTitle: 'A2A public endpoint prefix',
     a2aPublicBaseUrl: 'Public URL prefix',
     a2aPublicBaseHint:
@@ -3154,6 +3155,7 @@ export default {
     sourceUrl: 'Source URL',
     syncPolicy: 'Sync policy',
     syncInterval: 'Interval (hours)',
+    syncIntervalInvalid: 'Enter an integer between 1 and 168 (hours)',
     autoApply: 'Auto-apply to DB',
     savePolicy: 'Save policy',
     syncNow: 'Sync now',

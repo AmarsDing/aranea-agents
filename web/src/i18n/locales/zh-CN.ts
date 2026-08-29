@@ -3008,6 +3008,7 @@ export default {
     globalQuotaTitle: '全平台月预算',
     globalQuotaHint: '全平台 LLM 费用上限（USD）；0 表示不限制。保存后同步到用量配额（global）。Chat 每次对话前校验。',
     globalQuotaUsd: '月预算 (USD)',
+    globalQuotaInvalid: '请输入 0 ~ 1,000,000 之间的数值（0 表示不限制）',
     a2aPublicBaseTitle: 'A2A 公开 Endpoint 前缀',
     a2aPublicBaseUrl: '公开 URL 前缀',
     a2aPublicBaseHint:
@@ -3198,6 +3199,7 @@ export default {
     sourceUrl: '数据源 URL',
     syncPolicy: '同步策略',
     syncInterval: '间隔（小时）',
+    syncIntervalInvalid: '请输入 1 ~ 168 之间的整数（小时）',
     autoApply: '自动应用到 DB',
     savePolicy: '保存策略',
     syncNow: '立即同步',

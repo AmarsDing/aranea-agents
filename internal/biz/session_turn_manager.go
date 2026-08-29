@@ -52,6 +52,10 @@ type SessionTurnExtrasPort interface {
 	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
 	ApplyStateDelta(ctx context.Context, sessionID string, delta session.StateDelta) error
 	AccumulateMetricsDelta(delta session.SessionMetricsDelta)
+	// FlushSessionMetrics 立即把该 session 累积的 metrics delta 落库
+	// （SP-1d：run/turn 结束点强刷，不等 200ms ticker，保证 run 结束后
+	// session_metrics 立即可查）。
+	FlushSessionMetrics(sessionID string)
 	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]session.ChatMessage, error)
 	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg session.ChatMessage) error
 }

@@ -35,3 +35,9 @@ func (uc *SessionUsecase) forceFlushSingle(sessionID string) {
 	}
 	uc.metricsUsecase.forceFlushSingle(sessionID)
 }
+
+// FlushSessionMetrics is the exported facade for run/turn end forced flush
+// (SP-1d). Graceful degradation: nil metricsUsecase is a no-op.
+func (uc *SessionUsecase) FlushSessionMetrics(sessionID string) {
+	uc.forceFlushSingle(sessionID)
+}
