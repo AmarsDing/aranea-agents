@@ -566,6 +566,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
 			intentCh <- o.runIntentPass(intentCtx, ag, sessionID, content, prov, mod, emitter)
 		})
+		// 兜底取消：awaitIntentArtifact 正常消费后此为幂等空转；异常/早退
+		// 路径（EXECUTE/PERSIST 失败 return）保证 cancel 不丢失（vet lostcancel）。
+		defer func() { intentCancel() }()
 	} else if biz.IsA2AProxyAgent(ag) {
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	} else {

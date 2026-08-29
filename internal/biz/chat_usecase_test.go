@@ -71,6 +71,7 @@ func (stubChatPendingQueue) EnqueueInject(_, _ string) string   { return "" }
 func (stubChatPendingQueue) FlushLeadingInjects(string) []PendingQueueEntry {
 	return nil
 }
+func (stubChatPendingQueue) DequeueLeadingInjects(string) []PendingQueueEntry { return nil }
 func (stubChatPendingQueue) Dequeue(string) (PendingQueueEntry, bool) {
 	return PendingQueueEntry{}, false
 }

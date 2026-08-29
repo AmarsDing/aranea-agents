@@ -213,6 +213,33 @@ func (q *PendingMessageQueue) FlushLeadingInjects(sessionID string) []PendingMes
 	return flushed
 }
 
+// DequeueLeadingInjects atomically removes and returns the leading run of
+// inject-kind entries (N2 上下文合入，新 turn 起步时消费滞留 inject)。
+// 与「Peek 判头 + 循环 Dequeue」的两阶段写法不同，全程单锁持有：两阶段
+// 写法在并发出队（processPendingQueue 等）下会把非 inject 的头部条目
+// （用户 followup）误出队并静默丢弃。首个非 inject 条目就地保留。
+func (q *PendingMessageQueue) DequeueLeadingInjects(sessionID string) []PendingMessage {
+	q.mu.Lock()
+	queue := q.queues[sessionID]
+	n := 0
+	for n < len(queue) && queue[n].Kind == "inject" {
+		n++
+	}
+	if n == 0 {
+		q.mu.Unlock()
+		return nil
+	}
+	out := append([]PendingMessage(nil), queue[:n]...)
+	if n == len(queue) {
+		delete(q.queues, sessionID)
+	} else {
+		q.queues[sessionID] = append([]PendingMessage(nil), queue[n:]...)
+	}
+	q.mu.Unlock()
+	q.writeThrough()
+	return out
+}
+
 // Peek returns the head of the session queue without removing it.
 //
 // Used by callers that need to inspect the next pending message before

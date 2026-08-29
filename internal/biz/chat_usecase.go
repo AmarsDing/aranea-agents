@@ -84,6 +84,9 @@ type ChatPendingQueue interface {
 	// FlushLeadingInjects 仅在整队全为 inject 条目时原子清空并返回它们
 	// （N2 满队死锁冲刷）；否则返回 nil、不动队列。
 	FlushLeadingInjects(sessionID string) []PendingQueueEntry
+	// DequeueLeadingInjects 原子出队头部连续 inject 段（F7：Peek+Dequeue
+	// 两阶段在并发出队下会误吞 followup）。首个非 inject 条目就地保留。
+	DequeueLeadingInjects(sessionID string) []PendingQueueEntry
 	Dequeue(sessionID string) (PendingQueueEntry, bool)
 	Peek(sessionID string) (PendingQueueEntry, bool)
 	Remove(sessionID, entryID string) bool
@@ -415,21 +418,18 @@ func (uc *ChatUsecase) ConsumeLeadingInjects(sessionID string) []string {
 	if uc == nil || uc.pending == nil {
 		return nil
 	}
-	var out []string
-	for {
-		peek, ok := uc.pending.Peek(sessionID)
-		if !ok || peek.Kind != ChatEnqueueKindInject {
-			return out
-		}
-		e, ok := uc.pending.Dequeue(sessionID)
-		if !ok {
-			return out
-		}
-		if e.Kind != ChatEnqueueKindInject {
-			return out
-		}
+	// F7：原子出队头部 inject 段。旧 Peek+Dequeue 两阶段在并发出队
+	// （processPendingQueue 等不持会话锁的消费者）下会把已被他人抢先出队后
+	// 露出的 followup 头部误出队并丢弃（return out 时 e 被吞）。
+	entries := uc.pending.DequeueLeadingInjects(sessionID)
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
 		out = append(out, e.Content)
 	}
+	return out
 }
 
 // SplitLeadingInjects 将队列头部连续的 inject 条目与其后的第一条 followup

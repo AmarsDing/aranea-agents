@@ -221,3 +221,46 @@ func TestToolConfirmDecision_UnknownUserFallback(t *testing.T) {
 		t.Errorf("actor_key = %q, want unknown fallback", r.ActorKey)
 	}
 }
+
+// TestToolConfirmDecision_GrantSkip pins F12：grant（session/persisted）放行
+// 必须落 hitl_approval 决策记录（outcome=grant_skip）。S07 Evidence：同参
+// spawn 前 2 次超时 blocked、首次 approve 后第 3 次 5ms 放行——放行符合批量
+// 授权设计，但决策层无迹可寻会被误判为确认闸策略不一致。
+func TestToolConfirmDecision_GrantSkip(t *testing.T) {
+	cc := &captureDecisionCollector{}
+	h := newDecisionTestHook(cc)
+	h.gate.sessionGrants.GrantSession("sess-1", "agent-1", "bash")
+	ctx := decisionTestCtx("sess-1", "u-1", nil) // grant 命中，不进回复通道
+
+	if _, err := h.HandleBeforeTool(ctx, beforeToolArgs()); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(cc.recs))
+	}
+	r := cc.recs[0]
+	if r.Outcome != "grant_skip" {
+		t.Errorf("outcome = %q, want grant_skip", r.Outcome)
+	}
+	if got := r.Metadata["decision_reason"]; got != confirmReasonGrantSession {
+		t.Errorf("decision_reason = %v, want grant_session", got)
+	}
+}
+
+// TestToolConfirmDecision_DefaultAllowNoRecord pins the counterpart:
+// default_allow / shell_safe 等免确认放行不是人工授权事件，不得污染
+// hitl_approval 决策层。
+func TestToolConfirmDecision_DefaultAllowNoRecord(t *testing.T) {
+	cc := &captureDecisionCollector{}
+	h := newDecisionTestHook(cc)
+	ctx := decisionTestCtx("sess-1", "u-1", nil)
+	args := beforeToolArgs()
+	args.ToolName = "datetime" // 不在 catalog，default_allow
+
+	if _, err := h.HandleBeforeTool(ctx, args); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 0 {
+		t.Fatalf("default_allow must not emit hitl_approval, got %d records", len(cc.recs))
+	}
+}

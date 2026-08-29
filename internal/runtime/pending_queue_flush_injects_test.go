@@ -62,3 +62,50 @@ func TestPendingMessageQueue_FlushLeadingInjects(t *testing.T) {
 		}
 	})
 }
+
+// F7：DequeueLeadingInjects 原子出队头部 inject 段——替代 ConsumeLeadingInjects
+// 旧 Peek+Dequeue 两阶段（并发出队下误吞 followup 头部）。
+func TestPendingMessageQueue_DequeueLeadingInjects(t *testing.T) {
+	t.Run("drains leading injects, keeps followup", func(t *testing.T) {
+		q := NewPendingMessageQueue()
+		q.EnqueueInject("sess-a", "ctx-a")
+		q.EnqueueInject("sess-a", "ctx-b")
+		q.Enqueue("sess-a", "real question")
+		drained := q.DequeueLeadingInjects("sess-a")
+		if len(drained) != 2 || drained[0].Content != "ctx-a" || drained[1].Content != "ctx-b" {
+			t.Fatalf("drained = %+v", drained)
+		}
+		rest := q.List("sess-a")
+		if len(rest) != 1 || rest[0].Kind == "inject" || rest[0].Content != "real question" {
+			t.Fatalf("followup must remain, got %+v", rest)
+		}
+	})
+	t.Run("followup head drains nothing", func(t *testing.T) {
+		q := NewPendingMessageQueue()
+		q.Enqueue("sess-b", "q1")
+		q.EnqueueInject("sess-b", "ctx-late")
+		if drained := q.DequeueLeadingInjects("sess-b"); drained != nil {
+			t.Fatalf("non-inject head must drain nothing, got %+v", drained)
+		}
+		if got := q.List("sess-b"); len(got) != 2 {
+			t.Fatalf("queue must stay intact, got %+v", got)
+		}
+	})
+	t.Run("all-inject queue fully drained", func(t *testing.T) {
+		q := NewPendingMessageQueue()
+		q.EnqueueInject("sess-c", "ctx-a")
+		q.EnqueueInject("sess-c", "ctx-b")
+		if drained := q.DequeueLeadingInjects("sess-c"); len(drained) != 2 {
+			t.Fatalf("drained = %+v", drained)
+		}
+		if got := q.List("sess-c"); len(got) != 0 {
+			t.Fatalf("queue must be empty, got %+v", got)
+		}
+	})
+	t.Run("empty queue returns nil", func(t *testing.T) {
+		q := NewPendingMessageQueue()
+		if drained := q.DequeueLeadingInjects("sess-none"); drained != nil {
+			t.Fatalf("empty queue must return nil, got %+v", drained)
+		}
+	})
+}

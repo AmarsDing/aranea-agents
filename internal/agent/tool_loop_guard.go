@@ -325,8 +325,11 @@ type loopGuardVerdict struct {
 	blockedCount     int
 	consecutiveCount int
 	emptyStreak      int
-	lastDigest       string
-	lastTool         string // 上一次调用的原始工具名（跨名重复拦截时解释用）
+	// forbiddenStreak 是同签名连续 FORBIDDEN/not found 次数（判定见
+	// forbiddenLoop），禁止与 consecutiveCount（同参同结果连击）混用。
+	forbiddenStreak int
+	lastDigest      string
+	lastTool        string // 上一次调用的原始工具名（跨名重复拦截时解释用）
 	// Q1 装载闸消息字段：loadTarget 是被拦 tool_load 的目标工具名；
 	// loadCount/loadMax 是配额拦截时的当前装载数与配额上限。
 	loadTarget string
@@ -1017,6 +1020,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 		blockedCount:     e.blockedCount,
 		consecutiveCount: e.sameCount,
 		emptyStreak:      e.emptyStreak[toolName],
+		forbiddenStreak:  e.forbiddenStreak,
 		lastDigest:       e.lastResultDigest,
 		lastTool:         e.lastTool,
 		loadTarget:       loadTarget,
@@ -1288,7 +1292,7 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			g.lg.Warn("tool loop guard blocked forbidden retry",
 				loggateway.StepID("agent.tool_loop_guard"),
 				loggateway.Str("tool", args.ToolName),
-				loggateway.Int("forbidden_streak", v.consecutiveCount))
+				loggateway.Int("forbidden_streak", v.forbiddenStreak))
 			g.emitGateDecision(ctx, args.ToolName, "目标 agent 不存在，停止重试",
 				fmt.Sprintf("%s 连续返回 FORBIDDEN/target not found，继续重试不会接通", args.ToolName),
 				2, 2, "block_call")

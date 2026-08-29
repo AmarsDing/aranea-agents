@@ -9,7 +9,19 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/internal/runtime"
 )
+
+// F9：biz.ChatPendingQueueCap（G1 满员拒绝阈值）必须与
+// runtime.MaxPendingPerSession（真实队列容量）相等——前者大于后者时
+// 「满员拒绝」永不触发（Enqueue 先容量拒绝），小于后者时队列尾部容量闲置。
+// 两常量分属 biz/runtime 层无法互引，用适配层测试钉住绑定。
+func TestChatPendingQueueCapMatchesRuntime(t *testing.T) {
+	if biz.ChatPendingQueueCap != runtime.MaxPendingPerSession {
+		t.Fatalf("ChatPendingQueueCap=%d must equal runtime.MaxPendingPerSession=%d",
+			biz.ChatPendingQueueCap, runtime.MaxPendingPerSession)
+	}
+}
 
 // recordingSessionStatePort is a test double for biz.SessionStatePort that
 // records all PatchSessionState calls for verification.

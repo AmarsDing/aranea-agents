@@ -67,6 +67,38 @@ func TestInvocationStatusFromAfter_GNS3BusinessError(t *testing.T) {
 	}
 }
 
+// F11：业务错误改 JSON 字段解析后的口径钉住——ok=false / error 非空字段判失败；
+// 空 error 字段、output 内的键名碎片、成功结果不得误判。
+func TestBusinessToolResultError_JSONFieldParsing(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		tool    string
+		result  any
+		wantErr bool
+	}{
+		{"ok=false with error field", "gns3_exec", map[string]any{"ok": false, "error": "device offline"}, true},
+		{"ok=false without error field", "gns3_exec", map[string]any{"ok": false, "httpStatus": 502}, true},
+		{"error field non-empty (no ok key)", "gns3_health_check", map[string]any{"device": "sw1", "error": "unknown device sw1"}, true},
+		{"err field non-empty", "gns3_fault_inject", map[string]any{"err": "port not found"}, true},
+		{"jsonResult wrapper unwrap", "gns3_exec", map[string]any{"result": map[string]any{"ok": false, "error": "boom"}}, true},
+		{"output unknown device", "gns3_exec", map[string]any{"device": "sw1", "cmd": "ping", "output": "unknown device core-sw1"}, true},
+		{"empty error field is success", "gns3_exec", map[string]any{"ok": true, "error": "", "output": "eth1 state UP"}, false},
+		{"success without ok key", "gns3_exec", map[string]any{"device": "sw1", "cmd": "ip link show", "output": "1: lo: <LOOPBACK> state UP"}, false},
+		{"output key-name fragment not error", "gns3_exec", map[string]any{"output": `see {"error": ""} example in docs`}, false},
+		{"nil result", "gns3_exec", nil, false},
+		{"non-gns3 tool ignored", "shell_exec", map[string]any{"ok": false, "error": "boom"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := businessToolResultError(c.tool, c.result)
+			if (got != "") != c.wantErr {
+				t.Fatalf("businessToolResultError(%q) = %q, wantErr=%v", c.name, got, c.wantErr)
+			}
+		})
+	}
+}
+
 // TestSkillInvocationOutcome_FailedMapping ensures the runtime status "failed"
 // maps to outcome="failure" (this is the new canonical mapping after the fix).
 // "error" is also accepted for backward compatibility with rows written before

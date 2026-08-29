@@ -100,6 +100,14 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				loggateway.Str("tool", toolKey),
 				loggateway.Str("agent_id", h.ag.ID),
 				loggateway.Str("decision_reason", decision.reason))
+			// F12：grant 秒过必须落 hitl_approval 决策记录。S07 复查 Evidence：
+			// 同参 spawn 前 2 次超时 blocked、首次 approve 后第 3 次 5ms 放行——
+			// 放行本身符合 spawn 批量授权设计，但决策层无迹可寻，被误判为
+			// 确认闸策略不一致。shell_safe 是 E1 免确认设计（非人工授权事件），
+			// 不进 hitl_approval。
+			if decision.reason == confirmReasonGrantSession || decision.reason == confirmReasonGrantPersisted {
+				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "grant_skip", "", args.Arguments, "")
+			}
 		}
 		// P1-10 不变量对放行态同样成立（2026-08-27 三轮审查根修）：产品
 		// 门禁已作出「无需确认」裁定，与另两出口（:75 pluginAllow、:218
@@ -486,10 +494,6 @@ func toolConfirmationBypass() bool {
 		return true
 	}
 	return strings.TrimSpace(os.Getenv("ARANEA_TOOL_AUTO_APPROVE")) == "1"
-}
-
-func (h *toolConfirmationBeforeHook) extraConfirmAttempts() int {
-	return extraConfirmAttemptsForTool("", h.confirmRetries)
 }
 
 func extraConfirmAttemptsForTool(toolKey string, configured int) int {

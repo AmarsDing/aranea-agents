@@ -91,6 +91,21 @@ func (a *pendingQueueAdapter) FlushLeadingInjects(sessionID string) []biz.Pendin
 	return out
 }
 
+func (a *pendingQueueAdapter) DequeueLeadingInjects(sessionID string) []biz.PendingQueueEntry {
+	drained := a.PendingMessageQueue.DequeueLeadingInjects(sessionID)
+	out := make([]biz.PendingQueueEntry, len(drained))
+	for i, e := range drained {
+		out[i] = biz.PendingQueueEntry{
+			ID:        e.ID,
+			Content:   e.Content,
+			Status:    e.Status,
+			CreatedAt: e.CreatedAt,
+			Kind:      e.Kind,
+		}
+	}
+	return out
+}
+
 func (a *pendingQueueAdapter) Dequeue(sessionID string) (biz.PendingQueueEntry, bool) {
 	e, ok := a.PendingMessageQueue.Dequeue(sessionID)
 	if !ok {

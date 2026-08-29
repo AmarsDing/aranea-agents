@@ -45,17 +45,72 @@ func invocationStatusFromAfter(args *trpctool.AfterToolArgs) (status, errCode, e
 	return "success", "", ""
 }
 
+// businessToolResultError 判定 GNS3 族工具的业务级失败（HTTP 200 但语义失败）。
+// F11（2026-08-29 审查）：旧实现对整个序列化结果做子串匹配（`"error":` 等），
+// 空 error 字段（"error":""）或 output 文本含键名碎片都会误判；改为 JSON 字段
+// 级解析——ok=false / error/err 非空字段 / output 文本中的设备不存在证据。
 func businessToolResultError(toolName string, result any) string {
 	if !isGNS3FamilyTool(toolName) || result == nil {
 		return ""
 	}
-	text := strings.ToLower(stringifyToolResult(result))
-	for _, needle := range []string{"unknown device", "device not found", "\"error\":", `"err":`} {
-		if strings.Contains(text, needle) {
-			return "gns3 business error: " + safeTruncate(stringifyToolResult(result), 200)
+	m := toolResultMap(result)
+	if m == nil {
+		return ""
+	}
+	// jsonResult 包层（{"result": ...}）下钻一层到真实响应体。
+	if inner, ok := m["result"]; ok {
+		if im := toolResultMap(inner); im != nil {
+			m = im
+		}
+	}
+	// doRequest 错误包装与上游显式失败：ok=false。
+	if okFlag, exists := m["ok"].(bool); exists && !okFlag {
+		if es, _ := m["error"].(string); strings.TrimSpace(es) != "" {
+			return "gns3 business error: " + safeTruncate(es, 200)
+		}
+		return "gns3 business error: " + safeTruncate(stringifyToolResult(m), 200)
+	}
+	// 上游业务错误字段（无 ok 键的 gns3_agent 响应）：error/err 非空字符串。
+	for _, k := range []string{"error", "err"} {
+		if es, _ := m[k].(string); strings.TrimSpace(es) != "" {
+			return "gns3 business error: " + safeTruncate(es, 200)
+		}
+	}
+	// gns3_agent 200 业务失败（成功响应无 ok 键）的证据文本，仅扫 output 字段，
+	// 不扫整个 JSON（避免命令回显里的偶然子串误判）。
+	if out, _ := m["output"].(string); out != "" {
+		low := strings.ToLower(out)
+		if strings.Contains(low, "unknown device") || strings.Contains(low, "device not found") {
+			return "gns3 business error: " + safeTruncate(out, 200)
 		}
 	}
 	return ""
+}
+
+// toolResultMap 把工具结果归一化为 JSON 对象（map/JSON string/[]byte/struct）。
+func toolResultMap(result any) map[string]any {
+	switch v := result.(type) {
+	case map[string]any:
+		return v
+	case string:
+		var m map[string]any
+		if json.Unmarshal([]byte(v), &m) == nil {
+			return m
+		}
+	case []byte:
+		var m map[string]any
+		if json.Unmarshal(v, &m) == nil {
+			return m
+		}
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			var m map[string]any
+			if json.Unmarshal(b, &m) == nil {
+				return m
+			}
+		}
+	}
+	return nil
 }
 
 func isGNS3FamilyTool(toolName string) bool {

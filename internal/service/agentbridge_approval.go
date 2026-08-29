@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/agentbridge"
 	"aranea-agents/internal/biz/decision"
@@ -129,6 +130,10 @@ func (h *bridgeProgressHandler) OnPermission(ctx context.Context, title string, 
 	timeout := h.svc.approvalWait()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+	// 审批等待计入 HITL wait 累加器（与工具确认同口径）：否则整段人工等待
+	// 混进 turn 的 model_latency_ms，模型耗时统计失真。
+	waitStart := time.Now()
+	defer func() { chatagent.AddConfirmWaitMS(ctx, int(time.Since(waitStart).Milliseconds())) }()
 	select {
 	case dec := <-pending.done:
 		h.svc.clearPending(h.taskID)

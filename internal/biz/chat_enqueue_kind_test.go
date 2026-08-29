@@ -56,6 +56,19 @@ func (q *kindRecordingQueue) Dequeue(string) (PendingQueueEntry, bool) {
 	return e, true
 }
 
+func (q *kindRecordingQueue) DequeueLeadingInjects(string) []PendingQueueEntry {
+	n := 0
+	for n < len(q.entries) && q.entries[n].Kind == ChatEnqueueKindInject {
+		n++
+	}
+	if n == 0 {
+		return nil
+	}
+	out := append([]PendingQueueEntry(nil), q.entries[:n]...)
+	q.entries = q.entries[n:]
+	return out
+}
+
 // steerRecordingGateway 记录 steer 尝试的运行网关桩。
 type steerRecordingGateway struct {
 	stubChatRunGateway
