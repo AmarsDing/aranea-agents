@@ -32,7 +32,7 @@ type PlanAndExecuteInput struct {
 	// agent_keys=["__system_admin__"]). Heuristic matching can never select
 	// system agents, so explicit routing is the only path to them.
 	// agent_keys[0] executes; remaining keys join as team members in dag mode.
-	AgentKeys []string `json:"agent_keys,omitempty" jsonschema:"description=Explicit agent routing: agent_keys[0] executes the task (e.g. [\"__system_admin__\"] for Skill/MCP/industry management, [\"__memory__\"] for memory tasks, [\"__skills__\"] for skill-evolution tasks). Bypasses heuristic agent matching. Required when delegating to system butlers."`
+	AgentKeys []string `json:"agent_keys,omitempty" jsonschema:"description=Explicit agent routing: real agent_keys (e.g. [\"__system_admin__\"] for Skill/MCP/industry management, [\"__memory__\"] for memory tasks). Department/company display names (e.g. \"技术部\") are also accepted and resolved to that org unit's lead agent. In parallel mode, when len(agent_keys)==len(subtasks) they map 1:1 in order; otherwise agent_keys[0] executes all subtasks and remaining keys join as team members in dag mode. Bypasses heuristic agent matching. Required when delegating to system butlers."`
 	// ForceNew starts a brand-new DAG even when this spirit session already has
 	// overlapping running/completed teams for the same goal. Default false.
 	ForceNew bool `json:"force_new,omitempty" jsonschema:"description=Set true only when the user explicitly asked to start a NEW independent analysis. Default false: if this session already has teams, reuse them instead of decomposing again."`
@@ -76,7 +76,23 @@ type planAndExecuteDeps struct {
 	sessionModelLookup SessionModelLookup
 	bus                biz.EventBus // Phase 3b-D: v2 EventBus
 	lg                 loggateway.Logger
+	// startupWaiter P2-② 假启动对账：orchestrate 阶段返回前验证看板真实
+	// 启动了团队（首个 team_run 落地），失败则把真实原因回传给 Spirit。
+	// 可选：nil 时跳过对账（测试 / 旧装配路径）。
+	startupWaiter BoardStartupWaiter
 }
+
+// BoardStartupWaiter 对账一个新发布 PlanBoard 的启动结局（P2-②）。
+// 由 service.PlanExecutor 实现（tools 不反向依赖 service）。
+type BoardStartupWaiter interface {
+	// WaitBoardStartup 返回 (true, "")=首个 team 已创建或无法判定（超时/
+	// 挂起，不阻断）；(false, reason)=board 启动失败。
+	WaitBoardStartup(ctx context.Context, planBoardID string, timeout time.Duration) (bool, string)
+}
+
+// planBoardStartupWait 是 orchestrate 阶段启动对账的等待上限。正常首个
+// team 创建为 DB 事务（毫秒级）；HITL 挂起/慢创建超时后放行 running。
+const planBoardStartupWait = 10 * time.Second
 
 // SessionModelLookup resolves the effective provider/model for a Spirit session.
 // Used by plan_and_execute to inject the session model into the context for
@@ -120,7 +136,7 @@ func shouldRejectDirectAnswerPlan(taskPrompt, mode string, forceNew bool, explic
 
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
-func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus biz.EventBus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus biz.EventBus, lg loggateway.Logger, startupWaiter BoardStartupWaiter) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
 	deps := planAndExecuteDeps{
 		planner:            planner,
 		allocator:          allocator,
@@ -129,6 +145,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 		sessionModelLookup: sessionModelLookup,
 		bus:                bus,
 		lg:                 lg,
+		startupWaiter:      startupWaiter,
 	}
 
 	return trpcfunction.NewFunctionTool(
@@ -630,6 +647,29 @@ func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocP
 		loggateway.Str("spirit_session_id", taskPlan.SpiritSessionID),
 		loggateway.Int("subtask_count", len(taskPlan.SubTasks)),
 	)
+	// P2-② 假启动拦截（session-eval-20260829-r2 R4-Q1）：返回前对账看板
+	// 真实启动结局。S07 事故：assembly 校验失败（无效 agent_keys）→ 零
+	// team_runs，但工具返回 running → Spirit 终复谎称「编排已组建」。
+	// 现在启动失败会把真实原因作为工具错误回传，Spirit 必须如实告知用户。
+	if deps.startupWaiter != nil {
+		started, reason := deps.startupWaiter.WaitBoardStartup(ctx, planBoardID, planBoardStartupWait)
+		if !started {
+			deps.lg.Warn("plan_and_execute: 启动对账失败（假启动拦截）",
+				loggateway.StepID("spirit.plan_and_execute.startup_drift"),
+				loggateway.Str("plan_id", taskPlan.ID),
+				loggateway.Str("plan_board_id", planBoardID),
+				loggateway.Str("reason", reason),
+			)
+			return nil, biztypes.OrchestrationStepRecord{
+				StepName:   "orchestrate",
+				Status:     "failed",
+				Error:      "startup reconciliation failed: " + reason,
+				StartedAt:  start,
+				FinishedAt: time.Now().UTC(),
+			}, apierror.Internal(apierror.DomainSpirit,
+				"团队组建失败（启动对账未通过）：%s。请如实告知用户编排未能启动，不要声称已组建团队。", reason)
+		}
+	}
 	handle := &biz.OrchestrationHandle{
 		ID:              planBoardID,
 		TaskPlanID:      taskPlan.ID,

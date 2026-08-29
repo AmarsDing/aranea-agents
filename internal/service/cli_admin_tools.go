@@ -188,7 +188,11 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		allocator := o.team().AgentAllocator
 		orchestrator := o.team().TaskOrchestrator
 		if planner != nil && allocator != nil && orchestrator != nil {
-			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), sessionModelLookup{sessions: o.td().Sessions}, o.td().Pipeline.EventBus, o.lg()))
+			// P2-② 假启动拦截：planBoardOrch 实际就是 *PlanExecutor（SetPlanBoardOrch
+			// 注入），同时实现 BoardStartupWaiter；断言失败（v1-only 部署）则 nil，
+			// 工具跳过启动对账。
+			startupWaiter, _ := o.planBoardOrchFallback().(tools.BoardStartupWaiter)
+			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), sessionModelLookup{sessions: o.td().Sessions}, o.td().Pipeline.EventBus, o.lg(), startupWaiter))
 			// check_progress removed: the system-push pattern (checkAllTeamsCompleted
 			// → SynthesizeResults → ExecuteTurn) replaces the LLM-polling pattern.
 			// The Spirit LLM no longer needs to poll team status; the system

@@ -48,8 +48,8 @@ type TeamService struct {
 	// ResumeTeamRunExecution 成功后双写 hitl_approval 决策记录 + flowlog。
 	// 经 SetDecisionEvidence 后置注入（对齐 AgentBridgeService 先例），
 	// 避免拉长 NewTeamService 参数表。nil = 决策记录静默降级。
-	decisions    decision.Collector
-	decisionBus  contract.MonitorBus
+	decisions   decision.Collector
+	decisionBus contract.MonitorBus
 }
 
 func NewTeamService(

@@ -2,14 +2,21 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
 )
 
 // L3 (2026-07-22)：interrupted task 的显式续跑。

@@ -107,6 +107,14 @@ type PlanExecutor struct {
 	playbookConfirmDecided sync.Map
 	// confirmSteps reads persisted ConfirmBlock steps after restart.
 	confirmSteps biz.StepV2Reader
+	// startup 跟踪每个 board 的「首次团队派发」结果信号（P2-② 假启动拦截，
+	// session-eval-20260829-r2 R4-Q1）。key: board.ID → chan startupResult
+	// （buffered 1，首发有效、后续丢弃）。plan_and_execute 通过
+	// WaitBoardStartup 在返回前对账：声明的编排是否真实产出 team（首个
+	// team_run 创建成功），失败则把真实原因回传 Spirit，杜绝「声称已组建、
+	// 实际零团队运行」。条目随进程生命周期保留（同 playbookConfirmDecided
+	// 先例），单条仅一个 buffered chan，量级可忽略。
+	startup sync.Map
 }
 
 type playbookConfirmWait struct {
@@ -119,6 +127,86 @@ type playbookConfirmWait struct {
 type boardRunLease struct {
 	cancel    context.CancelFunc
 	sessionID string
+}
+
+// startupResult 是 board 首次团队派发的结果信号（P2-②）。
+type startupResult struct {
+	ok     bool
+	reason string
+}
+
+// signalStartup 非阻塞发送 board 启动信号；仅首个信号有效（chan buffered 1）。
+func (e *PlanExecutor) signalStartup(boardID string, ok bool, reason string) {
+	if e == nil || boardID == "" {
+		return
+	}
+	v, loaded := e.startup.Load(boardID)
+	if !loaded {
+		return
+	}
+	ch, _ := v.(chan startupResult)
+	select {
+	case ch <- startupResult{ok: ok, reason: reason}:
+	default:
+	}
+}
+
+// WaitBoardStartup 等待 board 的首次团队派发结果（P2-② 假启动拦截）：
+//   - 首个 team 创建成功 → (true, "")；
+//   - board 启动失败（assembly/agent key 校验等）→ (false, reason)；
+//   - 超时 / ctx 取消 / 信号缺失（HITL 挂起、慢创建）→ (true, "") 不阻断，
+//     保持既有「running」语义（宁可放行、不可误报失败）。
+//
+// 通道注册（startBoardDAG）与等待方（plan_and_execute）存在竞态：事件总线
+// 异步分发时等待方可能先到。故先轮询等待通道出现，叠加 board 终态 DB 兜底
+// （通道信号因进程重启丢失时仍能识别已 failed 的看板）。
+func (e *PlanExecutor) WaitBoardStartup(ctx context.Context, boardID string, timeout time.Duration) (bool, string) {
+	if e == nil || boardID == "" || timeout <= 0 {
+		return true, ""
+	}
+	deadline := time.Now().Add(timeout)
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if v, ok := e.startup.Load(boardID); ok {
+			if ch, _ := v.(chan startupResult); ch != nil {
+				remain := time.Until(deadline)
+				if remain <= 0 {
+					return true, ""
+				}
+				t := time.NewTimer(remain)
+				select {
+				case r := <-ch:
+					t.Stop()
+					// 信号已消费，释放登记（runBoard 退出时也会兜底删除）。
+					e.startup.Delete(boardID)
+					return r.ok, r.reason
+				case <-t.C:
+					return true, ""
+				case <-ctx.Done():
+					t.Stop()
+					return true, ""
+				}
+			}
+		}
+		// 通道未注册（事件尚未分发或信号已消费）：board 已到终态则直接对账。
+		// Completed/PartialFailure 都代表确有 team 落地（partial = 至少一个
+		// step 成功完成），声明的「running」属实，不误报。
+		if board, err := e.repos.GetPlanBoard(ctx, boardID); err == nil && biz.IsPlanBoardTerminal(board.Status) {
+			if board.Status == biz.PlanStatusCompleted || board.Status == biz.PlanStatusPartialFailure {
+				return true, ""
+			}
+			return false, "plan board " + string(board.Status)
+		}
+		if time.Now().After(deadline) {
+			return true, ""
+		}
+		select {
+		case <-tick.C:
+		case <-ctx.Done():
+			return true, ""
+		}
+	}
 }
 
 // TeamDispatchMarker 标记一个 task 已派发 team。
@@ -518,6 +606,8 @@ func (e *PlanExecutor) startBoardDAG(board biz.PlanBoard) {
 		loggateway.Str("plan_board_id", board.ID),
 		loggateway.Str("task_id", board.TaskID),
 		loggateway.Int("steps", len(board.Steps)))
+	// P2-②：注册启动信号通道，供 plan_and_execute 对账首次团队派发结果。
+	e.startup.Store(board.ID, make(chan startupResult, 1))
 	// Subscribe 是阻塞的，在独立 goroutine 中执行。
 	// 2026-07-04 问题 4 修复：从 PlanBoard.TaskID 恢复 RootTaskActivityID
 	// 注入 ctx，让下游 buildTeamProjectMeta / publishV2TeamRunAndMemberSessions
@@ -526,6 +616,7 @@ func (e *PlanExecutor) startBoardDAG(board biz.PlanBoard) {
 	b := board
 	safego.Go(runCtx, "plan_executor.dag."+b.ID, func() {
 		defer e.running.Delete(b.ID) // C-20: release lease on exit
+		defer e.startup.Delete(b.ID) // P2-②: 无等待方时兜底释放启动信号登记
 		defer cancel()
 		ctx := runCtx
 		if b.TaskID != "" {
@@ -914,6 +1005,23 @@ func (r *dagRun) snapshotStepOutcomes() (hasFailed, hasPartial bool) {
 	return hasFailed, hasPartial
 }
 
+// firstStepError 返回首个失败步骤的错误信息（P2-② 启动对账 reason）。
+// 无失败步骤时返回兜底文案。与 snapshotStepOutcomes 同锁约定。
+func (r *dagRun) firstStepError() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		if s.Status == biz.PlanStepStatusFailed {
+			if s.Error != nil && strings.TrimSpace(s.Error.Message) != "" {
+				return "step " + s.ID + " failed: " + s.Error.Message
+			}
+			return "step " + s.ID + " failed"
+		}
+	}
+	return "plan board failed"
+}
+
 // publishPlanBoardTerminal 根据 DAG 执行结果更新 PlanBoard terminal 状态
 // 并发布 PlanBoardUpdatedEvent。让计划列表在刷新后能正确显示最终状态。
 //
@@ -941,6 +1049,18 @@ func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 		event = biz.PlanBoardEventPartial
 	default:
 		event = biz.PlanBoardEventComplete
+	}
+	// P2-② 假启动拦截：board 终态 Failed 且尚无成功信号（signalStartup 首发
+	// 有效，已创建 team 时此信号被丢弃）→ 通知 WaitBoardStartup 对账失败。
+	// 覆盖步骤级失败路径（orchestrate 校验/agent key 无效 → failStep → 零
+	// team_runs），此前仅 publishPlanBoardFailed（校验 fail-closed）发信号，
+	// S07 类事故会静默漏过对账。
+	if event == biz.PlanBoardEventFail {
+		reason := "plan board run canceled"
+		if !r.canceled {
+			reason = r.firstStepError()
+		}
+		r.pe.signalStartup(r.board.ID, false, reason)
 	}
 	// 状态机校验：from=Executing → terminal 状态。
 	newStatus, err := r.pe.pbSM.Transition(r.board.Status, event)
@@ -1172,6 +1292,9 @@ func (r *dagRun) validateDAG() error {
 //   - board.Status == Executing → PlanBoardEventFail（Executing → Failed）
 //   - 其他（已 terminal 等）→ 跳过，不覆盖已有 terminal 状态
 func (r *dagRun) publishPlanBoardFailed(ctx context.Context, reason string) {
+	// P2-② 假启动拦截：board 失败 → 通知 WaitBoardStartup 对账失败，
+	// plan_and_execute 将真实原因回传 Spirit（首发有效；已有成功信号时丢弃）。
+	r.pe.signalStartup(r.board.ID, false, reason)
 	var event biz.PlanBoardEvent
 	switch r.board.Status {
 	case biz.PlanStatusPlanning:
@@ -1342,6 +1465,9 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 		r.failStep(ctx, step, "orchestrate returned empty team or team_stage_id")
 		return
 	}
+	// P2-② 假启动拦截：首个 team 真实创建成功 → 通知 WaitBoardStartup
+	// 对账通过（plan_and_execute 声明的编排确有 team_run 落地）。
+	r.pe.signalStartup(r.board.ID, true, "")
 	// 2026-07-04 问题 P5/D1 修复：标记此 task 已派发 team。
 	// OnTurnEnd 检查此标记，若为 true 则跳过 task.completed，
 	// 等 synthesis turn 完成后再发 task.completed。

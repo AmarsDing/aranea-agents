@@ -10,7 +10,9 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/internal/sandbox"
@@ -63,6 +65,8 @@ func newApp(
 	sandboxMgr *sandbox.Manager,
 	decisionLC decision.Lifecycle,
 	decisions decision.Collector,
+	teamSvc *service.TeamService,
+	pluginRT *plugintrpc.Runtime,
 ) *kratos.App {
 	// startupBegin approximates the start of the P1 migration window: NewData
 	// (which launches the P1 goroutine) runs immediately before newApp inside
@@ -120,25 +124,25 @@ func newApp(
 				chatSvc.BindAgentBridge(agentBridgeSvc)
 			}
 			// M80 1.5: AgentBridge 审批链双写 decision_records（hitl_approval）。
-		if agentBridgeSvc != nil && decisions != nil {
-			agentBridgeSvc.SetDecisionCollector(decisions)
-		}
-		// P1-④（2026-08-30）：team run 恢复（hitl_approval 留痕）与
-		// output_policy 输出拦截（system_guard 留痕）的证据通道接线。
-		if teamSvc != nil {
-			var monBus contract.MonitorBus
-			if eventInfra != nil {
-				monBus = eventInfra.MonitorEventBus
+			if agentBridgeSvc != nil && decisions != nil {
+				agentBridgeSvc.SetDecisionCollector(decisions)
 			}
-			teamSvc.SetDecisionEvidence(decisions, monBus)
-		}
-		if pluginRT != nil && decisions != nil {
-			pluginRT.SetDecisionCollector(decisions)
-		}
+			// P1-④（2026-08-30）：team run 恢复（hitl_approval 留痕）与
+			// output_policy 输出拦截（system_guard 留痕）的证据通道接线。
+			if teamSvc != nil {
+				var monBus contract.MonitorBus
+				if eventInfra != nil {
+					monBus = eventInfra.MonitorEventBus
+				}
+				teamSvc.SetDecisionEvidence(decisions, monBus)
+			}
+			if pluginRT != nil && decisions != nil {
+				pluginRT.SetDecisionCollector(decisions)
+			}
 
-		if knowledgeSvc != nil && vaultSyncSup != nil {
-			knowledgeSvc.SetVaultSyncController(vaultSyncSup)
-		}
+			if knowledgeSvc != nil && vaultSyncSup != nil {
+				knowledgeSvc.SetVaultSyncController(vaultSyncSup)
+			}
 			// Wave 2：写回重放双点接线 + 跨进程重建/重嵌入租约。
 			if knowledgeSvc != nil {
 				knowledgeSvc.BindDerivedIndexHooks()

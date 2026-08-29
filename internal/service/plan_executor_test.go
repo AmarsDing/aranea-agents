@@ -20,6 +20,8 @@ type fakeOrchestrator struct {
 	pending map[string]chan biz.TeamCompleteEvent
 	calls   []string // stepIDs in dispatch order
 	seq     *fakeSeq // 用于发布 TeamStageCreatedEvent 模拟真实流程
+	// failErr 按 stepID 注入 Orchestrate 失败（P2-② 假启动对账测试）。
+	failErr map[string]error
 }
 
 func newFakeOrchestrator() *fakeOrchestrator {
@@ -35,6 +37,10 @@ func (f *fakeOrchestrator) withSeq(seq *fakeSeq) *fakeOrchestrator {
 func (f *fakeOrchestrator) Orchestrate(ctx context.Context, step biz.PlanStep, _ biz.TeamStage) (*OrchestrateResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err, ok := f.failErr[step.ID]; ok {
+		f.calls = append(f.calls, step.ID)
+		return nil, err
+	}
 	ch := make(chan biz.TeamCompleteEvent, 1)
 	f.pending[step.ID] = ch
 	f.calls = append(f.calls, step.ID)

@@ -2,12 +2,17 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.ResumeTeamRunExecutionRequest) (*v1.ResumeTeamRunExecutionResponse, error) {
