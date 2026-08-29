@@ -30,6 +30,8 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	}
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
+	// R4-Q10：team run 墙钟计时起点（avg_latency_ms 样本）。
+	teamTurnStart := time.Now()
 
 	if qerr := o.admission().EnforceChatTurnQuotas(ctx, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
 		if unlock != nil {
@@ -136,7 +138,8 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	}
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",
-		assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.TokenCached, assistantMsg.ContentMarkdown)
+		assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.TokenCached, assistantMsg.ContentMarkdown,
+		int(time.Since(teamTurnStart).Milliseconds()))
 	return userMsg, assistantMsg, nil
 }
 

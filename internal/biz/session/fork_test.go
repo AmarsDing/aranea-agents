@@ -15,17 +15,27 @@ import (
 type forkFakeReader struct {
 	SessionReader
 	sess Session
+	// created 记录 writer 落库的 fork 子会话；GetSessionByID 命中其 ID 时返回它
+	// （生产实现返回持久化后的行，fake 必须同语义，否则断言到的恒是源会话）。
+	created *Session
 }
 
-func (f *forkFakeReader) GetSessionByID(_ context.Context, _ string) (Session, error) {
+func (f *forkFakeReader) GetSessionByID(_ context.Context, id string) (Session, error) {
+	if f.created != nil && f.created.ID == id {
+		return *f.created, nil
+	}
 	return f.sess, nil
 }
 
 type forkFakeWriter struct {
 	SessionWriter
+	reader *forkFakeReader
 }
 
 func (f *forkFakeWriter) CreateSession(_ context.Context, s Session) (Session, error) {
+	if f.reader != nil {
+		f.reader.created = &s
+	}
 	return s, nil
 }
 
@@ -44,11 +54,15 @@ func (forkFakeStore) CreateFrameworkState(_ context.Context, _, _ string) error 
 func (forkFakeStore) CopyV2Records(_ context.Context, _, _, _ string) (int, int, int, error) {
 	return 0, 0, 0, nil
 }
+func (forkFakeStore) InitForkedSessionMetrics(_ context.Context, _, _ string, _ int) error {
+	return nil
+}
 
 func TestSessionForkUsecase_ScopeGate(t *testing.T) {
 	t.Parallel()
 	mk := func(sess Session) *SessionForkUsecase {
-		return NewSessionForkUsecase(&forkFakeReader{sess: sess}, &forkFakeWriter{}, forkFakeStore{}, loggateway.NewNoop())
+		reader := &forkFakeReader{sess: sess}
+		return NewSessionForkUsecase(reader, &forkFakeWriter{reader: reader}, forkFakeStore{}, loggateway.NewNoop())
 	}
 
 	t.Run("root session allowed", func(t *testing.T) {

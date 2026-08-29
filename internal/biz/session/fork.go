@@ -48,6 +48,10 @@ type SessionForkStore interface {
 	// CopyV2Records 复制 ≤ forkTurnID 的 tasks/turns/steps（id 加确定性前缀重映射，
 	// seq 原值保留），返回各表复制条数。
 	CopyV2Records(ctx context.Context, srcSessionID, dstSessionID, forkTurnID string) (tasks, turns, steps int, err error)
+	// InitForkedSessionMetrics 初始化子会话展示级指标（R4-Q10）：message_count
+	// 按继承 turn 数回填、context_used_* 继承源会话水位；run/token/cost/latency
+	// 等用量计数不回填（自零累计）。
+	InitForkedSessionMetrics(ctx context.Context, srcSessionID, dstSessionID string, turnsCopied int) error
 }
 
 // SessionForkUsecase 独立子用例（不塞进 SessionUsecase——AS-COG-01 字段预算已满）。
@@ -144,6 +148,11 @@ func (uc *SessionForkUsecase) Fork(ctx context.Context, srcID, turnID, title str
 		}
 		tasks, turns, steps, err := uc.fork.CopyV2Records(txCtx, srcID, dst.ID, turnID)
 		if err != nil {
+			return err
+		}
+		// R4-Q10：fork 子会话展示级指标初始化（message_count/context 水位继承），
+		// 否则子会话带完整历史却 metrics 全零。
+		if err := uc.fork.InitForkedSessionMetrics(txCtx, srcID, dst.ID, turns); err != nil {
 			return err
 		}
 		uc.lg.Info("session forked",

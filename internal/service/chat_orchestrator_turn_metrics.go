@@ -34,7 +34,7 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 }
 
 // recordTeamSessionTurn records a completed team turn.
-func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok, cachedTok int, contentPreview string) {
+func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok, cachedTok int, contentPreview string, durationMs int) {
 	o.turnMetrics().RecordSessionTurn(ctx, SessionTurnRecordParams{
 		SessionID:      sessionID,
 		OwnerType:      "team",
@@ -47,6 +47,7 @@ func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID,
 		CompletionTok:  completionTok,
 		CachedTok:      cachedTok,
 		ContentPreview: contentPreview,
+		DurationMs:     durationMs,
 	})
 }
 

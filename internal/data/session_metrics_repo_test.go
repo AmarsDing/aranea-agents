@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/session"
-	"aranea-agents/internal/data/testhelper"
-	"aranea-agents/pkg/loggateway"
 )
 
 // R4-Q10 回归：session_metrics 聚合管线。
@@ -15,8 +13,7 @@ import (
 // ③ token-only delta（无 run）不稀释 avg。
 func TestUpsertSessionMetrics_FirstInsertAppliesDelta(t *testing.T) {
 	ctx := context.Background()
-	client, _ := testhelper.SetupTestPG(t)
-	d := newDataFromClient(client, loggateway.NewNoop())
+	d := newTestDataPG(t)
 	repo := NewSessionMetricsRepo(d)
 
 	if err := repo.ApplyMetricsDelta(ctx, &session.SessionMetricsDelta{
@@ -69,11 +66,10 @@ func TestUpsertSessionMetrics_FirstInsertAppliesDelta(t *testing.T) {
 // R4-Q10 回归：context_used 无条件镜像进 session_metrics，max 取历史峰值。
 func TestUpdateSessionContextFromLLMUsage_MirrorsMetrics(t *testing.T) {
 	ctx := context.Background()
-	client, _ := testhelper.SetupTestPG(t)
-	d := newDataFromClient(client, loggateway.NewNoop())
+	d := newTestDataPG(t)
 	repo := NewSessionRepo(d, NewSessionMetricsRepo(d), nil)
 
-	if _, err := client.Session.Create().
+	if _, err := d.RW().Write(ctx).Session.Create().
 		SetID("s1").SetTitle("s1").SetStatus("active").Save(ctx); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
