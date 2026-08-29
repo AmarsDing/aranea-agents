@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card style="min-width: 420px; max-width: 560px">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <!-- 阶段一：目标库选择 -->
       <template v-if="!result">
         <q-card-section>

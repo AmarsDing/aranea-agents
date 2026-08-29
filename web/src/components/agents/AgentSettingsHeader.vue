@@ -75,7 +75,8 @@ import { computed } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import KindBadge from './KindBadge.vue';
-import { promptModeLabel, statusLabel } from './agentUi';
+import { promptModeLabel } from './agentUi';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const props = defineProps<{
   agent: Agent;

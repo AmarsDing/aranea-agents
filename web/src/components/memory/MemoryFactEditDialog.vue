@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="memory-fact-edit-dialog">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section>
         <div class="text-h6">
           {{ mode === 'refine' ? t('memory.factEdit.refineTitle') : t('memory.factEdit.createTitle') }}

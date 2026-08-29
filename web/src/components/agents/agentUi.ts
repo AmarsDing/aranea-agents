@@ -31,10 +31,6 @@ export const statusOptions = [
   { label: '停用', value: 'inactive' },
 ];
 
-export function statusLabel(value: string) {
-  return statusOptions.find((opt) => opt.value === value)?.label ?? value;
-}
-
 export const toolOptions = [
   'browser',
   'replace_content',

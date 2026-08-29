@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card style="min-width: 380px">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section>
         <div class="text-h6">{{ t('knowledgePage.moveDialogTitle') }}</div>
         <div class="text-caption text-grey-7 ellipsis">{{ docSource }}</div>

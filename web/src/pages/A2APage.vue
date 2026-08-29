@@ -124,10 +124,9 @@
             </template>
             <template #body-cell-healthy="props">
               <q-td :props="props">
-                <q-badge
+                <AppStatusChip
                   v-if="props.row.last_health_at"
-                  :color="props.row.healthy ? 'positive' : 'negative'"
-                  :label="props.row.healthy ? '健康' : '异常'"
+                  :status="props.row.healthy ? 'healthy' : 'unhealthy'"
                 />
                 <span v-else class="text-grey-6">未探测</span>
               </q-td>

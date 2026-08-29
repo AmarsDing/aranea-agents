@@ -70,6 +70,7 @@ defineExpose({ focus });
   justify-content: center
   padding-top: 12vh
   backdrop-filter: blur(6px) brightness(0.6)
+  -webkit-backdrop-filter: blur(6px) brightness(0.6)
   background: rgba(4, 8, 18, 0.45)
 
 .kb-palette

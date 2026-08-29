@@ -162,9 +162,7 @@
       <template #body-cell-status="slotProps">
         <q-td :props="slotProps">
           <div class="row items-center no-wrap q-gutter-xs">
-            <q-badge rounded :color="slotProps.row.status === 'active' ? 'positive' : 'grey'">{{
-              statusLabel(slotProps.row.status)
-            }}</q-badge>
+            <AppStatusChip :status="slotProps.row.status" />
             <q-chip v-if="slotProps.row.readonly" dense square class="agent-card__readonly-chip" icon="verified_user">
               {{ t('agentsPage.actions.builtin') }}
               <q-tooltip>{{ t('agentsPage.actions.builtinTip') }}</q-tooltip>
@@ -287,7 +285,8 @@ import type { Agent } from '../../features/agents/types';
 import AgentCard from './AgentCard.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import { formatLastRunContext, isAgentEvolving, statusLabel, MEMORY_TOOL_MODE_LABELS } from './agentUi';
+import { formatLastRunContext, isAgentEvolving, MEMORY_TOOL_MODE_LABELS } from './agentUi';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const { t } = useI18n();
 

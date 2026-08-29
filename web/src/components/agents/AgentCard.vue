@@ -103,7 +103,7 @@ import { useQuasar } from 'quasar';
 import type { Agent } from '../../features/agents/types';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import KindBadge from './KindBadge.vue';
-import { statusLabel } from './agentUi';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const props = defineProps<{
   agent: Agent;

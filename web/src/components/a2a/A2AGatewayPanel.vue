@@ -94,6 +94,7 @@ import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { A2AGatewayEntry } from '../../features/a2a/types';
 import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
 

@@ -75,14 +75,22 @@ $prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 # 非交互：node_modules 与 lockfile 不吻合时 pnpm 默认询问是否清空重装，CI=true + confirmModulesPurge=false 免询问
 $env:CI = 'true'
-& pnpm install --frozen-lockfile --config.confirmModulesPurge=false 2>$null
+& pnpm install --frozen-lockfile --config.confirmModulesPurge=false
 if ($LASTEXITCODE -ne 0) {
+    # 回退普通 install 会同步改写 pnpm-lock.yaml；若 lockfile 因此与仓库不一致，
+    # 产物将基于未提交依赖状态（不可复现），必须拦截让人工提交后再打包
     Write-Host "  frozen-lockfile 失败，回退 pnpm install 同步依赖..." -ForegroundColor Yellow
     & pnpm install --config.confirmModulesPurge=false
     if ($LASTEXITCODE -ne 0) {
         $ErrorActionPreference = $prevEap
         Pop-Location
         Write-Error "pnpm install 失败"
+    }
+    $lockDirty = git -C $RepoRoot status --short -- web/pnpm-lock.yaml
+    if ($lockDirty) {
+        $ErrorActionPreference = $prevEap
+        Pop-Location
+        Write-Error "pnpm-lock.yaml 已被回退 install 改写且未提交（$lockDirty）。请先核对并提交 lockfile，再重新打包。"
     }
 }
 $ErrorActionPreference = $prevEap

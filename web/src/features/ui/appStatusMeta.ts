@@ -23,6 +23,14 @@ const STATUS_META: Record<string, AppStatusMeta> = {
   queued: { tone: 'neutral', icon: 'hourglass_empty', labelKey: 'common.status.queued' },
   idle: { tone: 'neutral', icon: 'radio_button_unchecked', labelKey: 'common.status.idle' },
   interrupted: { tone: 'warning', icon: 'pause_circle', labelKey: 'common.status.interrupted' },
+  enabled: { tone: 'success', icon: 'toggle_on', labelKey: 'common.status.enabled' },
+  disabled: { tone: 'neutral', icon: 'toggle_off', labelKey: 'common.status.disabled' },
+  healthy: { tone: 'success', icon: 'favorite', labelKey: 'common.status.healthy' },
+  unhealthy: { tone: 'danger', icon: 'heart_broken', labelKey: 'common.status.unhealthy' },
+  active: { tone: 'success', icon: 'check_circle', labelKey: 'common.status.active' },
+  inactive: { tone: 'neutral', icon: 'radio_button_unchecked', labelKey: 'common.status.inactive' },
+  replayed: { tone: 'success', icon: 'replay', labelKey: 'common.status.replayed' },
+  abandoned: { tone: 'neutral', icon: 'delete_outline', labelKey: 'common.status.abandoned' },
 };
 
 /** 按状态原文（大小写不敏感）查元数据；未收录返回 null */

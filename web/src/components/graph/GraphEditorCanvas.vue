@@ -1184,6 +1184,7 @@ onUnmounted(() => {
     border-radius: 20px
     background: var(--glass-surface, rgba(30, 30, 30, 0.7))
     backdrop-filter: blur(10px)
+    -webkit-backdrop-filter: blur(10px)
     border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1))
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2)
     z-index: 10

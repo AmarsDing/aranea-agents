@@ -26,7 +26,7 @@
               />
             </q-td>
           </template>
-        </q-table>
+        </AppRegistryTable>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps :label="$t('common.close')" @click="$emit('update:open', false)" />
