@@ -22,13 +22,11 @@ body:not(.body--dark) .q-dialog .q-card.app-dialog-card,
 body:not(.body--dark) .q-dialog .q-card.app-glass-dialog
   background: var(--app-dialog-shell-bg) !important
   backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
 
 body.body--dark .q-dialog .q-card.app-dialog-card,
 body.body--dark .q-dialog .q-card.app-glass-dialog
   background: var(--app-dialog-shell-bg) !important
   backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
 
 // 外壳：圆角、边框、单层 blur（所有 app-dialog-card）
 .q-dialog .q-card.app-dialog-card,
@@ -44,7 +42,6 @@ body.body--dark .q-dialog .q-card.app-glass-dialog
 body:not(.body--dark) .q-dialog:has(.app-dialog-card) > .q-dialog__backdrop,
 body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
   backdrop-filter: blur(10px)
-  -webkit-backdrop-filter: blur(10px)
 
 // ── 宽度阶梯（与业务修饰符叠加）──
 // 须在 .q-dialog 内声明：Quasar 的 @media (min-width:600px) { .q-dialog__inner--minimized > div { max-width: 560px } }
@@ -107,7 +104,6 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   padding: 16px 18px 14px
   background: var(--app-dialog-chrome-bg) !important
   backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
-  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
 
 .app-glass-dialog__title
   color: var(--color-text-heading)
@@ -128,7 +124,6 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   scrollbar-width: none
   background: var(--app-dialog-body-bg) !important
   backdrop-filter: blur(var(--glass-blur-default)) saturate(1.04)
-  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.04)
 
   &::-webkit-scrollbar
     display: none
@@ -143,7 +138,6 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   border-top: 1px solid var(--glass-border) !important
   background: var(--app-dialog-chrome-bg) !important
   backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
-  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
 
 // 无独立底栏 class 时仍用 chrome 底（简单 Dialog）
 .q-dialog .q-card.app-dialog-card:not(.app-glass-dialog) .q-card__actions:not(.app-glass-dialog__actions)
@@ -159,7 +153,6 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   border-radius: 18px
   background: color-mix(in srgb, var(--glass-surface) 42%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
   &:last-child
     margin-bottom: 0
@@ -175,7 +168,6 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   border-bottom: 1px solid var(--glass-border)
   background: var(--app-dialog-chrome-bg) !important
   backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
-  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
 
 .skill-meta-dialog__meta-grid
   display: grid
@@ -206,7 +198,6 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   border: none !important
   box-shadow: var(--glass-inner-highlight)
   backdrop-filter: blur(var(--glass-blur-elevated))
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
 
 body.body--dark .q-dialog .q-card.app-maximized-dialog
   box-shadow: 0 0 32px rgba(77, 216, 232, 0.1)
@@ -233,7 +224,6 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
   background: var(--glass-surface-hover)
   box-shadow: var(--glass-inner-highlight)
   backdrop-filter: blur(var(--glass-blur-hover))
-  -webkit-backdrop-filter: blur(var(--glass-blur-hover))
 
 .app-dual-column-editor__textarea
   min-height: calc(100vh - 190px)
@@ -261,7 +251,6 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
   .app-dual-column-editor__sidebar,
   .app-dual-column-editor__main
     backdrop-filter: blur(12px)
-    -webkit-backdrop-filter: blur(12px)
 
 // Dialog 内通用控件（Cron / Tool 覆盖等小表单弹窗）
 .app-dialog-subtitle
@@ -363,7 +352,6 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
   border-radius: 18px
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: var(--glass-inner-highlight)
   color: var(--color-text-primary)
   cursor: pointer

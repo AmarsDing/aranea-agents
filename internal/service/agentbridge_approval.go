@@ -316,15 +316,11 @@ func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pe
 		scenario += " 目标: " + t
 	}
 	// approve/reject 走 HTTP 请求 ctx、timeout 走 context.Background()，两者
-	// 都不携带 turn 的 TraceEmitter——LogHITLFlow 若直接读 ctx 恒为死接线。
+	// 都不携带 turn 的 TraceEmitter——flowlog 若直接读 ctx 恒为死接线。
 	// 用 service 级 emitter（SessionID 定位会话流）包装 ctx 再发射。
+	// SP-1b：EmitDecision 统一入口一次完成双写；collector 为 nil 时内部记
+	// collector_nil（D1），flowlog 仍落。
 	flowCtx := event.WithTraceEmitter(ctx, s.emitter(ctx, p.sessionID))
-	event.LogHITLFlow(flowCtx, outcome, scenario, agentbridge.ToolExternalCoding)
-	c := s.decisionCollector()
-	if c == nil {
-		event.LogNilCollector(flowCtx, "hitl_approval")
-		return
-	}
 	userID := "unknown"
 	if a, ok := auth.FromContext(ctx); ok && a != nil && a.UserID > 0 {
 		userID = fmt.Sprintf("%d", a.UserID)
@@ -340,7 +336,7 @@ func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pe
 	if p.agentKey != "" {
 		entities = append(entities, decision.EntityRef{Type: "agent", Key: p.agentKey})
 	}
-	c.Emit(ctx, decision.Record{
+	event.EmitDecision(flowCtx, s.decisionCollector(), decision.Record{
 		DecisionKey:     uuid.NewString(),
 		Category:        decision.CategoryHITLApproval,
 		Scenario:        scenario,
@@ -350,7 +346,10 @@ func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pe
 		RelatedEntities: entities,
 		SourceRef:       decision.SourceRef{TaskID: p.taskID, SessionID: strings.TrimSpace(p.sessionID)},
 		Metadata:        metadata,
-	})
+	}, "system.gate.hitl_approval", scenario,
+		event.P("trigger", "hitl_approval"),
+		event.P("outcome", outcome),
+		event.P("tool_key", agentbridge.ToolExternalCoding))
 }
 
 // ConfirmBridgePermissionFromStep is the ConfirmActivity adapter.

@@ -140,7 +140,6 @@ onUnmounted(() => {
   border: 1px solid rgba(0, 229, 255, 0.35)
   box-shadow: 0 0 24px rgba(0, 229, 255, 0.18), inset 0 0 32px rgba(0, 229, 255, 0.05)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
   animation: holo-confirm-enter 0.28s cubic-bezier(0.2, 0.9, 0.25, 1.2)
 

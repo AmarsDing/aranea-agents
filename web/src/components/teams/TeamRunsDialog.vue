@@ -185,8 +185,8 @@ import {
   formatDate,
   teamModeLabel,
   teamRoleLabel,
-  teamRunStatusLabel,
 } from './teamUtils';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const tab = ref('runs');
 

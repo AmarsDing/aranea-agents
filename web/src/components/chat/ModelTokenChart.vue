@@ -217,7 +217,6 @@ watch(
   // 仍基于 canvas-base 昼夜自适应 + 保留玻璃模糊
   background: color-mix(in srgb, var(--canvas-base) 92%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   border: 1px solid var(--glass-border)
   box-shadow: 0 4px 16px rgba(20, 24, 32, 0.14)
 

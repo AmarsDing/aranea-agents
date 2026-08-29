@@ -512,7 +512,6 @@ function sessionTime(session: SessionView) {
   border-radius: 12px;
   background: color-mix(in srgb, var(--glass-surface) 80%, transparent);
   backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .chat-session-search__input :deep(.q-field__control):before {
@@ -616,7 +615,6 @@ function sessionTime(session: SessionView) {
   letter-spacing: 0.02em;
   box-shadow: var(--glass-inner-highlight);
   backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 :global(.body--dark) .chat-session-count-badge {
@@ -639,7 +637,6 @@ function sessionTime(session: SessionView) {
   box-sizing: border-box;
   border-radius: 14px;
   backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .chat-session-main {
@@ -733,7 +730,6 @@ function sessionTime(session: SessionView) {
   border-radius: 14px;
   box-shadow: var(--glass-inner-highlight);
   backdrop-filter: blur(var(--glass-blur-elevated));
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
 }
 
 :global(.chat-session-title-tooltip .q-tooltip__content) {
@@ -787,7 +783,6 @@ function sessionTime(session: SessionView) {
   letter-spacing: 0.02em;
   padding: var(--space-1) var(--space-2);
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 .chat-session-item--active .chat-session-time-badge {

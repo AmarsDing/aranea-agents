@@ -95,7 +95,6 @@ function barWidth(tokens: number): string {
   border-radius: 14px;
   background: var(--glass-surface);
   backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
   border: 1px solid var(--glass-border);
 }
 

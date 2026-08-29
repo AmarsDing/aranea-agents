@@ -12,7 +12,6 @@
 .position-card
   position: relative
   backdrop-filter: blur(var(--glass-blur-default)) saturate(var(--liquid-saturate))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(var(--liquid-saturate))
   transition: transform 340ms cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 280ms ease, border-color 220ms ease, background 220ms ease, opacity 180ms ease
 
 // ── 光学层：静态 sheen + 扫掠高光 + 渐变内缘描边 ────────────────
@@ -86,7 +85,6 @@ body.body--dark .graph-card:not(.graph-card--add):not(.graph-card--status-draft)
   .graph-card:not(.graph-card--add),
   .position-card
     backdrop-filter: blur(10px) saturate(140%)
-    -webkit-backdrop-filter: blur(10px) saturate(140%)
 
   .agent-card::after,
   .team-card::after,

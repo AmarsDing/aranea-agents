@@ -51,7 +51,6 @@ const statusLabel = computed(() => {
   margin: 4px 0;
 
   backdrop-filter: blur(var(--glass-blur-default, 8px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default, 8px));
 
   &--optimizing {
     background: color-mix(in srgb, var(--color-warning) 10%, transparent);

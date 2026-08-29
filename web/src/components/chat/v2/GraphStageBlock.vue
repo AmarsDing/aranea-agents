@@ -405,26 +405,6 @@ const derivedStatus = computed<GraphStageStatus>(() => {
   if (hasRunning) return 'running';
   return 'running';
 });
-
-const stageStatusColor = computed(
-  () =>
-    ({
-      running: 'blue',
-      completed: 'green',
-      failed: 'red',
-      interrupted: 'yellow-8',
-    })[derivedStatus.value] || 'grey',
-);
-
-const stageStatusLabel = computed(() => {
-  const map: Record<string, string> = {
-    running: t('chat.v2.statusRunning'),
-    completed: t('chat.v2.statusCompleted'),
-    failed: t('chat.v2.statusFailed'),
-    interrupted: t('chat.v2.statusInterrupted'),
-  };
-  return map[derivedStatus.value] || derivedStatus.value;
-});
 </script>
 
 <style lang="sass" scoped>

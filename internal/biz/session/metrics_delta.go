@@ -5,6 +5,7 @@ import "time"
 type SessionMetricsDelta struct {
 	SessionID           string
 	MessageCount        int
+	RunCount            int
 	ModelCallCount      int
 	ToolCallCount       int
 	SkillCallCount      int

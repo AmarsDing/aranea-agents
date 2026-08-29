@@ -73,7 +73,7 @@
     <template #body-cell-status="props">
       <q-td :props="props">
         <div class="skill-status-cell">
-          <q-badge rounded :color="statusColor(props.row.status)">{{ statusLabel(props.row.status) }}</q-badge>
+          <AppStatusChip :status="props.row.status" />
           <span class="skill-status-cell__version">{{ props.row.current_version?.version ?? '无版本' }}</span>
         </div>
       </q-td>
@@ -212,14 +212,10 @@
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import SkillStatsHoverChart from './SkillStatsHoverChart.vue';
 import type { Skill, SkillHealthMetric, SkillTag } from '../../features/skills/types';
-import {
-  SKILL_TABLE_COLUMNS,
-  skillStatusLabel as statusLabel,
-  skillStatusColor as statusColor,
-  skillOriginLabel as originLabel,
-} from './skillTableUi';
+import { SKILL_TABLE_COLUMNS, skillOriginLabel as originLabel } from './skillTableUi';
 
 const props = defineProps<{
   rows: Skill[];

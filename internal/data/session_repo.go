@@ -830,6 +830,9 @@ func (r *sessionRepo) applyMetricsDeltaToSession(ctx context.Context, d *session
 	if d.MessageCount != 0 {
 		upd = upd.AddMessageCount(d.MessageCount)
 	}
+	if d.RunCount != 0 {
+		upd = upd.AddRunCount(d.RunCount)
+	}
 	if d.ModelCallCount != 0 {
 		upd = upd.AddModelCallCount(d.ModelCallCount)
 	}

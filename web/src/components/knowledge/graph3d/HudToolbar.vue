@@ -146,7 +146,6 @@ const { t } = useI18n();
   background: rgba(5, 8, 16, 0.72);
   border: 1px solid var(--kg-edge, #1a3a4a);
   backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 
   :deep(.q-btn) {
     color: var(--kg-text-dim, #7fa3b8);

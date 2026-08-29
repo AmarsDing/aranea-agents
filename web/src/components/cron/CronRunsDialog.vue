@@ -170,21 +170,6 @@ function taskLabel(id: string) {
   return id || '—';
 }
 
-function runStatusLabel(value: string) {
-  if (value === 'success') return '成功';
-  if (value === 'failure') return '失败';
-  if (value === 'skipped') return '跳过';
-  if (value === 'pending') return '待执行';
-  return value;
-}
-
-function runStatusColor(value: string) {
-  if (value === 'success') return 'positive';
-  if (value === 'failure') return 'negative';
-  if (value === 'skipped') return 'grey';
-  return 'warning';
-}
-
 function triggerLabel(value: string) {
   return TRIGGER_LABELS[value] || value || '定时';
 }

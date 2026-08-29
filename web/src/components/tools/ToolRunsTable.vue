@@ -40,9 +40,7 @@
 
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-badge rounded :color="toolInvocationStatusColor(props.row.status)">{{
-            toolInvocationStatusLabel(props.row.status)
-          }}</q-badge>
+          <AppStatusChip :status="props.row.status" />
         </q-td>
       </template>
 
@@ -86,6 +84,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import ToolGlassPanel from './ToolGlassPanel.vue';
 import type { ToolInvocation } from '../../features/tools/types';
 import {
@@ -94,8 +93,6 @@ import {
   formatInvocationDuration,
   formatInvocationWhen,
   invocationAgentLine,
-  toolInvocationStatusColor,
-  toolInvocationStatusLabel,
 } from './toolUi';
 
 defineProps<{

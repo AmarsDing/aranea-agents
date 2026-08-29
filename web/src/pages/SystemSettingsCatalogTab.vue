@@ -317,6 +317,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useModelCatalogTab } from '../features/model-catalog/useModelCatalogTab';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import JsonCodeViewer from '../components/common/JsonCodeViewer.vue';
 
 const expandMigration = ref(false);

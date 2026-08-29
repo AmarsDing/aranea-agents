@@ -106,7 +106,6 @@ function isSelected(slug: string): boolean {
   max-width: 90vw
   background: var(--glass-elevated, var(--glass-surface))
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   border: 1px solid var(--glass-border)
   border-radius: 12px
   overflow: hidden

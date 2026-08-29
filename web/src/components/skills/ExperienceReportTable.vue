@@ -28,9 +28,7 @@
           <div class="app-registry-cell-primary">{{ props.row.skillName || props.row.skillId || '-' }}</div>
         </q-td>
         <q-td key="result" :props="props">
-          <q-badge rounded :color="props.row.isSuccess ? 'positive' : 'negative'">
-            {{ props.row.isSuccess ? '成功' : '失败' }}
-          </q-badge>
+          <AppStatusChip :status="props.row.isSuccess ? 'success' : 'failed'" />
         </q-td>
         <q-td key="score" :props="props">
           <span>{{ props.row.score != null ? props.row.score.toFixed(2) : '-' }}</span>
@@ -78,6 +76,7 @@
 import { ref, watch } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { ExperienceReportView } from '../../features/skills/types';
 import { EXPERIENCE_REPORT_TABLE_COLUMNS } from './experienceReportTableUi';
 

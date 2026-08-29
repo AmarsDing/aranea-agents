@@ -220,10 +220,6 @@ watch(
   },
 );
 
-function statusLabel(status?: string): string {
-  return traceStatusLabel(t, status);
-}
-
 function domainLabel(row: MonitorTrace): string {
   return traceDomainLabel(t, row.domain);
 }

@@ -134,9 +134,3 @@ function onSubmit() {
 }
 </script>
 
-<style lang="scss" scoped>
-.memory-fact-edit-dialog {
-  min-width: 480px;
-  max-width: 600px;
-}
-</style>

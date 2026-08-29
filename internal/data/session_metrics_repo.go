@@ -128,6 +128,9 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 			if delta.MessageCount != 0 {
 				u.AddMessageCount(delta.MessageCount)
 			}
+			if delta.RunCount != 0 {
+				u.AddRunCount(delta.RunCount)
+			}
 			if delta.ModelCallCount != 0 {
 				u.AddModelCallCount(delta.ModelCallCount)
 			}

@@ -4,7 +4,7 @@
       <div class="row items-center q-mb-md">
         <q-icon name="monitor_heart" size="sm" class="q-mr-sm" :color="overallColor" />
         <span class="text-subtitle2">Health</span>
-        <q-badge rounded :color="overallColor" class="q-ml-sm">{{ overallLabel }}</q-badge>
+        <AppStatusChip :status="overallStatus" class="q-ml-sm" />
         <q-space />
         <q-btn flat round dense icon="refresh" size="sm" :loading="loading" @click="emit('refresh')" />
       </div>
@@ -116,10 +116,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { SkillHealthMetric } from '../../features/skills/types';
-
-const { t } = useI18n();
 
 const props = defineProps<{
   health: SkillHealthMetric | null;
@@ -145,12 +143,13 @@ const overallColor = computed(() => {
   return 'negative';
 });
 
-const overallLabel = computed(() => {
-  if (!props.health || hasNoInvocations.value) return t('skillsPage.healthNoData');
+const overallStatus = computed(() => {
+  // 空串走 AppStatusChip 的 common.status.unknown 兜底（无数据语义）
+  if (!props.health || hasNoInvocations.value) return '';
   const rate7d = props.health.success_rate_7d;
-  if (rate7d >= 0.95) return t('skillsPage.healthGood');
-  if (rate7d >= 0.8) return t('skillsPage.healthWarn');
-  return t('skillsPage.healthBad');
+  if (rate7d >= 0.95) return 'healthy';
+  if (rate7d >= 0.8) return 'warning';
+  return 'unhealthy';
 });
 
 function rateColorClass(rate: number): string {

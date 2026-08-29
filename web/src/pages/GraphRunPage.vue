@@ -11,7 +11,7 @@
       </div>
       <q-space />
       <q-badge v-if="streamConnected" rounded class="graph-run-page__live-badge">实时</q-badge>
-      <q-badge rounded :color="statusColor">{{ displayStatus }}</q-badge>
+      <AppStatusChip :status="displayStatus" />
       <span v-if="progressStepLabel && showProgressBar" class="graph-run-page__step-counter">{{
         progressStepLabel
       }}</span>
@@ -153,6 +153,7 @@ import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import GraphRunInspector from '../components/graph/GraphRunInspector.vue';
 import GraphHitlDialog from '../components/graph/GraphHitlDialog.vue';
 import GraphTaskDetailDrawer from '../components/graph/GraphTaskDetailDrawer.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import { useGraphRunPage } from '../features/graph/useGraphRunPage';
 
 const { t } = useI18n();

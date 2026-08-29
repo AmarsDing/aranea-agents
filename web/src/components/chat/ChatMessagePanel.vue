@@ -638,7 +638,6 @@ onMounted(() => {
   background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
   border-left: 3px solid var(--color-accent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .spirit-breadcrumb
   border-bottom: 1px solid var(--glass-border)

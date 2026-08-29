@@ -59,9 +59,7 @@
 
     <template #body-cell-runtime="props">
       <q-td :props="props">
-        <q-badge rounded :color="runtimeStatusColor(props.row.runtime_status)">
-          {{ runtimeStatusLabel(props.row.runtime_status) }}
-        </q-badge>
+        <AppStatusChip :status="props.row.runtime_status" />
         <div class="text-caption app-registry-muted-caption q-mt-xs">{{ runtimeKindHint(props.row) }}</div>
       </q-td>
     </template>
@@ -128,9 +126,7 @@
       <q-td :props="props">
         <template v-if="props.row.last_invoked_at">
           <div class="row items-center no-wrap q-gutter-xs">
-            <q-badge rounded :color="toolInvocationStatusColor(props.row.last_status)">
-              {{ toolInvocationStatusLabel(props.row.last_status) }}
-            </q-badge>
+            <AppStatusChip :status="props.row.last_status" />
           </div>
           <div class="text-caption app-registry-muted-caption q-mt-xs">
             {{ formatInvocationWhen(props.row.last_invoked_at) }}
@@ -190,6 +186,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { Tool } from '../../features/tools/types';
 import { toolPolicyChipCopy } from '../../features/tools/toolEditorCopy';
 import {
@@ -201,10 +198,6 @@ import {
   riskLevelOptions,
   riskQuasarColor,
   runtimeKindHint,
-  runtimeStatusLabel,
-  runtimeStatusColor,
-  toolInvocationStatusColor,
-  toolInvocationStatusLabel,
   toolSuccessRateColor,
   toolArgsFirstPassRateColor,
 } from './toolUi';

@@ -7,6 +7,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -18,6 +19,7 @@ type stubSessionTurnRecorder struct {
 	createN int
 	updated biz.SessionTurnUpdateFields
 	updateN int
+	deltas  []bizsession.SessionMetricsDelta
 }
 
 func (s *stubSessionTurnRecorder) CreateTurn(_ context.Context, turn biz.SessionTurn) (biz.SessionTurn, error) {
@@ -30,6 +32,10 @@ func (s *stubSessionTurnRecorder) UpdateTurn(_ context.Context, _ string, fields
 	s.updateN++
 	s.updated = fields
 	return biz.SessionTurn{}, nil
+}
+
+func (s *stubSessionTurnRecorder) AccumulateMetricsDelta(d bizsession.SessionMetricsDelta) {
+	s.deltas = append(s.deltas, d)
 }
 
 // CachedTok must land in session_turns.cached_input_tokens on the Create path
@@ -139,5 +145,64 @@ func assertContextBudgetMeta(t *testing.T, meta string) {
 	}
 	if _, ok := cb["est_tokens"].(map[string]any); !ok {
 		t.Fatalf("est_tokens missing: %s", meta)
+	}
+}
+
+// SP-1 回归（2026-08-29）：agent 消息持久化迁移到 steps_v2 投影后旁路了
+// message_usecase 的计数路径，session_metrics.message_count/run_count 恒 0。
+// RecordSessionTurn 必须在 turn 完成点统一累加——agent 路径 +2 消息
+// （user+assistant），team 路径消息由 runner AppendChatMessage 逐条累加，
+// 此处仅 +1 run，避免双计。
+func TestRecordSessionTurn_AccumulatesMetricsDelta(t *testing.T) {
+	cases := []struct {
+		name        string
+		ownerType   string
+		wantMsgCnt  int
+		wantRunCnt  int
+		wantLastMsg bool
+	}{
+		{"agent turn counts user+assistant", "agent", 2, 1, true},
+		{"team turn counts run only (messages via runner)", "team", 0, 1, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &stubSessionTurnRecorder{}
+			m := newChatTurnMetrics(stub, nil, nil, loggateway.NewNoop())
+			m.RecordSessionTurn(context.Background(), SessionTurnRecordParams{
+				SessionID: "s1",
+				OwnerType: tc.ownerType,
+				OwnerID:   "o1",
+			})
+			if len(stub.deltas) != 1 {
+				t.Fatalf("expected 1 metrics delta, got %d", len(stub.deltas))
+			}
+			d := stub.deltas[0]
+			if d.SessionID != "s1" {
+				t.Errorf("SessionID = %q, want s1", d.SessionID)
+			}
+			if d.MessageCount != tc.wantMsgCnt {
+				t.Errorf("MessageCount = %d, want %d", d.MessageCount, tc.wantMsgCnt)
+			}
+			if d.RunCount != tc.wantRunCnt {
+				t.Errorf("RunCount = %d, want %d", d.RunCount, tc.wantRunCnt)
+			}
+			if tc.wantLastMsg && d.LastMessageAt == "" {
+				t.Error("LastMessageAt must be set")
+			}
+		})
+	}
+}
+
+// 空 SessionID 不产生 delta（其他累加点均做同样的 trim 守卫）。
+func TestRecordSessionTurn_SkipsDeltaOnEmptySession(t *testing.T) {
+	stub := &stubSessionTurnRecorder{}
+	m := newChatTurnMetrics(stub, nil, nil, loggateway.NewNoop())
+	m.RecordSessionTurn(context.Background(), SessionTurnRecordParams{
+		SessionID: "  ",
+		OwnerType: "agent",
+		OwnerID:   "a1",
+	})
+	if len(stub.deltas) != 0 {
+		t.Fatalf("expected no delta for blank session id, got %+v", stub.deltas)
 	}
 }

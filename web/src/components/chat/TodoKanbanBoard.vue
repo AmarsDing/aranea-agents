@@ -79,7 +79,6 @@ const completedCount = computed(() => completedItems.value.length);
   border-radius: 12px
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   margin-bottom: 12px
   overflow: hidden
 

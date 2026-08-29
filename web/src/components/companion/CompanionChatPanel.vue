@@ -41,7 +41,6 @@ const { t } = useI18n();
   width: min(440px, 92vw)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-elevated))
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
   border-left: 1px solid var(--glass-border)
   z-index: 10
 

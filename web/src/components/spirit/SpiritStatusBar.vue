@@ -266,7 +266,6 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
   border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .spirit-status-bar__inner
   height: 28px

@@ -297,7 +297,6 @@ function answerDisplay(i: number): string {
   font-size: 13px
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
   &--awaiting
     border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)

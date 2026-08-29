@@ -461,7 +461,7 @@
     </div>
 
     <q-dialog v-model="unloadDialogVisible" persistent>
-      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 340px">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
         <q-card-section>
           <div class="text-h6">{{ t('settingsPage.unloadConfirmTitle') }}</div>
         </q-card-section>
@@ -498,6 +498,7 @@
 import { ref } from 'vue';
 import KnowledgeEmbedderFields from '../components/knowledge/KnowledgeEmbedderFields.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import WebResearchFields from '../components/settings/WebResearchFields.vue';
 import SpeechServiceFields from '../components/settings/SpeechServiceFields.vue';
 import SystemSettingsCatalogTab from './SystemSettingsCatalogTab.vue';

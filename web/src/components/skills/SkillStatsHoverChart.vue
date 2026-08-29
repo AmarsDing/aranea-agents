@@ -201,7 +201,6 @@ useUsageChart(donutEl, donutOption, () => [health.value, locale.value]);
   background: color-mix(in srgb, var(--glass-elevated) 94%, transparent)
   box-shadow: var(--glass-inner-highlight), var(--shadow-entity-panel)
   backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08)
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08)
 
 // S-6：夜间换用实体面板深色投影（--color-shadow 全局无定义，fallback #000 恒生效）
 :global(.body--dark .skill-stats-tooltip)

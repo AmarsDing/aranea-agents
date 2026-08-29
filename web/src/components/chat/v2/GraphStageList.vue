@@ -12,7 +12,7 @@
         {{ t('chat.v2.graphStageTitle') }}
       </span>
       <span class="header-progress">{{ completedCount }}/{{ nodes.length }}</span>
-      <q-badge :color="stageStatusColor">{{ stageStatusLabel }}</q-badge>
+      <AppStatusChip :status="derivedStatus" />
     </div>
 
     <div class="gsl-nodes">
@@ -128,26 +128,6 @@ const completedCount = computed(() => nodes.value.filter((n) => n.Status === 'co
 
 // ── 容器状态（与 GraphStageBlock 同规则，经共享纯函数） ──
 const derivedStatus = computed(() => deriveGraphStageStatus(props.graphStage.Status, nodes.value));
-
-const stageStatusColor = computed(
-  () =>
-    ({
-      running: 'blue',
-      completed: 'green',
-      failed: 'red',
-      interrupted: 'yellow-8',
-    })[derivedStatus.value] || 'grey',
-);
-
-const stageStatusLabel = computed(() => {
-  const map: Record<string, string> = {
-    running: t('chat.v2.statusRunning'),
-    completed: t('chat.v2.statusCompleted'),
-    failed: t('chat.v2.statusFailed'),
-    interrupted: t('chat.v2.statusInterrupted'),
-  };
-  return map[derivedStatus.value] || derivedStatus.value;
-});
 
 // ── 折叠态：用户显式展开/收起覆盖默认值（running/failed/interrupted 默认展开） ──
 const expandedOverrides = ref(new Map<string, boolean>());

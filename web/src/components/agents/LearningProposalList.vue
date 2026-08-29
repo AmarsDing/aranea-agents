@@ -56,7 +56,7 @@
             </q-btn>
           </div>
           <div v-else-if="p.status === 'approved'" class="row items-center no-wrap q-gutter-xs">
-            <q-badge :color="proposalStatusColor(p.status)" :label="proposalStatusLabel(p.status)" />
+            <AppStatusChip :status="p.status" />
             <q-btn
               flat
               round
@@ -118,48 +118,6 @@ function proposalKindColor(kind: string): string {
       return 'orange';
     default:
       return 'grey';
-  }
-}
-
-function proposalStatusColor(status: string): string {
-  switch (status) {
-    case 'draft':
-      return 'grey';
-    case 'validated':
-      return 'blue';
-    case 'approved':
-      return 'teal';
-    case 'rejected':
-      return 'negative';
-    case 'applied':
-      return 'positive';
-    case 'conflict':
-      return 'warning';
-    case 'expired':
-      return 'grey';
-    default:
-      return 'grey';
-  }
-}
-
-function proposalStatusLabel(status: string): string {
-  switch (status) {
-    case 'draft':
-      return t('agents.learning_loop.proposal_status_draft');
-    case 'validated':
-      return t('agents.learning_loop.proposal_status_validated');
-    case 'approved':
-      return t('agents.learning_loop.proposal_status_approved');
-    case 'rejected':
-      return t('agents.learning_loop.proposal_status_rejected');
-    case 'applied':
-      return t('agents.learning_loop.proposal_status_applied');
-    case 'conflict':
-      return t('agents.learning_loop.proposal_status_conflict');
-    case 'expired':
-      return t('agents.learning_loop.proposal_status_expired');
-    default:
-      return status;
   }
 }
 </script>

@@ -434,7 +434,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// 产物时另经降级分支注入风险提示（见澄清门后的 intentRunOpts 注入点）。
 	inputRiskFlags := intent.ScanInputRisk(content)
 	if len(inputRiskFlags) > 0 {
-		decision.EmitGate(ctx, o.infraDeps.DecisionCollector, decision.GateDecision{
+		event.EmitGate(ctx, o.infraDeps.DecisionCollector, decision.GateDecision{
 			TriggerRule: decision.TriggerInputRiskFlagged,
 			Outcome:     "tripped",
 			Scenario:    "用户输入命中确定性风险扫描",
@@ -443,7 +443,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			SessionID:   sessionID,
 			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
 		})
-		event.LogGateFlow(ctx, decision.TriggerInputRiskFlagged, "tripped", "用户输入命中确定性风险扫描", fmt.Sprintf("flags=%v", inputRiskFlags))
 	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
 		o.lg().Info("input risk shadow hit (not flagged)",
 			loggateway.StepID("chat.input_risk.shadow"),
@@ -673,8 +672,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			event.P("gate_reason", gateDecision.Reason),
 		)
 	}
-	emitter.LogDone("chat.orch.decision", "编排路由决策", orchDecisionP...)
-	o.emitOrchDecisionRecord(ctx, sessionID, ag.AgentKey, skipIntent, skipReason, string(assessLevel), intentOutcome, gateErr, gateDecision)
+	o.emitOrchDecisionRecord(ctx, sessionID, ag.AgentKey, skipIntent, skipReason, string(assessLevel), intentOutcome, gateErr, gateDecision, orchDecisionP)
 	deps := buildResult.deps
 	// P0 fix: BUILD runs inside the errgroup above, whose derived ctx is
 	// cancelled as soon as eg.Wait() returns. The AwaitHook created during

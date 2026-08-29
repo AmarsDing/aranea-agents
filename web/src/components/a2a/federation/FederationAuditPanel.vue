@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <AppPageToolbar dense>
       <q-select
@@ -67,10 +67,7 @@
       </template>
       <template #body-cell-decision="slotProps">
         <q-td :props="props">
-          <q-badge
-            :color="federationDecisionColor(slotProps.row.decision)"
-            :label="federationDecisionLabel(t, slotProps.row.decision)"
-          />
+          <AppStatusChip :status="slotProps.row.decision" />
         </q-td>
       </template>
       <template #body-cell-status="slotProps">

@@ -3,7 +3,9 @@
     <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
       <q-card-section class="text-h6">{{ $t('evaluationPage.versionsTitle') }}</q-card-section>
       <q-card-section class="app-dialog-body q-pt-none">
-        <q-table
+        <AppRegistryTable
+          :shell="false"
+          :resizable="false"
           flat
           dense
           row-key="id"
@@ -37,6 +39,7 @@
 
 <script setup lang="ts">
 import type { QTableColumn } from 'quasar';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import type { EvalDatasetVersion } from '../../features/evaluation/types';
 
 defineProps<{

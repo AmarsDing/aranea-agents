@@ -116,7 +116,6 @@ const verifyNodeClass = (vn: VerificationNode) => {
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .dag-diagram-card__icon
   display: flex

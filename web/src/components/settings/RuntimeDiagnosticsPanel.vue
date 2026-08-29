@@ -77,14 +77,14 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import { useRuntimeDiagnostics } from '../../features/system-settings/useRuntimeDiagnostics';
 import type { DiagnosticsItem } from '../../features/system-settings/types';
 
 const { t } = useI18n();
 const router = useRouter();
 
-const { items, loading, error, lastRunAt, load, itemLabel, statusIcon, statusColor, statusText } =
-  useRuntimeDiagnostics();
+const { items, loading, error, lastRunAt, load, itemLabel, statusIcon, statusColor } = useRuntimeDiagnostics();
 
 function goDetail(item: DiagnosticsItem) {
   const ref = (item.detail_ref || '').trim();

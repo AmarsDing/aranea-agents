@@ -1024,42 +1024,20 @@ type plannerDecision struct {
 	SpiritSessionID string
 }
 
-// emitPlannerDecision 把策略路由决策写入 FlowLog（spirit.planner.decision）。
-// 无 emitter 的 ctx（后台/测试路径）静默跳过。决策时刻的快照原样落盘——
-// 后续分解失败或校验门降级各有专属事件，不回写本条，保证证据链只读追加。
+// emitPlannerDecision 把策略路由决策经 event.EmitDecision 统一双写
+// （decision_records + spirit.planner.decision flowlog）。决策时刻的快照原样
+// 落盘——后续分解失败或校验门降级各有专属事件，不回写本条，保证证据链只读追加。
 func (impl *taskPlannerImpl) emitPlannerDecision(ctx context.Context, d plannerDecision) {
-	impl.emitPlannerDecisionRecord(ctx, d)
-	em := event.TraceEmitterFromContext(ctx)
-	if em == nil {
-		return
-	}
-	em.LogDone("spirit.planner.decision", "策略决策",
-		event.P("decision_source", d.DecisionSource),
-		event.P("mode", d.Mode),
-		event.P("strategy", string(d.Strategy)),
-		event.P("complexity_level", string(d.ComplexityLevel)),
-		event.P("complexity_score", d.ComplexityScore),
-		event.P("team_count", d.TeamCount),
-		event.P("fallback_triggered", d.KeywordFallback),
-		event.P("strategy_reason", d.StrategyReason),
-		event.P("spirit_session_id", d.SpiritSessionID),
-	)
-}
-
-// emitPlannerDecisionRecord 把策略路由决策双写到 M80 决策记录层
-// (planner_orchestration)。增量旁路：FlowLog 证据链保持原样，collector 为
-// nil（旧构造路径/CLI）时静默跳过。决策映射照设计 §3.2 row 1。
-func (impl *taskPlannerImpl) emitPlannerDecisionRecord(ctx context.Context, d plannerDecision) {
-	if impl.decisions == nil {
-		return
-	}
 	// Mode 为空（用户未显式指定）时策略即生效 mode——outcome 不允许空。
 	mode := d.Mode
 	if mode == "" {
 		mode = string(d.Strategy)
 	}
 	confidence := d.ComplexityScore
-	impl.decisions.Emit(ctx, decision.Record{
+	// SP-1b（2026-08-29 Q2 根修）：统一入口一次完成 decision_records +
+	// flowlog 双写，消除手工两调用的偏斜风险；collector 为 nil（旧构造
+	// 路径/CLI）时 EmitDecision 内部记 collector_nil，flowlog 仍落。
+	event.EmitDecision(ctx, impl.decisions, decision.Record{
 		DecisionKey: uuid.NewString(),
 		Category:    decision.CategoryPlannerOrchestration,
 		Scenario:    fmt.Sprintf("策略路由: %s/%s", mode, d.Strategy),
@@ -1076,7 +1054,17 @@ func (impl *taskPlannerImpl) emitPlannerDecisionRecord(ctx context.Context, d pl
 			"team_count":         d.TeamCount,
 			"spirit_session_id":  d.SpiritSessionID,
 		},
-	})
+	}, "spirit.planner.decision", "策略决策",
+		event.P("decision_source", d.DecisionSource),
+		event.P("mode", d.Mode),
+		event.P("strategy", string(d.Strategy)),
+		event.P("complexity_level", string(d.ComplexityLevel)),
+		event.P("complexity_score", d.ComplexityScore),
+		event.P("team_count", d.TeamCount),
+		event.P("fallback_triggered", d.KeywordFallback),
+		event.P("strategy_reason", d.StrategyReason),
+		event.P("spirit_session_id", d.SpiritSessionID),
+	)
 }
 
 // emitTeamCountMismatchGate 把 team_count_mismatch 截断/放行双写为

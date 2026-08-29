@@ -56,10 +56,7 @@
       </template>
       <template #body-cell-healthy="slotProps">
         <q-td :props="slotProps">
-          <q-badge
-            :color="slotProps.row.healthy ? 'positive' : 'negative'"
-            :label="slotProps.row.healthy ? '健康' : '异常'"
-          />
+          <AppStatusChip :status="slotProps.row.healthy ? 'healthy' : 'unhealthy'" />
         </q-td>
       </template>
       <template #body-cell-endpoint_url="slotProps">

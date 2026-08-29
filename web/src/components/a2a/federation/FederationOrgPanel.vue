@@ -246,14 +246,9 @@ import { computed, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageToolbar from '../../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../../layout/AppRegistryTable.vue';
+import AppStatusChip from '../../common/AppStatusChip.vue';
 import type { FederationOrg, RegisterFederationOrgInput } from '../../../features/a2a/federationTypes';
-import {
-  federationOrgStatusColor,
-  federationOrgStatusLabel,
-  federationTrustColor,
-  federationTrustLabel,
-  federationTrustOptions,
-} from '../../../features/a2a/federationUi';
+import { federationTrustOptions } from '../../../features/a2a/federationUi';
 import { a2aAuthTypeLabel } from '../../../features/a2a/a2aTableUi';
 import { A2A_AUTH_TYPE_OPTIONS, buildA2AAuthJSON } from '../../../features/a2a/authUtils';
 import type { RegistryTableColumn } from '../../../features/ui/registryTableColumns';

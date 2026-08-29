@@ -22,7 +22,7 @@
 
         <div v-if="job">
           <div class="row items-center q-gutter-sm q-mb-sm">
-            <q-badge rounded :color="statusColor(job.validation_status)">{{ job.validation_status }}</q-badge>
+            <AppStatusChip :status="job.validation_status" />
             <span class="text-caption text-grey-7">存储根目录：{{ job.storage_root }}</span>
           </div>
           <q-banner v-if="job.validation_status === 'block'" rounded class="bg-negative text-white q-mb-md">
@@ -192,8 +192,8 @@ import type {
   SkillRefineResult,
   SkillSimilarityMetrics,
 } from '../../features/skills/types';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import {
-  skillCandidateStatusColor as statusColor,
   skillCandidateIcon as candidateIcon,
   skillCandidateStatusColor as candidateColor,
 } from './skillTableUi';

@@ -33,6 +33,7 @@ import { useI18n } from 'vue-i18n';
 import type { EmbedderConfig, UpdateEmbedderConfigInput } from '../../features/knowledge/types';
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from '../../features/knowledge/embedder-constants';
 import KnowledgeEmbedderFields from './KnowledgeEmbedderFields.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const props = defineProps<{
   config: EmbedderConfig | null;

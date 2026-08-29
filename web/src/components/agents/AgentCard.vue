@@ -31,9 +31,7 @@
           />
           <div class="agent-card__name text-subtitle2 text-weight-bold ellipsis">{{ displayName }}</div>
           <KindBadge :kind="agent.kind" />
-          <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{
-            statusLabel(agent.status)
-          }}</q-badge>
+          <AppStatusChip :status="agent.status" />
         </div>
         <div class="row items-center q-gutter-x-sm q-mt-xxs">
           <button class="agent-handle" @click="$emit('copy-key', agent.agent_key)">{{ agent.agent_key }}</button>

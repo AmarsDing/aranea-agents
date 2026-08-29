@@ -264,7 +264,6 @@ const {
   tasksLoading,
   graphExecutionId,
   execNodeStates,
-  runStatusColor,
   timelineLoading,
   timelineNodeFilter,
   timelineNodeFilterOptions,

@@ -16,9 +16,7 @@
         <div class="row items-center q-gutter-sm">
           <div class="text-h5 text-weight-bold ellipsis">{{ agent.display_name || 'Agent 设置' }}</div>
           <KindBadge :kind="agent.kind" />
-          <q-badge rounded :class="['settings-status', agent.status === 'active' ? 'is-active' : '']">{{
-            statusLabel(agent.status)
-          }}</q-badge>
+          <AppStatusChip :status="agent.status" />
           <q-chip dense square class="settings-chip">{{ promptModeLabel(agent.system_prompt_mode) }}</q-chip>
           <q-chip v-if="showEvolving" dense square class="settings-chip is-evolving" icon="auto_awesome">{{
             $t('agentSettings.header.evolving')

@@ -91,7 +91,6 @@ const tooltipContent = computed(() => {
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   border: 1px solid var(--glass-border)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .session-status-badge--idle
   color: var(--color-text-tertiary)

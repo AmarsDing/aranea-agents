@@ -146,6 +146,7 @@
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import ChannelPlatformAvatar from './ChannelPlatformAvatar.vue';
 import type { ChannelTypeItem, ChannelRow } from '../../features/channels/types';
 
@@ -154,7 +155,6 @@ import {
   catalogLabelForType,
   channelExternalID,
   channelMetadata,
-  channelStatusBadgeColor,
   channelStatusBadgeText,
   channelSupportsWebhook,
   channelType,

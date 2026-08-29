@@ -11,9 +11,7 @@
       </div>
       <q-space />
       <q-badge v-if="liveConnected" rounded class="team-orchestrate-page__live-badge">实时</q-badge>
-      <q-badge v-if="compiled" rounded :color="compiled.valid ? 'positive' : 'negative'">
-        {{ compiled.valid ? '校验通过' : '校验失败' }}
-      </q-badge>
+      <AppStatusChip v-if="compiled" :status="compiled.valid ? 'valid' : 'invalid'" />
       <q-btn
         v-if="liveMode && activeRun"
         flat

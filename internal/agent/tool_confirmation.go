@@ -416,12 +416,6 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	if target := strings.TrimSpace(previewFromToolArgs(arguments)); target != "" {
 		scenario += " 目标: " + target
 	}
-	event.LogHITLFlow(ctx, outcome, scenario, toolKey)
-	c := h.deps.DecisionCollector
-	if c == nil {
-		event.LogNilCollector(ctx, "hitl_approval")
-		return
-	}
 	metadata := map[string]any{"decision_reason": gateReason}
 	if blockCause != "" {
 		metadata["block_cause"] = blockCause
@@ -451,7 +445,13 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	if sessionID != "" {
 		metadata["session_id"] = sessionID
 	}
-	c.Emit(ctx, decision.Record{
+	// SP-1b：统一入口一次完成 decision_records + flow_log 双写；collector 为
+	// nil 时 EmitDecision 内部记 collector_nil 且 flowlog 仍落（D1）。
+	flowPairs := []event.Pair{event.P("trigger", "hitl_approval"), event.P("outcome", outcome)}
+	if toolKey != "" {
+		flowPairs = append(flowPairs, event.P("tool_key", toolKey))
+	}
+	event.EmitDecision(ctx, h.deps.DecisionCollector, decision.Record{
 		DecisionKey:     uuid.NewString(),
 		Category:        decision.CategoryHITLApproval,
 		Scenario:        scenario,
@@ -462,7 +462,7 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 		RelatedEntities: entities,
 		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID, SessionID: sessionID},
 		Metadata:        metadata,
-	})
+	}, "system.gate.hitl_approval", scenario, flowPairs...)
 }
 
 func toolConfirmSessionID(ctx context.Context) string {

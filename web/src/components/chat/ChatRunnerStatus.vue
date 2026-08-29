@@ -38,12 +38,6 @@ const visible = computed(() => {
   return s === 'running' || s === 'pending' || s === 'awaiting_user' || s === 'durable';
 });
 
-const presentation = computed(() => presentRunStatus(props.status));
-
-const badgeColor = computed(() => toneToQuasarColor(presentation.value.tone));
-
-const statusLabel = computed(() => presentation.value.label);
-
 // ── Reactive elapsed timer ──
 // Without this, elapsedLabel uses Date.now() in a computed, which is NOT
 // reactive — the displayed "12s" never ticks up, making the user think the

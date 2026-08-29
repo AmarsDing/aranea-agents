@@ -102,10 +102,10 @@
 
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import SkillHealthCard from '../components/skills/SkillHealthCard.vue';
 import SkillVersionsCard from '../components/skills/SkillVersionsCard.vue';
 import { useSkillDetailPage } from '../features/skills/useSkillDetailPage';
-import { skillStatusLabel as statusLabel, skillStatusColor as statusColor } from '../components/skills/skillTableUi';
 
 const route = useRoute();
 const skillId = route.params.skillId as string;

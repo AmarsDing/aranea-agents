@@ -282,7 +282,6 @@ defineExpose({ triggerBurst });
     text-shadow: 0 0 8px rgba(0, 229, 255, 0.6)
     background: rgba(9, 13, 20, 0.55)
     backdrop-filter: blur(var(--glass-blur-default))
-    -webkit-backdrop-filter: blur(var(--glass-blur-default))
     border: 1px solid rgba(0, 229, 255, 0.35)
     box-shadow: 0 0 16px rgba(0, 229, 255, 0.15), inset 0 0 18px rgba(0, 229, 255, 0.05)
     overflow: hidden
@@ -339,7 +338,6 @@ defineExpose({ triggerBurst });
     text-shadow: 0 0 6px rgba(0, 229, 255, 0.35)
     background: rgba(9, 13, 20, 0.6)
     backdrop-filter: blur(var(--glass-blur-default))
-    -webkit-backdrop-filter: blur(var(--glass-blur-default))
     border: 1px solid rgba(0, 229, 255, 0.3)
     box-shadow: 0 0 18px rgba(0, 229, 255, 0.12), inset 0 0 24px rgba(0, 229, 255, 0.04)
 
@@ -358,7 +356,6 @@ defineExpose({ triggerBurst });
     color: var(--color-text-primary)
     background: rgba(9, 13, 20, 0.72)
     backdrop-filter: blur(var(--glass-blur-default))
-    -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
   &__mic-wrap
     position: absolute
@@ -398,7 +395,6 @@ defineExpose({ triggerBurst });
     background: rgba(9, 13, 20, 0.6)
     border: 1px solid rgba(0, 229, 255, 0.35)
     backdrop-filter: blur(var(--glass-blur-default))
-    -webkit-backdrop-filter: blur(var(--glass-blur-default))
     transition: box-shadow 0.25s ease, background 0.25s ease
 
     &--on

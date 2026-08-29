@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import {
   KNOWLEDGE_EMBED_PROVIDER_OPTIONS,
   type KnowledgeEmbedFormState,

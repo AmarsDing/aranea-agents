@@ -176,6 +176,7 @@
 <script setup lang="ts">
 const form = defineModel<SpeechFormState>('form', { required: true });
 import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import {
   SPEECH_ASR_LANGUAGE_OPTIONS,
   SPEECH_DRIVER_OPTIONS,

@@ -321,7 +321,6 @@ function onMemberClick(ms: MemberSession) {
   border-radius: 10px
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: 0 2px 10px rgb(0 0 0 / 8%)
   box-sizing: border-box
   overflow: hidden

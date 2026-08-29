@@ -111,10 +111,7 @@
             </template>
             <template #body-cell-enabled="props">
               <q-td :props="props">
-                <q-badge
-                  :color="props.row.enabled ? 'positive' : 'grey'"
-                  :label="props.row.enabled ? '启用' : '禁用'"
-                />
+                <AppStatusChip :status="props.row.enabled ? 'enabled' : 'disabled'" />
               </q-td>
             </template>
             <template #body-cell-auth_type="props">

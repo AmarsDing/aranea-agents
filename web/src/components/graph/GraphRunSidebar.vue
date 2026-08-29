@@ -100,11 +100,11 @@
             <div v-if="expandedSteps.has(step.stepIndex)" class="graph-run-step__detail q-mt-sm">
               <div v-if="step.inputState" class="q-mb-sm">
                 <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarInputState') }}</div>
-                <pre class="graph-run-step__json">{{ formatJson(step.inputState) }}</pre>
+                <JsonCodeViewer :text="formatJson(step.inputState)" :show-toolbar="false" scroll-height="200px" />
               </div>
               <div v-if="step.outputState">
                 <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarOutputState') }}</div>
-                <pre class="graph-run-step__json">{{ formatJson(step.outputState) }}</pre>
+                <JsonCodeViewer :text="formatJson(step.outputState)" :show-toolbar="false" scroll-height="200px" />
               </div>
             </div>
           </q-timeline-entry>
@@ -120,6 +120,7 @@
 import { reactive, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { GraphExecution, GraphRunExecutionSummary } from '../../features/graph/types';
 import { formatTime, stepIcon, stepColor } from '../../features/graph/utils';
 

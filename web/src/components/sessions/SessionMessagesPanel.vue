@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import { useSessionMessagesPanel } from '../../features/session/useSessionMessagesPanel';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import { formatSessionDate } from './sessionUi';

@@ -41,6 +41,7 @@ func (uc *SessionMetricsUsecase) AccumulateMetricsDelta(delta SessionMetricsDelt
 	defer uc.metricsDeltaMu.Unlock()
 	if existing, ok := uc.metricsDeltas[delta.SessionID]; ok {
 		existing.MessageCount += delta.MessageCount
+		existing.RunCount += delta.RunCount
 		existing.ModelCallCount += delta.ModelCallCount
 		existing.ToolCallCount += delta.ToolCallCount
 		existing.SkillCallCount += delta.SkillCallCount

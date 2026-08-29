@@ -68,7 +68,6 @@ const isDark = computed(() => $q.dark.isActive);
   background: var(--glass-surface)
   color: var(--color-text-secondary)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .chat-workspace-title
   margin: var(--space-3) 0 0

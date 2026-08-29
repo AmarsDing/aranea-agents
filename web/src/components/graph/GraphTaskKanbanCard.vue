@@ -23,22 +23,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { Task } from '../../features/graph/types';
-import { TASK_STATUS_COLORS, TASK_STATUS_LABEL_KEYS } from '../../features/graph/types';
 import { truncate } from '../../features/graph/utils';
 
 const { t } = useI18n();
 
-const props = defineProps<{
+defineProps<{
   task: Task;
   isDark: boolean;
   selected?: boolean;
 }>();
 
 defineEmits<{ select: [] }>();
-
-const statusLabel = computed(() => t(TASK_STATUS_LABEL_KEYS[props.task.status]) ?? props.task.status);
-const statusColor = computed(() => TASK_STATUS_COLORS[props.task.status] ?? 'grey');
 </script>

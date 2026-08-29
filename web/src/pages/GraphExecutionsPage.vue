@@ -57,11 +57,7 @@
               >
             </div>
           </div>
-          <q-badge
-            :color="statusColor(exec.status)"
-            :label="statusLabel(exec.status)"
-            class="graph-executions-page__badge"
-          />
+          <AppStatusChip :status="exec.status" class="graph-executions-page__badge" />
         </q-card-section>
         <q-card-section v-if="exec.errorMessage" class="q-pt-none">
           <div class="text-caption text-negative ellipsis-2-lines">{{ exec.errorMessage }}</div>

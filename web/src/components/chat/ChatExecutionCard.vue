@@ -358,7 +358,6 @@ const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.e
   border: 1px solid color-mix(in srgb, var(--glass-border) 65%, transparent)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
   transition: border-color 0.2s ease
 

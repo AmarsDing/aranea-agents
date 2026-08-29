@@ -240,7 +240,7 @@
                         >
                       </q-item-section>
                       <q-item-section side>
-                        <q-badge :color="toolInvocationStatusColor(r.status)" :label="toolInvocationStatusLabel(r.status)" />
+                        <AppStatusChip :status="r.status" />
                       </q-item-section>
                     </q-item>
                   </q-list>
@@ -549,13 +549,13 @@ import {
   toolArgsFirstPassRateColor,
   toolInvocationStatusIcon,
   toolInvocationStatusColor,
-  toolInvocationStatusLabel,
   formatInvocationWhen,
   formatInvocationDuration,
   formatToolSuccessRate,
   toolSuccessRateColor,
 } from './toolUi';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
 import ToolJsonBlock from './ToolJsonBlock.vue';
 import ToolOverrideEditorDialog from './ToolOverrideEditorDialog.vue';

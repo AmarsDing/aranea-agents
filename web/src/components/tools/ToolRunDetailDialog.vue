@@ -7,9 +7,7 @@
           <div class="text-caption muted-caption ellipsis">{{ invocation.tool_key }}</div>
         </div>
         <div class="row items-center q-gutter-sm">
-          <q-badge rounded :color="toolInvocationStatusColor(invocation.status)">
-            {{ toolInvocationStatusLabel(invocation.status) }}
-          </q-badge>
+          <AppStatusChip :status="invocation.status" :tooltip="invocation.error_message || undefined" />
           <q-btn flat dense round icon="close" class="app-dialog-icon-btn" @click="$emit('update:open', false)" />
         </div>
       </q-card-section>
@@ -79,14 +77,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { ToolInvocation, ToolInvocationParamDetail } from '../../features/tools/types';
-import {
-  formatInvocationDuration,
-  formatInvocationWhen,
-  prettyJSON,
-  toolInvocationStatusColor,
-  toolInvocationStatusLabel,
-} from './toolUi';
+import { formatInvocationDuration, formatInvocationWhen, prettyJSON } from './toolUi';
 
 const props = defineProps<{
   open: boolean;

@@ -28,7 +28,6 @@
   background: var(--glass-elevated)
   box-shadow: none
   backdrop-filter: blur(12px)
-  -webkit-backdrop-filter: blur(12px)
   transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease
 
   @media (width <= 599px)
@@ -131,7 +130,6 @@
   overflow: hidden
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   transition: border-color 180ms ease
 
 .capability-card:hover
@@ -195,7 +193,6 @@
   border-radius: 999px
   background: var(--glass-elevated)
   backdrop-filter: blur(12px)
-  -webkit-backdrop-filter: blur(12px)
 
 .skills-tab-nav__item
   padding: 6px 14px
@@ -475,7 +472,6 @@
   background: var(--glass-elevated)
   border-bottom: 1px solid var(--glass-border)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .agent-settings-header__avatar-wrap,
 .settings-header__avatar-wrap
@@ -489,19 +485,6 @@
 .agent-settings-header .header-icon-btn,
 .settings-header .header-icon-btn
   background: color-mix(in srgb, var(--glass-elevated) 92%, transparent)
-
-.agent-settings-header .settings-status,
-.settings-header .settings-status
-  padding: 4px 8px
-  background: var(--color-status-info-bg)
-  color: var(--color-text-tertiary)
-  font-weight: 700
-  text-transform: capitalize
-
-.agent-settings-header .settings-status.is-active,
-.settings-header .settings-status.is-active
-  background: var(--color-status-success-bg)
-  color: var(--color-accent-green)
 
 .agent-settings-header .settings-chip,
 .settings-header .settings-chip
@@ -560,7 +543,6 @@ body.body--dark .settings-header .text-grey-7
   overflow: hidden
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .app-glass-list__item--md
   min-height: 68px
@@ -664,7 +646,6 @@ body.body--dark
   box-shadow: none
   overflow: hidden
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .settings-shell--fill
   flex: 1 1 auto
@@ -689,7 +670,6 @@ body.body--dark
   padding: 8px 16px 0
   background: var(--nav-bg-light, var(--glass-surface))
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .agent-settings-tabs .q-tab
   min-height: 46px
@@ -801,7 +781,6 @@ body.body--dark
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-elevated))
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
   box-shadow: none
 
 .prompt-dialog__header
@@ -892,7 +871,6 @@ body.body--dark
   .agent-settings-tabs
     background: var(--nav-bg-dark, var(--glass-surface))
     backdrop-filter: blur(20px)
-    -webkit-backdrop-filter: blur(20px)
 
   .agent-settings-tabs .q-tab--active
     color: var(--color-accent)
@@ -958,7 +936,6 @@ body.body--dark
   overflow: hidden
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: none
 
 .agent-files-splitter .q-splitter__separator
@@ -994,7 +971,6 @@ body.body--dark
   color: var(--color-text-primary)
   background: radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 42%), var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .agent-file-editor__footer
   margin-top: 10px
@@ -1048,7 +1024,6 @@ body.body--dark .agent-file-item--active
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
 
 .app-settings-tabs
@@ -1056,7 +1031,6 @@ body.body--dark .agent-file-item--active
   // 与 agent-settings-tabs / 系统导航同系的奶油底色，避免白底与奶油壳层脱节
   background: var(--nav-bg-light, var(--glass-surface))
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 // Quasar q-tab-panels 默认 #fff 实色底（暗色同样生效），会把奶油玻璃壳内
 // 整片内容区刷成白色；改为透明让壳层玻璃底色透出

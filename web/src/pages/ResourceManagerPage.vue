@@ -349,6 +349,7 @@ import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import ProviderModelsTable from '../components/platform/ProviderModelsTable.vue';
 import ProviderTrendDialog from '../components/platform/ProviderTrendDialog.vue';
 import ProviderWizardStep1Connect from '../components/platform/ProviderWizardStep1Connect.vue';

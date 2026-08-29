@@ -384,7 +384,6 @@ function parseNodeMetaStatement(node: UnifiedGraphNode): string {
   border: 1px solid var(--glass-border);
   background: var(--glass-surface);
   backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .memory-tabs-card {

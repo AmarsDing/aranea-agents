@@ -68,7 +68,6 @@ const modeLabel = computed(() => spiritModeLabel(props.mode));
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .team-assembly-card--assembling
   border-color: color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))

@@ -41,10 +41,12 @@ func TestAccumulateMetricsDelta_BasicAccumulation(t *testing.T) {
 	uc.AccumulateMetricsDelta(SessionMetricsDelta{
 		SessionID:    "s1",
 		MessageCount: 1,
+		RunCount:     1,
 	})
 	uc.AccumulateMetricsDelta(SessionMetricsDelta{
 		SessionID:    "s1",
 		MessageCount: 2,
+		RunCount:     1,
 	})
 
 	uc.metricsUsecase.metricsDeltaMu.Lock()
@@ -56,6 +58,9 @@ func TestAccumulateMetricsDelta_BasicAccumulation(t *testing.T) {
 	}
 	if d.MessageCount != 3 {
 		t.Errorf("expected MessageCount=3, got %d", d.MessageCount)
+	}
+	if d.RunCount != 2 {
+		t.Errorf("expected RunCount=2, got %d", d.RunCount)
 	}
 	if d.AccumulatedCount != 2 {
 		t.Errorf("expected AccumulatedCount=2, got %d", d.AccumulatedCount)

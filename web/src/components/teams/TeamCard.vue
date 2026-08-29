@@ -28,9 +28,7 @@
           <q-badge v-if="team.has_active_run" rounded color="positive" class="team-card__live-badge">
             <q-icon name="fiber_manual_record" size="8px" class="q-mr-xs" />运行中
           </q-badge>
-          <q-badge rounded class="team-card__status" :color="statusColor">
-            {{ statusLabel }}
-          </q-badge>
+          <AppStatusChip :status="team.status" />
         </div>
       </header>
 
@@ -134,9 +132,9 @@ import {
   parseDefinition,
   teamModeLabel,
   teamRoleLabel,
-  teamStatusMap,
 } from './teamUtils';
 import KindBadge from '../agents/KindBadge.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const props = defineProps<{
   team: Team;
@@ -158,9 +156,6 @@ defineEmits<{
 
 const definition = computed(() => parseDefinition(props.team));
 
-const statusConfig = computed(() => teamStatusMap[props.team.status] ?? { label: props.team.status, color: 'grey' });
-const statusColor = computed(() => statusConfig.value.color);
-const statusLabel = computed(() => statusConfig.value.label);
 /** failed/cancelled teams can be reset to pending via RetryTeam RPC (backend state machine recover). */
 const canRetry = computed(() => ['failed', 'cancelled'].includes(props.team.status) && !props.team.readonly);
 

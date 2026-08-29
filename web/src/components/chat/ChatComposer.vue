@@ -354,7 +354,6 @@ function onInputKeydown(event: KeyboardEvent) {
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
   backdrop-filter: blur(8px)
-  -webkit-backdrop-filter: blur(8px)
   font-size: 12px
   color: var(--color-text-secondary)
 
@@ -383,7 +382,6 @@ function onInputKeydown(event: KeyboardEvent) {
   border-radius: 18px
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   padding: 12px 14px 10px
   display: flex
   flex-direction: column

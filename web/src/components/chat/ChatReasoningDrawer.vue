@@ -149,7 +149,6 @@ function onWheel(e: WheelEvent) {
   border-left: 1px solid var(--glass-border)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   border-radius: 0 14px 14px 0
   overflow: hidden
 

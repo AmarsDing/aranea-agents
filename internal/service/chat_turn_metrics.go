@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/appctx"
@@ -320,6 +322,23 @@ func (m *chatTurnMetrics) RecordSessionTurn(ctx context.Context, p SessionTurnRe
 	defer cancel()
 	now := time.Now().UTC().Format(time.RFC3339)
 	preview := strutil.ProtoPreview(p.ContentPreview, 200)
+	// 观测事务统一（SP-1，2026-08-29）：message_count/run_count 在 turn 完成点
+	// 统一累加。agent 路径消息改走 steps_v2 投影（tasks_v2+steps_v2），不再经过
+	// message_usecase.AppendChatTurn，message_count 在此补 +2（user+assistant）；
+	// team 路径消息仍由 runner AppendChatMessage 逐条累加（runner_team_trpc.go），
+	// 此处仅补 run_count，避免双计。
+	if sid := strings.TrimSpace(p.SessionID); sid != "" {
+		msgCount := 0
+		if p.OwnerType == "agent" {
+			msgCount = 2
+		}
+		m.sessions.AccumulateMetricsDelta(bizsession.SessionMetricsDelta{
+			SessionID:     sid,
+			MessageCount:  msgCount,
+			RunCount:      1,
+			LastMessageAt: now,
+		})
+	}
 	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {
 		updates := biz.SessionTurnUpdateFields{
 			Status:              ptrString("completed"),
