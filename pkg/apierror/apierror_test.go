@@ -74,7 +74,8 @@ func TestToKratos(t *testing.T) {
 		{apierror.Forbidden("ADMIN", "forbid"), http.StatusForbidden, "ADMIN_FORBIDDEN"},
 		{apierror.Conflict("SESSION", "conflict"), http.StatusConflict, "SESSION_CONFLICT"},
 		{apierror.Unavailable("DATA", "unavailable"), http.StatusServiceUnavailable, "DATA_UNAVAILABLE"},
-		{apierror.RateLimit("CHAT_QUEUE_FULL", "pending queue is full for this session"), http.StatusTooManyRequests, "CHAT_QUEUE_FULL"},
+		{apierror.RateLimit("LLM", "rate limited"), http.StatusTooManyRequests, "LLM_RATE_LIMITED"},
+		{apierror.BadRequest("CHAT_QUEUE_FULL", "pending queue is full for this session"), http.StatusBadRequest, "CHAT_QUEUE_FULL"},
 		{apierror.Internal("BIZ", "internal details"), http.StatusInternalServerError, "BIZ_INTERNAL"},
 	}
 	for _, c := range cases {

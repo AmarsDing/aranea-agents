@@ -19,7 +19,8 @@ func enqueueRejectMessage(reason string) string {
 func enqueueRejectError(reason string) error {
 	switch reason {
 	case biz.ChatEnqueueRejectQueueFull:
-		return apierror.RateLimit(apierror.DomainChatQueueFull, enqueueRejectMessage(reason))
+		// N2 规格：队满为请求语义错误（400），非限流（429）。
+		return apierror.BadRequest(apierror.DomainChatQueueFull, enqueueRejectMessage(reason))
 	case biz.ChatEnqueueRejectNoActiveRun:
 		return apierror.Conflict(apierror.DomainChatRunEnded, enqueueRejectMessage(reason))
 	default:

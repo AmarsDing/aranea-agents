@@ -1094,7 +1094,7 @@ func (impl *taskPlannerImpl) emitTeamCountMismatchGate(ctx context.Context, trac
 	if len(dropped) > 0 {
 		extra["dropped_subtask_names"] = dropped
 	}
-	decision.EmitGate(ctx, impl.decisions, decision.GateDecision{
+	event.EmitGate(ctx, impl.decisions, decision.GateDecision{
 		TriggerRule:   decision.TriggerTeamCountMismatch,
 		Outcome:       outcome,
 		Scenario:      fmt.Sprintf("分解子任务数(%d)与用户请求团队数(%d)不符", decomposed, requested),

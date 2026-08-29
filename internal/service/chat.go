@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -100,7 +101,7 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 				action = "reject_spawn"
 				scenario = "父会话 subagent spawn 合计 input token 超预算"
 			}
-			decision.EmitGate(ctx, deps.Infra.DecisionCollector, decision.GateDecision{
+			event.EmitGate(ctx, deps.Infra.DecisionCollector, decision.GateDecision{
 				TriggerRule:   decision.TriggerTokenBudgetTripped,
 				Outcome:       "tripped",
 				Scenario:      scenario,

@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -196,4 +197,109 @@ func TestFinishSessionRunLifecycle_AwaitingUserDoesNotComplete(t *testing.T) {
 	if repo.run.Phase != biz.SessionRunPhaseInteractive {
 		t.Fatalf("awaiting_user must keep session_runs interactive, got %s", repo.run.Phase)
 	}
+}
+
+// G2 续跑认领（2026-08-29 审查发现）：挂起（awaiting_user）的 session_runs
+// 行保持 interactive，续跑 turn 的 Begin 撞 StartInteractive 并发守卫后
+// 必须认领既有 run，而非静默丢绑定。
+func TestBeginSessionRunLifecycle_AdoptsAwaitingRun(t *testing.T) {
+	repo := &adoptSessionRunRepoStub{active: biz.SessionRun{
+		ID: "srid-await", SessionID: "sess-1", Phase: biz.SessionRunPhaseInteractive,
+	}}
+	reg := rt.NewRunRegistry()
+	reg.SetStatus("sess-1", "run-1", string(biz.RunStateAwaitingUser), "")
+	lc := newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
+		SessionRuns: biz.NewSessionRunUsecase(repo, nil, loggateway.NewNoop()),
+		RunStatus:   noopRunStatusTracker{},
+		Runs:        reg,
+		Logger:      loggateway.NewNoop(),
+	})
+	_, runID := lc.BeginSessionRunLifecycle(context.Background(), SessionRunStartParams{
+		Session: biz.Session{ID: "sess-1"},
+		TurnID:  "turn-2",
+	})
+	if runID != "srid-await" {
+		t.Fatalf("expected adopted run srid-await, got %q", runID)
+	}
+	if repo.createCalls != 0 {
+		t.Fatalf("adoption must not create a new row, createCalls=%d", repo.createCalls)
+	}
+}
+
+// 非挂起会话的真冲突仍 fail closed（不认领、不建行）。
+func TestBeginSessionRunLifecycle_GenuineConflictFailsClosed(t *testing.T) {
+	repo := &adoptSessionRunRepoStub{active: biz.SessionRun{
+		ID: "srid-busy", SessionID: "sess-1", Phase: biz.SessionRunPhaseInteractive,
+	}}
+	reg := rt.NewRunRegistry()
+	reg.SetStatus("sess-1", "run-1", "running", "")
+	lc := newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
+		SessionRuns: biz.NewSessionRunUsecase(repo, nil, loggateway.NewNoop()),
+		RunStatus:   noopRunStatusTracker{},
+		Runs:        reg,
+		Logger:      loggateway.NewNoop(),
+	})
+	_, runID := lc.BeginSessionRunLifecycle(context.Background(), SessionRunStartParams{
+		Session: biz.Session{ID: "sess-1"},
+		TurnID:  "turn-2",
+	})
+	if runID != "" {
+		t.Fatalf("genuine conflict must not adopt, got %q", runID)
+	}
+	if repo.createCalls != 0 {
+		t.Fatalf("conflict must not create a new row, createCalls=%d", repo.createCalls)
+	}
+}
+
+// adoptSessionRunRepoStub simulates a session with an active interactive run:
+// Create reports the DB unique-index conflict that StartInteractive's
+// pre-flight GetActiveForSession turns into apierror.Conflict.
+type adoptSessionRunRepoStub struct {
+	active      biz.SessionRun
+	createCalls int
+}
+
+func (s *adoptSessionRunRepoStub) Get(_ context.Context, id string) (biz.SessionRun, error) {
+	if s.active.ID == id {
+		return s.active, nil
+	}
+	return biz.SessionRun{}, apierror.NotFound(apierror.DomainSessionRun, "not found")
+}
+func (s *adoptSessionRunRepoStub) GetActiveForSession(_ context.Context, sessionID string) (biz.SessionRun, error) {
+	if s.active.SessionID == sessionID && s.active.Phase == biz.SessionRunPhaseInteractive {
+		return s.active, nil
+	}
+	return biz.SessionRun{}, apierror.NotFound(apierror.DomainSessionRun, "not found")
+}
+func (s *adoptSessionRunRepoStub) ListBySession(context.Context, string, int, int) ([]biz.SessionRun, int, error) {
+	return nil, 0, nil
+}
+func (s *adoptSessionRunRepoStub) ListForJobs(context.Context, biz.SessionRunListQuery) ([]biz.SessionRun, error) {
+	return nil, nil
+}
+func (s *adoptSessionRunRepoStub) ListByPhase(context.Context, string, int) ([]biz.SessionRun, error) {
+	return nil, nil
+}
+func (s *adoptSessionRunRepoStub) Create(context.Context, biz.SessionRun) (string, error) {
+	s.createCalls++
+	return "", nil
+}
+func (s *adoptSessionRunRepoStub) UpdateCheckpointID(context.Context, string, string) error {
+	return nil
+}
+func (s *adoptSessionRunRepoStub) MarkTerminal(context.Context, string, string, string) error {
+	return nil
+}
+func (s *adoptSessionRunRepoStub) MarkTerminalWherePhase(context.Context, string, string, string, string) (bool, error) {
+	return false, nil
+}
+func (s *adoptSessionRunRepoStub) TryClaimDurableResume(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+func (s *adoptSessionRunRepoStub) ClearResumeClaim(context.Context, string) error { return nil }
+func (s *adoptSessionRunRepoStub) MarkOrphanedRunsCancelled(context.Context) (int, error) {
+	return 0, nil
+}
+func (s *adoptSessionRunRepoStub) TransitionPhase(context.Context, string, string, string) (bool, error) {
+	return false, nil
 }

@@ -310,10 +310,14 @@ func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pe
 	if t := strings.TrimSpace(p.title); t != "" {
 		scenario += " 目标: " + t
 	}
-	event.LogHITLFlow(ctx, outcome, scenario, agentbridge.ToolExternalCoding)
+	// approve/reject 走 HTTP 请求 ctx、timeout 走 context.Background()，两者
+	// 都不携带 turn 的 TraceEmitter——LogHITLFlow 若直接读 ctx 恒为死接线。
+	// 用 service 级 emitter（SessionID 定位会话流）包装 ctx 再发射。
+	flowCtx := event.WithTraceEmitter(ctx, s.emitter(ctx, p.sessionID))
+	event.LogHITLFlow(flowCtx, outcome, scenario, agentbridge.ToolExternalCoding)
 	c := s.decisionCollector()
 	if c == nil {
-		event.LogNilCollector(ctx, "hitl_approval")
+		event.LogNilCollector(flowCtx, "hitl_approval")
 		return
 	}
 	userID := "unknown"

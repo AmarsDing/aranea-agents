@@ -8,7 +8,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -107,11 +106,6 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 
 	if len(proposals) == 0 && jsonParseErr != nil {
 		return nil, biz.ErrLLMExtractionFailed
-	}
-	if em := event.TraceEmitterFromContext(ctx); em != nil {
-		em.LogDone("system.memory.aux_extract", "aux_memory_extract 完成",
-			event.P("proposal_count", len(proposals)),
-			event.P("session_id", in.SessionID))
 	}
 	return proposals, nil
 }

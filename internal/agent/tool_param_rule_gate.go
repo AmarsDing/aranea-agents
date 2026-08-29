@@ -159,7 +159,7 @@ func newParamRuleGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Be
 			// run 归属经 gateRunID：team 图谱成员节点取 ctx 注入的 team run id
 			// （框架 Clone 后 InvocationID 已非 run.ID，2026-08-27 H5）。
 			runID := gateRunID(ctx)
-			decision.EmitGate(ctx, deps.DecisionCollector, decision.GateDecision{
+			event.EmitGate(ctx, deps.DecisionCollector, decision.GateDecision{
 				TriggerRule:   decision.TriggerParamRuleDeny,
 				Outcome:       "blocked",
 				Scenario:      "工具参数命中 deny 规则: " + toolName,

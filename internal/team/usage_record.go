@@ -152,7 +152,7 @@ func (r *Runner) tripRunTokenBudget(ctx context.Context, run biz.TeamRunRecord, 
 		loggateway.Int64("budget_used_input_tokens", used),
 		loggateway.Int64("budget_limit_input_tokens", limit),
 	)
-	decision.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
+	event.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
 		TriggerRule:   decision.TriggerTokenBudgetTripped,
 		Outcome:       "tripped",
 		Scenario:      "run 累计 input token 超预算",

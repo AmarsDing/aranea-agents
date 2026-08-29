@@ -126,7 +126,15 @@ func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 		strings.TrimSpace(p.Agent.ID),
 	)
 	if err != nil || run.ID == "" {
-		return ctx, ""
+		// G2 续跑认领：澄清/HITL 挂起（awaiting_user）时 session_runs 行保持
+		// interactive 不落终态（见 FinishSessionRunLifecycle），用户作答后的
+		// 续跑 turn 会撞 StartInteractive 并发守卫。此时认领既有 run 继续挂接，
+		// 而非静默丢绑定（否则续跑 turn 无 session_run，旧行只能靠孤儿清扫兜底）。
+		if adopted, ok := l.adoptAwaitingRun(ctx, sessionID); ok {
+			run = adopted
+		} else {
+			return ctx, ""
+		}
 	}
 	ctx = event.WithSessionRunID(ctx, run.ID)
 	ctx = event.WithTurnID(ctx, p.TurnID)
@@ -298,6 +306,30 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 			)
 		}
 	}
+}
+
+// adoptAwaitingRun re-adopts the still-interactive session run of a
+// clarification/HITL-suspended session when the resumed turn starts a new
+// lifecycle. Returns ok=false when no awaiting run exists (genuine conflicts
+// still fail closed).
+func (l *chatSessionRunLifecycle) adoptAwaitingRun(ctx context.Context, sessionID string) (biz.SessionRun, bool) {
+	if l == nil || l.sessionRuns == nil || l.runs == nil {
+		return biz.SessionRun{}, false
+	}
+	entry, ok := l.runs.GetStatus(sessionID)
+	if !ok || !strings.EqualFold(strings.TrimSpace(entry.Status), string(biz.RunStateAwaitingUser)) {
+		return biz.SessionRun{}, false
+	}
+	run, err := l.sessionRuns.GetActiveForSession(ctx, sessionID)
+	if err != nil || run.ID == "" || run.Phase != biz.SessionRunPhaseInteractive {
+		return biz.SessionRun{}, false
+	}
+	l.lg.Info("adopted awaiting session run for resumed turn",
+		loggateway.StepID("chat.session_run_adopt"),
+		loggateway.Str("session_id", sessionID),
+		loggateway.Str("session_run_id", run.ID),
+	)
+	return run, true
 }
 
 // FinishSessionRunLifecycle ends a session run and cleans up the binding.
