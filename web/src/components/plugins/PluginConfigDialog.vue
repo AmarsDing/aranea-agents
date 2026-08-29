@@ -37,12 +37,17 @@
           </q-tab-panel>
         </q-tab-panels>
         <q-expansion-item icon="schema" :label="t('pluginsPage.config.defaultRef')">
-          <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target?.default_config_json || '{}', t('pluginsPage.detail.noDefaultConfig'))
-          }}</pre>
-          <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target?.config_schema_json || '{}', t('pluginsPage.detail.noSchema'))
-          }}</pre>
+          <JsonCodeViewer
+            :text="prettyJSON(target?.default_config_json || '{}', t('pluginsPage.detail.noDefaultConfig'))"
+            :show-toolbar="false"
+            scroll-height="200px"
+          />
+          <JsonCodeViewer
+            class="q-mt-sm"
+            :text="prettyJSON(target?.config_schema_json || '{}', t('pluginsPage.detail.noSchema'))"
+            :show-toolbar="false"
+            scroll-height="200px"
+          />
         </q-expansion-item>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
@@ -66,6 +71,7 @@
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import PluginSchemaForm from './PluginSchemaForm.vue';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { Plugin } from '../../features/plugins/types';
 import { prettyJSON } from './pluginUi';
 

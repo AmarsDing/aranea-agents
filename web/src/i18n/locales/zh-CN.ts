@@ -2577,11 +2577,6 @@ export default {
         normal: '中',
         low: '低',
       },
-      state: {
-        pending: '待处理',
-        replayed: '已重试',
-        abandoned: '已放弃',
-      },
     },
     platformSettings: {
       title: '平台记忆策略',

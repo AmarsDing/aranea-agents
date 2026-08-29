@@ -169,6 +169,7 @@ import type { MonitorLogLine, MonitorTrace } from '../../features/monitor/types'
 import { compactJSON, formatDate, parseJSON } from '../../features/monitor/utils';
 import { downloadFlowDiagnosticJsonl } from '../../features/monitor/flow';
 import { formatCompactInt, formatCostUsd } from '../../features/monitor/runFormat';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import TraceWaterfall from './TraceWaterfall.vue';
 import TraceSpanTree from './TraceSpanTree.vue';
 import FlowTracePanel from './FlowTracePanel.vue';

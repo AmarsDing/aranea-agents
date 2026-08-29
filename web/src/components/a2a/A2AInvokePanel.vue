@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { A2AAgentCard, A2AInvokeResult } from '../../features/a2a/types';
 
 const props = defineProps<{

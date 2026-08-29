@@ -119,6 +119,7 @@
 <script setup lang="ts">
 import { reactive, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { GraphExecution, GraphRunExecutionSummary } from '../../features/graph/types';
 import { formatTime, stepIcon, stepColor } from '../../features/graph/utils';
 

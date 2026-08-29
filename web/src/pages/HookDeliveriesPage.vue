@@ -165,6 +165,7 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import JsonCodeViewer from '../components/common/JsonCodeViewer.vue';
 
 import {
   createHookDeliveryTableColumns,

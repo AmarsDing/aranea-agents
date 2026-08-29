@@ -2577,11 +2577,6 @@ export default {
         normal: 'Normal',
         low: 'Low',
       },
-      state: {
-        pending: 'Pending',
-        replayed: 'Replayed',
-        abandoned: 'Abandoned',
-      },
     },
     platformSettings: {
       title: 'Platform Memory Policy',

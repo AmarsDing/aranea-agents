@@ -99,19 +99,25 @@
         </q-expansion-item>
 
         <q-expansion-item dense-toggle :label="t('pluginsPage.detail.configJson')">
-          <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target.config_json, t('pluginsPage.detail.noConfig'))
-          }}</pre>
+          <JsonCodeViewer
+            :text="prettyJSON(target.config_json, t('pluginsPage.detail.noConfig'))"
+            :show-toolbar="false"
+            scroll-height="220px"
+          />
         </q-expansion-item>
         <q-expansion-item dense-toggle :label="t('pluginsPage.detail.defaultConfig')">
-          <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target.default_config_json, t('pluginsPage.detail.noDefaultConfig'))
-          }}</pre>
+          <JsonCodeViewer
+            :text="prettyJSON(target.default_config_json, t('pluginsPage.detail.noDefaultConfig'))"
+            :show-toolbar="false"
+            scroll-height="220px"
+          />
         </q-expansion-item>
         <q-expansion-item dense-toggle :label="t('pluginsPage.detail.configSchema')">
-          <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target.config_schema_json, t('pluginsPage.detail.noSchema'))
-          }}</pre>
+          <JsonCodeViewer
+            :text="prettyJSON(target.config_schema_json, t('pluginsPage.detail.noSchema'))"
+            :show-toolbar="false"
+            scroll-height="220px"
+          />
         </q-expansion-item>
       </q-card-section>
     </q-card>
@@ -123,6 +129,7 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Plugin } from '../../features/plugins/types';
 import { formatDate } from '../../shared/format';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import { lastStatusLabel, lastStatusTagClass, prettyJSON, riskTagClass } from './pluginUi';
 
 const props = defineProps<{

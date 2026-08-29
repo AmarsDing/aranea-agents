@@ -208,7 +208,7 @@
                 </div>
               </div>
             </div>
-            <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
+            <JsonCodeViewer :text="selectedJSON" :show-toolbar="false" scroll-height="320px" />
           </q-card-section>
         </div>
         <q-separator />
@@ -228,6 +228,7 @@ import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 
 import type { AuditLog, AuditQuery } from '../../features/monitor/types';
 import { auditDetailSummary, compactJSON, formatDate, parseJSON } from '../../features/monitor/utils';

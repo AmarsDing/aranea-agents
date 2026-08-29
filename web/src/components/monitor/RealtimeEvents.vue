@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="registry-table-card">
     <!-- ── Pulse：实时事件条（WS，不落库）── -->
     <div class="registry-table-card__header">
@@ -274,6 +274,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { copyToClipboard } from 'quasar';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import { createMonitorEventColumns } from './monitorTableUi';
 import { type MonitorViewEvent } from '../../features/monitor/eventView';

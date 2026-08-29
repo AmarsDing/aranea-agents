@@ -99,7 +99,7 @@
           <span class="a2a-invoke-result__id">{{ t('a2a.federation.invokeAuditId') }}: {{ result.audit_id }}</span>
           <span class="a2a-invoke-result__status">status: {{ result.status }} · {{ result.latency_ms }}ms</span>
         </div>
-        <pre class="a2a-result">{{ result.result_json || result.error_message }}</pre>
+        <JsonCodeViewer :text="result.result_json || result.error_message" scroll-height="240px" />
       </q-card>
     </div>
   </div>
@@ -108,6 +108,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import JsonCodeViewer from '../../common/JsonCodeViewer.vue';
 import type { FederatedInvokeResult, FederationAgentEntry } from '../../../features/a2a/federationTypes';
 
 const props = defineProps<{

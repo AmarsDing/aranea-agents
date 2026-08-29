@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 
 defineProps<{
   open: boolean;
