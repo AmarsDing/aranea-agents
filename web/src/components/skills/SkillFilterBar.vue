@@ -7,8 +7,8 @@
       outlined
       clearable
       debounce="350"
-      label="搜索 Skill"
-      placeholder="名称、Slug、描述…"
+      :label="t('skillsPage.filterSearchLabel')"
+      :placeholder="t('skillsPage.filterSearchPlaceholder')"
       @update:model-value="emit('update:search', String($event ?? ''))"
     >
       <template #prepend><q-icon name="search" /></template>
@@ -21,7 +21,7 @@
       clearable
       emit-value
       map-options
-      label="启用状态"
+      :label="t('skillsPage.filterEnabled')"
       :options="enabledOptions"
       @update:model-value="emit('update:enabled', $event as boolean | null)"
     />
@@ -33,7 +33,7 @@
       clearable
       emit-value
       map-options
-      label="状态"
+      :label="t('skillsPage.filterStatus')"
       :options="statusOptions"
       @update:model-value="emit('update:status', String($event ?? ''))"
     />
@@ -61,7 +61,7 @@
       clearable
       emit-value
       map-options
-      label="来源"
+      :label="t('skillsPage.filterOrigin')"
       :options="originOptions"
       @update:model-value="emit('update:syncOrigin', String($event ?? ''))"
     />
@@ -73,7 +73,7 @@
       clearable
       emit-value
       map-options
-      label="磁盘状态"
+      :label="t('skillsPage.filterFsState')"
       :options="filesystemOptions"
       @update:model-value="emit('update:filesystemMissing', $event as boolean | null)"
     />
@@ -84,7 +84,7 @@
       outlined
       emit-value
       map-options
-      label="排序"
+      :label="t('skillsPage.filterSort')"
       :options="sortByOptions"
       @update:model-value="emit('update:sortBy', $event as 'tag' | 'name')"
     />
@@ -94,12 +94,12 @@
       dense
       class="app-page-toolbar__sort-dir"
       :icon="sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'"
-      :title="sortOrder === 'asc' ? '升序（点击切换降序）' : '降序（点击切换升序）'"
+      :title="sortOrder === 'asc' ? t('skillsPage.sortAscTip') : t('skillsPage.sortDescTip')"
       @click="emit('update:sortOrder', sortOrder === 'asc' ? 'desc' : 'asc')"
     />
     <template #actions>
-      <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="emit('reset')" />
-      <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="emit('refresh')" />
+      <q-btn flat rounded no-caps icon="restart_alt" :label="t('skillsPage.reset')" @click="emit('reset')" />
+      <q-btn flat rounded no-caps icon="refresh" :label="t('common.refresh')" :loading="loading" @click="emit('refresh')" />
     </template>
   </AppPageToolbar>
 </template>
@@ -157,22 +157,22 @@ function onTagFilter(val: string, update: (fn: () => void) => void) {
   });
 }
 
-const enabledOptions = [
-  { label: '仅启用', value: true },
-  { label: '仅停用', value: false },
-];
+const enabledOptions = computed(() => [
+  { label: t('skillsPage.filterEnabledOnly'), value: true },
+  { label: t('skillsPage.filterDisabledOnly'), value: false },
+]);
 
-const statusOptions = [
-  { label: '草稿', value: 'draft' },
-  { label: '已发布', value: 'published' },
-  { label: '已归档', value: 'archived' },
-];
+const statusOptions = computed(() => [
+  { label: t('skillsPage.filterDraft'), value: 'draft' },
+  { label: t('skillsPage.filterPublished'), value: 'published' },
+  { label: t('skillsPage.filterArchived'), value: 'archived' },
+]);
 
-const originOptions = [
-  { label: '磁盘导入', value: 'filesystem' },
-  { label: 'ZIP 导入', value: 'import' },
-  { label: '手动创建', value: 'manual' },
-];
+const originOptions = computed(() => [
+  { label: t('skillsPage.originFilesystem'), value: 'filesystem' },
+  { label: t('skillsPage.originImport'), value: 'import' },
+  { label: t('skillsPage.originManual'), value: 'manual' },
+]);
 
 const filesystemOptions = computed(() => [
   { label: t('skillsPage.filterFsMissing'), value: true },

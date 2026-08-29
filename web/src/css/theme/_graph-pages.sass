@@ -89,6 +89,16 @@ body.body--dark
 .graphs-filter-bar__select
   min-width: 130px
 
+// 窄屏：搜索独占一行，下拉与排序均分第二行，避免横向挤压
+@media (max-width: 720px)
+  .graphs-filter-bar__search
+    min-width: 100%
+    max-width: none
+    flex: 1 1 100%
+  .graphs-filter-bar__select
+    flex: 1 1 0
+    min-width: 0
+
 .graphs-grid
   display: grid
   grid-template-columns: repeat(3, 1fr)

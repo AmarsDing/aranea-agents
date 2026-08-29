@@ -2,7 +2,6 @@ package event
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz/decision"
 )

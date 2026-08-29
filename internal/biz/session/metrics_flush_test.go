@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -160,4 +161,68 @@ func TestNilMetricsUsecase_GracefulDegradation(t *testing.T) {
 	uc.StartMetricsFlusher(context.Background())
 	uc.flushAllMetrics(context.Background())
 	uc.forceFlushSingle("s1")
+}
+
+// mockFailMetricsRepo always fails ApplyMetricsDelta (simulates DB outage).
+type mockFailMetricsRepo struct {
+	mockSessionRepo
+	failCount atomic.Int32
+}
+
+func (m *mockFailMetricsRepo) ApplyMetricsDelta(_ context.Context, _ *SessionMetricsDelta) error {
+	m.failCount.Add(1)
+	return errors.New("db down")
+}
+
+// SP-1c 回归：flush 失败重试有上限，超限后 delta 丢弃（不再无限回炉）。
+func TestFlushAllMetrics_RetryLimitDropsDelta(t *testing.T) {
+	repo := &mockFailMetricsRepo{}
+	mu := NewSessionMetricsUsecase(repo, nil, nil)
+
+	mu.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: "s1", MessageCount: 3})
+
+	// First failure re-accumulates with incremented fail count.
+	mu.flushAllMetrics(context.Background())
+	mu.metricsDeltaMu.Lock()
+	d, ok := mu.metricsDeltas["s1"]
+	mu.metricsDeltaMu.Unlock()
+	if !ok {
+		t.Fatal("expected delta re-accumulated after first failure")
+	}
+	if d.FlushFailCount != 1 {
+		t.Errorf("expected FlushFailCount=1, got %d", d.FlushFailCount)
+	}
+
+	// Keep flushing well past the limit: delta must be dropped at the cap,
+	// with no further ApplyMetricsDelta attempts (no infinite retry).
+	for i := 0; i < MaxFlushFailCount+3; i++ {
+		mu.flushAllMetrics(context.Background())
+	}
+	mu.metricsDeltaMu.Lock()
+	_, ok = mu.metricsDeltas["s1"]
+	mu.metricsDeltaMu.Unlock()
+	if ok {
+		t.Error("expected delta dropped after reaching MaxFlushFailCount")
+	}
+	if got := repo.failCount.Load(); got != int32(MaxFlushFailCount) {
+		t.Errorf("expected exactly %d flush attempts, got %d", MaxFlushFailCount, got)
+	}
+}
+
+// SP-1c 回归：失败回炉的 delta 与窗口内新 delta 合并时，失败计数取 max。
+func TestAccumulateMetricsDelta_MergeKeepsMaxFlushFailCount(t *testing.T) {
+	mu := NewSessionMetricsUsecase(&mockMetricsRepo{}, nil, nil)
+
+	mu.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: "s1", MessageCount: 1, FlushFailCount: 3})
+	mu.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: "s1", MessageCount: 1, FlushFailCount: 1})
+
+	mu.metricsDeltaMu.Lock()
+	d := mu.metricsDeltas["s1"]
+	mu.metricsDeltaMu.Unlock()
+	if d.FlushFailCount != 3 {
+		t.Errorf("expected merged FlushFailCount=3, got %d", d.FlushFailCount)
+	}
+	if d.MessageCount != 2 {
+		t.Errorf("expected merged MessageCount=2, got %d", d.MessageCount)
+	}
 }

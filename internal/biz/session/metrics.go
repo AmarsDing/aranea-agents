@@ -53,6 +53,11 @@ func (uc *SessionMetricsUsecase) AccumulateMetricsDelta(delta SessionMetricsDelt
 		if delta.LastMessageAt != "" && delta.LastMessageAt > existing.LastMessageAt {
 			existing.LastMessageAt = delta.LastMessageAt
 		}
+		// SP-1c：失败回炉的 delta 与窗口内新 delta 合并时，失败计数取 max
+		// 保守保留——旧批次已失败 N 次的事实不因并入新数据而清零。
+		if delta.FlushFailCount > existing.FlushFailCount {
+			existing.FlushFailCount = delta.FlushFailCount
+		}
 		existing.AccumulatedCount++
 		if existing.AccumulatedCount >= MaxDeltaCount || time.Since(existing.FirstAccumulatedAt) > MaxDeltaAge {
 			safego.Go(appctx.Ctx(), "metrics-delta-force-flush", func() {
@@ -93,13 +98,34 @@ func (uc *SessionMetricsUsecase) flushAllMetrics(ctx context.Context) {
 	for _, d := range deltas {
 		if err := uc.contextUpdater.ApplyMetricsDelta(ctx, d); err != nil {
 			if uc.lg != nil {
-				uc.lg.Error("session_metrics.flush_failed", loggateway.Err(err), loggateway.Str("session_id", d.SessionID))
+				uc.lg.Error("session_metrics.flush_failed", loggateway.Err(err), loggateway.Str("session_id", d.SessionID),
+					loggateway.Int("flush_fail_count", d.FlushFailCount+1))
 			}
-			uc.AccumulateMetricsDelta(*d)
+			uc.reaccumulateAfterFail(d)
 		} else if uc.metricsUpdatedPublisher != nil {
 			uc.metricsUpdatedPublisher.PublishMetricsUpdated(d.SessionID)
 		}
 	}
+}
+
+// reaccumulateAfterFail 把 flush 失败的 delta 回炉重试；失败次数达到
+// MaxFlushFailCount 上限时丢弃并升级告警（SP-1c：防无限重试循环，指标
+// 丢失必须带统计量显式告警，而非静默重试到进程退出）。
+func (uc *SessionMetricsUsecase) reaccumulateAfterFail(d *SessionMetricsDelta) {
+	d.FlushFailCount++
+	if d.FlushFailCount >= MaxFlushFailCount {
+		if uc.lg != nil {
+			uc.lg.Error("session_metrics.flush_dropped",
+				loggateway.Str("session_id", d.SessionID),
+				loggateway.Int("flush_fail_count", d.FlushFailCount),
+				loggateway.Int("message_count", d.MessageCount),
+				loggateway.Int("run_count", d.RunCount),
+				loggateway.Int64("total_tokens", d.TotalTokens),
+			)
+		}
+		return
+	}
+	uc.AccumulateMetricsDelta(*d)
 }
 
 func (uc *SessionMetricsUsecase) forceFlushSingle(sessionID string) {
@@ -116,9 +142,10 @@ func (uc *SessionMetricsUsecase) forceFlushSingle(sessionID string) {
 	defer cancel()
 	if err := uc.contextUpdater.ApplyMetricsDelta(ctx, d); err != nil {
 		if uc.lg != nil {
-			uc.lg.Error("session_metrics.force_flush_failed", loggateway.Err(err), loggateway.Str("session_id", d.SessionID))
+			uc.lg.Error("session_metrics.force_flush_failed", loggateway.Err(err), loggateway.Str("session_id", d.SessionID),
+				loggateway.Int("flush_fail_count", d.FlushFailCount+1))
 		}
-		uc.AccumulateMetricsDelta(*d)
+		uc.reaccumulateAfterFail(d)
 	} else if uc.metricsUpdatedPublisher != nil {
 		uc.metricsUpdatedPublisher.PublishMetricsUpdated(d.SessionID)
 	}
