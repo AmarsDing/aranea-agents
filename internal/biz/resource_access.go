@@ -269,8 +269,11 @@ func (u *ResourceAccessUsecase) authorizeMemberDir(ctx context.Context, callerAg
 	if targetKey == "" {
 		return RelationNone, "", "target agent_key is required", nil
 	}
-	target, err := u.agents.GetAgentByAgentKey(ctx, targetKey)
+	target, err := u.resolveMemberTarget(ctx, callerDeptID, targetKey)
 	if err != nil {
+		return RelationNone, "", "", err
+	}
+	if target.ID == "" {
 		return RelationNone, "", "target agent not found: " + targetKey, nil
 	}
 
@@ -300,6 +303,51 @@ func (u *ResourceAccessUsecase) authorizeMemberDir(ctx context.Context, callerAg
 	}
 
 	return RelationNone, target.ID, "target agent is neither in your department nor borrowed by your department's teams", nil
+}
+
+// resolveMemberTarget maps a caller-supplied agent_key to a department member.
+// Exact keys win; otherwise a unique in-department alias is accepted:
+// ppc_strategist → ppc_strategist__general, or position_key suffix /ppc_strategist.
+// Multiple matches fail closed (empty ID, no error) so the caller returns not found.
+func (u *ResourceAccessUsecase) resolveMemberTarget(ctx context.Context, callerDeptID, targetKey string) (Agent, error) {
+	if a, err := u.agents.GetAgentByAgentKey(ctx, targetKey); err == nil && a.ID != "" {
+		return a, nil
+	} else if err != nil && !isNotFound(err) {
+		return Agent{}, err
+	}
+	res, err := u.agents.SearchAgents(ctx, AgentListQuery{Keyword: targetKey, Limit: 50})
+	if err != nil {
+		return Agent{}, err
+	}
+	var hits []Agent
+	for _, cand := range res.Items {
+		if !agentKeyAliasMatch(cand, targetKey) {
+			continue
+		}
+		deptID, err := u.agentDepartment(ctx, cand)
+		if err != nil {
+			return Agent{}, err
+		}
+		if deptID == callerDeptID {
+			hits = append(hits, cand)
+		}
+	}
+	if len(hits) != 1 {
+		return Agent{}, nil
+	}
+	return hits[0], nil
+}
+
+func agentKeyAliasMatch(a Agent, key string) bool {
+	ak := strings.TrimSpace(a.AgentKey)
+	pk := strings.TrimSpace(a.PositionKey)
+	if ak == key || strings.HasPrefix(ak, key+"__") {
+		return true
+	}
+	if pk == key || strings.HasSuffix(pk, "/"+key) {
+		return true
+	}
+	return false
 }
 
 // agentDepartment resolves the department ID for an agent via its position in

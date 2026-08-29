@@ -206,6 +206,7 @@ func (r *Runner) prepareUserTurnOptions(
 			SessionID:   run.SessionID,
 			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
 		})
+		event.LogGateFlow(ctx, decision.TriggerInputRiskFlagged, "tripped", "团队会话用户输入命中确定性风险扫描", fmt.Sprintf("flags=%v", inputRiskFlags))
 	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
 		r.lg.Info("input risk shadow hit (not flagged)",
 			loggateway.StepID("team.input_risk.shadow"),

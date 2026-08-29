@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 
@@ -202,11 +203,8 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 // observed_value 记驱逐消息数；before_chars/dropped_cues/est_tokens/window
 // 落 metadata 供取证回放（不进 stats 聚合字段）。
 func emitCompactGateDecision(ctx context.Context, c decision.Collector, evicted, droppedCues, beforeChars, estTokens, window int) {
-	if c == nil {
-		return
-	}
 	runID := gateRunID(ctx)
-	decision.EmitGate(ctx, c, decision.GateDecision{
+	event.EmitGate(ctx, c, decision.GateDecision{
 		TriggerRule:   decision.TriggerContextCompacted,
 		Outcome:       "truncated",
 		Scenario:      "上下文终审压缩",

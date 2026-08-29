@@ -809,8 +809,17 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 			r.metricsCache.Invalidate(sessionID)
 		}
 	default:
-		// 仅写旧表（当前行为）
+		// Always populate session_metrics so eval/API aggregations are not empty
+		// when the split-table flags are off (r2 campaign: 0 rows campaign-wide).
 		err = r.applyMetricsDeltaToSession(ctx, d)
+		if r.metricsWriter != nil {
+			if e := r.metricsWriter.ApplyMetricsDelta(ctx, d); e != nil {
+				r.data.lg.Warn("session_metrics write failed (legacy sessions table succeeded)",
+					loggateway.StepID("data.session.metrics_table"),
+					loggateway.SessionID(sessionID),
+					loggateway.Err(e))
+			}
+		}
 	}
 	return entErrToBizErr(err, "SESSION")
 }

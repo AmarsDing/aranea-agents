@@ -307,6 +307,7 @@ func (r *Runner) auditMemberNoProgress(ctx context.Context, run biz.TeamRunRecor
 			Action:        "cancel_run",
 			Extra:         map[string]any{"fingerprint": fp},
 		})
+		event.LogGateFlow(ctx, decision.TriggerNoProgressTripped, "tripped", "成员连续同语义阻塞，纠偏后仍无进展", "")
 		if em := event.TraceEmitterFromContext(ctx); em != nil {
 			em.LogCritical("chat.team.no_progress", "成员连续同语义阻塞，纠偏无效，已取消 run",
 				event.P("run_id", run.ID), event.P("agent_key", key), event.P("streak", streak))

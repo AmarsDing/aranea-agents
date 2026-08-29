@@ -300,23 +300,32 @@ func (s *AgentBridgeService) ConfirmBridgePermission(ctx context.Context, taskID
 
 // emitBridgeDecisionRecord 把 AgentBridge 审批决议双写到 M80 决策记录层
 // (hitl_approval，设计 §3.2 row 2 ②)。outcome ∈ approved/rejected/timeout；
-// grantScope 仅 approved 时有值（once/always）。collector 为 nil 时静默跳过。
+// grantScope 仅 approved 时有值（once/always）。flowlog 先写；collector 为
+// nil 时记 collector_nil，不再静默跳过（D1）。
 func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pendingApproval, outcome, grantScope string) {
+	if p == nil {
+		return
+	}
+	scenario := fmt.Sprintf("工具确认: %s (external_coding_permission)", agentbridge.ToolExternalCoding)
+	if t := strings.TrimSpace(p.title); t != "" {
+		scenario += " 目标: " + t
+	}
+	event.LogHITLFlow(ctx, outcome, scenario, agentbridge.ToolExternalCoding)
 	c := s.decisionCollector()
-	if c == nil || p == nil {
+	if c == nil {
+		event.LogNilCollector(ctx, "hitl_approval")
 		return
 	}
 	userID := "unknown"
 	if a, ok := auth.FromContext(ctx); ok && a != nil && a.UserID > 0 {
 		userID = fmt.Sprintf("%d", a.UserID)
 	}
-	scenario := fmt.Sprintf("工具确认: %s (external_coding_permission)", agentbridge.ToolExternalCoding)
-	if t := strings.TrimSpace(p.title); t != "" {
-		scenario += " 目标: " + t
-	}
 	metadata := map[string]any{"decision_reason": "external_coding_permission"}
 	if grantScope != "" {
 		metadata["grant_scope"] = grantScope
+	}
+	if sid := strings.TrimSpace(p.sessionID); sid != "" {
+		metadata["session_id"] = sid
 	}
 	entities := []decision.EntityRef{{Type: "tool", Key: agentbridge.ToolExternalCoding}}
 	if p.agentKey != "" {
@@ -330,7 +339,7 @@ func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pe
 		ActorType:       decision.ActorHuman,
 		ActorKey:        userID,
 		RelatedEntities: entities,
-		SourceRef:       decision.SourceRef{TaskID: p.taskID},
+		SourceRef:       decision.SourceRef{TaskID: p.taskID, SessionID: strings.TrimSpace(p.sessionID)},
 		Metadata:        metadata,
 	})
 }

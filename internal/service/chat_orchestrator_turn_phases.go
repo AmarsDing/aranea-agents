@@ -946,6 +946,23 @@ func (o *ChatOrchestrator) postProcessTurn(
 		emitter.LogSkip("chat.turn.execute", "对话轮次已取消，跳过完成状态发布", event.P("run_id", runID))
 		return
 	}
+	if clarifySuspended {
+		// G2：awaiting_input 悬挂不得把 run 记 completed（与澄清门同口径 awaiting_user）。
+		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, string(biz.RunStateAwaitingUser), ""); serr != nil {
+			o.lg().Warn("set run status failed on clarify suspend",
+				loggateway.StepID("chat.turn.clarify_suspend"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(serr))
+		}
+		o.persistRememberIfRequested(ctx, sess, ag, input, execResult)
+		o.bumpSessionRevision(ctx, sessionID)
+		emitter.LogDone("chat.turn.awaiting_input", "对话轮次挂起等待用户澄清",
+			event.P("run_id", runID),
+			event.P("reply_len", len(persistResult.assistantMsg.ContentMarkdown)),
+		)
+		return
+	}
 	if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", ""); serr != nil {
 		o.lg().Warn("set run status failed on complete",
 			loggateway.StepID("chat.turn.complete"),

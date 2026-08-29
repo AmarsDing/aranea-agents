@@ -139,6 +139,12 @@ func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams Tea
 
 // isNotFound returns true if the error is a NOT_FOUND apierror or a kratos 404 error.
 func isNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if stderrors.Is(err, shared.ErrNotFound) {
+		return true
+	}
 	if ae, ok := apierror.From(err); ok {
 		return ae.Code == apierror.CodeNotFound
 	}

@@ -120,6 +120,12 @@ const (
 	ChatEnqueueRejectQueueFull   = "queue_full"
 )
 
+// ChatPendingQueueCap is the per-session pending depth (must match
+// runtime.MaxPendingPerSession). When the queue is at this cap, new
+// SendChatMessage/steer attempts are rejected with CHAT_QUEUE_FULL
+// instead of silently steering into the active turn (G1 / S12 dual-null).
+const ChatPendingQueueCap = 32
+
 // P2-3 Inbox 三级注入语义（DSH followup/steer/inject 对齐）。
 const (
 	// ChatEnqueueKindSteer 用户插话（默认）：优先经框架 steer 队列在下一
@@ -327,6 +333,16 @@ func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind strin
 		return false, false, "", ChatEnqueueRejectNoActiveRun, nil
 	}
 
+	// G1：队列已满时禁止再走 steer 成功空回执（S12 队满期 POST /v1/chat/messages
+	// 返回 userMessage/agentMessage 双 null）。满员全 inject 仍走冲刷合入。
+	if len(uc.pending.List(sessionID)) >= ChatPendingQueueCap {
+		if mergedPid, rescued := uc.rescueFullInjectQueue(sessionID, content); rescued {
+			uc.publisher.PublishMessageQueued(sessionID)
+			return true, true, mergedPid, "", nil
+		}
+		return false, false, "", ChatEnqueueRejectQueueFull, nil
+	}
+
 	// followup 级：显式追问，跳过 steer 保证成为独立新 turn。
 	if kind != ChatEnqueueKindFollowup {
 		enqueued, enqueueErr := uc.runs.EnqueueUserMessage(sessionID, content)
@@ -390,6 +406,30 @@ func (uc *ChatUsecase) rescueFullInjectQueue(sessionID, content string) (string,
 		loggateway.Str("session_id", sessionID),
 		loggateway.Int("flushed_count", len(flushed)))
 	return pid, true
+}
+
+// ConsumeLeadingInjects dequeues head-of-queue inject entries so a newly
+// started user turn can merge them as context (N2: normal message consumes
+// stranded injects in one turn). Callers must hold the session lock.
+func (uc *ChatUsecase) ConsumeLeadingInjects(sessionID string) []string {
+	if uc == nil || uc.pending == nil {
+		return nil
+	}
+	var out []string
+	for {
+		peek, ok := uc.pending.Peek(sessionID)
+		if !ok || peek.Kind != ChatEnqueueKindInject {
+			return out
+		}
+		e, ok := uc.pending.Dequeue(sessionID)
+		if !ok {
+			return out
+		}
+		if e.Kind != ChatEnqueueKindInject {
+			return out
+		}
+		out = append(out, e.Content)
+	}
 }
 
 // SplitLeadingInjects 将队列头部连续的 inject 条目与其后的第一条 followup

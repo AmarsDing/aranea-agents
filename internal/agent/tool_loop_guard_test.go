@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -678,5 +679,33 @@ func TestLoopGuardEmptyBlockSaturatesToStopError(t *testing.T) {
 	}
 	if _, ok := trpcagent.AsStopError(err); !ok {
 		t.Fatalf("saturated empty block should be StopError, got %v", err)
+	}
+}
+
+func TestLoopGuardBlocksDatetimeWithChangingResult(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-datetime-volatile")
+	for i := 1; i <= 2; i++ {
+		if err := runLoopGuardTurn(t, g, ctx, "datetime", `{}`, fmt.Sprintf("2026-08-28T0%d:00:00Z", i), nil); err != nil {
+			t.Fatalf("datetime call %d should pass, got %v", i, err)
+		}
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "datetime", `{}`, "2026-08-28T03:00:00Z", nil); err == nil {
+		t.Fatal("third same-param datetime call must block even when the clock result changed")
+	}
+}
+
+func TestLoopGuardBlocksForbiddenRetry(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-forbidden")
+	ferr := errors.New("[RESOURCE_ACCESS/FORBIDDEN] target agent not found: ppc_strategist")
+	if err := runLoopGuardTurn(t, g, ctx, "list_member_files", `{"agent_key":"ppc_strategist"}`, nil, ferr); err != nil {
+		t.Fatalf("first forbidden call executes: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "list_member_files", `{"agent_key":"ppc_strategist"}`, nil, ferr); err != nil {
+		t.Fatalf("second forbidden call executes: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "list_member_files", `{"agent_key":"ppc_strategist"}`, nil, ferr); err == nil {
+		t.Fatal("third forbidden retry must be blocked")
 	}
 }

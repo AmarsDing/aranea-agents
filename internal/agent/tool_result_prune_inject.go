@@ -29,6 +29,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -155,11 +156,8 @@ func newToolResultPruneBeforeHook(gate *biz.ToolResultGate, cfg ToolResultPruneC
 // uuid，InvocationID 不再等于 run 归属；chat 轮次回落 chat invocation id
 // （不 join 任何 team run，stats 聚合自然忽略）。
 func emitPruneGateDecision(ctx context.Context, c decision.Collector, sessionID string, pruned int, prunedBytes int64) {
-	if c == nil {
-		return
-	}
 	runID := gateRunID(ctx)
-	decision.EmitGate(ctx, c, decision.GateDecision{
+	event.EmitGate(ctx, c, decision.GateDecision{
 		TriggerRule:   decision.TriggerToolResultPruned,
 		Outcome:       "truncated",
 		Scenario:      "工具结果确定性剪枝",

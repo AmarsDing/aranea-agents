@@ -8,6 +8,11 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/todo"
 )
 
+// araneaDeclareBlockerToolDescription tightens the framework default (E4):
+// blocker is last resort after routing advice / honest report, not the first
+// escape from a forbidden or degradable path.
+const araneaDeclareBlockerToolDescription = "Declare that an objective external blocker prevents any further progress. Use this ONLY after you have already given the user an actionable next step (routing advice, required input, or an honest report of what failed). Valid blockers: missing permission/credentials, a requirement that is still blocking after you stated assumptions, unprovisioned infrastructure, or a sensitive decision the user must make. Do NOT use this as the first response to FORBIDDEN/not-found, missing agent_key, empty search, or other degradable failures — first try the documented fallback (department lead session, spirit teaming, or answer with labeled gaps). Calling this tool does not cancel the todo list."
+
 // NewTodoEnforcerOption returns an llmagent.Option that enables the framework's
 // TodoEnforcer extension. The TodoEnforcer ensures that an Agent follows its
 // todo list: if open todo items remain, the agent cannot declare itself "done"
@@ -23,6 +28,7 @@ import (
 func NewTodoEnforcerOption(todoTool *todo.Tool, lg loggateway.Logger) trpcllmagent.Option {
 	enforcerOpts := []todoenforcer.Option{
 		todoenforcer.WithMaxRetries(3),
+		todoenforcer.WithDeclareBlockerToolDescription(araneaDeclareBlockerToolDescription),
 		todoenforcer.WithOnEnforce(func(evt todoenforcer.EnforceEvent) {
 			if lg == nil {
 				return
@@ -52,6 +58,7 @@ func NewTodoEnforcerOption(todoTool *todo.Tool, lg loggateway.Logger) trpcllmage
 func NewTodoEnforcerOptionWithScope(todoTool *todo.Tool, scopedAgents []string, lg loggateway.Logger) trpcllmagent.Option {
 	enforcerOpts := []todoenforcer.Option{
 		todoenforcer.WithMaxRetries(3),
+		todoenforcer.WithDeclareBlockerToolDescription(araneaDeclareBlockerToolDescription),
 		todoenforcer.WithScopedAgents(scopedAgents...),
 		todoenforcer.WithOnEnforce(func(evt todoenforcer.EnforceEvent) {
 			if lg == nil {

@@ -184,3 +184,16 @@ func TestFinishSessionRunLifecycle_CompleteAndFailUnchanged(t *testing.T) {
 		}
 	})
 }
+
+func TestFinishSessionRunLifecycle_AwaitingUserDoesNotComplete(t *testing.T) {
+	repo := &finishSessionRunRepoStub{run: biz.SessionRun{
+		ID: "srid-1", SessionID: "sess-1", Phase: biz.SessionRunPhaseInteractive,
+	}}
+	reg := rt.NewRunRegistry()
+	reg.SetStatus("sess-1", "run-1", string(biz.RunStateAwaitingUser), "")
+	lc := newFinishTestLifecycle(repo, reg)
+	lc.FinishSessionRunLifecycle(context.Background(), "sess-1", "srid-1", nil)
+	if repo.run.Phase != biz.SessionRunPhaseInteractive {
+		t.Fatalf("awaiting_user must keep session_runs interactive, got %s", repo.run.Phase)
+	}
+}

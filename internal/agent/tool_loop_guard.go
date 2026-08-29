@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools/alias"
 	"aranea-agents/pkg/loggateway"
 
@@ -184,7 +185,8 @@ type loopGuardEntry struct {
 	lastResultKey    string // 上一次成功调用的结果哈希
 	lastResultDigest string // 上一次成功调用的结果摘要（供拦截消息回放，防模型「证据丢失感」）
 	sameCount        int    // 连续「签名+结果均相同」的成功调用次数
-	lastFailed       bool   // 上一次调用是否失败（失败重试不累计、不拦截）
+	lastFailed       bool   // 上一次调用是否失败（失败重试不累计、不拦截；FORBIDDEN 除外）
+	forbiddenStreak  int    // 同签名连续 FORBIDDEN/not found 次数（≥2 后拦下一跳）
 	recentSigs       []string
 	recentTools      []string                // 与 recentSigs 对齐的工具名，仅供轮换拦截消息可读性
 	emptyStreak      map[string]int          // 检索类工具名 → 连续空结果次数（无视参数差异；非空即清零）
@@ -237,6 +239,7 @@ const (
 	loopGuardBlockLoadRatio
 	loopGuardBlockLoadThenCall
 	loopGuardBlockPlanDrift
+	loopGuardBlockForbidden
 )
 
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
@@ -654,16 +657,12 @@ func (g *toolLoopGuard) emitGateDecision(ctx context.Context, toolName, scenario
 // plan-execute 漂移达阈值后由 BeforeTool 拦截（blocked）。
 // toolName 为空时省略 tool 实体（软闸无单一触发工具）。
 func (g *toolLoopGuard) emitGateEvent(ctx context.Context, outcome, toolName, scenario, reasoning string, observed any, threshold any, action string) {
-	c := g.decisions
-	if c == nil {
-		return
-	}
 	runID := gateRunID(ctx)
 	var entities []decision.EntityRef
 	if toolName != "" {
 		entities = []decision.EntityRef{{Type: "tool", Key: toolName}}
 	}
-	decision.EmitGate(ctx, c, decision.GateDecision{
+	event.EmitGate(ctx, g.decisions, decision.GateDecision{
 		TriggerRule:   decision.TriggerLoopGuardBlocked,
 		Outcome:       outcome,
 		Scenario:      scenario,
@@ -992,6 +991,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
 	emptyBlocked := e.emptyStreak[toolName] >= loopGuardEmptyStreakThreshold
 	loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopGuardBlockThreshold
+	forbiddenLoop := e.lastSig == sig && e.forbiddenStreak >= 2
 	var cycleDesc string
 	if !loop && len(e.recentSigs)+1 >= 2*loopGuardCycleMinRepeats {
 		// 试追加当前签名，检测末尾是否构成固定轮换循环（如 A→B→C 满 3 轮）。
@@ -1001,7 +1001,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 		}
 	}
-	if !loadRepeat && !loadQuota && !loadRatio && !planDrift && loadThenCall == "" && !emptyBlocked && !loop && cycleDesc == "" {
+	if !loadRepeat && !loadQuota && !loadRatio && !planDrift && loadThenCall == "" && !emptyBlocked && !loop && !forbiddenLoop && cycleDesc == "" {
 		e.beginInflight(sig, now)
 		if toolName == toolLoadToolName && loadTarget != "" {
 			e.beginInflightLoad(loadTarget)
@@ -1053,6 +1053,10 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	if cycleDesc != "" {
 		v.kind = loopGuardBlockCycle
 		v.cycleDesc = cycleDesc
+		return v
+	}
+	if forbiddenLoop {
+		v.kind = loopGuardBlockForbidden
 		return v
 	}
 	v.kind = loopGuardBlockLoop
@@ -1280,6 +1284,20 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loopGuardMarker, v.cycleDesc, loopGuardCycleMinRepeats, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
+		if v.kind == loopGuardBlockForbidden {
+			g.lg.Warn("tool loop guard blocked forbidden retry",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("forbidden_streak", v.consecutiveCount))
+			g.emitGateDecision(ctx, args.ToolName, "目标 agent 不存在，停止重试",
+				fmt.Sprintf("%s 连续返回 FORBIDDEN/target not found，继续重试不会接通", args.ToolName),
+				2, 2, "block_call")
+			msg := fmt.Sprintf("%s：%s 已连续因目标 agent 不存在（FORBIDDEN）失败——本调用被系统拦截。"+
+				"不要再猜 agent_key 或重试同一调用。请改走路由建议（部门主管会话/精灵组队）或如实向用户说明岗位未接通；禁止继续 memory_search 打转。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, args.ToolName, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
 			loggateway.StepID("agent.tool_loop_guard"),
 			loggateway.Str("tool", args.ToolName),
@@ -1327,7 +1345,14 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		e.roundSawTool = true
 		if args.Error != nil {
 			// 失败重试归熔断器治理：不累计重复计数，也不触发拦截。
-			// 但调用本身仍进签名窗口——失败不打破轮换循环的模式判定。
+			// FORBIDDEN/target not found 除外：同类失败 ≥2 次后拦下一跳（E3）。
+			if loopGuardForbiddenNotFound(args.Error) && (e.lastSig == "" || e.lastSig == sig) {
+				e.forbiddenStreak++
+			} else if loopGuardForbiddenNotFound(args.Error) {
+				e.forbiddenStreak = 1
+			} else {
+				e.forbiddenStreak = 0
+			}
 			e.lastSig = sig
 			e.lastTool = args.ToolName
 			e.lastResultKey = ""
@@ -1337,8 +1362,10 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			g.mu.Unlock()
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
+		e.forbiddenStreak = 0
 		rk := loopGuardResultKey(args.Result)
-		if e.lastSig == sig && !e.lastFailed && e.lastResultKey == rk {
+		sameResult := e.lastSig == sig && !e.lastFailed && e.lastResultKey == rk
+		if e.lastSig == sig && !e.lastFailed && (sameResult || loopGuardVolatileResultTool(args.ToolName)) {
 			e.sameCount++
 		} else {
 			e.sameCount = 1
@@ -1542,4 +1569,24 @@ func buildRoundProductCue(rounds, est, prod, hard int) string {
 	return fmt.Sprintf(`<runtime_notice>
 本节点已进行 %d 次模型调用，最近一轮约 %d tokens（轮数×单轮积 %d）。继续调用工具会按轮数平方放大计费；积达到 %d 后系统将封锁新的工具调用。请立即停止扩张性装载/检索，基于已有信息输出结论；若任务无法完成，调用 todo_declare_blocker 说明缺口后收尾。
 </runtime_notice>`, rounds, est, prod, hard)
+}
+
+// loopGuardVolatileResultTool reports tools whose success payload always
+// changes (clock/time) so same-param repeats would never trip the
+// result-hash guard. Same signature still counts toward the 3rd-call block.
+func loopGuardVolatileResultTool(toolName string) bool {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "datetime", "get_datetime", "current_time", "get_current_time", "now", "clock":
+		return true
+	default:
+		return false
+	}
+}
+
+func loopGuardForbiddenNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "forbidden") && strings.Contains(msg, "target agent not found")
 }

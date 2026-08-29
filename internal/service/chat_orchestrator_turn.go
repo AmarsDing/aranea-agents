@@ -140,6 +140,11 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, turnBusyError()
 	}
+	if !inPendingLoop(ctx) && o.chatUC != nil {
+		if injects := o.chatUC.ConsumeLeadingInjects(sessionID); len(injects) > 0 {
+			input.Content = biz.MergeInjectContext(injects, input.Content)
+		}
+	}
 	sessGetStart := time.Now()
 	sess, err := o.td().Sessions.Get(ctx, sessionID)
 	if err != nil {
@@ -438,6 +443,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			SessionID:   sessionID,
 			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
 		})
+		event.LogGateFlow(ctx, decision.TriggerInputRiskFlagged, "tripped", "用户输入命中确定性风险扫描", fmt.Sprintf("flags=%v", inputRiskFlags))
 	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
 		o.lg().Info("input risk shadow hit (not flagged)",
 			loggateway.StepID("chat.input_risk.shadow"),
@@ -665,6 +671,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		)
 	}
 	emitter.LogDone("chat.orch.decision", "编排路由决策", orchDecisionP...)
+	o.emitOrchDecisionRecord(ctx, sessionID, ag.AgentKey, skipIntent, skipReason, string(assessLevel), intentOutcome, gateErr, gateDecision)
 	deps := buildResult.deps
 	// P0 fix: BUILD runs inside the errgroup above, whose derived ctx is
 	// cancelled as soon as eg.Wait() returns. The AwaitHook created during
@@ -1059,4 +1066,50 @@ func extractMentionedEntities(content string) []string {
 		}
 	}
 	return out
+}
+
+func (o *ChatOrchestrator) emitOrchDecisionRecord(ctx context.Context, sessionID, agentKey string, skipIntent bool, skipReason, assessLevel, intentOutcome string, gateErr error, gate GateDecision) {
+	c := o.infraDeps.DecisionCollector
+	if c == nil {
+		return
+	}
+	level := assessLevel
+	reason := skipReason
+	if gateErr == nil && gate.Level != "" {
+		level = string(gate.Level)
+		if gate.Reason != "" {
+			reason = gate.Reason
+		}
+	}
+	outcome := "assessed_" + level
+	if outcome == "assessed_" {
+		outcome = "assessed"
+	}
+	meta := map[string]any{
+		"skip_intent":    skipIntent,
+		"skip_reason":    skipReason,
+		"assess_level":   assessLevel,
+		"intent_outcome": intentOutcome,
+		"session_id":     sessionID,
+		"agent_key":      agentKey,
+	}
+	if gateErr != nil {
+		meta["gate_error"] = gateErr.Error()
+	} else {
+		meta["gate_level"] = string(gate.Level)
+		meta["gate_score"] = gate.Score
+		meta["force_planning"] = gate.ForcePlanning
+		meta["gate_reason"] = gate.Reason
+	}
+	c.Emit(ctx, decision.Record{
+		DecisionKey: uuid.NewString(),
+		Category:    decision.CategoryPlannerOrchestration,
+		Scenario:    "编排路由决策",
+		Reasoning:   reason,
+		Outcome:     outcome,
+		ActorType:   decision.ActorSystem,
+		ActorKey:    "system:chat_orchestrator",
+		SourceRef:   decision.SourceRef{SessionID: sessionID},
+		Metadata:    meta,
+	})
 }

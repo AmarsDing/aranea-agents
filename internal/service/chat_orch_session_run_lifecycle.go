@@ -305,6 +305,12 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 	if l == nil || l.sessionRuns == nil || sessionRunID == "" {
 		return
 	}
+	awaitingUser := false
+	if l.runs != nil {
+		if entry, ok := l.runs.GetStatus(sessionID); ok && strings.EqualFold(strings.TrimSpace(entry.Status), string(biz.RunStateAwaitingUser)) {
+			awaitingUser = true
+		}
+	}
 	l.runStatus.DeleteBinding(sessionID)
 	// N1 取消感知必须在 Detach 前判定（session-eval-20260827 S10）：Detach
 	// 用 context.WithoutCancel 剥离取消信号，之后 ctx.Err() 恒 nil。
@@ -318,6 +324,10 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 	// 异常扫描漏网（C5-①）。
 	if wasCancelled {
 		l.finishCancelledRun(ctx, sessionID, sessionRunID)
+		return
+	}
+	if awaitingUser {
+		// G2：澄清/HITL 挂起时 session_runs 保持 interactive，禁止落 completed。
 		return
 	}
 	cur, getErr := l.sessionRuns.Get(ctx, sessionRunID)

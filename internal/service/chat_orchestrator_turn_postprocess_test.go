@@ -155,23 +155,28 @@ func TestPostProcessTurn_CompletesNormallyWhenNotCancelled(t *testing.T) {
 	}
 }
 
-// TestPostProcessTurn_SkipsSessionCompletedWhenClarifySuspended P2：后置澄清
+// TestPostProcessTurn_SkipsSessionCompletedWhenClarifySuspended P2/G2：后置澄清
 // 已把 session 翻转为 awaiting_confirmation 时，postProcessTurn 不得再落
-// completed（FSM 不允许 awaiting_confirmation→completed）；run 状态 completed、
-// revision bump、用量记账照常（LLM turn 确已完成）。
+// session completed 或 run completed；run 记 awaiting_user，revision bump 与
+// 用量记账照常。
 func TestPostProcessTurn_SkipsSessionCompletedWhenClarifySuspended(t *testing.T) {
 	f := newPostProcessFixture(rt.NewRunRegistry())
 
 	f.runWithClarifySuspended(true)
 
-	var runCompletedSeen bool
 	for _, c := range f.rs.setCalls {
 		if c.status == "completed" {
-			runCompletedSeen = true
+			t.Fatalf("clarify-suspended turn must not SetRunStatus(completed): %+v", f.rs.setCalls)
 		}
 	}
-	if !runCompletedSeen {
-		t.Fatalf("expected SetRunStatus(completed), got %+v", f.rs.setCalls)
+	var awaiting bool
+	for _, c := range f.rs.setCalls {
+		if c.status == string(biz.RunStateAwaitingUser) {
+			awaiting = true
+		}
+	}
+	if !awaiting {
+		t.Fatalf("expected SetRunStatus(awaiting_user), got %+v", f.rs.setCalls)
 	}
 	for _, s := range f.transitor.calls {
 		if s == sessstatus.SessionStatusCompleted {

@@ -199,3 +199,6 @@ web/vitest-result.json
 /agent-browser-out.txt
 /agent-browser-snap.ps1
 /hover-probe.js
+
+# 编译产物误落根部（二进制一律进 bin/，勿提交）
+/admin

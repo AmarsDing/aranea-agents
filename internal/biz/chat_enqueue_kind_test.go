@@ -40,6 +40,22 @@ func (q *kindRecordingQueue) EnqueueInject(_, content string) string {
 	return "p1"
 }
 
+func (q *kindRecordingQueue) Peek(string) (PendingQueueEntry, bool) {
+	if len(q.entries) == 0 {
+		return PendingQueueEntry{}, false
+	}
+	return q.entries[0], true
+}
+
+func (q *kindRecordingQueue) Dequeue(string) (PendingQueueEntry, bool) {
+	if len(q.entries) == 0 {
+		return PendingQueueEntry{}, false
+	}
+	e := q.entries[0]
+	q.entries = q.entries[1:]
+	return e, true
+}
+
 // steerRecordingGateway 记录 steer 尝试的运行网关桩。
 type steerRecordingGateway struct {
 	stubChatRunGateway
@@ -231,6 +247,43 @@ func TestEnqueueUserMessageWithKind_FullMixedQueueStaysRejected(t *testing.T) {
 	}
 	if len(q.entries) != 32 {
 		t.Fatalf("mixed queue must stay intact, got %d entries", len(q.entries))
+	}
+}
+
+func TestEnqueueUserMessageWithKind_FullFollowupQueueRejectsSteer(t *testing.T) {
+	g := &steerRecordingGateway{steerCapable: true}
+	g.hasActive = true
+	q := &fullInjectQueueStub{max: ChatPendingQueueCap}
+	for i := 0; i < ChatPendingQueueCap; i++ {
+		q.entries = append(q.entries, PendingQueueEntry{ID: "fol", Content: "追问", Kind: ChatEnqueueKindFollowup})
+	}
+	uc := newKindTestUsecase(g, q)
+
+	accepted, queued, _, reason, err := uc.EnqueueUserMessageWithKind("s1", "正常消息探针", "", false)
+	if err != nil || accepted || queued {
+		t.Fatalf("accepted=%v queued=%v err=%v, want queue_full (no silent steer)", accepted, queued, err)
+	}
+	if reason != ChatEnqueueRejectQueueFull {
+		t.Fatalf("rejectReason = %q, want queue_full", reason)
+	}
+	if g.steerCalls != 0 {
+		t.Fatalf("steer must not run when pending is at cap, calls=%d", g.steerCalls)
+	}
+}
+
+func TestConsumeLeadingInjects_MergesHeadInjects(t *testing.T) {
+	q := &kindRecordingQueue{entries: []PendingQueueEntry{
+		{ID: "i1", Content: "ctx-a", Kind: ChatEnqueueKindInject},
+		{ID: "i2", Content: "ctx-b", Kind: ChatEnqueueKindInject},
+		{ID: "f1", Content: "追问", Kind: ChatEnqueueKindFollowup},
+	}}
+	uc := newKindTestUsecase(&steerRecordingGateway{}, q)
+	got := uc.ConsumeLeadingInjects("s1")
+	if strings.Join(got, ",") != "ctx-a,ctx-b" {
+		t.Fatalf("injects=%v", got)
+	}
+	if len(q.entries) != 1 || q.entries[0].Kind != ChatEnqueueKindFollowup {
+		t.Fatalf("followup must remain, got %+v", q.entries)
 	}
 }
 

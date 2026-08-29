@@ -37,14 +37,45 @@ func invocationStatusFromAfter(args *trpctool.AfterToolArgs) (status, errCode, e
 		if strings.Contains(msg, errToolConfirmationRequired) {
 			return "blocked", event.ErrorCodeConfirmationRequired, truncateErr(msg)
 		}
-		// Use "failed" (not "error") for the runtime status. The wire contract uses
-		// {running, success, failed, blocked, cancelled} as the canonical set, and
-		// the frontend normalizeToolStatus collapses both "failed" and legacy
-		// "error" to a single canonical status. Emitting "error" here made the
-		// frontend's `error_code` fallback unreachable and erased error info.
 		return "failed", event.ErrorCodeToolError, truncateErr(msg)
 	}
+	if bizErr := businessToolResultError(args.ToolName, args.Result); bizErr != "" {
+		return "failed", event.ErrorCodeToolError, truncateErr(bizErr)
+	}
 	return "success", "", ""
+}
+
+func businessToolResultError(toolName string, result any) string {
+	if !isGNS3FamilyTool(toolName) || result == nil {
+		return ""
+	}
+	text := strings.ToLower(stringifyToolResult(result))
+	for _, needle := range []string{"unknown device", "device not found", "\"error\":", `"err":`} {
+		if strings.Contains(text, needle) {
+			return "gns3 business error: " + safeTruncate(stringifyToolResult(result), 200)
+		}
+	}
+	return ""
+}
+
+func isGNS3FamilyTool(toolName string) bool {
+	n := strings.ToLower(strings.TrimSpace(toolName))
+	return strings.HasPrefix(n, "gns3_") || n == "gns3_exec"
+}
+
+func stringifyToolResult(result any) string {
+	switch v := result.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(b)
+	}
 }
 
 func truncateErr(msg string) string {

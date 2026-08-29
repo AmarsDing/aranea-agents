@@ -7,7 +7,9 @@ FROM alpine:3.20
 # ca-certificates：出站 HTTPS（LLM API 等）；tzdata：时区
 # docker-cli：codeexecutor docker 后端经挂载的 /var/run/docker.sock 调宿主机
 # daemon 拉起一次性沙箱容器（仅客户端，不含 daemon；方案 B docker.sock 直通）
-RUN apk add --no-cache ca-certificates tzdata docker-cli
+# 镜像源换阿里云：本机网络直连 dl-cdn.alpinelinux.org 被 Reset（2026-08-28 实证）
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+    && apk add --no-cache ca-certificates tzdata docker-cli
 
 COPY bin/linux/admin /app/bin/admin
 

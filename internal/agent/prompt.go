@@ -390,6 +390,9 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	if hasSubagents && level >= cueLevelStandard && !skipToolCue {
 		b.WriteString("- subagents_spawn: set kind=explore for codebase search (avoid writes) or kind=verify for tests/builds. subagents_get accepts block_until_ms to wait for completion.\n")
 	}
+	if level >= cueLevelStandard && !skipToolCue {
+		b.WriteString("- todo_declare_blocker is last resort: only after you already told the user a concrete next step (routing advice or labeled gap). Do not use it as the first response to FORBIDDEN/not-found or empty search.\n")
+	}
 	if level >= cueLevelFull {
 		b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")
 	}

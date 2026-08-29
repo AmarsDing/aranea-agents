@@ -24,8 +24,16 @@ type m71AgentReader struct {
 	byKey map[string]Agent
 }
 
-func (s *m71AgentReader) SearchAgents(context.Context, AgentListQuery) (AgentListResult, error) {
-	return AgentListResult{}, nil
+func (s *m71AgentReader) SearchAgents(_ context.Context, q AgentListQuery) (AgentListResult, error) {
+	kw := strings.TrimSpace(q.Keyword)
+	var items []Agent
+	for _, a := range s.byKey {
+		if kw == "" || strings.Contains(strings.ToLower(a.AgentKey), strings.ToLower(kw)) ||
+			strings.Contains(strings.ToLower(a.PositionKey), strings.ToLower(kw)) {
+			items = append(items, a)
+		}
+	}
+	return AgentListResult{Items: items, Total: len(items)}, nil
 }
 func (s *m71AgentReader) GetAgentByID(_ context.Context, id string) (Agent, error) {
 	if a, ok := s.byID[id]; ok {
@@ -1041,5 +1049,24 @@ func TestNormalizeRefsJSON(t *testing.T) {
 	}
 	if got, err := normalizeRefsJSON(`[{"team_id":"t1"}]`); err != nil || got != `[{"team_id":"t1"}]` {
 		t.Fatalf("valid refs: got=%q err=%v", got, err)
+	}
+}
+
+func TestResourceAccess_PositionShortNameAlias(t *testing.T) {
+	leadA := m71LeadAgent("lead-a", m71DeptA)
+	member := Agent{
+		ID:          "ppc-1",
+		AgentKey:    "ppc_strategist__general",
+		PositionID:  m71PosA1,
+		PositionKey: "digital_content_media/paid_promotion/ppc_strategist",
+	}
+	agents := &m71AgentReader{
+		byID:  map[string]Agent{leadA.ID: leadA, member.ID: member},
+		byKey: map[string]Agent{member.AgentKey: member},
+	}
+	uc := newM71ResourceAccess(agents, m71OrgFixture(), &m71TeamLister{}, &m71Auditor{})
+	_, err := uc.ListMemberFiles(context.Background(), leadA.ID, "ppc_strategist", "", 0)
+	if err != nil {
+		t.Fatalf("short name ppc_strategist should resolve in-department: %v", err)
 	}
 }

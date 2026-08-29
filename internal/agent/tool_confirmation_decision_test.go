@@ -76,6 +76,12 @@ func TestToolConfirmDecision_Approve(t *testing.T) {
 	if r.SourceRef.ToolInvocationID != "tc-1" {
 		t.Errorf("source_ref.tool_invocation_id = %q, want tc-1", r.SourceRef.ToolInvocationID)
 	}
+	if r.SourceRef.SessionID != "sess-1" {
+		t.Errorf("source_ref.session_id = %q, want sess-1", r.SourceRef.SessionID)
+	}
+	if got := r.Metadata["session_id"]; got != "sess-1" {
+		t.Errorf("metadata.session_id = %v, want sess-1", got)
+	}
 	if got := r.Metadata["decision_reason"]; got == nil || got == "" {
 		t.Errorf("metadata.decision_reason missing: %v", r.Metadata)
 	}

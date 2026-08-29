@@ -52,6 +52,21 @@ func TestInvocationStatusFromAfter_SuccessPath(t *testing.T) {
 	}
 }
 
+func TestInvocationStatusFromAfter_GNS3BusinessError(t *testing.T) {
+	t.Parallel()
+	args := &trpctool.AfterToolArgs{
+		ToolName: "gns3_exec",
+		Result:   map[string]any{"output": "unknown device core-sw1"},
+	}
+	status, code, msg := invocationStatusFromAfter(args)
+	if status != "failed" || code != "tool_error" {
+		t.Fatalf("gns3 body error: got status=%q code=%q", status, code)
+	}
+	if !strings.Contains(strings.ToLower(msg), "unknown device") {
+		t.Fatalf("errMsg should keep body error, got %q", msg)
+	}
+}
+
 // TestSkillInvocationOutcome_FailedMapping ensures the runtime status "failed"
 // maps to outcome="failure" (this is the new canonical mapping after the fix).
 // "error" is also accepted for backward compatibility with rows written before

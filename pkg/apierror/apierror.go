@@ -192,6 +192,9 @@ func ToKratos(err error) error {
 	}
 
 	reason := ae.Domain + "_" + string(ae.Code)
+	if ae.Domain == DomainChatQueueFull {
+		reason = DomainChatQueueFull
+	}
 	msg := ae.Message
 
 	// Sanitize internal errors: never expose raw internal messages to clients.

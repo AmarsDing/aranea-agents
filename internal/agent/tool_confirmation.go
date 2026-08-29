@@ -126,7 +126,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		if decision.reason == confirmReasonShellOnFailure {
 			confirmContent = fmt.Sprintf("上一条命令失败后，工具 %s 需要再次确认", toolKey)
 		}
-		attempts := 1 + h.extraConfirmAttempts()
+		attempts := 1 + extraConfirmAttemptsForTool(toolKey, h.confirmRetries)
 		var confirmActivityID string
 		waitConfirm := func() (string, error, bool) {
 			var (
@@ -223,9 +223,9 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 						ToolCallID:   args.ToolCallID,
 						ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 					}, nil, h.ag, h.deps)
-					h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, "retryable_timeout")
+					h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, timeoutBlockCause(toolKey))
 				}
-				return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 的确认请求已连续 %d 次超时（每次 %s）。这不代表用户拒绝，也不是整步被静默取消——确认卡仍然有效，用户可随时批准。请告知用户界面上的确认已超时并可以重试，询问是否仍要执行；不要当作本步已取消。", errToolConfirmationRequired, toolKey, attempts, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
+				return callbacks.Reject(toolConfirmTimeoutMessage(toolKey, attempts, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
 			}
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
@@ -348,16 +348,6 @@ func waitConfirmCoalesced(sessionID, agentID, toolKey string, ctx context.Contex
 	return reply, err, timedOut, false
 }
 
-// toolConfirmSessionID extracts the session ID from the invocation context.
-// Empty when no invocation/session is attached; grant lookups with an empty
-// session ID never match (fail-closed).
-func toolConfirmSessionID(ctx context.Context) string {
-	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
-		return inv.Session.ID
-	}
-	return ""
-}
-
 // applyGrantOutcome records session-scoped / persisted grants when the user
 // approved with a grant scope. Grant write failures are logged but never
 // block the already-approved invocation (fail-closed: the next invocation
@@ -406,14 +396,10 @@ func toolConfirmUserID(ctx context.Context) string {
 }
 
 // emitToolConfirmDecisionRecord 把 HITL 工具确认结果双写到 M80 决策记录层
-// (hitl_approval，设计 §3.2 row 2)。collector 为 nil（旧构造路径）时静默跳过；
-// 与 recordToolInvocationWrite 同坐标调用，四出口分支各一次。
+// (hitl_approval，设计 §3.2 row 2)。flowlog 先写；collector 为 nil 时记
+// collector_nil 错误，不再静默跳过（D1）。四出口分支各一次。
 // blockCause 仅无回复通道分支使用（"no_reply_channel"）。
 func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.Context, toolKey, toolCallID, gateReason, outcome, reply string, arguments []byte, blockCause string) {
-	c := h.deps.DecisionCollector
-	if c == nil {
-		return
-	}
 	userID := toolConfirmUserID(ctx)
 	if userID == "" {
 		userID = "unknown"
@@ -421,6 +407,12 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	scenario := fmt.Sprintf("工具确认: %s (%s)", toolKey, gateReason)
 	if target := strings.TrimSpace(previewFromToolArgs(arguments)); target != "" {
 		scenario += " 目标: " + target
+	}
+	event.LogHITLFlow(ctx, outcome, scenario, toolKey)
+	c := h.deps.DecisionCollector
+	if c == nil {
+		event.LogNilCollector(ctx, "hitl_approval")
+		return
 	}
 	metadata := map[string]any{"decision_reason": gateReason}
 	if blockCause != "" {
@@ -447,6 +439,10 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	if h.ag.AgentKey != "" {
 		entities = append(entities, decision.EntityRef{Type: "agent", Key: h.ag.AgentKey})
 	}
+	sessionID := toolConfirmSessionID(ctx)
+	if sessionID != "" {
+		metadata["session_id"] = sessionID
+	}
 	c.Emit(ctx, decision.Record{
 		DecisionKey:     uuid.NewString(),
 		Category:        decision.CategoryHITLApproval,
@@ -456,9 +452,19 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 		ActorType:       decision.ActorHuman,
 		ActorKey:        userID,
 		RelatedEntities: entities,
-		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID},
+		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID, SessionID: sessionID},
 		Metadata:        metadata,
 	})
+}
+
+func toolConfirmSessionID(ctx context.Context) string {
+	if sid := decision.GateSessionIDFromContext(ctx); sid != "" {
+		return sid
+	}
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
+		return strings.TrimSpace(inv.Session.ID)
+	}
+	return ""
 }
 
 // toolConfirmationBypass reports whether tool confirmation should be
@@ -483,13 +489,36 @@ func toolConfirmationBypass() bool {
 }
 
 func (h *toolConfirmationBeforeHook) extraConfirmAttempts() int {
-	if h.confirmRetries < 0 {
+	return extraConfirmAttemptsForTool("", h.confirmRetries)
+}
+
+func extraConfirmAttemptsForTool(toolKey string, configured int) int {
+	if sessionBatchGrantTool(toolKey) {
 		return 0
 	}
-	if h.confirmRetries == 0 {
+	if configured < 0 {
+		return 0
+	}
+	if configured == 0 {
 		return 1
 	}
-	return h.confirmRetries
+	return configured
+}
+
+func timeoutBlockCause(toolKey string) string {
+	if sessionBatchGrantTool(toolKey) {
+		return "timeout_degrade"
+	}
+	return "retryable_timeout"
+}
+
+func toolConfirmTimeoutMessage(toolKey string, attempts int, timeout time.Duration) string {
+	if sessionBatchGrantTool(toolKey) {
+		return fmt.Sprintf("%s: 工具 \"%s\" 的确认已超时（%s）。不要再次调用 %s，也不要执行该高危操作。请告知用户无人审批，并给出改走部门主管会话或精灵组队的路由建议；禁止声称已经派发。",
+			errToolConfirmationRequired, toolKey, timeout, toolKey)
+	}
+	return fmt.Sprintf("%s: 工具 \"%s\" 的确认请求已连续 %d 次超时（每次 %s）。这不代表用户拒绝，也不是整步被静默取消——确认卡仍然有效，用户可随时批准。请告知用户界面上的确认已超时并可以重试，询问是否仍要执行；不要当作本步已取消。",
+		errToolConfirmationRequired, toolKey, attempts, timeout)
 }
 
 func (h *toolConfirmationBeforeHook) visibleWaitAfter() time.Duration {

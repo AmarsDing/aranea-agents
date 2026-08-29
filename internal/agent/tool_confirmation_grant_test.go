@@ -424,6 +424,61 @@ func TestConfirmTimeoutForTool(t *testing.T) {
 	}
 }
 
+func TestExtraConfirmAttemptsForSpawn(t *testing.T) {
+	if extraConfirmAttemptsForTool("subagents_spawn", 0) != 0 {
+		t.Fatal("spawn must not get the default extra confirm wait")
+	}
+	if extraConfirmAttemptsForTool("shell_exec", 0) != 1 {
+		t.Fatal("non-spawn keeps default extra attempt")
+	}
+	if !strings.Contains(toolConfirmTimeoutMessage("subagents_spawn", 1, 2*time.Minute), "不要再次调用") {
+		t.Fatal("spawn timeout copy must forbid retry")
+	}
+	if timeoutBlockCause("subagents_spawn") != "timeout_degrade" {
+		t.Fatal("spawn timeout cause")
+	}
+}
+
+// TestSpawnTimeoutDoesNotGrantSession pins F3: 同参 spawn「第 3 次 5ms 放行」
+// 只允许来自首次 *approve* 后的 session batch grant（有 grant_session 留痕）。
+// 超时不得 GrantSession，后续 spawn 仍须走确认卡。
+func TestSpawnTimeoutDoesNotGrantSession(t *testing.T) {
+	sessionGrants := newToolGrantStore(time.Now)
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"subagents_spawn": {requiresConfirm: true}},
+		sessionGrants: sessionGrants,
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	h.confirmTimeout = 20 * time.Millisecond
+	ctx := grantTestCtx("sess-1", func(ctx context.Context) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	res, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "subagents_spawn", ToolCallID: "c1"})
+	if err != nil {
+		t.Fatalf("timeout must reject without callback error: %v", err)
+	}
+	msg, _ := res.CustomResult.(string)
+	if !strings.Contains(msg, "不要再次调用") {
+		t.Fatalf("spawn timeout copy: %q", msg)
+	}
+	if sessionGrants.HasSession("sess-1", "agent-1", "subagents_spawn") {
+		t.Fatal("timeout must not session-grant remaining spawns")
+	}
+	waited := false
+	ctx2 := grantTestCtx("sess-1", func(ctx context.Context) (string, error) {
+		waited = true
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	if _, err := h.HandleBeforeTool(ctx2, &trpctool.BeforeToolArgs{ToolName: "subagents_spawn", ToolCallID: "c2"}); err != nil {
+		t.Fatal(err)
+	}
+	if !waited {
+		t.Fatal("second spawn after timeout must still wait for confirm")
+	}
+}
+
 func TestHITLWaitVisibilityEmitsNotice(t *testing.T) {
 	h := newToolConfirmationBeforeHook(nil, biz.Agent{ID: "a"}, TRPCBuilderDeps{})
 	h.hitlVisibleAfter = 20 * time.Millisecond

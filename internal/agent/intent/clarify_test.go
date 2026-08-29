@@ -133,6 +133,9 @@ func TestIntentSystemPrompts_ClarificationDiscipline(t *testing.T) {
 		if !strings.Contains(prompt, "autonomously") {
 			t.Errorf("%s prompt should state recommended defaults may be acted on autonomously", name)
 		}
+		if !strings.Contains(prompt, "待核") {
+			t.Errorf("%s prompt should allow labeled-assumption continue (F6)", name)
+		}
 	}
 }
 
