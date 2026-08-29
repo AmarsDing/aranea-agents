@@ -478,11 +478,11 @@ body.body--dark .taxonomy-industry-card
 
   .taxonomy-industry-card__status.is-on
     background: rgba(63, 224, 160, 0.12)
-    color: var(--color-success, #3FE0A0)
+    color: var(--color-success)
 
   .taxonomy-industry-card__status.is-off
     background: rgba(255, 94, 122, 0.12)
-    color: var(--color-danger, #FF5E7A)
+    color: var(--color-danger)
 
 .app-mono
   font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace

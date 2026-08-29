@@ -256,7 +256,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
   height: 24px
   border-radius: 50%
   background: var(--q-primary)
-  color: #fff
+  color: var(--color-on-accent)
   display: flex
   align-items: center
   justify-content: center
@@ -316,7 +316,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
   padding: 1px 5px
   border-radius: 8px
   background: var(--q-primary)
-  color: #fff
+  color: var(--color-on-accent)
   font-size: 9px
   font-weight: 600
   line-height: 1.4

@@ -61,7 +61,7 @@
             type="textarea"
             autogrow
             label="正文（SKILL.md）"
-            input-style="min-height: 220px; font-family: var(--font-mono, ui-monospace, monospace)"
+            input-style="min-height: 220px; font-family: var(--font-mono)"
             :disable="saving"
             :rules="[(v) => !!String(v || '').trim() || '发布前正文必填；草稿也建议填写']"
           />

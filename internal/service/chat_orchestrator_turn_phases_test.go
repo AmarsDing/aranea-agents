@@ -345,6 +345,33 @@ func TestResolveRootTaskActivityID(t *testing.T) {
 	})
 }
 
+// TestPreAssignedMessageIDCtx pins the SP-1e ctx-key contract: the submit
+// handler pre-generates the user message ID (= RootTaskActivityID) and injects
+// it into the background turn ctx; runSingleAgentViaTRPC must prefer it over a
+// fresh UUID so the HTTP ACK's messageId/turnId match the persisted row.
+func TestPreAssignedMessageIDCtx(t *testing.T) {
+	t.Run("roundtrip", func(t *testing.T) {
+		ctx := contextWithPreAssignedMessageID(context.Background(), "msg-1")
+		if got := preAssignedMessageIDFromCtx(ctx); got != "msg-1" {
+			t.Fatalf("got %q, want %q", got, "msg-1")
+		}
+	})
+	t.Run("nil/empty ctx returns empty", func(t *testing.T) {
+		if got := preAssignedMessageIDFromCtx(nil); got != "" {
+			t.Fatalf("nil ctx: got %q, want empty", got)
+		}
+		if got := preAssignedMessageIDFromCtx(context.Background()); got != "" {
+			t.Fatalf("empty ctx: got %q, want empty", got)
+		}
+	})
+	t.Run("blank id not stored", func(t *testing.T) {
+		ctx := contextWithPreAssignedMessageID(context.Background(), "   ")
+		if got := preAssignedMessageIDFromCtx(ctx); got != "" {
+			t.Fatalf("blank id must not be stored, got %q", got)
+		}
+	})
+}
+
 // captureMonitorBus is a thread-safe MonitorBus that records published events.
 type captureMonitorBus struct {
 	mu  sync.Mutex

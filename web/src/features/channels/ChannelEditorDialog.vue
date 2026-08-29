@@ -453,19 +453,20 @@ const { refreshingIcons, refreshPlatformIcons } = useChannelIconRefresh();
 
 <style scoped>
 .channel-wechat-ilink {
-  padding: var(--space-3, 12px);
+  padding: var(--space-3);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
 }
 
 .channel-wechat-ilink__title {
   font-weight: 600;
-  margin-bottom: var(--space-2, 8px);
+  margin-bottom: var(--space-2);
 }
 
 .channel-wechat-ilink__qrcode img {
   max-width: 200px;
   border-radius: 8px;
+  /* 二维码底色须为白（扫码识别率），不随主题切换 */
   background: #fff;
   padding: 8px;
 }

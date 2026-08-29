@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -104,6 +106,78 @@ func TestSetRunStatusWithAwait_CancelledWinsOverFailed(t *testing.T) {
 	}
 	if len(sessions.patches) != 0 {
 		t.Fatalf("expected no persist on cancelled→failed refuse, got %d patches", len(sessions.patches))
+	}
+}
+
+// stubHydrateTracker stubs the registry miss + hydration snapshot for
+// ChatService.GetRunStatus handler tests.
+type stubHydrateTracker struct {
+	noopRunStatusTracker
+	snap persistedRunStatus
+	ok   bool
+}
+
+func (s stubHydrateTracker) HydrateRunStatusFromSession(context.Context, string) (persistedRunStatus, bool) {
+	return s.snap, s.ok
+}
+
+func newGetRunStatusTestService(tracker runStatusTracker) *ChatService {
+	orch := &ChatOrchestrator{
+		runs: rt.NewRunRegistry(),
+		runMgr: &chatRunManagerImpl{
+			runStatusTracker:    tracker,
+			pendingQueueManager: noopPendingQueueManager{},
+			awaitCoordinator:    noopAwaitCoordinator{},
+			sessionRunLifecycle: noopSessionRunLifecycle{},
+		},
+	}
+	return &ChatService{orch: orch, lg: loggateway.NewNoop()}
+}
+
+// TestGetRunStatus_HydratedTerminalWithoutRunIDReturns404 pins SP-1e (R3-Q13):
+// terminal persistence clears run_id, so a hydrated snapshot with empty RunID
+// is a stale leftover (S05/S10 evidence: runId="" + status=cancelled + day-old
+// updatedAt). The API must answer 404 instead of serving the dirty snapshot.
+func TestGetRunStatus_HydratedTerminalWithoutRunIDReturns404(t *testing.T) {
+	svc := newGetRunStatusTestService(stubHydrateTracker{
+		snap: persistedRunStatus{RunID: "", Status: "cancelled", UpdatedAt: "2026-08-28T04:04:50Z"},
+		ok:   true,
+	})
+	_, err := svc.GetRunStatus(context.Background(), &chatv1.GetRunStatusRequest{SessionId: "sess-1"})
+	if err == nil {
+		t.Fatal("expected 404 for hydrated terminal snapshot without run_id")
+	}
+	if !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("expected NotFound, got %v", err)
+	}
+}
+
+// TestGetRunStatus_HydratedLiveRunSurvives guards crash recovery: a non-terminal
+// hydrated snapshot keeps its run_id and must still be served (status reattach).
+func TestGetRunStatus_HydratedLiveRunSurvives(t *testing.T) {
+	svc := newGetRunStatusTestService(stubHydrateTracker{
+		snap: persistedRunStatus{RunID: "run-1", Status: "awaiting_user", UpdatedAt: "2026-08-29T12:00:00+08:00"},
+		ok:   true,
+	})
+	resp, err := svc.GetRunStatus(context.Background(), &chatv1.GetRunStatusRequest{SessionId: "sess-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.RunId != "run-1" || resp.Status != "awaiting_user" {
+		t.Fatalf("got runId=%q status=%q", resp.RunId, resp.Status)
+	}
+}
+
+// TestGetRunStatus_NoRunAnywhereReturnsIdle pins the unchanged default: a
+// session that never ran gets the idle zero-state, not a 404.
+func TestGetRunStatus_NoRunAnywhereReturnsIdle(t *testing.T) {
+	svc := newGetRunStatusTestService(stubHydrateTracker{ok: false})
+	resp, err := svc.GetRunStatus(context.Background(), &chatv1.GetRunStatusRequest{SessionId: "sess-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != "idle" {
+		t.Fatalf("got status=%q, want idle", resp.Status)
 	}
 }
 

@@ -52,9 +52,7 @@
               <span class="member-sep">·</span>
               <span class="member-label">{{ member.name || agentName(agents, member.agent_id) }}</span>
             </div>
-            <q-badge dense rounded class="member-row__badge" :color="member.enabled ? 'positive' : 'grey'">
-              {{ member.enabled ? '启用' : '停用' }}
-            </q-badge>
+            <AppStatusChip class="member-row__badge" :status="member.enabled ? 'enabled' : 'disabled'" />
           </div>
         </div>
       </div>

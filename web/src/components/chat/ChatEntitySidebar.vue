@@ -210,9 +210,9 @@ function getBlockedInfoForAgent(agentKey: string): BlockedResult {
 
 <style scoped>
 .chat-side--left {
-  width: var(--chat-side-left-width, 280px);
-  min-width: min(var(--chat-side-left-width, 280px), 100%);
-  flex: 0 0 var(--chat-side-left-width, 280px);
+  width: var(--chat-side-left-width);
+  min-width: min(var(--chat-side-left-width), 100%);
+  flex: 0 0 var(--chat-side-left-width);
   overflow: hidden;
 }
 

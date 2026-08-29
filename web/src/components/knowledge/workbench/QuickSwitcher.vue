@@ -155,7 +155,7 @@ function onKeydown(e: KeyboardEvent) {
   border-radius: 8px
   font-size: 12px
   color: var(--kb-text-primary)
-  background: color-mix(in srgb, #f5a524 16%, transparent)
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent)
 
 .kb-switcher__section
   padding: 6px 10px 2px

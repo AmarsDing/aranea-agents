@@ -270,7 +270,7 @@ const memberInitials = computed(() => props.team.members.map((m) => nameInitial(
   display: flex
   align-items: center
   justify-content: center
-  background: var(--glass-elevated, var(--glass-surface))
+  background: var(--glass-elevated)
   color: var(--color-text-secondary)
   flex-shrink: 0
 

@@ -130,8 +130,8 @@ onUnmounted(() => {
     flex-wrap: wrap
     align-items: flex-start
     justify-content: space-between
-    gap: var(--space-4, 16px)
-    margin-bottom: var(--space-5, 20px)
+    gap: var(--space-4)
+    margin-bottom: var(--space-5)
 
   &__greeting
     min-width: 0
@@ -231,20 +231,20 @@ body.body--dark
       border-color: rgba(255, 255, 255, 0.14)
 
   .command-center-hero__stat-icon--agent
-    background: var(--color-accent-indigo-lighter, #818CF8)
+    background: var(--color-accent-indigo-lighter)
   .command-center-hero__stat-icon--provider
-    background: var(--color-accent-blue, #3B82F6)
+    background: var(--color-accent-blue)
   .command-center-hero__stat-icon--category
-    background: var(--color-accent-indigo-light, #A78BFA)
+    background: var(--color-accent-indigo-light)
   .command-center-hero__stat-icon--team
-    background: var(--color-accent-cyan, #22D3EE)
+    background: var(--color-accent-cyan)
   .command-center-hero__stat-icon--session
-    background: var(--color-accent-green-light, #34D399)
+    background: var(--color-accent-green-light)
   .command-center-hero__stat-icon--token
-    background: var(--color-accent, #4DD8E8)
+    background: var(--color-accent)
 
   .command-center-hero__stat-value--tech
-    background: linear-gradient(135deg, var(--color-accent-indigo-lighter, #818CF8), var(--color-accent-cyan, #22D3EE))
+    background: linear-gradient(135deg, var(--color-accent-indigo-lighter), var(--color-accent-cyan))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text

@@ -630,6 +630,9 @@ function onSaveClick() {
 const isSpiritTeam = computed(() => String(form.value.spirit_session_id || '').trim() !== '');
 
 // ── Status display (readonly; transitions via lifecycle / RetryTeam RPC) ──
+const statusMeta = computed(
+  () => teamStatusMap[form.value.status] ?? { label: form.value.status || '—', color: 'grey' },
+);
 const canRetryStatus = computed(() => ['failed', 'cancelled'].includes(form.value.status));
 
 // ── Compile preview (delegated to composable) ──

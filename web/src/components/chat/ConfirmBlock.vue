@@ -13,7 +13,7 @@
     </div>
     <div v-if="toolArgumentsJson" class="confirm-block__args">
       <div class="confirm-block__detail-label">{{ t('chat.confirm.arguments', '参数') }}</div>
-      <pre class="confirm-block__code">{{ toolArgumentsJson }}</pre>
+      <JsonCodeViewer :text="toolArgumentsJson" />
     </div>
     <div class="confirm-block__actions">
       <button
@@ -81,6 +81,7 @@ import { ref, computed, watch, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../features/chat/v2Types';
 import { TOOL_CONFIRM_REPLY, type ToolConfirmReply, type ConfirmStepPayload } from '../../features/chat/types';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 
 const props = defineProps<{
   step: Step;
@@ -309,17 +310,6 @@ function onConfirm(reply: ToolConfirmReply) {
 
   &__args
     margin-bottom: 8px
-
-  &__code
-    font-size: 12px
-    background: var(--glass-surface)
-    border: 1px solid var(--glass-border)
-    border-radius: 6px
-    padding: 6px 8px
-    overflow-x: auto
-    max-height: 200px
-    overflow-y: auto
-    margin: 0
 
   &__actions
     display: flex

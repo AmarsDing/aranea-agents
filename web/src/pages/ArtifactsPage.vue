@@ -311,6 +311,6 @@ const tableGroups = computed(() => {
 
 .artifacts-page__group-caption {
   font-size: 12px;
-  color: var(--color-text-secondary, rgb(235 240 255 / 55%));
+  color: var(--color-text-secondary);
 }
 </style>

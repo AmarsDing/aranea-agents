@@ -255,7 +255,7 @@ function handleCancel() {
   align-items: center;
   padding: 2px 10px;
   border-radius: 999px;
-  font-size: var(--text-xs, 12px);
+  font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--text-secondary);
   background: var(--glass-surface);

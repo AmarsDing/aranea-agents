@@ -32,9 +32,9 @@ export interface ChatMessageInput {
 
 /** ACK returned by the command channel — no full message data. */
 export interface MessageAck {
-  /** Server-assigned ID of the persisted user message. */
+  /** Server-assigned ID of the user message (pre-assigned on accept, SP-1e). */
   messageId: string;
-  /** Turn ID the message belongs to (empty if not yet assigned). */
+  /** Turn ID the message belongs to (equals messageId for root turns). */
   turnId: string;
   /** 'accepted' = message accepted and processing started; 'queued' = enqueued for later. */
   status: 'queued' | 'accepted';

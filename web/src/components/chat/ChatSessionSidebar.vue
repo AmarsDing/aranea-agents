@@ -489,10 +489,10 @@ function sessionTime(session: SessionView) {
 
 <style scoped>
 .chat-side--right {
-  width: var(--chat-side-right-width, 360px);
-  min-width: min(var(--chat-side-right-width, 360px), 100%);
+  width: var(--chat-side-right-width);
+  min-width: min(var(--chat-side-right-width), 100%);
   max-width: 100%;
-  flex: 0 0 var(--chat-side-right-width, 360px);
+  flex: 0 0 var(--chat-side-right-width);
   box-sizing: border-box;
   overflow-x: hidden;
 }
@@ -848,9 +848,9 @@ function sessionTime(session: SessionView) {
 
 @media (width <= 900px) {
   .chat-side--right {
-    width: var(--chat-side-right-width, 320px);
-    min-width: min(var(--chat-side-right-width, 320px), 100%);
-    flex: 0 0 var(--chat-side-right-width, 320px);
+    width: var(--chat-side-right-width);
+    min-width: min(var(--chat-side-right-width), 100%);
+    flex: 0 0 var(--chat-side-right-width);
   }
 }
 </style>

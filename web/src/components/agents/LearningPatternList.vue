@@ -67,7 +67,9 @@
 <script setup lang="ts">
 import type { LearningPattern } from '../../features/agents/learning.types';
 import { formatDate } from '../../features/agents/learning.utils';
-import AppStatusChip from '../common/AppStatusChip.vue';
+import { i18n } from '../../i18n';
+
+const t = i18n.global.t;
 
 defineProps<{
   patterns: LearningPattern[];

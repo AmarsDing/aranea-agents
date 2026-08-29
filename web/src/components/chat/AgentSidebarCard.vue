@@ -187,7 +187,7 @@ const statusText = computed(() => {
     border-left-color: var(--color-danger)
 
   &--pending
-    border-left-color: var(--color-icon-muted, var(--color-text-tertiary))
+    border-left-color: var(--color-icon-muted)
 
   &__name
     font-size: 12px

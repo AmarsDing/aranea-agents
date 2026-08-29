@@ -327,8 +327,8 @@ function syncLabel(state: string): string {
     line-height: 16px;
     padding: 0 6px;
     border-radius: 8px;
-    color: var(--color-primary, var(--q-primary));
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--q-primary)) 55%, transparent);
+    color: var(--color-primary);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
   }
 
   &__sync-dot {

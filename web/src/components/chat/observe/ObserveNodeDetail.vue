@@ -243,7 +243,7 @@ function memberStatusLabel(status: string): string {
   height: 28px
   border-radius: 50%
   background: var(--q-primary)
-  color: #fff
+  color: var(--color-on-accent)
   display: flex
   align-items: center
   justify-content: center

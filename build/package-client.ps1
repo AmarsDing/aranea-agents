@@ -24,7 +24,9 @@
 .PARAMETER ServerUrl
     构建期注入的默认后端地址（如 http://192.168.0.102:8810）。
     注入后首启免填服务器地址；用户仍可在设置页修改（持久化覆盖默认值）。
-    实现：临时改写 web/public/assets/config/runtime-config.json，打包结束恢复原内容。
+    实现：临时改写 src-tauri/src/server.rs 三处编译期常量（DEFAULT_DESKTOP_HTTP/WS
+    代理回退 upstream + DESKTOP_RUNTIME_CONFIG 置 {} 让 SPA 走同源代理），
+    cargo build 内嵌进 exe，打包结束恢复原文件。
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File build\package-client.ps1
@@ -104,16 +106,33 @@ Pop-Location
 Write-Host "  [OK] dependencies installed" -ForegroundColor Green
 
 # ─── Step 3: 前端构建 ─────────────────────────────────────────
-# 构建期注入默认后端地址：改写 public/assets/config/runtime-config.json（quasar 拷入 dist/spa，
-# rust-embed 内嵌进 exe），打包结束恢复原内容（finally 保证失败也恢复，不污染工作区）
-$runtimeConfigPath = Join-Path $WebDir "public\assets\config\runtime-config.json"
-$runtimeConfigBak = $null
+# 构建期注入默认后端地址：临时改写 src-tauri/src/server.rs 三处编译期常量。
+# 注意：桌面端 SPA 的 runtime-config.json 由 Rust 硬编码常量 DESKTOP_RUNTIME_CONFIG 提供
+#（spa_handler 拦截该路径，dist 里的同名文件不会生效），故注入必须改 Rust 常量：
+#  1) DEFAULT_DESKTOP_HTTP/WS —— 内嵌代理的回退 upstream（首启无 backend-config.json 时生效）
+#  2) DESKTOP_RUNTIME_CONFIG 置 {} —— SPA 走同源代理（与 Android 模式一致），
+#     避免 SPA 直连远端后端带来的跨源 SameSite Cookie 问题
+# cargo build 时内嵌进 exe，打包结束 finally 恢复原文件，不污染工作区。
+$serverRsPath = Join-Path $WebDir "src-tauri\src\server.rs"
+$serverRsBak = $null
 if ($ServerUrl) {
     $ServerUrl = $ServerUrl.TrimEnd('/')
-    $runtimeConfigBak = [IO.File]::ReadAllText($runtimeConfigPath)
-    $injected = @{ backendUrl = $ServerUrl; wsOrigin = $ServerUrl } | ConvertTo-Json -Compress
-    [IO.File]::WriteAllText($runtimeConfigPath, $injected, (New-Object System.Text.UTF8Encoding $false))
-    Write-Host "  注入默认后端地址: $ServerUrl" -ForegroundColor Yellow
+    $wsUrl = $ServerUrl -replace '^http', 'ws'
+    $serverRsBak = [IO.File]::ReadAllText($serverRsPath)
+    $injected = $serverRsBak
+    $pairs = @(
+        @('const DEFAULT_DESKTOP_HTTP: &str = "http://127.0.0.1:8800";', "const DEFAULT_DESKTOP_HTTP: &str = `"$ServerUrl`";"),
+        @('const DEFAULT_DESKTOP_WS: &str = "ws://127.0.0.1:8800";', "const DEFAULT_DESKTOP_WS: &str = `"$wsUrl`";"),
+        @('r#"{"backendUrl":"http://127.0.0.1:8800","wsOrigin":"http://127.0.0.1:8800"}"#', 'r#"{}"#')
+    )
+    foreach ($p in $pairs) {
+        if (-not $injected.Contains($p[0])) {
+            Write-Error "server.rs 注入点未命中（常量声明可能被改动）：$($p[0])"
+        }
+        $injected = $injected.Replace($p[0], $p[1])
+    }
+    [IO.File]::WriteAllText($serverRsPath, $injected, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "  注入默认后端地址: $ServerUrl（server.rs 三处常量，SPA 走同源代理）" -ForegroundColor Yellow
 }
 try {
 Write-Host "[3/6] pnpm build（quasar build → dist/spa）..." -ForegroundColor Cyan
@@ -147,6 +166,17 @@ Write-Host "  [OK] AraneaAgents.exe" -ForegroundColor Green
 
 # ─── Step 5: 附客户端 README ──────────────────────────────────
 Write-Host "[5/6] 写入客户端 README..." -ForegroundColor Cyan
+$addrGuide = if ($ServerUrl) {
+    "3. 本包已内置默认服务端地址：$ServerUrl（首启免填，可在设置页修改）"
+} else {
+    @"
+3. 首次启动在设置页填写服务端地址，例如：
+
+       http://192.168.0.102:8810
+
+   地址保存后持久生效（backend-config.json），更换服务器免重启。
+"@
+}
 $readme = @"
 # AraneaAgents 桌面客户端 v$Version
 
@@ -154,11 +184,7 @@ $readme = @"
 
 1. 解压本目录到任意位置（绿色软件，无需安装）
 2. 双击 AraneaAgents.exe
-3. 首次启动在设置页填写服务端地址，例如：
-
-       http://192.168.0.102:8810
-
-   地址保存后持久生效（backend-config.json），更换服务器免重启。
+$addrGuide
 
 ## 依赖
 
@@ -192,9 +218,9 @@ Write-Host "  Exe:      $exePath ($exeMB MB)" -ForegroundColor Green
 Write-Host "  Zip:      $zipPath ($zipMB MB)" -ForegroundColor Green
 Write-Host ""
 } finally {
-    # 恢复 runtime-config.json 原内容（注入了 -ServerUrl 时）
-    if ($null -ne $runtimeConfigBak) {
-        [IO.File]::WriteAllText($runtimeConfigPath, $runtimeConfigBak, (New-Object System.Text.UTF8Encoding $false))
-        Write-Host "runtime-config.json 已恢复原内容" -ForegroundColor DarkGray
+    # 恢复 server.rs 原内容（注入了 -ServerUrl 时）
+    if ($null -ne $serverRsBak) {
+        [IO.File]::WriteAllText($serverRsPath, $serverRsBak, (New-Object System.Text.UTF8Encoding $false))
+        Write-Host "server.rs 已恢复原内容" -ForegroundColor DarkGray
     }
 }

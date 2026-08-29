@@ -69,11 +69,12 @@ function wrapChatError(err: unknown, fallback: string): never {
  *
  * Calls `SubmitChatMessage` (async, ACK-only) — NOT `SendChatMessage` (sync,
  * full response). The backend starts the turn in a background goroutine and
- * returns immediately with a `MessageAck` (accepted/status only). Full
+ * returns immediately with a `MessageAck`. Full
  * message/state/streaming data arrives via the WS data channel.
  *
- * The `messageId` and `turnId` in the ACK are empty on accept; they are
- * delivered later via WS events (`message.persisted`, `run_status=running`).
+ * SP-1e: `messageId`/`turnId` are pre-assigned on accept (identical to the
+ * persisted user message ID); for queued messages the final ID arrives via
+ * WS events (`message_queued`/`message.persisted`).
  */
 export async function sendMessage(payload: {
   session_id: string;
@@ -102,7 +103,8 @@ export async function sendMessage(payload: {
           }
         : undefined,
     });
-    // B2: ACK-only — messageId/turnId are empty on accept, delivered via WS events.
+    // B2: ACK-only — messageId/turnId pre-assigned on accept (SP-1e);
+    // message content still arrives via WS events only.
     return {
       messageId: data.messageId ?? '',
       turnId: data.turnId ?? '',

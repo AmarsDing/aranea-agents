@@ -416,7 +416,7 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
   width: 16px
   height: 16px
   border-radius: 50%
-  background: var(--glass-elevated, var(--glass-surface))
+  background: var(--glass-elevated)
   display: flex
   align-items: center
   justify-content: center
@@ -463,7 +463,7 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
 
 .tp-action-btn.resume
   background: var(--color-accent)
-  color: var(--color-on-accent, white)
+  color: var(--color-on-accent)
 
 .tp-action-btn.cancel
   background: var(--glass-surface)

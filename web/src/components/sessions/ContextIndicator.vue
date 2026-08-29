@@ -50,7 +50,7 @@ const statusLabel = computed(() => {
   border-radius: 4px;
   margin: 4px 0;
 
-  backdrop-filter: blur(var(--glass-blur-default, 8px));
+  backdrop-filter: blur(var(--glass-blur-default));
 
   &--optimizing {
     background: color-mix(in srgb, var(--color-warning) 10%, transparent);

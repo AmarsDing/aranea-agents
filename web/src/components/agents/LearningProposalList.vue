@@ -81,6 +81,7 @@
 import type { LearningProposal } from '../../features/agents/learning.types';
 import { formatDate, formatApprovedBy } from '../../features/agents/learning.utils';
 import { i18n } from '../../i18n';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const t = i18n.global.t;
 
@@ -105,6 +106,44 @@ const statusOptions = [
   { label: '已拒绝', value: 'rejected' },
   { label: '冲突', value: 'conflict' },
 ];
+
+function proposalStatusColor(status: string): string {
+  switch (status) {
+    case 'validated':
+      return 'blue';
+    case 'approved':
+      return 'positive';
+    case 'applied':
+      return 'teal';
+    case 'rejected':
+      return 'negative';
+    case 'conflict':
+      return 'orange';
+    default:
+      return 'grey';
+  }
+}
+
+function proposalStatusLabel(status: string): string {
+  switch (status) {
+    case 'draft':
+      return t('agents.learning_loop.proposal_status_draft');
+    case 'validated':
+      return t('agents.learning_loop.proposal_status_validated');
+    case 'approved':
+      return t('agents.learning_loop.proposal_status_approved');
+    case 'applied':
+      return t('agents.learning_loop.proposal_status_applied');
+    case 'rejected':
+      return t('agents.learning_loop.proposal_status_rejected');
+    case 'conflict':
+      return t('agents.learning_loop.proposal_status_conflict');
+    case 'expired':
+      return t('agents.learning_loop.proposal_status_expired');
+    default:
+      return status;
+  }
+}
 
 function proposalKindColor(kind: string): string {
   switch (kind) {

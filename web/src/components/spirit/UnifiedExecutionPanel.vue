@@ -340,8 +340,8 @@ const dagLayers = computed<DagLayer[]>(() => {
 
 <style scoped lang="sass">
 .unified-execution-panel
-  background: var(--glass-surface, var(--color-bg-surface))
-  border: 1px solid var(--glass-border, var(--color-border))
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
   border-radius: var(--radius)
 
 // ── Section ──
@@ -389,7 +389,7 @@ const dagLayers = computed<DagLayer[]>(() => {
 
 // ── Divider ──
 .uep-divider
-  border-top: 1px solid var(--glass-border, var(--color-border))
+  border-top: 1px solid var(--glass-border)
 
 // ── Empty placeholder ──
 .uep-empty
@@ -564,7 +564,7 @@ const dagLayers = computed<DagLayer[]>(() => {
     width: 20px
     height: 20px
     border-radius: 50%
-    background: var(--glass-elevated, var(--glass-surface))
+    background: var(--glass-elevated)
     display: flex
     align-items: center
     justify-content: center
@@ -616,7 +616,7 @@ const dagLayers = computed<DagLayer[]>(() => {
   &__bar
     width: 50px
     height: 3px
-    background: var(--glass-border, var(--color-border))
+    background: var(--glass-border)
     border-radius: 2px
     overflow: hidden
     flex-shrink: 0
@@ -646,11 +646,11 @@ const dagLayers = computed<DagLayer[]>(() => {
 
     &--resume
       background: var(--color-accent)
-      color: var(--color-on-accent, white)
+      color: var(--color-on-accent)
 
     &--cancel
-      background: var(--glass-elevated, var(--glass-surface))
-      border: 1px solid var(--glass-border, var(--color-border))
+      background: var(--glass-elevated)
+      border: 1px solid var(--glass-border)
       color: var(--color-text-secondary)
 
   &__card

@@ -277,7 +277,7 @@ defineExpose({ triggerBurst });
     font-size: 12px
     letter-spacing: 0.22em
     text-transform: uppercase
-    font-family: var(--font-mono, monospace)
+    font-family: var(--font-mono)
     color: var(--color-neon-cyan)
     text-shadow: 0 0 8px rgba(0, 229, 255, 0.6)
     background: rgba(9, 13, 20, 0.55)

@@ -213,7 +213,7 @@ onUnmounted(() => {
     background: rgba(0, 229, 255, 0.08)
 
   &__target
-    font-family: var(--font-mono, monospace)
+    font-family: var(--font-mono)
     font-size: 18px
     font-weight: 600
     letter-spacing: 0.04em
