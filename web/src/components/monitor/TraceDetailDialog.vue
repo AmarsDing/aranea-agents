@@ -151,7 +151,7 @@
               header-class="text-subtitle2"
             >
               <q-card-section>
-                <pre class="monitor-json">{{ detailJSON }}</pre>
+                <JsonCodeViewer :text="detailJSON" />
               </q-card-section>
             </q-expansion-item>
           </q-card>

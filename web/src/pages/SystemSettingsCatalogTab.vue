@@ -305,7 +305,7 @@
             <q-item-label caption>{{ entry.message }}</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-badge :color="entry.status === 'ok' ? 'positive' : 'negative'" :label="entry.status || '?'" />
+            <AppStatusChip :status="entry.status || '?'" />
           </q-item-section>
         </q-item>
       </q-list>

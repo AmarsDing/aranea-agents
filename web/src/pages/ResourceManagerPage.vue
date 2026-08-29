@@ -124,9 +124,7 @@
       >
         <template #body-cell-status="props">
           <q-td :props="props">
-            <q-badge :color="props.row.enabled ? 'positive' : 'grey'">
-              {{ props.row.enabled ? '已启用' : '已禁用' }}
-            </q-badge>
+            <AppStatusChip :status="props.row.enabled ? 'enabled' : 'disabled'" />
           </q-td>
         </template>
         <template #body-cell-actions="props">

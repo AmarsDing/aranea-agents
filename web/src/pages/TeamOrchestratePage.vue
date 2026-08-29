@@ -143,6 +143,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
 import TeamMemberKanban from '../components/teams/TeamMemberKanban.vue';
 import TeamOrchestrateRuntimePanel from '../components/teams/TeamOrchestrateRuntimePanel.vue';

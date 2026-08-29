@@ -21,14 +21,20 @@
 .PARAMETER OutDir
     输出目录（默认：build/release/）
 
+.PARAMETER ServerUrl
+    构建期注入的默认后端地址（如 http://192.168.0.102:8810）。
+    注入后首启免填服务器地址；用户仍可在设置页修改（持久化覆盖默认值）。
+    实现：临时改写 web/public/assets/config/runtime-config.json，打包结束恢复原内容。
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File build\package-client.ps1
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File build\package-client.ps1 -Version v1.2.0
+    powershell -ExecutionPolicy Bypass -File build\package-client.ps1 -Version v1.2.0 -ServerUrl http://192.168.0.102:8810
 #>
 param(
     [string]$Version,
-    [string]$OutDir = "build\release"
+    [string]$OutDir = "build\release",
+    [string]$ServerUrl
 )
 
 $ErrorActionPreference = "Stop"
@@ -98,6 +104,18 @@ Pop-Location
 Write-Host "  [OK] dependencies installed" -ForegroundColor Green
 
 # ─── Step 3: 前端构建 ─────────────────────────────────────────
+# 构建期注入默认后端地址：改写 public/assets/config/runtime-config.json（quasar 拷入 dist/spa，
+# rust-embed 内嵌进 exe），打包结束恢复原内容（finally 保证失败也恢复，不污染工作区）
+$runtimeConfigPath = Join-Path $WebDir "public\assets\config\runtime-config.json"
+$runtimeConfigBak = $null
+if ($ServerUrl) {
+    $ServerUrl = $ServerUrl.TrimEnd('/')
+    $runtimeConfigBak = [IO.File]::ReadAllText($runtimeConfigPath)
+    $injected = @{ backendUrl = $ServerUrl; wsOrigin = $ServerUrl } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText($runtimeConfigPath, $injected, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "  注入默认后端地址: $ServerUrl" -ForegroundColor Yellow
+}
+try {
 Write-Host "[3/6] pnpm build（quasar build → dist/spa）..." -ForegroundColor Cyan
 Push-Location $WebDir
 $prevEap = $ErrorActionPreference
@@ -173,3 +191,10 @@ Write-Host "  Version:  $Version" -ForegroundColor Green
 Write-Host "  Exe:      $exePath ($exeMB MB)" -ForegroundColor Green
 Write-Host "  Zip:      $zipPath ($zipMB MB)" -ForegroundColor Green
 Write-Host ""
+} finally {
+    # 恢复 runtime-config.json 原内容（注入了 -ServerUrl 时）
+    if ($null -ne $runtimeConfigBak) {
+        [IO.File]::WriteAllText($runtimeConfigPath, $runtimeConfigBak, (New-Object System.Text.UTF8Encoding $false))
+        Write-Host "runtime-config.json 已恢复原内容" -ForegroundColor DarkGray
+    }
+}

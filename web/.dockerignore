@@ -3,3 +3,8 @@ dist
 .quasar
 .git
 *.log
+# Tauri/Electron 打包产物与 Rust 构建缓存（GB 级，web 镜像构建无需）
+build
+src-tauri/target
+playwright-report
+test-results

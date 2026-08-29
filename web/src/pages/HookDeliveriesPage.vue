@@ -145,7 +145,7 @@
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-dialog-body app-glass-dialog__body">
             <div class="text-caption text-grey">{{ detailUrl }}</div>
-            <pre class="hook-delivery-detail app-code-block">{{ detailText }}</pre>
+            <JsonCodeViewer :text="detailText" />
             <div v-if="detailError" class="text-negative q-mt-sm">{{ detailError }}</div>
           </q-card-section>
         </div>

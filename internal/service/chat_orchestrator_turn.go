@@ -1069,11 +1069,7 @@ func extractMentionedEntities(content string) []string {
 	return out
 }
 
-func (o *ChatOrchestrator) emitOrchDecisionRecord(ctx context.Context, sessionID, agentKey string, skipIntent bool, skipReason, assessLevel, intentOutcome string, gateErr error, gate GateDecision) {
-	c := o.infraDeps.DecisionCollector
-	if c == nil {
-		return
-	}
+func (o *ChatOrchestrator) emitOrchDecisionRecord(ctx context.Context, sessionID, agentKey string, skipIntent bool, skipReason, assessLevel, intentOutcome string, gateErr error, gate GateDecision, flowPairs []event.Pair) {
 	level := assessLevel
 	reason := skipReason
 	if gateErr == nil && gate.Level != "" {
@@ -1102,7 +1098,9 @@ func (o *ChatOrchestrator) emitOrchDecisionRecord(ctx context.Context, sessionID
 		meta["force_planning"] = gate.ForcePlanning
 		meta["gate_reason"] = gate.Reason
 	}
-	c.Emit(ctx, decision.Record{
+	// SP-1b：统一入口一次完成 decision_records + flowlog 双写；collector 为
+	// nil 时 EmitDecision 内部记 collector_nil 且 flowlog 仍落（D1）。
+	event.EmitDecision(ctx, o.infraDeps.DecisionCollector, decision.Record{
 		DecisionKey: uuid.NewString(),
 		Category:    decision.CategoryPlannerOrchestration,
 		Scenario:    "编排路由决策",
@@ -1112,5 +1110,5 @@ func (o *ChatOrchestrator) emitOrchDecisionRecord(ctx context.Context, sessionID
 		ActorKey:    "system:chat_orchestrator",
 		SourceRef:   decision.SourceRef{SessionID: sessionID},
 		Metadata:    meta,
-	})
+	}, "chat.orch.decision", "编排路由决策", flowPairs...)
 }

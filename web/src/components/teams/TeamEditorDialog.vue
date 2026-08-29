@@ -463,7 +463,7 @@
             <div class="team-editor-expansion team-editor-expansion--compact">
               <q-expansion-item icon="code" :label="t('teamsPage.definitionJsonPreview')" dense>
                 <div class="team-editor-expansion__body">
-                  <pre class="team-definition-json">{{ definitionJson }}</pre>
+                  <JsonCodeViewer :text="definitionJson" :show-toolbar="false" scroll-height="280px" />
                 </div>
               </q-expansion-item>
             </div>
@@ -506,6 +506,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { TeamDefinition } from '../../features/teams/types';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import { useTeamCompilePreview } from '../../features/teams/useTeamCompilePreview';
 import TeamCompilePreview from './TeamCompilePreview.vue';
 import {

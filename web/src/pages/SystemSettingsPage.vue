@@ -304,18 +304,8 @@
                       <div v-for="[industry, info] in ecosystemEntries" :key="industry" class="ecosystem-industry-row">
                         <div class="ecosystem-industry-row__label">
                           <span class="text-body2 text-weight-medium">{{ industry }}</span>
-                          <q-badge
-                            v-if="info.loaded"
-                            color="positive"
-                            outline
-                            :label="t('settingsPage.ecosystemLoaded')"
-                            class="q-ml-sm"
-                          />
-                          <q-badge
-                            v-else
-                            color="grey"
-                            outline
-                            :label="t('settingsPage.ecosystemNotLoaded')"
+                          <AppStatusChip
+                            :status="info.loaded ? 'configured' : 'unconfigured'"
                             class="q-ml-sm"
                           />
                         </div>

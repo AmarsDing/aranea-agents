@@ -7,7 +7,7 @@
       </q-card-section>
       <q-separator />
       <q-card-section class="app-dialog-body q-pt-none">
-        <pre class="plugin-run-detail app-code-block">{{ text }}</pre>
+        <JsonCodeViewer :text="text" />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
         <q-btn v-close-popup flat rounded no-caps :label="t('common.close')" />

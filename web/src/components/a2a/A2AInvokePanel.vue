@@ -121,7 +121,7 @@
           <span class="a2a-invoke-result__id">invoke_id: {{ result.invoke_id }}</span>
           <span class="a2a-invoke-result__status">status: {{ result.status }} · {{ result.duration_ms }}ms</span>
         </div>
-        <pre class="a2a-result">{{ result.result_json || result.error_message }}</pre>
+        <JsonCodeViewer :text="result.result_json || result.error_message" :show-toolbar="false" scroll-height="240px" />
       </q-card>
     </div>
   </div>

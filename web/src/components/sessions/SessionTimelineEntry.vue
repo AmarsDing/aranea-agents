@@ -52,9 +52,12 @@
           <span class="session-timeline-entry__meta-val">{{ item.subtitle }}</span>
         </div>
         <pre v-if="item.content_markdown" class="session-timeline-entry__detail">{{ item.content_markdown }}</pre>
-        <pre v-else-if="item.detail_json" class="session-timeline-entry__detail">{{
-          prettyTimelineJSON(item.detail_json)
-        }}</pre>
+        <JsonCodeViewer
+          v-else-if="item.detail_json"
+          :text="item.detail_json"
+          :show-toolbar="false"
+          scroll-height="240px"
+        />
         <div v-else class="session-timeline-entry__detail session-timeline-entry__detail--empty">暂无详情</div>
       </q-expansion-item>
     </div>
@@ -65,11 +68,11 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SessionTimelineItem } from '../../features/session/types';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import {
   formatTimelineDuration,
   formatTimelineTime,
   isTimelineMessage,
-  prettyTimelineJSON,
   timelineEntryAccent,
   timelineEntryIcon,
   timelineHasDetail,

@@ -14,7 +14,7 @@
         </q-banner>
         <div v-if="node?.input_preview" class="text-caption">
           <div class="text-weight-medium q-mb-xs">输入预览</div>
-          <pre class="orch-hitl-dialog__preview">{{ node.input_preview }}</pre>
+          <JsonCodeViewer :text="node.input_preview" :show-toolbar="false" scroll-height="200px" />
         </div>
         <q-expansion-item dense label="高级：恢复 JSON" icon="code">
           <q-input
@@ -43,6 +43,7 @@
 
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { AgentNodeState } from '../../features/orchestration/types';
 
 defineProps<{

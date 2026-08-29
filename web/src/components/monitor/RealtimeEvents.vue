@@ -250,7 +250,7 @@
               </div>
             </div>
             <q-expansion-item dense :label="t('monitorPage.events.detail.rawJson')" class="event-detail-raw">
-              <pre class="monitor-json">{{ detailJson }}</pre>
+              <JsonCodeViewer :text="detailJson" />
             </q-expansion-item>
           </q-card-section>
         </div>

@@ -37,13 +37,13 @@
             <div v-if="params?.redaction_applied" class="q-mb-sm">
               <q-badge rounded color="warning">{{ t('toolsPage.runDetail.redacted') }}</q-badge>
             </div>
-            <pre class="tool-run-detail-json">{{ prettyJSON(params?.params_json || '{}') }}</pre>
+            <JsonCodeViewer :text="params?.params_json || '{}'" />
             <div class="text-caption muted-caption q-mt-sm">{{ t('toolsPage.runDetail.inputHash') }}{{ invocation.input_hash || '—' }}</div>
           </template>
         </q-tab-panel>
 
         <q-tab-panel name="output">
-          <pre class="tool-run-detail-json">{{ prettyJSON(invocation.output_preview || '{}') }}</pre>
+          <JsonCodeViewer :text="invocation.output_preview || '{}'" />
           <div class="text-caption muted-caption q-mt-sm">{{ t('toolsPage.runDetail.outputHash') }}{{ invocation.output_hash || '—' }}</div>
         </q-tab-panel>
 
@@ -57,7 +57,7 @@
           <div v-else class="muted-caption">{{ t('toolsPage.runDetail.noError') }}</div>
           <template v-if="metadataPretty">
             <div class="text-subtitle2 q-mt-md q-mb-xs">metadata</div>
-            <pre class="tool-run-detail-json">{{ metadataPretty }}</pre>
+            <JsonCodeViewer :text="metadataPretty" />
           </template>
         </q-tab-panel>
 
@@ -78,6 +78,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppStatusChip from '../common/AppStatusChip.vue';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { ToolInvocation, ToolInvocationParamDetail } from '../../features/tools/types';
 import { formatInvocationDuration, formatInvocationWhen, prettyJSON } from './toolUi';
 

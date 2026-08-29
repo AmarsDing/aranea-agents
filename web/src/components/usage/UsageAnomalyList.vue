@@ -26,7 +26,7 @@
         </template>
         <template #cell-status="{ row }">
           <AppRegistryHoverTip :text="String(row.error_message ?? '')" empty-label="暂无错误信息">
-            <q-badge outline class="overview-status-badge overview-status-badge--error" :label="String(row.status)" />
+            <AppStatusChip :status="String(row.status)" />
           </AppRegistryHoverTip>
         </template>
         <template #empty>暂无异常请求</template>
@@ -38,6 +38,7 @@
 <script setup lang="ts">
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../layout/AppRegistryMarkupTable.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import { usageAnomalyColumns } from './usageAnomalyTableUi';
 import type { ModelTokenUsageEvent } from '../../features/usage/types';
 

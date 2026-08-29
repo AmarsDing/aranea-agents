@@ -61,14 +61,6 @@ export function formatTimelineDuration(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-export function prettyTimelineJSON(value: string): string {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
-}
-
 export const timelineKindFilterOptions = computed(() => [
   { label: t('sessionDetail.timelineKinds.all'), value: '' },
   { label: t('sessionDetail.timelineKinds.message'), value: 'message' },

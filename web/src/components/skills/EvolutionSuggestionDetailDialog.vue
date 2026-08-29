@@ -68,7 +68,7 @@
               class="evolution-detail-section"
             >
               <div class="q-pa-sm">
-                <pre class="evolution-detail-pre">{{ suggestion.draftBody }}</pre>
+                <JsonCodeViewer :text="suggestion.draftBody" :show-toolbar="false" scroll-height="240px" />
               </div>
             </q-expansion-item>
 
@@ -80,7 +80,7 @@
               class="evolution-detail-section"
             >
               <div class="q-pa-sm">
-                <pre class="evolution-detail-pre">{{ formatJson(suggestion.sandboxResult) }}</pre>
+                <JsonCodeViewer :text="formatJson(suggestion.sandboxResult)" :show-toolbar="false" scroll-height="240px" />
               </div>
             </q-expansion-item>
           </template>
@@ -96,6 +96,7 @@
 
 <script setup lang="ts">
 import type { SkillEvolutionView } from '../../features/skills/types';
+import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import {
   evoSuggestionStatusColor,
   evoSuggestionStatusLabel,

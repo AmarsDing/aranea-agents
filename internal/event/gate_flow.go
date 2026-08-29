@@ -76,20 +76,3 @@ func LogGateFlow(ctx context.Context, trigger, outcome, scenario, reasoning stri
 	}
 	em.LogDone(step, msg, pairs...)
 }
-
-// LogHITLFlow records a hitl_approval decision on the turn flow log.
-func LogHITLFlow(ctx context.Context, outcome, scenario, toolKey string) {
-	em := TraceEmitterFromContext(ctx)
-	if em == nil {
-		return
-	}
-	msg := scenario
-	if msg == "" {
-		msg = fmt.Sprintf("hitl_approval %s", outcome)
-	}
-	pairs := []Pair{P("trigger", "hitl_approval"), P("outcome", outcome)}
-	if toolKey != "" {
-		pairs = append(pairs, P("tool_key", toolKey))
-	}
-	em.LogDone("system.gate.hitl_approval", msg, pairs...)
-}

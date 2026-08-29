@@ -36,7 +36,7 @@
       >
         <q-tooltip>在 Graph 运行页查看本次执行（/graphs/:id/run/:execId）</q-tooltip>
       </q-btn>
-      <q-badge v-if="observatory" rounded :color="runStatusColor">{{ observatory.status }}</q-badge>
+      <AppStatusChip v-if="observatory" :status="observatory.status" />
     </div>
 
     <div v-if="loading" class="flex flex-center q-pa-xl">
@@ -243,6 +243,7 @@ import OrchestrationActivityTimeline from '../components/orchestration/Orchestra
 import OrchestrationFailureBanner from '../components/orchestration/OrchestrationFailureBanner.vue';
 import OrchestrationHitlReviewDialog from '../components/orchestration/OrchestrationHitlReviewDialog.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import { useTeamRunObservatoryPage } from '../features/teams/useTeamRunObservatoryPage';
 
 const { t } = useI18n();

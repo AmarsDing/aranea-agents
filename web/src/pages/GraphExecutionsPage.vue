@@ -87,14 +87,10 @@
 
 <script setup lang="ts">
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import { useGraphExecutionsPage } from '../features/graph/useGraphExecutionsPage';
 import { formatTime, execDuration } from '../features/graph/utils';
-import {
-  STATUS_FILTER_OPTIONS,
-  TIME_RANGE_OPTIONS,
-  statusColor,
-  statusLabel,
-} from '../features/graph/graphExecutionsUi';
+import { STATUS_FILTER_OPTIONS, TIME_RANGE_OPTIONS } from '../features/graph/graphExecutionsUi';
 
 const {
   isDark,

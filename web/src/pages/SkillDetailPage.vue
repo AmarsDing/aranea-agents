@@ -21,9 +21,8 @@
         <div class="col">
           <div class="row items-center q-gutter-sm">
             <div class="text-h5" style="color: var(--color-text-primary)">{{ skill.name }}</div>
-            <q-badge rounded :color="statusColor(skill.status)">{{ statusLabel(skill.status) }}</q-badge>
-            <q-badge v-if="skill.enabled" rounded color="positive">已启用</q-badge>
-            <q-badge v-else rounded color="grey">未启用</q-badge>
+            <AppStatusChip :status="skill.status" />
+            <AppStatusChip :status="skill.enabled ? 'enabled' : 'disabled'" />
           </div>
           <div class="text-caption text-grey-7 q-mt-xs">
             {{ skill.slug }} · 创建 {{ formatDate(skill.created_at) }} · 更新 {{ formatDate(skill.updated_at) }}
