@@ -83,7 +83,7 @@
                 <q-field class="team-control team-status-field" dense outlined label="状态" stack-label>
                   <template #control>
                     <div class="team-status-field__body row items-center no-wrap">
-                      <q-badge rounded :color="statusMeta.color" :label="statusMeta.label" />
+                      <AppStatusChip :status="form.status" />
                       <span class="team-status-field__hint">自动流转</span>
                       <q-btn
                         v-if="canRetryStatus"
@@ -507,6 +507,7 @@ import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { TeamDefinition } from '../../features/teams/types';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import { useTeamCompilePreview } from '../../features/teams/useTeamCompilePreview';
 import TeamCompilePreview from './TeamCompilePreview.vue';
 import {
@@ -519,7 +520,6 @@ import {
   parallelFailOptions,
   roleOptionsForMode,
   teamRoleLabel,
-  teamStatusMap,
   teamTemplateOptions,
   type TeamTemplateKey,
 } from './teamUtils';
@@ -630,9 +630,6 @@ function onSaveClick() {
 const isSpiritTeam = computed(() => String(form.value.spirit_session_id || '').trim() !== '');
 
 // ── Status display (readonly; transitions via lifecycle / RetryTeam RPC) ──
-const statusMeta = computed(
-  () => teamStatusMap[form.value.status] ?? { label: form.value.status || '—', color: 'grey' },
-);
 const canRetryStatus = computed(() => ['failed', 'cancelled'].includes(form.value.status));
 
 // ── Compile preview (delegated to composable) ──

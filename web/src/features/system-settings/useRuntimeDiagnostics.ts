@@ -59,18 +59,6 @@ export function useRuntimeDiagnostics() {
     }
   }
 
-  function statusText(status: string): string {
-    if (!isKnownStatus(status)) return status;
-    switch (status) {
-      case 'fail':
-        return t('settingsPage.diagnostics.statusFail');
-      case 'warn':
-        return t('settingsPage.diagnostics.statusWarn');
-      default:
-        return t('settingsPage.diagnostics.statusPass');
-    }
-  }
-
   async function load() {
     loading.value = true;
     error.value = '';
@@ -96,6 +84,5 @@ export function useRuntimeDiagnostics() {
     itemLabel,
     statusIcon,
     statusColor,
-    statusText,
   };
 }

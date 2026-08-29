@@ -51,7 +51,7 @@
         </q-item-section>
         <q-item-section side>
           <div class="row items-center no-wrap q-gutter-sm">
-            <q-badge :color="statusColor(item.status)" outline :label="statusText(item.status)" />
+            <AppStatusChip :status="item.status" />
             <q-btn
               v-if="item.status !== 'pass'"
               flat
@@ -79,6 +79,7 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useRuntimeDiagnostics } from '../../features/system-settings/useRuntimeDiagnostics';
 import type { DiagnosticsItem } from '../../features/system-settings/types';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const { t } = useI18n();
 const router = useRouter();

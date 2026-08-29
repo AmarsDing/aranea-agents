@@ -38,24 +38,10 @@ export function catalogLabelForType(catalog: ChannelTypeItem[], type: string): s
   return catalog.find((item) => item.type === type)?.label || type;
 }
 
-/** Quasar 语义色；对齐 UX §2 success / warning / danger */
-export function statusQuasarColor(status: string): string {
-  if (status === 'active') return 'positive';
-  if (status === 'error') return 'negative';
-  if (status === 'pending_auth') return 'warning';
-  return 'grey';
-}
-
+/** 徽标文字口径即状态芯片口径：enabled 且运行时 connected 时显示 connected，
+ *  色调由 AppStatusChip 的 appStatusMeta 按该字符串统一保证（文字与颜色同源）。 */
 export function channelStatusBadgeText(row: ChannelRow): string {
   return row.enabled ? statusText(row) : 'disabled';
-}
-
-/** 徽标颜色与文字同源：文字显示 connected 时颜色必须为 positive，
- *  避免 DB status=error（测试失败残留）+ 运行时 connected 出现「红字 connected」 */
-export function channelStatusBadgeColor(row: ChannelRow): string {
-  if (!row.enabled) return 'grey';
-  if (isChannelConnected(row)) return 'positive';
-  return statusQuasarColor(row.status);
 }
 
 function statusText(row: ChannelRow): string {

@@ -4,7 +4,7 @@
       <div class="graph-run-sidebar__title">{{ t('graphs.runSidebarTitle') }}</div>
       <q-badge v-if="streamConnected" rounded color="positive">{{ t('graphs.runSidebarLive') }}</q-badge>
       <q-space />
-      <q-badge rounded :color="statusColor">{{ displayStatus }}</q-badge>
+      <AppStatusChip :status="displayStatus" />
     </div>
 
     <template v-if="execution">
@@ -130,7 +130,6 @@ const props = defineProps<{
   execution: GraphExecution | null;
   executionSummary: GraphRunExecutionSummary | null;
   displayStatus: string;
-  statusColor: string;
   streamConnected: boolean;
   isDark: boolean;
   embedded?: boolean;

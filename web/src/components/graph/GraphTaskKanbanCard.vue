@@ -11,7 +11,7 @@
         <div class="text-weight-medium">{{ task.nodeId || task.taskId }}</div>
         <div class="text-caption app-text-secondary">{{ task.requiredRole || t('graphs.taskWorkerFallback') }}</div>
       </div>
-      <q-badge rounded :color="statusColor">{{ statusLabel }}</q-badge>
+      <AppStatusChip :status="task.status" />
     </q-card-section>
     <q-separator />
     <q-card-section class="q-gutter-xs">

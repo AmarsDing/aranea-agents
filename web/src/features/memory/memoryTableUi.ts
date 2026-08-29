@@ -178,24 +178,6 @@ export function memorySessionStatusColor(status?: string) {
   return 'blue-grey';
 }
 
-/** Memory Cascade 状态颜色 */
-export function memoryCascadeStatusColor(status: string) {
-  switch (status) {
-    case 'pending':
-      return 'grey-7';
-    case 'applied':
-      return 'positive';
-    case 'partial':
-      return 'warning';
-    case 'failed':
-      return 'negative';
-    case 'rejected':
-      return 'deep-orange';
-    default:
-      return 'grey-7';
-  }
-}
-
 /** MemoryRecallTester — Composite Search 结果列 */
 export function buildCompositeColumns(t: MemoryTranslator): QTableColumn<CompositeSearchHit>[] {
   return [

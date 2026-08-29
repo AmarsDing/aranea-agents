@@ -33,7 +33,7 @@
       </template>
       <template #body-cell-status="slotProps">
         <q-td :props="slotProps">
-          <q-badge :color="statusColor(String(slotProps.row.status))" :label="slotProps.row.status" />
+          <AppStatusChip :status="String(slotProps.row.status)" />
         </q-td>
       </template>
       <template #no-data>
@@ -46,9 +46,10 @@
 <script setup lang="ts">
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../../components/common/AppStatusChip.vue';
 import { useChannelTurnJobsPanel } from './useChannelTurnJobsPanel';
 
 const props = defineProps<{ channelId: string }>();
 
-const { t, loading, error, rows, columns, statusColor, load } = useChannelTurnJobsPanel(() => props.channelId);
+const { t, loading, error, rows, columns, load } = useChannelTurnJobsPanel(() => props.channelId);
 </script>

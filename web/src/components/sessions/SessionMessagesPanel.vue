@@ -20,9 +20,7 @@
             <span class="text-caption text-weight-bold">{{ roleLabel(msg.role) }}</span>
             <span v-if="msg.model_name" class="text-caption text-grey-6">{{ msg.model_name }}</span>
             <span class="text-caption text-grey-6">{{ formatSessionDate(msg.created_at) }}</span>
-            <q-badge v-if="msg.status !== 'ok'" :color="msg.status === 'error' ? 'negative' : 'warning'" outline>{{
-              statusLabel(msg.status)
-            }}</q-badge>
+            <AppStatusChip v-if="msg.status !== 'ok'" :status="msg.status" />
           </div>
           <!-- eslint-disable vue/no-v-html -- sanitized markdown HTML -->
           <div
@@ -57,12 +55,6 @@ const { messages, loading, error } = useSessionMessagesPanel(toRef(() => props.s
 
 function renderMarkdown(content: string) {
   return renderChatMarkdown(content || '');
-}
-
-function statusLabel(status: string) {
-  const key = `sessionDetail.messageStatus.${status}`;
-  const translated = t(key);
-  return translated !== key ? translated : status;
 }
 
 function roleLabel(role: string) {

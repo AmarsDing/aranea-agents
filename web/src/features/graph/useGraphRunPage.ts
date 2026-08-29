@@ -59,16 +59,6 @@ export function useGraphRunPage() {
 
   const displayStatus = computed(() => stream.liveStatus.value);
 
-  const statusColor = computed(() => {
-    const s = displayStatus.value;
-    if (s === 'completed') return 'positive';
-    if (s === 'running') return 'blue';
-    if (s === 'failed') return 'negative';
-    if (s === 'waiting_human') return 'warning';
-    if (s === 'cancelled') return 'grey';
-    return 'grey';
-  });
-
   async function refreshExecution() {
     if (!execId.value) return;
     execution.value = await graphStore.fetchExecution(execId.value);
@@ -291,7 +281,6 @@ export function useGraphRunPage() {
     hitlAdvancedJson: hitl.hitlAdvancedJson,
     resumeLoading: hitl.resumeLoading,
     displayStatus,
-    statusColor,
     taskList: stream.taskList,
     tasksLoading: tasks.tasksLoading,
     selectedTaskId: tasks.selectedTaskId,

@@ -84,7 +84,6 @@
         :execution="execution"
         :execution-summary="executionSummary"
         :display-status="displayStatus"
-        :status-color="statusColor"
         :stream-connected="streamConnected"
         :is-dark="isDark"
         :checkpoints="checkpoints"
@@ -171,7 +170,6 @@ const {
   hitlAdvancedJson,
   resumeLoading,
   displayStatus,
-  statusColor,
   taskList,
   tasksLoading,
   selectedTaskId,

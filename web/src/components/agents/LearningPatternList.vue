@@ -31,7 +31,7 @@
         </q-item-section>
         <q-item-section side>
           <div class="row items-center no-wrap q-gutter-xs">
-            <q-badge :color="patternStatusColor(p.status)" :label="patternStatusLabel(p.status)" />
+            <AppStatusChip :status="p.status" />
             <template v-if="p.status === 'detected'">
               <q-btn
                 flat
@@ -67,9 +67,7 @@
 <script setup lang="ts">
 import type { LearningPattern } from '../../features/agents/learning.types';
 import { formatDate } from '../../features/agents/learning.utils';
-import { i18n } from '../../i18n';
-
-const t = i18n.global.t;
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 defineProps<{
   patterns: LearningPattern[];
@@ -102,32 +100,6 @@ function patternKindColor(kind: string): string {
       return 'grey';
     default:
       return 'grey';
-  }
-}
-
-function patternStatusColor(status: string): string {
-  switch (status) {
-    case 'detected':
-      return 'orange';
-    case 'confirmed':
-      return 'positive';
-    case 'dismissed':
-      return 'grey';
-    default:
-      return 'grey';
-  }
-}
-
-function patternStatusLabel(status: string): string {
-  switch (status) {
-    case 'detected':
-      return t('agents.learning_loop.pattern_status_detected');
-    case 'confirmed':
-      return t('agents.learning_loop.pattern_status_confirmed');
-    case 'dismissed':
-      return t('agents.learning_loop.pattern_status_dismissed');
-    default:
-      return status;
   }
 }
 

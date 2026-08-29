@@ -18,7 +18,6 @@
           :execution="execution"
           :execution-summary="executionSummary"
           :display-status="displayStatus"
-          :status-color="statusColor"
           :stream-connected="streamConnected"
           :is-dark="isDark"
           embedded
@@ -94,7 +93,6 @@ const props = withDefaults(
     execution: GraphExecution | null;
     executionSummary: GraphRunExecutionSummary | null;
     displayStatus: string;
-    statusColor: string;
     streamConnected: boolean;
     isDark: boolean;
     checkpoints: CheckpointInfo[];

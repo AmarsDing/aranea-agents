@@ -19,7 +19,7 @@
         <q-avatar v-if="memberSession.AvatarURL" :src="memberSession.AvatarURL" size="24px" />
         <q-icon v-else name="person" size="20px" class="member-header__avatar-fallback" />
         <span class="member-header__name">{{ memberSession.AgentName }}</span>
-        <q-badge :color="statusColor" class="member-header__status">{{ statusLabel }}</q-badge>
+        <AppStatusChip :status="memberSession.Status" class="member-header__status" />
         <span class="member-header__time">{{ formattedTime }}</span>
       </div>
       <div v-if="latestAction" class="member-header__center">
@@ -287,33 +287,6 @@ const displayedInstruction = computed(() => {
   const text = instruction.value;
   if (!instructionCollapsible.value || instructionExpanded.value) return text;
   return `${text.slice(0, INSTRUCTION_COLLAPSE_THRESHOLD)}…`;
-});
-
-// 状态映射：running/paused/completed/failed/cancelled
-const statusColor = computed(
-  () =>
-    ({
-      pending: 'grey',
-      running: 'blue',
-      paused: 'warning',
-      completed: 'green',
-      failed: 'red',
-      cancelled: 'grey-6',
-      skipped: 'grey-5',
-    })[props.memberSession.Status] || 'grey',
-);
-
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    pending: t('chat.v2.statusPending'),
-    running: t('chat.v2.statusRunning'),
-    paused: t('chat.v2.statusPaused'),
-    completed: t('chat.v2.statusCompleted'),
-    failed: t('chat.v2.statusFailed'),
-    cancelled: t('chat.v2.statusCancelled'),
-    skipped: t('chat.v2.statusSkipped'),
-  };
-  return map[props.memberSession.Status] || props.memberSession.Status;
 });
 
 const formattedTime = computed(() => {

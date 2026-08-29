@@ -45,7 +45,7 @@
         </template>
         <template #body-cell-status="slotProps">
           <q-td :props="slotProps">
-            <q-badge :color="statusColor(slotProps.row.status)" :label="slotProps.row.status" />
+            <AppStatusChip :status="slotProps.row.status" />
           </q-td>
         </template>
         <template #body-cell-risk="slotProps">
@@ -228,9 +228,10 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
+import AppStatusChip from '../../components/common/AppStatusChip.vue';
 
 import type { CascadePreview, CascadeProposal } from './types';
-import { buildCascadeSagaTableColumns, memoryCascadeStatusColor as statusColor } from './memoryTableUi';
+import { buildCascadeSagaTableColumns } from './memoryTableUi';
 
 const { t } = useI18n();
 

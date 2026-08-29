@@ -77,7 +77,7 @@
               </template>
               <template #body-cell-status="props">
                 <q-td :props="props">
-                  <q-badge :color="runStatusColor(props.row.status)">{{ runStatusLabel(props.row.status) }}</q-badge>
+                  <AppStatusChip :status="props.row.status" />
                   <div
                     v-if="props.row.error_message"
                     class="app-registry-cell-sub ellipsis q-mt-xs"
@@ -130,6 +130,7 @@
 import type { QTableColumn } from 'quasar';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import type { CronTaskRun } from '../../features/cron/types';
 import { formatCronDate } from './cronTaskUtils';
 

@@ -46,9 +46,7 @@
         <AppRegistryHoverTip :text="channelMetadata(props.row).last_error_message">
           <div class="row items-center no-wrap q-gutter-xs">
             <q-icon v-if="isChannelConnected(props.row)" name="circle" color="positive" size="10px" />
-            <q-badge rounded :color="channelStatusBadgeColor(props.row)">
-              {{ channelStatusBadgeText(props.row) }}
-            </q-badge>
+            <AppStatusChip :status="channelStatusBadgeText(props.row)" />
           </div>
         </AppRegistryHoverTip>
       </q-td>

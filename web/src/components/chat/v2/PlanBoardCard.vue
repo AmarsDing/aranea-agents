@@ -12,7 +12,7 @@
       <div class="plan-header__left">
         <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="20px" class="plan-header__icon" />
         <span class="plan-header__title">{{ t('chat.v2.planBoardTitle') }}</span>
-        <q-badge :color="statusColor" class="plan-header__status">{{ statusLabel }}</q-badge>
+        <AppStatusChip :status="derivedStatus" class="plan-header__status" />
       </div>
       <div class="plan-header__summary">
         <span class="plan-summary-text">{{ summaryText }}</span>
@@ -102,28 +102,6 @@ const derivedStatus = computed<PlanStatus>(() => {
   if (hasPartial) return 'partial_failure';
   if (hasRunning) return 'executing';
   return 'planning';
-});
-
-const statusColor = computed(
-  () =>
-    ({
-      planning: 'orange',
-      executing: 'blue',
-      completed: 'green',
-      failed: 'red',
-      partial_failure: 'orange-8',
-    })[derivedStatus.value] || 'grey',
-);
-
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    planning: t('chat.v2.statusPlanning'),
-    executing: t('chat.v2.statusRunning'),
-    completed: t('chat.v2.statusCompleted'),
-    failed: t('chat.v2.statusFailed'),
-    partial_failure: t('chat.v2.statusPartialFailure'),
-  };
-  return map[derivedStatus.value] || derivedStatus.value;
 });
 
 // 状态图标（§B.4.3 视觉表）

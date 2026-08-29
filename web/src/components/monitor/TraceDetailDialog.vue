@@ -15,9 +15,7 @@
                 detail?.name || detail?.key || t('monitorPage.traces.detailFallbackTitle')
               }}</span>
               <q-badge v-if="detail?.domain" outline :color="domainColor(detail)">{{ domainLabel(detail) }}</q-badge>
-              <q-badge :color="traceStatusColor(detail?.status)" text-color="white">{{
-                statusLabel(detail?.status)
-              }}</q-badge>
+              <AppStatusChip :status="detail?.status" />
             </div>
             <div class="trace-head__ids row items-center q-gutter-md">
               <span class="trace-head__id text-mono">
@@ -170,17 +168,12 @@ import { compactJSON, formatDate, parseJSON } from '../../features/monitor/utils
 import { downloadFlowDiagnosticJsonl } from '../../features/monitor/flow';
 import { formatCompactInt, formatCostUsd } from '../../features/monitor/runFormat';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
+import AppStatusChip from '../common/AppStatusChip.vue';
 import TraceWaterfall from './TraceWaterfall.vue';
 import TraceSpanTree from './TraceSpanTree.vue';
 import FlowTracePanel from './FlowTracePanel.vue';
 import FlowLogExportButton from './FlowLogExportButton.vue';
-import {
-  traceDomainColor,
-  traceDomainLabel,
-  traceRunMetrics,
-  traceStatusColor,
-  traceStatusLabel,
-} from './monitorTableUi';
+import { traceDomainColor, traceDomainLabel, traceRunMetrics } from './monitorTableUi';
 
 const { t } = useI18n();
 

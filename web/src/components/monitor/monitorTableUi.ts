@@ -72,17 +72,6 @@ export function traceRunMetrics(row: {
   }
 }
 
-/** Trace 状态配色 — 语义色（running 为进行中蓝色，非错误红）；与语言无关 */
-const TRACE_STATUS_COLORS: Record<string, string> = {
-  running: 'info',
-  ok: 'positive',
-  success: 'positive',
-  error: 'negative',
-  cancelled: 'grey',
-  timeout: 'orange',
-  interrupted: 'warning',
-};
-
 /** Trace 状态 → i18n key（ok/success 共用 ok） */
 const TRACE_STATUS_I18N_KEYS: Record<string, string> = {
   running: 'monitorPage.traces.status.running',
@@ -93,11 +82,6 @@ const TRACE_STATUS_I18N_KEYS: Record<string, string> = {
   timeout: 'monitorPage.traces.status.timeout',
   interrupted: 'monitorPage.traces.status.interrupted',
 };
-
-/** Trace 状态颜色 */
-export function traceStatusColor(status?: string): string {
-  return TRACE_STATUS_COLORS[String(status ?? '')] ?? 'grey';
-}
 
 /** Trace 状态本地化标签（未知枚举回退原值） */
 export function traceStatusLabel(t: Translate, status?: string): string {

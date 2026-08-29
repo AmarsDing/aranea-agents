@@ -55,9 +55,10 @@ func TestEnqueueRejectError(t *testing.T) {
 		wantMessage string
 	}{
 		{
-			name:        "queue_full_rate_limited",
+			// N2 规格：队满为请求语义错误（400），非限流（429）——见 chat_enqueue.go。
+			name:        "queue_full_bad_request",
 			reason:      biz.ChatEnqueueRejectQueueFull,
-			wantCode:    apierror.CodeRateLimit,
+			wantCode:    apierror.CodeBadRequest,
 			wantMessage: "pending queue is full for this session",
 		},
 		{

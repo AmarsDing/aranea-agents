@@ -107,9 +107,7 @@
                       <div class="text-weight-medium">
                         {{ step.agent_name || step.agent_key || agentName(agents, step.agent_id) }}
                       </div>
-                      <q-badge rounded :color="stepStatusColor(step.status)">{{
-                        teamRunStatusLabel(step.status)
-                      }}</q-badge>
+                      <AppStatusChip :status="step.status" />
                     </div>
                     <div class="text-caption text-grey-7">
                       {{ teamRoleLabel(step.role || 'worker') }} · {{ step.duration_ms }}ms · 输入 {{ step.token_in }} /
@@ -186,6 +184,7 @@ import {
   teamModeLabel,
   teamRoleLabel,
 } from './teamUtils';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const tab = ref('runs');
 

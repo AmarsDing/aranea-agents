@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="chat-runner-status row items-center no-wrap q-gutter-x-sm">
-    <q-badge :color="badgeColor" :label="statusLabel" class="chat-runner-status__badge" />
+    <AppStatusChip :status="status" class="chat-runner-status__badge" />
     <span v-if="agentName" class="text-caption ellipsis chat-runner-status__agent">{{ agentName }}</span>
     <span v-if="elapsedLabel" class="text-caption text-grey">{{ elapsedLabel }}</span>
     <span v-if="eventCount != null && eventCount > 0" class="text-caption text-grey"> {{ eventCount }} 个事件 </span>
@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
 import type { RunStatusValue } from '../../features/chat/types';
-import { presentRunStatus, toneToQuasarColor } from '../../domain/conversationPresentation';
+import AppStatusChip from '../common/AppStatusChip.vue';
 
 const props = defineProps<{
   status: RunStatusValue;

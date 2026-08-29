@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelRow } from 'src/features/channels/types';
-import { channelStatusBadgeColor, channelStatusBadgeText } from '../channelUi';
+import { channelStatusBadgeText } from '../channelUi';
 
 function row(overrides: Partial<ChannelRow>): ChannelRow {
   return {
@@ -15,27 +15,26 @@ function row(overrides: Partial<ChannelRow>): ChannelRow {
   } as ChannelRow;
 }
 
-describe('channelStatusBadgeColor', () => {
-  it('returns positive when runtime-connected even if persisted status is error (text/color consistency)', () => {
+describe('channelStatusBadgeText', () => {
+  it('returns connected when runtime-connected even if persisted status is error', () => {
     // 回归：实时测试失败会把 DB status 写成 error，但运行时仍 connected，
-    // 徽标文字显示 connected 时颜色必须同为 positive，不能红字 connected
+    // 状态芯片的 status 必须显示 connected（色调由 appStatusMeta 同源保证）
     const r = row({ status: 'error', metadata_json: JSON.stringify({ runtime_connected: true }) });
     expect(channelStatusBadgeText(r)).toBe('connected');
-    expect(channelStatusBadgeColor(r)).toBe('positive');
   });
 
-  it('returns negative when not connected and status is error', () => {
+  it('returns persisted status when not connected', () => {
     const r = row({ status: 'error' });
-    expect(channelStatusBadgeColor(r)).toBe('negative');
+    expect(channelStatusBadgeText(r)).toBe('error');
   });
 
-  it('returns grey when disabled', () => {
+  it('returns disabled when not enabled', () => {
     const r = row({ enabled: false, status: 'error' });
-    expect(channelStatusBadgeColor(r)).toBe('grey');
+    expect(channelStatusBadgeText(r)).toBe('disabled');
   });
 
-  it('returns warning for pending_auth when not connected', () => {
+  it('returns pending_auth when not connected', () => {
     const r = row({ status: 'pending_auth', metadata_json: JSON.stringify({ last_error_message: 'x' }) });
-    expect(channelStatusBadgeColor(r)).toBe('warning');
+    expect(channelStatusBadgeText(r)).toBe('pending_auth');
   });
 });

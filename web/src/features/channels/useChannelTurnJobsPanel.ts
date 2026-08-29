@@ -12,26 +12,6 @@ export function useChannelTurnJobsPanel(channelId: () => string) {
   const rows = ref<ChannelTurnJobRow[]>([]);
   const columns = channelTurnJobsColumns(t);
 
-  function statusColor(status: string) {
-    switch (status) {
-      case 'running':
-      case 'accepted':
-        return 'info';
-      case 'completed':
-        return 'positive';
-      case 'timeout':
-      case 'failed':
-        return 'negative';
-      case 'cancelled':
-        return 'warning';
-      case 'async_queued':
-      case 'queued':
-        return 'accent';
-      default:
-        return 'grey';
-    }
-  }
-
   async function load() {
     const id = channelId();
     if (!id) return;
@@ -49,5 +29,5 @@ export function useChannelTurnJobsPanel(channelId: () => string) {
   watch(channelId, () => void load(), { immediate: false });
   onMounted(() => void load());
 
-  return { t, loading, error, rows, columns, statusColor, load };
+  return { t, loading, error, rows, columns, load };
 }

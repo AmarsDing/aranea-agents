@@ -19,7 +19,7 @@
           </q-item-label>
         </q-item-section>
         <q-item-section side class="text-right">
-          <q-badge :color="phaseColor(run.phase)" outline>{{ phaseLabel(run.phase) }}</q-badge>
+          <AppStatusChip :status="run.phase" />
         </q-item-section>
       </q-item>
     </q-list>
@@ -56,12 +56,5 @@ function sourceLabel(source: string) {
   const key = `sessionDetail.runSource.${source}`;
   const translated = t(key);
   return translated !== key ? translated : source;
-}
-
-function phaseColor(phase: string) {
-  if (phase === 'completed') return 'positive';
-  if (phase === 'failed') return 'negative';
-  if (phase === 'durable') return 'warning';
-  return 'primary';
 }
 </script>

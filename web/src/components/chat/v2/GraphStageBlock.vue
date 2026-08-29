@@ -13,7 +13,7 @@
         {{ t('chat.v2.graphStageTitle') }}
       </span>
       <span class="header-progress">{{ completedCount }}/{{ nodes.length }}</span>
-      <q-badge :color="stageStatusColor">{{ stageStatusLabel }}</q-badge>
+      <AppStatusChip :status="derivedStatus" />
       <div class="graph-viewport-controls">
         <q-btn
           flat
@@ -135,6 +135,7 @@ import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { usePlanDAGLayout } from '../../../features/chat/composables/usePlanDAGLayout';
 import GraphTeamNode from './GraphTeamNode.vue';
 import MemberSessionDialog from './MemberSessionDialog.vue';
+import AppStatusChip from '../../common/AppStatusChip.vue';
 import { GTN_WIDTH, graphTeamNodeHeight } from './graphTeamNodeUi';
 
 function useSafeI18n() {
