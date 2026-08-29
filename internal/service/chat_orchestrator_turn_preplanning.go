@@ -164,6 +164,9 @@ func intentArtifactToBiz(art *intent.Artifact) *biz.IntentArtifact {
 // message instructing the Spirit LLM to invoke plan_and_execute. The injected
 // message is appended to the run's context messages (same mechanism as the
 // intent pass injection), so it does not replace the agent's system prompt.
+//
+// SP-2a：提示注入仍是首选路径（LLM 遵从时零额外开销）；LLM 未遵从时由
+// ForcePlanningRoute 硬路由钩子直调（internal/agent/force_planning_route.go）。
 func forcedPlanningRunOption(decision GateDecision) trpcagent.RunOption {
 	msg := trpcmodel.NewSystemMessage(fmt.Sprintf(forcedPlanningSystemPrompt,
 		string(decision.Level),
@@ -171,4 +174,22 @@ func forcedPlanningRunOption(decision GateDecision) trpcagent.RunOption {
 		strings.TrimSpace(decision.Reason),
 	))
 	return trpcagent.WithInjectedContextMessages([]trpcmodel.Message{msg})
+}
+
+// forcePlanningTaskPrompt 为 SP-2a 硬路由选择 task_prompt：意图精化目标优先
+// （语义更清晰、利于 planner 分解），回退门控透传的 biz 镜像，最终回退原始
+// 用户消息。返回空串时 ContextWithForcePlanningRoute 不标记（与门控跳过
+// 等价，硬路由不触发）。
+func forcePlanningTaskPrompt(decision GateDecision, art *intent.Artifact, userMessage string) string {
+	if art != nil {
+		if goal := strings.TrimSpace(art.RefinedGoal); goal != "" {
+			return goal
+		}
+	}
+	if decision.IntentArtifact != nil {
+		if goal := strings.TrimSpace(decision.IntentArtifact.RefinedGoal); goal != "" {
+			return goal
+		}
+	}
+	return strings.TrimSpace(userMessage)
 }

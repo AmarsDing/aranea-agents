@@ -158,6 +158,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, hook)
 	}
 	entries = append(entries, newTokenUsageAccumulatorAfterHook())
+	// SP-2a 强制规划硬路由（AfterModel priority 100，其余观测 hook 先跑）：
+	// 门控 ForcePlanning 标记的根 turn 中，LLM 终答未调 plan_and_execute 时
+	// 直调（跳过重试）。详见 force_planning_route.go。
+	entries = append(entries, newForcePlanningRouteAfterModelHook(deps))
 
 	var cbRegistry *biztool.CircuitBreakerRegistry
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {

@@ -725,7 +725,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'coding_task_cancelled':
         pendingCodingApproval.value = null;
         {
-          const cancelled = String(meta.message ?? '编程工具审批已取消');
+          const cancelled = String(meta.message ?? i18n.global.t('spirit.codingApprovalCancelled'));
           if (cancelled) {
             Notify.create({ type: 'warning', message: cancelled, position: 'top' });
           }

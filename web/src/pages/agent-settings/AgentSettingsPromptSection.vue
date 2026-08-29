@@ -8,7 +8,7 @@
         <p class="settings-section__hint">控制运行时注入的提示块体量与人格强度。</p>
       </div>
     </div>
-    <div class="prompt-mode-segment" role="radiogroup" aria-label="系统提示模式">
+    <div class="prompt-mode-segment" role="radiogroup" :aria-label="$t('agentSettings.promptModeAriaLabel')">
       <button
         v-for="mode in promptModes"
         :key="mode.value"

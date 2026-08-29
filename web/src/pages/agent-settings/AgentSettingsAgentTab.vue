@@ -320,7 +320,7 @@
       <p class="settings-section__hint q-mt-md">
         记忆分层、心跳与语义检索请前往
         <q-btn flat dense size="sm" color="primary" no-caps label="「记忆」" @click="$emit('open-memory-tab')" />
-        Tab 配置。
+        {{ $t('agentSettings.memoryTabGotoSuffix') }}
       </p>
     </section>
 

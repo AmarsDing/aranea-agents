@@ -146,7 +146,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           type: 'warning',
           message: t('chat.serverShutdown', '服务器已关闭，请重新登录'),
           timeout: 0,
-          actions: [{ label: t('chat.relogin', '重新登录'), color: 'white', handler: () => {} }],
+          actions: [{ label: t('heartbeat.relogin'), color: 'white', handler: () => {} }],
         });
         const auth = useAuthStore();
         auth.user = null;

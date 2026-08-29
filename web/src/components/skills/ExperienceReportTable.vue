@@ -54,15 +54,15 @@
         <q-td colspan="100%">
           <div class="report-detail">
             <div v-if="props.row.rootCauseAnalysis" class="report-detail__block">
-              <div class="report-detail__label">根因分析</div>
+              <div class="report-detail__label">{{ $t('skillsPage.reportDetailRootCause') }}</div>
               <div class="report-detail__content">{{ props.row.rootCauseAnalysis }}</div>
             </div>
             <div v-if="props.row.suggestedFix" class="report-detail__block">
-              <div class="report-detail__label">建议修复</div>
+              <div class="report-detail__label">{{ $t('skillsPage.reportDetailSuggestedFix') }}</div>
               <div class="report-detail__content">{{ props.row.suggestedFix }}</div>
             </div>
             <div v-if="props.row.optimizationAdvice" class="report-detail__block">
-              <div class="report-detail__label">优化建议</div>
+              <div class="report-detail__label">{{ $t('skillsPage.reportDetailOptimization') }}</div>
               <div class="report-detail__content">{{ props.row.optimizationAdvice }}</div>
             </div>
           </div>

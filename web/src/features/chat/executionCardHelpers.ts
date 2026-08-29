@@ -7,6 +7,7 @@
  * pattern for global expand/collapse control.
  */
 import type { InjectionKey, Ref } from 'vue';
+import { i18n } from '../../i18n';
 import type { ToolUseEvent } from './types';
 
 // ── SP-FE-30: Provide/Inject global control ──
@@ -100,7 +101,7 @@ export function generateSummaryFallback(event: ToolUseEvent): string {
       return command ? `> ${truncate(command, 40)}` : '';
     }
     case 'plan_and_execute':
-      return '正在规划并执行…';
+      return i18n.global.t('chat.execution.planAndExecute');
     default:
       return '';
   }

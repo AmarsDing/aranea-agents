@@ -374,7 +374,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     await deps.focusCoordinator.runFocusOnce(key, options, async (resolveSkipReload) => {
       const session = await resolveSessionById(sid);
       if (!session) {
-        $q.notify({ type: 'warning', message: '找不到该会话' });
+        $q.notify({ type: 'warning', message: deps.t('chat.sessionNotFound') });
         return;
       }
       const aid = agentId?.trim() || session.agent_id?.trim() || deps.appStore.selectedAgent?.id?.trim();
@@ -382,7 +382,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       const agent =
         deps.appStore.agents.find((a) => a.id === aid) ?? deps.displayAgents.value?.find((a) => a.id === aid);
       if (!agent) {
-        $q.notify({ type: 'warning', message: '找不到该会话所属的 Agent' });
+        $q.notify({ type: 'warning', message: deps.t('chat.sessionAgentNotFound') });
         return;
       }
       await selectAgent(agent, { sessionId: sid, resolveSkipMessageReload: resolveSkipReload });

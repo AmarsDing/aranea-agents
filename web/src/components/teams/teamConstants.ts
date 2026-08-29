@@ -2,6 +2,7 @@
  * Team UI 常量：状态映射、模式/角色/引擎/失败策略选项、模板定义。
  * 与 `components/teams/*.vue` 共址，见 aranea-frontend-guide SKILL §3.3 路径硬性约定。
  */
+import { i18n } from '../../i18n';
 
 export const teamStatusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待执行', color: 'warning' },
@@ -156,7 +157,7 @@ export const failureDefaultOptions = ['retry_then_block', 'skip', 'fail_fast'].m
 
 export const parallelFailOptions = [
   { label: '继续（分支失败可跳过）', value: 'continue' },
-  { label: '中止', value: 'abort' },
+  { label: i18n.global.t('teamsPage.parallelFailAbort'), value: 'abort' },
 ];
 
 export const failureOnErrorOptions = ['await_review', 'halt'].map((value) => ({

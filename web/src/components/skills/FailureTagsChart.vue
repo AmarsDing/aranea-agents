@@ -19,9 +19,12 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { EChartsCoreOption } from 'echarts/core';
 import { usageChartPalette } from '../../features/usage/usageEcharts';
 import { useUsageChart } from '../../features/usage/useUsageChart';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   failureTags: Record<string, number>;
@@ -29,23 +32,23 @@ const props = defineProps<{
 
 const chartEl = ref<HTMLElement | null>(null);
 
-/** 失败标签中文化映射（与 biz/skill_scoring.go 的 FailureTag 常量集对齐；未收录的标签原样展示） */
-const TAG_LABELS: Record<string, string> = {
-  param_mismatch: '参数不匹配',
-  wrong_tool_choice: '工具选择错误',
-  tool_timeout: '工具超时',
-  tool_api_error: '工具 API 错误',
-  context_overflow: '上下文溢出',
-  instruction_ambiguity: '指令歧义',
-  user_cancelled: '用户取消',
-  unknown: '未分类',
+/** 失败标签 → i18n key 映射（与 biz/skill_scoring.go 的 FailureTag 常量集对齐；未收录的标签原样展示） */
+const TAG_KEYS: Record<string, string> = {
+  param_mismatch: 'skillsPage.failureTagParamMismatch',
+  wrong_tool_choice: 'skillsPage.failureTagWrongToolChoice',
+  tool_timeout: 'skillsPage.failureTagToolTimeout',
+  tool_api_error: 'skillsPage.failureTagToolApiError',
+  context_overflow: 'skillsPage.failureTagContextOverflow',
+  instruction_ambiguity: 'skillsPage.failureTagInstructionAmbiguity',
+  user_cancelled: 'skillsPage.failureTagUserCancelled',
+  unknown: 'skillsPage.failureTagUnknown',
 };
 
 const UNKNOWN_TAG = 'unknown';
 
 const slices = computed(() =>
   Object.entries(props.failureTags)
-    .map(([name, value]) => ({ name, label: TAG_LABELS[name] ?? name, value }))
+    .map(([name, value]) => ({ name, label: TAG_KEYS[name] ? t(TAG_KEYS[name]) : name, value }))
     .sort((a, b) => b.value - a.value),
 );
 
@@ -59,7 +62,7 @@ function barOption(): EChartsCoreOption {
   return {
     textStyle: { color: palette.text, fontFamily: 'inherit' },
     grid: { left: 8, right: 40, top: 8, bottom: 8, containLabel: true },
-    tooltip: { trigger: 'item', valueFormatter: (v: number) => `${v} 次` },
+    tooltip: { trigger: 'item', valueFormatter: (v: number) => t('skillsPage.statsTimes', { n: v }) },
     xAxis: {
       type: 'value',
       minInterval: 1,

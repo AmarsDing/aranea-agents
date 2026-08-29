@@ -32,19 +32,19 @@ export function useChatConfirmFlows(deps: ChatConfirmFlowsDeps) {
         const after = Math.round((result.estimated_tokens_after / 1000) * 10) / 10;
         $q.notify({
           type: 'positive',
-          message: t('chat.contextManuallyCompressed', `上下文已压缩 (${before}k → ${after}k tokens)`),
+          message: t('chat.contextManuallyCompressed', { before, after }),
           timeout: 4000,
         });
       } else {
         $q.notify({
           type: 'info',
-          message: t('chat.contextNoCompactionNeeded', '当前上下文无需压缩'),
+          message: t('chat.contextNoCompactionNeeded'),
           timeout: 3000,
         });
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      $q.notify({ type: 'negative', message: t('chat.contextCompactFailed', '压缩失败') + `: ${msg}`, timeout: 5000 });
+      $q.notify({ type: 'negative', message: t('chat.contextCompactFailed') + `: ${msg}`, timeout: 5000 });
     }
   }
 

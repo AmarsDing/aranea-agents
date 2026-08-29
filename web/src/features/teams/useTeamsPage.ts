@@ -508,7 +508,7 @@ export function useTeamsPage() {
       testRun.value = result.run;
       $q.notify({ type: 'positive', message: 'Team 测试运行完成' });
     } catch (err) {
-      testError.value = err instanceof Error ? err.message : '运行测试失败';
+      testError.value = err instanceof Error ? err.message : i18n.global.t('teamsPage.runTestFailed');
     } finally {
       testLoading.value = false;
     }

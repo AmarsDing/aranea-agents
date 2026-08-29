@@ -186,14 +186,14 @@ export function useMcpServersPage() {
     let base: string;
     if (metadata.last_error_message) base = metadata.last_error_message;
     else if (metadata.health_status === 'ok' && metadata.last_health_at)
-      base = `最近成功：${formatDate(metadata.last_health_at)}`;
+      base = t('mcpPage.lastHealthSuccess', { at: formatDate(metadata.last_health_at) }, 'Last success: {at}');
     else if (!row.enabled) base = t('mcpPage.notEnabledNotTested');
     else base = t('mcpPage.notTested');
     // P2：工具发现摘要与连通性结论正交，作为附加信息尾随展示。
     if (typeof metadata.tool_count === 'number') {
-      base += `；已发现 ${metadata.tool_count} 个工具`;
+      base += t('mcpPage.healthToolsDiscovered', { n: metadata.tool_count }, '; discovered {n} tools');
     } else if (metadata.tools_error_message) {
-      base += '；工具发现失败';
+      base += t('mcpPage.healthToolsFailed', '; tool discovery failed');
     }
     return base;
   }

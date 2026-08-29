@@ -50,7 +50,7 @@ export function useKnowledgeUpload(deps: KnowledgeUploadDeps) {
   async function submitIngest() {
     const text = ingestForm.value.text.trim();
     if (!text) {
-      $q.notify({ type: 'warning', message: '请粘贴文本内容' });
+      $q.notify({ type: 'warning', message: t('knowledgePage.ingestTextRequired', 'Paste the text content first') });
       return;
     }
     ingestLoading.value = true;
@@ -79,9 +79,12 @@ export function useKnowledgeUpload(deps: KnowledgeUploadDeps) {
       }
       await deps.loadDocuments();
       await deps.loadCollections();
-      $q.notify({ type: 'positive', message: '文档已提交入库，正在后台解析...' });
+      $q.notify({
+        type: 'positive',
+        message: t('knowledgePage.ingestSubmitted', 'Document submitted; parsing in the background...'),
+      });
     } catch (e) {
-      $q.notify({ type: 'negative', message: deps.friendlyError(e) || '入库失败' });
+      $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.uploadFailed') });
     } finally {
       ingestLoading.value = false;
     }

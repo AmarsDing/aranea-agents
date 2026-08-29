@@ -174,6 +174,12 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
   registryCol<SkillEvolutionView>('lifecycleStatus', '生命周期', 'lifecycleStatus', 'left', REGISTRY_COL_W.status),
   registryCol<SkillEvolutionView>('triggerReason', '触发原因', 'triggerReason', 'left', REGISTRY_COL_W.desc),
   registryCol<SkillEvolutionView>('sandboxPassed', '沙箱验证', 'sandboxPassed', 'center', REGISTRY_COL_W.metric),
-  registryCol<SkillEvolutionView>('createdAt', '创建时间', 'createdAt', 'left', REGISTRY_COL_W.timeWide),
+  registryCol<SkillEvolutionView>(
+    'createdAt',
+    i18n.global.t('evolutionSuggestionsPage.colCreatedAt'),
+    'createdAt',
+    'left',
+    REGISTRY_COL_W.timeWide,
+  ),
   registryColActions<SkillEvolutionView>(),
 ];

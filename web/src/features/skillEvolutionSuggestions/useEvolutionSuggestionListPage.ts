@@ -10,7 +10,7 @@ export const statusOptions = [
   { label: '已批准', value: 'approved' },
   { label: '已拒绝', value: 'rejected' },
   { label: '已应用', value: 'applied' },
-  { label: '已注册', value: 'registered' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusRegistered'), value: 'registered' },
   { label: i18n.global.t('evolutionSuggestionsPage.statusExpired'), value: 'expired' },
 ];
 

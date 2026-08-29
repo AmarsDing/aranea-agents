@@ -2,6 +2,7 @@ import axios, { type AxiosError } from 'axios';
 import { Notify } from 'quasar';
 import { getBackendOrigin } from '../config/runtime';
 import { bearerAuthHeader } from './authToken';
+import { i18n } from '../i18n';
 
 /** Default HTTP timeout for admin CRUD APIs (ms). */
 export const KRATOS_API_DEFAULT_TIMEOUT_MS = 30_000;
@@ -131,7 +132,7 @@ kratosApi.interceptors.response.use(
       if (!skipNotify) {
         Notify.create({
           type: 'warning',
-          message: kratosMsg ?? `请求错误 (${status})`,
+          message: kratosMsg ?? i18n.global.t('common.requestError', { status }),
           timeout: 3500,
         });
       }

@@ -898,7 +898,7 @@ function onConnect(connection: Connection) {
       graphDef.value.edges,
     );
     if (!validation.valid) {
-      $q.notify({ type: 'negative', message: validation.reason ?? '无效连接', timeout: 3000 });
+      $q.notify({ type: 'negative', message: validation.reason ?? t('graphs.canvasInvalidConnection'), timeout: 3000 });
       return;
     }
     if (validation.warning) {

@@ -115,9 +115,12 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
         deps.selectedId.value = '';
       }
       await deps.loadCollections();
-      $q.notify({ type: 'positive', message: '已删除' });
+      $q.notify({ type: 'positive', message: t('knowledgePage.deleted', 'Deleted') });
     } catch (e) {
-      $q.notify({ type: 'negative', message: deps.friendlyError(e) || '删除失败' });
+      $q.notify({
+        type: 'negative',
+        message: deps.friendlyError(e) || t('knowledgePage.deleteFailed', 'Delete failed'),
+      });
     }
   }
 
@@ -141,8 +144,8 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
 
   function confirmDeleteDocument(doc: KnowledgeDocument) {
     $q.dialog({
-      title: '删除文档',
-      message: `删除「${doc.source}」？`,
+      title: t('knowledgePage.deleteDocTitle', 'Delete document'),
+      message: t('knowledgePage.deleteDocMessage', { name: doc.source }, 'Delete "{name}"?'),
       cancel: true,
     }).onOk(async () => {
       try {
@@ -150,9 +153,12 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
         await deps.loadDocuments();
         await deps.loadCollections();
         removedDocId.value = doc.id;
-        $q.notify({ type: 'positive', message: '已删除' });
+        $q.notify({ type: 'positive', message: t('knowledgePage.deleted', 'Deleted') });
       } catch (e) {
-        $q.notify({ type: 'negative', message: deps.friendlyError(e) || '删除失败' });
+        $q.notify({
+          type: 'negative',
+          message: deps.friendlyError(e) || t('knowledgePage.deleteFailed', 'Delete failed'),
+        });
       }
     });
   }

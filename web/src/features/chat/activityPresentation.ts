@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n';
 import type { ActivityKind, ToolUseEvent } from './types';
 
 /** Curated friendly display labels for known tool_name values.
@@ -30,14 +31,27 @@ export const builtinLabels: Record<string, string> = {
   list_member_files: '查看成员文件',
   read_member_file: '读取成员文件',
   search_member_files: '搜索成员文件',
-  send_dept_message: '发送部门消息',
-  list_inbox: '查看部门信箱',
-  read_message: '读取消息',
-  reply_message: '回复消息',
-  search_messages: '搜索消息',
-  list_agent_sessions: '查看会话列表',
-  read_session_history: '读取会话历史',
 };
+
+/**
+ * Dept/message/session tool labels resolve through i18n keys (lazily, so
+ * runtime locale switches apply) instead of the static table above.
+ */
+const builtinLabelKeys: Record<string, string> = {
+  send_dept_message: 'chat.toolLabel.sendDeptMessage',
+  list_inbox: 'chat.toolLabel.listInbox',
+  read_message: 'chat.toolLabel.readMessage',
+  reply_message: 'chat.toolLabel.replyMessage',
+  search_messages: 'chat.toolLabel.searchMessages',
+  list_agent_sessions: 'chat.toolLabel.listAgentSessions',
+  read_session_history: 'chat.toolLabel.readSessionHistory',
+};
+
+function resolveBuiltinLabel(toolName: string): string | undefined {
+  const key = builtinLabelKeys[toolName];
+  if (key) return i18n.global.t(key);
+  return builtinLabels[toolName];
+}
 
 const kindIcons: Record<ActivityKind, string> = {
   tool: 'build',
@@ -70,7 +84,7 @@ export function resolveDisplayLabel(event: ToolUseEvent): string {
   return (
     event.display_label?.trim() ||
     event.tool_label?.trim() ||
-    builtinLabels[event.tool_name] ||
+    resolveBuiltinLabel(event.tool_name) ||
     event.tool_name ||
     'tool'
   );

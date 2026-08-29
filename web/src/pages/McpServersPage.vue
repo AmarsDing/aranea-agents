@@ -69,8 +69,18 @@
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-icon name="power" size="48px" color="grey-5" />
         <div class="text-subtitle1 text-weight-bold">暂无 MCP 服务器</div>
-        <div class="text-caption text-grey-7">添加您的第一个 MCP 服务器以开始使用。</div>
-        <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="添加服务器" @click="openCreate" />
+        <div class="text-caption text-grey-7">
+          {{ $t('mcpPage.emptyHint', 'Add your first MCP server to get started.') }}
+        </div>
+        <q-btn
+          class="q-mt-md"
+          color="primary"
+          rounded
+          unelevated
+          icon="add"
+          :label="$t('mcpPage.addServer', 'Add server')"
+          @click="openCreate"
+        />
       </q-card-section>
     </q-card>
 
@@ -95,7 +105,7 @@
         :page-max="pageMax"
         :total="total"
         :loading="loading"
-        label="个 MCP 服务器"
+        :label="$t('mcpPage.paginationUnit', 'MCP servers')"
         :page-size-options="[10, 20, 50]"
       />
     </template>

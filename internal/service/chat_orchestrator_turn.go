@@ -675,6 +675,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogDone("chat.pre_planning_gate", "强制规划路径", event.P("complexity_level", string(gateDecision.Level)), event.P("complexity_score", gateDecision.Score), event.P("reason", gateDecision.Reason))
 
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
+		// SP-2a：硬路由标记随 turn ctx 传入 run——提示注入仍是首选路径；
+		// LLM 终答未调 plan_and_execute 时由 AfterModel 钩子直调
+		// （跳过重试，见 internal/agent/force_planning_route.go）。
+		ctx = chatagent.ContextWithForcePlanningRoute(ctx, chatagent.ForcePlanningRoute{
+			TaskPrompt: forcePlanningTaskPrompt(gateDecision, intentArtifact, input.Content),
+			Level:      string(gateDecision.Level),
+			Score:      gateDecision.Score,
+			Reason:     gateDecision.Reason,
+		})
 	}
 	// 包B B4（session-eval-20260825）：编排路由决策落 flowlog——S07 三次执行
 	// 三种路径（直答 / plan_and_execute roster miss / build_orchestration_graph）

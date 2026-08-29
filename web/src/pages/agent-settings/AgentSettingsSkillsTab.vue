@@ -341,6 +341,8 @@ const SECTION_IDS = {
   executor: 'skills-section-executor',
 } as const;
 
+const { t } = useI18n();
+
 const baseExecutorOptions = [
   { label: 'Local（子进程，开发用）', value: 'local' },
   { label: 'Docker（容器隔离，推荐生产）', value: 'docker' },
@@ -352,10 +354,8 @@ const skillLoadModeOptions = [
   { label: 'progressive（L0→L1→L2 按需加载，默认）', value: 'progressive' },
   { label: 'turn（当前轮次）', value: 'turn' },
   { label: 'once（单次请求）', value: 'once' },
-  { label: 'session（会话内保持）', value: 'session' },
+  { label: t('agentSettings.skillLoadModeSession'), value: 'session' },
 ];
-
-const { t } = useI18n();
 
 const { activeId, selectSection } = useSkillsTabNav([
   SECTION_IDS.mount,
@@ -421,7 +421,10 @@ const codeExecutorOptions = computed(() =>
     return {
       ...opt,
       disable: unavailable,
-      label: unavailable && cap?.reason ? `${opt.label}（不可用：${cap.reason}）` : opt.label,
+      label:
+        unavailable && cap?.reason
+          ? t('agentSettings.skillExecutorOptionUnavailable', { label: opt.label, reason: cap.reason })
+          : opt.label,
     };
   }),
 );

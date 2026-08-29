@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n';
 import type { SpiritTeamStatus, SpiritTeamMode, TopologyType } from './types';
 import type { SessionStatus } from '../session/types';
 
@@ -189,7 +190,7 @@ export function formatTokenCount(tokenIn?: number, tokenOut?: number): string {
   const total = tin + tout;
   // Show as: 输入 1.2k · 输出 0.8k · 总计 2.0k
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-  return `输入 ${fmt(tin)} · 输出 ${fmt(tout)} · 总计 ${fmt(total)}`;
+  return i18n.global.t('spirit.tokenUsageSummary', { input: fmt(tin), output: fmt(tout), total: fmt(total) });
 }
 
 /** Get DQ score color CSS variable based on score value */

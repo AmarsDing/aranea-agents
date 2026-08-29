@@ -58,7 +58,13 @@
         label="验证超时"
       />
       <q-input v-model="form.promise_tag_open" dense outlined label="承诺开始标签" placeholder="&lt;promise&gt;" />
-      <q-input v-model="form.promise_tag_close" dense outlined label="承诺结束标签" placeholder="&lt;/promise&gt;" />
+      <q-input
+        v-model="form.promise_tag_close"
+        dense
+        outlined
+        :label="$t('agentSettings.ralphPromiseTagClose')"
+        placeholder="&lt;/promise&gt;"
+      />
     </div>
   </section>
 </template>

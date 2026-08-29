@@ -164,7 +164,7 @@
             </q-item>
           </q-list>
           <div v-if="!deadLettersLoading && !(deadLetters || []).length" class="text-center text-grey-7 q-pa-xl">
-            暂无待处理死信。
+            {{ $t('teamsPage.deadLetterEmpty') }}
           </div>
         </q-tab-panel>
       </q-tab-panels>

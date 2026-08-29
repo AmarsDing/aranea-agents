@@ -10,6 +10,7 @@ import type {
   EvalTrendPoint,
   JudgeDivergenceCase,
 } from './types';
+import { i18n } from '../../i18n';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
 
 /** EvaluationPage — Run 列表 */
@@ -62,16 +63,46 @@ export const EVAL_RESULT_TABLE_COLUMNS: QTableColumn<EvalCaseResult>[] = [
   registryCol<EvalCaseResult>('actual_output', '实际输出', 'actual_output', 'left', REGISTRY_COL_W.content),
   registryCol<EvalCaseResult>('exact_match', 'Exact', 'exact_match', 'center', REGISTRY_COL_W.narrow),
   registryCol<EvalCaseResult>('contains_match', 'Contains', 'contains_match', 'center', REGISTRY_COL_W.narrow),
-  registryCol<EvalCaseResult>('human_pass', '人工', 'human_pass', 'center', REGISTRY_COL_W.narrow),
-  registryCol<EvalCaseResult>('human_score', '分数', 'human_score', 'center', REGISTRY_COL_W.narrow),
-  registryCol<EvalCaseResult>('human_comment', '评语', 'human_comment', 'left', REGISTRY_COL_W.name),
+  registryCol<EvalCaseResult>(
+    'human_pass',
+    i18n.global.t('evaluationPage.resultColHuman', 'Human'),
+    'human_pass',
+    'center',
+    REGISTRY_COL_W.narrow,
+  ),
+  registryCol<EvalCaseResult>(
+    'human_score',
+    i18n.global.t('evaluationPage.resultColScore', 'Score'),
+    'human_score',
+    'center',
+    REGISTRY_COL_W.narrow,
+  ),
+  registryCol<EvalCaseResult>(
+    'human_comment',
+    i18n.global.t('evaluationPage.resultColComment', 'Comment'),
+    'human_comment',
+    'left',
+    REGISTRY_COL_W.name,
+  ),
   registryCol<EvalCaseResult>('annotate', '', 'id', 'right', REGISTRY_COL_W.actions),
 ];
 
 /** EvaluationAnalyticsPanel — 趋势点 */
 export const EVAL_TREND_TABLE_COLUMNS: QTableColumn<EvalTrendPoint>[] = [
-  registryCol<EvalTrendPoint>('created_at', '时间', 'created_at', 'left', REGISTRY_COL_W.time),
-  registryCol<EvalTrendPoint>('trigger_source', '触发', 'trigger_source', 'left', REGISTRY_COL_W.metric),
+  registryCol<EvalTrendPoint>(
+    'created_at',
+    i18n.global.t('evaluationPage.trendColTime', 'Time'),
+    'created_at',
+    'left',
+    REGISTRY_COL_W.time,
+  ),
+  registryCol<EvalTrendPoint>(
+    'trigger_source',
+    i18n.global.t('evaluationPage.trendColTrigger', 'Trigger'),
+    'trigger_source',
+    'left',
+    REGISTRY_COL_W.metric,
+  ),
   registryCol<EvalTrendPoint>('exact_match_score', 'Exact', 'exact_match_score', 'right', REGISTRY_COL_W.narrow),
   registryCol<EvalTrendPoint>(
     'contains_match_score',
@@ -87,9 +118,21 @@ export const EVAL_TREND_TABLE_COLUMNS: QTableColumn<EvalTrendPoint>[] = [
 /** EvaluationAnalyticsPanel — 最近 Run */
 export const EVAL_RECENT_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
   registryCol<EvalRun>('id', 'Run', 'id', 'left', REGISTRY_COL_W.agent),
-  registryCol<EvalRun>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
+  registryCol<EvalRun>(
+    'status',
+    i18n.global.t('evaluationPage.recentColStatus', 'Status'),
+    'status',
+    'left',
+    REGISTRY_COL_W.status,
+  ),
   registryCol<EvalRun>('exact_match_score', 'Exact', 'exact_match_score', 'right', REGISTRY_COL_W.narrow),
-  registryCol<EvalRun>('created_at', '时间', 'created_at', 'left', REGISTRY_COL_W.time),
+  registryCol<EvalRun>(
+    'created_at',
+    i18n.global.t('evaluationPage.recentColTime', 'Time'),
+    'created_at',
+    'left',
+    REGISTRY_COL_W.time,
+  ),
 ];
 
 /** EvaluationAnalyticsPanel — Run 对比（actions 列由面板 slot 渲染 pairwise 按钮） */

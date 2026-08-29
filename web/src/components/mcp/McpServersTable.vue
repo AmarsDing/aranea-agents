@@ -206,8 +206,8 @@ function toolDiscoveryFailed(row: McpServerRow) {
 
 function toolCountLabel(row: McpServerRow) {
   const m = rowMetadata(row);
-  if (typeof m.tool_count === 'number') return `${m.tool_count} 工具`;
-  if (m.tools_error_message) return '发现失败';
+  if (typeof m.tool_count === 'number') return t('mcpPage.toolCount', { n: m.tool_count }, '{n} tools');
+  if (m.tools_error_message) return t('mcpPage.toolDiscoveryFailed', 'Discovery failed');
   return '';
 }
 
@@ -216,12 +216,19 @@ function toolCountTooltip(row: McpServerRow) {
   if (typeof m.tool_count === 'number') {
     const names = Array.isArray(m.tool_names) ? m.tool_names.filter((n): n is string => typeof n === 'string') : [];
     const shown = names.slice(0, 10).join('、');
-    const suffix = m.tool_count > names.length || names.length > 10 ? ` 等 ${m.tool_count} 个` : '';
+    const suffix =
+      m.tool_count > names.length || names.length > 10
+        ? t('mcpPage.toolCountMore', { n: m.tool_count }, ' of {n}')
+        : '';
     const list = shown ? `：${shown}${names.length > 10 ? '…' : ''}${suffix}` : '';
-    const at = m.tools_discovered_at ? `（最近发现：${formatDateTime(m.tools_discovered_at)}）` : '';
-    return `已发现 ${m.tool_count} 个工具${list}${at}`;
+    const at = m.tools_discovered_at
+      ? t('mcpPage.toolsDiscoveredAt', { at: formatDateTime(m.tools_discovered_at) }, ' (last discovered: {at})')
+      : '';
+    return t('mcpPage.toolsDiscovered', { n: m.tool_count, list, at }, 'Discovered {n} tools{list}{at}');
   }
-  return m.tools_error_message ? `工具发现失败：${m.tools_error_message}` : '';
+  return m.tools_error_message
+    ? t('mcpPage.toolDiscoveryError', { msg: m.tools_error_message }, 'Tool discovery failed: {msg}')
+    : '';
 }
 
 function formatDateTime(value: string) {

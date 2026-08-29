@@ -142,7 +142,7 @@ export function useGlobalInboundNotifications() {
         timeout: 5000,
         actions: [
           {
-            label: t('chat.channelInboundOpen', '查看'),
+            label: t('chat.channelInboundOpen'),
             color: 'white',
             handler: () => {
               // 如果session属于当前agent，先尝试在当前列表中高亮显示

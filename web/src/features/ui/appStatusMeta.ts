@@ -56,6 +56,50 @@ const STATUS_META: Record<string, AppStatusMeta> = {
   starting: { tone: 'info', icon: 'rocket_launch', labelKey: 'common.status.starting' },
   skipped: { tone: 'neutral', icon: 'skip_next', labelKey: 'common.status.skipped' },
   retrying: { tone: 'info', icon: 'refresh', labelKey: 'common.status.retrying' },
+  unknown: { tone: 'neutral', icon: 'help_outline', labelKey: 'common.status.unknown' },
+  // 渠道
+  pending_auth: { tone: 'warning', icon: 'vpn_key', labelKey: 'common.status.pendingAuth' },
+  // 诊断（pass/warn/fail 短词）
+  pass: { tone: 'success', icon: 'check_circle', labelKey: 'common.status.pass' },
+  warn: { tone: 'warning', icon: 'warning_amber', labelKey: 'common.status.warn' },
+  fail: { tone: 'danger', icon: 'cancel', labelKey: 'common.status.fail' },
+  failure: { tone: 'danger', icon: 'cancel', labelKey: 'common.status.failed' },
+  // 队列/任务
+  accepted: { tone: 'info', icon: 'check', labelKey: 'common.status.accepted' },
+  async_queued: { tone: 'neutral', icon: 'hourglass_empty', labelKey: 'common.status.asyncQueued' },
+  task_pending: { tone: 'neutral', icon: 'hourglass_empty', labelKey: 'common.status.taskPending' },
+  task_claimed: { tone: 'info', icon: 'assignment_ind', labelKey: 'common.status.taskClaimed' },
+  task_complete: { tone: 'success', icon: 'check_circle', labelKey: 'common.status.taskComplete' },
+  task_blocked: { tone: 'danger', icon: 'block', labelKey: 'common.status.taskBlocked' },
+  task_review_required: { tone: 'warning', icon: 'rate_review', labelKey: 'common.status.taskReviewRequired' },
+  task_failed: { tone: 'danger', icon: 'cancel', labelKey: 'common.status.taskFailed' },
+  task_timed_out: { tone: 'warning', icon: 'schedule', labelKey: 'common.status.taskTimedOut' },
+  task_cancelled: { tone: 'neutral', icon: 'block', labelKey: 'common.status.taskCancelled' },
+  task_crashed: { tone: 'danger', icon: 'report', labelKey: 'common.status.taskCrashed' },
+  task_pending_assignment: { tone: 'neutral', icon: 'hourglass_empty', labelKey: 'common.status.taskPendingAssignment' },
+  // 运行/计划
+  loading: { tone: 'info', icon: 'sync', labelKey: 'common.status.loading' },
+  waiting: { tone: 'neutral', icon: 'hourglass_empty', labelKey: 'common.status.waiting' },
+  waiting_human: { tone: 'warning', icon: 'person', labelKey: 'common.status.waitingHuman' },
+  planning: { tone: 'info', icon: 'edit_note', labelKey: 'common.status.planning' },
+  executing: { tone: 'info', icon: 'play_circle', labelKey: 'common.status.executing' },
+  partial_failure: { tone: 'warning', icon: 'warning_amber', labelKey: 'common.status.partialFailure' },
+  paused: { tone: 'warning', icon: 'pause_circle', labelKey: 'common.status.paused' },
+  awaiting_user: { tone: 'warning', icon: 'person', labelKey: 'common.status.awaitingUser' },
+  sync: { tone: 'info', icon: 'sync', labelKey: 'common.status.sync' },
+  durable: { tone: 'success', icon: 'save', labelKey: 'common.status.durable' },
+  // 学习/知识提议
+  validated: { tone: 'success', icon: 'verified', labelKey: 'common.status.validated' },
+  approved: { tone: 'success', icon: 'approval', labelKey: 'common.status.approved' },
+  applied: { tone: 'success', icon: 'check_circle', labelKey: 'common.status.applied' },
+  rejected: { tone: 'danger', icon: 'block', labelKey: 'common.status.rejected' },
+  conflict: { tone: 'warning', icon: 'compare_arrows', labelKey: 'common.status.conflict' },
+  expired: { tone: 'neutral', icon: 'event_busy', labelKey: 'common.status.expired' },
+  detected: { tone: 'info', icon: 'search', labelKey: 'common.status.detected' },
+  confirmed: { tone: 'success', icon: 'check_circle', labelKey: 'common.status.confirmed' },
+  dismissed: { tone: 'neutral', icon: 'block', labelKey: 'common.status.dismissed' },
+  // 美式拼写别名
+  canceled: { tone: 'neutral', icon: 'block', labelKey: 'common.status.cancelled' },
 };
 
 /** 按状态原文（大小写不敏感）查元数据；未收录返回 null */

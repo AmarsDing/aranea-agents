@@ -23,6 +23,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   total: number;
@@ -67,36 +70,36 @@ const cards = computed<StatCard[]>(() => {
 
   return [
     {
-      label: '报告总数',
+      label: t('skillsPage.reportStatTotal'),
       icon: 'assessment',
       value: String(props.total),
       valueClass: 'overview-stat-card__value--tech-blue',
-      sub: `成功 ${props.successCount} · 失败 ${props.failureCount}`,
-      caption: '当前筛选范围',
+      sub: t('skillsPage.reportStatTotalSub', { success: props.successCount, failure: props.failureCount }),
+      caption: t('skillsPage.reportStatTotalCaption'),
     },
     {
-      label: '成功率',
+      label: t('skillsPage.statsSuccessRate'),
       icon: 'verified',
       iconClass: 'overview-stat-card__icon-wrap--accent',
       value: ratePct == null ? '—' : `${ratePct}%`,
       valueClass: rateValueClass,
-      sub: `失败 ${props.failureCount} 条`,
+      sub: t('skillsPage.reportStatRateSub', { count: props.failureCount }),
       bar: ratePct == null ? undefined : { width: `${Math.min(ratePct, 100)}%`, fillClass: rateFill },
     },
     {
-      label: '平均评分',
+      label: t('skillsPage.reportStatAvgScore'),
       icon: 'grade',
       value: props.total > 0 ? props.avgScore.toFixed(1) : '—',
       valueClass: 'overview-stat-card__value--tech-cyan',
-      sub: '满分 100',
+      sub: t('skillsPage.reportStatAvgScoreSub'),
     },
     {
-      label: '失败记录',
+      label: t('skillsPage.reportStatFailure'),
       icon: 'error_outline',
       iconClass: props.failureCount > 0 ? 'overview-stat-card__icon-wrap--danger' : undefined,
       value: String(props.failureCount),
       valueClass: props.failureCount > 0 ? 'overview-stat-card__value--tech-red' : undefined,
-      sub: `含根因分析 ${props.rcaCount} 条`,
+      sub: t('skillsPage.reportStatFailureSub', { count: props.rcaCount }),
     },
   ];
 });
