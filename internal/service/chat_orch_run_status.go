@@ -121,6 +121,15 @@ func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessio
 	if entry, ok := t.runs.GetStatus(sessionID); ok {
 		from = biz.ParseRunState(entry.Status)
 		hasCurrent = true
+		// R4-Q2: terminal statuses are retained in the registry for a polling
+		// TTL after Finish. An entry whose RunID belongs to a PREVIOUS run must
+		// not gate the new run's lifecycle — treat it as absent so the FSM
+		// does not reject the new run's first transition (terminal→running is
+		// illegal) and C-10 sticky-cancelled only applies within one run.
+		if entry.RunID != "" && runID != "" && entry.RunID != runID {
+			from = biz.RunStateNone
+			hasCurrent = false
+		}
 	}
 	to := biz.ParseRunState(status)
 

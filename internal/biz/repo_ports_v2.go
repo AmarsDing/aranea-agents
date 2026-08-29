@@ -67,6 +67,11 @@ type TaskV2Repo interface {
 type TurnV2Reader interface {
 	GetTurn(ctx context.Context, id string) (Turn, error)
 	ListTurnsByTask(ctx context.Context, taskID string) ([]Turn, error)
+	// MaxSeqBySession returns MAX(seq) of turns_v2 for the session, or 0 if
+	// none. R4-Q3: turns_v2.seq is a per-SESSION turn counter (member turns
+	// count in their own member session); used to restore the per-session
+	// turn counter after process restart.
+	MaxSeqBySession(ctx context.Context, sessionID string) (int64, error)
 }
 
 type TurnV2Writer interface {

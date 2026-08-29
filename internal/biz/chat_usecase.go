@@ -235,6 +235,13 @@ func (uc *ChatUsecase) SetRunStatusWithError(ctx context.Context, sessionID, run
 	fromState := RunStateNone
 	if hasCurrent {
 		fromState = ParseRunState(current.Status)
+		// R4-Q2: terminal statuses are retained for a polling TTL after Finish;
+		// a status entry from a PREVIOUS run must not gate the new run's
+		// lifecycle (terminal→running is illegal in the per-run FSM).
+		if current.RunID != "" && runID != "" && current.RunID != runID {
+			fromState = RunStateNone
+			hasCurrent = false
+		}
 	}
 	toState := ParseRunState(status)
 	// Skip validation when there is no prior record (bootstrap/crash recovery).

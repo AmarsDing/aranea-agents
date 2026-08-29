@@ -79,6 +79,11 @@ func (s *statusMap) load(key string) (*RunStatusEntry, bool) {
 func (s *statusMap) store(key string, val *RunStatusEntry) { s.m.Store(key, val) }
 func (s *statusMap) delete(key string)                     { s.m.Delete(key) }
 
+// TerminalStatusTTL 是终态 run status 在 Finish 后仍可被 run-status 轮询
+// 查询到的保留窗口（R4-Q2：run 完成即删导致轮询客户端 404 空转超时）。
+// 过期后由 GetStatus 惰性清除。
+const TerminalStatusTTL = 10 * time.Minute
+
 // RunRegistry owns per-session runtime state shared by chat, websocket, team,
 // cron, channel, and gateway ingress.
 //
@@ -190,7 +195,13 @@ func (r *RunRegistry) Finish(sessionID, runID string) {
 			return
 		}
 	}
-	r.runStatuses.delete(sessionID)
+	// R4-Q2: terminal statuses are KEPT for TerminalStatusTTL so run-status
+	// polling can observe the terminal state instead of getting 404. Non-terminal
+	// entries at Finish time (abnormal path) are dropped immediately. Expired
+	// terminal entries are lazily removed by GetStatus.
+	if entry, ok := r.runStatuses.load(sessionID); !ok || !IsRunStatusTerminal(entry.Status) {
+		r.runStatuses.delete(sessionID)
+	}
 	r.pendingCancels.delete(sessionID)
 }
 
@@ -346,6 +357,11 @@ func (r *RunRegistry) GetStatus(sessionID string) (RunStatusEntry, bool) {
 	}
 	entry, ok := r.runStatuses.load(sessionID)
 	if !ok || entry == nil {
+		return RunStatusEntry{}, false
+	}
+	// R4-Q2: lazy-expire retained terminal statuses after TerminalStatusTTL.
+	if IsRunStatusTerminal(entry.Status) && time.Since(entry.UpdatedAt) > TerminalStatusTTL {
+		r.runStatuses.delete(sessionID)
 		return RunStatusEntry{}, false
 	}
 	return *entry, true

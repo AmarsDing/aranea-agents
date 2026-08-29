@@ -53,6 +53,26 @@ func (r *turnV2Repo) ListTurnsByTask(ctx context.Context, taskID string) ([]biz.
 	return entTurnsV2ToBiz(rows), nil
 }
 
+// MaxSeqBySession returns the highest turn Seq stored for the session
+// (0 if none). R4-Q3: used to restore the per-session turn counter after
+// process restart (mirrors stepV2Repo.MaxSeqBySpiritSession).
+func (r *turnV2Repo) MaxSeqBySession(ctx context.Context, sessionID string) (int64, error) {
+	if r == nil || r.data == nil {
+		return 0, fmt.Errorf("turn v2 repo: database not configured")
+	}
+	row, err := r.data.RW().Read(ctx).TurnV2.Query().
+		Where(turnv2.SessionIDEQ(sessionID)).
+		Order(ent.Desc(turnv2.FieldSeq)).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return 0, nil
+		}
+		return 0, entErrToBizErr(err, "TURN_V2")
+	}
+	return row.Seq, nil
+}
+
 // CreateTurn inserts a new Turn with the caller's claimed Version.
 func (r *turnV2Repo) CreateTurn(ctx context.Context, t biz.Turn) (biz.Turn, error) {
 	if r == nil || r.data == nil {

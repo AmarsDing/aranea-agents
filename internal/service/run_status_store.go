@@ -2,6 +2,7 @@ package service
 
 import (
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
@@ -31,4 +32,19 @@ const (
 
 func terminalRunStatus(status string) bool {
 	return biz.IsSessionRunPhaseTerminal(biz.ParseSessionRunPhase(status)) || strings.TrimSpace(strings.ToLower(status)) == "idle"
+}
+
+// runStatusSnapshotFresh reports whether a persisted run-status snapshot's
+// updatedAt is within ttl of now. Unparseable/empty timestamps count as stale
+// (R4-Q2: fresh terminal snapshots are returned 200; stale ones 404).
+func runStatusSnapshotFresh(updatedAt string, ttl time.Duration) bool {
+	ts := strings.TrimSpace(updatedAt)
+	if ts == "" || ttl <= 0 {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return false
+	}
+	return time.Since(parsed) <= ttl
 }

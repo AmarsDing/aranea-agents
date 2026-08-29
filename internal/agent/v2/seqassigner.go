@@ -60,3 +60,36 @@ func (s *defaultSeqAssigner) RestoreAtLeast(spiritSessionID string, minSeq int64
 		}
 	}
 }
+
+// NextTurnSeq returns the next per-session TURN seq (from 1), independent of
+// the shared entity counter consumed by steps (R4-Q3).
+func (s *defaultSeqAssigner) NextTurnSeq(spiritSessionID string) int64 {
+	if spiritSessionID == "" {
+		spiritSessionID = "_default_"
+	}
+	v, _ := s.turnCounters.LoadOrStore(spiritSessionID, &atomic.Int64{})
+	return v.(*atomic.Int64).Add(1)
+}
+
+// RestoreTurnSeqAtLeast raises the turn counter so the next NextTurnSeq is
+// strictly greater than minSeq. Call with MAX(seq) from turns_v2 after
+// process restart (mirrors RestoreAtLeast for the shared counter).
+func (s *defaultSeqAssigner) RestoreTurnSeqAtLeast(spiritSessionID string, minSeq int64) {
+	if minSeq <= 0 {
+		return
+	}
+	if spiritSessionID == "" {
+		spiritSessionID = "_default_"
+	}
+	v, _ := s.turnCounters.LoadOrStore(spiritSessionID, &atomic.Int64{})
+	counter := v.(*atomic.Int64)
+	for {
+		cur := counter.Load()
+		if cur >= minSeq {
+			return
+		}
+		if counter.CompareAndSwap(cur, minSeq) {
+			return
+		}
+	}
+}

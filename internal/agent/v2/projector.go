@@ -32,6 +32,12 @@ type SeqAssigner interface {
 	// RestoreAtLeast raises the counter so the next NextSeq is > minSeq.
 	// Used after process restart to avoid reusing Seq values already in DB (B-06).
 	RestoreAtLeast(spiritSessionID string, minSeq int64)
+	// NextTurnSeq allocates the per-session TURN seq (R4-Q3: turns_v2.seq is a
+	// per-session turn counter 1,2,3…, independent of the shared step counter).
+	NextTurnSeq(spiritSessionID string) int64
+	// RestoreTurnSeqAtLeast raises the turn counter so the next NextTurnSeq is
+	// > minSeq. Call with MAX(seq) from turns_v2 after process restart.
+	RestoreTurnSeqAtLeast(spiritSessionID string, minSeq int64)
 }
 
 // stepCheckpointInterval 流式 checkpoint 节流间隔：每个 step 至多每秒广播一次
@@ -244,6 +250,17 @@ func (f *ProjectorFactory) RestoreSeqIfNeeded(spiritSessionID string, maxSeqFrom
 		return
 	}
 	f.seqAsg.RestoreAtLeast(spiritSessionID, maxSeqFromDB)
+}
+
+// RestoreTurnSeqIfNeeded raises the dedicated turn counter so the next
+// NextTurnSeq for spiritSessionID is > maxTurnSeqFromDB (R4-Q3, mirrors
+// RestoreSeqIfNeeded for the shared counter). Shares the per-process
+// seqRestored gate: turn and step maxima are restored at the same call site.
+func (f *ProjectorFactory) RestoreTurnSeqIfNeeded(spiritSessionID string, maxTurnSeqFromDB int64) {
+	if f == nil || f.seqAsg == nil || spiritSessionID == "" || maxTurnSeqFromDB <= 0 {
+		return
+	}
+	f.seqAsg.RestoreTurnSeqAtLeast(spiritSessionID, maxTurnSeqFromDB)
 }
 
 // OnTurnStart emits task.created (root turns only) followed by turn.started.

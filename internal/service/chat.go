@@ -519,19 +519,25 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 		resp.UpdatedAt = updatedAt
 	} else if snap, ok := s.orch.hydrateRunStatusFromSession(ctx, sessionID); ok {
 		// SP-1e（R3-Q13）：终态持久化会清除 run_id（chat_run_gateway.go
-		// terminalRunStatus 分支），hydration 得到 RunID="" 的残留快照——
-		// 对其返回 200 + 过期 status/updatedAt 即"脏数据"（S05/S10 实证：
-		// 前一天已取消的 run 仍返回 cancelled）。run 不存在时返回 404；
-		// 前端 hydrateFromHttpIfNeeded 静默忽略错误，WS 事件仍是状态主源。
-		// 非终态（running/awaiting_user）run_id 持久化保留，崩溃恢复 hydration
-		// 不受影响。
+		// terminalRunStatus 分支），hydration 得到 RunID="" 的残留快照。
+		// R4-Q2：终态快照在保留窗口（rt.TerminalStatusTTL）内返回 200 + 终态，
+		// 让轮询方拿到确定的终态语义而非 404 空转；超过窗口的陈旧快照仍返回
+		// 404（SP-1e 防脏数据语义保留）。非终态（running/awaiting_user）run_id
+		// 持久化保留，崩溃恢复 hydration 不受影响。
 		if strings.TrimSpace(snap.RunID) == "" {
-			return nil, apierror.NotFound(apierror.DomainChat, "no run found for session")
+			if terminalRunStatus(snap.Status) && runStatusSnapshotFresh(snap.UpdatedAt, rt.TerminalStatusTTL) {
+				resp.Status = snap.Status
+				resp.ErrorMessage = snap.ErrorMessage
+				resp.UpdatedAt = snap.UpdatedAt
+			} else {
+				return nil, apierror.NotFound(apierror.DomainChat, "no run found for session")
+			}
+		} else {
+			resp.RunId = snap.RunID
+			resp.Status = snap.Status
+			resp.ErrorMessage = snap.ErrorMessage
+			resp.UpdatedAt = snap.UpdatedAt
 		}
-		resp.RunId = snap.RunID
-		resp.Status = snap.Status
-		resp.ErrorMessage = snap.ErrorMessage
-		resp.UpdatedAt = snap.UpdatedAt
 		// Use await fields from hydrated snapshot when available.
 		if strings.TrimSpace(snap.Status) == "awaiting_user" {
 			resp.AwaitKind = snap.AwaitKind
