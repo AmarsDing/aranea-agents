@@ -308,7 +308,16 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	}
 	var seq int64
 	if p.seqAsg != nil {
-		seq = p.seqAsg.NextSeq(meta.SpiritSessionID)
+		// R4-Q3: turn seq comes from the dedicated per-session turn counter,
+		// not the shared counter consumed by steps — turns within one session
+		// are numbered 1,2,3… regardless of how many steps each turn emits.
+		// Keyed by session_id (member turns count in their own member
+		// session); falls back to spirit session when SessionID is empty.
+		turnSeqKey := meta.SessionID
+		if turnSeqKey == "" {
+			turnSeqKey = meta.SpiritSessionID
+		}
+		seq = p.seqAsg.NextTurnSeq(turnSeqKey)
 	}
 	turn := meta.newTurn(meta.TurnID, seq)
 	p.mu.Lock()

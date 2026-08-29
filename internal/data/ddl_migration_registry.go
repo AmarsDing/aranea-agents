@@ -558,6 +558,10 @@ var ddlMigrations = []ddlMigration{
 	// 20261272 knowledge_chunks_embedding_hnsw（P2）：知识检索 ANN 从 ivfflat
 	// 切 HNSW。存量 DROP ivfflat；fresh 库由 EnsureKnowledgeSchema 直接建 HNSW。
 	{Version: 20261272, Name: "knowledge_chunks_embedding_hnsw", Func: ddlKnowledgeChunksEmbeddingHNSW},
+	// 20261273 turns_v2_seq_per_session（R4-Q3）：turns_v2.seq 重排为
+	// per-session 单调计数（此前与 step 共享全局计数器，同会话 seq 呈
+	// 1→23→428）。按 (session_id, started_at, id) ROW_NUMBER 重排，幂等。
+	{Version: 20261273, Name: "turns_v2_seq_per_session", SQL: "sql/migrations/20261273_turns_v2_seq_per_session.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

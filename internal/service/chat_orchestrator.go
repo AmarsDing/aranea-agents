@@ -98,6 +98,7 @@ type chatTurnCoreDeps struct {
 	TurnTimeout time.Duration
 	StepReader  biz.StepV2Reader
 	StepWriter  biz.StepV2Writer
+	TurnReader  biz.TurnV2Reader
 	TaskV2      biz.TaskV2Repo
 }
 
@@ -212,6 +213,7 @@ func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase { return o.core
 func (o *ChatOrchestrator) turnTimeout() time.Duration           { return o.core.TurnTimeout }
 func (o *ChatOrchestrator) stepReader() biz.StepV2Reader         { return o.core.StepReader }
 func (o *ChatOrchestrator) stepWriter() biz.StepV2Writer         { return o.core.StepWriter }
+func (o *ChatOrchestrator) turnReader() biz.TurnV2Reader         { return o.core.TurnReader }
 func (o *ChatOrchestrator) taskV2Writer() biz.TaskV2Writer       { return o.core.TaskV2 }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
@@ -291,6 +293,9 @@ type ChatTurnDeps struct {
 	Admission    *biz.TurnAdmissionUsecase
 	StepReader   biz.StepV2Reader
 	StepWriter   biz.StepV2Writer
+	// TurnReader backs the R4-Q3 per-session turn-seq restore after process
+	// restart (MaxSeqBySession). Nil = restore skipped (fresh counter from 1).
+	TurnReader biz.TurnV2Reader
 	// TaskV2 backs interrupted-task resume (L3): GetTask pre-check +
 	// ResumeInterruptedTask CAS. Nil = resume unavailable (Internal error).
 	TaskV2 biz.TaskV2Repo

@@ -20,6 +20,11 @@ import (
 // sync.Map extraction rule does not apply.
 type defaultSeqAssigner struct {
 	counters sync.Map // sessionID → *atomic.Int64
+	// R4-Q3: turns_v2.seq must be a per-session TURN counter (1,2,3… per
+	// conversation turn), not shared with task/step/team entity allocation.
+	// turnCounters is an independent counter space so steps no longer inflate
+	// the turn sequence (observed: turn seqs 1→23→428 within one session).
+	turnCounters sync.Map // sessionID → *atomic.Int64
 }
 
 // NewDefaultSeqAssigner constructs a v2-local defaultSeqAssigner.

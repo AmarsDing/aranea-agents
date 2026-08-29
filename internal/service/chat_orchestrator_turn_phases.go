@@ -308,6 +308,15 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 				o.infraDeps.V2ProjectorFactory.RestoreSeqIfNeeded(sessionID, maxSeq)
 			}
 		}
+		// R4-Q3: restore the dedicated per-session TURN counter from
+		// turns_v2 MAX(seq) so new turns continue the session's 1,2,3…
+		// numbering instead of restarting at 1 (which would collide with
+		// persisted turns in the session's seq ordering).
+		if tr := o.turnReader(); tr != nil {
+			if maxTurnSeq, err := tr.MaxSeqBySession(ctx, sessionID); err == nil {
+				o.infraDeps.V2ProjectorFactory.RestoreTurnSeqIfNeeded(sessionID, maxTurnSeq)
+			}
+		}
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
 			RequestID:        userMsg.ID,

@@ -812,12 +812,12 @@ func provideRunnerConfig(
 		// M80：token_budget / no_progress 系统闸决策双写（设计 §3.2 row 3）。
 		DecisionCollector: decisions,
 		OutboundRouter:    outboundRouter,
-		SubAgentService: subAgentSvc,
-		KanbanBridge:    kanbanBridge,
-		ComputerUseUC:   computerUseUC,
-		SandboxFSStore:  sandboxLeases,
-		SandboxManager:  sandboxMgr,
-		A2AEnabled:      a2aUC != nil,
+		SubAgentService:   subAgentSvc,
+		KanbanBridge:      kanbanBridge,
+		ComputerUseUC:     computerUseUC,
+		SandboxFSStore:    sandboxLeases,
+		SandboxManager:    sandboxMgr,
+		A2AEnabled:        a2aUC != nil,
 		// SessionChildLookup resolves member agent session IDs for child_session_id
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up
 		// child sessions by parent (team) session ID and match by MemberAgentKey.
@@ -1012,6 +1012,7 @@ func provideChatServiceDeps(
 			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
 			StepReader:   stepReader,
 			StepWriter:   stepWriter,
+			TurnReader:   turnReader,
 			TaskV2:       taskV2Repo,
 		},
 		Usage: service.ChatUsageDeps{
