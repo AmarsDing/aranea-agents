@@ -155,7 +155,7 @@
               </q-card-section>
               <q-separator class="overview-separator" />
               <q-card-section>
-                <div class="overview-section-title" style="font-size: 0.85rem">
+                <div class="overview-section-title overview-section-title--sm">
                   {{ t('overviewPage.tokenComposition') }}
                 </div>
                 <UsageTokenComposition :summary="overview?.range" />

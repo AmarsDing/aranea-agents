@@ -73,7 +73,7 @@ const actions = [
   cursor: pointer
 
   &:hover
-    border-color: var(--glass-border-hover, rgba(128, 128, 128, 0.18))
+    border-color: var(--glass-border-hover)
 
   &__icon
     width: 40px
@@ -89,7 +89,7 @@ const actions = [
     &--agent
       background: var(--color-accent-indigo, #4F46E5)
     &--cron
-      background: var(--color-accent, #DCA03E)
+      background: var(--color-accent)
     &--settings
       background: var(--color-text-secondary)
 
@@ -117,7 +117,7 @@ body.body--dark
     background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
     border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
     &:hover
-      border-color: var(--glass-border-hover, rgba(255, 255, 255, 0.12))
+      border-color: var(--glass-border-hover)
 
   .command-center-quick-action__icon--chat
     background: var(--color-accent-blue, #3B82F6)
@@ -126,7 +126,7 @@ body.body--dark
     background: var(--color-accent-indigo, #818CF8)
 
   .command-center-quick-action__icon--cron
-    background: var(--color-accent, #4DD8E8)
+    background: var(--color-accent)
 
   .command-center-quick-action__icon--settings
     background: var(--color-text-secondary)

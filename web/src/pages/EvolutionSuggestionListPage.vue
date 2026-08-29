@@ -127,9 +127,8 @@
         <template #body-cell-triggerReason="props">
           <q-td :props="props">
             <span
-              class="app-registry-cell-sub ellipsis"
+              class="app-registry-cell-sub ellipsis app-field-max-240"
               :title="props.row.triggerReason ?? ''"
-              style="max-width: 240px"
             >
               {{ props.row.triggerReason || '—' }}
             </span>

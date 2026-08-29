@@ -46,6 +46,12 @@ type turnExecuteResult struct {
 	// not wired). Carried into PERSIST so the empty-reply failure path can
 	// persist an error step via ProjectTurnFailure (2026-08-19 no-reply fix).
 	turnProjector *v2.ActivityProjector
+	// cancelled is true when the stream consumer detected runCtx cancellation
+	// (c.canceled=true → turns_v2.status=cancelled). The outer ctx in the
+	// FinishSessionRunLifecycle defer may not carry the signal (cancellation
+	// propagates parent→child, not child→parent), so we propagate it
+	// explicitly to keep session_runs.phase consistent with turns_v2.status.
+	cancelled bool
 }
 
 // turnPersistResult holds the outputs of the PERSIST phase.

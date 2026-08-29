@@ -1,9 +1,6 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="onDialogUpdate">
-    <q-card
-      class="graph-task-drawer app-dialog-card app-glass-dialog"
-      :style="{ minWidth: '480px', maxWidth: '600px' }"
-    >
+    <q-card class="graph-task-drawer app-dialog-card app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
           <div class="app-glass-dialog__title">{{ t('graphs.taskDrawerTitle') }}</div>
@@ -15,8 +12,7 @@
       <div class="app-glass-dialog__scroll">
         <q-card-section
           v-if="!task && detailLoading"
-          class="app-dialog-body app-glass-dialog__body flex flex-center"
-          style="min-height: 120px"
+          class="app-dialog-body app-glass-dialog__body flex flex-center graph-task-drawer__loading"
         >
           <q-spinner color="primary" size="32px" />
         </q-card-section>

@@ -35,7 +35,7 @@ const { t } = useI18n();
 type LayerChip = { value: BrowseLayer; label: string; color: string };
 
 const layerOptions = computed<LayerChip[]>(() => [
-  { value: 'all', label: t('memory.browse.layers.all'), color: 'var(--color-chip-all, #607d8b)' },
+  { value: 'all', label: t('memory.browse.layers.all'), color: 'var(--color-text-secondary)' },
   ...(['L0', 'L1', 'L2', 'L3'] as const).map((key) => ({
     value: key as BrowseLayer,
     label: `${key} · ${t(`memory.panorama.layers.${key}.name`)}`,

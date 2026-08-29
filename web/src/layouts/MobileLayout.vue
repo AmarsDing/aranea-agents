@@ -10,7 +10,7 @@
             {{ auth.avatarLetter }}
           </q-avatar>
           <q-menu anchor="bottom right" self="top right">
-            <q-list dense style="min-width: 160px">
+            <q-list dense class="app-menu-min-160">
               <q-item>
                 <q-item-section class="text-caption text-grey">{{ auth.displayLabel }}</q-item-section>
               </q-item>

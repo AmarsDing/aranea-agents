@@ -83,5 +83,5 @@ const errorClass = computed(() => gaugeClass(props.errorRate, true));
   color: var(--color-accent, #DCA03E)
 
 body.body--dark .command-center-stat-panel__icon--runner
-  color: var(--color-accent, #4DD8E8)
+  color: var(--color-accent)
 </style>

@@ -52,7 +52,7 @@
                   :options="chunkStrategyOptions"
                   emit-value
                   map-options
-                  style="min-width: 140px"
+                  class="app-field-min-140"
                   @update:model-value="$emit('update:chunkStrategy', String($event ?? ''))"
                 />
                 <q-input
@@ -62,7 +62,7 @@
                   type="number"
                   label="分块大小"
                   hint="0 = 默认 512"
-                  style="max-width: 120px"
+                  class="app-field-max-120"
                   @update:model-value="$emit('update:chunkSize', Number($event) || 0)"
                 />
                 <q-input
@@ -72,7 +72,7 @@
                   type="number"
                   label="分块重叠"
                   hint="0 = 默认 64"
-                  style="max-width: 120px"
+                  class="app-field-max-120"
                   @update:model-value="$emit('update:chunkOverlap', Number($event) || 0)"
                 />
               </div>

@@ -87,9 +87,9 @@
 
     <!-- 水合中：用户面板 + 3 条 shimmer 骨架 -->
     <div v-if="!hydrated && hydrationState === 'loading'" class="task-card__skeleton" aria-hidden="true">
-      <div class="task-card__skeleton-bar" style="width: 62%" />
-      <div class="task-card__skeleton-bar" style="width: 38%" />
-      <div class="task-card__skeleton-bar" style="width: 81%" />
+      <div class="task-card__skeleton-bar task-card__skeleton-bar--w62" />
+      <div class="task-card__skeleton-bar task-card__skeleton-bar--w38" />
+      <div class="task-card__skeleton-bar task-card__skeleton-bar--w81" />
     </div>
 
     <!-- 折叠态（未水合 / 水合后手动收起）：仅 error 时显示 meta-bar -->
@@ -533,6 +533,13 @@ function copyMessage() {
     background: linear-gradient(90deg, var(--glass-surface) 25%, var(--glass-border) 50%, var(--glass-surface) 75%)
     background-size: 200% 100%
     animation: task-card-shimmer 1.4s infinite
+
+    &--w62
+      width: 62%
+    &--w38
+      width: 38%
+    &--w81
+      width: 81%
 
 @keyframes task-card-shimmer
   0%

@@ -7,7 +7,7 @@
       <span class="todo-inline-list__meta text-caption">{{ headerMeta }}</span>
       <q-space />
       <span v-if="isRunning" class="todo-inline-list__pulse" aria-hidden="true" />
-      <span v-if="durationLabel" class="text-caption" style="color: var(--color-text-tertiary)">{{
+      <span v-if="durationLabel" class="text-caption app-text-tertiary">{{
         durationLabel
       }}</span>
       <q-icon v-if="isFailed" name="error" color="negative" size="16px" />

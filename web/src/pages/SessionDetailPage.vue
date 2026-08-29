@@ -1,6 +1,6 @@
 <template>
   <q-page class="app-standard-page session-detail-page sessions-page">
-    <div v-if="loadingSession" class="column items-center justify-center" style="min-height: 300px">
+    <div v-if="loadingSession" class="column items-center justify-center app-loading-pane">
       <q-spinner color="primary" size="40px" />
       <div class="q-mt-md text-grey-7">加载中...</div>
     </div>
@@ -20,7 +20,7 @@
         <q-btn flat round icon="arrow_back" class="q-mr-sm" @click="router.push({ name: 'sessions' })" />
         <div class="col">
           <div class="row items-center q-gutter-sm">
-            <div class="text-h5" style="color: var(--color-text-primary)">{{ session.title || '未命名会话' }}</div>
+            <div class="text-h5 app-text-primary">{{ session.title || '未命名会话' }}</div>
             <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{
               ownerLabel(session.owner_type)
             }}</q-chip>
@@ -110,19 +110,19 @@
           </div>
           <div class="col-6 col-md-2">
             <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.messages') }}</div>
-            <div class="text-h6" style="color: var(--color-text-primary)">{{ session.message_count }}</div>
+            <div class="text-h6 app-text-primary">{{ session.message_count }}</div>
           </div>
           <div class="col-6 col-md-2">
             <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.modelCalls') }}</div>
-            <div class="text-h6" style="color: var(--color-text-primary)">{{ session.model_call_count }}</div>
+            <div class="text-h6 app-text-primary">{{ session.model_call_count }}</div>
           </div>
           <div class="col-6 col-md-2">
             <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.token') }}</div>
-            <div class="text-h6" style="color: var(--color-text-primary)">{{ formatNumber(session.total_tokens) }}</div>
+            <div class="text-h6 app-text-primary">{{ formatNumber(session.total_tokens) }}</div>
           </div>
           <div class="col-6 col-md-2">
             <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.cost') }}</div>
-            <div class="text-h6" style="color: var(--color-text-primary)">
+            <div class="text-h6 app-text-primary">
               {{ formatCostMicroUsd(session.total_cost_micro_usd) }}
             </div>
           </div>

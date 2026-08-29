@@ -17,7 +17,7 @@
     </template>
   </q-input>
   <q-menu v-model="showPicker" anchor="bottom right" self="top right" :offset="[0, 4]">
-    <q-list dense style="min-width: 200px" class="graph-variable-picker">
+    <q-list dense class="app-menu-min-200 graph-variable-picker">
       <q-item-label header>节点输出</q-item-label>
       <q-item v-for="node in nodes" :key="node.id" clickable @click="insertVariable(node.id, 'output')">
         <q-item-section side>

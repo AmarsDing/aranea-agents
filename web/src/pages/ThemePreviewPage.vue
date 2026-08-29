@@ -159,11 +159,11 @@
         <p class="theme-type theme-type--sm q-mb-md">
           Hero → 筛选面板 → 玻璃表格壳；列宽见 <code>registryTableColumns.ts</code>
         </p>
-        <div class="app-registry-page" style="padding: 0">
+        <div class="app-registry-page theme-preview-embed">
           <section class="app-page-hero q-mb-md">
             <div>
               <div class="app-page-kicker">Registry preview</div>
-              <h3 class="app-page-title" style="font-size: var(--text-lg)">实体列表示例</h3>
+              <h3 class="app-page-title theme-preview-embed__title">实体列表示例</h3>
               <p class="app-page-subtitle">紧凑 dense 表格 + 固定列宽 + 单元格 typography token</p>
             </div>
             <div class="app-actions-bar">

@@ -129,7 +129,7 @@ defineProps<{
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
-    filter: drop-shadow(0 0 12px var(--color-accent-cyan-soft, rgba(37, 99, 235, 0.25)))
+    filter: drop-shadow(0 0 12px var(--color-accent-cyan-soft))
     letter-spacing: -0.03em
     font-variant-numeric: tabular-nums
 
@@ -169,6 +169,9 @@ defineProps<{
   &__health-label
     color: var(--color-text-secondary)
     flex: 1
+
+  &__health-label--offset
+    margin-left: 14px
 
   &__health-value
     font-weight: 600
@@ -235,7 +238,7 @@ defineProps<{
 body.body--dark
   .command-center-stat-panel
     background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
-    border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
+    border-color: var(--glass-border)
     &:hover
       border-color: var(--glass-border-hover, rgba(255, 255, 255, 0.12))
 

@@ -3,7 +3,7 @@
     <q-card class="sessions-dialog-card app-dialog-card app-dialog-card--sm">
       <q-card-section>
         <div class="text-h6 text-weight-bold">确认永久删除</div>
-        <div class="text-body2 q-mt-sm" style="color: var(--color-text-secondary)">
+        <div class="text-body2 q-mt-sm app-text-secondary">
           {{ message }}
         </div>
       </q-card-section>

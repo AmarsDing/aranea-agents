@@ -17,7 +17,7 @@
     <div v-else-if="error" class="text-negative q-pa-md">{{ error }}</div>
 
     <div v-else class="col inspector-body">
-      <q-scroll-area style="height: min(520px, 60vh)">
+      <q-scroll-area class="inspector-body__scroll">
         <!-- 历史 Activity -->
         <div v-if="activities.length" class="q-mb-md">
           <div class="text-caption text-weight-bold q-mb-xs">历史 Activity</div>
@@ -135,6 +135,10 @@ defineExpose({ reload, clearEvents });
 <style scoped>
 .inspector-body {
   min-height: 280px;
+}
+
+.inspector-body__scroll {
+  height: min(520px, 60vh);
 }
 
 .ellipsis-3-lines {

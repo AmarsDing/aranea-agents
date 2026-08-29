@@ -1,5 +1,5 @@
 <template>
-  <q-card-section class="chat-composer" style="padding: 8px var(--chat-edge-gutter, 12px)">
+  <q-card-section class="chat-composer">
     <q-banner v-if="contextPressureLevel === 'critical'" rounded class="q-mb-sm app-banner-warning" dense>
       <template #avatar>
         <q-icon name="warning" color="negative" />
@@ -76,7 +76,7 @@
               class="q-mr-xs"
             />
             <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="accent" />
-            <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span>
+            <span class="ellipsis text-caption">{{ file.name }}</span>
             <q-tooltip>{{ file.name }}</q-tooltip>
             <q-btn
               icon="close"

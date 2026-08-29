@@ -2,7 +2,7 @@
   <q-card flat class="app-entity-glass-panel evaluation-analytics-panel">
     <q-card-section class="row items-center justify-between q-pb-none">
       <div class="text-subtitle2 text-weight-bold">趋势与对比</div>
-      <div class="app-form-field-grid items-end" style="grid-template-columns: minmax(180px, 240px) auto">
+      <div class="app-form-field-grid items-end evaluation-analytics-panel__filters">
         <q-select
           v-model="localAgentId"
           dense

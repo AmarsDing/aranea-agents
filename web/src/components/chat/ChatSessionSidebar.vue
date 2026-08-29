@@ -160,7 +160,7 @@
                     @click.stop
                   >
                     <q-menu anchor="bottom right" self="top right" class="chat-session-menu">
-                      <q-list dense style="min-width: 136px">
+                      <q-list dense class="app-menu-min-136">
                         <q-item v-close-popup clickable @click="renameSession(session)">
                           <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
                           <q-item-section>{{ t('chat.rename') }}</q-item-section>

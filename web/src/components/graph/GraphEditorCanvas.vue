@@ -1182,27 +1182,21 @@ onUnmounted(() => {
     gap: 8px
     padding: 6px 12px
     border-radius: 20px
-    background: var(--glass-surface, rgba(30, 30, 30, 0.7))
+    background: var(--glass-surface)
     backdrop-filter: blur(10px)
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1))
+    border: 1px solid var(--glass-border)
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2)
     z-index: 10
 
   &__zoom-text
     font-size: 12px
     font-weight: 500
-    color: var(--text-primary, #fff)
+    color: var(--color-text-primary)
     cursor: pointer
     user-select: none
     min-width: 40px
     text-align: center
 
     &:hover
-      color: var(--color-accent, #42a5f5)
-
-// Dark theme adjustments
-.is-dark
-  .graph-editor-canvas__zoom-indicator
-    background: var(--glass-surface-dark, rgba(20, 20, 20, 0.8))
-    border-color: var(--glass-border-dark, rgba(255, 255, 255, 0.08))
+      color: var(--color-accent)
 </style>

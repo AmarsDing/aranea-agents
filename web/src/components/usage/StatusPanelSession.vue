@@ -71,5 +71,5 @@ const sparklinePoints = computed(() => {
   color: var(--color-accent-blue, #2563EB)
 
 body.body--dark .command-center-stat-panel__icon--session
-  color: var(--color-accent-blue, #3B82F6)
+  color: var(--color-accent-blue)
 </style>

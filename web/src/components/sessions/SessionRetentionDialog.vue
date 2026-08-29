@@ -3,7 +3,7 @@
     <q-card class="sessions-dialog-card app-dialog-card app-dialog-card--sm">
       <q-card-section>
         <div class="text-h6 text-weight-bold">{{ title }}</div>
-        <div class="text-caption q-mt-xs" style="color: var(--color-text-secondary)">{{ subtitle }}</div>
+        <div class="text-caption q-mt-xs app-text-secondary">{{ subtitle }}</div>
         <q-input
           v-model.number="days"
           type="number"

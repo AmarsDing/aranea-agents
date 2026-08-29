@@ -145,7 +145,7 @@ function containsSession(node: SessionTreeNode, sessionId: string): boolean {
     &:hover
       background: var(--glass-surface)
     &--active
-      background: var(--color-accent-transparent, rgba(99, 102, 241, 0.12))
+      background: color-mix(in srgb, var(--color-accent) 12%, transparent)
 
   .node-toggle
     color: var(--color-text-secondary)

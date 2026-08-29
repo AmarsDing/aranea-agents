@@ -1,5 +1,5 @@
 <template>
-  <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0">
+  <q-card flat bordered class="col column no-wrap chat-mid-card">
     <!-- Breadcrumb navigation for team/member modes -->
     <div
       v-if="panelMode === 'team' || panelMode === 'member'"
@@ -127,8 +127,8 @@
         <span class="text-caption">{{ spiritLoadingMessage.text }}</span>
       </div>
     </div>
-    <div class="col row no-wrap chat-messages-area" style="min-height: 0">
-      <div class="col column no-wrap chat-messages-main" style="min-height: 0">
+    <div class="col row no-wrap chat-messages-area">
+      <div class="col column no-wrap chat-messages-main">
         <template v-if="isChatView">
           <TodoKanbanBoard
             v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"

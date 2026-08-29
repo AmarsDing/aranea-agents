@@ -158,7 +158,7 @@
               <q-btn flat dense round icon="more_vert" color="primary">
                 <q-tooltip>{{ t('cron.moreActions') }}</q-tooltip>
                 <q-menu anchor="bottom right" self="top right">
-                  <q-list dense style="min-width: 160px">
+                  <q-list dense class="app-menu-min-160">
                     <q-item v-close-popup clickable @click="openRuns(props.row)">
                       <q-item-section avatar><q-icon name="history" /></q-item-section>
                       <q-item-section>{{ t('cron.runHistory') }}</q-item-section>

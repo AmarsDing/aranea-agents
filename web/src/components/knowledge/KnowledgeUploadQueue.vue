@@ -16,7 +16,7 @@
     </div>
     <q-list dense class="q-pb-sm">
       <q-item v-for="task in tasks" :key="task.id" class="knowledge-upload-queue__item">
-        <q-item-section avatar style="min-width: 36px">
+        <q-item-section avatar class="knowledge-upload-queue__status">
           <q-spinner v-if="task.status === 'reading' || task.status === 'uploading'" color="primary" size="18px" />
           <q-icon v-else-if="task.status === 'success'" name="check_circle" color="positive" size="20px" />
           <q-icon v-else name="error" color="negative" size="20px" />

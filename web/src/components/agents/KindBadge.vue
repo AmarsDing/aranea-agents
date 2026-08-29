@@ -12,19 +12,19 @@ const props = defineProps<{
 const kindMap: Record<string, { label: string; style: { backgroundColor: string; color: string } }> = {
   system_builtin: {
     label: '内置',
-    style: { backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent, #fff)' },
+    style: { backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent)' },
   },
   ecosystem_preset: {
     label: '预设',
-    style: { backgroundColor: 'var(--color-positive)', color: 'var(--color-on-accent, #fff)' },
+    style: { backgroundColor: 'var(--color-success)', color: 'var(--color-on-accent)' },
   },
   marketplace: {
     label: '商城',
-    style: { backgroundColor: 'var(--color-accent-indigo, #4F46E5)', color: 'var(--color-on-accent, #fff)' },
+    style: { backgroundColor: 'var(--color-accent-indigo)', color: 'var(--color-on-accent)' },
   },
   certified: {
     label: '认证',
-    style: { backgroundColor: 'var(--color-warning, #F09B54)', color: 'var(--color-on-accent, #fff)' },
+    style: { backgroundColor: 'var(--color-warning)', color: 'var(--color-on-accent)' },
   },
 };
 

@@ -69,8 +69,7 @@
         </div>
         <div
           v-if="hiddenOrchestratedCount > 0"
-          class="q-mt-md row items-center no-wrap rounded-borders q-px-sm q-py-xs text-caption app-text-secondary"
-          style="border: 1px dashed var(--q-primary)"
+          class="q-mt-md row items-center no-wrap rounded-borders q-px-sm q-py-xs text-caption app-text-secondary teams-page__hint-banner"
         >
           <q-icon name="visibility_off" size="16px" class="q-mr-xs" />
           <span>{{ t('teamsPage.hiddenOrchestrated', { count: hiddenOrchestratedCount }) }}</span>

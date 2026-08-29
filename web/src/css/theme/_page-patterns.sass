@@ -266,6 +266,14 @@ body.body--dark
   @media (width <= 1023px)
     grid-template-columns: 1fr
 
+// 评估分析面板过滤区：下拉 + 操作按钮两列
+.evaluation-analytics-panel__filters
+  grid-template-columns: minmax(180px, 240px) auto
+
+// 评估结果人工评分输入框
+.evaluation-score-input
+  max-width: 88px
+
 // Template D — 双栏编辑/列表页（知识库 / 评估 / Memory 等）
 .app-pane-card
   border: 1px solid var(--glass-border)
@@ -318,6 +326,45 @@ body.body--dark
 // --- 通用工具 class ---
 .min-width-0
   min-width: 0
+
+// 下拉菜单最小宽度（q-list in q-menu 等）
+.app-menu-min-110
+  min-width: 110px
+.app-menu-min-136
+  min-width: 136px
+.app-menu-min-160
+  min-width: 160px
+.app-menu-min-180
+  min-width: 180px
+.app-menu-min-200
+  min-width: 200px
+
+// 加载中占位面板（详情页骨架）
+.app-loading-pane
+  min-height: 300px
+
+// 文本颜色 token 工具（app-text-secondary/-tertiary 已在 app-global.sass 定义，此处不重复）
+.app-text-primary
+  color: var(--color-text-primary)
+
+.app-break-all
+  word-break: break-all
+
+// 全视口高度居中容器（ChatPage 启动占位等）
+.app-full-viewport-center
+  height: 100vh
+
+// 表单字段宽度工具（Ingest 对话框分块配置等）
+.app-field-min-140
+  min-width: 140px
+.app-field-max-120
+  max-width: 120px
+.app-field-max-240
+  max-width: 240px
+
+// Tooltip 内多行文本限宽
+.app-tooltip-text
+  max-width: 280px
 
 .ellipsis-2-lines
   display: -webkit-box
@@ -967,6 +1014,14 @@ body.body--dark .theme-preview-title
   display: flex
   align-items: flex-end
   padding: var(--space-2)
+
+// 预览页内嵌 registry 示例：去掉页面级 padding
+.theme-preview-embed
+  padding: 0
+
+// 预览页示例标题缩小一档
+.theme-preview-embed__title
+  font-size: var(--text-lg)
 
 .theme-swatch__label
   font-size: var(--text-xs)

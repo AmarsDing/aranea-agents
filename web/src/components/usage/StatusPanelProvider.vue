@@ -28,7 +28,7 @@
           }}</span>
         </div>
         <div class="command-center-stat-panel__health-row">
-          <span class="command-center-stat-panel__health-label" style="margin-left: 14px">总计</span>
+          <span class="command-center-stat-panel__health-label command-center-stat-panel__health-label--offset">总计</span>
           <span class="command-center-stat-panel__health-value">{{ total }}</span>
         </div>
         <div v-if="degraded > 0" class="command-center-stat-panel__health-warn">

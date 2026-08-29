@@ -512,6 +512,7 @@ body.body--dark .theme-preview-page
 .chat-composer
   flex: 0 0 auto
   position: relative
+  padding: 8px var(--chat-edge-gutter, 12px)
   border-radius: 0 0 16px 16px
   &::before
     content: ""
@@ -578,6 +579,9 @@ body.body--dark .theme-preview-page
   height: 0
   overflow: hidden
   position: relative
+
+.chat-messages-area
+  min-height: 0
 
 .chat-messages-main
   flex: 1 1 0
@@ -2680,6 +2684,9 @@ body.body--dark .overview-filter-bar__inner
   font-weight: 600
   font-size: 0.92rem
   letter-spacing: -0.01em
+
+.overview-section-title--sm
+  font-size: 0.85rem
 
 .overview-section-caption,
 .overview-section-label,

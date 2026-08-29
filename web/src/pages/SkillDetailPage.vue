@@ -1,6 +1,6 @@
 <template>
   <q-page class="app-standard-page skill-detail-page">
-    <div v-if="loadingSkill" class="column items-center justify-center" style="min-height: 300px">
+    <div v-if="loadingSkill" class="column items-center justify-center app-loading-pane">
       <q-spinner color="primary" size="40px" />
       <div class="q-mt-md text-grey-7">加载中...</div>
     </div>
@@ -20,7 +20,7 @@
         <q-btn flat round icon="arrow_back" class="q-mr-sm" @click="goBack" />
         <div class="col">
           <div class="row items-center q-gutter-sm">
-            <div class="text-h5" style="color: var(--color-text-primary)">{{ skill.name }}</div>
+            <div class="text-h5 app-text-primary">{{ skill.name }}</div>
             <AppStatusChip :status="skill.status" />
             <AppStatusChip :status="skill.enabled ? 'enabled' : 'disabled'" />
           </div>

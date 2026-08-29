@@ -344,7 +344,19 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		return res, wrapLLMFailure(streamErr, firstByteTimeout)
 	}
 
-	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart, turnProjector)
+	execResult, err := o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart, turnProjector)
+	if err != nil {
+		return execResult, err
+	}
+	// Propagate stream-consumer cancellation: the consumer sets c.canceled=true
+	// when runCtx.Err()!=nil, marking turns_v2.status=cancelled. The outer ctx
+	// (parent of runCtx) may not carry the signal because cancellation
+	// propagates parent→child, not child→parent. Flag it so the
+	// FinishSessionRunLifecycle defer can align session_runs.phase.
+	if !execResult.cancelled && errors.Is(runCtx.Err(), context.Canceled) {
+		execResult.cancelled = true
+	}
+	return execResult, nil
 }
 
 // assembleTurnResult checks for context timeout and assembles the final turnExecuteResult.

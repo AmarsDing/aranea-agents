@@ -3,7 +3,7 @@
     <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section>
         <div class="text-h6 text-weight-bold">{{ t('selfImprovementPage.rules.title') }}</div>
-        <div class="text-caption q-mt-xs" style="color: var(--color-text-secondary)">
+        <div class="text-caption q-mt-xs app-text-secondary">
           {{ t('selfImprovementPage.rules.subtitle') }}
         </div>
       </q-card-section>
@@ -60,7 +60,7 @@
               })
             }}
           </div>
-          <div class="text-caption q-mt-xs" style="word-break: break-all">
+          <div class="text-caption q-mt-xs app-break-all">
             {{ effective.corePathGlobs.join(', ') }}
           </div>
         </div>

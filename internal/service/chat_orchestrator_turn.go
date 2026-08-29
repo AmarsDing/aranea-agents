@@ -804,6 +804,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return execResult.userMsg, biz.ChatMessage{}, err
 	}
 	defer func() {
+		// F14: propagate stream-consumer cancellation to session run lifecycle.
+		// The consumer cancels runCtx (child of ctx), but ctx itself may not
+		// carry the signal. Flag it explicitly so session_runs.phase aligns
+		// with turns_v2.status (both "cancelled").
+		if execResult.cancelled && turnErr == nil {
+			turnErr = context.Canceled
+		}
 		o.sessionRunLC().FinishSessionRunLifecycle(ctx, sessionID, execResult.sessionRunID, turnErr)
 	}()
 

@@ -77,7 +77,7 @@
           <q-btn flat dense round size="sm" icon="more_vert">
             <q-tooltip>更多操作</q-tooltip>
             <q-menu auto-close anchor="bottom right" self="top right">
-              <q-list dense style="min-width: 160px">
+              <q-list dense class="app-menu-min-160">
                 <q-item clickable @click="$emit('openRuns', team)">
                   <q-item-section side><q-icon name="timeline" size="xs" /></q-item-section>
                   <q-item-section>运行轨迹</q-item-section>

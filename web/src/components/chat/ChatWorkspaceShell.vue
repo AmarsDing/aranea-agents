@@ -5,7 +5,6 @@
       'chat-workspace-shell--compact': compact,
       'chat-workspace-shell--dark': isDark,
     }"
-    style="min-height: 0"
   >
     <header v-if="!compact" class="chat-workspace-hero">
       <div class="chat-workspace-hero__text">
@@ -15,7 +14,7 @@
       </div>
     </header>
 
-    <div class="row no-wrap col chat-page__row chat-workspace-shell__main" style="min-height: 0">
+    <div class="row no-wrap col chat-page__row chat-workspace-shell__main">
       <slot />
     </div>
 
@@ -45,6 +44,7 @@ const isDark = computed(() => $q.dark.isActive);
 <style scoped lang="sass">
 .chat-workspace-shell
   padding: var(--space-3) var(--space-4) var(--space-3)
+  min-height: 0
 
 .chat-workspace-shell--compact
   padding: var(--space-2) var(--space-3) var(--space-2)

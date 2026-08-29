@@ -1,5 +1,5 @@
 <template>
-  <div v-if="!coreReady" class="flex flex-center" style="height: 100vh">
+  <div v-if="!coreReady" class="flex flex-center app-full-viewport-center">
     <q-spinner-dots size="40px" color="accent" />
   </div>
   <ChatWorkspaceShell v-else>

@@ -11,7 +11,7 @@
       <q-separator />
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body">
-          <UsageTrendChart :points="trendPoints" :hourly="false" style="height: 320px" />
+          <UsageTrendChart :points="trendPoints" :hourly="false" class="app-chart-h-320" />
         </q-card-section>
       </div>
     </q-card>

@@ -84,5 +84,5 @@ body.body--dark .command-center-stat-panel__ring-fill
   stroke: rgba(128, 128, 128, 0.12)
 
 body.body--dark .command-center-stat-panel__ring-track
-  stroke: var(--glass-border, rgba(255, 255, 255, 0.08))
+  stroke: var(--glass-border)
 </style>

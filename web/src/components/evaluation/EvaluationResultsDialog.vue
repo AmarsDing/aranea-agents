@@ -60,7 +60,7 @@
                 min="0"
                 max="1"
                 :model-value="slotProps.row.human_score ?? ''"
-                style="max-width: 88px"
+                class="evaluation-score-input"
                 @update:model-value="(v: string | number | null) => onScoreChange(slotProps.row, v)"
               />
             </q-td>

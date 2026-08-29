@@ -7,7 +7,7 @@
           {{ t('chat.deleteBlockedBusy') }}
         </q-banner>
         <template v-if="kind !== 'all' && kind !== 'session' && !blockedBusy">
-          <p class="text-body2 q-mb-sm" style="color: var(--color-text-secondary)">
+          <p class="text-body2 q-mb-sm app-text-secondary">
             {{ t('chat.deleteConfirmHint') }} <strong>{{ expectedName }}</strong>
           </p>
           <q-input
@@ -22,10 +22,10 @@
             {{ t('chat.deleteNameMismatch') }}
           </p>
         </template>
-        <p v-else-if="kind === 'session'" class="text-body2 q-mb-none" style="color: var(--color-text-secondary)">
+        <p v-else-if="kind === 'session'" class="text-body2 q-mb-none app-text-secondary">
           {{ t('chat.deleteSessionConfirm') }} <strong>{{ expectedName }}</strong>
         </p>
-        <p v-else-if="kind === 'all'" class="text-body2 q-mb-none" style="color: var(--color-text-secondary)">
+        <p v-else-if="kind === 'all'" class="text-body2 q-mb-none app-text-secondary">
           {{ t('chat.deleteAllConfirm') }}
         </p>
       </q-card-section>

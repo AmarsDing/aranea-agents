@@ -1,5 +1,5 @@
 <template>
-  <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
+  <div :key="sessionKey" class="chat-messages col column no-wrap">
     <div
       v-if="!hasV2Activities"
       ref="emptyScrollEl"

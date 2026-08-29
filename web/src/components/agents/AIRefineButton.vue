@@ -12,7 +12,7 @@
     @click="handleRefine"
   >
     <q-tooltip v-if="guide">
-      <div class="text-caption" style="max-width: 280px">
+      <div class="text-caption app-tooltip-text">
         <strong>{{ guide.titleZh }}</strong
         >：{{ guide.purpose }}
         <template v-if="guide.budget.soft">

@@ -28,7 +28,7 @@
               {{ auth.avatarLetter }}
             </q-avatar>
             <q-menu anchor="bottom right" self="top right">
-              <q-list dense style="min-width: 180px">
+              <q-list dense class="app-menu-min-180">
                 <q-item>
                   <q-item-section class="text-caption text-grey">{{ auth.displayLabel }}</q-item-section>
                 </q-item>
@@ -48,7 +48,7 @@
         </div>
         <q-btn flat round :icon="themeIcon" :aria-label="t('common.autoMode')">
           <q-menu anchor="bottom right" self="top right" auto-close>
-            <q-list dense style="min-width: 160px">
+            <q-list dense class="app-menu-min-160">
               <q-item clickable :active="themeMode === 'auto'" active-class="text-primary" @click="setTheme('auto')">
                 <q-item-section avatar>
                   <q-icon name="brightness_auto" size="xs" />
@@ -79,8 +79,7 @@
           :dark="isDark"
           borderless
           options-dense
-          class="app-header-locale q-ml-sm"
-          style="min-width: 110px"
+          class="app-header-locale q-ml-sm app-menu-min-110"
         />
       </q-toolbar>
     </q-header>
