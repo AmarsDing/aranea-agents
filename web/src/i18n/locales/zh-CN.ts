@@ -1,6 +1,7 @@
 export default {
   common: {
     appTitle: 'Aranea Agent Orchestrator',
+    requestError: '请求错误 ({status})',
     placeholder: '此区域内容将在后续版本完善。',
     lightMode: '白昼',
     darkMode: '深色',
@@ -258,6 +259,11 @@ export default {
   },
   chat: {
     runLongStallWarning: '似乎没有进展，是否停止？',
+    contextManuallyCompressed: '上下文已手动压缩（{before} → {after}）',
+    contextNoCompactionNeeded: '当前上下文无需压缩',
+    contextCompactFailed: '上下文压缩失败',
+    sessionNotFound: '未找到会话',
+    sessionAgentNotFound: '未找到会话对应的 Agent',
     stop: '停止',
     wait: '继续等待',
     searchPlaceholder: '按名称搜索 Agent 或 Team',
@@ -809,6 +815,7 @@ export default {
     },
     execution: {
       taskBreakdown: '任务拆解',
+      planAndExecute: '规划并执行',
       dependencies: '依赖关系',
       teamProgress: '团队进度',
       noTasks: '暂无任务',
@@ -1303,8 +1310,21 @@ export default {
   },
   evolutionSuggestionsPage: {
     statusExpired: '已过期',
+    statusRegistered: '已登记',
+    colCreatedAt: '创建时间',
   },
   skillsPage: {
+    reportStatTotal: '报告总数',
+    reportStatTotalSub: '成功 {success} · 失败 {failure}',
+    reportStatTotalCaption: '当前筛选范围',
+    reportStatRateSub: '失败 {count} 条',
+    reportStatAvgScore: '平均评分',
+    reportStatAvgScoreSub: '满分 100',
+    reportStatFailure: '失败记录',
+    reportStatFailureSub: '含根因分析 {count} 条',
+    reportDetailRootCause: '根因分析',
+    reportDetailSuggestedFix: '建议修复',
+    reportDetailOptimization: '优化建议',
     filterFsMissing: '磁盘缺失',
     filterFsOk: '磁盘正常',
     sortByTag: '按标签',
@@ -3310,6 +3330,18 @@ export default {
   },
   mcpPage: {
     statusOk: '正常',
+    toolCount: '{n} 工具',
+    toolDiscoveryFailed: '发现失败',
+    toolCountMore: ' 等 {n} 个',
+    toolsDiscoveredAt: '（最近发现：{at}）',
+    toolsDiscovered: '已发现 {n} 个工具{list}{at}',
+    toolDiscoveryError: '工具发现失败：{msg}',
+    lastHealthSuccess: '最近成功：{at}',
+    healthToolsDiscovered: '；已发现 {n} 个工具',
+    healthToolsFailed: '；工具发现失败',
+    emptyHint: '添加您的第一个 MCP 服务器以开始使用。',
+    addServer: '添加服务器',
+    paginationUnit: '个 MCP 服务器',
     statusError: '异常',
     statusDegraded: '退化',
     notTested: '未检测',
@@ -3317,6 +3349,13 @@ export default {
   },
   evaluationPage: {
     uploadCases: '上传用例',
+    resultColHuman: '人工',
+    resultColScore: '分数',
+    resultColComment: '评语',
+    trendColTime: '时间',
+    trendColTrigger: '触发',
+    recentColStatus: '状态',
+    recentColTime: '时间',
     uploadJsonLabel: '用例 JSON',
     uploadJsonPlaceholder: '[{\'{\'}"input": "用户问题", "expected_output": "期望回答"{\'}\'}]',
     uploadHint: '粘贴 JSON 数组，每项含 input（必填）、expected_output，可选 metadata_json；空 input 自动跳过。',
@@ -3851,6 +3890,11 @@ export default {
     },
   },
   agentSettings: {
+    ralphPromiseTagClose: '承诺结束标签',
+    memoryTabGotoSuffix: 'Tab 配置。',
+    promptModeAriaLabel: '系统提示模式',
+    skillLoadModeSession: 'session（会话内保持）',
+    skillExecutorOptionUnavailable: '{label}（不可用：{reason}）',
     tabs: {
       agent: 'Agent 属性',
       memory: '记忆',
@@ -4109,6 +4153,7 @@ export default {
     hint: '运行时生效；保存后写入 system_settings；启动时 env KRATOS_KNOWLEDGE_EMBED_* 优先于数据库。',
   },
   knowledgePage: {
+    deleteDocMessage: '删除「{name}」？',
     queueTitle: '上传队列',
     queueActiveSuffix: '（{active} 进行中 / 共 {total}）',
     queueClearFinished: '清除已完成',
@@ -4688,6 +4733,8 @@ export default {
   },
   spirit: {
     stepsComplete: '{completed} / {total} 步骤完成',
+    codingApprovalCancelled: '编程工具审批已取消',
+    tokenUsageSummary: '输入 {input} · 输出 {output} · 总计 {total}',
     memberStatus: '成员状态',
     backToSpirit: '返回精灵',
     executionTimeline: '执行时间线',
@@ -4789,6 +4836,7 @@ export default {
 
   graphs: {
     kicker: 'Graph 工作流',
+    canvasInvalidConnection: '无效连接',
     title: 'Graph 管理',
     subtitle: '可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。',
     createFromTemplate: '从模板创建',
@@ -5435,6 +5483,9 @@ export default {
   },
   teamsPage: {
     builtin: '内置',
+    parallelFailAbort: '中止',
+    deadLetterEmpty: '暂无待处理死信。',
+    runTestFailed: '运行测试失败',
     applyTemplate: '应用模板',
     applyTemplateMsg: '应用模板将覆盖当前配置，确定继续？',
     showOrchestrated: '含编排生成',

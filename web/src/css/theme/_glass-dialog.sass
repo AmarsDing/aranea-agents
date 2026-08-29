@@ -41,7 +41,7 @@ body.body--dark .q-dialog .q-card.app-glass-dialog
 // 遮罩模糊页面，弹窗才有透视感
 body:not(.body--dark) .q-dialog:has(.app-dialog-card) > .q-dialog__backdrop,
 body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
-  backdrop-filter: blur(10px)
+  backdrop-filter: blur(var(--glass-blur-soft))
 
 // ── 宽度阶梯（与业务修饰符叠加）──
 // 须在 .q-dialog 内声明：Quasar 的 @media (min-width:600px) { .q-dialog__inner--minimized > div { max-width: 560px } }
@@ -250,7 +250,7 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
 
   .app-dual-column-editor__sidebar,
   .app-dual-column-editor__main
-    backdrop-filter: blur(12px)
+    backdrop-filter: blur(var(--glass-blur-soft))
 
 // Dialog 内通用控件（Cron / Tool 覆盖等小表单弹窗）
 .app-dialog-subtitle

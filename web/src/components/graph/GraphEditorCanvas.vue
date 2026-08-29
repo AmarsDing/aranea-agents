@@ -1183,7 +1183,7 @@ onUnmounted(() => {
     padding: 6px 12px
     border-radius: 20px
     background: var(--glass-surface)
-    backdrop-filter: blur(10px)
+    backdrop-filter: blur(var(--glass-blur-soft))
     border: 1px solid var(--glass-border)
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2)
     z-index: 10

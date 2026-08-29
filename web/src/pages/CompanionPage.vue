@@ -341,6 +341,6 @@ const fileInputRef = workspace.fileRef;
     position: absolute
     border-radius: 50%
     background: radial-gradient(circle, #a5f3fc 0%, #22d3ee 55%, transparent 75%)
-    box-shadow: 0 0 8px rgba(0, 229, 255, 0.8), 0 0 2px #fff
+    box-shadow: 0 0 8px rgba(var(--hud-cyan-rgb), 0.8), 0 0 2px #fff
     will-change: transform, opacity
 </style>

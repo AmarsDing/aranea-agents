@@ -782,7 +782,7 @@ function sessionTime(session: SessionView) {
   font-weight: 700;
   letter-spacing: 0.02em;
   padding: var(--space-1) var(--space-2);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--glass-blur-subtle));
 }
 
 .chat-session-item--active .chat-session-time-badge {

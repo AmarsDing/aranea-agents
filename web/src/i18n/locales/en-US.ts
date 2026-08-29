@@ -1,6 +1,7 @@
 export default {
   common: {
     appTitle: 'Aranea Agent Orchestrator',
+    requestError: 'Request error ({status})',
     placeholder: 'This section will be fleshed out in a later release.',
     lightMode: 'Light',
     darkMode: 'Dark',
@@ -260,6 +261,11 @@ export default {
   },
   chat: {
     runLongStallWarning: 'No progress detected. Stop?',
+    contextManuallyCompressed: 'Context manually compressed ({before} → {after})',
+    contextNoCompactionNeeded: 'No context compaction needed',
+    contextCompactFailed: 'Context compaction failed',
+    sessionNotFound: 'Session not found',
+    sessionAgentNotFound: 'Session agent not found',
     stop: 'Stop',
     wait: 'Keep waiting',
     searchPlaceholder: 'Search agent or team by name',
@@ -795,6 +801,7 @@ export default {
     },
     execution: {
       taskBreakdown: 'Task Breakdown',
+      planAndExecute: 'Plan and execute',
       dependencies: 'Dependencies',
       teamProgress: 'Team Progress',
       noTasks: 'No tasks',
@@ -1292,8 +1299,21 @@ export default {
   },
   evolutionSuggestionsPage: {
     statusExpired: 'Expired',
+    statusRegistered: 'Registered',
+    colCreatedAt: 'Created',
   },
   skillsPage: {
+    reportStatTotal: 'Total reports',
+    reportStatTotalSub: '{success} succeeded · {failure} failed',
+    reportStatTotalCaption: 'Current filter scope',
+    reportStatRateSub: '{count} failed',
+    reportStatAvgScore: 'Avg. score',
+    reportStatAvgScoreSub: 'Out of 100',
+    reportStatFailure: 'Failures',
+    reportStatFailureSub: '{count} with root-cause analysis',
+    reportDetailRootCause: 'Root cause analysis',
+    reportDetailSuggestedFix: 'Suggested fix',
+    reportDetailOptimization: 'Optimization advice',
     filterFsMissing: 'Missing on disk',
     filterFsOk: 'Present on disk',
     sortByTag: 'By tag',
@@ -3272,9 +3292,23 @@ export default {
     statusDegraded: 'Degraded',
     notTested: 'Not tested',
     notEnabledNotTested: 'Disabled / Not tested',
+    toolCount: '{n} tools',
+    toolCountMore: ' of {n}',
+    toolsDiscoveredAt: ' (last discovered: {at})',
+    toolsDiscovered: 'Discovered {n} tools{list}{at}',
+    toolDiscoveryError: 'Tool discovery failed: {msg}',
+    lastHealthSuccess: 'Last success: {at}',
+    healthToolsDiscovered: '; discovered {n} tools',
   },
   evaluationPage: {
     uploadCases: 'Upload cases',
+    resultColHuman: 'Human',
+    resultColScore: 'Score',
+    resultColComment: 'Comment',
+    trendColTime: 'Time',
+    trendColTrigger: 'Trigger',
+    recentColStatus: 'Status',
+    recentColTime: 'Time',
     uploadJsonLabel: 'Cases JSON',
     uploadJsonPlaceholder: '[{\'{\'}"input": "user question", "expected_output": "expected answer"{\'}\'}]',
     uploadHint:
@@ -3820,6 +3854,11 @@ export default {
     },
   },
   agentSettings: {
+    ralphPromiseTagClose: 'Promise close tag',
+    memoryTabGotoSuffix: 'tab.',
+    promptModeAriaLabel: 'System prompt mode',
+    skillLoadModeSession: 'session (persist within session)',
+    skillExecutorOptionUnavailable: '{label} (unavailable: {reason})',
     tabs: {
       agent: 'Agent',
       memory: 'Memory',
@@ -4087,6 +4126,14 @@ export default {
   },
   knowledgePage: {
     queueTitle: 'Upload queue',
+    errorApiNotFound: 'Knowledge API not found (404). Make sure the backend has been restarted and the routes are registered.',
+    errorNetworkUnavailable: 'Cannot reach the backend. Make sure the backend service is running.',
+    ingestTextRequired: 'Paste the text content first',
+    ingestSubmitted: 'Document submitted; parsing in the background...',
+    deleted: 'Deleted',
+    deleteFailed: 'Delete failed',
+    deleteDocTitle: 'Delete document',
+    deleteDocMessage: 'Delete "{name}"?',
     queueActiveSuffix: ' ({active} active / {total} total)',
     queueClearFinished: 'Clear finished',
     queueRemoveAria: 'Remove',
@@ -4720,6 +4767,8 @@ export default {
   },
   spirit: {
     stepsComplete: '{completed} / {total} steps completed',
+    codingApprovalCancelled: 'Coding tool approval cancelled',
+    tokenUsageSummary: 'In {input} · Out {output} · Total {total}',
     memberStatus: 'Member Status',
     backToSpirit: 'Back to Spirit',
     executionTimeline: 'Execution Timeline',
@@ -4821,6 +4870,7 @@ export default {
 
   graphs: {
     kicker: 'Graph Workflow',
+    canvasInvalidConnection: 'Invalid connection',
     title: 'Graph Management',
     subtitle:
       'Visually build observable, interruptible, and traceable deterministic workflows with conditional routing, human approval, and state recovery.',
@@ -5476,6 +5526,9 @@ export default {
   },
   teamsPage: {
     builtin: 'Built-in',
+    parallelFailAbort: 'Abort',
+    deadLetterEmpty: 'No pending dead letters.',
+    runTestFailed: 'Test run failed',
     applyTemplate: 'Apply Template',
     applyTemplateMsg: 'Applying a template will overwrite the current configuration. Continue?',
     showOrchestrated: 'Include orchestrated',

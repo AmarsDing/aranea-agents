@@ -976,7 +976,7 @@ const nodeLegend = computed(() => {
 .kg-hud {
   --kg-cyan: #00d4ff;
   --kg-edge: #1a3a4a;
-  --kg-panel: rgba(5, 8, 16, 0.88);
+  --kg-panel: rgba(var(--hud-abyss-rgb), 0.88);
   --kg-text: #cfe8f5;
   --kg-text-dim: #7fa3b8;
 
@@ -998,7 +998,7 @@ const nodeLegend = computed(() => {
   }
 
   .knowledge-graph__stats {
-    background: rgba(5, 8, 16, 0.72);
+    background: rgba(var(--hud-abyss-rgb), 0.72);
     border: 1px solid var(--kg-edge);
     color: var(--kg-text-dim);
   }
@@ -1030,7 +1030,7 @@ const nodeLegend = computed(() => {
   }
 
   .knowledge-graph__hint {
-    background: rgba(5, 8, 16, 0.72);
+    background: rgba(var(--hud-abyss-rgb), 0.72);
     border-color: var(--kg-edge);
     color: var(--kg-text-dim);
 
@@ -1073,7 +1073,7 @@ const nodeLegend = computed(() => {
   }
 
   .knowledge-graph__node--active {
-    background: rgba(0, 212, 255, 0.12);
+    background: rgba(var(--hud-cyan-rgb), 0.12);
     color: var(--kg-cyan);
   }
 

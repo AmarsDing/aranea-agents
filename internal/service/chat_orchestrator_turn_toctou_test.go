@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
@@ -55,6 +56,31 @@ func (l *toctouLocker) Lock(sessionID string) func() {
 	return l.delegate.Lock(sessionID)
 }
 
+// gatedFailureBus 在首个 TaskFailedEvent 发布处阻塞，直至测试放行。
+// 钉死「A：admitTurn 失败 → publishTurnFailure → runs.Finish」的执行顺序，
+// 使 A 的注册项在 B 的锁内 HasActive 复查期间确定性在册——否则 A 释放会话锁
+// 后与 B 并发竞速（unlock→Finish 仅数微秒），B 复查时 A 可能已 Finish，
+// HasActive=false 导致 B 被放行至 admitTurn 收到 FORBIDDEN 而非 BUSY
+//（2026-08-29 全量运行 flake 根因；生产语义上彼时 B 放行本属正确，
+// 是测试把「复查时 A 在册」误当确定性前提）。超时兜底防回归挂死。
+type gatedFailureBus struct {
+	*captureEventBus
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (b *gatedFailureBus) Publish(ctx context.Context, e biz.Event) {
+	if _, ok := e.(*biz.TaskFailedEvent); ok {
+		b.once.Do(func() {
+			select {
+			case <-b.release:
+			case <-time.After(10 * time.Second):
+			}
+		})
+	}
+	b.captureEventBus.Publish(ctx, e)
+}
+
 // TestRunNativeAgentTurn_TOCTOU_SecondTurnMustNotRun 复现 P1：两个并发 turn
 // 对同一会话的"双跑"竞态。
 //
@@ -62,10 +88,11 @@ func (l *toctouLocker) Lock(sessionID string) func() {
 //  1. turn A 通过锁外 HasActive 快速检查（false），获取会话锁，阻塞在
 //     Sessions.Get（模拟 DB 窗口）——此时尚未 StoreCancelable。
 //  2. turn B 通过锁外 HasActive 快速检查（false，A 未存储），阻塞在会话锁上。
-//  3. A 放行：StoreCancelable(A) → 释放锁 → 进入执行（admitTurn 因 AgentKey
-//     不匹配而失败，避免触及真实 LLM 构建）。
-//  4. B 获得锁：runNativeAgentTurnBody 锁内无 HasActive 复查 → B 继续 →
-//     StoreCancelable(B) 覆盖 A 的取消函数 → B 也进入执行。
+//  3. A 放行：StoreCancelable(A) → 释放锁 → admitTurn 因 AgentKey 不匹配
+//     失败，首个 TaskFailedEvent 发布被 gatedFailureBus 挂起（A 的注册项
+//     因此钉在册，不会先 Finish）。
+//  4. B 获得锁：锁内 HasActive 复查命中 A → 拒绝为 CHAT_TURN_BUSY。
+//  5. 测试放行事件闸门：A 完成 publishTurnFailure → Finish → 退出。
 //
 // 期望行为（修复后）：B 在锁内复查发现活跃运行，被拒为 CHAT_TURN_BUSY，
 // 仅 A 到达 admitTurn（恰好 1 个 TaskFailedEvent）。
@@ -90,7 +117,10 @@ func TestRunNativeAgentTurn_TOCTOU_SecondTurnMustNotRun(t *testing.T) {
 	locker := &toctouLocker{delegate: lockMgr, onSecond: func() { close(bWaiting) }}
 	chatUC := biz.NewChatUsecase(nil, locker, nil, nil, nil, loggateway.NewNoop())
 
-	bus := &captureEventBus{}
+	// 失败事件闸门：A 在 admitTurn 失败（publishTurnFailure）处挂起，直到 B
+	// 完成锁内复查——保证 B 复查时 A 的注册项确定性在册（见 gatedFailureBus）。
+	gate := make(chan struct{})
+	bus := &gatedFailureBus{captureEventBus: &captureEventBus{}, release: gate}
 	evtPub := newChatTurnEventPublisher(nil, bus, nil, loggateway.NewNoop())
 
 	orch := &ChatOrchestrator{
@@ -127,12 +157,16 @@ func TestRunNativeAgentTurn_TOCTOU_SecondTurnMustNotRun(t *testing.T) {
 		_, errA = orch.RunNativeAgentTurnWithOutcome(context.Background(), input)
 	}()
 	<-aInCritical // A 持锁并阻塞于 Sessions.Get（尚未 StoreCancelable）
+	bDone := make(chan struct{})
 	go func() {
 		defer wg.Done()
+		defer close(bDone)
 		_, errB = orch.RunNativeAgentTurnWithOutcome(context.Background(), input)
 	}()
 	<-bWaiting      // B 已通过锁外 HasActive 快速检查，正阻塞在会话锁上
-	close(releaseA) // A 放行：StoreCancelable → 释放锁 → admitTurn 失败
+	close(releaseA) // A 放行：StoreCancelable → 释放锁 → admitTurn 失败（挂起在事件闸门）
+	<-bDone         // B 完成锁内复查（A 的注册项被闸门钉在册）→ BUSY 被拒
+	close(gate)     // 放行 A 的失败事件发布 → Finish → 退出
 	wg.Wait()
 
 	// 获胜 turn A 必然在 admitTurn 失败（AgentKey 不匹配）。
@@ -156,6 +190,7 @@ func TestRunNativeAgentTurn_TOCTOU_SecondTurnMustNotRun(t *testing.T) {
 		t.Fatalf("P1 TOCTOU: expected exactly 1 TaskFailedEvent (winner only), got %d — double run", failedCount)
 	}
 
-	// 测试清理：A 的 registry 残留（admitTurn 失败路径不 Finish）。
+	// 兜底清理：A 的早退路径已 Finish（chat_orchestrator_turn.go L249），
+	// 此行防未来路径变动导致的残留。
 	reg.Finish("sess-toctou", "")
 }

@@ -10,6 +10,18 @@
   --glass-surface-hover: rgba(255, 253, 245, 0.92)
   --glass-blur-default: 18px
   --glass-blur-hover: 20px
+  // 小值档模糊：局部遮罩/菜单/角标等小面积玻璃，勿用 default 系大面积档
+  --glass-blur-faint: 2px
+  --glass-blur-subtle: 8px
+  --glass-blur-soft: 12px
+  --glass-blur-medium: 16px
+  --glass-blur-heavy: 28px
+  // HUD/画布子系统专用色（companion 全息、知识 3D 图谱、workbench），主题无关，body--dark 不覆盖
+  // 用法：rgba(var(--hud-cyan-rgb), 0.5)；WebGL 画布纹理（如 LabelLayer.ts SpriteText）无法解析 var()，保持硬编码并注释豁免
+  --hud-cyan-rgb: 0, 229, 255
+  --hud-sky-rgb: 79, 216, 255
+  --hud-abyss-rgb: 5, 8, 16
+  --hud-deep-rgb: 9, 13, 20
   --glass-border: rgba(235, 220, 200, 0.7)
   --glass-elevated: rgba(255, 255, 255, 0.72)
   // 细微微妙抬升底色（统计面板/快捷操作底色，非玻璃卡）

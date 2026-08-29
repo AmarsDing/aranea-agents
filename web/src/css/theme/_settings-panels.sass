@@ -27,7 +27,7 @@
   border-radius: 20px
   background: var(--glass-elevated)
   box-shadow: none
-  backdrop-filter: blur(12px)
+  backdrop-filter: blur(var(--glass-blur-soft))
   transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease
 
   @media (width <= 599px)
@@ -192,7 +192,7 @@
   border: 1px solid var(--glass-border)
   border-radius: 999px
   background: var(--glass-elevated)
-  backdrop-filter: blur(12px)
+  backdrop-filter: blur(var(--glass-blur-soft))
 
 .skills-tab-nav__item
   padding: 6px 14px
@@ -870,7 +870,7 @@ body.body--dark
 
   .agent-settings-tabs
     background: var(--nav-bg-dark)
-    backdrop-filter: blur(20px)
+    backdrop-filter: blur(var(--glass-blur-hover))
 
   .agent-settings-tabs .q-tab--active
     color: var(--color-accent)

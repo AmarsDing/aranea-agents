@@ -137,8 +137,8 @@ onUnmounted(() => {
   border-radius: 10px
   color: var(--color-text-primary)
   background: linear-gradient(160deg, rgba(10, 18, 28, 0.82), rgba(8, 12, 20, 0.88))
-  border: 1px solid rgba(0, 229, 255, 0.35)
-  box-shadow: 0 0 24px rgba(0, 229, 255, 0.18), inset 0 0 32px rgba(0, 229, 255, 0.05)
+  border: 1px solid rgba(var(--hud-cyan-rgb), 0.35)
+  box-shadow: 0 0 24px rgba(var(--hud-cyan-rgb), 0.18), inset 0 0 32px rgba(var(--hud-cyan-rgb), 0.05)
   backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
   animation: holo-confirm-enter 0.28s cubic-bezier(0.2, 0.9, 0.25, 1.2)
@@ -147,8 +147,8 @@ onUnmounted(() => {
     position: absolute
     width: 14px
     height: 14px
-    border: 2px solid rgba(0, 229, 255, 0.8)
-    filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.6))
+    border: 2px solid rgba(var(--hud-cyan-rgb), 0.8)
+    filter: drop-shadow(0 0 4px rgba(var(--hud-cyan-rgb), 0.6))
     pointer-events: none
 
     &--tl
@@ -176,7 +176,7 @@ onUnmounted(() => {
     position: absolute
     inset: 0
     pointer-events: none
-    background: linear-gradient(180deg, transparent 0%, rgba(0, 229, 255, 0.08) 48%, rgba(0, 229, 255, 0.16) 50%, rgba(0, 229, 255, 0.08) 52%, transparent 100%)
+    background: linear-gradient(180deg, transparent 0%, rgba(var(--hud-cyan-rgb), 0.08) 48%, rgba(var(--hud-cyan-rgb), 0.16) 50%, rgba(var(--hud-cyan-rgb), 0.08) 52%, transparent 100%)
     background-size: 100% 240%
     animation: holo-scan 3.2s linear infinite
     opacity: 0.7
@@ -196,7 +196,7 @@ onUnmounted(() => {
     font-weight: 600
     letter-spacing: 0.12em
     color: var(--color-neon-cyan)
-    text-shadow: 0 0 8px rgba(0, 229, 255, 0.5)
+    text-shadow: 0 0 8px rgba(var(--hud-cyan-rgb), 0.5)
 
   &__countdown
     margin-left: auto
@@ -209,8 +209,8 @@ onUnmounted(() => {
     padding: 1px 8px
     border-radius: 999px
     color: var(--color-neon-cyan)
-    border: 1px solid rgba(0, 229, 255, 0.4)
-    background: rgba(0, 229, 255, 0.08)
+    border: 1px solid rgba(var(--hud-cyan-rgb), 0.4)
+    background: rgba(var(--hud-cyan-rgb), 0.08)
 
   &__target
     font-family: var(--font-mono)
@@ -218,7 +218,7 @@ onUnmounted(() => {
     font-weight: 600
     letter-spacing: 0.04em
     color: #fff
-    text-shadow: 0 0 12px rgba(0, 229, 255, 0.75)
+    text-shadow: 0 0 12px rgba(var(--hud-cyan-rgb), 0.75)
     margin-bottom: 6px
     word-break: break-all
 
@@ -264,10 +264,10 @@ onUnmounted(() => {
     &--approve
       color: #04121a
       background: linear-gradient(135deg, #22d3ee, #34d399)
-      box-shadow: 0 0 14px rgba(0, 229, 255, 0.45)
+      box-shadow: 0 0 14px rgba(var(--hud-cyan-rgb), 0.45)
 
       &:hover:not(:disabled)
-        box-shadow: 0 0 22px rgba(0, 229, 255, 0.7)
+        box-shadow: 0 0 22px rgba(var(--hud-cyan-rgb), 0.7)
 
     &--reject
       color: var(--color-danger)
@@ -279,11 +279,11 @@ onUnmounted(() => {
 
     &--always
       color: var(--color-neon-cyan)
-      background: rgba(0, 229, 255, 0.08)
-      border-color: rgba(0, 229, 255, 0.35)
+      background: rgba(var(--hud-cyan-rgb), 0.08)
+      border-color: rgba(var(--hud-cyan-rgb), 0.35)
 
       &:hover:not(:disabled)
-        box-shadow: 0 0 12px rgba(0, 229, 255, 0.35)
+        box-shadow: 0 0 12px rgba(var(--hud-cyan-rgb), 0.35)
 
   &__voice-hint
     margin-top: 8px

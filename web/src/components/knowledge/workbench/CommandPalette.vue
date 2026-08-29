@@ -183,7 +183,7 @@ function onKeydown(e: KeyboardEvent) {
   cursor: pointer
 
   &--active
-    background: rgba(79, 216, 255, 0.1)
+    background: rgba(var(--hud-sky-rgb), 0.1)
 
   &--disabled
     opacity: 0.45

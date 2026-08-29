@@ -314,7 +314,7 @@ const kbTheme = EditorView.theme(
     '.cm-cursor': { borderLeftColor: 'var(--kb-accent-cyan)' },
     '&.cm-focused': { outline: 'none' },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'rgba(79, 216, 255, 0.15)',
+      backgroundColor: 'rgba(var(--hud-sky-rgb), 0.15)',
     },
     '.cm-tooltip': {
       background: 'var(--kb-bg-deep)',
@@ -322,7 +322,7 @@ const kbTheme = EditorView.theme(
       color: 'var(--kb-text-primary)',
     },
     '.cm-tooltip-autocomplete ul li[aria-selected]': {
-      background: 'rgba(79, 216, 255, 0.15)',
+      background: 'rgba(var(--hud-sky-rgb), 0.15)',
       color: 'var(--kb-text-primary)',
     },
     // Live Preview 样式
@@ -331,11 +331,11 @@ const kbTheme = EditorView.theme(
     '.kb-lp-italic': { fontStyle: 'italic' },
     '.kb-lp-strike': { textDecoration: 'line-through' },
     '.kb-lp-code': {
-      background: 'rgba(79, 216, 255, 0.08)',
+      background: 'rgba(var(--hud-sky-rgb), 0.08)',
       borderRadius: '4px',
       padding: '1px 4px',
     },
-    '.kb-lp-codeblock': { background: 'rgba(79, 216, 255, 0.05)' },
+    '.kb-lp-codeblock': { background: 'rgba(var(--hud-sky-rgb), 0.05)' },
     '.kb-lp-quote': {
       borderLeft: '3px solid var(--kb-accent-cyan)',
       paddingLeft: '10px',

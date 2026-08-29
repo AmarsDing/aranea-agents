@@ -281,7 +281,7 @@ function onListDrop(ev: DragEvent) {
 
     // SP2-8：drop 到列表 = 移到当前目录（合法目标发光，与树节点同语言）
     &--drop
-      box-shadow: inset 0 0 0 1px var(--kb-accent-cyan), inset 0 0 18px rgba(79, 216, 255, 0.12)
+      box-shadow: inset 0 0 0 1px var(--kb-accent-cyan), inset 0 0 18px rgba(var(--hud-sky-rgb), 0.12)
 
   &__file
     display: flex
@@ -302,7 +302,7 @@ function onListDrop(ev: DragEvent) {
       background: var(--kb-glass-highlight)
 
     &--active
-      background: rgba(79, 216, 255, 0.12)
+      background: rgba(var(--hud-sky-rgb), 0.12)
       color: var(--kb-accent-cyan)
 
   &__file-icon

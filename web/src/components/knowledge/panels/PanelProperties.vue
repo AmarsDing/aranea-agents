@@ -57,6 +57,6 @@ const { t } = useI18n();
     border-radius: 999px
     font-size: 11px
     color: var(--kb-accent-cyan)
-    background: rgba(79, 216, 255, 0.1)
-    border: 1px solid rgba(79, 216, 255, 0.22)
+    background: rgba(var(--hud-sky-rgb), 0.1)
+    border: 1px solid rgba(var(--hud-sky-rgb), 0.22)
 </style>

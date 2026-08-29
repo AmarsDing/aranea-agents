@@ -143,9 +143,9 @@ const { t } = useI18n();
   gap: 2px;
   padding: 4px 2px;
   border-radius: 999px;
-  background: rgba(5, 8, 16, 0.72);
+  background: rgba(var(--hud-abyss-rgb), 0.72);
   border: 1px solid var(--kg-edge);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(var(--glass-blur-subtle));
 
   :deep(.q-btn) {
     color: var(--kg-text-dim);
@@ -157,7 +157,7 @@ const { t } = useI18n();
 
   &__btn--on {
     color: var(--kg-cyan) !important;
-    text-shadow: 0 0 6px rgba(0, 212, 255, 0.35);
+    text-shadow: 0 0 6px rgba(var(--hud-cyan-rgb), 0.35);
   }
 
   &__legend {
@@ -166,7 +166,7 @@ const { t } = useI18n();
     padding: 10px 12px;
     background: var(--kg-panel);
     border: 1px solid var(--kg-edge);
-    box-shadow: 0 0 15px rgba(0, 212, 255, 0.13);
+    box-shadow: 0 0 15px rgba(var(--hud-cyan-rgb), 0.13);
     color: var(--kg-text);
   }
 

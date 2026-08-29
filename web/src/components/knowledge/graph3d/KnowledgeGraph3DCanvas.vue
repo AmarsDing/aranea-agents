@@ -1333,7 +1333,7 @@ defineExpose({ zoomToFit, clearFocus: clearFocusLock, setLens });
     font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
     letter-spacing: 0.08em;
     color: rgba(159, 220, 255, 0.62);
-    background: rgba(9, 13, 20, 0.42);
+    background: rgba(var(--hud-deep-rgb), 0.42);
     border: 1px solid rgba(159, 220, 255, 0.16);
     pointer-events: none;
     user-select: none;

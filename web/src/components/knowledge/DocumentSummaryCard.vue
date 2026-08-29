@@ -61,5 +61,5 @@ const hasCard = computed(() => Boolean(props.summary || props.docType || tags.va
     border-radius: 999px
     font-size: 11px
     color: var(--color-accent)
-    background: rgba(79, 216, 255, 0.1)
+    background: rgba(var(--hud-sky-rgb), 0.1)
 </style>

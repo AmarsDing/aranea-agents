@@ -69,8 +69,8 @@ defineExpose({ focus });
   align-items: flex-start
   justify-content: center
   padding-top: 12vh
-  backdrop-filter: blur(6px) brightness(0.6)
-  background: rgba(4, 8, 18, 0.45)
+  backdrop-filter: blur(var(--glass-blur-subtle)) brightness(0.6)
+  background: rgba(var(--hud-abyss-rgb), 0.45)
 
 .kb-palette
   width: 560px

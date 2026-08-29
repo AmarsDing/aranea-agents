@@ -120,7 +120,7 @@ body.body--dark
   border-radius: 18px
   background: var(--glass-surface)
   box-shadow: var(--shadow-entity-panel)
-  backdrop-filter: blur(16px)
+  backdrop-filter: blur(var(--glass-blur-medium))
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease
   animation: graph-card-in 0.3s ease-out both
   position: relative
@@ -590,7 +590,7 @@ body:not(.body--dark) .graph-card--add:hover
   border: 2px solid var(--node-border)
   border-radius: 8px
   background: var(--node-fill)
-  backdrop-filter: blur(8px)
+  backdrop-filter: blur(var(--glass-blur-subtle))
   box-shadow: 0 0 6px color-mix(in srgb, var(--node-border) 15%, transparent)
   transition: box-shadow 0.2s, border-color 0.2s
   position: relative
@@ -1374,7 +1374,7 @@ body:not(.body--dark) .graph-card--add:hover
   z-index: 9999
   width: 234px
   background: var(--graph-ctx-bg)
-  backdrop-filter: blur(28px)
+  backdrop-filter: blur(var(--glass-blur-heavy))
   border: 1px solid var(--graph-ctx-border)
   border-radius: 10px
   box-shadow: 0 0 32px color-mix(in srgb, var(--graph-ctx-accent) 5%, transparent), 0 12px 48px rgba(0, 0, 0, 0.8)
@@ -1600,7 +1600,7 @@ body:not(.body--dark) .graph-card--add:hover
   border-radius: 14px
   background: var(--glass-surface)
   box-shadow: var(--shadow-entity-panel)
-  backdrop-filter: blur(16px)
+  backdrop-filter: blur(var(--glass-blur-medium))
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease
 
 body:not(.body--dark) .template-example-card

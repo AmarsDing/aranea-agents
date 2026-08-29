@@ -217,7 +217,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   border: 1px solid var(--glass-border)
   border-radius: 18px
   background: var(--glass-surface)
-  backdrop-filter: blur(18px) saturate(var(--liquid-saturate))
+  backdrop-filter: blur(var(--glass-blur-default)) saturate(var(--liquid-saturate))
   box-shadow: var(--glass-inner-highlight)
   transition: transform 340ms cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 280ms ease, border-color 220ms ease
 

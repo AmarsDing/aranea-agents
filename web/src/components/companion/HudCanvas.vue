@@ -279,19 +279,19 @@ defineExpose({ triggerBurst });
     text-transform: uppercase
     font-family: var(--font-mono)
     color: var(--color-neon-cyan)
-    text-shadow: 0 0 8px rgba(0, 229, 255, 0.6)
-    background: rgba(9, 13, 20, 0.55)
+    text-shadow: 0 0 8px rgba(var(--hud-cyan-rgb), 0.6)
+    background: rgba(var(--hud-deep-rgb), 0.55)
     backdrop-filter: blur(var(--glass-blur-default))
-    border: 1px solid rgba(0, 229, 255, 0.35)
-    box-shadow: 0 0 16px rgba(0, 229, 255, 0.15), inset 0 0 18px rgba(0, 229, 255, 0.05)
+    border: 1px solid rgba(var(--hud-cyan-rgb), 0.35)
+    box-shadow: 0 0 16px rgba(var(--hud-cyan-rgb), 0.15), inset 0 0 18px rgba(var(--hud-cyan-rgb), 0.05)
     overflow: hidden
 
   &__state-corner
     position: absolute
     width: 7px
     height: 7px
-    border: 1.5px solid rgba(0, 229, 255, 0.85)
-    filter: drop-shadow(0 0 3px rgba(0, 229, 255, 0.6))
+    border: 1.5px solid rgba(var(--hud-cyan-rgb), 0.85)
+    filter: drop-shadow(0 0 3px rgba(var(--hud-cyan-rgb), 0.6))
     pointer-events: none
 
     &--tl
@@ -319,7 +319,7 @@ defineExpose({ triggerBurst });
     position: absolute
     inset: 0
     pointer-events: none
-    background: linear-gradient(180deg, transparent 0%, rgba(0, 229, 255, 0.1) 48%, rgba(0, 229, 255, 0.22) 50%, rgba(0, 229, 255, 0.1) 52%, transparent 100%)
+    background: linear-gradient(180deg, transparent 0%, rgba(var(--hud-cyan-rgb), 0.1) 48%, rgba(var(--hud-cyan-rgb), 0.22) 50%, rgba(var(--hud-cyan-rgb), 0.1) 52%, transparent 100%)
     background-size: 100% 240%
     animation: hud-scan 2.6s linear infinite
 
@@ -335,11 +335,11 @@ defineExpose({ triggerBurst });
     line-height: 1.5
     text-align: center
     color: var(--color-text-primary)
-    text-shadow: 0 0 6px rgba(0, 229, 255, 0.35)
-    background: rgba(9, 13, 20, 0.6)
+    text-shadow: 0 0 6px rgba(var(--hud-cyan-rgb), 0.35)
+    background: rgba(var(--hud-deep-rgb), 0.6)
     backdrop-filter: blur(var(--glass-blur-default))
-    border: 1px solid rgba(0, 229, 255, 0.3)
-    box-shadow: 0 0 18px rgba(0, 229, 255, 0.12), inset 0 0 24px rgba(0, 229, 255, 0.04)
+    border: 1px solid rgba(var(--hud-cyan-rgb), 0.3)
+    box-shadow: 0 0 18px rgba(var(--hud-cyan-rgb), 0.12), inset 0 0 24px rgba(var(--hud-cyan-rgb), 0.04)
 
   &__subtitle-char
     display: inline-block
@@ -354,7 +354,7 @@ defineExpose({ triggerBurst });
     max-width: 90%
     border: 1px solid var(--color-warning)
     color: var(--color-text-primary)
-    background: rgba(9, 13, 20, 0.72)
+    background: rgba(var(--hud-deep-rgb), 0.72)
     backdrop-filter: blur(var(--glass-blur-default))
 
   &__mic-wrap
@@ -369,7 +369,7 @@ defineExpose({ triggerBurst });
     position: absolute
     inset: -5px
     border-radius: 50%
-    border: 1px solid rgba(0, 229, 255, 0.45)
+    border: 1px solid rgba(var(--hud-cyan-rgb), 0.45)
     pointer-events: none
     animation: hud-mic-pulse 2.4s ease-out infinite
 
@@ -378,7 +378,7 @@ defineExpose({ triggerBurst });
     position: absolute
     inset: -11px
     border-radius: 50%
-    border: 1px dashed rgba(0, 229, 255, 0.55)
+    border: 1px dashed rgba(var(--hud-cyan-rgb), 0.55)
     pointer-events: none
     opacity: 0
     transition: opacity 0.3s ease
@@ -392,14 +392,14 @@ defineExpose({ triggerBurst });
 
   &__mic
     color: var(--color-neon-cyan)
-    background: rgba(9, 13, 20, 0.6)
-    border: 1px solid rgba(0, 229, 255, 0.35)
+    background: rgba(var(--hud-deep-rgb), 0.6)
+    border: 1px solid rgba(var(--hud-cyan-rgb), 0.35)
     backdrop-filter: blur(var(--glass-blur-default))
     transition: box-shadow 0.25s ease, background 0.25s ease
 
     &--on
-      background: rgba(0, 229, 255, 0.18)
-      box-shadow: 0 0 18px rgba(0, 229, 255, 0.35)
+      background: rgba(var(--hud-cyan-rgb), 0.18)
+      box-shadow: 0 0 18px rgba(var(--hud-cyan-rgb), 0.35)
 
 .hud-subtitle-enter-active,
 .hud-subtitle-leave-active
@@ -436,7 +436,7 @@ defineExpose({ triggerBurst });
   from
     opacity: 0
     transform: translateY(4px)
-    text-shadow: 0 0 10px rgba(0, 229, 255, 0.9)
+    text-shadow: 0 0 10px rgba(var(--hud-cyan-rgb), 0.9)
   to
     opacity: 1
     transform: translateY(0)

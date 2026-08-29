@@ -43,9 +43,7 @@
       :placeholder="hasApiKey ? t('knowledgeEmbed.apiKeyPlaceholderSet') : t('knowledgeEmbed.apiKeyPlaceholderEmpty')"
     />
     <div v-if="showStatus" class="app-grid-span-full app-actions-bar app-actions-bar--start">
-      <q-badge :color="configured ? 'positive' : 'warning'">
-        {{ configured ? t('knowledgeEmbed.configured') : t('knowledgeEmbed.notConfigured') }}
-      </q-badge>
+      <AppStatusChip :status="configured ? 'configured' : 'unconfigured'" />
       <slot name="actions" />
     </div>
   </div>

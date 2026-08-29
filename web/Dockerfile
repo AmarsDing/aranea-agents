@@ -8,5 +8,6 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Quasar 产物在 dist/spa/（quasar.config 未设 distDir）；直接拷 /app/dist 会残留 nginx 默认欢迎页
+COPY --from=builder /app/dist/spa /usr/share/nginx/html
 EXPOSE 80

@@ -127,6 +127,7 @@ export interface GroupLabelEntry {
 /** 组标签 sprite 工厂：中等醒目度（介于候选与焦点之间），屏幕恒尺寸。 */
 function makeGroupSprite(borderColor: string): SpriteText {
   const s = new SpriteText(' ', 3.8, '#d8ecff');
+  // hud-abyss 底色：SpriteText 绘制到 WebGL 纹理，CSS var() 不可解析，硬编码豁免（值同 --hud-abyss-rgb）
   s.backgroundColor = 'rgba(5, 8, 16, 0.72)';
   s.borderColor = borderColor;
   s.borderWidth = 0.25;
