@@ -403,7 +403,7 @@ func TestPlanAndExecute_NeedsClarification_ShortCircuits(t *testing.T) {
 		DecomposeReason:        "needs_clarification",
 		ClarificationQuestions: []string{"目标产品是什么？", "营销预算区间？"},
 	}}
-	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{
 		Session: &trpcsession.Session{ID: "spirit-1"},
 	})
@@ -434,7 +434,7 @@ func TestPlanAndExecute_DecomposeFailed_ShortCircuits(t *testing.T) {
 		ComplexityLevel: biz.ComplexityComplex,
 		DecomposeReason: biz.DecomposeReasonFailed,
 	}}
-	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{
 		Session: &trpcsession.Session{ID: "spirit-1"},
 	})
@@ -492,7 +492,7 @@ func TestPlanAndExecute_DeferredDecompose_ReturnsPlanningInProgress(t *testing.T
 		}},
 		resumeSeen: resumeSeen,
 	}
-	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{
 		Session: &trpcsession.Session{ID: "spirit-1"},
 	})
@@ -514,5 +514,90 @@ func TestPlanAndExecute_DeferredDecompose_ReturnsPlanningInProgress(t *testing.T
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("background Plan(ResumePlanID) was not called")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P2-② 假启动拦截（session-eval-20260829-r2 R4-Q1）
+// ---------------------------------------------------------------------------
+
+type stubStartupWaiter struct {
+	ok     bool
+	reason string
+	called chan string // boardID
+}
+
+func (s *stubStartupWaiter) WaitBoardStartup(_ context.Context, boardID string, _ time.Duration) (bool, string) {
+	if s.called != nil {
+		select {
+		case s.called <- boardID:
+		default:
+		}
+	}
+	return s.ok, s.reason
+}
+
+// 对账失败（零 team_runs）→ orchestrate 阶段返回错误，Spirit 必须如实告知，
+// 不得声称已组建团队（S07 事故回归守卫）。
+func TestExecuteOrchestratePhase_StartupDrift_Blocked(t *testing.T) {
+	waiter := &stubStartupWaiter{ok: false, reason: "step s1 failed: orchestrate: agent keys not found or not active: ghost", called: make(chan string, 1)}
+	deps := planAndExecuteDeps{lg: loggateway.NewNoop(), startupWaiter: waiter}
+	plan := &biz.TaskPlan{ID: "tp_drift", SpiritSessionID: "spirit-1", Strategy: biz.StrategyParallel}
+	alloc := &biz.AllocationPlan{ID: "ap_drift"}
+
+	handle, step, err := executeOrchestratePhase(context.Background(), plan, alloc, "board-drift", deps)
+	if err == nil {
+		t.Fatal("expected error when startup reconciliation fails, got nil")
+	}
+	if handle != nil {
+		t.Fatalf("handle = %+v, want nil on reconciliation failure", handle)
+	}
+	if step.StepName != "orchestrate" || step.Status != "failed" {
+		t.Fatalf("step = %+v, want orchestrate/failed", step)
+	}
+	if !strings.Contains(err.Error(), "启动对账") {
+		t.Fatalf("err = %v, want contains 启动对账", err)
+	}
+	select {
+	case boardID := <-waiter.called:
+		if boardID != "board-drift" {
+			t.Fatalf("waiter boardID = %q, want board-drift", boardID)
+		}
+	default:
+		t.Fatal("startup waiter was not consulted")
+	}
+}
+
+// 对账通过（首个 team 已落地）→ 正常返回 running handle。
+func TestExecuteOrchestratePhase_StartupOK_Running(t *testing.T) {
+	waiter := &stubStartupWaiter{ok: true}
+	deps := planAndExecuteDeps{lg: loggateway.NewNoop(), startupWaiter: waiter}
+	plan := &biz.TaskPlan{ID: "tp_ok", SpiritSessionID: "spirit-1", Strategy: biz.StrategyParallel}
+	alloc := &biz.AllocationPlan{ID: "ap_ok"}
+
+	handle, step, err := executeOrchestratePhase(context.Background(), plan, alloc, "board-ok", deps)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if handle == nil || handle.ID != "board-ok" || handle.Status != biz.OrchestrationStatusRunning {
+		t.Fatalf("handle = %+v, want running handle with board id", handle)
+	}
+	if step.Status != "running" {
+		t.Fatalf("step.Status = %q, want running", step.Status)
+	}
+}
+
+// nil waiter（v1-only / 旧装配路径）→ 跳过对账，保持既有行为。
+func TestExecuteOrchestratePhase_NilWaiter_Skips(t *testing.T) {
+	deps := planAndExecuteDeps{lg: loggateway.NewNoop()}
+	plan := &biz.TaskPlan{ID: "tp_nil", SpiritSessionID: "spirit-1", Strategy: biz.StrategyParallel}
+	alloc := &biz.AllocationPlan{ID: "ap_nil"}
+
+	handle, _, err := executeOrchestratePhase(context.Background(), plan, alloc, "board-nil", deps)
+	if err != nil {
+		t.Fatalf("unexpected err with nil waiter: %v", err)
+	}
+	if handle == nil || handle.ID != "board-nil" {
+		t.Fatalf("handle = %+v, want board-nil", handle)
 	}
 }

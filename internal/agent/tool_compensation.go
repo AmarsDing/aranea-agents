@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -190,6 +192,56 @@ func (t *compensationTracker) addPending(scope, forwardTool, inverseTool string,
 			loggateway.Str("scope", scope),
 			loggateway.Int("cap", compensateJournalMax))
 	}
+}
+
+// pendingForForward 返回 scope 内指定正向工具最近一条未核销 pending
+// （P2-③ 方案 C 引导的查询口）。无匹配项时 ok=false。
+func (t *compensationTracker) pendingForForward(scope, forwardTool string) (pendingCompensation, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	j, ok := t.journals[scope]
+	if !ok {
+		return pendingCompensation{}, false
+	}
+	var best *pendingCompensation
+	for _, p := range j {
+		if p.forwardTool != forwardTool {
+			continue
+		}
+		if best == nil || p.at.After(best.at) {
+			best = p
+		}
+	}
+	if best == nil {
+		return pendingCompensation{}, false
+	}
+	return *best, true
+}
+
+// planCCompensationCue 生成「方案 C」补偿引导文案：仅当本工具登记了逆工具、且
+// 当前作用域内存在该正向工具的未核销 pending（副作用已落、尚未清除）时返回
+// 非空。用于 HITL 拒绝/超时回执与 loop guard 拦截消息（P2-③，R4-Q6 根修），
+// 把模型从「重发原调用」引导到「调用逆工具完成补偿」。无 pending 时返回空串——
+// 无副作用待清除时不诱导模型做无谓的逆操作。
+func planCCompensationCue(ctx context.Context, forwardTool string) string {
+	spec, ok := inverse.LookupForward(forwardTool)
+	if !ok {
+		return ""
+	}
+	scope := compensationScopeKey(ctx)
+	if scope == "" {
+		return ""
+	}
+	p, ok := globalCompensationTracker.pendingForForward(scope, forwardTool)
+	if !ok {
+		return ""
+	}
+	argsText := strings.TrimSpace(string(p.mappedArgs))
+	if len(argsText) > 200 {
+		argsText = argsText[:200] + "…"
+	}
+	return fmt.Sprintf("注意：本会话中此前已批准执行的 %s 副作用尚未补偿清除——按方案 C 纪律，下一步应直接调用 %s（参考参数：%s）完成补偿，而不是重发 %s。",
+		forwardTool, spec.InverseTool, argsText, forwardTool)
 }
 
 // settle 核销：逆工具调用成功，移除对应 pending 项。无匹配项为 no-op

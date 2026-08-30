@@ -114,6 +114,12 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newIntentToolHintPromoteBeforeHook(deps.DeferredManager, lg); hook != nil {
 		entries = append(entries, hook)
 	}
+	// P2-④（session-eval-20260829-r2 R4-Q7）：显式知识库意图轮次激活
+	// knowledge_search/knowledge_reflect——词法确定性路由，先于 aux_intent
+	// 概率 hint。排在 intent hint 之后（priority 3），两 hook 幂等共存。
+	if hook := newKnowledgeIntentPromoteBeforeHook(ag, deps.DeferredManager, lg); hook != nil {
+		entries = append(entries, hook)
+	}
 	entries = append(entries, newOrchestrationBriefBeforeHook())
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
@@ -195,13 +201,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		// modelHook（A2'b 空转轮次早停）：BeforeModel 结算上轮工具产出，
 		// 连续零产出轮注入降级引导；满阈值的工具面封锁由 beforeHook 执行。
 		loopGuard := newToolLoopGuard(lg)
-	// M80：loop_guard_blocked 决策双写（设计 §3.2 row 3）。
-	loopGuard.setDecisionCollector(deps.DecisionCollector)
-	// 79-runtime-governance 二轮 Q1（S02「合法失控」根修）：行为模式闸阈值
-	// 每调用经 policyResolver 读取——注入 agentID（resolver 键）+ 构建期快照
-	// （resolver miss 兜底），策略变更零重建生效。
-	loopGuard.setGateThresholds(ag.ID, ag.Settings.LoopGuardToolLoadMax, ag.Settings.LoopGuardWallSoftSec, ag.Settings.LoopGuardWallHardSec)
-	entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook(), loopGuard.modelHook())
+		// M80：loop_guard_blocked 决策双写（设计 §3.2 row 3）。
+		loopGuard.setDecisionCollector(deps.DecisionCollector)
+		// 79-runtime-governance 二轮 Q1（S02「合法失控」根修）：行为模式闸阈值
+		// 每调用经 policyResolver 读取——注入 agentID（resolver 键）+ 构建期快照
+		// （resolver miss 兜底），策略变更零重建生效。
+		loopGuard.setGateThresholds(ag.ID, ag.Settings.LoopGuardToolLoadMax, ag.Settings.LoopGuardWallSoftSec, ag.Settings.LoopGuardWallHardSec)
+		entries = append(entries, loopGuard.beforeHook(), loopGuard.afterHook(), loopGuard.modelHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		entries = append(entries, newWorkspaceSandboxBeforeHook(ag, deps))
@@ -211,7 +217,12 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		}
 		entries = append(entries, newShellOnFailureAfterHook())
 		if gate != nil {
-			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
+			// P2-③：注入循环守卫——HITL 非批准出口（拒绝/超时/无回复通道）
+			// 工具不执行、AfterTool 不运行，确认门禁须显式归还守卫 inflight
+			// 槽位；拒绝/无通道还登记否决签名，同参重发由守卫首次即拦。
+			confirmHook := newToolConfirmationBeforeHook(gate, ag, deps)
+			confirmHook.setLoopGuard(loopGuard)
+			entries = append(entries, confirmHook)
 		}
 		// Capture skill_load/skill_run slug into invocation state BEFORE the
 		// tool recorder reads it (recorder runs at priority 50).

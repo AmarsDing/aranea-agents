@@ -173,6 +173,10 @@ type ChatOrchestrator struct {
 	// 客户端重试/双击/断连重发不产生重复消息与重复 turn。
 	turnIdem *turnIdemRegistry
 
+	// gateHysteresis 是预规划门控的会话级滞回热缓存（P2-⑤ R4-Q9）：
+	// 连续 2 轮同向越阈才切档，压住话题漂移引起的档位抖动。
+	gateHysteresis *gateHysteresisStore
+
 	sweepStop chan struct{}
 }
 
@@ -502,6 +506,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		v2Seq:               v2Seq,
 		immediateFactWriter: newImmediateFactWriterWithSlotGovernor(deps.Infra),
 		turnIdem:            newTurnIdemRegistry(),
+		gateHysteresis:      newGateHysteresisStore(),
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,
 			turnRecorder:          metrics,

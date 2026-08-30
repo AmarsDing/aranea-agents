@@ -123,6 +123,82 @@ func bashToolArgs(callID string) *trpctool.BeforeToolArgs {
 	return &trpctool.BeforeToolArgs{ToolName: "bash", ToolCallID: callID}
 }
 
+// TestToolConfirmationHook_DenyRegistersLoopGuardDenial verifies the P2-③
+// link: guard (priority 4) passes the call and begins inflight → confirmation
+// hook (priority 10) sees user denial → noteConfirmationOutcome releases the
+// inflight slot and registers the denial → a same-signature resend is blocked
+// by the guard on first retry（R4-Q6 根修的端到端链路验证）。
+func TestToolConfirmationHook_DenyRegistersLoopGuardDenial(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	g := newToolLoopGuard(nil)
+	h.setLoopGuard(g)
+
+	inv := &trpcagent.Invocation{InvocationID: "inv-hitl-link-1", Session: &trpcsession.Session{ID: "sess-hitl-link"}}
+	var ctx context.Context = trpcagent.NewInvocationContext(context.Background(), inv)
+	ctx = serviceawaitreply.WithReplyFunc(ctx, func(context.Context) (string, error) {
+		return serviceawaitreply.ReplyDeny, nil
+	})
+	args := []byte(`{"cmd":"rm -rf /tmp/x"}`)
+	guardBefore := g.beforeHook()
+	if _, err := guardBefore.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "bash", Arguments: args}); err != nil {
+		t.Fatalf("guard should pass first call, got %v", err)
+	}
+	res, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "bash", ToolCallID: "call-1", Arguments: args})
+	if err != nil {
+		t.Fatalf("deny must not surface as callback error, got %v", err)
+	}
+	if res == nil || res.CustomResult == nil {
+		t.Fatal("expected Reject CustomResult on denial")
+	}
+	if _, err := guardBefore.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "bash", Arguments: args}); err == nil {
+		t.Fatal("resend after denial must be blocked by loop guard")
+	} else if !strings.Contains(err.Error(), "否决") {
+		t.Fatalf("expected denial block message, got %q", err.Error())
+	}
+}
+
+// TestToolConfirmationHook_TimeoutReleasesLoopGuardInflight verifies the
+// timeout exit releases the guard inflight slot without registering a denial:
+// a user-mandated resend must be able to enter confirmation again (P2-③).
+func TestToolConfirmationHook_TimeoutReleasesLoopGuardInflight(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	h.confirmTimeout = 20 * time.Millisecond
+	h.confirmRetries = -1
+	g := newToolLoopGuard(nil)
+	h.setLoopGuard(g)
+
+	inv := &trpcagent.Invocation{InvocationID: "inv-hitl-link-2", Session: &trpcsession.Session{ID: "sess-hitl-link-2"}}
+	var ctx context.Context = trpcagent.NewInvocationContext(context.Background(), inv)
+	ctx = serviceawaitreply.WithReplyFunc(ctx, func(ctx context.Context) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	args := []byte(`{"cmd":"rm -rf /tmp/y"}`)
+	guardBefore := g.beforeHook()
+	if _, err := guardBefore.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "bash", Arguments: args}); err != nil {
+		t.Fatalf("guard should pass first call, got %v", err)
+	}
+	res, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "bash", ToolCallID: "call-1", Arguments: args})
+	if err != nil {
+		t.Fatalf("timeout must not surface as callback error, got %v", err)
+	}
+	if res == nil || res.CustomResult == nil {
+		t.Fatal("expected Reject CustomResult on timeout")
+	}
+	// 超时未登记否决且 inflight 已归还：同参重发放行（可再次发起确认）。
+	if _, err := guardBefore.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "bash", Arguments: args}); err != nil {
+		t.Fatalf("resend after timeout should pass guard, got %v", err)
+	}
+}
+
 func TestToolConfirmationHook_SessionGrantSkipsPrompt(t *testing.T) {
 	h, sessionGrants := newGrantTestHook(t, newFakeToolGrantStore())
 	sessionGrants.GrantSession("sess-1", "agent-1", "bash")

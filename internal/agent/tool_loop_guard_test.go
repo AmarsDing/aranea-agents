@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/tools/inverse"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -707,5 +709,131 @@ func TestLoopGuardBlocksForbiddenRetry(t *testing.T) {
 	}
 	if err := runLoopGuardTurn(t, g, ctx, "list_member_files", `{"agent_key":"ppc_strategist"}`, nil, ferr); err == nil {
 		t.Fatal("third forbidden retry must be blocked")
+	}
+}
+
+// P2-③（R4-Q6 根修）：HITL 拒绝后同参重发首次即拦。
+// 链路序：守卫放行（beginInflight）→ 确认门禁用户拒绝（noteConfirmationOutcome
+// 归还槽位+登记 denied）→ 模型同参重发 → 守卫首拦。beforeHook 单独驱动以模拟
+// 「工具未执行、AfterTool 不运行」的真实短路路径。
+func TestLoopGuardHITLDeniedResendBlocked(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-hitl-deny")
+	args := `{"to":"a@b.c","subject":"s"}`
+	before := g.beforeHook()
+
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(args)}); err != nil {
+		t.Fatalf("first call should pass guard, got %v", err)
+	}
+	g.noteConfirmationOutcome(ctx, "send_email", []byte(args), true)
+
+	_, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(args)})
+	if err == nil {
+		t.Fatal("resend of HITL-denied call must be blocked on first retry")
+	}
+	if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+		t.Fatalf("blocked error should carry loop guard marker, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "否决") {
+		t.Fatalf("blocked error should explain the denial, got %q", err.Error())
+	}
+	if _, ok := trpcagent.AsStopError(err); ok {
+		t.Fatal("first denied-resend block must NOT be a StopError before saturation")
+	}
+	// 不同参数不受否决登记影响。
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(`{"to":"x@y.z"}`)}); err != nil {
+		t.Fatalf("different args should pass, got %v", err)
+	}
+	// 新 invocation（新对话轮次）不携带否决登记：用户改变主意后重发合法。
+	ctx2 := newTestInvocationContext("inv-hitl-deny-2")
+	if _, err := before.HandleBeforeTool(ctx2, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(args)}); err != nil {
+		t.Fatalf("new invocation should not inherit denial, got %v", err)
+	}
+}
+
+// P2-③：确认超时只归还 inflight、不登记否决——用户授意的重发须能再走确认。
+// 同时验证不归还时本用例会命中「并行重复」误拦（回归锚点）。
+func TestLoopGuardHITLTimeoutReleasesInflightNoDenied(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-hitl-timeout")
+	args := `{"to":"a@b.c"}`
+	before := g.beforeHook()
+	after := g.afterHook()
+
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(args)}); err != nil {
+		t.Fatalf("first call should pass guard, got %v", err)
+	}
+	g.noteConfirmationOutcome(ctx, "send_email", []byte(args), false)
+
+	// 用户授意重发：守卫应放行（inflight 已归还、无 denied 登记）。
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(args)}); err != nil {
+		t.Fatalf("resend after timeout should pass guard, got %v", err)
+	}
+	// 批准后真实执行成功，AfterTool 正常归还。
+	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: "send_email", Arguments: []byte(args), Result: "sent"}); err != nil {
+		t.Fatalf("after hook error: %v", err)
+	}
+}
+
+// P2-③：noteConfirmationOutcome 的边界形态——nil 守卫不 panic（装配缺失
+// fail-open）；denied 登记不依赖先验 inflight（生产链序保证确认门禁只在其
+// 守卫放行后运行，但合成路径下登记行为保持一致、可预期）。
+func TestLoopGuardNoteConfirmationOutcomeEdge(t *testing.T) {
+	var nilGuard *toolLoopGuard
+	nilGuard.noteConfirmationOutcome(newTestInvocationContext("inv-hitl-nil"), "send_email", []byte(`{}`), true)
+
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-hitl-noop")
+	g.noteConfirmationOutcome(ctx, "send_email", []byte(`{"to":"a@b.c"}`), true)
+	if _, err := g.beforeHook().HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "send_email", Arguments: []byte(`{"to":"a@b.c"}`)}); err == nil {
+		t.Fatal("denied signature must be blocked even without prior inflight")
+	}
+	// 无 invocation 的 ctx：守卫本就无从记账，调用方亦不 panic。
+	g.noteConfirmationOutcome(context.Background(), "send_email", []byte(`{}`), true)
+}
+
+// P2-③（R4-Q6 根修）：补偿对工具同参去重阈值收紧为 1——审批通过后同参重放
+// 首次即拦，且拦截消息携带方案 C 引导（指向逆工具）。
+func TestLoopGuardInversePairThresholdTightened(t *testing.T) {
+	inverse.Register("test_lg_inject", inverse.Spec{InverseTool: "test_lg_clear"})
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-lg-tighten")
+	args := `{"link":"r1-eth0"}`
+
+	// 审批通过 + 真实执行成功一次（补偿跟踪同步记 pending，模拟生产回调链）。
+	if err := runLoopGuardTurn(t, g, ctx, "test_lg_inject", args, `{"ok":true}`, nil); err != nil {
+		t.Fatalf("first inject should pass, got %v", err)
+	}
+	globalCompensationTracker.afterTool(ctx, &trpctool.AfterToolArgs{ToolName: "test_lg_inject", Arguments: []byte(args)})
+
+	// R4-Q6 形态：同参重放——第 2 次即拦（默认阈值 2 下放行）。
+	err := runLoopGuardTurn(t, g, ctx, "test_lg_inject", args, `{"ok":true}`, nil)
+	if err == nil {
+		t.Fatal("same-param replay of side-effect tool must be blocked on first repeat")
+	}
+	if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+		t.Fatalf("blocked error should carry marker, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "test_lg_clear") {
+		t.Fatalf("block message should carry plan-C cue pointing to inverse tool, got %q", err.Error())
+	}
+}
+
+// P2-③：逆工具自身同参重发同样首次即拦（重复 clear 幂等空转）。
+func TestLoopGuardInverseToolRepeatClearBlocked(t *testing.T) {
+	inverse.Register("test_lg_inject", inverse.Spec{InverseTool: "test_lg_clear"})
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-lg-clear")
+	args := `{"link":"r1-eth0"}`
+
+	if err := runLoopGuardTurn(t, g, ctx, "test_lg_clear", args, "cleared", nil); err != nil {
+		t.Fatalf("first clear should pass, got %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "test_lg_clear", args, "cleared", nil); err == nil {
+		t.Fatal("second identical clear must be blocked (threshold tightened to 1)")
+	}
+	// 不同参数的 clear 不受影响。
+	if err := runLoopGuardTurn(t, g, ctx, "test_lg_clear", `{"link":"r2-eth0"}`, "cleared", nil); err != nil {
+		t.Fatalf("clear with different args should pass, got %v", err)
 	}
 }

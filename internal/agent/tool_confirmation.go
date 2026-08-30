@@ -45,6 +45,11 @@ type toolConfirmationBeforeHook struct {
 	gate *toolConfirmGate
 	ag   biz.Agent
 	deps TRPCBuilderDeps
+	// loopGuard 由装配链注入（P2-③ HITL 恢复路径）：非批准出口（拒绝/超时/
+	// 无回复通道）下工具不再执行、框架短路、AfterTool 不运行，必须显式归还
+	// 守卫 inflight 槽位；拒绝/无通道还登记否决签名，同参重发由守卫首拦。
+	// nil-safe（单测可不注入）。
+	loopGuard *toolLoopGuard
 	// confirmTimeout bounds the wait for a user decision. Zero means
 	// defaultToolConfirmationTimeout; overridable in tests.
 	confirmTimeout time.Duration
@@ -59,6 +64,12 @@ var _ callbacks.BeforeToolHook = (*toolConfirmationBeforeHook)(nil)
 
 func newToolConfirmationBeforeHook(gate *toolConfirmGate, ag biz.Agent, deps TRPCBuilderDeps) *toolConfirmationBeforeHook {
 	return &toolConfirmationBeforeHook{gate: gate, ag: ag, deps: deps}
+}
+
+// setLoopGuard 注入工具循环守卫（P2-③）。装配链在确认门禁注册前调用；
+// 重复设置同值无害。
+func (h *toolConfirmationBeforeHook) setLoopGuard(g *toolLoopGuard) {
+	h.loopGuard = g
 }
 
 func (h *toolConfirmationBeforeHook) Point() callbacks.CallbackPoint {
@@ -217,6 +228,11 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		reply, err, confirmationTimedOut, follower := waitConfirmCoalesced(sessionID, h.ag.ID, toolKey, ctx, waitConfirm)
 		if err != nil {
 			if confirmationTimedOut {
+				// P2-③：超时不构成用户否决（确认卡仍有效，用户授意的重发须能
+				// 再走确认流程）——只归还守卫 inflight 槽位，不登记 denied。
+				// leader 与 follower 各自的调用都已在守卫侧 beginInflight，
+				// 必须逐调用归还，故不随 follower 早退跳过。
+				h.loopGuard.noteConfirmationOutcome(ctx, toolKey, args.Arguments, false)
 				if !follower {
 					recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 						ToolKey:      toolKey,
@@ -233,8 +249,15 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					}, nil, h.ag, h.deps)
 					h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, timeoutBlockCause(toolKey))
 				}
-				return callbacks.Reject(toolConfirmTimeoutMessage(toolKey, attempts, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
+				timeoutMsg := toolConfirmTimeoutMessage(toolKey, attempts, effectiveConfirmTimeout)
+				// P2-③ 方案 C 回执：存在未核销副作用时引导模型先补偿清除而非重发。
+				if cue := planCCompensationCue(ctx, toolKey); cue != "" {
+					timeoutMsg += " " + cue
+				}
+				return callbacks.Reject(timeoutMsg).BeforeToolResult(ctx), nil
 			}
+			// P2-③：等待确认异常（如 ctx 取消）同样短路、工具未执行，归还槽位。
+			h.loopGuard.noteConfirmationOutcome(ctx, toolKey, args.Arguments, false)
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {
@@ -251,6 +274,10 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			}
 			return &trpctool.BeforeToolResult{Context: plugintrpc.WithToolConfirmHandled(ctx)}, nil
 		}
+		// P2-③：用户明确否决——归还守卫 inflight 槽位并登记 denied 签名，
+		// 本节点生命周期内同参重发由守卫首次即拦（守卫侧拼方案 C 引导）。
+		// 不随 follower 早退跳过：各调用的 inflight 需逐一归还。
+		h.loopGuard.noteConfirmationOutcome(ctx, toolKey, args.Arguments, true)
 		if !follower {
 			recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 				ToolKey:      toolKey,
@@ -267,9 +294,17 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			}, nil, h.ag, h.deps)
 			h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", reply, args.Arguments, "")
 		}
-		return callbacks.Reject(fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
+		denyMsg := fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)
+		// P2-③ 方案 C 回执：存在未核销副作用时引导模型先补偿清除而非重发。
+		if cue := planCCompensationCue(ctx, toolKey); cue != "" {
+			denyMsg += " " + cue
+		}
+		return callbacks.Reject(denyMsg).BeforeToolResult(ctx), nil
 	}
 
+	// P2-③：无回复通道——本 invocation 内重发必然同路失败，归还守卫
+	// inflight 槽位并登记 denied 签名，同参重发由守卫首次即拦止损。
+	h.loopGuard.noteConfirmationOutcome(ctx, toolKey, args.Arguments, true)
 	recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 		ToolKey:      toolKey,
 		AgentID:      h.ag.ID,
@@ -284,7 +319,11 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 	}, nil, h.ag, h.deps)
 	h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", "", args.Arguments, "no_reply_channel")
-	return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
+	noChannelMsg := fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)
+	if cue := planCCompensationCue(ctx, toolKey); cue != "" {
+		noChannelMsg += " " + cue
+	}
+	return callbacks.Reject(noChannelMsg).BeforeToolResult(ctx), nil
 }
 
 // confirmTimeoutForTool returns the HITL wait budget. Tests may override via

@@ -45,12 +45,17 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	// agent 仍可获得预检索命中的 chunks；仅"调用 knowledge_search 继续检索"
 	// 的引导文案依赖工具开关（见 buildKnowledgeCue/formatKnowledgeCue）。
 	toolsEnabled := ag.Settings != nil && ag.Settings.ToolsEnabled
-	kbTools := agentHasKnowledgeSearch(ag)
 	groundedOnly := biz.ParseAgentKnowledgeConfig(ag.ConfigJSON).GroundedOnly
 	return callbacks.NewBeforeModelHook(6, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		// P2-④（session-eval-20260829-r2 R4-Q7）：kbTools 动态判定——静态
+		// profile（coding/research/full 常驻）之外，Spirit 在知识意图轮次经
+		// knowledge_intent promote hook 激活后同样视为「在面上」，cue 文案
+		// 不再告知「不要 tool_search 猎取」。BeforeAgent(priority 3) 先于
+		// BeforeModel 执行，同轮激活同轮可见。
+		kbTools := knowledgeSearchOnFace(ctx, ag, deps.DeferredManager)
 		cue, cited, fresh := resolveKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled, kbTools, groundedOnly)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -383,8 +388,10 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 }
 
 // agentHasKnowledgeSearch reports whether this agent's tool face includes
-// knowledge_search. Spirit is orchestrator-only (org invariant) and must not
-// be told to call a specialist tool.
+// knowledge_search by static profile/allow-list. Spirit is orchestrator-only
+// and statically excluded — but P2-④（R4-Q7）起 Spirit 在显式知识库意图
+// 轮次由 knowledge_intent promote hook 动态激活 knowledge_search，动态面
+// 由 knowledgeSearchOnFace 判定，本函数保持纯静态语义。
 func agentHasKnowledgeSearch(ag biz.Agent) bool {
 	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
 		return false

@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools/alias"
+	"aranea-agents/internal/tools/inverse"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -192,6 +193,12 @@ type loopGuardEntry struct {
 	emptyStreak      map[string]int          // 检索类工具名 → 连续空结果次数（无视参数差异；非空即清零）
 	blockedCount     int                     // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
 	inflight         map[string]inflightSlot // 签名 → 当前正在执行（已放行、尚未 AfterTool）
+	// deniedSigs 记录本节点生命周期内被 HITL 确认门禁否决的签名（P2-③，
+	// R4-Q6 根修）：用户拒绝/无回复通道的工具调用不再执行、AfterTool 不运行，
+	// 确认门禁经 noteConfirmationOutcome 归还 inflight 并登记于此；同一节点
+	// 内同参重发即拦（阈值收紧为 1）。超时不登记（确认卡仍有效，用户授意的
+	// 重发属合法路径）。条目随 invocation/team-run 键隔离，新对话轮次自然清零。
+	deniedSigs map[string]int
 	// 空转轮次早停状态（A2'b）：roundSawTool/roundProductive 累积当前 LLM 轮的
 	// 工具结果，BeforeModel 续轮时结算进 unprodRounds（任一有产出的调用即清零）。
 	roundSawTool    bool
@@ -240,6 +247,8 @@ const (
 	loopGuardBlockLoadThenCall
 	loopGuardBlockPlanDrift
 	loopGuardBlockForbidden
+	// loopGuardBlockDenied：同参重发刚被 HITL 否决的调用（P2-③）。
+	loopGuardBlockDenied
 )
 
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
@@ -335,6 +344,9 @@ type loopGuardVerdict struct {
 	loadTarget string
 	loadCount  int
 	loadMax    int
+	// threshold 是本次同参判定实际使用的连击阈值（补偿对工具收紧为 1，
+	// 其余为 loopGuardBlockThreshold），仅供拦截消息展示「第 N 次起拦截」。
+	threshold int
 }
 
 func (e *loopGuardEntry) inflightCount(sig string, now time.Time) int {
@@ -945,6 +957,19 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	if e.inflightCount(sig, now) > 0 {
 		return loopGuardVerdict{kind: loopGuardBlockParallel}
 	}
+	// P2-③ HITL 恢复路径（R4-Q6 根修）：本签名刚被确认门禁否决（用户拒绝/
+	// 无回复通道，inflight 已由 noteConfirmationOutcome 归还）——同一节点
+	// 生命周期内同参重发即拦。被拦调用不进 AfterTool，blockedCount 与本轮
+	// 工具活动只能在此记账（与下方通用拦截路径同构）。
+	if e.deniedSigs[sig] > 0 {
+		e.blockedCount++
+		e.roundSawTool = true
+		return loopGuardVerdict{
+			kind:         loopGuardBlockDenied,
+			blockedCount: e.blockedCount,
+			saturated:    e.blockedCount >= loopGuardSaturatedStopThreshold,
+		}
+	}
 	// Q1 装载闸（S02「合法失控」根修）：优先于签名/轮换/空结果判定——
 	// tool_load 的异质调用序列对三重旧守卫全部"合法"，必须由装载语义自身收口。
 	//   - 重复装载：目标已在 loadedTools（激活幂等、无运行时卸载，重复装载恒零
@@ -993,7 +1018,15 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	// 空结果熔断优先于签名/轮换判定：库中确无资料时，任何参数的再调用都无意义，
 	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
 	emptyBlocked := e.emptyStreak[toolName] >= loopGuardEmptyStreakThreshold
-	loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopGuardBlockThreshold
+	// P2-③ 补偿对阈值收紧（R4-Q6 根修）：副作用工具的副作用不可重放——
+	// 重复 inject 不叠加新效果、重复 clear 幂等空转，首次成功即视为终态，
+	// 第 2 次同参同结果调用起拦（含审批通过后的重放形态）；其余工具维持
+	// 默认阈值（取证确认属合理模式）。
+	loopThreshold := loopGuardBlockThreshold
+	if loopGuardCompensationPairTool(toolName) {
+		loopThreshold = 1
+	}
+	loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopThreshold
 	forbiddenLoop := e.lastSig == sig && e.forbiddenStreak >= 2
 	var cycleDesc string
 	if !loop && len(e.recentSigs)+1 >= 2*loopGuardCycleMinRepeats {
@@ -1027,6 +1060,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 		loadCount:        e.loadCount,
 		loadMax:          loadMax,
 		saturated:        e.blockedCount >= loopGuardSaturatedStopThreshold,
+		threshold:        loopThreshold,
 	}
 	if loadThenCall != "" {
 		v.kind = loopGuardBlockLoadThenCall
@@ -1065,6 +1099,57 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	}
 	v.kind = loopGuardBlockLoop
 	return v
+}
+
+// loopGuardCompensationPairTool 报告工具是否属于已登记的补偿对（正向或逆向）。
+// 补偿对工具的副作用不可重放（重复 inject 不叠加新效果、重复 clear 幂等空转），
+// 同参去重阈值收紧为 1（P2-③，R4-Q6 根修：审批通过后的同参重放首次即拦）。
+// 注册表为进程级只读快照（构造路径幂等注册），锁外调用安全。
+func loopGuardCompensationPairTool(toolName string) bool {
+	if _, ok := inverse.LookupForward(toolName); ok {
+		return true
+	}
+	return inverse.IsInverse(toolName)
+}
+
+// noteConfirmationOutcome 由 HITL 确认门禁在非批准出口调用（P2-③，R4-Q6 根修）。
+//
+// 背景：确认门禁（priority 10）在循环守卫（priority 4）放行后才等待用户裁定，
+// 守卫已为该签名 beginInflight；非批准出口下工具不再执行、框架短路返回
+// CustomResult、AfterTool 不运行，inflight 槽位必须由本函数显式归还——否则
+// 陈旧期（loopGuardInflightStale）内的重发会被误判为「并行重复」。
+//
+// denied=true（用户明确拒绝 / 无回复通道）额外把签名登记进 deniedSigs：同一
+// 节点生命周期内同参重发即拦，拦截消息由 beforeHook 拼接方案 C 补偿引导。
+// denied=false（确认超时 / 等待异常）只归还槽位不登记——确认卡仍然有效，
+// 用户授意的重发必须能再次走进确认流程。
+//
+// 批准出口严禁调用本函数：工具继续执行，inflight 由 AfterTool 正常归还，
+// 重复归还会吞掉后续真实并行调用的计数。
+func (g *toolLoopGuard) noteConfirmationOutcome(ctx context.Context, toolName string, args []byte, denied bool) {
+	if g == nil {
+		return
+	}
+	key := loopGuardInvocationKey(ctx)
+	if key == "" {
+		return
+	}
+	sig := loopGuardSignature(toolName, args)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	e := g.entryLocked(key, time.Now())
+	e.endInflight(sig)
+	if toolName == toolLoadToolName {
+		e.endInflightLoad(loopGuardToolLoadTarget(args))
+	}
+	if denied {
+		if e.deniedSigs == nil {
+			e.deniedSigs = map[string]int{}
+		}
+		e.deniedSigs[sig]++
+	}
+	// 本轮有工具活动但零产出（工具未执行），供 BeforeModel 空转轮结算。
+	e.roundSawTool = true
 }
 
 func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
@@ -1302,13 +1387,34 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loopGuardMarker, args.ToolName, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
+		if v.kind == loopGuardBlockDenied {
+			g.lg.Warn("tool loop guard blocked HITL-denied resend",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName))
+			g.emitGateDecision(ctx, args.ToolName, "同参重发已被确认门禁否决的调用，拦截",
+				fmt.Sprintf("%s 的同参调用刚被确认流程否决（用户拒绝或无确认通道），节点内重发不会改变裁定", args.ToolName),
+				1, 1, "block_call")
+			cue := planCCompensationCue(ctx, args.ToolName)
+			if cue != "" {
+				cue = " " + cue
+			}
+			msg := fmt.Sprintf("%s：本调用与方才确认流程已否决的调用（工具与参数完全一致）重合——该调用已被判定为不可执行（用户拒绝或当前环境无确认通道），本调用被系统拦截，工具未执行、也非执行失败。"+
+				"同一节点内以相同参数重发不会改变裁定；若用户改变主意，会在新的对话轮次中明确提出，届时重新发起确认。请直接向用户说明该操作保持未执行状态，并询问接下来如何处理。%s"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, cue, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
+		threshold := v.threshold
+		if threshold <= 0 {
+			threshold = loopGuardBlockThreshold
+		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
 			loggateway.StepID("agent.tool_loop_guard"),
 			loggateway.Str("tool", args.ToolName),
 			loggateway.Int("consecutive", v.consecutiveCount))
 		g.emitGateDecision(ctx, args.ToolName, "同工具同参数同结果连续重发，拦截无效空转",
-			fmt.Sprintf("%s 已连续 %d 次以相同参数调用且结果一致（第 %d 次起拦截）", args.ToolName, v.consecutiveCount, loopGuardBlockThreshold+1),
-			v.consecutiveCount, loopGuardBlockThreshold+1, "block_call")
+			fmt.Sprintf("%s 已连续 %d 次以相同参数调用且结果一致（第 %d 次起拦截）", args.ToolName, v.consecutiveCount, threshold+1),
+			v.consecutiveCount, threshold+1, "block_call")
 		digest := v.lastDigest
 		if digest == "" {
 			digest = "（结果为空）"
@@ -1317,10 +1423,16 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 		if v.lastTool != "" && v.lastTool != args.ToolName {
 			crossName = fmt.Sprintf("（%s 与 %s 是同一底层工具的不同名字，同参数调用属重复）", args.ToolName, v.lastTool)
 		}
+		// P2-③ 方案 C 引导：补偿对工具（如 fault_inject）存在未核销副作用时，
+		// 把模型从「重发原调用」引导到「调用逆工具完成补偿」；无 pending 时为空串。
+		cue := planCCompensationCue(ctx, args.ToolName)
+		if cue != "" {
+			cue = " " + cue
+		}
 		msg := fmt.Sprintf("%s：本调用被系统拦截，工具未执行、也非执行失败——%s 此前已成功返回，取证已完成。%s"+
 			"禁止重发本调用，立即按任务指令推进到下一动作（发起下一步指定的工具调用；全部步骤完成则直接输出最终结论）。"+
-			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用；本节点累计被拦 %d 次，满 %d 次将被强制终止）。",
-			loopGuardMarker, args.ToolName, crossName, digest, v.consecutiveCount, v.blockedCount, loopGuardSaturatedStopThreshold)
+			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用；本节点累计被拦 %d 次，满 %d 次将被强制终止）。%s",
+			loopGuardMarker, args.ToolName, crossName, digest, v.consecutiveCount, v.blockedCount, loopGuardSaturatedStopThreshold, cue)
 		return nil, errors.New(msg)
 	})
 }

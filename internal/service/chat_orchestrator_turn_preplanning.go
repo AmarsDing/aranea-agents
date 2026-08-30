@@ -80,6 +80,18 @@ func (o *ChatOrchestrator) runPrePlanningGate(
 		)
 		return GateDecision{}, err
 	}
+	// P2-⑤（R4-Q9）门控滞回：会话内档位切换需连续 2 轮同向越阈。首轮直采
+	// 定档（S06/S07 单轮组队场景不受影响）；单轮尖峰被压住维持原档。
+	if effective, damped := o.gateHysteresis.Apply(input.SessionID, decision.ForcePlanning); damped {
+		o.lg().Info("预规划门控滞回：单轮反向越阈被压住，维持原档",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.SessionID(input.SessionID),
+			loggateway.Bool("raw_force", decision.ForcePlanning),
+			loggateway.Bool("effective_force", effective),
+		)
+		decision.ForcePlanning = effective
+		decision.Reason += "（滞回保持：档位切换需连续 2 轮同向越阈）"
+	}
 	return decision, nil
 }
 
