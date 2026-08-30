@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
@@ -183,5 +184,197 @@ func TestOutputPolicy_OnEvent_PassesWhenNoBlock(t *testing.T) {
 	passed := out.Response.Choices[0].Delta.Content
 	if passed != original {
 		t.Fatalf("when block_on_violation=false, content should pass unchanged; got %q", passed)
+	}
+}
+
+// ---------- P4（2026-08-30）：标记剥离 / 终态解耦 / 防御性白名单 ----------
+
+// P4 标记剥离：兜底文案不得暴露插件名/命中模式等内部细节（S14 实证
+// "output_policy: blocked content matching dangerous_command" 泄漏给用户）。
+func TestOutputPolicy_DefaultReplacementMessage_StripsInternalMarker(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	args := &trpcmodel.AfterModelArgs{
+		Response: &trpcmodel.Response{
+			Choices: []trpcmodel.Choice{{
+				Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "执行 rm -rf / 即可清理"},
+			}},
+		},
+	}
+	res, err := o.afterModel(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.CustomResponse == nil {
+		t.Fatal("expected block")
+	}
+	msg := res.CustomResponse.Choices[0].Message.Content
+	for _, internal := range []string{"output_policy", "dangerous_command", "blocked content"} {
+		if strings.Contains(msg, internal) {
+			t.Fatalf("user-visible message must not leak internal marker %q, got %q", internal, msg)
+		}
+	}
+}
+
+// P4 终态解耦：拦截响应必须是完整终态（Done + finish_reason=content_filter），
+// 否则调用侧可能按残缺输出触发续写/重试（S14 h3 89s 内被反复拦截 5 次）。
+func TestBlockedModelResponse_IsTerminal(t *testing.T) {
+	resp := blockedModelResponse("x")
+	if !resp.Done {
+		t.Fatal("blocked response must be Done=true")
+	}
+	if resp.Object != trpcmodel.ObjectTypeChatCompletion {
+		t.Fatalf("blocked response Object must be chat_completion, got %q", resp.Object)
+	}
+	fr := resp.Choices[0].FinishReason
+	if fr == nil || *fr != "content_filter" {
+		t.Fatalf("blocked response must carry finish_reason=content_filter, got %v", fr)
+	}
+}
+
+// P4 防御性白名单：讲解/警示语境提及危险命令不拦截。
+func TestOutputPolicy_DefensiveMention_Exempt(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	defensive := []string{
+		"千万不要执行 rm -rf /，它会递归删除所有文件，非常危险。",
+		"rm -rf 是危险命令，为什么危险？因为它不做任何确认。",
+		"什么是 drop table？这是一种高危 SQL 操作，务必避免在生产执行。",
+	}
+	for _, text := range defensive {
+		args := &trpcmodel.AfterModelArgs{
+			Response: &trpcmodel.Response{
+				Choices: []trpcmodel.Choice{{
+					Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: text},
+				}},
+			},
+		}
+		res, err := o.afterModel(context.Background(), args)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.CustomResponse != nil {
+			t.Fatalf("defensive/educational mention must not be blocked: %q", text)
+		}
+	}
+}
+
+// P4 白名单边界：代码块 / shell 提示符行内的危险命令仍是可执行指令形态，
+// 不豁免；无防御标记的祈使句照常拦截。
+func TestOutputPolicy_DangerousCommand_StillBlocked(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	blocked := []string{
+		"清理磁盘：\n```\nrm -rf /tmp/data\n```",
+		"$ rm -rf /",
+		"执行 rm -rf / 即可释放空间",
+		// 混合内容：散文讲解在前、代码块示范在后——首个命中是防御语境，
+		// 但第二个命中是可执行形态，必须拦截（遍历全部命中，防逃逸）。
+		"rm -rf 非常危险，千万不要执行。错误示范：\n```\nrm -rf /tmp/data\n```",
+	}
+	for _, text := range blocked {
+		args := &trpcmodel.AfterModelArgs{
+			Response: &trpcmodel.Response{
+				Choices: []trpcmodel.Choice{{
+					Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: text},
+				}},
+			},
+		}
+		res, err := o.afterModel(context.Background(), args)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.CustomResponse == nil {
+			t.Fatalf("actionable dangerous command must be blocked: %q", text)
+		}
+	}
+}
+
+// P4 流式白名单：防御标记与危险命令分属不同 chunk 时，滚动窗口必须让
+// 后到的命令 chunk 豁免（S14 h3 的真实形态——标记先于命令若干 chunk）。
+func TestOutputPolicy_StreamingChunks_DefensiveWindowExempt(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	inv := &trpcagent.Invocation{InvocationID: "inv-p4-stream"}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	chunks := []string{"千万", "不要执行 ", "rm -rf /", "，它会删除所有文件"}
+	for i, c := range chunks {
+		args := &trpcmodel.AfterModelArgs{
+			Response: &trpcmodel.Response{
+				Object:  trpcmodel.ObjectTypeChatCompletionChunk,
+				Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: c}}},
+			},
+		}
+		res, err := o.afterModel(ctx, args)
+		if err != nil {
+			t.Fatalf("chunk %d: unexpected error: %v", i, err)
+		}
+		if res.CustomResponse != nil {
+			t.Fatalf("chunk %d %q must not be blocked (defensive context in window)", i, c)
+		}
+	}
+}
+
+// P4 流式拦截后窗口重置：已拦截内容不再参与后续 chunk 判定，防同一命令
+// 残留在窗口内导致后续干净 chunk 被连锁误拦。
+func TestOutputPolicy_StreamingWindow_ResetsAfterBlock(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	inv := &trpcagent.Invocation{InvocationID: "inv-p4-reset"}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	mkChunk := func(c string) *trpcmodel.AfterModelArgs {
+		return &trpcmodel.AfterModelArgs{
+			Response: &trpcmodel.Response{
+				Object:  trpcmodel.ObjectTypeChatCompletionChunk,
+				Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: c}}},
+			},
+		}
+	}
+	// chunk1：裸指令，拦截。
+	res, err := o.afterModel(ctx, mkChunk("rm -rf /"))
+	if err != nil || res.CustomResponse == nil {
+		t.Fatalf("bare command chunk must be blocked, res=%+v err=%v", res, err)
+	}
+	// chunk2：命令已重置出窗口，干净文本不得被连锁误拦。
+	res, err = o.afterModel(ctx, mkChunk("后续说明文字"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.CustomResponse != nil {
+		t.Fatal("clean chunk after block must pass (window was reset)")
+	}
+}
+
+// P4 白名单不放宽严格清单：管理员配置的 blocked_patterns 即使伴随防御
+// 标记也照常拦截。
+func TestOutputPolicy_BlockedPatterns_RemainStrict(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockedPatterns:       []string{"secret_key"},
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	args := &trpcmodel.AfterModelArgs{
+		Response: &trpcmodel.Response{
+			Choices: []trpcmodel.Choice{{
+				Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "注意：千万不要泄露 secret_key，这很危险"},
+			}},
+		},
+	}
+	res, err := o.afterModel(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.CustomResponse == nil {
+		t.Fatal("admin blocked_patterns must remain strict (no defensive exemption)")
 	}
 }

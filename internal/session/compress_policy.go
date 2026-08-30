@@ -42,6 +42,11 @@ type CompressThreshold struct {
 	BufferRatio       float64 // CompressionBufferRatio
 	KeepTurns         int     // L0SummaryKeepTurns
 	RecentWindowTurns int     // L0RecentWindowTurns
+	// MaxTriggerTokens 是硬触发点的绝对上限（P3，2026-08-30：r4 S09 实证
+	// 64k 窗模型按比例 0.90 要到 ~59k 才压缩，拐点塌方+缓存清崖）。硬触发
+	// 超过该值时压到该值，软触发按 soft/hard 比例同步收缩保住滞回区间。
+	// <=0 = 不加绝对上限（维持纯比例语义）。
+	MaxTriggerTokens int
 	// SummaryMaxRows caps stored rolling-summary rows: when the count reaches
 	// the cap, Level 2 (MemoryCompact) is skipped and Level 3 (LLM) is forced
 	// so the LLM absorbs all prior rows back into one (prevents unbounded
@@ -91,6 +96,7 @@ func DefaultCompressPolicy() CompressPolicy {
 			BufferRatio:       biz.DefaultCompressionBufferRatio,
 			KeepTurns:         defaultKeepTurns,
 			RecentWindowTurns: 0,
+			MaxTriggerTokens:  defaultMaxTriggerTokens,
 			SummaryMaxRows:    defaultSummaryMaxRows,
 		},
 		Timing: CompressTiming{
@@ -161,6 +167,12 @@ func CompressPolicyFromAgent(ag biz.Agent) CompressPolicy {
 	// Timing
 	if s.L0CompressMinGapSec > 0 {
 		p.Timing.MinGap = time.Duration(s.L0CompressMinGapSec) * time.Second
+	}
+
+	// MaxTriggerTokens：biz 字段已接线；ent 列暂未新增（避免为首轮上线做
+	// schema 迁移），DB 加载的 agent 该字段恒 0 → 走全局默认 32768。
+	if s.L0CompressMaxTriggerTokens > 0 {
+		p.Threshold.MaxTriggerTokens = s.L0CompressMaxTriggerTokens
 	}
 
 	// Model
@@ -410,6 +422,20 @@ func compressionBufferRatioPolicy(p CompressPolicy) float64 {
 // compressionBufferRatio returns the buffer ratio from agent settings or the default.
 func compressionBufferRatio(ag biz.Agent) float64 {
 	return compressionBufferRatioPolicy(CompressPolicyFromAgent(ag))
+}
+
+// capTriggerTokens applies the absolute trigger ceiling (P3, 2026-08-30):
+// hard trigger is capped at maxTok; soft is scaled down proportionally when it
+// would otherwise land above the capped hard (preserves the hysteresis band).
+func capTriggerTokens(p CompressPolicy, softTok, hardTok int) (int, int) {
+	maxTok := p.Threshold.MaxTriggerTokens
+	if maxTok <= 0 || hardTok <= maxTok {
+		return softTok, hardTok
+	}
+	if softTok > maxTok && hardTok > 0 {
+		softTok = int(float64(maxTok) * float64(softTok) / float64(hardTok))
+	}
+	return softTok, maxTok
 }
 
 // effectiveBudget calculates the usable token budget for conversation content.

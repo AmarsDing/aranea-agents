@@ -139,10 +139,19 @@ func applyResponseText(resp *trpcmodel.Response, text string) {
 	resp.Choices[0].Message.Content = text
 }
 
+// blockedModelResponse 构造拦截兜底响应（P4 终态解耦，2026-08-30）：
+// 必须带 Object=chat_completion + Done=true + finish_reason=content_filter，
+// 让框架/上游把它当作一次完整终态响应而非残缺输出，避免调用侧误判
+// 触发续写/重试（S14 h3 曾被误拦后 89s 内反复拦截 5 次才结束）。
 func blockedModelResponse(msg string) *trpcmodel.Response {
+	reason := "content_filter"
 	return &trpcmodel.Response{
+		Object: trpcmodel.ObjectTypeChatCompletion,
+		Done:   true,
 		Choices: []trpcmodel.Choice{{
-			Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: msg},
+			Index:        0,
+			Message:      trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: msg},
+			FinishReason: &reason,
 		}},
 	}
 }

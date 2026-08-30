@@ -103,12 +103,28 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 			fmt.Sprintf("日 token 预算已用尽，模型 %s 调用被阻止", model))
 		return &trpcmodel.BeforeModelResult{
 			Context:        ctx,
-			CustomResponse: blockedModelResponse("cost_guard: daily token budget exceeded"),
+			CustomResponse: blockedModelResponse(costGuardBlockMessage("daily_budget")),
 		}, nil
 	}
 	c.base.logger.Info("plugin.cost_guard.before_model", "status", "success", "model", model, "est_tokens", est)
 	c.base.record(ctx, "before_model", "success")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+}
+
+// costGuardBlockMessage 把内部阻断原因映射为用户可读文案（P4 标记剥离，
+// 2026-08-30）：用户可见文本不得出现 "cost_guard:" 等内部插件名/原因码，
+// 技术细节只进日志与决策记录。
+func costGuardBlockMessage(reason string) string {
+	switch reason {
+	case "daily_budget":
+		return "今日模型调用额度已达上限，请明日再试或联系管理员调整配额。"
+	case "max_prompt_tokens":
+		return "当前请求的上下文过长，已超出安全限制。请精简内容或开启新会话后再试。"
+	case "blocked_model":
+		return "当前模型已被管理员停用，请切换其他模型后重试。"
+	default:
+		return "当前请求因成本与安全策略无法执行，请稍后重试或联系管理员。"
+	}
 }
 
 // emitNotice emits a notice Activity via the ActivityEmitter in ctx.

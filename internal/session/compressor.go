@@ -638,12 +638,17 @@ func (c *Compressor) newFlowEmitter(ctx context.Context, sessionID string) *even
 }
 
 // compressTriggerThresholds computes soft/hard trigger tokens (adaptive or static buffer).
+// P3: absolute ceiling MaxTriggerTokens caps hardTok; softTok is scaled
+// proportionally so the hysteresis band survives cap compression.
 func (c *Compressor) compressTriggerThresholds(sessionID string, sess biz.Session, ag biz.Agent, usedTokens, window int) (softTok, hardTok int) {
+	p := CompressPolicyFromAgent(ag)
 	if adaptiveBufferEnabled(ag) {
 		ratio := c.buf.getAdaptiveBufferRatio(sessionID, ag, usedTokens, window, sess.ToolCallCount, sess.RunCount)
-		return softTriggerTokensWithRatio(ag, window, ratio), hardTriggerTokensWithRatio(ag, window, ratio)
+		softTok, hardTok = softTriggerTokensWithRatio(ag, window, ratio), hardTriggerTokensWithRatio(ag, window, ratio)
+	} else {
+		softTok, hardTok = softTriggerTokens(ag, window), hardTriggerTokens(ag, window)
 	}
-	return softTriggerTokens(ag, window), hardTriggerTokens(ag, window)
+	return capTriggerTokens(p, softTok, hardTok)
 }
 
 // RemoveSessionState cleans up per-session in-memory state when a session ends.

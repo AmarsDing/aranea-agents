@@ -135,6 +135,10 @@ type AgentRuntimeSettings struct {
 	CompressLLMCacheEnabled    bool
 	CompressLLMCacheMaxEntries int
 	CompressLLMCacheTTLSec     int
+	// L0CompressMaxTriggerTokens is the absolute token ceiling at which
+	// context compaction fires regardless of window-ratio thresholds (P3).
+	// 0 = fall back to global default (currently 32768).
+	L0CompressMaxTriggerTokens int
 	// CompressionBufferRatio is the fraction of contextWindow reserved as compression buffer (default 0.15, range 0.10–0.25).
 	CompressionBufferRatio float64
 	// CompressionBufferAdaptive enables adaptive buffer ratio adjustment based on token increment patterns (default true).
