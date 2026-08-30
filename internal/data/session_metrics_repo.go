@@ -156,6 +156,9 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 			if delta.TotalCostMicroUsd != 0 {
 				u.AddTotalCostMicroUsd(delta.TotalCostMicroUsd)
 			}
+			if delta.ErrorCount != 0 {
+				u.AddErrorCount(delta.ErrorCount)
+			}
 			if delta.LastMessageAt != "" {
 				u.SetLastMessageAt(delta.LastMessageAt)
 			}

@@ -75,7 +75,17 @@ type TurnUsageParams struct {
 
 // RecordTurnUsage records token usage for a turn.
 func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams) {
-	if m == nil || m.usage == nil {
+	if m == nil {
+		return
+	}
+	// R4-Q10：失败 run 计入 session_metrics.error_count（此前该列无写入方恒 0，
+	// S09 first_byte_timeout critical 失败 error_count 仍为 0）。cancelled 是
+	// 用户主动行为、timeout_degraded 有产出，均不计入错误。该计数只依赖
+	// m.sessions，放在 usage nil 早退之前，保证失败一定被计数。
+	if (p.Status == "error" || p.Status == "failed") && m.sessions != nil && strings.TrimSpace(p.SessionID) != "" {
+		m.sessions.AccumulateMetricsDelta(bizsession.SessionMetricsDelta{SessionID: p.SessionID, ErrorCount: 1})
+	}
+	if m.usage == nil {
 		return
 	}
 	// 落库与执行 ctx 解耦：客户端断连/用户取消时 usage 行仍须写入，

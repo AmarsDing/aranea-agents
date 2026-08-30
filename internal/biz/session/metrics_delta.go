@@ -14,6 +14,11 @@ type SessionMetricsDelta struct {
 	OutputTokens        int64
 	TotalTokens         int64
 	TotalCostMicroUsd   int64
+	// ErrorCount 是本批次内失败 run 数（turn status=error/failed；cancelled 是
+	// 用户主动行为、timeout_degraded 有产出，均不计入）。R4-Q10 复测：
+	// session_metrics.error_count 此前无任何写入方恒 0（S09 first_byte_timeout
+	// critical 失败未计数）。
+	ErrorCount          int
 	LastMessageAt       string
 	ContextUsedTokens   int
 	ContextUsedRatio    float64

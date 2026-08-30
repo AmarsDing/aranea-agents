@@ -851,6 +851,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		if execResult.cancelled && turnErr == nil {
 			turnErr = context.Canceled
 		}
+		// R4-Q10：取消轮的 usage 记账状态须为 cancelled——此前只置 turnErr，
+		// turnStatus 保持 "ok"，usage 行被记成 success（S10 实测失真）。
+		if execResult.cancelled && turnStatus == "ok" {
+			turnStatus = "cancelled"
+		}
 		o.sessionRunLC().FinishSessionRunLifecycle(ctx, sessionID, execResult.sessionRunID, turnErr)
 	}()
 
