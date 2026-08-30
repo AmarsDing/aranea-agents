@@ -135,7 +135,11 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	}
 
 	// Step 0: Query OrchestrationCache for memory-driven routing
-	memoryHit := impl.queryMemory(ctx, input, traceID)
+	// N2: SkipMemory=true 时跳过缓存查询（roster_miss 重规划路径）。
+	var memoryHit *biz.MemoryHit
+	if !input.SkipMemory {
+		memoryHit = impl.queryMemory(ctx, input, traceID)
+	}
 	if memoryHit != nil {
 		impl.lg.Info("编排缓存命中，跳过完整复杂度评估",
 			loggateway.StepID(biz.SpiritStepPlannerMemory),
@@ -150,6 +154,36 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		// coordinator → dag (multi-member team), sequential → dag (ordered
 		// execution). This preserves backward compatibility with cache entries
 		// written before the three-mode refactor (direct/parallel/dag).
+		topologyHint := biz.TopologyType(memoryHit.TopologyUsed)
+		strategy := biz.StrategyDirect
+		switch topologyHint {
+		case biz.TopologyDirect:
+			strategy = biz.StrategyDirect
+		case biz.TopologyParallel:
+			strategy = biz.StrategyParallel
+		case biz.TopologyCoordinator, biz.TopologySequential, biz.TopologyHybrid:
+			strategy = biz.StrategyDAG
+		}
+
+		// N1 结构校验：记忆复用的子任务必须能通过花名册映射预检，
+		// 否则作废记忆命中并落入 LLM 分解（S07 根修：陈旧计划子任务
+		// 角色与当前花名册不匹配导致 roster_miss）。
+		var recipeSubTasks []biz.SubTask
+		if strategy != biz.StrategyDirect && (len(memoryHit.Specialties) > 0 || len(memoryHit.AgentKeysUsed) > 0) {
+			recipeSubTasks = recipeReplaySubTasks(memoryHit, input.UserMessage)
+			if !impl.validateRecipeSubTasks(ctx, recipeSubTasks) {
+				impl.lg.Info("记忆命中子任务结构校验失败，作废记忆命中",
+					loggateway.StepID(biz.SpiritStepPlannerMemory),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Int("subtask_count", len(recipeSubTasks)),
+				)
+				memoryHit = nil
+			}
+		}
+	}
+
+	if memoryHit != nil {
+		// Re-derive strategy from validated memory hit.
 		topologyHint := biz.TopologyType(memoryHit.TopologyUsed)
 		strategy := biz.StrategyDirect
 		switch topologyHint {
@@ -751,6 +785,40 @@ func recipeReplaySubTasks(hit *biz.MemoryHit, userMessage string) []biz.SubTask 
 		Description: userMessage,
 		DomainPath:  hit.DomainPath,
 	}}
+}
+
+// validateRecipeSubTasks N1 结构校验：记忆复用的子任务必须能通过花名册
+// 映射预检（bindRosterSpecialist），任一子任务无法映射即判定整个记忆命中
+// 结构无效。fail-open：capBuilder 缺失或 BuildAll 失败时跳过校验（与
+// decomposeCapabilityTags 的 fail-open 语义一致）。
+func (impl *taskPlannerImpl) validateRecipeSubTasks(ctx context.Context, subTasks []biz.SubTask) bool {
+	if len(subTasks) == 0 {
+		return false
+	}
+	if impl.capBuilder == nil {
+		return true
+	}
+	caps, err := impl.capBuilder.BuildAll(ctx)
+	if err != nil {
+		impl.lg.Warn("记忆命中结构校验：能力清单构建失败，跳过校验（fail-open）",
+			loggateway.StepID(biz.SpiritStepPlannerMemory),
+			loggateway.Err(err),
+		)
+		return true
+	}
+	assignable := filterHeuristicAssignable(caps)
+	for _, st := range subTasks {
+		if _, _, ok := bindRosterSpecialist(st.DomainPath, st.Name+" "+st.Description, assignable); !ok {
+			impl.lg.Info("记忆命中子任务花名册映射失败",
+				loggateway.StepID(biz.SpiritStepPlannerMemory),
+				loggateway.Str("subtask_id", st.ID),
+				loggateway.Str("subtask_name", st.Name),
+				loggateway.Str("domain_path", st.DomainPath),
+			)
+			return false
+		}
+	}
+	return true
 }
 
 // assessComplexity computes the six-dimension complexity assessment.

@@ -85,6 +85,9 @@ type PlanInput struct {
 	DeferLLMDecompose bool
 	// ResumePlanID continues a draft that returned DecomposeReasonDeferred.
 	ResumePlanID string
+	// SkipMemory 为 true 时跳过编排缓存查询（N2 roster_miss 重规划路径：
+	// 记忆命中导致分配失败后，作废缓存重新分解）。
+	SkipMemory bool
 }
 
 // PlanAdjustments allows Spirit LLM to adjust the plan

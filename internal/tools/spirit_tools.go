@@ -340,17 +340,56 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				out.Steps = append(out.Steps, allocStep)
 				if allocErr != nil {
 					publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
-					// 包B B3b（session-eval-20260825, P-ROSTER-GAP）：roster miss
-					// 结构化降级——通用角色名在花名册无映射时，返回 NextAction 引导
-					// LLM 改道 build_orchestration_graph 显式组队（authorize_playbook
-					// 先例；Plan-and-Act R4：计划失败是正常事件，重规划是一等公民），
-					// 不再向 LLM 裸露 BAD_REQUEST 导致首选编排路径硬失败。
-					if errors.Is(allocErr, biz.ErrRosterMiss) {
-						out.NextAction = biz.RosterMissNextAction
-						out.ReuseReason = biz.RosterMissUserHint
-						return out, nil
+					// N2 自动重规划：roster_miss 且计划来自记忆命中时，作废记忆
+					// 缓存重规划一次（LLM 分解），仍失败才回 NextAction。
+					if errors.Is(allocErr, biz.ErrRosterMiss) && taskPlan.MemoryHit != nil {
+						deps.lg.Info("roster_miss 且计划来自记忆命中，自动重规划",
+							loggateway.StepID("spirit.plan_and_execute.replan"),
+							loggateway.Str("plan_id", taskPlan.ID),
+							loggateway.Str("spirit_session_id", spiritSessionID),
+						)
+						replanInput := biz.PlanInput{
+							UserMessage:       taskPrompt,
+							SpiritSessionID:   spiritSessionID,
+							Mode:              mode,
+							AgentKeys:         explicitKeys,
+							DeferLLMDecompose: true,
+							SkipMemory:        true,
+						}
+						replanPlan, replanErr := deps.planner.Plan(ctx, replanInput)
+						if replanErr == nil && replanPlan != nil && replanPlan.MemoryHit == nil {
+							// 重规划成功且不再命中记忆——用新计划重试分配
+							taskPlan = replanPlan
+							out.PlanID = taskPlan.ID
+							out.Strategy = string(taskPlan.Strategy)
+							out.ComplexityLevel = string(taskPlan.ComplexityLevel)
+							out.SubtaskCount = len(taskPlan.SubTasks)
+							out.MemoryHit = false
+							out.SubTasks = nil
+							for _, st := range taskPlan.SubTasks {
+								out.SubTasks = append(out.SubTasks, SubTaskSummary{
+									ID:        st.ID,
+									Name:      st.Name,
+									DependsOn: st.DependsOn,
+								})
+							}
+							allocPlan, allocStep, allocErr = executeAllocatePhase(ctx, taskPlan, explicitKeys, deps)
+							out.Steps = append(out.Steps, allocStep)
+						}
 					}
-					return out, allocErr
+					if allocErr != nil {
+						// 包B B3b（session-eval-20260825, P-ROSTER-GAP）：roster miss
+						// 结构化降级——通用角色名在花名册无映射时，返回 NextAction 引导
+						// LLM 改道 build_orchestration_graph 显式组队（authorize_playbook
+						// 先例；Plan-and-Act R4：计划失败是正常事件，重规划是一等公民），
+						// 不再向 LLM 裸露 BAD_REQUEST 导致首选编排路径硬失败。
+						if errors.Is(allocErr, biz.ErrRosterMiss) {
+							out.NextAction = biz.RosterMissNextAction
+							out.ReuseReason = biz.RosterMissUserHint
+							return out, nil
+						}
+						return out, allocErr
+					}
 				}
 			}
 
