@@ -297,7 +297,11 @@ var toolProfiles = map[string][]string{
 	"system_memory": {"datetime"},
 	"system_skills": {"datetime"},
 	// Spirit 编排者：只编排与沟通，不直接执行 shell / 桌面自动化（与 CAPABILITIES.md 契约一致）。
-	"spirit": {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "datetime", "web_research", "duckduckgo_search", "web_fetch"},
+	// knowledge_search（种子 enabled=true/readonly/low）入面即落 deferred catalog
+	// （非核心常驻），由 knowledge_intent promote hook 在显式知识库意图轮次激活
+	// （P2-④/R4-Q7：此前 spirit 面外 → catalog 缺席 → hook 静默 skip，S03 零检索）。
+	// knowledge_reflect 种子 enabled=false，维持 admin deny，不在此命名。
+	"spirit": {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "datetime", "web_research", "duckduckgo_search", "web_fetch", "knowledge_search"},
 }
 
 // CanonicalToolProfile 归一化 profile 别名/空值到策略桶（general→coding、
