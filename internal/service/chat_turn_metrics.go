@@ -82,7 +82,7 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 	// S09 first_byte_timeout critical 失败 error_count 仍为 0）。cancelled 是
 	// 用户主动行为、timeout_degraded 有产出，均不计入错误。该计数只依赖
 	// m.sessions，放在 usage nil 早退之前，保证失败一定被计数。
-	if (p.Status == "error" || p.Status == "failed") && m.sessions != nil && strings.TrimSpace(p.SessionID) != "" {
+	if (p.Status == "error" || p.Status == "failed" || p.Status == "orphaned") && m.sessions != nil && strings.TrimSpace(p.SessionID) != "" {
 		m.sessions.AccumulateMetricsDelta(bizsession.SessionMetricsDelta{SessionID: p.SessionID, ErrorCount: 1})
 	}
 	if m.usage == nil {

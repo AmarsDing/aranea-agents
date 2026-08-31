@@ -837,3 +837,65 @@ func TestLoopGuardInverseToolRepeatClearBlocked(t *testing.T) {
 		t.Fatalf("clear with different args should pass, got %v", err)
 	}
 }
+
+func TestLoopGuardErrorClass_EmptyCommandWrapped(t *testing.T) {
+	wrapped := map[string]any{"result": map[string]any{"ok": false, "httpStatus": 400.0, "error": "empty command"}}
+	if got := loopGuardErrorClass("gns3_exec", wrapped, nil); got != "empty_command" {
+		t.Fatalf("class=%q, want empty_command", got)
+	}
+	if got := loopGuardErrorClass("gns3_exec", nil, errors.New("cmd 不能为空")); got != "empty_command" {
+		t.Fatalf("go error class=%q, want empty_command", got)
+	}
+	ok := map[string]any{"device": "sw1", "output": "UP"}
+	if got := loopGuardErrorClass("gns3_exec", ok, nil); got != "" {
+		t.Fatalf("success must have empty class, got %q", got)
+	}
+}
+
+func TestLoopGuardErrorClassFuseIgnoresArgs(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-err-class-1")
+	fail := map[string]any{"result": map[string]any{"ok": false, "httpStatus": 400.0, "error": "empty command"}}
+
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":""}`, fail, nil); err != nil {
+		t.Fatalf("1st empty command should pass: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","command":""}`, fail, nil); err != nil {
+		t.Fatalf("2nd empty command (different args) should pass: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ping 1.1.1.1"}`, fail, nil); err == nil {
+		t.Fatal("3rd same error class should be blocked")
+	}
+}
+
+func TestLoopGuardErrorClassClearsOnSuccess(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-err-class-2")
+	fail := map[string]any{"ok": false, "error": "empty command"}
+	ok := map[string]any{"device": "sw1", "output": "eth1 UP"}
+
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":""}`, fail, nil); err != nil {
+		t.Fatalf("1st fail: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, ok, nil); err != nil {
+		t.Fatalf("success must clear error class: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","command":""}`, fail, nil); err != nil {
+		t.Fatalf("fail after success is a new streak: %v", err)
+	}
+}
+
+func TestLoopGuardErrorClassHTTP501(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-err-class-501")
+	fail := map[string]any{"ok": false, "httpStatus": 501.0, "error": "not implemented"}
+	for i := 1; i <= 2; i++ {
+		if err := runLoopGuardTurn(t, g, ctx, "fault_inject", fmt.Sprintf(`{"n":%d}`, i), fail, nil); err != nil {
+			t.Fatalf("call %d should pass: %v", i, err)
+		}
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "fault_inject", `{"n":3}`, fail, nil); err == nil {
+		t.Fatal("3rd HTTP 501 should be blocked")
+	}
+}
+

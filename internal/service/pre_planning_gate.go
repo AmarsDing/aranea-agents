@@ -25,6 +25,9 @@ type GateDecision struct {
 	ForcePlanning  bool
 	Reason         string
 	IntentArtifact *biz.IntentArtifact
+	// Committed is the single-writer route for this turn. Plan() and the
+	// force-planning hard route consume it; they must not re-decide the lane.
+	Committed biz.RouteDecision
 }
 
 // PrePlanningGate evaluates task complexity before the Spirit LLM runs,
@@ -114,6 +117,7 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 		ForcePlanning:  forcePlanning,
 		Reason:         reason,
 		IntentArtifact: input.IntentArtifact,
+		Committed:      chatagent.CommitRoute(level, forcePlanning, score, reason, input.UserMessage),
 	}
 
 	// 内部日志记录，不发布到前端

@@ -16,6 +16,7 @@ func TestRecordTurnUsage_ErrorStatusAccumulatesErrorCount(t *testing.T) {
 	}{
 		{"error", 1},
 		{"failed", 1},
+		{"orphaned", 1},
 		{"ok", 0},
 		{"cancelled", 0},
 		{"timeout_degraded", 0},

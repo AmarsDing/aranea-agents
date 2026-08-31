@@ -59,15 +59,15 @@ func TestQuickAssess_Q2CampaignCorpus(t *testing.T) {
 // 无证据。
 func TestHasTeamModeEvidence_Corpus(t *testing.T) {
 	positive := map[string]string{
-		"S07-t1":  "组织一次新产品上线方案：技术侧给发布计划，内容侧给宣传文案，运营侧给上线 checklist，最后汇总成一份方案。",
-		"S06-t1":  "让数字内容媒体公司市场部出一版 Q3 推广文案框架，含三个渠道。",
+		"S07-t1": "组织一次新产品上线方案：技术侧给发布计划，内容侧给宣传文案，运营侧给上线 checklist，最后汇总成一份方案。",
+		"S06-t1": "让数字内容媒体公司市场部出一版 Q3 推广文案框架，含三个渠道。",
 		"显式组队":   "组建两个团队分别调研 A 和 B",
 		"显式并行":   "并行分析 A 和 B",
 		"组织链":    "这次请按组织链走编制汇报，完成整条软件交付",
 		"模式字面量":  "用 dag 模式跑这个复盘任务",
 	}
 	negative := map[string]string{
-		"S09-t1":  "我们来规划 Q3 的内容运营方案。先搭一个整体框架，包含渠道、节奏、预算三大块，每块简要说明。",
+		"S09-t1": "我们来规划 Q3 的内容运营方案。先搭一个整体框架，包含渠道、节奏、预算三大块，每块简要说明。",
 		"S08":    "出一条 30 秒产品宣传短视频的创意脚本框架，下周要用。",
 		"S11-t5": "推荐三本关于分布式系统的书",
 	}
@@ -140,6 +140,25 @@ func TestPlan_TeamModeEvidenceGate(t *testing.T) {
 		}
 		if plan.DecomposeReason != "decompose_failed" {
 			t.Fatalf("agent_keys 路由不得被证据闸拦截，got decompose_reason=%q", plan.DecomposeReason)
+		}
+	})
+
+	t.Run("S06 empty mode + committed PlanTeam 不得 silent direct", func(t *testing.T) {
+		msg := "让数字内容媒体公司市场部出一版 Q3 推广文案框架，含三个渠道。"
+		committed := CommitRoute(biz.ComplexityModerate, true, 0.4, "gate", msg)
+		if committed.Lane != biz.RouteLanePlanTeam {
+			t.Fatalf("precondition: S06 must commit plan_team, got %s", committed.Lane)
+		}
+		ctx := biz.ContextWithRouteDecision(context.Background(), committed)
+		plan, err := newImpl().Plan(ctx, biz.PlanInput{
+			SpiritSessionID: "sp-s06-commit",
+			UserMessage:     msg,
+		})
+		if err != nil {
+			t.Fatalf("Plan: %v", err)
+		}
+		if err := biz.CheckRouteHonored(committed, plan.Strategy, len(plan.SubTasks), plan.DecomposeReason); err != nil {
+			t.Fatal(err)
 		}
 	})
 

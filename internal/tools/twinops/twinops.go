@@ -268,8 +268,16 @@ type gns3HealthInput struct {
 }
 
 type gns3ExecInput struct {
-	Device string `json:"device" jsonschema:"description=目标设备名（gns3_agent 已纳管的设备）,required"`
-	Cmd    string `json:"cmd" jsonschema:"description=控制台命令。只读白名单：ping/show/ip 查询类/traceroute/arp/cat/echo/curl/hostname/uptime/vtysh -c show；写操作一律拒绝,required"`
+	Device  string `json:"device" jsonschema:"description=目标设备名（gns3_agent 已纳管的设备）,required"`
+	Cmd     string `json:"cmd" jsonschema:"description=控制台命令（与 command 同义，二选一即可）。只读白名单：ping/show/ip 查询类/traceroute/arp/cat/echo/curl/hostname/uptime/vtysh -c show；写操作一律拒绝"`
+	Command string `json:"command,omitempty" jsonschema:"description=cmd 的别名（模型常把参数名发成 command）"`
+}
+
+func (in gns3ExecInput) resolvedCmd() string {
+	if s := strings.TrimSpace(in.Cmd); s != "" {
+		return s
+	}
+	return strings.TrimSpace(in.Command)
 }
 
 type gns3PortInput struct {
@@ -660,12 +668,13 @@ func newGNS3ExecTool(cfg Config) trpctool.CallableTool {
 		if strings.TrimSpace(in.Device) == "" {
 			return jsonResult{}, fmt.Errorf("device 必填")
 		}
-		if err := checkExecWhitelist(in.Cmd); err != nil {
+		cmd := in.resolvedCmd()
+		if err := checkExecWhitelist(cmd); err != nil {
 			return jsonResult{}, err
 		}
-		res, err := cfg.gns3Post(ctx, "/exec", map[string]any{"device": strings.TrimSpace(in.Device), "cmd": in.Cmd})
+		res, err := cfg.gns3Post(ctx, "/exec", map[string]any{"device": strings.TrimSpace(in.Device), "cmd": cmd})
 		if err == nil {
-			enrichExecResult(in.Cmd, res.Result)
+			enrichExecResult(cmd, res.Result)
 		}
 		return res, err
 	},

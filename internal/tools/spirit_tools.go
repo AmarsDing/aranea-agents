@@ -531,6 +531,10 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode str
 		AgentKeys:         explicitKeys,
 		DeferLLMDecompose: true,
 	}
+	planInput = biz.MergeCommitted(ctx, planInput)
+	if m := strings.ToLower(strings.TrimSpace(planInput.Mode)); (m == "" || m == "auto") && planInput.Committed.Mode != "" {
+		planInput.Mode = planInput.Committed.Mode
+	}
 	taskPlan, planErr := deps.planner.Plan(ctx, planInput)
 	if planErr != nil {
 		return nil, biztypes.OrchestrationStepRecord{
@@ -560,13 +564,15 @@ func startBackgroundPlanCompletion(ctx context.Context, draft *biz.TaskPlan, tas
 	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), backgroundPlanCompleteTimeout)
 	safego.Go(bgCtx, "spirit.plan.complete_decompose", func() {
 		defer cancel()
-		finished, err := deps.planner.Plan(bgCtx, biz.PlanInput{
+		resumeInput := biz.PlanInput{
 			UserMessage:     taskPrompt,
 			SpiritSessionID: spiritSessionID,
 			Mode:            mode,
 			AgentKeys:       explicitKeys,
 			ResumePlanID:    draft.ID,
-		})
+		}
+		resumeInput = biz.MergeCommitted(bgCtx, resumeInput)
+		finished, err := deps.planner.Plan(bgCtx, resumeInput)
 		if err != nil {
 			publishOrchestrationFailed(deps.bus, bgCtx, spiritSessionID, "plan", err.Error())
 			return
@@ -700,13 +706,13 @@ func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocP
 				loggateway.Str("reason", reason),
 			)
 			return nil, biztypes.OrchestrationStepRecord{
-				StepName:   "orchestrate",
-				Status:     "failed",
-				Error:      "startup reconciliation failed: " + reason,
-				StartedAt:  start,
-				FinishedAt: time.Now().UTC(),
-			}, apierror.Internal(apierror.DomainSpirit,
-				"团队组建失败（启动对账未通过）：%s。请如实告知用户编排未能启动，不要声称已组建团队。", reason)
+					StepName:   "orchestrate",
+					Status:     "failed",
+					Error:      "startup reconciliation failed: " + reason,
+					StartedAt:  start,
+					FinishedAt: time.Now().UTC(),
+				}, apierror.Internal(apierror.DomainSpirit,
+					"团队组建失败（启动对账未通过）：%s。请如实告知用户编排未能启动，不要声称已组建团队。", reason)
 		}
 	}
 	handle := &biz.OrchestrationHandle{

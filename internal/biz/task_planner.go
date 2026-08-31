@@ -88,6 +88,10 @@ type PlanInput struct {
 	// SkipMemory 为 true 时跳过编排缓存查询（N2 roster_miss 重规划路径：
 	// 记忆命中导致分配失败后，作废缓存重新分解）。
 	SkipMemory bool
+	// Committed is the orchestrator-written RouteDecision for this turn.
+	// Zero Lane means unspecified (LLM may self-route). Plan() must honor a
+	// PlanTeam/PlanSolo commit (FIT-ROUTE-1) and must not re-decide the lane.
+	Committed RouteDecision
 }
 
 // PlanAdjustments allows Spirit LLM to adjust the plan

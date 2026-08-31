@@ -1,6 +1,7 @@
 package twinops
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -191,3 +192,24 @@ func TestEnrichExecResultFallbacks(t *testing.T) {
 		t.Fatalf("unparseable output should fall back to generic hint, got %q", hint3)
 	}
 }
+
+func TestGNS3ExecInput_CommandAlias(t *testing.T) {
+	var in gns3ExecInput
+	if err := json.Unmarshal([]byte(`{"device":"sw1","command":"ip link show"}`), &in); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got := in.resolvedCmd(); got != "ip link show" {
+		t.Fatalf("command alias resolved to %q, want ip link show", got)
+	}
+	if err := json.Unmarshal([]byte(`{"device":"sw1","cmd":"show ip route","command":"ignored"}`), &in); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got := in.resolvedCmd(); got != "show ip route" {
+		t.Fatalf("cmd must win over command, got %q", got)
+	}
+	empty := gns3ExecInput{Device: "sw1"}
+	if got := empty.resolvedCmd(); got != "" {
+		t.Fatalf("empty cmd+command must be empty, got %q", got)
+	}
+}
+

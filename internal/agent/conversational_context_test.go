@@ -41,8 +41,16 @@ func TestResolveAssemblyBudget(t *testing.T) {
 		t.Fatalf("explicit hard must win, got soft=%d hard=%d on=%v", soft, hard, on)
 	}
 	specialistOff := biz.Agent{AgentKey: "ops_fault_diagnosis", Settings: &biz.AgentRuntimeSettings{}}
-	if _, _, on = resolveAssemblyBudget(specialistOff); on {
-		t.Fatal("specialist hard=0 must stay off")
+	soft, hard, on = resolveAssemblyBudget(specialistOff)
+	if !on || soft != specialistAssemblySoftTokens || hard != specialistAssemblyHardTokens {
+		t.Fatalf("specialist hard=0 must default 64K/96K, got soft=%d hard=%d on=%v", soft, hard, on)
+	}
+	forcedOff := biz.Agent{
+		AgentKey: "ops_fault_diagnosis",
+		Settings: &biz.AgentRuntimeSettings{AssemblyBudgetHardTokens: -1},
+	}
+	if _, _, on = resolveAssemblyBudget(forcedOff); on {
+		t.Fatal("hard<0 must force the assembly gate off")
 	}
 }
 

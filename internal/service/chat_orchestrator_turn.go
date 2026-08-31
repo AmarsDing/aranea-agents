@@ -453,26 +453,41 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// dependency on each other. This saves 0.5-3s when Intent Pass is enabled.
 	content := strings.TrimSpace(input.Content)
 
-	// 输入级确定性安全扫描（2026-08-28 方案② S1/S3）：与 intent pass 的 LLM
-	// 成败无关，每条用户输入无条件执行。命中即发 gate 审计事件（tripped，
-	// 观测语义不阻断——硬拦截保持在 L3 ParamRuleGate）；本 turn 无 intent
-	// 产物时另经降级分支注入风险提示（见澄清门后的 intentRunOpts 注入点）。
-	inputRiskFlags := intent.ScanInputRisk(content)
-	if len(inputRiskFlags) > 0 {
+	// 输入级安全三档（Q6）：Deny 在 BUILD/LLM 之前零调用拒绝；HITL 继续
+	// 本 turn（工具仍走确认）；Inform 仅 shadow 日志。h2 类「BGP+模拟故障」
+	// 必须落 HITL 不得 Deny。无 intent 产物时 HITL flags 仍经降级注入。
+	inputRisk := intent.ClassifyInputSafety(content)
+	inputRiskFlags := inputRisk.Flags
+	if inputRisk.Action == intent.SafetyDeny {
+		ctx = biz.ContextWithRouteDecision(ctx, biz.RouteDecision{Lane: biz.RouteLaneRefuse, Reason: "input_safety_deny"})
+		event.EmitGate(ctx, o.infraDeps.DecisionCollector, decision.GateDecision{
+			TriggerRule: decision.TriggerInputRiskFlagged,
+			Outcome:     "blocked",
+			Scenario:    "用户输入命中 Deny 级破坏性操作，零 LLM 拒绝",
+			Reasoning:   fmt.Sprintf("action=deny hits=%v", inputRisk.Hits),
+			GuardName:   "input_safety_scan",
+			SessionID:   sessionID,
+			Extra:       map[string]any{"action": string(inputRisk.Action), "hits": strings.Join(inputRisk.Hits, ",")},
+		})
+		return o.failTurn(ctx, sessionID, runID, &turnStatus, &turnErr, &turnErrMsg,
+			apierror.Forbidden(apierror.DomainChatNative, intent.SafetyDenyUserMessage))
+	}
+	if inputRisk.Action == intent.SafetyHITL {
+		ctx = biz.ContextWithRouteDecision(ctx, biz.RouteDecision{Lane: biz.RouteLaneHITL, Reason: "input_safety_hitl"})
 		event.EmitGate(ctx, o.infraDeps.DecisionCollector, decision.GateDecision{
 			TriggerRule: decision.TriggerInputRiskFlagged,
 			Outcome:     "tripped",
-			Scenario:    "用户输入命中确定性风险扫描",
-			Reasoning:   fmt.Sprintf("flags=%v", inputRiskFlags),
+			Scenario:    "用户输入命中 HITL 级风险扫描（故障注入等，不零 LLM 拒绝）",
+			Reasoning:   fmt.Sprintf("action=hitl hits=%v", inputRisk.Hits),
 			GuardName:   "input_safety_scan",
 			SessionID:   sessionID,
-			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
+			Extra:       map[string]any{"action": string(inputRisk.Action), "flags": strings.Join(inputRiskFlags, ",")},
 		})
-	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
+	} else if inputRisk.Action == intent.SafetyInform {
 		o.lg().Info("input risk shadow hit (not flagged)",
 			loggateway.StepID("chat.input_risk.shadow"),
 			loggateway.Str("session_id", sessionID),
-			loggateway.Str("shadow_hits", strings.Join(shadow, ",")),
+			loggateway.Str("shadow_hits", strings.Join(inputRisk.Hits, ",")),
 		)
 	}
 
@@ -678,11 +693,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// SP-2a：硬路由标记随 turn ctx 传入 run——提示注入仍是首选路径；
 		// LLM 终答未调 plan_and_execute 时由 AfterModel 钩子直调
 		// （跳过重试，见 internal/agent/force_planning_route.go）。
+		ctx = biz.ContextWithRouteDecision(ctx, gateDecision.Committed)
 		ctx = chatagent.ContextWithForcePlanningRoute(ctx, chatagent.ForcePlanningRoute{
 			TaskPrompt: forcePlanningTaskPrompt(gateDecision, intentArtifact, input.Content),
 			Level:      string(gateDecision.Level),
 			Score:      gateDecision.Score,
 			Reason:     gateDecision.Reason,
+			Mode:       gateDecision.Committed.Mode,
 		})
 	}
 	// 包B B4（session-eval-20260825）：编排路由决策落 flowlog——S07 三次执行
@@ -800,6 +817,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			loggateway.StepID("chat.clarification_gate"),
 			loggateway.Err(clarifyErr))
 	} else if clarifyDecision.Triggered {
+		ctx = biz.ContextWithRouteDecision(ctx, biz.RouteDecision{
+			Lane:   biz.RouteLaneClarify,
+			Reason: "clarification_gate",
+		})
 		// Clarification triggered: publish run status and return empty reply.
 		// The turn will resume when the user submits clarification answers.
 		emitter.LogDone("chat.clarification_gate", "澄清门已触发，等待用户作答",

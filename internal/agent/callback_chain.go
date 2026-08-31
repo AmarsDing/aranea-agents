@@ -76,8 +76,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	}
 	// 包A（session-eval-20260825 A1）：管理层装配预算硬闸。priority 8 = 全量
 	// 注入（memory 5 / knowledge 6 / 各 cue ≤6）之后、终审压缩闸（9）与 L0
-	// 快照（10）之前，计量口径=完全注入后的请求。hard<=0（默认）时 hook 为
-	// nil——轻链路零开销，管理层经 SQL 灰度开启（assembly_budget_* 列）。
+	// 快照（10）之前。失败工具结果去重（7）始终注册；装配闸：Spirit/chat
+	// 默认 40K/60K，专项 named agent 默认 64K/96K（hard<0 关闸）。
+	entries = append(entries, newFailedToolResultDedupBeforeHook(lg))
 	if hook := newAssemblyBudgetBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
@@ -151,6 +152,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	// Voice Fast-Path：语音轮次 per-request 关思考（ctx 标记驱动，与入口无关的
 	// 缓存 BUILD 产物共享安全）。无条件注册——非语音轮次仅一次 ctx 读。
 	entries = append(entries, newVoiceFastPathBeforeHook())
+	if hook := newDirectAnswerReasoningBudgetBeforeHook(ag); hook != nil {
+		entries = append(entries, hook)
+	}
 	// Problem 6: inject a reply reminder after each tool call so the LLM
 	// outputs a brief "已完成 + 下一步" reply before calling the next tool.
 	// BeforeModel hook reads state set by the AfterTool hook.

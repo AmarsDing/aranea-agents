@@ -12,10 +12,8 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-// TestPrepareUserTurnOptions_InputRiskDegradedInject 钉死 2026-08-28 方案②
-// S3-2 team 路径降级注入（四轮审查补钉——此前仅 chat 路径有）：intent pass
-// 未运行（agent 未开启 intent pass → 无产物）且确定性扫描命中时，
-// intentRunOpts 必须含一条 input-safety 风险提示注入；安全输入则不注入。
+// TestPrepareUserTurnOptions_InputRiskDegradedInject 钉死输入安全三档（Q6）：
+// Deny（rm -rf）零 LLM 拒绝；HITL（fault_inject）降级注入警示后继续。
 func TestPrepareUserTurnOptions_InputRiskDegradedInject(t *testing.T) {
 	r := &Runner{lg: loggateway.NewNoop()}
 	// 零值 Settings → intent pass 未开启 → ShouldRun=false，无 LLM 依赖。
@@ -24,16 +22,29 @@ func TestPrepareUserTurnOptions_InputRiskDegradedInject(t *testing.T) {
 		return biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1"}
 	}
 
-	t.Run("risky input injects caution notice", func(t *testing.T) {
+	t.Run("deny input refuses before llm", func(t *testing.T) {
+		run := newRun()
+		_, status, err := r.prepareUserTurnOptions(
+			context.Background(), ar, "rm -rf /tmp/data",
+			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now(), pendingTeamIntent{})
+		if err == nil || status != biz.TeamMemberStepStatusError {
+			t.Fatalf("deny must fail turn: status=%s err=%v", status, err)
+		}
+		if !strings.Contains(err.Error(), "不可逆") {
+			t.Errorf("deny error = %v, want SafetyDenyUserMessage", err)
+		}
+	})
+
+	t.Run("hitl input injects caution notice", func(t *testing.T) {
 		run := newRun()
 		opts, status, err := r.prepareUserTurnOptions(
-			context.Background(), ar, "rm -rf /tmp/data",
+			context.Background(), ar, "请对 sw1 执行 fault_inject",
 			biz.Session{ID: "sess-1"}, &run, biz.Team{}, "default", time.Now(), pendingTeamIntent{})
 		if err != nil || status != biz.TeamMemberStepStatusOK {
 			t.Fatalf("prepareUserTurnOptions: status=%s err=%v", status, err)
 		}
 		if len(opts.intentRunOpts) != 1 {
-			t.Fatalf("intentRunOpts len = %d, want 1（降级注入）", len(opts.intentRunOpts))
+			t.Fatalf("intentRunOpts len = %d, want 1（HITL 降级注入）", len(opts.intentRunOpts))
 		}
 		var ro trpcagent.RunOptions
 		opts.intentRunOpts[0](&ro)

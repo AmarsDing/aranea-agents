@@ -269,11 +269,28 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			loggateway.Int("team_count", teamCount),
 		)
 	}
+	input = biz.MergeCommitted(ctx, input)
+
 	// P4-G5 决策证据链：decisionSource 记录策略来源——llm_mode（LLM/用户
 	// 显式指定）/ keyword_fallback（关键词回退升级）/ complexity_auto
-	// （六维评分自动评估）/ memory_cache（编排缓存命中）。
+	// （六维评分自动评估）/ memory_cache（编排缓存命中）/ route_commit
+	// （编排器提交的 RouteDecision，Plan 不得再改车道）。
 	decisionSource := "complexity_auto"
-	if m := strings.ToLower(strings.TrimSpace(input.Mode)); m == "" || m == "auto" {
+	if input.Committed.Lane == biz.RouteLanePlanTeam {
+		decisionSource = "route_commit"
+		m := strings.ToLower(strings.TrimSpace(input.Mode))
+		if m == "" || m == "auto" || m == "direct" {
+			input.Mode = strings.TrimSpace(input.Committed.Mode)
+			if input.Mode == "" {
+				input.Mode = "dag"
+			}
+			impl.lg.Info("消费已提交 PlanTeam 路由，禁止入口自降级 direct",
+				loggateway.StepID(biz.SpiritStepPlannerAssess),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("committed_mode", input.Mode),
+			)
+		}
+	} else if m := strings.ToLower(strings.TrimSpace(input.Mode)); m == "" || m == "auto" {
 		if detected := detectTeamIntent(input.UserMessage); detected != "" {
 			impl.lg.Info("检测到用户消息中的团队组建意图，自动升级模式",
 				loggateway.StepID(biz.SpiritStepPlannerAssess),
@@ -345,6 +362,13 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			loggateway.Str("trace_id", traceID),
 			loggateway.Str("mode", input.Mode),
 			loggateway.Str("original_level", string(complexityLevel)),
+		)
+	}
+	if input.Committed.Lane == biz.RouteLanePlanSolo && effectiveLevel != biz.ComplexityComplex {
+		effectiveLevel = biz.ComplexityComplex
+		impl.lg.Info("消费已提交 PlanSolo 路由，抬档分解且不组队",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.Str("trace_id", traceID),
 		)
 	}
 
@@ -500,6 +524,8 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		)
 		return nil, apierror.Internal(apierror.DomainSpirit, "persist plan: "+err.Error())
 	}
+
+	impl.warnIfRouteViolated(ctx, input.Committed, saved)
 
 	// Publish spirit_plan_created event.
 	impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
@@ -1076,6 +1102,24 @@ func promoteStrategyForSubTasks(
 		return strategy, reason, topology
 	}
 	return biz.StrategyParallel, "分解产出子任务且复杂度≥moderate，默认 parallel", biz.TopologyParallel
+}
+
+// warnIfRouteViolated logs FIT-ROUTE-1 breaches without failing the turn.
+// Tests pin the contract via CheckRouteHonored; production Warn keeps a
+// breadcrumb when a future writer reintroduces silent Direct collapse.
+func (impl *taskPlannerImpl) warnIfRouteViolated(ctx context.Context, committed biz.RouteDecision, plan *biz.TaskPlan) {
+	if impl == nil || plan == nil {
+		return
+	}
+	if err := biz.CheckRouteHonored(committed, plan.Strategy, len(plan.SubTasks), plan.DecomposeReason); err != nil {
+		impl.lg.Warn("FIT-ROUTE-1 提交档被下游改写",
+			loggateway.StepID(biz.SpiritStepPlannerRoute),
+			loggateway.Str("committed_lane", string(committed.Lane)),
+			loggateway.Str("strategy", string(plan.Strategy)),
+			loggateway.Int("subtask_count", len(plan.SubTasks)),
+			loggateway.Err(err),
+		)
+	}
 }
 
 // plannerDecision 是 P4-G5 策略决策证据链的记录单元。

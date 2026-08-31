@@ -55,14 +55,22 @@ func countMarker(msgs []trpcmodel.Message, marker string) int {
 	return n
 }
 
-// TestAssemblyBudgetHook_NilWhenDisabled pins the zero-cost specialist path:
-// hard<=0（含 settings 为 nil）时闸不注册。Spirit 在 hard=0 时走 40K/60K 默认（见 TestResolveAssemblyBudget）。
+// TestAssemblyBudgetHook_NilWhenDisabled pins the zero-cost anonymous path:
+// empty AgentKey 与 hard<0 不注册。named specialist 在 hard=0 时走 64K/96K。
 func TestAssemblyBudgetHook_NilWhenDisabled(t *testing.T) {
 	if hook := newAssemblyBudgetBeforeHook(biz.Agent{}, TRPCBuilderDeps{}); hook != nil {
 		t.Fatalf("settings=nil must yield nil hook")
 	}
-	if hook := newAssemblyBudgetBeforeHook(assemblyTestAgent(0, 0), TRPCBuilderDeps{}); hook != nil {
-		t.Fatalf("hard=0 specialist must yield nil hook")
+	off := assemblyTestAgent(0, -1)
+	if hook := newAssemblyBudgetBeforeHook(off, TRPCBuilderDeps{}); hook != nil {
+		t.Fatalf("hard<0 specialist must yield nil hook")
+	}
+}
+
+func TestAssemblyBudgetHook_SpecialistDefaultsWhenHardZero(t *testing.T) {
+	hook := newAssemblyBudgetBeforeHook(assemblyTestAgent(0, 0), TRPCBuilderDeps{})
+	if hook == nil {
+		t.Fatal("named specialist hard=0 must install 64K/96K assembly gate")
 	}
 }
 
@@ -346,3 +354,44 @@ func TestAssemblyBudgetHook_HardTrimSubtractsSchema(t *testing.T) {
 		t.Fatal("schema-aware trim must drop reply reminder when tools schema consumes the budget")
 	}
 }
+
+// TestAssemblyBudgetHook_CJKExceedsHardTrims pins FIT-BUDGET-1 for CJK:
+// blended 2.5 chars/token would estimate 65k Han runes as ~26k and miss the
+// Spirit 60k hard; the CJK floor must fire and evict history.
+func TestAssemblyBudgetHook_CJKExceedsHardTrims(t *testing.T) {
+	hook := newAssemblyBudgetBeforeHook(biz.Agent{AgentKey: biz.SpiritAgentKey}, TRPCBuilderDeps{})
+	if hook == nil {
+		t.Fatal("Spirit must install assembly gate")
+	}
+	body := strings.Repeat("测", 65000)
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "You are Spirit."},
+		{Role: trpcmodel.RoleUser, Content: body[:30000]},
+		{Role: trpcmodel.RoleAssistant, Content: body[30000:]},
+		{Role: trpcmodel.RoleUser, Content: "现在呢"},
+	}
+	before := promptEstTokens(msgs)
+	if before <= conversationalAssemblyHardTokens {
+		t.Fatalf("fixture CJK est=%d must exceed Spirit hard=%d", before, conversationalAssemblyHardTokens)
+	}
+	if blended := analyzePromptRequest(msgs).EstTokens; blended > conversationalAssemblyHardTokens {
+		t.Fatalf("precondition: blended est=%d should still miss the 60k hard", blended)
+	}
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
+	runAssemblyBudgetHook(t, hook, context.Background(), args)
+	after := promptEstTokens(args.Request.Messages)
+	if after > conversationalAssemblyHardTokens {
+		t.Fatalf("CJK assembly must trim below hard, est=%d", after)
+	}
+	hasTrunc := false
+	for _, m := range args.Request.Messages {
+		if strings.Contains(m.Content, "<context_truncated>") {
+			hasTrunc = true
+			break
+		}
+	}
+	if !hasTrunc {
+		t.Fatal("CJK over hard must evict history with truncation marker")
+	}
+}
+

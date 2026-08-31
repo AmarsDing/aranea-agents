@@ -108,6 +108,10 @@ const (
 	// 取值与 blockThreshold 对齐：首次空属正常未命中，第二次换词仍空即构成
 	// 「库中确无资料」的足够证据，第三次起拦截。
 	loopGuardEmptyStreakThreshold = 2
+	// 同类业务错误（empty command / HTTP 4xx/5xx / ok:false）连续达到此次数后
+	// 禁止再调该工具。与 emptyStreak 对齐：第 1、2 次放行记证据，第 3 次起拦。
+	// 签名无关：cmd vs command 空命令不会因参数哈希不同而绕开。
+	loopGuardErrorClassStreakThreshold = 2
 	// Q1 行为模式闸（2026-08-27 二轮，S02「合法失控」根修）内置默认阈值。
 	// S02 实证：spirit 节点 24 次异质 tool_load 全部"合法"（签名不同/结果成功/
 	// 记有产出），同参/轮换/空结果/空转轮四重守卫均不命中——装载行为本身无闸。
@@ -191,6 +195,8 @@ type loopGuardEntry struct {
 	recentSigs       []string
 	recentTools      []string                // 与 recentSigs 对齐的工具名，仅供轮换拦截消息可读性
 	emptyStreak      map[string]int          // 检索类工具名 → 连续空结果次数（无视参数差异；非空即清零）
+	errorClassStreak map[string]int          // 工具名 → 连续同类业务错误次数（无视参数差异）
+	lastErrorClass   map[string]string       // 工具名 → 上一跳业务错误类
 	blockedCount     int                     // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
 	inflight         map[string]inflightSlot // 签名 → 当前正在执行（已放行、尚未 AfterTool）
 	// deniedSigs 记录本节点生命周期内被 HITL 确认门禁否决的签名（P2-③，
@@ -249,6 +255,9 @@ const (
 	loopGuardBlockForbidden
 	// loopGuardBlockDenied：同参重发刚被 HITL 否决的调用（P2-③）。
 	loopGuardBlockDenied
+	// loopGuardBlockErrorClass：同工具连续同类业务错误（ok:false / empty
+	// command / HTTP 4xx）达到阈值后拦截下一跳。
+	loopGuardBlockErrorClass
 )
 
 // loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
@@ -337,6 +346,8 @@ type loopGuardVerdict struct {
 	// forbiddenStreak 是同签名连续 FORBIDDEN/not found 次数（判定见
 	// forbiddenLoop），禁止与 consecutiveCount（同参同结果连击）混用。
 	forbiddenStreak int
+	errorClass      string
+	errorClassN     int
 	lastDigest      string
 	lastTool        string // 上一次调用的原始工具名（跨名重复拦截时解释用）
 	// Q1 装载闸消息字段：loadTarget 是被拦 tool_load 的目标工具名；
@@ -834,6 +845,127 @@ func loopGuardResultKey(result any) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func (e *loopGuardEntry) noteErrorClass(tool, class string) {
+	if e == nil || class == "" || tool == "" {
+		return
+	}
+	if e.errorClassStreak == nil {
+		e.errorClassStreak = map[string]int{}
+	}
+	if e.lastErrorClass == nil {
+		e.lastErrorClass = map[string]string{}
+	}
+	if e.lastErrorClass[tool] == class {
+		e.errorClassStreak[tool]++
+		return
+	}
+	e.lastErrorClass[tool] = class
+	e.errorClassStreak[tool] = 1
+}
+
+func (e *loopGuardEntry) clearErrorClass(tool string) {
+	if e == nil {
+		return
+	}
+	delete(e.errorClassStreak, tool)
+	delete(e.lastErrorClass, tool)
+}
+
+func loopGuardAsObject(result any) map[string]any {
+	if result == nil {
+		return nil
+	}
+	if m, ok := result.(map[string]any); ok {
+		return m
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
+	}
+	return m
+}
+
+func loopGuardBusinessPayload(result any) map[string]any {
+	m := loopGuardAsObject(result)
+	if m == nil {
+		return nil
+	}
+	if inner, ok := m["result"]; ok {
+		if im := loopGuardAsObject(inner); im != nil {
+			if _, hasOK := im["ok"]; hasOK {
+				return im
+			}
+			if _, hasErr := im["error"]; hasErr {
+				return im
+			}
+		}
+	}
+	return m
+}
+
+func loopGuardErrorClass(toolName string, result any, err error) string {
+	if err != nil {
+		// Generic Go errors (timeout / "tool execution failed") stay on the
+		// circuit-breaker retry path. Only known business classes fuse here.
+		return loopGuardKnownErrorClass(err.Error())
+	}
+	m := loopGuardBusinessPayload(result)
+	if m == nil {
+		return ""
+	}
+	okVal, hasOK := m["ok"]
+	okTrue := false
+	if b, ok := okVal.(bool); ok {
+		okTrue = b
+	}
+	if hasOK && !okTrue {
+		if es, _ := m["error"].(string); es != "" {
+			if c := loopGuardKnownErrorClass(es); c != "" {
+				return c
+			}
+		}
+		if st := loopGuardHTTPStatus(m["httpStatus"]); st >= 400 {
+			return fmt.Sprintf("http_%d", st)
+		}
+		return "ok_false"
+	}
+	return ""
+}
+
+func loopGuardHTTPStatus(v any) int {
+	switch t := v.(type) {
+	case int:
+		return t
+	case int32:
+		return int(t)
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	case json.Number:
+		n, _ := t.Int64()
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+func loopGuardKnownErrorClass(s string) string {
+	s = strings.TrimSpace(s)
+	low := strings.ToLower(s)
+	if strings.Contains(low, "empty command") || strings.Contains(s, "cmd 不能为空") {
+		return "empty_command"
+	}
+	if strings.Contains(low, "not implemented") {
+		return "http_501"
+	}
+	return ""
+}
+
 // loopGuardToolLoadTarget 从 tool_load 参数中解析目标工具名（Q1 装载闸）。
 // 归一规则与签名归一同级（TrimSpace；工具名为 ASCII 标识符，码点微差异
 // 不产生语义区别）。解析失败返回空串——守卫 fail-open，参数缺失由工具
@@ -1018,6 +1150,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	// 空结果熔断优先于签名/轮换判定：库中确无资料时，任何参数的再调用都无意义，
 	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
 	emptyBlocked := e.emptyStreak[toolName] >= loopGuardEmptyStreakThreshold
+	errorClassBlocked := e.errorClassStreak[toolName] >= loopGuardErrorClassStreakThreshold
 	// P2-③ 补偿对阈值收紧（R4-Q6 根修）：副作用工具的副作用不可重放——
 	// 重复 inject 不叠加新效果、重复 clear 幂等空转，首次成功即视为终态，
 	// 第 2 次同参同结果调用起拦（含审批通过后的重放形态）；其余工具维持
@@ -1037,7 +1170,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 		}
 	}
-	if !loadRepeat && !loadQuota && !loadRatio && !planDrift && loadThenCall == "" && !emptyBlocked && !loop && !forbiddenLoop && cycleDesc == "" {
+	if !loadRepeat && !loadQuota && !loadRatio && !planDrift && loadThenCall == "" && !emptyBlocked && !errorClassBlocked && !loop && !forbiddenLoop && cycleDesc == "" {
 		e.beginInflight(sig, now)
 		if toolName == toolLoadToolName && loadTarget != "" {
 			e.beginInflightLoad(loadTarget)
@@ -1054,6 +1187,8 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 		consecutiveCount: e.sameCount,
 		emptyStreak:      e.emptyStreak[toolName],
 		forbiddenStreak:  e.forbiddenStreak,
+		errorClass:       e.lastErrorClass[toolName],
+		errorClassN:      e.errorClassStreak[toolName],
 		lastDigest:       e.lastResultDigest,
 		lastTool:         e.lastTool,
 		loadTarget:       loadTarget,
@@ -1086,6 +1221,10 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	}
 	if emptyBlocked {
 		v.kind = loopGuardBlockEmpty
+		return v
+	}
+	if errorClassBlocked {
+		v.kind = loopGuardBlockErrorClass
 		return v
 	}
 	if cycleDesc != "" {
@@ -1371,6 +1510,25 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loopGuardMarker, args.ToolName, v.emptyStreak, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
+		if v.kind == loopGuardBlockErrorClass {
+			g.lg.Warn("tool loop guard blocked same-error-class retry",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Str("error_class", v.errorClass),
+				loggateway.Int("error_class_streak", v.errorClassN))
+			g.emitGateDecision(ctx, args.ToolName, "同类业务错误连续失败，拦截重试",
+				fmt.Sprintf("%s 连续 %d 次返回同类错误 %s", args.ToolName, v.errorClassN, v.errorClass),
+				v.errorClassN, loopGuardErrorClassStreakThreshold, "block_call")
+			hint := "请改用正确参数、换工具，或基于已有失败信息收尾，不要原样重试。"
+			if v.errorClass == "empty_command" {
+				hint = "命令参数名是 cmd（也接受 command）；空命令不会成功。请填入只读白名单命令，或停止调用本工具。"
+			}
+			msg := fmt.Sprintf("%s：%s 已连续 %d 次返回同类错误（%s）——本调用被系统拦截，工具未执行。%s"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, args.ToolName, v.errorClassN, v.errorClass, hint,
+				v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
+		}
 		if v.kind == loopGuardBlockCycle {
 			g.lg.Warn("tool loop guard blocked rotation cycle call",
 				loggateway.StepID("agent.tool_loop_guard"),
@@ -1481,6 +1639,7 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			} else {
 				e.forbiddenStreak = 0
 			}
+			e.noteErrorClass(args.ToolName, loopGuardErrorClass(args.ToolName, args.Result, args.Error))
 			e.lastSig = sig
 			e.lastTool = args.ToolName
 			e.lastResultKey = ""
@@ -1490,6 +1649,18 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 			g.mu.Unlock()
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
+		if class := loopGuardErrorClass(args.ToolName, args.Result, nil); class != "" {
+			e.noteErrorClass(args.ToolName, class)
+			e.lastSig = sig
+			e.lastTool = args.ToolName
+			e.lastResultKey = ""
+			e.sameCount = 0
+			e.lastFailed = true
+			e.appendCallLocked(sig, args.ToolName)
+			g.mu.Unlock()
+			return &trpctool.AfterToolResult{Context: ctx}, nil
+		}
+		e.clearErrorClass(args.ToolName)
 		e.forbiddenStreak = 0
 		rk := loopGuardResultKey(args.Result)
 		sameResult := e.lastSig == sig && !e.lastFailed && e.lastResultKey == rk

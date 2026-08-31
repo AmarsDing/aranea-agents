@@ -110,6 +110,17 @@ func (o *ChatOrchestrator) runClarificationGate(
 		return ClarificationGateDecision{}, nil
 	}
 
+	// Q2 双源仲裁：记忆/推荐默认不得改档。模糊输入禁止「按惯例起稿」
+	// 自动代答；已点名设备/URL 的明确指令不强制澄清。
+	intentArt = intent.ArbitrateClarification(input.Content, intentArt)
+	if intentArt == nil || !intentArt.NeedsClarification() {
+		return ClarificationGateDecision{Artifact: intentArt}, nil
+	}
+	questions = intentArt.ClarificationQuestions()
+	if len(questions) == 0 {
+		return ClarificationGateDecision{Artifact: intentArt}, nil
+	}
+
 	// 假设式前进（2026-08-09）：全部问题携带推荐默认且无高风险标记时，
 	// 按推荐自动作答、落 completed 审计卡，turn 注入澄清上下文继续执行，
 	// 不再挂起打扰用户。任一问题无推荐或命中高风险标记（touches_auth/
@@ -117,7 +128,9 @@ func (o *ChatOrchestrator) runClarificationGate(
 	// 仍走下方挂起弹卡路径。
 	// L3 守卫（BUG-MON-A，2026-08-17）：推荐答案全为取消/放弃类时，
 	// 自动代答等于静默否决用户请求——禁止假设式前进，强制挂起人工确认。
-	if !intentArt.HasHighRiskFlag() && biz.ClarificationAllRecommended(questions) && !biz.RecommendedLooksLikeCancellation(questions) {
+	// Q2 armA：underspecified「帮我做个…」即便有推荐默认也必须挂起。
+	if !intentArt.HasHighRiskFlag() && biz.ClarificationAllRecommended(questions) && !biz.RecommendedLooksLikeCancellation(questions) &&
+		!intent.ShouldSkipAutoResolveClarification(input.Content, intentArt) {
 		return o.autoResolveClarification(ctx, sessionID, intentArt, ag, input, questions)
 	}
 

@@ -251,6 +251,31 @@ func TestForcePlanningRouteHook(t *testing.T) {
 		}
 	})
 
+	t.Run("hard_route_plan_team_passes_mode", func(t *testing.T) {
+		ctx := ContextWithForcePlanningRoute(context.Background(), ForcePlanningRoute{
+			TaskPrompt: "让市场部出一版 Q3 推广文案框架",
+			Level:      "moderate",
+			Score:      0.4,
+			Reason:     "强制走规划路径",
+			Mode:       "dag",
+		})
+		res := invokeForcePlanningHook(t, newHook(nil), ctx, &trpcmodel.AfterModelArgs{
+			Request:  requestWithPlanTool(),
+			Response: finalTextResponse(),
+		})
+		if res == nil || res.CustomResponse == nil {
+			t.Fatal("expected hard-route CustomResponse")
+		}
+		tc := res.CustomResponse.Choices[0].Message.ToolCalls[0]
+		var args map[string]any
+		if err := json.Unmarshal(tc.Function.Arguments, &args); err != nil {
+			t.Fatalf("args: %v", err)
+		}
+		if args["mode"] != "dag" {
+			t.Fatalf("mode = %v, want dag (FIT-ROUTE-1: committed PlanTeam must not inject empty mode)", args["mode"])
+		}
+	})
+
 	t.Run("hard_route_nil_collector_still_fires", func(t *testing.T) {
 		// collector nil（CLI/未装配）时 flowlog 仍落、直调不阻断（D1）。
 		res := invokeForcePlanningHook(t, newHook(nil), markedCtx(), &trpcmodel.AfterModelArgs{

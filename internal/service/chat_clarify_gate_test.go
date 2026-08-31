@@ -418,7 +418,7 @@ func TestRunClarificationGate_AutoResolvedWhenAllRecommended(t *testing.T) {
 	}
 
 	decision, err := orch.runClarificationGate(context.Background(), "sess-1", art, ag,
-		biz.TurnInput{SessionID: "sess-1", Content: "帮我做个应用"})
+		biz.TurnInput{SessionID: "sess-1", Content: "按你的推荐默认继续，平台我没意见"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestRunClarificationGate_AutoResolvedWhenAllRecommended(t *testing.T) {
 		t.Error("expected non-empty StepID (audit card)")
 	}
 	// ResolvedInput：澄清上下文 + 原始需求
-	if !strings.Contains(decision.ResolvedInput.Content, "原始需求：帮我做个应用") {
+	if !strings.Contains(decision.ResolvedInput.Content, "原始需求：按你的推荐默认继续，平台我没意见") {
 		t.Errorf("ResolvedInput missing original input: %q", decision.ResolvedInput.Content)
 	}
 	if !strings.Contains(decision.ResolvedInput.Content, "Web") || !strings.Contains(decision.ResolvedInput.Content, "代码") {
@@ -467,8 +467,8 @@ func TestRunClarificationGate_AutoResolvedWhenAllRecommended(t *testing.T) {
 	if len(envelope.Answers) != 2 || len(envelope.Answers[0].Selected) != 1 || envelope.Answers[0].Selected[0] != "Web" {
 		t.Errorf("envelope.Answers = %+v, want recommended applied", envelope.Answers)
 	}
-	if envelope.OriginalInput != "帮我做个应用" {
-		t.Errorf("envelope.OriginalInput = %q, want %q", envelope.OriginalInput, "帮我做个应用")
+	if envelope.OriginalInput != "按你的推荐默认继续，平台我没意见" {
+		t.Errorf("envelope.OriginalInput = %q, want recommended-default message", envelope.OriginalInput)
 	}
 
 	// 任务与事件仍落（澄清卡挂在任务下）
@@ -485,6 +485,32 @@ func TestRunClarificationGate_AutoResolvedWhenAllRecommended(t *testing.T) {
 	}
 	if _, ok := orch.pendingClarifications.Load("sess-1"); ok {
 		t.Error("expected no pendingClarification stored for auto-resolved turn")
+	}
+}
+
+func TestRunClarificationGate_UnderspecifiedDoesNotAutoResolve(t *testing.T) {
+	taskWriter := &stubTaskV2Writer{}
+	stepWriter := &stubStepV2Writer{}
+	seq := &stubEventPublisher{}
+	stateMgr := &stubSessionStateTransitor{}
+	orch := newClarificationTestOrch(taskWriter, stepWriter, seq, stateMgr)
+	ag := biz.Agent{AgentKey: "test-agent", Settings: &biz.AgentRuntimeSettings{ClarificationEnabled: true}}
+	art := &intent.Artifact{
+		RiskFlags: []string{intent.RiskFlagNeedsClarification},
+		Clarifications: []intent.ClarificationQuestion{
+			{Question: "目标平台？", Mode: "single", Options: []string{"Web", "iOS"}, Recommended: []string{"Web"}},
+		},
+	}
+	decision, err := orch.runClarificationGate(context.Background(), "sess-1", art, ag,
+		biz.TurnInput{SessionID: "sess-1", Content: "帮我做个应用"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if decision.AutoResolved {
+		t.Fatal("underspecified request must hang, not auto-draft")
+	}
+	if !decision.Triggered {
+		t.Fatal("underspecified request must trigger clarification")
 	}
 }
 

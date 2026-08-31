@@ -44,8 +44,9 @@ import (
 //  4. 截断落 flowlog `prompt.assembly.trimmed`（各段截断量）+ 进程 Warn。
 //
 // 配置：agent_runtime_settings.assembly_budget_soft/hard_tokens（估 token，
-// 0=关闭）。专项 hard=0 仍关闸；Spirit / chat profile 在 hard<=0 时默认
-// 40K/60K。est 含 messages + tools_schema（与 context_budget 同源 marshal）。
+// hard<0=强制关闭；hard=0 走 profile 默认）。Spirit / chat 默认 40K/60K，
+// 专项 named agent 默认 64K/96K（S05 工具循环必须过闸）。est 含
+// messages + tools_schema，闸侧对 CJK 按字数兜底（FIT-BUDGET-1）。
 // 读取为构建期快照（ag.Settings），与 hardTriggerRatioForAgent 同先例。
 
 // assemblyBudgetHookPriority 8：全量注入（memory 5 / knowledge 6 / 各 cue ≤6）
@@ -163,8 +164,8 @@ type assemblyTrimStats struct {
 	HeadOverBudget bool
 }
 
-// newAssemblyBudgetBeforeHook 构建装配预算闸；专项 hard<=0 返回 nil，
-// Spirit/chat 在 hard<=0 时打开 40K/60K 默认。
+// newAssemblyBudgetBeforeHook 构建装配预算闸；匿名 agent 与 hard<0 返回 nil，
+// Spirit/chat 默认 40K/60K，专项 named agent 默认 64K/96K。
 func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	soft, hard, enabled := resolveAssemblyBudget(ag)
 	if !enabled {
@@ -178,7 +179,7 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		msgs := args.Request.Messages
-		est := analyzePromptRequest(msgs).EstTokens + toolsSchemaEstTokens(args.Request)
+		est := promptEstTokens(msgs) + toolsSchemaEstTokens(args.Request)
 		if est <= soft {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -189,7 +190,7 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 			warn := buildAssemblyBudgetWarning(est, soft, hard)
 			msgs = replaceDynamicCue(msgs, assemblyBudgetWarnMarker, assemblyBudgetWarnMarker+warn)
 			args.Request.Messages = msgs
-			est = analyzePromptRequest(msgs).EstTokens + toolsSchemaEstTokens(args.Request)
+			est = promptEstTokens(msgs) + toolsSchemaEstTokens(args.Request)
 			lg.Info("assembly soft budget crossed, capacity warning injected",
 				loggateway.StepID("agent.assembly_budget"),
 				loggateway.AgentKey(agentKey),
@@ -203,6 +204,15 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 		schemaEst := toolsSchemaEstTokens(args.Request)
 		trimmed, stats := trimAssemblyToBudget(msgs, target, schemaEst)
 		args.Request.Messages = trimmed
+		didTrim := len(stats.DroppedCues) > 0 || stats.EvictedMessages > 0
+		if err := biz.CheckBudgetTrim(stats.EstBefore, hard, didTrim || stats.HeadOverBudget); err != nil {
+			lg.Warn("FIT-BUDGET-1: assembly exceeded hard without a trim",
+				loggateway.StepID("agent.assembly_budget"),
+				loggateway.AgentKey(agentKey),
+				loggateway.Err(err),
+				loggateway.Int("est_before", stats.EstBefore),
+				loggateway.Int("hard_tokens", hard))
+		}
 		lg.Warn("assembly over hard budget, trimmed",
 			loggateway.StepID("agent.assembly_budget"),
 			loggateway.AgentKey(agentKey),
@@ -249,7 +259,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 	if schemaEst < 0 {
 		schemaEst = 0
 	}
-	msgEst := analyzePromptRequest(msgs).EstTokens
+	msgEst := promptEstTokens(msgs)
 	stats := assemblyTrimStats{EstBefore: msgEst + schemaEst}
 	msgTarget := target - schemaEst
 	if msgTarget < 0 {
@@ -272,7 +282,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 		if !ok {
 			continue
 		}
-		cands = append(cands, cand{idx: i, rank: rank, kind: kind, tok: estTokensFromChars(messageCharLen(m))})
+		cands = append(cands, cand{idx: i, rank: rank, kind: kind, tok: messageEstTokens(m)})
 	}
 	sort.SliceStable(cands, func(a, b int) bool { return cands[a].rank > cands[b].rank })
 	dropped := make(map[int]bool, len(cands))
@@ -297,7 +307,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 		merged = append(merged, conv...)
 		merged = append(merged, newTail...)
 		msgs = merged
-		est = analyzePromptRequest(msgs).EstTokens
+		est = promptEstTokens(msgs)
 	}
 
 	// 段 2：仍超 messages 预算才驱逐最旧历史（与压缩闸同构：token 口径 + 标记
@@ -314,7 +324,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 			marker := trpcmodel.NewSystemMessage(buildTruncationMarker(len(evicted)))
 			msgs = insertMarkerAfterHead(keep, len(head2), marker)
 		}
-		est = analyzePromptRequest(msgs).EstTokens
+		est = promptEstTokens(msgs)
 	}
 
 	stats.EstAfter = est + schemaEst

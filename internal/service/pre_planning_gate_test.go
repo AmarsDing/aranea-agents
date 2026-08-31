@@ -56,10 +56,10 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			wantReason: "评估完成：简单任务",
 		},
 		{
-			name:      "moderate without team evidence does not force planning",
-			level:     biz.ComplexityModerate,
-			score:     0.45,
-			wantForce: false,
+			name:       "moderate without team evidence does not force planning",
+			level:      biz.ComplexityModerate,
+			score:      0.45,
+			wantForce:  false,
 			wantReason: "评估完成：中等任务（无组队证据，不强制规划）",
 		},
 		{
@@ -269,5 +269,54 @@ func TestPrePlanningGate_Evaluate_AttachesTaskID(t *testing.T) {
 	published := bus.snapshot()
 	if len(published) != 0 {
 		t.Errorf("published events = %d, want 0 (no events should be published)", len(published))
+	}
+}
+
+func TestPrePlanningGate_Evaluate_S06CommitsPlanTeam(t *testing.T) {
+	msg := "让数字内容媒体公司市场部出一版 Q3 推广文案框架，含三个渠道。"
+	gate := NewPrePlanningGate(
+		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.4},
+		&captureEventBus{},
+		nil,
+		loggateway.NewNoop(),
+	)
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
+		UserMessage:     msg,
+		SpiritSessionID: "sess-s06",
+	})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if !decision.ForcePlanning {
+		t.Fatalf("S06 must ForcePlanning, reason=%s", decision.Reason)
+	}
+	if decision.Committed.Lane != biz.RouteLanePlanTeam {
+		t.Fatalf("S06 committed lane = %s, want plan_team", decision.Committed.Lane)
+	}
+	if decision.Committed.Mode == "" || decision.Committed.Mode == "direct" {
+		t.Fatalf("S06 committed mode must be team-forming, got %q", decision.Committed.Mode)
+	}
+}
+
+func TestPrePlanningGate_Evaluate_S09DoesNotCommitTeam(t *testing.T) {
+	msg := "我们来规划 Q3 的内容运营方案。先搭一个整体框架，包含渠道、节奏、预算三大块，每块简要说明。"
+	gate := NewPrePlanningGate(
+		&fakePlanner{quickLevel: biz.ComplexityModerate, quickScore: 0.4},
+		&captureEventBus{},
+		nil,
+		loggateway.NewNoop(),
+	)
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
+		UserMessage:     msg,
+		SpiritSessionID: "sess-s09",
+	})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if decision.ForcePlanning {
+		t.Fatal("S09 must not ForcePlanning (no team evidence)")
+	}
+	if decision.Committed.Specified() {
+		t.Fatalf("S09 must stay unspecified, got %+v", decision.Committed)
 	}
 }

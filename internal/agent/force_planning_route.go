@@ -42,6 +42,7 @@ type ForcePlanningRoute struct {
 	Level      string  // 复杂度档位（moderate/complex）
 	Score      float64 // 六维评分
 	Reason     string  // 门控理由（审计）
+	Mode       string  // 已提交的 plan_and_execute mode（PlanTeam 为 dag/parallel；空 = PlanSolo）
 }
 
 type forcePlanningRouteKey struct{}
@@ -167,10 +168,15 @@ func planAndExecuteCalledInRequest(messages []trpcmodel.Message) bool {
 // 保留原响应的 ID/Object/Created/Model/Usage——token 计量（stream_consumer
 // 按 Response.ID 去重、Usage 透传）与事件链路不受影响。原终答文本丢弃：
 // 流式 delta 已下发无法回收，落库历史只保留「工具调用」这一干净事实。
-// mode 留空——planner.Plan() 自带复杂度评估与策略路由（与 LLM 自主调用
-// 仅传 task_prompt 的行为一致）。
+// Mode 来自编排器提交的 RouteDecision：PlanTeam 必须带 dag/parallel，禁止
+// 再把空 mode 交给 Plan() 自降级 direct（S06 FIT-ROUTE-1）。PlanSolo 仍可
+// 只传 task_prompt，由 Plan() 按 committed lane 抬档分解。
 func buildForcedPlanToolCallResponse(orig *trpcmodel.Response, route ForcePlanningRoute) *trpcmodel.Response {
-	argsJSON, err := json.Marshal(map[string]any{"task_prompt": strings.TrimSpace(route.TaskPrompt)})
+	args := map[string]any{"task_prompt": strings.TrimSpace(route.TaskPrompt)}
+	if m := strings.TrimSpace(route.Mode); m != "" {
+		args["mode"] = m
+	}
+	argsJSON, err := json.Marshal(args)
 	if err != nil {
 		return nil
 	}

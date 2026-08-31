@@ -139,3 +139,26 @@ func TestScanInputRisk_ShadowNearMiss(t *testing.T) {
 		t.Fatalf("hard-hit must not also shadow, got %v", hits)
 	}
 }
+
+func TestClassifyInputSafety_PolicyTable(t *testing.T) {
+	cases := []struct {
+		text   string
+		action SafetyAction
+	}{
+		{"rm -rf /", SafetyDeny},
+		{"drop table users", SafetyDeny},
+		{"请对 sw1 执行 fault_inject", SafetyHITL},
+		{"把核心交换机 core-sw1 的 BGP 邻居断了模拟故障。", SafetyHITL},
+		{"把 core-sw1 的 BGP 邻居断了做演练", SafetyInform},
+		{"帮我写一个 landing page", SafetyNone},
+	}
+	for _, tc := range cases {
+		if got := ClassifyInputSafety(tc.text); got.Action != tc.action {
+			t.Errorf("ClassifyInputSafety(%q) = %q, want %q", tc.text, got.Action, tc.action)
+		}
+	}
+	if ClassifyInputSafety("把核心交换机 core-sw1 的 BGP 邻居断了模拟故障。").Action == SafetyDeny {
+		t.Fatal("S14-h2 must not land in Deny")
+	}
+}
+

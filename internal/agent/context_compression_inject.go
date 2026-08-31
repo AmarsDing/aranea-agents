@@ -96,9 +96,9 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		lg := deps.Logger()
 		// 1. Estimate token usage ratio over the FULLY-INJECTED request.
-		report := analyzePromptRequest(args.Request.Messages)
+		estTokens := promptEstTokens(args.Request.Messages)
 		win := resolveCompressionContextWindow(ctx, deps, ag)
-		ratio := llmcontext.ContextRatio(report.EstTokens, win)
+		ratio := llmcontext.ContextRatio(estTokens, win)
 		// 2. Hard threshold gate.
 		if ratio < threshold {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -131,12 +131,12 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		// the estimate still exceeds target. Tail cues occupy the final
 		// len(tail) positions of `out` (head + marker? + keptConv + tail).
 		droppedCues := 0
-		for remaining := len(tail); remaining > 0 && analyzePromptRequest(out).EstTokens > target; remaining-- {
+		for remaining := len(tail); remaining > 0 && promptEstTokens(out) > target; remaining-- {
 			tailStart := len(out) - remaining
 			largest := tailStart
 			largestTok := -1
 			for i := tailStart; i < len(out); i++ {
-				if tok := estTokensFromChars(messageCharLen(out[i])); tok > largestTok {
+				if tok := messageEstTokens(out[i]); tok > largestTok {
 					largestTok = tok
 					largest = i
 				}
@@ -151,13 +151,13 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 				loggateway.StepID("agent.context.compress"),
 				loggateway.Phase("degraded"),
 				loggateway.Any("used_ratio", ratio),
-				loggateway.Int("est_tokens", report.EstTokens),
+				loggateway.Int("est_tokens", estTokens),
 				loggateway.Int("context_window", win))
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		args.Request.Messages = out
 		// 5. Re-verify (post-gate accounting for the log + snapshot overlay).
-		finalEst := analyzePromptRequest(out).EstTokens
+		finalEst := promptEstTokens(out)
 		if finalEst > target {
 			lg.Warn("context still over target after truncation+degradation",
 				loggateway.StepID("agent.context.compress"),
@@ -177,7 +177,7 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		// R7（G-1）：压缩事件结构化持久化——此前仅运行时日志，run 结束后无法
 		// 回溯「第几轮触发了什么」。双写 system_guard 决策记录（outcome=
 		// truncated），run 统计经 decision_records 聚合回放。
-		emitCompactGateDecision(ctx, deps.DecisionCollector, len(evictedMsgs), droppedCues, beforeChars, report.EstTokens, win)
+		emitCompactGateDecision(ctx, deps.DecisionCollector, len(evictedMsgs), droppedCues, beforeChars, estTokens, win)
 		lg.Info("context emergency truncation completed",
 			loggateway.StepID("agent.context.compress"),
 			loggateway.Phase("done"),
@@ -296,7 +296,7 @@ func partitionMessagesByTokenBudget(messages []trpcmodel.Message, budgetTokens i
 	var convIdx []int
 	for i, m := range messages {
 		if isPromptFixedMessage(m) {
-			fixed += estTokensFromChars(messageCharLen(m))
+			fixed += messageEstTokens(m)
 		} else {
 			convIdx = append(convIdx, i)
 		}
@@ -309,7 +309,7 @@ func partitionMessagesByTokenBudget(messages []trpcmodel.Message, budgetTokens i
 	keepFrom := len(convIdx)
 	acc := 0
 	for k := len(convIdx) - 1; k >= 0; k-- {
-		tok := estTokensFromChars(messageCharLen(messages[convIdx[k]]))
+		tok := messageEstTokens(messages[convIdx[k]])
 		if acc+tok > convBudget {
 			break
 		}

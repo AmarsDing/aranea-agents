@@ -3,90 +3,112 @@ package intent
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
-// scan.go：输入级确定性安全扫描（2026-08-28 方案② S1/S2，根修缺口 A/B）。
-//
-// 背景：此前 destructive 兜底（ForceDestructiveFlag）只能在 intent pass LLM
-// parse 成功后运行——LLM 失败（skipped_llm/skipped_parse）时输入级安全扫描
-// 完全不运行，而 pass 失败恰恰是降级继续执行的时刻（缺口 A）；且 L2 词表经
-// 三轮 L3 加固（20261264/265/267）后已漂移，rm 族在 L2 仍是朴素子串，变形全
-// 绕过（缺口 B）。
-//
-// 本文件把确定性扫描独立为 turn 入口可用的纯函数，不依赖 LLM 成败：
-//   - pass 成功：结果合并进 artifact.RiskFlags（ForceDestructiveFlag 已改为消费本函数）
-//   - pass 失败/跳过：service 层直接用本结果发 gate 事件 + 降级注入风险提示
-//
-// 定位【宽检测、窄拦截】：本层只标记+审计（gate 事件），硬拦截保持在 L3
-// ParamRuleGate 参数级（那里有工具上下文，判断更准）。target 集合因此比 L3
-// deny 宽（如 rm -rf /tmp/data 也打标）——标记的代价仅是审计记录与澄清门不
-// 自动代答，不会阻断流程；误报纪律：shutdown/reboot/poweroff/halt 等可逆系统
-// 管理操作【不】入本表（正常运维请求被标高风险会误挂澄清门，L3 已 deny 兜底）。
-//
-// 维护纪律：改 L3 deny 词表（tool_param_rules seed 迁移）时须同步评估本表；
-// scan_test.go 以对账向量防再次漂移。
+// SafetyAction is the product policy for a pre-LLM input scan (Q6).
+// Deny is zero-LLM refuse. HITL continues the turn but tools stay behind
+// confirmation. Inform is log-only (shadow). h2-class BGP wording must
+// never land in Deny.
+type SafetyAction string
 
-// inputRiskKeywords 高置信关键词（子串，小写比对）：沿用 BUG-MON-A 兜底词表，
-// 补 drop database。"rm -rf" 已由下方 rm 族正则覆盖（更强），不再单列。
-var inputRiskKeywords = []string{
-	"fault_inject", "fault inject", "故障注入", "注入故障", "gns3_fault_inject",
-	"模拟故障", "故障模拟",
+const (
+	SafetyNone   SafetyAction = ""
+	SafetyInform SafetyAction = "inform"
+	SafetyHITL   SafetyAction = "hitl"
+	SafetyDeny   SafetyAction = "deny"
+)
+
+// SafetyDenyUserMessage is the user-visible refuse text for Deny.
+const SafetyDenyUserMessage = "该请求包含不可逆的破坏性操作（删库、格式化磁盘、rm -rf 等），系统已拒绝执行。故障注入类运维请使用已授权工具并经确认，不会在输入扫描层直接拒绝。"
+
+// SafetyVerdict is the policy-table result for one user turn.
+type SafetyVerdict struct {
+	Action SafetyAction
+	Flags  []string
+	Hits   []string
+}
+
+// inputRiskDenyKeywords are irreversible destruction. HITL/fault language
+// stays out of this list so S14-h2 cannot be hard-refused.
+var inputRiskDenyKeywords = []string{
 	"drop table", "truncate table", "delete from ", "drop database",
 	"删库", "删除数据库",
 	"格式化磁盘", "format disk",
 }
 
-// inputRiskSoftKeywords 是词表未命中时的近误影子标记（只记录、不 flag）。
-// S14 自然语言「把 BGP 邻居断了模拟故障」原先漏标；补「模拟故障」后硬扫描
-// 已覆盖。影子表用于尚未入硬表的语义近邻，避免误报直接生效。
+// inputRiskHITLKeywords are destructive-adjacent ops that still need a
+// human confirm on the tool, not a zero-LLM refuse.
+var inputRiskHITLKeywords = []string{
+	"fault_inject", "fault inject", "故障注入", "注入故障", "gns3_fault_inject",
+	"模拟故障", "故障模拟",
+}
+
+// inputRiskSoftKeywords is the Inform (shadow) near-miss table.
 var inputRiskSoftKeywords = []string{
 	"bgp", "邻居断", "断邻居", "port down", "link down",
 }
 
-// inputRiskSep 是命令/路径前缀分隔符类（对齐 L3 20261267 口径 + 自然语言空格）。
+// inputRiskSep is command/path prefix separators (aligned with L3 20261267).
 const inputRiskSep = `(^|[;&|/\s"'($` + "`" + `])`
 
-// inputRiskPatterns 正则族（对齐 L3 tool_param_rules 20261267 加固标准）。
+// inputRiskPatterns are Deny-class regexes (rm / mkfs / dd).
 var inputRiskPatterns = []*regexp.Regexp{
-	// rm 递归删除：任意 flags 排列（-fr/-r -f/-rfv/--recursive）、长选项、
-	// sudo 包装、绝对路径（/bin/rm）、命令替换/子 shell/反引号前缀；
-	// target 首字符限定路径特征（/ ~ . * $ 字母数字 _ -），CJK 起头的
-	// target 不命中（防「如何防范 rm -rf 误删」类讨论误报）。
 	regexp.MustCompile(inputRiskSep + `(?:sudo\s+(?:-\S+\s+)*)?(?:/[\w.-]+)*/?rm(?:\s+(?:-{1,2}[\w=-]+|--))*\s+(?:-[a-z]*r[a-z]*|--recursive)(?:\s+(?:-{1,2}[\w=-]+|--))*\s+[/~.*$\w-]\S*`),
-	// mkfs 格式化块设备（mkfs /dev/... 或 mkfs.ext4 ...）。
 	regexp.MustCompile(`(?i)` + inputRiskSep + `(?:sudo\s+(?:-\S+\s+)*)?(?:/[\w.-]+)*/?mkfs(?:\.[\w]+)?\s`),
-	// dd 写块设备（of=/dev/ 为危险特征）。
 	regexp.MustCompile(`(?i)` + inputRiskSep + `(?:sudo\s+(?:-\S+\s+)*)?dd\s+[^;&|]*\bof=/dev/`),
 }
 
-// ScanInputRisk 对原始用户输入做确定性风险扫描，返回命中的风险标记集合
-// （当前仅 "destructive"，按集合设计便于后续扩展 ask 级标记）。纯函数、无
-// 外部依赖、微秒级，可在 turn 入口对每条用户输入无条件运行。
-func ScanInputRisk(userText string) []string {
+var concreteTargetRe = regexp.MustCompile(`(?i)(?:\b(?:sw|pc|r|fw|core-sw)\d+\b|\beth\d+\b|\b(?:\d{1,3}\.){3}\d{1,3}\b|https?://)`)
+
+// ClassifyInputSafety is the Deny / HITL / Inform policy table (Q6).
+func ClassifyInputSafety(userText string) SafetyVerdict {
 	if strings.TrimSpace(userText) == "" {
-		return nil
+		return SafetyVerdict{}
 	}
 	lower := strings.ToLower(userText)
-	for _, kw := range inputRiskKeywords {
+	for _, kw := range inputRiskDenyKeywords {
 		if strings.Contains(lower, kw) {
-			return []string{"destructive"}
+			return SafetyVerdict{Action: SafetyDeny, Flags: []string{"destructive"}, Hits: []string{kw}}
 		}
 	}
 	for _, re := range inputRiskPatterns {
 		if re.MatchString(userText) {
-			return []string{"destructive"}
+			return SafetyVerdict{Action: SafetyDeny, Flags: []string{"destructive"}, Hits: []string{re.String()}}
 		}
+	}
+	for _, kw := range inputRiskHITLKeywords {
+		if strings.Contains(lower, kw) {
+			return SafetyVerdict{Action: SafetyHITL, Flags: []string{"destructive"}, Hits: []string{kw}}
+		}
+	}
+	if shadow := scanShadowHits(lower); len(shadow) > 0 {
+		return SafetyVerdict{Action: SafetyInform, Hits: shadow}
+	}
+	return SafetyVerdict{}
+}
+
+// ScanInputRisk returns destructive flags for Deny and HITL hits (audit /
+// ForceDestructiveFlag). Inform-only shadow hits are not flags.
+func ScanInputRisk(userText string) []string {
+	v := ClassifyInputSafety(userText)
+	if v.Action == SafetyDeny || v.Action == SafetyHITL {
+		return v.Flags
 	}
 	return nil
 }
 
-// ScanInputRiskShadowHits returns soft near-miss tokens when the hard scan
-// missed. Callers log-only (shadow mode); do not treat as a flag.
+// ScanInputRiskShadowHits returns Inform near-miss tokens when the hard
+// scan missed. Callers log-only; do not treat as a flag.
 func ScanInputRiskShadowHits(userText string) []string {
-	if len(ScanInputRisk(userText)) > 0 {
+	v := ClassifyInputSafety(userText)
+	if v.Action != SafetyInform {
 		return nil
 	}
-	lower := strings.ToLower(userText)
+	return v.Hits
+}
+
+func scanShadowHits(lower string) []string {
 	var hits []string
 	for _, kw := range inputRiskSoftKeywords {
 		if strings.Contains(lower, kw) {
@@ -94,4 +116,29 @@ func ScanInputRiskShadowHits(userText string) []string {
 		}
 	}
 	return hits
+}
+
+// LooksLikeExplicitInstruction reports a user turn that already names a
+// concrete target and an action (Q2 armB: memory/intent must not force
+// clarification). Underspecified "帮我做个…" stays false.
+func LooksLikeExplicitInstruction(userText string) bool {
+	t := strings.TrimSpace(userText)
+	if t == "" || LooksLikeUnderspecifiedTask(t) {
+		return false
+	}
+	if !concreteTargetRe.MatchString(t) {
+		return false
+	}
+	hasLetter := false
+	n := 0
+	for _, r := range t {
+		n++
+		if unicode.IsLetter(r) {
+			hasLetter = true
+		}
+	}
+	if !hasLetter || n < 8 {
+		return false
+	}
+	return true
 }

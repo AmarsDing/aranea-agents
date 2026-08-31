@@ -203,9 +203,10 @@ type ContextCfg struct {
 	CompressionBufferAdaptive  bool    `json:"compression_buffer_adaptive,omitempty"`
 	SoftTriggerRatio           float64 `json:"soft_trigger_ratio,omitempty"`
 	HardTriggerRatio           float64 `json:"hard_trigger_ratio,omitempty"`
-	// AssemblyBudgetSoftTokens / AssemblyBudgetHardTokens: 包A 装配预算（估 token，
-	// 0=关闭）。soft 超线注容量告警 cue（R2 MemGPT），hard 超线按保护序截断
-	// 并落 flowlog prompt.assembly.trimmed。SQL 灰度配置（管理层 40K/60K）。
+	// AssemblyBudgetSoftTokens / AssemblyBudgetHardTokens: 包A 装配预算（估 token）。
+	// hard<0 关闸；hard=0 profile 默认（Spirit/chat 40K/60K，专项 64K/96K）；hard>0 显式。
+	// soft 超线注容量告警 cue（R2 MemGPT），hard 超线按保护序截断
+	// 并落 flowlog prompt.assembly.trimmed。
 	AssemblyBudgetSoftTokens  int    `json:"assembly_budget_soft_tokens,omitempty"`
 	AssemblyBudgetHardTokens  int    `json:"assembly_budget_hard_tokens,omitempty"`
 	SessionSummaryEnabled     bool   `json:"session_summary_enabled,omitempty"`

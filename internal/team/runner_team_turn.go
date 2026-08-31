@@ -120,8 +120,8 @@ func (r *Runner) resolveAnchorAndAttachments(
 		mod:       mod0,
 		attRefs:   attachmentRefs,
 		attN:      attN,
-		teamID:    run.TeamID,   // 新增：透传 team_id 供 assistant 消息锚点使用
-		sessionID: sess.ID,      // P3 aux 缓存键
+		teamID:    run.TeamID, // 新增：透传 team_id 供 assistant 消息锚点使用
+		sessionID: sess.ID,    // P3 aux 缓存键
 	}
 	return
 }
@@ -194,27 +194,43 @@ func (r *Runner) prepareUserTurnOptions(
 	var intentRunOpts []trpcagent.RunOption
 	var intRes intent.RunResult
 
-	// 输入级确定性安全扫描（2026-08-28 方案② S3，补 team 路径 risk_flags
-	// 零消费缺口）：与 intent pass 的 LLM 成败无关，命中即发 gate 审计事件
-	// （tripped，观测语义不阻断——硬拦截保持在 L3 ParamRuleGate）。content
-	// 是团队 turn 的用户原始输入（validateTeamTurnInput 自 input.Content）。
-	inputRiskFlags := intent.ScanInputRisk(content)
-	if len(inputRiskFlags) > 0 {
+	// 输入级安全三档（Q6，与 chat 同表）：Deny 停 intent pass 并零 LLM
+	// 拒绝；HITL/Inform 不阻断。content 来自 validateTeamTurnInput。
+	inputRisk := intent.ClassifyInputSafety(content)
+	inputRiskFlags := inputRisk.Flags
+	if inputRisk.Action == intent.SafetyDeny {
+		pending.stop()
+		turnStatus = biz.TeamMemberStepStatusError
+		r.finishRunErr(ctx, run, t0, intent.SafetyDenyUserMessage)
+		err = apierror.Forbidden(apierror.DomainChatTeamNative, intent.SafetyDenyUserMessage)
 		event.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
 			TriggerRule: decision.TriggerInputRiskFlagged,
-			Outcome:     "tripped",
-			Scenario:    "团队会话用户输入命中确定性风险扫描",
-			Reasoning:   fmt.Sprintf("flags=%v", inputRiskFlags),
+			Outcome:     "blocked",
+			Scenario:    "团队会话用户输入命中 Deny 级破坏性操作，零 LLM 拒绝",
+			Reasoning:   fmt.Sprintf("action=deny hits=%v", inputRisk.Hits),
 			GuardName:   "input_safety_scan",
 			RunID:       run.ID,
 			SessionID:   run.SessionID,
-			Extra:       map[string]any{"flags": strings.Join(inputRiskFlags, ",")},
+			Extra:       map[string]any{"action": string(inputRisk.Action)},
 		})
-	} else if shadow := intent.ScanInputRiskShadowHits(content); len(shadow) > 0 {
+		return
+	}
+	if inputRisk.Action == intent.SafetyHITL {
+		event.EmitGate(ctx, r.cfg.DecisionCollector, decision.GateDecision{
+			TriggerRule: decision.TriggerInputRiskFlagged,
+			Outcome:     "tripped",
+			Scenario:    "团队会话用户输入命中 HITL 级风险扫描",
+			Reasoning:   fmt.Sprintf("action=hitl hits=%v", inputRisk.Hits),
+			GuardName:   "input_safety_scan",
+			RunID:       run.ID,
+			SessionID:   run.SessionID,
+			Extra:       map[string]any{"action": string(inputRisk.Action), "flags": strings.Join(inputRiskFlags, ",")},
+		})
+	} else if inputRisk.Action == intent.SafetyInform {
 		r.lg.Info("input risk shadow hit (not flagged)",
 			loggateway.StepID("team.input_risk.shadow"),
 			loggateway.Str("session_id", run.SessionID),
-			loggateway.Str("shadow_hits", strings.Join(shadow, ",")),
+			loggateway.Str("shadow_hits", strings.Join(inputRisk.Hits, ",")),
 		)
 	}
 
