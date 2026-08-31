@@ -1,4 +1,0 @@
-# aranea-agents/internal/service
-internal\service\cli_admin_tools.go:191:178: not enough arguments in call to tools.NewPlanAndExecuteTool
-	have (biz.TaskPlannerPort, biz.AgentAllocatorPort, biz.TaskOrchestratorPort, *SpiritTeamAssembler, sessionModelLookup, biz.EventBus, loggateway.Logger)
-	want (biz.TaskPlannerPort, biz.AgentAllocatorPort, biz.TaskOrchestratorPort, tools.SpiritTeamQueryPort, tools.SessionModelLookup, biz.EventBus, loggateway.Logger, tools.BoardStartupWaiter)
