@@ -92,7 +92,7 @@ func TestScanInputRisk_NoFalsePositive(t *testing.T) {
 }
 
 // TestScanInputRisk_WideDetection 宽检测语义：target 为普通路径（L3 不 deny 的
-// /tmp 场景）输入级仍打标——分层差异：宽检测（审计/澄清门）→ 窄拦截（L3）。
+// /tmp 场景）输入级仍打标——Q6 后 Classify 为 Deny（flags 仍返回供 ForceDestructive）。
 func TestScanInputRisk_WideDetection(t *testing.T) {
 	hits := []string{
 		"rm -rf /tmp/data",    // L3 deny 不命中（target 非根），输入级打标
@@ -161,4 +161,3 @@ func TestClassifyInputSafety_PolicyTable(t *testing.T) {
 		t.Fatal("S14-h2 must not land in Deny")
 	}
 }
-

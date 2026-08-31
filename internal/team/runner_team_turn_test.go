@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 // TestPrepareUserTurnOptions_InputRiskDegradedInject 钉死输入安全三档（Q6）：
 // Deny（rm -rf）零 LLM 拒绝；HITL（fault_inject）降级注入警示后继续。
 func TestPrepareUserTurnOptions_InputRiskDegradedInject(t *testing.T) {
-	r := &Runner{lg: loggateway.NewNoop()}
+	r := &Runner{lg: loggateway.NewNoop(), runTransitioner: nopRunTransitioner{}}
 	// 零值 Settings → intent pass 未开启 → ShouldRun=false，无 LLM 依赖。
 	ar := anchorResolution{agent: biz.Agent{ID: "ag-1", AgentKey: "leader", DisplayName: "Leader"}}
 	newRun := func() biz.TeamRunRecord {
@@ -87,4 +88,10 @@ func TestStartTeamIntentPass_SkipDirectReply(t *testing.T) {
 	if !p.skip || p.ch != nil {
 		t.Fatalf("direct reply must skip intent, skip=%v ch=%v", p.skip, p.ch)
 	}
+}
+
+type nopRunTransitioner struct{}
+
+func (nopRunTransitioner) TransitionRunStatus(context.Context, string, string) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, errors.New("test skip persist")
 }
