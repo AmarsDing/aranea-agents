@@ -200,5 +200,11 @@ web/vitest-result.json
 /agent-browser-snap.ps1
 /hover-probe.js
 
+# 命令行碎片命名垃圾文件防护（2026-08-31 P23：误引号重定向把命令片段落成文件名并被误提交）
+/s -File *
+/erver *
+/be.txt
+/bo.txt
+
 # 编译产物误落根部（二进制一律进 bin/，勿提交）
 /admin
