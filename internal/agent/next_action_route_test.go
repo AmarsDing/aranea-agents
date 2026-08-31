@@ -102,6 +102,18 @@ func TestNextActionTrackAfterHook(t *testing.T) {
 			t.Fatalf("pending must survive unrelated tool, got %+v", p)
 		}
 	})
+
+	t.Run("await_orchestration_sets_block_final", func(t *testing.T) {
+		ctx, inv := nextActionTestCtx()
+		invokeAfterTool(t, hook, ctx, &trpctool.AfterToolArgs{
+			ToolName: planAndExecuteToolName,
+			Result:   map[string]any{"next_action": "await_orchestration", "reuse_reason": "已派发"},
+		})
+		p := pendingFromState(t, inv)
+		if !p.BlockFinal || p.Hint != "已派发" {
+			t.Fatalf("await_orchestration must block final, got %+v", p)
+		}
+	})
 }
 
 func TestNextActionCueBeforeHook(t *testing.T) {
@@ -220,6 +232,27 @@ func TestNextActionRouteAfterModelHook(t *testing.T) {
 		})
 		if res != nil && res.CustomResponse != nil {
 			t.Fatal("tool-call response must not be intercepted")
+		}
+	})
+
+	t.Run("block_final_replaces_diy_with_status", func(t *testing.T) {
+		ctx, inv := nextActionTestCtx()
+		inv.SetState(pendingNextActionStateKey, pendingNextAction{BlockFinal: true, Hint: "编排已启动，请等待团队交付。"})
+		res := invokeForcePlanningHook(t, newHook(), ctx, &trpcmodel.AfterModelArgs{
+			Request:  &trpcmodel.Request{Messages: []trpcmodel.Message{}},
+			Response: finalTextResponse(),
+		})
+		if res == nil || res.CustomResponse == nil {
+			t.Fatal("DIY final must be replaced with status speech")
+		}
+		if got := res.CustomResponse.Choices[0].Message.Content; got != "编排已启动，请等待团队交付。" {
+			t.Fatalf("status text = %q", got)
+		}
+		if len(res.CustomResponse.Choices[0].Message.ToolCalls) != 0 {
+			t.Fatal("status replacement must not be a tool call")
+		}
+		if p := pendingFromState(t, inv); p.BlockFinal || p.Tool != "" {
+			t.Fatalf("pending must clear after block-final, got %+v", p)
 		}
 	})
 }

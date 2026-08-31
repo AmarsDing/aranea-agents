@@ -16,6 +16,9 @@ func TestCheckRouteHonored_FIT_ROUTE_1(t *testing.T) {
 	if err := CheckRouteHonored(team, StrategyDAG, 0, "decompose_failed"); err != nil {
 		t.Fatalf("fail-closed non-direct is honored: %v", err)
 	}
+	if err := CheckRouteHonored(team, StrategyDAG, 0, DecomposeReasonDeferred); err == nil {
+		t.Fatal("PlanTeam + deferred/0 must fail FIT-ROUTE-1")
+	}
 	if err := CheckRouteHonored(RouteDecision{}, StrategyDirect, 0, ""); err != nil {
 		t.Fatalf("unspecified lane is not constrained: %v", err)
 	}

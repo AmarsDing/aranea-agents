@@ -393,6 +393,29 @@ func TestRunClarificationGate_NilArtifact(t *testing.T) {
 	}
 }
 
+func TestRunClarificationGate_UnderspecifiedWithoutIntentArtifact(t *testing.T) {
+	taskWriter := &stubTaskV2Writer{}
+	stepWriter := &stubStepV2Writer{}
+	seq := &stubEventPublisher{}
+	stateMgr := &stubSessionStateTransitor{}
+	orch := newClarificationTestOrch(taskWriter, stepWriter, seq, stateMgr)
+	ag := biz.Agent{
+		AgentKey: "test-agent",
+		Settings: &biz.AgentRuntimeSettings{ClarificationEnabled: true},
+	}
+	ctx := chatagent.ContextWithRootTaskActivityID(context.Background(), chatagent.RootTaskActivityID("task-s02"))
+	decision, err := orch.runClarificationGate(ctx, "sess-s02", nil, ag, biz.TurnInput{
+		SessionID: "sess-s02",
+		Content:   "帮我弄个报告。",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !decision.Triggered {
+		t.Fatal("underspecified task must hang even when intent proposed no clarify")
+	}
+}
+
 func TestRunClarificationGate_AutoResolvedWhenAllRecommended(t *testing.T) {
 	taskWriter := &stubTaskV2Writer{}
 	stepWriter := &stubStepV2Writer{}

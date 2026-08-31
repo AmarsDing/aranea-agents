@@ -1,6 +1,12 @@
 <template>
   <div class="ctx-budget-breakdown">
-    <!-- Stacked composition bar: segments sized against the rows total so the
+    <!-- 口径锚点：下方明细是「首轮 prompt 构成」的估算，合计 = est_total_input；
+         与 tooltip 标题的轮总 token（实测计费，含多轮工具循环累加）是两个口径。 -->
+    <div class="ctx-budget-breakdown__head">
+      <span class="ctx-budget-breakdown__head-label">{{ t('chat.contextBudgetFirstRoundTitle') }}</span>
+      <span class="ctx-budget-breakdown__head-value">{{ formatTokens(budget.est_total_input) }}</span>
+    </div>
+    <!-- Stacked composition bar: segments sized against est_total_input so the
          bar reads as the prompt's composition for this turn. -->
     <div class="ctx-budget-breakdown__stack" role="img" :aria-label="t('chat.contextBudgetTitle')">
       <div
@@ -57,13 +63,30 @@ const topTools = computed(() => props.budget.top_tools ?? []);
 const toolsSchemaKey = CONTEXT_BUDGET_CATEGORY.toolsSchema;
 
 function segWidth(row: ContextBudgetRow): string {
-  const total = rowsTotal.value > 0 ? rowsTotal.value : 1;
+  // Use the backend-reported est_total_input so bar segments always sum to
+  // 100% even when some categories are absent from the ledger (0 values are
+  // dropped by parseContextBudgetMeta).
+  const total = props.budget.est_total_input > 0 ? props.budget.est_total_input : rowsTotal.value || 1;
   const pct = Math.min(100, Math.max(0.6, (row.estTokens / total) * 100));
   return `${pct}%`;
 }
 </script>
 
 <style scoped lang="sass">
+.ctx-budget-breakdown__head
+  display: flex
+  align-items: center
+  justify-content: space-between
+  font-size: 11px
+  margin-bottom: 4px
+
+.ctx-budget-breakdown__head-label
+  color: var(--color-text-secondary)
+
+.ctx-budget-breakdown__head-value
+  color: var(--color-text-primary)
+  font-variant-numeric: tabular-nums
+
 .ctx-budget-breakdown__stack
   display: flex
   height: 6px

@@ -64,4 +64,7 @@ func TestLooksLikeUnderspecifiedTask(t *testing.T) {
 	if LooksLikeUnderspecifiedTask("请记住我的工号") {
 		t.Fatal("remember turns are not underspecified tasks")
 	}
+	if !LooksLikeUnderspecifiedTask("帮我弄个报告。") {
+		t.Fatal("帮我弄个报告 must hang the clarification gate")
+	}
 }

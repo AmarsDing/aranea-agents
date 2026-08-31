@@ -30,6 +30,7 @@ import (
 //  3. AfterModel 终答拦截：pending 期间 LLM 产出无工具调用的终答时，合成一次
 //     tool_load 调用替换终答（保持循环存活 + 幂等激活目标工具），每指令仅一次；
 //     催办后仍放弃的，写 decision_records/flowlog 留痕放行，不无限循环。
+//     BlockFinal（await_orchestration）：替换为状态终答，禁止 DIY 交付物。
 //
 // 合成 tool_load 而非直调 build_orchestration_graph：后者需 agents 列表等
 // 业务参数（build_graph.go: agents 至少一个），系统无法凭空构造有意义的
@@ -40,16 +41,24 @@ import (
 
 // nextActionRequiredTool 把 next_action 指令映射到必须跟进的工具名。
 // 仅收录「需工具调用」的指令；await_user_clarification / decompose_failed /
-// planning_in_progress / authorize_playbook 是面向用户的表达指令，终答即合规。
+// authorize_playbook 是面向用户的表达指令。planning_in_progress 在未提交
+// 车道上仍允许 Spirit 说话；已提交 PlanTeam 走 await_orchestration。
 var nextActionRequiredTool = map[string]string{
 	biz.RosterMissNextAction: "build_orchestration_graph",
 }
 
+// nextActionBlockFinal marks next_action values that forbid a DIY
+// deliverable as the turn's final answer (replace with status speech).
+var nextActionBlockFinal = map[string]bool{
+	biz.AwaitOrchestrationNextAction: true,
+}
+
 // pendingNextAction 是 invocation state 中暂存的待执行指令。
 type pendingNextAction struct {
-	Tool   string // 必须跟进的工具名
-	Hint   string // plan_and_execute 随 next_action 返回的中文指引
-	Nudged bool   // AfterModel 是否已合成过一次 tool_load 催办
+	Tool       string // 必须跟进的工具名（空 = 无工具催办）
+	Hint       string // plan_and_execute 随 next_action 返回的中文指引
+	Nudged     bool   // AfterModel 是否已合成过一次 tool_load 催办
+	BlockFinal bool   // 已提交组队：拦截 DIY 终答，换成状态汇报
 }
 
 // pendingNextActionStateKey 是 invocation state 键（per-invocation，不跨 turn）。
@@ -84,7 +93,13 @@ func newNextActionTrackAfterHook() callbacks.Callback {
 			return &trpctool.AfterToolResult{}, nil
 		}
 		nextAction, _ := m["next_action"].(string)
-		required, tracked := nextActionRequiredTool[strings.TrimSpace(nextAction)]
+		nextAction = strings.TrimSpace(nextAction)
+		if nextActionBlockFinal[nextAction] {
+			hint, _ := m["reuse_reason"].(string)
+			inv.SetState(pendingNextActionStateKey, pendingNextAction{BlockFinal: true, Hint: hint})
+			return &trpctool.AfterToolResult{}, nil
+		}
+		required, tracked := nextActionRequiredTool[nextAction]
 		if !tracked {
 			return &trpctool.AfterToolResult{}, nil
 		}
@@ -111,11 +126,13 @@ func newNextActionCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		p, ok := v.(pendingNextAction)
-		if !ok || p.Tool == "" {
+		if !ok || (p.Tool == "" && !p.BlockFinal) {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		var cue string
-		if deps.DeferredManager != nil && deps.DeferredManager.IsActivated(ctx, p.Tool) {
+		if p.BlockFinal {
+			cue = `[系统强制] 本轮已提交组队编排。禁止直接撰写用户交付物正文；只向用户说明已派发/进行中，等待团队交付。`
+		} else if deps.DeferredManager != nil && deps.DeferredManager.IsActivated(ctx, p.Tool) {
 			// 已 load 未调用（S07 形态）：禁止再 tool_load / 转向无关工具。
 			cue = fmt.Sprintf(`[系统强制] %s 已在本会话激活，你必须立即调用它完成组队——禁止再次 tool_load、禁止转向其他工具、禁止直接向用户宣告无法执行。参数不足时先用查询类工具收集信息，随后本轮或下一轮必须调用 %s。`,
 				p.Tool, p.Tool)
@@ -144,7 +161,7 @@ func newNextActionRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 			return nil, nil
 		}
 		p, ok := v.(pendingNextAction)
-		if !ok || p.Tool == "" {
+		if !ok || (p.Tool == "" && !p.BlockFinal) {
 			return nil, nil
 		}
 		resp := args.Response
@@ -158,14 +175,46 @@ func newNextActionRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 		if args.Request == nil {
 			return nil, nil
 		}
+		sessionID := ""
+		if inv.Session != nil {
+			sessionID = strings.TrimSpace(inv.Session.ID)
+		}
+		if p.BlockFinal {
+			inv.SetState(pendingNextActionStateKey, pendingNextAction{})
+			text := strings.TrimSpace(p.Hint)
+			if text == "" {
+				text = biz.AwaitOrchestrationUserHint
+			}
+			synthetic := buildStatusTextResponse(resp, text)
+			if synthetic == nil {
+				return nil, nil
+			}
+			lg.Warn("next_action 硬约束：拦截组队后 DIY 终答，改为状态汇报",
+				loggateway.StepID("chat.next_action.block_final"),
+				loggateway.SessionID(sessionID),
+			)
+			event.EmitDecision(ctx, deps.DecisionCollector, decision.Record{
+				DecisionKey: uuid.NewString(),
+				Category:    decision.CategoryPlannerOrchestration,
+				Scenario:    "next_action 拦截 DIY 终答",
+				Reasoning:   "已提交 PlanTeam 编排启动后 LLM 仍撰写交付物正文，替换为状态汇报。",
+				Outcome:     "block_final_await_orchestration",
+				ActorType:   decision.ActorSystem,
+				ActorKey:    "system:next_action_route",
+				SourceRef:   decision.SourceRef{SessionID: sessionID},
+				Metadata:    map[string]any{"session_id": sessionID},
+			}, "chat.next_action.block_final", "拦截组队后 DIY 终答",
+				event.P("session_id", sessionID),
+			)
+			return &trpcmodel.AfterModelResult{Context: ctx, CustomResponse: synthetic}, nil
+		}
+		if p.Tool == "" {
+			return nil, nil
+		}
 		// 目标工具已在本 turn 出现过（历史消息含调用/结果）——核销放行。
 		if toolCalledInRequest(args.Request.Messages, p.Tool) {
 			inv.SetState(pendingNextActionStateKey, pendingNextAction{})
 			return nil, nil
-		}
-		sessionID := ""
-		if inv.Session != nil {
-			sessionID = strings.TrimSpace(inv.Session.ID)
 		}
 		if p.Nudged {
 			// 已催办一次仍放弃：留痕放行，不无限循环。
@@ -275,6 +324,35 @@ func buildToolLoadCallResponse(orig *trpcmodel.Response, toolName string) *trpcm
 						Arguments: argsJSON,
 					},
 				}},
+			},
+			FinishReason: &finish,
+		}},
+	}
+	if out.Object == "" {
+		out.Object = trpcmodel.ObjectTypeChatCompletion
+	}
+	return out
+}
+
+// buildStatusTextResponse replaces a DIY final with a status-only reply.
+func buildStatusTextResponse(orig *trpcmodel.Response, text string) *trpcmodel.Response {
+	if orig == nil {
+		return nil
+	}
+	finish := "stop"
+	out := &trpcmodel.Response{
+		ID:        orig.ID,
+		Object:    orig.Object,
+		Created:   orig.Created,
+		Model:     orig.Model,
+		Usage:     orig.Usage,
+		Timestamp: orig.Timestamp,
+		Done:      true,
+		Choices: []trpcmodel.Choice{{
+			Index: 0,
+			Message: trpcmodel.Message{
+				Role:    trpcmodel.RoleAssistant,
+				Content: text,
 			},
 			FinishReason: &finish,
 		}},

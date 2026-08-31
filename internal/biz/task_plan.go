@@ -118,6 +118,14 @@ const PlanningInProgressNextAction = "planning_in_progress"
 // PlanningInProgressUserHint tells Spirit not to re-enter plan_and_execute.
 const PlanningInProgressUserHint = "任务正在分解规划中，请向用户说明正在组建方案，等待编排进度事件后再汇报结果。不要立刻再次调用 plan_and_execute。"
 
+// AwaitOrchestrationNextAction is returned when a committed PlanTeam lane
+// has started (or is starting) orchestration. Spirit must not write the
+// user-facing deliverable in this turn — the team owns that work.
+const AwaitOrchestrationNextAction = "await_orchestration"
+
+// AwaitOrchestrationUserHint is the user-facing status Spirit should relay.
+const AwaitOrchestrationUserHint = "编排已启动，团队正在执行。请向用户说明已派发，等待团队交付后再汇报结果。禁止在本轮直接撰写交付物正文。"
+
 // DecomposeFailedNextAction is returned by plan_and_execute when medium+
 // decomposition fails. Spirit must not treat StrategyDirect as success.
 const DecomposeFailedNextAction = "decompose_failed"

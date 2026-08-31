@@ -88,6 +88,13 @@ func CheckRouteHonored(d RouteDecision, strategy OrchestrationStrategy, subtaskC
 	if strategy == StrategyDirect && subtaskCount == 0 {
 		return fmt.Errorf("FIT-ROUTE-1: committed plan_team yielded direct/0 subtasks (decompose_reason=%q)", decomposeReason)
 	}
+	// Deferred ACK with zero subtasks lets Spirit speak (and DIY the
+	// deliverable) before allocate/orchestrate. Committed PlanTeam must
+	// not return that gap to the LLM (0831-r2 S06: 34ms planning_in_progress
+	// then Spirit wrote the copy; team_runs=0).
+	if reason == strings.ToLower(DecomposeReasonDeferred) && subtaskCount == 0 {
+		return fmt.Errorf("FIT-ROUTE-1: committed plan_team yielded deferred/0 subtasks")
+	}
 	return nil
 }
 

@@ -100,6 +100,12 @@ func (o *ChatOrchestrator) runClarificationGate(
 		return ClarificationGateDecision{}, nil
 	}
 
+	// 欠规格任务由编排器提交澄清车道：不依赖 intent LLM 先提出
+	// needs_clarification（0831-r2 S02 「帮我弄个报告」intent 未提议，仲裁从未运行）。
+	if intent.LooksLikeUnderspecifiedTask(input.Content) && (intentArt == nil || !intentArt.NeedsClarification()) {
+		intentArt = intent.UnderspecifiedClarifyArtifact(input.Content)
+	}
+
 	// 条件 2：Intent Artifact 检查
 	if intentArt == nil || !intentArt.NeedsClarification() {
 		return ClarificationGateDecision{}, nil

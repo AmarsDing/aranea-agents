@@ -293,6 +293,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			if taskPlan.DecomposeReason == biz.DecomposeReasonDeferred {
 				out.NextAction = biz.PlanningInProgressNextAction
 				out.ReuseReason = biz.PlanningInProgressUserHint
+				if committedPlanTeam(ctx) {
+					// Committed PlanTeam must not treat the defer ACK as
+					// "Spirit may now write the deliverable".
+					out.NextAction = biz.AwaitOrchestrationNextAction
+					out.ReuseReason = biz.AwaitOrchestrationUserHint
+				}
 				startBackgroundPlanCompletion(ctx, taskPlan, taskPrompt, spiritSessionID, mode, explicitKeys, deps)
 				return out, nil
 			}
@@ -353,7 +359,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 							SpiritSessionID:   spiritSessionID,
 							Mode:              mode,
 							AgentKeys:         explicitKeys,
-							DeferLLMDecompose: true,
+							DeferLLMDecompose: deferLLMDecompose(ctx),
 							SkipMemory:        true,
 						}
 						replanPlan, replanErr := deps.planner.Plan(ctx, replanInput)
@@ -423,6 +429,10 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			out.OrchestrationID = handle.ID
+			if committedPlanTeam(ctx) {
+				out.NextAction = biz.AwaitOrchestrationNextAction
+				out.ReuseReason = biz.AwaitOrchestrationUserHint
+			}
 			// B-04 fix: do NOT publish orchestration_completed here — the DAG
 			// hasn't executed yet. PlanExecutor.publishPlanBoardTerminal will
 			// emit the terminal orchestration event when the DAG finishes.
@@ -502,6 +512,27 @@ func tryReuseExistingOrchestration(ctx context.Context, spiritSessionID, taskPro
 	}, true
 }
 
+// deferLLMDecompose is true when Plan may ACK a draft and finish LLM
+// decompose in the background so Spirit can speak. A committed PlanTeam
+// or PlanSolo lane must not open that gap: Spirit would write the
+// deliverable while allocate/orchestrate has not run (0831-r2 S06).
+func deferLLMDecompose(ctx context.Context) bool {
+	d, ok := biz.RouteDecisionFromContext(ctx)
+	if !ok {
+		return true
+	}
+	switch d.Lane {
+	case biz.RouteLanePlanTeam, biz.RouteLanePlanSolo:
+		return false
+	}
+	return true
+}
+
+func committedPlanTeam(ctx context.Context) bool {
+	d, ok := biz.RouteDecisionFromContext(ctx)
+	return ok && d.Lane == biz.RouteLanePlanTeam
+}
+
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.
 func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode string, explicitKeys []string, deps planAndExecuteDeps) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
 	// Start plan phase span (P3-2): Trace propagation across Spirit→Team→Graph.
@@ -529,7 +560,7 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode str
 		SpiritSessionID:   spiritSessionID,
 		Mode:              mode,
 		AgentKeys:         explicitKeys,
-		DeferLLMDecompose: true,
+		DeferLLMDecompose: deferLLMDecompose(ctx),
 	}
 	planInput = biz.MergeCommitted(ctx, planInput)
 	if m := strings.ToLower(strings.TrimSpace(planInput.Mode)); (m == "" || m == "auto") && planInput.Committed.Mode != "" {

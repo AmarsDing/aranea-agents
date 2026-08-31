@@ -324,6 +324,9 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	default:
 		complexityLevel = biz.ComplexitySimple
 	}
+	if input.Committed.Specified() {
+		complexityLevel, complexityScore = applyCommittedComplexity(input.Committed, complexityLevel, complexityScore)
+	}
 
 	// Honor explicit user/LLM mode: team-forming modes (parallel/dag/coordinator)
 	// must trigger decomposition even when the complexity score is low, otherwise
@@ -473,6 +476,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			if updated, uerr := impl.repo.Update(ctx, saved); uerr == nil {
 				saved = updated
 			}
+			impl.warnIfRouteViolated(ctx, input.Committed, saved)
 			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposing", map[string]any{
 				"plan_id":  planID,
 				"deferred": true,
@@ -1032,6 +1036,32 @@ func (impl *taskPlannerImpl) determineStrategy(_ biz.ComplexityLevel, _ float64,
 	// (DECISION.md) to always pass an explicit mode; reaching this branch means
 	// the LLM did not comply — direct is the safest fallback.
 	return biz.StrategyDirect, "未指定 mode，默认 direct 模式", biz.TopologyDirect
+}
+
+func complexityRank(level biz.ComplexityLevel) int {
+	switch level {
+	case biz.ComplexityComplex:
+		return 3
+	case biz.ComplexityModerate:
+		return 2
+	case biz.ComplexitySimple:
+		return 1
+	}
+	return 0
+}
+
+// applyCommittedComplexity raises Plan()'s re-score to the gate commit.
+// QuickAssess and Plan() used to disagree (0831-r2 S06: gate moderate 0.3,
+// Plan simple 0.13 with decision_source=route_commit) — the later writer
+// silently undid the commit.
+func applyCommittedComplexity(committed biz.RouteDecision, level biz.ComplexityLevel, score float64) (biz.ComplexityLevel, float64) {
+	if committed.Score > score {
+		score = committed.Score
+	}
+	if complexityRank(committed.Level) > complexityRank(level) {
+		level = committed.Level
+	}
+	return level, score
 }
 
 // shouldForceComplex returns true when the explicit mode requires subtask

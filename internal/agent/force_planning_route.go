@@ -101,13 +101,7 @@ func newForcePlanningRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callbac
 		if args.Request == nil {
 			return nil, nil
 		}
-		if _, has := args.Request.Tools[planAndExecuteToolName]; !has {
-			return nil, nil
-		}
-		if planAndExecuteCalledInRequest(args.Request.Messages) {
-			return nil, nil
-		}
-		synthetic := buildForcedPlanToolCallResponse(resp, route)
+		synthetic, outcome, stepMsg := buildForcedLaneToolCall(args.Request, resp, route)
 		if synthetic == nil {
 			return nil, nil
 		}
@@ -115,11 +109,12 @@ func newForcePlanningRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callbac
 		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
 			sessionID = strings.TrimSpace(inv.Session.ID)
 		}
-		lg.Warn("强制规划硬路由：LLM 终答未调用 plan_and_execute，系统直调",
+		lg.Warn("强制规划硬路由：LLM 终答未调用车道工具，系统直调",
 			loggateway.StepID("chat.force_planning.hard_route"),
 			loggateway.SessionID(sessionID),
 			loggateway.Str("gate_level", route.Level),
 			loggateway.Float64("gate_score", route.Score),
+			loggateway.Str("outcome", outcome),
 		)
 		// SP-1b 统一入口：decision_records + flowlog 双写；collector nil 时
 		// flowlog 仍落（D1）。
@@ -129,7 +124,7 @@ func newForcePlanningRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callbac
 			Scenario:    "强制规划硬路由",
 			Reasoning: fmt.Sprintf("门控判定强制规划（%s，score %.2f），LLM 终答未调用 plan_and_execute，硬路由直调（跳过重试）。门控理由：%s",
 				route.Level, route.Score, route.Reason),
-			Outcome:   "hard_route_plan_and_execute",
+			Outcome:   outcome,
 			ActorType: decision.ActorSystem,
 			ActorKey:  "system:pre_planning_gate",
 			SourceRef: decision.SourceRef{SessionID: sessionID},
@@ -139,7 +134,7 @@ func newForcePlanningRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callbac
 				"gate_reason": route.Reason,
 				"session_id":  sessionID,
 			},
-		}, "chat.force_planning.hard_route", "强制规划硬路由：LLM 未调 plan_and_execute，系统直调",
+		}, "chat.force_planning.hard_route", stepMsg,
 			event.P("gate_level", route.Level),
 			event.P("gate_score", route.Score),
 			event.P("session_id", sessionID),
@@ -148,20 +143,66 @@ func newForcePlanningRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callbac
 	})
 }
 
-// planAndExecuteCalledInRequest 扫描请求消息历史，判定本 turn 是否已出现
-// plan_and_execute 调用（assistant tool_calls）或结果（tool 消息）。
-func planAndExecuteCalledInRequest(messages []trpcmodel.Message) bool {
-	for _, m := range messages {
-		if m.ToolName == planAndExecuteToolName {
-			return true
-		}
-		for _, tc := range m.ToolCalls {
-			if tc.Function.Name == planAndExecuteToolName {
-				return true
-			}
-		}
+const subagentsSpawnToolName = "subagents_spawn"
+
+// buildForcedLaneToolCall picks the tool that honors the committed lane:
+// Spirit → plan_and_execute; governance faces without that tool → subagents_spawn.
+func buildForcedLaneToolCall(req *trpcmodel.Request, orig *trpcmodel.Response, route ForcePlanningRoute) (*trpcmodel.Response, string, string) {
+	if req == nil {
+		return nil, "", ""
 	}
-	return false
+	if _, has := req.Tools[planAndExecuteToolName]; has && !toolCalledInRequest(req.Messages, planAndExecuteToolName) {
+		synthetic := buildForcedPlanToolCallResponse(orig, route)
+		if synthetic == nil {
+			return nil, "", ""
+		}
+		return synthetic, "hard_route_plan_and_execute", "强制规划硬路由：LLM 未调 plan_and_execute，系统直调"
+	}
+	if _, has := req.Tools[subagentsSpawnToolName]; has && !toolCalledInRequest(req.Messages, subagentsSpawnToolName) {
+		synthetic := buildForcedSpawnToolCallResponse(orig, route)
+		if synthetic == nil {
+			return nil, "", ""
+		}
+		return synthetic, "hard_route_subagents_spawn", "治理岗硬路由：LLM 未派发即终答，系统直调 subagents_spawn"
+	}
+	return nil, "", ""
+}
+
+func buildForcedSpawnToolCallResponse(orig *trpcmodel.Response, route ForcePlanningRoute) *trpcmodel.Response {
+	args := map[string]any{"task": strings.TrimSpace(route.TaskPrompt), "kind": "general"}
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		return nil
+	}
+	finish := "tool_calls"
+	out := &trpcmodel.Response{
+		ID:        orig.ID,
+		Object:    orig.Object,
+		Created:   orig.Created,
+		Model:     orig.Model,
+		Usage:     orig.Usage,
+		Timestamp: orig.Timestamp,
+		Done:      true,
+		Choices: []trpcmodel.Choice{{
+			Index: 0,
+			Message: trpcmodel.Message{
+				Role: trpcmodel.RoleAssistant,
+				ToolCalls: []trpcmodel.ToolCall{{
+					Type: "function",
+					ID:   "call_force_spawn_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16],
+					Function: trpcmodel.FunctionDefinitionParam{
+						Name:      subagentsSpawnToolName,
+						Arguments: argsJSON,
+					},
+				}},
+			},
+			FinishReason: &finish,
+		}},
+	}
+	if out.Object == "" {
+		out.Object = trpcmodel.ObjectTypeChatCompletion
+	}
+	return out
 }
 
 // buildForcedPlanToolCallResponse 构造替换原终答的合成工具调用响应。

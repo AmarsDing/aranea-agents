@@ -44,3 +44,16 @@ func TestCommitRoute_S01DirectUnspecified(t *testing.T) {
 		t.Fatalf("S01 must not commit a lane, got %+v", d)
 	}
 }
+
+func TestApplyCommittedComplexity_RaisesSimpleToGateModerate(t *testing.T) {
+	level, score := applyCommittedComplexity(
+		biz.RouteDecision{Lane: biz.RouteLanePlanTeam, Level: biz.ComplexityModerate, Score: 0.3},
+		biz.ComplexitySimple, 0.13,
+	)
+	if level != biz.ComplexityModerate {
+		t.Fatalf("level = %s, want moderate", level)
+	}
+	if score < 0.3 {
+		t.Fatalf("score = %v, want >= 0.3", score)
+	}
+}

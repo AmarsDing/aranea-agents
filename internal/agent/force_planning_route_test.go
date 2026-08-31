@@ -286,4 +286,27 @@ func TestForcePlanningRouteHook(t *testing.T) {
 			t.Fatal("nil collector must not block hard-route")
 		}
 	})
+
+	t.Run("governance_spawn_when_no_plan_and_execute", func(t *testing.T) {
+		res := invokeForcePlanningHook(t, newHook(nil), markedCtx(), &trpcmodel.AfterModelArgs{
+			Request: &trpcmodel.Request{
+				Tools: map[string]trpctool.Tool{subagentsSpawnToolName: nil},
+			},
+			Response: finalTextResponse(),
+		})
+		if res == nil || res.CustomResponse == nil {
+			t.Fatal("governance face must hard-route to subagents_spawn")
+		}
+		tc := res.CustomResponse.Choices[0].Message.ToolCalls[0]
+		if tc.Function.Name != subagentsSpawnToolName {
+			t.Fatalf("tool = %q, want %s", tc.Function.Name, subagentsSpawnToolName)
+		}
+		var args map[string]any
+		if err := json.Unmarshal(tc.Function.Arguments, &args); err != nil {
+			t.Fatalf("args: %v", err)
+		}
+		if args["task"] != "写一份竞品分析报告" {
+			t.Fatalf("task = %v", args["task"])
+		}
+	})
 }

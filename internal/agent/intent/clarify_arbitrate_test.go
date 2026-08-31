@@ -39,6 +39,16 @@ func TestArbitrateClarification_UnderspecifiedKeeps(t *testing.T) {
 	}
 }
 
+func TestUnderspecifiedClarifyArtifact_S02(t *testing.T) {
+	art := UnderspecifiedClarifyArtifact("帮我弄个报告。")
+	if !art.NeedsClarification() {
+		t.Fatal("synthetic artifact must trigger the clarification gate")
+	}
+	if len(art.Clarifications) == 0 || len(art.Clarifications[0].Recommended) != 0 {
+		t.Fatal("synthetic questions must not carry recommended defaults")
+	}
+}
+
 func TestArbitrateClarification_HighRiskKept(t *testing.T) {
 	art := &Artifact{
 		RiskFlags:      []string{RiskFlagNeedsClarification, "destructive"},

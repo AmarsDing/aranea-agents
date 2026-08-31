@@ -375,6 +375,7 @@ export default {
     contextBudgetFull: '已用 {pct}',
     contextBudgetToolsCount: '{count} 个工具',
     contextBudgetEstimated: '估算值（按字符数 ÷ 3.5 换算）',
+    contextBudgetFirstRoundTitle: '首轮 prompt 构成（估算）',
     contextBudgetStaticPrefix: '系统提示',
     contextBudgetToolsSchema: '工具定义',
     contextBudgetSkillOverview: '技能概览',

@@ -517,6 +517,59 @@ func TestPlanAndExecute_DeferredDecompose_ReturnsPlanningInProgress(t *testing.T
 	}
 }
 
+type deferCaptureStub struct {
+	clarifyPlanStub
+	deferSeen chan bool
+}
+
+func (s *deferCaptureStub) Plan(_ context.Context, in biz.PlanInput) (*biz.TaskPlan, error) {
+	select {
+	case s.deferSeen <- in.DeferLLMDecompose:
+	default:
+	}
+	return s.plan, nil
+}
+
+func TestPlanAndExecute_CommittedPlanTeam_DoesNotDefer(t *testing.T) {
+	seen := make(chan bool, 1)
+	planner := &deferCaptureStub{
+		clarifyPlanStub: clarifyPlanStub{plan: &biz.TaskPlan{
+			ID:              "tp_commit",
+			SpiritSessionID: "spirit-1",
+			Strategy:        biz.StrategyParallel,
+			ComplexityLevel: biz.ComplexityModerate,
+			DecomposeReason: biz.DecomposeReasonFailed,
+		}},
+		deferSeen: seen,
+	}
+	tool := NewPlanAndExecuteTool(planner, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	invCtx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{
+		Session: &trpcsession.Session{ID: "spirit-1"},
+	})
+	ctx := biz.ContextWithRouteDecision(invCtx, biz.RouteDecision{
+		Lane: biz.RouteLanePlanTeam, Mode: "dag", ForcePlanning: true,
+	})
+	res, err := tool.Call(ctx, []byte(`{"task_prompt":"让市场部出一版 Q3 推广文案框架","mode":"dag"}`))
+	if err != nil {
+		t.Fatalf("Call err: %v", err)
+	}
+	out, ok := res.(PlanAndExecuteOutput)
+	if !ok {
+		t.Fatalf("result type = %T", res)
+	}
+	select {
+	case def := <-seen:
+		if def {
+			t.Fatal("committed PlanTeam must not DeferLLMDecompose")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Plan() was not called")
+	}
+	if out.NextAction != biz.DecomposeFailedNextAction {
+		t.Fatalf("NextAction = %q, want decompose_failed (no DIY gap)", out.NextAction)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // P2-② 假启动拦截（session-eval-20260829-r2 R4-Q1）
 // ---------------------------------------------------------------------------

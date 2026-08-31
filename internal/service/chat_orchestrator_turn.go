@@ -702,6 +702,16 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			Mode:       gateDecision.Committed.Mode,
 		})
 	}
+	// 治理岗不是干活人：有交付信号但门控未 ForcePlanning 时仍标记硬路由，
+	// AfterModel 在无 plan_and_execute 时改调 subagents_spawn（0831-r2 S08 GM DIY）。
+	if biz.IsOrgGovernanceAgent(ag) && biz.HasTaskActionSignal(content) {
+		if _, ok := chatagent.ForcePlanningRouteFromCtx(ctx); !ok {
+			ctx = chatagent.ContextWithForcePlanningRoute(ctx, chatagent.ForcePlanningRoute{
+				TaskPrompt: strings.TrimSpace(content),
+				Reason:     "governance_must_not_diy",
+			})
+		}
+	}
 	// 包B B4（session-eval-20260825）：编排路由决策落 flowlog——S07 三次执行
 	// 三种路径（直答 / plan_and_execute roster miss / build_orchestration_graph）
 	// 才可审计回放（兼治 P-ORCH-NONDET 审计面）。字段按「可沉淀为路由训练

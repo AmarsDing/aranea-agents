@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"regexp"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -123,6 +124,10 @@ func LooksLikeRememberRequest(userText string) bool {
 	return false
 }
 
+// underspecifiedAskRe covers "帮我弄/做/写/出/搞 + 个/一份" without listing
+// every synonym (0831-r2 S02: 「帮我弄个报告」missed 帮我做个).
+var underspecifiedAskRe = regexp.MustCompile(`帮我[弄做写出搞][个一份]`)
+
 // LooksLikeUnderspecifiedTask reports short ambiguous task asks that still
 // need the intent pass so the clarification gate can run.
 func LooksLikeUnderspecifiedTask(userText string) bool {
@@ -135,5 +140,5 @@ func LooksLikeUnderspecifiedTask(userText string) bool {
 			return true
 		}
 	}
-	return false
+	return underspecifiedAskRe.MatchString(t)
 }

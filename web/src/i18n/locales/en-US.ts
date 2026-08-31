@@ -380,6 +380,7 @@ export default {
     contextBudgetFull: '{pct} Full',
     contextBudgetToolsCount: '{count} tools',
     contextBudgetEstimated: 'Estimated (chars ÷ 3.5)',
+    contextBudgetFirstRoundTitle: 'First-round prompt composition (est.)',
     contextBudgetStaticPrefix: 'System prompt',
     contextBudgetToolsSchema: 'Tool definitions',
     contextBudgetSkillOverview: 'Skills overview',
