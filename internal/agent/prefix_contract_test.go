@@ -257,6 +257,9 @@ func TestPrefixContract_HookExecutionOrderGolden(t *testing.T) {
 		{"agent.newContextBudgetStaticPrefixBeforeHook.func1", callbacks.LayerDynamic, 0},
 		// A.1 #10：L0 尺寸闸——注册由 Settings 门控（默认开），nil gate 在 hook 内判空。
 		{"agent.newToolResultGateBeforeHook.func1", callbacks.LayerDynamic, 3},
+		// A.1 #10a：N2 硬约束（session-eval-20260829-r2）——next_action 待执行
+		// 指令的强制 cue；无条件注册（无 pending 时一次 state 读早退）。
+		{"agent.newNextActionCueBeforeHook.func1", callbacks.LayerDynamic, 3},
 		// A.1 #13：GenerationConfig 标记驱动，无消息改写。
 		{"agent.newVoiceFastPathBeforeHook.func1", callbacks.LayerDynamic, 4},
 		// A.1 #17：session phase brief（Dynamic-5 组零依赖下唯一注册者）。

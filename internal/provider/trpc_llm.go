@@ -72,6 +72,9 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 	if omitThinkingKey(pm, cfg) {
 		m = wrapOmitThinking(m)
 	}
+	// P6-N3 最外层：首字节静默单发重试。预算由编排层经 ctx 注入
+	// （WithFirstByteRetryBudget）；无预算时纯透传，零行为变化。
+	m = WrapModelWithFirstByteRetry(m, strings.TrimSpace(cfg.ProviderType), strings.TrimSpace(cfg.ModelAPI), lg)
 	return m, nil
 }
 

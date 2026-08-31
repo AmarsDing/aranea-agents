@@ -91,6 +91,11 @@ func TestSessionForkUsecase_ScopeGate(t *testing.T) {
 		if dst.RootSessionID != "root-1" {
 			t.Fatalf("root lineage = %q, want inherited root-1", dst.RootSessionID)
 		}
+		// P6-N5：落库 fork_from_turn_id 必须剥离继承前缀（字段语义 =
+		// 框架 invocation id），多代 fork 不得存复合前缀形态。
+		if dst.ForkFromTurnID != "turn-1" {
+			t.Fatalf("fork_from_turn_id = %q, want normalized turn-1", dst.ForkFromTurnID)
+		}
 	})
 
 	t.Run("team/member child rejected", func(t *testing.T) {

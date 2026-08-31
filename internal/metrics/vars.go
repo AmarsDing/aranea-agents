@@ -380,6 +380,15 @@ var (
 		Help: "Total number of runtime graph replans by type.",
 	}, []string{"type"})
 
+	// LLMFirstByteRetryTotal counts automatic same-model retries triggered by
+	// provider first-byte silence (P6-N3). Labels: provider type + model API.
+	// Any increment means the provider stalled once; a second stall surfaces
+	// as the consume-level first_byte_timeout failure.
+	LLMFirstByteRetryTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_llm_first_byte_retry_total",
+		Help: "Automatic same-model retries triggered by provider first-byte silence.",
+	}, []string{"provider", "model"})
+
 	// SequencerDeadLetterTotal counts v2 sequencer events permanently sent to
 	// the dead-letter ring (persist retries exhausted or persist queue full).
 	// Any increment means durable event loss — operators should investigate.

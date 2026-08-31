@@ -13,7 +13,12 @@ import (
 // RewriteSnapshotWithCompression rebuilds runner snapshot events after rolling summary compaction.
 // taskState 非空时，在叙事摘要之前注入结构化任务状态块（先读状态，再读叙事）；
 // stateAsOfTurn > 0 时状态标题带 "as of turn N" 时点标注（状态新鲜度可辨认）。
-func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string, tail []biz.ChatMessage, assistantAuthor string, taskState *biz.TaskState, stateAsOfTurn int) (string, error) {
+//
+// anchor 是稳定前缀锚点（P3，2026-08-30）：首轮 user/assistant 原文事件，
+// 渲染在摘要事件之前。锚点内容跨压缩逐字节稳定，provider 提示缓存的前缀键
+// （系统提示+首轮）因此不因摘要重写而失效（r4 S09 cached 48.3k→5.8k 清崖）。
+// 锚点消息永不进压缩体（loadCompressBody 已排除），不会与摘要重复计账。
+func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string, anchor, tail []biz.ChatMessage, assistantAuthor string, taskState *biz.TaskState, stateAsOfTurn int) (string, error) {
 	snapshotJSON = strings.TrimSpace(snapshotJSON)
 	if snapshotJSON == "" {
 		snapshotJSON = "{}"
@@ -31,28 +36,32 @@ func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string
 		"content":   buildSummaryEventContent(mergedSummariesMarkdown, taskState, stateAsOfTurn),
 		"role":      "system",
 	}
-	var tailEvents []any
-	for _, m := range tail {
-		role := strings.ToLower(strings.TrimSpace(m.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		author := role
-		if role == "assistant" {
-			author = strings.TrimSpace(assistantAuthor)
-			if author == "" {
-				author = "agent"
+	render := func(msgs []biz.ChatMessage) []any {
+		var out []any
+		for _, m := range msgs {
+			role := strings.ToLower(strings.TrimSpace(m.Role))
+			if role != "user" && role != "assistant" {
+				continue
 			}
+			author := role
+			if role == "assistant" {
+				author = strings.TrimSpace(assistantAuthor)
+				if author == "" {
+					author = "agent"
+				}
+			}
+			out = append(out, map[string]any{
+				"author":    author,
+				"timestamp": m.CreatedAt,
+				"content":   strings.TrimSpace(m.ContentMarkdown),
+				"role":      role,
+			})
 		}
-		tailEvents = append(tailEvents, map[string]any{
-			"author":    author,
-			"timestamp": m.CreatedAt,
-			"content":   strings.TrimSpace(m.ContentMarkdown),
-			"role":      role,
-		})
+		return out
 	}
-	events := []any{summaryEvent}
-	events = append(events, tailEvents...)
+	events := render(anchor)
+	events = append(events, summaryEvent)
+	events = append(events, render(tail)...)
 	bundle["events"] = events
 	bundle["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	out, err := json.Marshal(bundle)
@@ -243,6 +252,30 @@ func timelineUserAssistant(msgs []biz.ChatMessage) []biz.ChatMessage {
 		out = append(out, m)
 	}
 	return out
+}
+
+// anchorMaxRunes 是稳定前缀锚点（首轮原文）的总 rune 上限：首轮异常庞大时
+// 放弃锚定回退旧行为（锚点常驻 prompt，超大首轮会持续挤占上下文预算）。
+const anchorMaxRunes = 4000
+
+// splitAnchorTurn 把时间线的首个 turn（user/assistant 原文）拆为稳定前缀
+// 锚点，其余为可压缩/可保留区。仅在 timeline[0].TurnNumber==1（真会话起点）
+// 且锚点总体积不超限时启用；否则 anchor=nil、rest=原时间线（回退旧行为）。
+// 锚点轮次永远不进压缩 body，也不进 tail（避免同一内容在快照中出现两次）。
+func splitAnchorTurn(timeline []biz.ChatMessage) (anchor, rest []biz.ChatMessage) {
+	if len(timeline) == 0 || timeline[0].TurnNumber != 1 {
+		return nil, timeline
+	}
+	end := 0
+	runes := 0
+	for end < len(timeline) && timeline[end].TurnNumber == 1 {
+		runes += utf8.RuneCountInString(timeline[end].ContentMarkdown)
+		end++
+	}
+	if end == 0 || runes > anchorMaxRunes {
+		return nil, timeline
+	}
+	return timeline[:end], timeline[end:]
 }
 
 func firstSummaryLine(md string) string {

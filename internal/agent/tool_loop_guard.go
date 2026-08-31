@@ -1023,7 +1023,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	// 第 2 次同参同结果调用起拦（含审批通过后的重放形态）；其余工具维持
 	// 默认阈值（取证确认属合理模式）。
 	loopThreshold := loopGuardBlockThreshold
-	if loopGuardCompensationPairTool(toolName) {
+	if loopGuardCompensationPairTool(toolName) || loopGuardReadOnlyRetrievalTool(toolName) {
 		loopThreshold = 1
 	}
 	loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopThreshold
@@ -1110,6 +1110,18 @@ func loopGuardCompensationPairTool(toolName string) bool {
 		return true
 	}
 	return inverse.IsInverse(toolName)
+}
+
+// loopGuardReadOnlyRetrievalTool 报告工具是否为只读检索类（P6-N8）。
+// 只读检索不产生副作用，同参重复调用不会返回新信息——阈值收紧为 1
+// （同节点内第 2 次同参同结果调用即拦），避免空转烧 token（S02 实证：
+// memory_search 18 秒内同参重复 2 次结果相同）。
+func loopGuardReadOnlyRetrievalTool(toolName string) bool {
+	switch toolName {
+	case "memory_search", "knowledge_search", "list_inbox", "tool_search":
+		return true
+	}
+	return false
 }
 
 // noteConfirmationOutcome 由 HITL 确认门禁在非批准出口调用（P2-③，R4-Q6 根修）。

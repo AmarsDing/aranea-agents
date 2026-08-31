@@ -206,6 +206,8 @@ const (
 	defaultKeepTurns         = 4
 	// defaultSummaryMaxRows: rolling-summary row cap before forcing L3 absorb.
 	defaultSummaryMaxRows = 3
+	// defaultMaxTriggerTokens: 压缩硬触发的绝对上限（P3 阈值 32k）。
+	defaultMaxTriggerTokens = 32768
 
 	// Reserved system tokens by ToolsProfile.
 	reservedTokensCoding   = 15000

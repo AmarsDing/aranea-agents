@@ -139,6 +139,8 @@ func (o *ChatOrchestrator) runIntentPass(
 	// 覆盖对必须存在于 LLM catalog，否则回退 turn 模型保证 Intent Pass 仍可运行。
 	prov, mod = resolveIntentPassProviderModel(ctx, o.td().ReadDeps.LLM, prov, mod, o.lg())
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
+	// P3 aux 缓存：注入 sessionID 供缓存键隔离。
+	ctx = intent.WithSessionID(ctx, sessionID)
 	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.recentIntentHistory(ctx, sessionID, content), o.lg())
 	// P1-2 (2026-08-19): 记录 intent pass 旁路用量（此前完全漏记）。
 	o.turnMetrics().RecordAuxUsage(ctx, biz.AuxLLMUsageInput{
@@ -289,6 +291,12 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		firstByteTimeout = custom
 	}
 	runCtx := o.prepareRunContext(ctx, input, ag, deps)
+	// P6-N3：向模型调用链注入首字节静默重试预算——每次 GenerateContent 在
+	// budget 内零产出即取消该发并同模型自动重试一次（S09 t32 deepseek
+	// 首字节 stall 直接 503 整轮的修复）。消费端守卫总时限必须放宽为
+	// 2×budget+slack，否则守卫会在第二发重试中途取消 runCtx 误杀恢复。
+	runCtx = provider.WithFirstByteRetryBudget(runCtx, firstByteTimeout)
+	firstByteTimeout = provider.FirstByteGuardWithRetry(firstByteTimeout)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 

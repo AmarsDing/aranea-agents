@@ -12,6 +12,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/sandbox"
 	sessctx "aranea-agents/internal/session"
@@ -249,6 +250,11 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// T5（2026-08-27）：会话归属同坐标注入——成员闸钩子经
 	// decision.GateSessionIDFromContext 取回，SessionGateStats 聚合命中。
 	runCtx = decision.WithGateSessionID(runCtx, run.SessionID)
+	// P6-N3：成员模型调用链注入首字节静默重试预算（每次 GenerateContent
+	// 静默超 budget 自动同模型重试一次）；下方消费端守卫总时限相应放宽
+	// 为 2×budget+slack，避免守卫在第二发重试中途取消 runCtx 误杀恢复。
+	firstByteBudget := agent.ResolveFirstByteTimeout(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
+	runCtx = provider.WithFirstByteRetryBudget(runCtx, firstByteBudget)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 	if teamEmitter != nil {
@@ -406,7 +412,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	firstByteTimeout := agent.ResolveFirstByteTimeout(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
+	firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget)
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, projectMeta, streamOpts, r.lg)
 	streamLastRoundPromptTok = result.LastRoundPromptTok
 	streamLastRoundCompletionTok = result.LastRoundCompletionTok

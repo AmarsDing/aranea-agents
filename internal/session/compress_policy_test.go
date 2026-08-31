@@ -84,6 +84,7 @@ func TestRewriteSnapshotWithCompression_tailEvents(t *testing.T) {
 	raw, err := RewriteSnapshotWithCompression(
 		`{"state":{}}`,
 		"merged summary",
+		nil,
 		[]biz.ChatMessage{
 			{Role: "user", ContentMarkdown: "hello", CreatedAt: "2026-05-24T10:00:00Z"},
 			{Role: "assistant", ContentMarkdown: "hi", CreatedAt: "2026-05-24T10:00:01Z"},

@@ -179,20 +179,24 @@ func newTestCompressor(read *stubCompressReadDeps) *Compressor {
 }
 
 func TestLoadCompressBody_returnsBodyAndTail(t *testing.T) {
-	// 5 turns × 2 msgs = 10 rows; default keepTurns=4 → keepRows=8 → split=2.
-	// body = turn 1 (2 rows), tail = turns 2..5 (8 rows).
-	read := &stubCompressReadDeps{maxSummarized: 0, msgs: makeTimeline(5)}
+	// P3 稳定前缀：turn 1（2 rows）拆为锚点不进压缩体。6 turns = 12 rows，
+	// 锚点后 rest = turns 2..6（10 rows）；keepRows=8 → split=2。
+	// body = turn 2（2 rows），tail = turns 3..6（8 rows），cutoffTurn=2。
+	read := &stubCompressReadDeps{maxSummarized: 0, msgs: makeTimeline(6)}
 	c := newTestCompressor(read)
 
-	body, tail, _, cutoffTurn, err := c.loadCompressBody(context.Background(), biz.Session{}, biz.Agent{}, "sess-1")
+	anchor, body, tail, _, cutoffTurn, err := c.loadCompressBody(context.Background(), biz.Session{}, biz.Agent{}, "sess-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cutoffTurn != 1 {
-		t.Fatalf("cutoffTurn = %d, want 1", cutoffTurn)
+	if len(anchor) != 2 || anchor[0].TurnNumber != 1 {
+		t.Fatalf("anchor = %+v, want turn-1 pair", anchor)
 	}
-	if len(body) != 2 {
-		t.Fatalf("body len = %d, want 2", len(body))
+	if cutoffTurn != 2 {
+		t.Fatalf("cutoffTurn = %d, want 2", cutoffTurn)
+	}
+	if len(body) != 2 || body[0].TurnNumber != 2 {
+		t.Fatalf("body = %+v, want turn-2 pair", body)
 	}
 	if len(tail) != 8 {
 		t.Fatalf("tail len = %d, want 8（近期轮次必须保留）", len(tail))
@@ -230,7 +234,7 @@ func TestExecuteCompression_tailWrittenIntoSnapshot(t *testing.T) {
 		{Role: "user", ContentMarkdown: "recent question 保留", TurnNumber: 2, CreatedAt: "2026-07-20T10:00:00Z"},
 		{Role: "assistant", ContentMarkdown: "recent answer 保留", TurnNumber: 2, CreatedAt: "2026-07-20T10:00:01Z"},
 	}
-	wrote, err := c.executeCompression(context.Background(), sess, ag, body, tail, compressOutcome{level: compressLevelLLM, markdown: "摘要内容"}, "sess-1", "user-1")
+	wrote, err := c.executeCompression(context.Background(), sess, ag, nil, body, tail, compressOutcome{level: compressLevelLLM, markdown: "摘要内容"}, "sess-1", "user-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +365,7 @@ func TestExecuteCompression_absorbDeletesPriors(t *testing.T) {
 	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "合并摘要", absorbedPriors: true}
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6, CreatedAt: "2026-07-20T11:00:00Z"}}
-	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u")
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, nil, body, nil, outcome, "sess-1", "u")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +408,7 @@ func TestExecuteCompression_noAbsorbKeepsAppend(t *testing.T) {
 	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "新摘要", absorbedPriors: false}
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6, CreatedAt: "2026-07-20T11:00:00Z"}}
-	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u")
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, nil, body, nil, outcome, "sess-1", "u")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,7 +840,7 @@ func TestExecuteCompression_CacheHitInNoticeMetadata(t *testing.T) {
 	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "合并摘要", cacheHit: true}
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6}}
-	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u")
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, nil, body, nil, outcome, "sess-1", "u")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,13 +22,14 @@ import (
 )
 
 type anchorResolution struct {
-	member  MemberDef
-	agent   biz.Agent
-	prov    string
-	mod     string
-	attRefs []artifactbiz.Ref
-	attN    int
-	teamID  string // 新增：标识消息属于哪个团队
+	member    MemberDef
+	agent     biz.Agent
+	prov      string
+	mod       string
+	attRefs   []artifactbiz.Ref
+	attN      int
+	teamID    string // 新增：标识消息属于哪个团队
+	sessionID string // P3 aux 缓存：注入 intent pass 缓存键
 }
 
 // resolveTeamProviderModel resolves the effective provider/model for a team
@@ -113,13 +114,14 @@ func (r *Runner) resolveAnchorAndAttachments(
 		}
 	}
 	ar = anchorResolution{
-		member:  anchorMem,
-		agent:   firstAg,
-		prov:    prov0,
-		mod:     mod0,
-		attRefs: attachmentRefs,
-		attN:    attN,
-		teamID:  run.TeamID, // 新增：透传 team_id 供 assistant 消息锚点使用
+		member:    anchorMem,
+		agent:     firstAg,
+		prov:      prov0,
+		mod:       mod0,
+		attRefs:   attachmentRefs,
+		attN:      attN,
+		teamID:    run.TeamID,   // 新增：透传 team_id 供 assistant 消息锚点使用
+		sessionID: sess.ID,      // P3 aux 缓存键
 	}
 	return
 }
@@ -157,6 +159,8 @@ func (r *Runner) startTeamIntentPass(ctx context.Context, ar anchorResolution, c
 	}
 	ch := make(chan intent.RunResult, 1)
 	ictx, cancel := context.WithTimeout(ctx, teamIntentTimeout)
+	// P3 aux 缓存：注入 sessionID 供缓存键隔离（team 场景 session 即 team session）。
+	ictx = intent.WithSessionID(ictx, ar.sessionID)
 	safego.Go(ictx, "team.intent.pass", func() {
 		ch <- intent.RunForAgent(ictx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
 	})

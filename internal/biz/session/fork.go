@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
@@ -9,6 +10,19 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// forkIDPrefixRe 与 data 层 forkIDPrefixRe 同契约（fk<8hex>- 世代前缀，
+// internal/data/session_fork_repo.go）。P6-N5：fork_from_turn_id 落库前剥离
+// 继承前缀——字段语义（session.proto）是「分叉点 turn id = 框架 invocation
+// id」，复合前缀是 v2 复制行的存储形态而非 invocation id 本身。注意仅规范
+// 化落库值：CopyV2Records 仍须拿源会话 v2 行空间的原始 id 定位分叉 turn。
+var forkIDPrefixRe = regexp.MustCompile(`^(?:fk[0-9a-fA-F]{8}-)+`)
+
+// stripForkIDPrefixes 剥离 id 上的全部 fk<dst8>- 继承前缀（与 data 层
+// stripForkIDPrefixes 同语义）。非前缀形态原样返回。
+func stripForkIDPrefixes(id string) string {
+	return forkIDPrefixRe.ReplaceAllString(id, "")
+}
 
 // Fork-from-Turn（79-runtime-governance R6）：以某一轮为分叉点复制会话。
 //
@@ -117,7 +131,7 @@ func (uc *SessionForkUsecase) Fork(ctx context.Context, srcID, turnID, title str
 		DefaultContextWindowTokens: src.DefaultContextWindowTokens,
 		Visibility:                 src.Visibility,
 		ParentSessionID:            src.ID,
-		ForkFromTurnID:             turnID,
+		ForkFromTurnID:             stripForkIDPrefixes(turnID),
 		SessionType:                src.SessionType,
 	}
 	// 血缘根：源是树根则新会话挂入同一棵树；源本身是根则新会话以源为根。

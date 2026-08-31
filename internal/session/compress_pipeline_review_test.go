@@ -193,24 +193,28 @@ func TestBuildCompressTranscript_TruncatesOversizeUserMessage(t *testing.T) {
 // loadCompressBody must surface tool messages inside the compressed turn range
 // so the summarizer sees what was actually executed (design doc §6.4).
 func TestLoadCompressBody_returnsToolBody(t *testing.T) {
-	msgs := makeTimeline(5)
-	// Tool message in body range (turn 1) and in tail range (turn 4).
+	// P3 稳定前缀：turn 1 拆为锚点。7 turns = 14 rows，rest = turns 2..7
+	// （12 rows），keepRows=8 → split=4 → cutoffTurn=3；body=turns 2..3。
+	msgs := makeTimeline(7)
+	// 锚点轮工具（turn 1）不进 L3 transcript；压缩体工具（turn 2）必须
+	// 捞到；保留区工具（turn 6）不捞。
 	msgs = append(msgs,
-		biz.ChatMessage{ID: "tool-body", Role: "tool", TurnNumber: 1, ContentMarkdown: "r1", OptionsJSON: `{"tool_name":"search"}`, CreatedAt: "2026-07-20T10:00:01Z"},
-		biz.ChatMessage{ID: "tool-tail", Role: "tool", TurnNumber: 4, ContentMarkdown: "r4", OptionsJSON: `{"tool_name":"shell"}`, CreatedAt: "2026-07-20T10:00:04Z"},
+		biz.ChatMessage{ID: "tool-anchor", Role: "tool", TurnNumber: 1, ContentMarkdown: "r1", OptionsJSON: `{"tool_name":"search"}`, CreatedAt: "2026-07-20T10:00:01Z"},
+		biz.ChatMessage{ID: "tool-body", Role: "tool", TurnNumber: 2, ContentMarkdown: "r2", OptionsJSON: `{"tool_name":"search"}`, CreatedAt: "2026-07-20T10:00:02Z"},
+		biz.ChatMessage{ID: "tool-tail", Role: "tool", TurnNumber: 6, ContentMarkdown: "r6", OptionsJSON: `{"tool_name":"shell"}`, CreatedAt: "2026-07-20T10:00:06Z"},
 	)
 	read := &stubCompressReadDeps{maxSummarized: 0, msgs: msgs}
 	c := newTestCompressor(read)
 
-	_, _, toolBody, cutoffTurn, err := c.loadCompressBody(context.Background(), biz.Session{}, biz.Agent{}, "sess-1")
+	_, _, _, toolBody, cutoffTurn, err := c.loadCompressBody(context.Background(), biz.Session{}, biz.Agent{}, "sess-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cutoffTurn != 1 {
-		t.Fatalf("cutoffTurn = %d, want 1", cutoffTurn)
+	if cutoffTurn != 3 {
+		t.Fatalf("cutoffTurn = %d, want 3", cutoffTurn)
 	}
 	if len(toolBody) != 1 || toolBody[0].ID != "tool-body" {
-		t.Fatalf("toolBody = %+v, want only the turn-1 tool", toolBody)
+		t.Fatalf("toolBody = %+v, want only the turn-2 tool (anchor turn excluded)", toolBody)
 	}
 }
 
@@ -267,7 +271,7 @@ func TestEstimateCompactedPromptTokens_IncludesReservedSystem(t *testing.T) {
 		{Role: "user", ContentMarkdown: strings.Repeat("x", 250)},
 	}
 	contentOnly := roughTokenEstimate("summary\n" + strings.Repeat("x", 250) + "\n")
-	got := estimateCompactedPromptTokens("summary", tail, 8000)
+	got := estimateCompactedPromptTokens("summary", nil, tail, 8000)
 	if got < 8000 {
 		t.Fatalf("est = %d, must include reservedSystem 8000", got)
 	}
@@ -455,7 +459,7 @@ func TestExecuteCompression_CASConflictReportsNotWritten(t *testing.T) {
 	body := []biz.ChatMessage{{Role: "user", TurnNumber: 1, ContentMarkdown: "q"}}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "摘要"}
 
-	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "")
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, nil, body, nil, outcome, "sess-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}

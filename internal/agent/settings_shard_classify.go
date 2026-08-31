@@ -144,6 +144,9 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"CompressLLMCacheEnabled":    classFullRebuild,
 	"CompressLLMCacheMaxEntries": classFullRebuild,
 	"CompressLLMCacheTTLSec":     classFullRebuild,
+	// P3（session-eval-20260829-r2 R4-Q4）：压缩硬触发绝对上限，经
+	// compress_policy.go 构建期固化进 CompressThreshold.MaxTriggerTokens。
+	"L0CompressMaxTriggerTokens": classFullRebuild,
 	"CompressionBufferRatio":     classFullRebuild,
 	"CompressionBufferAdaptive":  classFullRebuild,
 	"SoftTriggerRatio":           classFullRebuild,

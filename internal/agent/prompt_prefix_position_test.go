@@ -296,8 +296,20 @@ func TestMemoryInjectHook_AppendsCueAtEnd(t *testing.T) {
 	hook := newMemoryInjectBeforeHook(ag, deps)
 	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
-	msgs := runBeforeModelHook(t, hook, ctx)
-	assertCueAtEnd(t, msgs, "用户档案")
+	// P6-N7：「你好」寒暄轮会抑制常驻记忆注入，位置契约须用任务型轮次固定；
+	// 共享 helper 的「你好」供其他 hook 测试使用，这里内联构造请求。
+	h, ok := hook.(callbacks.BeforeModelHook)
+	if !ok {
+		t.Fatalf("hook %T does not implement callbacks.BeforeModelHook", hook)
+	}
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: []trpcmodel.Message{
+		trpcmodel.NewSystemMessage(prefixTestBaseSystem),
+		trpcmodel.NewUserMessage("帮我整理一下这周的项目进展"),
+	}}}
+	if _, err := h.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("HandleBeforeModel: %v", err)
+	}
+	assertCueAtEnd(t, args.Request.Messages, "用户档案")
 }
 
 func TestKnowledgeCueHook_AppendsCueAtEnd(t *testing.T) {

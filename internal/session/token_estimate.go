@@ -20,8 +20,13 @@ func roughTokenEstimate(s string) int {
 // ContextUsedTokens（provider 上报的 prompt_tokens = 系统提示 + 工具 schema + 内容）
 // 一致，因此计入 reservedSystem（不可压缩的系统部分）——否则触发逻辑在下一次
 // 权威更新前一直运行在偏低的估值上（压缩后立刻又软触发的抖动）。
-func estimateCompactedPromptTokens(mergedSummary string, tail []biz.ChatMessage, reservedSystem int) int {
+func estimateCompactedPromptTokens(mergedSummary string, anchor, tail []biz.ChatMessage, reservedSystem int) int {
 	var b strings.Builder
+	// 稳定前缀锚点（首轮原文）常驻 prompt，计入水位估计。
+	for _, m := range anchor {
+		b.WriteString(m.ContentMarkdown)
+		b.WriteString("\n")
+	}
 	b.WriteString(mergedSummary)
 	b.WriteString("\n")
 	for _, m := range tail {

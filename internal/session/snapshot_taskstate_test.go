@@ -19,7 +19,7 @@ func TestRewriteSnapshotWithCompression_TaskStateRendered(t *testing.T) {
 		Next:     "执行清除",
 		Blockers: []string{"等待审批"},
 	}
-	raw, err := RewriteSnapshotWithCompression("{}", "## 1. User Intent\nfix vpn", tail, "agent", state, 8)
+	raw, err := RewriteSnapshotWithCompression("{}", "## 1. User Intent\nfix vpn", nil, tail, "agent", state, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestRewriteSnapshotWithCompression_TaskStateRendered(t *testing.T) {
 
 func TestRewriteSnapshotWithCompression_TaskStateNoTurnOmitsAnnotation(t *testing.T) {
 	state := &biz.TaskState{Status: "进行中"}
-	raw, err := RewriteSnapshotWithCompression("{}", "narrative", nil, "agent", state, 0)
+	raw, err := RewriteSnapshotWithCompression("{}", "narrative", nil, nil, "agent", state, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestRewriteSnapshotWithCompression_TaskStateNoTurnOmitsAnnotation(t *testin
 }
 
 func TestRewriteSnapshotWithCompression_NilTaskState_LegacyFormat(t *testing.T) {
-	raw, err := RewriteSnapshotWithCompression("{}", "narrative only", nil, "agent", nil, 0)
+	raw, err := RewriteSnapshotWithCompression("{}", "narrative only", nil, nil, "agent", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

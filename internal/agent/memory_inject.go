@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/llmcontext"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
@@ -305,6 +306,13 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 	sessionID := strings.TrimSpace(inv.Session.ID)
 	keyword := RecallKeywordFromMessages(messages)
 
+	// P6-N7 闲聊轮抑制：proactive_recall 对 direct-reply 轮有 skip 闸，但常驻
+	// <memory_summary>（profile 卡/pinned 回退）与 L2/L3/L4 召回原先进侧无闸
+	// ——S01 t1「你好」回复把 profile 卡里的 Q3 预算口径主动带出。直复闲聊轮
+	// 只保留 L1 会话工作记忆，抑制 profile/recall。注意不复用 proactive 的
+	// ≤8 字短轮规则：那是省钱闸，会误伤「张三是谁」这类实体问句的 L4 召回。
+	chitchat := intent.SkipForDirectReply(lastUserMessageText(messages))
+
 	// P2-3 缓存命中：复用召回块，仅重建 L1。
 	if v, ok := inv.GetState(memoryCueTurnCacheStateKey); ok {
 		if c, ok := v.(*memoryCueTurnCache); ok && c != nil && c.keyword == keyword {
@@ -362,9 +370,10 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 	// C1 / FR-12.7: resident <memory_summary> — first memory-block position,
 	// no recall scoring. Prefers the distilled profile card; when the card
 	// is empty (Spirit cold start before Sleep-time), falls back to pinned
-	// prefs so stable constraints are still stated.
+	// prefs so stable constraints are still stated. P6-N7: chitchat turns
+	// suppress the resident block so stable prefs cannot leak unprompted.
 	var pinnedUsedInSummary bool
-	if policy.InjectL3 {
+	if policy.InjectL3 && !chitchat {
 		summary, fallbackIDs, usedPinned := MemorySummaryCue(ctx, deps.MemoryProfileCardReader, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID)
 		result.ProfileCue = summary
 		if usedPinned {
@@ -397,13 +406,13 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 	// vector scoring, always injected when L3 injection is enabled. Skipped
 	// when those same facts already filled <memory_summary> (cold-start
 	// fallback) so the model does not see the list twice.
-	if policy.InjectL3 && deps.MemoryPreferenceLister != nil && !pinnedUsedInSummary {
+	if policy.InjectL3 && deps.MemoryPreferenceLister != nil && !pinnedUsedInSummary && !chitchat {
 		if pinned, pinnedIDs := PinnedPreferenceCueWithIDs(ctx, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID); pinned != "" {
 			recallParts = append(recallParts, pinned)
 			result.InjectedFactIDs = append(result.InjectedFactIDs, pinnedIDs...)
 		}
 	}
-	if policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
+	if !chitchat && policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
 		proactiveHits := ProactiveHitsFromContext(ctx)
 		if composite, hits := CompositeMemoryCueWithHits(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0, proactiveHits); composite != "" {
 			recallParts = append(recallParts, composite)
@@ -416,7 +425,7 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 				}
 			}
 		}
-	} else {
+	} else if !chitchat {
 		if policy.RecallL2 {
 			if l2 := L2MemoryCue(ctx, deps.MemoryL2Recall, ag, policy, sessionID, keyword, 0, deps.LG); l2 != "" {
 				recallParts = append(recallParts, l2)
@@ -430,10 +439,12 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		}
 	}
 	// P3 M3: Agent Case 召回（任务经验），与 L2/L3 并列、位于 L4 之前。
-	if caseCue := CaseMemoryCue(ctx, deps.AgentCaseRecaller, rt.AgentID, keyword); caseCue != "" {
-		recallParts = append(recallParts, caseCue)
+	if !chitchat {
+		if caseCue := CaseMemoryCue(ctx, deps.AgentCaseRecaller, rt.AgentID, keyword); caseCue != "" {
+			recallParts = append(recallParts, caseCue)
+		}
 	}
-	if policy.InjectL4 {
+	if policy.InjectL4 && !chitchat {
 		if l4, entityIDs := L4MemoryCue(ctx, deps.L4Entities, ag, policy, keyword, deps.LG); l4 != "" {
 			recallParts = append(recallParts, l4)
 			result.L4RecalledEntityIDs = entityIDs

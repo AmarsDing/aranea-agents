@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/pkg/loggateway"
@@ -84,7 +85,8 @@ func PrefetchTurnCues(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, u
 			return nil
 		})
 	}
-	if policy.MasterEnabled {
+	// P6-N7：直复闲聊轮跳过记忆预取（与注入侧 SkipForDirectReply 闸同口径）。
+	if policy.MasterEnabled && !intent.SkipForDirectReply(userContent) {
 		eg.Go(func() error {
 			keyword := RecallKeywordFromMessages([]trpcmodel.Message{trpcmodel.NewUserMessage(userContent)})
 			mem := &prefetchedMemoryCue{keyword: keyword}

@@ -485,10 +485,16 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 	// Debounce check for soft trigger (non-forced).
 	if usedTokens < hardTok && !forced && !atFullContextUsage(sess) {
-		minGap := compressMinGapFromAgent(ag)
-		if ts, err := c.deps.summaryReader.LatestSessionSummaryTime(ctx, sessionID); err == nil {
-			if compressDebounceActive(ts, minGap, time.Now()) {
-				return nil
+		// P3 异步预压缩（2026-08-30）：时间防抖只约束滞回带下半段；水位进入
+		// 上半段（逼近硬阈）时防抖让位——让后台压缩赶在 turn 内终审闸之前
+		// 完成，避免确定性截断造成的缓存清崖（r4 S09）。
+		urgency := softTok + (hardTok-softTok)/2
+		if usedTokens < urgency {
+			minGap := compressMinGapFromAgent(ag)
+			if ts, err := c.deps.summaryReader.LatestSessionSummaryTime(ctx, sessionID); err == nil {
+				if compressDebounceActive(ts, minGap, time.Now()) {
+					return nil
+				}
 			}
 		}
 	}
@@ -511,7 +517,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 	defer c.flight.finishCompress()
 
-	body, tail, toolBody, cutoffTurn, err := c.loadCompressBody(ctx, sess, ag, sessionID)
+	anchor, body, tail, toolBody, cutoffTurn, err := c.loadCompressBody(ctx, sess, ag, sessionID)
 	if err != nil || len(body) == 0 {
 		return err
 	}
@@ -544,7 +550,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	wrote, err := c.executeCompression(ctx, sess, ag, body, tail, outcome, sessionID, trpcUserID)
+	wrote, err := c.executeCompression(ctx, sess, ag, anchor, body, tail, outcome, sessionID, trpcUserID)
 	if err != nil {
 		c.suppress.record(sessionID, compressFailureTransient, compressProviderModelKey(sess, ag), time.Now())
 		if flow != nil {
@@ -675,55 +681,65 @@ const (
 )
 
 // loadCompressBody loads and splits messages for compression.
-// Returns the body messages to compress, the tail messages to keep verbatim,
+// Returns the stable-prefix anchor (first-turn verbatim, never compressed),
+// the body messages to compress, the tail messages to keep verbatim,
 // the tool messages inside the compressed turn range (for the L3 transcript),
 // and the cutoff turn number.
-func (c *Compressor) loadCompressBody(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID string) (body, tail, toolBody []biz.ChatMessage, cutoffTurn int, err error) {
+func (c *Compressor) loadCompressBody(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID string) (anchor, body, tail, toolBody []biz.ChatMessage, cutoffTurn int, err error) {
 	maxSummarized, err := c.deps.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, nil, 0, err
 	}
 	msgs, err := c.deps.messageReader.ListMessagesAfterTurn(ctx, sessionID, maxSummarized)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, nil, 0, err
 	}
 	timeline := timelineUserAssistant(msgs)
 	if len(timeline) == 0 {
-		return nil, nil, nil, 0, nil
+		return nil, nil, nil, nil, 0, nil
 	}
 
 	_, keepTurns := compressThresholdAndKeep(ag)
 	keepRows := messagesPerTurn * max(1, keepTurns)
-	if len(timeline) <= keepRows {
-		return nil, nil, nil, 0, nil
+	// P3 稳定前缀：首轮原文拆为锚点常驻快照前缀（缓存键稳定），压缩/保留
+	// 窗口只在锚点之后的消息上计算。锚点为空时行为与旧逻辑一致。
+	anchor, rest := splitAnchorTurn(timeline)
+	if len(rest) <= keepRows {
+		return nil, nil, nil, nil, 0, nil
 	}
-	split := len(timeline) - keepRows
-	cutoffTurn = timeline[split-1].TurnNumber
+	split := len(rest) - keepRows
+	cutoffTurn = rest[split-1].TurnNumber
 
-	for _, m := range timeline {
-		if m.TurnNumber > maxSummarized && m.TurnNumber <= cutoffTurn {
+	// 压缩体下界：锚点轮次原样保留、不进压缩体，其工具消息同样不进 L3
+	// transcript（摘要只覆盖真实被压缩的轮次，避免锚点内容被重复计账）。
+	bodyLow := maxSummarized
+	if len(anchor) > 0 {
+		bodyLow = max(bodyLow, anchor[len(anchor)-1].TurnNumber)
+	}
+	for _, m := range rest {
+		if m.TurnNumber > bodyLow && m.TurnNumber <= cutoffTurn {
 			body = append(body, m)
 		}
 	}
-	tail = timeline[split:]
+	tail = rest[split:]
 	// 压缩轮次范围内的工具消息一并捞出，供 L3 transcript 渲染
 	// （summary 策略），让摘要覆盖"实际执行了什么工具、返回了什么"。
 	for _, m := range msgs {
 		if !strings.EqualFold(strings.TrimSpace(m.Role), "tool") {
 			continue
 		}
-		if m.TurnNumber > maxSummarized && m.TurnNumber <= cutoffTurn {
+		if m.TurnNumber > bodyLow && m.TurnNumber <= cutoffTurn {
 			toolBody = append(toolBody, m)
 		}
 	}
-	return body, tail, toolBody, cutoffTurn, nil
+	return anchor, body, tail, toolBody, cutoffTurn, nil
 }
 
 // executeCompression performs the CAS-protected transaction to write the compression result,
 // syncs the runtime snapshot, and publishes the compression notice.
 // wrote=false 表示未写入（CAS 冲突/幂等命中）：调用方不得按成功处理
 // （清除失败抑制、打"压缩完成"日志都以真实写入为前提）。
-func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, ag biz.Agent, body, tail []biz.ChatMessage, outcome compressOutcome, sessionID, trpcUserID string) (wrote bool, err error) {
+func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, ag biz.Agent, anchor, body, tail []biz.ChatMessage, outcome compressOutcome, sessionID, trpcUserID string) (wrote bool, err error) {
 	fromTurn := body[0].TurnNumber
 	toTurn := body[len(body)-1].TurnNumber
 
@@ -753,21 +769,21 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 		return false, nil
 	}
 
-	txMerged, txTail, txTaskState, txStateTurn, txErr := c.compressInTransaction(ctx, sessionID, ag, sess, tail, outcome, fromTurn, toTurn)
+	txMerged, txTail, txTaskState, txStateTurn, txErr := c.compressInTransaction(ctx, sessionID, ag, sess, anchor, tail, outcome, fromTurn, toTurn)
 	if txErr != nil {
 		return false, txErr
 	}
 
-	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, txTail, txTaskState, txStateTurn)
+	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, anchor, txTail, txTaskState, txStateTurn)
 	c.writebackL1TaskBoard(ctx, sess, ag, txTaskState)
-	c.postCompressionSync(ctx, sessionID, trpcUserID, ag, sess, fromTurn, toTurn, txMerged, txTail, outcome.cacheHit)
+	c.postCompressionSync(ctx, sessionID, trpcUserID, ag, sess, fromTurn, toTurn, txMerged, anchor, txTail, outcome.cacheHit)
 
 	return true, nil
 }
 
 // compressInTransaction executes the database transaction for compression.
 // 返回合并后的叙事摘要、tail、本次解析出的任务状态及其时点轮次（供快照同步与 L1 回写复用）。
-func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, tail []biz.ChatMessage, outcome compressOutcome, fromTurn, toTurn int) (mergedSummary string, tailMsgs []biz.ChatMessage, taskState *biz.TaskState, stateAsOfTurn int, err error) {
+func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, anchor, tail []biz.ChatMessage, outcome compressOutcome, fromTurn, toTurn int) (mergedSummary string, tailMsgs []biz.ChatMessage, taskState *biz.TaskState, stateAsOfTurn int, err error) {
 	err = c.deps.compressRepo.CompressSessionInTx(ctx, sessionID, func(txCtx context.Context) error {
 		priorRows, err := c.deps.summaryReader.ListSessionSummaries(txCtx, sessionID)
 		if err != nil {
@@ -820,7 +836,7 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 
 		author := c.resolveAgentAuthor(txCtx, ag, sess.AgentID)
 
-		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, mergedSummary, tailMsgs, author, taskState, stateAsOfTurn)
+		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, mergedSummary, anchor, tailMsgs, author, taskState, stateAsOfTurn)
 		if err != nil {
 			return err
 		}
@@ -829,7 +845,7 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 		}
 
 		win := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
-		est := estimateCompactedPromptTokens(mergedSummary, tailMsgs, calculateReservedSystem(ag))
+		est := estimateCompactedPromptTokens(mergedSummary, anchor, tailMsgs, calculateReservedSystem(ag))
 		if taskState != nil {
 			// 注入快照的结构化状态块也占 prompt 体积，计入水位估计。
 			est += roughTokenEstimate(taskState.RenderBlockAsOf(stateAsOfTurn))
@@ -851,12 +867,12 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 }
 
 // syncRuntimeSnapshot pushes the compressed snapshot to the trpc-agent-go runtime.
-func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID, trpcUserID, txMerged string, txTail []biz.ChatMessage, taskState *biz.TaskState, stateAsOfTurn int) {
+func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID, trpcUserID, txMerged string, anchor, txTail []biz.ChatMessage, taskState *biz.TaskState, stateAsOfTurn int) {
 	if c.Runtime == nil {
 		return
 	}
 	author := c.resolveAgentAuthor(ctx, ag, sess.AgentID)
-	raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author, taskState, stateAsOfTurn)
+	raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, anchor, txTail, author, taskState, stateAsOfTurn)
 	if snapErr == nil {
 		if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil {
 			c.lg.Warn("trpc 快照同步失败",
@@ -870,9 +886,9 @@ func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, 
 
 // postCompressionSync handles post-compression side effects: notice, memory resync, L0 force-snapshot,
 // and framework summary sync.
-func (c *Compressor) postCompressionSync(ctx context.Context, sessionID, trpcUserID string, ag biz.Agent, sess biz.Session, fromTurn, toTurn int, txMerged string, txTail []biz.ChatMessage, cacheHit bool) {
+func (c *Compressor) postCompressionSync(ctx context.Context, sessionID, trpcUserID string, ag biz.Agent, sess biz.Session, fromTurn, toTurn int, txMerged string, anchor, txTail []biz.ChatMessage, cacheHit bool) {
 	win := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
-	est := estimateCompactedPromptTokens(txMerged, txTail, calculateReservedSystem(ag))
+	est := estimateCompactedPromptTokens(txMerged, anchor, txTail, calculateReservedSystem(ag))
 	ratio := llmcontext.ContextRatio(est, win)
 	status := llmcontext.ContextStatusForRatio(ratio)
 

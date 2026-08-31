@@ -120,6 +120,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newKnowledgeIntentPromoteBeforeHook(ag, deps.DeferredManager, lg); hook != nil {
 		entries = append(entries, hook)
 	}
+	// N2 硬约束（session-eval-20260829-r2）：plan_and_execute next_action 待执行
+	// 指令的强制 cue（BeforeModel 每轮注入）+ 终答拦截（AfterModel 99）。
+	entries = append(entries, newNextActionCueBeforeHook(deps))
+	entries = append(entries, newNextActionRouteAfterModelHook(deps))
 	entries = append(entries, newOrchestrationBriefBeforeHook())
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
@@ -237,6 +241,8 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 			recordToolInvocationAfter(ctx, args, ag, deps)
 			return &trpctool.AfterToolResult{}, nil
 		}))
+		// N2 硬约束（55，记录器之后）：plan_and_execute next_action 指令跟踪/核销。
+		entries = append(entries, newNextActionTrackAfterHook())
 		entries = append(entries, newToolResultCacheAfterHook(deps, catalog))
 		// P0-1 终态补偿跟踪：声明了逆工具的正向工具（如 gns3_fault_inject）调用
 		// 成功后记 pending，逆工具调用成功核销；超时未核销产出

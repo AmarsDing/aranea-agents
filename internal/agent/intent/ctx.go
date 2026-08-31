@@ -2,6 +2,20 @@ package intent
 
 import "context"
 
+// sessionCtxKey carries the sessionID for cache-scoping.
+type sessionCtxKey struct{}
+
+// WithSessionID returns a context carrying the sessionID.
+func WithSessionID(ctx context.Context, sessionID string) context.Context {
+	return context.WithValue(ctx, sessionCtxKey{}, sessionID)
+}
+
+// SessionIDFromCtx returns the sessionID from context, or empty string.
+func SessionIDFromCtx(ctx context.Context) string {
+	v, _ := ctx.Value(sessionCtxKey{}).(string)
+	return v
+}
+
 // artifactCtxKey is the context key carrying a pre-resolved intent Artifact.
 // The clarification resume path stores the artifact produced before the
 // clarification gate fired so the resumed turn can reuse it instead of paying

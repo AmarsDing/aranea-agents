@@ -397,6 +397,17 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 		res.Outcome = "skipped_preflight"
 		return
 	}
+
+	// P3 aux 缓存（2026-08-30）：同一 session 内相同 userText+provider+model
+	// 的意图识别直接复用缓存，消除每轮 1.3-1.5k input tokens 的固定开销。
+	// 历史记录不参与缓存键——缓存目标是「同消息短窗口内复用」，历史漂移可忽略。
+	sessionID := SessionIDFromCtx(ctx)
+	cacheKey := CacheKey(sessionID, userText, provider, model, systemPrompt)
+	if cached, ok := globalRunCache().Get(cacheKey); ok {
+		cached.Outcome = "cached"
+		return cached
+	}
+
 	row, err := catalog.GetByProviderAndModel(ctx, provider, model)
 	if err != nil {
 		res.Outcome = "skipped_catalog"
@@ -442,6 +453,8 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 	res.Artifact = art
 	res.RawJSON = raw
 	res.Outcome = "completed"
+	// P3 aux 缓存：成功产物写缓存，供后续同消息轮次复用。
+	globalRunCache().Put(cacheKey, res)
 	return
 }
 
