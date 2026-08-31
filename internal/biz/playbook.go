@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Playbook is a company-authorized delivery flow (Evolving).
@@ -108,13 +110,31 @@ func playbookIDMentioned(taskText string, pbs []Playbook) string {
 
 // ExpandPlaybook turns authorized stages into department-slot SubTasks.
 // Does not invent specialties beyond what the playbook declared.
+//
+// 2026-09-01 F7 修复：stage ID 是 playbook 级稳定 key（sales/copy/...），
+// 原样作 SubTask.ID → PlanStep.ID 会跨看板全局碰撞（plan_steps_v2 PK=id +
+// VersionLT 守卫把后续运行的写入静默吞掉，任务计划面板永久空）。此处为每次
+// 展开加运行级唯一后缀，并同步重映射 DependsOn 引用。
 func ExpandPlaybook(pb Playbook) []SubTask {
+	suffix := uuid.NewString()[:8]
+	// 第一遍：raw stage id → 唯一 id（供 DependsOn 重映射；同 playbook 内
+	// 重复 stage id 追加序号兜底，避免看板内自碰撞）。
+	rawIDs := make([]string, len(pb.Stages))
+	uniqID := make(map[string]string, len(pb.Stages))
+	for i, st := range pb.Stages {
+		raw := strings.TrimSpace(st.ID)
+		if raw == "" {
+			raw = fmt.Sprintf("pb_%s_%d", pb.ID, i+1)
+		}
+		if _, dup := uniqID[raw]; dup {
+			raw = fmt.Sprintf("%s_%d", raw, i+1)
+		}
+		rawIDs[i] = raw
+		uniqID[raw] = raw + "_" + suffix
+	}
 	out := make([]SubTask, 0, len(pb.Stages))
 	for i, st := range pb.Stages {
-		id := strings.TrimSpace(st.ID)
-		if id == "" {
-			id = fmt.Sprintf("pb_%s_%d", pb.ID, i+1)
-		}
+		id := uniqID[rawIDs[i]]
 		name := strings.TrimSpace(st.Specialty)
 		if name == "" {
 			name = strings.TrimSpace(st.DepartmentKey)
@@ -134,11 +154,19 @@ func ExpandPlaybook(pb Playbook) []SubTask {
 			}
 			contracts = append(contracts, DeliverableContract{Name: dn})
 		}
+		deps := make([]string, 0, len(st.DependsOn))
+		for _, d := range st.DependsOn {
+			if mapped, ok := uniqID[strings.TrimSpace(d)]; ok {
+				deps = append(deps, mapped)
+			} else {
+				deps = append(deps, d)
+			}
+		}
 		out = append(out, SubTask{
 			ID:              id,
 			Name:            name,
 			Description:     "playbook:" + pb.ID,
-			DependsOn:       append([]string(nil), st.DependsOn...),
+			DependsOn:       deps,
 			DomainPath:      domain,
 			Deliverables:    contracts,
 			GraphTemplateID: strings.TrimSpace(st.GraphTemplateID),

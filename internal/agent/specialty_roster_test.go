@@ -92,7 +92,7 @@ func TestBindRosterSpecialist_GenericRoleMapping(t *testing.T) {
 // biz.ErrRosterMiss 哨兵（errors.Is 可达），plan_and_execute 才能捕获并
 // 降级为结构化 NextAction=build_orchestration_graph。
 func TestRosterMissError_Sentinel(t *testing.T) {
-	err := rosterMissError(biz.SubTask{ID: "st1", Name: "技术开发", DomainPath: "技术"})
+	err := rosterMissError(biz.SubTask{ID: "st1", Name: "技术开发", DomainPath: "技术"}, nil)
 	if err == nil {
 		t.Fatal("expect error")
 	}

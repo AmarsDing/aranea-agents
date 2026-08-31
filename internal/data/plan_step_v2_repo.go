@@ -189,6 +189,15 @@ func (r *planStepV2Repo) UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (b
 	//      Without this check, the CREATE fallback would fail with CONFLICT
 	//      and propagate an error to the v2 sequencer's retry loop.
 	if existing, getErr := r.data.RW().Read(ctx).PlanStepV2.Get(ctx, ps.ID); getErr == nil {
+		// F7 观测：跨看板 ID 碰撞（如 playbook 裸 stage key）会被版本守卫
+		// 静默吞掉，调用方拿到的 existing 属于别的看板。打 warn 让此事故
+		// 在日志中立即可见。
+		if existing.PlanID != ps.PlanID {
+			r.lg.Warn("UpsertPlanStep: 跨看板 step ID 碰撞，写入被版本守卫拦截",
+				loggateway.Str("step_id", ps.ID),
+				loggateway.Str("existing_plan_id", existing.PlanID),
+				loggateway.Str("incoming_plan_id", ps.PlanID))
+		}
 		return entPlanStepV2ToBiz(existing), nil
 	}
 	cb := r.data.RW().Write(ctx).PlanStepV2.Create().
@@ -222,6 +231,12 @@ func (r *planStepV2Repo) UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (b
 			existing, getErr := r.data.RW().Read(ctx).PlanStepV2.Get(ctx, ps.ID)
 			if getErr != nil {
 				return biz.PlanStep{}, entErrToBizErr(getErr, "PLAN_STEP_V2")
+			}
+			if existing.PlanID != ps.PlanID {
+				r.lg.Warn("UpsertPlanStep: 跨看板 step ID 碰撞（create 冲突兜底）",
+					loggateway.Str("step_id", ps.ID),
+					loggateway.Str("existing_plan_id", existing.PlanID),
+					loggateway.Str("incoming_plan_id", ps.PlanID))
 			}
 			return entPlanStepV2ToBiz(existing), nil
 		}

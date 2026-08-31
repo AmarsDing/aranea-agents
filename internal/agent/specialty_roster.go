@@ -40,7 +40,7 @@ var specialtyRoleAliases = map[string][]string{
 	"商务/客服": {"support", "客服"},
 }
 
-func rosterMissError(subTask biz.SubTask) error {
+func rosterMissError(subTask biz.SubTask, roster []biz.AgentCapability) error {
 	spec := NormalizeDomainPath(subTask.DomainPath)
 	if spec == "" {
 		spec = strings.TrimSpace(subTask.Name)
@@ -51,9 +51,36 @@ func rosterMissError(subTask biz.SubTask) error {
 	// 包B B3b：挂载 biz.ErrRosterMiss 哨兵，plan_and_execute 捕获后降级为
 	// 结构化 NextAction=build_orchestration_graph（authorize_playbook 先例），
 	// 不再裸露 BAD_REQUEST。
-	return apierror.BadRequest(apierror.DomainSpirit,
-		fmt.Sprintf("no roster specialist for %s; specify an existing agent or add one on the org roster", spec)).
+	//
+	// 2026-08-31 S06 根修：错误文案尾部附可点名名册摘要。改道
+	// build_orchestration_graph 的 agents[].agent_key 必填真实 key，而 LLM
+	// 此前从未见过名册（S06 实录「可用的只有三个管家」），只能瞎编被
+	// registry NOT_FOUND 打回。把可点名清单随错误一起回传，改道才可执行。
+	msg := fmt.Sprintf("no roster specialist for %s; specify an existing agent or add one on the org roster", spec)
+	if names := nameableRosterKeys(roster); names != "" {
+		msg += "; nameable agent_key: " + names
+	}
+	return apierror.BadRequest(apierror.DomainSpirit, msg).
 		WithCause(biz.ErrRosterMiss)
+}
+
+// nameableRosterKeys 渲染可点名 agent_key 摘要（最多 20 个，key 字典序）。
+// 只列 key 不带描述：该文案随工具结果回填主会话上下文，逐轮计费，必须紧凑。
+func nameableRosterKeys(roster []biz.AgentCapability) string {
+	if len(roster) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(roster))
+	for _, cap := range roster {
+		if k := strings.TrimSpace(cap.AgentKey); k != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) > 20 {
+		keys = keys[:20]
+	}
+	return strings.Join(keys, ", ")
 }
 
 // genericRoleDomains 包B B3a（session-eval-20260825, P-ROSTER-GAP）通用角色
@@ -63,33 +90,40 @@ func rosterMissError(subTask biz.SubTask) error {
 // 映射到词表一级域，rosterSpecialtyMatch 即可命中该域下任意岗位。仅在词表
 // 路径匹配失败后兜底——误映射代价是分到同域邻近岗位，远低于编排路径裸露
 // 报错。键序即优先级（先行业技术词，后职能词）。
+//
+// 2026-08-31 S06 根修：补英文别名（分解 prompt 为英文指令，LLM 常产出
+// "Marketing/Copywriting" 式英文 domain_path，纯中文词表零命中）；匹配
+// 统一小写化。英文别名取 ≥4 字符，避免短词子串误命中（如 bi⊂bilibili）。
 var genericRoleDomains = []struct {
 	words  []string
 	domain string
 }{
-	{[]string{"技术", "研发", "开发", "工程", "程序员", "编码", "代码"}, "软件"},
-	{[]string{"内容", "文案", "写作", "编辑", "媒体", "公众号"}, "创作"},
-	{[]string{"运营", "推广", "市场", "营销", "增长"}, "商务"},
-	{[]string{"数据", "分析", "报表", "bi"}, "数据"},
-	{[]string{"设计", "视觉", "ui"}, "设计"},
-	{[]string{"运维", "巡检", "值班", "sre"}, "运维"},
-	{[]string{"调研", "研究", "竞品"}, "研究"},
-	{[]string{"行政", "文档", "纪要", "办公"}, "办公"},
+	{[]string{"技术", "研发", "开发", "工程", "程序员", "编码", "代码", "backend", "develop", "engineer", "coding", "software"}, "软件"},
+	{[]string{"内容", "文案", "写作", "编辑", "媒体", "公众号", "content", "copywriting", "writing", "editorial", "douyin", "xiaohongshu", "wechat"}, "创作"},
+	{[]string{"运营", "推广", "市场", "营销", "增长", "marketing", "promotion", "growth", "branding"}, "商务"},
+	{[]string{"数据", "分析", "报表", "bi", "analytics", "analyst"}, "数据"},
+	{[]string{"设计", "视觉", "ui", "design", "visual"}, "设计"},
+	{[]string{"运维", "巡检", "值班", "sre", "devops", "inspection"}, "运维"},
+	{[]string{"调研", "研究", "竞品", "research", "survey"}, "研究"},
+	{[]string{"行政", "文档", "纪要", "办公", "documentation"}, "办公"},
 }
 
 // inferGenericRoleDomain 从原始 domainPath（归一化前的 LLM 产出）推断通用
 // 角色对应的一级域；domainPath 无命中时回退扫描任务文本。零命中返回 ""。
+// 匹配前统一小写（LLM 英文产出大小写随意，S06 实证 "Marketing/Copy"）。
 func inferGenericRoleDomain(domainPath, taskText string) string {
+	lowerPath := strings.ToLower(domainPath)
 	for _, g := range genericRoleDomains {
 		for _, w := range g.words {
-			if strings.Contains(domainPath, w) {
+			if strings.Contains(lowerPath, w) {
 				return g.domain
 			}
 		}
 	}
+	lowerTask := strings.ToLower(taskText)
 	for _, g := range genericRoleDomains {
 		for _, w := range g.words {
-			if strings.Contains(taskText, w) {
+			if strings.Contains(lowerTask, w) {
 				return g.domain
 			}
 		}

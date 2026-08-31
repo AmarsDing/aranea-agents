@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1412,8 +1413,20 @@ var teamModeLiterals = []string{
 // 并集为空时返回 nil——调用方回退静态预定义清单（fail-open，与校验门对空
 // 并集跳过 R2 的语义一致；旧测试构造路径行为不变）。
 func (impl *taskPlannerImpl) decomposeCapabilityTags(ctx context.Context) []string {
+	tags, _ := impl.decomposeRosterContext(ctx)
+	return tags
+}
+
+// decomposeRosterContext 返回 (能力标签并集, 可分配名册行)。两者同源
+// （capBuilder.BuildAll 只调一次）：能力标签供 required_capabilities 校验门
+// R2 使用；名册行注入分解 prompt，让分解 LLM 看到真实可点名/可匹配的
+// agent_key 与 domain_path（session-eval-20260831 S06 roster_miss 根修：
+// 此前 prompt 只有 33 域抽象词表，LLM 产出词表外/英文 domain_path 必
+// NormalizeDomainPath→其他→roster_miss，改道 build_orchestration_graph
+// 又因手里没有 agent_key 无法填参）。fail-open：任一构建失败两者皆 nil。
+func (impl *taskPlannerImpl) decomposeRosterContext(ctx context.Context) ([]string, []string) {
 	if impl.capBuilder == nil {
-		return nil
+		return nil, nil
 	}
 	caps, err := impl.capBuilder.BuildAll(ctx)
 	if err != nil {
@@ -1421,9 +1434,28 @@ func (impl *taskPlannerImpl) decomposeCapabilityTags(ctx context.Context) []stri
 			loggateway.StepID(biz.SpiritStepPlannerDecompose),
 			loggateway.Err(err),
 		)
+		return nil, nil
+	}
+	return capabilityRoleUnion(caps), rosterPromptLines(filterHeuristicAssignable(caps))
+}
+
+// rosterPromptLines 把可分配名册渲染为分解 prompt 用的紧凑行：
+// "- agent_key | DisplayName | DomainPath"。与 allocate 的可分配池
+// （filterHeuristicAssignable）保持一致，避免 LLM 点名不可分配 agent。
+func rosterPromptLines(caps []biz.AgentCapability) []string {
+	if len(caps) == 0 {
 		return nil
 	}
-	return capabilityRoleUnion(caps)
+	lines := make([]string, 0, len(caps))
+	for _, cap := range caps {
+		domain := NormalizeDomainPath(cap.DomainPath)
+		if domain == domainLexiconOther {
+			domain = ""
+		}
+		lines = append(lines, fmt.Sprintf("- %s | %s | %s", cap.AgentKey, strings.TrimSpace(cap.DisplayName), domain))
+	}
+	sort.Strings(lines)
+	return lines
 }
 
 // decomposeTask uses LLM to decompose a complex task into subtasks (T1.6).
@@ -1435,7 +1467,8 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
-	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount, impl.decomposeCapabilityTags(ctx))
+	capTags, rosterLines := impl.decomposeRosterContext(ctx)
+	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount, capTags, rosterLines...)
 
 	// Resolve planner model via system setting (specify/inherit) with session
 	// model fallback. Replaces legacy env-var + catalog-first approach.
@@ -1590,7 +1623,8 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 // llmDecomposeAttempt 是 decomposeTaskStream 的单次尝试实现——负责一次完整的
 // LLM 流式调用 + 解析。任何错误都会被上层重试循环分类处理。
 func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, level biz.ComplexityLevel, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
-	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount, impl.decomposeCapabilityTags(ctx))
+	capTags, rosterLines := impl.decomposeRosterContext(ctx)
+	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount, capTags, rosterLines...)
 
 	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
 	if impl.plannerSetting != nil {
@@ -1899,7 +1933,7 @@ func (impl *taskPlannerImpl) publishV2PlanStep(ctx context.Context, st biz.SubTa
 // 2026-07-04 问题 2 修复：原 prompt 固定 "2-6 subtasks"，未传递用户的数量
 // 约束。当用户说"派出2个team"时，LLM 可能产生 5 个 subtask，orchestrateDAG
 // 为每个 subtask 创建一个 team，导致最终多出 3 个 team。
-func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, teamCount int, capTags []string) string {
+func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, teamCount int, capTags []string, rosterLines ...string) string {
 	intentContext := ""
 	if artifact != nil {
 		intentContext = fmt.Sprintf("\nIntent analysis:\n- Refined goal: %s\n- Intent kind: %s\n- Risk flags: %v",
@@ -1936,6 +1970,19 @@ Before finalizing, COUNT your subtasks; if the count differs from %d, merge or s
 		capRule = fmt.Sprintf("- required_capabilities must ONLY use capability tags from the current agent roster: %s. NEVER invent tags outside this list — a subtask tagged with capabilities no agent possesses cannot be scheduled", strings.Join(capTags, ", "))
 	}
 
+	// session-eval-20260831 S06 根修：真实名册注入。分解 LLM 必须看见当前
+	// 可分配的 agent_key 与 domain_path，domain_path 才有落点（否则词表外
+	// 产出经 NormalizeDomainPath 归并为「其他」必然 roster_miss；改道
+	// build_orchestration_graph 时也才有真实 agent_key 可点名填参）。
+	rosterSection := ""
+	if len(rosterLines) > 0 {
+		rosterSection = fmt.Sprintf(`
+Current assignable agent roster (agent_key | display_name | domain_path):
+%s
+Pick each subtask's domain_path to match a domain that EXISTS in this roster whenever the task allows it — a subtask whose domain matches no roster entry cannot be scheduled. When you already know which roster agent fits a subtask, you MAY name that agent_key in the subtask description so the orchestrator can route it directly.
+`, strings.Join(rosterLines, "\n"))
+	}
+
 	return fmt.Sprintf(`You are a task decomposition specialist. %s
 
 Rules:
@@ -1952,7 +1999,7 @@ Rules:
 - CRITICAL: Each subtask "description" must be fully self-contained. The executing team sees ONLY its own description — it cannot see the user message or other subtasks. Every concrete parameter the executor needs (URLs, file paths, branch/tag names, subpaths, skill/agent names, numeric values, flags) MUST be copied verbatim into the description. NEVER use context references such as "the given URL", "the above parameters", "使用给定的/上述的/前文提到的" — always inline the actual values.
 - CLARIFICATION EXIT: If the user message is missing BLOCKING concrete parameters whose absence would materially change the plan's direction (e.g. product/brand name, target date or deadline, channel/platform, budget, target system/URL), DO NOT fabricate them. Output a single JSON object instead of the subtask array: {"needs_clarification": true, "questions": ["<short question 1>", "<short question 2>"]} (2-5 questions, each answerable in one line). NEVER invent product names, dates, URLs, channel names, budget figures, or any concrete fact not present in the user message — when such a fact is essential and missing, asking is mandatory and guessing is forbidden. Use this exit ONLY for truly blocking gaps; for non-essential details, proceed and state reasonable generic assumptions explicitly in the description (e.g. "a mainstream social platform") rather than specific invented names.
 - Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}. The contract "name" becomes the deliverable topic namespace that team members write via set_deliverable — keep it short (letters/digits in any language plus '_'/'-', no spaces or punctuation; a concise slug like "root-cause-report" or "根因报告" works) and NEVER use the reserved names "summary" or "cognition" (writes under them are rejected/overwritten).
-- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, capRule, DomainLexiconPromptList()) + intentContext
+- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, capRule, DomainLexiconPromptList()) + intentContext + rosterSection
 }
 
 // resolvePlannerProviderModel and resolveFallbackProviderModelFromCatalog

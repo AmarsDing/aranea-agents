@@ -23,8 +23,15 @@ func TestParseAndExpandAuthorizedPlaybook(t *testing.T) {
 		t.Fatal("authorized playbook missed")
 	}
 	steps := ExpandPlaybook(pb)
-	if len(steps) != 2 || steps[0].DomainPath != "设计/视觉" || steps[1].DependsOn[0] != "design" {
+	if len(steps) != 2 || steps[0].DomainPath != "设计/视觉" {
 		t.Fatalf("expand=%+v", steps)
+	}
+	// F7：step ID 必须带运行级唯一后缀，DependsOn 同步重映射到改名后的 ID。
+	if steps[0].ID == "design" || !strings.HasPrefix(steps[0].ID, "design_") {
+		t.Fatalf("step id not namespaced: %+v", steps[0])
+	}
+	if len(steps[1].DependsOn) != 1 || steps[1].DependsOn[0] != steps[0].ID {
+		t.Fatalf("depends_on not remapped: %+v", steps[1])
 	}
 	if !steps[1].ConfirmBefore || steps[1].GraphTemplateID != "parallel_review" {
 		t.Fatalf("confirm/template lost: %+v", steps[1])
@@ -34,6 +41,34 @@ func TestParseAndExpandAuthorizedPlaybook(t *testing.T) {
 	}
 	if _, ok := FindAuthorizedPlaybook(pbs, "missing"); ok {
 		t.Fatal("missing id must not hit")
+	}
+}
+
+func TestExpandPlaybookUniqueIDsAcrossRuns(t *testing.T) {
+	t.Parallel()
+	pb := Playbook{
+		ID: "software_delivery",
+		Stages: []PlaybookStage{
+			{ID: "design", DomainPath: "设计/视觉"},
+			{ID: "be", DomainPath: "软件/后端", DependsOn: []string{"design"}},
+		},
+	}
+	a := ExpandPlaybook(pb)
+	b := ExpandPlaybook(pb)
+	// 同一 playbook 两次展开：ID 必须不同（否则 plan_steps_v2 PK 碰撞）。
+	for i := range a {
+		if a[i].ID == b[i].ID {
+			t.Fatalf("run collision on step %d: %s", i, a[i].ID)
+		}
+	}
+	// 每次展开内部：DependsOn 必须指向同次展开的 ID。
+	if a[1].DependsOn[0] != a[0].ID || b[1].DependsOn[0] != b[0].ID {
+		t.Fatalf("intra-run dep remap broken: a=%+v b=%+v", a, b)
+	}
+	// 空 stage id 走兜底 id，同样唯一化。
+	c := ExpandPlaybook(Playbook{ID: "p", Stages: []PlaybookStage{{DomainPath: "软件/后端"}}})
+	if len(c) != 1 || c[0].ID == "pb_p_1" || !strings.HasPrefix(c[0].ID, "pb_p_1_") {
+		t.Fatalf("fallback id not namespaced: %+v", c)
 	}
 }
 

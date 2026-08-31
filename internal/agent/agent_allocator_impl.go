@@ -141,10 +141,10 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 				if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, taskPlan.SpiritSessionID, traceID, assignable); ok {
 					allocation = factoryAlloc
 				} else {
-					return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, subTask)
+					return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, subTask, assignable)
 				}
 			} else {
-				return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, subTask)
+				return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, subTask, assignable)
 			}
 		}
 		pool, prune := impl.matchingPool(subTask.DomainPath, assignable, traceID)
@@ -206,10 +206,10 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 				if factoryAlloc, ok := impl.tryAgentFactoryForPlan(ctx, taskPlan, traceID, pool); ok {
 					allocation = factoryAlloc
 				} else {
-					return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, st)
+					return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, st, assignable)
 				}
 			} else {
-				return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, st)
+				return nil, impl.failRoster(ctx, taskPlan.SpiritSessionID, st, assignable)
 			}
 		}
 		stampOrgOnAlloc(&allocation, pool, prune)
@@ -1939,13 +1939,13 @@ func (impl *agentAllocatorImpl) publishAllocatingProgress(ctx context.Context, s
 	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocating", extra)
 }
 
-func (impl *agentAllocatorImpl) failRoster(ctx context.Context, spiritSessionID string, subTask biz.SubTask) error {
+func (impl *agentAllocatorImpl) failRoster(ctx context.Context, spiritSessionID string, subTask biz.SubTask, roster []biz.AgentCapability) error {
 	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocate_failed", map[string]any{
 		"sub_task":  subTask.Name,
 		"specialty": NormalizeDomainPath(subTask.DomainPath),
 		"reason":    "no_roster_specialist",
 	})
-	return rosterMissError(subTask)
+	return rosterMissError(subTask, roster)
 }
 
 // publishOrchestrationProgress emits an orchestration_progress
