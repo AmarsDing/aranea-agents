@@ -51,31 +51,48 @@ type outputPolicyConfig struct {
 // 防御语境判定需要跨 chunk 的上下文（防御标记往往先于命令串若干 chunk
 // 到达），窗口在 afterModel 逐 chunk 追加、流结束由 clearStreamState 清理、
 // 触发拦截后重置（已拦截内容不再影响后续判定，防同一命令在窗口内反复命中）。
+// seenDefensive 是本响应的粘性防御标记（P4-r6，2026-08-31）：240 字滚动窗口
+// 会滑出先到的防御语境，导致后半段的代码块示例被误拦（S14 h3 实证：防御性
+// 提问的回答天然带 fenced 示例）。一旦在本响应任意位置见过防御标记，后续
+// 命中一律按讲解语境豁免；流结束/拦截重置时一并清零。
 type streamContext struct {
-	mu  sync.Mutex
-	buf string
+	mu            sync.Mutex
+	buf           string
+	seenDefensive bool
 }
 
-func (s *streamContext) append(text string) string {
+func (s *streamContext) append(text string) (window string, defensive bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.buf += text
+	// 粘性扫描必须在窗口裁剪之前：新 chunk 可能把窗口撑超 240，先裁剪会把
+	// 刚到的防御标记挤掉（扫描范围 = 裁剪前 buf，同时覆盖跨 chunk 标记）。
+	if !s.seenDefensive {
+		lower := strings.ToLower(s.buf)
+		for _, m := range defensiveMarkers {
+			if strings.Contains(lower, m) {
+				s.seenDefensive = true
+				break
+			}
+		}
+	}
 	if len(s.buf) > defensiveContextWindow {
 		s.buf = s.buf[len(s.buf)-defensiveContextWindow:]
 	}
-	return s.buf
+	return s.buf, s.seenDefensive
 }
 
-func (s *streamContext) current() string {
+func (s *streamContext) current() (window string, defensive bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.buf
+	return s.buf, s.seenDefensive
 }
 
 func (s *streamContext) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.buf = ""
+	s.seenDefensive = false
 }
 
 type OutputPolicyPlugin struct {
@@ -131,10 +148,11 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 	invID := invocationIDFromContext(ctx)
 	isChunk := args.Response.Object == trpcmodel.ObjectTypeChatCompletionChunk
 	ctxText := text
+	defensiveSeen := false
 	if isChunk && invID != "" && text != "" {
-		ctxText = o.streamWindow(invID).append(text)
+		ctxText, defensiveSeen = o.streamWindow(invID).append(text)
 	}
-	if viol, pat := o.violationWithContext(text, ctxText); viol {
+	if viol, pat := o.violationWithContext(text, ctxText, defensiveSeen); viol {
 		o.base.logger.Info("plugin.output_policy.after_model", "status", "blocked", "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
 		o.base.recordEvent(ctx, "after_model", "blocked",
 			fmt.Sprintf("模型输出命中阻断策略（pattern=%s）", pat))
@@ -180,14 +198,18 @@ func (o *OutputPolicyPlugin) onEvent(
 		return e, nil
 	}
 	// P4：危险命令白名单基于滚动窗口判定（窗口由 afterModel 维护，通常已
-	// 含当前 chunk；未过 afterModel 的事件兜底拼上当前文本）。
+	// 含当前 chunk；未过 afterModel 的事件兜底拼上当前文本）。P4-r6：粘性
+	// 防御标记随窗口一并参与豁免判定。
 	ctxText := text
+	defensiveSeen := false
 	if inv != nil && inv.InvocationID != "" {
 		if sc := o.peekStreamContext(inv.InvocationID); sc != nil {
-			ctxText = sc.current() + text
+			w, d := sc.current()
+			ctxText = w + text
+			defensiveSeen = d
 		}
 	}
-	viol, pat := o.violationWithContext(text, ctxText)
+	viol, pat := o.violationWithContext(text, ctxText, defensiveSeen)
 	if !viol {
 		return e, nil
 	}
@@ -219,14 +241,15 @@ func (o *OutputPolicyPlugin) onEvent(
 
 // violation 是严格判定（无上下文），供非流式/无窗口场景使用。
 func (o *OutputPolicyPlugin) violation(text string) (bool, string) {
-	return o.violationWithContext(text, text)
+	return o.violationWithContext(text, text, false)
 }
 
 // violationWithContext 判定违规：text 是当前输出（chunk），ctxText 是判定
-// 上下文（流式路径为滚动窗口，含当前 chunk；非流式即 text 本身）。
+// 上下文（流式路径为滚动窗口，含当前 chunk；非流式即 text 本身），
+// defensiveSeen 是本响应的粘性防御标记（P4-r6）。
 // blocked_patterns 是管理员的显式严格清单，只看当前 text 不做豁免；
 // 内建危险命令检查适用防御性白名单（讲解/警示语境放行）。
-func (o *OutputPolicyPlugin) violationWithContext(text, ctxText string) (bool, string) {
+func (o *OutputPolicyPlugin) violationWithContext(text, ctxText string, defensiveSeen bool) (bool, string) {
 	if containsAny(text, o.cfg.BlockedPatterns) {
 		for _, p := range o.cfg.BlockedPatterns {
 			if strings.TrimSpace(p) != "" && strings.Contains(strings.ToLower(text), strings.ToLower(p)) {
@@ -237,7 +260,7 @@ func (o *OutputPolicyPlugin) violationWithContext(text, ctxText string) (bool, s
 	}
 	if o.cfg.DangerousCommandCheck {
 		for _, cmd := range dangerousCommands {
-			if dangerousCommandActionable(ctxText, cmd) {
+			if dangerousCommandActionable(ctxText, cmd, defensiveSeen) {
 				return true, "dangerous_command"
 			}
 		}
@@ -245,52 +268,26 @@ func (o *OutputPolicyPlugin) violationWithContext(text, ctxText string) (bool, s
 	return false, ""
 }
 
-// dangerousCommandActionable 判定危险命令是否应拦截（P4 白名单）：
-// 任一命中为可执行形态（代码块/shell 提示符行）=> 拦截；
-// 全部命中均为散文提及且上下文带防御/讲解标记 => 放行；
-// 无防御标记 => 拦截（保守方向）。
-// 必须遍历全部命中：只查首个命中会让「讲解 + 代码块示范」的混合内容逃逸。
-// S14 h3 实证：模型回答「rm -rf 为什么危险」类防御性提问被连续误拦 5 次。
-func dangerousCommandActionable(ctxText, cmd string) bool {
+// dangerousCommandActionable 判定危险命令是否应拦截（P4 白名单 + P4-r6 粘性豁免）：
+// 本响应（窗口或粘性标记）带防御/讲解语境 => 全部命中放行——防御性提问的回答
+// 天然包含代码块/提示符行示例（S14 h3：「如何防范 rm -rf 误删」被误拦），
+// 「讲解+代码块示范」属正常科普内容而非逃逸；
+// 无任何防御标记 => 任一形态（散文/代码块/提示符行）命中即拦截（保守方向）。
+func dangerousCommandActionable(ctxText, cmd string, defensiveSeen bool) bool {
 	lower := strings.ToLower(ctxText)
-	hasDefensive := false
-	for _, m := range defensiveMarkers {
-		if strings.Contains(lower, m) {
-			hasDefensive = true
-			break
+	hasDefensive := defensiveSeen
+	if !hasDefensive {
+		for _, m := range defensiveMarkers {
+			if strings.Contains(lower, m) {
+				hasDefensive = true
+				break
+			}
 		}
 	}
-	found := false
-	searchFrom := 0
-	for {
-		rel := strings.Index(lower[searchFrom:], cmd)
-		if rel < 0 {
-			break
-		}
-		idx := searchFrom + rel
-		found = true
-		if insideCodeFence(ctxText, idx) || onPromptLine(ctxText, idx) {
-			return true
-		}
-		searchFrom = idx + len(cmd)
-	}
-	if !found {
+	if !strings.Contains(lower, cmd) {
 		return false
 	}
 	return !hasDefensive
-}
-
-// insideCodeFence 以 ``` 围栏奇偶判定命中位置是否在代码块内（滚动窗口上的
-// 近似判定：窗口起点可能切在块中，奇数即按块内处理，方向保守）。
-func insideCodeFence(text string, idx int) bool {
-	return strings.Count(text[:idx], "```")%2 == 1
-}
-
-// onPromptLine 判定命中位置所在行是否以 shell 提示符（$/#/>）开头。
-func onPromptLine(text string, idx int) bool {
-	lineStart := strings.LastIndexByte(text[:idx], '\n') + 1 // 无换行时为 0
-	line := strings.TrimLeft(text[lineStart:idx], " \t")
-	return strings.HasPrefix(line, "$") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ">")
 }
 
 func (o *OutputPolicyPlugin) replacementMessage() string {

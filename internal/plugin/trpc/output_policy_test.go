@@ -263,8 +263,8 @@ func TestOutputPolicy_DefensiveMention_Exempt(t *testing.T) {
 	}
 }
 
-// P4 白名单边界：代码块 / shell 提示符行内的危险命令仍是可执行指令形态，
-// 不豁免；无防御标记的祈使句照常拦截。
+// P4 白名单边界：无防御语境时，代码块 / shell 提示符行 / 祈使句形态的
+// 危险命令照常拦截（保守方向）。
 func TestOutputPolicy_DangerousCommand_StillBlocked(t *testing.T) {
 	o := newTestOutputPolicy(outputPolicyConfig{
 		BlockOnViolation:      true,
@@ -274,9 +274,6 @@ func TestOutputPolicy_DangerousCommand_StillBlocked(t *testing.T) {
 		"清理磁盘：\n```\nrm -rf /tmp/data\n```",
 		"$ rm -rf /",
 		"执行 rm -rf / 即可释放空间",
-		// 混合内容：散文讲解在前、代码块示范在后——首个命中是防御语境，
-		// 但第二个命中是可执行形态，必须拦截（遍历全部命中，防逃逸）。
-		"rm -rf 非常危险，千万不要执行。错误示范：\n```\nrm -rf /tmp/data\n```",
 	}
 	for _, text := range blocked {
 		args := &trpcmodel.AfterModelArgs{
@@ -292,6 +289,59 @@ func TestOutputPolicy_DangerousCommand_StillBlocked(t *testing.T) {
 		}
 		if res.CustomResponse == nil {
 			t.Fatalf("actionable dangerous command must be blocked: %q", text)
+		}
+	}
+}
+
+// P4-r6 粘性豁免：防御语境下的代码块示范属正常科普内容（S14 h3 实证：
+// 「如何防范 rm -rf 误删」的回答天然带 fenced 示例，240 字窗口滑出防御
+// 标记后误拦）。防御标记见过一次，本响应后续命中一律豁免。
+func TestOutputPolicy_DefensiveContext_FencedExampleExempt(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	// 非流式：整段判定，防御标记 + fenced 示范 => 放行。
+	args := &trpcmodel.AfterModelArgs{
+		Response: &trpcmodel.Response{
+			Choices: []trpcmodel.Choice{{
+				Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "rm -rf 非常危险，千万不要执行。错误示范：\n```\nrm -rf /tmp/data\n```"},
+			}},
+		},
+	}
+	res, err := o.afterModel(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.CustomResponse != nil {
+		t.Fatal("defensive context with fenced example must pass (P4-r6)")
+	}
+}
+
+// P4-r6 流式粘性：防御标记先于命令 240+ 字（窗口滑出）后，fenced 示范仍豁免。
+func TestOutputPolicy_StreamingChunks_StickyDefensiveBeyondWindow(t *testing.T) {
+	o := newTestOutputPolicy(outputPolicyConfig{
+		BlockOnViolation:      true,
+		DangerousCommandCheck: true,
+	})
+	inv := &trpcagent.Invocation{InvocationID: "inv-p4-sticky"}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	// chunk1 带防御标记；chunk2 用 300 字填充把标记挤出 240 窗口；chunk3 fenced 命令。
+	filler := strings.Repeat("说", 300)
+	chunks := []string{"千万不要执行危险命令。" + filler, "```\nrm -rf /tmp/data\n```"}
+	for i, c := range chunks {
+		args := &trpcmodel.AfterModelArgs{
+			Response: &trpcmodel.Response{
+				Object:  trpcmodel.ObjectTypeChatCompletionChunk,
+				Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: c}}},
+			},
+		}
+		res, err := o.afterModel(ctx, args)
+		if err != nil {
+			t.Fatalf("chunk %d: unexpected error: %v", i, err)
+		}
+		if res.CustomResponse != nil {
+			t.Fatalf("chunk %d must not be blocked (sticky defensive survives window slide)", i)
 		}
 	}
 }

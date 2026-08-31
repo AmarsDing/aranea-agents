@@ -4,7 +4,7 @@
   Aranea 102 远程发布：本机构建镜像 → docker save → SMB 传输 → 102 docker load
   → compose up -d → 健康验证。
 .DESCRIPTION
-  运行环境唯一 = 192.168.0.102（WSL Ubuntu-22.04 Docker CE，/mnt/f/deploy-102/aranea）。
+  运行环境唯一 = 102 实机（2026-08-30 重启后 DHCP 换租为 192.168.0.108，WSL Ubuntu-22.04 Docker CE，/mnt/f/deploy-102/aranea）。
   全量镜像 save/load 单一路径（2026-08-28 裁定，无二进制热修补丁路径）；
   staging 双端即用即清；不覆盖 102 的 compose/config（102 侧为唯一真理）。
 .EXAMPLE
@@ -19,7 +19,7 @@ param(
   [ValidateSet('all','admin','web')]
   [string]$Target = 'all',
   [switch]$SkipBuild,
-  [string]$RemoteHost = '192.168.0.102',
+  [string]$RemoteHost = '192.168.0.108',
   [string]$RemoteUser = 'ding',
   [string]$RemotePass = '123'
 )

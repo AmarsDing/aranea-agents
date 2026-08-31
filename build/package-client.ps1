@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Aranea 桌面客户端一键打包（服务+客户端形态：客户端与服务器分离部署）。
@@ -22,7 +22,7 @@
     输出目录（默认：build/release/）
 
 .PARAMETER ServerUrl
-    构建期注入的默认后端地址（如 http://192.168.0.102:8810）。
+    构建期注入的默认后端地址（如 http://192.168.0.108:8810）。
     注入后首启免填服务器地址；用户仍可在设置页修改（持久化覆盖默认值）。
     实现：临时改写 src-tauri/src/server.rs 三处编译期常量（DEFAULT_DESKTOP_HTTP/WS
     代理回退 upstream + DESKTOP_RUNTIME_CONFIG 置 {} 让 SPA 走同源代理），
@@ -31,7 +31,7 @@
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File build\package-client.ps1
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File build\package-client.ps1 -Version v1.2.0 -ServerUrl http://192.168.0.102:8810
+    powershell -ExecutionPolicy Bypass -File build\package-client.ps1 -Version v1.2.0 -ServerUrl http://192.168.0.108:8810
 #>
 param(
     [string]$Version,
@@ -172,7 +172,7 @@ $addrGuide = if ($ServerUrl) {
     @"
 3. 首次启动在设置页填写服务端地址，例如：
 
-       http://192.168.0.102:8810
+       http://192.168.0.108:8810
 
    地址保存后持久生效（backend-config.json），更换服务器免重启。
 "@
