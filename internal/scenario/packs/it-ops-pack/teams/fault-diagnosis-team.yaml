@@ -1,0 +1,26 @@
+key: fault-diagnosis-team
+display_name: 故障诊断团队
+description: 面向疑难故障的根因分析团队——日志、指标、拓扑多维取证，输出根因链与修复建议。
+mode: coordinator
+max_concurrency: 3
+timeout_seconds: 1200
+members:
+  - agent_key: fault_diagnostician__general
+    role: coordinator
+    name: 故障诊断专家
+    task_prompt: 作为诊断团队的协调者，建立症状模型与假设树，统筹日志与指标取证，汇总裁定根因链。
+  - agent_key: log_analyst__general
+    role: worker
+    name: 日志分析专家
+    task_prompt: 负责错误模式识别、异常聚类与跨源日志时序关联，提取关键证据行。
+    sort_order: 1
+  - agent_key: metric_analyst__general
+    role: worker
+    name: 指标分析专家
+    task_prompt: 负责时序指标异常检测、基线偏离判定与告警-指标相关性分析。
+    sort_order: 2
+  - agent_key: runbook_engineer__general
+    role: worker
+    name: 修复方案工程师
+    task_prompt: 基于根因结论生成修复命令与 Runbook，做风险分级并标注回退方法。
+    sort_order: 3

@@ -150,11 +150,19 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 			EnableCheckpoint: false,
 			Version:          1,
 			SortOrder:        0,
+			IsTemplate:       true,
 		}
 		def.Nodes = buildConfig.Nodes
 		def.Edges = buildConfig.Edges
 		def.ConditionalEdges = buildConfig.ConditionalEdges
 		def.StateFields = buildConfig.StateFields
+
+		// graph_definitions.id 无 DB 默认值，必须显式赋模板 ID；
+		// 幂等：已存在则跳过（SaveDefinition 为纯 insert，重复 ID 会唯一冲突）。
+		if existing, err := graphRepo.GetDefinition(ctx, tmpl.ID); err == nil && existing != nil {
+			continue
+		}
+		def.ID = tmpl.ID
 
 		if _, err := graphRepo.SaveDefinition(ctx, def); err != nil {
 			lg.Warn("seed graph template failed", loggateway.StepID("data.seed.graph_template"), loggateway.Str("id", tmpl.ID), loggateway.Err(err))
