@@ -21,16 +21,24 @@ import (
 // SpiritDelivery owns deliverable extraction, upstream injection, verification
 // gates, and member-execution evidence for Spirit (DEV-09).
 type SpiritDelivery struct {
-	teamUC            SpiritTeamAssembler
-	sessionUC         SpiritSessionAccessor
-	agentUC           SpiritAgentResolver
-	contractValidator *DeliverableContractValidator
-	gateExecutor      *VerificationGateExecutor
-	stepReader        SpiritStepReader
-	graphDelivReader  SpiritGraphDeliverableReader
-	runStatsReader    SpiritTeamRunStatsReader
-	inboxFS           TeamInboxFS
-	lg                loggateway.Logger
+	teamUC             SpiritTeamAssembler
+	sessionUC          SpiritSessionAccessor
+	agentUC            SpiritAgentResolver
+	contractValidator  *DeliverableContractValidator
+	gateExecutor       *VerificationGateExecutor
+	stepReader         SpiritStepReader
+	graphDelivReader   SpiritGraphDeliverableReader
+	runStatsReader     SpiritTeamRunStatsReader
+	inboxFS            TeamInboxFS
+	artifactSaver      deliverableArtifactSaver
+	artifactPublicBase string
+	lg                 loggateway.Logger
+}
+
+// deliverableArtifactSaver 是 biz/artifact.Saver 的结构等价窄接口（biz 不能
+// 反向 import biz/artifact，循环依赖）。nil = 桥接关闭（向后兼容）。
+type deliverableArtifactSaver interface {
+	Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
 }
 
 // ListTeamRunStats returns per-team latest-run stats for report enrichment.
@@ -227,7 +235,7 @@ func (d *SpiritDelivery) ListTeamDeliverableDigests(ctx context.Context, spiritS
 					summaries = append(summaries, s)
 				}
 				for _, art := range refs[k].Artifacts {
-					digest.Artifacts = append(digest.Artifacts, artifactDigestLine(art))
+					digest.Artifacts = append(digest.Artifacts, d.artifactDigestLine(art))
 				}
 			}
 			digest.DeliverableSummary = strings.Join(summaries, "\n")
@@ -447,6 +455,11 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 	if len(stateDeliv) == 0 {
 		return ErrNoRealDeliverable
 	}
+
+	// S06 交付物可见性（2026-09-01）：文档型 payload 落盘为 spirit 会话
+	// artifact，artifact_id/artifact_rel 回填 payload —— 信封 stub、产物页、
+	// 综合报告 digest 均由此获得可定位的产物引用。
+	d.bridgeDeliverableDocs(ctx, t, stateDeliv)
 
 	// The envelope is 100% state-sourced: the reserved "summary" key becomes
 	// the summary; when absent the summary aggregates each topic payload's
@@ -1790,6 +1803,70 @@ func payloadStateKeys(stateDeliv map[string]any) []string {
 	return keys
 }
 
+// bridgeDeliverableDocs 把文档型交付物 payload（map 且含非空 content）持久化
+// 为 **spirit 会话**的 artifact（用户产物页/预览/下载直接可见），并把
+// artifact_id 与 artifact_rel（存储相对路径，部署无关）回填进 payload map。
+// 幂等：payload 已带 artifact_id 时跳过。保存失败只记 Warn —— 信封落库
+// 不得因桥接失败而中断（交付物传播是主链路，产物可见性是增强）。
+// 注意：不回填 rel_path —— 该字段语义是成员工作区 inbox 相对路径，下游
+// 团队会据此做文件复制；artifact 存储路径不属于工作区，混入会误导复制。
+func (d *SpiritDelivery) bridgeDeliverableDocs(ctx context.Context, t Team, stateDeliv map[string]any) {
+	if d.artifactSaver == nil || strings.TrimSpace(t.SpiritSessionID) == "" {
+		return
+	}
+	for _, k := range payloadStateKeys(stateDeliv) {
+		v, ok := stateDeliv[k].(map[string]any)
+		if !ok {
+			continue
+		}
+		content, _ := v["content"].(string)
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		if id, _ := v["artifact_id"].(string); strings.TrimSpace(id) != "" {
+			continue
+		}
+		title, _ := v["title"].(string)
+		if title = strings.TrimSpace(title); title == "" {
+			title = k
+		}
+		format, _ := v["format"].(string)
+		mime, ext := deliverableDocMimeExt(format)
+		saved, err := d.artifactSaver.Save(ctx, t.SpiritSessionID, title+ext, mime, []byte(content))
+		if err != nil {
+			d.lg.Warn("交付物文档桥接 artifact 失败（信封仍按原样落库）",
+				loggateway.StepID("spirit.write_deliverables.artifact_bridge"),
+				loggateway.Str("team_id", t.ID),
+				loggateway.Str("topic", k),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		v["artifact_id"] = saved.ID
+		v["artifact_rel"] = saved.StorageURI
+		d.lg.Info("交付物文档已桥接为会话产物",
+			loggateway.StepID("spirit.write_deliverables.artifact_bridge"),
+			loggateway.Str("team_id", t.ID),
+			loggateway.Str("topic", k),
+			loggateway.Str("artifact_id", saved.ID),
+			loggateway.Str("storage_uri", saved.StorageURI),
+		)
+	}
+}
+
+// deliverableDocMimeExt 按交付物 format 给出 MIME 与文件扩展名；
+// 未识别按 markdown 处理（playbook 文档范式的默认载体）。
+func deliverableDocMimeExt(format string) (mime, ext string) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "html":
+		return "text/html", ".html"
+	case "text", "txt", "plain":
+		return "text/plain", ".txt"
+	default:
+		return "text/markdown", ".md"
+	}
+}
+
 // buildDeliverableArtifacts describes every payload key of the state
 // deliverable so downstream injection can decide inline vs pointer.
 // Contract entries (matched by name == key) supply type/format; document-
@@ -1846,6 +1923,9 @@ func fillArtifactFromPayload(art *DeliverableArtifact, v map[string]any) {
 	if id, ok := v["artifact_id"].(string); ok {
 		art.ArtifactID = strings.TrimSpace(id)
 	}
+	if su, ok := v["artifact_rel"].(string); ok {
+		art.StorageURI = strings.TrimSpace(su)
+	}
 	if rel, ok := v["rel_path"].(string); ok {
 		art.RelPath = sanitizeInboxRelPath(rel)
 	} else if rel, ok := v["path"].(string); ok {
@@ -1864,9 +1944,22 @@ func fillArtifactFromPayload(art *DeliverableArtifact, v map[string]any) {
 	} else if art.SizeChars == 0 {
 		art.SizeChars = jsonValueRuneLen(v)
 	}
-	if strings.TrimSpace(art.ArtifactID) != "" {
+	// S06 桥接标识：artifact_rel 仅由 bridgeDeliverableDocs 写入。桥接文档
+	// 自带 content 正文，必须保持 state_key 语义——信封内联/超阈值与下游
+	// 注入行为与桥接前完全一致；artifact_id/storage_uri 仅作为产物页与
+	// digest 的可定位引用随信封携带。生产者自声明的制品指针（媒体二进制
+	// 等无正文 payload）维持原有 artifact/workspace_rel 判定不变。
+	bridged := strings.TrimSpace(art.StorageURI) != ""
+	hasContent := false
+	if content, ok := v["content"].(string); ok {
+		hasContent = strings.TrimSpace(content) != ""
+	}
+	switch {
+	case bridged && hasContent:
+		// 保持 state_key（零下游行为变化）
+	case strings.TrimSpace(art.ArtifactID) != "":
 		art.Kind = DeliverableArtifactKindArtifact
-	} else if strings.TrimSpace(art.RelPath) != "" {
+	case strings.TrimSpace(art.RelPath) != "":
 		art.Kind = DeliverableArtifactKindWorkspaceRel
 	}
 }
@@ -2005,7 +2098,8 @@ func jsonValueRuneLen(v any) int {
 
 // artifactDigestLine renders one artifact as a compact pointer-level digest
 // line, e.g. article《云计算十年》（markdown，8234字）.
-func artifactDigestLine(art DeliverableArtifact) string {
+// 已桥接 artifact 的文档追加用户可定位路径（publicBase 未配置时省略）。
+func (d *SpiritDelivery) artifactDigestLine(art DeliverableArtifact) string {
 	label := art.Key
 	if art.Title != "" {
 		label += "《" + art.Title + "》"
@@ -2014,7 +2108,22 @@ func artifactDigestLine(art DeliverableArtifact) string {
 	if format == "" {
 		format = "text"
 	}
-	return fmt.Sprintf("%s（%s，%d字）", label, format, art.SizeChars)
+	line := fmt.Sprintf("%s（%s，%d字）", label, format, art.SizeChars)
+	if p := d.artifactPublicPath(art); p != "" {
+		line += "，路径：" + p
+	}
+	return line
+}
+
+// artifactPublicPath 把 artifact 存储相对路径映射为用户可访问的公开路径
+// （如 108 部署的 UNC 共享）。未配置 publicBase 或无存储路径时返回 ""。
+func (d *SpiritDelivery) artifactPublicPath(art DeliverableArtifact) string {
+	base := strings.TrimSpace(d.artifactPublicBase)
+	rel := strings.TrimSpace(art.StorageURI)
+	if base == "" || rel == "" {
+		return ""
+	}
+	return base + `\` + strings.ReplaceAll(rel, "/", `\`)
 }
 
 // deliverableAckKeyPrefix mirrors deliverabletools.AckKeyPrefix. biz cannot

@@ -156,7 +156,7 @@ defineEmits<{
 
 const { t } = useSafeI18n();
 const store = useActivityQueries();
-const { membersOf } = useGraphNodeTeam();
+const { displayMembersOf } = useGraphNodeTeam();
 
 // ── 布局：横向 DAG + 富卡片 per-node 高度（成员数决定卡片高度） ──
 const gapX = 64;
@@ -171,7 +171,8 @@ const completedCount = computed(() => nodes.value.filter((n) => n.Status === 'co
 
 function heightOfNode(nodeId: string): number {
   const n = nodes.value.find((x) => x.ID === nodeId);
-  return n ? graphTeamNodeHeight(membersOf(n).length) : graphTeamNodeHeight(0);
+  // displayMembersOf 含编排期计划成员回退，与 GraphTeamNode 渲染行数保持同一事实源
+  return n ? graphTeamNodeHeight(displayMembersOf(n).length) : graphTeamNodeHeight(0);
 }
 
 const { layoutDAG } = usePlanDAGLayout();

@@ -7,9 +7,13 @@ PKG_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE="$PKG_DIR/docker-compose.yaml"
 IMAGES_TAR="$PKG_DIR/images.tar"
 SERVER_IP=""
+PUBLIC_BASE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --server-ip) SERVER_IP="$2"; shift 2 ;;
+    # 可选：产物公开路径基址（如 \\<ip>\<share>\path\to\artifacts），
+    # 注入后前端产物详情显示用户可达路径；缺省留空（不泄露服务端路径）
+    --public-base) PUBLIC_BASE="$2"; shift 2 ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
 done
@@ -40,6 +44,7 @@ cat > "$PKG_DIR/web-config/runtime-config.json" <<EOF
 }
 EOF
 echo "ARANEA_SERVER_IP=${SERVER_IP}" > "$PKG_DIR/.env"
+echo "ARANEA_ARTIFACT_PUBLIC_BASE=${PUBLIC_BASE}" >> "$PKG_DIR/.env"
 ok "runtime-config → http://${SERVER_IP}:8810"
 
 step '3. compose up -d'

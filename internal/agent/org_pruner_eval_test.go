@@ -112,3 +112,34 @@ func TestOrgPruner_RealPackDepartmentKeys(t *testing.T) {
 		}
 	}
 }
+
+// 媒体/制作（2026-09-01 S06 种子修复）：词表内域必须过 Prune 前置闸门
+// （leafDepartmentAliases 有条目，否则 fail-closed roster miss），且 roster
+// 绑定命中 media_studio 部门下的媒体制作岗专家。
+func TestOrgPruner_MediaProduceHitsMediaStudio(t *testing.T) {
+	if len(DomainDepartmentAliases("媒体/制作")) == 0 {
+		t.Fatal("DomainDepartmentAliases(媒体/制作) 为空会触发 Prune fail-closed")
+	}
+	caps := []biz.AgentCapability{
+		{AgentKey: "media_video_producer", DepartmentID: "d-studio", DepartmentKey: "media_studio", DepartmentName: "媒体制作部", PositionKey: "demo_video_producer", DomainPath: "媒体/制作", DisplayName: "演示视频制作师"},
+		{AgentKey: "video_editor__general", DepartmentID: "d-studio", DepartmentKey: "media_studio", DepartmentName: "媒体制作部", PositionKey: "video_editor", DomainPath: "媒体/制作", DisplayName: "视频剪辑师"},
+		{AgentKey: "copy-1", DepartmentID: "d-media", DepartmentKey: "content_creation", DepartmentName: "内容创作部", DomainPath: "创作/文案"},
+	}
+	got := OrgPruner{}.Prune("媒体/制作", caps)
+	if got.FallbackAll || got.DepartmentName != "媒体制作部" {
+		t.Fatalf("dept=%q fallback=%v reason=%s want 媒体制作部", got.DepartmentName, got.FallbackAll, got.Reason)
+	}
+	if len(got.CandidateKeys) != 2 {
+		t.Fatalf("candidates=%v want 恰好 2 个 media_studio agent", got.CandidateKeys)
+	}
+	pick, backup, ok := bindRosterSpecialist("媒体/制作", "媒体制作 成品媒体素材", caps)
+	if !ok {
+		t.Fatal("bindRosterSpecialist(媒体/制作) 必须命中媒体制作岗")
+	}
+	if pick.AgentKey != "media_video_producer" && pick.AgentKey != "video_editor__general" {
+		t.Fatalf("pick=%s 不是媒体制作岗专家", pick.AgentKey)
+	}
+	if backup != "" && backup == pick.AgentKey {
+		t.Fatalf("backup=%s 与 pick 重复", backup)
+	}
+}

@@ -57,6 +57,10 @@ var leafDepartmentAliases = map[string][]string{
 	"运维/变更": {"变更", "执行", "runbook"},
 	"运维/巡检": {"巡检", "inspect", "网络", "数据库"},
 	"运维/复盘": {"复盘", "文档报告", "postmortem"},
+	// 媒体/制作（2026-09-01 S06 种子修复）：playbook produce 阶段专用域。
+	// 无本条目时 Prune 前置闸门 len(aliases)==0 fail-closed，media_studio
+	// 部门（媒体制作部）内 agent 即使 domain_path 精确相等也进不了候选池。
+	"媒体/制作": {"媒体制作", "media_studio"},
 }
 
 // DomainDepartmentAliases returns department name/key aliases for a

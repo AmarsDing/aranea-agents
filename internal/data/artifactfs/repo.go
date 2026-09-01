@@ -86,7 +86,7 @@ func (m artifactMeta) toBiz() biz.Artifact {
 }
 
 // FSArtifactRepo implements biz.ArtifactRepo using the local filesystem.
-// Layout: <root>/<session_id>/<artifact_id>-v<version>.bin  (binary)
+// Layout: <root>/<session_id>/<safe-name>-v<version><ext>   (binary, readable name)
 //
 //	<root>/<session_id>/<artifact_id>-v<version>.json (meta sidecar)
 type FSArtifactRepo struct {
@@ -139,7 +139,10 @@ func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType strin
 	hash := hex.EncodeToString(sum[:])
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	binName := fmt.Sprintf("%s-v%d.bin", id, version)
+	// 可读落盘命名（S06 交付物可见性，2026-09-01）：文件名携带净化后的
+	// 展示名与原始扩展名，用户打开文件夹即可辨认文档；同名不同源（净化后
+	// 撞名）时回退 id 后缀保证唯一。meta sidecar 仍按 id 命名，不受影响。
+	binName := readableBinName(dir, id, name, mimeType, version)
 	binPath := filepath.Join(dir, binName)
 	if err := os.WriteFile(binPath, data, 0o644); err != nil {
 		return biz.Artifact{}, fmt.Errorf("artifact write: %w", err)
@@ -177,6 +180,80 @@ func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType strin
 	r.idIndex[id] = append(r.idIndex[id], meta)
 
 	return meta.toBiz(), nil
+}
+
+// invalidFileNameChars 匹配 Windows/*nix 均非法的文件名字符。
+var invalidFileNameChars = regexp.MustCompile(`[<>:"/\\|?\x00-\x1f]`)
+
+// mimeExt 为无扩展名的展示名按 MIME 兜底扩展名；未识别一律 .bin。
+// 注意：application/json 刻意不映射 .json —— 数据文件若用 .json 后缀会被
+// sidecar 扫描（nextVersion/listAllMetas 读 *.json）误吞为 meta，产生幽灵记录。
+var mimeExt = map[string]string{
+	"text/markdown":   ".md",
+	"text/html":       ".html",
+	"text/plain":      ".txt",
+	"text/csv":        ".csv",
+	"image/png":       ".png",
+	"image/jpeg":      ".jpg",
+	"image/gif":       ".gif",
+	"image/webp":      ".webp",
+	"audio/mpeg":      ".mp3",
+	"audio/wav":       ".wav",
+	"video/mp4":       ".mp4",
+	"application/pdf": ".pdf",
+}
+
+// readableBinName 生成可读落盘文件名：<safeBase>-v<version><ext>。
+// ext 优先取展示名自带扩展名，其次按 MIME 映射，兜底 .bin。
+// 净化后撞名（不同展示名映射到同一 safeBase）且目标已存在时追加 id 前 8 位。
+func readableBinName(dir, id, name, mimeType string, version int) string {
+	base, ext := splitNameExt(name)
+	if ext == "" {
+		ext = mimeExt[strings.ToLower(strings.TrimSpace(mimeType))]
+	}
+	if ext == ".json" {
+		// 数据文件禁止 .json 后缀：会被 sidecar 扫描误吞为 meta（幽灵记录）。
+		ext = ".bin"
+	}
+	if ext == "" {
+		ext = ".bin"
+	}
+	safe := sanitizeFileBase(base)
+	binName := fmt.Sprintf("%s-v%d%s", safe, version, ext)
+	if _, err := os.Lstat(filepath.Join(dir, binName)); err == nil {
+		short := id
+		if len(short) > 8 {
+			short = short[:8]
+		}
+		binName = fmt.Sprintf("%s-%s-v%d%s", safe, short, version, ext)
+	}
+	return binName
+}
+
+// splitNameExt 拆分展示名的主体与扩展名（扩展名含点，小写归一）。
+func splitNameExt(name string) (base, ext string) {
+	name = strings.TrimSpace(name)
+	ext = strings.ToLower(filepath.Ext(name))
+	if ext != "" && len(ext) <= 6 { // 防御：超长“扩展名”视为名称一部分
+		base = strings.TrimSuffix(name, filepath.Ext(name))
+		return base, ext
+	}
+	return name, ""
+}
+
+// sanitizeFileBase 净化文件名主体：替换非法字符为 _，修剪首尾空格与点
+// （Windows 限制），按 rune 截断 60 字，全空兜底 "artifact"。
+func sanitizeFileBase(base string) string {
+	s := invalidFileNameChars.ReplaceAllString(base, "_")
+	s = strings.Trim(s, " .")
+	r := []rune(s)
+	if len(r) > 60 {
+		s = strings.TrimRight(string(r[:60]), " .")
+	}
+	if s == "" {
+		return "artifact"
+	}
+	return s
 }
 
 // Load returns artifact data.  version <= 0 means latest.
@@ -632,7 +709,8 @@ func (r *FSArtifactRepo) nextVersion(dir, name string) int {
 	return max + 1
 }
 
-// StorageBytes returns total bytes stored in .bin files under the artifact root.
+// StorageBytes returns total bytes stored in data files under the artifact
+// root (everything except .json meta sidecars; historically only .bin).
 func (r *FSArtifactRepo) StorageBytes(_ context.Context) (int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -658,7 +736,8 @@ func (r *FSArtifactRepo) storageBytesLocked() (int64, error) {
 			continue
 		}
 		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".bin") {
+			// 数据文件计数：排除 .json meta sidecar；.bin/.md/.html 等均算。
+			if f.IsDir() || strings.HasSuffix(f.Name(), ".json") {
 				continue
 			}
 			info, err := f.Info()

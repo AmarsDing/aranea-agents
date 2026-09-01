@@ -389,6 +389,9 @@ type DeliverableArtifact struct {
 	ArtifactID string `json:"artifact_id,omitempty"`
 	RelPath    string `json:"rel_path,omitempty"`
 	MimeType   string `json:"mime_type,omitempty"`
+	// StorageURI 是 artifact 存储内的相对路径（<session>/<file>），部署无关；
+	// 面向用户展示时由服务层/digest 按 ARANEA_ARTIFACT_PUBLIC_BASE 映射。
+	StorageURI string `json:"storage_uri,omitempty"`
 }
 
 const (
@@ -466,11 +469,11 @@ type TeamRunRecord struct {
 	// TeamRunV2ID 桥接到 team_runs_v2.id（agent.NewTeamRunV2ID 确定性派生）。
 	// 修复取证断裂：team_run_steps.run_id → team_runs.id → 本列 → team_runs_v2.id。
 	// 空 = 无 root task 上下文无法派生（legacy/standalone 无 v2 对应行）。
-	TeamRunV2ID            string `json:"team_run_v2_id,omitempty"`
-	StartedAt              string `json:"started_at"`
-	FinishedAt             string `json:"finished_at"`
-	CreatedAt              string `json:"created_at"`
-	UpdatedAt              string `json:"updated_at"`
+	TeamRunV2ID string `json:"team_run_v2_id,omitempty"`
+	StartedAt   string `json:"started_at"`
+	FinishedAt  string `json:"finished_at"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 
 	// SpiritSessionID is the root spirit session ID for cross-session activity
 	// aggregation (chat domain). Non-persistent runtime metadata — set by the

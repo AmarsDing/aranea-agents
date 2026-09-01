@@ -812,12 +812,12 @@ func provideRunnerConfig(
 		// M80：token_budget / no_progress 系统闸决策双写（设计 §3.2 row 3）。
 		DecisionCollector: decisions,
 		OutboundRouter:    outboundRouter,
-		SubAgentService: subAgentSvc,
-		KanbanBridge:    kanbanBridge,
-		ComputerUseUC:   computerUseUC,
-		SandboxFSStore:  sandboxLeases,
-		SandboxManager:  sandboxMgr,
-		A2AEnabled:      a2aUC != nil,
+		SubAgentService:   subAgentSvc,
+		KanbanBridge:      kanbanBridge,
+		ComputerUseUC:     computerUseUC,
+		SandboxFSStore:    sandboxLeases,
+		SandboxManager:    sandboxMgr,
+		A2AEnabled:        a2aUC != nil,
 		// SessionChildLookup resolves member agent session IDs for child_session_id
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up
 		// child sessions by parent (team) session ID and match by MemberAgentKey.
@@ -1011,10 +1011,10 @@ func provideChatServiceDeps(
 			TurnTimeout:  0,
 			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
 			StepReader:   stepReader,
-		StepWriter:   stepWriter,
-		TurnReader:   turnReader,
-		TaskV2:       taskV2Repo,
-	},
+			StepWriter:   stepWriter,
+			TurnReader:   turnReader,
+			TaskV2:       taskV2Repo,
+		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,
 			Monitor:      mon,
@@ -3049,7 +3049,7 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 		biz.WithDeptMailbox(deptMailbox))
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, deptMailbox *biz.DeptMailboxUsecase, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, deptMailbox *biz.DeptMailboxUsecase, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, artifactRepo biz.ArtifactRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
@@ -3061,6 +3061,8 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithSpiritTeamRunStatsReader(runStatsReader),
 		biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)),
 		biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)),
+		// S06 产物可见性：交付物文档桥接为会话 artifact，路径按公开根映射。
+		biz.WithDeliverableArtifactSaver(artifactRepo, conf.ArtifactPublicBase()),
 	)
 }
 

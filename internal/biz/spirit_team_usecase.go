@@ -276,6 +276,20 @@ func WithSpiritTeamRunStatsReader(r SpiritTeamRunStatsReader) SpiritTeamUsecaseO
 	return func(u *SpiritTeamUsecase) { u.delivery.runStatsReader = r }
 }
 
+// WithDeliverableArtifactSaver 注入交付物文档桥接（S06 产物可见性）：
+// 团队完成的文档型交付物同时落盘为 spirit 会话 artifact，digest/综合报告
+// 按 publicBase 渲染用户可定位路径。saver=nil 时桥接关闭（向后兼容）。
+func WithDeliverableArtifactSaver(saver interface {
+	Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
+}, publicBase string) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) {
+		if u != nil && u.delivery != nil {
+			u.delivery.artifactSaver = saver
+			u.delivery.artifactPublicBase = publicBase
+		}
+	}
+}
+
 // SpiritTeamUsecase is the public facade for Spirit team lifecycle (DEV-09).
 // Implementation is split across SpiritAssembly / SpiritOrchestration /
 // SpiritDelivery; service and Wire keep constructing this type.

@@ -492,18 +492,11 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}
 
-	// R1-a（2026-09-01）：graph 模式下根 agent 的 stream 累计量往往为 0
-	//（轻量 coordinator），但成员实际消耗了大量 token。若 promptTok /
-	// completionTok 全为 0，recordTeamRunUsage 的零值守卫会跳过 team_turn
-	// 行写入，导致会话级统计无法反映团队真实消耗。此处从 MemberUsage
-	// 聚合补齐，使 team_turn 行总量 = root + 成员之和。
-	if graphExecID != "" && len(result.MemberUsage) > 0 {
-		for _, u := range result.MemberUsage {
-			promptTok += u.PromptTokens
-			completionTok += u.CompletionTokens
-			result.CachedTok += u.CachedTokens
-		}
-	}
+	// （2026-09-01 删除 R1-a MemberUsage 补加块：accumulateStreamUsage 的
+	// billing 口径 result.PromptTok = ΣMemberUsage + ΣrootUsage 已含成员
+	// 用量，再补加导致 team_turn/run.token_in/spirit 镜像全链精确 2x——
+	// eval0831-s06-fix3 实证。R1-a 假设的「root=0 且成员有耗」场景在该口径
+	// 下不可能发生，块属多余。）
 
 	finishIn := TeamRunFinishInput{
 		Run:            run,

@@ -403,6 +403,44 @@ describe('useChatActivityStore', () => {
     expect(orphans.map((m) => m.ID)).toEqual(['ms-modeb']);
   });
 
+  it('upsertMemberSession keeps profile fields when outcome event carries empty strings', () => {
+    const s = useChatActivityStore();
+    const base = {
+      ID: 'ms-1',
+      TeamRunID: 'tr1',
+      TeamStageID: 'ts1',
+      TaskID: 't1',
+      SessionID: 'sess-1',
+      SpiritSessionID: 'spirit-1',
+      AgentKey: 'content_creator__general',
+      AvatarURL: 'a.png',
+      Seq: 1,
+      StartedAt: '2026-09-01T10:10:00Z',
+      FinishedAt: null,
+      Error: '',
+    };
+    s.upsertMemberSession({
+      ...base,
+      AgentName: '内容创作者',
+      Status: 'running',
+      Version: 1,
+    });
+    // 终态事件（V=1<<40 哨兵）不带 AgentName/AvatarURL/SessionID，不得抹掉 created 事件已写入的资料。
+    s.upsertMemberSession({
+      ...base,
+      SessionID: '',
+      AvatarURL: '',
+      AgentName: '',
+      Status: 'completed',
+      Version: 1 << 40,
+    });
+    const ms = s.memberSessions.get('ms-1');
+    expect(ms?.Status).toBe('completed');
+    expect(ms?.AgentName).toBe('内容创作者');
+    expect(ms?.AvatarURL).toBe('a.png');
+    expect(ms?.SessionID).toBe('sess-1');
+  });
+
   it('getTaskOrphanMemberSessions excludes members already under a TeamRun', () => {
     const s = useChatActivityStore();
     s.upsertTask(makeTask({ ID: 't1', SessionID: 'spirit-1', Status: 'running' }));
