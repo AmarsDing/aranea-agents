@@ -63,6 +63,7 @@ func (s stubTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.Ta
 	return biz.TaskDeadLetter{}, nil
 }
 func (s stubTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
+func (s stubTeamRepo) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (s stubTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }

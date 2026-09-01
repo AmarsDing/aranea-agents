@@ -109810,6 +109810,7 @@ type TeamRunMutation struct {
 	graph_execution_id       *string
 	definition_snapshot_json *string
 	trace_id                 *string
+	team_run_v2_id           *string
 	clearedFields            map[string]struct{}
 	done                     bool
 	oldValue                 func(context.Context) (*TeamRun, error)
@@ -110720,6 +110721,42 @@ func (m *TeamRunMutation) ResetTraceID() {
 	m.trace_id = nil
 }
 
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (m *TeamRunMutation) SetTeamRunV2ID(s string) {
+	m.team_run_v2_id = &s
+}
+
+// TeamRunV2ID returns the value of the "team_run_v2_id" field in the mutation.
+func (m *TeamRunMutation) TeamRunV2ID() (r string, exists bool) {
+	v := m.team_run_v2_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamRunV2ID returns the old "team_run_v2_id" field's value of the TeamRun entity.
+// If the TeamRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamRunMutation) OldTeamRunV2ID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamRunV2ID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamRunV2ID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamRunV2ID: %w", err)
+	}
+	return oldValue.TeamRunV2ID, nil
+}
+
+// ResetTeamRunV2ID resets all changes to the "team_run_v2_id" field.
+func (m *TeamRunMutation) ResetTeamRunV2ID() {
+	m.team_run_v2_id = nil
+}
+
 // Where appends a list predicates to the TeamRunMutation builder.
 func (m *TeamRunMutation) Where(ps ...predicate.TeamRun) {
 	m.predicates = append(m.predicates, ps...)
@@ -110754,7 +110791,7 @@ func (m *TeamRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamRunMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.team_id != nil {
 		fields = append(fields, teamrun.FieldTeamID)
 	}
@@ -110815,6 +110852,9 @@ func (m *TeamRunMutation) Fields() []string {
 	if m.trace_id != nil {
 		fields = append(fields, teamrun.FieldTraceID)
 	}
+	if m.team_run_v2_id != nil {
+		fields = append(fields, teamrun.FieldTeamRunV2ID)
+	}
 	return fields
 }
 
@@ -110863,6 +110903,8 @@ func (m *TeamRunMutation) Field(name string) (ent.Value, bool) {
 		return m.DefinitionSnapshotJSON()
 	case teamrun.FieldTraceID:
 		return m.TraceID()
+	case teamrun.FieldTeamRunV2ID:
+		return m.TeamRunV2ID()
 	}
 	return nil, false
 }
@@ -110912,6 +110954,8 @@ func (m *TeamRunMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldDefinitionSnapshotJSON(ctx)
 	case teamrun.FieldTraceID:
 		return m.OldTraceID(ctx)
+	case teamrun.FieldTeamRunV2ID:
+		return m.OldTeamRunV2ID(ctx)
 	}
 	return nil, fmt.Errorf("unknown TeamRun field %s", name)
 }
@@ -111060,6 +111104,13 @@ func (m *TeamRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTraceID(v)
+		return nil
+	case teamrun.FieldTeamRunV2ID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamRunV2ID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown TeamRun field %s", name)
@@ -111220,6 +111271,9 @@ func (m *TeamRunMutation) ResetField(name string) error {
 		return nil
 	case teamrun.FieldTraceID:
 		m.ResetTraceID()
+		return nil
+	case teamrun.FieldTeamRunV2ID:
+		m.ResetTeamRunV2ID()
 		return nil
 	}
 	return fmt.Errorf("unknown TeamRun field %s", name)

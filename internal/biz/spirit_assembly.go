@@ -22,6 +22,7 @@ type SpiritAssembly struct {
 	deptLeadMgr *DeptLeadManager
 	orch        *SpiritOrchestration
 	lg          loggateway.Logger
+	deptMailbox *DeptMailboxUsecase // P2: borrow 前置协商通知
 }
 
 // Domain: Assembly — team creation and composition.
@@ -390,6 +391,40 @@ func (a *SpiritAssembly) submitBorrowRequests(ctx context.Context, teamID, homeD
 			loggateway.Str("team_id", teamID),
 			loggateway.Err(err),
 		)
+		return
+	}
+	// P2: 借调请求提交后，向出借方部门主管发送 deptmail 协商通知。
+	a.notifyBorrowLeads(ctx, teamID, homeDeptID, rs)
+}
+
+// notifyBorrowLeads sends deptmail notifications to lending department leads
+// after borrow requests are submitted. Best-effort: failures are logged only.
+func (a *SpiritAssembly) notifyBorrowLeads(ctx context.Context, teamID, homeDeptID string, requests []BorrowRequest) {
+	if a.deptMailbox == nil || a.deptLeadMgr == nil {
+		return
+	}
+	homeLead, err := a.deptLeadMgr.GetDeptLeadForTeam(ctx, homeDeptID)
+	if err != nil || homeLead == nil {
+		a.lg.Warn("借调协商通知: 借用方部门无主管，跳过",
+			loggateway.StepID("spirit.borrow.notify"),
+			loggateway.Str("dept_id", homeDeptID),
+		)
+		return
+	}
+	for _, r := range requests {
+		subject := fmt.Sprintf("借调协商: %s 请求借调 %s", homeDeptID, r.AgentID)
+		body := fmt.Sprintf(
+			"团队 %s 需要借调贵部门成员 %s。\n\n借用方部门：%s\n出借方部门：%s\n借调原因：%s\n\n请审批借调请求，或回复本消息协商借调条件。",
+			teamID, r.AgentID, r.ToDeptID, r.FromDeptID, r.Reason,
+		)
+		if _, sendErr := a.deptMailbox.SendMessage(ctx, homeLead.ID, r.FromDeptID, subject, body, "[]"); sendErr != nil {
+			a.lg.Warn("借调协商通知发送失败",
+				loggateway.StepID("spirit.borrow.notify"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Str("from_dept", r.FromDeptID),
+				loggateway.Err(sendErr),
+			)
+		}
 	}
 }
 
@@ -563,11 +598,15 @@ func (a *SpiritAssembly) InjectDeptLeadIntoTeam(ctx context.Context, teamID stri
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, requireDeliverable bool, deliverables []DeliverableContract, gates []VerificationGate, parallelCfgJSON ...string) string {
 	type member struct {
-		AgentKey string `json:"agent_id"`
-		Role     string `json:"role"`
-		Enabled  *bool  `json:"enabled"`
+		AgentKey   string `json:"agent_id"`
+		Role       string `json:"role"`
+		Enabled    *bool  `json:"enabled"`
+		TaskPrompt string `json:"task_prompt,omitempty"`
 	}
 	members := make([]member, 0, len(agentKeys))
+	// deliverableChannel 与下方 enable_state_deliverable 同规则：无交付通道的
+	// 团队（单成员非 DAG）不得让任务书提及 set_deliverable（工具不存在会误导）。
+	deliverableChannel := len(agentKeys) > 1 || requireDeliverable
 	for i, key := range agentKeys {
 		role := RoleWorker
 		enabled := true
@@ -578,9 +617,10 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 			role = RoleSynthesizer
 		}
 		members = append(members, member{
-			AgentKey: strings.TrimSpace(key),
-			Role:     role,
-			Enabled:  &enabled,
+			AgentKey:   strings.TrimSpace(key),
+			Role:       role,
+			Enabled:    &enabled,
+			TaskPrompt: memberRoleTaskPrompt(role, deliverableChannel),
 		})
 	}
 	maxConcurrency := SpiritTeamDefaultMaxConc
@@ -630,4 +670,27 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 		return "{}"
 	}
 	return string(out)
+}
+
+// memberRoleTaskPrompt 按团队角色生成差异化任务书（2026-09-01 修复：此前
+// 成员定义不写 task_prompt，图编译节点 instruction 为空，synthesizer 与
+// worker 收到完全相同的输入，分工仅靠各自 system prompt，存在产出重叠与
+// 越界风险——如调研角色产出远超设计角色）。任务书经 definition JSON →
+// 图编译节点 instruction（embedded_graph.go）→ 注入成员用户消息头部
+// （graph/trpc/agent_instruction.go），不触碰 system prompt（保前缀缓存）。
+func memberRoleTaskPrompt(role string, deliverableChannel bool) string {
+	deliver := "产出通过 set_deliverable 提交。"
+	if !deliverableChannel {
+		deliver = "产出直接作为你的最终回复。"
+	}
+	switch role {
+	case RoleSynthesizer:
+		return "你是本团队的合成者：基于其他成员的产出做整合、去重与冲突裁决，形成团队最终交付物；" + deliver +
+			"不要重复执行成员已完成的调研/执行工作，输入中已有成员产出时在其基础上综合而非重做。"
+	case RoleWorker:
+		return "你是本团队的执行者：只完成与你专业职责直接相关的子任务，聚焦你的专业领域产出具体成果；" + deliver +
+			"团队最终汇总由合成者负责，不要代劳；不要越界承担其他成员的职责。"
+	default:
+		return ""
+	}
 }

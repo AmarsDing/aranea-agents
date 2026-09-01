@@ -335,6 +335,20 @@ func (_u *TeamRunUpdate) SetNillableTraceID(v *string) *TeamRunUpdate {
 	return _u
 }
 
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (_u *TeamRunUpdate) SetTeamRunV2ID(v string) *TeamRunUpdate {
+	_u.mutation.SetTeamRunV2ID(v)
+	return _u
+}
+
+// SetNillableTeamRunV2ID sets the "team_run_v2_id" field if the given value is not nil.
+func (_u *TeamRunUpdate) SetNillableTeamRunV2ID(v *string) *TeamRunUpdate {
+	if v != nil {
+		_u.SetTeamRunV2ID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TeamRunMutation object of the builder.
 func (_u *TeamRunUpdate) Mutation() *TeamRunMutation {
 	return _u.mutation
@@ -377,6 +391,11 @@ func (_u *TeamRunUpdate) check() error {
 	if v, ok := _u.mutation.TraceID(); ok {
 		if err := teamrun.TraceIDValidator(v); err != nil {
 			return &ValidationError{Name: "trace_id", err: fmt.Errorf(`ent: validator failed for field "TeamRun.trace_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TeamRunV2ID(); ok {
+		if err := teamrun.TeamRunV2IDValidator(v); err != nil {
+			return &ValidationError{Name: "team_run_v2_id", err: fmt.Errorf(`ent: validator failed for field "TeamRun.team_run_v2_id": %w`, err)}
 		}
 	}
 	return nil
@@ -465,6 +484,9 @@ func (_u *TeamRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.TraceID(); ok {
 		_spec.SetField(teamrun.FieldTraceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TeamRunV2ID(); ok {
+		_spec.SetField(teamrun.FieldTeamRunV2ID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -794,6 +816,20 @@ func (_u *TeamRunUpdateOne) SetNillableTraceID(v *string) *TeamRunUpdateOne {
 	return _u
 }
 
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (_u *TeamRunUpdateOne) SetTeamRunV2ID(v string) *TeamRunUpdateOne {
+	_u.mutation.SetTeamRunV2ID(v)
+	return _u
+}
+
+// SetNillableTeamRunV2ID sets the "team_run_v2_id" field if the given value is not nil.
+func (_u *TeamRunUpdateOne) SetNillableTeamRunV2ID(v *string) *TeamRunUpdateOne {
+	if v != nil {
+		_u.SetTeamRunV2ID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TeamRunMutation object of the builder.
 func (_u *TeamRunUpdateOne) Mutation() *TeamRunMutation {
 	return _u.mutation
@@ -849,6 +885,11 @@ func (_u *TeamRunUpdateOne) check() error {
 	if v, ok := _u.mutation.TraceID(); ok {
 		if err := teamrun.TraceIDValidator(v); err != nil {
 			return &ValidationError{Name: "trace_id", err: fmt.Errorf(`ent: validator failed for field "TeamRun.trace_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TeamRunV2ID(); ok {
+		if err := teamrun.TeamRunV2IDValidator(v); err != nil {
+			return &ValidationError{Name: "team_run_v2_id", err: fmt.Errorf(`ent: validator failed for field "TeamRun.team_run_v2_id": %w`, err)}
 		}
 	}
 	return nil
@@ -954,6 +995,9 @@ func (_u *TeamRunUpdateOne) sqlSave(ctx context.Context) (_node *TeamRun, err er
 	}
 	if value, ok := _u.mutation.TraceID(); ok {
 		_spec.SetField(teamrun.FieldTraceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TeamRunV2ID(); ok {
+		_spec.SetField(teamrun.FieldTeamRunV2ID, field.TypeString, value)
 	}
 	_node = &TeamRun{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -37,6 +37,88 @@ func (r *stepBusRunWriter) UpdateTeamRunTraceID(_ context.Context, _, _ string) 
 func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *stepBusRunWriter) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error {
+	return nil
+}
+
+// R2（2026-09-01 eval0831-s06 实证）：DAG 团队超时终态下，finishRunErr 收到的
+// ctx 已随 runCtx 一并取消（turnCtx deadline 级联）。真实 DB 驱动遇取消 ctx 立即
+// 拒绝写入，导致 team_runs_v2.error 永远为空——排查拿不到失败原因。finishRunErr
+// 必须改用 WithoutCancel 独立上下文完成状态转换 + error 落库。
+type ctxAwareRunRepo struct {
+	biz.TeamRunReader
+	biz.TeamRunWriter
+	runs map[string]biz.TeamRunRecord
+}
+
+func (r *ctxAwareRunRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRunRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return biz.TeamRunRecord{}, err
+	}
+	run, ok := r.runs[id]
+	if !ok {
+		return biz.TeamRunRecord{}, context.Canceled
+	}
+	return run, nil
+}
+
+func (r *ctxAwareRunRepo) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamRunStep, error) {
+	return nil, nil
+}
+
+func (r *ctxAwareRunRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRunRecord) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.runs[run.ID] = run
+	return nil
+}
+
+func (r *ctxAwareRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+
+type ctxAwareRunTransitioner struct{ repo *ctxAwareRunRepo }
+
+func (t *ctxAwareRunTransitioner) TransitionRunStatus(ctx context.Context, runID, newStatus string) (biz.TeamRunRecord, error) {
+	run, err := t.repo.GetTeamRunByID(ctx, runID)
+	if err != nil {
+		return biz.TeamRunRecord{}, err
+	}
+	run.Status = newStatus
+	t.repo.runs[runID] = run
+	return run, nil
+}
+
+func TestFinishRunErr_CancelledCtx_StillPersistsError(t *testing.T) {
+	repo := &ctxAwareRunRepo{runs: map[string]biz.TeamRunRecord{}}
+	runner := &Runner{
+		runReader:       repo,
+		runWriter:       repo,
+		runTransitioner: &ctxAwareRunTransitioner{repo: repo},
+		lg:              loggateway.NewNoop(),
+	}
+	run := biz.TeamRunRecord{
+		ID:        "run-timeout",
+		TeamID:    "team-1",
+		SessionID: "sess-1",
+		Status:    biz.TeamRunStatusRunning,
+		StartedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	repo.runs[run.ID] = run
+
+	// 模拟超时：传入已取消的 ctx（runCtx deadline exceeded 级联）。
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runner.finishRunErr(cancelledCtx, &run, time.Now(), "context deadline exceeded")
+
+	persisted := repo.runs[run.ID]
+	if persisted.Status != biz.TeamRunStatusFailed {
+		t.Fatalf("persisted status=%q want %q（取消 ctx 下状态转换仍须落库）", persisted.Status, biz.TeamRunStatusFailed)
+	}
+	if persisted.ErrorMessage != "context deadline exceeded" {
+		t.Fatalf("persisted ErrorMessage=%q want %q（超时原因必须可见）", persisted.ErrorMessage, "context deadline exceeded")
+	}
+}
 
 // TestTeamTurnBaseRunOptions_InjectsTeamIDRuntimeState verifies the C5 root
 // injection: the base run options of a team turn carry team_id in RuntimeState

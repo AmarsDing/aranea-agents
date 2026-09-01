@@ -71,6 +71,15 @@ func (r *Runner) createInitialTeamRun(ctx context.Context, sess biz.Session, tea
 		UpdatedAt:              agent.RFC3339Now(),
 		SpiritSessionID:        deriveSpiritSessionID(sess),
 	}
+	// 2026-09-01 取证断裂修复：桥接 v1 run → v2 run。team_run_steps.run_id
+	// 指向本行（v1 随机 UUID），而编排/UI 取证查 team_runs_v2（确定性 SHA1 ID），
+	// 两族 ID 独立生成导致 join 为 0。此处用与 service 侧（team_orchestrator_real.go）
+	// 同一公式派生 v2 run ID 落列，取证经 team_run_v2_id 直连接两表。
+	// ctx 无 root task（legacy 路径）时留空——v2 侧本就不会产生对应行。
+	if rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx)); rootTaskID != "" {
+		teamStageID := string(agent.NewTeamStageActivityID(teamRow.ID, rootTaskID))
+		run.TeamRunV2ID = agent.NewTeamRunV2ID(teamStageID)
+	}
 	saved, err := r.runWriter.CreateTeamRun(ctx, run)
 	if err != nil {
 		return biz.TeamRunRecord{}, err

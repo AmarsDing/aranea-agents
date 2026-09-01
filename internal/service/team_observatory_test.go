@@ -74,6 +74,7 @@ func (r *observatoryTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, 
 func (r *observatoryTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
+func (r *observatoryTeamRepo) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (r *observatoryTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }

@@ -463,6 +463,10 @@ type TeamRunRecord struct {
 	GraphExecutionID       string `json:"graph_execution_id,omitempty"`
 	DefinitionSnapshotJSON string `json:"definition_snapshot_json,omitempty"`
 	TraceID                string `json:"trace_id,omitempty"`
+	// TeamRunV2ID 桥接到 team_runs_v2.id（agent.NewTeamRunV2ID 确定性派生）。
+	// 修复取证断裂：team_run_steps.run_id → team_runs.id → 本列 → team_runs_v2.id。
+	// 空 = 无 root task 上下文无法派生（legacy/standalone 无 v2 对应行）。
+	TeamRunV2ID            string `json:"team_run_v2_id,omitempty"`
 	StartedAt              string `json:"started_at"`
 	FinishedAt             string `json:"finished_at"`
 	CreatedAt              string `json:"created_at"`

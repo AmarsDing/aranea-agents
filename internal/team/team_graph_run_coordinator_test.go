@@ -65,6 +65,7 @@ func (m *memTeamRunRepoCoord) UpdateTeamRunTraceID(context.Context, string, stri
 func (m *memTeamRunRepoCoord) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
+func (m *memTeamRunRepoCoord) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (m *memTeamRunRepoCoord) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }

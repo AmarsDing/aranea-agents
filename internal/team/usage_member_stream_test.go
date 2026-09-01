@@ -60,6 +60,7 @@ func (s *memberStreamRepoStub) UpdateTeamRunTraceID(context.Context, string, str
 func (s *memberStreamRepoStub) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
+func (s *memberStreamRepoStub) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (s *memberStreamRepoStub) CreateTeamRunStep(_ context.Context, st biz.TeamRunStep) (biz.TeamRunStep, error) {
 	s.steps = append(s.steps, st)
 	return st, nil

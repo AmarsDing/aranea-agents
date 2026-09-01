@@ -172,6 +172,7 @@ func ExpandPlaybook(pb Playbook) []SubTask {
 			GraphTemplateID: strings.TrimSpace(st.GraphTemplateID),
 			ConfirmBefore:   st.ConfirmBefore,
 			CollectionIDs:   append([]string(nil), st.CollectionIDs...),
+			DepartmentKey:   strings.TrimSpace(st.DepartmentKey),
 		})
 	}
 	return out

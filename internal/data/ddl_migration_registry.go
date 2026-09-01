@@ -562,6 +562,10 @@ var ddlMigrations = []ddlMigration{
 	// per-session 单调计数（此前与 step 共享全局计数器，同会话 seq 呈
 	// 1→23→428）。按 (session_id, started_at, id) ROW_NUMBER 重排，幂等。
 	{Version: 20261273, Name: "turns_v2_seq_per_session", SQL: "sql/migrations/20261273_turns_v2_seq_per_session.sql"},
+	// 20261274 team_runs_v2_bridge（2026-09-01 取证断裂修复）：team_runs 添加
+	// team_run_v2_id 桥接列，使 v1 team_run_steps.run_id 可与 v2 team_runs_v2.id
+	// 按 team_run_v2_id 精确 join，取代时间窗对齐。
+	{Version: 20261274, Name: "team_runs_v2_bridge", SQL: "sql/migrations/20261274_team_runs_v2_bridge.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

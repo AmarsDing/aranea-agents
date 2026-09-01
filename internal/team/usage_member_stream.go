@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -80,6 +81,21 @@ func (r *Runner) recordGraphMemberUsageFromResult(ctx context.Context, in TeamRu
 			stepID = in.Run.ID
 		}
 		r.recordMemberUsage(ctx, in.Run, in.TeamID, ag, asst, prov, mod, in.DialogMode, stepID, u.CachedTokens, agent.UsageSourceStreaming, biz.UsageAttributionMemberLevelStream)
+		// Backfill the graph-watch step row with real tokens (T3 fix).
+		if r.runWriter != nil && stepID != in.Run.ID {
+			cost := int64(0)
+			if r.usage != nil {
+				cost = r.usage.QuoteTokenUsageCostMicroUSD(ctx, prov, mod, u.PromptTokens, u.CompletionTokens, u.CachedTokens)
+			}
+			if uerr := r.runWriter.UpdateTeamRunStepTokens(ctx, stepID, u.PromptTokens, u.CompletionTokens, cost); uerr != nil {
+				r.lg.Warn("回填 team_run_steps token 失败",
+					loggateway.StepID("team.step_token_backfill_fail"),
+					loggateway.Err(uerr),
+					loggateway.Str("step_id", stepID),
+					loggateway.Str("agent_key", key),
+				)
+			}
+		}
 		sumIn += u.PromptTokens
 		sumOut += u.CompletionTokens
 		sumCached += u.CachedTokens

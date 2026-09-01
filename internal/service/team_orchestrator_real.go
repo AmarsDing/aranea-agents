@@ -227,6 +227,13 @@ func (o *RealTeamOrchestrator) NotifyTeamCompletion(teamID, teamRunID string, su
 // Preference: PlanStep.DepartmentID; else majority vote of member positions.
 func (o *RealTeamOrchestrator) resolveTeamOrg(ctx context.Context, step biz.PlanStep, agentKeys []string) (departmentID string, crossDeptAgentIDs []string) {
 	departmentID = strings.TrimSpace(step.DepartmentID)
+	// Playbook-declared department key takes priority over majority vote:
+	// when DepartmentID is empty, resolve DepartmentKey → DepartmentID via org tree.
+	if departmentID == "" && strings.TrimSpace(step.DepartmentKey) != "" && o.org != nil {
+		if node, err := o.org.GetOrgNodeByKey(ctx, strings.TrimSpace(step.DepartmentKey)); err == nil && node.ID != "" {
+			departmentID = node.ID
+		}
+	}
 	type member struct {
 		id   string
 		key  string

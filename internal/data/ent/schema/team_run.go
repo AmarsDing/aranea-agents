@@ -44,6 +44,11 @@ func (TeamRun) Fields() []ent.Field {
 		field.String("graph_execution_id").Default(""),
 		field.Text("definition_snapshot_json").Default(""),
 		field.String("trace_id").Default("").MaxLen(128),
+		// team_run_v2_id: 桥接到 team_runs_v2.id（确定性 SHA1 派生，
+		// agent.NewTeamRunV2ID）。v1 run.ID 是随机 UUID，与 v2 id 独立生成，
+		// 导致 team_run_steps.run_id 无法 join team_runs_v2（取证断裂）。
+		// 空 = 无 root task 上下文无法派生（legacy/测试路径）。
+		field.String("team_run_v2_id").Default("").MaxLen(64),
 	}
 }
 

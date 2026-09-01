@@ -193,3 +193,46 @@ func TestFinalizeTeamRun_QualityGateSkippedWhenBinaryVetoes(t *testing.T) {
 		t.Fatal("quality gate must not run after the binary gate vetoes (no deliverable)")
 	}
 }
+
+// R1-a（2026-09-01 eval0831-s06-fix1 实证）：质量门 revise 拦截的 run 仍消耗了
+// 真实 token——team_turn usage 行必须在质量门之前落库。finish-path 成员行带
+// attribution 标记（跳过 session 累计），team_turn 行是 run 消耗的唯一 session
+// 累计源；此前拦截路径直接 return，该 run 消耗从所有会话级统计中消失。
+func TestFinalizeTeamRun_QualityRevise_StillRecordsTeamTurnUsage(t *testing.T) {
+	repo := &gateRunRepo{runs: map[string]biz.TeamRunRecord{}}
+	bus := event.NewV2Bus()
+	_, unsub := bus.Subscribe(biz.EventSubscribeOptions{})
+	defer unsub()
+
+	runner := newGateTestRunner(repo, bus)
+	usage := &fakeTeamUsage{}
+	runner.usage = usage
+	runner.SetDeliverableGate(func(_ context.Context, _ biz.Team) (bool, error) { return true, nil })
+	runner.SetQualityGate(func(_ context.Context, _ biz.Team) (biz.QualityGateResult, error) {
+		return biz.QualityGateResult{Verdict: biz.TeamQualityRevise, Feedback: "不达标", RuleHits: []string{"J3"}}, nil
+	})
+	runner.SetRevisionEnqueuer(func(_ context.Context, _, _ string) error { return nil })
+
+	sess, run, ar, asst := gateTestFixture()
+	repo.runs[run.ID] = run
+	teamRow := biz.Team{ID: "team-1", DagNodeID: "st_1"}
+
+	got := runner.finalizeTeamRun(context.Background(), sess, run, teamRow, ar, asst, 300, 80, 0, "default", "", "", time.Now(), nil)
+
+	if got.Status != biz.TeamRunStatusFailed {
+		t.Fatalf("revision round must fail the run, status=%q", got.Status)
+	}
+	teamTurns := 0
+	for _, e := range usage.events {
+		if e.UsageKind != biz.UsageKindTeamTurn {
+			continue
+		}
+		teamTurns++
+		if e.InputTokens != 300 || e.OutputTokens != 80 {
+			t.Fatalf("team_turn tokens=%d/%d want 300/80", e.InputTokens, e.OutputTokens)
+		}
+	}
+	if teamTurns != 1 {
+		t.Fatalf("team_turn usage rows=%d want 1 (quality-gate-revised runs consumed real tokens and must be accounted)", teamTurns)
+	}
+}

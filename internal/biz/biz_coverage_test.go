@@ -110,6 +110,7 @@ func (m *memTeamRepoB) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ strin
 	return true, nil
 }
 func (m *memTeamRepoB) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (m *memTeamRepoB) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error { return nil }
 func (m *memTeamRepoB) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil
 }

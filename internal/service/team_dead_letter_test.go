@@ -62,6 +62,7 @@ func (r *deadLetterTeamRepo) UpdateTeamRunTraceID(context.Context, string, strin
 func (r *deadLetterTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
+func (r *deadLetterTeamRepo) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (r *deadLetterTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }
@@ -154,5 +155,36 @@ func TestTeamService_ListAndResolveTaskDeadLetters(t *testing.T) {
 	again, err := svc.ResolveTaskDeadLetter(context.Background(), &v1.ResolveTaskDeadLetterRequest{Id: "dl-1"})
 	if err != nil || again.GetItem().GetStatus() != biz.TaskDeadLetterStatusResolved {
 		t.Fatalf("idempotent resolve: err=%v item=%+v", err, again.GetItem())
+	}
+}
+
+// R3（2026-09-01）：团队尚未运行（无 TeamStage 行）时 ListSpiritTeams 必须回退
+// 解析 definition_json.members 返回成员——创建即确认成员构成，而非等到运行时
+// 才可见。agents 未装配（nil）时按 agent_id/name 降级展示，状态一律 pending。
+func TestDefinitionMemberViews_Fallback(t *testing.T) {
+	svc := &TeamService{}
+	def := `{"version":1,"mode":"dag","members":[` +
+		`{"agent_id":"a-1","role":"leader","name":"研究员"},` +
+		`{"agent_id":"a-2","role":"worker"},` +
+		`{"agent_id":"a-3","role":"observer","enabled":false}` +
+		`]}`
+
+	views := svc.definitionMemberViews(context.Background(), def)
+	if len(views) != 2 {
+		t.Fatalf("views=%d want 2（disabled 成员须跳过）", len(views))
+	}
+	if views[0].AgentKey != "a-1" || views[0].DisplayName != "研究员" || views[0].Status != "pending" {
+		t.Fatalf("view[0]=%+v want key=a-1 name=研究员 status=pending", views[0])
+	}
+	// 无 name 且 agents 未装配 → 降级为 agent_id 占位（显示重于精确）。
+	if views[1].DisplayName != "a-2" {
+		t.Fatalf("view[1].DisplayName=%q want fallback agent_id", views[1].DisplayName)
+	}
+
+	if got := svc.definitionMemberViews(context.Background(), ""); got != nil {
+		t.Fatalf("empty definition must yield nil, got %v", got)
+	}
+	if got := svc.definitionMemberViews(context.Background(), `{"version":1}`); got != nil {
+		t.Fatalf("member-less definition must yield nil, got %v", got)
 	}
 }

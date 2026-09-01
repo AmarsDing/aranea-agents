@@ -89,6 +89,7 @@ func (s *stubTeamRunWriter) UpdateTeamRunTraceID(context.Context, string, string
 func (s *stubTeamRunWriter) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
+func (s *stubTeamRunWriter) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (s *stubTeamRunWriter) CreateTeamRunStep(context.Context, TeamRunStep) (TeamRunStep, error) {
 	return TeamRunStep{}, nil
 }

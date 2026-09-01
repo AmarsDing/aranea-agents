@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/team"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -130,6 +131,13 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 				members = memberInfosToSpiritViews(ts.Members)
 			}
 		}
+		// R3（2026-09-01）：团队尚未运行（无 TeamStage 行）时 members 为空，
+		// 前端团队列表/graph 看不到成员——用户期望「团队分配完成即确认成员」。
+		// 回退解析 definition_json.members（创建时静态定义），状态一律 pending；
+		// 运行后 TeamStage 成员（携带真实执行状态）自然覆盖本回退。
+		if len(members) == 0 {
+			members = s.definitionMemberViews(ctx, teams[i].DefinitionJSON)
+		}
 		if len(members) > 0 {
 			view.Members = members
 			view.MemberAvatars = make([]string, 0, len(members))
@@ -142,6 +150,53 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 		out = append(out, view)
 	}
 	return &v1.ListSpiritTeamsResponse{Teams: out}, nil
+}
+
+// definitionMemberViews 回退解析团队定义（DefinitionJSON）中的成员——团队尚未
+// 运行（无 TeamStage 行）时成员列表仍应可见（R3，2026-09-01）：创建即确认成员
+// 构成，而非等到运行时才出现。状态统一 pending（尚无执行事实）；AgentKey /
+// DisplayName / AvatarURL 尽量经 agents 解析对齐运行时口径，解析失败降级为
+// agent_id 占位（显示重于精确，infra 错误不得拖垮列表接口）。
+func (s *TeamService) definitionMemberViews(ctx context.Context, definitionJSON string) []*v1.SpiritMemberView {
+	raw := strings.TrimSpace(definitionJSON)
+	if raw == "" {
+		return nil
+	}
+	def, err := team.ParseDefinition(raw)
+	if err != nil || len(def.Members) == 0 {
+		return nil
+	}
+	out := make([]*v1.SpiritMemberView, 0, len(def.Members))
+	for _, m := range def.Members {
+		if m.Enabled != nil && !*m.Enabled {
+			continue
+		}
+		agentID := strings.TrimSpace(m.AgentID)
+		if agentID == "" {
+			continue
+		}
+		mv := &v1.SpiritMemberView{
+			AgentKey:    agentID,
+			DisplayName: strings.TrimSpace(m.Name),
+			Status:      "pending",
+		}
+		if s.agents != nil {
+			if ag, aerr := s.agents.Get(ctx, agentID); aerr == nil {
+				if key := strings.TrimSpace(ag.AgentKey); key != "" {
+					mv.AgentKey = key
+				}
+				if mv.DisplayName == "" {
+					mv.DisplayName = strings.TrimSpace(ag.DisplayName)
+				}
+				mv.AvatarUrl = ag.Icon
+			}
+		}
+		if mv.DisplayName == "" {
+			mv.DisplayName = agentID
+		}
+		out = append(out, mv)
+	}
+	return out
 }
 
 // memberInfosToSpiritViews converts typed v2 TeamStage.Members ([]biz.MemberInfo)

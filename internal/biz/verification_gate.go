@@ -56,6 +56,12 @@ func WithToolAssertionInvoker(inv ToolAssertionInvoker) VerificationGateExecutor
 	return func(e *VerificationGateExecutor) { e.toolInvoker = inv }
 }
 
+// WithDeptMailbox wires the dept mailbox for cross-dept delivery rejection
+// notifications. Nil = skip notification (backward compatible).
+func WithDeptMailbox(mb *DeptMailboxUsecase) VerificationGateExecutorOption {
+	return func(e *VerificationGateExecutor) { e.deptMailbox = mb }
+}
+
 // CrossDeptDeliveryGate defines a two-party approval gate for cross-department deliverables.
 type CrossDeptDeliveryGate struct {
 	GateType              VerificationGateType `json:"gate_type"`               // "cross_dept_delivery"
@@ -82,6 +88,7 @@ type VerificationGateExecutor struct {
 	lg          loggateway.Logger
 	toolInvoker ToolAssertionInvoker
 	receipts    *verificationReceiptLedger // ADR-79-V V3 证据回执台账
+	deptMailbox *DeptMailboxUsecase       // M71: 拒绝时自动通知对方主管
 }
 
 func NewVerificationGateExecutor(deptLeadMgr *DeptLeadManager, llmCaller LLMCaller, lg loggateway.Logger, opts ...VerificationGateExecutorOption) *VerificationGateExecutor {
@@ -479,6 +486,8 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 			)
 			return false, "输出方部门主管审批结果解析失败", nil
 		} else if !result.Approved {
+			e.notifyDeliveryRejected(ctx, outputLead, crossGate.OutputDepartmentID, crossGate.ReceivingDepartmentID,
+				crossGate.DeliverableName, result.Reason)
 			return false, fmt.Sprintf("输出方部门主管拒绝: %s", result.Reason), nil
 		}
 	}
@@ -528,11 +537,32 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 			)
 			return false, "接收方部门主管审批结果解析失败", nil
 		} else if !result.Approved {
+			e.notifyDeliveryRejected(ctx, receivingLead, crossGate.ReceivingDepartmentID, crossGate.OutputDepartmentID,
+				crossGate.DeliverableName, result.Reason)
 			return false, fmt.Sprintf("接收方部门主管拒绝: %s", result.Reason), nil
 		}
 	}
 
 	return true, "双方部门主管均通过审批", nil
+}
+
+// notifyDeliveryRejected sends a deptmail notification to the other
+// department's lead when a cross-dept delivery is rejected. Best-effort:
+// notification failure never affects the gate result (already returned).
+func (e *VerificationGateExecutor) notifyDeliveryRejected(ctx context.Context, rejectingLead *Agent, rejectingDeptID, otherDeptID, deliverableName, reason string) {
+	if e.deptMailbox == nil || rejectingLead == nil {
+		return
+	}
+	subject := fmt.Sprintf("交付物审批未通过: %s", deliverableName)
+	body := fmt.Sprintf("交付物「%s」未通过审批。\n\n审批方：%s\n拒绝原因：%s",
+		deliverableName, rejectingDeptID, reason)
+	if _, err := e.deptMailbox.SendMessage(ctx, rejectingLead.ID, otherDeptID, subject, body, "[]"); err != nil {
+		e.lg.Warn("跨部门交付拒绝通知发送失败",
+			loggateway.StepID("gate.cross_dept.notify"),
+			loggateway.Str("deliverable", deliverableName),
+			loggateway.Err(err),
+		)
+	}
 }
 
 // executeBorrowApproval handles borrow approval gates.

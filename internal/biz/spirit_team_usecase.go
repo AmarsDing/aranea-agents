@@ -244,6 +244,16 @@ func WithTeamInboxFS(fs TeamInboxFS) SpiritTeamUsecaseOption {
 	}
 }
 
+// WithSpiritDeptMailbox wires the dept mailbox for borrow negotiation
+// notifications (P2). Nil = skip notification (backward compatible).
+func WithSpiritDeptMailbox(mb *DeptMailboxUsecase) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) {
+		if u != nil && u.assembly != nil {
+			u.assembly.deptMailbox = mb
+		}
+	}
+}
+
 // SpiritTeamRunStats is the latest-run statistics for one team, used by the
 // execution report (B.10.17) to enrich per-unit duration and error reason.
 type SpiritTeamRunStats struct {
@@ -313,8 +323,11 @@ type TeamProgress struct {
 // Spirit team definition constants.
 // SpiritTeamDefVersion is the current version of spirit team definition JSON.
 const (
-	SpiritTeamDefVersion     = 2
-	SpiritTeamDefaultTimeout = 600
+	SpiritTeamDefVersion = 2
+	// SpiritTeamDefaultTimeout: 600s proved too short for serial coordinator
+	// teams (eval0831-s06-r3 produce team needed 626s and was killed mid-run).
+	// 1800s covers media-production DAG stages; teamTurnMaxSeconds=7200 still caps.
+	SpiritTeamDefaultTimeout = 1800
 	SpiritTeamDefaultMaxConc = 2
 
 	// Truncation limits for display strings.

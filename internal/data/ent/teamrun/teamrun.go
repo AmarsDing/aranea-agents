@@ -51,6 +51,8 @@ const (
 	FieldDefinitionSnapshotJSON = "definition_snapshot_json"
 	// FieldTraceID holds the string denoting the trace_id field in the database.
 	FieldTraceID = "trace_id"
+	// FieldTeamRunV2ID holds the string denoting the team_run_v2_id field in the database.
+	FieldTeamRunV2ID = "team_run_v2_id"
 	// Table holds the table name of the teamrun in the database.
 	Table = "team_runs"
 )
@@ -78,6 +80,7 @@ var Columns = []string{
 	FieldGraphExecutionID,
 	FieldDefinitionSnapshotJSON,
 	FieldTraceID,
+	FieldTeamRunV2ID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -133,6 +136,10 @@ var (
 	DefaultTraceID string
 	// TraceIDValidator is a validator for the "trace_id" field. It is called by the builders before save.
 	TraceIDValidator func(string) error
+	// DefaultTeamRunV2ID holds the default value on creation for the "team_run_v2_id" field.
+	DefaultTeamRunV2ID string
+	// TeamRunV2IDValidator is a validator for the "team_run_v2_id" field. It is called by the builders before save.
+	TeamRunV2IDValidator func(string) error
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -243,4 +250,9 @@ func ByDefinitionSnapshotJSON(opts ...sql.OrderTermOption) OrderOption {
 // ByTraceID orders the results by the trace_id field.
 func ByTraceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTraceID, opts...).ToFunc()
+}
+
+// ByTeamRunV2ID orders the results by the team_run_v2_id field.
+func ByTeamRunV2ID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTeamRunV2ID, opts...).ToFunc()
 }

@@ -94,6 +94,7 @@ func (m *memTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string
 	return true, nil
 }
 func (m *memTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error      { return nil }
+func (m *memTeamRepo) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error { return nil }
 func (m *memTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error          { return nil }
 func (m *memTeamRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {

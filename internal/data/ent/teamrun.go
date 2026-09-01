@@ -55,7 +55,9 @@ type TeamRun struct {
 	// DefinitionSnapshotJSON holds the value of the "definition_snapshot_json" field.
 	DefinitionSnapshotJSON string `json:"definition_snapshot_json,omitempty"`
 	// TraceID holds the value of the "trace_id" field.
-	TraceID      string `json:"trace_id,omitempty"`
+	TraceID string `json:"trace_id,omitempty"`
+	// TeamRunV2ID holds the value of the "team_run_v2_id" field.
+	TeamRunV2ID  string `json:"team_run_v2_id,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -66,7 +68,7 @@ func (*TeamRun) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case teamrun.FieldTokenIn, teamrun.FieldTokenOut, teamrun.FieldCostMicroUsd, teamrun.FieldDurationMs:
 			values[i] = new(sql.NullInt64)
-		case teamrun.FieldID, teamrun.FieldTeamID, teamrun.FieldSessionID, teamrun.FieldMessageID, teamrun.FieldMode, teamrun.FieldStatus, teamrun.FieldInputPreview, teamrun.FieldOutputPreview, teamrun.FieldErrorMessage, teamrun.FieldTopologyJSON, teamrun.FieldStartedAt, teamrun.FieldFinishedAt, teamrun.FieldCreatedAt, teamrun.FieldUpdatedAt, teamrun.FieldGraphExecutionID, teamrun.FieldDefinitionSnapshotJSON, teamrun.FieldTraceID:
+		case teamrun.FieldID, teamrun.FieldTeamID, teamrun.FieldSessionID, teamrun.FieldMessageID, teamrun.FieldMode, teamrun.FieldStatus, teamrun.FieldInputPreview, teamrun.FieldOutputPreview, teamrun.FieldErrorMessage, teamrun.FieldTopologyJSON, teamrun.FieldStartedAt, teamrun.FieldFinishedAt, teamrun.FieldCreatedAt, teamrun.FieldUpdatedAt, teamrun.FieldGraphExecutionID, teamrun.FieldDefinitionSnapshotJSON, teamrun.FieldTraceID, teamrun.FieldTeamRunV2ID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -209,6 +211,12 @@ func (_m *TeamRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TraceID = value.String
 			}
+		case teamrun.FieldTeamRunV2ID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field team_run_v2_id", values[i])
+			} else if value.Valid {
+				_m.TeamRunV2ID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -304,6 +312,9 @@ func (_m *TeamRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("trace_id=")
 	builder.WriteString(_m.TraceID)
+	builder.WriteString(", ")
+	builder.WriteString("team_run_v2_id=")
+	builder.WriteString(_m.TeamRunV2ID)
 	builder.WriteByte(')')
 	return builder.String()
 }

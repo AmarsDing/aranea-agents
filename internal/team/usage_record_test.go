@@ -104,6 +104,69 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		}
 	})
 
+	t.Run("genuine row mirrors to spirit session (T3 fix)", func(t *testing.T) {
+		usage := &fakeTeamUsage{}
+		sessions := &fakeMetricSessions{}
+		r := newUsageTestRunner(usage, sessions)
+		spiritRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-team-1", SpiritSessionID: "sess-spirit-1"}
+
+		r.recordMemberUsage(context.Background(), spiritRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+
+		if len(sessions.deltas) != 2 {
+			t.Fatalf("expected 2 deltas (team + spirit), got %d", len(sessions.deltas))
+		}
+		teamDelta := sessions.deltas[0]
+		spiritDelta := sessions.deltas[1]
+		if teamDelta.SessionID != "sess-team-1" {
+			t.Fatalf("delta[0].SessionID = %q, want team session", teamDelta.SessionID)
+		}
+		if spiritDelta.SessionID != "sess-spirit-1" {
+			t.Fatalf("delta[1].SessionID = %q, want spirit session", spiritDelta.SessionID)
+		}
+		if spiritDelta.InputTokens != 280 || spiritDelta.OutputTokens != 55 {
+			t.Fatalf("spirit delta tokens = %d/%d, want 280/55", spiritDelta.InputTokens, spiritDelta.OutputTokens)
+		}
+	})
+
+	t.Run("spirit mirror skipped when SpiritSessionID empty", func(t *testing.T) {
+		usage := &fakeTeamUsage{}
+		sessions := &fakeMetricSessions{}
+		r := newUsageTestRunner(usage, sessions)
+		plainRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1", SpiritSessionID: ""}
+
+		r.recordMemberUsage(context.Background(), plainRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+
+		if len(sessions.deltas) != 1 {
+			t.Fatalf("expected 1 delta (no spirit mirror), got %d", len(sessions.deltas))
+		}
+	})
+
+	t.Run("spirit mirror skipped when SpiritSessionID equals SessionID", func(t *testing.T) {
+		usage := &fakeTeamUsage{}
+		sessions := &fakeMetricSessions{}
+		r := newUsageTestRunner(usage, sessions)
+		sameRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1", SpiritSessionID: "sess-1"}
+
+		r.recordMemberUsage(context.Background(), sameRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+
+		if len(sessions.deltas) != 1 {
+			t.Fatalf("expected 1 delta (same session, no mirror), got %d", len(sessions.deltas))
+		}
+	})
+
+	t.Run("attributed row skips both team and spirit accumulation", func(t *testing.T) {
+		usage := &fakeTeamUsage{}
+		sessions := &fakeMetricSessions{}
+		r := newUsageTestRunner(usage, sessions)
+		spiritRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-team-1", SpiritSessionID: "sess-spirit-1"}
+
+		r.recordMemberUsage(context.Background(), spiritRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", biz.UsageAttributionMemberLevelStream)
+
+		if len(sessions.deltas) != 0 {
+			t.Fatalf("attributed row must not accumulate to any session, got %d deltas", len(sessions.deltas))
+		}
+	})
+
 	t.Run("member_level_stream row recorded but not accumulated", func(t *testing.T) {
 		usage := &fakeTeamUsage{}
 		sessions := &fakeMetricSessions{}

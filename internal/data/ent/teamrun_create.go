@@ -294,6 +294,20 @@ func (_c *TeamRunCreate) SetNillableTraceID(v *string) *TeamRunCreate {
 	return _c
 }
 
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (_c *TeamRunCreate) SetTeamRunV2ID(v string) *TeamRunCreate {
+	_c.mutation.SetTeamRunV2ID(v)
+	return _c
+}
+
+// SetNillableTeamRunV2ID sets the "team_run_v2_id" field if the given value is not nil.
+func (_c *TeamRunCreate) SetNillableTeamRunV2ID(v *string) *TeamRunCreate {
+	if v != nil {
+		_c.SetTeamRunV2ID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *TeamRunCreate) SetID(v string) *TeamRunCreate {
 	_c.mutation.SetID(v)
@@ -411,6 +425,10 @@ func (_c *TeamRunCreate) defaults() {
 		v := teamrun.DefaultTraceID
 		_c.mutation.SetTraceID(v)
 	}
+	if _, ok := _c.mutation.TeamRunV2ID(); !ok {
+		v := teamrun.DefaultTeamRunV2ID
+		_c.mutation.SetTeamRunV2ID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -483,6 +501,14 @@ func (_c *TeamRunCreate) check() error {
 	if v, ok := _c.mutation.TraceID(); ok {
 		if err := teamrun.TraceIDValidator(v); err != nil {
 			return &ValidationError{Name: "trace_id", err: fmt.Errorf(`ent: validator failed for field "TeamRun.trace_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.TeamRunV2ID(); !ok {
+		return &ValidationError{Name: "team_run_v2_id", err: errors.New(`ent: missing required field "TeamRun.team_run_v2_id"`)}
+	}
+	if v, ok := _c.mutation.TeamRunV2ID(); ok {
+		if err := teamrun.TeamRunV2IDValidator(v); err != nil {
+			return &ValidationError{Name: "team_run_v2_id", err: fmt.Errorf(`ent: validator failed for field "TeamRun.team_run_v2_id": %w`, err)}
 		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
@@ -605,6 +631,10 @@ func (_c *TeamRunCreate) createSpec() (*TeamRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TraceID(); ok {
 		_spec.SetField(teamrun.FieldTraceID, field.TypeString, value)
 		_node.TraceID = value
+	}
+	if value, ok := _c.mutation.TeamRunV2ID(); ok {
+		_spec.SetField(teamrun.FieldTeamRunV2ID, field.TypeString, value)
+		_node.TeamRunV2ID = value
 	}
 	return _node, _spec
 }
@@ -919,6 +949,18 @@ func (u *TeamRunUpsert) SetTraceID(v string) *TeamRunUpsert {
 // UpdateTraceID sets the "trace_id" field to the value that was provided on create.
 func (u *TeamRunUpsert) UpdateTraceID() *TeamRunUpsert {
 	u.SetExcluded(teamrun.FieldTraceID)
+	return u
+}
+
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (u *TeamRunUpsert) SetTeamRunV2ID(v string) *TeamRunUpsert {
+	u.Set(teamrun.FieldTeamRunV2ID, v)
+	return u
+}
+
+// UpdateTeamRunV2ID sets the "team_run_v2_id" field to the value that was provided on create.
+func (u *TeamRunUpsert) UpdateTeamRunV2ID() *TeamRunUpsert {
+	u.SetExcluded(teamrun.FieldTeamRunV2ID)
 	return u
 }
 
@@ -1275,6 +1317,20 @@ func (u *TeamRunUpsertOne) SetTraceID(v string) *TeamRunUpsertOne {
 func (u *TeamRunUpsertOne) UpdateTraceID() *TeamRunUpsertOne {
 	return u.Update(func(s *TeamRunUpsert) {
 		s.UpdateTraceID()
+	})
+}
+
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (u *TeamRunUpsertOne) SetTeamRunV2ID(v string) *TeamRunUpsertOne {
+	return u.Update(func(s *TeamRunUpsert) {
+		s.SetTeamRunV2ID(v)
+	})
+}
+
+// UpdateTeamRunV2ID sets the "team_run_v2_id" field to the value that was provided on create.
+func (u *TeamRunUpsertOne) UpdateTeamRunV2ID() *TeamRunUpsertOne {
+	return u.Update(func(s *TeamRunUpsert) {
+		s.UpdateTeamRunV2ID()
 	})
 }
 
@@ -1798,6 +1854,20 @@ func (u *TeamRunUpsertBulk) SetTraceID(v string) *TeamRunUpsertBulk {
 func (u *TeamRunUpsertBulk) UpdateTraceID() *TeamRunUpsertBulk {
 	return u.Update(func(s *TeamRunUpsert) {
 		s.UpdateTraceID()
+	})
+}
+
+// SetTeamRunV2ID sets the "team_run_v2_id" field.
+func (u *TeamRunUpsertBulk) SetTeamRunV2ID(v string) *TeamRunUpsertBulk {
+	return u.Update(func(s *TeamRunUpsert) {
+		s.SetTeamRunV2ID(v)
+	})
+}
+
+// UpdateTeamRunV2ID sets the "team_run_v2_id" field to the value that was provided on create.
+func (u *TeamRunUpsertBulk) UpdateTeamRunV2ID() *TeamRunUpsertBulk {
+	return u.Update(func(s *TeamRunUpsert) {
+		s.UpdateTeamRunV2ID()
 	})
 }
 

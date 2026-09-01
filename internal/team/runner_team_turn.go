@@ -328,6 +328,21 @@ func (r *Runner) finalizeTeamRun(
 	t0 time.Time,
 	teamEmitter *event.TraceEmitter,
 ) biz.TeamRunRecord {
+	// R1-a（2026-09-01）：team_turn usage 行必须在所有终态出口前落库一次。
+	// 交付物质量门 revise/fail 拦截的 run 同样消耗了真实 token；此前
+	// recordTeamRunUsage 位于 success 路径末尾，被拦截即跳过，导致
+	// 该 run 消耗从会话级统计中凭空消失。defer + 单次守卫确保任何
+	// 终态（success / binary-fail / revise-fail）都入账。
+	usageRecorded := false
+	recordUsage := func() {
+		if usageRecorded {
+			return
+		}
+		usageRecorded = true
+		r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode, usageSource)
+	}
+	defer recordUsage()
+
 	// 2026-07-28 修复3 真实产出闸门（runner 侧）：DAG 团队从未调用
 	// set_deliverable（无 graph state 交付物）时禁止把 run 标为 success。
 	// run 的 FSM 终态不可逆（success→failed 非法），必须在 success 转换前
@@ -384,8 +399,6 @@ func (r *Runner) finalizeTeamRun(
 	if graphExecID != "" && r.mediator != nil {
 		_ = r.mediator.FinalizeTeamGraphExecution(ctx, graphExecID, false, "")
 	}
-
-	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode, usageSource)
 
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))
