@@ -256,6 +256,9 @@ type twinAgentInput struct {
 	ToolWhitelist []string       `json:"tool_whitelist"`
 	Tags          []string       `json:"tags"`
 	Metadata      map[string]any `json:"metadata"`
+	// AgentKey TwinMonitor 预设 Agent 稳定键（ops_*）；图节点 agent_name 按 agent_key 解析，
+	// 缺失时 CreateWithFilesAndSettings 校验拒绝（2026-09-01 种子同步 12/13 失败根因）。
+	AgentKey string `json:"agent_key"`
 }
 
 func (s *TwinOpenAPICompatService) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
@@ -277,9 +280,15 @@ func (s *TwinOpenAPICompatService) handleCreateAgent(w http.ResponseWriter, r *h
 		"metadata":       in.Metadata,
 	})
 	agent := biz.Agent{
+		AgentKey:         strings.TrimSpace(in.AgentKey),
 		DisplayName:      in.Name,
 		AgentDescription: in.Description,
 		MetadataJSON:     string(meta),
+		// Kind/Source 显式归类：TwinMonitor 种子同步的预设 Agent 属生态预设（不可直接删除，
+		// 由种子同步全生命周期管理）；缺省时 agent_repo_write 无条件 SetKind("") 会冲掉
+		// ent 默认值触发枚举校验失败（2026-09-01 种子同步 12/13 失败根因之二）。
+		Kind:   "ecosystem_preset",
+		Source: "imported",
 	}
 	if in.Role != "" {
 		agent.Roles = []string{in.Role}
