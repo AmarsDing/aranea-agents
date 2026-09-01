@@ -1,0 +1,26 @@
+key: inspection-governance-team
+display_name: 巡检治理团队
+description: 面向日常巡检与合规治理的团队——系统/网络/数据库巡检、隐患识别、合规审计与整改建议。
+mode: coordinator
+max_concurrency: 4
+timeout_seconds: 1800
+members:
+  - agent_key: system_inspector__general
+    role: coordinator
+    name: 系统巡检专家
+    task_prompt: 作为巡检治理的协调者，汇总各巡检专家的结果，按风险等级统一排序输出整改优先级。
+  - agent_key: network_inspector__general
+    role: worker
+    name: 网络巡检专家
+    task_prompt: 负责多厂商网络设备巡检、阈值判定与健康度评估。
+    sort_order: 1
+  - agent_key: db_operator__general
+    role: worker
+    name: 数据库运维专家
+    task_prompt: 负责数据库健康检查、慢查询诊断、死锁分析与安全审计。
+    sort_order: 2
+  - agent_key: compliance_checker__general
+    role: worker
+    name: 合规检查专家
+    task_prompt: 负责安全基线核查与运维操作合规审计，输出不符合项与整改建议。
+    sort_order: 3

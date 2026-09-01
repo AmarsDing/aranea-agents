@@ -1,0 +1,31 @@
+key: incident-response-team
+display_name: 告警应急处置团队
+description: 面向 P1-P4 事件的应急处置团队——告警分诊、事件定级、根因定位、修复执行、复盘沉淀全链路闭环。
+mode: coordinator
+max_concurrency: 3
+timeout_seconds: 1800
+members:
+  - agent_key: incident_commander__general
+    role: coordinator
+    name: 事件响应指挥官
+    task_prompt: 作为应急处置的指挥中枢，按 P1-P4 框架对事件定级，统筹分诊、诊断、执行、复盘各环节的协同节奏与升级决策。
+  - agent_key: alert_handler__general
+    role: worker
+    name: 告警处理专家
+    task_prompt: 负责多源告警聚合降噪、严重度评估与分诊，输出告警处置建议。
+    sort_order: 1
+  - agent_key: fault_diagnostician__general
+    role: worker
+    name: 故障诊断专家
+    task_prompt: 负责根因定位：建立假设树、逐条取证，输出带置信度的根因结论。
+    sort_order: 2
+  - agent_key: change_executor__general
+    role: worker
+    name: 变更执行专家
+    task_prompt: 负责修复方案的编排执行、变更窗口规划与执行后验证，准备回滚预案。
+    sort_order: 3
+  - agent_key: postmortem_writer__general
+    role: worker
+    name: 复盘文档专家
+    task_prompt: 事件闭环后撰写复盘报告，沉淀知识并跟踪改进项。
+    sort_order: 4

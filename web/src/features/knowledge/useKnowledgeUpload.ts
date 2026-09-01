@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
+import { randomUUID } from '../../utils/uuid';
 import type { KnowledgeCollection, KnowledgeUploadTask } from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { dirNodeKey, vaultNodeKey } from './vaultTreeUi';
@@ -108,7 +109,7 @@ export function useKnowledgeUpload(deps: KnowledgeUploadDeps) {
     for (const file of files) {
       const mime = inferUploadMime(file);
       const task: KnowledgeUploadTask = {
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         name: file.name,
         size: file.size,
         mime_type: mime,

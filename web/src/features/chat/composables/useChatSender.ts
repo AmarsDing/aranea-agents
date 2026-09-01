@@ -5,6 +5,7 @@ import { ref, reactive, computed, type Ref, type ComputedRef } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { randomUUID } from '../../../utils/uuid';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -546,7 +547,7 @@ export function useChatSender(deps: SenderDeps) {
         markSending(sessionId);
       }
 
-      const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
+      const pendingUserId = reusePendingId ?? `pending-user-${randomUUID()}`;
       // T6: placeholder mechanism removed — user messages are now rendered
       // from task activity events via ActivityStream. pendingUserId is kept
       // only as the WS request_id for idempotency. Input is cleared here for

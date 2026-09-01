@@ -1,9 +1,13 @@
 api_version: v1
 kind: industry
 name: it-ops-pack
-description: IT 运维行业岗位包（1 公司 / 5 部门 / 12 岗位）——告警响应、故障诊断、操作执行、巡检治理、文档报告全职能覆盖，支撑零人工运维闭环
-version: "1.0.0"
+description: IT 运维行业岗位包（1 公司 / 5 部门 / 12 岗位 / 3 团队）——告警响应、故障诊断、操作执行、巡检治理、文档报告全职能覆盖，支撑零人工运维闭环
+version: "1.1.0"
 author: aranea-agents
 created_at: "2026-07-29"
 contents:
   organization: true
+  teams:
+    - key: incident-response-team
+    - key: inspection-governance-team
+    - key: fault-diagnosis-team

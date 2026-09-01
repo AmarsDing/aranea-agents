@@ -74,6 +74,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { randomUUID } from '../../utils/uuid';
 
 export type ModelRouterRule = {
   id: string;
@@ -99,7 +100,7 @@ const { t } = useI18n();
 const rules = ref<ModelRouterRule[]>([]);
 
 function newRuleId() {
-  return crypto.randomUUID();
+  return randomUUID();
 }
 
 function normalizeRule(raw: Partial<ModelRouterRule>, fallbackId?: string): ModelRouterRule {
