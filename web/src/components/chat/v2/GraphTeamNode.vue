@@ -29,32 +29,37 @@
       <span class="gtn-header__status" :class="`gtn-header__status--${nodeTone}`">{{ nodeStatusLabel }}</span>
     </div>
 
-    <!-- 成员行：状态点 + 名称 + 耗时/状态（无成员时 1 行占位，保持卡片高度可预期） -->
+    <!-- 成员行：状态点 + 名称 + 耗时/状态（无成员时 1 行占位，保持卡片高度可预期）
+         运行时尚未 dispatch 的团队回退展示编排期已定员的计划成员（不可点击、无耗时）。 -->
     <div class="gtn-members">
-      <template v-if="members.length > 0">
+      <template v-if="displayMembers.length > 0">
         <div
-          v-for="ms in members"
-          :key="ms.ID"
+          v-for="m in displayMembers"
+          :key="m.ID"
           class="gtn-member"
           :class="{
-            'gtn-member--active': ms.Status === 'running',
-            'gtn-member--confirm-pending': isConfirmPending(ms),
+            'gtn-member--active': !m.Planned && m.Status === 'running',
+            'gtn-member--confirm-pending': m.Session ? isConfirmPending(m.Session) : false,
+            'gtn-member--planned': m.Planned,
           }"
-          :data-member-id="ms.ID"
-          @click.stop="onMemberClick(ms)"
+          :data-member-id="m.Session?.ID"
+          @click.stop="onDisplayMemberClick(m)"
         >
           <span
             class="gtn-member__dot"
             :class="[
-              `gtn-member__dot--${memberToneOf(ms)}`,
+              `gtn-member__dot--${displayMemberTone(m)}`,
               {
-                'gtn-member__dot--ripple': ms.Status === 'running' && !isConfirmPending(ms),
-                'gtn-member__dot--confirm-blink': isConfirmPending(ms),
+                'gtn-member__dot--ripple':
+                  !m.Planned && m.Status === 'running' && !(m.Session && isConfirmPending(m.Session)),
+                'gtn-member__dot--confirm-blink': m.Session ? isConfirmPending(m.Session) : false,
               },
             ]"
           />
-          <span class="gtn-member__name" :title="memberName(ms)">{{ memberName(ms) }}</span>
-          <span class="gtn-member__meta" :class="`gtn-member__meta--${memberToneOf(ms)}`">{{ memberMeta(ms) }}</span>
+          <span class="gtn-member__name" :title="m.Name">{{ m.Name }}</span>
+          <span class="gtn-member__meta" :class="`gtn-member__meta--${displayMemberTone(m)}`">
+            {{ displayMemberMeta(m) }}
+          </span>
         </div>
       </template>
       <div v-else class="gtn-member gtn-member--empty">
@@ -80,7 +85,7 @@
       <div class="gtn-progress__track">
         <div class="gtn-progress__fill" :style="{ width: `${progressPct}%` }" />
       </div>
-      <span class="gtn-progress__text">{{ progressCompleted }}/{{ members.length }}</span>
+      <span class="gtn-progress__text">{{ progressCompleted }}/{{ displayMembers.length }}</span>
     </div>
   </div>
 </template>
@@ -88,7 +93,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useGraphNodeTeam } from '../../../features/chat/composables/useGraphNodeTeam';
+import { useGraphNodeTeam, type TeamNodeMember } from '../../../features/chat/composables/useGraphNodeTeam';
 import type { GraphNode, MemberSession } from '../../../features/chat/v2Types';
 import type { NodePosition } from '../../../features/chat/composables/usePlanDAGLayout';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
@@ -128,10 +133,13 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
-const { membersOf, staffingOf } = useGraphNodeTeam();
+const { membersOf, displayMembersOf, staffingOf } = useGraphNodeTeam();
 
 // ── 成员解析：GraphNode → TeamStage → TeamRun → MemberSession（共享 composable） ──
+// members = 运行时成员（状态行/确认/进度逻辑用真实会话）；displayMembers = 渲染行
+//（运行时优先，未 dispatch 时回退编排期 PlanStep.AgentKeys 计划成员）。
 const members = computed<MemberSession[]>(() => membersOf(props.node));
+const displayMembers = computed<TeamNodeMember[]>(() => displayMembersOf(props.node));
 const staffingCaption = computed(() => formatStaffingCaption(staffingOf(props.node)));
 const headerTitle = computed(() => {
   const cap = staffingCaption.value;
@@ -178,7 +186,7 @@ const nodeStyle = computed(() => {
     left: `${props.pos.x}px`,
     top: `${props.pos.y}px`,
     width: `${GTN_WIDTH}px`,
-    height: `${graphTeamNodeHeight(members.value.length)}px`,
+    height: `${graphTeamNodeHeight(displayMembers.value.length)}px`,
   };
   if (props.entranceDelayMs !== undefined && !justCompleted.value) {
     style.animationDelay = `${props.entranceDelayMs}ms`;
@@ -259,8 +267,17 @@ function memberToneOf(ms: MemberSession): GraphTeamNodeTone {
   return graphTeamNodeTone(ms.Status);
 }
 
-function memberName(ms: MemberSession): string {
-  return ms.AgentName || ms.AgentKey;
+// ── 计划成员行（编排期已定员、运行时尚未 dispatch）：muted 点 + 等待中文案，不可点击 ──
+function displayMemberTone(m: TeamNodeMember): GraphTeamNodeTone {
+  return m.Session ? memberToneOf(m.Session) : 'muted';
+}
+
+function displayMemberMeta(m: TeamNodeMember): string {
+  return m.Session ? memberMeta(m.Session) : t('chat.v2.statusPending');
+}
+
+function onDisplayMemberClick(m: TeamNodeMember) {
+  if (m.Session) onMemberClick(m.Session);
 }
 
 function memberMeta(ms: MemberSession): string {
@@ -424,6 +441,14 @@ function onMemberClick(ms: MemberSession) {
 
     &:hover
       background: transparent
+
+  // 计划成员行（编排期已定员、尚未 dispatch）：无会话可点，仅展示
+  &--planned
+    cursor: default
+
+    &:hover
+      background: transparent
+      transform: none
 
   &__dot
     flex: 0 0 auto

@@ -38,6 +38,8 @@ var specialtyRoleAliases = map[string][]string{
 	"商务/销售": {"sales", "outbound", "销售"},
 	"商务/财务": {"finance", "财务", "fpa"},
 	"商务/客服": {"support", "客服"},
+	// 媒体/制作（2026-09-01 S06 种子修复）：produce 阶段评分/兜底匹配。
+	"媒体/制作": {"media", "video", "produce", "媒体", "制作", "剪辑", "视频"},
 }
 
 func rosterMissError(subTask biz.SubTask, roster []biz.AgentCapability) error {

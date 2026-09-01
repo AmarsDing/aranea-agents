@@ -6560,6 +6560,12 @@ func init() {
 	teamrun.DefaultTraceID = teamrunDescTraceID.Default.(string)
 	// teamrun.TraceIDValidator is a validator for the "trace_id" field. It is called by the builders before save.
 	teamrun.TraceIDValidator = teamrunDescTraceID.Validators[0].(func(string) error)
+	// teamrunDescTeamRunV2ID is the schema descriptor for team_run_v2_id field.
+	teamrunDescTeamRunV2ID := teamrunFields[21].Descriptor()
+	// teamrun.DefaultTeamRunV2ID holds the default value on creation for the team_run_v2_id field.
+	teamrun.DefaultTeamRunV2ID = teamrunDescTeamRunV2ID.Default.(string)
+	// teamrun.TeamRunV2IDValidator is a validator for the "team_run_v2_id" field. It is called by the builders before save.
+	teamrun.TeamRunV2IDValidator = teamrunDescTeamRunV2ID.Validators[0].(func(string) error)
 	// teamrunDescID is the schema descriptor for id field.
 	teamrunDescID := teamrunFields[0].Descriptor()
 	// teamrun.IDValidator is a validator for the "id" field. It is called by the builders before save.

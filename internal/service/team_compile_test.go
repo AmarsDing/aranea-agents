@@ -63,6 +63,7 @@ func (r *compileTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ st
 func (r *compileTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
+func (r *compileTeamRepo) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (r *compileTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }

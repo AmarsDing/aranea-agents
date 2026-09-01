@@ -180,6 +180,9 @@ type SubTask struct {
 	// CollectionIDs are knowledge bases this stage may search. Empty = no
 	// pre-scope (agent tools fall back to department/default routing).
 	CollectionIDs []string `json:"collection_ids,omitempty"`
+	// DepartmentKey is the playbook-declared department for this stage
+	// (used to resolve the correct dept_lead agent). Empty = no override.
+	DepartmentKey string `json:"department_key,omitempty"`
 }
 
 // PlanTaskDAG represents the dependency graph of subtasks within a TaskPlan.

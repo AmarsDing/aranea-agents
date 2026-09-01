@@ -134,6 +134,8 @@ var departmentDomainPaths = map[string][]string{
 	"brand_design":           {"设计/视觉"},
 	"content_creation":       {"创作/文案", "创作/文学"},
 	"media_operations":       {"创作/文案"},
+	// media_studio（2026-09-01 S06 种子修复）：数字内容媒体公司媒体制作部。
+	"media_studio":           {"媒体/制作"},
 	"paid_promotion":         {"商务/推广"},
 	"cross_border_ecommerce": {"商务/电商"},
 	"sales_dept":             {"商务/销售"},
@@ -256,4 +258,7 @@ var positionDomainPath = map[string]string{
 	"spatial_data_engineer":          "数据/空间",
 	"web_gis_developer":              "数据/空间",
 	"analytics_reporter":             "数据/分析",
+	// 媒体/制作（2026-09-01 S06 种子修复）：media_studio 部门岗位。
+	"demo_video_producer":            "媒体/制作",
+	"video_editor":                   "媒体/制作",
 }

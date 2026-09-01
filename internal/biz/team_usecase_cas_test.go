@@ -93,6 +93,9 @@ func (r *casTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error   
 func (r *casTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (r *casTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error          { return nil }
 func (r *casTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error      { return nil }
+func (r *casTeamRepo) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error {
+	return nil
+}
 func (r *casTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) (TeamRunStep, error) {
 	return s, nil
 }

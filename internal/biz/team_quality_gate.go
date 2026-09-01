@@ -157,6 +157,10 @@ func deliverableQualityRuleHits(text string) []string {
 		hits = append(hits, fmt.Sprintf("J2 充分性：有效内容仅 %d 字（要求 ≥%d），交付物过于简略", n, qualitySufficiencyMinRunes))
 	}
 	lower := strings.ToLower(text)
+	// R1-b（2026-09-01）：「占位符」是交付物中描述占位语法的合法术语
+	//（如视觉交付物「占位符统一【】包裹待产品信息回填」），先剔除再匹配
+	// 避免六团队全量被误判 revise。
+	lower = strings.ReplaceAll(lower, "占位符", "")
 	for _, marker := range qualityPlaceholderMarkers {
 		if strings.Contains(lower, marker) {
 			hits = append(hits, fmt.Sprintf("J3 占位/拒答：命中标记 %q", marker))

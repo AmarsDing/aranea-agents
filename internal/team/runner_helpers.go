@@ -190,7 +190,14 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 	}
 	// F-B：提前取出 graph exec ID（状态转换可能整体替换 run 记录）。
 	graphExecID := strings.TrimSpace(run.GraphExecutionID)
-	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
+	// R2（2026-09-01 eval0831-s06 实证）：超时终态下传入的 ctx 已取消
+	//（runCtx deadline exceeded），直接用于 DB 写入会被立即拒绝，导致
+	// team_runs_v2.error 永远为空——排查时拿不到失败原因。所有关键持久化
+	//（状态转换 / error 落库 / graph 收敛 / 死信）改用 WithoutCancel 独立
+	// 上下文，并保留 10s 上限避免悬挂。
+	persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer persistCancel()
+	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(persistCtx, run.ID, biz.TeamRunStatusFailed)
 	if transitionErr != nil {
 		r.lg.Error("TransitionRunStatus failed in finishRunErr",
 			loggateway.StepID("team.run.transition_fail"),
@@ -199,17 +206,17 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 		updatedRun.ErrorMessage = msg
 		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
 		updatedRun.SpiritSessionID = run.SpiritSessionID
-		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
+		if err := r.runWriter.UpdateTeamRun(persistCtx, updatedRun); err != nil {
 			r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 		}
 		*run = updatedRun
 	}
 	// F-B：失败终态同步收敛 graph_executions（team graph 路径无事件消费者）。
 	if graphExecID != "" && r.mediator != nil {
-		_ = r.mediator.FinalizeTeamGraphExecution(ctx, graphExecID, true, msg)
+		_ = r.mediator.FinalizeTeamGraphExecution(persistCtx, graphExecID, true, msg)
 	}
 	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
-		if dlerr := r.deadLetter.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
+		if dlerr := r.deadLetter.CreateTaskDeadLetter(persistCtx, biz.TaskDeadLetter{
 			ID:               uuid.NewString(),
 			SourceType:       biz.TaskDeadLetterSourceTeamRun,
 			SourceID:         run.ID,

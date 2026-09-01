@@ -114,6 +114,18 @@ func (r *Runner) recordMemberUsage(
 			TotalTokens:       int64(recEv.TotalTokens),
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
+		// Mirror accumulation to the spirit root session so the chat UI
+		// bottom bar reflects team member token cost (T3 fix, 2026-09-01).
+		if spiritSID := strings.TrimSpace(run.SpiritSessionID); spiritSID != "" && spiritSID != run.SessionID {
+			r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
+				SessionID:         spiritSID,
+				ModelCallCount:    recEv.CallCount,
+				InputTokens:       int64(recEv.InputTokens),
+				OutputTokens:      int64(recEv.OutputTokens),
+				TotalTokens:       int64(recEv.TotalTokens),
+				TotalCostMicroUsd: recEv.TotalCostMicroUSD,
+			})
+		}
 	}
 	// Run-level token budget gate (2026-08-24): accumulate only genuine member
 	// rows (attribution=="" — mirror rows duplicate the team_turn totals and
@@ -311,6 +323,17 @@ func (r *Runner) recordTeamRunUsage(
 			TotalTokens:       int64(recEv.TotalTokens),
 			TotalCostMicroUsd: recEv.TotalCostMicroUSD,
 		})
+		// Mirror to spirit root session (T3 fix, 2026-09-01).
+		if spiritSID := strings.TrimSpace(run.SpiritSessionID); spiritSID != "" && spiritSID != run.SessionID {
+			r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
+				SessionID:         spiritSID,
+				ModelCallCount:    recEv.CallCount,
+				InputTokens:       int64(recEv.InputTokens),
+				OutputTokens:      int64(recEv.OutputTokens),
+				TotalTokens:       int64(recEv.TotalTokens),
+				TotalCostMicroUsd: recEv.TotalCostMicroUSD,
+			})
+		}
 	}
 	// Envelope publishing is handled inside RecordTokenUsageEvent (P1-4) —
 	// publishing here as well would double-emit.

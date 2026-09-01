@@ -130,6 +130,7 @@ func (m *memSpiritTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ 
 func (m *memSpiritTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
 }
+func (m *memSpiritTeamRepo) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error { return nil }
 func (m *memSpiritTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil
 }
@@ -1034,6 +1035,57 @@ func TestSpiritTeamModeForStep(t *testing.T) {
 	}
 	if got := SpiritTeamModeForStep("", 2); got != TeamModeCoordinator {
 		t.Fatalf("empty strategy multi-agent → coordinator, got %q", got)
+	}
+}
+
+// 2026-09-01 问题3修复：成员定义必须携带按角色差异化的 task_prompt
+// （synthesizer/worker 输入此前完全相同，分工仅靠各自 system prompt）。
+func TestBuildSpiritTeamDefinitionJSON_RoleTaskPrompts(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop(), false, nil, nil)
+	var def struct {
+		Members []struct {
+			Role       string `json:"role"`
+			TaskPrompt string `json:"task_prompt"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(def.Members) != 2 {
+		t.Fatalf("members=%d", len(def.Members))
+	}
+	synth, worker := def.Members[0], def.Members[1]
+	if synth.Role != RoleSynthesizer || !strings.Contains(synth.TaskPrompt, "合成者") {
+		t.Fatalf("synthesizer task_prompt missing/wrong: role=%q prompt=%q", synth.Role, synth.TaskPrompt)
+	}
+	if !strings.Contains(synth.TaskPrompt, "set_deliverable") {
+		t.Fatalf("multi-member synthesizer prompt should reference set_deliverable: %q", synth.TaskPrompt)
+	}
+	if worker.Role != RoleWorker || !strings.Contains(worker.TaskPrompt, "执行者") {
+		t.Fatalf("worker task_prompt missing/wrong: role=%q prompt=%q", worker.Role, worker.TaskPrompt)
+	}
+	if synth.TaskPrompt == worker.TaskPrompt {
+		t.Fatal("synthesizer and worker must receive differentiated task prompts")
+	}
+}
+
+// 单成员非 DAG 团队无 enable_state_deliverable，任务书不得提及
+// set_deliverable（工具不存在会误导成员）。
+func TestBuildSpiritTeamDefinitionJSON_TaskPromptNoChannel(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("sequential", []string{"agent-a"}, loggateway.NewNoop(), false, nil, nil)
+	var def struct {
+		Members []struct {
+			TaskPrompt string `json:"task_prompt"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(def.Members) != 1 {
+		t.Fatalf("members=%d", len(def.Members))
+	}
+	if strings.Contains(def.Members[0].TaskPrompt, "set_deliverable") {
+		t.Fatalf("no deliverable channel → prompt must not reference set_deliverable: %q", def.Members[0].TaskPrompt)
 	}
 }
 

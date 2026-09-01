@@ -229,7 +229,7 @@ var (
 		{Name: "l3_max_per_recall_chars", Type: field.TypeInt, Default: 1500},
 		{Name: "l3_recall_budget_tokens", Type: field.TypeInt, Default: 800},
 		{Name: "l2_recall_budget_tokens", Type: field.TypeInt, Default: 800},
-		{Name: "l3_inject_provenance", Type: field.TypeBool, Default: true},
+		{Name: "l3_inject_provenance", Type: field.TypeBool, Default: false},
 		{Name: "l4_enabled", Type: field.TypeBool, Default: true},
 		{Name: "l4_graph_inject_neighbors", Type: field.TypeBool, Default: true},
 		{Name: "l4_graph_max_neighbors", Type: field.TypeInt, Default: 6},
@@ -3533,6 +3533,7 @@ var (
 		{Name: "graph_execution_id", Type: field.TypeString, Default: ""},
 		{Name: "definition_snapshot_json", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "trace_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "team_run_v2_id", Type: field.TypeString, Size: 64, Default: ""},
 	}
 	// TeamRunsTable holds the schema information for the "team_runs" table.
 	TeamRunsTable = &schema.Table{

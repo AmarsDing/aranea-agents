@@ -220,7 +220,15 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     const ex = memberSessions.value.get(ms.ID);
     if (ex && ms.Version <= ex.Version) return;
     if (ex) {
-      memberSessions.value.set(ms.ID, { ...ex, ...ms });
+      // 终态等增量事件不带资料字段（AgentName/AvatarURL/SessionID），
+      // 空串不得覆盖 created 事件已写入的资料（同 upsertTeamStage 的 Members 保护）。
+      memberSessions.value.set(ms.ID, {
+        ...ex,
+        ...ms,
+        AgentName: ms.AgentName || ex.AgentName,
+        AvatarURL: ms.AvatarURL || ex.AvatarURL,
+        SessionID: ms.SessionID || ex.SessionID,
+      });
     } else {
       memberSessions.value.set(ms.ID, { ...ms });
     }

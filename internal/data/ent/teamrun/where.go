@@ -163,6 +163,11 @@ func TraceID(v string) predicate.TeamRun {
 	return predicate.TeamRun(sql.FieldEQ(FieldTraceID, v))
 }
 
+// TeamRunV2ID applies equality check predicate on the "team_run_v2_id" field. It's identical to TeamRunV2IDEQ.
+func TeamRunV2ID(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldEQ(FieldTeamRunV2ID, v))
+}
+
 // TeamIDEQ applies the EQ predicate on the "team_id" field.
 func TeamIDEQ(v string) predicate.TeamRun {
 	return predicate.TeamRun(sql.FieldEQ(FieldTeamID, v))
@@ -1361,6 +1366,71 @@ func TraceIDEqualFold(v string) predicate.TeamRun {
 // TraceIDContainsFold applies the ContainsFold predicate on the "trace_id" field.
 func TraceIDContainsFold(v string) predicate.TeamRun {
 	return predicate.TeamRun(sql.FieldContainsFold(FieldTraceID, v))
+}
+
+// TeamRunV2IDEQ applies the EQ predicate on the "team_run_v2_id" field.
+func TeamRunV2IDEQ(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldEQ(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDNEQ applies the NEQ predicate on the "team_run_v2_id" field.
+func TeamRunV2IDNEQ(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldNEQ(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDIn applies the In predicate on the "team_run_v2_id" field.
+func TeamRunV2IDIn(vs ...string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldIn(FieldTeamRunV2ID, vs...))
+}
+
+// TeamRunV2IDNotIn applies the NotIn predicate on the "team_run_v2_id" field.
+func TeamRunV2IDNotIn(vs ...string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldNotIn(FieldTeamRunV2ID, vs...))
+}
+
+// TeamRunV2IDGT applies the GT predicate on the "team_run_v2_id" field.
+func TeamRunV2IDGT(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldGT(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDGTE applies the GTE predicate on the "team_run_v2_id" field.
+func TeamRunV2IDGTE(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldGTE(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDLT applies the LT predicate on the "team_run_v2_id" field.
+func TeamRunV2IDLT(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldLT(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDLTE applies the LTE predicate on the "team_run_v2_id" field.
+func TeamRunV2IDLTE(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldLTE(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDContains applies the Contains predicate on the "team_run_v2_id" field.
+func TeamRunV2IDContains(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldContains(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDHasPrefix applies the HasPrefix predicate on the "team_run_v2_id" field.
+func TeamRunV2IDHasPrefix(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldHasPrefix(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDHasSuffix applies the HasSuffix predicate on the "team_run_v2_id" field.
+func TeamRunV2IDHasSuffix(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldHasSuffix(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDEqualFold applies the EqualFold predicate on the "team_run_v2_id" field.
+func TeamRunV2IDEqualFold(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldEqualFold(FieldTeamRunV2ID, v))
+}
+
+// TeamRunV2IDContainsFold applies the ContainsFold predicate on the "team_run_v2_id" field.
+func TeamRunV2IDContainsFold(v string) predicate.TeamRun {
+	return predicate.TeamRun(sql.FieldContainsFold(FieldTeamRunV2ID, v))
 }
 
 // And groups predicates with the AND operator between them.

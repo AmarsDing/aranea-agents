@@ -81,6 +81,11 @@ services:
       # WebSocket Origin 放行：Docker 部署下前端可能通过宿主机 IP 或 dev server 访问，
       # 这些 Origin 不在默认 localhost/127.0.0.1 白名单内，必须显式配置。
       KRATOS_HTTP_EXTRA_CORS_ORIGINS: "http://0.0.0.0:9301,http://192.168.0.108:9301,http://192.168.0.108:8810,http://localhost:9301,http://127.0.0.1:9301"
+      # 产物公开路径映射基址（远程部署）：artifact meta 的 StorageUri 映射为该
+      # 基址 + 相对路径，供前端展示「打开所在文件夹」。本地开发留空（不泄露
+      # 服务端路径）；108 部署由 install.sh --public-base 注入 UNC 基址，
+      # IP 漂移时须随 CORS 同步更新（见项目记忆硬约束）。
+      ARANEA_ARTIFACT_PUBLIC_BASE: "${ARANEA_ARTIFACT_PUBLIC_BASE:-}"
       # G1 观测面（agent-eval-20260818）：pprof 独立端口，仅 araneanet 内网可达（不映射宿主机），
       # 抓取：docker exec aranea-admin wget -qO- http://127.0.0.1:8813/debug/pprof/heap
       # 缺省该环境变量即关闭（cmd/admin/pprof.go）；app 便携部署包不注入此变量。

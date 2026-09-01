@@ -112,6 +112,7 @@ func (r *cancelTeamRunRepo) UpdateTeamRunWhereStatus(_ context.Context, runID, n
 func (r *cancelTeamRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *cancelTeamRunRepo) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error { return nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil
 }

@@ -59,6 +59,10 @@ type TeamRunWriter interface {
 	UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error
 	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
+	// UpdateTeamRunStepTokens backfills token/cost fields on an existing
+	// team_run_steps row (graph watch writes steps with zero tokens; the
+	// finish path fills them in from the stream's MemberUsage map).
+	UpdateTeamRunStepTokens(ctx context.Context, stepID string, tokenIn, tokenOut int, costMicroUSD int64) error
 	// UpdateTeamRunWhereStatus performs a Compare-And-Swap update on the status
 	// field: the row is updated only if its current status equals
 	// expectedCurrentStatus. Returns true if the row was updated, false if the

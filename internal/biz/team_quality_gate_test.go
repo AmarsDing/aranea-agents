@@ -352,6 +352,11 @@ func TestDeliverableQualityRuleHits_Markers(t *testing.T) {
 		"该部分无法完成":           true,
 		"作为AI我无法访问实时数据":    true,
 		"正常且充分的分析结论内容描述": false,
+		// R1-b（2026-09-01 eval0831-s06-fix1 实证）：「占位符」是描述占位语法的
+		// 合法术语（视觉交付物：占位符统一【】包裹待产品信息回填），子串匹配
+		// 「占位」不得命中——六团队曾被全量误判 revise。
+		"占位符统一【】包裹待产品信息回填":      false,
+		"A/B 双方案共用令牌可互换，占位符待回填": false,
 	}
 	for text, wantHit := range cases {
 		hits := deliverableQualityRuleHits(text)

@@ -6,10 +6,11 @@ import { setActivePinia, createPinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
+import { useAppStore } from '../../../../stores/app';
 import GraphTeamNode from '../GraphTeamNode.vue';
 import { graphTeamNodeHeight, GTN_WIDTH } from '../graphTeamNodeUi';
 import zhCN from '../../../../i18n/locales/zh-CN';
-import type { GraphNode, TeamStage, TeamRun, MemberSession } from '../../../../features/chat/v2Types';
+import type { GraphNode, TeamStage, TeamRun, MemberSession, PlanStep } from '../../../../features/chat/v2Types';
 
 const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': zhCN } });
 
@@ -147,6 +148,76 @@ describe('GraphTeamNode', () => {
     const rows = wrapper.findAll('.gtn-member');
     expect(rows).toHaveLength(1);
     expect(wrapper.text()).toContain('暂无成员');
+  });
+
+  it('renders planned members from PlanStep.AgentKeys before the team is dispatched', async () => {
+    const store = useChatActivityStore();
+    // 编排期已定员：planStep（ID=DagNodeID）带 AgentKeys，但尚无 TeamStage/TeamRun/MemberSession。
+    store.upsertPlanStep({
+      ID: 'ps1',
+      PlanID: 'pb1',
+      TaskID: 'tk1',
+      Label: '媒体制作',
+      Description: '',
+      DependsOn: [],
+      MappedTeamStageID: '',
+      Status: 'pending',
+      AutoSynthesis: false,
+      StartedAt: '',
+      CompletedAt: null,
+      Seq: 1,
+      Version: 1,
+      Result: null,
+      Error: null,
+      AgentKeys: ['content_creator__general', 'brand_guardian__general'],
+    } as PlanStep);
+    const appStore = useAppStore();
+    appStore.agents = [
+      { id: 'a1', agent_key: 'content_creator__general', display_name: '内容创作者' },
+      { id: 'a2', agent_key: 'brand_guardian__general', display_name: '品牌守护者' },
+    ] as never;
+
+    const wrapper = mountNode(mkNode({ TeamStageID: '', Status: 'pending' }));
+
+    const rows = wrapper.findAll('.gtn-member');
+    expect(rows).toHaveLength(2);
+    expect(wrapper.text()).toContain('内容创作者');
+    expect(wrapper.text()).toContain('品牌守护者');
+    expect(wrapper.text()).not.toContain('暂无成员');
+    expect(wrapper.text()).toContain('0/2');
+    // 计划行：muted 状态点 + 等待中文案 + 不可点击（无 MemberSession 可弹窗）
+    expect(rows[0]!.find('.gtn-member__dot--muted').exists()).toBe(true);
+    expect(rows[0]!.text()).toContain('等待中');
+    await rows[0]!.trigger('click');
+    expect(wrapper.emitted('select-member')).toBeUndefined();
+  });
+
+  it('switches planned rows to runtime member sessions once the team is dispatched', () => {
+    const store = useChatActivityStore();
+    store.upsertPlanStep({
+      ID: 'ps1',
+      PlanID: 'pb1',
+      TaskID: 'tk1',
+      Label: '媒体制作',
+      Description: '',
+      DependsOn: [],
+      MappedTeamStageID: '',
+      Status: 'running',
+      AutoSynthesis: false,
+      StartedAt: '',
+      CompletedAt: null,
+      Seq: 1,
+      Version: 1,
+      Result: null,
+      Error: null,
+      AgentKeys: ['agent-m1'],
+    } as PlanStep);
+    seedTeam(store, [mkMember('m1', { AgentName: '运行时成员' })]);
+
+    const wrapper = mountNode(mkNode({ TeamStageID: '' }));
+    // 运行时成员接管后不再出现计划行
+    expect(wrapper.text()).toContain('运行时成员');
+    expect(wrapper.findAll('.gtn-member--planned')).toHaveLength(0);
   });
 
   it('falls back to DagNodeID matching when TeamStageID is empty', () => {

@@ -119,6 +119,7 @@ func (r *runSummaryRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) er
 func (r *runSummaryRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *runSummaryRepo) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error { return nil }
 func (r *runSummaryRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) (TeamRunStep, error) {
 	return s, nil
 }

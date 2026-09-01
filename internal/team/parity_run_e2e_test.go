@@ -81,6 +81,7 @@ func (m *parityMemRepo) UpdateTeamRunGraphExecutionID(context.Context, string, s
 }
 func (m *parityMemRepo) UpdateTeamRunTraceID(context.Context, string, string) error     { return nil }
 func (m *parityMemRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
+func (m *parityMemRepo) UpdateTeamRunStepTokens(context.Context, string, int, int, int64) error { return nil }
 func (m *parityMemRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	m.steps = append(m.steps, step)
 	return step, nil

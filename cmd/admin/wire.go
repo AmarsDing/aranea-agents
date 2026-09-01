@@ -812,12 +812,12 @@ func provideRunnerConfig(
 		// M80：token_budget / no_progress 系统闸决策双写（设计 §3.2 row 3）。
 		DecisionCollector: decisions,
 		OutboundRouter:    outboundRouter,
-		SubAgentService: subAgentSvc,
-		KanbanBridge:    kanbanBridge,
-		ComputerUseUC:   computerUseUC,
-		SandboxFSStore:  sandboxLeases,
-		SandboxManager:  sandboxMgr,
-		A2AEnabled:      a2aUC != nil,
+		SubAgentService:   subAgentSvc,
+		KanbanBridge:      kanbanBridge,
+		ComputerUseUC:     computerUseUC,
+		SandboxFSStore:    sandboxLeases,
+		SandboxManager:    sandboxMgr,
+		A2AEnabled:        a2aUC != nil,
 		// SessionChildLookup resolves member agent session IDs for child_session_id
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up
 		// child sessions by parent (team) session ID and match by MemberAgentKey.
@@ -1011,10 +1011,10 @@ func provideChatServiceDeps(
 			TurnTimeout:  0,
 			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
 			StepReader:   stepReader,
-		StepWriter:   stepWriter,
-		TurnReader:   turnReader,
-		TaskV2:       taskV2Repo,
-	},
+			StepWriter:   stepWriter,
+			TurnReader:   turnReader,
+			TaskV2:       taskV2Repo,
+		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,
 			Monitor:      mon,
@@ -3039,25 +3039,30 @@ func providePatternMiningJob(uc *heal.PatternMiningUsecase, lg loggateway.Logger
 	return jobs.NewPatternMiningJob(0, uc, lg)
 }
 
-func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, skillUC *biz.SkillUsecase, lg loggateway.Logger) *biz.VerificationGateExecutor {
+func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, skillUC *biz.SkillUsecase, deptMailbox *biz.DeptMailboxUsecase, lg loggateway.Logger) *biz.VerificationGateExecutor {
 	// 2026-07-28 F9 修复：注入 tool_assertion 门的确定性 invoker（白名单
 	// cli_admin_skill_get，由 SkillUsecase 直供）。此前生产缺该注入，
 	// tool_assertion 门恒 fail-closed 报 "no tool invoker configured"。
+	// 2026-09-01 P1 修复：注入 deptMailbox，跨部门交付拒绝时自动通知对方主管。
 	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg,
-		biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)))
+		biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)),
+		biz.WithDeptMailbox(deptMailbox))
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, deptMailbox *biz.DeptMailboxUsecase, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, artifactRepo biz.ArtifactRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
 		biz.WithEvolutionSuggestionCreator(evolutionUC),
 		biz.WithVerificationGateExecutor(gateExecutor),
 		biz.WithDeptLeadMgr(deptLeadMgr),
+		biz.WithSpiritDeptMailbox(deptMailbox),
 		biz.WithSpiritStepReader(stepReader),
 		biz.WithSpiritTeamRunStatsReader(runStatsReader),
 		biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)),
 		biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)),
+		// S06 产物可见性：交付物文档桥接为会话 artifact，路径按公开根映射。
+		biz.WithDeliverableArtifactSaver(artifactRepo, conf.ArtifactPublicBase()),
 	)
 }
 

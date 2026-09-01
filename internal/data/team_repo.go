@@ -652,6 +652,7 @@ func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRunRecord) (bi
 		SetGraphExecutionID(run.GraphExecutionID).
 		SetDefinitionSnapshotJSON(run.DefinitionSnapshotJSON).
 		SetTraceID(run.TraceID).
+		SetTeamRunV2ID(run.TeamRunV2ID).
 		SetStartedAt(run.StartedAt).
 		SetFinishedAt(run.FinishedAt).
 		SetCreatedAt(run.CreatedAt).
@@ -753,6 +754,25 @@ func (r *TeamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 		return biz.TeamRunStep{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamRunStepToBiz(row), nil
+}
+
+func (r *TeamRepo) UpdateTeamRunStepTokens(ctx context.Context, stepID string, tokenIn, tokenOut int, costMicroUSD int64) error {
+	if strings.TrimSpace(stepID) == "" {
+		return apierror.BadRequest("TEAM_RUN_STEP", "step id is required")
+	}
+	n, err := r.data.RW().Write(ctx).TeamRunStep.Update().
+		Where(teamrunstep.ID(stepID)).
+		SetTokenIn(tokenIn).
+		SetTokenOut(tokenOut).
+		SetCostMicroUsd(costMicroUSD).
+		Save(ctx)
+	if err != nil {
+		return entErrToBizErr(err, "TEAM")
+	}
+	if n == 0 {
+		return apierror.NotFound("TEAM_RUN_STEP", "team run step not found")
+	}
+	return nil
 }
 
 func (r *TeamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {

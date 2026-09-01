@@ -19,6 +19,8 @@ func TestNormalizeDomainPath_LexiconHit(t *testing.T) {
 		// 一级域本身是合法归一目标。
 		"创作": "创作",
 		"软件": "软件",
+		// 媒体/制作（2026-09-01 S06 种子修复）：produce 阶段专用域，词表内精确命中。
+		"媒体/制作": "媒体/制作",
 	}
 	for in, want := range cases {
 		if got := NormalizeDomainPath(in); got != want {

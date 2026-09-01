@@ -492,6 +492,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}
 
+	// （2026-09-01 删除 R1-a MemberUsage 补加块：accumulateStreamUsage 的
+	// billing 口径 result.PromptTok = ΣMemberUsage + ΣrootUsage 已含成员
+	// 用量，再补加导致 team_turn/run.token_in/spirit 镜像全链精确 2x——
+	// eval0831-s06-fix3 实证。R1-a 假设的「root=0 且成员有耗」场景在该口径
+	// 下不可能发生，块属多余。）
+
 	finishIn := TeamRunFinishInput{
 		Run:            run,
 		TeamID:         teamRow.ID,

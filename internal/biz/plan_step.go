@@ -50,6 +50,9 @@ func HydratePlanStepsFromSubTasks(planID string, steps []PlanStep, subtasks []Su
 		if len(steps[i].CollectionIDs) == 0 {
 			steps[i].CollectionIDs = NormalizeCollectionIDs(st.CollectionIDs)
 		}
+		if steps[i].DepartmentKey == "" {
+			steps[i].DepartmentKey = strings.TrimSpace(st.DepartmentKey)
+		}
 	}
 }
 
@@ -86,6 +89,10 @@ type PlanStep struct {
 	// DepartmentID is the team's home department (M78). Memory field — crash
 	// recovery infers from member positions when empty (same pattern as Mode).
 	DepartmentID string
+	// DepartmentKey is the playbook-declared department key (e.g. "media_studio").
+	// Memory-only: hydrated from SubTask.DepartmentKey by HydratePlanStepsFromSubTasks.
+	// resolveTeamOrg uses it to override majority-vote when DepartmentID is empty.
+	DepartmentKey string
 	// CrossDeptMemberKeys are borrow candidates (agent keys). Memory field.
 	CrossDeptMemberKeys []string
 	// Staffing fields are memory-only (WS plan_step payload) so the frontend

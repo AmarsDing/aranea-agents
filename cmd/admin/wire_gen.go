@@ -356,6 +356,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	deptLeadMailboxRepo := data.NewDeptLeadMessageRepo(dataData)
 	mailboxWaker := service.NewMailboxWaker(sessionRepo, sessionRepo, loggatewayLogger)
 	deptMailboxUsecase := provideDeptMailboxUsecase(deptLeadMailboxRepo, agentRepository, organizationRepo, accessAuditor, mailboxWaker, loggatewayLogger)
+	// P1: deptMailboxUsecase 同时注入 VerificationGateExecutor（cross-dept 拒绝通知）
 	messageReader := provideM71MessageReader(activityLister)
 	globalMessageSearcher := data.NewGlobalMessageSearchRepo(dataData)
 	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, messageReader, globalMessageSearcher, accessAuditor, loggatewayLogger)
@@ -396,9 +397,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	spiritTransactor := data.NewSpiritTransactor(dataData)
 	orchestrationCacheRepo := data.NewOrchestrationCacheRepo(dataData)
 	orchestrationCache := biz.NewOrchestrationCache(loggatewayLogger, orchestrationCacheRepo)
-	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, skillUsecase, loggatewayLogger)
+	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, skillUsecase, deptMailboxUsecase, loggatewayLogger)
 	spiritTeamRunStatsReader := data.NewSpiritTeamRunStatsReader(dataData, loggatewayLogger)
-	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, systemSettingRepo, loggatewayLogger)
+	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, deptMailboxUsecase, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, systemSettingRepo, artifactRepo, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
 	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository, organizationRepo, lifecycle)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
@@ -3564,13 +3565,13 @@ func providePatternMiningJob(uc *heal.PatternMiningUsecase, lg loggateway.Logger
 	return jobs.NewPatternMiningJob(0, uc, lg)
 }
 
-func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, skillUC *biz.SkillUsecase, lg loggateway.Logger) *biz.VerificationGateExecutor {
+func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, skillUC *biz.SkillUsecase, deptMailbox *biz.DeptMailboxUsecase, lg loggateway.Logger) *biz.VerificationGateExecutor {
 
-	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg, biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)))
+	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg, biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)), biz.WithDeptMailbox(deptMailbox))
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *session2.Runtime, sysRepo biz.SystemSettingRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
-	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg, biz.WithSpiritTransactor(transactor), biz.WithOrchestrationCache(orchCache), biz.WithEvolutionSuggestionCreator(evolutionUC), biz.WithVerificationGateExecutor(gateExecutor), biz.WithDeptLeadMgr(deptLeadMgr), biz.WithSpiritStepReader(stepReader), biz.WithSpiritTeamRunStatsReader(runStatsReader), biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)), biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)))
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, deptMailbox *biz.DeptMailboxUsecase, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *session2.Runtime, sysRepo biz.SystemSettingRepo, artifactRepo biz.ArtifactRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg, biz.WithSpiritTransactor(transactor), biz.WithOrchestrationCache(orchCache), biz.WithEvolutionSuggestionCreator(evolutionUC), biz.WithVerificationGateExecutor(gateExecutor), biz.WithDeptLeadMgr(deptLeadMgr), biz.WithSpiritDeptMailbox(deptMailbox), biz.WithSpiritStepReader(stepReader), biz.WithSpiritTeamRunStatsReader(runStatsReader), biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)), biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)), biz.WithDeliverableArtifactSaver(artifactRepo, conf.ArtifactPublicBase()))
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.ChannelDeliveryWorker {

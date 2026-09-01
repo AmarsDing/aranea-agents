@@ -110,7 +110,9 @@ func renderSynthesisDigests(digests []TeamDeliverableDigest) string {
 				sb.WriteString(fmt.Sprintf("  - 载荷：……另有 %d 项\n", len(d.Artifacts)-synthesisDigestMaxArtifacts))
 				break
 			}
-			sb.WriteString(fmt.Sprintf("  - 载荷：%s\n", TruncateRunes(line, 80)))
+			// 上限 200：桥接产物的 UNC 路径约 120-160 字符，80 会截断路径
+			// （S06 产物可见性——路径必须完整进入触发文本，LLM 才能逐字引用）。
+			sb.WriteString(fmt.Sprintf("  - 载荷：%s\n", TruncateRunes(line, 200)))
 		}
 	}
 	return sb.String()
@@ -124,6 +126,8 @@ const synthesisSummarySuccessTrigger = "所有团队已完成。请仅基于%s�
 	"（一段话概述用户目标与整体完成情况）\n" +
 	"## 各团队结果\n" +
 	"（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）\n" +
+	"## 产出文档\n" +
+	"（逐字列出上方载荷清单中带「路径」的条目：标题、格式、字数、路径；路径禁止改写、禁止截断。无产出文档时省略本节）\n" +
 	"## 综合结论\n" +
 	"（跨团队的核心发现、结论对比与最终答案）\n" +
 	"## 建议与后续行动\n" +
@@ -172,6 +176,8 @@ func BuildSynthesisSummaryTrigger(total, completed, failed int, failures []TeamF
 	sb.WriteString("（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）\n")
 	sb.WriteString("## 未解决问题\n")
 	sb.WriteString("（汇总失败团队遗留的疑问与阻塞事项，逐条列出需要用户澄清或决策的内容）\n")
+	sb.WriteString("## 产出文档\n")
+	sb.WriteString("（逐字列出上方载荷清单中带「路径」的条目：标题、格式、字数、路径；路径禁止改写、禁止截断。无产出文档时省略本节）\n")
 	sb.WriteString("## 综合结论\n")
 	sb.WriteString("（仅基于已完成团队的真实产出给出结论；禁止为失败团队虚构结论，禁止把失败回复当作产出）\n")
 	sb.WriteString("## 建议与后续行动\n")

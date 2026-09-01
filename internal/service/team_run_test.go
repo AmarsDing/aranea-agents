@@ -90,6 +90,7 @@ func (r *summaryTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ 
 }
 func (r *summaryTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error     { return nil }
 func (r *summaryTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (r *summaryTeamRepo) UpdateTeamRunStepTokens(_ context.Context, _ string, _, _ int, _ int64) error { return nil }
 func (r *summaryTeamRepo) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return s, nil
 }

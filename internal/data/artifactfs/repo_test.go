@@ -261,3 +261,66 @@ func TestFSArtifactRepo_ResolveBinPath_RejectsAbsOutsideRoot(t *testing.T) {
 		t.Fatalf("fallback path %q must stay under root %q", gotAbs, rootAbs)
 	}
 }
+
+// S06 产物可见性（2026-09-01）：落盘文件用可读命名 <safeTitle>-v<n><ext>，
+// 用户打开文件夹即可辨认；MIME 兜底扩展名；.json 强制 .bin 防 sidecar 误吞；
+// 净化后撞名回退 id 后缀。
+func TestFSArtifactRepo_SaveReadableBinName(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
+	ctx := context.Background()
+
+	saved, err := repo.Save(ctx, "sess1", "云计算十年", "text/markdown", []byte("# 正文"))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if saved.StorageURI != `sess1/云计算十年-v0.md` {
+		t.Fatalf("unexpected storage_uri: %q", saved.StorageURI)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sess1", "云计算十年-v0.md")); err != nil {
+		t.Fatalf("readable bin file missing: %v", err)
+	}
+	// 同名再存 → v1
+	saved2, err := repo.Save(ctx, "sess1", "云计算十年", "text/markdown", []byte("# v1"))
+	if err != nil {
+		t.Fatalf("Save v1: %v", err)
+	}
+	if saved2.StorageURI != `sess1/云计算十年-v1.md` {
+		t.Fatalf("unexpected v1 storage_uri: %q", saved2.StorageURI)
+	}
+	// .json 展示名强制落 .bin（防 sidecar 扫描误吞为 meta）
+	js, err := repo.Save(ctx, "sess1", "data.json", "application/json", []byte("{}"))
+	if err != nil {
+		t.Fatalf("Save json: %v", err)
+	}
+	if !strings.HasSuffix(js.StorageURI, ".bin") {
+		t.Fatalf("json payload must not land on .json suffix, got %q", js.StorageURI)
+	}
+	// 净化后撞名（a/b 与 a\b 都净化为 a_b）→ 后者回退 id 后缀且可读
+	c1, err := repo.Save(ctx, "sess1", "a/b", "text/plain", []byte("x"))
+	if err != nil {
+		t.Fatalf("Save c1: %v", err)
+	}
+	c2, err := repo.Save(ctx, "sess1", `a\b`, "text/plain", []byte("y"))
+	if err != nil {
+		t.Fatalf("Save c2: %v", err)
+	}
+	if c1.StorageURI != `sess1/a_b-v0.txt` {
+		t.Fatalf("unexpected c1 uri: %q", c1.StorageURI)
+	}
+	if !strings.HasPrefix(c2.StorageURI, "sess1/a_b-") || c2.StorageURI == c1.StorageURI {
+		t.Fatalf("collision must fall back to id suffix, got %q", c2.StorageURI)
+	}
+	// 全部可读回
+	for _, s := range []struct {
+		id   string
+		want string
+	}{
+		{saved.ID, "# 正文"}, {saved2.ID, "# v1"}, {js.ID, "{}"}, {c2.ID, "y"},
+	} {
+		_, data, err := repo.Load(ctx, s.id, 0)
+		if err != nil || string(data) != s.want {
+			t.Fatalf("Load %s: data=%q err=%v", s.id, data, err)
+		}
+	}
+}
