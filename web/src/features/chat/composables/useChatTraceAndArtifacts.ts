@@ -113,6 +113,9 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
   const artifactStore = useArtifactStore();
   const sessionArtifacts = ref<ArtifactMeta[]>([]);
   const sessionArtifactsLoading = ref(false);
+  // P0 会话产物抽屉（2026-09-01）：header 产物按钮的会话内查看入口，
+  // 点击条目经 artifactStore.openArtifactPreview 打开全局预览弹窗。
+  const artifactsDrawerOpen = ref(false);
 
   async function loadSessionArtifacts(sid: string) {
     if (!sid) {
@@ -134,20 +137,25 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
     { immediate: true },
   );
 
+  /** 打开会话内产物抽屉（header 产物按钮的默认行为，替代直接跳页）。 */
+  function openArtifactsDrawer() {
+    artifactsDrawerOpen.value = true;
+  }
+
+  /** 抽屉「管理全部产物」：跳转产物管理页（保留会话筛选）。 */
+  function goArtifactsPage() {
+    const sid = String(sessionId.value ?? '').trim();
+    artifactsDrawerOpen.value = false;
+    void router.push({ path: '/artifacts', query: sid ? { session: sid } : {} });
+  }
+
+  /**
+   * 产物点击统一入口（消息内产物卡片 / 历史绑定）：打开全局预览弹窗。
+   * 预览失败或 binary 类型由弹窗内下载按钮降级（2026-09-01，原为
+   * window.open 签名 URL 强制下载，点击无法「查看」）。
+   */
   function openSessionArtifact(id: string) {
-    void (async () => {
-      try {
-        const artifactStore = useArtifactStore();
-        const signed = await artifactStore.signDownload(id);
-        if (signed.url) {
-          window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
-          return;
-        }
-      } catch {
-        // fall through to artifacts page
-      }
-      void router.push({ path: '/artifacts', query: { id } });
-    })();
+    artifactStore.openArtifactPreview(id);
   }
 
   function onArtifactDeleted(id: string) {
@@ -157,6 +165,9 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
   return {
     sessionArtifacts,
     sessionArtifactsLoading,
+    artifactsDrawerOpen,
+    openArtifactsDrawer,
+    goArtifactsPage,
     openSessionArtifact,
     onArtifactDeleted,
   };

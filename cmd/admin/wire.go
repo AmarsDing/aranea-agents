@@ -3063,6 +3063,8 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)),
 		// S06 产物可见性：交付物文档桥接为会话 artifact，路径按公开根映射。
 		biz.WithDeliverableArtifactSaver(artifactRepo, conf.ArtifactPublicBase()),
+		// 终态自动团队 owned 图全局清扫（teamUC 实现 SpiritTeamGraphSweeper）。
+		biz.WithTeamGraphSweeper(teamUC),
 	)
 }
 

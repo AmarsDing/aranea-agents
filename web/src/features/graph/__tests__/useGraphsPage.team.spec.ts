@@ -177,4 +177,24 @@ describe('useGraphsPage F5 Team 归属 (M53 Phase 11)', () => {
     api.onCtxMenuAction('open-team');
     expect(routerPush).not.toHaveBeenCalled();
   });
+
+  it('编排产物图默认隐藏（team_owned + team_auto_created），开关后显示；hiddenOrchestratedCount 统计正确', () => {
+    const graphStore = useGraphStore();
+    const orchestrated = makeGraph({
+      id: 'g-orch',
+      name: 'orch',
+      teamId: 'team-1',
+      metadata: { team_owned: true, team_auto_created: true },
+    });
+    // 手动团队的 owned 图（有 team_owned 无 team_auto_created）必须始终可见
+    graphStore.graphs = [ownedGraph, linkedGraph, independentGraph, orchestrated];
+
+    const api = harness();
+    expect(api.showOrchestrated.value).toBe(false);
+    expect(api.filteredRows.value.map((g) => g.id).sort()).toEqual(['g-indie', 'g-linked', 'g-owned']);
+    expect(api.hiddenOrchestratedCount.value).toBe(1);
+
+    api.showOrchestrated.value = true;
+    expect(api.filteredRows.value.map((g) => g.id).sort()).toEqual(['g-indie', 'g-linked', 'g-orch', 'g-owned']);
+  });
 });

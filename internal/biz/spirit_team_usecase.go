@@ -199,6 +199,12 @@ func WithOrchestrationCache(c *OrchestrationCache) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.orchestration.orchCache = c }
 }
 
+// WithTeamGraphSweeper wires the terminal auto-team owned-graph sweeper
+// （*TeamUsecase 实现）。装配在 AutoArchiveCompletedTeams 事件触发点内全局执行。
+func WithTeamGraphSweeper(s SpiritTeamGraphSweeper) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.orchestration.graphSweeper = s }
+}
+
 func WithEvolutionSuggestionCreator(c EvolutionSuggestionCreator) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.orchestration.evolutionSugg = c }
 }

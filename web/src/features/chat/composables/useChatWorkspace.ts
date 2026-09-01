@@ -582,6 +582,9 @@ export function useChatWorkspace() {
   const {
     sessionArtifacts,
     sessionArtifactsLoading,
+    artifactsDrawerOpen,
+    openArtifactsDrawer,
+    goArtifactsPage,
     openSessionArtifact,
     onArtifactDeleted: removeArtifactFromList,
   } = useChatSessionArtifacts(sessionIdForArtifacts);
@@ -1065,6 +1068,9 @@ export function useChatWorkspace() {
       unpinReasoning: reasoningSidebar.unpin,
       sessionArtifacts,
       sessionArtifactsLoading,
+      artifactsDrawerOpen,
+      openArtifactsDrawer,
+      goArtifactsPage,
       fileSupported,
       fileAccept,
       openSessionArtifact,
