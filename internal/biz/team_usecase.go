@@ -325,63 +325,8 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 	return nil
 }
 
-// RecoverOrphanedRunningTeams transitions all running teams to interrupted
-// and their running runs to failed. Called on server startup to clean up
-// stale state from a previous crash.
-func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) ([]Team, error) {
-	teams, err := u.ListTeamsByStatus(ctx, TeamStatusRunning)
-	if err != nil {
-		return nil, err
-	}
-	if len(teams) == 0 {
-		return nil, nil
-	}
-	var recovered []Team
-	for i := range teams {
-		team, err := u.TransitionStatusWithReason(ctx, teams[i].ID, TeamStatusInterrupted, "服务器重启")
-		if err != nil {
-			u.lg.Warn("recover orphaned teams: failed to transition team to interrupted",
-				loggateway.Str("team_id", teams[i].ID),
-				loggateway.Err(err),
-			)
-			continue
-		}
-		recovered = append(recovered, team)
-		orphanRecoveryMaxRuns := 10
-		runs, err := u.ListRuns(ctx, teams[i].ID, orphanRecoveryMaxRuns)
-		if err != nil {
-			u.lg.Warn("recover orphaned teams: failed to list team runs",
-				loggateway.Str("team_id", teams[i].ID),
-				loggateway.Err(err),
-			)
-			continue
-		}
-		for _, run := range runs {
-			// Only orphan pending/running runs. waiting_human/paused runs are
-			// owned by the graph-session HITL recovery channel (RecoverSessions +
-			// completion watch with HITL SLA timeout); force-failing them here
-			// would silently discard human verdicts after restart. Terminal runs
-			// are skipped to avoid Warn noise on every startup.
-			var target string
-			switch run.Status {
-			case TeamRunStatusPending:
-				target = TeamRunStatusCancelled
-			case TeamRunStatusRunning:
-				target = TeamRunStatusFailed
-			default:
-				continue
-			}
-			if _, tErr := u.TransitionRunStatus(ctx, run.ID, target); tErr != nil {
-				u.lg.Warn("recover orphaned teams: failed to transition team run to terminal status",
-					loggateway.Str("team_run_id", run.ID),
-					loggateway.Str("target_status", target),
-					loggateway.Err(tErr),
-				)
-			}
-		}
-	}
-	return recovered, nil
-}
+// RecoverOrphanedRunningTeams / RecoverOrphanedRunningTeamsEx live in
+// team_orphan_recovery.go (AS-COG-01 split).
 
 func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
 	return u.reader.ListTeams(ctx)

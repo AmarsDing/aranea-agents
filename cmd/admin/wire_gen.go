@@ -651,7 +651,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryLegacyMigrator := data.NewMemoryLegacyMigratorAdapter(dataData, loggatewayLogger)
 	memoryDataMigrationWorker := provideMemoryDataMigrationWorker(memoryLegacyMigrator, loggatewayLogger)
 	v2RecoveryRepo := data.NewV2RecoveryRepo(dataData, loggatewayLogger)
-	sessionStatusGuard := service.NewSessionStatusGuard(v33, teamUsecase, taskOrchestratorPort, v2Bus, v2RecoveryRepo, chatService, loggatewayLogger)
+	sessionStatusGuard := service.NewSessionStatusGuard(v33, teamUsecase, taskOrchestratorPort, v2Bus, v2RecoveryRepo, chatService, teamGraphRunCoordinator, loggatewayLogger)
 	buildCache := provideGlobalBuildCache()
 	mcpToolSetPool := provideMCPToolSetPool()
 	shardCache := provideGlobalShardCache()

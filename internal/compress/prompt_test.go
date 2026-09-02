@@ -11,8 +11,28 @@ import (
 )
 
 func TestPromptVersion(t *testing.T) {
-	if PromptVersion != "v5" {
-		t.Fatalf("got %q want %q", PromptVersion, "v5")
+	if PromptVersion != "v6" {
+		t.Fatalf("got %q want %q", PromptVersion, "v6")
+	}
+}
+
+// LBG-2: v6 对照 Fable 六条清单补齐两条差距——§5 被排除方案及否决原因、
+// §7 已做决策及约束原话。节编号结构不变（9 节 + task_state）。
+func TestDefaultSystemPrompt_V6Sections(t *testing.T) {
+	if !strings.Contains(DefaultSystemPrompt, "approaches considered and rejected, with the reasons") {
+		t.Fatal("§5 rejected-approaches clause missing")
+	}
+	if !strings.Contains(DefaultSystemPrompt, "decisions made, with their constraints verbatim") {
+		t.Fatal("§7 decisions-verbatim clause missing")
+	}
+	// 9 节编号结构不变
+	for _, sec := range []string{
+		"## 1. User Intent & Goals",
+		"## 9. Current Work State",
+	} {
+		if !strings.Contains(DefaultSystemPrompt, sec) {
+			t.Fatalf("section %q missing", sec)
+		}
 	}
 }
 

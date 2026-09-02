@@ -10,6 +10,7 @@
 //	Running --> Failed : fail
 //	Running --> Cancelled : cancel
 //	Running --> WaitingHuman : interrupt
+//	Running --> Running : recover (startup reconcile only)
 //	WaitingHuman --> Running : resume
 //	WaitingHuman --> Cancelled : cancel
 //	WaitingHuman --> Failed : fail
@@ -49,6 +50,9 @@ const (
 	GraphExecEventCancel    GraphExecutionEvent = "cancel"
 	GraphExecEventInterrupt GraphExecutionEvent = "interrupt"
 	GraphExecEventResume    GraphExecutionEvent = "resume"
+	// GraphExecEventRecover 仅启动对账路径使用（83-长时运行韧性）：孤儿 running
+	// 执行被崩溃恢复接管、重建 runtime 的自环事件，DB 状态不变。
+	GraphExecEventRecover GraphExecutionEvent = "recover"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -60,6 +64,7 @@ var graphExecutionTransitionRules = []shared.TransitionRule[GraphExecutionState,
 	{From: GraphExecRunning, Event: GraphExecEventFail, To: GraphExecFailed},
 	{From: GraphExecRunning, Event: GraphExecEventCancel, To: GraphExecCancelled},
 	{From: GraphExecRunning, Event: GraphExecEventInterrupt, To: GraphExecWaitingHuman},
+	{From: GraphExecRunning, Event: GraphExecEventRecover, To: GraphExecRunning},
 	{From: GraphExecWaitingHuman, Event: GraphExecEventResume, To: GraphExecRunning},
 	{From: GraphExecWaitingHuman, Event: GraphExecEventCancel, To: GraphExecCancelled},
 	{From: GraphExecWaitingHuman, Event: GraphExecEventFail, To: GraphExecFailed},

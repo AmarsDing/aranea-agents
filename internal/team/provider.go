@@ -1,6 +1,7 @@
 package team
 
 import (
+	"os"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -16,6 +17,13 @@ import (
 // and starts a background ticker that evicts sessions older than sessionMaxAge.
 func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, eventBus biz.EventBus, seq rt.EventPublisher, sessionRepo biz.TeamGraphSessionRepo, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	coord := NewTeamGraphRunCoordinator(graphs, teamRunReader, teamRunWriter, runTransitioner, eventBus, seq, sessionRepo, nil, lg)
+	// 83-长时运行韧性：TEAM_RUN_CRASH_RESUME_DISABLED=1 时启动对账回退旧判死路径。
+	// 启动期读取一次注入，不在热路径重复读 env。
+	if os.Getenv("TEAM_RUN_CRASH_RESUME_DISABLED") == "1" {
+		coord.SetCrashResumeEnabled(false)
+		lg.Warn("team graph crash resume disabled via TEAM_RUN_CRASH_RESUME_DISABLED",
+			loggateway.StepID("team.session.crash_resume_disabled"))
+	}
 	interval := coord.cfg.CleanupInterval
 	if interval <= 0 {
 		interval = defaultCleanupInterval

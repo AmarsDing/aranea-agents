@@ -2,7 +2,6 @@ package team
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -186,6 +185,10 @@ func (b *coordGraphBackend) ResumeExecution(ctx context.Context, executionID str
 	return b.uc.ResumeExecution(ctx, executionID, resumeValue)
 }
 
+func (b *coordGraphBackend) RecoverOrphanedExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
+	return b.uc.RecoverOrphanedExecution(ctx, executionID)
+}
+
 func (b *coordGraphBackend) GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
 	return b.uc.GetExecution(ctx, executionID)
 }
@@ -318,43 +321,8 @@ func TestTeamGraphRunCoordinator_FinalizeRetainsWaitingHumanSession(t *testing.T
 	}
 }
 
-func TestTeamGraphRunCoordinator_RecoverSessions(t *testing.T) {
-	backend := newCoordTestBackend()
-	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{
-		"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1","name":"Agent1"}],"mode":"pipeline"}`},
-	}}
-	sessRepo := newMemSessionRepo()
-	sessRepo.SaveSession(context.Background(), biz.TeamGraphSession{
-		ExecID:         "exec-1",
-		TeamRunID:      "run-1",
-		TeamID:         "team-1",
-		SessionID:      "sess-1",
-		Status:         biz.TeamRunStatusWaitingHuman,
-		DefinitionJSON: `{"members":[{"agent_id":"a1","name":"Agent1"}],"mode":"pipeline"}`,
-	})
-	sessRepo.SaveSession(context.Background(), biz.TeamGraphSession{
-		ExecID:    "exec-2",
-		TeamRunID: "run-2",
-		TeamID:    "team-1",
-		SessionID: "sess-2",
-		Status:    biz.TeamRunStatusRunning,
-	})
-
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
-	coord.RecoverSessions(context.Background())
-
-	sess := coord.session("exec-1")
-	if sess == nil {
-		t.Fatal("waiting_human session should be recovered")
-	}
-	if sess.teamRunID != "run-1" {
-		t.Fatalf("expected run-1, got %q", sess.teamRunID)
-	}
-	sess2 := coord.session("exec-2")
-	if sess2 != nil {
-		t.Fatal("running session should not be recovered (orphaned)")
-	}
-}
+// RecoverSessions crash-resume tests live in team_graph_run_recovery_test.go
+// (83-长时运行韧性, AS-COG-01 split).
 
 func TestTeamGraphRunCoordinator_MarkInterruptUpdatesDB(t *testing.T) {
 	backend := newCoordTestBackend()
@@ -468,56 +436,8 @@ func TestTeamGraphRunCoordinator_CleanupStaleDeletesFromDB(t *testing.T) {
 	}
 }
 
-type failingResumeBackend struct {
-	inner TeamGraphExecutionBackend
-}
-
-func (b *failingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
-	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
-}
-func (b *failingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
-	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
-}
-func (b *failingResumeBackend) ResumeExecution(context.Context, string, map[string]any) (*biz.GraphExecution, error) {
-	return nil, errors.New("resume failed")
-}
-func (b *failingResumeBackend) RecordTeamGraphNodeEnd(ctx context.Context, execID, nodeID string, stepIndex int, status, errMsg string) error {
-	return b.inner.RecordTeamGraphNodeEnd(ctx, execID, nodeID, stepIndex, status, errMsg)
-}
-func (b *failingResumeBackend) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
-	return b.inner.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
-}
-func (b *failingResumeBackend) GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
-	return b.inner.GetExecution(ctx, executionID)
-}
-
-type succeedingResumeBackend struct {
-	inner TeamGraphExecutionBackend
-}
-
-func (b *succeedingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
-	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
-}
-func (b *succeedingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
-	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
-}
-func (b *succeedingResumeBackend) RecordTeamGraphNodeEnd(ctx context.Context, execID, nodeID string, stepIndex int, status, errMsg string) error {
-	return b.inner.RecordTeamGraphNodeEnd(ctx, execID, nodeID, stepIndex, status, errMsg)
-}
-func (b *succeedingResumeBackend) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
-	return b.inner.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
-}
-func (b *succeedingResumeBackend) ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error) {
-	exec, err := b.inner.GetExecution(ctx, executionID)
-	if err != nil {
-		return nil, err
-	}
-	exec.Status = biz.TeamRunStatusRunning
-	return exec, nil
-}
-func (b *succeedingResumeBackend) GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
-	return b.inner.GetExecution(ctx, executionID)
-}
+// failingResumeBackend / succeedingResumeBackend live in team_graph_resume_stub_test.go
+// (AS-COG-01 split).
 
 func TestShouldResumeTeamGraph(t *testing.T) {
 	if shouldResumeTeamGraph(nil, "node-1") {

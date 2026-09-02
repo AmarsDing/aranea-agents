@@ -154,6 +154,16 @@ type TeamGraphCoordPort interface {
 	RecoverSessions(ctx context.Context)
 }
 
+// TeamRunStartupResumeMarker reports whether a running team run was already
+// crash-resumed from its graph checkpoint during this process's startup
+// reconcile (83-长时运行韧性). Implemented by the team graph coordinator;
+// consumed by TeamUsecase.RecoverOrphanedRunningTeamsEx to skip killing runs
+// that are alive again. The marker set lives only for the startup window.
+// Stability:evolving
+type TeamRunStartupResumeMarker interface {
+	WasStartupResumed(runID string) bool
+}
+
 // TeamTurnRunnerPort is the biz-level port for the team turn runner.
 // TeamService depends on this instead of *team.Runner.
 //

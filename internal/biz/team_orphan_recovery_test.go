@@ -143,3 +143,72 @@ func TestRecoverOrphanedRunningTeams_SkipsWaitingHumanAndPausedRuns(t *testing.T
 		}
 	}
 }
+
+type stubStartupResumeMarker map[string]bool
+
+func (m stubStartupResumeMarker) WasStartupResumed(runID string) bool { return m[runID] }
+
+// 83-长时运行韧性：team 的活跃 running run 已在启动对账中从 checkpoint
+// 续跑成功（marker 命中）→ 整个 team 跳过判死：team 不 interrupted，run 不动。
+func TestRecoverOrphanedRunningTeamsEx_SkipsStartupResumedTeam(t *testing.T) {
+	repo := &orphanRecoveryRepo{
+		teams: []Team{
+			{ID: "team-resumed", Status: TeamStatusRunning},
+			{ID: "team-orphan", Status: TeamStatusRunning},
+		},
+		runs: []TeamRunRecord{
+			{ID: "run-resumed", TeamID: "team-resumed", Status: TeamRunStatusRunning},
+			{ID: "run-orphan", TeamID: "team-orphan", Status: TeamRunStatusRunning},
+		},
+	}
+	uc := NewTeamUsecase(TeamUsecaseOpts{
+		Reader:    repo,
+		Writer:    repo,
+		RunReader: repo,
+		RunWriter: repo,
+		Lg:        loggateway.NewNoop(),
+	})
+	marker := stubStartupResumeMarker{"run-resumed": true}
+
+	recovered, err := uc.RecoverOrphanedRunningTeamsEx(context.Background(), marker)
+	if err != nil {
+		t.Fatalf("RecoverOrphanedRunningTeamsEx: unexpected error: %v", err)
+	}
+	if len(recovered) != 1 || recovered[0].ID != "team-orphan" {
+		t.Fatalf("recovered = %v, want only team-orphan", recovered)
+	}
+	// marker 命中：team-resumed 与其 run 均不被触碰。
+	for _, tm := range repo.teams {
+		if tm.ID == "team-resumed" && tm.Status != TeamStatusRunning {
+			t.Errorf("team-resumed status = %q, want running untouched", tm.Status)
+		}
+	}
+	if s, ok := repo.casStatusFor("run-resumed"); ok {
+		t.Errorf("run-resumed must NOT be killed, got CAS to %q", s)
+	}
+	// 未命中：走旧判死路径。
+	if s, ok := repo.casStatusFor("run-orphan"); !ok || s != TeamRunStatusFailed {
+		t.Errorf("run-orphan: CAS = (%q, %v), want (%q, true)", s, ok, TeamRunStatusFailed)
+	}
+}
+
+// 83-长时运行韧性：nil marker 退化为旧行为（等价 RecoverOrphanedRunningTeams）。
+func TestRecoverOrphanedRunningTeamsEx_NilMarkerLegacy(t *testing.T) {
+	repo := &orphanRecoveryRepo{
+		teams: []Team{{ID: "team-1", Status: TeamStatusRunning}},
+		runs:  []TeamRunRecord{{ID: "run-1", TeamID: "team-1", Status: TeamRunStatusRunning}},
+	}
+	uc := NewTeamUsecase(TeamUsecaseOpts{
+		Reader:    repo,
+		Writer:    repo,
+		RunReader: repo,
+		RunWriter: repo,
+		Lg:        loggateway.NewNoop(),
+	})
+	if _, err := uc.RecoverOrphanedRunningTeamsEx(context.Background(), nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s, ok := repo.casStatusFor("run-1"); !ok || s != TeamRunStatusFailed {
+		t.Errorf("run-1: CAS = (%q, %v), want (%q, true)", s, ok, TeamRunStatusFailed)
+	}
+}

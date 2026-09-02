@@ -21,6 +21,9 @@ type TeamGraphExecutionBackend interface {
 	RecordTeamGraphNodeEnd(ctx context.Context, execID, nodeID string, stepIndex int, status, errMsg string) error
 	FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error
 	ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error)
+	// RecoverOrphanedExecution 接管重启残留的 running 执行（83-长时运行韧性，
+	// 仅启动对账路径）：checkpoint 安全闸 + hash 校验失败时返回错误，调用方回退判死。
+	RecoverOrphanedExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error)
 	GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error)
 }
 

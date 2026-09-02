@@ -26,11 +26,14 @@ type SessionStatusGuard struct {
 	bus          biz.EventBus // Phase 3b-D: v2 EventBus (originally biz.ActivityEventBus)
 	v2Recovery   biz.V2RecoveryRepo
 	escalator    SessionRunDurableEscalator
-	lg           loggateway.Logger
+	// startupResume 启动对账续跑记忆（83-长时运行韧性）：team 级判死前查
+	// marker，已从 checkpoint 续跑成功的 run 所属 team 整体跳过。nil-safe。
+	startupResume biz.TeamRunStartupResumeMarker
+	lg            loggateway.Logger
 }
 
-func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.EventBus, v2Recovery biz.V2RecoveryRepo, escalator SessionRunDurableEscalator, lg loggateway.Logger) *SessionStatusGuard {
-	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, v2Recovery: v2Recovery, escalator: escalator, lg: lg}
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.EventBus, v2Recovery biz.V2RecoveryRepo, escalator SessionRunDurableEscalator, startupResume biz.TeamRunStartupResumeMarker, lg loggateway.Logger) *SessionStatusGuard {
+	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, v2Recovery: v2Recovery, escalator: escalator, startupResume: startupResume, lg: lg}
 }
 
 func (g *SessionStatusGuard) OnStartup(ctx context.Context) error {
@@ -93,7 +96,7 @@ func (g *SessionStatusGuard) recoverOrphanedRunningTeams(ctx context.Context) er
 		return nil
 	}
 	g.lg.Info("session status guard: recovering orphaned running teams", loggateway.Int("count", len(teams)))
-	recovered, err := g.teamUC.RecoverOrphanedRunningTeams(ctx)
+	recovered, err := g.teamUC.RecoverOrphanedRunningTeamsEx(ctx, g.startupResume)
 	if err != nil {
 		g.lg.Error("session status guard: failed to recover orphaned teams", loggateway.Err(err))
 		return err

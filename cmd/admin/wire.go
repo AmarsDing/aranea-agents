@@ -4345,6 +4345,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
 		wire.Bind(new(biz.TeamRunStatusTransitioner), new(*biz.TeamUsecase)),
 		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
+		// 83-长时运行韧性：team 级判死跳过启动对账中已 checkpoint 续跑的 run。
+		wire.Bind(new(biz.TeamRunStartupResumeMarker), new(*team.TeamGraphRunCoordinator)),
 		// Self-check integration
 		provideSelfCheckScheduler,
 		provideDBPinger,

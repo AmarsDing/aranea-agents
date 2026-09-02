@@ -697,6 +697,20 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 	return runtime, eventCh, nil
 }
 
+// HasCheckpoint implements biz.GraphRunnerFactory：崩溃续跑安全闸（83-长时运行
+// 韧性）。PG saver 未命中返回 (nil, nil)（checkpoint/postgres/saver.go），
+// 故 tuple != nil 即存在；saver 为 nil（未启用持久化）视为无 checkpoint。
+func (f *trpcGraphBuilderFactory) HasCheckpoint(ctx context.Context, lineageID string) (bool, error) {
+	if f == nil || f.saver == nil || lineageID == "" {
+		return false, nil
+	}
+	tuple, err := f.saver.GetTuple(ctx, trpcgraph.CreateCheckpointConfig(lineageID, "", ""))
+	if err != nil {
+		return false, err
+	}
+	return tuple != nil, nil
+}
+
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphVisualization, error) {
 	g, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {

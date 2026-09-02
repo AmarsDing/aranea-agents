@@ -120,7 +120,7 @@ func (s *stubV2RecoveryRepo) FailOrphanedInFlight(_ context.Context, _ time.Time
 func TestSessionStatusGuard_OnStartup(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1", "s2")
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	err := g.OnStartup(context.Background())
 	if err != nil {
@@ -142,7 +142,7 @@ func TestSessionStatusGuard_OnStartup(t *testing.T) {
 func TestSessionStatusGuard_OnStartup_NoRunning(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	err := g.OnStartup(context.Background())
 	if err != nil {
@@ -156,7 +156,7 @@ func TestSessionStatusGuard_OnStartup_NoRunning(t *testing.T) {
 func TestSessionStatusGuard_OnShutdown(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1")
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	err := g.OnShutdown(context.Background())
 	if err != nil {
@@ -183,7 +183,7 @@ func TestSessionStatusGuard_OnShutdown(t *testing.T) {
 func TestSessionStatusGuard_OnShutdown_CanceledContext(t *testing.T) {
 	repo := &ctxAwareSessionRepo{newStubSessionRepoForGuard("s1")}
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Kratos cancels server ctx before invoking Stop hooks
@@ -200,7 +200,7 @@ func TestSessionStatusGuard_OnStartup_RecoversV2Entities(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
 	rec := &stubV2RecoveryRepo{stats: biz.V2RecoveryStats{Tasks: 2, Steps: 3}}
-	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, nil, nil, loggateway.NewNoop())
 
 	if err := g.OnStartup(context.Background()); err != nil {
 		t.Fatalf("OnStartup: %v", err)
@@ -215,7 +215,7 @@ func TestSessionStatusGuard_OnStartup_V2RecoveryErrorNonFatal(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
 	rec := &stubV2RecoveryRepo{err: errors.New("db down")}
-	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, nil, nil, loggateway.NewNoop())
 
 	if err := g.OnStartup(context.Background()); err != nil {
 		t.Fatalf("OnStartup should be non-fatal on v2 recovery error: %v", err)
@@ -260,7 +260,7 @@ func TestSessionStatusGuard_OnStartup_NotifiesInterruptedTasks(t *testing.T) {
 		},
 	}
 	bus := &stubGuardEventBus{}
-	g := NewSessionStatusGuard(uc, nil, nil, bus, rec, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, bus, rec, nil, nil, loggateway.NewNoop())
 
 	if err := g.OnStartup(context.Background()); err != nil {
 		t.Fatalf("OnStartup: %v", err)
@@ -301,7 +301,7 @@ func TestSessionStatusGuard_OnShutdown_EscalatesToDurable(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1")
 	uc := newTestGuardUC(repo)
 	esc := &stubDurableEscalator{n: 1}
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, esc, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, esc, nil, loggateway.NewNoop())
 
 	if err := g.OnShutdown(context.Background()); err != nil {
 		t.Fatalf("OnShutdown: %v", err)
@@ -311,5 +311,75 @@ func TestSessionStatusGuard_OnShutdown_EscalatesToDurable(t *testing.T) {
 	}
 	if len(repo.writer.updated) != 1 {
 		t.Fatalf("expected batch interrupt still applied, got %d updates", len(repo.writer.updated))
+	}
+}
+
+// guardOrphanTeamRepo supports the startup-resume marker injection test:
+// one running team with one running run; CAS calls are recorded.
+type guardOrphanTeamRepo struct {
+	cancelTeamRunRepo
+	team     biz.Team
+	run      biz.TeamRunRecord
+	casCalls map[string]string
+}
+
+func (r *guardOrphanTeamRepo) ListTeamsByStatus(_ context.Context, status string) ([]biz.Team, error) {
+	if r.team.Status == status {
+		return []biz.Team{r.team}, nil
+	}
+	return nil, nil
+}
+func (r *guardOrphanTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRunRecord, error) {
+	if r.run.TeamID == teamID {
+		return []biz.TeamRunRecord{r.run}, nil
+	}
+	return nil, nil
+}
+func (r *guardOrphanTeamRepo) UpdateTeamWhereStatus(_ context.Context, id, newStatus, _ string) (bool, error) {
+	if r.team.ID == id {
+		r.team.Status = newStatus
+		return true, nil
+	}
+	return false, nil
+}
+func (r *guardOrphanTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, runID, newStatus, _ string) (bool, error) {
+	if r.casCalls == nil {
+		r.casCalls = map[string]string{}
+	}
+	r.casCalls[runID] = newStatus
+	if r.run.ID == runID {
+		r.run.Status = newStatus
+		return true, nil
+	}
+	return false, nil
+}
+
+type guardStubMarker map[string]bool
+
+func (m guardStubMarker) WasStartupResumed(runID string) bool { return m[runID] }
+
+// 83-长时运行韧性：guard 构造注入的 marker 必须传入 teamUC.Ex 判死路径——
+// marker 命中时 team 不 interrupted、run 不判死。
+func TestSessionStatusGuard_StartupResumeMarkerSkipsKill(t *testing.T) {
+	sessRepo := newStubSessionRepoForGuard("s1")
+	uc := newTestGuardUC(sessRepo)
+	teamRepo := &guardOrphanTeamRepo{
+		team: biz.Team{ID: "team-1", Status: biz.TeamStatusRunning},
+		run:  biz.TeamRunRecord{ID: "run-1", TeamID: "team-1", Status: biz.TeamRunStatusRunning},
+	}
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo,
+		Lg: loggateway.NewNoop(),
+	})
+	g := NewSessionStatusGuard(uc, teamUC, nil, nil, nil, nil, guardStubMarker{"run-1": true}, loggateway.NewNoop())
+
+	if err := g.OnStartup(context.Background()); err != nil {
+		t.Fatalf("OnStartup: %v", err)
+	}
+	if teamRepo.team.Status != biz.TeamStatusRunning {
+		t.Fatalf("team with startup-resumed run must stay running, got %q", teamRepo.team.Status)
+	}
+	if s := teamRepo.casCalls["run-1"]; s != "" {
+		t.Fatalf("startup-resumed run must not be killed, got CAS to %q", s)
 	}
 }
