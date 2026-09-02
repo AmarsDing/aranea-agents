@@ -968,7 +968,7 @@ func newConfigRollbackTool(cfg Config) trpctool.CallableTool {
 	)
 }
 
-// NewToolset returns all 20 twinops tools.
+// NewToolset returns all 25 twinops tools.
 func NewToolset(cfg Config) []trpctool.Tool {
 	registerCompensationPairs() // P0-1：补偿对声明（见 compensation.go）
 	return []trpctool.Tool{
@@ -992,6 +992,12 @@ func NewToolset(cfg Config) []trpctool.Tool {
 		newConfigDiffTool(cfg),
 		newConfigPushTool(cfg),
 		newConfigRollbackTool(cfg),
+		// twin_butler 只读问答面扩展（twinops_query_ext.go，2026-09-02）
+		newArrivalOverviewTool(cfg),
+		newArrivalStatusTool(cfg),
+		newNoticeRecordsTool(cfg),
+		newReportTasksTool(cfg),
+		newKBSearchTool(cfg),
 	}
 }
 

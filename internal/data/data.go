@@ -1098,6 +1098,10 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	seedStep("data.seed.pack_it_ops", func(ctx context.Context) error {
 		return SeedPackItOps(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	}, 2*time.Minute)
+	// twinmonitor-pack：TwinMonitor 综合监控平台问答包（单 Agent「twin_butler__general」，无组织树）
+	seedStep("data.seed.pack_twinmonitor", func(ctx context.Context) error {
+		return SeedPackTwinMonitor(ctx, entClient, d.Dialect(), scenarioDir, lg)
+	})
 	seedStep("data.seed.spirit_prompt_files", func(ctx context.Context) error {
 		return SeedSpiritPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
