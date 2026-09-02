@@ -207,6 +207,9 @@ var systemInternalNoticeTypes = map[string]struct{}{
 	"token_usage":        {},
 	"memory_recalled":    {},
 	"knowledge_recalled": {},
+	// deliverables：交付物清单通知（Content 为 {"artifacts":[...]} 机器载荷），
+	// 由前端 v2 流渲染为产物卡片，不得以原始 JSON 系统消息泄漏到纯文本视图。
+	"deliverables": {},
 }
 
 // activityToChatMessage converts a single Activity to ChatMessage.

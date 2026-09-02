@@ -79,6 +79,24 @@ type TeamDeliverableDigest struct {
 	// Spirit composing the final report knows long-form full texts exist and
 	// can fetch them via read_upstream_deliverable when needed.
 	Artifacts []string
+	// ArtifactRefs 是同一批载荷中已桥接进 spirit 会话产物库的条目
+	// （artifact_id 非空）的结构化指针。service 层在 synthesis 触发时聚合
+	// 为 deliverables 通知（orphan notice step），供前端渲染可点击的产物
+	// 卡片（2026-09-02 会话产物点击查看 P1）。
+	ArtifactRefs []DeliverableArtifactRef
+}
+
+// DeliverableArtifactRef 是面向前端的产物指针：点击经产物预览/下载 API
+// 打开。仅携带渲染卡片所需的最小字段；完整元数据由前端按 artifact_id
+// 调产物 API 获取。
+type DeliverableArtifactRef struct {
+	ArtifactID string `json:"artifact_id"`
+	Name       string `json:"name"`
+	Format     string `json:"format,omitempty"`
+	SizeChars  int    `json:"size_chars,omitempty"`
+	// MimeType 供前端产物卡片选图标/预览方式；源数据缺失时为空，
+	// 前端按 Format 退化映射。
+	MimeType string `json:"mime_type,omitempty"`
 }
 
 // synthesisDigestMaxRunes caps each team's digest in the trigger so a

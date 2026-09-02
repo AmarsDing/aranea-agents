@@ -96,6 +96,13 @@
             :aria-label="t('chat.artifacts')"
             @click="emit('open-artifacts-page')"
           >
+            <q-badge
+              v-if="(sessionArtifacts?.length ?? 0) > 0"
+              color="accent"
+              floating
+              rounded
+              :label="sessionArtifacts!.length"
+            />
             <q-tooltip>{{ t('chat.artifacts') }}</q-tooltip>
           </q-btn>
           <q-btn flat round dense icon="bolt" :aria-label="t('chat.sessionEvents')" @click="emit('open-events')">
@@ -157,7 +164,6 @@
             @retry="(id) => emit('retry', id)"
             @dismiss-failed="(id) => emit('dismiss-failed', id)"
             @attachment-deleted="(id) => emit('attachment-deleted', id)"
-            @download-artifact="(meta) => emit('download-artifact', meta)"
             @pin-reasoning-message="(id) => emit('pin-reasoning-message', id)"
             @cancel-pending="(id) => emit('cancel-pending', id)"
             @interrupt-pending="(id) => emit('interrupt-pending', id)"
@@ -387,7 +393,6 @@ const emit = defineEmits<{
   'update-pending': [pendingId: string, content: string];
   'open-events': [];
   'open-artifacts-page': [];
-  'open-artifact': [id: string];
   'paste-file': [file: File];
   'focus-turn': [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
@@ -397,7 +402,6 @@ const emit = defineEmits<{
   retry: [messageId: string];
   'dismiss-failed': [messageId: string];
   'attachment-deleted': [id: string];
-  'download-artifact': [meta: import('../../features/artifact/types').ArtifactMeta];
   regenerate: [message: Message];
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
   'add-to-eval': [task: import('../../features/chat/v2Types').Task];

@@ -38,6 +38,12 @@ func teamTurnBaseRunOptions(teamID, turnQuery string) []trpcagent.RunOption {
 		// chat 主路径 buildTurnRunOptions 对齐）。
 		trpcagent.WithToolCallArgumentsJSONRepairEnabled(true),
 		trpcagent.WithToolCallTextRepairEnabled(true),
+		// 2026-09-01 错误传播口径统一（方案 B）：成员终态错误（LLM 流
+		// 被掐等）上抛为 graph 节点失败，team_run_steps 记 error 与
+		// steps_v2 证据同口径，团队 FailurePolicy 即时生效。配套必要
+		// 条件：provider 活性守卫装饰器对错误响应做 Object 归一化
+		// （框架 isTerminalAgentErrorEvent 的 Object 门）。
+		trpcagent.WithPropagateChildAgentErrors(true),
 	}
 }
 
@@ -251,10 +257,14 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// decision.GateSessionIDFromContext 取回，SessionGateStats 聚合命中。
 	runCtx = decision.WithGateSessionID(runCtx, run.SessionID)
 	// P6-N3：成员模型调用链注入首字节静默重试预算（每次 GenerateContent
-	// 静默超 budget 自动同模型重试一次）；下方消费端守卫总时限相应放宽
-	// 为 2×budget+slack，避免守卫在第二发重试中途取消 runCtx 误杀恢复。
+	// 静默超 budget 自动重连）；下方消费端守卫总时限按全部重连尝试放宽，
+	// 避免守卫在重连中途取消 runCtx 误杀恢复。
+	// 2026-09-01 活性守卫治理：同点注入流中段 stall 预算（事件间隔静默
+	// 上限 + 重连次数上限），模型目录 config_json 可覆盖包默认值。
 	firstByteBudget := agent.ResolveFirstByteTimeout(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
 	runCtx = provider.WithFirstByteRetryBudget(runCtx, firstByteBudget)
+	stallTimeout, stallMaxReconnects := agent.ResolveStallPolicy(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
+	runCtx = provider.WithStallBudget(runCtx, stallTimeout, stallMaxReconnects)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 	if teamEmitter != nil {
@@ -412,7 +422,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget)
+	firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, stallMaxReconnects)
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, projectMeta, streamOpts, r.lg)
 	streamLastRoundPromptTok = result.LastRoundPromptTok
 	streamLastRoundCompletionTok = result.LastRoundCompletionTok

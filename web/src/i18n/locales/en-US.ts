@@ -647,6 +647,7 @@ export default {
     connected: 'Connected',
     sessionEvents: 'Session events',
     artifacts: 'Artifacts',
+    deliverablesNotice: 'Deliverables',
     thinkingPanel: 'Thinking panel',
     activity: {
       running: 'Running',

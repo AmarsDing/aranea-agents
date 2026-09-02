@@ -640,6 +640,7 @@ export default {
     connected: '已连接',
     sessionEvents: '会话事件',
     artifacts: '产物',
+    deliverablesNotice: '交付物清单',
     thinkingPanel: '思考面板',
     activity: {
       running: '正在执行',

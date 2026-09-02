@@ -292,11 +292,15 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 	runCtx := o.prepareRunContext(ctx, input, ag, deps)
 	// P6-N3：向模型调用链注入首字节静默重试预算——每次 GenerateContent 在
-	// budget 内零产出即取消该发并同模型自动重试一次（S09 t32 deepseek
-	// 首字节 stall 直接 503 整轮的修复）。消费端守卫总时限必须放宽为
-	// 2×budget+slack，否则守卫会在第二发重试中途取消 runCtx 误杀恢复。
+	// budget 内零产出即取消该发并重连（S09 t32 deepseek 首字节 stall
+	// 直接 503 整轮的修复）。消费端守卫总时限必须按全部重连尝试放宽，
+	// 否则守卫会在重连中途取消 runCtx 误杀恢复。
+	// 2026-09-01 活性守卫治理：同点注入流中段 stall 预算（与 team 路径
+	// 同口径），模型目录 config_json 可覆盖包默认值。
 	runCtx = provider.WithFirstByteRetryBudget(runCtx, firstByteTimeout)
-	firstByteTimeout = provider.FirstByteGuardWithRetry(firstByteTimeout)
+	stallTimeout, stallMaxReconnects := chatagent.ResolveStallPolicy(runCtx, deps.ModelCatalog, ag.Provider, ag.Model)
+	runCtx = provider.WithStallBudget(runCtx, stallTimeout, stallMaxReconnects)
+	firstByteTimeout = provider.FirstByteGuardWithRetry(firstByteTimeout, stallMaxReconnects)
 	runCtx, abortRun := context.WithCancel(runCtx)
 	defer abortRun()
 

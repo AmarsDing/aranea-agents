@@ -43,6 +43,13 @@ const (
 	maxAllowedTimeout = 120 * time.Minute
 )
 
+// LLMLeakGuardTimeout 是 LLM HTTP 客户端的统一防泄漏安全网（2026-09-01
+// 活性守卫治理）：业务超时由「活性守卫（livenessGuardModel）+ 整轮 runCtx」
+// 治理，墙钟只负责回收 goroutine/连接双失效的死挂请求，永不干预业务。
+// 取代 wire.go 既有 60min/120s/120s/90s 四处硬编码与 resolver_model.go 的
+// nil-RT fallback 120s。
+const LLMLeakGuardTimeout = 6 * time.Hour
+
 // TimeoutPolicy 按任务类型动态选择 HTTP 超时。
 //
 // 构造后不可变（WithTimeout 应仅在构造阶段链式调用），因此并发安全：

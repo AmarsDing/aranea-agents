@@ -99,7 +99,7 @@ export const useArtifactStore = defineStore('artifact', () => {
   }
 
   /** 统一下载入口：签名 URL → 新窗口下载（attachment）。失败抛错由调用方提示。 */
-  async function download(meta: Pick<ArtifactMeta, 'id' | 'version'>): Promise<void> {
+  async function download(meta: { id: string; version?: number }): Promise<void> {
     const signed = await signDownloadUrl(meta.id, meta.version);
     if (signed.url) {
       window.open(artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');

@@ -48,7 +48,7 @@ import CodeToolDetail from './tools/CodeToolDetail.vue';
 import MediaToolDetail from './tools/MediaToolDetail.vue';
 import ArtifactRefCard from '../artifact/ArtifactRefCard.vue';
 import { classifyTool, TOOL_CATEGORY_ICON, type ToolCategory } from './tools/classifyTool';
-import { asRecord } from './tools/toolDetailShared';
+import { asRecord, extractArtifactRef } from './tools/toolDetailShared';
 
 /** T8.4: Tool result/arguments longer than this threshold auto-collapse. */
 const RESULT_COLLAPSE_THRESHOLD = 500;
@@ -100,14 +100,9 @@ const parsedToolResult = computed(() => asRecord(props.step.ToolResult));
  * 在 ToolResult 输出 artifact_id / file）。媒体工具已由 MediaToolDetail
  * 内联预览，不再重复渲染卡片。
  */
-const artifactRef = computed<{ id: string; name?: string } | null>(() => {
+const artifactRef = computed(() => {
   if (toolCategory.value === 'media') return null;
-  const result = parsedToolResult.value;
-  if (!result) return null;
-  const id = typeof result.artifact_id === 'string' ? result.artifact_id.trim() : '';
-  if (!id) return null;
-  const name = typeof result.file === 'string' && result.file.trim() ? result.file.trim() : undefined;
-  return { id, name };
+  return extractArtifactRef(props.step.ToolResult);
 });
 
 /**

@@ -150,13 +150,10 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
   }
 
   /**
-   * 产物点击统一入口（消息内产物卡片 / 历史绑定）：打开全局预览弹窗。
-   * 预览失败或 binary 类型由弹窗内下载按钮降级（2026-09-01，原为
-   * window.open 签名 URL 强制下载，点击无法「查看」）。
+   * 产物点击统一入口已收敛为 artifactStore.openArtifactPreview（消息内产物
+   * 卡片 / 抽屉 / deliverables 通知均直连 store，2026-09-02）；预览失败或
+   * binary 类型由弹窗内下载按钮降级。
    */
-  function openSessionArtifact(id: string) {
-    artifactStore.openArtifactPreview(id);
-  }
 
   function onArtifactDeleted(id: string) {
     sessionArtifacts.value = sessionArtifacts.value.filter((a) => a.id !== id);
@@ -168,7 +165,6 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
     artifactsDrawerOpen,
     openArtifactsDrawer,
     goArtifactsPage,
-    openSessionArtifact,
     onArtifactDeleted,
   };
 }

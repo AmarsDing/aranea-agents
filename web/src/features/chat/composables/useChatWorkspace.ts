@@ -585,7 +585,6 @@ export function useChatWorkspace() {
     artifactsDrawerOpen,
     openArtifactsDrawer,
     goArtifactsPage,
-    openSessionArtifact,
     onArtifactDeleted: removeArtifactFromList,
   } = useChatSessionArtifacts(sessionIdForArtifacts);
 
@@ -1073,7 +1072,6 @@ export function useChatWorkspace() {
       goArtifactsPage,
       fileSupported,
       fileAccept,
-      openSessionArtifact,
       onArtifactDeleted,
       downloadArtifact: async (meta: import('../../artifact/types').ArtifactMeta) => {
         try {

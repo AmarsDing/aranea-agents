@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"time"
 
 	"aranea-agents/pkg/apierror"
 
@@ -27,7 +26,9 @@ var _ graphtrpc.ModelResolver = (*CatalogModelResolver)(nil)
 
 func NewCatalogModelResolver(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, lg loggateway.Logger) *CatalogModelResolver {
 	if rt == nil {
-		rt = &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+		// nil-RT fallback 与全站同口径：墙钟只是防泄漏安全网
+		// （2026-09-01 活性守卫治理），业务超时由活性守卫 + runCtx 治理。
+		rt = &provider.RoundTrip{HTTP: &http.Client{Timeout: provider.LLMLeakGuardTimeout}}
 	}
 	return &CatalogModelResolver{ModelCatalog: catalog, RT: rt, lg: lg}
 }

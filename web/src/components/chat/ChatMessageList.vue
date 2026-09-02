@@ -72,7 +72,6 @@ import type {
   SubmitClarificationPayload,
 } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
 
 const AUTO_EXPAND_HOLD_MS = 3000;
@@ -103,7 +102,6 @@ defineEmits<{
   retry: [messageId: string];
   'dismiss-failed': [messageId: string];
   'attachment-deleted': [id: string];
-  'download-artifact': [meta: ArtifactMeta];
   'pin-reasoning-message': [messageId: string];
   'cancel-pending': [pendingId: string];
   'interrupt-pending': [pendingId: string];
