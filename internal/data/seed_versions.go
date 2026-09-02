@@ -30,5 +30,7 @@ const (
 	// 挂 16 个 twin_* 只读工具 + knowledge_search/datetime，严禁写操作工具。
 	// 版本号须大于全部既有 DDL（≤20261274）/数据/种子版本——首取值 20261118 与 DDL
 	// memory_episodes_l1_task_unique 撞号，被 TestMigrationVersionsGloballyUnique 拦下后改此。
-	SeedPackTwinMonitorV1 = 20261275
+	// 20261276：twin_butler 全资源问答面扩展（34 个新只读工具，覆盖流量/气象/雷达/卫星/
+	// 风场/航迹/告警统计/资产/视频/虚拟化/AIOps/采集/工单/分析洞察），需重新导入。
+	SeedPackTwinMonitorV1 = 20261276
 )
