@@ -330,6 +330,42 @@ func TestLoopGuardBlockMessageCarriesResultDigest(t *testing.T) {
 	}
 }
 
+// loadThenCall 同批保护仅覆盖「tool_load 尚未返回的同一 model step」——
+// tool_load 成功返回后，下一 model step 直调已激活工具必须放行。
+// 2026-09-02 线上实证（spirit 会话 cf2cdc77）：tool_load 成功后模型按指引
+// 在下一 model step 直调 twin_device_search/twin_alarm_query，仍被误判
+// 「刚在本轮由 tool_load 激活」连续拦截 5 次、节点被强制终止。
+func TestLoopGuardLoadThenCallClearedOnNextModelStep(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-load-then-call")
+	loadArgs := `{"tool_name":"twin_device_search"}`
+	loadResult := map[string]any{"success": true, "tool_name": "twin_device_search"}
+
+	// model step 1：装载 twin_device_search 成功。
+	if err := runLoopGuardTurn(t, g, ctx, "tool_load", loadArgs, loadResult, nil); err != nil {
+		t.Fatalf("tool_load should pass, got blocked: %v", err)
+	}
+
+	// 同一 model step 内直调已激活工具：必须拦截（同批保护语义本身）。
+	before := g.beforeHook()
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "twin_device_search", Arguments: []byte(`{"page":1}`),
+	}); err == nil {
+		t.Fatal("same-step direct call after tool_load must be blocked")
+	} else if !strings.Contains(err.Error(), "刚在本轮由 tool_load 激活") {
+		t.Fatalf("same-step block should be load-then-call kind, got %q", err.Error())
+	}
+
+	// model step 2 开始：BeforeModel 结算并清除 justLoaded。
+	runUnprodModelHook(t, g, ctx)
+
+	// 下一 model step 直调已激活工具：必须放行。
+	if err := runLoopGuardTurn(t, g, ctx, "twin_device_search", `{"page":1}`,
+		map[string]any{"ok": true, "total": 265}, nil); err != nil {
+		t.Fatalf("next-step direct call after tool_load must pass, got blocked: %v", err)
+	}
+}
+
 // 轮换循环（2026-08-16 复验实证缺口）：三工具交替 + 结果内嵌时间戳，
 // p=1 判定无从触发；周期检测应在满 3 轮的收尾调用（第 9 次）起拦截。
 func TestLoopGuardRotationCycleBlocked(t *testing.T) {

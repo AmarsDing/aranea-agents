@@ -107,3 +107,79 @@ func TestSnapshotMissingAndInvalidate(t *testing.T) {
 	_, ok = FilteredTraceableUserToolNames(inv)
 	require.False(t, ok)
 }
+
+// TestAppendOnViewVisibleToCanonicalInvocation reproduces the parallel-worker
+// snapshot loss: tool_load running inside a parallel worker operates on an
+// invocation VIEW (copied state map, shared InvocationID). Its Append must be
+// visible to the canonical invocation's next Get, otherwise the next model
+// request does not carry the freshly activated tool and the model's call
+// fails with "tool not found".
+//
+// Note: pending mutations are consumed by the first Get carrying the same
+// invocation ID. In the real flow only the canonical invocation calls Get
+// (workers never resolve tools), so the canonical invocation always consumes
+// its workers' mutations; this test mirrors that ordering.
+func TestAppendOnViewVisibleToCanonicalInvocation(t *testing.T) {
+	parent := &agent.Invocation{InvocationID: "inv-view-append"}
+	base := testTool{name: "base"}
+	Set(parent, []tool.Tool{base}, true, []string{"base"})
+
+	view := parent.View()
+	loaded := testTool{name: "twin_device_search"}
+	require.True(t, Append(view, loaded),
+		"Append on worker view must succeed (snapshot copied into view)")
+
+	// The canonical invocation must merge the pending append on its next Get.
+	parentTools, ok := Get(parent)
+	require.True(t, ok)
+	require.Len(t, parentTools, 2)
+	require.Equal(t, "twin_device_search",
+		parentTools[1].Declaration().Name)
+
+	// The merge is persisted back to state: subsequent Gets are idempotent
+	// and the pending entry has been consumed.
+	parentAgain, ok := Get(parent)
+	require.True(t, ok)
+	require.Len(t, parentAgain, 2)
+
+	// The worker view itself already saw the appended tool via its own state.
+	viewTools, ok := Get(view)
+	require.True(t, ok)
+	require.Len(t, viewTools, 2)
+}
+
+// TestInvalidateOnViewForcesCanonicalRebuild ensures an Invalidate issued on a
+// worker view clears the canonical invocation's cached snapshot as well.
+func TestInvalidateOnViewForcesCanonicalRebuild(t *testing.T) {
+	parent := &agent.Invocation{InvocationID: "inv-view-invalidate"}
+	Set(parent, []tool.Tool{testTool{name: "base"}}, true, []string{"base"})
+
+	view := parent.View()
+	Invalidate(view)
+
+	_, ok := Get(parent)
+	require.False(t, ok,
+		"pending invalidate from worker view must force rebuild on canonical invocation")
+	_, ok = Get(parent)
+	require.False(t, ok, "state cleared; still no snapshot")
+}
+
+// TestPendingMutationIsolatedByInvocationID ensures pending mutations do not
+// leak across different invocation IDs.
+func TestPendingMutationIsolatedByInvocationID(t *testing.T) {
+	invA := &agent.Invocation{InvocationID: "inv-iso-a"}
+	invB := &agent.Invocation{InvocationID: "inv-iso-b"}
+	Set(invA, []tool.Tool{testTool{name: "baseA"}}, true, nil)
+	Set(invB, []tool.Tool{testTool{name: "baseB"}}, true, nil)
+
+	viewA := invA.View()
+	require.True(t, Append(viewA, testTool{name: "only_a"}))
+
+	toolsB, ok := Get(invB)
+	require.True(t, ok)
+	require.Len(t, toolsB, 1, "invB must not see invA's pending append")
+
+	toolsA, ok := Get(invA)
+	require.True(t, ok)
+	require.Len(t, toolsA, 2)
+}

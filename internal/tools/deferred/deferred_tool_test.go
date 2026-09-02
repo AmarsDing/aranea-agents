@@ -102,3 +102,66 @@ func withTestInvocation(ctx context.Context) context.Context {
 	inv.Session = sess
 	return trpcagent.NewInvocationContext(ctx, inv)
 }
+
+// TestActivation_ParallelWorkerSessionClone 复现并行 worker 激活态丢失：
+// 框架并行执行同一批 tool call 时，worker 持有克隆 session（ID 相同、
+// state 隔离）。修复前 tool_load 在 worker 中的激活写入随 worker 退出丢失，
+// 父 invocation（同 session）的 ToolFilter/门禁永远看不到激活态；
+// 修复后进程级注册表按 session ID 共享，父 ctx 立即可见。
+func TestActivation_ParallelWorkerSessionClone(t *testing.T) {
+	sessionID := "sess-parallel-worker-clone"
+	t.Cleanup(func() { activatedRegistry.Delete(sessionID) })
+
+	parentSess := &trpcsession.Session{ID: sessionID}
+	parentInv := trpcagent.NewInvocation()
+	parentInv.Session = parentSess
+	parentCtx := trpcagent.NewInvocationContext(context.Background(), parentInv)
+
+	// worker：克隆 session（与框架 newParallelInvocationView 一致）
+	workerInv := trpcagent.NewInvocation()
+	workerInv.Session = parentSess.Clone()
+	workerCtx := trpcagent.NewInvocationContext(context.Background(), workerInv)
+
+	if !writeActivatedSet(workerCtx, "twin_device_search") {
+		t.Fatal("writeActivatedSet on worker ctx must succeed")
+	}
+
+	// 父 ctx（真实 session）必须看到激活态
+	if !isActivatedForSession(parentCtx, "twin_device_search") {
+		t.Fatal("parent invocation must see activation written by parallel worker")
+	}
+
+	// ToolFilter 在父 ctx 上放行已激活的延迟工具
+	mgr := NewDeferredToolManager([]DeferredToolEntry{
+		{Name: "twin_device_search", BaseName: "twin_device_search", Description: "search devices", Category: "twinops"},
+	})
+	raw := trpcfunction.NewFunctionTool(
+		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
+		trpcfunction.WithName("twin_device_search"),
+		trpcfunction.WithDescription("search devices"),
+	)
+	dt := NewDeferredCallableTool(raw, loggateway.NewNoop())
+	filter := mgr.ToolFilter()
+	if !filter(parentCtx, dt) {
+		t.Fatal("ToolFilter must pass activated deferred tool on parent ctx")
+	}
+
+	// 门禁在父 ctx 上放行执行
+	if _, err := dt.Call(parentCtx, []byte(`{}`)); err != nil {
+		t.Fatalf("activated tool must execute on parent ctx, got: %v", err)
+	}
+
+	// 未激活工具仍被过滤/拒绝（注册表不越权）
+	mgr2 := NewDeferredToolManager([]DeferredToolEntry{
+		{Name: "twin_alarm_query", BaseName: "twin_alarm_query", Description: "query alarms", Category: "twinops"},
+	})
+	raw2 := trpcfunction.NewFunctionTool(
+		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
+		trpcfunction.WithName("twin_alarm_query"),
+		trpcfunction.WithDescription("query alarms"),
+	)
+	dt2 := NewDeferredCallableTool(raw2, loggateway.NewNoop())
+	if mgr2.ToolFilter()(parentCtx, dt2) {
+		t.Fatal("ToolFilter must hide non-activated deferred tool")
+	}
+}

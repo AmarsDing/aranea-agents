@@ -1146,6 +1146,16 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	}
 	if !loadRepeat && !loadQuota && !loadRatio {
 		loadThenCall = e.loadThenCallTarget(toolName)
+		// DEBUG(2026-09-02)：误拦根因定位——dump 两张表与 guard 实例指针，验证后移除。
+		if loadThenCall != "" {
+			g.lg.Info("loop guard loadThenCall hit",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", toolName),
+				loggateway.Str("target", loadThenCall),
+				loggateway.Str("guard", fmt.Sprintf("%p", g)),
+				loggateway.Str("inflight_loads", fmt.Sprintf("%v", e.inflightLoads)),
+				loggateway.Str("just_loaded", fmt.Sprintf("%v", e.justLoaded)))
+		}
 	}
 	// 空结果熔断优先于签名/轮换判定：库中确无资料时，任何参数的再调用都无意义，
 	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
@@ -1484,7 +1494,8 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			g.lg.Warn("tool loop guard blocked same-step call after tool_load",
 				loggateway.StepID("agent.tool_loop_guard"),
 				loggateway.Str("tool", args.ToolName),
-				loggateway.Str("target", v.loadTarget))
+				loggateway.Str("target", v.loadTarget),
+				loggateway.Str("key", key))
 			g.emitGateDecision(ctx, args.ToolName, "刚激活的工具不能在同一步立刻调用",
 				fmt.Sprintf("工具 %s 刚由 tool_load 激活，须等下一 model step", v.loadTarget),
 				v.loadTarget, 1, "block_call")
@@ -1614,6 +1625,12 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		}
 		// 注：被拦调用以 error 形态返回、框架不执行 AfterTool，故这里只见真实执行结果。
 		key := loopGuardInvocationKey(ctx)
+		// DEBUG(2026-09-02)：定位 inflightLoads 泄漏——确认 AfterTool 是否触发/key 是否为空，验证后移除。
+		g.lg.Info("loop guard afterHook fired",
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("tool", args.ToolName),
+			loggateway.Str("key", key),
+			loggateway.Str("guard", fmt.Sprintf("%p", g)))
 		if key == "" {
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
@@ -1700,6 +1717,12 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 				if requested != "" {
 					e.markJustLoaded(requested)
 				}
+				// DEBUG(2026-09-02)：误拦根因定位——记录 markJustLoaded 落点，验证后移除。
+				g.lg.Info("loop guard markJustLoaded",
+					loggateway.StepID("agent.tool_loop_guard"),
+					loggateway.Str("tool", name),
+					loggateway.Str("guard", fmt.Sprintf("%p", g)),
+					loggateway.Str("key", key))
 				if e.planDeclared {
 					e.postPlanLoads++
 					if e.postPlanLoads >= loopGuardPlanDriftObserveAt && !e.planDriftRecorded {
@@ -1762,6 +1785,11 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		key := loopGuardInvocationKey(ctx)
+		// DEBUG(2026-09-02)：定位 justLoaded 跨 model step 未清除问题，验证后移除。
+		g.lg.Info("loop guard model hook round",
+			loggateway.StepID("agent.tool_loop_guard"),
+			loggateway.Str("key", key),
+			loggateway.Str("guard", fmt.Sprintf("%p", g)))
 		if key == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
