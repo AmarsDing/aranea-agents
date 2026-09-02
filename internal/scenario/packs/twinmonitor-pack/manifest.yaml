@@ -1,0 +1,7 @@
+api_version: v1
+kind: industry
+name: twinmonitor-pack
+description: TwinMonitor 综合监控平台问答包——twin_butler 智能运维助手，覆盖告警/设备/线路/数据到达/通知/报表/知识库全只读查询面
+version: "1.0.0"
+author: twinmonitor
+created_at: "2026-09-02"

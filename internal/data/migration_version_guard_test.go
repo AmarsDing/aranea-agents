@@ -56,6 +56,7 @@ func TestMigrationVersionsGloballyUnique(t *testing.T) {
 		{"SeedCleanupNonSystemV1", SeedCleanupNonSystemV1},
 		{"SeedPackAgencyV1", SeedPackAgencyV1},
 		{"SeedPackItOpsV1", SeedPackItOpsV1},
+		{"SeedPackTwinMonitorV1", SeedPackTwinMonitorV1},
 	} {
 		add("seed", sv.name, sv.version)
 	}

@@ -24,4 +24,11 @@ const (
 	// 8 个实操岗位 tools_allow=[shell_exec]（受控命令执行），需重新导入以重写既有零值行。
 	// schema_migrations 表由 DDL（≤20261115）/数据/种子迁移共享，必须全局唯一。
 	SeedPackItOpsV1 = 20261117
+
+	// SeedPackTwinMonitorV1: 导入 twinmonitor-pack（TwinMonitor 综合监控平台问答包）。
+	// 单 Agent「twin_butler__general」（TwinMonitor 运维助手），无组织树（position_key 为空），
+	// 挂 16 个 twin_* 只读工具 + knowledge_search/datetime，严禁写操作工具。
+	// 版本号须大于全部既有 DDL（≤20261274）/数据/种子版本——首取值 20261118 与 DDL
+	// memory_episodes_l1_task_unique 撞号，被 TestMigrationVersionsGloballyUnique 拦下后改此。
+	SeedPackTwinMonitorV1 = 20261275
 )

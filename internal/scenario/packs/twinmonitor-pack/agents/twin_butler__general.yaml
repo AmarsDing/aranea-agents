@@ -1,0 +1,38 @@
+key: twin_butler__general
+display_name: TwinMonitor 运维助手
+description: 综合监控平台智能问答助手——随问随查告警/设备/线路/数据到达/通知/报表与运维知识库，结构化汇报平台运行态势
+icon: 📡
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_allow:
+    # TwinMonitor 只读查询面（twinops，经网关 X-API-Key；严禁挂载任何写操作工具）
+    - twin_alarm_query
+    - twin_alarm_get
+    - twin_alarm_rule_get
+    - twin_device_search
+    - twin_device_get
+    - twin_device_metrics
+    - twin_collector_status
+    - twin_line_status
+    - twin_line_events
+    - twin_inspection_query
+    - twin_remediation_status
+    - twin_arrival_overview
+    - twin_arrival_status
+    - twin_notice_records
+    - twin_report_tasks
+    - twin_kb_search
+    # 平台工具
+    - knowledge_search
+    - datetime
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
