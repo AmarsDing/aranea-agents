@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/sandbox"
+	"aranea-agents/internal/sandbox/leasekey"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -244,6 +245,27 @@ func TestSessionKeyFromCtx(t *testing.T) {
 	key, err := sessionKeyFromCtx(ctx)
 	if err != nil || key != "app/u/s1" {
 		t.Fatalf("sessionKeyFromCtx = %q, %v", key, err)
+	}
+}
+
+// 83-长时运行韧性 FR-4：team run 上下文派生成员维度键，与 code_exec 同规则
+// （leasekey.FromContext 单点）；无会话上下文仍报错（现状语义）。
+func TestSessionKeyFromCtxTeamMemberDimension(t *testing.T) {
+	inv := trpcagent.NewInvocation()
+	inv.AgentName = "worker-a"
+	inv.Session = &trpcsession.Session{ID: "s1", AppName: "app", UserID: "u"}
+	ctx := sandbox.WithRunID(trpcagent.NewInvocationContext(context.Background(), inv), "run-1")
+
+	key, err := sessionKeyFromCtx(ctx)
+	if err != nil {
+		t.Fatalf("sessionKeyFromCtx: %v", err)
+	}
+	want := leasekey.FromContext(ctx, "")
+	if key != want {
+		t.Fatalf("sessionKeyFromCtx = %q, want leasekey %q", key, want)
+	}
+	if !strings.HasSuffix(key, "#run:run-1#agent:worker-a") {
+		t.Fatalf("team ctx key must carry member dimension: %q", key)
 	}
 }
 

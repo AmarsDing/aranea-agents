@@ -632,8 +632,6 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	return uc.execUC.ResumeExecution(ctx, executionID, resumeValue)
 }
 
-// RecoverOrphanedExecution 崩溃续跑入口（83-长时运行韧性）见 graph_execution_recover.go。
-
 func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *CompiledTeam) error {
 	return uc.execUC.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
 }

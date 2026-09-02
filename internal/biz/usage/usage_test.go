@@ -57,6 +57,52 @@ func TestMergeUsageSourceMetadata(t *testing.T) {
 	})
 }
 
+func TestMergeEffortMetadata(t *testing.T) {
+	t.Run("empty_effort_passthrough", func(t *testing.T) {
+		if got := MergeEffortMetadata(`{"a":1}`, ""); got != `{"a":1}` {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("whitespace_effort_passthrough", func(t *testing.T) {
+		if got := MergeEffortMetadata(`{"a":1}`, "  "); got != `{"a":1}` {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("sets_key_on_empty_object", func(t *testing.T) {
+		got := MergeEffortMetadata("{}", "max")
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got), &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if payload[MetadataKeyEffort] != "max" {
+			t.Fatalf("effort=%v", payload[MetadataKeyEffort])
+		}
+	})
+	t.Run("preserves_existing_keys_and_overwrites_effort", func(t *testing.T) {
+		got := MergeEffortMetadata(`{"trace_id":"t1","effort":"low"}`, "high")
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got), &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if payload["trace_id"] != "t1" {
+			t.Fatalf("trace_id lost: %v", payload)
+		}
+		if payload[MetadataKeyEffort] != "high" {
+			t.Fatalf("effort=%v want high", payload[MetadataKeyEffort])
+		}
+	})
+	t.Run("invalid_json_replaced_with_fresh_payload", func(t *testing.T) {
+		got := MergeEffortMetadata("not-json", "off")
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got), &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if payload[MetadataKeyEffort] != "off" {
+			t.Fatalf("effort=%v", payload[MetadataKeyEffort])
+		}
+	})
+}
+
 func TestMergeWaitMSMetadata(t *testing.T) {
 	if got := MergeWaitMSMetadata(`{"a":1}`, 0, 1000); got != `{"a":1}` {
 		t.Fatalf("zero wait passthrough: %q", got)

@@ -57,6 +57,15 @@ export function useUsageEventsPage() {
     { label: 'Team 成员', value: 'team_member' },
     { label: 'Team 整轮', value: 'team_turn' },
   ];
+  // LBG-6：思考强度过滤（与 biz.ThinkingEffort* 枚举一致；值为技术枚举不翻译）
+  const effortOptions = [
+    { label: t('usageEventsPage.effortAll'), value: '' },
+    { label: 'off', value: 'off' },
+    { label: 'low', value: 'low' },
+    { label: 'medium', value: 'medium' },
+    { label: 'high', value: 'high' },
+    { label: 'max', value: 'max' },
+  ];
 
   // ── 筛选下拉选项（显示名称、提交 ID/code；数据源为现有目录 Store，无新增 API） ──
   const agentOptions = ref<FilterOption[]>([]);
@@ -144,6 +153,7 @@ export function useUsageEventsPage() {
       team_id: f.team_id || undefined,
       usage_kind: f.usage_kind || undefined,
       status: f.status || undefined,
+      effort: f.effort || undefined,
     };
   }
 
@@ -261,6 +271,7 @@ export function useUsageEventsPage() {
     rangeOptions,
     statusOptions,
     usageKindOptions,
+    effortOptions,
     providerOptions,
     modelOptions,
     agentOptions,

@@ -141,6 +141,12 @@ type TeamUsecase struct {
 	agentIDResolver  TeamAgentIDResolver   // agent_key → agent_id（B6 members 反查）
 	linkedReader     TeamLinkedGraphReader // B7 external 引用删除保护
 	lg               loggateway.Logger
+	// flowLog：83-长时运行韧性，启动对账判死分支的用户可见流程日志
+	// （team.run.orphan_finalize）。可选，nil 时仅进程日志。
+	flowLog FlowLogWriter
+	// graphExecFinalizer：83 §4.2，判死 run 时同步收敛其 graph_executions
+	// 行（防 running 残留）。可选，nil 跳过。
+	graphExecFinalizer GraphExecFinalizer
 }
 
 // TeamUsecaseOpts groups all dependencies for NewTeamUsecase.
@@ -169,6 +175,10 @@ type TeamUsecaseOpts struct {
 	// LinkedReader：B7 external 引用删除保护；nil = 跳过引用检查。
 	LinkedReader TeamLinkedGraphReader
 	Lg           loggateway.Logger
+	// FlowLogWriter：83 判死分支流程日志（team.run.orphan_finalize）；nil = 仅进程日志。
+	FlowLogWriter FlowLogWriter
+	// GraphExecFinalizer：83 §4.2 判死 run 的 graph_executions 收敛；nil = 跳过。
+	GraphExecFinalizer GraphExecFinalizer
 }
 
 func NewTeamUsecase(opts TeamUsecaseOpts) *TeamUsecase {
@@ -195,6 +205,8 @@ func NewTeamUsecase(opts TeamUsecaseOpts) *TeamUsecase {
 		agentIDResolver:  opts.AgentIDResolver,
 		linkedReader:     opts.LinkedReader,
 		lg:               opts.Lg,
+		flowLog:          opts.FlowLogWriter,
+		graphExecFinalizer: opts.GraphExecFinalizer,
 	}
 }
 

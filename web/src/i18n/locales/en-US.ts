@@ -3267,6 +3267,8 @@ export default {
   },
   usageEventsPage: {
     paginationLabel: 'events',
+    effortLabel: 'Effort',
+    effortAll: 'All',
   },
   usageQuota: {
     remaining: 'Remaining',

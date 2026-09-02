@@ -40,7 +40,10 @@ type UsageQuery struct {
 	Offset int32 `protobuf:"varint,12,opt,name=offset,proto3" json:"offset,omitempty"`
 	// session_id filters ListUsageEvents to one session (79-runtime-governance 1.5:
 	// per-session cache-hit ratio drill-down, e.g. eval regression scripts).
-	SessionId     string `protobuf:"bytes,13,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	SessionId string `protobuf:"bytes,13,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// effort filters events to rows whose metadata_json["effort"] equals this
+	// value (LBG-6 effort 显性化: off/low/medium/high/max; empty = no filter).
+	Effort        string `protobuf:"bytes,14,opt,name=effort,proto3" json:"effort,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -162,6 +165,13 @@ func (x *UsageQuery) GetOffset() int32 {
 func (x *UsageQuery) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
+	}
+	return ""
+}
+
+func (x *UsageQuery) GetEffort() string {
+	if x != nil {
+		return x.Effort
 	}
 	return ""
 }
@@ -2919,7 +2929,7 @@ var File_kratos_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/usage/v1/usage.proto\x12\x0fkratos.usage.v1\x1a\x1cgoogle/api/annotations.proto\"\xfd\x02\n" +
+	"\x1bkratos/usage/v1/usage.proto\x12\x0fkratos.usage.v1\x1a\x1cgoogle/api/annotations.proto\"\x95\x03\n" +
 	"\n" +
 	"UsageQuery\x12\x14\n" +
 	"\x05range\x18\x01 \x01(\tR\x05range\x12\x1d\n" +
@@ -2939,7 +2949,8 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"usage_kind\x18\v \x01(\tR\tusageKind\x12\x16\n" +
 	"\x06offset\x18\f \x01(\x05R\x06offset\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\r \x01(\tR\tsessionId\"\xdb\x03\n" +
+	"session_id\x18\r \x01(\tR\tsessionId\x12\x16\n" +
+	"\x06effort\x18\x0e \x01(\tR\x06effort\"\xdb\x03\n" +
 	"\fUsageSummary\x12\x1d\n" +
 	"\n" +
 	"call_count\x18\x01 \x01(\x05R\tcallCount\x12#\n" +

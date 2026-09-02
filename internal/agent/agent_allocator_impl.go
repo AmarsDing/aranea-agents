@@ -38,6 +38,11 @@ type agentAllocatorImpl struct {
 	staffingAdvisor    biz.StaffingAdvisor
 	staffingTimeout    time.Duration
 	allowFactoryCreate bool // opt-in; default hot path never creates agents
+
+	// auxUsage records allocator cold-start LLM usage (M83 LBG-6). nil = 落账
+	// 跳过（旧测试构造路径），行为与旧版一致。Attached at wire time via
+	// AttachAllocatorAuxUsageRecorder.
+	auxUsage SpiritAuxUsageRecorder
 }
 
 var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
@@ -70,6 +75,15 @@ func NewAgentAllocator(
 		embedder:       embedder,
 		agentFactory:   agentFactory,
 		plannerSetting: plannerSetting,
+	}
+}
+
+// AttachAllocatorAuxUsageRecorder wires the spirit aux usage recorder so
+// allocator cold-start match LLM calls are billed (M83 LBG-6) without
+// changing the NewAgentAllocator constructor.
+func AttachAllocatorAuxUsageRecorder(a biz.AgentAllocatorPort, rec SpiritAuxUsageRecorder) {
+	if impl, ok := a.(*agentAllocatorImpl); ok {
+		impl.auxUsage = rec
 	}
 }
 
@@ -1379,7 +1393,24 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 	callCtx, cancel := context.WithTimeout(ctx, tools.AllocateLLMTimeout)
 	defer cancel()
 
-	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	callStart := time.Now()
+	text, _, promptTok, completionTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	// M83 LBG-6：冷启动匹配调用落账（此前 token 被丢弃）。RunID 用子任务
+	// ID 做关联。
+	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepAllocatorMatch, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxAllocatorMatch,
+		RunID:         subTask.ID,
+		Provider:      provider,
+		Model:         model,
+		Status:        spiritAuxCallStatus(err),
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		UsageSource:   biz.UsageSourceResponse,
+		Effort:        cfg.ThinkingEffort,
+		Latency:       time.Since(callStart),
+		ErrMsg:        spiritAuxErrMsg(err),
+		MetadataJSON:  spiritAuxMeta(ctx, "spirit_allocator_match"),
+	})
 	if err != nil {
 		return "", apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}
@@ -1619,7 +1650,24 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 	callCtx, cancel := context.WithTimeout(ctx, tools.AllocateLLMTimeout)
 	defer cancel()
 
-	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	callStart := time.Now()
+	text, _, promptTok, completionTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	// M83 LBG-6：整计划冷启动匹配调用落账（此前 token 被丢弃）。RunID 用
+	// spirit trace 做关联（整计划无子任务 ID）。
+	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepAllocatorMatch, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxAllocatorMatch,
+		RunID:         traceID,
+		Provider:      provider,
+		Model:         model,
+		Status:        spiritAuxCallStatus(err),
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		UsageSource:   biz.UsageSourceResponse,
+		Effort:        cfg.ThinkingEffort,
+		Latency:       time.Since(callStart),
+		ErrMsg:        spiritAuxErrMsg(err),
+		MetadataJSON:  spiritAuxMeta(ctx, "spirit_allocator_match"),
+	})
 	if err != nil {
 		return "", apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}

@@ -55,6 +55,18 @@ function obj(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
+/** LBG-6：从 metadata_json 安全提取 effort 档位（损坏 JSON 静默回退空串）。 */
+function effortFromMetadataJson(raw: string): string {
+  if (!raw) return '';
+  try {
+    const meta = JSON.parse(raw) as Record<string, unknown>;
+    const effort = meta?.effort;
+    return typeof effort === 'string' ? effort : '';
+  } catch {
+    return '';
+  }
+}
+
 function summaryFromUnknown(raw: unknown): ModelUsageSummary {
   const s = obj(raw);
   return {
@@ -186,6 +198,7 @@ function tokenEventFromUnknown(raw: unknown): ModelTokenUsageEvent {
     context_window_k: num(e.context_window_k ?? e.contextWindowK),
     stream_enabled: Boolean(e.stream_enabled ?? e.streamEnabled),
     metadata_json: String(e.metadata_json ?? e.metadataJson ?? ''),
+    effort: effortFromMetadataJson(String(e.metadata_json ?? e.metadataJson ?? '')),
     created_at: String(e.created_at ?? e.createdAt ?? ''),
   };
 }
@@ -253,6 +266,7 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     granularity: q.granularity,
     teamId: q.team_id?.trim() || undefined,
     usageKind: q.usage_kind?.trim() || undefined,
+    effort: q.effort?.trim() || undefined,
   };
   if (q.team_id?.trim()) out.teamId = q.team_id.trim();
   if (q.usage_kind?.trim()) out.usageKind = q.usage_kind.trim();

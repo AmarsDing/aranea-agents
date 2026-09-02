@@ -45,6 +45,23 @@ func TestDockerRuntimeFallbackFailClosedInProd(t *testing.T) {
 	}
 }
 
+// TestDockerRuntimeFallbackStrictRefusesLocal asserts that under
+// CODE_EXECUTOR_FALLBACK_POLICY=strict (83-长时运行韧性 FR-3), a runtime
+// docker failure is refused even outside production — no silent degrade to
+// the less-isolated local executor.
+func TestDockerRuntimeFallbackStrictRefusesLocal(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "dev")
+	t.Setenv("CODE_EXECUTOR_FALLBACK_POLICY", "strict")
+
+	f := NewFactoryWithLogger(loggateway.NewNoop())
+	fb := newDockerRuntimeFallback(errExecutor{}, f, t.TempDir(), loggateway.NewNoop())
+
+	_, err := fb.ExecuteCode(context.Background(), trpcagentcodeexec.CodeExecutionInput{})
+	if !errors.Is(err, sentinelDockerErr) {
+		t.Fatalf("strict: expected sentinel docker error, got %v", err)
+	}
+}
+
 // TestDockerRuntimeFallbackStillLocalInNonProd asserts the existing dev
 // behavior is preserved: outside production, a runtime docker failure still
 // falls back to the local executor (no error surfaced to the caller).

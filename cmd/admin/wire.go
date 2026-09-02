@@ -3743,13 +3743,30 @@ func provideFederationService(uc *a2abiz.FederationUsecase) *service.FederationS
 	return service.NewFederationService(uc)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader, decisions decision.Collector) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader, decisions decision.Collector, usageRef *biz.UsageUsecaseRef) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	p := chatagent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq, agentReader)
 	chatagent.AttachPlannerOrganizationReader(p, orgReader)
 	// M80 1.4: planner 双写 — emitPlannerDecision 内增 Emit，4 调用点全覆盖。
 	chatagent.AttachPlannerDecisionCollector(p, decisions)
+	// M83 LBG-6: planner 分解调用落账。迟绑定：UsageUsecase 在 DI 图上位于
+	// planner 下游（与 provideSubAgentService 同一防环模式）。
+	chatagent.AttachPlannerAuxUsageRecorder(p, spiritAuxUsageRecorderFromRef(usageRef))
 	return p
+}
+
+// spiritAuxUsageRecorderFromRef adapts the late-bound UsageUsecaseRef to the
+// agent package's SpiritAuxUsageRecorder port (M83 LBG-6).
+func spiritAuxUsageRecorderFromRef(ref *biz.UsageUsecaseRef) chatagent.SpiritAuxUsageRecorder {
+	return chatagent.SpiritAuxUsageRecorderFunc(func(ctx context.Context, in biz.AuxLLMUsageInput) error {
+		if ref == nil {
+			return nil
+		}
+		if u := ref.Get(); u != nil {
+			return u.RecordAuxLLMUsage(ctx, in)
+		}
+		return nil
+	})
 }
 
 func provideAgentAllocator(
@@ -3764,11 +3781,15 @@ func provideAgentAllocator(
 	lg loggateway.Logger,
 	sysUC *biz.SystemSettingUsecase,
 	orgReader biz.OrganizationReader,
+	usageRef *biz.UsageUsecaseRef,
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
 	capBuilder.SetOrganizationReader(orgReader)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
+	a := chatagent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
+	// M83 LBG-6: allocator 冷启动匹配调用落账（迟绑定，防 DI 环）。
+	chatagent.AttachAllocatorAuxUsageRecorder(a, spiritAuxUsageRecorderFromRef(usageRef))
+	return a
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
@@ -3877,6 +3898,7 @@ func provideTeamUsecaseOpts(
 	linkedReader biz.TeamLinkedGraphReader,
 	agentIDResolver biz.TeamAgentIDResolver,
 	channels *biz.ChannelUsecase,
+	flowLog biz.FlowLogWriter,
 	lg loggateway.Logger,
 ) biz.TeamUsecaseOpts {
 	return biz.TeamUsecaseOpts{
@@ -3899,6 +3921,8 @@ func provideTeamUsecaseOpts(
 		AgentIDResolver:  agentIDResolver,
 		LinkedReader:     linkedReader,
 		Lg:               lg,
+		// 83：启动对账判死分支的用户可见流程日志。
+		FlowLogWriter: flowLog,
 	}
 }
 
@@ -3921,6 +3945,9 @@ func provideTeamAgentIDResolver(agents biz.AgentRepository) biz.TeamAgentIDResol
 // 装配步骤，wire 无法经裸构造函数表达，故 NewTeamUsecase 从 biz.ProviderSet
 // 移出在此包装。
 func provideTeamUsecase(opts biz.TeamUsecaseOpts, graphs *biz.GraphUsecase) *biz.TeamUsecase {
+	// 83 §4.2：判死路径的 graph_executions 收敛（biz 同包窄接口，*GraphUsecase
+	// 已实现 FinalizeTeamGraphExecution）。
+	opts.GraphExecFinalizer = graphs
 	uc := biz.NewTeamUsecase(opts)
 	graphs.DefUC().SetTeamGraphGuard(uc)
 	return uc

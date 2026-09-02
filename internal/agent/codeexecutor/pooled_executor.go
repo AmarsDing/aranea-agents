@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/sandbox"
+	"aranea-agents/internal/sandbox/leasekey"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -146,13 +147,11 @@ func (a *pooledAdapter) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimite
 // execution_id could otherwise collide across sessions or split the two
 // consumers apart). The model-supplied ExecutionID is only a no-invocation
 // compatibility fallback (tests / non-session callers).
+//
+// 83-长时运行韧性 FR-4：键派生单点化在 internal/sandbox/leasekey；team run
+// 上下文追加成员维度（同 run 不同成员各持沙箱），详见 leasekey.FromContext。
 func (a *pooledAdapter) sessionKey(ctx context.Context, executionID string) string {
-	inv, ok := trpcagent.InvocationFromContext(ctx)
-	if ok && inv != nil && inv.Session != nil && inv.Session.ID != "" {
-		s := inv.Session
-		return s.AppName + "/" + s.UserID + "/" + s.ID
-	}
-	return strings.TrimSpace(executionID)
+	return leasekey.FromContext(ctx, executionID)
 }
 
 // agentKeyFromCtx derives the per-agent quota attribution key (review

@@ -20,6 +20,9 @@ export type UsageQuery = {
   // session_id filters ListUsageEvents to one session (79-runtime-governance 1.5:
   // per-session cache-hit ratio drill-down, e.g. eval regression scripts).
   sessionId: string | undefined;
+  // effort filters events to rows whose metadata_json["effort"] equals this
+  // value (LBG-6 effort 显性化: off/low/medium/high/max; empty = no filter).
+  effort: string | undefined;
 };
 
 export type UsageSummary = {
@@ -426,6 +429,9 @@ export function createUsageServiceClient(
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -481,6 +487,9 @@ export function createUsageServiceClient(
       }
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -538,6 +547,9 @@ export function createUsageServiceClient(
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -594,6 +606,9 @@ export function createUsageServiceClient(
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -649,6 +664,9 @@ export function createUsageServiceClient(
       }
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -832,6 +850,9 @@ export function createUsageServiceClient(
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -948,6 +969,9 @@ export function createUsageServiceClient(
       }
       if (request.sessionId) {
         queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      if (request.effort) {
+        queryParams.push(`effort=${encodeURIComponent(request.effort.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

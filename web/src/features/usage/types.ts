@@ -17,6 +17,8 @@ export type ModelUsageQuery = {
   offset?: number;
   /** "" | "day" | "hour" — hour uses model_token_usage_hourly */
   granularity?: string;
+  /** LBG-6：metadata_json["effort"] 精确过滤（off/low/medium/high/max） */
+  effort?: string;
 };
 
 export type ModelUsageEventsResult = {
@@ -124,6 +126,8 @@ export type ModelTokenUsageEvent = {
   context_window_k: number;
   stream_enabled: boolean;
   metadata_json?: string;
+  /** LBG-6：从 metadata_json["effort"] 解析的思考强度档位；未记录时为空 */
+  effort?: string;
   created_at?: string;
 };
 

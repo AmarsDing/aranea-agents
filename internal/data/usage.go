@@ -22,7 +22,7 @@ func NewUsageRepo(d *Data) biz.UsageRepo {
 }
 
 func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQuery) (biz.UsageSummary, error) {
-	where, args := usageWhere(query, true)
+	where, args := usageWhere(r.data.Dialect(), query, true)
 	q := `SELECT
 		 COALESCE(SUM(call_count), 0), COUNT(*),
 		 COALESCE(SUM(CASE WHEN ` + sqlUsageStatusSuccess + ` THEN 1 ELSE 0 END), 0),
@@ -46,7 +46,7 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
-	where, args := usageWhere(query, true)
+	where, args := usageWhere(r.data.Dialect(), query, true)
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
@@ -73,7 +73,7 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
-	where, args := usageWhere(query, true)
+	where, args := usageWhere(r.data.Dialect(), query, true)
 	args = append(args, usageLimit(query.Limit))
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT provider_code, model_api_id, MAX(model_display_name),
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
@@ -113,7 +113,7 @@ const sqlUsageEventNames = `,
 	 COALESCE((SELECT tm.display_name FROM teams tm WHERE (tm.id = model_token_usage_events.team_id OR tm.team_key = model_token_usage_events.team_id) AND tm.deleted_at = '' LIMIT 1), '') AS team_name`
 
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
-	where, args := usageWhere(query, false)
+	where, args := usageWhere(r.data.Dialect(), query, false)
 	args = append(args, usageLimit(query.Limit), usageOffset(query.Offset))
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 	 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
@@ -141,7 +141,7 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) CountModelUsageEvents(ctx context.Context, query biz.UsageQuery) (int, error) {
-	where, args := usageWhere(query, false)
+	where, args := usageWhere(r.data.Dialect(), query, false)
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM model_token_usage_events` + where)
 	var n int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args, &n); err != nil {
@@ -151,7 +151,7 @@ func (r *usageRepo) CountModelUsageEvents(ctx context.Context, query biz.UsageQu
 }
 
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
-	where, args := usageWhere(query, true)
+	where, args := usageWhere(r.data.Dialect(), query, true)
 	args = append(args, usageLimit(query.Limit))
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
@@ -195,7 +195,7 @@ func scanTokenUsageEvent(row scanner) (biz.TokenUsageEvent, error) {
 	return v, err
 }
 
-func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
+func usageWhere(d Dialect, query biz.UsageQuery, billableOnly bool) (string, []any) {
 	parts := []string{}
 	args := []any{}
 	if billableOnly {
@@ -244,6 +244,10 @@ func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 			parts = append(parts, "status = ?")
 			args = append(args, query.Status)
 		}
+	}
+	if query.Effort != "" {
+		parts = append(parts, d.JSONExtract("metadata_json", bizusage.MetadataKeyEffort)+" = ?")
+		args = append(args, query.Effort)
 	}
 	if clause, wsArgs := usageWorkspaceClause(query.WorkspaceID); clause != "" {
 		parts = append(parts, clause)

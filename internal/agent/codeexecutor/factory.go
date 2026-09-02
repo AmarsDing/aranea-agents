@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/pkg/loggateway"
 
@@ -158,6 +159,11 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 		}
 		// 防御性二次检查：applyAvailabilityFallback 通常已把 sandbox→docker；
 		// 运行期 Manager 不可用时走与 docker 相同的运行时回退链。
+		if f.env.StrictFallback() {
+			f.strictRefused(TypeSandbox, "sandbox_unavailable_runtime")
+			return nil
+		}
+		f.emitFallbackFlow(ctx, TypeSandbox, TypeDocker)
 		lg := f.lg
 		if lg == nil {
 			lg = loggateway.NewNoop()
@@ -173,6 +179,10 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 		if exec := f.getE2B(); exec != nil {
 			return exec
 		}
+		if f.env.StrictFallback() {
+			f.strictRefused(TypeE2B, "e2b_init_failed")
+			return nil
+		}
 		if isProductionEnv() && !f.env.AllowLocalInProd {
 			f.logger().Error("生产环境 E2B 初始化失败且未允许 local 执行器，拒绝代码执行",
 				loggateway.StepID("codeexec.e2b_init_fail_prod"),
@@ -184,6 +194,10 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 	case TypeContainer:
 		if exec := f.getContainer(); exec != nil {
 			return exec
+		}
+		if f.env.StrictFallback() {
+			f.strictRefused(TypeContainer, "container_init_failed")
+			return nil
 		}
 		if isProductionEnv() && !f.env.AllowLocalInProd {
 			f.logger().Error("生产环境 Container 初始化失败且未允许 local 执行器，拒绝代码执行",
@@ -207,14 +221,22 @@ func (f *Factory) logger() loggateway.Logger {
 
 func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) string {
 	if typ == TypeSandbox && !f.sandboxAvailable() {
+		// 83 FR-3 strict：不可用即拒，不沿降级链回退。
+		if f.env.StrictFallback() {
+			return f.strictRefused(TypeSandbox, "sandbox_unavailable")
+		}
 		// M82 降级链：sandbox 池不可用（禁用/无 daemon）→ docker；docker 再由
 		// 下方检查继续降级 local（NFR-04）。
 		f.logger().Warn("sandbox 池不可用，回退到 docker 执行器",
 			loggateway.StepID("codeexec.sandbox_fallback"),
 			loggateway.Str("requested", TypeSandbox))
+		f.emitFallbackFlow(ctx, TypeSandbox, TypeDocker)
 		typ = TypeDocker
 	}
 	if typ == TypeDocker && !DockerAvailable() {
+		if f.env.StrictFallback() {
+			return f.strictRefused(TypeDocker, "docker_unavailable")
+		}
 		if isProductionEnv() && !f.env.AllowLocalInProd {
 			f.logger().Error("生产环境 Docker 不可用且未允许 local 执行器，拒绝代码执行",
 				loggateway.StepID("codeexec.docker_unavailable_prod"),
@@ -224,9 +246,13 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 		f.logger().Warn("Docker 不可用，回退到 local 执行器",
 			loggateway.StepID("codeexec.docker_fallback"),
 			loggateway.Str("requested", TypeDocker))
+		f.emitFallbackFlow(ctx, TypeDocker, TypeLocal)
 		return TypeLocal
 	}
 	if typ == TypeE2B && !f.IsBackendAvailable(TypeE2B) {
+		if f.env.StrictFallback() {
+			return f.strictRefused(TypeE2B, "e2b_unavailable")
+		}
 		if isProductionEnv() && !f.env.AllowLocalInProd {
 			f.logger().Error("生产环境 E2B 不可用且未允许 local 执行器，拒绝代码执行",
 				loggateway.StepID("codeexec.e2b_unavailable_prod"),
@@ -237,6 +263,9 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 		return TypeLocal
 	}
 	if typ == TypeContainer && !f.IsBackendAvailable(TypeContainer) {
+		if f.env.StrictFallback() {
+			return f.strictRefused(TypeContainer, "container_unavailable")
+		}
 		if isProductionEnv() && !f.env.AllowLocalInProd {
 			f.logger().Error("生产环境 Container 不可用且未允许 local 执行器，拒绝代码执行",
 				loggateway.StepID("codeexec.container_unavailable_prod"),
@@ -249,10 +278,35 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 	return typ
 }
 
+// strictRefused 严格降级策略（83-长时运行韧性 FR-3）的统一判拒出口：
+// Error 进程日志（复用 refuseLocalInProd 的日志风格）+ TypeDisabled。
+func (f *Factory) strictRefused(requested, reason string) string {
+	f.logger().Error("严格降级策略（CODE_EXECUTOR_FALLBACK_POLICY=strict）：请求的执行器不可用，拒绝降级并拒绝代码执行",
+		loggateway.StepID("codeexec.strict_fallback_refused"),
+		loggateway.Str("requested", requested),
+		loggateway.Str("reason", reason))
+	return TypeDisabled
+}
+
 func (f *Factory) warnResolveFallback(ctx context.Context, requested string) {
 	f.logger().Warn("请求的执行器不可用，回退到 local",
 		loggateway.StepID("codeexec.resolve_fallback"),
 		loggateway.Str("requested", requested))
+	f.emitFallbackFlow(ctx, requested, TypeLocal)
+}
+
+// emitFallbackFlow 降级点流程日志（83-长时运行韧性 FR-3 K3）：ctx 携带
+// TraceEmitter 时发射 codeexec.backend_fallback（step 已登记 flow_log.go）；
+// 未携带（启动期/非会话调用）时仅进程日志（现状语义），nil-safe。
+func (f *Factory) emitFallbackFlow(ctx context.Context, requested, fallback string) {
+	em := event.TraceEmitterFromContext(ctx)
+	if em == nil {
+		return
+	}
+	em.LogWarn("codeexec.backend_fallback", "",
+		fmt.Sprintf("代码执行后端降级：%s → %s", requested, fallback),
+		event.P("requested", requested),
+		event.P("fallback", fallback))
 }
 
 // refuseLocalInProd converts TypeLocal → TypeDisabled in production unless

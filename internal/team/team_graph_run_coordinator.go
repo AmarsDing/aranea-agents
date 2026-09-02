@@ -83,6 +83,11 @@ type TeamGraphRunCoordinator struct {
 	// startupResumed 记忆本次启动成功续跑的 runID（进程内存态，生命周期仅
 	// 覆盖启动窗口）；供 biz.TeamRunStartupResumeMarker 查询，team 级判死跳过。
 	startupResumed map[string]struct{}
+	// 恢复审计通道（83 §4.1）：decision 双写 + 用户可见 flowlog。经
+	// SetRecoveryAudit 后置注入（对齐 TeamService.SetDecisionEvidence 先例），
+	// nil-safe：未注入时仅进程日志。
+	flowLog  biz.FlowLogWriter
+	decisions decision.Collector
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession

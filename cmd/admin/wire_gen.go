@@ -315,7 +315,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	teamGraphAssetStore := biz.ProvideTeamGraphAssetStore(graphUsecase)
 	teamLinkedGraphReader := biz.ProvideTeamLinkedGraphReader(teamRepo)
 	teamAgentIDResolver := provideTeamAgentIDResolver(agentRepository)
-	teamUsecaseOpts := provideTeamUsecaseOpts(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, agentIDExistenceChecker, deptLeadManager, graphReader, graphWriter, teamCompiler, teamGraphAssetStore, dataData, teamLinkedGraphReader, teamAgentIDResolver, channelUsecase, loggatewayLogger)
+	teamUsecaseOpts := provideTeamUsecaseOpts(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, agentIDExistenceChecker, deptLeadManager, graphReader, graphWriter, teamCompiler, teamGraphAssetStore, dataData, teamLinkedGraphReader, teamAgentIDResolver, channelUsecase, flowLogWriter, loggatewayLogger)
 	teamUsecase := provideTeamUsecase(teamUsecaseOpts, graphUsecase)
 	v37 := provideUsageUsecase(v3, v20, teamUsecase, v33, v2Bus, v11, loggatewayLogger)
 	providerReader := data.NewMediaProviderRepo(dataData)
@@ -389,7 +389,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, v37, v20, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
-	teamGraphRunCoordinator := team.ProvideTeamGraphRunCoordinator(graphUsecase, teamRepo, teamRepo, teamUsecase, v2Bus, sequencer, teamGraphSessionRepo, loggatewayLogger)
+	teamGraphRunCoordinator := team.ProvideTeamGraphRunCoordinator(graphUsecase, teamRepo, teamRepo, teamUsecase, v2Bus, sequencer, teamGraphSessionRepo, flowLogWriter, lifecycle, loggatewayLogger)
 	teamGraphCoordPort := service.ProvideTeamGraphCoordPort(teamGraphRunCoordinator)
 	teamRunMediator := team.NewTeamRunMediator(loggatewayLogger)
 	teamMediatorPort := service.ProvideTeamMediatorPort(teamRunMediator)
@@ -400,11 +400,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	spiritTeamRunStatsReader := data.NewSpiritTeamRunStatsReader(dataData, loggatewayLogger)
 	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, v33, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, deptMailboxUsecase, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, systemSettingRepo, artifactRepo, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
-	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository, organizationRepo, lifecycle)
+	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository, organizationRepo, lifecycle, v11)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
 	agentPerformanceRepository := data.NewAgentPerformanceRepo(dataData, loggatewayLogger)
 	agentFactory := provideAgentFactory(agentRepository, agentRepository, agentTemplateRepo, v2Bus, llmProviderModelUsecase, systemSettingUsecase, multiProviderEmbedder, loggatewayLogger, organizationRepo)
-	agentAllocatorPort := provideAgentAllocator(allocationPlanRepository, agentRepository, agentPerformanceRepository, orchestrationCache, llmProviderModelUsecase, v2Bus, multiProviderEmbedder, agentFactory, loggatewayLogger, systemSettingUsecase, organizationRepo)
+	agentAllocatorPort := provideAgentAllocator(allocationPlanRepository, agentRepository, agentPerformanceRepository, orchestrationCache, llmProviderModelUsecase, v2Bus, multiProviderEmbedder, agentFactory, loggatewayLogger, systemSettingUsecase, organizationRepo, v11)
 	nl2GraphConverter := provideNL2GraphConverter(loggatewayLogger)
 	teamOrchestrationDeps := provideTeamOrchestrationDeps(teamUsecase, teamRunnerWirePort, graphBuilderFactory, graphUsecase, taskUsecase, teamGraphCoordPort, teamMediatorPort, spiritTeamUsecase, taskPlannerPort, agentAllocatorPort, nl2GraphConverter, runtimeReplanner)
 	channelTurnJobRepo := data.NewChannelTurnJobRepo(dataData)
@@ -4205,12 +4205,27 @@ func provideFederationService(uc *a2a.FederationUsecase) *service.FederationServ
 	return service.NewFederationService(uc)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader, decisions decision.Collector) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader, orgReader biz.OrganizationReader, decisions decision.Collector, usageRef *biz.UsageUsecaseRef) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	p := agent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq, agentReader)
 	agent.AttachPlannerOrganizationReader(p, orgReader)
 	agent.AttachPlannerDecisionCollector(p, decisions)
+	agent.AttachPlannerAuxUsageRecorder(p, spiritAuxUsageRecorderFromRef(usageRef))
 	return p
+}
+
+// spiritAuxUsageRecorderFromRef adapts the late-bound UsageUsecaseRef to the
+// agent package's SpiritAuxUsageRecorder port (M83 LBG-6).
+func spiritAuxUsageRecorderFromRef(ref *biz.UsageUsecaseRef) agent.SpiritAuxUsageRecorder {
+	return agent.SpiritAuxUsageRecorderFunc(func(ctx context.Context, in biz.AuxLLMUsageInput) error {
+		if ref == nil {
+			return nil
+		}
+		if u := ref.Get(); u != nil {
+			return u.RecordAuxLLMUsage(ctx, in)
+		}
+		return nil
+	})
 }
 
 func provideAgentAllocator(
@@ -4225,11 +4240,14 @@ func provideAgentAllocator(
 	lg loggateway.Logger,
 	sysUC *biz.SystemSettingUsecase,
 	orgReader biz.OrganizationReader,
+	usageRef *biz.UsageUsecaseRef,
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := agent.NewAgentCapabilityBuilder(agentReader, lg)
 	capBuilder.SetOrganizationReader(orgReader)
-	return agent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
+	a := agent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
+	agent.AttachAllocatorAuxUsageRecorder(a, spiritAuxUsageRecorderFromRef(usageRef))
+	return a
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
@@ -4330,6 +4348,7 @@ func provideTeamUsecaseOpts(
 	linkedReader biz.TeamLinkedGraphReader,
 	agentIDResolver biz.TeamAgentIDResolver,
 	channels *biz.ChannelUsecase,
+	flowLog biz.FlowLogWriter,
 	lg loggateway.Logger,
 ) biz.TeamUsecaseOpts {
 	return biz.TeamUsecaseOpts{
@@ -4352,6 +4371,8 @@ func provideTeamUsecaseOpts(
 		AgentIDResolver:  agentIDResolver,
 		LinkedReader:     linkedReader,
 		Lg:               lg,
+
+		FlowLogWriter: flowLog,
 	}
 }
 
@@ -4374,6 +4395,8 @@ func provideTeamAgentIDResolver(agents biz.AgentRepository) biz.TeamAgentIDResol
 // 装配步骤，wire 无法经裸构造函数表达，故 NewTeamUsecase 从 biz.ProviderSet
 // 移出在此包装。
 func provideTeamUsecase(opts biz.TeamUsecaseOpts, graphs *biz.GraphUsecase) *biz.TeamUsecase {
+
+	opts.GraphExecFinalizer = graphs
 	uc := biz.NewTeamUsecase(opts)
 	graphs.DefUC().SetTeamGraphGuard(uc)
 	return uc

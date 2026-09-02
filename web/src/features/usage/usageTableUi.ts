@@ -16,6 +16,10 @@ export const USAGE_EVENT_TABLE_COLUMNS = [
     format: (val: unknown) => formatLocalTime(String(val ?? '')),
   }),
   registryCol<ModelTokenUsageEvent>('usage_kind', '来源', 'usage_kind', 'left', REGISTRY_COL_W.category),
+  // LBG-6：思考强度档位（off/low/medium/high/max），未记录的旧数据回退 '—'
+  registryCol<ModelTokenUsageEvent>('effort', 'Effort', 'effort', 'left', REGISTRY_COL_W.status, {
+    format: (val: unknown) => String(val ?? '').trim() || '—',
+  }),
   registryCol<ModelTokenUsageEvent>('provider_code', 'Provider', 'provider_code', 'left', REGISTRY_COL_W.category),
   registryCol<ModelTokenUsageEvent>('model_api_id', '模型', 'model_api_id', 'left', REGISTRY_COL_W.name),
   registryCol<ModelTokenUsageEvent>('agent_id', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.agent),

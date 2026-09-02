@@ -26,6 +26,9 @@ message UsageQuery {
   // session_id filters ListUsageEvents to one session (79-runtime-governance 1.5:
   // per-session cache-hit ratio drill-down, e.g. eval regression scripts).
   string session_id = 13;
+  // effort filters events to rows whose metadata_json["effort"] equals this
+  // value (LBG-6 effort 显性化: off/low/medium/high/max; empty = no filter).
+  string effort = 14;
 }
 
 message UsageSummary {

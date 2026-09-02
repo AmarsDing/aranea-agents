@@ -105,7 +105,7 @@ func RegisterTeamServiceHTTPServer(s *http.Server, srv TeamServiceHTTPServer) {
 	r.PATCH("/v1/teams/{id}", _TeamService_UpdateTeam0_HTTP_Handler(srv))
 	r.DELETE("/v1/teams/{id}", _TeamService_DeleteTeam0_HTTP_Handler(srv))
 	r.POST("/v1/teams/{id}/duplicate", _TeamService_DuplicateTeam0_HTTP_Handler(srv))
-	r.GET("/v1/team-runs", _TeamService_ListTeamRuns0_HTTP_Handler(srv))
+	r.GET("/v1/team-runs", _TeamService_ListTeamRuns1_HTTP_Handler(srv))
 	r.GET("/v1/team-runs/{run_id}/steps", _TeamService_ListTeamRunSteps0_HTTP_Handler(srv))
 	r.GET("/v1/team-runs/{id}", _TeamService_GetTeamRun0_HTTP_Handler(srv))
 	r.POST("/v1/team-runs/{id}/cancel", _TeamService_CancelTeamRun0_HTTP_Handler(srv))
@@ -265,7 +265,7 @@ func _TeamService_DuplicateTeam0_HTTP_Handler(srv TeamServiceHTTPServer) func(ct
 	}
 }
 
-func _TeamService_ListTeamRuns0_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx http.Context) error {
+func _TeamService_ListTeamRuns1_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListTeamRunsRequest
 		if err := ctx.BindQuery(&in); err != nil {

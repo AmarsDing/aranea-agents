@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -73,6 +74,25 @@ func (u *TeamUsecase) RecoverOrphanedRunningTeamsEx(ctx context.Context, marker 
 					loggateway.Str("target_status", target),
 					loggateway.Err(tErr),
 				)
+				continue
+			}
+			// 83-长时运行韧性（K5）：判死对用户可见，留流程日志证据链。
+			if u.flowLog != nil {
+				u.flowLog.LogFlowWarn(ctx, run.SessionID, "team.run.orphan_finalize", "服务器重启，运行已终结",
+					LogPair{Key: "team_id", Value: teams[i].ID},
+					LogPair{Key: "run_id", Value: run.ID},
+					LogPair{Key: "target_status", Value: target},
+					LogPair{Key: "reason", Value: "server_restart"})
+			}
+			// 83 §4.2 终态一致性：判死路径不经 team 层 finalize，graph_executions
+			// 行须在此同步收敛，否则残留 running 误导后续启动对账/监控。
+			if execID := strings.TrimSpace(run.GraphExecutionID); execID != "" && u.graphExecFinalizer != nil {
+				if fErr := u.graphExecFinalizer.FinalizeTeamGraphExecution(ctx, execID, true, "server restart: orphaned run finalized"); fErr != nil {
+					u.lg.Warn("recover orphaned teams: failed to converge graph execution",
+						loggateway.Str("team_run_id", run.ID),
+						loggateway.Str("graph_execution_id", execID),
+						loggateway.Err(fErr))
+				}
 			}
 		}
 	}

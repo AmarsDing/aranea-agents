@@ -9,6 +9,8 @@ import (
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // 83-长时运行韧性：TeamRun 崩溃续跑（checkpoint-based crash resume）。
@@ -106,12 +108,14 @@ func (c *TeamGraphRunCoordinator) tryResumeOrphanedRun(ctx context.Context, dbSe
 	resumeCtx = decision.WithGateSessionID(resumeCtx, dbSess.SessionID)
 	resumeCtx = sandbox.WithRunID(resumeCtx, dbSess.TeamRunID)
 	if _, err := c.graphs.RecoverOrphanedExecution(resumeCtx, dbSess.ExecID); err != nil {
+		reason := fmt.Sprintf("crash resume failed: %v", err)
 		c.lg.Warn("RecoverSessions: crash resume failed, finalize as failed",
 			loggateway.StepID("team.session.crash_resume_fail"),
 			loggateway.Str("exec_id", dbSess.ExecID),
 			loggateway.Str("team_run_id", dbSess.TeamRunID),
 			loggateway.Err(err))
-		c.finalizeTeamRun(ctx, sess, true, fmt.Sprintf("crash resume failed: %v", err))
+		c.finalizeTeamRun(ctx, sess, true, reason)
+		c.emitRecoveryAudit(ctx, sess, false, reason)
 		return false
 	}
 	c.mu.Lock()
@@ -125,5 +129,63 @@ func (c *TeamGraphRunCoordinator) tryResumeOrphanedRun(ctx context.Context, dbSe
 		loggateway.StepID("team.session.crash_resumed"),
 		loggateway.Str("exec_id", dbSess.ExecID),
 		loggateway.Str("team_run_id", dbSess.TeamRunID))
+	c.emitRecoveryAudit(ctx, sess, true, "resumed from graph checkpoint after process restart")
 	return true
+}
+
+// SetRecoveryAudit 注入恢复审计通道（83 §4.1）：用户可见 flowlog + 决策
+// collector。wire 装配（ProvideFlowLogWriter / provideDecisionCollector）。
+func (c *TeamGraphRunCoordinator) SetRecoveryAudit(flowLog biz.FlowLogWriter, decisions decision.Collector) {
+	if c == nil {
+		return
+	}
+	c.flowLog = flowLog
+	c.decisions = decisions
+}
+
+// emitRecoveryAudit 崩溃续跑审计双写（83 §4.1，对齐 emitResumeDecision 范式）：
+// decision_records（CategorySystemGuard，actor=system:crash_recovery）+ flowlog
+// （team.run.crash_resume / team.run.crash_resume_fail）。启动对账 ctx 无 turn
+// TraceEmitter，flowlog 走 coordinator 持有的 biz.FlowLogWriter 端口；两侧
+// nil-safe（未注入仅进程日志，collector nil 记 collector_nil 告警日志）。
+func (c *TeamGraphRunCoordinator) emitRecoveryAudit(ctx context.Context, sess *teamGraphRunSession, resumed bool, reason string) {
+	if c == nil || sess == nil {
+		return
+	}
+	outcome := "resumed"
+	if !resumed {
+		outcome = "failed"
+	}
+	runID, sessionID, execID := sess.teamRunID, sess.sessionID, sess.execID
+	if c.decisions != nil {
+		c.decisions.Emit(ctx, decision.Record{
+			DecisionKey: uuid.NewString(),
+			Category:    decision.CategorySystemGuard,
+			Scenario:    "团队运行崩溃续跑",
+			Reasoning:   reason,
+			Outcome:     outcome,
+			ActorType:   decision.ActorSystem,
+			ActorKey:    "system:crash_recovery",
+			SourceRef:   decision.SourceRef{RunID: runID, SessionID: sessionID},
+			Metadata:    map[string]any{"run_id": runID, "session_id": sessionID, "graph_execution_id": execID},
+		})
+	} else {
+		c.lg.Warn("recovery audit: decision collector is nil, record skipped",
+			loggateway.StepID("system.gate.collector_nil"),
+			loggateway.Str("trigger", "crash_recovery"),
+			loggateway.Str("run_id", runID))
+	}
+	if c.flowLog == nil {
+		return
+	}
+	if resumed {
+		c.flowLog.LogFlowDone(ctx, sessionID, "team.run.crash_resume", "服务器重启后从检查点恢复运行",
+			biz.LogPair{Key: "run_id", Value: runID},
+			biz.LogPair{Key: "graph_execution_id", Value: execID})
+		return
+	}
+	c.flowLog.LogFlowError(ctx, sessionID, "team.run.crash_resume_fail", "崩溃续跑失败，运行已终结",
+		biz.LogPair{Key: "run_id", Value: runID},
+		biz.LogPair{Key: "graph_execution_id", Value: execID},
+		biz.LogPair{Key: "reason", Value: reason})
 }
