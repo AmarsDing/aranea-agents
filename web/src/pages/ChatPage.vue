@@ -129,9 +129,7 @@
         @update-pending="composer.onUpdatePending"
         @open-events="session.openSessionEvents"
         @open-artifacts-page="onOpenArtifactsPage"
-        @open-artifact="session.openSessionArtifact"
         @attachment-deleted="session.onArtifactDeleted"
-        @download-artifact="session.downloadArtifact"
         @focus-turn="session.focusSessionTurn"
         @navigate="onNavigate"
         @cancel-job="composer.cancelBackgroundJob"
@@ -280,6 +278,17 @@
         @refresh-trace="dialogs.reloadTimeline()"
       />
 
+      <!-- P0 会话产物抽屉：会话内列出产物，点击经全局预览弹窗查看 -->
+      <SessionArtifactsDrawer
+        :open="session.artifactsDrawerOpen"
+        :artifacts="session.sessionArtifacts"
+        :loading="session.sessionArtifactsLoading"
+        @update:open="session.artifactsDrawerOpen = $event"
+        @preview="(meta: ArtifactMeta) => artifactStore.openArtifactPreview(meta.id, meta.version)"
+        @download="session.downloadArtifact"
+        @manage="session.goArtifactsPage"
+      />
+
       <AddEvalCaseDialog
         v-model:open="evalCase.open"
         :mode="evalCase.mode"
@@ -306,6 +315,7 @@
 <script setup lang="ts">
 import ChatDeleteDialog from '../components/chat/ChatDeleteDialog.vue';
 import AddEvalCaseDialog from '../components/evaluation/AddEvalCaseDialog.vue';
+import SessionArtifactsDrawer from '../components/artifact/SessionArtifactsDrawer.vue';
 import ChatEntitySidebar from '../components/chat/ChatEntitySidebar.vue';
 import ChatMessagePanel from '../components/chat/ChatMessagePanel.vue';
 import ChatSessionSidebar from '../components/chat/ChatSessionSidebar.vue';
@@ -326,10 +336,13 @@ import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
 import { useChatRuntimeStore } from '../stores/chat/runtimeStore';
 import { useLlmRetryStore } from '../stores/chat/llmRetryStore';
+import { useArtifactStore } from '../stores/artifact';
 import type { Agent } from '../features/agents/types';
+import type { ArtifactMeta } from '../features/artifact/types';
 
 const workspace = useChatWorkspace();
 const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock, evalCase } = workspace;
+const artifactStore = useArtifactStore();
 // Spirit/team 面板编排（状态栏聚合、Agent 卡片动作、成员会话定位）收口于 composable。
 const spirit = useChatSpiritPanel(workspace);
 // 注意：spirit 是普通对象，模板不会自动解包其嵌套 ref，必须解构为顶层绑定。
@@ -384,11 +397,12 @@ function onNavigate(route: { name: string; params: Record<string, string> }) {
   router.push(route);
 }
 
-/** 跳转制品管理页：自动填充当前会话筛选并切到「会话产物」Tab。 */
+/**
+ * P0 会话产物点击查看（2026-09-01）：header 产物按钮默认打开会话内
+ * 产物抽屉（点击条目即预览）；「管理全部产物」由抽屉底部入口跳页。
+ */
 function onOpenArtifactsPage() {
-  const sid = session.selectedSessionForUi?.id;
-  if (!sid) return;
-  void router.push({ name: 'artifacts', query: { session: sid } });
+  session.openArtifactsDrawer();
 }
 
 /**

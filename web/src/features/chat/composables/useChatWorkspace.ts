@@ -582,7 +582,9 @@ export function useChatWorkspace() {
   const {
     sessionArtifacts,
     sessionArtifactsLoading,
-    openSessionArtifact,
+    artifactsDrawerOpen,
+    openArtifactsDrawer,
+    goArtifactsPage,
     onArtifactDeleted: removeArtifactFromList,
   } = useChatSessionArtifacts(sessionIdForArtifacts);
 
@@ -1065,9 +1067,11 @@ export function useChatWorkspace() {
       unpinReasoning: reasoningSidebar.unpin,
       sessionArtifacts,
       sessionArtifactsLoading,
+      artifactsDrawerOpen,
+      openArtifactsDrawer,
+      goArtifactsPage,
       fileSupported,
       fileAccept,
-      openSessionArtifact,
       onArtifactDeleted,
       downloadArtifact: async (meta: import('../../artifact/types').ArtifactMeta) => {
         try {

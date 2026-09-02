@@ -12,6 +12,10 @@ const (
 	// GraphMetadataTeamOwnedKey marks a graph asset materialized/owned by a team.
 	// 删除保护（B7）与换绑校验（B8）以此判定 owned vs external。
 	GraphMetadataTeamOwnedKey = "team_owned"
+	// GraphMetadataTeamAutoCreatedKey marks an owned graph whose owner team was
+	// auto-created by spirit/orchestration（会话一次性团队）。GraphsPage 据此
+	// 默认隔离编排产物（镜像 TeamsPage 的 showOrchestrated 语义）。
+	GraphMetadataTeamAutoCreatedKey = "team_auto_created"
 )
 
 // MaterializeTeamGraphDefinition converts a compiled team graph (GraphBuildConfig)
@@ -56,6 +60,13 @@ func MaterializeTeamGraphDefinition(team Team, cfg GraphBuildConfig, existing *G
 	def.Metadata[GraphMetadataLayoutKey] = inheritGraphLayout(cfg, existing)
 	def.Metadata[GraphMetadataTeamOwnedKey] = true
 	def.Metadata[GraphMetadataTeamSourceKey] = source
+	// 编排产物标记：属主团队为会话自动创建时打标，前端据此默认隔离。
+	// 更新路径需以属主现状为准（不允许 existing 残留旧值），故在下方统一覆盖。
+	if team.AutoCreated {
+		def.Metadata[GraphMetadataTeamAutoCreatedKey] = true
+	} else {
+		delete(def.Metadata, GraphMetadataTeamAutoCreatedKey)
+	}
 	return def
 }
 

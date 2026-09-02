@@ -65,6 +65,15 @@ export function useGraphsPage() {
     return graph.metadata?.team_owned === true;
   }
 
+  /**
+   * 编排产物判定镜像后端 metadata.team_auto_created（spirit/会话一次性团队的
+   * owned 图）。管理页默认隔离此类图（对齐 TeamsPage 的 showOrchestrated 语义），
+   * 用户经工具栏开关显式展示。
+   */
+  function isOrchestratedOwned(graph: GraphDefinition): boolean {
+    return isTeamOwned(graph) && graph.metadata?.team_auto_created === true;
+  }
+
   /** 属主/关联 Team 展示名：teams 列表映射，未加载或找不到时回退 teamId。 */
   function teamDisplayName(teamId: string): string {
     const id = String(teamId || '').trim();
@@ -89,11 +98,22 @@ export function useGraphsPage() {
   const searchQuery = ref('');
   const engineFilter = ref('');
   const teamFilter = ref('');
+  // 编排产物图（会话自动团队的 owned 图）默认隐藏，经工具栏开关显式展示
+  // （对齐 TeamsPage 的 showOrchestrated 模式）。
+  const showOrchestrated = ref(false);
   const sortKey = ref('updatedAt');
   const sortOrder = ref('desc');
 
+  /** 默认被隔离的编排产物图数量（提示横幅用，先于搜索/筛选统计）。 */
+  const hiddenOrchestratedCount = computed(
+    () => rows.value.filter((g) => isOrchestratedOwned(g)).length,
+  );
+
   const filteredRows = computed(() => {
     let list = rows.value.slice();
+    if (!showOrchestrated.value) {
+      list = list.filter((g) => !isOrchestratedOwned(g));
+    }
     const q = searchQuery.value.trim().toLowerCase();
     if (q) {
       list = list.filter((g) => g.name.toLowerCase().includes(q) || (g.description ?? '').toLowerCase().includes(q));
@@ -410,6 +430,8 @@ export function useGraphsPage() {
     searchQuery,
     engineFilter,
     teamFilter,
+    showOrchestrated,
+    hiddenOrchestratedCount,
     sortKey,
     sortOrder,
     SORT_OPTIONS,

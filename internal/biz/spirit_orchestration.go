@@ -65,6 +65,7 @@ type SpiritOrchestration struct {
 	pollCtx            context.Context
 	pollCancel         context.CancelFunc
 	delivery           *SpiritDelivery
+	graphSweeper       SpiritTeamGraphSweeper
 	lg                 loggateway.Logger
 }
 
@@ -347,6 +348,19 @@ func (o *SpiritOrchestration) AutoArchiveCompletedTeams(ctx context.Context, spi
 	cfg := o.resolveParallelConfig(ctx, spiritSessionID)
 	if cfg.AutoArchiveSeconds <= 0 {
 		return
+	}
+	// 全局图资产清扫：终态自动团队的 owned 图超龄即回收（与归档同阈值、同
+	// 事件触发点）。归档本身是 per-session 扫描，会话结束后不再触发；图清扫
+	// 必须全局，否则编排产物图随会话堆积（108 实证 211/223）。
+	if o.graphSweeper != nil {
+		cutoff := time.Now().Add(-cfg.AutoArchiveAfter())
+		if _, err := o.graphSweeper.SweepTerminalAutoTeamGraphs(ctx, cutoff); err != nil {
+			o.lg.Warn("终态自动团队图资产清扫失败",
+				loggateway.StepID("spirit.auto_archive.sweep_err"),
+				loggateway.Str("spirit_session_id", spiritSessionID),
+				loggateway.Err(err),
+			)
+		}
 	}
 	teams, err := o.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {

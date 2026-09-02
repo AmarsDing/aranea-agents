@@ -11,6 +11,15 @@
         <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
         <span v-if="step.ToolDurationMs > 0" class="act-activity__duration">{{ formattedDuration }}</span>
       </div>
+      <!-- P1 会话产物点击查看（2026-09-01）：工具结果携带 artifact_id 时
+           渲染可点产物卡片（如 officecli_render 的渲染产物），折叠态也可见，
+           点击经 artifactStore.openArtifactPreview 打开全局预览弹窗。
+           媒体工具排除——MediaToolDetail 已内联预览。 -->
+      <ArtifactRefCard
+        v-if="artifactRef"
+        :artifact-id="artifactRef.id"
+        :name="artifactRef.name"
+      />
       <!-- Per-category dispatch: pick the specialized detail component based
            on toolCategory (inferred from toolName via classifyTool). Falls
            back to GenericToolDetail for unknown categories. -->
@@ -37,8 +46,9 @@ import WebSearchToolDetail from './tools/WebSearchToolDetail.vue';
 import McpToolDetail from './tools/McpToolDetail.vue';
 import CodeToolDetail from './tools/CodeToolDetail.vue';
 import MediaToolDetail from './tools/MediaToolDetail.vue';
+import ArtifactRefCard from '../artifact/ArtifactRefCard.vue';
 import { classifyTool, TOOL_CATEGORY_ICON, type ToolCategory } from './tools/classifyTool';
-import { asRecord } from './tools/toolDetailShared';
+import { asRecord, extractArtifactRef } from './tools/toolDetailShared';
 
 /** T8.4: Tool result/arguments longer than this threshold auto-collapse. */
 const RESULT_COLLAPSE_THRESHOLD = 500;
@@ -84,6 +94,16 @@ const detailComponent = computed<Component>(() => {
 
 const parsedToolArgs = computed(() => asRecord(props.step.ToolArgs));
 const parsedToolResult = computed(() => asRecord(props.step.ToolResult));
+
+/**
+ * P1 会话产物点击查看：工具结果里的 artifact 引用（officecli_render 等
+ * 在 ToolResult 输出 artifact_id / file）。媒体工具已由 MediaToolDetail
+ * 内联预览，不再重复渲染卡片。
+ */
+const artifactRef = computed(() => {
+  if (toolCategory.value === 'media') return null;
+  return extractArtifactRef(props.step.ToolResult);
+});
 
 /**
  * Compact execution-result hint shown in the tool header.

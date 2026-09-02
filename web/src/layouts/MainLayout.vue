@@ -132,6 +132,13 @@
     </q-page-container>
 
     <PairingQrDialog v-model="pairingOpen" />
+    <!-- 全局产物预览弹窗：目标由 artifactStore.previewTarget 驱动，
+         会话页抽屉/工具产物卡片等任意深层组件均可触发（2026-09-01）。 -->
+    <ArtifactPreviewDialog
+      :model-value="artifactStore.previewTarget"
+      @update:model-value="artifactStore.closeArtifactPreview()"
+      @download="onArtifactDownload"
+    />
   </q-layout>
 </template>
 
@@ -139,23 +146,38 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import { setQuasarLangFor } from '../i18n/quasar-lang';
 import { sideNavGroups } from '../config/sideNav';
 import { useAuthStore } from '../stores/auth';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
 import PairingQrDialog from '../components/mobile/PairingQrDialog.vue';
+import ArtifactPreviewDialog from '../components/artifact/ArtifactPreviewDialog.vue';
+import { useArtifactStore } from '../stores/artifact';
+import type { ArtifactMeta } from '../features/artifact/types';
 import { useGlobalInboundNotifications } from '../composables/useGlobalInboundNotifications';
 import { useTheme } from '../composables/useTheme';
 
 const { t, locale } = useI18n();
+const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const inboundStore = useInboundNotificationStore();
+const artifactStore = useArtifactStore();
 const drawerOpen = ref(true);
 const drawerMini = ref(true);
 const pairingOpen = ref(false);
+
+/** 产物预览弹窗的下载动作：统一走 artifactStore.download，失败提示。 */
+async function onArtifactDownload(meta: ArtifactMeta) {
+  try {
+    await artifactStore.download(meta);
+  } catch {
+    $q.notify({ type: 'negative', message: t('artifact.page.downloadLinkFailed') });
+  }
+}
 
 useGlobalInboundNotifications();
 

@@ -236,6 +236,9 @@ func (d *SpiritDelivery) ListTeamDeliverableDigests(ctx context.Context, spiritS
 				}
 				for _, art := range refs[k].Artifacts {
 					digest.Artifacts = append(digest.Artifacts, d.artifactDigestLine(art))
+					if ref, ok := deliverableArtifactRefOf(art); ok {
+						digest.ArtifactRefs = append(digest.ArtifactRefs, ref)
+					}
 				}
 			}
 			digest.DeliverableSummary = strings.Join(summaries, "\n")
@@ -2113,6 +2116,27 @@ func (d *SpiritDelivery) artifactDigestLine(art DeliverableArtifact) string {
 		line += "，路径：" + p
 	}
 	return line
+}
+
+// deliverableArtifactRefOf 把已桥接到 spirit 会话产物库的载荷转成前端可点击
+// 的产物指针（2026-09-02 P1）。artifact_id 为空（未桥接 / workspace_rel 纯
+// 指针）时 ok=false —— 无产物记录可定位，不进入 deliverables 通知。
+func deliverableArtifactRefOf(art DeliverableArtifact) (DeliverableArtifactRef, bool) {
+	id := strings.TrimSpace(art.ArtifactID)
+	if id == "" {
+		return DeliverableArtifactRef{}, false
+	}
+	name := strings.TrimSpace(art.Title)
+	if name == "" {
+		name = strings.TrimSpace(art.Key)
+	}
+	return DeliverableArtifactRef{
+		ArtifactID: id,
+		Name:       name,
+		Format:     strings.TrimSpace(art.Format),
+		SizeChars:  art.SizeChars,
+		MimeType:   strings.TrimSpace(art.MimeType),
+	}, true
 }
 
 // artifactPublicPath 把 artifact 存储相对路径映射为用户可访问的公开路径

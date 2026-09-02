@@ -963,6 +963,7 @@ func provideChatServiceDeps(
 	turnLifecycle *biz.TurnLifecycleUsecase,
 	stepReader biz.StepV2Reader,
 	stepWriter biz.StepV2Writer,
+	turnReader biz.TurnV2Reader,
 	taskV2Repo biz.TaskV2Repo,
 	heartbeatEmitter *service.RunHeartbeatEmitter,
 	deadLetterQueue *lifecycle.DeadLetterQueue,
@@ -985,17 +986,16 @@ func provideChatServiceDeps(
 	// (it would create a cycle), so we inject it here after Wire resolves it.
 	teamDeps.TaskOrchestrator = taskOrch
 
-	// LLMHTTP timeout is sourced from TimeoutPolicy.
-	// TaskTypeModerate (60min) is the baseline; per-task-type overrides
-	// can be applied in the LLM call path via context (see trpc_llm.go).
+	// LLMHTTP 墙钟已退役为防泄漏安全网（2026-09-01 活性守卫治理），同上。
 	timeoutPolicy := provider.NewTimeoutPolicy()
+	_ = timeoutPolicy // 保留策略对象供后续按 TaskType 覆盖；墙钟不再用于 LLMHTTP。
 	return service.ChatOrchestratorDeps{
 		Turn: service.ChatTurnDeps{
 			TurnDeps: rt.TurnDeps{
 				ReadDeps:     provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
 				Persist:      persist,
 				Pipeline:     rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus},
-				LLMHTTP:      &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
+				LLMHTTP:      &http.Client{Timeout: provider.LLMLeakGuardTimeout},
 				Sessions:     sessions,
 				SessionRT:    sessionRT,
 				Compress:     compress,
@@ -1245,7 +1245,7 @@ func provideGraphBuildDeps(
 	// T3 根修（同 provideTRPCBuilderDeps，两处必须一致）：ToolUC 非 nil ⇒
 	// 产品确认门禁机制可用，confirmation_guard runner 插件让位。
 	plugintrpc.SetProductConfirmGateActive(true)
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: provider.LLMLeakGuardTimeout}}
 	builderDeps := chatagent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
 			ModelCatalog: catalog,
@@ -2076,7 +2076,7 @@ func provideMemorySleepTimeWorker(
 	// (same precedence as MemoryLLMExtractor: MemoryWorker → L0Compress →
 	// agent default). Targets without a resolvable model gracefully degrade
 	// to a no-op consolidation pass.
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: provider.LLMLeakGuardTimeout}}
 	// Guard against typed-nil interfaces: a nil *LlmProviderModelUsecase
 	// wrapped in the TeamModelCatalog interface would pass the resolver's
 	// nil check and panic on first use.
@@ -3063,6 +3063,8 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)),
 		// S06 产物可见性：交付物文档桥接为会话 artifact，路径按公开根映射。
 		biz.WithDeliverableArtifactSaver(artifactRepo, conf.ArtifactPublicBase()),
+		// 终态自动团队 owned 图全局清扫（teamUC 实现 SpiritTeamGraphSweeper）。
+		biz.WithTeamGraphSweeper(teamUC),
 	)
 }
 

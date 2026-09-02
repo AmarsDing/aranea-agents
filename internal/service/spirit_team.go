@@ -993,6 +993,9 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		// 消息已受理，守卫继续阻止轮询重复注入。不得发兜底通知：总结必将
 		// 产出，通知 = 双重信号。
 		if isTurnMessageQueued(err) {
+			// 交付物清单独立于总结报告存在（产物已落库），受理即发布，
+			// 用户无需等总结 turn 排空。
+			s.publishDeliverablesNotice(ctx, spiritSessionID, parentTaskID, digests)
 			s.lg.Info("all teams completed: synthesis trigger accepted into active run (steer/queue)",
 				loggateway.StepID("spirit.synthesis_turn_queued"),
 				loggateway.Str("spirit_session_id", spiritSessionID),
@@ -1018,6 +1021,85 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		loggateway.Int("total_teams", result.TotalTeams),
 		loggateway.Int("completed_teams", result.CompletedTeams),
 		loggateway.Int("failed_teams", result.FailedTeams),
+	)
+	// 总结 turn 完成（ExecuteTurn 阻塞至 turn 终态）：发布交付物清单通知，
+	// 渲染在任务卡末尾（报告之后），供用户点击预览/下载产物。
+	s.publishDeliverablesNotice(ctx, spiritSessionID, parentTaskID, digests)
+}
+
+// deliverablesNoticeType 是「全部团队完成」聚合产物清单的 orphan notice
+// step 类型（2026-09-02 会话产物点击查看 P1）。前端 NoticeBlock 按此类型
+// 把 Content JSON 渲染为可点击产物卡片，而非 markdown 文本。
+const deliverablesNoticeType = "deliverables"
+
+// deliverablesNoticeMaxArtifacts 限制单条通知携带的产物数，防止病态编排
+// （大量 bridged 产物）撑爆 WS 事件与 steps_v2 content 列。
+const deliverablesNoticeMaxArtifacts = 50
+
+// publishDeliverablesNotice 发布交付物清单 orphan notice step（TurnID 空、
+// 挂 parentTaskID，任务卡 footer 位）。仅在存在已桥接产物（artifact_id
+// 非空）时发布；parentTaskID 为空时前端无法附着渲染（与兜底完成通知同一
+// 约束），跳过并记 Warn。失败仅记日志 —— 产物仍可由产物抽屉/管理页访问，
+// 通知缺失不阻断 synthesis 主路径。
+func (s *TeamStarter) publishDeliverablesNotice(ctx context.Context, spiritSessionID, parentTaskID string, digests []biz.TeamDeliverableDigest) {
+	if !s.v2EventReady() {
+		return
+	}
+	refs := make([]biz.DeliverableArtifactRef, 0, 8)
+	seen := make(map[string]struct{})
+loop:
+	for _, d := range digests {
+		for _, r := range d.ArtifactRefs {
+			if _, dup := seen[r.ArtifactID]; dup {
+				continue
+			}
+			seen[r.ArtifactID] = struct{}{}
+			refs = append(refs, r)
+			if len(refs) >= deliverablesNoticeMaxArtifacts {
+				break loop
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return
+	}
+	if strings.TrimSpace(parentTaskID) == "" {
+		s.lg.Warn("deliverables 通知 TaskID 为空，跳过发布（前端无法附着渲染）",
+			loggateway.StepID("spirit.deliverables_notice.empty_task"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+		return
+	}
+	payload, err := json.Marshal(map[string]any{"artifacts": refs})
+	if err != nil {
+		s.lg.Warn("deliverables 通知载荷序列化失败，跳过发布",
+			loggateway.StepID("spirit.deliverables_notice.marshal_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return
+	}
+	now := time.Now()
+	step := biz.Step{
+		ID:              uuid.NewString(),
+		SessionID:       spiritSessionID,
+		SpiritSessionID: spiritSessionID,
+		TaskID:          parentTaskID,
+		Kind:            biz.StepKindNotice,
+		NoticeType:      deliverablesNoticeType,
+		Content:         string(payload),
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+		Version:         1,
+		AuthorAgentKey:  "team-starter",
+	}
+	s.publishV2Event(ctx, biz.NewStepCreatedEvent(step))
+	s.lg.Info("all teams completed: 已发布 deliverables 交付物清单通知",
+		loggateway.StepID("spirit.deliverables_notice_published"),
+		loggateway.Str("spirit_session_id", spiritSessionID),
+		loggateway.Str("parent_task_id", parentTaskID),
+		loggateway.Int("artifact_count", len(refs)),
 	)
 }
 

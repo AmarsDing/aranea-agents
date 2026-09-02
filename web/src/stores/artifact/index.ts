@@ -27,6 +27,20 @@ export const useArtifactStore = defineStore('artifact', () => {
   const total = ref(0);
   const loading = ref(false);
 
+  // 产物预览弹窗的全局唯一目标（P0/P1 会话产物点击查看，2026-09-01）。
+  // 深层展示组件（ActionBlock 产物卡片）经 openArtifactPreview 触发，
+  // 弹窗本体挂在 MainLayout；状态集中于此遵守数据流红线 #2/#4。
+  const previewTarget = ref<{ id: string; version?: number } | null>(null);
+
+  function openArtifactPreview(id: string, version?: number): void {
+    if (!id) return;
+    previewTarget.value = version && version > 0 ? { id, version } : { id };
+  }
+
+  function closeArtifactPreview(): void {
+    previewTarget.value = null;
+  }
+
   async function loadArtifacts(params: ListArtifactsParams = {}): Promise<ListArtifactsResult> {
     loading.value = true;
     try {
@@ -84,10 +98,21 @@ export const useArtifactStore = defineStore('artifact', () => {
     return fetchLocalRevealEnabled();
   }
 
+  /** 统一下载入口：签名 URL → 新窗口下载（attachment）。失败抛错由调用方提示。 */
+  async function download(meta: { id: string; version?: number }): Promise<void> {
+    const signed = await signDownloadUrl(meta.id, meta.version);
+    if (signed.url) {
+      window.open(artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
+    }
+  }
+
   return {
     artifacts,
     total,
     loading,
+    previewTarget,
+    openArtifactPreview,
+    closeArtifactPreview,
     loadArtifacts,
     upload,
     get,
@@ -96,6 +121,7 @@ export const useArtifactStore = defineStore('artifact', () => {
     listVersions,
     signDownload,
     loadPreview,
+    download,
     revealLocal,
     loadLocalRevealEnabled,
     artifactDownloadHref,

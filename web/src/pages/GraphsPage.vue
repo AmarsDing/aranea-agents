@@ -80,7 +80,32 @@
               { value: 'desc', icon: 'arrow_downward' },
             ]"
           />
+          <q-toggle
+            v-model="showOrchestrated"
+            dense
+            :label="t('graphs.showOrchestrated')"
+            data-test="graphs-show-orchestrated"
+          >
+            <q-tooltip>{{ t('graphs.showOrchestratedHint') }}</q-tooltip>
+          </q-toggle>
         </section>
+
+        <div
+          v-if="!showOrchestrated && hiddenOrchestratedCount > 0"
+          class="q-mt-sm row items-center no-wrap rounded-borders q-px-sm q-py-xs text-caption app-text-secondary graphs-page__hint-banner"
+        >
+          <q-icon name="visibility_off" size="16px" class="q-mr-xs" />
+          <span>{{ t('graphs.hiddenOrchestrated', { count: hiddenOrchestratedCount }) }}</span>
+          <q-btn
+            flat
+            dense
+            no-caps
+            rounded
+            color="primary"
+            :label="t('graphs.showOrchestratedAction')"
+            @click="showOrchestrated = true"
+          />
+        </div>
 
         <q-inner-loading :showing="loading && rows.length === 0" />
 
@@ -347,6 +372,8 @@ const {
   searchQuery,
   engineFilter,
   teamFilter,
+  showOrchestrated,
+  hiddenOrchestratedCount,
   sortKey,
   sortOrder,
   SORT_OPTIONS,

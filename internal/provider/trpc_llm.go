@@ -36,19 +36,20 @@ var llmBaseURLValidator = outboundguard.NewCachedValidator(5 * time.Minute)
 // catalog and wires it with the project's HTTP transport (rate-limit, retry,
 // circuit-breaker, metrics).
 //
-// Per-task-type timeout:
-// The HTTP client's base timeout is set at wire time via TimeoutPolicy
-// (see provideLLMHTTPClient in cmd/admin/wire.go, using TaskTypeModerate as
-// the baseline). To apply a different timeout for a specific call, set the
-// TaskType in the request context before invoking model.GenerateContent:
+// Per-call business timeout:
+// HTTP 客户端墙钟已统一退役为防泄漏安全网（provider.LLMLeakGuardTimeout，
+// 2026-09-01 活性守卫治理）。业务维度的时间治理由两层承担：
+//   - 活性守卫（WrapModelWithLivenessGuard）：首字节预算 + 事件间隔 stall
+//     预算，静默即重连（预算经 ctx 注入，见 WithFirstByteRetryBudget /
+//     WithStallBudget）；
+//   - 整轮 runCtx（team timeout_seconds / turn deadline）：唯一业务总闸。
+//
+// TimeoutPolicy 仍可用于特殊场景经 ctx 显式覆盖：
 //
 //	ctx = provider.WithTaskType(ctx, provider.TaskTypeCodeGen)
 //	ctx, cancel, _ := timeoutPolicy.ApplyTimeoutFromCtx(ctx)
 //	if cancel != nil { defer cancel() }
 //	resp, err := model.GenerateContent(ctx, req)
-//
-// When no TaskType is set in context, the http.Client's default timeout
-// (TaskTypeModerate = 60min) applies.
 func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog, rt *RoundTrip, prov, modelAPI string, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if catalog == nil {
 		return nil, ErrNilLlmCatalog
@@ -72,9 +73,11 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 	if omitThinkingKey(pm, cfg) {
 		m = wrapOmitThinking(m)
 	}
-	// P6-N3 最外层：首字节静默单发重试。预算由编排层经 ctx 注入
-	// （WithFirstByteRetryBudget）；无预算时纯透传，零行为变化。
-	m = WrapModelWithFirstByteRetry(m, strings.TrimSpace(cfg.ProviderType), strings.TrimSpace(cfg.ModelAPI), lg)
+	// 活性守卫最外层（2026-09-01 治理由首字节单发重试升级为全程监控）：
+	// 首字节预算 + 流中段 stall 预算均由编排层经 ctx 注入
+	// （WithFirstByteRetryBudget / WithStallBudget）；stall 无注入时落回
+	// 包默认值，零预算首字节维度保持不重试的旧语义。
+	m = WrapModelWithLivenessGuard(m, strings.TrimSpace(cfg.ProviderType), strings.TrimSpace(cfg.ModelAPI), lg)
 	return m, nil
 }
 

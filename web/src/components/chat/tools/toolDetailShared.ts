@@ -48,6 +48,20 @@ export function asString(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+/**
+ * P1 会话产物点击查看（2026-09-01）：从工具结果中提取 artifact 引用。
+ * officecli_render 等工具在结果里输出 artifact_id / file（产物落盘后
+ * 的下载指针）；媒体工具结果由 MediaToolDetail 内联预览，调用方负责排除。
+ */
+export function extractArtifactRef(toolResult: unknown): { id: string; name?: string } | null {
+  const result = asRecord(toolResult);
+  if (!result) return null;
+  const id = asString(result.artifact_id)?.trim();
+  if (!id) return null;
+  const name = asString(result.file)?.trim();
+  return name ? { id, name } : { id };
+}
+
 /** Coerce to a finite number. Returns undefined for non-numbers. */
 export function asNumber(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;

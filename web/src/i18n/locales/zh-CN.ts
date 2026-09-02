@@ -640,6 +640,7 @@ export default {
     connected: '已连接',
     sessionEvents: '会话事件',
     artifacts: '产物',
+    deliverablesNotice: '交付物清单',
     thinkingPanel: '思考面板',
     activity: {
       running: '正在执行',
@@ -4867,6 +4868,10 @@ export default {
     teamFilterLinked: 'Team 关联',
     teamOwnedBadge: 'Team 编排',
     teamOwnedBadgeTip: '此图为 Team 物化的执行拓扑，保存将反向同步 Team',
+    showOrchestrated: '含编排产物',
+    showOrchestratedHint: '显示由会话任务编排自动生成的团队图',
+    hiddenOrchestrated: '有 {count} 张编排产物图被隐藏',
+    showOrchestratedAction: '显示全部',
     engineBSPHint: '批量同步并行引擎：按超步同步调度，支持检查点和中断恢复',
     engineDAGHint: '有向无环图引擎：并行执行无依赖节点，性能更优但不支持检查点',
     engineDAGNoCheckpoint: 'DAG 引擎不支持检查点功能',
@@ -5433,11 +5438,22 @@ export default {
       pickFile: '选择文件',
     },
     preview: {
+      title: '产物预览',
+      close: '关闭',
       download: '下载',
       audioLoading: '音频加载中…',
       videoLoading: '视频加载中…',
       unsupported: '此类型暂不支持在线预览',
       loadFailed: '加载预览失败',
+    },
+    drawer: {
+      title: '会话产物',
+      empty: '本会话暂无产物',
+      manage: '管理全部产物',
+      close: '关闭',
+    },
+    refCard: {
+      defaultName: '查看产物',
     },
   },
   skillImport: {
