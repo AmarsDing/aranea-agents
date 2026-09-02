@@ -8,8 +8,12 @@ import (
 )
 
 // NewKnowledgeRetriever wires embedder, repo, and optional env-configured reranker (KN-01).
+//
+// embedder 为 nil 时仍创建 Retriever（BM25 词法检索降级路径）——embedder 是可选
+// 增强，词法检索必须可用（F5 设计）。nil embedder 时 Retriever.Search 自动降级
+// BM25，不会触发网络调用。
 func NewKnowledgeRetriever(emb knowledge.QueryEmbedder, repo biz.KnowledgeRepo, lg loggateway.Logger) *knowledge.Retriever {
-	if emb == nil || repo == nil {
+	if repo == nil {
 		return nil
 	}
 	rr, err := knowledge.NewRerankerFromEnv()
