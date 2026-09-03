@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/sandbox"
+	"aranea-agents/internal/sandbox/leasekey"
 	"aranea-agents/pkg/apierror"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -93,13 +94,15 @@ func schemaOf(raw string) *trpctool.Schema {
 // codeexecutor pooledAdapter 的 invocation 兜底派生一致——同会话的 code_exec
 // 与 sandbox_fs 因此共享同一沙箱租约）。无会话上下文时报错：fs 工具在
 // 无归属租约下无意义（用完即毁语义要求会话级回收）。
+//
+// 83-长时运行韧性 FR-4：键派生单点化在 internal/sandbox/leasekey；team run
+// 上下文追加成员维度（同 run 不同成员各持沙箱），详见 leasekey.FromContext。
 func sessionKeyFromCtx(ctx context.Context) (string, error) {
-	inv, ok := trpcagent.InvocationFromContext(ctx)
-	if !ok || inv == nil || inv.Session == nil || inv.Session.ID == "" {
+	key := leasekey.FromContext(ctx, "")
+	if key == "" {
 		return "", apierror.Internal(apierror.DomainTool, "sandbox_fs: no session in invocation context")
 	}
-	s := inv.Session
-	return s.AppName + "/" + s.UserID + "/" + s.ID, nil
+	return key, nil
 }
 
 // agentKeyFromCtx 派生 per-agent 配额归因键（review 2026-08-26 #1：

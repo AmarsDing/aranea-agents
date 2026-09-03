@@ -74,6 +74,12 @@ func TestGraphExecutionStateMachine_InvalidTransitions(t *testing.T) {
 		// Running cannot resume (only waiting_human can)
 		{"running→resume", GraphExecRunning, GraphExecEventResume},
 
+		// recover 自环仅允许 running；waiting_human/terminal 一律非法
+		{"waiting_human→recover", GraphExecWaitingHuman, GraphExecEventRecover},
+		{"completed→recover", GraphExecCompleted, GraphExecEventRecover},
+		{"failed→recover", GraphExecFailed, GraphExecEventRecover},
+		{"cancelled→recover", GraphExecCancelled, GraphExecEventRecover},
+
 		// WaitingHuman cannot complete directly (must resume first)
 		{"waiting_human→complete", GraphExecWaitingHuman, GraphExecEventComplete},
 
@@ -114,8 +120,8 @@ func TestGraphExecutionStateMachine_CanTransition(t *testing.T) {
 		{GraphExecFailed, GraphExecRunning, false},
 		{GraphExecCancelled, GraphExecRunning, false},
 
-		// No self-transitions
-		{GraphExecRunning, GraphExecRunning, false},
+		// 83: running→running 自环合法（recover）；waiting_human 无自环
+		{GraphExecRunning, GraphExecRunning, true},
 		{GraphExecWaitingHuman, GraphExecWaitingHuman, false},
 
 		// WaitingHuman cannot reach completed directly (must resume first)
@@ -139,7 +145,7 @@ func TestGraphExecutionStateMachine_ValidTargets(t *testing.T) {
 		from GraphExecutionState
 		want []GraphExecutionState
 	}{
-		{GraphExecRunning, []GraphExecutionState{GraphExecCancelled, GraphExecCompleted, GraphExecFailed, GraphExecWaitingHuman}},
+		{GraphExecRunning, []GraphExecutionState{GraphExecCancelled, GraphExecCompleted, GraphExecFailed, GraphExecRunning, GraphExecWaitingHuman}},
 		{GraphExecWaitingHuman, []GraphExecutionState{GraphExecCancelled, GraphExecFailed, GraphExecRunning}},
 		{GraphExecCompleted, nil},
 		{GraphExecFailed, nil},

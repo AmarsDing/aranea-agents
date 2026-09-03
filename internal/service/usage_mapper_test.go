@@ -27,9 +27,10 @@ func TestFromProtoUsageQuery(t *testing.T) {
 			UsageKind:    "chat_turn",
 			Status:       "success",
 			Limit:        100,
-			Offset:       40,
-			Granularity:  "daily",
-		}
+		Offset:       40,
+		Granularity:  "daily",
+		Effort:       "high",
+	}
 		got := fromProtoUsageQuery(in)
 		if got.Range != "7d" {
 			t.Errorf("Range = %q", got.Range)
@@ -66,6 +67,9 @@ func TestFromProtoUsageQuery(t *testing.T) {
 		}
 		if got.Granularity != "daily" {
 			t.Errorf("Granularity = %q", got.Granularity)
+		}
+		if got.Effort != "high" {
+			t.Errorf("Effort = %q", got.Effort)
 		}
 	})
 }

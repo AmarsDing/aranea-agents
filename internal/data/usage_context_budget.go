@@ -37,7 +37,7 @@ func contextBudgetNumericPath(path string) string {
 }
 
 func (r *usageRepo) ContextBudgetGrains(ctx context.Context, query bizusage.Query) ([]bizusage.ContextBudgetGrain, error) {
-	where, args := usageWhere(query, true)
+	where, args := usageWhere(r.data.Dialect(), query, true)
 	samplesWhere := where
 	if samplesWhere == "" {
 		samplesWhere = " WHERE " + contextBudgetHasLedger
@@ -126,7 +126,7 @@ func (r *usageRepo) ContextBudgetTopTools(ctx context.Context, query bizusage.Qu
 	if limit <= 0 {
 		limit = 20
 	}
-	where, args := usageWhere(query, true)
+	where, args := usageWhere(r.data.Dialect(), query, true)
 	estTokens := `CAST(NULLIF(t.value ->> 'est_tokens', '') AS DOUBLE PRECISION)`
 	nameFilter := `(t.value ->> 'name') IS NOT NULL`
 	if where == "" {

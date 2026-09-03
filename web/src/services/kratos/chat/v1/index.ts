@@ -51,12 +51,13 @@ export type SubmitChatMessageResponse = {
   accepted: boolean | undefined;
   // status: "accepted" = turn started; "queued" = enqueued for later (active run).
   status: string | undefined;
-  // message_id is empty on accept (assigned when the user message is persisted,
-  // delivered via WS `message.persisted` event). For queued messages, this is
-  // the pending queue entry ID.
+  // message_id is pre-assigned on accept (SP-1e): it equals the user message
+  // ID that will be persisted (RootTaskActivityID). For queued messages the
+  // persisted ID is assigned at dequeue time and delivered via WS
+  // `message_queued`/`message.persisted` events.
   messageId: string | undefined;
-  // turn_id is empty on accept (assigned when the turn starts, delivered via
-  // WS `run_status=running` event).
+  // turn_id equals message_id on accept (frontend message model:
+  // user_message.turn_id == user_message.id for root turns).
   turnId: string | undefined;
 };
 

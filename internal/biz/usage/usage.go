@@ -78,6 +78,13 @@ const (
 	// KindAuxEvalJudge marks evaluation LLM-as-judge / faithfulness /
 	// context_precision calls (previously unrecorded).
 	KindAuxEvalJudge = "aux_eval_judge"
+	// KindAuxPlannerDecompose marks spirit planner decompose LLM calls
+	// (decomposeTask / decomposeTaskStream). Previously unrecorded — every
+	// team-task decomposition burned tokens invisibly (M83 LBG-6).
+	KindAuxPlannerDecompose = "aux_planner_decompose"
+	// KindAuxAllocatorMatch marks spirit allocator LLM cold-start matching
+	// calls (per-subtask / whole-plan). Previously unrecorded (M83 LBG-6).
+	KindAuxAllocatorMatch = "aux_allocator_match"
 )
 
 // MetadataKeyUsageSource is the metadata_json key recording how a usage row's
@@ -99,6 +106,33 @@ func MergeUsageSourceMetadata(metaJSON, usageSource string) string {
 		payload = map[string]any{}
 	}
 	payload[MetadataKeyUsageSource] = usageSource
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return metaJSON
+	}
+	return string(raw)
+}
+
+// MetadataKeyEffort is the metadata_json key recording the resolved thinking
+// effort applied to the LLM call (off/low/medium/high/max; M83 LBG-6). Only
+// rows whose call site routes effort (spirit planner decompose / allocator
+// match) carry the key; other rows omit it and the frontend renders empty.
+const MetadataKeyEffort = "effort"
+
+// MergeEffortMetadata sets metadata_json[effort], preserving existing keys.
+// Passthrough when effort is empty (caller did not route effort — nothing to
+// claim) or metaJSON is unparseable. Callers must pass the value actually
+// applied to the request (post-ResolveThinkingEffort), not a desired value.
+func MergeEffortMetadata(metaJSON, effort string) string {
+	effort = strings.TrimSpace(effort)
+	if effort == "" {
+		return metaJSON
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metaJSON), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	payload[MetadataKeyEffort] = effort
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return metaJSON
@@ -283,6 +317,9 @@ type Query struct {
 	// SessionID filters events to one session (79-runtime-governance 1.5:
 	// per-session cache-hit ratio drill-down; consumed by EventsPage/Events).
 	SessionID string
+	// Effort filters events to rows whose metadata_json["effort"] equals this
+	// value (M83 LBG-6; off/low/medium/high/max). Empty = no effort filter.
+	Effort string
 	// WorkspaceID filters events by workspace. Empty = no filter (system caller
 	// sees all workspaces); non-empty = restrict to that workspace only.
 	// Service layer injects this from ctx; clients cannot forge it.
@@ -1605,7 +1642,11 @@ type AuxLLMUsageInput struct {
 	// UsageSource records how the token counts were obtained
 	// (UsageSourceResponse / "streaming" / "estimated"); merged into
 	// metadata_json["usage_source"].
-	UsageSource  string
+	UsageSource string
+	// Effort is the resolved thinking effort actually applied to the call
+	// (off/low/medium/high/max; M83 LBG-6); merged into metadata_json["effort"].
+	// Empty = call site did not route effort → key omitted.
+	Effort       string
 	Latency      time.Duration
 	ErrMsg       string
 	MetadataJSON string
@@ -1629,6 +1670,7 @@ func (u *Usecase) RecordAuxLLMUsage(ctx context.Context, in AuxLLMUsageInput) er
 		meta = "{}"
 	}
 	meta = MergeUsageSourceMetadata(meta, in.UsageSource)
+	meta = MergeEffortMetadata(meta, in.Effort)
 	ev := TokenUsageEvent{
 		ID:                newUsageID(),
 		SessionID:         in.SessionID,

@@ -508,7 +508,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 }
 
 // ---------------------------------------------------------------------------
-// Team graph execution
+// Team graph execution（崩溃恢复 RecoverOrphanedExecution 见 graph_execution_recover.go，83）
 // ---------------------------------------------------------------------------
 
 // RegisterTeamGraphExecution indexes a team GraphAgent run for task/resume coordination (M53 Phase 7).

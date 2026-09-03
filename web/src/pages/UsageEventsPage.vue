@@ -83,6 +83,18 @@
         @update:model-value="onFilterChange"
       />
       <q-select
+        v-model="filters.effort"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        :label="t('usageEventsPage.effortLabel')"
+        :options="effortOptions"
+        @update:model-value="onFilterChange"
+      />
+      <q-select
         v-model="filters.status"
         class="app-page-toolbar__field"
         dense
@@ -213,6 +225,7 @@ const {
   rangeOptions,
   statusOptions,
   usageKindOptions,
+  effortOptions,
   providerOptions,
   modelOptions,
   agentOptions,
@@ -272,7 +285,7 @@ onMounted(() => {
 </script>
 
 <style scoped lang="sass">
-// 7 个筛选字段 + 操作按钮：收窄字段宽度，空间不足时换行而非横向滚动
+// 8 个筛选字段 + 操作按钮：收窄字段宽度，空间不足时换行而非横向滚动
 :deep(.app-page-toolbar__body)
   flex-wrap: wrap
 

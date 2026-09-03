@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/sandbox"
+	"aranea-agents/internal/sandbox/leasekey"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -195,6 +196,45 @@ func TestPooledAdapterInvocationSessionKeyFallback(t *testing.T) {
 	}
 	if n := eng.destroyedCount(); n != 1 {
 		t.Fatalf("ephemeral must destroy on return: destroyed=%d, want 1", n)
+	}
+}
+
+// 83-长时运行韧性 FR-4：team run 上下文同 run 不同成员各持沙箱（成员级并行），
+// 同成员多轮复用；键派生与 sandbox_fs 同为 leasekey.FromContext。
+func TestPooledAdapterTeamMemberLeaseKey(t *testing.T) {
+	eng := &fakeSandboxEngine{}
+	adapter, _ := newSessionTestAdapter(t, eng)
+
+	memberCtx := func(agentName string) context.Context {
+		inv := trpcagent.NewInvocation()
+		inv.AgentName = agentName
+		inv.Session = &trpcsession.Session{ID: "s1", AppName: "app", UserID: "u"}
+		return sandbox.WithRunID(trpcagent.NewInvocationContext(context.Background(), inv), "run-1")
+	}
+
+	// 成员 A 两轮复用同一沙箱。
+	if _, err := adapter.ExecuteCode(memberCtx("worker-a"), pythonInput("", "print(1)")); err != nil {
+		t.Fatalf("member A call 1: %v", err)
+	}
+	if _, err := adapter.ExecuteCode(memberCtx("worker-a"), pythonInput("", "print(2)")); err != nil {
+		t.Fatalf("member A call 2: %v", err)
+	}
+	if n := eng.createdCount(); n != 1 {
+		t.Fatalf("same member must reuse: created=%d, want 1", n)
+	}
+
+	// 成员 B 不再共享成员 A 的沙箱。
+	if _, err := adapter.ExecuteCode(memberCtx("worker-b"), pythonInput("", "print(3)")); err != nil {
+		t.Fatalf("member B: %v", err)
+	}
+	if n := eng.createdCount(); n != 2 {
+		t.Fatalf("different member must get own sandbox: created=%d, want 2", n)
+	}
+
+	// 键派生契约：与 leasekey.FromContext 一致（sandbox_fs 同用，单点防漂移）。
+	want := leasekey.FromContext(memberCtx("worker-a"), "")
+	if got := adapter.sessionKey(memberCtx("worker-a"), "ignored-exec"); got != want {
+		t.Fatalf("sessionKey = %q, want leasekey %q", got, want)
 	}
 }
 

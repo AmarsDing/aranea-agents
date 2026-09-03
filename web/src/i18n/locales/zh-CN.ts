@@ -3309,6 +3309,8 @@ export default {
   },
   usageEventsPage: {
     paginationLabel: '条事件',
+    effortLabel: '思考强度',
+    effortAll: '全部',
   },
   usageQuota: {
     remaining: '剩余',

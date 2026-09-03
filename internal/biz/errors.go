@@ -14,6 +14,7 @@ var (
 	ErrGraphInvalidStatus    = shared.ErrGraphInvalidStatus
 	ErrGraphResume           = shared.ErrGraphResume
 	ErrGraphTemplateNotFound = shared.ErrGraphTemplateNotFound
+	ErrGraphCheckpointMissing = shared.ErrGraphCheckpointMissing
 	ErrQuotaUnsupportedScope = shared.ErrQuotaUnsupportedScope
 	ErrAgentKeyConflict      = shared.ErrAgentKeyConflict
 )

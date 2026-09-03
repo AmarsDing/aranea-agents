@@ -32,7 +32,8 @@ type Deps struct {
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
 //
 // Order: <role_responsibility> → <industry_context> → description →
-// <working_contract> (coding / spirit / computer-use only) →
+// <working_contract> (coding / computer-use face) →
+// <team_execution_contract> (spirit orchestration face, LBG-1) →
 // <permission_state> → <internal_config> files → optional memory self-marking.
 //
 // PGO-1-AGENT-01: a new optional categoryResponsibility parameter has been added.
@@ -71,6 +72,12 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 	// role/industry (stable prefix) and before <internal_config> files so
 	// DeepSeek prefix cache stays aligned across turns.
 	if block := WorkingContractBlock(agent); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n\n")
+	}
+	// LBG-1: team/spirit 编排面执行契约，与 working_contract 适用域互斥，
+	// 同处稳定前缀区（纯静态文本，保持 prefix cache 对齐）。
+	if block := TeamExecutionContractBlock(agent); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n\n")
 	}

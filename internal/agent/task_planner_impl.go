@@ -59,6 +59,11 @@ type taskPlannerImpl struct {
 	// backwards compatible with old construction paths). Attached at wire
 	// time via AttachPlannerDecisionCollector.
 	decisions decision.Collector
+
+	// auxUsage records planner decompose LLM usage (M83 LBG-6). nil = 落账
+	// 跳过（旧测试构造路径），行为与旧版一致。Attached at wire time via
+	// AttachPlannerAuxUsageRecorder.
+	auxUsage SpiritAuxUsageRecorder
 }
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
@@ -104,6 +109,15 @@ func AttachPlannerOrganizationReader(p biz.TaskPlannerPort, org biz.Organization
 func AttachPlannerDecisionCollector(p biz.TaskPlannerPort, c decision.Collector) {
 	if impl, ok := p.(*taskPlannerImpl); ok {
 		impl.decisions = c
+	}
+}
+
+// AttachPlannerAuxUsageRecorder wires the spirit aux usage recorder so
+// planner decompose LLM calls are billed (M83 LBG-6) without changing the
+// TaskPlannerPort constructor.
+func AttachPlannerAuxUsageRecorder(p biz.TaskPlannerPort, rec SpiritAuxUsageRecorder) {
+	if impl, ok := p.(*taskPlannerImpl); ok {
+		impl.auxUsage = rec
 	}
 }
 
@@ -1507,7 +1521,25 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 	callCtx, cancel := context.WithTimeout(ctx, tools.DecomposeLLMTimeout)
 	defer cancel()
 
-	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	callStart := time.Now()
+	text, _, promptTok, completionTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	// M83 LBG-6：分解调用落账（此前 token 被丢弃）。RunID 用 spirit trace
+	// 做关联（同步修复路径无 planID）。
+	traceID, _ := biz.SpiritTraceIDFromContext(ctx)
+	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepPlannerDecompose, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxPlannerDecompose,
+		RunID:         traceID,
+		Provider:      provider,
+		Model:         model,
+		Status:        spiritAuxCallStatus(err),
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		UsageSource:   biz.UsageSourceResponse,
+		Effort:        cfg.ThinkingEffort,
+		Latency:       time.Since(callStart),
+		ErrMsg:        spiritAuxErrMsg(err),
+		MetadataJSON:  spiritAuxMeta(ctx, "spirit_planner_decompose"),
+	})
 	if err != nil {
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}
@@ -1695,7 +1727,25 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 	if thinkingPub != nil {
 		callbacks.OnReasoning = thinkingPub.OnReasoning
 	}
-	text, reasoning, _, _, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, callbacks)
+	callStart := time.Now()
+	text, reasoning, promptTok, completionTok, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, callbacks)
+	// M83 LBG-6：每次重试尝试独立落账（每次尝试都是一次真实计费调用）。
+	// SessionID=spiritSessionID 让规划消耗计入用户可见的会话成本。
+	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepPlannerDecompose, biz.AuxLLMUsageInput{
+		Kind:          biz.UsageKindAuxPlannerDecompose,
+		SessionID:     spiritSessionID,
+		RunID:         planID,
+		Provider:      provider,
+		Model:         model,
+		Status:        spiritAuxCallStatus(callErr),
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		UsageSource:   UsageSourceStreaming,
+		Effort:        cfg.ThinkingEffort,
+		Latency:       time.Since(callStart),
+		ErrMsg:        spiritAuxErrMsg(callErr),
+		MetadataJSON:  spiritAuxMeta(ctx, "spirit_planner_decompose"),
+	})
 	if thinkingPub != nil {
 		if callErr != nil {
 			thinkingPub.Fail()

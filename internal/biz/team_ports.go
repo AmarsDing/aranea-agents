@@ -154,6 +154,27 @@ type TeamGraphCoordPort interface {
 	RecoverSessions(ctx context.Context)
 }
 
+// TeamRunStartupResumeMarker reports whether a running team run was already
+// crash-resumed from its graph checkpoint during this process's startup
+// reconcile (83-长时运行韧性). Implemented by the team graph coordinator;
+// consumed by TeamUsecase.RecoverOrphanedRunningTeamsEx to skip killing runs
+// that are alive again. The marker set lives only for the startup window.
+// Stability:evolving
+type TeamRunStartupResumeMarker interface {
+	WasStartupResumed(runID string) bool
+}
+
+// GraphExecFinalizer converges a graph_executions row to a terminal state
+// when biz-layer orphan recovery kills a team run (83-长时运行韧性 §4.2):
+// without it the graph_executions row would stay running forever (team 层
+// finalize 不经手判死路径)。Implemented by *GraphUsecase
+// (FinalizeTeamGraphExecution); optional — nil skips convergence (单测/
+// 离线工具)。
+// Stability:evolving
+type GraphExecFinalizer interface {
+	FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error
+}
+
 // TeamTurnRunnerPort is the biz-level port for the team turn runner.
 // TeamService depends on this instead of *team.Runner.
 //

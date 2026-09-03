@@ -56,7 +56,11 @@ const (
 	// UsageKindAuxEmbedding mirrors usage.KindAuxEmbedding (P1-3).
 	UsageKindAuxEmbedding = usage.KindAuxEmbedding
 	UsageKindAuxEvalJudge = usage.KindAuxEvalJudge
-	QuotaScopeGlobal      = usage.QuotaScopeGlobal
+	// UsageKindAuxPlannerDecompose / UsageKindAuxAllocatorMatch mirror
+	// usage.KindAux* (M83 LBG-6): spirit orchestration LLM calls.
+	UsageKindAuxPlannerDecompose = usage.KindAuxPlannerDecompose
+	UsageKindAuxAllocatorMatch   = usage.KindAuxAllocatorMatch
+	QuotaScopeGlobal             = usage.QuotaScopeGlobal
 	GlobalQuotaScopeID    = usage.GlobalQuotaScopeID
 	// MinCacheablePromptTokens mirrors usage.MinCacheablePromptTokens.
 	MinCacheablePromptTokens = usage.MinCacheablePromptTokens
@@ -66,6 +70,8 @@ const (
 	UsageSourceResponse = usage.UsageSourceResponse
 	// MetadataKeyUsageAttribution mirrors usage.MetadataKeyUsageAttribution (P2-1).
 	MetadataKeyUsageAttribution = usage.MetadataKeyUsageAttribution
+	// MetadataKeyEffort mirrors usage.MetadataKeyEffort (M83 LBG-6).
+	MetadataKeyEffort = usage.MetadataKeyEffort
 	// UsageAttributionRunLevelAnchorFallback mirrors usage.UsageAttributionRunLevelAnchorFallback (P2-1).
 	UsageAttributionRunLevelAnchorFallback = usage.UsageAttributionRunLevelAnchorFallback
 	// UsageAttributionMemberLevelStream mirrors usage.UsageAttributionMemberLevelStream (P2-1b).
@@ -87,6 +93,8 @@ var (
 	MergeWaitMSMetadata = usage.MergeWaitMSMetadata
 	// MergeUsageAttributionMetadata mirrors usage.MergeUsageAttributionMetadata (P2-1).
 	MergeUsageAttributionMetadata = usage.MergeUsageAttributionMetadata
+	// MergeEffortMetadata mirrors usage.MergeEffortMetadata (M83 LBG-6).
+	MergeEffortMetadata = usage.MergeEffortMetadata
 	// NewUsageUsecaseRef mirrors usage.NewUsecaseRef.
 	NewUsageUsecaseRef = usage.NewUsecaseRef
 )

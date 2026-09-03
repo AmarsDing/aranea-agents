@@ -66,3 +66,22 @@ func TestCollectOutputDirFilesEmpty(t *testing.T) {
 		t.Fatalf("expected nil for empty dir")
 	}
 }
+
+func TestLoadEnvConfigFallbackPolicy(t *testing.T) {
+	// 默认（未设置）：degrade，非 strict。
+	t.Setenv("CODE_EXECUTOR_FALLBACK_POLICY", "")
+	cfg := codeexecutor.LoadEnvConfig()
+	if cfg.FallbackPolicy != codeexecutor.FallbackPolicyDegrade || cfg.StrictFallback() {
+		t.Fatalf("default: got policy %q strict=%v", cfg.FallbackPolicy, cfg.StrictFallback())
+	}
+	// strict（大小写不敏感）。
+	t.Setenv("CODE_EXECUTOR_FALLBACK_POLICY", "STRICT")
+	if cfg = codeexecutor.LoadEnvConfig(); !cfg.StrictFallback() {
+		t.Fatalf("strict: got policy %q", cfg.FallbackPolicy)
+	}
+	// typo 归一 degrade，避免被当作显式选择漏过审查。
+	t.Setenv("CODE_EXECUTOR_FALLBACK_POLICY", "stict")
+	if cfg = codeexecutor.LoadEnvConfig(); cfg.StrictFallback() {
+		t.Fatalf("typo must normalize to degrade: got policy %q", cfg.FallbackPolicy)
+	}
+}

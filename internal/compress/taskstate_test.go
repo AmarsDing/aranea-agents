@@ -6,12 +6,7 @@ import (
 )
 
 // --- 压缩产物双段化（v4）：叙事摘要 + 结构化任务状态块 ---
-
-func TestPromptVersion_V5(t *testing.T) {
-	if PromptVersion != "v5" {
-		t.Fatalf("got %q want %q", PromptVersion, "v5")
-	}
-}
+// 注：PromptVersion 断言统一在 prompt_test.go（v6）。
 
 func TestDefaultSystemPrompt_InstructsHandoffCard(t *testing.T) {
 	if !strings.Contains(DefaultSystemPrompt, "## 0. Handoff Card") {

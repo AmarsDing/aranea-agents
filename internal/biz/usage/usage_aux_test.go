@@ -98,6 +98,51 @@ func TestRecordAuxLLMUsage(t *testing.T) {
 		}
 	})
 
+	t.Run("effort merged into metadata only when set", func(t *testing.T) {
+		var got TokenUsageEvent
+		repo := &mockUsageRepo{
+			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+				got = e
+				return e, nil
+			},
+		}
+		u := NewUsecase(repo, nil)
+
+		// With effort → metadata_json carries effort alongside usage_source.
+		if err := u.RecordAuxLLMUsage(context.Background(), AuxLLMUsageInput{
+			Kind: KindAuxPlannerDecompose, SessionID: "sess-e1",
+			PromptTok: 100, CompletionTok: 50,
+			UsageSource: UsageSourceResponse, Effort: "max",
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(got.MetadataJSON), &payload); err != nil {
+			t.Fatalf("metadata not json: %v", err)
+		}
+		if payload[MetadataKeyEffort] != "max" {
+			t.Errorf("metadata effort = %v, want max", payload[MetadataKeyEffort])
+		}
+		if payload[MetadataKeyUsageSource] != UsageSourceResponse {
+			t.Errorf("usage_source lost: %v", payload)
+		}
+
+		// Without effort → key omitted (frontend renders empty).
+		if err := u.RecordAuxLLMUsage(context.Background(), AuxLLMUsageInput{
+			Kind: KindAuxAllocatorMatch, SessionID: "sess-e2",
+			PromptTok: 10, CompletionTok: 5,
+		}); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+		payload = map[string]any{}
+		if err := json.Unmarshal([]byte(got.MetadataJSON), &payload); err != nil {
+			t.Fatalf("metadata not json: %v", err)
+		}
+		if _, ok := payload[MetadataKeyEffort]; ok {
+			t.Errorf("effort key must be omitted when unset: %v", payload)
+		}
+	})
+
 	t.Run("accumulates session metrics only when session id set", func(t *testing.T) {
 		repo := &mockUsageRepo{
 			recordTokenUsageEventFn: func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {

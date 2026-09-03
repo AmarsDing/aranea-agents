@@ -65,6 +65,9 @@ func (f *stubGraphFactory) BuildAndResume(_ context.Context, _ biz.GraphBuildCon
 func (f *stubGraphFactory) BuildRuntime(context.Context, biz.GraphBuildConfig, string, string, string, string, string) (biz.GraphRuntime, error) {
 	return &stubGraphRuntime{lineage: "lin-rt"}, nil
 }
+func (f *stubGraphFactory) HasCheckpoint(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (f *stubGraphFactory) Visualize(context.Context, biz.GraphBuildConfig) (*biz.GraphVisualization, error) {
 	return &biz.GraphVisualization{}, nil
 }

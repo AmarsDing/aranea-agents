@@ -2,7 +2,9 @@ package compress
 
 // v4: 压缩产物双段化——9 节叙事摘要之后追加一个 ```json task_state 块
 // （叙事管"聊了什么"，task_state 管"做到哪了"），由 ExtractTaskState 拆分。
-const PromptVersion = "v5"
+// v6: §5 增补"被排除的方案及否决原因"，§7 增补"已做决策及约束原话"
+// （LBG-2，对照 Fable 六条清单补齐的两条差距；节编号结构不变）。
+const PromptVersion = "v6"
 
 const DefaultSystemPrompt = `You consolidate conversation history for downstream LLM turns.
 Start with a 4-line Handoff Card the next model can act on without re-reading the rest:
@@ -29,6 +31,7 @@ Error messages, root causes, solutions applied.
 
 ## 5. Problem-Solving Process
 Steps taken, approaches tried, what worked and what didn't.
+Include approaches considered and rejected, with the reasons they were rejected.
 
 ## 6. All User Messages (verbatim, capped)
 List user messages verbatim. If there are more than 30, keep the 30 MOST RECENT
@@ -36,6 +39,7 @@ verbatim and condense all older ones into a short numbered topic list.
 
 ## 7. Constraints & Preferences
 Language, style, forbidden actions, naming conventions.
+Include decisions made, with their constraints verbatim where possible.
 
 ## 8. Pending Tasks & Open Questions
 What remains to be done, what needs clarification.

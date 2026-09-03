@@ -90,6 +90,9 @@ var (
 	ErrGraphInvalidStatus    = apierror.BadRequest(apierror.DomainGraph, "cannot cancel execution in current status")
 	ErrGraphResume           = apierror.Internal(apierror.DomainGraph, "graph resume failed")
 	ErrGraphTemplateNotFound = apierror.NotFound(apierror.DomainGraphTemplate, "graph template not found")
+	// ErrGraphCheckpointMissing 崩溃续跑安全闸（83-长时运行韧性）：lineage 无可用
+	// checkpoint 时拒绝恢复，避免 BuildAndResume 静默 fresh-start 造成副作用重跑。
+	ErrGraphCheckpointMissing = apierror.NotFound(apierror.DomainGraph, "graph checkpoint missing for lineage; cannot crash-resume")
 
 	// Usage / Quota
 	ErrQuotaUnsupportedScope = apierror.BadRequest(apierror.DomainUsageQuota, "unsupported quota scope_type")

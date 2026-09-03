@@ -77,6 +77,18 @@ type TeamGraphRunCoordinator struct {
 	lg          loggateway.Logger
 	agentKeyFn  func(agentID string) string
 
+	// crashResumeEnabled 崩溃续跑开关（83-长时运行韧性，默认开）；
+	// TEAM_RUN_CRASH_RESUME_DISABLED=1 时启动对账回退旧判死路径。
+	crashResumeEnabled bool
+	// startupResumed 记忆本次启动成功续跑的 runID（进程内存态，生命周期仅
+	// 覆盖启动窗口）；供 biz.TeamRunStartupResumeMarker 查询，team 级判死跳过。
+	startupResumed map[string]struct{}
+	// 恢复审计通道（83 §4.1）：decision 双写 + 用户可见 flowlog。经
+	// SetRecoveryAudit 后置注入（对齐 TeamService.SetDecisionEvidence 先例），
+	// nil-safe：未注入时仅进程日志。
+	flowLog  biz.FlowLogWriter
+	decisions decision.Collector
+
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
 }
@@ -123,19 +135,24 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader 
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
 	return &TeamGraphRunCoordinator{
-		graphs:          graphs,
-		teamRunReader:   teamRunReader,
-		teamRunWriter:   teamRunWriter,
-		runTransitioner: runTransitioner,
-		eventBus:        eventBus,
-		seq:             seq,
-		sessionRepo:     sessionRepo,
-		agentKeyFn:      agentKeyFn,
-		sessions:        make(map[string]*teamGraphRunSession),
-		cfg:             DefaultCoordinatorConfig(),
-		lg:              lg,
+		graphs:             graphs,
+		teamRunReader:      teamRunReader,
+		teamRunWriter:      teamRunWriter,
+		runTransitioner:    runTransitioner,
+		eventBus:           eventBus,
+		seq:                seq,
+		sessionRepo:        sessionRepo,
+		agentKeyFn:         agentKeyFn,
+		sessions:           make(map[string]*teamGraphRunSession),
+		cfg:                DefaultCoordinatorConfig(),
+		crashResumeEnabled: true,
+		startupResumed:     make(map[string]struct{}),
+		lg:                 lg,
 	}
 }
+
+// SetCrashResumeEnabled / WasStartupResumed live in team_graph_run_recovery.go
+// (83-长时运行韧性, AS-COG-01 split).
 
 // publishEvent routes a v2 Event through the Sequencer when available;
 // falls back to EventBus.Publish when Sequencer is nil.
@@ -884,49 +901,8 @@ func (s *teamGraphRunSession) restoreAttribution(ct *biz.CompiledTeam, agentKeyF
 	s.stepSortIndex = stepSortIndex
 }
 
-// RecoverSessions rebuilds in-memory sessions from DB after process restart (BL-04b).
-// Running sessions whose graph runtime was lost are cancelled; waiting_human sessions
-// are re-registered so that HITL task completion can resume them.
-func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
-	if c == nil || c.sessionRepo == nil {
-		return
-	}
-	cancelled, err := c.sessionRepo.MarkOrphanedSessionsTerminal(ctx)
-	if err != nil {
-		c.lg.Warn("RecoverSessions: MarkOrphanedSessionsTerminal failed",
-			loggateway.StepID("team.session.recover_fail"),
-			loggateway.Err(err))
-	}
-	if cancelled > 0 {
-		c.lg.Warn("RecoverSessions: cancelled orphaned running sessions",
-			loggateway.StepID("team.session.orphan_cancelled"),
-			loggateway.Int("count", cancelled))
-	}
-	active, err := c.sessionRepo.ListActiveSessions(ctx)
-	if err != nil {
-		c.lg.Warn("RecoverSessions: ListActiveSessions failed",
-			loggateway.StepID("team.session.recover_fail"),
-			loggateway.Err(err))
-		return
-	}
-	if len(active) == 0 {
-		return
-	}
-	recovered := 0
-	for _, dbSess := range active {
-		sess := c.restoreSession(dbSess)
-		c.mu.Lock()
-		c.sessions[dbSess.ExecID] = sess
-		c.mu.Unlock()
-		if dbSess.Status == biz.TeamRunStatusWaitingHuman {
-			c.startCompletionWatch(ctx, sess)
-		}
-		recovered++
-	}
-	c.lg.Warn("RecoverSessions: recovered sessions from DB",
-		loggateway.StepID("team.session.recovered"),
-		loggateway.Int("recovered", recovered))
-}
+// RecoverSessions / tryResumeOrphanedRun live in team_graph_run_recovery.go
+// (83-长时运行韧性, AS-COG-01 split).
 
 // ---------------------------------------------------------------------------
 // P3-3 / ADR-D: TeamRun graph execution suspend / wake

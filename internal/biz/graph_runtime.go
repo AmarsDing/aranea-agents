@@ -156,6 +156,10 @@ type GraphRunnerFactory interface {
 	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, spiritSessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildRuntime(ctx context.Context, cfg GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (GraphRuntime, error)
+	// HasCheckpoint 探测 lineage 是否存在可恢复 checkpoint（83-长时运行韧性，
+	// 崩溃续跑安全闸）：无 checkpoint 时 BuildAndResume 会静默 fresh-start
+	// 造成副作用重跑，恢复路径必须先探测。
+	HasCheckpoint(ctx context.Context, lineageID string) (bool, error)
 }
 
 // GraphVisualizer renders graph topology for display.

@@ -45,6 +45,17 @@ func (d *dockerRuntimeFallback) ExecuteCode(ctx context.Context, input trpcagent
 		ResetDockerProbe()
 		return trpcagentcodeexec.CodeExecutionResult{}, err
 	}
+	// 83-长时运行韧性 FR-3：strict 策略禁止静默降级到隔离性更低的后端，
+	// 运行期 docker 失败与配置期不可用同等对待——拒绝执行而非回退 local。
+	if d.factory.env.StrictFallback() {
+		d.lg.Error("严格降级策略（CODE_EXECUTOR_FALLBACK_POLICY=strict）：Docker 运行期失败，拒绝回退 local 并拒绝代码执行",
+			loggateway.StepID("codeexec.strict_fallback_refused"),
+			loggateway.Str("requested", "docker"),
+			loggateway.Str("reason", "docker_runtime_failed"),
+			loggateway.Err(err))
+		ResetDockerProbe()
+		return trpcagentcodeexec.CodeExecutionResult{}, err
+	}
 	d.lg.Warn("Docker 执行失败，回退到 local 执行器",
 		loggateway.StepID("agent.codeexec.docker_runtime_fallback"),
 		loggateway.Err(err))
