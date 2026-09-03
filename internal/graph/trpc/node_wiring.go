@@ -69,6 +69,8 @@ func nodeOptions(n NodeDef, cfg GraphBuildConfig, resolvedFallback trpcagent.Age
 	opts = append(opts, circuitBreakerOptions(n, cfg, breakers)...)
 	opts = append(opts, swarmSafetyOptions(n, cfg)...)
 	opts = append(opts, failureRecoveryOptions(n, resolvedFallback)...)
+	// P3-2（2026-09-03 语义面防线）：synthesizer 节点合成前产出校验通告。
+	opts = append(opts, deliverableInspectionOptions(n)...)
 	return opts
 }
 

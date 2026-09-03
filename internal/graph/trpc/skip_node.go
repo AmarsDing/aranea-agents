@@ -17,6 +17,9 @@ func SkipNodeFunc(nodeID string) trpcgraph.NodeFunc {
 		}
 		skipped := appendSkippedNode(state[biz.SkippedNodesStateKey], id)
 		state[biz.SkippedNodesStateKey] = skipped
+		// P1-2（2026-09-03）：跳过对下游合成者可见（messages 通告），与
+		// failure_recovery 路径同一机制。
+		appendSkipNoticeMessage(state, id, nil)
 		return map[string]any{biz.SkippedNodeOutputKey: id}, nil
 	}
 }

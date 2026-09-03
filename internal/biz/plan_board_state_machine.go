@@ -11,6 +11,7 @@
 //	Executing --> Completed : complete
 //	Executing --> Failed : fail
 //	Executing --> PartialFailure : partial
+//	Failed --> Executing : resume  (F2: 失败可恢复——重跑/跳过失败 step 后续跑)
 //	Completed --> [*]
 //	Failed --> [*]
 //	PartialFailure --> [*]
@@ -34,18 +35,23 @@ const (
 	PlanBoardEventComplete  PlanBoardEvent = "complete"
 	PlanBoardEventFail      PlanBoardEvent = "fail"
 	PlanBoardEventPartial   PlanBoardEvent = "partial"
+	// PlanBoardEventResume（F2，2026-09-03 lbg-verify-planner 复盘 问题2）：
+	// Failed 不再是死胡同——ResumePlanBoard 重排队/降级失败 step 后将 board
+	// 拉回 Executing 续跑，任务导向而非失败即终局。
+	PlanBoardEventResume PlanBoardEvent = "resume"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
 
 // planBoardTransitionRules defines the legal state transitions for a PlanBoard.
-// Terminal states (completed, failed, partial_failure) have no outgoing transitions.
+// Completed/PartialFailure 无出边；Failed 仅可经 resume 回到 Executing。
 var planBoardTransitionRules = []shared.TransitionRule[PlanStatus, PlanBoardEvent]{
 	{From: PlanStatusPlanning, Event: PlanBoardEventExecute, To: PlanStatusExecuting},
 	{From: PlanStatusPlanning, Event: PlanBoardEventFailEarly, To: PlanStatusFailed},
 	{From: PlanStatusExecuting, Event: PlanBoardEventComplete, To: PlanStatusCompleted},
 	{From: PlanStatusExecuting, Event: PlanBoardEventFail, To: PlanStatusFailed},
 	{From: PlanStatusExecuting, Event: PlanBoardEventPartial, To: PlanStatusPartialFailure},
+	{From: PlanStatusFailed, Event: PlanBoardEventResume, To: PlanStatusExecuting},
 }
 
 // ── PlanBoardStateMachine ────────────────────────────────────────────────────

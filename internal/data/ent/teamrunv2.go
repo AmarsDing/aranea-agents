@@ -41,7 +41,9 @@ type TeamRunV2 struct {
 	// Version holds the value of the "version" field.
 	Version int64 `json:"version,omitempty"`
 	// error message if failed (empty if no error)
-	Error        string `json:"error,omitempty"`
+	Error string `json:"error,omitempty"`
+	// runner streaming heartbeat (throttled write)
+	HeartbeatAt  *time.Time `json:"heartbeat_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -56,7 +58,7 @@ func (*TeamRunV2) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case teamrunv2.FieldID, teamrunv2.FieldTeamStageID, teamrunv2.FieldTaskID, teamrunv2.FieldSessionID, teamrunv2.FieldSpiritSessionID, teamrunv2.FieldDagNodeID, teamrunv2.FieldStatus, teamrunv2.FieldError:
 			values[i] = new(sql.NullString)
-		case teamrunv2.FieldStartedAt, teamrunv2.FieldCompletedAt:
+		case teamrunv2.FieldStartedAt, teamrunv2.FieldCompletedAt, teamrunv2.FieldHeartbeatAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -154,6 +156,13 @@ func (_m *TeamRunV2) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Error = value.String
 			}
+		case teamrunv2.FieldHeartbeatAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field heartbeat_at", values[i])
+			} else if value.Valid {
+				_m.HeartbeatAt = new(time.Time)
+				*_m.HeartbeatAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -227,6 +236,11 @@ func (_m *TeamRunV2) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("error=")
 	builder.WriteString(_m.Error)
+	builder.WriteString(", ")
+	if v := _m.HeartbeatAt; v != nil {
+		builder.WriteString("heartbeat_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

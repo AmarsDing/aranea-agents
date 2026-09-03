@@ -263,6 +263,20 @@ func (_c *StepV2Create) SetNillableCompletedAt(v *time.Time) *StepV2Create {
 	return _c
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (_c *StepV2Create) SetUpdatedAt(v time.Time) *StepV2Create {
+	_c.mutation.SetUpdatedAt(v)
+	return _c
+}
+
+// SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
+func (_c *StepV2Create) SetNillableUpdatedAt(v *time.Time) *StepV2Create {
+	if v != nil {
+		_c.SetUpdatedAt(*v)
+	}
+	return _c
+}
+
 // SetVersion sets the "version" field.
 func (_c *StepV2Create) SetVersion(v int64) *StepV2Create {
 	_c.mutation.SetVersion(v)
@@ -373,6 +387,10 @@ func (_c *StepV2Create) defaults() {
 	if _, ok := _c.mutation.StartedAt(); !ok {
 		v := stepv2.DefaultStartedAt()
 		_c.mutation.SetStartedAt(v)
+	}
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		v := stepv2.DefaultUpdatedAt()
+		_c.mutation.SetUpdatedAt(v)
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		v := stepv2.DefaultVersion
@@ -493,6 +511,9 @@ func (_c *StepV2Create) check() error {
 	}
 	if _, ok := _c.mutation.StartedAt(); !ok {
 		return &ValidationError{Name: "started_at", err: errors.New(`ent: missing required field "StepV2.started_at"`)}
+	}
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "StepV2.updated_at"`)}
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "StepV2.version"`)}
@@ -617,6 +638,10 @@ func (_c *StepV2Create) createSpec() (*StepV2, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CompletedAt(); ok {
 		_spec.SetField(stepv2.FieldCompletedAt, field.TypeTime, value)
 		_node.CompletedAt = &value
+	}
+	if value, ok := _c.mutation.UpdatedAt(); ok {
+		_spec.SetField(stepv2.FieldUpdatedAt, field.TypeTime, value)
+		_node.UpdatedAt = value
 	}
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(stepv2.FieldVersion, field.TypeInt64, value)
@@ -929,6 +954,18 @@ func (u *StepV2Upsert) UpdateCompletedAt() *StepV2Upsert {
 // ClearCompletedAt clears the value of the "completed_at" field.
 func (u *StepV2Upsert) ClearCompletedAt() *StepV2Upsert {
 	u.SetNull(stepv2.FieldCompletedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *StepV2Upsert) SetUpdatedAt(v time.Time) *StepV2Upsert {
+	u.Set(stepv2.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *StepV2Upsert) UpdateUpdatedAt() *StepV2Upsert {
+	u.SetExcluded(stepv2.FieldUpdatedAt)
 	return u
 }
 
@@ -1296,6 +1333,20 @@ func (u *StepV2UpsertOne) UpdateCompletedAt() *StepV2UpsertOne {
 func (u *StepV2UpsertOne) ClearCompletedAt() *StepV2UpsertOne {
 	return u.Update(func(s *StepV2Upsert) {
 		s.ClearCompletedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *StepV2UpsertOne) SetUpdatedAt(v time.Time) *StepV2UpsertOne {
+	return u.Update(func(s *StepV2Upsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *StepV2UpsertOne) UpdateUpdatedAt() *StepV2UpsertOne {
+	return u.Update(func(s *StepV2Upsert) {
+		s.UpdateUpdatedAt()
 	})
 }
 
@@ -1833,6 +1884,20 @@ func (u *StepV2UpsertBulk) UpdateCompletedAt() *StepV2UpsertBulk {
 func (u *StepV2UpsertBulk) ClearCompletedAt() *StepV2UpsertBulk {
 	return u.Update(func(s *StepV2Upsert) {
 		s.ClearCompletedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *StepV2UpsertBulk) SetUpdatedAt(v time.Time) *StepV2UpsertBulk {
+	return u.Update(func(s *StepV2Upsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *StepV2UpsertBulk) UpdateUpdatedAt() *StepV2UpsertBulk {
+	return u.Update(func(s *StepV2Upsert) {
+		s.UpdateUpdatedAt()
 	})
 }
 

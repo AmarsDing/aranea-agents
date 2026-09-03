@@ -152,6 +152,9 @@ type TeamStageV2Repo interface {
 
 type TeamRunV2Reader interface {
 	GetTeamRun(ctx context.Context, id string) (TeamRun, error)
+	// ListTeamRunsByStage 返回指定 stage 的全部 run，按 seq 升序。
+	// 契约：无 run 返回空切片（非 nil、非 error）；调用方不得假定至多一条
+	// （假启动对账与重试会产生同 stage 多 run）。
 	ListTeamRunsByStage(ctx context.Context, stageID string) ([]TeamRun, error)
 }
 
@@ -164,6 +167,22 @@ type TeamRunV2Writer interface {
 type TeamRunV2Repo interface {
 	TeamRunV2Reader
 	TeamRunV2Writer
+}
+
+// TeamRunHeartbeatWriter 团队运行心跳写入端口（P2-1，2026-09-03）。
+// 单列 UPDATE heartbeat_at，无版本守卫，last-writer-wins——心跳允许丢序，
+// 不与 sequencer 的全行 Upsert 竞争。runner 流式消费节流调用。
+// Stability:evolving（节流参数与写路径随 idle 探测调优可能变化）。
+type TeamRunHeartbeatWriter interface {
+	TouchTeamRunHeartbeat(ctx context.Context, runID string, at time.Time) error
+}
+
+// SpiritTeamRunHeartbeatReader idle 探测心跳读取端口（P2-1）。返回指定团队
+// 会话下最近一次心跳时间；无心跳记录返回零值（探测回退 steps.started_at
+// 语义，行为与 P2-1 之前一致）。
+// Stability:evolving。
+type SpiritTeamRunHeartbeatReader interface {
+	LatestTeamRunHeartbeat(ctx context.Context, sessionID string) (time.Time, error)
 }
 
 // === MemberSession ===

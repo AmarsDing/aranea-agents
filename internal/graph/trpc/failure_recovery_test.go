@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -10,6 +11,7 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -29,6 +31,42 @@ func TestFailureRecoveryAfterNode_skipOnFailure(t *testing.T) {
 	skipped, ok := state[biz.SkippedNodesStateKey].([]string)
 	if !ok || len(skipped) != 1 || skipped[0] != "member-1" {
 		t.Fatalf("state=%v", state[biz.SkippedNodesStateKey])
+	}
+	// P1-2：skip 必须向 messages 注入成员失败通告（下游合成者可见），
+	// 且通告携带错误原因。
+	msgs, ok := state[trpcgraph.StateKeyMessages].([]trpcmodel.Message)
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("notice message missing, state messages=%v", state[trpcgraph.StateKeyMessages])
+	}
+	if !strings.Contains(msgs[0].Content, "member-1") || !strings.Contains(msgs[0].Content, "boom") {
+		t.Fatalf("notice content = %q, want node id + error", msgs[0].Content)
+	}
+	if msgs[0].Role != trpcmodel.RoleAssistant {
+		t.Fatalf("notice role = %q, want assistant", msgs[0].Role)
+	}
+}
+
+// P1-2：通告追加到既有 messages 末尾（不覆盖成员已产出消息）；错误文本
+// 超长按 skipNoticeErrMaxLen 截断。
+func TestFailureRecoveryAfterNode_skipNoticeAppendsAndTruncates(t *testing.T) {
+	cb := failureRecoveryAfterNode(NodeDef{
+		NodeDef: biz.NodeDef{ID: "member-9", FailureAction: biz.FailureOnFailureSkip},
+	}, nil)
+	existing := trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "worker output"}
+	state := trpcgraph.State{trpcgraph.StateKeyMessages: []trpcmodel.Message{existing}}
+	longErr := errors.New(strings.Repeat("x", skipNoticeErrMaxLen+50))
+	if _, err := cb(context.Background(), &trpcgraph.NodeCallbackContext{NodeID: "member-9"}, state, nil, longErr); err != nil {
+		t.Fatal(err)
+	}
+	msgs, ok := state[trpcgraph.StateKeyMessages].([]trpcmodel.Message)
+	if !ok || len(msgs) != 2 {
+		t.Fatalf("messages len = %v, want existing+notice", state[trpcgraph.StateKeyMessages])
+	}
+	if msgs[0].Content != "worker output" {
+		t.Fatalf("existing message overwritten: %q", msgs[0].Content)
+	}
+	if len([]rune(msgs[1].Content)) > skipNoticeErrMaxLen+80 {
+		t.Fatalf("notice not truncated: len=%d", len([]rune(msgs[1].Content)))
 	}
 }
 

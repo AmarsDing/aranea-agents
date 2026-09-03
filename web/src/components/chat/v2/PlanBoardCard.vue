@@ -25,6 +25,9 @@
           <div class="plan-step-item__main">
             <div class="plan-step-item__label">{{ step.Label }}</div>
             <div v-if="step.Description" class="plan-step-item__desc">{{ step.Description }}</div>
+            <div v-if="assigneeText(step)" class="plan-step-item__assignee" :title="assigneeTooltip(step)">
+              👤 {{ assigneeText(step) }}
+            </div>
           </div>
           <div class="plan-step-item__status">
             <span :class="['plan-step-item__icon', `plan-step-item__icon--${step.Status}`]">
@@ -43,7 +46,7 @@
 import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
-import type { PlanBoard, PlanStepStatus, PlanStatus } from '../../../features/chat/v2Types';
+import type { PlanBoard, PlanStep, PlanStepStatus, PlanStatus } from '../../../features/chat/v2Types';
 
 function useSafeI18n() {
   try {
@@ -128,6 +131,23 @@ function statusText(status: PlanStepStatus): string {
     partial_failure: t('chat.v2.statusPartialFailure'),
   };
   return map[status] || status;
+}
+
+// F3：分配摘要——优先显示 AssignedName（lead 显示名），多人团队追加 +n；
+// 无 AssignedName 时退化到 agentKeys。
+function assigneeText(step: PlanStep): string {
+  const keys = step.AgentKeys ?? [];
+  if (step.AssignedName) {
+    return keys.length > 1 ? `${step.AssignedName} +${keys.length - 1}` : step.AssignedName;
+  }
+  return keys.join('、');
+}
+
+function assigneeTooltip(step: PlanStep): string {
+  const parts: string[] = [];
+  if (step.AgentKeys?.length) parts.push(step.AgentKeys.join(', '));
+  if (step.MatchReason) parts.push(step.MatchReason);
+  return parts.join('\n');
 }
 </script>
 
@@ -225,6 +245,13 @@ function statusText(status: PlanStepStatus): string {
     color: var(--color-text-secondary)
     line-height: 1.4
     margin-top: 2px
+
+  &__assignee
+    font-size: 11px
+    color: var(--color-text-secondary)
+    line-height: 1.4
+    margin-top: 2px
+    opacity: 0.85
 
   &__status
     flex-shrink: 0

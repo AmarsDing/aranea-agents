@@ -1069,6 +1069,37 @@ func TestBuildSpiritTeamDefinitionJSON_RoleTaskPrompts(t *testing.T) {
 	}
 }
 
+// P1-1（2026-09-03）：合成者任务书注入团队名册 + 缺席如实标注义务
+// （名册×结果矩阵的 prompt 层；mechanism 层通告在 graph/trpc skip 路径）。
+func TestBuildSpiritTeamDefinitionJSON_SynthesizerRoster(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"lead-x", "w-a", "w-b"}, loggateway.NewNoop(), false, nil, nil)
+	var def struct {
+		Members []struct {
+			Role       string `json:"role"`
+			TaskPrompt string `json:"task_prompt"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	synth := def.Members[0]
+	for _, want := range []string{"团队名册", "lead-x", "w-a", "w-b", "合成者", "执行者", "如实标注", "严禁编造"} {
+		if !strings.Contains(synth.TaskPrompt, want) {
+			t.Errorf("synthesizer prompt missing %q: %q", want, synth.TaskPrompt)
+		}
+	}
+	// worker 任务书不携带名册（职责边界：缺席检测是合成者的事）。
+	worker := def.Members[1]
+	if strings.Contains(worker.TaskPrompt, "团队名册") {
+		t.Errorf("worker prompt should not carry roster: %q", worker.TaskPrompt)
+	}
+	// 单成员团队无合成者角色，名册注入无害（无 synthesizer 消费）。
+	single := buildSpiritTeamDefinitionJSON("sequential", []string{"agent-a"}, loggateway.NewNoop(), false, nil, nil)
+	if strings.Contains(single, "团队名册") {
+		t.Errorf("single-member sequential team should not carry roster prompt: %q", single)
+	}
+}
+
 // 单成员非 DAG 团队无 enable_state_deliverable，任务书不得提及
 // set_deliverable（工具不存在会误导成员）。
 func TestBuildSpiritTeamDefinitionJSON_TaskPromptNoChannel(t *testing.T) {
@@ -1169,6 +1200,41 @@ func TestBuildSpiritTeamDefinitionJSON_NoGates_NoVerificationGatesKey(t *testing
 	}
 	if _, ok := def["verification_gates"]; ok {
 		t.Fatal("no gates → no verification_gates key")
+	}
+}
+
+// F4（2026-09-03 lbg-verify-planner 复盘 问题4）：规划路径团队默认携带
+// failure_policy——成员失败先图级重试，并行分支重试耗尽后 skip 续跑，
+// 终局由 F10 证据收敛 partial_failure；不再一人死=全队死。
+func TestBuildSpiritTeamDefinitionJSON_DefaultFailurePolicy(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"lead", "w1", "w2"}, loggateway.NewNoop(), false, nil, nil)
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	raw, ok := def["failure_policy"]
+	if !ok {
+		t.Fatal("spirit team definition must carry default failure_policy (F4)")
+	}
+	rawJSON, _ := json.Marshal(raw)
+	var fp map[string]any
+	if err := json.Unmarshal(rawJSON, &fp); err != nil {
+		t.Fatalf("failure_policy not parseable: %v", err)
+	}
+	if fp["default"] != FailurePolicyRetryThenBlock {
+		t.Fatalf("failure_policy.default=%v, want %q", fp["default"], FailurePolicyRetryThenBlock)
+	}
+	if fp["parallel_fail"] != FailurePolicyContinue {
+		t.Fatalf("failure_policy.parallel_fail=%v, want %q", fp["parallel_fail"], FailurePolicyContinue)
+	}
+	retry, _ := fp["retry"].(map[string]any)
+	if retry == nil || retry["max_attempts"] != float64(2) {
+		t.Fatalf("failure_policy.retry=%v, want max_attempts=2", fp["retry"])
+	}
+	// F1 同案：run 级 wall-clock deadline 必须为 0（无额外 deadline）。
+	if ts, _ := def["timeout_seconds"].(float64); ts != 0 {
+		t.Fatalf("timeout_seconds=%v, want 0 (F1: no run wall-clock)", def["timeout_seconds"])
 	}
 }
 

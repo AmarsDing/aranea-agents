@@ -29,6 +29,9 @@ type SpiritDelivery struct {
 	stepReader         SpiritStepReader
 	graphDelivReader   SpiritGraphDeliverableReader
 	runStatsReader     SpiritTeamRunStatsReader
+	// heartbeatReader 是 P2-1 持久化心跳读取端口（idle 探测信号源之一）。
+	// nil = 探测回退 steps.started_at 旧语义（向后兼容）。
+	heartbeatReader SpiritTeamRunHeartbeatReader
 	inboxFS            TeamInboxFS
 	artifactSaver      deliverableArtifactSaver
 	artifactPublicBase string

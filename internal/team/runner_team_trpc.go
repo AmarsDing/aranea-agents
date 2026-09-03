@@ -302,6 +302,14 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			abortRun()
 		}
 	}
+	// P2-1（2026-09-03 持久化心跳）：流式事件 → 节流写 team_runs_v2.heartbeat_at，
+	// biz idle 探测取 max(steps.started_at, heartbeat_at)——成员单 step 长流式
+	// 生成（如 32k 报告）不再被误判 idle 击杀。graph runtime 下并行成员共享
+	// 本 streamOpts，pinger 内部并发安全。
+	if r.heartbeatWriter != nil && run.TeamRunV2ID != "" {
+		pinger := newTeamRunHeartbeatPinger(r.heartbeatWriter, run.TeamRunV2ID, r.lg)
+		streamOpts.OnStreamActivity = func() { pinger.Ping(runCtx) }
+	}
 	if streamOpts.V2Projector != nil {
 		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
 		streamOpts.V2Projector.Configure(v2Meta)

@@ -218,6 +218,11 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) (result Eve
 		}
 		c.markFirstByte(ev)
 		c.countCalls(ev)
+		if c.opts != nil && c.opts.OnStreamActivity != nil {
+			// P2-1 团队心跳：任何流式事件都是活性证据（LangGraph progress
+			// signal 语义）。钩子内需自行节流——本调用逐事件触发。
+			c.opts.OnStreamActivity()
+		}
 		if !c.handleEvent(ev) {
 			// Y1: 早退（doom-loop）必须后台排干 events channel——trpc runner
 			// 生产者 goroutine 仍在写入，不排干会在 buffer 满后永久阻塞泄漏

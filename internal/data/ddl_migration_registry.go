@@ -566,6 +566,15 @@ var ddlMigrations = []ddlMigration{
 	// team_run_v2_id 桥接列，使 v1 team_run_steps.run_id 可与 v2 team_runs_v2.id
 	// 按 team_run_v2_id 精确 join，取代时间窗对齐。
 	{Version: 20261274, Name: "team_runs_v2_bridge", SQL: "sql/migrations/20261274_team_runs_v2_bridge.sql"},
+	// 20261276 steps_v2_updated_at（P4-1 行级新鲜度）：steps_v2 添加
+    // updated_at（ent UpdateDefault 每次写入自动刷新），idle 探测信号升级为
+    // GREATEST(started_at, updated_at)。
+    {Version: 20261276, Name: "steps_v2_updated_at", SQL: "sql/migrations/20261276_steps_v2_updated_at.sql"},
+    // 20261277 team_runs_v2_heartbeat（P2-1 持久化心跳）：runner 流式节流写
+    // heartbeat_at；idle 探测取 max(steps.started_at, heartbeat_at)，根治长
+    // 流式生成误判 idle（P3-C）。原编号 20261275 与 SeedPackTwinMonitorV1
+    // 撞号（schema_migrations 版本全局唯一），重编号至 20261277。
+    {Version: 20261277, Name: "team_runs_v2_heartbeat", SQL: "sql/migrations/20261277_team_runs_v2_heartbeat.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

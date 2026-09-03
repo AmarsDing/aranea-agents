@@ -119,6 +119,11 @@ func Error(v string) predicate.TeamRunV2 {
 	return predicate.TeamRunV2(sql.FieldEQ(FieldError, v))
 }
 
+// HeartbeatAt applies equality check predicate on the "heartbeat_at" field. It's identical to HeartbeatAtEQ.
+func HeartbeatAt(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldEQ(FieldHeartbeatAt, v))
+}
+
 // TeamStageIDEQ applies the EQ predicate on the "team_stage_id" field.
 func TeamStageIDEQ(v string) predicate.TeamRunV2 {
 	return predicate.TeamRunV2(sql.FieldEQ(FieldTeamStageID, v))
@@ -752,6 +757,56 @@ func ErrorEqualFold(v string) predicate.TeamRunV2 {
 // ErrorContainsFold applies the ContainsFold predicate on the "error" field.
 func ErrorContainsFold(v string) predicate.TeamRunV2 {
 	return predicate.TeamRunV2(sql.FieldContainsFold(FieldError, v))
+}
+
+// HeartbeatAtEQ applies the EQ predicate on the "heartbeat_at" field.
+func HeartbeatAtEQ(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldEQ(FieldHeartbeatAt, v))
+}
+
+// HeartbeatAtNEQ applies the NEQ predicate on the "heartbeat_at" field.
+func HeartbeatAtNEQ(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldNEQ(FieldHeartbeatAt, v))
+}
+
+// HeartbeatAtIn applies the In predicate on the "heartbeat_at" field.
+func HeartbeatAtIn(vs ...time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldIn(FieldHeartbeatAt, vs...))
+}
+
+// HeartbeatAtNotIn applies the NotIn predicate on the "heartbeat_at" field.
+func HeartbeatAtNotIn(vs ...time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldNotIn(FieldHeartbeatAt, vs...))
+}
+
+// HeartbeatAtGT applies the GT predicate on the "heartbeat_at" field.
+func HeartbeatAtGT(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldGT(FieldHeartbeatAt, v))
+}
+
+// HeartbeatAtGTE applies the GTE predicate on the "heartbeat_at" field.
+func HeartbeatAtGTE(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldGTE(FieldHeartbeatAt, v))
+}
+
+// HeartbeatAtLT applies the LT predicate on the "heartbeat_at" field.
+func HeartbeatAtLT(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldLT(FieldHeartbeatAt, v))
+}
+
+// HeartbeatAtLTE applies the LTE predicate on the "heartbeat_at" field.
+func HeartbeatAtLTE(v time.Time) predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldLTE(FieldHeartbeatAt, v))
+}
+
+// HeartbeatAtIsNil applies the IsNil predicate on the "heartbeat_at" field.
+func HeartbeatAtIsNil() predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldIsNull(FieldHeartbeatAt))
+}
+
+// HeartbeatAtNotNil applies the NotNil predicate on the "heartbeat_at" field.
+func HeartbeatAtNotNil() predicate.TeamRunV2 {
+	return predicate.TeamRunV2(sql.FieldNotNull(FieldHeartbeatAt))
 }
 
 // And groups predicates with the AND operator between them.

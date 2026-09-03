@@ -156,6 +156,11 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 			nd := compileEmbeddedBizNode(n, biz.NodeDef{
 				ID: id, Type: "agent", Description: desc, Instruction: instruction,
 				AgentName: key,
+				// P3-2（2026-09-03 语义面防线）：角色随 NodeDef 下发，图层据此
+				// 给 synthesizer 节点挂合成前产出校验回调
+				// （deliverable_inspection_wiring.go）。此前角色只进 taskMeta，
+				// 图层不可见。
+				RequiredRole: role,
 			})
 			nodes = append(nodes, nd)
 			if role != "" {

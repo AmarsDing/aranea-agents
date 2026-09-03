@@ -93,16 +93,25 @@ func (f *fakeOrchestrator) completeStep(stepID string, success bool, errMsg stri
 
 // waitForCall polls until stepID appears in the orchestrate call list or times out.
 func (f *fakeOrchestrator) waitForCall(stepID string, timeout time.Duration) bool {
+	return f.waitForCallCount(stepID, 1, timeout)
+}
+
+// waitForCallCount polls until stepID has been dispatched at least n times
+// (F2: 自动重试会产生同一 step 的多次 dispatch)。
+func (f *fakeOrchestrator) waitForCallCount(stepID string, n int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		f.mu.Lock()
+		count := 0
 		for _, id := range f.calls {
 			if id == stepID {
-				f.mu.Unlock()
-				return true
+				count++
 			}
 		}
 		f.mu.Unlock()
+		if count >= n {
+			return true
+		}
 		time.Sleep(time.Millisecond)
 	}
 	return false
@@ -439,8 +448,10 @@ func TestPlanExecutor_ParallelRoots(t *testing.T) {
 	}
 }
 
-// TestPlanExecutor_FailedStepBlocksDownstream verifies that when s1 fails,
-// its dependent s2 is marked skipped (not dispatched to the orchestrator).
+// TestPlanExecutor_FailedStepBlocksDownstream verifies that when s1 fails
+// (retries exhausted), its dependent s2 is marked skipped (not dispatched to
+// the orchestrator). F2（2026-09-03）：首次失败触发 1 次自动重试，重试仍败
+// 才 cascade skip 下游。
 func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	t.Parallel()
 	board := biz.PlanBoard{
@@ -458,6 +469,7 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	repos := newFakeReposForExecutor()
 	seq.repos = repos
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	pe.stepRetryBackoff = 0 // 测试关闭退避
 
 	done := make(chan error, 1)
 	go func() { done <- pe.Subscribe(context.Background(), board) }()
@@ -469,7 +481,16 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	if orch.waitForCall("f2", 100*time.Millisecond) {
 		t.Fatal("f2 dispatched before f1 completed")
 	}
+	// 首次失败：触发自动重试（f1 会被再次 dispatch），下游仍不 cascade。
 	orch.completeStep("f1", false, "team execution failed")
+	if !orch.waitForCallCount("f1", 2, 2*time.Second) {
+		t.Fatal("f1 was not auto-retried after first failure")
+	}
+	if orch.waitForCall("f2", 100*time.Millisecond) {
+		t.Fatal("f2 dispatched while f1 retry in flight")
+	}
+	// 重试仍败：预算耗尽，cascade skip 生效。
+	orch.completeStep("f1", false, "team execution failed again")
 
 	select {
 	case err := <-done:
@@ -504,16 +525,227 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 		t.Errorf("f2 status = %s, want %s", f2.Status, biz.PlanStepStatusSkipped)
 	}
 
-	// Verify events: f1 started + failed; f2 skipped (no started event for f2).
+	// Verify events: f1 started ×2（含重试）+ failed ×2; f2 skipped ×1。
 	kinds := countingEventKinds(seq.snapshot())
-	if kinds[biz.EventKindPlanStepStarted] != 1 {
-		t.Errorf("PlanStepStarted events = %d, want 1 (only f1)", kinds[biz.EventKindPlanStepStarted])
+	if kinds[biz.EventKindPlanStepStarted] != 2 {
+		t.Errorf("PlanStepStarted events = %d, want 2 (f1 首发+重试)", kinds[biz.EventKindPlanStepStarted])
 	}
-	if kinds[biz.EventKindPlanStepFailed] != 1 {
-		t.Errorf("PlanStepFailed events = %d, want 1", kinds[biz.EventKindPlanStepFailed])
+	if kinds[biz.EventKindPlanStepFailed] != 2 {
+		t.Errorf("PlanStepFailed events = %d, want 2", kinds[biz.EventKindPlanStepFailed])
 	}
 	if kinds[biz.EventKindPlanStepSkipped] != 1 {
 		t.Errorf("PlanStepSkipped events = %d, want 1", kinds[biz.EventKindPlanStepSkipped])
+	}
+}
+
+// TestPlanExecutor_StepAutoRetrySucceeds F2：step 首次失败后 executor 自动
+// 重试 1 次；重试成功则下游照常 dispatch，board 收敛 Completed——瞬时故障
+// （如 LLM 首字节超时）不再杀死整个任务计划。
+func TestPlanExecutor_StepAutoRetrySucceeds(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "board-retry",
+		TaskID:    "task-retry",
+		SessionID: "sess-retry",
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "a1", PlanID: "board-retry", TaskID: "task-retry", Label: "flaky", Status: biz.PlanStepStatusPending, Version: 1},
+			{ID: "a2", PlanID: "board-retry", TaskID: "task-retry", Label: "downstream", DependsOn: []string{"a1"}, Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	pe.stepRetryBackoff = 0
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("a1", 2*time.Second) {
+		t.Fatal("a1 was not dispatched")
+	}
+	orch.completeStep("a1", false, "transient: first byte timeout")
+	// 自动重试：a1 第二次 dispatch。
+	if !orch.waitForCallCount("a1", 2, 2*time.Second) {
+		t.Fatal("a1 was not auto-retried")
+	}
+	orch.completeStep("a1", true, "")
+	// 重试成功 → 下游 a2 照常派发。
+	if !orch.waitForCall("a2", 2*time.Second) {
+		t.Fatal("a2 was not dispatched after a1 retry succeeded")
+	}
+	orch.completeStep("a2", true, "")
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+
+	repos.mu.Lock()
+	defer repos.mu.Unlock()
+	if got := repos.steps["a1"].Status; got != biz.PlanStepStatusCompleted {
+		t.Errorf("a1 status = %s, want completed", got)
+	}
+	if got := repos.steps["a2"].Status; got != biz.PlanStepStatusCompleted {
+		t.Errorf("a2 status = %s, want completed", got)
+	}
+	if repos.board == nil || repos.board.Status != biz.PlanStatusCompleted {
+		t.Errorf("board status = %v, want completed", repos.board)
+	}
+}
+
+// waitBoardStatus 轮询 fake repos 直到 board 进入目标状态或超时（resume 后
+// DAG 在异步 goroutine 中执行）。
+func waitBoardStatus(repos *fakeReposForExecutor, boardID string, want biz.PlanStatus, timeout time.Duration) biz.PlanStatus {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		repos.mu.Lock()
+		b, ok := repos.boards[boardID]
+		repos.mu.Unlock()
+		if ok && b.Status == want {
+			return b.Status
+		}
+		time.Sleep(time.Millisecond)
+	}
+	repos.mu.Lock()
+	defer repos.mu.Unlock()
+	return repos.boards[boardID].Status
+}
+
+// runBoardToFailed 构造两 step（b1→b2）的 board 并跑到 Failed 终态
+//（b1 两次失败耗尽自动重试）。返回执行器三件套。
+func runBoardToFailed(t *testing.T, boardID string) (*PlanExecutor, *fakeOrchestrator, *fakeReposForExecutor, *fakeSeq) {
+	t.Helper()
+	board := biz.PlanBoard{
+		ID:        boardID,
+		TaskID:    "task-" + boardID,
+		SessionID: "sess-" + boardID,
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "b1", PlanID: boardID, TaskID: "task-" + boardID, Label: "failstep", Status: biz.PlanStepStatusPending, Version: 1},
+			{ID: "b2", PlanID: boardID, TaskID: "task-" + boardID, Label: "depstep", DependsOn: []string{"b1"}, Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	pe.stepRetryBackoff = 0
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+	if !orch.waitForCall("b1", 2*time.Second) {
+		t.Fatal("b1 was not dispatched")
+	}
+	orch.completeStep("b1", false, "boom-1")
+	if !orch.waitForCallCount("b1", 2, 2*time.Second) {
+		t.Fatal("b1 was not auto-retried")
+	}
+	orch.completeStep("b1", false, "boom-2")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+	if got := waitBoardStatus(repos, boardID, biz.PlanStatusFailed, time.Second); got != biz.PlanStatusFailed {
+		t.Fatalf("board status = %s, want failed", got)
+	}
+	return pe, orch, repos, seq
+}
+
+// TestPlanExecutor_ResumeFailedBoard_Retry F2：失败 board 可恢复——retry 模式
+// 重跑失败 step，cascade skip 的下游复活，DAG 续跑至 Completed。
+func TestPlanExecutor_ResumeFailedBoard_Retry(t *testing.T) {
+	t.Parallel()
+	pe, orch, repos, _ := runBoardToFailed(t, "board-resume-retry")
+
+	if err := pe.ResumePlanBoard(context.Background(), "board-resume-retry", ResumeModeRetry); err != nil {
+		t.Fatalf("ResumePlanBoard: %v", err)
+	}
+	// resume 重排队后 b1 第三次 dispatch（新 dagRun，重试预算重置）。
+	if !orch.waitForCallCount("b1", 3, 2*time.Second) {
+		t.Fatal("b1 was not redispatched after resume(retry)")
+	}
+	orch.completeStep("b1", true, "")
+	// b1 成功 → 下游 b2 照常派发。
+	if !orch.waitForCall("b2", 2*time.Second) {
+		t.Fatal("b2 was not dispatched after resumed b1 completed")
+	}
+	orch.completeStep("b2", true, "")
+
+	if got := waitBoardStatus(repos, "board-resume-retry", biz.PlanStatusCompleted, 5*time.Second); got != biz.PlanStatusCompleted {
+		t.Fatalf("board status = %s, want completed", got)
+	}
+	repos.mu.Lock()
+	defer repos.mu.Unlock()
+	if got := repos.steps["b1"].Status; got != biz.PlanStepStatusCompleted {
+		t.Errorf("b1 status = %s, want completed", got)
+	}
+	if got := repos.steps["b2"].Status; got != biz.PlanStepStatusCompleted {
+		t.Errorf("b2 status = %s, want completed", got)
+	}
+}
+
+// TestPlanExecutor_ResumeFailedBoard_Skip F2：skip 模式把失败 step 降级为
+// skipped，下游依赖按「skipped 视为已满足」放行续跑，board 收敛 Completed。
+func TestPlanExecutor_ResumeFailedBoard_Skip(t *testing.T) {
+	t.Parallel()
+	pe, orch, repos, _ := runBoardToFailed(t, "board-resume-skip")
+
+	if err := pe.ResumePlanBoard(context.Background(), "board-resume-skip", ResumeModeSkip); err != nil {
+		t.Fatalf("ResumePlanBoard: %v", err)
+	}
+	// b1 不再 dispatch；b2 降级放行直接 dispatch。
+	repos.mu.Lock()
+	b1Status := repos.steps["b1"].Status
+	repos.mu.Unlock()
+	if b1Status != biz.PlanStepStatusSkipped {
+		t.Fatalf("b1 status = %s, want skipped", b1Status)
+	}
+	if !orch.waitForCall("b2", 2*time.Second) {
+		t.Fatal("b2 was not dispatched under degraded skip semantics")
+	}
+	orch.completeStep("b2", true, "")
+
+	if got := waitBoardStatus(repos, "board-resume-skip", biz.PlanStatusCompleted, 5*time.Second); got != biz.PlanStatusCompleted {
+		t.Fatalf("board status = %s, want completed", got)
+	}
+	// b1 保持 skipped（两轮失败后第三次 dispatch 不得发生）。
+	if orch.waitForCallCount("b1", 3, 200*time.Millisecond) {
+		t.Fatal("b1 must not be redispatched in skip mode")
+	}
+}
+
+// TestPlanExecutor_ResumePlanBoard_Guards F2：非 Failed board / 非法 mode /
+// 空 board 拒绝恢复。
+func TestPlanExecutor_ResumePlanBoard_Guards(t *testing.T) {
+	t.Parallel()
+	repos := newFakeReposForExecutor()
+	pe := NewPlanExecutor(repos, newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+
+	if err := pe.ResumePlanBoard(context.Background(), "", ResumeModeRetry); err == nil {
+		t.Error("empty board id should be rejected")
+	}
+	if err := pe.ResumePlanBoard(context.Background(), "x", "bogus"); err == nil {
+		t.Error("invalid mode should be rejected")
+	}
+	repos.boards["board-ok"] = biz.PlanBoard{ID: "board-ok", Status: biz.PlanStatusCompleted}
+	if err := pe.ResumePlanBoard(context.Background(), "board-ok", ResumeModeRetry); err == nil {
+		t.Error("completed board should be rejected")
+	}
+	repos.boards["board-nosteps"] = biz.PlanBoard{ID: "board-nosteps", Status: biz.PlanStatusFailed}
+	if err := pe.ResumePlanBoard(context.Background(), "board-nosteps", ResumeModeRetry); err == nil {
+		t.Error("failed board without failed steps should be rejected")
 	}
 }
 
@@ -894,6 +1126,8 @@ func TestPlanExecutor_TaskPlanStatusPropagation(t *testing.T) {
 
 // TestPlanExecutor_TaskPlanStatusPropagation_Failed (TS9-BUG-1) verifies a
 // failed DAG run propagates failed to the TaskPlan.
+// F2（2026-09-03）：首次失败触发自动重试，重试耗尽（第二次失败）后才收敛
+// board/plan 终态。
 func TestPlanExecutor_TaskPlanStatusPropagation_Failed(t *testing.T) {
 	t.Parallel()
 	board := biz.PlanBoard{
@@ -910,6 +1144,7 @@ func TestPlanExecutor_TaskPlanStatusPropagation_Failed(t *testing.T) {
 	repos := newFakeReposForExecutor()
 	seq.repos = repos
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	pe.stepRetryBackoff = 0
 	updater := &stubTaskPlanUpdater{plan: &biz.TaskPlan{ID: "plan-2", Status: biz.TaskPlanStatusConfirmed}}
 	pe.SetTaskPlanUpdater(updater)
 
@@ -922,6 +1157,11 @@ func TestPlanExecutor_TaskPlanStatusPropagation_Failed(t *testing.T) {
 	waitPlanStatus(t, updater, biz.TaskPlanStatusExecuting)
 
 	orch.completeStep("s1", false, "boom")
+	// F2：自动重试→第二次 dispatch→仍败，重试预算耗尽。
+	if !orch.waitForCallCount("s1", 2, 2*time.Second) {
+		t.Fatal("s1 was not auto-retried after first failure")
+	}
+	orch.completeStep("s1", false, "boom again")
 	select {
 	case err := <-done:
 		if err != nil {

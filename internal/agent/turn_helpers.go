@@ -147,6 +147,14 @@ type StreamConsumeOptions struct {
 	// branch (attribution=="") never fires and the gate would never trip.
 	// Keep the hook cheap — it runs on the single consume goroutine.
 	OnPromptTokensAccumulated func(deltaPromptTokens int)
+	// OnStreamActivity, when non-nil, is invoked synchronously from the consume
+	// loop on every event (text delta, tool call, usage, completion…). P2-1
+	// (2026-09-03): the team runner wires this to a throttled heartbeat writer
+	// so a long single-step streaming generation still signals liveness to the
+	// biz idle probe (LangGraph progress-signal / Temporal heartbeat 语义).
+	// Keep the hook cheap — it runs on the single consume goroutine; throttle
+	// inside the closure.
+	OnStreamActivity func()
 }
 
 func ConsumeEventStream(

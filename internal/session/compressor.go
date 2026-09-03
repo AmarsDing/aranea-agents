@@ -381,6 +381,15 @@ func (c *Compressor) CompactSession(ctx context.Context, sessionID string, prese
 
 	estBefore := sess.ContextUsedTokens
 
+	// Snapshot the summary watermark so a below-threshold no-op is reported
+	// honestly (Compacted=false → 前端提示"无需压缩") instead of lying
+	// compacted:true with zero turns (2026-09-02 LBG verify: 1-turn session
+	// returned compacted:true without writing any summary).
+	maxToTurnBefore, err := c.deps.summaryReader.MaxSessionSummaryToTurn(ctx, sid)
+	if err != nil {
+		return nil, err
+	}
+
 	runCtx, cancel := context.WithTimeout(ctx, compressRunTimeout)
 	defer cancel()
 
@@ -395,18 +404,37 @@ func (c *Compressor) CompactSession(ctx context.Context, sessionID string, prese
 
 	sessAfter, err := c.deps.sessionReader.GetSessionByID(ctx, sid)
 	if err != nil {
+		// 读失败不否决已完成的压缩本身，但须留痕——静默返回 true 会让
+		// tokens/turn 区间丢失且无迹可查。
+		c.lg.Warn("压缩后回读会话失败，降级返回 compacted:true 无统计",
+			loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 		return &biz.CompactResult{Compacted: true, EstimatedTokensBefore: estBefore, EstimatedTokensAfter: estBefore}, nil
 	}
 
 	level := "auto_compact"
 	fromTurn, toTurn := 0, 0
-	if summaries, sErr := c.deps.summaryReader.ListSessionSummaries(ctx, sid); sErr == nil && len(summaries) > 0 {
-		latest := summaries[len(summaries)-1]
-		fromTurn = latest.FromTurn
-		toTurn = latest.ToTurn
-		if containsMemoryCompactMarker(latest.SummaryMarkdown) {
-			level = "memory_compact"
+	summaryKnown := false
+	if summaries, sErr := c.deps.summaryReader.ListSessionSummaries(ctx, sid); sErr == nil {
+		summaryKnown = true
+		if len(summaries) > 0 {
+			latest := summaries[len(summaries)-1]
+			fromTurn = latest.FromTurn
+			toTurn = latest.ToTurn
+			if containsMemoryCompactMarker(latest.SummaryMarkdown) {
+				level = "memory_compact"
+			}
 		}
+	} else {
+		// 水位线读失败 → summaryKnown=false 走旧语义 compacted:true，但
+		// no-op 诚实上报防线随之失效，必须可观测。
+		c.lg.Warn("压缩后读取 summary 水位线失败，no-op 检测降级为旧语义",
+			loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Err(sErr))
+	}
+	// loadCompressBody only summarizes turns after the previous watermark, so a
+	// new summary necessarily pushes to_turn past it; no movement = no-op. On a
+	// summary read error keep the legacy compacted:true (compress itself ran).
+	if summaryKnown && toTurn <= maxToTurnBefore {
+		return &biz.CompactResult{Compacted: false, EstimatedTokensBefore: estBefore, EstimatedTokensAfter: sessAfter.ContextUsedTokens}, nil
 	}
 
 	return &biz.CompactResult{

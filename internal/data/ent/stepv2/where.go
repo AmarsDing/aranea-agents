@@ -164,6 +164,11 @@ func CompletedAt(v time.Time) predicate.StepV2 {
 	return predicate.StepV2(sql.FieldEQ(FieldCompletedAt, v))
 }
 
+// UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
+func UpdatedAt(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
 // Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
 func Version(v int64) predicate.StepV2 {
 	return predicate.StepV2(sql.FieldEQ(FieldVersion, v))
@@ -1322,6 +1327,46 @@ func CompletedAtIsNil() predicate.StepV2 {
 // CompletedAtNotNil applies the NotNil predicate on the "completed_at" field.
 func CompletedAtNotNil() predicate.StepV2 {
 	return predicate.StepV2(sql.FieldNotNull(FieldCompletedAt))
+}
+
+// UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
+func UpdatedAtEQ(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtNEQ applies the NEQ predicate on the "updated_at" field.
+func UpdatedAtNEQ(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldNEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtIn applies the In predicate on the "updated_at" field.
+func UpdatedAtIn(vs ...time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtNotIn applies the NotIn predicate on the "updated_at" field.
+func UpdatedAtNotIn(vs ...time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldNotIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtGT applies the GT predicate on the "updated_at" field.
+func UpdatedAtGT(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldGT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtGTE applies the GTE predicate on the "updated_at" field.
+func UpdatedAtGTE(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldGTE(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLT applies the LT predicate on the "updated_at" field.
+func UpdatedAtLT(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldLT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
+func UpdatedAtLTE(v time.Time) predicate.StepV2 {
+	return predicate.StepV2(sql.FieldLTE(FieldUpdatedAt, v))
 }
 
 // VersionEQ applies the EQ predicate on the "version" field.

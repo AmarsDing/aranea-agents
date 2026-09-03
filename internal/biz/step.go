@@ -32,6 +32,10 @@ type Step struct {
 	IsFinal         bool // reply 是否为最终回复
 	StartedAt       time.Time
 	CompletedAt     *time.Time
+	// UpdatedAt 行级新鲜度（P4-1，2026-09-03）：ent UpdateDefault 在每次
+	// 写入时自动刷新，观测/审计与 idle 探测（GREATEST(started_at,
+	// updated_at)）使用。仅读侧透出，写入侧无需设置（DB/ent 维护）。
+	UpdatedAt time.Time
 }
 
 // SynthesisAuthorAgentKey 精灵总结 turn 的 reply step 专属 AuthorAgentKey。

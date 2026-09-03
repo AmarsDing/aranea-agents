@@ -132,6 +132,72 @@ func TestCompileToGraphRuntimeConfig_parallelFailContinue(t *testing.T) {
 	}
 }
 
+// F4（2026-09-03 lbg-verify-planner 复盘 问题4）：coordinator（dispatch）拓扑
+// 下默认策略的编译语义。dispatch 拓扑中 lead(hub) 与各 worker 都是 finish
+// 汇聚点的 feeder（启发式标记全部 feeder），故 lead/中间成员均标
+// skip_on_failure + 保留重试——任一成员失败都被跳过、图继续，终局由 F10
+// 证据收敛 partial_failure；唯 finish（末位成员=汇聚点）保持
+// retry_then_block：汇聚失败无产出，团队真失败。
+func TestCompileToGraphRuntimeConfig_coordinatorParallelFailContinue(t *testing.T) {
+	def := Definition{
+		Mode: "coordinator",
+		Members: []MemberDef{
+			{AgentID: "lead", Role: "synthesizer", SortOrder: 1},
+			{AgentID: "w1", SortOrder: 2},
+			{AgentID: "w2", SortOrder: 3},
+			{AgentID: "w3", SortOrder: 4},
+		},
+		FailurePolicy: &FailurePolicy{
+			Default:      "retry_then_block",
+			Retry:        RetryPolicy{MaxAttempts: 2},
+			ParallelFail: "continue",
+		},
+	}
+	cfg, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]biz.NodeDef, len(cfg.Nodes))
+	for _, n := range cfg.Nodes {
+		byID[n.ID] = n
+	}
+	// lead + 中间成员（finish 的全部 feeder）：skip_on_failure + 重试保留。
+	for _, id := range []string{"member-1", "member-2", "member-3"} {
+		n, ok := byID[id]
+		if !ok {
+			t.Fatalf("missing node %s", id)
+		}
+		if n.FailureAction != biz.FailureOnFailureSkip {
+			t.Fatalf("%s action=%q want skip_on_failure", id, n.FailureAction)
+		}
+		if n.RetryMaxAttempts != 2 {
+			t.Fatalf("%s retry=%d want 2", id, n.RetryMaxAttempts)
+		}
+	}
+	// finish（member-4 汇聚点）：retry_then_block，不得 skip（跳过即无产出）。
+	n, ok := byID["member-4"]
+	if !ok {
+		t.Fatal("missing finish node member-4")
+	}
+	if n.FailureAction != biz.FailureDefaultRetryThenBlock {
+		t.Fatalf("member-4 action=%q want retry_then_block", n.FailureAction)
+	}
+	if n.RetryMaxAttempts != 2 {
+		t.Fatalf("member-4 retry=%d want 2", n.RetryMaxAttempts)
+	}
+	// skip 语义需要 _skipped_nodes 状态字段支撑。
+	hasSkippedField := false
+	for _, sf := range cfg.StateFields {
+		if sf.Name == biz.SkippedNodesStateKey {
+			hasSkippedField = true
+			break
+		}
+	}
+	if !hasSkippedField {
+		t.Fatal("skipped_nodes state field missing for parallel_fail=continue")
+	}
+}
+
 func TestGraphRuntimeE2E_buildSequentialTeamGraph(t *testing.T) {
 	def := Definition{
 		Mode: "sequential",

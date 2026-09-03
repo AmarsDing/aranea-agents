@@ -1475,6 +1475,148 @@ func TestHandleTeamTurnResult_CompletedWithFailedMemberEvidence_ConvergesPartial
 	}
 }
 
+// ── P1-3 quorum 收敛 / P1-4 salvage（2026-09-03）─────────────────────────────
+
+func newP1Starter(team biz.Team, ctrl *stubSpiritTeamController, sessions []biz.Session, writer *stubTeamWriter, seq *capturingSeq) *TeamStarter {
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader:    &stubTeamReader{teams: map[string]biz.Team{team.ID: team}},
+		Writer:    writer,
+		RunReader: &stubTeamRunReader{},
+		Lg:        loggateway.NewNoop(),
+	})
+	tsID := "ts-" + team.ID
+	return &TeamStarter{
+		sessions: biz.NewSessionUsecase(&f10SessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil),
+		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: ctrl},
+		seq:      seq,
+		lg:       loggateway.NewNoop(),
+		teamStageR: &stubTeamStageV2Reader{stages: map[string]biz.TeamStage{
+			tsID: {ID: tsID, TeamID: team.ID, SessionID: team.SpiritSessionID,
+				Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, Version: 1},
+		}},
+		tsSM:     biz.NewTeamStageStateMachine(),
+		teamRunR: &stubTeamRunV2Reader{runs: map[string]biz.TeamRun{}},
+		trSM:     biz.NewTeamRunV2StateMachine(),
+	}
+}
+
+// P1-3：completed 回调但全体成员均带失败证据（全灭）→ 收敛 failed；
+// 且不得被 salvage 救回（gateFlipped 语义）。
+func TestHandleTeamTurnResult_QuorumAllFailed_ConvergesFailed(t *testing.T) {
+	team := biz.Team{
+		ID: "team-quorum", DisplayName: "全灭团队", SpiritSessionID: "spirit-q",
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+		{ID: "sess-b", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-b"},
+	}
+	ctrl := &stubSpiritTeamController{
+		hasRealDeliverable: true, // 交付物存在（合成者独角戏），quorum 仍须判死
+		memberEvidence: map[string]stubMemberEvidence{
+			"sess-a": {failed: true, reason: "step failed: a"},
+			"sess-b": {failed: true, reason: "step failed: b"},
+		},
+	}
+	writer := &stubTeamWriter{}
+	seq := &capturingSeq{}
+	s := newP1Starter(team, ctrl, sessions, writer, seq)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCompleted, "", "")
+
+	var failedFound bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusFailed {
+			failedFound = true
+		}
+		if tr.id == team.ID && (tr.newStatus == biz.TeamStatusCompleted || tr.newStatus == biz.TeamStatusPartialFailure) {
+			t.Errorf("全灭团队不得收敛为 %s, transitions=%+v", tr.newStatus, writer.snapshotTransitions())
+		}
+	}
+	if !failedFound {
+		t.Fatalf("teams 表未收敛为 failed, transitions = %+v", writer.snapshotTransitions())
+	}
+	if ctrl.recordCompletionCalls != 0 {
+		t.Errorf("RecordTeamCompletion 不应调用（quorum failed）")
+	}
+}
+
+// P1-4：runner 报 failed（如 finish 合成节点重试耗尽）但存在成员真实交付物
+// → salvage 为 partial_failure（调度语义成功，下游照常激活）。
+func TestHandleTeamTurnResult_FailedWithDeliverable_SalvagesPartialFailure(t *testing.T) {
+	team := biz.Team{
+		ID: "team-salvage", DisplayName: "合成失败团队", SpiritSessionID: "spirit-s",
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+		{ID: "sess-b", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-b"},
+	}
+	ctrl := &stubSpiritTeamController{
+		hasRealDeliverable: true, // worker 已提交交付物，finish 失败前写入 state
+		memberEvidence: map[string]stubMemberEvidence{
+			"sess-b": {failed: true, reason: "合成节点重试耗尽"},
+		},
+	}
+	writer := &stubTeamWriter{}
+	seq := &capturingSeq{}
+	s := newP1Starter(team, ctrl, sessions, writer, seq)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusFailed, "graph error: finish node failed", "")
+
+	var salvaged bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusPartialFailure {
+			salvaged = true
+		}
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusFailed {
+			t.Errorf("有交付物的 runner 失败不应落 failed（应 salvage）, transitions=%+v", writer.snapshotTransitions())
+		}
+	}
+	if !salvaged {
+		t.Fatalf("teams 表未 salvage 为 partial_failure, transitions = %+v", writer.snapshotTransitions())
+	}
+	if ctrl.recordCompletionCalls == 0 {
+		t.Errorf("RecordTeamCompletion 应照常调用（salvage 调度语义 = 成功）")
+	}
+	if ctrl.scheduleDependentsCalls == 0 {
+		t.Errorf("ScheduleDependentTeams 应照常调用（下游照常激活）")
+	}
+}
+
+// P1-4 边界：runner 失败且无交付物 → 维持 failed（无产出不救）。
+func TestHandleTeamTurnResult_FailedWithoutDeliverable_StaysFailed(t *testing.T) {
+	team := biz.Team{
+		ID: "team-nosalvage", DisplayName: "无产出团队", SpiritSessionID: "spirit-n",
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+	}
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: false}
+	writer := &stubTeamWriter{}
+	seq := &capturingSeq{}
+	s := newP1Starter(team, ctrl, sessions, writer, seq)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusFailed, "member crashed", "")
+
+	var failedFound bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusFailed {
+			failedFound = true
+		}
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusPartialFailure {
+			t.Errorf("无交付物不得 salvage 为 partial_failure")
+		}
+	}
+	if !failedFound {
+		t.Fatalf("teams 表未收敛为 failed, transitions = %+v", writer.snapshotTransitions())
+	}
+}
+
 // 无失败证据时不得误收敛：completed 回调保持 completed。
 func TestHandleTeamTurnResult_CompletedWithoutFailedEvidence_StaysCompleted(t *testing.T) {
 	teamID := "team-clean"

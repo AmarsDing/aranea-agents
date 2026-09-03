@@ -221,6 +221,26 @@ func (_u *TeamRunV2Update) SetNillableError(v *string) *TeamRunV2Update {
 	return _u
 }
 
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (_u *TeamRunV2Update) SetHeartbeatAt(v time.Time) *TeamRunV2Update {
+	_u.mutation.SetHeartbeatAt(v)
+	return _u
+}
+
+// SetNillableHeartbeatAt sets the "heartbeat_at" field if the given value is not nil.
+func (_u *TeamRunV2Update) SetNillableHeartbeatAt(v *time.Time) *TeamRunV2Update {
+	if v != nil {
+		_u.SetHeartbeatAt(*v)
+	}
+	return _u
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (_u *TeamRunV2Update) ClearHeartbeatAt() *TeamRunV2Update {
+	_u.mutation.ClearHeartbeatAt()
+	return _u
+}
+
 // Mutation returns the TeamRunV2Mutation object of the builder.
 func (_u *TeamRunV2Update) Mutation() *TeamRunV2Mutation {
 	return _u.mutation
@@ -352,6 +372,12 @@ func (_u *TeamRunV2Update) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Error(); ok {
 		_spec.SetField(teamrunv2.FieldError, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.HeartbeatAt(); ok {
+		_spec.SetField(teamrunv2.FieldHeartbeatAt, field.TypeTime, value)
+	}
+	if _u.mutation.HeartbeatAtCleared() {
+		_spec.ClearField(teamrunv2.FieldHeartbeatAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -565,6 +591,26 @@ func (_u *TeamRunV2UpdateOne) SetNillableError(v *string) *TeamRunV2UpdateOne {
 	return _u
 }
 
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (_u *TeamRunV2UpdateOne) SetHeartbeatAt(v time.Time) *TeamRunV2UpdateOne {
+	_u.mutation.SetHeartbeatAt(v)
+	return _u
+}
+
+// SetNillableHeartbeatAt sets the "heartbeat_at" field if the given value is not nil.
+func (_u *TeamRunV2UpdateOne) SetNillableHeartbeatAt(v *time.Time) *TeamRunV2UpdateOne {
+	if v != nil {
+		_u.SetHeartbeatAt(*v)
+	}
+	return _u
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (_u *TeamRunV2UpdateOne) ClearHeartbeatAt() *TeamRunV2UpdateOne {
+	_u.mutation.ClearHeartbeatAt()
+	return _u
+}
+
 // Mutation returns the TeamRunV2Mutation object of the builder.
 func (_u *TeamRunV2UpdateOne) Mutation() *TeamRunV2Mutation {
 	return _u.mutation
@@ -726,6 +772,12 @@ func (_u *TeamRunV2UpdateOne) sqlSave(ctx context.Context) (_node *TeamRunV2, er
 	}
 	if value, ok := _u.mutation.Error(); ok {
 		_spec.SetField(teamrunv2.FieldError, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.HeartbeatAt(); ok {
+		_spec.SetField(teamrunv2.FieldHeartbeatAt, field.TypeTime, value)
+	}
+	if _u.mutation.HeartbeatAtCleared() {
+		_spec.ClearField(teamrunv2.FieldHeartbeatAt, field.TypeTime)
 	}
 	_node = &TeamRunV2{config: _u.config}
 	_spec.Assign = _node.assignValues

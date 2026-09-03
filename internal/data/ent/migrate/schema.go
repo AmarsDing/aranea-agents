@@ -3285,6 +3285,7 @@ var (
 		{Name: "is_final", Type: field.TypeBool, Default: false},
 		{Name: "started_at", Type: field.TypeTime},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "version", Type: field.TypeInt64, Default: 0},
 	}
 	// StepsV2Table holds the schema information for the "steps_v2" table.
@@ -3609,6 +3610,7 @@ var (
 		{Name: "seq", Type: field.TypeInt64, Default: 0},
 		{Name: "version", Type: field.TypeInt64, Default: 0},
 		{Name: "error", Type: field.TypeString, Default: ""},
+		{Name: "heartbeat_at", Type: field.TypeTime, Nullable: true},
 	}
 	// TeamRunsV2Table holds the schema information for the "team_runs_v2" table.
 	TeamRunsV2Table = &schema.Table{

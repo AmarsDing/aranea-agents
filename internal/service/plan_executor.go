@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -86,6 +87,9 @@ type PlanExecutor struct {
 	// 超时仍未就绪则 fail-closed（防止 Plan/Allocate 中途失败时看板永停 planning）。
 	// 测试可覆盖此字段缩短超时。
 	shellTimeout time.Duration
+	// F2（2026-09-03）：step 自动重试前的退避等待。默认 defaultStepRetryBackoff，
+	// 测试置 0 关闭退避（字段随实例走，避免并行测试改包级变量的数据竞争）。
+	stepRetryBackoff time.Duration
 	// 2026-07-27 总结重复触发修复：board 终态后的完成通知器（TeamStarter）。
 	// lazy 建团下 checkAllTeamsCompleted 在波次中点会误判全完成（后续 step
 	// 尚无团队记录），改为 dagRun 活跃期间门控拦截 + board 终态唯一触发。
@@ -236,6 +240,8 @@ func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPu
 		tsSM: biz.NewTeamStageStateMachine(),
 		// 2026-08-06 P0-2：流式空壳兜底超时默认值（测试可覆盖）。
 		shellTimeout: defaultPlanBoardShellTimeout,
+		// F2：step 自动重试退避默认值（测试可置 0 关闭）。
+		stepRetryBackoff: planStepRetryBackoff,
 	}
 }
 
@@ -704,6 +710,145 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 	return r.run(ctx)
 }
 
+// Resume mode for ResumePlanBoard.
+const (
+	// ResumeModeRetry 重跑失败 step：Failed→Pending 重排队，cascade skip 的
+	// 下游 Skipped→Pending 一并复活，由 DAG 依赖序重新调度。
+	ResumeModeRetry = "retry"
+	// ResumeModeSkip 跳过失败 step（降级）：Failed→Skipped，下游复活并按
+	// dependencySatisfied 的降级语义放行（skipped 依赖视为已满足）。
+	ResumeModeSkip = "skip"
+)
+
+// ResumePlanBoard 恢复一个 Failed 的 PlanBoard 继续执行（F2，2026-09-03
+// lbg-verify-planner 复盘 问题2）：board Failed 不再是死胡同。mode=retry
+// 重跑全部失败 step；mode=skip 跳过全部失败 step（降级放行下游）。两种
+// 模式都会把 cascade skip 的下游 step 复活回 Pending。恢复后 board 经
+// resume 事件回到 Executing 并重新取得执行 lease 续跑。
+//
+// 前置约束：board 必须处于 Failed 且当前无执行 lease（正在执行的 board
+// 拒绝恢复）。TaskPlan 终态不联动回滚（resume 后 DAG 终态会再次传播覆盖）。
+func (e *PlanExecutor) ResumePlanBoard(ctx context.Context, boardID string, mode string) error {
+	if e == nil {
+		return fmt.Errorf("plan executor is nil")
+	}
+	boardID = strings.TrimSpace(boardID)
+	if boardID == "" {
+		return apierror.BadRequest(apierror.DomainOrchestrator, "plan board id is empty")
+	}
+	if mode != ResumeModeRetry && mode != ResumeModeSkip {
+		return apierror.BadRequest(apierror.DomainOrchestrator, "invalid resume mode %q (want %q|%q)", mode, ResumeModeRetry, ResumeModeSkip)
+	}
+	board, err := e.repos.GetPlanBoard(ctx, boardID)
+	if err != nil {
+		return fmt.Errorf("load plan board: %w", err)
+	}
+	if board.Status != biz.PlanStatusFailed {
+		return apierror.BadRequest(apierror.DomainOrchestrator, "plan board %s is %s, only failed boards can resume", boardID, board.Status)
+	}
+	if _, ok := e.running.Load(boardID); ok {
+		return apierror.BadRequest(apierror.DomainOrchestrator, "plan board %s is running, refuse to resume", boardID)
+	}
+	steps, err := e.repos.ListPlanStepsByPlan(ctx, board.ID)
+	if err != nil {
+		return fmt.Errorf("load plan steps: %w", err)
+	}
+	board.Steps = steps
+	// 前置校验：board Failed 必然至少有一个失败 step（snapshotStepOutcomes），
+	// 否则拒绝改造避免半持久化中间态。
+	var failedCount int
+	for i := range board.Steps {
+		if board.Steps[i].Status == biz.PlanStepStatusFailed {
+			failedCount++
+		}
+	}
+	if failedCount == 0 {
+		return apierror.BadRequest(apierror.DomainOrchestrator, "plan board %s has no failed steps to resume", boardID)
+	}
+	// 1. 按 mode 改造 step 集合（board 未在运行，无并发写）。
+	for i := range board.Steps {
+		s := &board.Steps[i]
+		switch s.Status {
+		case biz.PlanStepStatusFailed:
+			if mode == ResumeModeSkip {
+				if err := s.Transition(biz.PlanStepStatusSkipped); err != nil {
+					return fmt.Errorf("skip step %s: %w", s.ID, err)
+				}
+			} else {
+				if err := s.Transition(biz.PlanStepStatusPending); err != nil {
+					return fmt.Errorf("requeue step %s: %w", s.ID, err)
+				}
+				s.Error = nil // 重跑前清掉上轮错误，避免误导
+			}
+			s.CompletedAt = nil
+			s.Version++
+		case biz.PlanStepStatusSkipped:
+			// 只复活 cascade skip 的受害者（R1 审查修复）：人工拒绝确认
+			//（confirm_denied）与上一轮 resume(mode=skip) 的人工降级跳过
+			// 均保持 Skipped——不违背用户已表达的拒绝/跳过意图。
+			if s.Error == nil || s.Error.Code != biz.StepErrCodeCascadeSkip {
+				continue
+			}
+			if err := s.Transition(biz.PlanStepStatusPending); err != nil {
+				return fmt.Errorf("revive skipped step %s: %w", s.ID, err)
+			}
+			s.Error = nil // 清掉 cascade 标记，避免误导
+			s.CompletedAt = nil
+			s.Version++
+		default:
+			continue
+		}
+		// 持久化失败必须中止（R1 审查修复）：继续推进会造成 DB 与内存
+		// 发散，进程重启后 recover 到旧状态，行为不可预期。已持久化的前
+		// 序 step 幂等（再次 resume 时状态已非原值，switch 自然跳过）。
+		if _, err := e.repos.UpsertPlanStep(ctx, *s); err != nil {
+			return fmt.Errorf("resume: upsert plan_step %s: %w", s.ID, err)
+		}
+		// GraphNode 与 step 状态对齐（skip→interrupted，requeue→pending）。
+		e.syncGraphNodeStatus(ctx, board, *s)
+		if mode == ResumeModeSkip && s.Status == biz.PlanStepStatusSkipped {
+			e.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(*s, board.SessionID, "resume: skip failed step"))
+		}
+	}
+	// 2. board Failed→Executing（状态机 resume 边）。
+	newStatus, err := e.pbSM.Transition(board.Status, biz.PlanBoardEventResume)
+	if err != nil {
+		return fmt.Errorf("resume transition: %w", err)
+	}
+	board.Status = newStatus
+	board.CompletedAt = nil
+	board.Version++
+	if _, err := e.repos.UpsertPlanBoard(ctx, board); err != nil {
+		return fmt.Errorf("resume: upsert plan_board: %w", err)
+	}
+	e.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(board))
+	e.lg.Info("PlanBoard 已恢复续跑",
+		loggateway.Str("plan_board_id", board.ID),
+		loggateway.Str("mode", mode),
+		loggateway.Int("failed_steps", failedCount))
+	// 3. 重新启动 DAG（终态时 lease 已释放；Subscribe 的 C-20 守卫要求
+	// 非终态，上一步已转 Executing；initGraphStage 幂等跳过已有 GraphStage）。
+	e.startBoardDAG(board)
+	return nil
+}
+
+// syncGraphNodeStatus 按 MapPlanStepToGraphNodeStatus 映射关系同步单个
+// GraphNode 状态（resume 用；dagRun 未建，直接走 repo + 事件）。
+func (e *PlanExecutor) syncGraphNodeStatus(ctx context.Context, board biz.PlanBoard, step biz.PlanStep) {
+	existing, err := e.repos.GetGraphStageByPlanBoard(ctx, board.ID)
+	if err != nil || existing.ID == "" {
+		return
+	}
+	stepCopy := step
+	r := &dagRun{
+		pe:           e,
+		graphStageID: existing.ID,
+		board:        board,
+		stepsByID:    map[string]*biz.PlanStep{step.ID: &stepCopy},
+	}
+	r.updateGraphNode(ctx, step.ID, biz.MapPlanStepToGraphNodeStatus(step.Status), "")
+}
+
 // markPlanBoardExecuting updates the PlanBoard status from "planning" to
 // "executing" and publishes a PlanBoardUpdatedEvent so the frontend can
 // reflect the transition. Idempotent: if the PlanBoard is already in a
@@ -842,6 +987,11 @@ type dagRun struct {
 	stepsByID  map[string]*biz.PlanStep
 	dependents map[string][]string // stepID → stepIDs that depend on it
 	wg         sync.WaitGroup
+
+	// attempts 记录各 step 已消耗的自动重试次数（F2，2026-09-03）。memory-only
+	// （与 PlanStep.Mode/DepartmentID 同模式）：进程重启后重试预算重置，
+	// resume 重建 dagRun 亦获得全新预算。
+	attempts map[string]int
 }
 
 func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {
@@ -867,6 +1017,7 @@ func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {
 		graphStageID: gsID,
 		stepsByID:    stepsByID,
 		dependents:   dependents,
+		attempts:     make(map[string]int),
 	}
 }
 
@@ -1561,20 +1712,14 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 	if ev.Success {
 		_ = step.Transition(biz.PlanStepStatusCompleted)
 		step.CompletedAt = &now
-	} else {
-		_ = step.Transition(biz.PlanStepStatusFailed)
-		step.CompletedAt = &now
-		step.Error = &biz.StepError{Code: "team_failed", Message: ev.ErrorMsg}
-	}
-	step.Version++
-	current := *step
-	r.mu.Unlock()
-	// Publish terminal event + direct persist.
-	if _, err := r.pe.repos.UpsertPlanStep(ctx, current); err != nil {
-		r.pe.lg.Error("upsert plan_step (terminal) failed",
-			loggateway.Str("step_id", step.ID), loggateway.Err(err))
-	}
-	if ev.Success {
+		step.Version++
+		current := *step
+		r.mu.Unlock()
+		// Publish terminal event + direct persist.
+		if _, err := r.pe.repos.UpsertPlanStep(ctx, current); err != nil {
+			r.pe.lg.Error("upsert plan_step (terminal) failed",
+				loggateway.Str("step_id", step.ID), loggateway.Err(err))
+		}
 		r.pe.seq.Publish(ctx, biz.NewPlanStepCompletedEvent(current, r.board.SessionID))
 		r.publishUpward(ctx, biz.PipeUpwardHeartbeat, "阶段完成："+current.Label, map[string]any{
 			"step_id": step.ID,
@@ -1582,25 +1727,36 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 		// 2026-07-04 补齐：GraphNode → Completed
 		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusCompleted, "")
 		r.checkDownstream(ctx, step.ID)
-	} else {
-		r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
-		r.publishUpward(ctx, biz.PipeUpwardException, "阶段例外："+current.Label+" "+ev.ErrorMsg, map[string]any{
-			"step_id": step.ID,
-		})
-		// 2026-07-04 补齐：GraphNode → Failed
-		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
-		r.cascadeSkip(ctx, step.ID)
+		return
 	}
+	r.mu.Unlock()
+	// team_failed：成员执行期失败（LLM 首字节超时等瞬时故障），可自动重试。
+	r.failStepWith(ctx, step, "team_failed", ev.ErrorMsg, true)
 }
 
 // failStep marks a step as failed without orchestrator completion (used for
 // internal errors like persist failures or orchestrator invocation errors).
+// 不消耗自动重试预算（F2 2026-09-03 全面检查修正）：启动前失败多为永久性
+// 配置/校验错误（S07 类 "agent keys not found"），重试只会推迟
+// WaitBoardStartup 对账信号（生产窗口 10s，5s 退避+二次失败会逼近上限）。
 func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
+	r.failStepWith(ctx, step, "internal", msg, false)
+}
+
+// failStepWith 是 step 失败的统一出口（F2，2026-09-03 lbg-verify-planner
+// 复盘 问题2）：标记 Failed → 持久化 → 发布事件（保持失败可见性）；
+// retryable=true（team 执行失败）时先经 L4 失败分类器（P2-3）判定——能力
+// 缺失/语义错误重试不会改变结果，跳过自动重试直接 cascade；瞬时故障（LLM
+// 首字节超时等）才走 maybeRetryStep，重试耗尽才 cascadeSkip 下游，board 由
+// publishPlanBoardTerminal 收敛终态；retryable=false（启动前内部错误）
+// 立即 cascade，保持 P2-② 假启动对账的快速失败语义。之前失败即 cascade +
+// board 终态，瞬时故障直接杀死整个任务计划。
+func (r *dagRun) failStepWith(ctx context.Context, step *biz.PlanStep, code, msg string, retryable bool) {
 	now := time.Now()
 	r.mu.Lock()
 	_ = step.Transition(biz.PlanStepStatusFailed)
 	step.CompletedAt = &now
-	step.Error = &biz.StepError{Code: "internal", Message: msg}
+	step.Error = &biz.StepError{Code: code, Message: msg}
 	step.Version++
 	current := *step
 	r.mu.Unlock()
@@ -1614,7 +1770,71 @@ func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
 	})
 	// 2026-07-04 补齐：GraphNode → Failed
 	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
+	// P2-3（2026-09-03 L4 失败分类器规则版）：retryable 的 team 失败先分类，
+	// 非瞬时故障（能力缺失/语义错误）跳过重试直接 cascade——重试不会改变
+	// 结果，只会推迟对账信号并浪费一轮退避+整体团队重跑。
+	if retryable {
+		if class := biz.ClassifyStepFailure(msg); class != biz.StepFailureTransient {
+			r.pe.lg.Info("step 失败分类为非瞬时故障，跳过自动重试",
+				loggateway.Str("plan_board_id", r.board.ID),
+				loggateway.Str("step_id", step.ID),
+				loggateway.Str("failure_class", string(class)),
+				loggateway.Str("error", msg))
+		} else if r.maybeRetryStep(ctx, step) {
+			return
+		}
+	}
 	r.cascadeSkip(ctx, step.ID)
+}
+
+// planStepMaxRetries 是 step 级自动重试次数上限（F2）：首次失败后重试 1 次
+// （共 2 次尝试）。叠于 F4 图级成员重试（retry_then_block×2）之上——图级
+// 重试耗尽仍失败的 team 才走到这里，故 step 级再给 1 次整体重跑即可，
+// 指数退避交给上层 idle 超时与 maxLifetime 兜底。
+const planStepMaxRetries = 1
+
+// planStepRetryBackoff 是自动重试前的退避等待（瞬时故障恢复窗口），
+// 作为 NewPlanExecutor 中 stepRetryBackoff 字段的默认值（测试覆盖字段为 0）。
+const planStepRetryBackoff = 5 * time.Second
+
+// maybeRetryStep 在重试预算内自动重新 dispatch 失败 step（Failed→Running，
+// 状态机允许）。返回 true 表示已重排队——此时不 cascadeSkip，board 保持
+// executing，下游等待重试结果；返回 false 表示预算耗尽或已取消。
+func (r *dagRun) maybeRetryStep(ctx context.Context, step *biz.PlanStep) bool {
+	r.mu.Lock()
+	if r.canceled {
+		r.mu.Unlock()
+		return false
+	}
+	r.attempts[step.ID]++
+	attempt := r.attempts[step.ID]
+	if attempt > planStepMaxRetries {
+		r.mu.Unlock()
+		return false
+	}
+	// wg.Add 必须在旧 dispatch goroutine 的 Done 之前（本函数运行在旧
+	// goroutine 内，Done 是 defer 尚未触发），计数不会瞬时归零。
+	r.wg.Add(1)
+	r.mu.Unlock()
+	r.pe.lg.Info("plan step 失败，自动重试",
+		loggateway.Str("plan_board_id", r.board.ID),
+		loggateway.Str("step_id", step.ID),
+		loggateway.Int("attempt", attempt),
+		loggateway.Int("max_retries", planStepMaxRetries))
+	safego.Go(ctx, "plan_executor.retry."+step.ID, func() {
+		defer r.wg.Done()
+		if backoff := r.pe.stepRetryBackoff; backoff > 0 {
+			timer := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+		r.dispatchStep(ctx, step)
+	})
+	return true
 }
 
 func (e *PlanExecutor) hydrateBoardOrgFields(ctx context.Context, board *biz.PlanBoard) {
@@ -1852,6 +2072,8 @@ func (r *dagRun) skipPlaybookConfirmDenied(ctx context.Context, step *biz.PlanSt
 	now := time.Now()
 	r.mu.Lock()
 	_ = step.Transition(biz.PlanStepStatusSkipped)
+	// 标记 skip 来源（R1 审查修复）：人工拒绝确认的 step 不被 resume 复活。
+	step.Error = &biz.StepError{Code: biz.StepErrCodeConfirmDenied, Message: "playbook stage confirmation denied"}
 	step.CompletedAt = &now
 	step.Version++
 	skipped := *step
@@ -1888,13 +2110,22 @@ func (r *dagRun) dispatchReadyPending(ctx context.Context) {
 	}
 }
 
+// dependencySatisfied 判定依赖 step 是否「已满足」（F2）：Completed 正常满足；
+// Skipped 视为降级满足——resume(skip) 人工跳过失败 step 后其下游照常被
+// dispatch（输入缺失由下游 team 自行应对）。正常执行流中该分支不可达：
+// cascadeSkip 会把 skipped step 的全部 pending 下游同步置 skipped，不存在
+// 「依赖 skipped 而自身 pending」的稳态。
+func dependencySatisfied(st biz.PlanStepStatus) bool {
+	return st == biz.PlanStepStatusCompleted || st == biz.PlanStepStatusSkipped
+}
+
 func (r *dagRun) dependenciesCompleted(s *biz.PlanStep) bool {
 	if s == nil {
 		return false
 	}
 	for _, d := range s.DependsOn {
 		dep := r.stepsByID[d]
-		if dep == nil || dep.Status != biz.PlanStepStatusCompleted {
+		if dep == nil || !dependencySatisfied(dep.Status) {
 			return false
 		}
 	}
@@ -1905,9 +2136,11 @@ func (r *dagRun) dependenciesCompleted(s *biz.PlanStep) bool {
 // completed. Called after a step completes successfully.
 func (r *dagRun) checkDownstream(ctx context.Context, completedID string) {
 	deps := r.dependents[completedID]
+	println("DEBUG checkDownstream", completedID, "deps", len(deps))
 	for _, depID := range deps {
 		r.mu.Lock()
 		depStep, ok := r.stepsByID[depID]
+		println("DEBUG dep", depID, "status", string(depStep.Status))
 		if !ok || depStep.Status != biz.PlanStepStatusPending {
 			r.mu.Unlock()
 			continue
@@ -1915,7 +2148,7 @@ func (r *dagRun) checkDownstream(ctx context.Context, completedID string) {
 		allCompleted := true
 		for _, d := range depStep.DependsOn {
 			s := r.stepsByID[d]
-			if s == nil || s.Status != biz.PlanStepStatusCompleted {
+			if s == nil || !dependencySatisfied(s.Status) {
 				allCompleted = false
 				break
 			}
@@ -1986,6 +2219,9 @@ func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
 			}
 			reason := fmt.Sprintf("dependency %s failed", failedID)
 			_ = depStep.Transition(biz.PlanStepStatusSkipped)
+			// 标记 skip 来源（R1 审查修复）：resume 只复活 cascade_skip
+			// 受害者，人工拒绝/人工降级跳过的 step 不复活。
+			depStep.Error = &biz.StepError{Code: biz.StepErrCodeCascadeSkip, Message: reason}
 			depStep.Version++
 			skipped := *depStep
 			r.mu.Unlock()

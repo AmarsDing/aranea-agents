@@ -6058,8 +6058,14 @@ func init() {
 	stepv2DescStartedAt := stepv2Fields[19].Descriptor()
 	// stepv2.DefaultStartedAt holds the default value on creation for the started_at field.
 	stepv2.DefaultStartedAt = stepv2DescStartedAt.Default.(func() time.Time)
+	// stepv2DescUpdatedAt is the schema descriptor for updated_at field.
+	stepv2DescUpdatedAt := stepv2Fields[21].Descriptor()
+	// stepv2.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	stepv2.DefaultUpdatedAt = stepv2DescUpdatedAt.Default.(func() time.Time)
+	// stepv2.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	stepv2.UpdateDefaultUpdatedAt = stepv2DescUpdatedAt.UpdateDefault.(func() time.Time)
 	// stepv2DescVersion is the schema descriptor for version field.
-	stepv2DescVersion := stepv2Fields[21].Descriptor()
+	stepv2DescVersion := stepv2Fields[22].Descriptor()
 	// stepv2.DefaultVersion holds the default value on creation for the version field.
 	stepv2.DefaultVersion = stepv2DescVersion.Default.(int64)
 	// stepv2DescID is the schema descriptor for id field.

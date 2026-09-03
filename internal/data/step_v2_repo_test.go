@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -284,4 +285,76 @@ func TestStepV2Repo_ListStepsBySessionPaged(t *testing.T) {
 			t.Errorf("len=%d, want 10", len(steps))
 		}
 	})
+}
+
+// TestStepV2Repo_LatestStepActivityAt 锚定 F1（2026-09-03 lbg-verify-planner
+// 复盘）idle 团队超时的活动探测 + P4-2 信号升级：团队主会话 + 成员子会话
+// 集合的 MAX(updated_at) 单查询聚合（updated_at 由 ent UpdateDefault 每次
+// 写入刷新，语义 ≡ GREATEST(started_at, updated_at)）；存量行经迁移回填
+// updated_at=started_at 后保持原始新鲜度；原地更新刷新 updated_at 使
+// 探测信号提升；无 step 返回零值；空会话列表快速返回。
+func TestStepV2Repo_LatestStepActivityAt(t *testing.T) {
+	client, rawDB := testhelper.SetupTestPG(t)
+	d := &Data{}
+	d.SetEntClientForTest(client, rawDB, loggateway.NewNoop())
+	repo := NewStepV2Repo(d, loggateway.NewNoop())
+	activity, ok := repo.(biz.SpiritStepActivityReader)
+	if !ok {
+		t.Fatal("stepV2Repo must implement biz.SpiritStepActivityReader")
+	}
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	seed := []biz.Step{
+		{ID: "st-a1", TurnID: "turn-1", TaskID: "t-1", SessionID: "team-1", SpiritSessionID: "spirit-1", Kind: biz.StepKindReply, Seq: 1, Status: biz.StepStatusCompleted, StartedAt: now.Add(-time.Hour), Version: 1},
+		{ID: "st-a2", TurnID: "turn-2", TaskID: "t-1", SessionID: "member-1", SpiritSessionID: "spirit-1", Kind: biz.StepKindReply, Seq: 2, Status: biz.StepStatusCompleted, StartedAt: now.Add(-time.Minute), Version: 1},
+		{ID: "st-other", TurnID: "turn-3", TaskID: "t-9", SessionID: "other-team", SpiritSessionID: "spirit-1", Kind: biz.StepKindReply, Seq: 3, Status: biz.StepStatusCompleted, StartedAt: now, Version: 1},
+	}
+	for i, s := range seed {
+		if _, err := repo.CreateStep(ctx, s); err != nil {
+			t.Fatalf("CreateStep[%d]: %v", i, err)
+		}
+	}
+	// 模拟迁移 20261276 回填：存量行 updated_at = started_at（CreateStep 走
+	// ent Default 会把 updated_at 填成插入时刻 ≈now，掩盖 started_at 语义，
+	// 回填恢复「既有行保留原始新鲜度」的迁移语义后再断言）。
+	if _, err := rawDB.ExecContext(ctx, `UPDATE steps_v2 SET updated_at = started_at`); err != nil {
+		t.Fatalf("backfill updated_at: %v", err)
+	}
+
+	// 团队会话树（主会话 + 成员子会话）：聚合取最新，不混入其他团队的会话。
+	latest, err := activity.LatestStepActivityAt(ctx, []string{"team-1", "member-1"})
+	if err != nil {
+		t.Fatalf("LatestStepActivityAt: %v", err)
+	}
+	if !latest.Equal(now.Add(-time.Minute)) {
+		t.Fatalf("latest=%v, want %v (member-1 step, not other-team)", latest, now.Add(-time.Minute))
+	}
+
+	// P4-2 核心新语义：原地更新（无新 step 启动）刷新 updated_at → 探测
+	// 信号提升到 ≈现在。
+	if _, err := repo.UpdateStep(ctx, biz.Step{ID: "st-a2", Content: "progress", Status: biz.StepStatusCompleted, Version: 2}); err != nil {
+		t.Fatalf("UpdateStep: %v", err)
+	}
+	bumped, err := activity.LatestStepActivityAt(ctx, []string{"team-1", "member-1"})
+	if err != nil {
+		t.Fatalf("LatestStepActivityAt after update: %v", err)
+	}
+	if bumped.Before(now) {
+		t.Fatalf("after in-place update latest=%v, want >= %v (updated_at refreshed by UpdateDefault)", bumped, now)
+	}
+
+	// 无 step 的会话集合 → 零值无错误。
+	zero, err := activity.LatestStepActivityAt(ctx, []string{"no-such-session"})
+	if err != nil {
+		t.Fatalf("LatestStepActivityAt empty: %v", err)
+	}
+	if !zero.IsZero() {
+		t.Fatalf("latest=%v, want zero for unknown sessions", zero)
+	}
+
+	// 空会话列表 → 零值无查询。
+	if v, err := activity.LatestStepActivityAt(ctx, nil); err != nil || !v.IsZero() {
+		t.Fatalf("LatestStepActivityAt(nil) = %v, %v; want zero, nil", v, err)
+	}
 }

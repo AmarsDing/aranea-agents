@@ -6,12 +6,14 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	localexec "aranea-agents/internal/agent/codeexecutor"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/wire"
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
 // ProvideTeamGraphRunCoordinator wires a singleton coordinator for team graph HITL/resume
@@ -48,5 +50,31 @@ func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teamRunReader biz.
 	return coord
 }
 
+// ProvideRunner wraps NewRunner with post-construction wiring that wire cannot
+// express through a bare constructor (precedent: ProvideTeamGraphRunCoordinator).
+// P2-1 (2026-09-03): injects the persistent heartbeat writer so team runs
+// throttle stream events into team_runs_v2.heartbeat_at.
+func ProvideRunner(
+	teamReader biz.TeamReader,
+	runReader biz.TeamRunReader,
+	runWriter biz.TeamRunWriter,
+	runTransitioner biz.TeamRunStatusTransitioner,
+	stepRepo biz.OrchestrationStepRepo,
+	deadLetter biz.TaskDeadLetterRepo,
+	usage biz.TeamUsageQuerier,
+	monitor *biz.MonitorUsecase,
+	td rt.TurnDeps,
+	skillDBRepo trpcskill.Repository,
+	codeExecFactory *localexec.Factory,
+	lg loggateway.Logger,
+	cfg RunnerConfig,
+	heartbeatWriter biz.TeamRunHeartbeatWriter,
+) *Runner {
+	r := NewRunner(teamReader, runReader, runWriter, runTransitioner, stepRepo,
+		deadLetter, usage, monitor, td, skillDBRepo, codeExecFactory, lg, cfg)
+	r.SetTeamRunHeartbeatWriter(heartbeatWriter)
+	return r
+}
+
 // ProviderSet wires team runtime.
-var ProviderSet = wire.NewSet(NewRunner, ProvideTeamGraphRunCoordinator, NewTeamRunMediator)
+var ProviderSet = wire.NewSet(ProvideRunner, ProvideTeamGraphRunCoordinator, NewTeamRunMediator)

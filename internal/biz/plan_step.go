@@ -137,6 +137,17 @@ type StepError struct {
 	FailedMember *MemberReport // 哪个 member 失败
 }
 
+// Step skip 来源标记（StepError.Code，R1 审查修复 2026-09-03）：
+// Skipped 状态本身不区分来源，ResumePlanBoard 只复活 cascade_skip 受害者；
+// confirm_denied（人工拒绝确认）与 resume(mode=skip) 的人工降级跳过均保持
+// Skipped，不被复活。
+const (
+	// StepErrCodeCascadeSkip 依赖失败级联跳过（cascadeSkip 写入）。
+	StepErrCodeCascadeSkip = "cascade_skip"
+	// StepErrCodeConfirmDenied playbook 确认被人工拒绝（skipPlaybookConfirmDenied 写入）。
+	StepErrCodeConfirmDenied = "confirm_denied"
+)
+
 // MemberReport 是单个 member 的执行报告。
 type MemberReport struct {
 	AgentKey   string

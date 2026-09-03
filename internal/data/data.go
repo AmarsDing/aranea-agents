@@ -182,6 +182,9 @@ var ProviderSet = wire.NewSet(
 	NewTeamRunV2Repo,
 	// B.10.17 execution report: latest-run stats reader (same repo, second port).
 	NewSpiritTeamRunStatsReader,
+	// P2-1 (2026-09-03): persistent heartbeat writer/reader (same repo, narrow ports).
+	NewTeamRunHeartbeatWriter,
+	NewSpiritTeamRunHeartbeatReader,
 	NewMemberSessionV2Repo,
 	NewPlanBoardV2Repo,
 	NewPlanStepV2Repo,

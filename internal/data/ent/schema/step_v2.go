@@ -42,6 +42,11 @@ func (StepV2) Fields() []ent.Field {
 		field.Bool("is_final").Default(false).Comment("reply: is this the final reply"),
 		field.Time("started_at").Default(timeNow),
 		field.Time("completed_at").Optional().Nillable(),
+		// P4-1（2026-09-03 观测面）：updated_at 由 ent 在每次写入时自动刷新
+		// （UpdateDefault），无需业务调用点改动。观测/审计可见行级新鲜度；
+		// idle 探测取 max(started_at, updated_at)（step_v2_repo.
+		// LatestStepActivityAt），覆盖「step 原地更新但无新 step」的活跃形态。
+		field.Time("updated_at").Default(timeNow).UpdateDefault(timeNow),
 		field.Int64("version").Default(0).Comment("Monotonic version for ordered upserts"),
 	}
 }

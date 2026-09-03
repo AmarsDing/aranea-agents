@@ -601,6 +601,48 @@ func TestRunCompress_forcedBypassesSuppression(t *testing.T) {
 	}
 }
 
+// --- 手动 CompactSession 空跑诚实回报（2026-09-02 LBG 验证：低于软阈的会话曾谎报 compacted:true） ---
+
+type stubAgentKeyLookup struct{ ag biz.Agent }
+
+func (s stubAgentKeyLookup) GetAgentByID(_ context.Context, _ string) (biz.Agent, error) {
+	return s.ag, nil
+}
+
+func TestCompactSession_belowThresholdReportsNotCompacted(t *testing.T) {
+	read := &stubCompressReadDeps{
+		sess: biz.Session{ID: "sess-1", ContextUsedTokens: 42}, // 远低于软阈，runCompress 早退
+	}
+	c := newSuppressTestCompressor(read, &scriptedLLMCompressor{})
+	c.agents = stubAgentKeyLookup{ag: biz.Agent{}}
+
+	res, err := c.CompactSession(context.Background(), "sess-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil || res.Compacted {
+		t.Fatalf("below-threshold manual compact must report Compacted=false, got %+v", res)
+	}
+}
+
+func TestCompactSession_staleSummaryWatermarkReportsNotCompacted(t *testing.T) {
+	read := &stubCompressReadDeps{
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 42},
+		maxSummarized: 4,
+		listSummaries: []biz.SessionSummary{{FromTurn: 1, ToTurn: 4, SummaryMarkdown: "旧摘要"}},
+	}
+	c := newSuppressTestCompressor(read, &scriptedLLMCompressor{})
+	c.agents = stubAgentKeyLookup{ag: biz.Agent{}}
+
+	res, err := c.CompactSession(context.Background(), "sess-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil || res.Compacted {
+		t.Fatalf("no new summary (to_turn watermark unmoved) must report Compacted=false, got %+v", res)
+	}
+}
+
 // --- 摘要行数累积上限（超限强制 L3） ---
 
 func newCascadeTestCompressor(read *stubCompressReadDeps, fake *scriptedLLMCompressor) *Compressor {

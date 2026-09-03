@@ -60,6 +60,9 @@ type Runner struct {
 	// 问题3c). Optional: nil skips seeding. Wired in production to
 	// biz.SpiritTeamUsecase.UpstreamDeliverableSeed.
 	upstreamSeedFn func(ctx context.Context, team biz.Team) (map[string]any, error)
+	// heartbeatWriter 是 P2-1 持久化心跳写入端口（run_heartbeat.go）。Optional:
+	// nil 时流式事件不产生心跳，biz idle 探测回退 steps.started_at 旧语义。
+	heartbeatWriter biz.TeamRunHeartbeatWriter
 	// monitor receives runner.completion events on run terminal states
 	// (Runner metrics + runner.error_rate alert data source). Optional:
 	// nil skips monitor recording (tests).
@@ -109,6 +112,16 @@ func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID,
 		return
 	}
 	r.cfg.AwaitHookProvider = fn
+}
+
+// SetTeamRunHeartbeatWriter wires the P2-1 persistent heartbeat writer.
+// runTeamTRPCFromInput throttles stream events into team_runs_v2.heartbeat_at
+// so the biz idle probe sees liveness during long single-step generations.
+func (r *Runner) SetTeamRunHeartbeatWriter(w biz.TeamRunHeartbeatWriter) {
+	if r == nil {
+		return
+	}
+	r.heartbeatWriter = w
 }
 
 // SetDeliverableGate wires the real-deliverable gate consulted by

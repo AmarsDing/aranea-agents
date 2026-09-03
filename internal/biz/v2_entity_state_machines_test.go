@@ -27,6 +27,8 @@ func TestPlanBoardStateMachine_ValidTransitions(t *testing.T) {
 		{PlanStatusExecuting, PlanBoardEventComplete, PlanStatusCompleted},
 		{PlanStatusExecuting, PlanBoardEventFail, PlanStatusFailed},
 		{PlanStatusExecuting, PlanBoardEventPartial, PlanStatusPartialFailure},
+		// F2（2026-09-03）：Failed 可经 resume 恢复续跑。
+		{PlanStatusFailed, PlanBoardEventResume, PlanStatusExecuting},
 	}
 
 	for _, tc := range cases {
@@ -44,18 +46,28 @@ func TestPlanBoardStateMachine_ValidTransitions(t *testing.T) {
 func TestPlanBoardStateMachine_InvalidTransitions(t *testing.T) {
 	sm := NewPlanBoardStateMachine()
 
-	terminalStates := []PlanStatus{PlanStatusCompleted, PlanStatusFailed, PlanStatusPartialFailure}
+	// Completed/PartialFailure 无任何出边；Failed（F2）仅接受 resume。
+	deadStates := []PlanStatus{PlanStatusCompleted, PlanStatusPartialFailure}
 	allEvents := []PlanBoardEvent{
 		PlanBoardEventExecute, PlanBoardEventFailEarly, PlanBoardEventComplete,
-		PlanBoardEventFail, PlanBoardEventPartial,
+		PlanBoardEventFail, PlanBoardEventPartial, PlanBoardEventResume,
 	}
 
-	for _, state := range terminalStates {
+	for _, state := range deadStates {
 		for _, event := range allEvents {
 			got, err := sm.Transition(state, event)
 			if err == nil {
 				t.Errorf("terminal state %q should reject event %q (got %q)", string(state), string(event), string(got))
 			}
+		}
+	}
+	// Failed 只放行 resume，其余事件一律拒绝。
+	for _, event := range allEvents {
+		if event == PlanBoardEventResume {
+			continue
+		}
+		if got, err := sm.Transition(PlanStatusFailed, event); err == nil {
+			t.Errorf("failed state should reject event %q (got %q)", string(event), string(got))
 		}
 	}
 

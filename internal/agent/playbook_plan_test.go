@@ -55,6 +55,66 @@ func TestPlanExpandsNamedPlaybookWithoutLLM(t *testing.T) {
 	}
 }
 
+// Multi-company workspaces must not let the first company's sole authorized
+// playbook hijack unrelated heavy tasks (2026-09-02: planner LLM path silently
+// dead on 3-company 108 since playbook authorization). Ambiguity fails closed:
+// org-chain requests get playbook_fill_required, heavy tasks fall to planner LLM.
+func TestPlanOrgChainMultiCompanySolePlaybookIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	repo := &stubTaskPlanRepo{}
+	impl := NewTaskPlanner(repo, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	AttachPlannerOrganizationReader(impl, &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {
+			ID: "co-1", Key: "acme", Level: "company",
+			MetadataJSON: `{"playbooks": [{"id": "software_delivery", "authorized_by": "__company_lead_acme__", "stages": [{"id": "be", "domain_path": "软件/后端"}]}]}`,
+		},
+		"co-2": {
+			ID: "co-2", Key: "media", Level: "company",
+			MetadataJSON: `{"playbooks": [{"id": "content_delivery", "authorized_by": "__company_lead_media__", "stages": [{"id": "copy", "domain_path": "创作/文案"}]}]}`,
+		},
+	}})
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-multi-co",
+		UserMessage:     "这次请按组织链走编制汇报，完成整条软件交付",
+		Mode:            "dag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.StrategyReason != biz.PlaybookFillRequiredReason {
+		t.Fatalf("multi-company sole playbook must fail closed, got reason=%s hit=%+v", plan.StrategyReason, plan.MemoryHit)
+	}
+	if len(plan.SubTasks) != 0 {
+		t.Fatalf("must not expand an ambiguous playbook: %+v", plan.SubTasks)
+	}
+}
+
+// Single-company workspaces keep the sole-playbook shortcut (regression guard).
+func TestPlanOrgChainSingleCompanySolePlaybookStillExpands(t *testing.T) {
+	t.Parallel()
+	repo := &stubTaskPlanRepo{}
+	impl := NewTaskPlanner(repo, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
+	AttachPlannerOrganizationReader(impl, &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {
+			ID: "co-1", Key: "acme", Level: "company",
+			MetadataJSON: `{"playbooks": [{"id": "software_delivery", "authorized_by": "__company_lead_acme__", "stages": [{"id": "be", "domain_path": "软件/后端"}]}]}`,
+		},
+	}})
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-single-co",
+		UserMessage:     "这次请按组织链走编制汇报，完成整条软件交付",
+		Mode:            "dag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.MemoryHit == nil || plan.MemoryHit.PlaybookID != "software_delivery" {
+		t.Fatalf("single-company sole playbook must expand, hit=%+v reason=%s", plan.MemoryHit, plan.StrategyReason)
+	}
+}
+
 func TestPlanOrgChainWithoutPlaybookDoesNotDecompose(t *testing.T) {
 	t.Parallel()
 	repo := &stubTaskPlanRepo{}

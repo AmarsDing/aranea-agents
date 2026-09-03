@@ -57,6 +57,8 @@ type StepV2 struct {
 	StartedAt time.Time `json:"started_at,omitempty"`
 	// CompletedAt holds the value of the "completed_at" field.
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// UpdatedAt holds the value of the "updated_at" field.
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Monotonic version for ordered upserts
 	Version      int64 `json:"version,omitempty"`
 	selectValues sql.SelectValues
@@ -73,7 +75,7 @@ func (*StepV2) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case stepv2.FieldID, stepv2.FieldTurnID, stepv2.FieldTaskID, stepv2.FieldSessionID, stepv2.FieldSpiritSessionID, stepv2.FieldKind, stepv2.FieldAuthorAgentKey, stepv2.FieldContent, stepv2.FieldReasoning, stepv2.FieldToolName, stepv2.FieldToolCallID, stepv2.FieldToolArgs, stepv2.FieldToolResult, stepv2.FieldToolErrorCode, stepv2.FieldNoticeType, stepv2.FieldStatus:
 			values[i] = new(sql.NullString)
-		case stepv2.FieldStartedAt, stepv2.FieldCompletedAt:
+		case stepv2.FieldStartedAt, stepv2.FieldCompletedAt, stepv2.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -217,6 +219,12 @@ func (_m *StepV2) assignValues(columns []string, values []any) error {
 				_m.CompletedAt = new(time.Time)
 				*_m.CompletedAt = value.Time
 			}
+		case stepv2.FieldUpdatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
+			} else if value.Valid {
+				_m.UpdatedAt = value.Time
+			}
 		case stepv2.FieldVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field version", values[i])
@@ -318,6 +326,9 @@ func (_m *StepV2) String() string {
 		builder.WriteString("completed_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("updated_at=")
+	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))

@@ -328,6 +328,12 @@ func (_u *StepV2Update) ClearCompletedAt() *StepV2Update {
 	return _u
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (_u *StepV2Update) SetUpdatedAt(v time.Time) *StepV2Update {
+	_u.mutation.SetUpdatedAt(v)
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *StepV2Update) SetVersion(v int64) *StepV2Update {
 	_u.mutation.ResetVersion()
@@ -356,6 +362,7 @@ func (_u *StepV2Update) Mutation() *StepV2Mutation {
 
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *StepV2Update) Save(ctx context.Context) (int, error) {
+	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -378,6 +385,14 @@ func (_u *StepV2Update) Exec(ctx context.Context) error {
 func (_u *StepV2Update) ExecX(ctx context.Context) {
 	if err := _u.Exec(ctx); err != nil {
 		panic(err)
+	}
+}
+
+// defaults sets the default values of the builder before save.
+func (_u *StepV2Update) defaults() {
+	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		v := stepv2.UpdateDefaultUpdatedAt()
+		_u.mutation.SetUpdatedAt(v)
 	}
 }
 
@@ -521,6 +536,9 @@ func (_u *StepV2Update) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.CompletedAtCleared() {
 		_spec.ClearField(stepv2.FieldCompletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.UpdatedAt(); ok {
+		_spec.SetField(stepv2.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(stepv2.FieldVersion, field.TypeInt64, value)
@@ -848,6 +866,12 @@ func (_u *StepV2UpdateOne) ClearCompletedAt() *StepV2UpdateOne {
 	return _u
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (_u *StepV2UpdateOne) SetUpdatedAt(v time.Time) *StepV2UpdateOne {
+	_u.mutation.SetUpdatedAt(v)
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *StepV2UpdateOne) SetVersion(v int64) *StepV2UpdateOne {
 	_u.mutation.ResetVersion()
@@ -889,6 +913,7 @@ func (_u *StepV2UpdateOne) Select(field string, fields ...string) *StepV2UpdateO
 
 // Save executes the query and returns the updated StepV2 entity.
 func (_u *StepV2UpdateOne) Save(ctx context.Context) (*StepV2, error) {
+	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -911,6 +936,14 @@ func (_u *StepV2UpdateOne) Exec(ctx context.Context) error {
 func (_u *StepV2UpdateOne) ExecX(ctx context.Context) {
 	if err := _u.Exec(ctx); err != nil {
 		panic(err)
+	}
+}
+
+// defaults sets the default values of the builder before save.
+func (_u *StepV2UpdateOne) defaults() {
+	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		v := stepv2.UpdateDefaultUpdatedAt()
+		_u.mutation.SetUpdatedAt(v)
 	}
 }
 
@@ -1071,6 +1104,9 @@ func (_u *StepV2UpdateOne) sqlSave(ctx context.Context) (_node *StepV2, err erro
 	}
 	if _u.mutation.CompletedAtCleared() {
 		_spec.ClearField(stepv2.FieldCompletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.UpdatedAt(); ok {
+		_spec.SetField(stepv2.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(stepv2.FieldVersion, field.TypeInt64, value)

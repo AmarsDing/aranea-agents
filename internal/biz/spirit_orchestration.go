@@ -67,6 +67,46 @@ type SpiritOrchestration struct {
 	delivery           *SpiritDelivery
 	graphSweeper       SpiritTeamGraphSweeper
 	lg                 loggateway.Logger
+	// P2-2（2026-09-03）：探测失败 strike 计数（teamID → 连续失败次数）。
+	// 惰性初始化，直构 struct（测试）零值安全。
+	probeStrikesMu   sync.Mutex
+	probeFailStrikes map[string]int
+}
+
+// errNoTeamRunToProbe 是「已调度未启动」的确定性信号（P2-2）：团队 Running
+// 但无任何运行记录——启动链断裂，重查不会改变结果。与 Temporal
+// schedule-to-start 同语义：by design 快速失败，不进重试/顺延。
+var errNoTeamRunToProbe = errors.New("team has no run session to probe")
+
+// teamProbeMaxStrikes 是 infra 类探测失败的判死阈值：连续 3 次失败
+// （≈3 个 idle 窗口的持续故障）fail-closed 判死，替代 P2-2 前的无限顺延
+// （病态团队可活到进程重启）。期间任何一次成功探测即清零。
+const teamProbeMaxStrikes = 3
+
+func (o *SpiritOrchestration) noteProbeFailure(teamID string) int {
+	o.probeStrikesMu.Lock()
+	defer o.probeStrikesMu.Unlock()
+	if o.probeFailStrikes == nil {
+		o.probeFailStrikes = make(map[string]int)
+	}
+	o.probeFailStrikes[teamID]++
+	return o.probeFailStrikes[teamID]
+}
+
+func (o *SpiritOrchestration) resetProbeFailures(teamID string) {
+	o.probeStrikesMu.Lock()
+	defer o.probeStrikesMu.Unlock()
+	delete(o.probeFailStrikes, teamID)
+}
+
+// teamCreatedOlderThan 判定团队创建时间是否已超 given 时长。CreatedAt 缺失
+// 或不可解析时返回 false——数据不全不判死。
+func teamCreatedOlderThan(team Team, d time.Duration, now time.Time) bool {
+	created, err := time.Parse(time.RFC3339, strings.TrimSpace(team.CreatedAt))
+	if err != nil {
+		return false
+	}
+	return now.Sub(created) > d
 }
 
 // SetTimeoutHandler injects the service-layer timeout handler.
@@ -189,55 +229,237 @@ func (o *SpiritOrchestration) registerTeamTimeout(ctx context.Context, cfg Paral
 	if cfg.TeamTimeoutSeconds <= 0 {
 		return
 	}
+	if cfg.TeamMaxLifetimeSeconds <= 0 {
+		// Defensive default for direct struct literals (production paths all
+		// flow through ParseParallelConfig / DefaultParallelConfig).
+		cfg.TeamMaxLifetimeSeconds = 14400
+	}
 	// Replace any previous timer so StartTeamTurn retries don't leak AfterFuncs.
 	o.timeouts.cancel(teamID)
 	// Use WithoutCancel to preserve trace/log context while detaching from request lifecycle.
 	bgCtx := context.WithoutCancel(ctx)
-	timer := time.AfterFunc(cfg.TeamTimeout(), func() {
+	o.armTeamTimeout(bgCtx, cfg, teamID, cfg.TeamTimeout())
+}
+
+// armTeamTimeout schedules the next idle-timeout check (F1, 2026-09-03
+// lbg-verify-planner 复盘): TeamTimeout is an IDLE window, not a wall-clock
+// deadline. A team whose members are still progressing is re-armed for the
+// remaining window instead of being killed mid-work.
+func (o *SpiritOrchestration) armTeamTimeout(bgCtx context.Context, cfg ParallelConfig, teamID string, after time.Duration) {
+	timer := time.AfterFunc(after, func() {
 		// If CancelTimeoutTimer already removed this entry, the team completed
 		// normally and we should not interfere.
 		if !o.timeouts.claim(teamID) {
 			return
 		}
 		safego.Go(bgCtx, "spirit-team-timeout", func() {
-			timeoutCtx, timeoutCancel := context.WithTimeout(bgCtx, cfg.TimeoutHandlerDBTimeout())
-			defer timeoutCancel()
-			team, err := o.teamUC.Get(timeoutCtx, teamID)
-			if err != nil {
-				return
-			}
-			if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled || team.Status == TeamStatusPartialFailure {
-				// partial_failure 同为终态（超时回调可能是残留定时器），不得干预。
-				return
-			}
-			if team.Status == TeamStatusPending {
-				o.lg.Info("团队仍待激活，忽略超时",
-					loggateway.StepID("spirit.team.timeout_skip_pending"),
-					loggateway.Str("team_id", teamID),
-				)
-				return
-			}
-			o.lg.Warn("团队执行超时",
-				loggateway.StepID("spirit.team.timeout"),
-				loggateway.Str("team_id", teamID),
-			)
-			if _, err := o.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed); err != nil {
-				o.lg.Warn("超时后转换团队状态失败",
-					loggateway.StepID("spirit.team.timeout_transition_err"),
-					loggateway.Str("team_id", teamID),
-					loggateway.Err(err),
-				)
-				return
-			}
-			// Notify service layer to handle dependency scheduling, event
-			// publishing, and AllDone checks — same lifecycle as a normal
-			// team failure.
-			if o.timeoutHandler != nil && team.SpiritSessionID != "" {
-				o.timeoutHandler.HandleTeamTimeout(timeoutCtx, team.SpiritSessionID, teamID)
-			}
+			o.onTeamTimeout(bgCtx, cfg, teamID)
 		})
 	})
 	o.timeouts.store(teamID, timer)
+}
+
+// onTeamTimeout decides whether the team is genuinely wedged (idle for a full
+// window or beyond the absolute lifetime ceiling) or merely long-running
+// (members still progressing → re-arm). The runner-level guards (first-byte/
+// stall budgets, no-progress auditor, token budget) own member-level liveness;
+// this timer is a backstop for a fully wedged run.
+func (o *SpiritOrchestration) onTeamTimeout(bgCtx context.Context, cfg ParallelConfig, teamID string) {
+	timeoutCtx, timeoutCancel := context.WithTimeout(bgCtx, cfg.TimeoutHandlerDBTimeout())
+	defer timeoutCancel()
+	team, err := o.teamUC.Get(timeoutCtx, teamID)
+	if err != nil {
+		// Get 失败（多为瞬时 DB 抖动）：entry 已被 claim，直接 return 会让
+		// 该团队的超时定时器永久丢失（wedged 团队只能活到进程重启）。
+		// 顺延一个窗口重查（R1 审查修复）。
+		o.lg.Warn("超时回调读取团队失败，顺延一个窗口",
+			loggateway.StepID("spirit.team.timeout_get_err"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(err),
+		)
+		o.armTeamTimeout(bgCtx, cfg, teamID, cfg.TeamTimeout())
+		return
+	}
+	if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled || team.Status == TeamStatusPartialFailure {
+		// partial_failure 同为终态（超时回调可能是残留定时器），不得干预。
+		return
+	}
+	if team.Status == TeamStatusPending {
+		o.lg.Info("团队仍待激活，忽略超时",
+			loggateway.StepID("spirit.team.timeout_skip_pending"),
+			loggateway.Str("team_id", teamID),
+		)
+		return
+	}
+	now := time.Now()
+	lastActivity, runStartedAt, probeErr := o.probeTeamActivity(timeoutCtx, teamID)
+	// 绝对兜底：单次执行尝试超过最大存活时长，无视活动直接判死。
+	// 基准为 run 启动时间；run 启动时间不可得（探测失败 / StartedAt 缺失）
+	// 时退化用团队创建时间——保证包括 probeErr 在内的任何路径都有绝对上限
+	//（R1 审查修复：此前 probeErr 路径 runStartedAt 为零值，本检查被跳过，
+	// 病态团队可无限顺延）。
+	ceilingBase := runStartedAt
+	if ceilingBase.IsZero() {
+		if created, cerr := time.Parse(time.RFC3339, strings.TrimSpace(team.CreatedAt)); cerr == nil {
+			ceilingBase = created
+		}
+	}
+	if !ceilingBase.IsZero() && now.Sub(ceilingBase) > cfg.TeamMaxLifetime() {
+		o.lg.Warn("团队超过最大存活时长，强制终止",
+			loggateway.StepID("spirit.team.max_lifetime"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("ceiling_base", ceilingBase.Format(time.RFC3339)),
+		)
+		o.failTeamOnTimeout(timeoutCtx, team)
+		return
+	}
+	if probeErr != nil {
+		// P2-2 分级（R1 审查修复接线）：
+		// (a) errNoTeamRunToProbe 是「已调度未启动」的确定性信号——Running
+		//     但无任何运行记录，启动链断裂，重查不会改变结果。创建时间已超
+		//     2×idle 窗口（宽限启动链在途）即判死。
+		if errors.Is(probeErr, errNoTeamRunToProbe) && teamCreatedOlderThan(team, 2*cfg.TeamTimeout(), now) {
+			o.lg.Warn("团队 Running 但无运行记录且已超启动宽限，判死",
+				loggateway.StepID("spirit.team.timeout_no_run"),
+				loggateway.Str("team_id", teamID),
+			)
+			o.failTeamOnTimeout(timeoutCtx, team)
+			return
+		}
+		// (b) infra 类探测失败：fail-open 顺延一个 idle 窗口重查，但记
+		//     strike——连续 ≥teamProbeMaxStrikes 次（≈3 个窗口的持续故障）
+		//     fail-closed 判死，替代无限顺延。探测成功即清零（见下）。
+		strikes := o.noteProbeFailure(teamID)
+		if strikes >= teamProbeMaxStrikes {
+			o.lg.Warn("团队活动探测连续失败，fail-closed 判死",
+				loggateway.StepID("spirit.team.timeout_probe_strikes"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Int("strikes", strikes),
+				loggateway.Err(probeErr),
+			)
+			o.failTeamOnTimeout(timeoutCtx, team)
+			return
+		}
+		o.lg.Warn("团队活动探测失败，超时顺延一个窗口",
+			loggateway.StepID("spirit.team.timeout_probe_err"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Int("strikes", strikes),
+			loggateway.Err(probeErr),
+		)
+		o.armTeamTimeout(bgCtx, cfg, teamID, cfg.TeamTimeout())
+		return
+	}
+	// 探测成功：清零连续失败计数。
+	o.resetProbeFailures(teamID)
+	if idle := now.Sub(lastActivity); idle < cfg.TeamTimeout() {
+		// 成员仍在推进：不是超时，顺延剩余窗口。DB/应用时钟偏差致 idle
+		// 为负时 remaining 会超过一个完整窗口，钳制（R1 审查修复）。
+		remaining := min(cfg.TeamTimeout()-idle, cfg.TeamTimeout())
+		o.lg.Info("团队成员仍在推进，超时顺延",
+			loggateway.StepID("spirit.team.timeout_extended"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("last_activity", lastActivity.Format(time.RFC3339)),
+			loggateway.Str("remaining", remaining.String()),
+		)
+		o.armTeamTimeout(bgCtx, cfg, teamID, remaining)
+		return
+	}
+	o.lg.Warn("团队执行超时（idle 窗口内无成员活动）",
+		loggateway.StepID("spirit.team.timeout"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("last_activity", lastActivity.Format(time.RFC3339)),
+	)
+	o.failTeamOnTimeout(timeoutCtx, team)
+}
+
+// failTeamOnTimeout transitions the team to failed and notifies the service
+// layer — the original timeout path, now reached only for genuinely idle or
+// over-ceiling teams.
+func (o *SpiritOrchestration) failTeamOnTimeout(ctx context.Context, team Team) {
+	o.resetProbeFailures(team.ID)
+	if _, err := o.teamUC.TransitionStatus(ctx, team.ID, TeamStatusFailed); err != nil {
+		o.lg.Warn("超时后转换团队状态失败",
+			loggateway.StepID("spirit.team.timeout_transition_err"),
+			loggateway.Str("team_id", team.ID),
+			loggateway.Err(err),
+		)
+		return
+	}
+	// Notify service layer to handle dependency scheduling, event
+	// publishing, and AllDone checks — same lifecycle as a normal
+	// team failure.
+	if o.timeoutHandler != nil && team.SpiritSessionID != "" {
+		o.timeoutHandler.HandleTeamTimeout(ctx, team.SpiritSessionID, team.ID)
+	}
+}
+
+// probeTeamActivity returns the team's last observed activity and the latest
+// run's start time. Activity = max(latest steps_v2 started_at across the team
+// session tree, latest run started_at). Steps are probed through the narrow
+// SpiritStepActivityReader capability when the configured SpiritStepReader
+// supports it; otherwise the probe degrades to run-start activity (bounded by
+// the lifetime ceiling).
+func (o *SpiritOrchestration) probeTeamActivity(ctx context.Context, teamID string) (lastActivity, runStartedAt time.Time, err error) {
+	runs, err := o.teamUC.ListRuns(ctx, teamID, 1)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if len(runs) == 0 || strings.TrimSpace(runs[0].SessionID) == "" {
+		return time.Time{}, time.Time{}, fmt.Errorf("%w: team %s", errNoTeamRunToProbe, teamID)
+	}
+	run := runs[0]
+	runStartedAt = parseTeamRunStartedAt(run.StartedAt)
+	lastActivity = runStartedAt
+	var activityReader SpiritStepActivityReader
+	if o.delivery != nil {
+		activityReader, _ = o.delivery.stepReader.(SpiritStepActivityReader)
+	}
+	if activityReader == nil {
+		return lastActivity, runStartedAt, nil
+	}
+	sessionIDs := []string{run.SessionID}
+	children, childErr := o.sessionUC.ListChildSessions(ctx, run.SessionID)
+	if childErr != nil {
+		return time.Time{}, runStartedAt, childErr
+	}
+	for _, child := range children {
+		if child.ID != "" {
+			sessionIDs = append(sessionIDs, child.ID)
+		}
+	}
+	latest, stepErr := activityReader.LatestStepActivityAt(ctx, sessionIDs)
+	if stepErr != nil {
+		return time.Time{}, runStartedAt, stepErr
+	}
+	if latest.After(lastActivity) {
+		lastActivity = latest
+	}
+	// P2-1（2026-09-03 持久化心跳）：runner 流式节流写 team_runs_v2.heartbeat_at，
+	// 取 max(steps, heartbeat) 作为活跃信号——成员单 step 长流式生成（如 32k
+	// 报告，期间无新 step 启动）不再被误判 idle。心跳读取失败 fail-open 降级
+	// 为 steps-only 语义（心跳是增强信号，不是主探测路径）。
+	if o.delivery != nil && o.delivery.heartbeatReader != nil {
+		if hb, hbErr := o.delivery.heartbeatReader.LatestTeamRunHeartbeat(ctx, run.SessionID); hbErr != nil {
+			o.lg.Warn("团队心跳读取失败，降级为 steps-only 探测",
+				loggateway.StepID("spirit.team.heartbeat_probe_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(hbErr),
+			)
+		} else if hb.After(lastActivity) {
+			lastActivity = hb
+		}
+	}
+	return lastActivity, runStartedAt, nil
+}
+
+// parseTeamRunStartedAt parses the run started_at column; empty or invalid
+// yields zero (the ceiling check then skips while the idle probe still applies).
+func parseTeamRunStartedAt(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(s))
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 func (o *SpiritOrchestration) BuildCascadeBlockedResults(ctx context.Context, teams []Team) []TeamSynthesisResult {

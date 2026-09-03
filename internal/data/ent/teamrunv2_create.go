@@ -151,6 +151,20 @@ func (_c *TeamRunV2Create) SetNillableError(v *string) *TeamRunV2Create {
 	return _c
 }
 
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (_c *TeamRunV2Create) SetHeartbeatAt(v time.Time) *TeamRunV2Create {
+	_c.mutation.SetHeartbeatAt(v)
+	return _c
+}
+
+// SetNillableHeartbeatAt sets the "heartbeat_at" field if the given value is not nil.
+func (_c *TeamRunV2Create) SetNillableHeartbeatAt(v *time.Time) *TeamRunV2Create {
+	if v != nil {
+		_c.SetHeartbeatAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *TeamRunV2Create) SetID(v string) *TeamRunV2Create {
 	_c.mutation.SetID(v)
@@ -369,6 +383,10 @@ func (_c *TeamRunV2Create) createSpec() (*TeamRunV2, *sqlgraph.CreateSpec) {
 		_spec.SetField(teamrunv2.FieldError, field.TypeString, value)
 		_node.Error = value
 	}
+	if value, ok := _c.mutation.HeartbeatAt(); ok {
+		_spec.SetField(teamrunv2.FieldHeartbeatAt, field.TypeTime, value)
+		_node.HeartbeatAt = &value
+	}
 	return _node, _spec
 }
 
@@ -586,6 +604,24 @@ func (u *TeamRunV2Upsert) SetError(v string) *TeamRunV2Upsert {
 // UpdateError sets the "error" field to the value that was provided on create.
 func (u *TeamRunV2Upsert) UpdateError() *TeamRunV2Upsert {
 	u.SetExcluded(teamrunv2.FieldError)
+	return u
+}
+
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (u *TeamRunV2Upsert) SetHeartbeatAt(v time.Time) *TeamRunV2Upsert {
+	u.Set(teamrunv2.FieldHeartbeatAt, v)
+	return u
+}
+
+// UpdateHeartbeatAt sets the "heartbeat_at" field to the value that was provided on create.
+func (u *TeamRunV2Upsert) UpdateHeartbeatAt() *TeamRunV2Upsert {
+	u.SetExcluded(teamrunv2.FieldHeartbeatAt)
+	return u
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (u *TeamRunV2Upsert) ClearHeartbeatAt() *TeamRunV2Upsert {
+	u.SetNull(teamrunv2.FieldHeartbeatAt)
 	return u
 }
 
@@ -830,6 +866,27 @@ func (u *TeamRunV2UpsertOne) SetError(v string) *TeamRunV2UpsertOne {
 func (u *TeamRunV2UpsertOne) UpdateError() *TeamRunV2UpsertOne {
 	return u.Update(func(s *TeamRunV2Upsert) {
 		s.UpdateError()
+	})
+}
+
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (u *TeamRunV2UpsertOne) SetHeartbeatAt(v time.Time) *TeamRunV2UpsertOne {
+	return u.Update(func(s *TeamRunV2Upsert) {
+		s.SetHeartbeatAt(v)
+	})
+}
+
+// UpdateHeartbeatAt sets the "heartbeat_at" field to the value that was provided on create.
+func (u *TeamRunV2UpsertOne) UpdateHeartbeatAt() *TeamRunV2UpsertOne {
+	return u.Update(func(s *TeamRunV2Upsert) {
+		s.UpdateHeartbeatAt()
+	})
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (u *TeamRunV2UpsertOne) ClearHeartbeatAt() *TeamRunV2UpsertOne {
+	return u.Update(func(s *TeamRunV2Upsert) {
+		s.ClearHeartbeatAt()
 	})
 }
 
@@ -1241,6 +1298,27 @@ func (u *TeamRunV2UpsertBulk) SetError(v string) *TeamRunV2UpsertBulk {
 func (u *TeamRunV2UpsertBulk) UpdateError() *TeamRunV2UpsertBulk {
 	return u.Update(func(s *TeamRunV2Upsert) {
 		s.UpdateError()
+	})
+}
+
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (u *TeamRunV2UpsertBulk) SetHeartbeatAt(v time.Time) *TeamRunV2UpsertBulk {
+	return u.Update(func(s *TeamRunV2Upsert) {
+		s.SetHeartbeatAt(v)
+	})
+}
+
+// UpdateHeartbeatAt sets the "heartbeat_at" field to the value that was provided on create.
+func (u *TeamRunV2UpsertBulk) UpdateHeartbeatAt() *TeamRunV2UpsertBulk {
+	return u.Update(func(s *TeamRunV2Upsert) {
+		s.UpdateHeartbeatAt()
+	})
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (u *TeamRunV2UpsertBulk) ClearHeartbeatAt() *TeamRunV2UpsertBulk {
+	return u.Update(func(s *TeamRunV2Upsert) {
+		s.ClearHeartbeatAt()
 	})
 }
 

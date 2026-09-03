@@ -3049,7 +3049,7 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 		biz.WithDeptMailbox(deptMailbox))
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, deptMailbox *biz.DeptMailboxUsecase, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, artifactRepo biz.ArtifactRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, deptMailbox *biz.DeptMailboxUsecase, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, heartbeatReader biz.SpiritTeamRunHeartbeatReader, sessionRT *araneasession.Runtime, sysRepo biz.SystemSettingRepo, artifactRepo biz.ArtifactRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
@@ -3059,6 +3059,8 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithSpiritDeptMailbox(deptMailbox),
 		biz.WithSpiritStepReader(stepReader),
 		biz.WithSpiritTeamRunStatsReader(runStatsReader),
+		// P2-1（2026-09-03）：idle 探测的持久化心跳信号源。
+		biz.WithSpiritTeamRunHeartbeatReader(heartbeatReader),
 		biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)),
 		biz.WithTeamInboxFS(service.NewTeamInboxFS(sysRepo)),
 		// S06 产物可见性：交付物文档桥接为会话 artifact，路径按公开根映射。

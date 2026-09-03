@@ -101559,6 +101559,7 @@ type StepV2Mutation struct {
 	is_final            *bool
 	started_at          *time.Time
 	completed_at        *time.Time
+	updated_at          *time.Time
 	version             *int64
 	addversion          *int64
 	clearedFields       map[string]struct{}
@@ -102444,6 +102445,42 @@ func (m *StepV2Mutation) ResetCompletedAt() {
 	delete(m.clearedFields, stepv2.FieldCompletedAt)
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (m *StepV2Mutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *StepV2Mutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the StepV2 entity.
+// If the StepV2 object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StepV2Mutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *StepV2Mutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
 // SetVersion sets the "version" field.
 func (m *StepV2Mutation) SetVersion(i int64) {
 	m.version = &i
@@ -102534,7 +102571,7 @@ func (m *StepV2Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *StepV2Mutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.turn_id != nil {
 		fields = append(fields, stepv2.FieldTurnID)
 	}
@@ -102595,6 +102632,9 @@ func (m *StepV2Mutation) Fields() []string {
 	if m.completed_at != nil {
 		fields = append(fields, stepv2.FieldCompletedAt)
 	}
+	if m.updated_at != nil {
+		fields = append(fields, stepv2.FieldUpdatedAt)
+	}
 	if m.version != nil {
 		fields = append(fields, stepv2.FieldVersion)
 	}
@@ -102646,6 +102686,8 @@ func (m *StepV2Mutation) Field(name string) (ent.Value, bool) {
 		return m.StartedAt()
 	case stepv2.FieldCompletedAt:
 		return m.CompletedAt()
+	case stepv2.FieldUpdatedAt:
+		return m.UpdatedAt()
 	case stepv2.FieldVersion:
 		return m.Version()
 	}
@@ -102697,6 +102739,8 @@ func (m *StepV2Mutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStartedAt(ctx)
 	case stepv2.FieldCompletedAt:
 		return m.OldCompletedAt(ctx)
+	case stepv2.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
 	case stepv2.FieldVersion:
 		return m.OldVersion(ctx)
 	}
@@ -102847,6 +102891,13 @@ func (m *StepV2Mutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCompletedAt(v)
+		return nil
+	case stepv2.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
 		return nil
 	case stepv2.FieldVersion:
 		v, ok := value.(int64)
@@ -103011,6 +103062,9 @@ func (m *StepV2Mutation) ResetField(name string) error {
 		return nil
 	case stepv2.FieldCompletedAt:
 		m.ResetCompletedAt()
+		return nil
+	case stepv2.FieldUpdatedAt:
+		m.ResetUpdatedAt()
 		return nil
 	case stepv2.FieldVersion:
 		m.ResetVersion()
@@ -112853,6 +112907,7 @@ type TeamRunV2Mutation struct {
 	version           *int64
 	addversion        *int64
 	error             *string
+	heartbeat_at      *time.Time
 	clearedFields     map[string]struct{}
 	done              bool
 	oldValue          func(context.Context) (*TeamRunV2, error)
@@ -113477,6 +113532,55 @@ func (m *TeamRunV2Mutation) ResetError() {
 	m.error = nil
 }
 
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (m *TeamRunV2Mutation) SetHeartbeatAt(t time.Time) {
+	m.heartbeat_at = &t
+}
+
+// HeartbeatAt returns the value of the "heartbeat_at" field in the mutation.
+func (m *TeamRunV2Mutation) HeartbeatAt() (r time.Time, exists bool) {
+	v := m.heartbeat_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeartbeatAt returns the old "heartbeat_at" field's value of the TeamRunV2 entity.
+// If the TeamRunV2 object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamRunV2Mutation) OldHeartbeatAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeartbeatAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeartbeatAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeartbeatAt: %w", err)
+	}
+	return oldValue.HeartbeatAt, nil
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (m *TeamRunV2Mutation) ClearHeartbeatAt() {
+	m.heartbeat_at = nil
+	m.clearedFields[teamrunv2.FieldHeartbeatAt] = struct{}{}
+}
+
+// HeartbeatAtCleared returns if the "heartbeat_at" field was cleared in this mutation.
+func (m *TeamRunV2Mutation) HeartbeatAtCleared() bool {
+	_, ok := m.clearedFields[teamrunv2.FieldHeartbeatAt]
+	return ok
+}
+
+// ResetHeartbeatAt resets all changes to the "heartbeat_at" field.
+func (m *TeamRunV2Mutation) ResetHeartbeatAt() {
+	m.heartbeat_at = nil
+	delete(m.clearedFields, teamrunv2.FieldHeartbeatAt)
+}
+
 // Where appends a list predicates to the TeamRunV2Mutation builder.
 func (m *TeamRunV2Mutation) Where(ps ...predicate.TeamRunV2) {
 	m.predicates = append(m.predicates, ps...)
@@ -113511,7 +113615,7 @@ func (m *TeamRunV2Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamRunV2Mutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.team_stage_id != nil {
 		fields = append(fields, teamrunv2.FieldTeamStageID)
 	}
@@ -113548,6 +113652,9 @@ func (m *TeamRunV2Mutation) Fields() []string {
 	if m.error != nil {
 		fields = append(fields, teamrunv2.FieldError)
 	}
+	if m.heartbeat_at != nil {
+		fields = append(fields, teamrunv2.FieldHeartbeatAt)
+	}
 	return fields
 }
 
@@ -113580,6 +113687,8 @@ func (m *TeamRunV2Mutation) Field(name string) (ent.Value, bool) {
 		return m.Version()
 	case teamrunv2.FieldError:
 		return m.Error()
+	case teamrunv2.FieldHeartbeatAt:
+		return m.HeartbeatAt()
 	}
 	return nil, false
 }
@@ -113613,6 +113722,8 @@ func (m *TeamRunV2Mutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldVersion(ctx)
 	case teamrunv2.FieldError:
 		return m.OldError(ctx)
+	case teamrunv2.FieldHeartbeatAt:
+		return m.OldHeartbeatAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown TeamRunV2 field %s", name)
 }
@@ -113706,6 +113817,13 @@ func (m *TeamRunV2Mutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetError(v)
 		return nil
+	case teamrunv2.FieldHeartbeatAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeartbeatAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown TeamRunV2 field %s", name)
 }
@@ -113769,6 +113887,9 @@ func (m *TeamRunV2Mutation) ClearedFields() []string {
 	if m.FieldCleared(teamrunv2.FieldCompletedAt) {
 		fields = append(fields, teamrunv2.FieldCompletedAt)
 	}
+	if m.FieldCleared(teamrunv2.FieldHeartbeatAt) {
+		fields = append(fields, teamrunv2.FieldHeartbeatAt)
+	}
 	return fields
 }
 
@@ -113788,6 +113909,9 @@ func (m *TeamRunV2Mutation) ClearField(name string) error {
 		return nil
 	case teamrunv2.FieldCompletedAt:
 		m.ClearCompletedAt()
+		return nil
+	case teamrunv2.FieldHeartbeatAt:
+		m.ClearHeartbeatAt()
 		return nil
 	}
 	return fmt.Errorf("unknown TeamRunV2 nullable field %s", name)
@@ -113832,6 +113956,9 @@ func (m *TeamRunV2Mutation) ResetField(name string) error {
 		return nil
 	case teamrunv2.FieldError:
 		m.ResetError()
+		return nil
+	case teamrunv2.FieldHeartbeatAt:
+		m.ResetHeartbeatAt()
 		return nil
 	}
 	return fmt.Errorf("unknown TeamRunV2 field %s", name)

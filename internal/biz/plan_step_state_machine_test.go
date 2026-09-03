@@ -18,6 +18,10 @@ func TestPlanStep_Transition_Valid(t *testing.T) {
 		{"running to partial_failure", PlanStepStatusRunning, PlanStepStatusPartialFailure},
 		{"failed to running (retry)", PlanStepStatusFailed, PlanStepStatusRunning},
 		{"partial_failure to running (retry)", PlanStepStatusPartialFailure, PlanStepStatusRunning},
+		// F2（2026-09-03）：resume 恢复边。
+		{"failed to pending (resume retry)", PlanStepStatusFailed, PlanStepStatusPending},
+		{"failed to skipped (resume skip)", PlanStepStatusFailed, PlanStepStatusSkipped},
+		{"skipped to pending (resume revive)", PlanStepStatusSkipped, PlanStepStatusPending},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

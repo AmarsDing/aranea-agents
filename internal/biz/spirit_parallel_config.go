@@ -10,12 +10,23 @@ import (
 type ParallelConfig struct {
 	MaxConcurrentTeams int `json:"max_concurrent_teams"`
 	MaxTeamConcurrency int `json:"max_team_concurrency"`
-	// TeamTimeoutSeconds is the maximum duration a team is allowed to run
-	// after StartTeamTurn. The AfterFunc is registered at activation, not
-	// AssembleTeam, so pending DAG dependents do not time out while waiting.
+	// TeamTimeoutSeconds is the IDLE window for a running team (2026-09-03 F1,
+	// lbg-verify-planner 复盘): the timeout fires only when no member activity
+	// (steps_v2 started_at across the team session tree) has been observed for
+	// this long. A team whose members are still progressing is re-armed for the
+	// remaining window instead of being killed mid-work — the runner-level
+	// guards (first-byte/stall budgets, no-progress auditor, token budget) own
+	// member-level liveness; this timer is a backstop for a fully wedged run.
+	// The AfterFunc is registered at activation, not AssembleTeam, so pending
+	// DAG dependents do not time out while waiting.
 	TeamTimeoutSeconds int `json:"team_timeout_seconds"`
-	AutoArchiveSeconds int `json:"auto_archive_seconds"`
-	MaxSessionDepth    int `json:"max_session_depth"`
+	// TeamMaxLifetimeSeconds is the absolute ceiling for one team execution
+	// attempt, measured from the latest run's started_at. It bounds the
+	// fail-open extension path (probe errors / continuous activity) so a team
+	// can never run forever. Default 14400 (4h).
+	TeamMaxLifetimeSeconds int `json:"team_max_lifetime_seconds"`
+	AutoArchiveSeconds     int `json:"auto_archive_seconds"`
+	MaxSessionDepth        int `json:"max_session_depth"`
 	// TimeoutHandlerDBTimeoutSec is the maximum duration for DB operations
 	// inside the timeout callback goroutine (default 30s).
 	TimeoutHandlerDBTimeoutSec int `json:"timeout_handler_db_timeout_sec"`
@@ -26,6 +37,7 @@ func DefaultParallelConfig() ParallelConfig {
 		MaxConcurrentTeams:         3,
 		MaxTeamConcurrency:         2,
 		TeamTimeoutSeconds:         600,
+		TeamMaxLifetimeSeconds:     14400,
 		AutoArchiveSeconds:         3600,
 		MaxSessionDepth:            2,
 		TimeoutHandlerDBTimeoutSec: 30,
@@ -68,6 +80,11 @@ func ParseParallelConfig(extraJSON string, lg loggateway.Logger) ParallelConfig 
 
 func (c ParallelConfig) TeamTimeout() time.Duration {
 	return time.Duration(c.TeamTimeoutSeconds) * time.Second
+}
+
+// TeamMaxLifetime returns the absolute ceiling for one team execution attempt.
+func (c ParallelConfig) TeamMaxLifetime() time.Duration {
+	return time.Duration(c.TeamMaxLifetimeSeconds) * time.Second
 }
 
 func (c ParallelConfig) AutoArchiveAfter() time.Duration {

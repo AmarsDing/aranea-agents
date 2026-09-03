@@ -53,6 +53,8 @@ const (
 	FieldStartedAt = "started_at"
 	// FieldCompletedAt holds the string denoting the completed_at field in the database.
 	FieldCompletedAt = "completed_at"
+	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
+	FieldUpdatedAt = "updated_at"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// Table holds the table name of the stepv2 in the database.
@@ -82,6 +84,7 @@ var Columns = []string{
 	FieldIsFinal,
 	FieldStartedAt,
 	FieldCompletedAt,
+	FieldUpdatedAt,
 	FieldVersion,
 }
 
@@ -146,6 +149,10 @@ var (
 	DefaultIsFinal bool
 	// DefaultStartedAt holds the default value on creation for the "started_at" field.
 	DefaultStartedAt func() time.Time
+	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
+	DefaultUpdatedAt func() time.Time
+	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
+	UpdateDefaultUpdatedAt func() time.Time
 	// DefaultVersion holds the default value on creation for the "version" field.
 	DefaultVersion int64
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -258,6 +265,11 @@ func ByStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByCompletedAt orders the results by the completed_at field.
 func ByCompletedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCompletedAt, opts...).ToFunc()
+}
+
+// ByUpdatedAt orders the results by the updated_at field.
+func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
 
 // ByVersion orders the results by the version field.

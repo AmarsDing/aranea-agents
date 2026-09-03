@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -20,8 +21,10 @@ type teamRunV2Repo struct {
 }
 
 var (
-	_ biz.TeamRunV2Repo            = (*teamRunV2Repo)(nil)
-	_ biz.SpiritTeamRunStatsReader = (*teamRunV2Repo)(nil)
+	_ biz.TeamRunV2Repo                = (*teamRunV2Repo)(nil)
+	_ biz.SpiritTeamRunStatsReader     = (*teamRunV2Repo)(nil)
+	_ biz.TeamRunHeartbeatWriter       = (*teamRunV2Repo)(nil)
+	_ biz.SpiritTeamRunHeartbeatReader = (*teamRunV2Repo)(nil)
 )
 
 // NewTeamRunV2Repo creates a new TeamRunV2Repo.
@@ -34,6 +37,18 @@ func NewTeamRunV2Repo(d *Data, lg loggateway.Logger) biz.TeamRunV2Repo {
 // stats-reader port consumed by the execution report (B.10.17). Returned as
 // the biz interface directly so Wire needs no Bind.
 func NewSpiritTeamRunStatsReader(d *Data, lg loggateway.Logger) biz.SpiritTeamRunStatsReader {
+	return &teamRunV2Repo{data: d, lg: lg.With(loggateway.Domain("TEAM_RUN_V2"))}
+}
+
+// NewTeamRunHeartbeatWriter exposes the P2-1 heartbeat writer port (runner
+// stream throttling target). Returned as the biz interface directly.
+func NewTeamRunHeartbeatWriter(d *Data, lg loggateway.Logger) biz.TeamRunHeartbeatWriter {
+	return &teamRunV2Repo{data: d, lg: lg.With(loggateway.Domain("TEAM_RUN_V2"))}
+}
+
+// NewSpiritTeamRunHeartbeatReader exposes the P2-1 heartbeat reader port
+// (biz idle probe). Returned as the biz interface directly.
+func NewSpiritTeamRunHeartbeatReader(d *Data, lg loggateway.Logger) biz.SpiritTeamRunHeartbeatReader {
 	return &teamRunV2Repo{data: d, lg: lg.With(loggateway.Domain("TEAM_RUN_V2"))}
 }
 
@@ -255,12 +270,53 @@ func (r *teamRunV2Repo) UpsertTeamRun(ctx context.Context, tr biz.TeamRun) (biz.
 	return entTeamRunV2ToBiz(row), nil
 }
 
+// TouchTeamRunHeartbeat implements biz.TeamRunHeartbeatWriter（P2-1）。
+// 单列 UPDATE，无版本守卫：心跳是单调时间戳，last-writer-wins 无丢序风险；
+// 不与 sequencer 的全行版本化 Upsert 竞争。
+func (r *teamRunV2Repo) TouchTeamRunHeartbeat(ctx context.Context, runID string, at time.Time) error {
+	if r == nil || r.data == nil {
+		return fmt.Errorf("team run v2 repo: database not configured")
+	}
+	if strings.TrimSpace(runID) == "" {
+		return fmt.Errorf("team run v2 repo: empty run id")
+	}
+	return entErrToBizErr(r.data.RW().Write(ctx).TeamRunV2.UpdateOneID(runID).
+		SetHeartbeatAt(at).
+		Exec(ctx), "TEAM_RUN_V2")
+}
+
+// LatestTeamRunHeartbeat implements biz.SpiritTeamRunHeartbeatReader（P2-1）。
+// team_runs_v2.session_id = 团队会话 ID（runner 创建 run 时落）。无心跳记录
+// 返回零值——探测回退 steps.started_at 语义。
+func (r *teamRunV2Repo) LatestTeamRunHeartbeat(ctx context.Context, sessionID string) (time.Time, error) {
+	if r == nil || r.data == nil {
+		return time.Time{}, fmt.Errorf("team run v2 repo: database not configured")
+	}
+	rows, err := r.data.RW().Read(ctx).TeamRunV2.Query().
+		Where(teamrunv2.SessionIDEQ(sessionID), teamrunv2.HeartbeatAtNotNil()).
+		Order(ent.Desc(teamrunv2.FieldHeartbeatAt)).
+		Limit(1).
+		All(ctx)
+	if err != nil {
+		return time.Time{}, entErrToBizErr(err, "TEAM_RUN_V2")
+	}
+	if len(rows) == 0 || rows[0].HeartbeatAt == nil {
+		return time.Time{}, nil
+	}
+	return *rows[0].HeartbeatAt, nil
+}
+
 // entTeamRunV2ToBiz converts an Ent TeamRunV2 row to biz.TeamRun.
 func entTeamRunV2ToBiz(row *ent.TeamRunV2) biz.TeamRun {
 	var completedAt *time.Time
 	if row.CompletedAt != nil {
 		t := *row.CompletedAt
 		completedAt = &t
+	}
+	var heartbeatAt *time.Time
+	if row.HeartbeatAt != nil {
+		t := *row.HeartbeatAt
+		heartbeatAt = &t
 	}
 	return biz.TeamRun{
 		ID:              row.ID,
@@ -276,6 +332,7 @@ func entTeamRunV2ToBiz(row *ent.TeamRunV2) biz.TeamRun {
 		Seq:             row.Seq,
 		Version:         row.Version,
 		Error:           row.Error,
+		HeartbeatAt:     heartbeatAt,
 	}
 }
 

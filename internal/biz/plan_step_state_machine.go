@@ -20,9 +20,15 @@ var planStepTransitions = map[PlanStepStatus][]PlanStepStatus{
 		PlanStepStatusSkipped,
 		PlanStepStatusPartialFailure,
 	},
-	PlanStepStatusCompleted:      {},                      // terminal
-	PlanStepStatusFailed:         {PlanStepStatusRunning}, // 允许重试
-	PlanStepStatusSkipped:        {},                      // terminal
+	PlanStepStatusCompleted: {}, // terminal
+	PlanStepStatusFailed: {
+		PlanStepStatusRunning, // F2：executor 自动重试（原地 Failed→Running）
+		PlanStepStatusPending, // F2 resume(retry)：重排队，由 dispatchReadyPending 统一调度
+		PlanStepStatusSkipped, // F2 resume(skip)：人工跳过降级，放行下游
+	},
+	PlanStepStatusSkipped: {
+		PlanStepStatusPending, // F2 resume：撤销 cascade skip，重排队
+	},
 	PlanStepStatusPartialFailure: {PlanStepStatusRunning}, // 允许重试
 }
 
@@ -55,12 +61,8 @@ func (s *PlanStep) CanTransition(to PlanStepStatus) bool {
 	return false
 }
 
-// IsTerminal 返回当前状态是否为终态。
+// IsTerminal 返回当前状态是否为终态（无出边）。
+// F2（2026-09-03）：Skipped 不再是终态——resume 可将其撤销回 Pending。
 func (s PlanStepStatus) IsTerminal() bool {
-	switch s {
-	case PlanStepStatusCompleted, PlanStepStatusSkipped:
-		return true
-	default:
-		return false
-	}
+	return s == PlanStepStatusCompleted
 }

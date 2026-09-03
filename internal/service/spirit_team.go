@@ -266,7 +266,13 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	turnCtx := ctx
 	if spiritSessionID != "" && s.team.SpiritUC != nil {
 		resolvedCfg := s.team.SpiritUC.GetParallelConfig(ctx, spiritSessionID)
-		if timeout := resolvedCfg.TeamTimeout(); timeout > 0 {
+		// F1（2026-09-03 lbg-verify-planner 复盘）：turn ctx 改用绝对存活上限
+		// （maxLifetime，默认 4h）而非 idle 窗口——600s wall-clock 曾在成员
+		// LLM 首字节重试预算（~213s）未耗尽时掐断执行中团队。成员级活性由
+		// runner 守卫链（first-byte/stall/no-progress/token budget）负责，
+		// 团队级 idle 判死由 biz AfterFunc 探测负责；此处仅作 goroutine
+		// 泄漏的绝对兜底。
+		if timeout := resolvedCfg.TeamMaxLifetime(); timeout > 0 {
 			var cancel context.CancelFunc
 			turnCtx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
@@ -368,6 +374,9 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	// 为 failed —— 「只提问/只说话」不是产出，不允许无交付物的成功。翻转后
 	// 全链路走既有 failed 路径：team 标 failed、级联调度下游（anyDepFailed
 	// 级联失败）、发布 TeamStageFailedEvent、NotifyTeamCompletion(success=false)。
+	// P1-4（2026-09-03 salvage）：区分「门翻转 failed」与「runner 执行失败」——
+	// 前者（无交付物/验证门拒绝）是 fail-closed 语义，不得被 salvage 救回。
+	gateFlipped := false
 	if status == biz.TeamStatusCompleted && team.DagNodeID != "" {
 		has, gateErr := s.team.SpiritUC.HasRealDeliverable(ctx, team)
 		if gateErr != nil {
@@ -395,6 +404,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			switch {
 			case vErr != nil:
 				status = biz.TeamStatusFailed
+				gateFlipped = true
 				errMsg = fmt.Sprintf("验证门执行失败（fail-closed）：%v", vErr)
 				s.lg.Warn("F9 验证门执行错误，翻转为 failed",
 					loggateway.StepID("spirit.team.verification_gate"),
@@ -403,6 +413,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 				)
 			case !approved:
 				status = biz.TeamStatusFailed
+				gateFlipped = true
 				errMsg = fmt.Sprintf("验证门拒绝：%s", strings.Join(reasons, "；"))
 				s.lg.Info("F9 验证门拒绝，翻转为 failed",
 					loggateway.StepID("spirit.team.verification_gate"),
@@ -417,14 +428,49 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	// 成员有执行失败证据（与 resolveMemberOutcomeStatus 同源），团队状态从
 	// completed 收敛为 partial_failure。调度语义保持成功（下游照常激活、
 	// 可归档、可重试），仅状态展示区分「部分失败」。
+	// P1-3（2026-09-03 quorum 收敛）：全体成员均带失败证据 = 团队全灭——
+	// 交付物不含任何成员实质产出（仅合成者独角戏），收敛为 failed 而非
+	// partial_failure。临界成员（合成者）失败已在图级=团队失败，不进此分支。
 	if status == biz.TeamStatusCompleted {
-		if failedN := s.countFailedEvidenceMembers(ctx, teamID); failedN > 0 {
-			status = biz.TeamStatusPartialFailure
-			s.lg.Info("团队完成但存在失败成员，收敛为 partial_failure",
-				loggateway.StepID("spirit.team.partial_failure"),
+		if failedN, totalN := s.countFailedEvidenceMembers(ctx, teamID); failedN > 0 {
+			if totalN > 0 && failedN >= totalN {
+				status = biz.TeamStatusFailed
+				// 全灭翻转与交付物/验证门同为 fail-closed 语义：置 gateFlipped
+				// 防止下方 P1-4 salvage（交付物存在）将其救回 partial_failure。
+				gateFlipped = true
+				errMsg = fmt.Sprintf("全体成员（%d/%d）均有执行失败证据，交付物无实质成员产出，收敛为 failed", failedN, totalN)
+				s.lg.Info("团队完成但全体成员有失败证据，收敛为 failed（quorum）",
+					loggateway.StepID("spirit.team.quorum_failed"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Int("failed_members", failedN),
+					loggateway.Int("total_members", totalN),
+				)
+			} else {
+				status = biz.TeamStatusPartialFailure
+				s.lg.Info("团队完成但存在失败成员，收敛为 partial_failure",
+					loggateway.StepID("spirit.team.partial_failure"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Int("failed_members", failedN),
+					loggateway.Int("total_members", totalN),
+				)
+			}
+		}
+	}
+
+	// P1-4（2026-09-03 salvage，LangGraph error_handler 模式的 team 级镜像）：
+	// runner 报 failed（图执行失败，如 finish 合成节点重试耗尽）但图 state 中
+	// 已存在成员真实交付物时，收敛为 partial_failure——「有产出不浪费」，任务
+	// 导向。门翻转 failed（gateFlipped：无交付物/验证门拒绝）是 fail-closed
+	// 语义，明确排除在 salvage 之外。失败信息保留在 errMsg 供下游展示。
+	if status == biz.TeamStatusFailed && !gateFlipped && team.DagNodeID != "" {
+		if has, salvErr := s.team.SpiritUC.HasRealDeliverable(ctx, team); salvErr == nil && has {
+			s.lg.Info("团队执行失败但存在成员真实交付物，salvage 为 partial_failure",
+				loggateway.StepID("spirit.team.salvage"),
 				loggateway.Str("team_id", teamID),
-				loggateway.Int("failed_members", failedN),
+				loggateway.Str("original_error", errMsg),
 			)
+			status = biz.TeamStatusPartialFailure
+			errMsg = "团队未完整执行（合成/收尾环节失败），交付物为成员原始产出：" + errMsg
 		}
 	}
 
@@ -689,16 +735,28 @@ func (s *TeamStarter) handleStandaloneTeamTurnResult(
 	teamID := team.ID
 	s.team.SpiritUC.CancelTimeoutTimer(teamID)
 
-	// F10 部分失败收敛（与 AutoCreated 路径同一语义）：completed 且 ≥1 成员
-	// 有执行失败证据 → partial_failure。
+	// F10 部分失败收敛 + P1-3 quorum（与 AutoCreated 路径同一语义）：
+	// completed 且 ≥1 成员有执行失败证据 → partial_failure；全体成员均带
+	// 失败证据（全灭）→ failed。
 	if status == biz.TeamStatusCompleted {
-		if failedN := s.countFailedEvidenceMembers(ctx, teamID); failedN > 0 {
-			status = biz.TeamStatusPartialFailure
-			s.lg.Info("standalone 团队完成但存在失败成员，收敛为 partial_failure",
-				loggateway.StepID("spirit.standalone.partial_failure"),
-				loggateway.Str("team_id", teamID),
-				loggateway.Int("failed_members", failedN),
-			)
+		if failedN, totalN := s.countFailedEvidenceMembers(ctx, teamID); failedN > 0 {
+			if totalN > 0 && failedN >= totalN {
+				status = biz.TeamStatusFailed
+				s.lg.Info("standalone 团队全体成员有失败证据，收敛为 failed（quorum）",
+					loggateway.StepID("spirit.standalone.quorum_failed"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Int("failed_members", failedN),
+					loggateway.Int("total_members", totalN),
+				)
+			} else {
+				status = biz.TeamStatusPartialFailure
+				s.lg.Info("standalone 团队完成但存在失败成员，收敛为 partial_failure",
+					loggateway.StepID("spirit.standalone.partial_failure"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Int("failed_members", failedN),
+					loggateway.Int("total_members", totalN),
+				)
+			}
 		}
 	}
 
@@ -1775,13 +1833,14 @@ func resolveMemberOutcomeStatus(
 }
 
 // countFailedEvidenceMembers 统计团队下有执行失败证据（F10
-// MemberExecutionEvidence）的成员数，用于 partial_failure 收敛判定。与
-// publishV2TeamRunCompletion 的逐成员覆盖同源同口径（SessionType=agent 且
-// MemberAgentKey 非空的成员会话）。查询失败按 0 处理（fail-open：不阻断
-// completed 收敛，与 F10 证据覆盖的降级姿态一致）。
-func (s *TeamStarter) countFailedEvidenceMembers(ctx context.Context, teamID string) int {
+// MemberExecutionEvidence）的成员数与成员总数，用于 partial_failure 收敛与
+// P1-3 quorum 判定（全灭→failed）。与 publishV2TeamRunCompletion 的逐成员
+// 覆盖同源同口径（SessionType=agent 且 MemberAgentKey 非空的成员会话）。
+// 查询失败按 (0,0) 处理（fail-open：不阻断 completed 收敛，quorum 规则
+// failedN>0 才生效，(0,0) 天然放行，与 F10 证据覆盖的降级姿态一致）。
+func (s *TeamStarter) countFailedEvidenceMembers(ctx context.Context, teamID string) (failed int, total int) {
 	if s.team.SpiritUC == nil || s.sessions == nil || teamID == "" {
-		return 0
+		return 0, 0
 	}
 	result, err := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 100})
 	if err != nil {
@@ -1790,18 +1849,18 @@ func (s *TeamStarter) countFailedEvidenceMembers(ctx context.Context, teamID str
 			loggateway.Str("team_id", teamID),
 			loggateway.Err(err),
 		)
-		return 0
+		return 0, 0
 	}
-	failedN := 0
 	for _, sess := range result.Items {
 		if sess.SessionType != "agent" || sess.MemberAgentKey == "" {
 			continue
 		}
-		if failed, _ := s.team.SpiritUC.MemberExecutionEvidence(ctx, sess.ID); failed {
-			failedN++
+		total++
+		if failedEv, _ := s.team.SpiritUC.MemberExecutionEvidence(ctx, sess.ID); failedEv {
+			failed++
 		}
 	}
-	return failedN
+	return failed, total
 }
 
 // publishV2TeamRunCompletion 发布 v2 TeamRun 完成事件 + MemberSession 更新事件。

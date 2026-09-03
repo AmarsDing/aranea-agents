@@ -53,6 +53,25 @@ type SpiritStepReader interface {
 	ListStepsBySessionID(ctx context.Context, sessionID string) ([]Step, error)
 }
 
+// SpiritStepActivityReader provides the activity probe backing the F1 idle
+// team timeout (2026-09-03, lbg-verify-planner 复盘): the latest step
+// started_at across a set of session IDs (team main session + member child
+// sessions) in one cheap aggregate query.
+//
+// Narrow interface resolved by type assertion on SpiritStepReader (same
+// pattern as TeamRunStatsExportReader): the SpiritStepReader contract is
+// untouched, test doubles need no changes, and implementations lacking this
+// capability degrade the probe to run-start activity bounded by the absolute
+// lifetime ceiling. Implemented by data.StepV2Repo.
+// Stability:evolving
+type SpiritStepActivityReader interface {
+	// P4-2（2026-09-03）：语义升级为 MAX(updated_at)——updated_at 恒 ≥
+	// started_at（创建时两者相等，之后任何写入都刷新 updated_at），等价于
+	// MAX(GREATEST(started_at, updated_at))，覆盖「step 原地更新但无新
+	// step 启动」的活跃形态。
+	LatestStepActivityAt(ctx context.Context, sessionIDs []string) (time.Time, error)
+}
+
 // SpiritGraphDeliverableReader reads the graph final-state "deliverable" map
 // of a completed team's trpc session (B.10.15.4 Graph StateFields bridge).
 // appName/userID/sessionID form the trpc session key: appName is the team's
@@ -282,6 +301,13 @@ func WithSpiritTeamRunStatsReader(r SpiritTeamRunStatsReader) SpiritTeamUsecaseO
 	return func(u *SpiritTeamUsecase) { u.delivery.runStatsReader = r }
 }
 
+// WithSpiritTeamRunHeartbeatReader injects the P2-1 persistent heartbeat
+// reader used by the team idle probe (spirit_orchestration.probeTeamActivity).
+// Nil keeps the legacy steps.started_at-only activity semantics.
+func WithSpiritTeamRunHeartbeatReader(r SpiritTeamRunHeartbeatReader) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.delivery.heartbeatReader = r }
+}
+
 // WithDeliverableArtifactSaver 注入交付物文档桥接（S06 产物可见性）：
 // 团队完成的文档型交付物同时落盘为 spirit 会话 artifact，digest/综合报告
 // 按 publicBase 渲染用户可定位路径。saver=nil 时桥接关闭（向后兼容）。
@@ -344,10 +370,9 @@ type TeamProgress struct {
 // SpiritTeamDefVersion is the current version of spirit team definition JSON.
 const (
 	SpiritTeamDefVersion = 2
-	// SpiritTeamDefaultTimeout: 600s proved too short for serial coordinator
-	// teams (eval0831-s06-r3 produce team needed 626s and was killed mid-run).
-	// 1800s covers media-production DAG stages; teamTurnMaxSeconds=7200 still caps.
-	SpiritTeamDefaultTimeout = 1800
+	// F1（2026-09-03）：SpiritTeamDefaultTimeout（600→1800 两次上调仍误杀长
+	// 任务）已删除——spirit 团队定义不再写 run 级 wall-clock deadline，
+	// 活性判定见 spirit_assembly.go timeout_seconds 注释。
 	SpiritTeamDefaultMaxConc = 2
 
 	// Truncation limits for display strings.

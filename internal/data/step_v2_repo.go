@@ -162,6 +162,36 @@ func (r *stepV2Repo) ListStepsBySessionID(ctx context.Context, sessionID string)
 	return entStepsV2ToBiz(rows), nil
 }
 
+// LatestStepActivityAt returns MAX(updated_at) across the given session IDs in
+// one aggregate query (biz.SpiritStepActivityReader, F1 idle team timeout).
+// Zero time (no error) when no steps exist for any of the sessions.
+//
+// P4-2（2026-09-03）：探测信号从 MAX(started_at) 升级为 MAX(updated_at)。
+// updated_at 恒 ≥ started_at（创建时两者相等，此后任何写入由 ent
+// UpdateDefault 刷新），故 MAX(updated_at) ≡ MAX(GREATEST(started_at,
+// updated_at))——覆盖「step 原地更新（状态翻转/内容修订）但无新 step
+// 启动」的活跃形态，与 P2-1 run 级心跳互补。
+func (r *stepV2Repo) LatestStepActivityAt(ctx context.Context, sessionIDs []string) (time.Time, error) {
+	if r == nil || r.data == nil {
+		return time.Time{}, fmt.Errorf("step v2 repo: database not configured")
+	}
+	if len(sessionIDs) == 0 {
+		return time.Time{}, nil
+	}
+	row, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SessionIDIn(sessionIDs...)).
+		Order(ent.Desc(stepv2.FieldUpdatedAt)).
+		Select(stepv2.FieldUpdatedAt).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, entErrToBizErr(err, "STEP_V2")
+	}
+	return row.UpdatedAt, nil
+}
+
 // MaxSeqBySpiritSession returns the highest Seq stored for the spirit session (0 if none).
 func (r *stepV2Repo) MaxSeqBySpiritSession(ctx context.Context, spiritSessionID string) (int64, error) {
 	if r == nil || r.data == nil {
@@ -362,6 +392,7 @@ func entStepV2ToBiz(row *ent.StepV2) biz.Step {
 		IsFinal:         row.IsFinal,
 		StartedAt:       row.StartedAt,
 		CompletedAt:     completedAt,
+		UpdatedAt:       row.UpdatedAt,
 		Version:         row.Version,
 	}
 }

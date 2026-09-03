@@ -25,6 +25,11 @@ func (impl *taskPlannerImpl) companyNodeCount(ctx context.Context) int {
 	}
 	companies, err := impl.org.ListOrgNodesByLevel(ctx, "company")
 	if err != nil {
+		// org 读取失败会让剧本旁路静默失效（回落 planner LLM），必须留痕。
+		impl.lg.Warn("公司节点读取失败，剧本探测降级为空",
+			loggateway.StepID(biz.SpiritStepPlannerRoute),
+			loggateway.Err(err),
+		)
 		return 0
 	}
 	return len(companies)
@@ -63,16 +68,40 @@ func (impl *taskPlannerImpl) lookupNamedPlaybook(ctx context.Context, taskText s
 	return biz.Playbook{}, nil, false
 }
 
+// lookupSolePlaybookIfHeavy expands the workspace's sole authorized playbook.
+// org-invariants §1: a workspace defaults to ONE company tree, so "the company's
+// only authorized playbook" is unambiguous there. When multiple companies each
+// hold a sole authorized playbook (multi-company fixtures), first-match would
+// hijack unrelated heavy tasks into the wrong company's process — fail closed
+// and let the planner LLM decompose instead (2026-09-02: planner LLM path was
+// silently dead on multi-company workspaces since playbooks were authorized).
 func (impl *taskPlannerImpl) lookupSolePlaybookIfHeavy(ctx context.Context, gear TaskGear) (biz.Playbook, []biz.SubTask, bool) {
 	if gear != GearHeavy {
 		return biz.Playbook{}, nil, false
 	}
+	var (
+		solePB    biz.Playbook
+		soleSteps []biz.SubTask
+		found     int
+	)
 	for _, meta := range impl.eachCompanyMetadata(ctx) {
 		if pb, steps, ok := biz.TrySoleAuthorizedPlaybook(meta); ok {
-			return pb, steps, true
+			solePB, soleSteps = pb, steps
+			found++
 		}
 	}
-	return biz.Playbook{}, nil, false
+	if found != 1 {
+		if found > 1 {
+			// 配置异常（多公司多独家剧本）导致重型任务静默走 LLM 分解，
+			// 偏离预期剧本路径——Warn 而非 Info。
+			impl.lg.Warn("多家公司各有独家授权剧本，重型档旁路歧义 fail-closed，回落 planner LLM 分解",
+				loggateway.StepID(biz.SpiritStepPlannerRoute),
+				loggateway.Int("candidate_count", found),
+			)
+		}
+		return biz.Playbook{}, nil, false
+	}
+	return solePB, soleSteps, true
 }
 
 func (impl *taskPlannerImpl) planFromNamedPlaybook(ctx context.Context, input biz.PlanInput, traceID string) (*biz.TaskPlan, bool) {

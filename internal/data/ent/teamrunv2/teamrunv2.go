@@ -37,6 +37,8 @@ const (
 	FieldVersion = "version"
 	// FieldError holds the string denoting the error field in the database.
 	FieldError = "error"
+	// FieldHeartbeatAt holds the string denoting the heartbeat_at field in the database.
+	FieldHeartbeatAt = "heartbeat_at"
 	// Table holds the table name of the teamrunv2 in the database.
 	Table = "team_runs_v2"
 )
@@ -56,6 +58,7 @@ var Columns = []string{
 	FieldSeq,
 	FieldVersion,
 	FieldError,
+	FieldHeartbeatAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -158,4 +161,9 @@ func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByError orders the results by the error field.
 func ByError(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldError, opts...).ToFunc()
+}
+
+// ByHeartbeatAt orders the results by the heartbeat_at field.
+func ByHeartbeatAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHeartbeatAt, opts...).ToFunc()
 }

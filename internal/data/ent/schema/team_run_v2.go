@@ -34,6 +34,10 @@ func (TeamRunV2) Fields() []ent.Field {
 		field.Int64("seq").Default(0),
 		field.Int64("version").Default(0),
 		field.String("error").Default("").Comment("error message if failed (empty if no error)"),
+		// P2-1（2026-09-03 持久化心跳）：runner 流式消费节流写入；idle 探测
+		// （spirit_orchestration.probeTeamActivity）优先取 max(steps.started_at,
+		// heartbeat_at)，根治「单 step 长流式生成被误判 idle」。
+		field.Time("heartbeat_at").Optional().Nillable().Comment("runner streaming heartbeat (throttled write)"),
 	}
 }
 
