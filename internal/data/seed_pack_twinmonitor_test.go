@@ -17,23 +17,74 @@ const twinMonitorAgentKey = "twin_butler__general"
 
 // twinMonitorWantTools 钉死 twin_butler 的只读工具白名单——防 pack yaml 被误改
 // 引入写操作工具（twin_alarm_ack/twin_config_push/twin_config_rollback 等）。
+// 2026-09-02 全资源扩展：覆盖流量/气象/雷达/卫星/风场/航迹/告警统计/资产/视频/
+// 虚拟化/AIOps/采集/工单/分析洞察共 50 个 twin_* 只读工具 + 2 个平台工具。
 var twinMonitorWantTools = []string{
+	// 告警与事件
 	"twin_alarm_query",
 	"twin_alarm_get",
 	"twin_alarm_rule_get",
+	"twin_alarm_stats",
+	"twin_problem_clusters",
+	"twin_problem_cluster_stats",
+	// 设备与资产
 	"twin_device_search",
 	"twin_device_get",
 	"twin_device_metrics",
+	"twin_asset_full",
 	"twin_collector_status",
+	// 线路与流量
 	"twin_line_status",
 	"twin_line_events",
-	"twin_inspection_query",
-	"twin_remediation_status",
+	"twin_flow_summary",
+	"twin_flow_top",
+	"twin_flow_trend",
+	"twin_flow_anomalies",
+	"twin_flow_records",
+	// 气象数据
+	"twin_metar_reports",
+	"twin_taf_reports",
+	"twin_metar_stations",
+	// 雷达/卫星/风场
+	"twin_radar_sites",
+	"twin_radar_scans",
+	"twin_satellite_files",
+	"twin_satellite_stats",
+	"twin_windfield_files",
+	// 航迹
+	"twin_flight_positions",
+	"twin_flight_track",
+	"twin_flight_stats",
+	// 数据到达与通知
 	"twin_arrival_overview",
 	"twin_arrival_status",
 	"twin_notice_records",
+	// 巡检与处置
+	"twin_inspection_query",
+	"twin_remediation_status",
+	// 视频与虚拟化
+	"twin_video_channels",
+	"twin_virtman_containers",
+	"twin_virtman_endpoints",
+	// 智能运维
+	"twin_aiops_tasks",
+	"twin_aiops_mcp_overview",
+	"twin_aiops_mcp_call_history",
+	// 采集管理
+	"twin_collector_tasks",
+	"twin_collector_quality",
+	"twin_collector_failures",
+	// 业务运营
+	"twin_tickets",
+	"twin_change_records",
+	"twin_incident_records",
+	// 报表与知识库
 	"twin_report_tasks",
 	"twin_kb_search",
+	// 分析洞察
+	"twin_analysis_health_scores",
+	"twin_analysis_insights",
+	// 平台工具
 	"knowledge_search",
 	"datetime",
 }

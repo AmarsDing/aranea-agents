@@ -968,7 +968,7 @@ func newConfigRollbackTool(cfg Config) trpctool.CallableTool {
 	)
 }
 
-// NewToolset returns all 25 twinops tools.
+// NewToolset returns all 59 twinops tools.
 func NewToolset(cfg Config) []trpctool.Tool {
 	registerCompensationPairs() // P0-1：补偿对声明（见 compensation.go）
 	return []trpctool.Tool{
@@ -998,6 +998,55 @@ func NewToolset(cfg Config) []trpctool.Tool {
 		newNoticeRecordsTool(cfg),
 		newReportTasksTool(cfg),
 		newKBSearchTool(cfg),
+		// twin_butler 全资源问答面扩展·第二弹（twinops_query_ext2.go，2026-09-02）
+		// 网络流量
+		newFlowSummaryTool(cfg),
+		newFlowTopTool(cfg),
+		newFlowTrendTool(cfg),
+		newFlowAnomaliesTool(cfg),
+		newFlowRecordsTool(cfg),
+		// 气象数据
+		newMetarReportsTool(cfg),
+		newTafReportsTool(cfg),
+		newMetarStationsTool(cfg),
+		// 雷达数据
+		newRadarSitesTool(cfg),
+		newRadarScansTool(cfg),
+		// 卫星数据
+		newSatelliteFilesTool(cfg),
+		newSatelliteStatsTool(cfg),
+		// 风场数据
+		newWindfieldFilesTool(cfg),
+		// 航迹数据
+		newFlightPositionsTool(cfg),
+		newFlightTrackTool(cfg),
+		newFlightStatsTool(cfg),
+		// 告警扩展
+		newAlarmStatsTool(cfg),
+		newProblemClustersTool(cfg),
+		newProblemClusterStatsTool(cfg),
+		// 资产详情
+		newAssetFullTool(cfg),
+		// 视频
+		newVideoChannelsTool(cfg),
+		// 虚拟化
+		newVirtmanContainersTool(cfg),
+		newVirtmanEndpointsTool(cfg),
+		// 智能运维
+		newAiopsTasksTool(cfg),
+		newAiopsMcpOverviewTool(cfg),
+		newAiopsMcpCallHistoryTool(cfg),
+		// 采集扩展
+		newCollectorTasksTool(cfg),
+		newCollectorQualityTool(cfg),
+		newCollectorFailuresTool(cfg),
+		// 业务运营
+		newTicketsTool(cfg),
+		newChangeRecordsTool(cfg),
+		newIncidentRecordsTool(cfg),
+		// 分析洞察
+		newHealthScoresTool(cfg),
+		newInsightsTool(cfg),
 	}
 }
 
