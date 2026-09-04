@@ -294,6 +294,9 @@ func (c *CredentialCrypto) ProcessConfigJSONForStorage(ctx context.Context, cfg 
 	if m == nil {
 		return "", nil
 	}
+	// 写入边界剥离响应装饰键（统计注入仅用于读响应，见 injectedStatsConfigKeys），
+	// 防前端整包回写把瞬态统计固化进 DB。须在密钥检查之前，保证无密钥环境同样生效。
+	stripInjectedStatsKeys(m)
 	key, err := c.aesKey(ctx)
 	if err != nil {
 		return "", err

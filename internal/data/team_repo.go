@@ -102,6 +102,11 @@ func entTeamRunToBiz(e *ent.TeamRun) biz.TeamRunRecord {
 		FinishedAt:             e.FinishedAt,
 		CreatedAt:              e.CreatedAt,
 		UpdatedAt:              e.UpdatedAt,
+		// P2-1（2026-09-04 心跳链断点修复）：回读必须带回 v2 桥接 ID——
+		// CreateTeamRun 经本函数返回，缺映射时 runner 侧 run.TeamRunV2ID
+		// 恒空，心跳 pinger 接线条件（runner_team_trpc.go）永不成立，
+		// team_runs_v2.heartbeat_at 恒 NULL，idle 探测退化为 steps-only。
+		TeamRunV2ID: e.TeamRunV2ID,
 	}
 }
 

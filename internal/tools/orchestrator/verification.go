@@ -50,10 +50,14 @@ func injectVerificationNodes(config *biz.GraphBuildConfig, mode string) []string
 	for i, vc := range configs {
 		nodeID := fmt.Sprintf("verify_%s_%d", vc.Type, i)
 
-		// Build the verification node definition.
+		// Build the verification node definition. FuncRef=skip：门节点为 no-op
+		// 透传，human_approval 由 InterruptBefore 在图运行时独立于节点函数生效；
+		// 缺 FuncRef 的 function 节点会被 node_wiring 直接判 BAD_REQUEST
+		// （2026-09-03 108 实证：entry/merge/finish/verify 节点全中招）。
 		vNode := biz.NodeDef{
 			ID:            nodeID,
 			Type:          biz.NodeTypeFunction,
+			FuncRef:       biz.SkipNodeFuncRef,
 			Description:   fmt.Sprintf("Verification gate: %s", vc.Type),
 			FailureAction: vc.FailureAction,
 		}

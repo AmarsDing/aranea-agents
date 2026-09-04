@@ -46,7 +46,11 @@ func (StepV2) Fields() []ent.Field {
 		// （UpdateDefault），无需业务调用点改动。观测/审计可见行级新鲜度；
 		// idle 探测取 max(started_at, updated_at)（step_v2_repo.
 		// LatestStepActivityAt），覆盖「step 原地更新但无新 step」的活跃形态。
-		field.Time("updated_at").Default(timeNow).UpdateDefault(timeNow),
+		// entsql.Default("now()") 必须显式给：.Default(timeNow) 只是 Go 侧默认，
+		// 不落 DB DDL——ent 启动迁移对存量表 ADD COLUMN NOT NULL 无 DEFAULT 会
+		// 直接 23502 崩溃（2026-09-03 108 实证）。
+		field.Time("updated_at").Default(timeNow).UpdateDefault(timeNow).
+			Annotations(entsql.Default("now()")),
 		field.Int64("version").Default(0).Comment("Monotonic version for ordered upserts"),
 	}
 }

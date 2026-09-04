@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"context"
 	"strings"
 	"time"
 )
@@ -122,4 +123,22 @@ func ComputeHotnessAt(stats []ModelUsageStats, now time.Time) map[string]float64
 		result[s.ProviderCode+"/"+s.ModelAPIID] = hotness
 	}
 	return result
+}
+
+// LatencyPercentiles 单模型延迟分位数（30 天窗口，来自原始事件表）。
+// 动机（2026-09-03 实证）：avg_latency_ms_30d 是按请求数加权的均值，
+// 单次供应商劣化（TTFT 211s）即可把均值污染一个数量级；p50/p95 抗噪，
+// 与均值并列展示可区分「整体变慢」与「偶发尖刺」。
+type LatencyPercentiles struct {
+	ProviderCode string
+	ModelAPIID   string
+	P50LatencyMS float64
+	P95LatencyMS float64
+}
+
+// ModelLatencyReader 可选扩展端口（data 层 usage repo 实现）。
+// ModelStatsInjector 对 reader 做类型断言，支持即注入分位数字段，
+// 不支持则静默跳过——测试 mock 与旧实现零成本兼容。
+type ModelLatencyReader interface {
+	ListModelLatencyPercentiles(ctx context.Context, days int) ([]LatencyPercentiles, error)
 }

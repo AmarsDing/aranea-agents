@@ -104,7 +104,7 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) (biz.GraphBuildConfig,
 	var warnings []string
 
 	entryNode := "entry"
-	nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: biz.NodeTypeFunction})
+	nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: biz.NodeTypeFunction, FuncRef: biz.SkipNodeFuncRef})
 	agentKeys := buildAgentNodes(&nodes, input.Agents)
 	buildDependencyEdges(&edges, entryNode, input.Agents, agentKeys)
 
@@ -114,11 +114,11 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) (biz.GraphBuildConfig,
 	}
 
 	mergeNode := "merge_results"
-	nodes = append(nodes, biz.NodeDef{ID: mergeNode, Type: biz.NodeTypeFunction})
+	nodes = append(nodes, biz.NodeDef{ID: mergeNode, Type: biz.NodeTypeFunction, FuncRef: biz.SkipNodeFuncRef})
 	buildMergeEdges(&edges, input.Agents, mergeNode)
 
 	finishNode := "finish"
-	nodes = append(nodes, biz.NodeDef{ID: finishNode, Type: biz.NodeTypeFunction})
+	nodes = append(nodes, biz.NodeDef{ID: finishNode, Type: biz.NodeTypeFunction, FuncRef: biz.SkipNodeFuncRef})
 	edges = append(edges, biz.EdgeDef{From: mergeNode, To: finishNode})
 
 	// Build conditional edges from ConditionalBranches.
@@ -133,9 +133,12 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) (biz.GraphBuildConfig,
 		FinishPoint:      finishNode,
 		EnableCheckpoint: true,
 		ExecutionEngine:  biz.EngineDAG,
+		// StateFields 必须带 Type：builder 对空 Type 不补默认，框架 Compile 校验
+		// 直接报 "field X has nil type"（2026-09-03 108 实证，P-A 修掉 FuncRef 后
+		// 暴露的下一层卡口）。agent_results 配 ReducerMerge 对应 map[string]any。
 		StateFields: []biz.StateFieldDef{
-			{Name: "task_description", Reducer: biz.ReducerDefault},
-			{Name: "agent_results", Reducer: biz.ReducerMerge},
+			{Name: "task_description", Type: "string", Reducer: biz.ReducerDefault},
+			{Name: "agent_results", Type: "map", Reducer: biz.ReducerMerge},
 		},
 	}, warnings
 }

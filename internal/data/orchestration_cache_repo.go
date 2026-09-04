@@ -36,10 +36,14 @@ func (r *orchestrationCacheRepo) LoadCacheJSON(ctx context.Context) (string, err
 
 func (r *orchestrationCacheRepo) SaveCacheJSON(ctx context.Context, jsonStr string) error {
 	// Use ON CONFLICT upsert (works for both SQLite 3.24+ and Postgres).
+	// 2026-09-04：system_settings.update_time 是 NOT NULL 且仅 Go 侧默认
+	// （schema 无 entsql.Default，PG 侧列无 DB 默认）——裸 SQL 绕过 ent，
+	// 首行 INSERT 在 PG 必炸 23502。显式写 CURRENT_TIMESTAMP（SQL 标准，
+	// SQLite/PG 双兼容；不可用 NOW()——SQLite 无此函数）。
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`INSERT INTO system_settings (id, orchestration_cache_json)
-		 VALUES (1, ?)
-		 ON CONFLICT(id) DO UPDATE SET orchestration_cache_json=excluded.orchestration_cache_json`),
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO system_settings (id, orchestration_cache_json, update_time)
+		 VALUES (1, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(id) DO UPDATE SET orchestration_cache_json=excluded.orchestration_cache_json, update_time=CURRENT_TIMESTAMP`),
 		jsonStr,
 	)
 	return entErrToBizErr(err, "ORCHESTRATION_CACHE")

@@ -150,3 +150,98 @@ func TestInjectStats_ModelNotInStatsKeepConfigNull(t *testing.T) {
 		t.Fatalf("model not in stats should not have usage_call_count_30d")
 	}
 }
+
+// fakeLatencyStatsReader 同时实现 ModelStatsReader + ModelLatencyReader。
+type fakeLatencyStatsReader struct {
+	fakeStatsReader
+	percentiles []LatencyPercentiles
+	latErr      error
+}
+
+func (f *fakeLatencyStatsReader) ListModelLatencyPercentiles(ctx context.Context, days int) ([]LatencyPercentiles, error) {
+	return f.percentiles, f.latErr
+}
+
+// TestInjectStats_InjectsLatencyPercentiles reader 支持分位数端口时注入 p50/p95。
+func TestInjectStats_InjectsLatencyPercentiles(t *testing.T) {
+	reader := &fakeLatencyStatsReader{
+		fakeStatsReader: fakeStatsReader{
+			rows: []usage.BreakdownRow{
+				{ProviderCode: "deepseek", ModelAPIID: "deepseek-v4-flash", CallCount: 50, SuccessRate: 0.9, AvgLatencyMS: 145284},
+			},
+		},
+		percentiles: []LatencyPercentiles{
+			{ProviderCode: "deepseek", ModelAPIID: "deepseek-v4-flash", P50LatencyMS: 3500, P95LatencyMS: 213000},
+		},
+	}
+	inj := NewModelStatsInjector(reader, loggateway.NewNoop())
+	inj.cacheTTL = 1 * time.Hour
+
+	items := []ProviderModel{{Provider: "deepseek", Model: "deepseek-v4-flash", ConfigJSON: `{}`}}
+	inj.InjectStats(context.Background(), items)
+
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(items[0].ConfigJSON), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if v, _ := cfg["p50_latency_ms_30d"].(float64); v != 3500 {
+		t.Fatalf("p50_latency_ms_30d: expected 3500, got %v", cfg["p50_latency_ms_30d"])
+	}
+	if v, _ := cfg["p95_latency_ms_30d"].(float64); v != 213000 {
+		t.Fatalf("p95_latency_ms_30d: expected 213000, got %v", cfg["p95_latency_ms_30d"])
+	}
+	// 均值字段保留（连续性）
+	if v, _ := cfg["avg_latency_ms_30d"].(float64); v != 145284 {
+		t.Fatalf("avg_latency_ms_30d: expected 145284, got %v", cfg["avg_latency_ms_30d"])
+	}
+}
+
+// TestInjectStats_LatencyReaderFailureDegradesGracefully 分位数查询失败不阻断主统计。
+func TestInjectStats_LatencyReaderFailureDegradesGracefully(t *testing.T) {
+	reader := &fakeLatencyStatsReader{
+		fakeStatsReader: fakeStatsReader{
+			rows: []usage.BreakdownRow{
+				{ProviderCode: "openai", ModelAPIID: "gpt-4o", CallCount: 100, SuccessRate: 0.9, AvgLatencyMS: 200},
+			},
+		},
+		latErr: context.DeadlineExceeded,
+	}
+	inj := NewModelStatsInjector(reader, loggateway.NewNoop())
+	inj.cacheTTL = 1 * time.Hour
+
+	items := []ProviderModel{{Provider: "openai", Model: "gpt-4o", ConfigJSON: `{}`}}
+	inj.InjectStats(context.Background(), items)
+
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(items[0].ConfigJSON), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if v, _ := cfg["usage_call_count_30d"].(float64); v != 100 {
+		t.Fatalf("usage_call_count_30d should still be injected, got %v", cfg["usage_call_count_30d"])
+	}
+	if _, ok := cfg["p50_latency_ms_30d"]; ok {
+		t.Fatalf("p50 should be absent when latency reader fails")
+	}
+}
+
+// TestInjectStats_ReaderWithoutLatencyPort 不支持分位数端口的 reader 不注入分位数字段。
+func TestInjectStats_ReaderWithoutLatencyPort(t *testing.T) {
+	reader := &fakeStatsReader{
+		rows: []usage.BreakdownRow{
+			{ProviderCode: "openai", ModelAPIID: "gpt-4o", CallCount: 100, SuccessRate: 0.9, AvgLatencyMS: 200},
+		},
+	}
+	inj := NewModelStatsInjector(reader, loggateway.NewNoop())
+	inj.cacheTTL = 1 * time.Hour
+
+	items := []ProviderModel{{Provider: "openai", Model: "gpt-4o", ConfigJSON: `{}`}}
+	inj.InjectStats(context.Background(), items)
+
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(items[0].ConfigJSON), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if _, ok := cfg["p50_latency_ms_30d"]; ok {
+		t.Fatalf("p50 should be absent when reader lacks latency port")
+	}
+}

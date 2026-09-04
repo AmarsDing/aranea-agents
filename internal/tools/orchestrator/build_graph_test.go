@@ -93,3 +93,47 @@ func (s *stubGraphBuilder) BuildAndExecute(ctx context.Context, config biz.Graph
 	s.called = true
 	return s.execID, nil
 }
+
+// TestBuildGraphConfig_FunctionNodesHaveFuncRef 回归：2026-09-03 108 实证
+// entry/merge_results/finish/verify_* 这类结构/门节点是 function 类型，node_wiring
+// 要求 function 节点必须带 Func 或 SkipNodeFuncRef，否则图构建直接 BAD_REQUEST。
+// 所有模式（含会注入验证节点的 parallel/hybrid/coordinator）都必须满足。
+func TestBuildGraphConfig_FunctionNodesHaveFuncRef(t *testing.T) {
+	for _, mode := range []string{"sequential", "parallel", "hybrid", "coordinator", "dag", ""} {
+		t.Run("mode="+mode, func(t *testing.T) {
+			cfg, _ := BuildGraphConfig(BuildOrchestrationGraphInput{
+				TaskDescription: "t",
+				Agents: []AgentAssignment{
+					{AgentKey: "a", SubTask: "A"},
+					{AgentKey: "b", SubTask: "B", DependsOn: []string{"a"}},
+				},
+				Mode: mode,
+			})
+			injectVerificationNodes(&cfg, mode)
+			for _, n := range cfg.Nodes {
+				if n.Type == biz.NodeTypeFunction && strings.TrimSpace(n.FuncRef) == "" {
+					t.Errorf("mode=%q node %q is function type without FuncRef", mode, n.ID)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildGraphConfig_StateFieldsHaveType 回归：2026-09-03 108 实证（P-A 修复
+// FuncRef 后暴露的下一层卡口）——builder 对空 Type 不补默认，框架 Compile 校验
+// 报 "field X has nil type"，图构建失败。所有声明的 StateField 必须带可解析 Type。
+func TestBuildGraphConfig_StateFieldsHaveType(t *testing.T) {
+	cfg, _ := BuildGraphConfig(BuildOrchestrationGraphInput{
+		TaskDescription: "t",
+		Agents:          []AgentAssignment{{AgentKey: "a", SubTask: "A"}},
+		Mode:            "parallel",
+	})
+	if len(cfg.StateFields) == 0 {
+		t.Fatal("expected StateFields to be declared")
+	}
+	for _, sf := range cfg.StateFields {
+		if strings.TrimSpace(sf.Type) == "" {
+			t.Errorf("state field %q has empty Type (compile would fail: field has nil type)", sf.Name)
+		}
+	}
+}

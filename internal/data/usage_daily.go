@@ -153,3 +153,34 @@ func usageDailyWhere(query biz.UsageQuery) (string, []any) {
 	}
 	return " WHERE " + strings.Join(parts, " AND "), args
 }
+
+// ListModelLatencyPercentiles 实现 biz.ModelLatencyReader：从原始事件表算
+// 每模型延迟 p50/p95（days 天窗口）。分位数无法从日桶均值推得，必须扫事件表——
+// 30 天窗口约数万行（2026-09-03 实测 37k），percentile_cont 开销可忽略。
+// 展示口径：latency_ms<=0 的行无意义（写入失败/缺观测），剔除。
+func (r *usageRepo) ListModelLatencyPercentiles(ctx context.Context, days int) ([]biz.LatencyPercentiles, error) {
+	if days <= 0 {
+		days = 30
+	}
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT provider_code, model_api_id,
+		 percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms),
+		 percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)
+		 FROM model_token_usage_events
+		 WHERE latency_ms > 0
+		   AND occurred_at::timestamptz >= now() - make_interval(days => ?)
+		 GROUP BY provider_code, model_api_id`)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, days)
+	if err != nil {
+		return nil, entErrToBizErr(err, apierror.DomainData)
+	}
+	defer rows.Close()
+	var result []biz.LatencyPercentiles
+	for rows.Next() {
+		var p biz.LatencyPercentiles
+		if err = rows.Scan(&p.ProviderCode, &p.ModelAPIID, &p.P50LatencyMS, &p.P95LatencyMS); err != nil {
+			return nil, entErrToBizErr(err, apierror.DomainData)
+		}
+		result = append(result, p)
+	}
+	return result, entErrToBizErr(rows.Err(), apierror.DomainData)
+}

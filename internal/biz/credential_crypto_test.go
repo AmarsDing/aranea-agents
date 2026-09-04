@@ -85,6 +85,36 @@ func TestProcessConfigJSONForStorage_EncryptsAPIKey(t *testing.T) {
 	}
 }
 
+// 回归（2026-09-03 108 实证）：List 响应注入的统计键随前端整包 PATCH 回写
+// 被固化进 glm-4.7 存库 config_json。写入边界必须剥离全部响应装饰键。
+func TestProcessConfigJSONForStorage_StripsInjectedStatsKeys(t *testing.T) {
+	_ = os.Unsetenv(envCredentialKey) // 无密钥环境同样必须剥离
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
+
+	in := `{"provider_type":"openai","model_hotness_score":0.9,"usage_call_count_30d":12,` +
+		`"usage_total_tokens_30d":3456,"usage_cost_micro_usd_30d":78,"success_rate_30d":0.5,` +
+		`"avg_latency_ms_30d":123,"p50_latency_ms_30d":100,"p95_latency_ms_30d":200}`
+	out, err := c.ProcessConfigJSONForStorage(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range injectedStatsConfigKeys {
+		if _, ok := m[k]; ok {
+			t.Fatalf("injected stats key %q must be stripped before storage", k)
+		}
+	}
+	if m["provider_type"] != "openai" {
+		t.Fatalf("real config key must survive, got %#v", m["provider_type"])
+	}
+	if len(m) != 1 {
+		t.Fatalf("expected only provider_type left, got %d keys: %#v", len(m), m)
+	}
+}
+
 func TestMergeConfigJSONForUpdate_NewAPIKeyReplacesEncrypted(t *testing.T) {
 	cur := `{"api_key_enc":"enc-old","api_key_set":true,"provider_type":"openai"}`
 	patch := `{"api_key":"sk-new","provider_type":"openai"}`

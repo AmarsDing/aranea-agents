@@ -3285,7 +3285,7 @@ var (
 		{Name: "is_final", Type: field.TypeBool, Default: false},
 		{Name: "started_at", Type: field.TypeTime},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
-		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime, Default: "now()"},
 		{Name: "version", Type: field.TypeInt64, Default: 0},
 	}
 	// StepsV2Table holds the schema information for the "steps_v2" table.
