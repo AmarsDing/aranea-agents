@@ -156,14 +156,15 @@ func TestPlanVerifyGate_RepairSuccess(t *testing.T) {
 	}
 	impl := gateTestPlanner(agents, func(_ context.Context, msg string, _ *biz.IntentArtifact, _ int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		// 修复 prompt 必须携带违例反馈（Self-Refine：失败上下文写回）。
-		if !strings.Contains(msg, "hardware-repair") {
+		if !strings.Contains(msg, "empty_definition") {
 			t.Errorf("repair prompt missing violation feedback: %q", msg)
 		}
 		return good, buildDAGFromSubTasks(good), nil
 	})
 
+	// 阻断级违例（R1 空定义）仍触发有界重分解。
 	bad := []biz.SubTask{
-		{ID: "st_1", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}},
+		{ID: "st_1", Name: "", Description: "修服务器", RequiredCapabilities: []string{"go-backend"}},
 	}
 	out := impl.applyPlanVerifyGate(context.Background(), bad, buildDAGFromSubTasks(bad), biz.PlanInput{UserMessage: "orig"}, 0, biz.ComplexityComplex)
 	if out.degraded {
@@ -182,14 +183,15 @@ func TestPlanVerifyGate_RepairStillInvalid_Degrades(t *testing.T) {
 		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
 	}
 	stillBad := []biz.SubTask{
-		{ID: "st_1", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}},
+		{ID: "st_1", Name: "", Description: "修服务器", RequiredCapabilities: []string{"go-backend"}},
 	}
 	impl := gateTestPlanner(agents, func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		return stillBad, buildDAGFromSubTasks(stillBad), nil
 	})
 
+	// 阻断级违例（R1 空定义）修复后仍违例 → 降级 direct。
 	bad := []biz.SubTask{
-		{ID: "st_1", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}},
+		{ID: "st_1", Name: "", Description: "修服务器", RequiredCapabilities: []string{"go-backend"}},
 	}
 	out := impl.applyPlanVerifyGate(context.Background(), bad, buildDAGFromSubTasks(bad), biz.PlanInput{UserMessage: "orig"}, 0, biz.ComplexityComplex)
 	if !out.degraded {
@@ -198,7 +200,7 @@ func TestPlanVerifyGate_RepairStillInvalid_Degrades(t *testing.T) {
 	if out.subTasks != nil {
 		t.Fatalf("subTasks = %+v, want nil on degrade", out.subTasks)
 	}
-	if !strings.Contains(out.note, "hardware-repair") {
+	if !strings.Contains(out.note, "empty_definition") {
 		t.Fatalf("degrade note must carry violation detail, got %q", out.note)
 	}
 }
@@ -314,7 +316,9 @@ func TestPlanVerifyGate_TeamCountMismatch_RepairError_NoDegrade(t *testing.T) {
 	}
 }
 
-// 数量违例叠加能力违例且修复未果 → 维持降级 direct（非数量独例不享受兜底）。
+// 2026-09-04（项 3d）契约更新：能力违例（R2）在名册治理期降为 warn-only，
+// 从可行动违例集中剥离——R2+R4 混合不再降级：R2 记 warn 放行，R4 走原有
+// 修复/数量兜底路径（修复后仍不符 → 不降级，交数量兜底）。
 func TestPlanVerifyGate_MixedViolations_StillDegrade(t *testing.T) {
 	agents := []biz.Agent{
 		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
@@ -325,9 +329,46 @@ func TestPlanVerifyGate_MixedViolations_StillDegrade(t *testing.T) {
 	})
 
 	mixed := append(teamCountSubTasks(2), biz.SubTask{ID: "st_8", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}})
-	out := impl.applyPlanVerifyGate(context.Background(), mixed, buildDAGFromSubTasks(mixed), biz.PlanInput{UserMessage: "orig"}, 3, biz.ComplexityComplex)
-	if !out.degraded {
-		t.Fatal("degraded = false, want degrade for mixed violations")
+	// 3 子任务 vs 请求 2 团队 → R4 触发；叠加 R2（st_8）→ R2 剥离后仅剩 R4。
+	out := impl.applyPlanVerifyGate(context.Background(), mixed, buildDAGFromSubTasks(mixed), biz.PlanInput{UserMessage: "orig"}, 2, biz.ComplexityComplex)
+	if out.degraded {
+		t.Fatal("degraded = true, want no degrade for R2(warn-only)+R4(count fallback) mix")
+	}
+	// R4 修复产物 5 个 vs 请求 2 个仍不符 → 数量兜底放行修复产物。
+	if len(out.subTasks) != len(stillBad) {
+		t.Fatalf("subTasks = %d, want repaired %d", len(out.subTasks), len(stillBad))
+	}
+	if !strings.Contains(out.note, "数量仍不符") {
+		t.Fatalf("note must annotate count fallback, got %q", out.note)
+	}
+}
+
+// R2 能力违例单独出现时（名册治理期）：不触发重分解、不降级，warn-only 放行。
+func TestPlanVerifyGate_CapabilityOnly_WarnOnlyPassthrough(t *testing.T) {
+	agents := []biz.Agent{
+		{AgentKey: "agent-be", Status: "active", Roles: []string{"go-backend"}},
+	}
+	repairCalled := false
+	impl := gateTestPlanner(agents, func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		repairCalled = true
+		return nil, nil, context.DeadlineExceeded
+	})
+
+	bad := []biz.SubTask{
+		{ID: "st_1", Name: "硬件", Description: "修服务器", RequiredCapabilities: []string{"hardware-repair"}},
+	}
+	out := impl.applyPlanVerifyGate(context.Background(), bad, buildDAGFromSubTasks(bad), biz.PlanInput{UserMessage: "orig"}, 0, biz.ComplexityComplex)
+	if out.degraded {
+		t.Fatal("degraded = true, want warn-only passthrough for capability-only violations")
+	}
+	if len(out.subTasks) != 1 {
+		t.Fatalf("subTasks = %d, want original 1", len(out.subTasks))
+	}
+	if repairCalled {
+		t.Fatal("repair must not be attempted for capability-only violations (deterministic roster gap)")
+	}
+	if !strings.Contains(out.note, "warn-only") {
+		t.Fatalf("note must annotate warn-only passthrough, got %q", out.note)
 	}
 }
 

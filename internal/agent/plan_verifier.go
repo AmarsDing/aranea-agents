@@ -177,14 +177,65 @@ func onlyTeamCountViolations(violations []PlanViolation) bool {
 	return true
 }
 
-// summarizeViolations 生成降级说明用的违例摘要（含具体标签，便于排障）。
+// hasBlockingViolations 报告违例集合是否含阻断级违例（R1 空定义 / R3 病态
+// 规模——需要重分解，修复失败则降级）。R4 数量不符触发重分解但永不降级
+// （数量兜底路径）；R2 能力违例见 filterWarnOnlyViolations。
+func hasBlockingViolations(violations []PlanViolation) bool {
+	for _, v := range violations {
+		if v.Rule != PlanViolationCapabilityUnsatisfiable && v.Rule != PlanViolationTeamCountMismatch {
+			return true
+		}
+	}
+	return false
+}
+
+// filterWarnOnlyViolations 把 R2 能力违例从可行动违例集中剥离（返回剩余
+// 可行动违例与被剥离的 R2 违例）。2026-09-04（项 3d）名册治理期止血：
+// 名册 roles 覆盖不足（337 个 Agent 中仅 ops_* 运维系列有有效标签，业务
+// Agent roles_json 全为 null）时，业务任务的 R2 误杀率 100%（2026-09-04
+// 营销任务实证：4/4 子任务违例、有界重分解空耗 42s+ 后仍降级），且名册
+// 缺口是确定性的——重分解不可能修复，纯浪费一次 LLM 往返。R2 的设计前提
+// 是名册完整，属于运维态数据缺陷而非计划违例；剥离后仅记 warn 保留观测，
+// 待项 3c 名册补齐后恢复可行动（重分解+降级）。R4/R1/R3 语义不变。
+func filterWarnOnlyViolations(violations []PlanViolation) (actionable, capability []PlanViolation) {
+	for _, v := range violations {
+		if v.Rule == PlanViolationCapabilityUnsatisfiable {
+			capability = append(capability, v)
+			continue
+		}
+		actionable = append(actionable, v)
+	}
+	return actionable, capability
+}
+
+// logCapabilityWarnOnly 记录 R2 能力违例 warn-only 放行（首检与复检共用）。
+func (impl *taskPlannerImpl) logCapabilityWarnOnly(ctx context.Context, input biz.PlanInput, capViolations []PlanViolation) {
+	if len(capViolations) == 0 {
+		return
+	}
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogWarn("spirit.planner.verify", "计划校验门",
+			fmt.Sprintf("分解产物存在 %d 项能力违例，warn-only 放行（名册治理期）", len(capViolations)),
+			event.P("violation_count", len(capViolations)),
+			event.P("violation_summary", summarizeViolations(capViolations)))
+	}
+	impl.lg.Warn("计划校验门：能力违例 warn-only 放行（名册治理期）",
+		loggateway.StepID(biz.SpiritStepPlannerDecompose),
+		loggateway.Str("trace_id", input.TraceID),
+		loggateway.Int("violation_count", len(capViolations)),
+		loggateway.Str("violation_summary", summarizeViolations(capViolations)),
+	)
+}
+
+// summarizeViolations 生成降级说明用的违例摘要（含规则名与具体标签，便于排障
+// grep——规则名是稳定标识，Detail 为易变自然语言）。
 func summarizeViolations(violations []PlanViolation) string {
 	parts := make([]string, 0, len(violations))
 	for _, v := range violations {
 		if v.SubTaskID != "" {
-			parts = append(parts, v.SubTaskID+": "+v.Detail)
+			parts = append(parts, fmt.Sprintf("%s[%s]: %s", v.SubTaskID, v.Rule, v.Detail))
 		} else {
-			parts = append(parts, v.Detail)
+			parts = append(parts, fmt.Sprintf("[%s] %s", v.Rule, v.Detail))
 		}
 	}
 	return strings.Join(parts, "；")
@@ -221,6 +272,19 @@ func (impl *taskPlannerImpl) applyPlanVerifyGate(ctx context.Context, subTasks [
 		return passthrough
 	}
 
+	// 2026-09-04（项 3d）：剥离 R2 能力违例（warn-only，名册治理期），
+	// 剩余可行动违例（R1/R3 阻断级、R4 数量级）维持原有重分解/兜底语义。
+	actionable, capViolations := filterWarnOnlyViolations(violations)
+	impl.logCapabilityWarnOnly(ctx, input, capViolations)
+	if len(actionable) == 0 {
+		return planVerifyOutcome{
+			subTasks: subTasks,
+			dag:      dag,
+			note:     "（能力违例 warn-only 放行，名册治理期）",
+		}
+	}
+	violations = actionable
+
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		em.LogWarn("spirit.planner.verify", "计划校验门",
 			fmt.Sprintf("分解产物未通过可行性校验（%d 项违例），尝试有界修复", len(violations)),
@@ -242,6 +306,12 @@ func (impl *taskPlannerImpl) applyPlanVerifyGate(ctx context.Context, subTasks [
 	repaired, repairedDAG, repErr := repairFn(ctx, input.UserMessage+"\n\n"+feedback, input.IntentArtifact, teamCount, level)
 	if repErr == nil && len(repaired) > 0 {
 		reViolations := verifyPlanFeasibility(repaired, caps, teamCount)
+		// 2026-09-04（项 3d）：复检与首检同契约——R2 能力违例 warn-only 剥离。
+		// 漏剥离时混合违例（R2+R4）的修复产物会被误判「修复失败」而回退原计划，
+		// 修复结果整体丢失（TestPlanVerifyGate_MixedViolations 实证）。
+		reActionable, reCapViolations := filterWarnOnlyViolations(reViolations)
+		impl.logCapabilityWarnOnly(ctx, input, reCapViolations)
+		reViolations = reActionable
 		if len(reViolations) == 0 {
 			if em := event.TraceEmitterFromContext(ctx); em != nil {
 				em.LogDone("spirit.planner.verify", "计划校验门修复后通过",

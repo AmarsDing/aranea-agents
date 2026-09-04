@@ -223,7 +223,12 @@ type TeamDispatchMarker interface {
 // defaultPlanBoardShellTimeout 是流式空壳 PlanBoard 等待 steps 就绪的兜底
 // 超时（2026-08-06 P0-2）。正常 LLM 分解在工具预算内完成；超过即视为分解
 // 失败，看板 fail-closed 标记 Failed。
-const defaultPlanBoardShellTimeout = 2 * time.Minute
+// 2026-09-04（项 2b）：2min → 5min。实证：首次分解 LLM 流式耗时 74s，
+// 校验门有界重分解（R1/R3 违例时）再叠加一次完整分解（~1min），分解+重试
+// 最坏 ~2.5-3min——2min 看门狗会在重试进行中误杀看板（看板 Failed 后，
+// 重试成功的 PublishV2Board 批量 steps 被终态拒收，前端永远显示失败）。
+// 5min 覆盖分解+重试全链路且对进程崩溃仍 fail-closed 有界。
+const defaultPlanBoardShellTimeout = 5 * time.Minute
 
 // NewPlanExecutor constructs a PlanExecutor. All dependencies are required.
 func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPublisher, lg loggateway.Logger) *PlanExecutor {

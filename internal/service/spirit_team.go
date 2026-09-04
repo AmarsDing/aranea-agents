@@ -1951,7 +1951,14 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 	}
 	newStatus := teamRunStatus
 	newVersion := int64(2) // 降级默认值（与原硬编码一致）
-	if currentTR, getErr := s.teamRunR.GetTeamRun(ctx, teamRunID); getErr != nil {
+	// 2026-09-04 终态覆盖修复：原实现把 SessionID 留空、StartedAt 取 now，
+	// 注释声称"RepoSet 保持空避免覆盖"，但 UpsertTeamRun 无条件全字段 SET——
+	// 早建行（组团时创建）的 session_id 被抹空、真实 started_at 被改成结束
+	// 时刻（DB 实证：v2 行 session_id 全空、started_at 聚集于 dagRun 结束）。
+	// 这里回读现有行（状态机校验本就需要），用其 SessionID/StartedAt 回填；
+	// 行不存在（直接团队会话路径，v2 行由本事件首建）才维持空/now 兜底。
+	currentTR, getErr := s.teamRunR.GetTeamRun(ctx, teamRunID)
+	if getErr != nil {
 		s.lg.Warn("publishV2TeamRunCompletion: failed to load current TeamRun, fallback to Version=2",
 			loggateway.Str("team_run_id", teamRunID),
 			loggateway.Err(getErr))
@@ -1973,14 +1980,17 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		ID:              teamRunID,
 		TeamStageID:     teamStageID,
 		TaskID:          rootTaskID,
-		SessionID:       "", // RepoSet 不依赖此字段做合并；保持空避免覆盖
+		SessionID:       currentTR.SessionID, // 回填早建行值；行不存在时为零值（首建场景）
 		SpiritSessionID: spiritSessionID,
 		DagNodeID:       team.DagNodeID,
 		DependsOn:       dependsOn,
 		Status:          newStatus,
-		StartedAt:       now, // 此处用 now 是 RepoSet 的 fallback；真实 StartedAt 已在 created 事件中持久化
+		StartedAt:       currentTR.StartedAt, // 回填真实开始时刻；零值时由下方兜底
 		CompletedAt:     &now,
 		Version:         newVersion,
+	}
+	if tr.StartedAt.IsZero() {
+		tr.StartedAt = now // 行不存在（首建）或早建行缺 StartedAt 时的兜底
 	}
 	switch newStatus {
 	case biz.TeamRunV2StatusCompleted, biz.TeamRunV2StatusPartialFailure:

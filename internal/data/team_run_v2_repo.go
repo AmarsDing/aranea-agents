@@ -273,6 +273,10 @@ func (r *teamRunV2Repo) UpsertTeamRun(ctx context.Context, tr biz.TeamRun) (biz.
 // TouchTeamRunHeartbeat implements biz.TeamRunHeartbeatWriter（P2-1）。
 // 单列 UPDATE，无版本守卫：心跳是单调时间戳，last-writer-wins 无丢序风险；
 // 不与 sequencer 的全行版本化 Upsert 竞争。
+// 2026-09-04：行不存在（NotFound）降级 debug 并返回 nil——直接团队会话路径
+// 的 v2 行由终态事件晚建（run 运行期不存在），心跳必然 NotFound；该路径无
+// idle 探测消费者，心跳本就不需要，warn 级只会产生噪音。spirit 编排路径
+// 组团时早建行，真异常（早建行缺失）仍有心跳长期不推进的探测侧可观测性。
 func (r *teamRunV2Repo) TouchTeamRunHeartbeat(ctx context.Context, runID string, at time.Time) error {
 	if r == nil || r.data == nil {
 		return fmt.Errorf("team run v2 repo: database not configured")
@@ -280,9 +284,17 @@ func (r *teamRunV2Repo) TouchTeamRunHeartbeat(ctx context.Context, runID string,
 	if strings.TrimSpace(runID) == "" {
 		return fmt.Errorf("team run v2 repo: empty run id")
 	}
-	return entErrToBizErr(r.data.RW().Write(ctx).TeamRunV2.UpdateOneID(runID).
+	err := r.data.RW().Write(ctx).TeamRunV2.UpdateOneID(runID).
 		SetHeartbeatAt(at).
-		Exec(ctx), "TEAM_RUN_V2")
+		Exec(ctx)
+	if err != nil && ent.IsNotFound(err) {
+		if r.lg != nil {
+			r.lg.Debug("团队运行心跳跳过：v2 行尚未创建",
+				loggateway.Str("run_id", runID))
+		}
+		return nil
+	}
+	return entErrToBizErr(err, "TEAM_RUN_V2")
 }
 
 // LatestTeamRunHeartbeat implements biz.SpiritTeamRunHeartbeatReader（P2-1）。
