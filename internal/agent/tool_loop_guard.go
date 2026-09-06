@@ -1797,6 +1797,13 @@ func (g *toolLoopGuard) modelHook() callbacks.BeforeModelHook {
 		g.mu.Lock()
 		e := g.entryLocked(key, now)
 		e.justLoaded = nil
+		// inflightLoads 同属「单 model step 工具批次」窗口状态：BeforeModel 触发
+		// 时上一轮全部工具调用必然已结束（框架须收齐结果才能构造下一轮请求），
+		// 此处仍残留的条目只可能是 AfterTool 未触发（如插件 CustomResult 短路
+		// 回调链）导致的泄漏。不清除会让目标工具在本节点内被 loadThenCall 闸
+		// 永久误拦（2026-09-06 spirit WS 路径实锤：tool_load 成功后 afterHook
+		// 未触发，inflightLoads 跨轮泄漏，twin_* 工具后续每轮都被拦截）。
+		e.inflightLoads = nil
 		if e.roundSawTool {
 			if e.roundProductive {
 				e.unprodRounds = 0
