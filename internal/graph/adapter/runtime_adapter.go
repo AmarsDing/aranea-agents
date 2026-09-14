@@ -63,6 +63,9 @@ type trpcGraphRuntime struct {
 	// must be released when this runtime's event stream ends (S3).
 	replanner graph.RuntimeReplanner
 
+	// usageAcc 累计本次运行的 LLM 用量（G2）；nil 时 forwardEvents 不计量。
+	usageAcc *graphUsageAccumulator
+
 	cancelMu  sync.Mutex
 	runCancel context.CancelFunc
 }
@@ -224,9 +227,27 @@ func (r *trpcGraphRuntime) forwardEvents(ctx context.Context, eventCh <-chan *tr
 					lastNodeErr = meta.Error
 				}
 			}
+			// G2：计量 LLM 用量（Response.Usage，按 Response.ID 去重、按
+			// Model 分桶）。usageAcc 为 nil（未装配落账器）时早退。
+			r.usageAcc.observe(e)
 		}
 		out <- convertTrpcEvent(ctx, e, r.bridge, r.lg)
 	}
+	// G2：流结束落账（best-effort）。HITL 暂停也落账——Resume 以同一
+	// execID/sessionID 重建 runtime 与累计器，前后两段行按会话聚合求和。
+	// 状态优先级与下方 flow log 终态判定保持一致：done（图完成，即便中途
+	// 有节点报错也按成功）> interrupt（HITL 暂停，非终态）> 节点错误；
+	// 三者皆无（流因 ctx 取消而关闭）记 cancelled，不误标 success。
+	usageStatus := "cancelled"
+	switch {
+	case sawDone:
+		usageStatus = "success"
+	case sawInterrupt:
+		usageStatus = "interrupted"
+	case lastNodeErr != "":
+		usageStatus = "failed"
+	}
+	r.usageAcc.flush(ctx, usageStatus)
 	if flow == nil {
 		return
 	}
@@ -557,6 +578,12 @@ type trpcGraphBuilderFactory struct {
 	// 工具/节点历史。为 nil 时 runner 退回到 inmemory 会话（不持久化），
 	// 仅用于单测等无完整依赖场景。
 	sessionService trpcsession.Service
+
+	// usageRecorder 图运行 LLM 用量落账器（G2 回填，2026-09-12）。nil 时
+	// 构建的 runtime 不计量——与旧版行为一致（零行为变更）。由
+	// GraphExecutionUsecase.SetGraphUsageRecorder 经可选接口注入，
+	// ExecuteGraph 与 Resume 共用 factory，注入一次覆盖两条路径。
+	usageRecorder biz.GraphUsageRecorder
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
@@ -584,6 +611,16 @@ func NewGraphBuilderFactory(
 		replanner:      replanner,
 		sessionService: sessionService,
 	}
+}
+
+// SetGraphUsageRecorder 注入图运行用量落账器（biz.graphUsageRecorderSetter
+// 可选接口的实现，经 GraphExecutionUsecase.SetGraphUsageRecorder 转调）。
+// 装配期调用一次；此后构建的 runtime 在事件泵中计量 LLM 用量。
+func (f *trpcGraphBuilderFactory) SetGraphUsageRecorder(rec biz.GraphUsageRecorder) {
+	if f == nil || rec == nil {
+		return
+	}
+	f.usageRecorder = rec
 }
 
 // hasDeliverableStateField reports whether the graph schema carries the
@@ -657,6 +694,7 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 		bridge:    graphtrpc.NewEventBridge(f.eventBus, f.monitorBus, sessionID, spiritSessionID, graphID, execID, f.lg),
 		callbacks: f.buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID),
 		replanner: f.replanner,
+		usageAcc:  newGraphUsageAccumulator(sessionID, execID, graphID, f.usageRecorder, f.lg),
 	}, nil
 }
 
