@@ -222,7 +222,7 @@ curl http://localhost:8910/healthz
 ## 文档导航
 
 - **[用户手册](doc/manual/README.md)**——分模块的功能原理、设计方案与界面配置详解
-- [开发文档](docs/development/) · [架构决策](docs/development/65-module-cross-reference-full.md) · [组织不变量](docs/development/org-invariants.md)
+- [架构总览](doc/manual/02-architecture.md) · [组织管理](doc/manual/06-organization.md) · [记忆挑战赛参评说明](doc/memory-challenge.md)
 - [AGENTS.md](./AGENTS.md)——仓库协作规约
 
 ## License
