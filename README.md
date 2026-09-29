@@ -211,11 +211,11 @@ CLI 覆盖 Agent / Team / Graph / Skill / MCP / Channel / Tool / Cron / Org / Me
 
 ```bash
 docker compose -f docker-compose.eval.yml build
-EVAL_MEMORY_TOKEN=<memory-system-key> docker compose -f docker-compose.eval.yml up -d
+EVAL_MEMORY_TOKEN=<memory-system-key> EVAL_VECTOR_DIM=1024 docker compose -f docker-compose.eval.yml up -d
 curl http://localhost:8910/healthz
 ```
 
-端点契约：`POST /v1/memory/add`（写入）、`POST /v1/memory/search`（检索证据）、`GET /healthz`。鉴权 `Authorization: Bearer <EVAL_MEMORY_TOKEN>`，`user_id` 为唯一检索隔离边界。方法披露见 [docs/scenarios/agent-memory-challenge/](./docs/scenarios/agent-memory-challenge/README.md)。
+端点契约：`POST /v1/memory/add`（写入）、`POST /v1/memory/search`（检索证据）、`GET /healthz`。鉴权 `Authorization: Bearer <EVAL_MEMORY_TOKEN>`，`user_id` 为唯一检索隔离边界。方法披露、原始工作引用与部署说明见 [doc/memory-challenge.md](./doc/memory-challenge.md)。
 
 ---
 
