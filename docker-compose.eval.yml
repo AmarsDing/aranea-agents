@@ -43,6 +43,12 @@ services:
       EVAL_VECTOR_DIM: ${EVAL_VECTOR_DIM:-}
       # Memory System Key (Bearer / X-Api-Key). Provide via environment; never commit.
       EVAL_MEMORY_TOKEN: ${EVAL_MEMORY_TOKEN:-}
+      # The memoryeval binary links pkg/auth transitively (via internal/data),
+      # whose package init() refuses to start without a JWT signing secret.
+      # The evaluation endpoints never issue or verify JWTs, so any non-empty
+      # value satisfies the guard; override it with a real random secret if the
+      # same stack is ever exposed for normal app traffic.
+      KRATOS_AUTH_SECRET: ${KRATOS_AUTH_SECRET:-aranea-memory-eval-non-jwt-placeholder-secret}
       # Optional OpenAI-compatible embedding endpoint. When unset, recall
       # degrades to keyword-only hybrid scoring and the contract stays live.
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
