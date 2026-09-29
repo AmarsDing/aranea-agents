@@ -128,6 +128,74 @@ func TestHandleAdd_GeneratesRequestID(t *testing.T) {
 	}
 }
 
+// Cycle 2 contract: messages[].timestamp is sent as Unix milliseconds (JSON
+// number) when the source has one. The handler must tolerate it instead of
+// failing the whole Add request at JSON decode time.
+func TestHandleAdd_NumericTimestamp(t *testing.T) {
+	store := &fakeEvalStore{}
+	h := newTestHandler(store, "")
+	rec := doJSON(t, h, http.MethodPost, "/v1/memory/add", "", map[string]any{
+		"request_id": "req-ts-1",
+		"user_id":    "u-1",
+		"session_id": "s-1",
+		"messages": []map[string]any{
+			{"role": "user", "timestamp": 1704067200000, "content": "raw memory text"},
+		},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if len(store.addMsgs) != 1 {
+		t.Fatalf("store got %d messages, want 1", len(store.addMsgs))
+	}
+	if got := store.addMsgs[0].Timestamp; got != "1704067200000" {
+		t.Fatalf("timestamp = %q, want %q", got, "1704067200000")
+	}
+}
+
+// Cycle 2 contract: the Add response must echo user_id and session_id.
+func TestHandleAdd_EchoesUserAndSession(t *testing.T) {
+	store := &fakeEvalStore{}
+	h := newTestHandler(store, "")
+	rec := doJSON(t, h, http.MethodPost, "/v1/memory/add", "", map[string]any{
+		"request_id": "req-echo",
+		"user_id":    "u-echo",
+		"session_id": "s-echo",
+		"messages":   []map[string]any{{"role": "user", "content": "hi"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success   bool   `json:"success"`
+		RequestID string `json:"request_id"`
+		UserID    string `json:"user_id"`
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if resp.RequestID != "req-echo" {
+		t.Fatalf("request_id = %q, want req-echo", resp.RequestID)
+	}
+	if resp.UserID != "u-echo" {
+		t.Fatalf("user_id = %q, want u-echo", resp.UserID)
+	}
+	if resp.SessionID != "s-echo" {
+		t.Fatalf("session_id = %q, want s-echo", resp.SessionID)
+	}
+}
+
 func TestHandleAdd_MissingUserID(t *testing.T) {
 	h := newTestHandler(&fakeEvalStore{}, "")
 	rec := doJSON(t, h, http.MethodPost, "/v1/memory/add", "", map[string]any{

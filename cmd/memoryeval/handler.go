@@ -78,12 +78,30 @@ type addRequest struct {
 // rawMessage tolerates the platform's message shape variants: text may arrive
 // as "content" or "text"; id as "id" or "message_id".
 type rawMessage struct {
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Text      string `json:"text"`
-	ID        string `json:"id"`
-	MessageID string `json:"message_id"`
-	Timestamp string `json:"timestamp"`
+	Role      string        `json:"role"`
+	Content   string        `json:"content"`
+	Text      string        `json:"text"`
+	ID        string        `json:"id"`
+	MessageID string        `json:"message_id"`
+	Timestamp flexTimestamp `json:"timestamp"`
+}
+
+// flexTimestamp tolerates the platform's timestamp variants: JSON string or
+// JSON number (Cycle 2 sends Unix milliseconds as a number). Both normalize to
+// the decimal-string form; null/absent becomes "".
+type flexTimestamp string
+
+func (t *flexTimestamp) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if s == "" || s == "null" {
+		*t = ""
+		return nil
+	}
+	if len(s) >= 2 && s[0] == '"' {
+		s = s[1 : len(s)-1]
+	}
+	*t = flexTimestamp(s)
+	return nil
 }
 
 func (m rawMessage) body() string {
@@ -103,6 +121,8 @@ func (m rawMessage) msgID() string {
 type addResponse struct {
 	Success   bool   `json:"success"`
 	RequestID string `json:"request_id"`
+	UserID    string `json:"user_id"`
+	SessionID string `json:"session_id"`
 	Timestamp string `json:"timestamp"`
 	Stored    int    `json:"stored,omitempty"`
 	Error     string `json:"error,omitempty"`
@@ -129,11 +149,11 @@ func (s *evalServer) handleAdd(w http.ResponseWriter, r *http.Request) {
 			Role:      strings.TrimSpace(m.Role),
 			Content:   body,
 			MessageID: m.msgID(),
-			Timestamp: strings.TrimSpace(m.Timestamp),
+			Timestamp: strings.TrimSpace(string(m.Timestamp)),
 		})
 	}
 	if len(msgs) == 0 {
-		writeJSON(w, http.StatusBadRequest, addResponse{Success: false, Error: "messages must contain at least one non-empty entry"})
+		writeJSON(w, http.StatusBadRequest, addResponse{Success: false, UserID: req.UserID, SessionID: req.SessionID, Error: "messages must contain at least one non-empty entry"})
 		return
 	}
 	if req.RequestID == "" {
@@ -144,12 +164,14 @@ func (s *evalServer) handleAdd(w http.ResponseWriter, r *http.Request) {
 		// K2: error path — 5xx is platform-retryable.
 		s.lg.Error("eval add failed",
 			loggateway.StepID("memoryeval.add"), loggateway.Str("user_id", req.UserID), loggateway.Err(err))
-		writeJSON(w, http.StatusInternalServerError, addResponse{Success: false, RequestID: req.RequestID, Error: "add failed"})
+		writeJSON(w, http.StatusInternalServerError, addResponse{Success: false, RequestID: req.RequestID, UserID: req.UserID, SessionID: req.SessionID, Error: "add failed"})
 		return
 	}
 	writeJSON(w, http.StatusOK, addResponse{
 		Success:   true,
 		RequestID: req.RequestID,
+		UserID:    req.UserID,
+		SessionID: strings.TrimSpace(req.SessionID),
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Stored:    n,
 	})
