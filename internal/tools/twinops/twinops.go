@@ -415,29 +415,44 @@ func jsonNumber(v any) float64 {
 	return 0
 }
 
+// fetchAllListPages 循环拉取网关列表接口的全部分页并合并 items。
+// 终止条件：某页返回条数 < pageSize（网关列表响应无可靠 total 字段）。
+// 单页 500 的硬上限曾导致资产数 > 500 时 twin_device_search 少报总数
+// （2026-09-06 实锤：715 资产仅报 500）。
+func fetchAllListPages(ctx context.Context, cfg Config, path string) ([]any, jsonResult, bool) {
+	const pageSize = 500
+	var all []any
+	for page := 1; ; page++ {
+		q := url.Values{}
+		q.Set("page", strconv.Itoa(page))
+		q.Set("pageSize", strconv.Itoa(pageSize))
+		res, err := cfg.gatewayGet(ctx, path, q)
+		if err != nil {
+			return nil, res, false
+		}
+		items, ok := extractListItems(res)
+		if !ok {
+			return nil, res, false // 上游结构化错误原样透传
+		}
+		all = append(all, items...)
+		if len(items) < pageSize {
+			return all, jsonResult{}, true
+		}
+	}
+}
+
 // newDeviceSearchTool 搜索设备/资产。monitor-devices 从表无名称字段且网关
 // List 不支持 keyword，故拉取资产主表 + 设备从表本地拼接过滤（2026-08-15
 // P3 复盘：诊断岗 8 次搜索零贡献的根修）。
 func newDeviceSearchTool(cfg Config) trpctool.CallableTool {
 	return trpcfunction.NewFunctionTool(func(ctx context.Context, in deviceSearchInput) (jsonResult, error) {
-		big := url.Values{}
-		big.Set("page", "1")
-		big.Set("pageSize", "500")
-		assetsRes, err := cfg.gatewayGet(ctx, "/api/v1/monitor/monitor-assets", big)
-		if err != nil {
-			return assetsRes, err
-		}
-		assets, ok := extractListItems(assetsRes)
+		assets, res, ok := fetchAllListPages(ctx, cfg, "/api/v1/monitor/monitor-assets")
 		if !ok {
-			return assetsRes, nil // 上游结构化错误原样透传
+			return res, nil
 		}
-		devsRes, err := cfg.gatewayGet(ctx, "/api/v1/monitor/monitor-devices", big)
-		if err != nil {
-			return devsRes, err
-		}
-		devs, ok := extractListItems(devsRes)
+		devs, res, ok := fetchAllListPages(ctx, cfg, "/api/v1/monitor/monitor-devices")
 		if !ok {
-			return devsRes, nil
+			return res, nil
 		}
 		// assetId → 设备监控配置
 		type devInfo struct {

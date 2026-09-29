@@ -113,6 +113,10 @@ func NewTwinOpenAPICompatService(
 	s.routes()
 	if graphs != nil && graphs.ExecUC() != nil {
 		graphs.ExecUC().SetRunEventSink(s)
+		// G2：注入图运行用量落账器（经可选接口转调 factory）。twin 运行
+		// 的 LLM 用量此后按 "twin-" 会话落账，handleGetRun 据以回填
+		// model_used/tokens。usageUC 为 nil 时 recorder 静默跳过。
+		graphs.ExecUC().SetGraphUsageRecorder(&twinGraphUsageRecorder{usageUC: usageUC, lg: lg})
 	}
 	if s.Enabled() {
 		lg.Info("twinmonitor OpenAPI 兼容门面已启用",
@@ -751,6 +755,8 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 	} else {
 		durationMs = time.Since(exec.StartedAt).Milliseconds()
 	}
+	// G2：从用量表聚合本运行的 model/tokens（执行时按 "twin-" 会话落账）。
+	modelUsed, tokIn, tokOut := s.runTelemetry(r.Context(), exec)
 	writeTwinJSON(w, http.StatusOK, map[string]any{
 		"run_id":        exec.ID,
 		"graph_id":      exec.GraphID,
@@ -758,12 +764,74 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 		"output":        runOutput,
 		"error_message": exec.ErrorMessage,
 		"nodes":         nodes,
-		"model_used":    "",
-		"tokens_input":  0,
-		"tokens_output": 0,
+		"model_used":    modelUsed,
+		"tokens_input":  tokIn,
+		"tokens_output": tokOut,
 		"duration_ms":   durationMs,
 		"trace_url":     "",
 	})
+}
+
+// runTelemetry 聚合一次运行的用量遥测：twin 运行落账的 graph_run 行
+// 按运行求和，model_used 取输入+输出 token 量最大的模型。无用量数据或
+// 查询失败时返回零值（前端 resolveAraneaTraceUrl 对空 model 有兜底，
+// tokens=0 与旧版硬编码行为一致）。
+//
+// 查询键取 exec.ID（execID）：落账行 SessionID=execID（对齐框架 runner
+// 真实 session 行），SpiritSessionID/SessionID（"twin-<uuid>"）仅作归属
+// 判定。日期范围必须显式给出——usage.Usecase.Events 的 normalizeQuery
+// 对空 StartDate/EndDate 默认只查最近 30 天，历史运行的遥测会被静默
+// 清零，故从运行起始日查到今天。
+func (s *TwinOpenAPICompatService) runTelemetry(ctx context.Context, exec *biz.GraphExecution) (modelUsed string, tokIn, tokOut int) {
+	if s.usageUC == nil || exec == nil || strings.TrimSpace(exec.ID) == "" {
+		return "", 0, 0
+	}
+	execID := strings.TrimSpace(exec.ID)
+	startDate := time.Now().Format("2006-01-02")
+	if !exec.StartedAt.IsZero() {
+		startDate = exec.StartedAt.Format("2006-01-02")
+	}
+	events, err := s.usageUC.Events(ctx, usage.Query{
+		SessionID: execID,
+		UsageKind: KindGraphRun,
+		StartDate: startDate,
+		EndDate:   time.Now().Format("2006-01-02"),
+		Limit:     200,
+	})
+	if err != nil {
+		s.lg.Warn("run 遥测用量查询失败",
+			loggateway.StepID("twinopenapi.run_telemetry_fail"),
+			loggateway.Err(err),
+			loggateway.Str("execution_id", execID),
+		)
+		return "", 0, 0
+	}
+	// 按模型聚合，取 token 量最大的模型作为 model_used。
+	type sum struct{ in, out int }
+	byModel := map[string]*sum{}
+	for _, e := range events {
+		tokIn += e.InputTokens
+		tokOut += e.OutputTokens
+		m := strings.TrimSpace(e.ModelDisplayName)
+		if m == "" {
+			m = strings.TrimSpace(e.ModelAPIID)
+		}
+		agg := byModel[m]
+		if agg == nil {
+			agg = &sum{}
+			byModel[m] = agg
+		}
+		agg.in += e.InputTokens
+		agg.out += e.OutputTokens
+	}
+	best := -1
+	for m, agg := range byModel {
+		if tot := agg.in + agg.out; tot > best {
+			best = tot
+			modelUsed = m
+		}
+	}
+	return modelUsed, tokIn, tokOut
 }
 
 func (s *TwinOpenAPICompatService) handleCancelRun(w http.ResponseWriter, r *http.Request) {
@@ -1046,6 +1114,84 @@ func (s *TwinOpenAPICompatService) OnRunCancelled(_ context.Context, execID, gra
 	}
 	s.postEvent(execID, "run.cancelled", map[string]any{})
 	s.unregisterSub(execID)
+}
+
+// ---------------------------------------------------------------------------
+// 图运行用量落账（G2，2026-09-12）
+// ---------------------------------------------------------------------------
+
+// KindGraphRun 独立图运行（含本门面触发的 twin 运行）的用量行 UsageKind。
+// 计入聚合/配额（billable 过滤仅排除 team_turn），供按会话聚合回填
+// handleGetRun 的 model_used/tokens，并让 twin 运行成本可见。
+const KindGraphRun = "graph_run"
+
+// twinGraphUsageRecorder 把 biz.GraphUsageRecorder 适配到 usage.Usecase，
+// 仅对 twin 会话（"twin-" 前缀）落账——团队运行的图执行已有
+// team_member/team_turn 落账，按前缀过滤避免与团队路径双重计费。
+type twinGraphUsageRecorder struct {
+	usageUC *usage.Usecase
+	lg      loggateway.Logger
+}
+
+// RecordGraphRunUsage implements biz.GraphUsageRecorder.
+func (r *twinGraphUsageRecorder) RecordGraphRunUsage(ctx context.Context, in biz.GraphRunUsageInput) error {
+	if r == nil || r.usageUC == nil {
+		return nil
+	}
+	// 归属判定用 aranea 会话（twin-<uuid>）：仅门面触发的 twin 运行落账，
+	// 团队运行（team_member/team_turn 已有行）与其余独立图执行不重复计费。
+	if !strings.HasPrefix(in.SessionID, "twin-") {
+		return nil
+	}
+	status := biz.TokenUsageStatusSuccess
+	switch in.Status {
+	case "failed":
+		status = biz.TokenUsageStatusError
+	case "cancelled":
+		status = "cancelled"
+	}
+	// 用量行 SessionID 取 RunID（execID），而非 "twin-<uuid>"：
+	// 框架 runner 以 execID 创建 session 行（r.runner.Run(ctx, "graph", execID, msg)），
+	// 对齐后 RecordAuxLLMUsage 的 session 指标增量落得到真实存在的行——
+	// 用 "twin-<uuid>" 会命中 sessions 表不存在的 id，触发 UpdateOneID
+	// NotFound 的 reaccumulate 重试风暴（刷错误日志），并在新表路径下
+	// upsert 出孤儿 session_metrics 行。twin 会话仍可从用量行 MetadataJSON
+	// 的 aranea_session_id 反查；handleGetRun 遥测按 exec.ID 查询。
+	meta := strings.TrimSpace(in.MetadataJSON)
+	if meta == "" {
+		meta = "{}"
+	}
+	meta = mergeGraphRunSessionMeta(meta, in.SessionID)
+	return r.usageUC.RecordAuxLLMUsage(ctx, usage.AuxLLMUsageInput{
+		Kind:          KindGraphRun,
+		SessionID:     in.RunID,
+		RunID:         in.RunID,
+		Model:         in.Model,
+		Status:        status,
+		PromptTok:     in.PromptTok,
+		CompletionTok: in.CompletionTok,
+		UsageSource:   in.UsageSource,
+		MetadataJSON:  meta,
+	})
+}
+
+// mergeGraphRunSessionMeta 把 aranea 归属会话（"twin-<uuid>"）写入用量行
+// metadata（JSON 合并，保留既有键），供归属反查；非法 JSON 时原样返回
+// （RecordAuxLLMUsage 侧有默认 "{}" 兜底，不做静默改写）。
+func mergeGraphRunSessionMeta(meta, sessionID string) string {
+	if strings.TrimSpace(sessionID) == "" {
+		return meta
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(meta), &m); err != nil || m == nil {
+		return meta
+	}
+	m["aranea_session_id"] = sessionID
+	b, err := json.Marshal(m)
+	if err != nil {
+		return meta
+	}
+	return string(b)
 }
 
 // ---------------------------------------------------------------------------

@@ -516,12 +516,14 @@ func (c *Callbacks) finalizeAfterToolResult(
 		return lastResult, firstErr
 	}
 	if lastResult == nil {
-		if args.Result != nil {
-			return &AfterToolResult{
-				CustomResult: args.Result,
-			}, nil
-		}
-		return &AfterToolResult{}, nil
+		// 无任何回调产出：返回 nil 表示「无覆写」。
+		// 历史实现在此把工具原始结果伪造成 CustomResult 透传，但
+		// functioncall/state_graph 处理器把任何非 nil CustomResult 都视为
+		// 插件覆写并提前返回——跳过 agent 链上全部 AfterTool 钩子
+		// （2026-09-06 spirit WS 路径实锤：tool_load 成功后守卫 afterHook
+		// 未触发，inflightLoads 跨轮泄漏，已激活工具被 loadThenCall 闸
+		// 永久误拦）。与 finalizeBeforeToolResult 的空结果→nil 语义对齐。
+		return nil, nil
 	}
 	return lastResult, nil
 }

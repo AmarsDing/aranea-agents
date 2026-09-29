@@ -488,9 +488,10 @@ func TestRunAfterTool_Empty(t *testing.T) {
 	}
 	result, err := callbacks.RunAfterTool(context.Background(), afterArgs)
 
+	// 无回调产出时必须返回 nil（无覆写）：把原始结果伪造成 CustomResult
+	// 会被处理器误判为插件覆写并跳过 agent 链 AfterTool 钩子。
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, originalResult, result.CustomResult)
+	require.Nil(t, result)
 }
 
 func TestRunAfterTool_PanicRecovery(t *testing.T) {
@@ -877,8 +878,8 @@ func TestRunAfterTool_NoCallbacksPreservesOriginalResultShape(t *testing.T) {
 
 	result, err := callbacks.RunAfterTool(context.Background(), afterArgs)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Same(t, rawResult, result.CustomResult)
+	// 无回调产出 → 返回 nil（无覆写）；原始结果对象本身不被改写。
+	require.Nil(t, result)
 	require.Same(t, rawResult, afterArgs.Result)
 }
 
@@ -1111,7 +1112,10 @@ func TestToolCallbacks_ContextPropagation(t *testing.T) {
 }
 
 // TestToolCallbacks_After_NoCallbacks_WithResult tests that when no callbacks
-// are registered and args.Result is not nil, RunAfterTool returns the original result.
+// are registered, RunAfterTool returns nil (no override) even when args.Result
+// is not nil — the original result must NOT be fabricated into a CustomResult,
+// otherwise processors mistake it for a plugin override and skip the agent
+// chain's AfterTool hooks.
 func TestToolCallbacks_After_NoCallbacks_WithResult(t *testing.T) {
 	callbacks := tool.NewCallbacks()
 	originalResult := map[string]string{"key": "value"}
@@ -1124,12 +1128,11 @@ func TestToolCallbacks_After_NoCallbacks_WithResult(t *testing.T) {
 	}
 	result, err := callbacks.RunAfterTool(context.Background(), args)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, originalResult, result.CustomResult)
+	require.Nil(t, result)
 }
 
 // TestToolCallbacks_After_NoCallbacks_WithoutResult tests that when no callbacks
-// are registered and args.Result is nil, RunAfterTool returns an empty result.
+// are registered and args.Result is nil, RunAfterTool returns nil (no override).
 func TestToolCallbacks_After_NoCallbacks_WithoutResult(t *testing.T) {
 	callbacks := tool.NewCallbacks()
 	args := &tool.AfterToolArgs{
@@ -1141,8 +1144,7 @@ func TestToolCallbacks_After_NoCallbacks_WithoutResult(t *testing.T) {
 	}
 	result, err := callbacks.RunAfterTool(context.Background(), args)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Nil(t, result.CustomResult)
+	require.Nil(t, result)
 }
 
 // TestToolCallbacks_After_NilResult tests that when a callback returns
@@ -1410,7 +1412,8 @@ func TestToolCallbacks_After_ToolCallID(t *testing.T) {
 	result, err := callbacks.RunAfterTool(context.Background(), afterArgs)
 	require.NoError(t, err)
 	require.Equal(t, expectedToolCallID, capturedToolCallID)
-	require.NotNil(t, result)
+	// 回调返回 (nil, nil) 即无产出：整体返回 nil（无覆写）。
+	require.Nil(t, result)
 }
 
 func TestToolCallbacks_Before_ToolCallID_Empty(t *testing.T) {
@@ -1463,7 +1466,9 @@ func TestToolCallbacks_After_ToolCallID_Empty(t *testing.T) {
 	result, err := callbacks.RunAfterTool(context.Background(), afterArgs)
 	require.NoError(t, err)
 	require.Equal(t, "", capturedToolCallID)
-	require.NotNil(t, result)
+	// 回调返回 (nil, nil) 即无产出：整体返回 nil（无覆写），不再伪造
+	// CustomResult 透传原始结果（会被处理器误判为插件覆写而跳过链上钩子）。
+	require.Nil(t, result)
 }
 
 func TestToolCallbacks_Before_ToolCallID_Multiple(t *testing.T) {

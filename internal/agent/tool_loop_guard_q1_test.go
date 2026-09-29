@@ -393,6 +393,28 @@ func TestLoopGuardLoadThenCallSameStepBlockedUntilNextModel(t *testing.T) {
 	}
 }
 
+// 回归（2026-09-06 spirit WS 路径实锤）：tool_load 的 AfterTool 未触发
+// （回调链被短路）时，inflightLoads 泄漏会让目标工具在本节点内被
+// loadThenCall 闸永久误拦——模型即使按指引等到下一轮再调用也仍被拦。
+// BeforeModel 必须兜底清空该批次窗口状态。
+func TestLoopGuardLoadThenCallAfterHookSkippedRecoversNextModel(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-c1-after-skipped")
+	before := g.beforeHook()
+	// tool_load 仅跑 BeforeTool（模拟 AfterTool 被回调链短路）：inflightLoads 泄漏。
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "tool_load", Arguments: []byte(`{"tool_name":"exec_command"}`),
+	}); err != nil {
+		t.Fatalf("tool_load should pass: %v", err)
+	}
+	// 下一 model step：BeforeModel 兜底清空泄漏的 inflightLoads。
+	_ = runWallModelHook(t, g, ctx)
+	// 直接调用已加载工具必须放行（修复前：被泄漏的 inflightLoads 误拦）。
+	if err := runLoopGuardTurn(t, g, ctx, "exec_command", `{"cmd":"ls"}`, "ok", nil); err != nil {
+		t.Fatalf("next model step must allow the loaded tool even when afterHook was skipped: %v", err)
+	}
+}
+
 func runFatModelHook(t *testing.T, g *toolLoopGuard, ctx context.Context, body string) []trpcmodel.Message {
 	t.Helper()
 	hook := g.modelHook()
