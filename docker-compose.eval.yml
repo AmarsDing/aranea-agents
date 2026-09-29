@@ -37,6 +37,10 @@ services:
       # Use the pgvector store provided by the db service (required together
       # with the GO_BUILD_TAGS=pgvector build arg above).
       DAO_VECTOR_PGVECTOR: "true"
+      # pgvector column / expected embedding dimension. Must match the
+      # embedding model output (e.g. 1024 for qwen3.7-text-embedding,
+      # 1536 for text-embedding-3-small). Mismatched dims skip vector indexing.
+      EVAL_VECTOR_DIM: ${EVAL_VECTOR_DIM:-}
       # Memory System Key (Bearer / X-Api-Key). Provide via environment; never commit.
       EVAL_MEMORY_TOKEN: ${EVAL_MEMORY_TOKEN:-}
       # Optional OpenAI-compatible embedding endpoint. When unset, recall
