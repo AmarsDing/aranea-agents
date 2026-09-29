@@ -95,7 +95,7 @@ query ──► Embedding（OpenAI 兼容 API，可降级）──► 向量召�
 - **隔离**：`user_id` 是唯一检索边界，Add 与 Search 必须使用同一值；禁止跨 `user_id` 检索。
 - **Search 不生成答案**：Search 路径无任何 LLM 调用，返回内容为库存记忆原文。
 - **Add/Search 模型规则**：开源组 Add 阶段若使用 LLM 须为 `gpt-4o-mini`。本系统 **Add 路径不调用任何 LLM**——事实切分与槽位分类均为词法/规则实现（`internal/biz/memory_eval_classify.go`），故该约束自动满足。
-- **Embedding**：OpenAI 兼容端点（如 `qwen3.7-text-embedding`，1024 维）；未配置时降级为关键词混合召回，契约保持可用。
+- **Embedding**：OpenAI 兼容端点，模型 `text-embedding-v4`（1024 维，学术榜要求）；未配置时降级为关键词混合召回，契约保持可用。
 - **重试语义**：可重试错误按 408/409/425/429/500/502/503/504 返回，供平台重试；`request_id` 重放幂等。
 
 ---
@@ -109,7 +109,7 @@ EVAL_MEMORY_TOKEN=<memory-system-key> \
 EVAL_VECTOR_DIM=1024 \
 EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode \
 EMBEDDING_API_KEY=<key> \
-EMBEDDING_MODEL=qwen3.7-text-embedding \
+EMBEDDING_MODEL=text-embedding-v4 \
 EMBEDDING_DIM=1024 \
 docker compose -f docker-compose.eval.yml up -d
 

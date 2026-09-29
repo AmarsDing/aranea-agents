@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -262,8 +263,8 @@ func TestHandleAdd_StoreError(t *testing.T) {
 
 func TestHandleSearch_Success(t *testing.T) {
 	store := &fakeEvalStore{searchItems: []biz.EvalMemoryItem{
-		{ID: "f-1", Content: "用户喜欢咖啡", Score: 0.91, Timestamp: "2026-08-01T00:00:00Z"},
-		{ID: "f-2", Content: "用户不喝牛奶", Score: 0.77, Timestamp: "2026-08-02T00:00:00Z"},
+		{ID: "f-1", Content: "用户喜欢咖啡", Score: 0.91, Timestamp: "2026-08-01T00:00:00Z", CreatedAt: "2026-08-01T00:00:00Z"},
+		{ID: "f-2", Content: "用户不喝牛奶", Score: 0.77, Timestamp: "2026-08-02T00:00:00Z", CreatedAt: "2026-08-02T00:00:00Z"},
 	}}
 	h := newTestHandler(store, "")
 	rec := doJSON(t, h, http.MethodPost, "/v1/memory/search", "", map[string]any{
@@ -273,14 +274,22 @@ func TestHandleSearch_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+	body := rec.Body.String()
 	var resp struct {
 		Data []biz.EvalMemoryItem `json:"data"`
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(resp.Data) != 2 || resp.Data[0].ID != "f-1" || resp.Data[0].Score != 0.91 {
 		t.Fatalf("data = %+v", resp.Data)
+	}
+	// Cycle-2 API Guide: Search evidence carries created_at; cycle-1 used
+	// timestamp. Both must be on the wire so either contract can parse it.
+	for _, key := range []string{`"timestamp":"2026-08-01T00:00:00Z"`, `"created_at":"2026-08-01T00:00:00Z"`} {
+		if !strings.Contains(body, key) {
+			t.Fatalf("search body missing %s: %s", key, body)
+		}
 	}
 	// Default top_k per platform contract.
 	if store.searchTopK != 100 {

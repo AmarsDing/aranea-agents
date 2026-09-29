@@ -13,13 +13,16 @@ type EvalMessage struct {
 }
 
 // EvalMemoryItem is one memory-evidence row returned through the Agent Memory
-// Challenge Search contract. JSON field names follow the platform contract.
+// Challenge Search contract. JSON field names follow the platform contract:
+// the cycle-2 API Guide names this field created_at, while cycle-1 and the Add
+// request path use timestamp, so both are emitted with the same value.
 // Stability:internal
 type EvalMemoryItem struct {
 	ID        string  `json:"id"`
 	Content   string  `json:"content"`
 	Score     float64 `json:"score"`
 	Timestamp string  `json:"timestamp"`
+	CreatedAt string  `json:"created_at"`
 }
 
 // EvalMemoryStore bridges the Agent Memory Challenge Add/Search contract onto

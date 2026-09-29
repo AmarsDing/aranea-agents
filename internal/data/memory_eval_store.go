@@ -403,7 +403,10 @@ func evalItemFromFactJSON(raw []byte, fallback float64) (biz.EvalMemoryItem, boo
 	if ts == "" {
 		ts = row.CreatedAt
 	}
-	return biz.EvalMemoryItem{ID: row.ID, Content: row.Statement, Score: score, Timestamp: ts}, true
+	if row.CreatedAt == "" {
+		row.CreatedAt = ts
+	}
+	return biz.EvalMemoryItem{ID: row.ID, Content: row.Statement, Score: score, Timestamp: ts, CreatedAt: row.CreatedAt}, true
 }
 
 func evalItemFromEpisodeJSON(raw []byte) (biz.EvalMemoryItem, bool) {
@@ -423,7 +426,7 @@ func evalItemFromEpisodeJSON(raw []byte) (biz.EvalMemoryItem, bool) {
 	if content == "" {
 		content = row.Title
 	}
-	return biz.EvalMemoryItem{ID: "l2:" + row.ID, Content: content, Score: row.Scores.Total, Timestamp: row.CreatedAt}, true
+	return biz.EvalMemoryItem{ID: "l2:" + row.ID, Content: content, Score: row.Scores.Total, Timestamp: row.CreatedAt, CreatedAt: row.CreatedAt}, true
 }
 
 func factJSONString(raw []byte, key string) string {

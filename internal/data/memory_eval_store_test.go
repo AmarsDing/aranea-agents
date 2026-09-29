@@ -196,4 +196,24 @@ func TestEvalItemFromFactJSON_UsesEventTime(t *testing.T) {
 	if item.Timestamp != "2026-02-01T00:00:00Z" {
 		t.Fatalf("timestamp=%q, want valid_from", item.Timestamp)
 	}
+	// Cycle-2 API Guide names the Search evidence field created_at; it must
+	// carry the row creation time even when valid_from takes over timestamp.
+	if item.CreatedAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("created_at=%q, want row created_at", item.CreatedAt)
+	}
+}
+
+func TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{
+		"id":         "f2",
+		"statement":  "Alice likes blue",
+		"valid_from": "2026-02-01T00:00:00Z",
+	})
+	item, ok := evalItemFromFactJSON(raw, 0.5)
+	if !ok {
+		t.Fatal("decode failed")
+	}
+	if item.CreatedAt != "2026-02-01T00:00:00Z" {
+		t.Fatalf("created_at=%q, want fallback to valid_from", item.CreatedAt)
+	}
 }
