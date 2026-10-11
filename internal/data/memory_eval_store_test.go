@@ -71,6 +71,46 @@ func TestEvalStore_SupersedesFavoriteColor(t *testing.T) {
 	}
 }
 
+// TestEvalStore_SameSessionEpisodeMergesTurns is the L2 overwrite regression:
+// repeated Add calls for one session used to replace the episode transcript
+// with the latest batch only (upsert keyed on (session_id, l1_task_id)),
+// dropping earlier turns from recall evidence. The episode must merge batches
+// instead, and an identical replay must not duplicate lines.
+func TestEvalStore_SameSessionEpisodeMergesTurns(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	batch1 := []biz.EvalMessage{{Role: "user", Content: "first turn alpha", MessageID: "m1"}}
+	batch2 := []biz.EvalMessage{{Role: "user", Content: "second turn beta", MessageID: "m2"}}
+	if _, err := store.AddMessages(ctx, "u-merge", "s-merge", batch1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMessages(ctx, "u-merge", "s-merge", batch2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMessages(ctx, "u-merge", "s-merge", batch1); err != nil { // replay
+		t.Fatal(err)
+	}
+	rows, err := newL2EpisodeRepo(r.data, nil).ListEpisodeRowsForRecall(ctx, "u-merge", "s-merge", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("episode rows=%d, want 1 (same session must merge)", len(rows))
+	}
+	var m map[string]any
+	if err := json.Unmarshal(rows[0], &m); err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := m["outcome_summary"].(string)
+	if !strings.Contains(summary, "first turn alpha") || !strings.Contains(summary, "second turn beta") {
+		t.Fatalf("episode transcript lost turns: %q", summary)
+	}
+	if strings.Count(summary, "first turn alpha") != 1 {
+		t.Fatalf("identical replay duplicated transcript lines: %q", summary)
+	}
+}
+
 func TestEvalStore_SearchMergesL2Episode(t *testing.T) {
 	store := setupEvalStore(t)
 	ctx := context.Background()

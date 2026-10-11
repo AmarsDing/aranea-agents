@@ -47,6 +47,46 @@ var (
 
 // --- L2EpisodeWriter ---
 
+// l2MergedTranscriptMaxChars bounds the merged episode transcript so
+// long-running sessions cannot grow outcome/outcome_summary without limit.
+const l2MergedTranscriptMaxChars = 12000
+
+// l2EpisodeConflictSetReplace is the default (session_id, l1_task_id) upsert
+// semantics: the incoming archive replaces the stored episode.
+const l2EpisodeConflictSetReplace = `goal = excluded.goal, outcome = excluded.outcome,
+	outcome_summary = excluded.outcome_summary, importance = excluded.importance,
+	confidence = excluded.confidence,
+	key_decisions_json = excluded.key_decisions_json,
+	key_artifacts_json = excluded.key_artifacts_json,
+	l1_snapshot_json = excluded.l1_snapshot_json,
+	title = excluded.title,
+	episode_kind = excluded.episode_kind,
+	ended_at = excluded.ended_at,
+	updated_at = excluded.updated_at`
+
+// l2EpisodeConflictSetMerge appends the incoming transcript to the stored
+// episode instead of replacing it. An identical replay is detected by
+// substring match and leaves the transcript unchanged; goal keeps the first
+// non-empty value. Used by the eval ingest path (MergeOutcome).
+var l2EpisodeConflictSetMerge = fmt.Sprintf(`goal = CASE WHEN memory_episodes.goal = '' THEN excluded.goal ELSE memory_episodes.goal END,
+	outcome = CASE
+		WHEN memory_episodes.outcome = '' THEN excluded.outcome
+		WHEN excluded.outcome = '' OR position(excluded.outcome in memory_episodes.outcome) > 0 THEN memory_episodes.outcome
+		ELSE left(memory_episodes.outcome || E'\n' || excluded.outcome, %d) END,
+	outcome_summary = CASE
+		WHEN memory_episodes.outcome_summary = '' THEN excluded.outcome_summary
+		WHEN excluded.outcome_summary = '' OR position(excluded.outcome_summary in memory_episodes.outcome_summary) > 0 THEN memory_episodes.outcome_summary
+		ELSE left(memory_episodes.outcome_summary || E'\n' || excluded.outcome_summary, %d) END,
+	importance = excluded.importance,
+	confidence = excluded.confidence,
+	key_decisions_json = excluded.key_decisions_json,
+	key_artifacts_json = excluded.key_artifacts_json,
+	l1_snapshot_json = excluded.l1_snapshot_json,
+	title = excluded.title,
+	episode_kind = excluded.episode_kind,
+	ended_at = excluded.ended_at,
+	updated_at = excluded.updated_at`, l2MergedTranscriptMaxChars, l2MergedTranscriptMaxChars)
+
 func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1ArchiveEpisodeInsert) error {
 	id := newUUIDString()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -91,23 +131,17 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 		confidence = 0.6
 	}
 	consolidationStatus := "consolidated"
+	conflictSet := l2EpisodeConflictSetReplace
+	if in.MergeOutcome {
+		conflictSet = l2EpisodeConflictSetMerge
+	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
-	id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
-	outcome, outcome_summary, importance, confidence,
-	key_decisions_json, key_artifacts_json, l1_snapshot_json,
-	consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at, updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
-	goal = excluded.goal, outcome = excluded.outcome,
-	outcome_summary = excluded.outcome_summary, importance = excluded.importance,
-	confidence = excluded.confidence,
-	key_decisions_json = excluded.key_decisions_json,
-	key_artifacts_json = excluded.key_artifacts_json,
-	l1_snapshot_json = excluded.l1_snapshot_json,
-	title = excluded.title,
-	episode_kind = excluded.episode_kind,
-	ended_at = excluded.ended_at,
-	updated_at = excluded.updated_at`),
+		id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
+		outcome, outcome_summary, importance, confidence,
+		key_decisions_json, key_artifacts_json, l1_snapshot_json,
+		consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at, updated_at
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET `+conflictSet),
 		id,
 		strings.TrimSpace(in.SessionID),
 		strings.TrimSpace(in.AgentID),
@@ -124,6 +158,30 @@ ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
 		l1SnapshotJSON,
 		consolidationStatus, 0, "{}", now, now, now,
 	)
+	return entErrToBizErr(err, "MEMORY_L2")
+}
+
+// StripEpisodeStatement removes a statement line from the merged eval episode
+// transcript. The merge-on-conflict path (MergeOutcome) appends every batch,
+// so when an L3 fact is superseded its line must also leave the L2
+// transcript, otherwise recall keeps surfacing the stale value. The three
+// anchored replaces cover middle/first/last line (and the bare one the
+// single-line case); btrim cleans the freed edge newline.
+func (r *l2EpisodeRepo) StripEpisodeStatement(ctx context.Context, agentID, sessionID, statement string) error {
+	agentID = strings.TrimSpace(agentID)
+	sessionID = strings.TrimSpace(sessionID)
+	statement = strings.TrimSpace(statement)
+	if agentID == "" || sessionID == "" || statement == "" {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	q := `UPDATE memory_episodes
+		SET outcome = btrim(replace(replace(replace(outcome, E'\n' || ?, ''), ? || E'\n', ''), ?, ''), E'\n'),
+			outcome_summary = btrim(replace(replace(replace(outcome_summary, E'\n' || ?, ''), ? || E'\n', ''), ?, ''), E'\n'),
+			updated_at = ?
+		WHERE agent_id = ? AND session_id = ? AND l1_task_id != '' AND deleted_at = ''`
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q),
+		statement, statement, statement, statement, statement, statement, now, agentID, sessionID)
 	return entErrToBizErr(err, "MEMORY_L2")
 }
 

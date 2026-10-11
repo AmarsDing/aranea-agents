@@ -281,6 +281,10 @@ type L1ArchiveEpisodeInsert struct {
 	EpisodeKind      string
 	Importance       float64
 	Confidence       float64
+	// MergeOutcome 让 (session_id, l1_task_id) 冲突时把 Outcome/OutcomeSummary
+	// 追加合并到已有 episode，而不是整体覆盖。评测摄入路径使用（同一 session
+	// 多次增量 Add）；L1 归档流程保持默认覆盖语义。
+	MergeOutcome bool
 }
 
 // L2RecallStore retrieves episodic (L2) memories for prompt injection and admin.

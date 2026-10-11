@@ -191,6 +191,14 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 			s.lg.Warn("eval invalidate failed",
 				loggateway.StepID("memoryeval.invalidate"), loggateway.Err(invErr),
 				loggateway.Str("fact_id", old.id))
+		} else if old.sourceSessionID != "" {
+			// The merged eval episode keeps every appended turn, so a
+			// superseded statement must also leave the L2 transcript,
+			// otherwise recall keeps surfacing the stale value.
+			if stripErr := s.episodes.StripEpisodeStatement(ctx, userID, old.sourceSessionID, old.statement); stripErr != nil {
+				s.lg.Warn("eval episode strip failed",
+					loggateway.StepID("memoryeval.episode_strip"), loggateway.Err(stripErr))
+			}
 		}
 	}
 	return nil
@@ -267,6 +275,7 @@ func (s *evalMemoryStore) upsertEvalEpisode(ctx context.Context, userID, session
 		EpisodeKind:    "eval_session",
 		Importance:     0.6,
 		Confidence:     0.8,
+		MergeOutcome:   true,
 	})
 }
 
@@ -365,21 +374,23 @@ type evalWrittenFact struct {
 }
 
 type evalFactRow struct {
-	id        string
-	statement string
-	kind      string
+	id              string
+	statement       string
+	kind            string
+	sourceSessionID string
 }
 
 func decodeEvalFactRow(raw []byte) evalFactRow {
 	var row struct {
-		ID        string `json:"id"`
-		Statement string `json:"statement"`
-		FactKind  string `json:"fact_kind"`
+		ID              string `json:"id"`
+		Statement       string `json:"statement"`
+		FactKind        string `json:"fact_kind"`
+		SourceSessionID string `json:"source_session_id"`
 	}
 	if json.Unmarshal(raw, &row) != nil {
 		return evalFactRow{}
 	}
-	return evalFactRow{id: row.ID, statement: row.Statement, kind: row.FactKind}
+	return evalFactRow{id: row.ID, statement: row.Statement, kind: row.FactKind, sourceSessionID: row.SourceSessionID}
 }
 
 func evalItemFromFactJSON(raw []byte, fallback float64) (biz.EvalMemoryItem, bool) {

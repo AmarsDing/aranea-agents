@@ -400,6 +400,22 @@ func (d *Data) SeedLazy(ctx context.Context, name string) error {
 
 const defaultVectorDim = 1536
 
+// ctxExecer is the minimal ExecContext surface needed by startup DDL helpers.
+type ctxExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// ensurePgVectorExtension creates the pgvector extension idempotently before
+// the vector store probes the vector type. Previously the extension was only
+// created by the P1 migration step, which runs AFTER vector store
+// construction, so a brand-new database silently degraded vector search on
+// first boot until restart. Errors are returned for the caller to warn: the
+// degrade-to-keyword fallback stays available.
+func ensurePgVectorExtension(ctx context.Context, ex ctxExecer) error {
+	_, err := ex.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`)
+	return err
+}
+
 func vectorDimFromConf(c *conf.Data) int {
 	dim := defaultVectorDim
 	if c != nil && c.GetPostgres() != nil {
@@ -507,6 +523,15 @@ func NewData(c *conf.Data, lg loggateway.Logger, rr biz.Reranker) (*Data, func()
 	// SQLiteVectorStore remains available only for tests (see vector/sqlite.go).
 	var vs vector.VectorStore
 	if pg != nil && conf.DAOVectorPgVector() {
+		extCtx, extCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		extErr := ensurePgVectorExtension(extCtx, rawDB)
+		extCancel()
+		if extErr != nil {
+			// Non-fatal: the degrade path below still applies, but a fresh
+			// database is the exact case this pre-create guards, so surface it.
+			lg.Warn("create pgvector extension failed; vector store may degrade on a fresh database",
+				loggateway.StepID("data.vector"), loggateway.Err(extErr))
+		}
 		pgvs, vsErr := vector.NewPgVectorStore(pg, "vector_embeddings", vdim, lg)
 		if vsErr != nil {
 			// pgvector extension missing or broken: degrade to nil vector store.
