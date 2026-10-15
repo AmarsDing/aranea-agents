@@ -4,7 +4,6 @@ cmd/launcher/main.go 529
 cmd/migrate-sqlite-to-postgres/migrator.go 524
 cmd/tools/agency-converter/main.go 971
 internal/a2a/federation_e2e_helpers_test.go 666
-internal/agent/agent_allocator_impl.go 1029
 internal/agent/agent_allocator_impl_test.go 673
 internal/agent/agent_factory.go 579
 internal/agent/agent_factory_test.go 843
@@ -18,7 +17,7 @@ internal/agent/model_selector.go 604
 internal/agent/shard_plan.go 716
 internal/agent/stream_consumer.go 587
 internal/agent/task_orchestrator_impl.go 775
-internal/agent/task_planner_impl.go 2155
+internal/agent/task_planner_impl.go 981
 internal/agent/task_planner_impl_test.go 1261
 internal/agent/tool_assembly.go 610
 internal/agent/tool_loop_guard_test.go 549
@@ -122,7 +121,7 @@ internal/biz/tool/tool.go 721
 internal/biz/tool/tool_catalog_policy_test.go 517
 internal/biz/tool/tool_usecase_more_test.go 1545
 internal/biz/tool/tool_usecase_test.go 819
-internal/biz/usage/usage.go 1840
+internal/biz/usage/usage.go 1035
 internal/biz/usage/usage_more_test.go 599
 internal/biz/usage/usage_usecase_more_test.go 1578
 internal/biz/usage/usage_usecase_test.go 615
