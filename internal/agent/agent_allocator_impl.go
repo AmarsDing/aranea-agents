@@ -232,7 +232,8 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "collaborating", sketch.meta())
 	}
 
-	plan := &biz.AllocationPlan{
+		allocations = impl.applyCapacitySoftGate(ctx, taskPlan, allocations, assignable, traceID)
+plan := &biz.AllocationPlan{
 		ID:              "ap_" + uuid.NewString(),
 		TaskPlanID:      taskPlan.ID,
 		SpiritSessionID: taskPlan.SpiritSessionID,

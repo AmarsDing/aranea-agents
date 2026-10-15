@@ -60,12 +60,10 @@ func (r *dagRun) dependenciesCompleted(s *biz.PlanStep) bool {
 // completed. Called after a step completes successfully.
 func (r *dagRun) checkDownstream(ctx context.Context, completedID string) {
 	deps := r.dependents[completedID]
-	println("DEBUG checkDownstream", completedID, "deps", len(deps))
 	for _, depID := range deps {
 		r.mu.Lock()
 		depStep, ok := r.stepsByID[depID]
-		println("DEBUG dep", depID, "status", string(depStep.Status))
-		if !ok || depStep.Status != biz.PlanStepStatusPending {
+		if !ok || depStep == nil || depStep.Status != biz.PlanStepStatusPending {
 			r.mu.Unlock()
 			continue
 		}

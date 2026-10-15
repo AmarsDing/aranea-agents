@@ -164,6 +164,7 @@ type TeamCompletionNotifier interface {
 // TeamStarter.HandleTeamTurnResult when a team_run reaches terminal status.
 // 2026-07-04 问题 4 修复：让 PlanExecutor 转发 team_run 完成通知。
 func (e *PlanExecutor) NotifyTeamCompletion(teamID, teamRunID string, success bool, errMsg string) {
+	e.releaseTeamAgentLoads(teamID)
 	if notifier, ok := e.orch.(TeamCompletionNotifier); ok {
 		notifier.NotifyTeamCompletion(teamID, teamRunID, success, errMsg)
 	}

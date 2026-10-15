@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -89,7 +90,9 @@ func (o *SpiritOrchestration) noteProbeFailure(teamID string) int {
 		o.probeFailStrikes = make(map[string]int)
 	}
 	o.probeFailStrikes[teamID]++
-	return o.probeFailStrikes[teamID]
+	n := o.probeFailStrikes[teamID]
+	metrics.SpiritProbeStrikeTotal.Inc()
+	return n
 }
 
 func (o *SpiritOrchestration) resetProbeFailures(teamID string) {
@@ -298,5 +301,28 @@ func (o *SpiritOrchestration) Stop() {
 	if o.pollCancel != nil {
 		o.pollCancel()
 	}
-	o.timeouts.stopAll()
+	if o.timeouts != nil {
+		o.timeouts.stopAll()
+	}
+	o.clearProbeStrikes()
+}
+
+// ProbeStrikeCount returns the consecutive probe-failure count for teamID
+// (ORCH-05 observability). Zero when unknown.
+func (o *SpiritOrchestration) ProbeStrikeCount(teamID string) int {
+	if o == nil || teamID == "" {
+		return 0
+	}
+	o.probeStrikesMu.Lock()
+	defer o.probeStrikesMu.Unlock()
+	return o.probeFailStrikes[teamID]
+}
+
+func (o *SpiritOrchestration) clearProbeStrikes() {
+	if o == nil {
+		return
+	}
+	o.probeStrikesMu.Lock()
+	defer o.probeStrikesMu.Unlock()
+	o.probeFailStrikes = make(map[string]int)
 }
