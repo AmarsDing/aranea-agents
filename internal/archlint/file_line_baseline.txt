@@ -66,7 +66,7 @@ internal/biz/learning_loop.go 559
 internal/biz/llm_provider_model.go 785
 internal/biz/mcp_server.go 689
 internal/biz/mcp_server_test.go 536
-internal/biz/memory_admin_usecase.go 827
+internal/biz/memory_admin_usecase.go 825
 internal/biz/memory_center.go 738
 internal/biz/memory_l4_cascade.go 956
 internal/biz/monitor/alert/engine.go 641
@@ -126,7 +126,7 @@ internal/cronrunner/jobs/memory_l1_archive_test.go 721
 internal/cronrunner/runner.go 592
 internal/data/a2a.go 513
 internal/data/artifactfs/repo.go 682
-internal/data/data.go 1173
+internal/data/data.go 1164
 internal/data/evaluation.go 633
 internal/data/graph.go 530
 internal/data/knowledge_curate_test.go 644

@@ -3,10 +3,27 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"time"
 )
+
+// ErrTurnRangeUnavailable tells ListMessagesAfterTurn to fall back to a full scan.
+var ErrTurnRangeUnavailable = errors.New("activity turn range lister unavailable")
+
+// ActivityTurnRangeResult is a range-bounded activity load for compression (COMPRESS-IO).
+// TurnSeq maps turn_id -> turns_v2.seq used as ChatMessage.TurnNumber.
+type ActivityTurnRangeResult struct {
+	Entries []ActivityEntry
+	TurnSeq map[string]int
+}
+
+// ActivityTurnRangeLister optionally loads activities for turns with seq > afterTurn
+// without relying solely on synthesized ordinals from a full chronology.
+type ActivityTurnRangeLister interface {
+	ListBySessionAfterTurnNumber(ctx context.Context, sessionID string, afterTurn int) (ActivityTurnRangeResult, error)
+}
 
 // ActivityMessageReader adapts ActivityLister to the SessionMessageUsecase's
 // message listing API, allowing the messages table to be deleted while keeping
@@ -59,10 +76,28 @@ func (r *ActivityMessageReader) ListMessagesRecent(ctx context.Context, sessionI
 // Note: Activity doesn't have turn_number; this uses TurnID correlation.
 // For now, returns all messages (turn-based filtering is handled at the Activity level).
 func (r *ActivityMessageReader) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
-	// TECH-DEBT(COMPRESS-IO): turn ordinals are synthesized from full chronology,
-	// so AfterTurn still loads the session once. Output is filtered to
-	// TurnNumber > afterTurn (W1-5). ByIDs path no longer full-scans.
-	// Next: persist turn_number or cursor so the load can be range-bounded.
+	// Prefer turns_v2.seq-aligned load when ActivityTurnRangeLister is available (COMPRESS-IO).
+	if afterTurn > 0 {
+		if trl, ok := r.activities.(ActivityTurnRangeLister); ok {
+			res, err := trl.ListBySessionAfterTurnNumber(ctx, sessionID, afterTurn)
+			if err == nil {
+				msgs := activitiesToChatMessages(res.Entries)
+				if len(res.TurnSeq) > 0 {
+					for i := range msgs {
+						if n, ok := res.TurnSeq[msgs[i].TurnID]; ok {
+							msgs[i].TurnNumber = n
+						}
+					}
+				}
+				return msgs, nil
+			}
+			if !errors.Is(err, ErrTurnRangeUnavailable) {
+				return nil, err
+			}
+			// fall through to full scan
+		}
+	}
+	// Fallback: full session load + synthesizeTurnNumbers (stable ordinals).
 	acts, err := r.activities.ListBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err

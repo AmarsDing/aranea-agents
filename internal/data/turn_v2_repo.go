@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -45,6 +46,28 @@ func (r *turnV2Repo) ListTurnsByTask(ctx context.Context, taskID string) ([]biz.
 	}
 	rows, err := r.data.RW().Read(ctx).TurnV2.Query().
 		Where(turnv2.TaskIDEQ(taskID)).
+		Order(ent.Asc(turnv2.FieldSeq)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TURN_V2")
+	}
+	return entTurnsV2ToBiz(rows), nil
+}
+
+// ListTurnsBySessionAfterSeq returns turns for the session with seq > afterSeq.
+func (r *turnV2Repo) ListTurnsBySessionAfterSeq(ctx context.Context, sessionID string, afterSeq int64) ([]biz.Turn, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("turn v2 repo: database not configured")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).TurnV2.Query().
+		Where(
+			turnv2.SessionIDEQ(sessionID),
+			turnv2.SeqGT(afterSeq),
+		).
 		Order(ent.Asc(turnv2.FieldSeq)).
 		All(ctx)
 	if err != nil {

@@ -64,7 +64,7 @@ type Service struct {
 
 	mu    sync.Mutex
 	inner trpcevolution.Service
-	tried bool           // build once; model catalog changes need restart
+	tried bool           // true after successful build; ResetBuild clears for catalog hot-add
 	store WatermarkStore // local lastReviewAt bypass (W1-4)
 }
 
@@ -115,10 +115,11 @@ func (s *Service) Close() error {
 func (s *Service) resolve(ctx context.Context) trpcevolution.Service {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.inner != nil || s.tried {
+	if s.inner != nil {
 		return s.inner
 	}
-	s.tried = true
+	// SKL-02: tried latches only after a successful build below, so a failed
+	// model resolve / mkdir can retry on the next Enqueue without restart.
 
 	m, prov, mod, err := s.resolveReviewModel(ctx)
 	if err != nil || m == nil {
@@ -162,10 +163,27 @@ func (s *Service) resolve(ctx context.Context) trpcevolution.Service {
 		}))
 	}
 	s.inner = trpcevolution.NewService(m, opts...)
+	s.tried = true // latch only after successful build
 	s.cfg.Lg.Info("evolution: 技能演化 service 已构建（hold-all 模式，零自动发布）",
 		loggateway.StepID("skill.evolution_ready"),
 		loggateway.Str("candidates_dir", dir))
 	return s.inner
+}
+
+
+// ResetBuild clears the build latch so the next Enqueue re-resolves the review
+// model (hot-add catalog / config change). Closes an existing inner service.
+func (s *Service) ResetBuild() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tried = false
+	if s.inner == nil {
+		return nil
+	}
+	err := s.inner.Close()
+	s.inner = nil
+	s.store = nil
+	return err
 }
 
 // resolveReviewModel 复用 session 摘要的模型选取策略：catalog 的标题模型，

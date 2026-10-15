@@ -26,7 +26,37 @@ const activatedStateKey = "temp:deferred:activated"
 // worker 的克隆 session 与父 invocation 共享同一 session ID，因此以
 // session ID 为键的进程级注册表可以穿透 worker 隔离，对后续所有
 // LLM 请求可见。进程内存语义与 temp: 前缀一致：重启后需重新 tool_load。
-var activatedRegistry sync.Map // map[string]*activatedToolSet
+// activatedSessionRegistry is the AS-COG-01 named wrapper for the process-level
+// sessionID -> activated tool set map (replaces a bare package-level sync.Map).
+type activatedSessionRegistry struct {
+	m sync.Map // map[string]*activatedToolSet
+}
+
+func (r *activatedSessionRegistry) load(sessionID string) (*activatedToolSet, bool) {
+	v, ok := r.m.Load(sessionID)
+	if !ok {
+		return nil, false
+	}
+	return v.(*activatedToolSet), true
+}
+
+func (r *activatedSessionRegistry) loadOrStore(sessionID string, set *activatedToolSet) *activatedToolSet {
+	v, _ := r.m.LoadOrStore(sessionID, set)
+	return v.(*activatedToolSet)
+}
+
+func (r *activatedSessionRegistry) delete(sessionID string) { r.m.Delete(sessionID) }
+
+// Delete is kept for tests that touch the registry directly.
+func (r *activatedSessionRegistry) Delete(sessionID string) { r.delete(sessionID) }
+
+func (r *activatedSessionRegistry) count() int {
+	n := 0
+	r.m.Range(func(_, _ any) bool { n++; return true })
+	return n
+}
+
+var activatedRegistry activatedSessionRegistry
 
 type activatedToolSet struct {
 	mu    sync.RWMutex
@@ -37,11 +67,10 @@ func registryActivated(sessionID, toolName string) bool {
 	if sessionID == "" {
 		return false
 	}
-	v, ok := activatedRegistry.Load(sessionID)
+	set, ok := activatedRegistry.load(sessionID)
 	if !ok {
 		return false
 	}
-	set := v.(*activatedToolSet)
 	set.mu.RLock()
 	hit := set.names[toolName]
 	set.mu.RUnlock()
@@ -52,10 +81,9 @@ func registryActivate(sessionID, toolName string) {
 	if sessionID == "" {
 		return
 	}
-	v, _ := activatedRegistry.LoadOrStore(sessionID, &activatedToolSet{
+	set := activatedRegistry.loadOrStore(sessionID, &activatedToolSet{
 		names: make(map[string]bool),
 	})
-	set := v.(*activatedToolSet)
 	set.mu.Lock()
 	set.names[toolName] = true
 	set.mu.Unlock()
@@ -138,16 +166,11 @@ func ClearActivated(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	activatedRegistry.Delete(sessionID)
+	activatedRegistry.delete(sessionID)
 }
 
 // ActivatedSessionCount returns how many sessions currently hold activated
 // tools in the process registry (tests / optional metrics).
 func ActivatedSessionCount() int {
-	n := 0
-	activatedRegistry.Range(func(_, _ any) bool {
-		n++
-		return true
-	})
-	return n
+	return activatedRegistry.count()
 }

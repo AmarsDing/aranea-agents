@@ -24,6 +24,7 @@ import (
 type sessionActivityLister struct {
 	stepReader StepV2Reader
 	taskReader TaskV2Reader
+	turnReader TurnV2Reader // optional; enables COMPRESS-IO AfterTurn range loads
 }
 
 // NewSessionActivityLister creates a session.ActivityLister from the v2
@@ -36,6 +37,71 @@ func NewSessionActivityLister(stepReader StepV2Reader, taskReader TaskV2Reader) 
 		return nil
 	}
 	return &sessionActivityLister{stepReader: stepReader, taskReader: taskReader}
+}
+
+// ProvideSessionActivityLister wires step/task/turn readers. Turn reader enables
+// ActivityTurnRangeLister for compression AfterTurn (COMPRESS-IO).
+func ProvideSessionActivityLister(stepReader StepV2Reader, taskReader TaskV2Reader, turnReader TurnV2Reader) session.ActivityLister {
+	l := NewSessionActivityLister(stepReader, taskReader)
+	if l == nil {
+		return nil
+	}
+	if a, ok := l.(*sessionActivityLister); ok {
+		a.turnReader = turnReader
+	}
+	return l
+}
+
+// ListBySessionAfterTurnNumber implements session.ActivityTurnRangeLister when
+// turnReader is wired. afterTurn is compared to turns_v2.seq.
+func (a *sessionActivityLister) ListBySessionAfterTurnNumber(ctx context.Context, sessionID string, afterTurn int) (session.ActivityTurnRangeResult, error) {
+	if a == nil || a.turnReader == nil {
+		return session.ActivityTurnRangeResult{}, session.ErrTurnRangeUnavailable
+	}
+	turns, err := a.turnReader.ListTurnsBySessionAfterSeq(ctx, sessionID, int64(afterTurn))
+	if err != nil {
+		return session.ActivityTurnRangeResult{}, err
+	}
+	if len(turns) == 0 {
+		return session.ActivityTurnRangeResult{TurnSeq: map[string]int{}}, nil
+	}
+	turnSeq := make(map[string]int, len(turns))
+	turnSet := make(map[string]struct{}, len(turns))
+	for _, t := range turns {
+		turnSeq[t.ID] = int(t.Seq)
+		turnSet[t.ID] = struct{}{}
+	}
+	allSteps, err := a.stepReader.ListStepsBySession(ctx, sessionID)
+	if err != nil {
+		return session.ActivityTurnRangeResult{}, err
+	}
+	var acts []Activity
+	for _, s := range allSteps {
+		if _, ok := turnSet[s.TurnID]; !ok {
+			continue
+		}
+		acts = append(acts, StepToActivity(s))
+	}
+	if a.taskReader != nil {
+		tasks, err := a.taskReader.ListTasksBySession(ctx, sessionID)
+		if err != nil {
+			return session.ActivityTurnRangeResult{}, err
+		}
+		firstTurn := firstTurnIDByTask(allSteps)
+		for _, t := range tasks {
+			ft := firstTurn[t.ID]
+			if _, ok := turnSet[ft]; !ok {
+				continue
+			}
+			act := taskToActivity(t)
+			act.TurnID = ft
+			acts = append(acts, act)
+		}
+	}
+	return session.ActivityTurnRangeResult{
+		Entries: activitiesToSessionEntries(acts),
+		TurnSeq: turnSeq,
+	}, nil
 }
 
 func (a *sessionActivityLister) ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]session.ActivityEntry, error) {
