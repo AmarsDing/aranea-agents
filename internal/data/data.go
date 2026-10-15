@@ -13,7 +13,6 @@ import (
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/conf"
-	"aranea-agents/internal/data/artifactfs"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/vector"
@@ -1162,37 +1161,3 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	}
 	return nil
 }
-
-func NewArtifactRepo(d *Data) biz.ArtifactRepo {
-	return artifactfs.NewFSArtifactRepo(d.lg)
-}
-
-func NewKnowledgeRepoFromData(d *Data) biz.KnowledgeRepo {
-	return NewKnowledgeRepo(d, d.lg)
-}
-
-func NewKnowledgeSparseSearcherFromData(d *Data) biz.KnowledgeSparseSearcher {
-	repo := NewKnowledgeRepo(d, d.lg)
-	if repo == nil {
-		return nil
-	}
-	kr, ok := repo.(*knowledgeRepo)
-	if !ok {
-		return nil
-	}
-	return kr
-}
-
-// NewEvalStoresFromData maps the evaluation adapter onto the ISP DTO used by
-// Wire / Usecase. Production must consume Stores, not the deprecated Repo.
-
-// NewEvalRepoFromData returns the deprecated composed Repo for tests and the
-// adapter compile-time check. Production Wire uses NewEvalStoresFromData.
-
-// NewA2ARemoteAgentCardWriterFromData binds the federation narrow card-writer
-// port (biza2a.RemoteAgentCardWriter) to the a2a repo, without widening the
-// biz.A2ARepo aggregate interface (T10 design: kept out of RemoteAgentRepo).
-
-// generateCatalogID generates a random 24-hex-char ID for agent/team catalog entries.
-
-// Fallback: use timestamp-based ID

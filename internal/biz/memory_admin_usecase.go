@@ -49,6 +49,7 @@ type MemoryAdminUsecase struct {
 	msgLister      RecentMessageLister
 	l2AdminReader  L2EpisodeAdminReader
 	l4RelReader    L4RelationAdminReader
+	resolveUserID  SessionUserIDResolver
 	lg             loggateway.Logger
 }
 
@@ -356,10 +357,24 @@ func (uc *MemoryAdminUsecase) EndL1Task(ctx context.Context, sessionID, taskID, 
 func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessionID, taskID string, endTaskRaw []byte) {
 	m, _ := jsonutil.ParseMap(endTaskRaw)
 	agentID := jsonutil.IfaceStr(m, "agent_id")
-	// Extract userID from task metadata if available.
-	// TODO(debt): Add SessionInfoGetter dependency to reliably resolve userID
-	// from sessionID, since the L1 task table does not have a user_id column.
+	// MEM-01: prefer task meta, then SessionUserIDResolver (session.user_id).
 	userID := extractUserIDFromTaskMeta(m)
+	if userID == "" && uc.resolveUserID != nil {
+		if uid, rerr := uc.resolveUserID(ctx, sessionID); rerr != nil {
+			uc.lg.Warn("L1 archive: session userID resolve failed",
+				loggateway.StepID("memory.l1_archive_userid_resolve_fail"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Err(rerr))
+		} else {
+			userID = strings.TrimSpace(uid)
+		}
+	}
+	if userID == "" {
+		uc.lg.Warn("L1 archive: empty userID (Path B entity scope may be wrong)",
+			loggateway.StepID("memory.l1_archive_userid_empty"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("task_id", taskID))
+	}
 
 	// Atomically archive the L1 task and create a bare L2 episode.
 	// The data layer builds the full snapshot inside the transaction and
@@ -542,24 +557,6 @@ func buildConsolidateInputFromSnapshot(snapshot []byte, sessionID, agentID, user
 	return input
 }
 
-// extractUserIDFromTaskMeta attempts to extract user_id from the L1 task row's
-// metadata_json. Returns empty string if not found (the L1 task table does not
-// have a dedicated user_id column, so this is a best-effort extraction).
-func extractUserIDFromTaskMeta(taskMap map[string]any) string {
-	if taskMap == nil {
-		return ""
-	}
-	metaStr, _ := taskMap["metadata_json"].(string)
-	if metaStr == "" {
-		return ""
-	}
-	var meta map[string]any
-	if json.Unmarshal([]byte(metaStr), &meta) != nil {
-		return ""
-	}
-	uid, _ := meta["user_id"].(string)
-	return uid
-}
 
 // extractEpisodeSignals builds EpisodeSignals from the EndL1Task raw response and importance.
 func extractEpisodeSignals(endTaskRaw []byte, importance float64) EpisodeSignals {

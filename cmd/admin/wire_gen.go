@@ -256,7 +256,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	metricsUpdatedPublisher := service.ProvideMetricsUpdatedPublisher(v2Bus)
 	sessionMetricsUsecase := session.NewSessionMetricsUsecase(sessionRepo, loggatewayLogger, metricsUpdatedPublisher)
 	sessionRuntimeWriter := data.NewSessionRuntimeRepo(dataData)
-	activityLister := biz.NewSessionActivityLister(stepV2Repo, taskV2Repo)
+	activityLister := biz.ProvideSessionActivityLister(stepV2Repo, taskV2Repo, turnV2Repo)
 	flowLogWriter := service.ProvideFlowLogWriter(loggatewayLogger, monitorBus)
 	sessionFlowLogWriter := service.ProvideSessionFlowLogWriter(flowLogWriter)
 	v33 := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)

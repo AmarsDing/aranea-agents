@@ -26,25 +26,6 @@ func newL2EpisodeRepo(data *Data, vs vector.VectorStore) *l2EpisodeRepo {
 	return &l2EpisodeRepo{data: data, vectorStore: vs}
 }
 
-// NewL2RecallStore creates a biz.L2RecallStore backed by data.
-// Used by EpisodeConsolidator (Phase 6A-06) for reading L2 episodes.
-func NewL2RecallStore(data *Data, vs vector.VectorStore) biz.L2RecallStore {
-	return newL2EpisodeRepo(data, vs)
-}
-
-// NewL2EpisodeAdminReader creates a biz.L2EpisodeAdminReader backed by data.
-// Used by the memory-center layer overview and unified graph assembly.
-func NewL2EpisodeAdminReader(data *Data, vs vector.VectorStore) biz.L2EpisodeAdminReader {
-	return newL2EpisodeRepo(data, vs)
-}
-
-// Compile-time interface checks.
-var (
-	_ biz.L2EpisodeWriter      = (*l2EpisodeRepo)(nil)
-	_ biz.L2RecallStore        = (*l2EpisodeRepo)(nil)
-	_ biz.L2EpisodeAdminReader = (*l2EpisodeRepo)(nil)
-)
-
 // --- L2EpisodeWriter ---
 
 // l2MergedTranscriptMaxChars bounds the merged episode transcript so
@@ -511,46 +492,4 @@ func (r *l2EpisodeRepo) recallL2WithVectorStore(ctx context.Context, agentID, se
 		out = append(out, annotateEpisodeScores(s.raw, s.breakdown))
 	}
 	return out, nil
-}
-
-// anyFloat extracts a float from a map value (handles float64, int, etc.)
-func anyFloat(m map[string]any, key string) float64 {
-	v, ok := m[key]
-	if !ok {
-		return 0
-	}
-	switch n := v.(type) {
-	case float64:
-		return n
-	case float32:
-		return float64(n)
-	case int:
-		return float64(n)
-	case int32:
-		return float64(n)
-	case int64:
-		return float64(n)
-	default:
-		return 0
-	}
-}
-
-// anyInt extracts an int from a map value
-func anyInt(m map[string]any, key string) int {
-	v, ok := m[key]
-	if !ok {
-		return 0
-	}
-	switch n := v.(type) {
-	case int:
-		return n
-	case int32:
-		return int(n)
-	case int64:
-		return int(n)
-	case float64:
-		return int(n)
-	default:
-		return 0
-	}
 }
