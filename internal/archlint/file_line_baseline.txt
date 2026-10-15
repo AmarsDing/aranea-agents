@@ -206,7 +206,6 @@ internal/service/model_catalog_test.go 1018
 internal/service/monitor.go 547
 internal/service/monitor_integration_test.go 842
 internal/service/monitor_mapping_test.go 586
-internal/service/plan_executor.go 1539
 internal/service/plan_executor_test.go 968
 internal/service/repo_sandbox_runner_test.go 531
 internal/service/service_agent_mapping_test.go 1196
@@ -216,7 +215,6 @@ internal/service/session.go 838
 internal/service/session_v2.go 673
 internal/service/skill.go 767
 internal/service/skill_intelligence_integration_test.go 868
-internal/service/spirit_team.go 1968
 internal/service/spirit_team_handle_result_test.go 1918
 internal/service/team.go 695
 internal/service/tool.go 670
