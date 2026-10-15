@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz/session"
 )
@@ -67,31 +68,43 @@ func (a *sessionActivityLister) ListBySessionAfterTurnNumber(ctx context.Context
 	}
 	turnSeq := make(map[string]int, len(turns))
 	turnSet := make(map[string]struct{}, len(turns))
+	turnIDs := make([]string, 0, len(turns))
+	taskIDs := make(map[string]struct{}, len(turns))
 	for _, t := range turns {
 		turnSeq[t.ID] = int(t.Seq)
 		turnSet[t.ID] = struct{}{}
+		turnIDs = append(turnIDs, t.ID)
+		if tid := strings.TrimSpace(t.TaskID); tid != "" {
+			taskIDs[tid] = struct{}{}
+		}
 	}
-	allSteps, err := a.stepReader.ListStepsBySession(ctx, sessionID)
+	// COMPRESS-IO: load steps only for turns in the AfterTurn window (no full
+	// session step scan). Prefer batch IN query when the repo supports it.
+	steps, err := listStepsForTurns(ctx, a.stepReader, turnIDs)
 	if err != nil {
 		return session.ActivityTurnRangeResult{}, err
 	}
 	var acts []Activity
-	for _, s := range allSteps {
-		if _, ok := turnSet[s.TurnID]; !ok {
-			continue
-		}
+	for _, s := range steps {
 		acts = append(acts, StepToActivity(s))
 	}
 	if a.taskReader != nil {
-		tasks, err := a.taskReader.ListTasksBySession(ctx, sessionID)
-		if err != nil {
-			return session.ActivityTurnRangeResult{}, err
-		}
-		firstTurn := firstTurnIDByTask(allSteps)
-		for _, t := range tasks {
-			ft := firstTurn[t.ID]
-			if _, ok := turnSet[ft]; !ok {
+		// Attribute user(task) rows via turns_v2 first-turn (min seq), not
+		// firstTurnIDByTask(allSteps) — avoids scanning pre-window steps.
+		for taskID := range taskIDs {
+			ft, ok, err := firstTurnIDForTask(ctx, a.turnReader, taskID)
+			if err != nil {
+				return session.ActivityTurnRangeResult{}, err
+			}
+			if !ok {
 				continue
+			}
+			if _, in := turnSet[ft]; !in {
+				continue // first turn already outside AfterTurn window
+			}
+			t, err := a.taskReader.GetTask(ctx, taskID)
+			if err != nil {
+				return session.ActivityTurnRangeResult{}, err
 			}
 			act := taskToActivity(t)
 			act.TurnID = ft
@@ -199,4 +212,53 @@ func activitiesToSessionEntries(acts []Activity) []session.ActivityEntry {
 		out = append(out, entry)
 	}
 	return out
+}
+
+
+// StepTurnBatchLister optionally loads steps for many turn IDs in one query.
+type StepTurnBatchLister interface {
+	ListStepsByTurnIDs(ctx context.Context, turnIDs []string) ([]Step, error)
+}
+
+func listStepsForTurns(ctx context.Context, reader StepV2Reader, turnIDs []string) ([]Step, error) {
+	if len(turnIDs) == 0 {
+		return nil, nil
+	}
+	if bl, ok := reader.(StepTurnBatchLister); ok {
+		return bl.ListStepsByTurnIDs(ctx, turnIDs)
+	}
+	var out []Step
+	for _, id := range turnIDs {
+		steps, err := reader.ListStepsByTurn(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, steps...)
+	}
+	return out, nil
+}
+
+func firstTurnIDForTask(ctx context.Context, turns TurnV2Reader, taskID string) (string, bool, error) {
+	taskID = strings.TrimSpace(taskID)
+	if turns == nil || taskID == "" {
+		return "", false, nil
+	}
+	list, err := turns.ListTurnsByTask(ctx, taskID)
+	if err != nil {
+		return "", false, err
+	}
+	var bestID string
+	var bestSeq int64
+	found := false
+	for _, t := range list {
+		if t.ID == "" {
+			continue
+		}
+		if !found || t.Seq < bestSeq {
+			bestID = t.ID
+			bestSeq = t.Seq
+			found = true
+		}
+	}
+	return bestID, found, nil
 }

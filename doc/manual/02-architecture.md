@@ -71,7 +71,7 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 
 | 能力 | 状态 |
 |------|------|
-| `AgentCapability.Capacity` | **预留未启用**（DEV-03）：不参与分配门禁 |
+| `AgentCapability.Capacity` | **进程内软门控已启用**（DEV-03）；跨实例硬门控仍未做 |
 | `TaskRunAdapter` 异步 taskrun | **未启用**（TECH-DEBT B-7） |
 | Prompt / State 框架渲染器 | **未启用**（TECH-DEBT B-5 / B-6）；热路径手写 prompt |
 | Framework Memory Extractor 适配器 | **未启用**；生产用 AutoMemoryWorker |

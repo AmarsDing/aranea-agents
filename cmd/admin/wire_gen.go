@@ -71,7 +71,6 @@ import (
 	session2 "aranea-agents/internal/session"
 	session4 "aranea-agents/internal/session/trpc"
 	skill2 "aranea-agents/internal/skill"
-	evolution2 "aranea-agents/internal/skill/evolution"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/skill/watch"
@@ -500,7 +499,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	channelRuntimeLeaseRepo := data.NewChannelRuntimeLeaseRepo(dataData)
 	channelRuntime := provideChannelRuntime(channelUsecase, channelIngress, channelRuntimeLeaseRepo, router, loggatewayLogger)
 	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, v20, loggatewayLogger)
-	usageService := service.NewUsageService(v37)
+	usageService := service.NewUsageService(v37, loggatewayLogger)
 	processLogEnabledProvider := provideProcessLogEnabled(confServer)
 	flowlogRepo := data.NewFlowLogRepo(dataData)
 	v47 := flowlog.NewUsecase(flowlogRepo)
@@ -1774,23 +1773,6 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
 	})
-}
-
-// provideEvolutionService 装配框架 v1.11 技能演化 service（hold-all 模式，
-// 详见 internal/skill/evolution 包注释）。模型目录/技能 repo 缺失时返回 nil，
-// runner 侧自动跳过演化学习。
-func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo skill.Repository, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) evolution.Service {
-	svc := evolution2.NewService(evolution2.Config{
-		Catalog:  catalog,
-		RT:       &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
-		Repo:     repo,
-		UsageRef: usageRef,
-		Lg:       lg,
-	})
-	if svc == nil {
-		return nil
-	}
-	return svc
 }
 
 func provideSessionMemoryResync(admin biz.MemoryAdminDeps) session2.MemoryResync {

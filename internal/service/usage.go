@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 // UsageService implements kratos usage.v1.
@@ -16,18 +17,20 @@ type UsageService struct {
 	v1.UnimplementedUsageServiceServer
 
 	uc *biz.UsageUsecase
+	lg loggateway.Logger
 }
 
-func NewUsageService(uc *biz.UsageUsecase) *UsageService {
-	return &UsageService{uc: uc}
+func NewUsageService(uc *biz.UsageUsecase, lg loggateway.Logger) *UsageService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &UsageService{uc: uc, lg: lg}
 }
 
 // assertSystemCaller returns Forbidden if the caller is not a system
 // caller. Quota/BudgetAlert/Purge operations are platform-level configurations
 // that require system privileges.
 //
-// TECH-DEBT: UsageService has no lg field, so we cannot log IDOR attempts.
-// Future refactor should inject loggateway.Logger via constructor.
 func (s *UsageService) assertSystemCaller(ctx context.Context) error {
 	if workspace.IsSystem(ctx) {
 		return nil
@@ -35,6 +38,9 @@ func (s *UsageService) assertSystemCaller(ctx context.Context) error {
 	if a, ok := auth.FromContext(ctx); ok && a.HasAdminAccess() {
 		return nil
 	}
+	s.lg.Warn("usage privileged op denied for non-system caller",
+		loggateway.StepID("usage.assert_system_caller"),
+		loggateway.Str("workspace_id", workspace.IDFromContext(ctx)))
 	return apierror.Forbidden("USAGE", "system or admin privileges required")
 }
 
@@ -55,7 +61,10 @@ func (s *UsageService) RecordTokenUsageEvent(ctx context.Context, in *v1.TokenUs
 	if !workspace.IsSystem(ctx) {
 		callerWS := workspace.IDFromContext(ctx)
 		if e.WorkspaceID != "" && e.WorkspaceID != callerWS {
-			// TECH-DEBT: no lg field, cannot log forgery attempt.
+			s.lg.Warn("usage workspace_id forgery overridden",
+				loggateway.StepID("usage.workspace_forgery"),
+				loggateway.Str("caller_workspace", callerWS),
+				loggateway.Str("requested_workspace", e.WorkspaceID))
 			e.WorkspaceID = callerWS // force-override
 		} else if e.WorkspaceID == "" {
 			e.WorkspaceID = callerWS

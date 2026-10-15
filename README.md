@@ -232,7 +232,7 @@ curl http://localhost:8910/healthz
 
 | 能力 | 状态 | 说明 |
 |------|------|------|
-| `AgentCapability.Capacity` | **预留未启用**（DEV-03） | 字段可从 `config_json` 提取，分配器**不做**并发冲突/负载门禁 |
+| `AgentCapability.Capacity` | **进程内软门控已启用**（DEV-03） | Allocator + `AgentLoadTracker` 软重分配；**非**跨实例硬门控 |
 | `TaskRunAdapter`（异步 taskrun） | **未启用** | 适配器已实现；缺 Controller 与持久化，未挂工具注册表（TECH-DEBT B-7） |
 | `RenderPromptTemplate` / `RenderCapabilityCue` | **未启用** | 框架对齐渲染已实现；热路径仍用手写拼接（TECH-DEBT B-5） |
 | Framework `MemoryExtractor`（`ConsolidatorExtractorAdapter`） | **未启用** | 适配器就绪；生产仍走项目自有 AutoMemoryWorker（TECH-DEBT P2-7/8） |

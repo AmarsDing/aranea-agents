@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"sync"
+	"time"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -59,8 +60,9 @@ func (r *activatedSessionRegistry) count() int {
 var activatedRegistry activatedSessionRegistry
 
 type activatedToolSet struct {
-	mu    sync.RWMutex
-	names map[string]bool
+	mu       sync.RWMutex
+	names    map[string]bool
+	lastUsed time.Time
 }
 
 func registryActivated(sessionID, toolName string) bool {
@@ -71,9 +73,12 @@ func registryActivated(sessionID, toolName string) bool {
 	if !ok {
 		return false
 	}
-	set.mu.RLock()
+	set.mu.Lock()
 	hit := set.names[toolName]
-	set.mu.RUnlock()
+	if hit {
+		set.lastUsed = time.Now()
+	}
+	set.mu.Unlock()
 	return hit
 }
 
@@ -86,6 +91,7 @@ func registryActivate(sessionID, toolName string) {
 	})
 	set.mu.Lock()
 	set.names[toolName] = true
+	set.lastUsed = time.Now()
 	set.mu.Unlock()
 }
 
@@ -173,4 +179,32 @@ func ClearActivated(sessionID string) {
 // tools in the process registry (tests / optional metrics).
 func ActivatedSessionCount() int {
 	return activatedRegistry.count()
+}
+
+
+// DefaultActivatedTTL is how long an idle activated session may linger in the
+// process registry before SweepStaleActivated may drop it (defense in depth
+// beside ClearActivated on terminal phases).
+const DefaultActivatedTTL = 2 * time.Hour
+
+// SweepStaleActivated deletes registry entries whose lastUsed is older than
+// ttl. ttl<=0 uses DefaultActivatedTTL. Returns the number of sessions removed.
+func SweepStaleActivated(ttl time.Duration) int {
+	if ttl <= 0 {
+		ttl = DefaultActivatedTTL
+	}
+	cutoff := time.Now().Add(-ttl)
+	removed := 0
+	activatedRegistry.m.Range(func(key, value any) bool {
+		set := value.(*activatedToolSet)
+		set.mu.RLock()
+		stale := set.lastUsed.Before(cutoff)
+		set.mu.RUnlock()
+		if stale {
+			activatedRegistry.delete(key.(string))
+			removed++
+		}
+		return true
+	})
+	return removed
 }

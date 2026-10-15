@@ -215,6 +215,14 @@ func NewChatUsecaseFromDeps(
 	)
 	uc.StartBackgroundGoroutines()
 	uc.SetSessionTerminalCleanup(deferred.ClearActivated)
+	// Defense-in-depth: drop idle deferred activations that never hit a terminal status.
+	safego.Go(context.Background(), "deferred-activated-ttl", func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			_ = deferred.SweepStaleActivated(0)
+		}
+	})
 	return uc
 }
 

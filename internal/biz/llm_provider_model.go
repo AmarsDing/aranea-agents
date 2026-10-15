@@ -253,6 +253,9 @@ type LlmProviderModelUsecase struct {
 	// 可为 nil：nil 时 List 跳过注入，保持向后兼容（用于不关心统计的调用方/测试）。
 	statsInjector *ModelStatsInjector
 	lg            loggateway.Logger
+
+	catalogChangeMu    sync.Mutex
+	catalogChangeHooks []func()
 }
 
 // NewLlmProviderModelUsecase 构造 Usecase。statsInjector 可为 nil。
@@ -354,6 +357,7 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 			loggateway.Str("model_id", out.ID),
 			loggateway.Err(err))
 	}
+	u.notifyCatalogChange()
 	return sanitizeProviderModelForAPI(out), nil
 }
 
@@ -434,6 +438,7 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 		u.statsInjector.InjectStats(ctx, items)
 		result = items[0]
 	}
+	u.notifyCatalogChange()
 	return result, nil
 }
 
@@ -464,20 +469,11 @@ func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
 	if count > 0 {
 		return apierror.Conflict("LLM_PROVIDER_MODEL", "cannot delete provider model referenced by %d agent(s); reassign agents first", count)
 	}
-	return u.writer.DeleteProviderModel(ctx, id)
-}
-
-// RevealCredentials returns decrypted credentials for admin edit UI (never logged).
-func (u *LlmProviderModelUsecase) RevealCredentials(ctx context.Context, id string) (ProviderCredentialsReveal, error) {
-	id, err := requireNonEmpty(id, "LLM_PROVIDER_MODEL", "id")
-	if err != nil {
-		return ProviderCredentialsReveal{}, err
+	if err := u.writer.DeleteProviderModel(ctx, id); err != nil {
+		return err
 	}
-	m, err := u.reader.GetProviderModel(ctx, id)
-	if err != nil {
-		return ProviderCredentialsReveal{}, err
-	}
-	return u.crypto.RevealCredentialsFromConfig(ctx, m.ConfigJSON)
+	u.notifyCatalogChange()
+	return nil
 }
 
 func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, model string) (bool, string, error) {
