@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/runtime"
+	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -213,6 +214,7 @@ func NewChatUsecaseFromDeps(
 		lg,
 	)
 	uc.StartBackgroundGoroutines()
+	uc.SetSessionTerminalCleanup(deferred.ClearActivated)
 	return uc
 }
 

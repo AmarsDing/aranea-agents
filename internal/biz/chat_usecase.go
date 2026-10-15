@@ -155,6 +155,11 @@ type ChatEventPublisher interface {
 	PublishMessageQueued(sessionID string)
 }
 
+// SessionTerminalCleanup clears session-scoped process caches when a run
+// reaches a terminal phase (completed/failed/cancelled). Optional; nil-safe.
+// Wired from service to deferred.ClearActivated without biz importing tools.
+type SessionTerminalCleanup func(sessionID string)
+
 type ChatUsecase struct {
 	runs       ChatRunGateway
 	locker     ChatSessionLocker
@@ -165,6 +170,7 @@ type ChatUsecase struct {
 	awaitChans map[string]awaitChanEntry
 	bgCancel   context.CancelFunc
 	lg         loggateway.Logger
+	onTerminal SessionTerminalCleanup
 
 	// Optional ports for provider/model resolution (BA4). Nil-safe: when not
 	// wired, ResolveProviderModel and SyncSessionProviderModel degrade to no-ops.
@@ -192,6 +198,13 @@ func NewChatUsecase(
 	}
 }
 
+// SetSessionTerminalCleanup registers an optional terminal-phase cleanup hook.
+func (uc *ChatUsecase) SetSessionTerminalCleanup(fn SessionTerminalCleanup) {
+	if uc == nil {
+		return
+	}
+	uc.onTerminal = fn
+}
 func (uc *ChatUsecase) LockSession(sessionID string) func() {
 	return uc.locker.Lock(sessionID)
 }
@@ -280,6 +293,9 @@ func (uc *ChatUsecase) SetRunStatusWithError(ctx context.Context, sessionID, run
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case SessionRunPhaseCompleted, SessionRunPhaseFailed, SessionRunPhaseCancelled:
 		uc.DeleteAwaitChannelsForSession(sessionID)
+		if uc.onTerminal != nil {
+			uc.onTerminal(sessionID)
+		}
 	}
 	return nil
 }
