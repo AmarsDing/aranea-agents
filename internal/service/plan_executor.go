@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
@@ -41,6 +43,19 @@ type sequencerPublisher interface {
 	Publish(ctx context.Context, e biz.Event)
 }
 
+// boardRunRegistry tracks in-flight PlanBoard DAG leases (AS-COG-01 named
+// sync.Map wrapper). Key: board.ID, Value: *boardRunLease.
+type boardRunRegistry struct {
+	m sync.Map
+}
+
+func (r *boardRunRegistry) Store(key, value any) { r.m.Store(key, value) }
+func (r *boardRunRegistry) Load(key any) (any, bool) { return r.m.Load(key) }
+func (r *boardRunRegistry) LoadOrStore(key, value any) (any, bool) {
+	return r.m.LoadOrStore(key, value)
+}
+func (r *boardRunRegistry) Delete(key any) { r.m.Delete(key) }
+func (r *boardRunRegistry) Range(f func(key, value any) bool) { r.m.Range(f) }
 // PlanExecutor is the forward DAG scheduler that replaces spirit_team's
 // reverse-sync updatePlanStepForTeam. It dispatches PlanSteps to a
 // TeamOrchestrator, correlates team completions, and cascades downstream
@@ -71,7 +86,7 @@ type PlanExecutor struct {
 	// C-20 fix: in-process execution lease. Prevents duplicate Team creation
 	// when the same PlanBoardCreatedEvent is delivered multiple times (replay,
 	// multi-instance, or event bus redelivery). Key: board.ID, Value: *boardRunLease.
-	running sync.Map
+	running boardRunRegistry
 	// 2026-08-06 P0-2 修复（流式空壳契约）：publishV2BoardShell 先发 Steps=nil
 	// 的 PlanBoardCreatedEvent（供前端先渲染看板），steps 就绪后由 PublishV2Board
 	// 发 PlanBoardUpdatedEvent。shellTimeout 是空壳等待 steps 的兜底超时，
@@ -110,6 +125,9 @@ type PlanExecutor struct {
 	// 实际零团队运行」。条目随进程生命周期保留（同 playbookConfirmDecided
 	// 先例），单条仅一个 buffered chan，量级可忽略。
 	startup sync.Map
+	// teamAgentLoads maps teamID -> agent keys acquired on the process-local
+	// AgentLoadTracker (DEV-03 soft capacity). Released in NotifyTeamCompletion.
+	teamAgentLoads sync.Map
 }
 
 type playbookConfirmWait struct {
@@ -288,3 +306,44 @@ func (e *PlanExecutor) SetConfirmStepReader(r biz.StepV2Reader) {
 // taskPlanIDFromBoard 从 PlanBoard ID 还原 TaskPlan ID。PublishV2Board 以
 // "pb_"+plan.ID 派生 board ID；以 rootTaskID/uuid 为 seed 的 board 还原出的
 // ID 不是 plan 主键，GetByID 会 NotFound，传播安全跳过。
+
+// trackTeamAgentLoads acquires process-local capacity slots for agents in a
+// dispatched team (DEV-03 soft gate). Idempotent per teamID.
+func (e *PlanExecutor) trackTeamAgentLoads(teamID string, agentKeys []string) {
+	if e == nil || teamID == "" || len(agentKeys) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(agentKeys))
+	seen := map[string]struct{}{}
+	for _, k := range agentKeys {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	if _, loaded := e.teamAgentLoads.LoadOrStore(teamID, keys); loaded {
+		return
+	}
+	chatagent.GlobalAgentLoadTracker.Acquire(keys...)
+}
+
+// releaseTeamAgentLoads releases capacity slots acquired for teamID.
+func (e *PlanExecutor) releaseTeamAgentLoads(teamID string) {
+	if e == nil || teamID == "" {
+		return
+	}
+	v, ok := e.teamAgentLoads.LoadAndDelete(teamID)
+	if !ok {
+		return
+	}
+	keys, _ := v.([]string)
+	chatagent.GlobalAgentLoadTracker.Release(keys...)
+}

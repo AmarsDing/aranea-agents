@@ -10,6 +10,8 @@ package team
 //   - Session isolation → NodeDef.IsolatedMessages
 //
 // These native team.Option helpers remain for reference / emergency native paths.
+// ORCH-03: do not call SwarmSafetyOptions/SessionIsolationOptions/MemberToolOptions
+// from production Graph runners — Graph path owns the equivalent knobs listed above.
 
 import (
 	"time"

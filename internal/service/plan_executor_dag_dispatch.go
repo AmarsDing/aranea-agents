@@ -90,6 +90,8 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	// P2-② 假启动拦截：首个 team 真实创建成功 → 通知 WaitBoardStartup
 	// 对账通过（plan_and_execute 声明的编排确有 team_run 落地）。
 	r.pe.signalStartup(r.board.ID, true, "")
+	r.pe.trackTeamAgentLoads(result.Team.ID, runningStep.AgentKeys)
+
 	// 2026-07-04 问题 P5/D1 修复：标记此 task 已派发 team。
 	// OnTurnEnd 检查此标记，若为 true 则跳过 task.completed，
 	// 等 synthesis turn 完成后再发 task.completed。

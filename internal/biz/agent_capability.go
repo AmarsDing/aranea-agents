@@ -13,9 +13,10 @@ type AgentCapability struct {
 	Mission string
 	// DomainPath 是 Agent 的归一化领域路径（agents.domain_path）。
 	DomainPath string
-	// TODO(debt): DEV-03 — AgentCapability.Capacity field unused. No conflict detection
-	// or load balancing logic implemented yet.
-	// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-03
+	// Capacity is the soft max concurrent assignments for this agent (DEV-03).
+	// Enforced process-locally by agent.GlobalAgentLoadTracker + Allocator
+	// soft reassignment; Capacity <= 0 means unlimited. Not a durable
+	// cross-instance hard gate yet.
 	Capacity int // max concurrent tasks
 
 	// Organization placement (M78). Empty when the agent has no position or

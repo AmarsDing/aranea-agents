@@ -353,6 +353,14 @@ var (
 		Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
 	})
 
+	// SpiritProbeStrikeTotal counts Spirit team activity-probe failures that
+	// increment the consecutive strike counter (ORCH-05 / W2-2). A team is
+	// fail-closed after teamProbeMaxStrikes consecutive strikes.
+	SpiritProbeStrikeTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_spirit_probe_strike_total",
+		Help: "Total Spirit team activity probe failure strikes (consecutive counter increments).",
+	})
+
 	// AgentFactoryCreated counts dynamically created agents (P1-4 AgentFactory).
 	// Monotonically increasing; used to verify the 4-layer matching fallback rate.
 	AgentFactoryCreated = promauto.NewCounter(prometheus.CounterOpts{
