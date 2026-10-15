@@ -25,8 +25,14 @@ func (s stubStepReader) ListStepsBySession(context.Context, string) ([]Step, err
 	return s.steps, nil
 }
 
-func (s stubStepReader) ListStepsByTurn(context.Context, string) ([]Step, error) {
-	return s.steps, nil
+func (s stubStepReader) ListStepsByTurn(_ context.Context, turnID string) ([]Step, error) {
+	var out []Step
+	for _, st := range s.steps {
+		if st.TurnID == turnID {
+			out = append(out, st)
+		}
+	}
+	return out, nil
 }
 
 func (s stubStepReader) ListStepsByTask(context.Context, string) ([]Step, error) {
@@ -252,5 +258,136 @@ func TestSessionActivityLister_ListBySession_BackfillsTaskTurnID(t *testing.T) {
 	}
 	if turnOf["tk2"] != "" {
 		t.Fatalf("tk2 TurnID = %q, want empty (no steps)", turnOf["tk2"])
+	}
+}
+
+
+type stubTurnReader struct {
+	turns []Turn
+}
+
+func (s stubTurnReader) GetTurn(_ context.Context, id string) (Turn, error) {
+	for _, t := range s.turns {
+		if t.ID == id {
+			return t, nil
+		}
+	}
+	return Turn{}, nil
+}
+
+func (s stubTurnReader) ListTurnsByTask(_ context.Context, taskID string) ([]Turn, error) {
+	var out []Turn
+	for _, t := range s.turns {
+		if t.TaskID == taskID {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (s stubTurnReader) ListTurnsBySessionAfterSeq(_ context.Context, _ string, afterSeq int64) ([]Turn, error) {
+	var out []Turn
+	for _, t := range s.turns {
+		if t.Seq > afterSeq {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (s stubTurnReader) MaxSeqBySession(context.Context, string) (int64, error) { return 0, nil }
+
+type countingStepReader struct {
+	stubStepReader
+	sessionCalls int
+	turnCalls    int
+}
+
+func (c *countingStepReader) ListStepsBySession(ctx context.Context, sessionID string) ([]Step, error) {
+	c.sessionCalls++
+	return c.stubStepReader.ListStepsBySession(ctx, sessionID)
+}
+
+func (c *countingStepReader) ListStepsByTurn(ctx context.Context, turnID string) ([]Step, error) {
+	c.turnCalls++
+	return c.stubStepReader.ListStepsByTurn(ctx, turnID)
+}
+
+func TestListBySessionAfterTurnNumber_NoFullSessionScan(t *testing.T) {
+	now := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	steps := []Step{
+		{ID: "st0", TaskID: "tk1", TurnID: "tu1", Kind: StepKindReply, Status: "completed", SessionID: "s1", Seq: 1, StartedAt: now, Content: "old"},
+		{ID: "st1", TaskID: "tk1", TurnID: "tu2", Kind: StepKindReply, Status: "completed", SessionID: "s1", Seq: 2, StartedAt: now.Add(time.Second), Content: "new"},
+	}
+	csr := &countingStepReader{stubStepReader: stubStepReader{steps: steps}}
+	lister := ProvideSessionActivityLister(
+		csr,
+		stubTaskReader{tasks: []Task{{ID: "tk1", SessionID: "s1", UserMessage: "hi", Status: TaskStatusCompleted, CreatedAt: now}}},
+		stubTurnReader{turns: []Turn{
+			{ID: "tu1", TaskID: "tk1", SessionID: "s1", Seq: 1},
+			{ID: "tu2", TaskID: "tk1", SessionID: "s1", Seq: 2},
+		}},
+	)
+	trl, ok := lister.(session.ActivityTurnRangeLister)
+	if !ok {
+		t.Fatal("lister must implement ActivityTurnRangeLister")
+	}
+	res, err := trl.ListBySessionAfterTurnNumber(context.Background(), "s1", 1)
+	if err != nil {
+		t.Fatalf("ListBySessionAfterTurnNumber: %v", err)
+	}
+	if csr.sessionCalls != 0 {
+		t.Fatalf("COMPRESS-IO: ListStepsBySession called %d times, want 0", csr.sessionCalls)
+	}
+	if csr.turnCalls == 0 {
+		t.Fatal("expected ListStepsByTurn (or batch) for window turns")
+	}
+	if len(res.Entries) == 0 {
+		t.Fatal("expected entries in AfterTurn window")
+	}
+	foundStep := false
+	for _, e := range res.Entries {
+		if e.ID == "st0" {
+			t.Fatalf("pre-window step st0 must not appear")
+		}
+		if e.ID == "st1" {
+			foundStep = true
+		}
+	}
+	if !foundStep {
+		t.Fatal("expected step st1 in window")
+	}
+	// Continuation turn tu2 is not the task's first turn (tu1), so user row must be excluded.
+	for _, e := range res.Entries {
+		if e.Kind == "task" {
+			t.Fatalf("user task must not appear when first turn is outside AfterTurn window, got %+v", e)
+		}
+	}
+}
+
+func TestListBySessionAfterTurnNumber_IncludesUserOnFirstTurn(t *testing.T) {
+	now := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	lister := ProvideSessionActivityLister(
+		stubStepReader{steps: []Step{
+			{ID: "st1", TaskID: "tk2", TurnID: "tu3", Kind: StepKindReply, Status: "completed", SessionID: "s1", Seq: 1, StartedAt: now, Content: "reply"},
+		}},
+		stubTaskReader{tasks: []Task{{ID: "tk2", SessionID: "s1", UserMessage: "new q", Status: TaskStatusCompleted, CreatedAt: now}}},
+		stubTurnReader{turns: []Turn{
+			{ID: "tu3", TaskID: "tk2", SessionID: "s1", Seq: 3},
+		}},
+	)
+	trl := lister.(session.ActivityTurnRangeLister)
+	res, err := trl.ListBySessionAfterTurnNumber(context.Background(), "s1", 2)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	foundUser := false
+	for _, e := range res.Entries {
+		if e.Kind == "task" && e.TurnID == "tu3" {
+			foundUser = true
+		}
+	}
+	if !foundUser {
+		t.Fatal("expected user task attributed to first turn tu3 in window")
 	}
 }

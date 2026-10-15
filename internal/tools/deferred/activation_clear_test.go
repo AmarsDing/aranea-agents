@@ -1,6 +1,9 @@
 package deferred
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestClearActivated_RemovesSessionEntry(t *testing.T) {
 	const sid = "hardening-clear-activated-sess"
@@ -38,5 +41,26 @@ func TestClearActivated_DoesNotAffectOtherSessions(t *testing.T) {
 	}
 	if !registryActivated(b, "y") {
 		t.Fatal("session b must remain")
+	}
+}
+
+
+func TestSweepStaleActivated_RemovesIdle(t *testing.T) {
+	sid := "sweep-ttl-sess"
+	t.Cleanup(func() { ClearActivated(sid) })
+	registryActivate(sid, "web_search")
+	set, ok := activatedRegistry.load(sid)
+	if !ok {
+		t.Fatal("expected registry entry")
+	}
+	set.mu.Lock()
+	set.lastUsed = time.Now().Add(-3 * time.Hour)
+	set.mu.Unlock()
+	n := SweepStaleActivated(2 * time.Hour)
+	if n < 1 {
+		t.Fatalf("SweepStaleActivated removed %d, want >=1", n)
+	}
+	if _, ok := activatedRegistry.load(sid); ok {
+		t.Fatal("stale session should be gone")
 	}
 }
