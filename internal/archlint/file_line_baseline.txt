@@ -4,7 +4,7 @@ cmd/launcher/main.go 529
 cmd/migrate-sqlite-to-postgres/migrator.go 524
 cmd/tools/agency-converter/main.go 971
 internal/a2a/federation_e2e_helpers_test.go 666
-internal/agent/agent_allocator_impl.go 1455
+internal/agent/agent_allocator_impl.go 1029
 internal/agent/agent_allocator_impl_test.go 673
 internal/agent/agent_factory.go 579
 internal/agent/agent_factory_test.go 843
@@ -109,7 +109,7 @@ internal/biz/skill_gate_verifier_test.go 586
 internal/biz/skill_intelligence.go 1285
 internal/biz/skill_intelligence_test.go 1451
 internal/biz/spirit_assembly.go 627
-internal/biz/spirit_delivery.go 1954
+internal/biz/spirit_delivery.go 1407
 internal/biz/spirit_orchestration.go 826
 internal/biz/spirit_team_deliverable_test.go 3012
 internal/biz/spirit_team_usecase.go 759
