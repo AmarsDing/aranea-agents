@@ -18,7 +18,7 @@ internal/agent/model_selector.go 604
 internal/agent/shard_plan.go 716
 internal/agent/stream_consumer.go 587
 internal/agent/task_orchestrator_impl.go 775
-internal/agent/task_planner_impl.go 2356
+internal/agent/task_planner_impl.go 2155
 internal/agent/task_planner_impl_test.go 1261
 internal/agent/tool_assembly.go 610
 internal/agent/tool_loop_guard_test.go 549
