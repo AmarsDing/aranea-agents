@@ -29,8 +29,13 @@ func TestAgentLoadTracker_AcquireRelease(t *testing.T) {
 
 func TestApplyCapacitySoftGate_ReassignOrAnnotate(t *testing.T) {
 	prev := GlobalAgentLoadTracker
+	prevHard := CapacityHardGate
 	GlobalAgentLoadTracker = NewAgentLoadTracker()
-	t.Cleanup(func() { GlobalAgentLoadTracker = prev })
+	CapacityHardGate = false
+	t.Cleanup(func() {
+		GlobalAgentLoadTracker = prev
+		CapacityHardGate = prevHard
+	})
 
 	reader := &stubAgentReader{agents: []biz.Agent{
 		{AgentKey: "writer_a", DisplayName: "A", Status: "active", DomainPath: "content/write", PositionKey: "writer_a", ConfigJSON: `{"capacity":1}`},
@@ -85,8 +90,13 @@ func TestApplyCapacitySoftGate_ReassignOrAnnotate(t *testing.T) {
 
 func TestApplyCapacitySoftGate_WithinPlan(t *testing.T) {
 	prev := GlobalAgentLoadTracker
+	prevHard := CapacityHardGate
 	GlobalAgentLoadTracker = NewAgentLoadTracker()
-	t.Cleanup(func() { GlobalAgentLoadTracker = prev })
+	CapacityHardGate = false
+	t.Cleanup(func() {
+		GlobalAgentLoadTracker = prev
+		CapacityHardGate = prevHard
+	})
 
 	reader := &stubAgentReader{agents: []biz.Agent{
 		{AgentKey: "writer_a", DisplayName: "A", Status: "active", DomainPath: "content/write", PositionKey: "writer_a", ConfigJSON: `{"capacity":1}`},
@@ -125,3 +135,55 @@ func TestApplyCapacitySoftGate_WithinPlan(t *testing.T) {
 		t.Fatalf("unexpected second=%q", out[1].AssignedKey)
 	}
 }
+
+func TestApplyCapacitySoftGate_HardBlocked(t *testing.T) {
+	prev := GlobalAgentLoadTracker
+	prevHard := CapacityHardGate
+	GlobalAgentLoadTracker = NewAgentLoadTracker()
+	CapacityHardGate = true
+	t.Cleanup(func() {
+		GlobalAgentLoadTracker = prev
+		CapacityHardGate = prevHard
+	})
+
+	reader := &stubAgentReader{agents: []biz.Agent{
+		{AgentKey: "writer_a", DisplayName: "A", Status: "active", DomainPath: "content/write", PositionKey: "writer_a", ConfigJSON: `{"capacity":1}`},
+	}}
+	impl := &agentAllocatorImpl{
+		repo:        &fakeAllocatorRepo{},
+		agentReader: reader,
+		capBuilder:  NewAgentCapabilityBuilder(reader, loggateway.NewNoop()),
+		lg:          loggateway.NewNoop(),
+	}
+	caps, err := impl.capBuilder.BuildAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assignable := filterHeuristicAssignable(caps)
+	GlobalAgentLoadTracker.Acquire("writer_a")
+	plan := &biz.TaskPlan{
+		ID:       "tp-hard",
+		SubTasks: []biz.SubTask{{ID: "st1", Name: "draft", DomainPath: "content/write"}},
+	}
+	allocs := []biz.TaskAllocation{{SubTaskID: "st1", AssignedKey: "writer_a", AssignedType: "agent", MatchReason: "exact"}}
+	out := impl.applyCapacitySoftGate(context.Background(), plan, allocs, assignable, "trace")
+	if out[0].AssignedKey != "" {
+		t.Fatalf("hard gate must clear AssignedKey, got %q reason=%q", out[0].AssignedKey, out[0].MatchReason)
+	}
+	if out[0].MatchReason != "capacity_hard_blocked" {
+		t.Fatalf("MatchReason=%q", out[0].MatchReason)
+	}
+}
+
+func TestAgentLoadTracker_SnapshotForMergesKeys(t *testing.T) {
+	tr := NewAgentLoadTracker()
+	tr.Acquire("a")
+	got := tr.SnapshotFor([]string{"a", "b", ""})
+	if got["a"] != 1 {
+		t.Fatalf("a=%d", got["a"])
+	}
+	if _, ok := got["b"]; ok && got["b"] != 0 {
+		t.Fatalf("b unexpected %v", got["b"])
+	}
+}
+

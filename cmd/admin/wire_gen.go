@@ -1158,7 +1158,13 @@ func provideProcessLogEnabled(server2 *conf.Server) service.ProcessLogEnabledPro
 }
 
 func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
-	return data.NewRedisClient(c, lg)
+	rdb := data.NewRedisClient(c, lg)
+	if rdb != nil && rdb.IsEnabled() {
+		agent.ConfigureCapacityRedis(rdb.Client)
+	} else {
+		agent.ConfigureCapacityRedis(nil)
+	}
+	return rdb
 }
 
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {

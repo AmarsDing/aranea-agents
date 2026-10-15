@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -10,11 +10,14 @@ import (
 
 // applyCapacitySoftGate reassigns subtasks whose lead (or members) already sit
 // at AgentCapability.Capacity, preferring free roster peers. Soft: if every
-// candidate is busy, the original assignment is kept with an annotated reason.
+// candidate is busy, the original assignment is kept with an annotated reason
+// unless CapacityHardGate is enabled (Redis wired), in which case the
+// assignment is cleared (capacity_hard_blocked) so PlanExecutor cannot
+// oversubscribe the agent across instances.
 //
-// loads starts from GlobalAgentLoadTracker (live team runs) and accumulates
-// provisional assignments within this Allocate call so Capacity=1 agents are
-// not handed to multiple concurrent DAG nodes in one plan.
+// loads starts from GlobalAgentLoadTracker (live team runs + Redis merge) and
+// accumulates provisional assignments within this Allocate call so Capacity=1
+// agents are not handed to multiple concurrent DAG nodes in one plan.
 func (impl *agentAllocatorImpl) applyCapacitySoftGate(
 	ctx context.Context,
 	taskPlan *biz.TaskPlan,
@@ -26,9 +29,14 @@ func (impl *agentAllocatorImpl) applyCapacitySoftGate(
 		return allocations
 	}
 	caps := capacityByKey(assignable)
-	loads := GlobalAgentLoadTracker.Snapshot()
+	keys := make([]string, 0, len(caps))
+	for k := range caps {
+		keys = append(keys, k)
+	}
+	loads := GlobalAgentLoadTracker.SnapshotFor(keys)
 	out := make([]biz.TaskAllocation, len(allocations))
 	copy(out, allocations)
+	hard := CapacityHardGate
 
 	for i := range out {
 		alloc := out[i]
@@ -55,31 +63,13 @@ func (impl *agentAllocatorImpl) applyCapacitySoftGate(
 		pool, prune := impl.matchingPool(sub.DomainPath, assignable, traceID)
 		filtered := filterUnderCapacity(pool, loads, caps, alloc.AssignedKey)
 		if len(filtered) == 0 {
-			if impl.lg != nil {
-				impl.lg.Info("capacity soft gate: all candidates busy, keeping assignment",
-					loggateway.StepID(biz.SpiritStepAllocatorMatch),
-					loggateway.Str("trace_id", traceID),
-					loggateway.Str("sub_task_id", sub.ID),
-					loggateway.Str("agent_key", alloc.AssignedKey),
-				)
-			}
-			if alloc.MatchReason != "" && !strings.Contains(alloc.MatchReason, "capacity_soft") {
-				alloc.MatchReason = alloc.MatchReason + "; capacity_soft_kept"
-			}
-			out[i] = alloc
-			noteAssignment(loads, alloc)
+			out[i] = capacityBusyFallback(impl, alloc, sub, traceID, hard, loads)
 			continue
 		}
 
 		rematched, err := impl.matchSubTask(ctx, sub, filtered, traceID)
 		if err != nil || rematched.AssignedKey == "" {
-			if alloc.MatchReason != "" && !strings.Contains(alloc.MatchReason, "capacity_soft") {
-				alloc.MatchReason = alloc.MatchReason + "; capacity_soft_kept"
-			} else if alloc.MatchReason == "" {
-				alloc.MatchReason = "capacity_soft_kept"
-			}
-			out[i] = alloc
-			noteAssignment(loads, alloc)
+			out[i] = capacityBusyFallback(impl, alloc, sub, traceID, hard, loads)
 			continue
 		}
 		stampOrgOnAlloc(&rematched, filtered, prune)
@@ -101,6 +91,46 @@ func (impl *agentAllocatorImpl) applyCapacitySoftGate(
 		noteAssignment(loads, rematched)
 	}
 	return out
+}
+
+func capacityBusyFallback(
+	impl *agentAllocatorImpl,
+	alloc biz.TaskAllocation,
+	sub biz.SubTask,
+	traceID string,
+	hard bool,
+	loads map[string]int,
+) biz.TaskAllocation {
+	if hard {
+		if impl.lg != nil {
+			impl.lg.Warn("capacity hard gate: blocking assignment (all candidates busy)",
+				loggateway.StepID(biz.SpiritStepAllocatorMatch),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("sub_task_id", sub.ID),
+				loggateway.Str("agent_key", alloc.AssignedKey),
+			)
+		}
+		alloc.AssignedKey = ""
+		alloc.AssignedName = ""
+		alloc.TeamMemberKeys = nil
+		alloc.MatchReason = "capacity_hard_blocked"
+		return alloc
+	}
+	if impl.lg != nil {
+		impl.lg.Info("capacity soft gate: all candidates busy, keeping assignment",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("sub_task_id", sub.ID),
+			loggateway.Str("agent_key", alloc.AssignedKey),
+		)
+	}
+	if alloc.MatchReason != "" && !strings.Contains(alloc.MatchReason, "capacity_soft") {
+		alloc.MatchReason = alloc.MatchReason + "; capacity_soft_kept"
+	} else if alloc.MatchReason == "" {
+		alloc.MatchReason = "capacity_soft_kept"
+	}
+	noteAssignment(loads, alloc)
+	return alloc
 }
 
 func filterUnderCapacity(pool []biz.AgentCapability, loads, caps map[string]int, excludeBusyPrimary string) []biz.AgentCapability {

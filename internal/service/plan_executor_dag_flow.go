@@ -135,7 +135,7 @@ func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
 		for _, depID := range r.dependents[current] {
 			r.mu.Lock()
 			depStep, ok := r.stepsByID[depID]
-			if !ok || depStep.Status != biz.PlanStepStatusPending {
+			if !ok || depStep == nil || depStep.Status != biz.PlanStepStatusPending {
 				r.mu.Unlock()
 				continue
 			}
@@ -181,7 +181,7 @@ func (r *dagRun) updateGraphNode(ctx context.Context, stepID string, status biz.
 	// 从 stepsByID 读取 Label/DagNodeID/DependsOn/MappedTeamStageID，避免
 	// Upsert 用空字段覆盖 initGraphStage 与 dispatch 已写入的正确值。
 	r.mu.Lock()
-	if step, ok := r.stepsByID[stepID]; ok {
+	if step, ok := r.stepsByID[stepID]; ok && step != nil {
 		gn.Label = step.Label
 		gn.DagNodeID = step.ID
 		gn.DependsOn = append([]string(nil), step.DependsOn...)

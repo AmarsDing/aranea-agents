@@ -94,6 +94,14 @@ func (impl *agentAllocatorImpl) AllocateExplicit(ctx context.Context, taskPlan *
 		}
 	}
 
+	var roster []biz.AgentCapability
+	if impl.capBuilder != nil {
+		if built, err := impl.capBuilder.BuildAll(ctx); err == nil {
+			roster = built
+		}
+	}
+	allocations = annotateExplicitCapacity(allocations, roster)
+
 	plan := &biz.AllocationPlan{
 		ID:              "ap_" + uuid.NewString(),
 		TaskPlanID:      taskPlan.ID,
@@ -104,6 +112,53 @@ func (impl *agentAllocatorImpl) AllocateExplicit(ctx context.Context, taskPlan *
 	}
 	return impl.persistAllocationPlan(ctx, plan, traceID)
 }
+
+// annotateExplicitCapacity flags explicit routes that already sit at Capacity.
+// Explicit routing never reassigns (caller intent wins) but records pressure
+// so MatchReason surfaces capacity_*_explicit for operators / audits.
+func annotateExplicitCapacity(allocations []biz.TaskAllocation, caps []biz.AgentCapability) []biz.TaskAllocation {
+	if len(allocations) == 0 {
+		return allocations
+	}
+	capMap := capacityByKey(caps)
+	keys := make([]string, 0, len(capMap))
+	for k := range capMap {
+		keys = append(keys, k)
+	}
+	for _, a := range allocations {
+		if a.AssignedKey != "" {
+			keys = append(keys, a.AssignedKey)
+		}
+		keys = append(keys, a.TeamMemberKeys...)
+	}
+	loads := GlobalAgentLoadTracker.SnapshotFor(keys)
+	for i := range allocations {
+		a := &allocations[i]
+		busy := softGateBusy(loads, capMap, a.AssignedKey)
+		if !busy {
+			for _, k := range a.TeamMemberKeys {
+				if softGateBusy(loads, capMap, k) {
+					busy = true
+					break
+				}
+			}
+		}
+		if !busy {
+			continue
+		}
+		tag := "capacity_soft_kept_explicit"
+		if CapacityHardGate {
+			tag = "capacity_hard_noted_explicit"
+		}
+		if a.MatchReason != "" && !strings.Contains(a.MatchReason, "capacity_") {
+			a.MatchReason = a.MatchReason + "; " + tag
+		} else if a.MatchReason == "" {
+			a.MatchReason = tag
+		}
+	}
+	return allocations
+}
+
 
 // resolveExplicitKeys best-effort maps caller-supplied explicit keys to real
 // agent_keys: exact agent_key → itself; display name → its key; department /
