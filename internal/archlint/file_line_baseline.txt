@@ -105,11 +105,8 @@ internal/biz/skill_evolution_triggers.go 611
 internal/biz/skill_evolution_unified.go 634
 internal/biz/skill_gate_verifier.go 755
 internal/biz/skill_gate_verifier_test.go 586
-internal/biz/skill_intelligence.go 1285
 internal/biz/skill_intelligence_test.go 1451
 internal/biz/spirit_assembly.go 627
-internal/biz/spirit_delivery.go 1407
-internal/biz/spirit_orchestration.go 826
 internal/biz/spirit_team_deliverable_test.go 3012
 internal/biz/spirit_team_usecase.go 759
 internal/biz/spirit_team_usecase_test.go 1530
@@ -121,7 +118,6 @@ internal/biz/tool/tool.go 721
 internal/biz/tool/tool_catalog_policy_test.go 517
 internal/biz/tool/tool_usecase_more_test.go 1545
 internal/biz/tool/tool_usecase_test.go 819
-internal/biz/usage/usage.go 1035
 internal/biz/usage/usage_more_test.go 599
 internal/biz/usage/usage_usecase_more_test.go 1578
 internal/biz/usage/usage_usecase_test.go 615
@@ -239,7 +235,6 @@ internal/tools/memory_butler/dream_cycle.go 503
 internal/tools/skillruntime/resolve.go 606
 internal/tools/skillruntime/resolve_test.go 891
 internal/tools/spirit_tools.go 696
-internal/tools/subagent/service.go 1640
 internal/tools/testexec/executor_more_test.go 601
 internal/tools/toolset.go 872
 internal/tools/toolset_assemble.go 714
