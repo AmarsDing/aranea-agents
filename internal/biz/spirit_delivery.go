@@ -1,37 +1,36 @@
 package biz
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"reflect"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
-
 	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 // SpiritDelivery owns deliverable extraction, upstream injection, verification
 // gates, and member-execution evidence for Spirit (DEV-09).
 type SpiritDelivery struct {
-	teamUC             SpiritTeamAssembler
-	sessionUC          SpiritSessionAccessor
-	agentUC            SpiritAgentResolver
-	contractValidator  *DeliverableContractValidator
-	gateExecutor       *VerificationGateExecutor
-	stepReader         SpiritStepReader
-	graphDelivReader   SpiritGraphDeliverableReader
-	runStatsReader     SpiritTeamRunStatsReader
+	teamUC            SpiritTeamAssembler
+	sessionUC         SpiritSessionAccessor
+	agentUC           SpiritAgentResolver
+	contractValidator *DeliverableContractValidator
+	gateExecutor      *VerificationGateExecutor
+	stepReader        SpiritStepReader
+	graphDelivReader  SpiritGraphDeliverableReader
+	runStatsReader    SpiritTeamRunStatsReader
 	// heartbeatReader 是 P2-1 持久化心跳读取端口（idle 探测信号源之一）。
 	// nil = 探测回退 steps.started_at 旧语义（向后兼容）。
-	heartbeatReader SpiritTeamRunHeartbeatReader
+	heartbeatReader    SpiritTeamRunHeartbeatReader
 	inboxFS            TeamInboxFS
 	artifactSaver      deliverableArtifactSaver
 	artifactPublicBase string
@@ -107,9 +106,6 @@ func (d *SpiritDelivery) extractTeamFullOutput(ctx context.Context, teamID strin
 		return teamFullOutput{}, nil
 	}
 
-	// Primary source (production): the team session's final completed reply
-	// step, read with exact session_id semantics. Legacy ChatMessage storage
-	// is only a fallback when no step reader is wired or no reply step exists.
 	if d.stepReader != nil {
 		steps, stepErr := d.stepReader.ListStepsBySessionID(ctx, teamSessionID)
 		if stepErr != nil {
@@ -180,7 +176,7 @@ func (d *SpiritDelivery) ListFailedTeamBriefs(ctx context.Context, spiritSession
 	for _, t := range failed {
 		teamIDs = append(teamIDs, t.ID)
 	}
-	stats := d.ListTeamRunStats(ctx, teamIDs) // nil-safe: reader not wired → nil map
+	stats := d.ListTeamRunStats(ctx, teamIDs)
 	briefs := make([]TeamFailureBrief, 0, len(failed))
 	for _, t := range failed {
 		brief := TeamFailureBrief{TeamName: t.DisplayName, TaskName: t.TaskDescription}
@@ -251,10 +247,6 @@ func (d *SpiritDelivery) ListTeamDeliverableDigests(ctx context.Context, spiritS
 	return digests
 }
 
-// ---------------------------------------------------------------------------
-// XC-03: Cross-Department Collaboration — Contract Validation & Gate Injection
-// ---------------------------------------------------------------------------
-
 // ValidateDeliverableContracts validates deliverable contracts between
 // upstream and downstream teams in the DAG. Returns a list of warnings
 // for contract mismatches. Called after Team DAG is built.
@@ -273,7 +265,6 @@ func (d *SpiritDelivery) ValidateDeliverableContracts(ctx context.Context, spiri
 		return nil
 	}
 
-	// Build a map of dag_node_id → team for dependency resolution
 	teamByDagNode := make(map[string]Team, len(teams))
 	for _, t := range teams {
 		if t.DagNodeID != "" {
@@ -332,13 +323,11 @@ func (d *SpiritDelivery) ExecuteVerificationGates(ctx context.Context, teamID st
 		return false, nil, err
 	}
 
-	// Get verification gates from the team's linked graph
 	gates, err := d.resolveVerificationGates(ctx, t)
 	if err != nil || len(gates) == 0 {
 		return true, nil, nil
 	}
 
-	// Resolve truncate chars from the Spirit agent's runtime settings.
 	truncateChars := 0
 	if d.agentUC != nil {
 		agents, listErr := d.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: SpiritAgentQueryLimit})
@@ -362,10 +351,7 @@ func (d *SpiritDelivery) ExecuteVerificationGates(ctx context.Context, teamID st
 		}
 		allWarnings = append(allWarnings, fmt.Sprintf("gate %s approved: %s", gate.GateType, reason))
 	}
-	// ADR-79-V V3 失效重验（2026-08-26）：同 scope 写操作（RecordScopeWrite）
-	// 会使先前门裁决失效——terminal 前发现失效回执时全量重跑一次（对活证据
-	// 全新执行即重验语义；重跑产生的新回执取代失效回执）。只补跑一轮：
-	// 第二轮的裁决本就基于当下活证据，无需递归。
+
 	if invalidated := d.gateExecutor.InvalidatedReceipts(teamID); len(invalidated) > 0 {
 		d.lg.Warn("验证门回执写后失效，terminal 前全量重验",
 			loggateway.StepID("spirit.verification_gate.revalidate"),
@@ -423,12 +409,12 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		return err
 	}
 	if t.DagNodeID == "" {
-		return nil // not a DAG node — nothing to key the output by
+		return nil
 	}
 
 	anchor, ok := d.stateDeliverableChannel(t)
 	if !ok {
-		return ErrNoRealDeliverable // channel disabled → no real deliverable can exist
+		return ErrNoRealDeliverable
 	}
 	teamSessionID, err := d.resolveTeamMainSessionID(ctx, t.ID)
 	if err != nil {
@@ -446,8 +432,7 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		)
 		return ErrNoRealDeliverable
 	}
-	// 2026-08-08 问题3：减去上游播种——信封只承载本团队自有产出；种子
-	// 回流混入信封会把上游产出当本团队产出再向下游传播（污染链）。
+
 	seed, serr := d.UpstreamDeliverableSeed(ctx, t)
 	if serr != nil {
 		d.lg.Warn("上游种子重算失败，按无真实交付物处理",
@@ -462,17 +447,8 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		return ErrNoRealDeliverable
 	}
 
-	// S06 交付物可见性（2026-09-01）：文档型 payload 落盘为 spirit 会话
-	// artifact，artifact_id/artifact_rel 回填 payload —— 信封 stub、产物页、
-	// 综合报告 digest 均由此获得可定位的产物引用。
 	d.bridgeDeliverableDocs(ctx, t, stateDeliv)
 
-	// The envelope is 100% state-sourced: the reserved "summary" key becomes
-	// the summary; when absent the summary aggregates each topic payload's
-	// title/summary (long-article paradigm puts the body under contract
-	// topics), degrading to the business keys' JSON only when no readable
-	// text exists (never from the reply). Non-reserved keys land in
-	// StructuredJSON and are described in Artifacts.
 	summarySource, _ := stateDeliv[deliverableReservedKeySummary].(string)
 	summarySource = strings.TrimSpace(summarySource)
 	artifacts := buildDeliverableArtifacts(stateDeliv, t.Deliverables)
@@ -485,9 +461,6 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 	}
 	cognition := extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
 
-	// MDC completion-time advisory: required contract topics that were never
-	// written (producer bypassed set_deliverable) surface as a Warn — the run
-	// still completes and the envelope is persisted unchanged.
 	if missing := requiredTopicsMissingFromState(t, stateDeliv); len(missing) > 0 {
 		d.lg.Warn("成员交付物契约 required topic 未产出",
 			loggateway.StepID("spirit.write_deliverables"),
@@ -514,14 +487,9 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		return marshalErr
 	}
 
-	// Merge into the dedicated deliverables_output_json column. Existing
-	// values are preserved as raw messages so legacy plain-string entries
-	// (pre-P2) coexist with P2 envelopes.
 	outputs := make(map[string]json.RawMessage)
 	if t.DeliverablesOutput != "" && t.DeliverablesOutput != "{}" {
-		// Tolerate malformed JSON by starting fresh rather than failing the
-		// write — the cache is rebuilt below; a corrupt row must not block
-		// deliverable persistence for downstream teams.
+
 		if uerr := json.Unmarshal([]byte(t.DeliverablesOutput), &outputs); uerr != nil {
 			d.lg.Warn("交付物输出缓存 JSON 损坏，重建缓存",
 				loggateway.StepID("spirit.write_deliverables"),
@@ -546,8 +514,7 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		)
 		return err
 	}
-	// ADR-79-V V3（2026-08-26）：交付物落库是同 scope 写操作——该团队先前
-	// 通过的验证门回执标记失效，下次 ExecuteVerificationGates 全量重验。
+
 	if d.gateExecutor != nil {
 		d.gateExecutor.RecordScopeWrite(t.ID, "deliverables_output")
 	}
@@ -569,7 +536,7 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 // "did not produce" from "could not verify" (2026-07-25 Fix 1 gate).
 func (d *SpiritDelivery) HasRealDeliverable(ctx context.Context, team Team) (bool, error) {
 	if team.DagNodeID == "" {
-		return false, nil // non-DAG teams carry no deliverable obligation
+		return false, nil
 	}
 	anchor, ok := d.stateDeliverableChannel(team)
 	if !ok {
@@ -586,9 +553,7 @@ func (d *SpiritDelivery) HasRealDeliverable(ctx context.Context, team Team) (boo
 	if err != nil {
 		return false, err
 	}
-	// 2026-08-08 问题3：下游 graph state 可能含上游播种（turn 启动时经
-	// RuntimeState 注入）。种子回流不是本团队产出——减去种子后再判空，
-	// 否则「成员什么都没写」也会因种子非空误判为真实交付物。
+
 	seed, serr := d.UpstreamDeliverableSeed(ctx, team)
 	if serr != nil {
 		return false, serr
@@ -638,7 +603,7 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 		interruptReason = string(session.SessionStatusInterrupted)
 	}
 	if d.stepReader == nil {
-		// 无 step 证据源 → 无法核实交付事实，保持原语义。
+
 		if interrupted {
 			return true, "session interrupted: " + interruptReason
 		}
@@ -652,18 +617,13 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 			loggateway.Str("session_id", sessionID),
 			loggateway.Err(err),
 		)
-		// 读失败 = 事实无法确认：interrupted 仍判失败，其余按无证据。
+
 		if interrupted {
 			return true, "session interrupted: " + interruptReason
 		}
 		return false, ""
 	}
 
-	// 2026-08-08 修复（stream_error 误报完成）：coordinator 模式下成员的 turn
-	// 级错误 step（kind=error，如 stream_error/context deadline）落在**团队会话**
-	// 而非成员会话（成员会话 0 steps）→ 需回扫父（团队）会话中归属于该成员
-	// （AuthorAgentKey == MemberAgentKey）的 step。可恢复的普通工具错误是
-	// kind=action + ToolErrorCode，不在此列。
 	parentID := strings.TrimSpace(sess.ParentSessionID)
 	memberKey := strings.TrimSpace(sess.MemberAgentKey)
 	backscan := parentID != "" && parentID != sessionID && memberKey != ""
@@ -672,8 +632,7 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 		var terr error
 		teamSteps, terr = d.stepReader.ListStepsBySessionID(ctx, parentID)
 		if terr != nil {
-			// 读失败 = 该证据源不贡献任何内容（事实无法确认 → 保守），
-			// 成员会话自身的 fatal step 证据不受影响，继续走后续扫描。
+
 			d.lg.Warn("成员执行证据：读取团队会话 steps 失败，团队会话证据按空处理",
 				loggateway.StepID("spirit.member_evidence.team_steps_err"),
 				loggateway.Str("team_session_id", parentID),
@@ -683,7 +642,6 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 		}
 	}
 
-	// P7：交付事实 = 任一证据源中该成员 completed 的 set_deliverable action。
 	delivered := false
 	for _, st := range steps {
 		if st.Kind == StepKindAction && st.Status == StepStatusCompleted && st.ToolName == "set_deliverable" {
@@ -703,7 +661,7 @@ func (d *SpiritDelivery) MemberExecutionEvidence(ctx context.Context, sessionID 
 		}
 	}
 	if delivered {
-		// 交付事实成立 → 过程性异常不再作为成员失败证据（见函数头注释）。
+
 		return false, ""
 	}
 
@@ -780,8 +738,7 @@ func (d *SpiritDelivery) MemberExecutionWindow(ctx context.Context, sessionID st
 	} else if start, end, ok := memberStepWindow(steps, ""); ok {
 		return start, end, true
 	}
-	// coordinator 模式回退：成员 step 落在团队会话（与 MemberExecutionEvidence
-	// 同一归属模型），按 AuthorAgentKey 过滤出本成员的 step。
+
 	parentID := strings.TrimSpace(sess.ParentSessionID)
 	memberKey := strings.TrimSpace(sess.MemberAgentKey)
 	if parentID == "" || parentID == sessionID || memberKey == "" {
@@ -922,7 +879,6 @@ func (d *SpiritDelivery) InjectUpstreamDeliverables(ctx context.Context, downstr
 		return ""
 	}
 
-	// Build a map of dag_node_id → team
 	teamByDagNode := make(map[string]Team, len(teams))
 	for _, t := range teams {
 		if t.DagNodeID != "" {
@@ -937,16 +893,11 @@ func (d *SpiritDelivery) InjectUpstreamDeliverables(ctx context.Context, downstr
 			continue
 		}
 
-		// Read the persisted deliverable envelope. 2026-07-25 Fix 1: the reply
-		// extraction fallback is REMOVED — after the deliverable gate a
-		// completed team always has an envelope, so a missing/empty one means
-		// the write failed; degrade to "no injection" rather than fabricating
-		// downstream input from reply text.
 		ref, refOK := d.readDeliverableRef(upstream)
 		if !refOK || ref.Summary == "" {
 			continue
 		}
-		// Legacy plain-string values carry no team_id; the caller always knows it.
+
 		if ref.TeamID == "" {
 			ref.TeamID = upstream.ID
 		}
@@ -968,144 +919,6 @@ func (d *SpiritDelivery) InjectUpstreamDeliverables(ctx context.Context, downstr
 
 	return fmt.Sprintf("--- 上游交付物 ---\n%s\n--- 请基于以上上游交付物执行任务 ---\n\n",
 		strings.Join(deliverableParts, "\n\n"))
-}
-
-// renderArtifactSections renders the upstream envelope's payload artifacts:
-// small payloads (≤ InlineUpstreamPayloadMaxChars) inline in full so the
-// downstream team consumes them with zero tool calls; larger payloads render
-// as a pointer plus a keyed read_upstream_deliverable instruction. Inline
-// rendering is bounded by InlineUpstreamArtifactMaxCount and
-// InlineUpstreamPayloadTotalMaxChars — once either budget is spent, remaining
-// payloads degrade to pointers so a multi-topic deliverable cannot bloat the
-// downstream first-turn input. Empty payloads (SizeChars == 0) render as an
-// honest note WITHOUT a retrieval instruction: a keyed read of them can only
-// return "内容为空". When the artifact key hits the downstream team's
-// InputContract, the retrieval instruction escalates from an optional hint to
-// a mandatory pre-task step — fetching the full text no longer depends on LLM
-// discretion.
-func renderArtifactSections(ref DeliverableRef, downstreamTeam Team) string {
-	if len(ref.Artifacts) == 0 {
-		return ""
-	}
-	inputNames := make(map[string]bool)
-	if contracts, err := ParseDeliverableContracts(downstreamTeam.InputContract); err == nil {
-		for _, c := range contracts {
-			if name := strings.TrimSpace(c.Name); name != "" {
-				inputNames[name] = true
-			}
-		}
-	}
-	// structured parses lazily on the first inline decision.
-	var structured map[string]any
-	structuredParsed := false
-	parseStructured := func() map[string]any {
-		if !structuredParsed {
-			structuredParsed = true
-			if ref.StructuredJSON != "" {
-				_ = json.Unmarshal([]byte(ref.StructuredJSON), &structured)
-			}
-		}
-		return structured
-	}
-
-	var sb strings.Builder
-	inlinedCount, inlinedChars := 0, 0
-	for _, art := range ref.Artifacts {
-		label := art.Key
-		if art.Title != "" {
-			label += "《" + art.Title + "》"
-		}
-		format := art.Format
-		if format == "" {
-			format = "text"
-		}
-		if art.IsBulkPointer() {
-			dest := art.RelPath
-			if dest == "" {
-				dest = art.Key
-			}
-			sizeHint := ""
-			if art.SizeBytes > 0 {
-				sizeHint = fmt.Sprintf("，%d 字节", art.SizeBytes)
-			} else if art.SizeChars > 0 {
-				sizeHint = fmt.Sprintf("，%d 字", art.SizeChars)
-			}
-			sb.WriteString(fmt.Sprintf("\n- 附件 %s（%s%s）已物化到 inbox/%s/%s，请用文件工具按需读取，禁止把文件正文贴进回复。",
-				label, format, sizeHint, ref.TeamID, dest))
-			continue
-		}
-		if art.SizeChars == 0 {
-			// 空载荷：keyed 读取只会得到「内容为空」的 NotFound，不给读取指令。
-			sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s）：载荷内容为空（上游写入但无正文）。", label, format))
-			continue
-		}
-		withinInlineBudget := inlinedCount < InlineUpstreamArtifactMaxCount &&
-			inlinedChars+art.SizeChars <= InlineUpstreamPayloadTotalMaxChars
-		if art.SizeChars <= InlineUpstreamPayloadMaxChars && withinInlineBudget {
-			content := extractArtifactContent(parseStructured(), art.Key)
-			if content == "" {
-				// Envelope lost the payload body (legacy writer) — degrade to
-				// a pointer rather than dropping the artifact silently.
-				sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s，共 %d 字）。需要全文时调用 read_upstream_deliverable(team_id=\"%s\", key=\"%s\") 获取。",
-					label, format, art.SizeChars, ref.TeamID, art.Key))
-				continue
-			}
-			inlinedCount++
-			inlinedChars += art.SizeChars
-			sb.WriteString(fmt.Sprintf("\n### 交付物 %s（%s，全文 %d 字）\n%s", label, format, art.SizeChars, content))
-			continue
-		}
-		// Payloads beyond the tool's default budget need an explicit max_chars —
-		// otherwise the instructed call silently returns truncated content.
-		call := fmt.Sprintf("read_upstream_deliverable(team_id=\"%s\", key=\"%s\")", ref.TeamID, art.Key)
-		if art.SizeChars > DefaultUpstreamDeliverableMaxChars {
-			budget := art.SizeChars
-			if budget > MaxUpstreamDeliverableChars {
-				budget = MaxUpstreamDeliverableChars
-			}
-			call = fmt.Sprintf("read_upstream_deliverable(team_id=\"%s\", key=\"%s\", max_chars=%d)", ref.TeamID, art.Key, budget)
-		}
-		sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s，共 %d 字，全文未内联）", label, format, art.SizeChars))
-		if inputNames[art.Key] {
-			sb.WriteString(fmt.Sprintf("\n  你的输入契约包含 %s：开始任务前必须先调用 %s 获取全文，再基于全文执行。",
-				art.Key, call))
-		} else {
-			sb.WriteString(fmt.Sprintf("\n  需要全文时调用 %s 获取。", call))
-		}
-	}
-	return sb.String()
-}
-
-// extractArtifactContent pulls one payload's body out of the envelope's
-// StructuredJSON: document-paradigm maps contribute their "content" field,
-// plain strings pass through, other shapes serialize as indented JSON.
-func extractArtifactContent(structured map[string]any, key string) string {
-	if structured == nil {
-		return ""
-	}
-	v, ok := structured[key]
-	if !ok {
-		return ""
-	}
-	switch payload := v.(type) {
-	case map[string]any:
-		if content, ok := payload["content"].(string); ok {
-			return strings.TrimSpace(content)
-		}
-		b, err := json.MarshalIndent(payload, "", "  ")
-		if err != nil {
-			return ""
-		}
-		return string(b)
-	case string:
-		return strings.TrimSpace(payload)
-	default:
-		b, err := json.MarshalIndent(payload, "", "  ")
-		if err != nil {
-			return ""
-		}
-		return string(b)
-	}
 }
 
 // DeliverableProtocolSuffix renders the mandatory delivery-protocol block
@@ -1147,7 +960,7 @@ func (d *SpiritDelivery) BuildTeamTurnInput(ctx context.Context, t Team) string 
 	taskDesc := t.TaskDescription
 	prefix := d.InjectUpstreamDeliverables(ctx, t)
 	protocol := d.DeliverableProtocolSuffix(t)
-	// Knowledge/memory stay on-demand (tools). 6KB is a ceiling on Brief+protocol only.
+
 	trimmed := TrimPrefixBudget(PrefixBudget{Brief: prefix, Protocol: protocol})
 	if trimmed.Brief != "" {
 		taskDesc = trimmed.Brief + taskDesc
@@ -1210,9 +1023,7 @@ func (d *SpiritDelivery) ReadUpstreamDeliverable(ctx context.Context, readerSess
 	if full.Content == "" {
 		return UpstreamDeliverableContent{}, apierror.NotFound("SPIRIT", "no deliverable content found for team %s", teamID)
 	}
-	// C2: content-level schema validation runs AFTER full-text extraction (it
-	// needs the content), unlike the name/type/format check above which fails
-	// fast before the expensive read.
+
 	if err := d.validateUpstreamContractSchema(ctx, readerSessionID, t, full.Content); err != nil {
 		return UpstreamDeliverableContent{}, err
 	}
@@ -1376,31 +1187,6 @@ func (d *SpiritDelivery) readEnvelopeKeyContent(t Team, key string) (teamFullOut
 	return teamFullOutput{Content: renderPayloadContent(v), SessionID: ref.TeamSessionID}, nil, true, true
 }
 
-// renderPayloadContent renders one payload value as standalone full text:
-// document-paradigm maps prepend 《title》 to their content, plain strings
-// pass through, other shapes serialize as indented JSON.
-func renderPayloadContent(v any) string {
-	switch payload := v.(type) {
-	case map[string]any:
-		content, _ := payload["content"].(string)
-		title, _ := payload["title"].(string)
-		content, title = strings.TrimSpace(content), strings.TrimSpace(title)
-		if content != "" {
-			if title != "" {
-				return "《" + title + "》\n\n" + content
-			}
-			return content
-		}
-	case string:
-		return strings.TrimSpace(payload)
-	}
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
 // resolveDeliverableFullContent returns the full deliverable content of a
 // completed team, sourced from the DELIVERABLE itself — never the reply
 // (2026-07-25 Fix 7). Priority:
@@ -1522,7 +1308,7 @@ func (d *SpiritDelivery) resolveReaderContracts(ctx context.Context, readerSessi
 	}
 	sess, err := d.sessionUC.Get(ctx, readerSessionID)
 	if err != nil || sess.TeamID == "" || sess.TeamID == upstreamTeamID {
-		// Unresolvable reader, or a team reading its own deliverable: no check.
+
 		return Team{}, nil, false
 	}
 	reader, err := d.teamUC.Get(ctx, sess.TeamID)
@@ -1563,7 +1349,7 @@ func (d *SpiritDelivery) validateUpstreamContractSchema(ctx context.Context, rea
 		return nil
 	}
 	if !json.Valid([]byte(content)) {
-		return nil // non-JSON content cannot be schema-validated — advisory skip
+		return nil
 	}
 	upstreamContracts, err := ParseDeliverableContracts(upstream.Deliverables)
 	if err != nil || len(upstreamContracts) == 0 {
@@ -1582,14 +1368,14 @@ func (d *SpiritDelivery) validateUpstreamContractSchema(ctx context.Context, rea
 			continue
 		}
 		if !upstreamJSONDeclared[entry.Name] {
-			continue // name/format gaps are reported by the fast-fail check
+			continue
 		}
 		verr := shared.ValidateDocumentAgainstSchema("SPIRIT", entry.SchemaJSON, content)
 		if verr == nil {
 			continue
 		}
 		if !apierror.IsCode(verr, apierror.CodeBadRequest) {
-			continue // schema execution error (e.g. invalid schema) — advisory skip
+			continue
 		}
 		detail := verr.Error()
 		if ae, ok := apierror.From(verr); ok {
@@ -1613,693 +1399,9 @@ func (d *SpiritDelivery) validateUpstreamContractSchema(ctx context.Context, rea
 	return &ContractMismatchError{ReaderTeamID: reader.ID, UpstreamTeamID: upstream.ID, Mismatches: mismatches}
 }
 
-// teamFullOutput is the untruncated team output plus its source session —
-// the P2 DeliverableRef envelope needs both (SizeChars / TeamSessionID).
-type teamFullOutput struct {
-	Content   string // full, untruncated deliverable content
-	SessionID string // team main session the content was read from
-}
-
-func extractKeyFindings(content string) string {
-	var findings []string
-	for _, line := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		isBullet := strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ")
-		isNumbered := isNumberedListItem(trimmed)
-		isQuote := strings.HasPrefix(trimmed, "> ")
-		if (isBullet || isNumbered) && !isQuote && len(findings) < MaxKeyFindingsCount {
-			findings = append(findings, trimmed)
-		}
-	}
-	return strings.Join(findings, "\n")
-}
-
-func isNumberedListItem(s string) bool {
-	if len(s) < 3 {
-		return false
-	}
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 || i >= len(s) {
-		return false
-	}
-	return (s[i] == '.' || s[i] == ')') && i+1 < len(s) && s[i+1] == ' '
-}
-
-// ---------------------------------------------------------------------------
-// XC-03b: Deliverable Passing Mechanism
-// ---------------------------------------------------------------------------
-
 // ErrNoRealDeliverable marks a DAG team that has no graph-state deliverable —
 // set_deliverable was never called (or the state is unreadable). Reply text
 // must NOT be dressed up as a deliverable: a team that only asked clarifying
 // questions produced nothing, and persisting its reply as a "deliverable" is
 // the root of the 19:29 false-success chain (2026-07-25 Fix 1).
 var ErrNoRealDeliverable = errors.New("no real deliverable: set_deliverable was never called")
-
-// stateDeliverableProbe is the minimal subset of the team DefinitionJSON the
-// graph-state bridge needs. biz cannot import internal/team (dependency
-// direction), so the relevant fields are probed directly.
-type stateDeliverableProbe struct {
-	EnableStateDeliverable bool   `json:"enable_state_deliverable"`
-	IntentAnchorAgentID    string `json:"intent_anchor_agent_id"`
-	Members                []struct {
-		AgentID string `json:"agent_id"`
-	} `json:"members"`
-}
-
-// anchorAgentID mirrors the runner's anchor resolution
-// (resolveAnchorAndAttachments): intent_anchor_agent_id wins when it names a
-// member; an intent anchor naming no member is ignored (the runner warns and
-// falls back the same way) and the first member's agent ID is used. The
-// anchor agent ID is the AppName the team run persisted its graph state
-// under — a wrong pick makes the bridge read a session that never existed.
-func (p stateDeliverableProbe) anchorAgentID() string {
-	first := ""
-	for _, m := range p.Members {
-		if id := strings.TrimSpace(m.AgentID); id != "" {
-			first = id
-			break
-		}
-	}
-	if want := strings.TrimSpace(p.IntentAnchorAgentID); want != "" {
-		for _, m := range p.Members {
-			if strings.TrimSpace(m.AgentID) == want {
-				return want
-			}
-		}
-	}
-	return first
-}
-
-// memberEvidenceSummaryMaxRunes caps the failed-step summary carried in a
-// MemberExecutionEvidence reason (log + projection diagnostics only).
-const memberEvidenceSummaryMaxRunes = 120
-
-// memberStepWindow aggregates the execution window across steps: start is the
-// earliest non-zero StartedAt; end is the latest activity evidence, preferring
-// CompletedAt over StartedAt per step. authorFilter non-empty restricts to
-// steps authored by that agent key. ok=false means no step carried a non-zero
-// StartedAt.
-//
-// notice steps are excluded (2026-08-08 回归发现): context_usage 等被动通知以
-// 成员 author 持续落到 run 结束，会把 end 撑大到远超成员真实工作完成时刻
-// （真实 reply 04:54:42，notice 拖到 04:59:15），且 publish 查询与 notice 落库
-// 存在时序 race，窗口结果不稳定。notice 不产生任何执行工作量，不是活动证据。
-func memberStepWindow(steps []Step, authorFilter string) (start, end time.Time, ok bool) {
-	for _, st := range steps {
-		if authorFilter != "" && strings.TrimSpace(st.AuthorAgentKey) != authorFilter {
-			continue
-		}
-		if st.Kind == StepKindNotice {
-			continue
-		}
-		if !st.StartedAt.IsZero() {
-			if start.IsZero() || st.StartedAt.Before(start) {
-				start = st.StartedAt
-			}
-		}
-		// 每步的「最后活动证据」：CompletedAt 优先，缺失退 StartedAt。
-		candidate := st.StartedAt
-		if st.CompletedAt != nil && !st.CompletedAt.IsZero() {
-			candidate = *st.CompletedAt
-		}
-		if !candidate.IsZero() && (end.IsZero() || candidate.After(end)) {
-			end = candidate
-		}
-	}
-	return start, end, !start.IsZero()
-}
-
-// Reserved keys of the graph deliverable state map. Both are extracted into
-// first-class DeliverableRef fields by WriteDeliverablesToSession and are
-// therefore excluded from StructuredJSON.
-const (
-	deliverableReservedKeySummary   = "summary"
-	deliverableReservedKeyCognition = "cognition"
-)
-
-// extractStateCognition converts the reserved "cognition" state-map entry
-// into a DeliverableCognition. The value arrives as a map[string]any (JSON
-// round-trip from graph state), so it is re-marshalled and unmarshalled into
-// the typed struct. Tolerant: nil on absence, wrong shape, or corrupt data —
-// a malformed cognition must never block the deliverable write.
-func extractStateCognition(v any) *DeliverableCognition {
-	if v == nil {
-		return nil
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	var c DeliverableCognition
-	if err := json.Unmarshal(b, &c); err != nil {
-		return nil
-	}
-	if len(c.Decisions) == 0 && len(c.Rejected) == 0 && len(c.Assumptions) == 0 && len(c.OpenQuestions) == 0 {
-		return nil
-	}
-	return &c
-}
-
-// marshalNonReservedStateKeys serializes every deliverable state key except
-// the reserved ones ("summary", "cognition") into the envelope's
-// StructuredJSON field. "" when nothing remains.
-func marshalNonReservedStateKeys(stateDeliv map[string]any) string {
-	rest := make(map[string]any, len(stateDeliv))
-	for k, v := range stateDeliv {
-		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
-			continue
-		}
-		// ack/<topic> keys are intra-team delivery acknowledgments (MDC) —
-		// advisory signals for the coordinator, never inter-team content, so
-		// they must not leak into the DeliverableRef envelope.
-		if strings.HasPrefix(k, deliverableAckKeyPrefix) {
-			continue
-		}
-		rest[k] = v
-	}
-	if len(rest) == 0 {
-		return ""
-	}
-	b, err := json.Marshal(rest)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-// payloadStateKeys returns the non-reserved deliverable state keys (sorted
-// for deterministic output): the reserved summary/cognition keys and the
-// intra-team ack/ keys are excluded — everything else is a payload topic.
-func payloadStateKeys(stateDeliv map[string]any) []string {
-	keys := make([]string, 0, len(stateDeliv))
-	for k := range stateDeliv {
-		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
-			continue
-		}
-		if strings.HasPrefix(k, deliverableAckKeyPrefix) {
-			continue
-		}
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-// bridgeDeliverableDocs 把文档型交付物 payload（map 且含非空 content）持久化
-// 为 **spirit 会话**的 artifact（用户产物页/预览/下载直接可见），并把
-// artifact_id 与 artifact_rel（存储相对路径，部署无关）回填进 payload map。
-// 幂等：payload 已带 artifact_id 时跳过。保存失败只记 Warn —— 信封落库
-// 不得因桥接失败而中断（交付物传播是主链路，产物可见性是增强）。
-// 注意：不回填 rel_path —— 该字段语义是成员工作区 inbox 相对路径，下游
-// 团队会据此做文件复制；artifact 存储路径不属于工作区，混入会误导复制。
-func (d *SpiritDelivery) bridgeDeliverableDocs(ctx context.Context, t Team, stateDeliv map[string]any) {
-	if d.artifactSaver == nil || strings.TrimSpace(t.SpiritSessionID) == "" {
-		return
-	}
-	for _, k := range payloadStateKeys(stateDeliv) {
-		v, ok := stateDeliv[k].(map[string]any)
-		if !ok {
-			continue
-		}
-		content, _ := v["content"].(string)
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		if id, _ := v["artifact_id"].(string); strings.TrimSpace(id) != "" {
-			continue
-		}
-		title, _ := v["title"].(string)
-		if title = strings.TrimSpace(title); title == "" {
-			title = k
-		}
-		format, _ := v["format"].(string)
-		mime, ext := deliverableDocMimeExt(format)
-		saved, err := d.artifactSaver.Save(ctx, t.SpiritSessionID, title+ext, mime, []byte(content))
-		if err != nil {
-			d.lg.Warn("交付物文档桥接 artifact 失败（信封仍按原样落库）",
-				loggateway.StepID("spirit.write_deliverables.artifact_bridge"),
-				loggateway.Str("team_id", t.ID),
-				loggateway.Str("topic", k),
-				loggateway.Err(err),
-			)
-			continue
-		}
-		v["artifact_id"] = saved.ID
-		v["artifact_rel"] = saved.StorageURI
-		d.lg.Info("交付物文档已桥接为会话产物",
-			loggateway.StepID("spirit.write_deliverables.artifact_bridge"),
-			loggateway.Str("team_id", t.ID),
-			loggateway.Str("topic", k),
-			loggateway.Str("artifact_id", saved.ID),
-			loggateway.Str("storage_uri", saved.StorageURI),
-		)
-	}
-}
-
-// deliverableDocMimeExt 按交付物 format 给出 MIME 与文件扩展名；
-// 未识别按 markdown 处理（playbook 文档范式的默认载体）。
-func deliverableDocMimeExt(format string) (mime, ext string) {
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "html":
-		return "text/html", ".html"
-	case "text", "txt", "plain":
-		return "text/plain", ".txt"
-	default:
-		return "text/markdown", ".md"
-	}
-}
-
-// buildDeliverableArtifacts describes every payload key of the state
-// deliverable so downstream injection can decide inline vs pointer.
-// Contract entries (matched by name == key) supply type/format; document-
-// paradigm payloads {"title","format","content"} contribute title and a
-// content-based size; other shapes size by JSON serialization.
-func buildDeliverableArtifacts(stateDeliv map[string]any, deliverablesJSON string) []DeliverableArtifact {
-	keys := payloadStateKeys(stateDeliv)
-	if len(keys) == 0 {
-		return nil
-	}
-	contracts, _ := ParseDeliverableContracts(deliverablesJSON)
-	byName := make(map[string]DeliverableContract, len(contracts))
-	for _, c := range contracts {
-		byName[strings.TrimSpace(c.Name)] = c
-	}
-	out := make([]DeliverableArtifact, 0, len(keys))
-	for _, k := range keys {
-		art := DeliverableArtifact{Key: k}
-		if c, ok := byName[k]; ok {
-			art.Type = strings.TrimSpace(c.Type)
-			art.Format = strings.TrimSpace(c.Format)
-		}
-		switch v := stateDeliv[k].(type) {
-		case map[string]any:
-			fillArtifactFromPayload(&art, v)
-		case string:
-			art.SizeChars = utf8.RuneCountInString(v)
-		default:
-			art.SizeChars = jsonValueRuneLen(v)
-		}
-		out = append(out, art)
-	}
-	return out
-}
-
-func fillArtifactFromPayload(art *DeliverableArtifact, v map[string]any) {
-	if art == nil || v == nil {
-		return
-	}
-	if title, ok := v["title"].(string); ok {
-		art.Title = strings.TrimSpace(title)
-	}
-	if art.Format == "" {
-		if f, ok := v["format"].(string); ok {
-			art.Format = strings.TrimSpace(f)
-		}
-	}
-	if mime, ok := v["mime_type"].(string); ok {
-		art.MimeType = strings.TrimSpace(mime)
-	}
-	if sha, ok := v["sha256"].(string); ok {
-		art.SHA256 = strings.TrimSpace(sha)
-	}
-	if id, ok := v["artifact_id"].(string); ok {
-		art.ArtifactID = strings.TrimSpace(id)
-	}
-	if su, ok := v["artifact_rel"].(string); ok {
-		art.StorageURI = strings.TrimSpace(su)
-	}
-	if rel, ok := v["rel_path"].(string); ok {
-		art.RelPath = sanitizeInboxRelPath(rel)
-	} else if rel, ok := v["path"].(string); ok {
-		art.RelPath = sanitizeInboxRelPath(rel)
-	}
-	switch n := v["size_bytes"].(type) {
-	case float64:
-		art.SizeBytes = int64(n)
-	case int:
-		art.SizeBytes = int64(n)
-	case int64:
-		art.SizeBytes = n
-	}
-	if content, ok := v["content"].(string); ok && strings.TrimSpace(content) != "" {
-		art.SizeChars = utf8.RuneCountInString(content)
-	} else if art.SizeChars == 0 {
-		art.SizeChars = jsonValueRuneLen(v)
-	}
-	// S06 桥接标识：artifact_rel 仅由 bridgeDeliverableDocs 写入。桥接文档
-	// 自带 content 正文，必须保持 state_key 语义——信封内联/超阈值与下游
-	// 注入行为与桥接前完全一致；artifact_id/storage_uri 仅作为产物页与
-	// digest 的可定位引用随信封携带。生产者自声明的制品指针（媒体二进制
-	// 等无正文 payload）维持原有 artifact/workspace_rel 判定不变。
-	bridged := strings.TrimSpace(art.StorageURI) != ""
-	hasContent := false
-	if content, ok := v["content"].(string); ok {
-		hasContent = strings.TrimSpace(content) != ""
-	}
-	switch {
-	case bridged && hasContent:
-		// 保持 state_key（零下游行为变化）
-	case strings.TrimSpace(art.ArtifactID) != "":
-		art.Kind = DeliverableArtifactKindArtifact
-	case strings.TrimSpace(art.RelPath) != "":
-		art.Kind = DeliverableArtifactKindWorkspaceRel
-	}
-}
-
-// marshalEnvelopeStructuredJSON copies non-reserved keys into the envelope.
-// Bulk pointers and oversize text omit the full content (M78 ORGFAST-16).
-func marshalEnvelopeStructuredJSON(stateDeliv map[string]any, artifacts []DeliverableArtifact) string {
-	byKey := make(map[string]DeliverableArtifact, len(artifacts))
-	for _, a := range artifacts {
-		byKey[a.Key] = a
-	}
-	rest := make(map[string]any, len(stateDeliv))
-	for k, v := range stateDeliv {
-		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
-			continue
-		}
-		if strings.HasPrefix(k, deliverableAckKeyPrefix) {
-			continue
-		}
-		art := byKey[k]
-		if art.IsBulkPointer() {
-			rest[k] = bulkPointerStub(v, art)
-			continue
-		}
-		if art.SizeChars > MaxEnvelopeStructuredPayloadChars {
-			rest[k] = oversizedTextStub(v, art)
-			continue
-		}
-		rest[k] = v
-	}
-	if len(rest) == 0 {
-		return ""
-	}
-	b, err := json.Marshal(rest)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-func bulkPointerStub(v any, art DeliverableArtifact) map[string]any {
-	stub := map[string]any{
-		"content_omitted": true,
-		"kind":            art.ResolvedKind(),
-	}
-	if art.Title != "" {
-		stub["title"] = art.Title
-	}
-	if art.Format != "" {
-		stub["format"] = art.Format
-	}
-	if art.RelPath != "" {
-		stub["rel_path"] = art.RelPath
-	}
-	if art.ArtifactID != "" {
-		stub["artifact_id"] = art.ArtifactID
-	}
-	if art.SizeBytes > 0 {
-		stub["size_bytes"] = art.SizeBytes
-	}
-	if m, ok := v.(map[string]any); ok {
-		if t, ok := m["title"].(string); ok && stub["title"] == nil {
-			stub["title"] = t
-		}
-	}
-	return stub
-}
-
-func oversizedTextStub(v any, art DeliverableArtifact) map[string]any {
-	stub := map[string]any{
-		"content_omitted": true,
-		"size_chars":      art.SizeChars,
-	}
-	if m, ok := v.(map[string]any); ok {
-		if t, ok := m["title"].(string); ok {
-			stub["title"] = t
-		}
-		if f, ok := m["format"].(string); ok {
-			stub["format"] = f
-		}
-	}
-	if art.Title != "" {
-		stub["title"] = art.Title
-	}
-	if art.Format != "" {
-		stub["format"] = art.Format
-	}
-	return stub
-}
-
-// aggregateTopicSummaries builds a readable summary from topic payloads when
-// the producer did not write a top-level "summary" key (the long-article
-// paradigm puts the body under contract topics). Only map-shaped topics
-// contribute (title/summary/note); flat scalar keys keep the legacy
-// structured-JSON fallback so no key context is lost. Returns "" when no
-// topic contributes human-readable text.
-func aggregateTopicSummaries(stateDeliv map[string]any) string {
-	keys := payloadStateKeys(stateDeliv)
-	lines := make([]string, 0, len(keys))
-	for _, k := range keys {
-		v, ok := stateDeliv[k].(map[string]any)
-		if !ok {
-			continue
-		}
-		title, _ := v["title"].(string)
-		summ, _ := v["summary"].(string)
-		if strings.TrimSpace(summ) == "" {
-			summ, _ = v["note"].(string)
-		}
-		title, summ = strings.TrimSpace(title), strings.TrimSpace(summ)
-		switch {
-		case title != "" && summ != "":
-			lines = append(lines, "《"+title+"》"+summ)
-		case title != "":
-			lines = append(lines, "《"+title+"》")
-		case summ != "":
-			lines = append(lines, summ)
-		}
-	}
-	// Cap the aggregate — the envelope truncates to MaxSummaryLen anyway, so
-	// this only bounds pathological multi-topic maps.
-	return TruncateRunes(strings.Join(lines, "\n"), MaxSummaryLen*4)
-}
-
-// jsonValueRuneLen sizes a non-string payload by its indented JSON
-// serialization — the same rendering extractArtifactContent/renderPayloadContent
-// inline or serve, so the inline-vs-pointer threshold
-// (InlineUpstreamPayloadMaxChars) measures exactly what gets injected.
-func jsonValueRuneLen(v any) int {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return 0
-	}
-	return utf8.RuneCountInString(string(b))
-}
-
-// artifactDigestLine renders one artifact as a compact pointer-level digest
-// line, e.g. article《云计算十年》（markdown，8234字）.
-// 已桥接 artifact 的文档追加用户可定位路径（publicBase 未配置时省略）。
-func (d *SpiritDelivery) artifactDigestLine(art DeliverableArtifact) string {
-	label := art.Key
-	if art.Title != "" {
-		label += "《" + art.Title + "》"
-	}
-	format := art.Format
-	if format == "" {
-		format = "text"
-	}
-	line := fmt.Sprintf("%s（%s，%d字）", label, format, art.SizeChars)
-	if p := d.artifactPublicPath(art); p != "" {
-		line += "，路径：" + p
-	}
-	return line
-}
-
-// deliverableArtifactRefOf 把已桥接到 spirit 会话产物库的载荷转成前端可点击
-// 的产物指针（2026-09-02 P1）。artifact_id 为空（未桥接 / workspace_rel 纯
-// 指针）时 ok=false —— 无产物记录可定位，不进入 deliverables 通知。
-func deliverableArtifactRefOf(art DeliverableArtifact) (DeliverableArtifactRef, bool) {
-	id := strings.TrimSpace(art.ArtifactID)
-	if id == "" {
-		return DeliverableArtifactRef{}, false
-	}
-	name := strings.TrimSpace(art.Title)
-	if name == "" {
-		name = strings.TrimSpace(art.Key)
-	}
-	return DeliverableArtifactRef{
-		ArtifactID: id,
-		Name:       name,
-		Format:     strings.TrimSpace(art.Format),
-		SizeChars:  art.SizeChars,
-		MimeType:   strings.TrimSpace(art.MimeType),
-	}, true
-}
-
-// artifactPublicPath 把 artifact 存储相对路径映射为用户可访问的公开路径
-// （如 108 部署的 UNC 共享）。未配置 publicBase 或无存储路径时返回 ""。
-func (d *SpiritDelivery) artifactPublicPath(art DeliverableArtifact) string {
-	base := strings.TrimSpace(d.artifactPublicBase)
-	rel := strings.TrimSpace(art.StorageURI)
-	if base == "" || rel == "" {
-		return ""
-	}
-	return base + `\` + strings.ReplaceAll(rel, "/", `\`)
-}
-
-// deliverableAckKeyPrefix mirrors deliverabletools.AckKeyPrefix. biz cannot
-// import internal/tools (dependency direction), so the prefix is duplicated
-// and pinned by TestMarshalNonReservedStateKeys_ExcludesAckKeys.
-const deliverableAckKeyPrefix = "ack/"
-
-// requiredTopicsMissingFromState is the completion-time advisory check for
-// the member-level deliverable contract (MDC): topics declared required in
-// the team's deliverable_contract but absent from the final deliverable map
-// (covers the "producer never called set_deliverable" bypass). Advisory only
-// — the caller logs a Warn and never blocks the run.
-func requiredTopicsMissingFromState(t Team, stateDeliv map[string]any) []string {
-	if strings.TrimSpace(t.DefinitionJSON) == "" {
-		return nil
-	}
-	var probe struct {
-		DeliverableContract *MemberDeliverableContract `json:"deliverable_contract"`
-	}
-	if err := json.Unmarshal([]byte(t.DefinitionJSON), &probe); err != nil {
-		return nil
-	}
-	return probe.DeliverableContract.RequiredTopicsMissing(stateDeliv)
-}
-
-// subtractUpstreamSeed returns the entries of stateDeliv that did NOT come
-// from the seed. A key counts as seeded only when its current value
-// deep-equals the seed value: a member overwrite of a seeded topic changes
-// the value and therefore counts as the team's OWN output. nil/empty seed
-// (or empty state) returns the state unchanged.
-func subtractUpstreamSeed(stateDeliv, seed map[string]any) map[string]any {
-	if len(seed) == 0 || len(stateDeliv) == 0 {
-		return stateDeliv
-	}
-	own := make(map[string]any, len(stateDeliv))
-	for k, v := range stateDeliv {
-		if sv, ok := seed[k]; ok && reflect.DeepEqual(sv, v) {
-			continue
-		}
-		own[k] = v
-	}
-	return own
-}
-
-// contractSubmissionLines renders the F5 per-contract submission instruction
-// for the delivery-protocol suffix, one entry per contract:
-//
-//	契约: xlsx_install_result (data/json) — 安装结果
-//	  提交方式：set_deliverable(topic="xlsx_install_result", data={...})
-//
-// The explicit topic removes the member's freedom to invent topic names —
-// the 12:33 root cause where the spirit guessed pdf_install_result while the
-// member wrote xlsx_install_result. Returns "" when no parseable contract.
-func contractSubmissionLines(deliverablesJSON string) string {
-	contracts, err := ParseDeliverableContracts(deliverablesJSON)
-	if err != nil || len(contracts) == 0 {
-		return ""
-	}
-	lines := make([]string, 0, len(contracts)*2)
-	for _, c := range contracts {
-		name := strings.TrimSpace(c.Name)
-		if name == "" {
-			continue
-		}
-		line := fmt.Sprintf("契约: %s (%s/%s)", name, c.Type, c.Format)
-		if c.Description != "" {
-			line += " — " + c.Description
-		}
-		lines = append(lines, line)
-		lines = append(lines, fmt.Sprintf("  提交方式：set_deliverable(topic=%q, data={...})", name))
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// contractDeclarationLines renders the P1 contract declaration for the
-// injection prefix, one line per declared contract, e.g.
-// "契约: research_report (document/markdown) — 调研结论报告\n".
-// Returns "" when the upstream team has no parseable contract, so the
-// prefix keeps its legacy shape (name + summary only).
-func contractDeclarationLines(deliverablesJSON string) string {
-	contracts, err := ParseDeliverableContracts(deliverablesJSON)
-	if err != nil || len(contracts) == 0 {
-		return ""
-	}
-	lines := make([]string, 0, len(contracts))
-	for _, c := range contracts {
-		line := fmt.Sprintf("契约: %s (%s/%s)", c.Name, c.Type, c.Format)
-		if c.Description != "" {
-			line += " — " + c.Description
-		}
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// cognitionItemMaxRunes bounds each rendered cognition item so a verbose
-// upstream record cannot blow up the injection prefix.
-const cognitionItemMaxRunes = 200
-
-// renderCognitionLines renders the C1 cognition block of an upstream
-// deliverable ref for the injection prefix, one line per aspect:
-//
-//	[上游决策] 选择 A 方案（理由: …，置信度 0.8）；否决 B 方案（原因: …）
-//	[上游假设] 数据源 Q3 已封板
-//	[上游遗留问题] 样本偏差未校正
-//
-// Each item is truncated to cognitionItemMaxRunes. "" when cognition is nil
-// or renders to nothing — legacy envelopes keep the prefix unchanged.
-func renderCognitionLines(c *DeliverableCognition) string {
-	if c == nil {
-		return ""
-	}
-	var lines []string
-	var decisions []string
-	for _, d := range c.Decisions {
-		item := fmt.Sprintf("选择 %s（理由: %s", d.Choice, d.Rationale)
-		if d.Confidence > 0 {
-			item += fmt.Sprintf("，置信度 %g", d.Confidence)
-		}
-		item += "）"
-		decisions = append(decisions, TruncateRunes(item, cognitionItemMaxRunes))
-	}
-	for _, r := range c.Rejected {
-		decisions = append(decisions, TruncateRunes(fmt.Sprintf("否决 %s（原因: %s）", r.Option, r.Reason), cognitionItemMaxRunes))
-	}
-	if len(decisions) > 0 {
-		lines = append(lines, "[上游决策] "+strings.Join(decisions, "；"))
-	}
-	if len(c.Assumptions) > 0 {
-		items := make([]string, 0, len(c.Assumptions))
-		for _, a := range c.Assumptions {
-			items = append(items, TruncateRunes(a, cognitionItemMaxRunes))
-		}
-		lines = append(lines, "[上游假设] "+strings.Join(items, "；"))
-	}
-	if len(c.OpenQuestions) > 0 {
-		items := make([]string, 0, len(c.OpenQuestions))
-		for _, q := range c.OpenQuestions {
-			items = append(items, TruncateRunes(q, cognitionItemMaxRunes))
-		}
-		lines = append(lines, "[上游遗留问题] "+strings.Join(items, "；"))
-	}
-	return strings.Join(lines, "\n")
-}
-
-// schemaViolationPrefix is the message prefix produced by
-// shared.ValidateDocumentAgainstSchema on a document/schema mismatch; the
-// mismatch record keeps only the violation detail.
-const schemaViolationPrefix = "config does not match schema: "
