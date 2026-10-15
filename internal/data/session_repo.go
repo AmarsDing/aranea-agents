@@ -961,83 +961,22 @@ func (r *sessionRepo) ListByParentSessionID(ctx context.Context, parentSessionID
 // GetSessionTree returns the complete session tree (arbitrary depth) rooted at
 // the given spirit session ID. Uses a single query on root_session_id index,
 // then builds the recursive tree in memory to avoid N recursive queries.
-func (r *sessionRepo) GetSessionTree(ctx context.Context, spiritSessionID string) (*biz.SessionTree, error) {
-	spiritSessionID = strings.TrimSpace(spiritSessionID)
-	if spiritSessionID == "" {
-		return nil, apierror.BadRequest("SESSION", "spirit_session_id is required")
-	}
-	c := r.data.RW().Read(ctx)
-	// One query for all sessions in the tree (root + descendants).
-	// The root itself must be included explicitly: production spirit roots
-	// carry root_session_id='' (no creation path assigns it), so filtering
-	// on RootSessionIDEQ alone would exclude the root row.
-	rows, err := c.Session.Query().
-		Where(
-			entsession.Or(
-				entsession.RootSessionIDEQ(spiritSessionID),
-				entsession.IDEQ(spiritSessionID),
-			),
-			entsession.DeletedAtEQ(""),
-		).
-		Order(entsession.ByAgentDepth(entsql.OrderAsc()), entsession.ByCreatedAt(entsql.OrderAsc())).
-		All(ctx)
-	if err != nil {
-		return nil, entErrToBizErr(err, "SESSION")
-	}
 
-	tree := &biz.SessionTree{}
-	nodeMap := make(map[string]*biz.SessionTreeNode, len(rows))
+// One query for all sessions in the tree (root + descendants).
+// The root itself must be included explicitly: production spirit roots
+// carry root_session_id='' (no creation path assigns it), so filtering
+// on RootSessionIDEQ alone would exclude the root row.
 
-	for _, s := range rows {
-		// Root identification by ID match — authoritative. Production roots
-		// have session_type='' (only team/agent types are assigned at
-		// creation), so type-switching alone leaves Root empty (TS9-BUG-5).
-		if s.ID == spiritSessionID {
-			tree.Root = entSessionToBiz(s)
-			continue
-		}
-		node := &biz.SessionTreeNode{Session: entSessionToBiz(s)}
-		nodeMap[s.ID] = node
+// Root identification by ID match — authoritative. Production roots
+// have session_type='' (only team/agent types are assigned at
+// creation), so type-switching alone leaves Root empty (TS9-BUG-5).
 
-		// Attach to parent node (supports arbitrary depth). Rows are ordered
-		// by agent_depth ASC, so parents are always processed before children.
-		if parent, ok := nodeMap[s.ParentSessionID]; ok {
-			parent.Children = append(parent.Children, node)
-		} else {
-			// Parent is the root itself or was filtered out; attach to root.
-			tree.Children = append(tree.Children, node)
-		}
-	}
-	return tree, nil
-}
+// Attach to parent node (supports arbitrary depth). Rows are ordered
+// by agent_depth ASC, so parents are always processed before children.
+
+// Parent is the root itself or was filtered out; attach to root.
 
 // ListChildSessions returns direct child sessions (single level, non-recursive).
-func (r *sessionRepo) ListChildSessions(ctx context.Context, parentSessionID string) ([]biz.Session, error) {
-	return r.ListByParentSessionID(ctx, parentSessionID)
-}
 
 // ListTeamAgentSessions returns all agent-type sessions under a team
 // (members and their sub-agents).
-func (r *sessionRepo) ListTeamAgentSessions(ctx context.Context, teamID string) ([]biz.Session, error) {
-	teamID = strings.TrimSpace(teamID)
-	if teamID == "" {
-		return nil, apierror.BadRequest("SESSION", "team_id is required")
-	}
-	c := r.data.RW().Read(ctx)
-	rows, err := c.Session.Query().
-		Where(
-			entsession.TeamIDEQ(teamID),
-			entsession.SessionTypeEQ(string(biz.SessionTypeAgent)),
-			entsession.DeletedAtEQ(""),
-		).
-		Order(entsession.ByAgentDepth(entsql.OrderAsc()), entsession.ByCreatedAt(entsql.OrderAsc())).
-		All(ctx)
-	if err != nil {
-		return nil, entErrToBizErr(err, "SESSION")
-	}
-	out := make([]biz.Session, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, entSessionToBiz(row))
-	}
-	return out, nil
-}

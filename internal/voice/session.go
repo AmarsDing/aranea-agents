@@ -1462,68 +1462,13 @@ func (s *Session) sendError(code string, err error, retryable bool) {
 	_ = s.down.SendJSON(map[string]any{"type": "voice.error", "code": code, "message": err.Error(), "retryable": retryable})
 }
 
-func (s *Session) resetIdleTimer() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.idleTimer != nil {
-		s.idleTimer.Stop()
-	}
-	s.idleTimer = time.AfterFunc(idleReclaimTimeout, s.reclaimIdleASR)
-}
+// V10：拆除即停静默休眠计时——否则 WS 断连（Close 无 voice.stop）后计时器
+// 对死会话触发 dormant 转换 + 死连接广播。
 
-func (s *Session) reclaimIdleASR() {
-	s.mu.Lock()
-	asr := s.asr
-	s.asr = nil
-	s.mu.Unlock()
-	if asr != nil {
-		_ = asr.Close()
-		s.lg.Info("voice asr: idle upstream reclaimed", loggateway.StepID("voice.asr.idle_reclaim"))
-	}
-}
+// C2：拆除即停止 partial 稳定追踪
 
-func (s *Session) teardown() {
-	s.mu.Lock()
-	if s.idleTimer != nil {
-		s.idleTimer.Stop()
-		s.idleTimer = nil
-	}
-	// V10：拆除即停静默休眠计时——否则 WS 断连（Close 无 voice.stop）后计时器
-	// 对死会话触发 dormant 转换 + 死连接广播。
-	if s.sleepTimer != nil {
-		s.sleepTimer.Stop()
-		s.sleepTimer = nil
-	}
-	s.stopSpeculationLocked() // C2：拆除即停止 partial 稳定追踪
-	asr := s.asr
-	s.asr = nil
-	sch := s.scheduler
-	s.scheduler = nil
-	s.chunker = nil
-	s.schedGen++ // F6：拆除后该调度器的在途 drain 不再驱动状态转换/休眠
-	ttsProv := s.ttsProvider
-	s.ttsProvider = nil
-	s.ttsCfg = biz.TTSSessionConfig{}
-	s.utterBuf = nil
-	s.utterOverflow = false
-	unsub := s.unsub
-	s.unsub = nil
-	s.mu.Unlock()
-	if asr != nil {
-		_ = asr.Close()
-	}
-	if sch != nil {
-		sch.Cancel()
-	}
-	// L5：释放未消费的 TTS 温连接（已消费则槽空 no-op）。
-	if pw, ok := ttsProv.(ttsConnPrewarmer); ok {
-		pw.ReleaseWarmTTSConn()
-	}
-	// M74 V9：会话拆除即清委派条目与 watcher（进程内委派跟随会话生命周期）。
-	if reg := s.deps.Delegation; reg != nil {
-		reg.ClearVoiceSession(s.sessionID)
-	}
-	if unsub != nil {
-		unsub()
-	}
-}
+// F6：拆除后该调度器的在途 drain 不再驱动状态转换/休眠
+
+// L5：释放未消费的 TTS 温连接（已消费则槽空 no-op）。
+
+// M74 V9：会话拆除即清委派条目与 watcher（进程内委派跟随会话生命周期）。

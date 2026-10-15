@@ -46,7 +46,6 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
-	datacg "aranea-agents/internal/data/configgraph"
 	speech "aranea-agents/internal/data/speech"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
@@ -72,7 +71,6 @@ import (
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/internal/skill"
 	skillevolution "aranea-agents/internal/skill/evolution"
-	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
@@ -83,12 +81,9 @@ import (
 	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/appctx"
 	loggateway "aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/logpipeline"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
@@ -3994,454 +3989,99 @@ func provideEcosystemPresetScenarioDir() string {
 }
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.Sandbox, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
-	panic(wire.Build(
-		server.ProviderSet,
-		data.ProviderSet,
-		biz.ProviderSet,
-		event.InfraProviderSet,
-		araneasession.ProviderSet,
-		service.ProviderSet,
-		data.NewPackRepoAdapter,
-		wire.Bind(new(service.PackExporterImporterValidator), new(*data.PackRepoAdapter)),
-		provideEventBusSideConsumers,
-		provideCronRunnerDeps,
-		provideCronRunner,
-		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),
-		provideSkillWatchRunner,
-		wire.Bind(new(watch.SkillReader), new(*biz.SkillUsecase)),
-		wire.Bind(new(watch.SkillWriter), new(*biz.SkillUsecase)),
-		providePromptFileAIEditor,
-		provideSessionTitleGenerator,
-		provideRunRegistry,
-		provideGlobalBuildCache,
-		provideAgentPolicyResolver,
-		provideVoiceDelegationRegistry,
-		provideMCPToolSetPool,
-		provideGlobalShardCache,
-		provideLifecycleManager,
-		provideDeadLetterQueue,
-		provideRunHeartbeatEmitter,
-		providePendingMessageQueue,
-		provideCodeExecutorFactory,
-		// M82: sandbox Manager + admin service; the admin port binds onto the
-		// Manager (read-only list/metrics surface, ADR-82-3). SessionLeases is
-		// the P1-1/P1-2 process-wide shared session-lease store, bound to both
-		// the codeexecutor sandbox backend and the sandbox_fs toolset.
-		provideSandboxManager,
-		provideSandboxSessionLeases,
-		service.NewSandboxService,
-		wire.Bind(new(biz.SandboxAdminPort), new(*sandbox.Manager)),
-		// M80: decision record layer — repo + collector (Lifecycle for
-		// newApp Start/Stop; Collector bound for the 1.4 planner adapter).
-		data.NewDecisionRepoFromData,
-		provideDecisionCollector,
-		// M80 Phase 1 查询面：QueryRepo → QueryUsecase → DecisionRecordService。
-		data.NewDecisionQueryRepoFromData,
-		decision.NewQueryUsecase,
-		service.NewDecisionRecordService,
-		// T5 四轮审查 IDOR 根修：GetSessionGateStats 会话归属校验的窄接口绑定。
-		wire.Bind(new(service.SessionWorkspaceReader), new(*bizsession.SessionUsecase)),
-		wire.Bind(new(decision.Collector), new(decision.Lifecycle)),
-		// M81: config graph — raw-SQL repos → rebuilder → indexer → HTTP API
-		// (P0: rebuild/status/nodes only; querier/health land in P1, event
-		// subscription in P2).
-		datacg.NewSourceRepo,
-		datacg.NewRepo,
-		provideConfigGraphRebuilder,
-		provideConfigGraphIndexer,
-		provideConfigGraphService,
-		wire.Bind(new(bizcg.EffectiveToolsProvider), new(*biz.AgentUsecase)),
-		// 79-runtime-governance R8: diagnostics doctor API（依赖 M81 indexer，
-		// 放在 config graph providers 之后）。
-		provideDiagnosticsUsecase,
-		provideDiagnosticsService,
-		provideAutoMemoryQueue,
-		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
-		wire.Bind(new(biz.MemoryDeadLetterAdminRepo), new(*data.MemoryJobDeadLetterRepo)),
-		wire.Bind(new(biz.MemoryDeadLetterSink), new(*data.MemoryJobDeadLetterRepo)),
-		provideMemoryPolicyEngine,
-		provideFactIndexSync,
-		provideMemoryConflictDetector,
-		provideL3ConflictStore,
-		provideFactWriteAdjudicator,
-		provideFactWritePipeline,
-		provideMemoryFactPendingNotifier,
-		provideMemoryFactPendingDecider,
-		provideMemoryFactSessionGrants,
-		provideMemoryL2Recall,
-		provideMemoryL3Recall,
-		provideMemoryCompositeRecall,
-		provideMemoryTRPCService,
-		provideLinkEvolutionService,
-		provideEvolutionService,
-		provideFeedbackMemoryEnqueuer,
-		provideMCPProber,
-		provideMCPMetadataEditor,
-		provideMCPServerUsecaseWithDeps,
-		provideLLMInspector,
-		provideCredentialCrypto,
-		provideLlmProviderModelUsecaseWithDeps,
-		provideModelStatsInjector,
-		provideWebResearchReadinessChecker,
-		provideBizWebResearchReadinessChecker,
-		provideAgentUsecaseWithDeps,
-		provideToolTester,
-		provideParallelToolExecutor,
-		provideToolUsecaseWithDeps,
-		provideChatServiceDeps,
-		provideRuntimeTooling,
-		// R1: shared skill health-metrics adapter (singleton) — consumed by
-		// provideRuntimeTooling (turn routing) and NewSkillService (preview),
-		// backed by biz.SkillHealthAggregator (SkillIntelligenceRepo).
-		service.NewSkillHealthMetricsAdapter,
-		provideTeamOrchestrationDeps,
-		provideRunnerConfig,
-		// M71: agent resource sharing (memberfs/deptmail/sessionaccess)
-		provideResourceAccessUsecase,
-		provideDeptMailboxUsecase,
-		provideSessionSearchUsecase,
-		provideM71MessageReader,
-		service.NewMemberDirResolver,
-		service.NewMemberFileReader,
-		service.NewMailboxWaker,
-		wire.Bind(new(biz.OrganizationReader), new(biz.OrganizationRepo)),
-		wire.Bind(new(biz.SessionWriter), new(biz.SessionRepo)),
-		// v2 event pipeline providers (Phase 1 收尾)
-		provideV2EventBus,
-		provideV2RepoSet,
-		// v2 reader bindings: SessionV2Service consumes the narrow Reader
-		// interfaces; the data layer provides the composite Repo interfaces.
-		wire.Bind(new(biz.TaskV2Reader), new(biz.TaskV2Repo)),
-		wire.Bind(new(biz.TurnV2Reader), new(biz.TurnV2Repo)),
-		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
-		wire.Bind(new(biz.StepV2Writer), new(biz.StepV2Repo)),
-		wire.Bind(new(biz.TeamStageV2Reader), new(biz.TeamStageV2Repo)),
-		wire.Bind(new(biz.TeamStageV2Writer), new(biz.TeamStageV2Repo)),
-		wire.Bind(new(biz.TeamRunV2Reader), new(biz.TeamRunV2Repo)),
-		wire.Bind(new(biz.MemberSessionV2Reader), new(biz.MemberSessionV2Repo)),
-		wire.Bind(new(biz.PlanBoardV2Reader), new(biz.PlanBoardV2Repo)),
-		wire.Bind(new(biz.PlanStepV2Reader), new(biz.PlanStepV2Repo)),
-		wire.Bind(new(biz.GraphStageV2Reader), new(biz.GraphStageV2Repo)),
-		wire.Bind(new(biz.GraphNodeV2Reader), new(biz.GraphNodeV2Repo)),
-		// Phase 3b-D: bind v2 EventBus interface to *event.V2Bus implementation
-		// so Wire can inject biz.EventBus into consumers migrated from v1 ActivityEventBus.
-		wire.Bind(new(biz.EventBus), new(*event.V2Bus)),
-		// Phase 2: bind v2 EventPublisher interface to *v2.Sequencer so Wire
-		// can inject the publish-only Sequencer entry into team package consumers
-		// (Runner.Pipeline.Sequencer, TeamGraphRunCoordinator.seq).
-		wire.Bind(new(rt.EventPublisher), new(*v2.Sequencer)),
-		provideV2Sequencer,
-		provideV2ProjectorFactory,
-		provideWSServer,
-		provideWSV2Subscriber,
-		provideSpeechRegistry,
-		provideSpeechConfigReader,
-		provideVoiceWSServer,
-		provideTeamOrchestrator,
-		wire.Bind(new(service.TeamOrchestrator), new(*service.RealTeamOrchestrator)),
-		providePlanExecutor,
-		provideTeamTurnDeps,
-		provideChannelTurnJobDeps,
-		provideChannelNotifierDeps,
-		provideRunCanceller,
-		provideChatSender,
-		provideTaskResumer,
-		provideSkillCatalogPusher,
-		provideArtifactRuntimeService,
-		provideArtifactSigner,
-		provideMemoryService,
-		provideTRPCSessionService,
-		provideGraphCheckpointSaver,
-		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.CheckpointSaver)),
-		// P1 fix (2026-06-18): Wire previously-orphan graph components into production.
-		provideNL2GraphConverter,
-		provideRuntimeReplanner,
-		providePersistenceSet,
-		provideReconsolidationService,
-		provideSessionMemoryResync,
-		provideL1AdminReader,
-		provideL1TaskBoardWriter,
-		provideEpisodeIndexSync,
-		providePluginStatsRecorder,
-		providePluginManager,
-		providePluginRuntime,
-		graphtrpc.NewRegistry,
-		provideGraphBuildDeps,
-		provideTRPCBuilderDeps,
-		biz.ProvideNodeCircuitBreakerRegistry,
-		graphadapter.NewGraphBuilderFactory,
-		provideL4CascadeUsecase,
-		provideAutoMemoryWorker,
-		provideKnowledgeWriteBackArbiter,
-		provideL4GraphWriter,
-		provideSkillAutoCreator,
-		provideSkillRegistrationPort,
-		provideSkillUsecase,
-		provideSkillMergeUsecase,
-		provideSkillEvolutionOrchestrator,
-		provideEvolutionUsecase,
-		provideLearningLoopUsecase,
-		provideEvolutionDrafter,
-		provideEvolutionOrchestratorWorker,
-		provideSelfImprovementTestRunReader,
-		provideSelfImprovementObserveUsecase,
-		provideSelfImprovementObserveWorker,
-		// 73-self-iteration-v3 W6: Phase 4 chain (sandbox/applier/stages/
-		// adapters/usecases/workers), all gated on self_improvement.enabled.
-		provideRepoSandboxRunner,
-		provideSIControlPlane,
-		provideSIAnalystStage,
-		provideSIPatcherStage,
-		provideSICriticStage,
-		provideSINotifier,
-		provideSIApprovalSink,
-		provideSIActivitySink,
-		provideSINegativePatternSink,
-		provideSITriggerFeedbackSink,
-		provideSIApplier,
-		provideSIRiskRules,
-		provideSelfImprovementPipelineUsecase,
-		provideSelfImprovementApplyUsecase,
-		provideSIGovernanceRouter,
-		provideSelfImprovementDriveUsecase,
-		provideSelfImprovementWatchdogUsecase,
-		provideSelfImprovementOutcomeUsecase,
-		provideSelfImprovementAdminUsecase, // P5：SelfImprovementService 消费
-		provideSelfImprovementService,      // P5.5：始终注册路由（disabled → 503 SELF_IMPROVEMENT）
-		provideSelfImproveDriveWorker,
-		provideSelfImproveWatchdogWorker,
-		provideSelfImproveOutcomeWorker,
-		provideSkillIntelligenceWorker,
-		provideCuratorWorker,
-		provideLearningLoopScanner,
-		provideProviderHealthScanner,
-		provideChannelHealthScanner,
-		provideTeamCompiler,
-		provideChannelIngress,
-		provideChannelGateCards,
-		provideChannelIngressAdmission,
-		provideChannelDeliveryWorker,
-		provideChannelDeliveryScanner,
-		provideChannelRuntime,
-		provideOutboundRouter,
-		provideSubAgentService,
-		provideMemoryL2DecayWorker,
-		provideMemoryAdminUsecase,
-		providePathBExtractor,
-		providePathBL4Writer,
-		provideMemoryAdminDeps,
-		provideMemoryL1ArchiveWorker,
-		provideChannelTurnJobSweeper,
-		provideMemoryL3DecayWorker,
-		provideMemoryL4DecayWorker,
-		provideMemoryEbbinghausDecayWorker,
-		provideMemoryCanaryWorker,
-		provideMemoryCitationBackfillWorker,
-		provideKnowledgeCitationBackfillWorker,
-		provideKnowledgeRelationExtractWorker,
-		provideKnowledgeIndexRepairWorker,
-		provideKnowledgeCurateWorker,
-		provideKnowledgeEntityPipeline,
-		provideKnowledgeRelationExtractor,
-		provideKnowledgeWriteBackGraphHook,
-		provideKnowledgeDistillWiring,
-		provideMemorySleepTimeWorker,
-		provideMemoryEpisodeBackfillWorker,
-		provideMemoryDataMigrationWorker,
-		provideMemoryFactIndexReconciler,
-		provideMemoryDeadLetterReplayer,
-		provideToolAuditCleanup,
-		provideFlowLogCleanup,
-		provideMonitorEventsCleanup,
-		provideAutoHealTTLCleanup,
-		provideMonitorAlertEvalWorker,
-		provideTraceProjector,
-		provideFlowFileAppender,
-		provideMonitorTraceBackfillWorker,
-		provideDiagBundleGenerator,
-		provideSelfHealObserver,
-		provideSkillIntelligenceUsecase,
-		provideLLMSkillEvolver,
-		provideSkillVersionReloader,
-		provideSkillReplayRunner,
-		wire.Bind(new(biz.SkillReplayABRunner), new(*service.SkillReplayRunner)),
-		provideSkillTriggerGoldenRunner,
-		wire.Bind(new(biz.SkillTriggerGoldenRunner), new(*service.SkillTriggerGoldenRunner)),
-		provideSkillGateVerifier,
-		provideBizRootCauseAdapter,
-		provideMCPHealthRunnerDeps,
-		provideMCPHealthRunner,
-		provideA2AGatewayHealthRunnerDeps,
-		provideA2AGatewayHealthRunner,
-		wire.Bind(new(biz.A2ACardRepo), new(biz.A2ARepo)),
-		wire.Bind(new(biz.A2AInvocationRepo), new(biz.A2ARepo)),
-		wire.Bind(new(biz.A2AAuditRepo), new(biz.A2ARepo)),
-		wire.Bind(new(biz.A2ARemoteAgentRepo), new(biz.A2ARepo)),
-		provideMonitorAlertNotifier,
-		provideChannelRunEscalationNotifier,
-		provideSessionRunDurableWorker,
-		provideRecoveryWorker,
-		provideBackgroundJobRegistry,
-		provideBackgroundJobWorker,
-		provideFilesystemHealthReader,
-		provideProcessLogEnabled,
-		provideRedisClient,
-		provideTurnLifecycleUsecase,
-		provideMonitorUsecase,
-		provideUsageUsecaseRef,
-		provideUsageUsecase,
-		provideSystemSettingUsecase,
-		provideModelRegistryApplyBackend,
-		provideModelRegistrySyncAgent,
-		wire.Bind(new(cronrunner.CronRegistrySyncAgent), new(*agent.ModelRegistrySyncAgent)),
-		provideModelRegistryUsecase,
-		provideA2APublicBaseInput,
-		providePublicBaseURLStore,
-		provideA2AEndpointRegistry,
-		provideA2APublicBaseReloader,
-		provideA2ALimiter,
-		provideA2AService,
-		// Federation (design F.5/F.6)
-		provideFederationLimiterFactory,
-		provideFederationPolicyEngine,
-		provideFederationGovernance,
-		provideFederationRemoteInvoker,
-		provideFederationUsecase,
-		provideFederationService,
-		wire.Bind(new(a2abiz.FederationOrgRepo), new(*data.A2AFederationRepo)),
-		wire.Bind(new(a2abiz.FederationPolicyRepo), new(*data.A2AFederationRepo)),
-		wire.Bind(new(a2abiz.FederationAuditRepo), new(*data.A2AFederationRepo)),
-		wire.Bind(new(a2abiz.RemoteAgentLister), new(biz.A2ARepo)),
-		wire.Bind(new(a2abiz.RemoteCardDiscoverer), new(biz.A2ARepo)),
-		provideTaskPlanner,
-		provideAgentAllocator,
-		provideAgentFactory,
-		chatagent.NewProfileResolver,
-		provideTaskOrchestrator,
-		debug.NewRecorderFactory,
-		// PGO-3: DynamicLLMCaller → biz.LLMCaller binding, PromptRefiner.
-		provideRefineLLMRoundTrip,
-		chatagent.NewDynamicLLMCaller,
-		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
-		wire.Bind(new(biz.SandboxRunner), new(*service.SandboxRunner)),
-		biz.NewPromptRefiner,
-		wire.Bind(new(biz.Refiner), new(*biz.PromptRefiner)),
-		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
-		wire.Bind(new(biz.ToolRegistryReader), new(biz.ToolRepo)),
-		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
-		// Phase 1c-3: CompressReadDeps/CompressWriteDeps now provided by
-		// ProvideCompressReadDepsAdapter / ProvideCompressWriteDepsAdapter
-		// (in internal/session) because SessionRepo no longer implements
-		// MessageReader/MessageWriter (messages table removed).
-		wire.Bind(new(araneasession.CompressTxDeps), new(biz.SessionRepo)),
-		wire.Bind(new(server.ReadinessProbe), new(*data.Data)),
-		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
-		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
-		wire.Bind(new(biz.SkillLookupReader), new(biz.SkillRepo)),
-		wire.Bind(new(bizskill.SkillQueryReader), new(biz.SkillRepo)),
-		wire.Bind(new(biz.SkillVersionWriter), new(biz.SkillRepo)),
-		wire.Bind(new(biz.ExperienceReportReader), new(*data.SkillIntelligenceRepo)),
-		wire.Bind(new(biz.ExperienceReportStatsReader), new(*data.SkillIntelligenceRepo)),
-		wire.Bind(new(biz.ExperienceReportWriter), new(*data.SkillIntelligenceRepo)),
-		wire.Bind(new(biz.SkillHealthAggregator), new(*data.SkillIntelligenceRepo)),
-		wire.Bind(new(biz.SkillInvocationUnanalyzedReader), new(*data.SkillIntelligenceRepo)),
-		wire.Bind(new(biz.SkillDedupReader), new(*data.SkillDedupRepo)),
-		wire.Bind(new(biz.SkillMergeReader), new(*data.SkillMergeRepo)),
-		wire.Bind(new(biz.SkillMergeWriter), new(*data.SkillMergeRepo)),
-		wire.Bind(new(biz.SkillContentFuser), new(*biz.RuleBasedContentFuser)),
-		wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo)),
-		// biz.ModelStatsReader 是 usage.AnalyticsRepo 的子集（仅 ListTopModelUsageFromDaily）。
-		// 通过 AnalyticsRepo 中转绑定，复用 biz.UsageRepo 实现，避免新增 data 层 Repo。
-		wire.Bind(new(biz.ModelStatsReader), new(bizusage.AnalyticsRepo)),
-		wire.Bind(new(biz.SessionReader), new(biz.SessionRepo)),
-		wire.Bind(new(bizsession.ContextUpdater), new(biz.SessionRepo)),
-		wire.Bind(new(biztool.ToolInvocationReader), new(biz.ToolRepo)),
-		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
-		wire.Bind(new(biz.TeamReader), new(*data.TeamRepo)),
-		wire.Bind(new(biz.TeamWriter), new(*data.TeamRepo)),
-		wire.Bind(new(biz.TeamRunReader), new(*data.TeamRepo)),
-		wire.Bind(new(biz.TeamRunWriter), new(*data.TeamRepo)),
-		wire.Bind(new(biz.TeamActiveRunLister), new(*data.TeamRepo)),
-		wire.Bind(new(biz.OrchestrationStepRepo), new(*data.TeamRepo)),
-		wire.Bind(new(biz.TaskDeadLetterRepo), new(*data.TeamRepo)),
-		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
-		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
-		wire.Bind(new(biz.AgentWriter), new(biz.AgentRepository)),
-		wire.Bind(new(biz.AgentReferenceChecker), new(biz.AgentRepository)),
-		wire.Bind(new(biz.ProviderModelPairValidator), new(*biz.LlmProviderModelUsecase)),
-		// Team-layer narrow interface bindings
-		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
-		wire.Bind(new(biz.TeamRunStatusTransitioner), new(*biz.TeamUsecase)),
-		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
-		// 83-长时运行韧性：team 级判死跳过启动对账中已 checkpoint 续跑的 run。
-		wire.Bind(new(biz.TeamRunStartupResumeMarker), new(*team.TeamGraphRunCoordinator)),
-		// Self-check integration
-		provideSelfCheckScheduler,
-		provideDBPinger,
-		provideEventBusHealthChecker,
-		provideWSConnectionCounter,
-		provideEventBusResubscriber,
-		provideSelfCheckCleanup,
-		provideSelfCheckJob,
-		provideFailurePatternSyncJob,
-		providePredictiveHealUsecase,
-		providePredictiveHealJob,
-		providePatternMiningUsecase,
-		providePatternMiningJob,
-		provideSpiritTeamUsecase,
-		provideVerificationGateExecutor,
-		wire.Bind(new(heal.FailurePatternReader), new(*data.FailurePatternReadWriter)),
-		wire.Bind(new(heal.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
-		wire.Bind(new(heal.RootCauseAnalyzer), new(*heal.RootCauseEngine)),
-		provideWSTurnExecutor,
-		// Kanban bridge binding
-		wire.Bind(new(kanbanpkg.Bridge), new(*service.KanbanToolBridge)),
-		// Coding agent bridge binding (76-coding-agent-bridge M1-15)
-		wire.Bind(new(codingbridge.BridgeService), new(*service.AgentBridgeService)),
-		// ToolResultGate bindings
-		wire.Bind(new(biz.ToolResultBlobReader), new(*data.ToolResultBlobRepo)),
-		wire.Bind(new(biz.ToolResultBlobWriter), new(*data.ToolResultBlobRepo)),
-		wire.Bind(new(biz.ToolResultReplacementWriter), new(*data.ToolResultReplacementRepo)),
-		wire.Bind(new(biz.ToolResultReplacementReader), new(*data.ToolResultReplacementRepo)),
-		// Knowledge embedder bindings
-		wire.Bind(new(knowledge.QueryEmbedder), new(*knowledge.MultiProviderEmbedder)),
-		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
-		// biz.KnowledgeWriteBack = knowledge.SessionWriteBack 别名，生产实现为
-		// *service.KnowledgeService（provideAutoMemoryWorker 运行时断言同型）。
-		wire.Bind(new(biz.KnowledgeWriteBack), new(*service.KnowledgeService)),
-		// AH-04: memory L2/L3 reranker is a knowledge adapter, injected into data.NewData.
-		knowledge.NewMemoryReranker,
-		// Knowledge vault sync（P1-3 生产装配；M0 编译端口 + M2.1 entity 轨接线）。
-		// 注：service.NewKnowledgeExtractorRegistry 由 service.ProviderSet 提供，
-		// 此处不再重复列出（重复绑定会导致 wire gen 失败）。
-		provideVaultSyncSupervisor,
-		provideKnowledgeVaultFiler,
-		// DynamicLLMCaller dependency bindings
-		wire.Bind(new(chatagent.LLMCredentialResolver), new(*biz.LlmProviderModelUsecase)),
-		wire.Bind(new(chatagent.LLMRefineConfigResolver), new(*biz.SystemSettingUsecase)),
-		// Ecosystem preset: bind repo and provide usecase deps
-		wire.Bind(new(biz.EcosystemPresetRepo), new(*data.EcosystemPresetRepo)),
-		wire.Bind(new(biz.PackSeeder), new(*data.PackSeeder)),
-		provideEcosystemPresetScenarioDir,
-		wire.Bind(new(biz.DeptLeadTeamGetter), new(*data.TeamRepo)),
-		provideDeptLeadManager,
-		// TeamUsecaseOpts provider
-		provideTeamUsecaseOpts,
-		provideTeamUsecase,
-		provideTeamAgentIDResolver,
-		// SkillSimilarityComparer binding
-		wire.Bind(new(biz.SkillSimilarityComparer), new(*biz.SkillSimilarityEngine)),
-		// Memory extractor config providers
-		provideMemoryLLMExtractorConfig,
-		provideMemoryEnhancedExtractorConfig,
-		// Bind *ChatService as OpenAIRunnerBuilder for the compat service
-		// wrappers (AGUI / OpenAI Session / A2A Extension).
-		wire.Bind(new(service.OpenAIRunnerBuilder), new(*service.ChatService)),
-		// Bind *ChatService as SessionRunDurableEscalator so SessionStatusGuard
-		// can escalate active interactive runs to durable on shutdown (L2).
-		wire.Bind(new(service.SessionRunDurableEscalator), new(*service.ChatService)),
-		newApp,
-		provideWireOut,
-	))
-}
+
+// M82: sandbox Manager + admin service; the admin port binds onto the
+// Manager (read-only list/metrics surface, ADR-82-3). SessionLeases is
+// the P1-1/P1-2 process-wide shared session-lease store, bound to both
+// the codeexecutor sandbox backend and the sandbox_fs toolset.
+
+// M80: decision record layer — repo + collector (Lifecycle for
+// newApp Start/Stop; Collector bound for the 1.4 planner adapter).
+
+// M80 Phase 1 查询面：QueryRepo → QueryUsecase → DecisionRecordService。
+
+// T5 四轮审查 IDOR 根修：GetSessionGateStats 会话归属校验的窄接口绑定。
+
+// M81: config graph — raw-SQL repos → rebuilder → indexer → HTTP API
+// (P0: rebuild/status/nodes only; querier/health land in P1, event
+// subscription in P2).
+
+// 79-runtime-governance R8: diagnostics doctor API（依赖 M81 indexer，
+// 放在 config graph providers 之后）。
+
+// R1: shared skill health-metrics adapter (singleton) — consumed by
+// provideRuntimeTooling (turn routing) and NewSkillService (preview),
+// backed by biz.SkillHealthAggregator (SkillIntelligenceRepo).
+
+// M71: agent resource sharing (memberfs/deptmail/sessionaccess)
+
+// v2 event pipeline providers (Phase 1 收尾)
+
+// v2 reader bindings: SessionV2Service consumes the narrow Reader
+// interfaces; the data layer provides the composite Repo interfaces.
+
+// Phase 3b-D: bind v2 EventBus interface to *event.V2Bus implementation
+// so Wire can inject biz.EventBus into consumers migrated from v1 ActivityEventBus.
+
+// Phase 2: bind v2 EventPublisher interface to *v2.Sequencer so Wire
+// can inject the publish-only Sequencer entry into team package consumers
+// (Runner.Pipeline.Sequencer, TeamGraphRunCoordinator.seq).
+
+// P1 fix (2026-06-18): Wire previously-orphan graph components into production.
+
+// 73-self-iteration-v3 W6: Phase 4 chain (sandbox/applier/stages/
+// adapters/usecases/workers), all gated on self_improvement.enabled.
+
+// P5：SelfImprovementService 消费
+// P5.5：始终注册路由（disabled → 503 SELF_IMPROVEMENT）
+
+// Federation (design F.5/F.6)
+
+// PGO-3: DynamicLLMCaller → biz.LLMCaller binding, PromptRefiner.
+
+// Phase 1c-3: CompressReadDeps/CompressWriteDeps now provided by
+// ProvideCompressReadDepsAdapter / ProvideCompressWriteDepsAdapter
+// (in internal/session) because SessionRepo no longer implements
+// MessageReader/MessageWriter (messages table removed).
+
+// biz.ModelStatsReader 是 usage.AnalyticsRepo 的子集（仅 ListTopModelUsageFromDaily）。
+// 通过 AnalyticsRepo 中转绑定，复用 biz.UsageRepo 实现，避免新增 data 层 Repo。
+
+// Team-layer narrow interface bindings
+
+// 83-长时运行韧性：team 级判死跳过启动对账中已 checkpoint 续跑的 run。
+
+// Self-check integration
+
+// Kanban bridge binding
+
+// Coding agent bridge binding (76-coding-agent-bridge M1-15)
+
+// ToolResultGate bindings
+
+// Knowledge embedder bindings
+
+// biz.KnowledgeWriteBack = knowledge.SessionWriteBack 别名，生产实现为
+// *service.KnowledgeService（provideAutoMemoryWorker 运行时断言同型）。
+
+// AH-04: memory L2/L3 reranker is a knowledge adapter, injected into data.NewData.
+
+// Knowledge vault sync（P1-3 生产装配；M0 编译端口 + M2.1 entity 轨接线）。
+// 注：service.NewKnowledgeExtractorRegistry 由 service.ProviderSet 提供，
+// 此处不再重复列出（重复绑定会导致 wire gen 失败）。
+
+// DynamicLLMCaller dependency bindings
+
+// Ecosystem preset: bind repo and provide usecase deps
+
+// TeamUsecaseOpts provider
+
+// SkillSimilarityComparer binding
+
+// Memory extractor config providers
+
+// Bind *ChatService as OpenAIRunnerBuilder for the compat service
+// wrappers (AGUI / OpenAI Session / A2A Extension).
+
+// Bind *ChatService as SessionRunDurableEscalator so SessionStatusGuard
+// can escalate active interactive runs to durable on shutdown (L2).

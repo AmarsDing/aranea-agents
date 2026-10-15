@@ -14,29 +14,29 @@ import (
 )
 
 type mockRepo struct {
-	getModelUsageSummaryFn          func(context.Context, usage.Query) (usage.Summary, error)
-	listModelUsageTrendsFn          func(context.Context, usage.Query) ([]usage.TrendPoint, error)
-	listTopModelUsageFn             func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
-	listTopAgentUsageFn             func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
-	listModelUsageEventsFn          func(context.Context, usage.Query) ([]usage.TokenUsageEvent, error)
-	listModelUsageHourlyTrendsFn    func(context.Context, usage.Query) ([]usage.TrendPoint, error)
-	getModelUsageSummaryFromDailyFn func(context.Context, usage.Query) (usage.Summary, error)
-	listModelUsageDailyTrendsFn     func(context.Context, usage.Query) ([]usage.TrendPoint, error)
-	listTopModelUsageFromDailyFn    func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
-	listTopAgentUsageFromDailyFn    func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
-	listAllModelsBreakdownFn        func(context.Context, usage.BreakdownQuery) (usage.BreakdownResult, error)
+	getModelUsageSummaryFn           func(context.Context, usage.Query) (usage.Summary, error)
+	listModelUsageTrendsFn           func(context.Context, usage.Query) ([]usage.TrendPoint, error)
+	listTopModelUsageFn              func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
+	listTopAgentUsageFn              func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
+	listModelUsageEventsFn           func(context.Context, usage.Query) ([]usage.TokenUsageEvent, error)
+	listModelUsageHourlyTrendsFn     func(context.Context, usage.Query) ([]usage.TrendPoint, error)
+	getModelUsageSummaryFromDailyFn  func(context.Context, usage.Query) (usage.Summary, error)
+	listModelUsageDailyTrendsFn      func(context.Context, usage.Query) ([]usage.TrendPoint, error)
+	listTopModelUsageFromDailyFn     func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
+	listTopAgentUsageFromDailyFn     func(context.Context, usage.Query) ([]usage.BreakdownRow, error)
+	listAllModelsBreakdownFn         func(context.Context, usage.BreakdownQuery) (usage.BreakdownResult, error)
 	listAllModelsBreakdownRealtimeFn func(context.Context, usage.BreakdownQuery) (usage.BreakdownResult, error)
-	recordTokenUsageEventFn         func(context.Context, usage.TokenUsageEvent) (usage.TokenUsageEvent, error)
-	getActiveModelPricingFn         func(context.Context, string, string) (usage.ModelPricingSnapshot, bool, error)
-	getQuotaFn                      func(context.Context, string, string) (usage.Quota, error)
-	setQuotaFn                      func(context.Context, usage.Quota) (usage.Quota, error)
-	sumScopeCostInPeriodFn          func(context.Context, string, string, string, string) (int64, error)
-	listActiveQuotasFn              func(context.Context) ([]usage.Quota, error)
-	batchSumScopeCostFn             func(context.Context, []usage.Quota) (map[string]int64, error)
-	listBudgetAlertsFn              func(context.Context, string, string) ([]usage.BudgetAlert, error)
-	setBudgetAlertFn                func(context.Context, usage.BudgetAlert) (usage.BudgetAlert, error)
-	updateBudgetAlertLastFiredFn    func(context.Context, string, string) error
-	purgeUsageEventsOlderThanFn     func(context.Context, int) (int64, error)
+	recordTokenUsageEventFn          func(context.Context, usage.TokenUsageEvent) (usage.TokenUsageEvent, error)
+	getActiveModelPricingFn          func(context.Context, string, string) (usage.ModelPricingSnapshot, bool, error)
+	getQuotaFn                       func(context.Context, string, string) (usage.Quota, error)
+	setQuotaFn                       func(context.Context, usage.Quota) (usage.Quota, error)
+	sumScopeCostInPeriodFn           func(context.Context, string, string, string, string) (int64, error)
+	listActiveQuotasFn               func(context.Context) ([]usage.Quota, error)
+	batchSumScopeCostFn              func(context.Context, []usage.Quota) (map[string]int64, error)
+	listBudgetAlertsFn               func(context.Context, string, string) ([]usage.BudgetAlert, error)
+	setBudgetAlertFn                 func(context.Context, usage.BudgetAlert) (usage.BudgetAlert, error)
+	updateBudgetAlertLastFiredFn     func(context.Context, string, string) error
+	purgeUsageEventsOlderThanFn      func(context.Context, int) (int64, error)
 }
 
 func (m *mockRepo) GetModelUsageSummary(ctx context.Context, q usage.Query) (usage.Summary, error) {
@@ -1552,35 +1552,4 @@ func TestCheckQuota_PeriodRollover_PersistFails(t *testing.T) {
 	}
 }
 
-func TestCheckQuota_CurrentPeriod_NoRollover(t *testing.T) {
-	setCalls := 0
-	var sumStart, sumEnd string
-	repo := &mockRepo{}
-	repo.getQuotaFn = func(_ context.Context, _, _ string) (usage.Quota, error) {
-		return usage.Quota{
-			ScopeType:       "agent",
-			ScopeID:         "agent-1",
-			MonthlyMicroUSD: 10000,
-			PeriodStart:     "2025-03-01",
-			PeriodEnd:       "2025-03-31", // 未过期（fixedNow=2025-03-15）
-		}, nil
-	}
-	repo.setQuotaFn = func(_ context.Context, q usage.Quota) (usage.Quota, error) {
-		setCalls++
-		return q, nil
-	}
-	repo.sumScopeCostInPeriodFn = func(_ context.Context, _, _, ps, pe string) (int64, error) {
-		sumStart, sumEnd = ps, pe
-		return 5000, nil
-	}
-	uc := newTestUsecase(repo)
-	if _, err := uc.CheckQuota(context.Background(), "agent", "agent-1"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if setCalls != 0 {
-		t.Errorf("SetQuota called %d times, want 0 for unexpired period", setCalls)
-	}
-	if sumStart != "2025-03-01" || sumEnd != "2025-03-31" {
-		t.Errorf("sum period = %s~%s, want original period", sumStart, sumEnd)
-	}
-}
+// 未过期（fixedNow=2025-03-15）

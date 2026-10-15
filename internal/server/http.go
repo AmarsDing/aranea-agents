@@ -19,6 +19,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
+	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
@@ -37,7 +38,6 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
-	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -486,33 +486,7 @@ func registerCompatibilityRedirects(srv *kratoshttp.Server) {
 // This allows the HTTP server to start listening immediately while P1
 // migrations run in the background, so /healthz can properly report
 // "starting" (503) instead of the connection being refused entirely.
-func readinessFilter(readiness ReadinessProbe) func(next nethttp.Handler) nethttp.Handler {
-	return func(next nethttp.Handler) nethttp.Handler {
-		return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			if readiness == nil || readiness.IsReady() {
-				next.ServeHTTP(w, r)
-				return
-			}
-			// Allow infrastructure routes through so /healthz reports accurate status.
-			switch r.URL.Path {
-			case "/healthz", "/metrics":
-				next.ServeHTTP(w, r)
-				return
-			}
-			// Reject everything else with 503.
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			w.WriteHeader(nethttp.StatusServiceUnavailable)
-			status := "starting"
-			reason := ""
-			if readiness.IsFailed() {
-				status = "failed"
-				reason = readiness.FailedReason()
-			}
-			resp := map[string]string{"status": status, "auth_mode": auth.HealthAuthInfo().AuthMode}
-			if reason != "" {
-				resp["reason"] = reason
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		})
-	}
-}
+
+// Allow infrastructure routes through so /healthz reports accurate status.
+
+// Reject everything else with 503.
