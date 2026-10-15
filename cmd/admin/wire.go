@@ -507,7 +507,14 @@ func provideProcessLogEnabled(server *conf.Server) service.ProcessLogEnabledProv
 }
 
 func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
-	return data.NewRedisClient(c, lg)
+	rdb := data.NewRedisClient(c, lg)
+	// DEV-03 durable capacity: dual-write AgentLoadTracker when Redis is up.
+	if rdb != nil && rdb.IsEnabled() {
+		chatagent.ConfigureCapacityRedis(rdb.Client)
+	} else {
+		chatagent.ConfigureCapacityRedis(nil)
+	}
+	return rdb
 }
 
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {

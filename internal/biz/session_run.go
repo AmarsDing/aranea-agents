@@ -17,8 +17,9 @@ const (
 	// These are kept only for DB string comparisons where a typed constant
 	// would require an explicit string() cast. New code must use PhaseXxx.
 	//
-	// NOTE(SES-03): usecase paths use SessionRunPhase + FSM; repo CRUD still takes string for DB columns — optional follow-up to type repo params as SessionRunPhase
-	// instead of string, after which these legacy constants can be removed.
+	// NOTE(SES-03): Usecase ListByPhase takes SessionRunPhase; repo CRUD still
+	// uses string for DB columns (legacy SessionRunPhase* string aliases remain
+	// for those call sites). Full repo-param typing is deferred.
 	SessionRunPhaseInteractive = string(PhaseInteractive)
 	SessionRunPhaseDurable     = string(PhaseDurable)
 	SessionRunPhaseCompleted   = string(PhaseCompleted)
