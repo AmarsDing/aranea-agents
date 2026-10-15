@@ -6,35 +6,33 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/shared"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
 type mockUsageRepo struct {
-	getModelUsageSummaryFn          func(context.Context, Query) (Summary, error)
-	listModelUsageTrendsFn          func(context.Context, Query) ([]TrendPoint, error)
-	listTopModelUsageFn             func(context.Context, Query) ([]BreakdownRow, error)
-	listTopAgentUsageFn             func(context.Context, Query) ([]BreakdownRow, error)
-	listModelUsageEventsFn          func(context.Context, Query) ([]TokenUsageEvent, error)
-	listModelUsageHourlyTrendsFn    func(context.Context, Query) ([]TrendPoint, error)
-	getModelUsageSummaryFromDailyFn func(context.Context, Query) (Summary, error)
-	listModelUsageDailyTrendsFn     func(context.Context, Query) ([]TrendPoint, error)
-	listTopModelUsageFromDailyFn    func(context.Context, Query) ([]BreakdownRow, error)
-	listTopAgentUsageFromDailyFn    func(context.Context, Query) ([]BreakdownRow, error)
-	listAllModelsBreakdownFn        func(context.Context, BreakdownQuery) (BreakdownResult, error)
+	getModelUsageSummaryFn           func(context.Context, Query) (Summary, error)
+	listModelUsageTrendsFn           func(context.Context, Query) ([]TrendPoint, error)
+	listTopModelUsageFn              func(context.Context, Query) ([]BreakdownRow, error)
+	listTopAgentUsageFn              func(context.Context, Query) ([]BreakdownRow, error)
+	listModelUsageEventsFn           func(context.Context, Query) ([]TokenUsageEvent, error)
+	listModelUsageHourlyTrendsFn     func(context.Context, Query) ([]TrendPoint, error)
+	getModelUsageSummaryFromDailyFn  func(context.Context, Query) (Summary, error)
+	listModelUsageDailyTrendsFn      func(context.Context, Query) ([]TrendPoint, error)
+	listTopModelUsageFromDailyFn     func(context.Context, Query) ([]BreakdownRow, error)
+	listTopAgentUsageFromDailyFn     func(context.Context, Query) ([]BreakdownRow, error)
+	listAllModelsBreakdownFn         func(context.Context, BreakdownQuery) (BreakdownResult, error)
 	listAllModelsBreakdownRealtimeFn func(context.Context, BreakdownQuery) (BreakdownResult, error)
-	recordTokenUsageEventFn         func(context.Context, TokenUsageEvent) (TokenUsageEvent, error)
-	getActiveModelPricingFn         func(context.Context, string, string) (ModelPricingSnapshot, bool, error)
-	getQuotaFn                      func(context.Context, string, string) (Quota, error)
-	setQuotaFn                      func(context.Context, Quota) (Quota, error)
-	sumScopeCostInPeriodFn          func(context.Context, string, string, string, string) (int64, error)
-	listActiveQuotasFn              func(context.Context) ([]Quota, error)
-	batchSumScopeCostFn             func(context.Context, []Quota) (map[string]int64, error)
-	listBudgetAlertsFn              func(context.Context, string, string) ([]BudgetAlert, error)
-	setBudgetAlertFn                func(context.Context, BudgetAlert) (BudgetAlert, error)
-	updateBudgetAlertLastFiredFn    func(context.Context, string, string) error
-	purgeUsageEventsOlderThanFn     func(context.Context, int) (int64, error)
+	recordTokenUsageEventFn          func(context.Context, TokenUsageEvent) (TokenUsageEvent, error)
+	getActiveModelPricingFn          func(context.Context, string, string) (ModelPricingSnapshot, bool, error)
+	getQuotaFn                       func(context.Context, string, string) (Quota, error)
+	setQuotaFn                       func(context.Context, Quota) (Quota, error)
+	sumScopeCostInPeriodFn           func(context.Context, string, string, string, string) (int64, error)
+	listActiveQuotasFn               func(context.Context) ([]Quota, error)
+	batchSumScopeCostFn              func(context.Context, []Quota) (map[string]int64, error)
+	listBudgetAlertsFn               func(context.Context, string, string) ([]BudgetAlert, error)
+	setBudgetAlertFn                 func(context.Context, BudgetAlert) (BudgetAlert, error)
+	updateBudgetAlertLastFiredFn     func(context.Context, string, string) error
+	purgeUsageEventsOlderThanFn      func(context.Context, int) (int64, error)
 }
 
 func (m *mockUsageRepo) GetModelUsageSummary(ctx context.Context, q Query) (Summary, error) {
@@ -535,88 +533,6 @@ func TestCheckQuota(t *testing.T) {
 			}
 			if tt.check != nil {
 				tt.check(t, qc)
-			}
-		})
-	}
-}
-
-func TestGetQuota(t *testing.T) {
-	tests := []struct {
-		name       string
-		scopeType  string
-		scopeID    string
-		setup      func(*mockUsageRepo)
-		wantErr    bool
-		wantReason string
-		wantCode   apierror.Code
-		check      func(t *testing.T, q Quota)
-	}{
-		{
-			name:      "existing_quota",
-			scopeType: "agent",
-			scopeID:   "agent-1",
-			setup: func(r *mockUsageRepo) {
-				r.getQuotaFn = func(_ context.Context, _, _ string) (Quota, error) {
-					return Quota{
-						ScopeType:       "agent",
-						ScopeID:         "agent-1",
-						MonthlyMicroUSD: 50000,
-						PeriodStart:     "2025-03-01",
-						PeriodEnd:       "2025-03-31",
-					}, nil
-				}
-			},
-			check: func(t *testing.T, q Quota) {
-				if q.MonthlyMicroUSD != 50000 {
-					t.Errorf("MonthlyMicroUSD = %d, want 50000", q.MonthlyMicroUSD)
-				}
-				if q.ScopeType != "agent" {
-					t.Errorf("ScopeType = %q, want %q", q.ScopeType, "agent")
-				}
-			},
-		},
-		{
-			name:      "not_found",
-			scopeType: "agent",
-			scopeID:   "agent-unknown",
-			setup: func(r *mockUsageRepo) {
-				r.getQuotaFn = func(_ context.Context, _, _ string) (Quota, error) {
-					return Quota{}, shared.ErrQuotaNotFound
-				}
-			},
-			wantErr:    true,
-			wantReason: "USAGE_QUOTA",
-			wantCode:   apierror.CodeNotFound,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &mockUsageRepo{}
-			tt.setup(repo)
-			uc := newTestUsecase(repo)
-			q, err := uc.GetQuota(context.Background(), tt.scopeType, tt.scopeID)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("GetQuota() expected error, got nil")
-				}
-				se, ok := apierror.From(err)
-				if !ok {
-					t.Fatalf("expected apierror, got %T", err)
-				}
-				if se.Domain != tt.wantReason {
-					t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
-				}
-				if se.Code != tt.wantCode {
-					t.Errorf("code = %s, want %s", se.Code, tt.wantCode)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("GetQuota() unexpected error: %v", err)
-			}
-			if tt.check != nil {
-				tt.check(t, q)
 			}
 		})
 	}

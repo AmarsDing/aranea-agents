@@ -130,3 +130,24 @@ func isActivatedForSession(ctx context.Context, toolName string) bool {
 	set := readActivatedSet(ctx)
 	return set[toolName]
 }
+
+// ClearActivated removes the process-level activated-tool set for a session.
+// Call on run/session terminal phases so long-lived processes do not leak
+// activatedRegistry entries (temp: semantics: restart already clears memory).
+func ClearActivated(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	activatedRegistry.Delete(sessionID)
+}
+
+// ActivatedSessionCount returns how many sessions currently hold activated
+// tools in the process registry (tests / optional metrics).
+func ActivatedSessionCount() int {
+	n := 0
+	activatedRegistry.Range(func(_, _ any) bool {
+		n++
+		return true
+	})
+	return n
+}

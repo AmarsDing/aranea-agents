@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -88,7 +87,7 @@ type VerificationGateExecutor struct {
 	lg          loggateway.Logger
 	toolInvoker ToolAssertionInvoker
 	receipts    *verificationReceiptLedger // ADR-79-V V3 证据回执台账
-	deptMailbox *DeptMailboxUsecase       // M71: 拒绝时自动通知对方主管
+	deptMailbox *DeptMailboxUsecase        // M71: 拒绝时自动通知对方主管
 }
 
 func NewVerificationGateExecutor(deptLeadMgr *DeptLeadManager, llmCaller LLMCaller, lg loggateway.Logger, opts ...VerificationGateExecutorOption) *VerificationGateExecutor {
@@ -602,52 +601,11 @@ func (e *VerificationGateExecutor) executeBorrowApproval(ctx context.Context, ga
 }
 
 // parseGateResult parses the LLM response into a GateResult.
-func parseGateResult(resp string) (GateResult, error) {
-	// Try to extract JSON from the response (may contain markdown fences)
-	cleaned := resp
-	if idx := strings.Index(resp, "{"); idx >= 0 {
-		cleaned = resp[idx:]
-	}
-	if idx := strings.LastIndex(cleaned, "}"); idx >= 0 {
-		cleaned = cleaned[:idx+1]
-	}
 
-	var result GateResult
-	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
-		return GateResult{}, err
-	}
-	return result, nil
-}
+// Try to extract JSON from the response (may contain markdown fences)
 
 // ParseVerificationGates parses a JSON string into a slice of VerificationGate.
-func ParseVerificationGates(jsonStr string) ([]VerificationGate, error) {
-	if jsonStr == "" {
-		return nil, nil
-	}
-	var gates []VerificationGate
-	if err := json.Unmarshal([]byte(jsonStr), &gates); err != nil {
-		return nil, err
-	}
-	return gates, nil
-}
 
 // VerificationGatesToJSON serializes a slice of VerificationGate to JSON.
-func VerificationGatesToJSON(gates []VerificationGate) string {
-	if len(gates) == 0 {
-		return "[]"
-	}
-	b, err := json.Marshal(gates)
-	if err != nil {
-		return "[]"
-	}
-	return string(b)
-}
 
 // truncateForPrompt truncates content for inclusion in LLM prompts.
-func truncateForPrompt(s string, maxRunes int) string {
-	if utf8.RuneCountInString(s) <= maxRunes {
-		return s
-	}
-	runes := []rune(s)
-	return string(runes[:maxRunes]) + "..."
-}
