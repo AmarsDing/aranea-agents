@@ -183,22 +183,27 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 	for i := 0; i < int(w.memConf.DrainBatchSize); i++ {
 		select {
 		case req := <-q.Chan():
-			if ctx.Err() != nil {
-				// AckDone here because we return before entering processWithRetry
-				// which has its own defer AckDone — without this, the tenant
-				// in-flight counter would permanently leak.
-				w.queue.AckDone(req)
-				return
-			}
-			w.processWithRetry(ctx, req)
+			// Single AckDone ownership: always release tenant in-flight,
+			// including ctx cancel, early return, and panic inside process.
+			w.handleDequeued(ctx, req)
 		default:
 			return
 		}
 	}
 }
 
-func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
+// handleDequeued guarantees AckDone for every job taken from Chan().
+// processWithRetry must not AckDone again (would double-decrement safely,
+// but single owner keeps the contract obvious for leak audits).
+func (w *AutoMemoryWorker) handleDequeued(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
 	defer w.queue.AckDone(req)
+	if ctx.Err() != nil {
+		return
+	}
+	w.processWithRetry(ctx, req)
+}
+
+func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
 
 	flow := w.flowEmitter(ctx, req.SessionID)
 	if flow != nil {
