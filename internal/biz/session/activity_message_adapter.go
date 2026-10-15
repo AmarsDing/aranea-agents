@@ -59,20 +59,40 @@ func (r *ActivityMessageReader) ListMessagesRecent(ctx context.Context, sessionI
 // Note: Activity doesn't have turn_number; this uses TurnID correlation.
 // For now, returns all messages (turn-based filtering is handled at the Activity level).
 func (r *ActivityMessageReader) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
-	// TECH-DEBT(COMPRESS-IO): 全量加载会话所有 Activity 再内存过滤/转换，
-	// afterTurn 未下推到存储层——长会话每次压缩软触发都全表读一次。
-	// 修复方向：ActivityLister 增加按 turn 范围/游标的分页查询（需 TurnID 单调
-	// 或可排序映射），或 ListBySession 内部加服务端过滤。见
-	// docs/development/memory/L0-compression.development.md 差距清单 G6。
+	// TECH-DEBT(COMPRESS-IO): turn ordinals are synthesized from full chronology,
+	// so AfterTurn still loads the session once. Output is filtered to
+	// TurnNumber > afterTurn (W1-5). ByIDs path no longer full-scans.
+	// Next: persist turn_number or cursor so the load can be range-bounded.
 	acts, err := r.activities.ListBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	return activitiesToChatMessages(acts), nil
+	msgs := activitiesToChatMessages(acts)
+	if afterTurn <= 0 {
+		return msgs, nil
+	}
+	out := make([]ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if m.TurnNumber > afterTurn {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // ListMessagesByIDs returns messages matching the given IDs.
 func (r *ActivityMessageReader) ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// W1-5: prefer primary-key fetch when the lister supports it (avoids full session scan).
+	if idl, ok := r.activities.(ActivityIDLister); ok {
+		acts, err := idl.ListByIDs(ctx, sessionID, ids)
+		if err != nil {
+			return nil, err
+		}
+		return activitiesToChatMessages(acts), nil
+	}
 	acts, err := r.activities.ListBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err
