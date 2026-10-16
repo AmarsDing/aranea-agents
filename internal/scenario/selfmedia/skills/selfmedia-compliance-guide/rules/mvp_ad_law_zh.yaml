@@ -1,0 +1,13 @@
+# Soft machine-scan rules for MVP review (flag only, do not auto-reject).
+version: 1
+rules:
+  - 第一
+  - 绝对
+  - 必赚
+  - 稳赚
+  - "100%"
+  - 国家级
+  - 最好
+  - 最强
+  - 包治
+  - 根治

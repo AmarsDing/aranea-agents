@@ -45,6 +45,10 @@ import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
 import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
 import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
 import CompanionPage from '../pages/CompanionPage.vue';
+import ContentInboxPage from '../pages/ContentInboxPage.vue';
+import ReviewQueuePage from '../pages/ReviewQueuePage.vue';
+import OpportunityBoardPage from '../pages/OpportunityBoardPage.vue';
+import SourcingPage from '../pages/SourcingPage.vue';
 import ServerSetupPage from '../pages/mobile/ServerSetupPage.vue';
 import MobilePlaceholderPage from '../pages/mobile/MobilePlaceholderPage.vue';
 import MobileSessionsPage from '../pages/mobile/MobileSessionsPage.vue';
@@ -98,6 +102,10 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: '/overview' },
       { path: 'overview', name: 'overview', component: OverviewPage },
+      { path: 'content-inbox', name: 'content-inbox', component: ContentInboxPage },
+      { path: 'review-queue', name: 'review-queue', component: ReviewQueuePage },
+      { path: 'opportunity-board', name: 'opportunity-board', component: OpportunityBoardPage },
+      { path: 'sourcing', name: 'sourcing', component: SourcingPage },
       { path: 'usage/events', name: 'usage-events', component: UsageEventsPage },
       { path: 'usage/quotas', redirect: { name: 'agents' } },
       { path: 'chat', name: 'chat', component: ChatPage },
