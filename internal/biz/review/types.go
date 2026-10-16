@@ -11,9 +11,12 @@ const (
 
 // Task is a single-person final review gate over draft content.
 type Task struct {
-	ID              string
-	ContentItemID   string
-	DraftArtifactID string
+	ID               string
+	ContentItemID    string
+	GraphExecutionID string
+	GraphNodeID      string
+	GraphTaskID      string
+	DraftArtifactID  string
 	PlatformTargets []string
 	MachineFlags    []string
 	DraftTitle      string
@@ -31,4 +34,5 @@ type Repo interface {
 	Get(id string) (Task, error)
 	Update(t Task) (Task, error)
 	ListPending(limit, offset int) ([]Task, int, error)
+	GetByGraphExecution(executionID, nodeID string) (Task, bool, error)
 }

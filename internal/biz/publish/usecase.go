@@ -1,12 +1,14 @@
 package publish
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/review"
 
 	"github.com/google/uuid"
@@ -16,6 +18,7 @@ import (
 type Usecase struct {
 	repo        Repo
 	packageRoot string
+	artifacts   biz.ArtifactSaver
 }
 
 func NewUsecase(repo Repo, packageRoot string) *Usecase {
@@ -23,6 +26,13 @@ func NewUsecase(repo Repo, packageRoot string) *Usecase {
 		packageRoot = filepath.Join(os.TempDir(), "aranea-publish-packages")
 	}
 	return &Usecase{repo: repo, packageRoot: packageRoot}
+}
+
+// SetArtifactSaver stores package manifests via the normal Artifact path (Package A).
+func (uc *Usecase) SetArtifactSaver(s biz.ArtifactSaver) {
+	if uc != nil {
+		uc.artifacts = s
+	}
 }
 
 // CreateFromApprovedReview refuses unless review.MustBeApproved passes.
@@ -105,6 +115,18 @@ func (uc *Usecase) packageOne(j Job) error {
 	j.PackageDir = filepath.Dir(path)
 	j.ArtifactID = j.ID
 	j.LastError = ""
+	if uc.artifacts != nil {
+		manifestBytes, rerr := os.ReadFile(path)
+		if rerr == nil {
+			sessionID := "mvp-publish-" + j.ID
+			if art, aerr := uc.artifacts.Save(context.Background(), sessionID, "manifest.json", "application/json", manifestBytes); aerr == nil {
+				j.ArtifactID = art.ID
+			}
+			if bodyBytes, berr := os.ReadFile(filepath.Join(j.PackageDir, "body.md")); berr == nil {
+				_, _ = uc.artifacts.Save(context.Background(), sessionID, "body.md", "text/markdown", bodyBytes)
+			}
+		}
+	}
 	j.UpdatedAt = time.Now().UTC()
 	_, err = uc.repo.Update(j)
 	return err

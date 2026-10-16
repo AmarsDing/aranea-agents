@@ -93,3 +93,19 @@ func MustBeApproved(t Task) error {
 	}
 	return nil
 }
+
+func (uc *Usecase) GetByGraphExecution(executionID, nodeID string) (Task, bool, error) {
+	if uc == nil || uc.repo == nil {
+		return Task{}, false, fmt.Errorf("review: repo not configured")
+	}
+	return uc.repo.GetByGraphExecution(executionID, nodeID)
+}
+
+// UpdateLinks persists graph linkage fields without changing decision status.
+func (uc *Usecase) UpdateLinks(t Task) (Task, error) {
+	if uc == nil || uc.repo == nil {
+		return Task{}, fmt.Errorf("review: repo not configured")
+	}
+	t.UpdatedAt = time.Now().UTC()
+	return uc.repo.Update(t)
+}

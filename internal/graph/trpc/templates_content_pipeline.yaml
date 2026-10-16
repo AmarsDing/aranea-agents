@@ -13,7 +13,7 @@ nodes:
   - id: machine_scan
     type: task
   - id: human_review
-    type: human
+    type: review
   - id: build_publish_package
     type: task
 edges:

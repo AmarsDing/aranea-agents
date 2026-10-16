@@ -66,6 +66,9 @@ type CompiledTeam func(*sql.Selector)
 // ComputerUseAudit is the predicate function for computeruseaudit builders.
 type ComputerUseAudit func(*sql.Selector)
 
+// ContentItem is the predicate function for contentitem builders.
+type ContentItem func(*sql.Selector)
+
 // CronTask is the predicate function for crontask builders.
 type CronTask func(*sql.Selector)
 
@@ -180,6 +183,9 @@ type ModelPricingRule func(*sql.Selector)
 // ModelTokenUsageHourly is the predicate function for modeltokenusagehourly builders.
 type ModelTokenUsageHourly func(*sql.Selector)
 
+// Opportunity is the predicate function for opportunity builders.
+type Opportunity func(*sql.Selector)
+
 // Orchestration is the predicate function for orchestration builders.
 type Orchestration func(*sql.Selector)
 
@@ -228,8 +234,14 @@ type PlatformSkill func(*sql.Selector)
 // PlatformTool is the predicate function for platformtool builders.
 type PlatformTool func(*sql.Selector)
 
+// PublishJob is the predicate function for publishjob builders.
+type PublishJob func(*sql.Selector)
+
 // ResourceAccessAudit is the predicate function for resourceaccessaudit builders.
 type ResourceAccessAudit func(*sql.Selector)
+
+// ReviewTask is the predicate function for reviewtask builders.
+type ReviewTask func(*sql.Selector)
 
 // SchemaMigration is the predicate function for schemamigration builders.
 type SchemaMigration func(*sql.Selector)
@@ -278,6 +290,9 @@ type SkillVersion func(*sql.Selector)
 
 // StepV2 is the predicate function for stepv2 builders.
 type StepV2 func(*sql.Selector)
+
+// SupplierCandidate is the predicate function for suppliercandidate builders.
+type SupplierCandidate func(*sql.Selector)
 
 // SystemSetting is the predicate function for systemsetting builders.
 type SystemSetting func(*sql.Selector)

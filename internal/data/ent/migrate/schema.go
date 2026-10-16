@@ -796,6 +796,37 @@ var (
 			},
 		},
 	}
+	// ContentItemsColumns holds the columns for the "content_items" table.
+	ContentItemsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "workspace_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "org_key", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "source_type", Type: field.TypeString, Size: 64, Default: "manual"},
+		{Name: "source_url", Type: field.TypeString, Size: 2048, Default: ""},
+		{Name: "title", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "body", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "lang", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "media_artifact_ids_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "dedupe_hash", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "hot_score", Type: field.TypeFloat64, Default: 0},
+		{Name: "status", Type: field.TypeString, Size: 64, Default: "candidate"},
+		{Name: "raw_payload", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// ContentItemsTable holds the schema information for the "content_items" table.
+	ContentItemsTable = &schema.Table{
+		Name:       "content_items",
+		Columns:    ContentItemsColumns,
+		PrimaryKey: []*schema.Column{ContentItemsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "contentitem_status",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[11]},
+			},
+		},
+	}
 	// CronTaskColumns holds the columns for the "cron_task" table.
 	CronTaskColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -2068,6 +2099,32 @@ var (
 			},
 		},
 	}
+	// OpportunitiesColumns holds the columns for the "opportunities" table.
+	OpportunitiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "title", Type: field.TypeString, Size: 1024},
+		{Name: "summary", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "entities_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "signals_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "audience", Type: field.TypeString, Size: 64, Default: "both"},
+		{Name: "score", Type: field.TypeFloat64, Default: 0},
+		{Name: "status", Type: field.TypeString, Size: 64, Default: "open"},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// OpportunitiesTable holds the schema information for the "opportunities" table.
+	OpportunitiesTable = &schema.Table{
+		Name:       "opportunities",
+		Columns:    OpportunitiesColumns,
+		PrimaryKey: []*schema.Column{OpportunitiesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "opportunity_status",
+				Unique:  false,
+				Columns: []*schema.Column{OpportunitiesColumns[7]},
+			},
+		},
+	}
 	// OrchestrationsColumns holds the columns for the "orchestrations" table.
 	OrchestrationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -2643,6 +2700,39 @@ var (
 			},
 		},
 	}
+	// PublishJobsColumns holds the columns for the "publish_jobs" table.
+	PublishJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "review_task_id", Type: field.TypeString, Size: 256},
+		{Name: "content_item_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "platform", Type: field.TypeString, Size: 128, Default: "generic"},
+		{Name: "mode", Type: field.TypeString, Size: 32, Default: "package"},
+		{Name: "status", Type: field.TypeString, Size: 64, Default: "pending"},
+		{Name: "attempt", Type: field.TypeInt, Default: 0},
+		{Name: "last_error", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "artifact_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "package_dir", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "title", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "body", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "tags_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "media_paths_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// PublishJobsTable holds the schema information for the "publish_jobs" table.
+	PublishJobsTable = &schema.Table{
+		Name:       "publish_jobs",
+		Columns:    PublishJobsColumns,
+		PrimaryKey: []*schema.Column{PublishJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "publishjob_status",
+				Unique:  false,
+				Columns: []*schema.Column{PublishJobsColumns[5]},
+			},
+		},
+	}
 	// ResourceAccessAuditsColumns holds the columns for the "resource_access_audits" table.
 	ResourceAccessAuditsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
@@ -2672,6 +2762,43 @@ var (
 				Name:    "idx_raaudit_target_created",
 				Unique:  false,
 				Columns: []*schema.Column{ResourceAccessAuditsColumns[4], ResourceAccessAuditsColumns[10]},
+			},
+		},
+	}
+	// ReviewTasksColumns holds the columns for the "review_tasks" table.
+	ReviewTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "content_item_id", Type: field.TypeString, Size: 256},
+		{Name: "graph_execution_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "graph_node_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "graph_task_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "draft_artifact_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "platform_targets_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "machine_flags_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "draft_title", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "draft_body", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 64, Default: "pending"},
+		{Name: "decision_note", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "reviewer_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "decided_at", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// ReviewTasksTable holds the schema information for the "review_tasks" table.
+	ReviewTasksTable = &schema.Table{
+		Name:       "review_tasks",
+		Columns:    ReviewTasksColumns,
+		PrimaryKey: []*schema.Column{ReviewTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "reviewtask_status",
+				Unique:  false,
+				Columns: []*schema.Column{ReviewTasksColumns[10]},
+			},
+			{
+				Name:    "reviewtask_graph_execution_id",
+				Unique:  false,
+				Columns: []*schema.Column{ReviewTasksColumns[2]},
 			},
 		},
 	}
@@ -3308,6 +3435,31 @@ var (
 				Name:    "idx_steps_v2_spirit_seq",
 				Unique:  false,
 				Columns: []*schema.Column{StepsV2Columns[4], StepsV2Columns[7]},
+			},
+		},
+	}
+	// SupplierCandidatesColumns holds the columns for the "supplier_candidates" table.
+	SupplierCandidatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "opportunity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "name", Type: field.TypeString, Size: 512},
+		{Name: "url", Type: field.TypeString, Size: 2048, Default: ""},
+		{Name: "price_range", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "notes", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 64, Default: "suggested"},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// SupplierCandidatesTable holds the schema information for the "supplier_candidates" table.
+	SupplierCandidatesTable = &schema.Table{
+		Name:       "supplier_candidates",
+		Columns:    SupplierCandidatesColumns,
+		PrimaryKey: []*schema.Column{SupplierCandidatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "suppliercandidate_status",
+				Unique:  false,
+				Columns: []*schema.Column{SupplierCandidatesColumns[6]},
 			},
 		},
 	}
@@ -4015,6 +4167,7 @@ var (
 		CodingTasksTable,
 		CompiledTeamsTable,
 		ComputerUseAuditTable,
+		ContentItemsTable,
 		CronTaskTable,
 		CronTaskRunTable,
 		DecisionRecordsTable,
@@ -4053,6 +4206,7 @@ var (
 		MemoryFactPendingTable,
 		ModelPricingRulesTable,
 		ModelTokenUsageHourlyTable,
+		OpportunitiesTable,
 		OrchestrationsTable,
 		OrchestrationStepsTable,
 		OrganizationsTable,
@@ -4069,7 +4223,9 @@ var (
 		PluginsTable,
 		SkillTable,
 		ToolsTable,
+		PublishJobsTable,
 		ResourceAccessAuditsTable,
+		ReviewTasksTable,
 		SchemaMigrationsTable,
 		SelfCheckReportsTable,
 		SelfImprovementRunsTable,
@@ -4086,6 +4242,7 @@ var (
 		SkillTagsTable,
 		SkillVersionTable,
 		StepsV2Table,
+		SupplierCandidatesTable,
 		SystemSettingsTable,
 		TaskDeadLettersTable,
 		TaskPlansTable,
@@ -4165,6 +4322,9 @@ func init() {
 	}
 	ComputerUseAuditTable.Annotation = &entsql.Annotation{
 		Table: "computer_use_audit",
+	}
+	ContentItemsTable.Annotation = &entsql.Annotation{
+		Table: "content_items",
 	}
 	CronTaskTable.Annotation = &entsql.Annotation{
 		Table: "cron_task",
@@ -4284,6 +4444,9 @@ func init() {
 	ModelTokenUsageHourlyTable.Annotation = &entsql.Annotation{
 		Table: "model_token_usage_hourly",
 	}
+	OpportunitiesTable.Annotation = &entsql.Annotation{
+		Table: "opportunities",
+	}
 	OrchestrationsTable.Annotation = &entsql.Annotation{
 		Table: "orchestrations",
 	}
@@ -4332,8 +4495,14 @@ func init() {
 	ToolsTable.Annotation = &entsql.Annotation{
 		Table: "tools",
 	}
+	PublishJobsTable.Annotation = &entsql.Annotation{
+		Table: "publish_jobs",
+	}
 	ResourceAccessAuditsTable.Annotation = &entsql.Annotation{
 		Table: "resource_access_audits",
+	}
+	ReviewTasksTable.Annotation = &entsql.Annotation{
+		Table: "review_tasks",
 	}
 	SchemaMigrationsTable.Annotation = &entsql.Annotation{
 		Table: "schema_migrations",
@@ -4382,6 +4551,9 @@ func init() {
 	}
 	StepsV2Table.Annotation = &entsql.Annotation{
 		Table: "steps_v2",
+	}
+	SupplierCandidatesTable.Annotation = &entsql.Annotation{
+		Table: "supplier_candidates",
 	}
 	TaskDeadLettersTable.Annotation = &entsql.Annotation{
 		Table: "task_dead_letters",

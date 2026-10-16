@@ -60,3 +60,14 @@ func (r *MemoryRepo) ListPending(limit, offset int) ([]Task, int, error) {
 	}
 	return all, total, nil
 }
+
+func (r *MemoryRepo) GetByGraphExecution(executionID, nodeID string) (Task, bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, t := range r.byID {
+		if t.GraphExecutionID == executionID && (nodeID == "" || t.GraphNodeID == nodeID) {
+			return t, true, nil
+		}
+	}
+	return Task{}, false, nil
+}

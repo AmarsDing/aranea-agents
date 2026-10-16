@@ -24,6 +24,9 @@ func (ReviewTask) Fields() []ent.Field {
 		field.String("id").Immutable().Unique().MaxLen(256),
 
 		field.String("content_item_id").MaxLen(256),
+		field.String("graph_execution_id").Default("").MaxLen(256),
+		field.String("graph_node_id").Default("").MaxLen(256),
+		field.String("graph_task_id").Default("").MaxLen(256),
 		field.String("draft_artifact_id").Default("").MaxLen(256),
 		field.Text("platform_targets_json").Default("[]"),
 		field.Text("machine_flags_json").Default("[]"),
@@ -42,5 +45,6 @@ func (ReviewTask) Fields() []ent.Field {
 func (ReviewTask) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("status"),
+		index.Fields("graph_execution_id"),
 	}
 }
