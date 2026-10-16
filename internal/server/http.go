@@ -360,6 +360,9 @@ func registerCustomRoutes(
 		auth.RegisterNoAuthPathPrefix("/api/v1/metrics/")
 		srv.HandlePrefix(twinOpenAPI.Path(), lazyCompatHandler(twinOpenAPI))
 	}
+	// MVP media/commerce: content inbox, review gate, publish package outbox,
+	// opportunity + sourcing board. Memory-backed runtime; Channel != Publish.
+	service.RegisterMVPMediaRoutes(srv)
 }
 
 // compatHandler is the minimal interface satisfied by all three compat
@@ -388,10 +391,6 @@ func lazyCompatHandler(svc compatHandler) nethttp.Handler {
 		}
 		h.ServeHTTP(w, r)
 	})
-	// MVP media/commerce: content inbox, review gate, publish package outbox,
-	// opportunity + sourcing board. Memory-backed runtime; Channel ≠ Publish.
-	service.RegisterMVPMediaRoutes(srv)
-
 }
 
 func registerInfrastructureRoutes(srv *kratoshttp.Server, readiness ReadinessProbe) {
