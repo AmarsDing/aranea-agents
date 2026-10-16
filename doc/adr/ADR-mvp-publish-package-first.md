@@ -31,5 +31,6 @@
 - `mvp.Configure` preserves Graph / notify / outbound webhook side-hooks so admin HTTP boot cannot wipe `WireGraphTaskRuntime` hooks.
 - Builtin Graph template `content_pipeline` registered alongside YAML sketch.
 - Ops ingest: `POST /api/v1/mvp/ingest/rss|search`; cron `mvp_rss_ingest` (+ optional `ARANEA_MVP_RSS_FEEDS`).
+- Search ingest resolves via system `web_research` (platform settings / `TAVILY_API_KEY` / `SERPAPI_API_KEY`) when `hits[]` omitted; clear error if unset.
 - Package download: `GET /api/v1/mvp/publish/jobs/{id}/files/{manifest.json|body.md}` with honest `packaged_not_posted_to_platform` header.
-- Pending-review notify via `ARANEA_MVP_REVIEW_NOTIFY_URL` (noop if unset).
+- Pending-review notify: HTTP `ARANEA_MVP_REVIEW_NOTIFY_URL` and/or native IM `ARANEA_MVP_REVIEW_NOTIFY_CHANNEL_ID`+`RECIPIENT` via Channel SendText (noop if unset; Channel≠Publish).

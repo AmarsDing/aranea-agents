@@ -11,7 +11,9 @@ import (
 )
 
 func configureMVPMedia(readiness ReadinessProbe, lg loggateway.Logger) {
-	// Pending-review notify (noop if ARANEA_MVP_REVIEW_NOTIFY_URL unset / invalid).
+	// Search ingest via system webresearch when hits[] omitted.
+	mvp.EnsureDefaultSearcher()
+	// Pending-review notify: HTTP URL and/or native IM channel env (noop if unset).
 	mvp.ConfigureReviewNotify(mvp.DefaultReviewNotifyFromEnv())
 
 	if d, ok := readiness.(*data.Data); ok && d != nil {

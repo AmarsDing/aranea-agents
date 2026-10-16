@@ -10,9 +10,9 @@ import (
 
 // Hit is a normalized web-search result (wrapper over webresearch / mocks).
 type Hit struct {
-	URL     string
-	Title   string
-	Snippet string
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Snippet string `json:"snippet,omitempty"`
 }
 
 // Searcher abstracts webresearch so outboundguard stays in that package.
