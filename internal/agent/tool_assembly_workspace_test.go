@@ -105,8 +105,11 @@ func TestResolveAgentFilesystemDir_AcceptsPathUnderTenantRoot(t *testing.T) {
 	}
 	gotAbs, _ := filepath.Abs(got)
 	wantAbs, _ := filepath.Abs(subdir)
-	if gotAbs != wantAbs {
-		t.Fatalf("got %q, want contained path %q", gotAbs, wantAbs)
+	// Windows TempDir may return 8.3 short paths; Abs forms can differ.
+	gi, err1 := os.Stat(gotAbs)
+	wi, err2 := os.Stat(wantAbs)
+	if err1 != nil || err2 != nil || !os.SameFile(gi, wi) {
+		t.Fatalf("got %q, want same path as %q (stat err %v / %v)", gotAbs, wantAbs, err1, err2)
 	}
 }
 
