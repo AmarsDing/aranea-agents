@@ -447,7 +447,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, v37, v33, agentRepository, agentUsecase, v2, v29, llmProviderModelUsecase, v13, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, v22, v23, mcpServerUsecase, v20, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, turnV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, v37, v33, agentRepository, agentUsecase, v2, v29, llmProviderModelUsecase, v13, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, v22, v23, mcpServerUsecase, v20, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, turnV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, dataData, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, organizationRepo, graphOrchestrationProjector, mailboxWaker)
@@ -1620,6 +1620,7 @@ func provideChatServiceDeps(
 	learningLoop *biz.LearningLoopUsecase,
 	voiceDelegation *voice.DelegationRegistry,
 	decisions decision.Lifecycle,
+	d *data.Data,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 
@@ -1697,6 +1698,7 @@ func provideChatServiceDeps(
 			VoiceDelegation:           voiceDelegation,
 
 			DecisionCollector: decisions,
+			TurnSubmitClaimer:  data.NewChatTurnSubmitClaimer(d),
 		},
 	}
 }

@@ -398,4 +398,5 @@ var ddlMigrationsLate = []ddlMigration{
 	// 流式生成误判 idle（P3-C）。原编号 20261275 与 SeedPackTwinMonitorV1
 	// 撞号（schema_migrations 版本全局唯一），重编号至 20261277。
 	{Version: 20261277, Name: "team_runs_v2_heartbeat", SQL: "sql/migrations/20261277_team_runs_v2_heartbeat.sql"},
+	{Version: 20261278, Name: "chat_turn_submit_claim", Func: ddlChatTurnSubmitClaimSchema},
 }

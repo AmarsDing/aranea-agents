@@ -132,7 +132,12 @@ func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chat
 
 	// SP-1e：同步预生成用户消息 ID（即 RootTaskActivityID，前端消息模型的
 	// turn_id），注入后台 turn ctx 供持久化复用，并随 ACK 返回。
-	preMsgID := uuid.NewString()
+	// Prefer client request_id so optimistic pending-user-* cards converge
+	// without remapping (same ID on FE + BE).
+	preMsgID := strings.TrimSpace(input.RequestID)
+	if preMsgID == "" {
+		preMsgID = uuid.NewString()
+	}
 
 	// Derive from appctx.Ctx() so the turn outlives the HTTP request.
 	// StopGeneration cancels via the RunRegistry, not via this context.

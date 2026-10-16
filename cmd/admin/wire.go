@@ -984,6 +984,7 @@ func provideChatServiceDeps(
 	learningLoop *biz.LearningLoopUsecase,
 	voiceDelegation *voice.DelegationRegistry,
 	decisions decision.Lifecycle,
+	d *data.Data,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -1067,6 +1068,7 @@ func provideChatServiceDeps(
 			// system_guard 事件）。漏接则 collector 恒 nil、EmitGate 静默跳过
 			// （2026-08-28 S14 实测：input_risk_flagged 全不落库）。
 			DecisionCollector: decisions,
+			TurnSubmitClaimer:  data.NewChatTurnSubmitClaimer(d),
 		},
 	}
 }

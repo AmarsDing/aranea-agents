@@ -343,6 +343,18 @@ func TestResolveRootTaskActivityID(t *testing.T) {
 			t.Fatalf("blank ParentTaskID must fall back to fresh ID, got %q", got)
 		}
 	})
+	t.Run("request_id becomes task ID for optimistic FE converge", func(t *testing.T) {
+		got := resolveRootTaskActivityID(biz.TurnInput{RequestID: "pending-user-abc"})
+		if got != "pending-user-abc" {
+			t.Fatalf("RequestID must become RootTaskActivityID, got %q", got)
+		}
+	})
+	t.Run("ParentTaskID still wins over RequestID", func(t *testing.T) {
+		got := resolveRootTaskActivityID(biz.TurnInput{ParentTaskID: "task-parent", RequestID: "pending-user-abc"})
+		if got != "task-parent" {
+			t.Fatalf("ParentTaskID must win, got %q", got)
+		}
+	})
 }
 
 // TestPreAssignedMessageIDCtx pins the SP-1e ctx-key contract: the submit

@@ -60,6 +60,10 @@ func ddlChannelInboundSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.
 	return EnsureChannelInboundSchema(ctx, rawDB)
 }
 
+func ddlChatTurnSubmitClaimSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return EnsureChatTurnSubmitClaimSchema(ctx, rawDB)
+}
+
 func ddlChannelTurnJobSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureChannelTurnJobSchema(ctx, rawDB)
 }

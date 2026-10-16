@@ -118,6 +118,7 @@ func reconcileVersionedEnsureSchemas(ctx context.Context, rawDB *sql.DB, entClie
 			{"agent_performance_schema", func() error { return EnsureAgentPerformanceSchema(ctx, rawDB, lg) }},
 			{"compiled_team_schema", func() error { return EnsureCompiledTeamSchema(ctx, rawDB) }},
 			{"channel_inbound_schema", func() error { return EnsureChannelInboundSchema(ctx, rawDB) }},
+			{"chat_turn_submit_claim_schema", func() error { return EnsureChatTurnSubmitClaimSchema(ctx, rawDB) }},
 			{"channel_turn_job_schema", func() error { return EnsureChannelTurnJobSchema(ctx, rawDB) }},
 			{"channel_runtime_lease_schema", func() error { return EnsureChannelRuntimeLeaseSchema(ctx, rawDB) }},
 		}

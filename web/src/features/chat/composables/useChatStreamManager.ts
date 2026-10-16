@@ -20,6 +20,8 @@ export type StreamManagerDeps = {
    * Server no longer replays events; clients must re-fetch REST history.
    */
   onReconnectHydrate?: (sessionId: string) => Promise<void>;
+  /** businessQueue drop of user_message — clear matching optimistic pending card. */
+  onUpstreamUserMessageDropped?: (sessionId: string, requestId: string) => void;
 };
 
 export function useChatStreamManager(deps: StreamManagerDeps) {
@@ -62,6 +64,12 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           type: 'warning',
           message: t('chat.wsQueueFullDropped', '连接拥塞，消息未能送达，请重新发送'),
         });
+        // Clear the optimistic pending card for this exact request so the user
+        // can resend without a stuck "pending" ghost task.
+        const requestId = String(upstream.request_id ?? '').trim();
+        if (requestId && deps.onUpstreamUserMessageDropped) {
+          deps.onUpstreamUserMessageDropped(sessionId, requestId);
+        }
       }
       needsHydrateAfterReconnect.set(sessionId, true);
     };
@@ -141,6 +149,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     needsHydrateAfterReconnect.delete(sessionId);
 
     teamStream = createTeamStream(sessionId, {
+      lastEventId: getChannelWsCursor(sessionId),
       onServerShutdown: () => {
         $q.notify({
           type: 'warning',

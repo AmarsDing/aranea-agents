@@ -27,7 +27,13 @@ import type {
 export function useChatV2EventHandlers(deps: {
   /** 当前选中会话 id（getter 延迟求值，事件到达时才读取） */
   selectedSessionId: () => string | undefined;
-  sender: { sending: { value: boolean }; markSendingDone: () => void };
+  sender: {
+    sending: { value: boolean };
+    markSendingDone: () => void;
+    onRunAccepted: () => void;
+    onFirstByteArrived: () => void;
+    touchRunActivity: () => void;
+  };
   followUp: { onRunStatusV2: (payload: RunStatusEventPayload) => void };
   applyFromV2RunStatus: (payload: RunStatusEventPayload) => void;
   contextualLoading: {
@@ -52,6 +58,23 @@ export function useChatV2EventHandlers(deps: {
     const cursorSessionId = String(envelope.session_id ?? '').trim();
     if (cursorEventId && cursorSessionId) {
       noteChannelWsEnvelope(cursorSessionId, cursorEventId);
+    }
+    // Stall / first-byte watchdogs: any real activity resets the 60s/5min timers.
+    // run_status=running arms first-byte notice; first streaming token clears it.
+    if (
+      envelope.kind === 'step.streaming' ||
+      envelope.kind === 'step.completed' ||
+      envelope.kind === 'turn.started' ||
+      envelope.kind === 'turn.completed' ||
+      envelope.kind === 'task.created' ||
+      envelope.kind === 'task.completed' ||
+      envelope.kind === 'system.heartbeat' ||
+      envelope.kind === 'system.run_status'
+    ) {
+      deps.sender.touchRunActivity();
+    }
+    if (envelope.kind === 'step.streaming') {
+      deps.sender.onFirstByteArrived();
     }
     // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
     // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2
@@ -245,6 +268,7 @@ export function useChatV2EventHandlers(deps: {
     }
     const rs = runStatusFromV2Payload(payload);
     if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
+      deps.sender.onRunAccepted();
       if (sessionStore.entityKind === 'team') {
         deps.streamManager.ensureTeamStream(sid);
       } else {

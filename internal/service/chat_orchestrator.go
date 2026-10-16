@@ -394,6 +394,9 @@ type ChatInfraDeps struct {
 	// 验收3 根修：漏接则 emitToolConfirmDecisionRecord 遇 nil 静默跳过）。
 	// nil 时决策记录静默降级（测试/CLI）。
 	DecisionCollector decision.Collector
+	// TurnSubmitClaimer persists chat submit/enqueue idempotency keys
+	// (chat_turn_submit_claim). Optional: nil keeps memory-only 30min registry.
+	TurnSubmitClaimer TurnSubmitClaimer
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -519,6 +522,9 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			sessionRunLifecycle: sessRunLC,
 		},
 		cmdSafetyChecker: security.NewCommandSafetyPermissionChecker(deps.Infra.LG),
+	}
+	if deps.Infra.TurnSubmitClaimer != nil {
+		o.turnIdem.setDurable(deps.Infra.TurnSubmitClaimer, deps.Infra.LG)
 	}
 	o.agentBuild = newChatAgentBuildDirector(chatAgentBuildDirectorDeps{
 		TurnDeps:       deps.Turn.TurnDeps,

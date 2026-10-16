@@ -244,6 +244,8 @@ export type EnqueueUserMessageRequest = {
   // "followup"   = 显式追问，跳过 steer 直接入 pending 队列；
   // "inject"     = 系统上下文静默排队，不单独唤醒 turn。
   kind: string | undefined;
+  // request_id 是客户端幂等键（与 WS/Submit 同一 pending-user-<uuid> 约定）
+  requestId?: string | undefined;
 };
 
 export type EnqueueUserMessageResponse = {

@@ -287,6 +287,11 @@ func resolveRootTaskActivityID(input biz.TurnInput) chatagent.RootTaskActivityID
 	if pt := strings.TrimSpace(input.ParentTaskID); pt != "" {
 		return chatagent.RootTaskActivityID(pt)
 	}
+	// Align optimistic FE pending-user-<uuid> with the persisted Task ID so
+	// upsertTask merges in place (no session-wide wipe / dual cards).
+	if rid := strings.TrimSpace(input.RequestID); rid != "" {
+		return chatagent.RootTaskActivityID(rid)
+	}
 	return chatagent.RootTaskActivityID(uuid.NewString())
 }
 
