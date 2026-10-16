@@ -417,6 +417,8 @@ func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.
 }
 
 func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
+	// MVP pending-review native IM notify (Channel ≠ Publish).
+	service.WireMVPReviewChannelNotify(channels)
 	return service.NewChannelRunEscalationNotifier(channels, sessions, lg)
 }
 
@@ -549,6 +551,8 @@ func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuot
 	uc := biz.NewSystemSettingUsecase(repo, quota)
 	uc.SetWebResearchTester(tester)
 	uc.SetTxProvider(tp)
+	// MVP search ingest: platform web_research + env keys (hits[] optional).
+	service.WireMVPWebResearchSearcher(repo)
 	return uc
 }
 

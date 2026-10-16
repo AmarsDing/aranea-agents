@@ -145,6 +145,7 @@ func handleMVPIngestSearch(ctx kratoshttp.Context) error {
 	if err := readJSON(ctx, &body); err != nil {
 		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+	// hits[] optional when system webresearch / TAVILY_API_KEY / SERPAPI_API_KEY configured.
 	res, err := mvp.IngestSearchHits(ctx.Request().Context(), body.WorkspaceID, body.Query, body.Hits)
 	if err != nil {
 		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})

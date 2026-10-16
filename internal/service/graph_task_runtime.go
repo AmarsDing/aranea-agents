@@ -260,6 +260,7 @@ func WireGraphTaskRuntime(
 	)
 	// Opportunity → real WebhookDispatcher (opportunity.created / theme.digest intel only).
 	mvp.ConfigureOutboundWebhook(webhooks)
+	mvp.EnsureDefaultSearcher()
 	mvp.ConfigureReviewNotify(mvp.DefaultReviewNotifyFromEnv())
 	rt.Start()
 	return rt

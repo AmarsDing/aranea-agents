@@ -8,16 +8,78 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz/review"
 	"aranea-agents/pkg/webhookurl"
 )
 
-// DefaultReviewNotifyFromEnv returns an HTTP pending-review notifier when
-// ARANEA_MVP_REVIEW_NOTIFY_URL is set; otherwise nil (Enqueue stays noop-safe).
-// Channel ≠ Publish: this is IM/ops notify only, never a platform publisher.
+var (
+	channelEnqueueMu sync.Mutex
+	channelEnqueue   ChannelEnqueueFn
+)
+
+// ChannelEnqueueFn enqueues native IM outbound text (Channel ≠ Publish).
+// Implementations typically call ChannelUsecase.EnqueueOutboundDelivery →
+// delivery worker → platform SendText.
+type ChannelEnqueueFn func(ctx context.Context, channelID, platform, recipient, text, idempotencyKey string) error
+
+// ConfigureChannelEnqueue wires native IM pending-review notify delivery.
+// Noop-safe: when unset, channel env vars are ignored (HTTP URL path still works).
+func ConfigureChannelEnqueue(fn ChannelEnqueueFn) {
+	channelEnqueueMu.Lock()
+	defer channelEnqueueMu.Unlock()
+	channelEnqueue = fn
+}
+
+func currentChannelEnqueue() ChannelEnqueueFn {
+	channelEnqueueMu.Lock()
+	defer channelEnqueueMu.Unlock()
+	return channelEnqueue
+}
+
+func resetChannelEnqueueForTest() {
+	channelEnqueueMu.Lock()
+	defer channelEnqueueMu.Unlock()
+	channelEnqueue = nil
+}
+
+// ComposeReviewNotify runs multiple notify hooks (nil entries skipped).
+func ComposeReviewNotify(fns ...review.NotifyFn) review.NotifyFn {
+	var active []review.NotifyFn
+	for _, fn := range fns {
+		if fn != nil {
+			active = append(active, fn)
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+	return func(task review.Task) {
+		for _, fn := range active {
+			fn(task)
+		}
+	}
+}
+
+// DefaultReviewNotifyFromEnv returns pending-review notify when HTTP URL and/or
+// native IM channel env is set; otherwise nil (Enqueue stays noop-safe).
+//
+// Env:
+//   - ARANEA_MVP_REVIEW_NOTIFY_URL — HTTP POST (ops webhook)
+//   - ARANEA_MVP_REVIEW_NOTIFY_CHANNEL_ID + ARANEA_MVP_REVIEW_NOTIFY_RECIPIENT —
+//     native IM via ConfigureChannelEnqueue (platform optional:
+//     ARANEA_MVP_REVIEW_NOTIFY_PLATFORM; else resolved by enqueue impl)
+//
+// Channel ≠ Publish: IM/ops notify only, never a platform content publisher.
 func DefaultReviewNotifyFromEnv() review.NotifyFn {
+	httpFn := httpReviewNotifyFromEnv()
+	channelFn := channelReviewNotifyFromEnv()
+	return ComposeReviewNotify(httpFn, channelFn)
+}
+
+func httpReviewNotifyFromEnv() review.NotifyFn {
 	raw := strings.TrimSpace(os.Getenv("ARANEA_MVP_REVIEW_NOTIFY_URL"))
 	if raw == "" {
 		return nil
@@ -56,6 +118,27 @@ func DefaultReviewNotifyFromEnv() review.NotifyFn {
 			return
 		}
 		_ = resp.Body.Close()
+	}
+}
+
+func channelReviewNotifyFromEnv() review.NotifyFn {
+	channelID := strings.TrimSpace(os.Getenv("ARANEA_MVP_REVIEW_NOTIFY_CHANNEL_ID"))
+	recipient := strings.TrimSpace(os.Getenv("ARANEA_MVP_REVIEW_NOTIFY_RECIPIENT"))
+	platform := strings.TrimSpace(os.Getenv("ARANEA_MVP_REVIEW_NOTIFY_PLATFORM"))
+	if channelID == "" || recipient == "" {
+		return nil
+	}
+	return func(task review.Task) {
+		fn := currentChannelEnqueue()
+		if fn == nil {
+			// Channel env set but enqueue not wired yet — noop (safe).
+			return
+		}
+		text := NotifyPendingReviewMessage(task)
+		idem := "mvp-review-pending:" + task.ID
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		_ = fn(ctx, channelID, platform, recipient, text, idem)
 	}
 }
 

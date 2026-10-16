@@ -59,18 +59,36 @@ func IngestRSSFeeds(ctx context.Context, feedURLs []string, workspaceID string) 
 }
 
 // IngestSearchHits maps search hits → ContentItems (source_type=search).
+// When hits is empty, resolves via configured Searcher (system webresearch).
+// Honest error when provider unset and no hits[] provided.
 func IngestSearchHits(ctx context.Context, workspaceID, query string, hits []search.Hit) (IngestResult, error) {
-	_ = ctx
-	if len(hits) == 0 {
-		return IngestResult{}, fmt.Errorf("mvp: search hits required (provide hits[] or configure a searcher)")
+	query = strings.TrimSpace(query)
+	resolved := hits
+	if len(resolved) == 0 {
+		EnsureDefaultSearcher()
+		fn := currentSearcher()
+		if fn == nil {
+			return IngestResult{}, fmt.Errorf("mvp: search hits required (provide hits[] or configure a searcher)")
+		}
+		if query == "" {
+			return IngestResult{}, fmt.Errorf("mvp: search query required when hits[] is empty")
+		}
+		var err error
+		resolved, err = fn(ctx, query)
+		if err != nil {
+			return IngestResult{Source: "search", Query: query}, err
+		}
+		if len(resolved) == 0 {
+			return IngestResult{Source: "search", Query: query, Fetched: 0}, nil
+		}
 	}
 	adapter := &search.Adapter{
 		Query: query,
 		Searcher: func(context.Context, string) ([]search.Hit, error) {
-			return hits, nil
+			return resolved, nil
 		},
 	}
-	items, _, err := adapter.Fetch(context.Background(), "")
+	items, _, err := adapter.Fetch(ctx, "")
 	if err != nil {
 		return IngestResult{Source: "search", Query: query}, err
 	}

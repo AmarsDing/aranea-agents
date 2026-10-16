@@ -160,6 +160,8 @@ func ResetForTest() {
 	notifyFn = nil
 	resumeFn = nil
 	completeFn = nil
+	resetSearcherForTest()
+	resetChannelEnqueueForTest()
 }
 
 // ConfigureGraphHooks attaches Graph resume callbacks without replacing repos.
