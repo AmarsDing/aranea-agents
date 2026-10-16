@@ -87,7 +87,7 @@ type Runner struct {
 	deps   Deps
 	lg     loggateway.Logger
 	mu     sync.Mutex
-	taskMu sync.Map
+	taskMu taskMutexRegistry
 	lease  taskLease
 }
 
@@ -590,3 +590,4 @@ func errString(err error) string {
 	}
 	return err.Error()
 }
+
