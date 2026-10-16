@@ -132,13 +132,47 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         }
       : { ...t };
     tasks.value.set(t.ID, merged);
+    // Converge optimistic cards: prefer exact ID match (request_id == Task ID).
+    // Fallback: drop other pending-user-* in the same session only when the
+    // real task is not itself an optimistic id (legacy server UUIDs).
     if (!t.ID.startsWith('pending-user-')) {
+      const msg = (t.UserMessage || '').trim();
       for (const [id, task] of tasks.value) {
-        if (id.startsWith('pending-user-') && task.SessionID === t.SessionID) {
+        if (!id.startsWith('pending-user-') || task.SessionID !== t.SessionID) continue;
+        // Prefer content match when multiple pending cards exist; otherwise wipe all.
+        if (!msg || !(task.UserMessage || '').trim() || (task.UserMessage || '').trim() === msg) {
           tasks.value.delete(id);
         }
       }
     }
+  }
+
+  /**
+   * Remap an optimistic pending-user-* Task onto the server-assigned ID
+   * (HTTP ACK messageId). Avoids dual cards when ACK id ≠ pending id.
+   * No-op when ids are equal or pending is missing.
+   */
+  function adoptOptimisticTask(pendingId: string, realId: string) {
+    const pending = String(pendingId || '').trim();
+    const real = String(realId || '').trim();
+    if (!pending || !real || pending === real) return;
+    const existing = tasks.value.get(pending);
+    if (!existing) return;
+    const prior = tasks.value.get(real);
+    const merged: Task = prior
+      ? {
+          ...existing,
+          ...prior,
+          ID: real,
+          UserMessage: prior.UserMessage || existing.UserMessage,
+          CreatedAt: isZeroTime(prior.CreatedAt) ? existing.CreatedAt : prior.CreatedAt,
+          UpdatedAt: isZeroTime(prior.UpdatedAt) ? existing.UpdatedAt : prior.UpdatedAt,
+          CompletedAt: prior.CompletedAt ?? existing.CompletedAt ?? null,
+          Version: Math.max(prior.Version, existing.Version),
+        }
+      : { ...existing, ID: real };
+    tasks.value.set(real, merged);
+    tasks.value.delete(pending);
   }
 
   /** removeTask 删除指定 ID 的 Task（用于乐观 Task 失败时清理） */
@@ -786,6 +820,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     graphStages,
     graphNodes,
     upsertTask,
+    adoptOptimisticTask,
     removeTask,
     upsertTurn,
     upsertStep,

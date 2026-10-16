@@ -307,7 +307,7 @@ export function useChatSender(deps: SenderDeps) {
     if (isActiveRun()) {
       const runtime = useChatRuntimeStore();
       try {
-        const res = await runtime.enqueue(sid, failed.content_markdown);
+        const res = await runtime.enqueue(sid, failed.content_markdown, pendingUserId);
         if (res.accepted) {
           dropPendingUserRow(sid, pendingUserId);
           $q.notify({
@@ -352,7 +352,7 @@ export function useChatSender(deps: SenderDeps) {
   async function enqueueDuringRun(sessionId: string, content: string, pendingUserId: string) {
     const runtime = useChatRuntimeStore();
     try {
-      const res = await runtime.enqueue(sessionId, content);
+      const res = await runtime.enqueue(sessionId, content, pendingUserId);
       if (res.accepted) {
         dropPendingUserRow(sessionId, pendingUserId);
         // T5.3: Clear input only after successful enqueue (matches Path B
@@ -407,7 +407,7 @@ export function useChatSender(deps: SenderDeps) {
     // Do NOT call loadMessages after HTTP success — the WS data channel
     // is the single source of truth for message data.
     // US-14：不再随消息发送 knowledge_bases（留空 = 后端全库智能路由）。
-    await sendCommand({
+    const ack = await sendCommand({
       session_id: sessionId,
       agent_key: agentKey,
       team_id: teamId,
@@ -422,6 +422,13 @@ export function useChatSender(deps: SenderDeps) {
         attachments: options.attachments.map((a) => ({ id: a.id })),
       },
     });
+    // SP-1e: when ACK messageId differs from optimistic pending id, remap in
+    // place so task.created merges without dual-source double-render.
+    const realId = String(ack?.messageId || ack?.turnId || '').trim();
+    const pending = String(requestId || '').trim();
+    if (pending && realId && pending !== realId) {
+      activityStore.adoptOptimisticTask(pending, realId);
+    }
   }
 
   function notifyUnsupportedImageModel() {

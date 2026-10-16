@@ -481,15 +481,42 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 		return nil, apierror.BadRequest(apierror.DomainChat, "invalid kind: must be steer|followup|inject")
 	}
 
+	requestID := strings.TrimSpace(req.GetRequestId())
+	// Enqueue idempotency: same pending-user-* key as WS/Submit, scoped with
+	// enqueue: prefix so it does not collide with an in-flight turn claim.
+	idemKey := ""
+	if requestID != "" {
+		idemKey = "enqueue:" + requestID
+		if s.orch != nil && !s.orch.claimTurnIdem(sessionID, idemKey) {
+			s.lg.With(loggateway.SessionID(sessionID)).Info("duplicate chat enqueue dropped",
+				loggateway.StepID("chat.enqueue_duplicate"),
+				loggateway.Str("request_id", requestID))
+			return &chatv1.EnqueueUserMessageResponse{
+				Accepted:  true,
+				Queued:    true,
+				PendingId: requestID,
+			}, nil
+		}
+	}
+
 	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessageWithKind(sessionID, content, kind)
 	if err != nil {
+		if idemKey != "" && s.orch != nil {
+			s.orch.releaseTurnIdem(sessionID, idemKey)
+		}
 		return nil, err
 	}
 	if !accepted {
+		if idemKey != "" && s.orch != nil {
+			s.orch.releaseTurnIdem(sessionID, idemKey)
+		}
 		return nil, enqueueRejectError(rejectReason)
 	}
 	if queued {
 		if pendingID == "" {
+			if idemKey != "" && s.orch != nil {
+				s.orch.releaseTurnIdem(sessionID, idemKey)
+			}
 			return nil, apierror.Internal(apierror.DomainChat, "queued message missing pending id")
 		}
 		return &chatv1.EnqueueUserMessageResponse{
