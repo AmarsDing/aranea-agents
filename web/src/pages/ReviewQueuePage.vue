@@ -17,19 +17,25 @@
       <q-item>
         <q-item-section>
           <q-item-label>最近发布包：{{ lastJob.Status }} / {{ lastJob.ID }}</q-item-label>
-          <q-item-label caption>请人工粘贴到平台后台；不是「已发布到平台」</q-item-label>
+          <q-item-label caption>packaged ≠ 已发布到平台；请下载后人工粘贴到平台后台</q-item-label>
+        </q-item-section>
+        <q-item-section side class="row q-gutter-xs">
+          <q-btn flat dense color="primary" label="manifest.json" :href="manifestURL" target="_blank" />
+          <q-btn flat dense color="primary" label="body.md" :href="bodyURL" target="_blank" />
         </q-item-section>
       </q-item>
     </q-list>
   </q-page>
 </template>
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
-import { mvpApi, type ReviewTask, type PublishJob } from '../features/mvp/api';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { mvpApi, packageFileURL, type ReviewTask, type PublishJob } from '../features/mvp/api';
 const queue = ref<ReviewTask[]>([]);
 const current = ref<ReviewTask | null>(null);
 const rejectNote = ref('');
 const lastJob = ref<PublishJob | null>(null);
+const manifestURL = computed(() => lastJob.value ? packageFileURL(lastJob.value.ID, 'manifest.json') : '#');
+const bodyURL = computed(() => lastJob.value ? packageFileURL(lastJob.value.ID, 'body.md') : '#');
 async function refresh() {
   const res = await mvpApi.listReview();
   queue.value = res.items || [];

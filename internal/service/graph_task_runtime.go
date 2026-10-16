@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/mvp"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/mvp"
 	"aranea-agents/internal/team"
 	"aranea-agents/pkg/loggateway"
 
@@ -258,6 +258,9 @@ func WireGraphTaskRuntime(
 			return err
 		},
 	)
+	// Opportunity → real WebhookDispatcher (opportunity.created / theme.digest intel only).
+	mvp.ConfigureOutboundWebhook(webhooks)
+	mvp.ConfigureReviewNotify(mvp.DefaultReviewNotifyFromEnv())
 	rt.Start()
 	return rt
 }

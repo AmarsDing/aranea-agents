@@ -11,6 +11,9 @@ import (
 )
 
 func configureMVPMedia(readiness ReadinessProbe, lg loggateway.Logger) {
+	// Pending-review notify (noop if ARANEA_MVP_REVIEW_NOTIFY_URL unset / invalid).
+	mvp.ConfigureReviewNotify(mvp.DefaultReviewNotifyFromEnv())
+
 	if d, ok := readiness.(*data.Data); ok && d != nil {
 		mvp.Configure(mvp.Deps{
 			Content:     data.NewContentItemRepo(d),

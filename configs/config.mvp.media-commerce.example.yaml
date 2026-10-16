@@ -4,6 +4,8 @@ content:
 review:
   single_reviewer: true
   soft_machine_scan: true
+  # Optional pending-review HTTP notify (Channel ≠ Publish). Also via env:
+  # ARANEA_MVP_REVIEW_NOTIFY_URL=https://hooks.example/review-pending
 publish:
   mode: package          # A only
   computeruse_default: false
@@ -13,6 +15,11 @@ commerce:
     - opportunity.created
     - theme.digest
   # NovaTrader receives intel only — never trading orders from media agents.
+  # Subscribe these event types on an outbound Webhook in Admin → Webhooks.
+ingest:
+  # Ops path: POST /api/v1/mvp/ingest/rss and /ingest/search
+  # Optional cron (enabled when env set): ARANEA_MVP_RSS_FEEDS=https://a/rss,https://b/atom
+  # Cron target_type: mvp_rss_ingest
 local_ai:
   # Windows Launcher path: ensure Ollama / ComfyUI health before media jobs.
   ollama_endpoint: "http://127.0.0.1:11434"
