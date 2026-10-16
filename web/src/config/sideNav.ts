@@ -55,6 +55,15 @@ export const sideNavGroups: NavGroup[] = [
     ],
   },
   {
+    labelKey: 'menu.groupMediaCommerce',
+    items: [
+      { to: '/content-inbox', icon: 'inbox', labelKey: 'menu.contentInbox' },
+      { to: '/review-queue', icon: 'rate_review', labelKey: 'menu.reviewQueue' },
+      { to: '/opportunity-board', icon: 'storefront', labelKey: 'menu.opportunityBoard' },
+      { to: '/sourcing', icon: 'travel_explore', labelKey: 'menu.sourcing' },
+    ],
+  },
+  {
     labelKey: 'menu.groupKnowledge',
     items: [
       { to: '/knowledge', icon: 'menu_book', labelKey: 'menu.knowledge' },

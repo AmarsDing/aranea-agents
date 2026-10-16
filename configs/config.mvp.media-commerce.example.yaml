@@ -1,0 +1,19 @@
+# MVP media + commerce feature flags (example only — merge into local config as needed).
+content:
+  enabled: true
+review:
+  single_reviewer: true
+  soft_machine_scan: true
+publish:
+  mode: package          # A only
+  computeruse_default: false
+  package_root: ""       # default: OS temp / aranea-publish-packages
+commerce:
+  opportunity_webhook_events:
+    - opportunity.created
+    - theme.digest
+  # NovaTrader receives intel only — never trading orders from media agents.
+local_ai:
+  # Windows Launcher path: ensure Ollama / ComfyUI health before media jobs.
+  ollama_endpoint: "http://127.0.0.1:11434"
+  comfyui_endpoint: "http://127.0.0.1:8188"

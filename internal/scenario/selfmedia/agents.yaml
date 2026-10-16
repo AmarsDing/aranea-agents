@@ -1,3 +1,5 @@
+# MVP: human Review gate required before Publish Package A; no platform API skills claimed.
+# Channel ≠ Publish. computeruse must NOT be default publish path.
 company_key: selfmedia
 
 defaults:
