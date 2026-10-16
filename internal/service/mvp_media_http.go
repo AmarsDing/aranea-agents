@@ -152,6 +152,7 @@ func handleMVPReviewApprove(ctx kratoshttp.Context) error {
 	}
 	_, _ = rt.Publish.ProcessNext(1)
 	job, _ = rt.Publish.Get(job.ID)
+	_ = mvp.AfterReviewDecision(task)
 	return writeJSON(ctx, nethttp.StatusOK, map[string]any{"review": task, "publish_job": job})
 }
 
@@ -165,6 +166,7 @@ func handleMVPReviewReject(ctx kratoshttp.Context) error {
 	if task.ContentItemID != "" {
 		_, _ = mvp.Ensure().Content.MarkRejected(task.ContentItemID)
 	}
+	_ = mvp.AfterReviewDecision(task)
 	return writeJSON(ctx, nethttp.StatusOK, task)
 }
 

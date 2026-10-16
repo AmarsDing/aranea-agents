@@ -102,10 +102,13 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	}
 	srv := kratoshttp.NewServer(opts...)
 
+	configureMVPMedia(readiness, lg)
+
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
 	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics)
+	registerMVPMediaRoutes(srv)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -360,10 +363,8 @@ func registerCustomRoutes(
 		auth.RegisterNoAuthPathPrefix("/api/v1/metrics/")
 		srv.HandlePrefix(twinOpenAPI.Path(), lazyCompatHandler(twinOpenAPI))
 	}
-	// MVP media/commerce: content inbox, review gate, publish package outbox,
-	// opportunity + sourcing board. Memory-backed runtime; Channel != Publish.
-	service.RegisterMVPMediaRoutes(srv)
 }
+
 
 // compatHandler is the minimal interface satisfied by all three compat
 // service wrappers (AGUICompatService, OpenAISessionCompatService,
