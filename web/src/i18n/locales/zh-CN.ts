@@ -3227,6 +3227,8 @@ export default {
     eventRunFailed: 'Run 失败',
     eventRunCancelled: 'Run 取消',
     eventGraphTaskStatus: 'Graph 任务状态',
+    eventOpportunityCreated: '商机创建（NovaTrade 情报）',
+    eventThemeDigest: '主题摘要（NovaTrade 情报）',
     btnCancel: '取消',
     btnSave: '保存',
     notifyRequired: '名称和 URL 为必填',

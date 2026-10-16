@@ -13,8 +13,9 @@
           <q-item-label>{{ o.Title }} · {{ o.Audience }} · {{ o.Status }}</q-item-label>
           <q-item-label caption>{{ o.Summary }}</q-item-label>
         </q-item-section>
-        <q-item-section side>
+        <q-item-section side class="row q-gutter-xs">
           <q-btn flat dense label="确认" @click="ack(o.ID)" />
+          <q-btn flat dense color="secondary" label="寻源" :to="{ name: 'sourcing', query: { opportunity_id: o.ID, title: o.Title } }" />
         </q-item-section>
       </q-item>
     </q-list>

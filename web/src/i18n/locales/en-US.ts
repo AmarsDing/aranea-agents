@@ -4668,6 +4668,8 @@ export default {
     eventRunFailed: 'Run Failed',
     eventRunCancelled: 'Run Cancelled',
     eventGraphTaskStatus: 'Graph Task Status',
+    eventOpportunityCreated: 'Opportunity Created (NovaTrade intel)',
+    eventThemeDigest: 'Theme Digest (NovaTrade intel)',
     btnCancel: 'Cancel',
     btnSave: 'Save',
     notifyRequired: 'Name and URL are required',

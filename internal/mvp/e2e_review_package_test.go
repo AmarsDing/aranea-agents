@@ -78,4 +78,3 @@ func TestSmokeReviewApproveCreatesPackageViaHTTPFlow(t *testing.T) {
 		t.Fatalf("want packaged got %s", got.Status)
 	}
 }
-

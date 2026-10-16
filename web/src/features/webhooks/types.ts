@@ -5,6 +5,8 @@ export const WEBHOOK_EVENT_TYPES = [
   { value: 'run.failed', labelKey: 'webhooksPage.eventRunFailed' },
   { value: 'run.cancelled', labelKey: 'webhooksPage.eventRunCancelled' },
   { value: 'graph.task.status', labelKey: 'webhooksPage.eventGraphTaskStatus' },
+  { value: 'opportunity.created', labelKey: 'webhooksPage.eventOpportunityCreated' },
+  { value: 'theme.digest', labelKey: 'webhooksPage.eventThemeDigest' },
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number]['value'];

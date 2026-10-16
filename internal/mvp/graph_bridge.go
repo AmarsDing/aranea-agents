@@ -64,12 +64,12 @@ func AfterReviewDecision(task review.Task) error {
 	}
 	decision := task.Status
 	resumeValue := map[string]any{
-		"review_task_id":    task.ID,
-		"review_decision":   decision,
-		"review_note":       task.DecisionNote,
-		"reviewer_id":       task.ReviewerID,
-		"content_item_id":   task.ContentItemID,
-		"graph_node_id":     task.GraphNodeID,
+		"review_task_id":  task.ID,
+		"review_decision": decision,
+		"review_note":     task.DecisionNote,
+		"reviewer_id":     task.ReviewerID,
+		"content_item_id": task.ContentItemID,
+		"graph_node_id":   task.GraphNodeID,
 	}
 	var firstErr error
 	if task.GraphTaskID != "" && rt.GraphTaskComplete != nil {
