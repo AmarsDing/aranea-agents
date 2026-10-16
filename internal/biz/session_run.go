@@ -17,9 +17,9 @@ const (
 	// These are kept only for DB string comparisons where a typed constant
 	// would require an explicit string() cast. New code must use PhaseXxx.
 	//
-	// NOTE(SES-03): Usecase ListByPhase takes SessionRunPhase; repo CRUD still
-	// uses string for DB columns (legacy SessionRunPhase* string aliases remain
-	// for those call sites). Full repo-param typing is deferred.
+	// NOTE(SES-03 residual): Usecase ListByPhase is typed SessionRunPhase;
+	// SessionRunReader.ListByPhase still takes string at the DB boundary
+	// (NormalizeSessionRunPhase). Full repo-param typing deferred intentionally.
 	SessionRunPhaseInteractive = string(PhaseInteractive)
 	SessionRunPhaseDurable     = string(PhaseDurable)
 	SessionRunPhaseCompleted   = string(PhaseCompleted)
