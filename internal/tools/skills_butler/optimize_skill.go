@@ -35,7 +35,7 @@ func newOptimizeSkillTool(deps Deps) trpctool.Tool {
 		if input.SkillName == "" {
 			return optimizeSkillOutput{}, ErrSkillNameRequired
 		}
-		since := time.Now().AddDate(0, 0, -30)
+		since := time.Now().AddDate(0, 0, -statsWindowDays)
 		stats, err := deps.Queries.GetSkillInvocationStats(ctx, input.AgentID, since)
 		if err != nil {
 			return optimizeSkillOutput{}, err
@@ -59,36 +59,36 @@ func newOptimizeSkillTool(deps Deps) trpctool.Tool {
 				}},
 			}, nil
 		}
-		health := assessHealth(*target, 4.29)
+		health := assessHealth(*target, weeksPerMonth)
 		var suggestions []optimizationSuggestion
-		if target.SuccessRate < 0.6 {
+		if target.SuccessRate < successRateCriticalThreshold {
 			suggestions = append(suggestions, optimizationSuggestion{
 				Category:    "reliability",
 				Description: fmt.Sprintf("成功率仅 %.0f%%，建议检查 Skill 实现逻辑或调整工具参数", target.SuccessRate*100),
 				Priority:    "high",
 			})
-		} else if target.SuccessRate < 0.8 {
+		} else if target.SuccessRate < successRateHealthyThreshold {
 			suggestions = append(suggestions, optimizationSuggestion{
 				Category:    "reliability",
 				Description: fmt.Sprintf("成功率 %.0f%%，存在优化空间，建议增加错误处理和重试逻辑", target.SuccessRate*100),
 				Priority:    "medium",
 			})
 		}
-		if target.AvgDurationMs > 5000 {
+		if target.AvgDurationMs > avgDurationSlowMs {
 			suggestions = append(suggestions, optimizationSuggestion{
 				Category:    "performance",
 				Description: fmt.Sprintf("平均耗时 %dms，建议优化执行路径或引入缓存", target.AvgDurationMs),
 				Priority:    "medium",
 			})
-		} else if target.AvgDurationMs > 2000 {
+		} else if target.AvgDurationMs > avgDurationImproveMs {
 			suggestions = append(suggestions, optimizationSuggestion{
 				Category:    "performance",
 				Description: fmt.Sprintf("平均耗时 %dms，可考虑异步化或减少不必要的步骤", target.AvgDurationMs),
 				Priority:    "low",
 			})
 		}
-		callsPerWeek := float64(target.Count) / 4.29
-		if callsPerWeek < 2 {
+		callsPerWeek := float64(target.Count) / weeksPerMonth
+		if callsPerWeek < callsPerWeekLowThreshold {
 			suggestions = append(suggestions, optimizationSuggestion{
 				Category:    "usage",
 				Description: fmt.Sprintf("周均调用 %.1f 次，使用率极低，建议评估是否需要保留", callsPerWeek),

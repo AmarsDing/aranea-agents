@@ -2,14 +2,15 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { i18n } from '../../i18n';
 import { useSkillEvolutionStore } from '../../stores/skillEvolution';
 import { useAuthStore } from '../../stores/auth';
+import { listSkills } from '../skills/api';
 import type { SkillEvolutionView, EvolutionTargetType } from '../skills/types';
 
 export const statusOptions = [
-  { label: '全部', value: '' },
-  { label: '待审批', value: 'pending' },
-  { label: '已批准', value: 'approved' },
-  { label: '已拒绝', value: 'rejected' },
-  { label: '已应用', value: 'applied' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusAll'), value: '' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusPending'), value: 'pending' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusApproved'), value: 'approved' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusRejected'), value: 'rejected' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusApplied'), value: 'applied' },
   { label: i18n.global.t('evolutionSuggestionsPage.statusRegistered'), value: 'registered' },
   { label: i18n.global.t('evolutionSuggestionsPage.statusExpired'), value: 'expired' },
 ];
@@ -31,7 +32,31 @@ export function useEvolutionSuggestionListPage() {
   const page = ref(1);
   const pageSize = ref(20);
 
-  const rows = computed(() => store.suggestions);
+  // W8：后端建议消息不携带 skill_name，这里一次性拉取技能清单建立
+  // targetId → 名称 映射（直接调 API，避免污染 skills store 的列表分页状态）。
+  // 映射失败仅回退显示原始 ID，不阻断列表。
+  const skillNameByKey = ref<Map<string, string>>(new Map());
+
+  async function loadSkillNameMap() {
+    try {
+      const resp = await listSkills({ page: 1, page_size: 200 });
+      const map = new Map<string, string>();
+      for (const sk of resp.items ?? []) {
+        if (sk.id) map.set(sk.id, sk.name || sk.id);
+        if (sk.name && sk.name !== sk.id) map.set(sk.name, sk.name);
+      }
+      skillNameByKey.value = map;
+    } catch (err) {
+      console.warn('[skillEvolution] failed to load skill name map, falling back to raw IDs', err);
+    }
+  }
+
+  function resolveTargetName(s: SkillEvolutionView): string {
+    if (s.targetType === 'agent') return s.targetId;
+    return skillNameByKey.value.get(s.targetId) || s.targetName;
+  }
+
+  const rows = computed(() => store.suggestions.map((s) => ({ ...s, targetName: resolveTargetName(s) })));
   const total = computed(() => store.total);
   const loading = computed(() => store.loading);
   const error = computed(() => store.error ?? '');
@@ -166,6 +191,7 @@ export function useEvolutionSuggestionListPage() {
   });
 
   onMounted(() => {
+    void loadSkillNameMap();
     void loadRows();
   });
 

@@ -24,7 +24,8 @@
                 </q-chip>
               </div>
               <div class="col-6">
-                <span class="text-weight-medium text-grey-7">目标 ID：</span>{{ suggestion.targetId || '—' }}
+                <span class="text-weight-medium text-grey-7">目标 ID：</span
+                >{{ suggestion.targetName || suggestion.targetId || '—' }}
               </div>
               <div class="col-6">
                 <span class="text-weight-medium text-grey-7">操作类型：</span>
@@ -80,7 +81,11 @@
               class="evolution-detail-section"
             >
               <div class="q-pa-sm">
-                <JsonCodeViewer :text="formatJson(suggestion.sandboxResult)" :show-toolbar="false" scroll-height="240px" />
+                <JsonCodeViewer
+                  :text="formatJson(suggestion.sandboxResult)"
+                  :show-toolbar="false"
+                  scroll-height="240px"
+                />
               </div>
             </q-expansion-item>
           </template>

@@ -407,6 +407,41 @@ func (_u *SkillInvocationUpdate) ClearAnalyzedAt() *SkillInvocationUpdate {
 	return _u
 }
 
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (_u *SkillInvocationUpdate) SetAnalysisAttempts(v int) *SkillInvocationUpdate {
+	_u.mutation.ResetAnalysisAttempts()
+	_u.mutation.SetAnalysisAttempts(v)
+	return _u
+}
+
+// SetNillableAnalysisAttempts sets the "analysis_attempts" field if the given value is not nil.
+func (_u *SkillInvocationUpdate) SetNillableAnalysisAttempts(v *int) *SkillInvocationUpdate {
+	if v != nil {
+		_u.SetAnalysisAttempts(*v)
+	}
+	return _u
+}
+
+// AddAnalysisAttempts adds value to the "analysis_attempts" field.
+func (_u *SkillInvocationUpdate) AddAnalysisAttempts(v int) *SkillInvocationUpdate {
+	_u.mutation.AddAnalysisAttempts(v)
+	return _u
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (_u *SkillInvocationUpdate) SetAnalysisError(v string) *SkillInvocationUpdate {
+	_u.mutation.SetAnalysisError(v)
+	return _u
+}
+
+// SetNillableAnalysisError sets the "analysis_error" field if the given value is not nil.
+func (_u *SkillInvocationUpdate) SetNillableAnalysisError(v *string) *SkillInvocationUpdate {
+	if v != nil {
+		_u.SetAnalysisError(*v)
+	}
+	return _u
+}
+
 // SetRoutedSlugs sets the "routed_slugs" field.
 func (_u *SkillInvocationUpdate) SetRoutedSlugs(v []string) *SkillInvocationUpdate {
 	_u.mutation.SetRoutedSlugs(v)
@@ -616,6 +651,15 @@ func (_u *SkillInvocationUpdate) sqlSave(ctx context.Context) (_node int, err er
 	}
 	if _u.mutation.AnalyzedAtCleared() {
 		_spec.ClearField(skillinvocation.FieldAnalyzedAt, field.TypeString)
+	}
+	if value, ok := _u.mutation.AnalysisAttempts(); ok {
+		_spec.SetField(skillinvocation.FieldAnalysisAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAnalysisAttempts(); ok {
+		_spec.AddField(skillinvocation.FieldAnalysisAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AnalysisError(); ok {
+		_spec.SetField(skillinvocation.FieldAnalysisError, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RoutedSlugs(); ok {
 		_spec.SetField(skillinvocation.FieldRoutedSlugs, field.TypeJSON, value)
@@ -1033,6 +1077,41 @@ func (_u *SkillInvocationUpdateOne) ClearAnalyzedAt() *SkillInvocationUpdateOne 
 	return _u
 }
 
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (_u *SkillInvocationUpdateOne) SetAnalysisAttempts(v int) *SkillInvocationUpdateOne {
+	_u.mutation.ResetAnalysisAttempts()
+	_u.mutation.SetAnalysisAttempts(v)
+	return _u
+}
+
+// SetNillableAnalysisAttempts sets the "analysis_attempts" field if the given value is not nil.
+func (_u *SkillInvocationUpdateOne) SetNillableAnalysisAttempts(v *int) *SkillInvocationUpdateOne {
+	if v != nil {
+		_u.SetAnalysisAttempts(*v)
+	}
+	return _u
+}
+
+// AddAnalysisAttempts adds value to the "analysis_attempts" field.
+func (_u *SkillInvocationUpdateOne) AddAnalysisAttempts(v int) *SkillInvocationUpdateOne {
+	_u.mutation.AddAnalysisAttempts(v)
+	return _u
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (_u *SkillInvocationUpdateOne) SetAnalysisError(v string) *SkillInvocationUpdateOne {
+	_u.mutation.SetAnalysisError(v)
+	return _u
+}
+
+// SetNillableAnalysisError sets the "analysis_error" field if the given value is not nil.
+func (_u *SkillInvocationUpdateOne) SetNillableAnalysisError(v *string) *SkillInvocationUpdateOne {
+	if v != nil {
+		_u.SetAnalysisError(*v)
+	}
+	return _u
+}
+
 // SetRoutedSlugs sets the "routed_slugs" field.
 func (_u *SkillInvocationUpdateOne) SetRoutedSlugs(v []string) *SkillInvocationUpdateOne {
 	_u.mutation.SetRoutedSlugs(v)
@@ -1272,6 +1351,15 @@ func (_u *SkillInvocationUpdateOne) sqlSave(ctx context.Context) (_node *SkillIn
 	}
 	if _u.mutation.AnalyzedAtCleared() {
 		_spec.ClearField(skillinvocation.FieldAnalyzedAt, field.TypeString)
+	}
+	if value, ok := _u.mutation.AnalysisAttempts(); ok {
+		_spec.SetField(skillinvocation.FieldAnalysisAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAnalysisAttempts(); ok {
+		_spec.AddField(skillinvocation.FieldAnalysisAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AnalysisError(); ok {
+		_spec.SetField(skillinvocation.FieldAnalysisError, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RoutedSlugs(); ok {
 		_spec.SetField(skillinvocation.FieldRoutedSlugs, field.TypeJSON, value)

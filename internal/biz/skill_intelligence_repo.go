@@ -99,4 +99,8 @@ type SkillInvocationUnanalyzedReader interface {
 	ListUnanalyzed(ctx context.Context, batchSize int) ([]SkillInvocationWrite, error)
 	// MarkAnalyzed sets the analyzed_at timestamp for a skill invocation.
 	MarkAnalyzed(ctx context.Context, id string) error
+	// RecordAnalysisFailure 审计 W5②：记录一次报告生成失败（attempts 自增 +
+	// 最近错误落库）。attempts 达上限的行被 ListUnanalyzed 死信隔离，根治
+	// 永久失败毒行的每轮重扫与队头阻塞。
+	RecordAnalysisFailure(ctx context.Context, activationID, errMsg string) error
 }

@@ -3185,6 +3185,8 @@ var (
 		{Name: "token_usage", Type: field.TypeJSON, Nullable: true},
 		{Name: "deleted_at", Type: field.TypeString, Nullable: true, Default: ""},
 		{Name: "analyzed_at", Type: field.TypeString, Nullable: true, Default: ""},
+		{Name: "analysis_attempts", Type: field.TypeInt, Default: 0},
+		{Name: "analysis_error", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "routed_slugs", Type: field.TypeJSON, Nullable: true},
 		{Name: "loaded_slug", Type: field.TypeString, Nullable: true, Size: 256, Default: ""},
 	}

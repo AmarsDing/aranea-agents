@@ -90,7 +90,16 @@ func (x agentExtractor) ExtractEdges(ctx context.Context, src SourceRepo) ([]Edg
 			})
 		}
 		if pol, ok := policyByAgent[r.ID]; ok {
-			rp := skill.ParseRuntimePolicy(pol.SkillRuntimeJSON)
+			// 审计 T1：解析失败不再静默重置为默认 policy——按 extractor 降级
+			// 惯例发一条 extract_error broken 边，使损坏行在图中可见。
+			rp, parseErr := skill.ParseRuntimePolicyE(pol.SkillRuntimeJSON)
+			if parseErr != nil {
+				edges = append(edges, extractErrorEdge(
+					NodeTypeAgent, r.ID, EdgeTypeAllowsSkill, r.WorkspaceID,
+					"agent_runtime_settings", "skill_runtime_json", "skill_runtime_json", parseErr,
+				))
+				continue
+			}
 			for _, slug := range rp.AllowedSlugs {
 				slug = strings.TrimSpace(slug)
 				if slug == "" {

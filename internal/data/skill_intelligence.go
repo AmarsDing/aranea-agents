@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -141,31 +141,54 @@ func (r *SkillIntelligenceRepo) ListFiltered(ctx context.Context, skillID string
 
 // ── ExperienceReportStatsReader ────────────────────────────────────────────────
 
+// GetFailureTagCountsFiltered 审计 T8：失败标签聚类从「全行拉取 + Go 内存
+// 计数」下沉为方言感知 SQL 数组展开 + GROUP BY——失败行随时间无界增长，
+// 内存聚合会持续退化。谓词与 buildExperienceReportPredicates 语义等价；
+// NULL/空数组行经 json_each / json_array_elements_text 展开后为零元素，
+// 行为与原 Go 循环一致。
 func (r *SkillIntelligenceRepo) GetFailureTagCountsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time) ([]biz.FailureTagCount, error) {
-	preds := buildExperienceReportPredicates(skillID, startTime, endTime)
-	preds = append(preds, experiencereport.IsSuccessEQ(false))
+	conds := []string{"is_success = false"}
+	var args []any
+	if skillID != "" {
+		conds = append(conds, "skill_id = ?")
+		args = append(args, skillID)
+	}
+	if startTime != nil {
+		conds = append(conds, "created_at >= ?")
+		args = append(args, startTime.UTC().Format(time.RFC3339))
+	}
+	if endTime != nil {
+		conds = append(conds, "created_at <= ?")
+		args = append(args, endTime.UTC().Format(time.RFC3339))
+	}
+	return r.queryFailureTagCounts(ctx, conds, args)
+}
 
-	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
-		Where(preds...).
-		All(ctx)
+// queryFailureTagCounts 执行失败标签 SQL 聚合（T8 两入口共用）：JSON 数组
+// 展开（dialect.JSONEach）后按 tag GROUP BY，ORDER BY count desc + tag 升序
+// 保证确定性排序。无命中时返回空的非 nil 切片（与原实现一致）。
+func (r *SkillIntelligenceRepo) queryFailureTagCounts(ctx context.Context, conds []string, args []any) ([]biz.FailureTagCount, error) {
+	d := r.data.Dialect()
+	query := fmt.Sprintf(
+		`SELECT value AS tag, COUNT(*) AS cnt FROM %s, %s WHERE %s GROUP BY value ORDER BY cnt DESC, value ASC`,
+		experiencereport.Table, d.JSONEach(experiencereport.FieldFailureTags), strings.Join(conds, " AND "))
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, d.RenumberPlaceholders(query), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
+	defer rows.Close()
 
-	tagCountMap := make(map[string]int)
-	for _, row := range rows {
-		for _, tag := range row.FailureTags {
-			tagCountMap[tag]++
+	result := make([]biz.FailureTagCount, 0, 8)
+	for rows.Next() {
+		var fc biz.FailureTagCount
+		if err := rows.Scan(&fc.Tag, &fc.Count); err != nil {
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
+		result = append(result, fc)
 	}
-
-	result := make([]biz.FailureTagCount, 0, len(tagCountMap))
-	for tag, count := range tagCountMap {
-		result = append(result, biz.FailureTagCount{Tag: tag, Count: count})
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Count > result[j].Count
-	})
 	return result, nil
 }
 
@@ -268,6 +291,24 @@ func (r *SkillIntelligenceRepo) reportToCreateBuilder(ctx context.Context, repor
 }
 
 func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.ExperienceReport) error {
+	// 审计 W5① 幂等：invocation_id 仅普通索引无唯一约束，MarkAnalyzed 失败
+	// 后下轮扫描会对同一激活重复生成报告。写前按 invocation_id 存在性检查，
+	// 已存在即跳过（空 invocation_id 不参与去重——非激活来源无法用此键判重）。
+	if report.InvocationID != "" {
+		exists, err := r.data.RW().Read(ctx).ExperienceReport.Query().
+			Where(experiencereport.InvocationIDEQ(report.InvocationID)).
+			Exist(ctx)
+		if err != nil {
+			return entErrToBizErr(err, "SKILL_INTELLIGENCE")
+		}
+		if exists {
+			r.lg.Info("experience report already exists for invocation, idempotent skip",
+				loggateway.StepID("skill_intelligence.create"),
+				loggateway.Str("invocation_id", report.InvocationID),
+				loggateway.Str("skill_id", report.SkillID))
+			return nil
+		}
+	}
 	builder, err := r.reportToCreateBuilder(ctx, report)
 	if err != nil {
 		return err
@@ -298,13 +339,16 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 	sinceStr := since.UTC().Format(time.RFC3339)
 
 	// Main aggregation query — computes count, success_count, avg_duration, avg_token_usage in SQL.
+	// 审计 W1 统计口径：invocation_count / 成功率分母只计已完成执行
+	// （排除 outcome=partial/cancelled 的取消、门禁拒绝、中途记录等非终态中断）；
+	// legacy outcome='' 行保留计数（由 success_count 侧的 status 分支判成败）。
 	d := r.data.Dialect()
 	tokenUsageTotal := d.JSONExtractNumeric("token_usage", "total")
 	aggQuery := d.RenumberPlaceholders(`SELECT
-  COUNT(*) as invocation_count,
+  COALESCE(SUM(CASE WHEN outcome NOT IN ('partial', 'cancelled') THEN 1 ELSE 0 END), 0) as invocation_count,
   COALESCE(SUM(CASE WHEN outcome = 'success' OR (outcome = '' AND (status = 'completed' OR status = 'success')) THEN 1 ELSE 0 END), 0) as success_count,
-  AVG(CASE WHEN duration_ms > 0 THEN duration_ms END) as avg_duration_ms,
-  COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN ` + tokenUsageTotal + ` END), 0) as avg_token_usage
+  AVG(CASE WHEN outcome NOT IN ('partial', 'cancelled') AND duration_ms > 0 THEN duration_ms END) as avg_duration_ms,
+  COALESCE(AVG(CASE WHEN outcome NOT IN ('partial', 'cancelled') AND token_usage IS NOT NULL THEN ` + tokenUsageTotal + ` END), 0) as avg_token_usage
 FROM skill_invocation
 WHERE skill_id = ? AND created_at >= ? AND source = 'runtime'`)
 
@@ -431,7 +475,9 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
 	d := r.data.Dialect()
 
 	// Count total failures. 与 GetHealthMetrics 口径一致：只统计真实运行时调用。
-	failCountQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND source = 'runtime' AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`)
+	// 审计 W1：partial/cancelled（取消、门禁拒绝、中途记录）不计失败——
+	// 它们不代表技能执行失败，纳入会虚增失败率并误触发失败推动化。
+	failCountQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND source = 'runtime' AND outcome != 'success' AND outcome NOT IN ('partial', 'cancelled') AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`)
 	var failureCount int
 	fRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, failCountQuery, skillID, sinceStr)
 	if err != nil {
@@ -452,7 +498,7 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
   COALESCE(error_code, 'unknown') as error_code,
   COUNT(*) as count
 FROM skill_invocation
-WHERE skill_id = ? AND created_at >= ? AND source = 'runtime' AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))
+WHERE skill_id = ? AND created_at >= ? AND source = 'runtime' AND outcome != 'success' AND outcome NOT IN ('partial', 'cancelled') AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))
 GROUP BY error_code
 ORDER BY count DESC
 LIMIT 5`)
@@ -484,34 +530,11 @@ LIMIT 5`)
 
 // GetFailureTagCounts returns failure tag counts for a skill over the given
 // time window by querying experience reports.
+// 审计 T8：与 GetFailureTagCountsFiltered 同口径下沉 SQL（见 queryFailureTagCounts）。
 func (r *SkillIntelligenceRepo) GetFailureTagCounts(ctx context.Context, skillID string, since time.Time) ([]biz.FailureTagCount, error) {
-	sinceStr := since.UTC().Format(time.RFC3339)
-	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
-		Where(
-			experiencereport.SkillIDEQ(skillID),
-			experiencereport.CreatedAtGTE(sinceStr),
-			experiencereport.IsSuccessEQ(false),
-		).
-		All(ctx)
-	if err != nil {
-		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
-	}
-
-	tagCountMap := make(map[string]int)
-	for _, row := range rows {
-		for _, tag := range row.FailureTags {
-			tagCountMap[tag]++
-		}
-	}
-
-	result := make([]biz.FailureTagCount, 0, len(tagCountMap))
-	for tag, count := range tagCountMap {
-		result = append(result, biz.FailureTagCount{Tag: tag, Count: count})
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Count > result[j].Count
-	})
-	return result, nil
+	conds := []string{"skill_id = ?", "created_at >= ?", "is_success = false"}
+	args := []any{skillID, since.UTC().Format(time.RFC3339)}
+	return r.queryFailureTagCounts(ctx, conds, args)
 }
 
 // ── Mapping helpers ───────────────────────────────────────────────────────────
@@ -559,6 +582,16 @@ func mapEntReports(rows []*ent.ExperienceReport) []biz.ExperienceReport {
 
 // ── SkillInvocationUnanalyzedReader ───────────────────────────────────────────
 
+// maxSkillAnalysisAttempts 审计 W5②：报告分析失败重试上限。GenerateReport 失败
+// 时 RecordAnalysisFailure 自增 analysis_attempts；达到上限的行被下方谓词排除
+// （死信隔离，analysis_error 保留最近错误供排查后经 SQL 清零复活），根治毒行
+// 「按 created_at ASC 每轮重扫 + 积压满批次后队头阻塞」。15min 一轮 = 最多再
+// 试约 1.25 小时，对瞬时故障足够宽容。
+const maxSkillAnalysisAttempts = 5
+
+// analysisErrorMaxLen 落库的最近错误最大长度（防超长错误链路占行宽）。
+const analysisErrorMaxLen = 500
+
 func (r *SkillIntelligenceRepo) ListUnanalyzed(ctx context.Context, batchSize int) ([]biz.SkillInvocationWrite, error) {
 	if batchSize <= 0 {
 		batchSize = 100
@@ -567,6 +600,11 @@ func (r *SkillIntelligenceRepo) ListUnanalyzed(ctx context.Context, batchSize in
 		Where(
 			skillinvocation.AnalyzedAtEQ(""),
 			skillinvocation.OutcomeNEQ(""),
+			// 审计 W1：partial/cancelled 是非终态中断，不是成败信号，
+			// 不生成经验报告（否则取消会被归因 unknown，污染报告统计）。
+			skillinvocation.OutcomeNotIn("partial", "cancelled"),
+			// 审计 W5②：死信隔离——失败次数达上限的毒行不再进入批次。
+			skillinvocation.AnalysisAttemptsLT(maxSkillAnalysisAttempts),
 		).
 		Order(ent.Asc(skillinvocation.FieldCreatedAt)).
 		Limit(batchSize).
@@ -651,6 +689,29 @@ func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID s
 	n, err := r.data.RW().Write(ctx).SkillInvocation.Update().
 		Where(skillinvocation.ActivationIDEQ(activationID)).
 		SetAnalyzedAt(time.Now().UTC().Format(time.RFC3339)).
+		Save(ctx)
+	if err != nil {
+		return entErrToBizErr(err, "SKILL_INTELLIGENCE")
+	}
+	if n == 0 {
+		return apierror.NotFound("SKILL_INTELLIGENCE", fmt.Sprintf("skill invocation with activation_id %s not found", activationID))
+	}
+	return nil
+}
+
+// RecordAnalysisFailure 审计 W5②：记录一次报告生成失败——analysis_attempts 自增
+// 并落最近错误（截断防超长）。达到 maxSkillAnalysisAttempts 的行被 ListUnanalyzed
+// 死信隔离；行保持 analyzed_at=''，成绩状态清晰可查（attempts + analysis_error）。
+// 与 MarkAnalyzed 同款的 activation_id 定位 + n==0 NotFound 语义。
+func (r *SkillIntelligenceRepo) RecordAnalysisFailure(ctx context.Context, activationID, errMsg string) error {
+	if activationID == "" {
+		return nil
+	}
+	errMsg = truncateUTF8(errMsg, analysisErrorMaxLen)
+	n, err := r.data.RW().Write(ctx).SkillInvocation.Update().
+		Where(skillinvocation.ActivationIDEQ(activationID)).
+		AddAnalysisAttempts(1).
+		SetAnalysisError(errMsg).
 		Save(ctx)
 	if err != nil {
 		return entErrToBizErr(err, "SKILL_INTELLIGENCE")

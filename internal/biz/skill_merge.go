@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"aranea-agents/internal/biz/skill"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -111,7 +112,12 @@ func (uc *SkillMergeUsecase) SetDedupCacheInvalidator(inv DedupCacheInvalidator)
 }
 
 // Merge 执行三阶段合并
+// 审计 H1：合并把一个 skill 的正文写入另一个 skill 并归档源 skill，
+// 跨 workspace 影响，必须与 skill CRUD 同等管理员门禁（此前无任何访问控制）。
 func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (*SkillMergeResult, error) {
+	if err := skill.RequireAdminAccess(ctx); err != nil {
+		return nil, err
+	}
 	if req.SourceID == req.TargetID {
 		return nil, apierror.BadRequest("SKILL_MERGE", "source and target must be different skills")
 	}

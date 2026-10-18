@@ -1555,9 +1555,14 @@ func (e *Engine) restoreCandidateFiles(tempDir, candidateID string, cs *candidat
 	})
 	cs.files = files
 
-	// Restore body from SKILL.md.
-	if body, ok := files["SKILL.md"]; ok {
-		cs.body = string(body)
+	// Restore body from SKILL.md — case-insensitive, mirroring ValidateSkillPackage
+	// which accepts both SKILL.md and skill.md (审计 W3：小写 skill.md 的包重启后
+	// 恢复 body 为空，会以空正文通过 ApplyImport 校验并创建空正文 skill）。
+	for name, data := range files {
+		if strings.EqualFold(filepath.ToSlash(name), "SKILL.md") {
+			cs.body = string(data)
+			break
+		}
 	}
 
 	// Restore tags from _tags.json.

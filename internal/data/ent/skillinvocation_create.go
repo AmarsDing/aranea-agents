@@ -362,6 +362,34 @@ func (_c *SkillInvocationCreate) SetNillableAnalyzedAt(v *string) *SkillInvocati
 	return _c
 }
 
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (_c *SkillInvocationCreate) SetAnalysisAttempts(v int) *SkillInvocationCreate {
+	_c.mutation.SetAnalysisAttempts(v)
+	return _c
+}
+
+// SetNillableAnalysisAttempts sets the "analysis_attempts" field if the given value is not nil.
+func (_c *SkillInvocationCreate) SetNillableAnalysisAttempts(v *int) *SkillInvocationCreate {
+	if v != nil {
+		_c.SetAnalysisAttempts(*v)
+	}
+	return _c
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (_c *SkillInvocationCreate) SetAnalysisError(v string) *SkillInvocationCreate {
+	_c.mutation.SetAnalysisError(v)
+	return _c
+}
+
+// SetNillableAnalysisError sets the "analysis_error" field if the given value is not nil.
+func (_c *SkillInvocationCreate) SetNillableAnalysisError(v *string) *SkillInvocationCreate {
+	if v != nil {
+		_c.SetAnalysisError(*v)
+	}
+	return _c
+}
+
 // SetRoutedSlugs sets the "routed_slugs" field.
 func (_c *SkillInvocationCreate) SetRoutedSlugs(v []string) *SkillInvocationCreate {
 	_c.mutation.SetRoutedSlugs(v)
@@ -515,6 +543,14 @@ func (_c *SkillInvocationCreate) defaults() {
 		v := skillinvocation.DefaultAnalyzedAt
 		_c.mutation.SetAnalyzedAt(v)
 	}
+	if _, ok := _c.mutation.AnalysisAttempts(); !ok {
+		v := skillinvocation.DefaultAnalysisAttempts
+		_c.mutation.SetAnalysisAttempts(v)
+	}
+	if _, ok := _c.mutation.AnalysisError(); !ok {
+		v := skillinvocation.DefaultAnalysisError
+		_c.mutation.SetAnalysisError(v)
+	}
 	if _, ok := _c.mutation.LoadedSlug(); !ok {
 		v := skillinvocation.DefaultLoadedSlug
 		_c.mutation.SetLoadedSlug(v)
@@ -613,6 +649,12 @@ func (_c *SkillInvocationCreate) check() error {
 		if err := skillinvocation.OutcomeValidator(v); err != nil {
 			return &ValidationError{Name: "outcome", err: fmt.Errorf(`ent: validator failed for field "SkillInvocation.outcome": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.AnalysisAttempts(); !ok {
+		return &ValidationError{Name: "analysis_attempts", err: errors.New(`ent: missing required field "SkillInvocation.analysis_attempts"`)}
+	}
+	if _, ok := _c.mutation.AnalysisError(); !ok {
+		return &ValidationError{Name: "analysis_error", err: errors.New(`ent: missing required field "SkillInvocation.analysis_error"`)}
 	}
 	if v, ok := _c.mutation.LoadedSlug(); ok {
 		if err := skillinvocation.LoadedSlugValidator(v); err != nil {
@@ -763,6 +805,14 @@ func (_c *SkillInvocationCreate) createSpec() (*SkillInvocation, *sqlgraph.Creat
 	if value, ok := _c.mutation.AnalyzedAt(); ok {
 		_spec.SetField(skillinvocation.FieldAnalyzedAt, field.TypeString, value)
 		_node.AnalyzedAt = value
+	}
+	if value, ok := _c.mutation.AnalysisAttempts(); ok {
+		_spec.SetField(skillinvocation.FieldAnalysisAttempts, field.TypeInt, value)
+		_node.AnalysisAttempts = value
+	}
+	if value, ok := _c.mutation.AnalysisError(); ok {
+		_spec.SetField(skillinvocation.FieldAnalysisError, field.TypeString, value)
+		_node.AnalysisError = value
 	}
 	if value, ok := _c.mutation.RoutedSlugs(); ok {
 		_spec.SetField(skillinvocation.FieldRoutedSlugs, field.TypeJSON, value)
@@ -1163,6 +1213,36 @@ func (u *SkillInvocationUpsert) UpdateAnalyzedAt() *SkillInvocationUpsert {
 // ClearAnalyzedAt clears the value of the "analyzed_at" field.
 func (u *SkillInvocationUpsert) ClearAnalyzedAt() *SkillInvocationUpsert {
 	u.SetNull(skillinvocation.FieldAnalyzedAt)
+	return u
+}
+
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (u *SkillInvocationUpsert) SetAnalysisAttempts(v int) *SkillInvocationUpsert {
+	u.Set(skillinvocation.FieldAnalysisAttempts, v)
+	return u
+}
+
+// UpdateAnalysisAttempts sets the "analysis_attempts" field to the value that was provided on create.
+func (u *SkillInvocationUpsert) UpdateAnalysisAttempts() *SkillInvocationUpsert {
+	u.SetExcluded(skillinvocation.FieldAnalysisAttempts)
+	return u
+}
+
+// AddAnalysisAttempts adds v to the "analysis_attempts" field.
+func (u *SkillInvocationUpsert) AddAnalysisAttempts(v int) *SkillInvocationUpsert {
+	u.Add(skillinvocation.FieldAnalysisAttempts, v)
+	return u
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (u *SkillInvocationUpsert) SetAnalysisError(v string) *SkillInvocationUpsert {
+	u.Set(skillinvocation.FieldAnalysisError, v)
+	return u
+}
+
+// UpdateAnalysisError sets the "analysis_error" field to the value that was provided on create.
+func (u *SkillInvocationUpsert) UpdateAnalysisError() *SkillInvocationUpsert {
+	u.SetExcluded(skillinvocation.FieldAnalysisError)
 	return u
 }
 
@@ -1646,6 +1726,41 @@ func (u *SkillInvocationUpsertOne) UpdateAnalyzedAt() *SkillInvocationUpsertOne 
 func (u *SkillInvocationUpsertOne) ClearAnalyzedAt() *SkillInvocationUpsertOne {
 	return u.Update(func(s *SkillInvocationUpsert) {
 		s.ClearAnalyzedAt()
+	})
+}
+
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (u *SkillInvocationUpsertOne) SetAnalysisAttempts(v int) *SkillInvocationUpsertOne {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.SetAnalysisAttempts(v)
+	})
+}
+
+// AddAnalysisAttempts adds v to the "analysis_attempts" field.
+func (u *SkillInvocationUpsertOne) AddAnalysisAttempts(v int) *SkillInvocationUpsertOne {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.AddAnalysisAttempts(v)
+	})
+}
+
+// UpdateAnalysisAttempts sets the "analysis_attempts" field to the value that was provided on create.
+func (u *SkillInvocationUpsertOne) UpdateAnalysisAttempts() *SkillInvocationUpsertOne {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.UpdateAnalysisAttempts()
+	})
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (u *SkillInvocationUpsertOne) SetAnalysisError(v string) *SkillInvocationUpsertOne {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.SetAnalysisError(v)
+	})
+}
+
+// UpdateAnalysisError sets the "analysis_error" field to the value that was provided on create.
+func (u *SkillInvocationUpsertOne) UpdateAnalysisError() *SkillInvocationUpsertOne {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.UpdateAnalysisError()
 	})
 }
 
@@ -2302,6 +2417,41 @@ func (u *SkillInvocationUpsertBulk) UpdateAnalyzedAt() *SkillInvocationUpsertBul
 func (u *SkillInvocationUpsertBulk) ClearAnalyzedAt() *SkillInvocationUpsertBulk {
 	return u.Update(func(s *SkillInvocationUpsert) {
 		s.ClearAnalyzedAt()
+	})
+}
+
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (u *SkillInvocationUpsertBulk) SetAnalysisAttempts(v int) *SkillInvocationUpsertBulk {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.SetAnalysisAttempts(v)
+	})
+}
+
+// AddAnalysisAttempts adds v to the "analysis_attempts" field.
+func (u *SkillInvocationUpsertBulk) AddAnalysisAttempts(v int) *SkillInvocationUpsertBulk {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.AddAnalysisAttempts(v)
+	})
+}
+
+// UpdateAnalysisAttempts sets the "analysis_attempts" field to the value that was provided on create.
+func (u *SkillInvocationUpsertBulk) UpdateAnalysisAttempts() *SkillInvocationUpsertBulk {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.UpdateAnalysisAttempts()
+	})
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (u *SkillInvocationUpsertBulk) SetAnalysisError(v string) *SkillInvocationUpsertBulk {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.SetAnalysisError(v)
+	})
+}
+
+// UpdateAnalysisError sets the "analysis_error" field to the value that was provided on create.
+func (u *SkillInvocationUpsertBulk) UpdateAnalysisError() *SkillInvocationUpsertBulk {
+	return u.Update(func(s *SkillInvocationUpsert) {
+		s.UpdateAnalysisError()
 	})
 }
 

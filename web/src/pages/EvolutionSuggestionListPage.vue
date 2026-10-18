@@ -2,8 +2,8 @@
   <q-page class="app-standard-page app-registry-page evolution-suggestion-page">
     <AppPageHero
       kicker="Skill intelligence"
-      title="进化建议"
-      subtitle="审批或拒绝由技能管家和 Agent 进化系统生成的进化建议，查看沙箱验证结果与触发原因。"
+      :title="$t('evolutionSuggestionsPage.pageTitle')"
+      :subtitle="$t('evolutionSuggestionsPage.pageSubtitle')"
     >
       <template #actions>
         <q-btn
@@ -12,7 +12,7 @@
           rounded
           no-caps
           icon="auto_fix_high"
-          label="触发 Curator"
+          :label="$t('evolutionSuggestionsPage.triggerCurator')"
           :loading="triggeringCurator"
           @click="handleTriggerCurator(targetId)"
         />
@@ -46,28 +46,53 @@
         outlined
         emit-value
         map-options
-        label="状态"
+        :label="$t('evolutionSuggestionsPage.filterStatus')"
         :options="statusOptions"
       />
       <template #actions>
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="restart_alt"
+          :label="$t('evolutionSuggestionsPage.reset')"
+          @click="resetFilters"
+        />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="$t('evolutionSuggestionsPage.refresh')"
+          :loading="loading"
+          @click="loadRows"
+        />
       </template>
     </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
+        <q-btn flat dense :label="$t('evolutionSuggestionsPage.retry')" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
     <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="auto_fix_high" />
-        <div class="text-h6 q-mt-md">{{ targetId || status ? '没有匹配的进化建议' : '暂无进化建议' }}</div>
+        <div class="text-h6 q-mt-md">
+          {{
+            targetId || status
+              ? $t('evolutionSuggestionsPage.emptyFiltered')
+              : $t('evolutionSuggestionsPage.emptyDefault')
+          }}
+        </div>
         <div class="text-body2 text-grey-7 q-mt-sm">
-          {{ targetId || status ? '请调整筛选条件后重试。' : '技能管家将基于使用数据自动生成进化建议，待审批后生效。' }}
+          {{
+            targetId || status
+              ? $t('evolutionSuggestionsPage.emptyFilteredHint')
+              : $t('evolutionSuggestionsPage.emptyDefaultHint')
+          }}
         </div>
       </q-card-section>
     </q-card>
@@ -95,7 +120,7 @@
               :title="props.row.targetId ?? ''"
               @click="openDetailDialog(props.row)"
             >
-              {{ props.row.targetId || '—' }}
+              {{ props.row.targetName || props.row.targetId || '—' }}
             </span>
           </q-td>
         </template>
@@ -126,10 +151,7 @@
 
         <template #body-cell-triggerReason="props">
           <q-td :props="props">
-            <span
-              class="app-registry-cell-sub ellipsis app-field-max-240"
-              :title="props.row.triggerReason ?? ''"
-            >
+            <span class="app-registry-cell-sub ellipsis app-field-max-240" :title="props.row.triggerReason ?? ''">
               {{ props.row.triggerReason || '—' }}
             </span>
           </q-td>
@@ -159,7 +181,7 @@
           <q-td :props="props">
             <div class="app-registry-cell-actions">
               <q-btn flat dense round icon="visibility" color="primary" @click="openDetailDialog(props.row)">
-                <q-tooltip>查看详情</q-tooltip>
+                <q-tooltip>{{ $t('evolutionSuggestionsPage.actionView') }}</q-tooltip>
               </q-btn>
               <template v-if="props.row.status === 'pending'">
                 <q-btn
@@ -171,10 +193,10 @@
                   :loading="approvingId === props.row.id"
                   @click="approveSuggestion(props.row)"
                 >
-                  <q-tooltip>批准</q-tooltip>
+                  <q-tooltip>{{ $t('evolutionSuggestionsPage.actionApprove') }}</q-tooltip>
                 </q-btn>
                 <q-btn flat dense round icon="close" color="negative" @click="openRejectDialog(props.row)">
-                  <q-tooltip>拒绝</q-tooltip>
+                  <q-tooltip>{{ $t('evolutionSuggestionsPage.actionReject') }}</q-tooltip>
                 </q-btn>
               </template>
             </div>
@@ -188,7 +210,7 @@
         :page-max="pageMax"
         :total="total"
         :loading="loading"
-        label="条进化建议"
+        :label="$t('evolutionSuggestionsPage.paginationUnit')"
       />
     </template>
 
@@ -205,26 +227,32 @@
     <q-dialog v-model="curatorDialogOpen" persistent>
       <q-card class="app-dialog-card app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">触发 Curator 流水线</div>
+          <div class="app-glass-dialog__title">{{ $t('evolutionSuggestionsPage.curatorDialogTitle') }}</div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
             <div class="text-body2">
-              为指定 Skill 运行完整的 Curator Agent 进化流水线：触发检测 → 草稿生成 → 沙箱验证。
+              {{ $t('evolutionSuggestionsPage.curatorDialogDesc') }}
             </div>
-            <q-input v-model="curatorSkillId" dense outlined label="Skill ID" placeholder="输入要触发进化的 Skill ID" />
+            <q-input
+              v-model="curatorSkillId"
+              dense
+              outlined
+              label="Skill ID"
+              :placeholder="$t('evolutionSuggestionsPage.curatorSkillIdPlaceholder')"
+            />
           </q-card-section>
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn v-close-popup flat no-caps label="取消" />
+          <q-btn v-close-popup flat no-caps :label="$t('evolutionSuggestionsPage.cancel')" />
           <q-btn
             color="primary"
             unelevated
             no-caps
-            label="触发"
+            :label="$t('evolutionSuggestionsPage.trigger')"
             :loading="triggeringCurator"
             :disable="!curatorSkillId.trim()"
             @click="confirmTriggerCurator"

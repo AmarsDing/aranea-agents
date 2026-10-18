@@ -69,6 +69,10 @@ type SkillInvocation struct {
 	DeletedAt string `json:"deleted_at,omitempty"`
 	// AnalyzedAt holds the value of the "analyzed_at" field.
 	AnalyzedAt string `json:"analyzed_at,omitempty"`
+	// AnalysisAttempts holds the value of the "analysis_attempts" field.
+	AnalysisAttempts int `json:"analysis_attempts,omitempty"`
+	// AnalysisError holds the value of the "analysis_error" field.
+	AnalysisError string `json:"analysis_error,omitempty"`
 	// RoutedSlugs holds the value of the "routed_slugs" field.
 	RoutedSlugs []string `json:"routed_slugs,omitempty"`
 	// LoadedSlug holds the value of the "loaded_slug" field.
@@ -83,9 +87,9 @@ func (*SkillInvocation) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case skillinvocation.FieldSelectionReason, skillinvocation.FieldTokenUsage, skillinvocation.FieldRoutedSlugs:
 			values[i] = new([]byte)
-		case skillinvocation.FieldDurationMs:
+		case skillinvocation.FieldDurationMs, skillinvocation.FieldAnalysisAttempts:
 			values[i] = new(sql.NullInt64)
-		case skillinvocation.FieldID, skillinvocation.FieldSkillID, skillinvocation.FieldAgentID, skillinvocation.FieldStatus, skillinvocation.FieldInputJSON, skillinvocation.FieldOutputJSON, skillinvocation.FieldErrorMessage, skillinvocation.FieldCreatedAt, skillinvocation.FieldUpdatedAt, skillinvocation.FieldSkillVersion, skillinvocation.FieldUserID, skillinvocation.FieldSessionID, skillinvocation.FieldStartedAt, skillinvocation.FieldEndedAt, skillinvocation.FieldInputPreview, skillinvocation.FieldInputHash, skillinvocation.FieldOutputPreview, skillinvocation.FieldErrorCode, skillinvocation.FieldSource, skillinvocation.FieldActivationID, skillinvocation.FieldMessageID, skillinvocation.FieldOutcome, skillinvocation.FieldDeletedAt, skillinvocation.FieldAnalyzedAt, skillinvocation.FieldLoadedSlug:
+		case skillinvocation.FieldID, skillinvocation.FieldSkillID, skillinvocation.FieldAgentID, skillinvocation.FieldStatus, skillinvocation.FieldInputJSON, skillinvocation.FieldOutputJSON, skillinvocation.FieldErrorMessage, skillinvocation.FieldCreatedAt, skillinvocation.FieldUpdatedAt, skillinvocation.FieldSkillVersion, skillinvocation.FieldUserID, skillinvocation.FieldSessionID, skillinvocation.FieldStartedAt, skillinvocation.FieldEndedAt, skillinvocation.FieldInputPreview, skillinvocation.FieldInputHash, skillinvocation.FieldOutputPreview, skillinvocation.FieldErrorCode, skillinvocation.FieldSource, skillinvocation.FieldActivationID, skillinvocation.FieldMessageID, skillinvocation.FieldOutcome, skillinvocation.FieldDeletedAt, skillinvocation.FieldAnalyzedAt, skillinvocation.FieldAnalysisError, skillinvocation.FieldLoadedSlug:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -268,6 +272,18 @@ func (_m *SkillInvocation) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AnalyzedAt = value.String
 			}
+		case skillinvocation.FieldAnalysisAttempts:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field analysis_attempts", values[i])
+			} else if value.Valid {
+				_m.AnalysisAttempts = int(value.Int64)
+			}
+		case skillinvocation.FieldAnalysisError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field analysis_error", values[i])
+			} else if value.Valid {
+				_m.AnalysisError = value.String
+			}
 		case skillinvocation.FieldRoutedSlugs:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field routed_slugs", values[i])
@@ -395,6 +411,12 @@ func (_m *SkillInvocation) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("analyzed_at=")
 	builder.WriteString(_m.AnalyzedAt)
+	builder.WriteString(", ")
+	builder.WriteString("analysis_attempts=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AnalysisAttempts))
+	builder.WriteString(", ")
+	builder.WriteString("analysis_error=")
+	builder.WriteString(_m.AnalysisError)
 	builder.WriteString(", ")
 	builder.WriteString("routed_slugs=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RoutedSlugs))

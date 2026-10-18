@@ -232,7 +232,7 @@ func (m *mockEvolutionStoreBridge) Create(_ context.Context, s UnifiedEvolutionS
 	if m.err != nil {
 		return m.err
 	}
-	m.suggestions = append(m.suggestions, *unifiedToLegacySuggestionPtr(&s))
+	m.suggestions = append(m.suggestions, *unifiedToLegacySuggestionPtr(loggateway.NewNoop(), &s))
 	return nil
 }
 

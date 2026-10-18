@@ -97932,43 +97932,46 @@ func (m *SkillImportJobMutation) ResetEdge(name string) error {
 // SkillInvocationMutation represents an operation that mutates the SkillInvocation nodes in the graph.
 type SkillInvocationMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *string
-	skill_id           *string
-	agent_id           *string
-	status             *string
-	input_json         *string
-	output_json        *string
-	error_message      *string
-	created_at         *string
-	updated_at         *string
-	skill_version      *string
-	user_id            *string
-	session_id         *string
-	duration_ms        *int
-	addduration_ms     *int
-	started_at         *string
-	ended_at           *string
-	input_preview      *string
-	input_hash         *string
-	output_preview     *string
-	error_code         *string
-	source             *string
-	activation_id      *string
-	message_id         *string
-	selection_reason   *map[string]interface{}
-	outcome            *string
-	token_usage        *map[string]interface{}
-	deleted_at         *string
-	analyzed_at        *string
-	routed_slugs       *[]string
-	appendrouted_slugs []string
-	loaded_slug        *string
-	clearedFields      map[string]struct{}
-	done               bool
-	oldValue           func(context.Context) (*SkillInvocation, error)
-	predicates         []predicate.SkillInvocation
+	op                   Op
+	typ                  string
+	id                   *string
+	skill_id             *string
+	agent_id             *string
+	status               *string
+	input_json           *string
+	output_json          *string
+	error_message        *string
+	created_at           *string
+	updated_at           *string
+	skill_version        *string
+	user_id              *string
+	session_id           *string
+	duration_ms          *int
+	addduration_ms       *int
+	started_at           *string
+	ended_at             *string
+	input_preview        *string
+	input_hash           *string
+	output_preview       *string
+	error_code           *string
+	source               *string
+	activation_id        *string
+	message_id           *string
+	selection_reason     *map[string]interface{}
+	outcome              *string
+	token_usage          *map[string]interface{}
+	deleted_at           *string
+	analyzed_at          *string
+	analysis_attempts    *int
+	addanalysis_attempts *int
+	analysis_error       *string
+	routed_slugs         *[]string
+	appendrouted_slugs   []string
+	loaded_slug          *string
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*SkillInvocation, error)
+	predicates           []predicate.SkillInvocation
 }
 
 var _ ent.Mutation = (*SkillInvocationMutation)(nil)
@@ -99083,6 +99086,98 @@ func (m *SkillInvocationMutation) ResetAnalyzedAt() {
 	delete(m.clearedFields, skillinvocation.FieldAnalyzedAt)
 }
 
+// SetAnalysisAttempts sets the "analysis_attempts" field.
+func (m *SkillInvocationMutation) SetAnalysisAttempts(i int) {
+	m.analysis_attempts = &i
+	m.addanalysis_attempts = nil
+}
+
+// AnalysisAttempts returns the value of the "analysis_attempts" field in the mutation.
+func (m *SkillInvocationMutation) AnalysisAttempts() (r int, exists bool) {
+	v := m.analysis_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAnalysisAttempts returns the old "analysis_attempts" field's value of the SkillInvocation entity.
+// If the SkillInvocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillInvocationMutation) OldAnalysisAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAnalysisAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAnalysisAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAnalysisAttempts: %w", err)
+	}
+	return oldValue.AnalysisAttempts, nil
+}
+
+// AddAnalysisAttempts adds i to the "analysis_attempts" field.
+func (m *SkillInvocationMutation) AddAnalysisAttempts(i int) {
+	if m.addanalysis_attempts != nil {
+		*m.addanalysis_attempts += i
+	} else {
+		m.addanalysis_attempts = &i
+	}
+}
+
+// AddedAnalysisAttempts returns the value that was added to the "analysis_attempts" field in this mutation.
+func (m *SkillInvocationMutation) AddedAnalysisAttempts() (r int, exists bool) {
+	v := m.addanalysis_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAnalysisAttempts resets all changes to the "analysis_attempts" field.
+func (m *SkillInvocationMutation) ResetAnalysisAttempts() {
+	m.analysis_attempts = nil
+	m.addanalysis_attempts = nil
+}
+
+// SetAnalysisError sets the "analysis_error" field.
+func (m *SkillInvocationMutation) SetAnalysisError(s string) {
+	m.analysis_error = &s
+}
+
+// AnalysisError returns the value of the "analysis_error" field in the mutation.
+func (m *SkillInvocationMutation) AnalysisError() (r string, exists bool) {
+	v := m.analysis_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAnalysisError returns the old "analysis_error" field's value of the SkillInvocation entity.
+// If the SkillInvocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillInvocationMutation) OldAnalysisError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAnalysisError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAnalysisError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAnalysisError: %w", err)
+	}
+	return oldValue.AnalysisError, nil
+}
+
+// ResetAnalysisError resets all changes to the "analysis_error" field.
+func (m *SkillInvocationMutation) ResetAnalysisError() {
+	m.analysis_error = nil
+}
+
 // SetRoutedSlugs sets the "routed_slugs" field.
 func (m *SkillInvocationMutation) SetRoutedSlugs(s []string) {
 	m.routed_slugs = &s
@@ -99231,7 +99326,7 @@ func (m *SkillInvocationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SkillInvocationMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 30)
 	if m.skill_id != nil {
 		fields = append(fields, skillinvocation.FieldSkillID)
 	}
@@ -99310,6 +99405,12 @@ func (m *SkillInvocationMutation) Fields() []string {
 	if m.analyzed_at != nil {
 		fields = append(fields, skillinvocation.FieldAnalyzedAt)
 	}
+	if m.analysis_attempts != nil {
+		fields = append(fields, skillinvocation.FieldAnalysisAttempts)
+	}
+	if m.analysis_error != nil {
+		fields = append(fields, skillinvocation.FieldAnalysisError)
+	}
 	if m.routed_slugs != nil {
 		fields = append(fields, skillinvocation.FieldRoutedSlugs)
 	}
@@ -99376,6 +99477,10 @@ func (m *SkillInvocationMutation) Field(name string) (ent.Value, bool) {
 		return m.DeletedAt()
 	case skillinvocation.FieldAnalyzedAt:
 		return m.AnalyzedAt()
+	case skillinvocation.FieldAnalysisAttempts:
+		return m.AnalysisAttempts()
+	case skillinvocation.FieldAnalysisError:
+		return m.AnalysisError()
 	case skillinvocation.FieldRoutedSlugs:
 		return m.RoutedSlugs()
 	case skillinvocation.FieldLoadedSlug:
@@ -99441,6 +99546,10 @@ func (m *SkillInvocationMutation) OldField(ctx context.Context, name string) (en
 		return m.OldDeletedAt(ctx)
 	case skillinvocation.FieldAnalyzedAt:
 		return m.OldAnalyzedAt(ctx)
+	case skillinvocation.FieldAnalysisAttempts:
+		return m.OldAnalysisAttempts(ctx)
+	case skillinvocation.FieldAnalysisError:
+		return m.OldAnalysisError(ctx)
 	case skillinvocation.FieldRoutedSlugs:
 		return m.OldRoutedSlugs(ctx)
 	case skillinvocation.FieldLoadedSlug:
@@ -99636,6 +99745,20 @@ func (m *SkillInvocationMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAnalyzedAt(v)
 		return nil
+	case skillinvocation.FieldAnalysisAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAnalysisAttempts(v)
+		return nil
+	case skillinvocation.FieldAnalysisError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAnalysisError(v)
+		return nil
 	case skillinvocation.FieldRoutedSlugs:
 		v, ok := value.([]string)
 		if !ok {
@@ -99661,6 +99784,9 @@ func (m *SkillInvocationMutation) AddedFields() []string {
 	if m.addduration_ms != nil {
 		fields = append(fields, skillinvocation.FieldDurationMs)
 	}
+	if m.addanalysis_attempts != nil {
+		fields = append(fields, skillinvocation.FieldAnalysisAttempts)
+	}
 	return fields
 }
 
@@ -99671,6 +99797,8 @@ func (m *SkillInvocationMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case skillinvocation.FieldDurationMs:
 		return m.AddedDurationMs()
+	case skillinvocation.FieldAnalysisAttempts:
+		return m.AddedAnalysisAttempts()
 	}
 	return nil, false
 }
@@ -99686,6 +99814,13 @@ func (m *SkillInvocationMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddDurationMs(v)
+		return nil
+	case skillinvocation.FieldAnalysisAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAnalysisAttempts(v)
 		return nil
 	}
 	return fmt.Errorf("unknown SkillInvocation numeric field %s", name)
@@ -99830,6 +99965,12 @@ func (m *SkillInvocationMutation) ResetField(name string) error {
 		return nil
 	case skillinvocation.FieldAnalyzedAt:
 		m.ResetAnalyzedAt()
+		return nil
+	case skillinvocation.FieldAnalysisAttempts:
+		m.ResetAnalysisAttempts()
+		return nil
+	case skillinvocation.FieldAnalysisError:
+		m.ResetAnalysisError()
 		return nil
 	case skillinvocation.FieldRoutedSlugs:
 		m.ResetRoutedSlugs()

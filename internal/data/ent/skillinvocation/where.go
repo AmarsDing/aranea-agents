@@ -183,6 +183,16 @@ func AnalyzedAt(v string) predicate.SkillInvocation {
 	return predicate.SkillInvocation(sql.FieldEQ(FieldAnalyzedAt, v))
 }
 
+// AnalysisAttempts applies equality check predicate on the "analysis_attempts" field. It's identical to AnalysisAttemptsEQ.
+func AnalysisAttempts(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldEQ(FieldAnalysisAttempts, v))
+}
+
+// AnalysisError applies equality check predicate on the "analysis_error" field. It's identical to AnalysisErrorEQ.
+func AnalysisError(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldEQ(FieldAnalysisError, v))
+}
+
 // LoadedSlug applies equality check predicate on the "loaded_slug" field. It's identical to LoadedSlugEQ.
 func LoadedSlug(v string) predicate.SkillInvocation {
 	return predicate.SkillInvocation(sql.FieldEQ(FieldLoadedSlug, v))
@@ -1761,6 +1771,111 @@ func AnalyzedAtEqualFold(v string) predicate.SkillInvocation {
 // AnalyzedAtContainsFold applies the ContainsFold predicate on the "analyzed_at" field.
 func AnalyzedAtContainsFold(v string) predicate.SkillInvocation {
 	return predicate.SkillInvocation(sql.FieldContainsFold(FieldAnalyzedAt, v))
+}
+
+// AnalysisAttemptsEQ applies the EQ predicate on the "analysis_attempts" field.
+func AnalysisAttemptsEQ(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldEQ(FieldAnalysisAttempts, v))
+}
+
+// AnalysisAttemptsNEQ applies the NEQ predicate on the "analysis_attempts" field.
+func AnalysisAttemptsNEQ(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldNEQ(FieldAnalysisAttempts, v))
+}
+
+// AnalysisAttemptsIn applies the In predicate on the "analysis_attempts" field.
+func AnalysisAttemptsIn(vs ...int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldIn(FieldAnalysisAttempts, vs...))
+}
+
+// AnalysisAttemptsNotIn applies the NotIn predicate on the "analysis_attempts" field.
+func AnalysisAttemptsNotIn(vs ...int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldNotIn(FieldAnalysisAttempts, vs...))
+}
+
+// AnalysisAttemptsGT applies the GT predicate on the "analysis_attempts" field.
+func AnalysisAttemptsGT(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldGT(FieldAnalysisAttempts, v))
+}
+
+// AnalysisAttemptsGTE applies the GTE predicate on the "analysis_attempts" field.
+func AnalysisAttemptsGTE(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldGTE(FieldAnalysisAttempts, v))
+}
+
+// AnalysisAttemptsLT applies the LT predicate on the "analysis_attempts" field.
+func AnalysisAttemptsLT(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldLT(FieldAnalysisAttempts, v))
+}
+
+// AnalysisAttemptsLTE applies the LTE predicate on the "analysis_attempts" field.
+func AnalysisAttemptsLTE(v int) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldLTE(FieldAnalysisAttempts, v))
+}
+
+// AnalysisErrorEQ applies the EQ predicate on the "analysis_error" field.
+func AnalysisErrorEQ(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldEQ(FieldAnalysisError, v))
+}
+
+// AnalysisErrorNEQ applies the NEQ predicate on the "analysis_error" field.
+func AnalysisErrorNEQ(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldNEQ(FieldAnalysisError, v))
+}
+
+// AnalysisErrorIn applies the In predicate on the "analysis_error" field.
+func AnalysisErrorIn(vs ...string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldIn(FieldAnalysisError, vs...))
+}
+
+// AnalysisErrorNotIn applies the NotIn predicate on the "analysis_error" field.
+func AnalysisErrorNotIn(vs ...string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldNotIn(FieldAnalysisError, vs...))
+}
+
+// AnalysisErrorGT applies the GT predicate on the "analysis_error" field.
+func AnalysisErrorGT(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldGT(FieldAnalysisError, v))
+}
+
+// AnalysisErrorGTE applies the GTE predicate on the "analysis_error" field.
+func AnalysisErrorGTE(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldGTE(FieldAnalysisError, v))
+}
+
+// AnalysisErrorLT applies the LT predicate on the "analysis_error" field.
+func AnalysisErrorLT(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldLT(FieldAnalysisError, v))
+}
+
+// AnalysisErrorLTE applies the LTE predicate on the "analysis_error" field.
+func AnalysisErrorLTE(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldLTE(FieldAnalysisError, v))
+}
+
+// AnalysisErrorContains applies the Contains predicate on the "analysis_error" field.
+func AnalysisErrorContains(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldContains(FieldAnalysisError, v))
+}
+
+// AnalysisErrorHasPrefix applies the HasPrefix predicate on the "analysis_error" field.
+func AnalysisErrorHasPrefix(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldHasPrefix(FieldAnalysisError, v))
+}
+
+// AnalysisErrorHasSuffix applies the HasSuffix predicate on the "analysis_error" field.
+func AnalysisErrorHasSuffix(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldHasSuffix(FieldAnalysisError, v))
+}
+
+// AnalysisErrorEqualFold applies the EqualFold predicate on the "analysis_error" field.
+func AnalysisErrorEqualFold(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldEqualFold(FieldAnalysisError, v))
+}
+
+// AnalysisErrorContainsFold applies the ContainsFold predicate on the "analysis_error" field.
+func AnalysisErrorContainsFold(v string) predicate.SkillInvocation {
+	return predicate.SkillInvocation(sql.FieldContainsFold(FieldAnalysisError, v))
 }
 
 // RoutedSlugsIsNil applies the IsNil predicate on the "routed_slugs" field.

@@ -54,11 +54,15 @@ func (uc *SkillReportUsecase) SetUnanalyzedReader(r SkillInvocationUnanalyzedRea
 // It uses rule-based extraction for structured fields and can optionally
 // use LLM for natural language summaries (degradable to rule-based only).
 func (uc *SkillReportUsecase) GenerateReport(ctx context.Context, inv SkillInvocationWrite) (*ExperienceReport, error) {
-	isSuccess, failureTags := uc.scorer.AnalyzeInvocation(ctx, inv)
-
-	// Compute score.
-	score := DefaultNeutralScore // default neutral
+	// 审计 T4：nil 检查必须先于任何 scorer 方法调用（ScoreSkill 会解引用
+	// uc.aggregator/uc.lg，nil 接收者直接 panic；AnalyzeInvocation 目前恰好
+	// 不触字段，但同属偶然安全）。nil scorer 为降级路径：按 outcome 推导
+	// 成败、不打失败标签、分数取中立默认。
+	isSuccess := inv.Outcome == "success"
+	var failureTags []string
+	score := DefaultNeutralScore
 	if uc.scorer != nil {
+		isSuccess, failureTags = uc.scorer.AnalyzeInvocation(ctx, inv)
 		if s, err := uc.scorer.ScoreSkill(ctx, inv.SkillID); err == nil {
 			score = s
 		}
@@ -236,6 +240,15 @@ func (uc *SkillReportUsecase) ScanAndGenerateReports(ctx context.Context) error 
 				loggateway.StepID("skill_intelligence.scan"),
 				loggateway.Str("invocation_id", inv.ActivationID),
 				loggateway.Err(genErr))
+			// 审计 W5②：失败落重试计数（attempts 自增 + 错误落库）；达上限的行
+			// 被 ListUnanalyzed 死信隔离，不再每轮重扫/挤占批次。打标失败仅
+			// Warn——下轮会重试该行（计数继续增长直至隔离）。
+			if recErr := uc.unanalyzedReader.RecordAnalysisFailure(ctx, inv.ActivationID, genErr.Error()); recErr != nil {
+				uc.lg.Warn("SkillIntelligenceWorker: RecordAnalysisFailure failed",
+					loggateway.StepID("skill_intelligence.scan"),
+					loggateway.Str("invocation_id", inv.ActivationID),
+					loggateway.Err(recErr))
+			}
 			continue
 		}
 		// Only mark as analyzed when report generation succeeded.

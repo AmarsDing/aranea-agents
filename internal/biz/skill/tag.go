@@ -87,7 +87,11 @@ func (u *Usecase) ListTags(ctx context.Context) ([]TagInfo, error) {
 }
 
 // CreateTag 预建标签（管理员治理或前端选项源兜底）。
+// 审计 H2：标签字典是跨 workspace 全局资产，写操作与 skill CRUD 同级管理员门禁。
 func (u *Usecase) CreateTag(ctx context.Context, rawName string) (TagInfo, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return TagInfo{}, err
+	}
 	repo, err := u.tagRepoOrErr()
 	if err != nil {
 		return TagInfo{}, err
@@ -101,7 +105,11 @@ func (u *Usecase) CreateTag(ctx context.Context, rawName string) (TagInfo, error
 
 // RenameTag 改名并事务重写所有 skill 引用；成功后全量失效路由缓存
 // （skillCorpusText 含 tags，向量必须重算）。
+// 审计 H2：重写覆盖所有 workspace 的 skill 引用，必须管理员门禁。
 func (u *Usecase) RenameTag(ctx context.Context, rawOld, rawNew string) (int, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return 0, err
+	}
 	repo, err := u.tagRepoOrErr()
 	if err != nil {
 		return 0, err
@@ -127,7 +135,11 @@ func (u *Usecase) RenameTag(ctx context.Context, rawOld, rawNew string) (int, er
 }
 
 // DeleteTag 删除标签并从事务内所有 skill 引用中移除。
+// 审计 H2：移除覆盖所有 workspace 的 skill 引用，必须管理员门禁。
 func (u *Usecase) DeleteTag(ctx context.Context, rawName string) (int, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return 0, err
+	}
 	repo, err := u.tagRepoOrErr()
 	if err != nil {
 		return 0, err

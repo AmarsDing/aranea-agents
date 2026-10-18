@@ -67,35 +67,40 @@ type DedupEmbedder interface {
 	CosineSimilarity(ctx context.Context, textA, textB string) (float64, error)
 }
 
-// Similarity classification thresholds
-const (
-	similarityHighThreshold     = 0.8 // total score >= this → high risk
-	similarityNameHighThreshold = 0.9 // name score >= this → high risk
-	similarityMediumThreshold   = 0.5 // total score >= this → medium risk
-	embeddingBlendWeight        = 0.5 // Jaccard/Embedding blend ratio for Body dimension
-)
-
-// SkillSimilarityEngine 统一相似度引擎
-type SkillSimilarityEngine struct {
-	embedder DedupEmbedder // 可选
-	weights  SimilarityWeights
-	lg       loggateway.Logger
+// TokenizedDedupCandidate 预算分词后的去重候选（审计 T6：全库两两比较时
+// 每个文本被分词 O(n) 次而非 O(n²) 次；Jaccard 结果与逐对分词完全一致）。
+type TokenizedDedupCandidate struct {
+	Candidate SkillDedupCandidate
+	NameSet   map[string]bool
+	DescSet   map[string]bool
+	BodySet   map[string]bool
 }
 
-// NewSkillSimilarityEngine creates a new SkillSimilarityEngine.
-func NewSkillSimilarityEngine(embedder DedupEmbedder, weights SimilarityWeights, lg loggateway.Logger) *SkillSimilarityEngine {
-	return &SkillSimilarityEngine{embedder: embedder, weights: weights, lg: lg}
-}
-
-// Compare 计算两个 Skill 的完整相似度
-func (e *SkillSimilarityEngine) Compare(ctx context.Context, a, b SkillDedupCandidate) (*SimilarityResult, error) {
-	dims := []DimensionScore{
-		{Dimension: DimName, Score: jaccardSimilarity(a.Name, b.Name), Method: "jaccard"},
-		{Dimension: DimDescription, Score: jaccardSimilarity(a.Description, b.Description), Method: "jaccard"},
-		{Dimension: DimBody, Score: jaccardSimilarity(a.BodyPreview, b.BodyPreview), Method: "jaccard"},
-		{Dimension: DimTag, Score: setJaccard(a.Tags, b.Tags), Method: "jaccard"},
+// TokenizeDedupCandidate 预计算候选项的三个文本维度分词集合。
+func TokenizeDedupCandidate(c SkillDedupCandidate) TokenizedDedupCandidate {
+	return TokenizedDedupCandidate{
+		Candidate: c,
+		NameSet:   wordSet(c.Name),
+		DescSet:   wordSet(c.Description),
+		BodySet:   wordSet(c.BodyPreview),
 	}
+}
 
+// CompareTokenized 与 Compare 语义一致，但使用预算分词集合；Body 维度的
+// embedding 增强仍基于原文本（embedder 为 nil 时纯 Jaccard，与 Compare 相同）。
+func (e *SkillSimilarityEngine) CompareTokenized(ctx context.Context, a, b TokenizedDedupCandidate) (*SimilarityResult, error) {
+	dims := []DimensionScore{
+		{Dimension: DimName, Score: jaccardFromSets(a.NameSet, b.NameSet), Method: "jaccard"},
+		{Dimension: DimDescription, Score: jaccardFromSets(a.DescSet, b.DescSet), Method: "jaccard"},
+		{Dimension: DimBody, Score: jaccardFromSets(a.BodySet, b.BodySet), Method: "jaccard"},
+		{Dimension: DimTag, Score: setJaccard(a.Candidate.Tags, b.Candidate.Tags), Method: "jaccard"},
+	}
+	return e.finishCompare(ctx, a.Candidate, b.Candidate, dims)
+}
+
+// finishCompare 完成 embedding 增强、加权总分与风险分类（Compare /
+// CompareTokenized 共用，保证两条路径口径不漂移）。
+func (e *SkillSimilarityEngine) finishCompare(ctx context.Context, a, b SkillDedupCandidate, dims []DimensionScore) (*SimilarityResult, error) {
 	// 如果有 Embedder，用语义相似度增强 Body 维度
 	if e.embedder != nil {
 		if embScore, err := e.embedder.CosineSimilarity(ctx, a.BodyPreview, b.BodyPreview); err == nil {
@@ -134,6 +139,59 @@ func (e *SkillSimilarityEngine) Compare(ctx context.Context, a, b SkillDedupCand
 		ConflictRisk:   risk,
 		Recommendation: recommendation,
 	}, nil
+}
+
+// jaccardFromSets 计算两个分词集合的 Jaccard 相似度（jaccardSimilarity 的
+// 集合形式，供预算分词的批量比较复用）。
+func jaccardFromSets(setA, setB map[string]bool) float64 {
+	if len(setA) == 0 && len(setB) == 0 {
+		return 0.0 // cannot determine similarity from empty fields
+	}
+	if len(setA) == 0 || len(setB) == 0 {
+		return 0.0
+	}
+	intersection := 0
+	for w := range setA {
+		if setB[w] {
+			intersection++
+		}
+	}
+	union := len(setA) + len(setB) - intersection
+	if union == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
+}
+
+// Similarity classification thresholds
+const (
+	similarityHighThreshold     = 0.8 // total score >= this → high risk
+	similarityNameHighThreshold = 0.9 // name score >= this → high risk
+	similarityMediumThreshold   = 0.5 // total score >= this → medium risk
+	embeddingBlendWeight        = 0.5 // Jaccard/Embedding blend ratio for Body dimension
+)
+
+// SkillSimilarityEngine 统一相似度引擎
+type SkillSimilarityEngine struct {
+	embedder DedupEmbedder // 可选
+	weights  SimilarityWeights
+	lg       loggateway.Logger
+}
+
+// NewSkillSimilarityEngine creates a new SkillSimilarityEngine.
+func NewSkillSimilarityEngine(embedder DedupEmbedder, weights SimilarityWeights, lg loggateway.Logger) *SkillSimilarityEngine {
+	return &SkillSimilarityEngine{embedder: embedder, weights: weights, lg: lg}
+}
+
+// Compare 计算两个 Skill 的完整相似度
+func (e *SkillSimilarityEngine) Compare(ctx context.Context, a, b SkillDedupCandidate) (*SimilarityResult, error) {
+	dims := []DimensionScore{
+		{Dimension: DimName, Score: jaccardSimilarity(a.Name, b.Name), Method: "jaccard"},
+		{Dimension: DimDescription, Score: jaccardSimilarity(a.Description, b.Description), Method: "jaccard"},
+		{Dimension: DimBody, Score: jaccardSimilarity(a.BodyPreview, b.BodyPreview), Method: "jaccard"},
+		{Dimension: DimTag, Score: setJaccard(a.Tags, b.Tags), Method: "jaccard"},
+	}
+	return e.finishCompare(ctx, a, b, dims)
 }
 
 func classifySimilarity(total float64, dims []DimensionScore) (risk, recommendation string) {

@@ -119,7 +119,7 @@ func TestCreateTag_NormalizesInput(t *testing.T) {
 	tr := &mockTagRepo{createResult: TagInfo{Name: "file_type:xlsx", Dimension: "file_type", Source: "user"}}
 	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
-	got, err := u.CreateTag(context.Background(), "  File_Type:XLSX ")
+	got, err := u.CreateTag(adminCtx(), "  File_Type:XLSX ")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestCreateTag_InvalidFormat(t *testing.T) {
 	tr := &mockTagRepo{}
 	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
-	_, err := u.CreateTag(context.Background(), "bad tag!")
+	_, err := u.CreateTag(adminCtx(), "bad tag!")
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
@@ -152,7 +152,7 @@ func TestCreateTag_Conflict(t *testing.T) {
 	tr := &mockTagRepo{createErr: apierror.Conflict("SKILL", "tag already exists")}
 	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
-	_, err := u.CreateTag(context.Background(), "figma")
+	_, err := u.CreateTag(adminCtx(), "figma")
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
@@ -168,7 +168,7 @@ func TestRenameTag_InvalidatesCaches(t *testing.T) {
 	u.SetTagRepo(tr)
 	u.embedCache = map[string]embedEntry{"a": {vector: []float32{1}, cachedAt: time.Now()}}
 
-	n, err := u.RenameTag(context.Background(), "Figma", "design-tool")
+	n, err := u.RenameTag(adminCtx(), "Figma", "design-tool")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestRenameTag_SameName(t *testing.T) {
 	tr := &mockTagRepo{}
 	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
-	_, err := u.RenameTag(context.Background(), "figma", " FIGMA ")
+	_, err := u.RenameTag(adminCtx(), "figma", " FIGMA ")
 	if err == nil {
 		t.Fatal("expected error for identical names after normalization")
 	}
@@ -201,7 +201,7 @@ func TestRenameTag_RepoErrorKeepsCache(t *testing.T) {
 	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	u.embedCache = map[string]embedEntry{"a": {vector: []float32{1}, cachedAt: time.Now()}}
-	_, err := u.RenameTag(context.Background(), "a", "b")
+	_, err := u.RenameTag(adminCtx(), "a", "b")
 	if err == nil {
 		t.Fatal("expected repo error")
 	}
@@ -216,7 +216,7 @@ func TestDeleteTag_InvalidatesCaches(t *testing.T) {
 	u.SetTagRepo(tr)
 	u.embedCache = map[string]embedEntry{"a": {vector: []float32{1}, cachedAt: time.Now()}}
 
-	n, err := u.DeleteTag(context.Background(), " Figma ")
+	n, err := u.DeleteTag(adminCtx(), " Figma ")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -150,6 +150,10 @@ func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs
 		durationMS = int(ended.Sub(t).Milliseconds())
 	}
 	status, errCode, errMsg := invocationStatusFromAfter(args)
+	// A3 审计定案（2026-10-19）：确认门禁的全部 blocked 出口（denied/timeout/
+	// 无回复通道/等待失败）已在 tool_confirmation.go 内自录 status=blocked 行
+	// （同一 ToolCallID 由 data 层 upsert 升级为终态）。此处对 confirmation 类
+	// 错误直接跳过是**防双写守卫**，不是可见性缺口——勿删。
 	if status == "blocked" && errCode == event.ErrorCodeConfirmationRequired {
 		return
 	}
@@ -392,6 +396,9 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 		// "error" is accepted here for backward compatibility with rows written
 		// before the status was normalized.
 		outcome = "failure"
+	case "cancelled", "canceled":
+		// 审计 W1：用户取消是独立 outcome，不计入成功/失败统计。
+		outcome = "cancelled"
 	default:
 		outcome = "partial"
 	}

@@ -52,7 +52,7 @@ func TestUnifiedToLegacySuggestionPtr_MapsDraftOrigin(t *testing.T) {
 		ActionType: EvolutionActionImprove, Status: "pending",
 		DraftBody: "# D\n", Metadata: meta,
 	}
-	got := unifiedToLegacySuggestionPtr(u)
+	got := unifiedToLegacySuggestionPtr(loggateway.NewNoop(), u)
 	if got.DraftOrigin != DraftOriginRuleTemplate {
 		t.Fatalf("DraftOrigin = %q, want %q", got.DraftOrigin, DraftOriginRuleTemplate)
 	}

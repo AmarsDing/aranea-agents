@@ -575,6 +575,11 @@ var ddlMigrations = []ddlMigration{
     // 流式生成误判 idle（P3-C）。原编号 20261275 与 SeedPackTwinMonitorV1
     // 撞号（schema_migrations 版本全局唯一），重编号至 20261277。
     {Version: 20261277, Name: "team_runs_v2_heartbeat", SQL: "sql/migrations/20261277_team_runs_v2_heartbeat.sql"},
+    // 20261278 skill_invocation_analysis_retry（审计 W5② 报告分析队列死信）：
+    // analysis_attempts/analysis_error 两列——GenerateReport 失败行的重试计数
+    // 与最近错误；ListUnanalyzed 谓词排除 attempts 达上限的行，根治「永久失败
+    // 毒行按 created_at ASC 每轮重扫 + 积压 100 条队头阻塞」。
+    {Version: 20261278, Name: "skill_invocation_analysis_retry", SQL: "sql/migrations/20261278_skill_invocation_analysis_retry.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

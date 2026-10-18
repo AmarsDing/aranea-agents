@@ -12,11 +12,11 @@ export const EVO_SUGGESTION_TYPE_MERGE_DUPLICATE = 'merge_duplicate';
 export function evoSuggestionTypeLabel(type?: string): string {
   switch (type) {
     case EVO_SUGGESTION_TYPE_FIX_FAILURE:
-      return '修复失败';
+      return i18n.global.t('evolutionSuggestionsPage.typeFixFailure');
     case EVO_SUGGESTION_TYPE_BOOST_EFFICIENCY:
-      return '提升效率';
+      return i18n.global.t('evolutionSuggestionsPage.typeBoostEfficiency');
     case EVO_SUGGESTION_TYPE_MERGE_DUPLICATE:
-      return '合并重复';
+      return i18n.global.t('evolutionSuggestionsPage.typeMergeDuplicate');
     default:
       return type || '—';
   }
@@ -64,13 +64,13 @@ export function evoTargetTypeColor(targetType?: string): string {
 export function evoActionTypeLabel(actionType?: string): string {
   switch (actionType) {
     case 'create_skill':
-      return '创建 Skill';
+      return i18n.global.t('evolutionSuggestionsPage.actionCreateSkill');
     case 'improve_skill':
-      return '改进 Skill';
+      return i18n.global.t('evolutionSuggestionsPage.actionImproveSkill');
     case 'merge_skill':
-      return '合并 Skill';
+      return i18n.global.t('evolutionSuggestionsPage.actionMergeSkill');
     case 'evolve_agent':
-      return '进化 Agent';
+      return i18n.global.t('evolutionSuggestionsPage.actionEvolveAgent');
     default:
       return actionType || '—';
   }
@@ -96,15 +96,15 @@ export function evoActionTypeColor(actionType?: string): string {
 export function evoSuggestionStatusLabel(status?: string): string {
   switch (status) {
     case 'pending':
-      return '待审批';
+      return i18n.global.t('evolutionSuggestionsPage.statusPending');
     case 'approved':
-      return '已批准';
+      return i18n.global.t('evolutionSuggestionsPage.statusApproved');
     case 'rejected':
-      return '已拒绝';
+      return i18n.global.t('evolutionSuggestionsPage.statusRejected');
     case 'applied':
-      return '已应用';
+      return i18n.global.t('evolutionSuggestionsPage.statusApplied');
     case 'registered':
-      return '已注册';
+      return i18n.global.t('evolutionSuggestionsPage.statusRegistered');
     case 'expired':
       return i18n.global.t('evolutionSuggestionsPage.statusExpired');
     default:
@@ -136,13 +136,13 @@ export function evoSuggestionStatusColor(status?: string): string {
 export function evoLifecycleStatusLabel(status?: string): string {
   switch (status) {
     case 'draft':
-      return '草稿';
+      return i18n.global.t('evolutionSuggestionsPage.lifecycleDraft');
     case 'validating':
-      return '验证中';
+      return i18n.global.t('evolutionSuggestionsPage.lifecycleValidating');
     case 'ready':
-      return '就绪';
+      return i18n.global.t('evolutionSuggestionsPage.lifecycleReady');
     case 'applied':
-      return '已应用';
+      return i18n.global.t('evolutionSuggestionsPage.lifecycleApplied');
     default:
       return status || '—';
   }
@@ -167,13 +167,55 @@ export function evoLifecycleStatusColor(status?: string): string {
 
 /** Unified Evolution Table 列定义 */
 export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView>[] = [
-  registryCol<SkillEvolutionView>('targetType', '目标类型', 'targetType', 'left', REGISTRY_COL_W.category),
-  registryCol<SkillEvolutionView>('targetId', '目标 ID', 'targetId', 'left', REGISTRY_COL_W.name),
-  registryCol<SkillEvolutionView>('actionType', '操作类型', 'actionType', 'left', REGISTRY_COL_W.category),
-  registryCol<SkillEvolutionView>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-  registryCol<SkillEvolutionView>('lifecycleStatus', '生命周期', 'lifecycleStatus', 'left', REGISTRY_COL_W.status),
-  registryCol<SkillEvolutionView>('triggerReason', '触发原因', 'triggerReason', 'left', REGISTRY_COL_W.desc),
-  registryCol<SkillEvolutionView>('sandboxPassed', '沙箱验证', 'sandboxPassed', 'center', REGISTRY_COL_W.metric),
+  registryCol<SkillEvolutionView>(
+    'targetType',
+    i18n.global.t('evolutionSuggestionsPage.colTargetType'),
+    'targetType',
+    'left',
+    REGISTRY_COL_W.category,
+  ),
+  registryCol<SkillEvolutionView>(
+    'targetId',
+    i18n.global.t('evolutionSuggestionsPage.colTargetId'),
+    'targetId',
+    'left',
+    REGISTRY_COL_W.name,
+  ),
+  registryCol<SkillEvolutionView>(
+    'actionType',
+    i18n.global.t('evolutionSuggestionsPage.colActionType'),
+    'actionType',
+    'left',
+    REGISTRY_COL_W.category,
+  ),
+  registryCol<SkillEvolutionView>(
+    'status',
+    i18n.global.t('evolutionSuggestionsPage.colStatus'),
+    'status',
+    'left',
+    REGISTRY_COL_W.status,
+  ),
+  registryCol<SkillEvolutionView>(
+    'lifecycleStatus',
+    i18n.global.t('evolutionSuggestionsPage.colLifecycle'),
+    'lifecycleStatus',
+    'left',
+    REGISTRY_COL_W.status,
+  ),
+  registryCol<SkillEvolutionView>(
+    'triggerReason',
+    i18n.global.t('evolutionSuggestionsPage.colTriggerReason'),
+    'triggerReason',
+    'left',
+    REGISTRY_COL_W.desc,
+  ),
+  registryCol<SkillEvolutionView>(
+    'sandboxPassed',
+    i18n.global.t('evolutionSuggestionsPage.colSandboxPassed'),
+    'sandboxPassed',
+    'center',
+    REGISTRY_COL_W.metric,
+  ),
   registryCol<SkillEvolutionView>(
     'createdAt',
     i18n.global.t('evolutionSuggestionsPage.colCreatedAt'),

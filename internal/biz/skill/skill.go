@@ -1056,7 +1056,17 @@ type RuntimeCandidate struct {
 }
 
 // ParseRuntimePolicy unmarshals skill_runtime_json with safe defaults.
+// Parse failures silently reset to defaults; callers that need to surface
+// corrupt JSON should use ParseRuntimePolicyE (审计 T1).
 func ParseRuntimePolicy(raw string) RuntimePolicy {
+	p, _ := ParseRuntimePolicyE(raw)
+	return p
+}
+
+// ParseRuntimePolicyE is ParseRuntimePolicy with the JSON error exposed, so
+// callers can log or mark corrupt policy rows instead of silently resetting
+// to defaults (审计 T1).
+func ParseRuntimePolicyE(raw string) (RuntimePolicy, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		raw = "{}"
@@ -1072,7 +1082,9 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 		EmbeddingScoreWeight    float64  `json:"embedding_score_weight"`
 		OverviewMaxChars        *int     `json:"overview_max_chars"`
 	}
+	var parseErr error
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
+		parseErr = err
 		wire = struct {
 			AllowedSlugs            []string `json:"allowed_slugs"`
 			DeniedSlugs             []string `json:"denied_slugs"`
@@ -1121,7 +1133,7 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 	normalizeSlugSlice(&p.AllowedSlugs)
 	normalizeSlugSlice(&p.DeniedSlugs)
 	normalizeLowerSlice(&p.AllowedTags)
-	return p
+	return p, parseErr
 }
 
 // NormalizeSlug normalizes a skill slug for consistent matching across all layers.
@@ -1293,6 +1305,14 @@ func requireAdminAccess(ctx context.Context) error {
 		return apierror.Forbidden("SKILL", "admin access required")
 	}
 	return nil
+}
+
+// RequireAdminAccess 导出管理员门禁，供 biz 根包的 skill 治理能力（合并/去重）
+// 复用与 skill CRUD 完全一致的管理员校验（审计 H1/H2：治理操作跨 workspace 重写，
+// 不得低于 CRUD 的 requireAdminAccess 强度）。endpoint 层应先做 IDOR/工作区校验，
+// 本函数兜底管理员身份。
+func RequireAdminAccess(ctx context.Context) error {
+	return requireAdminAccess(ctx)
 }
 
 func applyInvocationPermissions(ctx context.Context, items []SkillInvocation) {

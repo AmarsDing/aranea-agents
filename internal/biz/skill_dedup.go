@@ -3,11 +3,14 @@ package biz
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
+	"aranea-agents/internal/biz/skill"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 const (
@@ -76,7 +79,12 @@ func NewSkillDedupUsecase(reader SkillDedupReader, engine SkillSimilarityCompare
 }
 
 // DetectDuplicateGroups finds groups of similar skills using the unified similarity engine.
+// 审计 H1 附带：全库扫描所有 workspace 的 skill 名称/描述/正文摘要，
+// 与合并（跨租户写）配套收束为管理员治理能力（此前任何 caller 可读全量清单）。
 func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]SkillDuplicateGroup, error) {
+	if err := skill.RequireAdminAccess(ctx); err != nil {
+		return nil, err
+	}
 	// Default 5-minute timeout to prevent runaway comparisons.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -111,49 +119,18 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 		}
 	}
 
-	// Pairwise comparison using the unified similarity engine with batch processing.
-	type pair struct {
-		i, j   int
-		result *SimilarityResult
+	// Pairwise comparison using the unified similarity engine.
+	// 审计 T6：真实引擎（*SkillSimilarityEngine）走快路径——分词预算 O(n) +
+	// 分段并行，结果与串行逐对比较完全一致（同引擎、同阈值，段合并后维持
+	// (i,j) 字典序）；接口 mock（测试）回退原串行路径。
+	var pairs []dedupPair
+	if eng, ok := uc.engine.(*SkillSimilarityEngine); ok {
+		pairs, err = uc.comparePairsParallel(ctx, eng, candidates)
+	} else {
+		pairs, err = uc.comparePairsSerial(ctx, candidates)
 	}
-
-	const batchSize = 200
-	var pairs []pair
-	for batchStart := 0; batchStart < len(candidates); batchStart += batchSize {
-		// Check context cancellation between batches.
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		batchEnd := batchStart + batchSize
-		if batchEnd > len(candidates) {
-			batchEnd = len(candidates)
-		}
-		for i := batchStart; i < batchEnd; i++ {
-			for j := i + 1; j < len(candidates); j++ {
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				default:
-				}
-				res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
-				if err != nil {
-					// If context was cancelled, return immediately rather than continuing.
-					if ctx.Err() != nil {
-						return nil, ctx.Err()
-					}
-					uc.lg.Warn("skill_dedup: Compare failed",
-						loggateway.StepID("skill_dedup.compare"),
-						loggateway.Err(err))
-					continue
-				}
-				if res.TotalScore >= dedupSimilarityThreshold {
-					pairs = append(pairs, pair{i: i, j: j, result: res})
-				}
-			}
-		}
+	if err != nil {
+		return nil, err
 	}
 
 	if len(pairs) == 0 {
@@ -238,7 +215,7 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 
 	uc.lg.Info("skill dedup detection completed",
 		loggateway.StepID("skill_dedup.detect"),
-		loggateway.Str("group_count", fmt.Sprintf("%d", len(groups))),
+		loggateway.Int("group_count", len(groups)),
 	)
 
 	// Update cache.
@@ -248,6 +225,138 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	uc.cacheMu.Unlock()
 
 	return groups, nil
+}
+
+// dedupPair 是一次超阈值的两两比较结果（候选下标对 + 引擎明细）。
+type dedupPair struct {
+	i, j   int
+	result *SimilarityResult
+}
+
+// comparePairsSerial 逐对串行比较（接口 mock 与回退路径），与原实现一致：
+// 外层按 batchSize 分批，批间/对间检查 ctx 取消；单对失败 Warn 后跳过。
+func (uc *SkillDedupUsecase) comparePairsSerial(ctx context.Context, candidates []SkillDedupCandidate) ([]dedupPair, error) {
+	const batchSize = 200
+	var pairs []dedupPair
+	for batchStart := 0; batchStart < len(candidates); batchStart += batchSize {
+		// Check context cancellation between batches.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		batchEnd := batchStart + batchSize
+		if batchEnd > len(candidates) {
+			batchEnd = len(candidates)
+		}
+		for i := batchStart; i < batchEnd; i++ {
+			for j := i + 1; j < len(candidates); j++ {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				default:
+				}
+				res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
+				if err != nil {
+					// If context was cancelled, return immediately rather than continuing.
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
+					uc.lg.Warn("skill_dedup: Compare failed",
+						loggateway.StepID("skill_dedup.compare"),
+						loggateway.Err(err))
+					continue
+				}
+				if res.TotalScore >= dedupSimilarityThreshold {
+					pairs = append(pairs, dedupPair{i: i, j: j, result: res})
+				}
+			}
+		}
+	}
+	return pairs, nil
+}
+
+// dedupCompareWorkers 并行比较的 worker 数上限（防 n 大时 goroutine 过量）。
+const dedupCompareWorkers = 8
+
+// comparePairsParallel 审计 T6 快路径：先对每个候选做 O(n) 分词预算，再按
+// 外层下标分段并行执行集合级 Jaccard 比较。结果与 comparePairsSerial 完全
+// 一致（同引擎 CompareTokenized ≡ Compare、同阈值、段合并恢复 (i,j) 字典
+// 序），仅消除 O(n²) 重复分词并摊到多核。
+func (uc *SkillDedupUsecase) comparePairsParallel(ctx context.Context, eng *SkillSimilarityEngine, candidates []SkillDedupCandidate) ([]dedupPair, error) {
+	n := len(candidates)
+	tokens := make([]TokenizedDedupCandidate, n)
+	for i, c := range candidates {
+		tokens[i] = TokenizeDedupCandidate(c)
+	}
+
+	workers := runtime.GOMAXPROCS(0)
+	if workers > dedupCompareWorkers {
+		workers = dedupCompareWorkers
+	}
+	if workers > n {
+		workers = n
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	// 按外层 i 均分段：每段只写自己的结果 slice（无共享可变状态），
+	// 合并时按段序 append，恢复与串行相同的 (i,j) 字典序。
+	segSize := (n + workers - 1) / workers
+	segPairs := make([][]dedupPair, 0, workers)
+	var wg sync.WaitGroup
+	for start := 0; start < n; start += segSize {
+		end := start + segSize
+		if end > n {
+			end = n
+		}
+		segPairs = append(segPairs, nil)
+		out := &segPairs[len(segPairs)-1]
+		wg.Add(1)
+		safego.Go(ctx, "skill_dedup.compare", func() {
+			defer wg.Done()
+			local := make([]dedupPair, 0, 64)
+			for i := start; i < end; i++ {
+				for j := i + 1; j < n; j++ {
+					if ctx.Err() != nil {
+						*out = local
+						return
+					}
+					res, err := eng.CompareTokenized(ctx, tokens[i], tokens[j])
+					if err != nil {
+						if ctx.Err() != nil {
+							*out = local
+							return
+						}
+						uc.lg.Warn("skill_dedup: Compare failed",
+							loggateway.StepID("skill_dedup.compare"),
+							loggateway.Err(err))
+						continue
+					}
+					if res.TotalScore >= dedupSimilarityThreshold {
+						local = append(local, dedupPair{i: i, j: j, result: res})
+					}
+				}
+			}
+			*out = local
+		})
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	total := 0
+	for _, sp := range segPairs {
+		total += len(sp)
+	}
+	pairs := make([]dedupPair, 0, total)
+	for _, sp := range segPairs {
+		pairs = append(pairs, sp...)
+	}
+	return pairs, nil
 }
 
 // InvalidateDedupCache clears the cached duplicate groups so the next call
@@ -265,25 +374,7 @@ func (uc *SkillDedupUsecase) InvalidateDedupCache() {
 // ---------------------------------------------------------------------------
 
 func jaccardSimilarity(a, b string) float64 {
-	setA := wordSet(a)
-	setB := wordSet(b)
-	if len(setA) == 0 && len(setB) == 0 {
-		return 0.0 // cannot determine similarity from empty fields
-	}
-	if len(setA) == 0 || len(setB) == 0 {
-		return 0.0
-	}
-	intersection := 0
-	for w := range setA {
-		if setB[w] {
-			intersection++
-		}
-	}
-	union := len(setA) + len(setB) - intersection
-	if union == 0 {
-		return 0
-	}
-	return float64(intersection) / float64(union)
+	return jaccardFromSets(wordSet(a), wordSet(b))
 }
 
 // wordSet extracts a set of tokens from s for Jaccard similarity comparison.

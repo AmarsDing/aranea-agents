@@ -63,13 +63,13 @@ func newAnalyzeSkillUsageTool(deps Deps) trpctool.Tool {
 
 func assessHealth(stat SkillInvocationStat, weeks float64) string {
 	callsPerWeek := float64(stat.Count) / weeks
-	if callsPerWeek >= 2 && stat.SuccessRate >= 0.8 {
+	if callsPerWeek >= callsPerWeekLowThreshold && stat.SuccessRate >= successRateHealthyThreshold {
 		return "healthy"
 	}
-	if callsPerWeek > 5 && stat.SuccessRate >= 0.6 {
+	if callsPerWeek > callsPerWeekActiveThreshold && stat.SuccessRate >= successRateCriticalThreshold {
 		return "warning"
 	}
-	if callsPerWeek < 2 || stat.SuccessRate < 0.6 {
+	if callsPerWeek < callsPerWeekLowThreshold || stat.SuccessRate < successRateCriticalThreshold {
 		return "critical"
 	}
 	return "warning"
@@ -89,8 +89,7 @@ func timeRangeToSince(tr string) time.Time {
 	}
 }
 
-const weeksPerMonth = 4.29
-
+// 窗口周数折算常量集中在 thresholds.go（审计 T3）。
 func weeksInRange(tr string) float64 {
 	switch tr {
 	case "7d":
@@ -98,7 +97,7 @@ func weeksInRange(tr string) float64 {
 	case "30d":
 		return weeksPerMonth
 	case "90d":
-		return 12.86
+		return weeksPerQuarter
 	default:
 		return weeksPerMonth
 	}

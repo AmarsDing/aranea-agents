@@ -620,6 +620,9 @@ export async function listUnifiedEvolutionSuggestions(params: {
   let res;
   try {
     res = await client.ListSkillEvolutionSuggestions({
+      // 生成类型将 skillId 作为必备键（可选值）：显式传 target_type/target_id
+      // 时以二者为准，skillId 置 undefined（ADR-3 兼容字段，runtime 不传）。
+      skillId: undefined,
       targetType,
       targetId: params.targetId || undefined,
       status: params.status || undefined,

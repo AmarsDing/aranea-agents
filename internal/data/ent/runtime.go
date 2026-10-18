@@ -5862,8 +5862,16 @@ func init() {
 	skillinvocationDescAnalyzedAt := skillinvocationFields[26].Descriptor()
 	// skillinvocation.DefaultAnalyzedAt holds the default value on creation for the analyzed_at field.
 	skillinvocation.DefaultAnalyzedAt = skillinvocationDescAnalyzedAt.Default.(string)
+	// skillinvocationDescAnalysisAttempts is the schema descriptor for analysis_attempts field.
+	skillinvocationDescAnalysisAttempts := skillinvocationFields[27].Descriptor()
+	// skillinvocation.DefaultAnalysisAttempts holds the default value on creation for the analysis_attempts field.
+	skillinvocation.DefaultAnalysisAttempts = skillinvocationDescAnalysisAttempts.Default.(int)
+	// skillinvocationDescAnalysisError is the schema descriptor for analysis_error field.
+	skillinvocationDescAnalysisError := skillinvocationFields[28].Descriptor()
+	// skillinvocation.DefaultAnalysisError holds the default value on creation for the analysis_error field.
+	skillinvocation.DefaultAnalysisError = skillinvocationDescAnalysisError.Default.(string)
 	// skillinvocationDescLoadedSlug is the schema descriptor for loaded_slug field.
-	skillinvocationDescLoadedSlug := skillinvocationFields[28].Descriptor()
+	skillinvocationDescLoadedSlug := skillinvocationFields[30].Descriptor()
 	// skillinvocation.DefaultLoadedSlug holds the default value on creation for the loaded_slug field.
 	skillinvocation.DefaultLoadedSlug = skillinvocationDescLoadedSlug.Default.(string)
 	// skillinvocation.LoadedSlugValidator is a validator for the "loaded_slug" field. It is called by the builders before save.

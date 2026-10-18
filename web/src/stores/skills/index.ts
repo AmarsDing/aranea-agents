@@ -47,15 +47,21 @@ export const useSkillsStore = defineStore('skills', () => {
   const total = ref(0);
   const loading = ref(false);
 
+  // T7：列表加载 stale-guard。筛选/翻页可连发多个请求（350ms debounce 只能
+  // 缓解），后到先发回的旧响应不得覆盖新结果；loading 也只有最新请求负责复位。
+  let loadSkillsSeq = 0;
+
   async function loadSkills(query?: SkillListQuery) {
+    const seq = ++loadSkillsSeq;
     loading.value = true;
     try {
       const result: PaginatedResponse<Skill> = await listSkills(query);
+      if (seq !== loadSkillsSeq) return result; // 过期响应：返回数据但不落地
       skills.value = result.items ?? [];
       total.value = result.total ?? skills.value.length;
       return result;
     } finally {
-      loading.value = false;
+      if (seq === loadSkillsSeq) loading.value = false;
     }
   }
 
@@ -77,8 +83,13 @@ export const useSkillsStore = defineStore('skills', () => {
 
   async function duplicate(id: string) {
     const copy = await duplicateSkill(id);
-    skills.value.push(copy);
-    total.value += 1;
+    // T7：列表按 updated_at desc 排序，新副本必在头部——unshift 与服务端
+    // 排序语义一致，避免乐观插入尾部造成的错位；调用方随后整页 reload，
+    // 此处按 id 幂等去重，防双击/重试导致重复行与重复计数。
+    if (!skills.value.some((s) => s.id === copy.id)) {
+      skills.value.unshift(copy);
+      total.value += 1;
+    }
     return copy;
   }
 

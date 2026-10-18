@@ -828,7 +828,7 @@ func (uc *SkillIntelligenceUsecase) GetEvolutionSuggestion(ctx context.Context, 
 	if unified == nil {
 		return nil, nil
 	}
-	return unifiedToLegacySuggestionPtr(unified), nil
+	return unifiedToLegacySuggestionPtr(uc.lg, unified), nil
 }
 
 // UpdateSuggestionDraftBody updates the draft skill body of an evolution suggestion.
@@ -878,7 +878,7 @@ func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context
 	}
 	result := make([]SkillEvolutionSuggestion, len(unifiedList))
 	for i, u := range unifiedList {
-		result[i] = *unifiedToLegacySuggestionPtr(&u)
+		result[i] = *unifiedToLegacySuggestionPtr(uc.lg, &u)
 	}
 	return result, nil
 }
@@ -1124,7 +1124,7 @@ func (uc *SkillIntelligenceUsecase) CreateAgentSkillSuggestion(ctx context.Conte
 	if err := uc.unifiedStore.Create(ctx, row); err != nil {
 		return nil, err
 	}
-	return unifiedToLegacySuggestionPtr(&row), nil
+	return unifiedToLegacySuggestionPtr(uc.lg, &row), nil
 }
 
 // ── Bridge functions: Unified ↔ Legacy ────────────────────────────────────────
@@ -1161,7 +1161,7 @@ func unifiedToLegacySuggestion(s *SkillEvolutionSuggestion) UnifiedEvolutionSugg
 // metadata keys merged by UpdateStatus and the 20261111 backfill (A6),
 // mirroring the legacy L2 columns. The legacy suggestion type prefers the
 // exact legacy_type metadata (action_type mapping is lossy).
-func unifiedToLegacySuggestionPtr(u *UnifiedEvolutionSuggestion) *SkillEvolutionSuggestion {
+func unifiedToLegacySuggestionPtr(lg loggateway.Logger, u *UnifiedEvolutionSuggestion) *SkillEvolutionSuggestion {
 	var resolvedAt *time.Time
 	if raw := u.MetaString(EvoMetaResolvedAt); raw != "" {
 		if t, err := time.Parse(time.RFC3339, raw); err == nil {
@@ -1174,7 +1174,13 @@ func unifiedToLegacySuggestionPtr(u *UnifiedEvolutionSuggestion) *SkillEvolution
 	}
 	var sourceReportIDs []string
 	if raw := u.MetaRaw(EvoMetaSourceReportIDs); len(raw) > 0 {
-		_ = json.Unmarshal(raw, &sourceReportIDs)
+		// 审计 T2：metadata 损坏不再静默吞错，warn 后降级为空列表。
+		if err := json.Unmarshal(raw, &sourceReportIDs); err != nil {
+			lg.Warn("unifiedToLegacySuggestionPtr: corrupt source_report_ids metadata, degrading to empty",
+				loggateway.StepID("skill_intelligence.bridge"),
+				loggateway.Str("suggestion_id", u.ID),
+				loggateway.Err(err))
+		}
 	}
 	return &SkillEvolutionSuggestion{
 		ID:              u.ID,

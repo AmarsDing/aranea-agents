@@ -63,6 +63,10 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldAnalyzedAt holds the string denoting the analyzed_at field in the database.
 	FieldAnalyzedAt = "analyzed_at"
+	// FieldAnalysisAttempts holds the string denoting the analysis_attempts field in the database.
+	FieldAnalysisAttempts = "analysis_attempts"
+	// FieldAnalysisError holds the string denoting the analysis_error field in the database.
+	FieldAnalysisError = "analysis_error"
 	// FieldRoutedSlugs holds the string denoting the routed_slugs field in the database.
 	FieldRoutedSlugs = "routed_slugs"
 	// FieldLoadedSlug holds the string denoting the loaded_slug field in the database.
@@ -100,6 +104,8 @@ var Columns = []string{
 	FieldTokenUsage,
 	FieldDeletedAt,
 	FieldAnalyzedAt,
+	FieldAnalysisAttempts,
+	FieldAnalysisError,
 	FieldRoutedSlugs,
 	FieldLoadedSlug,
 }
@@ -171,6 +177,10 @@ var (
 	DefaultDeletedAt string
 	// DefaultAnalyzedAt holds the default value on creation for the "analyzed_at" field.
 	DefaultAnalyzedAt string
+	// DefaultAnalysisAttempts holds the default value on creation for the "analysis_attempts" field.
+	DefaultAnalysisAttempts int
+	// DefaultAnalysisError holds the default value on creation for the "analysis_error" field.
+	DefaultAnalysisError string
 	// DefaultLoadedSlug holds the default value on creation for the "loaded_slug" field.
 	DefaultLoadedSlug string
 	// LoadedSlugValidator is a validator for the "loaded_slug" field. It is called by the builders before save.
@@ -305,6 +315,16 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByAnalyzedAt orders the results by the analyzed_at field.
 func ByAnalyzedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAnalyzedAt, opts...).ToFunc()
+}
+
+// ByAnalysisAttempts orders the results by the analysis_attempts field.
+func ByAnalysisAttempts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAnalysisAttempts, opts...).ToFunc()
+}
+
+// ByAnalysisError orders the results by the analysis_error field.
+func ByAnalysisError(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAnalysisError, opts...).ToFunc()
 }
 
 // ByLoadedSlug orders the results by the loaded_slug field.

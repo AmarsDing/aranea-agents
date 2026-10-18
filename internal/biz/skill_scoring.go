@@ -79,6 +79,14 @@ func (uc *SkillScoringUsecase) AnalyzeInvocation(ctx context.Context, inv SkillI
 		return isSuccess, nil
 	}
 
+	// 审计 W1：partial/cancelled 不是技能失败（取消、门禁拒绝、中途记录等非终态），
+	// 统一归因 user_cancelled，不走关键词失败打标——避免把非执行性中断
+	// 错误归因成 wrong_tool_choice/unknown，污染根因统计与进化触发。
+	// 该分支此前是 FailureTagUserCancelled 常量定义了却从未赋值的死代码路径。
+	if inv.Outcome == "cancelled" || inv.Outcome == "partial" {
+		return isSuccess, []string{FailureTagUserCancelled}
+	}
+
 	// Rule-based failure tag extraction.
 	tags := make([]string, 0, 2)
 

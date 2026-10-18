@@ -305,12 +305,15 @@ export default {
       allocating: 'Matching agents… ({index}/{total}) {subTask}',
       allocatingBound: 'Matching ({index}/{total}) "{specialty}" → {agentName} ({matchLayer}) {subTask}',
       allocated: 'Agent allocation complete ({total} total)',
-      collaborating: 'Teams coordinate by protocol: {sketch}. Dept lead does not dispatch; handoff is the conclusion brief; Spirit synthesizes.',
+      collaborating:
+        'Teams coordinate by protocol: {sketch}. Dept lead does not dispatch; handoff is the conclusion brief; Spirit synthesizes.',
       allocateFailed: 'No specialist for "{specialty}". Pick an existing agent or fill the org roster ({subTask})',
       creatingAgent: 'Creating new agent "{agentName}"…',
       agentCreated: 'Agent "{agentName}" created',
-      teamCountMismatch: 'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — running the first {requestedTeamCount} (dropped: {droppedSubtaskNames})',
-      teamCountMismatchProceed: 'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — proceeding with the decomposed count',
+      teamCountMismatch:
+        'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — running the first {requestedTeamCount} (dropped: {droppedSubtaskNames})',
+      teamCountMismatchProceed:
+        'Team count mismatch: requested {requestedTeamCount}, decomposed {decomposedSubtaskCount} — proceeding with the decomposed count',
       reused: 'Reusing {teamCount} existing team(s) in this session…',
       heartbeat: 'Stage heartbeat: {summary}',
       runStepBuilding: 'assembling runtime',
@@ -453,8 +456,7 @@ export default {
     imageModelUnsupported:
       'The current model does not support image understanding. Remove image attachments or switch to a vision-capable model.',
     sessionCreateFailed: 'Session not created or invalid, please retry',
-    backendUnavailableDev:
-      'Backend service unavailable. Make sure the backend is running',
+    backendUnavailableDev: 'Backend service unavailable. Make sure the backend is running',
     backendUnavailable: 'Backend unavailable, please log in again',
     wsFallbackHttp: 'WebSocket unavailable, sending via HTTP…',
     wsQueueFullDropped: 'Connection congested — message was not delivered, please resend',
@@ -1303,6 +1305,51 @@ export default {
     statusExpired: 'Expired',
     statusRegistered: 'Registered',
     colCreatedAt: 'Created',
+    pageTitle: 'Evolution Suggestions',
+    pageSubtitle:
+      'Approve or reject evolution suggestions from the skill butler and agent evolution system; review sandbox validation results and trigger reasons.',
+    triggerCurator: 'Trigger Curator',
+    filterStatus: 'Status',
+    reset: 'Reset',
+    refresh: 'Refresh',
+    retry: 'Retry',
+    emptyFiltered: 'No matching evolution suggestions',
+    emptyFilteredHint: 'Adjust the filters and try again.',
+    emptyDefault: 'No evolution suggestions yet',
+    emptyDefaultHint: 'The skill butler generates suggestions from usage data; they take effect after approval.',
+    actionView: 'View details',
+    actionApprove: 'Approve',
+    actionReject: 'Reject',
+    paginationUnit: 'suggestions',
+    curatorDialogTitle: 'Trigger Curator Pipeline',
+    curatorDialogDesc:
+      'Run the full Curator Agent evolution pipeline for a skill: trigger detection → draft generation → sandbox validation.',
+    curatorSkillIdPlaceholder: 'Enter the Skill ID to evolve',
+    cancel: 'Cancel',
+    trigger: 'Trigger',
+    statusAll: 'All',
+    statusPending: 'Pending',
+    statusApproved: 'Approved',
+    statusRejected: 'Rejected',
+    statusApplied: 'Applied',
+    typeFixFailure: 'Fix failures',
+    typeBoostEfficiency: 'Boost efficiency',
+    typeMergeDuplicate: 'Merge duplicates',
+    actionCreateSkill: 'Create skill',
+    actionImproveSkill: 'Improve skill',
+    actionMergeSkill: 'Merge skill',
+    actionEvolveAgent: 'Evolve agent',
+    lifecycleDraft: 'Draft',
+    lifecycleValidating: 'Validating',
+    lifecycleReady: 'Ready',
+    lifecycleApplied: 'Applied',
+    colTargetType: 'Target type',
+    colTargetId: 'Target ID',
+    colActionType: 'Action type',
+    colStatus: 'Status',
+    colLifecycle: 'Lifecycle',
+    colTriggerReason: 'Trigger reason',
+    colSandboxPassed: 'Sandbox',
   },
   skillsPage: {
     reportStatTotal: 'Total reports',
@@ -1692,7 +1739,8 @@ export default {
       tabTree: 'Span tree',
       flowLinesBadge: '{count} flow logs',
       flowLiveHint: 'Live capture (filtered by trace_id, streaming while details are open)',
-      flowEmpty: 'No flow logs yet. Keep details open and run a conversation, or view the global stream in the Logs tab.',
+      flowEmpty:
+        'No flow logs yet. Keep details open and run a conversation, or view the global stream in the Logs tab.',
       spanSearchPlaceholder: 'Search span name / kind / tool / model',
       spanCount: '{count} spans',
       spanExpandAll: 'Expand all',
@@ -1922,7 +1970,8 @@ export default {
     hero: {
       kicker: 'Tool registry',
       title: 'Tools Management',
-      subtitle: 'Centrally manage tool metadata, runtime bindings, risk policies, config schemas and invocation records.',
+      subtitle:
+        'Centrally manage tool metadata, runtime bindings, risk policies, config schemas and invocation records.',
       audits: 'Audit logs',
       runs: 'Invocations',
       create: 'New Tool',
@@ -2055,7 +2104,8 @@ export default {
       back: 'Back to Tools',
       pageUnit: ' invocations',
       emptyTitle: 'No tool invocations yet',
-      emptySubtitle: 'Once ADK tool execution auditing is connected, args summaries, result summaries and durations will appear here.',
+      emptySubtitle:
+        'Once ADK tool execution auditing is connected, args summaries, result summaries and durations will appear here.',
       hoverEmpty: 'No args / result summary',
       hoverInput: 'Args: {text}',
       hoverOutput: 'Result: {text}',
@@ -2068,7 +2118,8 @@ export default {
       back: 'Back to Tools',
       pageUnit: ' audit records',
       emptyTitle: 'No tool audit records yet',
-      emptySubtitle: 'Tool calls made during agent runs are written to structured audit logs (retained 90 days by default).',
+      emptySubtitle:
+        'Tool calls made during agent runs are written to structured audit logs (retained 90 days by default).',
       hoverEmpty: 'No summary',
     },
     runs: {
@@ -2084,7 +2135,8 @@ export default {
       tabOutput: 'Output',
       tabError: 'Error',
       tabContext: 'Context',
-      redactionTip: 'Params are redacted; the hash only helps identify duplicate calls and cannot restore the original text.',
+      redactionTip:
+        'Params are redacted; the hash only helps identify duplicate calls and cannot restore the original text.',
       loadingParams: 'Loading parameter details…',
       redacted: 'Redacted',
       inputHash: 'input hash: ',
@@ -2161,14 +2213,16 @@ export default {
       agentLabel: 'Agent',
       modeLabel: 'Mode',
       confirmLabel: 'Requires confirmation',
-      confirmHint: 'This switch can only add confirmation: when the tool is globally marked as "requires confirmation", it cannot be exempted here (either one enables confirmation).',
+      confirmHint:
+        'This switch can only add confirmation: when the tool is globally marked as "requires confirmation", it cannot be exempted here (either one enables confirmation).',
       configLabel: 'Config override JSON',
     },
     schemaBuilder: {
       addField: 'Add field',
       fieldView: 'Field view',
       bannerPre: 'Field view only supports flat ',
-      bannerPost: ' (string / number / integer / boolean). For nested object, array, oneOf etc. switch to JSON mode; switching back may drop complex structures.',
+      bannerPost:
+        ' (string / number / integer / boolean). For nested object, array, oneOf etc. switch to JSON mode; switching back may drop complex structures.',
       fieldKey: 'Field key',
       fieldType: 'Type',
       fieldTitle: 'Title',
@@ -2240,35 +2294,44 @@ export default {
       paramsTitle: 'Call parameters',
       paramsDesc: 'Define the parameter structure the AI must pass when calling this tool.',
       paramsWhen: 'When to configure: ',
-      paramsWhenText: 'When you want the AI to know what information to pass to the tool (search keywords, file paths, etc.).',
+      paramsWhenText:
+        'When you want the AI to know what information to pass to the tool (search keywords, file paths, etc.).',
       paramsAfter: 'After configuration: ',
-      paramsAfterText: 'The AI builds call requests from the parameter structure, and auto-fills or asks the user when required parameters are missing.',
+      paramsAfterText:
+        'The AI builds call requests from the parameter structure, and auto-fills or asks the user when required parameters are missing.',
       paramsBuilderTitle: 'Call parameters definition',
       resultExpLabel: 'Result schema description (optional)',
-      resultDesc: 'Defines the structure of data returned by the tool, so the AI can make follow-up decisions based on the result (e.g. whether a search returned hits). Not required for the tool to run, but the AI cannot anticipate the return format without it.',
+      resultDesc:
+        'Defines the structure of data returned by the tool, so the AI can make follow-up decisions based on the result (e.g. whether a search returned hits). Not required for the tool to run, but the AI cannot anticipate the return format without it.',
       resultBuilderTitle: 'Result schema definition',
       configTitle: 'Admin config',
-      configDesc: 'Configure secrets, timeouts and other runtime parameters. Invisible to the AI; editable by admins only.',
+      configDesc:
+        'Configure secrets, timeouts and other runtime parameters. Invisible to the AI; editable by admins only.',
       configWhen: 'When to configure: ',
       configWhenText: 'When the tool needs runtime parameters such as API keys, endpoints or timeouts.',
       configAfter: 'After configuration: ',
-      configAfterText: 'These config values are carried automatically on invocation; the AI never needs to pass sensitive information.',
+      configAfterText:
+        'These config values are carried automatically on invocation; the AI never needs to pass sensitive information.',
       configSchemaExpLabel: 'Config keys definition (admin maintained)',
-      configSchemaDesc: 'Defines which config keys this tool accepts (e.g. api_key, timeout). Edit when first creating the tool or adding new config keys; tools with existing keys usually need no changes here.',
+      configSchemaDesc:
+        'Defines which config keys this tool accepts (e.g. api_key, timeout). Edit when first creating the tool or adding new config keys; tools with existing keys usually need no changes here.',
       configSchemaBuilderTitle: 'Config keys definition',
       currentConfig: 'Current config values',
       webResearchPre: 'When API key is empty, falls back to ',
       webResearchLink: 'System settings → Web research',
       webResearchPost: ' or the TAVILY_API_KEY environment variable.',
       configJsonLabel: 'Config JSON',
-      extraKeysBanner: 'The following keys are not in the config schema and may be rejected by the backend on save: {keys}',
+      extraKeysBanner:
+        'The following keys are not in the config schema and may be rejected by the backend on save: {keys}',
       advancedTitle: 'Advanced',
       advancedDesc: 'Factory default config and metadata; usually no changes needed.',
       advancedWhen: 'When to configure: ',
-      advancedWhenText: 'When setting default config values for a new tool, or adding extension info for other systems to read.',
+      advancedWhenText:
+        'When setting default config values for a new tool, or adding extension info for other systems to read.',
       advancedAfter: 'After configuration: ',
       advancedAfterText: 'New agents binding this tool inherit the factory default config.',
-      advancedRegistryBanner: 'Readonly built-in tool: advanced JSON is viewable; changes may be overwritten by the registry after restart.',
+      advancedRegistryBanner:
+        'Readonly built-in tool: advanced JSON is viewable; changes may be overwritten by the registry after restart.',
       defaultConfigExp: 'Factory default config',
       defaultConfigLabel: 'Default config JSON',
       copyFromCurrent: 'Copy from current config',
@@ -2297,7 +2360,8 @@ export default {
       toggle: {
         enabled: {
           title: 'Globally enabled',
-          summary: 'When off, the tool is unavailable to all agents by default (unless a policy allow explicitly names it).',
+          summary:
+            'When off, the tool is unavailable to all agents by default (unless a policy allow explicitly names it).',
           impact: 'Writes catalog enabled; consistent with the list page toggle.',
         },
         readonly: {
@@ -2308,7 +2372,8 @@ export default {
         },
         requiresConfirmation: {
           title: 'Requires confirmation before execution',
-          summary: 'The agent pauses before calling and waits for your confirmation in the conversation (delete files, send emails, run commands, etc.).',
+          summary:
+            'The agent pauses before calling and waits for your confirmation in the conversation (delete files, send emails, run commands, etc.).',
           impact: 'Runtime goes through the ToolRequiresConfirmation gate.',
           note: 'Stacks with the agent override "requires confirmation"; not the same as the agent tools master switch.',
         },
@@ -2331,10 +2396,13 @@ export default {
         category: 'Affects list filtering and profile tool groups, e.g. web, filesystem, integration.',
         source: 'external=externally registered; builtin/mcp/system are platform maintained.',
         riskLevel: 'Affects enable double-confirmation and audit display: low / medium / high / critical.',
-        parametersSchemaJson: 'Parameter fields the LLM can pass on invocation (JSON Schema). Use {} for parameter-less tools.',
+        parametersSchemaJson:
+          'Parameter fields the LLM can pass on invocation (JSON Schema). Use {} for parameter-less tools.',
         resultSchemaJson: 'Describes the return data structure (optional); useful for testing and documentation.',
-        configSchemaJson: 'Admin config keys definition (API keys, timeouts, etc.); once defined, a visual form appears below.',
-        configJson: 'Currently effective config values; must conform to the config schema. Sensitive fields never appear in plaintext in invocation records.',
+        configSchemaJson:
+          'Admin config keys definition (API keys, timeouts, etc.); once defined, a visual form appears below.',
+        configJson:
+          'Currently effective config values; must conform to the config schema. Sensitive fields never appear in plaintext in invocation records.',
         defaultConfigJson: 'Factory defaults restored on reset; usually the same as or a subset of the current config.',
         metadataJson: 'Extended metadata (OpenAPI URL, MCP info, etc.); regular users can leave {}.',
       },
@@ -2386,7 +2454,8 @@ export default {
         policy: {
           title: 'Runtime policy: catalog flags ≠ runtime effective',
           item0: '"Requires confirmation / streaming / parallel" are catalog metadata; chips carry the "flag:" prefix',
-          item1: 'Whether streaming / parallel actually happen → agent "streaming tools" and "parallel tool calls" master switches',
+          item1:
+            'Whether streaming / parallel actually happen → agent "streaming tools" and "parallel tool calls" master switches',
           item2: 'For built-in tools, the latter three are registry-maintained and may reset after restart',
         },
         schemaView: {
@@ -2403,15 +2472,18 @@ export default {
       chips: {
         requiresConfirmation: {
           label: 'Flag: needs confirm',
-          tooltip: 'Catalog flag: invocation may require user confirmation. Actual behavior also depends on agent overrides and the runtime gate.',
+          tooltip:
+            'Catalog flag: invocation may require user confirmation. Actual behavior also depends on agent overrides and the runtime gate.',
         },
         supportsStreaming: {
           label: 'Flag: streaming',
-          tooltip: 'Catalog flag: tool supports StreamableCall. Actual streaming also depends on the agent "streaming tools" master switch.',
+          tooltip:
+            'Catalog flag: tool supports StreamableCall. Actual streaming also depends on the agent "streaming tools" master switch.',
         },
         supportsConcurrency: {
           label: 'Flag: parallel',
-          tooltip: 'Catalog flag: suitable for parallel calls with other readonly tools in the same turn. Actual parallelism depends on agent "parallel tool calls" and the allow list.',
+          tooltip:
+            'Catalog flag: suitable for parallel calls with other readonly tools in the same turn. Actual parallelism depends on agent "parallel tool calls" and the allow list.',
         },
       },
     },
@@ -2425,7 +2497,8 @@ export default {
       stateDenied: 'Deny',
       stateAll: 'All',
       filterState: 'Effective state',
-      masterOff: 'The agent tools master switch is off; the matrix below shows policy-computed results and no tools are injected at runtime.',
+      masterOff:
+        'The agent tools master switch is off; the matrix below shows policy-computed results and no tools are injected at runtime.',
       requiresConfirmation: 'Needs confirm',
       editOverride: 'Edit override',
       addOverride: 'Add override',
@@ -2536,7 +2609,8 @@ export default {
         },
       },
       activityTitle: 'Recent Memory Activity',
-      activityCaption: 'Cross-layer events: facts extracted, facts injected into replies, episodes recorded, entities created.',
+      activityCaption:
+        'Cross-layer events: facts extracted, facts injected into replies, episodes recorded, entities created.',
       activityEmpty: 'No memory activity yet.',
       activity: {
         fact_extracted: 'Fact extracted',
@@ -2798,7 +2872,8 @@ export default {
       proposalsCaption: 'Pending self-correction suggestions and rollback logs.',
       proposalsState: '{pending} pending · {events} events',
       reviewTitle: 'Evolution review',
-      reviewCaption: 'Approve or reject records a decision only — identity and strategy are not auto-applied. Revert marks the event; it does not undo a patch.',
+      reviewCaption:
+        'Approve or reject records a decision only — identity and strategy are not auto-applied. Revert marks the event; it does not undo a patch.',
       reviewEmpty: 'No pending proposals or evolution events.',
       approve: 'Approve',
       reject: 'Reject',
@@ -2813,14 +2888,17 @@ export default {
     },
     pending: {
       title: 'High-risk write approvals',
-      caption: 'Writes judged UPDATE / DELETE / contested-ADD by the auto-memory pipeline are withheld here for approval-center decisions.',
+      caption:
+        'Writes judged UPDATE / DELETE / contested-ADD by the auto-memory pipeline are withheld here for approval-center decisions.',
       refreshAria: 'Refresh pending list',
       emptyTitle: 'No withheld memory writes',
-      emptyCaption: 'When the auto-memory pipeline tries to update, delete, or controversially add a fact, it lands here first.',
+      emptyCaption:
+        'When the auto-memory pipeline tries to update, delete, or controversially add a fact, it lands here first.',
       priorLabel: 'Current statement (old)',
       proposedLabel: 'Proposed write (new)',
       targetFact: 'Target fact',
-      decideHint: 'Approve / reject happens in the approval center (twinmonitor); once approved, the original adjudicated write is replayed.',
+      decideHint:
+        'Approve / reject happens in the approval center (twinmonitor); once approved, the original adjudicated write is replayed.',
       status: {
         pending: 'Pending',
         approved: 'Approved',
@@ -2830,7 +2908,8 @@ export default {
     },
     pii: {
       title: 'PII review',
-      caption: 'Sensitive facts stay redacted by default. Approve keeps the redacted text; reject marks the fact redacted.',
+      caption:
+        'Sensitive facts stay redacted by default. Approve keeps the redacted text; reject marks the fact redacted.',
       refreshAria: 'Refresh PII list',
       emptyTitle: 'No sensitive memories pending review',
       emptyCaption: 'Writes that hit phone numbers or IDs show up here.',
@@ -3470,7 +3549,8 @@ export default {
     runDeleteConfirm: 'Delete this run and its results?',
     runDeleted: 'Run deleted',
     runDeleteFailed: 'Failed to delete run',
-    addCaseTeamBlocked: 'Team tasks cannot be replayed as a single-agent eval case. Use a solo agent conversation instead.',
+    addCaseTeamBlocked:
+      'Team tasks cannot be replayed as a single-agent eval case. Use a solo agent conversation instead.',
   },
   channelsPage: {
     kicker: 'Channel management',
@@ -3830,8 +3910,7 @@ export default {
       pattern_dismissed: 'Pattern dismissed',
       pattern_dismiss_failed: 'Failed to dismiss pattern',
       approve_title: 'Approve Knowledge Proposal',
-      approve_message:
-        'Approve this knowledge proposal? It will be registered to the agent knowledge base.',
+      approve_message: 'Approve this knowledge proposal? It will be registered to the agent knowledge base.',
       approve: 'Approve',
       cancel: 'Cancel',
       approved: 'Approved and registered',
@@ -3939,7 +4018,8 @@ export default {
       pipelineEnableLabel: 'Enable proposal pipeline',
       pipelineEnableCaption: 'Scan sessions and generate improvement proposals once thresholds are met.',
       autoApplyLabel: 'Auto-apply low-risk proposals',
-      autoApplyCaption: 'Low-risk proposals are applied without per-item confirmation; requires the pipeline to be enabled.',
+      autoApplyCaption:
+        'Low-risk proposals are applied without per-item confirmation; requires the pipeline to be enabled.',
       pipelineNotLiveBanner:
         'Min episodes, min negative feedback, persona max chars, and proposal TTL days take effect immediately; auto-apply, throttle hours, and max appends are saved only and will become effective once the auto-apply pipeline goes live.',
       sectionTitle: 'Evolution',
@@ -3955,7 +4035,8 @@ export default {
       toggleSuggestionsTitle: 'Evolution suggestions',
       toggleSuggestionsCaption: 'Generate improvement suggestions based on metrics.',
       pipelineSectionTitle: 'Auto-Proposal Pipeline',
-      pipelineSectionHint: 'Trigger structured evolution proposals based on episodes / negative feedback (unrelated to L4 graph injection).',
+      pipelineSectionHint:
+        'Trigger structured evolution proposals based on episodes / negative feedback (unrelated to L4 graph injection).',
       minEpisodesLabel: 'Trigger episodes',
       minNegativeFeedbackLabel: 'Trigger negative feedback',
       throttleHoursLabel: 'Throttle hours',
@@ -3977,7 +4058,8 @@ export default {
       suggestionsSectionTitle: 'Evolution suggestions list',
       suggestionsSectionHint: 'Improvement suggestions auto-generated from metrics; can be applied or rejected.',
       guardrailsSectionTitle: 'Guardrails',
-      guardrailsSectionHint: 'Limit the magnitude of auto-adjustment; rollback when samples are insufficient or performance declines.',
+      guardrailsSectionHint:
+        'Limit the magnitude of auto-adjustment; rollback when samples are insufficient or performance declines.',
       maxChangeLabel: 'Max change per period',
       minDataPointsLabel: 'Min data points',
       rollbackDeclineLabel: 'Rollback on decline',
@@ -3992,7 +4074,8 @@ export default {
       proposalTtlDaysHint: 'Proposals expire if left unhandled beyond this many days',
       personaMaxCharsHint: 'Max characters of persona content for injection and drafts (effective immediately)',
       maxAppendsHint: 'Maximum appended sections allowed in the system prompt',
-      guardrailsNotLiveBanner: 'Guardrail rules are saved and will take effect once auto-tuning ships; currently record-only.',
+      guardrailsNotLiveBanner:
+        'Guardrail rules are saved and will take effect once auto-tuning ships; currently record-only.',
       maxChangeHint: 'Maximum adjustment magnitude allowed per period (0–1)',
       minDataPointsHint: 'Minimum samples required before auto-tuning',
       rollbackDeclineHint: 'Trigger a rollback when metrics decline by this percentage',
@@ -4134,7 +4217,8 @@ export default {
   },
   knowledgePage: {
     queueTitle: 'Upload queue',
-    errorApiNotFound: 'Knowledge API not found (404). Make sure the backend has been restarted and the routes are registered.',
+    errorApiNotFound:
+      'Knowledge API not found (404). Make sure the backend has been restarted and the routes are registered.',
     errorNetworkUnavailable: 'Cannot reach the backend. Make sure the backend service is running.',
     ingestTextRequired: 'Paste the text content first',
     ingestSubmitted: 'Document submitted; parsing in the background...',
@@ -4171,7 +4255,8 @@ export default {
     moveDialogTitle: 'Move document to',
     moveTargetLabel: 'Target knowledge base',
     moveDimMismatch: 'Target vault uses a different retrieval type and cannot accept this move',
-    documentsTruncated: 'Document index is incomplete (batches of {n}). The folder tree is fine; switcher and graph may miss files.',
+    documentsTruncated:
+      'Document index is incomplete (batches of {n}). The folder tree is fine; switcher and graph may miss files.',
     loadMoreDocuments: 'Load more',
     summaryCardEmpty: 'Summary pending',
     createAdvanced: 'Advanced (semantic search)',
@@ -4263,14 +4348,16 @@ export default {
     promoteTitle: 'Promote to Team Vault',
     promoteTargetLabel: 'Target team vault',
     promoteEmpty: 'No team vault available',
-    promoteHint: 'Clones all blocks of this document into the target team vault; the source stays and lineage links are recorded.',
+    promoteHint:
+      'Clones all blocks of this document into the target team vault; the source stays and lineage links are recorded.',
     promoteSubmit: 'Promote',
     promoteCancel: 'Cancel',
     promoteFailed: 'Promotion failed',
     promoteResultTitle: 'Promotion Complete',
     promoteResultCreated: 'Cloned {count} block(s) into the team vault with lineage links.',
     promoteCascadeTitle: '{count} reference(s) point to private documents not promoted along',
-    promoteCascadeHint: 'These references stay dangling on the team side and resolve once the target notes are created.',
+    promoteCascadeHint:
+      'These references stay dangling on the team side and resolve once the target notes are created.',
     promoteClose: 'Done',
     searchDualPlaceholder: 'Search files or knowledge…',
     searchZoneInstant: 'Instant',
@@ -4407,7 +4494,7 @@ export default {
       expertsEmpty: 'No write-back provenance yet, so no experts',
       expertsFromHome: 'From "{name}"',
       pendingEmpty: 'No pending write-back facts',
-      pendingConfirm: 'Write {n} lower-confidence facts into today\'s daily note?\n{preview}',
+      pendingConfirm: "Write {n} lower-confidence facts into today's daily note?\n{preview}",
       pendingDone: 'Confirmed {n} facts',
       pendingSelectAll: 'Select all',
       pendingApplySelected: 'Confirm selected',
@@ -4653,7 +4740,8 @@ export default {
     dialogTitleEdit: 'Edit Webhook',
     fieldName: 'Name',
     fieldUrl: 'Callback URL',
-    fieldUrlHint: 'Must be an HTTPS or public HTTP URL; localhost/intranet hosts require ARANEA_OUTBOUND_ALLOW_HOSTS on the server',
+    fieldUrlHint:
+      'Must be an HTTPS or public HTTP URL; localhost/intranet hosts require ARANEA_OUTBOUND_ALLOW_HOSTS on the server',
     fieldSecret: 'Signing secret',
     fieldSecretHintCreate: 'For HMAC-SHA256 signature verification. Leave empty for unsigned callbacks.',
     fieldSecretHintEdit: 'Leave empty to keep current value. Enter a new value to replace.',
@@ -5777,14 +5865,16 @@ export default {
     rules: {
       action: 'Risk rules',
       title: 'Risk-classification rules',
-      subtitle: 'Configurable knobs of the governance router D6 rule set; 0 / empty inherits the code defaults for line caps and globs. Daily quota 0 disables auto-apply.',
+      subtitle:
+        'Configurable knobs of the governance router D6 rule set; 0 / empty inherits the code defaults for line caps and globs. Daily quota 0 disables auto-apply.',
       lowMax: 'Low-risk line cap',
       lowMaxHint:
         'A single-file diff with ≤ this many lines and a soft kind classifies as low risk (R1); 0 = default (effective {value})',
       mediumMax: 'Medium-risk line cap',
       mediumMaxHint: 'Above this or hitting a core path classifies as high risk (R3); 0 = default (effective {value})',
       quota: 'Daily auto-apply quota',
-      quotaHint: 'Max low-risk patches auto-applied per day (D10); 0 = auto-apply OFF (production default). Set >0 to enable (effective {value}).',
+      quotaHint:
+        'Max low-risk patches auto-applied per day (D10); 0 = auto-apply OFF (production default). Set >0 to enable (effective {value}).',
       globs: 'Core path globs',
       globsHint: 'One doublestar pattern per line; empty = use the default core path set',
       effective: 'Effective values (normalized)',

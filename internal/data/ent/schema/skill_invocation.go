@@ -48,6 +48,12 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.JSON("token_usage", map[string]any{}).Optional(),
 		field.String("deleted_at").Default("").Optional(),
 		field.String("analyzed_at").Default("").Optional(),
+		// 审计 W5②：报告分析队列重试计数/最后错误。ScanAndGenerateReports 生成
+		// 失败时 RecordAnalysisFailure 自增 attempts 并落 error；analysis_attempts
+		// 达到上限的行被 ListUnanalyzed 谓词排除（隔离死信），修复毒行队头阻塞
+		// （按 created_at ASC 取批，永久失败行每轮重扫并挤占批次）。
+		field.Int("analysis_attempts").Default(0),
+		field.Text("analysis_error").Default(""),
 		field.JSON("routed_slugs", []string{}).Optional(),
 		field.String("loaded_slug").Default("").Optional().MaxLen(256),
 	}
