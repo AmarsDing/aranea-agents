@@ -2579,9 +2579,13 @@ export default {
       hopsLabel: 'Hops',
       statusBar: 'Nodes {nodes} · Edges {edges} · Filtered {filtered}',
       focusPrefix: 'Focus',
+      truncatedHint:
+        'Large memory scope: only the ~500 most recent memories take part in this graph; older entities/facts are not loaded',
       empty: {
         noMemoryData: 'No memory relations for this Agent yet. Build up memory through conversations.',
         focusNotFound: 'The focus entity is outside the current graph scope. Adjust the filters.',
+        focusNotFoundTruncated:
+          'The focus is outside the loaded recent-first window — the memory may still exist. Adjust the filters and retry.',
         generic: 'No graph data.',
       },
       edgeTypes: {

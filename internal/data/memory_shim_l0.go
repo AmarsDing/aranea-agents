@@ -58,6 +58,29 @@ func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID, agen
 	return out, entErrToBizErr(rows.Err(), "MEMORY_L0")
 }
 
+// AggregateL0Overview returns the L0 panorama card counts (snapshot total,
+// created-today count) in one SQL pass (P2-1, 2026-10-18 audit). The headline
+// fields (used_ratio / warning_codes) are NOT covered — callers fetch the
+// latest snapshot row separately with ListL0SnapshotRows(limit=1).
+func (r *l0SnapshotRepo) AggregateL0Overview(ctx context.Context, sessionID, agentID, todayStart string) (biz.L0OverviewAgg, error) {
+	var agg biz.L0OverviewAgg
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return agg, nil
+	}
+	clauses := []string{"session_id = ?"}
+	args := []any{strings.TrimSpace(todayStart), sessionID}
+	if agentID = strings.TrimSpace(agentID); agentID != "" {
+		clauses = append(clauses, "agent_id = ?")
+		args = append(args, agentID)
+	}
+	q := `SELECT COUNT(*), COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0)
+		 FROM memory_l0_assembly_snapshots WHERE ` + strings.Join(clauses, " AND ")
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(q), args,
+		&agg.ItemCount, &agg.TodayAdded)
+	return agg, entErrToBizErr(err, "MEMORY_L0")
+}
+
 func (r *l0SnapshotRepo) GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

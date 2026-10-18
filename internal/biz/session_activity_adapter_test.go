@@ -67,6 +67,12 @@ func (s stubTaskReader) ListTasksBySession(context.Context, string) ([]Task, err
 	return s.tasks, s.err
 }
 
+// MaxSeqBySession 是 TaskV2Reader 新成员的编译补齐（并行工作流的接口扩展在途）；
+// 本测试不消费 seq，恒 0 即可。
+func (s stubTaskReader) MaxSeqBySession(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
 // Regression: steps_v2 persists only agent-side steps; user inputs live in
 // tasks_v2. ListBySession must merge both or every role=user message is
 // dropped from the reconstructed timeline (breaks auto-memory L4 extraction,

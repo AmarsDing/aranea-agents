@@ -33,6 +33,7 @@ function sampleGraph(): UnifiedMemoryGraph {
     edge_count: 2,
     filtered_edge_count: 5,
     empty_reason: '',
+    truncated: false,
   };
 }
 
@@ -120,5 +121,16 @@ describe('useUnifiedMemoryGraph', () => {
     mockApi.mockResolvedValue({ ...sampleGraph(), nodes: [], edges: [], empty_reason: 'no_memory_data' });
     const g = useUnifiedMemoryGraph(ref('agent-1'));
     await vi.waitFor(() => expect(g.emptyReason.value).toBe('no_memory_data'));
+  });
+
+  it('truncated 透传（P2-3）：默认 false，后端 true 时 exposing true', async () => {
+    mockApi.mockResolvedValue(sampleGraph());
+    const g1 = useUnifiedMemoryGraph(ref('agent-1'));
+    await vi.waitFor(() => expect(g1.nodes.value.length).toBe(3));
+    expect(g1.truncated.value).toBe(false);
+
+    mockApi.mockResolvedValue({ ...sampleGraph(), truncated: true });
+    const g2 = useUnifiedMemoryGraph(ref('agent-2'));
+    await vi.waitFor(() => expect(g2.truncated.value).toBe(true));
   });
 });

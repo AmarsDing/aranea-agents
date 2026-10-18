@@ -227,7 +227,7 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 
 	// P1-2a（2026-08-21）自适应阈值：仅查询路径；top1 强时抬高有效 minScore。
 	// 空查询已把 minScore 置 0，AdaptiveRecallMinScore 因此关闭过滤。
-	effMinScore := AdaptiveRecallMinScore(minScore, 0)
+	var effMinScore float64
 	if len(merged) > 0 {
 		effMinScore = AdaptiveRecallMinScore(minScore, merged[0].Scores.Total)
 	}

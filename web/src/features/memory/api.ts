@@ -1043,6 +1043,8 @@ export async function getUnifiedMemoryGraph(
     edge_count: pickOptionalI32(res, 'edge_count', 'edgeCount') ?? edges.length,
     filtered_edge_count: pickOptionalI32(res, 'filtered_edge_count', 'filteredEdgeCount') ?? 0,
     empty_reason: pickStr(res, 'empty_reason', 'emptyReason'),
+    // P2-3：source 扫描截断透传，图谱页显示"仅最近部分记忆参与构图"提示。
+    truncated: pickBool(res, 'truncated', 'truncated'),
   };
 }
 

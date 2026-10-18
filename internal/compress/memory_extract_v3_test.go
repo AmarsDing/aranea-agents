@@ -80,10 +80,29 @@ func TestBuildFactAdjudicationPrompt(t *testing.T) {
 		},
 	}
 	prompt := BuildFactAdjudicationPrompt(items)
-	for _, want := range []string{"用户现在只喝茶", "f1", "用户喜欢咖啡"} {
+	for _, want := range []string{"用户现在只喝茶", "f1", "用户喜欢咖啡", `"ordinal":0`} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("adjudication prompt missing %q", want)
 		}
+	}
+}
+
+// P2-4（2026-10-18 审计）：判决回执携带 ordinal（与 new_facts 数组同序），
+// 供管线按序数匹配；缺失 ordinal 的判决解析为 -1 走 statement 兜底。
+func TestParseFactAdjudicationResponse_Ordinal(t *testing.T) {
+	raw := `{"verdicts":[{"ordinal":1,"statement":"b","operation":"add"},{"statement":"a","operation":"noop"}]}`
+	verdicts, err := ParseFactAdjudicationResponse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(verdicts) != 2 {
+		t.Fatalf("verdicts: got %d want 2", len(verdicts))
+	}
+	if verdicts[0].Ordinal != 1 {
+		t.Errorf("verdict[0].Ordinal: got %d want 1", verdicts[0].Ordinal)
+	}
+	if verdicts[1].Ordinal != -1 {
+		t.Errorf("missing ordinal must map to -1, got %d", verdicts[1].Ordinal)
 	}
 }
 

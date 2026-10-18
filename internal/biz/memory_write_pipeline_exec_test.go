@@ -12,12 +12,42 @@ import (
 // --- fakes (fakeNeighborSearcher shared with memory_conflict_test.go) ---
 
 type fakeEmbedder struct {
-	err error
+	err   error
+	calls int
 }
 
 func (f *fakeEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
+	f.calls++
 	if f.err != nil {
 		return nil, f.err
+	}
+	return []float32{0.1, 0.2}, nil
+}
+
+// batchEmbedder 实现可选的批量口（P2-5），管线必须优先用它。
+type batchEmbedder struct {
+	fakeEmbedder
+	batchCalls int
+	batchSizes []int
+}
+
+func (b *batchEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	b.batchCalls++
+	b.batchSizes = append(b.batchSizes, len(texts))
+	out := make([][]float32, 0, len(texts))
+	for _, t := range texts {
+		v, err := b.embedOne(t)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+func (b *batchEmbedder) embedOne(t string) ([]float32, error) {
+	if b.err != nil {
+		return nil, b.err
 	}
 	return []float32{0.1, 0.2}, nil
 }
@@ -28,10 +58,12 @@ func factRowJSON(id, statement, kind string) []byte {
 }
 
 type fakeFactRowReader struct {
-	rows [][]byte
+	rows  [][]byte
+	calls int
 }
 
 func (f *fakeFactRowReader) GetFactRowsByIDs(_ context.Context, _ []string) ([][]byte, error) {
+	f.calls++
 	return f.rows, nil
 }
 
@@ -92,13 +124,20 @@ func (f *fakeAccessCounter) IncrementFactRecalledCount(_ context.Context, ids []
 }
 
 type fakeAdjudicator struct {
-	verdicts []FactAdjudicationVerdict
-	err      error
-	calls    int
+	verdicts  []FactAdjudicationVerdict
+	err       error
+	calls     int
+	lastItems []FactAdjudicationItem
+	// fn：按 items 动态生成判决（P2-4 序数匹配测试用）；设置后覆盖 verdicts。
+	fn func(items []FactAdjudicationItem) []FactAdjudicationVerdict
 }
 
-func (f *fakeAdjudicator) AdjudicateFactWrites(_ context.Context, _, _ string, _ []FactAdjudicationItem) ([]FactAdjudicationVerdict, error) {
+func (f *fakeAdjudicator) AdjudicateFactWrites(_ context.Context, _, _ string, items []FactAdjudicationItem) ([]FactAdjudicationVerdict, error) {
 	f.calls++
+	f.lastItems = items
+	if f.fn != nil {
+		return f.fn(items), f.err
+	}
 	return f.verdicts, f.err
 }
 
@@ -350,5 +389,129 @@ func TestFactWritePipeline_EmbedErrorDegradesToAdd(t *testing.T) {
 	res := p.Apply(context.Background(), []FactWriteCandidate{pipelineCandidate("用户喜欢茶")})
 	if res.Added != 1 {
 		t.Fatalf("embed failure must degrade to add, got %+v", res)
+	}
+}
+
+// P2-4（2026-10-18 审计）：同批次两条相同 statement 的 contested 候选，判决
+// 必须按 ordinal 一一对应——旧的 statement→verdict map 会让两条候选共用同一
+// 判决（交叉错配）。
+func TestFactWritePipeline_DuplicateStatementsMatchDistinctVerdicts(t *testing.T) {
+	writer := &fakeFactWriter{}
+	pending := &fakePendingStore{}
+	access := &fakeAccessCounter{}
+	adj := &fakeAdjudicator{fn: func(items []FactAdjudicationItem) []FactAdjudicationVerdict {
+		out := make([]FactAdjudicationVerdict, 0, len(items))
+		for i, it := range items {
+			if i == 0 {
+				out = append(out, FactAdjudicationVerdict{
+					Ordinal: i, Statement: it.Candidate.Statement,
+					Operation: FactWriteOpUpdate, TargetFactID: "f1",
+				})
+			} else {
+				out = append(out, FactAdjudicationVerdict{
+					Ordinal: i, Statement: it.Candidate.Statement,
+					Operation: FactWriteOpNoop, TargetFactID: "f1",
+				})
+			}
+		}
+		return out
+	}}
+	p := NewFactWritePipeline(FactWritePipelineDeps{
+		Searcher: &fakeNeighborSearcher{neighbors: []MemoryConflictNeighbor{
+			{FactID: "f1", Score: 0.85, FactKind: "preference"},
+		}},
+		Embedder:    &fakeEmbedder{},
+		Reader:      &fakeFactRowReader{rows: [][]byte{factRowJSON("f1", "用户喜欢咖啡", "preference")}},
+		Writer:      writer,
+		Access:      access,
+		Adjudicator: adj,
+		Pending:     pending,
+		LG:          loggateway.NewNoop(),
+	})
+	res := p.Apply(context.Background(), []FactWriteCandidate{
+		pipelineCandidate("用户现在只喝茶"), // ordinal 0 → adjudicated UPDATE → pend
+		pipelineCandidate("用户现在只喝茶"), // ordinal 1 → adjudicated NOOP  → merge
+	})
+	if res.Pended != 1 || res.Merged != 1 || res.Added != 0 {
+		t.Fatalf("ordinal mis-match: got Pended=%d Merged=%d Added=%d, want 1/1/0",
+			res.Pended, res.Merged, res.Added)
+	}
+	if len(pending.recs) != 1 || pending.recs[0].Verdict != MemoryFactPendingVerdictUpdate {
+		t.Fatalf("pending rec mismatch: %+v", pending.recs)
+	}
+	if len(access.ids) != 1 || access.ids[0] != "f1" {
+		t.Fatalf("merge bump mismatch: %+v", access.ids)
+	}
+	// items 顺序即 ordinal——判决实现依赖该契约（服务端 prompt 同序）。
+	if adj.calls != 1 || len(adj.lastItems) != 2 {
+		t.Fatalf("adjudicator contract: calls=%d items=%d", adj.calls, len(adj.lastItems))
+	}
+}
+
+// P2-5（2026-10-18 审计）：邻居检索必须跨候选批处理——fact 行读取整个批次
+// 至多一次；embedder 提供批量口时必须走批量（每候选一次 Embed 的旧路径）。
+func TestFactWritePipeline_NeighborRetrievalBatched(t *testing.T) {
+	writer := &fakeFactWriter{}
+	reader := &fakeFactRowReader{rows: [][]byte{
+		factRowJSON("f1", "用户喜欢咖啡", "preference"),
+	}}
+	embedder := &batchEmbedder{}
+	p := NewFactWritePipeline(FactWritePipelineDeps{
+		Searcher: &fakeNeighborSearcher{neighbors: []MemoryConflictNeighbor{
+			{FactID: "f1", Score: 0.95, FactKind: "preference"}, // ≥0.92 同 kind → merge
+		}},
+		Embedder: embedder,
+		Reader:   reader,
+		Writer:   writer,
+		LG:       loggateway.NewNoop(),
+	})
+	res := p.Apply(context.Background(), []FactWriteCandidate{
+		pipelineCandidate("用户喜欢喝咖啡"),
+		pipelineCandidate("用户偏好拿铁"),
+		pipelineCandidate("用户不喝奶茶"),
+	})
+	// 全部 merge：无新增写入。
+	if res.Added != 0 || len(writer.upserts) != 0 {
+		t.Fatalf("expected all merged, got Added=%d upserts=%d", res.Added, len(writer.upserts))
+	}
+	if reader.calls != 1 {
+		t.Errorf("GetFactRowsByIDs calls: got %d, want 1 (batched across candidates)", reader.calls)
+	}
+	if embedder.batchCalls != 1 {
+		t.Errorf("EmbedBatch calls: got %d, want 1; per-text Embed calls: %d", embedder.batchCalls, embedder.calls)
+	}
+	if len(embedder.batchSizes) != 1 || embedder.batchSizes[0] != 3 {
+		t.Errorf("batch sizes: got %v, want [3]", embedder.batchSizes)
+	}
+}
+
+// 无批量口的 embedder 退化为逐条 Embed（旧行为兼容）。
+func TestFactWritePipeline_NeighborRetrievalFallbackPerTextEmbed(t *testing.T) {
+	writer := &fakeFactWriter{}
+	reader := &fakeFactRowReader{rows: [][]byte{
+		factRowJSON("f1", "用户喜欢咖啡", "preference"),
+	}}
+	embedder := &fakeEmbedder{}
+	p := NewFactWritePipeline(FactWritePipelineDeps{
+		Searcher: &fakeNeighborSearcher{neighbors: []MemoryConflictNeighbor{
+			{FactID: "f1", Score: 0.95, FactKind: "preference"},
+		}},
+		Embedder: embedder,
+		Reader:   reader,
+		Writer:   writer,
+		LG:       loggateway.NewNoop(),
+	})
+	res := p.Apply(context.Background(), []FactWriteCandidate{
+		pipelineCandidate("用户喜欢喝咖啡"),
+		pipelineCandidate("用户偏好拿铁"),
+	})
+	if res.Added != 0 {
+		t.Fatalf("expected all merged, got Added=%d", res.Added)
+	}
+	if reader.calls != 1 {
+		t.Errorf("GetFactRowsByIDs calls: got %d, want 1", reader.calls)
+	}
+	if embedder.calls != 2 {
+		t.Errorf("per-text Embed calls: got %d, want 2 (no batch interface)", embedder.calls)
 	}
 }

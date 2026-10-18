@@ -33,6 +33,15 @@ type EmbeddingService interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
+// EmbeddingBatchService 是 EmbeddingService 的可选批量能力（P2-5，2026-10-18
+// 审计）：事实写管线逐候选 Embed 会造成批次 N 次嵌入往返；实现本接口的
+// embedder 由管线经 type-assertion 优先走批量，未实现时回退逐条 Embed
+// （与 MemoryFactPendingCounter 同一窄优模式，主契约不扩面）。
+// Stability:evolving
+type EmbeddingBatchService interface {
+	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+}
+
 // ErrMemoryUnavailable when postgres vector backing is disabled or unreachable.
 var ErrMemoryUnavailable = apierror.Internal("MEMORY", "postgres vector store not available")
 

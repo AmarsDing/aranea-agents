@@ -507,6 +507,8 @@ export type UnifiedMemoryGraph = {
   edge_count: number;
   filtered_edge_count: number;
   empty_reason: string;
+  /** P2-3：构图 source 行被扫描上限截断（最近优先）；true 时图谱可能缺节点/边，focus_not_found 也可能只是焦点未加载。 */
+  truncated: boolean;
 };
 
 /** L2 情景记忆条目（浏览 Tab 时间线卡片）。 */

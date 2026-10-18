@@ -810,6 +810,10 @@ message GetUnifiedMemoryGraphResponse {
   int32 edge_count = 5;
   int32 filtered_edge_count = 6;
   string empty_reason = 7;
+  // P2-3（2026-10-18 审计）：构图 source 行（实体/事实）被统一扫描上限截断
+  // （SQL 最近优先，截掉的是最旧数据）时为 true；图谱可能缺节点/边，且
+  // focus_not_found 可能只是焦点未加载而非记忆不存在。
+  bool truncated = 8;
 }
 
 // ── 记忆中心重设计 P3：L2 情景浏览 ──

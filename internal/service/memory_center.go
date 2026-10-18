@@ -126,6 +126,8 @@ func (s *MemoryService) GetUnifiedMemoryGraph(ctx context.Context, req *v1.GetUn
 	out.NodeCount = int32(len(out.Nodes))
 	out.EdgeCount = int32(len(out.Edges))
 	out.FilteredEdgeCount = g.FilteredEdgeCount
+	// P2-3：source 扫描截断透传，前端图谱据此显示"仅最近部分记忆参与构图"。
+	out.Truncated = g.Truncated
 	return out, nil
 }
 

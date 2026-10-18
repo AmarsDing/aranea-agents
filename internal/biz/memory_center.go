@@ -98,6 +98,11 @@ type UnifiedMemoryGraph struct {
 	Edges             []UnifiedGraphEdge
 	FilteredEdgeCount int32
 	EmptyReason       string // no_memory_data | focus_not_found | ""
+	// Truncated（P2-3，2026-10-18 审计）：实体/事实 source 行受
+	// unifiedGraphScanLimit 上限截断（SQL ORDER BY updated_at DESC，截掉的是
+	// 最旧数据）时为 true。为 true 时图谱可能缺节点/边，focus_not_found 也
+	// 可能只是焦点掉出扫描窗口而非记忆不存在。
+	Truncated bool
 }
 
 // ── Layer overview ────────────────────────────────────────────────────
@@ -122,19 +127,36 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 	contextUsagePct := 0
 	compressStatus := "normal"
 	if sessionID != "" {
-		l0Rows, err := uc.admin.ListL0SnapshotRows(ctx, sessionID, agentID, 100)
-		if err != nil {
-			return nil, err
-		}
-		l0.ItemCount = int32(len(l0Rows))
-		for _, raw := range l0Rows {
-			m, _ := jsonutil.ParseMap(raw)
-			if m == nil {
-				continue
+		var l0Rows [][]byte
+		if stats, ok := uc.admin.(MemoryOverviewStatsReader); ok {
+			// P2-1：计数走 SQL 聚合（真实总量，无 100 行上限）；headline 仅回
+			// 表取最新一行渲染 used_ratio/compress_status。
+			agg, aerr := stats.AggregateL0Overview(ctx, sessionID, agentID, todayStart.UTC().Format(time.RFC3339Nano))
+			if aerr != nil {
+				return nil, aerr
 			}
-			if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
-				l0.TodayAdded++
+			l0.ItemCount, l0.TodayAdded = agg.ItemCount, agg.TodayAdded
+			latest, lerr := uc.admin.ListL0SnapshotRows(ctx, sessionID, agentID, 1)
+			if lerr != nil {
+				return nil, lerr
 			}
+			l0Rows = latest
+		} else {
+			l0Scan, err := uc.admin.ListL0SnapshotRows(ctx, sessionID, agentID, 100)
+			if err != nil {
+				return nil, err
+			}
+			l0.ItemCount = int32(len(l0Scan))
+			for _, raw := range l0Scan {
+				m, _ := jsonutil.ParseMap(raw)
+				if m == nil {
+					continue
+				}
+				if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
+					l0.TodayAdded++
+				}
+			}
+			l0Rows = l0Scan
 		}
 		if len(l0Rows) > 0 {
 			if m, _ := jsonutil.ParseMap(l0Rows[0]); m != nil {
@@ -156,27 +178,38 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 	l1 := MemoryLayerStat{Layer: "L1", Health: "ok"}
 	fieldCount := 0
 	if sessionID != "" {
-		taskRows, err := uc.admin.ListL1TaskRows(ctx, sessionID, agentID, "active", "")
-		if err != nil {
-			return nil, err
-		}
-		l1.ItemCount = int32(len(taskRows))
-		for _, raw := range taskRows {
-			m, _ := jsonutil.ParseMap(raw)
-			if m == nil {
-				continue
+		if stats, ok := uc.admin.(MemoryOverviewStatsReader); ok {
+			// P2-2：任务计数 + 今日新增 + 非 internal 未过期字段数一次 SQL 聚
+			// 合，消除逐任务 ListL1FieldRows 的 N+1。
+			agg, aerr := stats.AggregateL1Overview(ctx, sessionID, agentID, todayStart.UTC().Format(time.RFC3339Nano))
+			if aerr != nil {
+				return nil, aerr
 			}
-			if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
-				l1.TodayAdded++
+			l1.ItemCount, l1.TodayAdded = agg.ItemCount, agg.TodayAdded
+			fieldCount = int(agg.FieldCount)
+		} else {
+			taskRows, err := uc.admin.ListL1TaskRows(ctx, sessionID, agentID, "active", "")
+			if err != nil {
+				return nil, err
 			}
-			fields, ferr := uc.admin.ListL1FieldRows(ctx, jsonutil.IfaceStr(m, "id"), false)
-			if ferr != nil {
-				uc.lg.Warn("L1 field count failed (best-effort)",
-					loggateway.StepID("memory.center_l1_fields_fail"),
-					loggateway.Err(ferr))
-				continue
+			l1.ItemCount = int32(len(taskRows))
+			for _, raw := range taskRows {
+				m, _ := jsonutil.ParseMap(raw)
+				if m == nil {
+					continue
+				}
+				if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
+					l1.TodayAdded++
+				}
+				fields, ferr := uc.admin.ListL1FieldRows(ctx, jsonutil.IfaceStr(m, "id"), false)
+				if ferr != nil {
+					uc.lg.Warn("L1 field count failed (best-effort)",
+						loggateway.StepID("memory.center_l1_fields_fail"),
+						loggateway.Err(ferr))
+					continue
+				}
+				fieldCount += len(fields)
 			}
-			fieldCount += len(fields)
 		}
 	}
 	l1.HeadlineJSON = marshalHeadline(map[string]any{
@@ -453,11 +486,17 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 	}
 
 	// --- load node rows ---
+	// P2-3：列表 SQL 已 ORDER BY updated_at DESC LIMIT unifiedGraphScanLimit
+	// （最近优先截断）；此处以总量>已加载行数导出 truncated 标记给前端。
+	truncated := false
 	entityByID := map[string]map[string]any{}
 	if include["L4"] {
-		rows, _, err := uc.admin.ListEntityRows(ctx, "agent", agentID, "", "", "", "", "", unifiedGraphScanLimit, 0)
+		rows, entityTotal, err := uc.admin.ListEntityRows(ctx, "agent", agentID, "", "", "", "", "", unifiedGraphScanLimit, 0)
 		if err != nil {
 			return nil, err
+		}
+		if entityTotal > int32(len(rows)) {
+			truncated = true
 		}
 		for _, raw := range rows {
 			m, _ := jsonutil.ParseMap(raw)
@@ -472,9 +511,14 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 		// as F1 layer overview) — facts live in session/user/agent scopes;
 		// the old scope='agent' query missed session/user facts, so graph
 		// nodes and fact-linked edges were silently dropped.
-		rows, _, _, _, err := uc.admin.ListFactRows(ctx, "", "", "", "", "", agentID, unifiedGraphScanLimit, 0)
+		rows, _, factActive, _, err := uc.admin.ListFactRows(ctx, "", "", "", "", "", agentID, unifiedGraphScanLimit, 0)
 		if err != nil {
 			return nil, err
+		}
+		// 截断口径与返回行一致：rows 默认 status='active'，与 active 计数比较
+		// （total 含 archived，会误报截断）。
+		if factActive > int32(len(rows)) {
+			truncated = true
 		}
 		for _, raw := range rows {
 			m, _ := jsonutil.ParseMap(raw)
@@ -597,15 +641,22 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 		}
 	}
 	for id, m := range factByID {
-		hits := jsonutil.IfaceI32(m, "hit_count")
+		// P1-1（2026-10-18 审计）：权重取真实召回计数 recalled_count（写管线
+		// merge 与召回链真实递增），缺失/为 0 时回退 importance——hit_count
+		// 是全库无递增代码的死字段（恒 0，见 L298 注释），不能再作权重。
+		recalled := jsonutil.IfaceI32(m, "recalled_count")
+		weight := float64(recalled)
+		if weight <= 0 {
+			weight = jsonutil.IfaceF64(m, "importance")
+		}
 		nodeByID[id] = &UnifiedGraphNode{
 			ID: id, Layer: "L3", Kind: "fact",
 			Label:  truncateRunes(jsonutil.IfaceStr(m, "statement"), 40),
-			Weight: float64(hits),
+			Weight: weight,
 			MetaJSON: marshalHeadline(map[string]any{
-				"statement":  jsonutil.IfaceStr(m, "statement"),
-				"confidence": jsonutil.IfaceF64(m, "confidence"),
-				"hit_count":  hits,
+				"statement":      jsonutil.IfaceStr(m, "statement"),
+				"confidence":     jsonutil.IfaceF64(m, "confidence"),
+				"recalled_count": recalled,
 			}, uc.lg),
 		}
 	}
@@ -625,7 +676,9 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 	focus = strings.TrimSpace(focus)
 	if focus != "" {
 		if _, ok := nodeByID[focus]; !ok {
-			return &UnifiedMemoryGraph{EmptyReason: "focus_not_found"}, nil
+			// 截断场景下焦点可能只是掉出最近优先的扫描窗口——truncated 与
+			// focus_not_found 一起返回，前端可区分"真不存在"与"未加载"。
+			return &UnifiedMemoryGraph{EmptyReason: "focus_not_found", Truncated: truncated}, nil
 		}
 	} else {
 		if top, topErr := uc.l4RelReader.TopConnectedEntityID(ctx, "agent", agentID); topErr != nil {
@@ -640,7 +693,7 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 		}
 	}
 	if focus == "" {
-		return &UnifiedMemoryGraph{EmptyReason: "no_memory_data"}, nil
+		return &UnifiedMemoryGraph{EmptyReason: "no_memory_data", Truncated: truncated}, nil
 	}
 
 	// --- BFS expansion (undirected) ---
@@ -678,7 +731,7 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 	}
 
 	// --- collect + min_weight filter (relation edges only) ---
-	out := &UnifiedMemoryGraph{Focus: focus}
+	out := &UnifiedMemoryGraph{Focus: focus, Truncated: truncated}
 	for id := range visited {
 		out.Nodes = append(out.Nodes, *nodeByID[id])
 	}

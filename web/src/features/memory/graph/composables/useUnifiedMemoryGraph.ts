@@ -22,6 +22,9 @@ export function useUnifiedMemoryGraph(agentId: Ref<string | null>) {
   const focusId = computed(() => graph.value?.focus ?? '');
   const emptyReason = computed(() => graph.value?.empty_reason ?? '');
   const filteredEdgeCount = computed(() => graph.value?.filtered_edge_count ?? 0);
+  // P2-3：source 行被扫描上限截断（最近优先）——图谱可能缺节点/边，
+  // focus_not_found 也可能只是焦点未加载；界面据此显示截断提示。
+  const truncated = computed(() => graph.value?.truncated ?? false);
 
   const selectedNode = computed(() => nodes.value.find((n) => n.id === selectedNodeId.value) ?? null);
   const selectedEdges = computed(() => {
@@ -92,6 +95,7 @@ export function useUnifiedMemoryGraph(agentId: Ref<string | null>) {
     focusId,
     emptyReason,
     filteredEdgeCount,
+    truncated,
     loading,
     error,
     hops,

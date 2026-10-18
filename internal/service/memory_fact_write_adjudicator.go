@@ -126,6 +126,7 @@ func (a *MemoryFactWriteAdjudicator) AdjudicateFactWrites(ctx context.Context, a
 	out := make([]biz.FactAdjudicationVerdict, 0, len(rawVerdicts))
 	for _, v := range rawVerdicts {
 		out = append(out, biz.FactAdjudicationVerdict{
+			Ordinal:      v.Ordinal,
 			Statement:    v.Statement,
 			Operation:    biz.FactWriteOperation(v.Operation),
 			TargetFactID: v.TargetID,

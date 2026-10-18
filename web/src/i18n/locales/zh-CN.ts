@@ -2580,9 +2580,12 @@ export default {
       hopsLabel: '扩展跳数',
       statusBar: '节点 {nodes} · 边 {edges} · 已过滤 {filtered}',
       focusPrefix: '焦点',
+      truncatedHint: '数据量较大，仅最近约 500 条记忆参与构图；较旧的实体/事实未加载',
       empty: {
         noMemoryData: '该 Agent 暂无记忆关联数据，先在对话中积累记忆。',
         focusNotFound: '焦点实体不在当前图谱范围内，请调整过滤条件。',
+        focusNotFoundTruncated:
+          '焦点未命中已加载的记忆窗口（数据已被最近优先截断）——记忆可能仍存在，请调整过滤条件后重试。',
         generic: '暂无图谱数据。',
       },
       edgeTypes: {

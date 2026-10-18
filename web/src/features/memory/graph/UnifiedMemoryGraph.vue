@@ -106,6 +106,10 @@
           <span v-if="focusLabel" class="graph-status__focus">
             {{ t('memory.unifiedGraph.focusPrefix') }} · {{ focusLabel }}
           </span>
+          <span v-if="truncated" class="graph-status__truncated row items-center q-gutter-xs">
+            <q-icon name="content_cut" size="13px" />
+            {{ t('memory.unifiedGraph.truncatedHint') }}
+          </span>
         </div>
       </div>
     </div>
@@ -158,6 +162,7 @@ const {
   focusId,
   emptyReason,
   filteredEdgeCount,
+  truncated,
   loading,
   error,
   hops,
@@ -230,7 +235,12 @@ const flowEdges = computed<Edge[]>(() =>
 
 const emptyText = computed(() => {
   if (emptyReason.value === 'no_memory_data') return t('memory.unifiedGraph.empty.noMemoryData');
-  if (emptyReason.value === 'focus_not_found') return t('memory.unifiedGraph.empty.focusNotFound');
+  // P2-3：截断场景下 focus_not_found 可能只是焦点掉出最近优先窗口——给出区分文案。
+  if (emptyReason.value === 'focus_not_found') {
+    return truncated.value
+      ? t('memory.unifiedGraph.empty.focusNotFoundTruncated')
+      : t('memory.unifiedGraph.empty.focusNotFound');
+  }
   return t('memory.unifiedGraph.empty.generic');
 });
 
@@ -326,6 +336,11 @@ onUnmounted(() => {
 
 .graph-status__focus {
   color: var(--q-primary);
+}
+
+/* P2-3：source 扫描截断提示（最近优先窗口，旧数据未加载）。 */
+.graph-status__truncated {
+  color: var(--q-warning);
 }
 
 /* P4 回放状态栏 */

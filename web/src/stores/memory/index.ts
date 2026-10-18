@@ -96,25 +96,45 @@ export const useMemoryStore = defineStore('memory', () => {
   const loadingWorkerStatus = ref(false);
   const loadingDeadLetters = ref(false);
 
+  // P1-4（2026-10-18 审计）：latest-wins 请求序号。快速切换 agent 时，迟到的
+  // 旧目标响应不得覆盖共享 ref；每个 ref 一个序号，load 前置自增、响应后比对，
+  // 过期丢弃（clear* 同步自增，作废在途旧响应）。
+  let snapshotsSeq = 0;
+  let factsSeq = 0;
+  let entitiesSeq = 0;
+  let cascadeSeq = 0;
+
   async function loadSnapshots(sessionID: string, limit = MEMORY_SNAPSHOT_LIMIT): Promise<L0AssemblySnapshot[]> {
+    const seq = ++snapshotsSeq;
     loading.value = true;
     try {
-      snapshots.value = await listL0Snapshots(sessionID, limit);
-      return snapshots.value;
+      const result = await listL0Snapshots(sessionID, limit);
+      if (seq === snapshotsSeq) {
+        snapshots.value = result;
+      }
+      return result;
     } finally {
-      loading.value = false;
+      if (seq === snapshotsSeq) {
+        loading.value = false;
+      }
     }
   }
 
   async function loadFacts(query?: MemoryFactListQuery): Promise<MemoryFactListResult> {
+    const seq = ++factsSeq;
     const result = await listMemoryFacts(query);
-    facts.value = result.items ?? [];
+    if (seq === factsSeq) {
+      facts.value = result.items ?? [];
+    }
     return result;
   }
 
   async function loadEntities(query?: Parameters<typeof listMemoryEntities>[0]) {
+    const seq = ++entitiesSeq;
     const result = await listMemoryEntities(query);
-    entities.value = result.items ?? [];
+    if (seq === entitiesSeq) {
+      entities.value = result.items ?? [];
+    }
     return result;
   }
 
@@ -123,6 +143,7 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   async function loadEvolutionForAgent(agentID: string): Promise<MemoryEvolutionBundle> {
+    const seq = ++entitiesSeq;
     const entityQuery = agentID
       ? { scope_type: 'agent', scope_id: agentID, limit: MEMORY_ENTITY_LIMIT }
       : { limit: MEMORY_ENTITY_LIMIT };
@@ -136,7 +157,9 @@ export const useMemoryStore = defineStore('memory', () => {
       agentID ? listEvolutionEvents(agentID, { limit: MEMORY_EVOLUTION_LIMIT }).catch(() => []) : Promise.resolve([]),
       agentID ? getEvolutionMetrics(agentID).catch(() => null) : Promise.resolve(null),
     ]);
-    entities.value = entityResult.items;
+    if (seq === entitiesSeq) {
+      entities.value = entityResult.items;
+    }
     return {
       entities: entityResult.items,
       identity,
@@ -148,6 +171,7 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   async function loadCascadeProposals(agentID: string) {
+    const seq = ++cascadeSeq;
     loadingCascade.value = true;
     try {
       const [pending, partial, failed] = await Promise.all([
@@ -155,10 +179,15 @@ export const useMemoryStore = defineStore('memory', () => {
         listCascadeProposals(agentID, { status: 'partial', limit: MEMORY_CASCADE_LIMIT }).catch(() => []),
         listCascadeProposals(agentID, { status: 'failed', limit: MEMORY_CASCADE_LIMIT }).catch(() => []),
       ]);
-      cascadeProposals.value = [...pending, ...partial, ...failed];
-      return cascadeProposals.value;
+      const merged = [...pending, ...partial, ...failed];
+      if (seq === cascadeSeq) {
+        cascadeProposals.value = merged;
+      }
+      return merged;
     } finally {
-      loadingCascade.value = false;
+      if (seq === cascadeSeq) {
+        loadingCascade.value = false;
+      }
     }
   }
 
@@ -203,14 +232,17 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   function clearSnapshots() {
+    snapshotsSeq += 1;
     snapshots.value = [];
   }
 
   function clearFacts() {
+    factsSeq += 1;
     facts.value = [];
   }
 
   function clearEntities() {
+    entitiesSeq += 1;
     entities.value = [];
   }
 

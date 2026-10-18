@@ -666,8 +666,10 @@ func TestFactWriteGate_SessionGrantBypassesPend(t *testing.T) {
 	grants := NewMemoryFactSessionGrants()
 	grants.Grant("ag1", MemoryFactPendingVerdictUpdate, "sess-1")
 	adj := &fakeAdjudicator{verdicts: []FactAdjudicationVerdict{
-		{Statement: "用户偏好编辑器为 Neovim", Operation: FactWriteOpUpdate, TargetFactID: "fact-old"},
-		{Statement: "用户偏好主题为暗色", Operation: FactWriteOpUpdate, TargetFactID: "fact-old"},
+		// Ordinal:-1 = legacy statement-FIFO matching (P2-4: zero value 0 would
+		// be read as a real ordinal and the two verdicts would collide at 0).
+		{Ordinal: -1, Statement: "用户偏好编辑器为 Neovim", Operation: FactWriteOpUpdate, TargetFactID: "fact-old"},
+		{Ordinal: -1, Statement: "用户偏好主题为暗色", Operation: FactWriteOpUpdate, TargetFactID: "fact-old"},
 	}}
 	p := contestedFixture(adj, pending, writer)
 	p.sessionGrants = grants

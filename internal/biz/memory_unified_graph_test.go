@@ -335,3 +335,121 @@ func TestUnifiedMemoryGraph_FactMetaCarriesFullStatement(t *testing.T) {
 		t.Errorf("meta.statement: got %q, want full statement", meta["statement"])
 	}
 }
+
+// P1-1（2026-10-18 审计）：fact 节点权重必须取真实召回计数 recalled_count
+// （写管线 merge / 召回链真实递增），缺失或为 0 时回退 importance；
+// hit_count 是全库无递增代码的死字段（恒 0），此前的 weight=0 使图谱节点
+// 大小/排序全部失真。
+func TestUnifiedMemoryGraph_FactNodeWeightUsesRecalledCount(t *testing.T) {
+	mkFact := func(id string, recalled int, importance float64) []byte {
+		return centerRowJSON(map[string]any{
+			"id": id, "statement": "事实-" + id, "recalled_count": recalled,
+			"importance": importance, "confidence": 0.8,
+			"created_at": "2026-07-20T00:00:00Z",
+		})
+	}
+	deps := &fakeCenterAdminDeps{
+		factRows: [][]byte{
+			mkFact("f_recall", 7, 0.3),
+			mkFact("f_fresh", 0, 0.6),
+			mkFact("f_zero", 0, 0),
+		},
+	}
+	// relation 把三个 fact 连成 BFS 可达（图谱输出只含 focus hops 内节点）。
+	l4 := &fakeL4RelReader{rows: [][]byte{
+		relationRow("r1", "f_recall", "f_fresh", "RELATED_TO", 0.5),
+		relationRow("r2", "f_recall", "f_zero", "RELATED_TO", 0.5),
+	}}
+	uc := newGraphUsecase(deps, &fakeL2AdminReader{}, l4)
+
+	g, err := uc.GetUnifiedMemoryGraph(context.Background(), "agent-1", "f_recall", 1, 0, nil)
+	if err != nil {
+		t.Fatalf("GetUnifiedMemoryGraph: %v", err)
+	}
+	w := map[string]float64{}
+	for _, n := range g.Nodes {
+		w[n.ID] = n.Weight
+	}
+	if got := w["f_recall"]; got != 7 {
+		t.Errorf("f_recall weight: got %v, want 7 (recalled_count)", got)
+	}
+	if got := w["f_fresh"]; got != 0.6 {
+		t.Errorf("f_fresh weight: got %v, want 0.6 (importance fallback)", got)
+	}
+	if got := w["f_zero"]; got != 0 {
+		t.Errorf("f_zero weight: got %v, want 0", got)
+	}
+	for _, n := range g.Nodes {
+		if n.ID != "f_recall" {
+			continue
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(n.MetaJSON), &meta); err != nil {
+			t.Fatalf("meta_json unmarshal: %v", err)
+		}
+		if _, ok := meta["hit_count"]; ok {
+			t.Errorf("meta hit_count must be dropped (dead counter)")
+		}
+		if got, _ := meta["recalled_count"].(float64); got != 7 {
+			t.Errorf("meta recalled_count: got %v, want 7", got)
+		}
+	}
+}
+
+// P2-3（2026-10-18 审计）：scope 规模超过统一扫描上限（unifiedGraphScanLimit）
+// 时响应必须带 truncated=true——前端据此提示"仅最近若干条参与构图"，而非静默
+// 缺节点。检测口径 = 行数口径匹配的总量（实体 total / 事实 active）> 实际加
+// 载行数；SQL 侧 ORDER BY updated_at DESC 保证截断截掉的是最旧数据。焦点因截
+// 断缺失时 focus_not_found 同样要带标记，避免"没有这个记忆"的误判。
+func TestUnifiedMemoryGraph_TruncatedWhenScanCapsRows(t *testing.T) {
+	deps := &fakeCenterAdminDeps{
+		entityRows: [][]byte{entityRow("e1", "实体一", 10), entityRow("e2", "实体二", 5)},
+		// 真实 SQL 下 total 是全量计数、已加载行受 LIMIT 收敛——fake 忽略
+		// limit，直接以 total>len(rows) 模拟 600+ 行 scope 截到 500 的情形。
+		entityTotal: 700,
+		factRows:    [][]byte{factRow("f1", "事实一", 11, nil, "")},
+		factActive:  640,
+	}
+	l4 := &fakeL4RelReader{
+		topID: "e1",
+		rows:  [][]byte{relationRow("r1", "e1", "f1", "RELATED_TO", 0.9)},
+	}
+	uc := newGraphUsecase(deps, &fakeL2AdminReader{}, l4)
+
+	g, err := uc.GetUnifiedMemoryGraph(context.Background(), "agent-1", "", 2, 0, nil)
+	if err != nil {
+		t.Fatalf("GetUnifiedMemoryGraph: %v", err)
+	}
+	if !g.Truncated {
+		t.Error("truncated: got false, want true (entityTotal 700>2, factActive 640>1)")
+	}
+
+	// 焦点不在已加载行内 + 截断 → focus_not_found 也必须带 truncated。
+	g2, err := uc.GetUnifiedMemoryGraph(context.Background(), "agent-1", "ghost-old-entity", 2, 0, nil)
+	if err != nil {
+		t.Fatalf("GetUnifiedMemoryGraph(focus): %v", err)
+	}
+	if g2.EmptyReason != "focus_not_found" {
+		t.Fatalf("empty_reason: got %q, want focus_not_found", g2.EmptyReason)
+	}
+	if !g2.Truncated {
+		t.Error("focus_not_found + truncated scan must still report truncated=true")
+	}
+
+	// 规模在扫描上限内（总量 == 已加载行数）→ 不标截断。
+	depsFits := &fakeCenterAdminDeps{
+		entityRows:  [][]byte{entityRow("e1", "实体一", 10)},
+		entityTotal: 1,
+		factRows:    [][]byte{factRow("f1", "事实一", 11, nil, "")},
+		factActive:  1,
+	}
+	l4Fits := &fakeL4RelReader{topID: "e1", rows: [][]byte{relationRow("r1", "e1", "f1", "RELATED_TO", 0.9)}}
+	ucFits := newGraphUsecase(depsFits, &fakeL2AdminReader{}, l4Fits)
+	g3, err := ucFits.GetUnifiedMemoryGraph(context.Background(), "agent-1", "", 2, 0, nil)
+	if err != nil {
+		t.Fatalf("GetUnifiedMemoryGraph(fits): %v", err)
+	}
+	if g3.Truncated {
+		t.Error("truncated: got true, want false when totals fit loaded rows")
+	}
+}

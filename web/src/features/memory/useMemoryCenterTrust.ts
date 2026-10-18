@@ -206,16 +206,25 @@ export function useMemoryCenterTrust(opts: {
     }
   }
 
+  // P1-4（2026-10-18 审计）：latest-wins 序号——快速切换 agent 时迟到的旧
+  // 响应不得覆盖本地列表。
+  let evolutionSeq = 0;
+  let conflictsSeq = 0;
+  let piiSeq = 0;
+
   async function loadEvolution() {
+    const seq = ++evolutionSeq;
     loadingEvolution.value = true;
     try {
       const bundle = await memoryStore.loadEvolutionForAgent(resolveAgentID());
+      if (seq !== evolutionSeq) return;
       agentIdentity.value = bundle.identity;
       agentStrategy.value = bundle.strategy;
       evolutionProposals.value = bundle.proposals;
       evolutionEvents.value = bundle.events;
       evolutionMetrics.value = bundle.metrics;
     } catch {
+      if (seq !== evolutionSeq) return;
       memoryStore.clearEntities();
       agentIdentity.value = null;
       agentStrategy.value = null;
@@ -223,7 +232,9 @@ export function useMemoryCenterTrust(opts: {
       evolutionEvents.value = [];
       evolutionMetrics.value = null;
     } finally {
-      loadingEvolution.value = false;
+      if (seq === evolutionSeq) {
+        loadingEvolution.value = false;
+      }
     }
   }
 
@@ -233,14 +244,21 @@ export function useMemoryCenterTrust(opts: {
       conflictFacts.value = [];
       return;
     }
+    const seq = ++conflictsSeq;
     loadingConflicts.value = true;
     try {
       const result = await memoryStore.loadConflictingFacts('', '', agentID, 50, 0);
-      conflictFacts.value = result.items;
+      if (seq === conflictsSeq) {
+        conflictFacts.value = result.items;
+      }
     } catch {
-      conflictFacts.value = [];
+      if (seq === conflictsSeq) {
+        conflictFacts.value = [];
+      }
     } finally {
-      loadingConflicts.value = false;
+      if (seq === conflictsSeq) {
+        loadingConflicts.value = false;
+      }
     }
   }
 
@@ -264,13 +282,21 @@ export function useMemoryCenterTrust(opts: {
       piiFacts.value = [];
       return;
     }
+    const seq = ++piiSeq;
     loadingPII.value = true;
     try {
-      piiFacts.value = await memoryStore.loadPIIFlaggedFacts('', '', 50, 0, agentID);
+      const items = await memoryStore.loadPIIFlaggedFacts('', '', 50, 0, agentID);
+      if (seq === piiSeq) {
+        piiFacts.value = items;
+      }
     } catch {
-      piiFacts.value = [];
+      if (seq === piiSeq) {
+        piiFacts.value = [];
+      }
     } finally {
-      loadingPII.value = false;
+      if (seq === piiSeq) {
+        loadingPII.value = false;
+      }
     }
   }
 

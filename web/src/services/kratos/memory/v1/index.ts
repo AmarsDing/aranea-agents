@@ -857,6 +857,10 @@ export type GetUnifiedMemoryGraphResponse = {
   edgeCount: number | undefined;
   filteredEdgeCount: number | undefined;
   emptyReason: string | undefined;
+  // P2-3（2026-10-18 审计）：构图 source 行（实体/事实）被统一扫描上限截断
+  // （SQL 最近优先，截掉的是最旧数据）时为 true；图谱可能缺节点/边，且
+  // focus_not_found 可能只是焦点未加载而非记忆不存在。
+  truncated: boolean | undefined;
 };
 
 export type ListMemoryEpisodesRequest = {

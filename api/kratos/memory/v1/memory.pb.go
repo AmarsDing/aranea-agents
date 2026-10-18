@@ -7145,8 +7145,12 @@ type GetUnifiedMemoryGraphResponse struct {
 	EdgeCount         int32                  `protobuf:"varint,5,opt,name=edge_count,json=edgeCount,proto3" json:"edge_count,omitempty"`
 	FilteredEdgeCount int32                  `protobuf:"varint,6,opt,name=filtered_edge_count,json=filteredEdgeCount,proto3" json:"filtered_edge_count,omitempty"`
 	EmptyReason       string                 `protobuf:"bytes,7,opt,name=empty_reason,json=emptyReason,proto3" json:"empty_reason,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// P2-3（2026-10-18 审计）：构图 source 行（实体/事实）被统一扫描上限截断
+	// （SQL 最近优先，截掉的是最旧数据）时为 true；图谱可能缺节点/边，且
+	// focus_not_found 可能只是焦点未加载而非记忆不存在。
+	Truncated     bool `protobuf:"varint,8,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetUnifiedMemoryGraphResponse) Reset() {
@@ -7226,6 +7230,13 @@ func (x *GetUnifiedMemoryGraphResponse) GetEmptyReason() string {
 		return x.EmptyReason
 	}
 	return ""
+}
+
+func (x *GetUnifiedMemoryGraphResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
 }
 
 type ListMemoryEpisodesRequest struct {
@@ -8463,7 +8474,7 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\x04type\x18\x03 \x01(\tR\x04type\x12\x14\n" +
 	"\x05label\x18\x04 \x01(\tR\x05label\x12\x16\n" +
 	"\x06weight\x18\x05 \x01(\x01R\x06weight\x12\x1a\n" +
-	"\bpolarity\x18\x06 \x01(\tR\bpolarity\"\xba\x02\n" +
+	"\bpolarity\x18\x06 \x01(\tR\bpolarity\"\xd8\x02\n" +
 	"\x1dGetUnifiedMemoryGraphResponse\x12\x14\n" +
 	"\x05focus\x18\x01 \x01(\tR\x05focus\x128\n" +
 	"\x05nodes\x18\x02 \x03(\v2\".kratos.memory.v1.UnifiedGraphNodeR\x05nodes\x128\n" +
@@ -8473,7 +8484,8 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\n" +
 	"edge_count\x18\x05 \x01(\x05R\tedgeCount\x12.\n" +
 	"\x13filtered_edge_count\x18\x06 \x01(\x05R\x11filteredEdgeCount\x12!\n" +
-	"\fempty_reason\x18\a \x01(\tR\vemptyReason\"\x89\x01\n" +
+	"\fempty_reason\x18\a \x01(\tR\vemptyReason\x12\x1c\n" +
+	"\ttruncated\x18\b \x01(\bR\ttruncated\"\x89\x01\n" +
 	"\x19ListMemoryEpisodesRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x1d\n" +
 	"\n" +

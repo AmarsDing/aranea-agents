@@ -350,12 +350,33 @@ type FactOverviewAgg struct {
 	RecallHits  int32
 }
 
+// L0OverviewAgg is the SQL-level L0 panorama card (snapshot total, today
+// added). Replaces the 100-row scan count (P2-1, 2026-10-18 audit): the
+// legacy path capped ItemCount at 100 and transferred full row payloads only
+// to count them. The headline (used_ratio / compress_status) still needs the
+// latest snapshot row — callers fetch it separately with limit=1.
+type L0OverviewAgg struct {
+	ItemCount  int32
+	TodayAdded int32
+}
+
+// L1OverviewAgg is the SQL-level L1 panorama card (active task count, today
+// added, non-internal live field count across those tasks). Replaces the
+// per-task ListL1FieldRows N+1 (P2-2, 2026-10-18 audit).
+type L1OverviewAgg struct {
+	ItemCount  int32
+	TodayAdded int32
+	FieldCount int32
+}
+
 // MemoryOverviewStatsReader provides SQL aggregates for the memory-center
 // panorama. Not embedded in MemoryAdminDeps: fakes keep the 500-row scan
 // fallback; production MemoryAdminAdapter implements this.
 // Stability:evolving
 type MemoryOverviewStatsReader interface {
 	AggregateFactOverview(ctx context.Context, agentID, todayStart string) (FactOverviewAgg, error)
+	AggregateL0Overview(ctx context.Context, sessionID, agentID, todayStart string) (L0OverviewAgg, error)
+	AggregateL1Overview(ctx context.Context, sessionID, agentID, todayStart string) (L1OverviewAgg, error)
 	ListRecentFactActivityRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
 	ListRecentlyInjectedFactRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
 	CountEntitiesCreatedSince(ctx context.Context, scopeType, scopeID, todayStart string) (int32, error)

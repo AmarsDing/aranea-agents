@@ -63,6 +63,38 @@ func NewL1TaskBoardWriterFromRawDB(db *sql.DB, lg loggateway.Logger) biz.L1TaskB
 
 // --- L1AdminReader ---
 
+// AggregateL1Overview returns the L1 panorama card in one SQL pass (P2-2,
+// 2026-10-18 audit): active task count, created-today count, and the count of
+// live non-internal fields across those tasks — eliminating the per-task
+// ListL1FieldRows N+1. Field semantics mirror listL1FieldRows(includeInternal
+// =false, includeExpired=false): visibility != 'internal', and expires_at
+// empty or in the future (string-compared RFC3339, same as the row path).
+func (r *l1WorkingMemoryRepo) AggregateL1Overview(ctx context.Context, sessionID, agentID, todayStart string) (biz.L1OverviewAgg, error) {
+	var agg biz.L1OverviewAgg
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return agg, nil
+	}
+	taskClauses := []string{"session_id = ?", "status = 'active'"}
+	taskArgs := []any{sessionID}
+	if agentID = strings.TrimSpace(agentID); agentID != "" {
+		taskClauses = append(taskClauses, "agent_id = ?")
+		taskArgs = append(taskArgs, agentID)
+	}
+	fieldNow := time.Now().UTC().Format(time.RFC3339)
+	q := `WITH tasks AS (
+		 SELECT id, created_at FROM memory_l1_tasks WHERE ` + strings.Join(taskClauses, " AND ") + `
+	 ) SELECT
+		 (SELECT COUNT(*) FROM tasks),
+		 (SELECT COUNT(*) FROM tasks WHERE created_at >= ?),
+		 (SELECT COUNT(*) FROM memory_l1_fields f JOIN tasks t ON f.task_id = t.id
+		  WHERE f.visibility <> 'internal' AND (f.expires_at = '' OR f.expires_at > ?))`
+	args := append(append([]any{}, taskArgs...), strings.TrimSpace(todayStart), fieldNow)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(q), args,
+		&agg.ItemCount, &agg.TodayAdded, &agg.FieldCount)
+	return agg, entErrToBizErr(err, "MEMORY_L1")
+}
+
 func (r *l1WorkingMemoryRepo) ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error) {
 	if sessionID == "" {
 		return nil, apierror.BadRequest("MEMORY", "session id is required")

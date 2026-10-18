@@ -18,6 +18,7 @@ import (
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -27,6 +28,16 @@ import (
 //
 // Retry schedule: 30 s / 2 m / 10 m exponential back-off.
 // Jobs that exceed maxRetries are marked dead and discarded.
+const (
+	// autoMemoryRetryConcurrency caps concurrent background retry chains (P1-3).
+	autoMemoryRetryConcurrency = 4
+)
+
+var (
+	// autoMemoryRetryBackoff is the production backoff schedule (30s/2m/10m).
+	autoMemoryRetryBackoff = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+)
+
 type AutoMemoryWorker struct {
 	interval     time.Duration
 	sessions     *biz.SessionUsecase
@@ -43,6 +54,13 @@ type AutoMemoryWorker struct {
 	memConf      conf.RuntimeAutoMemoryConfig
 	stats        *biz.MemoryWorkerStats
 	monitorBus   contract.MonitorBus
+	// retrySlots 是异步重试链的并发上限（P1-3，2026-10-18 审计）：退避重试
+	// 移出 worker 主循环后，持续失败的任务在后台链上重试；槽满时降级同步
+	// 执行（宁可排队也不丢任务）。
+	retrySlots chan struct{}
+	// retryBackoff 是重试退避序列（30s/2m/10m）。设为字段以便测试注入毫秒
+	// 级退避，生产固定取 autoMemoryRetryBackoff。
+	retryBackoff []time.Duration
 	// P3 M2: Agent Case 经验提取（用户记忆主流程之后的增强分支）。
 	caseExtractor biz.AgentCaseExtractor
 	caseReader    biz.AgentCaseReader
@@ -131,6 +149,8 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		memConf:       cfg.RuntimeConf.AutoMemoryConfig(),
 		stats:         cfg.Stats,
 		monitorBus:    cfg.MonitorBus,
+		retrySlots:    make(chan struct{}, autoMemoryRetryConcurrency),
+		retryBackoff:  autoMemoryRetryBackoff,
 		caseExtractor: cfg.CaseExtractor,
 		caseReader:    cfg.CaseReader,
 		caseWriter:    cfg.CaseWriter,
@@ -198,34 +218,75 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 }
 
 func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
-	defer w.queue.AckDone(req)
-
 	flow := w.flowEmitter(ctx, req.SessionID)
 	if flow != nil {
 		flow.LogStart("memory.auto.extract", "自动记忆提取",
 			event.P("session_id", req.SessionID))
 	}
-	backoffSchedule := []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
-	var lastErr error
-	for attempt := 0; attempt < int(w.memConf.MaxRetries); attempt++ {
-		if attempt > 0 {
-			bo := backoffSchedule[len(backoffSchedule)-1]
-			if attempt-1 < len(backoffSchedule) {
-				bo = backoffSchedule[attempt-1]
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(bo):
-			}
+	// P1-2（2026-10-18 审计）：episodeID 随 job 生成一次并贯穿全部 attempt。
+	// 此前 extract 在每次 attempt 内重建 id——attempt N 写出的 facts 已携带
+	// id_N，episode 写失败重试时 id 变更，旧 facts 的 source_episode_id 悬空。
+	episodeID := uuid.NewString()
+
+	// 首次 attempt 在主循环同步执行（正常路径零延迟）。
+	duration, err := w.runExtractAttempt(ctx, req, episodeID)
+	if err == nil {
+		w.queue.AckDone(req)
+		if flow != nil {
+			flow.LogDone("memory.auto.extract", "自动记忆提取完成",
+				event.P("session_id", req.SessionID),
+				event.P("duration_ms", int64(duration*1000)),
+				event.P("attempt", 1))
 		}
-		t0 := time.Now()
-		err := w.extract(ctx, req)
-		duration := time.Since(t0).Seconds()
+		return
+	}
+	w.logExtractFail(req, flow, 1, err)
+
+	if int(w.memConf.MaxRetries) <= 1 {
+		w.finishExhausted(req, flow, err)
+		return
+	}
+	// P1-3（2026-10-18 审计）：退避重试移出 worker 主循环——旧实现在单
+	// goroutine 里 sleep 30s/2m/10m，一个持续失败的任务把后续所有任务
+	// （含高优先级反馈）堵在队头，队列 3 档优先级语义失效。后台链带并发
+	// 上限；槽位耗尽降级同步（宁可阻塞也不可静默丢任务）。
+	if slots := w.retrySlots; slots != nil {
+		select {
+		case slots <- struct{}{}:
+			safego.Go(ctx, "auto_memory.retry", func() {
+				defer func() { <-slots }()
+				w.retryRemaining(ctx, req, episodeID, flow, 1)
+			})
+			return
+		default:
+		}
+	}
+	w.retryRemaining(ctx, req, episodeID, flow, 1)
+}
+
+// retryRemaining 执行 attempts [startAttempt, MaxRetries)（含退避），全部失败
+// 后进入死信收尾。AckDone（C-02 租户配额释放）只在 job 真正结束时调用——
+// 成功、耗尽或关停放弃，绝不在交接后台链时提前释放。
+func (w *AutoMemoryWorker) retryRemaining(ctx context.Context, req memtrpc.AutoMemoryJobRequest, episodeID string, flow *event.TraceEmitter, startAttempt int) {
+	backoff := w.retryBackoff
+	if len(backoff) == 0 {
+		backoff = autoMemoryRetryBackoff
+	}
+	var lastErr error
+	for attempt := startAttempt; attempt < int(w.memConf.MaxRetries); attempt++ {
+		bo := backoff[len(backoff)-1]
+		if attempt-1 < len(backoff) {
+			bo = backoff[attempt-1]
+		}
+		select {
+		case <-ctx.Done():
+			w.queue.AckDone(req)
+			return
+		case <-time.After(bo):
+		}
+		duration, err := w.runExtractAttempt(ctx, req, episodeID)
 		if err == nil {
-			servmetrics.AutoMemoryJobTotal.WithLabelValues("done").Inc()
-			servmetrics.AutoMemoryExtractionDuration.Observe(duration)
-			w.stats.RecordJobDone(int64(duration * 1000))
+			w.queue.AckDone(req)
 			if flow != nil {
 				flow.LogDone("memory.auto.extract", "自动记忆提取完成",
 					event.P("session_id", req.SessionID),
@@ -235,15 +296,41 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 			return
 		}
 		lastErr = err
-		w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取失败",
-			loggateway.Int("attempt", attempt+1), loggateway.Err(err))
-		if flow != nil {
-			flow.LogWarn("system.auto_memory.extract_fail", "自动记忆提取失败", "",
-				event.P("session_id", req.SessionID),
-				event.P("attempt", attempt+1),
-				event.P("error", err.Error()))
-		}
+		w.logExtractFail(req, flow, attempt+1, err)
 	}
+	w.finishExhausted(req, flow, lastErr)
+}
+
+// runExtractAttempt 执行一次 extract（携带 job 级 episodeID）并记录成功
+// 指标；失败时仅返回 error，由调用方决定退避/死信。duration 单位为秒，
+// 仅成功路径有意义。
+func (w *AutoMemoryWorker) runExtractAttempt(ctx context.Context, req memtrpc.AutoMemoryJobRequest, episodeID string) (duration float64, err error) {
+	t0 := time.Now()
+	err = w.extractWithEpisode(ctx, req, episodeID)
+	duration = time.Since(t0).Seconds()
+	if err == nil {
+		servmetrics.AutoMemoryJobTotal.WithLabelValues("done").Inc()
+		servmetrics.AutoMemoryExtractionDuration.Observe(duration)
+		w.stats.RecordJobDone(int64(duration * 1000))
+	}
+	return duration, err
+}
+
+// logExtractFail 记录一次 attempt 失败（结构化日志 + 流程日志）。
+func (w *AutoMemoryWorker) logExtractFail(req memtrpc.AutoMemoryJobRequest, flow *event.TraceEmitter, attempt int, err error) {
+	w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取失败",
+		loggateway.Int("attempt", attempt), loggateway.Err(err))
+	if flow != nil {
+		flow.LogWarn("system.auto_memory.extract_fail", "自动记忆提取失败", "",
+			event.P("session_id", req.SessionID),
+			event.P("attempt", attempt),
+			event.P("error", err.Error()))
+	}
+}
+
+// finishExhausted 死信收尾：释放租户配额、落死信、记指标与流程日志。
+func (w *AutoMemoryWorker) finishExhausted(req memtrpc.AutoMemoryJobRequest, flow *event.TraceEmitter, lastErr error) {
+	w.queue.AckDone(req)
 	servmetrics.AutoMemoryJobTotal.WithLabelValues("dead").Inc()
 	w.stats.RecordJobDead()
 	// P2-03: persist the exhausted job to the dead-letter store so the user
@@ -270,7 +357,14 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 	}
 }
 
+// extract 单次执行的便捷入口（一次性调用：测试/工具直接用；episodeID 每次
+// 现场生成，与旧行为一致）。生产重试链请走 extractWithEpisode，让 episodeID
+// 贯穿全部 attempt（P1-2）。
 func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJobRequest) error {
+	return w.extractWithEpisode(ctx, req, uuid.NewString())
+}
+
+func (w *AutoMemoryWorker) extractWithEpisode(ctx context.Context, req memtrpc.AutoMemoryJobRequest, episodeID string) error {
 	if strings.TrimSpace(req.FeedbackMessageID) != "" {
 		return w.extractFeedback(ctx, req)
 	}
@@ -342,8 +436,8 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	}
 
 	lastUserMsgID := lastUserMessageID(msgs)
-	// Pre-generate episode ID so facts can reference it as source_episode_id.
-	episodeID := uuid.NewString()
+	// episodeID 由 job（重试链入口，P1-2）生成并传入，保证 facts 引用的
+	// source_episode_id 与最终事件行一致。
 	var candidates []biz.FactWriteCandidate
 	if memoryPolicy.WriteL3Facts {
 		for _, p := range proposals {

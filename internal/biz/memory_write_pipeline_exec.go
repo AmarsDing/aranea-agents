@@ -27,8 +27,11 @@ type FactAdjudicationItem struct {
 }
 
 // FactAdjudicationVerdict is the LLM adjudicator's per-candidate operation
-// verdict. Statement matches the verdict back to its candidate.
+// verdict. Ordinal 为判决请求数组下标（P2-4，-1 表示 LLM 未回带），管线
+// 优先按 ordinal 与 contested 候选项一一匹配；仅有 Statement 时退化为
+// FIFO 序的 statement 匹配，相同语句在批内不会共用同一判决。
 type FactAdjudicationVerdict struct {
+	Ordinal      int
 	Statement    string
 	Operation    FactWriteOperation
 	TargetFactID string
@@ -154,13 +157,10 @@ func (p *FactWritePipeline) Apply(ctx context.Context, candidates []FactWriteCan
 		return res
 	}
 
-	// 2. Neighbor search per candidate (embedding); failures degrade to no
-	// neighbors (→ ADD). Kinds/statements enriched from the fact rows.
-	neighborsByCand := make([][]MemoryConflictNeighbor, len(passed))
-	statementsByID := map[string]string{}
-	for i, c := range passed {
-		neighborsByCand[i] = p.findNeighbors(ctx, c, statementsByID)
-	}
+	// 2. Neighbor search（P2-5，2026-10-18 审计：跨候选批处理——批量 Embed +
+	// 全批次一次 GetFactRowsByIDs，替代旧 per-candidate 3N 次往返）。
+	// 任何基础设施失败降级为无邻居（→ ADD）。
+	neighborsByCand, statementsByID := p.gatherNeighbors(ctx, passed)
 
 	// 3. Partition: contested candidates go to the LLM adjudicator (one
 	// batch call); the rest are decided heuristically. Contested is marked
@@ -204,33 +204,50 @@ func (p *FactWritePipeline) Apply(ctx context.Context, candidates []FactWriteCan
 	return res
 }
 
-// findNeighbors embeds the candidate statement and recalls scored neighbors,
-// enriching kinds/statements from fact rows. Any failure degrades to nil
-// (candidate will be ADDed).
-func (p *FactWritePipeline) findNeighbors(ctx context.Context, c FactWriteCandidate, statementsByID map[string]string) []MemoryConflictNeighbor {
-	if p.searcher == nil || p.embedder == nil {
-		return nil
+// gatherNeighbors 对整批候选做邻居检索并富化 kind/statement（P2-5 批处理）：
+//  1. 批量 Embed（实现 EmbeddingBatchService 时一次调用，否则逐条）；
+//  2. 逐候选 SearchFactNeighbors（携带 agent/user 口径，必须逐候选）；
+//  3. 全批次邻居 ID 归并，一次 GetFactRowsByIDs 富化。
+//
+// 失败一律降级为 nil 邻居（候选走 ADD）。reader 缺失时不做任何检索——
+// 没有 kind 富化就没有安全的波段判定。
+func (p *FactWritePipeline) gatherNeighbors(ctx context.Context, passed []FactWriteCandidate) ([][]MemoryConflictNeighbor, map[string]string) {
+	out := make([][]MemoryConflictNeighbor, len(passed))
+	statementsByID := map[string]string{}
+	if p.searcher == nil || p.embedder == nil || p.reader == nil {
+		return out, statementsByID
 	}
-	embedding, err := p.embedder.Embed(ctx, c.Statement)
-	if err != nil || len(embedding) == 0 {
-		return nil
-	}
-	neighbors, err := p.searcher.SearchFactNeighbors(ctx, c.AgentID, c.UserID, embedding, memoryConflictNeighborLimit, FactWriteContestedScore)
-	if err != nil || len(neighbors) == 0 {
-		return nil
-	}
-	if p.reader == nil {
-		return nil // without kind enrichment no band decision is safe
-	}
-	ids := make([]string, 0, len(neighbors))
-	for _, n := range neighbors {
-		if n.FactID != "" {
-			ids = append(ids, n.FactID)
+
+	embeddings := p.embedStatements(ctx, passed)
+	var allIDs []string
+	seenID := map[string]struct{}{}
+	rawByCand := make([][]MemoryConflictNeighbor, len(passed))
+	for i, c := range passed {
+		if len(embeddings[i]) == 0 {
+			continue
+		}
+		neighbors, err := p.searcher.SearchFactNeighbors(ctx, c.AgentID, c.UserID, embeddings[i], memoryConflictNeighborLimit, FactWriteContestedScore)
+		if err != nil || len(neighbors) == 0 {
+			continue
+		}
+		rawByCand[i] = neighbors
+		for _, n := range neighbors {
+			if n.FactID == "" {
+				continue
+			}
+			if _, ok := seenID[n.FactID]; !ok {
+				seenID[n.FactID] = struct{}{}
+				allIDs = append(allIDs, n.FactID)
+			}
 		}
 	}
-	rows, err := p.reader.GetFactRowsByIDs(ctx, ids)
+	if len(allIDs) == 0 {
+		return out, statementsByID
+	}
+
+	rows, err := p.reader.GetFactRowsByIDs(ctx, allIDs)
 	if err != nil {
-		return nil
+		return out, statementsByID
 	}
 	kindByID := make(map[string]string, len(rows))
 	for _, raw := range rows {
@@ -247,14 +264,41 @@ func (p *FactWritePipeline) findNeighbors(ctx context.Context, c FactWriteCandid
 			statementsByID[id] = stmt
 		}
 	}
-	out := make([]MemoryConflictNeighbor, 0, len(neighbors))
-	for _, n := range neighbors {
-		kind, ok := kindByID[n.FactID]
-		if !ok {
-			continue // inactive/deleted rows are excluded
+	for i, neighbors := range rawByCand {
+		for _, n := range neighbors {
+			kind, ok := kindByID[n.FactID]
+			if !ok {
+				continue // inactive/deleted rows are excluded
+			}
+			n.FactKind = kind
+			out[i] = append(out[i], n)
 		}
-		n.FactKind = kind
-		out = append(out, n)
+	}
+	return out, statementsByID
+}
+
+// embedStatements 批量嵌入候选语句：embedder 实现 EmbeddingBatchService 时
+// 一次调用（批内单条失败由实现方负责整体语义——整批失败则全部降级），否则
+// 逐条 Embed（单条失败仅该候选降级）。
+func (p *FactWritePipeline) embedStatements(ctx context.Context, passed []FactWriteCandidate) [][]float32 {
+	out := make([][]float32, len(passed))
+	if batch, ok := p.embedder.(EmbeddingBatchService); ok {
+		texts := make([]string, len(passed))
+		for i, c := range passed {
+			texts[i] = c.Statement
+		}
+		vecs, err := batch.EmbedBatch(ctx, texts)
+		if err == nil && len(vecs) == len(passed) {
+			copy(out, vecs)
+		}
+		return out
+	}
+	for i, c := range passed {
+		vec, err := p.embedder.Embed(ctx, c.Statement)
+		if err != nil || len(vec) == 0 {
+			continue
+		}
+		out[i] = vec
 	}
 	return out
 }
@@ -279,13 +323,35 @@ func (p *FactWritePipeline) applyAdjudication(ctx context.Context, passed []Fact
 		}
 		return
 	}
-	verdictByStmt := make(map[string]FactAdjudicationVerdict, len(verdicts))
+	// P2-4（2026-10-18 审计）：优先 ordinal（= 判决请求数组下标）精确匹配；
+	// LLM 未回带 ordinal 的旧格式退化为同 statement 的 FIFO 队列匹配——批内
+	// 重复语句各得一条判决，不再 map 交叉覆盖。Ordinal 字段零值 0 需要显式
+	// 判定：测试/旧实现构造零 ordinal 值时，-1 才是「未知」信号。
+	verdictByOrdinal := map[int]FactAdjudicationVerdict{}
+	verdictQueueByStmt := map[string][]FactAdjudicationVerdict{}
 	for _, v := range verdicts {
-		verdictByStmt[strings.TrimSpace(v.Statement)] = v
+		if v.Ordinal >= 0 && v.Ordinal < len(items) {
+			verdictByOrdinal[v.Ordinal] = v
+			continue
+		}
+		stmt := strings.TrimSpace(v.Statement)
+		verdictQueueByStmt[stmt] = append(verdictQueueByStmt[stmt], v)
 	}
-	for _, i := range contestedIdx {
+	for pos, i := range contestedIdx {
 		c := passed[i]
-		v, ok := verdictByStmt[strings.TrimSpace(c.Statement)]
+		v, ok := verdictByOrdinal[pos]
+		if ok && strings.TrimSpace(v.Statement) != strings.TrimSpace(c.Statement) {
+			// 护栏：ordinal 对上但语句不一致（旧式构造零值 ordinal / LLM 回错）——
+			// 退回 statement FIFO 匹配，绝不把别的候选的判决套用进来。
+			ok = false
+		}
+		if !ok {
+			stmt := strings.TrimSpace(c.Statement)
+			if q := verdictQueueByStmt[stmt]; len(q) > 0 {
+				v, ok = q[0], true
+				verdictQueueByStmt[stmt] = q[1:]
+			}
+		}
 		if !ok {
 			decisions[i] = DecideFactWriteHeuristic(c, neighborsByCand[i])
 			decisions[i].Contested = true

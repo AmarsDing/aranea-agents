@@ -82,9 +82,9 @@ For each NEW fact, decide exactly one operation:
 
 Rules:
 - Verdicts must reference existing memories only by their given ids.
+- One verdict per NEW fact, in input order. Echo back the fact's "ordinal" and copy its statement verbatim.
 - When unsure between "add" and "update", prefer "add" (a wrong update loses history).
-- Output ONLY a JSON object: {"verdicts":[{"statement":"<exact new fact statement>","operation":"add|update|delete|noop","target_id":"<id or empty>"}]}
-- Include one verdict per NEW fact, copying the statement verbatim.`
+- Output ONLY a JSON object: {"verdicts":[{"ordinal":<int>,"statement":"<exact new fact statement>","operation":"add|update|delete|noop","target_id":"<id or empty>"}]}`
 
 // FactAdjudicationPromptNeighbor is one existing memory shown beside a
 // candidate in the adjudication prompt.
@@ -96,21 +96,33 @@ type FactAdjudicationPromptNeighbor struct {
 
 // FactAdjudicationPromptItem is one contested candidate with its neighbors.
 type FactAdjudicationPromptItem struct {
-	Statement string                           `json:"statement"`
-	Kind      string                           `json:"kind"`
+	// Ordinal 与 new_facts 数组下标一致（P2-4）：判决回执回带它，管线按序数
+	// 匹配 verdict ↔ candidate，相同 statement 在批内不会交叉错配。由
+	// BuildFactAdjudicationPrompt 统一赋下标，调用方无需手填。
+	Ordinal   int                            `json:"ordinal"`
+	Statement string                         `json:"statement"`
+	Kind      string                         `json:"kind"`
 	Neighbors []FactAdjudicationPromptNeighbor `json:"neighbors"`
 }
 
 // BuildFactAdjudicationPrompt renders the user message for the adjudication
-// call: candidates plus their existing neighbors as JSON.
+// call: candidates plus their existing neighbors as JSON. Ordinal 在此统一赋
+// 数组下标（复制入参数组，不改调用方切片）。
 func BuildFactAdjudicationPrompt(items []FactAdjudicationPromptItem) string {
-	b, _ := json.Marshal(map[string]any{"new_facts": items})
+	withOrdinals := make([]FactAdjudicationPromptItem, len(items))
+	for i, it := range items {
+		it.Ordinal = i
+		withOrdinals[i] = it
+	}
+	b, _ := json.Marshal(map[string]any{"new_facts": withOrdinals})
 	return "Arbitrate these NEW facts against their EXISTING neighbors:\n" + string(b)
 }
 
 // FactAdjudicationVerdictRaw is one parsed adjudication verdict (pre-mapping
-// to the biz type to keep this package dependency-free).
+// to the biz type to keep this package dependency-free). Ordinal 为回带的
+// new_facts 下标；-1 表示 LLM 未回带（管线退化按 statement 匹配）。
 type FactAdjudicationVerdictRaw struct {
+	Ordinal   int    `json:"ordinal"`
 	Statement string `json:"statement"`
 	Operation string `json:"operation"`
 	TargetID  string `json:"target_id"`
@@ -118,24 +130,29 @@ type FactAdjudicationVerdictRaw struct {
 
 // ParseFactAdjudicationResponse parses the adjudicator LLM output. Verdicts
 // with empty statements or unknown operations are dropped; fenced JSON is
-// tolerated.
+// tolerated. Ordinal 缺失（旧版 LLM 输出）解析为 -1。
 func ParseFactAdjudicationResponse(raw string) ([]FactAdjudicationVerdictRaw, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 	raw = stripJSONFence(raw)
+	// 中间结构用指针区分「未回带」与 ordinal:0。
 	var payload struct {
-		Verdicts []FactAdjudicationVerdictRaw `json:"verdicts"`
+		Verdicts []struct {
+			Ordinal   *int   `json:"ordinal"`
+			Statement string `json:"statement"`
+			Operation string `json:"operation"`
+			TargetID  string `json:"target_id"`
+		} `json:"verdicts"`
 	}
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return nil, err
 	}
 	out := make([]FactAdjudicationVerdictRaw, 0, len(payload.Verdicts))
 	for _, v := range payload.Verdicts {
-		v.Statement = strings.TrimSpace(v.Statement)
-		v.TargetID = strings.TrimSpace(v.TargetID)
-		if v.Statement == "" {
+		stmt := strings.TrimSpace(v.Statement)
+		if stmt == "" {
 			continue
 		}
 		switch v.Operation {
@@ -143,7 +160,16 @@ func ParseFactAdjudicationResponse(raw string) ([]FactAdjudicationVerdictRaw, er
 		default:
 			continue
 		}
-		out = append(out, v)
+		ordinal := -1
+		if v.Ordinal != nil {
+			ordinal = *v.Ordinal
+		}
+		out = append(out, FactAdjudicationVerdictRaw{
+			Ordinal:   ordinal,
+			Statement: stmt,
+			Operation: v.Operation,
+			TargetID:  strings.TrimSpace(v.TargetID),
+		})
 	}
 	return out, nil
 }
