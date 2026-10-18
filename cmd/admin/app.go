@@ -51,6 +51,7 @@ func newApp(
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
 	sessions *biz.SessionUsecase,
+	mcpServerUC *biz.MCPServerUsecase,
 	chatSvc *service.ChatService,
 	spiritUC *biz.SpiritTeamUsecase,
 	teamStarter *service.TeamStarter,
@@ -78,6 +79,12 @@ func newApp(
 	// hook implementation lives in internal/server and is wired here.
 	if eventInfra != nil {
 		server.RegisterAuthFlowHooks(eventInfra.MonitorEventBus, lg)
+	}
+
+	// MCP OAuth2 refresh_token 轮换回写钩子：进程级全局钩子，注册属于组合根
+	// 职责（勿放回 service 构造函数，避免重复构造相互覆写）。
+	if mcpServerUC != nil {
+		service.RegisterMCPRefreshTokenPersister(mcpServerUC, lg)
 	}
 
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so

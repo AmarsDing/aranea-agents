@@ -59,7 +59,7 @@ func TestDoHTTPProbe_success(t *testing.T) {
 }
 
 func TestEvaluate_disabled(t *testing.T) {
-	result := Evaluate(context.Background(), false, "{}")
+	result := NewProber(nil).Evaluate(context.Background(), false, "{}")
 	if result.OK {
 		t.Error("expected OK=false for disabled server")
 	}
@@ -69,7 +69,7 @@ func TestEvaluate_disabled(t *testing.T) {
 }
 
 func TestEvaluate_stdioNoCommand(t *testing.T) {
-	result := Evaluate(context.Background(), true, `{"transport":"stdio"}`)
+	result := NewProber(nil).Evaluate(context.Background(), true, `{"transport":"stdio"}`)
 	if result.OK {
 		t.Error("expected OK=false for stdio without command")
 	}
@@ -79,7 +79,7 @@ func TestEvaluate_stdioNoCommand(t *testing.T) {
 }
 
 func TestEvaluate_httpNoURL(t *testing.T) {
-	result := Evaluate(context.Background(), true, `{"transport":"sse"}`)
+	result := NewProber(nil).Evaluate(context.Background(), true, `{"transport":"sse"}`)
 	if result.OK {
 		t.Error("expected OK=false for HTTP without URL")
 	}
@@ -89,7 +89,7 @@ func TestEvaluate_httpNoURL(t *testing.T) {
 }
 
 func TestEvaluate_invalidJSON(t *testing.T) {
-	result := Evaluate(context.Background(), true, `{invalid`)
+	result := NewProber(nil).Evaluate(context.Background(), true, `{invalid`)
 	if result.OK {
 		t.Error("expected OK=false for invalid JSON")
 	}
@@ -114,7 +114,7 @@ func TestEvaluate_transportAutoNormalize(t *testing.T) {
 }
 
 func TestEvaluate_unknownTransport(t *testing.T) {
-	result := Evaluate(context.Background(), true, `{"transport":"websocket"}`)
+	result := NewProber(nil).Evaluate(context.Background(), true, `{"transport":"websocket"}`)
 	if result.OK {
 		t.Error("expected OK=false for unknown transport")
 	}

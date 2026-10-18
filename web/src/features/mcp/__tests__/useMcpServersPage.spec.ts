@@ -12,9 +12,25 @@ vi.mock('quasar', () => ({
   useQuasar: () => ({ notify: vi.fn(), dialog: vi.fn(() => ({ onOk: vi.fn() })) }),
 }));
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
-}));
+// healthTooltip 断言依赖「已翻译 + 插值」的三个键；刻意不注册的键
+// （notTested / notEnabledNotTested）返回裸 key，供断言锁定未探测分支。
+vi.mock('vue-i18n', () => {
+  const messages: Record<string, string> = {
+    'mcpPage.lastHealthSuccess': '最近成功：{at}',
+    'mcpPage.healthToolsDiscovered': '；已发现 {n} 个工具',
+    'mcpPage.healthToolsFailed': '；工具发现失败',
+  };
+  const t = (key: string, params?: unknown) => {
+    const template = messages[key];
+    if (!template) return key;
+    if (!params || typeof params !== 'object') return template;
+    return Object.entries(params as Record<string, unknown>).reduce(
+      (acc, [k, v]) => acc.replace(`{${k}}`, String(v)),
+      template,
+    );
+  };
+  return { useI18n: () => ({ t }) };
+});
 
 vi.mock('../../../stores/auth', async () => {
   const { ref } = await import('vue');

@@ -80,6 +80,9 @@ type Runner struct {
 }
 
 func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &Runner{deps: deps, lg: lg}
 }
 
@@ -89,14 +92,10 @@ func (r *Runner) logFlowError(ctx context.Context, step, message string, err err
 	if r == nil || r.deps.FlowBus == nil {
 		return
 	}
-	lg := r.lg
-	if lg == nil {
-		lg = loggateway.NewNoop()
-	}
 	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 		Ctx:    ctx,
 		Domain: event.TraceDomainSystem,
-		LG:     lg,
+		LG:     r.lg,
 		Infra:  event.NewInfraFromBus(r.deps.FlowBus),
 	})
 	flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)

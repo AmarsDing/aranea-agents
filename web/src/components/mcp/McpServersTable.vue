@@ -127,6 +127,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
@@ -136,7 +137,8 @@ import { MCP_SERVER_TABLE_COLUMNS } from './mcpServerTableUi';
 
 const { t } = useI18n();
 
-defineProps<{
+// 命名 tableProps：模板各 slot 的 props 形参会遮蔽外层绑定（vue/no-template-shadow）。
+const tableProps = defineProps<{
   rows: McpServerRow[];
   loading: boolean;
   testingId: string;
@@ -153,12 +155,26 @@ defineEmits<{
   toggleEnabled: [row: McpServerRow, enabled: boolean];
 }>();
 
+// config_json/metadata_json 每行只解析一次：此前 name/transport/toolPrefix/
+// timeout/health 各单元格每次渲染各自 JSON.parse（每行 6+ 次），现为按 rows
+// 变化重建的查表缓存。
+const parsedByRow = computed(() => {
+  const map = new Map<string, { config: McpServerConfig; metadata: McpServerMetadata }>();
+  for (const row of tableProps.rows) {
+    map.set(row.id, {
+      config: parseJSON<McpServerConfig>(row.config_json, {}),
+      metadata: parseJSON<McpServerMetadata>(row.metadata_json, {}),
+    });
+  }
+  return map;
+});
+
 function rowConfig(row: McpServerRow) {
-  return parseJSON<McpServerConfig>(row.config_json, {});
+  return parsedByRow.value.get(row.id)?.config ?? {};
 }
 
 function rowMetadata(row: McpServerRow) {
-  return parseJSON<McpServerMetadata>(row.metadata_json, {});
+  return parsedByRow.value.get(row.id)?.metadata ?? {};
 }
 
 function displayName(row: McpServerRow) {

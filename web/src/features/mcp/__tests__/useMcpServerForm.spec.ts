@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { reactive, nextTick } from 'vue';
 import { useMcpServerForm } from '../useMcpServerForm';
-import { createMcpServer, updateMcpServer } from '../api';
+import { createMcpServer, testMcpServer, updateMcpServer } from '../api';
 import type { PlatformResourceInput } from '../../platform/types';
 import type { McpServerRow } from '../types';
 
@@ -202,5 +202,33 @@ describe('useMcpServerForm buildPayload', () => {
       last_health_at: '2026-08-01T00:00:00Z',
     });
     expect(payload.description).toBe('updated');
+  });
+
+  it('保存并测试：只发 tested 不发 saved（页面据此单次刷新列表）', async () => {
+    const c = setup();
+    await open(c.props);
+    c.form.name = 'save-test';
+    c.form.url = 'https://mcp.example.com/mcp';
+    vi.mocked(testMcpServer).mockResolvedValue({ ok: true, status: 'ok', message: '连接正常' });
+
+    await c.saveAndTest();
+
+    const events = c.emit.mock.calls.map((call) => call[0]);
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(events.filter((e) => e === 'saved')).toHaveLength(0);
+    expect(events.filter((e) => e === 'tested')).toHaveLength(1);
+    expect(events.filter((e) => e === 'update:modelValue')).toHaveLength(1);
+  });
+
+  it('普通保存：仍发 saved（编辑页保存路径语义不变）', async () => {
+    const c = setup();
+    await open(c.props);
+    c.form.name = 'plain-save';
+    c.form.url = 'https://mcp.example.com/mcp';
+
+    await c.save();
+
+    const events = c.emit.mock.calls.map((call) => call[0]);
+    expect(events.filter((e) => e === 'saved')).toHaveLength(1);
   });
 });

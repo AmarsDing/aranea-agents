@@ -177,7 +177,9 @@ export function useMcpServerForm(
   async function saveAndTest() {
     testing.value = true;
     try {
-      const saved = await persist({ close: false, notify: false });
+      // emitSaved:false —— 本路径只发 tested 一次：页面据此在「测试完成后」
+      // 单次刷新列表（健康列才是新值）；若同时发 saved 会双次拉取列表。
+      const saved = await persist({ close: false, notify: false, emitSaved: false });
       const result = await mcpStore.test(saved.id);
       emit('tested');
       emit('update:modelValue', false);
@@ -190,13 +192,13 @@ export function useMcpServerForm(
     }
   }
 
-  async function persist(options: { close: boolean; notify: boolean }) {
+  async function persist(options: { close: boolean; notify: boolean; emitSaved?: boolean }) {
     serverError.value = '';
     saving.value = true;
     try {
       const payload = buildPayload();
       const saved = props.row ? await mcpStore.editServer(props.row.id, payload) : await mcpStore.addServer(payload);
-      emit('saved', saved);
+      if (options.emitSaved !== false) emit('saved', saved);
       if (options.close) emit('update:modelValue', false);
       if (options.notify) $q.notify({ type: 'positive', message: 'MCP 服务器已保存' });
       return saved;

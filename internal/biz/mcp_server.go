@@ -595,7 +595,11 @@ func (u *MCPServerUsecase) discover(ctx context.Context, serverKey string, store
 	var probeCfg struct {
 		RequireUserCredentials bool `json:"require_user_credentials"`
 	}
-	_ = json.Unmarshal([]byte(cfgJSON), &probeCfg)
+	if err := json.Unmarshal([]byte(cfgJSON), &probeCfg); err != nil {
+		// 配置解析失败须当场暴露：吞掉错误会把 require_user_credentials 静默
+		// 当作 false，将真实问题延迟到 discoverer 的网络/子进程阶段才显现。
+		return MCPToolDiscoveryResult{OK: false, Message: "配置解析失败: " + err.Error()}
+	}
 	if probeCfg.RequireUserCredentials {
 		return MCPToolDiscoveryResult{OK: false, Message: "该服务器要求按用户凭据，无用户上下文时无法自动发现工具"}
 	}

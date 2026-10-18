@@ -32,7 +32,7 @@ func newMCPCatalogRefreshAfterHook(invs []tools.MCPCacheInvalidator, lg loggatew
 				inv.InvalidateToolsCache()
 			}
 		}
-		lg.Info("mcp catalog cache invalidated for next model call",
+		lg.Info("MCP 工具目录缓存已失效，下次模型调用前将重新拉取",
 			loggateway.StepID("agent.mcp.catalog_refresh"),
 			loggateway.Str("tool", strings.TrimSpace(args.ToolName)))
 		return &trpctool.AfterToolResult{}, nil

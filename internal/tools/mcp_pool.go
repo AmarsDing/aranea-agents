@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -37,6 +38,10 @@ const (
 	defaultMCPPoolIdleTTL      = 10 * time.Minute
 	defaultMCPPoolReapInterval = time.Minute
 )
+
+// errMCPToolSetFactoryNil is returned by Acquire when the ToolSet factory
+// violates its contract by returning (nil, nil).
+var errMCPToolSetFactoryNil = errors.New("mcp toolset factory returned nil toolset without error")
 
 // mcpToolSetFactory builds one MCP ToolSet for the given config. Injectable
 // for tests; production default is buildMCPToolSet.
@@ -165,7 +170,10 @@ func (p *MCPToolSetPool) Acquire(ctx context.Context, cfg MCPServerConfig) (Tool
 		return nil, err
 	}
 	if ts == nil {
-		return nil, nil
+		// Fail fast: a (nil, nil) factory result is a contract violation, not a
+		// "no toolset" signal — returning (nil, nil) here would push a latent
+		// nil-pointer crash onto every caller.
+		return nil, errMCPToolSetFactoryNil
 	}
 	if init, ok := ts.(interface{ Init(context.Context) error }); ok {
 		if initErr := init.Init(ctx); initErr != nil {

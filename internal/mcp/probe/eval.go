@@ -1,7 +1,6 @@
 package probe
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -18,12 +17,6 @@ type TestResult struct {
 	Status  string         `json:"status"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
-}
-
-var defaultProber = NewProber(nil)
-
-func Evaluate(ctx context.Context, enabled bool, configJSON string) TestResult {
-	return defaultProber.Evaluate(ctx, enabled, configJSON)
 }
 
 func evaluateStdio(cfg config.ServerConfig) TestResult {

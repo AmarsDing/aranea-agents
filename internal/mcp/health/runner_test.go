@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -143,4 +144,30 @@ func TestProbeOne_nilAlertsNoPanic(t *testing.T) {
 		}
 	}()
 	runProbeOneLogic(result, nil)
+}
+
+// errMCPServerRepo always fails ListMCPServers, driving probeAll down its
+// error-logging path (r.lg.Error) which panicked pre-fix when lg was nil.
+type errMCPServerRepo struct {
+	biz.MCPServerReader
+}
+
+func (r *errMCPServerRepo) ListMCPServers(context.Context, biz.MCPListQuery) ([]biz.MCPServer, error) {
+	return nil, errors.New("list boom")
+}
+
+// TestNewRunner_nilLoggerNoPanic verifies that a nil logger is normalized to a
+// no-op logger in NewRunner, so the probeAll error path (r.lg.Error) cannot
+// panic on minimal/test setups.
+func TestNewRunner_nilLoggerNoPanic(t *testing.T) {
+	r := NewRunner(Deps{MCP: &errMCPServerRepo{}}, nil)
+	if r == nil {
+		t.Fatal("expected non-nil runner")
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("nil logger should not panic on error path, got: %v", rec)
+		}
+	}()
+	r.probeAll(context.Background())
 }

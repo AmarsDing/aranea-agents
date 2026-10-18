@@ -75,7 +75,7 @@ func TestMCPToolSetPool_CloseClosesIdleEntryImmediately(t *testing.T) {
 }
 
 // 建连期间池被并发 Close：返回给调用方的 ToolSet 不得是已关闭的
-//（调用方持有所有权，与不可池化路径一致）。
+// （调用方持有所有权，与不可池化路径一致）。
 func TestMCPToolSetPool_AcquireDuringCloseReturnsUsableToolSet(t *testing.T) {
 	entered := make(chan struct{})
 	gate := make(chan struct{})
@@ -111,6 +111,21 @@ func TestMCPToolSetPool_AcquireDuringCloseReturnsUsableToolSet(t *testing.T) {
 	}
 	if err := r.ts.Close(); err != nil {
 		t.Fatalf("caller Close: %v", err)
+	}
+}
+
+// factory 违反契约返回 (nil, nil) 时，Acquire 必须 fail-fast 返回错误，
+// 而不是透传 (nil, nil) 把 nil 指针崩溃推迟到各调用点。
+func TestMCPToolSetPool_AcquireNilFactoryResultFails(t *testing.T) {
+	pool := newMCPToolSetPoolWithFactory(func(MCPServerConfig) (ToolSet, error) { return nil, nil }, time.Hour)
+	defer pool.Close()
+
+	ts, err := pool.Acquire(context.Background(), MCPServerConfig{Name: "srv", Transport: "stdio", Command: "false"})
+	if !errors.Is(err, errMCPToolSetFactoryNil) {
+		t.Fatalf("expected errMCPToolSetFactoryNil, got ts=%v err=%v", ts, err)
+	}
+	if ts != nil {
+		t.Fatalf("expected nil toolset on contract violation, got %v", ts)
 	}
 }
 

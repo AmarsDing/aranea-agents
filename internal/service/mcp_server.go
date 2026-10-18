@@ -37,10 +37,21 @@ func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, agen
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	// Wire the OAuth2 refresh-token rotation persistence hook: when a provider
-	// rotates the refresh token, the agent runtime writes it back into the
-	// server's stored config_json so a restart does not resurrect the revoked
-	// token. The closure owns failure logging per the hook contract.
+	return &MCPServerService{uc: uc, mon: mon, agents: agents, lg: lg, monitorBus: monitorBus}
+}
+
+// RegisterMCPRefreshTokenPersister wires the OAuth2 refresh-token rotation
+// persistence hook: when a provider rotates the refresh token, the agent
+// runtime writes it back into the server's stored config_json so a restart
+// does not resurrect the revoked token. The closure owns failure logging per
+// the hook contract.
+//
+// 刻意不放在 NewMCPServerService 里：安装进程级全局钩子是组合根（cmd/admin
+// newApp）的职责，而非构造函数副作用——重复构造（测试/多实例）不得相互覆写注册。
+func RegisterMCPRefreshTokenPersister(uc *biz.MCPServerUsecase, lg loggateway.Logger) {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	chatagent.SetMCPRefreshTokenPersister(func(ctx context.Context, serverKey, refreshToken string) error {
 		if err := uc.PersistRotatedRefreshToken(ctx, serverKey, refreshToken); err != nil {
 			lg.Warn("MCP 轮换 refresh_token 回写失败",
@@ -54,7 +65,6 @@ func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, agen
 			loggateway.Str("server_key", serverKey))
 		return nil
 	})
-	return &MCPServerService{uc: uc, mon: mon, agents: agents, lg: lg, monitorBus: monitorBus}
 }
 
 // logMCPFlow emits a user-visible flow log (流程日志) for MCP server CRUD steps.

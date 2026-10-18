@@ -495,6 +495,30 @@ func TestDiscoverMCPServerTools_RequireUserCredentialsShortCircuits(t *testing.T
 	}
 }
 
+func TestDiscoverMCPServerTools_InvalidConfigJSON(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID: "m1", Key: "srv", Enabled: true, Status: "active",
+		ConfigJSON: `{invalid`,
+	}}}
+	disc := &stubMCPDiscoverer{names: []string{"a"}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+	uc.SetToolDiscoverer(disc)
+
+	res, err := uc.DiscoverMCPServerTools(context.Background(), "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("expected OK=false for unparseable config")
+	}
+	if !strings.HasPrefix(res.Message, "配置解析失败") {
+		t.Fatalf("message=%q, want 配置解析失败 prefix", res.Message)
+	}
+	if disc.called != 0 {
+		t.Fatal("discoverer must not be called when config cannot be parsed")
+	}
+}
+
 func TestDiscoverMCPServerTools_FailurePreservesLastGood(t *testing.T) {
 	repo := &stubMCPRepo{rows: []MCPServer{{
 		ID: "m1", Key: "srv", Enabled: true, Status: "active",
