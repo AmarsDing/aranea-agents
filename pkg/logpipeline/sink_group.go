@@ -3,6 +3,8 @@ package logpipeline
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -24,6 +26,7 @@ type SinkGroup struct {
 	ch         chan LogEntry
 	wg         sync.WaitGroup
 	dropped    atomic.Uint64
+	panics     atomic.Uint64
 	dropPolicy DropPolicy
 	name       string
 	ctx        context.Context
@@ -62,7 +65,16 @@ func (sg *SinkGroup) run() {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					// Sink.Write panicked; continue processing.
+					// Sink.Write panicked; count it so the failure is visible via
+					// pipeline Stats (previously this was a silent swallow: a
+					// persistently panicking sink looked exactly like "no logs").
+					// Rate-limited stderr mirrors the file_sink/eventbus_sink
+					// precedent — do NOT re-log into the pipeline here (the sink
+					// itself is broken; that would recurse).
+					n := sg.panics.Add(1)
+					if n <= 10 || n%100 == 0 {
+						fmt.Fprintf(os.Stderr, "[sinkgroup-%s] sink Write panic recovered: %v (total=%d)\n", sg.name, r, n)
+					}
 				}
 			}()
 			sg.sink.Write(entry)
@@ -109,6 +121,7 @@ func (sg *SinkGroup) Flush() {
 type SinkGroupStats struct {
 	Name    string
 	Dropped uint64
+	Panics  uint64
 	ChanLen int
 	ChanCap int
 }
@@ -118,6 +131,7 @@ func (sg *SinkGroup) Stats() SinkGroupStats {
 	return SinkGroupStats{
 		Name:    sg.name,
 		Dropped: sg.dropped.Load(),
+		Panics:  sg.panics.Load(),
 		ChanLen: len(sg.ch),
 		ChanCap: cap(sg.ch),
 	}

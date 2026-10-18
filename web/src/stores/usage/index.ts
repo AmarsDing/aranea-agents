@@ -96,7 +96,10 @@ export const useUsageStore = defineStore('usage', () => {
     try {
       cacheHitStats.value = await getCacheHitRatioStats(windowHours);
       cacheHitDenied.value = false;
-    } catch {
+    } catch (err) {
+      // 403 是预期的观测性降级（非管理员隐藏卡片，见上方注释）；
+      // 其余错误同样要留痕，否则"无权限"与"查询故障"无法区分。
+      console.warn('[usage] cache hit stats load failed', err);
       cacheHitDenied.value = true;
       cacheHitStats.value = [];
     } finally {

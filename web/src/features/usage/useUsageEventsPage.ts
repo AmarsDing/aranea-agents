@@ -242,7 +242,8 @@ export function useUsageEventsPage() {
       try {
         const deleted = await purgeEvents();
         $q.notify({ type: 'positive', message: `已删除 ${deleted} 条用量事件` });
-      } catch {
+      } catch (err) {
+        console.warn('[usage-events] purge failed', err);
         $q.notify({ type: 'negative', message: '删除用量事件失败' });
       } finally {
         purging.value = false;

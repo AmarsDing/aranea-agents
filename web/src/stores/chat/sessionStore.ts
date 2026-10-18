@@ -691,7 +691,9 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       const status = await getCompressStatus(sessionId);
       compressStatus.value = status;
       return status;
-    } catch {
+    } catch (err) {
+      // 压缩状态查询失败降级为当前值（不阻断会话操作），但要留痕
+      console.warn('[session] compress status fetch failed', err);
       return compressStatus.value;
     }
   }

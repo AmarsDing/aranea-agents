@@ -81,6 +81,9 @@ type PipelineStats struct {
 	ChanCap    int
 	SinkCount  int
 	SinkErrors uint64
+	// SinkPanics aggregates recovered Sink.Write panics across all SinkGroups
+	// (P1-1: previously swallowed silently with no observable trace).
+	SinkPanics uint64
 }
 
 type ThrottleRule struct {
@@ -148,15 +151,21 @@ func (p *pipeline) Throttled() uint64 {
 
 func (p *pipeline) Stats() PipelineStats {
 	p.mu.RLock()
-	sinkCount := len(p.sinkGroups)
+	groups := make([]*SinkGroup, len(p.sinkGroups))
+	copy(groups, p.sinkGroups)
 	p.mu.RUnlock()
+	var sinkPanics uint64
+	for _, sg := range groups {
+		sinkPanics += sg.Stats().Panics
+	}
 	return PipelineStats{
 		Dropped:    p.dropped.Load(),
 		Throttled:  p.throttled.Load(),
 		ChanLen:    len(p.ch),
 		ChanCap:    cap(p.ch),
-		SinkCount:  sinkCount,
+		SinkCount:  len(groups),
 		SinkErrors: p.sinkErrors.Load(),
+		SinkPanics: sinkPanics,
 	}
 }
 

@@ -155,7 +155,8 @@ export const useMonitorStore = defineStore('monitor', () => {
         label: `${c.name || c.key} (${c.id})`,
         value: c.id,
       }));
-    } catch {
+    } catch (err) {
+      console.warn('[monitor] alert channel options load failed', err);
       alertChannelOptions.value = [];
     }
   }

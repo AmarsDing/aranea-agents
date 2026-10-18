@@ -15,6 +15,7 @@ import (
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/telemetry/turntrace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -86,7 +87,7 @@ type TeamGraphRunCoordinator struct {
 	// 恢复审计通道（83 §4.1）：decision 双写 + 用户可见 flowlog。经
 	// SetRecoveryAudit 后置注入（对齐 TeamService.SetDecisionEvidence 先例），
 	// nil-safe：未注入时仅进程日志。
-	flowLog  biz.FlowLogWriter
+	flowLog   biz.FlowLogWriter
 	decisions decision.Collector
 
 	mu       sync.RWMutex
@@ -1018,6 +1019,12 @@ func (c *TeamGraphRunCoordinator) ensureSessionResident(ctx context.Context, exe
 	}
 	dbSess, err := c.sessionRepo.GetSession(ctx, execID)
 	if err != nil {
+		// audit P2-2：NotFound 是合法的"非本会话执管"语义，静默；
+		// 其他错误（DB 抖动/断连）必须留痕，否则降级与故障无法区分。
+		if !apierror.IsCode(err, apierror.CodeNotFound) {
+			c.lg.Warn("ensureSessionResident: session repo query failed, degrading to non-resident",
+				loggateway.Str("exec_id", execID), loggateway.Err(err))
+		}
 		return nil
 	}
 	sess := c.restoreSession(dbSess)

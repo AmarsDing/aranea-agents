@@ -280,8 +280,9 @@ export function useGraphsPage() {
       const result = await listGraphExecutions(id, 6);
       selectedExecutions.value = result.items.slice(0, 5);
       selectedExecutionsHasMore.value = result.items.length > 5 || Boolean(result.nextPageToken);
-    } catch {
-      // 执行历史预览失败不阻断详情面板展示
+    } catch (err) {
+      // 执行历史预览失败不阻断详情面板展示，但要留痕（audit P2-3）
+      console.warn('[graphs] execution preview load failed', err);
     }
   });
 
@@ -369,7 +370,8 @@ export function useGraphsPage() {
     try {
       await graphStore.loadTemplates();
       templates.value = graphStore.templates;
-    } catch {
+    } catch (err) {
+      console.warn('[graphs] templates load failed', err);
       $q.notify({ type: 'negative', message: t('graphs.loadTemplatesFailed') });
     } finally {
       templatesLoading.value = false;

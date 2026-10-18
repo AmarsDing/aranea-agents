@@ -290,8 +290,10 @@ func (f *FederatedRetriever) searchBroadcast(ctx context.Context, collectionIDs 
 	var firstErr error
 	for i, r := range results {
 		if r.err != nil {
-			f.lg.Warn(fmt.Sprintf("collection %s search failed", collectionIDs[i]),
+			// audit P2-4：静态 msg + 结构化字段（禁 Sprintf 拼接）。
+			f.lg.Warn("collection search failed",
 				loggateway.StepID("knowledge.federated_retriever"),
+				loggateway.Str("collection_id", collectionIDs[i]),
 				loggateway.Err(r.err))
 			if firstErr == nil {
 				firstErr = r.err

@@ -116,8 +116,8 @@ export function useOverviewPage() {
     providerHealthLoading.value = true;
     try {
       await platformStore.loadProviderModels();
-    } catch {
-      // silent
+    } catch (err) {
+      console.warn('[overview] provider health load failed', err);
     } finally {
       providerHealthLoading.value = false;
     }
@@ -160,8 +160,8 @@ export function useOverviewPage() {
         active: activeResult.total,
         total: totalResult.total,
       };
-    } catch {
-      // silent
+    } catch (err) {
+      console.warn('[overview] agent stats load failed', err);
     }
   }
 
@@ -181,16 +181,16 @@ export function useOverviewPage() {
     try {
       await platformStore.loadTaxonomyTree('organization');
       categoryCount.value = platformStore.taxonomyTree.length;
-    } catch {
-      // silent
+    } catch (err) {
+      console.warn('[overview] category count load failed', err);
     }
   }
 
   async function loadTeamCount() {
     try {
       teamCount.value = await countTeams();
-    } catch {
-      // silent
+    } catch (err) {
+      console.warn('[overview] team count load failed', err);
     }
   }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"aranea-agents/internal/adapter"
 	"aranea-agents/internal/conf"
@@ -101,6 +102,11 @@ func initLogging(bc *conf.Bootstrap, logger log.Logger) (loggateway.Logger, logp
 		// Route *Context helpers through the adapter with OTel trace fields,
 		// and bridge the trpc-a2a-go package logger (LOG-02).
 		adapter.InstallRuntimeLogContextFuncs(rla)
+		// Bridge vendored log/slog records (trpc-agent-go knowledge/source) into
+		// the Pipeline instead of the bare default stderr handler (audit P3-1).
+		// This is interception, not logging — log/slog remains forbidden in
+		// first-party business code per red line #16.
+		slog.SetDefault(slog.New(adapter.NewSlogBridge(gw)))
 	}
 
 	return lg, pipeline, loggingSinks

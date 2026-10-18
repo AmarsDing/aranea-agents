@@ -420,6 +420,45 @@ var (
 		Help:    "Duration of knowledge search pipeline stages (embed, dense, sparse, total).",
 		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	}, []string{"stage"})
+
+	// ── Log pipeline self-observability (2026-10-18 audit P1-1) ──
+	// The logpipeline package counters (Dropped/Throttled/SinkErrors/SinkPanics)
+	// were never exported: log loss was invisible to operators. These metrics are
+	// fed by the periodic reporter in cmd/admin (delta accumulation for counters).
+
+	// LogPipelineDroppedTotal counts entries dropped before dispatch
+	// (pipeline closed or dispatch buffer full).
+	LogPipelineDroppedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_logpipeline_dropped_total",
+		Help: "Log entries dropped before dispatch (pipeline closed or buffer full).",
+	})
+
+	// LogPipelineThrottledTotal counts entries suppressed by step throttle rules.
+	LogPipelineThrottledTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_logpipeline_throttled_total",
+		Help: "Log entries suppressed by step-id throttle rules.",
+	})
+
+	// LogPipelineSinkErrorsTotal counts sink write failures
+	// (≈ per-sink-group buffer-full drops and emit failures).
+	LogPipelineSinkErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_logpipeline_sink_errors_total",
+		Help: "Sink write failures / sink-group buffer drops.",
+	})
+
+	// LogPipelineSinkPanicsTotal counts recovered panics from Sink.Write.
+	// Any increment means a sink is malfunctioning and logs are being lost.
+	LogPipelineSinkPanicsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_logpipeline_sink_panics_total",
+		Help: "Recovered Sink.Write panics (sink malfunction, logs lost).",
+	})
+
+	// LogPipelineBufferUsage is the dispatch channel occupancy ratio (0..1).
+	// Sustained values near 1 predict upcoming drops.
+	LogPipelineBufferUsage = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "aranea_logpipeline_buffer_usage",
+		Help: "Log pipeline dispatch buffer occupancy ratio (0..1).",
+	})
 )
 
 // SafegoPanicHook returns a PanicHook function that increments the

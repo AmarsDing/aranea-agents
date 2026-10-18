@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/skill"
+	"aranea-agents/pkg/safego"
 )
 
 // effectiveToolsConcurrency 是 design §4.1 step 4 规定的 GetEffectiveTools
@@ -136,12 +137,13 @@ func (x agentExtractor) effectiveToolEdges(ctx context.Context, active []AgentRo
 	sem := make(chan struct{}, effectiveToolsConcurrency)
 	for i, ag := range active {
 		wg.Add(1)
-		go func(i int, ag AgentRow) {
+		i, ag := i, ag
+		safego.Go(ctx, "configgraph.effective_edges", func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			perAgent[i] = x.effectiveEdgesFor(ctx, ag)
-		}(i, ag)
+		})
 	}
 	wg.Wait()
 	var out []Edge

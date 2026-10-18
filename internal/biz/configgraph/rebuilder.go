@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // flowStepRebuild 是全量重建的 flowlog step（design §4.1 step 6）。
@@ -131,14 +132,15 @@ func (r *Rebuilder) RebuildAsync() (int64, bool) {
 		return r.current.Load() + 1, false
 	}
 	gen := r.current.Load() + 1
-	go func() {
+	// safego（audit P2-1）：裸 goroutine 的 panic 不受 recover、直接崩进程。
+	safego.GoBackground("configgraph.rebuild_async", func() {
 		defer r.running.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
 		defer cancel()
 		if _, err := r.Rebuild(ctx); err != nil {
 			r.lg.Warn("configgraph async rebuild failed", loggateway.Err(err))
 		}
-	}()
+	})
 	return gen, true
 }
 
@@ -191,7 +193,7 @@ func (r *Rebuilder) Rebuild(ctx context.Context) (RebuildResult, error) {
 	r.flowDone(ctx, res)
 
 	// 异步清理 gen-1 之前的旧代（保留 1 代供对账，design §2.4）。
-	go r.cleanupBelow(gen - 1)
+	safego.GoBackground("configgraph.cleanup_below", func() { r.cleanupBelow(gen - 1) })
 	return res, nil
 }
 

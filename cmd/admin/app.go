@@ -344,6 +344,9 @@ func startReadinessDependentServices(
 		gateCards.Start(ctx)
 	}
 	sessions.StartMetricsFlusher(ctx)
+	// 日志管道自观测（audit P1-1）：把 logpipeline 内部 drop/throttle/panic
+	// 计数导出为 Prometheus 指标，日志静默丢失由此可见。
+	startLogPipelineStatsReporter(ctx, pipeline)
 	if eventInfra != nil {
 		if pipeline != nil {
 			if len(loggingSinks) > 0 {
