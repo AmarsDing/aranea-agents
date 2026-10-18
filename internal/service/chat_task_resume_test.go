@@ -57,6 +57,34 @@ func newResumeTestService(taskV2 biz.TaskV2Repo, steps biz.StepV2Reader) *ChatSe
 		taskV2:     taskV2,
 		stepReader: steps,
 		lg:         loggateway.NewNoop(),
+		// Zero-value orchestrator: HasActiveRun is nil-registry safe (returns
+		// false). prepareInterruptedResume now requires a non-nil orchestrator
+		// before the CAS claim (#3 fix, 2026-10-18).
+		orch: &ChatOrchestrator{},
+	}
+}
+
+// TestResumeInterruptedTask_NilOrchestratorDoesNotClaim is the #3 regression
+// test: when the orchestrator is unavailable, the resume must fail BEFORE the
+// CAS claim so the task is not left bricked in "running" (which had made every
+// retry return Conflict).
+func TestResumeInterruptedTask_NilOrchestratorDoesNotClaim(t *testing.T) {
+	repo := &stubTaskV2RepoForResume{
+		task:     biz.Task{ID: "t-1", SessionID: "s-1", Status: biz.TaskStatusInterrupted},
+		resumeOK: true,
+		resumeTask: biz.Task{
+			ID: "t-1", SessionID: "s-1", Status: biz.TaskStatusRunning,
+		},
+	}
+	svc := newResumeTestService(repo, &stubStepV2ReaderForResume{})
+	svc.orch = nil // orchestrator unavailable
+
+	err := svc.ResumeInterruptedTask(context.Background(), "s-1", "t-1")
+	if !apierror.IsCode(err, apierror.CodeInternal) {
+		t.Fatalf("want Internal, got %v", err)
+	}
+	if repo.resumeN != 0 {
+		t.Fatalf("CAS claim count = %d, want 0 (task must not be claimed without orchestrator)", repo.resumeN)
 	}
 }
 

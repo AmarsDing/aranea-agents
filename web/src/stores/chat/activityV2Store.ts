@@ -118,6 +118,27 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return !s || s.startsWith('0001-01-01');
   }
 
+  // F2 (2026-10-19): session → optimistic pending task IDs. Replacing an
+  // optimistic "pending-user-*" task with its persisted counterpart becomes an
+  // O(pending-in-session) lookup instead of a full-map scan on every upsert.
+  const pendingTaskIdsBySession = new Map<string, Set<string>>();
+
+  function indexPendingTask(t: Task) {
+    let set = pendingTaskIdsBySession.get(t.SessionID);
+    if (!set) {
+      set = new Set<string>();
+      pendingTaskIdsBySession.set(t.SessionID, set);
+    }
+    set.add(t.ID);
+  }
+
+  function dropPendingTaskIndex(sessionId: string, taskId: string) {
+    const set = pendingTaskIdsBySession.get(sessionId);
+    if (!set) return;
+    set.delete(taskId);
+    if (set.size === 0) pendingTaskIdsBySession.delete(sessionId);
+  }
+
   function upsertTask(t: Task) {
     const ex = tasks.value.get(t.ID);
     if (ex && t.Version <= ex.Version) return;
@@ -132,17 +153,23 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         }
       : { ...t };
     tasks.value.set(t.ID, merged);
-    if (!t.ID.startsWith('pending-user-')) {
-      for (const [id, task] of tasks.value) {
-        if (id.startsWith('pending-user-') && task.SessionID === t.SessionID) {
-          tasks.value.delete(id);
-        }
+    if (merged.ID.startsWith('pending-user-')) {
+      indexPendingTask(merged);
+      return;
+    }
+    const pendings = pendingTaskIdsBySession.get(merged.SessionID);
+    if (pendings) {
+      for (const id of pendings) {
+        tasks.value.delete(id);
       }
+      pendingTaskIdsBySession.delete(merged.SessionID);
     }
   }
 
   /** removeTask 删除指定 ID 的 Task（用于乐观 Task 失败时清理） */
   function removeTask(taskId: string) {
+    const existing = tasks.value.get(taskId);
+    if (existing) dropPendingTaskIndex(existing.SessionID, taskId);
     tasks.value.delete(taskId);
   }
 
@@ -585,6 +612,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         taskHydration.value.delete(id);
       }
     }
+    pendingTaskIdsBySession.delete(spiritSessionId);
     for (const [id, t] of turns.value) {
       if (t.SpiritSessionID === spiritSessionId) {
         turns.value.delete(id);
@@ -627,6 +655,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     tasks.value.clear();
     turns.value.clear();
     steps.value.clear();
+    pendingTaskIdsBySession.clear();
     lastDeltaSeqs.clear();
     clearAllStepLiveText();
     teamStages.value.clear();

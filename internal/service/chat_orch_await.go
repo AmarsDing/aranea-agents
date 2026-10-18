@@ -51,7 +51,6 @@ type AwaitResumption interface {
 	PublishAwaitResumed(sessionID, runID string)
 	SessionAwaitingUser(ctx context.Context, sessionID string) (persistedRunStatus, bool)
 	CanResumeAwait(ctx context.Context, sessionID string) (runID string, ok bool)
-	ResumeAwaitAfterRestart(ctx context.Context, sessionID, reply, runID string) error
 	HasPendingAwaitUserReplyRoute(ctx context.Context, sessionID string) bool
 }
 
@@ -211,22 +210,6 @@ func (a *chatAwaitCoordinator) hasPendingAwaitUserReplyRoute(ctx context.Context
 		return false
 	}
 	return rtPort.HasPendingAwaitUserReply(ctx, userID, sessionID)
-}
-
-// ResumeAwaitAfterRestart resumes an await after process restart.
-func (a *chatAwaitCoordinator) ResumeAwaitAfterRestart(ctx context.Context, sessionID, reply, runID string) error {
-	if !a.TryBeginResume(sessionID) {
-		return errResumeInFlight
-	}
-	if err := a.runStatus.ClearAwaitingRunStateSync(ctx, sessionID); err != nil {
-		a.EndResume(sessionID)
-		return err
-	}
-	a.PublishAwaitResumed(sessionID, runID)
-	// NOTE: The actual turn re-execution is handled by the caller (ChatOrchestrator)
-	// because it needs access to the full turn execution pipeline.
-	// This method only handles the coordination state.
-	return nil
 }
 
 // RegisterAwaitChannel registers an await channel for a session.

@@ -4,7 +4,7 @@
  * the Tauri side-effect wrapper lives in services/localNotification.ts and
  * the store watcher in composables/useBlockingStepNotifications.ts.
  */
-import type { Step } from '../v2Types';
+import type { Step } from './v2Types';
 import { i18n } from '../../i18n';
 
 export type BlockingNotification = {

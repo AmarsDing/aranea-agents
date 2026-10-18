@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -240,12 +241,26 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 	safego.Go(enqCtx, "ws-enqueue-message", func() {
 		resp, err := s.sender.EnqueueUserMessage(enqCtx, req)
 		if err != nil {
+			// M8 (2026-10-18): distinguish enqueue REJECTION (queue full / run
+			// ended) from transport/internal failure, so the timeline
+			// ErrorBlock and other consumers can branch on a stable error_type
+			// instead of parsing message text.
+			errType := "enqueue_failed"
+			if ae, ok := apierror.From(err); ok {
+				switch ae.Domain {
+				case apierror.DomainChatQueueFull, apierror.DomainChatRunEnded, apierror.DomainChatEnqueueRejected:
+					errType = "enqueue_rejected"
+				}
+			}
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-			s.publishWSErrorActivity(sessionID, requestID, "enqueue_failed", err.Error(), req.Content)
+			s.publishWSErrorActivity(sessionID, requestID, errType, err.Error(), req.Content)
 			return
 		}
 		if resp == nil || !resp.GetAccepted() {
-			s.publishWSErrorActivity(sessionID, requestID, "enqueue_rejected", "no active run for session", req.Content)
+			// The service layer rejects via typed apierrors, so this branch is
+			// defensive; the specific reason is genuinely unknown at this
+			// layer — do not fabricate "no active run" (M8).
+			s.publishWSErrorActivity(sessionID, requestID, "enqueue_rejected", "message not accepted by the active run", req.Content)
 		}
 	})
 }

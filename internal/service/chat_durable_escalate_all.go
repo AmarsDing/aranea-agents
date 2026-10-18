@@ -39,8 +39,12 @@ func (s *ChatService) EscalateAllActiveToDurable(ctx context.Context) int {
 		if run.ID == "" || run.SessionID == "" {
 			continue
 		}
-		s.orch.sessionRunLC().EscalateToDurableOnShutdown(ctx, run.SessionID, run.ID)
-		escalated++
+		// Only count runs whose durable transition actually applied (review #7):
+		// a silent no-op (run already finished, checkpoint write failed, CAS
+		// lost) must not inflate the shutdown metric.
+		if s.orch.sessionRunLC().EscalateToDurableOnShutdown(ctx, run.SessionID, run.ID) {
+			escalated++
+		}
 	}
 	if escalated > 0 {
 		s.lg.Info("shutdown durable escalate: interactive runs escalated",

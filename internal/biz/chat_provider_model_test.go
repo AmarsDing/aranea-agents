@@ -202,3 +202,67 @@ func TestResolveProviderModelWithFallback_NilDeps_KeepsOriginal(t *testing.T) {
 		t.Fatalf("expected original values with nil deps, got %s/%s", prov, mod)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// M7 (2026-10-18): mixed-source provider/model pairs must be unit-validated;
+// a cross-joined pair (provider A + provider B's model) never ships.
+// ---------------------------------------------------------------------------
+
+// Model-only input completed by the refine provider produces a mixed pair;
+// it must be re-resolved to a coherent catalog row carrying the explicit
+// model (not shipped as provider A + model from nowhere).
+func TestResolveProviderModelWithFallback_MixedModelInput_ResolvesCoherentPair(t *testing.T) {
+	catalog := &stubModelCatalog{models: []ProviderModel{
+		{Provider: "openai", Model: "gpt-5", Enabled: true},
+		{Provider: "openai", Model: "gpt-4o-mini", Enabled: true},
+	}}
+	refine := &stubRefineLLMLookup{setting: RefineLLMSetting{Provider: "deepseek", Model: "deepseek-v4-flash"}}
+
+	prov, mod := ResolveProviderModelWithFallback(context.Background(), catalog, refine, loggateway.NewNoop(), "", "gpt-5")
+	if prov != "openai" || mod != "gpt-5" {
+		t.Fatalf("mixed pair must resolve to the catalog row carrying the explicit model, got %s/%s", prov, mod)
+	}
+}
+
+// Provider-only input completed by the refine model: keep the explicit
+// provider and complete the model from that provider's own catalog row.
+func TestResolveProviderModelWithFallback_MixedProviderInput_CompletesSameProvider(t *testing.T) {
+	catalog := &stubModelCatalog{models: []ProviderModel{
+		{Provider: "openai", Model: "gpt-4o-mini", Enabled: true},
+		{Provider: "deepseek", Model: "deepseek-v4-flash", Enabled: true},
+	}}
+	refine := &stubRefineLLMLookup{setting: RefineLLMSetting{Provider: "deepseek", Model: "deepseek-v4-flash"}}
+
+	prov, mod := ResolveProviderModelWithFallback(context.Background(), catalog, refine, loggateway.NewNoop(), "openai", "")
+	if prov != "openai" || mod != "gpt-4o-mini" {
+		t.Fatalf("mixed pair must complete from the explicit provider's own row, got %s/%s", prov, mod)
+	}
+}
+
+// The pure RefineLLM pair is operator configuration and remains trusted
+// even when absent from the tenant catalog (may live outside it by design).
+func TestResolveProviderModelWithFallback_PureRefinePair_TrustedOutsideCatalog(t *testing.T) {
+	catalog := &stubModelCatalog{models: []ProviderModel{
+		{Provider: "openai", Model: "gpt-4o-mini", Enabled: true},
+	}}
+	refine := &stubRefineLLMLookup{setting: RefineLLMSetting{Provider: "deepseek", Model: "deepseek-v4-flash"}}
+
+	prov, mod := ResolveProviderModelWithFallback(context.Background(), catalog, refine, loggateway.NewNoop(), "", "")
+	if prov != "deepseek" || mod != "deepseek-v4-flash" {
+		t.Fatalf("pure refine pair must be trusted, got %s/%s", prov, mod)
+	}
+}
+
+// A mixed pair whose explicit side has no matching catalog row degrades to
+// the half pair so deeper layers fall back to the provider's own default
+// (never to an unrelated provider's model).
+func TestResolveProviderModelWithFallback_MixedNoMatchingRow_KeepsExplicitSide(t *testing.T) {
+	catalog := &stubModelCatalog{models: []ProviderModel{
+		{Provider: "openai", Model: "gpt-4o-mini", Enabled: true},
+	}}
+
+	prov, mod := ResolveProviderModelWithFallback(context.Background(), catalog, nil, loggateway.NewNoop(), "anthropic", "")
+	if prov != "anthropic" || mod != "" {
+		t.Fatalf("no matching row must keep the explicit provider with empty model, got %s/%s", prov, mod)
+	}
+}

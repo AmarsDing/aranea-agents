@@ -212,6 +212,34 @@ func (cs *connStore) add(sessionID string, wc *wsConn) {
 	cs.conns[sessionID] = append(cs.conns[sessionID], wc)
 }
 
+// tryAdd atomically enforces the connection limit AND registers the
+// connection under one lock (M1, 2026-10-18). The previous
+// canAcceptConnection(count) → upgrade → add sequence had a TOCTOU window:
+// N concurrent handshakes could each pass the count check and all register,
+// overshooting the limit. limit<=0 disables that check. Returns false when
+// the limit was reached and the connection was NOT registered.
+func (cs *connStore) tryAdd(sessionID string, wc *wsConn, maxSession, maxGlobal int, globalMode, probeMode bool) bool {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if globalMode && !probeMode && maxGlobal > 0 {
+		n := 0
+		for _, c := range cs.conns["*"] {
+			if c != nil && !c.probeMode {
+				n++
+			}
+		}
+		if n >= maxGlobal {
+			return false
+		}
+	} else if !globalMode && maxSession > 0 {
+		if len(cs.conns[sessionID]) >= maxSession {
+			return false
+		}
+	}
+	cs.conns[sessionID] = append(cs.conns[sessionID], wc)
+	return true
+}
+
 func (cs *connStore) remove(wc *wsConn) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()

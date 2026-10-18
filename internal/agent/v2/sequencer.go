@@ -426,6 +426,10 @@ func (s *Sequencer) processTask(task publishTask) {
 			// Deadlock-safe: publishLoop is the sole producer of persistChan
 			// and persistLoop never sends back into publishQueue.
 			drainCh := make(chan struct{})
+			// L1: blocking-with-timeout enqueue of the flush marker. The prior
+			// non-blocking `default:` skipped the drain exactly when the drain
+			// mattered most (persistLoop backed up), letting a terminal sync
+			// persist overtake the queued async persists of earlier events.
 			select {
 			case s.persist.ch <- persistItem{flushCh: drainCh}:
 				select {
@@ -434,11 +438,11 @@ func (s *Sequencer) processTask(task publishTask) {
 					s.lg.Warn("terminal event persist-drain timed out, proceeding with sync persist",
 						loggateway.Str("kind", string(task.event.EventKind())))
 				}
-			default:
-				// persistChan full: persistLoop is backed up. Skip the drain;
-				// the sync persist still runs (best-effort WBPF) and queued
-				// items retain async retry semantics.
-				s.lg.Warn("persist channel full, skipping pre-terminal drain",
+			case <-time.After(2 * time.Second):
+				// persistLoop still backed up after the grace window: proceed
+				// with the best-effort sync persist (ordering hazard accepted,
+				// logged loudly). Queued items retain async retry semantics.
+				s.lg.Warn("persist channel full after drain-wait timeout, skipping pre-terminal drain",
 					loggateway.Str("kind", string(task.event.EventKind())))
 			}
 			persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -490,8 +494,16 @@ func (s *Sequencer) publishCritical(ctx context.Context, e biz.Event) {
 	}
 }
 
-// insertCriticalOutbox assigns seq when missing, inserts an outbox row, and returns its id.
-// Failures are logged and ignored so publish is never fail-closed on outbox errors.
+// insertCriticalOutbox assigns a delivery seq when missing, inserts an outbox
+// row, and returns its id. Failures are logged and ignored so publish is never
+// fail-closed on outbox errors.
+//
+// The delivery seq ALWAYS comes from the shared per-session SeqAssigner
+// counter — never from the event's embedded entity Seq (domain data, e.g. the
+// turn counter 1,2,3…). The outbox's UNIQUE(session_id, seq) index and
+// ListAfter(seq > cursor) replay both require one monotonic counter space per
+// session; mixing turn seqs into it collided/skipped terminal frames on
+// reconnect (H1, 2026-10-18 review).
 func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) string {
 	if s.outbox == nil || e == nil || !biz.IsCriticalDeliveryEvent(e) {
 		return ""
@@ -500,13 +512,19 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 	if sessionID == "" {
 		return ""
 	}
-	seq := biz.EventSeq(e)
+	de, ok := e.(biz.DeliverySeqEvent)
+	if !ok {
+		s.lg.Warn("critical event lacks delivery-seq carrier, outbox skipped",
+			loggateway.Str("kind", string(e.EventKind())))
+		return ""
+	}
+	seq := de.DeliverySeqValue()
 	if seq <= 0 {
 		if s.seqAssigner == nil {
 			return ""
 		}
 		seq = s.seqAssigner.NextSeq(sessionID)
-		biz.SetEventSeq(e, seq)
+		de.SetDeliverySeqValue(seq)
 	}
 	eventID := biz.DeliveryEventID(e, seq)
 	payload, err := marshalV2EventEnvelope(e, eventID)

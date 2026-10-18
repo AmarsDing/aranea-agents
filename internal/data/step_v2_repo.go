@@ -277,6 +277,34 @@ func (r *stepV2Repo) UpdateStep(ctx context.Context, s biz.Step) (biz.Step, erro
 	return entStepV2ToBiz(row), nil
 }
 
+// CompleteClarificationStep implements biz.StepV2Writer.CompleteClarificationStep
+// (review #4): a guarded UPDATE(id,status=awaiting_input) so concurrent
+// double-submits race on the row predicate instead of on read-then-write.
+//
+// The loser sees updated=false with a nil error — the caller degrades to
+// idempotent success without re-publishing events or re-resuming the turn.
+func (r *stepV2Repo) CompleteClarificationStep(ctx context.Context, s biz.Step) (bool, error) {
+	if r == nil || r.data == nil {
+		return false, fmt.Errorf("step v2 repo: database not configured")
+	}
+	b := r.data.RW().Write(ctx).StepV2.Update().
+		Where(
+			stepv2.ID(s.ID),
+			stepv2.StatusEQ(string(biz.StepStatusAwaitingInput)),
+		).
+		SetContent(s.Content).
+		SetStatus(string(s.Status)).
+		SetVersion(s.Version)
+	if s.CompletedAt != nil {
+		b.SetCompletedAt(*s.CompletedAt)
+	}
+	n, err := b.Save(ctx)
+	if err != nil {
+		return false, entErrToBizErr(err, "STEP_V2")
+	}
+	return n > 0, nil
+}
+
 // UpsertStep applies optimistic-concurrency upsert (see UpsertTask for semantics).
 func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, error) {
 	if r == nil || r.data == nil {

@@ -107,9 +107,15 @@ func (s *WSV2Subscriber) forward(e biz.Event) {
 		SessionID: sessionID,
 		Payload:   payload,
 	}
-	// B-06: critical frames carry a stable event_id matching the durable outbox cursor.
-	if biz.IsCriticalDeliveryEvent(e) {
-		if seq := biz.EventSeq(e); seq > 0 {
+	// B-06: critical frames carry a stable event_id matching the durable outbox
+	// cursor. The seq is the Sequencer-assigned delivery seq (shared per-session
+	// counter), written back onto the event by insertCriticalOutbox BEFORE bus
+	// fanout — so live frames and reconnect replays are identical and the client
+	// last_event_id cursor only advances on outbox-replayable frames (H1 fix,
+	// 2026-10-18). Frames without a delivery seq (not yet outbox-inserted, or
+	// non-critical) intentionally carry no event_id.
+	if de, ok := e.(biz.DeliverySeqEvent); ok {
+		if seq := de.DeliverySeqValue(); seq > 0 {
 			envelope.EventID = biz.DeliveryEventID(e, seq)
 		}
 	}

@@ -99,7 +99,19 @@ type ActivityProjector struct {
 
 	// === Per-turn ProcessEvent state ===
 	// meta is the ProjectMeta for the current turn, set by OnTurnStart.
+	// NOTE (M5, 2026-10-18): ProcessEvent must never write to p.meta — it is
+	// read concurrently by ActivityEmitter methods (EmitNotice/EmitConfirm)
+	// running on plugin goroutines during the LLM call. The resolved event
+	// author lives in eventAgentKey below; use eventMeta()/currentAgentKey()
+	// inside the dispatch subtree.
 	meta ProjectMeta
+	// eventAgentKey is the resolved member-agent key for the event currently
+	// being dispatched by ProcessEvent (graph mode: events from several
+	// member agents flow through one projector). Written only by the stream
+	// consumer goroutine (sequential), so no lock is required; reset to "" on
+	// ProcessEvent exit. Replaces the old p.meta.AgentKey swap+defer-restore,
+	// which data-raced with ActivityEmitter readers.
+	eventAgentKey string
 	// thinkingStepIDs maps agentKey → stepID of the current thinking step
 	// (lazily created on the first reasoning delta, finalized on OnReasoningDone).
 	//
@@ -252,6 +264,18 @@ func (f *ProjectorFactory) RestoreSeqIfNeeded(spiritSessionID string, maxSeqFrom
 	f.seqAsg.RestoreAtLeast(spiritSessionID, maxSeqFromDB)
 }
 
+// AllocateNextSeq allocates the next shared per-session domain seq from the
+// same counter used for steps/tasks inside the projector. Exposed for
+// service-layer entity creation that bypasses the projector (the clarification
+// gate creates its Task/Step directly). H2 (2026-10-18): replaces the
+// hardcoded Seq=1 so task/step seqs stay session-monotonic.
+func (f *ProjectorFactory) AllocateNextSeq(spiritSessionID string) int64 {
+	if f == nil || f.seqAsg == nil {
+		return 0
+	}
+	return f.seqAsg.NextSeq(spiritSessionID)
+}
+
 // RestoreTurnSeqIfNeeded raises the dedicated turn counter so the next
 // NextTurnSeq for spiritSessionID is > maxTurnSeqFromDB (R4-Q3, mirrors
 // RestoreSeqIfNeeded for the shared counter). Shares the per-process
@@ -301,6 +325,14 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 		meta.TaskID = meta.ParentTaskID
 	} else if meta.TeamStageID == "" {
 		task := meta.newTask(meta.TaskID, biz.TaskStatusRunning, meta.TaskContent)
+		if p.seqAsg != nil {
+			// H2 (2026-10-18 review): fresh tasks take a domain Seq from the
+			// shared per-session counter (same space as steps). Seq was always
+			// 0 before, breaking Seq-ordered consumers (frontend getSessionTasks
+			// sort, biz/task_resume.go ordering) per the schema's stated intent
+			// ("Sequence within session, monotonic").
+			task.Seq = p.seqAsg.NextSeq(meta.SpiritSessionID)
+		}
 		p.mu.Lock()
 		p.activeTask[meta.TaskID] = &task
 		p.mu.Unlock()
@@ -735,7 +767,7 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 // 不得误关其他成员正在执行的工具步骤。
 func (p *ActivityProjector) processToolLimitHardStop(ctx context.Context, message string) {
 	now := time.Now()
-	authorKey := p.meta.AgentKey
+	authorKey := p.currentAgentKey() // resolved event author (M5)
 	p.mu.Lock()
 	var closed []*biz.Step
 	for id, step := range p.activeStep {
@@ -1289,6 +1321,26 @@ func (p *ActivityProjector) failStep(ctx context.Context, stepID string, err err
 
 // === ProcessEvent: trpc event → v2 callback dispatch ===
 
+// eventMeta returns p.meta with AgentKey overridden by the resolved event
+// author for the duration of a ProcessEvent dispatch (M5). Callers inside the
+// dispatch subtree use this instead of p.meta so member steps attribute to the
+// correct agent without mutating shared state.
+func (p *ActivityProjector) eventMeta() ProjectMeta {
+	meta := p.meta
+	if p.eventAgentKey != "" {
+		meta.AgentKey = p.eventAgentKey
+	}
+	return meta
+}
+
+// currentAgentKey is the AgentKey portion of eventMeta (M5).
+func (p *ActivityProjector) currentAgentKey() string {
+	if p.eventAgentKey != "" {
+		return p.eventAgentKey
+	}
+	return p.meta.AgentKey
+}
+
 // ProcessEvent dispatches a trpc runtime event to the appropriate v2 callbacks.
 // It is the v2 equivalent of v1 ActivityProjector.ProcessEvent.
 //
@@ -1337,12 +1389,12 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 				resolvedKey = author
 			}
 		}
-		// 切换 p.meta.AgentKey 让 BeginStep 创建的 Step.AuthorAgentKey 归属到
-		// 正确的 member agent。defer 恢复原值。
+		// 记录本事件的归属 member，让 BeginStep 创建的 Step.AuthorAgentKey 归属到
+		// 正确的 member agent。写专用字段而非改 p.meta（M5：消除与
+		// ActivityEmitter 读者的数据竞争），ProcessEvent 退出时复位。
 		if resolvedKey != "" && resolvedKey != p.meta.AgentKey {
-			origKey := p.meta.AgentKey
-			p.meta.AgentKey = resolvedKey
-			defer func() { p.meta.AgentKey = origKey }()
+			p.eventAgentKey = resolvedKey
+			defer func() { p.eventAgentKey = "" }()
 		}
 	}
 
@@ -1463,7 +1515,7 @@ func (e *toolResponseError) Error() string {
 
 // handleToolCall records the tool_call_id → stepID mapping and delegates to OnToolCall.
 func (p *ActivityProjector) handleToolCall(ctx context.Context, toolCallID, toolName string, args json.RawMessage) {
-	stepID := p.OnToolCall(ctx, p.meta, toolName, args)
+	stepID := p.OnToolCall(ctx, p.eventMeta(), toolName, args)
 	if toolCallID != "" && stepID != "" {
 		p.mu.Lock()
 		p.toolCallSteps[toolCallID] = stepID
@@ -1478,10 +1530,10 @@ func (p *ActivityProjector) handleToolCall(ctx context.Context, toolCallID, tool
 // agent 的 thinking step，避免 graph 模式下后续 member 复用首个 member
 // 的 thinking step。
 func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta string) {
-	agentKey := p.meta.AgentKey
+	agentKey := p.currentAgentKey()
 	stepID, ok := p.thinkingStepIDs[agentKey]
 	if !ok || stepID == "" {
-		stepID = p.BeginStep(ctx, p.meta, biz.StepKindThinking)
+		stepID = p.BeginStep(ctx, p.eventMeta(), biz.StepKindThinking)
 		p.thinkingStepIDs[agentKey] = stepID
 	}
 	p.OnReasoningDelta(ctx, stepID, delta, "")
@@ -1502,7 +1554,7 @@ func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta stri
 // 2026-07-04 问题 1 根因 2 修复：使用 per-agentKey map 隔离不同 member
 // agent 的 reply step。
 func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
-	agentKey := p.meta.AgentKey
+	agentKey := p.currentAgentKey()
 	stepID, ok := p.replyStepIDs[agentKey]
 	if !ok || stepID == "" {
 		// 防止 LLM 输出引导空白（"\n", " "）导致创建空 ReplyStep。
@@ -1510,7 +1562,7 @@ func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
 		if strings.TrimSpace(delta) == "" {
 			return
 		}
-		stepID = p.BeginStep(ctx, p.meta, biz.StepKindReply)
+		stepID = p.BeginStep(ctx, p.eventMeta(), biz.StepKindReply)
 		p.replyStepIDs[agentKey] = stepID
 	}
 	p.OnTextDelta(ctx, stepID, delta, "")
@@ -1519,7 +1571,7 @@ func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
 // handleReasoningDone finalizes the thinking step. If no thinking step was
 // created (no prior delta) and the content is empty, this is a no-op.
 func (p *ActivityProjector) handleReasoningDone(ctx context.Context, finalContent string) {
-	agentKey := p.meta.AgentKey
+	agentKey := p.currentAgentKey()
 	stepID, ok := p.thinkingStepIDs[agentKey]
 	if !ok || stepID == "" {
 		// No thinking step was started. If there's reasoning content, create
@@ -1527,7 +1579,7 @@ func (p *ActivityProjector) handleReasoningDone(ctx context.Context, finalConten
 		if strings.TrimSpace(finalContent) == "" {
 			return
 		}
-		stepID = p.BeginStep(ctx, p.meta, biz.StepKindThinking)
+		stepID = p.BeginStep(ctx, p.eventMeta(), biz.StepKindThinking)
 		p.thinkingStepIDs[agentKey] = stepID
 	}
 	p.OnReasoningDone(ctx, stepID, finalContent)
@@ -1542,13 +1594,13 @@ func (p *ActivityProjector) handleReasoningDone(ctx context.Context, finalConten
 //
 // Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.1.2
 func (p *ActivityProjector) handleTextDone(ctx context.Context, finalContent string) {
-	agentKey := p.meta.AgentKey
+	agentKey := p.currentAgentKey()
 	stepID, ok := p.replyStepIDs[agentKey]
 	if !ok || stepID == "" {
 		if strings.TrimSpace(finalContent) == "" {
 			return
 		}
-		stepID = p.BeginStep(ctx, p.meta, biz.StepKindReply)
+		stepID = p.BeginStep(ctx, p.eventMeta(), biz.StepKindReply)
 		p.replyStepIDs[agentKey] = stepID
 	}
 	// 检查 step 是否为空（已创建但 finalContent 为空白）。

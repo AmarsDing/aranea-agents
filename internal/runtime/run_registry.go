@@ -35,6 +35,12 @@ type activeRun struct {
 	// P1-01 fix: previously Cancel deleted the entry immediately, allowing
 	// a new turn to start before the old Runner had drained/exited.
 	cancelling bool
+	// cancelIntent records a Cancel that arrived while the slot was a
+	// placeholder / runner-less (M3, 2026-10-18): previously the intent was
+	// dropped and a runner landing in the upgrade window right after became
+	// a zombie. StoreRunner/StoreCancelable propagate the flag and apply the
+	// cancellation to the freshly stored runner immediately.
+	cancelIntent bool
 }
 
 // cancelMap wraps sync.Map for context.CancelFunc storage.
@@ -138,6 +144,7 @@ func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Run
 	// load+store was non-atomic: a concurrent StoreCancelable could
 	// overwrite the runner reference, or a concurrent StoreRunner could
 	// lose the cancel func.
+	intent := false
 	r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
 		ar := activeRun{runID: runID, runner: runner}
 		if ok {
@@ -145,9 +152,18 @@ func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Run
 			if ar.runID == "" {
 				ar.runID = existing.runID
 			}
+			// M3: a Cancel recorded its intent while this slot was a
+			// placeholder — capture it and apply the cancellation below,
+			// outside the shard lock.
+			if existing.cancelIntent {
+				intent = true
+			}
 		}
 		return ar
 	})
+	if intent {
+		r.applyRecordedCancelIntent(sessionID, runID)
+	}
 }
 
 func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.CancelFunc) {
@@ -158,6 +174,7 @@ func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.Ca
 	// load+store was non-atomic: a concurrent StoreRunner could
 	// overwrite the cancel func, or a concurrent StoreCancelable could
 	// lose the runner reference.
+	intent := false
 	r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
 		ar := activeRun{runID: runID, cancel: cancel}
 		if ok {
@@ -165,8 +182,53 @@ func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.Ca
 			if ar.runID == "" {
 				ar.runID = existing.runID
 			}
+			if existing.cancelIntent {
+				intent = true
+			}
 		}
 		return ar
+	})
+	if intent {
+		r.applyRecordedCancelIntent(sessionID, runID)
+	}
+}
+
+// applyRecordedCancelIntent cancels the run that just landed on a slot a
+// previous Cancel (placeholder window) had marked with cancelIntent (M3).
+// Mirrors Cancel's paths 1/3/4 in priority order.
+func (r *RunRegistry) applyRecordedCancelIntent(sessionID, runID string) {
+	run, ok := r.activeRuns.Load(sessionID)
+	if !ok || run.runID != runID {
+		return
+	}
+	cancelled := false
+	switch {
+	case run.cancel != nil:
+		run.cancel()
+		cancelled = true
+	case run.runner != nil:
+		if mr, ok := run.runner.(trpcrunner.ManagedRunner); ok {
+			cancelled = mr.Cancel(sessionID)
+		}
+		if !cancelled {
+			if err := run.runner.Close(); err != nil && r.lg != nil {
+				r.lg.Warn("runner close error applying recorded cancel intent",
+					loggateway.SessionID(sessionID), loggateway.Err(err))
+			}
+			cancelled = true
+		}
+	}
+	if !cancelled {
+		return
+	}
+	// Consistent with Cancel paths 1/3: keep the entry as "cancelling" so
+	// HasActive blocks new turns until the runner's defer calls Finish.
+	r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+		if !ok || existing.runID != runID {
+			return existing
+		}
+		existing.cancelling = true
+		return existing
 	})
 }
 
@@ -277,9 +339,20 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 		return true, run.runID
 	}
 
-	// Path 2: placeholder or no runner — nothing to cancel.
+	// Path 2: placeholder or no runner — nothing to cancel YET, but record the
+	// intent (M3): a runner landing in the placeholder upgrade window right
+	// after this Cancel would otherwise become a zombie. StoreRunner and
+	// StoreCancelable pick the flag up and apply the cancellation immediately.
 	if run.placeholder || run.runner == nil {
-		return false, ""
+		r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+			if !ok || existing.runID != run.runID || existing.placeholder != run.placeholder {
+				return existing // slot replaced since our Load — intent must not leak into a new turn
+			}
+			existing.cancelIntent = true
+			return existing
+		})
+		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, reason)
+		return true, run.runID
 	}
 
 	// Path 3: ManagedRunner.Cancel — idempotent within the registry.
@@ -300,6 +373,9 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	// Path 4: fallback to Close. Delete first so concurrent callers see the
 	// run is gone and skip Close. Close() is synchronous, so deleting
 	// immediately is safe here (unlike Paths 1/3 where cancel is async).
+	// M2 (2026-10-18): record the cancelled status as in paths 1/3 so the
+	// run-status poller observes the terminal state instead of a gap.
+	r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, reason)
 	if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
 		r.activeRuns.Delete(sessionID)
 	}

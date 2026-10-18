@@ -68,6 +68,7 @@ func stepToWire(s biz.Step) stepWire {
 		IsFinal:         s.IsFinal,
 		StartedAt:       s.StartedAt,
 		CompletedAt:     s.CompletedAt,
+		UpdatedAt:       s.UpdatedAt,
 	}
 }
 
@@ -129,6 +130,7 @@ func teamRunToWire(tr biz.TeamRun) teamRunWire {
 		Seq:             tr.Seq,
 		Version:         tr.Version,
 		Error:           tr.Error,
+		HeartbeatAt:     tr.HeartbeatAt,
 	}
 }
 
@@ -222,6 +224,7 @@ func planStepToWire(ps biz.PlanStep) planStepWire {
 		Deliverables:        ps.Deliverables,
 		InputContract:       ps.InputContract,
 		DepartmentID:        ps.DepartmentID,
+		DepartmentKey:       ps.DepartmentKey,
 		CrossDeptMemberKeys: ps.CrossDeptMemberKeys,
 		DomainPath:          ps.DomainPath,
 		AssignedName:        ps.AssignedName,

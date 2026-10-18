@@ -34,6 +34,12 @@ type SessionV2Repo interface {
 type TaskV2Reader interface {
 	GetTask(ctx context.Context, id string) (Task, error)
 	ListTasksBySession(ctx context.Context, sessionID string) ([]Task, error)
+	// MaxSeqBySession returns MAX(seq) of tasks_v2 for the session, or 0 if
+	// none. H2 (2026-10-18): task.seq shares the per-session shared counter
+	// space with steps; the SeqAssigner restore after process restart must fold
+	// in both maxima so it never re-issues a seq already persisted (which would
+	// collide with UNIQUE(session_id, seq) on event_delivery_outbox).
+	MaxSeqBySession(ctx context.Context, sessionID string) (int64, error)
 }
 
 type TaskV2Writer interface {
@@ -119,6 +125,14 @@ type StepV2Writer interface {
 	CreateStep(ctx context.Context, s Step) (Step, error)
 	UpdateStep(ctx context.Context, s Step) (Step, error)
 	UpsertStep(ctx context.Context, s Step) (Step, error)
+	// CompleteClarificationStep atomically transitions an awaiting_input
+	// clarification step to its answered/completed state. The UPDATE carries
+	// WHERE id+status=awaiting_input so a concurrent double submit loses the
+	// race (updated=false, nil error) instead of overwriting the winner's
+	// answers and double-resuming the turn (review #4, 2026-10-18). Callers
+	// must treat updated=false as idempotent success and skip event
+	// publication and turn resumption.
+	CompleteClarificationStep(ctx context.Context, s Step) (updated bool, err error)
 }
 
 type StepV2Repo interface {

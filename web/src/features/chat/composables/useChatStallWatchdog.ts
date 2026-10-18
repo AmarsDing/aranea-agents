@@ -7,6 +7,14 @@ import { useQuasar } from 'quasar';
  * 弹出「似乎没有进展，是否停止？」通知。通过包装 sender.touchRunActivity
  * 在每次 run 活动事件时重置计时器。
  */
+
+// 附着在 touchRunActivity 包装函数上的守卫标记（F3，2026-10-19）：
+// 同一 sender 被多个 watchdog 实例 patch 时，不叠加第二层包装——
+// 旧实现的叠包会让第一层闭包继续重置其已失效实例的计时器。
+const STALL_PATCHED = Symbol.for('aranea.stallWatchdogPatched');
+
+type TouchRunActivity = { (): void; [STALL_PATCHED]?: true };
+
 export function useChatStallWatchdog(deps: {
   runStatus: { value: string };
   sender: { touchRunActivity: () => void };
@@ -53,7 +61,9 @@ export function useChatStallWatchdog(deps: {
     }
   }
 
-  // Start/stop stall timer based on runStatus
+  // Start/stop stall timer based on runStatus.
+  // F3: immediate:true — 组合式挂载时 runStatus 已经是 'running'
+  // （例如切换到进行中的会话）也必须立即启动计时器，而非等待下一次状态翻转。
   watch(
     () => deps.runStatus.value,
     (newVal) => {
@@ -64,18 +74,24 @@ export function useChatStallWatchdog(deps: {
         stallNotified = false;
       }
     },
+    { immediate: true },
   );
 
   // Reset stall timer whenever we receive a run activity event
-  const origTouchRunActivity = deps.sender.touchRunActivity.bind(deps.sender);
-  deps.sender.touchRunActivity = () => {
-    origTouchRunActivity();
-    if (stallNotified) {
-      resetStallNotifyTimer();
-    } else if (deps.runStatus.value === 'running' && stallNotifyTimer != null) {
-      resetStallNotifyTimer();
-    }
-  };
+  const senderTouch = deps.sender.touchRunActivity as TouchRunActivity;
+  if (!senderTouch[STALL_PATCHED]) {
+    const origTouchRunActivity = senderTouch.bind(deps.sender);
+    const wrapped: TouchRunActivity = () => {
+      origTouchRunActivity();
+      if (stallNotified) {
+        resetStallNotifyTimer();
+      } else if (deps.runStatus.value === 'running' && stallNotifyTimer != null) {
+        resetStallNotifyTimer();
+      }
+    };
+    wrapped[STALL_PATCHED] = true;
+    deps.sender.touchRunActivity = wrapped;
+  }
 
   return { clearStallNotifyTimer };
 }

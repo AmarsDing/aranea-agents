@@ -159,10 +159,27 @@ func (o *ChatOrchestrator) runClarificationGate(
 		SessionID:   sessionID,
 		UserMessage: input.Content, // 展示用：澄清卡片所属任务显示原始需求
 		Status:      biz.TaskStatusRunning,
-		Seq:         1, // 单任务 session 的 seq=1
 		Version:     1,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+	}
+	step := biz.Step{
+		ID:              taskID + "-clarify",
+		TurnID:          "", // orphan step（Turn 尚未创建）
+		TaskID:          taskID,
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindClarify,
+		AuthorAgentKey:  ag.AgentKey,
+		Version:         1,
+		Status:          biz.StepStatusAwaitingInput,
+		StartedAt:       now,
+	}
+	// H2 (2026-10-18)：Seq 从会话共享计数器分配（替代原硬编码 1——多任务
+	// 会话下恒定 1 使前端按 seq 排序错乱，见 task_v2_repo.go 2026-07-26 注释）。
+	if f := o.infraDeps.V2ProjectorFactory; f != nil {
+		task.Seq = f.AllocateNextSeq(sessionID)
+		step.Seq = f.AllocateNextSeq(sessionID)
 	}
 	if _, err := o.taskV2Writer().UpsertTask(ctx, task); err != nil {
 		lg.Warn("澄清门 UpsertTask 失败", loggateway.Err(err))
@@ -191,20 +208,8 @@ func (o *ChatOrchestrator) runClarificationGate(
 	}
 
 	stepID := taskID + "-clarify"
-	step := biz.Step{
-		ID:              stepID,
-		TurnID:          "", // orphan step（Turn 尚未创建）
-		TaskID:          taskID,
-		SessionID:       sessionID,
-		SpiritSessionID: sessionID,
-		Kind:            biz.StepKindClarify,
-		AuthorAgentKey:  ag.AgentKey,
-		Seq:             1,
-		Version:         1,
-		Content:         string(contentJSON),
-		Status:          biz.StepStatusAwaitingInput,
-		StartedAt:       now,
-	}
+	step.ID = stepID
+	step.Content = string(contentJSON)
 	if _, err := o.stepWriter().CreateStep(ctx, step); err != nil {
 		lg.Warn("澄清门 CreateStep 失败", loggateway.Err(err))
 		return ClarificationGateDecision{}, err
@@ -269,10 +274,27 @@ func (o *ChatOrchestrator) autoResolveClarification(
 		SessionID:   sessionID,
 		UserMessage: input.Content,
 		Status:      biz.TaskStatusRunning,
-		Seq:         1,
 		Version:     1,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+	}
+	step := biz.Step{
+		ID:              taskID + "-clarify",
+		TurnID:          "",
+		TaskID:          taskID,
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindClarify,
+		AuthorAgentKey:  ag.AgentKey,
+		Version:         1,
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+	}
+	// H2 (2026-10-18)：与挂起路径一致，Seq 走会话共享计数器（原硬编码 1）。
+	if f := o.infraDeps.V2ProjectorFactory; f != nil {
+		task.Seq = f.AllocateNextSeq(sessionID)
+		step.Seq = f.AllocateNextSeq(sessionID)
 	}
 	if _, err := o.taskV2Writer().UpsertTask(ctx, task); err != nil {
 		lg.Warn("澄清自动作答 UpsertTask 失败", loggateway.Err(err))
@@ -296,22 +318,7 @@ func (o *ChatOrchestrator) autoResolveClarification(
 		return ClarificationGateDecision{}, err
 	}
 
-	stepID := taskID + "-clarify"
-	step := biz.Step{
-		ID:              stepID,
-		TurnID:          "",
-		TaskID:          taskID,
-		SessionID:       sessionID,
-		SpiritSessionID: sessionID,
-		Kind:            biz.StepKindClarify,
-		AuthorAgentKey:  ag.AgentKey,
-		Seq:             1,
-		Version:         1,
-		Content:         string(contentJSON),
-		Status:          biz.StepStatusCompleted,
-		StartedAt:       now,
-		CompletedAt:     &now,
-	}
+	step.Content = string(contentJSON)
 	if _, err := o.stepWriter().CreateStep(ctx, step); err != nil {
 		lg.Warn("澄清自动作答 CreateStep 失败", loggateway.Err(err))
 		return ClarificationGateDecision{}, err
@@ -328,11 +335,11 @@ func (o *ChatOrchestrator) autoResolveClarification(
 
 	lg.Info("澄清问题均含推荐默认，按推荐假设继续执行",
 		loggateway.Str("task_id", taskID),
-		loggateway.Str("step_id", stepID),
+		loggateway.Str("step_id", step.ID),
 		loggateway.Int("question_count", len(questions)))
 
 	return ClarificationGateDecision{
-		StepID:        stepID,
+		StepID:        step.ID,
 		AutoResolved:  true,
 		ResolvedInput: resolved,
 		Artifact:      intentArt.CloneWithoutClarification(),

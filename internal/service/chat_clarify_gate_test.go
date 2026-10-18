@@ -66,6 +66,14 @@ func (s *stubStepV2Writer) UpsertStep(_ context.Context, step biz.Step) (biz.Ste
 	return step, s.err
 }
 
+// CompleteClarificationStep mirrors the guarded repo semantics for tests:
+// always wins (single-threaded fixtures); the race path is covered by
+// raceGuardStepWriter in chat_clarify_freetext_test.go.
+func (s *stubStepV2Writer) CompleteClarificationStep(_ context.Context, step biz.Step) (bool, error) {
+	s.updated = append(s.updated, step)
+	return true, s.err
+}
+
 // stubEventPublisher is a stub implementation of rt.EventPublisher for testing.
 type stubEventPublisher struct {
 	published []biz.Event
@@ -97,6 +105,10 @@ func (s *stubTaskV2Repo) GetTask(_ context.Context, id string) (biz.Task, error)
 
 func (s *stubTaskV2Repo) ListTasksBySession(_ context.Context, sessionID string) ([]biz.Task, error) {
 	return nil, nil
+}
+
+func (s *stubTaskV2Repo) MaxSeqBySession(context.Context, string) (int64, error) {
+	return 0, nil
 }
 
 func (s *stubTaskV2Repo) CreateTask(ctx context.Context, t biz.Task) (biz.Task, error) {

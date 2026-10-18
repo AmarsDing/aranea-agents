@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,9 +79,83 @@ func (s *recordingStepV2Writer) UpdateStep(_ context.Context, step biz.Step) (bi
 	return step, s.err
 }
 
+func (s *recordingStepV2Writer) CompleteClarificationStep(_ context.Context, step biz.Step) (bool, error) {
+	s.updated = append(s.updated, step)
+	return true, s.err
+}
+
+// raceGuardStepWriter implements the guarded CompleteClarificationStep
+// semantics atomically (review #4): exactly one concurrent submitter wins.
+type raceGuardStepWriter struct {
+	stubStepV2Writer
+	mu     sync.Mutex
+	done   bool
+	wins   int
+	losses int
+}
+
+func (w *raceGuardStepWriter) CompleteClarificationStep(_ context.Context, step biz.Step) (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.done {
+		w.losses++
+		return false, nil
+	}
+	w.done = true
+	w.wins++
+	w.updated = append(w.updated, step)
+	return true, nil
+}
+
+// TestSubmitClarification_ConcurrentDoubleSubmit (review #4): two racing
+// submits must produce exactly one step completion + one event/resume chain;
+// the loser degrades to idempotent success without a duplicate resume.
+func TestSubmitClarification_ConcurrentDoubleSubmit(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &raceGuardStepWriter{}
+	seq := &stubEventPublisher{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, seq, &stubSessionStateTransitor{})
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	stepReader.steps[step.ID] = step
+
+	svc := &ChatService{orch: orch, lg: loggateway.NewNoop()}
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	ctxs := make([]string, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ctxs[i], errs[i] = svc.submitClarification(context.Background(), step, []biz.ClarificationAnswer{
+				{Selected: []string{"Web"}},
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	for i := range errs {
+		if errs[i] != nil {
+			t.Fatalf("submit %d must succeed idempotently, got %v", i, errs[i])
+		}
+		if ctxs[i] == "" {
+			t.Fatalf("submit %d must return the clarified context", i)
+		}
+	}
+	stepWriter.mu.Lock()
+	wins, losses := stepWriter.wins, stepWriter.losses
+	stepWriter.mu.Unlock()
+	if wins != 1 || losses != 1 {
+		t.Fatalf("guarded completion wins=%d losses=%d, want exactly 1/1", wins, losses)
+	}
+	// Only the winner publishes the step.updated event.
+	if got := len(seq.published); got != 1 {
+		t.Fatalf("step updated events = %d, want 1 (winner only)", got)
+	}
+}
+
 func newClarifyFreeTextTestOrch(
 	stepReader *stubStepV2ReaderByID,
-	stepWriter *recordingStepV2Writer,
+	stepWriter biz.StepV2Writer,
 	seq *stubEventPublisher,
 	stateMgr *stubSessionStateTransitor,
 ) *ChatOrchestrator {

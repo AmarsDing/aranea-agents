@@ -22,13 +22,17 @@ func (s *escalateAllSessionRunRepoStub) ListByPhase(_ context.Context, _ string,
 }
 
 // spySessionRunLifecycle records EscalateToDurableOnShutdown invocations.
+// ok controls the reported outcome so tests can assert the counter only
+// increments on successful escalations (review #7).
 type spySessionRunLifecycle struct {
 	noopSessionRunLifecycle
 	calls []string
+	ok    bool
 }
 
-func (s *spySessionRunLifecycle) EscalateToDurableOnShutdown(_ context.Context, sessionID, sessionRunID string) {
+func (s *spySessionRunLifecycle) EscalateToDurableOnShutdown(_ context.Context, sessionID, sessionRunID string) bool {
 	s.calls = append(s.calls, sessionID+"/"+sessionRunID)
+	return s.ok
 }
 
 func newEscalateAllTestService(runs []biz.SessionRun, listErr error, spy *spySessionRunLifecycle) *ChatService {
@@ -51,7 +55,7 @@ func newEscalateAllTestService(runs []biz.SessionRun, listErr error, spy *spySes
 // L2 (2026-07-22)：shutdown 时所有 interactive run 必须被 durable 化，
 // 重启后由 SessionRunDurableWorker 自动续跑。
 func TestEscalateAllActiveToDurable_happy(t *testing.T) {
-	spy := &spySessionRunLifecycle{}
+	spy := &spySessionRunLifecycle{ok: true}
 	svc := newEscalateAllTestService([]biz.SessionRun{
 		{ID: "run-1", SessionID: "sess-1"},
 		{ID: "run-2", SessionID: "sess-2"},
@@ -67,6 +71,23 @@ func TestEscalateAllActiveToDurable_happy(t *testing.T) {
 	}
 	if spy.calls[0] != "sess-1/run-1" || spy.calls[1] != "sess-2/run-2" {
 		t.Fatalf("calls=%v", spy.calls)
+	}
+}
+
+// Review #7: 升级失败的 run 不得计入 escalated 指标（原先无条件 +1，
+// shutdown 日志会虚报成功数）。
+func TestEscalateAllActiveToDurable_countsOnlySuccessful(t *testing.T) {
+	spy := &spySessionRunLifecycle{ok: false}
+	svc := newEscalateAllTestService([]biz.SessionRun{
+		{ID: "run-1", SessionID: "sess-1"},
+		{ID: "run-2", SessionID: "sess-2"},
+	}, nil, spy)
+
+	if got := svc.EscalateAllActiveToDurable(context.Background()); got != 0 {
+		t.Fatalf("escalated=%d, want 0 when every escalation reports failure", got)
+	}
+	if len(spy.calls) != 2 {
+		t.Fatalf("calls=%v, want both runs attempted", spy.calls)
 	}
 }
 

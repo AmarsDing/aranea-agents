@@ -103,9 +103,6 @@ func (noopAwaitCoordinator) CanResumeAwait(context.Context, string) (string, boo
 func (noopAwaitCoordinator) HasPendingAwaitUserReplyRoute(context.Context, string) bool {
 	return false
 }
-func (noopAwaitCoordinator) ResumeAwaitAfterRestart(context.Context, string, string, string) error {
-	return nil
-}
 func (noopAwaitCoordinator) Sweep() {}
 
 // noopSessionRunLifecycle satisfies sessionRunLifecycle.
@@ -116,7 +113,9 @@ func (noopSessionRunLifecycle) BeginSessionRunLifecycle(ctx context.Context, _ S
 }
 func (noopSessionRunLifecycle) FinishSessionRunLifecycle(context.Context, string, string, error) {}
 func (noopSessionRunLifecycle) EscalateToDurableByUser(context.Context, string, string)          {}
-func (noopSessionRunLifecycle) EscalateToDurableOnShutdown(context.Context, string, string)      {}
+func (noopSessionRunLifecycle) EscalateToDurableOnShutdown(context.Context, string, string) bool {
+	return false
+}
 func (noopSessionRunLifecycle) ResolveChannelLongTaskConfig(context.Context, biz.Session) biz.ChannelLongTaskConfig {
 	return biz.ChannelLongTaskConfig{}
 }

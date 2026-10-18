@@ -2,7 +2,9 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -106,6 +108,88 @@ func TestPendingMessageQueue_UpdateWriteThrough(t *testing.T) {
 
 type memPendingStore struct {
 	m map[string][]PendingMessage
+}
+
+// failLoadStore simulates a store whose LoadAll fails (transient DB outage),
+// while still holding durable rows a healthy replica wrote earlier.
+type failLoadStore struct {
+	mu           sync.Mutex
+	m            map[string][]PendingMessage
+	replaceCalls int
+}
+
+func (s *failLoadStore) LoadAll(context.Context) (map[string][]PendingMessage, error) {
+	return nil, errors.New("db unavailable")
+}
+
+func (s *failLoadStore) ReplaceAll(_ context.Context, queues map[string][]PendingMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.replaceCalls++
+	s.m = make(map[string][]PendingMessage, len(queues))
+	for k, v := range queues {
+		s.m[k] = append([]PendingMessage(nil), v...)
+	}
+	return nil
+}
+
+// TestPendingMessageQueue_SetStoreLoadFailureKeepsStore is the H3 regression
+// test (2026-10-18): SetStore must NOT push in-memory state into the store
+// when LoadAll fails — at startup memory is empty, so the old code wiped
+// durable rows on a transient DB error.
+func TestPendingMessageQueue_SetStoreLoadFailureKeepsStore(t *testing.T) {
+	store := &failLoadStore{m: map[string][]PendingMessage{
+		"sess-durable": {{ID: "d1", Content: "durable"}},
+	}}
+	q := NewPendingMessageQueue()
+	q.SetStore(store)
+
+	store.mu.Lock()
+	calls := store.replaceCalls
+	rows := len(store.m["sess-durable"])
+	store.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("ReplaceAll called %d times after failed load, want 0", calls)
+	}
+	if rows != 1 {
+		t.Fatalf("durable rows after failed load = %d, want 1 (must not be wiped)", rows)
+	}
+
+	// Recovery semantics: the first real mutation reconciles memory → store.
+	q.Enqueue("sess-new", "hello")
+	q.Close()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.replaceCalls == 0 {
+		t.Fatal("expected reconciliation ReplaceAll after mutation + Close")
+	}
+	if len(store.m["sess-new"]) != 1 {
+		t.Fatalf("new entry not persisted: %+v", store.m)
+	}
+}
+
+// TestPendingMessageQueue_CloseIdempotent is the M4 regression test: a second
+// Close must not panic ("close of closed channel") and must be a no-op.
+func TestPendingMessageQueue_CloseIdempotent(t *testing.T) {
+	q := NewPendingMessageQueueWithDir(t.TempDir()) // snapshot=true exercises stopCh
+	q.Enqueue("sess-1", "x")
+	q.Close()
+	q.Close() // must not panic
+}
+
+// TestPendingMessageQueue_BatchedPersist covers M6: hot-path mutations are
+// coalesced; the durable flush is explicit (timer) or forced by Close.
+func TestPendingMessageQueue_BatchedPersist(t *testing.T) {
+	store := &memPendingStore{}
+	q := NewPendingMessageQueue()
+	q.SetStore(store)
+	q.Enqueue("s1", "a")
+	q.Enqueue("s1", "b")
+	q.flushPersist() // deterministic flush (no timer wait)
+	if got := len(store.m["s1"]); got != 2 {
+		t.Fatalf("after flush: %d entries, want 2: %+v", got, store.m)
+	}
+	q.Close()
 }
 
 func (s *memPendingStore) LoadAll(_ context.Context) (map[string][]PendingMessage, error) {

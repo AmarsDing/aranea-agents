@@ -75,6 +75,7 @@ type stepWire struct {
 	IsFinal         bool            `json:"IsFinal"`
 	StartedAt       time.Time       `json:"StartedAt"`
 	CompletedAt     *time.Time      `json:"CompletedAt"`
+	UpdatedAt       time.Time       `json:"UpdatedAt"` // 与 biz.Step 字节级对齐（P4-1 行级新鲜度）
 }
 
 type memberInfoWire struct {
@@ -118,6 +119,7 @@ type teamRunWire struct {
 	Seq             int64               `json:"Seq"`
 	Version         int64               `json:"Version"`
 	Error           string              `json:"Error"`
+	HeartbeatAt     *time.Time          `json:"HeartbeatAt"` // 与 biz.TeamRun 字节级对齐（P2-1 流式心跳）
 }
 
 type memberSessionWire struct {
@@ -190,6 +192,7 @@ type planStepWire struct {
 	InputContract []biz.DeliverableContract `json:"InputContract"`
 	// 与 biz.PlanStep 字节级对齐：字段顺序一致、无 omitempty（biz 侧无 json tag）。
 	DepartmentID        string   `json:"DepartmentID"`
+	DepartmentKey       string   `json:"DepartmentKey"`
 	CrossDeptMemberKeys []string `json:"CrossDeptMemberKeys"`
 	DomainPath          string   `json:"DomainPath"`
 	AssignedName        string   `json:"AssignedName"`

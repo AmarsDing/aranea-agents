@@ -328,14 +328,27 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	// Build connection object
 	wc := s.newWSConn(conn, sessionID, userID, globalMode, probeMode, r)
 
+	// Register connection with atomic limit admission (M1): the HTTP 429
+	// precheck above is only a cheap early filter; handshakes that raced past
+	// it are authoritatively rejected here, after the upgrade, with a WS close.
+	// Admission must precede setupEventSubscription so a rejected connection
+	// never leaks a bus subscription.
+	if !s.store.tryAdd(sessionID, wc, s.maxSessionConns, s.maxGlobalMonitorConns, globalMode, probeMode) {
+		s.lg.Warn("WS connection rejected by atomic limit admission",
+			loggateway.StepID("ws.conn_limit"),
+			loggateway.Str("session_id", sessionID))
+		wc.connCancel()
+		_ = conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "connection limit reached"))
+		_ = conn.Close()
+		return
+	}
+
 	// Event subscription
 	var monitorCh <-chan contract.MonitorEvent
 	if !probeMode {
 		monitorCh = s.setupEventSubscription(wc, globalMode)
 	}
-
-	// Register connection
-	s.store.add(sessionID, wc)
 
 	// B-06: replay missed critical outbox frames before "connected" so the
 	// client applies them prior to treating the stream as caught up.

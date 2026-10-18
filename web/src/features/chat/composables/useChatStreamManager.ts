@@ -103,11 +103,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         needsHydrateAfterReconnect.set(sessionId, true);
       },
       onServerShutdown: () => {
-        $q.notify({
+        // F4 (2026-10-19): timeout:0 的持久 toast 必须提供可用的 dismiss
+        // 路径——旧 action handler 为空函数，toast 永远无法关闭。
+        const dismiss = $q.notify({
           type: 'warning',
           message: t('chat.serverShutdown', '服务器已关闭，请重新登录'),
           timeout: 0,
-          actions: [{ label: t('chat.relogin', '重新登录'), color: 'white', handler: () => {} }],
+          actions: [{ label: t('chat.relogin', '重新登录'), color: 'white', handler: () => dismiss() }],
         });
         const auth = useAuthStore();
         auth.user = null;
@@ -142,11 +144,12 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
     teamStream = createTeamStream(sessionId, {
       onServerShutdown: () => {
-        $q.notify({
+        // F4: 持久 toast 的 action 必须真正可关闭（详见上方 chatStream 同注释）。
+        const dismiss = $q.notify({
           type: 'warning',
           message: t('chat.serverShutdown', '服务器已关闭，请重新登录'),
           timeout: 0,
-          actions: [{ label: t('heartbeat.relogin'), color: 'white', handler: () => {} }],
+          actions: [{ label: t('heartbeat.relogin'), color: 'white', handler: () => dismiss() }],
         });
         const auth = useAuthStore();
         auth.user = null;

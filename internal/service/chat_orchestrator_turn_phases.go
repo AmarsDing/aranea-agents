@@ -315,8 +315,17 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	if o.infraDeps.V2ProjectorFactory != nil {
 		// B-06: after process restart, restore SeqAssigner from persisted MAX(seq)
 		// so new steps do not reuse Seq values already shown to clients.
+		// H2 (2026-10-18): tasks share the same shared counter space — fold the
+		// persisted task max in too, otherwise a session whose LAST allocation
+		// was a task (no newer step) would re-issue that seq and collide with
+		// UNIQUE(session_id, seq) on event_delivery_outbox.
 		if sr := o.stepReader(); sr != nil {
 			if maxSeq, err := sr.MaxSeqBySpiritSession(ctx, sessionID); err == nil {
+				if tr := o.taskReader(); tr != nil {
+					if maxTaskSeq, terr := tr.MaxSeqBySession(ctx, sessionID); terr == nil && maxTaskSeq > maxSeq {
+						maxSeq = maxTaskSeq
+					}
+				}
 				o.infraDeps.V2ProjectorFactory.RestoreSeqIfNeeded(sessionID, maxSeq)
 			}
 		}

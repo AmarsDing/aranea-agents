@@ -61,6 +61,16 @@ func (m *TypedSyncMap[K, V]) LoadOrStore(key K, value V) (V, bool) {
 		var zero V
 		return zero, false
 	}
+	// An expired entry must not win (review #5): a stale resumeInFlight guard
+	// would otherwise block resume forever even though Load/Sweep already treat
+	// it as gone. Replace atomically; on a concurrent update, re-resolve.
+	if m.ttl > 0 && time.Since(entry.createdAt) > m.ttl {
+		if m.mu.CompareAndDelete(key, existing) {
+			m.mu.Store(key, typedEntry[V]{value: value, createdAt: time.Now()})
+			return value, false
+		}
+		return m.LoadOrStore(key, value)
+	}
 	return entry.value, true
 }
 

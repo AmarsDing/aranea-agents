@@ -112,7 +112,14 @@ func (s *ChatService) prepareInterruptedResume(ctx context.Context, sessionID, t
 	if task.Status != biz.TaskStatusInterrupted {
 		return biz.Task{}, "", apierror.Conflict(apierror.DomainChat, "task %s is %s, not interrupted", taskID, task.Status)
 	}
-	if s.orch != nil && s.orch.HasActiveRun(sessionID) {
+	// #3 (2026-10-18 review): orchestrator availability must be validated BEFORE
+	// the CAS claim below. Previously the check lived in startInterruptedResume
+	// (after the claim): with orch==nil the task was left bricked in "running"
+	// and every retry was rejected by the conflict pre-check above.
+	if s.orch == nil {
+		return biz.Task{}, "", apierror.Internal(apierror.DomainChat, "orchestrator unavailable for resume")
+	}
+	if s.orch.HasActiveRun(sessionID) {
 		return biz.Task{}, "", apierror.Conflict(apierror.DomainChat, "session %s has an active run", sessionID)
 	}
 

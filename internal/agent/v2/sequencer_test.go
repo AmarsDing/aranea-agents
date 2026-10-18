@@ -586,7 +586,8 @@ func TestSequencer_CriticalOutboxInsert(t *testing.T) {
 		Seq:       9,
 		Version:   2,
 	}
-	s.Publish(ctx, biz.NewTaskCompletedEvent(task))
+	ev := biz.NewTaskCompletedEvent(task)
+	s.Publish(ctx, ev)
 	if err := s.Flush(ctx); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
@@ -597,12 +598,19 @@ func TestSequencer_CriticalOutboxInsert(t *testing.T) {
 		t.Fatalf("outbox inserts = %d, want 1", len(outbox.inserted))
 	}
 	row := outbox.inserted[0]
-	wantID := biz.DeliveryEventID(biz.NewTaskCompletedEvent(task), 9)
+	// H1 (2026-10-18): the outbox seq comes from the shared per-session DELIVERY
+	// counter (first allocation = 1), never from the domain Task.Seq (9).
+	wantID := biz.DeliveryEventID(ev, 1)
 	if row.EventID != wantID {
 		t.Fatalf("event_id = %q, want %q", row.EventID, wantID)
 	}
-	if row.Seq != 9 || row.SessionID != "sess-1" {
+	if row.Seq != 1 || row.SessionID != "sess-1" {
 		t.Fatalf("row = %+v", row)
+	}
+	// Live-frame write-back: the published instance carries the delivery seq so
+	// the WS subscriber attaches the same event_id to live frames.
+	if got := ev.DeliverySeqValue(); got != 1 {
+		t.Fatalf("event delivery seq = %d, want 1", got)
 	}
 	if len(row.Payload) == 0 {
 		t.Fatal("payload empty")
@@ -622,5 +630,87 @@ func TestSequencer_CriticalOutboxInsert(t *testing.T) {
 	}
 	if len(outbox.markPublished) != 1 || outbox.markPublished[0] != row.ID {
 		t.Fatalf("MarkPublished = %v, want [%s]", outbox.markPublished, row.ID)
+	}
+}
+
+// TestSequencer_CriticalOutboxSeqMonotonic is the H1 regression test
+// (2026-10-18 review): one session emitting terminal events whose DOMAIN seqs
+// come from different counter spaces (turn counter 1,2,3… vs shared entity
+// counter) must still receive strictly monotonic outbox delivery seqs in
+// publication order — satisfying UNIQUE(session_id, seq) on
+// event_delivery_outbox and keeping ListAfter(seq > cursor) replay complete.
+// Pre-fix this produced outbox seqs 1,9,9 (turn/task/step domain seqs),
+// colliding on the unique index and skipping the later frames on replay.
+func TestSequencer_CriticalOutboxSeqMonotonic(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	bus := &fakeBus{}
+	outbox := &fakeOutbox{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+		WithEventOutbox(outbox),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	// Publication order is preserved by the single publish worker (FIFO).
+	turnEv := biz.NewTurnCompletedEvent(biz.Turn{
+		ID:              "turn-1",
+		TaskID:          "task-1",
+		SessionID:       "sess-1",
+		SpiritSessionID: "sess-1",
+		Status:          biz.TurnStatusCompleted,
+		Seq:             1, // turn-counter domain seq
+	})
+	taskEv := biz.NewTaskCompletedEvent(biz.Task{
+		ID:        "task-1",
+		SessionID: "sess-1",
+		Status:    biz.TaskStatusCompleted,
+		Seq:       9, // shared-counter domain seq
+	})
+	stepEv := biz.NewStepCompletedEvent(biz.Step{
+		ID:              "step-1",
+		TaskID:          "task-1",
+		SessionID:       "sess-1",
+		SpiritSessionID: "sess-1",
+		Status:          biz.StepStatusCompleted,
+		Seq:             9, // shared-counter domain seq — collides with task's
+	})
+	s.Publish(ctx, turnEv)
+	s.Publish(ctx, taskEv)
+	s.Publish(ctx, stepEv)
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	outbox.mu.Lock()
+	defer outbox.mu.Unlock()
+	if len(outbox.inserted) != 3 {
+		t.Fatalf("outbox inserts = %d, want 3", len(outbox.inserted))
+	}
+	seen := make(map[int64]string, 3)
+	var prev int64
+	for _, row := range outbox.inserted {
+		if row.Seq <= prev {
+			t.Fatalf("outbox seq not strictly increasing: prev=%d got row=%+v", prev, row)
+		}
+		prev = row.Seq
+		if _, dup := seen[row.Seq]; dup {
+			t.Fatalf("duplicate outbox seq %d (violates UNIQUE(session_id, seq))", row.Seq)
+		}
+		seen[row.Seq] = row.EventID
+	}
+	// Domain seqs must be untouched by delivery allocation.
+	if turnEv.Turn.Seq != 1 || taskEv.Task.Seq != 9 || stepEv.Step.Seq != 9 {
+		t.Fatalf("domain seqs mutated: turn=%d task=%d step=%d",
+			turnEv.Turn.Seq, taskEv.Task.Seq, stepEv.Step.Seq)
+	}
+	// Each event instance carries its own delivery seq for live-frame event_id.
+	if turnEv.DeliverySeqValue() == 0 || taskEv.DeliverySeqValue() == 0 || stepEv.DeliverySeqValue() == 0 {
+		t.Fatalf("delivery seq not written back: turn=%d task=%d step=%d",
+			turnEv.DeliverySeqValue(), taskEv.DeliverySeqValue(), stepEv.DeliverySeqValue())
 	}
 }

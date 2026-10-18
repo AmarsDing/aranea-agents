@@ -200,6 +200,15 @@ export interface StepError {
   FailedMember: MemberReport | null;
 }
 
+/** 与 biz.DeliverableContract 对齐（snake_case json tag，本身即 wire 定义）。 */
+export interface DeliverableContract {
+  name: string;
+  type: string;
+  format: string;
+  description: string;
+  schema_json?: string;
+}
+
 export interface PlanStep {
   ID: string;
   PlanID: string;
@@ -217,11 +226,20 @@ export interface PlanStep {
   Result: StepResult | null;
   Error: StepError | null;
   AgentKeys?: string[];
+  Mode?: string;
+  /** P1 形式契约（B.10.15.2）。元素为 snake_case wire（biz.DeliverableContract 自带 json tag）。 */
+  Deliverables?: DeliverableContract[];
+  InputContract?: DeliverableContract[];
   DepartmentID?: string;
+  DepartmentKey?: string;
+  CrossDeptMemberKeys?: string[];
   DomainPath?: string;
   AssignedName?: string;
   MatchLayer?: string;
   MatchReason?: string;
+  GraphTemplateID?: string;
+  ConfirmBefore?: boolean;
+  CollectionIDs?: string[];
 }
 
 export interface PlanBoard {

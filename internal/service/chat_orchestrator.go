@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
@@ -178,6 +179,11 @@ type ChatOrchestrator struct {
 	gateHysteresis *gateHysteresisStore
 
 	sweepStop chan struct{}
+	// closeOnce makes Close idempotent (review #1, 2026-10-18): Close used to
+	// do a non-blocking send on sweepStop, which was silently dropped whenever
+	// sweepLoop was busy inside sweepStaleMaps — the sweeper goroutine leaked
+	// and Close returned as if it had succeeded.
+	closeOnce sync.Once
 }
 
 // chatTurnLifecycleImpl combines sessionStateTransitor, turnRecorder, and
@@ -218,6 +224,7 @@ func (o *ChatOrchestrator) turnTimeout() time.Duration           { return o.core
 func (o *ChatOrchestrator) stepReader() biz.StepV2Reader         { return o.core.StepReader }
 func (o *ChatOrchestrator) stepWriter() biz.StepV2Writer         { return o.core.StepWriter }
 func (o *ChatOrchestrator) turnReader() biz.TurnV2Reader         { return o.core.TurnReader }
+func (o *ChatOrchestrator) taskReader() biz.TaskV2Reader         { return o.core.TaskV2 }
 func (o *ChatOrchestrator) taskV2Writer() biz.TaskV2Writer       { return o.core.TaskV2 }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
@@ -891,16 +898,18 @@ func (o *ChatOrchestrator) resolveAwaitMeta(ctx context.Context, sessionID, stat
 	return o.runStatus().ResolveAwaitMeta(ctx, sessionID, status)
 }
 
+// Close is idempotent (review #1): closing sweepStop is detected by sweepLoop
+// immediately, unlike the previous non-blocking send which was lost whenever
+// the loop was not parked in select.
 func (o *ChatOrchestrator) Close() {
 	if o == nil {
 		return
 	}
-	if o.sweepStop != nil {
-		select {
-		case o.sweepStop <- struct{}{}:
-		default:
+	o.closeOnce.Do(func() {
+		if o.sweepStop != nil {
+			close(o.sweepStop)
 		}
-	}
+	})
 }
 
 func (o *ChatOrchestrator) sweepLoop() {
@@ -920,6 +929,7 @@ func (o *ChatOrchestrator) sweepStaleMaps() {
 	o.runStatus().Sweep()
 	o.pendingQ().Sweep()
 	o.awaitCoord().Sweep()
+	o.pendingClarifications.Sweep()
 }
 
 // canResumeAwait delegates to the awaitCoord sub-manager.

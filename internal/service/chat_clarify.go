@@ -34,6 +34,14 @@ type pendingClarification struct {
 	Artifact *intent.Artifact
 }
 
+// clarificationPendingMaxIdle bounds how long a pending clarification entry
+// may sit in the hot cache before the periodic sweep drops it (review #8).
+// Dropping is safe: a cache miss falls back to rebuilding the resume input
+// from the persisted clarify-Step envelope (errClarifyOriginalInputMissing
+// path), at the cost of re-running the Intent Pass. 24h keeps overnight
+// clarify cards hot while still bounding memory for cards never answered.
+const clarificationPendingMaxIdle = 24 * time.Hour
+
 // clarificationPendingCache is a process-local hot cache of in-flight
 // clarification resume state. The persisted clarify Step envelope is the
 // source of truth; this cache must not be required after restart or across
@@ -66,6 +74,22 @@ func (c *clarificationPendingCache) Delete(sessionID string) {
 		return
 	}
 	c.m.Delete(sessionID)
+}
+
+// Sweep drops entries idle longer than clarificationPendingMaxIdle. Called
+// from the orchestrator sweep loop so never-answered clarify cards cannot
+// leak cache entries forever (review #8).
+func (c *clarificationPendingCache) Sweep() {
+	if c == nil {
+		return
+	}
+	c.m.Range(func(key, value any) bool {
+		pc, ok := value.(pendingClarification)
+		if !ok || time.Since(pc.CreatedAt) > clarificationPendingMaxIdle {
+			c.m.Delete(key)
+		}
+		return true
+	})
 }
 
 // SubmitClarification handles user submission of clarification answers.
@@ -215,8 +239,21 @@ func (s *ChatService) submitClarification(ctx context.Context, step biz.Step, an
 	}
 	step.Content = string(updatedContent)
 
-	if _, err := stepWriter.UpdateStep(ctx, step); err != nil {
+	// Guarded completion (review #4): the UPDATE carries
+	// WHERE id+status=awaiting_input, so a concurrent double submit loses on
+	// the row predicate instead of overwriting the winner's answers and
+	// double-resuming the turn. Loser degrades to idempotent success.
+	updated, err := stepWriter.CompleteClarificationStep(ctx, step)
+	if err != nil {
 		return "", err
+	}
+	if !updated {
+		s.lg.Info("clarification already completed by a concurrent submit, skipping duplicate resume",
+			loggateway.SessionID(sessionID),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("task_id", step.TaskID),
+		)
+		return clarifiedContext, nil
 	}
 
 	// Publish step updated event.
@@ -391,8 +428,15 @@ func (o *ChatOrchestrator) resolveClarificationFreeTextHint(ctx context.Context,
 		return input, nil
 	}
 	step.Content = string(updatedContent)
-	if _, err := writer.UpdateStep(ctx, step); err != nil {
-		o.lg().Warn("failed to update clarification step", loggateway.Err(err))
+	// Guarded completion (review #4): loses to a concurrent submit on the row
+	// predicate; the winner consumed the clarification, so this message
+	// proceeds as a normal followup (input returned unchanged).
+	updated, err := writer.CompleteClarificationStep(ctx, step)
+	if err != nil {
+		o.lg().Warn("failed to complete clarification step", loggateway.Err(err))
+		return input, nil
+	}
+	if !updated {
 		return input, nil
 	}
 

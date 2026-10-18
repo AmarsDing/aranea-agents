@@ -39,7 +39,9 @@ type sessionRunLifecycle interface {
 	EscalateToDurableByUser(ctx context.Context, sessionID, sessionRunID string)
 	// EscalateToDurableOnShutdown escalates an interactive session run to durable mode
 	// during server shutdown, so the durable worker auto-resumes it after restart.
-	EscalateToDurableOnShutdown(ctx context.Context, sessionID, sessionRunID string)
+	// Returns true only when the durable transition was actually applied
+	// (review #7: shutdown callers must not count silent no-ops).
+	EscalateToDurableOnShutdown(ctx context.Context, sessionID, sessionRunID string) bool
 	// ResolveChannelLongTaskConfig resolves the channel long task config for a session.
 	ResolveChannelLongTaskConfig(ctx context.Context, sess biz.Session) biz.ChannelLongTaskConfig
 }
@@ -169,20 +171,21 @@ func (l *chatSessionRunLifecycle) EscalateToDurableByUser(ctx context.Context, s
 
 // EscalateToDurableOnShutdown escalates an interactive session run to durable mode
 // during server shutdown, so the durable worker auto-resumes it after restart.
-func (l *chatSessionRunLifecycle) EscalateToDurableOnShutdown(ctx context.Context, sessionID, sessionRunID string) {
-	l.escalateToDurable(ctx, sessionID, sessionRunID, sessstatus.StatusReasonServerShutdown)
+func (l *chatSessionRunLifecycle) EscalateToDurableOnShutdown(ctx context.Context, sessionID, sessionRunID string) bool {
+	return l.escalateToDurable(ctx, sessionID, sessionRunID, sessstatus.StatusReasonServerShutdown)
 }
 
 // escalateToDurable is the shared escalation path: snapshot checkpoint, transition
 // phase, cancel the runtime runner, and mark the session interrupted with reason.
-func (l *chatSessionRunLifecycle) escalateToDurable(ctx context.Context, sessionID, sessionRunID string, reason sessstatus.SessionStatusReason) {
+// Returns true only when the durable transition was applied end to end.
+func (l *chatSessionRunLifecycle) escalateToDurable(ctx context.Context, sessionID, sessionRunID string, reason sessstatus.SessionStatusReason) bool {
 	if l == nil || l.sessionRuns == nil {
-		return
+		return false
 	}
 	sessionRunID = strings.TrimSpace(sessionRunID)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionRunID == "" || sessionID == "" {
-		return
+		return false
 	}
 	bind, hasBind := l.runStatus.LoadBinding(sessionID)
 	run, err := l.sessionRuns.Get(ctx, sessionRunID)
@@ -192,13 +195,13 @@ func (l *chatSessionRunLifecycle) escalateToDurable(ctx context.Context, session
 			loggateway.Str("session_run_id", sessionRunID),
 			loggateway.Str("session_id", sessionID),
 		)
-		return
+		return false
 	}
 	if run.Phase == biz.SessionRunPhaseCompleted || run.Phase == biz.SessionRunPhaseFailed {
-		return
+		return false
 	}
 	if run.Phase == biz.SessionRunPhaseDurable && strings.TrimSpace(run.CheckpointID) != "" {
-		return
+		return false
 	}
 	agentID, userContent, dialogMode, provider, model, runtimeRunID := l.resolveEscalationFields(ctx, sessionRunID, run, bind, hasBind)
 	var sessionRevision int64
@@ -225,9 +228,9 @@ func (l *chatSessionRunLifecycle) escalateToDurable(ctx context.Context, session
 			loggateway.Str("session_id", sessionID),
 			loggateway.Err(err),
 		)
-		return
+		return false
 	}
-	l.applyDurableTransition(ctx, sessionID, sessionRunID, run, cp, reason)
+	return l.applyDurableTransition(ctx, sessionID, sessionRunID, run, cp, reason)
 }
 
 func (l *chatSessionRunLifecycle) orgCheckpointForSession(ctx context.Context, sessionID string) biz.OrgCheckpointFields {
@@ -271,10 +274,11 @@ func (l *chatSessionRunLifecycle) resolveEscalationFields(
 }
 
 // applyDurableTransition marks the run as durable, cancels the runtime runner, and notifies escalation.
+// Returns false when the phase CAS fails (run concurrently finished/cancelled elsewhere).
 func (l *chatSessionRunLifecycle) applyDurableTransition(
 	ctx context.Context, sessionID, sessionRunID string, run biz.SessionRun, cp biz.SessionRunCheckpoint,
 	reason sessstatus.SessionStatusReason,
-) {
+) bool {
 	ok, err := l.sessionRuns.TransitionPhase(ctx, sessionRunID, biz.PhaseEventUserEscalate)
 	if err != nil || !ok {
 		l.lg.Warn("session run transition to durable failed",
@@ -283,7 +287,7 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 			loggateway.Bool("cas_ok", ok),
 			loggateway.Err(err),
 		)
-		return
+		return false
 	}
 	stopped, runID := l.runs.Cancel(sessionID, "durable_escalate")
 	if stopped {
@@ -306,6 +310,7 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 			)
 		}
 	}
+	return true
 }
 
 // adoptAwaitingRun re-adopts the still-interactive session run of a

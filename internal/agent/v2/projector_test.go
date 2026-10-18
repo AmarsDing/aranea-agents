@@ -801,6 +801,10 @@ func (s stubTaskV2Reader) ListTasksBySession(_ context.Context, _ string) ([]biz
 	return nil, nil
 }
 
+func (s stubTaskV2Reader) MaxSeqBySession(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
 func synthesisProjector(capture *capturingSequencer, reader biz.TaskV2Reader) *ActivityProjector {
 	factory := NewProjectorFactory(capture, nil, reader, nil)
 	p := factory.NewProjector()

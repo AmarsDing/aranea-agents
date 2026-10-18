@@ -137,13 +137,24 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 		TraceID:            traceID,
 		TimeToFirstTokenMS: p.FirstTokenMs,
 		WaitMS:             p.WaitMS,
-	}); err != nil && p.Emitter != nil {
-		p.Emitter.LogError("chat.usage_record", "turn usage record failed",
-			event.P("error", err.Error()),
-			event.P("run_id", p.RunID),
-			event.P("usage_kind", biz.UsageKindChatTurn),
-			event.P("status", p.Status),
-		)
+	}); err != nil {
+		// Process-level Warn regardless of emitter availability (review #6):
+		// previously an emitter-less failure was silently swallowed, losing all
+		// observability of usage-gap incidents.
+		m.lg.Warn("turn usage record failed",
+			loggateway.StepID("chat.usage_record"),
+			loggateway.RunID(p.RunID),
+			loggateway.SessionID(p.SessionID),
+			loggateway.Str("status", p.Status),
+			loggateway.Err(err))
+		if p.Emitter != nil {
+			p.Emitter.LogError("chat.usage_record", "turn usage record failed",
+				event.P("error", err.Error()),
+				event.P("run_id", p.RunID),
+				event.P("usage_kind", biz.UsageKindChatTurn),
+				event.P("status", p.Status),
+			)
+		}
 	}
 	m.recordRunnerCompletion(ctx, p, traceID)
 }

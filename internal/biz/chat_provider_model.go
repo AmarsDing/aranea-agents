@@ -62,10 +62,41 @@ func ResolveProviderModelWithFallback(ctx context.Context, catalog TeamModelCata
 		}
 		provider, model = "", ""
 	}
+	// Caller-explicit sides (survivors of the pair validation above). M7
+	// (2026-10-18): a mixed-source pair must never ship — when only one side
+	// was given and the refine stage completes the other, the composed pair
+	// is re-validated as a unit; on a miss the refine-filled side is dropped
+	// and resolution falls to a single catalog row matching the explicit
+	// side. Previously the pair sailed through unchecked (provider A +
+	// provider B's model) and failed at call time with a nonexistent
+	// endpoint.
+	explicitProvider, explicitModel := provider, model
+	refineProvider, refineModel := "", ""
 	if refine != nil {
 		if setting, err := refine.GetRefineLLM(ctx); err == nil {
-			provider = strutil.FirstNonEmpty(provider, setting.Provider)
-			model = strutil.FirstNonEmpty(model, setting.Model)
+			refineProvider, refineModel = setting.Provider, setting.Model
+			provider = strutil.FirstNonEmpty(provider, refineProvider)
+			model = strutil.FirstNonEmpty(model, refineModel)
+		}
+	}
+	if provider != "" && model != "" && catalog != nil {
+		pureRefinePair := refineProvider != "" && refineModel != "" &&
+			provider == refineProvider && model == refineModel
+		// The pure RefineLLM pair is operator configuration and is trusted
+		// as-is (it may intentionally live outside the tenant catalog);
+		// anything else is a mixed-source pair and is unit-validated (M7).
+		if !pureRefinePair {
+			if _, err := catalog.GetByProviderAndModel(ctx, provider, model); err == nil {
+				return provider, model
+			} else if !errors.Is(err, ErrProviderModelNotFound) {
+				return provider, model // infra errors stay non-blocking
+			}
+			if lg != nil {
+				lg.Warn("provider/model 组合不在模型目录中，回退到目录默认",
+					loggateway.Str("orig_provider", provider),
+					loggateway.Str("orig_model", model))
+			}
+			provider, model = explicitProvider, explicitModel
 		}
 	}
 	if provider != "" && model != "" {
@@ -73,12 +104,21 @@ func ResolveProviderModelWithFallback(ctx context.Context, catalog TeamModelCata
 	}
 	if catalog != nil {
 		if models, err := catalog.List(ctx); err == nil {
+			// M7: complete the pair atomically from ONE catalog row — the
+			// row must match the surviving explicit side (never fill the
+			// missing side from an unrelated provider's row).
 			for _, m := range models {
-				if m.Enabled && m.Provider != "" && m.Model != "" {
-					provider = strutil.FirstNonEmpty(provider, m.Provider)
-					model = strutil.FirstNonEmpty(model, m.Model)
-					break
+				if !m.Enabled || m.Provider == "" || m.Model == "" {
+					continue
 				}
+				if provider != "" && m.Provider != provider {
+					continue
+				}
+				if model != "" && m.Model != model {
+					continue
+				}
+				provider, model = m.Provider, m.Model
+				break
 			}
 		}
 	}

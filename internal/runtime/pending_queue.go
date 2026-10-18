@@ -21,6 +21,12 @@ const MaxPendingPerSession = 32
 const (
 	pendingSnapshotPeriod = 10 * time.Second
 	pendingSnapshotFile   = "pending_queue.json"
+	// pendingPersistFlushInterval coalesces hot-path mutations into one durable
+	// write (M6, 2026-10-18): each Enqueue/Dequeue/Update used to run a
+	// synchronous full ReplaceAll (5s timeout) on the caller's hot path. Memory
+	// state is authoritative immediately; the store/snapshot flush happens at
+	// most once per interval, plus a final synchronous flush on Close.
+	pendingPersistFlushInterval = 100 * time.Millisecond
 )
 
 // PendingMessage is one FIFO follow-up entry waiting for the current turn to finish.
@@ -51,6 +57,15 @@ type PendingMessageQueue struct {
 	snapshot bool
 	store    PendingQueueStore
 	lg       loggateway.Logger
+	// closeOnce makes Close idempotent (M4, 2026-10-18): a second Close used to
+	// panic with "close of closed channel" on stopCh.
+	closeOnce sync.Once
+	// persistMu guards persistTimer (M6 batched flush); flushMu serializes
+	// flushPersist invocations so a delayed flush can never overwrite a newer
+	// snapshot with an older one (snapshots are taken inside the flush).
+	persistMu    sync.Mutex
+	persistTimer *time.Timer
+	flushMu      sync.Mutex
 }
 
 func NewPendingMessageQueue() *PendingMessageQueue {
@@ -104,7 +119,7 @@ func (q *PendingMessageQueue) Enqueue(sessionID, content string) string {
 	}
 	q.queues[sessionID] = append(queue, entry)
 	q.mu.Unlock()
-	q.writeThrough()
+	q.schedulePersist()
 	return id
 }
 
@@ -133,7 +148,7 @@ func (q *PendingMessageQueue) EnqueueInject(sessionID, content string) string {
 	}
 	q.queues[sessionID] = append(queue, entry)
 	q.mu.Unlock()
-	q.writeThrough()
+	q.schedulePersist()
 	return id
 }
 
@@ -167,7 +182,7 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 		q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 		id := queue[last].ID
 		q.mu.Unlock()
-		q.writeThrough()
+		q.schedulePersist()
 		return id
 	}
 	if len(queue) >= MaxPendingPerSession {
@@ -182,7 +197,7 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 		CreatedAt: time.Now().Format(time.RFC3339),
 	})
 	q.mu.Unlock()
-	q.writeThrough()
+	q.schedulePersist()
 	return id
 }
 
@@ -209,7 +224,7 @@ func (q *PendingMessageQueue) FlushLeadingInjects(sessionID string) []PendingMes
 	flushed := append([]PendingMessage(nil), queue...)
 	delete(q.queues, sessionID)
 	q.mu.Unlock()
-	q.writeThrough()
+	q.schedulePersist()
 	return flushed
 }
 
@@ -236,7 +251,7 @@ func (q *PendingMessageQueue) DequeueLeadingInjects(sessionID string) []PendingM
 		q.queues[sessionID] = append([]PendingMessage(nil), queue[n:]...)
 	}
 	q.mu.Unlock()
-	q.writeThrough()
+	q.schedulePersist()
 	return out
 }
 
@@ -271,7 +286,7 @@ func (q *PendingMessageQueue) Dequeue(sessionID string) (PendingMessage, bool) {
 		q.queues[sessionID] = append([]PendingMessage(nil), queue[1:]...)
 	}
 	q.mu.Unlock()
-	q.writeThrough()
+	q.schedulePersist()
 	return head, true
 }
 
@@ -287,7 +302,7 @@ func (q *PendingMessageQueue) Remove(sessionID, entryID string) bool {
 				q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 			}
 			q.mu.Unlock()
-			q.writeThrough()
+			q.schedulePersist()
 			return true
 		}
 	}
@@ -307,6 +322,31 @@ func (q *PendingMessageQueue) writeThrough() {
 	if q.snapshot {
 		q.saveSnapshot()
 	}
+}
+
+// schedulePersist coalesces hot-path mutations into a batched durable flush
+// (M6). Callers must not hold q.mu.
+func (q *PendingMessageQueue) schedulePersist() {
+	if q == nil {
+		return
+	}
+	q.persistMu.Lock()
+	if q.persistTimer == nil {
+		q.persistTimer = time.AfterFunc(pendingPersistFlushInterval, q.flushPersist)
+	}
+	q.persistMu.Unlock()
+}
+
+// flushPersist runs the batched durable write. flushMu serializes concurrent
+// flushes (timer fire vs Close final flush) and the snapshot is taken inside
+// writeThrough at flush time, so writes reach the store in fresh-data order.
+func (q *PendingMessageQueue) flushPersist() {
+	q.flushMu.Lock()
+	defer q.flushMu.Unlock()
+	q.persistMu.Lock()
+	q.persistTimer = nil
+	q.persistMu.Unlock()
+	q.writeThrough()
 }
 
 func (q *PendingMessageQueue) persistStore() {
@@ -333,8 +373,12 @@ func (q *PendingMessageQueue) SetStore(store PendingQueueStore) {
 	defer cancel()
 	loaded, err := store.LoadAll(ctx)
 	if err != nil {
-		q.lg.Warn("pending queue store load failed", loggateway.StepID("runtime.pending_queue.store"), loggateway.Err(err))
-		q.writeThrough()
+		// H3 (2026-10-18): NEVER push in-memory state into the store when the
+		// load failed — at startup memory is empty (dir="") or a stale file
+		// snapshot, so ReplaceAll would wipe durable rows on a transient DB
+		// error. Continue memory-only; the first real mutation reconciles.
+		q.lg.Warn("pending queue store load failed, continuing memory-only",
+			loggateway.StepID("runtime.pending_queue.store"), loggateway.Err(err))
 		return
 	}
 	if len(loaded) > 0 {
@@ -346,7 +390,15 @@ func (q *PendingMessageQueue) SetStore(store PendingQueueStore) {
 		}
 		return
 	}
-	q.writeThrough()
+	// Store load succeeded and is empty: push in-memory state only when there
+	// is something to migrate (file snapshot → store). Pushing an empty map
+	// would be a no-op anyway, but skipping keeps the intent explicit.
+	q.mu.Lock()
+	pending := len(q.queues)
+	q.mu.Unlock()
+	if pending > 0 {
+		q.writeThrough()
+	}
 }
 
 func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool {
@@ -370,7 +422,7 @@ func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool
 	}
 	q.mu.Unlock()
 	if ok {
-		q.writeThrough()
+		q.schedulePersist()
 	}
 	return ok
 }
@@ -401,7 +453,7 @@ func (q *PendingMessageQueue) PromoteToFront(sessionID, pendingID string) error 
 	}
 	q.mu.Unlock()
 	if moved {
-		q.writeThrough()
+		q.schedulePersist()
 	}
 	return err
 }
@@ -432,16 +484,33 @@ func (q *PendingMessageQueue) SetPriority(sessionID, pendingID string, priority 
 	}
 	q.mu.Unlock()
 	if ok {
-		q.writeThrough()
+		q.schedulePersist()
 	}
 	return err
 }
 
+// Close is idempotent (M4): stops the snapshot loop, cancels any pending
+// batched flush, and performs one final synchronous durable write.
 func (q *PendingMessageQueue) Close() {
-	if q.snapshot {
-		close(q.stopCh)
+	if q == nil {
+		return
 	}
-	q.writeThrough()
+	q.closeOnce.Do(func() {
+		if q.snapshot {
+			close(q.stopCh)
+		}
+		q.persistMu.Lock()
+		if q.persistTimer != nil {
+			q.persistTimer.Stop()
+			q.persistTimer = nil
+		}
+		q.persistMu.Unlock()
+		// flushMu so a timer flush already in flight cannot overwrite this
+		// final flush with an older snapshot.
+		q.flushMu.Lock()
+		defer q.flushMu.Unlock()
+		q.writeThrough()
+	})
 }
 
 func (q *PendingMessageQueue) snapshotLoop() {

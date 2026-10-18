@@ -70,6 +70,10 @@ type persistWorker struct {
 	wg         sync.WaitGroup
 	maxRetries int
 	backoff    time.Duration
+	// done is closed by close() to interrupt in-flight backoff sleeps
+	// immediately (review L3): shutdown previously blocked up to
+	// sum(backoff<<i) per event being retried.
+	done chan struct{}
 
 	ring *deadLetterRing
 	// store is the optional durable dead-letter store (P1-R2b). When set,
@@ -93,6 +97,7 @@ func newPersistWorker(rs RepoSet, lg loggateway.Logger, throttles *sequencerThro
 		backoff:    cfg.persistBackoff,
 		ring:       newDeadLetterRing(cfg.deadLetterCapacity),
 		store:      cfg.deadLetterStore,
+		done:       make(chan struct{}),
 		replayDone: make(chan struct{}),
 		throttles:  throttles,
 	}
@@ -114,6 +119,10 @@ func (p *persistWorker) start(disableReplayLoop bool) {
 // Caller must guarantee no producer sends to ch after this point
 // (Sequencer.Close closes publishQueue and waits publishWG first).
 func (p *persistWorker) close() {
+	// Interrupt in-flight backoff sleeps first so a stuck retry cannot hold
+	// shutdown hostage (review L3). Events still in ch keep their drain
+	// semantics; dead-lettering still applies on failure.
+	close(p.done)
 	close(p.ch)
 	p.wg.Wait()
 	if p.replayStarted {
@@ -147,8 +156,18 @@ func (p *persistWorker) persistWithRetry(e biz.Event) {
 		// Exponential backoff: 1x, 2x, 4x, 8x, 16x.
 		// Y7: no sleep after the final attempt — the event is about to be
 		// dead-lettered, so the extra backoff only delays the failure signal.
+		// L3: the sleep aborts on close() so shutdown is not held hostage by
+		// the full backoff schedule; the event still dead-letters below.
 		if attempt < p.maxRetries-1 {
-			time.Sleep(p.backoff * time.Duration(1<<attempt))
+			timer := time.NewTimer(p.backoff * time.Duration(1<<attempt))
+			select {
+			case <-timer.C:
+			case <-p.done:
+				timer.Stop()
+				p.pushDeadLetterThrottledLog(e, lastErr)
+				p.pushDeadLetter(e)
+				return
+			}
 		}
 	}
 	p.pushDeadLetterThrottledLog(e, lastErr)

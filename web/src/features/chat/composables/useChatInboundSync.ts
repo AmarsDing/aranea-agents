@@ -49,8 +49,6 @@ export type ChatInboundSyncDeps = {
   loadTeamSessions?: (teamId: string) => Promise<void>;
 };
 
-type TurnStreamSeal = { revision: number };
-
 /**
  * Global WS consumer for channel/cron inbound. Session-scoped WS (ensureChatStream) handles
  * web-initiated turns; channel inbound uses this path for incremental stream + hydrate.
@@ -61,13 +59,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   let hubId: string | null = null;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingHydrateSessionId = '';
-  const sealedTurnBySession = new Map<string, TurnStreamSeal>();
+  // F1 cleanup (2026-10-19): sealedTurnBySession / unsealTurnStream removed —
+  // the seal map was written on turn finalize and deleted on run start but
+  // never read by any consumer, so it carried no behavior.
   const hydrateInFlight = new Map<string, Promise<void>>();
   const focusInFlight = new Set<string>();
-
-  function unsealTurnStream(sessionId: string) {
-    sealedTurnBySession.delete(sessionId);
-  }
 
   function agentIdFromActivity(ev: ActivityEvent): string {
     const meta = ev.activity.meta ?? {};
@@ -346,9 +342,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
 
       channelRunStatus = ev.activity.stage === 'run_status' ? (runStatusFromActivityEvent(ev)?.status ?? '') : '';
-      if (channelRunStatus === SESSION_RUN_STATUS.RUNNING) {
-        unsealTurnStream(sessionId);
-      }
     }
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
@@ -381,7 +374,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (isCurrent && ev.activity.stage === 'run_status') {
       const rs = runStatusFromActivityEvent(ev);
       if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
-        unsealTurnStream(sessionId);
         if (deps.sessionStore.entityKind === 'team') {
           deps.ensureTeamStream(sessionId);
         } else {
@@ -412,18 +404,14 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     await refreshSessionsAfterTurn(sessionId);
 
     if (shouldGlobalHubFinalizeTurnActivity(channelInbound, isCurrent, turnComplete)) {
-      await finalizeTurnActivity(sessionId, envRev);
+      await finalizeTurnActivity(sessionId);
     }
 
     deps.onTurnComplete?.(sessionId);
   }
 
-  /** ActivityEvent variant of finalizeTurn — seals the turn stream and hydrates. */
-  async function finalizeTurnActivity(sessionId: string, envRev: number) {
-    const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
-    sealedTurnBySession.set(sessionId, {
-      revision: Math.max(envRev, localRev),
-    });
+  /** ActivityEvent variant of finalizeTurn — hydrates the authoritative snapshot. */
+  async function finalizeTurnActivity(sessionId: string) {
     await hydrateCurrentSession(sessionId, true, true);
   }
 
