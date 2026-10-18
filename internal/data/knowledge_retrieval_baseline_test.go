@@ -11,7 +11,8 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-const knowledgeRAGFixtureDir = "../../docs/testing/agent-eval-20260818/03-knowledge-rag"
+// 金标语料由 internal/knowledge 持有（testdata/retrieval-gold，随仓提交）。
+const knowledgeRAGFixtureDir = "../knowledge/testdata/retrieval-gold"
 
 type knowledgeRAGDataset struct {
 	Cases []struct {

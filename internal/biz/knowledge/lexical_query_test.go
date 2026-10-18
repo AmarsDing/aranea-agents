@@ -9,7 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-const lexicalGoldDir = "../../../docs/testing/agent-eval-20260818/03-knowledge-rag"
+// 金标语料由 internal/knowledge 持有（testdata/retrieval-gold，随仓提交）。
+const lexicalGoldDir = "../../knowledge/testdata/retrieval-gold"
 
 // P1-3（2026-08-21）：CJK bigram 抽取——2 字中文词是问句与正文的核心重叠信号。
 func TestCJKBigrams(t *testing.T) {

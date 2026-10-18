@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-const knowledgeRAGFixtureDir = "../../docs/testing/agent-eval-20260818/03-knowledge-rag"
+// knowledgeRAGFixtureDir 为随仓提交的 RAG 检索金标语料目录（2026-10-18 自
+// gitignored 的 docs/testing 迁入 testdata，保证干净 clone / CI 可复现）。
+const knowledgeRAGFixtureDir = "testdata/retrieval-gold"
 
 type retrievalGoldFile struct {
 	Cases []struct {

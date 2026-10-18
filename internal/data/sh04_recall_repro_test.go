@@ -3,7 +3,7 @@ package data
 // 复现 mem-sh-04 召回排序：用真实 DB dump（agent+user scope 全量事实、含 embedding）
 // + 真实 Ollama bge-m3 查询向量，离线重放 scoreFactRow 打分，定位为何
 // 「FW-Edge-02 管理 IP」事实未进入 top-5 注入。
-// 数据文件（评测证据目录）：
+// 数据文件（随仓 testdata，2026-10-18 自 gitignored 的 docs/testing 评测证据目录迁入）：
 //   sh04-facts-full.jsonl  — psql json_build_object 导出的候推行
 //   sh04-query-embed.json  — Ollama /api/embed 返回的查询向量
 // 运行：go test ./internal/data/ -run TestSh04RecallRepro -v
@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	sh04FactsFile = `..\..\docs\testing\agent-eval-20260818\02-memory-recall\evidence\sh04-facts-full.jsonl`
-	sh04EmbedFile = `..\..\docs\testing\agent-eval-20260818\02-memory-recall\evidence\sh04-query-embed.json`
+	sh04FactsFile = `testdata/sh04-facts-full.jsonl`
+	sh04EmbedFile = `testdata/sh04-query-embed.json`
 	sh04Query     = "FW-Edge-02 的管理 IP 是多少？"
 )
 
