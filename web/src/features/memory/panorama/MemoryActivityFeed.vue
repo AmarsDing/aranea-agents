@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import type { MemoryActivityItem } from '../../types';
+import type { MemoryActivityItem } from '../types';
 import { memoryLayerColor } from './layerMeta';
 
 defineProps<{ items: MemoryActivityItem[] }>();

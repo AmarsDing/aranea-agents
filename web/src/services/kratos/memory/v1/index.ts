@@ -769,6 +769,10 @@ export type ListPIIFlaggedFactsRequest = {
   scopeId: string | undefined;
   limit: number | undefined;
   offset: number | undefined;
+  // 产生方 agent 过滤（跨全部 scope；service searches also raw HTTP query
+  // agent_id for backward compat）。声明为字段后前端 TS client 才会序列化——
+  // 未声明时生成代码会静默丢弃，治理 Tab 的 agent 过滤不生效（2026-10-19 修复）。
+  agentId: string | undefined;
 };
 
 export type ListPIIFlaggedFactsResponse = {
@@ -1704,6 +1708,9 @@ export function createMemoryServiceClient(
       }
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

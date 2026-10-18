@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { MemoryLayerStat } from '../../types';
+import type { MemoryLayerStat } from '../types';
 import { MEMORY_LAYER_META, type MemoryLayerKey } from './layerMeta';
 
 const props = defineProps<{ stat: MemoryLayerStat }>();

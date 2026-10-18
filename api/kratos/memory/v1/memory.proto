@@ -724,6 +724,10 @@ message ListPIIFlaggedFactsRequest {
   string scope_id = 2;
   int32 limit = 3;
   int32 offset = 4;
+  // 产生方 agent 过滤（跨全部 scope；service searches also raw HTTP query
+  // agent_id for backward compat）。声明为字段后前端 TS client 才会序列化——
+  // 未声明时生成代码会静默丢弃，治理 Tab 的 agent 过滤不生效（2026-10-19 修复）。
+  string agent_id = 5;
 }
 
 message ListPIIFlaggedFactsResponse {

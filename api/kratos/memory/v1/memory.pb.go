@@ -6345,11 +6345,15 @@ func (x *AbandonMemoryDeadLetterResponse) GetEntry() *MemoryDeadLetterEntry {
 }
 
 type ListPIIFlaggedFactsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ScopeType     string                 `protobuf:"bytes,1,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
-	ScopeId       string                 `protobuf:"bytes,2,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ScopeType string                 `protobuf:"bytes,1,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	ScopeId   string                 `protobuf:"bytes,2,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
+	Limit     int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset    int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	// 产生方 agent 过滤（跨全部 scope；service searches also raw HTTP query
+	// agent_id for backward compat）。声明为字段后前端 TS client 才会序列化——
+	// 未声明时生成代码会静默丢弃，治理 Tab 的 agent 过滤不生效（2026-10-19 修复）。
+	AgentId       string `protobuf:"bytes,5,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6410,6 +6414,13 @@ func (x *ListPIIFlaggedFactsRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *ListPIIFlaggedFactsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
 }
 
 type ListPIIFlaggedFactsResponse struct {
@@ -8409,13 +8420,14 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x03B\x04\xe2A\x01\x02R\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"`\n" +
 	"\x1fAbandonMemoryDeadLetterResponse\x12=\n" +
-	"\x05entry\x18\x01 \x01(\v2'.kratos.memory.v1.MemoryDeadLetterEntryR\x05entry\"\x84\x01\n" +
+	"\x05entry\x18\x01 \x01(\v2'.kratos.memory.v1.MemoryDeadLetterEntryR\x05entry\"\x9f\x01\n" +
 	"\x1aListPIIFlaggedFactsRequest\x12\x1d\n" +
 	"\n" +
 	"scope_type\x18\x01 \x01(\tR\tscopeType\x12\x19\n" +
 	"\bscope_id\x18\x02 \x01(\tR\ascopeId\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x04 \x01(\x05R\x06offset\"g\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\x12\x19\n" +
+	"\bagent_id\x18\x05 \x01(\tR\aagentId\"g\n" +
 	"\x1bListPIIFlaggedFactsResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.memory.v1.MemoryFactR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"S\n" +

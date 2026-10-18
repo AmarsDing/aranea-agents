@@ -8,7 +8,11 @@
     <q-list v-if="items.length" separator>
       <q-item v-for="item in items" :key="item.kind" clickable @click="emit('navigate', item)">
         <q-item-section avatar>
-          <q-avatar :color="kindMeta[item.kind]?.color ?? 'grey'" text-color="white" :icon="kindMeta[item.kind]?.icon ?? 'info'" />
+          <q-avatar
+            :color="kindMeta[item.kind]?.color ?? 'grey'"
+            text-color="white"
+            :icon="kindMeta[item.kind]?.icon ?? 'info'"
+          />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{ t(`memory.panorama.actions.${item.kind}.title`) }}</q-item-label>
@@ -28,7 +32,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import type { MemoryActionItem } from '../../types';
+import type { MemoryActionItem } from '../types';
 
 defineProps<{ items: MemoryActionItem[] }>();
 const emit = defineEmits<{ (e: 'navigate', item: MemoryActionItem): void }>();

@@ -180,7 +180,10 @@ const {
 const replay = useActivationReplay();
 const replayActive = computed(() => replay.playing.value || replay.activeHops.value.size > 0);
 
-const nodeTypes = { unified: markRaw(UnifiedGraphNode) };
+// @vue-flow/core@1.48 的 NodeTypesObject / NodeComponent 未从包根导出，且其内部
+// 声明与 Vue 3.5 + TS 5.9 的 DefineComponent 解析不兼容（类型误报，运行时正常）；
+// 以 never 显式收窄消除该基线 vue-tsc 错误，行为不变。
+const nodeTypes = { unified: markRaw(UnifiedGraphNode) as unknown as never };
 const vueFlowRef = useTemplateRef('vueFlowRef');
 const drawerOpen = ref(false);
 

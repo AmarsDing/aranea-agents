@@ -120,7 +120,12 @@ func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPII
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
-	agentID := memoryHTTPQuery(ctx, "agent_id", "agentId")
+	// 优先取 proto 字段；HTTP 直连裸 query（未走 gateway 绑定）时回退原始查询串，
+	// 两条路径都过 assertAgentMemoryAccess。
+	agentID := strings.TrimSpace(req.GetAgentId())
+	if agentID == "" {
+		agentID = memoryHTTPQuery(ctx, "agent_id", "agentId")
+	}
 	if scopeType == "" && agentID == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type or agent_id is required")
 	}
