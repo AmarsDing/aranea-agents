@@ -25,6 +25,12 @@ func (f *fakeOutboxRepo) Insert(_ context.Context, row biz.EventDeliveryOutboxRo
 
 func (f *fakeOutboxRepo) MarkPublished(context.Context, string, time.Time) error { return nil }
 
+func (f *fakeOutboxRepo) MarkPublishedBatch(context.Context, []string, time.Time) error { return nil }
+
+func (f *fakeOutboxRepo) ListPending(context.Context, time.Time, int) ([]biz.EventDeliveryOutboxRow, error) {
+	return nil, nil
+}
+
 func (f *fakeOutboxRepo) ListAfter(_ context.Context, sessionID, afterEventID string, afterSeq int64, limit int) ([]biz.EventDeliveryOutboxRow, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -68,7 +74,7 @@ func TestWSServer_ReplayOutbox_FiltersByLastEventID(t *testing.T) {
 	}}
 
 	srv := &WSServer{
-		outbox:      repo,
+		outboxSweep: outboxSweepRuntime{repo: repo},
 		runtimeConf: &conf.Runtime{},
 		lg:          loggateway.NewNoop(),
 	}
@@ -107,7 +113,7 @@ func TestWSServer_ReplayOutbox_SkipsGlobalAndEmpty(t *testing.T) {
 	repo := &fakeOutboxRepo{rows: []biz.EventDeliveryOutboxRow{
 		{SessionID: "sess-1", Seq: 1, EventID: "evt-1", Payload: []byte(`x`)},
 	}}
-	srv := &WSServer{outbox: repo, runtimeConf: &conf.Runtime{}, lg: loggateway.NewNoop()}
+	srv := &WSServer{outboxSweep: outboxSweepRuntime{repo: repo}, runtimeConf: &conf.Runtime{}, lg: loggateway.NewNoop()}
 	cfg := srv.wsConfig()
 	wc := &wsConn{sessionID: "*", queues: newConnQueues(cfg)}
 

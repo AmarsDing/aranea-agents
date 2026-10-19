@@ -109,6 +109,35 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     await hydrateFromHttpIfNeeded(sessionId);
   }
 
+  /**
+   * Unconditional REST reconcile (bypasses the WS-authoritative guard).
+   * Used by the sending watchdog when run activity has been silent for a long
+   * stretch and the terminal WS frame may have been lost. Errors propagate so
+   * the caller can distinguish "backend confirmed terminal" from "network
+   * failure — try again later" (never auto-reset on network failure).
+   *
+   * Returns the freshly applied backend status; null means NO backend-confirmed
+   * state was applied (no session, or the response was dropped by the staleness
+   * guard). Callers must treat null as "unconfirmed" and never fall back to the
+   * local runStatus value — it may be only the initial 'idle' default (REG-2).
+   */
+  async function refreshRunStatusForced(sessionId?: string): Promise<string | null> {
+    if (!sessionId) {
+      resetRunStatus();
+      return null;
+    }
+    const runtime = useChatRuntimeStore();
+    const rs = await runtime.fetchRunStatus(sessionId);
+    // 会话过期守卫（同 hydrateFromHttpIfNeeded 手法）：对账请求在途时用户可能已
+    // 切换会话——旧会话的迟到响应必须整个丢弃，不得写 runStatus/runMeta 或 apply；
+    // 否则旧状态会覆盖当前会话面板，watchdog 读到过期终态还会误判并复位 sending。
+    if (sessionId !== hydrateSessionId) return null;
+    runStatus.value = rs.status;
+    runMeta.value = rs;
+    deps.applyAwaitRunStatus(rs);
+    return rs.status;
+  }
+
   function onSessionSwitch(sessionId: string | undefined) {
     if (!sessionId) {
       resetRunStatus();
@@ -137,6 +166,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     applyFromActivityEvent,
     onSessionSwitch,
     refreshRunStatus,
+    refreshRunStatusForced,
     forceSetRunStatus,
   };
 }

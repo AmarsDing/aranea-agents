@@ -387,16 +387,13 @@ func v2EventPayloadToWire(e biz.Event) (any, error) {
 		return graphNodeEventWire{GraphNode: graphNodeToWire(ev.GraphNode)}, nil
 	// System domain
 	case *biz.RunStatusEvent:
-		return runStatusEventWire{RunID: ev.RunID, Status: ev.Status, Meta: ev.Meta}, nil
+		return runStatusEventWire{RunID: ev.RunID, Status: ev.Status, Meta: ev.Meta, Seq: ev.Seq}, nil
 	case *biz.HeartbeatEvent:
 		return heartbeatEventWire{Message: ev.Message, Meta: ev.Meta}, nil
 	case *biz.SystemNoticeEvent:
 		return systemNoticeEventWire{NoticeType: ev.NoticeType, Message: ev.Message, Meta: ev.Meta, Seq: ev.Seq}, nil
 	case *biz.SkillCatalogEvent:
 		return skillCatalogEventWire{Skills: mapSlice(ev.Skills, skillCatalogEntryToWire)}, nil
-	// v1 bridge
-	case *biz.ActivityBridgeEvent:
-		return activityBridgeEventWire{Event: ev.Event}, nil
 	default:
 		return nil, fmt.Errorf("no wire mapping for v2 event kind %q (type %T)", e.EventKind(), e)
 	}

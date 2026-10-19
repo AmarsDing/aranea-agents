@@ -382,7 +382,7 @@ func (r *Runner) finalizeTeamRun(
 		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
 		updatedRun.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 		// Preserve transient SpiritSessionID (team_runs has no such column;
-		// publishTeamRunSummary → TeamSummaryActivityEvent relies on it).
+		// publishTeamRunSummary's team_summary SystemNoticeEvent relies on it).
 		updatedRun.SpiritSessionID = run.SpiritSessionID
 		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
 			r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",

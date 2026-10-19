@@ -29,6 +29,7 @@ type recordingSessionStatePort struct {
 	mu      sync.Mutex
 	state   map[string]string
 	patches []recordedPatch
+	saves   int
 	err     error
 }
 
@@ -56,6 +57,7 @@ func (r *recordingSessionStatePort) GetSessionState(_ context.Context, _ string)
 func (r *recordingSessionStatePort) SaveSessionState(_ context.Context, _ string, state map[string]string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.saves++
 	r.state = make(map[string]string, len(state))
 	for k, v := range state {
 		r.state[k] = v

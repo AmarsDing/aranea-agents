@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
+	"aranea-agents/internal/data/ent/agentruntimesetting"
 	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/predicate"
 
@@ -254,7 +255,16 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 	if agentKey == "" {
 		return biz.Agent{}, shared.ErrNotFound
 	}
-	row, err := r.data.RW().Read(ctx).Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
+	// Shared-or-own visibility (aligned with GetAgentByID): a tenant must not be
+	// able to probe another tenant's agent by key. Uniqueness is still enforced
+	// globally by the agents.agent_key unique index — CheckAgentKeyAvailability
+	// simply reports "available" for a foreign key and the create then fails
+	// with AGENT_KEY_CONFLICT, which leaks nothing about the existing row.
+	preds := []predicate.Agent{agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")}
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		preds = append(preds, agent.WorkspaceIDIn(ids...))
+	}
+	row, err := r.data.RW().Read(ctx).Agent.Query().Where(preds...).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, shared.ErrNotFound
@@ -262,6 +272,68 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	return entAgentToBiz(row, r.data.lg), nil
+}
+
+// GetAgentWorkspaceScope returns the workspace_id of a live agent row without
+// hydrating the full catalog row. Used by service-layer workspace access
+// checks: previously each access check ran a full uc.Get (agent + settings +
+// files + extras queries) just to compare workspace_id.
+func (r *agentRepo) GetAgentWorkspaceScope(ctx context.Context, id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", shared.ErrNotFound
+	}
+	row, err := r.data.RW().Read(ctx).Agent.Query().
+		Where(agent.IDEQ(id), agent.DeletedAtEQ("")).
+		Select(agent.FieldWorkspaceID).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return "", shared.ErrNotFound
+		}
+		return "", entErrToBizErr(err, "AGENT")
+	}
+	return row.WorkspaceID, nil
+}
+
+// GetAgentKeyByID returns the agent_key of a live agent row without hydrating
+// the full catalog row (DeleteAgent audit-enrichment path).
+func (r *agentRepo) GetAgentKeyByID(ctx context.Context, id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", shared.ErrNotFound
+	}
+	row, err := r.data.RW().Read(ctx).Agent.Query().
+		Where(agent.IDEQ(id), agent.DeletedAtEQ("")).
+		Select(agent.FieldAgentKey).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return "", shared.ErrNotFound
+		}
+		return "", entErrToBizErr(err, "AGENT")
+	}
+	return row.AgentKey, nil
+}
+
+// ListAgentRuntimeSettingsByIDs returns settings rows for the given agents in a
+// single query (batch-hydrate path). Agents without a settings row are absent
+// from the map — callers apply defaults, exactly like ListAgentRuntimeSettings.
+func (r *agentRepo) ListAgentRuntimeSettingsByIDs(ctx context.Context, ids []string) (map[string]biz.AgentRuntimeSettings, error) {
+	out := make(map[string]biz.AgentRuntimeSettings, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := r.data.RW().Read(ctx).AgentRuntimeSetting.Query().
+		Where(agentruntimesetting.IDIn(ids...)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "AGENT")
+	}
+	for _, row := range rows {
+		out[row.ID] = entRuntimeToBiz(row)
+	}
+	return out, nil
 }
 
 func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {

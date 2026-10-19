@@ -116,6 +116,12 @@ export type AgentRuntimeSettings = {
   l3_decay_interval_hours?: number;
   l3_archive_threshold?: number;
   l3_max_per_recall_chars?: number;
+  /** standalone L2 episodic recall block budget (0/absent = backend default 800) */
+  l2_recall_budget_tokens?: number;
+  /** L3 semantic recall block budget (0/absent = backend default 800) */
+  l3_recall_budget_tokens?: number;
+  /** toggle provenance metadata on injected L3 facts (backend default false) */
+  l3_inject_provenance?: boolean;
   l4_enabled?: boolean;
   l4_graph_inject_neighbors?: boolean;
   l4_graph_max_neighbors?: number;

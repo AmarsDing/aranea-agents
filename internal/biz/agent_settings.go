@@ -477,3 +477,49 @@ type RuntimeSettingsWriter interface {
 	ApplyRalphLoop(RalphLoopCfg)
 	ApplyContext(ContextCfg)
 }
+
+// inheritAPIUncoveredSettings copies runtime-settings columns that the public
+// Agent API cannot carry (no proto field, or owned by a narrow RPC such as
+// UpdateAgentToolPolicy) from the persisted row, so a fat UpdateAgent upsert —
+// which rewrites the entire agent_runtime_settings row — does not silently
+// reset them (2026-10-18 P0 root-fix; see
+// docs/reports/2026-10-18-review-agent-management-module.md).
+//
+// MAINTENANCE RULE (F11): when a new column is added to
+// agent_runtime_settings, either wire it through proto + fromProtoRuntime +
+// toProtoRuntime, or add it here. A column reachable by neither path is reset
+// to defaults on every settings save.
+func inheritAPIUncoveredSettings(dst *AgentRuntimeSettings, cur *AgentRuntimeSettings) {
+	if dst == nil || cur == nil {
+		return
+	}
+	// Memory: L0/L4 knobs and memory-butler state not exposed via the API.
+	dst.L0CompressMinGapSec = cur.L0CompressMinGapSec
+	dst.L0CompressMaxTriggerTokens = cur.L0CompressMaxTriggerTokens
+	dst.L4DecayIntervalHours = cur.L4DecayIntervalHours
+	dst.L4DecayOverridesJSON = cur.L4DecayOverridesJSON
+	dst.ForgetConfigJSON = cur.ForgetConfigJSON
+	// Tools: narrow-RPC-owned (execution timeout) and analysis-owned columns.
+	dst.ToolsExecutionTimeoutSec = cur.ToolsExecutionTimeoutSec
+	dst.ToolWeightJSON = cur.ToolWeightJSON
+	dst.MaxLLMCalls = cur.MaxLLMCalls
+	dst.MaxToolIterations = cur.MaxToolIterations
+	dst.EnableTokenTailoring = cur.EnableTokenTailoring
+	dst.TokenTailoringStrategy = cur.TokenTailoringStrategy
+	dst.TokenTailoringSafetyMargin = cur.TokenTailoringSafetyMargin
+	// Governance thresholds (loop guard) — PolicyResolver-managed, proto-free.
+	dst.LoopGuardToolLoadMax = cur.LoopGuardToolLoadMax
+	dst.LoopGuardWallSoftSec = cur.LoopGuardWallSoftSec
+	dst.LoopGuardWallHardSec = cur.LoopGuardWallHardSec
+	// Skills/intent fast path: configured out-of-band for management agents
+	// (P-INTENT-SKIP, 宁重勿轻 R4); must survive ordinary settings saves.
+	dst.IntentSkipEnabled = cur.IntentSkipEnabled
+	// Evolution: dream-cycle rollback snapshots are system-owned state.
+	dst.DreamSnapshotJSON = cur.DreamSnapshotJSON
+	// Context assembly: budgets and gates without proto coverage.
+	dst.CompressionBufferAdaptive = cur.CompressionBufferAdaptive
+	dst.AssemblyBudgetSoftTokens = cur.AssemblyBudgetSoftTokens
+	dst.AssemblyBudgetHardTokens = cur.AssemblyBudgetHardTokens
+	dst.ClarificationEnabled = cur.ClarificationEnabled
+	dst.ReplyReminderEnabled = cur.ReplyReminderEnabled
+}

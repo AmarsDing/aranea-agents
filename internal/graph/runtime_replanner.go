@@ -84,9 +84,8 @@ type RuntimeReplannerImpl struct {
 var _ RuntimeReplanner = (*RuntimeReplannerImpl)(nil)
 
 // NewRuntimeReplanner creates a RuntimeReplannerImpl with the given v2
-// event bus and logger. The bus is used to publish graph_stage
-// ActivityBridgeEvents (Stage="replanned") so the replan is observable on
-// the frontend timeline.
+// event bus and logger. The bus is used to publish a 'replanned'
+// SystemNoticeEvent so the replan is observable on the frontend timeline.
 func NewRuntimeReplanner(eventBus biz.EventBus, lg loggateway.Logger) *RuntimeReplannerImpl {
 	if lg == nil {
 		lg = loggateway.NewNoop()

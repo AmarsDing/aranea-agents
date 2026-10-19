@@ -1,7 +1,6 @@
 package biz
 
 import (
-	"aranea-agents/internal/biz/session"
 	"time"
 )
 
@@ -9,8 +8,6 @@ type DomainEventType string
 
 const (
 	DomainEventRunnerCompletion DomainEventType = "runner_completion"
-	DomainEventStateDelta       DomainEventType = "state_delta"
-	DomainEventError            DomainEventType = "error"
 	DomainEventGraphNodeStart   DomainEventType = "graph_node_start"
 	DomainEventGraphNodeEnd     DomainEventType = "graph_node_end"
 	DomainEventGraphNodeError   DomainEventType = "graph_node_error"
@@ -21,9 +18,6 @@ const (
 	// DomainEventGraphDone is the explicit framework completion event; it is
 	// the ONLY signal allowed to converge an execution to Completed — N1.
 	DomainEventGraphDone DomainEventType = "graph_done"
-	DomainEventTextDelta        DomainEventType = "text_delta"
-	DomainEventToolCall         DomainEventType = "tool_call"
-	DomainEventToolResult       DomainEventType = "tool_result"
 )
 
 type DomainEvent struct {
@@ -45,21 +39,9 @@ type DomainEvent struct {
 	UsageEventID     string
 	TurnStartedAt    time.Time
 
-	Content    *DomainContent    `json:",omitempty"`
-	StateDelta *DomainStateDelta `json:",omitempty"`
-	Error      *DomainError      `json:",omitempty"`
-	Usage      *DomainUsage      `json:",omitempty"`
-	ToolCall   *DomainToolCall   `json:",omitempty"`
-	GraphNode  *DomainGraphNode  `json:",omitempty"`
+	Error *DomainError `json:",omitempty"`
+	Usage *DomainUsage `json:",omitempty"`
 }
-
-type DomainContent struct {
-	Text      string
-	Reasoning string
-	IsPartial bool
-}
-
-type DomainStateDelta = session.StateDelta
 
 type DomainError struct {
 	Type    string
@@ -70,18 +52,4 @@ type DomainUsage struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
-}
-
-type DomainToolCall struct {
-	ID            string
-	Name          string
-	ArgumentsJSON string
-	ResultJSON    string
-	Status        string
-	DurationMS    int64
-}
-
-type DomainGraphNode struct {
-	NodeID string
-	Error  string
 }

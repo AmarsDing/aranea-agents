@@ -42,6 +42,73 @@ type AgentReader interface {
 	ListAgentsByIDs(ctx context.Context, ids []string) ([]Agent, error)
 }
 
+// AgentWorkspaceScopeReader is the narrow single-column scope lookup used by
+// service-layer workspace access checks. Optional: the production repo
+// implements it; legacy test fakes fall back to a full hydrated Get.
+// Stability:evolving
+type AgentWorkspaceScopeReader interface {
+	GetAgentWorkspaceScope(ctx context.Context, id string) (string, error)
+}
+
+// PeekWorkspaceScope returns the workspace_id of a live agent row. With the
+// production repo this is one SELECT of a single column instead of the full
+// hydration (agent + settings + files + extras) that access checks previously
+// paid for on every guarded RPC.
+func (u *AgentUsecase) PeekWorkspaceScope(ctx context.Context, id string) (string, error) {
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return "", err
+	}
+	if sr, ok := u.reader.(AgentWorkspaceScopeReader); ok {
+		ws, err := sr.GetAgentWorkspaceScope(ctx, id)
+		if err != nil {
+			if stderrors.Is(err, shared.ErrNotFound) {
+				return "", shared.ErrNotFound
+			}
+			return "", err
+		}
+		return ws, nil
+	}
+	a, err := u.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return a.WorkspaceID, nil
+}
+
+// AgentKeyReader is the narrow single-column key lookup used by the delete
+// path's audit/enrichment reads. Optional: the production repo implements it;
+// legacy test fakes fall back to a full hydrated Get.
+// Stability:evolving
+type AgentKeyReader interface {
+	GetAgentKeyByID(ctx context.Context, id string) (string, error)
+}
+
+// PeekAgentKey returns the agent_key of a live agent row. Same one-column
+// shape as PeekWorkspaceScope: service DeleteAgent only needs the key for
+// audit detail and previously paid a full uc.Get for it (F7 residual).
+func (u *AgentUsecase) PeekAgentKey(ctx context.Context, id string) (string, error) {
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return "", err
+	}
+	if kr, ok := u.reader.(AgentKeyReader); ok {
+		key, err := kr.GetAgentKeyByID(ctx, id)
+		if err != nil {
+			if stderrors.Is(err, shared.ErrNotFound) {
+				return "", shared.ErrNotFound
+			}
+			return "", err
+		}
+		return key, nil
+	}
+	a, err := u.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return a.AgentKey, nil
+}
+
 // Stability:stable
 type AgentWriter interface {
 	CreateAgent(ctx context.Context, a Agent) (Agent, error)
@@ -325,53 +392,60 @@ func (u *AgentUsecase) create(ctx context.Context, in Agent, skipProviderValidat
 }
 
 // Update merges patch into the stored agent, then rewrites settings, files, and config_json.
+// The read-modify-write runs inside ONE transaction (current-row read included)
+// so concurrent updates serialize instead of silently losing each other's
+// changes (previously the current read happened before the tx: TOCTOU).
 func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agent, error) {
 	id, err := requireNonEmpty(id, "AGENT", "id")
 	if err != nil {
 		return Agent{}, err
 	}
-	current, err := u.Get(ctx, id)
-	if err != nil {
-		return Agent{}, err
-	}
-	HydrateAgentKind(&patch)
-	HydrateAgentKind(&current)
-	if strings.TrimSpace(patch.AgentKey) != "" && strings.TrimSpace(patch.AgentKey) != strings.TrimSpace(current.AgentKey) {
-		return Agent{}, apierror.BadRequest("AGENT", "agent_key is immutable")
-	}
-	if strings.TrimSpace(patch.AgentKind) != "" && NormalizeAgentKind(patch.AgentKind) != NormalizeAgentKind(current.AgentKind) {
-		return Agent{}, apierror.BadRequest("AGENT", "agent_kind is immutable")
-	}
-	merged := mergeAgentCatalog(current, patch)
-	// AS-FSM-01: Validate state transition when status changes.
-	if merged.Status != current.Status && strings.TrimSpace(merged.Status) != "" {
-		if _, err := u.agentSM.Transition(ParseAgentState(current.Status), agentEventForTarget(ParseAgentState(merged.Status))); err != nil {
-			return Agent{}, apierror.BadRequest("AGENT", "invalid status transition from "+current.Status+" to "+merged.Status)
-		}
-	}
-	settings := withSettingDefaults(settingsFromAgentInput(merged))
-	settings.AgentID = id
-	if err := validateAgentUpdate(ctx, u, &merged, &settings); err != nil {
-		return Agent{}, err
-	}
-	files := merged.Files
-	if len(files) == 0 {
-		files = current.Files
-	} else {
-		files = withFileDefaults(files)
-		for i := range files {
-			files[i].AgentID = id
-		}
-	}
-	merged.Settings = &settings
-	merged.Files = files
-	HydrateAgentKind(&merged)
-	overlay := extractConfigJSONKeys(patch.ConfigJSON, "evaluation", "knowledge")
-	if overlay == "{}" {
-		overlay = extractConfigJSONKeys(current.ConfigJSON, "evaluation", "knowledge")
-	}
-	merged.ConfigJSON = overlay
 	if err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
+		current, err := u.Get(txCtx, id)
+		if err != nil {
+			return err
+		}
+		HydrateAgentKind(&patch)
+		HydrateAgentKind(&current)
+		if strings.TrimSpace(patch.AgentKey) != "" && strings.TrimSpace(patch.AgentKey) != strings.TrimSpace(current.AgentKey) {
+			return apierror.BadRequest("AGENT", "agent_key is immutable")
+		}
+		if strings.TrimSpace(patch.AgentKind) != "" && NormalizeAgentKind(patch.AgentKind) != NormalizeAgentKind(current.AgentKind) {
+			return apierror.BadRequest("AGENT", "agent_kind is immutable")
+		}
+		merged := mergeAgentCatalog(current, patch)
+		// AS-FSM-01: Validate state transition when status changes.
+		if merged.Status != current.Status && strings.TrimSpace(merged.Status) != "" {
+			if _, err := u.agentSM.Transition(ParseAgentState(current.Status), agentEventForTarget(ParseAgentState(merged.Status))); err != nil {
+				return apierror.BadRequest("AGENT", "invalid status transition from "+current.Status+" to "+merged.Status)
+			}
+		}
+		settings := withSettingDefaults(settingsFromAgentInput(merged))
+		settings.AgentID = id
+		// P0 root-fix: columns the fat Update API cannot express are inherited
+		// from the persisted row instead of being reset to zero/defaults by the
+		// full-row upsert (see inheritAPIUncoveredSettings).
+		inheritAPIUncoveredSettings(&settings, current.Settings)
+		if err := validateAgentUpdate(txCtx, u, &merged, &settings); err != nil {
+			return err
+		}
+		files := merged.Files
+		if len(files) == 0 {
+			files = current.Files
+		} else {
+			files = withFileDefaults(files)
+			for i := range files {
+				files[i].AgentID = id
+			}
+		}
+		merged.Settings = &settings
+		merged.Files = files
+		HydrateAgentKind(&merged)
+		overlay := extractConfigJSONKeys(patch.ConfigJSON, "evaluation", "knowledge")
+		if overlay == "{}" {
+			overlay = extractConfigJSONKeys(current.ConfigJSON, "evaluation", "knowledge")
+		}
+		merged.ConfigJSON = overlay
 		if _, err := u.writer.UpdateAgent(txCtx, merged); err != nil {
 			return err
 		}

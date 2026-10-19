@@ -41,18 +41,44 @@ describe('normalizeRuntimeSettingsFromWire', () => {
 
   it('applies numeric defaults', () => {
     const settings = normalizeRuntimeSettingsFromWire({ agentId: 'a1' });
-    expect(settings?.subagents_max_concurrency).toBe(20);
+    // Fallbacks mirror biz.DefaultAgentRuntimeSettings (proto3 omits zero
+    // values on the wire — a wrong fallback would display ≠ stored and the
+    // next save would persist the displayed value).
+    expect(settings?.subagents_max_concurrency).toBe(5);
     expect(settings?.memory_max_chunk_length).toBe(1000);
     expect(settings?.heartbeat_interval_minutes).toBe(30);
   });
 
-  it('applies boolean defaults', () => {
+  it('applies boolean defaults aligned with backend', () => {
     const settings = normalizeRuntimeSettingsFromWire({ agentId: 'a1' });
-    expect(settings?.self_evolve).toBe(true);
+    expect(settings?.self_evolve).toBe(false);
     expect(settings?.memory_enabled).toBe(true);
     expect(settings?.heartbeat_enabled).toBe(false);
     expect(settings?.intent_pass_enabled).toBe(true);
     expect(settings?.tools_profile).toBe('coding');
+    // Evolution switches default OFF on the backend (opt-in capabilities).
+    expect(settings?.evolution_self_evolve).toBe(false);
+    expect(settings?.evolution_skill_evolve).toBe(false);
+    expect(settings?.evolution_metrics_enabled).toBe(false);
+    expect(settings?.evolution_suggestions_enabled).toBe(false);
+  });
+
+  it('defaults tools deny list to the backend framework-memory deny set', () => {
+    const settings = normalizeRuntimeSettingsFromWire({ agentId: 'a1' });
+    expect(settings?.tools_deny_json).toBe(
+      '["memory_add","memory_update","memory_delete","memory_search","memory_load"]',
+    );
+  });
+
+  it('round-trips L2/L3 recall budget and provenance fields', () => {
+    const settings = normalizeRuntimeSettingsFromWire({
+      l2RecallBudgetTokens: 400,
+      l3RecallBudgetTokens: 1200,
+      l3InjectProvenance: true,
+    });
+    expect(settings?.l2_recall_budget_tokens).toBe(400);
+    expect(settings?.l3_recall_budget_tokens).toBe(1200);
+    expect(settings?.l3_inject_provenance).toBe(true);
   });
 });
 

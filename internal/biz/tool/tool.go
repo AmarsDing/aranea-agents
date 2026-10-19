@@ -335,6 +335,17 @@ type ToolReader interface {
 	ListToolCatalogEntries(ctx context.Context, keys []string) ([]ToolCatalogEntry, error)
 }
 
+// EffectiveToolsCatalogLister is an OPTIONAL lean-catalog capability of the
+// tool registry repo (P3-1, 2026-10-19): a single full-scan list query without
+// SearchTools' COUNT/SUMMARY/stats aggregates, which the runtime effective
+// computation never consumes (buildAgentEffectiveTools reads only Items).
+// Consumers type-assert for it and fall back to SearchTools when absent
+// (legacy test fakes), so it is deliberately NOT part of ToolReader.
+// Stability:evolving
+type EffectiveToolsCatalogLister interface {
+	ListAllToolsForEffective(ctx context.Context) ([]Tool, error)
+}
+
 // Stability:stable
 type ToolWriter interface {
 	CreateTool(ctx context.Context, in ToolUpsertInput) (Tool, error)
@@ -479,7 +490,7 @@ func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListR
 	if err != nil {
 		return ToolListResult{}, err
 	}
-	result.Items = enrichToolList(result.Items, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
+	result.Items = enrichToolList(result.Items, LoadWebResearchPlatform(ctx, u.sys, u.lg), CheckerToReadinessFunc(u.webResChecker))
 	return result, nil
 }
 
@@ -491,7 +502,7 @@ func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error) {
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
+	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys, u.lg), CheckerToReadinessFunc(u.webResChecker))
 	return t, nil
 }
 
@@ -530,7 +541,7 @@ func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, err
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
+	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys, u.lg), CheckerToReadinessFunc(u.webResChecker))
 	return t, nil
 }
 
@@ -555,7 +566,7 @@ func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput)
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
+	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys, u.lg), CheckerToReadinessFunc(u.webResChecker))
 	return t, nil
 }
 

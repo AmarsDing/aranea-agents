@@ -36,6 +36,7 @@ type (
 	ToolOverrideWriter       = tool.ToolOverrideWriter
 	ToolSyncer               = tool.ToolSyncer
 	ToolRegistryReader       = tool.ToolRegistryReader
+	EffectiveToolsCatalogLister = tool.EffectiveToolsCatalogLister
 	ToolQualityStat          = tool.ToolQualityStat
 	ToolQualityStatsReader   = tool.ToolQualityStatsReader
 	ToolUsecase              = tool.ToolUsecase

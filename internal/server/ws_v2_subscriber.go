@@ -14,9 +14,9 @@ import (
 // subscribed to a given spirit_session_id.
 //
 // Each v2 Event is wrapped in a wsEnvelope{Type:"v2_event"} before being pushed
-// to the hub. The v2 frontend will consume the envelope's payload directly;
-// the legacy v1 frontend ignores events with type="v2_event" (it only
-// recognizes v1 ActivityEvent shapes pushed via the existing activityEventPump).
+// to the hub. The v2 frontend consumes the envelope's payload directly; the
+// legacy v1 push path (ActivityEvent via activityEventPump) was removed in
+// Phase 3b-D Tier 4, so "v2_event" is the only chat-event envelope on the wire.
 //
 // Phase 1: created and tested standalone (not wired via Wire). Production
 // wiring will be done in a follow-up once V2Bus is injected into the Wire
@@ -150,11 +150,11 @@ func (s *WSV2Subscriber) Close() error {
 // subscribers can route without digging into unexported spiritSessionID
 // fields inside the payload (E2E-P1-06).
 //
-// Phase 2 frontend will consume `payload` directly; v1 frontend will ignore
-// events with `type == "v2_event"` (it only recognizes v1 ActivityEvent shapes
-// pushed via the existing activityEventPump in ws_io_pump.go).
+// The v2 frontend consumes `payload` directly. The v1 ActivityEvent push path
+// (activityEventPump in the removed ws_io_pump.go) was retired in Phase 3b-D
+// Tier 4; only "v2_event" envelopes carry chat events now.
 type wsEnvelope struct {
-	Type      string `json:"type"`                 // "v2_event" or "v1_activity_event"
+	Type      string `json:"type"`                 // 恒为 "v2_event"（v1 推送路径已于 Phase 3b-D Tier 4 移除）
 	Kind      string `json:"kind"`                 // EventKind value (e.g. "task.created")
 	SessionID string `json:"session_id,omitempty"` // SpiritSessionID for routing
 	EventID   string `json:"event_id,omitempty"`   // B-06 outbox cursor for reconnect replay

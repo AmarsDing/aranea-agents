@@ -70,7 +70,8 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     overridesLoading.value = true;
     try {
       overrides.value = await toolsStore.fetchOverrides(key);
-    } catch {
+    } catch (err) {
+      console.warn('[toolDetail] loadOverrides failed:', err);
       overrides.value = [];
     } finally {
       overridesLoading.value = false;
@@ -84,7 +85,10 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     try {
       const res = await toolsStore.fetchToolRuns(key, { page: 1, page_size: 20 });
       recentRuns.value = res.items;
-    } catch {
+    } catch (err) {
+      // 失败回退空态并保持可重试（tab 懒加载标记不置位前的失败会在下次进入重试）；
+      // warn 预警避免与真「无调用记录」不可区分。
+      console.warn('[toolDetail] loadRecentRuns failed:', err);
       recentRuns.value = [];
     } finally {
       runsLoading.value = false;
@@ -152,17 +156,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     open.value = false;
   }
 
-  /** 强制刷新当前 tab 的远端数据（保存覆盖/配置后调用）。 */
-  async function refreshDetail() {
-    if (activeTab.value === 'overview') {
-      await loadRecentRuns();
-      return;
-    }
-    if (activeTab.value === 'agents') {
-      await Promise.all([loadAgentBindingSummary(), loadOverrides()]);
-    }
-  }
-
   /** 执行在线测试。失败抛错（UI 反馈由 Page 层编排，红线 #4）。 */
   async function runToolTest(): Promise<ToolTestResult> {
     const t = tool.value;
@@ -210,7 +203,8 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
         label: a.display_name || a.agent_key || a.id,
         value: a.id,
       }));
-    } catch {
+    } catch (err) {
+      console.warn('[toolDetail] loadAgentOptions failed:', err);
       agentOptions.value = [];
     } finally {
       agentsLoading.value = false;
@@ -328,7 +322,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     openDetail,
     updateTool,
     closeDetail,
-    refreshDetail,
     loadAgentBindingSummary,
     runToolTest,
     saveConfig,

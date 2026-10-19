@@ -261,6 +261,7 @@ export default {
   },
   chat: {
     runLongStallWarning: 'No progress detected. Stop?',
+    runStateRecovered: 'Synced latest run status',
     contextManuallyCompressed: 'Context manually compressed ({before} → {after})',
     contextNoCompactionNeeded: 'No context compaction needed',
     contextCompactFailed: 'Context compaction failed',

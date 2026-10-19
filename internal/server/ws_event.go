@@ -30,12 +30,12 @@ func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
 // replayOutbox pushes durable critical v2_event frames missed since lastEventID
 // (B-06). Session-scoped only; best-effort — failures are logged and ignored.
 func (s *WSServer) replayOutbox(wc *wsConn, sessionID, lastEventID string) {
-	if s == nil || s.outbox == nil || wc == nil || lastEventID == "" || sessionID == "" || sessionID == "*" {
+	if s == nil || s.outboxSweep.repo == nil || wc == nil || lastEventID == "" || sessionID == "" || sessionID == "*" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rows, err := s.outbox.ListAfter(ctx, sessionID, lastEventID, 0, defaultOutboxReplayLimit)
+	rows, err := s.outboxSweep.repo.ListAfter(ctx, sessionID, lastEventID, 0, defaultOutboxReplayLimit)
 	if err != nil {
 		s.lg.Warn("WS outbox replay failed",
 			loggateway.StepID("ws.outbox_replay"),

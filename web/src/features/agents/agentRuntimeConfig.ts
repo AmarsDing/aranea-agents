@@ -1,4 +1,11 @@
-/** Agent runtime form defaults and shared helpers (settings ↔ config_json). */
+/** Agent runtime form defaults and shared helpers (settings ↔ config_json).
+ *
+ * 默认值契约：defaultAgentRuntimeConfig 的 settings 域字段必须与后端
+ * internal/biz/agent_defaults.go DefaultAgentRuntimeSettings 逐一对齐。
+ * 无 settings 行的存量/新建 agent 从 config_json（多为 {}）hydrate，表单默认值即
+ * 展示值、并在首次保存时全量写回 settings——任何偏差都是 display≠stored 漂移。
+ * 后端默认值变更时同步此处。已知例外：code_executor_type 前端固定 'local'
+ * （UI 仅暴露具体执行器，无 auto 选项；后端 ''=auto 优先 docker），见报告 F17。 */
 
 import type { EvolutionKey } from '../../components/agents/agentUi';
 
@@ -20,10 +27,10 @@ export function defaultAgentAdvancedSettings() {
 
 export function defaultAgentRuntimeConfig() {
   return {
-    self_evolve: true,
+    self_evolve: false,
     subagents: {
       enabled: true,
-      max_concurrency: 20,
+      max_concurrency: 5,
       max_generation_depth: 1,
       max_children_per_agent: 5,
       archive_after_minutes: 60,
@@ -37,7 +44,9 @@ export function defaultAgentRuntimeConfig() {
       profile: 'coding',
       tool_call_prefix: '',
       allow: [] as string[],
-      deny: [] as string[],
+      // Mirrors biz.DefaultToolsDenyFrameworkMemory（见 internal/biz/agent_types.go）：
+      // working_memory 模式下框架 memory 工具默认 deny；空数组首次保存会清掉 deny 集。
+      deny: ['memory_add', 'memory_update', 'memory_delete', 'memory_search', 'memory_load'] as string[],
       concurrent_allow: [] as string[],
       retry: {
         enabled: true,
@@ -63,10 +72,10 @@ export function defaultAgentRuntimeConfig() {
       summary_keep_turns: 4,
       compress_provider: '',
       compress_model: '',
-      truncate_strategy: 'summary',
+      truncate_strategy: 'hybrid',
       inject_l1: true,
       inject_l3: true,
-      inject_l4: true,
+      inject_l4: false,
       l3_max_chunks: 5,
       l4_max_paths: 3,
       snapshot_mode: 'on_warning',
@@ -84,7 +93,7 @@ export function defaultAgentRuntimeConfig() {
       episode_min_importance: 0.3,
       index_enabled: true,
       index_embedding_model: '',
-      recall_enabled: false,
+      recall_enabled: true,
       recall_max: 3,
       retention_days: 90,
       archive_after_days: 30,
@@ -140,10 +149,10 @@ export function defaultAgentRuntimeConfig() {
       grounded_only: false,
     },
     evolution: {
-      self_evolve: true,
-      skill_evolve: true,
-      evolution_metrics_enabled: true,
-      evolution_suggestions_enabled: true,
+      self_evolve: false,
+      skill_evolve: false,
+      evolution_metrics_enabled: false,
+      evolution_suggestions_enabled: false,
     } as Record<EvolutionKey, boolean>,
     evolution_guardrails: {
       max_change_per_period: 0.1,
@@ -161,7 +170,7 @@ export function defaultAgentRuntimeConfig() {
     skill_load_mode: 'progressive',
     code_executor_type: 'local',
     intent_pass: {
-      enabled: false,
+      enabled: true,
     },
     spirit: {
       max_concurrent_teams: 3,

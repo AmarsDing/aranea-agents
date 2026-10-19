@@ -301,6 +301,14 @@ func (t *chatRunStatusTracker) ResolveAwaitMeta(ctx context.Context, sessionID, 
 }
 
 // ClearAwaitingRunStateSync clears awaiting run state synchronously.
+//
+// P2-2 (2026-10-19): implemented via the atomic PatchSessionState delete
+// (jsonb_remove chain in a single UPDATE) instead of Get+delete+Save — the
+// previous read-modify-write could silently drop concurrent async patches
+// (e.g. the next run's await markers landing between our Get and our Save,
+// then being overwritten by the stale snapshot). This is exactly the
+// lost-update anti-pattern PatchSessionState exists to avoid. Callers on the
+// resume-await hot path no longer need the surrounding state to be stable.
 func (t *chatRunStatusTracker) ClearAwaitingRunStateSync(ctx context.Context, sessionID string) error {
 	if t == nil || t.sessions == nil {
 		return nil
@@ -309,24 +317,12 @@ func (t *chatRunStatusTracker) ClearAwaitingRunStateSync(ctx context.Context, se
 	if sessionID == "" {
 		return nil
 	}
-	state, err := t.sessions.GetSessionState(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	if len(state) == 0 {
-		return nil
-	}
 	t.ClearAwaitMetaCache(sessionID)
-	delete(state, stateKeyRunID)
-	delete(state, stateKeyRunStatus)
-	delete(state, stateKeyRunError)
-	delete(state, stateKeyRunUpdatedAt)
-	delete(state, stateKeyAwaitRunID)
-	delete(state, stateKeyAwaitSince)
-	delete(state, stateKeyAwaitKind)
-	delete(state, stateKeyAwaitToolKey)
-	delete(state, stateKeyAwaitToolCallID)
-	return t.sessions.SaveSessionState(ctx, sessionID, state)
+	return t.sessions.PatchSessionState(ctx, sessionID, nil, []string{
+		stateKeyRunID, stateKeyRunStatus, stateKeyRunError, stateKeyRunUpdatedAt,
+		stateKeyAwaitRunID, stateKeyAwaitSince, stateKeyAwaitKind,
+		stateKeyAwaitToolKey, stateKeyAwaitToolCallID,
+	})
 }
 
 // ClearAwaitingRunState clears awaiting run state asynchronously.

@@ -27,6 +27,10 @@ const (
 const DeliverableStateKey = "deliverable"
 
 // ExecutionEngineType selects the graph execution strategy.
+//
+// ADR-86（`docs/development/86-adr-dual-dag-engine-scope.md` D2/D5）：BSP 与
+// DAG 是同一 vendored 引擎的两个运行模式，不构成"第三引擎"；跨 Team/PlanStep
+// 波次调度唯一归 internal/service.PlanExecutor（D1），禁止另起调度器。
 type ExecutionEngineType string
 
 const (

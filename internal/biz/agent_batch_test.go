@@ -127,7 +127,46 @@ func TestReorderAgents_NotPersisted(t *testing.T) {
 	}
 }
 
-func TestMergeAgentCatalog_PreservesTaxonomyAndMission(t *testing.T) {
+// mergeAgentCatalog FULL-REPLACE contract: proto-carried catalog fields are
+// wholesale-replaced by the patch (a sparse patch clears them); org-owned
+// fields (Mission/DomainPath/Roles) are not proto-carried and are inherited.
+// Full-replace, highest-risk half: a sparse patch (zero values) must clear the
+// proto-carried Provider/Model/Icon/ContextWindow/BudgetMonthlyCents to zero —
+// that is the contract the frontend's full-form submit relies on, and any
+// "helpful" preserve of these fields silently resurrects cleared values.
+// The flip side: required-or-enum fields (DisplayName/Status/SystemPromptMode)
+// treat empty as "not provided" and keep the stored value.
+func TestMergeAgentCatalog_SparsePatchFullReplace(t *testing.T) {
+	current := Agent{
+		ID:                 "a1",
+		AgentKey:           "k1",
+		DisplayName:        "Kept Name",
+		Status:             "active",
+		SystemPromptMode:   "append",
+		Provider:           "openai",
+		Model:              "gpt-4o",
+		Icon:               "icon://bot",
+		ContextWindow:      128000,
+		BudgetMonthlyCents: 9900,
+	}
+	got := mergeAgentCatalog(current, Agent{})
+	if got.Provider != "" || got.Model != "" || got.Icon != "" {
+		t.Fatalf("proto-carried string fields must be cleared: provider=%q model=%q icon=%q", got.Provider, got.Model, got.Icon)
+	}
+	if got.ContextWindow != 0 || got.BudgetMonthlyCents != 0 {
+		t.Fatalf("proto-carried numeric fields must be cleared: context_window=%d budget_monthly_cents=%d", got.ContextWindow, got.BudgetMonthlyCents)
+	}
+	if got.DisplayName != "Kept Name" || got.Status != "active" || got.SystemPromptMode != "append" {
+		t.Fatalf("required-or-enum fields must be kept on empty patch: name=%q status=%q prompt_mode=%q",
+			got.DisplayName, got.Status, got.SystemPromptMode)
+	}
+}
+
+// Taxonomy/inherit half of the same contract: a sparse patch clears
+// PositionKey/AgentVariant (full-replace), while org-owned
+// MissionStatement/DomainPath/Roles/MetadataJSON are inherited, never cleared
+// (explicit patch values for them are still adopted).
+func TestMergeAgentCatalog_FullReplaceContract(t *testing.T) {
 	current := Agent{
 		ID:               "a1",
 		AgentKey:         "k1",
@@ -146,9 +185,16 @@ func TestMergeAgentCatalog_PreservesTaxonomyAndMission(t *testing.T) {
 	if got.AgentKey != "k1" {
 		t.Fatalf("immutable AgentKey mutated: %q", got.AgentKey)
 	}
-	if got.PositionKey != "ops/sre" || got.AgentVariant != "general" {
-		t.Fatalf("taxonomy dropped: key=%q variant=%q", got.PositionKey, got.AgentVariant)
+	// CONTRACT (2026-10-18): proto-carried catalog fields are FULL-REPLACE on
+	// the Update/merge path — a sparse patch (zero values) clears them. The
+	// frontend always echoes the full proto Agent, so this is safe; but the
+	// merge itself must no longer "helpfully" preserve them (that was F2:
+	// position changes could never be cleared).
+	if got.PositionKey != "" || got.AgentVariant != "" {
+		t.Fatalf("taxonomy should be cleared by sparse patch: key=%q variant=%q", got.PositionKey, got.AgentVariant)
 	}
+	// NOT proto-carried: maintained through organization-module paths, so the
+	// catalog merge must keep them (inherit guard) or every update wipes them.
 	if got.MissionStatement != "keep the lights on" || got.DomainPath != "运维/SRE" {
 		t.Fatalf("mission dropped: statement=%q path=%q", got.MissionStatement, got.DomainPath)
 	}
@@ -164,8 +210,14 @@ func TestMergeAgentCatalog_PreservesTaxonomyAndMission(t *testing.T) {
 		MissionStatement: "ship code",
 		Roles:            []string{"coordinator"},
 	})
-	if patched.PositionKey != "eng/backend" || patched.MissionStatement != "ship code" {
-		t.Fatalf("explicit patch not applied: %+v", patched)
+	if patched.PositionKey != "eng/backend" {
+		t.Fatalf("explicit taxonomy patch not applied: %+v", patched)
+	}
+	// Mission/roles are NOT proto-carried: an explicit value in the patch is
+	// still adopted (write paths that DO set them must not be neutered), but
+	// absence never clears (verified above).
+	if patched.MissionStatement != "ship code" {
+		t.Fatalf("explicit mission patch not applied: %+v", patched)
 	}
 	if len(patched.Roles) != 1 || patched.Roles[0] != "coordinator" {
 		t.Fatalf("roles=%v", patched.Roles)

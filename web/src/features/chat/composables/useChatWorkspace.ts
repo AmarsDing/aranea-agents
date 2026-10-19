@@ -144,8 +144,15 @@ export function useChatWorkspace() {
   const sessionTree = useSessionTree();
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
-  const { runStatus, runMeta, applyFromV2RunStatus, onSessionSwitch, refreshRunStatus, forceSetRunStatus } =
-    runStatusCtrl;
+  const {
+    runStatus,
+    runMeta,
+    applyFromV2RunStatus,
+    onSessionSwitch,
+    refreshRunStatus,
+    refreshRunStatusForced,
+    forceSetRunStatus,
+  } = runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(appStore);
   const {
@@ -389,6 +396,21 @@ export function useChatWorkspace() {
     await refreshRunStatus(sid);
   }
 
+  // WS 静默期主动对账（供发送态 watchdog）：绕过 WS 权威守卫直接 REST 核对。
+  // 契约对齐「仅后端确认终态才复位 sending」（useChatSender.reconcileRunState）：
+  // 无选中会话时（发送中会话被删/选中态清空的边缘态）绝不能走
+  // refreshRunStatusForced(undefined) 的 resetRunStatus 分支——那把 runStatus 本地
+  // 置 idle 未经任何后端确认，watchdog 读到后会误判终态并复位 sending。
+  // 这里直接 return 保留 sending 等待下轮，与网络失败不复位是同一契约的另一面；
+  // reset 语义仅限普通 refresh / 会话真正清空路径（refreshRunStatusForUi）。
+  async function reconcileRunStatusForUi(): Promise<string | null> {
+    const sid = selectedSessionForUi.value?.id;
+    // null = 未获后端确认（REG-2）：watchdog 读到 null 必须保持 sending 等待下轮，
+    // 绝不能把本地遗留的 runStatus 默认值当作后端权威终态来复位。
+    if (!sid) return null;
+    return await refreshRunStatusForced(sid);
+  }
+
   const awaitSubmit = createSubmitHandlers({
     resolveSessionId: () => sessionStore.currentSessionId() ?? undefined,
     inputText,
@@ -518,6 +540,7 @@ export function useChatWorkspace() {
     onNewSession: (title?: string) => entityNav.onNewSession(title),
     makeSessionTitle,
     refreshRunStatus: refreshRunStatusForUi,
+    reconcileRunStatus: reconcileRunStatusForUi,
     setRunStatus: forceSetRunStatus,
     submitAwaitingReply: awaitSubmit.submitAwaitingReply,
     submitToolConfirm: awaitSubmit.submitToolConfirm,

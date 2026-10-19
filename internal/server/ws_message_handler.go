@@ -168,7 +168,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		if err := s.turnExecutor.ExecuteTurn(turnCtx, input); err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), input.Content)
-			s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error ActivityEvent published",
+			s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error notice published",
 				loggateway.StepID("ws.error_activity_published"),
 				loggateway.Any("request_id", requestID))
 		}

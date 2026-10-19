@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -175,6 +176,29 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 	// safego 提供 recover + PanicHook 告警。
 	safego.GoBackground("sequencer-v2-publish", s.publishLoop)
 	s.persist.start(cfg.disableReplayLoop)
+
+	// AS-EVT-01 (2026-10-19 review fix): register as the bus-level critical
+	// delegate so critical events published DIRECTLY to the bus by
+	// non-Sequencer producers (service.PublishRunStatusFull, the session status
+	// publisher, pause/resume gateways) are routed through this Sequencer's
+	// publish pipeline — they receive a delivery Seq and a durable
+	// event_delivery_outbox row like every other critical event, instead of a
+	// live-only BlockUpTo with no replay coverage. The Sequencer's own fan-out
+	// bypasses the hook via fanoutBus (V2Bus.Fanout), so no publish recursion.
+	// Last registration wins when several Sequencers share a bus (test setups).
+	if setter, ok := bus.(interface{ SetCriticalDelegate(event.CriticalDelegate) }); ok {
+		if _, canFanout := bus.(fanoutBus); canFanout {
+			setter.SetCriticalDelegate(s.PublishCritical)
+		} else {
+			// REG-1 (final-review 2026-10-19): on a bus that implements
+			// SetCriticalDelegate but NOT fanoutBus, registering would make
+			// s.fanout fall back to s.bus.Publish and re-enter this delegate for
+			// every critical event — an unbounded self-enqueue livelock. Only
+			// V2Bus implements both today; leave the delegate unset so those
+			// events keep plain BlockUpTo semantics instead of livelocking.
+			slg.Warn("critical delegate not registered: bus lacks Fanout; terminal frames stay BlockUpTo-only")
+		}
+	}
 	return s
 }
 
@@ -402,6 +426,31 @@ func (s *Sequencer) flushStreaming(ev *biz.StepStreamingEvent) {
 // avoids leaving the frontend stuck in a non-terminal state when the DB is
 // temporarily unavailable.
 //
+// Best-effort WBPF is an INTENTIONAL design decision, not an accident
+// (P2-1, 2026-10-19): strict WBPF (block publish until persist confirmed)
+// was the legacy mode and was retired by ADR-02 — hiding a completed turn
+// from the UI for the duration of a DB outage is strictly worse UX than a
+// frontend that may momentarily lead the DB. The residual consistency window
+// (all persist retries fail AND the client refreshes during the outage) is
+// covered by an explicit four-layer recovery stack, deepest first:
+//  1. Async persist retry: 5 exponential attempts (~1.5s backoff budget
+//     — 100+200+400+800ms sleeps, no sleep after the final attempt;
+//     excludes per-attempt execution time) → dead-letter (memory ring +
+//     durable event_dead_letter with replay worker).
+//  2. session_runs: written synchronously in the turn defer chain, fully
+//     outside the event pipeline — the authoritative terminal marker for
+//     REST reads.
+//  3. Durable outbox: insertCriticalOutbox (via publishCritical below) runs
+//     after the sync persist attempt on its OWN fresh 2s ctx, decoupled from
+//     the task-level 5s ctx that the pre-WBPF drain may already have
+//     exhausted — so the terminal frame lands in event_delivery_outbox even
+//     on persist failure → reconnect replay (ListAfter) + P1-3 sweeper.
+//  4. Frontend watchdog (P1-2): 90s of run-event silence while sending →
+//     forced REST reconcile (refreshRunStatusForced); the UI self-heals from
+//     the session_runs truth in layer 2.
+//
+// Do NOT "strictify" this path without revisiting ADR-02.
+//
 // Non-terminal events (created/updated/streaming) keep the original async
 // persist + sync publish flow for low latency.
 func (s *Sequencer) processTask(task publishTask) {
@@ -450,7 +499,7 @@ func (s *Sequencer) processTask(task publishTask) {
 			persistCancel()
 			if err == nil {
 				// Sync persist succeeded — durable outbox then publish (B-06).
-				s.publishCritical(ctx, task.event)
+				s.publishCritical(task.event)
 				return
 			}
 			// Sync persist failed — log and fall through to async retry + publish.
@@ -474,17 +523,109 @@ func (s *Sequencer) processTask(task publishTask) {
 		}
 	}
 	if biz.IsCriticalDeliveryEvent(task.event) {
-		s.publishCritical(ctx, task.event)
+		s.publishCritical(task.event)
 		return
 	}
 	// Sync bus publish.
 	s.bus.Publish(ctx, task.event)
 }
 
-// publishCritical writes the durable outbox row (best-effort) then fans out on the bus.
-func (s *Sequencer) publishCritical(ctx context.Context, e biz.Event) {
-	outboxID := s.insertCriticalOutbox(ctx, e)
+// fanoutBus is implemented by *event.V2Bus: Fanout skips the critical
+// delegate (which points back at this Sequencer) so critical events handled
+// here are fanned out exactly once instead of re-entering the delegate.
+type fanoutBus interface {
+	Fanout(ctx context.Context, e biz.Event)
+}
+
+// fanout publishes e to the bus without re-entering the critical delegate.
+//
+// Fallback invariant (REG-1): the s.bus.Publish path below is safe ONLY because
+// NewSequencer refuses to register the critical delegate when the bus lacks
+// fanoutBus — keep those two checks coupled. Registering the delegate on such
+// a bus would re-enter PublishCritical here on every critical event (livelock).
+func (s *Sequencer) fanout(ctx context.Context, e biz.Event) {
+	if fb, ok := s.bus.(fanoutBus); ok {
+		fb.Fanout(ctx, e)
+		return
+	}
 	s.bus.Publish(ctx, e)
+}
+
+// PublishCritical is the V2Bus critical delegate (registered in NewSequencer):
+// it routes critical events that producers published DIRECTLY to the bus —
+// service-level terminal/reset-required run_status, session_status_changed,
+// pause/resume frames — through the Sequencer's FIFO publish queue so they
+// receive a delivery Seq and a durable outbox row like every other critical
+// event (AS-EVT-01). Non-critical events never reach this path.
+//
+// Backpressure semantics: unlike ephemeral streaming/heartbeat frames (which
+// may drop on ctx cancel), a critical enqueue blocks up to
+// persistEnqueueTimeout on a cancel-detached ctx. If the queue is still full
+// past that window the event is delivered synchronously via the outbox
+// fallback (publishCriticalDirect) — terminal/reset-required frames are never
+// silently dropped; the outbox row is the floor, not the queue.
+func (s *Sequencer) PublishCritical(ctx context.Context, e biz.Event) {
+	if e == nil {
+		return
+	}
+	// Y6: same closed-check + send critical section as Publish.
+	s.pubMu.RLock()
+	defer s.pubMu.RUnlock()
+	if s.closed.Load() {
+		// Shutdown in flight: the queue path is gone; deliver synchronously so
+		// a terminal frame published during Close still lands (best-effort).
+		s.publishCriticalDirect(e)
+		return
+	}
+	enqueueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.persistEnqueueTimeout)
+	defer cancel()
+	select {
+	case s.publishQueue <- publishTask{event: e, persist: false, enqueuedAt: time.Now()}:
+	case <-enqueueCtx.Done():
+		// Queue stalled past the grace window: fall back to synchronous
+		// outbox + fan-out so the critical frame is never lost.
+		if ok, suppressed := s.throttles.enqueueTimeoutErr.Allow(); ok {
+			s.lg.Error("critical event enqueue timeout, delivering via direct outbox fallback",
+				stallFields(suppressed,
+					loggateway.Str("kind", string(e.EventKind())), loggateway.Err(enqueueCtx.Err()))...)
+		}
+		s.publishCriticalDirect(e)
+	}
+}
+
+// publishCriticalDirect delivers a critical event synchronously on the
+// caller's goroutine (outbox row → fan-out → MarkPublished), bypassing the
+// publish queue. Used only when the queue is unavailable (Sequencer closed
+// or saturated past the enqueue timeout).
+func (s *Sequencer) publishCriticalDirect(e biz.Event) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	outboxID := s.insertCriticalOutbox(ctx, e)
+	s.fanout(ctx, e)
+	if outboxID != "" && s.outbox != nil {
+		if err := s.outbox.MarkPublished(ctx, outboxID, time.Now().UTC()); err != nil {
+			s.lg.Warn("outbox mark published failed",
+				loggateway.Str("kind", string(e.EventKind())),
+				loggateway.Err(err))
+		}
+	}
+}
+
+// publishCritical writes the durable outbox row (best-effort) then fans out.
+//
+// Recovery-stack fix (P1 review, 2026-10-19): the outbox Insert, fan-out and
+// MarkPublished deliberately run on an independent fresh 2s ctx instead of
+// processTask's 5s task ctx. That budget is routinely consumed before this
+// point by the pre-WBPF drain wait (up to ~2s enqueue grace + ~5s drain
+// wait), so an inherited ctx is often already expired exactly when the DB is
+// backing up — the failure mode the outbox layer exists to cover. A fresh
+// short ctx keeps the layer-3 outbox row writable without letting a stalled
+// DB stall the publish worker for longer.
+func (s *Sequencer) publishCritical(e biz.Event) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	outboxID := s.insertCriticalOutbox(ctx, e)
+	s.fanout(ctx, e)
 	if outboxID != "" && s.outbox != nil {
 		if err := s.outbox.MarkPublished(ctx, outboxID, time.Now().UTC()); err != nil {
 			s.lg.Warn("outbox mark published failed",

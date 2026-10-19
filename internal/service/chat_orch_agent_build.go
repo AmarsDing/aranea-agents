@@ -101,9 +101,15 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		customTools = d.customToolFunc(ctx, p.Agent)
 	}
 
-	// Parallel fetch: GetEffectiveTools, computeSkillHash, computeMCPHash
-	// are independent DB queries. Running them concurrently reduces BUILD
-	// phase latency from ~3x sequential DB round-trips to ~1x.
+	// Parallel fetch: GetEffectiveTools and computeSkillHash are independent
+	// DB queries. Running them concurrently reduces BUILD phase latency from
+	// ~2x sequential DB round-trips to ~1x.
+	//
+	// P3-1 (2026-10-19): computeMCPHash is deliberately NOT in this errgroup —
+	// it only needs the effective-tools result, so it runs after eg.Wait() on
+	// cachedEffTools via the hash-only path (EffectiveServersForHash), saving
+	// the 7-query duplicate effective-tools resolution + C-05 decryption that
+	// EffectiveServersForAgent performed every turn.
 	var cachedEffTools *biz.AgentEffectiveTools
 	var skillHash, mcpHash string
 
@@ -120,15 +126,14 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		skillHash = d.computeSkillHash(egCtx)
 		return nil
 	})
-	eg.Go(func() error {
-		mcpHash = d.computeMCPHash(egCtx, p.Agent.ID)
-		return nil
-	})
 	if err := eg.Wait(); err != nil {
 		d.lg.Warn("agent build hash computation failed, hashes default to empty",
 			loggateway.StepID("chat_orch_agent_build.hash"),
 			loggateway.Err(err))
 	}
+
+	// Depends on the GetEffectiveTools arm above; reuses cachedEffTools.
+	mcpHash = d.computeMCPHash(ctx, p.Agent.ID, cachedEffTools)
 
 	// Compute tool hash from cached result (depends on GetEffectiveTools above).
 	toolHash := d.computeToolHashFromCached(cachedEffTools)
@@ -254,13 +259,25 @@ func (d *chatAgentBuildDirector) computeSkillHash(ctx context.Context) string {
 
 // computeMCPHash produces a content hash from the agent's effective MCP servers.
 // When MCP servers are added/removed/reconfigured, this hash changes and invalidates the cache.
-func (d *chatAgentBuildDirector) computeMCPHash(ctx context.Context, agentID string) string {
+//
+// P3-1 (2026-10-19): when eff is non-nil (the effective-tools result already
+// resolved this turn), the hash-only path EffectiveServersForHash reuses it —
+// no duplicate GetEffectiveTools round and no C-05 decryption. A nil eff
+// (e.g. narrow test stubs or a failed effective-tools arm) falls back to the
+// legacy full resolution so the hash stays correct rather than silently empty.
+func (d *chatAgentBuildDirector) computeMCPHash(ctx context.Context, agentID string, eff *biz.AgentEffectiveTools) string {
 	if d.td.Persist.AgentMCP == nil {
 		return ""
 	}
-	servers, err := d.td.Persist.AgentMCP.EffectiveServersForAgent(ctx, agentID)
-	if err != nil {
-		return ""
+	var servers []biz.EffectiveMCPServer
+	if eff != nil {
+		servers = d.td.Persist.AgentMCP.EffectiveServersForHash(ctx, agentID, eff)
+	} else {
+		var err error
+		servers, err = d.td.Persist.AgentMCP.EffectiveServersForAgent(ctx, agentID)
+		if err != nil {
+			return ""
+		}
 	}
 	entries := make([]versionHashEntry, len(servers))
 	for i, s := range servers {

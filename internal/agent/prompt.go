@@ -36,6 +36,11 @@ type Deps struct {
 // <team_execution_contract> (spirit orchestration face, LBG-1) →
 // <permission_state> → <internal_config> files → optional memory self-marking.
 //
+// working_contract and team_execution_contract are mutually exclusive
+// (ShouldAttachTeamExecutionContract): 8 write slots, at most 7 segments per
+// call. The caller (trpc_build.go) additionally appends the static capability
+// cue and <project_agents_md> after this function returns.
+//
 // PGO-1-AGENT-01: a new optional categoryResponsibility parameter has been added.
 // When non-empty and PGO_CATEGORY_RESPONSIBILITY_INJECT is enabled, it is prepended
 // as a <role_responsibility source="category"> block BEFORE agent_description.

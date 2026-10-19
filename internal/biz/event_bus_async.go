@@ -18,7 +18,7 @@ const defaultHandleTimeout = 45 * time.Second
 type eventLogFields[T any] func(T) (sessionID, typeName, eventID string)
 
 // offerOption configures fallback behavior when the worker queue is full.
-// T is either ActivityEvent or contract.MonitorEvent.
+// T is either Event (v2 typed events) or contract.MonitorEvent.
 type offerOption[T any] struct {
 	// FallbackSync, when true, calls FallbackFn synchronously instead of
 	// dropping the event when the queue is full.
@@ -34,7 +34,7 @@ type offerOption[T any] struct {
 // Each event is handled in a dedicated goroutine with a timeout, preventing
 // a slow handler from blocking the queue drain loop.
 //
-// T is either ActivityEvent or contract.MonitorEvent. The logFields
+// T is either Event (v2 typed events) or contract.MonitorEvent. The logFields
 // callback extracts identifying fields for queue-full warnings, avoiding
 // type switches inside the generic worker.
 type asyncEventWorker[T any] struct {

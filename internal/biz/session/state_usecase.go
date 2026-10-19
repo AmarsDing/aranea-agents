@@ -43,6 +43,15 @@ func (uc *SessionStateUsecase) PatchSessionState(ctx context.Context, sessionID 
 	return uc.stateRepo.PatchSessionState(ctx, sessionID, sets, deletes)
 }
 
+// ApplyStateDelta applies one key-level delta via the atomic PatchSessionState
+// path (a single jsonb UPDATE — never a read-modify-write).
+//
+// P2-2 (2026-10-19): no production producer exists for this method yet (the
+// original finding assumed a StateDelta event pipeline; none is wired).
+// Ordering/fencing is therefore deferred (YAGNI): when a producer is added,
+// extend StateDelta with a monotonic Seq and enforce per-session ordinals at
+// the producer/dispatch layer — see the note on
+// biz.SessionTurnExtrasPort.ApplyStateDelta.
 func (uc *SessionStateUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta StateDelta) error {
 	if delta.Path == "" {
 		return nil

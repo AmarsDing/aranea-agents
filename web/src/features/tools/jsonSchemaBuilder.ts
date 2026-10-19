@@ -50,14 +50,32 @@ export function buildSchemaFromFields(rows: SchemaFieldRow[]): string {
   for (const row of rows) {
     const key = row.key.trim();
     if (!key) continue;
+    if (properties[key]) {
+      // 重复 key 会静默覆盖先前行——预警以便用户发现配置错误。
+      console.warn(`[jsonSchemaBuilder] duplicate field key "${key}" overridden`);
+    }
     const def: Record<string, unknown> = { type: row.type };
     if (row.title.trim()) def.title = row.title.trim();
     if (row.description.trim()) def.description = row.description.trim();
     if (row.enumValues.trim()) {
-      def.enum = row.enumValues
+      const items = row.enumValues
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      // number/integer 的 enum 必须保持数字语义，否则
+      // {"type":"integer","enum":[1,2,3]} 往返后变成 ["1","2","3"]（schema 语义错误）。
+      // boolean 同理："true"/"false" 转布尔，非法值保留原串并预警。
+      def.enum =
+        row.type === 'number' || row.type === 'integer'
+          ? items.map((s) => (s === '' || Number.isNaN(Number(s)) ? s : Number(s)))
+          : row.type === 'boolean'
+            ? items.map((s) => {
+                if (s === 'true') return true;
+                if (s === 'false') return false;
+                console.warn(`[jsonSchemaBuilder] invalid boolean enum value "${s}" for key "${key}"; kept as string`);
+                return s;
+              })
+            : items;
     }
     properties[key] = def;
     if (row.required) required.push(key);

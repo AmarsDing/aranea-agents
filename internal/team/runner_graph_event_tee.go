@@ -17,6 +17,10 @@ import (
 // republishes graph node lifecycle events as graph_stage system notices on
 // the event bus.
 //
+// ADR-86（`docs/development/86-adr-dual-dag-engine-scope.md` D4）：本 tee 与
+// internal/biz/graph_team_execution.go 构成仅有的两个受认可 team↔graph 镜像
+// 缝（封闭集）；notice 为 best-effort 非权威。新增镜像必须扩展这两个文件。
+//
 // Background (F-C): the team graph path runs a GraphAgent as the trpc runner
 // root (BuildTeamGraphRoot), bypassing trpcGraphRuntime.Run — the only place
 // an EventBridge converts framework graph events into graph_stage notices.

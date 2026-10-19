@@ -319,19 +319,13 @@ func wireGoldenCases() []wireGoldenCase {
 		}, []string{"GraphNode"}},
 		{"system.run_status", func() biz.Event {
 			return biz.NewRunStatusEvent("sess-1", "run-1", "running", map[string]any{"k": "v"})
-		}, []string{"RunID", "Status", "Meta"}},
+		}, []string{"RunID", "Status", "Meta", "Seq"}},
 		{"system.heartbeat", func() biz.Event {
 			return biz.NewHeartbeatEventWithMeta("sess-1", "hb", wireTestTime, map[string]any{"k": "v"})
 		}, []string{"Message", "Meta"}},
 		{"system.notice", func() biz.Event {
 			return biz.NewSystemNoticeEvent("sess-1", "cost_guard", "msg", map[string]any{"k": "v"})
 		}, []string{"NoticeType", "Message", "Meta", "Seq"}},
-		{"activity.bridge", func() biz.Event {
-			return biz.NewActivityBridgeEvent(biz.ActivityEvent{
-				Event:    biz.ActivityEventType("activity.updated"),
-				Activity: biz.Activity{ID: "act-1", SessionID: "sess-1"},
-			})
-		}, []string{"Event"}},
 	}
 }
 

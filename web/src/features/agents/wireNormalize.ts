@@ -67,9 +67,12 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
   if (Object.keys(w).length === 0) return undefined;
   return {
     agent_id: pickStrOpt(w, 'agentId', 'agent_id'),
-    self_evolve: pickBool(w, 'selfEvolve', 'self_evolve', true),
+    // Fallbacks must mirror biz.DefaultAgentRuntimeSettings exactly: proto3 JSON
+    // omits zero values, so a wrong fallback DISPLAYS a different value than what
+    // is stored — and the next save persists the displayed one (2026-10-18 fix).
+    self_evolve: pickBool(w, 'selfEvolve', 'self_evolve', false),
     subagents_enabled: pickBool(w, 'subagentsEnabled', 'subagents_enabled', true),
-    subagents_max_concurrency: pickNum(w, 'subagentsMaxConcurrency', 'subagents_max_concurrency', 20),
+    subagents_max_concurrency: pickNum(w, 'subagentsMaxConcurrency', 'subagents_max_concurrency', 5),
     subagents_max_generation_depth: pickNum(w, 'subagentsMaxGenerationDepth', 'subagents_max_generation_depth', 1),
     subagents_max_children_per_agent: pickNum(w, 'subagentsMaxChildrenPerAgent', 'subagents_max_children_per_agent', 5),
     subagents_archive_after_minutes: pickNum(w, 'subagentsArchiveAfterMinutes', 'subagents_archive_after_minutes', 60),
@@ -81,7 +84,14 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     tools_profile: pickStr(w, 'toolsProfile', 'tools_profile', 'coding'),
     tools_tool_call_prefix: pickStr(w, 'toolsToolCallPrefix', 'tools_tool_call_prefix', ''),
     tools_allow_json: pickStr(w, 'toolsAllowJson', 'tools_allow_json', '[]'),
-    tools_deny_json: pickStr(w, 'toolsDenyJson', 'tools_deny_json', '[]'),
+    // Mirrors biz.DefaultToolsDenyFrameworkMemory (framework memory tools are
+    // denied for business agents by default).
+    tools_deny_json: pickStr(
+      w,
+      'toolsDenyJson',
+      'tools_deny_json',
+      '["memory_add","memory_update","memory_delete","memory_search","memory_load"]',
+    ),
     tools_concurrent_allow_json: pickStr(w, 'toolsConcurrentAllowJson', 'tools_concurrent_allow_json', '[]'),
     tools_retry_enabled: pickBoolOpt(w, 'toolsRetryEnabled', 'tools_retry_enabled'),
     tools_retry_max_attempts: pickNumOpt(w, 'toolsRetryMaxAttempts', 'tools_retry_max_attempts'),
@@ -134,6 +144,9 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     l3_decay_interval_hours: pickNumOpt(w, 'l3DecayIntervalHours', 'l3_decay_interval_hours'),
     l3_archive_threshold: pickNumOpt(w, 'l3ArchiveThreshold', 'l3_archive_threshold'),
     l3_max_per_recall_chars: pickNumOpt(w, 'l3MaxPerRecallChars', 'l3_max_per_recall_chars'),
+    l2_recall_budget_tokens: pickNumOpt(w, 'l2RecallBudgetTokens', 'l2_recall_budget_tokens'),
+    l3_recall_budget_tokens: pickNumOpt(w, 'l3RecallBudgetTokens', 'l3_recall_budget_tokens'),
+    l3_inject_provenance: pickBoolOpt(w, 'l3InjectProvenance', 'l3_inject_provenance'),
     l4_enabled: pickBoolOpt(w, 'l4Enabled', 'l4_enabled'),
     l4_graph_inject_neighbors: pickBoolOpt(w, 'l4GraphInjectNeighbors', 'l4_graph_inject_neighbors'),
     l4_graph_max_neighbors: pickNumOpt(w, 'l4GraphMaxNeighbors', 'l4_graph_max_neighbors'),
@@ -150,10 +163,11 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     evo_system_prompt_max_appends: pickNumOpt(w, 'evoSystemPromptMaxAppends', 'evo_system_prompt_max_appends'),
     heartbeat_enabled: pickBool(w, 'heartbeatEnabled', 'heartbeat_enabled', false),
     heartbeat_interval_minutes: pickNum(w, 'heartbeatIntervalMinutes', 'heartbeat_interval_minutes', 30),
-    evolution_self_evolve: pickBool(w, 'evolutionSelfEvolve', 'evolution_self_evolve', true),
-    evolution_skill_evolve: pickBool(w, 'evolutionSkillEvolve', 'evolution_skill_evolve', true),
-    evolution_metrics_enabled: pickBool(w, 'evolutionMetricsEnabled', 'evolution_metrics_enabled', true),
-    evolution_suggestions_enabled: pickBool(w, 'evolutionSuggestionsEnabled', 'evolution_suggestions_enabled', true),
+    // Evolution switches: backend defaults are all OFF (opt-in capabilities).
+    evolution_self_evolve: pickBool(w, 'evolutionSelfEvolve', 'evolution_self_evolve', false),
+    evolution_skill_evolve: pickBool(w, 'evolutionSkillEvolve', 'evolution_skill_evolve', false),
+    evolution_metrics_enabled: pickBool(w, 'evolutionMetricsEnabled', 'evolution_metrics_enabled', false),
+    evolution_suggestions_enabled: pickBool(w, 'evolutionSuggestionsEnabled', 'evolution_suggestions_enabled', false),
     guardrail_max_change_per_period: pickNum(w, 'guardrailMaxChangePerPeriod', 'guardrail_max_change_per_period', 0.1),
     guardrail_min_data_points: pickNum(w, 'guardrailMinDataPoints', 'guardrail_min_data_points', 100),
     guardrail_rollback_on_decline_percent: pickNum(
@@ -353,6 +367,9 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     l3DecayIntervalHours: s.l3_decay_interval_hours,
     l3ArchiveThreshold: s.l3_archive_threshold,
     l3MaxPerRecallChars: s.l3_max_per_recall_chars,
+    l2RecallBudgetTokens: s.l2_recall_budget_tokens,
+    l3RecallBudgetTokens: s.l3_recall_budget_tokens,
+    l3InjectProvenance: s.l3_inject_provenance,
     l4Enabled: s.l4_enabled,
     l4GraphInjectNeighbors: s.l4_graph_inject_neighbors,
     l4GraphMaxNeighbors: s.l4_graph_max_neighbors,

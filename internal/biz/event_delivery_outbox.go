@@ -26,102 +26,56 @@ type EventDeliveryOutboxRow struct {
 type EventDeliveryOutboxRepo interface {
 	Insert(ctx context.Context, row EventDeliveryOutboxRow) error
 	MarkPublished(ctx context.Context, id string, publishedAt time.Time) error
+	// MarkPublishedBatch marks the given rows published in a single UPDATE
+	// (WHERE id IN (...)). It is the WS compensation-sweeper path (P1-3):
+	// one RTT per swept batch instead of N serial UPDATEs sharing one query
+	// budget with the broadcast loop, so marking never starves under backlog.
+	// Empty/whitespace-only id lists are a no-op. The delivery contract stays
+	// at-least-once: on batch failure every listed row stays pending and is
+	// re-broadcast next tick (clients dedupe by event_id / delivery seq).
+	MarkPublishedBatch(ctx context.Context, ids []string, publishedAt time.Time) error
 	// ListAfter returns rows for sessionID with seq strictly greater than the
 	// cursor. When afterEventID is non-empty, the cursor seq is resolved from
 	// that event_id (unknown id → empty result). When afterEventID is empty and
 	// afterSeq > 0, afterSeq is used directly. limit <= 0 defaults to 100.
 	ListAfter(ctx context.Context, sessionID, afterEventID string, afterSeq int64, limit int) ([]EventDeliveryOutboxRow, error)
+	// ListPending returns up to limit rows whose live publish path never
+	// completed (published_at IS NULL) created strictly before cutoff, oldest
+	// first. Used by the WS outbox compensation sweeper (P1-3) to re-broadcast
+	// frames whose fan-out dropped or whose MarkPublished failed. limit <= 0
+	// defaults to 200; zero cutoff means "no age filter".
+	ListPending(ctx context.Context, cutoff time.Time, limit int) ([]EventDeliveryOutboxRow, error)
 }
 
-// EventSeq extracts the session-scoped sequence from a typed v2 event payload.
-// Returns 0 when the event carries no sequence (caller may assign one).
-func EventSeq(e Event) int64 {
-	if e == nil {
-		return 0
-	}
-	switch ev := e.(type) {
-	case *TaskCreatedEvent:
-		return ev.Task.Seq
-	case *TaskUpdatedEvent:
-		return ev.Task.Seq
-	case *TaskCompletedEvent:
-		return ev.Task.Seq
-	case *TaskFailedEvent:
-		return ev.Task.Seq
-	case *TurnStartedEvent:
-		return ev.Turn.Seq
-	case *TurnCompletedEvent:
-		return ev.Turn.Seq
-	case *TurnFailedEvent:
-		return ev.Turn.Seq
-	case *StepCreatedEvent:
-		return ev.Step.Seq
-	case *StepUpdatedEvent:
-		return ev.Step.Seq
-	case *StepCompletedEvent:
-		return ev.Step.Seq
-	case *StepFailedEvent:
-		return ev.Step.Seq
-	case *StepStreamingEvent:
-		return 0
-	case *TeamStageCreatedEvent:
-		return ev.TeamStage.Seq
-	case *TeamStageUpdatedEvent:
-		return ev.TeamStage.Seq
-	case *TeamStageCompletedEvent:
-		return ev.TeamStage.Seq
-	case *TeamStageFailedEvent:
-		return ev.TeamStage.Seq
-	case *TeamRunStartedEvent:
-		return ev.TeamRun.Seq
-	case *TeamRunCompletedEvent:
-		return ev.TeamRun.Seq
-	case *TeamRunFailedEvent:
-		return ev.TeamRun.Seq
-	case *MemberSessionCreatedEvent:
-		return ev.MemberSession.Seq
-	case *MemberSessionUpdatedEvent:
-		return ev.MemberSession.Seq
-	case *PlanBoardCreatedEvent:
-		return ev.PlanBoard.Seq
-	case *PlanBoardUpdatedEvent:
-		return ev.PlanBoard.Seq
-	case *PlanStepStartedEvent:
-		return ev.PlanStep.Seq
-	case *PlanStepCompletedEvent:
-		return ev.PlanStep.Seq
-	case *PlanStepFailedEvent:
-		return ev.PlanStep.Seq
-	case *PlanStepSkippedEvent:
-		return ev.PlanStep.Seq
-	case *PlanStepUpdatedEvent:
-		return ev.PlanStep.Seq
-	case *GraphStageCreatedEvent:
-		return ev.GraphStage.Seq
-	case *GraphStageUpdatedEvent:
-		return ev.GraphStage.Seq
-	case *GraphStageCompletedEvent:
-		return ev.GraphStage.Seq
-	case *GraphStageFailedEvent:
-		return ev.GraphStage.Seq
-	case *GraphStageInterruptedEvent:
-		return ev.GraphStage.Seq
-	case *SystemNoticeEvent:
-		return ev.Seq
-	default:
-		return 0
-	}
+// deliverySeqCarrier carries the Sequencer-assigned outbox delivery sequence
+// (B-06). It is delivery metadata only: entity Seq fields (Task.Seq, Turn.Seq,
+// Step.Seq, ...) stay domain data in their own counter spaces and are never
+// reused as delivery cursors. Delivery seqs are allocated from the shared
+// per-session counter (SeqAssigner.NextSeq) by the v2 Sequencer's single
+// publish worker, so outbox rows are strictly monotonic in insertion order per
+// session and ListAfter(seq > cursor) replay can neither skip nor duplicate
+// terminal frames when a session mixes turn-counter and shared-counter entity
+// seqs (pre-2026-10-18 this mixed the two spaces and violated
+// UNIQUE(session_id, seq) on event_delivery_outbox).
+type deliverySeqCarrier struct {
+	deliverySeq int64
 }
 
-// SetEventSeq assigns seq onto events that support an explicit Seq field
-// (currently SystemNoticeEvent). Entity-backed events keep their embedded Seq.
-func SetEventSeq(e Event, seq int64) {
-	if e == nil || seq <= 0 {
-		return
-	}
-	if ev, ok := e.(*SystemNoticeEvent); ok {
-		ev.Seq = seq
-	}
+// DeliverySeqValue returns the assigned outbox delivery sequence (0 = not yet
+// assigned).
+func (c *deliverySeqCarrier) DeliverySeqValue() int64 { return c.deliverySeq }
+
+// SetDeliverySeqValue records the outbox delivery sequence assigned by the
+// Sequencer so live WS frames carry the same event_id as the durable outbox row.
+func (c *deliverySeqCarrier) SetDeliverySeqValue(seq int64) { c.deliverySeq = seq }
+
+// DeliverySeqEvent is implemented by critical-delivery events (B-06) that carry
+// a Sequencer-assigned outbox delivery sequence. The v2 Sequencer assigns it in
+// insertCriticalOutbox; the WS v2 subscriber reads it to attach the outbox
+// cursor event_id to live frames, keeping live and replayed frames identical.
+type DeliverySeqEvent interface {
+	DeliverySeqValue() int64
+	SetDeliverySeqValue(seq int64)
 }
 
 // DeliveryEventID builds a stable cursor id for outbox + WS last_event_id.

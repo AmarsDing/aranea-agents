@@ -27,6 +27,27 @@ func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([
 	return out, nil
 }
 
+// ListAgentPromptFilesByAgentIDs fetches prompt files for many agents in a
+// single query (batch-hydrate path), keyed by agent ID and per-agent ordered
+// exactly like ListAgentPromptFiles.
+func (r *agentRepo) ListAgentPromptFilesByAgentIDs(ctx context.Context, agentIDs []string) (map[string][]biz.AgentPromptFile, error) {
+	out := make(map[string][]biz.AgentPromptFile, len(agentIDs))
+	if len(agentIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.data.RW().Read(ctx).AgentPromptFile.Query().
+		Where(agentpromptfile.AgentIDIn(agentIDs...)).
+		Order(agentpromptfile.ByAgentID(), agentpromptfile.BySortOrder(), agentpromptfile.ByFileName()).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "AGENT")
+	}
+	for _, row := range rows {
+		out[row.AgentID] = append(out[row.AgentID], entPromptToBiz(row))
+	}
+	return out, nil
+}
+
 func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error) {
 	if agentID == "" {
 		return nil, apierror.BadRequest("AGENT", "agent id is required")

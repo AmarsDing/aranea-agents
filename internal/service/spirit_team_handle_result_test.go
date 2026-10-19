@@ -972,6 +972,10 @@ func (s *stubSynthesisTaskReader) ListTasksBySession(_ context.Context, _ string
 	return s.tasks, s.err
 }
 
+func (s *stubSynthesisTaskReader) MaxSeqBySession(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
 // 重启后重放：父 Task 已 Completed（synthesis 已产出）→ 不得重复触发。
 func TestCheckAllTeamsCompleted_ParentTaskCompleted_SkipsDuplicateSynthesis(t *testing.T) {
 	controller := &stubSpiritTeamController{

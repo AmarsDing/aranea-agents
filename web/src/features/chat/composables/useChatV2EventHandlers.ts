@@ -27,7 +27,11 @@ import type {
 export function useChatV2EventHandlers(deps: {
   /** 当前选中会话 id（getter 延迟求值，事件到达时才读取） */
   selectedSessionId: () => string | undefined;
-  sender: { sending: { value: boolean }; markSendingDone: () => void };
+  sender: {
+    sending: { value: boolean };
+    markSendingDone: () => void;
+    touchRunActivity: (eventSessionId?: string) => void;
+  };
   followUp: { onRunStatusV2: (payload: RunStatusEventPayload) => void };
   applyFromV2RunStatus: (payload: RunStatusEventPayload) => void;
   contextualLoading: {
@@ -52,6 +56,15 @@ export function useChatV2EventHandlers(deps: {
     const cursorSessionId = String(envelope.session_id ?? '').trim();
     if (cursorEventId && cursorSessionId) {
       noteChannelWsEnvelope(cursorSessionId, cursorEventId);
+    }
+    // 发送态对账 watchdog（useChatSender.reconcileRunState）的活动基线：
+    // run 相关 WS 帧（run_status / turn·step·task / heartbeat / notice）都说明
+    // 数据仍在流动，刷新 lastRunEventAt 顺延 90s 对账；唯一例外是连接建立时的
+    // skill.catalog 目录推送（与 run 进度无关，不算活动）。
+    // REG-3：带上传事件的 session_id——基线只顺延当前发送会话，其他会话/团队流
+    // 的活动不得掩盖本会话的终态丢失（见 useChatSender.touchRunActivity）。
+    if (envelope.kind !== 'skill.catalog') {
+      deps.sender.touchRunActivity(envelope.session_id ? String(envelope.session_id) : undefined);
     }
     // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
     // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2

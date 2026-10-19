@@ -334,7 +334,11 @@ export function useToolsPage() {
     (isOpen) => {
       if (!isOpen && editorStore.editingId && detailStore.tool) {
         nextTick(() => {
-          detailStore.openDetail(detailStore.tool!);
+          // editTool 已把更新后的对象替换进 toolsStore.tools（save 先于 open=false
+          // resolve），detailStore.tool 仍是保存前的旧引用——必须取最新行重开抽屉，
+          // 否则抽屉展示编辑前的旧数据。
+          const fresh = toolsStore.tools.find((t) => t.id === editorStore.editingId);
+          detailStore.openDetail(fresh ?? detailStore.tool!);
         });
       }
     },

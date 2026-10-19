@@ -71,6 +71,36 @@ func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) (
 	return entTasksV2ToBiz(rows), nil
 }
 
+// MaxSeqBySession returns the highest Seq stored for the session (0 if none).
+// H2 (2026-10-18): task.seq shares the per-session shared counter space with
+// steps; used together with StepV2Reader.MaxSeqBySpiritSession to seed the
+// SeqAssigner after process restart so neither entity nor outbox delivery seqs
+// are re-issued (the outbox has UNIQUE(session_id, seq)).
+func (r *taskV2Repo) MaxSeqBySession(ctx context.Context, sessionID string) (int64, error) {
+	if r == nil || r.data == nil {
+		return 0, fmt.Errorf("task v2 repo: database not configured")
+	}
+	if sessionID == "" {
+		return 0, nil
+	}
+	preds := []predicate.TaskV2{taskv2.SessionIDEQ(sessionID)}
+	if wsPred := taskV2WorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
+	row, err := r.data.RW().Read(ctx).TaskV2.Query().
+		Where(preds...).
+		Order(ent.Desc(taskv2.FieldSeq)).
+		Select(taskv2.FieldSeq).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return 0, nil
+		}
+		return 0, entErrToBizErr(err, "TASK_V2")
+	}
+	return row.Seq, nil
+}
+
 // taskV2WorkspacePredicate returns a workspace visibility predicate for tasks_v2 (C-25).
 // System callers see all; default workspace also sees legacy empty workspace_id.
 func taskV2WorkspacePredicate(ctx context.Context) predicate.TaskV2 {

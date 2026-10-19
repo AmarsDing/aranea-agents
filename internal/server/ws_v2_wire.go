@@ -301,6 +301,13 @@ type runStatusEventWire struct {
 	RunID  string         `json:"RunID"`
 	Status string         `json:"Status"`
 	Meta   map[string]any `json:"Meta"`
+	// Seq 为 Sequencer 在 Critical 车道分配的 outbox 重放序号：仅终态/
+	// 复位必需态（completed/failed/cancelled/awaiting_user 等，见
+	// biz.IsResetRequiredRunStatus 与 AS-EVT-01 车道分流）帧会被赋值并落
+	// event_delivery_outbox；非终态进度帧（running/streaming/…）走
+	// Informational 车道，不经 outbox，Seq 恒为 0 属正常。
+	// 与领域 struct 字节级对齐：字段顺序一致、无 omitempty。
+	Seq int64 `json:"Seq"`
 }
 
 type heartbeatEventWire struct {
@@ -327,10 +334,4 @@ type skillCatalogEntryWire struct {
 
 type skillCatalogEventWire struct {
 	Skills []skillCatalogEntryWire `json:"skills"`
-}
-
-// activityBridgeEventWire 包装 v1 ActivityEvent。biz.ActivityEvent 自带
-// snake_case json tag（本身即 wire 定义），故直接复用而非另建镜像类型。
-type activityBridgeEventWire struct {
-	Event biz.ActivityEvent `json:"Event"`
 }

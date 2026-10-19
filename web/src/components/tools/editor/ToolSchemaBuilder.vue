@@ -141,7 +141,6 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 const showJson = ref(false);
 const rows = ref<SchemaFieldRow[]>([]);
-const dirty = ref(false);
 
 const { t } = useI18n();
 
@@ -154,19 +153,22 @@ const typeOptions = computed(() => [
 
 function syncRowsFromJson(json: string) {
   rows.value = parseSchemaFields(json);
-  dirty.value = false;
 }
 
 watch(
   () => props.modelValue,
   (v) => {
-    if (!showJson.value && !dirty.value) syncRowsFromJson(v);
+    if (showJson.value) return;
+    // 回声比较：传入值与本组件 rows 当前产出一致 → 这是 emit 回流，跳过；
+    // 不一致 → 外部变更（如 applyTemplate 替换 schema），必须重同步 rows，
+    // 否则下一次行编辑会用旧 rows 覆盖外部刚注入的 schema。
+    if (v === buildSchemaFromFields(rows.value)) return;
+    syncRowsFromJson(v);
   },
   { immediate: true },
 );
 
 function emitSchema() {
-  dirty.value = true;
   emit('update:modelValue', buildSchemaFromFields(rows.value));
 }
 

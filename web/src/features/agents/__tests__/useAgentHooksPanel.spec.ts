@@ -15,6 +15,9 @@ vi.mock('quasar', () => ({
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
+  // stores/hooks 组链路会加载真 axiosHandler → src/i18n（createI18n 在模块求值时调用；
+  // i18n.global.t 仅在错误拦截器运行时用到）。
+  createI18n: () => ({ global: { t: (key: string) => key } }),
 }));
 
 vi.mock('../../hooks/api', () => ({

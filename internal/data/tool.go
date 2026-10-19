@@ -389,6 +389,44 @@ func (r *toolRepo) ListToolCatalogEntries(ctx context.Context, keys []string) ([
 	return out, nil
 }
 
+// ListAllToolsForEffective returns the full tool catalog in ONE scan without
+// toolSelectSQL's stats/p95/override joins and without SearchTools' COUNT and
+// SUMMARY queries (P3-1, 2026-10-19). The runtime effective-tools computation
+// (AgentUsecase.GetEffectiveTools) consumes only Items, so paying the admin
+// list path's aggregates per agent turn was pure waste.
+//
+// Column order mirrors toolSelectSQL with zero/empty placeholders for the
+// stats columns so scanBizTool stays shared; AvgDurationMS stays nil (truthful
+// "not computed"). Visibility matches the previous system-view call site
+// (deleted rows filtered, all workspaces) — only the data source changed.
+func (r *toolRepo) ListAllToolsForEffective(ctx context.Context) ([]biz.Tool, error) {
+	client := r.data.RW().Read(ctx)
+	if client == nil {
+		return nil, apierror.Internal("TOOL", "ent client unavailable")
+	}
+	const q = `
+		SELECT t.id, t.tool_key, t.display_name, t.description, t.category, t.source, t.risk_level,
+		       t.enabled, t.readonly, t.requires_confirmation, t.supports_streaming, t.supports_concurrency,
+		       t.parameters_schema_json, t.result_schema_json, t.config_schema_json, t.config_json, t.default_config_json, t.metadata_json,
+		       0, 0, 0, 0, 0, 0, 0, 0, NULL, 0, '', '',
+		       t.created_at, t.updated_at, t.deleted_at, t.workspace_id
+		FROM tools t
+		WHERE t.deleted_at = ''
+		ORDER BY t.category ASC, t.display_name ASC`
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q))
+	if err != nil {
+		r.data.lg.Warn("tool effective-catalog query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
+		return nil, entErrToBizErr(err, "TOOL")
+	}
+	defer rows.Close()
+	items, err := scanBizTool(rows)
+	if err != nil {
+		r.data.lg.Warn("tool effective-catalog scan failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
+		return nil, entErrToBizErr(err, "TOOL")
+	}
+	return items, nil
+}
+
 func applyBuiltinToolDefaults(in *biz.ToolUpsertInput) {
 	if strings.TrimSpace(in.Key) == "" {
 		return

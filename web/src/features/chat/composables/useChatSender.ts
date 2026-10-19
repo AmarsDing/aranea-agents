@@ -24,6 +24,7 @@ import { sendCommand } from '../../../realtime/command_channel';
 import {
   CHAT_RUN_STALL_CHECK_INTERVAL_MS,
   CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS,
+  CHAT_RUN_RECONCILE_THRESHOLD_MS,
   CHAT_STALL_NOTIFY_DURATION_MS,
   CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
   firstByteNotifyThresholdMs,
@@ -79,6 +80,10 @@ export type SenderDeps = {
   onNewSession: (title?: string) => Promise<void>;
   makeSessionTitle: (content: string) => string;
   refreshRunStatus: () => Promise<void>;
+  // 主动对账（watchdog 用）：绕过 WS 权威守卫直接 REST 核对 run 状态。
+  // 返回本次对账刚取回并应用的后端权威状态；null = 未获后端确认（无选中会话，
+  // 或响应被会话过期守卫丢弃）。网络失败会抛错。
+  reconcileRunStatus: () => Promise<string | null>;
   setRunStatus: (status: RunStatusValue) => void;
   submitAwaitingReply: () => Promise<void>;
   submitToolConfirm: (approved: boolean) => Promise<void>;
@@ -103,6 +108,10 @@ export function useChatSender(deps: SenderDeps) {
 
   let lastRunEventAt = 0;
   let stallCheckInterval: ReturnType<typeof setInterval> | null = null;
+  let watchdogReconciling = false;
+  // 当前发送会话 id（final-review REG-3）：touchRunActivity 只统计本会话的活动帧，
+  // 其他会话/团队流的事件不得顺延本会话的 90s 对账窗口。
+  let sendingSessionId: string | undefined;
 
   const failedPendingIds = reactive(new Map<string, string>());
 
@@ -110,6 +119,39 @@ export function useChatSender(deps: SenderDeps) {
     if (stallCheckInterval != null) {
       clearInterval(stallCheckInterval);
       stallCheckInterval = null;
+    }
+  }
+
+  // 终态集合：后端权威确认为这些状态时，watchdog 可安全复位 sending。
+  // awaiting_user/pending/running/sync/durable 均不算终态（run 仍存活或待用户作答）。
+  function isTerminalRunStatus(s: string): boolean {
+    return s === 'idle' || s === 'completed' || s === 'failed' || s === 'cancelled';
+  }
+
+  // 发送态对账 watchdog：长时间无任何 run 活动事件时（终态 WS 帧丢失的残余场景），
+  // 主动 REST 核对后端权威状态；仅当后端确认终态才复位。
+  // 网络失败不复位（下个轮询周期重试）；活动中的 run 绝不打断。
+  async function reconcileRunState() {
+    if (watchdogReconciling) return;
+    watchdogReconciling = true;
+    try {
+      const freshStatus = await deps.reconcileRunStatus();
+      if (!sending.value) return;
+      // 终态判定只认本次对账刚取回的后端状态（final-review REG-2）。null = 未获
+      // 后端确认——本地遗留的 runStatus 值（可能是初始 'idle' 默认值）绝不能冒充
+      // 后端确认，否则会无凭据复位 sending 并误报「已同步最新运行状态」。
+      if (freshStatus != null && isTerminalRunStatus(freshStatus)) {
+        markSendingDone();
+        $q.notify({
+          type: 'info',
+          message: t('chat.runStateRecovered', '已同步最新运行状态'),
+          timeout: 3000,
+        });
+      }
+    } catch {
+      // 网络失败：保持 sending，下个轮询周期重试。
+    } finally {
+      watchdogReconciling = false;
     }
   }
 
@@ -128,16 +170,25 @@ export function useChatSender(deps: SenderDeps) {
           timeout: CHAT_STALL_NOTIFY_DURATION_MS,
         });
       }
+      if (Date.now() - lastRunEventAt > CHAT_RUN_RECONCILE_THRESHOLD_MS) {
+        void reconcileRunState();
+      }
     }, CHAT_RUN_STALL_CHECK_INTERVAL_MS);
   }
 
-  function markSending(_sessionId?: string) {
+  function markSending(sessionId?: string) {
     sending.value = true;
+    sendingSessionId = sessionId;
+    // 发送时刻即 run 活动基线（final-review #2）：『发送后全程无事件』恰是最需要
+    // 对账的场景——若保持 lastRunEventAt===0，stall 检查的首行早退会让对账永不可达。
+    // WS 事件到达时由 touchRunActivity 顺延该基线（见 useChatV2EventHandlers）。
+    lastRunEventAt = Date.now();
     startStallCheck();
   }
 
   function markSendingDone() {
     sending.value = false;
+    sendingSessionId = undefined;
     clearFirstByteNotice();
     clearStallCheck();
   }
@@ -172,7 +223,11 @@ export function useChatSender(deps: SenderDeps) {
     }, firstByteNotifyThresholdMs(deps.selectedProviderModel.value?.config_json));
   }
 
-  function touchRunActivity() {
+  function touchRunActivity(eventSessionId?: string) {
+    // final-review REG-3：基线按发送会话隔离——其他会话/团队流的 run 活动不得
+    // 顺延本会话的 90s 对账窗口（那会持续掩盖本会话终态帧丢失）。会话未知的帧
+    // 保持宽松刷新（兼容无 session_id 的事件与旧调用方，如 stall watchdog 包装器）。
+    if (eventSessionId && sendingSessionId && eventSessionId !== sendingSessionId) return;
     lastRunEventAt = Date.now();
   }
 

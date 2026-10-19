@@ -167,6 +167,82 @@ func TestIsCriticalDeliveryEvent(t *testing.T) {
 	if biz.IsCriticalDeliveryEvent(noise) {
 		t.Fatal("generic system.notice should not be critical")
 	}
+	// AS-EVT-01 lane split (2026-10-19): session_status_changed is Critical.
+	statusChanged := biz.NewSystemNoticeEvent("s1", "session_status_changed", "", nil)
+	if !biz.IsCriticalDeliveryEvent(statusChanged) {
+		t.Fatal("session_status_changed notice should be critical")
+	}
+	// Terminal / reset-required run_status frames are Critical; progress
+	// frames stay on the Informational lane.
+	for _, st := range []string{"completed", "failed", "cancelled", "awaiting_user", "succeeded", "error"} {
+		if !biz.IsCriticalDeliveryEvent(biz.NewRunStatusEvent("s1", "r1", st, nil)) {
+			t.Fatalf("run_status %q should be critical", st)
+		}
+	}
+	for _, st := range []string{"running", "streaming", "pending", "paused", "durable"} {
+		if biz.IsCriticalDeliveryEvent(biz.NewRunStatusEvent("s1", "r1", st, nil)) {
+			t.Fatalf("run_status %q should NOT be critical", st)
+		}
+	}
+}
+
+// TestV2Bus_CriticalDelegateRouting verifies the critical-delegate hook:
+// critical events arriving via Publish are handed to the delegate instead of
+// bus fan-out; non-critical events and the Fanout path bypass it.
+func TestV2Bus_CriticalDelegateRouting(t *testing.T) {
+	t.Parallel()
+	bus := event.NewV2Bus()
+	ch, cancel := bus.Subscribe(biz.EventSubscribeOptions{})
+	defer cancel()
+
+	var mu sync.Mutex
+	var delegated []biz.Event
+	bus.SetCriticalDelegate(func(_ context.Context, e biz.Event) {
+		mu.Lock()
+		delegated = append(delegated, e)
+		mu.Unlock()
+		// Real delegate (Sequencer) fans out via Fanout; mirror that here so
+		// subscribers still receive the frame exactly once.
+		bus.Fanout(context.Background(), e)
+	})
+
+	critical := biz.NewRunStatusEvent("s1", "r1", "completed", nil)
+	nonCritical := biz.NewRunStatusEvent("s1", "r1", "running", nil)
+
+	bus.Publish(context.Background(), critical)
+	bus.Publish(context.Background(), nonCritical)
+
+	mu.Lock()
+	if len(delegated) != 1 || delegated[0] != critical {
+		t.Fatalf("delegate received %v, want exactly the critical event", delegated)
+	}
+	mu.Unlock()
+
+	// Both frames must reach the subscriber (critical via delegate+Fanout,
+	// non-critical via the direct fan-out path).
+	got := map[string]bool{}
+	deadline := time.After(time.Second)
+	for len(got) < 2 {
+		select {
+		case ev := <-ch:
+			if rs, ok := ev.(*biz.RunStatusEvent); ok {
+				got[rs.Status] = true
+			}
+		case <-deadline:
+			t.Fatalf("subscriber received %v, want both completed+running", got)
+		}
+	}
+
+	// Direct Fanout must NOT re-enter the delegate.
+	mu.Lock()
+	delegated = nil
+	mu.Unlock()
+	bus.Fanout(context.Background(), critical)
+	mu.Lock()
+	if len(delegated) != 0 {
+		t.Fatalf("Fanout re-entered delegate: %v", delegated)
+	}
+	mu.Unlock()
 }
 
 // TestV2Bus_PublishDoesNotHoldLockAcrossBlock verifies Publish releases the

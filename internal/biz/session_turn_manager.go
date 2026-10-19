@@ -50,6 +50,16 @@ type SessionTurnExtrasPort interface {
 	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
 	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
 	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
+	// ApplyStateDelta applies one key-level delta to session state via the
+	// atomic PatchSessionState path (set/delete, single UPDATE — no RMW).
+	//
+	// P2-2 (2026-10-19): as of today there is NO production producer for this
+	// method (only the facade chain and tests call it). Before wiring one up —
+	// especially an async event-pipeline producer — StateDelta MUST gain a
+	// fencing token (monotonic Seq/Version) and the applier must enforce
+	// per-session monotonicity (serialize dispatch per session, or reject
+	// out-of-order seq), otherwise concurrent deltas can apply out of order
+	// and silently corrupt state. Do not add a producer without that guard.
 	ApplyStateDelta(ctx context.Context, sessionID string, delta session.StateDelta) error
 	AccumulateMetricsDelta(delta session.SessionMetricsDelta)
 	// FlushSessionMetrics 立即把该 session 累积的 metrics delta 落库

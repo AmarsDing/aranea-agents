@@ -99,11 +99,15 @@ type WSServer struct {
 	store      *connStore
 	monitorBus contract.MonitorBus
 	// eventBus is the v2 typed EventBus (Phase 3b-D). Used by publishWSErrorActivity
-	// to emit ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) for the
-	// chat error activity. The v2 WSV2Subscriber fans these out to WS clients.
+	// to emit a SystemNoticeEvent ("ws_error") plus synthetic v2 Task/Turn/Step
+	// failure events for the chat error activity (ws_message_handler.go).
+	// The v2 WSV2Subscriber fans these out to WS clients.
 	eventBus biz.EventBus
-	// outbox provides durable critical-event replay for last_event_id (B-06). Optional.
-	outbox       biz.EventDeliveryOutboxRepo
+	// outboxSweep bundles the durable critical-event outbox repo (B-06
+	// last_event_id replay, optional) with the lifecycle guard of the P1-3
+	// compensation sweeper, keeping this coordinator's field count flat
+	// (AS-COG-01).
+	outboxSweep  outboxSweepRuntime
 	canceller    RunCanceller
 	sender       ChatSender
 	turnExecutor WSTurnExecutor
@@ -136,7 +140,7 @@ func (s *WSServer) SetEventOutbox(repo biz.EventDeliveryOutboxRepo) {
 	if s == nil {
 		return
 	}
-	s.outbox = repo
+	s.outboxSweep.repo = repo
 }
 
 // SetTaskResumer wires the interrupted-task resume handler (L3).
@@ -209,7 +213,18 @@ func (s *WSServer) wsConfig() conf.RuntimeWSConfig {
 	return s.runtimeConf.WSConfig()
 }
 
+// Start is invoked by kratos with the app-lifetime context (WSServer is a
+// registered transport.Server, app.go EP-OBS-03). It launches the P1-3 outbox
+// compensation sweeper; the sweep loop exits when ctx is cancelled at
+// shutdown. The HTTP upgrade path is registered separately via
+// RegisterOnKratos, so there is nothing to listen on here.
 func (s *WSServer) Start(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	if s.outboxSweep.repo != nil && s.outboxSweep.started.CompareAndSwap(false, true) {
+		newEventOutboxSweeper(s.outboxSweep.repo, s.BroadcastCriticalToSession, s.lg).Start(ctx)
+	}
 	return nil
 }
 

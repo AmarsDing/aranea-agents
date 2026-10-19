@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 
@@ -560,7 +561,18 @@ func (f *fakeOutbox) MarkPublished(_ context.Context, id string, _ time.Time) er
 	return nil
 }
 
+func (f *fakeOutbox) MarkPublishedBatch(_ context.Context, ids []string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.markPublished = append(f.markPublished, ids...)
+	return nil
+}
+
 func (f *fakeOutbox) ListAfter(context.Context, string, string, int64, int) ([]biz.EventDeliveryOutboxRow, error) {
+	return nil, nil
+}
+
+func (f *fakeOutbox) ListPending(context.Context, time.Time, int) ([]biz.EventDeliveryOutboxRow, error) {
 	return nil, nil
 }
 
@@ -712,5 +724,123 @@ func TestSequencer_CriticalOutboxSeqMonotonic(t *testing.T) {
 	if turnEv.DeliverySeqValue() == 0 || taskEv.DeliverySeqValue() == 0 || stepEv.DeliverySeqValue() == 0 {
 		t.Fatalf("delivery seq not written back: turn=%d task=%d step=%d",
 			turnEv.DeliverySeqValue(), taskEv.DeliverySeqValue(), stepEv.DeliverySeqValue())
+	}
+}
+
+// TestSequencer_CriticalDelegateRoute verifies the AS-EVT-01 lane fix
+// (2026-10-19): terminal/reset-required run_status frames published DIRECTLY
+// to the V2Bus (bypassing Sequencer.Publish, e.g. service.PublishRunStatusFull)
+// are routed through the Sequencer via the critical delegate — receiving a
+// delivery Seq, a durable outbox row, and exactly one fan-out. Non-terminal
+// progress frames stay on the bus-local Informational lane: fan-out only, no
+// outbox row.
+func TestSequencer_CriticalDelegateRoute(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	bus := event.NewV2Bus()
+	outbox := &fakeOutbox{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+		WithEventOutbox(outbox),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	subCh, cancelSub := bus.Subscribe(biz.EventSubscribeOptions{})
+	defer cancelSub()
+
+	ctx := context.Background()
+	terminal := biz.NewRunStatusEvent("sess-1", "run-1", "completed", nil)
+	progress := biz.NewRunStatusEvent("sess-1", "run-1", "running", nil)
+
+	// Producers publish directly to the bus (no Sequencer.Publish).
+	bus.Publish(ctx, terminal)
+	bus.Publish(ctx, progress)
+
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Exactly one outbox row (the terminal frame); the progress frame must
+	// stay off the critical lane.
+	outbox.mu.Lock()
+	if len(outbox.inserted) != 1 {
+		t.Fatalf("outbox inserts = %d, want 1", len(outbox.inserted))
+	}
+	row := outbox.inserted[0]
+	if row.Kind != string(biz.EventKindSystemRunStatus) || row.Seq != 1 {
+		t.Fatalf("row = %+v", row)
+	}
+	marked := append([]string(nil), outbox.markPublished...)
+	outbox.mu.Unlock()
+	if len(marked) != 1 || marked[0] != row.ID {
+		t.Fatalf("MarkPublished = %v, want [%s]", marked, row.ID)
+	}
+	// Delivery seq write-back for the live frame's event_id (H1).
+	if got := terminal.DeliverySeqValue(); got != 1 {
+		t.Fatalf("terminal delivery seq = %d, want 1", got)
+	}
+	if got := progress.DeliverySeqValue(); got != 0 {
+		t.Fatalf("progress delivery seq = %d, want 0 (informational lane)", got)
+	}
+
+	// Both frames reach the subscriber exactly once (no double fan-out).
+	counts := map[string]int{}
+	for i := 0; i < 2; i++ {
+		select {
+		case ev := <-subCh:
+			if rs, ok := ev.(*biz.RunStatusEvent); ok {
+				counts[rs.Status]++
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("subscriber timed out; counts=%v", counts)
+		}
+	}
+	if counts["completed"] != 1 || counts["running"] != 1 {
+		t.Fatalf("subscriber counts = %v, want completed:1 running:1", counts)
+	}
+}
+
+// TestSequencer_CriticalDelegateAfterClose verifies the degraded fallback:
+// critical frames published to the bus after Sequencer.Close are delivered
+// synchronously (outbox + direct fan-out) instead of being silently dropped.
+func TestSequencer_CriticalDelegateAfterClose(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	bus := event.NewV2Bus()
+	outbox := &fakeOutbox{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+		WithEventOutbox(outbox),
+	)
+	subCh, cancelSub := bus.Subscribe(biz.EventSubscribeOptions{})
+	defer cancelSub()
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	ev := biz.NewRunStatusEvent("sess-1", "run-2", "cancelled", nil)
+	bus.Publish(context.Background(), ev)
+
+	outbox.mu.Lock()
+	if len(outbox.inserted) != 1 || outbox.inserted[0].Kind != string(biz.EventKindSystemRunStatus) {
+		t.Fatalf("outbox inserts = %+v, want 1 run_status row", outbox.inserted)
+	}
+	outbox.mu.Unlock()
+	if got := ev.DeliverySeqValue(); got != 1 {
+		t.Fatalf("delivery seq = %d, want 1", got)
+	}
+	select {
+	case got := <-subCh:
+		if got != ev {
+			t.Fatalf("subscriber got %v, want the terminal event", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("subscriber did not receive the terminal frame after close")
 	}
 }

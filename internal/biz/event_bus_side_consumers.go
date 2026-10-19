@@ -11,10 +11,10 @@ import (
 // EventBusSideConsumers runs typed event subscriptions for side effects
 // (webhooks, flow-log persistence, user-feedback recording, usage rollup).
 //
-// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
-// typed ActivityEventBus (chat business events) and MonitorBus (monitor
-// events). Each consumer subscribes to exactly one bus and filters at the
-// bus level to avoid queue pressure from non-matching events.
+// Phase 5 Blocker B: each consumer subscribes to either the v2 typed
+// biz.EventBus (chat business events) or the contract.MonitorBus (monitor
+// events), filtering at the bus level to avoid queue pressure from
+// non-matching events.
 type EventBusSideConsumers struct {
 	callback        *callbackConsumer
 	flowLog         *flowLogPersistConsumer
@@ -80,12 +80,6 @@ func (c *EventBusSideConsumers) Start(ctx context.Context) {
 	if c.fileAppender != nil {
 		c.fileAppender.Start(ctx, c.monitorEventBus)
 	}
-}
-
-// activityLogFields extracts identifying fields from an ActivityEvent for
-// queue-full warning logging.
-func activityLogFields(ev ActivityEvent) (sessionID, typeName, eventID string) {
-	return ev.Activity.SessionID, string(ev.Event), ev.Activity.ID
 }
 
 // monitorLogFields extracts identifying fields from a MonitorEvent for

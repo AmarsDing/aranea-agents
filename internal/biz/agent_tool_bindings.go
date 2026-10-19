@@ -76,7 +76,7 @@ func (u *AgentUsecase) GetToolAgentBindings(ctx context.Context, toolID, callerW
 	if err != nil {
 		return nil, err
 	}
-	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
+	platform := loadWebResearchPlatformFromSys(ctx, u.sys, u.lg)
 
 	out := make([]ToolAgentBinding, 0, len(agents))
 	for i := range agents {

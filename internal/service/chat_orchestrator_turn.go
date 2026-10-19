@@ -276,6 +276,14 @@ func (o *ChatOrchestrator) hydratedAgent(ctx context.Context, agentID string) (b
 		return biz.Agent{}, apierror.BadRequest(apierror.DomainChatNative, "agent id is required")
 	}
 	if o.td().ReadDeps.AgentsUC != nil {
+		// P3-1 (2026-10-19): the build/turn path consumes settings + files only,
+		// so prefer GetForBuild (skips the display-only extras query) when the
+		// concrete usecase is present; narrow test stubs fall back to Get.
+		if forBuild, ok := o.td().ReadDeps.AgentsUC.(interface {
+			GetForBuild(ctx context.Context, id string) (biz.Agent, error)
+		}); ok {
+			return forBuild.GetForBuild(ctx, agentID)
+		}
 		return o.td().ReadDeps.AgentsUC.Get(ctx, agentID)
 	}
 	if o.td().ReadDeps.Agents == nil {

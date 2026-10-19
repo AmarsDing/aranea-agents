@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -26,6 +27,14 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 	}
 	copy := src
 	copy.ID = ""
+	// P2-B tenant binding (mirrors the CreateAgent service rule): a tenant's
+	// duplicate belongs to the caller's workspace. Duplicating a shared /
+	// built-in agent (workspace_id="") must NOT mint another shared row that
+	// every tenant can see — the copy is the caller's private agent.
+	// System callers keep the source workspace semantics (shared stays shared).
+	if !workspace.IsSystem(ctx) {
+		copy.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	// Sanitize the source key so the duplicated key always passes the
 	// lowercase-letters/digits/hyphens validation rule.
 	baseKey := strings.ToLower(strings.TrimSpace(src.AgentKey))

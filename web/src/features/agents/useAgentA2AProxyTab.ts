@@ -83,7 +83,14 @@ export function useAgentA2AProxyTab(
         auth_type: authType === 'none' ? undefined : authType,
         auth_config_json: buildAuthConfigJson(),
       };
-      await detailStore.patch(agentId(), { a2a_proxy_config: payload });
+      // UpdateAgent is FULL-REPLACE for proto-carried catalog fields
+      // (2026-10-18 contract): a sparse patch would silently clear icon /
+      // description / position / provider+model and reset is_default /
+      // is_favorite. Echo the stored row and only override the proxy config.
+      const current = await detailStore.fetchById(agentId());
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { settings: _s, files: _f, config_json: _c, ...catalogEcho } = current;
+      await detailStore.patch(agentId(), { ...catalogEcho, a2a_proxy_config: payload });
       $q.notify({ type: 'positive', message: 'A2A 代理配置已保存' });
       onSaved?.();
     } catch (error) {

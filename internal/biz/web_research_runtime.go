@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/tool"
+	"aranea-agents/pkg/loggateway"
 )
 
 // WebResearchPlatformFields holds platform-level defaults for web_research.
@@ -26,12 +27,22 @@ type WebResearchReadinessChecker interface {
 }
 
 // loadWebResearchPlatformFromSys loads WebResearchSetting via SystemSettingRepo.
-func loadWebResearchPlatformFromSys(ctx context.Context, sys SystemSettingRepo) *WebResearchSetting {
+// A missing/broken setting degrades enrichment to nil (fields stay at per-tool
+// defaults), but the failure must be visible — same contract as the tool
+// package's twin helper (internal/biz/tool/tool_catalog_runtime.go
+// LoadWebResearchPlatform, which carries the identical Warn semantics). The two
+// helpers read from different SystemSettingRepo/SettingRepo ports; keep their
+// failure semantics aligned until a shared helper converges them. lg may be nil.
+func loadWebResearchPlatformFromSys(ctx context.Context, sys SystemSettingRepo, lg loggateway.Logger) *WebResearchSetting {
 	if sys == nil {
 		return nil
 	}
 	s, err := sys.GetWebResearch(ctx)
 	if err != nil {
+		if lg != nil {
+			lg.Warn("agent: failed to load web research platform setting, enriching with per-tool defaults",
+				loggateway.Err(err))
+		}
 		return nil
 	}
 	return &s

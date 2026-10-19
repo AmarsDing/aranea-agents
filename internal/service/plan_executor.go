@@ -55,6 +55,11 @@ type sequencerPublisher interface {
 // TeamOrchestrator, correlates team completions, and cascades downstream
 // steps (or skips them on failure).
 //
+// 引擎所有权契约（ADR-86：`docs/development/86-adr-dual-dag-engine-scope.md`）：
+// 本器是唯一跨 Team/跨 PlanStep 波次调度器（D1）；图内/队内节点级执行归
+// trpc-agent-go graph 引擎（D2）；team-graph 模式为两引擎嵌套组合（D3），
+// 镜像桥接仅限 graph_team_execution.go + runner_graph_event_tee.go 封闭集（D4）。
+//
 // Lifecycle:
 //   - Subscribe(ctx, board) blocks until all steps reach a terminal status
 //     (completed / failed / skipped) or ctx is canceled.

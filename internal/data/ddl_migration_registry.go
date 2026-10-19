@@ -162,6 +162,11 @@ var ddlMigrations = []ddlMigration{
 	// observation view). Originally 20261008 on release/installer-0.1.35; renumbered
 	// to avoid collision with session_turn_idempotency_key on dev.
 	{Version: 20261014, Name: "media_providers", SQL: "sql/migrations/20261008_media_providers.sql"},
+	// 20261019 event_delivery_outbox_pending_idx: partial index
+	// (created_at) WHERE published_at IS NULL for the P1-3 sweeper's ListPending
+	// — the outbox table grows until session cascade-delete, so the 10s sweep
+	// was a full sequential scan degrading linearly with deployment age.
+	{Version: 20261019, Name: "event_delivery_outbox_pending_idx", SQL: "sql/migrations/20261019_event_delivery_outbox_pending_idx.sql"},
 	// 20261106 learning_loop_schema: learning_observations/learning_patterns/learning_proposals
 	// tables were never wired into the migration registry (EnsureLearningLoopSchema was
 	// defined but never called), causing 500 on /v1/agents/{id}/learning/* endpoints.

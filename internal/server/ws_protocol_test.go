@@ -372,7 +372,6 @@ func TestWSUpstreamErrorPublishesSyntheticV2Failure(t *testing.T) {
 	srv.handleUpstream(wc, raw)
 
 	// Collect events published within 2 seconds. Expect at least:
-	//   1 *ActivityBridgeEvent (v1 compat)
 	//   1 *TaskFailedEvent (synthetic)
 	//   1 *TurnFailedEvent (synthetic)
 	//   1 *StepCreatedEvent (synthetic error Step)

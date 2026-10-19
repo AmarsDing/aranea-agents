@@ -607,14 +607,11 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			wantResult: false,
 		},
 		{
-			name:    "GetTool error returns false",
+			name:    "catalog entry missing returns false",
 			agentID: "agent_1",
 			toolKey: "missing_tool",
-			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, apierror.NotFound("TOOL", "tool not found")
-				},
-			},
+			repo:    &mockRepo{},
+			// listToolCatalogEntries 默认返回 nil —— 工具不存在与查询失败同为 false。
 			wantResult: false,
 		},
 		{
@@ -622,8 +619,8 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			agentID: "agent_1",
 			toolKey: "shell_exec",
 			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "t1", Key: "shell_exec", RequiresConfirmation: true}, nil
+				listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+					return []ToolCatalogEntry{{Key: "shell_exec", RequiresConfirmation: true}}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
 					return nil, nil
@@ -636,8 +633,8 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			agentID: "agent_1",
 			toolKey: "read_file",
 			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "t1", Key: "read_file", RequiresConfirmation: false}, nil
+				listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+					return []ToolCatalogEntry{{Key: "read_file", RequiresConfirmation: false}}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
 					return nil, nil
@@ -650,8 +647,8 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			agentID: "agent_1",
 			toolKey: "read_file",
 			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "t1", Key: "read_file", RequiresConfirmation: false}, nil
+				listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+					return []ToolCatalogEntry{{Key: "read_file", RequiresConfirmation: false}}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
 					return []ToolAgentOverride{
@@ -666,8 +663,8 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			agentID: "agent_1",
 			toolKey: "shell_exec",
 			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "t1", Key: "shell_exec", RequiresConfirmation: true}, nil
+				listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+					return []ToolCatalogEntry{{Key: "shell_exec", RequiresConfirmation: true}}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
 					return []ToolAgentOverride{
@@ -682,8 +679,8 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			agentID: "agent_1",
 			toolKey: "read_file",
 			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "t1", Key: "read_file", RequiresConfirmation: false}, nil
+				listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+					return []ToolCatalogEntry{{Key: "read_file", RequiresConfirmation: false}}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
 					return []ToolAgentOverride{
@@ -698,8 +695,8 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			agentID: "agent_1",
 			toolKey: "shell_exec",
 			repo: &mockRepo{
-				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "t1", Key: "shell_exec", RequiresConfirmation: true}, nil
+				listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+					return []ToolCatalogEntry{{Key: "shell_exec", RequiresConfirmation: true}}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
 					return nil, apierror.Internal("TOOL", "db error")

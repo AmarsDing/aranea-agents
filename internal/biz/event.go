@@ -36,11 +36,40 @@ func IsTerminalEventKind(kind EventKind) bool {
 		strings.HasSuffix(k, ".skipped")
 }
 
+// IsResetRequiredRunStatus reports whether a run_status value is terminal or
+// otherwise load-bearing for frontend UI reset, and therefore rides the
+// Critical delivery lane (AS-EVT-01 Important: BlockUpTo + outbox replay):
+//   - terminal (idle/completed/failed/cancelled): the frontend sending reset
+//     and stop-button visibility are pinned on these frames
+//     (useChatWorkspace runStatus watch + isTerminalRunStatus); legacy alias
+//     spellings (succeeded/error/canceled, see runStatusNoticeTypeAndLabel)
+//     are classified identically.
+//   - awaiting_user: the run parks awaiting user input; losing this frame
+//     strands the await/reply affordance until the next REST hydrate. It is
+//     NOT terminal (the user still has to reply), but reset-load-bearing.
+//
+// Progress frames (running/streaming/pending/paused/sync/durable and unknown
+// values) stay on the Informational lane (non-blocking DropNewest fan-out) —
+// promoting them would add a worst-case BlockUpTo×N synchronous stall to the
+// turn hot path and give non-terminal frames a kill-slow-connection semantic.
+func IsResetRequiredRunStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "idle", "completed", "succeeded", "failed", "error", "cancelled", "canceled", "awaiting_user":
+		return true
+	default:
+		return false
+	}
+}
+
 // IsCriticalDeliveryEvent reports whether e must use BlockUpTo / high-priority
 // delivery (B-06). Covers suffix-terminal kinds plus payloads that encode
 // terminal lifecycle without a *.completed/*.failed kind:
 //   - plan_board.updated when PlanBoard status is terminal
-//   - system.notice for orchestration_completed / orchestration_failed
+//   - system.notice for orchestration_completed / orchestration_failed /
+//     session_status_changed
+//   - system.run_status only for terminal / reset-required statuses
+//     (IsResetRequiredRunStatus) — non-terminal progress frames are
+//     Informational (AS-EVT-01 lane split, 2026-10-19)
 func IsCriticalDeliveryEvent(e Event) bool {
 	if e == nil {
 		return false
@@ -51,9 +80,15 @@ func IsCriticalDeliveryEvent(e Event) bool {
 	switch ev := e.(type) {
 	case *PlanBoardUpdatedEvent:
 		return IsPlanBoardTerminal(ev.PlanBoard.Status)
+	case *RunStatusEvent:
+		// Lane split (2026-10-19 review fix): only terminal / reset-required
+		// run_status frames take the Critical lane — the frontend sending
+		// reset is pinned on them. running/streaming and other progress
+		// frames stay Informational (see IsResetRequiredRunStatus).
+		return IsResetRequiredRunStatus(ev.Status)
 	case *SystemNoticeEvent:
 		switch ev.NoticeType {
-		case "orchestration_completed", "orchestration_failed":
+		case "orchestration_completed", "orchestration_failed", "session_status_changed":
 			return true
 		}
 	}
@@ -151,6 +186,7 @@ type TaskCompletedEvent struct {
 	spiritSessionID string
 	Task            Task
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TaskCompletedEvent) EventKind() EventKind      { return EventKindTaskCompleted }
@@ -164,6 +200,7 @@ type TaskFailedEvent struct {
 	spiritSessionID string
 	Task            Task
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TaskFailedEvent) EventKind() EventKind      { return EventKindTaskFailed }
@@ -194,6 +231,7 @@ type TurnCompletedEvent struct {
 	TurnID          string
 	Turn            Turn
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TurnCompletedEvent) EventKind() EventKind      { return EventKindTurnCompleted }
@@ -208,6 +246,7 @@ type TurnFailedEvent struct {
 	TurnID          string
 	Turn            Turn
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TurnFailedEvent) EventKind() EventKind      { return EventKindTurnFailed }
@@ -271,6 +310,7 @@ type StepCompletedEvent struct {
 	spiritSessionID string
 	Step            Step
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *StepCompletedEvent) EventKind() EventKind      { return EventKindStepCompleted }
@@ -284,6 +324,7 @@ type StepFailedEvent struct {
 	spiritSessionID string
 	Step            Step
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *StepFailedEvent) EventKind() EventKind      { return EventKindStepFailed }
@@ -325,6 +366,7 @@ type TeamStageCompletedEvent struct {
 	spiritSessionID string
 	TeamStage       TeamStage
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TeamStageCompletedEvent) EventKind() EventKind      { return EventKindTeamStageCompleted }
@@ -338,6 +380,7 @@ type TeamStageFailedEvent struct {
 	spiritSessionID string
 	TeamStage       TeamStage
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TeamStageFailedEvent) EventKind() EventKind      { return EventKindTeamStageFailed }
@@ -366,6 +409,7 @@ type TeamRunCompletedEvent struct {
 	spiritSessionID string
 	TeamRun         TeamRun
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TeamRunCompletedEvent) EventKind() EventKind      { return EventKindTeamRunCompleted }
@@ -379,6 +423,7 @@ type TeamRunFailedEvent struct {
 	spiritSessionID string
 	TeamRun         TeamRun
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *TeamRunFailedEvent) EventKind() EventKind      { return EventKindTeamRunFailed }
@@ -435,6 +480,7 @@ type PlanBoardUpdatedEvent struct {
 	spiritSessionID string
 	PlanBoard       PlanBoard
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *PlanBoardUpdatedEvent) EventKind() EventKind      { return EventKindPlanBoardUpdated }
@@ -463,6 +509,7 @@ type PlanStepCompletedEvent struct {
 	spiritSessionID string
 	PlanStep        PlanStep
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *PlanStepCompletedEvent) EventKind() EventKind      { return EventKindPlanStepCompleted }
@@ -476,6 +523,7 @@ type PlanStepFailedEvent struct {
 	spiritSessionID string
 	PlanStep        PlanStep
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *PlanStepFailedEvent) EventKind() EventKind      { return EventKindPlanStepFailed }
@@ -490,6 +538,7 @@ type PlanStepSkippedEvent struct {
 	PlanStep        PlanStep
 	Reason          string // dependency_failed / cancelled
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *PlanStepSkippedEvent) EventKind() EventKind      { return EventKindPlanStepSkipped }
@@ -546,6 +595,7 @@ type GraphStageCompletedEvent struct {
 	spiritSessionID string
 	GraphStage      GraphStage
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *GraphStageCompletedEvent) EventKind() EventKind      { return EventKindGraphStageCompleted }
@@ -559,6 +609,7 @@ type GraphStageFailedEvent struct {
 	spiritSessionID string
 	GraphStage      GraphStage
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *GraphStageFailedEvent) EventKind() EventKind      { return EventKindGraphStageFailed }
@@ -572,6 +623,7 @@ type GraphStageInterruptedEvent struct {
 	spiritSessionID string
 	GraphStage      GraphStage
 	occurredAt      time.Time
+	deliverySeqCarrier
 }
 
 func (e *GraphStageInterruptedEvent) EventKind() EventKind      { return EventKindGraphStageInterrupted }

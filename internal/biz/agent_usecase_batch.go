@@ -2,10 +2,8 @@ package biz
 
 import (
 	"context"
-	stderrors "errors"
 	"strings"
 
-	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -17,26 +15,6 @@ func (u *AgentUsecase) ReorderAgents(_ context.Context, ids []string) error {
 		return nil
 	}
 	return apierror.FailedPrecondition("AGENT", "manual agent order is not persisted; list order is is_default → kind → updated_at")
-}
-
-// UpsertByKey 按 agent_key 幂等创建或更新 Agent。
-// 如果 agent_key 已存在则更新，否则创建。返回最终的 Agent（含水合）。
-func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, error) {
-	agent.AgentKey = strings.TrimSpace(agent.AgentKey)
-	if agent.AgentKey == "" {
-		return Agent{}, apierror.BadRequest("AGENT", "agent_key is required for upsert")
-	}
-	existing, err := u.reader.GetAgentByAgentKey(ctx, agent.AgentKey)
-	if err == nil {
-		// 已存在 → 更新
-		agent.ID = existing.ID
-		return u.Update(ctx, existing.ID, agent)
-	}
-	if !stderrors.Is(err, shared.ErrNotFound) {
-		return Agent{}, err
-	}
-	// 不存在 → 创建
-	return u.Create(ctx, agent)
 }
 
 // CreateWithFilesAndSettings 在事务中创建 Agent 并同时写入 Files 和 RuntimeSettings。
@@ -177,16 +155,28 @@ func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdat
 	return n, nil
 }
 
+// mergeAgentCatalog merges a patch into the stored catalog row.
+//
+// CONTRACT (2026-10-18 review): for catalog fields carried by proto Agent, the
+// fat UpdateAgent is a FULL-REPLACE — the patch value wins, so a settings-form
+// save can clear a field by sending ""/0 ("清空图标/模型/预算" now persists).
+// Guards remain for fields the wire cannot express or must never be blank:
+//   - DisplayName/Status/SystemPromptMode: required-or-enum fields, empty means
+//     "not provided" (sparse callers must not blank them).
+//   - Roles/MissionStatement/DomainPath/MetadataJSON: NOT carried by the Agent
+//     proto message (owned by the org module paths); patch values are always
+//     empty there, so they must be inherited, never cleared.
+//   - AgentKey/AgentKind/WorkspaceID: immutable (validated in Update).
 func mergeAgentCatalog(current, patch Agent) Agent {
 	out := current
 	// Immutable fields: AgentKey and AgentKind are never merged from patch.
 	// They are validated as immutable in Update() before this function is called.
-	// Skipping them here prevents accidental overwrite if patch carries a stale value.
 	// out.AgentKey remains current.AgentKey
 	// out.AgentKind remains current.AgentKind
 	out.DisplayName = firstNonEmpty(patch.DisplayName, current.DisplayName)
-	out.Provider = firstNonEmpty(patch.Provider, current.Provider)
-	out.Model = firstNonEmpty(patch.Model, current.Model)
+	// Full-replace fields (proto-carried): empty means "cleared on purpose".
+	out.Provider = patch.Provider
+	out.Model = patch.Model
 	out.Status = firstNonEmpty(patch.Status, current.Status)
 	// Boolean fields: *bool semantics — nil means "not set" (skip), non-nil
 	// means "explicitly set" (overwrite). This solves the Proto3 zero-value
@@ -197,25 +187,23 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	if patch.IsFavorite != nil {
 		out.IsFavorite = patch.IsFavorite
 	}
-	out.Icon = firstNonEmpty(patch.Icon, current.Icon)
-	out.AgentDescription = firstNonEmpty(patch.AgentDescription, current.AgentDescription)
-	out.PositionID = firstNonEmpty(patch.PositionID, current.PositionID)
-	out.PositionKey = firstNonEmpty(patch.PositionKey, current.PositionKey)
-	out.AgentVariant = firstNonEmpty(patch.AgentVariant, current.AgentVariant)
-	out.VariantDescription = firstNonEmpty(patch.VariantDescription, current.VariantDescription)
+	out.Icon = patch.Icon
+	out.AgentDescription = patch.AgentDescription
+	out.PositionID = patch.PositionID
+	out.PositionKey = patch.PositionKey
+	out.AgentVariant = patch.AgentVariant
+	out.VariantDescription = patch.VariantDescription
+	out.MetadataJSON = firstNonEmpty(patch.MetadataJSON, current.MetadataJSON)
+	// Org-owned fields are not carried by the Agent proto message; the patch
+	// always arrives empty from this API, so inherit the stored values.
 	out.MissionStatement = firstNonEmpty(patch.MissionStatement, current.MissionStatement)
 	out.DomainPath = firstNonEmpty(patch.DomainPath, current.DomainPath)
-	out.MetadataJSON = firstNonEmpty(patch.MetadataJSON, current.MetadataJSON)
 	if len(patch.Roles) > 0 {
 		out.Roles = patch.Roles
 	}
 	out.SystemPromptMode = firstNonEmpty(patch.SystemPromptMode, current.SystemPromptMode)
-	if patch.ContextWindow != 0 {
-		out.ContextWindow = patch.ContextWindow
-	}
-	if patch.BudgetMonthlyCents != 0 {
-		out.BudgetMonthlyCents = patch.BudgetMonthlyCents
-	}
+	out.ContextWindow = patch.ContextWindow
+	out.BudgetMonthlyCents = patch.BudgetMonthlyCents
 	// DEV-10 FIXED: ConfigJSON is no longer merged/written; it is computed on read.
 	// out.ConfigJSON is intentionally left from current (will be cleared before persist).
 	if patch.Settings != nil {

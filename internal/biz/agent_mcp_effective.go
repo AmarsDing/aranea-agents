@@ -157,7 +157,48 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 	if err != nil {
 		return nil, err
 	}
-	if !effectiveToolsAllowsMCPServers(eff) {
+	out, err := t.effectiveServersForEffectiveTools(ctx, &eff)
+	if err != nil {
+		return nil, err
+	}
+	// C-05: decrypt at-rest secrets before runtime tool assembly.
+	for i := range out {
+		dec, err := t.mcp.PrepareConfigJSONForRuntime(ctx, out[i].ConfigJSON)
+		if err != nil {
+			return nil, err
+		}
+		out[i].ConfigJSON = dec
+	}
+	return out, nil
+}
+
+// EffectiveServersForHash returns the agent's effective MCP server rows for
+// build-fingerprint hashing WITHOUT re-resolving effective tools and WITHOUT
+// C-05 secret decryption (P3-1, 2026-10-19): the caller passes the
+// effective-tools result it already resolved this turn; the raw stored
+// ConfigJSON is hashed — decryption is a deterministic function of the stored
+// row, so the raw bytes change iff the effective row changes (equally valid
+// change-detector; decryption remains on the assembly path in
+// EffectiveServersForAgent). List errors degrade to empty (hash empty) — a
+// hash miss only costs one extra rebuild, never blocks the turn.
+//
+// NOTE: the hash input differs from the pre-P3-1 (decrypted) value — the first
+// turn after deploy rebuilds the agent cache once, then is stable.
+func (t *AgentMCPTooling) EffectiveServersForHash(ctx context.Context, agentID string, eff *AgentEffectiveTools) []EffectiveMCPServer {
+	if t == nil || t.mcp == nil || eff == nil {
+		return nil
+	}
+	out, err := t.effectiveServersForEffectiveTools(ctx, eff)
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+// effectiveServersForEffectiveTools lists + filters effective MCP servers
+// against an already-resolved effective-tools view.
+func (t *AgentMCPTooling) effectiveServersForEffectiveTools(ctx context.Context, eff *AgentEffectiveTools) ([]EffectiveMCPServer, error) {
+	if !effectiveToolsAllowsMCPServers(*eff) {
 		return nil, nil
 	}
 	// P2-B 收紧：按调用方 workspace 过滤可见 MCP 服务器（共享 + 自有），
@@ -173,16 +214,7 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 		return nil, err
 	}
 	out := filterEnabledMCPServerRows(rows)
-	out = FilterEffectiveMCPServers(out, MCPPolicyFromAgentEffectiveTools(eff))
-	// C-05: decrypt at-rest secrets before runtime tool assembly.
-	for i := range out {
-		dec, err := t.mcp.PrepareConfigJSONForRuntime(ctx, out[i].ConfigJSON)
-		if err != nil {
-			return nil, err
-		}
-		out[i].ConfigJSON = dec
-	}
-	return out, nil
+	return FilterEffectiveMCPServers(out, MCPPolicyFromAgentEffectiveTools(*eff)), nil
 }
 
 // AllEnabledServers returns every enabled, non-deleted, active MCP server row

@@ -9,6 +9,11 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
+
+	// Pure-Go SQLite driver (already a direct dependency via
+	// cmd/session-consistency-check); registers database/sql name "sqlite3"
+	// for the in-memory legacy-''-guard test below.
+	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func newEventOutboxTestRepo(t *testing.T, dbName string) (biz.EventDeliveryOutboxRepo, *sql.DB) {
@@ -34,6 +39,9 @@ func newEventOutboxTestRepo(t *testing.T, dbName string) (biz.EventDeliveryOutbo
 			ON event_delivery_outbox(session_id, event_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_id
 			ON event_delivery_outbox(session_id)`,
+		// Mirrors sql/migrations/20261019_event_delivery_outbox_pending_idx.sql.
+		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_pending
+			ON event_delivery_outbox(created_at) WHERE published_at IS NULL`,
 	} {
 		if _, err := db.ExecContext(ctx, s); err != nil {
 			t.Fatalf("outbox schema: %v", err)
@@ -140,6 +148,9 @@ func TestEventDeliveryOutbox_NilRepoNoPanic(t *testing.T) {
 	if err := typedNil.MarkPublished(ctx, "x", time.Now()); err != nil {
 		t.Fatalf("typed nil MarkPublished: %v", err)
 	}
+	if err := typedNil.MarkPublishedBatch(ctx, []string{"x"}, time.Now()); err != nil {
+		t.Fatalf("typed nil MarkPublishedBatch: %v", err)
+	}
 	if rows, err := typedNil.ListAfter(ctx, "s", "e", 0, 10); err != nil || rows != nil {
 		t.Fatalf("typed nil ListAfter: rows=%v err=%v", rows, err)
 	}
@@ -170,5 +181,231 @@ func TestEventDeliveryOutbox_MarkPublished(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].PublishedAt == nil {
 		t.Fatalf("expected PublishedAt set, got %+v", got)
+	}
+}
+
+func TestEventDeliveryOutbox_MarkPublishedBatch(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newEventOutboxTestRepo(t, "event-outbox-mark-batch")
+
+	now := time.Now().UTC()
+	old := now.Add(-60 * time.Second)
+	rows := []biz.EventDeliveryOutboxRow{
+		{ID: "b-1", SessionID: "sess-1", Seq: 1, EventID: "evt-b1", Kind: "task.completed", Payload: []byte(`{}`), CreatedAt: old},
+		{ID: "b-2", SessionID: "sess-1", Seq: 2, EventID: "evt-b2", Kind: "task.failed", Payload: []byte(`{}`), CreatedAt: old},
+		{ID: "b-3", SessionID: "sess-1", Seq: 3, EventID: "evt-b3", Kind: "task.completed", Payload: []byte(`{}`), CreatedAt: old},
+	}
+	for _, row := range rows {
+		if err := repo.Insert(ctx, row); err != nil {
+			t.Fatalf("Insert(%s): %v", row.ID, err)
+		}
+	}
+
+	// Empty / blank-only lists are no-ops and must not error.
+	if err := repo.MarkPublishedBatch(ctx, nil, now); err != nil {
+		t.Fatalf("batch nil: %v", err)
+	}
+	if err := repo.MarkPublishedBatch(ctx, []string{"", "  "}, now); err != nil {
+		t.Fatalf("batch blanks: %v", err)
+	}
+
+	// Duplicates collapse; already-published rows keep their first timestamp.
+	publishedAt := now.Add(time.Second)
+	if err := repo.MarkPublishedBatch(ctx, []string{"b-1", "b-2", "b-1"}, publishedAt); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.ListPending(ctx, now.Add(-time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "b-3" {
+		t.Fatalf("ListPending after batch: got %+v, want only b-3 pending", got)
+	}
+	all, err := repo.ListAfter(ctx, "sess-1", "", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 || all[0].PublishedAt == nil || all[1].PublishedAt == nil || all[2].PublishedAt != nil {
+		t.Fatalf("published state = %+v, want b-1/b-2 published and b-3 pending", all)
+	}
+
+	// Second batch must not flip b-3's state of b-1/b-2 nor touch unknown ids.
+	if err := repo.MarkPublishedBatch(ctx, []string{"b-3", "missing"}, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := repo.ListPending(ctx, now.Add(-time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("ListPending after second batch: got %+v, want empty", remaining)
+	}
+}
+
+// TestEventDeliveryOutbox_SQLiteLegacyEmptyStringGuard covers the SQLite-only
+// unpublished predicate (published_at IS NULL OR published_at = ”) in
+// ListPending and MarkPublished(Batch). Legacy SQLite rows may carry ”
+// instead of NULL; PG-only tests never exercise this branch (finding #13).
+// glebarez/go-sqlite is already a direct dependency (cmd/session-consistency-
+// check), so the in-memory DB costs nothing extra.
+func TestEventDeliveryOutbox_SQLiteLegacyEmptyStringGuard(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	// A single in-memory database per connection: pin one connection so all
+	// statements below share it.
+	db.SetMaxOpenConns(1)
+
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS event_delivery_outbox (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			seq INTEGER NOT NULL,
+			event_id TEXT NOT NULL,
+			kind TEXT NOT NULL DEFAULT '',
+			entity_id TEXT NOT NULL DEFAULT '',
+			payload BLOB NOT NULL,
+			published_at TEXT,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_seq
+			ON event_delivery_outbox(session_id, seq)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_event_id
+			ON event_delivery_outbox(session_id, event_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_id
+			ON event_delivery_outbox(session_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_pending
+			ON event_delivery_outbox(created_at) WHERE published_at IS NULL`,
+	} {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			t.Fatalf("outbox schema: %v", err)
+		}
+	}
+	d := &Data{
+		rawDB:   db,
+		readDB:  db,
+		rwDB:    NewReadWriteDB(db, db),
+		lg:      loggateway.NewNoop(),
+		dialect: DialectSQLite,
+	}
+	repo := NewEventDeliveryOutboxRepo(d, loggateway.NewNoop())
+
+	now := time.Now().UTC()
+	old := now.Add(-60 * time.Second)
+	// Legacy row pre-dating the published_at NULL convention: stored as ''.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO event_delivery_outbox (id, session_id, seq, event_id, kind, entity_id, payload, published_at, created_at)
+		 VALUES ('legacy-empty', 'sess-1', 1, 'evt-legacy', 'task.completed', 't1', X'7B7D', '', ?)`,
+		old.Format(time.RFC3339Nano),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Insert(ctx, biz.EventDeliveryOutboxRow{
+		ID: "modern-null", SessionID: "sess-1", Seq: 2, EventID: "evt-modern",
+		Kind: "task.failed", Payload: []byte(`{}`), CreatedAt: old,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Insert(ctx, biz.EventDeliveryOutboxRow{
+		ID: "published", SessionID: "sess-1", Seq: 3, EventID: "evt-pub",
+		Kind: "task.completed", Payload: []byte(`{}`), CreatedAt: old,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.MarkPublished(ctx, "published", old.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListPending must count BOTH the legacy '' row and the NULL row.
+	got, err := repo.ListPending(ctx, now.Add(-10*time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ListPending: got %d rows (%+v), want 2 (legacy '' + NULL)", len(got), got)
+	}
+	if got[0].ID != "legacy-empty" || got[1].ID != "modern-null" {
+		t.Fatalf("ListPending order = %s,%s; want legacy-empty,modern-null", got[0].ID, got[1].ID)
+	}
+
+	// The batch mark must publish the legacy '' row too; the timestamp written
+	// afterwards matches the ''-free predicate on the next read.
+	if err := repo.MarkPublishedBatch(ctx, []string{"legacy-empty", "modern-null"}, now); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := repo.ListPending(ctx, now.Add(-10*time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("ListPending after batch: got %+v, want empty (legacy '' row must be markable)", remaining)
+	}
+}
+
+func TestEventDeliveryOutbox_ListPending(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newEventOutboxTestRepo(t, "event-outbox-list-pending")
+
+	now := time.Now().UTC()
+	old := now.Add(-60 * time.Second)
+	older := now.Add(-120 * time.Second)
+	rows := []biz.EventDeliveryOutboxRow{
+		// Stuck: old + unpublished → swept.
+		{ID: "p-old-2", SessionID: "sess-1", Seq: 2, EventID: "evt-old-2", Kind: "task.failed", EntityID: "t2", Payload: []byte(`{}`), CreatedAt: old},
+		{ID: "p-older-1", SessionID: "sess-1", Seq: 1, EventID: "evt-older-1", Kind: "task.completed", EntityID: "t1", Payload: []byte(`{}`), CreatedAt: older},
+		// Younger than cutoff → not yet considered stuck.
+		{ID: "p-new", SessionID: "sess-1", Seq: 3, EventID: "evt-new", Kind: "task.completed", EntityID: "t3", Payload: []byte(`{}`), CreatedAt: now},
+		// Old but already published → excluded.
+		{ID: "p-published", SessionID: "sess-1", Seq: 4, EventID: "evt-published", Kind: "task.completed", EntityID: "t4", Payload: []byte(`{}`), CreatedAt: old},
+		// Old + unpublished in another session — sweep is global (per-tick
+		// broadcast is routed by row.SessionID).
+		{ID: "p-other", SessionID: "sess-other", Seq: 1, EventID: "evt-other", Kind: "task.completed", EntityID: "x", Payload: []byte(`{}`), CreatedAt: old},
+	}
+	for _, row := range rows {
+		if err := repo.Insert(ctx, row); err != nil {
+			t.Fatalf("Insert(%s): %v", row.ID, err)
+		}
+	}
+	if err := repo.MarkPublished(ctx, "p-published", old.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.ListPending(ctx, now.Add(-10*time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("ListPending: got %d rows (%+v), want 3", len(got), got)
+	}
+	// Oldest first across sessions.
+	if got[0].ID != "p-older-1" || got[1].ID != "p-old-2" || got[2].ID != "p-other" {
+		t.Fatalf("ListPending order = %s,%s,%s; want p-older-1,p-old-2,p-other", got[0].ID, got[1].ID, got[2].ID)
+	}
+
+	// Limit respected.
+	limited, err := repo.ListPending(ctx, now.Add(-10*time.Second), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 2 || limited[0].ID != "p-older-1" {
+		t.Fatalf("ListPending limit=2: got %+v", limited)
+	}
+
+	// Zero cutoff = no age filter (all unpublished).
+	all, err := repo.ListPending(ctx, time.Time{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 4 {
+		t.Fatalf("ListPending zero cutoff: got %d rows, want 4 (all unpublished)", len(all))
+	}
+
+	// Typed-nil repo must not panic.
+	var typedNil *eventDeliveryOutboxRepo
+	if rows, err := typedNil.ListPending(ctx, now, 10); err != nil || rows != nil {
+		t.Fatalf("typed nil ListPending: rows=%v err=%v", rows, err)
 	}
 }

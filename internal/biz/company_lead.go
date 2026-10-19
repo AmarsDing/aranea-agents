@@ -132,7 +132,21 @@ func (m *DeptLeadManager) CreateCompanyLead(ctx context.Context, companyNode Org
 			}
 		}
 		if existing.PositionID != pos.ID && m.agentUC != nil {
-			_, _ = m.agentUC.Update(ctx, existing.ID, Agent{PositionID: pos.ID, PositionKey: pos.Key})
+			// Full read-modify-write: UpdateAgent is full-replace for catalog
+			// fields (2026-10-18 contract), so a sparse patch would clear every
+			// other proto-carried column of the lead agent.
+			patched := existing
+			patched.PositionID = pos.ID
+			patched.PositionKey = pos.Key
+			if _, updateErr := m.agentUC.Update(ctx, existing.ID, patched); updateErr != nil {
+				// Best-effort: the follow-up Get below re-reads the row; surface the
+				// failure instead of swallowing it (红线 #22).
+				m.lg.Warn("failed to patch company lead position",
+					loggateway.StepID("company_lead.patch_position"),
+					loggateway.Str("agent_id", existing.ID),
+					loggateway.Str("position_id", pos.ID),
+					loggateway.Err(updateErr))
+			}
 		}
 		if m.agentUC != nil {
 			if a, getErr := m.agentUC.Get(ctx, existing.ID); getErr == nil && a.ID != "" {

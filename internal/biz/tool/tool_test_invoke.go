@@ -44,7 +44,7 @@ func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string
 		return ToolTestResult{}, apierror.Internal("TOOL", "tool tester not configured")
 	}
 	var pf *WebResearchPlatformFields
-	if platform := LoadWebResearchPlatform(ctx, u.sys); platform != nil {
+	if platform := LoadWebResearchPlatform(ctx, u.sys, u.lg); platform != nil {
 		pf = webResearchPlatformFields(*platform)
 	}
 	res, err := u.tester.Execute(ctx, ToolTestInput{

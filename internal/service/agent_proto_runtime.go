@@ -100,6 +100,13 @@ func fromProtoMemory(pb *v1.AgentRuntimeSettings) biz.MemoryCfg {
 		L3ArchiveThreshold:       pb.GetL3ArchiveThreshold(),
 		L3MaxPerRecallChars:      int(pb.GetL3MaxPerRecallChars()),
 		L3RecallBudgetTokens:     int(pb.GetL3RecallBudgetTokens()),
+		L2RecallBudgetTokens:     int(pb.GetL2RecallBudgetTokens()),
+		// proto optional bool: absent decodes to false, which matches the
+		// DefaultAgentRuntimeSettings baseline (2026-08-28: provenance off by
+		// default). Explicit true from the caller is respected; persistence for
+		// older rows is provided by the biz inherit pass (fat Update inherits
+		// API-uncovered columns from the current row).
+		L3InjectProvenance:       pb.GetL3InjectProvenance(),
 		L4Enabled:                pb.GetL4Enabled(),
 		L4GraphInjectNeighbors:   pb.GetL4GraphInjectNeighbors(),
 		L4GraphMaxNeighbors:      int(pb.GetL4GraphMaxNeighbors()),
@@ -156,6 +163,8 @@ func fromProtoEvolution(pb *v1.AgentRuntimeSettings) biz.EvolutionCfg {
 		SubagentsArchiveAfterMinutes:      int(pb.GetSubagentsArchiveAfterMinutes()),
 		SubagentsMaxRetries:               int(pb.GetSubagentsMaxRetries()),
 		SubagentsModelOverride:            pb.GetSubagentsModelOverride(),
+		SubagentsStoredResultRunes:        int(pb.GetSubagentsStoredResultRunes()),
+		SubagentsStoredSummaryRunes:       int(pb.GetSubagentsStoredSummaryRunes()),
 		SkillEvolve:                       pb.GetEvolutionSkillEvolve(),
 		MetricsEnabled:                    pb.GetEvolutionMetricsEnabled(),
 		SuggestionsEnabled:                pb.GetEvolutionSuggestionsEnabled(),
@@ -189,6 +198,7 @@ func fromProtoContext(pb *v1.AgentRuntimeSettings) biz.ContextCfg {
 		ModelSelector:              pb.GetModelSelector(),
 		PlannerKind:                pb.GetPlannerKind(),
 		PlannerConfigJSON:          pb.GetPlannerConfigJson(),
+		VerificationTruncateChars:  int(pb.GetVerificationTruncateChars()),
 	}
 }
 
@@ -213,6 +223,8 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		SubagentsArchiveAfterMinutes:      int32(evo.SubagentsArchiveAfterMinutes),
 		SubagentsMaxRetries:               int32(evo.SubagentsMaxRetries),
 		SubagentsModelOverride:            evo.SubagentsModelOverride,
+		SubagentsStoredResultRunes:        int32(evo.SubagentsStoredResultRunes),
+		SubagentsStoredSummaryRunes:       int32(evo.SubagentsStoredSummaryRunes),
 		ToolsEnabled:                      tools.Enabled,
 		ToolsProfile:                      tools.Profile,
 		ToolsToolCallPrefix:               tools.ToolCallPrefix,
@@ -272,6 +284,8 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		L3ArchiveThreshold:                mem.L3ArchiveThreshold,
 		L3MaxPerRecallChars:               int32(mem.L3MaxPerRecallChars),
 		L3RecallBudgetTokens:              int32(mem.L3RecallBudgetTokens),
+		L2RecallBudgetTokens:              int32(mem.L2RecallBudgetTokens),
+		L3InjectProvenance:                proto.Bool(mem.L3InjectProvenance),
 		L4Enabled:                         mem.L4Enabled,
 		L4GraphInjectNeighbors:            mem.L4GraphInjectNeighbors,
 		L4GraphMaxNeighbors:               int32(mem.L4GraphMaxNeighbors),
@@ -325,6 +339,7 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		ToolsCommandSafetyEnabled:         tools.CommandSafetyEnabled,
 		PlannerKind:                       ctx.PlannerKind,
 		PlannerConfigJson:                 ctx.PlannerConfigJSON,
+		VerificationTruncateChars:         int32(ctx.VerificationTruncateChars),
 		RalphLoopMaxIterations:            int32(b.RalphLoopMaxIterations),
 		RalphLoopCompletionPromise:        b.RalphLoopCompletionPromise,
 		RalphLoopVerifyCommand:            b.RalphLoopVerifyCommand,

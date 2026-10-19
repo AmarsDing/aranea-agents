@@ -96,7 +96,8 @@ export function useAgentsPage() {
   const deleteOpen = ref(false);
   const deleteTarget = ref<Agent | null>(null);
   const creating = ref(false);
-  const selfEvolve = ref(true);
+  // 与后端 DefaultAgentRuntimeSettings（agent_defaults.go）opt-in 语义一致：自进化默认关。
+  const selfEvolve = ref(false);
   const agentKind = ref<AgentKind>('llm');
   const a2aProxy = reactive<A2AProxyConfig>({
     remote_url: '',
@@ -286,7 +287,7 @@ export function useAgentsPage() {
     selectedTemplateKey.value = '';
     clearCreateFieldErrors();
     modelCheckPassed.value = false;
-    selfEvolve.value = true;
+    selfEvolve.value = false;
     agentKind.value = 'llm';
     Object.assign(a2aProxy, { remote_url: '', enable_streaming: true, timeout_seconds: 30 });
   }

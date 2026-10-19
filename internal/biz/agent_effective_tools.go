@@ -76,23 +76,41 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 		return AgentEffectiveTools{}, err
 	}
 	ClampSpecialistToolFace(&settings, ag)
-	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
+	// P3-1 (2026-10-19): lean single-scan catalog — the effective computation
+	// consumes only Items, so the admin list path's COUNT/SUMMARY/stats
+	// aggregates are skipped on this per-turn read.
+	catalogItems, err := u.toolCatalogForEffective(ctx)
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
-	for i := range all.Items {
-		EnrichToolRuntimeFieldsWithPlatform(&all.Items[i], platform, checkerToReadinessFunc(u.webResearchChecker))
+	platform := loadWebResearchPlatformFromSys(ctx, u.sys, u.lg)
+	for i := range catalogItems {
+		EnrichToolRuntimeFieldsWithPlatform(&catalogItems[i], platform, checkerToReadinessFunc(u.webResearchChecker))
 	}
-	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
+	eff := buildAgentEffectiveTools(settings, catalogItems, u.lg)
 	var overrides []ToolAgentOverride
 	if o, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
 		overrides = o
-		ApplyAgentToolOverrides(&eff, all.Items, overrides)
+		ApplyAgentToolOverrides(&eff, catalogItems, overrides)
 	}
-	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, all.Items, platform, overrides)
+	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, catalogItems, platform, overrides)
 	DisableSpiritReservedTools(&eff, ag.AgentKey)
 	return eff, nil
+}
+
+// toolCatalogForEffective returns the full tool catalog for the effective
+// computation. When the registry repo implements EffectiveToolsCatalogLister
+// (production repo), a single lean scan is used; legacy test fakes fall back
+// to SearchTools (Items only — COUNT/SUMMARY ignored, same as before).
+func (u *AgentUsecase) toolCatalogForEffective(ctx context.Context) ([]Tool, error) {
+	if lean, ok := u.tools.(EffectiveToolsCatalogLister); ok {
+		return lean.ListAllToolsForEffective(ctx)
+	}
+	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
+	if err != nil {
+		return nil, err
+	}
+	return all.Items, nil
 }
 
 func (u *AgentUsecase) runtimeSettingsForEffective(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
@@ -160,7 +178,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	// (runtimeSettingsForEffective applied defaults; we mutated the tool columns
 	// in place), so a second GetAgentRuntimeSettings would be a redundant query.
 
-	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
+	platform := loadWebResearchPlatformFromSys(ctx, u.sys, u.lg)
 	for i := range all.Items {
 		EnrichToolRuntimeFieldsWithPlatform(&all.Items[i], platform, checkerToReadinessFunc(u.webResearchChecker))
 	}

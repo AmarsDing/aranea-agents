@@ -235,3 +235,77 @@ func TestFailTurn_skipsFailedWhenCancelled(t *testing.T) {
 		t.Fatalf("turn still marked error, msg=%q", turnErrMsg)
 	}
 }
+
+// TestClearAwaitingRunStateSync_AtomicPatchNoRMW pins the P2-2 fix
+// (2026-10-19): clearing await state must go through a single atomic
+// PatchSessionState delete call and must NOT round-trip through
+// Get+delete+Save — that read-modify-write could silently overwrite a
+// concurrent await-marker patch landing between the read and the write.
+func TestClearAwaitingRunStateSync_AtomicPatchNoRMW(t *testing.T) {
+	sessions := newRecordingSessionStatePort()
+	tracker := newChatRunStatusTracker(rt.NewRunRegistry(), sessions, &captureEventBus{}, loggateway.NewNoop())
+
+	// Pre-populate state with run/await keys plus a foreign key that must survive.
+	sessions.mu.Lock()
+	sessions.state[stateKeyRunID] = "run-old"
+	sessions.state[stateKeyRunStatus] = "awaiting_user"
+	sessions.state[stateKeyRunError] = "boom"
+	sessions.state[stateKeyRunUpdatedAt] = "2026-10-19T00:00:00Z"
+	sessions.state[stateKeyAwaitRunID] = "run-old"
+	sessions.state[stateKeyAwaitSince] = "2026-10-19T00:00:01Z"
+	sessions.state[stateKeyAwaitKind] = "tool"
+	sessions.state[stateKeyAwaitToolKey] = "k"
+	sessions.state[stateKeyAwaitToolCallID] = "tc-1"
+	sessions.state["custom.keep"] = "v"
+	sessions.mu.Unlock()
+
+	if err := tracker.ClearAwaitingRunStateSync(context.Background(), "sess-1"); err != nil {
+		t.Fatalf("ClearAwaitingRunStateSync failed: %v", err)
+	}
+
+	sessions.mu.Lock()
+	defer sessions.mu.Unlock()
+
+	// (1) No read-modify-write: SaveSessionState must never be called.
+	if sessions.saves != 0 {
+		t.Fatalf("SaveSessionState called %d times; want 0 (atomic patch only, no RMW)", sessions.saves)
+	}
+
+	// (2) Exactly one patch: nil sets, all nine obsolete keys in deletes.
+	if len(sessions.patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(sessions.patches))
+	}
+	patch := sessions.patches[0]
+	if len(patch.sets) != 0 {
+		t.Fatalf("patch sets = %v; want empty (delete-only patch)", patch.sets)
+	}
+	wantDeletes := map[string]bool{
+		stateKeyRunID: false, stateKeyRunStatus: false, stateKeyRunError: false,
+		stateKeyRunUpdatedAt: false, stateKeyAwaitRunID: false, stateKeyAwaitSince: false,
+		stateKeyAwaitKind: false, stateKeyAwaitToolKey: false, stateKeyAwaitToolCallID: false,
+	}
+	if len(patch.deletes) != len(wantDeletes) {
+		t.Fatalf("patch deletes = %v; want %d keys", patch.deletes, len(wantDeletes))
+	}
+	for _, d := range patch.deletes {
+		if _, ok := wantDeletes[d]; !ok {
+			t.Fatalf("unexpected delete key %q in %v", d, patch.deletes)
+		}
+		wantDeletes[d] = true
+	}
+	for k, seen := range wantDeletes {
+		if !seen {
+			t.Fatalf("expected delete key %q missing from %v", k, patch.deletes)
+		}
+	}
+
+	// (3) The foreign key survives; the run/await keys are gone.
+	if sessions.state["custom.keep"] != "v" {
+		t.Fatalf("unrelated key custom.keep lost: state = %v", sessions.state)
+	}
+	for k := range wantDeletes {
+		if _, ok := sessions.state[k]; ok {
+			t.Fatalf("key %q still present after clear: state = %v", k, sessions.state)
+		}
+	}
+}

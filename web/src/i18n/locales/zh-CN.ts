@@ -258,6 +258,7 @@ export default {
   },
   chat: {
     runLongStallWarning: '似乎没有进展，是否停止？',
+    runStateRecovered: '已同步最新运行状态',
     contextManuallyCompressed: '上下文已手动压缩（{before} → {after}）',
     contextNoCompactionNeeded: '当前上下文无需压缩',
     contextCompactFailed: '上下文压缩失败',

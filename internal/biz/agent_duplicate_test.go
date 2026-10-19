@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
@@ -96,6 +97,57 @@ func TestDuplicate_copiesFilesWithNewIDs(t *testing.T) {
 	}
 	if len(repo.created.Files) != 1 || repo.created.Files[0].ID != "" {
 		t.Fatalf("expected copied file without id, got %+v", repo.created.Files)
+	}
+}
+
+// P2-B tenant binding: a non-system caller's duplicate always lands in the
+// caller's workspace (duplicating a shared/built-in row must not mint another
+// shared row visible to every tenant); system callers keep the source
+// workspace semantics.
+func TestDuplicate_tenantBinding(t *testing.T) {
+	cases := []struct {
+		name   string
+		ctx    context.Context
+		srcWS  string
+		wantWS string
+	}{
+		{
+			name:   "tenant ctx duplicating shared row binds to caller workspace",
+			ctx:    workspace.WithContext(context.Background(), "ws-a"),
+			srcWS:  "",
+			wantWS: "ws-a",
+		},
+		{
+			name:   "tenant ctx duplicating own row keeps ownership",
+			ctx:    workspace.WithContext(context.Background(), "ws-a"),
+			srcWS:  "ws-a",
+			wantWS: "ws-a",
+		},
+		{
+			name:   "system ctx duplicating shared row keeps shared semantics",
+			ctx:    workspace.WithSystemWorkspace(context.Background()),
+			srcWS:  "",
+			wantWS: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &duplicateAgentRepo{src: Agent{
+				ID:          "src-1",
+				AgentKey:    "demo",
+				DisplayName: "Demo",
+				Provider:    "openai",
+				Model:       "gpt-4",
+				WorkspaceID: tc.srcWS,
+			}}
+			uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
+			if _, err := uc.Duplicate(tc.ctx, "src-1"); err != nil {
+				t.Fatalf("Duplicate: %v", err)
+			}
+			if repo.created.WorkspaceID != tc.wantWS {
+				t.Fatalf("workspace_id = %q, want %q", repo.created.WorkspaceID, tc.wantWS)
+			}
+		})
 	}
 }
 

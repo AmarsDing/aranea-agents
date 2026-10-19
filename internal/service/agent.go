@@ -74,7 +74,9 @@ func (s *AgentService) checkAgentAccess(ctx context.Context, agentID string, mut
 	if agentID == "" {
 		return nil
 	}
-	a, err := s.uc.Get(ctx, agentID)
+	// Narrow scope lookup (single-column query) — a full uc.Get here previously
+	// cost 4+ queries per guarded RPC, and 2–3 full hydrations per Update/Delete.
+	agentWS, err := s.uc.PeekWorkspaceScope(ctx, agentID)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return apierror.NotFound(apierror.DomainAgent, "agent not found")
@@ -83,18 +85,18 @@ func (s *AgentService) checkAgentAccess(ctx context.Context, agentID string, mut
 	}
 	callerWS := workspace.IDFromContext(ctx)
 	if mutate {
-		err = workspace.AssertWorkspaceMutate(callerWS, a.WorkspaceID)
+		err = workspace.AssertWorkspaceMutate(callerWS, agentWS)
 		// 内置 agent（__spirit__ 等 system_builtin）是共享行（workspace_id=""），
 		// P2-B fail-closed 会让 default 工作区的管理员保存设置/收藏/工具策略时
 		// 莫名 404。管理端设置页本就开放内置 agent 编辑，此处对 admin 明确放行；
 		// 租户（非 admin access）调用方仍保持 fail-closed。
-		if err != nil && a.WorkspaceID == "" {
+		if err != nil && agentWS == "" {
 			if claims, ok := auth.FromContext(ctx); ok && claims.HasAdminAccess() {
 				err = nil
 			}
 		}
 	} else {
-		err = workspace.AssertWorkspaceOrShared(callerWS, a.WorkspaceID)
+		err = workspace.AssertWorkspaceOrShared(callerWS, agentWS)
 	}
 	if err != nil {
 		s.lg.Warn("agent access denied: workspace mismatch",
@@ -265,9 +267,10 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 		return nil, err
 	}
 	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
+	// 窄查询单列（F7 残留收口）：此前此处做一次全水合 uc.Get 仅为取 key。
 	agentKey := ""
-	if a, err := s.uc.Get(ctx, req.GetId()); err == nil {
-		agentKey = a.AgentKey
+	if key, err := s.uc.PeekAgentKey(ctx, req.GetId()); err == nil {
+		agentKey = key
 	}
 	s.lg.Info("删除 Agent", loggateway.StepID("agent.crud.delete"), loggateway.Str("agent_id", req.GetId()), loggateway.Str("agent_key", agentKey))
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {

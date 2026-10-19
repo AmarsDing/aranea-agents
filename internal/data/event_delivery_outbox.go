@@ -13,7 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const defaultEventOutboxListLimit = 100
+const (
+	defaultEventOutboxListLimit    = 100
+	defaultEventOutboxPendingLimit = 200
+)
 
 type eventDeliveryOutboxRepo struct {
 	data *Data
@@ -82,11 +85,27 @@ func (r *eventDeliveryOutboxRepo) Insert(ctx context.Context, row biz.EventDeliv
 }
 
 func (r *eventDeliveryOutboxRepo) MarkPublished(ctx context.Context, id string, publishedAt time.Time) error {
+	return r.MarkPublishedBatch(ctx, []string{id}, publishedAt)
+}
+
+func (r *eventDeliveryOutboxRepo) MarkPublishedBatch(ctx context.Context, ids []string, publishedAt time.Time) error {
 	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil
 	}
-	id = strings.TrimSpace(id)
-	if id == "" {
+	dedup := make(map[string]struct{}, len(ids))
+	clean := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := dedup[id]; ok {
+			continue
+		}
+		dedup[id] = struct{}{}
+		clean = append(clean, id)
+	}
+	if len(clean) == 0 {
 		return nil
 	}
 	if publishedAt.IsZero() {
@@ -99,10 +118,19 @@ func (r *eventDeliveryOutboxRepo) MarkPublished(ctx context.Context, id string, 
 	if r.data.Dialect().IsSQLite() {
 		unpublishedCond = "(published_at IS NULL OR published_at='')"
 	}
+	placeholders := make([]string, len(clean))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
 	q := r.data.Dialect().RenumberPlaceholders(
-		`UPDATE event_delivery_outbox SET published_at=? WHERE id=? AND ` + unpublishedCond,
+		`UPDATE event_delivery_outbox SET published_at=? WHERE id IN (` + strings.Join(placeholders, ",") + `) AND ` + unpublishedCond,
 	)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, publishedAt.UTC().Format(time.RFC3339Nano), id)
+	args := make([]any, 0, len(clean)+1)
+	args = append(args, publishedAt.UTC().Format(time.RFC3339Nano))
+	for _, id := range clean {
+		args = append(args, id)
+	}
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return entErrToBizErr(err, "EVENT_OUTBOX")
 	}
@@ -152,7 +180,61 @@ func (r *eventDeliveryOutboxRepo) ListAfter(ctx context.Context, sessionID, afte
 		return nil, entErrToBizErr(err, "EVENT_OUTBOX")
 	}
 	defer rows.Close()
-	out := make([]biz.EventDeliveryOutboxRow, 0, limit)
+	out, err := scanEventOutboxRows(rows, limit)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *eventDeliveryOutboxRepo) ListPending(ctx context.Context, cutoff time.Time, limit int) ([]biz.EventDeliveryOutboxRow, error) {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = defaultEventOutboxPendingLimit
+	}
+	d := r.data.Dialect()
+	// See MarkPublished: published_at is timestamptz on Postgres, TEXT with
+	// possible legacy '' on SQLite — the '' guard is SQLite-only.
+	unpublishedCond := "published_at IS NULL"
+	if d.IsSQLite() {
+		unpublishedCond = "(published_at IS NULL OR published_at='')"
+	}
+	args := make([]any, 0, 3)
+	createdCond := ""
+	if !cutoff.IsZero() {
+		// created_at is written as UTC RFC3339Nano TEXT; a same-format string
+		// compare works on SQLite and coerces cleanly to timestamptz on PG.
+		createdCond = " AND created_at < ?"
+		args = append(args, cutoff.UTC().Format(time.RFC3339Nano))
+	}
+	args = append(args, limit)
+	q := d.RenumberPlaceholders(
+		`SELECT id, session_id, seq, event_id, kind, entity_id, payload, published_at, created_at
+		 FROM event_delivery_outbox
+		 WHERE ` + unpublishedCond + createdCond + `
+		 ORDER BY created_at ASC
+		 LIMIT ?`,
+	)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "EVENT_OUTBOX")
+	}
+	defer rows.Close()
+	out, err := scanEventOutboxRows(rows, limit)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// scanEventOutboxRows decodes rows produced by the shared outbox SELECT
+// column list. Timestamps are stored as RFC3339(Nano) strings (timestamptz on
+// Postgres returns the same layout), parsed leniently — an unparseable value
+// leaves the field zero/nil rather than failing the whole batch.
+func scanEventOutboxRows(rows *sql.Rows, capHint int) ([]biz.EventDeliveryOutboxRow, error) {
+	out := make([]biz.EventDeliveryOutboxRow, 0, capHint)
 	for rows.Next() {
 		var row biz.EventDeliveryOutboxRow
 		var published, created sql.NullString

@@ -180,7 +180,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		updatedRun.OutputPreview = run.OutputPreview
 	}
 	// Preserve transient SpiritSessionID (team_runs has no such column;
-	// publishTeamRunSummary → TeamSummaryActivityEvent relies on it).
+	// publishTeamRunSummary's team_summary SystemNoticeEvent relies on it).
 	updatedRun.SpiritSessionID = run.SpiritSessionID
 	if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
 		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", updatedRun.ID), loggateway.Err(err))

@@ -13,11 +13,11 @@ import { useQuasar } from 'quasar';
 // 旧实现的叠包会让第一层闭包继续重置其已失效实例的计时器。
 const STALL_PATCHED = Symbol.for('aranea.stallWatchdogPatched');
 
-type TouchRunActivity = { (): void; [STALL_PATCHED]?: true };
+type TouchRunActivity = { (eventSessionId?: string): void; [STALL_PATCHED]?: true };
 
 export function useChatStallWatchdog(deps: {
   runStatus: { value: string };
-  sender: { touchRunActivity: () => void };
+  sender: { touchRunActivity: (eventSessionId?: string) => void };
   stopStreaming: () => void;
 }) {
   const { t } = useI18n();
@@ -81,8 +81,8 @@ export function useChatStallWatchdog(deps: {
   const senderTouch = deps.sender.touchRunActivity as TouchRunActivity;
   if (!senderTouch[STALL_PATCHED]) {
     const origTouchRunActivity = senderTouch.bind(deps.sender);
-    const wrapped: TouchRunActivity = () => {
-      origTouchRunActivity();
+    const wrapped: TouchRunActivity = (eventSessionId?: string) => {
+      origTouchRunActivity(eventSessionId);
       if (stallNotified) {
         resetStallNotifyTimer();
       } else if (deps.runStatus.value === 'running' && stallNotifyTimer != null) {

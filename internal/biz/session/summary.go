@@ -126,7 +126,7 @@ func truncateTaskStateRunes(s string, maxRunes int) string {
 	return s
 }
 
-// StateDelta represents a key-value state mutation (mirrors biz.DomainStateDelta).
+// StateDelta represents a key-value state mutation.
 type StateDelta struct {
 	Operation string
 	Path      string

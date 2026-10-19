@@ -1574,8 +1574,8 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// kebab-case keys like "deep-researcher" in the UI). Now we batch-resolve
 	// each agent_key to DisplayName via AgentReader. Lookup failures fall back
 	// to the agent_key so we never block team assembly on a stale key — the
-	// richer TeamSummaryActivityEvent emitted at run completion will still
-	// carry authoritative member data.
+	// richer team_summary SystemNoticeEvent (publishTeamRunSummary) emitted at
+	// run completion will still carry authoritative member data.
 	members := make([]map[string]any, 0, len(agentKeys))
 	for _, key := range agentKeys {
 		displayName := key
@@ -1612,18 +1612,9 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	}
 	// Persist synchronously to prevent a race with the progress event
 	// (StartTeamTurn publishes a "progress" event with Status=Running but no
-	// members/depends_on). The Bus's async persistence goroutine for the
-	// assembled event may execute after the progress event's goroutine, causing
-	// the version-guarded update to be rejected and members/depends_on to be
-	// lost. Synchronous persistence guarantees the assembled event is always
-	// stored first, so the progress event's UpsertActivity can merge its partial
-	// Meta with the existing members/depends_on.
-	//
-	// Issue 3 fix: If sync persistence fails, fall back to Bus async persist
-	// (SequencerHandled=false). Previously the Bus event always had
-	// SequencerHandled=true, meaning a sync failure = permanent data loss.
-	// Now the Bus provides a fallback path.
-	// Persist via v2 TeamStage Sequencer only (activities dual-write removed 2026-07-16).
+	// members/depends_on); the 2026-07-24 race-fix note below details the
+	// version-guard failure this prevents. Persist via v2 TeamStage Sequencer
+	// only (activities dual-write removed 2026-07-16).
 	if strings.TrimSpace(team.DisplayName) == "" {
 		a.lg.Warn("publishSpiritTeamAssembled: team.DisplayName 为空，前端将显示 team_id",
 			loggateway.StepID("spirit.team.empty_display_name"),

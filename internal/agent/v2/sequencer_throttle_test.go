@@ -165,7 +165,7 @@ func TestSequencer_PersistChannelFullWarnThrottled(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	s.processTask(publishTask{event: taskCreatedEv(0), persist: true})
-	<-rs.entered                                           // persistLoop now blocked inside UpsertTask (up to 2s)
+	<-rs.entered                                          // persistLoop now blocked inside UpsertTask (up to 2s)
 	s.persist.ch <- persistItem{event: taskCreatedEv(99)} // occupy the single slot
 	for i := 1; i <= 10; i++ {
 		s.processTask(publishTask{event: taskCreatedEv(i), persist: true})
@@ -230,9 +230,8 @@ func TestSequencer_OutboxInsertWarnThrottled(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	task := biz.Task{ID: "task-1", SessionID: "sess-1", Status: biz.TaskStatusCompleted, Seq: 9, Version: 2}
-	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		s.publishCritical(ctx, biz.NewTaskCompletedEvent(task))
+		s.publishCritical(biz.NewTaskCompletedEvent(task))
 	}
 	if got := lg.warnCount(); got != 1 {
 		t.Errorf("outbox insert warns = %d, want 1 (throttled)", got)

@@ -12,6 +12,11 @@ import (
 // runner 根，绕过 trpcGraphRuntime.Run，consumeRuntimeEvents 观察不到这些
 // 执行。steps_json 增量落库与终态收敛由 team coordinator/runner 经下列方法
 // 显式驱动（对齐 standalone 路径 node_end / 终态行为）。
+//
+// ADR-86（`docs/development/86-adr-dual-dag-engine-scope.md` D4）：本文件与
+// internal/team/runner_graph_event_tee.go 构成仅有的两个受认可 team↔graph
+// 镜像缝；本缝产出为 best-effort 非权威（背压可丢 notice），权威源是框架
+// checkpoint 谱系。移除 F-B 须立新 ADR（前提：恢复统一 runtime-event 消费者）。
 
 // RecordTeamGraphNodeEnd upserts a per-node step snapshot for a team-linked
 // graph execution and persists it immediately.
