@@ -229,6 +229,14 @@ func (ac *assembleContext) assembleClaudeCodeToolset() error {
 
 // assembleOpenAPIToolsets creates OpenAPI toolsets from spec configs.
 func (ac *assembleContext) assembleOpenAPIToolsets() error {
+	if ac.enabled["openapi"] && len(ac.cfg.OpenAPISpecs) == 0 {
+		// 开启 openapi 但未配置 spec：降级为无工具可用（此前 Registry 工厂直接
+		// 报错导致整个 Agent 装配失败，已修复为占位装配件 + 此处告警）。
+		ac.lg.Warn("tools.assemble.openapi_no_specs",
+			loggateway.StepID("tool.assemble.openapi_no_specs"),
+			loggateway.Str("reason", "openapi enabled but cfg.OpenAPISpecs is empty; no tools assembled"),
+		)
+	}
 	for _, spec := range ac.cfg.OpenAPISpecs {
 		var specLoader trpcopenapi.Loader
 		var err error

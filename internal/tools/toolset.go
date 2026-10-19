@@ -245,9 +245,15 @@ func Registry() []*ToolRegistration {
 				Description: "OpenAPI spec ToolSet (dynamic REST API tools from spec)",
 				Category:    "integration",
 				Tags:        []string{"api", "rest", "openapi"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return nil, apierror.BadRequest(apierror.DomainTool, "openapi requires spec configuration")
-				},
+				// Placeholder: actual assembly happens in assembleOpenAPIToolsets()
+				// from cfg.OpenAPISpecs. Previously this factory returned
+				// "openapi requires spec configuration", which assembleFromRegistry
+				// surfaces as a fatal Assemble error — enabling "openapi" without a
+				// spec then broke the whole Agent build. Degrade instead: enabled
+				// without spec assembles nothing (warned in assembleOpenAPIToolsets),
+				// consistent with every other config-gated tool (TPM-P2-02).
+				ToolSetFactory:      placeholderToolSetFactory,
+				AssembledElsewhere:  true,
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
 			},
@@ -332,6 +338,9 @@ func Registry() []*ToolRegistration {
 				Description:         "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
 				Category:            "media",
 				Tags:                []string{"document", "pdf", "docx", "read"},
+				// Placeholder: actual assembly happens in assembleBuiltinToolsets().
+				Factory:             placeholderToolFactory,
+				AssembledElsewhere:  true,
 				EnabledByDefault:    true,
 				RiskLevel:           "medium",
 				SupportsConcurrency: true,
@@ -362,6 +371,9 @@ func Registry() []*ToolRegistration {
 				Description:         "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
 				Category:            "media",
 				Tags:                []string{"spreadsheet", "xlsx", "csv", "read"},
+				// Placeholder: actual assembly happens in assembleBuiltinToolsets().
+				Factory:             placeholderToolFactory,
+				AssembledElsewhere:  true,
 				EnabledByDefault:    true,
 				RiskLevel:           "medium",
 				SupportsConcurrency: true,
