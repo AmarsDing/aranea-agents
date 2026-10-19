@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpportunityOutput",
+  "type": "object",
+  "required": ["title", "audience"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string" },
+    "entities": { "type": "array", "items": { "type": "string" } },
+    "signals": { "type": "array", "items": { "type": "string" } },
+    "audience": {
+      "type": "string",
+      "enum": ["novatrade_intel", "commerce_sourcing", "both"]
+    },
+    "score": { "type": "number" }
+  }
+}

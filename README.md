@@ -225,8 +225,22 @@ curl http://localhost:8910/healthz
 - [架构总览](doc/manual/02-architecture.md) · [组织管理](doc/manual/06-organization.md) · [记忆挑战赛参评说明](doc/memory-challenge.md)
 - [AGENTS.md](./AGENTS.md)——仓库协作规约
 
-## License
 
+## 能力状态（诚实声明）
+
+下列能力在代码库中已有实现或适配器，但**生产热路径未启用或未接线**，请勿按「开箱即用」理解：
+
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| `AgentCapability.Capacity` | **Soft gate + Redis hard gate when Redis up** (DEV-03) | Allocator soft reassign; Redis dual-write enables `capacity_hard_blocked`; process-local only if Redis down | Allocator + `AgentLoadTracker` 软重分配；**非**跨实例硬门控 |
+| `TaskRunAdapter`（异步 taskrun） | **未启用** | 适配器已实现；缺 Controller 与持久化，未挂工具注册表（TECH-DEBT B-7） |
+| `RenderPromptTemplate` / `RenderCapabilityCue` | **未启用** | 框架对齐渲染已实现；热路径仍用手写拼接（TECH-DEBT B-5） |
+| Framework `MemoryExtractor`（`ConsolidatorExtractorAdapter`） | **未启用** | 适配器就绪；生产仍走项目自有 AutoMemoryWorker（TECH-DEBT P2-7/8） |
+| `WorktreeIsolator` | **已启用（条件）** | `cmd/admin` Wire + 文件 ToolSet；仅当工作区在 git 仓库根下生效 |
+
+底座模块地图见本机 `docs/development/00-base-module-map.md`（`docs/` 默认 gitignore）。
+
+## License
 See [LICENSE](./LICENSE).
 
 *Aranea-Agents — 一人通过精灵控制 N 家公司，自己当发号施令的总裁。*

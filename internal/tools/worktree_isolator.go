@@ -28,6 +28,8 @@ type WorktreeHandler func(ctx context.Context, worktreeDir string, call ToolCall
 // on failure the worktree is discarded. This prevents concurrent file edits
 // from corrupting each other.
 //
+// HONESTY(TOOL-03): not registered in the production tool registry; safe to keep
+// as a library helper only until 3-way merge + conflict policy land.
 // TODO(debt): P2-4 ships a minimal implementation that creates a worktree per
 // call and merges via fast-forward. Production hardening (3-way merge,
 // conflict resolution, branch naming strategy) is deferred until the executor

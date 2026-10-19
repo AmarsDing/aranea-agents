@@ -31,6 +31,7 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
+	"aranea-agents/internal/data/ent/contentitem"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -69,6 +70,7 @@ import (
 	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
+	"aranea-agents/internal/data/ent/opportunity"
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
@@ -85,7 +87,9 @@ import (
 	"aranea-agents/internal/data/ent/platformplugin"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
+	"aranea-agents/internal/data/ent/reviewtask"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
@@ -102,6 +106,7 @@ import (
 	"aranea-agents/internal/data/ent/skilltag"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/internal/data/ent/stepv2"
+	"aranea-agents/internal/data/ent/suppliercandidate"
 	"aranea-agents/internal/data/ent/systemsetting"
 	"aranea-agents/internal/data/ent/taskdeadletter"
 	"aranea-agents/internal/data/ent/taskplan"
@@ -175,6 +180,8 @@ type Client struct {
 	CompiledTeam *CompiledTeamClient
 	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
 	ComputerUseAudit *ComputerUseAuditClient
+	// ContentItem is the client for interacting with the ContentItem builders.
+	ContentItem *ContentItemClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -251,6 +258,8 @@ type Client struct {
 	ModelPricingRule *ModelPricingRuleClient
 	// ModelTokenUsageHourly is the client for interacting with the ModelTokenUsageHourly builders.
 	ModelTokenUsageHourly *ModelTokenUsageHourlyClient
+	// Opportunity is the client for interacting with the Opportunity builders.
+	Opportunity *OpportunityClient
 	// Orchestration is the client for interacting with the Orchestration builders.
 	Orchestration *OrchestrationClient
 	// OrchestrationStep is the client for interacting with the OrchestrationStep builders.
@@ -283,8 +292,12 @@ type Client struct {
 	PlatformSkill *PlatformSkillClient
 	// PlatformTool is the client for interacting with the PlatformTool builders.
 	PlatformTool *PlatformToolClient
+	// PublishJob is the client for interacting with the PublishJob builders.
+	PublishJob *PublishJobClient
 	// ResourceAccessAudit is the client for interacting with the ResourceAccessAudit builders.
 	ResourceAccessAudit *ResourceAccessAuditClient
+	// ReviewTask is the client for interacting with the ReviewTask builders.
+	ReviewTask *ReviewTaskClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -317,6 +330,8 @@ type Client struct {
 	SkillVersion *SkillVersionClient
 	// StepV2 is the client for interacting with the StepV2 builders.
 	StepV2 *StepV2Client
+	// SupplierCandidate is the client for interacting with the SupplierCandidate builders.
+	SupplierCandidate *SupplierCandidateClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
 	SystemSetting *SystemSettingClient
 	// TaskDeadLetter is the client for interacting with the TaskDeadLetter builders.
@@ -386,6 +401,7 @@ func (c *Client) init() {
 	c.CodingTask = NewCodingTaskClient(c.config)
 	c.CompiledTeam = NewCompiledTeamClient(c.config)
 	c.ComputerUseAudit = NewComputerUseAuditClient(c.config)
+	c.ContentItem = NewContentItemClient(c.config)
 	c.CronTask = NewCronTaskClient(c.config)
 	c.CronTaskRun = NewCronTaskRunClient(c.config)
 	c.DecisionRecord = NewDecisionRecordClient(c.config)
@@ -424,6 +440,7 @@ func (c *Client) init() {
 	c.MemoryFactPending = NewMemoryFactPendingClient(c.config)
 	c.ModelPricingRule = NewModelPricingRuleClient(c.config)
 	c.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(c.config)
+	c.Opportunity = NewOpportunityClient(c.config)
 	c.Orchestration = NewOrchestrationClient(c.config)
 	c.OrchestrationStep = NewOrchestrationStepClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
@@ -440,7 +457,9 @@ func (c *Client) init() {
 	c.PlatformPlugin = NewPlatformPluginClient(c.config)
 	c.PlatformSkill = NewPlatformSkillClient(c.config)
 	c.PlatformTool = NewPlatformToolClient(c.config)
+	c.PublishJob = NewPublishJobClient(c.config)
 	c.ResourceAccessAudit = NewResourceAccessAuditClient(c.config)
+	c.ReviewTask = NewReviewTaskClient(c.config)
 	c.SchemaMigration = NewSchemaMigrationClient(c.config)
 	c.SelfCheckReport = NewSelfCheckReportClient(c.config)
 	c.SelfImprovementRun = NewSelfImprovementRunClient(c.config)
@@ -457,6 +476,7 @@ func (c *Client) init() {
 	c.SkillTag = NewSkillTagClient(c.config)
 	c.SkillVersion = NewSkillVersionClient(c.config)
 	c.StepV2 = NewStepV2Client(c.config)
+	c.SupplierCandidate = NewSupplierCandidateClient(c.config)
 	c.SystemSetting = NewSystemSettingClient(c.config)
 	c.TaskDeadLetter = NewTaskDeadLetterClient(c.config)
 	c.TaskPlan = NewTaskPlanClient(c.config)
@@ -588,6 +608,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
+		ContentItem:                NewContentItemClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DecisionRecord:             NewDecisionRecordClient(cfg),
@@ -626,6 +647,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		MemoryFactPending:          NewMemoryFactPendingClient(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
+		Opportunity:                NewOpportunityClient(cfg),
 		Orchestration:              NewOrchestrationClient(cfg),
 		OrchestrationStep:          NewOrchestrationStepClient(cfg),
 		Organization:               NewOrganizationClient(cfg),
@@ -642,7 +664,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PlatformPlugin:             NewPlatformPluginClient(cfg),
 		PlatformSkill:              NewPlatformSkillClient(cfg),
 		PlatformTool:               NewPlatformToolClient(cfg),
+		PublishJob:                 NewPublishJobClient(cfg),
 		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
+		ReviewTask:                 NewReviewTaskClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
 		SelfImprovementRun:         NewSelfImprovementRunClient(cfg),
@@ -659,6 +683,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SkillTag:                   NewSkillTagClient(cfg),
 		SkillVersion:               NewSkillVersionClient(cfg),
 		StepV2:                     NewStepV2Client(cfg),
+		SupplierCandidate:          NewSupplierCandidateClient(cfg),
 		SystemSetting:              NewSystemSettingClient(cfg),
 		TaskDeadLetter:             NewTaskDeadLetterClient(cfg),
 		TaskPlan:                   NewTaskPlanClient(cfg),
@@ -717,6 +742,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
+		ContentItem:                NewContentItemClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DecisionRecord:             NewDecisionRecordClient(cfg),
@@ -755,6 +781,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		MemoryFactPending:          NewMemoryFactPendingClient(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
+		Opportunity:                NewOpportunityClient(cfg),
 		Orchestration:              NewOrchestrationClient(cfg),
 		OrchestrationStep:          NewOrchestrationStepClient(cfg),
 		Organization:               NewOrganizationClient(cfg),
@@ -771,7 +798,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PlatformPlugin:             NewPlatformPluginClient(cfg),
 		PlatformSkill:              NewPlatformSkillClient(cfg),
 		PlatformTool:               NewPlatformToolClient(cfg),
+		PublishJob:                 NewPublishJobClient(cfg),
 		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
+		ReviewTask:                 NewReviewTaskClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
 		SelfImprovementRun:         NewSelfImprovementRunClient(cfg),
@@ -788,6 +817,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SkillTag:                   NewSkillTagClient(cfg),
 		SkillVersion:               NewSkillVersionClient(cfg),
 		StepV2:                     NewStepV2Client(cfg),
+		SupplierCandidate:          NewSupplierCandidateClient(cfg),
 		SystemSetting:              NewSystemSettingClient(cfg),
 		TaskDeadLetter:             NewTaskDeadLetterClient(cfg),
 		TaskPlan:                   NewTaskPlanClient(cfg),
@@ -840,9 +870,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
-		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.CronTask, c.CronTaskRun,
-		c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase,
-		c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
+		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.ContentItem, c.CronTask,
+		c.CronTaskRun, c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage,
+		c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
 		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
 		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
 		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
@@ -850,17 +880,18 @@ func (c *Client) Use(hooks ...Hook) {
 		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
 		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
 		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
-		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Opportunity, c.Orchestration,
 		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
 		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
-		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
-		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.PlatformSkill, c.PlatformTool, c.PublishJob, c.ResourceAccessAudit,
+		c.ReviewTask, c.SchemaMigration, c.SelfCheckReport, c.SelfImprovementRun,
+		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
+		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
+		c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2,
+		c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2,
+		c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
 		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
 		c.UsageQuota, c.UserEmbeddingSetting,
@@ -877,9 +908,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
-		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.CronTask, c.CronTaskRun,
-		c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase,
-		c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
+		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.ContentItem, c.CronTask,
+		c.CronTaskRun, c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage,
+		c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
 		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
 		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
 		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
@@ -887,17 +918,18 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
 		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
 		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
-		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Opportunity, c.Orchestration,
 		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
 		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
-		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
-		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.PlatformSkill, c.PlatformTool, c.PublishJob, c.ResourceAccessAudit,
+		c.ReviewTask, c.SchemaMigration, c.SelfCheckReport, c.SelfImprovementRun,
+		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
+		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
+		c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2,
+		c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2,
+		c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
 		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
 		c.UsageQuota, c.UserEmbeddingSetting,
@@ -949,6 +981,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CompiledTeam.mutate(ctx, m)
 	case *ComputerUseAuditMutation:
 		return c.ComputerUseAudit.mutate(ctx, m)
+	case *ContentItemMutation:
+		return c.ContentItem.mutate(ctx, m)
 	case *CronTaskMutation:
 		return c.CronTask.mutate(ctx, m)
 	case *CronTaskRunMutation:
@@ -1025,6 +1059,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ModelPricingRule.mutate(ctx, m)
 	case *ModelTokenUsageHourlyMutation:
 		return c.ModelTokenUsageHourly.mutate(ctx, m)
+	case *OpportunityMutation:
+		return c.Opportunity.mutate(ctx, m)
 	case *OrchestrationMutation:
 		return c.Orchestration.mutate(ctx, m)
 	case *OrchestrationStepMutation:
@@ -1057,8 +1093,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PlatformSkill.mutate(ctx, m)
 	case *PlatformToolMutation:
 		return c.PlatformTool.mutate(ctx, m)
+	case *PublishJobMutation:
+		return c.PublishJob.mutate(ctx, m)
 	case *ResourceAccessAuditMutation:
 		return c.ResourceAccessAudit.mutate(ctx, m)
+	case *ReviewTaskMutation:
+		return c.ReviewTask.mutate(ctx, m)
 	case *SchemaMigrationMutation:
 		return c.SchemaMigration.mutate(ctx, m)
 	case *SelfCheckReportMutation:
@@ -1091,6 +1131,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SkillVersion.mutate(ctx, m)
 	case *StepV2Mutation:
 		return c.StepV2.mutate(ctx, m)
+	case *SupplierCandidateMutation:
+		return c.SupplierCandidate.mutate(ctx, m)
 	case *SystemSettingMutation:
 		return c.SystemSetting.mutate(ctx, m)
 	case *TaskDeadLetterMutation:
@@ -3791,6 +3833,139 @@ func (c *ComputerUseAuditClient) mutate(ctx context.Context, m *ComputerUseAudit
 		return (&ComputerUseAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ComputerUseAudit mutation op: %q", m.Op())
+	}
+}
+
+// ContentItemClient is a client for the ContentItem schema.
+type ContentItemClient struct {
+	config
+}
+
+// NewContentItemClient returns a client for the ContentItem from the given config.
+func NewContentItemClient(c config) *ContentItemClient {
+	return &ContentItemClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `contentitem.Hooks(f(g(h())))`.
+func (c *ContentItemClient) Use(hooks ...Hook) {
+	c.hooks.ContentItem = append(c.hooks.ContentItem, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `contentitem.Intercept(f(g(h())))`.
+func (c *ContentItemClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ContentItem = append(c.inters.ContentItem, interceptors...)
+}
+
+// Create returns a builder for creating a ContentItem entity.
+func (c *ContentItemClient) Create() *ContentItemCreate {
+	mutation := newContentItemMutation(c.config, OpCreate)
+	return &ContentItemCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ContentItem entities.
+func (c *ContentItemClient) CreateBulk(builders ...*ContentItemCreate) *ContentItemCreateBulk {
+	return &ContentItemCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ContentItemClient) MapCreateBulk(slice any, setFunc func(*ContentItemCreate, int)) *ContentItemCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ContentItemCreateBulk{err: fmt.Errorf("calling to ContentItemClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ContentItemCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ContentItemCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ContentItem.
+func (c *ContentItemClient) Update() *ContentItemUpdate {
+	mutation := newContentItemMutation(c.config, OpUpdate)
+	return &ContentItemUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ContentItemClient) UpdateOne(_m *ContentItem) *ContentItemUpdateOne {
+	mutation := newContentItemMutation(c.config, OpUpdateOne, withContentItem(_m))
+	return &ContentItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ContentItemClient) UpdateOneID(id string) *ContentItemUpdateOne {
+	mutation := newContentItemMutation(c.config, OpUpdateOne, withContentItemID(id))
+	return &ContentItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ContentItem.
+func (c *ContentItemClient) Delete() *ContentItemDelete {
+	mutation := newContentItemMutation(c.config, OpDelete)
+	return &ContentItemDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ContentItemClient) DeleteOne(_m *ContentItem) *ContentItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ContentItemClient) DeleteOneID(id string) *ContentItemDeleteOne {
+	builder := c.Delete().Where(contentitem.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ContentItemDeleteOne{builder}
+}
+
+// Query returns a query builder for ContentItem.
+func (c *ContentItemClient) Query() *ContentItemQuery {
+	return &ContentItemQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeContentItem},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ContentItem entity by its id.
+func (c *ContentItemClient) Get(ctx context.Context, id string) (*ContentItem, error) {
+	return c.Query().Where(contentitem.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ContentItemClient) GetX(ctx context.Context, id string) *ContentItem {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ContentItemClient) Hooks() []Hook {
+	return c.hooks.ContentItem
+}
+
+// Interceptors returns the client interceptors.
+func (c *ContentItemClient) Interceptors() []Interceptor {
+	return c.inters.ContentItem
+}
+
+func (c *ContentItemClient) mutate(ctx context.Context, m *ContentItemMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ContentItemCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ContentItemUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ContentItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ContentItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ContentItem mutation op: %q", m.Op())
 	}
 }
 
@@ -8976,6 +9151,139 @@ func (c *ModelTokenUsageHourlyClient) mutate(ctx context.Context, m *ModelTokenU
 	}
 }
 
+// OpportunityClient is a client for the Opportunity schema.
+type OpportunityClient struct {
+	config
+}
+
+// NewOpportunityClient returns a client for the Opportunity from the given config.
+func NewOpportunityClient(c config) *OpportunityClient {
+	return &OpportunityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `opportunity.Hooks(f(g(h())))`.
+func (c *OpportunityClient) Use(hooks ...Hook) {
+	c.hooks.Opportunity = append(c.hooks.Opportunity, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `opportunity.Intercept(f(g(h())))`.
+func (c *OpportunityClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Opportunity = append(c.inters.Opportunity, interceptors...)
+}
+
+// Create returns a builder for creating a Opportunity entity.
+func (c *OpportunityClient) Create() *OpportunityCreate {
+	mutation := newOpportunityMutation(c.config, OpCreate)
+	return &OpportunityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Opportunity entities.
+func (c *OpportunityClient) CreateBulk(builders ...*OpportunityCreate) *OpportunityCreateBulk {
+	return &OpportunityCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OpportunityClient) MapCreateBulk(slice any, setFunc func(*OpportunityCreate, int)) *OpportunityCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OpportunityCreateBulk{err: fmt.Errorf("calling to OpportunityClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OpportunityCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OpportunityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Opportunity.
+func (c *OpportunityClient) Update() *OpportunityUpdate {
+	mutation := newOpportunityMutation(c.config, OpUpdate)
+	return &OpportunityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OpportunityClient) UpdateOne(_m *Opportunity) *OpportunityUpdateOne {
+	mutation := newOpportunityMutation(c.config, OpUpdateOne, withOpportunity(_m))
+	return &OpportunityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OpportunityClient) UpdateOneID(id string) *OpportunityUpdateOne {
+	mutation := newOpportunityMutation(c.config, OpUpdateOne, withOpportunityID(id))
+	return &OpportunityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Opportunity.
+func (c *OpportunityClient) Delete() *OpportunityDelete {
+	mutation := newOpportunityMutation(c.config, OpDelete)
+	return &OpportunityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OpportunityClient) DeleteOne(_m *Opportunity) *OpportunityDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OpportunityClient) DeleteOneID(id string) *OpportunityDeleteOne {
+	builder := c.Delete().Where(opportunity.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OpportunityDeleteOne{builder}
+}
+
+// Query returns a query builder for Opportunity.
+func (c *OpportunityClient) Query() *OpportunityQuery {
+	return &OpportunityQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOpportunity},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Opportunity entity by its id.
+func (c *OpportunityClient) Get(ctx context.Context, id string) (*Opportunity, error) {
+	return c.Query().Where(opportunity.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OpportunityClient) GetX(ctx context.Context, id string) *Opportunity {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OpportunityClient) Hooks() []Hook {
+	return c.hooks.Opportunity
+}
+
+// Interceptors returns the client interceptors.
+func (c *OpportunityClient) Interceptors() []Interceptor {
+	return c.inters.Opportunity
+}
+
+func (c *OpportunityClient) mutate(ctx context.Context, m *OpportunityMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OpportunityCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OpportunityUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OpportunityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OpportunityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Opportunity mutation op: %q", m.Op())
+	}
+}
+
 // OrchestrationClient is a client for the Orchestration schema.
 type OrchestrationClient struct {
 	config
@@ -11104,6 +11412,139 @@ func (c *PlatformToolClient) mutate(ctx context.Context, m *PlatformToolMutation
 	}
 }
 
+// PublishJobClient is a client for the PublishJob schema.
+type PublishJobClient struct {
+	config
+}
+
+// NewPublishJobClient returns a client for the PublishJob from the given config.
+func NewPublishJobClient(c config) *PublishJobClient {
+	return &PublishJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `publishjob.Hooks(f(g(h())))`.
+func (c *PublishJobClient) Use(hooks ...Hook) {
+	c.hooks.PublishJob = append(c.hooks.PublishJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `publishjob.Intercept(f(g(h())))`.
+func (c *PublishJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PublishJob = append(c.inters.PublishJob, interceptors...)
+}
+
+// Create returns a builder for creating a PublishJob entity.
+func (c *PublishJobClient) Create() *PublishJobCreate {
+	mutation := newPublishJobMutation(c.config, OpCreate)
+	return &PublishJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PublishJob entities.
+func (c *PublishJobClient) CreateBulk(builders ...*PublishJobCreate) *PublishJobCreateBulk {
+	return &PublishJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PublishJobClient) MapCreateBulk(slice any, setFunc func(*PublishJobCreate, int)) *PublishJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PublishJobCreateBulk{err: fmt.Errorf("calling to PublishJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PublishJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PublishJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PublishJob.
+func (c *PublishJobClient) Update() *PublishJobUpdate {
+	mutation := newPublishJobMutation(c.config, OpUpdate)
+	return &PublishJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PublishJobClient) UpdateOne(_m *PublishJob) *PublishJobUpdateOne {
+	mutation := newPublishJobMutation(c.config, OpUpdateOne, withPublishJob(_m))
+	return &PublishJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PublishJobClient) UpdateOneID(id string) *PublishJobUpdateOne {
+	mutation := newPublishJobMutation(c.config, OpUpdateOne, withPublishJobID(id))
+	return &PublishJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PublishJob.
+func (c *PublishJobClient) Delete() *PublishJobDelete {
+	mutation := newPublishJobMutation(c.config, OpDelete)
+	return &PublishJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PublishJobClient) DeleteOne(_m *PublishJob) *PublishJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PublishJobClient) DeleteOneID(id string) *PublishJobDeleteOne {
+	builder := c.Delete().Where(publishjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PublishJobDeleteOne{builder}
+}
+
+// Query returns a query builder for PublishJob.
+func (c *PublishJobClient) Query() *PublishJobQuery {
+	return &PublishJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePublishJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PublishJob entity by its id.
+func (c *PublishJobClient) Get(ctx context.Context, id string) (*PublishJob, error) {
+	return c.Query().Where(publishjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PublishJobClient) GetX(ctx context.Context, id string) *PublishJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PublishJobClient) Hooks() []Hook {
+	return c.hooks.PublishJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *PublishJobClient) Interceptors() []Interceptor {
+	return c.inters.PublishJob
+}
+
+func (c *PublishJobClient) mutate(ctx context.Context, m *PublishJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PublishJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PublishJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PublishJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PublishJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PublishJob mutation op: %q", m.Op())
+	}
+}
+
 // ResourceAccessAuditClient is a client for the ResourceAccessAudit schema.
 type ResourceAccessAuditClient struct {
 	config
@@ -11234,6 +11675,139 @@ func (c *ResourceAccessAuditClient) mutate(ctx context.Context, m *ResourceAcces
 		return (&ResourceAccessAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ResourceAccessAudit mutation op: %q", m.Op())
+	}
+}
+
+// ReviewTaskClient is a client for the ReviewTask schema.
+type ReviewTaskClient struct {
+	config
+}
+
+// NewReviewTaskClient returns a client for the ReviewTask from the given config.
+func NewReviewTaskClient(c config) *ReviewTaskClient {
+	return &ReviewTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `reviewtask.Hooks(f(g(h())))`.
+func (c *ReviewTaskClient) Use(hooks ...Hook) {
+	c.hooks.ReviewTask = append(c.hooks.ReviewTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `reviewtask.Intercept(f(g(h())))`.
+func (c *ReviewTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ReviewTask = append(c.inters.ReviewTask, interceptors...)
+}
+
+// Create returns a builder for creating a ReviewTask entity.
+func (c *ReviewTaskClient) Create() *ReviewTaskCreate {
+	mutation := newReviewTaskMutation(c.config, OpCreate)
+	return &ReviewTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ReviewTask entities.
+func (c *ReviewTaskClient) CreateBulk(builders ...*ReviewTaskCreate) *ReviewTaskCreateBulk {
+	return &ReviewTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReviewTaskClient) MapCreateBulk(slice any, setFunc func(*ReviewTaskCreate, int)) *ReviewTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReviewTaskCreateBulk{err: fmt.Errorf("calling to ReviewTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReviewTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReviewTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ReviewTask.
+func (c *ReviewTaskClient) Update() *ReviewTaskUpdate {
+	mutation := newReviewTaskMutation(c.config, OpUpdate)
+	return &ReviewTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReviewTaskClient) UpdateOne(_m *ReviewTask) *ReviewTaskUpdateOne {
+	mutation := newReviewTaskMutation(c.config, OpUpdateOne, withReviewTask(_m))
+	return &ReviewTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ReviewTaskClient) UpdateOneID(id string) *ReviewTaskUpdateOne {
+	mutation := newReviewTaskMutation(c.config, OpUpdateOne, withReviewTaskID(id))
+	return &ReviewTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ReviewTask.
+func (c *ReviewTaskClient) Delete() *ReviewTaskDelete {
+	mutation := newReviewTaskMutation(c.config, OpDelete)
+	return &ReviewTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReviewTaskClient) DeleteOne(_m *ReviewTask) *ReviewTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ReviewTaskClient) DeleteOneID(id string) *ReviewTaskDeleteOne {
+	builder := c.Delete().Where(reviewtask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ReviewTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for ReviewTask.
+func (c *ReviewTaskClient) Query() *ReviewTaskQuery {
+	return &ReviewTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeReviewTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ReviewTask entity by its id.
+func (c *ReviewTaskClient) Get(ctx context.Context, id string) (*ReviewTask, error) {
+	return c.Query().Where(reviewtask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReviewTaskClient) GetX(ctx context.Context, id string) *ReviewTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ReviewTaskClient) Hooks() []Hook {
+	return c.hooks.ReviewTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReviewTaskClient) Interceptors() []Interceptor {
+	return c.inters.ReviewTask
+}
+
+func (c *ReviewTaskClient) mutate(ctx context.Context, m *ReviewTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReviewTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReviewTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReviewTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReviewTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ReviewTask mutation op: %q", m.Op())
 	}
 }
 
@@ -13362,6 +13936,139 @@ func (c *StepV2Client) mutate(ctx context.Context, m *StepV2Mutation) (Value, er
 		return (&StepV2Delete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown StepV2 mutation op: %q", m.Op())
+	}
+}
+
+// SupplierCandidateClient is a client for the SupplierCandidate schema.
+type SupplierCandidateClient struct {
+	config
+}
+
+// NewSupplierCandidateClient returns a client for the SupplierCandidate from the given config.
+func NewSupplierCandidateClient(c config) *SupplierCandidateClient {
+	return &SupplierCandidateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `suppliercandidate.Hooks(f(g(h())))`.
+func (c *SupplierCandidateClient) Use(hooks ...Hook) {
+	c.hooks.SupplierCandidate = append(c.hooks.SupplierCandidate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `suppliercandidate.Intercept(f(g(h())))`.
+func (c *SupplierCandidateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SupplierCandidate = append(c.inters.SupplierCandidate, interceptors...)
+}
+
+// Create returns a builder for creating a SupplierCandidate entity.
+func (c *SupplierCandidateClient) Create() *SupplierCandidateCreate {
+	mutation := newSupplierCandidateMutation(c.config, OpCreate)
+	return &SupplierCandidateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SupplierCandidate entities.
+func (c *SupplierCandidateClient) CreateBulk(builders ...*SupplierCandidateCreate) *SupplierCandidateCreateBulk {
+	return &SupplierCandidateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SupplierCandidateClient) MapCreateBulk(slice any, setFunc func(*SupplierCandidateCreate, int)) *SupplierCandidateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SupplierCandidateCreateBulk{err: fmt.Errorf("calling to SupplierCandidateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SupplierCandidateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SupplierCandidateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SupplierCandidate.
+func (c *SupplierCandidateClient) Update() *SupplierCandidateUpdate {
+	mutation := newSupplierCandidateMutation(c.config, OpUpdate)
+	return &SupplierCandidateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SupplierCandidateClient) UpdateOne(_m *SupplierCandidate) *SupplierCandidateUpdateOne {
+	mutation := newSupplierCandidateMutation(c.config, OpUpdateOne, withSupplierCandidate(_m))
+	return &SupplierCandidateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SupplierCandidateClient) UpdateOneID(id string) *SupplierCandidateUpdateOne {
+	mutation := newSupplierCandidateMutation(c.config, OpUpdateOne, withSupplierCandidateID(id))
+	return &SupplierCandidateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SupplierCandidate.
+func (c *SupplierCandidateClient) Delete() *SupplierCandidateDelete {
+	mutation := newSupplierCandidateMutation(c.config, OpDelete)
+	return &SupplierCandidateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SupplierCandidateClient) DeleteOne(_m *SupplierCandidate) *SupplierCandidateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SupplierCandidateClient) DeleteOneID(id string) *SupplierCandidateDeleteOne {
+	builder := c.Delete().Where(suppliercandidate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SupplierCandidateDeleteOne{builder}
+}
+
+// Query returns a query builder for SupplierCandidate.
+func (c *SupplierCandidateClient) Query() *SupplierCandidateQuery {
+	return &SupplierCandidateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSupplierCandidate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SupplierCandidate entity by its id.
+func (c *SupplierCandidateClient) Get(ctx context.Context, id string) (*SupplierCandidate, error) {
+	return c.Query().Where(suppliercandidate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SupplierCandidateClient) GetX(ctx context.Context, id string) *SupplierCandidate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SupplierCandidateClient) Hooks() []Hook {
+	return c.hooks.SupplierCandidate
+}
+
+// Interceptors returns the client interceptors.
+func (c *SupplierCandidateClient) Interceptors() []Interceptor {
+	return c.inters.SupplierCandidate
+}
+
+func (c *SupplierCandidateClient) mutate(ctx context.Context, m *SupplierCandidateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SupplierCandidateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SupplierCandidateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SupplierCandidateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SupplierCandidateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SupplierCandidate mutation op: %q", m.Op())
 	}
 }
 
@@ -15899,52 +16606,55 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
-		ComputerUseAudit, CronTask, CronTaskRun, DecisionRecord, DecisionRecordOutbox,
-		DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig,
-		EvalRun, EvalRunPreference, EventDeliveryOutbox, ExperienceReport,
-		FailurePattern, FederationAuditLog, FederationOrg, FederationPolicy,
-		FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2,
-		GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink,
-		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel,
-		MediaProvider, MemberSessionV2, MemoryFactAllowRule, MemoryFactPending,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		ComputerUseAudit, ContentItem, CronTask, CronTaskRun, DecisionRecord,
+		DecisionRecordOutbox, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
+		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
+		MemoryFactAllowRule, MemoryFactPending, ModelPricingRule,
+		ModelTokenUsageHourly, Opportunity, Orchestration, OrchestrationStep,
 		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
 		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
 		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
-		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		PlatformSkill, PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask,
+		SchemaMigration, SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
 		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
 		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
-		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
-		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
-		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
+		SkillVersion, StepV2, SupplierCandidate, SystemSetting, TaskDeadLetter,
+		TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2,
+		ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
+		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
-		ComputerUseAudit, CronTask, CronTaskRun, DecisionRecord, DecisionRecordOutbox,
-		DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig,
-		EvalRun, EvalRunPreference, EventDeliveryOutbox, ExperienceReport,
-		FailurePattern, FederationAuditLog, FederationOrg, FederationPolicy,
-		FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2,
-		GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink,
-		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel,
-		MediaProvider, MemberSessionV2, MemoryFactAllowRule, MemoryFactPending,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		ComputerUseAudit, ContentItem, CronTask, CronTaskRun, DecisionRecord,
+		DecisionRecordOutbox, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
+		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
+		MemoryFactAllowRule, MemoryFactPending, ModelPricingRule,
+		ModelTokenUsageHourly, Opportunity, Orchestration, OrchestrationStep,
 		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
 		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
 		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
-		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		PlatformSkill, PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask,
+		SchemaMigration, SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
 		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
 		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
-		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
-		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
-		ToolResultReplacement, TurnV2, UsageQuota,
+		SkillVersion, StepV2, SupplierCandidate, SystemSetting, TaskDeadLetter,
+		TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2,
+		ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
+		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

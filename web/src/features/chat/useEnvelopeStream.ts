@@ -48,6 +48,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
 export function createTeamStream(
   sessionId: string,
   streamOpts?: {
+    lastEventId?: string;
     onConnected?: () => void;
     onDisconnected?: () => void;
     onServerShutdown?: (reason: string) => void;
@@ -59,6 +60,7 @@ export function createTeamStream(
     sessionId,
     channels: ['chat', 'team', 'system'],
     autoConnect: false,
+    lastEventId: streamOpts?.lastEventId,
     onConnected: () => streamOpts?.onConnected?.(),
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,

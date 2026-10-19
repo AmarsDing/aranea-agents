@@ -498,7 +498,7 @@ func ShouldCreateTaskForNode(node *NodeDef, meta NodeTaskMeta) bool {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(node.Type)) {
-	case NodeTypeAgent, NodeTypeLLM, NodeTypeTool, NodeTypeTools, NodeTypeTask, NodeTypeReview:
+	case NodeTypeAgent, NodeTypeLLM, NodeTypeTool, NodeTypeTools, NodeTypeTask, NodeTypeReview, NodeTypeHuman:
 		return true
 	default:
 		return meta.RequiredRole != "" || meta.AssignmentMode != "" || meta.ReviewerAgent != ""
@@ -512,7 +512,7 @@ func ShouldCreateTeamGraphTaskNode(node *NodeDef) bool {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(node.Type)) {
-	case NodeTypeTask, NodeTypeReview:
+	case NodeTypeTask, NodeTypeReview, NodeTypeHuman:
 		return true
 	default:
 		return false

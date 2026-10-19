@@ -157,13 +157,56 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       indexPendingTask(merged);
       return;
     }
+    // Converge optimistic cards: prefer exact ID match (request_id == Task ID).
+    // Fallback: drop other pending-user-* in the same session only when the
+    // real task is not itself an optimistic id (legacy server UUIDs).
+    // Prefer content match when multiple pending cards exist; otherwise wipe all.
+    // F2: the sweep is scoped to the session's pending index (O(pending-in-session)
+    // lookup) instead of the original full-map scan.
     const pendings = pendingTaskIdsBySession.get(merged.SessionID);
     if (pendings) {
-      for (const id of pendings) {
+      const msg = (merged.UserMessage || '').trim();
+      for (const id of Array.from(pendings)) {
+        const task = tasks.value.get(id);
+        // Keep non-matching pending cards when the real task carries a message.
+        if (msg && task && (task.UserMessage || '').trim() && (task.UserMessage || '').trim() !== msg) {
+          continue;
+        }
         tasks.value.delete(id);
+        pendings.delete(id);
       }
-      pendingTaskIdsBySession.delete(merged.SessionID);
+      if (pendings.size === 0) pendingTaskIdsBySession.delete(merged.SessionID);
     }
+  }
+
+  /**
+   * Remap an optimistic pending-user-* Task onto the server-assigned ID
+   * (HTTP ACK messageId). Avoids dual cards when ACK id ≠ pending id.
+   * No-op when ids are equal or pending is missing.
+   */
+  function adoptOptimisticTask(pendingId: string, realId: string) {
+    const pending = String(pendingId || '').trim();
+    const real = String(realId || '').trim();
+    if (!pending || !real || pending === real) return;
+    const existing = tasks.value.get(pending);
+    if (!existing) return;
+    const prior = tasks.value.get(real);
+    const merged: Task = prior
+      ? {
+          ...existing,
+          ...prior,
+          ID: real,
+          UserMessage: prior.UserMessage || existing.UserMessage,
+          CreatedAt: isZeroTime(prior.CreatedAt) ? existing.CreatedAt : prior.CreatedAt,
+          UpdatedAt: isZeroTime(prior.UpdatedAt) ? existing.UpdatedAt : prior.UpdatedAt,
+          CompletedAt: prior.CompletedAt ?? existing.CompletedAt ?? null,
+          Version: Math.max(prior.Version, existing.Version),
+        }
+      : { ...existing, ID: real };
+    tasks.value.set(real, merged);
+    tasks.value.delete(pending);
+    // F2 index hygiene: drop the adopted optimistic id from the session index.
+    dropPendingTaskIndex(existing.SessionID, pending);
   }
 
   /** removeTask 删除指定 ID 的 Task（用于乐观 Task 失败时清理） */
@@ -815,6 +858,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     graphStages,
     graphNodes,
     upsertTask,
+    adoptOptimisticTask,
     removeTask,
     upsertTurn,
     upsertStep,

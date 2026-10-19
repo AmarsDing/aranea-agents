@@ -1,0 +1,23 @@
+# Content pipeline template (MVP steady path).
+# Nodes: ingest_or_pick → team_produce → machine_scan → human_review → build_publish_package
+# human_review bridges to ReviewTask; only approved creates PublishJob (mode=package).
+# team-multi-platform-sync remains a role playbook, NOT a connector.
+name: content_pipeline
+version: 1
+nodes:
+  - id: ingest_or_pick
+    type: task
+  - id: team_produce
+    type: team
+    ref: team-viral-video-factory
+  - id: machine_scan
+    type: task
+  - id: human_review
+    type: review
+  - id: build_publish_package
+    type: task
+edges:
+  - [ingest_or_pick, team_produce]
+  - [team_produce, machine_scan]
+  - [machine_scan, human_review]
+  - [human_review, build_publish_package]

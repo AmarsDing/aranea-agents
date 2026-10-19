@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"sync"
+	"time"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -26,25 +27,58 @@ const activatedStateKey = "temp:deferred:activated"
 // worker 的克隆 session 与父 invocation 共享同一 session ID，因此以
 // session ID 为键的进程级注册表可以穿透 worker 隔离，对后续所有
 // LLM 请求可见。进程内存语义与 temp: 前缀一致：重启后需重新 tool_load。
-var activatedRegistry sync.Map // map[string]*activatedToolSet
+// activatedSessionRegistry is the AS-COG-01 named wrapper for the process-level
+// sessionID -> activated tool set map (replaces a bare package-level sync.Map).
+type activatedSessionRegistry struct {
+	m sync.Map // map[string]*activatedToolSet
+}
+
+func (r *activatedSessionRegistry) load(sessionID string) (*activatedToolSet, bool) {
+	v, ok := r.m.Load(sessionID)
+	if !ok {
+		return nil, false
+	}
+	return v.(*activatedToolSet), true
+}
+
+func (r *activatedSessionRegistry) loadOrStore(sessionID string, set *activatedToolSet) *activatedToolSet {
+	v, _ := r.m.LoadOrStore(sessionID, set)
+	return v.(*activatedToolSet)
+}
+
+func (r *activatedSessionRegistry) delete(sessionID string) { r.m.Delete(sessionID) }
+
+// Delete is kept for tests that touch the registry directly.
+func (r *activatedSessionRegistry) Delete(sessionID string) { r.delete(sessionID) }
+
+func (r *activatedSessionRegistry) count() int {
+	n := 0
+	r.m.Range(func(_, _ any) bool { n++; return true })
+	return n
+}
+
+var activatedRegistry activatedSessionRegistry
 
 type activatedToolSet struct {
-	mu    sync.RWMutex
-	names map[string]bool
+	mu       sync.RWMutex
+	names    map[string]bool
+	lastUsed time.Time
 }
 
 func registryActivated(sessionID, toolName string) bool {
 	if sessionID == "" {
 		return false
 	}
-	v, ok := activatedRegistry.Load(sessionID)
+	set, ok := activatedRegistry.load(sessionID)
 	if !ok {
 		return false
 	}
-	set := v.(*activatedToolSet)
-	set.mu.RLock()
+	set.mu.Lock()
 	hit := set.names[toolName]
-	set.mu.RUnlock()
+	if hit {
+		set.lastUsed = time.Now()
+	}
+	set.mu.Unlock()
 	return hit
 }
 
@@ -52,12 +86,12 @@ func registryActivate(sessionID, toolName string) {
 	if sessionID == "" {
 		return
 	}
-	v, _ := activatedRegistry.LoadOrStore(sessionID, &activatedToolSet{
+	set := activatedRegistry.loadOrStore(sessionID, &activatedToolSet{
 		names: make(map[string]bool),
 	})
-	set := v.(*activatedToolSet)
 	set.mu.Lock()
 	set.names[toolName] = true
+	set.lastUsed = time.Now()
 	set.mu.Unlock()
 }
 
@@ -129,4 +163,48 @@ func isActivatedForSession(ctx context.Context, toolName string) bool {
 	}
 	set := readActivatedSet(ctx)
 	return set[toolName]
+}
+
+// ClearActivated removes the process-level activated-tool set for a session.
+// Call on run/session terminal phases so long-lived processes do not leak
+// activatedRegistry entries (temp: semantics: restart already clears memory).
+func ClearActivated(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	activatedRegistry.delete(sessionID)
+}
+
+// ActivatedSessionCount returns how many sessions currently hold activated
+// tools in the process registry (tests / optional metrics).
+func ActivatedSessionCount() int {
+	return activatedRegistry.count()
+}
+
+
+// DefaultActivatedTTL is how long an idle activated session may linger in the
+// process registry before SweepStaleActivated may drop it (defense in depth
+// beside ClearActivated on terminal phases).
+const DefaultActivatedTTL = 2 * time.Hour
+
+// SweepStaleActivated deletes registry entries whose lastUsed is older than
+// ttl. ttl<=0 uses DefaultActivatedTTL. Returns the number of sessions removed.
+func SweepStaleActivated(ttl time.Duration) int {
+	if ttl <= 0 {
+		ttl = DefaultActivatedTTL
+	}
+	cutoff := time.Now().Add(-ttl)
+	removed := 0
+	activatedRegistry.m.Range(func(key, value any) bool {
+		set := value.(*activatedToolSet)
+		set.mu.RLock()
+		stale := set.lastUsed.Before(cutoff)
+		set.mu.RUnlock()
+		if stale {
+			activatedRegistry.delete(key.(string))
+			removed++
+		}
+		return true
+	})
+	return removed
 }

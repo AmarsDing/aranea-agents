@@ -31,7 +31,7 @@ func (stubUsageRepo) GetQuota(_ context.Context, scopeType, scopeID string) (usa
 
 func newTestUsageService() *UsageService {
 	uc := usage.NewUsecase(stubUsageRepo{}, nil)
-	return NewUsageService(uc)
+	return NewUsageService(uc, nil)
 }
 
 // TestUsageService_GetUsageQuota_RejectsNonSystemNonAdmin verifies that

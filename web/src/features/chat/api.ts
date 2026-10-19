@@ -188,9 +188,17 @@ export async function enqueueUserMessage(sessionId: string, content: string): Pr
 }
 
 /** Unified enqueue entry (HTTP). WS enqueue_message is no longer used from the UI. */
-export async function enqueueMessage(sessionId: string, content: string): Promise<EnqueueUserMessageResult> {
+export async function enqueueMessage(
+  sessionId: string,
+  content: string,
+  requestId?: string,
+): Promise<EnqueueUserMessageResult> {
   try {
-    const data = await chatService.EnqueueUserMessage({ sessionId, content });
+    const data = await chatService.EnqueueUserMessage({
+      sessionId,
+      content,
+      requestId: requestId || undefined,
+    });
     return {
       accepted: !!data?.accepted,
       queued: !!data?.queued,

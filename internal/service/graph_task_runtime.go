@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/mvp"
 	"aranea-agents/internal/team"
 	"aranea-agents/pkg/loggateway"
 
@@ -152,7 +153,7 @@ func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.Graph
 	if strings.TrimSpace(inputPreview) != "" {
 		input = inputPreview
 	}
-	_, err := r.taskUC.CreateTask(ctx, biz.CreateTaskParams{
+	gt, err := r.taskUC.CreateTask(ctx, biz.CreateTaskParams{
 		NodeID:             node.ID,
 		ExecutionID:        exec.ID,
 		RequiredRole:       role,
@@ -161,7 +162,25 @@ func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.Graph
 		Input:              input,
 		Context:            "{}",
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	// MVP: review/human nodes also enqueue ReviewTask so approve/reject resumes Graph.
+	nt := strings.ToLower(strings.TrimSpace(node.Type))
+	if nt == biz.NodeTypeReview || nt == biz.NodeTypeHuman {
+		graphTaskID := ""
+		if gt != nil {
+			graphTaskID = gt.TaskID
+		}
+		if _, berr := mvp.EnqueueFromGraphPause(exec.ID, node.ID, graphTaskID, "", node.Description, input, nil); berr != nil && r.lg != nil {
+			r.lg.Warn("mvp review bridge enqueue failed",
+				loggateway.StepID("mvp.review_bridge_fail"),
+				loggateway.Str("execution_id", exec.ID),
+				loggateway.Str("node_id", node.ID),
+				loggateway.Err(berr))
+		}
+	}
+	return nil
 }
 
 func (r *GraphTaskRuntime) OnTaskCompleted(ctx context.Context, task *biz.GraphTask) error {
@@ -222,6 +241,27 @@ func WireGraphTaskRuntime(
 	if teamGraphCoord != nil {
 		rt.SetTeamGraphTaskResumeHandler(teamGraphCoord)
 	}
+	// MVP ReviewTask ↔ Graph HITL: approve/reject completes GraphTask / resumes exec.
+	mvp.ConfigureGraphHooks(
+		func(executionID string, resumeValue map[string]any) error {
+			if graphUC == nil {
+				return nil
+			}
+			_, err := graphUC.ResumeExecution(context.Background(), executionID, resumeValue)
+			return err
+		},
+		func(taskID, submitter, output, summary string) error {
+			if taskUC == nil {
+				return nil
+			}
+			_, err := taskUC.SubmitTaskResult(context.Background(), taskID, submitter, output, summary, `{"source":"mvp_review"}`)
+			return err
+		},
+	)
+	// Opportunity → real WebhookDispatcher (opportunity.created / theme.digest intel only).
+	mvp.ConfigureOutboundWebhook(webhooks)
+	mvp.EnsureDefaultSearcher()
+	mvp.ConfigureReviewNotify(mvp.DefaultReviewNotifyFromEnv())
 	rt.Start()
 	return rt
 }

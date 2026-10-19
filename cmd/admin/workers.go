@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/event/contract"
 	mcphealth "aranea-agents/internal/mcp/health"
+	"aranea-agents/internal/mvp"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -424,6 +425,15 @@ func startBackgroundWorkers(
 			}
 		})
 		logger.Log(log.LevelInfo, "msg", "model registry sync agent registered", "schedule", "via CronRunner")
+	}
+
+	// MVP RSS → Content Inbox cron (enabled when ARANEA_MVP_RSS_FEEDS is set).
+	if cfg.CronRepo != nil {
+		safego.Go(ctx, "mvp.rss_cron_seed", func() {
+			if err := mvp.SeedRSSIngestCronTask(ctx, cfg.CronRepo); err != nil {
+				lg.Warn("Failed to seed MVP RSS ingest cron task", loggateway.StepID("mvp.rss_cron_seed"), loggateway.Err(err))
+			}
+		})
 	}
 
 	// M81 config-asset graph indexer (P0: rebuild capability only). The

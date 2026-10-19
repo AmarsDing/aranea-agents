@@ -66,3 +66,15 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 - [系统架构总览](../../docs/development/0-system-diagram.md)
 - [模块交叉引用全表](../../docs/development/65-module-cross-reference-full.md)
 - [AGENTS.md](../../AGENTS.md)（仓库协作规约）
+
+## 能力诚实声明（底座）
+
+| 能力 | 状态 |
+|------|------|
+| `AgentCapability.Capacity` | **Soft gate + Redis hard gate when Redis up** (DEV-03) | Allocator soft reassign; Redis dual-write enables `capacity_hard_blocked`; process-local only if Redis down |
+| `TaskRunAdapter` 异步 taskrun | **未启用**（TECH-DEBT B-7） |
+| Prompt / State 框架渲染器 | **未启用**（TECH-DEBT B-5 / B-6）；热路径手写 prompt |
+| Framework Memory Extractor 适配器 | **未启用**；生产用 AutoMemoryWorker |
+| `WorktreeIsolator` | **已启用（条件）**：Wire + 文件 ToolSet，需 git root |
+
+细节与加固进度见本机 `docs/development/00-base-module-map.md`、`2026-10-15-base-hardening-progress.md`。

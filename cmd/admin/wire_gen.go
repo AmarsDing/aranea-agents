@@ -71,7 +71,6 @@ import (
 	session2 "aranea-agents/internal/session"
 	session4 "aranea-agents/internal/session/trpc"
 	skill2 "aranea-agents/internal/skill"
-	evolution2 "aranea-agents/internal/skill/evolution"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/skill/watch"
@@ -256,7 +255,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	metricsUpdatedPublisher := service.ProvideMetricsUpdatedPublisher(v2Bus)
 	sessionMetricsUsecase := session.NewSessionMetricsUsecase(sessionRepo, loggatewayLogger, metricsUpdatedPublisher)
 	sessionRuntimeWriter := data.NewSessionRuntimeRepo(dataData)
-	activityLister := biz.NewSessionActivityLister(stepV2Repo, taskV2Repo)
+	activityLister := biz.ProvideSessionActivityLister(stepV2Repo, taskV2Repo, turnV2Repo)
 	flowLogWriter := service.ProvideFlowLogWriter(loggatewayLogger, monitorBus)
 	sessionFlowLogWriter := service.ProvideSessionFlowLogWriter(flowLogWriter)
 	sessionUsecase := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)
@@ -448,7 +447,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, turnV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, turnV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, dataData, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, organizationRepo, graphOrchestrationProjector, mailboxWaker)
@@ -500,7 +499,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	channelRuntimeLeaseRepo := data.NewChannelRuntimeLeaseRepo(dataData)
 	channelRuntime := provideChannelRuntime(channelUsecase, channelIngress, channelRuntimeLeaseRepo, router, loggatewayLogger)
 	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, monitorUsecase, loggatewayLogger)
-	usageService := service.NewUsageService(usageUsecase)
+	usageService := service.NewUsageService(usageUsecase, loggatewayLogger)
 	processLogEnabledProvider := provideProcessLogEnabled(confServer)
 	flowlogRepo := data.NewFlowLogRepo(dataData)
 	flowlogUsecase := flowlog.NewUsecase(flowlogRepo)
@@ -1078,6 +1077,8 @@ func provideSandboxManager(sbConf *conf.Sandbox, lg loggateway.Logger) *sandbox.
 }
 
 func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
+	// MVP pending-review native IM notify (Channel ≠ Publish).
+	service.WireMVPReviewChannelNotify(channels)
 	return service.NewChannelRunEscalationNotifier(channels, sessions, lg)
 }
 
@@ -1159,7 +1160,13 @@ func provideProcessLogEnabled(server2 *conf.Server) service.ProcessLogEnabledPro
 }
 
 func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
-	return data.NewRedisClient(c, lg)
+	rdb := data.NewRedisClient(c, lg)
+	if rdb != nil && rdb.IsEnabled() {
+		agent.ConfigureCapacityRedis(rdb.Client)
+	} else {
+		agent.ConfigureCapacityRedis(nil)
+	}
+	return rdb
 }
 
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
@@ -1194,6 +1201,8 @@ func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuot
 	uc := biz.NewSystemSettingUsecase(repo, quota)
 	uc.SetWebResearchTester(tester)
 	uc.SetTxProvider(tp)
+	// MVP search ingest: platform web_research + env keys (hits[] optional).
+	service.WireMVPWebResearchSearcher(repo)
 	return uc
 }
 
@@ -1611,6 +1620,7 @@ func provideChatServiceDeps(
 	learningLoop *biz.LearningLoopUsecase,
 	voiceDelegation *voice.DelegationRegistry,
 	decisions decision.Lifecycle,
+	d *data.Data,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 
@@ -1688,6 +1698,7 @@ func provideChatServiceDeps(
 			VoiceDelegation:           voiceDelegation,
 
 			DecisionCollector: decisions,
+			TurnSubmitClaimer: data.NewChatTurnSubmitClaimer(d),
 		},
 	}
 }
@@ -1774,23 +1785,6 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
 	})
-}
-
-// provideEvolutionService 装配框架 v1.11 技能演化 service（hold-all 模式，
-// 详见 internal/skill/evolution 包注释）。模型目录/技能 repo 缺失时返回 nil，
-// runner 侧自动跳过演化学习。
-func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo skill.Repository, usageRef *biz.UsageUsecaseRef, lg loggateway.Logger) evolution.Service {
-	svc := evolution2.NewService(evolution2.Config{
-		Catalog:  catalog,
-		RT:       &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
-		Repo:     repo,
-		UsageRef: usageRef,
-		Lg:       lg,
-	})
-	if svc == nil {
-		return nil
-	}
-	return svc
 }
 
 func provideSessionMemoryResync(admin biz.MemoryAdminDeps) session2.MemoryResync {

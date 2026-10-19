@@ -23,6 +23,7 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
+	"aranea-agents/internal/data/ent/contentitem"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -61,6 +62,7 @@ import (
 	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
+	"aranea-agents/internal/data/ent/opportunity"
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
@@ -77,7 +79,9 @@ import (
 	"aranea-agents/internal/data/ent/platformplugin"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
+	"aranea-agents/internal/data/ent/reviewtask"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
@@ -94,6 +98,7 @@ import (
 	"aranea-agents/internal/data/ent/skilltag"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/internal/data/ent/stepv2"
+	"aranea-agents/internal/data/ent/suppliercandidate"
 	"aranea-agents/internal/data/ent/systemsetting"
 	"aranea-agents/internal/data/ent/taskdeadletter"
 	"aranea-agents/internal/data/ent/taskplan"
@@ -202,6 +207,7 @@ func checkColumn(t, c string) error {
 			codingtask.Table:                 codingtask.ValidColumn,
 			compiledteam.Table:               compiledteam.ValidColumn,
 			computeruseaudit.Table:           computeruseaudit.ValidColumn,
+			contentitem.Table:                contentitem.ValidColumn,
 			crontask.Table:                   crontask.ValidColumn,
 			crontaskrun.Table:                crontaskrun.ValidColumn,
 			decisionrecord.Table:             decisionrecord.ValidColumn,
@@ -240,6 +246,7 @@ func checkColumn(t, c string) error {
 			memoryfactpending.Table:          memoryfactpending.ValidColumn,
 			modelpricingrule.Table:           modelpricingrule.ValidColumn,
 			modeltokenusagehourly.Table:      modeltokenusagehourly.ValidColumn,
+			opportunity.Table:                opportunity.ValidColumn,
 			orchestration.Table:              orchestration.ValidColumn,
 			orchestrationstep.Table:          orchestrationstep.ValidColumn,
 			organization.Table:               organization.ValidColumn,
@@ -256,7 +263,9 @@ func checkColumn(t, c string) error {
 			platformplugin.Table:             platformplugin.ValidColumn,
 			platformskill.Table:              platformskill.ValidColumn,
 			platformtool.Table:               platformtool.ValidColumn,
+			publishjob.Table:                 publishjob.ValidColumn,
 			resourceaccessaudit.Table:        resourceaccessaudit.ValidColumn,
+			reviewtask.Table:                 reviewtask.ValidColumn,
 			schemamigration.Table:            schemamigration.ValidColumn,
 			selfcheckreport.Table:            selfcheckreport.ValidColumn,
 			selfimprovementrun.Table:         selfimprovementrun.ValidColumn,
@@ -273,6 +282,7 @@ func checkColumn(t, c string) error {
 			skilltag.Table:                   skilltag.ValidColumn,
 			skillversion.Table:               skillversion.ValidColumn,
 			stepv2.Table:                     stepv2.ValidColumn,
+			suppliercandidate.Table:          suppliercandidate.ValidColumn,
 			systemsetting.Table:              systemsetting.ValidColumn,
 			taskdeadletter.Table:             taskdeadletter.ValidColumn,
 			taskplan.Table:                   taskplan.ValidColumn,

@@ -622,116 +622,18 @@ func (u *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelt
 // ws 为调用方 workspace（system 调用传 "" 表示共享库）；创建时盖章到 Collection，
 // 与 service 层 CreateCollection 的 C-01 租户盖章行为一致——否则懒创建的默认库
 // workspace="" 会被 assertCollectionMutateAccess 视为共享只读，导致首次入库 404。
-func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int, ws string) (Collection, error) {
-	if err := u.requireRepo(); err != nil {
-		return Collection{}, err
-	}
-	existing, err := u.collections.GetCollectionByName(ctx, ws, DefaultCollectionName)
-	if err == nil {
-		return existing, nil
-	}
-	if !apierror.IsCode(err, apierror.CodeNotFound) {
-		return Collection{}, err
-	}
-	model := strings.TrimSpace(embeddingModel)
-	if model == "" {
-		dim = 0
-	}
-	created, err := u.CreateVault(ctx, Collection{
-		Name:           DefaultCollectionName,
-		Description:    "未指定知识库的文档自动归入此处",
-		EmbeddingModel: model,
-		Dim:            dim,
-		VaultBackend:   VaultBackendTeam,
-		Workspace:      ws,
-	})
-	if err == nil {
-		return created, nil
-	}
-	// 并发懒创建：他请求已插入同名库，(workspace, name) 唯一约束冲突后回读。
-	if apierror.IsCode(err, apierror.CodeConflict) {
-		return u.collections.GetCollectionByName(ctx, ws, DefaultCollectionName)
-	}
-	return Collection{}, err
-}
+
+// 并发懒创建：他请求已插入同名库，(workspace, name) 唯一约束冲突后回读。
 
 // MoveDocument 文档跨库移动（US-14 整理归档：默认库收件箱 → 分类库）。
 // 校验目标库存在且与源库 dim 兼容后，委托 Repo 在单事务内完成 documents/chunks 随迁与计数校正。
-func (u *Usecase) MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error) {
-	if err := u.requireRepo(); err != nil {
-		return Document{}, err
-	}
-	id = strings.TrimSpace(id)
-	targetCollectionID = strings.TrimSpace(targetCollectionID)
-	if id == "" {
-		return Document{}, ErrIDRequired
-	}
-	if targetCollectionID == "" {
-		return Document{}, ErrCollectionIDRequired
-	}
-	doc, err := u.documents.GetDocument(ctx, id)
-	if err != nil {
-		return Document{}, err
-	}
-	if doc.CollectionID == targetCollectionID {
-		return doc, nil // 同库 no-op
-	}
-	src, err := u.collections.GetCollection(ctx, doc.CollectionID)
-	if err != nil {
-		return Document{}, err
-	}
-	dst, err := u.collections.GetCollection(ctx, targetCollectionID)
-	if err != nil {
-		return Document{}, err
-	}
-	if src.Dim != dst.Dim {
-		return Document{}, ErrMoveDimensionMismatch
-	}
-	return u.documents.MoveDocument(ctx, id, targetCollectionID)
-}
+
+// 同库 no-op
 
 // ── Embed settings ────────────────────────────────────────────────────────────
 
 // EmbedSetting is persisted platform default for the knowledge embedder.
-type EmbedSetting struct {
-	Provider  string
-	BaseURL   string
-	Model     string
-	Dim       int
-	APIKey    string
-	HasAPIKey bool
-}
 
 // EmbedConfigured reports whether stored settings are sufficient for the provider.
-func EmbedConfigured(s EmbedSetting) bool {
-	p := strings.TrimSpace(s.Provider)
-	if p == "" {
-		return false
-	}
-	switch p {
-	case "ollama":
-		return true
-	case "huggingface":
-		return strings.TrimSpace(s.BaseURL) != ""
-	default:
-		return s.HasAPIKey
-	}
-}
 
 // ApplyEmbedPatch merges an update onto current settings.
-func ApplyEmbedPatch(cur EmbedSetting, provider, baseURL, apiKey, model string, dim int, updateAPIKey bool) EmbedSetting {
-	out := cur
-	if p := strings.TrimSpace(provider); p != "" {
-		out.Provider = p
-	}
-	out.BaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	out.Model = strings.TrimSpace(model)
-	if dim > 0 {
-		out.Dim = dim
-	}
-	if updateAPIKey && strings.TrimSpace(apiKey) != "" {
-		out.APIKey = strings.TrimSpace(apiKey)
-		out.HasAPIKey = true
-	}
-	return out
-}

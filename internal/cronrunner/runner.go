@@ -18,6 +18,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/mvp"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -87,7 +88,7 @@ type Runner struct {
 	deps   Deps
 	lg     loggateway.Logger
 	mu     sync.Mutex
-	taskMu sync.Map
+	taskMu taskMutexRegistry
 	lease  taskLease
 }
 
@@ -344,6 +345,14 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 			return cronDispatchResult{}, validationErr("model registry sync agent not available")
 		}
 		if err := r.deps.RegistrySyncAgent.RunSync(ctx); err != nil {
+			return cronDispatchResult{}, err
+		}
+		return cronDispatchResult{}, nil
+	case "mvp_rss_ingest":
+		if len(cfg.FeedURLs) == 0 {
+			return cronDispatchResult{}, validationErr("feed_urls required for mvp_rss_ingest")
+		}
+		if _, err := mvp.IngestRSSFeeds(ctx, cfg.FeedURLs, cfg.WorkspaceID); err != nil {
 			return cronDispatchResult{}, err
 		}
 		return cronDispatchResult{}, nil

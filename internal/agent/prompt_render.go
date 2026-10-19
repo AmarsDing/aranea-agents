@@ -6,6 +6,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/prompt"
 )
 
+// HONESTY: production prompts use BuildSystemPrompt structured concat, not these
+// helpers. Do not document template rendering as a live product capability.
 // TECH-DEBT(B-5): RenderPromptTemplate/RenderCapabilityCue 已实现但未接入生产路径。
 // 阻塞类型：设计前提不匹配（模板渲染 vs 结构化拼接）。
 // 项目的 BuildSystemPrompt() 使用 strings.Builder 结构化拼接 capability cues/sections/runtime cues，

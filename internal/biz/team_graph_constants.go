@@ -26,6 +26,7 @@ const (
 	NodeTypeTools    = "tools"
 	NodeTypeTask     = "task"
 	NodeTypeReview   = "review"
+	NodeTypeHuman    = "human" // alias of review for content-pipeline templates
 	NodeTypeRouter   = "router"
 	NodeTypeJoin     = "join"
 	NodeTypeFunction = "function"

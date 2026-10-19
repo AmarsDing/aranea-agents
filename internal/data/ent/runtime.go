@@ -23,6 +23,7 @@ import (
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
+	"aranea-agents/internal/data/ent/contentitem"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -61,6 +62,7 @@ import (
 	"aranea-agents/internal/data/ent/memoryfactpending"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
+	"aranea-agents/internal/data/ent/opportunity"
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
@@ -77,7 +79,9 @@ import (
 	"aranea-agents/internal/data/ent/platformplugin"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
+	"aranea-agents/internal/data/ent/reviewtask"
 	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
@@ -94,6 +98,7 @@ import (
 	"aranea-agents/internal/data/ent/skilltag"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/internal/data/ent/stepv2"
+	"aranea-agents/internal/data/ent/suppliercandidate"
 	"aranea-agents/internal/data/ent/systemsetting"
 	"aranea-agents/internal/data/ent/taskdeadletter"
 	"aranea-agents/internal/data/ent/taskplan"
@@ -1658,6 +1663,84 @@ func init() {
 	computeruseaudit.DefaultScreenshotRef = computeruseauditDescScreenshotRef.Default.(string)
 	// computeruseaudit.ScreenshotRefValidator is a validator for the "screenshot_ref" field. It is called by the builders before save.
 	computeruseaudit.ScreenshotRefValidator = computeruseauditDescScreenshotRef.Validators[0].(func(string) error)
+	contentitemFields := schema.ContentItem{}.Fields()
+	_ = contentitemFields
+	// contentitemDescWorkspaceID is the schema descriptor for workspace_id field.
+	contentitemDescWorkspaceID := contentitemFields[1].Descriptor()
+	// contentitem.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	contentitem.DefaultWorkspaceID = contentitemDescWorkspaceID.Default.(string)
+	// contentitem.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	contentitem.WorkspaceIDValidator = contentitemDescWorkspaceID.Validators[0].(func(string) error)
+	// contentitemDescOrgKey is the schema descriptor for org_key field.
+	contentitemDescOrgKey := contentitemFields[2].Descriptor()
+	// contentitem.DefaultOrgKey holds the default value on creation for the org_key field.
+	contentitem.DefaultOrgKey = contentitemDescOrgKey.Default.(string)
+	// contentitem.OrgKeyValidator is a validator for the "org_key" field. It is called by the builders before save.
+	contentitem.OrgKeyValidator = contentitemDescOrgKey.Validators[0].(func(string) error)
+	// contentitemDescSourceType is the schema descriptor for source_type field.
+	contentitemDescSourceType := contentitemFields[3].Descriptor()
+	// contentitem.DefaultSourceType holds the default value on creation for the source_type field.
+	contentitem.DefaultSourceType = contentitemDescSourceType.Default.(string)
+	// contentitem.SourceTypeValidator is a validator for the "source_type" field. It is called by the builders before save.
+	contentitem.SourceTypeValidator = contentitemDescSourceType.Validators[0].(func(string) error)
+	// contentitemDescSourceURL is the schema descriptor for source_url field.
+	contentitemDescSourceURL := contentitemFields[4].Descriptor()
+	// contentitem.DefaultSourceURL holds the default value on creation for the source_url field.
+	contentitem.DefaultSourceURL = contentitemDescSourceURL.Default.(string)
+	// contentitem.SourceURLValidator is a validator for the "source_url" field. It is called by the builders before save.
+	contentitem.SourceURLValidator = contentitemDescSourceURL.Validators[0].(func(string) error)
+	// contentitemDescTitle is the schema descriptor for title field.
+	contentitemDescTitle := contentitemFields[5].Descriptor()
+	// contentitem.DefaultTitle holds the default value on creation for the title field.
+	contentitem.DefaultTitle = contentitemDescTitle.Default.(string)
+	// contentitem.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	contentitem.TitleValidator = contentitemDescTitle.Validators[0].(func(string) error)
+	// contentitemDescBody is the schema descriptor for body field.
+	contentitemDescBody := contentitemFields[6].Descriptor()
+	// contentitem.DefaultBody holds the default value on creation for the body field.
+	contentitem.DefaultBody = contentitemDescBody.Default.(string)
+	// contentitemDescLang is the schema descriptor for lang field.
+	contentitemDescLang := contentitemFields[7].Descriptor()
+	// contentitem.DefaultLang holds the default value on creation for the lang field.
+	contentitem.DefaultLang = contentitemDescLang.Default.(string)
+	// contentitem.LangValidator is a validator for the "lang" field. It is called by the builders before save.
+	contentitem.LangValidator = contentitemDescLang.Validators[0].(func(string) error)
+	// contentitemDescMediaArtifactIdsJSON is the schema descriptor for media_artifact_ids_json field.
+	contentitemDescMediaArtifactIdsJSON := contentitemFields[8].Descriptor()
+	// contentitem.DefaultMediaArtifactIdsJSON holds the default value on creation for the media_artifact_ids_json field.
+	contentitem.DefaultMediaArtifactIdsJSON = contentitemDescMediaArtifactIdsJSON.Default.(string)
+	// contentitemDescDedupeHash is the schema descriptor for dedupe_hash field.
+	contentitemDescDedupeHash := contentitemFields[9].Descriptor()
+	// contentitem.DefaultDedupeHash holds the default value on creation for the dedupe_hash field.
+	contentitem.DefaultDedupeHash = contentitemDescDedupeHash.Default.(string)
+	// contentitem.DedupeHashValidator is a validator for the "dedupe_hash" field. It is called by the builders before save.
+	contentitem.DedupeHashValidator = contentitemDescDedupeHash.Validators[0].(func(string) error)
+	// contentitemDescHotScore is the schema descriptor for hot_score field.
+	contentitemDescHotScore := contentitemFields[10].Descriptor()
+	// contentitem.DefaultHotScore holds the default value on creation for the hot_score field.
+	contentitem.DefaultHotScore = contentitemDescHotScore.Default.(float64)
+	// contentitemDescStatus is the schema descriptor for status field.
+	contentitemDescStatus := contentitemFields[11].Descriptor()
+	// contentitem.DefaultStatus holds the default value on creation for the status field.
+	contentitem.DefaultStatus = contentitemDescStatus.Default.(string)
+	// contentitem.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	contentitem.StatusValidator = contentitemDescStatus.Validators[0].(func(string) error)
+	// contentitemDescRawPayload is the schema descriptor for raw_payload field.
+	contentitemDescRawPayload := contentitemFields[12].Descriptor()
+	// contentitem.DefaultRawPayload holds the default value on creation for the raw_payload field.
+	contentitem.DefaultRawPayload = contentitemDescRawPayload.Default.(string)
+	// contentitemDescCreatedAt is the schema descriptor for created_at field.
+	contentitemDescCreatedAt := contentitemFields[13].Descriptor()
+	// contentitem.DefaultCreatedAt holds the default value on creation for the created_at field.
+	contentitem.DefaultCreatedAt = contentitemDescCreatedAt.Default.(string)
+	// contentitemDescUpdatedAt is the schema descriptor for updated_at field.
+	contentitemDescUpdatedAt := contentitemFields[14].Descriptor()
+	// contentitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	contentitem.DefaultUpdatedAt = contentitemDescUpdatedAt.Default.(string)
+	// contentitemDescID is the schema descriptor for id field.
+	contentitemDescID := contentitemFields[0].Descriptor()
+	// contentitem.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	contentitem.IDValidator = contentitemDescID.Validators[0].(func(string) error)
 	crontaskFields := schema.CronTask{}.Fields()
 	_ = crontaskFields
 	// crontaskDescTaskKey is the schema descriptor for task_key field.
@@ -3750,6 +3833,52 @@ func init() {
 	modeltokenusagehourlyDescID := modeltokenusagehourlyFields[0].Descriptor()
 	// modeltokenusagehourly.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	modeltokenusagehourly.IDValidator = modeltokenusagehourlyDescID.Validators[0].(func(string) error)
+	opportunityFields := schema.Opportunity{}.Fields()
+	_ = opportunityFields
+	// opportunityDescTitle is the schema descriptor for title field.
+	opportunityDescTitle := opportunityFields[1].Descriptor()
+	// opportunity.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	opportunity.TitleValidator = opportunityDescTitle.Validators[0].(func(string) error)
+	// opportunityDescSummary is the schema descriptor for summary field.
+	opportunityDescSummary := opportunityFields[2].Descriptor()
+	// opportunity.DefaultSummary holds the default value on creation for the summary field.
+	opportunity.DefaultSummary = opportunityDescSummary.Default.(string)
+	// opportunityDescEntitiesJSON is the schema descriptor for entities_json field.
+	opportunityDescEntitiesJSON := opportunityFields[3].Descriptor()
+	// opportunity.DefaultEntitiesJSON holds the default value on creation for the entities_json field.
+	opportunity.DefaultEntitiesJSON = opportunityDescEntitiesJSON.Default.(string)
+	// opportunityDescSignalsJSON is the schema descriptor for signals_json field.
+	opportunityDescSignalsJSON := opportunityFields[4].Descriptor()
+	// opportunity.DefaultSignalsJSON holds the default value on creation for the signals_json field.
+	opportunity.DefaultSignalsJSON = opportunityDescSignalsJSON.Default.(string)
+	// opportunityDescAudience is the schema descriptor for audience field.
+	opportunityDescAudience := opportunityFields[5].Descriptor()
+	// opportunity.DefaultAudience holds the default value on creation for the audience field.
+	opportunity.DefaultAudience = opportunityDescAudience.Default.(string)
+	// opportunity.AudienceValidator is a validator for the "audience" field. It is called by the builders before save.
+	opportunity.AudienceValidator = opportunityDescAudience.Validators[0].(func(string) error)
+	// opportunityDescScore is the schema descriptor for score field.
+	opportunityDescScore := opportunityFields[6].Descriptor()
+	// opportunity.DefaultScore holds the default value on creation for the score field.
+	opportunity.DefaultScore = opportunityDescScore.Default.(float64)
+	// opportunityDescStatus is the schema descriptor for status field.
+	opportunityDescStatus := opportunityFields[7].Descriptor()
+	// opportunity.DefaultStatus holds the default value on creation for the status field.
+	opportunity.DefaultStatus = opportunityDescStatus.Default.(string)
+	// opportunity.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	opportunity.StatusValidator = opportunityDescStatus.Validators[0].(func(string) error)
+	// opportunityDescCreatedAt is the schema descriptor for created_at field.
+	opportunityDescCreatedAt := opportunityFields[8].Descriptor()
+	// opportunity.DefaultCreatedAt holds the default value on creation for the created_at field.
+	opportunity.DefaultCreatedAt = opportunityDescCreatedAt.Default.(string)
+	// opportunityDescUpdatedAt is the schema descriptor for updated_at field.
+	opportunityDescUpdatedAt := opportunityFields[9].Descriptor()
+	// opportunity.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	opportunity.DefaultUpdatedAt = opportunityDescUpdatedAt.Default.(string)
+	// opportunityDescID is the schema descriptor for id field.
+	opportunityDescID := opportunityFields[0].Descriptor()
+	// opportunity.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	opportunity.IDValidator = opportunityDescID.Validators[0].(func(string) error)
 	orchestrationFields := schema.Orchestration{}.Fields()
 	_ = orchestrationFields
 	// orchestrationDescTaskPlanID is the schema descriptor for task_plan_id field.
@@ -4810,6 +4939,90 @@ func init() {
 	platformtoolDescID := platformtoolFields[0].Descriptor()
 	// platformtool.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	platformtool.IDValidator = platformtoolDescID.Validators[0].(func(string) error)
+	publishjobFields := schema.PublishJob{}.Fields()
+	_ = publishjobFields
+	// publishjobDescReviewTaskID is the schema descriptor for review_task_id field.
+	publishjobDescReviewTaskID := publishjobFields[1].Descriptor()
+	// publishjob.ReviewTaskIDValidator is a validator for the "review_task_id" field. It is called by the builders before save.
+	publishjob.ReviewTaskIDValidator = publishjobDescReviewTaskID.Validators[0].(func(string) error)
+	// publishjobDescContentItemID is the schema descriptor for content_item_id field.
+	publishjobDescContentItemID := publishjobFields[2].Descriptor()
+	// publishjob.DefaultContentItemID holds the default value on creation for the content_item_id field.
+	publishjob.DefaultContentItemID = publishjobDescContentItemID.Default.(string)
+	// publishjob.ContentItemIDValidator is a validator for the "content_item_id" field. It is called by the builders before save.
+	publishjob.ContentItemIDValidator = publishjobDescContentItemID.Validators[0].(func(string) error)
+	// publishjobDescPlatform is the schema descriptor for platform field.
+	publishjobDescPlatform := publishjobFields[3].Descriptor()
+	// publishjob.DefaultPlatform holds the default value on creation for the platform field.
+	publishjob.DefaultPlatform = publishjobDescPlatform.Default.(string)
+	// publishjob.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	publishjob.PlatformValidator = publishjobDescPlatform.Validators[0].(func(string) error)
+	// publishjobDescMode is the schema descriptor for mode field.
+	publishjobDescMode := publishjobFields[4].Descriptor()
+	// publishjob.DefaultMode holds the default value on creation for the mode field.
+	publishjob.DefaultMode = publishjobDescMode.Default.(string)
+	// publishjob.ModeValidator is a validator for the "mode" field. It is called by the builders before save.
+	publishjob.ModeValidator = publishjobDescMode.Validators[0].(func(string) error)
+	// publishjobDescStatus is the schema descriptor for status field.
+	publishjobDescStatus := publishjobFields[5].Descriptor()
+	// publishjob.DefaultStatus holds the default value on creation for the status field.
+	publishjob.DefaultStatus = publishjobDescStatus.Default.(string)
+	// publishjob.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	publishjob.StatusValidator = publishjobDescStatus.Validators[0].(func(string) error)
+	// publishjobDescAttempt is the schema descriptor for attempt field.
+	publishjobDescAttempt := publishjobFields[6].Descriptor()
+	// publishjob.DefaultAttempt holds the default value on creation for the attempt field.
+	publishjob.DefaultAttempt = publishjobDescAttempt.Default.(int)
+	// publishjobDescLastError is the schema descriptor for last_error field.
+	publishjobDescLastError := publishjobFields[7].Descriptor()
+	// publishjob.DefaultLastError holds the default value on creation for the last_error field.
+	publishjob.DefaultLastError = publishjobDescLastError.Default.(string)
+	// publishjobDescArtifactID is the schema descriptor for artifact_id field.
+	publishjobDescArtifactID := publishjobFields[8].Descriptor()
+	// publishjob.DefaultArtifactID holds the default value on creation for the artifact_id field.
+	publishjob.DefaultArtifactID = publishjobDescArtifactID.Default.(string)
+	// publishjob.ArtifactIDValidator is a validator for the "artifact_id" field. It is called by the builders before save.
+	publishjob.ArtifactIDValidator = publishjobDescArtifactID.Validators[0].(func(string) error)
+	// publishjobDescPackageDir is the schema descriptor for package_dir field.
+	publishjobDescPackageDir := publishjobFields[9].Descriptor()
+	// publishjob.DefaultPackageDir holds the default value on creation for the package_dir field.
+	publishjob.DefaultPackageDir = publishjobDescPackageDir.Default.(string)
+	// publishjobDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	publishjobDescIdempotencyKey := publishjobFields[10].Descriptor()
+	// publishjob.DefaultIdempotencyKey holds the default value on creation for the idempotency_key field.
+	publishjob.DefaultIdempotencyKey = publishjobDescIdempotencyKey.Default.(string)
+	// publishjob.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	publishjob.IdempotencyKeyValidator = publishjobDescIdempotencyKey.Validators[0].(func(string) error)
+	// publishjobDescTitle is the schema descriptor for title field.
+	publishjobDescTitle := publishjobFields[11].Descriptor()
+	// publishjob.DefaultTitle holds the default value on creation for the title field.
+	publishjob.DefaultTitle = publishjobDescTitle.Default.(string)
+	// publishjob.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	publishjob.TitleValidator = publishjobDescTitle.Validators[0].(func(string) error)
+	// publishjobDescBody is the schema descriptor for body field.
+	publishjobDescBody := publishjobFields[12].Descriptor()
+	// publishjob.DefaultBody holds the default value on creation for the body field.
+	publishjob.DefaultBody = publishjobDescBody.Default.(string)
+	// publishjobDescTagsJSON is the schema descriptor for tags_json field.
+	publishjobDescTagsJSON := publishjobFields[13].Descriptor()
+	// publishjob.DefaultTagsJSON holds the default value on creation for the tags_json field.
+	publishjob.DefaultTagsJSON = publishjobDescTagsJSON.Default.(string)
+	// publishjobDescMediaPathsJSON is the schema descriptor for media_paths_json field.
+	publishjobDescMediaPathsJSON := publishjobFields[14].Descriptor()
+	// publishjob.DefaultMediaPathsJSON holds the default value on creation for the media_paths_json field.
+	publishjob.DefaultMediaPathsJSON = publishjobDescMediaPathsJSON.Default.(string)
+	// publishjobDescCreatedAt is the schema descriptor for created_at field.
+	publishjobDescCreatedAt := publishjobFields[15].Descriptor()
+	// publishjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	publishjob.DefaultCreatedAt = publishjobDescCreatedAt.Default.(string)
+	// publishjobDescUpdatedAt is the schema descriptor for updated_at field.
+	publishjobDescUpdatedAt := publishjobFields[16].Descriptor()
+	// publishjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	publishjob.DefaultUpdatedAt = publishjobDescUpdatedAt.Default.(string)
+	// publishjobDescID is the schema descriptor for id field.
+	publishjobDescID := publishjobFields[0].Descriptor()
+	// publishjob.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	publishjob.IDValidator = publishjobDescID.Validators[0].(func(string) error)
 	resourceaccessauditFields := schema.ResourceAccessAudit{}.Fields()
 	_ = resourceaccessauditFields
 	// resourceaccessauditDescActorAgentID is the schema descriptor for actor_agent_id field.
@@ -4866,6 +5079,86 @@ func init() {
 	resourceaccessauditDescID := resourceaccessauditFields[0].Descriptor()
 	// resourceaccessaudit.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	resourceaccessaudit.IDValidator = resourceaccessauditDescID.Validators[0].(func(string) error)
+	reviewtaskFields := schema.ReviewTask{}.Fields()
+	_ = reviewtaskFields
+	// reviewtaskDescContentItemID is the schema descriptor for content_item_id field.
+	reviewtaskDescContentItemID := reviewtaskFields[1].Descriptor()
+	// reviewtask.ContentItemIDValidator is a validator for the "content_item_id" field. It is called by the builders before save.
+	reviewtask.ContentItemIDValidator = reviewtaskDescContentItemID.Validators[0].(func(string) error)
+	// reviewtaskDescGraphExecutionID is the schema descriptor for graph_execution_id field.
+	reviewtaskDescGraphExecutionID := reviewtaskFields[2].Descriptor()
+	// reviewtask.DefaultGraphExecutionID holds the default value on creation for the graph_execution_id field.
+	reviewtask.DefaultGraphExecutionID = reviewtaskDescGraphExecutionID.Default.(string)
+	// reviewtask.GraphExecutionIDValidator is a validator for the "graph_execution_id" field. It is called by the builders before save.
+	reviewtask.GraphExecutionIDValidator = reviewtaskDescGraphExecutionID.Validators[0].(func(string) error)
+	// reviewtaskDescGraphNodeID is the schema descriptor for graph_node_id field.
+	reviewtaskDescGraphNodeID := reviewtaskFields[3].Descriptor()
+	// reviewtask.DefaultGraphNodeID holds the default value on creation for the graph_node_id field.
+	reviewtask.DefaultGraphNodeID = reviewtaskDescGraphNodeID.Default.(string)
+	// reviewtask.GraphNodeIDValidator is a validator for the "graph_node_id" field. It is called by the builders before save.
+	reviewtask.GraphNodeIDValidator = reviewtaskDescGraphNodeID.Validators[0].(func(string) error)
+	// reviewtaskDescGraphTaskID is the schema descriptor for graph_task_id field.
+	reviewtaskDescGraphTaskID := reviewtaskFields[4].Descriptor()
+	// reviewtask.DefaultGraphTaskID holds the default value on creation for the graph_task_id field.
+	reviewtask.DefaultGraphTaskID = reviewtaskDescGraphTaskID.Default.(string)
+	// reviewtask.GraphTaskIDValidator is a validator for the "graph_task_id" field. It is called by the builders before save.
+	reviewtask.GraphTaskIDValidator = reviewtaskDescGraphTaskID.Validators[0].(func(string) error)
+	// reviewtaskDescDraftArtifactID is the schema descriptor for draft_artifact_id field.
+	reviewtaskDescDraftArtifactID := reviewtaskFields[5].Descriptor()
+	// reviewtask.DefaultDraftArtifactID holds the default value on creation for the draft_artifact_id field.
+	reviewtask.DefaultDraftArtifactID = reviewtaskDescDraftArtifactID.Default.(string)
+	// reviewtask.DraftArtifactIDValidator is a validator for the "draft_artifact_id" field. It is called by the builders before save.
+	reviewtask.DraftArtifactIDValidator = reviewtaskDescDraftArtifactID.Validators[0].(func(string) error)
+	// reviewtaskDescPlatformTargetsJSON is the schema descriptor for platform_targets_json field.
+	reviewtaskDescPlatformTargetsJSON := reviewtaskFields[6].Descriptor()
+	// reviewtask.DefaultPlatformTargetsJSON holds the default value on creation for the platform_targets_json field.
+	reviewtask.DefaultPlatformTargetsJSON = reviewtaskDescPlatformTargetsJSON.Default.(string)
+	// reviewtaskDescMachineFlagsJSON is the schema descriptor for machine_flags_json field.
+	reviewtaskDescMachineFlagsJSON := reviewtaskFields[7].Descriptor()
+	// reviewtask.DefaultMachineFlagsJSON holds the default value on creation for the machine_flags_json field.
+	reviewtask.DefaultMachineFlagsJSON = reviewtaskDescMachineFlagsJSON.Default.(string)
+	// reviewtaskDescDraftTitle is the schema descriptor for draft_title field.
+	reviewtaskDescDraftTitle := reviewtaskFields[8].Descriptor()
+	// reviewtask.DefaultDraftTitle holds the default value on creation for the draft_title field.
+	reviewtask.DefaultDraftTitle = reviewtaskDescDraftTitle.Default.(string)
+	// reviewtask.DraftTitleValidator is a validator for the "draft_title" field. It is called by the builders before save.
+	reviewtask.DraftTitleValidator = reviewtaskDescDraftTitle.Validators[0].(func(string) error)
+	// reviewtaskDescDraftBody is the schema descriptor for draft_body field.
+	reviewtaskDescDraftBody := reviewtaskFields[9].Descriptor()
+	// reviewtask.DefaultDraftBody holds the default value on creation for the draft_body field.
+	reviewtask.DefaultDraftBody = reviewtaskDescDraftBody.Default.(string)
+	// reviewtaskDescStatus is the schema descriptor for status field.
+	reviewtaskDescStatus := reviewtaskFields[10].Descriptor()
+	// reviewtask.DefaultStatus holds the default value on creation for the status field.
+	reviewtask.DefaultStatus = reviewtaskDescStatus.Default.(string)
+	// reviewtask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	reviewtask.StatusValidator = reviewtaskDescStatus.Validators[0].(func(string) error)
+	// reviewtaskDescDecisionNote is the schema descriptor for decision_note field.
+	reviewtaskDescDecisionNote := reviewtaskFields[11].Descriptor()
+	// reviewtask.DefaultDecisionNote holds the default value on creation for the decision_note field.
+	reviewtask.DefaultDecisionNote = reviewtaskDescDecisionNote.Default.(string)
+	// reviewtaskDescReviewerID is the schema descriptor for reviewer_id field.
+	reviewtaskDescReviewerID := reviewtaskFields[12].Descriptor()
+	// reviewtask.DefaultReviewerID holds the default value on creation for the reviewer_id field.
+	reviewtask.DefaultReviewerID = reviewtaskDescReviewerID.Default.(string)
+	// reviewtask.ReviewerIDValidator is a validator for the "reviewer_id" field. It is called by the builders before save.
+	reviewtask.ReviewerIDValidator = reviewtaskDescReviewerID.Validators[0].(func(string) error)
+	// reviewtaskDescDecidedAt is the schema descriptor for decided_at field.
+	reviewtaskDescDecidedAt := reviewtaskFields[13].Descriptor()
+	// reviewtask.DefaultDecidedAt holds the default value on creation for the decided_at field.
+	reviewtask.DefaultDecidedAt = reviewtaskDescDecidedAt.Default.(string)
+	// reviewtaskDescCreatedAt is the schema descriptor for created_at field.
+	reviewtaskDescCreatedAt := reviewtaskFields[14].Descriptor()
+	// reviewtask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	reviewtask.DefaultCreatedAt = reviewtaskDescCreatedAt.Default.(string)
+	// reviewtaskDescUpdatedAt is the schema descriptor for updated_at field.
+	reviewtaskDescUpdatedAt := reviewtaskFields[15].Descriptor()
+	// reviewtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	reviewtask.DefaultUpdatedAt = reviewtaskDescUpdatedAt.Default.(string)
+	// reviewtaskDescID is the schema descriptor for id field.
+	reviewtaskDescID := reviewtaskFields[0].Descriptor()
+	// reviewtask.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	reviewtask.IDValidator = reviewtaskDescID.Validators[0].(func(string) error)
 	selfcheckreportFields := schema.SelfCheckReport{}.Fields()
 	_ = selfcheckreportFields
 	// selfcheckreportDescCheckResultsJSON is the schema descriptor for check_results_json field.
@@ -6080,6 +6373,52 @@ func init() {
 	stepv2DescID := stepv2Fields[0].Descriptor()
 	// stepv2.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	stepv2.IDValidator = stepv2DescID.Validators[0].(func(string) error)
+	suppliercandidateFields := schema.SupplierCandidate{}.Fields()
+	_ = suppliercandidateFields
+	// suppliercandidateDescOpportunityID is the schema descriptor for opportunity_id field.
+	suppliercandidateDescOpportunityID := suppliercandidateFields[1].Descriptor()
+	// suppliercandidate.DefaultOpportunityID holds the default value on creation for the opportunity_id field.
+	suppliercandidate.DefaultOpportunityID = suppliercandidateDescOpportunityID.Default.(string)
+	// suppliercandidate.OpportunityIDValidator is a validator for the "opportunity_id" field. It is called by the builders before save.
+	suppliercandidate.OpportunityIDValidator = suppliercandidateDescOpportunityID.Validators[0].(func(string) error)
+	// suppliercandidateDescName is the schema descriptor for name field.
+	suppliercandidateDescName := suppliercandidateFields[2].Descriptor()
+	// suppliercandidate.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	suppliercandidate.NameValidator = suppliercandidateDescName.Validators[0].(func(string) error)
+	// suppliercandidateDescURL is the schema descriptor for url field.
+	suppliercandidateDescURL := suppliercandidateFields[3].Descriptor()
+	// suppliercandidate.DefaultURL holds the default value on creation for the url field.
+	suppliercandidate.DefaultURL = suppliercandidateDescURL.Default.(string)
+	// suppliercandidate.URLValidator is a validator for the "url" field. It is called by the builders before save.
+	suppliercandidate.URLValidator = suppliercandidateDescURL.Validators[0].(func(string) error)
+	// suppliercandidateDescPriceRange is the schema descriptor for price_range field.
+	suppliercandidateDescPriceRange := suppliercandidateFields[4].Descriptor()
+	// suppliercandidate.DefaultPriceRange holds the default value on creation for the price_range field.
+	suppliercandidate.DefaultPriceRange = suppliercandidateDescPriceRange.Default.(string)
+	// suppliercandidate.PriceRangeValidator is a validator for the "price_range" field. It is called by the builders before save.
+	suppliercandidate.PriceRangeValidator = suppliercandidateDescPriceRange.Validators[0].(func(string) error)
+	// suppliercandidateDescNotes is the schema descriptor for notes field.
+	suppliercandidateDescNotes := suppliercandidateFields[5].Descriptor()
+	// suppliercandidate.DefaultNotes holds the default value on creation for the notes field.
+	suppliercandidate.DefaultNotes = suppliercandidateDescNotes.Default.(string)
+	// suppliercandidateDescStatus is the schema descriptor for status field.
+	suppliercandidateDescStatus := suppliercandidateFields[6].Descriptor()
+	// suppliercandidate.DefaultStatus holds the default value on creation for the status field.
+	suppliercandidate.DefaultStatus = suppliercandidateDescStatus.Default.(string)
+	// suppliercandidate.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	suppliercandidate.StatusValidator = suppliercandidateDescStatus.Validators[0].(func(string) error)
+	// suppliercandidateDescCreatedAt is the schema descriptor for created_at field.
+	suppliercandidateDescCreatedAt := suppliercandidateFields[7].Descriptor()
+	// suppliercandidate.DefaultCreatedAt holds the default value on creation for the created_at field.
+	suppliercandidate.DefaultCreatedAt = suppliercandidateDescCreatedAt.Default.(string)
+	// suppliercandidateDescUpdatedAt is the schema descriptor for updated_at field.
+	suppliercandidateDescUpdatedAt := suppliercandidateFields[8].Descriptor()
+	// suppliercandidate.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	suppliercandidate.DefaultUpdatedAt = suppliercandidateDescUpdatedAt.Default.(string)
+	// suppliercandidateDescID is the schema descriptor for id field.
+	suppliercandidateDescID := suppliercandidateFields[0].Descriptor()
+	// suppliercandidate.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	suppliercandidate.IDValidator = suppliercandidateDescID.Validators[0].(func(string) error)
 	systemsettingFields := schema.SystemSetting{}.Fields()
 	_ = systemsettingFields
 	// systemsettingDescRootDirectory is the schema descriptor for root_directory field.

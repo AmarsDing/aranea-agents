@@ -1468,3 +1468,32 @@ companies:
                 name: 通用
               - key: agile
                 name: 敏捷
+
+
+  # MVP commerce company (parallel to selfmedia / finance)
+  - key: commerce
+    name: 商机与寻源
+    icon: storefront
+    description: 选品分析、寻源看板、合规顾问（MVP 不下单）
+    sort_order: 90
+    departments:
+      - key: sourcing
+        name: 寻源
+        description: 供应商候选与商机分流
+        sort_order: 1
+        positions:
+          - key: sourcing_analyst
+            name: 选品分析
+            description: Opportunity 产出
+            sort_order: 1
+            seniority_level: mid
+          - key: sourcing_assistant
+            name: 寻源助理
+            description: 供应商候选录入
+            sort_order: 2
+            seniority_level: junior
+          - key: commerce_compliance
+            name: 电商合规顾问
+            description: 软合规提示
+            sort_order: 3
+            seniority_level: mid
