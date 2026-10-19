@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { ref } from 'vue';
 import { useAgentToolOverrides } from '../useAgentToolOverrides';
-import type { AgentEffectiveTools, ToolAgentOverride } from '../../tools/types';
+import type { AgentEffectiveTool, AgentEffectiveTools, ToolAgentOverride } from '../../tools/types';
 
 const notify = vi.fn();
 
@@ -32,7 +32,12 @@ vi.mock('../../../stores/tools', () => ({
   }),
 }));
 
-function effectiveItem(toolKey: string, overrides: Record<string, unknown> = {}) {
+// 估值类 overrides 直接收窄到 AgentEffectiveTool 的可变字段：
+// Record<string, unknown> + ?? 会把 display_name 等推断为 {}，与 AgentEffectiveTool 不兼容（TS2322）。
+function effectiveItem(
+  toolKey: string,
+  overrides: Partial<Pick<AgentEffectiveTool, 'display_name' | 'category' | 'effective_state' | 'reason'>> = {},
+) {
   return {
     tool_key: toolKey,
     display_name: overrides.display_name ?? toolKey,

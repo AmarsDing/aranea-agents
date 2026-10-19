@@ -33,6 +33,17 @@
         />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
+        <!-- G2 修复：恢复编辑态删除入口（父组件 @remove → 删除确认流，此前
+             emit 缺失致整条删除链路不可达）。 -->
+        <q-btn
+          v-if="editing"
+          flat
+          no-caps
+          color="negative"
+          :label="$t('common.delete')"
+          @click="$emit('remove')"
+        />
+        <q-space />
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
         <q-btn no-caps unelevated color="primary" label="保存" :loading="saving" @click="$emit('save')" />
       </q-card-actions>
@@ -55,6 +66,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean];
   save: [];
+  remove: [];
   'update:form': [value: AgentToolOverrideForm];
 }>();
 

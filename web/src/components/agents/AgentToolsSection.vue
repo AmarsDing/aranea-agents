@@ -144,6 +144,7 @@
       :saving="saving"
       :row="editingRow"
       :form="form"
+      :mode-options="modeOptions"
       @update:open="editorOpen = $event"
       @update:form="form = $event"
       @save="saveOverride()"
@@ -197,6 +198,7 @@ const {
   confirmRemoveOpen,
   pendingRemoveRow,
   form,
+  modeOptions,
   effectiveStateLabel,
   reload,
   openEditor,
