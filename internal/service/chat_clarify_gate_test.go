@@ -97,9 +97,15 @@ func (s *stubSessionStateTransitor) TransitionStatus(_ context.Context, _ string
 // stubTaskV2Repo wraps stubTaskV2Writer to implement biz.TaskV2Repo.
 type stubTaskV2Repo struct {
 	writer *stubTaskV2Writer
+	// tasks serves GetTask lookups (legacy clarify-envelope heal tests);
+	// a nil/empty map returns a zero Task as before.
+	tasks map[string]biz.Task
 }
 
 func (s *stubTaskV2Repo) GetTask(_ context.Context, id string) (biz.Task, error) {
+	if t, ok := s.tasks[id]; ok {
+		return t, nil
+	}
 	return biz.Task{}, nil
 }
 

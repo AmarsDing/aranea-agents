@@ -581,3 +581,88 @@ func TestSubmitClarification_RestartEmptyCache_MissingOriginalInput_FailsBeforeC
 		t.Errorf("step must not complete when original_input missing, got %d updates", len(stepWriter.updated))
 	}
 }
+
+// Legacy-envelope heal (residual risk fix, 2026-10-19): envelopes written
+// before original_input existed must not brick the submission after a
+// restart — the owning task's UserMessage is the fallback, and the healed
+// value is persisted back into the completed envelope.
+func TestSubmitClarification_RestartEmptyCache_LegacyEnvelope_HealedFromTaskContent(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, &stubSessionStateTransitor{})
+	orch.core.TaskV2 = &stubTaskV2Repo{tasks: map[string]biz.Task{
+		"task-clarify-1": {ID: "task-clarify-1", UserMessage: "帮我做个应用"},
+	}}
+
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	// legacy 信封：original_input 为空（旧版本写入）
+	var env biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	env.OriginalInput = ""
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	step.Content = string(raw)
+	stepReader.steps[step.ID] = step
+
+	svc := &ChatService{orch: orch, lg: loggateway.NewNoop()}
+	got, err := svc.submitClarification(context.Background(), step, []biz.ClarificationAnswer{{Selected: []string{"Web"}}})
+	if err != nil {
+		t.Fatalf("legacy envelope should be healed from task content, got: %v", err)
+	}
+	if got == "" {
+		t.Fatal("expected clarified context")
+	}
+	if len(stepWriter.updated) != 1 {
+		t.Fatalf("expected 1 step update, got %d", len(stepWriter.updated))
+	}
+	if stepWriter.updated[0].Status != biz.StepStatusCompleted {
+		t.Errorf("step.Status = %q, want completed", stepWriter.updated[0].Status)
+	}
+	// 落库信封应自愈：original_input 回填为任务内容
+	var healed biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(stepWriter.updated[0].Content), &healed); err != nil {
+		t.Fatalf("unmarshal healed envelope: %v", err)
+	}
+	if healed.OriginalInput != "帮我做个应用" {
+		t.Errorf("healed original_input = %q, want task content", healed.OriginalInput)
+	}
+}
+
+// Legacy-envelope heal on the free-text path: rebuild from steps must also
+// fall back to task content instead of passing the message through.
+func TestResolveClarificationFreeText_RestartEmptyCache_LegacyEnvelope_HealedByTaskContent(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, &stubSessionStateTransitor{})
+	orch.core.TaskV2 = &stubTaskV2Repo{tasks: map[string]biz.Task{
+		"task-clarify-1": {ID: "task-clarify-1", UserMessage: "帮我做个应用"},
+	}}
+
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	var env biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	env.OriginalInput = ""
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	step.Content = string(raw)
+	stepReader.steps[step.ID] = step
+
+	got, gotArt := orch.resolveClarificationFreeText(context.Background(), biz.TurnInput{SessionID: "sess-1", Content: "新消息"})
+	if !strings.Contains(got.Content, "帮我做个应用") {
+		t.Errorf("legacy envelope should resolve original need from task content, got %q", got.Content)
+	}
+	if gotArt != nil {
+		t.Errorf("legacy envelope carries no intent artifact, expected nil, got %v", gotArt)
+	}
+	if len(stepWriter.updated) != 1 || stepWriter.updated[0].Status != biz.StepStatusCompleted {
+		t.Errorf("expected clarify step completed via free text, got %+v", stepWriter.updated)
+	}
+}

@@ -930,6 +930,7 @@ func (o *ChatOrchestrator) sweepStaleMaps() {
 	o.pendingQ().Sweep()
 	o.awaitCoord().Sweep()
 	o.pendingClarifications.Sweep()
+	o.sweepStuckRuns()
 }
 
 // canResumeAwait delegates to the awaitCoord sub-manager.

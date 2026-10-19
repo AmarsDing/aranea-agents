@@ -217,12 +217,19 @@ func (s *ChatService) submitClarification(ctx context.Context, step biz.Step, an
 	}
 	envelope.Answers = answers
 
+	// Legacy-envelope heal (residual risk fix, 2026-10-19): envelopes written
+	// before original_input existed carry an empty value; fall back to the
+	// owning task's UserMessage so a restart + cache miss cannot brick the
+	// submission. The healed value is persisted below with the completed
+	// envelope, self-repairing the row.
+	envelope.OriginalInput = s.orch.clarifyOriginalInput(ctx, step, envelope.OriginalInput)
+
 	// Cache miss（重启 / 其他副本）时必须能从信封重建续跑输入。
 	// 在 CAS 完成 step 之前失败，避免卡片已收口却无法续跑。
 	if _, ok := s.orch.pendingClarifications.Load(sessionID); !ok {
 		if strings.TrimSpace(envelope.OriginalInput) == "" {
 			return "", apierror.FailedPrecondition(apierror.DomainChat,
-				"clarification envelope missing original_input; cannot resume after restart")
+				"clarification envelope missing original_input and task content fallback unavailable; cannot resume after restart")
 		}
 	}
 
@@ -492,7 +499,12 @@ func (o *ChatOrchestrator) rebuildPendingFromSteps(ctx context.Context, sessionI
 	if !ok {
 		return pendingClarification{}, false
 	}
-	pc, err := pendingFromClarifyStep(step)
+	pc, err := pendingFromClarifyStep(step, "")
+	if errors.Is(err, errClarifyOriginalInputMissing) {
+		// Legacy-envelope heal (residual risk fix, 2026-10-19): retry with
+		// the owning task's UserMessage as original_input.
+		pc, err = pendingFromClarifyStep(step, o.clarifyOriginalInput(ctx, step, ""))
+	}
 	if err != nil {
 		o.lg().Warn("rebuild pending clarification from envelope failed",
 			loggateway.SessionID(sessionID),
@@ -518,18 +530,25 @@ func latestAwaitingClarifyStep(steps []biz.Step) (biz.Step, bool) {
 	return best, found
 }
 
-func pendingFromClarifyStep(step biz.Step) (pendingClarification, error) {
+func pendingFromClarifyStep(step biz.Step, fallbackOriginal string) (pendingClarification, error) {
 	var envelope biz.ClarificationEnvelope
 	if err := json.Unmarshal([]byte(step.Content), &envelope); err != nil {
 		return pendingClarification{}, err
 	}
-	if strings.TrimSpace(envelope.OriginalInput) == "" {
+	original := strings.TrimSpace(envelope.OriginalInput)
+	if original == "" {
+		// Legacy-envelope heal (residual risk fix, 2026-10-19): envelopes
+		// written before original_input existed fall back to the owning
+		// task's UserMessage supplied by the caller.
+		original = strings.TrimSpace(fallbackOriginal)
+	}
+	if original == "" {
 		return pendingClarification{}, errClarifyOriginalInputMissing
 	}
 	return pendingClarification{
 		Input: biz.TurnInput{
 			SessionID: step.SessionID,
-			Content:   envelope.OriginalInput,
+			Content:   original,
 			AgentKey:  step.AuthorAgentKey,
 		},
 		StepID:    step.ID,
@@ -537,4 +556,39 @@ func pendingFromClarifyStep(step biz.Step) (pendingClarification, error) {
 		CreatedAt: step.StartedAt,
 		Artifact:  parseIntentArtifactJSON(envelope.IntentArtifactJSON),
 	}, nil
+}
+
+// clarifyOriginalInput resolves the original user input for a clarify step:
+// the persisted envelope value first, then the owning task's UserMessage as
+// the legacy-envelope fallback (residual risk fix, 2026-10-19 — envelopes
+// written before original_input existed must not brick clarification after a
+// restart). Returns "" when no usable source exists; callers keep their
+// existing failure semantics in that case.
+func (o *ChatOrchestrator) clarifyOriginalInput(ctx context.Context, step biz.Step, envelopeOriginal string) string {
+	if v := strings.TrimSpace(envelopeOriginal); v != "" {
+		return v
+	}
+	task, err := o.clarifyTask(ctx, step)
+	if err != nil || strings.TrimSpace(task.UserMessage) == "" {
+		return ""
+	}
+	o.lg().Info("healed legacy clarify envelope original_input from task content",
+		loggateway.SessionID(step.SessionID),
+		loggateway.Str("step_id", step.ID),
+		loggateway.Str("task_id", step.TaskID),
+	)
+	return task.UserMessage
+}
+
+// clarifyTask loads the task owning a clarify step; nil-safe on every
+// dependency so legacy-heal never panics in partially wired test orchs.
+func (o *ChatOrchestrator) clarifyTask(ctx context.Context, step biz.Step) (biz.Task, error) {
+	if o == nil || step.TaskID == "" {
+		return biz.Task{}, errClarifyOriginalInputMissing
+	}
+	tr := o.taskReader()
+	if tr == nil {
+		return biz.Task{}, errClarifyOriginalInputMissing
+	}
+	return tr.GetTask(ctx, step.TaskID)
 }
