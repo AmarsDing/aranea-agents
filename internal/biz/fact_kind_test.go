@@ -75,6 +75,8 @@ func TestPreferenceSlotKey(t *testing.T) {
 		{"My favorite color is red", "favorite:color"},
 		{"I live in Seattle", "live"},
 		{"我最喜欢的颜色是红色", "favorite:颜色"},
+		{"我现在最喜欢的颜色改成红色了", "favorite:颜色"},
+		{"我最喜欢的语言换成 Go 了", "favorite:语言"},
 		{"我住在杭州", "live"},
 		{"I like coffee", "like"},
 		{"杂项陈述", ""},

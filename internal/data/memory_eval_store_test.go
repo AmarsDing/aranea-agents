@@ -71,6 +71,36 @@ func TestEvalStore_SupersedesFavoriteColor(t *testing.T) {
 	}
 }
 
+// TestEvalStore_SupersedesFavoriteColorChinese mirrors the English case for the
+// Chinese correction phrasing "我现在最喜欢的颜色改成红色了": the slot parser
+// must treat "改成" as the attribute terminator, so the superseded "蓝色" fact
+// never re-enters recall (dimension-D governance regression).
+func TestEvalStore_SupersedesFavoriteColorChinese(t *testing.T) {
+	store := setupEvalStore(t)
+	ctx := context.Background()
+	if _, err := store.AddMessages(ctx, "u-upd-zh", "s-upd-zh", []biz.EvalMessage{
+		{Role: "user", Content: "我最喜欢的颜色是蓝色", MessageID: "m1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMessages(ctx, "u-upd-zh", "s-upd-zh", []biz.EvalMessage{
+		{Role: "user", Content: "我现在最喜欢的颜色改成红色了", MessageID: "m2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.SearchMemories(ctx, "u-upd-zh", "用户最喜欢的颜色", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := evalContents(items)
+	if !strings.Contains(joined, "红色") {
+		t.Fatalf("missing updated color: %s", joined)
+	}
+	if strings.Contains(joined, "蓝色") {
+		t.Fatalf("stale color leaked: %s", joined)
+	}
+}
+
 // TestEvalStore_SameSessionEpisodeMergesTurns is the L2 overwrite regression:
 // repeated Add calls for one session used to replace the episode transcript
 // with the latest batch only (upsert keyed on (session_id, l1_task_id)),
