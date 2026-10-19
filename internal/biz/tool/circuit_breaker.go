@@ -275,11 +275,26 @@ func (cb *CircuitBreaker) restoreFromEntry(entry CircuitBreakerStateEntry) {
 	cb.lastFailureTime = entry.LastFailureTime
 }
 
+// IsTransientError reports whether err should NOT count toward circuit-breaker
+// failure accounting (the AfterTool hook skips RecordFailure for these).
+//
+// Deliberate semantics:
+//   - context.Canceled: user/run cancellation — must not punish the tool.
+//   - EOF / net.Error: connection-level flakes handled by the retry layer.
+//   - context.DeadlineExceeded is NOT transient here: a repeatedly timing-out
+//     upstream is exactly the scenario a breaker must open for (fail-fast);
+//     otherwise a permanently slow tool would retry forever and never trip.
 func IsTransientError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	// 必须先于 net.Error 判断显式排除：context.deadlineExceededError 自身实现了
+	// net.Error（Timeout()=true），若放后面会被 net 分支误兜住，导致持续超时的
+	// 上游永远熔断不了。
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
 		return true
 	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {

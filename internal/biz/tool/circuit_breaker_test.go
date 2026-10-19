@@ -319,8 +319,9 @@ func TestIsTransientError(t *testing.T) {
 	if !IsTransientError(context.Canceled) {
 		t.Fatal("context.Canceled should be transient")
 	}
-	if !IsTransientError(context.DeadlineExceeded) {
-		t.Fatal("context.DeadlineExceeded should be transient")
+	// DeadlineExceeded 不再视为瞬时：持续超时的上游必须能触发熔断（fail-fast）。
+	if IsTransientError(context.DeadlineExceeded) {
+		t.Fatal("context.DeadlineExceeded should NOT be transient (must count toward breaker failures)")
 	}
 	var timeoutErr net.Error = &net.OpError{Op: "read", Net: "tcp", Err: &timeoutError{}}
 	if !IsTransientError(timeoutErr) {
