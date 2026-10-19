@@ -153,6 +153,20 @@ func (_u *ToolInvocationUpdate) SetNillableUserID(v *string) *ToolInvocationUpda
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *ToolInvocationUpdate) SetWorkspaceID(v string) *ToolInvocationUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *ToolInvocationUpdate) SetNillableWorkspaceID(v *string) *ToolInvocationUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetSource sets the "source" field.
 func (_u *ToolInvocationUpdate) SetSource(v string) *ToolInvocationUpdate {
 	_u.mutation.SetSource(v)
@@ -479,6 +493,9 @@ func (_u *ToolInvocationUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.UserID(); ok {
 		_spec.SetField(toolinvocation.FieldUserID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(toolinvocation.FieldWorkspaceID, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Source(); ok {
 		_spec.SetField(toolinvocation.FieldSource, field.TypeString, value)
 	}
@@ -681,6 +698,20 @@ func (_u *ToolInvocationUpdateOne) SetUserID(v string) *ToolInvocationUpdateOne 
 func (_u *ToolInvocationUpdateOne) SetNillableUserID(v *string) *ToolInvocationUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *ToolInvocationUpdateOne) SetWorkspaceID(v string) *ToolInvocationUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *ToolInvocationUpdateOne) SetNillableWorkspaceID(v *string) *ToolInvocationUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
 	}
 	return _u
 }
@@ -1040,6 +1071,9 @@ func (_u *ToolInvocationUpdateOne) sqlSave(ctx context.Context) (_node *ToolInvo
 	}
 	if value, ok := _u.mutation.UserID(); ok {
 		_spec.SetField(toolinvocation.FieldUserID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(toolinvocation.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Source(); ok {
 		_spec.SetField(toolinvocation.FieldSource, field.TypeString, value)

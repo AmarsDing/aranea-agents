@@ -248,6 +248,15 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	// A2：KPI 24h 口径工作区化——tenant 调用方只聚合本租户行（写入时自
+	// agents 派生，20261279 backfill）；'' 行 = 宿主缺失存量，仅系统视图可见。
+	// q.WorkspaceID 空 = 系统调用方（不加过滤，保持全局视图）。
+	invWhere := "started_at >= ?"
+	invArgs := []any{cutoff}
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		invWhere += " AND workspace_id = ?"
+		invArgs = append(invArgs, ws)
+	}
 	var success24h, failed24h, blocked24h int
 	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`
 	SELECT
@@ -255,8 +264,8 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 	  COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
 	  COALESCE(SUM(CASE WHEN status IN ('failed', 'error') THEN 1 ELSE 0 END), 0),
 	  COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0)
-	FROM tool_invocations WHERE started_at >= ?`),
-		[]any{cutoff},
+	FROM tool_invocations WHERE `+invWhere),
+		invArgs,
 		&s.Calls24h, &success24h, &failed24h, &blocked24h); err != nil {
 		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")
 	}
@@ -695,6 +704,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		SetAgentKey(strings.TrimSpace(in.AgentKey)).
 		SetSessionID(strings.TrimSpace(in.SessionID)).
 		SetUserID(strings.TrimSpace(in.UserID)).
+		SetWorkspaceID(r.toolInvocationWorkspace(ctx, client, in)).
 		SetSource(source).
 		SetStatus(status).
 		SetStartedAt(started).
@@ -740,6 +750,28 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		r.data.lg.Error("tool invocation fallback update failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
 	}
 	return entErrToBizErr(err, "TOOL")
+}
+
+// toolInvocationWorkspace 解析工具调用行的租户归属（A2）：写入方显式提供
+// 时优先；否则自 agents 表按 AgentID 派生（同 unified_evolution_suggestions
+// 空值派生惯例）；宿主缺失/查询失败 → ''（仅系统视图 KPI 可见，不丢数据）。
+// 注意：constraint fallback-update 路径刻意不写本列——workspace 随首次
+// 写入的身份行确定，chunk 合并不得改写身份字段。
+func (r *toolRepo) toolInvocationWorkspace(ctx context.Context, client *ent.Client, in biz.ToolInvocationWrite) string {
+	if ws := strings.TrimSpace(in.WorkspaceID); ws != "" {
+		return ws
+	}
+	agentID := strings.TrimSpace(in.AgentID)
+	if agentID == "" {
+		return ""
+	}
+	var ws string
+	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT workspace_id FROM agents WHERE id = ? LIMIT 1`), []any{agentID}, &ws); err != nil {
+		r.data.lg.Warn("tool invocation workspace derive failed", loggateway.StepID("data.tool.invocation_ws_derive"), loggateway.Err(err))
+		return ""
+	}
+	return strings.TrimSpace(ws)
 }
 
 func hashTrim(explicit, fallback string) string {

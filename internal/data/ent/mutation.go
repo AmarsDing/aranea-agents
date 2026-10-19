@@ -116785,6 +116785,7 @@ type ToolInvocationMutation struct {
 	session_id        *string
 	message_id        *string
 	user_id           *string
+	workspace_id      *string
 	source            *string
 	status            *string
 	started_at        *string
@@ -117236,6 +117237,42 @@ func (m *ToolInvocationMutation) OldUserID(ctx context.Context) (v string, err e
 // ResetUserID resets all changes to the "user_id" field.
 func (m *ToolInvocationMutation) ResetUserID() {
 	m.user_id = nil
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *ToolInvocationMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *ToolInvocationMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the ToolInvocation entity.
+// If the ToolInvocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolInvocationMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *ToolInvocationMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
 }
 
 // SetSource sets the "source" field.
@@ -117937,7 +117974,7 @@ func (m *ToolInvocationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ToolInvocationMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 27)
 	if m.request_id != nil {
 		fields = append(fields, toolinvocation.FieldRequestID)
 	}
@@ -117964,6 +118001,9 @@ func (m *ToolInvocationMutation) Fields() []string {
 	}
 	if m.user_id != nil {
 		fields = append(fields, toolinvocation.FieldUserID)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, toolinvocation.FieldWorkspaceID)
 	}
 	if m.source != nil {
 		fields = append(fields, toolinvocation.FieldSource)
@@ -118042,6 +118082,8 @@ func (m *ToolInvocationMutation) Field(name string) (ent.Value, bool) {
 		return m.MessageID()
 	case toolinvocation.FieldUserID:
 		return m.UserID()
+	case toolinvocation.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case toolinvocation.FieldSource:
 		return m.Source()
 	case toolinvocation.FieldStatus:
@@ -118103,6 +118145,8 @@ func (m *ToolInvocationMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldMessageID(ctx)
 	case toolinvocation.FieldUserID:
 		return m.OldUserID(ctx)
+	case toolinvocation.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case toolinvocation.FieldSource:
 		return m.OldSource(ctx)
 	case toolinvocation.FieldStatus:
@@ -118208,6 +118252,13 @@ func (m *ToolInvocationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case toolinvocation.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case toolinvocation.FieldSource:
 		v, ok := value.(string)
@@ -118439,6 +118490,9 @@ func (m *ToolInvocationMutation) ResetField(name string) error {
 		return nil
 	case toolinvocation.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case toolinvocation.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	case toolinvocation.FieldSource:
 		m.ResetSource()

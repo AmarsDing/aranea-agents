@@ -108,7 +108,7 @@ LLM tool_call
 | # | 发现 | 证据 | 状态（2026-10-19 修复复盘） |
 |---|------|------|--------|
 | A1 | **工具熔断器注册表无持久化、且为 per-agent 实例**：`buildCircuitBreakerRegistry`（[agent/tool_circuit_breaker.go:18-47](internal/agent/tool_circuit_breaker.go#L18)）不挂 `WithStateRepo`，且在每个 agent 构建时（[callback_chain.go:262](internal/agent/callback_chain.go#L262)）重建——Agent 设置变更触发缓存失效即全部复位 Closed；跨 agent 的同名工具互不认账。相比之下 NodeCircuitBreakerRegistry（[node_circuit_breaker.go:55](internal/biz/node_circuit_breaker.go#L55)）已接 StateRepo，双语义不对称且未文档化 | 代码直证 | ✅ **已修**。ADR-84（`docs/development/84-adr-tool-circuit-breaker-persistence.md`）定案后落地：进程级共享注册表 `ProvideToolCircuitBreakerRegistry`（StateRepo 持久化 + 启动恢复）；名空间 `tool:<workspaceID>:<tool>`（共享/落表）与 `tool_agent:<agentID>:<tool>`（overrides 隔离/易失）经 `WithPersistFilter` 分流；回调链由 per-build 改为 deps 注入；新增 8 个单测（过滤/恢复/降级/同空间共享/跨空间隔离/Agent 隔离）全绿 |
-| A2 | **顶部 KPI 24h 口径全局**：`computeToolSummary` 的 `tool_invocations` 聚合无条件（[data/tool.go:252-258](internal/data/tool.go#L252)），该表 schema 无 workspace 列（[ent/schema/tool_invocation.go:22-51](internal/data/ent/schema/tool_invocation.go#L22)）。单工作空间部署无碍；按工作空间强隔离则工具总数过滤与调用量统计口径不一（前者走 `toolWhereClause(q)`） | 代码直证 | 📌 **保持设计**（本迭代不动）：拉通需改 schema + 写入路径 + 统计口径，收益/成本比低；已在本报告显式记录为已知口径，后续随多工作空间产品需求一并设计 |
+| A2 | **顶部 KPI 24h 口径全局**：`computeToolSummary` 的 `tool_invocations` 聚合无条件（[data/tool.go:252-258](internal/data/tool.go#L252)），该表 schema 无 workspace 列（[ent/schema/tool_invocation.go:22-51](internal/data/ent/schema/tool_invocation.go#L22)）。单工作空间部署无碍；按工作空间强隔离则工具总数过滤与调用量统计口径不一（前者走 `toolWhereClause(q)`） | 代码直证 | ✅ **已修**（2026-10-19 用户指令启动，ADR-85 `docs/development/85-adr-tool-invocations-workspace.md`）：`tool_invocations.workspace_id` 列 + `(workspace_id, started_at)` 索引 + 迁移 `20261279` 自 agents 派生 backfill（宿主缺失行保持 `''` 仅系统视图可见）；写入时空值由 data 层按 AgentID 单点派生，constraint chunk 合并不改写身份；KPI 按 `q.WorkspaceID` 过滤（tenant 仅本租户，空 = 系统全局）；不扩 RLS/旁车表爆炸半径 |
 | A3 | ~~**确认拦截调用完全不落记录/审计**~~ | 复审修正 | ✅ **前提修正 + 残余出口补齐**。复审 [tool_confirmation.go](internal/agent/tool_confirmation.go) 全分支证伪原判：**denied / timeout / 无回复通道**三条出口早已自录 `status=blocked` 行（细粒度 ErrorCode：confirmation_denied/timeout/required），预审器 153 行提前 return 是防双写守卫（同 ToolCallID upsert 终态升级）。唯一真漏的「等待确认失败（ctx 取消/通道异常）」出口已补自录（一致性对齐）；防双写处加定案注释禁止误删 |
 | A4 | **双脱敏链分叉且时间戳口径不一**：运行链 `internal/tools/preview`（pattern 丰富）与 biz 链 `tool_preview.go`（上轮加固）各自独立维护同类 regex；preview 包 phoneRE 仍是宽松版（`(+\|00)?`+9–15 位裸数字，[preview.go:12](internal/tools/preview/preview.go#L12)）会把 10/13 位 Unix 时间戳当电话脱敏 | 代码直证 | ✅ **已修**。preview 包升级为唯一权威实现（B6 时间戳安全 phoneRE/JWT {5,} 段/AWS 8 前缀/GitHub 全家族/glpat/hf_/pk_ Stripe/PEM dotall+截断头兜底 ∪ 原细粒度模式，全部 \\b 锚定防 task-/risk- 误伤）；biz `RedactToolPreview` 薄委托，标记统一 `[secret redacted]`；新增 4 组回归单测（厂商家族/截断 PEM/时间戳存活/长后缀防误伤）全绿 |
 | A5 | **openapi 开启但无 spec 配置 → 整个 Agent 装配失败**：`assembleFromRegistry` 对工厂错误直接 Internal 上抛，openapi Registry 工厂即「requires spec configuration」报错 | 代码直证 | ✅ **已修**。openapi 条目转 `placeholderToolSetFactory + AssembledElsewhere`（与 browser 等占位模式一致），`assembleOpenAPIToolsets` 增 enabled-但无-spec Warn 降级；回归测试 `TestAssemble_openapiWithoutSpecsDegrades` 全绿 |
@@ -131,7 +131,7 @@ LLM tool_call
 4. ~~A3（blocked 落档评审）~~ ✅（结论：既定设计正确 + 补 1 条残余出口）
 5. ~~G1/G2（元数据与类型错）~~ ✅
 
-A2 评审结论为「保持设计 + 显式记录口径」，不进本期改动清单。
+A2 评审初判为「保持设计 + 显式记录口径」；2026-10-19 经用户指令启动实施并完成（ADR-85），全部 8 项发现至此清零。
 
 ### 5.1 变更文件清单
 
@@ -159,6 +159,18 @@ A2 评审结论为「保持设计 + 显式记录口径」，不进本期改动�
 | 前端 | `web/src/features/agents/__tests__/useAgentToolOverrides.spec.ts` | G2 周边：终验时发现的存量 TS2322（夹具 `Record<string, unknown>+??` 推断 `{}` 与 `AgentEffectiveTool` 不兼容；HEAD 已存在、非本轮引入）收窄为精确 `Partial<Pick<…>>` |
 | docs | `docs/development/84-adr-tool-circuit-breaker-persistence.md`（新） | A1 决策记录 |
 
+A2 工作区化追加（2026-10-19，ADR-85）：
+
+| 模块 | 文件 | 事项 |
+|------|------|------|
+| ent | `internal/data/ent/schema/tool_invocation.go` + 生成物 | `workspace_id` 列 + `(workspace_id, started_at)` 索引 |
+| data | `internal/data/sql/migrations/20261279_tool_invocations_workspace.sql`（新） | 加列/索引/自 agents backfill（Postgres-only） |
+| data | `internal/data/ddl_migration_registry.go` | 20261279 条目 + `ddlToolInvocationsWorkspace` Func |
+| biz | `internal/biz/tool/tool.go` | `ToolInvocationWrite.WorkspaceID` 字段 |
+| data | `internal/data/tool.go` | `toolInvocationWorkspace` 派生 + 写入链落列 + `computeToolSummary` 租户过滤 |
+| data | `internal/data/tool_invocation_workspace_test.go`（新） | 派生/显式归属/KPI 口径三项回归 |
+| docs | `docs/development/85-adr-tool-invocations-workspace.md`（新） | A2 决策记录 |
+
 ### 5.2 回归验证结果（2026-10-19 终验）
 
 | 域 | 命令面 | 结果 |
@@ -167,3 +179,6 @@ A2 评审结论为「保持设计 + 显式记录口径」，不进本期改动�
 | Go 测试 | `go test ./internal/tools/... ./internal/biz/tool/ ./internal/agent/`（agent 侧聚焦 `CircuitBreaker\|ToolInvocation\|ToolConfirm\|Recorder`） | ✅ 全部 `ok`（biz/tool 7.851s、agent 2.698s，装配/熔断/记录/确认全链路绿） |
 | 前端类型 | `vue-tsc --noEmit` 全量 + `AgentTool` 域过滤 | ✅ 该域 0 错（G2 漂移 + 存量 spec TS2322 均清零） |
 | 前端测试 | `vitest run src/features/tools src/features/agents` | ✅ 13 文件 / 90 用例全过 |
+| A2 复验（2026-10-19 追加） | ent codegen + `go build ./internal/data/... ./internal/biz/tool/ ./internal/agent/ ./cmd/admin/...` | ✅ 通过 |
+| A2 数据回归 | `go test ./internal/data/ -run 'TestToolRepo\|TestToolInvocation\|TestSearchTool'`（本机新建 55432 测试 PG） | ✅ `ok 22.210s`（含新增 WorkspaceScoping 派生/归属/KPI 三断言） |
+| A2 链路回归 | `go test ./internal/biz/tool/` + `go test ./internal/agent/ -run 'ToolInvocation\|ToolConfirm\|Recorder\|CircuitBreaker'` | ✅ `ok 7.865s` / `ok 2.706s` |

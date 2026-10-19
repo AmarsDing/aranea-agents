@@ -34,6 +34,8 @@ type ToolInvocation struct {
 	MessageID string `json:"message_id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID string `json:"user_id,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// Source holds the value of the "source" field.
 	Source string `json:"source,omitempty"`
 	// Status holds the value of the "status" field.
@@ -80,7 +82,7 @@ func (*ToolInvocation) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case toolinvocation.FieldDurationMs, toolinvocation.FieldChunkCount:
 			values[i] = new(sql.NullInt64)
-		case toolinvocation.FieldID, toolinvocation.FieldRequestID, toolinvocation.FieldInvocationID, toolinvocation.FieldToolID, toolinvocation.FieldToolKey, toolinvocation.FieldAgentID, toolinvocation.FieldAgentKey, toolinvocation.FieldSessionID, toolinvocation.FieldMessageID, toolinvocation.FieldUserID, toolinvocation.FieldSource, toolinvocation.FieldStatus, toolinvocation.FieldStartedAt, toolinvocation.FieldEndedAt, toolinvocation.FieldInputPreview, toolinvocation.FieldInputHash, toolinvocation.FieldOutputPreview, toolinvocation.FieldOutputHash, toolinvocation.FieldErrorCode, toolinvocation.FieldErrorMessage, toolinvocation.FieldMetadataJSON, toolinvocation.FieldCreatedAt, toolinvocation.FieldDeletedAt:
+		case toolinvocation.FieldID, toolinvocation.FieldRequestID, toolinvocation.FieldInvocationID, toolinvocation.FieldToolID, toolinvocation.FieldToolKey, toolinvocation.FieldAgentID, toolinvocation.FieldAgentKey, toolinvocation.FieldSessionID, toolinvocation.FieldMessageID, toolinvocation.FieldUserID, toolinvocation.FieldWorkspaceID, toolinvocation.FieldSource, toolinvocation.FieldStatus, toolinvocation.FieldStartedAt, toolinvocation.FieldEndedAt, toolinvocation.FieldInputPreview, toolinvocation.FieldInputHash, toolinvocation.FieldOutputPreview, toolinvocation.FieldOutputHash, toolinvocation.FieldErrorCode, toolinvocation.FieldErrorMessage, toolinvocation.FieldMetadataJSON, toolinvocation.FieldCreatedAt, toolinvocation.FieldDeletedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -156,6 +158,12 @@ func (_m *ToolInvocation) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.String
+			}
+		case toolinvocation.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
 			}
 		case toolinvocation.FieldSource:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -321,6 +329,9 @@ func (_m *ToolInvocation) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(_m.UserID)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteString(", ")
 	builder.WriteString("source=")
 	builder.WriteString(_m.Source)

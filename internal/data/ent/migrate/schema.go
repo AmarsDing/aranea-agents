@@ -3750,6 +3750,7 @@ var (
 		{Name: "session_id", Type: field.TypeString, Default: ""},
 		{Name: "message_id", Type: field.TypeString, Default: ""},
 		{Name: "user_id", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 		{Name: "source", Type: field.TypeString, Default: "adk"},
 		{Name: "status", Type: field.TypeString, Default: "success"},
 		{Name: "started_at", Type: field.TypeString},
@@ -3777,12 +3778,17 @@ var (
 			{
 				Name:    "idx_tool_invocations_tool_time",
 				Unique:  false,
-				Columns: []*schema.Column{ToolInvocationsColumns[4], ToolInvocationsColumns[12]},
+				Columns: []*schema.Column{ToolInvocationsColumns[4], ToolInvocationsColumns[13]},
 			},
 			{
 				Name:    "idx_tool_invocations_agent_time",
 				Unique:  false,
-				Columns: []*schema.Column{ToolInvocationsColumns[5], ToolInvocationsColumns[12]},
+				Columns: []*schema.Column{ToolInvocationsColumns[5], ToolInvocationsColumns[13]},
+			},
+			{
+				Name:    "idx_tool_invocations_ws_time",
+				Unique:  false,
+				Columns: []*schema.Column{ToolInvocationsColumns[10], ToolInvocationsColumns[13]},
 			},
 			{
 				Name:    "idx_tool_invocations_session",
@@ -3792,12 +3798,12 @@ var (
 			{
 				Name:    "idx_tool_invocations_status",
 				Unique:  false,
-				Columns: []*schema.Column{ToolInvocationsColumns[11]},
+				Columns: []*schema.Column{ToolInvocationsColumns[12]},
 			},
 			{
 				Name:    "idx_tool_invocations_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{ToolInvocationsColumns[26]},
+				Columns: []*schema.Column{ToolInvocationsColumns[27]},
 			},
 		},
 	}

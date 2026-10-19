@@ -169,6 +169,9 @@ type ToolInvocationWrite struct {
 	AgentKey      string
 	SessionID     string
 	UserID        string
+	// WorkspaceID：租户归属（A2）。写入方留空时 data 层自 agents 表按
+	// AgentID 派生；KPI 24h 聚合按此过滤，empty = 宿主缺失行（仅系统视图可见）。
+	WorkspaceID   string
 	Status        string
 	DurationMS    int
 	StartedAt     string

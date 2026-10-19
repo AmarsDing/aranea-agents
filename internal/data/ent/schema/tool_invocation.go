@@ -31,6 +31,10 @@ func (ToolInvocation) Fields() []ent.Field {
 		field.String("session_id").Default(""),
 		field.String("message_id").Default(""),
 		field.String("user_id").Default(""),
+		// A2（tools 端到端审计 2026-10-19）：租户归属列。空串 = 宿主缺失的
+		// 存量行，仅系统调用方在 KPI 聚合中可见；非空 = 归属租户。
+		// 写入路径空值时由 data 层自 agents 表派生（同 unified_evolution_suggestions 惯例）。
+		field.String("workspace_id").Default(""),
 		field.String("source").Default("adk"),
 		field.String("status").Default("success"),
 		field.String("started_at"),
@@ -55,6 +59,8 @@ func (ToolInvocation) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("tool_key", "started_at").StorageKey("idx_tool_invocations_tool_time"),
 		index.Fields("agent_id", "started_at").StorageKey("idx_tool_invocations_agent_time"),
+		// A2：24h KPI 按租户过滤的时间窗扫描。
+		index.Fields("workspace_id", "started_at").StorageKey("idx_tool_invocations_ws_time"),
 		index.Fields("session_id").StorageKey("idx_tool_invocations_session"),
 		index.Fields("status").StorageKey("idx_tool_invocations_status"),
 		index.Fields("deleted_at").StorageKey("idx_tool_invocations_deleted_at"),

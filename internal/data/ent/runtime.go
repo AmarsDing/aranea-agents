@@ -6858,64 +6858,68 @@ func init() {
 	toolinvocationDescUserID := toolinvocationFields[9].Descriptor()
 	// toolinvocation.DefaultUserID holds the default value on creation for the user_id field.
 	toolinvocation.DefaultUserID = toolinvocationDescUserID.Default.(string)
+	// toolinvocationDescWorkspaceID is the schema descriptor for workspace_id field.
+	toolinvocationDescWorkspaceID := toolinvocationFields[10].Descriptor()
+	// toolinvocation.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	toolinvocation.DefaultWorkspaceID = toolinvocationDescWorkspaceID.Default.(string)
 	// toolinvocationDescSource is the schema descriptor for source field.
-	toolinvocationDescSource := toolinvocationFields[10].Descriptor()
+	toolinvocationDescSource := toolinvocationFields[11].Descriptor()
 	// toolinvocation.DefaultSource holds the default value on creation for the source field.
 	toolinvocation.DefaultSource = toolinvocationDescSource.Default.(string)
 	// toolinvocationDescStatus is the schema descriptor for status field.
-	toolinvocationDescStatus := toolinvocationFields[11].Descriptor()
+	toolinvocationDescStatus := toolinvocationFields[12].Descriptor()
 	// toolinvocation.DefaultStatus holds the default value on creation for the status field.
 	toolinvocation.DefaultStatus = toolinvocationDescStatus.Default.(string)
 	// toolinvocationDescEndedAt is the schema descriptor for ended_at field.
-	toolinvocationDescEndedAt := toolinvocationFields[13].Descriptor()
+	toolinvocationDescEndedAt := toolinvocationFields[14].Descriptor()
 	// toolinvocation.DefaultEndedAt holds the default value on creation for the ended_at field.
 	toolinvocation.DefaultEndedAt = toolinvocationDescEndedAt.Default.(string)
 	// toolinvocationDescDurationMs is the schema descriptor for duration_ms field.
-	toolinvocationDescDurationMs := toolinvocationFields[14].Descriptor()
+	toolinvocationDescDurationMs := toolinvocationFields[15].Descriptor()
 	// toolinvocation.DefaultDurationMs holds the default value on creation for the duration_ms field.
 	toolinvocation.DefaultDurationMs = toolinvocationDescDurationMs.Default.(int)
 	// toolinvocationDescInputPreview is the schema descriptor for input_preview field.
-	toolinvocationDescInputPreview := toolinvocationFields[15].Descriptor()
+	toolinvocationDescInputPreview := toolinvocationFields[16].Descriptor()
 	// toolinvocation.DefaultInputPreview holds the default value on creation for the input_preview field.
 	toolinvocation.DefaultInputPreview = toolinvocationDescInputPreview.Default.(string)
 	// toolinvocationDescInputHash is the schema descriptor for input_hash field.
-	toolinvocationDescInputHash := toolinvocationFields[16].Descriptor()
+	toolinvocationDescInputHash := toolinvocationFields[17].Descriptor()
 	// toolinvocation.DefaultInputHash holds the default value on creation for the input_hash field.
 	toolinvocation.DefaultInputHash = toolinvocationDescInputHash.Default.(string)
 	// toolinvocationDescOutputPreview is the schema descriptor for output_preview field.
-	toolinvocationDescOutputPreview := toolinvocationFields[17].Descriptor()
+	toolinvocationDescOutputPreview := toolinvocationFields[18].Descriptor()
 	// toolinvocation.DefaultOutputPreview holds the default value on creation for the output_preview field.
 	toolinvocation.DefaultOutputPreview = toolinvocationDescOutputPreview.Default.(string)
 	// toolinvocationDescOutputHash is the schema descriptor for output_hash field.
-	toolinvocationDescOutputHash := toolinvocationFields[18].Descriptor()
+	toolinvocationDescOutputHash := toolinvocationFields[19].Descriptor()
 	// toolinvocation.DefaultOutputHash holds the default value on creation for the output_hash field.
 	toolinvocation.DefaultOutputHash = toolinvocationDescOutputHash.Default.(string)
 	// toolinvocationDescErrorCode is the schema descriptor for error_code field.
-	toolinvocationDescErrorCode := toolinvocationFields[19].Descriptor()
+	toolinvocationDescErrorCode := toolinvocationFields[20].Descriptor()
 	// toolinvocation.DefaultErrorCode holds the default value on creation for the error_code field.
 	toolinvocation.DefaultErrorCode = toolinvocationDescErrorCode.Default.(string)
 	// toolinvocationDescErrorMessage is the schema descriptor for error_message field.
-	toolinvocationDescErrorMessage := toolinvocationFields[20].Descriptor()
+	toolinvocationDescErrorMessage := toolinvocationFields[21].Descriptor()
 	// toolinvocation.DefaultErrorMessage holds the default value on creation for the error_message field.
 	toolinvocation.DefaultErrorMessage = toolinvocationDescErrorMessage.Default.(string)
 	// toolinvocationDescRedactionApplied is the schema descriptor for redaction_applied field.
-	toolinvocationDescRedactionApplied := toolinvocationFields[21].Descriptor()
+	toolinvocationDescRedactionApplied := toolinvocationFields[22].Descriptor()
 	// toolinvocation.DefaultRedactionApplied holds the default value on creation for the redaction_applied field.
 	toolinvocation.DefaultRedactionApplied = toolinvocationDescRedactionApplied.Default.(bool)
 	// toolinvocationDescStreaming is the schema descriptor for streaming field.
-	toolinvocationDescStreaming := toolinvocationFields[22].Descriptor()
+	toolinvocationDescStreaming := toolinvocationFields[23].Descriptor()
 	// toolinvocation.DefaultStreaming holds the default value on creation for the streaming field.
 	toolinvocation.DefaultStreaming = toolinvocationDescStreaming.Default.(bool)
 	// toolinvocationDescChunkCount is the schema descriptor for chunk_count field.
-	toolinvocationDescChunkCount := toolinvocationFields[23].Descriptor()
+	toolinvocationDescChunkCount := toolinvocationFields[24].Descriptor()
 	// toolinvocation.DefaultChunkCount holds the default value on creation for the chunk_count field.
 	toolinvocation.DefaultChunkCount = toolinvocationDescChunkCount.Default.(int)
 	// toolinvocationDescMetadataJSON is the schema descriptor for metadata_json field.
-	toolinvocationDescMetadataJSON := toolinvocationFields[24].Descriptor()
+	toolinvocationDescMetadataJSON := toolinvocationFields[25].Descriptor()
 	// toolinvocation.DefaultMetadataJSON holds the default value on creation for the metadata_json field.
 	toolinvocation.DefaultMetadataJSON = toolinvocationDescMetadataJSON.Default.(string)
 	// toolinvocationDescDeletedAt is the schema descriptor for deleted_at field.
-	toolinvocationDescDeletedAt := toolinvocationFields[26].Descriptor()
+	toolinvocationDescDeletedAt := toolinvocationFields[27].Descriptor()
 	// toolinvocation.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	toolinvocation.DefaultDeletedAt = toolinvocationDescDeletedAt.Default.(string)
 	// toolinvocationDescID is the schema descriptor for id field.

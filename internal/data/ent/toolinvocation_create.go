@@ -140,6 +140,20 @@ func (_c *ToolInvocationCreate) SetNillableUserID(v *string) *ToolInvocationCrea
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *ToolInvocationCreate) SetWorkspaceID(v string) *ToolInvocationCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *ToolInvocationCreate) SetNillableWorkspaceID(v *string) *ToolInvocationCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetSource sets the "source" field.
 func (_c *ToolInvocationCreate) SetSource(v string) *ToolInvocationCreate {
 	_c.mutation.SetSource(v)
@@ -435,6 +449,10 @@ func (_c *ToolInvocationCreate) defaults() {
 		v := toolinvocation.DefaultUserID
 		_c.mutation.SetUserID(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := toolinvocation.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.Source(); !ok {
 		v := toolinvocation.DefaultSource
 		_c.mutation.SetSource(v)
@@ -525,6 +543,9 @@ func (_c *ToolInvocationCreate) check() error {
 	}
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "ToolInvocation.user_id"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "ToolInvocation.workspace_id"`)}
 	}
 	if _, ok := _c.mutation.Source(); !ok {
 		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "ToolInvocation.source"`)}
@@ -650,6 +671,10 @@ func (_c *ToolInvocationCreate) createSpec() (*ToolInvocation, *sqlgraph.CreateS
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(toolinvocation.FieldUserID, field.TypeString, value)
 		_node.UserID = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(toolinvocation.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	if value, ok := _c.mutation.Source(); ok {
 		_spec.SetField(toolinvocation.FieldSource, field.TypeString, value)
@@ -876,6 +901,18 @@ func (u *ToolInvocationUpsert) SetUserID(v string) *ToolInvocationUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *ToolInvocationUpsert) UpdateUserID() *ToolInvocationUpsert {
 	u.SetExcluded(toolinvocation.FieldUserID)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *ToolInvocationUpsert) SetWorkspaceID(v string) *ToolInvocationUpsert {
+	u.Set(toolinvocation.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *ToolInvocationUpsert) UpdateWorkspaceID() *ToolInvocationUpsert {
+	u.SetExcluded(toolinvocation.FieldWorkspaceID)
 	return u
 }
 
@@ -1272,6 +1309,20 @@ func (u *ToolInvocationUpsertOne) SetUserID(v string) *ToolInvocationUpsertOne {
 func (u *ToolInvocationUpsertOne) UpdateUserID() *ToolInvocationUpsertOne {
 	return u.Update(func(s *ToolInvocationUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *ToolInvocationUpsertOne) SetWorkspaceID(v string) *ToolInvocationUpsertOne {
+	return u.Update(func(s *ToolInvocationUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *ToolInvocationUpsertOne) UpdateWorkspaceID() *ToolInvocationUpsertOne {
+	return u.Update(func(s *ToolInvocationUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1872,6 +1923,20 @@ func (u *ToolInvocationUpsertBulk) SetUserID(v string) *ToolInvocationUpsertBulk
 func (u *ToolInvocationUpsertBulk) UpdateUserID() *ToolInvocationUpsertBulk {
 	return u.Update(func(s *ToolInvocationUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *ToolInvocationUpsertBulk) SetWorkspaceID(v string) *ToolInvocationUpsertBulk {
+	return u.Update(func(s *ToolInvocationUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *ToolInvocationUpsertBulk) UpdateWorkspaceID() *ToolInvocationUpsertBulk {
+	return u.Update(func(s *ToolInvocationUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

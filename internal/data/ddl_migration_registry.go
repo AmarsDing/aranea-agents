@@ -580,6 +580,11 @@ var ddlMigrations = []ddlMigration{
     // 与最近错误；ListUnanalyzed 谓词排除 attempts 达上限的行，根治「永久失败
     // 毒行按 created_at ASC 每轮重扫 + 积压 100 条队头阻塞」。
     {Version: 20261278, Name: "skill_invocation_analysis_retry", SQL: "sql/migrations/20261278_skill_invocation_analysis_retry.sql"},
+    // 20261279 tool_invocations_workspace（A2，tools 端到端审计跟进）：tool_invocations
+    // 加 workspace_id 列 + (workspace_id, started_at) 索引 + 自 agents 表按 agent_id
+    // backfill；宿主缺失行保持 ''（仅系统调用方在 KPI 聚合可见）。Postgres-only
+    // （SQLite/测试由 Ent schema 建列）；不加 RLS（本表租户边界一直在 service 层）。
+    {Version: 20261279, Name: "tool_invocations_workspace", Func: ddlToolInvocationsWorkspace},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1688,6 +1693,21 @@ func ddlToolGrantsExpiresAt(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d
 			loggateway.Int("rows_updated", int(n)))
 	}
 	return nil
+}
+
+// ddlToolInvocationsWorkspace adds workspace_id to tool_invocations
+// (A2, tools 端到端审计 2026-10-19): column + (workspace_id, started_at) index
+// + backfill from agents by agent_id. 宿主缺失的存量行保持 ''（仅系统调用方
+// 在 KPI 聚合可见）。Postgres-only：SQLite 侧由 Ent schema 建列（同
+// ddlToolGrantsExpiresAt 惯例）。Idempotent: ADD COLUMN IF NOT EXISTS +
+// CREATE INDEX IF NOT EXISTS + 空值守卫 UPDATE。
+func ddlToolInvocationsWorkspace(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("tool_invocations_workspace skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.tool_invocations_workspace"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261279_tool_invocations_workspace.sql", d, lg)
 }
 
 // ddlToolsRetryParallelDefaultOn flips historical false defaults for

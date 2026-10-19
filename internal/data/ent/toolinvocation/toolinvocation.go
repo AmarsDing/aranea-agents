@@ -29,6 +29,8 @@ const (
 	FieldMessageID = "message_id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// FieldSource holds the string denoting the source field in the database.
 	FieldSource = "source"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -79,6 +81,7 @@ var Columns = []string{
 	FieldSessionID,
 	FieldMessageID,
 	FieldUserID,
+	FieldWorkspaceID,
 	FieldSource,
 	FieldStatus,
 	FieldStartedAt,
@@ -125,6 +128,8 @@ var (
 	DefaultMessageID string
 	// DefaultUserID holds the default value on creation for the "user_id" field.
 	DefaultUserID string
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
 	// DefaultSource holds the default value on creation for the "source" field.
 	DefaultSource string
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -210,6 +215,11 @@ func ByMessageID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }
 
 // BySource orders the results by the source field.
