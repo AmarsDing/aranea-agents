@@ -275,3 +275,79 @@ func TestRedactAndTruncate_ExtendedPatterns(t *testing.T) {
 		})
 	}
 }
+
+// TestRedactAndTruncate_VendorTokenFamily 锁定 A4 合并后新增/扩展的厂商
+// token 模式：AWS 多前缀、GitHub 全家族、GitLab、Hugging Face、Stripe pk_。
+func TestRedactAndTruncate_VendorTokenFamily(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"AWS temporary ASIA", "token ASIAIOSFODNN7EXAMPLE here"},
+		{"GitHub OAuth gho_", "gho_abcdefghijklmnopqrstuvwxyz done"},
+		{"GitHub fine-grained pat", "github_pat_11ABCDEFGH_abcdefghijklmnopqrstuvwxyz0123456789 end"},
+		{"GitLab glpat-", "glpat-ABCDEFGHIJKLMNOPQRSTuv end"},
+		{"Hugging Face hf_", "hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ12 end"},
+		{"Stripe public live pk_", "pk_live_abc123def456ghi789jkl0 end"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RedactAndTruncate(tt.input, 10000)
+			if strings.Contains(got, tt.input) {
+				t.Errorf("RedactAndTruncate(%q) did not redact token, got: %q", tt.input, got)
+			}
+			if !strings.Contains(got, "[secret redacted]") {
+				t.Errorf("RedactAndTruncate(%q) missing redaction marker, got: %q", tt.input, got)
+			}
+		})
+	}
+}
+
+// TestRedactAndTruncate_TruncatedPEMHead 截断预览缺少 END 行时 BEGIN 行也要脱敏。
+func TestRedactAndTruncate_TruncatedPEMHead(t *testing.T) {
+	input := "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA"
+	got := RedactAndTruncate(input, 10000)
+	if strings.Contains(got, "PRIVATE KEY") {
+		t.Errorf("truncated PEM head not redacted, got: %q", got)
+	}
+}
+
+// TestRedactAndTruncate_TimestampsSurvive 锁定 B6/A4 口径：裸 10/13 位
+// Unix 时间戳不得被 phone 模式误伤（时间戳比无格式号码常见得多）。
+func TestRedactAndTruncate_TimestampsSurvive(t *testing.T) {
+	for _, ts := range []string{"1700000000", "1700000000000"} {
+		got := RedactAndTruncate("event ts="+ts+" ok", 10000)
+		if !strings.Contains(got, ts) {
+			t.Errorf("timestamp %s must survive redaction, got: %q", ts, got)
+		}
+		if strings.Contains(got, "[phone redacted]") {
+			t.Errorf("timestamp %s wrongly phone-redacted, got: %q", ts, got)
+		}
+	}
+	// 带前缀/分隔符的号码仍须脱敏。
+	for _, in := range []string{
+		"call +86 138 0000 0000 now",
+		"tel 138-0000-0000",
+		"+8613800138000",
+	} {
+		got := RedactAndTruncate(in, 10000)
+		if !strings.Contains(got, "[phone redacted]") {
+			t.Errorf("expected phone redaction for %q, got: %q", in, got)
+		}
+	}
+}
+
+// TestRedactAndTruncate_LongSuffixFalsePositiveGuard 厂商 token 模式必须
+// 保持 \b 锚定：risk-/task-/disk- 加超长后缀也不得被当成 sk- token。
+func TestRedactAndTruncate_LongSuffixFalsePositiveGuard(t *testing.T) {
+	for _, in := range []string{
+		"risk-12345678901234567890",
+		"disk-abcdefghijklmnopqrstuvwx",
+		"task-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	} {
+		got := RedactAndTruncate(in, 10000)
+		if got != in {
+			t.Errorf("RedactAndTruncate(%q) must leave record id untouched, got: %q", in, got)
+		}
+	}
+}

@@ -1,35 +1,20 @@
 package tool
 
 import (
-	"regexp"
-	"strings"
+	"aranea-agents/internal/tools/preview"
 )
 
 const toolPreviewMaxLen = 2000
 
-var (
-	toolPreviewEmailRE    = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
-	toolPreviewPhoneRE    = regexp.MustCompile(`(?:(?:\+|00)\d{1,3}[\s-]?)?(?:\d[\s-]?){8,14}\d`)
-	toolPreviewSecretKVRE = regexp.MustCompile(`(?i)"(?:api[_-]?key|secret|token|password|authorization)"\s*:\s*"[^"]*"`)
-	toolPreviewSecretRE   = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|authorization|bearer)\s*[:=]\s*\S+`)
-)
-
-// RedactToolPreview masks common sensitive patterns then truncates.
+// RedactToolPreview masks sensitive patterns then truncates.
+//
+// A4：脱敏实现已单源化到 internal/tools/preview.RedactAndTruncate
+// （运行记录链与 biz 落档链此前各维护一份 regex，已分叉且 preview 侧会误伤
+// Unix 时间戳）。本函数仅保留 biz 语义入口（maxLen 默认 2000），全部模式
+// 以 preview 包为准；新增/调整脱敏模式只改 preview。
 func RedactToolPreview(raw string, maxLen int) string {
 	if maxLen <= 0 {
 		maxLen = toolPreviewMaxLen
 	}
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return ""
-	}
-	s = toolPreviewEmailRE.ReplaceAllString(s, "[email redacted]")
-	s = toolPreviewPhoneRE.ReplaceAllString(s, "[phone redacted]")
-	s = toolPreviewSecretKVRE.ReplaceAllString(s, `"[secret redacted]"`)
-	s = toolPreviewSecretRE.ReplaceAllString(s, "[secret redacted]")
-	runes := []rune(s)
-	if len(runes) > maxLen {
-		return string(runes[:maxLen])
-	}
-	return s
+	return preview.RedactAndTruncate(raw, maxLen)
 }
