@@ -70,7 +70,6 @@ import (
 	araneasession "aranea-agents/internal/session"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/internal/skill"
-	skillevolution "aranea-agents/internal/skill/evolution"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
