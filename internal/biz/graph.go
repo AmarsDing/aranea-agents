@@ -197,22 +197,22 @@ type GraphExecution struct {
 	// the CURRENT definition; a mismatch means the graph was edited after the
 	// checkpoint was written and resuming would route stale state through a
 	// changed topology. Empty for legacy rows (pre-20261214) — check skipped.
-	DefinitionHash  string
-	Status          string
-	CurrentNode     string
-	LineageID       string
-	ErrorMessage    string
-	CurrentState    map[string]any
-	Steps           []GraphStepSnapshot
-	InterruptNode   string
-	interrupted     bool
-	interruptMu     sync.RWMutex
-	runtime         GraphRuntime
-	StartedAt       time.Time
-	FinishedAt      *time.Time
-	execMu          sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt, streamGen
-	evicted         bool            // set by GC before removing from map; not persisted
-	ctx             context.Context // detached context preserving trace info for background DB writes
+	DefinitionHash string
+	Status         string
+	CurrentNode    string
+	LineageID      string
+	ErrorMessage   string
+	CurrentState   map[string]any
+	Steps          []GraphStepSnapshot
+	InterruptNode  string
+	interrupted    bool
+	interruptMu    sync.RWMutex
+	runtime        GraphRuntime
+	StartedAt      time.Time
+	FinishedAt     *time.Time
+	execMu         sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt, streamGen
+	evicted        bool            // set by GC before removing from map; not persisted
+	ctx            context.Context // detached context preserving trace info for background DB writes
 	// streamGen identifies the active event-stream generation (Y2). Run/Resume
 	// increment it before spawning a consumer; a stale consumer (older gen)
 	// must not converge terminal state or apply status-mutating events, or the
@@ -236,6 +236,19 @@ func (e *GraphExecution) GetStatus() string {
 	e.execMu.RLock()
 	defer e.execMu.RUnlock()
 	return e.Status
+}
+
+// Snapshot returns a consistent deep copy of the execution for read-only
+// consumers (RPC response builders), taking execMu internally. Writers only
+// mutate under execMu, so the copy is race-free.
+// 锁域注意（终审-2）：InterruptNode 由 interruptMu 保护，而本方法只持 execMu——
+// 快照里的 InterruptNode 是 best-effort 副本；要保证该字段一致的调用方必须
+// 另走 GetInterruptNode()。SnapshotForPersist remains the caller-holds-lock
+// variant for persist paths.
+func (e *GraphExecution) Snapshot() *GraphExecution {
+	e.execMu.RLock()
+	defer e.execMu.RUnlock()
+	return e.SnapshotForPersist()
 }
 
 func (e *GraphExecution) IsEvicted() bool {
@@ -352,7 +365,7 @@ type GraphStepSnapshot struct {
 	OutputState map[string]any `json:"output_state,omitempty"`
 	Status      string         `json:"status"`
 	Error       string         `json:"error"`
-	Timestamp   time.Time
+	Timestamp   time.Time      `json:"timestamp"` // F6: 持久化出口是 internal/data 的 json.Marshal(exec.Steps)（data/graph.go stepsJSON）——显式 tag 保证落库键为 "timestamp"；Go 默认会落 "Timestamp"，与前端/回放消费键失配
 }
 
 // GraphReader provides read access to graph definitions.
@@ -691,30 +704,4 @@ func BuildConfigFromGraphDefinition(def *GraphDefinition) GraphBuildConfig {
 		InterruptBefore:  def.InterruptBefore,
 		InterruptAfter:   def.InterruptAfter,
 	}
-}
-
-func graphStepSnapshotToJSON(steps []GraphStepSnapshot) string {
-	type jsonStep struct {
-		NodeID      string `json:"node_id"`
-		StepIndex   int    `json:"step_index"`
-		InputState  any    `json:"input_state,omitempty"`
-		OutputState any    `json:"output_state,omitempty"`
-		Status      string `json:"status"`
-		Error       string `json:"error"`
-		Timestamp   string `json:"timestamp"`
-	}
-	js := make([]jsonStep, len(steps))
-	for i, s := range steps {
-		js[i] = jsonStep{
-			NodeID:      s.NodeID,
-			StepIndex:   s.StepIndex,
-			InputState:  s.InputState,
-			OutputState: s.OutputState,
-			Status:      s.Status,
-			Error:       s.Error,
-			Timestamp:   s.Timestamp.Format(time.RFC3339Nano),
-		}
-	}
-	b, _ := json.Marshal(js)
-	return string(b)
 }

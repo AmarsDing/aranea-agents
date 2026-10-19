@@ -59,8 +59,10 @@ func (f *fakeRecoverFactory) BuildAndResume(_ context.Context, _ GraphBuildConfi
 	if f.buildErr != nil {
 		return nil, nil, f.buildErr
 	}
+	// 通道保持打开：恢复成功语义是「流仍存活、status 保持 running」。若返回
+	// 已关闭的空通道，N1 done-driven 收敛会把执行 fail-close（无完成事件即
+	// 失败），与 TestRecoverOrphanedExecution_Success 的断言竞态。
 	ch := make(chan GraphRuntimeEvent)
-	close(ch)
 	return &fakeRecoverRuntime{}, ch, nil
 }
 func (f *fakeRecoverFactory) BuildRuntime(context.Context, GraphBuildConfig, string, string, string, string, string) (GraphRuntime, error) {

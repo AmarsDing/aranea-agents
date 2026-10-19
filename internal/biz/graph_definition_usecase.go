@@ -19,6 +19,12 @@ type GraphDefinitionProvider interface {
 	GetGraph(ctx context.Context, id string) (*GraphDefinition, error)
 }
 
+// graphDefsCacheMax bounds the in-memory definition cache (F12: the map used
+// to grow unbounded for the process lifetime). Eviction is a single arbitrary
+// entry on overflow — cheap under the write lock and sufficient for this
+// access pattern; misses fall back to the repo.
+const graphDefsCacheMax = 512
+
 // GraphDefinitionUsecase handles graph definition CRUD, templates, and versioning.
 // Separated from execution lifecycle to isolate concerns and enable independent testing.
 type GraphDefinitionUsecase struct {
@@ -76,9 +82,21 @@ func (uc *GraphDefinitionUsecase) createGraph(ctx context.Context, def *GraphDef
 		return nil, err
 	}
 	uc.mu.Lock()
-	uc.defs[saved.ID] = saved
+	uc.cacheDefLocked(saved.ID, saved)
 	uc.mu.Unlock()
 	return saved, nil
+}
+
+// cacheDefLocked inserts or replaces a definition under the write lock,
+// enforcing graphDefsCacheMax (F12). Caller must hold uc.mu (write).
+func (uc *GraphDefinitionUsecase) cacheDefLocked(id string, def *GraphDefinition) {
+	if _, ok := uc.defs[id]; !ok && len(uc.defs) >= graphDefsCacheMax {
+		for evictID := range uc.defs {
+			delete(uc.defs, evictID)
+			break
+		}
+	}
+	uc.defs[id] = def
 }
 
 // stripTeamGraphMarkers removes caller-supplied team ownership markers（Y10）：
@@ -103,7 +121,7 @@ func (uc *GraphDefinitionUsecase) GetGraph(ctx context.Context, id string) (*Gra
 		return nil, err
 	}
 	uc.mu.Lock()
-	uc.defs[id] = def
+	uc.cacheDefLocked(id, def)
 	uc.mu.Unlock()
 	return def, nil
 }
@@ -160,7 +178,7 @@ func (uc *GraphDefinitionUsecase) updateGraph(ctx context.Context, def *GraphDef
 	}
 	syncVersionMetadata(saved)
 	uc.mu.Lock()
-	uc.defs[saved.ID] = saved
+	uc.cacheDefLocked(saved.ID, saved)
 	uc.mu.Unlock()
 	return saved, nil
 }
@@ -392,7 +410,7 @@ func (uc *GraphDefinitionUsecase) SaveGraphAsTemplate(ctx context.Context, graph
 		return nil, err
 	}
 	uc.mu.Lock()
-	uc.defs[saved.ID] = saved
+	uc.cacheDefLocked(saved.ID, saved)
 	uc.mu.Unlock()
 	return ReadUserTemplateMeta(saved), nil
 }

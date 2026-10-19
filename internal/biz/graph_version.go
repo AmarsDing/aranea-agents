@@ -12,9 +12,11 @@ const (
 	GraphMetadataVersionKey        = "_version"
 	GraphMetadataVersionHistoryKey = "_version_history"
 	GraphMetadataUserTemplateKey   = "user_template"
-	graphLayoutMetadataKey         = "layout"
-	GraphMaxVersionHistory         = 50
-	UserTemplateIDPrefix           = "user:"
+	// graphLayoutMetadataKey aliases the single-source GraphMetadataLayoutKey
+	// (team_graph_materialize.go) — F11: the literal "layout" was defined twice.
+	graphLayoutMetadataKey = GraphMetadataLayoutKey
+	GraphMaxVersionHistory = 50
+	UserTemplateIDPrefix   = "user:"
 )
 
 // ParseUserTemplateID extracts the underlying graph ID from a user template ID.

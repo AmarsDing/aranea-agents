@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // Team 路径 graph 执行扩展（F-B）：team graph 路径以 GraphAgent 为 trpc
@@ -65,13 +67,24 @@ func (uc *GraphExecutionUsecase) FinalizeTeamGraphExecution(ctx context.Context,
 		return err
 	}
 	exec.execMu.Lock()
-	if IsGraphExecutionTerminal(ParseGraphExecutionState(exec.Status)) {
+	state := ParseGraphExecutionState(exec.Status)
+	if IsGraphExecutionTerminal(state) {
 		exec.execMu.Unlock()
 		return nil
 	}
 	event := GraphExecEventComplete
 	if failed {
 		event = GraphExecEventFail
+	}
+	// F7: waiting_human is owned by the HITL recovery channel. A late/duplicate
+	// completion finalize (coordinator racing a human wait) must be an
+	// idempotent no-op, not a 400 — WaitingHuman→Completed has no rule. Fail is
+	// legal from WaitingHuman and keeps its semantics.
+	if state == GraphExecWaitingHuman && event == GraphExecEventComplete {
+		exec.execMu.Unlock()
+		uc.lg.Info("team graph finalize skipped: execution waiting on human input",
+			loggateway.Str("exec_id", exec.ID))
+		return nil
 	}
 	if terr := uc.applyExecTransition(exec, event); terr != nil {
 		exec.execMu.Unlock()

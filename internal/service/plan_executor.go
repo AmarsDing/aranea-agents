@@ -122,8 +122,24 @@ type PlanExecutor struct {
 }
 
 type playbookConfirmWait struct {
-	ch   chan bool
+	ch chan bool
+	// mu guards step: the dispatch goroutine publishes the confirm card
+	// (setStep) while an external resolver reads it (confirmStep); the
+	// approval channel orders the decision only, not the card snapshot.
+	mu   sync.Mutex
 	step biz.Step
+}
+
+func (w *playbookConfirmWait) setStep(s biz.Step) {
+	w.mu.Lock()
+	w.step = s
+	w.mu.Unlock()
+}
+
+func (w *playbookConfirmWait) confirmStep() biz.Step {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.step
 }
 
 // boardRunLease holds the cancel func for an in-flight PlanBoard DAG run (C-18).
@@ -1907,7 +1923,7 @@ func (e *PlanExecutor) ResolvePlaybookStageConfirm(sessionID, stepID string, app
 	for _, id := range playbookConfirmLookupIDs(sessionID, stepID) {
 		e.playbookConfirm.Delete(playbookConfirmKey(sessionID, id))
 	}
-	e.finalizePlaybookConfirmCard(context.Background(), w.step, approved)
+	e.finalizePlaybookConfirmCard(context.Background(), w.confirmStep(), approved)
 	return true
 }
 
@@ -2068,7 +2084,7 @@ func (r *dagRun) publishConfirmRequired(ctx context.Context, step *biz.PlanStep,
 		StartedAt:       now,
 	}
 	if wait != nil {
-		wait.step = confirm
+		wait.setStep(confirm)
 	}
 	r.pe.seq.Publish(ctx, biz.NewStepCreatedEvent(confirm))
 }
@@ -2101,7 +2117,15 @@ func (r *dagRun) publishUpward(ctx context.Context, phase, summary string, extra
 
 // dispatchReadyPending starts every pending step whose dependencies are already
 // completed. Called once at run() start (fresh roots + recover-ready steps).
+//
+// r.mu is held across the scan: dispatched goroutines mutate sibling step
+// states via Transition under the same mutex, and dependenciesCompleted reads
+// those states — without the lock the scheduler races its own dispatches
+// (2026-10-19 -race 实证). dispatch itself is non-blocking (spawns a
+// goroutine), so holding the lock cannot deadlock.
 func (r *dagRun) dispatchReadyPending(ctx context.Context) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for i := range r.board.Steps {
 		s := &r.board.Steps[i]
 		if s.Status != biz.PlanStepStatusPending {
@@ -2141,11 +2165,9 @@ func (r *dagRun) dependenciesCompleted(s *biz.PlanStep) bool {
 // completed. Called after a step completes successfully.
 func (r *dagRun) checkDownstream(ctx context.Context, completedID string) {
 	deps := r.dependents[completedID]
-	println("DEBUG checkDownstream", completedID, "deps", len(deps))
 	for _, depID := range deps {
 		r.mu.Lock()
 		depStep, ok := r.stepsByID[depID]
-		println("DEBUG dep", depID, "status", string(depStep.Status))
 		if !ok || depStep.Status != biz.PlanStepStatusPending {
 			r.mu.Unlock()
 			continue

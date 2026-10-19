@@ -83,22 +83,26 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 		}
 		return nil, err
 	}
+	// The runtime-event consumer mutates exec concurrently (status transitions)
+	// — build log/response from an internally-locked snapshot instead of bare
+	// field reads (-race, 2026-10-19).
+	snap := exec.Snapshot()
 	s.lg.Info("graph run started",
 		loggateway.StepID("graph.execute"),
 		loggateway.Str("graph_id", req.GetGraphId()),
 		loggateway.Str("execution_id", execID),
 		loggateway.Str("session_id", req.GetSessionId()),
-		loggateway.Str("status", exec.Status),
+		loggateway.Str("status", snap.Status),
 	)
 	if defErr == nil && def != nil && s.orchProjector != nil {
 		s.orchProjector.Start(context.Background(), req.GetSessionId(), execID, req.GetGraphId(), def)
 	}
 	resp := &graphv1.ExecuteGraphResponse{
-		ExecutionId: exec.ID,
-		Status:      exec.Status,
+		ExecutionId: snap.ID,
+		Status:      snap.Status,
 	}
-	if exec.CurrentState != nil {
-		st, err := structpb.NewStruct(exec.CurrentState)
+	if snap.CurrentState != nil {
+		st, err := structpb.NewStruct(snap.CurrentState)
 		if err == nil {
 			resp.FinalState = st
 		}
@@ -111,26 +115,36 @@ func (s *GraphService) GetGraphExecution(ctx context.Context, req *graphv1.GetGr
 	if err != nil {
 		return nil, err
 	}
+	// Internally-locked snapshot: a live execution's status/steps/state are
+	// concurrently transitioned by the runtime-event consumer (-race, 2026-10-19).
+	snap := exec.Snapshot()
 	resp := &graphv1.GetGraphExecutionResponse{
-		ExecutionId:   exec.ID,
-		GraphId:       exec.GraphID,
-		SessionId:     exec.SessionID,
-		Status:        exec.Status,
+		ExecutionId: snap.ID,
+		GraphId:     snap.GraphID,
+		SessionId:   snap.SessionID,
+		Status:      snap.Status,
+		// 终审-2：InterruptNode 属于 interruptMu 锁域（ResumeExecution 只在
+		// interruptMu 下写入），Snapshot() 只持 execMu——必须走自身的锁内读取，
+		// 不能用快照里那个 best-effort 副本。
 		InterruptNode: exec.GetInterruptNode(),
-		StartedAt:     timestamppb.New(exec.StartedAt),
+		StartedAt:     timestamppb.New(snap.StartedAt),
+		// F8: detail parity with GraphExecutionSummary.
+		ErrorMessage: snap.ErrorMessage,
+		CurrentNode:  snap.CurrentNode,
+		LineageId:    snap.LineageID,
 	}
-	if exec.FinishedAt != nil {
-		resp.FinishedAt = timestamppb.New(*exec.FinishedAt)
+	if snap.FinishedAt != nil {
+		resp.FinishedAt = timestamppb.New(*snap.FinishedAt)
 	}
-	if exec.CurrentState != nil {
-		st, err := structpb.NewStruct(exec.CurrentState)
+	if snap.CurrentState != nil {
+		st, err := structpb.NewStruct(snap.CurrentState)
 		if err == nil {
 			resp.CurrentState = st
 		}
 	}
-	if exec.Steps != nil {
-		resp.Steps = make([]*graphv1.GraphStepSnapshot, len(exec.Steps))
-		for i, step := range exec.Steps {
+	if snap.Steps != nil {
+		resp.Steps = make([]*graphv1.GraphStepSnapshot, len(snap.Steps))
+		for i, step := range snap.Steps {
 			resp.Steps[i] = toProtoStep(step)
 		}
 	}
@@ -197,7 +211,8 @@ func (s *GraphService) CancelGraphExecution(ctx context.Context, req *graphv1.Ca
 	}
 	status := string(biz.GraphExecCancelled)
 	if exec != nil {
-		status = exec.Status
+		// 终审-3：锁内读，勿裸读共享执行体。
+		status = exec.GetStatus()
 	}
 	s.lg.Info("graph run cancelled",
 		loggateway.StepID("graph.cancel"),
@@ -245,17 +260,20 @@ func (s *GraphService) ResumeGraph(ctx context.Context, req *graphv1.ResumeGraph
 		}
 		return nil, err
 	}
+	// 终审-3：ResumeExecution 返回的是共享缓存执行体，状态/CurrentState 由
+	// runtime 消费者持续写——用锁内快照构建响应。
+	snap := exec.Snapshot()
 	s.lg.Info("graph run resumed",
 		loggateway.StepID("graph.resume"),
 		loggateway.Str("execution_id", req.GetExecutionId()),
-		loggateway.Str("status", exec.Status),
+		loggateway.Str("status", snap.Status),
 	)
 	resp := &graphv1.ResumeGraphResponse{
-		ExecutionId: exec.ID,
-		Status:      exec.Status,
+		ExecutionId: snap.ID,
+		Status:      snap.Status,
 	}
-	if exec.CurrentState != nil {
-		st, err := structpb.NewStruct(exec.CurrentState)
+	if snap.CurrentState != nil {
+		st, err := structpb.NewStruct(snap.CurrentState)
 		if err == nil {
 			resp.FinalState = st
 		}
@@ -278,12 +296,15 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 	if idx < 0 {
 		return nil, apierror.BadRequest("GRAPH", "step index must be >= 0")
 	}
-	if idx >= len(exec.Steps) {
+	// 终审-3：Steps 由 runtime 消费者持续追加/写终态，len+下标读取必须作用于
+	// 锁内快照，否则下标与长度可来自不同时间点。
+	snap := exec.Snapshot()
+	if idx >= len(snap.Steps) {
 		return nil, apierror.NotFound("GRAPH", "step index out of range")
 	}
-	step := exec.Steps[idx]
+	step := snap.Steps[idx]
 	resp := &graphv1.TimeTravelGraphResponse{
-		ExecutionId: exec.ID,
+		ExecutionId: snap.ID,
 		StepIndex:   int32(idx),
 		NodeId:      step.NodeID,
 	}

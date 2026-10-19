@@ -120,9 +120,16 @@ export function useGraphEditorPage() {
     await loadGraphDefinition(id);
   });
 
+  // F9: out-of-order guard — rapid graph switching must not let a slow
+  // response for graph A overwrite the canvas already switched to graph B
+  // (mirrors useGraphRunPage loadSeq).
+  let loadSeq = 0;
+
   async function loadGraphDefinition(id: string) {
+    const seq = ++loadSeq;
     try {
       const g = await graphStore.fetchGraph(id);
+      if (seq !== loadSeq) return;
       Object.assign(graphDef, g);
       dirty.value = false;
       undoRedo.clear();
@@ -130,6 +137,7 @@ export function useGraphEditorPage() {
         await runValidation(graphDef.id);
       }
     } catch {
+      if (seq !== loadSeq) return;
       $q.notify({ type: 'negative', message: '加载 Graph 失败' });
     }
   }

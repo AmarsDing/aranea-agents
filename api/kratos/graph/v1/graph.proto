@@ -212,6 +212,8 @@ message ExecuteGraphRequest {
   string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
   string session_id = 2;
   google.protobuf.Struct initial_state = 3;
+  // F15: wire-reserved — no backend consumer (service/biz read no agent_key);
+  // frontend executeGraph no longer sends it. Kept for proto compatibility.
   optional string agent_key = 4;
 }
 
@@ -247,6 +249,11 @@ message GetGraphExecutionResponse {
   string interrupt_node = 7;
   google.protobuf.Timestamp started_at = 8;
   google.protobuf.Timestamp finished_at = 9;
+  // F8: detail parity with GraphExecutionSummary — failure reason / current node
+  // / lineage were mapped list-side only, leaving the detail RPC blind.
+  string error_message = 10;
+  string current_node = 11;
+  string lineage_id = 12;
 }
 
 // --- ResumeGraph ---

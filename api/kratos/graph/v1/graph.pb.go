@@ -1651,11 +1651,13 @@ func (*ReorderGraphsResponse) Descriptor() ([]byte, []int) {
 }
 
 type ExecuteGraphRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GraphId       string                 `protobuf:"bytes,1,opt,name=graph_id,json=graphId,proto3" json:"graph_id,omitempty"`
-	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	InitialState  *structpb.Struct       `protobuf:"bytes,3,opt,name=initial_state,json=initialState,proto3" json:"initial_state,omitempty"`
-	AgentKey      *string                `protobuf:"bytes,4,opt,name=agent_key,json=agentKey,proto3,oneof" json:"agent_key,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	GraphId      string                 `protobuf:"bytes,1,opt,name=graph_id,json=graphId,proto3" json:"graph_id,omitempty"`
+	SessionId    string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	InitialState *structpb.Struct       `protobuf:"bytes,3,opt,name=initial_state,json=initialState,proto3" json:"initial_state,omitempty"`
+	// F15: wire-reserved — no backend consumer (service/biz read no agent_key);
+	// frontend executeGraph no longer sends it. Kept for proto compatibility.
+	AgentKey      *string `protobuf:"bytes,4,opt,name=agent_key,json=agentKey,proto3,oneof" json:"agent_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1925,6 +1927,11 @@ type GetGraphExecutionResponse struct {
 	InterruptNode string                 `protobuf:"bytes,7,opt,name=interrupt_node,json=interruptNode,proto3" json:"interrupt_node,omitempty"`
 	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	// F8: detail parity with GraphExecutionSummary — failure reason / current node
+	// / lineage were mapped list-side only, leaving the detail RPC blind.
+	ErrorMessage  string `protobuf:"bytes,10,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	CurrentNode   string `protobuf:"bytes,11,opt,name=current_node,json=currentNode,proto3" json:"current_node,omitempty"`
+	LineageId     string `protobuf:"bytes,12,opt,name=lineage_id,json=lineageId,proto3" json:"lineage_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2020,6 +2027,27 @@ func (x *GetGraphExecutionResponse) GetFinishedAt() *timestamppb.Timestamp {
 		return x.FinishedAt
 	}
 	return nil
+}
+
+func (x *GetGraphExecutionResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *GetGraphExecutionResponse) GetCurrentNode() string {
+	if x != nil {
+		return x.CurrentNode
+	}
+	return ""
+}
+
+func (x *GetGraphExecutionResponse) GetLineageId() string {
+	if x != nil {
+		return x.LineageId
+	}
+	return ""
 }
 
 type ResumeGraphRequest struct {
@@ -7002,7 +7030,7 @@ const file_kratos_graph_v1_graph_proto_rawDesc = "" +
 	"\foutput_state\x18\x04 \x01(\v2\x17.google.protobuf.StructR\voutputState\x12\x16\n" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error\x128\n" +
-	"\ttimestamp\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xa7\x03\n" +
+	"\ttimestamp\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x8e\x04\n" +
 	"\x19GetGraphExecutionResponse\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x19\n" +
 	"\bgraph_id\x18\x02 \x01(\tR\agraphId\x12\x1d\n" +
@@ -7015,7 +7043,12 @@ const file_kratos_graph_v1_graph_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishedAt\"y\n" +
+	"finishedAt\x12#\n" +
+	"\rerror_message\x18\n" +
+	" \x01(\tR\ferrorMessage\x12!\n" +
+	"\fcurrent_node\x18\v \x01(\tR\vcurrentNode\x12\x1d\n" +
+	"\n" +
+	"lineage_id\x18\f \x01(\tR\tlineageId\"y\n" +
 	"\x12ResumeGraphRequest\x12'\n" +
 	"\fexecution_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\vexecutionId\x12:\n" +
 	"\fresume_value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\vresumeValue\"\x8a\x01\n" +

@@ -233,6 +233,8 @@ export type ExecuteGraphRequest = {
   graphId: string | undefined;
   sessionId: string | undefined;
   initialState: wellKnownStruct | undefined;
+  // F15: wire-reserved — no backend consumer (service/biz read no agent_key);
+  // frontend executeGraph no longer sends it. Kept for proto compatibility.
   agentKey?: string;
 };
 
@@ -268,6 +270,11 @@ export type GetGraphExecutionResponse = {
   interruptNode: string | undefined;
   startedAt: wellKnownTimestamp | undefined;
   finishedAt: wellKnownTimestamp | undefined;
+  // F8: detail parity with GraphExecutionSummary — failure reason / current node
+  // / lineage were mapped list-side only, leaving the detail RPC blind.
+  errorMessage: string | undefined;
+  currentNode: string | undefined;
+  lineageId: string | undefined;
 };
 
 export type ResumeGraphRequest = {

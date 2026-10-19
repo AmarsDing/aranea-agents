@@ -72,7 +72,9 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
 
   function matchesFilter(meta: Record<string, unknown>): boolean {
     const metaFilterKey = meta.filter_key;
-    if (typeof metaFilterKey === 'string' && metaFilterKey !== '' && !metaFilterKey.startsWith(filterKey)) {
+    // F10: exact match — all graph emitters use the full 3-segment key; a
+    // startsWith would let id prefixes (graph/g1 vs graph/g12) cross-match.
+    if (typeof metaFilterKey === 'string' && metaFilterKey !== '' && metaFilterKey !== filterKey) {
       return false;
     }
     return true;

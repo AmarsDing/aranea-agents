@@ -3,6 +3,7 @@ package biz
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestBuildConfigFromGraphDefinition(t *testing.T) {
@@ -267,4 +268,35 @@ func TestGraphStepSnapshotToJSON(t *testing.T) {
 	if parsed[1]["error"] != "timeout" {
 		t.Fatalf("step1 error=%v", parsed[1]["error"])
 	}
+}
+
+// graphStepSnapshotToJSON 是 steps 线格式的契约性样例（终审-9：唯一调用方是上面
+// 的测试，故从 graph.go 迁入本文件）。真实持久化走 internal/data 的
+// json.Marshal(exec.Steps)，即 GraphStepSnapshot 上的结构体 tag——本测试固化的
+// 键布局（node_id/step_index/.../timestamp）就是该路径必须保持的格式；
+// 改动 GraphStepSnapshot 的 json tag 时同步更新本契约样例。
+func graphStepSnapshotToJSON(steps []GraphStepSnapshot) string {
+	type jsonStep struct {
+		NodeID      string `json:"node_id"`
+		StepIndex   int    `json:"step_index"`
+		InputState  any    `json:"input_state,omitempty"`
+		OutputState any    `json:"output_state,omitempty"`
+		Status      string `json:"status"`
+		Error       string `json:"error"`
+		Timestamp   string `json:"timestamp"`
+	}
+	js := make([]jsonStep, len(steps))
+	for i, s := range steps {
+		js[i] = jsonStep{
+			NodeID:      s.NodeID,
+			StepIndex:   s.StepIndex,
+			InputState:  s.InputState,
+			OutputState: s.OutputState,
+			Status:      s.Status,
+			Error:       s.Error,
+			Timestamp:   s.Timestamp.Format(time.RFC3339Nano),
+		}
+	}
+	b, _ := json.Marshal(js)
+	return string(b)
 }

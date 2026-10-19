@@ -336,6 +336,36 @@ func TestGraphTaskInputFromNode_defaults(t *testing.T) {
 	}
 }
 
+// F7：waiting_human 状态下迟到的完成型 finalize（编排协调器与人审通道竞速）
+// 必须是幂等 no-op——该状态由 HITL 恢复通道持有；失败型 finalize 仍合法收敛。
+func TestFinalizeTeamGraphExecution_WaitingHuman_CompleteIsNoOp(t *testing.T) {
+	repo := &memGraphRunRepo{runs: map[string]*GraphExecution{}}
+	uc := NewGraphUsecase(GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})
+	ct := NewCompiledTeam(GraphBuildConfig{
+		Nodes:      []NodeDef{{ID: "review-1", Type: "review", InterruptAfter: true}},
+		EntryPoint: "review-1", FinishPoint: "review-1",
+	}, nil, nil, nil)
+	ctx := context.Background()
+	if err := uc.RegisterTeamGraphExecution(ctx, "exec-hitl", "sess-1", "sess-1", "team-1", "run-1", "g-1", ct); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.MarkTeamGraphInterrupt(ctx, "exec-hitl", "review-1", "lineage-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.FinalizeTeamGraphExecution(ctx, "exec-hitl", false, ""); err != nil {
+		t.Fatalf("late complete finalize on waiting_human must be a no-op, got %v", err)
+	}
+	if repo.runs["exec-hitl"].Status != string(GraphExecWaitingHuman) {
+		t.Fatalf("status=%q, want waiting_human untouched", repo.runs["exec-hitl"].Status)
+	}
+	if err := uc.FinalizeTeamGraphExecution(ctx, "exec-hitl", true, "human rejected"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.runs["exec-hitl"].Status != string(GraphExecFailed) {
+		t.Fatalf("status=%q, want failed (fail is legal from waiting_human)", repo.runs["exec-hitl"].Status)
+	}
+}
+
 func TestShouldCreateTeamGraphTaskNode_vsStandalone(t *testing.T) {
 	agent := NodeDef{ID: "a1", Type: "agent", AgentName: "worker"}
 	if !ShouldCreateTaskForNode(&agent, NodeTaskMeta{}) {

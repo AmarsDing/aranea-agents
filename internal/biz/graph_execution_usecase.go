@@ -114,6 +114,27 @@ func (uc *GraphExecutionUsecase) notifyExecComplete(exec *GraphExecution) {
 	uc.execObserver.OnGraphExecutionComplete(exec)
 }
 
+// persistFailedStart records an execution that failed before it ever entered
+// the registry (definition lookup or runtime build failure). F5: these rows
+// used to be transient — observers got a completion notify but nothing was
+// persisted, so failed starts vanished from execution history and orphan
+// accounting. The row is terminal and repo-only (never cached), keeping it
+// symmetric with every other finished execution.
+func (uc *GraphExecutionUsecase) persistFailedStart(ctx context.Context, exec *GraphExecution) {
+	now := time.Now()
+	exec.FinishedAt = &now
+	uc.notifyExecComplete(exec)
+	if uc.runRepo == nil {
+		return
+	}
+	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+		uc.lg.Warn("persist failed graph start",
+			loggateway.Str("exec_id", exec.ID),
+			loggateway.Str("graph_id", exec.GraphID),
+			loggateway.Err(err))
+	}
+}
+
 // evictIfNeeded removes the oldest finished execution if the executions map exceeds MaxExecutions.
 // Caller must hold uc.mu (write lock). This method reads exec fields under execMu protection.
 func (uc *GraphExecutionUsecase) evictIfNeeded() {
@@ -216,21 +237,45 @@ func (uc *GraphExecutionUsecase) uncacheExecution(exec *GraphExecution) {
 }
 
 func (uc *GraphExecutionUsecase) ensureCheckpointRuntime(ctx context.Context, exec *GraphExecution) error {
+	// F4: exec.runtime is mutated under execMu by Resume/Cancel, so the lazy
+	// build here must synchronize too — a bare read/write raced with a resume
+	// replacing the runtime (duplicate runners leaked, half-installed pointer).
+	exec.execMu.RLock()
 	if exec.runtime != nil {
+		exec.execMu.RUnlock()
 		return nil
 	}
-	if exec.GraphID == "" || exec.LineageID == "" {
+	// 终审-4：构建参数全部在锁内快照。ResumeExecution 持 execMu 重写 LineageID，
+	// 锁外裸读会与之竞态（可能拿新 GraphID 配旧 LineageID 构建 runtime）。
+	sessionID := exec.SessionID
+	spiritSessionID := exec.SpiritSessionID
+	graphID := exec.GraphID
+	lineageID := exec.LineageID
+	if graphID == "" || lineageID == "" {
+		exec.execMu.RUnlock()
 		return ErrNotFound
 	}
+	exec.execMu.RUnlock()
 	ct, err := uc.cacheMgr.BuildConfigForExecution(ctx, exec)
 	if err != nil {
 		return err
 	}
-	rt, err := uc.factory.BuildRuntime(ctx, ct.GraphBuildConfig, exec.SessionID, exec.SpiritSessionID, exec.GraphID, exec.ID, exec.LineageID)
+	rt, err := uc.factory.BuildRuntime(ctx, ct.GraphBuildConfig, sessionID, spiritSessionID, graphID, exec.ID, lineageID)
 	if err != nil {
 		return err
 	}
+	exec.execMu.Lock()
+	if exec.runtime != nil {
+		// A concurrent resume/cancel installed a runtime while we built ours;
+		// release the loser so its runner and channels do not leak.
+		exec.execMu.Unlock()
+		if err := rt.Cancel(); err != nil {
+			uc.lg.Warn("cancel losing checkpoint runtime build", loggateway.Err(err))
+		}
+		return nil
+	}
 	exec.runtime = rt
+	exec.execMu.Unlock()
 	uc.mu.Lock()
 	uc.evictIfNeeded()
 	uc.executions[exec.ID] = exec
@@ -248,7 +293,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.SpiritSessionID = sessionID
 		failedExec.ErrorMessage = err.Error()
-		uc.notifyExecComplete(failedExec)
+		uc.persistFailedStart(ctx, failedExec)
 		return nil, err
 	}
 
@@ -264,7 +309,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.SpiritSessionID = sessionID
 		failedExec.ErrorMessage = err.Error()
-		uc.notifyExecComplete(failedExec)
+		uc.persistFailedStart(ctx, failedExec)
 		return nil, err
 	}
 
@@ -282,6 +327,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		if inserted {
 			uc.uncacheExecution(exec)
 		}
+		// 终审-5：exec 已被 insert-first 发布给并发读者（如 service 层 Snapshot），
+		// 终态转换与 ErrorMessage 必须持 execMu 写入，与所有其他写者同域。
+		exec.execMu.Lock()
 		if tErr := uc.applyExecTransition(exec, GraphExecEventFail); tErr != nil {
 			uc.lg.Warn("applyExecTransition failed on error path",
 				loggateway.Str("exec_id", execID),
@@ -289,6 +337,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 				loggateway.Err(tErr))
 		}
 		exec.ErrorMessage = err.Error()
+		exec.execMu.Unlock()
 		uc.notifyExecComplete(exec)
 		e := apierror.Internal("GRAPH", "graph execute save run failed")
 		e.Cause = err
@@ -321,7 +370,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.SpiritSessionID = sessionID
 		failedExec.ErrorMessage = err.Error()
-		uc.notifyExecComplete(failedExec)
+		uc.persistFailedStart(ctx, failedExec)
 		return nil, err
 	}
 
@@ -339,6 +388,8 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		if inserted {
 			uc.uncacheExecution(exec)
 		}
+		// 终审-5：同 ExecuteGraph——已发布的 exec 终态写入必须持 execMu。
+		exec.execMu.Lock()
 		if tErr := uc.applyExecTransition(exec, GraphExecEventFail); tErr != nil {
 			uc.lg.Warn("applyExecTransition failed on error path",
 				loggateway.Str("exec_id", execID),
@@ -346,6 +397,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 				loggateway.Err(tErr))
 		}
 		exec.ErrorMessage = err.Error()
+		exec.execMu.Unlock()
 		uc.notifyExecComplete(exec)
 		e := apierror.Internal("GRAPH", "graph execute save run failed")
 		e.Cause = err

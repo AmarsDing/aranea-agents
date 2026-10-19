@@ -89,8 +89,6 @@ var ProviderSet = wire.NewSet(
 	NewRuleBasedContentFuser,
 	ProvideSkillEmbedder,
 	ProvideDefaultDedupWeights,
-	NewDefaultKnowledgeProvider,
-	NewDefaultPluginProvider,
 	monitor.WireProviderSet,
 	heal.WireProviderSet,
 	session.SessionMetricsProviderSet,

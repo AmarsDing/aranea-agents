@@ -245,10 +245,11 @@ export async function executeGraph(
   graphId: string,
   sessionId: string,
   initialState?: Record<string, unknown>,
-  agentKey?: string,
 ): Promise<{ executionId: string; status: string }> {
   const svc = createGraphService();
-  const res = await svc.ExecuteGraph({ graphId, sessionId, initialState, agentKey });
+  // F15: ExecuteGraphRequest.agent_key exists in proto but the backend never
+  // consumes it — do not send it.
+  const res = await svc.ExecuteGraph({ graphId, sessionId, initialState });
   return { executionId: res.executionId ?? '', status: res.status ?? '' };
 }
 
@@ -263,6 +264,9 @@ export async function getGraphExecution(executionId: string): Promise<GraphExecu
     currentState: (res.currentState as Record<string, unknown>) ?? {},
     steps: (res.steps ?? []).map(wireStep),
     interruptNode: res.interruptNode ?? '',
+    errorMessage: res.errorMessage ?? '',
+    currentNode: res.currentNode ?? '',
+    lineageId: res.lineageId ?? '',
     startedAt: res.startedAt ?? '',
     finishedAt: res.finishedAt ?? '',
   };

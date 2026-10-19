@@ -142,6 +142,10 @@ export type GraphExecution = {
   currentState: Record<string, unknown>;
   steps: GraphStepSnapshot[];
   interruptNode: string;
+  // F8: detail parity with GraphExecutionSummary.
+  errorMessage: string;
+  currentNode: string;
+  lineageId: string;
   startedAt: string;
   finishedAt: string;
 };

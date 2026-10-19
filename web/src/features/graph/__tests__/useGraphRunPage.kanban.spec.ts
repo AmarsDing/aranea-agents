@@ -138,6 +138,10 @@ function mkExecution(partial: Partial<GraphExecution> = {}): GraphExecution {
       },
     ],
     interruptNode: '',
+    // F8 字段：GraphExecution 必填，缺了过不了精确类型检查（终审-6）。
+    errorMessage: '',
+    currentNode: '',
+    lineageId: '',
     startedAt: '',
     finishedAt: '',
     ...partial,
