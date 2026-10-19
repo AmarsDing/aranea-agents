@@ -163,8 +163,11 @@ type TRPCExtensionDeps struct {
 	// DeferredManager controls lazy tool visibility. Optional: when nil,
 	// deferred tool filtering is skipped and all tools are always visible.
 	DeferredManager *deferred.DeferredToolManager
-	// CircuitBreakerRegistry exposes per-tool circuit breakers for admin reset.
-	// Optional: when nil, circuit breaker state is not accessible externally.
+	// CircuitBreakerRegistry is the process-wide shared tool circuit breaker
+	// registry (ADR-84): wired in as the chain's breaker backend (StateRepo
+	// persistence, tool:<workspaceID>:<tool> namespacing) and re-exposed on the
+	// build outcome for admin reset. Optional: when nil, tool circuit breakers
+	// are disabled (degrade, consistent with other optional deps).
 	CircuitBreakerRegistry *biztool.CircuitBreakerRegistry
 	// ResultCache stores results of cache-enabled catalog tools (PERF-1).
 	// Optional: when nil, the agent package's process-wide default instance

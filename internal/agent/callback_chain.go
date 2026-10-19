@@ -259,9 +259,15 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newToolReminderBeforeAgentHook())
 		entries = append(entries, newToolReminderAfterHook())
 		if ag.Settings.ToolsCircuitBreakerEnabled {
-			cbRegistry = buildCircuitBreakerRegistry(ag.Settings, lg)
-			entries = append(entries, newCircuitBreakerBeforeHook(cbRegistry, lg))
-			entries = append(entries, newCircuitBreakerAfterHook(cbRegistry, lg))
+			// ADR-84：熔断注册表为进程级共享单例（deps 注入、StateRepo 持久化、
+			// 启动恢复）；per-agent overrides 由 configureSharedToolBreakers 以
+			// 全限定名应用。未注入（deps.CircuitBreakerRegistry == nil）时熔断
+			// 关闭——与各降级路径一致，不拖垮装配。
+			if shared := configureSharedToolBreakers(deps.CircuitBreakerRegistry, ag, lg); shared != nil {
+				cbRegistry = shared
+				entries = append(entries, newCircuitBreakerBeforeHook(shared, ag, lg))
+				entries = append(entries, newCircuitBreakerAfterHook(shared, ag, lg))
+			}
 		}
 		if ag.Settings.ToolsCommandSafetyEnabled {
 			entries = append(entries, newCommandSafetyBeforeHook(lg))

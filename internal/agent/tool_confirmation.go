@@ -258,6 +258,25 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			}
 			// P2-③：等待确认异常（如 ctx 取消）同样短路、工具未执行，归还槽位。
 			h.loopGuard.noteConfirmationOutcome(ctx, toolKey, args.Arguments, false)
+			// A3（2026-10-18 端到端审计跟进）：此出口此前是唯一不落档的 blocked
+			// 路径——AfterTool 记录器对 confirmation 类错误一律跳过（防与门禁
+			// 自录双写）。与超时/否决/无通道出口对齐，自录一行 status=blocked，
+			// 使「高危工具发起尝试但等待受理失败」在 runs/审计页可见。
+			if !follower {
+				recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
+					ToolKey:      toolKey,
+					AgentID:      h.ag.ID,
+					Status:       "blocked",
+					ErrorCode:    event.ErrorCodeConfirmationRequired,
+					ErrorMessage: fmt.Sprintf("awaiting user confirmation failed (decision_reason=%s): %v", decision.reason, err),
+					InputPreview: previewFromToolArgs(args.Arguments),
+					StartedAt:    time.Now().UTC().Format(time.RFC3339),
+					EndedAt:      time.Now().UTC().Format(time.RFC3339),
+					Source:       biz.ToolInvocationSourceRuntime,
+					ToolCallID:   args.ToolCallID,
+					ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
+				}, nil, h.ag, h.deps)
+			}
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {

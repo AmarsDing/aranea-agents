@@ -73,6 +73,16 @@ func WithLogger(lg loggateway.Logger) CircuitBreakerRegistryOption {
 	}
 }
 
+// WithPersistFilter 限定哪些 breaker 名参与 StateRepo 持久化/恢复：
+// fn 返回 false 的名称跳过 LoadState（Get 创建时）与 SaveState（状态变更时），
+// RestoreStates 全量恢复同样按此过滤。nil（默认）= 全部名称都持久化，
+// 保持 Node 熔断等既有调用方行为不变（ADR-84）。
+func WithPersistFilter(fn func(name string) bool) CircuitBreakerRegistryOption {
+	return func(r *CircuitBreakerRegistry) {
+		r.persistFilter = fn
+	}
+}
+
 type CircuitBreakerRegistry struct {
 	mu            sync.RWMutex
 	breakers      map[string]*CircuitBreaker
@@ -80,7 +90,21 @@ type CircuitBreakerRegistry struct {
 	overrides     map[string]CircuitBreakerConfig
 	onStateChange func(name string, from, to CircuitState)
 	stateRepo     CircuitBreakerStateRepo
+	persistFilter func(name string) bool
 	lg            loggateway.Logger
+}
+
+// persists 报告该 breaker 名是否应触达 StateRepo。
+func (r *CircuitBreakerRegistry) persists(name string) bool {
+	return r.persistFilter == nil || r.persistFilter(name)
+}
+
+// stateIOTimeout bounds stateRepo calls so a stalled store cannot block the
+// registry write lock in Get() or the tool-call hot path in persistState().
+const stateIOTimeout = 3 * time.Second
+
+func stateCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), stateIOTimeout)
 }
 
 func NewCircuitBreakerRegistry(opts ...CircuitBreakerRegistryOption) *CircuitBreakerRegistry {
@@ -121,9 +145,15 @@ func (r *CircuitBreakerRegistry) Get(toolName, category string) *CircuitBreaker 
 		}))
 	}
 	cb := NewCircuitBreaker(toolName, cfg, opts...)
-	// Restore persisted state if available.
-	if r.stateRepo != nil {
-		if entry, err := r.stateRepo.LoadState(context.Background(), toolName); err == nil && entry.State != "" {
+	// Restore persisted state if available. Bounded by stateIOTimeout: the write
+	// lock is held across this call to keep create+restore atomic, so the I/O
+	// must not be able to stall the registry indefinitely. 持久化过滤（ADR-84
+	// WithPersistFilter）命中的易失名不触库。
+	if r.stateRepo != nil && r.persists(toolName) {
+		sctx, cancel := stateCtx()
+		entry, err := r.stateRepo.LoadState(sctx, toolName)
+		cancel()
+		if err == nil && entry.State != "" {
 			cb.restoreFromEntry(entry)
 		}
 	}
@@ -142,19 +172,28 @@ func (r *CircuitBreakerRegistry) SetOverride(toolName string, cfg CircuitBreaker
 }
 
 func (r *CircuitBreakerRegistry) ResetAll() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// 先在锁内收集，解锁后再 Reset：cb.Reset() 触发 onStateChange → persistState
+	// 需要 r.mu.RLock()，持写锁调用会与自身死锁（sync.RWMutex 不可重入）。
+	r.mu.RLock()
+	breakers := make([]*CircuitBreaker, 0, len(r.breakers))
 	for _, cb := range r.breakers {
+		breakers = append(breakers, cb)
+	}
+	r.mu.RUnlock()
+	for _, cb := range breakers {
 		cb.Reset()
 	}
 }
 
 func (r *CircuitBreakerRegistry) ResetTool(toolName string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if cb, ok := r.breakers[toolName]; ok {
-		cb.Reset()
+	r.mu.RLock()
+	cb, ok := r.breakers[toolName]
+	r.mu.RUnlock()
+	if !ok {
+		return
 	}
+	// 同 ResetAll：Reset 的 onStateChange 回调需要 RLock，不能在写锁内调用。
+	cb.Reset()
 }
 
 func (r *CircuitBreakerRegistry) OpenBreakers() []string {
@@ -191,7 +230,7 @@ func (r *CircuitBreakerRegistry) resolveConfig(toolName, category string) Circui
 // persistState saves the current state of a circuit breaker to the stateRepo.
 // Called from the onStateChange callback; must be nil-safe.
 func (r *CircuitBreakerRegistry) persistState(name string) {
-	if r.stateRepo == nil {
+	if r.stateRepo == nil || !r.persists(name) {
 		return
 	}
 	r.mu.RLock()
@@ -201,7 +240,9 @@ func (r *CircuitBreakerRegistry) persistState(name string) {
 		return
 	}
 	entry := cb.snapshotEntry()
-	if err := r.stateRepo.SaveState(context.Background(), name, entry); err != nil {
+	sctx, cancel := stateCtx()
+	defer cancel()
+	if err := r.stateRepo.SaveState(sctx, name, entry); err != nil {
 		if r.lg != nil {
 			r.lg.Warn("circuit_breaker: failed to persist state",
 				loggateway.Str("name", name),
@@ -230,6 +271,11 @@ func (r *CircuitBreakerRegistry) RestoreStates(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for name, entry := range states {
+		// ADR-84：只恢复持久化命名空间内的条目（如 tool: 前缀）；
+		// 其它命名空间（tool_agent: 易失 / graph_node: 归 Node 注册表）跳过。
+		if !r.persists(name) {
+			continue
+		}
 		if cb, ok := r.breakers[name]; ok {
 			cb.restoreFromEntry(entry)
 		}

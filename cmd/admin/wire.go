@@ -1234,6 +1234,7 @@ func provideGraphBuildDeps(
 	subAgentSvc *subagenttool.Service,
 	a2aUC *biz.A2AUsecase,
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
+	toolBreakers *biztool.CircuitBreakerRegistry,
 	clientBridge *clientbridge.Bridge,
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
@@ -1294,6 +1295,8 @@ func provideGraphBuildDeps(
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
 			ClientBridge:    clientBridge,
+			// ADR-84：共享工具熔断注册表（持久化）注入回调链。
+			CircuitBreakerRegistry: toolBreakers,
 			// TeamCompletionChecker 将在运行时通过 SetTeamCompletionChecker 注入，避免循环依赖
 			LG: lg,
 		},
@@ -1327,6 +1330,7 @@ func provideTRPCBuilderDeps(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	a2aUC *biz.A2AUsecase,
+	toolBreakers *biztool.CircuitBreakerRegistry,
 	clientBridge *clientbridge.Bridge,
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
@@ -1388,6 +1392,8 @@ func provideTRPCBuilderDeps(
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
 			ClientBridge:    clientBridge,
+			// ADR-84：共享工具熔断注册表（持久化）注入回调链。
+			CircuitBreakerRegistry: toolBreakers,
 			// TeamCompletionChecker 将在运行时通过 SetTeamCompletionChecker 注入，避免循环依赖
 			LG: lg,
 		},
@@ -4170,6 +4176,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideGraphBuildDeps,
 		provideTRPCBuilderDeps,
 		biz.ProvideNodeCircuitBreakerRegistry,
+		// ADR-84：进程级共享工具熔断注册表（StateRepo 持久化，仅 tool: 前缀落表）。
+		biztool.ProvideToolCircuitBreakerRegistry,
 		graphadapter.NewGraphBuilderFactory,
 		provideL4CascadeUsecase,
 		provideAutoMemoryWorker,
