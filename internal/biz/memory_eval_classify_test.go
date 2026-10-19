@@ -36,6 +36,8 @@ func TestShouldSupersedeEvalFact(t *testing.T) {
 		want    bool
 	}{
 		{"favorite color update", "preference", "My favorite color is blue", "preference", "My favorite color is red", true},
+		{"chinese favorite color update", "preference", "我最喜欢的颜色是蓝色", "preference", "我现在最喜欢的颜色改成红色了", true},
+		{"chinese favorite tool update", "preference", "我最喜欢的编程语言是 Go", "preference", "我最喜欢的编程语言换成 Rust 了", true},
 		{"like without cue coexist", "preference", "I like coffee", "preference", "I like tea", false},
 		{"like with now cue", "preference", "I like blue", "preference", "I like red now", true},
 		{"live update", "preference", "I live in Boston", "preference", "I live in Seattle", true},

@@ -10,7 +10,7 @@ var (
 	favoriteStatementRe = regexp.MustCompile(`(?i)\b(?:my\s+)?favou?rite\s+\w+\s+(?:is|was|are)\s+`)
 	liveStatementRe     = regexp.MustCompile(`(?i)\b(?:i\s+)?(?:live|lives|lived)\s+(?:in|at)\s+`)
 	nameStatementRe     = regexp.MustCompile(`(?i)\b(?:my name is|i am called)\s+`)
-	chineseFavoriteRe   = regexp.MustCompile(`最喜欢的([^是为，。,\s]{1,12})(?:是|为)`)
+	chineseFavoriteRe   = regexp.MustCompile(`最喜欢的([^是为改换变，。,\s]{1,12})(?:是|为|改成|换成|改为|变成|变为)`)
 )
 
 // CanonicalizeFactKind maps extractor / tool kinds onto the remember-tool
