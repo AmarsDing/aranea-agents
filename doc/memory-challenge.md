@@ -7,7 +7,7 @@
 |----|------|
 | 参评类别 | Open-source Methods |
 | 系统名 | Aranea-Agents Memory |
-| 版本 | `amc-2026.09`（git tag `amc-2026.09`） |
+| 版本 | `amc-2026.09-r2`（git tag `amc-2026.09-r2`；前序 `amc-2026.09` 保留不删） |
 | 参评实现 | `cmd/memoryeval/`（独立入口，**主程序零修改**） |
 | 适配层端口 | `8910` |
 
@@ -79,7 +79,7 @@ query ──► Embedding（OpenAI 兼容 API，可降级）──► 向量召�
 | C4 | **PII 安全管线** | 写入前 PII 扫描与脱敏标记，审计留痕 |
 | C5 | **提取协议与队列** | 未启用框架 Auto 模式；自建三优先级队列 + Cron Worker + LLM 提取器 |
 | C6 | **五级 scope 隔离** | user / agent / team / workspace / global 作用域权限模型；评测中 `user_id` 直接映射 `scope=user` |
-| C7 | **Add/Search 评测适配层** | 平台契约 → 内部 L2/L3 读写的协议桥接，不含任何评测数据特化逻辑 |
+| C7 | **Add/Search 评测适配层** | 平台契约 → 内部 L2/L3 读写的协议桥接，不含任何评测数据特化逻辑；写入侧含同槽位偏好更新 supersede（中/英文更新短语均覆盖） |
 
 ---
 
@@ -88,7 +88,7 @@ query ──► Embedding（OpenAI 兼容 API，可降级）──► 向量召�
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/v1/memory/add` | POST | 写入记忆，同步返回 `200 {success, request_id, user_id, session_id, timestamp}` |
-| `/v1/memory/search` | POST | 检索记忆证据，返回 `{data: [{id, content, score, created_at}]}`；无结果返回 `data: []` |
+| `/v1/memory/search` | POST | 检索记忆证据，返回 `{data: [{id, content, score, created_at, timestamp}]}`（Cycle-2 API Guide 用 `created_at`，Cycle-1 用 `timestamp`，两者同值双发）；无结果返回 `data: []` |
 | `/healthz` | GET | 免鉴权存活探针，返回 `{"status":"ok"}` |
 
 - **鉴权**：`Authorization: Bearer <Memory System Key>` 或 `X-Api-Key` 头；key 由我方签发并经申请表提交，不进仓库。
