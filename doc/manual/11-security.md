@@ -73,3 +73,13 @@ confirmation_guard（人工确认）
 
 - [65 模块交叉引用 · plugin / hook 章节](../../docs/development/65-module-cross-reference-full.md)
 - [23 工具开发计划](../../docs/development/23-tools.development.md)
+
+## Confirm Gate：Server vs CLI（W1-6）
+
+| 形态 | `ProductConfirmGateActive` | 命中 ConfirmTools 时 |
+|------|------------------------------|----------------------|
+| Server（`cmd/admin` wire 置 true） | true | 插件让位；产品门禁出确认卡 |
+| CLI（默认 false） | false | 插件 `CustomResult` 硬拦——**无确认卡** |
+| 任一 + `ToolConfirmHandled` | — | 插件 no-op（链上已决策） |
+
+CLI 出现「需要确认但没有确认卡」是预期 fail-closed 行为；交互审批请走 server 装配。详见 `docs/development/confirm-gate-modes.md`。

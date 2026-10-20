@@ -1,0 +1,22 @@
+# Commerce industry pack skeleton (MVP).
+# Parallel to selfmedia — do not mix e-commerce agents into selfmedia.
+# No 1688/Taobao API. Sourcing board is human/Agent suggestions only.
+version: 1
+pack: commerce
+agents:
+  - key: commerce-sourcing-analyst
+    name: 选品分析
+    role: 分析商机与选品信号，输出 Opportunity JSON
+  - key: commerce-sourcing-assistant
+    name: 寻源助理
+    role: 整理供应商候选到寻源看板（不下单）
+  - key: commerce-compliance-advisor
+    name: 电商合规顾问
+    role: 广告法/平台规则提示（软提示）
+teams:
+  - key: team-sourcing-research
+    name: 寻源研究组
+    members:
+      - commerce-sourcing-analyst
+      - commerce-sourcing-assistant
+      - commerce-compliance-advisor

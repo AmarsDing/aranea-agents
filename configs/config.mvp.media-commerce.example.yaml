@@ -1,0 +1,30 @@
+# MVP media + commerce feature flags (example only — merge into local config as needed).
+content:
+  enabled: true
+review:
+  single_reviewer: true
+  soft_machine_scan: true
+  # Optional pending-review notify (Channel ≠ Publish). Env:
+  # ARANEA_MVP_REVIEW_NOTIFY_URL=https://hooks.example/review-pending
+  # ARANEA_MVP_REVIEW_NOTIFY_CHANNEL_ID=<channel uuid>
+  # ARANEA_MVP_REVIEW_NOTIFY_RECIPIENT=<open_id|chat_id>
+  # ARANEA_MVP_REVIEW_NOTIFY_PLATFORM=feishu   # optional; else from channel config type
+publish:
+  mode: package          # A only
+  computeruse_default: false
+  package_root: ""       # default: OS temp / aranea-publish-packages
+commerce:
+  opportunity_webhook_events:
+    - opportunity.created
+    - theme.digest
+  # NovaTrader receives intel only — never trading orders from media agents.
+  # Subscribe these event types on an outbound Webhook in Admin → Webhooks.
+ingest:
+  # Ops path: POST /api/v1/mvp/ingest/rss and /ingest/search
+  # Search: hits[] optional when platform web_research or TAVILY_API_KEY/SERPAPI_API_KEY set
+  # Optional cron (enabled when env set): ARANEA_MVP_RSS_FEEDS=https://a/rss,https://b/atom
+  # Cron target_type: mvp_rss_ingest
+local_ai:
+  # Windows Launcher path: ensure Ollama / ComfyUI health before media jobs.
+  ollama_endpoint: "http://127.0.0.1:11434"
+  comfyui_endpoint: "http://127.0.0.1:8188"

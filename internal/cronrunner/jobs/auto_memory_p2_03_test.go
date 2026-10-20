@@ -135,7 +135,7 @@ func TestAutoMemoryWorker_RetryExhaustedWritesDeadLetter(t *testing.T) {
 		AppName:   "agent-retry",
 		Priority:  memtrpc.MemoryJobPriorityHigh,
 	}
-	// Call processWithRetry directly (it has its own defer AckDone).
+	// Call processWithRetry directly (AckDone is owned by handleDequeued on drain path).
 	w.processWithRetry(context.Background(), req)
 
 	entries := sink.Entries()

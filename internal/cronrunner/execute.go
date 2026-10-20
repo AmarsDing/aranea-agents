@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -21,12 +20,8 @@ type runOutcome struct {
 }
 
 func (r *Runner) lockTask(taskID string) func() {
-	// LoadOrStore is atomic: concurrent calls for the same key always return
-	// the same mutex pointer (the one already stored or the newly stored one).
-	v, _ := r.taskMu.LoadOrStore(taskID, &sync.Mutex{})
-	mu := v.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+	// Named registry (CRON-01): LoadOrStore is atomic for the same taskID.
+	return r.taskMu.lock(taskID)
 }
 
 func (r *Runner) insertPendingRun(ctx context.Context, taskID, trigger string, now time.Time) (runID, started string, ok bool) {
@@ -283,3 +278,4 @@ func (r *Runner) recordPreExecuteOutcome(ctx context.Context, task biz.CronTask,
 func (r *Runner) recordScheduleFailure(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, now time.Time, message string) {
 	r.recordPreExecuteOutcome(ctx, task, cfg, now, "failure", message)
 }
+

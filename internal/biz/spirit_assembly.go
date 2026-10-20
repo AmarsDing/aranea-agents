@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -560,149 +559,53 @@ func (a *SpiritAssembly) UpdateTeamDefinitionJSON(ctx context.Context, teamID st
 // InjectDeptLeadIntoTeam adds the department lead agent to a team's definition.
 // Called during team assembly for cross-department collaboration.
 // Domain: Assembly — dept lead injection into team definition.
-func (a *SpiritAssembly) InjectDeptLeadIntoTeam(ctx context.Context, teamID string) error {
-	if a.deptLeadMgr == nil {
-		return nil
-	}
-	t, err := a.teamUC.Get(ctx, teamID)
-	if err != nil {
-		return err
-	}
-	if t.DepartmentID == "" {
-		return nil
-	}
-	lead, err := a.deptLeadMgr.GetDeptLeadForTeam(ctx, t.DepartmentID)
-	if err != nil {
-		a.lg.Warn("获取部门主管失败，跳过注入",
-			loggateway.StepID("spirit.inject_dept_lead"),
-			loggateway.Str("team_id", teamID),
-			loggateway.Str("dept_id", t.DepartmentID),
-			loggateway.Err(err),
-		)
-		return nil
-	}
 
-	// Update the team's DeptLeadAgentID
-	_, err = a.teamUC.Update(ctx, teamID, Team{DeptLeadAgentID: lead.ID})
-	if err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
-	}
+// Update the team's DeptLeadAgentID
 
-	a.lg.Info("注入部门主管到团队",
-		loggateway.StepID("spirit.inject_dept_lead"),
-		loggateway.Str("team_id", teamID),
-		loggateway.Str("dept_lead_agent_id", lead.ID),
-	)
-	return nil
-}
+// deliverableChannel 与下方 enable_state_deliverable 同规则：无交付通道的
+// 团队（单成员非 DAG）不得让任务书提及 set_deliverable（工具不存在会误导）。
 
-func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, requireDeliverable bool, deliverables []DeliverableContract, gates []VerificationGate, parallelCfgJSON ...string) string {
-	type member struct {
-		AgentKey   string `json:"agent_id"`
-		Role       string `json:"role"`
-		Enabled    *bool  `json:"enabled"`
-		TaskPrompt string `json:"task_prompt,omitempty"`
-	}
-	members := make([]member, 0, len(agentKeys))
-	// deliverableChannel 与下方 enable_state_deliverable 同规则：无交付通道的
-	// 团队（单成员非 DAG）不得让任务书提及 set_deliverable（工具不存在会误导）。
-	deliverableChannel := len(agentKeys) > 1 || requireDeliverable
-	roles := make([]string, len(agentKeys))
-	for i := range agentKeys {
-		role := RoleWorker
-		if mode == TeamModeCoordinator && i == 0 {
-			role = RoleSynthesizer
-		}
-		if mode == TeamModeParallel && i == len(agentKeys)-1 && len(agentKeys) > 1 {
-			role = RoleSynthesizer
-		}
-		roles[i] = role
-	}
-	// P1（2026-09-03 名册×结果矩阵 prompt 层）：合成者任务书注入团队名册——
-	// 缺席检测从「LLM 推断」变为「名册对照」，配合图级失败通告（P1-2，
-	// failure_recovery.go skipNodeUpdate 注入 messages）构成双保险。
-	roster := buildMemberRosterPrompt(agentKeys, roles)
-	for i, key := range agentKeys {
-		enabled := true
-		members = append(members, member{
-			AgentKey:   strings.TrimSpace(key),
-			Role:       roles[i],
-			Enabled:    &enabled,
-			TaskPrompt: memberRoleTaskPrompt(roles[i], deliverableChannel, roster),
-		})
-	}
-	maxConcurrency := SpiritTeamDefaultMaxConc
-	if len(parallelCfgJSON) > 0 && parallelCfgJSON[0] != "" {
-		cfg := ParseParallelConfig(parallelCfgJSON[0], lg)
-		if cfg.MaxTeamConcurrency > 0 {
-			maxConcurrency = cfg.MaxTeamConcurrency
-		}
-	}
-	def := map[string]any{
-		"version":            SpiritTeamDefVersion,
-		"mode":               mode,
-		"runtime_engine":     RuntimeEngineGraph,
-		"team_graph_runtime": true,
-		"members":            members,
-		"max_concurrency":    maxConcurrency,
-		// F1（2026-09-03 lbg-verify-planner 复盘）：不再写入 run 级 wall-clock
-		// deadline（旧值 1800s 曾三次上调仍误杀长任务）。timeout_seconds=0 →
-		// TurnDeadlineDuration 不加额外 deadline；活性判定归位到：成员守卫链
-		// （first-byte/stall/no-progress/token budget）→ 团队 idle 探测
-		// （biz AfterFunc）→ 绝对存活上限（maxLifetime，biz + service 双层）。
-		"timeout_seconds": 0,
-	}
-	// F4（2026-09-03 lbg-verify-planner 复盘 问题4）：成员级解耦默认策略。
-	// 此前规划路径团队无 failure_policy——成员终态错误直接上抛为图失败，
-	// 一人死=全队死。现默认注入：
-	//   - default=retry_then_block + max_attempts=2：节点失败先在图级重试
-	//     （叠于 LLM 首字节/stall 重试之上；框架 DefaultTransientCondition
-	//     覆盖 DeadlineExceeded/net timeout）。
-	//   - parallel_fail=continue：并行拓扑的分支节点（coordinator 模式下
-	//     lead+中间成员均为 finish 汇聚点的 feeder、parallel 模式下各
-	//     worker）重试耗尽后转为 skip_on_failure，图继续等其他成员；终局
-	//     由 F10 证据收敛为 partial_failure（spirit_team.go
-	//     countFailedEvidenceMembers），下游 DAG 视同成功照常激活。
-	//     finish 汇聚点不标记：汇聚失败无产出，团队真失败。
-	// sequential 拓扑无并行分支不标记——后置成员依赖前置产出，成员失败仍
-	// 终止图，由 PlanExecutor 层重试入口兜底。
-	def["failure_policy"] = map[string]any{
-		"default":       FailurePolicyRetryThenBlock,
-		"retry":         map[string]any{"max_attempts": 2},
-		"parallel_fail": FailurePolicyContinue,
-	}
-	if mode == TeamModeParallel && len(agentKeys) > 1 {
-		def["synthesizer_agent_id"] = strings.TrimSpace(agentKeys[len(agentKeys)-1])
-	}
-	// C1/C3: multi-member teams get the deliverable state channel so members
-	// can pass structured output via set_deliverable/get_deliverable tools.
-	// 2026-07-25 Fix 2b: DAG teams (requireDeliverable, i.e. DagNodeID != "")
-	// get the channel unconditionally — the real-deliverable gate (Fix 1)
-	// judges DAG teams solely by set_deliverable output, so a single-member
-	// DAG team without the channel could never pass.
-	if len(agentKeys) > 1 || requireDeliverable {
-		def["enable_state_deliverable"] = true
-	}
-	// F5 (Phase 11): auto-generate the member-level deliverable contract (MDC)
-	// from the team's inter-team deliverable contracts. topic == contract name
-	// (1:1), so the member prompt instruction and the spirit's retrieval always
-	// agree on the topic. Members write via set_deliverable; the MDC is
-	// enforced write-time (schema/required_keys) and advisory at completion.
-	if entries := MemberEntriesFromDeliverableContracts(deliverables); len(entries) > 0 {
-		def["deliverable_contract"] = MemberDeliverableContract{Entries: entries}
-	}
-	// F9 (Phase 11): verification gates (e.g. the deterministic tool_assertion
-	// gate for skill-install teams) ride the definition JSON;
-	// resolveVerificationGates parses them back at completion time.
-	if len(gates) > 0 {
-		def["verification_gates"] = gates
-	}
-	out, err := json.Marshal(def)
-	if err != nil {
-		return "{}"
-	}
-	return string(out)
-}
+// P1（2026-09-03 名册×结果矩阵 prompt 层）：合成者任务书注入团队名册——
+// 缺席检测从「LLM 推断」变为「名册对照」，配合图级失败通告（P1-2，
+// failure_recovery.go skipNodeUpdate 注入 messages）构成双保险。
+
+// F1（2026-09-03 lbg-verify-planner 复盘）：不再写入 run 级 wall-clock
+// deadline（旧值 1800s 曾三次上调仍误杀长任务）。timeout_seconds=0 →
+// TurnDeadlineDuration 不加额外 deadline；活性判定归位到：成员守卫链
+// （first-byte/stall/no-progress/token budget）→ 团队 idle 探测
+// （biz AfterFunc）→ 绝对存活上限（maxLifetime，biz + service 双层）。
+
+// F4（2026-09-03 lbg-verify-planner 复盘 问题4）：成员级解耦默认策略。
+// 此前规划路径团队无 failure_policy——成员终态错误直接上抛为图失败，
+// 一人死=全队死。现默认注入：
+//   - default=retry_then_block + max_attempts=2：节点失败先在图级重试
+//     （叠于 LLM 首字节/stall 重试之上；框架 DefaultTransientCondition
+//     覆盖 DeadlineExceeded/net timeout）。
+//   - parallel_fail=continue：并行拓扑的分支节点（coordinator 模式下
+//     lead+中间成员均为 finish 汇聚点的 feeder、parallel 模式下各
+//     worker）重试耗尽后转为 skip_on_failure，图继续等其他成员；终局
+//     由 F10 证据收敛为 partial_failure（spirit_team.go
+//     countFailedEvidenceMembers），下游 DAG 视同成功照常激活。
+//     finish 汇聚点不标记：汇聚失败无产出，团队真失败。
+// sequential 拓扑无并行分支不标记——后置成员依赖前置产出，成员失败仍
+// 终止图，由 PlanExecutor 层重试入口兜底。
+
+// C1/C3: multi-member teams get the deliverable state channel so members
+// can pass structured output via set_deliverable/get_deliverable tools.
+// 2026-07-25 Fix 2b: DAG teams (requireDeliverable, i.e. DagNodeID != "")
+// get the channel unconditionally — the real-deliverable gate (Fix 1)
+// judges DAG teams solely by set_deliverable output, so a single-member
+// DAG team without the channel could never pass.
+
+// F5 (Phase 11): auto-generate the member-level deliverable contract (MDC)
+// from the team's inter-team deliverable contracts. topic == contract name
+// (1:1), so the member prompt instruction and the spirit's retrieval always
+// agree on the topic. Members write via set_deliverable; the MDC is
+// enforced write-time (schema/required_keys) and advisory at completion.
+
+// F9 (Phase 11): verification gates (e.g. the deterministic tool_assertion
+// gate for skill-install teams) ride the definition JSON;
+// resolveVerificationGates parses them back at completion time.
 
 // memberRoleTaskPrompt 按团队角色生成差异化任务书（2026-09-01 修复：此前
 // 成员定义不写 task_prompt，图编译节点 instruction 为空，synthesizer 与
@@ -710,50 +613,6 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 // 越界风险——如调研角色产出远超设计角色）。任务书经 definition JSON →
 // 图编译节点 instruction（embedded_graph.go）→ 注入成员用户消息头部
 // （graph/trpc/agent_instruction.go），不触碰 system prompt（保前缀缓存）。
-func memberRoleTaskPrompt(role string, deliverableChannel bool, roster string) string {
-	deliver := "产出通过 set_deliverable 提交。"
-	if !deliverableChannel {
-		deliver = "产出直接作为你的最终回复。"
-	}
-	switch role {
-	case RoleSynthesizer:
-		p := "你是本团队的合成者：基于其他成员的产出做整合、去重与冲突裁决，形成团队最终交付物；" + deliver +
-			"不要重复执行成员已完成的调研/执行工作，输入中已有成员产出时在其基础上综合而非重做。"
-		if roster != "" {
-			p += roster +
-				"整合前先对照名册核查：名册成员的产出未出现在输入中（或收到其失败通告）即该成员执行失败已被跳过——" +
-				"在交付物中如实标注缺失部分及其影响，严禁编造其内容。"
-		}
-		return p
-	case RoleWorker:
-		return "你是本团队的执行者：只完成与你专业职责直接相关的子任务，聚焦你的专业领域产出具体成果；" + deliver +
-			"团队最终汇总由合成者负责，不要代劳；不要越界承担其他成员的职责。"
-	default:
-		return ""
-	}
-}
 
 // buildMemberRosterPrompt 生成团队名册文本（仅合成者使用）。名册身份用
 // agent key——与图节点 ID / 消息作者同口径，合成者可直接对照输入消息的作者。
-func buildMemberRosterPrompt(agentKeys []string, roles []string) string {
-	if len(agentKeys) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("团队名册：")
-	for i, key := range agentKeys {
-		label := "执行者"
-		if i < len(roles) && roles[i] == RoleSynthesizer {
-			label = "合成者"
-		}
-		if i > 0 {
-			b.WriteString("、")
-		}
-		b.WriteString(strings.TrimSpace(key))
-		b.WriteString("（")
-		b.WriteString(label)
-		b.WriteString("）")
-	}
-	b.WriteString("。")
-	return b.String()
-}

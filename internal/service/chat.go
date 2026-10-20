@@ -18,7 +18,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
-	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
 // ChatService is the thin transport bridge between proto/HTTP/WS and the
@@ -482,15 +481,42 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 		return nil, apierror.BadRequest(apierror.DomainChat, "invalid kind: must be steer|followup|inject")
 	}
 
+	requestID := strings.TrimSpace(req.GetRequestId())
+	// Enqueue idempotency: same pending-user-* key as WS/Submit, scoped with
+	// enqueue: prefix so it does not collide with an in-flight turn claim.
+	idemKey := ""
+	if requestID != "" {
+		idemKey = "enqueue:" + requestID
+		if s.orch != nil && !s.orch.claimTurnIdem(sessionID, idemKey) {
+			s.lg.With(loggateway.SessionID(sessionID)).Info("duplicate chat enqueue dropped",
+				loggateway.StepID("chat.enqueue_duplicate"),
+				loggateway.Str("request_id", requestID))
+			return &chatv1.EnqueueUserMessageResponse{
+				Accepted:  true,
+				Queued:    true,
+				PendingId: requestID,
+			}, nil
+		}
+	}
+
 	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessageWithKind(sessionID, content, kind)
 	if err != nil {
+		if idemKey != "" && s.orch != nil {
+			s.orch.releaseTurnIdem(sessionID, idemKey)
+		}
 		return nil, err
 	}
 	if !accepted {
+		if idemKey != "" && s.orch != nil {
+			s.orch.releaseTurnIdem(sessionID, idemKey)
+		}
 		return nil, enqueueRejectError(rejectReason)
 	}
 	if queued {
 		if pendingID == "" {
+			if idemKey != "" && s.orch != nil {
+				s.orch.releaseTurnIdem(sessionID, idemKey)
+			}
 			return nil, apierror.Internal(apierror.DomainChat, "queued message missing pending id")
 		}
 		return &chatv1.EnqueueUserMessageResponse{
@@ -503,103 +529,17 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 }
 
 // GetRunStatus returns the current run lifecycle state for a session.
-func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatusRequest) (*chatv1.RunStatus, error) {
-	sessionID := strings.TrimSpace(req.GetSessionId())
-	if sessionID == "" {
-		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
-	}
-	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
-		return nil, err
-	}
-	resp := &chatv1.RunStatus{Status: "idle"}
-	if runID, status, errMsg, updatedAt, ok := s.orch.GetRunStatus(ctx, sessionID); ok {
-		resp.RunId = runID
-		resp.Status = status
-		resp.ErrorMessage = errMsg
-		resp.UpdatedAt = updatedAt
-	} else if snap, ok := s.orch.hydrateRunStatusFromSession(ctx, sessionID); ok {
-		// SP-1e（R3-Q13）：终态持久化会清除 run_id（chat_run_gateway.go
-		// terminalRunStatus 分支），hydration 得到 RunID="" 的残留快照。
-		// R4-Q2：终态快照在保留窗口（rt.TerminalStatusTTL）内返回 200 + 终态，
-		// 让轮询方拿到确定的终态语义而非 404 空转；超过窗口的陈旧快照仍返回
-		// 404（SP-1e 防脏数据语义保留）。非终态（running/awaiting_user）run_id
-		// 持久化保留，崩溃恢复 hydration 不受影响。
-		if strings.TrimSpace(snap.RunID) == "" {
-			if terminalRunStatus(snap.Status) && runStatusSnapshotFresh(snap.UpdatedAt, rt.TerminalStatusTTL) {
-				resp.Status = snap.Status
-				resp.ErrorMessage = snap.ErrorMessage
-				resp.UpdatedAt = snap.UpdatedAt
-			} else {
-				return nil, apierror.NotFound(apierror.DomainChat, "no run found for session")
-			}
-		} else {
-			resp.RunId = snap.RunID
-			resp.Status = snap.Status
-			resp.ErrorMessage = snap.ErrorMessage
-			resp.UpdatedAt = snap.UpdatedAt
-		}
-		// Use await fields from hydrated snapshot when available.
-		if strings.TrimSpace(snap.Status) == "awaiting_user" {
-			resp.AwaitKind = snap.AwaitKind
-			resp.AwaitToolKey = snap.AwaitToolKey
-			resp.AwaitToolCallId = snap.AwaitToolCallID
-		}
-	}
-	if runnerIface, _, active := s.orch.ActiveRunner(sessionID); active {
-		if runner, ok := runnerIface.(trpcrunner.Runner); ok {
-			applyFrameworkRunStatus(resp, runner, sessionID)
-		}
-	}
-	if meta := s.orch.resolveAwaitMeta(ctx, sessionID, resp.Status); strings.TrimSpace(resp.Status) == "awaiting_user" {
-		resp.AwaitKind = meta.Kind
-		resp.AwaitToolKey = meta.ToolKey
-		resp.AwaitToolCallId = meta.ToolCallID
-	}
-	return resp, nil
-}
 
-func applyFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, requestID string) {
-	if resp == nil || runner == nil {
-		return
-	}
-	st, ok := rt.FrameworkRunStatusFromRunner(runner, requestID)
-	if !ok {
-		return
-	}
-	resp.InvocationId = st.InvocationID
-	resp.AgentName = st.AgentName
-	if !st.StartedAt.IsZero() {
-		resp.StartedAt = st.StartedAt.Format(time.RFC3339)
-	}
-	if !st.LastEventAt.IsZero() {
-		resp.LastEventAt = st.LastEventAt.Format(time.RFC3339)
-	}
-	resp.EventCount = int32(st.EventCount)
-}
+// SP-1e（R3-Q13）：终态持久化会清除 run_id（chat_run_gateway.go
+// terminalRunStatus 分支），hydration 得到 RunID="" 的残留快照。
+// R4-Q2：终态快照在保留窗口（rt.TerminalStatusTTL）内返回 200 + 终态，
+// 让轮询方拿到确定的终态语义而非 404 空转；超过窗口的陈旧快照仍返回
+// 404（SP-1e 防脏数据语义保留）。非终态（running/awaiting_user）run_id
+// 持久化保留，崩溃恢复 hydration 不受影响。
+
+// Use await fields from hydrated snapshot when available.
 
 // AwaitUserReply submits a human reply for a run that is paused in awaiting_user state.
-func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserReplyRequest) (*chatv1.AwaitUserReplyResponse, error) {
-	sessionID := strings.TrimSpace(req.GetSessionId())
-	if sessionID == "" {
-		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
-	}
-	reply := strings.TrimSpace(req.GetReply())
-	if reply == "" {
-		return nil, apierror.BadRequest(apierror.DomainChat, "reply is required")
-	}
-	runID := ""
-	if req.RunId != nil {
-		runID = strings.TrimSpace(*req.RunId)
-	}
-	// Unified delivery: fast path via in-memory channel, restart recovery via
-	// resumeAwaitAfterRestart. The user's own words serve as resume content.
-	outcome, err := s.orch.submitAwaitReply(ctx, sessionID, awaitReply{
-		runID:         runID,
-		token:         reply,
-		resumeContent: reply,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &chatv1.AwaitUserReplyResponse{Accepted: outcome != awaitReplyRejected}, nil
-}
+
+// Unified delivery: fast path via in-memory channel, restart recovery via
+// resumeAwaitAfterRestart. The user's own words serve as resume content.

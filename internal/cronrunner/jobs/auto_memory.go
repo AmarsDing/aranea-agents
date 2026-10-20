@@ -210,18 +210,37 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 	for i := 0; i < int(w.memConf.DrainBatchSize); i++ {
 		select {
 		case req := <-q.Chan():
-			if ctx.Err() != nil {
-				// AckDone here because we return before entering processWithRetry
-				// which has its own defer AckDone — without this, the tenant
-				// in-flight counter would permanently leak.
-				w.queue.AckDone(req)
-				return
-			}
-			w.processWithRetry(ctx, req)
+			// AckDone 单一所有权（合并契约）：handleDequeued 统一入口——
+			// ctx 取消即时释放、panic 兜底释放；正常完成由重试链终点
+			// （成功/耗尽/关停放弃，含 P1-3 异步后台链）释放一次。
+			w.handleDequeued(ctx, req)
 		default:
 			return
 		}
 	}
+}
+
+// handleDequeued 是每个出队任务的统一入口（两侧契约的合并）：
+//   - ctx 已取消：在此 AckDone 释放租户配额（C-02）后直接丢弃；
+//   - 处理过程 panic：AckDone 后原样向上传播——正常路径的配额由重试链
+//     终点释放，panic 未经任何终点，必须在此兜底（AckDone 测试契约；
+//     panic 再由 Start 的 recover 收口，与既有 worker 语义一致）；
+//   - 正常完成：配额由 processWithRetry/retryRemaining 的终点各释放一次，
+//     本函数不能 defer 释放——P1-3 异步退避链在 processWithRetry 返回后
+//     仍在后台运行，提前 AckDone 会让同租户新任务越过配额上限并导致
+//     终点二次释放。
+func (w *AutoMemoryWorker) handleDequeued(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
+	if ctx.Err() != nil {
+		w.queue.AckDone(req)
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			w.queue.AckDone(req)
+			panic(r)
+		}
+	}()
+	w.processWithRetry(ctx, req)
 }
 
 func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
@@ -1005,25 +1024,4 @@ func parseFactTagsJSON(raw string) []string {
 		}
 	}
 	return out
-}
-
-func jsonNumber(v any) float64 {
-	switch n := v.(type) {
-	case float64:
-		return n
-	case json.Number:
-		f, _ := n.Float64()
-		return f
-	default:
-		return 0
-	}
-}
-
-// errString safely converts an error to its string representation.
-// Returns empty string for nil errors.
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }

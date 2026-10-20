@@ -187,7 +187,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, cfg Grap
 			return state, nil
 		}, opts...)
 		return nil, nil
-	case biz.NodeTypeTask, biz.NodeTypeReview:
+	case biz.NodeTypeTask, biz.NodeTypeReview, biz.NodeTypeHuman:
 		if !n.InterruptAfter {
 			opts = append(opts, trpcgraph.WithInterruptAfter())
 		}

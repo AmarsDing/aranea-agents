@@ -9,6 +9,8 @@ import (
 	trpctaskrun "trpc.group/trpc-go/trpc-agent-go/tool/taskrun"
 )
 
+// HONESTY(TOOL-02): TaskRunAdapter is NOT production-wired — do not advertise
+// async taskrun in the tool catalog or UI. Agents must not spawn via this path.
 // TECH-DEBT(B-7): TaskRunAdapter 已实现但未接入生产路径。
 // 阻塞类型：缺少核心依赖 + 复杂依赖链。
 // 适配器需要 taskrun.Controller 实例管理异步任务生命周期，但项目缺少：

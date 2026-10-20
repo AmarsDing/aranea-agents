@@ -14,7 +14,7 @@
 //（writeLastReviewAt → sess.SetState）只写 session 内存态，异步 worker
 // 处理 job 时 runner 已完成本 turn 的持久化（AppendEvent），水位线永不落库；
 // aranea 的 PG session service 无缓存、每 turn 从 DB 重建 State，故跨 turn
-// 水位线必丢，scanDelta 退化为全量评审。hold-all 模式下影响限于评审 LLM
+// 水位线必丢，scanDelta 退化为全量评审。W1-4 本地绕过：FileWatermarkStore + Enqueue 恢复（可用 EVOLUTION_WATERMARK_PERSIST=0 关闭）。hold-all 模式下影响限于评审 LLM
 // 成本随 session 长度增长与候选重复累积（reconcile 批内去重兜底），功能
 // 正确性无损。评审触发本身有 DefaultReviewPolicy 门槛（≥4 次工具调用/用户
 // 纠正/工具错误恢复），纯聊天 turn 不产生评审开销。
@@ -64,7 +64,8 @@ type Service struct {
 
 	mu    sync.Mutex
 	inner trpcevolution.Service
-	tried bool // 构建只尝试一次，失败不再重试（模型配置变化需重启生效）
+	tried bool           // true after successful build; ResetBuild clears for catalog hot-add
+	store WatermarkStore // local lastReviewAt bypass (W1-4)
 }
 
 // NewService 创建延迟装配的 evolution service；cfg 缺关键依赖时返回 nil
@@ -85,7 +86,20 @@ func (s *Service) EnqueueLearningJob(ctx context.Context, job trpcevolution.Lear
 	if inner == nil {
 		return nil
 	}
-	return inner.EnqueueLearningJob(ctx, job)
+	// W1-4: restore durable watermark into the job session before the async
+	// worker runs scanDelta (framework SetState never reaches PG).
+	if s.store != nil {
+		restoreWatermark(s.store, job.Session)
+	}
+	err := inner.EnqueueLearningJob(ctx, job)
+	if s.store != nil && job.Session != nil {
+		sess := job.Session
+		sid := sess.ID
+		safego.Go(ctx, "skill.evolution_wm_watch", func() {
+			s.watchAndPersist(sess, sid)
+		})
+	}
+	return err
 }
 
 // Close 实现 trpcevolution.Service；仅在底层已构建时传播。
@@ -101,10 +115,11 @@ func (s *Service) Close() error {
 func (s *Service) resolve(ctx context.Context) trpcevolution.Service {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.inner != nil || s.tried {
+	if s.inner != nil {
 		return s.inner
 	}
-	s.tried = true
+	// SKL-02: tried latches only after a successful build below, so a failed
+	// model resolve / mkdir can retry on the next Enqueue without restart.
 
 	m, prov, mod, err := s.resolveReviewModel(ctx)
 	if err != nil || m == nil {
@@ -128,18 +143,47 @@ func (s *Service) resolve(ctx context.Context) trpcevolution.Service {
 		return nil
 	}
 
-	s.inner = trpcevolution.NewService(m,
+	opts := []trpcevolution.Option{
 		trpcevolution.WithSkillRepository(s.cfg.Repo),
 		trpcevolution.WithSpecGate(trpcevolution.NewDefaultSpecGate()),
 		trpcevolution.WithSafetyGate(trpcevolution.NewDefaultSafetyGate()),
 		// 全挂起：一切修订待人工审批，零自动发布。
 		trpcevolution.WithHumanGate(trpcevolution.NewAlwaysHoldGate()),
 		trpcevolution.WithCandidateStore(trpcevolution.NewFileCandidateStore(dir)),
-	)
+	}
+	// W1-4 local bypass: persist lastReviewAt across turns (framework writes
+	// only in-memory session state after AppendEvent). Disable with
+	// EVOLUTION_WATERMARK_PERSIST=0.
+	if watermarkPersistEnabled() {
+		s.store = NewFileWatermarkStore(dir, s.cfg.Lg)
+		opts = append(opts, trpcevolution.WithReviewPolicy(&persistingReviewPolicy{
+			inner: trpcevolution.DefaultReviewPolicy{},
+			store: s.store,
+			lg:    s.cfg.Lg,
+		}))
+	}
+	s.inner = trpcevolution.NewService(m, opts...)
+	s.tried = true // latch only after successful build
 	s.cfg.Lg.Info("evolution: 技能演化 service 已构建（hold-all 模式，零自动发布）",
 		loggateway.StepID("skill.evolution_ready"),
 		loggateway.Str("candidates_dir", dir))
 	return s.inner
+}
+
+
+// ResetBuild clears the build latch so the next Enqueue re-resolves the review
+// model (hot-add catalog / config change). Closes an existing inner service.
+func (s *Service) ResetBuild() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tried = false
+	if s.inner == nil {
+		return nil
+	}
+	err := s.inner.Close()
+	s.inner = nil
+	s.store = nil
+	return err
 }
 
 // resolveReviewModel 复用 session 摘要的模型选取策略：catalog 的标题模型，

@@ -188,6 +188,36 @@ var builtinTemplates = []GraphTemplate{
 			{Name: "output", Type: "string", Reducer: ReducerDefault},
 		},
 	},
+	{
+		ID:          "content_pipeline",
+		Name:        "内容流水线（MVP）",
+		Description: "采→写→机审→人审→打包发布包（Package A）。human_review 桥接 ReviewTask；仅过审可打包。Channel≠Publish。",
+		Category:    "pipeline",
+		EntryPoint:  "ingest_or_pick",
+		FinishPoint: "build_publish_package",
+		Nodes: []TemplateNode{
+			{NodeID: "ingest_or_pick", Type: "function", Label: "采集/选题", Description: "RSS/搜索/Inbox 选题入库"},
+			{NodeID: "team_produce", Type: "agent", Label: "团队出稿", Description: "自媒体团队生产草稿"},
+			{NodeID: "machine_scan", Type: "function", Label: "机审", Description: "软机审提示（不自动拦）"},
+			{NodeID: "human_review", Type: "function", Label: "人审闸门", Description: "单人终审；桥接 ReviewTask / HITL"},
+			{NodeID: "build_publish_package", Type: "function", Label: "打发布包", Description: "Package A：manifest+body，非平台自动发"},
+		},
+		Edges: []TemplateEdge{
+			{FromNode: "ingest_or_pick", ToNode: "team_produce", Type: "runtime"},
+			{FromNode: "team_produce", ToNode: "machine_scan", Type: "runtime"},
+			{FromNode: "machine_scan", ToNode: "human_review", Type: "runtime"},
+			{FromNode: "human_review", ToNode: "build_publish_package", Type: "runtime"},
+		},
+		StateFields: []StateFieldDef{
+			{Name: "input", Type: "string", Reducer: ReducerDefault},
+			{Name: "content_item_id", Type: "string", Reducer: ReducerDefault},
+			{Name: "draft_title", Type: "string", Reducer: ReducerDefault},
+			{Name: "draft_body", Type: "string", Reducer: ReducerDefault},
+			{Name: "review_decision", Type: "string", Reducer: ReducerDefault},
+			{Name: "publish_job_id", Type: "string", Reducer: ReducerDefault},
+			{Name: "messages", Type: "[]any", Reducer: ReducerAppend},
+		},
+	},
 }
 
 func ListBuiltinTemplates() []GraphTemplate {

@@ -136,6 +136,7 @@ func TestValidateTaskConfig(t *testing.T) {
 		{"valid json object passes", `{"target_type":"agent"}`, false},
 		{"valid json with multiple fields passes", `{"target_type":"team","cron_expression":"0 * * * *"}`, false},
 		{"valid json with model_registry_sync passes", `{"target_type":"model_registry_sync"}`, false},
+		{"valid json with mvp_rss_ingest passes", `{"target_type":"mvp_rss_ingest","feed_urls":["https://example.com/rss"]}`, false},
 		{"invalid json rejected", "not-json", true},
 		{"invalid json with trailing comma rejected", `{"target_type":"agent",}`, true},
 		{"target_type not string rejected", `{"target_type":123}`, true},

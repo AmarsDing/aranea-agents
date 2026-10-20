@@ -30,6 +30,8 @@ export function useChatV2EventHandlers(deps: {
   sender: {
     sending: { value: boolean };
     markSendingDone: () => void;
+    onRunAccepted: () => void;
+    onFirstByteArrived: () => void;
     touchRunActivity: (eventSessionId?: string) => void;
   };
   followUp: { onRunStatusV2: (payload: RunStatusEventPayload) => void };
@@ -65,6 +67,11 @@ export function useChatV2EventHandlers(deps: {
     // 的活动不得掩盖本会话的终态丢失（见 useChatSender.touchRunActivity）。
     if (envelope.kind !== 'skill.catalog') {
       deps.sender.touchRunActivity(envelope.session_id ? String(envelope.session_id) : undefined);
+    }
+    // Stall / first-byte watchdogs: run_status=running arms the first-byte
+    // notice (useChatSender.onRunAccepted); the first streaming token clears it.
+    if (envelope.kind === 'step.streaming') {
+      deps.sender.onFirstByteArrived();
     }
     // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
     // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2
@@ -268,6 +275,7 @@ export function useChatV2EventHandlers(deps: {
     }
     const rs = runStatusFromV2Payload(payload);
     if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
+      deps.sender.onRunAccepted();
       if (sessionStore.entityKind === 'team') {
         deps.streamManager.ensureTeamStream(sid);
       } else {

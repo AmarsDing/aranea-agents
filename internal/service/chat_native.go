@@ -111,6 +111,14 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (res
 		}()
 	}
 
+	// Converge optimistic FE IDs: reuse client request_id as RootTaskActivityID
+	// when the HTTP/WS path did not already pre-assign one (submitChatMessageAsync does).
+	if preAssignedMessageIDFromCtx(ctx) == "" {
+		if rid := strings.TrimSpace(input.RequestID); rid != "" {
+			ctx = contextWithPreAssignedMessageID(ctx, rid)
+		}
+	}
+
 	if s != nil && s.turnPipeline != nil {
 		if admResult, admErr, handled := s.tryAdmissionBeforePersistence(ctx, input); handled {
 			s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: admission handled",

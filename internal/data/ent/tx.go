@@ -54,6 +54,8 @@ type Tx struct {
 	CompiledTeam *CompiledTeamClient
 	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
 	ComputerUseAudit *ComputerUseAuditClient
+	// ContentItem is the client for interacting with the ContentItem builders.
+	ContentItem *ContentItemClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -134,6 +136,8 @@ type Tx struct {
 	ModelPricingRule *ModelPricingRuleClient
 	// ModelTokenUsageHourly is the client for interacting with the ModelTokenUsageHourly builders.
 	ModelTokenUsageHourly *ModelTokenUsageHourlyClient
+	// Opportunity is the client for interacting with the Opportunity builders.
+	Opportunity *OpportunityClient
 	// Orchestration is the client for interacting with the Orchestration builders.
 	Orchestration *OrchestrationClient
 	// OrchestrationStep is the client for interacting with the OrchestrationStep builders.
@@ -166,8 +170,12 @@ type Tx struct {
 	PlatformSkill *PlatformSkillClient
 	// PlatformTool is the client for interacting with the PlatformTool builders.
 	PlatformTool *PlatformToolClient
+	// PublishJob is the client for interacting with the PublishJob builders.
+	PublishJob *PublishJobClient
 	// ResourceAccessAudit is the client for interacting with the ResourceAccessAudit builders.
 	ResourceAccessAudit *ResourceAccessAuditClient
+	// ReviewTask is the client for interacting with the ReviewTask builders.
+	ReviewTask *ReviewTaskClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -200,6 +208,8 @@ type Tx struct {
 	SkillVersion *SkillVersionClient
 	// StepV2 is the client for interacting with the StepV2 builders.
 	StepV2 *StepV2Client
+	// SupplierCandidate is the client for interacting with the SupplierCandidate builders.
+	SupplierCandidate *SupplierCandidateClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
 	SystemSetting *SystemSettingClient
 	// TaskDeadLetter is the client for interacting with the TaskDeadLetter builders.
@@ -389,6 +399,7 @@ func (tx *Tx) init() {
 	tx.CodingTask = NewCodingTaskClient(tx.config)
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.ComputerUseAudit = NewComputerUseAuditClient(tx.config)
+	tx.ContentItem = NewContentItemClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
 	tx.DecisionRecord = NewDecisionRecordClient(tx.config)
@@ -429,6 +440,7 @@ func (tx *Tx) init() {
 	tx.MemoryFactPending = NewMemoryFactPendingClient(tx.config)
 	tx.ModelPricingRule = NewModelPricingRuleClient(tx.config)
 	tx.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(tx.config)
+	tx.Opportunity = NewOpportunityClient(tx.config)
 	tx.Orchestration = NewOrchestrationClient(tx.config)
 	tx.OrchestrationStep = NewOrchestrationStepClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
@@ -445,7 +457,9 @@ func (tx *Tx) init() {
 	tx.PlatformPlugin = NewPlatformPluginClient(tx.config)
 	tx.PlatformSkill = NewPlatformSkillClient(tx.config)
 	tx.PlatformTool = NewPlatformToolClient(tx.config)
+	tx.PublishJob = NewPublishJobClient(tx.config)
 	tx.ResourceAccessAudit = NewResourceAccessAuditClient(tx.config)
+	tx.ReviewTask = NewReviewTaskClient(tx.config)
 	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SelfCheckReport = NewSelfCheckReportClient(tx.config)
 	tx.SelfImprovementRun = NewSelfImprovementRunClient(tx.config)
@@ -462,6 +476,7 @@ func (tx *Tx) init() {
 	tx.SkillTag = NewSkillTagClient(tx.config)
 	tx.SkillVersion = NewSkillVersionClient(tx.config)
 	tx.StepV2 = NewStepV2Client(tx.config)
+	tx.SupplierCandidate = NewSupplierCandidateClient(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)
 	tx.TaskDeadLetter = NewTaskDeadLetterClient(tx.config)
 	tx.TaskPlan = NewTaskPlanClient(tx.config)

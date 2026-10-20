@@ -297,6 +297,10 @@ export function useChatWorkspace() {
     onReconnectHydrate: async (sessionId) => {
       await activityStore.fetchSessionHistory(sessionId);
     },
+    onUpstreamUserMessageDropped: (sessionId, requestId) => {
+      activityStore.removeTask(requestId);
+      void activityStore.fetchSessionHistory(sessionId).catch(() => undefined);
+    },
   });
 
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);

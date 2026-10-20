@@ -58,8 +58,8 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     return stopGeneration(sessionId);
   }
 
-  async function enqueue(sessionId: string, content: string) {
-    return enqueueMessage(sessionId, content);
+  async function enqueue(sessionId: string, content: string, requestId?: string) {
+    return enqueueMessage(sessionId, content, requestId);
   }
 
   async function fetchPendingMessages(sessionId: string): Promise<PendingMessage[]> {

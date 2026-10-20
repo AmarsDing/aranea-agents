@@ -672,37 +672,8 @@ func haSwitchCallback(lg loggateway.Logger, bus contract.MonitorBus, mode, stepI
 	}
 }
 
-func trpcModelFromCandidate(c HACandidateConfig, parentCfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
-	if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
-		if err := outboundguard.ValidateURL(baseURL); err != nil {
-			lg.Warn("HA 候选模型 URL 校验失败",
-				loggateway.StepID("provider.ha_candidate_url_blocked"),
-				loggateway.Str("candidate_name", c.Name),
-				loggateway.Str("base_url", baseURL),
-				loggateway.Err(err))
-			return nil, fmt.Errorf("HA candidate URL blocked: %w", err)
-		}
-	}
-	// Build a ProviderModelConfig from the candidate so it flows through the
-	// same buildProviderOptions pipeline as the primary model (rate-limit,
-	// variant, provider-specific options, etc.).
-	// 继承主模型的可靠性配置（Retry/CB/RateLimitRPM），确保候选模型
-	// 也有重试/熔断/限流保护，避免 HA 切换后候选模型因瞬时故障失败。
-	cfg := ProviderModelConfig{
-		ProviderType: strings.TrimSpace(c.ProviderType),
-		BaseURL:      strings.TrimSpace(c.BaseURL),
-		APIKey:       strings.TrimSpace(c.APIKey),
-		ModelAPI:     strings.TrimSpace(c.Name),
-		Retry:        parentCfg.Retry,
-		CB:           parentCfg.CB,
-		RateLimitRPM: parentCfg.RateLimitRPM,
-	}
-	providerName := MapProviderType(cfg.ProviderType)
-	opts := buildProviderOptions(cfg, rt, lg)
-	m, err := trpcprovider.Model(providerName, cfg.ModelAPI, opts...)
-	if err != nil {
-		lg.Error("HA candidate model 构建失败", loggateway.StepID("provider.ha_candidate_build_fail"), loggateway.Str("provider", providerName), loggateway.Str("model", cfg.ModelAPI), loggateway.Err(err))
-		return nil, err
-	}
-	return WrapModelWithMetrics(m, cfg.ProviderType, cfg.ModelAPI), nil
-}
+// Build a ProviderModelConfig from the candidate so it flows through the
+// same buildProviderOptions pipeline as the primary model (rate-limit,
+// variant, provider-specific options, etc.).
+// 继承主模型的可靠性配置（Retry/CB/RateLimitRPM），确保候选模型
+// 也有重试/熔断/限流保护，避免 HA 切换后候选模型因瞬时故障失败。

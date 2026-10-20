@@ -21,6 +21,7 @@ func TestSpiritMetrics_Registered(t *testing.T) {
 
 	// Counter increments — should not panic.
 	AgentFactoryCreated.Inc()
+	SpiritProbeStrikeTotal.Inc()
 	OrgFastDeptLeadTotal.WithLabelValues("skipped_high_confidence").Inc()
 	OrgFastDeptLeadTotal.WithLabelValues("staffing_asked").Inc()
 	GraphReplanTotal.WithLabelValues("retry").Inc()

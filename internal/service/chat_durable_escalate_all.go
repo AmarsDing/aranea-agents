@@ -27,7 +27,7 @@ func (s *ChatService) EscalateAllActiveToDurable(ctx context.Context) int {
 	if s == nil || s.orch == nil || s.orch.chJobs().SessionRuns == nil {
 		return 0
 	}
-	runs, err := s.orch.chJobs().SessionRuns.ListByPhase(ctx, biz.SessionRunPhaseInteractive, shutdownEscalateBatchLimit)
+	runs, err := s.orch.chJobs().SessionRuns.ListByPhase(ctx, biz.PhaseInteractive, shutdownEscalateBatchLimit)
 	if err != nil {
 		s.lg.Warn("shutdown durable escalate: list interactive runs failed",
 			loggateway.StepID("chat.durable_escalate_all"),

@@ -20,6 +20,9 @@ const (
 	// WebhookEventTest is the synthetic event sent by the manual "test send"
 	// action (TestWebhook RPC); it is never produced by run lifecycle.
 	WebhookEventTest = "webhook.test"
+	// MVP commerce → NovaTrader intel only (never trading).
+	WebhookEventOpportunityCreated = "opportunity.created"
+	WebhookEventThemeDigest        = "theme.digest"
 )
 
 // WebhookConfig is one outbound callback target for run lifecycle events.

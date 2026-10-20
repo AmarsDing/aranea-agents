@@ -3,10 +3,27 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"time"
 )
+
+// ErrTurnRangeUnavailable tells ListMessagesAfterTurn to fall back to a full scan.
+var ErrTurnRangeUnavailable = errors.New("activity turn range lister unavailable")
+
+// ActivityTurnRangeResult is a range-bounded activity load for compression (COMPRESS-IO).
+// TurnSeq maps turn_id -> turns_v2.seq used as ChatMessage.TurnNumber.
+type ActivityTurnRangeResult struct {
+	Entries []ActivityEntry
+	TurnSeq map[string]int
+}
+
+// ActivityTurnRangeLister optionally loads activities for turns with seq > afterTurn
+// without relying solely on synthesized ordinals from a full chronology.
+type ActivityTurnRangeLister interface {
+	ListBySessionAfterTurnNumber(ctx context.Context, sessionID string, afterTurn int) (ActivityTurnRangeResult, error)
+}
 
 // ActivityMessageReader adapts ActivityLister to the SessionMessageUsecase's
 // message listing API, allowing the messages table to be deleted while keeping
@@ -59,20 +76,58 @@ func (r *ActivityMessageReader) ListMessagesRecent(ctx context.Context, sessionI
 // Note: Activity doesn't have turn_number; this uses TurnID correlation.
 // For now, returns all messages (turn-based filtering is handled at the Activity level).
 func (r *ActivityMessageReader) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
-	// TECH-DEBT(COMPRESS-IO): 全量加载会话所有 Activity 再内存过滤/转换，
-	// afterTurn 未下推到存储层——长会话每次压缩软触发都全表读一次。
-	// 修复方向：ActivityLister 增加按 turn 范围/游标的分页查询（需 TurnID 单调
-	// 或可排序映射），或 ListBySession 内部加服务端过滤。见
-	// docs/development/memory/L0-compression.development.md 差距清单 G6。
+	// Prefer turns_v2.seq-aligned load when ActivityTurnRangeLister is available (COMPRESS-IO).
+	if afterTurn > 0 {
+		if trl, ok := r.activities.(ActivityTurnRangeLister); ok {
+			res, err := trl.ListBySessionAfterTurnNumber(ctx, sessionID, afterTurn)
+			if err == nil {
+				msgs := activitiesToChatMessages(res.Entries)
+				if len(res.TurnSeq) > 0 {
+					for i := range msgs {
+						if n, ok := res.TurnSeq[msgs[i].TurnID]; ok {
+							msgs[i].TurnNumber = n
+						}
+					}
+				}
+				return msgs, nil
+			}
+			if !errors.Is(err, ErrTurnRangeUnavailable) {
+				return nil, err
+			}
+			// fall through to full scan
+		}
+	}
+	// Fallback: full session load + synthesizeTurnNumbers (stable ordinals).
 	acts, err := r.activities.ListBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	return activitiesToChatMessages(acts), nil
+	msgs := activitiesToChatMessages(acts)
+	if afterTurn <= 0 {
+		return msgs, nil
+	}
+	out := make([]ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if m.TurnNumber > afterTurn {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // ListMessagesByIDs returns messages matching the given IDs.
 func (r *ActivityMessageReader) ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// W1-5: prefer primary-key fetch when the lister supports it (avoids full session scan).
+	if idl, ok := r.activities.(ActivityIDLister); ok {
+		acts, err := idl.ListByIDs(ctx, sessionID, ids)
+		if err != nil {
+			return nil, err
+		}
+		return activitiesToChatMessages(acts), nil
+	}
 	acts, err := r.activities.ListBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err

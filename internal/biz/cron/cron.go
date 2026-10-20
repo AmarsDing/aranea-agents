@@ -313,10 +313,10 @@ func ValidateTaskConfig(configJSON string) error {
 			return apierror.BadRequest("CRON", "config_json target_type must be a string")
 		}
 		switch s {
-		case "agent", "team", "model_registry_sync":
-			// valid
+		case "agent", "team", "model_registry_sync", "mvp_rss_ingest":
+			// valid — mvp_rss_ingest pulls RSS into Content Inbox (ops path)
 		default:
-			return apierror.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync")
+			return apierror.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync, mvp_rss_ingest")
 		}
 	}
 	// Validate cron_expression field if present

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -46,6 +47,37 @@ func (r *stepV2Repo) ListStepsByTurn(ctx context.Context, turnID string) ([]biz.
 	}
 	rows, err := r.data.RW().Read(ctx).StepV2.Query().
 		Where(stepv2.TurnIDEQ(turnID)).
+		Order(ent.Asc(stepv2.FieldSeq)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "STEP_V2")
+	}
+	return entStepsV2ToBiz(rows), nil
+}
+
+// ListStepsByTurnIDs implements biz.StepTurnBatchLister (COMPRESS-IO AfterTurn).
+func (r *stepV2Repo) ListStepsByTurnIDs(ctx context.Context, turnIDs []string) ([]biz.Step, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("step v2 repo: database not configured")
+	}
+	ids := make([]string, 0, len(turnIDs))
+	seen := make(map[string]struct{}, len(turnIDs))
+	for _, id := range turnIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.TurnIDIn(ids...)).
 		Order(ent.Asc(stepv2.FieldSeq)).
 		All(ctx)
 	if err != nil {

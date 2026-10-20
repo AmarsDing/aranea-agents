@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/runtime"
+	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -213,6 +214,15 @@ func NewChatUsecaseFromDeps(
 		lg,
 	)
 	uc.StartBackgroundGoroutines()
+	uc.SetSessionTerminalCleanup(deferred.ClearActivated)
+	// Defense-in-depth: drop idle deferred activations that never hit a terminal status.
+	safego.Go(context.Background(), "deferred-activated-ttl", func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			_ = deferred.SweepStaleActivated(0)
+		}
+	})
 	return uc
 }
 

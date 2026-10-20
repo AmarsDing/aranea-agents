@@ -24,7 +24,7 @@ func (s *stubCacheHitUsageRepo) CacheHitRatioStats(_ context.Context, window tim
 }
 
 func newCacheHitUsageService(repo *stubCacheHitUsageRepo) *UsageService {
-	return NewUsageService(usage.NewUsecase(repo, nil))
+	return NewUsageService(usage.NewUsecase(repo, nil), nil)
 }
 
 // window_hours clamping: 0/negative -> 1h default (alert window), >168 -> 168h,
