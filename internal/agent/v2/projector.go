@@ -1091,15 +1091,18 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, stepID string, res
 	p.completeStep(ctx, stepID, "", result)
 }
 
-// OnTurnEnd emits turn.completed and, for root turns, task.completed.
+// OnTurnEnd emits turn.completed and, for root turns, the terminal task event.
 //
 // The canceled flag controls the terminal status applied to the Turn and Task
 // entities. When false (normal completion) the entities are marked Completed;
-// when true (user-initiated cancellation) they are marked Cancelled. The event
-// kind (TurnCompletedEvent / TaskCompletedEvent) is reused in both cases — it
-// represents "lifecycle ended" while the entity.Status field carries the
-// actual terminal state. This avoids introducing a parallel Cancelled event
-// type and keeps the frontend terminal-event handling uniform.
+// when true (user-initiated cancellation) they are marked Cancelled. The Turn
+// event kind (TurnCompletedEvent) is reused in both cases — it represents
+// "lifecycle ended" while Turn.Status carries the actual terminal state.
+// 2026-10-20 task.cancelled 补实现：Task 终态事件不再复用 task.completed
+// 表达取消——Status=Cancelled 时发布专用 TaskCancelledEvent（kind
+// "task.cancelled"），completed/failed 仍走 TaskCompletedEvent（见
+// publishTerminalTask）。前端可据此对取消做针对性 UI（左侧列表标记、
+// sending 复位），无需对 completed 做 Status 二值分支。
 //
 // System-push continuation turns (meta.ParentTaskID != "") emit turn.completed
 // only — the original Task's state machine is owned by the original user-input
@@ -1162,7 +1165,7 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 			// parent task（它在 root turn 的 projector 中）。terminalTask 回读
 			// DB 保留 CreatedAt/Seq/UserMessage。
 			task := p.terminalTask(ctx, meta.ParentTaskID, meta.SpiritSessionID, taskStatus, now)
-			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
+			p.publishTerminalTask(ctx, task)
 			if p.factory != nil {
 				p.factory.ClearTeamDispatch(meta.ParentTaskID)
 			}
@@ -1194,15 +1197,27 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 		}
 		p.mu.Unlock()
 		if tok {
-			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(*task))
+			p.publishTerminalTask(ctx, *task)
 		} else if canceled {
 			// Cancelled root turn whose task is not in activeTask (e.g. team
 			// dispatch path where the task was already removed). terminalTask
 			// 回读 DB 保留 CreatedAt/Seq/UserMessage。
 			task := p.terminalTask(ctx, meta.TaskID, meta.SpiritSessionID, taskStatus, now)
-			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
+			p.seq.Publish(ctx, biz.NewTaskCancelledEvent(task))
 		}
 	}
+}
+
+// publishTerminalTask publishes the terminal task event, picking the dedicated
+// TaskCancelledEvent kind when the task ended cancelled (2026-10-20 补实现：
+// 取消终态不再复用 task.completed 表达）。completed/failed（ProjectTurnFailure
+// 定案）仍发布 TaskCompletedEvent，与历史兼容。
+func (p *ActivityProjector) publishTerminalTask(ctx context.Context, task biz.Task) {
+	if task.Status == biz.TaskStatusCancelled {
+		p.seq.Publish(ctx, biz.NewTaskCancelledEvent(task))
+		return
+	}
+	p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
 }
 
 // terminalTask constructs the task.completed payload for paths where the task

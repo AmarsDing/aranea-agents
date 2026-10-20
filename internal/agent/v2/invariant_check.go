@@ -130,6 +130,8 @@ func (c *invariantChecker) check(e biz.Event) {
 		c.terminalLocked(sess, sess.tasks, "task", ev.Task.ID, kind)
 	case *biz.TaskFailedEvent:
 		c.terminalLocked(sess, sess.tasks, "task", ev.Task.ID, kind)
+	case *biz.TaskCancelledEvent:
+		c.terminalLocked(sess, sess.tasks, "task", ev.Task.ID, kind)
 
 	// --- Turn ---
 	case *biz.TurnStartedEvent:

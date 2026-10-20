@@ -28,9 +28,12 @@ export function useChatEventRouter(store: Store) {
           store.hydratedTaskIds.add((p.Task as { ID: string }).ID);
         }
         break;
+      // 2026-10-20: 取消终态由专用 kind 承载（后端 projector 不再复用
+      // task.completed 表达取消），与终态事件同路径 upsert。
       case 'task.updated':
       case 'task.completed':
       case 'task.failed':
+      case 'task.cancelled':
         if (p.Task) store.upsertTask(p.Task as never);
         break;
 

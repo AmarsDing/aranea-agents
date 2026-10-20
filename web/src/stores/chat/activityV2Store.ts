@@ -54,6 +54,17 @@ export interface HydrationError {
   message: string; // error message
 }
 
+// P1-1 (2026-10-20): contract_mismatch advisory 记录（交付物契约校验不匹配
+// 的黄色提示），由 PlanBoardCard 渲染。后端经 system.notice 发布（Meta 含
+// plan_board_id / warnings），为非持久化事件——Map 仅内存态，断线重连后
+// 依赖下一次 dag_run 校验重新发布。
+export interface ContractMismatch {
+  sessionId: string;
+  message: string;
+  warnings: string[];
+  at: number;
+}
+
 /**
  * useChatActivityStore holds all v2 chat entities in flat Maps keyed by ID.
  * Entities are keyed by their own ID; associations are via task_id / turn_id etc.
@@ -76,6 +87,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   // visibility) but is hidden from the chat stream via noticeFilter.
   const recallHitsByTurn = ref(new Map<string, MemoryRecallHit[]>());
   const knowledgeChunksByTurn = ref(new Map<string, KnowledgeRecallChunk[]>());
+  // P1-1: contract_mismatch advisory keyed by PlanBoardID（见 ContractMismatch 注释）。
+  const contractMismatchesByBoard = ref(new Map<string, ContractMismatch>());
 
   // P2-07: track sub-resource fetch failures so the UI can distinguish
   // "no data" from "failed to load" and show a partial/stale indicator.
@@ -604,6 +617,25 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Bulk operations ===
 
+  // P1-1: record a contract_mismatch advisory from system.notice. Meta format:
+  // { plan_board_id: string, warnings: string[] }（见 plan_executor.go 发布处）。
+  // 无 plan_board_id 的畸形帧丢弃（fail-closed：横幅必须能定位到具体计划板）。
+  function noteContractMismatch(sessionId: string, meta: Record<string, unknown>) {
+    const planBoardId = typeof meta.plan_board_id === 'string' ? meta.plan_board_id.trim() : '';
+    if (!planBoardId) return;
+    const warnings = Array.isArray(meta.warnings) ? meta.warnings.map((w) => String(w)) : [];
+    contractMismatchesByBoard.value.set(planBoardId, {
+      sessionId,
+      message: typeof meta.message === 'string' ? meta.message : '',
+      warnings,
+      at: Date.now(),
+    });
+  }
+
+  function getContractMismatch(planBoardId: string): ContractMismatch | undefined {
+    return contractMismatchesByBoard.value.get(planBoardId);
+  }
+
   function clearSession(spiritSessionId: string) {
     for (const [id, t] of tasks.value) {
       if (t.SessionID === spiritSessionId) {
@@ -640,6 +672,9 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const [id, pb] of planBoards.value) {
       if (pb.SessionID === spiritSessionId) planBoards.value.delete(id);
     }
+    for (const [id, m] of contractMismatchesByBoard.value) {
+      if (m.sessionId === spiritSessionId) contractMismatchesByBoard.value.delete(id);
+    }
     for (const [id, ps] of planSteps.value) {
       if (ps.TaskID && tasks.value.has(ps.TaskID) === false) planSteps.value.delete(id);
     }
@@ -667,6 +702,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     graphNodes.value.clear();
     recallHitsByTurn.value.clear();
     knowledgeChunksByTurn.value.clear();
+    contractMismatchesByBoard.value.clear();
     loadedMemberStepSessions.value.clear();
     hydratedTaskIds.value.clear();
     taskHydration.value.clear();
@@ -844,6 +880,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getGraphStageNodes,
     getTeamStageTeamRuns,
     getTeamRunMemberSessions,
+    noteContractMismatch,
+    getContractMismatch,
     clearSession,
     clearAll,
     fetchSessionHistory,

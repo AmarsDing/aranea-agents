@@ -113,6 +113,17 @@ describe('useChatEventRouter', () => {
     expect(store.tasks.get('t1')?.Status).toBe('completed');
   });
 
+  // 2026-10-20: 取消终态由专用 kind 承载（后端不再复用 task.completed）。
+  it('handles task.cancelled as terminal upsert', () => {
+    store.upsertTask(mkTask({ ID: 't1', Version: 1, Status: 'running' }));
+    router.dispatch({
+      type: 'v2_event',
+      kind: 'task.cancelled',
+      payload: { Task: mkTask({ ID: 't1', Version: 2, Status: 'cancelled' }) },
+    });
+    expect(store.tasks.get('t1')?.Status).toBe('cancelled');
+  });
+
   it('ignores unknown event kinds', () => {
     router.dispatch({ type: 'v2_event', kind: 'unknown.kind' as never, payload: {} as never });
     expect(store.tasks.size).toBe(0);

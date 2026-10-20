@@ -115,7 +115,8 @@ export function useChatV2EventHandlers(deps: {
       case 'task.completed':
       case 'step.failed':
       case 'turn.failed':
-      case 'task.failed': {
+      case 'task.failed':
+      case 'task.cancelled': {
         const sid = String(envelope.session_id ?? '').trim() || deps.selectedSessionId();
         if (sid) llmRetryStore.clearTransient(sid);
         break;
@@ -123,9 +124,12 @@ export function useChatV2EventHandlers(deps: {
     }
 
     // Robust fallback: when the backend completes a turn but the terminal
-    // run_status is missing/late, task.completed/failed still resets sending
-    // so the composer does not stay stuck on "停止生成".
-    if ((envelope.kind === 'task.completed' || envelope.kind === 'task.failed') && deps.sender.sending.value) {
+    // run_status is missing/late, task.completed/failed/cancelled still resets
+    // sending so the composer does not stay stuck on "停止生成".
+    if (
+      (envelope.kind === 'task.completed' || envelope.kind === 'task.failed' || envelope.kind === 'task.cancelled') &&
+      deps.sender.sending.value
+    ) {
       deps.sender.markSendingDone();
     }
   }
@@ -217,6 +221,12 @@ export function useChatV2EventHandlers(deps: {
     }
     if (noticeType === 'llm_stall') {
       llmRetryStore.noteAlert(sid, 'stall', meta);
+    }
+    // contract_mismatch（2026-10-20 P1-1）：dag_run 启动时 plan_executor 对
+    // 交付物契约的 advisory 校验结果，非阻断；由 PlanBoardCard 渲染黄色横幅。
+    // ephemeral notice——不入库、不 replay（front-end 仅按 plan_board_id 暂存）。
+    if (noticeType === 'contract_mismatch') {
+      activityStore.noteContractMismatch(sid, meta);
     }
     spiritStore.handleSystemNotice(noticeType, meta);
     deps.contextualLoading.onSpiritNoticeType(noticeType);

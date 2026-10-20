@@ -720,7 +720,8 @@ func TestOnTurnEndEnhancedCanceledWithStuckTool(t *testing.T) {
 
 	p.OnTurnEndEnhanced(context.Background(), p.meta, nil, true)
 
-	// Expect 3 events: StepFailedEvent (stuck) + TurnCompletedEvent + TaskCompletedEvent
+	// Expect 3 events: StepFailedEvent (stuck) + TurnCompletedEvent + TaskCancelledEvent
+	// （2026-10-20：取消终态改走专用 task.cancelled kind）
 	if len(capture.events) != 3 {
 		t.Fatalf("expected 3 events, got %d", len(capture.events))
 	}
@@ -732,9 +733,9 @@ func TestOnTurnEndEnhancedCanceledWithStuckTool(t *testing.T) {
 	if _, ok := capture.events[1].(*biz.TurnCompletedEvent); !ok {
 		t.Fatalf("expected TurnCompletedEvent, got %T", capture.events[1])
 	}
-	// Event[2]: task completed
-	if _, ok := capture.events[2].(*biz.TaskCompletedEvent); !ok {
-		t.Fatalf("expected TaskCompletedEvent, got %T", capture.events[2])
+	// Event[2]: task cancelled（专用 kind）
+	if _, ok := capture.events[2].(*biz.TaskCancelledEvent); !ok {
+		t.Fatalf("expected TaskCancelledEvent, got %T", capture.events[2])
 	}
 }
 
@@ -777,10 +778,12 @@ func TestEmitSystemEvent(t *testing.T) {
 	}
 }
 
-// === 2026-07-25 回归：synthesis/cancelled 兜底路径的 task.completed 必须保留 ===
+// === 2026-07-25 回归：synthesis/cancelled 兜底路径的终态 task 事件必须保留 ===
 // 父 Task 的 CreatedAt/Seq/UserMessage。最小 Task 对象的零值 CreatedAt 序列化为
 // "0001-01-01T00:00:00Z"（truthy），使前端 merge 守卫 (t.CreatedAt || ex.CreatedAt)
 // 失效，任务创建时间被覆盖显示为 "01-01 08:05"。
+// 2026-10-20：取消终态改由专用 TaskCancelledEvent 承载（不再复用
+// TaskCompletedEvent kind），兜底路径断言相应调整。
 
 type stubTaskV2Reader struct {
 	task biz.Task
@@ -821,6 +824,15 @@ func synthesisProjector(capture *capturingSequencer, reader biz.TaskV2Reader) *A
 func lastTaskCompleted(events []biz.Event) *biz.TaskCompletedEvent {
 	for i := len(events) - 1; i >= 0; i-- {
 		if ev, ok := events[i].(*biz.TaskCompletedEvent); ok {
+			return ev
+		}
+	}
+	return nil
+}
+
+func lastTaskCancelled(events []biz.Event) *biz.TaskCancelledEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if ev, ok := events[i].(*biz.TaskCancelledEvent); ok {
 			return ev
 		}
 	}
@@ -911,9 +923,9 @@ func TestOnTurnEndCancelledFallbackPreservesTaskFields(t *testing.T) {
 	}
 	p.OnTurnEnd(context.Background(), meta, true)
 
-	ev := lastTaskCompleted(capture.events)
+	ev := lastTaskCancelled(capture.events)
 	if ev == nil {
-		t.Fatal("expected TaskCompletedEvent for cancelled fallback")
+		t.Fatal("expected TaskCancelledEvent for cancelled fallback")
 	}
 	if ev.Task.Status != biz.TaskStatusCancelled {
 		t.Errorf("Status = %s, want cancelled", ev.Task.Status)

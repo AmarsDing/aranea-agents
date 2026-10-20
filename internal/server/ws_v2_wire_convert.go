@@ -317,6 +317,8 @@ func v2EventPayloadToWire(e biz.Event) (any, error) {
 		return taskEventWire{Task: taskToWire(ev.Task)}, nil
 	case *biz.TaskFailedEvent:
 		return taskEventWire{Task: taskToWire(ev.Task)}, nil
+	case *biz.TaskCancelledEvent:
+		return taskEventWire{Task: taskToWire(ev.Task)}, nil
 	// Turn
 	case *biz.TurnStartedEvent:
 		return turnEventWire{TurnID: ev.TurnID, Turn: turnToWire(ev.Turn)}, nil

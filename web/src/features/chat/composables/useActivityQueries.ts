@@ -9,6 +9,7 @@
 // The store remains the single source of truth; this composable is a thin
 // accessor that keeps the `useXxxStore()` call outside of `components/`.
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import type { ContractMismatch } from '../../../stores/chat/activityV2Store';
 import type { MemoryRecallHit } from '../memoryRecall';
 import type {
   Task,
@@ -80,6 +81,10 @@ export function useActivityQueries() {
     // --- PlanBoard-scoped ---
     getPlanBoardSteps(planBoardId: string): PlanStep[] {
       return store.getPlanBoardSteps(planBoardId);
+    },
+    /** P1-1: plan_board 交付物契约校验的 advisory 不匹配提示（无则 undefined）。 */
+    getContractMismatch(planBoardId: string): ContractMismatch | undefined {
+      return store.getContractMismatch(planBoardId);
     },
 
     // --- GraphStage-scoped ---

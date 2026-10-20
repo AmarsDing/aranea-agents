@@ -59,6 +59,17 @@ func NewTaskFailedEvent(task Task) *TaskFailedEvent {
 	}
 }
 
+// NewTaskCancelledEvent constructs a TaskCancelledEvent from a Task.
+// Task.Status 调用方须已置为 TaskStatusCancelled。
+func NewTaskCancelledEvent(task Task) *TaskCancelledEvent {
+	return &TaskCancelledEvent{
+		taskID:          task.ID,
+		spiritSessionID: task.SessionID,
+		Task:            task,
+		occurredAt:      time.Now(),
+	}
+}
+
 // === Turn event factories ===
 
 // NewTurnStartedEvent constructs a TurnStartedEvent from a Turn.
@@ -331,6 +342,7 @@ func (e *TaskCreatedEvent) EntityID() string   { return e.Task.ID }
 func (e *TaskUpdatedEvent) EntityID() string   { return e.Task.ID }
 func (e *TaskCompletedEvent) EntityID() string { return e.Task.ID }
 func (e *TaskFailedEvent) EntityID() string    { return e.Task.ID }
+func (e *TaskCancelledEvent) EntityID() string { return e.Task.ID }
 
 func (e *TurnStartedEvent) EntityID() string   { return e.TurnID }
 func (e *TurnCompletedEvent) EntityID() string { return e.TurnID }

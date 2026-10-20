@@ -752,6 +752,9 @@ export default {
       // 计划面板（PlanBoard）
       planBoardTitle: '执行计划',
       failedLabel: '失败',
+      // 交付物契约校验 advisory 横幅（contract_mismatch system.notice，2026-10-20 P1-1）
+      contractMismatchTitle: '交付物契约不匹配',
+      contractMismatchMore: '…另有 {count} 项不匹配',
       // Graph 面板
       graphStageTitle: '流程图',
       graphStageEmpty: '暂无节点',

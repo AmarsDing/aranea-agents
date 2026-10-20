@@ -17,8 +17,8 @@ import (
 // Implementations must be safe for concurrent use.
 type RepoSet interface {
 	UpsertTask(ctx context.Context, t biz.Task) (biz.Task, error)
-	// CompleteTaskTerminal persists task.completed / task.failed (L3,
-	// 2026-07-22). Terminal events are monotonic: version is bumped from the
+	// CompleteTaskTerminal persists task.completed / task.failed / task.cancelled
+	// (L3, 2026-07-22; task.cancelled 专用 kind 于 2026-10-20 补入）。Terminal events are monotonic: version is bumped from the
 	// DB value, so a stale event Version (e.g. the synthesis turn's hardcoded
 	// Version=2 after a resume CAS pushed it higher) cannot strand the task
 	// in running. Already-terminal tasks are not overwritten.
@@ -82,6 +82,11 @@ func describePersist(e biz.Event) *persistDescriptor {
 		// task 永远 running。
 		return &persistDescriptor{EntityKindTask, PersistOpCompleteTaskTerminal, ev.Task}
 	case *biz.TaskFailedEvent:
+		return &persistDescriptor{EntityKindTask, PersistOpCompleteTaskTerminal, ev.Task}
+	case *biz.TaskCancelledEvent:
+		// 2026-10-20 task.cancelled 专用 kind：与 completed/failed 同走
+		// CompleteTaskTerminal（终态单调持久化），否则取消的任务在 DB 滞留
+		// running。
 		return &persistDescriptor{EntityKindTask, PersistOpCompleteTaskTerminal, ev.Task}
 
 	case *biz.TurnStartedEvent:

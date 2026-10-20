@@ -739,6 +739,9 @@ export default {
       // Plan board
       planBoardTitle: 'Plan',
       failedLabel: 'failed',
+      // Deliverable-contract advisory banner (contract_mismatch system.notice, 2026-10-20 P1-1)
+      contractMismatchTitle: 'Deliverable contract mismatch',
+      contractMismatchMore: '…and {count} more mismatches',
       // Graph stage
       graphStageTitle: 'Flow',
       graphStageEmpty: 'No nodes',

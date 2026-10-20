@@ -36,6 +36,7 @@ export interface Task {
   Status: TaskStatus;
   Seq: number;
   Version: number;
+  WorkspaceID?: string;
   CreatedAt: string;
   UpdatedAt: string;
   CompletedAt: string | null;
@@ -81,6 +82,7 @@ export interface Step {
   IsFinal: boolean;
   StartedAt: string;
   CompletedAt: string | null;
+  UpdatedAt?: string;
 }
 
 export interface MemberInfo {
@@ -151,6 +153,7 @@ export interface TeamRun {
   Seq: number;
   Version: number;
   Error: string;
+  HeartbeatAt?: string | null;
 }
 
 export interface MemberSession {
@@ -288,6 +291,7 @@ export type EventKind =
   | 'task.updated'
   | 'task.completed'
   | 'task.failed'
+  | 'task.cancelled'
   | 'turn.started'
   | 'turn.completed'
   | 'turn.failed'
@@ -349,6 +353,7 @@ export interface StepStreamingPayload {
   StepID: string;
   DeltaField: string;
   DeltaChunk: string;
+  DeltaSeq?: number;
 }
 export interface StepUpdatedPayload {
   Step: Step;
@@ -387,6 +392,7 @@ export interface RunStatusEventPayload {
   RunID: string;
   Status: string;
   Meta: Record<string, unknown> | null;
+  Seq?: number;
 }
 export interface HeartbeatEventPayload {
   Message: string;
@@ -396,6 +402,7 @@ export interface SystemNoticeEventPayload {
   NoticeType: string;
   Message: string;
   Meta: Record<string, unknown> | null;
+  Seq?: number;
 }
 
 // Design 69 Phase 3: skill.catalog payload. NOTE: unlike the PascalCase

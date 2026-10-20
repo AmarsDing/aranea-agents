@@ -19,6 +19,23 @@
       </div>
     </div>
     <div v-show="!collapsed" class="plan-body">
+      <!-- P1-1 (2026-10-20): contract_mismatch advisory 横幅——后端在 dag_run
+        启动时对交付物契约做 advisory 校验（ValidatePlanStepContracts），
+        结果经 system.notice 推送到此。非阻断：仅提示，仍可继续执行。 -->
+      <div v-if="mismatch" class="plan-contract-warning" role="alert">
+        <q-icon name="warning_amber" size="16px" class="plan-contract-warning__icon" />
+        <div class="plan-contract-warning__main">
+          <div class="plan-contract-warning__title">
+            {{ mismatch.message || t('chat.v2.contractMismatchTitle') }}
+          </div>
+          <ul v-if="mismatch.warnings.length > 0" class="plan-contract-warning__list">
+            <li v-for="(w, i) in mismatch.warnings.slice(0, 5)" :key="i">{{ w }}</li>
+            <li v-if="mismatch.warnings.length > 5" class="plan-contract-warning__more">
+              {{ t('chat.v2.contractMismatchMore', { count: mismatch.warnings.length - 5 }) }}
+            </li>
+          </ul>
+        </div>
+      </div>
       <ol v-if="steps.length > 0" class="plan-step-list">
         <li v-for="(step, idx) in steps" :key="step.ID" :class="['plan-step-item', `plan-step-item--${step.Status}`]">
           <div class="plan-step-item__index">{{ idx + 1 }}</div>
@@ -62,6 +79,9 @@ const store = useActivityQueries();
 
 // 从 store.getPlanBoardSteps 查询辅助获取最新 steps（独立 Map，反映最新状态）
 const steps = computed(() => store.getPlanBoardSteps(props.planBoard.ID));
+
+// P1-1: 交付物契约校验 advisory（contract_mismatch system.notice → store）。
+const mismatch = computed(() => store.getContractMismatch(props.planBoard.ID));
 
 // 折叠状态：默认展开。用户手动操作后 userToggled=true，不再自动变更。
 const collapsed = ref(false);
@@ -195,6 +215,46 @@ function assigneeTooltip(step: PlanStep): string {
 
 .plan-body
   padding: 8px 12px
+
+.plan-contract-warning
+  display: flex
+  align-items: flex-start
+  gap: 8px
+  padding: 8px 10px
+  margin-bottom: 8px
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--glass-border))
+  border-left-width: 3px
+  border-radius: 6px
+  background: var(--color-warning-soft)
+
+  &__icon
+    color: var(--color-warning)
+    margin-top: 1px
+
+  &__main
+    flex: 1
+    min-width: 0
+
+  &__title
+    font-size: 12px
+    font-weight: 600
+    color: var(--color-warning)
+    line-height: 1.4
+
+  &__list
+    margin: 4px 0 0
+    padding-left: 16px
+    font-size: 12px
+    color: var(--color-text-secondary)
+    line-height: 1.5
+
+    li
+      word-break: break-word
+
+  &__more
+    list-style: none
+    margin-left: -16px
+    opacity: 0.8
 
 .plan-step-list
   list-style: none

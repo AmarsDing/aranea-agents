@@ -917,11 +917,18 @@ func (s *Session) routeEvent(e biz.Event) {
 		if entry, ok := reg.CompleteTask(s.sessionID, sid, ev.TaskID()); ok {
 			s.handleDelegationTerminal(entry, biz.TaskStatusFailed, sid)
 		}
+	case *biz.TaskCancelledEvent:
+		// 2026-10-20 task.cancelled 专用 kind（projector 不再复用
+		// task.completed 表达取消终态），委派口播照常走 cancelled 分支。
+		if entry, ok := reg.CompleteTask(s.sessionID, sid, ev.TaskID()); ok {
+			s.handleDelegationTerminal(entry, biz.TaskStatusCancelled, sid)
+		}
 	}
 }
 
 // handleDelegationTerminal 委派任务终态：组织口播文本并入队/播报（K5 双轨）。
-// TaskCompletedEvent 含 cancelled（Task.Status 区分，§15.2 R9）。
+// 取消终态自 2026-10-20 起由专用 TaskCancelledEvent 承载（kind
+// "task.cancelled"），此前复用 TaskCompletedEvent 并按 Task.Status 区分（§15.2 R9）。
 func (s *Session) handleDelegationTerminal(entry DelegationEntry, status biz.TaskStatus, spiritSessionID string) {
 	var text string
 	switch status {

@@ -732,3 +732,50 @@ describe('hydrateTask', () => {
     expect(s.hydratedTaskIds.has('t-9')).toBe(true);
   });
 });
+
+// P1-1 (2026-10-20): contract_mismatch advisory（交付物契约校验不匹配）——
+// system.notice 事件经 noteContractMismatch 入暂存 Map，PlanBoardCard 渲染
+// 黄色横幅；清理语义与 session 生命周期一致（clearSession/clearAll）。
+describe('contract_mismatch advisory (P1-1)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    clearAllStepLiveText();
+  });
+
+  it('noteContractMismatch records by plan_board_id with warnings', () => {
+    const s = useChatActivityStore();
+    s.noteContractMismatch('spirit-1', {
+      plan_board_id: 'pb-1',
+      warnings: ['report.docx 缺少交付声明', 'summary.md 类型不匹配'],
+      message: '交付物契约校验发现 2 处不匹配',
+    });
+    const m = s.getContractMismatch('pb-1');
+    expect(m).toBeDefined();
+    expect(m?.warnings).toHaveLength(2);
+    expect(m?.message).toContain('2 处不匹配');
+    expect(s.getContractMismatch('pb-404')).toBeUndefined();
+  });
+
+  it('noteContractMismatch drops frames without plan_board_id', () => {
+    const s = useChatActivityStore();
+    s.noteContractMismatch('spirit-1', { warnings: ['x'] });
+    s.noteContractMismatch('spirit-1', {});
+    expect(s.getContractMismatch('pb-1')).toBeUndefined();
+  });
+
+  it('clearSession removes mismatches of that session only', () => {
+    const s = useChatActivityStore();
+    s.noteContractMismatch('spirit-1', { plan_board_id: 'pb-1', warnings: ['w1'] });
+    s.noteContractMismatch('spirit-2', { plan_board_id: 'pb-2', warnings: ['w2'] });
+    s.clearSession('spirit-1');
+    expect(s.getContractMismatch('pb-1')).toBeUndefined();
+    expect(s.getContractMismatch('pb-2')).toBeDefined();
+  });
+
+  it('clearAll clears all mismatches', () => {
+    const s = useChatActivityStore();
+    s.noteContractMismatch('spirit-1', { plan_board_id: 'pb-1', warnings: ['w1'] });
+    s.clearAll();
+    expect(s.getContractMismatch('pb-1')).toBeUndefined();
+  });
+});

@@ -246,8 +246,8 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 	}
 	var lastTask biz.Task
 	var hasTask bool
-	// L3 (2026-07-22): terminal task events (task.completed incl. Status=
-	// Cancelled) persist via CompleteTaskTerminal into rs.terminal, while
+	// L3 (2026-07-22): terminal task events (task.completed / task.cancelled)
+	// persist via CompleteTaskTerminal into rs.terminal, while
 	// non-terminal states land in rs.tasks via UpsertTask. Scan both and pick
 	// the highest version (production CAS semantics).
 	for i := range rs.tasks {
@@ -276,16 +276,17 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 		t.Errorf("cancelled task Status = %q, want %q (version=%d)", lastTask.Status, biz.TaskStatusCancelled, lastTask.Version)
 	}
 
-	// Verify published events carry cancelled status.
+	// Verify published events carry cancelled status. task.cancelled 自
+	// 2026-10-20 起为专用 kind（不再复用 task.completed 表达取消）。
 	events := v2Bus.Events()
 	var turnCompletedEvent *biz.TurnCompletedEvent
-	var taskCompletedEvent *biz.TaskCompletedEvent
+	var taskCancelledEvent *biz.TaskCancelledEvent
 	for _, e := range events {
 		switch ev := e.(type) {
 		case *biz.TurnCompletedEvent:
 			turnCompletedEvent = ev
-		case *biz.TaskCompletedEvent:
-			taskCompletedEvent = ev
+		case *biz.TaskCancelledEvent:
+			taskCancelledEvent = ev
 		}
 	}
 	if turnCompletedEvent == nil {
@@ -295,11 +296,11 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 		t.Errorf("published TurnCompletedEvent.Turn.Status = %q, want %q",
 			turnCompletedEvent.Turn.Status, biz.TurnStatusCancelled)
 	}
-	if taskCompletedEvent == nil {
-		t.Fatalf("TaskCompletedEvent not published")
+	if taskCancelledEvent == nil {
+		t.Fatalf("TaskCancelledEvent not published")
 	}
-	if taskCompletedEvent.Task.Status != biz.TaskStatusCancelled {
-		t.Errorf("published TaskCompletedEvent.Task.Status = %q, want %q",
-			taskCompletedEvent.Task.Status, biz.TaskStatusCancelled)
+	if taskCancelledEvent.Task.Status != biz.TaskStatusCancelled {
+		t.Errorf("published TaskCancelledEvent.Task.Status = %q, want %q",
+			taskCancelledEvent.Task.Status, biz.TaskStatusCancelled)
 	}
 }

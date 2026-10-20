@@ -88,7 +88,11 @@ func IsCriticalDeliveryEvent(e Event) bool {
 		return IsResetRequiredRunStatus(ev.Status)
 	case *SystemNoticeEvent:
 		switch ev.NoticeType {
-		case "orchestration_completed", "orchestration_failed", "session_status_changed":
+		case "orchestration_completed", "orchestration_failed", "session_status_changed",
+			// team_summary 是团队汇总结果的唯一 WS 载体（teamRunWire 无
+			// summary 字段，outbox/REST 均不携带）：Informational 通道在
+			// 断线时丢弃后无法重放（2026-10-20 升级，P2 裁决）。
+			"team_summary":
 			return true
 		}
 	}
@@ -208,6 +212,24 @@ func (e *TaskFailedEvent) SpiritSessionID() string   { return e.spiritSessionID 
 func (e *TaskFailedEvent) TaskID() string            { return e.taskID }
 func (e *TaskFailedEvent) OccurredAt() time.Time     { return e.occurredAt }
 func (e *TaskFailedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+// TaskCancelledEvent 是 Task 的专用取消终态事件（kind "task.cancelled"）。
+// 早期实现复用 TaskCompletedEvent kind + Status=Cancelled 表达取消终态；
+// 2026-10-20 补实现：专用 kind 使前端无需对 completed 事件做 Status 二值
+// 分支，并与其他实体的专用取消终态（您 run_status.cancelled 等）保持一致。
+type TaskCancelledEvent struct {
+	taskID          string
+	spiritSessionID string
+	Task            Task
+	occurredAt      time.Time
+	deliverySeqCarrier
+}
+
+func (e *TaskCancelledEvent) EventKind() EventKind      { return EventKindTaskCancelled }
+func (e *TaskCancelledEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *TaskCancelledEvent) TaskID() string            { return e.taskID }
+func (e *TaskCancelledEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *TaskCancelledEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
 
 // === Turn 事件 ===
 
