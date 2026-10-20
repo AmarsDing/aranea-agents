@@ -36,6 +36,8 @@ type HAConfig struct {
 }
 
 // CacheConfig holds prompt-caching configuration for provider models.
+// For provider_type=="anthropic" rows, unset flags default to true
+// (ADR cache-anthropic-default-on); every other provider defaults to false.
 type CacheConfig struct {
 	SystemPrompt bool
 	Tools        bool
@@ -188,14 +190,31 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 	}
 	if c.CacheSystemPrompt != nil {
 		cfg.Cache.SystemPrompt = *c.CacheSystemPrompt
+	} else if isAnthropicProviderType(c.ProviderType) {
+		cfg.Cache.SystemPrompt = true
 	}
 	if c.CacheTools != nil {
 		cfg.Cache.Tools = *c.CacheTools
+	} else if isAnthropicProviderType(c.ProviderType) {
+		cfg.Cache.Tools = true
 	}
 	if c.CacheMessages != nil {
 		cfg.Cache.Messages = *c.CacheMessages
+	} else if isAnthropicProviderType(c.ProviderType) {
+		cfg.Cache.Messages = true
 	}
 	return cfg
+}
+
+// isAnthropicProviderType reports whether the catalog row targets the
+// Anthropic Messages API. Anthropic prompt caching (cache_breakpoints on
+// system/tools/messages) defaults ON for such rows when the flags are unset
+// (P1 cache-enable, ADR cache-anthropic-default-on, 2026-10-20): long
+// multi-turn prompts otherwise pay full input price every turn. Operators
+// can opt out per model via cache_system_prompt=false etc. — e.g. legacy
+// Claude 2.x endpoints that reject cache_control.
+func isAnthropicProviderType(pt string) bool {
+	return strings.EqualFold(strings.TrimSpace(pt), "anthropic")
 }
 
 // defaultRetryMaxAttempts returns the effective MaxAttempts value. When the

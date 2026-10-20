@@ -379,6 +379,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	turnStatus := "ok"
 	var turnErr error
 	var resultPromptTok, resultCompletionTok, resultCachedTok int
+	var resultCacheWriteTok, resultReasoningTok int
 	var resultLastRoundPromptTok, resultLastRoundCompletionTok int
 	var resultUsageSource string
 	var resultModelCallCount int
@@ -426,7 +427,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.FinishRoot(turnStatus)
 		endTurnSpan(traceBridge, turnErr)
 		o.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
-			resultPromptTok, resultCompletionTok, resultCachedTok, resultUsageSource, resultModelCallCount, time.Since(turnStart), turnErrMsg,
+			resultPromptTok, resultCompletionTok, resultCachedTok, resultCacheWriteTok, resultReasoningTok, resultUsageSource, resultModelCallCount, time.Since(turnStart), turnErrMsg,
 			resultFirstTokenMs, chatagent.ConfirmWaitMS(ctx))
 		if turnStatus != "ok" && resultPromptTok > 0 {
 			// Context patching uses the final round's tokens (window occupancy),
@@ -911,6 +912,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	resultPromptTok = persistResult.promptTok
 	resultCompletionTok = persistResult.completionTok
 	resultCachedTok = persistResult.cachedTok
+	resultCacheWriteTok = persistResult.cacheWriteTok
+	resultReasoningTok = persistResult.reasoningTok
 	resultLastRoundPromptTok = persistResult.lastRoundPromptTok
 	resultLastRoundCompletionTok = persistResult.lastRoundCompletionTok
 	resultUsageSource = persistResult.usageSource

@@ -305,6 +305,24 @@ func looksLikeDeepSeek(parts ...string) bool {
 	return false
 }
 
+// IsGenuineOpenAIProvider reports whether the catalog row's provider_type is
+// exactly "openai" — the genuine OpenAI API — as opposed to openai-COMPATIBLE
+// variants (deepseek/qwen/ollama/…) that merely share the wire protocol. Used
+// to gate OpenAI-proprietary request fields (prompt_cache_key) that strict
+// gateways may reject with 400 (P1 cache-key, 2026-10-20). Any resolution
+// failure returns false (no key = degraded caching, never broken requests).
+func IsGenuineOpenAIProvider(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string) bool {
+	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(model))
+	if err != nil {
+		return false
+	}
+	cfg, err := ResolveModelConfig(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(cfg.ProviderType, "openai")
+}
+
 func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) []trpcprovider.Option {
 	var opts []trpcprovider.Option
 

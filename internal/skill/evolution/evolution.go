@@ -228,8 +228,8 @@ func (m *meteringModel) GenerateContent(ctx context.Context, req *trpcmodel.Requ
 func (m *meteringModel) forward(ctx context.Context, in <-chan *trpcmodel.Response, out chan<- *trpcmodel.Response) {
 	defer close(out)
 	start := time.Now()
-	var prevPrompt, prevCompletion, prevCached int
-	var curPrompt, curCompletion, curCached int
+	var prevPrompt, prevCompletion, prevCached, prevWrite, prevReasoning int
+	var curPrompt, curCompletion, curCached, curWrite, curReasoning int
 	var apiErr string
 	for resp := range in {
 		if resp != nil {
@@ -237,19 +237,30 @@ func (m *meteringModel) forward(ctx context.Context, in <-chan *trpcmodel.Respon
 				apiErr = resp.Error.Message
 			}
 			if u := resp.Usage; u != nil {
-				if u.PromptTokens != curPrompt {
+				uIn, uOut, uCached, uWrite, uReasoning := provider.NormalizeUsageTokens(u)
+				if uIn != curPrompt {
 					prevPrompt += curPrompt
 					prevCompletion += curCompletion
 					prevCached += curCached
-					curPrompt = u.PromptTokens
-					curCompletion = u.CompletionTokens
-					curCached = u.PromptTokensDetails.CachedTokens
+					prevWrite += curWrite
+					prevReasoning += curReasoning
+					curPrompt = uIn
+					curCompletion = uOut
+					curCached = uCached
+					curWrite = uWrite
+					curReasoning = uReasoning
 				} else {
-					if u.CompletionTokens > curCompletion {
-						curCompletion = u.CompletionTokens
+					if uOut > curCompletion {
+						curCompletion = uOut
 					}
-					if u.PromptTokensDetails.CachedTokens > curCached {
-						curCached = u.PromptTokensDetails.CachedTokens
+					if uCached > curCached {
+						curCached = uCached
+					}
+					if uWrite > curWrite {
+						curWrite = uWrite
+					}
+					if uReasoning > curReasoning {
+						curReasoning = uReasoning
 					}
 				}
 			}
@@ -284,6 +295,8 @@ func (m *meteringModel) forward(ctx context.Context, in <-chan *trpcmodel.Respon
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
 		CachedTok:     prevCached + curCached,
+		CacheWriteTok: prevWrite + curWrite,
+		ReasoningTok:  prevReasoning + curReasoning,
 		UsageSource:   biz.UsageSourceResponse,
 		Latency:       time.Since(start),
 		ErrMsg:        apiErr,

@@ -57,16 +57,16 @@ type fallbackCallRecorder struct {
 	failModels map[string]error
 }
 
-func (r *fallbackCallRecorder) fn() func(context.Context, *http.Client, ProviderAPIConfig, string, []OpenAICompatMessage) (string, string, int, int, error) {
-	return func(_ context.Context, _ *http.Client, cfg ProviderAPIConfig, modelName string, _ []OpenAICompatMessage) (string, string, int, int, error) {
+func (r *fallbackCallRecorder) fn() func(context.Context, *http.Client, ProviderAPIConfig, string, []OpenAICompatMessage) (string, string, int, int, int, error) {
+	return func(_ context.Context, _ *http.Client, cfg ProviderAPIConfig, modelName string, _ []OpenAICompatMessage) (string, string, int, int, int, error) {
 		r.mu.Lock()
 		r.seq = append(r.seq, modelName)
 		r.cfgs = append(r.cfgs, cfg)
 		r.mu.Unlock()
 		if err, ok := r.failModels[modelName]; ok {
-			return "", "", 0, 0, err
+			return "", "", 0, 0, 0, err
 		}
-		return "ok-" + modelName, "", 3, 5, nil
+		return "ok-" + modelName, "", 3, 5, 0, nil
 	}
 }
 

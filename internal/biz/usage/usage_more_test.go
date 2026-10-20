@@ -37,8 +37,8 @@ func TestRecordTokenUsageEvent(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, got TokenUsageEvent) {
-				if got.UsageKind != "chat" {
-					t.Fatalf("expected UsageKind 'chat', got %q", got.UsageKind)
+				if got.UsageKind != KindUnknown {
+					t.Fatalf("expected UsageKind %q, got %q", KindUnknown, got.UsageKind)
 				}
 				if got.CallCount != 1 {
 					t.Fatalf("expected CallCount 1, got %d", got.CallCount)

@@ -60,6 +60,8 @@ const (
 	// usage.KindAux* (M83 LBG-6): spirit orchestration LLM calls.
 	UsageKindAuxPlannerDecompose = usage.KindAuxPlannerDecompose
 	UsageKindAuxAllocatorMatch   = usage.KindAuxAllocatorMatch
+	// UsageKindUnknown mirrors usage.KindUnknown (P0-3, 2026-10-20).
+	UsageKindUnknown = usage.KindUnknown
 	QuotaScopeGlobal             = usage.QuotaScopeGlobal
 	GlobalQuotaScopeID    = usage.GlobalQuotaScopeID
 	// MinCacheablePromptTokens mirrors usage.MinCacheablePromptTokens.

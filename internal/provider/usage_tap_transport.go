@@ -68,6 +68,19 @@ func (t *usageTapTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 }
 
+// UsageTapTransportIfNeeded wraps base with the DeepSeek cache-hit normalizer
+// when cfg may return DeepSeek-style usage fields; returns base unchanged
+// otherwise. Exported for side-channel aux call paths (llmcompat: intent /
+// title / planner / allocator / compress) that build their own models outside
+// the main provider chain — without the tap their cache-hit tokens stay
+// invisible and hit-ratio aggregates are systematically underestimated.
+func UsageTapTransportIfNeeded(cfg ProviderModelConfig, base http.RoundTripper) http.RoundTripper {
+	if !needsUsageTap(cfg) {
+		return base
+	}
+	return newUsageTapTransport(base)
+}
+
 // needsUsageTap reports whether the provider may return DeepSeek-style
 // cache-hit usage fields. Matches explicit variant, deepseek base URL, or a
 // deepseek model name routed through an OpenAI-compatible proxy.

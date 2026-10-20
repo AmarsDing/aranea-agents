@@ -502,7 +502,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if deferred, derr := r.mediator.DeferTeamRunSuccessIfHITL(ctx, graphExecID, &run); derr != nil {
 			r.lg.Warn("HITL defer 失败", loggateway.StepID("team.graph_runtime.hitl"), loggateway.Err(derr))
 		} else if deferred {
-			r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, result.CachedTok, ar.prov, ar.mod, ti.dialogMode, usageSource)
+			r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, result.CachedTok, result.CacheWriteTok, result.ReasoningTok, ar.prov, ar.mod, ti.dialogMode, usageSource)
 			if teamEmitter != nil {
 				teamEmitter.LogDone("team.run.finish", "团队任务等待人工", event.P("status", run.Status))
 			}
@@ -546,7 +546,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		writeSwarmActiveAgent(ctx, r.td.Sessions, sess, ar.agent.AgentKey)
 	}
 
-	run = r.finalizeTeamRun(ctx, sess, run, teamRow, ar, assistantMsg, promptTok, completionTok, result.CachedTok, ti.dialogMode, usageSource, graphExecID, t0, teamEmitter)
+	run = r.finalizeTeamRun(ctx, sess, run, teamRow, ar, assistantMsg, promptTok, completionTok, result.CachedTok, result.CacheWriteTok, result.ReasoningTok, ti.dialogMode, usageSource, graphExecID, t0, teamEmitter)
 
 	// Context patching uses the final round's tokens (window occupancy), not
 	// the billing totals; fall back to turn totals when usage was estimated.

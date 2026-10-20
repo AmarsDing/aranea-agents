@@ -14,8 +14,8 @@ import (
 func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
 	var result EventStreamResult
 	meta := ProjectMeta{SessionID: "s1"}
-	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 100, 50, 40)
-	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 30, 150)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 100, 50, 40, 0, 0)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 30, 150, 0, 0)
 	// Billing semantics: every round is a separately billed API call, so
 	// prompt/cached/completion are summed across rounds.
 	if result.PromptTok != 300 || result.CompletionTok != 80 {
@@ -30,7 +30,7 @@ func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
 	}
 	// A chunk with the same prompt is the SAME round (cumulative streaming):
 	// take the per-round max for completion/cached, not another sum step.
-	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 35, 100)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 35, 100, 0, 0)
 	if result.PromptTok != 300 {
 		t.Fatalf("PromptTok = %d, want 300 (same-round chunk must not double count)", result.PromptTok)
 	}
@@ -41,9 +41,39 @@ func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
 		t.Fatalf("CachedTok = %d, want 190 (40 + max(150,100))", result.CachedTok)
 	}
 	// Prompt shrink (mid-run compaction) also starts a new billed round.
-	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 60, 10, 0)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 60, 10, 0, 0, 0)
 	if result.PromptTok != 360 || result.LastRoundPromptTok != 60 {
 		t.Fatalf("post-compaction: prompt=%d lastRound=%d, want 360/60", result.PromptTok, result.LastRoundPromptTok)
+	}
+}
+
+// F7 回归（2026-10-20）：write/reasoning 必须与 cached 同语义累计——
+// 轮内流式取最大（cumulative 重报），跨轮独立计费求和；成员维度同步入账。
+func TestAccumulateStreamUsage_cacheWriteAndReasoning(t *testing.T) {
+	var result EventStreamResult
+	meta := ProjectMeta{
+		TeamID:          "team-1",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}
+	ev := &trpcevent.Event{Author: "worker-a"}
+	// Round 1: prompt=100, write=20, reasoning=15.
+	accumulateStreamUsage(&result, ev, meta, 100, 50, 40, 20, 15)
+	// Same-round cumulative resend with smaller write/reasoning: keep max.
+	accumulateStreamUsage(&result, ev, meta, 100, 55, 40, 10, 5)
+	// Round 2 (prompt grows): lock round-1 maxima into prev sums.
+	accumulateStreamUsage(&result, ev, meta, 200, 30, 150, 25, 8)
+	if result.CacheWriteTok != 45 {
+		t.Fatalf("CacheWriteTok = %d, want 45 (max(20,10) + 25)", result.CacheWriteTok)
+	}
+	if result.ReasoningTok != 23 {
+		t.Fatalf("ReasoningTok = %d, want 23 (max(15,5) + 8)", result.ReasoningTok)
+	}
+	u, ok := result.MemberUsage["worker-a"]
+	if !ok {
+		t.Fatalf("member usage missing: %+v", result.MemberUsage)
+	}
+	if u.CacheWriteTokens != 45 || u.ReasoningTokens != 23 {
+		t.Fatalf("member write/reasoning = %d/%d, want 45/23", u.CacheWriteTokens, u.ReasoningTokens)
 	}
 }
 
@@ -62,7 +92,7 @@ func TestAccumulateStreamUsage_memberByAgentKey(t *testing.T) {
 			},
 		},
 	}
-	accumulateStreamUsage(&result, ev, meta, 100, 50, 30)
+	accumulateStreamUsage(&result, ev, meta, 100, 50, 30, 0, 0)
 	if result.PromptTok != 100 || result.CompletionTok != 50 {
 		t.Fatalf("aggregate tokens: in=%d out=%d", result.PromptTok, result.CompletionTok)
 	}
@@ -84,7 +114,7 @@ func TestAccumulateStreamUsage_skipsTeamRootAuthor(t *testing.T) {
 			Usage: &trpcmodel.Usage{PromptTokens: 10, CompletionTokens: 5},
 		},
 	}
-	accumulateStreamUsage(&result, ev, meta, 10, 5, 0)
+	accumulateStreamUsage(&result, ev, meta, 10, 5, 0, 0, 0)
 	if len(result.MemberUsage) != 0 {
 		t.Fatalf("expected no member usage for team root author, got %+v", result.MemberUsage)
 	}
@@ -105,8 +135,8 @@ func TestAccumulateStreamUsage_memberMultiRoundSums(t *testing.T) {
 		}
 	}
 	// Two rounds for worker-b: billing totals must sum across rounds.
-	accumulateStreamUsage(&result, usageEv(100, 50, 0), meta, 100, 50, 10)
-	accumulateStreamUsage(&result, usageEv(200, 30, 0), meta, 200, 30, 20)
+	accumulateStreamUsage(&result, usageEv(100, 50, 0), meta, 100, 50, 10, 0, 0)
+	accumulateStreamUsage(&result, usageEv(200, 30, 0), meta, 200, 30, 20, 0, 0)
 	u, ok := result.MemberUsage["worker-b"]
 	if !ok {
 		t.Fatalf("member usage missing: %+v", result.MemberUsage)
@@ -134,10 +164,10 @@ func TestAccumulateStreamUsage_parallelMemberInterleave(t *testing.T) {
 			},
 		}
 	}
-	accumulateStreamUsage(&result, usageEv("worker-a", 10000, 100), meta, 10000, 100, 0)
-	accumulateStreamUsage(&result, usageEv("worker-b", 8000, 80), meta, 8000, 80, 0)
+	accumulateStreamUsage(&result, usageEv("worker-a", 10000, 100), meta, 10000, 100, 0, 0, 0)
+	accumulateStreamUsage(&result, usageEv("worker-b", 8000, 80), meta, 8000, 80, 0, 0, 0)
 	// A 同轮累计重报（provider 流式重发同轮 usage）：不得触发新轮。
-	accumulateStreamUsage(&result, usageEv("worker-a", 10000, 120), meta, 10000, 120, 0)
+	accumulateStreamUsage(&result, usageEv("worker-a", 10000, 120), meta, 10000, 120, 0, 0, 0)
 	if result.PromptTok != 18000 {
 		t.Fatalf("PromptTok = %d, want 18000 (A 同轮重报不得双计)", result.PromptTok)
 	}
@@ -153,8 +183,8 @@ func TestAccumulateStreamUsage_parallelMemberInterleave(t *testing.T) {
 		t.Fatalf("worker-b usage = %+v, want prompt=8000 completion=80", ub)
 	}
 	// A 进入第二轮（prompt 增长）后再与 B 交错：A 两轮 + B 一轮。
-	accumulateStreamUsage(&result, usageEv("worker-a", 12000, 50), meta, 12000, 50, 0)
-	accumulateStreamUsage(&result, usageEv("worker-b", 8000, 90), meta, 8000, 90, 0)
+	accumulateStreamUsage(&result, usageEv("worker-a", 12000, 50), meta, 12000, 50, 0, 0, 0)
+	accumulateStreamUsage(&result, usageEv("worker-b", 8000, 90), meta, 8000, 90, 0, 0, 0)
 	if result.PromptTok != 30000 {
 		t.Fatalf("PromptTok = %d, want 30000 (10000+12000+8000)", result.PromptTok)
 	}

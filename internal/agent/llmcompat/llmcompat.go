@@ -159,10 +159,10 @@ func contextError(ctx context.Context) error {
 	return nil
 }
 
-func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
+func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (fullText string, reasoningText string, promptTok, completionTok, cachedTok int, err error) {
 	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, 0, err
 	}
 	thinkingEnabled, reasoningEffort := thinkingFieldsFromConfig(cfg)
 	req := &trpcmodel.Request{
@@ -175,32 +175,32 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	}
 	respCh, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, 0, err
 	}
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
 			// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
 			if err := contextError(ctx); err != nil {
-				return "", "", 0, 0, err
+				return "", "", 0, 0, 0, err
 			}
-			return "", "", 0, 0, providerResponseError(resp.Error)
+			return "", "", 0, 0, 0, providerResponseError(resp.Error)
 		}
 		last = resp
 	}
 	if err := contextError(ctx); err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, 0, err
 	}
 	if last == nil {
-		return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
+		return "", "", 0, 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
 	}
 	return extractFromTRPCResponse(last, modelName)
 }
 
-func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, callbacks StreamCallbacks) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
+func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, callbacks StreamCallbacks) (fullText string, reasoningText string, promptTok, completionTok, cachedTok int, err error) {
 	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, 0, err
 	}
 	thinkingEnabled, reasoningEffort := thinkingFieldsFromConfig(cfg)
 	req := &trpcmodel.Request{
@@ -214,7 +214,7 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	}
 	respCh, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, 0, err
 	}
 	var accText, accReason strings.Builder
 	// finalText/finalReason 来自流结束时框架发射的聚合响应（IsPartial=false，
@@ -241,9 +241,9 @@ loop:
 	for {
 		select {
 		case <-idleTimer.C:
-			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, &StreamIdleError{Timeout: streamIdleTimeout}
+			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, &StreamIdleError{Timeout: streamIdleTimeout}
 		case <-ctx.Done():
-			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, contextError(ctx)
+			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, contextError(ctx)
 		case resp, ok := <-respCh:
 			if !ok {
 				break loop
@@ -252,9 +252,9 @@ loop:
 			if resp.Error != nil {
 				// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
 				if err := contextError(ctx); err != nil {
-					return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+					return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, err
 				}
-				return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, providerResponseError(resp.Error)
+				return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, providerResponseError(resp.Error)
 			}
 			if len(resp.Choices) == 0 {
 				continue
@@ -265,7 +265,7 @@ loop:
 					accText.WriteString(ch.Delta.Content)
 					if callbacks.OnContent != nil {
 						if err = callbacks.OnContent(ch.Delta.Content); err != nil {
-							return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+							return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, err
 						}
 					}
 				}
@@ -273,7 +273,7 @@ loop:
 					accReason.WriteString(ch.Delta.ReasoningContent)
 					if callbacks.OnReasoning != nil {
 						if err = callbacks.OnReasoning(ch.Delta.ReasoningContent); err != nil {
-							return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+							return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, err
 						}
 					}
 				}
@@ -287,14 +287,16 @@ loop:
 				finalReason = ch.Message.ReasoningContent
 			}
 			if resp.Usage != nil {
-				promptTok = resp.Usage.PromptTokens
-				completionTok = resp.Usage.CompletionTokens
+				// 与 extractFromTRPCResponse 同口径：账单输入归一化 +
+				// 缓存命中 token 上送，否则 aux 流式调用（任务分解等）
+				// 命中率被记 0、Anthropic 输入欠计。
+				promptTok, completionTok, cachedTok, _, _ = provider.NormalizeUsageTokens(resp.Usage)
 			}
 		}
 	}
 	// 流正常关闭但 ctx 已取消 = 超时截断：返回错误而非静默的部分结果。
 	if err := contextError(ctx); err != nil {
-		return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+		return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, cachedTok, err
 	}
 	full, reason := accText.String(), accReason.String()
 	if haveFinal {
@@ -303,7 +305,7 @@ loop:
 			reason = finalReason
 		}
 	}
-	return strings.TrimSpace(full), strings.TrimSpace(reason), promptTok, completionTok, nil
+	return strings.TrimSpace(full), strings.TrimSpace(reason), promptTok, completionTok, cachedTok, nil
 }
 
 func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (trpcmodel.Model, error) {
@@ -322,7 +324,15 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 		opts = append(opts, trpcprovider.WithVariant(v))
 	}
 	if hc != nil && hc.Transport != nil {
-		opts = append(opts, trpcprovider.WithHTTPClientTransport(hc.Transport))
+		// DeepSeek 类端点的 prompt_cache_hit_tokens 归一化 tap：主聊天链路在
+		// buildProviderOptions 里已装（trpc_llm.go），本侧信道路径此前缺失，
+		// DeepSeek 辅助调用的命中 token 对 SDK 不可见、aux 行 cached 恒 0。
+		transport := provider.UsageTapTransportIfNeeded(provider.ProviderModelConfig{
+			ProviderType: cfg.ProviderType,
+			BaseURL:      cfg.APIBaseURL,
+			ModelAPI:     modelName,
+		}, hc.Transport)
+		opts = append(opts, trpcprovider.WithHTTPClientTransport(transport))
 	}
 	m, err := trpcprovider.Model(providerName, modelName, opts...)
 	if err != nil {
@@ -368,18 +378,21 @@ func thinkingFieldsFromConfig(cfg ProviderAPIConfig) (thinkingEnabled *bool, rea
 	return nil, nil
 }
 
-func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok int, err error) {
+func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok, cachedTok int, err error) {
 	if len(resp.Choices) == 0 {
-		return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, "empty choices")
+		return "", "", 0, 0, 0, apierror.Internal(apierror.DomainProvider, "empty choices")
 	}
 	ch := resp.Choices[0]
 	text = strings.TrimSpace(ch.Message.Content)
 	reasoning = strings.TrimSpace(ch.Message.ReasoningContent)
 	if resp.Usage != nil {
-		promptTok = resp.Usage.PromptTokens
-		completionTok = resp.Usage.CompletionTokens
+		// 账单输入归一化（Anthropic input 不含 read/write 分量，补回才是
+		// 计费/命中率口径；OpenAI/DeepSeek 为 no-op）+ 缓存命中 token 上送
+		// （DeepSeek 经 usageTapTransport 归一化后同源）。此前被丢弃导致
+		// aux 调用行 cached 恒 0、命中率聚合系统性低估。
+		promptTok, completionTok, cachedTok, _, _ = provider.NormalizeUsageTokens(resp.Usage)
 	}
-	return text, reasoning, promptTok, completionTok, nil
+	return text, reasoning, promptTok, completionTok, cachedTok, nil
 }
 
 func reasoningFromAPIRawJSON(raw json.RawMessage) string {
@@ -400,10 +413,10 @@ type OpenAICompatToolCallResult struct {
 	Arguments string
 }
 
-func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, tools []map[string]any) (text string, toolCalls []OpenAICompatToolCallResult, promptTok, completionTok int, err error) {
+func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, tools []map[string]any) (text string, toolCalls []OpenAICompatToolCallResult, promptTok, completionTok, cachedTok int, err error) {
 	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
-		return "", nil, 0, 0, err
+		return "", nil, 0, 0, 0, err
 	}
 	toolDecls := make(map[string]trpctool.Tool, len(tools))
 	for _, t := range tools {
@@ -435,27 +448,27 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 	}
 	respCh, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", nil, 0, 0, err
+		return "", nil, 0, 0, 0, err
 	}
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
 			// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
 			if err := contextError(ctx); err != nil {
-				return "", nil, 0, 0, err
+				return "", nil, 0, 0, 0, err
 			}
-			return "", nil, 0, 0, providerResponseError(resp.Error)
+			return "", nil, 0, 0, 0, providerResponseError(resp.Error)
 		}
 		last = resp
 	}
 	if err := contextError(ctx); err != nil {
-		return "", nil, 0, 0, err
+		return "", nil, 0, 0, 0, err
 	}
 	if last == nil {
-		return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
+		return "", nil, 0, 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
 	}
 	if len(last.Choices) == 0 {
-		return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, "empty choices")
+		return "", nil, 0, 0, 0, apierror.Internal(apierror.DomainProvider, "empty choices")
 	}
 	ch := last.Choices[0]
 	text = strings.TrimSpace(ch.Message.Content)
@@ -466,10 +479,9 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 		})
 	}
 	if last.Usage != nil {
-		promptTok = last.Usage.PromptTokens
-		completionTok = last.Usage.CompletionTokens
+		promptTok, completionTok, cachedTok, _, _ = provider.NormalizeUsageTokens(last.Usage)
 	}
-	return text, toolCalls, promptTok, completionTok, nil
+	return text, toolCalls, promptTok, completionTok, cachedTok, nil
 }
 
 type staticToolDecl struct {

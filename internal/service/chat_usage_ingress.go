@@ -77,7 +77,7 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 		TokensPerSecond:  tps,
 		Status:           status,
 		StreamEnabled:    streamEnabled,
-		UsageKind:        "chat",
+		UsageKind:        biz.UsageKindChatTurn,
 		MetadataJSON:     `{"source":"chat_ingress_native"}`,
 	}
 	if streamEnabled {

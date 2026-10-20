@@ -68,7 +68,7 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 	// usageSource "": this path carries no token counts (asst TokenIn/Out are
 	// zero → recordMemberUsage skips), so there is no provenance to label.
 	// attribution "": zero-token rows never reach session metrics anyway.
-	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0, "", startedAt, "")
+	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0, 0, 0, "", startedAt, "")
 	stepCtx.MarkPersisted(nodeID)
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
@@ -281,7 +281,7 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	anchorAg biz.Agent,
 	userContent string,
 	assistantMsg biz.ChatMessage,
-	promptTok, completionTok, cachedTok int,
+	promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok int,
 	prov, mod string,
 	usageSource string,
 	suppressUsageRow bool,
@@ -305,11 +305,13 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	if suppressUsageRow {
 		stepMsg.TokenIn, stepMsg.TokenOut = 0, 0
 		cachedTok = 0
+		cacheWriteTok = 0
+		reasoningTok = 0
 	}
 	prov = strutil.FirstNonEmpty(strings.TrimSpace(prov), strings.TrimSpace(anchorAg.Provider))
 	mod = strutil.FirstNonEmpty(strings.TrimSpace(mod), strings.TrimSpace(anchorAg.Model))
 	// attribution=run_level_anchor_fallback: this anchor fallback step carries
 	// RUN-LEVEL totals (same totals the team_turn row records), so its usage row
 	// must not also accumulate session metrics (P2-1 双计根治).
-	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok, usageSource, time.Time{}, biz.UsageAttributionRunLevelAnchorFallback)
+	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok, cacheWriteTok, reasoningTok, usageSource, time.Time{}, biz.UsageAttributionRunLevelAnchorFallback)
 }

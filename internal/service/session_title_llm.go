@@ -98,6 +98,7 @@ func (g *LLMSessionTitleGenerator) recordUsage(ctx context.Context, req session.
 	if usage.PromptTokens <= 0 && usage.CompletionTokens <= 0 {
 		return
 	}
+	normIn, normOut, normCached, normWrite, normReasoning := provider.NormalizeUsageTokens(usage)
 	if err := u.RecordAuxLLMUsage(ctx, biz.AuxLLMUsageInput{
 		Kind:          biz.UsageKindAuxTitle,
 		SessionID:     req.SessionID,
@@ -105,9 +106,11 @@ func (g *LLMSessionTitleGenerator) recordUsage(ctx context.Context, req session.
 		Provider:      prov,
 		Model:         mod,
 		Status:        "success",
-		PromptTok:     usage.PromptTokens,
-		CompletionTok: usage.CompletionTokens,
-		CachedTok:     usage.PromptTokensDetails.CachedTokens,
+		PromptTok:     normIn,
+		CompletionTok: normOut,
+		CachedTok:     normCached,
+		CacheWriteTok: normWrite,
+		ReasoningTok:  normReasoning,
 		UsageSource:   biz.UsageSourceResponse,
 		Latency:       latency,
 	}); err != nil {

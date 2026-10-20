@@ -85,6 +85,11 @@ const (
 	// KindAuxAllocatorMatch marks spirit allocator LLM cold-start matching
 	// calls (per-subtask / whole-plan). Previously unrecorded (M83 LBG-6).
 	KindAuxAllocatorMatch = "aux_allocator_match"
+	// KindUnknown is the fallback for persisted events whose caller did not
+	// classify the usage. Previously defaulted to the non-enum literal "chat"
+	// (valid enum is chat_turn), which the UI source filter could not map —
+	// mislabeling unknown consumption as chat traffic (P0-3, 2026-10-20).
+	KindUnknown = "unknown"
 )
 
 // MetadataKeyUsageSource is the metadata_json key recording how a usage row's
@@ -1045,7 +1050,7 @@ func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUs
 		e.HourKey = e.OccurredAt[:13] + ":00"
 	}
 	if strings.TrimSpace(e.UsageKind) == "" {
-		e.UsageKind = "chat"
+		e.UsageKind = KindUnknown
 	}
 	if e.CallCount <= 0 {
 		e.CallCount = 1
@@ -1185,7 +1190,7 @@ func applyPricingUSDToEvent(e *TokenUsageEvent, snap ModelPricingSnapshot) {
 // input, or unpriced provider/model — callers treat 0 as "no cost data", which
 // matches the behavior of usage rows recorded without a pricing snapshot.
 // Read-only: nothing is persisted (P2-1 TeamRunStep.CostMicroUSD 回填).
-func (u *Usecase) QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod string, inputTok, outputTok, cachedTok int) int64 {
+func (u *Usecase) QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod string, inputTok, outputTok, cachedTok, cacheWriteTok int) int64 {
 	if u == nil || (inputTok <= 0 && outputTok <= 0) {
 		return 0
 	}
@@ -1195,6 +1200,7 @@ func (u *Usecase) QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod str
 		InputTokens:       inputTok,
 		OutputTokens:      outputTok,
 		CachedInputTokens: cachedTok,
+		CacheWriteTokens:  cacheWriteTok,
 	}
 	u.enrichPricing(ctx, e)
 	return e.TotalCostMicroUSD
@@ -1225,8 +1231,9 @@ func NormalizeStatus(status string) string {
 // cache-read price only, never at the full input price. Therefore:
 //
 //	billableInput = InputTokens - min(CachedInputTokens, InputTokens)
-//	InputCost     = billableInput × inputPrice
+//	InputCost     = (InputTokens − cached − write) × inputPrice   // 新鲜输入
 //	CachedCost    = min(CachedInputTokens, InputTokens) × cacheReadPrice
+//	WritedCost    = min(CacheWriteTokens, InputTokens−cached) × cacheWritePrice
 func ApplyTokenUsageCosts(e *TokenUsageEvent) {
 	if e == nil {
 		return
@@ -1238,8 +1245,19 @@ func ApplyTokenUsageCosts(e *TokenUsageEvent) {
 	if cachedBillable < 0 {
 		cachedBillable = 0
 	}
+	// F7 修复（2026-10-20 报告）：cache_write ⊂ billingInput（provider 层
+	// 归一化后），Anthropic 对写入按 write 价计费——若不从 input 扣除，
+	// write 分量会被按 input 价多计一次。clamp 到（input − cached）上限
+	// 对历史脏数据（write 未落账时 input 不含 write）保持零值无影响。
+	writeBillable := e.CacheWriteTokens
+	if writeBillable < 0 {
+		writeBillable = 0
+	}
+	if writeBillable > e.InputTokens-cachedBillable {
+		writeBillable = e.InputTokens - cachedBillable
+	}
 	if e.InputCostMicroUSD == 0 && e.InputTokens > 0 {
-		e.InputCostMicroUSD = usageCostMicro(e.InputTokens-cachedBillable, e.InputPriceMicroUSDPer1K, e.InputPriceUSDPer1M)
+		e.InputCostMicroUSD = usageCostMicro(e.InputTokens-cachedBillable-writeBillable, e.InputPriceMicroUSDPer1K, e.InputPriceUSDPer1M)
 	}
 	if e.OutputCostMicroUSD == 0 && e.OutputTokens > 0 {
 		e.OutputCostMicroUSD = usageCostMicro(e.OutputTokens, e.OutputPriceMicroUSDPer1K, e.OutputPriceUSDPer1M)
@@ -1247,8 +1265,8 @@ func ApplyTokenUsageCosts(e *TokenUsageEvent) {
 	if e.CachedInputCostMicroUSD == 0 && cachedBillable > 0 {
 		e.CachedInputCostMicroUSD = usageCostMicro(cachedBillable, e.CachedInputPriceMicroUSDPer1K, e.CacheReadPriceUSDPer1M)
 	}
-	if e.CacheWriteCostMicroUSD == 0 && e.CacheWriteTokens > 0 {
-		e.CacheWriteCostMicroUSD = usageCostMicro(e.CacheWriteTokens, e.CacheWritePriceMicroUSDPer1K, e.CacheWritePriceUSDPer1M)
+	if e.CacheWriteCostMicroUSD == 0 && writeBillable > 0 {
+		e.CacheWriteCostMicroUSD = usageCostMicro(writeBillable, e.CacheWritePriceMicroUSDPer1K, e.CacheWritePriceUSDPer1M)
 	}
 	if e.ReasoningCostMicroUSD == 0 && e.ReasoningTokens > 0 {
 		e.ReasoningCostMicroUSD = usageCostMicro(e.ReasoningTokens, e.ReasoningPriceMicroUSDPer1K, e.ReasoningPriceUSDPer1M)
@@ -1514,7 +1532,15 @@ type TurnUsageInput struct {
 	PromptTok     int
 	CompletionTok int
 	// CachedTok is the cache-hit portion of PromptTok (billed at cache-read price).
-	CachedTok    int
+	CachedTok int
+	// CacheWriteTok is the Anthropic cache-write portion of PromptTok (0 for
+	// OpenAI/DeepSeek since their prompt tokens already include it); must be
+	// ≤ PromptTok after the provider-layer normalization (billingInput =
+	// PromptTokens + read + write). ReasoningTok is the thinking portion of
+	// CompletionTok (subset). Both are subsets for billing/display; no caller
+	// adds them onto the totals again.
+	CacheWriteTok int
+	ReasoningTok  int
 	Latency      time.Duration
 	ErrMsg       string
 	MetadataJSON string
@@ -1551,6 +1577,8 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 		InputTokens:        in.PromptTok,
 		OutputTokens:       in.CompletionTok,
 		CachedInputTokens:  in.CachedTok,
+		CacheWriteTokens:   in.CacheWriteTok,
+		ReasoningTokens:    in.ReasoningTok,
 		TotalTokens:        in.PromptTok + in.CompletionTok,
 		LatencyMS:          latencyMS,
 		TimeToFirstTokenMS: in.TimeToFirstTokenMS,
@@ -1634,6 +1662,13 @@ type AuxLLMUsageInput struct {
 	PromptTok     int
 	CompletionTok int
 	CachedTok     int
+	// CacheWriteTok is the Anthropic cache-write portion of PromptTok (0 for
+	// OpenAI/DeepSeek paths via llmcompat — that extraction does not unwrap the
+	// write component, so for those paths any write stays inside PromptTok and
+	// bills at input price; documented approximation). ReasoningTok is the
+	// thinking portion of CompletionTok.
+	CacheWriteTok int
+	ReasoningTok  int
 	// EmbeddingTok is the embedding-call token count (KindAuxEmbedding only);
 	// persisted into the EmbeddingTokens column and priced at the embedding
 	// rate. Mutually exclusive with the Prompt/Completion split: embedding
@@ -1684,6 +1719,8 @@ func (u *Usecase) RecordAuxLLMUsage(ctx context.Context, in AuxLLMUsageInput) er
 		InputTokens:       in.PromptTok,
 		OutputTokens:      in.CompletionTok,
 		CachedInputTokens: in.CachedTok,
+		CacheWriteTokens:  in.CacheWriteTok,
+		ReasoningTokens:   in.ReasoningTok,
 		EmbeddingTokens:   in.EmbeddingTok,
 		TotalTokens:       in.PromptTok + in.CompletionTok + in.EmbeddingTok,
 		LatencyMS:         int(in.Latency.Milliseconds()),

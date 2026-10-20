@@ -1394,7 +1394,7 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 	defer cancel()
 
 	callStart := time.Now()
-	text, _, promptTok, completionTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	text, _, promptTok, completionTok, cachedTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
 	// M83 LBG-6：冷启动匹配调用落账（此前 token 被丢弃）。RunID 用子任务
 	// ID 做关联。
 	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepAllocatorMatch, biz.AuxLLMUsageInput{
@@ -1405,6 +1405,7 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 		Status:        spiritAuxCallStatus(err),
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
+		CachedTok:     cachedTok,
 		UsageSource:   biz.UsageSourceResponse,
 		Effort:        cfg.ThinkingEffort,
 		Latency:       time.Since(callStart),
@@ -1651,7 +1652,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 	defer cancel()
 
 	callStart := time.Now()
-	text, _, promptTok, completionTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	text, _, promptTok, completionTok, cachedTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
 	// M83 LBG-6：整计划冷启动匹配调用落账（此前 token 被丢弃）。RunID 用
 	// spirit trace 做关联（整计划无子任务 ID）。
 	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepAllocatorMatch, biz.AuxLLMUsageInput{
@@ -1662,6 +1663,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 		Status:        spiritAuxCallStatus(err),
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
+		CachedTok:     cachedTok,
 		UsageSource:   biz.UsageSourceResponse,
 		Effort:        cfg.ThinkingEffort,
 		Latency:       time.Since(callStart),

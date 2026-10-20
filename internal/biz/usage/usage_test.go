@@ -253,7 +253,7 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 
 	t.Run("all_six_cost_kinds", func(t *testing.T) {
 		e := &TokenUsageEvent{
-			InputTokens:             100,
+			InputTokens:             230,
 			InputPriceUSDPer1M:      2.0,
 			OutputTokens:            200,
 			OutputPriceUSDPer1M:     4.0,
@@ -268,9 +268,9 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 		}
 		ApplyTokenUsageCosts(e)
 
-		// OpenAI/DeepSeek semantics: InputTokens includes the cached portion,
-		// so full-price billable input = 100 - 50 = 50.
-		wantInput := int64(math.Round(50 * 2.0))
+		// Post-F7 semantics: cached(50) ⊂ input, write(80) ⊂ input, so
+		// fresh-input billable = 230 − 50 − 80 = 100.
+		wantInput := int64(math.Round(100 * 2.0))
 		wantOutput := int64(math.Round(200 * 4.0))
 		wantCached := int64(math.Round(50 * 1.0))
 		wantCacheWrite := int64(math.Round(80 * 5.0))
@@ -299,6 +299,50 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 		wantTotal := wantInput + wantOutput + wantCached + wantCacheWrite + wantReasoning + wantEmbedding
 		if e.TotalCostMicroUSD != wantTotal {
 			t.Errorf("TotalCostMicroUSD = %d, want %d", e.TotalCostMicroUSD, wantTotal)
+		}
+	})
+
+	// F7 回归（2026-10-20）：cacheWrite ⊂ billingInput 后，写入分量必须单独
+	// 按 write 价计费且从 input 计费基数扣除；此前 input_cost=(input−cached)×in_price
+	// 会把 write 分量按 input 价多计一遍。
+	t.Run("write_subtracted_from_input_no_double_charge", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			// Anthropic 三分量语义：input(100) = fresh(20) + read(60) + write(20)
+			InputTokens:             100,
+			InputPriceUSDPer1M:      3.0,
+			CachedInputTokens:       60,
+			CacheReadPriceUSDPer1M:  0.3,
+			CacheWriteTokens:        20,
+			CacheWritePriceUSDPer1M: 3.75,
+		}
+		ApplyTokenUsageCosts(e)
+		if want := int64(math.Round(20 * 3.0)); e.InputCostMicroUSD != want {
+			t.Errorf("InputCostMicroUSD = %d, want %d (fresh input only)", e.InputCostMicroUSD, want)
+		}
+		if want := int64(math.Round(60 * 0.3)); e.CachedInputCostMicroUSD != want {
+			t.Errorf("CachedInputCostMicroUSD = %d, want %d", e.CachedInputCostMicroUSD, want)
+		}
+		if want := int64(math.Round(20 * 3.75)); e.CacheWriteCostMicroUSD != want {
+			t.Errorf("CacheWriteCostMicroUSD = %d, want %d", e.CacheWriteCostMicroUSD, want)
+		}
+	})
+
+	// F7 clamp 保护：历史脏数据 write > (input − cached) 时 input 成本不得为负。
+	t.Run("write_clamped_no_negative_input_cost", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:             100,
+			InputPriceUSDPer1M:      3.0,
+			CachedInputTokens:       90,
+			CacheReadPriceUSDPer1M:  0.3,
+			CacheWriteTokens:        50, // 脏数据：超出 (input − cached) = 10
+			CacheWritePriceUSDPer1M: 3.75,
+		}
+		ApplyTokenUsageCosts(e)
+		if e.InputCostMicroUSD < 0 {
+			t.Errorf("InputCostMicroUSD = %d, must not go negative", e.InputCostMicroUSD)
+		}
+		if want := int64(math.Round(10 * 3.75)); e.CacheWriteCostMicroUSD != want {
+			t.Errorf("CacheWriteCostMicroUSD = %d, want %d (clamped to input−cached)", e.CacheWriteCostMicroUSD, want)
 		}
 	})
 

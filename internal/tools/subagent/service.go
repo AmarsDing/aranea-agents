@@ -20,6 +20,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/outbound"
+	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -829,7 +830,7 @@ func (g *runBudgetGuard) observe(a *usageAccum) {
 	if g == nil || g.svc == nil || a == nil {
 		return
 	}
-	prompt, _, _ := a.totals()
+	prompt, _, _, _, _ := a.totals()
 	delta := prompt - g.lastPromptTotal
 	if delta < 0 {
 		delta = 0
@@ -908,7 +909,7 @@ func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *u
 	if rec == nil {
 		return
 	}
-	promptTok, completionTok, cachedTok := usage.totals()
+	promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok := usage.totals()
 	if promptTok <= 0 && completionTok <= 0 {
 		return
 	}
@@ -950,6 +951,8 @@ func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *u
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
 		CachedTok:     cachedTok,
+		CacheWriteTok: cacheWriteTok,
+		ReasoningTok:  reasoningTok,
 		UsageSource:   "streaming",
 		Latency:       latency,
 		ErrMsg:        errMsg,
@@ -968,8 +971,8 @@ func (s *Service) recordRunUsage(record *runRecord, started runningRun, usage *u
 // track the max. A usage payload whose prompt differs from the current
 // round's prompt marks a new billable round.
 type usageAccum struct {
-	prevPrompt, prevCompletion, prevCached int
-	curPrompt, curCompletion, curCached    int
+	prevPrompt, prevCompletion, prevCached, prevWrite, prevReasoning int
+	curPrompt, curCompletion, curCached, curWrite, curReasoning      int
 	// model is the last non-empty provider-reported model id seen.
 	model string
 }
@@ -985,16 +988,18 @@ func (a *usageAccum) consume(evt *trpcevent.Event) {
 	if u == nil {
 		return
 	}
-	promptTok := u.PromptTokens
-	completionTok := u.CompletionTokens
-	cachedTok := u.PromptTokensDetails.CachedTokens
+	promptTok, completionTok, cachedTok, writeTok, reasoningTok := provider.NormalizeUsageTokens(u)
 	if promptTok != a.curPrompt {
 		a.prevPrompt += a.curPrompt
 		a.prevCompletion += a.curCompletion
 		a.prevCached += a.curCached
+		a.prevWrite += a.curWrite
+		a.prevReasoning += a.curReasoning
 		a.curPrompt = promptTok
 		a.curCompletion = completionTok
 		a.curCached = cachedTok
+		a.curWrite = writeTok
+		a.curReasoning = reasoningTok
 	} else {
 		if completionTok > a.curCompletion {
 			a.curCompletion = completionTok
@@ -1002,16 +1007,24 @@ func (a *usageAccum) consume(evt *trpcevent.Event) {
 		if cachedTok > a.curCached {
 			a.curCached = cachedTok
 		}
+		if writeTok > a.curWrite {
+			a.curWrite = writeTok
+		}
+		if reasoningTok > a.curReasoning {
+			a.curReasoning = reasoningTok
+		}
 	}
 }
 
-func (a *usageAccum) totals() (prompt, completion, cached int) {
+func (a *usageAccum) totals() (prompt, completion, cached, cacheWrite, reasoning int) {
 	if a == nil {
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 	return a.prevPrompt + a.curPrompt,
 		a.prevCompletion + a.curCompletion,
-		a.prevCached + a.curCached
+		a.prevCached + a.curCached,
+		a.prevWrite + a.curWrite,
+		a.prevReasoning + a.curReasoning
 }
 
 func (s *Service) runChild(

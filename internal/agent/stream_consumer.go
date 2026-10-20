@@ -417,13 +417,24 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 
 	if ev.IsRunnerCompletion() {
 		if ev.Response != nil && ev.Response.Usage != nil {
-			c.result.PromptTok = ev.Response.Usage.PromptTokens
-			c.result.CompletionTok = ev.Response.Usage.CompletionTokens
-			if ct := ev.Response.Usage.PromptTokensDetails.CachedTokens; ct > c.result.CachedTok {
-				c.result.CachedTok = ct
+			// 2026-10-20（报告 F4/F7）：统一归一化为账单输入口径——Anthropic
+			// input_tokens 不含 cache_read/cache_write，需补回；OpenAI/DeepSeek
+			// 语义下为 no-op。Cached 保持取其两语义下的公共子集定义
+			// （provider.NormalizeUsageTokens）。
+			in, out, cached, write, reasoning := provider.NormalizeUsageTokens(ev.Response.Usage)
+			c.result.PromptTok = in
+			c.result.CompletionTok = out
+			if cached > c.result.CachedTok {
+				c.result.CachedTok = cached
 			}
+			c.result.CacheWriteTok = write
+			c.result.ReasoningTok = reasoning
 			// Runner-completion usage is the authoritative final-round payload:
-			// treat it as the context occupancy source as well.
+			// treat it as the context occupancy source as well. NOTE: context
+			// occupancy must reflect the raw prompt window (framework
+			// PromptTokens), not the billing input total (which for Anthropic
+			// includes cache_read — they overlap conceptually but cached
+			// tokens still sit in the window; keep using the framework value).
 			c.result.LastRoundPromptTok = ev.Response.Usage.PromptTokens
 			c.result.LastRoundCompletionTok = ev.Response.Usage.CompletionTokens
 			c.result.UsageSource = UsageSourceRunnerCompletion
@@ -449,7 +460,8 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 	}
 	if usage := ev.Response.Usage; usage != nil {
 		prevPrompt := c.result.PromptTok
-		accumulateStreamUsage(&c.result, ev, c.projectMeta, usage.PromptTokens, usage.CompletionTokens, usage.PromptTokensDetails.CachedTokens)
+		in, out, cached, write, reasoning := provider.NormalizeUsageTokens(usage)
+		accumulateStreamUsage(&c.result, ev, c.projectMeta, in, out, cached, write, reasoning)
 		if delta := c.result.PromptTok - prevPrompt; delta > 0 {
 			c.publishContextUsageStep()
 			if c.opts != nil && c.opts.OnPromptTokensAccumulated != nil {

@@ -153,6 +153,7 @@ func (o *ChatOrchestrator) runIntentPass(
 		Status:        "success",
 		PromptTok:     intRes.PromptTok,
 		CompletionTok: intRes.CompletionTok,
+		CachedTok:     intRes.CachedTok,
 		UsageSource:   biz.UsageSourceResponse,
 		Latency:       intRes.Duration,
 	})
@@ -668,6 +669,18 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 				loggateway.Str("provider", prov),
 				loggateway.Str("model", mod),
 				loggateway.Err(err))
+		}
+	}
+	// P1 cache-key（2026-10-20）：OpenAI 官方 prompt 缓存亲和路由——把
+	// prompt_cache_key 锚定到 session_id，同 session 的多轮对话路由到同一
+	// 缓存分片，拉长缓存驻留、抬升命中率。仅 provider_type=="openai" 的官方
+	// 行生效（openai 兼容网关可能拒绝未知字段 400）；catalog 读取失败时静默
+	// 降级为不带 key（自动缓存仍生效）。框架经 WithJSONSet 透传该字段。
+	if strings.TrimSpace(prov) != "" && strings.TrimSpace(mod) != "" && sessionID != "" {
+		if provider.IsGenuineOpenAIProvider(ctx, deps.ModelCatalog, prov, mod) {
+			runOpts = append(runOpts, trpcagent.WithModelRequestExtraFields(map[string]any{
+				"prompt_cache_key": sessionID,
+			}))
 		}
 	}
 

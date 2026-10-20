@@ -91,7 +91,7 @@ func TestCallOpenAICompatChat_ContextDeadline_ReturnsError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	_, _, _, _, err := CallOpenAICompatChat(ctx, srv.Client(), cfg, "test-model",
+	_, _, _, _, _, err := CallOpenAICompatChat(ctx, srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}})
 	if err == nil {
 		t.Fatal("expected error when ctx deadline exceeded, got nil (silent timeout)")
@@ -125,7 +125,7 @@ func TestCallOpenAICompatChatStream_ContextDeadlineMidStream_ReturnsError(t *tes
 	defer cancel()
 
 	var received string
-	_, _, _, _, err := CallOpenAICompatChatStream(ctx, srv.Client(), cfg, "test-model",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(ctx, srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}},
 		StreamCallbacks{OnContent: func(piece string) error { received += piece; return nil }})
 	if err == nil {
@@ -167,7 +167,7 @@ func TestCallOpenAICompatChatStream_IdleStall_ReturnsStreamIdleError(t *testing.
 
 	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
 	start := time.Now()
-	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err == nil {
 		t.Fatal("expected idle stall error, got nil")
@@ -213,7 +213,7 @@ func TestCallOpenAICompatChatStream_SlowFlowingStream_Succeeds(t *testing.T) {
 	})
 
 	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
-	full, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+	full, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("slow but flowing stream must not be killed by idle guard: %v", err)
@@ -268,7 +268,7 @@ func TestCallOpenAICompatChatStream_ReasoningCallback_ReceivesReasoningDeltas(t 
 
 	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
 	var reasoning, content []string
-	full, reason, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+	full, reason, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}},
 		StreamCallbacks{
 			OnContent:   func(p string) error { content = append(content, p); return nil },
@@ -300,7 +300,7 @@ func TestCallOpenAICompatChatStream_NilCallbacks_NoPanic(t *testing.T) {
 	}
 	srv := sseServer(t, chunks, nil)
 	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
-	full, reason, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+	full, reason, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -321,7 +321,7 @@ func TestCallOpenAICompatChatStream_ThinkingDisabled_InjectsThinkingObject(t *te
 	srv := sseServer(t, chunks, &body)
 
 	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key", ThinkingDisabled: true}
-	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -339,7 +339,7 @@ func TestCallOpenAICompatChatStream_ThinkingDefault_NoInjection(t *testing.T) {
 	srv := sseServer(t, chunks, &body)
 
 	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key"}
-	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -446,7 +446,7 @@ func TestCallOpenAICompatChatStream_ThinkingEffort_InjectsReasoningEffort(t *tes
 	srv := sseServer(t, chunks, &body)
 
 	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key", ThinkingEffort: "high"}
-	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -469,7 +469,7 @@ func TestCallOpenAICompatChatStream_ThinkingEffortOff_MapsThinkingDisabled(t *te
 	srv := sseServer(t, chunks, &body)
 
 	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key", ThinkingEffort: "off"}
-	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -490,7 +490,7 @@ func TestCallOpenAICompatChatStream_ThinkingEffort_OverridesThinkingDisabled(t *
 
 	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key",
 		ThinkingDisabled: true, ThinkingEffort: "max"}
-	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+	_, _, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -500,5 +500,68 @@ func TestCallOpenAICompatChatStream_ThinkingEffort_OverridesThinkingDisabled(t *
 	}
 	if strings.Contains(string(body), `"disabled"`) {
 		t.Fatalf("explicit effort must override thinking_disabled: %s", string(body))
+	}
+}
+
+// ─── 2026-10-20 P0-1：aux 调用解析缓存命中 token ─────────────────────────────
+//
+// 背景：llmcompat 此前只透传 prompt/completion，Usage.PromptTokensDetails.
+// CachedTokens 被丢弃——aux 行（intent/title/planner/allocator/memory）cached
+// 恒 0，且 aux 行参与命中率聚合，DeepSeek 命中率被系统性低估。
+
+// OpenAI 标准字段 prompt_tokens_details.cached_tokens 必须透传到 cachedTok。
+func TestCallOpenAICompatChat_CachedTokens_Propagated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"c1","object":"chat.completion","created":1,"model":"m",`+
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],`+
+			`"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,`+
+			`"prompt_tokens_details":{"cached_tokens":40}}}`)
+	}))
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+	})
+
+	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
+	_, _, promptTok, _, cachedTok, err := CallOpenAICompatChat(context.Background(), srv.Client(), cfg, "test-model",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if promptTok != 100 {
+		t.Fatalf("promptTok = %d, want 100", promptTok)
+	}
+	if cachedTok != 40 {
+		t.Fatalf("cachedTok = %d, want 40 (prompt_tokens_details.cached_tokens must propagate)", cachedTok)
+	}
+}
+
+// DeepSeek 私有字段 prompt_cache_hit_tokens 经 usageTapTransport 归一化后
+// 同样必须透传到 cachedTok（side-channel 路径此前未装 tap）。
+func TestCallOpenAICompatChat_DeepSeekCacheHit_Normalized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"c1","object":"chat.completion","created":1,"model":"m",`+
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],`+
+			`"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,`+
+			`"prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":20}}`)
+	}))
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+	})
+
+	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key"}
+	_, _, promptTok, _, cachedTok, err := CallOpenAICompatChat(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if promptTok != 100 {
+		t.Fatalf("promptTok = %d, want 100", promptTok)
+	}
+	if cachedTok != 80 {
+		t.Fatalf("cachedTok = %d, want 80 (DeepSeek prompt_cache_hit_tokens must be normalized by usage tap)", cachedTok)
 	}
 }

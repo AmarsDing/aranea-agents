@@ -43,6 +43,8 @@ type BlockingQuestionVerdict struct {
 	Question      string
 	PromptTok     int
 	CompletionTok int
+	// CachedTok 是 prompt-cache 命中部分（2026-10-20 补透出，此前解析层丢弃）。
+	CachedTok     int
 	Duration      time.Duration
 	// Outcome: completed | skipped_preflight | skipped_catalog | skipped_llm | skipped_parse
 	Outcome string
@@ -86,13 +88,14 @@ func JudgeBlockingQuestion(ctx context.Context, catalog biz.TeamModelCatalog, ht
 	callCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	text, _, promptTok, completionTok, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
+	text, _, promptTok, completionTok, cachedTok, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
 	if err != nil {
 		res.Outcome = "skipped_llm"
 		return
 	}
 	res.PromptTok = promptTok
 	res.CompletionTok = completionTok
+	res.CachedTok = cachedTok
 
 	text = stripFences(text)
 	if i := strings.Index(text, "{"); i >= 0 {

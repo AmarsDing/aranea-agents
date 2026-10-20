@@ -36,7 +36,9 @@
       </q-menu>
     </div>
     <div v-if="usageParts.length" class="chat-header-usage__metrics row items-center no-wrap">
-      <span v-for="(part, idx) in usageParts" :key="idx" class="chat-header-usage__chip">{{ part }}</span>
+      <span v-for="(part, idx) in usageParts" :key="idx" class="chat-header-usage__chip"
+        >{{ part.text }}<q-tooltip v-if="part.tip" :delay="300">{{ part.tip }}</q-tooltip></span
+      >
     </div>
     <span v-else class="chat-header-usage__chip chat-header-usage__chip--muted">
       {{ t('chat.contextUsageEmpty', '暂无用量数据') }}
@@ -127,7 +129,7 @@ async function onCompactClick() {
 }
 
 const ariaLabel = computed(() => {
-  const detail = usageParts.value.join(' · ');
+  const detail = usageParts.value.map((p) => p.text).join(' · ');
   return detail
     ? `${t('chat.contextPromptUse')} ${pctLabel.value} · ${detail}`
     : `${t('chat.contextPromptUse')} ${pctLabel.value}`;

@@ -189,6 +189,7 @@ func (e *MemoryLLMExtractor) recordExtractUsage(ctx context.Context, in biz.Cons
 	if usage.PromptTokens <= 0 && usage.CompletionTokens <= 0 {
 		return
 	}
+	normIn, normOut, normCached, normWrite, normReasoning := provider.NormalizeUsageTokens(usage)
 	if err := u.RecordAuxLLMUsage(ctx, biz.AuxLLMUsageInput{
 		Kind:          biz.UsageKindAuxMemoryExtract,
 		SessionID:     in.SessionID,
@@ -197,9 +198,11 @@ func (e *MemoryLLMExtractor) recordExtractUsage(ctx context.Context, in biz.Cons
 		Provider:      prov,
 		Model:         mod,
 		Status:        "success",
-		PromptTok:     usage.PromptTokens,
-		CompletionTok: usage.CompletionTokens,
-		CachedTok:     usage.PromptTokensDetails.CachedTokens,
+		PromptTok:     normIn,
+		CompletionTok: normOut,
+		CachedTok:     normCached,
+		CacheWriteTok: normWrite,
+		ReasoningTok:  normReasoning,
 		UsageSource:   biz.UsageSourceResponse,
 		Latency:       latency,
 	}); err != nil {

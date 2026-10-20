@@ -23,7 +23,7 @@ type TeamUsageQuerier interface {
 	// QuoteTokenUsageCostMicroUSD computes the total cost (micro USD) for the
 	// given token counts via the active pricing snapshot; 0 when unpriced.
 	// Read-only (P2-1 TeamRunStep.CostMicroUSD 回填).
-	QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod string, inputTok, outputTok, cachedTok int) int64
+	QuoteTokenUsageCostMicroUSD(ctx context.Context, prov, mod string, inputTok, outputTok, cachedTok, cacheWriteTok int) int64
 }
 
 // TeamSessionManager captures the subset of SessionUsecase needed by the team Runner.

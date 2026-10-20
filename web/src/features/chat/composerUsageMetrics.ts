@@ -1,6 +1,7 @@
 import { formatUsdCompact } from '../usage/moneyFormat';
 import { contextProgressColor } from '../../components/sessions/sessionUi';
 import type { ContextBudgetSnapshot } from '../session/types';
+import { i18n } from '../../i18n';
 
 export type ComposerUsageSnapshot = {
   contextRatio: number;
@@ -48,21 +49,37 @@ export function formatComposerUsageDetail(snapshot: ComposerUsageSnapshot): stri
   return parts.join(' · ');
 }
 
+/** One chip in the header usage row. `tip` explains the metric's scope:
+ * `in`/`out`/`Σ` are CUMULATIVE session-billed tokens (sum over every turn),
+ * while `ctx` is the current context-window occupancy — the two scopes sit
+ * side by side and need disambiguating (2026-10-20 label review). */
+export type ComposerUsagePart = { text: string; tip?: string };
+
 /** Segments for header usage row (wider spacing via flex gap in UI). */
-export function composerUsageParts(snapshot: ComposerUsageSnapshot): string[] {
-  const parts: string[] = [];
+export function composerUsageParts(snapshot: ComposerUsageSnapshot): ComposerUsagePart[] {
+  const tip = (key: string) =>
+    i18n.global.te(`chat.usageTips.${key}`) ? i18n.global.t(`chat.usageTips.${key}`) : undefined;
+  const parts: ComposerUsagePart[] = [];
   if (snapshot.contextUsedTokens != null && snapshot.contextUsedTokens > 0) {
     const window = snapshot.contextWindow;
-    if (window != null && window > 0) {
-      parts.push(`ctx ${formatTokenCount(snapshot.contextUsedTokens)}/${formatTokenCount(window)}`);
-    } else {
-      parts.push(`ctx ${formatTokenCount(snapshot.contextUsedTokens)}`);
-    }
+    const text =
+      window != null && window > 0
+        ? `ctx ${formatTokenCount(snapshot.contextUsedTokens)}/${formatTokenCount(window)}`
+        : `ctx ${formatTokenCount(snapshot.contextUsedTokens)}`;
+    parts.push({ text, tip: tip('ctx') });
   }
-  if (snapshot.inputTokens > 0) parts.push(`in ${formatTokenCount(snapshot.inputTokens)}`);
-  if (snapshot.outputTokens > 0) parts.push(`out ${formatTokenCount(snapshot.outputTokens)}`);
-  if (snapshot.totalTokens > 0) parts.push(`Σ ${formatTokenCount(snapshot.totalTokens)}`);
-  if (snapshot.totalCostMicroUsd > 0) parts.push(formatUsdCompact(snapshot.totalCostMicroUsd));
+  if (snapshot.inputTokens > 0) {
+    parts.push({ text: `in ${formatTokenCount(snapshot.inputTokens)}`, tip: tip('in') });
+  }
+  if (snapshot.outputTokens > 0) {
+    parts.push({ text: `out ${formatTokenCount(snapshot.outputTokens)}`, tip: tip('out') });
+  }
+  if (snapshot.totalTokens > 0) {
+    parts.push({ text: `Σ ${formatTokenCount(snapshot.totalTokens)}`, tip: tip('total') });
+  }
+  if (snapshot.totalCostMicroUsd > 0) {
+    parts.push({ text: formatUsdCompact(snapshot.totalCostMicroUsd), tip: tip('cost') });
+  }
   return parts;
 }
 

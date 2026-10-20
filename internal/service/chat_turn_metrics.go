@@ -57,6 +57,11 @@ type TurnUsageParams struct {
 	CompletionTok int
 	// CachedTok is the cache-hit portion of PromptTok (billed at cache-read price).
 	CachedTok int
+	// CacheWriteTok is the Anthropic cache-write portion of PromptTok (0 for
+	// OpenAI/DeepSeek); ReasoningTok is the thinking portion of CompletionTok.
+	// Both are subsets for display/auditing; billing handles them separately.
+	CacheWriteTok int
+	ReasoningTok  int
 	// UsageSource records how PromptTok/CompletionTok were obtained
 	// ("streaming"/"runner_completion"/"estimated"); persisted into
 	// metadata_json["usage_source"] so estimated rows stay identifiable.
@@ -105,6 +110,8 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 			loggateway.Int("completion_tokens", p.CompletionTok),
 			loggateway.Int("cached_tokens", p.CachedTok),
 			loggateway.Float64("cache_hit_ratio", float64(p.CachedTok)/float64(p.PromptTok)),
+			loggateway.Int("cache_write_tokens", p.CacheWriteTok),
+			loggateway.Int("reasoning_tokens", p.ReasoningTok),
 			loggateway.Duration(p.Latency.Milliseconds()))
 	}
 	m.recordContextBudgetLog(ctx, p)
@@ -131,6 +138,8 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 		PromptTok:          p.PromptTok,
 		CompletionTok:      p.CompletionTok,
 		CachedTok:          p.CachedTok,
+		CacheWriteTok:      p.CacheWriteTok,
+		ReasoningTok:       p.ReasoningTok,
 		Latency:            p.Latency,
 		ErrMsg:             p.ErrMsg,
 		MetadataJSON:       meta,

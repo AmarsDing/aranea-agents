@@ -11,21 +11,21 @@ import (
 func TestQuoteTokenUsageCostMicroUSD(t *testing.T) {
 	t.Run("nil usecase returns 0", func(t *testing.T) {
 		var u *Usecase
-		if got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "deepseek", "deepseek-chat", 100, 10, 0); got != 0 {
+		if got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "deepseek", "deepseek-chat", 100, 10, 0, 0); got != 0 {
 			t.Fatalf("nil usecase = %d, want 0", got)
 		}
 	})
 
 	t.Run("zero tokens returns 0", func(t *testing.T) {
 		u := NewUsecase(&mockUsageRepo{}, nil)
-		if got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "deepseek", "deepseek-chat", 0, 0, 0); got != 0 {
+		if got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "deepseek", "deepseek-chat", 0, 0, 0, 0); got != 0 {
 			t.Fatalf("zero tokens = %d, want 0", got)
 		}
 	})
 
 	t.Run("unpriced model returns 0", func(t *testing.T) {
 		u := NewUsecase(&mockUsageRepo{}, nil)
-		if got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "noprov", "nomodel", 100, 10, 0); got != 0 {
+		if got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "noprov", "nomodel", 100, 10, 0, 0); got != 0 {
 			t.Fatalf("unpriced = %d, want 0", got)
 		}
 	})
@@ -46,7 +46,7 @@ func TestQuoteTokenUsageCostMicroUSD(t *testing.T) {
 		//   cached = 400 × 0.5             = 200
 		//   output = 100 × 8               = 800
 		// total = 600*2 + 400*0.5 + 100*8 (micro-USD per-1M scaled) = 1200+200+800 = 2200 µ$/1M-units
-		got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "deepseek", "deepseek-chat", 1000, 100, 400)
+		got := u.QuoteTokenUsageCostMicroUSD(context.Background(), "deepseek", "deepseek-chat", 1000, 100, 400, 0)
 		// CostMicroUSDFromUSDPer1M(tokens, usdPer1M) = round(tokens × usdPer1M) micro USD? verify via totals:
 		// 600 tok × $2/1M  = 1200 micro-USD? No: 600/1e6 × 2 USD = 0.0012 USD = 1200 µUSD ✓
 		// 400 tok × $0.5/1M = 200 µUSD ✓

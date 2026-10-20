@@ -299,7 +299,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 	}))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int, usageSource string, startedAt time.Time, attribution string) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok, cacheWriteTok, reasoningTok int, usageSource string, startedAt time.Time, attribution string) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -326,7 +326,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 	// snapshot (same pricing path as persisted usage events). 0 when unpriced
 	// or tokenless — matches the usage-row behavior for missing pricing.
 	if r.usage != nil {
-		step.CostMicroUSD = r.usage.QuoteTokenUsageCostMicroUSD(ctx, prov, mod, asst.TokenIn, asst.TokenOut, cachedTok)
+		step.CostMicroUSD = r.usage.QuoteTokenUsageCostMicroUSD(ctx, prov, mod, asst.TokenIn, asst.TokenOut, cachedTok, cacheWriteTok)
 	}
 	// 2026-08-08 问题4b：graph watch 路径传入 node_start 追踪的真实开始时刻
 	// 时，落真实执行窗口——StartedAt 取追踪值、DurationMS 取墙钟耗时；否则
@@ -342,7 +342,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 	if err != nil {
 		return
 	}
-	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok, usageSource, attribution)
+	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok, cacheWriteTok, reasoningTok, usageSource, attribution)
 	// R5 无进展审计（79-runtime-governance）：与 recordMemberUsage 同点挂载，
 	// 独立于其 token 早退（失败 step 常 token=0，恰是无进展证据富矿）。
 	r.auditMemberNoProgress(ctx, run, teamID, ag, asst)

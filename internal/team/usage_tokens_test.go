@@ -12,7 +12,7 @@ func TestStepTokensForMember_prefersStreamMap(t *testing.T) {
 			"worker-b": {PromptTokens: 40, CompletionTokens: 20, CachedTokens: 15},
 		},
 	}
-	in, out, cached := stepTokensForMember("worker-b", 1, result, 100, 50, 30)
+	in, out, cached, _, _ := stepTokensForMember("worker-b", 1, result, 100, 50, 30, 0, 0)
 	if in != 40 || out != 20 {
 		t.Fatalf("got in=%d out=%d", in, out)
 	}
@@ -22,7 +22,7 @@ func TestStepTokensForMember_prefersStreamMap(t *testing.T) {
 }
 
 func TestStepTokensForMember_anchorFallback(t *testing.T) {
-	in, out, cached := stepTokensForMember("anchor", 0, agent.EventStreamResult{}, 100, 50, 30)
+	in, out, cached, _, _ := stepTokensForMember("anchor", 0, agent.EventStreamResult{}, 100, 50, 30, 0, 0)
 	if in != 100 || out != 50 {
 		t.Fatalf("got in=%d out=%d", in, out)
 	}
@@ -32,7 +32,7 @@ func TestStepTokensForMember_anchorFallback(t *testing.T) {
 }
 
 func TestStepTokensForMember_nonAnchorMiss(t *testing.T) {
-	in, out, cached := stepTokensForMember("worker-c", 2, agent.EventStreamResult{}, 100, 50, 30)
+	in, out, cached, _, _ := stepTokensForMember("worker-c", 2, agent.EventStreamResult{}, 100, 50, 30, 0, 0)
 	if in != 0 || out != 0 || cached != 0 {
 		t.Fatalf("got in=%d out=%d cached=%d, want all zero", in, out, cached)
 	}

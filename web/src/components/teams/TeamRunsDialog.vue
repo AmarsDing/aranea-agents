@@ -65,7 +65,7 @@
                 </template>
                 <div class="run-detail q-pa-md">
                   <div v-if="detailsByRun[run.id]?.cache_hit_ratio !== undefined" class="text-caption text-grey-7 q-mb-sm">
-                    缓存命中率 {{ formatCacheHitRatio(detailsByRun[run.id].cache_hit_ratio) }}
+                    缓存命中占比（账单口径） {{ formatCacheHitRatio(detailsByRun[run.id].cache_hit_ratio) }}
                   </div>
                   <div class="text-caption text-grey-7 q-mb-sm">输入</div>
                   <div class="run-preview">{{ run.input_preview || '-' }}</div>

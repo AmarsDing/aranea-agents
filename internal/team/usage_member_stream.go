@@ -55,7 +55,7 @@ func (r *Runner) recordGraphMemberUsageFromResult(ctx context.Context, in TeamRu
 			}
 		}
 	}
-	sumIn, sumOut, sumCached := 0, 0, 0
+	sumIn, sumOut, sumCached, sumWrite, sumReasoning := 0, 0, 0, 0, 0
 	wrote := false
 	consumed := map[string]bool{} // duplicate agent keys across members share one MemberUsage entry
 	for _, m := range EnabledMembers(def) {
@@ -80,12 +80,12 @@ func (r *Runner) recordGraphMemberUsageFromResult(ctx context.Context, in TeamRu
 		if stepID == "" {
 			stepID = in.Run.ID
 		}
-		r.recordMemberUsage(ctx, in.Run, in.TeamID, ag, asst, prov, mod, in.DialogMode, stepID, u.CachedTokens, agent.UsageSourceStreaming, biz.UsageAttributionMemberLevelStream)
+		r.recordMemberUsage(ctx, in.Run, in.TeamID, ag, asst, prov, mod, in.DialogMode, stepID, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens, agent.UsageSourceStreaming, biz.UsageAttributionMemberLevelStream)
 		// Backfill the graph-watch step row with real tokens (T3 fix).
 		if r.runWriter != nil && stepID != in.Run.ID {
 			cost := int64(0)
 			if r.usage != nil {
-				cost = r.usage.QuoteTokenUsageCostMicroUSD(ctx, prov, mod, u.PromptTokens, u.CompletionTokens, u.CachedTokens)
+				cost = r.usage.QuoteTokenUsageCostMicroUSD(ctx, prov, mod, u.PromptTokens, u.CompletionTokens, u.CachedTokens, u.CacheWriteTokens)
 			}
 			if uerr := r.runWriter.UpdateTeamRunStepTokens(ctx, stepID, u.PromptTokens, u.CompletionTokens, cost); uerr != nil {
 				r.lg.Warn("回填 team_run_steps token 失败",
@@ -99,6 +99,8 @@ func (r *Runner) recordGraphMemberUsageFromResult(ctx context.Context, in TeamRu
 		sumIn += u.PromptTokens
 		sumOut += u.CompletionTokens
 		sumCached += u.CachedTokens
+		sumWrite += u.CacheWriteTokens
+		sumReasoning += u.ReasoningTokens
 		wrote = true
 	}
 	// Anchor remainder: consumption authored by the team root (non-member
@@ -108,9 +110,17 @@ func (r *Runner) recordGraphMemberUsageFromResult(ctx context.Context, in TeamRu
 	// usageSource (possibly "estimated").
 	remIn, remOut := in.PromptTok-sumIn, in.CompletionTok-sumOut
 	remCached := in.Result.CachedTok - sumCached
+	remWrite := in.Result.CacheWriteTok - sumWrite
+	remReasoning := in.Result.ReasoningTok - sumReasoning
 	if remIn > 0 || remOut > 0 {
 		if remCached < 0 {
 			remCached = 0
+		}
+		if remWrite < 0 {
+			remWrite = 0
+		}
+		if remReasoning < 0 {
+			remReasoning = 0
 		}
 		asst := in.AssistantMsg
 		asst.TokenIn, asst.TokenOut = remIn, remOut
@@ -121,7 +131,7 @@ func (r *Runner) recordGraphMemberUsageFromResult(ctx context.Context, in TeamRu
 		r.recordMemberUsage(ctx, in.Run, in.TeamID, in.AnchorAg, asst,
 			strutil.FirstNonEmpty(strings.TrimSpace(in.AnchorAg.Provider), strings.TrimSpace(in.Prov)),
 			strutil.FirstNonEmpty(strings.TrimSpace(in.AnchorAg.Model), strings.TrimSpace(in.Mod)),
-			in.DialogMode, stepID, remCached, in.UsageSource, biz.UsageAttributionStreamAnchorRemainder)
+			in.DialogMode, stepID, remCached, remWrite, remReasoning, in.UsageSource, biz.UsageAttributionStreamAnchorRemainder)
 		wrote = true
 	}
 	return wrote

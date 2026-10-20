@@ -61,6 +61,10 @@ type turnPersistResult struct {
 	promptTok     int
 	completionTok int
 	cachedTok     int
+	// cacheWriteTok is the Anthropic cache-write portion of promptTok (0 for
+	// OpenAI/DeepSeek); reasoningTok is the thinking portion of completionTok.
+	cacheWriteTok int
+	reasoningTok  int
 	// lastRound* are the final LLM round's tokens = current context-window
 	// occupancy (distinct from promptTok/completionTok which are billing
 	// totals summed across rounds).
@@ -318,6 +322,8 @@ func (p *turnPhases) persistTurn(
 		promptTok:              promptTok,
 		completionTok:          completionTok,
 		cachedTok:              execResult.result.CachedTok,
+		cacheWriteTok:          execResult.result.CacheWriteTok,
+		reasoningTok:           execResult.result.ReasoningTok,
 		lastRoundPromptTok:     lastRoundPrompt,
 		lastRoundCompletionTok: lastRoundCompletion,
 		usageSource:            usageSource,

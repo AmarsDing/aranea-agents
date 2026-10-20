@@ -51,11 +51,22 @@ export function useUsageEventsPage() {
     label: t(appStatusMeta(v)?.labelKey ?? 'common.status.unknown'),
     value: v,
   }));
+  // 与 biz/usage Kind* 枚举全量对齐（含 aux_* 辅助计量与 unknown 兜底）
   const usageKindOptions = [
-    { label: '全部', value: '' },
-    { label: 'Chat Turn', value: 'chat_turn' },
-    { label: 'Team 成员', value: 'team_member' },
-    { label: 'Team 整轮', value: 'team_turn' },
+    { label: t('usageEventsPage.kindAll'), value: '' },
+    { label: t('usageKinds.chat_turn'), value: 'chat_turn' },
+    { label: t('usageKinds.team_member'), value: 'team_member' },
+    { label: t('usageKinds.team_turn'), value: 'team_turn' },
+    { label: t('usageKinds.aux_subagent'), value: 'aux_subagent' },
+    { label: t('usageKinds.aux_title'), value: 'aux_title' },
+    { label: t('usageKinds.aux_intent'), value: 'aux_intent' },
+    { label: t('usageKinds.aux_evolution'), value: 'aux_evolution' },
+    { label: t('usageKinds.aux_memory_extract'), value: 'aux_memory_extract' },
+    { label: t('usageKinds.aux_embedding'), value: 'aux_embedding' },
+    { label: t('usageKinds.aux_eval_judge'), value: 'aux_eval_judge' },
+    { label: t('usageKinds.aux_planner_decompose'), value: 'aux_planner_decompose' },
+    { label: t('usageKinds.aux_allocator_match'), value: 'aux_allocator_match' },
+    { label: t('usageKinds.unknown'), value: 'unknown' },
   ];
   // LBG-6：思考强度过滤（与 biz.ThinkingEffort* 枚举一致；值为技术枚举不翻译）
   const effortOptions = [

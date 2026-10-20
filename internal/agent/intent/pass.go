@@ -297,8 +297,11 @@ type RunResult struct {
 	// PromptTok/CompletionTok are provider-reported usage of the intent call
 	// (0 when the call never happened or the provider returned no usage).
 	// Surfaced so callers can record aux LLM usage (P1-2, 2026-08-19).
+	// CachedTok is the prompt-cache-hit portion of PromptTok (2026-10-20,
+	// 此前解析层丢弃导致 aux 行 cached 恒 0、命中率聚合系统性低估).
 	PromptTok     int
 	CompletionTok int
+	CachedTok     int
 }
 
 // RunMeta carries IDs duplicated into intent_pass event payload (snake_case) for clients that only read payload.
@@ -431,13 +434,14 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 	callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
-	text, _, promptTok, completionTok, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
+	text, _, promptTok, completionTok, cachedTok, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
 	if err != nil {
 		res.Outcome = "skipped_llm"
 		return
 	}
 	res.PromptTok = promptTok
 	res.CompletionTok = completionTok
+	res.CachedTok = cachedTok
 	text = stripFences(text)
 	art, raw := parseArtifactJSON(text)
 	if art == nil {

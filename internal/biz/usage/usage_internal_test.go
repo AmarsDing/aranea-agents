@@ -111,11 +111,11 @@ func TestNormalizeTokenUsageEventForInsert(t *testing.T) {
 		}
 	})
 
-	t.Run("defaults UsageKind to chat", func(t *testing.T) {
+	t.Run("defaults UsageKind to unknown", func(t *testing.T) {
 		e := TokenUsageEvent{ID: "test-12"}
 		got := NormalizeTokenUsageEventForInsert(e, fixedTime)
-		if got.UsageKind != "chat" {
-			t.Errorf("UsageKind = %q, want %q", got.UsageKind, "chat")
+		if got.UsageKind != KindUnknown {
+			t.Errorf("UsageKind = %q, want %q", got.UsageKind, KindUnknown)
 		}
 	})
 

@@ -39,7 +39,7 @@ func TestUsageAccum_PerRoundSum(t *testing.T) {
 	// Round 2 (tool loop): prompt grew → new billable round.
 	a.consume(usageEvent(180, 5, 60, "m1"))
 	a.consume(usageEvent(180, 30, 60, "m1"))
-	p, c, cached := a.totals()
+	p, c, cached, _, _ := a.totals()
 	if p != 280 || c != 55 || cached != 100 {
 		t.Fatalf("totals = (%d,%d,%d), want (280,55,100)", p, c, cached)
 	}
@@ -54,7 +54,7 @@ func TestUsageAccum_PromptShrinkCountsAsNewRound(t *testing.T) {
 	a := &usageAccum{}
 	a.consume(usageEvent(200, 20, 0, ""))
 	a.consume(usageEvent(120, 8, 0, "")) // compaction → smaller prompt
-	p, c, _ := a.totals()
+	p, c, _, _, _ := a.totals()
 	if p != 320 || c != 28 {
 		t.Fatalf("totals = (%d,%d), want (320,28)", p, c)
 	}
@@ -65,12 +65,12 @@ func TestUsageAccum_NilAndEmptyEvents(t *testing.T) {
 	a.consume(nil)
 	a.consume(&trpcevent.Event{}) // no response
 	a.consume(&trpcevent.Event{Response: &trpcmodel.Response{}}) // no usage
-	if p, c, cached := a.totals(); p != 0 || c != 0 || cached != 0 {
+	if p, c, cached, _, _ := a.totals(); p != 0 || c != 0 || cached != 0 {
 		t.Fatalf("totals = (%d,%d,%d), want zeros", p, c, cached)
 	}
 	var nilAccum *usageAccum
 	nilAccum.consume(usageEvent(1, 1, 0, "")) // must not panic
-	if p, c, cached := nilAccum.totals(); p != 0 || c != 0 || cached != 0 {
+	if p, c, cached, _, _ := nilAccum.totals(); p != 0 || c != 0 || cached != 0 {
 		t.Fatalf("nil totals = (%d,%d,%d), want zeros", p, c, cached)
 	}
 }

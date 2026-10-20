@@ -41,7 +41,7 @@ type DynamicLLMCaller struct {
 	sys     LLMRefineConfigResolver
 	hc      *http.Client
 	// callFn 是可注入的底层调用（测试替身）；nil 时使用 CallOpenAICompatChat。
-	callFn func(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (string, string, int, int, error)
+	callFn func(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (string, string, int, int, int, error)
 }
 
 // NewDynamicLLMCaller wires a DynamicLLMCaller for use in Wire.
@@ -75,7 +75,7 @@ func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (st
 	cfg.ThinkingEffort = req.ThinkingEffort
 	msgs := buildMessages(req.System, req.User, req.Images...)
 	modelName := strings.TrimSpace(req.Model)
-	text, _, promptTok, completionTok, err := fn(ctx, c.hc, cfg, modelName, msgs)
+	text, _, promptTok, completionTok, _, err := fn(ctx, c.hc, cfg, modelName, msgs)
 	if err == nil {
 		return text, promptTok + completionTok, nil
 	}
@@ -98,7 +98,7 @@ func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (st
 			event.P("primary_model", modelName),
 			event.P("fallback_model", fb.Model))
 	}
-	text, _, promptTok, completionTok, fbErr := fn(ctx, c.hc, fbCfg, fb.Model, msgs)
+	text, _, promptTok, completionTok, _, fbErr := fn(ctx, c.hc, fbCfg, fb.Model, msgs)
 	if fbErr != nil {
 		return "", 0, fbErr
 	}

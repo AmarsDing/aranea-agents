@@ -27,7 +27,7 @@ func (f *fakeTeamUsage) RecordTokenUsageEvent(_ context.Context, e biz.TokenUsag
 
 func (f *fakeTeamUsage) RecordAuxLLMUsage(context.Context, biz.AuxLLMUsageInput) error { return nil }
 
-func (f *fakeTeamUsage) QuoteTokenUsageCostMicroUSD(_ context.Context, _, _ string, _, _, _ int) int64 {
+func (f *fakeTeamUsage) QuoteTokenUsageCostMicroUSD(_ context.Context, _, _ string, _, _, _, _ int) int64 {
 	return f.quoteCost
 }
 
@@ -68,7 +68,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		sessions := &fakeMetricSessions{}
 		r := newUsageTestRunner(usage, sessions)
 
-		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", biz.UsageAttributionRunLevelAnchorFallback)
+		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", biz.UsageAttributionRunLevelAnchorFallback)
 
 		if len(usage.events) != 1 {
 			t.Fatalf("events=%d want 1", len(usage.events))
@@ -87,7 +87,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		sessions := &fakeMetricSessions{}
 		r := newUsageTestRunner(usage, sessions)
 
-		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", "")
 
 		if len(usage.events) != 1 {
 			t.Fatalf("events=%d want 1", len(usage.events))
@@ -110,7 +110,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		r := newUsageTestRunner(usage, sessions)
 		spiritRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-team-1", SpiritSessionID: "sess-spirit-1"}
 
-		r.recordMemberUsage(context.Background(), spiritRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+		r.recordMemberUsage(context.Background(), spiritRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", "")
 
 		if len(sessions.deltas) != 2 {
 			t.Fatalf("expected 2 deltas (team + spirit), got %d", len(sessions.deltas))
@@ -134,7 +134,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		r := newUsageTestRunner(usage, sessions)
 		plainRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1", SpiritSessionID: ""}
 
-		r.recordMemberUsage(context.Background(), plainRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+		r.recordMemberUsage(context.Background(), plainRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", "")
 
 		if len(sessions.deltas) != 1 {
 			t.Fatalf("expected 1 delta (no spirit mirror), got %d", len(sessions.deltas))
@@ -147,7 +147,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		r := newUsageTestRunner(usage, sessions)
 		sameRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1", SpiritSessionID: "sess-1"}
 
-		r.recordMemberUsage(context.Background(), sameRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", "")
+		r.recordMemberUsage(context.Background(), sameRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", "")
 
 		if len(sessions.deltas) != 1 {
 			t.Fatalf("expected 1 delta (same session, no mirror), got %d", len(sessions.deltas))
@@ -160,7 +160,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		r := newUsageTestRunner(usage, sessions)
 		spiritRun := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-team-1", SpiritSessionID: "sess-spirit-1"}
 
-		r.recordMemberUsage(context.Background(), spiritRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", biz.UsageAttributionMemberLevelStream)
+		r.recordMemberUsage(context.Background(), spiritRun, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", biz.UsageAttributionMemberLevelStream)
 
 		if len(sessions.deltas) != 0 {
 			t.Fatalf("attributed row must not accumulate to any session, got %d deltas", len(sessions.deltas))
@@ -172,7 +172,7 @@ func TestRecordMemberUsage_RunLevelAttributionSkipsSessionAccum(t *testing.T) {
 		sessions := &fakeMetricSessions{}
 		r := newUsageTestRunner(usage, sessions)
 
-		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, "streaming", biz.UsageAttributionMemberLevelStream)
+		r.recordMemberUsage(context.Background(), run, "team-1", ag, asst, "deepseek", "deepseek-chat", "default", "step-1", 100, 0, 0, "streaming", biz.UsageAttributionMemberLevelStream)
 
 		if len(usage.events) != 1 {
 			t.Fatalf("events=%d want 1", len(usage.events))
@@ -200,7 +200,7 @@ func TestPersistStep_BackfillsCostMicroUSD(t *testing.T) {
 	t.Run("quote result lands on step", func(t *testing.T) {
 		usage := &fakeTeamUsage{quoteCost: 4200}
 		r := newUsageTestRunner(usage, nil)
-		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "deepseek", "deepseek-chat", "default", 0, 40, "streaming", time.Time{}, "")
+		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "deepseek", "deepseek-chat", "default", 0, 40, 0, 0, "streaming", time.Time{}, "")
 
 		repo := r.runWriter.(*stepBusRunWriter)
 		if len(repo.steps) != 1 {
@@ -213,7 +213,7 @@ func TestPersistStep_BackfillsCostMicroUSD(t *testing.T) {
 
 	t.Run("nil usage keeps zero cost", func(t *testing.T) {
 		r := newUsageTestRunner(nil, nil)
-		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, "", time.Time{}, "")
+		r.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 0, 0, 0, 0, "", time.Time{}, "")
 
 		repo := r.runWriter.(*stepBusRunWriter)
 		if len(repo.steps) != 1 {

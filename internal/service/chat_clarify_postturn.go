@@ -89,6 +89,7 @@ func (o *ChatOrchestrator) maybeSuspendTurnForClarification(
 			Status:        "success",
 			PromptTok:     verdict.PromptTok,
 			CompletionTok: verdict.CompletionTok,
+			CachedTok:     verdict.CachedTok,
 			UsageSource:   biz.UsageSourceResponse,
 			Latency:       verdict.Duration,
 		})

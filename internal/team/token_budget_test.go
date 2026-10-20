@@ -82,7 +82,7 @@ func TestRecordMemberUsage_BudgetTripCancelsRun(t *testing.T) {
 
 	// Mirror row (attribution set): must not accumulate — a huge value here
 	// would otherwise trip immediately.
-	r.recordMemberUsage(context.Background(), run, "team-1", ag, mkAsst(900_000), "deepseek", "deepseek-chat", "default", "step-0", 0, "streaming", biz.UsageAttributionMemberLevelStream)
+	r.recordMemberUsage(context.Background(), run, "team-1", ag, mkAsst(900_000), "deepseek", "deepseek-chat", "default", "step-0", 0, 0, 0, "streaming", biz.UsageAttributionMemberLevelStream)
 	select {
 	case <-cancelled:
 		t.Fatal("mirror row must not trip the budget gate")
@@ -90,14 +90,14 @@ func TestRecordMemberUsage_BudgetTripCancelsRun(t *testing.T) {
 	}
 
 	// Genuine rows accumulate: 700 + 500 = 1200 > 1000 → trip on second row.
-	r.recordMemberUsage(context.Background(), run, "team-1", ag, mkAsst(700), "deepseek", "deepseek-chat", "default", "step-1", 0, "streaming", "")
+	r.recordMemberUsage(context.Background(), run, "team-1", ag, mkAsst(700), "deepseek", "deepseek-chat", "default", "step-1", 0, 0, 0, "streaming", "")
 	select {
 	case <-cancelled:
 		t.Fatal("under-budget row must not cancel the run")
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	r.recordMemberUsage(context.Background(), run, "team-1", ag, mkAsst(500), "deepseek", "deepseek-chat", "default", "step-2", 0, "streaming", "")
+	r.recordMemberUsage(context.Background(), run, "team-1", ag, mkAsst(500), "deepseek", "deepseek-chat", "default", "step-2", 0, 0, 0, "streaming", "")
 	select {
 	case got := <-cancelled:
 		if got != "cancelled" {

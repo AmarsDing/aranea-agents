@@ -37,3 +37,51 @@ func TestCatalogConfigToConfig_TailoringExplicitTrueWithoutWindow(t *testing.T) 
 		t.Fatal("explicit enable_token_tailoring=true must win even without context_window_k")
 	}
 }
+
+// P1 cache-enable（ADR cache-anthropic-default-on，2026-10-20）：
+// Anthropic 行未显式配置时三项缓存断点默认开启；显式 false 可逐键关闭；
+// 非 anthropic 行不得被默认置位（避免向 OpenAI 兼容网关泄漏 anthropic 语义）。
+
+func TestCatalogConfigToConfig_AnthropicCacheDefaultsOn(t *testing.T) {
+	cfg := catalogConfigToConfig(catalogConfigJSON{ProviderType: "anthropic"}, "claude-sonnet-4-5")
+	if !cfg.Cache.SystemPrompt || !cfg.Cache.Tools || !cfg.Cache.Messages {
+		t.Fatalf("anthropic unset flags must default on, got %+v", cfg.Cache)
+	}
+}
+
+func TestCatalogConfigToConfig_AnthropicCacheExplicitFalseWins(t *testing.T) {
+	f := false
+	cfg := catalogConfigToConfig(catalogConfigJSON{
+		ProviderType:      "anthropic",
+		CacheSystemPrompt: &f,
+	}, "claude-2.1")
+	if cfg.Cache.SystemPrompt {
+		t.Fatal("explicit cache_system_prompt=false must win over anthropic default-on")
+	}
+	if !cfg.Cache.Tools || !cfg.Cache.Messages {
+		t.Fatalf("unset tools/messages still default on for anthropic, got %+v", cfg.Cache)
+	}
+}
+
+func TestCatalogConfigToConfig_NonAnthropicCacheDefaultsOff(t *testing.T) {
+	cfg := catalogConfigToConfig(catalogConfigJSON{ProviderType: "openai"}, "gpt-5")
+	if cfg.Cache.SystemPrompt || cfg.Cache.Tools || cfg.Cache.Messages {
+		t.Fatalf("non-anthropic unset flags must stay off, got %+v", cfg.Cache)
+	}
+	// Empty provider_type (legacy rows) must not receive anthropic defaults.
+	cfg = catalogConfigToConfig(catalogConfigJSON{}, "m")
+	if cfg.Cache.SystemPrompt || cfg.Cache.Tools || cfg.Cache.Messages {
+		t.Fatalf("unset provider_type must stay off, got %+v", cfg.Cache)
+	}
+}
+
+func TestCatalogConfigToConfig_NonAnthropicCacheExplicitTrueWins(t *testing.T) {
+	tr := true
+	cfg := catalogConfigToConfig(catalogConfigJSON{ProviderType: "openai", CacheTools: &tr}, "m")
+	if !cfg.Cache.Tools {
+		t.Fatal("explicit cache_tools=true must be honoured for non-anthropic providers")
+	}
+	if cfg.Cache.SystemPrompt || cfg.Cache.Messages {
+		t.Fatalf("other unset flags must stay off for non-anthropic, got %+v", cfg.Cache)
+	}
+}

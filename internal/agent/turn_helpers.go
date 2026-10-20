@@ -17,18 +17,26 @@ import (
 
 // MemberTokenUsage is per team member (agent_key) usage observed in the event stream.
 // PromptTokens/CompletionTokens/CachedTokens are billing totals summed across
-// LLM rounds (each tool-call round is a separate billed API call).
+// LLM rounds (each tool-call round is a separate billed API call). All prompt
+// totals are normalized billing-input totals (see provider.NormalizeUsageTokens:
+// Anthropic input + cache-read + cache-write), so CachedTokens and
+// CacheWriteTokens are strict subsets of PromptTokens.
 type MemberTokenUsage struct {
 	PromptTokens     int
 	CompletionTokens int
 	// CachedTokens is the cache-hit portion of PromptTokens (DeepSeek/OpenAI
-	// prompt caching). Billed at the cache-read price downstream.
+	// prompt caching; Anthropic cache_read). Billed at the cache-read price downstream.
 	CachedTokens int
+	// CacheWriteTokens is the cache-write portion of PromptTokens (Anthropic
+	// explicit caching; OpenAI/DeepSeek report 0). 0 for OpenAI-compat rows.
+	CacheWriteTokens int
+	// ReasoningTokens is the thinking portion of CompletionTokens (subset).
+	ReasoningTokens int
 	// Per-round accumulators: within a round usage is reported cumulatively
 	// (max); on a round boundary the previous round's values are locked into
 	// the prev* sums.
-	prevPrompt, prevCompletion, prevCached int
-	curPrompt, curCompletion, curCached    int
+	prevPrompt, prevCompletion, prevCached, prevWrite, prevReasoning int
+	curPrompt, curCompletion, curCached, curWrite, curReasoning      int
 }
 
 // Usage source values for EventStreamResult.UsageSource. Persisted into
@@ -53,6 +61,11 @@ type EventStreamResult struct {
 	CompletionTok int
 	// CachedTok is the cache-hit portion of PromptTok (summed across rounds).
 	CachedTok int
+	// CacheWriteTok is the cache-write portion of PromptTok (Anthropic explicit
+	// caching, summed across rounds; OpenAI/DeepSeek always 0).
+	CacheWriteTok int
+	// ReasoningTok is the thinking portion of CompletionTok (subset, across rounds).
+	ReasoningTok int
 	// LastRoundPromptTok/LastRoundCompletionTok describe the FINAL LLM round
 	// only — i.e. the current context-window occupancy after the turn. Use
 	// these (not the billing totals) for context_used_tokens patching and
@@ -186,14 +199,18 @@ func ConsumeEventStreamWithFirstByte(
 // new billable call (prompt grows across rounds in tool loops; it shrinks
 // after mid-run compaction — both are detected), locking the previous round's
 // maxima into the prev* sums.
-func accumulateRound(u *MemberTokenUsage, promptTok, completionTok, cachedTok int) {
+func accumulateRound(u *MemberTokenUsage, promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok int) {
 	if promptTok != u.curPrompt {
 		u.prevPrompt += u.curPrompt
 		u.prevCompletion += u.curCompletion
 		u.prevCached += u.curCached
+		u.prevWrite += u.curWrite
+		u.prevReasoning += u.curReasoning
 		u.curPrompt = promptTok
 		u.curCompletion = completionTok
 		u.curCached = cachedTok
+		u.curWrite = cacheWriteTok
+		u.curReasoning = reasoningTok
 	} else {
 		if completionTok > u.curCompletion {
 			u.curCompletion = completionTok
@@ -201,13 +218,21 @@ func accumulateRound(u *MemberTokenUsage, promptTok, completionTok, cachedTok in
 		if cachedTok > u.curCached {
 			u.curCached = cachedTok
 		}
+		if cacheWriteTok > u.curWrite {
+			u.curWrite = cacheWriteTok
+		}
+		if reasoningTok > u.curReasoning {
+			u.curReasoning = reasoningTok
+		}
 	}
 	u.PromptTokens = u.prevPrompt + u.curPrompt
 	u.CompletionTokens = u.prevCompletion + u.curCompletion
 	u.CachedTokens = u.prevCached + u.curCached
+	u.CacheWriteTokens = u.prevWrite + u.curWrite
+	u.ReasoningTokens = u.prevReasoning + u.curReasoning
 }
 
-func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok, cachedTok int) {
+func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok int) {
 	if result == nil {
 		return
 	}
@@ -227,7 +252,7 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 			result.MemberUsage = make(map[string]MemberTokenUsage)
 		}
 		mu := result.MemberUsage[author]
-		accumulateRound(&mu, promptTok, completionTok, cachedTok)
+		accumulateRound(&mu, promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok)
 		result.MemberUsage[author] = mu
 		lastPrompt, lastCompletion = mu.curPrompt, mu.curCompletion
 	} else {
@@ -239,24 +264,30 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 			ru = &MemberTokenUsage{}
 			result.rootUsage[author] = ru
 		}
-		accumulateRound(ru, promptTok, completionTok, cachedTok)
+		accumulateRound(ru, promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok)
 		lastPrompt, lastCompletion = ru.curPrompt, ru.curCompletion
 	}
 	// Billing totals = sum over every author's billed rounds.
-	p, cpl, cch := 0, 0, 0
+	p, cpl, cch, cwr, rsn := 0, 0, 0, 0, 0
 	for _, mu := range result.MemberUsage {
 		p += mu.PromptTokens
 		cpl += mu.CompletionTokens
 		cch += mu.CachedTokens
+		cwr += mu.CacheWriteTokens
+		rsn += mu.ReasoningTokens
 	}
 	for _, ru := range result.rootUsage {
 		p += ru.PromptTokens
 		cpl += ru.CompletionTokens
 		cch += ru.CachedTokens
+		cwr += ru.CacheWriteTokens
+		rsn += ru.ReasoningTokens
 	}
 	result.PromptTok = p
 	result.CompletionTok = cpl
 	result.CachedTok = cch
+	result.CacheWriteTok = cwr
+	result.ReasoningTok = rsn
 	// Context occupancy = current round of the author that produced this
 	// usage event (last reporter wins; RunnerCompletion may overwrite).
 	result.LastRoundPromptTok = lastPrompt

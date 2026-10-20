@@ -31,8 +31,8 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 			continue
 		}
 		stepMsg := in.AssistantMsg
-		var cachedTok int
-		stepMsg.TokenIn, stepMsg.TokenOut, cachedTok = stepTokensForMember(ag.AgentKey, i, in.Result, in.PromptTok, in.CompletionTok, in.Result.CachedTok)
+		var cachedTok, cacheWriteTok, reasoningTok int
+		stepMsg.TokenIn, stepMsg.TokenOut, cachedTok, cacheWriteTok, reasoningTok = stepTokensForMember(ag.AgentKey, i, in.Result, in.PromptTok, in.CompletionTok, in.Result.CachedTok, in.Result.CacheWriteTok, in.Result.ReasoningTok)
 		// Per-member provenance: tokens picked from MemberUsage came from
 		// streaming events; the sortIdx==0 anchor fallback inherits the
 		// aggregate's provenance (possibly "estimated").
@@ -53,7 +53,7 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 		if i == 0 && !genuine {
 			attribution = biz.UsageAttributionRunLevelAnchorFallback
 		}
-		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok, memberUsageSource, time.Time{}, attribution)
+		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok, cacheWriteTok, reasoningTok, memberUsageSource, time.Time{}, attribution)
 		stepCtx.MarkPersisted(nodeID)
 	}
 }

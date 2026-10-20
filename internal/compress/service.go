@@ -103,7 +103,7 @@ func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) 
 		defer cancel()
 	}
 
-	text, _, ptok, ctok, err := chatagent.CallOpenAICompatChat(callCtx, s.HTTPClient, cfg, out.Model, msgs)
+	text, _, ptok, ctok, _, err := chatagent.CallOpenAICompatChat(callCtx, s.HTTPClient, cfg, out.Model, msgs)
 	if err != nil {
 		s.lg.Error("L4 压缩 LLM 调用失败", loggateway.StepID("compress.llm_call_fail"), loggateway.Str("provider", out.Provider), loggateway.Str("model", out.Model), loggateway.Err(err))
 		return out, err

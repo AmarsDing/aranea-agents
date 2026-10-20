@@ -1522,7 +1522,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 	defer cancel()
 
 	callStart := time.Now()
-	text, _, promptTok, completionTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	text, _, promptTok, completionTok, cachedTok, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
 	// M83 LBG-6：分解调用落账（此前 token 被丢弃）。RunID 用 spirit trace
 	// 做关联（同步修复路径无 planID）。
 	traceID, _ := biz.SpiritTraceIDFromContext(ctx)
@@ -1534,6 +1534,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 		Status:        spiritAuxCallStatus(err),
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
+		CachedTok:     cachedTok,
 		UsageSource:   biz.UsageSourceResponse,
 		Effort:        cfg.ThinkingEffort,
 		Latency:       time.Since(callStart),
@@ -1728,7 +1729,7 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 		callbacks.OnReasoning = thinkingPub.OnReasoning
 	}
 	callStart := time.Now()
-	text, reasoning, promptTok, completionTok, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, callbacks)
+	text, reasoning, promptTok, completionTok, cachedTok, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, callbacks)
 	// M83 LBG-6：每次重试尝试独立落账（每次尝试都是一次真实计费调用）。
 	// SessionID=spiritSessionID 让规划消耗计入用户可见的会话成本。
 	recordSpiritAuxUsage(ctx, impl.auxUsage, impl.lg, biz.SpiritStepPlannerDecompose, biz.AuxLLMUsageInput{
@@ -1740,6 +1741,7 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 		Status:        spiritAuxCallStatus(callErr),
 		PromptTok:     promptTok,
 		CompletionTok: completionTok,
+		CachedTok:     cachedTok,
 		UsageSource:   UsageSourceStreaming,
 		Effort:        cfg.ThinkingEffort,
 		Latency:       time.Since(callStart),

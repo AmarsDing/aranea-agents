@@ -258,6 +258,7 @@ func (r *Runner) prepareUserTurnOptions(
 			Status:        "success",
 			PromptTok:     intRes.PromptTok,
 			CompletionTok: intRes.CompletionTok,
+			CachedTok:     intRes.CachedTok,
 			UsageSource:   biz.UsageSourceResponse,
 			Latency:       intRes.Duration,
 		})
@@ -321,7 +322,7 @@ func (r *Runner) finalizeTeamRun(
 	teamRow biz.Team,
 	ar anchorResolution,
 	assistantMsg biz.ChatMessage,
-	promptTok, completionTok, cachedTok int,
+	promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok int,
 	dialogMode string,
 	usageSource string,
 	graphExecID string,
@@ -339,7 +340,7 @@ func (r *Runner) finalizeTeamRun(
 			return
 		}
 		usageRecorded = true
-		r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode, usageSource)
+		r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, cacheWriteTok, reasoningTok, ar.prov, ar.mod, dialogMode, usageSource)
 	}
 	defer recordUsage()
 
