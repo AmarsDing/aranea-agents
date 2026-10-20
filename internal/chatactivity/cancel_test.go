@@ -164,6 +164,12 @@ func (s *stubStepWriter) UpsertStep(_ context.Context, st biz.Step) (biz.Step, e
 	return s.UpdateStep(context.Background(), st)
 }
 
+// CompleteClarificationStep 满足 biz.StepV2Writer（review #4 接口扩展）；
+// 本包测试不覆盖澄清完成路径，stub 直接返回幂等成功。
+func (s *stubStepWriter) CompleteClarificationStep(_ context.Context, _ biz.Step) (bool, error) {
+	return false, nil
+}
+
 var errUpdateFailed = errSimple("update failed")
 
 type errSimple string
