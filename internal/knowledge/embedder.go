@@ -529,7 +529,9 @@ func (e *MultiProviderEmbedder) embedGeminiBatch(ctx context.Context, apiKey, mo
 			contents[i] = genai.NewContentFromText(t, genai.RoleUser)
 		}
 		cfg := &genai.EmbedContentConfig{TaskType: "RETRIEVAL_DOCUMENT"}
-		if taskType != "" {
+		if taskType != "" && taskType != TaskTypeGraphCard {
+			// Gemini TaskType 是闭枚举；graph_card 仅为 usage 记账拆分值
+			// （ADR-KN-20261020-I），provider 侧保持 DOCUMENT 提示。
 			cfg.TaskType = taskType
 		}
 		if dim > 0 && dim <= math.MaxInt32 {

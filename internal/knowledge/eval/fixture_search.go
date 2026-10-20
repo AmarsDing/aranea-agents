@@ -34,12 +34,24 @@ type FixtureDoc struct {
 	Body  string `json:"body"`
 }
 
+// FixtureCardDecl 语料卡片声明（G-33，ADR-KN-20261020-H）：一条图谱卡片命中
+// 经宿主投影产出的候选。声明即接线（NewFixtureSearcher 自动装配桩）；关腿
+// 消融走 NewFixtureSearcherAblated。
+type FixtureCardDecl struct {
+	Kind string `json:"kind"` // entity | edge（bizknowledge.GraphCardKind*）
+	Ref  int64  `json:"ref"`
+	Text string `json:"text"`
+	Host string `json:"host"` // 宿主文档 id（必须指向 docs）
+}
+
 // FixtureCorpus 金标语料：docs + seeds（查询原文 → 种子文档 id）。
 // seeds 与 EvalSet 的查询一一对应；缺锚点的查询在 Search 时显式报错，
 // 让快照门禁把「语料与评测集漂移」作为失败而非静默 vacuous success。
+// cards 为可选扩展（G-33 实体/边卡第三腿探针——非 strict Unmarshal 零破坏）。
 type FixtureCorpus struct {
-	Docs  []FixtureDoc      `json:"docs"`
-	Seeds map[string]string `json:"seeds"`
+	Docs  []FixtureDoc                 `json:"docs"`
+	Seeds map[string]string            `json:"seeds"`
+	Cards map[string][]FixtureCardDecl `json:"cards,omitempty"`
 }
 
 // fixtureCollection 是 fixture 世界内固定的 collection id。
@@ -89,21 +101,88 @@ func (c FixtureCorpus) validate() error {
 			return fmt.Errorf("seeds: query %q anchors unknown doc %q", q, id)
 		}
 	}
+	for q, decls := range c.Cards {
+		if strings.TrimSpace(q) == "" {
+			return errors.New("cards: query key is required")
+		}
+		for i, cd := range decls {
+			if cd.Kind != bizknowledge.GraphCardKindEntity && cd.Kind != bizknowledge.GraphCardKindEdge {
+				return fmt.Errorf("cards: query %q decl %d: kind %q must be entity/edge", q, i, cd.Kind)
+			}
+			if cd.Ref <= 0 {
+				return fmt.Errorf("cards: query %q decl %d: ref must be positive", q, i)
+			}
+			if strings.TrimSpace(cd.Text) == "" {
+				return fmt.Errorf("cards: query %q decl %d: text is required", q, i)
+			}
+			if _, ok := ids[cd.Host]; !ok {
+				return fmt.Errorf("cards: query %q decl %d: unknown host doc %q", q, i, cd.Host)
+			}
+		}
+	}
 	return nil
 }
 
 // fixtureSearcher 以种子锚点为起点的确定性 Searcher。无词法打分——种子即
-// 最坏假设下的混合检索命中，后续全部交给生产扩展/合并组件。
+// 最坏假设下的混合检索命中，后续全部交给生产扩展/合并组件。cards 为 G-33
+// 图谱卡片第三腿桩（nil=关腿，与装配层 nil 关腿语义同款）。
 type fixtureSearcher struct {
 	chunks   map[string][]biz.KnowledgeChunk // docID → chunks（chunk 序固定）
 	links    map[string][]bizknowledge.Link  // docID → outbound explicit links
 	seeds    map[string]string
+	cards    knowledge.GraphCardSearcher
 	expander *knowledge.GraphExpander
+}
+
+// fixtureCardSearcher 以语料声明卡片充当生产 GraphCardSearcher 桩（vec 忽略，
+// 与 nil 关腿装配语义并列：桩必须在接口层面与生产检索器消费的端口同型）。
+type fixtureCardSearcher struct {
+	byQuery map[string][]biz.KnowledgeChunk
+}
+
+func (f fixtureCardSearcher) SearchGraphCardChunks(_ context.Context, q biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {
+	return f.byQuery[q.Query], nil
+}
+
+var _ knowledge.GraphCardSearcher = fixtureCardSearcher{}
+
+// fixtureCardChunkID 复刻生产合成 ID 契约（ADR-KN-20261020-H：g33e/g33r 前缀
+// 宿主投影候选一并走 side-channel metadata 标记——gen/消费两端格式钉死）。
+func fixtureCardChunkID(kind string, ref int64, host string) string {
+	if kind == bizknowledge.GraphCardKindEdge {
+		return fmt.Sprintf("g33r/%d/%s", ref, host)
+	}
+	return fmt.Sprintf("g33e/%d/%s", ref, host)
+}
+
+// fixtureCardChunk 按生产候选构造规则造卡块：ID 合成、DocID/CollectionID 为
+// 真实宿主、metadata g33 标记（键序与 json.Marshal map 字母序一致，钉字面量）。
+func fixtureCardChunk(d FixtureCardDecl) biz.KnowledgeChunk {
+	return biz.KnowledgeChunk{
+		ID:           fixtureCardChunkID(d.Kind, d.Ref, d.Host),
+		DocID:        d.Host,
+		CollectionID: fixtureCollection,
+		Content:      d.Text,
+		Score:        0.9, // 与种子分同口径，保证快照确定
+		EntityScore:  0.9,
+		MetadataJSON: fmt.Sprintf(`{"g33":%q,"g33_ref":%d}`, d.Kind, d.Ref),
+	}
 }
 
 // NewFixtureSearcher 把语料编译为 Searcher：成链 → 切分 → 提取 wiki 边 →
 // 接生产 GraphExpander（无 active 边，维持 1 跳旧行为，与 gold_recall_test 同口径）。
+// 语料声明了 cards 时自动装配卡片腿桩（声明即接线）。
 func NewFixtureSearcher(c FixtureCorpus) (Searcher, error) {
+	return buildFixtureSearcher(c, true)
+}
+
+// NewFixtureSearcherAblated 同语料但强制关卡片腿——消融对照（ADR-KN-20261020-I
+// 测试策略：装配 nil 关腿复现基线，证明探针用例的命中确由第三腿贡献）。
+func NewFixtureSearcherAblated(c FixtureCorpus) (Searcher, error) {
+	return buildFixtureSearcher(c, false)
+}
+
+func buildFixtureSearcher(c FixtureCorpus, withCards bool) (Searcher, error) {
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("eval: validate corpus: %w", err)
 	}
@@ -146,11 +225,21 @@ func NewFixtureSearcher(c FixtureCorpus) (Searcher, error) {
 		fixtureChunkLister{byDoc: s.chunks},
 		nil, // GraphExpander 对 nil logger 自降级为 Noop
 	)
+	if withCards && len(c.Cards) > 0 {
+		byQuery := make(map[string][]biz.KnowledgeChunk, len(c.Cards))
+		for q, decls := range c.Cards {
+			for _, d := range decls {
+				byQuery[q] = append(byQuery[q], fixtureCardChunk(d))
+			}
+		}
+		s.cards = fixtureCardSearcher{byQuery: byQuery}
+	}
 	return s, nil
 }
 
-// Search 以锚点种子 + 一跳扩展回答查询。未登记的查询报错（Runner 记入
-// CaseResult.Err 并继续），由快照测试汇总成失败。
+// Search 以锚点种子 ∪ 卡片腿候选 + 一跳扩展回答查询。未登记的查询报错
+// （Runner 记入 CaseResult.Err 并继续），由快照测试汇总成失败。卡片腿失败
+// 复刻生产语义（warn 降级为种子集），fixture 桩实际不失败。
 func (s *fixtureSearcher) Search(ctx context.Context, query string, topK int) ([]Hit, error) {
 	docID, ok := s.seeds[query]
 	if !ok {
@@ -160,11 +249,19 @@ func (s *fixtureSearcher) Search(ctx context.Context, query string, topK int) ([
 	if len(seeds) == 0 {
 		return nil, fmt.Errorf("eval: fixture seed doc %q produced no chunks", docID)
 	}
-	out := s.expander.Expand(ctx, biz.KnowledgeSearchQuery{
+	q := biz.KnowledgeSearchQuery{
 		CollectionID: fixtureCollection,
 		Query:        query,
 		TopK:         topK,
-	}, seeds)
+	}
+	// 拷贝再并，避免 append 写回种子底层数组（多查询复跑同一 docID 时重复卡片）。
+	cands := append([]biz.KnowledgeChunk{}, seeds...)
+	if s.cards != nil {
+		if cardChunks, err := s.cards.SearchGraphCardChunks(ctx, q, nil); err == nil {
+			cands = append(cands, cardChunks...)
+		}
+	}
+	out := s.expander.Expand(ctx, q, cands)
 	hits := make([]Hit, 0, len(out))
 	for _, ch := range out {
 		hits = append(hits, Hit{ChunkID: ch.ID, DocID: ch.DocID, Score: float64(ch.Score)})

@@ -129,6 +129,10 @@ type Chunk struct {
 	SparseScore float32
 	RRFScore    float32
 	RerankScore float32
+	// EntityScore（G-33 图卡第三腿）：卡片相似度分解——仅在图谱卡片候选上有值，
+	// Go-only 不入 proto；检索前端/hit-test 通过 metadata_json 的 g33 标记读取
+	// 卡类与来源 ref（side-channel 契约）。
+	EntityScore float32
 }
 
 // DisplayContent 展示用正文：父子分块命中优先父块语境（ParentContent 非空），

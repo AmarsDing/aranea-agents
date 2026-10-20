@@ -429,4 +429,13 @@ var ddlMigrationsLate = []ddlMigration{
 	// （20261280-20261284 已为本批 knowledge/审计条目占用，20261281 为 twinmonitor
 	// 种子）；SQL 文件保留原磁盘文件名——版本唯一性由注册表 Version 字段保证。
 	{Version: 20261285, Name: "tool_invocations_workspace", Func: ddlToolInvocationsWorkspace},
+	// 20261286 knowledge_graph_embeddings（G-33，2026-10-20，ADR-KN-20261020-H）：
+	// 图谱卡片独立向量档——词条文（kind='entity'，每实体一卡）与谓词文（kind='edge'，
+	// 每 active semantic 边一卡）注入 RRF 第三腿。ref_id 不建 FK（kind 复用实体/链接
+	// 两宿主表，孤儿行由 GraphProjectionWorker 墓碑回收）；可见性不落列，读路径经
+	// 宿主文档投影下推 G-08 中央谓词。迁移不带 embedding 列（迁移轨道免 pgvector
+	// 依赖先例）：存量库由 EnsureKnowledgeSchema ALTER 补列 + HNSW，维度与
+	// knowledge_chunks 同源由 reconcileEmbeddingDim 对账。原拟 20261285 与
+	// tool_invocations_workspace 撞号（合并重排后的注册版本唯一）→ 重编号 20261286。
+	{Version: 20261286, Name: "knowledge_graph_embeddings", SQL: "sql/migrations/20261286_knowledge_graph_embeddings.sql"},
 }

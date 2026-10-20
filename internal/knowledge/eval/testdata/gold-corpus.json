@@ -19,6 +19,16 @@
     "夜间告警按哪份 Escalation": "ops",
     "备用通道在通信协议哪一节": "sec",
     "oncall playbook escalation wait": "play",
-    "运维手册引用的值班规则": "ops"
+    "运维手册引用的值班规则": "ops",
+    "变更发布要遵守哪条安全基线": "play",
+    "从运维手册顺到哪份安全约束": "ops"
+  },
+  "cards": {
+    "变更发布要遵守哪条安全基线": [
+      {"kind": "entity", "ref": 101, "text": "安全基线（规范）\n别名：sec baseline", "host": "sec"}
+    ],
+    "从运维手册顺到哪份安全约束": [
+      {"kind": "edge", "ref": 102, "text": "生产变更 遵循 安全基线 — 灰度为强制前置", "host": "sec"}
+    ]
   }
 }

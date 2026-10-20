@@ -84,6 +84,20 @@
       "expected_chunk_ids": ["ops-c0", "duty-c0"],
       "expected_doc_ids": ["ops", "duty"],
       "notes": "种子 ops；需一跳到 值班制度（机房）"
+    },
+    {
+      "id": "g33-ent-1",
+      "query": "变更发布要遵守哪条安全基线",
+      "expected_chunk_ids": ["play-c0", "esc-c0", "g33e/101/sec", "net-c0"],
+      "expected_doc_ids": ["play", "esc", "sec", "net"],
+      "notes": "G-33 实体卡探针：种子 play（一跳 esc）；实体卡宿主 sec 由第三腿唯一贡献，其出边再一跳到 net"
+    },
+    {
+      "id": "g33-edge-1",
+      "query": "从运维手册顺到哪份安全约束",
+      "expected_chunk_ids": ["ops-c0", "duty-c0", "esc-c0", "g33r/102/sec", "net-c0"],
+      "expected_doc_ids": ["ops", "duty", "esc", "sec", "net"],
+      "notes": "G-33 边卡探针：种子 ops（一跳 duty/esc）；边卡宿主 sec 由第三腿唯一贡献，其出边再一跳到 net"
     }
   ]
 }

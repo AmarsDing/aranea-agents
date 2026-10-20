@@ -13,12 +13,19 @@ import (
 const (
 	knowledgeEmbeddingIVFFlatIndex = "knowledge_chunks_embedding_idx"
 	knowledgeEmbeddingHNSWIndex    = "knowledge_chunks_embedding_hnsw"
-	defaultHNSWEfSearch            = 40
+	// graphCardEmbeddingHNSWIndex G-33 卡片档 ANN 索引（与 chunks 同参 m16/ef64）。
+	graphCardEmbeddingHNSWIndex = "knowledge_graph_embeddings_embedding_hnsw"
+	defaultHNSWEfSearch         = 40
 )
 
 func knowledgeHNSWIndexSQL() string {
 	return fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s
 			ON knowledge_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`, knowledgeEmbeddingHNSWIndex)
+}
+
+func graphCardHNSWIndexSQL() string {
+	return fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s
+			ON knowledge_graph_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`, graphCardEmbeddingHNSWIndex)
 }
 
 // ensureKnowledgeEmbeddingHNSW drops the legacy IVFFlat ANN index and creates
@@ -154,6 +161,28 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 			ON knowledge_documents USING GIN (shared_with)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_collection_hash_idx
 			ON knowledge_documents (collection_id, content_hash) WHERE content_hash <> ''`,
+
+		// --- G-33 图谱卡片向量档（ADR-KN-20261020-H；fresh 形态，存量库由迁移 20261286
+		// 建表——迁移轨道不带 vector 列，下方 ALTER 双轨补齐） ---
+		// ref_id 无 FK：kind 复用实体/链接两宿主表无法单一 FK，孤儿行由
+		// GraphProjectionWorker 墓碑回收；可见性不落列，读路径经宿主文档投影
+		// 下推 G-08 中央谓词。
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS knowledge_graph_embeddings (
+			kind          TEXT NOT NULL CHECK (kind IN ('entity','edge')),
+			ref_id        BIGINT NOT NULL,
+			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+			text          TEXT NOT NULL,
+			source_hash   TEXT NOT NULL DEFAULT '',
+			embedding     vector(%d),
+			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (kind, ref_id)
+		)`, dim),
+		// 存量库（迁移 20261286 已建表但无 vector 列）补列；fresh 库 CREATE 已含，
+		// ADD COLUMN IF NOT EXISTS 幂等。
+		fmt.Sprintf(`ALTER TABLE knowledge_graph_embeddings ADD COLUMN IF NOT EXISTS embedding vector(%d)`, dim),
+		graphCardHNSWIndexSQL(),
+		`CREATE INDEX IF NOT EXISTS knowledge_graph_embeddings_collection_kind_idx
+			ON knowledge_graph_embeddings (collection_id, kind)`,
 
 		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS cited_count INT NOT NULL DEFAULT 0`,
 		`CREATE TABLE IF NOT EXISTS knowledge_chunk_citations (
@@ -354,13 +383,21 @@ func reconcileEmbeddingDim(ctx context.Context, db *sql.DB, dim int, lg loggatew
 	stmts := []string{
 		`DROP INDEX IF EXISTS knowledge_chunks_embedding_idx`,
 		`DROP INDEX IF EXISTS knowledge_chunks_embedding_hnsw`,
+		// G-33 卡片表同维对账（ADR-KN-20261020-H）：旧维度卡向量对新 embedder 无
+		// 检索意义，而卡片 source_hash 由卡片文推导——embedder 换维 hash 不漂移，
+		// 对账工人无法靠漂移自愈 → 整表墓碑式清空，由 GraphProjectionWorker 逐轮
+		// 重建（重建期第三腿召回退化回双腿，属可接受的短暂降级）。
+		`DROP INDEX IF EXISTS knowledge_graph_embeddings_embedding_hnsw`,
+		`DELETE FROM knowledge_graph_embeddings`,
 		`UPDATE knowledge_chunks SET embedding = NULL WHERE embedding IS NOT NULL`,
 		`UPDATE knowledge_documents SET content_hash = '', status = 'pending', updated_at = NOW()
 			WHERE content_hash <> '' AND id IN (SELECT DISTINCT doc_id FROM knowledge_chunks)`,
 		fmt.Sprintf(`UPDATE knowledge_collections SET dim = %d, updated_at = NOW()
 			WHERE embedding_model <> '' AND dim <> %d`, dim, dim),
 		fmt.Sprintf(`ALTER TABLE knowledge_chunks ALTER COLUMN embedding TYPE vector(%d)`, dim),
+		fmt.Sprintf(`ALTER TABLE knowledge_graph_embeddings ALTER COLUMN embedding TYPE vector(%d)`, dim),
 		knowledgeHNSWIndexSQL(),
+		graphCardHNSWIndexSQL(),
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {

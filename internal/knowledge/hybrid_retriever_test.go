@@ -382,3 +382,127 @@ func TestRouterSearch_RRFChainBackfillsParentContext(t *testing.T) {
 		}
 	}
 }
+
+// ===== G-33（ADR-KN-20261020-I）：rrfMergeN 变参核心 + 卡片第三腿 =====
+
+func TestRRFMergeN_ThreeListScoreBreakdown(t *testing.T) {
+	// 卡片腿同权 1/(k+rank+1)：实体卡 #1 → 1/61，边卡 #2 → 1/62；未命中腿
+	// 分解为零值；EntityScore/MetadataJSON 携带照常。
+	dense := []biz.KnowledgeChunk{
+		{ID: "a", Content: "alpha", Score: 0.9},
+	}
+	sparse := []biz.KnowledgeChunk{
+		{ID: "a", Content: "alpha", Score: 11},
+	}
+	cards := []biz.KnowledgeChunk{
+		{ID: "g33e/7/d1", DocID: "d1", CollectionID: "col", Content: "实体卡文", EntityScore: 0.77, MetadataJSON: `{"g33":"entity","g33_ref":7}`},
+		{ID: "g33r/9/d2", DocID: "d2", CollectionID: "col", Content: "边卡文", EntityScore: 0.66, MetadataJSON: `{"g33":"edge","g33_ref":9}`},
+	}
+
+	merged := rrfMergeN(60, dense, sparse, cards)
+	byID := make(map[string]biz.KnowledgeChunk, len(merged))
+	for _, ch := range merged {
+		byID[ch.ID] = ch
+	}
+	if len(merged) != 3 {
+		t.Fatalf("want 3 unique chunks, got %d", len(merged))
+	}
+
+	a := byID["a"]
+	if want := float32(1.0/61.0 + 1.0/61.0); !float32Near(a.RRFScore, want) || a.Score != a.RRFScore {
+		t.Errorf("a RRF=%v Score=%v want %v（dense+sparse 双 #1）", a.RRFScore, a.Score, want)
+	}
+	if a.DenseScore != 0.9 || a.SparseScore != 11 || a.EntityScore != 0 {
+		t.Errorf("a breakdown = %v/%v/%v, want 0.9/11/0（未命中卡片腿）", a.DenseScore, a.SparseScore, a.EntityScore)
+	}
+
+	e := byID["g33e/7/d1"]
+	if want := float32(1.0 / 61.0); !float32Near(e.RRFScore, want) || e.Score != e.RRFScore {
+		t.Errorf("entity card RRF=%v want %v（卡 #1 贡献）", e.RRFScore, want)
+	}
+	if e.DenseScore != 0 || e.SparseScore != 0 {
+		t.Errorf("entity card dense/sparse = %v/%v, want 双零（未命中两侧）", e.DenseScore, e.SparseScore)
+	}
+	if e.EntityScore != 0.77 {
+		t.Errorf("entity card EntityScore = %v, want 0.77 过融合", e.EntityScore)
+	}
+	if e.MetadataJSON != `{"g33":"entity","g33_ref":7}` {
+		t.Errorf("entity card MetadataJSON = %q, want g33 标记过融合", e.MetadataJSON)
+	}
+
+	r := byID["g33r/9/d2"]
+	if want := float32(1.0 / 62.0); !float32Near(r.RRFScore, want) {
+		t.Errorf("edge card RRF=%v want %v（卡 #2 贡献）", r.RRFScore, want)
+	}
+	if r.EntityScore != 0.66 {
+		t.Errorf("edge card EntityScore = %v, want 0.66", r.EntityScore)
+	}
+}
+
+// assertChunksSame 逐字段比较（Chunk 含 []float32 Embedding 不能直接 !=；
+// 钉全投影面，字面量重建纪律的保真担保）。
+func assertChunksSame(t *testing.T, i int, a, b biz.KnowledgeChunk) {
+	t.Helper()
+	if a.ID != b.ID || a.DocID != b.DocID || a.CollectionID != b.CollectionID ||
+		a.Content != b.Content || a.ChunkIndex != b.ChunkIndex || a.ParentChunkID != b.ParentChunkID ||
+		a.IsParent != b.IsParent || a.ParentContent != b.ParentContent ||
+		a.Score != b.Score || a.DenseScore != b.DenseScore || a.SparseScore != b.SparseScore ||
+		a.RRFScore != b.RRFScore || a.RerankScore != b.RerankScore || a.EntityScore != b.EntityScore ||
+		a.MetadataJSON != b.MetadataJSON || len(a.Embedding) != len(b.Embedding) {
+		t.Fatalf("index %d mismatch: %+v vs %+v", i, a, b)
+	}
+}
+
+func TestRRFMergeN_TwoListMatchesLegacyWrapper(t *testing.T) {
+	// 包装保真钉：rrfMerge(d,s,60) 与 rrfMergeN(60,d,s) 输出逐字段一致——
+	// TestRRFMerge_ScoreBreakdown 等存量精确分值测试的零改动由本钉担保。
+	dense := []biz.KnowledgeChunk{
+		{ID: "a", DocID: "d1", Content: "alpha", Score: 0.9, ParentChunkID: "d1-p-0"},
+		{ID: "b", DocID: "d2", Content: "beta", Score: 0.7},
+	}
+	sparse := []biz.KnowledgeChunk{
+		{ID: "b", DocID: "d2", Content: "beta", Score: 11},
+		{ID: "c", DocID: "d3", Content: "gamma", Score: 10},
+	}
+	legacy := rrfMerge(dense, sparse, 60)
+	variadic := rrfMergeN(60, dense, sparse)
+	if len(legacy) != len(variadic) {
+		t.Fatalf("length mismatch: %d vs %d", len(legacy), len(variadic))
+	}
+	for i := range legacy {
+		assertChunksSame(t, i, legacy[i], variadic[i])
+	}
+}
+
+func TestRRFMergeN_NilCardListSameAsLegacy(t *testing.T) {
+	// 腿关闭（装配 nil 关腿）时第三列传 nil——融合结果与两腿版完全一致。
+	dense := []biz.KnowledgeChunk{{ID: "a", Content: "alpha", Score: 0.9}}
+	sparse := []biz.KnowledgeChunk{{ID: "a", Content: "alpha", Score: 11}}
+	legacy := rrfMerge(dense, sparse, 60)
+	withNilLeg := rrfMergeN(60, dense, sparse, nil)
+	if len(legacy) != len(withNilLeg) {
+		t.Fatalf("nil card list must not change fusion length: %+v vs %+v", legacy, withNilLeg)
+	}
+	assertChunksSame(t, 0, legacy[0], withNilLeg[0])
+}
+
+func TestRRFMergeN_CarriesCardProjectionFields(t *testing.T) {
+	// 宿主投影契约钉：卡候选的 DocID/CollectionID/Content 为真实值并过融合——
+	// 父回填/基础加成/access_log/Hebbian/GraphExpander 种子的下游继承全靠它们
+	// （同 G-06 字面量重建纪律）。
+	cards := []biz.KnowledgeChunk{{
+		ID: "g33e/7/d1", DocID: "d1", CollectionID: "col", Content: "卡片文",
+		ChunkIndex: 0, MetadataJSON: `{"g33":"entity","g33_ref":7}`, EntityScore: 0.77,
+	}}
+	merged := rrfMergeN(60, nil, nil, cards)
+	if len(merged) != 1 {
+		t.Fatalf("want 1 chunk, got %d", len(merged))
+	}
+	got := merged[0]
+	if got.DocID != "d1" || got.CollectionID != "col" || got.Content != "卡片文" {
+		t.Fatalf("projection fields lost: %+v", got)
+	}
+	if want := float32(1.0 / 61.0); !float32Near(got.Score, want) || got.RRFScore != got.Score {
+		t.Fatalf("Score=%v RRFScore=%v want %v 且两者相等（mode_used 保持 rrf）", got.Score, got.RRFScore, want)
+	}
+}

@@ -40,6 +40,7 @@ type HybridRetriever struct {
 	embedder QueryEmbedder
 	dense    biz.KnowledgeRepo
 	sparse   SparseSearcher
+	cards    GraphCardSearcher
 	reranker rerankerForHybrid
 	rrfK     int
 	lg       loggateway.Logger
@@ -68,6 +69,13 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggatew
 		rrfK:     rrfK,
 		lg:       lg,
 	}
+}
+
+// SetGraphCardSearcher 接线图谱卡片第三腿（G-33，ADR-KN-20261020-I）：
+// 照 SparseSearcher 先例 nil=关闭——v1 只在 RRF 模式启用（dense-only 模式
+// 与词法库降级路径不跑本腿，词法降级分支由同一检索器端口内部换实现备役）。
+func (h *HybridRetriever) SetGraphCardSearcher(s GraphCardSearcher) {
+	h.cards = s
 }
 
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {
@@ -208,8 +216,10 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	var (
 		denseChunks  []biz.KnowledgeChunk
 		sparseChunks []biz.KnowledgeChunk
+		cardChunks   []biz.KnowledgeChunk
 		denseErr     error
 		sparseErr    error
+		cardErr      error
 		wg           sync.WaitGroup
 	)
 	wg.Add(1)
@@ -226,6 +236,15 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 			start := time.Now()
 			sparseChunks, sparseErr = h.sparse.SearchChunksBM25(ctx, sparseQ)
 			observeSearchStage(searchStageSparse, start)
+		})
+	}
+	// G-33 图谱卡片第三腿：与 dense/sparse 同模式并发；腿失败回退两腿融合
+	// （warn 日志，照 dense/sparse 单路失败先例）。
+	if h.cards != nil {
+		wg.Add(1)
+		safego.Go(ctx, "knowledge.search.rrf_graph_cards", func() {
+			defer wg.Done()
+			cardChunks, cardErr = h.cards.SearchGraphCardChunks(ctx, q, vec)
 		})
 	}
 	wg.Wait()
@@ -252,7 +271,15 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 		return trimChunks(tagDenseScores(denseChunks), topK), nil
 	}
 
-	merged := rrfMerge(denseChunks, sparseChunks, h.rrfK)
+	if cardErr != nil {
+		h.lg.Warn("RRF 图谱卡片腿失败，回退密集+稀疏融合",
+			loggateway.StepID("knowledge.hybrid.card_fail"),
+			loggateway.Err(cardErr),
+			loggateway.Str("collection_id", q.CollectionID))
+		cardChunks = nil
+	}
+
+	merged := rrfMergeN(h.rrfK, denseChunks, sparseChunks, cardChunks)
 	if h.reranker != nil && h.reranker.HasReranker() && len(merged) > 0 {
 		return h.reranker.RerankChunks(ctx, q, merged, topK)
 	}
@@ -276,42 +303,53 @@ func tagSparseScores(chunks []biz.KnowledgeChunk) []biz.KnowledgeChunk {
 }
 
 func rrfMerge(dense, sparse []biz.KnowledgeChunk, k int) []biz.KnowledgeChunk {
+	// G-33：两列包装（签名钉死：TestRRFMerge_ScoreBreakdown 等既有断言零改动），
+	// 变参核心支持第三腿图谱卡片列。
+	return rrfMergeN(k, dense, sparse)
+}
+
+// rrfMergeN 变参 RRF 融合核心（ADR-KN-20261020-I）：以加入序编号各列——
+// 第 0/1 列的原始分记入 Dense/SparseScore 分解；第 ≥2 列（图谱卡片腿）原始
+// 相似度携于 chunk.EntityScore，融合同名 ID 取最大。所有列贡献同权
+// 1/(k+rank+1)（v1 不加权，金标裁决再调）。融合键恒为 ch.ID。
+func rrfMergeN(k int, lists ...[]biz.KnowledgeChunk) []biz.KnowledgeChunk {
 	scores := make(map[string]float64)
 	denseRaw := make(map[string]float32)
 	sparseRaw := make(map[string]float32)
+	entityRaw := make(map[string]float32)
 	chunkMap := make(map[string]*biz.KnowledgeChunk)
 
-	for i, ch := range dense {
-		scores[ch.ID] += 1.0 / float64(k+i+1)
-		denseRaw[ch.ID] = ch.Score
-		if _, exists := chunkMap[ch.ID]; !exists {
-			chunkMap[ch.ID] = &biz.KnowledgeChunk{
-				ID:           ch.ID,
-				DocID:        ch.DocID,
-				CollectionID: ch.CollectionID,
-				Content:      ch.Content,
-				MetadataJSON: ch.MetadataJSON,
-				ChunkIndex:   ch.ChunkIndex,
-				// G-06：ParentChunkID 必须过融合——Router 尾步回填的唯一触发键，
-				// 字面量重建易漏新字段，新增字段请同步此处。
-				ParentChunkID: ch.ParentChunkID,
-			}
+	// G-06 字面量重建纪律：融合重建处必须抄录全部经融合字段（G-06 钉——
+	// 新增字段请同步此处，G-33 起含 EntityScore）。
+	rebuild := func(ch biz.KnowledgeChunk) *biz.KnowledgeChunk {
+		return &biz.KnowledgeChunk{
+			ID:            ch.ID,
+			DocID:         ch.DocID,
+			CollectionID:  ch.CollectionID,
+			Content:       ch.Content,
+			MetadataJSON:  ch.MetadataJSON,
+			ChunkIndex:    ch.ChunkIndex,
+			ParentChunkID: ch.ParentChunkID,
+			EntityScore:   ch.EntityScore,
 		}
 	}
 
-	for i, ch := range sparse {
-		scores[ch.ID] += 1.0 / float64(k+i+1)
-		sparseRaw[ch.ID] = ch.Score
-		if _, exists := chunkMap[ch.ID]; !exists {
-			chunkMap[ch.ID] = &biz.KnowledgeChunk{
-				ID:           ch.ID,
-				DocID:        ch.DocID,
-				CollectionID: ch.CollectionID,
-				Content:      ch.Content,
-				MetadataJSON: ch.MetadataJSON,
-				ChunkIndex:   ch.ChunkIndex,
-				// G-06：同上——融合不得丢父块引用（对抗评审 F1）。
-				ParentChunkID: ch.ParentChunkID,
+	for li, list := range lists {
+		for i, ch := range list {
+			scores[ch.ID] += 1.0 / float64(k+i+1)
+			switch li {
+			case 0:
+				denseRaw[ch.ID] = ch.Score
+			case 1:
+				sparseRaw[ch.ID] = ch.Score
+			default:
+				// 卡片腿：原始分语义在 EntityScore，不写入 dense/sparse 分解。
+				if ch.EntityScore > entityRaw[ch.ID] {
+					entityRaw[ch.ID] = ch.EntityScore
+				}
+			}
+			if _, exists := chunkMap[ch.ID]; !exists {
+				chunkMap[ch.ID] = rebuild(ch)
 			}
 		}
 	}
@@ -325,6 +363,9 @@ func rrfMerge(dense, sparse []biz.KnowledgeChunk, k int) []biz.KnowledgeChunk {
 		ch.RRFScore = fused
 		ch.DenseScore = denseRaw[id]
 		ch.SparseScore = sparseRaw[id]
+		if e := entityRaw[id]; e > ch.EntityScore {
+			ch.EntityScore = e
+		}
 		result = append(result, *ch)
 	}
 

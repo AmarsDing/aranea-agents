@@ -22,6 +22,23 @@ func NewKnowledgeHybridRetriever(retriever *knowledge.Retriever, sparse biz.Know
 	return knowledge.NewHybridRetriever(retriever, sparse, lg)
 }
 
+// WireKnowledgeGraphCards 装配 G-33 图谱卡片第三腿（ADR-KN-20261020-I）：
+// repo 同时实现卡片 ANN/词法降级/宿主投影三窄口时启用，否则 nil=关闭本腿。
+func WireKnowledgeGraphCards(hybrid *knowledge.HybridRetriever, repo biz.KnowledgeRepo, lg loggateway.Logger) {
+	if hybrid == nil || repo == nil {
+		return
+	}
+	dense, ok1 := repo.(bizknowledge.GraphCardVectorSearcher)
+	lexical, ok2 := repo.(bizknowledge.GraphCardLexicalSearcher)
+	hosts, ok3 := repo.(bizknowledge.GraphCardHostDocLister)
+	if !ok1 || !ok2 || !ok3 {
+		lg.Info("图谱卡片腿未接线：repo 未同时实现卡片检索三窄口",
+			loggateway.StepID("knowledge.graph_card.init_skip"))
+		return
+	}
+	hybrid.SetGraphCardSearcher(knowledge.NewGraphCardSearcher(dense, lexical, hosts, lg))
+}
+
 func NewKnowledgeQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.QueryRewriter {
 	if llm == nil {
 		lg.Info("LLM 未配置，查询重写已禁用",
@@ -78,6 +95,8 @@ func NewKnowledgeAdaptiveRouter(hybrid *knowledge.HybridRetriever, rewriter *kno
 		lg.Info("父块语境回填未接线：repo 未实现 ParentContextResolver",
 			loggateway.StepID("knowledge.parent_context.init_skip"))
 	}
+	// G-33：repo 同时实现卡片检索三窄口时接线图谱卡片第三腿（nil=关闭）。
+	WireKnowledgeGraphCards(hybrid, repo, lg)
 	return router
 }
 

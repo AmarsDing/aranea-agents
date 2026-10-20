@@ -308,6 +308,9 @@ func mergeScoreBreakdown(reranked, originals []biz.KnowledgeChunk) []biz.Knowled
 		reranked[i].DenseScore = o.DenseScore
 		reranked[i].SparseScore = o.SparseScore
 		reranked[i].RRFScore = o.RRFScore
+		// G-33：图谱卡片候选的 EntityScore 同理必并回——卡片相似度分解要在
+		// 重排后仍能回答「为什么命中」。
+		reranked[i].EntityScore = o.EntityScore
 		// G-06：reranker 结果只带 ID/Content/新分，ParentChunkID 必须从融合前
 		// 候选集并回——否则重排后 Router 尾步回填父块语境的唯一触发键丢失（对抗评审 F2）。
 		reranked[i].ParentChunkID = o.ParentChunkID
