@@ -6,7 +6,10 @@
         <h3 class="app-settings-section__title">{{ t('knowledgeEmbed.title') }}</h3>
         <p class="app-settings-section__hint q-mb-none q-mt-xs">{{ t('knowledgeEmbed.subtitle') }}</p>
       </div>
-      <AppStatusChip :status="config?.configured ? 'configured' : 'unconfigured'" class="knowledge-embedder-panel__badge" />
+      <AppStatusChip
+        :status="config?.configured ? 'configured' : 'unconfigured'"
+        class="knowledge-embedder-panel__badge"
+      />
     </div>
 
     <knowledge-embedder-fields :form="form" :has-api-key="config?.has_api_key" />

@@ -2,11 +2,7 @@
   <!-- M4 聚焦节点信息卡：真折射玻璃（M1），画布右侧浮层，可收起。
        操作：在编辑器打开（open-in-explorer 既有链路）+ 重新向量化（B1 入口②，emit 由上层接线 RPC）。 -->
   <div class="kg3d-focus-card" :style="{ left: `${pos.x}px`, top: `${pos.y}px` }">
-    <GlassPanel
-      strong
-      :title="collapsed ? node.name : t('knowledgePage.graphFocusCardTitle')"
-      icon="my_location"
-    >
+    <GlassPanel strong :title="collapsed ? node.name : t('knowledgePage.graphFocusCardTitle')" icon="my_location">
       <template #header-actions>
         <q-btn
           flat

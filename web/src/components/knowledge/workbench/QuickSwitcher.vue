@@ -89,7 +89,10 @@ function toItem(d: KnowledgeDocument, tab: boolean): SwitcherItem {
 /** 已打开 tab 对应文档（保持 tab 顺序）。 */
 const openTabDocs = computed<SwitcherItem[]>(() => {
   const byId = new Map(props.documents.map((d) => [d.id, d]));
-  return props.tabs.map((tb) => byId.get(tb.docId)).filter((d): d is KnowledgeDocument => !!d).map((d) => toItem(d, true));
+  return props.tabs
+    .map((tb) => byId.get(tb.docId))
+    .filter((d): d is KnowledgeDocument => !!d)
+    .map((d) => toItem(d, true));
 });
 
 const flatItems = computed<SwitcherItem[]>(() => {

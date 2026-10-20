@@ -144,7 +144,9 @@ export class AggregateLayer {
     const n = this.groups.length;
     for (let g = 0; g < n; g++) {
       const grp = this.groups[g];
-      let cx = 0, cy = 0, cz = 0;
+      let cx = 0,
+        cy = 0,
+        cz = 0;
       const m = grp.members;
       for (let i = 0; i < m.length; i++) {
         const idx = m[i] * 3;

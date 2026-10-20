@@ -1,10 +1,6 @@
 <template>
   <div class="kb-local-graph">
-    <canvas
-      ref="canvasRef"
-      class="kb-local-graph__canvas"
-      @click="onClick"
-    />
+    <canvas ref="canvasRef" class="kb-local-graph__canvas" @click="onClick" />
     <div class="kb-local-graph__footer">
       <q-slider
         :model-value="hops"

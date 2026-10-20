@@ -1,7 +1,15 @@
 <template>
   <!-- D5：左中竖排图标胶囊（玻璃、青描边、tooltip）。纯展示组件：props in / emits out。 -->
   <div class="hud-toolbar">
-    <q-btn flat dense round size="sm" icon="fit_screen" :aria-label="t('knowledgePage.graphFitView')" @click="$emit('fit')">
+    <q-btn
+      flat
+      dense
+      round
+      size="sm"
+      icon="fit_screen"
+      :aria-label="t('knowledgePage.graphFitView')"
+      @click="$emit('fit')"
+    >
       <q-tooltip anchor="center right" self="center left">{{ t('knowledgePage.graphFitView') }}</q-tooltip>
     </q-btn>
     <q-btn

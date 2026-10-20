@@ -388,12 +388,7 @@ export class LabelLayer {
   }
 
   dispose(): void {
-    for (const s of [
-      ...this.sprites,
-      this.focusSprites.hover,
-      this.focusSprites.selected,
-      ...this.groupSprites,
-    ]) {
+    for (const s of [...this.sprites, this.focusSprites.hover, this.focusSprites.selected, ...this.groupSprites]) {
       // SpriteText 无公开 dispose()：手动释放 canvas 纹理与材质（GC 路径）。
       s.material.map?.dispose();
       s.material.dispose();

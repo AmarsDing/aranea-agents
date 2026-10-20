@@ -6,41 +6,44 @@
       </q-card-section>
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body">
-      <div v-if="!homeIsCurrent" class="kb-writeback-review__banner">
-        {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="primary"
-          class="q-ml-sm"
-          :label="t('knowledgePage.workbench.writebackHomeSwitch')"
-          @click="$emit('switch-home')"
-        />
-      </div>
-      <div class="kb-writeback-review__toolbar">
-        <q-checkbox
-          :model-value="allChecked"
-          dense
-          :label="t('knowledgePage.workbench.pendingSelectAll')"
-          @update:model-value="toggleAll"
-        />
-        <span class="kb-writeback-review__count">{{ selectedIds.length }}/{{ items.length }}</span>
-      </div>
-      <q-list dense class="kb-writeback-review__list">
-        <q-item v-for="it in items" :key="it.fact_id" tag="label" clickable>
-          <q-item-section avatar>
-            <q-checkbox :model-value="selected.has(it.fact_id)" @update:model-value="(v: boolean) => toggle(it.fact_id, v)" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label>{{ it.statement }}</q-item-label>
-            <q-item-label caption>
-              {{ it.kind }} · {{ it.confidence.toFixed(2) }}
-              <template v-if="it.agent_id"> · {{ it.agent_id }}</template>
-            </q-item-label>
-          </q-item-section>
-        </q-item>
-      </q-list>
+          <div v-if="!homeIsCurrent" class="kb-writeback-review__banner">
+            {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="primary"
+              class="q-ml-sm"
+              :label="t('knowledgePage.workbench.writebackHomeSwitch')"
+              @click="$emit('switch-home')"
+            />
+          </div>
+          <div class="kb-writeback-review__toolbar">
+            <q-checkbox
+              :model-value="allChecked"
+              dense
+              :label="t('knowledgePage.workbench.pendingSelectAll')"
+              @update:model-value="toggleAll"
+            />
+            <span class="kb-writeback-review__count">{{ selectedIds.length }}/{{ items.length }}</span>
+          </div>
+          <q-list dense class="kb-writeback-review__list">
+            <q-item v-for="it in items" :key="it.fact_id" tag="label" clickable>
+              <q-item-section avatar>
+                <q-checkbox
+                  :model-value="selected.has(it.fact_id)"
+                  @update:model-value="(v: boolean) => toggle(it.fact_id, v)"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ it.statement }}</q-item-label>
+                <q-item-label caption>
+                  {{ it.kind }} · {{ it.confidence.toFixed(2) }}
+                  <template v-if="it.agent_id"> · {{ it.agent_id }}</template>
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
         </q-card-section>
       </div>
       <q-card-actions align="right" class="app-glass-dialog__actions">
