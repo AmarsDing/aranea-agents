@@ -9,8 +9,17 @@ import (
 	"time"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
+
+// adminAccessCtx supplies the admin identity required by the skill governance
+// gates (审计 H1: DetectDuplicateGroups/Merge 收束为管理员能力，见
+// skill.RequireAdminAccess)。非管理员拒绝路径由 internal/biz/skill 的
+// *AdminAccessRequired 用例覆盖。
+func adminAccessCtx() context.Context {
+	return auth.NewContext(context.Background(), &auth.Auth{UserID: 1, Access: "admin"})
+}
 
 // isAPIErrorCode reports whether err carries the given apierror code.
 // （原定义在已删除的 skill_evolution_test.go，merge 用例仍依赖，随 ADR-3-C5 回迁。）
@@ -239,7 +248,7 @@ func scorePair(score float64, dim SimilarityDimension) *SimilarityResult {
 func TestDedup_LessThanTwoSkills_NoGroups(t *testing.T) {
 	reader := &dedupStubReader{summaries: []SkillSummary{{ID: "only-one"}}}
 	uc := NewSkillDedupUsecase(reader, &stubComparer{}, loggateway.NewNoop())
-	groups, err := uc.DetectDuplicateGroups(context.Background())
+	groups, err := uc.DetectDuplicateGroups(adminAccessCtx())
 	if err != nil {
 		t.Fatalf("DetectDuplicateGroups: %v", err)
 	}
@@ -256,7 +265,7 @@ func TestDedup_IdenticalSkills_SingleGroup(t *testing.T) {
 	eng := NewSkillSimilarityEngine(nil, DefaultDedupWeights(), loggateway.NewNoop())
 	uc := NewSkillDedupUsecase(reader, eng, loggateway.NewNoop())
 
-	groups, err := uc.DetectDuplicateGroups(context.Background())
+	groups, err := uc.DetectDuplicateGroups(adminAccessCtx())
 	if err != nil {
 		t.Fatalf("DetectDuplicateGroups: %v", err)
 	}
@@ -286,7 +295,7 @@ func TestDedup_TransitiveGrouping_UnionFind(t *testing.T) {
 		pairKey("b", "c"): scorePair(0.6, DimName),
 	}}
 	uc := NewSkillDedupUsecase(reader, cmp, loggateway.NewNoop())
-	groups, err := uc.DetectDuplicateGroups(context.Background())
+	groups, err := uc.DetectDuplicateGroups(adminAccessCtx())
 	if err != nil {
 		t.Fatalf("DetectDuplicateGroups: %v", err)
 	}
@@ -304,7 +313,7 @@ func TestDedup_BelowThreshold_NoGroups(t *testing.T) {
 		pairKey("a", "b"): scorePair(0.49, DimName), // 低于 0.5 阈值
 	}}
 	uc := NewSkillDedupUsecase(reader, cmp, loggateway.NewNoop())
-	groups, err := uc.DetectDuplicateGroups(context.Background())
+	groups, err := uc.DetectDuplicateGroups(adminAccessCtx())
 	if err != nil {
 		t.Fatalf("DetectDuplicateGroups: %v", err)
 	}
@@ -318,7 +327,7 @@ func TestDedup_CompareError_SkipsPair(t *testing.T) {
 	reader := &dedupStubReader{summaries: []SkillSummary{{ID: "a"}, {ID: "b"}}}
 	cmp := &stubComparer{err: errors.New("compare boom")}
 	uc := NewSkillDedupUsecase(reader, cmp, loggateway.NewNoop())
-	groups, err := uc.DetectDuplicateGroups(context.Background())
+	groups, err := uc.DetectDuplicateGroups(adminAccessCtx())
 	if err != nil {
 		t.Fatalf("Compare errors must not fail the whole scan: %v", err)
 	}
@@ -332,14 +341,14 @@ func TestDedup_CacheHit_SkipsReader(t *testing.T) {
 	cmp := &stubComparer{scores: map[string]*SimilarityResult{pairKey("a", "b"): scorePair(0.9, DimName)}}
 	uc := NewSkillDedupUsecase(reader, cmp, loggateway.NewNoop())
 
-	if _, err := uc.DetectDuplicateGroups(context.Background()); err != nil {
+	if _, err := uc.DetectDuplicateGroups(adminAccessCtx()); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	if reader.calls != 1 {
 		t.Fatalf("reader calls = %d, want 1", reader.calls)
 	}
 	// 第二次调用命中 10 分钟 TTL 缓存，不再访问 reader。
-	if _, err := uc.DetectDuplicateGroups(context.Background()); err != nil {
+	if _, err := uc.DetectDuplicateGroups(adminAccessCtx()); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 	if reader.calls != 1 {
@@ -354,11 +363,11 @@ func TestDedup_InvalidateCache_ForcesRescan(t *testing.T) {
 	cmp := &stubComparer{scores: map[string]*SimilarityResult{pairKey("a", "b"): scorePair(0.9, DimName)}}
 	uc := NewSkillDedupUsecase(reader, cmp, loggateway.NewNoop())
 
-	if _, err := uc.DetectDuplicateGroups(context.Background()); err != nil {
+	if _, err := uc.DetectDuplicateGroups(adminAccessCtx()); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	uc.InvalidateDedupCache()
-	if _, err := uc.DetectDuplicateGroups(context.Background()); err != nil {
+	if _, err := uc.DetectDuplicateGroups(adminAccessCtx()); err != nil {
 		t.Fatalf("after invalidate: %v", err)
 	}
 	if reader.calls != 2 {
@@ -378,7 +387,7 @@ func TestDedup_GroupMetadata_UsesBestPair(t *testing.T) {
 		pairKey("s2", "s4"): scorePair(0.55, DimTag),
 	}}
 	uc := NewSkillDedupUsecase(reader, cmp, loggateway.NewNoop())
-	groups, err := uc.DetectDuplicateGroups(context.Background())
+	groups, err := uc.DetectDuplicateGroups(adminAccessCtx())
 	if err != nil {
 		t.Fatalf("DetectDuplicateGroups: %v", err)
 	}
@@ -469,7 +478,7 @@ func newMergeFixture() (*mergeStubReader, *mergeStubWriter) {
 func TestMerge_SameSourceAndTarget_Rejected(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "x", TargetID: "x", Strategy: MergeStrategyAppend})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "x", TargetID: "x", Strategy: MergeStrategyAppend})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest", err)
 	}
@@ -479,7 +488,7 @@ func TestMerge_DeletedSource_Rejected(t *testing.T) {
 	reader, writer := newMergeFixture()
 	reader.skills["src"].Status = "deleted"
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest for deleted source", err)
 	}
@@ -489,7 +498,7 @@ func TestMerge_ArchivedTarget_Rejected(t *testing.T) {
 	reader, writer := newMergeFixture()
 	reader.skills["tgt"].Status = "archived"
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest for archived target", err)
 	}
@@ -499,7 +508,7 @@ func TestMerge_ArchivedTarget_Rejected(t *testing.T) {
 func TestMerge_AIFuseStrategy_RejectedAsDeprecated(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, &stubContentFuser{fused: &FusedContent{Body: "x"}}, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAIFuse})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAIFuse})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest for deprecated ai_fuse", err)
 	}
@@ -539,7 +548,7 @@ func TestMerge_Success_InvalidatesDedupCache(t *testing.T) {
 	inv := &fakeDedupInvalidator{}
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
 	uc.SetDedupCacheInvalidator(inv)
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
 	if err != nil {
 		t.Fatalf("Merge: %v", err)
 	}
@@ -555,7 +564,7 @@ func TestMerge_Failure_KeepsDedupCache(t *testing.T) {
 	inv := &fakeDedupInvalidator{}
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
 	uc.SetDedupCacheInvalidator(inv)
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
 	if err == nil {
 		t.Fatal("expected merge error")
 	}
@@ -571,7 +580,7 @@ func (f *fakeDedupInvalidator) InvalidateDedupCache() { f.calls++ }
 func TestMerge_RuleFuse_WithoutFuser_Rejected(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyRuleFuse})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyRuleFuse})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest when fuser not configured", err)
 	}
@@ -581,7 +590,7 @@ func TestMerge_RuleFuse_Success(t *testing.T) {
 	reader, writer := newMergeFixture()
 	fuser := &stubContentFuser{fused: &FusedContent{Body: "fused-body", Tags: []string{"merged"}}}
 	uc := NewSkillMergeUsecase(reader, writer, fuser, nil, loggateway.NewNoop())
-	res, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyRuleFuse})
+	res, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyRuleFuse})
 	if err != nil {
 		t.Fatalf("Merge: %v", err)
 	}
@@ -602,7 +611,7 @@ func TestMerge_RuleFuse_Success(t *testing.T) {
 func TestMerge_ManualPick_EmptyBody_Rejected(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyManualPick, ManualBody: "   "})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyManualPick, ManualBody: "   "})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest for empty manual_body", err)
 	}
@@ -612,7 +621,7 @@ func TestMerge_ManualPick_EmptyBody_Rejected(t *testing.T) {
 func TestMerge_ManualPick_MergesTagsCaseInsensitive(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	res, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyManualPick, ManualBody: "人工选定内容"})
+	res, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyManualPick, ManualBody: "人工选定内容"})
 	if err != nil {
 		t.Fatalf("Merge: %v", err)
 	}
@@ -632,7 +641,7 @@ func TestMerge_ManualPick_MergesTagsCaseInsensitive(t *testing.T) {
 func TestMerge_Append_SkipsDuplicateSections(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	res, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
+	res, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
 	if err != nil {
 		t.Fatalf("Merge: %v", err)
 	}
@@ -656,7 +665,7 @@ func TestMerge_GateFailure_BlocksApply(t *testing.T) {
 		Checks: []GateCheckResult{{Name: "security", Passed: false, Reason: "detected api_key"}},
 	}}
 	uc := NewSkillMergeUsecase(reader, writer, nil, gate, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: MergeStrategyAppend})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest on gate failure", err)
 	}
@@ -671,7 +680,7 @@ func TestMerge_GateFailure_BlocksApply(t *testing.T) {
 func TestMerge_UnknownStrategy_Rejected(t *testing.T) {
 	reader, writer := newMergeFixture()
 	uc := NewSkillMergeUsecase(reader, writer, nil, nil, loggateway.NewNoop())
-	_, err := uc.Merge(context.Background(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: "teleport"})
+	_, err := uc.Merge(adminAccessCtx(), SkillMergeRequest{SourceID: "src", TargetID: "tgt", Strategy: "teleport"})
 	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("err = %v, want BadRequest for unknown strategy", err)
 	}
