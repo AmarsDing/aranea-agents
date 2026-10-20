@@ -208,6 +208,23 @@ jobs:
           name: go-coverage
           path: coverage.out
 
+      # G-13 金标快照门禁：无 PG/embedder 依赖的确定性检索跑入仓金标集，
+      # before/after chunk recall / chunk MRR 跌幅越阈即红；检索失败、集漂移、
+      # 快照过期、基线降级同样卡。判定单一事实源 eval gate.go（CheckGoldGate）。
+      # 该门禁同时含在上方 go test ./... 内（TestGoldSnapshotRegression），
+      # 本步编译执行以保留 goldeval 退出码（0 无回归 / 1 运行错误 / 2 门禁违规），
+      # 并把 diff 报表写入 job summary。markdown 在任何结果下都得落盘，供汇总。
+      - name: Knowledge gold recall gate
+        run: |
+          mkdir -p ./bin
+          go build -o ./bin/goldeval ./internal/knowledge/eval/cmd/goldeval
+          set +e
+          ./bin/goldeval -markdown gold-report.md
+          code=$?
+          set -e
+          if [ -f gold-report.md ]; then cat gold-report.md >> "$GITHUB_STEP_SUMMARY"; fi
+          exit $code
+
   test-web:
     name: Frontend Build + Test
     runs-on: ubuntu-latest
