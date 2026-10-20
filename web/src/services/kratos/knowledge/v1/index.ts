@@ -67,6 +67,17 @@ export type KnowledgeChunk = {
   metadataJson: string | undefined;
   chunkIndex: number | undefined;
   score: number | undefined;
+  // G-12 hit-debug: per-lane raw scores. score stays the final sort key;
+  // rrf_score is the fused RRF sum (score==rrf_score pre-rerank);
+  // rerank_score is set only when a reranker rewrote score.
+  denseScore: number | undefined;
+  sparseScore: number | undefined;
+  rrfScore: number | undefined;
+  rerankScore: number | undefined;
+  // G-06 parent_child: runtime-backfilled parent content for display/inject cue.
+  // Populated at search time only (data-driven backfill); never persisted on the
+  // child row. Empty for non-parent_child docs.
+  parentContent: string | undefined;
 };
 
 // CreateCollectionRequest creates a knowledge collection (Vault V2 / SP1-F team library).
@@ -121,7 +132,9 @@ export type IngestDocumentRequest = {
   chunkSize: number | undefined;
   // chunk_overlap is the token/char overlap between consecutive chunks (0 = server default 64).
   chunkOverlap: number | undefined;
-  // chunk_strategy: char | token | markdown | json | recursive (empty = char).
+  // chunk_strategy: char | token | markdown | json | recursive | parent_child (empty = char).
+  // parent_child（G-06 父子分块）仅 API 层可用——小块召回、父块语境回填，
+  // 配套 parent_chunk_size（field 11）。
   chunkStrategy: string | undefined;
   // organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
   // (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
@@ -133,6 +146,10 @@ export type IngestDocumentRequest = {
   // the vault sync chain treats it as already-applied. Empty = legacy behavior
   // (no filesystem write).
   targetDir: string | undefined;
+  // G-06: parent window size in tokens, only meaningful with
+  // chunk_strategy = "parent_child". 0 = default 4×chunk_size (clamped ≥2×).
+  // NOT persisted per-document: reembed normalizes back to 4×chunk_size.
+  parentChunkSize: number | undefined;
 };
 
 export type GetDocumentContentRequest = {
@@ -407,6 +424,21 @@ export type RebuildKnowledgeIndexResponse = {
   status: string | undefined;
 };
 
+// ReindexVaultRequest triggers a full vault re-index (G-11).
+export type ReindexVaultRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+// ReindexVaultResponse acknowledges the accepted asynchronous vault re-index.
+// Progress is broadcast on the knowledge WS channel (EP-KN-02 pattern,
+// event_type = knowledge_vault_reindex); sync_state turns "error" on failure
+// and back to "active" on completion (same as the periodic vault sync loop).
+export type ReindexVaultResponse = {
+  status: string | undefined;
+};
+
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
 // source = "norm" (same name_norm, different display name) or "embedding"
 // (cosine similarity of entity-name embeddings).
@@ -473,10 +505,12 @@ export type ListGovernanceProposalsRequest = {
   collectionId: string | undefined;
   status: string | undefined;
   limit: number | undefined;
+  offset: number | undefined;
 };
 
 export type ListGovernanceProposalsResponse = {
   items: GovernanceProposal[] | undefined;
+  total: number | undefined;
 };
 
 // ResolveGovernanceProposalRequest closes one pending proposal (人工二审).
@@ -491,6 +525,20 @@ export type ResolveGovernanceProposalRequest = {
 
 export type ResolveGovernanceProposalResponse = {
   id: number | undefined;
+  status: string | undefined;
+};
+
+// G-30 治理仪表盘手动入口：对一个库立即触发一轮词条治理（同 dream 周期
+// CurateKnowledge 语义——decay/promote/stale/distill 自动项 + 高风险提案探测）。
+// 异步受理；dry_run=true 仅探测不应用（decay/置位/提案均不落库）。
+export type CurateKnowledgeNowRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  dryRun: boolean | undefined;
+};
+
+export type CurateKnowledgeNowResponse = {
   status: string | undefined;
 };
 
@@ -510,6 +558,10 @@ export type ReembedDocumentsRequest = {
   docIds: string[] | undefined;
   chunkSize: number | undefined;
   chunkOverlap: number | undefined;
+  // G-06: optional rechunk strategy override. Empty = document's stored
+  // chunk_strategy (ingest-time persisted), falling back to "char" for legacy
+  // rows. Fixes the pre-existing reembed-always-char shape loss.
+  chunkStrategy: string | undefined;
 };
 
 export type ReembedDocumentsResponse = {
@@ -606,6 +658,40 @@ export type SearchRequest = {
 
 export type SearchResponse = {
   chunks: KnowledgeChunk[] | undefined;
+};
+
+// G-19 hit-test: self-serve "why did (not) X hit" debugging for one vault.
+// Same retrieval path as Search (router/hybrid/rerank/routing intact); differs:
+// collection_id REQUIRED (panel is per-vault), access_log is NOT written
+// (debug trials must not pollute base-level activation / popularity signals),
+// no RetrievalEvaluator LLM pass. Per-chunk dense/sparse/rrf/rerank scores are
+// carried on KnowledgeChunk (G-12) so the panel can rank both pre- and
+// post-rerank orderings from one response.
+export type DebugKnowledgeSearchRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  query: string | undefined;
+  topK: number | undefined;
+  minScore: number | undefined;
+  filterJson: string | undefined;
+  useRerank?: boolean;
+  // hybrid_search: auto | dense | sparse | rrf (empty = auto). The panel issues
+  // one call per strategy for side-by-side comparison.
+  hybridSearch: string | undefined;
+  pathPrefix: string | undefined;
+};
+
+export type DebugKnowledgeSearchResponse = {
+  chunks: KnowledgeChunk[] | undefined;
+  // mode_used: provenance inferred from the score breakdown actually produced
+  // ("rrf" | "dense" | "sparse" | "none") — falls back visibly on embedder
+  // outage (request said rrf, result is pure sparse).
+  modeUsed: string | undefined;
+  // reranked: true when a reranker rewrote scores (compare rrf_score vs score).
+  reranked: boolean | undefined;
 };
 
 export type GetEmbedderConfigRequest = {
@@ -707,6 +793,13 @@ export interface KnowledgeService {
   // collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
   // stay on old data during the rebuild (degraded but available).
   RebuildKnowledgeIndex(request: RebuildKnowledgeIndexRequest): Promise<RebuildKnowledgeIndexResponse>;
+  // ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+  // local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+  // mirror-only docs → forced re-create for everything on disk. Team vaults are
+  // rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+  // Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+  // same collection is in flight (job key knowledge-reindex:<id>).
+  ReindexVault(request: ReindexVaultRequest): Promise<ReindexVaultResponse>;
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
   // normalization conflict groups (same name_norm, different display name)
   // plus high-similarity embedding pairs when the embedder is configured.
@@ -722,8 +815,14 @@ export interface KnowledgeService {
   // decision=applied approves the action; rejected dismisses it;
   // keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
   ResolveGovernanceProposal(request: ResolveGovernanceProposalRequest): Promise<ResolveGovernanceProposalResponse>;
+  // G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+  // 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+  CurateKnowledgeNow(request: CurateKnowledgeNowRequest): Promise<CurateKnowledgeNowResponse>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
+  // G-19 hit-test panel: per-vault search debugging with score decomposition;
+  // never writes access_log (see DebugKnowledgeSearchRequest docs).
+  DebugKnowledgeSearch(request: DebugKnowledgeSearchRequest): Promise<DebugKnowledgeSearchResponse>;
   GetEmbedderConfig(request: GetEmbedderConfigRequest): Promise<EmbedderConfig>;
   UpdateEmbedderConfig(request: UpdateEmbedderConfigRequest): Promise<UpdateEmbedderConfigResponse>;
 }
@@ -1283,6 +1382,26 @@ export function createKnowledgeServiceClient(
         method: "RebuildKnowledgeIndex",
       }) as Promise<RebuildKnowledgeIndexResponse>;
     },
+    ReindexVault(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/vaults/${request.id}/reindex`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ReindexVault",
+      }) as Promise<ReindexVaultResponse>;
+    },
     ListEntityMergeSuggestions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.collectionId) {
         throw new Error("missing required field request.collection_id");
@@ -1336,6 +1455,9 @@ export function createKnowledgeServiceClient(
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -1369,6 +1491,26 @@ export function createKnowledgeServiceClient(
         method: "ResolveGovernanceProposal",
       }) as Promise<ResolveGovernanceProposalResponse>;
     },
+    CurateKnowledgeNow(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/curate`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "CurateKnowledgeNow",
+      }) as Promise<CurateKnowledgeNowResponse>;
+    },
     Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
@@ -1385,6 +1527,23 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "Search",
       }) as Promise<SearchResponse>;
+    },
+    DebugKnowledgeSearch(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/knowledge/search/debug`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "DebugKnowledgeSearch",
+      }) as Promise<DebugKnowledgeSearchResponse>;
     },
     GetEmbedderConfig(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/embedder-config`; // eslint-disable-line quotes

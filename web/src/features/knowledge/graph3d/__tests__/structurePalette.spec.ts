@@ -90,7 +90,15 @@ describe('structurePalette · buildNodeColorBuffer', () => {
   });
 
   it('group 模式：组索引越界回退中性灰', () => {
-    const buf = buildNodeColorBuffer(1, Uint16Array.from([9]), groups, Uint8Array.from([0]), Uint16Array.from([1]), 'group', groupPalette);
+    const buf = buildNodeColorBuffer(
+      1,
+      Uint16Array.from([9]),
+      groups,
+      Uint8Array.from([0]),
+      Uint16Array.from([1]),
+      'group',
+      groupPalette,
+    );
     expect(rgbAt(buf, 0)).toEqual([0.5, 0.5, 0.5]);
   });
 });

@@ -9,6 +9,7 @@ const mockGet = vi.fn();
 const mockPost = vi.fn();
 const mockListGov = vi.fn();
 const mockResolveGov = vi.fn();
+const mockCurateNow = vi.fn();
 vi.mock('../../../services/axiosHandler', () => ({
   kratosApi: {
     get: (...args: unknown[]) => mockGet(...args),
@@ -19,10 +20,18 @@ vi.mock('../../../services', () => ({
   createKnowledgeService: () => ({
     ListGovernanceProposals: (...args: unknown[]) => mockListGov(...args),
     ResolveGovernanceProposal: (...args: unknown[]) => mockResolveGov(...args),
+    CurateKnowledgeNow: (...args: unknown[]) => mockCurateNow(...args),
   }),
 }));
 
-import { listBlockBacklinks, listGovernanceProposals, listUnlinkedMentions, resolveGovernanceProposal, updateDocumentVisibility } from '../api';
+import {
+  curateKnowledge,
+  listBlockBacklinks,
+  listGovernanceProposals,
+  listUnlinkedMentions,
+  resolveGovernanceProposal,
+  updateDocumentVisibility,
+} from '../api';
 
 describe('listBlockBacklinks（SP1-I：doc_id 附加绑定直连）', () => {
   beforeEach(() => {
@@ -101,7 +110,7 @@ describe('governance proposals（US-52）', () => {
     mockResolveGov.mockReset();
   });
 
-  it('listGovernanceProposals 映射 snake/camel 字段', async () => {
+  it('listGovernanceProposals 映射 snake/camel 字段（G-30：分页入参 + total 透传）', async () => {
     mockListGov.mockResolvedValue({
       items: [
         {
@@ -114,20 +123,36 @@ describe('governance proposals（US-52）', () => {
           createdAt: '2026-08-17T12:00:00Z',
         },
       ],
+      total: 42,
     });
-    const out = await listGovernanceProposals('c1');
-    expect(mockListGov).toHaveBeenCalledWith({ collectionId: 'c1', status: 'pending', limit: 50 });
-    expect(out).toEqual([
-      {
-        id: 12,
-        collection_id: 'c1',
-        kind: 'conflict',
-        risk: 'high',
-        status: 'pending',
-        payload_json: '{"target_fact_id":"fid-old","new_fact_id":"fid-new"}',
-        created_at: '2026-08-17T12:00:00Z',
-      },
-    ]);
+    const out = await listGovernanceProposals('c1', 'pending', { limit: 20, offset: 20 });
+    expect(mockListGov).toHaveBeenCalledWith({ collectionId: 'c1', status: 'pending', limit: 20, offset: 20 });
+    expect(out).toEqual({
+      items: [
+        {
+          id: 12,
+          collection_id: 'c1',
+          kind: 'conflict',
+          risk: 'high',
+          status: 'pending',
+          payload_json: '{"target_fact_id":"fid-old","new_fact_id":"fid-new"}',
+          created_at: '2026-08-17T12:00:00Z',
+        },
+      ],
+      total: 42,
+    });
+  });
+
+  it('listGovernanceProposals 缺 total 时回退 items 长度', async () => {
+    mockListGov.mockResolvedValue({ items: [] });
+    await expect(listGovernanceProposals('c1')).resolves.toEqual({ items: [], total: 0 });
+    expect(mockListGov).toHaveBeenCalledWith({ collectionId: 'c1', status: 'pending', limit: 20, offset: 0 });
+  });
+
+  it('curateKnowledge 手动触发治理（G-30）：dry_run 透传', async () => {
+    mockCurateNow.mockResolvedValue({ status: 'curating' });
+    await expect(curateKnowledge('c1', true)).resolves.toEqual({ status: 'curating' });
+    expect(mockCurateNow).toHaveBeenCalledWith({ collectionId: 'c1', dryRun: true });
   });
 
   it('resolveGovernanceProposal 传 keep_new', async () => {
@@ -147,10 +172,9 @@ describe('updateDocumentVisibility', () => {
       data: { id: 'd1', visibility: 'private', owner_user_id: '7' },
     });
     const out = await updateDocumentVisibility('doc/特殊 id', 'private');
-    expect(mockPost).toHaveBeenCalledWith(
-      '/v1/knowledge/documents/doc%2F%E7%89%B9%E6%AE%8A%20id/visibility',
-      { visibility: 'private' },
-    );
+    expect(mockPost).toHaveBeenCalledWith('/v1/knowledge/documents/doc%2F%E7%89%B9%E6%AE%8A%20id/visibility', {
+      visibility: 'private',
+    });
     expect(out).toEqual({ id: 'd1', visibility: 'private', owner_user_id: '7' });
   });
 });

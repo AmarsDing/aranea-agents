@@ -80,12 +80,21 @@ export class CameraDirector {
       const { target, distance, from = [0, 0, 400] } = this.focusTarget;
       const e = easeInOutQuad(t);
       // 二次贝塞尔甩镜：控制点侧向抬升（电影感弧度）
-      const mid: Vec3 = [(from[0] + target[0]) / 2, (from[1] + target[1]) / 2 + distance * 0.6, (from[2] + target[2]) / 2];
-      const quad = (a: number, c: number, b: number): number => (1 - e) * ((1 - e) * a + e * c) + e * ((1 - e) * c + e * b);
+      const mid: Vec3 = [
+        (from[0] + target[0]) / 2,
+        (from[1] + target[1]) / 2 + distance * 0.6,
+        (from[2] + target[2]) / 2,
+      ];
+      const quad = (a: number, c: number, b: number): number =>
+        (1 - e) * ((1 - e) * a + e * c) + e * ((1 - e) * c + e * b);
       const end: Vec3 = [target[0], target[1], target[2] + distance];
       return {
         position: [quad(from[0], mid[0], end[0]), quad(from[1], mid[1], end[1]), quad(from[2], mid[2], end[2])],
-        lookAt: [from[0] + (target[0] - from[0]) * e, from[1] + (target[1] - from[1]) * e, from[2] + (target[2] - from[2]) * e],
+        lookAt: [
+          from[0] + (target[0] - from[0]) * e,
+          from[1] + (target[1] - from[1]) * e,
+          from[2] + (target[2] - from[2]) * e,
+        ],
         revealT: 1,
       };
     }
@@ -93,7 +102,11 @@ export class CameraDirector {
       this.orbitAngle += 0.004;
       const { target, distance } = this.focusTarget;
       return {
-        position: [target[0] + Math.sin(this.orbitAngle) * distance, target[1] + distance * 0.25, target[2] + Math.cos(this.orbitAngle) * distance],
+        position: [
+          target[0] + Math.sin(this.orbitAngle) * distance,
+          target[1] + distance * 0.25,
+          target[2] + Math.cos(this.orbitAngle) * distance,
+        ],
         lookAt: target,
         revealT: 1,
       };

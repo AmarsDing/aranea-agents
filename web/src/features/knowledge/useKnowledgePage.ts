@@ -83,6 +83,13 @@ export function useKnowledgePage() {
     }
   }
 
+  // 上传链路对账按「任务目标库」重拉（二轮复核 F8：解析中途切库时 reconcile
+  // 误读选中库会把成功误判为可重试超时）；省略参数或等于选中库时走常规重载。
+  async function loadDocumentsFor(collectionId?: string): Promise<void> {
+    if (!collectionId || collectionId === selectedId.value) return loadDocuments();
+    await knowledgeStore.loadDocuments(collectionId, { limit: DOCUMENTS_PAGE_LIMIT, offset: 0 });
+  }
+
   function selectCollection(id: string) {
     selectedId.value = id;
   }
@@ -101,7 +108,7 @@ export function useKnowledgePage() {
   const upload = useKnowledgeUpload({
     selectedId,
     collections,
-    loadDocuments,
+    loadDocuments: loadDocumentsFor,
     loadCollections,
     friendlyError,
     selectTreeNode: (key) => explorer.selectTreeNode(key),
@@ -182,6 +189,12 @@ export function useKnowledgePage() {
     }
   }
   async function loadEmbedderConfig() {
+    // Embedder 配置是平台管理员域：非管理员 GET 恒为 403，旧实现把每次 403 弹成
+    // “检索功能可能不可用”的警告 toast，吓阻所有非管理员用户——直接跳过加载。
+    // auth store 动态引入：静态导入会把 admin/api→axiosHandler→i18n 整条链拉进
+    // 本组合式的模块图（单测上下文无完整 i18n 会炸），且 pinia 需在调用时已激活。
+    const { useAuthStore } = await import('../../stores/auth');
+    if (!useAuthStore().isPlatformAdmin) return;
     try {
       await knowledgeStore.loadEmbedderConfig();
     } catch {

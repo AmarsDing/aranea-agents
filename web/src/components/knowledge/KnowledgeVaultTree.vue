@@ -45,10 +45,7 @@
             />
             <span class="knowledge-vault-tree__label ellipsis" :title="scope.node.label">{{ scope.node.label }}</span>
             <!-- 库节点文档计数徽标（hover 显示完整文案） -->
-            <span
-              v-if="scope.node.kind === 'vault' && scope.node.docCount != null"
-              class="knowledge-vault-tree__count"
-            >
+            <span v-if="scope.node.kind === 'vault' && scope.node.docCount != null" class="knowledge-vault-tree__count">
               {{ scope.node.docCount }}
               <q-tooltip>{{ t('knowledgePage.treeDocCount', { count: scope.node.docCount }) }}</q-tooltip>
             </span>
@@ -105,6 +102,16 @@
                     <q-item clickable @click="emitAction('refresh', scope.node)">
                       <q-item-section avatar><q-icon name="refresh" size="18px" /></q-item-section>
                       <q-item-section>{{ t('knowledgePage.refreshVault') }}</q-item-section>
+                    </q-item>
+                    <!-- G-11：仅 local vault（PG 真相源的 team 库经服务编排重嵌入，不走文件系统重扫） -->
+                    <q-item
+                      v-if="scope.node.vaultBackend !== 'team'"
+                      clickable
+                      data-test="vault-reindex"
+                      @click="emitAction('reindex-vault', scope.node)"
+                    >
+                      <q-item-section avatar><q-icon name="sync_alt" size="18px" /></q-item-section>
+                      <q-item-section>{{ tt('reindexVault') }}</q-item-section>
                     </q-item>
                     <q-item clickable class="text-negative" @click="emitAction('delete-vault', scope.node)">
                       <q-item-section avatar
@@ -180,6 +187,21 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+// G-11：组件本地 i18n（全局 locale 文件归并行会话维护，零冲突接入）。
+let tt: (key: string, named?: Record<string, unknown>) => string = (key) => key;
+try {
+  tt = useI18n({
+    useScope: 'local',
+    inheritLocale: true,
+    messages: {
+      'zh-CN': { reindexVault: '重建索引（全量）' },
+      'en-US': { reindexVault: 'Rebuild index (full)' },
+    },
+  }).t;
+} catch (e) {
+  console.warn('KnowledgeVaultTree: local i18n init failed, falling back', e);
+}
 
 function visualOf(node: VaultQTreeNode): VaultNodeVisual {
   return node.kind === 'vault' ? vaultRootVisual() : vaultNodeVisual({ kind: node.kind });

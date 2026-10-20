@@ -171,9 +171,7 @@ describe('useKnowledgeGraph', () => {
     const fail = vi.fn();
     await graph.onScopeLazyLoad({ key: 'v|c1', done, fail });
     expect(fail).not.toHaveBeenCalled();
-    expect(done).toHaveBeenCalledWith([
-      expect.objectContaining({ kind: 'dir', prefix: 'guides/', vaultId: 'c1' }),
-    ]);
+    expect(done).toHaveBeenCalledWith([expect.objectContaining({ kind: 'dir', prefix: 'guides/', vaultId: 'c1' })]);
   });
 
   // ---------- G5-G G-1：实体治理（合并建议 + 一键合并） ----------

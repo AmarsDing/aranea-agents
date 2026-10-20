@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const notifySpy = vi.fn();
 let onOkCb: (() => void) | null = null;
-const dialogSpy = vi.fn(() => ({
+const dialogSpy = vi.fn((_opts?: unknown) => ({
   onOk: (cb: () => void) => {
     onOkCb = cb;
   },
@@ -13,9 +13,12 @@ vi.mock('quasar', () => ({
   useQuasar: () => ({ notify: notifySpy, dialog: dialogSpy }),
 }));
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (k: string) => k }),
-}));
+vi.mock('vue-i18n', async (importOriginal) => {
+  // createI18n 需保留真实现：knowledgePageError → src/i18n 在模块加载期调用；
+  // 只替换 useI18n 为恒等 t。
+  const actual = await importOriginal<typeof import('vue-i18n')>();
+  return { ...actual, useI18n: () => ({ t: (k: string) => k }) };
+});
 
 const mockStore = {
   embedderConfig: null,

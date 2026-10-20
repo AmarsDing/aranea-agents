@@ -2,7 +2,7 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { promoteTargetOptions } from './knowledgeUi';
-import { fetchDocumentAsset } from './api';
+import { fetchDocumentAsset, reindexVault } from './api';
 import { dirNodeKey, vaultNodeKey } from './vaultTreeUi';
 import type { EmbedderConfig, KnowledgeCollection, KnowledgeDocument, PromoteResult } from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
@@ -31,6 +31,30 @@ export type KnowledgeVaultOpsDeps = {
 export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
   const $q = useQuasar();
   const { t } = useI18n();
+  // G-11：组件本地 i18n（全局 locale 文件归并行会话维护，零冲突接入）。
+  let lt: (key: string, named?: Record<string, unknown>) => string = (key) => key;
+  try {
+    lt = useI18n({
+      useScope: 'local',
+      inheritLocale: true,
+      messages: {
+        'zh-CN': {
+          reindexTitle: '重建索引',
+          reindexMessage:
+            '以文件系统为源全量重建「{name}」的索引（分块/向量/关联）？期间检索质量不受影响，完成后自动恢复。',
+          reindexAccepted: '重索引已受理，后台进行中…',
+        },
+        'en-US': {
+          reindexTitle: 'Rebuild index',
+          reindexMessage:
+            'Force-rebuild all derived indices (chunks/vectors/links) of "{name}" from the filesystem? Search stays available throughout.',
+          reindexAccepted: 'Reindex accepted; running in the background…',
+        },
+      },
+    }).t;
+  } catch (e) {
+    console.warn('useKnowledgeVaultOps: local i18n init failed, falling back', e);
+  }
   const knowledgeStore = useKnowledgeStore();
 
   const createOpen = ref(false);
@@ -181,7 +205,8 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     try {
       await knowledgeStore.setDocumentVisibility(doc.id, visibility);
     } catch (e) {
-      $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.workbench.filePrivate') });
+      // G-03：非 owner/admin 的更改被后端以 NotFound 拒绝——给出明确归因文案。
+      $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.visibilityUpdateFailed') });
     }
   }
 
@@ -306,6 +331,25 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     });
   }
 
+  /** G-11：local vault 全量重索引（文件系统真相源强制重建派生索引）；确认后
+   *  异步受理（在途返回 409），进度经 knowledge_vault_reindex WS 通知。 */
+  function confirmReindexVault(node: VaultQTreeNode) {
+    $q.dialog({
+      title: lt('reindexTitle'),
+      message: lt('reindexMessage', { name: node.label ?? '' }),
+      cancel: true,
+      persistent: true,
+    }).onOk(() => {
+      void reindexVault(node.vaultId)
+        .then(async () => {
+          $q.notify({ type: 'positive', message: lt('reindexAccepted') });
+          await deps.loadCollections();
+          if (node.vaultId === deps.selectedId.value) await deps.loadDocuments();
+        })
+        .catch((e) => $q.notify({ type: 'negative', message: deps.friendlyError(e) }));
+    });
+  }
+
   function confirmEnableSemantic(collectionId: string) {
     const col = deps.collections.value.find((c) => c.id === collectionId);
     if (!col || col.embedding_model) return;
@@ -353,6 +397,9 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
         break;
       case 'enable-semantic':
         confirmEnableSemantic(node.vaultId);
+        break;
+      case 'reindex-vault':
+        confirmReindexVault(node);
         break;
     }
   }

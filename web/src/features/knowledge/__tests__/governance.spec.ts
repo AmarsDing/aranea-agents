@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  decisionsForProposal,
-  isFactConflict,
-  parseProposalPayload,
-  proposalSummary,
-} from '../governance';
+import { decisionsForProposal, isFactConflict, parseProposalPayload, proposalSummary } from '../governance';
 
 describe('parseProposalPayload', () => {
   it('解析事实冲突字段', () => {
@@ -37,14 +32,8 @@ describe('decisionsForProposal', () => {
   });
 
   it('文档级 conflict 与 orphan 走 applied / rejected', () => {
-    expect(decisionsForProposal('conflict', { doc_id: 'a', target_doc_id: 'b' })).toEqual([
-      'applied',
-      'rejected',
-    ]);
-    expect(decisionsForProposal('orphan', { doc_id: 'd1', rel_path: 'entries/x.md' })).toEqual([
-      'applied',
-      'rejected',
-    ]);
+    expect(decisionsForProposal('conflict', { doc_id: 'a', target_doc_id: 'b' })).toEqual(['applied', 'rejected']);
+    expect(decisionsForProposal('orphan', { doc_id: 'd1', rel_path: 'entries/x.md' })).toEqual(['applied', 'rejected']);
   });
 });
 
@@ -59,8 +48,6 @@ describe('proposalSummary', () => {
   });
 
   it('孤儿词条展示路径', () => {
-    expect(proposalSummary('orphan', { rel_path: 'entries/stale.md', doc_id: 'd1' })).toBe(
-      'entries/stale.md',
-    );
+    expect(proposalSummary('orphan', { rel_path: 'entries/stale.md', doc_id: 'd1' })).toBe('entries/stale.md');
   });
 });

@@ -7,9 +7,17 @@
           <span class="ellipsis">{{ g.docName }}</span>
           <span class="kb-panel-group__count">{{ g.items.length }}</span>
         </button>
-        <div v-for="(it, i) in g.items" :key="i" class="kb-panel-item kb-panel-item--static" :title="it.context">
+        <!-- G-18：反链项点击 = 点回引用现场（来源文档 + 锚点滚动） -->
+        <button
+          v-for="(it, i) in g.items"
+          :key="i"
+          type="button"
+          class="kb-panel-item"
+          :title="it.context"
+          @click="$emit('open-doc-at', it.src_doc_id, it.context, it.raw_target)"
+        >
           {{ it.context || it.raw_target }}
-        </div>
+        </button>
       </div>
       <div v-if="dangling.length" class="kb-panel-group">
         <div class="kb-panel-group__head kb-panel-group__head--dangling">
@@ -66,6 +74,8 @@ withDefaults(
 
 defineEmits<{
   'open-doc-id': [docId: string];
+  /** G-18：点击反链项 → 打开来源文档并滚动到引用现场。 */
+  'open-doc-at': [docId: string, context: string, rawTarget: string];
   'apply-autolink': [];
 }>();
 

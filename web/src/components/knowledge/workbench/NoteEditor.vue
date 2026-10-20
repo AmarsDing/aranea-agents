@@ -445,6 +445,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  // 闪烁定时器若在卸载后触发，会对已销毁 DOM 做 classList 操作——先清掉。
+  if (flashTimer) clearTimeout(flashTimer);
   view?.destroy();
   view = null;
 });
@@ -457,7 +459,46 @@ function scrollToOffset(offset: number) {
   view.focus();
 }
 
-defineExpose({ scrollToOffset, flushPendingContent: flushContentUpdate });
+/** 二轮复核 F9：只滚动、不动选区/不抢焦点的被动定位。引用点击是「读」意图——
+ *  锚点失效兜底若复用 scrollToOffset，编辑态 tab 会把 caret 落到文档头并 focus()，
+ *  用户随后的按键直接写进正文。 */
+function scrollToOffsetPassive(offset: number) {
+  if (!view) return;
+  const pos = Math.min(Math.max(0, offset), view.state.doc.length);
+  view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start' }) });
+}
+
+/** G-17 引用锚定：与 scrollToOffset 同定位，叠加块级闪烁（引用现场直感）。 */
+let flashTimer: ReturnType<typeof setTimeout> | undefined;
+let flashEl: Element | null = null;
+function scrollToOffsetExact(offset: number) {
+  if (!view) return;
+  scrollToOffset(offset);
+  const pos = Math.min(Math.max(0, offset), view.state.doc.length);
+  try {
+    const node = view.domAtPos(pos).node;
+    const el = node instanceof Element ? node : (node?.parentElement ?? null);
+    if (!el) return;
+    const block = el.closest('h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,table') ?? el.closest('.cm-line');
+    if (!block) return;
+    // 二轮复核 F11：先卸下上一块的闪烁 class 再放新块——cancel 定时器不清
+    // 旧 class 会永久残留，同块二次点击 classList.add 变成 no-op 无法重闪。
+    // 同块重闪时 remove/add 无样式变化中断，显式 reflow 让动画重新起播。
+    if (flashEl) flashEl.classList.remove('kb-cite-flash');
+    void block.clientWidth; // 强制 reflow：同块重点击时动画可重新触发
+    block.classList.add('kb-cite-flash');
+    flashEl = block;
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      block.classList.remove('kb-cite-flash');
+      if (flashEl === block) flashEl = null;
+    }, 1400);
+  } catch {
+    // domAtPos 在跨节点越界时可能抛错——定位仍成功，仅丢失闪烁，静默降级。
+  }
+}
+
+defineExpose({ scrollToOffset, scrollToOffsetPassive, scrollToOffsetExact, flushPendingContent: flushContentUpdate });
 </script>
 
 <style lang="sass" scoped>
@@ -468,4 +509,15 @@ defineExpose({ scrollToOffset, flushPendingContent: flushContentUpdate });
 
   :deep(.cm-editor)
     height: 100%
+
+  // G-17 引用锚定：跳转后块级闪烁（与 NotePreview .kb-flash 同款脉冲）。
+  :deep(.kb-cite-flash)
+    animation: kb-cite-pulse 1.2s ease-out
+    border-radius: 6px
+
+@keyframes kb-cite-pulse
+  0%
+    background: color-mix(in srgb, var(--kb-accent-cyan) 30%, transparent)
+  100%
+    background: transparent
 </style>

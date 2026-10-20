@@ -108,19 +108,21 @@ async function selectAndSettle(ex: ReturnType<typeof useVaultExplorer>, docId: s
 describe('UX-003 详情加载错误态', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockStore.loadVaultTree.mockResolvedValue([makeDoc('d1', 'readme.md')].map((d) => ({
-      name: d.source,
-      path: d.rel_path,
-      kind: 'file',
-      doc_id: d.id,
-      summary: '',
-      tags: [],
-      doc_type: 'note',
-      status: 'indexed',
-      size_bytes: 10,
-      updated_at: d.updated_at,
-      error_message: '',
-    })));
+    mockStore.loadVaultTree.mockResolvedValue(
+      [makeDoc('d1', 'readme.md')].map((d) => ({
+        name: d.source,
+        path: d.rel_path,
+        kind: 'file',
+        doc_id: d.id,
+        summary: '',
+        tags: [],
+        doc_type: 'note',
+        status: 'indexed',
+        size_bytes: 10,
+        updated_at: d.updated_at,
+        error_message: '',
+      })),
+    );
   });
 
   it('内容/关联加载失败置错误态并通知；reloadDetail 重试成功后清除', async () => {

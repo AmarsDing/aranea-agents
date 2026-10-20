@@ -11,6 +11,7 @@ import {
   applyOutgoingAutolink,
   applyWriteBackPending,
   backfillAutolinkIndex,
+  curateKnowledge,
   getCollectionHealth,
   getWriteBackHome,
   listCollectionExperts,
@@ -23,6 +24,7 @@ import {
   resolveGovernanceProposal,
 } from './api';
 import { COMMAND_DEFS, pushMru, type CommandId, type CommandItem } from './commands';
+import { buildSearchSnippet, type HighlightRange } from './searchHighlight';
 import { normalizeTargetName } from './wikilink';
 import type { GovernanceDecision } from './governance';
 import type { KnowledgeWorkbench } from './useKnowledgeWorkbench';
@@ -41,6 +43,8 @@ export interface WorkbenchSearchItem {
   name: string;
   path: string;
   snippet: string;
+  /** G-16：片段内关键词高亮区间（[start,end) 半开，已归并）；可选以兼容面板侧入参。 */
+  marks?: HighlightRange[];
   score: number;
 }
 
@@ -128,23 +132,13 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
 
   // ---------- 全库搜索（Ctrl+Shift+F，P1-3） ----------
   // 防抖 300ms + seq 竞态守卫（慢响应不覆盖新查询）；检索走 store（统一 HTTP 门面）。
+  // G-16：片段生成移至 searchHighlight.ts（命中词 + CJK bigram 高亮区间）。
   const searchOpen = ref(false);
   const searchQuery = ref('');
   const searchItems = ref<WorkbenchSearchItem[]>([]);
   const searchLoading = ref(false);
   let searchSeq = 0;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-
-  /** 命中文本窗口：以首个匹配词为中心截取片段（Obsidian 语义）。 */
-  function buildSnippet(content: string, query: string): string {
-    const flat = content.replace(/\s+/g, ' ').trim();
-    const idx = flat.toLowerCase().indexOf(query.trim().toLowerCase());
-    if (idx < 0) return flat.slice(0, 160);
-    const start = Math.max(0, idx - 48);
-    const prefix = start > 0 ? '…' : '';
-    const tail = start + 160 < flat.length ? '…' : '';
-    return `${prefix}${flat.slice(start, start + 160)}${tail}`;
-  }
 
   async function runSearch(q: string) {
     const seq = ++searchSeq;
@@ -165,12 +159,14 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
         const doc = deps.documents.value.find((d) => d.id === chunk.doc_id);
         const rel = doc?.rel_path || doc?.source || chunk.doc_id;
         const name = rel.split('/').filter(Boolean).pop() || rel;
+        const snip = buildSearchSnippet(chunk.content, q);
         return {
           chunk,
           docId: chunk.doc_id,
           name,
           path: rel,
-          snippet: buildSnippet(chunk.content, q),
+          snippet: snip.text,
+          marks: snip.marks,
           score: chunk.score,
         };
       });
@@ -459,38 +455,58 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     }
   }
 
-  // ---------- 治理提案 ----------
+  // ---------- 治理提案（G-30：offset 分页 + 手动触发治理） ----------
 
   const govOpen = ref(false);
   const govItems = ref<GovernanceProposalItem[]>([]);
   const govHome = ref<WriteBackTarget>({ id: '', name: '', redirected: false });
   const govLoadingId = ref<number | undefined>(undefined);
+  const govTotal = ref(0);
+  const govPage = ref(1);
+  const govPageSize = 20;
+  const govCurating = ref(false);
 
-  async function loadGovernanceItems(collectionId: string): Promise<GovernanceProposalItem[]> {
-    return listGovernanceProposals(collectionId, 'pending');
+  /** loadGovernancePage 取一页 pending 提案（G-30 分页契约：items + 同口径 total）。 */
+  async function loadGovernancePage(collectionId: string, page: number): Promise<number> {
+    const res = await listGovernanceProposals(collectionId, 'pending', {
+      limit: govPageSize,
+      offset: (page - 1) * govPageSize,
+    });
+    govItems.value = res.items;
+    govTotal.value = res.total;
+    govPage.value = page;
+    return res.items.length;
   }
 
   async function reviewGovernance() {
     if (!deps.currentVaultId.value) return;
     try {
-      let items = await loadGovernanceItems(deps.currentVaultId.value);
+      let count = await loadGovernancePage(deps.currentVaultId.value, 1);
       let home: WriteBackTarget = { id: deps.currentVaultId.value, name: '', redirected: false };
-      if (!items.length) {
+      if (!count) {
         const inbox = await getWriteBackHome().catch(() => null);
         if (inbox?.found && inbox.collection_id && inbox.collection_id !== deps.currentVaultId.value) {
-          items = await loadGovernanceItems(inbox.collection_id);
-          if (items.length) {
+          count = await loadGovernancePage(inbox.collection_id, 1);
+          if (count) {
             home = { id: inbox.collection_id, name: inbox.name, redirected: true };
           }
         }
       }
-      if (!items.length) {
+      if (!count) {
         $q.notify({ type: 'info', message: t('knowledgePage.workbench.govEmpty') });
         return;
       }
       govHome.value = home;
-      govItems.value = items;
       govOpen.value = true;
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  async function onGovPageChange(page: number) {
+    if (!govHome.value.id || page === govPage.value) return;
+    try {
+      await loadGovernancePage(govHome.value.id, page);
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     }
@@ -505,13 +521,39 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     try {
       await resolveGovernanceProposal(payload.id, payload.decision);
       govItems.value = govItems.value.filter((it) => it.id !== payload.id);
+      govTotal.value = Math.max(0, govTotal.value - 1);
       $q.notify({ type: 'positive', message: t('knowledgePage.workbench.govDone') });
-      if (!govItems.value.length) govOpen.value = false;
+      if (!govTotal.value) {
+        govOpen.value = false;
+      } else if (!govItems.value.length) {
+        // 当前页批完：自动回退上一页继续二审（G-30 分页）。
+        await onGovPageChange(Math.max(1, govPage.value - 1));
+      }
       deps.events.refreshTree();
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     } finally {
       govLoadingId.value = undefined;
+    }
+  }
+
+  /** onCurateGovernance 治理仪表盘手动触发一轮词条治理（G-30）：异步受理，
+   *  409 = 同库在途；dryRun 预演不落库；完成后提案经下一轮探测入库（重新开面板即见）。 */
+  async function onCurateGovernance(payload: { dryRun: boolean }) {
+    if (!govHome.value.id || govCurating.value) return;
+    govCurating.value = true;
+    try {
+      await curateKnowledge(govHome.value.id, payload.dryRun);
+      $q.notify({
+        type: 'positive',
+        message: t(
+          payload.dryRun ? 'knowledgePage.workbench.govCurateDryAccepted' : 'knowledgePage.workbench.govCurateAccepted',
+        ),
+      });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      govCurating.value = false;
     }
   }
 
@@ -660,6 +702,12 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     govItems,
     govHome,
     govLoadingId,
+    govTotal,
+    govPage,
+    govPageSize,
+    govCurating,
+    onGovPageChange,
+    onCurateGovernance,
     onResolveGovernance,
     onSwitchGovHome,
     // 快捷键

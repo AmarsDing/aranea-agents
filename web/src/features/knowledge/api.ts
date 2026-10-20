@@ -38,7 +38,8 @@ import type {
   KnowledgeExpert,
   PendingWriteBackItem,
   WriteBackHome,
-  GovernanceProposalItem,
+  KnowledgeHitTestResult,
+  ListGovernanceProposalsResult,
 } from './types';
 
 const svc = createKnowledgeService();
@@ -139,6 +140,11 @@ function mapChunk(raw: unknown): KnowledgeChunk {
     metadata_json: pickStr(r, 'metadata_json', 'metadataJson'),
     chunk_index: pickI32(r, 'chunk_index', 'chunkIndex'),
     score: pickNum(r, 'score', 'score'),
+    // G-12/hit-test：分路分解（未走的通路为 0；camelCase 来自生成客户端）。
+    dense_score: pickNum(r, 'dense_score', 'denseScore'),
+    sparse_score: pickNum(r, 'sparse_score', 'sparseScore'),
+    rrf_score: pickNum(r, 'rrf_score', 'rrfScore'),
+    rerank_score: pickNum(r, 'rerank_score', 'rerankScore'),
   };
 }
 
@@ -164,6 +170,7 @@ export async function createCollection(input: CreateCollectionInput): Promise<Kn
     description: input.description ?? '',
     embeddingModel: input.embedding_model ?? '',
     rootPath: input.root_path,
+    vaultBackend: undefined,
   });
   return mapCollection(raw);
 }
@@ -390,9 +397,7 @@ export async function previewOutgoingAutolink(docId: string): Promise<AutolinkPr
 }
 
 export async function applyOutgoingAutolink(docId: string): Promise<AutolinkApplyResult> {
-  const r = asRecord(
-    (await kratosApi.post(`/v1/knowledge/documents/${encodeURIComponent(docId)}/autolink`)).data,
-  );
+  const r = asRecord((await kratosApi.post(`/v1/knowledge/documents/${encodeURIComponent(docId)}/autolink`)).data);
   return {
     doc_id: pickStr(r, 'doc_id', 'docId'),
     replacements: pickI32(r, 'replacements', 'replacements'),
@@ -460,10 +465,9 @@ export async function applyWriteBackPending(
 ): Promise<{ appended: number; doc_id: string }> {
   const r = asRecord(
     (
-      await kratosApi.post(
-        `/v1/knowledge/collections/${encodeURIComponent(collectionId)}/writeback-pending/apply`,
-        { fact_ids: factIds },
-      )
+      await kratosApi.post(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/writeback-pending/apply`, {
+        fact_ids: factIds,
+      })
     ).data,
   );
   return {
@@ -472,30 +476,49 @@ export async function applyWriteBackPending(
   };
 }
 
+/** listGovernanceProposals 治理提案分页列表（G-30）：items 走 LIMIT/OFFSET，
+ *  total 为同 WHERE 口径总数（前端据此渲染翻页）。 */
 export async function listGovernanceProposals(
   collectionId: string,
   status = 'pending',
-): Promise<GovernanceProposalItem[]> {
-  const res = asRecord(await svc.ListGovernanceProposals({ collectionId, status, limit: 50 }));
+  params: { limit?: number; offset?: number } = {},
+): Promise<ListGovernanceProposalsResult> {
+  const res = asRecord(
+    await svc.ListGovernanceProposals({
+      collectionId,
+      status,
+      limit: params.limit ?? 20,
+      offset: params.offset ?? 0,
+    }),
+  );
   const itemsRaw = res.items ?? res.Items;
-  if (!Array.isArray(itemsRaw)) return [];
-  return itemsRaw.map((raw) => {
-    const r = asRecord(raw);
-    return {
-      id: pickI64(r, 'id', 'id'),
-      collection_id: pickStr(r, 'collection_id', 'collectionId'),
-      kind: pickStr(r, 'kind', 'kind'),
-      risk: pickStr(r, 'risk', 'risk'),
-      status: pickStr(r, 'status', 'status'),
-      payload_json: pickStr(r, 'payload_json', 'payloadJson'),
-      created_at: pickStr(r, 'created_at', 'createdAt'),
-    };
-  });
+  const items = Array.isArray(itemsRaw)
+    ? itemsRaw.map((raw) => {
+        const r = asRecord(raw);
+        return {
+          id: pickI64(r, 'id', 'id'),
+          collection_id: pickStr(r, 'collection_id', 'collectionId'),
+          kind: pickStr(r, 'kind', 'kind'),
+          risk: pickStr(r, 'risk', 'risk'),
+          status: pickStr(r, 'status', 'status'),
+          payload_json: pickStr(r, 'payload_json', 'payloadJson'),
+          created_at: pickStr(r, 'created_at', 'createdAt'),
+        };
+      })
+    : [];
+  return { items, total: pickI32(res, 'total', 'total') || items.length };
 }
 
 export async function resolveGovernanceProposal(id: number, decision: string): Promise<{ id: number; status: string }> {
   const r = asRecord(await svc.ResolveGovernanceProposal({ id, decision }));
   return { id: pickI64(r, 'id', 'id'), status: pickStr(r, 'status', 'status') };
+}
+
+/** curateKnowledge 治理仪表盘手动触发一轮词条治理（G-30）：异步受理（409 = 同库
+ *  在途）；dryRun=true 仅探测不应用（预演治理效果）；进度/终态走 knowledge_curate WS。 */
+export async function curateKnowledge(collectionId: string, dryRun = false): Promise<{ status: string }> {
+  const r = asRecord(await svc.CurateKnowledgeNow({ collectionId, dryRun }));
+  return { status: pickStr(r, 'status', 'status') };
 }
 
 /** getWriteBackHome 工作区写回落点（US-46）：只解析不创建。 */
@@ -529,9 +552,7 @@ export async function updateDocumentVisibility(
 
 /** backfillAutolinkIndex 显式回填存量出链并重建索引（US-45）；会改写 Markdown。 */
 export async function backfillAutolinkIndex(collectionId: string): Promise<void> {
-  await kratosApi.post(
-    `/v1/knowledge/collections/${encodeURIComponent(collectionId)}/autolink-backfill`,
-  );
+  await kratosApi.post(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/autolink-backfill`);
 }
 
 /** recordLinkUse wikilink 落链上报（B4 #8）：补全选中目标后 upsert recency 行。
@@ -594,7 +615,7 @@ function mapPromoteResult(raw: unknown): PromoteResult {
 /** promoteDocuments 文档级晋升（SP1-I）：后端解析整文档全部块走同一晋升管线
  *  （谱系 + 级联提示 + 目标文档 chunk 重放）。目标库必须 vault_backend=team。 */
 export async function promoteDocuments(docIds: string[], targetCollectionId: string): Promise<PromoteResult> {
-  const raw = await svc.PromoteBlocks({ docIds, targetCollectionId });
+  const raw = await svc.PromoteBlocks({ docIds, targetCollectionId, blockIds: undefined });
   return mapPromoteResult(raw);
 }
 
@@ -653,6 +674,12 @@ export async function listDocumentNeighborhood(docId: string, hops = 2): Promise
 /** rebuildKnowledgeIndex 触发块级派生索引（blocks/refs）流式重建；异步执行，立即返回受理结果。 */
 export async function rebuildKnowledgeIndex(collectionId: string): Promise<void> {
   await svc.RebuildKnowledgeIndex({ id: collectionId });
+}
+
+/** reindexVault 触发 local vault 全量重索引（G-11）：文件系统为真相源强制重建
+ *  chunks/向量/links；team 库/无 root_path 由服务端拒绝；进度走 knowledge_vault_reindex WS。 */
+export async function reindexVault(collectionId: string): Promise<void> {
+  await svc.ReindexVault({ id: collectionId });
 }
 
 /** enableCollectionSemantic 词法库一键启用语义层（B2，单向）：绑定当前全局 embedder，
@@ -725,6 +752,36 @@ export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<Know
   );
   const chunksRaw = res.chunks ?? res.Chunks;
   return Array.isArray(chunksRaw) ? chunksRaw.map(mapChunk) : [];
+}
+
+/** G-19 hit-test：单库检索调试——与 Search 同链路（路由/混合/rerank 保真），
+ *  但不写 access_log（调试流量不得污染 base-level/个性化信号）。 */
+export async function debugKnowledgeSearch(query: {
+  collection_id: string;
+  query: string;
+  top_k?: number;
+  use_rerank?: boolean;
+  hybrid_search?: string;
+  path_prefix?: string;
+}): Promise<KnowledgeHitTestResult> {
+  const res = asRecord(
+    await svc.DebugKnowledgeSearch({
+      collectionId: query.collection_id,
+      query: query.query,
+      topK: query.top_k ?? 10,
+      minScore: undefined,
+      filterJson: undefined,
+      useRerank: query.use_rerank,
+      hybridSearch: query.hybrid_search ?? '',
+      pathPrefix: query.path_prefix ?? '',
+    }),
+  );
+  const chunksRaw = res.chunks ?? res.Chunks;
+  return {
+    chunks: Array.isArray(chunksRaw) ? chunksRaw.map(mapChunk) : [],
+    mode_used: pickStr(res, 'mode_used', 'modeUsed'),
+    reranked: Boolean(res.reranked ?? res.Reranked ?? false),
+  };
 }
 
 export async function getEmbedderConfig(): Promise<EmbedderConfig> {

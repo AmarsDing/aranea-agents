@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const notifySpy = vi.fn();
 let onOkCb: (() => void) | null = null;
-const dialogSpy = vi.fn(() => ({
+const dialogSpy = vi.fn((_opts?: unknown) => ({
   onOk: (cb: () => void) => {
     onOkCb = cb;
   },
@@ -13,18 +13,30 @@ vi.mock('quasar', () => ({
   useQuasar: () => ({ notify: notifySpy, dialog: dialogSpy }),
 }));
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (k: string) => k }),
-}));
+vi.mock('vue-i18n', async (importOriginal) => {
+  // createI18n 需保留真实现：knowledgePageError → src/i18n 在模块加载期调用；
+  // 只替换 useI18n 为恒等 t。
+  const actual = await importOriginal<typeof import('vue-i18n')>();
+  return { ...actual, useI18n: () => ({ t: (k: string) => k }) };
+});
 
 const lexicalCol = { id: 'col-lex', name: '词法库', embedding_model: '' };
 const mockStore = {
-  embedderConfig: { provider: 'openai', base_url: '', model: 'text-embedding-3-small', dim: 1536, configured: true, has_api_key: true },
+  embedderConfig: {
+    provider: 'openai',
+    base_url: '',
+    model: 'text-embedding-3-small',
+    dim: 1536,
+    configured: true,
+    has_api_key: true,
+  },
   collections: [lexicalCol],
   documentsByCollection: {},
   documentsTruncatedByCollection: {},
   loading: false,
-  enableCollectionSemantic: vi.fn().mockResolvedValue({ enqueued_docs: 7, embedding_model: 'text-embedding-3-small', dim: 1536 }),
+  enableCollectionSemantic: vi
+    .fn()
+    .mockResolvedValue({ enqueued_docs: 7, embedding_model: 'text-embedding-3-small', dim: 1536 }),
   loadCollections: vi.fn().mockResolvedValue({ items: [lexicalCol], total: 1 }),
   loadDocuments: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   // useVaultExplorer 依赖（setup 期不触发，仅兜底）

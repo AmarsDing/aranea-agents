@@ -43,6 +43,7 @@
             :dangling="danglingHere"
             :mentions="mentions"
             @open-doc-id="(id: string) => $emit('open-doc-id', id)"
+            @open-doc-at="(id: string, ctx: string, raw: string) => $emit('open-doc-at', id, ctx, raw)"
             @apply-autolink="$emit('apply-autolink')"
           />
           <PanelOutlinks
@@ -99,6 +100,8 @@ const props = defineProps<{
 
 defineEmits<{
   'open-doc-id': [docId: string];
+  /** G-18：反链项点击 → 打开来源文档并滚动到引用现场。 */
+  'open-doc-at': [docId: string, context: string, rawTarget: string];
   'expand-graph': [docId: string];
   'jump-outline': [offset: number];
   'apply-autolink': [];

@@ -43,7 +43,10 @@ describe('vaultTreeUi 节点视觉', () => {
   it('md=teal / 图片=magenta / 音频=orange / 视频=orange', () => {
     expect(vaultNodeVisual({ kind: 'file', name: 'a.md' }).cls).toBe('kv-icon--teal');
     expect(vaultNodeVisual({ kind: 'file', name: 'p.PNG' }).cls).toBe('kv-icon--magenta');
-    expect(vaultNodeVisual({ kind: 'file', name: 's.mp3' })).toMatchObject({ icon: 'graphic_eq', cls: 'kv-icon--orange' });
+    expect(vaultNodeVisual({ kind: 'file', name: 's.mp3' })).toMatchObject({
+      icon: 'graphic_eq',
+      cls: 'kv-icon--orange',
+    });
     expect(vaultNodeVisual({ kind: 'file', name: 'v.mp4' })).toMatchObject({ icon: 'movie', cls: 'kv-icon--orange' });
   });
 

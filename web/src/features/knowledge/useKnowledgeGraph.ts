@@ -70,7 +70,12 @@ export function useKnowledgeGraph(input: {
     }
     loading.value = true;
     try {
-      const g = await knowledgeStore.loadCollectionGraph(collectionId.value, effectiveLinkTypes(), pathPrefix.value, force);
+      const g = await knowledgeStore.loadCollectionGraph(
+        collectionId.value,
+        effectiveLinkTypes(),
+        pathPrefix.value,
+        force,
+      );
       // UX 分组归一：doc_type 空 → rel_path 顶级目录（图例/过滤/配色/搜索全链路一致）。
       nodes.value = g.nodes.map((n) => ({ ...n, doc_type: graphNodeGroupKey(n.doc_type, n.rel_path) }));
       edges.value = g.edges;

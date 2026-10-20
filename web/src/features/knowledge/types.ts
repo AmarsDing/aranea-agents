@@ -164,6 +164,20 @@ export type KnowledgeChunk = {
   chunk_index: number;
   /** similarity score — only populated in search results */
   score: number;
+  /** G-12 hit-debug: per-lane raw/fused scores (0 = that lane not taken) */
+  dense_score?: number;
+  sparse_score?: number;
+  rrf_score?: number;
+  rerank_score?: number;
+};
+
+/** G-19 hit-test 调试响应：分解命中 + 服务端推断的执行真值。 */
+export type KnowledgeHitTestResult = {
+  chunks: KnowledgeChunk[];
+  /** rrf | dense | sparse | none（降级按实际执行呈现） */
+  mode_used: string;
+  /** 有 reranker 重写分数时为 true；用 rrf_score vs score 对比前后序 */
+  reranked: boolean;
 };
 
 export type CreateCollectionInput = {
@@ -208,11 +222,19 @@ export type KnowledgeUploadTask = {
   name: string;
   size: number;
   mime_type: string;
-  /** reading | uploading | success | error */
+  /** reading | uploading | parsing | success | error */
   status: string;
   message?: string;
   /** US-14：免预选上传时标注目标库（未选中集合 = 「默认知识库」）。 */
   collection_label?: string;
+  /** G-21：入库 chunk 数（success 时展示）。 */
+  chunk_count?: number;
+  /** G-21：失败所在阶段（read | upload | parse），阶段条标红定位。 */
+  fail_stage?: string;
+  /** G-21：错误重传载荷（仅内存态；旧数据无 file 则不可重试）。 */
+  file?: File;
+  target_collection_id?: string;
+  target_dir?: string;
 };
 
 export type SearchKnowledgeQuery = {
@@ -355,6 +377,12 @@ export type GovernanceProposalItem = {
   status: string;
   payload_json: string;
   created_at: string;
+};
+
+/** 治理提案分页结果（G-30）：total 为同 WHERE 口径总数（非当前页条数）。 */
+export type ListGovernanceProposalsResult = {
+  items: GovernanceProposalItem[];
+  total: number;
 };
 
 /** 工作区写回落点（US-46）：团队收件箱或第一个 team 库；found=false 表示尚未创建。 */

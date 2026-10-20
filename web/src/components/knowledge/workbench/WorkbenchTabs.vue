@@ -79,10 +79,10 @@
           <span>{{ t('knowledgePage.workbench.conflictHint') }}</span>
         </div>
         <NoteEditor
+          v-if="activeTab.mode === 'edit'"
           ref="editorRef"
-          :key="`${activeTab.docId}:${activeTab.mode}`"
+          :key="`${activeTab.docId}:edit`"
           :content="activeTab.content"
-          :read-only="activeTab.mode === 'preview'"
           :candidates="candidates"
           :get-headings="getHeadings"
           :link-recency-rank="linkRecencyRank"
@@ -91,6 +91,15 @@
           @open-doc="(target: string, heading?: string) => $emit('open-doc', target, heading)"
           @create-doc="(target: string) => $emit('create-doc', target)"
           @pick-link="(target: string) => $emit('pick-link', target)"
+        />
+        <NotePreview
+          v-else
+          ref="previewRef"
+          :key="`${activeTab.docId}:preview`"
+          :content="activeTab.content"
+          :candidates="candidates"
+          @open-doc="(target: string, heading?: string) => $emit('open-doc', target, heading)"
+          @create-doc="(target: string) => $emit('create-doc', target)"
         />
       </template>
 
@@ -132,6 +141,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import NoteEditor from './NoteEditor.vue';
+import NotePreview from './NotePreview.vue';
 import type { WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { KnowledgeDocument } from '../../../features/knowledge/types';
 
@@ -207,16 +217,33 @@ function onDragEnd() {
   dropIndex.value = -1;
 }
 
-/** 右栏大纲跳转透传（SP2-5）：NoteEditor 实例滚动定位。 */
+/** 右栏大纲跳转透传（SP2-5）：编辑/预览两模式各自实现 scrollToOffset。 */
 const editorRef = ref<InstanceType<typeof NoteEditor> | null>(null);
+const previewRef = ref<InstanceType<typeof NotePreview> | null>(null);
 
 function scrollToOffset(offset: number) {
-  editorRef.value?.scrollToOffset(offset);
+  if (activeTab.value?.mode === 'preview') previewRef.value?.scrollToOffset(offset);
+  else editorRef.value?.scrollToOffset(offset);
 }
 
-/** C6：保存前 flush 编辑器挂起的防抖写回（工具栏/命令面板保存路径不走编辑器内 Mod-s）。 */
+/** G-17 引用锚定：按 offset 精确块级定位 + 闪烁（preview/editor 各自实现，均含 flash）。 */
+function scrollToOffsetExact(offset: number) {
+  if (activeTab.value?.mode === 'preview') previewRef.value?.scrollToOffsetExact(offset);
+  else editorRef.value?.scrollToOffsetExact(offset);
+}
+
+/** 二轮复核 F9：被动定位——锚点失效兜底只滚到文档头，编辑态 tab 不得被抢焦点/
+ *  落 caret（preview 模式 scrollToOffset 本就无焦点副作用，契约已对齐）。 */
+function scrollToOffsetPassive(offset: number) {
+  if (activeTab.value?.mode === 'preview') previewRef.value?.scrollToOffset(offset);
+  else editorRef.value?.scrollToOffsetPassive(offset);
+}
+
+/** C6：保存前 flush 编辑器挂起的防抖写回（工具栏/命令面板保存路径不走编辑器内 Mod-s）；
+ *  预览模式无写回（NotePreview.flushPendingContent 为 no-op 契约对齐）。 */
 function flushPendingContent() {
-  editorRef.value?.flushPendingContent();
+  if (activeTab.value?.mode === 'preview') previewRef.value?.flushPendingContent();
+  else editorRef.value?.flushPendingContent();
 }
 
 /** 工具栏保存按钮：先 flush 再上报 save，保证父级 tab.content 为最新。 */
@@ -225,7 +252,7 @@ function onSaveClick(docId: string) {
   emit('save', docId);
 }
 
-defineExpose({ scrollToOffset, flushPendingContent });
+defineExpose({ scrollToOffset, scrollToOffsetPassive, scrollToOffsetExact, flushPendingContent });
 </script>
 
 <style lang="sass" scoped>

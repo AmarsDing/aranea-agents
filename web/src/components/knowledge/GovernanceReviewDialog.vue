@@ -6,47 +6,79 @@
       </q-card-section>
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body">
-      <div v-if="!homeIsCurrent" class="kb-gov-review__banner">
-        {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="primary"
-          class="q-ml-sm"
-          :label="t('knowledgePage.workbench.writebackHomeSwitch')"
-          @click="$emit('switch-home')"
-        />
-      </div>
-      <q-list dense class="kb-gov-review__list">
-        <q-item v-for="row in rows" :key="row.item.id" class="kb-gov-review__item">
-          <q-item-section>
-            <q-item-label class="kb-gov-review__kind">{{ kindLabel(row.item.kind, row.payload) }}</q-item-label>
-            <q-item-label>{{ row.summary }}</q-item-label>
-            <q-item-label v-if="row.caption" caption>{{ row.caption }}</q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <div class="kb-gov-review__btns">
-              <q-btn
-                v-for="decision in row.decisions"
-                :key="decision"
-                dense
-                unelevated
-                no-caps
-                :color="decisionColor(decision)"
-                :flat="decision === 'rejected'"
-                :disable="loadingId === row.item.id"
-                :loading="loadingId === row.item.id"
-                :label="decisionLabel(decision, row.item.kind, row.payload)"
-                @click="$emit('resolve', { id: row.item.id, decision })"
-              />
-            </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
+          <div v-if="!homeIsCurrent" class="kb-gov-review__banner">
+            {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="primary"
+              class="q-ml-sm"
+              :label="t('knowledgePage.workbench.writebackHomeSwitch')"
+              @click="$emit('switch-home')"
+            />
+          </div>
+          <q-list dense class="kb-gov-review__list">
+            <q-item v-for="row in rows" :key="row.item.id" class="kb-gov-review__item">
+              <q-item-section>
+                <q-item-label class="kb-gov-review__kind">{{ kindLabel(row.item.kind, row.payload) }}</q-item-label>
+                <q-item-label>{{ row.summary }}</q-item-label>
+                <q-item-label v-if="row.caption" caption>{{ row.caption }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="kb-gov-review__btns">
+                  <q-btn
+                    v-for="decision in row.decisions"
+                    :key="decision"
+                    dense
+                    unelevated
+                    no-caps
+                    :color="decisionColor(decision)"
+                    :flat="decision === 'rejected'"
+                    :disable="loadingId === row.item.id"
+                    :loading="loadingId === row.item.id"
+                    :label="decisionLabel(decision, row.item.kind, row.payload)"
+                    @click="$emit('resolve', { id: row.item.id, decision })"
+                  />
+                </div>
+              </q-item-section>
+            </q-item>
+          </q-list>
         </q-card-section>
       </div>
-      <q-card-actions align="right" class="app-glass-dialog__actions">
+      <q-card-actions align="right" class="app-glass-dialog__actions kb-gov-review__footer">
+        <div class="kb-gov-review__page">
+          <q-pagination
+            v-if="maxPage > 1"
+            :model-value="page"
+            :max="maxPage"
+            :max-pages="5"
+            boundary-numbers
+            dense
+            @update:model-value="$emit('page', Number($event))"
+          />
+          <span v-if="total" class="kb-gov-review__total">{{
+            t('knowledgePage.workbench.govTotal', { n: total })
+          }}</span>
+        </div>
+        <q-btn
+          flat
+          no-caps
+          color="secondary"
+          :loading="curating"
+          :disable="curating"
+          :label="t('knowledgePage.workbench.govCurateDryRun')"
+          @click="$emit('curate', { dryRun: true })"
+        />
+        <q-btn
+          flat
+          no-caps
+          color="primary"
+          :loading="curating"
+          :disable="curating"
+          :label="t('knowledgePage.workbench.govCurateNow')"
+          @click="$emit('curate', { dryRun: false })"
+        />
         <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
       </q-card-actions>
     </q-card>
@@ -65,21 +97,40 @@ import {
   type GovernanceDecision,
 } from '../../features/knowledge/governance';
 
-const props = defineProps<{
-  open: boolean;
-  items: GovernanceProposalItem[];
-  homeName: string;
-  homeIsCurrent: boolean;
-  loadingId?: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    items: GovernanceProposalItem[];
+    homeName: string;
+    homeIsCurrent: boolean;
+    loadingId?: number;
+    /** G-30 分页：total 为同 WHERE 口径总数；page 当前页（1 基）；pageSize 每页条数。 */
+    total?: number;
+    page?: number;
+    pageSize?: number;
+    /** G-30 手动治理受理中（禁用按钮防重入）。 */
+    curating?: boolean;
+  }>(),
+  {
+    loadingId: undefined,
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    curating: false,
+  },
+);
 
 defineEmits<{
   'update:open': [open: boolean];
   resolve: [payload: { id: number; decision: GovernanceDecision }];
   'switch-home': [];
+  page: [page: number];
+  curate: [payload: { dryRun: boolean }];
 }>();
 
 const { t } = useI18n();
+
+const maxPage = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)));
 
 const rows = computed(() =>
   props.items.map((item) => {
@@ -157,4 +208,19 @@ function decisionColor(decision: GovernanceDecision): string {
     gap: 6px
     justify-content: flex-end
     max-width: 280px
+
+  &__footer
+    display: flex
+    align-items: center
+    gap: 8px
+
+  &__page
+    display: flex
+    align-items: center
+    gap: 8px
+    margin-right: auto
+
+  &__total
+    font-size: 12px
+    color: var(--color-text-secondary)
 </style>

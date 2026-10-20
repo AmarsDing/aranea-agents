@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  CameraDirector,
-  canTransition,
-  type CameraEvent,
-  type CameraState,
-} from '../cameraDirector';
+import { CameraDirector, canTransition, type CameraEvent, type CameraState } from '../cameraDirector';
 
 describe('cameraDirector 状态机（M3）', () => {
   it('合法转换表：idle→focus/genesis/cruise；flying→arrived/user-interrupt；orbiting→user-interrupt/timeout/focus；genesis→completed/user-interrupt；cruising→user-interrupt/focus', () => {

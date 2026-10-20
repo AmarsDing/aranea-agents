@@ -10,6 +10,9 @@
         @open-search="openSearch"
         @open-graph="$emit('open-graph')"
         @open-settings="$emit('open-settings')"
+        @open-hit-test="$emit('open-hit-test')"
+        @open-review-governance="runCommand('review-governance')"
+        @open-review-writeback="runCommand('review-writeback')"
       />
 
       <div class="kb-workbench__grid">
@@ -79,6 +82,7 @@
           :tags="activeDocument?.tags"
           :doc-type="activeDocument?.doc_type"
           @open-doc-id="openDocById"
+          @open-doc-at="openDocAtAnchor"
           @expand-graph="(docId: string) => $emit('open-graph', docId)"
           @jump-outline="jumpOutline"
           @apply-autolink="onApplyAutolinkFromPanel"
@@ -107,15 +111,17 @@
       @switch-vault="(id: string) => $emit('switch-vault', id)"
     />
 
-    <!-- Ctrl+Shift+F 全库搜索（P1-3） -->
+    <!-- Ctrl+Shift+F 全库搜索（P1-3）；@open-hit-test 桥接空态/弱相关引导入口 -->
     <SearchPanel
       :open="searchOpen"
       :query="searchQuery"
       :items="searchItems"
       :loading="searchLoading"
+      :semantic-lexical-only="currentVaultLexicalOnly"
       @update:open="searchOpen = $event"
       @update:query="searchQuery = $event"
       @pick="onSearchPick"
+      @open-hit-test="$emit('open-hit-test')"
     />
 
     <WritebackReviewDialog
@@ -134,8 +140,14 @@
       :home-name="govHome.name"
       :home-is-current="!govHome.redirected"
       :loading-id="govLoadingId"
+      :total="govTotal"
+      :page="govPage"
+      :page-size="govPageSize"
+      :curating="govCurating"
       @resolve="onResolveGovernance"
       @switch-home="onSwitchGovHome"
+      @page="onGovPageChange"
+      @curate="onCurateGovernance"
     />
 
     <!-- 脏关闭确认（SP3：全站标准玻璃对话框） -->
@@ -190,6 +202,8 @@ import GovernanceReviewDialog from '../GovernanceReviewDialog.vue';
 import { useWorkbenchCommands } from '../../../features/knowledge/useWorkbenchCommands';
 import { normalizeTargetName } from '../../../features/knowledge/wikilink';
 import { parseOutline } from '../../../features/knowledge/outline';
+import { findBacklinkOffset } from '../../../features/knowledge/backlinkAnchor';
+import { findCitationOffset } from '../../../features/knowledge/citationAnchor';
 import type { KnowledgeWorkbench as Workbench } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
@@ -229,6 +243,8 @@ const emit = defineEmits<{
   'refresh-tree': [];
   'open-graph': [focusDocId?: string];
   'open-settings': [];
+  /** G-19：顶栏 hit-test 入口（页面打开检索排查面板） */
+  'open-hit-test': [];
   /** 命令面板「晋升到团队库」（SP2-8 由页面接入既有 PromoteDialog） */
   'promote-active': [docId: string];
   /** SP2-8：命令面板「粘贴文本入库」（页面打开既有 IngestDialog） */
@@ -282,8 +298,14 @@ const {
   govItems,
   govHome,
   govLoadingId,
+  govTotal,
+  govPage,
+  govPageSize,
+  govCurating,
   onResolveGovernance,
   onSwitchGovHome,
+  onGovPageChange,
+  onCurateGovernance,
   onGlobalKeydown,
 } = useWorkbenchCommands({
   workbench: props.workbench,
@@ -318,9 +340,13 @@ const currentVaultName = computed(
   () => props.collections.find((c) => c.id === props.currentVaultId)?.name ?? props.currentVaultId,
 );
 
-const activeDocument = computed(
-  () => props.documents.find((d) => d.id === props.workbench.activeTabId.value) ?? null,
-);
+/** U1-6 空态引导：当前库为词法库（未绑 embedder，dim=0）时搜索面板提示可启用语义检索。 */
+const currentVaultLexicalOnly = computed(() => {
+  const c = props.collections.find((x) => x.id === props.currentVaultId);
+  return !!c && !c.dim;
+});
+
+const activeDocument = computed(() => props.documents.find((d) => d.id === props.workbench.activeTabId.value) ?? null);
 
 // ---------- 全局快捷键注册（处理器在 commands 层） ----------
 
@@ -374,9 +400,38 @@ function openDocById(docId: string) {
   if (doc) void props.workbench.openDoc(doc);
 }
 
+/** G-18 反链「点回引用现场」：打开来源文档后按 context/rawTarget 计算锚点并滚动定位。 */
+async function openDocAtAnchor(docId: string, context: string, rawTarget: string) {
+  const doc = props.documents.find((d) => d.id === docId);
+  if (!doc) return; // 跨库/已删除：维持原 open-doc-id 行为（本库文档才有锚点可滚）
+  await props.workbench.openDoc(doc);
+  await nextTick(); // 等 NoteEditor 按新 activeTab 挂载
+  const content = props.workbench.activeTab.value?.content ?? '';
+  const offset = findBacklinkOffset(content, context, rawTarget);
+  if (offset >= 0) tabsRef.value?.scrollToOffset(offset);
+}
+
+/** G-17 chat 引用锚定：打开文档后把 notice line（chunk 开头前缀）换算成锚点，
+ *  精确块级滚动 + 闪烁。doc 由调用方解析（documents 命中或合成为 stub）。 */
+async function openDocAtCitation(doc: KnowledgeDocument, line: string) {
+  await props.workbench.openDoc(doc);
+  await nextTick();
+  const content = props.workbench.activeTab.value?.content ?? '';
+  const offset = findCitationOffset(content, line);
+  if (offset >= 0) {
+    tabsRef.value?.scrollToOffsetExact(offset);
+  } else {
+    // 锚点失效时落文档头（click 至少到达目的地），但 F9：引用点击是读意图，
+    // 编辑态 tab 不能动选区/抢焦点——用被动定位。
+    tabsRef.value?.scrollToOffsetPassive(0);
+  }
+}
+
 function jumpOutline(offset: number) {
   tabsRef.value?.scrollToOffset(offset);
 }
+
+defineExpose({ openDocAtCitation });
 
 // ---------- 脏关闭确认 ----------
 const confirmSaving = ref(false);

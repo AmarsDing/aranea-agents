@@ -13,12 +13,20 @@
     <q-banner v-if="documentsTruncated" rounded class="app-banner-warning q-ma-sm flex-none">
       {{ t('knowledgePage.documentsTruncated', { n: DOCUMENTS_PAGE_LIMIT }) }}
       <template #action>
-        <q-btn flat dense no-caps :label="t('knowledgePage.loadMoreDocuments')" :loading="docsLoading" @click="loadMoreDocuments" />
+        <q-btn
+          flat
+          dense
+          no-caps
+          :label="t('knowledgePage.loadMoreDocuments')"
+          :loading="docsLoading"
+          @click="loadMoreDocuments"
+        />
       </template>
     </q-banner>
 
     <!-- SP2-8：深空液态玻璃工作台（薄壳页面唯一的常驻主体） -->
     <KnowledgeWorkbench
+      ref="workbenchRef"
       class="knowledge-page-wb__main"
       :workbench="workbench"
       :collections="collections"
@@ -45,6 +53,7 @@
       @refresh-tree="refreshExplorerTree"
       @open-graph="onOpenGraph"
       @open-settings="settingsOpen = true"
+      @open-hit-test="hitTestOpen = true"
       @promote-active="openPromoteDialog"
       @ingest-text="ingestOpen = true"
       @file-action="onFileAction"
@@ -59,6 +68,7 @@
           :tasks="uploadTasks"
           @clear-finished="clearFinishedUploadTasks"
           @remove-task="removeUploadTask"
+          @retry-task="retryUploadTask"
         />
       </template>
     </KnowledgeWorkbench>
@@ -128,6 +138,20 @@
       </q-card>
     </q-dialog>
 
+    <!-- G-19 hit-test：检索排查面板（同 query 的 dense/sparse/RRF 三策略对比；不落 access_log） -->
+    <q-dialog v-model="hitTestOpen">
+      <q-card class="app-dialog-card app-glass-dialog knowledge-page-wb__hit-test">
+        <q-card-section class="app-glass-dialog__head row items-center justify-between">
+          <div class="app-glass-dialog__title">{{ hitTestTitle }}</div>
+        </q-card-section>
+        <div class="app-glass-dialog__scroll">
+          <q-card-section class="app-dialog-body app-glass-dialog__body">
+            <knowledge-hit-test-panel v-if="selectedId" :collection-id="selectedId" />
+          </q-card-section>
+        </div>
+      </q-card>
+    </q-dialog>
+
     <knowledge-create-dialog
       v-model:open="createOpen"
       v-model:name="createForm.name"
@@ -176,17 +200,20 @@
     />
     <!-- G1 树 hover「上传文件到此」：隐藏文件输入，pendingUploadTarget 置位时触发 -->
     <input ref="uploadFileInput" type="file" multiple class="hidden" @change="onUploadInputChange" />
+    <!-- U0-3：OS 文件拖入本页时的全页提示遮罩（纯视觉；drop 数据走下方 window 监听） -->
+    <upload-drop-overlay />
   </q-page>
 </template>
 
 <script setup lang="ts">
 // SP2-8：薄壳页面——持有 composable（页面级状态）+ 装配 KnowledgeWorkbench / 全屏图谱 / 设置浮层 / 既有对话框。
 // 旧 Tab 管理后台（浏览/图谱/设置三页签）已退役，职责分别由工作台、全屏覆盖图谱、设置浮层吸收。
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
+import KnowledgeHitTestPanel from '../components/knowledge/KnowledgeHitTestPanel.vue';
 import KnowledgeWorkbench from '../components/knowledge/workbench/KnowledgeWorkbench.vue';
 import KnowledgeGraph3D from '../components/knowledge/KnowledgeGraph3D.vue';
 import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
@@ -195,7 +222,9 @@ import KnowledgeUploadQueue from '../components/knowledge/KnowledgeUploadQueue.v
 import KnowledgeMoveDialog from '../components/knowledge/KnowledgeMoveDialog.vue';
 import KnowledgeMoveConflictDialog from '../components/knowledge/KnowledgeMoveConflictDialog.vue';
 import KnowledgePromoteDialog from '../components/knowledge/KnowledgePromoteDialog.vue';
+import UploadDropOverlay from '../components/knowledge/UploadDropOverlay.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
+import { collectDropFiles, isOsFileDrag } from '../features/knowledge/dragFiles';
 import { filterGraphByGroups } from '../features/knowledge/graph3d/model';
 import { useKnowledgeGraph } from '../features/knowledge/useKnowledgeGraph';
 import { useKnowledgeGraphDeltaWs } from '../features/knowledge/useKnowledgeGraphDeltaWs';
@@ -235,6 +264,7 @@ const {
   uploadTasks,
   removeUploadTask,
   clearFinishedUploadTasks,
+  retryUploadTask,
   pendingUploadTarget,
   onUploadFilesPicked,
   onTreeNodeAction,
@@ -281,6 +311,7 @@ const { t } = useI18n();
 
 const workbench = createKnowledgeWorkbench();
 const route = useRoute();
+const workbenchRef = ref<InstanceType<typeof KnowledgeWorkbench> | null>(null);
 
 watch(
   () => route.query.doc,
@@ -296,9 +327,18 @@ watch(
         collection_id: selectedId.value,
         mime_type: 'text/markdown',
       } as KnowledgeDocument);
-    void workbench.openDoc(doc);
+    const line = typeof route.query.line === 'string' ? route.query.line : '';
+    if (line) {
+      // G-17 引用锚定：带 line 锚参数时走精确块级定位 + 闪烁（workbenchRef 暴露）。
+      void workbenchRef.value?.openDocAtCitation(doc, line);
+    } else {
+      void workbench.openDoc(doc);
+    }
   },
-  { immediate: true },
+  // flush:'post' 关键：页面无 keep-alive，chat→knowledge 深链每次重建页面；
+  // pre 时机的 immediate 回调先于模板 ref 赋值执行，workbenchRef 必为 null，
+  // 首击/硬刷新深链会静默丢失。post 使首次回调推迟到挂载（ref 已就位）后。
+  { immediate: true, flush: 'post' },
 );
 
 // FR-SP2-2：文档删除广播 → 关闭对应 tab（无确认，数据已删）。
@@ -314,7 +354,12 @@ function onSwitchVault(id: string) {
 function resolveWorkbenchDoc(node: VaultTreeNode): KnowledgeDocument {
   const found = documents.value.find((d) => d.id === node.doc_id);
   if (found) return found;
-  return { id: node.doc_id, source: node.name, rel_path: node.path, collection_id: selectedId.value } as KnowledgeDocument;
+  return {
+    id: node.doc_id,
+    source: node.name,
+    rel_path: node.path,
+    collection_id: selectedId.value,
+  } as KnowledgeDocument;
 }
 
 /** 侧栏文件行操作（移动跨库 / 下载原文 / 重嵌入 / 删除），复用既有对话框与逻辑。 */
@@ -488,6 +533,25 @@ function onGraphOpenInWorkbench(payload: { docId: string; relPath: string }) {
 
 const settingsOpen = ref(false);
 
+// ---------- G-19：hit-test 检索排查浮层 ----------
+
+const hitTestOpen = ref(false);
+// 面板标题用组件内消息（全局 locale 文件归并行会话维护，不动）。
+let hitTestTitleFn: (key: string) => string;
+try {
+  hitTestTitleFn = useI18n({
+    useScope: 'local',
+    inheritLocale: true,
+    messages: {
+      'zh-CN': { hitTestTitle: '检索排查（hit-test）' },
+      'en-US': { hitTestTitle: 'Retrieval hit-test' },
+    },
+  }).t;
+} catch {
+  hitTestTitleFn = (key) => key;
+}
+const hitTestTitle = computed(() => hitTestTitleFn('hitTestTitle'));
+
 // ---------- SP1-I（I-4）：knowledge.graph.delta WS 增量 ----------
 
 /** 图谱增量到达时 +1：右栏五面板据此重拉反链/出链/悬空链/局部图谱（缓存已失效）。 */
@@ -535,7 +599,10 @@ async function onExplorerDropNode(node: VaultQTreeNode) {
 
 /** 中栏空白处 drop = 移入当前目录（WorkbenchSidebar 的 drop-current-dir）。 */
 async function onDropCurrentDir() {
-  handleDropResult(await explorer.dropOnTarget({ vaultId: selectedId.value, prefix: explorerPrefix.value }), explorerPrefix.value);
+  handleDropResult(
+    await explorer.dropOnTarget({ vaultId: selectedId.value, prefix: explorerPrefix.value }),
+    explorerPrefix.value,
+  );
 }
 
 // G3-F1 冲突弹窗（V12.5）：覆盖（旧版入回收站）/ 保留两份（自动改名）/ 取消。
@@ -577,6 +644,35 @@ function onUploadInputChange(e: Event) {
   if (files.length) void onUploadFilesPicked(files);
 }
 
+// ---------- U0-3：OS 文件拖拽上传（window 级监听，与按钮上传同一入队入口 onUploadFilesPicked） ----------
+
+function onOsDragOver(e: DragEvent) {
+  // 树内移动/Tab 排序等内部拖拽 types 不含 Files，不干预其默认行为。
+  if (!isOsFileDrag(e.dataTransfer)) return;
+  e.preventDefault(); // 必须 preventDefault 才允许 drop 触发
+}
+
+function onOsDrop(e: DragEvent) {
+  if (!isOsFileDrag(e.dataTransfer)) return;
+  e.preventDefault(); // 防浏览器接管打开文件导致页面导航
+  const { files, skippedDirs } = collectDropFiles(e.dataTransfer as DataTransfer);
+  if (skippedDirs > 0) {
+    $q.notify({ type: 'warning', message: t('knowledgePage.dropDirsSkipped', { n: skippedDirs }) });
+  }
+  if (files.length) void onUploadFilesPicked(files);
+}
+
+onMounted(() => {
+  window.addEventListener('dragover', onOsDragOver);
+  window.addEventListener('drop', onOsDrop);
+});
+
+onUnmounted(() => {
+  // 页面无 keep-alive：卸载即摘除，离开本页后拖拽恢复浏览器默认行为。
+  window.removeEventListener('dragover', onOsDragOver);
+  window.removeEventListener('drop', onOsDrop);
+});
+
 onMounted(() => {
   void loadCollections();
   void loadEmbedderConfig();
@@ -595,6 +691,11 @@ onMounted(() => {
   &__settings {
     width: 640px;
     max-width: 92vw;
+  }
+
+  &__hit-test {
+    width: 1080px;
+    max-width: 94vw;
   }
 }
 </style>
