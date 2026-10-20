@@ -384,6 +384,11 @@ type ChatInfraDeps struct {
 	// memory_remember explicit-memory tool (FR-M4). Optional: nil disables
 	// conflict governance (writes still succeed).
 	MemoryConflictDetector biz.MemoryConflictDetector
+	// OrgReader 是 G-08（ADR-KN-20261020-D/F）runCtx org scope 解析的组织读取端口：
+	// prepareRunContext 按当前 Agent 挂岗解析 {position, department} 并 stamp 进
+	// runCtx，shared 档知识文档据此判定部门/岗位级可见性。nil = 不 stamp
+	// （fail-closed：shared 档仅属主可见）。
+	OrgReader biz.OrganizationReader
 	// MemoryConflictStore applies supersede/mark-conflict decisions for the
 	// memory_remember tool (FR-M4). Optional: nil skips governance application.
 	MemoryConflictStore biz.L3ConflictStore

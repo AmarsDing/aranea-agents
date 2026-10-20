@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
@@ -560,6 +561,15 @@ func (o *ChatOrchestrator) prepareRunContext(
 	// 仅在显式评估时走 SearchWithEvaluation。
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
+	}
+	// G-08（ADR-KN-20261020-D/F）：runCtx 装配期解析调用 Agent 的 org scope
+	// （{position, department}）并 stamp——shared 档知识文档的部门/岗位级可见性
+	// 谓词（data 层 docVisibilityPredicate / biz 层 DocumentVisibleTo）只认 ctx。
+	// OrgReader 未接线或 Agent 未挂岗时 fail-closed（shared 仅属主可见）。
+	if o.infraDeps.OrgReader != nil {
+		if scope := biz.ResolveKnowledgeOrgScope(ctx, o.infraDeps.OrgReader.GetOrgNode, ag.PositionID); len(scope) > 0 {
+			runCtx = bizknowledge.WithOrgScope(runCtx, scope)
+		}
 	}
 	return runCtx
 }

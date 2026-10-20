@@ -29,6 +29,9 @@ import (
 // 需后注入打破循环。
 func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, orgReader biz.OrganizationReader, graphProj *GraphOrchestrationProjector, mbWaker biz.MailboxWaker) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
+	// G-08（ADR-KN-20261020-F）：runCtx org scope 解析端口注入编排器——
+	// shared 档知识文档的部门/岗位级可见性依赖 runCtx 里的调用 Agent org scope。
+	deps.Infra.OrgReader = orgReader
 	cs := NewChatService(deps)
 	cs.planExec = planExec
 	// Backfill turnGateway into TeamStarter to break the Wire cycle:

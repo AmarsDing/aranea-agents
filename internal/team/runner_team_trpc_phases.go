@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/event"
 	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/telemetry/turntrace"
@@ -305,6 +306,16 @@ func (r *Runner) buildTeamRunContext(ctx context.Context, def Definition, builde
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, ids)
 	} else if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
+	}
+	// G-08（ADR-KN-20261020-D/F）：团队 run 的 org scope = ENABLED 成员
+	// {position, department} 并集（借调成员带本部门读权进队，M78 语义）。
+	// 零并集时不 stamp——shared 档仅属主可见（fail-closed）。
+	var orgGetter biz.KnowledgeOrgScopeGetter
+	if r.cfg.OrganizationUC != nil {
+		orgGetter = r.cfg.OrganizationUC.Get
+	}
+	if scope := r.resolveTeamOrgScope(runCtx, def, orgGetter); len(scope) > 0 {
+		runCtx = bizknowledge.WithOrgScope(runCtx, scope)
 	}
 	runCtx, turnArtCollector := artifactbiz.WithTurnCollector(runCtx)
 	return runCtx, cancel, turnArtCollector
