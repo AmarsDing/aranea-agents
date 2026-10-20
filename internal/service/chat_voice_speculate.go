@@ -260,6 +260,7 @@ func (s *VoiceIntentSpeculator) defaultRunIntent(ctx context.Context, ag biz.Age
 		Status:        "success",
 		PromptTok:     res.PromptTok,
 		CompletionTok: res.CompletionTok,
+		CachedTok:     res.CachedTok,
 		UsageSource:   biz.UsageSourceResponse,
 		Latency:       res.Duration,
 	})
