@@ -4,6 +4,7 @@ import {
   mergeKnowledgeRecallChunks,
   assignCitationNumbers,
   linkKnowledgeCitations,
+  knowledgeDocRoute,
   KNOWLEDGE_RECALLED_NOTICE_TYPE,
 } from '../knowledgeRecall';
 
@@ -69,8 +70,33 @@ describe('knowledgeRecall', () => {
     ]);
     const html = '<p>值班 [1] 见 <code>[1]</code></p>';
     expect(linkKnowledgeCitations(html, chunks)).toBe(
-      '<p>值班 <button type="button" class="kb-cite" data-n="1" data-doc-id="d1">[1]</button> 见 <code>[1]</code></p>',
+      '<p>值班 <button type="button" class="kb-cite" data-n="1" data-doc-id="d1" data-chunk-id="k1">[1]</button> 见 <code>[1]</code></p>',
     );
     expect(linkKnowledgeCitations('<p>无引用</p>', chunks)).toBe('<p>无引用</p>');
+  });
+
+  it('omits data-chunk-id independently when chunk ids are blank', () => {
+    const chunks = assignCitationNumbers([{ chunk_id: 'k9', doc_id: 'd2', line: 'x', score: 0 }]);
+    const html = '<p>ref [1]</p>';
+    expect(linkKnowledgeCitations(html, chunks)).toContain('data-chunk-id="k9"');
+    expect(linkKnowledgeCitations(html, [])).toBe(html);
+  });
+
+  // ---------- G-17 引用锚定跳链 ----------
+
+  it('builds a plain doc route when no line hint is given', () => {
+    expect(knowledgeDocRoute('d1')).toEqual({ path: '/knowledge', query: { doc: 'd1' } });
+    expect(knowledgeDocRoute('d1', {})).toEqual({ path: '/knowledge', query: { doc: 'd1' } });
+    expect(knowledgeDocRoute('d1', { line: '  ' })).toEqual({ path: '/knowledge', query: { doc: 'd1' } });
+  });
+
+  it('carries the chunk preview line as anchor query (capped at 96 chars)', () => {
+    expect(knowledgeDocRoute('d1', { line: '核心论点在此' })).toEqual({
+      path: '/knowledge',
+      query: { doc: 'd1', line: '核心论点在此' },
+    });
+    const long = '一'.repeat(200);
+    const r = knowledgeDocRoute('d1', { line: long });
+    expect(r.query.line).toHaveLength(96);
   });
 });

@@ -119,11 +119,27 @@ export function linkKnowledgeCitations(html: string, chunks: KnowledgeRecallChun
       const hit = byN.get(n);
       if (!hit) return all;
       const doc = hit.doc_id ? ` data-doc-id="${escapeAttr(hit.doc_id)}"` : '';
-      return `<button type="button" class="kb-cite" data-n="${n}"${doc}>[${n}]</button>`;
+      // G-17：chunk_id 同时写出，点击时经它回填 line 锚参数，精确跳引用现场。
+      const ck = hit.chunk_id ? ` data-chunk-id="${escapeAttr(hit.chunk_id)}"` : '';
+      return `<button type="button" class="kb-cite" data-n="${n}"${doc}${ck}>[${n}]</button>`;
     },
   );
 }
 
-export function knowledgeDocRoute(docId: string): { path: string; query: { doc: string } } {
-  return { path: '/knowledge', query: { doc: docId } };
+/** G-17：引用跳链 query 上限（line 是 chunk 开头前缀，截 96 字符足够锚定又不过载 URL）。 */
+const ROUTE_LINE_MAX = 96;
+
+/**
+ * G-17 引用锚定跳链：?doc=<docId>（原样）+ 可选 ?line=<chunk 开头片段>。
+ * KnowledgePage 见到 line 即走 workbench 精确锚定 + 闪烁；无 line 保持原行为。
+ */
+export function knowledgeDocRoute(
+  docId: string,
+  hint?: { line?: string },
+): { path: string; query: Record<string, string> } {
+  const query: Record<string, string> = { doc: docId };
+  const line = hint?.line?.trim() ?? '';
+  // 码点切片：UTF-16 slice 可能切断代理对，vue-router 对残缺 URL 编码序列抛错。
+  if (line) query.line = [...line].slice(0, ROUTE_LINE_MAX).join('');
+  return { path: '/knowledge', query };
 }

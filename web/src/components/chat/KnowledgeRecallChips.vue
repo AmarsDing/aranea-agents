@@ -27,7 +27,9 @@
         <span v-if="hit.score > 0" class="knowledge-recall-chips__score">{{ scoreLabel(hit.score) }}</span>
         <q-tooltip :delay="300" max-width="360px">
           <div>{{ hit.line || hit.chunk_id }}</div>
-          <div v-if="hit.doc_id" class="knowledge-recall-chips__tip-meta">{{ hit.doc_id }}</div>
+          <div class="knowledge-recall-chips__tip-meta">
+            {{ tipT('chipMeta', { doc: hit.doc_id || '—', chunk: hit.chunk_id }) }}
+          </div>
         </q-tooltip>
       </button>
     </div>
@@ -53,6 +55,22 @@ function useSafeI18n() {
 
 const props = defineProps<{ turnId: string }>();
 const { t } = useSafeI18n();
+
+// tooltip 元信息行用组件内消息（全局 locale 文件归并行会话维护，不动）；
+// useScope:'local' 不与全局 key 冲突，inheritLocale 跟随应用语言。
+let tipT: (key: string, named?: Record<string, unknown>) => string;
+try {
+  tipT = useI18n({
+    useScope: 'local',
+    inheritLocale: true,
+    messages: {
+      'zh-CN': { chipMeta: '文档：{doc} · 分块：{chunk}' },
+      'en-US': { chipMeta: 'doc: {doc} · chunk: {chunk}' },
+    },
+  }).t;
+} catch {
+  tipT = (key, named) => (named ? `${key}:${JSON.stringify(named)}` : key);
+}
 const store = useActivityQueries();
 const chunks = computed(() => store.getTurnKnowledgeChunks(props.turnId));
 const { collapsed, toggle } = useCollapseState(`kb-recall:${props.turnId}`, true);
@@ -74,7 +92,8 @@ function scoreLabel(score: number): string {
 
 function onOpen(hit: KnowledgeRecallChunk) {
   if (!hit.doc_id || !router) return;
-  void router.push(knowledgeDocRoute(hit.doc_id));
+  // G-17 引用锚定：把 chunk 开头片段 line 一并传给知识页，跳转后精确锚定 + 闪烁。
+  void router.push(knowledgeDocRoute(hit.doc_id, { line: hit.line }));
 }
 </script>
 

@@ -72,7 +72,11 @@ function onCiteClick(ev: MouseEvent) {
   if (!(btn instanceof HTMLElement)) return;
   const docId = btn.getAttribute('data-doc-id');
   if (!docId || !router) return;
-  void router.push(knowledgeDocRoute(docId));
+  // G-17 引用锚定：经 data-chunk-id 取回该引用的 chunk 开头片段 line，
+  // 随跳链传给知识页精确锚定 + 闪烁（无 chunk 时退化为原 doc 跳链）。
+  const ck = btn.getAttribute('data-chunk-id') ?? '';
+  const hit = ck ? kbChunks.value.find((c) => c.chunk_id === ck) : undefined;
+  void router.push(knowledgeDocRoute(docId, { line: hit?.line ?? '' }));
 }
 
 // --- Bridge computeds: derive legacy fields from Step prop ---
