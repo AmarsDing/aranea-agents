@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/agentbridge/v1"
@@ -43,7 +44,16 @@ func (a *AgentBridgeAPI) UpsertAgent(ctx context.Context, req *v1.UpsertAgentReq
 		Env:         req.Env,
 		Enabled:     req.Enabled,
 	}
-	// E9: known keys (codebuddy / claude_code / codex) fill argv when omitted.
+	// M4 P3-6：liveness_override JSON 文本透传（省略=保留旧值；"{}"=显式清空回全局默认）。
+	if s := strings.TrimSpace(req.LivenessOverrideJson); s != "" {
+		var ov map[string]any
+		if err := json.Unmarshal([]byte(s), &ov); err != nil {
+			return nil, apierror.BadRequest(apierror.DomainAgentBridge, "liveness_override_json is not valid JSON")
+		}
+		agent.LivenessOverride = ov
+	}
+	// E9/M4 §B: known keys（codebuddy/workbuddy 归一 / claude_code / codex / deepseek / grok）
+	// fill argv when omitted.
 	agentbridge.ApplyDefaultLaunch(agent)
 	if strings.TrimSpace(agent.Command) == "" {
 		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "command is required")
@@ -178,6 +188,34 @@ func (a *AgentBridgeAPI) CancelTask(ctx context.Context, req *v1.CancelTaskReque
 
 // --- converters ---
 
+// sensitiveEnvMark S1（M4 P0-1，AC-11）：API 响应中密钥形态 env 值一律掩码，
+// 落库值不受影响。非敏感键（PATH 等）保留原值便于管理页展示。
+func maskAgentEnv(env map[string]string) map[string]string {
+	if len(env) == 0 {
+		return env
+	}
+	out := make(map[string]string, len(env))
+	for k, v := range env {
+		if isSensitiveEnvKey(k) {
+			out[k] = "***"
+		} else {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// isSensitiveEnvKey 判定密钥形态键：KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL（大小写不敏感）。
+func isSensitiveEnvKey(key string) bool {
+	up := strings.ToUpper(key)
+	for _, tok := range []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"} {
+		if strings.Contains(up, tok) {
+			return true
+		}
+	}
+	return false
+}
+
 func agentToProto(agent *agentbridge.CodingAgent) *v1.CodingAgent {
 	return &v1.CodingAgent{
 		Id:             agent.ID,
@@ -185,13 +223,27 @@ func agentToProto(agent *agentbridge.CodingAgent) *v1.CodingAgent {
 		DisplayName:    agent.DisplayName,
 		Command:        agent.Command,
 		Args:           agent.Args,
-		Env:            agent.Env,
+		Env:            maskAgentEnv(agent.Env),
 		Enabled:        agent.Enabled,
 		LastProbeOk:    agent.LastProbeOK,
 		LastProbeError: agent.LastProbeError,
 		CreatedAt:      agent.CreatedAt,
 		UpdatedAt:      agent.UpdatedAt,
+		// M4 P3-6：liveness_override 透传（空=未配置，全局默认生效）
+		LivenessOverrideJson: marshalLivenessOverride(agent.LivenessOverride),
 	}
+}
+
+// marshalLivenessOverride 序列化阈值为 JSON 文本；未配置/空表回落空串。
+func marshalLivenessOverride(ov map[string]any) string {
+	if len(ov) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(ov)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func projectToProto(p *agentbridge.CodingProject) *v1.CodingProject {
@@ -219,6 +271,12 @@ func (a *AgentBridgeAPI) taskToProto(t *agentbridge.CodingTask) *v1.CodingTask {
 		ProgressCount: int32(t.ProgressCount),
 		CreatedAt:     t.CreatedAt,
 		CompletedAt:   t.CompletedAt,
+		// M4：活跃性徽标数据源（设计 §B/§F）
+		ChildPid:      int32(t.ChildPID),
+		LastActiveAt:  t.LastActiveAt,
+		LastExcerpt:   t.LastExcerpt,
+		HeartbeatMiss: int32(t.HeartbeatMiss),
+		LivenessState: t.LivenessState,
 	}
 }
 

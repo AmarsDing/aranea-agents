@@ -208,6 +208,21 @@ func (f *abFakeTasks) UpdateStatus(_ context.Context, id string, from, to agentb
 	if patch.ProgressCount != nil {
 		t.ProgressCount = *patch.ProgressCount
 	}
+	if patch.ChildPID != nil {
+		t.ChildPID = *patch.ChildPID
+	}
+	if patch.LastActiveAt != nil {
+		t.LastActiveAt = *patch.LastActiveAt
+	}
+	if patch.LastExcerpt != nil {
+		t.LastExcerpt = *patch.LastExcerpt
+	}
+	if patch.HeartbeatMiss != nil {
+		t.HeartbeatMiss = *patch.HeartbeatMiss
+	}
+	if patch.LivenessState != nil {
+		t.LivenessState = *patch.LivenessState
+	}
 	return nil
 }
 
@@ -258,6 +273,9 @@ func (s *abFakeSession) Prompt(ctx context.Context, cwd, prompt string, h agentb
 	return s.promptFn(ctx, cwd, prompt, h)
 }
 func (s *abFakeSession) Cancel(context.Context) error { return nil }
+func (s *abFakeSession) Kill(context.Context) error   { return nil }
+func (s *abFakeSession) Ping(context.Context) error   { return nil }
+func (s *abFakeSession) ProcessPID() int              { return 4242 }
 func (s *abFakeSession) Close() error                 { return nil }
 
 type abFakeBus struct {

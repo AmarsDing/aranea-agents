@@ -194,7 +194,16 @@ func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyM
 	if stepWriter == nil {
 		return false, "", apierror.Internal(apierror.DomainChat, "step store unavailable")
 	}
-	if IsExternalCodingConfirm(step) {
+	if IsExternalCodingLivenessConfirm(step) {
+		// M4 P3-5：失联处置确认卡（source=external_coding_liveness）先于
+		// 审批中继路由——两类卡共享通道但决议语义不同（继续等待/终止）。
+		if s.bridge == nil {
+			return false, "", apierror.Internal(apierror.DomainChat, "coding bridge liveness not wired")
+		}
+		if err := s.bridge.ConfirmBridgeLivenessFromStep(ctx, step, replyMsg, approved); err != nil {
+			return false, "", err
+		}
+	} else if IsExternalCodingConfirm(step) {
 		if s.bridge == nil {
 			return false, "", apierror.Internal(apierror.DomainChat, "coding bridge approval not wired")
 		}

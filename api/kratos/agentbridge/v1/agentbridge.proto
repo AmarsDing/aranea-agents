@@ -23,6 +23,8 @@ message CodingAgent {
   string last_probe_error = 9;
   string created_at = 10;
   string updated_at = 11;
+  // M4 P3-6：liveness 阈值覆盖（JSON 文本，空=用全局默认；键见设计「活跃性监管」§E）
+  string liveness_override_json = 12;
 }
 
 message UpsertAgentRequest {
@@ -32,6 +34,8 @@ message UpsertAgentRequest {
   repeated string args = 4;
   map<string, string> env = 5;
   bool enabled = 6;
+  // M4 P3-6：liveness 阈值覆盖（JSON 文本；省略=保留旧值，"{}"=显式清空回全局默认）
+  string liveness_override_json = 7;
 }
 
 message ListAgentsResponse {
@@ -84,6 +88,12 @@ message CodingTask {
   int32 progress_count = 9;
   string created_at = 10;
   string completed_at = 11;
+  // M4：子进程 PID（进程组根）+ 活跃性监管（UI 徽标数据源，设计 §B/§F）
+  int32 child_pid = 12;
+  string last_active_at = 13;
+  string last_excerpt = 14;
+  int32 heartbeat_miss = 15;
+  string liveness_state = 16; // healthy/silent/suspect/lost，默认 healthy
 }
 
 message ListTasksRequest {

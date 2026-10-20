@@ -1,0 +1,15 @@
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"reasoning_content":"先看下文件结构"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"我先读取"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc123","type":"function","function":{"name":"fs_read","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"README.md\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-ds1","object":"chat.completion.chunk","created":1729500000,"model":"deepseek-chat","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

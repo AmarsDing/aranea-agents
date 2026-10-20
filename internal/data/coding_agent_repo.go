@@ -35,8 +35,10 @@ func entCodingAgentToBiz(e *dataent.CodingAgent) *bridge.CodingAgent {
 		Enabled:        e.Enabled,
 		LastProbeOK:    e.LastProbeOk,
 		LastProbeError: e.LastProbeError,
-		CreatedAt:      e.CreatedAt,
-		UpdatedAt:      e.UpdatedAt,
+		// M4 P3-6：liveness 阈值覆盖（nil 表示未配置，用全局默认）
+		LivenessOverride: e.LivenessOverride,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        e.UpdatedAt,
 	}
 }
 
@@ -84,6 +86,9 @@ func (r *codingAgentRepo) Upsert(ctx context.Context, agent *bridge.CodingAgent)
 	if agent.Env != nil {
 		create = create.SetEnv(agent.Env)
 	}
+	if agent.LivenessOverride != nil {
+		create = create.SetLivenessOverride(agent.LivenessOverride)
+	}
 	if agent.ID != "" {
 		create = create.SetID(agent.ID)
 	} else {
@@ -104,6 +109,9 @@ func (r *codingAgentRepo) Upsert(ctx context.Context, agent *bridge.CodingAgent)
 			}
 			if agent.Env != nil {
 				u.UpdateEnv()
+			}
+			if agent.LivenessOverride != nil {
+				u.UpdateLivenessOverride()
 			}
 		}).
 		Exec(ctx)

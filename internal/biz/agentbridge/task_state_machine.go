@@ -26,9 +26,10 @@ var transitions = map[TaskStatus]map[TaskStatus]bool{
 		StatusCancelling:       true,
 	},
 	StatusAwaitingApproval: {
-		StatusRunning:   true, // permission_resolved
-		StatusCancelled: true, // 审批超时
-		StatusFailed:    true, // 服务重启恢复
+		StatusRunning:    true, // permission_resolved
+		StatusCancelled:  true, // 审批超时
+		StatusCancelling: true, // M4 P0-3（S5）：审批中用户主动取消（不再是非法边）
+		StatusFailed:     true, // 服务重启恢复
 	},
 	StatusCancelling: {
 		StatusCancelled: true,

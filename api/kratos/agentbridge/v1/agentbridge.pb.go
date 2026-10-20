@@ -37,8 +37,10 @@ type CodingAgent struct {
 	LastProbeError string                 `protobuf:"bytes,9,opt,name=last_probe_error,json=lastProbeError,proto3" json:"last_probe_error,omitempty"`
 	CreatedAt      string                 `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt      string                 `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// M4 P3-6：liveness 阈值覆盖（JSON 文本，空=用全局默认；键见设计「活跃性监管」§E）
+	LivenessOverrideJson string `protobuf:"bytes,12,opt,name=liveness_override_json,json=livenessOverrideJson,proto3" json:"liveness_override_json,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *CodingAgent) Reset() {
@@ -148,16 +150,25 @@ func (x *CodingAgent) GetUpdatedAt() string {
 	return ""
 }
 
+func (x *CodingAgent) GetLivenessOverrideJson() string {
+	if x != nil {
+		return x.LivenessOverrideJson
+	}
+	return ""
+}
+
 type UpsertAgentRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentKey      string                 `protobuf:"bytes,1,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
-	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	Command       string                 `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
-	Args          []string               `protobuf:"bytes,4,rep,name=args,proto3" json:"args,omitempty"`
-	Env           map[string]string      `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Enabled       bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	AgentKey    string                 `protobuf:"bytes,1,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
+	DisplayName string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Command     string                 `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
+	Args        []string               `protobuf:"bytes,4,rep,name=args,proto3" json:"args,omitempty"`
+	Env         map[string]string      `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Enabled     bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// M4 P3-6：liveness 阈值覆盖（JSON 文本；省略=保留旧值，"{}"=显式清空回全局默认）
+	LivenessOverrideJson string `protobuf:"bytes,7,opt,name=liveness_override_json,json=livenessOverrideJson,proto3" json:"liveness_override_json,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *UpsertAgentRequest) Reset() {
@@ -230,6 +241,13 @@ func (x *UpsertAgentRequest) GetEnabled() bool {
 		return x.Enabled
 	}
 	return false
+}
+
+func (x *UpsertAgentRequest) GetLivenessOverrideJson() string {
+	if x != nil {
+		return x.LivenessOverrideJson
+	}
+	return ""
 }
 
 type ListAgentsResponse struct {
@@ -619,6 +637,12 @@ type CodingTask struct {
 	ProgressCount int32                  `protobuf:"varint,9,opt,name=progress_count,json=progressCount,proto3" json:"progress_count,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	CompletedAt   string                 `protobuf:"bytes,11,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	// M4：子进程 PID（进程组根）+ 活跃性监管（UI 徽标数据源，设计 §B/§F）
+	ChildPid      int32  `protobuf:"varint,12,opt,name=child_pid,json=childPid,proto3" json:"child_pid,omitempty"`
+	LastActiveAt  string `protobuf:"bytes,13,opt,name=last_active_at,json=lastActiveAt,proto3" json:"last_active_at,omitempty"`
+	LastExcerpt   string `protobuf:"bytes,14,opt,name=last_excerpt,json=lastExcerpt,proto3" json:"last_excerpt,omitempty"`
+	HeartbeatMiss int32  `protobuf:"varint,15,opt,name=heartbeat_miss,json=heartbeatMiss,proto3" json:"heartbeat_miss,omitempty"`
+	LivenessState string `protobuf:"bytes,16,opt,name=liveness_state,json=livenessState,proto3" json:"liveness_state,omitempty"` // healthy/silent/suspect/lost，默认 healthy
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -726,6 +750,41 @@ func (x *CodingTask) GetCreatedAt() string {
 func (x *CodingTask) GetCompletedAt() string {
 	if x != nil {
 		return x.CompletedAt
+	}
+	return ""
+}
+
+func (x *CodingTask) GetChildPid() int32 {
+	if x != nil {
+		return x.ChildPid
+	}
+	return 0
+}
+
+func (x *CodingTask) GetLastActiveAt() string {
+	if x != nil {
+		return x.LastActiveAt
+	}
+	return ""
+}
+
+func (x *CodingTask) GetLastExcerpt() string {
+	if x != nil {
+		return x.LastExcerpt
+	}
+	return ""
+}
+
+func (x *CodingTask) GetHeartbeatMiss() int32 {
+	if x != nil {
+		return x.HeartbeatMiss
+	}
+	return 0
+}
+
+func (x *CodingTask) GetLivenessState() string {
+	if x != nil {
+		return x.LivenessState
 	}
 	return ""
 }
@@ -918,7 +977,7 @@ var File_kratos_agentbridge_v1_agentbridge_proto protoreflect.FileDescriptor
 
 const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"\n" +
-	"'kratos/agentbridge/v1/agentbridge.proto\x12\x15kratos.agentbridge.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xa8\x03\n" +
+	"'kratos/agentbridge/v1/agentbridge.proto\x12\x15kratos.agentbridge.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xde\x03\n" +
 	"\vCodingAgent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tagent_key\x18\x02 \x01(\tR\bagentKey\x12!\n" +
@@ -933,17 +992,19 @@ const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"created_at\x18\n" +
 	" \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\v \x01(\tR\tupdatedAt\x1a6\n" +
+	"updated_at\x18\v \x01(\tR\tupdatedAt\x124\n" +
+	"\x16liveness_override_json\x18\f \x01(\tR\x14livenessOverrideJson\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa6\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xdc\x02\n" +
 	"\x12UpsertAgentRequest\x12!\n" +
 	"\tagent_key\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\bagentKey\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x1e\n" +
 	"\acommand\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\acommand\x12\x12\n" +
 	"\x04args\x18\x04 \x03(\tR\x04args\x12D\n" +
 	"\x03env\x18\x05 \x03(\v22.kratos.agentbridge.v1.UpsertAgentRequest.EnvEntryR\x03env\x12\x18\n" +
-	"\aenabled\x18\x06 \x01(\bR\aenabled\x1a6\n" +
+	"\aenabled\x18\x06 \x01(\bR\aenabled\x124\n" +
+	"\x16liveness_override_json\x18\a \x01(\tR\x14livenessOverrideJson\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"N\n" +
@@ -970,7 +1031,7 @@ const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"\x14ListProjectsResponse\x12:\n" +
 	"\x05items\x18\x01 \x03(\v2$.kratos.agentbridge.v1.CodingProjectR\x05items\",\n" +
 	"\x14DeleteProjectRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xc4\x02\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xf8\x03\n" +
 	"\n" +
 	"CodingTask\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
@@ -986,7 +1047,12 @@ const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\n" +
 	" \x01(\tR\tcreatedAt\x12!\n" +
-	"\fcompleted_at\x18\v \x01(\tR\vcompletedAt\"M\n" +
+	"\fcompleted_at\x18\v \x01(\tR\vcompletedAt\x12\x1b\n" +
+	"\tchild_pid\x18\f \x01(\x05R\bchildPid\x12$\n" +
+	"\x0elast_active_at\x18\r \x01(\tR\flastActiveAt\x12!\n" +
+	"\flast_excerpt\x18\x0e \x01(\tR\vlastExcerpt\x12%\n" +
+	"\x0eheartbeat_miss\x18\x0f \x01(\x05R\rheartbeatMiss\x12%\n" +
+	"\x0eliveness_state\x18\x10 \x01(\tR\rlivenessState\"M\n" +
 	"\x10ListTasksRequest\x12#\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12\x14\n" +

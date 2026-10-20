@@ -1,0 +1,1 @@
+{"id":"chatcmpl-xai2","object":"chat.completion","created":1729500000,"model":"grok-4","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_grok2","type":"function","function":{"name":"fs_read","arguments":"{\"path\":\"main.go\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":5,"completion_tokens":10,"total_tokens":15}}

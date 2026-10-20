@@ -376,6 +376,10 @@ func TestConfirmActivity_ExternalCodingSkipsChatAwait(t *testing.T) {
 	step := toolBlockedConfirmStep()
 	step.ToolName = agentbridge.ToolExternalCoding
 	step.TaskID = "task-bridge-1"
+	// S6（M4 P0-3）绑定纪律：桥接卡片必须带 bridge-confirm- 前缀；
+	// 真实卡经 emitApprovalRequest 生成即此前缀，测试同步对齐。
+	step.ID = "bridge-confirm-test-1"
+	step.TurnID = step.ID
 	step.ToolArgs = json.RawMessage(`{"source":"external_coding","task_id":"task-bridge-1"}`)
 	resumed := false
 	coord := stubAwaitCoord{

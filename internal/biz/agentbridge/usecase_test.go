@@ -178,6 +178,21 @@ func (m *mockTaskRepo) UpdateStatus(_ context.Context, id string, from, to TaskS
 	if patch.ProgressCount != nil {
 		t.ProgressCount = *patch.ProgressCount
 	}
+	if patch.ChildPID != nil {
+		t.ChildPID = *patch.ChildPID
+	}
+	if patch.LastActiveAt != nil {
+		t.LastActiveAt = *patch.LastActiveAt
+	}
+	if patch.LastExcerpt != nil {
+		t.LastExcerpt = *patch.LastExcerpt
+	}
+	if patch.HeartbeatMiss != nil {
+		t.HeartbeatMiss = *patch.HeartbeatMiss
+	}
+	if patch.LivenessState != nil {
+		t.LivenessState = *patch.LivenessState
+	}
 	return nil
 }
 
@@ -248,6 +263,9 @@ type mockACPSession struct {
 	// cancelCh 模拟真实 ACPSession.Cancel 中断进行中的 Prompt。
 	cancelCh chan struct{}
 	closed   bool
+	pid      int   // M4 P0-2b：模拟子进程 PID（0 时 ProcessPID 返回默认 4321）
+	pingErr  error // M4 P3：`_aranea/ping` 探测注入错误（nil=pong）
+	killed   bool  // M4 P3：取消宽限升级链强杀标记
 }
 
 func (s *mockACPSession) Prompt(ctx context.Context, cwd, prompt string, h EventHandler) (string, error) {
@@ -261,6 +279,32 @@ func (s *mockACPSession) Cancel(_ context.Context) error {
 		close(s.cancelCh)
 	}
 	return nil
+}
+
+func (s *mockACPSession) Kill(_ context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.killed = true
+	return nil
+}
+
+func (s *mockACPSession) Ping(_ context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pingErr
+}
+
+func (s *mockACPSession) wasKilled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.killed
+}
+
+func (s *mockACPSession) ProcessPID() int {
+	if s.pid == 0 {
+		return 4321
+	}
+	return s.pid
 }
 
 func (s *mockACPSession) Close() error { s.closed = true; return nil }
@@ -447,6 +491,10 @@ func TestUsecase_DispatchSuccessRunsToDone(t *testing.T) {
 	if done.CompletedAt == "" {
 		t.Fatal("completed_at must be set")
 	}
+	// M4 P0-2b（S4）：派发后子进程 PID 已持久化，且跨状态迁移存续。
+	if done.ChildPID != 4321 {
+		t.Fatalf("child_pid = %d, want persisted 4321 from mock session", done.ChildPID)
+	}
 }
 
 func TestUsecase_DispatchSpawnFailMarksTaskFailed(t *testing.T) {
@@ -559,6 +607,43 @@ func TestUsecase_CancelRunningTask(t *testing.T) {
 	if cancelled.CompletedAt == "" {
 		t.Fatal("completed_at must be set on cancel")
 	}
+}
+
+// TestUsecase_CancelAwaitingApprovalTask M4 P0-3（S5）：审批中取消走
+// awaiting_approval→cancelling 合法边（不再 Conflict），run 收尾 cancelled。
+func TestUsecase_CancelAwaitingApprovalTask(t *testing.T) {
+	e := newTestEnv()
+	e.seedAgent("codebuddy", true)
+	e.seedProject("proj", `F:\proj`)
+
+	promptBlocked := make(chan struct{})
+	cancelCh := make(chan struct{})
+	e.factory.sessions = []*mockACPSession{{
+		cancelCh: cancelCh,
+		promptFn: func(ctx context.Context, _, _ string, _ EventHandler) (string, error) {
+			close(promptBlocked)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-cancelCh:
+				return "", context.Canceled
+			}
+		},
+	}}
+	res, err := e.uc.Dispatch(context.Background(), DispatchInput{
+		SessionID: "s1", AgentKey: "codebuddy", ProjectQuery: "proj", Prompt: "x", Handler: noopHandler(),
+	})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	<-promptBlocked
+	if err := e.uc.MarkAwaitingApproval(res.Task.ID); err != nil {
+		t.Fatalf("mark awaiting: %v", err)
+	}
+	if err := e.uc.Cancel(context.Background(), res.Task.ID); err != nil {
+		t.Fatalf("cancel under awaiting_approval must not conflict: %v", err)
+	}
+	waitStatus(t, e.tasks, res.Task.ID, StatusCancelled)
 }
 
 func TestUsecase_CancelTerminalTaskConflicts(t *testing.T) {
@@ -727,6 +812,63 @@ func TestUsecase_PromptPanicRecovered(t *testing.T) {
 }
 
 // ---------- 启动恢复 ----------
+
+// TestUsecase_RecoverReapsOrphanPIDs M4 P0-4（S4）：重启恢复先按 child_pid
+// 收割孤儿进程树再标记 failed；未配 reaper 时保持旧行为（仅标记）。
+func TestUsecase_RecoverReapsOrphanPIDs(t *testing.T) {
+	reaped := make(chan int, 4)
+	e := newTestEnv()
+	e.uc = NewAgentBridgeUsecase(UsecaseDeps{
+		Agents: e.agents, Projects: e.projects, Tasks: e.tasks,
+		Sessions: e.factory,
+		Reaper:   func(pid int) error { reaped <- pid; return nil },
+	})
+	// ①活跃任务带 child_pid → 收割并标记 failed
+	tk1 := &CodingTask{Workspace: "default", SessionID: "s", AgentID: "a", ProjectID: "p",
+		Prompt: "x", Status: StatusRunning, ChildPID: 9911}
+	// ②活跃任务无 child_pid（从未 spawn 成功）→ 不收割，仅标记
+	tk2 := &CodingTask{Workspace: "default", SessionID: "s", AgentID: "a", ProjectID: "p",
+		Prompt: "y", Status: StatusAwaitingApproval}
+	for _, tk := range []*CodingTask{tk1, tk2} {
+		if err := e.tasks.Create(context.Background(), tk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.uc.RecoverActiveTasks(context.Background()); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	select {
+	case pid := <-reaped:
+		if pid != 9911 {
+			t.Fatalf("reaped pid = %d, want 9911", pid)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("orphan pid was not reaped")
+	}
+	select {
+	case pid := <-reaped:
+		t.Fatalf("unexpected extra reap: pid=%d", pid)
+	case <-time.After(50 * time.Millisecond):
+	}
+	for _, tk := range e.tasks.byID {
+		if tk.Status != StatusFailed {
+			t.Fatalf("task %s = %s, want failed", tk.ID, tk.Status)
+		}
+	}
+	// 无 reaper：旧行为（仅标记，不 panic）
+	e2 := newTestEnv()
+	tk := &CodingTask{Workspace: "default", SessionID: "s", AgentID: "a", ProjectID: "p",
+		Prompt: "z", Status: StatusRunning, ChildPID: 9922}
+	if err := e2.tasks.Create(context.Background(), tk); err != nil {
+		t.Fatal(err)
+	}
+	if err := e2.uc.RecoverActiveTasks(context.Background()); err != nil {
+		t.Fatalf("recover without reaper: %v", err)
+	}
+	if got := e2.tasks.byID[tk.ID].Status; got != StatusFailed {
+		t.Fatalf("task = %s, want failed", got)
+	}
+}
 
 func TestUsecase_RecoverActiveTasks(t *testing.T) {
 	e := newTestEnv()

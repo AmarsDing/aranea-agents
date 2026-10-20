@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/agentbridge/acp"
 	"aranea-agents/internal/biz/agentbridge"
+	"aranea-agents/pkg/safego"
 )
 
 // acpSummaryLimit 结果摘要截断上限（设计 §12：入库前截断 4000 字符）。
@@ -92,6 +93,32 @@ func (s *acpSession) Close() error {
 	s.client.Close()
 	return nil
 }
+
+// Kill M4（设计「活跃性监管」§D）：cancel 宽限期后强制终止整个进程组
+// （Windows taskkill /T /F，Unix 负 pgid）。语义=「动作发出即成功」：
+// 底层 Process.Kill 等待退出无超时保证，故异步发出并以 ctx 兜底，不允许永久阻塞调用方。
+func (s *acpSession) Kill(ctx context.Context) error {
+	done := make(chan struct{})
+	safego.GoBackground("agentbridge.session.kill", func() {
+		s.client.Proc().Kill()
+		close(done)
+	})
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Ping M4（设计「活跃性监管」§A L-protocol）：`_aranea/ping` 探测透传。
+// 任何合法 JSON-RPC 响应（含 -32601 Method not found）即 pong。
+func (s *acpSession) Ping(ctx context.Context) error {
+	return s.client.Ping(ctx)
+}
+
+// ProcessPID M4 P0-2b：子进程 PID（Windows 为进程组根），任务行持久化/重启收割用。
+func (s *acpSession) ProcessPID() int { return s.client.Proc().PID() }
 
 // acpEventCollector 将 acp.SessionHandler 适配到 agentbridge.EventHandler，
 // 同时累积 agent_message_chunk 文本作为结果摘要。

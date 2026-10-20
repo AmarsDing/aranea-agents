@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/agentbridge/acp"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/agentbridge"
 	"aranea-agents/internal/biz/decision"
@@ -54,6 +55,7 @@ type AgentBridgeService struct {
 	uc *agentbridge.AgentBridgeUsecase
 
 	pending         sync.Map // taskID → *pendingApproval
+	pendingLiv      sync.Map // taskID → *pendingLiveness（M4 P3-5：失联确认卡）
 	always          sync.Map // taskID → true (本任务 allow_always)
 	confirmSink     ConfirmSink
 	approvalTimeout time.Duration
@@ -100,6 +102,11 @@ func ProvideAgentBridgeService(agents agentbridge.AgentRepo, projects agentbridg
 		Sessions: factory,
 		Listener: svc,
 		Logger:   lg,
+		// M4 P0-4（S4）：重启恢复按 child_pid 收割孤儿子进程树（Windows taskkill /T /F）
+		Reaper: acp.ReapOrphanPID,
+		// M4 P3（活跃性监管）：G3 失联确认卡 + 阶梯流程日志/提示均由 service 出口。
+		Decider: svc,
+		Hints:   svc,
 	})
 	svc.BindUsecase(uc)
 	return svc
@@ -175,12 +182,18 @@ func (s *AgentBridgeService) ListSessionTasks(ctx context.Context, sessionID str
 }
 
 // CancelTask 取消任务（running/awaiting_approval → cancelling → cancelled）。
+// S5（M4 P0-3）：取消落地后解除挂起审批（拒成语义），OnPermission 不再僵等到超时。
 func (s *AgentBridgeService) CancelTask(ctx context.Context, id string) error {
 	uc, err := s.usecase()
 	if err != nil {
 		return err
 	}
-	return uc.Cancel(ctx, id)
+	if err := uc.Cancel(ctx, id); err != nil {
+		return err
+	}
+	s.rejectPending(id, apierror.Unavailable(apierror.DomainAgentBridge, "task cancelled"))
+	s.rejectPendingLiveness(id, apierror.Unavailable(apierror.DomainAgentBridge, "task cancelled"))
+	return nil
 }
 
 // OnTaskTerminal 实现 agentbridge.TaskListener：终态事件 + 流程日志。
@@ -222,6 +235,13 @@ func (s *AgentBridgeService) OnTaskTerminal(t *agentbridge.CodingTask) {
 			event.P("task_id", t.ID), event.P("agent_key", agentKey))
 		s.emitter(ctx, t.SessionID).LogDone("agentbridge.process.exit", "编程 Agent 进程已退出",
 			event.P("task_id", t.ID), event.P("agent_key", agentKey))
+	}
+	// S5：任务抵终态时解除可能残存的挂起审批（如审批中直接判失败/外部取消）。
+	if t.Status == agentbridge.StatusFailed || t.Status == agentbridge.StatusCancelled {
+		s.rejectPending(t.ID, apierror.Unavailable(apierror.DomainAgentBridge,
+			"task reached %s", t.Status))
+		s.rejectPendingLiveness(t.ID, apierror.Unavailable(apierror.DomainAgentBridge,
+			"task reached %s", t.Status))
 	}
 }
 

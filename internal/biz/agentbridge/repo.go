@@ -40,6 +40,14 @@ type ACPSession interface {
 	// Prompt 阻塞执行至 agent 完成，返回结果摘要。
 	Prompt(ctx context.Context, cwd, prompt string, h EventHandler) (string, error)
 	Cancel(ctx context.Context) error
+	// Kill M4：cancel 宽限期后强制终止进程组（Windows taskkill /T /F，Unix 负 pgid）。
+	// 语义=「动作发出即成功」，不允许永久阻塞调用方（ctx Done 兜底返回）。
+	Kill(ctx context.Context) error
+	// Ping M4（设计「活跃性监管」§A L-protocol）：`_aranea/ping` 主动探测。
+	// 任何合法 JSON-RPC 响应（含 Method not found）即 pong——证明传输+协议存活。
+	Ping(ctx context.Context) error
+	// ProcessPID M4 P0-2b：返回子进程 PID（Windows 组根），供任务行持久化与重启收割。
+	ProcessPID() int
 	Close() error
 }
 

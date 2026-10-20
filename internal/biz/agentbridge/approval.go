@@ -16,6 +16,10 @@ const (
 // ToolExternalCoding is the confirm-step tool name / source for M2 审批中继.
 const ToolExternalCoding = "external_coding"
 
+// ToolExternalCodingLiveness M4 P3-5：失联处置确认卡的 args.source（设计 §C：
+// 复用审批卡通道，以独立 source 区分审批意图，路由到活跃性确认）。
+const ToolExternalCodingLiveness = "external_coding_liveness"
+
 // ResolvePermissionOption maps a user decision onto an ACP option.
 // rememberAlways is true when the caller should cache allow_always for this task
 // (DecisionAlways, or DecisionApprove while alwaysCache is already set).

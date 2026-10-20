@@ -33,8 +33,10 @@ type CodingAgent struct {
 	Enabled        bool
 	LastProbeOK    bool
 	LastProbeError string
-	CreatedAt      string
-	UpdatedAt      string
+	// LivenessOverride M4 P3-6：按 key 覆盖 liveness 阈值（JSON，空=用全局默认）
+	LivenessOverride map[string]any
+	CreatedAt        string
+	UpdatedAt        string
 }
 
 // CodingProject 是一个可派发任务的本机项目目录（cwd 白名单）。
@@ -61,6 +63,13 @@ type CodingTask struct {
 	Summary       string
 	Error         string
 	ProgressCount int
+	// ChildPID M4 P0-S4：子进程 PID（Windows 为进程组根，重启收割用）
+	ChildPID int
+	// M4 活跃性监管（设计「活跃性监管」§B）
+	LastActiveAt  string // RFC3339；为空表示尚无活动
+	LastExcerpt   string
+	HeartbeatMiss int
+	LivenessState string // healthy / silent / suspect / lost
 	CreatedAt     string
 	UpdatedAt     string
 	CompletedAt   string
@@ -73,6 +82,11 @@ type TaskPatch struct {
 	Error         *string
 	CompletedAt   *string
 	ProgressCount *int
+	ChildPID      *int    // M4 P0-2b：Spawn 后写回子进程 PID
+	LastActiveAt  *string // M4：liveness 字段（同态 CAS 更新）
+	LastExcerpt   *string
+	HeartbeatMiss *int
+	LivenessState *string
 }
 
 // ProjectCandidate 是项目名消歧候选。

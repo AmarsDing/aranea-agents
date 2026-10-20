@@ -127,6 +127,15 @@ func (h *bridgeProgressHandler) OnPermission(ctx context.Context, title string, 
 	h.svc.storePending(pending)
 	h.svc.emitApprovalRequest(ctx, h, pending)
 
+	// S5（M4 P0-3）竞态闭窗：Cancel 与 storePending 之间存在窄窗——若取消
+	// 先落地，rejectPending 找不到本 pending，须自查任务状态补齐解除。
+	if uc2, uerr := h.svc.usecase(); uerr == nil {
+		if t, terr := uc2.GetTask(ctx, h.taskID); terr == nil && t.Status == agentbridge.StatusCancelling {
+			h.svc.clearPending(h.taskID)
+			return "", apierror.Unavailable(apierror.DomainAgentBridge, "task cancelled during approval setup")
+		}
+	}
+
 	timeout := h.svc.approvalWait()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -186,6 +195,22 @@ func (s *AgentBridgeService) loadPending(taskID string) *pendingApproval {
 	}
 	p, _ := v.(*pendingApproval)
 	return p
+}
+
+// rejectPending S5（M4 P0-3）：任务进入取消/终态路径时解除挂起审批（拒成语义）。
+// 解除后 OnPermission 立即返回错误，agent 收到 cancelled 决议，Prompt 回卷、
+// run 协程收尾终态；无挂起或已决议时 no-op（done 缓冲 1，非阻塞发送）。
+func (s *AgentBridgeService) rejectPending(taskID string, err error) {
+	p := s.loadPending(taskID)
+	if p == nil {
+		return
+	}
+	select {
+	case p.done <- approvalDecision{err: err}:
+		s.lg.Info("agentbridge pending approval rejected on task terminal path",
+			loggateway.Str("task_id", taskID))
+	default:
+	}
 }
 
 func (s *AgentBridgeService) emitApprovalRequest(ctx context.Context, h *bridgeProgressHandler, p *pendingApproval) {
@@ -353,12 +378,45 @@ func (s *AgentBridgeService) emitBridgeDecisionRecord(ctx context.Context, p *pe
 }
 
 // ConfirmBridgePermissionFromStep is the ConfirmActivity adapter.
-func (s *AgentBridgeService) ConfirmBridgePermissionFromStep(_ context.Context, step biz.Step, reply string, approved bool) error {
-	taskID := taskIDFromConfirmArgs(step.ToolArgs)
+// S6（M4 P0-3）审批卡强绑定：stepID 前缀 + step↔pending 多重一致性校验
+// （task / session / agent_key / card id），防伪造或重放他会话确认卡越权放行。
+// actor ctx 透传（M80 决策记录 ActorKey 取自 ctx 鉴权身份）。
+func (s *AgentBridgeService) ConfirmBridgePermissionFromStep(ctx context.Context, step biz.Step, reply string, approved bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !strings.HasPrefix(step.ID, "bridge-confirm-") {
+		return apierror.Forbidden(apierror.DomainAgentBridge, "not a coding-bridge confirm card")
+	}
+	args := map[string]any{}
+	if len(step.ToolArgs) > 0 {
+		_ = json.Unmarshal(step.ToolArgs, &args)
+	}
+	taskID, _ := args["task_id"].(string)
+	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
 		taskID = strings.TrimSpace(step.TaskID)
 	}
-	return s.ConfirmBridgePermission(context.Background(), taskID, decisionFromConfirmReply(reply, approved))
+	if taskID == "" {
+		return apierror.BadRequest(apierror.DomainAgentBridge, "confirm card missing task binding")
+	}
+	if st := strings.TrimSpace(step.TaskID); st != "" && st != taskID {
+		return apierror.Forbidden(apierror.DomainAgentBridge, "confirm card task binding mismatch")
+	}
+	p := s.loadPending(taskID)
+	if p == nil {
+		return apierror.Conflict(apierror.DomainAgentBridge, "no pending approval for task %s", taskID)
+	}
+	if step.SessionID != "" && p.sessionID != "" && step.SessionID != p.sessionID {
+		return apierror.Forbidden(apierror.DomainAgentBridge, "confirm card session mismatch")
+	}
+	if ak, _ := args["agent_key"].(string); ak != "" && p.agentKey != "" && ak != p.agentKey {
+		return apierror.Forbidden(apierror.DomainAgentBridge, "confirm card agent mismatch")
+	}
+	if p.stepID != "" && step.ID != p.stepID {
+		return apierror.Forbidden(apierror.DomainAgentBridge, "confirm card does not match pending approval")
+	}
+	return s.ConfirmBridgePermission(ctx, taskID, decisionFromConfirmReply(reply, approved))
 }
 
 func normalizeBridgeDecision(decision string) string {
@@ -386,18 +444,6 @@ func decisionFromConfirmReply(reply string, approved bool) string {
 		return agentbridge.DecisionApprove
 	}
 	return agentbridge.DecisionDeny
-}
-
-func taskIDFromConfirmArgs(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var m map[string]any
-	if json.Unmarshal(raw, &m) != nil {
-		return ""
-	}
-	id, _ := m["task_id"].(string)
-	return strings.TrimSpace(id)
 }
 
 func approvalSpokenPrompt(agentKey, project, title string) string {

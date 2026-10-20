@@ -258,6 +258,11 @@ var stepTitleRegistry = map[string]string{
 	"agentbridge.probe.degraded":   "编程工具探测降级",
 	"agentbridge.approval.request": "编程工具审批请求",
 	"agentbridge.approval.timeout": "编程工具审批超时",
+	// M4 P3 活跃性监管（与 internal/service/agentbridge_liveness.go 实际发射对齐）
+	"agentbridge.liveness.suspect":   "编程任务静默可疑",
+	"agentbridge.liveness.lost":      "编程任务失联",
+	"agentbridge.liveness.recovered": "编程任务恢复活动",
+	"agentbridge.liveness.kill":      "编程任务被活跃性监管终止",
 	// computer use（M75）：与 internal/biz/computeruse/usecase.go 实际发射对齐
 	"computeruse.session.start":      "桌面会话已创建",
 	"computeruse.session.done":       "桌面会话已结束",

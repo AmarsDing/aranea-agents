@@ -126,6 +126,57 @@ func TestAgentBridgeAPI_ListTasksResolvesNames(t *testing.T) {
 	}
 }
 
+// ---------- M4 P0-1 S1（AC-11）：API 响应 env 掩码 ----------
+
+func TestAgentBridgeAPI_EnvMasking(t *testing.T) {
+	e := newABSvcEnv()
+	if _, err := e.api.UpsertAgent(context.Background(), &v1.UpsertAgentRequest{
+		AgentKey: "deepseek",
+		Command:  `bin\acp-shim-deepseek.exe`,
+		Env: map[string]string{
+			"DEEPSEEK_API_KEY":     "sk-plaintext-12345",
+			"AUTH_TOKEN":           "tok-plaintext",
+			"WILL_NOT_LEAK_SECRET": "sec-plaintext",
+			"DB_PASSWORD":          "pw-plaintext",
+			"APP_CREDENTIAL":       "cred-plaintext",
+			"NO_PROXY":             "127.0.0.1", // 非敏感键保留
+		},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	res, err := e.api.ListAgents(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(res.Items))
+	}
+	envMap := res.Items[0].Env
+	for _, k := range []string{"DEEPSEEK_API_KEY", "AUTH_TOKEN", "WILL_NOT_LEAK_SECRET", "DB_PASSWORD", "APP_CREDENTIAL"} {
+		if v := envMap[k]; v != "***" {
+			t.Fatalf("sensitive key %s leaked: %q", k, v)
+		}
+	}
+	if envMap["NO_PROXY"] != "127.0.0.1" {
+		t.Fatalf("non-sensitive key must keep value, got %q", envMap["NO_PROXY"])
+	}
+}
+
+func TestMaskAgentEnv_Idempotent(t *testing.T) {
+	in := map[string]string{"X_KEY": "abc"}
+	out := maskAgentEnv(in)
+	if out["X_KEY"] != "***" {
+		t.Fatalf("mask = %q", out["X_KEY"])
+	}
+	if in["X_KEY"] != "abc" {
+		t.Fatal("input map must not be mutated")
+	}
+	if got := maskAgentEnv(nil); got != nil {
+		t.Fatalf("nil env must stay nil, got %v", got)
+	}
+}
+
 func TestAgentBridgeAPI_GetAndCancelTask(t *testing.T) {
 	e := newABSvcEnv()
 	e.seedAgent("codebuddy")

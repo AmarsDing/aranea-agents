@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"aranea-agents/internal/biz/agentbridge"
 
@@ -94,6 +95,23 @@ func taskEnvelope(t *agentbridge.CodingTask) map[string]any {
 	if t.Error != "" {
 		m["error"] = t.Error
 	}
+	// M4 P3-5（活跃性监管）播报数据源：「状态｜活动度｜最后活动于 N 秒前｜摘要」。
+	// 健康且进行中时活动度字段一并给出，播报模板可直接拼装；缺失字段表示尚无信号。
+	if t.LivenessState != "" {
+		m["liveness_state"] = t.LivenessState
+	}
+	if t.LastActiveAt != "" {
+		m["last_active_at"] = t.LastActiveAt
+		if ts, err := time.Parse(time.RFC3339, t.LastActiveAt); err == nil {
+			m["last_active_seconds_ago"] = int(time.Since(ts).Seconds())
+		}
+	}
+	if t.LastExcerpt != "" {
+		m["last_excerpt"] = t.LastExcerpt
+	}
+	if t.HeartbeatMiss > 0 {
+		m["heartbeat_miss"] = t.HeartbeatMiss
+	}
 	return m
 }
 
@@ -124,12 +142,12 @@ func (t *dispatchTool) Declaration() *trpctool.Declaration {
 			Description: "Dispatch envelope.",
 			Required:    []string{"ok"},
 			Properties: map[string]*trpctool.Schema{
-				"ok":          {Type: "boolean"},
-				"task_id":     {Type: "string", Description: "Dispatched task id when ok is true."},
-				"status":      {Type: "string", Description: "Task status after dispatch (running)."},
-				"error":       {Type: "string"},
-				"error_code":  {Type: "string", Description: "INVALID_ARGS / AMBIGUOUS_PROJECT / DISPATCH_FAILED."},
-				"candidates":  {Type: "array", Description: "Project candidates when error_code is AMBIGUOUS_PROJECT."},
+				"ok":         {Type: "boolean"},
+				"task_id":    {Type: "string", Description: "Dispatched task id when ok is true."},
+				"status":     {Type: "string", Description: "Task status after dispatch (running)."},
+				"error":      {Type: "string"},
+				"error_code": {Type: "string", Description: "INVALID_ARGS / AMBIGUOUS_PROJECT / DISPATCH_FAILED."},
+				"candidates": {Type: "array", Description: "Project candidates when error_code is AMBIGUOUS_PROJECT."},
 			},
 		},
 	}
@@ -206,6 +224,12 @@ func (t *checkTool) Declaration() *trpctool.Declaration {
 				"error":          {Type: "string"},
 				"error_code":     {Type: "string", Description: "NO_TASK when the session has no coding task."},
 				"progress_count": {Type: "integer", Description: "Number of progress updates received from the agent."},
+				// M4 P3-5 活跃性播报字段：「状态｜活动度｜最后活动于 N 秒前｜摘要」
+				"liveness_state":          {Type: "string", Description: "Liveness ladder: healthy/silent/suspect/lost."},
+				"last_active_at":          {Type: "string", Description: "RFC3339 of the latest activity signal."},
+				"last_active_seconds_ago": {Type: "integer", Description: "Seconds since the latest activity signal."},
+				"last_excerpt":            {Type: "string", Description: "Truncated excerpt of the latest agent output."},
+				"heartbeat_miss":          {Type: "integer", Description: "Consecutive failed liveness probes."},
 			},
 		},
 	}

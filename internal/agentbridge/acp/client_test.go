@@ -129,6 +129,15 @@ func runFakeAgent() {
 			}})
 		case "session/cancel":
 			// 通知，无需响应
+		default:
+			// M4 `_aranea/ping`：未知方法的请求应回 -32601（模拟原生 adapter 行为），
+			// 任何合法 JSON-RPC 响应都证明对端事件循环存活。
+			if method != "" && len(id) > 0 && string(id) != "null" {
+				writeFrame(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "error": map[string]any{
+					"code":    -32601,
+					"message": "method not found",
+				}})
+			}
 		}
 	}
 }

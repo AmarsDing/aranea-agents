@@ -18,6 +18,9 @@ const (
 	MethodSessionCancel     = "session/cancel"
 	MethodSessionUpdate     = "session/update"
 	MethodRequestPermission = "session/request_permission"
+	// MethodAraneaPing M4 活跃性监管私有探测方法：对端回任何合法 JSON-RPC
+	// 响应（含 -32601 Method not found）即计为存活。
+	MethodAraneaPing = "_aranea/ping"
 )
 
 // StopReason 是 session/prompt 的结束原因。
@@ -97,8 +100,10 @@ type CancelNotificationParams struct {
 
 // SessionNotification 是 session/update 通知参数。
 type SessionNotification struct {
-	SessionID string        `json:"sessionId"`
-	Update    SessionUpdate `json:"update"`
+	SessionID string          `json:"sessionId"`
+	Update    SessionUpdate   `json:"update"`
+	// Meta 厂商扩展透传（M4 设计 §F：codebuddy 等在通知根携带 _meta）。
+	Meta json.RawMessage `json:"_meta,omitempty"`
 }
 
 // SessionUpdate 是流式更新载荷（只保留关心字段，未知字段忽略）。
@@ -107,6 +112,9 @@ type SessionUpdate struct {
 	Content *ContentBlock `json:"content,omitempty"` // agent_message_chunk 的文本
 	Title   string        `json:"title,omitempty"`   // tool_call 标题
 	ToolCallID string      `json:"toolCallId,omitempty"`
+	// Meta 厂商扩展透传（M4 设计 §F：update 内 _meta 保留原文，供活跃性/
+	// 降级诊断消费；不认识的 key 不得丢弃）。
+	Meta json.RawMessage `json:"_meta,omitempty"`
 }
 
 // ToolCallInfo 是 request_permission 中的工具调用信息。

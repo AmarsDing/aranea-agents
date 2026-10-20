@@ -14,9 +14,6 @@ import (
 // MaxConcurrentPerAgent 同 agent_key 活跃任务上限（设计 §10：M1 超限直接拒绝）。
 const MaxConcurrentPerAgent = 2
 
-// taskHardTimeout 单任务硬上限（设计 §10：30 分钟）。
-const taskHardTimeout = 30 * time.Minute
-
 // SessionFactory 按 agent 注册信息 spawn ACP 会话（service 层实现注入）。
 // Stability:internal
 type SessionFactory interface {
@@ -29,21 +26,38 @@ type UsecaseDeps struct {
 	Projects ProjectRepo
 	Tasks    TaskRepo
 	Sessions SessionFactory
-	Listener TaskListener     // 可选：终态通知（事件发射/播报）
+	Listener TaskListener      // 可选：终态通知（事件发射/播报）
 	Logger   loggateway.Logger // 可选，nil 时 Noop
+	// Reaper 可选（M4 P0-4）：按 child_pid（进程组根）收割孤儿子进程树，
+	// 服务重启恢复用；nil 时退化为仅标记 failed（旧行为）。
+	// 生产装配 = acp.ReapOrphanPID（Windows taskkill /T /F）。
+	Reaper func(pid int) error
+	// Liveness M4 P3（活跃性监管，设计 §E）：全局阈值默认；零字段回落 §E 默认。
+	// 按 key 覆盖经 coding_agents.liveness_override 在派发时解析（ResolveLivenessConfig）。
+	Liveness LivenessConfig
+	// Decider 可选（M4 P3）：G3 失联确认卡（service 实现，复用审批卡通道）；
+	// nil 时失联停留 G3 观望（活动信号可救回，不自动杀）。
+	Decider LivenessDecider
+	// Hints 可选（M4 P3）：阶梯迁移/用户提示出口（service 流程日志 + 进度面板）。
+	Hints LivenessListener
 }
 
 // AgentBridgeUsecase 编排外部编程任务的生命周期：派发/取消/消歧/恢复。
 type AgentBridgeUsecase struct {
-	agents   AgentRepo
-	projects ProjectRepo
-	tasks    TaskRepo
-	sessions SessionFactory
-	listener TaskListener
-	lg       loggateway.Logger
+	agents      AgentRepo
+	projects    ProjectRepo
+	tasks       TaskRepo
+	sessions    SessionFactory
+	listener    TaskListener
+	reaper      func(pid int) error
+	livenessCfg LivenessConfig
+	decider     LivenessDecider
+	hints       LivenessListener
+	lg          loggateway.Logger
 
 	mu      sync.Mutex
-	running map[string]ACPSession // taskID → 活跃会话（取消用）
+	running map[string]ACPSession          // taskID → 活跃会话（取消用）
+	sups    map[string]*livenessSupervisor // taskID → 活跃性监管器（M4）
 }
 
 // NewAgentBridgeUsecase 构造用例。
@@ -53,13 +67,18 @@ func NewAgentBridgeUsecase(deps UsecaseDeps) *AgentBridgeUsecase {
 		lg = loggateway.NewNoop()
 	}
 	return &AgentBridgeUsecase{
-		agents:   deps.Agents,
-		projects: deps.Projects,
-		tasks:    deps.Tasks,
-		sessions: deps.Sessions,
-		listener: deps.Listener,
-		lg:       lg.With(loggateway.Domain("agentbridge")),
-		running:  map[string]ACPSession{},
+		agents:      deps.Agents,
+		projects:    deps.Projects,
+		tasks:       deps.Tasks,
+		sessions:    deps.Sessions,
+		listener:    deps.Listener,
+		reaper:      deps.Reaper,
+		livenessCfg: deps.Liveness.withDefaults(),
+		decider:     deps.Decider,
+		hints:       deps.Hints,
+		lg:          lg.With(loggateway.Domain("agentbridge")),
+		running:     map[string]ACPSession{},
+		sups:        map[string]*livenessSupervisor{},
 	}
 }
 
@@ -116,17 +135,25 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 			"start agent %s failed: %v", agent.AgentKey, err)
 	}
 	acpSessID := task.ID // M1：ACP session id 由会话实现持有；此处先用任务 ID 占位关联
-	if err := u.transition(task.ID, StatusDispatched, StatusRunning, TaskPatch{ACPSessionID: &acpSessID}); err != nil {
+	// M4 P0-2b（S4）：任务行持久化子进程 PID（Windows 为进程组根），重启收割用
+	pid := sess.ProcessPID()
+	if err := u.transition(task.ID, StatusDispatched, StatusRunning, TaskPatch{ACPSessionID: &acpSessID, ChildPID: &pid}); err != nil {
 		_ = sess.Close()
 		return nil, err
 	}
 	task.Status = StatusRunning
+	task.ChildPID = pid
 
 	u.track(task.ID, sess)
 	u.lg.Info("agentbridge process spawned",
 		loggateway.Str("task_id", task.ID),
-		loggateway.Str("agent_key", agent.AgentKey))
-	safego.GoBackground("agentbridge.task.run", func() { u.run(task, sess, project.Path, in.Handler) })
+		loggateway.Str("agent_key", agent.AgentKey),
+		loggateway.Int("child_pid", pid))
+	// M4 P3（活跃性监管）：派发即开监管器（阈值按 agent.liveness_override 解析）。
+	sup := u.trackSuper(newLivenessSupervisor(u, task, sess,
+		ResolveLivenessConfig(u.livenessCfg, agent.LivenessOverride)))
+	safego.GoBackground("agentbridge.liveness.watch", sup.run)
+	safego.GoBackground("agentbridge.task.run", func() { u.run(task, sess, sup, project.Path, in.Handler) })
 	return &DispatchResult{Task: task}, nil
 }
 
@@ -188,13 +215,17 @@ func (u *AgentBridgeUsecase) checkConcurrency(ctx context.Context, agentID strin
 }
 
 // run 在独立 ctx 中执行 Prompt 至结束，按结果推进终态。
-// 调用方 ctx 随工具调用返回即取消，任务必须脱离之运行（硬上限 30min）。
-func (u *AgentBridgeUsecase) run(task *CodingTask, sess ACPSession, cwd string, h EventHandler) {
+// 调用方 ctx 随工具调用返回即取消，任务必须脱离之运行。M4 P3-6（ADR-88）：
+// 单任务硬超时已废除——长任务合法性由活跃性阶梯保障（liveness.go，
+// 静默→探测→失联处置），ctx 仅随 cancel/kill 经 ACP 会话作用于 Prompt。
+func (u *AgentBridgeUsecase) run(task *CodingTask, sess ACPSession, sup *livenessSupervisor, cwd string, h EventHandler) {
 	// defer 执行逆序：recover（最先）→ notifyTerminal → Close → untrack → exit 日志。
 	// recover 必须先于 notifyTerminal：panic 路径在此推进 failed，listener 才能收到终态。
 	defer func() {
 		u.lg.Info("agentbridge process exited", loggateway.Str("task_id", task.ID))
 	}()
+	defer u.untrackSuper(task.ID)
+	defer sup.stop()
 	defer u.untrack(task.ID)
 	defer sess.Close()
 	defer u.notifyTerminal(task.ID)
@@ -210,10 +241,9 @@ func (u *AgentBridgeUsecase) run(task *CodingTask, sess ACPSession, cwd string, 
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), taskHardTimeout)
-	defer cancel()
+	ctx := context.Background()
 
-	counter := &countingHandler{inner: h}
+	counter := &countingHandler{inner: h, onActivity: sup.noteActivity}
 	summary, err := sess.Prompt(ctx, cwd, task.Prompt, counter)
 	now := nowRFC3339()
 	progress := counter.count
@@ -244,13 +274,21 @@ func (u *AgentBridgeUsecase) run(task *CodingTask, sess ACPSession, cwd string, 
 }
 
 // countingHandler 统计进度事件数（终态落库 ProgressCount）。
+// M4 §F：`_aranea/heartbeat` 心跳只算活跃性证据，不计入 progress_count。
 type countingHandler struct {
 	inner EventHandler
 	count int
+	// onActivity M4：活跃性信号上报（含心跳，由监管器消费）。
+	onActivity func(kind, text string)
 }
 
 func (c *countingHandler) OnUpdate(kind, text string) {
-	c.count++
+	if kind != heartbeatKind {
+		c.count++
+	}
+	if c.onActivity != nil {
+		c.onActivity(kind, text)
+	}
 	c.inner.OnUpdate(kind, text)
 }
 
@@ -313,6 +351,8 @@ func (u *AgentBridgeUsecase) CancelFromApprovalTimeout(taskID string) error {
 }
 
 // Cancel 推进 running/awaiting_approval → cancelling 并向 ACP 会话发取消。
+// M4 §D（统一升级链）：session/cancel 发出后进入宽限升级——宽限期内会话未
+// 退出则强制 Kill 进程组（宽限取该任务监管器的 cancel_grace 配置）。
 func (u *AgentBridgeUsecase) Cancel(ctx context.Context, taskID string) error {
 	task, err := u.tasks.Get(ctx, taskID)
 	if err != nil {
@@ -329,7 +369,8 @@ func (u *AgentBridgeUsecase) Cancel(ctx context.Context, taskID string) error {
 		if err := sess.Cancel(ctx); err != nil {
 			u.lg.Warn("agentbridge acp cancel failed", loggateway.Str("task_id", taskID), loggateway.Err(err))
 		}
-		return nil // run goroutine 收尾到 cancelled
+		u.escalateCancel(taskID, sess, u.cancelGraceOf(taskID))
+		return nil // run goroutine 或升级链收尾到 cancelled
 	}
 	// 无活跃会话（如 awaiting_approval 但会话已丢）：直接收尾。
 	now := nowRFC3339()
@@ -349,6 +390,9 @@ func (u *AgentBridgeUsecase) ListSessionTasks(ctx context.Context, sessionID str
 }
 
 // RecoverActiveTasks 服务重启恢复：所有非终态任务标记 failed（设计 §10）。
+// M4 P0-4（S4）：标记失败前先按 child_pid（进程组根）收割孤儿子进程树——
+// 宿主重启不会带走已 spawn 的 agent 进程，不收割则钥匙持有方继续跑（AC 语义
+// 之外的地带）。收割失败容错（记日志，不阻断恢复）。
 func (u *AgentBridgeUsecase) RecoverActiveTasks(ctx context.Context) error {
 	active, err := u.tasks.ListActive(ctx)
 	if err != nil {
@@ -356,6 +400,14 @@ func (u *AgentBridgeUsecase) RecoverActiveTasks(ctx context.Context) error {
 	}
 	now := nowRFC3339()
 	for _, t := range active {
+		if t.ChildPID > 0 && u.reaper != nil {
+			if rerr := u.reaper(t.ChildPID); rerr != nil {
+				u.lg.Warn("agentbridge orphan reap failed",
+					loggateway.Str("task_id", t.ID),
+					loggateway.Int("child_pid", t.ChildPID),
+					loggateway.Err(rerr))
+			}
+		}
 		reason := "service_restart: process lost while task active"
 		if err := u.tasks.UpdateStatus(ctx, t.ID, t.Status, StatusFailed, TaskPatch{
 			Error: &reason, CompletedAt: &now,
@@ -401,6 +453,32 @@ func (u *AgentBridgeUsecase) sessionOf(taskID string) ACPSession {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return u.running[taskID]
+}
+
+// trackSuper 登记任务监管器（M4；Dispatch 在 spawn 成功后调用）。
+func (u *AgentBridgeUsecase) trackSuper(s *livenessSupervisor) *livenessSupervisor {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.sups[s.taskID] = s
+	return s
+}
+
+// untrackSuper 摘除监管器（run() 退出路径）。
+func (u *AgentBridgeUsecase) untrackSuper(taskID string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	delete(u.sups, taskID)
+}
+
+// cancelGraceOf 取该任务监管器配置的 cancel_grace（无监管器时用全局默认）。
+func (u *AgentBridgeUsecase) cancelGraceOf(taskID string) time.Duration {
+	u.mu.Lock()
+	s := u.sups[taskID]
+	u.mu.Unlock()
+	if s == nil {
+		return u.livenessCfg.CancelGrace
+	}
+	return s.cfg.CancelGrace
 }
 
 // discardEvents 是 Handler 缺省值（丢弃进度，审批取首选项）。

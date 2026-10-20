@@ -126,6 +126,25 @@ func (c *Client) Cancel(sessionID string) error {
 	return c.conn.Notify(MethodSessionCancel, CancelNotificationParams{SessionID: sessionID})
 }
 
+// Ping M4 活跃性监管 `_aranea/ping` 探测（P3-3）：向 agent 发私有 JSON-RPC
+// 方法。**任何合法 JSON-RPC 响应（含 Method not found 错误）都证明对端事件
+// 循环存活**——原生 adapter 不认识该方法会回 -32601，同样计为 pong。
+// 仅传输层失败（EOF/写失败/ctx 超时）返回错误。
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.conn.Call(ctx, MethodAraneaPing, struct{}{})
+	if err == nil {
+		return nil
+	}
+	var rerr *rpcError
+	if errors.As(err, &rerr) {
+		return nil // 协议层活答（方法不存在等）= 存活
+	}
+	return err
+}
+
+// StderrTail 返回子进程 stderr 尾部（≤32KiB，S3 诊断材料）。
+func (c *Client) StderrTail() string { return c.proc.StderrTail() }
+
 // Close 关闭连接并终止子进程。幂等。
 func (c *Client) Close() {
 	_ = c.conn.Close()

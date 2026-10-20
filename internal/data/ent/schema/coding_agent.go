@@ -9,8 +9,9 @@ import (
 )
 
 // CodingAgent maps table coding_agents：外部编程 CLI Agent 注册表。
-// command+args 描述 ACP stdio 子进程启动方式（如 codebuddy --acp /
-// npx -y @zed-industries/claude-code-acp）。
+// command+args 描述 ACP stdio 子进程启动方式（M4 §B 五工具面：
+// codebuddy --acp / claude-agent-acp / npx -y @agentclientprotocol/codex-acp /
+// bin/acp-shim-deepseek / bin/acp-shim-grok）。
 type CodingAgent struct {
 	ent.Schema
 }
@@ -36,6 +37,8 @@ func (CodingAgent) Fields() []ent.Field {
 		// 最近一次派发前探测结果
 		field.Bool("last_probe_ok").Default(false),
 		field.String("last_probe_error").Default("").MaxLen(2048),
+		// M4 P3-6：按 key 覆盖 liveness 阈值（JSON 文本，空=用全局默认）
+		field.JSON("liveness_override", map[string]any{}).Optional(),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}

@@ -38,6 +38,13 @@ func (CodingTask) Fields() []ent.Field {
 		field.Text("error").Default(""),
 		// 进度事件计数（限流统计）
 		field.Int("progress_count").Default(0),
+		// M4 P0-S4：子进程 PID（Windows 为进程组根；重启收割用 taskkill /T）
+		field.Int("child_pid").Default(0),
+		// M4 活跃性监管（设计「活跃性监管」§B）：最近活动/探测时间与状态
+		field.String("last_active_at").Default(""),
+		field.String("last_excerpt").Default("").MaxLen(256),
+		field.Int("heartbeat_miss").Default(0),
+		field.String("liveness_state").Default("healthy").MaxLen(16),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("completed_at").Default(""),

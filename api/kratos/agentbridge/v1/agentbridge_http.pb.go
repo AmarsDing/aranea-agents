@@ -48,7 +48,7 @@ type AgentBridgeServiceHTTPServer interface {
 func RegisterAgentBridgeServiceHTTPServer(s *http.Server, srv AgentBridgeServiceHTTPServer) {
 	r := s.Route("/")
 	r.POST("/v1/agentbridge/agents", _AgentBridgeService_UpsertAgent0_HTTP_Handler(srv))
-	r.GET("/v1/agentbridge/agents", _AgentBridgeService_ListAgents1_HTTP_Handler(srv))
+	r.GET("/v1/agentbridge/agents", _AgentBridgeService_ListAgents0_HTTP_Handler(srv))
 	r.POST("/v1/agentbridge/agents/probe", _AgentBridgeService_ProbeAgent0_HTTP_Handler(srv))
 	r.POST("/v1/agentbridge/projects", _AgentBridgeService_UpsertProject0_HTTP_Handler(srv))
 	r.GET("/v1/agentbridge/projects", _AgentBridgeService_ListProjects0_HTTP_Handler(srv))
@@ -80,7 +80,7 @@ func _AgentBridgeService_UpsertAgent0_HTTP_Handler(srv AgentBridgeServiceHTTPSer
 	}
 }
 
-func _AgentBridgeService_ListAgents1_HTTP_Handler(srv AgentBridgeServiceHTTPServer) func(ctx http.Context) error {
+func _AgentBridgeService_ListAgents0_HTTP_Handler(srv AgentBridgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in emptypb.Empty
 		if err := ctx.BindQuery(&in); err != nil {
