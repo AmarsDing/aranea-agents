@@ -55,7 +55,7 @@ func (r *ExtractorRegistry) Extract(ctx context.Context, raw []byte, source, mim
 	return "", fmt.Errorf("unsupported document type: %q (%s)", source, mimeType)
 }
 
-// TextExtractor 覆盖文本直读（txt/md/json/csv/html/xml/yaml 等）与
+// TextExtractor 覆盖文本直读（txt/md/json/csv/代码源码类/html/xml/yaml 等）与
 // Office 类（pdf/doc/docx/xlsx/pptx，经 trpc document/reader）。
 // 图片不属于本提取器（Phase 9 VisionExtractor 接管）。
 type TextExtractor struct{}
@@ -75,10 +75,14 @@ func (TextExtractor) Extract(ctx context.Context, raw []byte, source, mimeType s
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".webp":
 		return "", fmt.Errorf("multimodal ingest not available yet: %q (%s) requires vision extractor", source, mimeType)
-	case ".txt", ".md", ".markdown", ".text", ".log", ".json", ".csv", ".tsv", ".yaml", ".yml", ".xml":
+	case ".txt", ".md", ".markdown", ".text", ".log", ".json", ".csv", ".tsv", ".yaml", ".yml", ".xml",
+		// U2-3 解析纵深：代码/源码类按 txt 同一纯文本直读路径入库（不动 MIME 结构）。
+		".go", ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cc", ".cpp", ".h", ".hpp",
+		".rs", ".cs", ".rb", ".php", ".swift", ".kt", ".sh", ".sql", ".proto", ".vue", ".css", ".scss":
 		return string(raw), nil
 	case ".html", ".htm":
-		return ExtractVisibleText(string(raw)), nil
+		// U2-3：优先正文抽取，失败/过短回落全量可见文本（document_extract.go）。
+		return extractHTMLMainText(string(raw)), nil
 	case ".pdf", ".doc", ".docx", ".xlsx", ".pptx":
 		return extractOfficeText(ctx, raw, source, mimeType)
 	default:
@@ -87,7 +91,7 @@ func (TextExtractor) Extract(ctx context.Context, raw []byte, source, mimeType s
 			case strings.HasPrefix(mt, "text/"):
 				return string(raw), nil
 			case mt == "application/xhtml+xml":
-				return ExtractVisibleText(string(raw)), nil
+				return extractHTMLMainText(string(raw)), nil
 			}
 		}
 		return "", fmt.Errorf("unsupported document type: %q (%s)", source, mimeType)

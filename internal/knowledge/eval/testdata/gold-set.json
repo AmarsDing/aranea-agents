@@ -1,0 +1,89 @@
+{
+  "name": "gold-autolink-1hop",
+  "cases": [
+    {
+      "id": "zh-duty-1",
+      "query": "夜班能不能一个人值守",
+      "expected_chunk_ids": ["ops-c0", "duty-c0"],
+      "expected_doc_ids": ["ops", "duty"],
+      "notes": "种子 ops；需一跳到 值班制度（双人值守）"
+    },
+    {
+      "id": "zh-duty-2",
+      "query": "机房单人禁入",
+      "expected_chunk_ids": ["ops-c0", "duty-c0"],
+      "expected_doc_ids": ["ops", "duty"],
+      "notes": "种子 ops；需一跳到 值班制度（禁止单人）"
+    },
+    {
+      "id": "zh-duty-3",
+      "query": "值班制度怎么写夜班",
+      "expected_chunk_ids": ["net-c0", "duty-c0"],
+      "expected_doc_ids": ["net", "duty"],
+      "notes": "种子 net；需一跳到 值班制度（双人值守）"
+    },
+    {
+      "id": "zh-proto-1",
+      "query": "MQTT 心跳超时怎么办",
+      "expected_chunk_ids": ["sec-c0", "net-c0"],
+      "expected_doc_ids": ["sec", "net"],
+      "notes": "种子 sec；需一跳到 通信协议（备用通道）"
+    },
+    {
+      "id": "zh-proto-2",
+      "query": "生产变更灰度依据哪份协议",
+      "expected_chunk_ids": ["sec-c0", "net-c0"],
+      "expected_doc_ids": ["sec", "net"],
+      "notes": "种子 sec；需一跳到 通信协议（MQTT）"
+    },
+    {
+      "id": "en-esc-1",
+      "query": "when to page the secondary",
+      "expected_chunk_ids": ["ops-c0", "esc-c0"],
+      "expected_doc_ids": ["ops", "esc"],
+      "notes": "种子 ops；需一跳到 Escalation Policy（15 minutes）"
+    },
+    {
+      "id": "en-esc-2",
+      "query": "15 minutes of silence",
+      "expected_chunk_ids": ["play-c0", "esc-c0"],
+      "expected_doc_ids": ["play", "esc"],
+      "notes": "种子 play；需一跳到 Escalation Policy（secondary oncall）"
+    },
+    {
+      "id": "en-esc-3",
+      "query": "declare incident after escalation",
+      "expected_chunk_ids": ["play-c0", "esc-c0"],
+      "expected_doc_ids": ["play", "esc"],
+      "notes": "种子 play；需一跳到 Escalation Policy（15 minutes）"
+    },
+    {
+      "id": "zh-mix-1",
+      "query": "夜间告警按哪份 Escalation",
+      "expected_chunk_ids": ["ops-c0", "esc-c0"],
+      "expected_doc_ids": ["ops", "esc"],
+      "notes": "种子 ops；需一跳到 Escalation Policy（secondary）"
+    },
+    {
+      "id": "zh-mix-2",
+      "query": "备用通道在通信协议哪一节",
+      "expected_chunk_ids": ["sec-c0", "net-c0"],
+      "expected_doc_ids": ["sec", "net"],
+      "notes": "种子 sec；需一跳到 通信协议（心跳）"
+    },
+    {
+      "id": "en-mix-1",
+      "query": "oncall playbook escalation wait",
+      "expected_chunk_ids": ["play-c0", "esc-c0"],
+      "expected_doc_ids": ["play", "esc"],
+      "notes": "种子 play；需一跳到 Escalation Policy（Page the secondary）"
+    },
+    {
+      "id": "zh-mix-3",
+      "query": "运维手册引用的值班规则",
+      "expected_chunk_ids": ["ops-c0", "duty-c0"],
+      "expected_doc_ids": ["ops", "duty"],
+      "notes": "种子 ops；需一跳到 值班制度（机房）"
+    }
+  ]
+}

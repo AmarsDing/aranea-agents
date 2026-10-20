@@ -1,0 +1,24 @@
+{
+  "docs": [
+    {"id": "ops", "title": "运维手册", "body": "日常请遵守值班制度，并参考 Escalation Policy 处理夜间告警。"},
+    {"id": "duty", "title": "值班制度", "body": "夜班必须双人值守，禁止单人进入机房。"},
+    {"id": "esc", "title": "Escalation Policy", "body": "Page the secondary oncall after 15 minutes of silence."},
+    {"id": "net", "title": "通信协议", "body": "MQTT 心跳超时后应切换备用通道，详见 值班制度。"},
+    {"id": "play", "title": "Oncall Playbook", "body": "Follow the Escalation Policy before declaring an incident."},
+    {"id": "sec", "title": "安全基线", "body": "生产变更必须走灰度，约束见 通信协议。"}
+  ],
+  "seeds": {
+    "夜班能不能一个人值守": "ops",
+    "机房单人禁入": "ops",
+    "值班制度怎么写夜班": "net",
+    "MQTT 心跳超时怎么办": "sec",
+    "生产变更灰度依据哪份协议": "sec",
+    "when to page the secondary": "ops",
+    "15 minutes of silence": "play",
+    "declare incident after escalation": "play",
+    "夜间告警按哪份 Escalation": "ops",
+    "备用通道在通信协议哪一节": "sec",
+    "oncall playbook escalation wait": "play",
+    "运维手册引用的值班规则": "ops"
+  }
+}

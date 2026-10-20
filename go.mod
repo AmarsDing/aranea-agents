@@ -40,6 +40,7 @@ require (
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-kratos/aip-go/ents v0.0.0-20251213081434-74ffa1fc1588
 	github.com/go-kratos/kratos/v2 v2.9.2
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -67,6 +68,7 @@ require (
 	github.com/tencent-connect/botgo v0.2.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
+	github.com/tiktoken-go/tokenizer v0.7.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/xuri/excelize/v2 v2.10.1
 	github.com/yuin/goldmark v1.7.13
@@ -277,7 +279,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
-	github.com/tiktoken-go/tokenizer v0.7.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect

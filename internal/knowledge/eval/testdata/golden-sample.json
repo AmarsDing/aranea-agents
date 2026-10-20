@@ -1,0 +1,39 @@
+{
+  "name": "golden-sample",
+  "cases": [
+    {
+      "id": "network-inspection-cycle",
+      "query": "核心交换机巡检周期是多久？",
+      "expected_chunk_ids": [
+        "chunk-inspection-001",
+        "chunk-inspection-002"
+      ],
+      "expected_doc_ids": [
+        "sample-doc-inspection.md"
+      ],
+      "notes": "巡检流程基础问答"
+    },
+    {
+      "id": "security-tacacs-port",
+      "query": "TACACS+ 认证使用哪个端口？",
+      "expected_chunk_ids": [
+        "chunk-security-003"
+      ],
+      "expected_doc_ids": [
+        "sample-doc-security.md"
+      ],
+      "notes": "精确事实型查询"
+    },
+    {
+      "id": "emergency-ups-runtime",
+      "query": "UPS 满载续航时间是多少？",
+      "expected_chunk_ids": [
+        "chunk-emergency-001"
+      ],
+      "expected_doc_ids": [
+        "sample-doc-emergency.md"
+      ],
+      "notes": "应急预案关键指标"
+    }
+  ]
+}

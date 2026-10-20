@@ -1,0 +1,316 @@
+{
+  "set_name": "gold-autolink-1hop",
+  "top_k": 8,
+  "cases": [
+    {
+      "case_id": "zh-duty-1",
+      "query": "夜班能不能一个人值守",
+      "ranked_chunk_ids": [
+        "ops-c0",
+        "duty-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "ops",
+        "duty",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-duty-2",
+      "query": "机房单人禁入",
+      "ranked_chunk_ids": [
+        "ops-c0",
+        "duty-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "ops",
+        "duty",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-duty-3",
+      "query": "值班制度怎么写夜班",
+      "ranked_chunk_ids": [
+        "net-c0",
+        "duty-c0"
+      ],
+      "ranked_doc_ids": [
+        "net",
+        "duty"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-proto-1",
+      "query": "MQTT 心跳超时怎么办",
+      "ranked_chunk_ids": [
+        "sec-c0",
+        "net-c0"
+      ],
+      "ranked_doc_ids": [
+        "sec",
+        "net"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-proto-2",
+      "query": "生产变更灰度依据哪份协议",
+      "ranked_chunk_ids": [
+        "sec-c0",
+        "net-c0"
+      ],
+      "ranked_doc_ids": [
+        "sec",
+        "net"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "en-esc-1",
+      "query": "when to page the secondary",
+      "ranked_chunk_ids": [
+        "ops-c0",
+        "duty-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "ops",
+        "duty",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "en-esc-2",
+      "query": "15 minutes of silence",
+      "ranked_chunk_ids": [
+        "play-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "play",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "en-esc-3",
+      "query": "declare incident after escalation",
+      "ranked_chunk_ids": [
+        "play-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "play",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-mix-1",
+      "query": "夜间告警按哪份 Escalation",
+      "ranked_chunk_ids": [
+        "ops-c0",
+        "duty-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "ops",
+        "duty",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-mix-2",
+      "query": "备用通道在通信协议哪一节",
+      "ranked_chunk_ids": [
+        "sec-c0",
+        "net-c0"
+      ],
+      "ranked_doc_ids": [
+        "sec",
+        "net"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "en-mix-1",
+      "query": "oncall playbook escalation wait",
+      "ranked_chunk_ids": [
+        "play-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "play",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "zh-mix-3",
+      "query": "运维手册引用的值班规则",
+      "ranked_chunk_ids": [
+        "ops-c0",
+        "duty-c0",
+        "esc-c0"
+      ],
+      "ranked_doc_ids": [
+        "ops",
+        "duty",
+        "esc"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    }
+  ],
+  "chunk_agg": {
+    "case_count": 12,
+    "recall_at_k": 1,
+    "mrr": 1,
+    "hit_rate": 1
+  },
+  "doc_agg": {
+    "case_count": 12,
+    "recall_at_k": 1,
+    "mrr": 1,
+    "hit_rate": 1
+  }
+}
