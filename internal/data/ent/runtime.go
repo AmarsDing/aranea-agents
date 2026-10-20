@@ -53,7 +53,9 @@ import (
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
+	"aranea-agents/internal/data/ent/knowledgeaccesslog"
 	"aranea-agents/internal/data/ent/knowledgelinkused"
+	"aranea-agents/internal/data/ent/knowledgewritebackoutbox"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
@@ -3168,6 +3170,40 @@ func init() {
 	healrecordDescID := healrecordFields[0].Descriptor()
 	// healrecord.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	healrecord.IDValidator = healrecordDescID.Validators[0].(func(string) error)
+	knowledgeaccesslogFields := schema.KnowledgeAccessLog{}.Fields()
+	_ = knowledgeaccesslogFields
+	// knowledgeaccesslogDescCollectionID is the schema descriptor for collection_id field.
+	knowledgeaccesslogDescCollectionID := knowledgeaccesslogFields[1].Descriptor()
+	// knowledgeaccesslog.CollectionIDValidator is a validator for the "collection_id" field. It is called by the builders before save.
+	knowledgeaccesslog.CollectionIDValidator = knowledgeaccesslogDescCollectionID.Validators[0].(func(string) error)
+	// knowledgeaccesslogDescDocID is the schema descriptor for doc_id field.
+	knowledgeaccesslogDescDocID := knowledgeaccesslogFields[2].Descriptor()
+	// knowledgeaccesslog.DocIDValidator is a validator for the "doc_id" field. It is called by the builders before save.
+	knowledgeaccesslog.DocIDValidator = knowledgeaccesslogDescDocID.Validators[0].(func(string) error)
+	// knowledgeaccesslogDescAccessedAt is the schema descriptor for accessed_at field.
+	knowledgeaccesslogDescAccessedAt := knowledgeaccesslogFields[3].Descriptor()
+	// knowledgeaccesslog.DefaultAccessedAt holds the default value on creation for the accessed_at field.
+	knowledgeaccesslog.DefaultAccessedAt = knowledgeaccesslogDescAccessedAt.Default.(func() time.Time)
+	// knowledgeaccesslogDescUserID is the schema descriptor for user_id field.
+	knowledgeaccesslogDescUserID := knowledgeaccesslogFields[6].Descriptor()
+	// knowledgeaccesslog.DefaultUserID holds the default value on creation for the user_id field.
+	knowledgeaccesslog.DefaultUserID = knowledgeaccesslogDescUserID.Default.(string)
+	// knowledgeaccesslogDescAgentID is the schema descriptor for agent_id field.
+	knowledgeaccesslogDescAgentID := knowledgeaccesslogFields[7].Descriptor()
+	// knowledgeaccesslog.DefaultAgentID holds the default value on creation for the agent_id field.
+	knowledgeaccesslog.DefaultAgentID = knowledgeaccesslogDescAgentID.Default.(string)
+	// knowledgeaccesslogDescRank is the schema descriptor for rank field.
+	knowledgeaccesslogDescRank := knowledgeaccesslogFields[8].Descriptor()
+	// knowledgeaccesslog.DefaultRank holds the default value on creation for the rank field.
+	knowledgeaccesslog.DefaultRank = knowledgeaccesslogDescRank.Default.(int)
+	// knowledgeaccesslogDescScore is the schema descriptor for score field.
+	knowledgeaccesslogDescScore := knowledgeaccesslogFields[9].Descriptor()
+	// knowledgeaccesslog.DefaultScore holds the default value on creation for the score field.
+	knowledgeaccesslog.DefaultScore = knowledgeaccesslogDescScore.Default.(float64)
+	// knowledgeaccesslogDescLatencyMs is the schema descriptor for latency_ms field.
+	knowledgeaccesslogDescLatencyMs := knowledgeaccesslogFields[10].Descriptor()
+	// knowledgeaccesslog.DefaultLatencyMs holds the default value on creation for the latency_ms field.
+	knowledgeaccesslog.DefaultLatencyMs = knowledgeaccesslogDescLatencyMs.Default.(int)
 	knowledgelinkusedFields := schema.KnowledgeLinkUsed{}.Fields()
 	_ = knowledgelinkusedFields
 	// knowledgelinkusedDescCollectionID is the schema descriptor for collection_id field.
@@ -3206,6 +3242,50 @@ func init() {
 			return nil
 		}
 	}()
+	knowledgewritebackoutboxFields := schema.KnowledgeWriteBackOutbox{}.Fields()
+	_ = knowledgewritebackoutboxFields
+	// knowledgewritebackoutboxDescBatchKey is the schema descriptor for batch_key field.
+	knowledgewritebackoutboxDescBatchKey := knowledgewritebackoutboxFields[1].Descriptor()
+	// knowledgewritebackoutbox.BatchKeyValidator is a validator for the "batch_key" field. It is called by the builders before save.
+	knowledgewritebackoutbox.BatchKeyValidator = func() func(string) error {
+		validators := knowledgewritebackoutboxDescBatchKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(batch_key string) error {
+			for _, fn := range fns {
+				if err := fn(batch_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// knowledgewritebackoutboxDescWorkspaceID is the schema descriptor for workspace_id field.
+	knowledgewritebackoutboxDescWorkspaceID := knowledgewritebackoutboxFields[2].Descriptor()
+	// knowledgewritebackoutbox.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	knowledgewritebackoutbox.DefaultWorkspaceID = knowledgewritebackoutboxDescWorkspaceID.Default.(string)
+	// knowledgewritebackoutbox.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	knowledgewritebackoutbox.WorkspaceIDValidator = knowledgewritebackoutboxDescWorkspaceID.Validators[0].(func(string) error)
+	// knowledgewritebackoutboxDescStatus is the schema descriptor for status field.
+	knowledgewritebackoutboxDescStatus := knowledgewritebackoutboxFields[4].Descriptor()
+	// knowledgewritebackoutbox.DefaultStatus holds the default value on creation for the status field.
+	knowledgewritebackoutbox.DefaultStatus = knowledgewritebackoutboxDescStatus.Default.(string)
+	// knowledgewritebackoutbox.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	knowledgewritebackoutbox.StatusValidator = knowledgewritebackoutboxDescStatus.Validators[0].(func(string) error)
+	// knowledgewritebackoutboxDescAttempts is the schema descriptor for attempts field.
+	knowledgewritebackoutboxDescAttempts := knowledgewritebackoutboxFields[5].Descriptor()
+	// knowledgewritebackoutbox.DefaultAttempts holds the default value on creation for the attempts field.
+	knowledgewritebackoutbox.DefaultAttempts = knowledgewritebackoutboxDescAttempts.Default.(int)
+	// knowledgewritebackoutboxDescLastError is the schema descriptor for last_error field.
+	knowledgewritebackoutboxDescLastError := knowledgewritebackoutboxFields[6].Descriptor()
+	// knowledgewritebackoutbox.DefaultLastError holds the default value on creation for the last_error field.
+	knowledgewritebackoutbox.DefaultLastError = knowledgewritebackoutboxDescLastError.Default.(string)
+	// knowledgewritebackoutboxDescCreatedAt is the schema descriptor for created_at field.
+	knowledgewritebackoutboxDescCreatedAt := knowledgewritebackoutboxFields[7].Descriptor()
+	// knowledgewritebackoutbox.DefaultCreatedAt holds the default value on creation for the created_at field.
+	knowledgewritebackoutbox.DefaultCreatedAt = knowledgewritebackoutboxDescCreatedAt.Default.(func() time.Time)
 	llmprovidermodelFields := schema.LlmProviderModel{}.Fields()
 	_ = llmprovidermodelFields
 	// llmprovidermodelDescModelKey is the schema descriptor for model_key field.

@@ -361,9 +361,11 @@ func (r *knowledgeRepo) MarkStaleEntries(ctx context.Context, docIDs []string) e
 }
 
 // ListGovernanceProposals 治理提案列表（人工二审出口）。collectionID/status 空 = 不过滤。
-func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionID, status string, limit int) ([]bizknowledge.GovernanceProposalView, error) {
+// G-30 offset 分页：items 走 LIMIT/OFFSET，total 同 WHERE 单独 COUNT。
+func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionID, status string, limit, offset int) ([]bizknowledge.GovernanceProposalView, int, error) {
 	q := `SELECT id, collection_id, kind, risk, status, payload, created_at, resolved_at
 		 FROM knowledge_governance_proposal`
+	countQ := `SELECT COUNT(*) FROM knowledge_governance_proposal`
 	var args []any
 	var where []string
 	if collectionID != "" {
@@ -376,13 +378,18 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 	}
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, ` AND `)
+		countQ += ` WHERE ` + strings.Join(where, ` AND `)
 	}
-	args = append(args, limit)
-	q += fmt.Sprintf(` ORDER BY id DESC LIMIT $%d`, len(args))
+	var total int
+	if err := r.data.PostgresRead().QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+		return nil, 0, entErrToBizErr(err, "knowledge")
+	}
+	args = append(args, limit, offset)
+	q += fmt.Sprintf(` ORDER BY id DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args))
 
 	rows, err := r.data.PostgresRead().QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, entErrToBizErr(err, "knowledge")
+		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	var out []bizknowledge.GovernanceProposalView
@@ -391,7 +398,7 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 		var raw []byte
 		var resolvedAt sql.NullTime
 		if err := rows.Scan(&v.ID, &v.CollectionID, &v.Kind, &v.Risk, &v.Status, &raw, &v.CreatedAt, &resolvedAt); err != nil {
-			return nil, entErrToBizErr(err, "knowledge")
+			return nil, 0, entErrToBizErr(err, "knowledge")
 		}
 		if resolvedAt.Valid {
 			v.ResolvedAt = resolvedAt.Time
@@ -401,5 +408,8 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 		}
 		out = append(out, v)
 	}
-	return out, entErrToBizErr(rows.Err(), "knowledge")
+	if err := rows.Err(); err != nil {
+		return nil, 0, entErrToBizErr(err, "knowledge")
+	}
+	return out, total, nil
 }

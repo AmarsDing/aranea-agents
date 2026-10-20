@@ -46,11 +46,14 @@ const (
 	KnowledgeService_ListRecentLinkUses_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListRecentLinkUses"
 	KnowledgeService_PromoteBlocks_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
 	KnowledgeService_RebuildKnowledgeIndex_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
+	KnowledgeService_ReindexVault_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/ReindexVault"
 	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
 	KnowledgeService_MergeKnowledgeEntities_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 	KnowledgeService_ListGovernanceProposals_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/ListGovernanceProposals"
 	KnowledgeService_ResolveGovernanceProposal_FullMethodName  = "/kratos.knowledge.v1.KnowledgeService/ResolveGovernanceProposal"
+	KnowledgeService_CurateKnowledgeNow_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/CurateKnowledgeNow"
 	KnowledgeService_Search_FullMethodName                     = "/kratos.knowledge.v1.KnowledgeService/Search"
+	KnowledgeService_DebugKnowledgeSearch_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/DebugKnowledgeSearch"
 	KnowledgeService_GetEmbedderConfig_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 	KnowledgeService_UpdateEmbedderConfig_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
 )
@@ -133,6 +136,13 @@ type KnowledgeServiceClient interface {
 	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
 	// stay on old data during the rebuild (degraded but available).
 	RebuildKnowledgeIndex(ctx context.Context, in *RebuildKnowledgeIndexRequest, opts ...grpc.CallOption) (*RebuildKnowledgeIndexResponse, error)
+	// ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+	// local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+	// mirror-only docs → forced re-create for everything on disk. Team vaults are
+	// rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+	// Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+	// same collection is in flight (job key knowledge-reindex:<id>).
+	ReindexVault(ctx context.Context, in *ReindexVaultRequest, opts ...grpc.CallOption) (*ReindexVaultResponse, error)
 	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
 	// plus high-similarity embedding pairs when the embedder is configured.
@@ -148,8 +158,14 @@ type KnowledgeServiceClient interface {
 	// decision=applied approves the action; rejected dismisses it;
 	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(ctx context.Context, in *ResolveGovernanceProposalRequest, opts ...grpc.CallOption) (*ResolveGovernanceProposalResponse, error)
+	// G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+	// 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+	CurateKnowledgeNow(ctx context.Context, in *CurateKnowledgeNowRequest, opts ...grpc.CallOption) (*CurateKnowledgeNowResponse, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
+	// G-19 hit-test panel: per-vault search debugging with score decomposition;
+	// never writes access_log (see DebugKnowledgeSearchRequest docs).
+	DebugKnowledgeSearch(ctx context.Context, in *DebugKnowledgeSearchRequest, opts ...grpc.CallOption) (*DebugKnowledgeSearchResponse, error)
 	GetEmbedderConfig(ctx context.Context, in *GetEmbedderConfigRequest, opts ...grpc.CallOption) (*EmbedderConfig, error)
 	UpdateEmbedderConfig(ctx context.Context, in *UpdateEmbedderConfigRequest, opts ...grpc.CallOption) (*UpdateEmbedderConfigResponse, error)
 }
@@ -422,6 +438,16 @@ func (c *knowledgeServiceClient) RebuildKnowledgeIndex(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ReindexVault(ctx context.Context, in *ReindexVaultRequest, opts ...grpc.CallOption) (*ReindexVaultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReindexVaultResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ReindexVault_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) ListEntityMergeSuggestions(ctx context.Context, in *ListEntityMergeSuggestionsRequest, opts ...grpc.CallOption) (*ListEntityMergeSuggestionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEntityMergeSuggestionsResponse)
@@ -462,10 +488,30 @@ func (c *knowledgeServiceClient) ResolveGovernanceProposal(ctx context.Context, 
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) CurateKnowledgeNow(ctx context.Context, in *CurateKnowledgeNowRequest, opts ...grpc.CallOption) (*CurateKnowledgeNowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CurateKnowledgeNowResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_CurateKnowledgeNow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SearchResponse)
 	err := c.cc.Invoke(ctx, KnowledgeService_Search_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) DebugKnowledgeSearch(ctx context.Context, in *DebugKnowledgeSearchRequest, opts ...grpc.CallOption) (*DebugKnowledgeSearchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DebugKnowledgeSearchResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_DebugKnowledgeSearch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -570,6 +616,13 @@ type KnowledgeServiceServer interface {
 	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
 	// stay on old data during the rebuild (degraded but available).
 	RebuildKnowledgeIndex(context.Context, *RebuildKnowledgeIndexRequest) (*RebuildKnowledgeIndexResponse, error)
+	// ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+	// local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+	// mirror-only docs → forced re-create for everything on disk. Team vaults are
+	// rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+	// Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+	// same collection is in flight (job key knowledge-reindex:<id>).
+	ReindexVault(context.Context, *ReindexVaultRequest) (*ReindexVaultResponse, error)
 	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
 	// plus high-similarity embedding pairs when the embedder is configured.
@@ -585,8 +638,14 @@ type KnowledgeServiceServer interface {
 	// decision=applied approves the action; rejected dismisses it;
 	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
+	// G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+	// 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+	CurateKnowledgeNow(context.Context, *CurateKnowledgeNowRequest) (*CurateKnowledgeNowResponse, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
+	// G-19 hit-test panel: per-vault search debugging with score decomposition;
+	// never writes access_log (see DebugKnowledgeSearchRequest docs).
+	DebugKnowledgeSearch(context.Context, *DebugKnowledgeSearchRequest) (*DebugKnowledgeSearchResponse, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
 	UpdateEmbedderConfig(context.Context, *UpdateEmbedderConfigRequest) (*UpdateEmbedderConfigResponse, error)
 	mustEmbedUnimplementedKnowledgeServiceServer()
@@ -677,6 +736,9 @@ func (UnimplementedKnowledgeServiceServer) PromoteBlocks(context.Context, *Promo
 func (UnimplementedKnowledgeServiceServer) RebuildKnowledgeIndex(context.Context, *RebuildKnowledgeIndexRequest) (*RebuildKnowledgeIndexResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RebuildKnowledgeIndex not implemented")
 }
+func (UnimplementedKnowledgeServiceServer) ReindexVault(context.Context, *ReindexVaultRequest) (*ReindexVaultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReindexVault not implemented")
+}
 func (UnimplementedKnowledgeServiceServer) ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEntityMergeSuggestions not implemented")
 }
@@ -689,8 +751,14 @@ func (UnimplementedKnowledgeServiceServer) ListGovernanceProposals(context.Conte
 func (UnimplementedKnowledgeServiceServer) ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveGovernanceProposal not implemented")
 }
+func (UnimplementedKnowledgeServiceServer) CurateKnowledgeNow(context.Context, *CurateKnowledgeNowRequest) (*CurateKnowledgeNowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CurateKnowledgeNow not implemented")
+}
 func (UnimplementedKnowledgeServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) DebugKnowledgeSearch(context.Context, *DebugKnowledgeSearchRequest) (*DebugKnowledgeSearchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DebugKnowledgeSearch not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetEmbedderConfig not implemented")
@@ -1187,6 +1255,24 @@ func _KnowledgeService_RebuildKnowledgeIndex_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ReindexVault_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReindexVaultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ReindexVault(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ReindexVault_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ReindexVault(ctx, req.(*ReindexVaultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListEntityMergeSuggestionsRequest)
 	if err := dec(in); err != nil {
@@ -1259,6 +1345,24 @@ func _KnowledgeService_ResolveGovernanceProposal_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_CurateKnowledgeNow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CurateKnowledgeNowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).CurateKnowledgeNow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_CurateKnowledgeNow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).CurateKnowledgeNow(ctx, req.(*CurateKnowledgeNowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SearchRequest)
 	if err := dec(in); err != nil {
@@ -1273,6 +1377,24 @@ func _KnowledgeService_Search_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).Search(ctx, req.(*SearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_DebugKnowledgeSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DebugKnowledgeSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).DebugKnowledgeSearch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_DebugKnowledgeSearch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).DebugKnowledgeSearch(ctx, req.(*DebugKnowledgeSearchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1425,6 +1547,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KnowledgeService_RebuildKnowledgeIndex_Handler,
 		},
 		{
+			MethodName: "ReindexVault",
+			Handler:    _KnowledgeService_ReindexVault_Handler,
+		},
+		{
 			MethodName: "ListEntityMergeSuggestions",
 			Handler:    _KnowledgeService_ListEntityMergeSuggestions_Handler,
 		},
@@ -1441,8 +1567,16 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KnowledgeService_ResolveGovernanceProposal_Handler,
 		},
 		{
+			MethodName: "CurateKnowledgeNow",
+			Handler:    _KnowledgeService_CurateKnowledgeNow_Handler,
+		},
+		{
 			MethodName: "Search",
 			Handler:    _KnowledgeService_Search_Handler,
+		},
+		{
+			MethodName: "DebugKnowledgeSearch",
+			Handler:    _KnowledgeService_DebugKnowledgeSearch_Handler,
 		},
 		{
 			MethodName: "GetEmbedderConfig",

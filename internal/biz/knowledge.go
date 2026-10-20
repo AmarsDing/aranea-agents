@@ -35,6 +35,9 @@ type (
 	KnowledgeWriteBackFact   = knowledge.WriteBackFact
 	KnowledgeWriteBackResult = knowledge.WriteBackResult
 	KnowledgeWriteBackReview = knowledge.SessionWriteBackReview
+	// G-10 写回 outbox：失败批次持久化重试队列（AS-EVT-01 Important 分级）。
+	KnowledgeWriteBackOutboxRepo  = knowledge.WriteBackOutboxRepo
+	KnowledgeWriteBackOutboxRow   = knowledge.WriteBackOutboxRow
 	KnowledgeAgentMemoryProjector = knowledge.AgentMemoryProjectPort
 )
 
@@ -53,9 +56,12 @@ var (
 	ErrKnowledgeEmbeddingEmpty         = knowledge.ErrEmbeddingEmpty
 	// ErrKnowledgeCollectionSemanticConflict 语义层已被并发请求绑定（B2 守卫式 UPDATE 未生效）。
 	ErrKnowledgeCollectionSemanticConflict = knowledge.ErrCollectionSemanticConflict
-	KnowledgeEmbedConfigured               = knowledge.EmbedConfigured
-	ApplyKnowledgeEmbedPatch               = knowledge.ApplyEmbedPatch
-	KnowledgeHashContent                   = knowledge.HashContent
+	// G-10 写回 outbox 编解码与幂等键（重放 worker / 装配共享）。
+	KnowledgeWriteBackBatchKey      = knowledge.WriteBackBatchKey
+	KnowledgeDecodeWriteBackPayload = knowledge.DecodeWriteBackOutboxPayload
+	KnowledgeEmbedConfigured        = knowledge.EmbedConfigured
+	ApplyKnowledgeEmbedPatch        = knowledge.ApplyEmbedPatch
+	KnowledgeHashContent            = knowledge.HashContent
 	// KnowledgeWriteBackInboxPrefix 写回日记流水 rel_path 前缀：Agent 默认检索
 	// 路径（预检索注入 / knowledge_search / knowledge_reflect）以此排除流水文档。
 	KnowledgeWriteBackInboxPrefix = knowledge.WriteBackInboxPrefix

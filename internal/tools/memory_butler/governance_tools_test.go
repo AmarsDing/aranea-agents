@@ -24,8 +24,8 @@ type stubGovernanceCurateRepo struct {
 	resolvedStatus                   string
 }
 
-func (s *stubGovernanceCurateRepo) ListGovernanceProposals(context.Context, string, string, int) ([]bizknowledge.GovernanceProposalView, error) {
-	return s.views, nil
+func (s *stubGovernanceCurateRepo) ListGovernanceProposals(context.Context, string, string, int, int) ([]bizknowledge.GovernanceProposalView, int, error) {
+	return s.views, len(s.views), nil
 }
 
 func (s *stubGovernanceCurateRepo) ResolveGovernanceProposal(_ context.Context, id int64, status string) error {

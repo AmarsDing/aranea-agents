@@ -35,6 +35,7 @@ type writeBackFields struct {
 	writeBackReplay WriteBackReplayFunc
 	writeBackGraph  WriteBackGraphFunc
 	docACL          DocumentACLStore
+	orgValidator    OrgNodeValidator
 	factVersions    FactVersionRepo
 	proposals       GovernanceProposalRepo
 	arbiter         WriteBackArbiter

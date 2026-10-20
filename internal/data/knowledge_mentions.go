@@ -29,6 +29,12 @@ func (r *knowledgeRepo) SearchDocContentMentions(ctx context.Context, collection
 		q += ` AND (c.workspace = $4 OR c.workspace = '')`
 		args = append(args, ws)
 	}
+	// G-08 泄漏面收口：autolink mention 预览抽取正文，须按行级可见性过滤——
+	// private / 未命中 shared 名单的文档正文不得借 mention 预览流出。
+	if clause, pargs := docRowVisibilityClause(ctx, len(args)+1); clause != "" {
+		q += " " + clause
+		args = append(args, pargs...)
+	}
 	q += ` ORDER BY d.id LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, limit)
 

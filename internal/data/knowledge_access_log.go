@@ -18,21 +18,39 @@ var (
 )
 
 // LogAccess 批量记录检索命中（同一 query_hash 标识同批召回，Hebbian 共激活分组键）。
+// G-15：连同会话/用户/Agent 与 rank/score/latency 一起落库（审计足迹口径）；
+// 未知来源的上下文字段记空串（列均可空/DEFAULT 0，查询侧按空值过滤）。
 func (r *knowledgeRepo) LogAccess(ctx context.Context, entries []bizknowledge.AccessLogEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
-	stmt := `INSERT INTO knowledge_access_log (collection_id, doc_id, query_hash)
-			 SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[])`
-	cols := make([]string, 0, len(entries))
-	docs := make([]string, 0, len(entries))
-	hashes := make([]string, 0, len(entries))
+	stmt := `INSERT INTO knowledge_access_log (collection_id, doc_id, query_hash, session_id, user_id, agent_id, "rank", score, latency_ms)
+			 SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int[], $8::float8[], $9::int[])`
+	n := len(entries)
+	cols := make([]string, 0, n)
+	docs := make([]string, 0, n)
+	hashes := make([]string, 0, n)
+	sessions := make([]string, 0, n)
+	users := make([]string, 0, n)
+	agents := make([]string, 0, n)
+	ranks := make([]int32, 0, n)
+	scores := make([]float64, 0, n)
+	latencies := make([]int32, 0, n)
 	for _, e := range entries {
 		cols = append(cols, e.CollectionID)
 		docs = append(docs, e.DocID)
 		hashes = append(hashes, e.QueryHash)
+		sessions = append(sessions, e.SessionID)
+		users = append(users, e.UserID)
+		agents = append(agents, e.AgentID)
+		ranks = append(ranks, int32(e.Rank))
+		scores = append(scores, e.Score)
+		latencies = append(latencies, int32(e.LatencyMs))
 	}
-	if _, err := r.data.Postgres().ExecContext(ctx, stmt, pq.Array(cols), pq.Array(docs), pq.Array(hashes)); err != nil {
+	if _, err := r.data.Postgres().ExecContext(ctx, stmt,
+		pq.Array(cols), pq.Array(docs), pq.Array(hashes),
+		pq.Array(sessions), pq.Array(users), pq.Array(agents),
+		pq.Array(ranks), pq.Array(scores), pq.Array(latencies)); err != nil {
 		return entErrToBizErr(err, "knowledge")
 	}
 	return nil

@@ -200,10 +200,16 @@ type stubGovCurateRepo struct {
 	views                         []knowledge.GovernanceProposalView
 	resolvedID                    int64
 	resolvedStatus                string
+	gotLimit                      int
+	gotOffset                     int
+	gotStatus                     string
+	gotCol                        string
 }
 
-func (s *stubGovCurateRepo) ListGovernanceProposals(context.Context, string, string, int) ([]knowledge.GovernanceProposalView, error) {
-	return s.views, nil
+// ListGovernanceProposals（G-30 offset 分页透传）：返回 views + 同 WHERE 口径 total。
+func (s *stubGovCurateRepo) ListGovernanceProposals(_ context.Context, collectionID, status string, limit, offset int) ([]knowledge.GovernanceProposalView, int, error) {
+	s.gotLimit, s.gotOffset, s.gotStatus, s.gotCol = limit, offset, status, collectionID
+	return s.views, 2 * len(s.views), nil // total ≠ len(items)，便于断言用的是 total 而非页大小
 }
 
 func (s *stubGovCurateRepo) ResolveGovernanceProposal(_ context.Context, id int64, status string) error {
@@ -255,6 +261,20 @@ func TestKnowledgeService_ListGovernanceProposals(t *testing.T) {
 		if resp.GetItems()[1].GetResolvedAt() == "" {
 			t.Errorf("resolved proposal must carry resolved_at: %+v", resp.GetItems()[1])
 		}
+		// G-30：total 为同 WHERE 口径总数（非当前页条数）。
+		if resp.GetTotal() != 4 {
+			t.Errorf("total = %d, want 4（stub 口径 2*len）", resp.GetTotal())
+		}
+	}
+	// G-30：limit/offset 分页透传至 repo。
+	curate.gotLimit, curate.gotOffset = 0, 0
+	if _, err := svc.ListGovernanceProposals(context.Background(),
+		&v1.ListGovernanceProposalsRequest{CollectionId: "c1", Limit: 5, Offset: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if curate.gotLimit != 5 || curate.gotOffset != 10 || curate.gotCol != "c1" {
+		t.Errorf("pagination passthrough = (limit %d, offset %d, col %q), want (5, 10, c1)",
+			curate.gotLimit, curate.gotOffset, curate.gotCol)
 	}
 }
 

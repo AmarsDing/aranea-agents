@@ -4,10 +4,18 @@ import "context"
 
 // AccessLogEntry 一次检索命中（M1 统计联想层数据源）。
 // 每条命中 chunk 的文档记一行；QueryHash 标识同批召回（Hebbian 共激活分组键）。
+// G-15 审计足迹：Session/User/Agent 为请求上下文透传（空=未知来源），
+// Rank/Score 取自文档首个 chunk 在最终排序中的位置与分数，LatencyMs 为检索总时延。
 type AccessLogEntry struct {
 	CollectionID string
 	DocID        string
 	QueryHash    string
+	SessionID    string
+	UserID       string
+	AgentID      string
+	Rank         int
+	Score        float64
+	LatencyMs    int64
 }
 
 // AccessLogRepo 检索命中日志端口（自治理知识图谱 M1）：

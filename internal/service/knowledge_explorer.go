@@ -108,19 +108,14 @@ func (s *KnowledgeService) ListCollectionGraph(ctx context.Context, req *v1.List
 
 // ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph of one
 // document (SP2-8 右栏局部图)：服务端 BFS 裁剪，仅传输小邻域（大库免全图传输）。
+// G-08 泄漏面收口：根文档须过行级可见性（private / 未命中 shared 名单 → 404），
+// 与 GetDocument/其余 RPC 的 404 语义一致，避免借邻域图推断私密文档存在性。
 func (s *KnowledgeService) ListDocumentNeighborhood(ctx context.Context, req *v1.ListDocumentNeighborhoodRequest) (*v1.ListCollectionGraphResponse, error) {
-	doc, err := s.uc.GetDocument(ctx, req.GetDocId())
+	doc, _, err := s.requireDocumentRead(ctx, req.GetDocId())
 	if err != nil {
 		return nil, err
 	}
-	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
-		return nil, err
-	}
-	g, err := s.uc.ListDocumentNeighborhood(ctx, req.GetDocId(), int(req.GetHops()))
+	g, err := s.uc.ListDocumentNeighborhood(ctx, doc.ID, int(req.GetHops()))
 	if err != nil {
 		return nil, err
 	}

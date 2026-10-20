@@ -162,7 +162,8 @@ type KnowledgeCurateRepo interface {
 	// HasProposal 是否已存在同 dedup_key 且 status 在 statuses 内的提案（去重防风暴）。
 	HasProposal(ctx context.Context, collectionID, kind, dedupKey string, statuses []string) (bool, error)
 	// ListGovernanceProposals 治理提案列表（人工二审出口）；collectionID/status 空 = 不过滤。
-	ListGovernanceProposals(ctx context.Context, collectionID, status string, limit int) ([]GovernanceProposalView, error)
+	// G-30 offset 分页：返回 (items, total)——total 为同 WHERE 口径总数（分页 UI）。
+	ListGovernanceProposals(ctx context.Context, collectionID, status string, limit, offset int) ([]GovernanceProposalView, int, error)
 	// GetGovernanceProposal 单提案读取（P1-b：applied 处置前取 kind/payload + pending 守卫）。
 	GetGovernanceProposal(ctx context.Context, id int64) (GovernanceProposalView, error)
 	// ResolveGovernanceProposal 人工二审闭环：pending → applied/rejected。
@@ -460,15 +461,16 @@ func (u *Usecase) CurateAllTeamKnowledge(ctx context.Context, opts CurateOptions
 const listProposalsDefaultLimit = 50
 
 // ListGovernanceProposals 人工二审列表出口（M4 补丁：此前提案只写不读，死信堆积）。
-// status 空 = 全部；合法值 pending/applied/rejected。limit 0 = 默认 50，上限 200。
-func (u *Usecase) ListGovernanceProposals(ctx context.Context, collectionID, status string, limit int) ([]GovernanceProposalView, error) {
+// status 空 = 全部；合法值 pending/applied/rejected。limit 0 = 默认 50，上限 200；
+// offset <0 = 0（G-30 offset 分页，total 为同 WHERE 口径总数）。
+func (u *Usecase) ListGovernanceProposals(ctx context.Context, collectionID, status string, limit, offset int) ([]GovernanceProposalView, int, error) {
 	if u == nil || u.curate == nil {
-		return nil, apierror.Unavailable(apierror.DomainKnowledge, "knowledge curate repo not wired")
+		return nil, 0, apierror.Unavailable(apierror.DomainKnowledge, "knowledge curate repo not wired")
 	}
 	switch status {
 	case "", ProposalStatusPending, ProposalStatusApplied, ProposalStatusRejected:
 	default:
-		return nil, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("invalid proposal status %q", status))
+		return nil, 0, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("invalid proposal status %q", status))
 	}
 	if limit <= 0 {
 		limit = listProposalsDefaultLimit
@@ -476,7 +478,10 @@ func (u *Usecase) ListGovernanceProposals(ctx context.Context, collectionID, sta
 	if limit > 200 {
 		limit = 200
 	}
-	return u.curate.ListGovernanceProposals(ctx, collectionID, status, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	return u.curate.ListGovernanceProposals(ctx, collectionID, status, limit, offset)
 }
 
 // ResolveGovernanceProposal 人工二审闭环。decision 允许 applied / rejected /

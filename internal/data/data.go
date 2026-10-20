@@ -195,6 +195,8 @@ var ProviderSet = wire.NewSet(
 	NewV2RecoveryRepo,
 	// B-06: durable critical-event outbox for WS last_event_id replay.
 	NewEventDeliveryOutboxRepoFromData,
+	// G-10: durable retry queue for knowledge write-back batches (auto-memory flywheel).
+	NewKnowledgeWriteBackOutboxRepoFromData,
 	// P1-R2b: durable dead-letter store for v2 sequencer events.
 	NewEventDeadLetterRepo,
 	// Media generation provider catalog (media_providers) for media tool assembly.

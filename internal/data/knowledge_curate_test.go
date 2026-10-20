@@ -374,7 +374,7 @@ func TestKnowledgeRepo_ListGovernanceProposals(t *testing.T) {
 	}
 
 	// 全量：3 条，id DESC（最新 id 最大在前）。
-	all, err := repo.ListGovernanceProposals(ctx, "", "", 50)
+	all, _, err := repo.ListGovernanceProposals(ctx, "", "", 50, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,12 +385,12 @@ func TestKnowledgeRepo_ListGovernanceProposals(t *testing.T) {
 		t.Fatalf("view projection broken: %+v", all[0])
 	}
 	// status 过滤：pending 2 条（c1 orphan + c2 conflict）。
-	pending, err := repo.ListGovernanceProposals(ctx, "", bizknowledge.ProposalStatusPending, 50)
+	pending, _, err := repo.ListGovernanceProposals(ctx, "", bizknowledge.ProposalStatusPending, 50, 0)
 	if err != nil || len(pending) != 2 {
 		t.Fatalf("pending = %d, %v", len(pending), err)
 	}
 	// collection 过滤：c2 1 条。
-	c2, err := repo.ListGovernanceProposals(ctx, "c2", "", 50)
+	c2, _, err := repo.ListGovernanceProposals(ctx, "c2", "", 50, 0)
 	if err != nil || len(c2) != 1 || c2[0].Kind != bizknowledge.ProposalKindConflict {
 		t.Fatalf("c2 = %+v, %v", c2, err)
 	}
@@ -403,7 +403,7 @@ func TestKnowledgeRepo_ListGovernanceProposals(t *testing.T) {
 	if err := repo.ResolveGovernanceProposal(ctx, id, bizknowledge.ProposalStatusRejected); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.ListGovernanceProposals(ctx, "c1", bizknowledge.ProposalStatusRejected, 50)
+	got, _, err := repo.ListGovernanceProposals(ctx, "c1", bizknowledge.ProposalStatusRejected, 50, 0)
 	if err != nil || len(got) != 1 || got[0].ResolvedAt.IsZero() {
 		t.Fatalf("resolved view = %+v, %v", got, err)
 	}

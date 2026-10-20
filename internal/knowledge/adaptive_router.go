@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"aranea-agents/internal/biz"
@@ -21,6 +22,14 @@ const (
 	QueryComplex
 )
 
+// ParentContextResolver 按 chunk ID 批量取父块（G-06 父子分块回填端口）。
+// 生产实现：data.knowledgeRepo.ListChunksByIDs（含 ACL 过滤，无角色过滤——
+// 回填需读到 parent 行）。仅 Search 尾部消费，biz 契约面零变更
+// （NeighborChunkLister 同款能力断言接线）。
+type ParentContextResolver interface {
+	ListChunksByIDs(ctx context.Context, collectionID string, ids []string) ([]biz.KnowledgeChunk, error)
+}
+
 type AdaptiveRouter struct {
 	hybrid   *HybridRetriever
 	rewriter *QueryRewriter
@@ -31,7 +40,9 @@ type AdaptiveRouter struct {
 	// 自治理图谱 M1-3：Hebbian 共激活边（可选；nil = 不写）。异步触发，不阻塞返回。
 	coact bizknowledge.CoActivationRepo
 	eta   float64
-	lg    loggateway.Logger
+	// G-06 父子分块：父块语境回填端口（可选；nil = 不回填）。
+	parents ParentContextResolver
+	lg      loggateway.Logger
 }
 
 func NewAdaptiveRouter(hybrid *HybridRetriever, rewriter *QueryRewriter, lg loggateway.Logger) *AdaptiveRouter {
@@ -66,6 +77,14 @@ func (a *AdaptiveRouter) SetCoActivation(repo bizknowledge.CoActivationRepo, eta
 	a.eta = eta
 }
 
+// SetParentContextResolver 接线父块语境回填（G-06，可选；nil = 不回填）。
+func (a *AdaptiveRouter) SetParentContextResolver(resolver ParentContextResolver) {
+	if a == nil {
+		return
+	}
+	a.parents = resolver
+}
+
 func (a *AdaptiveRouter) Hybrid() *HybridRetriever {
 	return a.hybrid
 }
@@ -75,6 +94,7 @@ func (a *AdaptiveRouter) QueryRewriter() *QueryRewriter {
 }
 
 func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+	start := time.Now()
 	if a.hybrid == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "adaptive_router: hybrid retriever not configured")
 	}
@@ -116,12 +136,64 @@ func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery,
 		chunks = a.expander.Expand(ctx, q, chunks)
 	}
 	if a.accessLog != nil && len(chunks) > 0 {
-		chunks = a.applyBaseLevelBoost(ctx, q, chunks)
+		chunks = a.applyBaseLevelBoost(ctx, q, chunks, time.Since(start))
 	}
 	if a.coact != nil && len(chunks) > 1 {
 		a.triggerHebbian(ctx, q, chunks)
 	}
+	// G-06：父块语境回填为 Search 尾步——不参与排序/重排/共激活（父块正文
+	// 仅作渲染/注入语境，回填失败仅告警，不阻断检索）。
+	if a.parents != nil && len(chunks) > 0 {
+		chunks = a.BackfillParentContext(ctx, q, chunks)
+	}
 	return chunks, nil
+}
+
+// BackfillParentContext 父块语境回填（G-06 数据驱动，ADR-KN-20261020）：
+// 命中子块行携带 parent_chunk_id 即触发一次批量取父块——零配置开关，无
+// 集合级 context_mode 双真相。仅回填 ParentContent（渲染/注入语境），不
+// 参与排序/重排；父块缺失或查询失败仅告警跳过（检索不被回填阻断）。
+// 导出供绕过 Router 的裸检索路径补充回填（use_eval 补充块与初检块渲染口径一致）。
+func (a *AdaptiveRouter) BackfillParentContext(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) []biz.KnowledgeChunk {
+	idSet := make(map[string]struct{}, len(chunks))
+	ids := make([]string, 0, len(chunks))
+	for _, ch := range chunks {
+		pid := strings.TrimSpace(ch.ParentChunkID)
+		if pid == "" {
+			continue
+		}
+		if _, ok := idSet[pid]; !ok {
+			idSet[pid] = struct{}{}
+			ids = append(ids, pid)
+		}
+	}
+	if len(ids) == 0 {
+		return chunks
+	}
+	parents, err := a.parents.ListChunksByIDs(ctx, q.CollectionID, ids)
+	if err != nil {
+		a.lg.Warn("父块语境回填失败，跳过",
+			loggateway.StepID("knowledge.parent_context.backfill_fail"),
+			loggateway.Str("collection_id", q.CollectionID),
+			loggateway.Err(err))
+		return chunks
+	}
+	content := make(map[string]string, len(parents))
+	for _, p := range parents {
+		if p.Content != "" {
+			content[p.ID] = p.Content
+		}
+	}
+	for i := range chunks {
+		pid := strings.TrimSpace(chunks[i].ParentChunkID)
+		if pid == "" {
+			continue
+		}
+		if c, ok := content[pid]; ok {
+			chunks[i].ParentContent = c
+		}
+	}
+	return chunks
 }
 
 // triggerHebbian 异步强化同批召回文档的共激活边（M1-3）。脱离请求 ctx：
@@ -149,8 +221,8 @@ func (a *AdaptiveRouter) triggerHebbian(ctx context.Context, q biz.KnowledgeSear
 
 // applyBaseLevelBoost 用历史命中计算 base-level 激活分并加成到最终排序（M1-2）。
 // 顺序：先用历史加成排序，再记录本次命中——本次检索不得加成自身（防循环自激）。
-// 日志失败仅告警，不阻断检索返回。
-func (a *AdaptiveRouter) applyBaseLevelBoost(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) []biz.KnowledgeChunk {
+// 日志失败仅告警，不阻断检索返回。latency 为 Search 入口计时（G-15 审计足迹）。
+func (a *AdaptiveRouter) applyBaseLevelBoost(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk, latency time.Duration) []biz.KnowledgeChunk {
 	docSet := make(map[string]struct{}, len(chunks))
 	docIDs := make([]string, 0, len(chunks))
 	for _, ch := range chunks {
@@ -170,7 +242,11 @@ func (a *AdaptiveRouter) applyBaseLevelBoost(ctx context.Context, q biz.Knowledg
 		}
 		sortChunksByScoreDesc(chunks)
 	}
-	entries := accessEntriesFromChunks(q.CollectionID, q.Query, chunks)
+	// G-19：命中调试旁路不写热度日志（排序加成照常，保持排位保真）。
+	if q.SkipAccessLog {
+		return chunks
+	}
+	entries := accessEntriesFromChunks(q, newAccessContext(ctx, q, latency), chunks)
 	if err := a.accessLog.LogAccess(ctx, entries); err != nil {
 		a.lg.Warn("检索命中日志写入失败",
 			loggateway.StepID("knowledge.access_boost.log_fail"),

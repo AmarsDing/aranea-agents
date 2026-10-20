@@ -56,6 +56,7 @@ type governanceProposalsInput struct {
 	CollectionID string `json:"collection_id" jsonschema:"description=目标知识库集合ID（留空不过滤）"`
 	Status       string `json:"status" jsonschema:"description=提案状态过滤：pending/applied/rejected（留空不过滤）,default=pending"`
 	Limit        int    `json:"limit" jsonschema:"description=返回条数上限（默认50，最大200）,default=50"`
+	Offset       int    `json:"offset" jsonschema:"description=列表分页偏移量（默认0,配合limit翻页）,default=0"`
 }
 
 type governanceProposalItem struct {
@@ -79,11 +80,12 @@ func newGovernanceProposalsTool(deps Deps) trpctool.Tool {
 		if deps.Knowledge == nil {
 			return governanceProposalsOutput{}, errors.New("knowledge curate not wired")
 		}
-		views, err := deps.Knowledge.ListGovernanceProposals(ctx, input.CollectionID, input.Status, input.Limit)
+		views, total, err := deps.Knowledge.ListGovernanceProposals(ctx, input.CollectionID, input.Status, input.Limit, input.Offset)
 		if err != nil {
 			return governanceProposalsOutput{}, err
 		}
-		out := governanceProposalsOutput{Total: len(views)}
+		// total 为同 WHERE 口径总数（分页 UI 源），非当前页条数。
+		out := governanceProposalsOutput{Total: total}
 		for _, v := range views {
 			out.Proposals = append(out.Proposals, governanceProposalItem{
 				ID:           v.ID,

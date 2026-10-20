@@ -136,8 +136,14 @@ func TestKnowledgeService_CreateCollection_DimFromEmbedder(t *testing.T) {
 }
 
 type stubVaultSync struct {
-	started int
+	started    int
+	reindexed  int
+	reindexErr error
 }
 
 func (s *stubVaultSync) StartVault(_ biz.KnowledgeCollection) { s.started++ }
 func (s *stubVaultSync) StopVault(_ string)                   {}
+func (s *stubVaultSync) ReindexVault(_ context.Context, _ biz.KnowledgeCollection) error {
+	s.reindexed++
+	return s.reindexErr
+}

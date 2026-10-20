@@ -8,8 +8,14 @@ import (
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
+
+// embedderAdminCtx 模拟平台管理员调用（G-09 门禁生效路径）。
+func embedderAdminCtx() context.Context {
+	return auth.NewContext(context.Background(), &auth.Auth{UserID: 1, Access: "admin"})
+}
 
 // embedderAdminSpy records Update calls for assertion.
 type embedderAdminSpy struct {
@@ -159,7 +165,7 @@ func TestUpdateEmbedderConfig_PersistFailureDoesNotTouchMemory(t *testing.T) {
 		Dim:      768,
 	}
 
-	resp, err := svc.UpdateEmbedderConfig(context.Background(), req)
+	resp, err := svc.UpdateEmbedderConfig(embedderAdminCtx(), req)
 	if err == nil {
 		t.Fatalf("expected error when persistence fails, got nil (resp=%+v)", resp)
 	}
@@ -200,7 +206,7 @@ func TestUpdateEmbedderConfig_PersistSuccessMutatesMemory(t *testing.T) {
 		Dim:      768,
 	}
 
-	resp, err := svc.UpdateEmbedderConfig(context.Background(), req)
+	resp, err := svc.UpdateEmbedderConfig(embedderAdminCtx(), req)
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
@@ -248,11 +254,55 @@ func TestUpdateEmbedderConfig_GetFailsPropagatesError(t *testing.T) {
 		Dim:      1536,
 	}
 
-	_, err := svc.UpdateEmbedderConfig(context.Background(), req)
+	_, err := svc.UpdateEmbedderConfig(embedderAdminCtx(), req)
 	if err == nil {
 		t.Fatalf("expected error when GetKnowledgeEmbed fails, got nil")
 	}
 	if got := spy.updateCallCount(); got != 0 {
 		t.Fatalf("embedderAdmin.Update must NOT be called when Get fails; got %d calls", got)
 	}
+}
+
+// TestEmbedderConfig_RequiresPlatformAdmin is the regression test for G-09:
+// embedder config read/write must be gated to platform admins.
+// No-auth → Unauthorized; non-admin → Forbidden; admin → pass.
+func TestEmbedderConfig_RequiresPlatformAdmin(t *testing.T) {
+	svc := &KnowledgeService{
+		embedderAdmin: &embedderAdminSpy{snap: embedderSnapshot{provider: "openai", configured: true}},
+		systemSetting: &sysSettingRepoStub{},
+		lg:            loggateway.NewNoop(),
+	}
+	putReq := &v1.UpdateEmbedderConfigRequest{Provider: "openai", Model: "text-embedding-3-small", Dim: 1536}
+
+	t.Run("update: no auth → unauthorized", func(t *testing.T) {
+		if _, err := svc.UpdateEmbedderConfig(context.Background(), putReq); err != auth.ErrUnauthorized {
+			t.Fatalf("want ErrUnauthorized, got %v", err)
+		}
+	})
+	t.Run("update: non-admin → forbidden", func(t *testing.T) {
+		userCtx := auth.NewContext(context.Background(), &auth.Auth{UserID: 2, Access: "user"})
+		if _, err := svc.UpdateEmbedderConfig(userCtx, putReq); err != auth.ErrForbidden {
+			t.Fatalf("want ErrForbidden, got %v", err)
+		}
+	})
+	t.Run("get: no auth → unauthorized", func(t *testing.T) {
+		if _, err := svc.GetEmbedderConfig(context.Background(), &v1.GetEmbedderConfigRequest{}); err != auth.ErrUnauthorized {
+			t.Fatalf("want ErrUnauthorized, got %v", err)
+		}
+	})
+	t.Run("get: non-admin → forbidden", func(t *testing.T) {
+		userCtx := auth.NewContext(context.Background(), &auth.Auth{UserID: 2, Access: "user"})
+		if _, err := svc.GetEmbedderConfig(userCtx, &v1.GetEmbedderConfigRequest{}); err != auth.ErrForbidden {
+			t.Fatalf("want ErrForbidden, got %v", err)
+		}
+	})
+	t.Run("get: admin → ok", func(t *testing.T) {
+		cfg, err := svc.GetEmbedderConfig(embedderAdminCtx(), &v1.GetEmbedderConfigRequest{})
+		if err != nil {
+			t.Fatalf("admin Get should pass: %v", err)
+		}
+		if cfg.GetProvider() != "openai" {
+			t.Fatalf("provider = %q, want openai", cfg.GetProvider())
+		}
+	})
 }

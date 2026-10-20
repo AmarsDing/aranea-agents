@@ -54,7 +54,9 @@ import (
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
+	"aranea-agents/internal/data/ent/knowledgeaccesslog"
 	"aranea-agents/internal/data/ent/knowledgelinkused"
+	"aranea-agents/internal/data/ent/knowledgewritebackoutbox"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
@@ -184,7 +186,9 @@ const (
 	TypeGraphTaskLog               = "GraphTaskLog"
 	TypeGraphTaskRun               = "GraphTaskRun"
 	TypeHealRecord                 = "HealRecord"
+	TypeKnowledgeAccessLog         = "KnowledgeAccessLog"
 	TypeKnowledgeLinkUsed          = "KnowledgeLinkUsed"
+	TypeKnowledgeWriteBackOutbox   = "KnowledgeWriteBackOutbox"
 	TypeLlmProviderModel           = "LlmProviderModel"
 	TypeMediaProvider              = "MediaProvider"
 	TypeMemberSessionV2            = "MemberSessionV2"
@@ -54999,6 +55003,1005 @@ func (m *HealRecordMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown HealRecord edge %s", name)
 }
 
+// KnowledgeAccessLogMutation represents an operation that mutates the KnowledgeAccessLog nodes in the graph.
+type KnowledgeAccessLogMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	collection_id *string
+	doc_id        *string
+	accessed_at   *time.Time
+	query_hash    *string
+	session_id    *string
+	user_id       *string
+	agent_id      *string
+	rank          *int
+	addrank       *int
+	score         *float64
+	addscore      *float64
+	latency_ms    *int
+	addlatency_ms *int
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*KnowledgeAccessLog, error)
+	predicates    []predicate.KnowledgeAccessLog
+}
+
+var _ ent.Mutation = (*KnowledgeAccessLogMutation)(nil)
+
+// knowledgeaccesslogOption allows management of the mutation configuration using functional options.
+type knowledgeaccesslogOption func(*KnowledgeAccessLogMutation)
+
+// newKnowledgeAccessLogMutation creates new mutation for the KnowledgeAccessLog entity.
+func newKnowledgeAccessLogMutation(c config, op Op, opts ...knowledgeaccesslogOption) *KnowledgeAccessLogMutation {
+	m := &KnowledgeAccessLogMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeKnowledgeAccessLog,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withKnowledgeAccessLogID sets the ID field of the mutation.
+func withKnowledgeAccessLogID(id int64) knowledgeaccesslogOption {
+	return func(m *KnowledgeAccessLogMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *KnowledgeAccessLog
+		)
+		m.oldValue = func(ctx context.Context) (*KnowledgeAccessLog, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().KnowledgeAccessLog.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withKnowledgeAccessLog sets the old KnowledgeAccessLog of the mutation.
+func withKnowledgeAccessLog(node *KnowledgeAccessLog) knowledgeaccesslogOption {
+	return func(m *KnowledgeAccessLogMutation) {
+		m.oldValue = func(context.Context) (*KnowledgeAccessLog, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m KnowledgeAccessLogMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m KnowledgeAccessLogMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of KnowledgeAccessLog entities.
+func (m *KnowledgeAccessLogMutation) SetID(id int64) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *KnowledgeAccessLogMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *KnowledgeAccessLogMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().KnowledgeAccessLog.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCollectionID sets the "collection_id" field.
+func (m *KnowledgeAccessLogMutation) SetCollectionID(s string) {
+	m.collection_id = &s
+}
+
+// CollectionID returns the value of the "collection_id" field in the mutation.
+func (m *KnowledgeAccessLogMutation) CollectionID() (r string, exists bool) {
+	v := m.collection_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCollectionID returns the old "collection_id" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldCollectionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCollectionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCollectionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCollectionID: %w", err)
+	}
+	return oldValue.CollectionID, nil
+}
+
+// ResetCollectionID resets all changes to the "collection_id" field.
+func (m *KnowledgeAccessLogMutation) ResetCollectionID() {
+	m.collection_id = nil
+}
+
+// SetDocID sets the "doc_id" field.
+func (m *KnowledgeAccessLogMutation) SetDocID(s string) {
+	m.doc_id = &s
+}
+
+// DocID returns the value of the "doc_id" field in the mutation.
+func (m *KnowledgeAccessLogMutation) DocID() (r string, exists bool) {
+	v := m.doc_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDocID returns the old "doc_id" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldDocID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDocID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDocID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDocID: %w", err)
+	}
+	return oldValue.DocID, nil
+}
+
+// ResetDocID resets all changes to the "doc_id" field.
+func (m *KnowledgeAccessLogMutation) ResetDocID() {
+	m.doc_id = nil
+}
+
+// SetAccessedAt sets the "accessed_at" field.
+func (m *KnowledgeAccessLogMutation) SetAccessedAt(t time.Time) {
+	m.accessed_at = &t
+}
+
+// AccessedAt returns the value of the "accessed_at" field in the mutation.
+func (m *KnowledgeAccessLogMutation) AccessedAt() (r time.Time, exists bool) {
+	v := m.accessed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccessedAt returns the old "accessed_at" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldAccessedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccessedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccessedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccessedAt: %w", err)
+	}
+	return oldValue.AccessedAt, nil
+}
+
+// ResetAccessedAt resets all changes to the "accessed_at" field.
+func (m *KnowledgeAccessLogMutation) ResetAccessedAt() {
+	m.accessed_at = nil
+}
+
+// SetQueryHash sets the "query_hash" field.
+func (m *KnowledgeAccessLogMutation) SetQueryHash(s string) {
+	m.query_hash = &s
+}
+
+// QueryHash returns the value of the "query_hash" field in the mutation.
+func (m *KnowledgeAccessLogMutation) QueryHash() (r string, exists bool) {
+	v := m.query_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQueryHash returns the old "query_hash" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldQueryHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQueryHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQueryHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQueryHash: %w", err)
+	}
+	return oldValue.QueryHash, nil
+}
+
+// ClearQueryHash clears the value of the "query_hash" field.
+func (m *KnowledgeAccessLogMutation) ClearQueryHash() {
+	m.query_hash = nil
+	m.clearedFields[knowledgeaccesslog.FieldQueryHash] = struct{}{}
+}
+
+// QueryHashCleared returns if the "query_hash" field was cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) QueryHashCleared() bool {
+	_, ok := m.clearedFields[knowledgeaccesslog.FieldQueryHash]
+	return ok
+}
+
+// ResetQueryHash resets all changes to the "query_hash" field.
+func (m *KnowledgeAccessLogMutation) ResetQueryHash() {
+	m.query_hash = nil
+	delete(m.clearedFields, knowledgeaccesslog.FieldQueryHash)
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *KnowledgeAccessLogMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *KnowledgeAccessLogMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (m *KnowledgeAccessLogMutation) ClearSessionID() {
+	m.session_id = nil
+	m.clearedFields[knowledgeaccesslog.FieldSessionID] = struct{}{}
+}
+
+// SessionIDCleared returns if the "session_id" field was cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) SessionIDCleared() bool {
+	_, ok := m.clearedFields[knowledgeaccesslog.FieldSessionID]
+	return ok
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *KnowledgeAccessLogMutation) ResetSessionID() {
+	m.session_id = nil
+	delete(m.clearedFields, knowledgeaccesslog.FieldSessionID)
+}
+
+// SetUserID sets the "user_id" field.
+func (m *KnowledgeAccessLogMutation) SetUserID(s string) {
+	m.user_id = &s
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *KnowledgeAccessLogMutation) UserID() (r string, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldUserID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (m *KnowledgeAccessLogMutation) ClearUserID() {
+	m.user_id = nil
+	m.clearedFields[knowledgeaccesslog.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[knowledgeaccesslog.FieldUserID]
+	return ok
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *KnowledgeAccessLogMutation) ResetUserID() {
+	m.user_id = nil
+	delete(m.clearedFields, knowledgeaccesslog.FieldUserID)
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *KnowledgeAccessLogMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *KnowledgeAccessLogMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ClearAgentID clears the value of the "agent_id" field.
+func (m *KnowledgeAccessLogMutation) ClearAgentID() {
+	m.agent_id = nil
+	m.clearedFields[knowledgeaccesslog.FieldAgentID] = struct{}{}
+}
+
+// AgentIDCleared returns if the "agent_id" field was cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) AgentIDCleared() bool {
+	_, ok := m.clearedFields[knowledgeaccesslog.FieldAgentID]
+	return ok
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *KnowledgeAccessLogMutation) ResetAgentID() {
+	m.agent_id = nil
+	delete(m.clearedFields, knowledgeaccesslog.FieldAgentID)
+}
+
+// SetRank sets the "rank" field.
+func (m *KnowledgeAccessLogMutation) SetRank(i int) {
+	m.rank = &i
+	m.addrank = nil
+}
+
+// Rank returns the value of the "rank" field in the mutation.
+func (m *KnowledgeAccessLogMutation) Rank() (r int, exists bool) {
+	v := m.rank
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRank returns the old "rank" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldRank(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRank is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRank requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRank: %w", err)
+	}
+	return oldValue.Rank, nil
+}
+
+// AddRank adds i to the "rank" field.
+func (m *KnowledgeAccessLogMutation) AddRank(i int) {
+	if m.addrank != nil {
+		*m.addrank += i
+	} else {
+		m.addrank = &i
+	}
+}
+
+// AddedRank returns the value that was added to the "rank" field in this mutation.
+func (m *KnowledgeAccessLogMutation) AddedRank() (r int, exists bool) {
+	v := m.addrank
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRank resets all changes to the "rank" field.
+func (m *KnowledgeAccessLogMutation) ResetRank() {
+	m.rank = nil
+	m.addrank = nil
+}
+
+// SetScore sets the "score" field.
+func (m *KnowledgeAccessLogMutation) SetScore(f float64) {
+	m.score = &f
+	m.addscore = nil
+}
+
+// Score returns the value of the "score" field in the mutation.
+func (m *KnowledgeAccessLogMutation) Score() (r float64, exists bool) {
+	v := m.score
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScore returns the old "score" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldScore(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScore: %w", err)
+	}
+	return oldValue.Score, nil
+}
+
+// AddScore adds f to the "score" field.
+func (m *KnowledgeAccessLogMutation) AddScore(f float64) {
+	if m.addscore != nil {
+		*m.addscore += f
+	} else {
+		m.addscore = &f
+	}
+}
+
+// AddedScore returns the value that was added to the "score" field in this mutation.
+func (m *KnowledgeAccessLogMutation) AddedScore() (r float64, exists bool) {
+	v := m.addscore
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetScore resets all changes to the "score" field.
+func (m *KnowledgeAccessLogMutation) ResetScore() {
+	m.score = nil
+	m.addscore = nil
+}
+
+// SetLatencyMs sets the "latency_ms" field.
+func (m *KnowledgeAccessLogMutation) SetLatencyMs(i int) {
+	m.latency_ms = &i
+	m.addlatency_ms = nil
+}
+
+// LatencyMs returns the value of the "latency_ms" field in the mutation.
+func (m *KnowledgeAccessLogMutation) LatencyMs() (r int, exists bool) {
+	v := m.latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLatencyMs returns the old "latency_ms" field's value of the KnowledgeAccessLog entity.
+// If the KnowledgeAccessLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeAccessLogMutation) OldLatencyMs(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLatencyMs: %w", err)
+	}
+	return oldValue.LatencyMs, nil
+}
+
+// AddLatencyMs adds i to the "latency_ms" field.
+func (m *KnowledgeAccessLogMutation) AddLatencyMs(i int) {
+	if m.addlatency_ms != nil {
+		*m.addlatency_ms += i
+	} else {
+		m.addlatency_ms = &i
+	}
+}
+
+// AddedLatencyMs returns the value that was added to the "latency_ms" field in this mutation.
+func (m *KnowledgeAccessLogMutation) AddedLatencyMs() (r int, exists bool) {
+	v := m.addlatency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLatencyMs resets all changes to the "latency_ms" field.
+func (m *KnowledgeAccessLogMutation) ResetLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+}
+
+// Where appends a list predicates to the KnowledgeAccessLogMutation builder.
+func (m *KnowledgeAccessLogMutation) Where(ps ...predicate.KnowledgeAccessLog) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the KnowledgeAccessLogMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *KnowledgeAccessLogMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.KnowledgeAccessLog, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *KnowledgeAccessLogMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *KnowledgeAccessLogMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (KnowledgeAccessLog).
+func (m *KnowledgeAccessLogMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *KnowledgeAccessLogMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.collection_id != nil {
+		fields = append(fields, knowledgeaccesslog.FieldCollectionID)
+	}
+	if m.doc_id != nil {
+		fields = append(fields, knowledgeaccesslog.FieldDocID)
+	}
+	if m.accessed_at != nil {
+		fields = append(fields, knowledgeaccesslog.FieldAccessedAt)
+	}
+	if m.query_hash != nil {
+		fields = append(fields, knowledgeaccesslog.FieldQueryHash)
+	}
+	if m.session_id != nil {
+		fields = append(fields, knowledgeaccesslog.FieldSessionID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, knowledgeaccesslog.FieldUserID)
+	}
+	if m.agent_id != nil {
+		fields = append(fields, knowledgeaccesslog.FieldAgentID)
+	}
+	if m.rank != nil {
+		fields = append(fields, knowledgeaccesslog.FieldRank)
+	}
+	if m.score != nil {
+		fields = append(fields, knowledgeaccesslog.FieldScore)
+	}
+	if m.latency_ms != nil {
+		fields = append(fields, knowledgeaccesslog.FieldLatencyMs)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *KnowledgeAccessLogMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case knowledgeaccesslog.FieldCollectionID:
+		return m.CollectionID()
+	case knowledgeaccesslog.FieldDocID:
+		return m.DocID()
+	case knowledgeaccesslog.FieldAccessedAt:
+		return m.AccessedAt()
+	case knowledgeaccesslog.FieldQueryHash:
+		return m.QueryHash()
+	case knowledgeaccesslog.FieldSessionID:
+		return m.SessionID()
+	case knowledgeaccesslog.FieldUserID:
+		return m.UserID()
+	case knowledgeaccesslog.FieldAgentID:
+		return m.AgentID()
+	case knowledgeaccesslog.FieldRank:
+		return m.Rank()
+	case knowledgeaccesslog.FieldScore:
+		return m.Score()
+	case knowledgeaccesslog.FieldLatencyMs:
+		return m.LatencyMs()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *KnowledgeAccessLogMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case knowledgeaccesslog.FieldCollectionID:
+		return m.OldCollectionID(ctx)
+	case knowledgeaccesslog.FieldDocID:
+		return m.OldDocID(ctx)
+	case knowledgeaccesslog.FieldAccessedAt:
+		return m.OldAccessedAt(ctx)
+	case knowledgeaccesslog.FieldQueryHash:
+		return m.OldQueryHash(ctx)
+	case knowledgeaccesslog.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case knowledgeaccesslog.FieldUserID:
+		return m.OldUserID(ctx)
+	case knowledgeaccesslog.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case knowledgeaccesslog.FieldRank:
+		return m.OldRank(ctx)
+	case knowledgeaccesslog.FieldScore:
+		return m.OldScore(ctx)
+	case knowledgeaccesslog.FieldLatencyMs:
+		return m.OldLatencyMs(ctx)
+	}
+	return nil, fmt.Errorf("unknown KnowledgeAccessLog field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *KnowledgeAccessLogMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case knowledgeaccesslog.FieldCollectionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCollectionID(v)
+		return nil
+	case knowledgeaccesslog.FieldDocID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDocID(v)
+		return nil
+	case knowledgeaccesslog.FieldAccessedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccessedAt(v)
+		return nil
+	case knowledgeaccesslog.FieldQueryHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQueryHash(v)
+		return nil
+	case knowledgeaccesslog.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case knowledgeaccesslog.FieldUserID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case knowledgeaccesslog.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case knowledgeaccesslog.FieldRank:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRank(v)
+		return nil
+	case knowledgeaccesslog.FieldScore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScore(v)
+		return nil
+	case knowledgeaccesslog.FieldLatencyMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLatencyMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeAccessLog field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *KnowledgeAccessLogMutation) AddedFields() []string {
+	var fields []string
+	if m.addrank != nil {
+		fields = append(fields, knowledgeaccesslog.FieldRank)
+	}
+	if m.addscore != nil {
+		fields = append(fields, knowledgeaccesslog.FieldScore)
+	}
+	if m.addlatency_ms != nil {
+		fields = append(fields, knowledgeaccesslog.FieldLatencyMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *KnowledgeAccessLogMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case knowledgeaccesslog.FieldRank:
+		return m.AddedRank()
+	case knowledgeaccesslog.FieldScore:
+		return m.AddedScore()
+	case knowledgeaccesslog.FieldLatencyMs:
+		return m.AddedLatencyMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *KnowledgeAccessLogMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case knowledgeaccesslog.FieldRank:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRank(v)
+		return nil
+	case knowledgeaccesslog.FieldScore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddScore(v)
+		return nil
+	case knowledgeaccesslog.FieldLatencyMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLatencyMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeAccessLog numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *KnowledgeAccessLogMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(knowledgeaccesslog.FieldQueryHash) {
+		fields = append(fields, knowledgeaccesslog.FieldQueryHash)
+	}
+	if m.FieldCleared(knowledgeaccesslog.FieldSessionID) {
+		fields = append(fields, knowledgeaccesslog.FieldSessionID)
+	}
+	if m.FieldCleared(knowledgeaccesslog.FieldUserID) {
+		fields = append(fields, knowledgeaccesslog.FieldUserID)
+	}
+	if m.FieldCleared(knowledgeaccesslog.FieldAgentID) {
+		fields = append(fields, knowledgeaccesslog.FieldAgentID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *KnowledgeAccessLogMutation) ClearField(name string) error {
+	switch name {
+	case knowledgeaccesslog.FieldQueryHash:
+		m.ClearQueryHash()
+		return nil
+	case knowledgeaccesslog.FieldSessionID:
+		m.ClearSessionID()
+		return nil
+	case knowledgeaccesslog.FieldUserID:
+		m.ClearUserID()
+		return nil
+	case knowledgeaccesslog.FieldAgentID:
+		m.ClearAgentID()
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeAccessLog nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *KnowledgeAccessLogMutation) ResetField(name string) error {
+	switch name {
+	case knowledgeaccesslog.FieldCollectionID:
+		m.ResetCollectionID()
+		return nil
+	case knowledgeaccesslog.FieldDocID:
+		m.ResetDocID()
+		return nil
+	case knowledgeaccesslog.FieldAccessedAt:
+		m.ResetAccessedAt()
+		return nil
+	case knowledgeaccesslog.FieldQueryHash:
+		m.ResetQueryHash()
+		return nil
+	case knowledgeaccesslog.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case knowledgeaccesslog.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case knowledgeaccesslog.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case knowledgeaccesslog.FieldRank:
+		m.ResetRank()
+		return nil
+	case knowledgeaccesslog.FieldScore:
+		m.ResetScore()
+		return nil
+	case knowledgeaccesslog.FieldLatencyMs:
+		m.ResetLatencyMs()
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeAccessLog field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *KnowledgeAccessLogMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *KnowledgeAccessLogMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *KnowledgeAccessLogMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *KnowledgeAccessLogMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *KnowledgeAccessLogMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *KnowledgeAccessLogMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown KnowledgeAccessLog unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *KnowledgeAccessLogMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown KnowledgeAccessLog edge %s", name)
+}
+
 // KnowledgeLinkUsedMutation represents an operation that mutates the KnowledgeLinkUsed nodes in the graph.
 type KnowledgeLinkUsedMutation struct {
 	config
@@ -55431,6 +56434,774 @@ func (m *KnowledgeLinkUsedMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *KnowledgeLinkUsedMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown KnowledgeLinkUsed edge %s", name)
+}
+
+// KnowledgeWriteBackOutboxMutation represents an operation that mutates the KnowledgeWriteBackOutbox nodes in the graph.
+type KnowledgeWriteBackOutboxMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	batch_key     *string
+	workspace_id  *string
+	payload       *string
+	status        *string
+	attempts      *int
+	addattempts   *int
+	last_error    *string
+	created_at    *time.Time
+	published_at  *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*KnowledgeWriteBackOutbox, error)
+	predicates    []predicate.KnowledgeWriteBackOutbox
+}
+
+var _ ent.Mutation = (*KnowledgeWriteBackOutboxMutation)(nil)
+
+// knowledgewritebackoutboxOption allows management of the mutation configuration using functional options.
+type knowledgewritebackoutboxOption func(*KnowledgeWriteBackOutboxMutation)
+
+// newKnowledgeWriteBackOutboxMutation creates new mutation for the KnowledgeWriteBackOutbox entity.
+func newKnowledgeWriteBackOutboxMutation(c config, op Op, opts ...knowledgewritebackoutboxOption) *KnowledgeWriteBackOutboxMutation {
+	m := &KnowledgeWriteBackOutboxMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeKnowledgeWriteBackOutbox,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withKnowledgeWriteBackOutboxID sets the ID field of the mutation.
+func withKnowledgeWriteBackOutboxID(id int64) knowledgewritebackoutboxOption {
+	return func(m *KnowledgeWriteBackOutboxMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *KnowledgeWriteBackOutbox
+		)
+		m.oldValue = func(ctx context.Context) (*KnowledgeWriteBackOutbox, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().KnowledgeWriteBackOutbox.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withKnowledgeWriteBackOutbox sets the old KnowledgeWriteBackOutbox of the mutation.
+func withKnowledgeWriteBackOutbox(node *KnowledgeWriteBackOutbox) knowledgewritebackoutboxOption {
+	return func(m *KnowledgeWriteBackOutboxMutation) {
+		m.oldValue = func(context.Context) (*KnowledgeWriteBackOutbox, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m KnowledgeWriteBackOutboxMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m KnowledgeWriteBackOutboxMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of KnowledgeWriteBackOutbox entities.
+func (m *KnowledgeWriteBackOutboxMutation) SetID(id int64) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *KnowledgeWriteBackOutboxMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().KnowledgeWriteBackOutbox.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetBatchKey sets the "batch_key" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetBatchKey(s string) {
+	m.batch_key = &s
+}
+
+// BatchKey returns the value of the "batch_key" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) BatchKey() (r string, exists bool) {
+	v := m.batch_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBatchKey returns the old "batch_key" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldBatchKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBatchKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBatchKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBatchKey: %w", err)
+	}
+	return oldValue.BatchKey, nil
+}
+
+// ResetBatchKey resets all changes to the "batch_key" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetBatchKey() {
+	m.batch_key = nil
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
+// SetPayload sets the "payload" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetPayload(s string) {
+	m.payload = &s
+}
+
+// Payload returns the value of the "payload" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) Payload() (r string, exists bool) {
+	v := m.payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayload returns the old "payload" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldPayload(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayload: %w", err)
+	}
+	return oldValue.Payload, nil
+}
+
+// ResetPayload resets all changes to the "payload" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetPayload() {
+	m.payload = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *KnowledgeWriteBackOutboxMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
+// SetLastError sets the "last_error" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldLastError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetLastError() {
+	m.last_error = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetPublishedAt sets the "published_at" field.
+func (m *KnowledgeWriteBackOutboxMutation) SetPublishedAt(t time.Time) {
+	m.published_at = &t
+}
+
+// PublishedAt returns the value of the "published_at" field in the mutation.
+func (m *KnowledgeWriteBackOutboxMutation) PublishedAt() (r time.Time, exists bool) {
+	v := m.published_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublishedAt returns the old "published_at" field's value of the KnowledgeWriteBackOutbox entity.
+// If the KnowledgeWriteBackOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeWriteBackOutboxMutation) OldPublishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublishedAt: %w", err)
+	}
+	return oldValue.PublishedAt, nil
+}
+
+// ClearPublishedAt clears the value of the "published_at" field.
+func (m *KnowledgeWriteBackOutboxMutation) ClearPublishedAt() {
+	m.published_at = nil
+	m.clearedFields[knowledgewritebackoutbox.FieldPublishedAt] = struct{}{}
+}
+
+// PublishedAtCleared returns if the "published_at" field was cleared in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) PublishedAtCleared() bool {
+	_, ok := m.clearedFields[knowledgewritebackoutbox.FieldPublishedAt]
+	return ok
+}
+
+// ResetPublishedAt resets all changes to the "published_at" field.
+func (m *KnowledgeWriteBackOutboxMutation) ResetPublishedAt() {
+	m.published_at = nil
+	delete(m.clearedFields, knowledgewritebackoutbox.FieldPublishedAt)
+}
+
+// Where appends a list predicates to the KnowledgeWriteBackOutboxMutation builder.
+func (m *KnowledgeWriteBackOutboxMutation) Where(ps ...predicate.KnowledgeWriteBackOutbox) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the KnowledgeWriteBackOutboxMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *KnowledgeWriteBackOutboxMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.KnowledgeWriteBackOutbox, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *KnowledgeWriteBackOutboxMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *KnowledgeWriteBackOutboxMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (KnowledgeWriteBackOutbox).
+func (m *KnowledgeWriteBackOutboxMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *KnowledgeWriteBackOutboxMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.batch_key != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldBatchKey)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldWorkspaceID)
+	}
+	if m.payload != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldPayload)
+	}
+	if m.status != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldStatus)
+	}
+	if m.attempts != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldAttempts)
+	}
+	if m.last_error != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldLastError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldCreatedAt)
+	}
+	if m.published_at != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldPublishedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *KnowledgeWriteBackOutboxMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case knowledgewritebackoutbox.FieldBatchKey:
+		return m.BatchKey()
+	case knowledgewritebackoutbox.FieldWorkspaceID:
+		return m.WorkspaceID()
+	case knowledgewritebackoutbox.FieldPayload:
+		return m.Payload()
+	case knowledgewritebackoutbox.FieldStatus:
+		return m.Status()
+	case knowledgewritebackoutbox.FieldAttempts:
+		return m.Attempts()
+	case knowledgewritebackoutbox.FieldLastError:
+		return m.LastError()
+	case knowledgewritebackoutbox.FieldCreatedAt:
+		return m.CreatedAt()
+	case knowledgewritebackoutbox.FieldPublishedAt:
+		return m.PublishedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *KnowledgeWriteBackOutboxMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case knowledgewritebackoutbox.FieldBatchKey:
+		return m.OldBatchKey(ctx)
+	case knowledgewritebackoutbox.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
+	case knowledgewritebackoutbox.FieldPayload:
+		return m.OldPayload(ctx)
+	case knowledgewritebackoutbox.FieldStatus:
+		return m.OldStatus(ctx)
+	case knowledgewritebackoutbox.FieldAttempts:
+		return m.OldAttempts(ctx)
+	case knowledgewritebackoutbox.FieldLastError:
+		return m.OldLastError(ctx)
+	case knowledgewritebackoutbox.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case knowledgewritebackoutbox.FieldPublishedAt:
+		return m.OldPublishedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown KnowledgeWriteBackOutbox field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *KnowledgeWriteBackOutboxMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case knowledgewritebackoutbox.FieldBatchKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBatchKey(v)
+		return nil
+	case knowledgewritebackoutbox.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
+	case knowledgewritebackoutbox.FieldPayload:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayload(v)
+		return nil
+	case knowledgewritebackoutbox.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case knowledgewritebackoutbox.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
+	case knowledgewritebackoutbox.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case knowledgewritebackoutbox.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case knowledgewritebackoutbox.FieldPublishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublishedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeWriteBackOutbox field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempts != nil {
+		fields = append(fields, knowledgewritebackoutbox.FieldAttempts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *KnowledgeWriteBackOutboxMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case knowledgewritebackoutbox.FieldAttempts:
+		return m.AddedAttempts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *KnowledgeWriteBackOutboxMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case knowledgewritebackoutbox.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeWriteBackOutbox numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *KnowledgeWriteBackOutboxMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(knowledgewritebackoutbox.FieldPublishedAt) {
+		fields = append(fields, knowledgewritebackoutbox.FieldPublishedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *KnowledgeWriteBackOutboxMutation) ClearField(name string) error {
+	switch name {
+	case knowledgewritebackoutbox.FieldPublishedAt:
+		m.ClearPublishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeWriteBackOutbox nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *KnowledgeWriteBackOutboxMutation) ResetField(name string) error {
+	switch name {
+	case knowledgewritebackoutbox.FieldBatchKey:
+		m.ResetBatchKey()
+		return nil
+	case knowledgewritebackoutbox.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
+	case knowledgewritebackoutbox.FieldPayload:
+		m.ResetPayload()
+		return nil
+	case knowledgewritebackoutbox.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case knowledgewritebackoutbox.FieldAttempts:
+		m.ResetAttempts()
+		return nil
+	case knowledgewritebackoutbox.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case knowledgewritebackoutbox.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case knowledgewritebackoutbox.FieldPublishedAt:
+		m.ResetPublishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown KnowledgeWriteBackOutbox field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *KnowledgeWriteBackOutboxMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *KnowledgeWriteBackOutboxMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown KnowledgeWriteBackOutbox unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *KnowledgeWriteBackOutboxMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown KnowledgeWriteBackOutbox edge %s", name)
 }
 
 // LlmProviderModelMutation represents an operation that mutates the LlmProviderModel nodes in the graph.

@@ -46,6 +46,30 @@ func TestAcquireJob_LocalAndDistributed(t *testing.T) {
 	rel()
 }
 
+// G-30：手动治理在途门与同库其他作业键互斥；curate 键同库互斥。
+func TestAcquireJob_CurateKeyScope(t *testing.T) {
+	svc := NewKnowledgeService(nil, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc.SetJobLocker(NewMemKnowledgeJobLocker())
+	// 同库在途 curate → 二次触发 409。
+	rel, err := svc.acquireJob(context.Background(), &svc.curateRuns, "c1", knowledgeCurateJobKey("c1"),
+		"knowledge curate already running for collection %s", "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.acquireJob(context.Background(), &svc.curateRuns, "c1", knowledgeCurateJobKey("c1"),
+		"knowledge curate already running for collection %s", "c1"); !apierror.IsCode(err, apierror.CodeConflict) {
+		t.Fatalf("want Conflict, got %v", err)
+	}
+	// 与 reindex 键分立：同库 reindex 不被 curate 在途阻塞。
+	rel2, err := svc.acquireJob(context.Background(), &svc.reindexRuns, "c1", knowledgeReindexJobKey("c1"),
+		"vault reindex already running for collection %s", "c1")
+	if err != nil {
+		t.Fatalf("reindex key must be disjoint from curate: %v", err)
+	}
+	rel2()
+	rel()
+}
+
 func TestNewKnowledgeService_BindsWriteBackReplay(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)

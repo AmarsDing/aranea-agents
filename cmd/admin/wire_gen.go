@@ -671,9 +671,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryFactPendingNotifier := provideMemoryFactPendingNotifier(loggatewayLogger)
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, memoryFactPendingNotifier, memoryFactSessionGrants, loggatewayLogger)
 	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
+	v55 := data.NewKnowledgeWriteBackOutboxRepoFromData(dataData)
 	writeBackArbiter := provideKnowledgeWriteBackArbiter(v35, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	mainKnowledgeDistillWiring := provideKnowledgeDistillWiring(v35, memoryAdminUsecase, dataData)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, v33, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, v35, dataData, loggatewayLogger, writeBackArbiter, mainKnowledgeDistillWiring)
+	mainKnowledgeOrgValidatorWiring := provideKnowledgeOrgValidatorWiring(v35, organizationRepo)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, v33, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, v55, v35, dataData, loggatewayLogger, writeBackArbiter, mainKnowledgeDistillWiring, mainKnowledgeOrgValidatorWiring)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -711,6 +713,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, relationExtractor, v35, loggatewayLogger)
 	knowledgeIndexRepairWorker := provideKnowledgeIndexRepairWorker(knowledgeService, loggatewayLogger)
 	knowledgeCurateWorker := provideKnowledgeCurateWorker(v35, loggatewayLogger)
+	knowledgeWriteBackSweeperWorker := provideKnowledgeWriteBackSweeperWorker(v55, knowledgeService, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
 	memoryEpisodeBackfillReader := data.NewMemoryEpisodeBackfillReaderAdapter(dataData)
 	memoryEpisodeBackfillWorker := provideMemoryEpisodeBackfillWorker(memoryEpisodeBackfillReader, episodeIndexSyncer, systemSettingRepo, memoryWorkerStats, loggatewayLogger)
@@ -762,7 +765,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, v51, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, v50, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, v51, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, v50, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -2063,6 +2066,7 @@ func provideAutoMemoryWorker(
 	caseReader biz.AgentCaseReader,
 	caseWriter biz.AgentCaseWriter,
 	writeBack biz.KnowledgeWriteBack,
+	writeBackOutbox biz.KnowledgeWriteBackOutboxRepo,
 	uc *biz.KnowledgeUsecase,
 	d *data.Data,
 	lg loggateway.Logger,
@@ -2070,6 +2074,8 @@ func provideAutoMemoryWorker(
 	writeBackArbiter *knowledge.WriteBackArbiter,
 
 	distillWiring *knowledgeDistillWiring,
+
+	orgValidatorWiring *knowledgeOrgValidatorWiring,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
 		ks.SetAgentMemoryProjector(knowledge2.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
@@ -2102,6 +2108,7 @@ func provideAutoMemoryWorker(
 		CaseWriter:      caseWriter,
 		WriteBack:       writeBack,
 		ReviewQueue:     review,
+		WriteBackOutbox: writeBackOutbox,
 		MemoryProjector: proj,
 		Logger:          lg,
 	})
@@ -2586,6 +2593,17 @@ func provideKnowledgeCurateWorker(
 	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
 }
 
+// provideKnowledgeWriteBackSweeperWorker G-10：写回重试队列重放（AS-EVT-01
+// Important 分级——AutoMemory 写回失败已落 knowledge_writeback_outbox，本
+// worker 周期重投 WriteBackSessionFacts）。
+func provideKnowledgeWriteBackSweeperWorker(
+	outbox biz.KnowledgeWriteBackOutboxRepo,
+	writeBack biz.KnowledgeWriteBack,
+	lg loggateway.Logger,
+) *jobs.KnowledgeWriteBackSweeperWorker {
+	return jobs.NewKnowledgeWriteBackSweeperWorker(0, outbox, writeBack, lg)
+}
+
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
 type knowledgeDistillWiring struct{}
 
@@ -2629,6 +2647,25 @@ func provideKnowledgeDistillWiring(uc *biz.KnowledgeUsecase, admin *biz.MemoryAd
 	}
 	uc.SetDistillRepos(hot, knowledgeDistillFactWriter{admin: admin})
 	return &knowledgeDistillWiring{}
+}
+
+// knowledgeOrgValidatorWiring G-08 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeOrgValidatorWiring struct{}
+
+// provideKnowledgeOrgValidatorWiring 装配 G-08 部门级可见性校验口：回注
+// KnowledgeUsecase（Set 副作用，与 provideKnowledgeDistillWiring 同模式——
+// OrganizationRepo 与 KnowledgeUsecase 存在构造期环依赖）。orgRepo 断言
+// bizknowledge.OrgNodeValidator；任一缺席返回 nil（shared 档更新拒收
+// Unavailable，fail-closed，无越权风险）。注：手改 wire_gen.go 注入即等价
+// 代码，但任何 go generate 重生成都会静默丢弃——必须走本 provider 入图。
+func provideKnowledgeOrgValidatorWiring(uc *biz.KnowledgeUsecase, orgRepo biz.OrganizationRepo) *knowledgeOrgValidatorWiring {
+	if uc == nil || orgRepo == nil {
+		return nil
+	}
+	if v, ok := orgRepo.(knowledge2.OrgNodeValidator); ok {
+		uc.SetOrgNodeValidator(v)
+	}
+	return &knowledgeOrgValidatorWiring{}
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -3767,6 +3804,7 @@ type wireOut struct {
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
 	KnowledgeCurate             *jobs.KnowledgeCurateWorker
+	KnowledgeWriteBackSweeper   *jobs.KnowledgeWriteBackSweeperWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3829,6 +3867,7 @@ func provideWireOut(
 	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	knowledgeIndexRepair *jobs.KnowledgeIndexRepairWorker,
 	knowledgeCurate *jobs.KnowledgeCurateWorker,
+	knowledgeWriteBackSweeper *jobs.KnowledgeWriteBackSweeperWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3876,6 +3915,7 @@ func provideWireOut(
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		KnowledgeIndexRepair:        knowledgeIndexRepair,
 		KnowledgeCurate:             knowledgeCurate,
+		KnowledgeWriteBackSweeper:   knowledgeWriteBackSweeper,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,

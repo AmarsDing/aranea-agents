@@ -61,7 +61,9 @@ import (
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
+	"aranea-agents/internal/data/ent/knowledgeaccesslog"
 	"aranea-agents/internal/data/ent/knowledgelinkused"
+	"aranea-agents/internal/data/ent/knowledgewritebackoutbox"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
@@ -235,8 +237,12 @@ type Client struct {
 	GraphTaskRun *GraphTaskRunClient
 	// HealRecord is the client for interacting with the HealRecord builders.
 	HealRecord *HealRecordClient
+	// KnowledgeAccessLog is the client for interacting with the KnowledgeAccessLog builders.
+	KnowledgeAccessLog *KnowledgeAccessLogClient
 	// KnowledgeLinkUsed is the client for interacting with the KnowledgeLinkUsed builders.
 	KnowledgeLinkUsed *KnowledgeLinkUsedClient
+	// KnowledgeWriteBackOutbox is the client for interacting with the KnowledgeWriteBackOutbox builders.
+	KnowledgeWriteBackOutbox *KnowledgeWriteBackOutboxClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
 	// MediaProvider is the client for interacting with the MediaProvider builders.
@@ -416,7 +422,9 @@ func (c *Client) init() {
 	c.GraphTaskLog = NewGraphTaskLogClient(c.config)
 	c.GraphTaskRun = NewGraphTaskRunClient(c.config)
 	c.HealRecord = NewHealRecordClient(c.config)
+	c.KnowledgeAccessLog = NewKnowledgeAccessLogClient(c.config)
 	c.KnowledgeLinkUsed = NewKnowledgeLinkUsedClient(c.config)
+	c.KnowledgeWriteBackOutbox = NewKnowledgeWriteBackOutboxClient(c.config)
 	c.LlmProviderModel = NewLlmProviderModelClient(c.config)
 	c.MediaProvider = NewMediaProviderClient(c.config)
 	c.MemberSessionV2 = NewMemberSessionV2Client(c.config)
@@ -618,7 +626,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GraphTaskLog:               NewGraphTaskLogClient(cfg),
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
+		KnowledgeAccessLog:         NewKnowledgeAccessLogClient(cfg),
 		KnowledgeLinkUsed:          NewKnowledgeLinkUsedClient(cfg),
+		KnowledgeWriteBackOutbox:   NewKnowledgeWriteBackOutboxClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
 		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
@@ -747,7 +757,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GraphTaskLog:               NewGraphTaskLogClient(cfg),
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
+		KnowledgeAccessLog:         NewKnowledgeAccessLogClient(cfg),
 		KnowledgeLinkUsed:          NewKnowledgeLinkUsedClient(cfg),
+		KnowledgeWriteBackOutbox:   NewKnowledgeWriteBackOutboxClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
 		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
@@ -848,7 +860,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
 		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
 		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
+		c.HealRecord, c.KnowledgeAccessLog, c.KnowledgeLinkUsed,
+		c.KnowledgeWriteBackOutbox, c.LlmProviderModel, c.MediaProvider,
 		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
 		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
 		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
@@ -885,7 +898,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
 		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
 		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
+		c.HealRecord, c.KnowledgeAccessLog, c.KnowledgeLinkUsed,
+		c.KnowledgeWriteBackOutbox, c.LlmProviderModel, c.MediaProvider,
 		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
 		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
 		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
@@ -1009,8 +1023,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GraphTaskRun.mutate(ctx, m)
 	case *HealRecordMutation:
 		return c.HealRecord.mutate(ctx, m)
+	case *KnowledgeAccessLogMutation:
+		return c.KnowledgeAccessLog.mutate(ctx, m)
 	case *KnowledgeLinkUsedMutation:
 		return c.KnowledgeLinkUsed.mutate(ctx, m)
+	case *KnowledgeWriteBackOutboxMutation:
+		return c.KnowledgeWriteBackOutbox.mutate(ctx, m)
 	case *LlmProviderModelMutation:
 		return c.LlmProviderModel.mutate(ctx, m)
 	case *MediaProviderMutation:
@@ -7912,6 +7930,139 @@ func (c *HealRecordClient) mutate(ctx context.Context, m *HealRecordMutation) (V
 	}
 }
 
+// KnowledgeAccessLogClient is a client for the KnowledgeAccessLog schema.
+type KnowledgeAccessLogClient struct {
+	config
+}
+
+// NewKnowledgeAccessLogClient returns a client for the KnowledgeAccessLog from the given config.
+func NewKnowledgeAccessLogClient(c config) *KnowledgeAccessLogClient {
+	return &KnowledgeAccessLogClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `knowledgeaccesslog.Hooks(f(g(h())))`.
+func (c *KnowledgeAccessLogClient) Use(hooks ...Hook) {
+	c.hooks.KnowledgeAccessLog = append(c.hooks.KnowledgeAccessLog, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `knowledgeaccesslog.Intercept(f(g(h())))`.
+func (c *KnowledgeAccessLogClient) Intercept(interceptors ...Interceptor) {
+	c.inters.KnowledgeAccessLog = append(c.inters.KnowledgeAccessLog, interceptors...)
+}
+
+// Create returns a builder for creating a KnowledgeAccessLog entity.
+func (c *KnowledgeAccessLogClient) Create() *KnowledgeAccessLogCreate {
+	mutation := newKnowledgeAccessLogMutation(c.config, OpCreate)
+	return &KnowledgeAccessLogCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of KnowledgeAccessLog entities.
+func (c *KnowledgeAccessLogClient) CreateBulk(builders ...*KnowledgeAccessLogCreate) *KnowledgeAccessLogCreateBulk {
+	return &KnowledgeAccessLogCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *KnowledgeAccessLogClient) MapCreateBulk(slice any, setFunc func(*KnowledgeAccessLogCreate, int)) *KnowledgeAccessLogCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &KnowledgeAccessLogCreateBulk{err: fmt.Errorf("calling to KnowledgeAccessLogClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*KnowledgeAccessLogCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &KnowledgeAccessLogCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for KnowledgeAccessLog.
+func (c *KnowledgeAccessLogClient) Update() *KnowledgeAccessLogUpdate {
+	mutation := newKnowledgeAccessLogMutation(c.config, OpUpdate)
+	return &KnowledgeAccessLogUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *KnowledgeAccessLogClient) UpdateOne(_m *KnowledgeAccessLog) *KnowledgeAccessLogUpdateOne {
+	mutation := newKnowledgeAccessLogMutation(c.config, OpUpdateOne, withKnowledgeAccessLog(_m))
+	return &KnowledgeAccessLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *KnowledgeAccessLogClient) UpdateOneID(id int64) *KnowledgeAccessLogUpdateOne {
+	mutation := newKnowledgeAccessLogMutation(c.config, OpUpdateOne, withKnowledgeAccessLogID(id))
+	return &KnowledgeAccessLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for KnowledgeAccessLog.
+func (c *KnowledgeAccessLogClient) Delete() *KnowledgeAccessLogDelete {
+	mutation := newKnowledgeAccessLogMutation(c.config, OpDelete)
+	return &KnowledgeAccessLogDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *KnowledgeAccessLogClient) DeleteOne(_m *KnowledgeAccessLog) *KnowledgeAccessLogDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *KnowledgeAccessLogClient) DeleteOneID(id int64) *KnowledgeAccessLogDeleteOne {
+	builder := c.Delete().Where(knowledgeaccesslog.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &KnowledgeAccessLogDeleteOne{builder}
+}
+
+// Query returns a query builder for KnowledgeAccessLog.
+func (c *KnowledgeAccessLogClient) Query() *KnowledgeAccessLogQuery {
+	return &KnowledgeAccessLogQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeKnowledgeAccessLog},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a KnowledgeAccessLog entity by its id.
+func (c *KnowledgeAccessLogClient) Get(ctx context.Context, id int64) (*KnowledgeAccessLog, error) {
+	return c.Query().Where(knowledgeaccesslog.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *KnowledgeAccessLogClient) GetX(ctx context.Context, id int64) *KnowledgeAccessLog {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *KnowledgeAccessLogClient) Hooks() []Hook {
+	return c.hooks.KnowledgeAccessLog
+}
+
+// Interceptors returns the client interceptors.
+func (c *KnowledgeAccessLogClient) Interceptors() []Interceptor {
+	return c.inters.KnowledgeAccessLog
+}
+
+func (c *KnowledgeAccessLogClient) mutate(ctx context.Context, m *KnowledgeAccessLogMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&KnowledgeAccessLogCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&KnowledgeAccessLogUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&KnowledgeAccessLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&KnowledgeAccessLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown KnowledgeAccessLog mutation op: %q", m.Op())
+	}
+}
+
 // KnowledgeLinkUsedClient is a client for the KnowledgeLinkUsed schema.
 type KnowledgeLinkUsedClient struct {
 	config
@@ -8042,6 +8193,139 @@ func (c *KnowledgeLinkUsedClient) mutate(ctx context.Context, m *KnowledgeLinkUs
 		return (&KnowledgeLinkUsedDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown KnowledgeLinkUsed mutation op: %q", m.Op())
+	}
+}
+
+// KnowledgeWriteBackOutboxClient is a client for the KnowledgeWriteBackOutbox schema.
+type KnowledgeWriteBackOutboxClient struct {
+	config
+}
+
+// NewKnowledgeWriteBackOutboxClient returns a client for the KnowledgeWriteBackOutbox from the given config.
+func NewKnowledgeWriteBackOutboxClient(c config) *KnowledgeWriteBackOutboxClient {
+	return &KnowledgeWriteBackOutboxClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `knowledgewritebackoutbox.Hooks(f(g(h())))`.
+func (c *KnowledgeWriteBackOutboxClient) Use(hooks ...Hook) {
+	c.hooks.KnowledgeWriteBackOutbox = append(c.hooks.KnowledgeWriteBackOutbox, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `knowledgewritebackoutbox.Intercept(f(g(h())))`.
+func (c *KnowledgeWriteBackOutboxClient) Intercept(interceptors ...Interceptor) {
+	c.inters.KnowledgeWriteBackOutbox = append(c.inters.KnowledgeWriteBackOutbox, interceptors...)
+}
+
+// Create returns a builder for creating a KnowledgeWriteBackOutbox entity.
+func (c *KnowledgeWriteBackOutboxClient) Create() *KnowledgeWriteBackOutboxCreate {
+	mutation := newKnowledgeWriteBackOutboxMutation(c.config, OpCreate)
+	return &KnowledgeWriteBackOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of KnowledgeWriteBackOutbox entities.
+func (c *KnowledgeWriteBackOutboxClient) CreateBulk(builders ...*KnowledgeWriteBackOutboxCreate) *KnowledgeWriteBackOutboxCreateBulk {
+	return &KnowledgeWriteBackOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *KnowledgeWriteBackOutboxClient) MapCreateBulk(slice any, setFunc func(*KnowledgeWriteBackOutboxCreate, int)) *KnowledgeWriteBackOutboxCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &KnowledgeWriteBackOutboxCreateBulk{err: fmt.Errorf("calling to KnowledgeWriteBackOutboxClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*KnowledgeWriteBackOutboxCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &KnowledgeWriteBackOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for KnowledgeWriteBackOutbox.
+func (c *KnowledgeWriteBackOutboxClient) Update() *KnowledgeWriteBackOutboxUpdate {
+	mutation := newKnowledgeWriteBackOutboxMutation(c.config, OpUpdate)
+	return &KnowledgeWriteBackOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *KnowledgeWriteBackOutboxClient) UpdateOne(_m *KnowledgeWriteBackOutbox) *KnowledgeWriteBackOutboxUpdateOne {
+	mutation := newKnowledgeWriteBackOutboxMutation(c.config, OpUpdateOne, withKnowledgeWriteBackOutbox(_m))
+	return &KnowledgeWriteBackOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *KnowledgeWriteBackOutboxClient) UpdateOneID(id int64) *KnowledgeWriteBackOutboxUpdateOne {
+	mutation := newKnowledgeWriteBackOutboxMutation(c.config, OpUpdateOne, withKnowledgeWriteBackOutboxID(id))
+	return &KnowledgeWriteBackOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for KnowledgeWriteBackOutbox.
+func (c *KnowledgeWriteBackOutboxClient) Delete() *KnowledgeWriteBackOutboxDelete {
+	mutation := newKnowledgeWriteBackOutboxMutation(c.config, OpDelete)
+	return &KnowledgeWriteBackOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *KnowledgeWriteBackOutboxClient) DeleteOne(_m *KnowledgeWriteBackOutbox) *KnowledgeWriteBackOutboxDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *KnowledgeWriteBackOutboxClient) DeleteOneID(id int64) *KnowledgeWriteBackOutboxDeleteOne {
+	builder := c.Delete().Where(knowledgewritebackoutbox.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &KnowledgeWriteBackOutboxDeleteOne{builder}
+}
+
+// Query returns a query builder for KnowledgeWriteBackOutbox.
+func (c *KnowledgeWriteBackOutboxClient) Query() *KnowledgeWriteBackOutboxQuery {
+	return &KnowledgeWriteBackOutboxQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeKnowledgeWriteBackOutbox},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a KnowledgeWriteBackOutbox entity by its id.
+func (c *KnowledgeWriteBackOutboxClient) Get(ctx context.Context, id int64) (*KnowledgeWriteBackOutbox, error) {
+	return c.Query().Where(knowledgewritebackoutbox.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *KnowledgeWriteBackOutboxClient) GetX(ctx context.Context, id int64) *KnowledgeWriteBackOutbox {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *KnowledgeWriteBackOutboxClient) Hooks() []Hook {
+	return c.hooks.KnowledgeWriteBackOutbox
+}
+
+// Interceptors returns the client interceptors.
+func (c *KnowledgeWriteBackOutboxClient) Interceptors() []Interceptor {
+	return c.inters.KnowledgeWriteBackOutbox
+}
+
+func (c *KnowledgeWriteBackOutboxClient) mutate(ctx context.Context, m *KnowledgeWriteBackOutboxMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&KnowledgeWriteBackOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&KnowledgeWriteBackOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&KnowledgeWriteBackOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&KnowledgeWriteBackOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown KnowledgeWriteBackOutbox mutation op: %q", m.Op())
 	}
 }
 
@@ -15905,10 +16189,11 @@ type (
 		FailurePattern, FederationAuditLog, FederationOrg, FederationPolicy,
 		FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2,
 		GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink,
-		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel,
-		MediaProvider, MemberSessionV2, MemoryFactAllowRule, MemoryFactPending,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
-		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeAccessLog, KnowledgeLinkUsed,
+		KnowledgeWriteBackOutbox, LlmProviderModel, MediaProvider, MemberSessionV2,
+		MemoryFactAllowRule, MemoryFactPending, ModelPricingRule,
+		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
+		PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
 		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
 		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
 		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
@@ -15931,10 +16216,11 @@ type (
 		FailurePattern, FederationAuditLog, FederationOrg, FederationPolicy,
 		FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2,
 		GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink,
-		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel,
-		MediaProvider, MemberSessionV2, MemoryFactAllowRule, MemoryFactPending,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
-		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		GraphTaskLog, GraphTaskRun, HealRecord, KnowledgeAccessLog, KnowledgeLinkUsed,
+		KnowledgeWriteBackOutbox, LlmProviderModel, MediaProvider, MemberSessionV2,
+		MemoryFactAllowRule, MemoryFactPending, ModelPricingRule,
+		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
+		PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
 		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
 		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
 		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,

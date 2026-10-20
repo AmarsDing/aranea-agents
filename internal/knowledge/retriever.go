@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
@@ -82,7 +83,7 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	defer observeSearchStage(searchStageTotal, totalStart)
 	chunks, err := r.search(ctx, q)
 	if err == nil {
-		r.logAccess(ctx, q, chunks)
+		r.logAccess(ctx, q, chunks, time.Since(totalStart))
 	}
 	if r != nil && r.monitorBus != nil {
 		topK := q.TopK
@@ -107,11 +108,13 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 
 // logAccess 异步记录本次命中（P2-c）。持久化延迟不进入检索热路径；
 // 使用 WithoutCancel 保留 workspace/trace values，同时设置短超时避免后台泄漏。
-func (r *Retriever) logAccess(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) {
-	if r == nil || r.accessLog == nil || len(chunks) == 0 {
+// G-15：latency 为检索总时延（含量化与重排），随命中条目落库（审计足迹）。
+func (r *Retriever) logAccess(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk, latency time.Duration) {
+	// G-19：命中调试旁路不写热度日志（防调试流量污染 base-level 信号）。
+	if r == nil || r.accessLog == nil || len(chunks) == 0 || q.SkipAccessLog {
 		return
 	}
-	entries := accessEntriesFromChunks(q.CollectionID, q.Query, chunks)
+	entries := accessEntriesFromChunks(q, newAccessContext(ctx, q, latency), chunks)
 	if len(entries) == 0 {
 		return
 	}
@@ -135,30 +138,59 @@ func accessQueryHash(query string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// accessContext （G-15 审计足迹）：命中日志的请求上下文透传——session/agent
+// 由调用方经 SearchQuery 带入（Agent 工具回调 / cue 预检索），user 缺省时从
+// 请求 ctx 的认证身份回填；latencyMs 为调用方计时的检索总时延。
+type accessContext struct {
+	sessionID string
+	userID    string
+	agentID   string
+	latencyMs int64
+}
+
+func newAccessContext(ctx context.Context, q biz.KnowledgeSearchQuery, latency time.Duration) accessContext {
+	userID := q.UserID
+	if userID == "" {
+		userID = ctxuser.FromContext(ctx)
+	}
+	return accessContext{
+		sessionID: q.SessionID,
+		userID:    userID,
+		agentID:   q.AgentID,
+		latencyMs: latency.Milliseconds(),
+	}
+}
+
 // accessEntriesFromChunks 按 doc 去重构建命中日志条目（同批同 doc 多 chunk 记一次）。
-func accessEntriesFromChunks(collectionID, query string, chunks []biz.KnowledgeChunk) []bizknowledge.AccessLogEntry {
+// G-15：Rank/Score 取该文档首个 chunk 在最终排序中的位置（1-based）与最终排序分。
+func accessEntriesFromChunks(q biz.KnowledgeSearchQuery, ids accessContext, chunks []biz.KnowledgeChunk) []bizknowledge.AccessLogEntry {
 	docSet := make(map[string]struct{}, len(chunks))
-	docIDs := make([]string, 0, len(chunks))
-	for _, ch := range chunks {
+	entries := make([]bizknowledge.AccessLogEntry, 0, len(chunks))
+	for i, ch := range chunks {
 		if ch.DocID == "" {
 			continue
 		}
-		if _, ok := docSet[ch.DocID]; !ok {
-			docSet[ch.DocID] = struct{}{}
-			docIDs = append(docIDs, ch.DocID)
+		if _, ok := docSet[ch.DocID]; ok {
+			continue
 		}
+		docSet[ch.DocID] = struct{}{}
+		entries = append(entries, bizknowledge.AccessLogEntry{
+			CollectionID: q.CollectionID,
+			DocID:        ch.DocID,
+			Rank:         i + 1,
+			Score:        float64(ch.Score),
+		})
 	}
-	if len(docIDs) == 0 {
+	if len(entries) == 0 {
 		return nil
 	}
-	queryHash := accessQueryHash(query)
-	entries := make([]bizknowledge.AccessLogEntry, 0, len(docIDs))
-	for _, id := range docIDs {
-		entries = append(entries, bizknowledge.AccessLogEntry{
-			CollectionID: collectionID,
-			DocID:        id,
-			QueryHash:    queryHash,
-		})
+	queryHash := accessQueryHash(q.Query)
+	for i := range entries {
+		entries[i].QueryHash = queryHash
+		entries[i].SessionID = ids.sessionID
+		entries[i].UserID = ids.userID
+		entries[i].AgentID = ids.agentID
+		entries[i].LatencyMs = ids.latencyMs
 	}
 	return entries
 }
@@ -253,7 +285,34 @@ func (r *Retriever) RerankChunks(ctx context.Context, q biz.KnowledgeSearchQuery
 			loggateway.Str("collection_id", q.CollectionID))
 		return trimChunks(chunks, topK), nil
 	}
-	return rerankerResultsToChunks(reranked, topK), nil
+	return mergeScoreBreakdown(rerankerResultsToChunks(reranked, topK), chunks), nil
+}
+
+// mergeScoreBreakdown（G-12 命中调试）：reranker 结果只带 ID/Content/新分——
+// 从融合前候选集并回分路分解与被丢弃的 MetadataJSON；RerankScore=重排后分数。
+func mergeScoreBreakdown(reranked, originals []biz.KnowledgeChunk) []biz.KnowledgeChunk {
+	if len(originals) == 0 {
+		return reranked
+	}
+	byID := make(map[string]biz.KnowledgeChunk, len(originals))
+	for _, o := range originals {
+		byID[o.ID] = o
+	}
+	for i := range reranked {
+		reranked[i].RerankScore = reranked[i].Score
+		o, ok := byID[reranked[i].ID]
+		if !ok {
+			continue
+		}
+		reranked[i].MetadataJSON = o.MetadataJSON
+		reranked[i].DenseScore = o.DenseScore
+		reranked[i].SparseScore = o.SparseScore
+		reranked[i].RRFScore = o.RRFScore
+		// G-06：reranker 结果只带 ID/Content/新分，ParentChunkID 必须从融合前
+		// 候选集并回——否则重排后 Router 尾步回填父块语境的唯一触发键丢失（对抗评审 F2）。
+		reranked[i].ParentChunkID = o.ParentChunkID
+	}
+	return reranked
 }
 
 func (r *Retriever) shouldRerank(q biz.KnowledgeSearchQuery) bool {

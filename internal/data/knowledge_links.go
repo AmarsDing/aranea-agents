@@ -159,6 +159,7 @@ func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, link
 
 // ListCollectionLinks 列出库内全部关联（G4-B8 图谱数据源）；linkTypes 空 = 全部类型。
 // 按 id 有序保证返回稳定；路径前缀过滤在 biz 层按文档集裁剪（端点须在范围内）。
+// ACL：双端点须对 ctx 可见（与 ListLinks/ListActiveLinks 同规，防私有文档边泄露进图谱）。
 func (r *knowledgeRepo) ListCollectionLinks(ctx context.Context, collectionID string, linkTypes []string) ([]bizknowledge.Link, error) {
 	q := `SELECT id, collection_id, doc_id, target_doc_id, link_type, context, weight
 		FROM knowledge_links
@@ -168,6 +169,9 @@ func (r *knowledgeRepo) ListCollectionLinks(ctx context.Context, collectionID st
 		q += ` AND link_type = ANY($2)`
 		args = append(args, pq.Array(linkTypes))
 	}
+	acl, aclArgs := docBothEndpointsVisibleClause(ctx, "$1", len(args)+1)
+	q += " " + acl
+	args = append(args, aclArgs...)
 	q += ` ORDER BY id`
 	rows, err := r.data.PostgresRead().QueryContext(ctx, q, args...)
 	if err != nil {

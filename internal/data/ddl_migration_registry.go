@@ -572,24 +572,45 @@ var ddlMigrations = []ddlMigration{
 	// 按 team_run_v2_id 精确 join，取代时间窗对齐。
 	{Version: 20261274, Name: "team_runs_v2_bridge", SQL: "sql/migrations/20261274_team_runs_v2_bridge.sql"},
 	// 20261276 steps_v2_updated_at（P4-1 行级新鲜度）：steps_v2 添加
-    // updated_at（ent UpdateDefault 每次写入自动刷新），idle 探测信号升级为
-    // GREATEST(started_at, updated_at)。
-    {Version: 20261276, Name: "steps_v2_updated_at", SQL: "sql/migrations/20261276_steps_v2_updated_at.sql"},
-    // 20261277 team_runs_v2_heartbeat（P2-1 持久化心跳）：runner 流式节流写
-    // heartbeat_at；idle 探测取 max(steps.started_at, heartbeat_at)，根治长
-    // 流式生成误判 idle（P3-C）。原编号 20261275 与 SeedPackTwinMonitorV1
-    // 撞号（schema_migrations 版本全局唯一），重编号至 20261277。
-    {Version: 20261277, Name: "team_runs_v2_heartbeat", SQL: "sql/migrations/20261277_team_runs_v2_heartbeat.sql"},
-    // 20261278 skill_invocation_analysis_retry（审计 W5② 报告分析队列死信）：
-    // analysis_attempts/analysis_error 两列——GenerateReport 失败行的重试计数
-    // 与最近错误；ListUnanalyzed 谓词排除 attempts 达上限的行，根治「永久失败
-    // 毒行按 created_at ASC 每轮重扫 + 积压 100 条队头阻塞」。
-    {Version: 20261278, Name: "skill_invocation_analysis_retry", SQL: "sql/migrations/20261278_skill_invocation_analysis_retry.sql"},
-    // 20261279 tool_invocations_workspace（A2，tools 端到端审计跟进）：tool_invocations
-    // 加 workspace_id 列 + (workspace_id, started_at) 索引 + 自 agents 表按 agent_id
-    // backfill；宿主缺失行保持 ''（仅系统调用方在 KPI 聚合可见）。Postgres-only
-    // （SQLite/测试由 Ent schema 建列）；不加 RLS（本表租户边界一直在 service 层）。
-    {Version: 20261279, Name: "tool_invocations_workspace", Func: ddlToolInvocationsWorkspace},
+	// updated_at（ent UpdateDefault 每次写入自动刷新），idle 探测信号升级为
+	// GREATEST(started_at, updated_at)。
+	{Version: 20261276, Name: "steps_v2_updated_at", SQL: "sql/migrations/20261276_steps_v2_updated_at.sql"},
+	// 20261277 team_runs_v2_heartbeat（P2-1 持久化心跳）：runner 流式节流写
+	// heartbeat_at；idle 探测取 max(steps.started_at, heartbeat_at)，根治长
+	// 流式生成误判 idle（P3-C）。原编号 20261275 与 SeedPackTwinMonitorV1
+	// 撞号（schema_migrations 版本全局唯一），重编号至 20261277。
+	{Version: 20261277, Name: "team_runs_v2_heartbeat", SQL: "sql/migrations/20261277_team_runs_v2_heartbeat.sql"},
+	// 20261278 skill_invocation_analysis_retry（审计 W5② 报告分析队列死信）：
+	// analysis_attempts/analysis_error 两列——GenerateReport 失败行的重试计数
+	// 与最近错误；ListUnanalyzed 谓词排除 attempts 达上限的行，根治「永久失败
+	// 毒行按 created_at ASC 每轮重扫 + 积压 100 条队头阻塞」。
+	{Version: 20261278, Name: "skill_invocation_analysis_retry", SQL: "sql/migrations/20261278_skill_invocation_analysis_retry.sql"},
+	// 20261279 tool_invocations_workspace（A2，tools 端到端审计跟进）：tool_invocations
+	// 加 workspace_id 列 + (workspace_id, started_at) 索引 + 自 agents 表按 agent_id
+	// backfill；宿主缺失行保持 ''（仅系统调用方在 KPI 聚合可见）。Postgres-only
+	// （SQLite/测试由 Ent schema 建列）；不加 RLS（本表租户边界一直在 service 层）。
+	{Version: 20261279, Name: "tool_invocations_workspace", Func: ddlToolInvocationsWorkspace},
+	// 20261280 knowledge_writeback_outbox（G-10，2026-10-19）：AutoMemory 写回
+	// 团队库失败仅 Warn 即永久丢失（违反 AS-EVT-01 Important 分级）。写回批次
+	// 重试队列——失败落 payload，knowledge_writeback worker 周期重放，触达
+	// attempts 上限翻 dead；batch_key 幂等键（模式复用 decision_record_outbox）。
+	{Version: 20261280, Name: "knowledge_writeback_outbox", SQL: "sql/migrations/20261280_knowledge_writeback_outbox.sql"},
+	// 20261282 knowledge_access_log_columns（G-15，2026-10-19）：access_log 此前
+	// 只落 collection/doc/query_hash，session_id 列建了从不写。补 user/agent/
+	// rank/score/latency 列并接通写入（检索命中路径透传请求上下文），为「我的
+	// 足迹」与审计查询建 (user_id, accessed_at DESC) 索引。20261281 为
+	// twinmonitor 种子重编号（schema_migrations 版本全局唯一）。
+	{Version: 20261282, Name: "knowledge_access_log_columns", SQL: "sql/migrations/20261282_knowledge_access_log_columns.sql"},
+	// 20261283 knowledge_parent_child（G-06，2026-10-20）：knowledge_chunks 增
+	// parent_chunk_id/chunk_role（父块语境行不入召回，部分索引支撑回填批量取）；
+	// knowledge_documents 落库摄取生效的分块三元组（reembed 保形）。父子一致性由
+	// 应用层 CommitIndexedDocument 单事务保证，不加自引用 FK。
+	{Version: 20261283, Name: "knowledge_parent_child", SQL: "sql/migrations/20261283_knowledge_parent_child.sql"},
+	// 20261284 knowledge_shared_visibility（G-08，2026-10-20）：knowledge_documents
+	// 增 shared_with TEXT[]（visibility='shared' 的 org 部门/岗位名单）+ GIN
+	// 重叠索引（谓词 `shared_with && $n`）。TEXT[] 为 knowledge 域数组先例
+	// （heading_path），JSON-in-TEXT 双方言惯例不适用于 PG-only 域。
+	{Version: 20261284, Name: "knowledge_shared_visibility", SQL: "sql/migrations/20261284_knowledge_shared_visibility.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

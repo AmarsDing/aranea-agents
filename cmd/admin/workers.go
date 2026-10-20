@@ -69,6 +69,7 @@ type backgroundWorkersConfig struct {
 	KnowledgeRelationExtract    BackgroundStarter
 	KnowledgeIndexRepair        BackgroundStarter
 	KnowledgeCurate             BackgroundStarter
+	KnowledgeWriteBackSweeper   BackgroundStarter
 	MemorySleepTime             BackgroundStarter
 	MemoryEpisodeBackfill       BackgroundStarter
 	MemoryFactIndexReconciler   BackgroundStarter
@@ -128,6 +129,7 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		KnowledgeRelationExtract:    out.KnowledgeRelationExtract,
 		KnowledgeIndexRepair:        out.KnowledgeIndexRepair,
 		KnowledgeCurate:             out.KnowledgeCurate,
+		KnowledgeWriteBackSweeper:   out.KnowledgeWriteBackSweeper,
 		MemorySleepTime:             out.MemorySleepTime,
 		MemoryEpisodeBackfill:       out.MemoryEpisodeBackfill,
 		MemoryFactIndexReconciler:   out.MemoryFactIndexReconciler,
@@ -395,6 +397,11 @@ func startBackgroundWorkers(
 	if cfg.KnowledgeCurate != nil {
 		goAfterReady("knowledge_curate", func() { cfg.KnowledgeCurate.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "knowledge curate worker scheduled", "interval", "6h")
+	}
+
+	if cfg.KnowledgeWriteBackSweeper != nil {
+		goAfterReady("knowledge_writeback_sweeper", func() { cfg.KnowledgeWriteBackSweeper.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "knowledge writeback sweeper worker scheduled", "interval", "2m")
 	}
 
 	if cfg.MemorySleepTime != nil {

@@ -71,6 +71,13 @@ func NewKnowledgeAdaptiveRouter(hybrid *knowledge.HybridRetriever, rewriter *kno
 		lg.Info("Hebbian 共激活未接线：repo 未实现 CoActivationRepo",
 			loggateway.StepID("knowledge.coactivation.init_skip"))
 	}
+	// G-06：repo 实现 ParentContextResolver 时接线父块语境回填（Search 尾步）。
+	if parents, ok := repo.(knowledge.ParentContextResolver); ok {
+		router.SetParentContextResolver(parents)
+	} else {
+		lg.Info("父块语境回填未接线：repo 未实现 ParentContextResolver",
+			loggateway.StepID("knowledge.parent_context.init_skip"))
+	}
 	return router
 }
 

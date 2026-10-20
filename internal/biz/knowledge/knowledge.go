@@ -49,6 +49,9 @@ const (
 const (
 	DocVisibilityCollection = "collection"
 	DocVisibilityPrivate    = "private"
+	// DocVisibilityShared 是 G-08 第三档：属主 + 组织可见域 ∩ SharedWith ≠ ∅ 的
+	// 调用方可见（专项 Agent 按本岗位/本部门命中；人类用户仅属主可见）。
+	DocVisibilityShared = "shared"
 )
 
 // Document is one source document ingested into a collection.
@@ -79,16 +82,25 @@ type Document struct {
 	Tags []string
 	// DocType 是自动分类（report/manual/note/faq…）。
 	DocType string
+	// ChunkStrategy/ChunkSize/ChunkOverlap 是入库时生效的分块参数（G-06 落库）：
+	// reembed 据此保形重嵌；空/0 = 历史行（reembed 回落默认 char+512/64）。
+	ChunkStrategy string
+	ChunkSize     int
+	ChunkOverlap  int
 	// EmbedFailCount 是 embedding 连续失败计数（SP2 #9 熔断）；0 = 熔断关闭。
 	EmbedFailCount int
 	// EmbedLastTried 是最近一次 embed 尝试时间（退避判定依据）；零值 = 从未尝试。
 	EmbedLastTried time.Time
 	CreatedAt      string
 	UpdatedAt      string
-	// Visibility is collection (default, everyone with collection access) or private (owner only).
+	// Visibility is collection (default, everyone with collection access), private
+	// (owner only), or shared (owner + org-scope match, G-08).
 	Visibility string
 	// OwnerUserID is the authenticated user id that marked the document private.
 	OwnerUserID string
+	// SharedWith 是 visibility=shared 时的组织节点 ID 名单（部门/岗位）；
+	// 其余档位恒为空（切档即清，不留隐藏状态）。
+	SharedWith []string
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -101,6 +113,32 @@ type Chunk struct {
 	MetadataJSON string
 	ChunkIndex   int
 	Score        float32
+	// ParentChunkID 父子分块（G-06）：子块所属父块行 ID（<docID>-p-<pidx>）；
+	// "" = 独立块。回填旁路凭此批量取父块正文。
+	ParentChunkID string
+	// IsParent 父块（语境行）标记，仅摄取写路径使用：父块行不入 embed/召回，
+	// 检索返回集恒为子块（本字段读路径恒 false）。
+	IsParent bool
+	// ParentContent 语境回填结果（AdaptiveRouter 尾段按 ParentChunkID 批量取回）：
+	// 纯运行时字段、不持久化；只影响「LLM/用户看到的文本」，引用锚点仍以子块为准。
+	ParentContent string
+	// 分路分数分解（G-12 命中调试）：Score 始终是最终排序键；分解字段仅在产生它
+	// 的通路上有值——单通路检索=该侧原始分；RRF=融合分（此时 Score==RRFScore）；
+	// 经过重排时 RerankScore=重排后分数（此时 Score==RerankScore）。
+	DenseScore  float32
+	SparseScore float32
+	RRFScore    float32
+	RerankScore float32
+}
+
+// DisplayContent 展示用正文：父子分块命中优先父块语境（ParentContent 非空），
+// 否则子块原文——inject cue 与 knowledge_search 工具摘要的唯一取文案规则点。
+// 引用锚点（[n]→子块 id）不受此影响。
+func (ch Chunk) DisplayContent() string {
+	if len(ch.ParentContent) > 0 {
+		return ch.ParentContent
+	}
+	return ch.Content
 }
 
 // SearchQuery holds search parameters.
@@ -119,6 +157,16 @@ type SearchQuery struct {
 	// 的文档不参与检索（字面前缀语义，非目录边界）。用于把写回日记流水
 	// （inbox/writeback-*，仅 provenance）挡在 Agent 默认检索外。
 	ExcludePathPrefixes []string
+	// SkipAccessLog（G-19 hit-test）：命中调试等旁路调用不写热度日志——
+	// 调试流量反复试探同一查询会污染 base-level 激活分与个性化信号。
+	// 不影响排序保真：base-level 历史加成照常被应用。
+	SkipAccessLog bool
+	// G-15 审计足迹：请求上下文透传（仅用于 access_log 记账，不影响检索
+	// 语义）。Agent 路径由工具回调 ctx 透传 session/agent；UserID 缺省时由
+	// 检索层从请求 ctx 的认证身份回填。
+	SessionID string
+	AgentID   string
+	UserID    string
 }
 
 // Repo is the persistence interface for knowledge base operations.
@@ -187,6 +235,16 @@ type ChunkRepo interface {
 // Stability:evolving
 type IngestCommitter interface {
 	CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) error
+}
+
+// DocumentRetryClaimer 原子认领重跑摄取管线的资格（G-21 二轮复核 F5/F6）。
+// 守卫式 UPDATE：error 文档恒可认领；indexing/pending 仅当 updated_at 早于
+// staleBefore（进程重启/panic 停在半路的摄取尸体）。认领失败 = 已有并发
+// 摄取在途持有，调用方不得重跑。可选能力：单测 fakes 不实现时 Usecase 退化
+// 为读取判定（error 视为可认领）。
+// Stability:evolving
+type DocumentRetryClaimer interface {
+	ClaimDocumentRetry(ctx context.Context, id string, staleBefore time.Time) (bool, error)
 }
 
 // Stability:evolving
@@ -555,6 +613,24 @@ func (u *Usecase) CommitIndexedDocument(ctx context.Context, collectionID, docID
 	return u.commitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, nil)
 }
 
+// ClaimDocumentForRetry 原子认领「重跑摄取管线」的资格（G-21 二轮复核 F5/F6）：
+// check-then-spawn 的竞态使并发重试/尸体恢复双双起跑，败者回写 error 踩踏胜者
+// 的 indexed 终态。认领成功前不得启动管线；认领失败 = 在途摄取持有该文档。
+// 单测 fakes（未实现 DocumentRetryClaimer）退化为读取判定：error → 可认领。
+func (u *Usecase) ClaimDocumentForRetry(ctx context.Context, id string, staleBefore time.Time) (bool, error) {
+	if strings.TrimSpace(id) == "" {
+		return false, ErrIDRequired
+	}
+	if rc, ok := u.documents.(DocumentRetryClaimer); ok {
+		return rc.ClaimDocumentRetry(ctx, id, staleBefore)
+	}
+	doc, err := u.documents.GetDocument(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return NormalizeDocumentState(doc.Status) == DocumentStateError, nil
+}
+
 // CommitIndexedDocumentMeta is CommitIndexedDocument plus vault sync meta
 // (content hash / summary card) in the same commit.
 func (u *Usecase) CommitIndexedDocumentMeta(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, meta DocumentSyncMeta) error {
@@ -593,10 +669,18 @@ func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID
 			return err
 		}
 	}
-	if err := u.documents.UpdateDocumentStatus(ctx, docID, string(DocumentStateIndexed), "", len(chunks)); err != nil {
+	// 计数口径 = 子块（G-06）：父块语境行不进 chunk_count，与 IngestCommitter
+	// 快路径的口径一致（该路径在 data 层按 chunk_role='child' 计数）。
+	childCount := 0
+	for _, ch := range chunks {
+		if !ch.IsParent {
+			childCount++
+		}
+	}
+	if err := u.documents.UpdateDocumentStatus(ctx, docID, string(DocumentStateIndexed), "", childCount); err != nil {
 		return err
 	}
-	return u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, len(chunks)-doc.ChunkCount)
+	return u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, childCount-doc.ChunkCount)
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。

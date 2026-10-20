@@ -1801,6 +1801,38 @@ var (
 			},
 		},
 	}
+	// KnowledgeAccessLogColumns holds the columns for the "knowledge_access_log" table.
+	KnowledgeAccessLogColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "collection_id", Type: field.TypeString},
+		{Name: "doc_id", Type: field.TypeString},
+		{Name: "accessed_at", Type: field.TypeTime},
+		{Name: "query_hash", Type: field.TypeString, Nullable: true},
+		{Name: "session_id", Type: field.TypeString, Nullable: true},
+		{Name: "user_id", Type: field.TypeString, Nullable: true, Default: ""},
+		{Name: "agent_id", Type: field.TypeString, Nullable: true, Default: ""},
+		{Name: "rank", Type: field.TypeInt, Default: 0},
+		{Name: "score", Type: field.TypeFloat64, Default: 0},
+		{Name: "latency_ms", Type: field.TypeInt, Default: 0},
+	}
+	// KnowledgeAccessLogTable holds the schema information for the "knowledge_access_log" table.
+	KnowledgeAccessLogTable = &schema.Table{
+		Name:       "knowledge_access_log",
+		Columns:    KnowledgeAccessLogColumns,
+		PrimaryKey: []*schema.Column{KnowledgeAccessLogColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "knowledgeaccesslog_collection_id_doc_id_accessed_at",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgeAccessLogColumns[1], KnowledgeAccessLogColumns[2], KnowledgeAccessLogColumns[3]},
+			},
+			{
+				Name:    "knowledgeaccesslog_user_id_accessed_at",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgeAccessLogColumns[6], KnowledgeAccessLogColumns[3]},
+			},
+		},
+	}
 	// KnowledgeLinkUsedColumns holds the columns for the "knowledge_link_used" table.
 	KnowledgeLinkUsedColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1823,6 +1855,31 @@ var (
 				Name:    "knowledgelinkused_collection_id_last_used_at",
 				Unique:  false,
 				Columns: []*schema.Column{KnowledgeLinkUsedColumns[1], KnowledgeLinkUsedColumns[3]},
+			},
+		},
+	}
+	// KnowledgeWritebackOutboxColumns holds the columns for the "knowledge_writeback_outbox" table.
+	KnowledgeWritebackOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "batch_key", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "last_error", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "published_at", Type: field.TypeTime, Nullable: true},
+	}
+	// KnowledgeWritebackOutboxTable holds the schema information for the "knowledge_writeback_outbox" table.
+	KnowledgeWritebackOutboxTable = &schema.Table{
+		Name:       "knowledge_writeback_outbox",
+		Columns:    KnowledgeWritebackOutboxColumns,
+		PrimaryKey: []*schema.Column{KnowledgeWritebackOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "knowledgewritebackoutbox_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgeWritebackOutboxColumns[4], KnowledgeWritebackOutboxColumns[7]},
 			},
 		},
 	}
@@ -4053,7 +4110,9 @@ var (
 		GraphTaskLogsTable,
 		GraphTaskRunsTable,
 		HealRecordsTable,
+		KnowledgeAccessLogTable,
 		KnowledgeLinkUsedTable,
+		KnowledgeWritebackOutboxTable,
 		LlmProviderModelsTable,
 		MediaProvidersTable,
 		MemberSessionsV2Table,
@@ -4268,8 +4327,14 @@ func init() {
 	HealRecordsTable.Annotation = &entsql.Annotation{
 		Table: "heal_records",
 	}
+	KnowledgeAccessLogTable.Annotation = &entsql.Annotation{
+		Table: "knowledge_access_log",
+	}
 	KnowledgeLinkUsedTable.Annotation = &entsql.Annotation{
 		Table: "knowledge_link_used",
+	}
+	KnowledgeWritebackOutboxTable.Annotation = &entsql.Annotation{
+		Table: "knowledge_writeback_outbox",
 	}
 	LlmProviderModelsTable.Annotation = &entsql.Annotation{
 		Table: "llm_provider_models",

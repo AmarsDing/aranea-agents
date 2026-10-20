@@ -67,8 +67,11 @@ type AutoMemoryWorker struct {
 	caseWriter    biz.AgentCaseWriter
 	writeBack     biz.KnowledgeWriteBack
 	reviewQueue   biz.KnowledgeWriteBackReview
-	memoryProj    biz.KnowledgeAgentMemoryProjector
-	lg            loggateway.Logger
+	// writeBackOutbox G-10：写回失败批次的持久化重试队列（nil 退回 Warn-only
+	// 旧行为——装配期必须注入，否则 AS-EVT-01 Important 分级失守）。
+	writeBackOutbox biz.KnowledgeWriteBackOutboxRepo
+	memoryProj      biz.KnowledgeAgentMemoryProjector
+	lg              loggateway.Logger
 }
 
 // AutoMemoryWorkerConfig holds all dependencies for AutoMemoryWorker.
@@ -106,6 +109,9 @@ type AutoMemoryWorkerConfig struct {
 	WriteBack biz.KnowledgeWriteBack
 	// ReviewQueue 低置信白名单事实进入 pending（US-44；nil 跳过）。
 	ReviewQueue biz.KnowledgeWriteBackReview
+	// WriteBackOutbox G-10：写回失败时落持久化重试队列，由
+	// KnowledgeWriteBackSweeperWorker 周期重放（nil 退回 Warn-only 旧行为）。
+	WriteBackOutbox biz.KnowledgeWriteBackOutboxRepo
 	// MemoryProjector L3 → agents/{id}.md 只读投影（SP7 G1；nil 跳过）。
 	MemoryProjector biz.KnowledgeAgentMemoryProjector
 	Logger          loggateway.Logger
@@ -154,9 +160,10 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		caseExtractor: cfg.CaseExtractor,
 		caseReader:    cfg.CaseReader,
 		caseWriter:    cfg.CaseWriter,
-		writeBack:     cfg.WriteBack,
-		reviewQueue:   cfg.ReviewQueue,
-		memoryProj:    cfg.MemoryProjector,
+		writeBack:       cfg.WriteBack,
+		reviewQueue:     cfg.ReviewQueue,
+		writeBackOutbox: cfg.WriteBackOutbox,
+		memoryProj:      cfg.MemoryProjector,
 		lg:            cfg.Logger,
 	}, nil
 }
@@ -848,17 +855,30 @@ func (w *AutoMemoryWorker) maybeWriteBack(ctx context.Context, sess biz.Session,
 		return
 	}
 	facts := writeBackFactsFromPipeline(candidates, writeRes.FactRows)
-	if _, err := w.writeBack.WriteBackSessionFacts(ctx, biz.KnowledgeWriteBackInput{
+	in := biz.KnowledgeWriteBackInput{
 		Workspace: sess.WorkspaceID,
 		SessionID: sess.ID,
 		AgentID:   sess.AgentID,
 		UserID:    sess.UserID,
 		Facts:     facts,
-	}); err != nil {
+	}
+	if _, err := w.writeBack.WriteBackSessionFacts(ctx, in); err != nil {
 		w.lg.With(loggateway.SessionID(sess.ID)).Warn("知识库写回飞轮失败（记忆主流程不受影响）",
 			loggateway.StepID("knowledge.writeback"),
 			loggateway.Err(err),
 		)
+		// G-10：失败批次落持久化重试队列（AS-EVT-01 Important 分级——不再
+		// Warn 即永久丢失）；batch_key 幂等，同批反复失败不堆行。入队本身再败
+		// 才退回 Warn-only（dead letter，与 decision replay 同语义）。
+		if w.writeBackOutbox != nil {
+			key := biz.KnowledgeWriteBackBatchKey(sess.ID, facts)
+			if qErr := w.writeBackOutbox.EnqueueWriteBackOutbox(ctx, key, in); qErr != nil {
+				w.lg.With(loggateway.SessionID(sess.ID)).Error("知识库写回重试队列入队失败（dead letter）",
+					loggateway.StepID("knowledge.writeback.outbox_dead_letter"),
+					loggateway.Err(qErr),
+				)
+			}
+		}
 	}
 }
 

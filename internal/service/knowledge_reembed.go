@@ -80,7 +80,7 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 			loggateway.StepID("knowledge.reembed.worker_exit"),
 			loggateway.Str("collection_id", col.ID))
 		for _, doc := range docs {
-			s.reembedOneDocument(reembedCtx, uc, embedder, col, doc, req.GetChunkSize(), req.GetChunkOverlap(), flow)
+			s.reembedOneDocument(reembedCtx, uc, embedder, col, doc, req.GetChunkSize(), req.GetChunkOverlap(), req.GetChunkStrategy(), flow)
 		}
 		flow.LogDone("knowledge.reembed.done", "文档重嵌入完成",
 			event.P("collection_id", col.ID),
@@ -150,7 +150,7 @@ func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1
 			loggateway.StepID("knowledge.collection.enable_semantic"),
 			loggateway.Str("collection_id", col.ID))
 		for _, doc := range docs {
-			s.reembedOneDocument(reembedCtx, uc, embedder, col, doc, 0, 0, flow)
+			s.reembedOneDocument(reembedCtx, uc, embedder, col, doc, 0, 0, "", flow)
 		}
 		flow.LogDone("knowledge.collection.enable_semantic", "集合语义层启用",
 			event.P("collection_id", col.ID),
@@ -198,7 +198,7 @@ func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, li
 			if repaired+failed >= limit {
 				break
 			}
-			if s.reembedOneDocument(ctx, s.uc, embedder, col, doc, 0, 0, flow) {
+			if s.reembedOneDocument(ctx, s.uc, embedder, col, doc, 0, 0, "", flow) {
 				repaired++
 			} else {
 				failed++
@@ -209,9 +209,13 @@ func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, li
 }
 
 // reembedOneDocument 单文档串行管线：indexing+WS → BuildIndexedChunks(content_text)
-// → CommitIndexedDocument（同一事务删旧插新 + indexed + 计数）。失败置 error 由调用方继续下一篇。
+// → CommitIndexedDocument（同一事务删旧插新 + indexed + 子块计数）。失败置 error 由调用方继续下一篇。
 // 分块失败时旧 chunks 仍在。不触发 RebuildBlockIndex（content_text 未变）。
-func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, flow *event.TraceEmitter) bool {
+// 分块形状三级回退（G-06，修复重嵌恒 char+512/64 丢形状的存量 bug）：
+// 显式入参（chunkStrategy/chunkSize/chunkOverlap 非空/非零）> 文档摄取落库形状
+// > 包默认（char + 512/64）。req 覆盖为一次性生效，不回写文档形状列；
+// parent_chunk_size 不落库，parent_child 重嵌归一为 4×chunk_size。
+func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, chunkStrategy string, flow *event.TraceEmitter) bool {
 	release, err := s.acquireJob(ctx, &s.reembedRuns, doc.ID, knowledgeReembedJobKey(doc.ID),
 		"reembed already running for document %s", doc.ID)
 	if err != nil {
@@ -254,18 +258,41 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 	}
 	s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
 
+	// 形状三级回退：req 显式 > 文档摄取落库 > 包默认（ApplyDefaults）。
+	strategy := knowledge.ChunkStrategy("")
+	if raw := strings.TrimSpace(chunkStrategy); raw != "" {
+		strategy = knowledge.ParseChunkStrategy(raw)
+	} else if raw := strings.TrimSpace(doc.ChunkStrategy); raw != "" {
+		strategy = knowledge.ParseChunkStrategy(raw)
+	}
+	size := int(chunkSize)
+	if size <= 0 && doc.ChunkSize > 0 {
+		size = doc.ChunkSize
+	}
+	overlap := int(chunkOverlap)
+	if overlap <= 0 && doc.ChunkOverlap > 0 {
+		overlap = doc.ChunkOverlap
+	}
+
 	params := knowledge.IngestParams{
 		DocID:        doc.ID,
 		CollectionID: col.ID,
 		Text:         doc.ContentText,
-		ChunkSize:    int(chunkSize),
-		ChunkOverlap: int(chunkOverlap),
+		ChunkSize:    size,
+		ChunkOverlap: overlap,
+		Strategy:     strategy,
 	}
 	params.ApplyDefaults()
 	bizChunks, err := knowledge.BuildIndexedChunks(ctx, embedder, params, flow)
 	if err != nil {
 		fail("build_chunks", err)
 		return false
+	}
+	childCount := 0
+	for _, ch := range bizChunks {
+		if !ch.IsParent {
+			childCount++
+		}
 	}
 	docDelta := 0
 	if doc.Status != "indexed" {
@@ -275,10 +302,10 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 		fail("commit_indexed", err)
 		return false
 	}
-	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
+	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", childCount)
 	s.lg.Info("knowledge reembed document done", // K7 每文档 done
 		loggateway.StepID("knowledge.reembed.doc_done"),
 		loggateway.Str("doc_id", doc.ID),
-		loggateway.Int("chunk_count", len(bizChunks)))
+		loggateway.Int("chunk_count", childCount))
 	return true
 }

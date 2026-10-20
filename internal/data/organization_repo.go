@@ -24,6 +24,33 @@ func NewOrganizationRepo(d *Data) biz.OrganizationRepo {
 	return &organizationRepo{data: d}
 }
 
+// ValidateSharedOrgNodes 实现 knowledge.OrgNodeValidator（G-08 部门级可见性）：
+// 共享名单内每个 ID 须为存在、未软删、且 level ∈ {department, position} 的 org
+// 节点（company 级共享等同 collection，拒收——名单粒度即部门/岗位）。
+func (r *organizationRepo) ValidateSharedOrgNodes(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return apierror.BadRequest("KNOWLEDGE", "shared_with must not be empty")
+	}
+	nodes, err := r.ListOrgNodesByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]biz.OrganizationNode, len(nodes))
+	for _, n := range nodes {
+		byID[n.ID] = n
+	}
+	for _, id := range ids {
+		n, ok := byID[id]
+		if !ok {
+			return apierror.BadRequest("KNOWLEDGE", "shared_with contains unknown org node")
+		}
+		if n.Level != "department" && n.Level != "position" {
+			return apierror.BadRequest("KNOWLEDGE", "shared_with nodes must be department/position level")
+		}
+	}
+	return nil
+}
+
 func (r *organizationRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	if r == nil || r.data == nil {
 		return fn(ctx)

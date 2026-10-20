@@ -183,6 +183,12 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS owner_user_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_visibility_idx
 			ON knowledge_documents (collection_id, visibility, owner_user_id)`,
+		// --- G-08 部门级可见性（fresh 形态；存量库由迁移 20261284 补列） ---
+		// shared_with：visibility='shared' 时的 org 节点 ID 名单（部门/岗位），
+		// TEXT[] + GIN 支撑谓词 `shared_with && $n`（ADR-KN-20261020-E）。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS shared_with TEXT[] NOT NULL DEFAULT '{}'`,
+		`CREATE INDEX IF NOT EXISTS knowledge_documents_shared_with_gin
+			ON knowledge_documents USING GIN (shared_with)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_collection_hash_idx
 			ON knowledge_documents (collection_id, content_hash) WHERE content_hash <> ''`,
 		// --- 29-token P2-2 cited 引用计数（fresh 形态；存量库由迁移 20261215 补列/建表） ---
@@ -195,6 +201,17 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_knowledge_chunk_citations_turn
 			ON knowledge_chunk_citations(turn_id)`,
+		// --- 父子分块（G-06，2026-10-20；fresh 形态，存量库由迁移 20261283 补列） ---
+		// parent_chunk_id：子块→父块行 ID（'' = 独立块/父块自身；不加自引用 FK，
+		// 应用层单事务维护）；chunk_role：child|parent，父块仅语境回填不进召回。
+		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS parent_chunk_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS chunk_role TEXT NOT NULL DEFAULT 'child'`,
+		`CREATE INDEX IF NOT EXISTS knowledge_chunks_parent_idx
+			ON knowledge_chunks (parent_chunk_id) WHERE parent_chunk_id <> ''`,
+		// 摄取生效的分块三元组落库（reembed 保形）。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS chunk_strategy TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS chunk_size INT NOT NULL DEFAULT 0`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS chunk_overlap INT NOT NULL DEFAULT 0`,
 		// --- SP1-C 跨库双链解析（fresh 形态；存量库由迁移 20261204 补列） ---
 		// documents.title/aliases：Resolver 文档键（frontmatter 物化）；
 		// links.weight：N-3 投影权重（同文档对块边数聚合）。
@@ -225,10 +242,18 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 			doc_id TEXT NOT NULL,
 			accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			query_hash TEXT,
-			session_id TEXT
+			session_id TEXT,
+			user_id TEXT,
+			agent_id TEXT,
+			"rank" INTEGER NOT NULL DEFAULT 0,
+			score DOUBLE PRECISION NOT NULL DEFAULT 0,
+			latency_ms INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_access_log_doc_idx
 			ON knowledge_access_log (collection_id, doc_id, accessed_at DESC)`,
+		// G-15 审计足迹：按用户的审计/足迹查询索引（20261282 同型，存量库走迁移）。
+		`CREATE INDEX IF NOT EXISTS knowledge_access_log_user_idx
+			ON knowledge_access_log (user_id, accessed_at DESC)`,
 		// --- 实体治理（G5-F B9/B12）：name_norm 承载唯一性（展示名 name 保留首见写法）；
 		// 存量库由迁移 20261129 回填/合并后建唯一索引，此处定义 fresh 库最终形态 ---
 		`CREATE TABLE IF NOT EXISTS knowledge_entities (
@@ -491,18 +516,22 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	}
 	q := `INSERT INTO knowledge_documents
 		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri,
-		 rel_path, content_hash, summary, summary_hash, tags, doc_type, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)
+		 rel_path, content_hash, summary, summary_hash, tags, doc_type, created_at, updated_at,
+		 chunk_strategy, chunk_size, chunk_overlap)
+		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18,$19)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 	          content_text, organized, asset_uri,
 	          rel_path, content_hash, summary, summary_hash, tags, doc_type,
 	          embed_fail_count, embed_last_tried,
 	          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 	          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-	          COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,'')`
+	          COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
+		          COALESCE(shared_with, '{}'::text[]),
+	          chunk_strategy, chunk_size, chunk_overlap`
 	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
 		d.ContentText, d.Organized, d.AssetURI,
-		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now)
+		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now,
+		d.ChunkStrategy, d.ChunkSize, d.ChunkOverlap)
 	return scanDocument(row)
 }
 
@@ -514,7 +543,9 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,'')
+		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,''),
+		         COALESCE(d.shared_with, '{}'::text[]),
+		         d.chunk_strategy, d.chunk_size, d.chunk_overlap
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.collection_id = $1 AND d.rel_path = $2`
@@ -544,7 +575,9 @@ func (r *knowledgeRepo) GetDocumentByContentHash(ctx context.Context, collection
 		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,'')
+		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,''),
+		         COALESCE(d.shared_with, '{}'::text[]),
+		         d.chunk_strategy, d.chunk_size, d.chunk_overlap
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.collection_id = $1 AND d.content_hash = $2`
@@ -563,15 +596,21 @@ func (r *knowledgeRepo) GetDocumentByContentHash(ctx context.Context, collection
 }
 
 // ListDocumentNames 批量解析文档显示名（SP1-E DocNameReader）：rel_path 优先，
-// 空 rel_path 回 source；未知 id 缺席。空入参短路空 map（避免空数组查询）。
+// 空 rel_path 回 source；未知或不可见 id 缺席。空入参短路空 map（避免空数组查询）。
+// G-08 泄漏面收口：按行级可见性过滤——private 文档名不得借引用/链接批解析外泄
+// （SP5 已声明可见文档名才允许出现在引用渲染里）。
 func (r *knowledgeRepo) ListDocumentNames(ctx context.Context, ids []string) (map[string]string, error) {
 	out := make(map[string]string, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, COALESCE(NULLIF(rel_path, ''), source) FROM knowledge_documents WHERE id = ANY($1)`,
-		pq.Array(ids))
+	q := `SELECT id, COALESCE(NULLIF(rel_path, ''), source) FROM knowledge_documents WHERE id = ANY($1)`
+	args := []any{pq.Array(ids)}
+	if clause, pargs := docRowVisibilityClause(ctx, len(args)+1); clause != "" {
+		q += clause
+		args = append(args, pargs...)
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "knowledge")
 	}
@@ -648,7 +687,9 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,'')
+		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,''),
+		         COALESCE(d.shared_with, '{}'::text[]),
+		         d.chunk_strategy, d.chunk_size, d.chunk_overlap
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.id = $1`
@@ -671,6 +712,28 @@ func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, er
 		 SET status = $2, error_message = $3, chunk_count = $4, updated_at = NOW()
 		 WHERE id = $1`, id, status, errMsg, chunkCount)
 	return entErrToBizErr(err, "knowledge")
+}
+
+// ClaimDocumentRetry 原子认领重跑摄取资格（G-21 二轮复核 F5/F6）：
+// error 恒可认领；indexing/pending 仅在 updated_at 早于 staleBefore（重启/
+// panic 尸体）时可认领。单条守卫式 UPDATE——认领失败（0 行命中）说明在途
+// 摄取持有该文档或文档已达终态，调用方不得重跑。
+func (r *knowledgeRepo) ClaimDocumentRetry(ctx context.Context, id string, staleBefore time.Time) (bool, error) {
+	res, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents
+		 SET status = 'indexing', error_message = '', updated_at = NOW()
+		 WHERE id = $1 AND (
+		     status = 'error'
+		     OR (status IN ('indexing', 'pending') AND updated_at < $2)
+		 )`, id, staleBefore)
+	if err != nil {
+		return false, entErrToBizErr(err, "knowledge")
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, entErrToBizErr(err, "knowledge")
+	}
+	return n > 0, nil
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
@@ -707,7 +770,9 @@ func (r *knowledgeRepo) ListEmbedDegradedDocuments(ctx context.Context, collecti
 		         embed_fail_count, embed_last_tried,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,'')
+		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
+		          COALESCE(shared_with, '{}'::text[]),
+		         chunk_strategy, chunk_size, chunk_overlap
 		  FROM knowledge_documents
 		  WHERE collection_id = $1 AND embed_fail_count > 0
 		  ORDER BY embed_last_tried ASC NULLS FIRST
@@ -788,9 +853,11 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 }
 
 // ListDocumentsPendingReembed 列出待重嵌入文档（B1）：有正文、非 indexing、
-// 且（chunks embedding IS NULL 或无任何 chunks）。按 created_at ASC（先入队先处理）。
+// 且（无任何 chunks 或存在子块 embedding IS NULL）。按 created_at ASC（先入队先处理）。
 // 返回完整文档（含 content_text，scanDocument 全字段扫描）——重嵌入以 content_text
 // 为正文源，无需原始文件（与 ListEmbedDegradedDocuments 同理带正文）。
+// 待嵌口径按子块（G-06）：父块语境行恒 embedding NULL，不计缺失——否则 parent_child
+// 文档永久 pending、每轮修复全量重嵌空转。
 func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]biz.KnowledgeDocument, error) {
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 		         content_text, organized, asset_uri,
@@ -798,13 +865,15 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		         embed_fail_count, embed_last_tried,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,'')
+		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
+		          COALESCE(shared_with, '{}'::text[]),
+		         chunk_strategy, chunk_size, chunk_overlap
 		  FROM knowledge_documents d
 		  WHERE collection_id = $1
 		    AND content_text <> ''
 		    AND status <> 'indexing'
 		    AND (
-		      NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id)
+		      NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id AND c.chunk_role = 'child')
 		      OR (
 		        EXISTS (
 		          SELECT 1 FROM knowledge_collections kc
@@ -812,7 +881,7 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		        )
 		        AND EXISTS (
 		          SELECT 1 FROM knowledge_chunks c
-		          WHERE c.doc_id = d.id AND c.embedding IS NULL
+		          WHERE c.doc_id = d.id AND c.chunk_role = 'child' AND c.embedding IS NULL
 		        )
 		      )
 		    )
@@ -909,9 +978,11 @@ func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID,
 		}
 	}
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		// 计数口径 = 子块（G-06）：父块语境行不进 chunk_count（documents 与
+		// collections 两侧一致）。既有行 chunk_role 默认 'child' 天然兼容。
 		var oldCount int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id = $1`, docID).Scan(&oldCount); err != nil {
+			`SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id = $1 AND chunk_role = 'child'`, docID).Scan(&oldCount); err != nil {
 			return entErrToBizErr(err, "knowledge")
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID); err != nil {
@@ -925,10 +996,16 @@ func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID,
 				return err
 			}
 		}
+		newCount := 0
+		for _, ch := range chunks {
+			if !ch.IsParent {
+				newCount++
+			}
+		}
 		res, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_documents
 			 SET status = 'indexed', error_message = '', chunk_count = $2, updated_at = NOW()
-			 WHERE id = $1 AND status = 'indexing'`, docID, len(chunks))
+			 WHERE id = $1 AND status = 'indexing'`, docID, newCount)
 		if err != nil {
 			return entErrToBizErr(err, "knowledge")
 		}
@@ -936,7 +1013,7 @@ func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID,
 		if n != 1 {
 			return bizknowledge.ErrDocumentStatusConflict
 		}
-		chunkDelta := len(chunks) - oldCount
+		chunkDelta := newCount - oldCount
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_collections
 			 SET document_count = document_count + $2,
@@ -969,6 +1046,11 @@ func (r *knowledgeRepo) assertChunkDimensions(ctx context.Context, chunks []biz.
 		return entErrToBizErr(err, "knowledge")
 	}
 	for _, ch := range chunks {
+		// G-06 父块行不嵌入（语境回填专用），跳过维度校验；dense 召回恒有
+		// chunk_role='child' 谓词，误带向量也进不了召回。
+		if ch.IsParent {
+			continue
+		}
 		if expectedDim > 0 && len(ch.Embedding) != expectedDim {
 			return apierror.BadRequest(apierror.DomainKnowledge, "embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding))
 		}
@@ -981,8 +1063,8 @@ func (r *knowledgeRepo) insertChunksTx(ctx context.Context, tx *sql.Tx, chunks [
 		return nil
 	}
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`)
+		`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index, parent_chunk_id, chunk_role)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`)
 	if err != nil {
 		return entErrToBizErr(err, "knowledge")
 	}
@@ -992,12 +1074,17 @@ func (r *knowledgeRepo) insertChunksTx(ctx context.Context, tx *sql.Tx, chunks [
 		if meta == "" {
 			meta = "{}"
 		}
-		// 无语义层 vault（R-4）：空 embedding 写 NULL，pgvector.NewVector(nil) 会生成非法 '[]'。
+		// 无语义层 vault（R-4）/ 父子分块父块行（G-06）：空 embedding 写 NULL，
+		// pgvector.NewVector(nil) 会生成非法 '[]'。
 		var vec any
 		if len(ch.Embedding) > 0 {
 			vec = pgvector.NewVector(ch.Embedding)
 		}
-		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
+		role := "child"
+		if ch.IsParent {
+			role = "parent"
+		}
+		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex, ch.ParentChunkID, role); err != nil {
 			r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
 			return entErrToBizErr(err, "knowledge")
 		}
@@ -1012,6 +1099,7 @@ func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string
 
 // ListChunksByDocuments 按文档取前 limitPerDoc 个 chunk（chunk_index 升序）。
 // Lazy GraphRAG 邻居扩展用：不走向量排序，避免二次 embed。空输入返回 nil。
+// G-06：仅取子块（chunk_role='child'），父块语境行不进扩展集。
 func (r *knowledgeRepo) ListChunksByDocuments(ctx context.Context, collectionID string, docIDs []string, limitPerDoc int) ([]biz.KnowledgeChunk, error) {
 	if strings.TrimSpace(collectionID) == "" || len(docIDs) == 0 || limitPerDoc <= 0 {
 		return nil, nil
@@ -1022,12 +1110,12 @@ func (r *knowledgeRepo) ListChunksByDocuments(ctx context.Context, collectionID 
 	limitPH := len(args) + 1
 	args = append(args, limitPerDoc)
 	raw := fmt.Sprintf(`
-SELECT id, doc_id, collection_id, content, metadata::text, chunk_index, 0::float4 AS score
+SELECT id, doc_id, collection_id, content, metadata::text, chunk_index, parent_chunk_id, 0::float4 AS score
 FROM (
-  SELECT id, doc_id, collection_id, content, metadata, chunk_index,
+  SELECT id, doc_id, collection_id, content, metadata, chunk_index, parent_chunk_id,
          ROW_NUMBER() OVER (PARTITION BY doc_id ORDER BY chunk_index) AS rn
   FROM knowledge_chunks
-  WHERE collection_id = $1 AND doc_id = ANY($2)
+  WHERE collection_id = $1 AND chunk_role = 'child' AND doc_id = ANY($2)
   %s
 ) t
 WHERE rn <= $%d
@@ -1040,12 +1128,35 @@ ORDER BY doc_id, chunk_index`, acl, limitPH)
 	var out []biz.KnowledgeChunk
 	for rows.Next() {
 		var ch biz.KnowledgeChunk
-		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.ParentChunkID, &ch.Score); err != nil {
 			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, ch)
 	}
 	return out, entErrToBizErr(rows.Err(), "knowledge")
+}
+
+// ListChunksByIDs 按 chunk ID 批量取回行（G-06 语境回填的父块读取通道）。
+// 无 chunk_role 谓词——调用方传入的正是父块 ID；ACL 仍走 docChunkVisibilityClause
+// （父子同文档，可见性与子块召回一致）。空输入返回 nil。
+func (r *knowledgeRepo) ListChunksByIDs(ctx context.Context, collectionID string, ids []string) ([]biz.KnowledgeChunk, error) {
+	if strings.TrimSpace(collectionID) == "" || len(ids) == 0 {
+		return nil, nil
+	}
+	args := []any{collectionID, pq.Array(ids)}
+	acl, aclArgs := docChunkVisibilityClause(ctx, "$1", len(args)+1)
+	args = append(args, aclArgs...)
+	raw := fmt.Sprintf(`
+SELECT id, doc_id, collection_id, content, metadata::text, chunk_index, parent_chunk_id, 0::float4 AS score
+FROM knowledge_chunks
+WHERE collection_id = $1 AND id = ANY($2)
+%s`, acl)
+	rows, err := r.data.PostgresRead().QueryContext(ctx, raw, args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer rows.Close()
+	return scanChunks(rows)
 }
 
 // MoveDocument moves a document (and its chunks) to another collection in one
@@ -1220,14 +1331,17 @@ func annCandidateLimit(topK int) int {
 // denseANNSearchSQL 内层 ORDER BY embedding <=> $1 走 HNSW；外层对候选集
 // 套 recency/stale 表达式再 LIMIT topK。clauses 作用于内层 knowledge_chunks
 // （无表别名），overfetchPH / topKPH 是 LIMIT 占位序号。
+// G-06：chunk_role='child' 谓词显式排除父块语境行（embedding IS NULL 本已挡，
+// 统一谓词防未来父子检索层演化时破口子）。
 func denseANNSearchSQL(clauses string, overfetchPH, topKPH int) string {
 	return fmt.Sprintf(`
-SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index, c.parent_chunk_id,
        %s AS score
 FROM (
-  SELECT id, doc_id, collection_id, content, metadata, chunk_index, embedding
+  SELECT id, doc_id, collection_id, content, metadata, chunk_index, parent_chunk_id, embedding
   FROM knowledge_chunks
   WHERE collection_id = $2
+    AND chunk_role = 'child'
     AND embedding IS NOT NULL
     %s
   ORDER BY embedding <=> $1::vector
@@ -1299,7 +1413,7 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	var out []biz.KnowledgeChunk
 	for rows.Next() {
 		var ch biz.KnowledgeChunk
-		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.ParentChunkID, &ch.Score); err != nil {
 			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, ch)
@@ -1404,11 +1518,12 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 
 func (r *knowledgeRepo) searchChunksTsvector(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
-SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index, c.parent_chunk_id,
        %s AS score
 FROM knowledge_chunks c
 %s
 WHERE c.collection_id = $2
+  AND c.chunk_role = 'child'
   AND to_tsvector('simple', c.content) @@ plainto_tsquery('simple', $1)
   %s
 ORDER BY score DESC
@@ -1431,11 +1546,12 @@ func (r *knowledgeRepo) searchChunksTrigram(ctx context.Context, q biz.Knowledge
 	// 分母含长文本全部 trigram，2-4 字查询相似度被稀释到 0.3 阈值以下永不命中。
 	// `%>` 是 `<%` 的交换操作符（doc %> query ≡ query <% doc），gin_trgm_ops 索引支持。
 	raw := fmt.Sprintf(`
-SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index, c.parent_chunk_id,
        %s AS score
 FROM knowledge_chunks c
 %s
 WHERE c.collection_id = $2
+  AND c.chunk_role = 'child'
   AND c.content %%> $1
   %s
 ORDER BY score DESC
@@ -1457,11 +1573,12 @@ LIMIT $%d`, recencyScoreSQL(`word_similarity($1, c.content)`), recencyJoinSQL, e
 // 「命中多少个不同 2 字词」比单字词频更接近语义重叠。
 func (r *knowledgeRepo) searchChunksBigramOverlap(ctx context.Context, q biz.KnowledgeSearchQuery, bigrams []string, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
-SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index, c.parent_chunk_id,
        %s AS score
 FROM knowledge_chunks c
 %s
 WHERE c.collection_id = $2
+  AND c.chunk_role = 'child'
   AND (SELECT COUNT(*) FROM unnest($1::text[]) bg WHERE position(bg in c.content) > 0) > 0
   %s
 ORDER BY score DESC
@@ -1480,11 +1597,12 @@ LIMIT $%d`, recencyScoreSQL(`(SELECT COUNT(*) FROM unnest($1::text[]) bg WHERE p
 
 func (r *knowledgeRepo) searchChunksSubstring(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
-SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index, c.parent_chunk_id,
        %s AS score
 FROM knowledge_chunks c
 %s
 WHERE c.collection_id = $2
+  AND c.chunk_role = 'child'
   AND position(lower($1) in lower(c.content)) > 0
   %s
 ORDER BY score DESC
@@ -1553,7 +1671,7 @@ func scanChunks(rows *sql.Rows) ([]biz.KnowledgeChunk, error) {
 	var out []biz.KnowledgeChunk
 	for rows.Next() {
 		var ch biz.KnowledgeChunk
-		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.ParentChunkID, &ch.Score); err != nil {
 			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, ch)
@@ -1583,7 +1701,8 @@ func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.ContentText, &d.Organized, &d.AssetURI,
 		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
 		&d.EmbedFailCount, &embedLastTried,
-		&d.CreatedAt, &d.UpdatedAt, &d.Visibility, &d.OwnerUserID)
+		&d.CreatedAt, &d.UpdatedAt, &d.Visibility, &d.OwnerUserID, pq.Array(&d.SharedWith),
+		&d.ChunkStrategy, &d.ChunkSize, &d.ChunkOverlap)
 	if err != nil {
 		return d, entErrToBizErr(err, "knowledge")
 	}

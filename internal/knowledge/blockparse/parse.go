@@ -54,6 +54,10 @@ type BlockRow struct {
 	// 重新解析出等价块。heading 带 ##、list_item 带 marker、blockquote 带 >、
 	// code_block 带 fence（缩进代码块重构为 fenced）；显式锚保留在原文中。
 	Text string
+	// ByteStart 块起始行在（换行归一 + frontmatter 剥离后的）body 中的字节偏移；
+	// 换算回调用方 src 坐标须补偿 frontmatter 前缀（skip = len(src)-len(BodyOf(src))）。
+	// G-07 引用锚定：真源偏移替代子串重定位，代码 fence/行内同名串不再错锚。
+	ByteStart int
 }
 
 // RefRow 引用边行（knowledge_block_refs 的解析产物）。
@@ -191,7 +195,7 @@ func (p *parser) emitHeading(h *ast.Heading) {
 	for _, e := range p.headings {
 		path = append(path, e.text)
 	}
-	p.emit(KindHeading, runs, plain, anchor, path, rawTextOf(h, p.src))
+	p.emit(KindHeading, runs, plain, anchor, path, rawTextOf(h, p.src), blockLineStart(h, p.src))
 }
 
 func (p *parser) emitParagraph(n ast.Node) {
@@ -211,14 +215,14 @@ func (p *parser) emitParagraph(n ast.Node) {
 	if isMathBlock(plain) {
 		kind = KindMath
 	}
-	p.emit(kind, runs, plain, anchor, p.currentPath(), rawTextOf(n, p.src))
+	p.emit(kind, runs, plain, anchor, p.currentPath(), rawTextOf(n, p.src), blockLineStart(n, p.src))
 }
 
 // emitRich 引用块/表格/列表项：runs 取自节点全部文本后代（CodeSpan 子树除外）。
 func (p *parser) emitRich(kind BlockKind, n ast.Node) {
 	runs := collectRuns(n, p.src)
 	plain, anchor := splitAnchor(joinRuns(runs, p.src))
-	p.emit(kind, runs, plain, anchor, p.currentPath(), rawTextOf(n, p.src))
+	p.emit(kind, runs, plain, anchor, p.currentPath(), rawTextOf(n, p.src), blockLineStart(n, p.src))
 }
 
 // emitCode 代码块：成块但不扫描引用（代码内容无 wikilink 语义）。
@@ -237,7 +241,7 @@ func (p *parser) emitCode(n ast.Node) {
 	}
 	content := strings.TrimRight(sb.String(), "\n")
 	plain, anchor := splitAnchor(content)
-	p.emit(KindCodeBlock, nil, plain, anchor, p.currentPath(), "```"+lang+"\n"+content+"\n```")
+	p.emit(KindCodeBlock, nil, plain, anchor, p.currentPath(), "```"+lang+"\n"+content+"\n```", blockLineStart(n, p.src))
 }
 
 // rawTextOf 取节点覆盖行的原文切片（首行回溯到行首以含 ##/-/ > 等行首标记；
@@ -292,7 +296,7 @@ func nodeByteRange(n ast.Node) (int, int, bool) {
 }
 
 // emit 统一成块入口：plain 已剥离锚点；runs 为引用扫描范围（nil 表示不扫描）。
-func (p *parser) emit(kind BlockKind, runs []text.Segment, plain, anchor string, path []string, rawText string) {
+func (p *parser) emit(kind BlockKind, runs []text.Segment, plain, anchor string, path []string, rawText string, byteStart int) {
 	normalized := normalizeSpace(plain)
 	b := BlockRow{
 		Ordinal:     len(p.blocks),
@@ -302,9 +306,22 @@ func (p *parser) emit(kind BlockKind, runs []text.Segment, plain, anchor string,
 		ContentHash: hashText(normalized),
 		TextExcerpt: truncateRunes(wikilinkDisplay(normalized), excerptRunes),
 		Text:        rawText,
+		ByteStart:   byteStart,
 	}
 	p.blocks = append(p.blocks, b)
 	p.scanRefs(b.Ordinal, runs)
+}
+
+// blockLineStart 块起始行的行首字节偏移（与 rawTextOf 同口径：节点首行回溯到行首）。
+func blockLineStart(n ast.Node, src string) int {
+	start, _, ok := nodeByteRange(n)
+	if !ok {
+		return -1
+	}
+	if ls := strings.LastIndexByte(src[:start], '\n'); ls >= 0 {
+		return ls + 1
+	}
+	return 0
 }
 
 func (p *parser) currentPath() []string {
@@ -535,6 +552,14 @@ func splitFrontmatter(src string) (body string, ok bool) {
 		return src, false
 	}
 	return body, true
+}
+
+// BodyOf 返回剥离 frontmatter 后的正文（无 frontmatter 或 YAML 损坏时为原文，
+// 与 Parse 内部口径分毫不差）。BlockRow.ByteStart 以该 body 为坐标系，回调用
+// 方 src 坐标的补偿前缀 = len(src)-len(BodyOf(src))（body 恒为 src 后缀）。
+func BodyOf(src string) string {
+	body, _ := splitFrontmatter(src)
+	return body
 }
 
 // splitFrontmatterKV 仅按分隔行切分 frontmatter（不校验 YAML），返回 body 与原始 meta。

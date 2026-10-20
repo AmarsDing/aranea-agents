@@ -294,6 +294,7 @@ func (s *KnowledgeService) ServeDocumentVisibility(w http.ResponseWriter, r *htt
 			"id":            doc.ID,
 			"visibility":    doc.Visibility,
 			"owner_user_id": doc.OwnerUserID,
+			"shared_with":   doc.SharedWith,
 		})
 		return
 	}
@@ -302,13 +303,14 @@ func (s *KnowledgeService) ServeDocumentVisibility(w http.ResponseWriter, r *htt
 		return
 	}
 	var body struct {
-		Visibility string `json:"visibility"`
+		Visibility string   `json:"visibility"`
+		SharedWith []string `json:"shared_with"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeKnowledgeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
-	updated, err := s.uc.UpdateDocumentVisibility(ctx, docID, body.Visibility)
+	updated, err := s.uc.UpdateDocumentVisibility(ctx, docID, body.Visibility, body.SharedWith)
 	if err != nil {
 		writeKnowledgeJSONError(w, err)
 		return
@@ -317,5 +319,6 @@ func (s *KnowledgeService) ServeDocumentVisibility(w http.ResponseWriter, r *htt
 		"id":            updated.ID,
 		"visibility":    updated.Visibility,
 		"owner_user_id": updated.OwnerUserID,
+		"shared_with":   updated.SharedWith,
 	})
 }

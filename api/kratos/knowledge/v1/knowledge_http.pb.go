@@ -23,6 +23,8 @@ const _ = http.SupportPackageIsVersion1
 const OperationKnowledgeServiceCreateCollection = "/kratos.knowledge.v1.KnowledgeService/CreateCollection"
 const OperationKnowledgeServiceCreateVaultDir = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
 const OperationKnowledgeServiceCreateVaultDocument = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
+const OperationKnowledgeServiceCurateKnowledgeNow = "/kratos.knowledge.v1.KnowledgeService/CurateKnowledgeNow"
+const OperationKnowledgeServiceDebugKnowledgeSearch = "/kratos.knowledge.v1.KnowledgeService/DebugKnowledgeSearch"
 const OperationKnowledgeServiceDeleteCollection = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
 const OperationKnowledgeServiceDeleteDocument = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 const OperationKnowledgeServiceEnableCollectionSemantic = "/kratos.knowledge.v1.KnowledgeService/EnableCollectionSemantic"
@@ -49,6 +51,7 @@ const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeSe
 const OperationKnowledgeServiceRebuildKnowledgeIndex = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 const OperationKnowledgeServiceRecordLinkUse = "/kratos.knowledge.v1.KnowledgeService/RecordLinkUse"
 const OperationKnowledgeServiceReembedDocuments = "/kratos.knowledge.v1.KnowledgeService/ReembedDocuments"
+const OperationKnowledgeServiceReindexVault = "/kratos.knowledge.v1.KnowledgeService/ReindexVault"
 const OperationKnowledgeServiceResolveGovernanceProposal = "/kratos.knowledge.v1.KnowledgeService/ResolveGovernanceProposal"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
@@ -62,6 +65,12 @@ type KnowledgeServiceHTTPServer interface {
 	// CreateVaultDocument CreateVaultDocument writes a template .md (frontmatter + empty heading) and
 	// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
 	CreateVaultDocument(context.Context, *CreateVaultDocumentRequest) (*KnowledgeDocument, error)
+	// CurateKnowledgeNow G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+	// 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+	CurateKnowledgeNow(context.Context, *CurateKnowledgeNowRequest) (*CurateKnowledgeNowResponse, error)
+	// DebugKnowledgeSearch G-19 hit-test panel: per-vault search debugging with score decomposition;
+	// never writes access_log (see DebugKnowledgeSearchRequest docs).
+	DebugKnowledgeSearch(context.Context, *DebugKnowledgeSearchRequest) (*DebugKnowledgeSearchResponse, error)
 	DeleteCollection(context.Context, *DeleteCollectionRequest) (*emptypb.Empty, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	// EnableCollectionSemantic EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
@@ -137,6 +146,13 @@ type KnowledgeServiceHTTPServer interface {
 	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error)
+	// ReindexVault ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+	// local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+	// mirror-only docs → forced re-create for everything on disk. Team vaults are
+	// rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+	// Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+	// same collection is in flight (job key knowledge-reindex:<id>).
+	ReindexVault(context.Context, *ReindexVaultRequest) (*ReindexVaultResponse, error)
 	// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
 	// decision=applied approves the action; rejected dismisses it;
 	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
@@ -179,11 +195,14 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/collections/{collection_id}/link-uses", _KnowledgeService_ListRecentLinkUses0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/blocks/promote", _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/collections/{id}/rebuild-index", _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{id}/reindex", _KnowledgeService_ReindexVault0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/entity-merges", _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/governance-proposals", _KnowledgeService_ListGovernanceProposals0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/governance-proposals/{id}:resolve", _KnowledgeService_ResolveGovernanceProposal0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{collection_id}/curate", _KnowledgeService_CurateKnowledgeNow0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/search/debug", _KnowledgeService_DebugKnowledgeSearch0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/embedder-config", _KnowledgeService_GetEmbedderConfig0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/embedder-config", _KnowledgeService_UpdateEmbedderConfig0_HTTP_Handler(srv))
 }
@@ -803,6 +822,31 @@ func _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv KnowledgeServiceH
 	}
 }
 
+func _KnowledgeService_ReindexVault0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ReindexVaultRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceReindexVault)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ReindexVault(ctx, req.(*ReindexVaultRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ReindexVaultResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListEntityMergeSuggestionsRequest
@@ -894,6 +938,31 @@ func _KnowledgeService_ResolveGovernanceProposal0_HTTP_Handler(srv KnowledgeServ
 	}
 }
 
+func _KnowledgeService_CurateKnowledgeNow0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CurateKnowledgeNowRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceCurateKnowledgeNow)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CurateKnowledgeNow(ctx, req.(*CurateKnowledgeNowRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*CurateKnowledgeNowResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_Search0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in SearchRequest
@@ -912,6 +981,28 @@ func _KnowledgeService_Search0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func
 			return err
 		}
 		reply := out.(*SearchResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_DebugKnowledgeSearch0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DebugKnowledgeSearchRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceDebugKnowledgeSearch)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DebugKnowledgeSearch(ctx, req.(*DebugKnowledgeSearchRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DebugKnowledgeSearchResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -965,6 +1056,12 @@ type KnowledgeServiceHTTPClient interface {
 	// CreateVaultDocument CreateVaultDocument writes a template .md (frontmatter + empty heading) and
 	// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
 	CreateVaultDocument(ctx context.Context, req *CreateVaultDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
+	// CurateKnowledgeNow G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+	// 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+	CurateKnowledgeNow(ctx context.Context, req *CurateKnowledgeNowRequest, opts ...http.CallOption) (rsp *CurateKnowledgeNowResponse, err error)
+	// DebugKnowledgeSearch G-19 hit-test panel: per-vault search debugging with score decomposition;
+	// never writes access_log (see DebugKnowledgeSearchRequest docs).
+	DebugKnowledgeSearch(ctx context.Context, req *DebugKnowledgeSearchRequest, opts ...http.CallOption) (rsp *DebugKnowledgeSearchResponse, err error)
 	DeleteCollection(ctx context.Context, req *DeleteCollectionRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// EnableCollectionSemantic EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
@@ -1040,6 +1137,13 @@ type KnowledgeServiceHTTPClient interface {
 	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(ctx context.Context, req *ReembedDocumentsRequest, opts ...http.CallOption) (rsp *ReembedDocumentsResponse, err error)
+	// ReindexVault ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+	// local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+	// mirror-only docs → forced re-create for everything on disk. Team vaults are
+	// rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+	// Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+	// same collection is in flight (job key knowledge-reindex:<id>).
+	ReindexVault(ctx context.Context, req *ReindexVaultRequest, opts ...http.CallOption) (rsp *ReindexVaultResponse, err error)
 	// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
 	// decision=applied approves the action; rejected dismisses it;
 	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
@@ -1096,6 +1200,36 @@ func (c *KnowledgeServiceHTTPClientImpl) CreateVaultDocument(ctx context.Context
 	pattern := "/v1/knowledge/vaults/{collection_id}/docs"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceCreateVaultDocument))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CurateKnowledgeNow G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+// 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+func (c *KnowledgeServiceHTTPClientImpl) CurateKnowledgeNow(ctx context.Context, in *CurateKnowledgeNowRequest, opts ...http.CallOption) (*CurateKnowledgeNowResponse, error) {
+	var out CurateKnowledgeNowResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/curate"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceCurateKnowledgeNow))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DebugKnowledgeSearch G-19 hit-test panel: per-vault search debugging with score decomposition;
+// never writes access_log (see DebugKnowledgeSearchRequest docs).
+func (c *KnowledgeServiceHTTPClientImpl) DebugKnowledgeSearch(ctx context.Context, in *DebugKnowledgeSearchRequest, opts ...http.CallOption) (*DebugKnowledgeSearchResponse, error) {
+	var out DebugKnowledgeSearchResponse
+	pattern := "/v1/knowledge/search/debug"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceDebugKnowledgeSearch))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
@@ -1483,6 +1617,25 @@ func (c *KnowledgeServiceHTTPClientImpl) ReembedDocuments(ctx context.Context, i
 	pattern := "/v1/knowledge/collections/{collection_id}/documents:reembed"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceReembedDocuments))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ReindexVault ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+// local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+// mirror-only docs → forced re-create for everything on disk. Team vaults are
+// rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+// Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+// same collection is in flight (job key knowledge-reindex:<id>).
+func (c *KnowledgeServiceHTTPClientImpl) ReindexVault(ctx context.Context, in *ReindexVaultRequest, opts ...http.CallOption) (*ReindexVaultResponse, error) {
+	var out ReindexVaultResponse
+	pattern := "/v1/knowledge/vaults/{id}/reindex"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceReindexVault))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

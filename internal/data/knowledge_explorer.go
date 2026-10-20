@@ -6,6 +6,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 )
@@ -43,6 +44,7 @@ func (r *knowledgeRepo) ListDocumentPaths(ctx context.Context, collectionID stri
 
 // ListResolvedLinks 列出文档关联（出向 + 入向），JOIN knowledge_documents 一次取回
 // 对端 source/rel_path（禁 N+1）。target 已被级联清理，LEFT JOIN 仅为防御性兜底。
+// ACL：双端点须对 ctx 可见（对端 source/rel_path 属元数据，防私有文档路径泄露）。
 func (r *knowledgeRepo) ListResolvedLinks(ctx context.Context, collectionID, docID, linkType string) ([]bizknowledge.ResolvedLink, error) {
 	q := `SELECT l.doc_id, l.target_doc_id, l.link_type, l.context,
 	             s.source, s.rel_path, t.source, t.rel_path
@@ -54,6 +56,14 @@ func (r *knowledgeRepo) ListResolvedLinks(ctx context.Context, collectionID, doc
 	if linkType != "" {
 		q += ` AND l.link_type = $3`
 		args = append(args, linkType)
+	}
+	acl, aclArgs := docBothEndpointsVisibleClause(ctx, "$1", len(args)+1)
+	// 子查询针对 knowledge_links 表别名为 l 的查询：谓词裸列名在此歧义，显式加 l. 前缀。
+	if acl != "" {
+		acl = strings.ReplaceAll(acl, "AND doc_id IN", "AND l.doc_id IN")
+		acl = strings.ReplaceAll(acl, "AND target_doc_id IN", "AND l.target_doc_id IN")
+		q += " " + acl
+		args = append(args, aclArgs...)
 	}
 	q += ` ORDER BY l.link_type, l.id`
 	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/tools/working_memory"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
@@ -173,6 +174,9 @@ func NewSearchTool(lg loggateway.Logger) trpctool.CallableTool {
 			UseRerank:  in.UseRerank,
 			// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
 			ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
+			// G-15 审计足迹：Agent 工具回调 ctx 注入的会话/Agent 透传进命中日志。
+			SessionID: working_memory.SessionIDFromCtx(ctx),
+			AgentID:   working_memory.AgentIDFromCtx(ctx),
 		}
 
 		var chunks []biz.KnowledgeChunk
@@ -223,8 +227,10 @@ func NewSearchTool(lg loggateway.Logger) trpctool.CallableTool {
 		out := searchOutput{Chunks: make([]chunkSummary, 0, len(chunks))}
 		for _, ch := range chunks {
 			out.Chunks = append(out.Chunks, chunkSummary{
-				ID:      ch.ID,
-				Content: ch.Content,
+				ID: ch.ID,
+				// G-06：父子分块命中的子块渲染父块语境（ParentContent 非空时），
+				// 模型侧直接拿到上下文；引用锚定仍走子块（emitKnowledgeRecalledNotice 不变）。
+				Content: ch.DisplayContent(),
 				Score:   ch.Score,
 				DocID:   ch.DocID,
 			})
@@ -409,6 +415,9 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 			TopK:  in.TopK,
 			// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
 			ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
+			// G-15 审计足迹：Agent 工具回调 ctx 注入的会话/Agent 透传进命中日志。
+			SessionID: working_memory.SessionIDFromCtx(ctx),
+			AgentID:   working_memory.AgentIDFromCtx(ctx),
 		}
 
 		var chunks []biz.KnowledgeChunk
@@ -467,9 +476,11 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		}
 
 		for _, ch := range chunks {
+			// G-06：父子分块命中用父块语境作正文（G-06 回填 ParentContent 时）；
+			// 否则保留子块原文——citation 回采链（emitKnowledgeRecalledNotice）同样基于子块。
 			out.Chunks = append(out.Chunks, chunkSummary{
 				ID:      ch.ID,
-				Content: ch.Content,
+				Content: ch.DisplayContent(),
 				Score:   ch.Score,
 				DocID:   ch.DocID,
 			})

@@ -75,6 +75,17 @@ message KnowledgeChunk {
   string metadata_json = 6;
   int32  chunk_index = 7;
   float  score = 8;           // similarity score (only in search results)
+  // G-12 hit-debug: per-lane raw scores. score stays the final sort key;
+  // rrf_score is the fused RRF sum (score==rrf_score pre-rerank);
+  // rerank_score is set only when a reranker rewrote score.
+  float  dense_score = 9;
+  float  sparse_score = 10;
+  float  rrf_score = 11;
+  float  rerank_score = 12;
+  // G-06 parent_child: runtime-backfilled parent content for display/inject cue.
+  // Populated at search time only (data-driven backfill); never persisted on the
+  // child row. Empty for non-parent_child docs.
+  string parent_content = 13;
 }
 
 // --- Requests / Responses ---
@@ -121,7 +132,9 @@ message IngestDocumentRequest {
   int32 chunk_size = 6;
   // chunk_overlap is the token/char overlap between consecutive chunks (0 = server default 64).
   int32 chunk_overlap = 7;
-  // chunk_strategy: char | token | markdown | json | recursive (empty = char).
+  // chunk_strategy: char | token | markdown | json | recursive | parent_child (empty = char).
+  // parent_child（G-06 父子分块）仅 API 层可用——小块召回、父块语境回填，
+  // 配套 parent_chunk_size（field 11）。
   string chunk_strategy = 8;
   // organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
   // (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
@@ -133,6 +146,10 @@ message IngestDocumentRequest {
   // the vault sync chain treats it as already-applied. Empty = legacy behavior
   // (no filesystem write).
   string target_dir = 10;
+  // G-06: parent window size in tokens, only meaningful with
+  // chunk_strategy = "parent_child". 0 = default 4×chunk_size (clamped ≥2×).
+  // NOT persisted per-document: reembed normalizes back to 4×chunk_size.
+  int32 parent_chunk_size = 11;
 }
 
 message GetDocumentContentRequest {
@@ -372,6 +389,19 @@ message RebuildKnowledgeIndexResponse {
   string status = 1;  // "rebuilding" (task accepted)
 }
 
+// ReindexVaultRequest triggers a full vault re-index (G-11).
+message ReindexVaultRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];  // collection id
+}
+
+// ReindexVaultResponse acknowledges the accepted asynchronous vault re-index.
+// Progress is broadcast on the knowledge WS channel (EP-KN-02 pattern,
+// event_type = knowledge_vault_reindex); sync_state turns "error" on failure
+// and back to "active" on completion (same as the periodic vault sync loop).
+message ReindexVaultResponse {
+  string status = 1;  // "reindexing" (task accepted)
+}
+
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
 // source = "norm" (same name_norm, different display name) or "embedding"
 // (cosine similarity of entity-name embeddings).
@@ -432,10 +462,12 @@ message ListGovernanceProposalsRequest {
   string collection_id = 1;   // empty = 不过滤
   string status = 2;          // pending | applied | rejected; empty = 不过滤
   int32 limit = 3;            // default 50, max 200
+  int32 offset = 4;           // default 0（G-30 offset 分页）
 }
 
 message ListGovernanceProposalsResponse {
   repeated GovernanceProposal items = 1;
+  int32 total = 2;  // 满足过滤条件的总数（G-30 分页 UI 用，同 WHERE 口径）
 }
 
 // ResolveGovernanceProposalRequest closes one pending proposal (人工二审).
@@ -447,6 +479,18 @@ message ResolveGovernanceProposalRequest {
 message ResolveGovernanceProposalResponse {
   int64 id = 1;
   string status = 2;  // 二审后状态：applied | rejected
+}
+
+// G-30 治理仪表盘手动入口：对一个库立即触发一轮词条治理（同 dream 周期
+// CurateKnowledge 语义——decay/promote/stale/distill 自动项 + 高风险提案探测）。
+// 异步受理；dry_run=true 仅探测不应用（decay/置位/提案均不落库）。
+message CurateKnowledgeNowRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool dry_run = 2;
+}
+
+message CurateKnowledgeNowResponse {
+  string status = 1;  // curating（异步受理，进度经 knowledge WS 事件 knowledge_curate 广播）
 }
 
 message DeleteDocumentRequest {
@@ -461,6 +505,10 @@ message ReembedDocumentsRequest {
   repeated string doc_ids = 2;  // 空 = 全集合待重嵌入文档（chunks embedding IS NULL 或无 chunks）
   int32 chunk_size = 3;
   int32 chunk_overlap = 4;
+  // G-06: optional rechunk strategy override. Empty = document's stored
+  // chunk_strategy (ingest-time persisted), falling back to "char" for legacy
+  // rows. Fixes the pre-existing reembed-always-char shape loss.
+  string chunk_strategy = 5;
 }
 
 message ReembedDocumentsResponse {
@@ -543,6 +591,36 @@ message SearchRequest {
 
 message SearchResponse {
   repeated KnowledgeChunk chunks = 1;
+}
+
+// G-19 hit-test: self-serve "why did (not) X hit" debugging for one vault.
+// Same retrieval path as Search (router/hybrid/rerank/routing intact); differs:
+// collection_id REQUIRED (panel is per-vault), access_log is NOT written
+// (debug trials must not pollute base-level activation / popularity signals),
+// no RetrievalEvaluator LLM pass. Per-chunk dense/sparse/rrf/rerank scores are
+// carried on KnowledgeChunk (G-12) so the panel can rank both pre- and
+// post-rerank orderings from one response.
+message DebugKnowledgeSearchRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string query = 2 [(google.api.field_behavior) = REQUIRED];
+  int32 top_k = 3;            // default 5
+  float min_score = 4;
+  string filter_json = 5;
+  optional bool use_rerank = 6;
+  // hybrid_search: auto | dense | sparse | rrf (empty = auto). The panel issues
+  // one call per strategy for side-by-side comparison.
+  string hybrid_search = 7;
+  string path_prefix = 8;
+}
+
+message DebugKnowledgeSearchResponse {
+  repeated KnowledgeChunk chunks = 1;
+  // mode_used: provenance inferred from the score breakdown actually produced
+  // ("rrf" | "dense" | "sparse" | "none") — falls back visibly on embedder
+  // outage (request said rrf, result is pure sparse).
+  string mode_used = 2;
+  // reranked: true when a reranker rewrote scores (compare rrf_score vs score).
+  bool reranked = 3;
 }
 
 message GetEmbedderConfigRequest {}
@@ -763,6 +841,18 @@ service KnowledgeService {
       body: "*"
     };
   }
+  // ReindexVault force-rebuilds every derived index (chunks/vectors/links) of a
+  // local vault from the filesystem (G-11, SP1 P1-4): scan → deleted events for
+  // mirror-only docs → forced re-create for everything on disk. Team vaults are
+  // rejected (PG is the source of truth; use RebuildKnowledgeIndex/Reembed).
+  // Asynchronous and idempotent; 409 Conflict while any vault reindex for the
+  // same collection is in flight (job key knowledge-reindex:<id>).
+  rpc ReindexVault(ReindexVaultRequest) returns (ReindexVaultResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{id}/reindex"
+      body: "*"
+    };
+  }
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
   // normalization conflict groups (same name_norm, different display name)
   // plus high-similarity embedding pairs when the embedder is configured.
@@ -796,11 +886,27 @@ service KnowledgeService {
       body: "*"
     };
   }
+  // G-30 治理仪表盘手动触发（此前只能等 cron 或 butler 工具间接触达）：
+  // 异步幂等，同库在途 409（job key knowledge-curate:<id>，与 ReindexVault 同双层门）。
+  rpc CurateKnowledgeNow(CurateKnowledgeNowRequest) returns (CurateKnowledgeNowResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{collection_id}/curate"
+      body: "*"
+    };
+  }
 
   // Search
   rpc Search(SearchRequest) returns (SearchResponse) {
     option (google.api.http) = {
       post: "/v1/knowledge/search"
+      body: "*"
+    };
+  }
+  // G-19 hit-test panel: per-vault search debugging with score decomposition;
+  // never writes access_log (see DebugKnowledgeSearchRequest docs).
+  rpc DebugKnowledgeSearch(DebugKnowledgeSearchRequest) returns (DebugKnowledgeSearchResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/search/debug"
       body: "*"
     };
   }

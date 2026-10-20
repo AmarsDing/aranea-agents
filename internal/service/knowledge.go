@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
@@ -21,6 +22,7 @@ import (
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -31,6 +33,11 @@ import (
 )
 
 const maxIngestBytes = 32 << 20
+
+// ingestCorpseStaleAfter：indexing/pending 停留超过该时长视为摄取尸体
+// （进程重启/panic 停在半路），可被同内容重传原子认领重跑。取 15 分钟——
+// 远大于常规 chunk/embed 窗口（百页 PDF 分钟级），用户甘愿死等的上限之下。
+const ingestCorpseStaleAfter = 15 * time.Minute
 
 var allowedIngestMIMEs = map[string]bool{
 	"text/plain":         true,
@@ -92,6 +99,12 @@ type KnowledgeService struct {
 	linkIndex *bizknowledge.LinkIndex
 	// rebuildRuns SP1-H 块索引重建在途集合门（单进程部署 N-1；value 恒为 struct{}）。
 	rebuildRuns sync.Map
+	// reindexRuns G-11 vault 全量重索引在途门（与块索引重建分立键：两者均幂等，
+	// 允许并发交错，语义收敛各自维护）。
+	reindexRuns sync.Map
+	// curateRuns G-30 手动治理在途门（同库一轮 curate 内嵌多套探测/置位，
+	// 并发重入会双倍提案；cron 周期入口与手动入口共用同键互斥）。
+	curateRuns sync.Map
 	// reembedRuns 文档级重嵌入在途门；自动修复、人工重嵌入和语义层启用共用，
 	// 防止同一文档并发执行 delete-old/insert-new。
 	reembedRuns sync.Map
@@ -112,6 +125,8 @@ type VaultSyncController interface {
 	StartVault(vault biz.KnowledgeCollection)
 	// StopVault 停止单 vault 同步循环（幂等）。
 	StopVault(vaultID string)
+	// ReindexVault 全量重建单 vault 派生索引（G-11；文件系统为真相源）。
+	ReindexVault(ctx context.Context, vault biz.KnowledgeCollection) error
 }
 
 // SetVaultSyncController 注入 vault 同步控制器（装配在 wire/app 层，打破
@@ -530,6 +545,30 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		contentHash = biz.KnowledgeHashContent(string(vaultBytes))
 	}
 	if existing, findErr := s.uc.GetDocumentByContentHash(ctx, col.ID, contentHash); findErr == nil && existing.ID != "" {
+		// G-21 重试闭环（审查 B3 + 二轮复核 F5/F6）：内容哈希命中非终态文档时
+		// 原子认领后重跑摄取管线。去重直返从不发 knowledge_ingest 事件，前端解析
+		// 重试会永远等不到终态帧（240s 假超时死循环）；重跑即从 indexing 起重发
+		// 全链路事件，返回状态也标记为 indexing 供前端继续监听。
+		//   - error 文档：用户显式重试，恒可认领；
+		//   - indexing/pending：仅陈旧尸体（updated_at 早于 ingestCorpseStaleAfter，
+		//     进程重启/panic 停在半路）可认领；在途管线 fresh 时按现状直返；
+		//   - 认领必须原子（守卫式 UPDATE）——check-then-spawn 会让并发重试双双
+		//     起跑、败者回写 error 踩踏胜者 indexed 终态（F5）。
+		switch existing.Status {
+		case "error", "indexing", "pending":
+			claimed, claimErr := s.uc.ClaimDocumentForRetry(ctx, existing.ID, time.Now().Add(-ingestCorpseStaleAfter))
+			if claimErr == nil && claimed {
+				retryText := existing.ContentText
+				if strings.TrimSpace(text) != "" {
+					retryText = text // 与首次摄取同口径（content_hash 已保证内容等价）
+				}
+				s.runIngestPipeline(ctx, col, existing, metaJSON,
+					knowledge.ParseChunkStrategy(req.GetChunkStrategy()),
+					int(req.GetChunkSize()), int(req.GetChunkOverlap()), int(req.GetParentChunkSize()),
+					isImage, raw, retryText, len(raw))
+				existing.Status = "indexing"
+			}
+		}
 		return toProtoDocument(existing), nil
 	}
 
@@ -554,17 +593,34 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		RelPath:      vaultRel,
 		ContentHash:  contentHash,
 	}
+	// G-06：摄取生效的分块形状落库（strategy/size/overlap 按默认值归一），
+	// reembed 据此保形重分块——修复重嵌恒 char+512/64 丢形状的存量 bug。
+	// parent_chunk_size 不落库（重嵌归一为 4×chunk_size，见设计 G-06）。
+	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
+	shape := knowledge.IngestParams{
+		Strategy:     strategy,
+		ChunkSize:    int(req.GetChunkSize()),
+		ChunkOverlap: int(req.GetChunkOverlap()),
+	}
+	shape.ApplyDefaults()
+	doc.ChunkStrategy = string(shape.Strategy)
+	doc.ChunkSize = shape.ChunkSize
+	doc.ChunkOverlap = shape.ChunkOverlap
 	if strings.TrimSpace(doc.Summary) == "" {
 		sum, typ, sh := bizknowledge.DeriveSummaryCard(text, vaultRel, req.GetSource())
 		doc.Summary = sum
 		doc.DocType = typ
 		doc.SummaryHash = sh
 	}
-	// Phase 9：原图留存血缘（asset_uri）；asset 文件名依赖 doc ID，故提前生成。
-	if isImage && s.assets != nil {
+	// Phase 9 + G-07 原件留存血缘（asset_uri）：可提取源（文本/Office 经 extractors，
+	// 图片经 vision）非 vault 上传均落 AssetStore——引用页码锚定（G-07）需原件
+	// 回跳；vault 上传经 rel_path 已持原件镜像，不双份留存。asset 文件名依赖
+	// doc ID，故在此提前生成（图片沿用原分支语义，存量无 asset 文档不回填）。
+	assetEligible := isImage || (s.extractors != nil && s.extractors.Supports(req.GetSource(), req.GetMimeType()))
+	if assetEligible && vaultRel == "" && s.assets != nil {
 		doc.ID = uuid.NewString()
 		if uri, saveErr := s.assets.Save(doc.ID, doc.Source, raw); saveErr != nil {
-			s.lg.Warn("原图留存失败，跳过血缘",
+			s.lg.Warn("原件留存失败，跳过血缘",
 				loggateway.StepID("knowledge.ingest.asset_save"),
 				loggateway.Str("source", doc.Source),
 				loggateway.Err(saveErr),
@@ -590,12 +646,42 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				)
 			}
 		}
+		// G-07 对抗审查 F9：asset 先落盘后入库失败同样补偿删除（防孤儿文件——
+		// 留存文件无任何文档 asset_uri 指向，重试一次泄漏一份）。
+		if doc.AssetURI != "" && s.assets != nil {
+			if rbErr := os.Remove(s.assets.Resolve(doc.AssetURI)); rbErr != nil && !os.IsNotExist(rbErr) {
+				s.lg.Warn("原件留存补偿删除失败（文件已落盘但入库失败）",
+					loggateway.StepID("knowledge.ingest.asset_compensate_fail"),
+					loggateway.Str("asset_uri", doc.AssetURI),
+					loggateway.Err(rbErr),
+				)
+			}
+		}
 		return nil, err
 	}
 	doc = created
 
-	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
-	// 词法库（无 embedding_model）：跳过 embedding，与 vault 同步链 buildChunks 一致。
+	s.runIngestPipeline(ctx, col, doc, metaJSON, strategy,
+		int(req.GetChunkSize()), int(req.GetChunkOverlap()), int(req.GetParentChunkSize()),
+		isImage, raw, text, len(raw))
+	return toProtoDocument(doc), nil
+}
+
+// runIngestPipeline 启动异步 chunk/embed/索引管线（流程日志 + knowledge_ingest
+// 终态事件）。新建文档摄取与 G-21 失败重试（内容哈希命中 error 文档）共用；
+// 词法库（无 embedding_model）跳过 embedding，与 vault 同步链 buildChunks 一致。
+func (s *KnowledgeService) runIngestPipeline(
+	ctx context.Context,
+	col biz.KnowledgeCollection,
+	doc biz.KnowledgeDocument,
+	metaJSON string,
+	strategy knowledge.ChunkStrategy,
+	chunkSize, chunkOverlap, parentChunkSize int,
+	isImage bool,
+	raw []byte,
+	text string,
+	sizeBytes int,
+) {
 	embedder := s.embedder
 	if strings.TrimSpace(col.EmbeddingModel) == "" {
 		embedder = nil
@@ -603,13 +689,14 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	uc := s.uc
 
 	params := knowledge.IngestParams{
-		DocID:        doc.ID,
-		CollectionID: col.ID,
-		Text:         text,
-		MetadataJSON: metaJSON,
-		Strategy:     strategy,
-		ChunkSize:    int(req.GetChunkSize()),
-		ChunkOverlap: int(req.GetChunkOverlap()),
+		DocID:           doc.ID,
+		CollectionID:    col.ID,
+		Text:            text,
+		MetadataJSON:    metaJSON,
+		Strategy:        strategy,
+		ChunkSize:       chunkSize,
+		ChunkOverlap:    chunkOverlap,
+		ParentChunkSize: parentChunkSize,
 	}
 	params.ApplyDefaults()
 
@@ -617,11 +704,30 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	flow := s.knowledgeFlow(ctx)
 	flow.LogStart("knowledge.ingest.start", "知识文档摄取开始",
 		event.P("collection_id", col.ID),
-		event.P("source", req.GetSource()),
-		event.P("size_bytes", len(raw)))
+		event.P("source", doc.Source),
+		event.P("size_bytes", sizeBytes))
 
 	ingestCtx := appctx.Ctx()
 	safego.Go(ingestCtx, "knowledge-ingest", func() {
+		// 二轮复核 F6：safego 只 recover+记日志，panic 会把文档晾在 indexing/
+		// pending 成尸体（同内容永不可再入库）。这里自兜 recover——标 error +
+		// 发终态帧，让前端立即失败可重试，而不是干等 240s。
+		defer func() {
+			if rec := recover(); rec != nil {
+				msg := fmt.Sprintf("ingest pipeline panic: %v", rec)
+				if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", msg, 0); statusErr != nil {
+					s.lg.Error("panic 后回写文档 error 状态失败",
+						loggateway.StepID("knowledge.ingest.panic_status_fail"),
+						loggateway.Str("doc_id", doc.ID),
+						loggateway.Err(statusErr),
+					)
+				}
+				s.publishKnowledgeIngest(col.ID, doc.ID, "error", msg, 0)
+				flow.LogError("knowledge.ingest.done", "知识摄取失败",
+					event.P("doc_id", doc.ID),
+					event.P("error", msg))
+			}
+		}()
 		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexing", "", 0); err != nil {
 			s.lg.Error("failed to update document status to indexing",
 				loggateway.StepID("knowledge.ingest.status_fail"),
@@ -683,6 +789,19 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		}
 
 		if err := uc.CommitIndexedDocument(ingestCtx, col.ID, doc.ID, bizChunks, 1); err != nil {
+			// 二轮复核 F5 收口：并发/陈旧认领竞态的败者不得回写 error——无条件
+			// UPDATE 会把胜者已提交的 indexed 终态踩回 error 并清 chunk_count，
+			// 前端以最后一帧为终（error），且下次重试再 commit 使 collection
+			// document_count 二次漂移。以提交后真实状态判定：已 indexed 则只记
+			// 日志退场（胜者已发 indexed 帧，双传任务同 doc 一起终局）。
+			if cur, getErr := uc.GetDocument(ingestCtx, doc.ID); getErr == nil && cur.Status == "indexed" {
+				s.lg.Warn("commit 冲突且文档已 indexed（并发摄取胜者已提交），放弃 error 回写",
+					loggateway.StepID("knowledge.ingest.commit_conflict_lost"),
+					loggateway.Str("doc_id", doc.ID),
+					loggateway.Err(err),
+				)
+				return
+			}
 			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
 				s.lg.Error("failed to update document status to error",
 					loggateway.StepID("knowledge.ingest.status_fail"),
@@ -717,8 +836,6 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			event.P("chunk_count", len(bizChunks)))
 		knowledgeIngestTotal.Inc()
 	})
-
-	return toProtoDocument(doc), nil
 }
 
 // ListDocuments returns documents for a collection.
@@ -934,6 +1051,12 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		if err != nil {
 			return nil, err
 		}
+		// G-06：use_eval 补充检索走裸 Retriever（不经 Router），补入的新块缺
+		// 父块语境回填会致渲染口径分叉；合并终态统一补一次——幂等（已回填
+		// 的初检块重跑无副作用，对抗评审 F6）。
+		if s.search.Router != nil && len(chunks) > 0 {
+			chunks = s.search.Router.BackfillParentContext(ctx, q, chunks)
+		}
 	}
 
 	out := make([]*v1.KnowledgeChunk, 0, len(chunks))
@@ -946,6 +1069,13 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 			MetadataJson: ch.MetadataJSON,
 			ChunkIndex:   int32(ch.ChunkIndex),
 			Score:        ch.Score,
+			// G-12 命中调试：分路分解（未走的通路为 0；未重排时 RerankScore 为 0）。
+			DenseScore:  ch.DenseScore,
+			SparseScore: ch.SparseScore,
+			RrfScore:    ch.RRFScore,
+			RerankScore: ch.RerankScore,
+			// G-06：父块语境回填（仅 parent_child 文档的命中子块携带；运行时回填不落库）。
+			ParentContent: ch.ParentContent,
 		})
 	}
 	return &v1.SearchResponse{Chunks: out}, nil
@@ -975,12 +1105,32 @@ func (s *KnowledgeService) rewriteSearchQuery(ctx context.Context, query, strate
 }
 
 // GetEmbedderConfig returns redacted embedder settings (EP-KN-01).
-func (s *KnowledgeService) GetEmbedderConfig(_ context.Context, _ *v1.GetEmbedderConfigRequest) (*v1.EmbedderConfig, error) {
+func (s *KnowledgeService) GetEmbedderConfig(ctx context.Context, _ *v1.GetEmbedderConfigRequest) (*v1.EmbedderConfig, error) {
+	if err := assertEmbedderAdmin(ctx); err != nil {
+		return nil, err
+	}
 	return s.embedderConfigProto(), nil
+}
+
+// assertEmbedderAdmin gates embedder config read/write to platform admins (G-09).
+// Embedder config is workspace-global：任意租户的普通用户都不应读取（虽脱敏）
+// 或改写（直接导致全库向量不可用）——与 admin.go CreateAdmin 同标准。
+func assertEmbedderAdmin(ctx context.Context) error {
+	a, ok := auth.FromContext(ctx)
+	if !ok || a == nil {
+		return auth.ErrUnauthorized
+	}
+	if !a.HasAdminAccess() {
+		return auth.ErrForbidden
+	}
+	return nil
 }
 
 // UpdateEmbedderConfig applies runtime embedder settings from admin UI.
 func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.UpdateEmbedderConfigRequest) (*v1.UpdateEmbedderConfigResponse, error) {
+	if err := assertEmbedderAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if s.embedderAdmin == nil {
 		return nil, apierror.Internal("KNOWLEDGE", "embedder not configured")
 	}

@@ -608,6 +608,18 @@ func (f HealRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.HealRecordMutation", m)
 }
 
+// The KnowledgeAccessLogFunc type is an adapter to allow the use of ordinary
+// function as KnowledgeAccessLog mutator.
+type KnowledgeAccessLogFunc func(context.Context, *ent.KnowledgeAccessLogMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f KnowledgeAccessLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.KnowledgeAccessLogMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KnowledgeAccessLogMutation", m)
+}
+
 // The KnowledgeLinkUsedFunc type is an adapter to allow the use of ordinary
 // function as KnowledgeLinkUsed mutator.
 type KnowledgeLinkUsedFunc func(context.Context, *ent.KnowledgeLinkUsedMutation) (ent.Value, error)
@@ -618,6 +630,18 @@ func (f KnowledgeLinkUsedFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KnowledgeLinkUsedMutation", m)
+}
+
+// The KnowledgeWriteBackOutboxFunc type is an adapter to allow the use of ordinary
+// function as KnowledgeWriteBackOutbox mutator.
+type KnowledgeWriteBackOutboxFunc func(context.Context, *ent.KnowledgeWriteBackOutboxMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f KnowledgeWriteBackOutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.KnowledgeWriteBackOutboxMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KnowledgeWriteBackOutboxMutation", m)
 }
 
 // The LlmProviderModelFunc type is an adapter to allow the use of ordinary

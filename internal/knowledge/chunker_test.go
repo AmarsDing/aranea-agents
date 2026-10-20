@@ -1,6 +1,7 @@
 package knowledge_test
 
 import (
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/knowledge"
@@ -32,11 +33,29 @@ func TestChunkerByToken(t *testing.T) {
 	if len(chunks) < 2 {
 		t.Fatalf("expected multiple chunks, got %d", len(chunks))
 	}
-	// Each chunk should be 3 tokens or fewer
+	// 真 BPE 计数（G-06）：窗口按未裁剪 token 序列切分，TrimSpace 重编码边界至多
+	// ±2 漂移；ParentIndex 归一 -1。
 	for _, ch := range chunks {
-		words := splitWords(ch.Content)
-		if len(words) > 3 {
-			t.Errorf("chunk %q exceeds token size: %d words", ch.Content, len(words))
+		if n := knowledge.CountTokens(ch.Content); n > 3+2 {
+			t.Errorf("chunk %q exceeds token size: %d tokens", ch.Content, n)
+		}
+		if ch.ParentIndex != -1 {
+			t.Errorf("flat token chunk must have ParentIndex=-1, got %d", ch.ParentIndex)
+		}
+	}
+}
+
+// G-06 回归锚点：中文长无空格段在 token 策略下必须切窗（旧空格分词会塌缩成 1 块）。
+func TestChunkerByTokenCJKLongRun(t *testing.T) {
+	c := knowledge.NewChunker(16, 4, knowledge.ChunkByToken)
+	text := strings.Repeat("中文段落连续书写没有任何空格间隔", 8)
+	chunks := c.Split(text)
+	if len(chunks) < 2 {
+		t.Fatalf("CJK long run must be windowed by true tokens, got %d chunk", len(chunks))
+	}
+	for _, ch := range chunks {
+		if n := knowledge.CountTokens(ch.Content); n > 16+2 {
+			t.Errorf("chunk exceeds token size: %d tokens", n)
 		}
 	}
 }
@@ -73,23 +92,4 @@ func TestNewChunkerDefaults(t *testing.T) {
 	if c.Strategy != knowledge.ChunkByChar {
 		t.Errorf("expected default strategy ChunkByChar")
 	}
-}
-
-func splitWords(s string) []string {
-	var out []string
-	start := -1
-	for i, r := range s {
-		if r != ' ' && r != '\t' && r != '\n' {
-			if start == -1 {
-				start = i
-			}
-		} else if start != -1 {
-			out = append(out, s[start:i])
-			start = -1
-		}
-	}
-	if start != -1 {
-		out = append(out, s[start:])
-	}
-	return out
 }

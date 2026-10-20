@@ -96,7 +96,8 @@ func (s *KnowledgeService) ListEntityMergeSuggestions(ctx context.Context, req *
 // 与 dream_cycle curate 的全局语义一致）。
 
 // ListGovernanceProposals lists curation governance proposals (M4 人工二审出口).
-// Read-only, no flow log. status/limit 收口在 biz 层（非法 status → CodeBadRequest）。
+// Read-only, no flow log. status/limit 收口在 biz 层（非法 status → CodeBadRequest）；
+// G-30 offset 分页：total 与 items 同 WHERE 口径回填。
 func (s *KnowledgeService) ListGovernanceProposals(ctx context.Context, req *v1.ListGovernanceProposalsRequest) (*v1.ListGovernanceProposalsResponse, error) {
 	if req.GetCollectionId() != "" {
 		col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
@@ -107,11 +108,14 @@ func (s *KnowledgeService) ListGovernanceProposals(ctx context.Context, req *v1.
 			return nil, err
 		}
 	}
-	views, err := s.uc.ListGovernanceProposals(ctx, req.GetCollectionId(), req.GetStatus(), int(req.GetLimit()))
+	views, total, err := s.uc.ListGovernanceProposals(ctx, req.GetCollectionId(), req.GetStatus(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
 	}
-	out := &v1.ListGovernanceProposalsResponse{Items: make([]*v1.GovernanceProposal, 0, len(views))}
+	out := &v1.ListGovernanceProposalsResponse{
+		Items: make([]*v1.GovernanceProposal, 0, len(views)),
+		Total: int32(total),
+	}
 	for _, v := range views {
 		payloadJSON, _ := json.Marshal(v.Payload)
 		item := &v1.GovernanceProposal{

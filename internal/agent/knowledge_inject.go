@@ -21,8 +21,10 @@ const (
 	knowledgeCueMaxCollections = 10
 	knowledgeCueMaxChars       = 1800
 	knowledgeCueChunkChars     = 280
-	knowledgeCueTopK           = 4
-	knowledgeCueSearchTimeout  = 2 * time.Second
+	// G-06：命中子块带父块语境时，cue 渲染换用父块预算（父块 ≈ 4×chunk_size）。
+	knowledgeCueParentRunes   = 768
+	knowledgeCueTopK          = 4
+	knowledgeCueSearchTimeout = 2 * time.Second
 
 	// emptyRetrievalToolPointer is for agents that actually have knowledge_search
 	// (coding/research/full). Catalog + strategy tips caused 157+ empty loops;
@@ -202,6 +204,13 @@ func lastUserQuery(msgs []trpcmodel.Message) string {
 func retrieveCueChunks(ctx context.Context, query string, scoped []string, catalog []biz.KnowledgeCollection, lg loggateway.Logger) []biz.KnowledgeChunk {
 	// 词条优先写回：日记流水（inbox/writeback-*）仅 provenance，不进默认预检索。
 	q := biz.KnowledgeSearchQuery{Query: query, TopK: knowledgeCueTopK, ExcludePathPrefixes: []string{biz.KnowledgeWriteBackInboxPrefix}}
+	// G-15 审计足迹：cue 预检索透传会话/Agent 进命中日志（invocation 持有二者）。
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		if inv.Session != nil {
+			q.SessionID = strings.TrimSpace(inv.Session.ID)
+		}
+		q.AgentID = strings.TrimSpace(inv.AgentName)
+	}
 	searchCtx, cancel := context.WithTimeout(ctx, knowledgeCueSearchTimeout)
 	defer cancel()
 
@@ -337,9 +346,16 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		}
 		writeBlock(header + "\n\n")
 		for i, ch := range rendered {
+			// G-06：父子分块命中渲染父块语境（预算放宽至 knowledgeCueParentRunes），
+			// 无父块仍回退子块原文（knowledgeCueChunkChars）；总预算不变（writeBlock 统裁）。
 			content := strings.TrimSpace(ch.Content)
-			if utf8.RuneCountInString(content) > knowledgeCueChunkChars {
-				content = string([]rune(content)[:knowledgeCueChunkChars]) + "..."
+			budget := knowledgeCueChunkChars
+			if pc := strings.TrimSpace(ch.ParentContent); pc != "" {
+				content = pc
+				budget = knowledgeCueParentRunes
+			}
+			if utf8.RuneCountInString(content) > budget {
+				content = string([]rune(content)[:budget]) + "..."
 			}
 			if !writeBlock(fmt.Sprintf("[%d] (doc=%s score=%.2f)\n%s\n\n", i+1, ch.DocID, ch.Score, content)) {
 				break

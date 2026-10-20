@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -138,6 +139,81 @@ func TestBuildIndexedChunks_errorWhenEmbedderFails(t *testing.T) {
 	}, nil)
 	if err == nil {
 		t.Fatal("expected embed failure to propagate")
+	}
+}
+
+// 父子分块摄取（G-06）：父块行进 -p- 命名空间且不进 embed 批；子块带 ParentChunkID 照常嵌入。
+func TestBuildIndexedChunks_parentChild(t *testing.T) {
+	t.Parallel()
+	emb := &stubIngestEmbedder{dim: 4}
+	text := strings.Repeat("核心机房夜间值守必须双人同时在场，禁止单人进入配电区。", 20)
+	chunks, err := BuildIndexedChunks(t.Context(), emb, IngestParams{
+		DocID:        "doc1",
+		CollectionID: "col1",
+		Text:         text,
+		Strategy:     ChunkByParentChild,
+		ChunkSize:    16,
+		ChunkOverlap: 4,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentIDs := map[string]struct{}{}
+	childCount := 0
+	for _, ch := range chunks {
+		if ch.IsParent {
+			if len(ch.Embedding) != 0 {
+				t.Fatalf("parent row must not be embedded: %s", ch.ID)
+			}
+			if ch.ID != "doc1-p-"+strconv.Itoa(ch.ChunkIndex) {
+				t.Fatalf("parent ID must be <docID>-p-<pidx>, got %s", ch.ID)
+			}
+			if ch.ParentChunkID != "" {
+				t.Fatalf("parent row must not itself reference a parent: %s", ch.ID)
+			}
+			parentIDs[ch.ID] = struct{}{}
+			continue
+		}
+		childCount++
+		if len(ch.Embedding) != 4 {
+			t.Fatalf("child row must be embedded: %s", ch.ID)
+		}
+		if !strings.HasPrefix(ch.ID, "doc1-ch-") {
+			t.Fatalf("child ID must be <docID>-ch-<idx>, got %s", ch.ID)
+		}
+		if _, ok := parentIDs[ch.ParentChunkID]; !ok {
+			t.Fatalf("child %s references unknown parent %q", ch.ID, ch.ParentChunkID)
+		}
+	}
+	if len(parentIDs) == 0 || childCount == 0 {
+		t.Fatalf("expected parents and children, got %d parents %d children", len(parentIDs), childCount)
+	}
+}
+
+// 父子分块 + 词法库（embedder nil）：父块/子块均无向量、行结构不变。
+func TestBuildIndexedChunks_parentChildLexical(t *testing.T) {
+	t.Parallel()
+	text := strings.Repeat("词法库父子分块一样要保留父块语境行。", 30)
+	chunks, err := BuildIndexedChunks(t.Context(), nil, IngestParams{
+		DocID: "doc1", CollectionID: "col1", Text: text,
+		Strategy: ChunkByParentChild, ChunkSize: 8, ChunkOverlap: 2,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawParent, sawChildWithParent bool
+	for _, ch := range chunks {
+		if len(ch.Embedding) != 0 {
+			t.Fatalf("lexical ingest must keep embeddings empty: %s", ch.ID)
+		}
+		if ch.IsParent {
+			sawParent = true
+		} else if ch.ParentChunkID != "" {
+			sawChildWithParent = true
+		}
+	}
+	if !sawParent || !sawChildWithParent {
+		t.Fatalf("expected parent rows and linked children, got %+v", chunks)
 	}
 }
 

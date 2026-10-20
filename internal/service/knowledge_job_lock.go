@@ -107,6 +107,14 @@ func knowledgeReembedJobKey(docID string) string {
 	return "knowledge-reembed:" + docID
 }
 
+func knowledgeReindexJobKey(collectionID string) string {
+	return "knowledge-reindex:" + collectionID
+}
+
+func knowledgeCurateJobKey(collectionID string) string {
+	return "knowledge-curate:" + collectionID
+}
+
 func (s *KnowledgeService) acquireJob(ctx context.Context, runs *sync.Map, localKey, jobKey, conflictFmt, conflictArg string) (func(), error) {
 	var distRelease func()
 	if s != nil && s.jobLock != nil {

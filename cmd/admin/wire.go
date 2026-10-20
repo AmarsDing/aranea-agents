@@ -1442,6 +1442,7 @@ func provideAutoMemoryWorker(
 	caseReader biz.AgentCaseReader,
 	caseWriter biz.AgentCaseWriter,
 	writeBack biz.KnowledgeWriteBack,
+	writeBackOutbox biz.KnowledgeWriteBackOutboxRepo,
 	uc *biz.KnowledgeUsecase,
 	d *data.Data,
 	lg loggateway.Logger,
@@ -1451,6 +1452,9 @@ func provideAutoMemoryWorker(
 	// distillWiring 仅作依赖锚点（M4 distill：构造时已完成 Set 回注，本函数不直接使用），
 	// 保证 wire 图到达 provideKnowledgeDistillWiring。
 	distillWiring *knowledgeDistillWiring,
+	// orgValidatorWiring 仅作依赖锚点（G-08：构造时已完成 Set 回注，本函数不直接使用），
+	// 保证 wire 图到达 provideKnowledgeOrgValidatorWiring。
+	orgValidatorWiring *knowledgeOrgValidatorWiring,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
 		ks.SetAgentMemoryProjector(bizknowledge.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
@@ -1483,6 +1487,7 @@ func provideAutoMemoryWorker(
 		CaseWriter:      caseWriter,
 		WriteBack:       writeBack,
 		ReviewQueue:     review,
+		WriteBackOutbox: writeBackOutbox,
 		MemoryProjector: proj,
 		Logger:          lg,
 	})
@@ -1998,6 +2003,17 @@ func provideKnowledgeCurateWorker(
 	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
 }
 
+// provideKnowledgeWriteBackSweeperWorker G-10：写回重试队列重放（AS-EVT-01
+// Important 分级——AutoMemory 写回失败已落 knowledge_writeback_outbox，本
+// worker 周期重投 WriteBackSessionFacts）。
+func provideKnowledgeWriteBackSweeperWorker(
+	outbox biz.KnowledgeWriteBackOutboxRepo,
+	writeBack biz.KnowledgeWriteBack,
+	lg loggateway.Logger,
+) *jobs.KnowledgeWriteBackSweeperWorker {
+	return jobs.NewKnowledgeWriteBackSweeperWorker(0, outbox, writeBack, lg)
+}
+
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
 type knowledgeDistillWiring struct{}
 
@@ -2041,6 +2057,25 @@ func provideKnowledgeDistillWiring(uc *biz.KnowledgeUsecase, admin *biz.MemoryAd
 	}
 	uc.SetDistillRepos(hot, knowledgeDistillFactWriter{admin: admin})
 	return &knowledgeDistillWiring{}
+}
+
+// knowledgeOrgValidatorWiring G-08 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeOrgValidatorWiring struct{}
+
+// provideKnowledgeOrgValidatorWiring 装配 G-08 部门级可见性校验口：回注
+// KnowledgeUsecase（Set 副作用，与 provideKnowledgeDistillWiring 同模式——
+// OrganizationRepo 与 KnowledgeUsecase 存在构造期环依赖）。orgRepo 断言
+// bizknowledge.OrgNodeValidator；任一缺席返回 nil（shared 档更新拒收
+// Unavailable，fail-closed，无越权风险）。注：手改 wire_gen.go 注入即等价
+// 代码，但任何 go generate 重生成都会静默丢弃——必须走本 provider 入图。
+func provideKnowledgeOrgValidatorWiring(uc *biz.KnowledgeUsecase, orgRepo biz.OrganizationRepo) *knowledgeOrgValidatorWiring {
+	if uc == nil || orgRepo == nil {
+		return nil
+	}
+	if v, ok := orgRepo.(bizknowledge.OrgNodeValidator); ok {
+		uc.SetOrgNodeValidator(v)
+	}
+	return &knowledgeOrgValidatorWiring{}
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -3287,6 +3322,7 @@ type wireOut struct {
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
 	KnowledgeCurate             *jobs.KnowledgeCurateWorker
+	KnowledgeWriteBackSweeper   *jobs.KnowledgeWriteBackSweeperWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3349,6 +3385,7 @@ func provideWireOut(
 	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	knowledgeIndexRepair *jobs.KnowledgeIndexRepairWorker,
 	knowledgeCurate *jobs.KnowledgeCurateWorker,
+	knowledgeWriteBackSweeper *jobs.KnowledgeWriteBackSweeperWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3396,6 +3433,7 @@ func provideWireOut(
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		KnowledgeIndexRepair:        knowledgeIndexRepair,
 		KnowledgeCurate:             knowledgeCurate,
+		KnowledgeWriteBackSweeper:   knowledgeWriteBackSweeper,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -4250,10 +4288,12 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideKnowledgeRelationExtractWorker,
 		provideKnowledgeIndexRepairWorker,
 		provideKnowledgeCurateWorker,
+		provideKnowledgeWriteBackSweeperWorker,
 		provideKnowledgeEntityPipeline,
 		provideKnowledgeRelationExtractor,
 		provideKnowledgeWriteBackGraphHook,
 		provideKnowledgeDistillWiring,
+		provideKnowledgeOrgValidatorWiring,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,

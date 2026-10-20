@@ -187,3 +187,78 @@ func TestKnowledgeRepo_StrengthenCoActivations(t *testing.T) {
 		t.Fatalf("single doc strengthen: %v", err)
 	}
 }
+
+// G-15 审计足迹：session/user/agent/rank/score/latency 随命中一起落库并可读回。
+// 自建表避开 EnsureKnowledgeSchema 的 vector 扩展依赖（本测试 PG 容器无 pgvector）。
+func TestKnowledgeRepo_AccessLog_G15ColumnsRoundTrip(t *testing.T) {
+	db := testhelper.SetupTestPGRaw(t)
+	ctx := context.Background()
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS knowledge_access_log (
+			id BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL,
+			doc_id TEXT NOT NULL,
+			accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			query_hash TEXT,
+			session_id TEXT,
+			user_id TEXT,
+			agent_id TEXT,
+			"rank" INTEGER NOT NULL DEFAULT 0,
+			score DOUBLE PRECISION NOT NULL DEFAULT 0,
+			latency_ms INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_access_log_doc_idx
+			ON knowledge_access_log (collection_id, doc_id, accessed_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_access_log_user_idx
+			ON knowledge_access_log (user_id, accessed_at DESC)`,
+	} {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("ddl: %v", err)
+		}
+	}
+	repo, ok := NewKnowledgeRepo(&Data{rawDB: db, pg: db, pgRead: db, dialect: DialectPostgres},
+		loggateway.NewNoop()).(bizknowledge.AccessLogRepo)
+	if !ok {
+		t.Fatal("knowledgeRepo does not implement bizknowledge.AccessLogRepo")
+	}
+	raw := repo.(*knowledgeRepo).data.Postgres()
+
+	entries := []bizknowledge.AccessLogEntry{
+		{CollectionID: "c1", DocID: "d1", QueryHash: "q1",
+			SessionID: "sess-1", UserID: "u-9", AgentID: "agent-a",
+			Rank: 1, Score: 0.95, LatencyMs: 42},
+		{CollectionID: "c1", DocID: "d2", QueryHash: "q1",
+			SessionID: "sess-1", UserID: "u-9", AgentID: "agent-a",
+			Rank: 3, Score: 0.71, LatencyMs: 42},
+	}
+	if err := repo.LogAccess(ctx, entries); err != nil {
+		t.Fatalf("LogAccess: %v", err)
+	}
+
+	var sessionID, userID, agentID string
+	var rank int
+	var score float64
+	var latencyMs int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT session_id, user_id, agent_id, "rank", score, latency_ms
+		 FROM knowledge_access_log WHERE collection_id='c1' AND doc_id='d1' ORDER BY id DESC LIMIT 1`).Scan(
+		&sessionID, &userID, &agentID, &rank, &score, &latencyMs); err != nil {
+		t.Fatalf("select back: %v", err)
+	}
+	if sessionID != "sess-1" || userID != "u-9" || agentID != "agent-a" {
+		t.Errorf("identity = (%q,%q,%q), want (sess-1,u-9,agent-a)", sessionID, userID, agentID)
+	}
+	if rank != 1 || score != 0.95 || latencyMs != 42 {
+		t.Errorf("rank/score/latency = (%d,%v,%d), want (1,0.95,42)", rank, score, latencyMs)
+	}
+	// 上下文列永不落 NULL（审计查询可按空串过滤，UNNEST 空串 = ''）。
+	var nulls int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM knowledge_access_log
+		 WHERE collection_id='c1' AND (session_id IS NULL OR user_id IS NULL OR agent_id IS NULL)`).Scan(&nulls); err != nil {
+		t.Fatal(err)
+	}
+	if nulls != 0 {
+		t.Errorf("identity columns must never be NULL, got %d rows", nulls)
+	}
+}

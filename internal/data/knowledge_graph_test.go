@@ -162,7 +162,7 @@ func TestKnowledgeRepo_GraphExpandHidesPrivateNeighbors(t *testing.T) {
 		{ID: "k1", DocID: "d1", CollectionID: "c1", Content: "public seed", ChunkIndex: 0},
 		{ID: "k2", DocID: "d2", CollectionID: "c1", Content: "private neighbor", ChunkIndex: 0},
 	}))
-	must(repo.UpdateDocumentVisibility(ctx, "d2", "private", "7"))
+	must(repo.UpdateDocumentVisibility(ctx, "d2", "private", "7", nil))
 
 	other := auth.NewContext(ctx, &auth.Auth{UserID: 8})
 	chunks, err := repo.ListChunksByDocuments(other, "c1", []string{"d1", "d2"}, 2)
@@ -189,6 +189,34 @@ func TestKnowledgeRepo_GraphExpandHidesPrivateNeighbors(t *testing.T) {
 		if l.DocID == "d2" || l.TargetDocID == "d2" {
 			t.Fatalf("other user must not see active link to private d2: %+v", l)
 		}
+	}
+
+	// G-02 回归：库级图谱（ListCollectionLinks）与已解析关联（ListResolvedLinks）
+	// 同样过滤触及私有端点的边——修复前这两个读路径未套 ACL，可经图谱端点枚举
+	// 私有文档的关系边与对端路径。
+	colLinks, err := repo.ListCollectionLinks(other, "c1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range colLinks {
+		if l.DocID == "d2" || l.TargetDocID == "d2" {
+			t.Fatalf("other user must not see collection link to private d2: %+v", l)
+		}
+	}
+	if len(colLinks) != 1 || colLinks[0].TargetDocID != "d3" {
+		t.Fatalf("other user collection links = %+v, want only d1->d3", colLinks)
+	}
+	resolved, err := repo.ListResolvedLinks(other, "c1", "d1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rl := range resolved {
+		if rl.TargetDocID == "d2" || rl.TargetSource == "b.md" {
+			t.Fatalf("other user must not see resolved link to private d2: %+v", rl)
+		}
+	}
+	if len(resolved) != 1 || resolved[0].TargetDocID != "d3" {
+		t.Fatalf("other user resolved links = %+v, want only d1->d3", resolved)
 	}
 
 	owner := auth.NewContext(ctx, &auth.Auth{UserID: 7})

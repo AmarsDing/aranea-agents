@@ -20,16 +20,24 @@ var _ bizknowledge.ResolveIndex = (*knowledgeBlockRepo)(nil)
 // ListResolveCandidates 列出可见集合内的全部候选文档（B-1：不可见集合由
 // 调用方传入的 collectionIDs 裁剪，SQL 不再过滤）。title/aliases 为
 // 20261204 迁移列（frontmatter 物化）；空集合 ID 列表直接短路不查库。
+// G-08：行级谓词由 docRowVisibilityClause 注入（可见性下裁剪见函数体内注释）。
 func (r *knowledgeBlockRepo) ListResolveCandidates(ctx context.Context, collectionIDs []string) ([]bizknowledge.ResolveDocCandidate, error) {
 	if len(collectionIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT d.id, d.collection_id, d.rel_path, d.title,
+	q := `SELECT d.id, d.collection_id, d.rel_path, d.title,
 		        COALESCE(d.aliases, '[]'::jsonb), c.created_at
 		 FROM knowledge_documents d
 		 JOIN knowledge_collections c ON c.id = d.collection_id
-		 WHERE d.collection_id = ANY($1)`, pq.Array(collectionIDs))
+		 WHERE d.collection_id = ANY($1)`
+	args := []any{pq.Array(collectionIDs)}
+	// G-08（审查 C1）泄漏面收口：autolink needle 候选集按调用者行级可见性过滤——
+	// 私有文档 title/aliases 不得作为 [[wikilink]] 针拼进他人文档正文持久扩散。
+	if clause, pargs := docRowVisibilityClause(ctx, len(args)+1); clause != "" {
+		q += clause
+		args = append(args, pargs...)
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "knowledge")
 	}

@@ -113,8 +113,8 @@ func (s *stubCurateRepo) MarkStaleEntries(_ context.Context, docIDs []string) er
 	return s.markStaleErr
 }
 
-func (s *stubCurateRepo) ListGovernanceProposals(context.Context, string, string, int) ([]GovernanceProposalView, error) {
-	return s.proposalViews, nil
+func (s *stubCurateRepo) ListGovernanceProposals(context.Context, string, string, int, int) ([]GovernanceProposalView, int, error) {
+	return s.proposalViews, len(s.proposalViews), nil
 }
 
 func newCurateUsecase(curate KnowledgeCurateRepo, proposals GovernanceProposalRepo) *Usecase {
@@ -629,22 +629,29 @@ func TestResolveGovernanceProposal_Guards(t *testing.T) {
 	}
 }
 
-// 二审列表出口：状态白名单校验；未接线报错；合法调用透传。
+// 二审列表出口：状态白名单校验；未接线报错；合法调用透传（G-30 返回 total）。
 func TestListGovernanceProposals(t *testing.T) {
 	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{ID: 1, Kind: ProposalKindOrphan}}}
 	u := newCurateUsecase(curate, nil)
-	got, err := u.ListGovernanceProposals(context.Background(), "", ProposalStatusPending, 0)
+	got, total, err := u.ListGovernanceProposals(context.Background(), "", ProposalStatusPending, 0, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("total = %d, want 1", total)
 	}
 	if len(got) != 1 || got[0].ID != 1 {
 		t.Fatalf("views = %+v", got)
 	}
-	if _, err := u.ListGovernanceProposals(context.Background(), "", "bogus", 0); err == nil {
+	if _, _, err := u.ListGovernanceProposals(context.Background(), "", "bogus", 0, 0); err == nil {
 		t.Fatal("invalid status must error")
 	}
+	// 负 offset 收 0（防 -1 OFFSET bug 冲入 SQL 层）。
+	if _, _, err := u.ListGovernanceProposals(context.Background(), "", ProposalStatusPending, 0, -5); err != nil {
+		t.Fatal(err)
+	}
 	u2 := NewUsecase(nil, nil, nil)
-	if _, err := u2.ListGovernanceProposals(context.Background(), "", "", 0); err == nil {
+	if _, _, err := u2.ListGovernanceProposals(context.Background(), "", "", 0, 0); err == nil {
 		t.Fatal("unwired must error")
 	}
 }

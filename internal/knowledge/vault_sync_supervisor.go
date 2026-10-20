@@ -90,6 +90,13 @@ func (s *VaultSyncSupervisor) StopVault(vaultID string) {
 	}
 }
 
+// ReindexVault 对单 vault 强制全量重建派生索引（G-11 RPC 委托点；与周期
+// SyncOnce 共用 runner，事件序列幂等、可交错——不互斥，互斥由 service 层
+// job lock 承担）。
+func (s *VaultSyncSupervisor) ReindexVault(ctx context.Context, vault bizknowledge.Collection) error {
+	return s.runner.ReindexVault(ctx, vault)
+}
+
 // Stop 停止全部同步循环（进程关闭时调用；幂等）。
 func (s *VaultSyncSupervisor) Stop() {
 	s.mu.Lock()

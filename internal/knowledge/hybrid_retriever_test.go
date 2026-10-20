@@ -33,6 +33,100 @@ func TestParseHybridSearchMode(t *testing.T) {
 	}
 }
 
+func TestRRFMerge_ScoreBreakdown(t *testing.T) {
+	// G-12：RRF 融合保留两侧原始分 + 融合分，回答「为什么命中」。
+	dense := []biz.KnowledgeChunk{
+		{ID: "a", Content: "alpha", Score: 0.9},
+		{ID: "b", Content: "beta", Score: 0.7},
+	}
+	sparse := []biz.KnowledgeChunk{
+		{ID: "b", Content: "beta", Score: 11},
+		{ID: "c", Content: "gamma", Score: 10},
+	}
+
+	merged := rrfMerge(dense, sparse, 60)
+	byID := make(map[string]biz.KnowledgeChunk, len(merged))
+	for _, ch := range merged {
+		byID[ch.ID] = ch
+	}
+
+	a := byID["a"]
+	if a.DenseScore != 0.9 {
+		t.Errorf("a.DenseScore = %v, want 0.9 (dense 侧原始分)", a.DenseScore)
+	}
+	if a.SparseScore != 0 {
+		t.Errorf("a.SparseScore = %v, want 0（未命中 sparse 侧）", a.SparseScore)
+	}
+	wantA := float32(1.0 / 61.0)
+	if !float32Near(a.RRFScore, wantA) || a.Score != a.RRFScore {
+		t.Errorf("a RRF = %v Score = %v, want %v 且 Score==RRFScore", a.RRFScore, a.Score, wantA)
+	}
+
+	b := byID["b"]
+	if b.DenseScore != 0.7 || b.SparseScore != 11 {
+		t.Errorf("b breakdown = dense %v sparse %v, want 0.7/11", b.DenseScore, b.SparseScore)
+	}
+	wantB := float32(1.0/62.0 + 1.0/61.0)
+	if !float32Near(b.RRFScore, wantB) {
+		t.Errorf("b.RRFScore = %v, want %v（dense#2 + sparse#1 贡献和）", b.RRFScore, wantB)
+	}
+
+	c := byID["c"]
+	if c.SparseScore != 10 || c.DenseScore != 0 {
+		t.Errorf("c breakdown = dense %v sparse %v, want 0/10", c.DenseScore, c.SparseScore)
+	}
+	wantC := float32(1.0 / 62.0)
+	if !float32Near(c.RRFScore, wantC) {
+		t.Errorf("c.RRFScore = %v, want %v", c.RRFScore, wantC)
+	}
+}
+
+func float32Near(got, want float32) bool {
+	const eps = 1e-6
+	d := got - want
+	return d < eps && d > -eps
+}
+
+func TestRerankChunks_CarriesScoreBreakdown(t *testing.T) {
+	// G-12：rerank 重写 Score 后分解不丢——原始分路从候选集并回，
+	// RerankScore = 重排后分数；MetadataJSON 一并回补（reranker 结果元数据原本就丢它）。
+	repo := &stubSparseRepo{}
+	rr := &reverseReranker{}
+	ret := NewRetriever(stubEmbedder{}, repo, rr, loggateway.NewNoop())
+
+	candidates := []biz.KnowledgeChunk{
+		{ID: "x", DocID: "d1", CollectionID: "col", Content: "c1", MetadataJSON: `{"k":1}`, Score: 0.20, DenseScore: 0.8, RRFScore: 0.20},
+		{ID: "y", DocID: "d2", CollectionID: "col", Content: "c2", MetadataJSON: `{"k":2}`, Score: 0.10, SparseScore: 9.5, RRFScore: 0.10},
+	}
+	got, err := ret.RerankChunks(context.Background(), biz.KnowledgeSearchQuery{
+		CollectionID: "col", Query: "q", TopK: 2,
+	}, candidates, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || !rr.called {
+		t.Fatalf("rerank 未生效：got %d chunks, called=%v", len(got), rr.called)
+	}
+	byID := make(map[string]biz.KnowledgeChunk, len(got))
+	for _, ch := range got {
+		byID[ch.ID] = ch
+	}
+	x := byID["x"]
+	if x.DenseScore != 0.8 || x.SparseScore != 0 || x.RRFScore != 0.20 {
+		t.Errorf("x breakdown 丢失：dense=%v sparse=%v rrf=%v", x.DenseScore, x.SparseScore, x.RRFScore)
+	}
+	if x.MetadataJSON != `{"k":1}` {
+		t.Errorf("x.MetadataJSON = %q, want 回补的原始 metadata", x.MetadataJSON)
+	}
+	if x.RerankScore != x.Score {
+		t.Errorf("x.RerankScore = %v, want == 重排后 Score %v", x.RerankScore, x.Score)
+	}
+	y := byID["y"]
+	if y.SparseScore != 9.5 || y.MetadataJSON != `{"k":2}` {
+		t.Errorf("y breakdown/metadata 丢失：sparse=%v meta=%q", y.SparseScore, y.MetadataJSON)
+	}
+}
+
 func TestRRFMerge(t *testing.T) {
 	dense := []biz.KnowledgeChunk{
 		{ID: "a", Content: "alpha", Score: 0.9},
@@ -188,5 +282,103 @@ func TestHybridRetriever_RRFStartsDenseAndSparseConcurrently(t *testing.T) {
 	close(repo.release)
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// G-06 对抗评审 F1 回归：RRF 融合字面量重建块时不得丢 ParentChunkID——
+// 它是 Router 尾步父块语境回填的唯一触发键，双侧命中路径都要保。
+func TestRRFMerge_PreservesParentChunkID(t *testing.T) {
+	dense := []biz.KnowledgeChunk{
+		{ID: "d-ch", Content: "dense child", Score: 0.9, ParentChunkID: "d-p-0"},
+		{ID: "both", Content: "dual hit", Score: 0.8, ParentChunkID: "b-p-0"},
+	}
+	sparse := []biz.KnowledgeChunk{
+		{ID: "s-ch", Content: "sparse child", Score: 11, ParentChunkID: "s-p-0"},
+		{ID: "both", Content: "dual hit", Score: 10, ParentChunkID: "b-p-s"},
+	}
+
+	merged := rrfMerge(dense, sparse, 60)
+	byID := make(map[string]biz.KnowledgeChunk, len(merged))
+	for _, ch := range merged {
+		byID[ch.ID] = ch
+	}
+	if got := byID["d-ch"].ParentChunkID; got != "d-p-0" {
+		t.Errorf("dense-only chunk lost ParentChunkID: %q", got)
+	}
+	if got := byID["s-ch"].ParentChunkID; got != "s-p-0" {
+		t.Errorf("sparse-only chunk lost ParentChunkID: %q", got)
+	}
+	// 双侧同 ID：chunkMap 先记 dense 侧，父引用取 dense 值——关键是不丢。
+	if got := byID["both"].ParentChunkID; got != "b-p-0" {
+		t.Errorf("dual-hit chunk lost ParentChunkID: %q (dense side wins)", got)
+	}
+}
+
+// G-06 对抗评审 F2 回归：reranker 结果只带 ID/Content/新分，mergeScoreBreakdown
+// 必须从融合前候选集并回 ParentChunkID——否则重排后父块回填触发键丢失。
+func TestRerankChunks_PreservesParentChunkID(t *testing.T) {
+	repo := &stubSparseRepo{}
+	rr := &reverseReranker{}
+	ret := NewRetriever(stubEmbedder{}, repo, rr, loggateway.NewNoop())
+
+	candidates := []biz.KnowledgeChunk{
+		{ID: "x", DocID: "d1", CollectionID: "col", Content: "c1", Score: 0.20, ParentChunkID: "d1-p-0"},
+		{ID: "y", DocID: "d2", CollectionID: "col", Content: "c2", Score: 0.10, ParentChunkID: "d2-p-0"},
+	}
+	got, err := ret.RerankChunks(context.Background(), biz.KnowledgeSearchQuery{
+		CollectionID: "col", Query: "q", TopK: 2,
+	}, candidates, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]biz.KnowledgeChunk, len(got))
+	for _, ch := range got {
+		byID[ch.ID] = ch
+	}
+	if byID["x"].ParentChunkID != "d1-p-0" || byID["y"].ParentChunkID != "d2-p-0" {
+		t.Fatalf("rerank path dropped ParentChunkID: %+v", got)
+	}
+}
+
+// G-06 F1+F6 全链回归：fake dense/sparse → HybridRRF 融合 → Router.Search 尾步
+// 触发一次父块批量回填——锁定「融合丢字段 → 回填静默跳过」的回归链。
+func TestRouterSearch_RRFChainBackfillsParentContext(t *testing.T) {
+	repo := &stubSparseRepo{
+		stubKnowledgeRepo: stubKnowledgeRepo{chunks: []biz.KnowledgeChunk{
+			{ID: "doc1-ch-0", DocID: "doc1", CollectionID: "col", Content: "子块0",
+				Score: 0.9, ParentChunkID: "doc1-p-0"},
+		}},
+		bm25Chunks: []biz.KnowledgeChunk{
+			{ID: "doc1-ch-1", DocID: "doc1", CollectionID: "col", Content: "子块1",
+				Score: 10, ParentChunkID: "doc1-p-0"},
+		},
+	}
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+	hybrid := NewHybridRetriever(ret, repo, loggateway.NewNoop())
+	router := NewAdaptiveRouter(hybrid, nil, loggateway.NewNoop())
+	resolver := &stubParentResolver{parents: []biz.KnowledgeChunk{
+		{ID: "doc1-p-0", Content: "父块零语境"},
+	}}
+	router.SetParentContextResolver(resolver)
+
+	got, err := router.Search(context.Background(),
+		biz.KnowledgeSearchQuery{CollectionID: "col", Query: "物料", TopK: 5},
+		nil, HybridRRF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 merged chunks, got %d: %+v", len(got), got)
+	}
+	if len(resolver.calls) != 1 {
+		t.Fatalf("parent resolver must be called exactly once after RRF fusion, got %d", len(resolver.calls))
+	}
+	if len(resolver.calls[0]) != 1 || resolver.calls[0][0] != "doc1-p-0" {
+		t.Fatalf("resolver got wrong parent ids: %v", resolver.calls[0])
+	}
+	for _, ch := range got {
+		if ch.ParentContent != "父块零语境" {
+			t.Fatalf("chunk %s missing backfilled ParentContent: %+v", ch.ID, ch)
+		}
 	}
 }
