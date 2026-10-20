@@ -56,7 +56,10 @@ func TestFakeACPAgent(t *testing.T) {
 }
 
 // runFakeAgent 在子进程内执行 ACP agent 行为。
+// GO_WANT_ACP_FAKE_INIT_DELAY（duration 字符串）可令 initialize 应答迟延
+// 指定时长——P4-2 探针 L5 预热档的素材。
 func runFakeAgent() {
+	initDelay, _ := time.ParseDuration(os.Getenv("GO_WANT_ACP_FAKE_INIT_DELAY"))
 	rd := bufio.NewReader(os.Stdin)
 	writeFrame := func(f map[string]any) {
 		data, _ := json.Marshal(f)
@@ -84,6 +87,9 @@ func runFakeAgent() {
 
 		switch method {
 		case "initialize":
+			if initDelay > 0 {
+				time.Sleep(initDelay)
+			}
 			writeFrame(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "result": map[string]any{
 				"protocolVersion":   1,
 				"agentCapabilities": map[string]any{"loadSession": false},
@@ -154,9 +160,9 @@ func fakeAgentSpawn(t *testing.T) SpawnOptions {
 // ---------- Client 集成测试（真实子进程） ----------
 
 type recordHandler struct {
-	mu       sync.Mutex
-	texts    []string
-	onPerm   func(ctx context.Context, req PermissionRequestParams) (PermissionResult, error)
+	mu     sync.Mutex
+	texts  []string
+	onPerm func(ctx context.Context, req PermissionRequestParams) (PermissionResult, error)
 }
 
 func (h *recordHandler) OnUpdate(_ context.Context, n SessionNotification) {

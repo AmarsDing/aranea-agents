@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"os/exec"
 	"sync"
 	"time"
 
@@ -245,25 +243,38 @@ func (s *AgentBridgeService) OnTaskTerminal(t *agentbridge.CodingTask) {
 	}
 }
 
-// ProbeAgent 探测工具命令可用性（exec.LookPath），结果落库；
+// ProbeAgent 分级探测工具可用性（M4 P4-2，设计 §G：L1 未安装 / L2 启动失败 /
+// L3 握手失败 / L4 版本不兼容 / L5 预热中——分级逻辑在 acp.Probe）。
+// 级别与中文引导经 last_probe_error 以 "<level>: <引导语>" 扩枚举形态落库；
 // 探测失败是业务结果而非系统错误，返回 nil（设计 §10）。
 func (s *AgentBridgeService) ProbeAgent(ctx context.Context, workspace, agentKey string) error {
 	agent, err := s.agents.GetByKey(ctx, workspace, agentKey)
 	if err != nil {
 		return err
 	}
-	if _, lookErr := exec.LookPath(agent.Command); lookErr != nil {
-		msg := fmt.Sprintf("command %q not found in PATH", agent.Command)
-		if uerr := s.agents.UpdateProbe(ctx, agent.ID, false, msg); uerr != nil {
-			return uerr
+	level, detail := acp.Probe(ctx, acp.SpawnOptions{
+		Command: agent.Command,
+		Args:    agent.Args,
+		Env:     agent.Env, // shim 启动即读 API key（缺则退出进程）——探针必须注入
+	}, acp.DefaultProbeWarmTimeout)
+	if level.OKish() {
+		errMsg := ""
+		if level == acp.ProbeWarming {
+			errMsg = string(level) + ": " + detail // 预热提示入档，派发不阻断
 		}
-		s.lg.Warn("agentbridge probe degraded",
-			loggateway.Str("agent_key", agentKey), loggateway.Str("command", agent.Command))
-		s.emitter(ctx, "").LogWarn("agentbridge.probe.degraded", "", msg,
-			event.P("agent_key", agentKey), event.P("command", agent.Command))
-		return nil
+		return s.agents.UpdateProbe(ctx, agent.ID, true, errMsg)
 	}
-	return s.agents.UpdateProbe(ctx, agent.ID, true, "")
+	msg := string(level) + ": " + detail
+	if uerr := s.agents.UpdateProbe(ctx, agent.ID, false, msg); uerr != nil {
+		return uerr
+	}
+	s.lg.Warn("agentbridge probe degraded",
+		loggateway.Str("agent_key", agentKey), loggateway.Str("command", agent.Command),
+		loggateway.Str("probe_level", string(level)))
+	s.emitter(ctx, "").LogWarn("agentbridge.probe.degraded", "", msg,
+		event.P("agent_key", agentKey), event.P("command", agent.Command),
+		event.P("probe_level", string(level)))
+	return nil
 }
 
 // RecoverActiveTasks 服务重启恢复：活跃任务标记 failed（启动钩子调用）。

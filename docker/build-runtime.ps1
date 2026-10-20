@@ -75,6 +75,15 @@ try {
   # ErrMemoryUnavailable；根 Dockerfile 注释本就声明 pgvector tag 为预期能力）
   $rc = Invoke-Native go build -tags pgvector -ldflags $ldflags -o .\bin\linux\ .\cmd\admin
   if ($rc -ne 0) { throw "go build 失败（$rc）" }
+
+  # M4 P4-1：两个自研 ACP shim（deepseek/grok）一并交叉编译（linux 裸名）。
+  # 与宿主同居 /app/bin/（launch.go shimCommand 按 os.Executable() 推导）。
+  # 注：alpine 无 node，原生 npx 预设（codex-acp）容器内不可用——容器侧仅
+  # shim 可用属采信决策（76 开发计划 Q6），此处如实保证 shim 随镜像。
+  $rc = Invoke-Native go build -ldflags $ldflags -o .\bin\linux\ .\cmd\acp-shim-deepseek
+  if ($rc -ne 0) { throw "acp-shim-deepseek 编译失败（$rc）" }
+  $rc = Invoke-Native go build -ldflags $ldflags -o .\bin\linux\ .\cmd\acp-shim-grok
+  if ($rc -ne 0) { throw "acp-shim-grok 编译失败（$rc）" }
 } finally {
   Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue
   Pop-Location

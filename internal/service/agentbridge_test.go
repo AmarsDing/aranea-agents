@@ -1,9 +1,13 @@
 package service
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -549,15 +553,16 @@ func TestAgentBridgeService_ProbeAgent(t *testing.T) {
 	if err := e.svc.ProbeAgent(context.Background(), "default", "codebuddy"); err != nil {
 		t.Fatalf("probe: %v", err)
 	}
-	// fake agent command = key（"codebuddy" 不存在于 PATH → 探测失败）
+	// L1：fake agent command = key（"codebuddy" 不存在于 PATH → not_installed）
 	if len(e.agents.probes) != 1 || e.agents.probes[0].ok {
 		t.Fatalf("probe for nonexistent command must be ok=false: %+v", e.agents.probes)
 	}
-	if e.agents.probes[0].errMsg == "" {
-		t.Fatal("failed probe must record error message")
+	if got := e.agents.probes[0].errMsg; !strings.HasPrefix(got, "not_installed:") {
+		t.Fatalf("分级失败态须以 not_installed: 前缀落库，got %q", got)
 	}
 
-	// 存在的命令（go 必然在开发机 PATH）
+	// 命令存在但非 ACP agent：进程首屏即退 / 握手无应答 → 分级失败而非「可用」
+	//（go 必然在开发机 PATH；P4-2 前 LookPath 命中即误报可用的行为已废止）。
 	e.agents.byKey["default/go"] = &agentbridge.CodingAgent{
 		ID: "agent-go", Workspace: "default", AgentKey: "go",
 		DisplayName: "go", Command: "go", Enabled: true,
@@ -566,8 +571,47 @@ func TestAgentBridgeService_ProbeAgent(t *testing.T) {
 		t.Fatalf("probe go: %v", err)
 	}
 	last := e.agents.probes[len(e.agents.probes)-1]
-	if !last.ok {
-		t.Fatalf("probe go must succeed: %+v", last)
+	if last.ok {
+		t.Fatalf("非 ACP 命令不得判可用: %+v", last)
+	}
+	if !strings.HasPrefix(last.errMsg, "spawn_failed:") && !strings.HasPrefix(last.errMsg, "handshake_failed:") {
+		t.Fatalf("非 ACP 命令须判 spawn_failed/handshake_failed，got %q", last.errMsg)
+	}
+
+	// 真正 ACP agent（自测试二进制 fake，initialize 即时应答）→ ok=true、errMsg 清空。
+	e.agents.byKey["default/fakeacp"] = &agentbridge.CodingAgent{
+		ID: "agent-fakeacp", Workspace: "default", AgentKey: "fakeacp",
+		DisplayName: "fake ACP", Enabled: true,
+		Command: os.Args[0],
+		Args:    []string{"-test.run=^TestAgentBridgeService_FakeACPAgent$"},
+		Env:     map[string]string{"GO_WANT_AB_SVC_FAKE_ACP": "1"},
+	}
+	if err := e.svc.ProbeAgent(context.Background(), "default", "fakeacp"); err != nil {
+		t.Fatalf("probe fakeacp: %v", err)
+	}
+	last = e.agents.probes[len(e.agents.probes)-1]
+	if !last.ok || last.errMsg != "" {
+		t.Fatalf("真 ACP agent 须 ok=true 且 errMsg 清空: %+v", last)
+	}
+}
+
+// TestAgentBridgeService_FakeACPAgent 探针 e2e 素材：仅应答 initialize 的最小 ACP agent。
+func TestAgentBridgeService_FakeACPAgent(t *testing.T) {
+	if os.Getenv("GO_WANT_AB_SVC_FAKE_ACP") != "1" {
+		return
+	}
+	rd := bufio.NewReader(os.Stdin)
+	for {
+		line, err := rd.ReadString('\n')
+		if err != nil {
+			os.Exit(0)
+		}
+		if !strings.Contains(line, `"initialize"`) {
+			continue
+		}
+		var f map[string]json.RawMessage
+		_ = json.Unmarshal([]byte(strings.TrimSpace(line)), &f)
+		fmt.Printf(`{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1,"agentCapabilities":{}}}`+"\n", f["id"])
 	}
 }
 

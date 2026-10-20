@@ -12,6 +12,12 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     && apk add --no-cache ca-certificates tzdata docker-cli
 
 COPY bin/linux/admin /app/bin/admin
+# M4 P4-1：自研 ACP shim 随镜像（与宿主同居 /app/bin/，launch.go shimCommand
+# 按 os.Executable() 推导绝对路径）。注意：alpine 无 node，原生 npx 预设
+# （codex-acp 等 @agentclientprotocol/* 包）容器内不可用——容器侧编程面仅
+# shim（deepseek/grok）+ 全局 bin 可用（76 开发计划 Q6 采信，发布说明如实标注）。
+COPY bin/linux/acp-shim-deepseek /app/bin/acp-shim-deepseek
+COPY bin/linux/acp-shim-grok /app/bin/acp-shim-grok
 COPY internal/scenario /app/internal/scenario
 
 WORKDIR /app

@@ -113,6 +113,18 @@ if (-not $SkipBackend) {
     }
     Write-Host "  [OK] bin/aranea-server.exe built" -ForegroundColor Green
 
+    # M4 P4-1：两个自研 ACP shim 与宿主同居 bin/（launch.go shimCommand 按
+    # os.Executable() 推导绝对路径——cwd 漂移安全）。CGO_ENABLED=0 静态编译。
+    & go build -ldflags $ldflags -o (Join-Path $BinDir "acp-shim-deepseek.exe") ./cmd/acp-shim-deepseek
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "acp-shim-deepseek 编译失败"
+    }
+    & go build -ldflags $ldflags -o (Join-Path $BinDir "acp-shim-grok.exe") ./cmd/acp-shim-grok
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "acp-shim-grok 编译失败"
+    }
+    Write-Host "  [OK] bin/acp-shim-{deepseek,grok}.exe built" -ForegroundColor Green
+
     # -H windowsgui：双击无黑框控制台
     $launcherLdflags = "-s -w -H windowsgui"
     & go build -ldflags $launcherLdflags -o (Join-Path $BinDir "AraneaLauncher.exe") ./cmd/launcher
