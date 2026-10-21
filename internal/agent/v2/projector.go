@@ -564,6 +564,11 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 		task.UpdatedAt = now
 		task.Version++
 		delete(p.activeTask, p.meta.TaskID)
+		// FR-12（89 批次3）：root task 已在此终态化并即将发布 task.failed，
+		// 置 turnFailed 阻止 OnTurnEnd 的 cancel fallback 补发第二个终态
+		// task 事件（duplicate_terminal 违例）；后续 OnTurnEnd 的 turn 终态
+		// 事件也据此携带 failed 而非 completed。
+		p.turnFailed = true
 	}
 	p.mu.Unlock()
 	// System-push continuation: skip task.failed emission (preserve original
@@ -1198,10 +1203,13 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 		p.mu.Unlock()
 		if tok {
 			p.publishTerminalTask(ctx, *task)
-		} else if canceled {
+		} else if canceled && !turnFailed {
 			// Cancelled root turn whose task is not in activeTask (e.g. team
 			// dispatch path where the task was already removed). terminalTask
 			// 回读 DB 保留 CreatedAt/Seq/UserMessage。
+			// FR-12（89 批次3）：turnFailed==true 表示 OnError 已发布
+			// task.failed——不得再补发 task.cancelled 覆写 live 结局
+			// （恰好一个终态 task 事件不变量）。
 			task := p.terminalTask(ctx, meta.TaskID, meta.SpiritSessionID, taskStatus, now)
 			p.seq.Publish(ctx, biz.NewTaskCancelledEvent(task))
 		}
