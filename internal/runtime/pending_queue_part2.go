@@ -38,6 +38,9 @@ func (q *PendingMessageQueue) restore() {
 		}
 		if len(kept) > 0 {
 			q.queues[sid] = kept
+			// FR-7：文件快照恢复的会话同样进入恢复集；SetStore 成功加载后
+			// 会以 store 键集权威重建该集合。
+			q.markRestoredLocked(sid)
 		}
 	}
 }

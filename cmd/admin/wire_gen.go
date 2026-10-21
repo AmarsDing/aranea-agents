@@ -261,6 +261,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionUsecase := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)
 	runRegistry := provideRunRegistry(loggatewayLogger)
 	pendingMessageQueue := providePendingMessageQueue(loggatewayLogger, dataData)
+	// 89 FR-7：删除/归档会话的内存 pending 队列级联清理（防批量 ReplaceAll
+	// 复活已删会话行/恢复标记）。wire_gen 手维护约定：wire.go regen 时须镜
+	// 像本行（见 wire-gen-hand-merge-convention）。
+	sessionUsecase.SetPendingQueueFlusher(pendingMessageQueue.FlushSession)
 	agentIDExistenceChecker := biz.ProvideAgentIDExistenceChecker(agentRepository)
 	organizationRepo := data.NewOrganizationRepo(dataData)
 	borrowRequestRepo := data.NewBorrowRequestRepo(dataData)

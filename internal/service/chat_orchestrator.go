@@ -925,6 +925,12 @@ func (o *ChatOrchestrator) lockSession(sessionID string) func() {
 	return o.chatUC.LockSession(sessionID)
 }
 
+// lockSessionCtx 是 P1 FR-6（89-session-concurrency-hardening / M-1）的
+// ctx 化变体：会话互斥上的等待随 ctx 取消解除（见 biz.LockSessionCtx）。
+func (o *ChatOrchestrator) lockSessionCtx(ctx context.Context, sessionID string) (func(), error) {
+	return o.chatUC.LockSessionCtx(ctx, sessionID)
+}
+
 // AttachNativeTurnAfterHook sets the post-turn hook.
 func (o *ChatOrchestrator) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHook) {
 	if o == nil || hook == nil {

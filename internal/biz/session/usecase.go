@@ -597,6 +597,13 @@ type SessionUsecase struct {
 	statusPublisher     SessionStatusPublisher
 	flowLog             FlowLogWriter
 
+	// pendingFlusher 可选（Stability:internal，89 FR-7）：删除/归档会话的
+	// 内存 pending 队列级联清理回调。DB 侧级联由 cascadeDeleteBySession
+	// （pending_queue_entries）负责；内存侧不清理会被批量 ReplaceAll 复活
+	// （FK 违例/幽灵行）。由 service 层注入
+	// runtime.PendingMessageQueue.FlushSession；未注入为 no-op。
+	pendingFlusher func(sessionID string)
+
 	// Sub-usecases (Facade pattern — old callers delegate through these).
 	metricsUsecase     *SessionMetricsUsecase
 	compressionUsecase *SessionCompressionUsecase
@@ -693,6 +700,26 @@ func (uc *SessionUsecase) flowError(ctx context.Context, sessionID, stepID, mess
 		pairs = append(pairs, LogPair{Key: "error", Value: err.Error()})
 	}
 	uc.flowLog.LogFlowError(ctx, sessionID, stepID, message, pairs...)
+}
+
+// SetPendingQueueFlusher 注册可选的内存 pending 队列清理回调（89 FR-7
+// 级联清理）。在 Archive/Delete 成功后同步调用；未注入时静默跳过（测试
+// 与 CLI 形态的默认）。
+func (uc *SessionUsecase) SetPendingQueueFlusher(fn func(sessionID string)) {
+	if uc == nil {
+		return
+	}
+	uc.pendingFlusher = fn
+}
+
+// flushSessionPending 级联清理内存 pending 队列（含恢复标记）。放在会话锁
+// 范围外调用——回调内部（runtime.PendingMessageQueue.FlushSession）只取
+// 队列自身互斥，不会与 biz 锁形成环。
+func (uc *SessionUsecase) flushSessionPending(sessionID string) {
+	if uc == nil || uc.pendingFlusher == nil || sessionID == "" {
+		return
+	}
+	uc.pendingFlusher(sessionID)
 }
 
 func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {
@@ -883,6 +910,9 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if n == 0 {
 		return apierror.NotFound("SESSION", id)
 	}
+	// 89 FR-7：归档即冻结——内存 pending（含重启恢复标记）同步清空，未消费
+	// 追问不再随下一条消息幽灵派发；持久行随队列批量 ReplaceAll 收敛删除。
+	uc.flushSessionPending(id)
 	return nil
 }
 
@@ -914,6 +944,9 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 			LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
 		return err
 	}
+	// 89 FR-7：DB 侧 cascadeDeleteBySession 已清 pending_queue_entries；内存
+	// 队列同步清空，防批量 ReplaceAll 把已删会话条目插回（FK 违例/幽灵行）。
+	uc.flushSessionPending(id)
 	uc.flowDone(ctx, id, "session.delete", "会话已删除",
 		LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
 	return nil

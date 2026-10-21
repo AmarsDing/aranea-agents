@@ -14,6 +14,8 @@ type mockSessionRepo struct {
 	createSessionFn  func(ctx context.Context, s Session) (Session, error)
 	getSessionByIDFn func(ctx context.Context, id string) (Session, error)
 	updateSessionFn  func() (Session, error)
+	archiveSessionFn func(ctx context.Context, id string) (int, error)
+	deleteSessionFn  func(ctx context.Context, id string) (int, error)
 }
 
 func (m *mockSessionRepo) SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -76,11 +78,17 @@ func (m *mockSessionRepo) BumpSessionRevision(_ context.Context, _ string) (int6
 	return 0, nil
 }
 
-func (m *mockSessionRepo) ArchiveSession(_ context.Context, _ string) (int, error) {
+func (m *mockSessionRepo) ArchiveSession(ctx context.Context, id string) (int, error) {
+	if m.archiveSessionFn != nil {
+		return m.archiveSessionFn(ctx, id)
+	}
 	return 0, nil
 }
 
-func (m *mockSessionRepo) DeleteSession(_ context.Context, _ string) (int, error) {
+func (m *mockSessionRepo) DeleteSession(ctx context.Context, id string) (int, error) {
+	if m.deleteSessionFn != nil {
+		return m.deleteSessionFn(ctx, id)
+	}
 	return 0, nil
 }
 

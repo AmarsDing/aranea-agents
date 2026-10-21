@@ -72,6 +72,16 @@ type ChatSessionLocker interface {
 	Lock(sessionID string) func()
 }
 
+// ChatSessionLockerCtx is an OPTIONAL extension of ChatSessionLocker for
+// lockers that can abort a pending acquisition on ctx cancellation
+// (89-session-concurrency-hardening / M-1). Consumers type-assert; absence
+// degrades to the blocking Lock (documented fallback, not an error).
+//
+// Stability:internal
+type ChatSessionLockerCtx interface {
+	LockCtx(ctx context.Context, sessionID string) (func(), error)
+}
+
 // Stability:evolving
 type ChatPendingQueue interface {
 	List(sessionID string) []PendingQueueEntry
@@ -208,6 +218,17 @@ func (uc *ChatUsecase) LockSession(sessionID string) func() {
 	return uc.locker.Lock(sessionID)
 }
 
+// LockSessionCtx acquires the per-session lock honoring ctx cancellation
+// (P1 FR-6 / M-1)。底层 locker 支持 ChatSessionLockerCtx 时等待可解除；
+// 不支持时退化为阻塞 Lock（返回 nil error，ctx 取消无法预先中止在途等待，
+// 为存量 stub/测试桩的文档化降级，不视为错误）。
+func (uc *ChatUsecase) LockSessionCtx(ctx context.Context, sessionID string) (func(), error) {
+	if cl, ok := uc.locker.(ChatSessionLockerCtx); ok {
+		return cl.LockCtx(ctx, sessionID)
+	}
+	return uc.locker.Lock(sessionID), nil
+}
+
 func (uc *ChatUsecase) HasActiveRun(sessionID string) bool {
 	return uc.runs.HasActive(sessionID)
 }
@@ -341,6 +362,14 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollow
 //   - inject：静默上下文——不要求活动 run、不尝试 steer，仅排队等待随下一条
 //     followup 合入（见 SplitLeadingInjects / MergeInjectContext）。
 func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind string, mergeFollowup bool) (accepted, queued bool, pendingID, rejectReason string, err error) {
+	return uc.enqueueWithKind(sessionID, content, kind, mergeFollowup, false)
+}
+
+// enqueueWithKind 是 EnqueueUserMessageWithKind 的实现体，额外暴露
+// allowNoActive（P1 FR-7）：仅 ForceEnqueueFollowup 置位，用于恢复
+// 队列惰性排空的强制入队。allowNoActive 时跳过 steer 尝试（无活动
+// runner 可 steer），直接按 kind 排队。
+func (uc *ChatUsecase) enqueueWithKind(sessionID, content, kind string, mergeFollowup, allowNoActive bool) (accepted, queued bool, pendingID, rejectReason string, err error) {
 	unlock := uc.locker.Lock(sessionID)
 	defer unlock()
 
@@ -354,7 +383,8 @@ func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind strin
 		return true, true, pid, "", nil
 	}
 
-	if !uc.runs.HasActive(sessionID) {
+	hasActive := uc.runs.HasActive(sessionID)
+	if !hasActive && !allowNoActive {
 		return false, false, "", ChatEnqueueRejectNoActiveRun, nil
 	}
 
@@ -368,8 +398,9 @@ func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind strin
 		return false, false, "", ChatEnqueueRejectQueueFull, nil
 	}
 
-	// followup 级：显式追问，跳过 steer 保证成为独立新 turn。
-	if kind != ChatEnqueueKindFollowup {
+	// followup 级：显式追问，跳过 steer 保证成为独立新 turn。允许无 run
+	// 入队（FR-7）时同样跳过——无活动 runner 可 steer。
+	if kind != ChatEnqueueKindFollowup && hasActive {
 		enqueued, enqueueErr := uc.runs.EnqueueUserMessage(sessionID, content)
 		if enqueueErr != nil {
 			return false, false, "", "", enqueueErr
@@ -399,6 +430,37 @@ func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind strin
 	}
 	uc.publisher.PublishMessageQueued(sessionID)
 	return true, true, pid, "", nil
+}
+
+// chatPendingQueueRestored 可选端口（Stability:internal）：由
+// runtime.PendingMessageQueue 实现，经类型断言取用——不强求所有
+// ChatPendingQueue 实现方（测试桩等）跟进。
+type chatPendingQueueRestored interface {
+	IsRestored(sessionID string) bool
+}
+
+// PendingQueueHasRestored 报告会话是否存在「启动时从持久层恢复、尚未排空」
+// 的 pending 条目（P1 FR-7，89-session-concurrency-hardening）。编排器据此
+// 在会话空闲时强制新消息入队再整体 FIFO 排空，防直行 turn 插队到恢复行
+// 之前（重启后 FIFO 反转）。队列实现不支持该端口时一律按 false 处理。
+func (uc *ChatUsecase) PendingQueueHasRestored(sessionID string) bool {
+	if uc == nil || uc.pending == nil {
+		return false
+	}
+	q, ok := uc.pending.(chatPendingQueueRestored)
+	return ok && q.IsRestored(sessionID)
+}
+
+// ForceEnqueueFollowup 强制以 followup 级入队（P1 FR-7 恢复队列惰性排空
+// 专用）：与 EnqueueUserMessageWithKind(followup) 唯一区别是绕过
+// 「无活跃 run 拒绝」门——恢复行存在且会话空闲时，新消息必须排队保证
+// FIFO，再由编排器触发整体排空。容量上限/满队冲刷语义与原路径一致。
+func (uc *ChatUsecase) ForceEnqueueFollowup(sessionID, content string) (pendingID, rejectReason string, err error) {
+	accepted, _, pid, reason, err := uc.enqueueWithKind(sessionID, content, ChatEnqueueKindFollowup, false, true)
+	if err != nil || !accepted {
+		return "", reason, err
+	}
+	return pid, "", nil
 }
 
 // rescueFullInjectQueue 处理满队全 inject 死锁（N2）：FlushLeadingInjects

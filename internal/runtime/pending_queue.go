@@ -50,8 +50,13 @@ type PendingQueueStore interface {
 
 // PendingMessageQueue stores per-session follow-up message queues (Follow-up Queue / Cursor-style).
 type PendingMessageQueue struct {
-	mu       sync.Mutex
-	queues   map[string][]PendingMessage
+	mu     sync.Mutex
+	queues map[string][]PendingMessage
+	// restored 记录「启动时从持久层（PG store / 文件快照）恢复且尚未完全排空」
+	// 的会话集合（P1 FR-7，89-session-concurrency-hardening）。编排器据此在
+	// 会话空闲时把新消息强制入队再整体 FIFO 排空，防止直行 turn 插队到恢复
+	// 行之前（重启后 FIFO 反转）。标记在会话队列清空时被移除。
+	restored map[string]struct{}
 	dir      string
 	stopCh   chan struct{}
 	snapshot bool
@@ -82,6 +87,7 @@ func NewPendingMessageQueueWithDirAndLogger(dir string, lg loggateway.Logger) *P
 	}
 	q := &PendingMessageQueue{
 		queues:   make(map[string][]PendingMessage),
+		restored: make(map[string]struct{}),
 		dir:      dir,
 		stopCh:   make(chan struct{}),
 		snapshot: dir != "",
@@ -101,6 +107,46 @@ func (q *PendingMessageQueue) List(sessionID string) []PendingMessage {
 	out := make([]PendingMessage, len(queue))
 	copy(out, queue)
 	return out
+}
+
+// IsRestored 报告会话队列是否为启动时从持久层恢复且尚未排空的集合（P1
+// FR-7）。仅服务于编排器的惰性排空判定；普通入队/出队路径不读此标记。
+func (q *PendingMessageQueue) IsRestored(sessionID string) bool {
+	if q == nil {
+		return false
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	_, ok := q.restored[sessionID]
+	return ok
+}
+
+// FlushSession 级联清空会话的内存队列与恢复标记（P1 FR-7 删除/归档会话的
+// 级联入口）。调度一次批量持久冲刷：删除会话后若内存仍持有条目，下一次
+// ReplaceAll 会把它们重新插回 pending_queue_entries（FK 违例/幽灵行复活）。
+// 调用方不得持有会话锁之外的 q.mu——本方法不持锁调用外部代码。
+func (q *PendingMessageQueue) FlushSession(sessionID string) {
+	if q == nil || sessionID == "" {
+		return
+	}
+	q.mu.Lock()
+	_, had := q.queues[sessionID]
+	delete(q.queues, sessionID)
+	delete(q.restored, sessionID)
+	q.mu.Unlock()
+	if had {
+		q.schedulePersist()
+	}
+}
+
+// markRestoredLocked 记录恢复会话；调用方须持 q.mu。
+func (q *PendingMessageQueue) markRestoredLocked(sessionID string) {
+	q.restored[sessionID] = struct{}{}
+}
+
+// clearRestoredLocked 在会话队列清空时移除恢复标记；调用方须持 q.mu。
+func (q *PendingMessageQueue) clearRestoredLocked(sessionID string) {
+	delete(q.restored, sessionID)
 }
 
 func (q *PendingMessageQueue) Enqueue(sessionID, content string) string {
@@ -223,6 +269,7 @@ func (q *PendingMessageQueue) FlushLeadingInjects(sessionID string) []PendingMes
 	}
 	flushed := append([]PendingMessage(nil), queue...)
 	delete(q.queues, sessionID)
+	q.clearRestoredLocked(sessionID)
 	q.mu.Unlock()
 	q.schedulePersist()
 	return flushed
@@ -247,6 +294,7 @@ func (q *PendingMessageQueue) DequeueLeadingInjects(sessionID string) []PendingM
 	out := append([]PendingMessage(nil), queue[:n]...)
 	if n == len(queue) {
 		delete(q.queues, sessionID)
+		q.clearRestoredLocked(sessionID)
 	} else {
 		q.queues[sessionID] = append([]PendingMessage(nil), queue[n:]...)
 	}
@@ -276,12 +324,14 @@ func (q *PendingMessageQueue) Dequeue(sessionID string) (PendingMessage, bool) {
 	queue := q.queues[sessionID]
 	if len(queue) == 0 {
 		delete(q.queues, sessionID)
+		q.clearRestoredLocked(sessionID)
 		q.mu.Unlock()
 		return PendingMessage{}, false
 	}
 	head := queue[0]
 	if len(queue) == 1 {
 		delete(q.queues, sessionID)
+		q.clearRestoredLocked(sessionID)
 	} else {
 		q.queues[sessionID] = append([]PendingMessage(nil), queue[1:]...)
 	}
@@ -298,6 +348,7 @@ func (q *PendingMessageQueue) Remove(sessionID, entryID string) bool {
 			queue = append(queue[:i], queue[i+1:]...)
 			if len(queue) == 0 {
 				delete(q.queues, sessionID)
+				q.clearRestoredLocked(sessionID)
 			} else {
 				q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 			}
@@ -384,6 +435,12 @@ func (q *PendingMessageQueue) SetStore(store PendingQueueStore) {
 	if len(loaded) > 0 {
 		q.mu.Lock()
 		q.queues = loaded
+		// FR-7：store 内容权威——恢复集以其键集合整体重建（覆盖文件快照期的
+		// 试探性标记），随后队列排空时在出队分支逐会话清除。
+		q.restored = make(map[string]struct{}, len(loaded))
+		for sid := range loaded {
+			q.markRestoredLocked(sid)
+		}
 		q.mu.Unlock()
 		if q.snapshot {
 			q.saveSnapshot()
