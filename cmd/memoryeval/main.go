@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
+	"aranea-agents/pkg/safego"
 )
 
 // memoryeval is the standalone Agent Memory Challenge evaluation entrypoint.
@@ -84,6 +85,18 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// C3-C: embedding 索引补偿——Add 的 fire-and-forget 索引失败后事实永久停在
+	// stale，sweeper 周期性重试到期批次，恢复向量召回；emb 为空时无向量可写不启动。
+	var sweeperCancel context.CancelFunc
+	if emb != nil {
+		var sweepCtx context.Context
+		sweepCtx, sweeperCancel = context.WithCancel(context.Background())
+		sweeper := data.NewMemoryFactIndexSweeper(d,
+			data.NewMemoryFactIndexSync(biz.NewMemoryUsecase(data.NewMemoryRepo(d), emb), d, lg),
+			lg, 0, 0, 0)
+		safego.Go(sweepCtx, "memoryeval.index_sweeper", func() { _ = sweeper.Run(sweepCtx) })
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		lg.Info("memoryeval listening", loggateway.StepID("memoryeval.startup"), loggateway.Str("addr", addr))
@@ -104,6 +117,9 @@ func main() {
 		if err := srv.Shutdown(ctx); err != nil {
 			lg.Error("http shutdown failed", loggateway.StepID("memoryeval.shutdown"), loggateway.Err(err))
 			os.Exit(1)
+		}
+		if sweeperCancel != nil {
+			sweeperCancel()
 		}
 	case err := <-errCh:
 		if err != nil {
