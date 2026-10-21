@@ -129,7 +129,9 @@ func LooksLikePreferenceStatement(statement string) bool {
 }
 
 // LooksLikeConstraintStatement reports explicit rules. "always" alone is not
-// a constraint ("I always drink coffee" is a preference/habit).
+// a constraint ("I always drink coffee" is a preference/habit). Conditional
+// and policy phrasings (如果/若/每当/只要/按照/规定/规则/whenever/if…then/
+// policy) count as constraints (AMC C3-A Q7a).
 func LooksLikeConstraintStatement(statement string) bool {
 	s := strings.ToLower(strings.TrimSpace(statement))
 	if s == "" {
@@ -139,6 +141,14 @@ func LooksLikeConstraintStatement(statement string) bool {
 		if strings.Contains(s, p) {
 			return true
 		}
+	}
+	for _, p := range []string{"如果", "若", "每当", "只要", "按照", "规定", "规则", "whenever", "policy"} {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	if strings.Contains(s, "if ") && strings.Contains(s, "then") {
+		return true
 	}
 	return false
 }
@@ -186,6 +196,18 @@ func PreferenceSlotKey(statement string) string {
 	if strings.Contains(s, "住在") || strings.Contains(s, "居住在") {
 		return "live"
 	}
+	// AMC C3-A Q7c slot extensions: residence moves, job changes and phone
+	// numbers are governable slots so a later update supersedes the old value.
+	lowS := strings.ToLower(s)
+	if strings.Contains(s, "搬到") || strings.Contains(s, "搬去") || strings.Contains(lowS, "moved to") {
+		return "live"
+	}
+	if strings.Contains(s, "换工作") || strings.Contains(s, "入职") || strings.Contains(s, "新工作") {
+		return "job"
+	}
+	if strings.Contains(s, "手机号") || strings.Contains(s, "电话号码") {
+		return "phone"
+	}
 	if likeStatementRe.MatchString(s) {
 		return "like"
 	}
@@ -194,9 +216,10 @@ func PreferenceSlotKey(statement string) string {
 
 // HasPreferenceUpdateCue reports an explicit correction, not an additional
 // preference (coffee and tea can coexist unless the user says "now/instead").
+// AMC C3-A Q7c adds 不喜欢了/没感觉/改为 (改成/换成 were already covered).
 func HasPreferenceUpdateCue(statement string) bool {
 	low := strings.ToLower(statement)
-	for _, n := range []string{" now", "now ", "instead", "no longer", "not anymore", "changed", "updated", "used to", "from now", "anymore", "现在", "改成", "换成", "不再"} {
+	for _, n := range []string{" now", "now ", "instead", "no longer", "not anymore", "changed", "updated", "used to", "from now", "anymore", "现在", "改成", "换成", "不再", "不喜欢了", "没感觉", "改为"} {
 		if strings.Contains(low, n) {
 			return true
 		}

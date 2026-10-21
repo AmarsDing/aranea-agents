@@ -285,6 +285,10 @@ type L1ArchiveEpisodeInsert struct {
 	// 追加合并到已有 episode，而不是整体覆盖。评测摄入路径使用（同一 session
 	// 多次增量 Add）；L1 归档流程保持默认覆盖语义。
 	MergeOutcome bool
+	// MaxMergeChars 覆盖 MergeOutcome 追加合并时 transcript 的最大 rune 数；
+	// <=0 用 data 层既有默认（l2MergedTranscriptMaxChars）。评测摄入路径传入
+	// 32768 以保留全量 L2 证据（AMC C3-A Q8a）。
+	MaxMergeChars int
 }
 
 // L2RecallStore retrieves episodic (L2) memories for prompt injection and admin.
