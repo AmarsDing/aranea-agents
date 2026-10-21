@@ -28,7 +28,7 @@ const (
 // index_attempts on failure, so rows converge to 'fresh' or age out of the
 // sweep after maxAttempts. Concurrency is 1 (serial batches) to protect the
 // embedding provider quota. All queries force status='active' and
-// deleted_at=” so it never resurrects invalidated facts.
+// deleted_at='' so it never resurrects invalidated facts.
 type MemoryFactIndexSweeper struct {
 	data        *Data
 	syncer      biz.MemoryFactIndexSyncer
@@ -125,7 +125,7 @@ func (s *MemoryFactIndexSweeper) sweepOnce(ctx context.Context) int {
 // scanFactRowJSON yields raw JSON isomorphic to l3FactRepo.UpsertFactRow's
 // return shape (id/agent_id/scope_id/user_id/statement are what
 // SyncFactIndexFromRow consumes). The backoff due check is
-// COALESCE(NULLIF(updated_at,”)) + 2^index_attempts minutes (capped at 60)
+// COALESCE(NULLIF(updated_at,'')) + 2^index_attempts minutes (capped at 60)
 // <= now(); rows with a corrupt/empty updated_at are due immediately.
 func (s *MemoryFactIndexSweeper) pickDueStaleFactRows(ctx context.Context) ([][]byte, error) {
 	db := s.data.RWDB()
