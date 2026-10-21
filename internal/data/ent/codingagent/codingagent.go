@@ -29,6 +29,8 @@ const (
 	FieldLastProbeOk = "last_probe_ok"
 	// FieldLastProbeError holds the string denoting the last_probe_error field in the database.
 	FieldLastProbeError = "last_probe_error"
+	// FieldLivenessOverride holds the string denoting the liveness_override field in the database.
+	FieldLivenessOverride = "liveness_override"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -49,6 +51,7 @@ var Columns = []string{
 	FieldEnabled,
 	FieldLastProbeOk,
 	FieldLastProbeError,
+	FieldLivenessOverride,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }

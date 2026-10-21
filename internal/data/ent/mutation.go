@@ -24209,25 +24209,26 @@ func (m *CircuitBreakerStateMutation) ResetEdge(name string) error {
 // CodingAgentMutation represents an operation that mutates the CodingAgent nodes in the graph.
 type CodingAgentMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *string
-	workspace        *string
-	agent_key        *string
-	display_name     *string
-	command          *string
-	args             *[]string
-	appendargs       []string
-	env              *map[string]string
-	enabled          *bool
-	last_probe_ok    *bool
-	last_probe_error *string
-	created_at       *string
-	updated_at       *string
-	clearedFields    map[string]struct{}
-	done             bool
-	oldValue         func(context.Context) (*CodingAgent, error)
-	predicates       []predicate.CodingAgent
+	op                Op
+	typ               string
+	id                *string
+	workspace         *string
+	agent_key         *string
+	display_name      *string
+	command           *string
+	args              *[]string
+	appendargs        []string
+	env               *map[string]string
+	enabled           *bool
+	last_probe_ok     *bool
+	last_probe_error  *string
+	liveness_override *map[string]interface{}
+	created_at        *string
+	updated_at        *string
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*CodingAgent, error)
+	predicates        []predicate.CodingAgent
 }
 
 var _ ent.Mutation = (*CodingAgentMutation)(nil)
@@ -24700,6 +24701,55 @@ func (m *CodingAgentMutation) ResetLastProbeError() {
 	m.last_probe_error = nil
 }
 
+// SetLivenessOverride sets the "liveness_override" field.
+func (m *CodingAgentMutation) SetLivenessOverride(value map[string]interface{}) {
+	m.liveness_override = &value
+}
+
+// LivenessOverride returns the value of the "liveness_override" field in the mutation.
+func (m *CodingAgentMutation) LivenessOverride() (r map[string]interface{}, exists bool) {
+	v := m.liveness_override
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLivenessOverride returns the old "liveness_override" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldLivenessOverride(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLivenessOverride is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLivenessOverride requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLivenessOverride: %w", err)
+	}
+	return oldValue.LivenessOverride, nil
+}
+
+// ClearLivenessOverride clears the value of the "liveness_override" field.
+func (m *CodingAgentMutation) ClearLivenessOverride() {
+	m.liveness_override = nil
+	m.clearedFields[codingagent.FieldLivenessOverride] = struct{}{}
+}
+
+// LivenessOverrideCleared returns if the "liveness_override" field was cleared in this mutation.
+func (m *CodingAgentMutation) LivenessOverrideCleared() bool {
+	_, ok := m.clearedFields[codingagent.FieldLivenessOverride]
+	return ok
+}
+
+// ResetLivenessOverride resets all changes to the "liveness_override" field.
+func (m *CodingAgentMutation) ResetLivenessOverride() {
+	m.liveness_override = nil
+	delete(m.clearedFields, codingagent.FieldLivenessOverride)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *CodingAgentMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -24806,7 +24856,7 @@ func (m *CodingAgentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodingAgentMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.workspace != nil {
 		fields = append(fields, codingagent.FieldWorkspace)
 	}
@@ -24833,6 +24883,9 @@ func (m *CodingAgentMutation) Fields() []string {
 	}
 	if m.last_probe_error != nil {
 		fields = append(fields, codingagent.FieldLastProbeError)
+	}
+	if m.liveness_override != nil {
+		fields = append(fields, codingagent.FieldLivenessOverride)
 	}
 	if m.created_at != nil {
 		fields = append(fields, codingagent.FieldCreatedAt)
@@ -24866,6 +24919,8 @@ func (m *CodingAgentMutation) Field(name string) (ent.Value, bool) {
 		return m.LastProbeOk()
 	case codingagent.FieldLastProbeError:
 		return m.LastProbeError()
+	case codingagent.FieldLivenessOverride:
+		return m.LivenessOverride()
 	case codingagent.FieldCreatedAt:
 		return m.CreatedAt()
 	case codingagent.FieldUpdatedAt:
@@ -24897,6 +24952,8 @@ func (m *CodingAgentMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldLastProbeOk(ctx)
 	case codingagent.FieldLastProbeError:
 		return m.OldLastProbeError(ctx)
+	case codingagent.FieldLivenessOverride:
+		return m.OldLivenessOverride(ctx)
 	case codingagent.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case codingagent.FieldUpdatedAt:
@@ -24973,6 +25030,13 @@ func (m *CodingAgentMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastProbeError(v)
 		return nil
+	case codingagent.FieldLivenessOverride:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLivenessOverride(v)
+		return nil
 	case codingagent.FieldCreatedAt:
 		v, ok := value.(string)
 		if !ok {
@@ -25023,6 +25087,9 @@ func (m *CodingAgentMutation) ClearedFields() []string {
 	if m.FieldCleared(codingagent.FieldEnv) {
 		fields = append(fields, codingagent.FieldEnv)
 	}
+	if m.FieldCleared(codingagent.FieldLivenessOverride) {
+		fields = append(fields, codingagent.FieldLivenessOverride)
+	}
 	return fields
 }
 
@@ -25042,6 +25109,9 @@ func (m *CodingAgentMutation) ClearField(name string) error {
 		return nil
 	case codingagent.FieldEnv:
 		m.ClearEnv()
+		return nil
+	case codingagent.FieldLivenessOverride:
+		m.ClearLivenessOverride()
 		return nil
 	}
 	return fmt.Errorf("unknown CodingAgent nullable field %s", name)
@@ -25077,6 +25147,9 @@ func (m *CodingAgentMutation) ResetField(name string) error {
 		return nil
 	case codingagent.FieldLastProbeError:
 		m.ResetLastProbeError()
+		return nil
+	case codingagent.FieldLivenessOverride:
+		m.ResetLivenessOverride()
 		return nil
 	case codingagent.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -25755,6 +25828,13 @@ type CodingTaskMutation struct {
 	error             *string
 	progress_count    *int
 	addprogress_count *int
+	child_pid         *int
+	addchild_pid      *int
+	last_active_at    *string
+	last_excerpt      *string
+	heartbeat_miss    *int
+	addheartbeat_miss *int
+	liveness_state    *string
 	created_at        *string
 	updated_at        *string
 	completed_at      *string
@@ -26248,6 +26328,226 @@ func (m *CodingTaskMutation) ResetProgressCount() {
 	m.addprogress_count = nil
 }
 
+// SetChildPid sets the "child_pid" field.
+func (m *CodingTaskMutation) SetChildPid(i int) {
+	m.child_pid = &i
+	m.addchild_pid = nil
+}
+
+// ChildPid returns the value of the "child_pid" field in the mutation.
+func (m *CodingTaskMutation) ChildPid() (r int, exists bool) {
+	v := m.child_pid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChildPid returns the old "child_pid" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldChildPid(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChildPid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChildPid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChildPid: %w", err)
+	}
+	return oldValue.ChildPid, nil
+}
+
+// AddChildPid adds i to the "child_pid" field.
+func (m *CodingTaskMutation) AddChildPid(i int) {
+	if m.addchild_pid != nil {
+		*m.addchild_pid += i
+	} else {
+		m.addchild_pid = &i
+	}
+}
+
+// AddedChildPid returns the value that was added to the "child_pid" field in this mutation.
+func (m *CodingTaskMutation) AddedChildPid() (r int, exists bool) {
+	v := m.addchild_pid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChildPid resets all changes to the "child_pid" field.
+func (m *CodingTaskMutation) ResetChildPid() {
+	m.child_pid = nil
+	m.addchild_pid = nil
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (m *CodingTaskMutation) SetLastActiveAt(s string) {
+	m.last_active_at = &s
+}
+
+// LastActiveAt returns the value of the "last_active_at" field in the mutation.
+func (m *CodingTaskMutation) LastActiveAt() (r string, exists bool) {
+	v := m.last_active_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastActiveAt returns the old "last_active_at" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldLastActiveAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastActiveAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastActiveAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastActiveAt: %w", err)
+	}
+	return oldValue.LastActiveAt, nil
+}
+
+// ResetLastActiveAt resets all changes to the "last_active_at" field.
+func (m *CodingTaskMutation) ResetLastActiveAt() {
+	m.last_active_at = nil
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (m *CodingTaskMutation) SetLastExcerpt(s string) {
+	m.last_excerpt = &s
+}
+
+// LastExcerpt returns the value of the "last_excerpt" field in the mutation.
+func (m *CodingTaskMutation) LastExcerpt() (r string, exists bool) {
+	v := m.last_excerpt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastExcerpt returns the old "last_excerpt" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldLastExcerpt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastExcerpt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastExcerpt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastExcerpt: %w", err)
+	}
+	return oldValue.LastExcerpt, nil
+}
+
+// ResetLastExcerpt resets all changes to the "last_excerpt" field.
+func (m *CodingTaskMutation) ResetLastExcerpt() {
+	m.last_excerpt = nil
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (m *CodingTaskMutation) SetHeartbeatMiss(i int) {
+	m.heartbeat_miss = &i
+	m.addheartbeat_miss = nil
+}
+
+// HeartbeatMiss returns the value of the "heartbeat_miss" field in the mutation.
+func (m *CodingTaskMutation) HeartbeatMiss() (r int, exists bool) {
+	v := m.heartbeat_miss
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeartbeatMiss returns the old "heartbeat_miss" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldHeartbeatMiss(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeartbeatMiss is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeartbeatMiss requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeartbeatMiss: %w", err)
+	}
+	return oldValue.HeartbeatMiss, nil
+}
+
+// AddHeartbeatMiss adds i to the "heartbeat_miss" field.
+func (m *CodingTaskMutation) AddHeartbeatMiss(i int) {
+	if m.addheartbeat_miss != nil {
+		*m.addheartbeat_miss += i
+	} else {
+		m.addheartbeat_miss = &i
+	}
+}
+
+// AddedHeartbeatMiss returns the value that was added to the "heartbeat_miss" field in this mutation.
+func (m *CodingTaskMutation) AddedHeartbeatMiss() (r int, exists bool) {
+	v := m.addheartbeat_miss
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetHeartbeatMiss resets all changes to the "heartbeat_miss" field.
+func (m *CodingTaskMutation) ResetHeartbeatMiss() {
+	m.heartbeat_miss = nil
+	m.addheartbeat_miss = nil
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (m *CodingTaskMutation) SetLivenessState(s string) {
+	m.liveness_state = &s
+}
+
+// LivenessState returns the value of the "liveness_state" field in the mutation.
+func (m *CodingTaskMutation) LivenessState() (r string, exists bool) {
+	v := m.liveness_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLivenessState returns the old "liveness_state" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldLivenessState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLivenessState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLivenessState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLivenessState: %w", err)
+	}
+	return oldValue.LivenessState, nil
+}
+
+// ResetLivenessState resets all changes to the "liveness_state" field.
+func (m *CodingTaskMutation) ResetLivenessState() {
+	m.liveness_state = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *CodingTaskMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -26390,7 +26690,7 @@ func (m *CodingTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodingTaskMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 18)
 	if m.workspace != nil {
 		fields = append(fields, codingtask.FieldWorkspace)
 	}
@@ -26420,6 +26720,21 @@ func (m *CodingTaskMutation) Fields() []string {
 	}
 	if m.progress_count != nil {
 		fields = append(fields, codingtask.FieldProgressCount)
+	}
+	if m.child_pid != nil {
+		fields = append(fields, codingtask.FieldChildPid)
+	}
+	if m.last_active_at != nil {
+		fields = append(fields, codingtask.FieldLastActiveAt)
+	}
+	if m.last_excerpt != nil {
+		fields = append(fields, codingtask.FieldLastExcerpt)
+	}
+	if m.heartbeat_miss != nil {
+		fields = append(fields, codingtask.FieldHeartbeatMiss)
+	}
+	if m.liveness_state != nil {
+		fields = append(fields, codingtask.FieldLivenessState)
 	}
 	if m.created_at != nil {
 		fields = append(fields, codingtask.FieldCreatedAt)
@@ -26458,6 +26773,16 @@ func (m *CodingTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.Error()
 	case codingtask.FieldProgressCount:
 		return m.ProgressCount()
+	case codingtask.FieldChildPid:
+		return m.ChildPid()
+	case codingtask.FieldLastActiveAt:
+		return m.LastActiveAt()
+	case codingtask.FieldLastExcerpt:
+		return m.LastExcerpt()
+	case codingtask.FieldHeartbeatMiss:
+		return m.HeartbeatMiss()
+	case codingtask.FieldLivenessState:
+		return m.LivenessState()
 	case codingtask.FieldCreatedAt:
 		return m.CreatedAt()
 	case codingtask.FieldUpdatedAt:
@@ -26493,6 +26818,16 @@ func (m *CodingTaskMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldError(ctx)
 	case codingtask.FieldProgressCount:
 		return m.OldProgressCount(ctx)
+	case codingtask.FieldChildPid:
+		return m.OldChildPid(ctx)
+	case codingtask.FieldLastActiveAt:
+		return m.OldLastActiveAt(ctx)
+	case codingtask.FieldLastExcerpt:
+		return m.OldLastExcerpt(ctx)
+	case codingtask.FieldHeartbeatMiss:
+		return m.OldHeartbeatMiss(ctx)
+	case codingtask.FieldLivenessState:
+		return m.OldLivenessState(ctx)
 	case codingtask.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case codingtask.FieldUpdatedAt:
@@ -26578,6 +26913,41 @@ func (m *CodingTaskMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetProgressCount(v)
 		return nil
+	case codingtask.FieldChildPid:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChildPid(v)
+		return nil
+	case codingtask.FieldLastActiveAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastActiveAt(v)
+		return nil
+	case codingtask.FieldLastExcerpt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastExcerpt(v)
+		return nil
+	case codingtask.FieldHeartbeatMiss:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeartbeatMiss(v)
+		return nil
+	case codingtask.FieldLivenessState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLivenessState(v)
+		return nil
 	case codingtask.FieldCreatedAt:
 		v, ok := value.(string)
 		if !ok {
@@ -26610,6 +26980,12 @@ func (m *CodingTaskMutation) AddedFields() []string {
 	if m.addprogress_count != nil {
 		fields = append(fields, codingtask.FieldProgressCount)
 	}
+	if m.addchild_pid != nil {
+		fields = append(fields, codingtask.FieldChildPid)
+	}
+	if m.addheartbeat_miss != nil {
+		fields = append(fields, codingtask.FieldHeartbeatMiss)
+	}
 	return fields
 }
 
@@ -26620,6 +26996,10 @@ func (m *CodingTaskMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case codingtask.FieldProgressCount:
 		return m.AddedProgressCount()
+	case codingtask.FieldChildPid:
+		return m.AddedChildPid()
+	case codingtask.FieldHeartbeatMiss:
+		return m.AddedHeartbeatMiss()
 	}
 	return nil, false
 }
@@ -26635,6 +27015,20 @@ func (m *CodingTaskMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddProgressCount(v)
+		return nil
+	case codingtask.FieldChildPid:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChildPid(v)
+		return nil
+	case codingtask.FieldHeartbeatMiss:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHeartbeatMiss(v)
 		return nil
 	}
 	return fmt.Errorf("unknown CodingTask numeric field %s", name)
@@ -26692,6 +27086,21 @@ func (m *CodingTaskMutation) ResetField(name string) error {
 		return nil
 	case codingtask.FieldProgressCount:
 		m.ResetProgressCount()
+		return nil
+	case codingtask.FieldChildPid:
+		m.ResetChildPid()
+		return nil
+	case codingtask.FieldLastActiveAt:
+		m.ResetLastActiveAt()
+		return nil
+	case codingtask.FieldLastExcerpt:
+		m.ResetLastExcerpt()
+		return nil
+	case codingtask.FieldHeartbeatMiss:
+		m.ResetHeartbeatMiss()
+		return nil
+	case codingtask.FieldLivenessState:
+		m.ResetLivenessState()
 		return nil
 	case codingtask.FieldCreatedAt:
 		m.ResetCreatedAt()

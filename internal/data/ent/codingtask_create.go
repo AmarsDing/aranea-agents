@@ -138,6 +138,76 @@ func (_c *CodingTaskCreate) SetNillableProgressCount(v *int) *CodingTaskCreate {
 	return _c
 }
 
+// SetChildPid sets the "child_pid" field.
+func (_c *CodingTaskCreate) SetChildPid(v int) *CodingTaskCreate {
+	_c.mutation.SetChildPid(v)
+	return _c
+}
+
+// SetNillableChildPid sets the "child_pid" field if the given value is not nil.
+func (_c *CodingTaskCreate) SetNillableChildPid(v *int) *CodingTaskCreate {
+	if v != nil {
+		_c.SetChildPid(*v)
+	}
+	return _c
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (_c *CodingTaskCreate) SetLastActiveAt(v string) *CodingTaskCreate {
+	_c.mutation.SetLastActiveAt(v)
+	return _c
+}
+
+// SetNillableLastActiveAt sets the "last_active_at" field if the given value is not nil.
+func (_c *CodingTaskCreate) SetNillableLastActiveAt(v *string) *CodingTaskCreate {
+	if v != nil {
+		_c.SetLastActiveAt(*v)
+	}
+	return _c
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (_c *CodingTaskCreate) SetLastExcerpt(v string) *CodingTaskCreate {
+	_c.mutation.SetLastExcerpt(v)
+	return _c
+}
+
+// SetNillableLastExcerpt sets the "last_excerpt" field if the given value is not nil.
+func (_c *CodingTaskCreate) SetNillableLastExcerpt(v *string) *CodingTaskCreate {
+	if v != nil {
+		_c.SetLastExcerpt(*v)
+	}
+	return _c
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (_c *CodingTaskCreate) SetHeartbeatMiss(v int) *CodingTaskCreate {
+	_c.mutation.SetHeartbeatMiss(v)
+	return _c
+}
+
+// SetNillableHeartbeatMiss sets the "heartbeat_miss" field if the given value is not nil.
+func (_c *CodingTaskCreate) SetNillableHeartbeatMiss(v *int) *CodingTaskCreate {
+	if v != nil {
+		_c.SetHeartbeatMiss(*v)
+	}
+	return _c
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (_c *CodingTaskCreate) SetLivenessState(v string) *CodingTaskCreate {
+	_c.mutation.SetLivenessState(v)
+	return _c
+}
+
+// SetNillableLivenessState sets the "liveness_state" field if the given value is not nil.
+func (_c *CodingTaskCreate) SetNillableLivenessState(v *string) *CodingTaskCreate {
+	if v != nil {
+		_c.SetLivenessState(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *CodingTaskCreate) SetCreatedAt(v string) *CodingTaskCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -249,6 +319,26 @@ func (_c *CodingTaskCreate) defaults() {
 		v := codingtask.DefaultProgressCount
 		_c.mutation.SetProgressCount(v)
 	}
+	if _, ok := _c.mutation.ChildPid(); !ok {
+		v := codingtask.DefaultChildPid
+		_c.mutation.SetChildPid(v)
+	}
+	if _, ok := _c.mutation.LastActiveAt(); !ok {
+		v := codingtask.DefaultLastActiveAt
+		_c.mutation.SetLastActiveAt(v)
+	}
+	if _, ok := _c.mutation.LastExcerpt(); !ok {
+		v := codingtask.DefaultLastExcerpt
+		_c.mutation.SetLastExcerpt(v)
+	}
+	if _, ok := _c.mutation.HeartbeatMiss(); !ok {
+		v := codingtask.DefaultHeartbeatMiss
+		_c.mutation.SetHeartbeatMiss(v)
+	}
+	if _, ok := _c.mutation.LivenessState(); !ok {
+		v := codingtask.DefaultLivenessState
+		_c.mutation.SetLivenessState(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := codingtask.DefaultCreatedAt
 		_c.mutation.SetCreatedAt(v)
@@ -324,6 +414,31 @@ func (_c *CodingTaskCreate) check() error {
 	}
 	if _, ok := _c.mutation.ProgressCount(); !ok {
 		return &ValidationError{Name: "progress_count", err: errors.New(`ent: missing required field "CodingTask.progress_count"`)}
+	}
+	if _, ok := _c.mutation.ChildPid(); !ok {
+		return &ValidationError{Name: "child_pid", err: errors.New(`ent: missing required field "CodingTask.child_pid"`)}
+	}
+	if _, ok := _c.mutation.LastActiveAt(); !ok {
+		return &ValidationError{Name: "last_active_at", err: errors.New(`ent: missing required field "CodingTask.last_active_at"`)}
+	}
+	if _, ok := _c.mutation.LastExcerpt(); !ok {
+		return &ValidationError{Name: "last_excerpt", err: errors.New(`ent: missing required field "CodingTask.last_excerpt"`)}
+	}
+	if v, ok := _c.mutation.LastExcerpt(); ok {
+		if err := codingtask.LastExcerptValidator(v); err != nil {
+			return &ValidationError{Name: "last_excerpt", err: fmt.Errorf(`ent: validator failed for field "CodingTask.last_excerpt": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.HeartbeatMiss(); !ok {
+		return &ValidationError{Name: "heartbeat_miss", err: errors.New(`ent: missing required field "CodingTask.heartbeat_miss"`)}
+	}
+	if _, ok := _c.mutation.LivenessState(); !ok {
+		return &ValidationError{Name: "liveness_state", err: errors.New(`ent: missing required field "CodingTask.liveness_state"`)}
+	}
+	if v, ok := _c.mutation.LivenessState(); ok {
+		if err := codingtask.LivenessStateValidator(v); err != nil {
+			return &ValidationError{Name: "liveness_state", err: fmt.Errorf(`ent: validator failed for field "CodingTask.liveness_state": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "CodingTask.created_at"`)}
@@ -414,6 +529,26 @@ func (_c *CodingTaskCreate) createSpec() (*CodingTask, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ProgressCount(); ok {
 		_spec.SetField(codingtask.FieldProgressCount, field.TypeInt, value)
 		_node.ProgressCount = value
+	}
+	if value, ok := _c.mutation.ChildPid(); ok {
+		_spec.SetField(codingtask.FieldChildPid, field.TypeInt, value)
+		_node.ChildPid = value
+	}
+	if value, ok := _c.mutation.LastActiveAt(); ok {
+		_spec.SetField(codingtask.FieldLastActiveAt, field.TypeString, value)
+		_node.LastActiveAt = value
+	}
+	if value, ok := _c.mutation.LastExcerpt(); ok {
+		_spec.SetField(codingtask.FieldLastExcerpt, field.TypeString, value)
+		_node.LastExcerpt = value
+	}
+	if value, ok := _c.mutation.HeartbeatMiss(); ok {
+		_spec.SetField(codingtask.FieldHeartbeatMiss, field.TypeInt, value)
+		_node.HeartbeatMiss = value
+	}
+	if value, ok := _c.mutation.LivenessState(); ok {
+		_spec.SetField(codingtask.FieldLivenessState, field.TypeString, value)
+		_node.LivenessState = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(codingtask.FieldCreatedAt, field.TypeString, value)
@@ -602,6 +737,78 @@ func (u *CodingTaskUpsert) UpdateProgressCount() *CodingTaskUpsert {
 // AddProgressCount adds v to the "progress_count" field.
 func (u *CodingTaskUpsert) AddProgressCount(v int) *CodingTaskUpsert {
 	u.Add(codingtask.FieldProgressCount, v)
+	return u
+}
+
+// SetChildPid sets the "child_pid" field.
+func (u *CodingTaskUpsert) SetChildPid(v int) *CodingTaskUpsert {
+	u.Set(codingtask.FieldChildPid, v)
+	return u
+}
+
+// UpdateChildPid sets the "child_pid" field to the value that was provided on create.
+func (u *CodingTaskUpsert) UpdateChildPid() *CodingTaskUpsert {
+	u.SetExcluded(codingtask.FieldChildPid)
+	return u
+}
+
+// AddChildPid adds v to the "child_pid" field.
+func (u *CodingTaskUpsert) AddChildPid(v int) *CodingTaskUpsert {
+	u.Add(codingtask.FieldChildPid, v)
+	return u
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (u *CodingTaskUpsert) SetLastActiveAt(v string) *CodingTaskUpsert {
+	u.Set(codingtask.FieldLastActiveAt, v)
+	return u
+}
+
+// UpdateLastActiveAt sets the "last_active_at" field to the value that was provided on create.
+func (u *CodingTaskUpsert) UpdateLastActiveAt() *CodingTaskUpsert {
+	u.SetExcluded(codingtask.FieldLastActiveAt)
+	return u
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (u *CodingTaskUpsert) SetLastExcerpt(v string) *CodingTaskUpsert {
+	u.Set(codingtask.FieldLastExcerpt, v)
+	return u
+}
+
+// UpdateLastExcerpt sets the "last_excerpt" field to the value that was provided on create.
+func (u *CodingTaskUpsert) UpdateLastExcerpt() *CodingTaskUpsert {
+	u.SetExcluded(codingtask.FieldLastExcerpt)
+	return u
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (u *CodingTaskUpsert) SetHeartbeatMiss(v int) *CodingTaskUpsert {
+	u.Set(codingtask.FieldHeartbeatMiss, v)
+	return u
+}
+
+// UpdateHeartbeatMiss sets the "heartbeat_miss" field to the value that was provided on create.
+func (u *CodingTaskUpsert) UpdateHeartbeatMiss() *CodingTaskUpsert {
+	u.SetExcluded(codingtask.FieldHeartbeatMiss)
+	return u
+}
+
+// AddHeartbeatMiss adds v to the "heartbeat_miss" field.
+func (u *CodingTaskUpsert) AddHeartbeatMiss(v int) *CodingTaskUpsert {
+	u.Add(codingtask.FieldHeartbeatMiss, v)
+	return u
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (u *CodingTaskUpsert) SetLivenessState(v string) *CodingTaskUpsert {
+	u.Set(codingtask.FieldLivenessState, v)
+	return u
+}
+
+// UpdateLivenessState sets the "liveness_state" field to the value that was provided on create.
+func (u *CodingTaskUpsert) UpdateLivenessState() *CodingTaskUpsert {
+	u.SetExcluded(codingtask.FieldLivenessState)
 	return u
 }
 
@@ -833,6 +1040,90 @@ func (u *CodingTaskUpsertOne) AddProgressCount(v int) *CodingTaskUpsertOne {
 func (u *CodingTaskUpsertOne) UpdateProgressCount() *CodingTaskUpsertOne {
 	return u.Update(func(s *CodingTaskUpsert) {
 		s.UpdateProgressCount()
+	})
+}
+
+// SetChildPid sets the "child_pid" field.
+func (u *CodingTaskUpsertOne) SetChildPid(v int) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetChildPid(v)
+	})
+}
+
+// AddChildPid adds v to the "child_pid" field.
+func (u *CodingTaskUpsertOne) AddChildPid(v int) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.AddChildPid(v)
+	})
+}
+
+// UpdateChildPid sets the "child_pid" field to the value that was provided on create.
+func (u *CodingTaskUpsertOne) UpdateChildPid() *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateChildPid()
+	})
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (u *CodingTaskUpsertOne) SetLastActiveAt(v string) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetLastActiveAt(v)
+	})
+}
+
+// UpdateLastActiveAt sets the "last_active_at" field to the value that was provided on create.
+func (u *CodingTaskUpsertOne) UpdateLastActiveAt() *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateLastActiveAt()
+	})
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (u *CodingTaskUpsertOne) SetLastExcerpt(v string) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetLastExcerpt(v)
+	})
+}
+
+// UpdateLastExcerpt sets the "last_excerpt" field to the value that was provided on create.
+func (u *CodingTaskUpsertOne) UpdateLastExcerpt() *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateLastExcerpt()
+	})
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (u *CodingTaskUpsertOne) SetHeartbeatMiss(v int) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetHeartbeatMiss(v)
+	})
+}
+
+// AddHeartbeatMiss adds v to the "heartbeat_miss" field.
+func (u *CodingTaskUpsertOne) AddHeartbeatMiss(v int) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.AddHeartbeatMiss(v)
+	})
+}
+
+// UpdateHeartbeatMiss sets the "heartbeat_miss" field to the value that was provided on create.
+func (u *CodingTaskUpsertOne) UpdateHeartbeatMiss() *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateHeartbeatMiss()
+	})
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (u *CodingTaskUpsertOne) SetLivenessState(v string) *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetLivenessState(v)
+	})
+}
+
+// UpdateLivenessState sets the "liveness_state" field to the value that was provided on create.
+func (u *CodingTaskUpsertOne) UpdateLivenessState() *CodingTaskUpsertOne {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateLivenessState()
 	})
 }
 
@@ -1237,6 +1528,90 @@ func (u *CodingTaskUpsertBulk) AddProgressCount(v int) *CodingTaskUpsertBulk {
 func (u *CodingTaskUpsertBulk) UpdateProgressCount() *CodingTaskUpsertBulk {
 	return u.Update(func(s *CodingTaskUpsert) {
 		s.UpdateProgressCount()
+	})
+}
+
+// SetChildPid sets the "child_pid" field.
+func (u *CodingTaskUpsertBulk) SetChildPid(v int) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetChildPid(v)
+	})
+}
+
+// AddChildPid adds v to the "child_pid" field.
+func (u *CodingTaskUpsertBulk) AddChildPid(v int) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.AddChildPid(v)
+	})
+}
+
+// UpdateChildPid sets the "child_pid" field to the value that was provided on create.
+func (u *CodingTaskUpsertBulk) UpdateChildPid() *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateChildPid()
+	})
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (u *CodingTaskUpsertBulk) SetLastActiveAt(v string) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetLastActiveAt(v)
+	})
+}
+
+// UpdateLastActiveAt sets the "last_active_at" field to the value that was provided on create.
+func (u *CodingTaskUpsertBulk) UpdateLastActiveAt() *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateLastActiveAt()
+	})
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (u *CodingTaskUpsertBulk) SetLastExcerpt(v string) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetLastExcerpt(v)
+	})
+}
+
+// UpdateLastExcerpt sets the "last_excerpt" field to the value that was provided on create.
+func (u *CodingTaskUpsertBulk) UpdateLastExcerpt() *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateLastExcerpt()
+	})
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (u *CodingTaskUpsertBulk) SetHeartbeatMiss(v int) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetHeartbeatMiss(v)
+	})
+}
+
+// AddHeartbeatMiss adds v to the "heartbeat_miss" field.
+func (u *CodingTaskUpsertBulk) AddHeartbeatMiss(v int) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.AddHeartbeatMiss(v)
+	})
+}
+
+// UpdateHeartbeatMiss sets the "heartbeat_miss" field to the value that was provided on create.
+func (u *CodingTaskUpsertBulk) UpdateHeartbeatMiss() *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateHeartbeatMiss()
+	})
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (u *CodingTaskUpsertBulk) SetLivenessState(v string) *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.SetLivenessState(v)
+	})
+}
+
+// UpdateLivenessState sets the "liveness_state" field to the value that was provided on create.
+func (u *CodingTaskUpsertBulk) UpdateLivenessState() *CodingTaskUpsertBulk {
+	return u.Update(func(s *CodingTaskUpsert) {
+		s.UpdateLivenessState()
 	})
 }
 

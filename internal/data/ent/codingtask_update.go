@@ -174,6 +174,90 @@ func (_u *CodingTaskUpdate) AddProgressCount(v int) *CodingTaskUpdate {
 	return _u
 }
 
+// SetChildPid sets the "child_pid" field.
+func (_u *CodingTaskUpdate) SetChildPid(v int) *CodingTaskUpdate {
+	_u.mutation.ResetChildPid()
+	_u.mutation.SetChildPid(v)
+	return _u
+}
+
+// SetNillableChildPid sets the "child_pid" field if the given value is not nil.
+func (_u *CodingTaskUpdate) SetNillableChildPid(v *int) *CodingTaskUpdate {
+	if v != nil {
+		_u.SetChildPid(*v)
+	}
+	return _u
+}
+
+// AddChildPid adds value to the "child_pid" field.
+func (_u *CodingTaskUpdate) AddChildPid(v int) *CodingTaskUpdate {
+	_u.mutation.AddChildPid(v)
+	return _u
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (_u *CodingTaskUpdate) SetLastActiveAt(v string) *CodingTaskUpdate {
+	_u.mutation.SetLastActiveAt(v)
+	return _u
+}
+
+// SetNillableLastActiveAt sets the "last_active_at" field if the given value is not nil.
+func (_u *CodingTaskUpdate) SetNillableLastActiveAt(v *string) *CodingTaskUpdate {
+	if v != nil {
+		_u.SetLastActiveAt(*v)
+	}
+	return _u
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (_u *CodingTaskUpdate) SetLastExcerpt(v string) *CodingTaskUpdate {
+	_u.mutation.SetLastExcerpt(v)
+	return _u
+}
+
+// SetNillableLastExcerpt sets the "last_excerpt" field if the given value is not nil.
+func (_u *CodingTaskUpdate) SetNillableLastExcerpt(v *string) *CodingTaskUpdate {
+	if v != nil {
+		_u.SetLastExcerpt(*v)
+	}
+	return _u
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (_u *CodingTaskUpdate) SetHeartbeatMiss(v int) *CodingTaskUpdate {
+	_u.mutation.ResetHeartbeatMiss()
+	_u.mutation.SetHeartbeatMiss(v)
+	return _u
+}
+
+// SetNillableHeartbeatMiss sets the "heartbeat_miss" field if the given value is not nil.
+func (_u *CodingTaskUpdate) SetNillableHeartbeatMiss(v *int) *CodingTaskUpdate {
+	if v != nil {
+		_u.SetHeartbeatMiss(*v)
+	}
+	return _u
+}
+
+// AddHeartbeatMiss adds value to the "heartbeat_miss" field.
+func (_u *CodingTaskUpdate) AddHeartbeatMiss(v int) *CodingTaskUpdate {
+	_u.mutation.AddHeartbeatMiss(v)
+	return _u
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (_u *CodingTaskUpdate) SetLivenessState(v string) *CodingTaskUpdate {
+	_u.mutation.SetLivenessState(v)
+	return _u
+}
+
+// SetNillableLivenessState sets the "liveness_state" field if the given value is not nil.
+func (_u *CodingTaskUpdate) SetNillableLivenessState(v *string) *CodingTaskUpdate {
+	if v != nil {
+		_u.SetLivenessState(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CodingTaskUpdate) SetCreatedAt(v string) *CodingTaskUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -280,6 +364,16 @@ func (_u *CodingTaskUpdate) check() error {
 			return &ValidationError{Name: "acp_session_id", err: fmt.Errorf(`ent: validator failed for field "CodingTask.acp_session_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LastExcerpt(); ok {
+		if err := codingtask.LastExcerptValidator(v); err != nil {
+			return &ValidationError{Name: "last_excerpt", err: fmt.Errorf(`ent: validator failed for field "CodingTask.last_excerpt": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LivenessState(); ok {
+		if err := codingtask.LivenessStateValidator(v); err != nil {
+			return &ValidationError{Name: "liveness_state", err: fmt.Errorf(`ent: validator failed for field "CodingTask.liveness_state": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -327,6 +421,27 @@ func (_u *CodingTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.AddedProgressCount(); ok {
 		_spec.AddField(codingtask.FieldProgressCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ChildPid(); ok {
+		_spec.SetField(codingtask.FieldChildPid, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChildPid(); ok {
+		_spec.AddField(codingtask.FieldChildPid, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastActiveAt(); ok {
+		_spec.SetField(codingtask.FieldLastActiveAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LastExcerpt(); ok {
+		_spec.SetField(codingtask.FieldLastExcerpt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.HeartbeatMiss(); ok {
+		_spec.SetField(codingtask.FieldHeartbeatMiss, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHeartbeatMiss(); ok {
+		_spec.AddField(codingtask.FieldHeartbeatMiss, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LivenessState(); ok {
+		_spec.SetField(codingtask.FieldLivenessState, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(codingtask.FieldCreatedAt, field.TypeString, value)
@@ -504,6 +619,90 @@ func (_u *CodingTaskUpdateOne) AddProgressCount(v int) *CodingTaskUpdateOne {
 	return _u
 }
 
+// SetChildPid sets the "child_pid" field.
+func (_u *CodingTaskUpdateOne) SetChildPid(v int) *CodingTaskUpdateOne {
+	_u.mutation.ResetChildPid()
+	_u.mutation.SetChildPid(v)
+	return _u
+}
+
+// SetNillableChildPid sets the "child_pid" field if the given value is not nil.
+func (_u *CodingTaskUpdateOne) SetNillableChildPid(v *int) *CodingTaskUpdateOne {
+	if v != nil {
+		_u.SetChildPid(*v)
+	}
+	return _u
+}
+
+// AddChildPid adds value to the "child_pid" field.
+func (_u *CodingTaskUpdateOne) AddChildPid(v int) *CodingTaskUpdateOne {
+	_u.mutation.AddChildPid(v)
+	return _u
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (_u *CodingTaskUpdateOne) SetLastActiveAt(v string) *CodingTaskUpdateOne {
+	_u.mutation.SetLastActiveAt(v)
+	return _u
+}
+
+// SetNillableLastActiveAt sets the "last_active_at" field if the given value is not nil.
+func (_u *CodingTaskUpdateOne) SetNillableLastActiveAt(v *string) *CodingTaskUpdateOne {
+	if v != nil {
+		_u.SetLastActiveAt(*v)
+	}
+	return _u
+}
+
+// SetLastExcerpt sets the "last_excerpt" field.
+func (_u *CodingTaskUpdateOne) SetLastExcerpt(v string) *CodingTaskUpdateOne {
+	_u.mutation.SetLastExcerpt(v)
+	return _u
+}
+
+// SetNillableLastExcerpt sets the "last_excerpt" field if the given value is not nil.
+func (_u *CodingTaskUpdateOne) SetNillableLastExcerpt(v *string) *CodingTaskUpdateOne {
+	if v != nil {
+		_u.SetLastExcerpt(*v)
+	}
+	return _u
+}
+
+// SetHeartbeatMiss sets the "heartbeat_miss" field.
+func (_u *CodingTaskUpdateOne) SetHeartbeatMiss(v int) *CodingTaskUpdateOne {
+	_u.mutation.ResetHeartbeatMiss()
+	_u.mutation.SetHeartbeatMiss(v)
+	return _u
+}
+
+// SetNillableHeartbeatMiss sets the "heartbeat_miss" field if the given value is not nil.
+func (_u *CodingTaskUpdateOne) SetNillableHeartbeatMiss(v *int) *CodingTaskUpdateOne {
+	if v != nil {
+		_u.SetHeartbeatMiss(*v)
+	}
+	return _u
+}
+
+// AddHeartbeatMiss adds value to the "heartbeat_miss" field.
+func (_u *CodingTaskUpdateOne) AddHeartbeatMiss(v int) *CodingTaskUpdateOne {
+	_u.mutation.AddHeartbeatMiss(v)
+	return _u
+}
+
+// SetLivenessState sets the "liveness_state" field.
+func (_u *CodingTaskUpdateOne) SetLivenessState(v string) *CodingTaskUpdateOne {
+	_u.mutation.SetLivenessState(v)
+	return _u
+}
+
+// SetNillableLivenessState sets the "liveness_state" field if the given value is not nil.
+func (_u *CodingTaskUpdateOne) SetNillableLivenessState(v *string) *CodingTaskUpdateOne {
+	if v != nil {
+		_u.SetLivenessState(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CodingTaskUpdateOne) SetCreatedAt(v string) *CodingTaskUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -623,6 +822,16 @@ func (_u *CodingTaskUpdateOne) check() error {
 			return &ValidationError{Name: "acp_session_id", err: fmt.Errorf(`ent: validator failed for field "CodingTask.acp_session_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LastExcerpt(); ok {
+		if err := codingtask.LastExcerptValidator(v); err != nil {
+			return &ValidationError{Name: "last_excerpt", err: fmt.Errorf(`ent: validator failed for field "CodingTask.last_excerpt": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LivenessState(); ok {
+		if err := codingtask.LivenessStateValidator(v); err != nil {
+			return &ValidationError{Name: "liveness_state", err: fmt.Errorf(`ent: validator failed for field "CodingTask.liveness_state": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -687,6 +896,27 @@ func (_u *CodingTaskUpdateOne) sqlSave(ctx context.Context) (_node *CodingTask, 
 	}
 	if value, ok := _u.mutation.AddedProgressCount(); ok {
 		_spec.AddField(codingtask.FieldProgressCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ChildPid(); ok {
+		_spec.SetField(codingtask.FieldChildPid, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChildPid(); ok {
+		_spec.AddField(codingtask.FieldChildPid, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastActiveAt(); ok {
+		_spec.SetField(codingtask.FieldLastActiveAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LastExcerpt(); ok {
+		_spec.SetField(codingtask.FieldLastExcerpt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.HeartbeatMiss(); ok {
+		_spec.SetField(codingtask.FieldHeartbeatMiss, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHeartbeatMiss(); ok {
+		_spec.AddField(codingtask.FieldHeartbeatMiss, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LivenessState(); ok {
+		_spec.SetField(codingtask.FieldLivenessState, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(codingtask.FieldCreatedAt, field.TypeString, value)

@@ -1482,11 +1482,11 @@ func init() {
 	// codingagent.LastProbeErrorValidator is a validator for the "last_probe_error" field. It is called by the builders before save.
 	codingagent.LastProbeErrorValidator = codingagentDescLastProbeError.Validators[0].(func(string) error)
 	// codingagentDescCreatedAt is the schema descriptor for created_at field.
-	codingagentDescCreatedAt := codingagentFields[10].Descriptor()
+	codingagentDescCreatedAt := codingagentFields[11].Descriptor()
 	// codingagent.DefaultCreatedAt holds the default value on creation for the created_at field.
 	codingagent.DefaultCreatedAt = codingagentDescCreatedAt.Default.(string)
 	// codingagentDescUpdatedAt is the schema descriptor for updated_at field.
-	codingagentDescUpdatedAt := codingagentFields[11].Descriptor()
+	codingagentDescUpdatedAt := codingagentFields[12].Descriptor()
 	// codingagent.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	codingagent.DefaultUpdatedAt = codingagentDescUpdatedAt.Default.(string)
 	// codingagentDescID is the schema descriptor for id field.
@@ -1575,16 +1575,40 @@ func init() {
 	codingtaskDescProgressCount := codingtaskFields[10].Descriptor()
 	// codingtask.DefaultProgressCount holds the default value on creation for the progress_count field.
 	codingtask.DefaultProgressCount = codingtaskDescProgressCount.Default.(int)
+	// codingtaskDescChildPid is the schema descriptor for child_pid field.
+	codingtaskDescChildPid := codingtaskFields[11].Descriptor()
+	// codingtask.DefaultChildPid holds the default value on creation for the child_pid field.
+	codingtask.DefaultChildPid = codingtaskDescChildPid.Default.(int)
+	// codingtaskDescLastActiveAt is the schema descriptor for last_active_at field.
+	codingtaskDescLastActiveAt := codingtaskFields[12].Descriptor()
+	// codingtask.DefaultLastActiveAt holds the default value on creation for the last_active_at field.
+	codingtask.DefaultLastActiveAt = codingtaskDescLastActiveAt.Default.(string)
+	// codingtaskDescLastExcerpt is the schema descriptor for last_excerpt field.
+	codingtaskDescLastExcerpt := codingtaskFields[13].Descriptor()
+	// codingtask.DefaultLastExcerpt holds the default value on creation for the last_excerpt field.
+	codingtask.DefaultLastExcerpt = codingtaskDescLastExcerpt.Default.(string)
+	// codingtask.LastExcerptValidator is a validator for the "last_excerpt" field. It is called by the builders before save.
+	codingtask.LastExcerptValidator = codingtaskDescLastExcerpt.Validators[0].(func(string) error)
+	// codingtaskDescHeartbeatMiss is the schema descriptor for heartbeat_miss field.
+	codingtaskDescHeartbeatMiss := codingtaskFields[14].Descriptor()
+	// codingtask.DefaultHeartbeatMiss holds the default value on creation for the heartbeat_miss field.
+	codingtask.DefaultHeartbeatMiss = codingtaskDescHeartbeatMiss.Default.(int)
+	// codingtaskDescLivenessState is the schema descriptor for liveness_state field.
+	codingtaskDescLivenessState := codingtaskFields[15].Descriptor()
+	// codingtask.DefaultLivenessState holds the default value on creation for the liveness_state field.
+	codingtask.DefaultLivenessState = codingtaskDescLivenessState.Default.(string)
+	// codingtask.LivenessStateValidator is a validator for the "liveness_state" field. It is called by the builders before save.
+	codingtask.LivenessStateValidator = codingtaskDescLivenessState.Validators[0].(func(string) error)
 	// codingtaskDescCreatedAt is the schema descriptor for created_at field.
-	codingtaskDescCreatedAt := codingtaskFields[11].Descriptor()
+	codingtaskDescCreatedAt := codingtaskFields[16].Descriptor()
 	// codingtask.DefaultCreatedAt holds the default value on creation for the created_at field.
 	codingtask.DefaultCreatedAt = codingtaskDescCreatedAt.Default.(string)
 	// codingtaskDescUpdatedAt is the schema descriptor for updated_at field.
-	codingtaskDescUpdatedAt := codingtaskFields[12].Descriptor()
+	codingtaskDescUpdatedAt := codingtaskFields[17].Descriptor()
 	// codingtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	codingtask.DefaultUpdatedAt = codingtaskDescUpdatedAt.Default.(string)
 	// codingtaskDescCompletedAt is the schema descriptor for completed_at field.
-	codingtaskDescCompletedAt := codingtaskFields[13].Descriptor()
+	codingtaskDescCompletedAt := codingtaskFields[18].Descriptor()
 	// codingtask.DefaultCompletedAt holds the default value on creation for the completed_at field.
 	codingtask.DefaultCompletedAt = codingtaskDescCompletedAt.Default.(string)
 	// codingtaskDescID is the schema descriptor for id field.

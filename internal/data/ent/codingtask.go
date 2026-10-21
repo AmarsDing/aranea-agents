@@ -36,6 +36,16 @@ type CodingTask struct {
 	Error string `json:"error,omitempty"`
 	// ProgressCount holds the value of the "progress_count" field.
 	ProgressCount int `json:"progress_count,omitempty"`
+	// ChildPid holds the value of the "child_pid" field.
+	ChildPid int `json:"child_pid,omitempty"`
+	// LastActiveAt holds the value of the "last_active_at" field.
+	LastActiveAt string `json:"last_active_at,omitempty"`
+	// LastExcerpt holds the value of the "last_excerpt" field.
+	LastExcerpt string `json:"last_excerpt,omitempty"`
+	// HeartbeatMiss holds the value of the "heartbeat_miss" field.
+	HeartbeatMiss int `json:"heartbeat_miss,omitempty"`
+	// LivenessState holds the value of the "liveness_state" field.
+	LivenessState string `json:"liveness_state,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt string `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -50,9 +60,9 @@ func (*CodingTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case codingtask.FieldProgressCount:
+		case codingtask.FieldProgressCount, codingtask.FieldChildPid, codingtask.FieldHeartbeatMiss:
 			values[i] = new(sql.NullInt64)
-		case codingtask.FieldID, codingtask.FieldWorkspace, codingtask.FieldSessionID, codingtask.FieldAgentID, codingtask.FieldProjectID, codingtask.FieldPrompt, codingtask.FieldStatus, codingtask.FieldAcpSessionID, codingtask.FieldSummary, codingtask.FieldError, codingtask.FieldCreatedAt, codingtask.FieldUpdatedAt, codingtask.FieldCompletedAt:
+		case codingtask.FieldID, codingtask.FieldWorkspace, codingtask.FieldSessionID, codingtask.FieldAgentID, codingtask.FieldProjectID, codingtask.FieldPrompt, codingtask.FieldStatus, codingtask.FieldAcpSessionID, codingtask.FieldSummary, codingtask.FieldError, codingtask.FieldLastActiveAt, codingtask.FieldLastExcerpt, codingtask.FieldLivenessState, codingtask.FieldCreatedAt, codingtask.FieldUpdatedAt, codingtask.FieldCompletedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -134,6 +144,36 @@ func (_m *CodingTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field progress_count", values[i])
 			} else if value.Valid {
 				_m.ProgressCount = int(value.Int64)
+			}
+		case codingtask.FieldChildPid:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field child_pid", values[i])
+			} else if value.Valid {
+				_m.ChildPid = int(value.Int64)
+			}
+		case codingtask.FieldLastActiveAt:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_active_at", values[i])
+			} else if value.Valid {
+				_m.LastActiveAt = value.String
+			}
+		case codingtask.FieldLastExcerpt:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_excerpt", values[i])
+			} else if value.Valid {
+				_m.LastExcerpt = value.String
+			}
+		case codingtask.FieldHeartbeatMiss:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field heartbeat_miss", values[i])
+			} else if value.Valid {
+				_m.HeartbeatMiss = int(value.Int64)
+			}
+		case codingtask.FieldLivenessState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field liveness_state", values[i])
+			} else if value.Valid {
+				_m.LivenessState = value.String
 			}
 		case codingtask.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -218,6 +258,21 @@ func (_m *CodingTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("progress_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProgressCount))
+	builder.WriteString(", ")
+	builder.WriteString("child_pid=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ChildPid))
+	builder.WriteString(", ")
+	builder.WriteString("last_active_at=")
+	builder.WriteString(_m.LastActiveAt)
+	builder.WriteString(", ")
+	builder.WriteString("last_excerpt=")
+	builder.WriteString(_m.LastExcerpt)
+	builder.WriteString(", ")
+	builder.WriteString("heartbeat_miss=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HeartbeatMiss))
+	builder.WriteString(", ")
+	builder.WriteString("liveness_state=")
+	builder.WriteString(_m.LivenessState)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)

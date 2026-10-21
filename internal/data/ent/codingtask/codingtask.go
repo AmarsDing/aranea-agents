@@ -31,6 +31,16 @@ const (
 	FieldError = "error"
 	// FieldProgressCount holds the string denoting the progress_count field in the database.
 	FieldProgressCount = "progress_count"
+	// FieldChildPid holds the string denoting the child_pid field in the database.
+	FieldChildPid = "child_pid"
+	// FieldLastActiveAt holds the string denoting the last_active_at field in the database.
+	FieldLastActiveAt = "last_active_at"
+	// FieldLastExcerpt holds the string denoting the last_excerpt field in the database.
+	FieldLastExcerpt = "last_excerpt"
+	// FieldHeartbeatMiss holds the string denoting the heartbeat_miss field in the database.
+	FieldHeartbeatMiss = "heartbeat_miss"
+	// FieldLivenessState holds the string denoting the liveness_state field in the database.
+	FieldLivenessState = "liveness_state"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -54,6 +64,11 @@ var Columns = []string{
 	FieldSummary,
 	FieldError,
 	FieldProgressCount,
+	FieldChildPid,
+	FieldLastActiveAt,
+	FieldLastExcerpt,
+	FieldHeartbeatMiss,
+	FieldLivenessState,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldCompletedAt,
@@ -96,6 +111,20 @@ var (
 	DefaultError string
 	// DefaultProgressCount holds the default value on creation for the "progress_count" field.
 	DefaultProgressCount int
+	// DefaultChildPid holds the default value on creation for the "child_pid" field.
+	DefaultChildPid int
+	// DefaultLastActiveAt holds the default value on creation for the "last_active_at" field.
+	DefaultLastActiveAt string
+	// DefaultLastExcerpt holds the default value on creation for the "last_excerpt" field.
+	DefaultLastExcerpt string
+	// LastExcerptValidator is a validator for the "last_excerpt" field. It is called by the builders before save.
+	LastExcerptValidator func(string) error
+	// DefaultHeartbeatMiss holds the default value on creation for the "heartbeat_miss" field.
+	DefaultHeartbeatMiss int
+	// DefaultLivenessState holds the default value on creation for the "liveness_state" field.
+	DefaultLivenessState string
+	// LivenessStateValidator is a validator for the "liveness_state" field. It is called by the builders before save.
+	LivenessStateValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt string
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -162,6 +191,31 @@ func ByError(opts ...sql.OrderTermOption) OrderOption {
 // ByProgressCount orders the results by the progress_count field.
 func ByProgressCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProgressCount, opts...).ToFunc()
+}
+
+// ByChildPid orders the results by the child_pid field.
+func ByChildPid(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChildPid, opts...).ToFunc()
+}
+
+// ByLastActiveAt orders the results by the last_active_at field.
+func ByLastActiveAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastActiveAt, opts...).ToFunc()
+}
+
+// ByLastExcerpt orders the results by the last_excerpt field.
+func ByLastExcerpt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastExcerpt, opts...).ToFunc()
+}
+
+// ByHeartbeatMiss orders the results by the heartbeat_miss field.
+func ByHeartbeatMiss(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHeartbeatMiss, opts...).ToFunc()
+}
+
+// ByLivenessState orders the results by the liveness_state field.
+func ByLivenessState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLivenessState, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

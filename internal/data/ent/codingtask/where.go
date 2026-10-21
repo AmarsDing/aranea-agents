@@ -113,6 +113,31 @@ func ProgressCount(v int) predicate.CodingTask {
 	return predicate.CodingTask(sql.FieldEQ(FieldProgressCount, v))
 }
 
+// ChildPid applies equality check predicate on the "child_pid" field. It's identical to ChildPidEQ.
+func ChildPid(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldChildPid, v))
+}
+
+// LastActiveAt applies equality check predicate on the "last_active_at" field. It's identical to LastActiveAtEQ.
+func LastActiveAt(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldLastActiveAt, v))
+}
+
+// LastExcerpt applies equality check predicate on the "last_excerpt" field. It's identical to LastExcerptEQ.
+func LastExcerpt(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldLastExcerpt, v))
+}
+
+// HeartbeatMiss applies equality check predicate on the "heartbeat_miss" field. It's identical to HeartbeatMissEQ.
+func HeartbeatMiss(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldHeartbeatMiss, v))
+}
+
+// LivenessState applies equality check predicate on the "liveness_state" field. It's identical to LivenessStateEQ.
+func LivenessState(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldLivenessState, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v string) predicate.CodingTask {
 	return predicate.CodingTask(sql.FieldEQ(FieldCreatedAt, v))
@@ -751,6 +776,281 @@ func ProgressCountLT(v int) predicate.CodingTask {
 // ProgressCountLTE applies the LTE predicate on the "progress_count" field.
 func ProgressCountLTE(v int) predicate.CodingTask {
 	return predicate.CodingTask(sql.FieldLTE(FieldProgressCount, v))
+}
+
+// ChildPidEQ applies the EQ predicate on the "child_pid" field.
+func ChildPidEQ(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldChildPid, v))
+}
+
+// ChildPidNEQ applies the NEQ predicate on the "child_pid" field.
+func ChildPidNEQ(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNEQ(FieldChildPid, v))
+}
+
+// ChildPidIn applies the In predicate on the "child_pid" field.
+func ChildPidIn(vs ...int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldIn(FieldChildPid, vs...))
+}
+
+// ChildPidNotIn applies the NotIn predicate on the "child_pid" field.
+func ChildPidNotIn(vs ...int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNotIn(FieldChildPid, vs...))
+}
+
+// ChildPidGT applies the GT predicate on the "child_pid" field.
+func ChildPidGT(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGT(FieldChildPid, v))
+}
+
+// ChildPidGTE applies the GTE predicate on the "child_pid" field.
+func ChildPidGTE(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGTE(FieldChildPid, v))
+}
+
+// ChildPidLT applies the LT predicate on the "child_pid" field.
+func ChildPidLT(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLT(FieldChildPid, v))
+}
+
+// ChildPidLTE applies the LTE predicate on the "child_pid" field.
+func ChildPidLTE(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLTE(FieldChildPid, v))
+}
+
+// LastActiveAtEQ applies the EQ predicate on the "last_active_at" field.
+func LastActiveAtEQ(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldLastActiveAt, v))
+}
+
+// LastActiveAtNEQ applies the NEQ predicate on the "last_active_at" field.
+func LastActiveAtNEQ(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNEQ(FieldLastActiveAt, v))
+}
+
+// LastActiveAtIn applies the In predicate on the "last_active_at" field.
+func LastActiveAtIn(vs ...string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldIn(FieldLastActiveAt, vs...))
+}
+
+// LastActiveAtNotIn applies the NotIn predicate on the "last_active_at" field.
+func LastActiveAtNotIn(vs ...string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNotIn(FieldLastActiveAt, vs...))
+}
+
+// LastActiveAtGT applies the GT predicate on the "last_active_at" field.
+func LastActiveAtGT(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGT(FieldLastActiveAt, v))
+}
+
+// LastActiveAtGTE applies the GTE predicate on the "last_active_at" field.
+func LastActiveAtGTE(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGTE(FieldLastActiveAt, v))
+}
+
+// LastActiveAtLT applies the LT predicate on the "last_active_at" field.
+func LastActiveAtLT(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLT(FieldLastActiveAt, v))
+}
+
+// LastActiveAtLTE applies the LTE predicate on the "last_active_at" field.
+func LastActiveAtLTE(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLTE(FieldLastActiveAt, v))
+}
+
+// LastActiveAtContains applies the Contains predicate on the "last_active_at" field.
+func LastActiveAtContains(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldContains(FieldLastActiveAt, v))
+}
+
+// LastActiveAtHasPrefix applies the HasPrefix predicate on the "last_active_at" field.
+func LastActiveAtHasPrefix(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldHasPrefix(FieldLastActiveAt, v))
+}
+
+// LastActiveAtHasSuffix applies the HasSuffix predicate on the "last_active_at" field.
+func LastActiveAtHasSuffix(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldHasSuffix(FieldLastActiveAt, v))
+}
+
+// LastActiveAtEqualFold applies the EqualFold predicate on the "last_active_at" field.
+func LastActiveAtEqualFold(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEqualFold(FieldLastActiveAt, v))
+}
+
+// LastActiveAtContainsFold applies the ContainsFold predicate on the "last_active_at" field.
+func LastActiveAtContainsFold(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldContainsFold(FieldLastActiveAt, v))
+}
+
+// LastExcerptEQ applies the EQ predicate on the "last_excerpt" field.
+func LastExcerptEQ(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldLastExcerpt, v))
+}
+
+// LastExcerptNEQ applies the NEQ predicate on the "last_excerpt" field.
+func LastExcerptNEQ(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNEQ(FieldLastExcerpt, v))
+}
+
+// LastExcerptIn applies the In predicate on the "last_excerpt" field.
+func LastExcerptIn(vs ...string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldIn(FieldLastExcerpt, vs...))
+}
+
+// LastExcerptNotIn applies the NotIn predicate on the "last_excerpt" field.
+func LastExcerptNotIn(vs ...string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNotIn(FieldLastExcerpt, vs...))
+}
+
+// LastExcerptGT applies the GT predicate on the "last_excerpt" field.
+func LastExcerptGT(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGT(FieldLastExcerpt, v))
+}
+
+// LastExcerptGTE applies the GTE predicate on the "last_excerpt" field.
+func LastExcerptGTE(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGTE(FieldLastExcerpt, v))
+}
+
+// LastExcerptLT applies the LT predicate on the "last_excerpt" field.
+func LastExcerptLT(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLT(FieldLastExcerpt, v))
+}
+
+// LastExcerptLTE applies the LTE predicate on the "last_excerpt" field.
+func LastExcerptLTE(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLTE(FieldLastExcerpt, v))
+}
+
+// LastExcerptContains applies the Contains predicate on the "last_excerpt" field.
+func LastExcerptContains(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldContains(FieldLastExcerpt, v))
+}
+
+// LastExcerptHasPrefix applies the HasPrefix predicate on the "last_excerpt" field.
+func LastExcerptHasPrefix(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldHasPrefix(FieldLastExcerpt, v))
+}
+
+// LastExcerptHasSuffix applies the HasSuffix predicate on the "last_excerpt" field.
+func LastExcerptHasSuffix(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldHasSuffix(FieldLastExcerpt, v))
+}
+
+// LastExcerptEqualFold applies the EqualFold predicate on the "last_excerpt" field.
+func LastExcerptEqualFold(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEqualFold(FieldLastExcerpt, v))
+}
+
+// LastExcerptContainsFold applies the ContainsFold predicate on the "last_excerpt" field.
+func LastExcerptContainsFold(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldContainsFold(FieldLastExcerpt, v))
+}
+
+// HeartbeatMissEQ applies the EQ predicate on the "heartbeat_miss" field.
+func HeartbeatMissEQ(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldHeartbeatMiss, v))
+}
+
+// HeartbeatMissNEQ applies the NEQ predicate on the "heartbeat_miss" field.
+func HeartbeatMissNEQ(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNEQ(FieldHeartbeatMiss, v))
+}
+
+// HeartbeatMissIn applies the In predicate on the "heartbeat_miss" field.
+func HeartbeatMissIn(vs ...int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldIn(FieldHeartbeatMiss, vs...))
+}
+
+// HeartbeatMissNotIn applies the NotIn predicate on the "heartbeat_miss" field.
+func HeartbeatMissNotIn(vs ...int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNotIn(FieldHeartbeatMiss, vs...))
+}
+
+// HeartbeatMissGT applies the GT predicate on the "heartbeat_miss" field.
+func HeartbeatMissGT(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGT(FieldHeartbeatMiss, v))
+}
+
+// HeartbeatMissGTE applies the GTE predicate on the "heartbeat_miss" field.
+func HeartbeatMissGTE(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGTE(FieldHeartbeatMiss, v))
+}
+
+// HeartbeatMissLT applies the LT predicate on the "heartbeat_miss" field.
+func HeartbeatMissLT(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLT(FieldHeartbeatMiss, v))
+}
+
+// HeartbeatMissLTE applies the LTE predicate on the "heartbeat_miss" field.
+func HeartbeatMissLTE(v int) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLTE(FieldHeartbeatMiss, v))
+}
+
+// LivenessStateEQ applies the EQ predicate on the "liveness_state" field.
+func LivenessStateEQ(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEQ(FieldLivenessState, v))
+}
+
+// LivenessStateNEQ applies the NEQ predicate on the "liveness_state" field.
+func LivenessStateNEQ(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNEQ(FieldLivenessState, v))
+}
+
+// LivenessStateIn applies the In predicate on the "liveness_state" field.
+func LivenessStateIn(vs ...string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldIn(FieldLivenessState, vs...))
+}
+
+// LivenessStateNotIn applies the NotIn predicate on the "liveness_state" field.
+func LivenessStateNotIn(vs ...string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldNotIn(FieldLivenessState, vs...))
+}
+
+// LivenessStateGT applies the GT predicate on the "liveness_state" field.
+func LivenessStateGT(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGT(FieldLivenessState, v))
+}
+
+// LivenessStateGTE applies the GTE predicate on the "liveness_state" field.
+func LivenessStateGTE(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldGTE(FieldLivenessState, v))
+}
+
+// LivenessStateLT applies the LT predicate on the "liveness_state" field.
+func LivenessStateLT(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLT(FieldLivenessState, v))
+}
+
+// LivenessStateLTE applies the LTE predicate on the "liveness_state" field.
+func LivenessStateLTE(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldLTE(FieldLivenessState, v))
+}
+
+// LivenessStateContains applies the Contains predicate on the "liveness_state" field.
+func LivenessStateContains(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldContains(FieldLivenessState, v))
+}
+
+// LivenessStateHasPrefix applies the HasPrefix predicate on the "liveness_state" field.
+func LivenessStateHasPrefix(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldHasPrefix(FieldLivenessState, v))
+}
+
+// LivenessStateHasSuffix applies the HasSuffix predicate on the "liveness_state" field.
+func LivenessStateHasSuffix(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldHasSuffix(FieldLivenessState, v))
+}
+
+// LivenessStateEqualFold applies the EqualFold predicate on the "liveness_state" field.
+func LivenessStateEqualFold(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldEqualFold(FieldLivenessState, v))
+}
+
+// LivenessStateContainsFold applies the ContainsFold predicate on the "liveness_state" field.
+func LivenessStateContainsFold(v string) predicate.CodingTask {
+	return predicate.CodingTask(sql.FieldContainsFold(FieldLivenessState, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

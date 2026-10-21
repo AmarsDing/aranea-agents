@@ -108,6 +108,12 @@ func (_c *CodingAgentCreate) SetNillableLastProbeError(v *string) *CodingAgentCr
 	return _c
 }
 
+// SetLivenessOverride sets the "liveness_override" field.
+func (_c *CodingAgentCreate) SetLivenessOverride(v map[string]interface{}) *CodingAgentCreate {
+	_c.mutation.SetLivenessOverride(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *CodingAgentCreate) SetCreatedAt(v string) *CodingAgentCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -334,6 +340,10 @@ func (_c *CodingAgentCreate) createSpec() (*CodingAgent, *sqlgraph.CreateSpec) {
 		_spec.SetField(codingagent.FieldLastProbeError, field.TypeString, value)
 		_node.LastProbeError = value
 	}
+	if value, ok := _c.mutation.LivenessOverride(); ok {
+		_spec.SetField(codingagent.FieldLivenessOverride, field.TypeJSON, value)
+		_node.LivenessOverride = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(codingagent.FieldCreatedAt, field.TypeString, value)
 		_node.CreatedAt = value
@@ -511,6 +521,24 @@ func (u *CodingAgentUpsert) SetLastProbeError(v string) *CodingAgentUpsert {
 // UpdateLastProbeError sets the "last_probe_error" field to the value that was provided on create.
 func (u *CodingAgentUpsert) UpdateLastProbeError() *CodingAgentUpsert {
 	u.SetExcluded(codingagent.FieldLastProbeError)
+	return u
+}
+
+// SetLivenessOverride sets the "liveness_override" field.
+func (u *CodingAgentUpsert) SetLivenessOverride(v map[string]interface{}) *CodingAgentUpsert {
+	u.Set(codingagent.FieldLivenessOverride, v)
+	return u
+}
+
+// UpdateLivenessOverride sets the "liveness_override" field to the value that was provided on create.
+func (u *CodingAgentUpsert) UpdateLivenessOverride() *CodingAgentUpsert {
+	u.SetExcluded(codingagent.FieldLivenessOverride)
+	return u
+}
+
+// ClearLivenessOverride clears the value of the "liveness_override" field.
+func (u *CodingAgentUpsert) ClearLivenessOverride() *CodingAgentUpsert {
+	u.SetNull(codingagent.FieldLivenessOverride)
 	return u
 }
 
@@ -723,6 +751,27 @@ func (u *CodingAgentUpsertOne) SetLastProbeError(v string) *CodingAgentUpsertOne
 func (u *CodingAgentUpsertOne) UpdateLastProbeError() *CodingAgentUpsertOne {
 	return u.Update(func(s *CodingAgentUpsert) {
 		s.UpdateLastProbeError()
+	})
+}
+
+// SetLivenessOverride sets the "liveness_override" field.
+func (u *CodingAgentUpsertOne) SetLivenessOverride(v map[string]interface{}) *CodingAgentUpsertOne {
+	return u.Update(func(s *CodingAgentUpsert) {
+		s.SetLivenessOverride(v)
+	})
+}
+
+// UpdateLivenessOverride sets the "liveness_override" field to the value that was provided on create.
+func (u *CodingAgentUpsertOne) UpdateLivenessOverride() *CodingAgentUpsertOne {
+	return u.Update(func(s *CodingAgentUpsert) {
+		s.UpdateLivenessOverride()
+	})
+}
+
+// ClearLivenessOverride clears the value of the "liveness_override" field.
+func (u *CodingAgentUpsertOne) ClearLivenessOverride() *CodingAgentUpsertOne {
+	return u.Update(func(s *CodingAgentUpsert) {
+		s.ClearLivenessOverride()
 	})
 }
 
@@ -1106,6 +1155,27 @@ func (u *CodingAgentUpsertBulk) SetLastProbeError(v string) *CodingAgentUpsertBu
 func (u *CodingAgentUpsertBulk) UpdateLastProbeError() *CodingAgentUpsertBulk {
 	return u.Update(func(s *CodingAgentUpsert) {
 		s.UpdateLastProbeError()
+	})
+}
+
+// SetLivenessOverride sets the "liveness_override" field.
+func (u *CodingAgentUpsertBulk) SetLivenessOverride(v map[string]interface{}) *CodingAgentUpsertBulk {
+	return u.Update(func(s *CodingAgentUpsert) {
+		s.SetLivenessOverride(v)
+	})
+}
+
+// UpdateLivenessOverride sets the "liveness_override" field to the value that was provided on create.
+func (u *CodingAgentUpsertBulk) UpdateLivenessOverride() *CodingAgentUpsertBulk {
+	return u.Update(func(s *CodingAgentUpsert) {
+		s.UpdateLivenessOverride()
+	})
+}
+
+// ClearLivenessOverride clears the value of the "liveness_override" field.
+func (u *CodingAgentUpsertBulk) ClearLivenessOverride() *CodingAgentUpsertBulk {
+	return u.Update(func(s *CodingAgentUpsert) {
+		s.ClearLivenessOverride()
 	})
 }
 

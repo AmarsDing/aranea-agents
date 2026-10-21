@@ -473,6 +473,16 @@ func LastProbeErrorContainsFold(v string) predicate.CodingAgent {
 	return predicate.CodingAgent(sql.FieldContainsFold(FieldLastProbeError, v))
 }
 
+// LivenessOverrideIsNil applies the IsNil predicate on the "liveness_override" field.
+func LivenessOverrideIsNil() predicate.CodingAgent {
+	return predicate.CodingAgent(sql.FieldIsNull(FieldLivenessOverride))
+}
+
+// LivenessOverrideNotNil applies the NotNil predicate on the "liveness_override" field.
+func LivenessOverrideNotNil() predicate.CodingAgent {
+	return predicate.CodingAgent(sql.FieldNotNull(FieldLivenessOverride))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v string) predicate.CodingAgent {
 	return predicate.CodingAgent(sql.FieldEQ(FieldCreatedAt, v))

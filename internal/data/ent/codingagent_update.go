@@ -156,6 +156,18 @@ func (_u *CodingAgentUpdate) SetNillableLastProbeError(v *string) *CodingAgentUp
 	return _u
 }
 
+// SetLivenessOverride sets the "liveness_override" field.
+func (_u *CodingAgentUpdate) SetLivenessOverride(v map[string]interface{}) *CodingAgentUpdate {
+	_u.mutation.SetLivenessOverride(v)
+	return _u
+}
+
+// ClearLivenessOverride clears the value of the "liveness_override" field.
+func (_u *CodingAgentUpdate) ClearLivenessOverride() *CodingAgentUpdate {
+	_u.mutation.ClearLivenessOverride()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CodingAgentUpdate) SetCreatedAt(v string) *CodingAgentUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -295,6 +307,12 @@ func (_u *CodingAgentUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.LastProbeError(); ok {
 		_spec.SetField(codingagent.FieldLastProbeError, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LivenessOverride(); ok {
+		_spec.SetField(codingagent.FieldLivenessOverride, field.TypeJSON, value)
+	}
+	if _u.mutation.LivenessOverrideCleared() {
+		_spec.ClearField(codingagent.FieldLivenessOverride, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(codingagent.FieldCreatedAt, field.TypeString, value)
@@ -447,6 +465,18 @@ func (_u *CodingAgentUpdateOne) SetNillableLastProbeError(v *string) *CodingAgen
 	if v != nil {
 		_u.SetLastProbeError(*v)
 	}
+	return _u
+}
+
+// SetLivenessOverride sets the "liveness_override" field.
+func (_u *CodingAgentUpdateOne) SetLivenessOverride(v map[string]interface{}) *CodingAgentUpdateOne {
+	_u.mutation.SetLivenessOverride(v)
+	return _u
+}
+
+// ClearLivenessOverride clears the value of the "liveness_override" field.
+func (_u *CodingAgentUpdateOne) ClearLivenessOverride() *CodingAgentUpdateOne {
+	_u.mutation.ClearLivenessOverride()
 	return _u
 }
 
@@ -619,6 +649,12 @@ func (_u *CodingAgentUpdateOne) sqlSave(ctx context.Context) (_node *CodingAgent
 	}
 	if value, ok := _u.mutation.LastProbeError(); ok {
 		_spec.SetField(codingagent.FieldLastProbeError, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LivenessOverride(); ok {
+		_spec.SetField(codingagent.FieldLivenessOverride, field.TypeJSON, value)
+	}
+	if _u.mutation.LivenessOverrideCleared() {
+		_spec.ClearField(codingagent.FieldLivenessOverride, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(codingagent.FieldCreatedAt, field.TypeString, value)

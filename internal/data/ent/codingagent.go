@@ -35,6 +35,8 @@ type CodingAgent struct {
 	LastProbeOk bool `json:"last_probe_ok,omitempty"`
 	// LastProbeError holds the value of the "last_probe_error" field.
 	LastProbeError string `json:"last_probe_error,omitempty"`
+	// LivenessOverride holds the value of the "liveness_override" field.
+	LivenessOverride map[string]interface{} `json:"liveness_override,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt string `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -47,7 +49,7 @@ func (*CodingAgent) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case codingagent.FieldArgs, codingagent.FieldEnv:
+		case codingagent.FieldArgs, codingagent.FieldEnv, codingagent.FieldLivenessOverride:
 			values[i] = new([]byte)
 		case codingagent.FieldEnabled, codingagent.FieldLastProbeOk:
 			values[i] = new(sql.NullBool)
@@ -132,6 +134,14 @@ func (_m *CodingAgent) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.LastProbeError = value.String
 			}
+		case codingagent.FieldLivenessOverride:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field liveness_override", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.LivenessOverride); err != nil {
+					return fmt.Errorf("unmarshal field liveness_override: %w", err)
+				}
+			}
 		case codingagent.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -206,6 +216,9 @@ func (_m *CodingAgent) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("last_probe_error=")
 	builder.WriteString(_m.LastProbeError)
+	builder.WriteString(", ")
+	builder.WriteString("liveness_override=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LivenessOverride))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)
