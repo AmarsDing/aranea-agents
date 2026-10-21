@@ -469,4 +469,10 @@ var ddlMigrationsLate = []ddlMigration{
 	// 幂等、崩溃可断点续补）走 Ensure 双轨。迁移轨道免 pgvector 依赖先例
 	//（20261286）：本 .sql 不建 vector 列、不建 HNSW。编号紧跟 20261289。
 	{Version: 20261290, Name: "chunk_embeddings", SQL: "sql/migrations/20261290_chunk_embeddings.sql"},
+	// 20261291 session_approval_policies（P0-5 审批工程化，批 A11，2026-10-22）：
+	// 会话/Agent 作用域的确定性审批姿态表（ask|never|trusted × tool_pattern ×
+	// command_prefix × args_pattern × priority × shadow_only × expires_at），
+	// 消费链 BeforeTool 审批策略 gate（paramRuleGate 之后、循环守卫之前）。
+	// 仅建表：不加 ent schema、不播种内置规则；幂等，重跑安全。编号紧跟 20261290。
+	{Version: 20261291, Name: "session_approval_policies", SQL: "sql/migrations/20261291_session_approval_policies.sql"},
 }
