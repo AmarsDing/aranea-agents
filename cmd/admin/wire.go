@@ -985,6 +985,9 @@ func provideChatServiceDeps(
 	decisions decision.Lifecycle,
 	d *data.Data,
 	lg loggateway.Logger,
+	// 89 FR-9：outbox 水位折入共享计数器恢复（wire_gen.go 已手工镜像——
+	// regen 时须与本参数一致，见 wire-gen-hand-merge-convention）。
+	eventOutbox biz.EventDeliveryOutboxRepo,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
 	// TaskOrchestrator → SpiritTeamAssembler → TeamStarterPort → ChatService.
@@ -1063,6 +1066,7 @@ func provideChatServiceDeps(
 			MemoryConflictStore:       memoryConflictStore,
 			MemoryPreferenceLister:    persist.Memory.PreferenceLister,
 			VoiceDelegation:           voiceDelegation,
+			EventOutbox:               eventOutbox,
 			// M80/M82：chat 侧决策记录入口（HITL confirm 双写 + 输入安全扫描等
 			// system_guard 事件）。漏接则 collector 恒 nil、EmitGate 静默跳过
 			// （2026-08-28 S14 实测：input_risk_flagged 全不落库）。

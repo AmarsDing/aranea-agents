@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -74,14 +75,77 @@ func (r *eventDeliveryOutboxRepo) Insert(ctx context.Context, row biz.EventDeliv
 		placeholders,
 		"session_id, seq",
 	)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q,
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q,
 		id, sessionID, row.Seq, eventID, row.Kind, row.EntityID, row.Payload, published,
 		createdAt.UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return entErrToBizErr(err, "EVENT_OUTBOX")
 	}
+	// FR-9：ON CONFLICT DO NOTHING 命中 0 行即 (session_id, seq) 已被占用——
+	// 同 event_id 视为幂等重放成功（崩溃-重试窗口）；否则返回哨兵错误，供
+	// insertCriticalOutbox 重取 seq 重试。无水位洞见会让重启后的 counter
+	// 静默撞上既有 outbox 行并整批丢帧（INSERT OR IGNORE 静默吞错）。
+	if res != nil {
+		if n, rerr := res.RowsAffected(); rerr == nil && n == 0 {
+			existingEventID := r.lookupEventIDAtSeq(ctx, sessionID, row.Seq)
+			if existingEventID != "" && existingEventID == eventID {
+				return nil
+			}
+			return fmt.Errorf("%w: session=%s seq=%d", biz.ErrEventOutboxSeqConflict, sessionID, row.Seq)
+		}
+	}
 	return nil
+}
+
+// lookupEventIDAtSeq reads the occupying row's event_id ("" when absent) so
+// the conflict path can distinguish same-event idempotent retries from true
+// watermark collisions.
+func (r *eventDeliveryOutboxRepo) lookupEventIDAtSeq(ctx context.Context, sessionID string, seq int64) string {
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`SELECT event_id FROM event_delivery_outbox WHERE session_id = ? AND seq = ?`),
+		sessionID, seq,
+	)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			return id
+		}
+	}
+	return ""
+}
+
+// MaxSeqBySession implements biz.EventOutboxWatermarkReader (FR-9): the
+// per-session persisted delivery-seq high-watermark used to re-base the shared
+// SeqAssigner after restart.
+func (r *eventDeliveryOutboxRepo) MaxSeqBySession(ctx context.Context, sessionID string) (int64, error) {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
+		return 0, nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, nil
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`SELECT COALESCE(MAX(seq), 0) FROM event_delivery_outbox WHERE session_id = ?`),
+		sessionID,
+	)
+	if err != nil {
+		return 0, entErrToBizErr(err, "EVENT_OUTBOX")
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var maxSeq int64
+		if err := rows.Scan(&maxSeq); err != nil {
+			return 0, entErrToBizErr(err, "EVENT_OUTBOX")
+		}
+		return maxSeq, nil
+	}
+	return 0, nil
 }
 
 func (r *eventDeliveryOutboxRepo) MarkPublished(ctx context.Context, id string, publishedAt time.Time) error {
