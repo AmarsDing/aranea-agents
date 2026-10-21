@@ -207,14 +207,17 @@ func TestGraphCardANN_VisibilityProjectionPG(t *testing.T) {
 		t.Skipf("pgvector unavailable (local env debt; CI covers): %v", err)
 	}
 	// 词法集合不物化卡片；为卡片行手工补 embedding 列（迁移轨道本就由
-	// EnsureKnowledgeSchema ALTER 补列，见 20261286 + 双轨纪律）。
+	// EnsureKnowledgeSchema ALTER 补列，见 20261286 + 双轨纪律）。G-39：补 dim
+	// 列 + 行级回填（镜像 ensureMultiDimEmbeddingLayer 的 vector_dims() 回填）；
+	// ANN 读口径按查询 dim 桶定 + cast 表达式排序（per-dim partial HNSW）。
 	stmts := []string{
 		`ALTER TABLE knowledge_graph_embeddings ADD COLUMN embedding vector(3)`,
-		`INSERT INTO knowledge_graph_embeddings (kind, ref_id, collection_id, text, source_hash, embedding) VALUES
-			('entity', 1, 'c1', 'pgvector（扩展）\n别名：vector ext', 'h1', '[1,0,0]'),
-			('entity', 2, 'c1', '内部代号X（项目）\n别名：codex', 'h2', '[0.98,0.2,0]'),
-			('edge',   11, 'c1', '灰度平台 applies-to 目标文档 — 先 5% 流量', 'h3', '[0.9,0.3,0]'),
-			('edge',   12, 'c1', '内部代号X depends-on 目标文档 — 依赖链', 'h4', '[0.85,0.5,0]')`,
+		`ALTER TABLE knowledge_graph_embeddings ADD COLUMN dim INT NOT NULL DEFAULT 0`,
+		`INSERT INTO knowledge_graph_embeddings (kind, ref_id, collection_id, text, source_hash, embedding, dim) VALUES
+			('entity', 1, 'c1', 'pgvector（扩展）\n别名：vector ext', 'h1', '[1,0,0]',       3),
+			('entity', 2, 'c1', '内部代号X（项目）\n别名：codex', 'h2', '[0.98,0.2,0]',    3),
+			('edge',   11, 'c1', '灰度平台 applies-to 目标文档 — 先 5% 流量', 'h3', '[0.9,0.3,0]',  3),
+			('edge',   12, 'c1', '内部代号X depends-on 目标文档 — 依赖链', 'h4', '[0.85,0.5,0]', 3)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -244,5 +247,56 @@ func TestGraphCardANN_VisibilityProjectionPG(t *testing.T) {
 	}
 	if len(hits) != 2 {
 		t.Fatalf("owner edge ANN = %+v, want 双端可见 2 条", hits)
+	}
+}
+
+// TestUpsertGraphCards_EmptyEmbeddingPreservesVector 空向量 upsert 不抹既有
+// 向量/dim（G-39 对抗评审 F3-B3）：Embedder 批内空切片不得使卡片静默退出
+// 向量腿；文本/hash 照常推进，缺维由 PlanGraphCardReconcile dim 口径召回。
+func TestUpsertGraphCards_EmptyEmbeddingPreservesVector(t *testing.T) {
+	repo := setupGraphCardPG(t)
+	ctx := context.Background()
+	db := repo.data.rawDB
+	if _, err := db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+		t.Skipf("pgvector unavailable (local env debt; CI covers): %v", err)
+	}
+	stmts := []string{
+		`ALTER TABLE knowledge_graph_embeddings ADD COLUMN embedding vector(3)`,
+		`ALTER TABLE knowledge_graph_embeddings ADD COLUMN dim INT NOT NULL DEFAULT 0`,
+		`INSERT INTO knowledge_graph_embeddings (kind, ref_id, collection_id, text, source_hash, embedding, dim) VALUES
+			('entity', 1, 'c1', '旧卡文', 'h-old', '[1,0,0]', 3)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	// 空向量 upsert：文本/hash 推进，向量与 dim 保留。
+	if err := repo.UpsertGraphCards(ctx, []bizknowledge.GraphCardUpsert{{
+		Kind: "entity", RefID: 1, CollectionID: "c1", Text: "新卡文", SourceHash: "h-new", Embedding: nil,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	var text, hash string
+	var dim int
+	var vecNotNull bool
+	if err := db.QueryRowContext(ctx,
+		`SELECT text, source_hash, dim, embedding IS NOT NULL FROM knowledge_graph_embeddings WHERE kind='entity' AND ref_id=1`).
+		Scan(&text, &hash, &dim, &vecNotNull); err != nil {
+		t.Fatal(err)
+	}
+	if text != "新卡文" || hash != "h-new" {
+		t.Fatalf("text/hash must advance: (%q, %q)", text, hash)
+	}
+	if !vecNotNull || dim != 3 {
+		t.Fatalf("empty upsert must preserve vector/dim: notnull=%v dim=%d", vecNotNull, dim)
+	}
+	// ListGraphCards 带 dim 出账（对账可识别漂移的前提）。
+	cards, err := repo.ListGraphCards(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 1 || cards[0].Dim != 3 {
+		t.Fatalf("ListGraphCards dim surface = %+v, want dim 3", cards)
 	}
 }

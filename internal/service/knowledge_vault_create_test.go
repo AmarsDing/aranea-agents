@@ -114,8 +114,8 @@ func TestKnowledgeService_CreateCollection_TeamBackend(t *testing.T) {
 }
 
 // P0-2（2026-08-21）：语义库 dim 快照必须取当前 embedder 实际维度——
-// bge-m3（1024）部署下运行中建库若落入 biz 层 1536 兜底，ingest 会被 data 层
-// dimension mismatch 全部拒绝，且启动对账只在重启后生效。
+// bge-m3（1024）部署下运行中建库若落入 biz 层 1536 兜底，台账 dim 快照失真
+// （G-39 起台账仅账本，但仍是 UI/运维展示口径，必须准确）。
 func TestKnowledgeService_CreateCollection_DimFromEmbedder(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)

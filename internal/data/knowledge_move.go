@@ -46,6 +46,13 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 			id, targetCollectionID); err != nil {
 			return entErrToBizErr(err, "knowledge")
 		}
+		// G-39 侧表随迁（ADR-KN-20261021-G）：chunk_embeddings.collection_id 冗余
+		// 落列用于集合粒度运维/台账，移库必须同步，否则侧表归属与主表分叉。
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE chunk_embeddings SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
 
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_links SET collection_id = $2 WHERE doc_id = $1`,

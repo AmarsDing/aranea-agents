@@ -137,7 +137,7 @@ func (m *memKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) 
 	}
 	return out, len(out), nil
 }
-func (m *memKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string) ([]biz.KnowledgeDocument, error) {
+func (m *memKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string, int) ([]biz.KnowledgeDocument, error) {
 	return nil, nil
 }
 func (m *memKnowledgeRepo) EnableCollectionSemantic(_ context.Context, id, model string, dim int) (bool, error) {

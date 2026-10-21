@@ -26,7 +26,7 @@ func setupParentChildRepo(t *testing.T) (context.Context, *knowledgeRepo, string
 	if err := EnsureKnowledgeSchema(context.Background(), db, 3); err != nil {
 		t.Fatalf("ensure knowledge schema (idempotent re-run): %v", err)
 	}
-	repo := NewKnowledgeRepo(&Data{rawDB: db, pg: db, pgRead: db, dialect: DialectPostgres},
+	repo := NewKnowledgeRepo(&Data{rawDB: db, pg: db, pgRead: db, rwDB: NewReadWriteDB(db, db), dialect: DialectPostgres},
 		loggateway.NewNoop())
 	ctx := context.Background()
 	col, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{
@@ -61,7 +61,7 @@ func TestKnowledgeRepo_DocumentChunkShape_RoundTrip(t *testing.T) {
 	if _, err := repo.data.rawDB.ExecContext(ctx, "UPDATE knowledge_documents SET status='pending' WHERE id=$1", docID); err != nil {
 		t.Fatalf("advance doc status: %v", err)
 	}
-	pending, err := repo.ListDocumentsPendingReembed(ctx, got.CollectionID)
+	pending, err := repo.ListDocumentsPendingReembed(ctx, got.CollectionID, 3)
 	if err != nil {
 		t.Fatalf("ListDocumentsPendingReembed: %v", err)
 	}
@@ -127,6 +127,11 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 	}
 
 	// 同 doc 重提交（重嵌口径）：旧行整删重插，collection 计数仍为 2（delta 以子块计）。
+	// 生产重嵌流（ReembedDocuments）先把文档状态拨回 indexing 再提交——测试镜像该
+	// 时序以满足 CommitIndexedDocument 的 status CAS 守卫（doc 已是 indexed）。
+	if _, err := repo.data.rawDB.ExecContext(ctx, "UPDATE knowledge_documents SET status='indexing' WHERE id=$1", docID); err != nil {
+		t.Fatalf("re-arm status before recommit: %v", err)
+	}
 	if err := repo.CommitIndexedDocument(ctx, colID, docID, chunks[:3], 0, nil); err != nil {
 		t.Fatalf("recommit: %v", err)
 	}
@@ -140,7 +145,7 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 
 	// 待嵌口径按子块（G-06 修复：父块恒 embedding NULL 不得拖文档永久 pending）：
 	// 全部子块已嵌入 → 不出现在 pending；存在 NULL 嵌入子块 → 出现。
-	pending, err := repo.ListDocumentsPendingReembed(ctx, colID)
+	pending, err := repo.ListDocumentsPendingReembed(ctx, colID, 3)
 	if err != nil {
 		t.Fatalf("ListDocumentsPendingReembed: %v", err)
 	}
@@ -149,10 +154,14 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 	}
 	degraded := append([]biz.KnowledgeChunk{}, chunks...)
 	degraded[1].Embedding = nil
+	// 同上：镜像生产重嵌时序，先拨回 indexing 再过 CAS。
+	if _, err := repo.data.rawDB.ExecContext(ctx, "UPDATE knowledge_documents SET status='indexing' WHERE id=$1", docID); err != nil {
+		t.Fatalf("re-arm status before degraded recommit: %v", err)
+	}
 	if err := repo.CommitIndexedDocument(ctx, colID, docID, degraded, 0, nil); err != nil {
 		t.Fatalf("recommit degraded: %v", err)
 	}
-	pending2, err := repo.ListDocumentsPendingReembed(ctx, colID)
+	pending2, err := repo.ListDocumentsPendingReembed(ctx, colID, 3)
 	if err != nil {
 		t.Fatalf("ListDocumentsPendingReembed after degrade: %v", err)
 	}

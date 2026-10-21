@@ -27,9 +27,17 @@ func TestAnnCandidateLimit(t *testing.T) {
 }
 
 func TestDenseANNSearchSQL_OrdersByVectorDistance(t *testing.T) {
-	sql := denseANNSearchSQL("", 3, 4)
-	if !strings.Contains(sql, "ORDER BY embedding <=> $1::vector") {
-		t.Fatalf("inner ANN order missing:\n%s", sql)
+	// G-39 侧表形态：内层 JOIN chunk_embeddings 按查询 dim 字面桶定（ce.dim=3），
+	// ORDER BY 同一 cast 表达式以命中 per-dim partial HNSW（索引建在表达式上）。
+	sql := denseANNSearchSQL("", 3, 3, 4)
+	if !strings.Contains(sql, "JOIN chunk_embeddings ce ON ce.chunk_id = c.id AND ce.dim = 3") {
+		t.Fatalf("side-table dim-bucketed join missing:\n%s", sql)
+	}
+	if !strings.Contains(sql, "ORDER BY ce.embedding::vector(3) <=> $1::vector") {
+		t.Fatalf("inner ANN order (cast expression form) missing:\n%s", sql)
+	}
+	if !strings.Contains(sql, "AND ce.embedding IS NOT NULL") {
+		t.Fatalf("dirty-NULL guard missing (side column is nullable):\n%s", sql)
 	}
 	if !strings.Contains(sql, "ORDER BY score DESC") {
 		t.Fatalf("outer recency order missing:\n%s", sql)

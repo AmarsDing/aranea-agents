@@ -105,7 +105,7 @@ func (m *mockRepo) UpdateDocumentContent(ctx context.Context, id, contentText st
 func (m *mockRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error) {
 	return m.docListFn(ctx, collectionID, limit, offset)
 }
-func (m *mockRepo) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error) {
+func (m *mockRepo) ListDocumentsPendingReembed(ctx context.Context, collectionID string, _ int) ([]Document, error) {
 	return m.docPendingFn(ctx, collectionID)
 }
 func (m *mockRepo) DeleteDocument(ctx context.Context, id string) error {

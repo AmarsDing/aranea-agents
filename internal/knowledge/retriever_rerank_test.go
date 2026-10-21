@@ -72,7 +72,7 @@ func (s *stubKnowledgeRepo) UpdateDocumentContent(context.Context, string, strin
 func (s *stubKnowledgeRepo) ListDocuments(context.Context, string, int, int) ([]biz.KnowledgeDocument, int, error) {
 	return nil, 0, nil
 }
-func (s *stubKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string) ([]biz.KnowledgeDocument, error) {
+func (s *stubKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string, int) ([]biz.KnowledgeDocument, error) {
 	return nil, nil
 }
 func (s *stubKnowledgeRepo) DeleteDocument(context.Context, string) error { return nil }

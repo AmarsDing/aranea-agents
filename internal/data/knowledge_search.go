@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -53,28 +54,47 @@ func annCandidateLimit(topK int) int {
 	return n
 }
 
-// denseANNSearchSQL 内层 ORDER BY embedding <=> $1 走 HNSW；外层对候选集
-// 套 recency/stale 表达式再 LIMIT topK。clauses 作用于内层 knowledge_chunks
-// （无表别名），overfetchPH / topKPH 是 LIMIT 占位序号。
-// G-06：chunk_role='child' 谓词显式排除父块语境行（embedding IS NULL 本已挡，
-// 统一谓词防未来父子检索层演化时破口子）。
-func denseANNSearchSQL(clauses string, overfetchPH, topKPH int) string {
+// denseANNSearchSQL 内层 JOIN chunk_embeddings 侧表取当前 dim 向量，ORDER BY
+// ce.embedding::vector(N) <=> $1 走 per-dim partial HNSW（索引建在 cast 表达式
+// 上——pgvector 不接受裸型列建 opclass，查询侧必须用同一表达式方能命中）；
+// 外层对候选集套 recency/stale 表达式再 LIMIT topK。clauses 作用于内层（主表
+// 别名 c，doc_id 引用必须经 qualifyChunkDocClause 限定——JOIN 后 chunks/
+// chunk_embeddings 同名 doc_id 并存，未限定引用 PG 42702），overfetchPH /
+// topKPH 是 LIMIT 占位序号。
+// G-39（ADR-KN-20261021-G）：dim 以查询向量长度（Go 侧 len）字面值内联
+// （注入安全：纯 int），令 partial 谓词对 generic plan 亦可证；`ce.dim = N`
+// + cast 使跨维度比较（22P02）结构性不可能——比较只发生在同 dim 桶内。
+// G-06：chunk_role='child' 谓词显式排除父块语境行（侧表无父块行本已挡，
+// 统一谓词防未来父子检索层演化时破口子）。ce.embedding IS NOT NULL 是对
+// 侧表列可空（schema 未加 NOT NULL）的兜底——在树写路径恒非空，但一行越
+// 权脏行（手工回填/未来迁移）不应让外层 score Scan NULL 而当掉整条 dense
+// 腿（卡片档同款 IS NOT NULL 对称）。
+func denseANNSearchSQL(clauses string, dim, overfetchPH, topKPH int) string {
 	return fmt.Sprintf(`
 SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index, c.parent_chunk_id,
        %s AS score
 FROM (
-  SELECT id, doc_id, collection_id, content, metadata, chunk_index, parent_chunk_id, embedding
-  FROM knowledge_chunks
-  WHERE collection_id = $2
-    AND chunk_role = 'child'
-    AND embedding IS NOT NULL
+  SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata, c.chunk_index, c.parent_chunk_id, ce.embedding
+  FROM knowledge_chunks c
+  JOIN chunk_embeddings ce ON ce.chunk_id = c.id AND ce.dim = %d
+  WHERE c.collection_id = $2
+    AND c.chunk_role = 'child'
+    AND ce.embedding IS NOT NULL
     %s
-  ORDER BY embedding <=> $1::vector
+  ORDER BY ce.embedding::vector(%d) <=> $1::vector
   LIMIT $%d
 ) c
 %s
 ORDER BY score DESC
-LIMIT $%d`, recencyScoreSQL(`1 - (c.embedding <=> $1::vector)`), clauses, overfetchPH, recencyJoinSQL, topKPH)
+LIMIT $%d`, recencyScoreSQL(`1 - (c.embedding <=> $1::vector)`), dim, clauses, dim, overfetchPH, recencyJoinSQL, topKPH)
+}
+
+// qualifyChunkDocClause 把可见性/路径子句中未限定表的 `AND doc_id ` 前缀改写
+// 为 `AND c.doc_id `（G-39 侧表 JOIN 后 chunks c 与 chunk_embeddings ce 同名
+// doc_id 列并存，未限定引用 PG 报 42702 ambiguous）。仅 dense 召回构建处
+// 使用（子句生成器契约：doc_id 引用恒以 "AND doc_id " 前缀出现）。
+func qualifyChunkDocClause(clause string) string {
+	return strings.Replace(clause, "AND doc_id ", "AND c.doc_id ", 1)
 }
 
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
@@ -84,12 +104,13 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	vec := pgvector.NewVector(queryEmbedding)
 	args := []any{vec, q.CollectionID}
 	clauses := ""
+	// doc_id 子句必须限定到主表别名 c（G-39 侧表 JOIN 后 doc_id 双名并存）。
 	if c, a := pathPrefixClause(q.PathPrefix, "$2", len(args)+1); c != "" {
-		clauses += "\n  " + c
+		clauses += "\n  " + qualifyChunkDocClause(c)
 		args = append(args, a)
 	}
 	if c, a := pathExcludeClause(q.ExcludePathPrefixes, "$2", len(args)+1); c != "" {
-		clauses += "\n  " + c
+		clauses += "\n  " + qualifyChunkDocClause(c)
 		args = append(args, a...)
 	}
 	if q.FilterJSON != "" {
@@ -98,11 +119,11 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	}
 	if q.MinScore > 0 {
 
-		clauses += fmt.Sprintf("\n  AND (1 - (embedding <=> $1::vector)) >= $%d", len(args)+1)
+		clauses += fmt.Sprintf("\n  AND (1 - (ce.embedding <=> $1::vector)) >= $%d", len(args)+1)
 		args = append(args, q.MinScore)
 	}
 	if c, a := docChunkVisibilityClause(ctx, "$2", len(args)+1); c != "" {
-		clauses += "\n  " + c
+		clauses += "\n  " + qualifyChunkDocClause(c)
 		args = append(args, a...)
 	}
 	overfetch := 0
@@ -113,7 +134,7 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	args = append(args, overfetch)
 	topKPH := len(args) + 1
 	args = append(args, q.TopK)
-	raw := denseANNSearchSQL(clauses, overfetchPH, topKPH)
+	raw := denseANNSearchSQL(clauses, len(queryEmbedding), overfetchPH, topKPH)
 
 	tx, err := r.data.Postgres().BeginTx(ctx, nil)
 	if err != nil {

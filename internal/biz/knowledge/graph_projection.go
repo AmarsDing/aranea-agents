@@ -61,6 +61,10 @@ type GraphCardRow struct {
 	CollectionID string
 	Text         string
 	SourceHash   string
+	// Dim 该行向量维度（0=无向量；G-39，ADR-KN-20261021-G）。对账据此识别
+	// 换模型后的维度漂移——hash 一致但 dim 落后的卡必须重嵌，否则向量腿
+	// 对未改文本的实体/边永久静默。
+	Dim int
 }
 
 // GraphCardKey 卡片主键（kind 复用两宿主表，ref_id 无 FK——孤儿由本工人回收）。
@@ -155,8 +159,11 @@ func docBaseNameNoExt(relPath string) string {
 
 // PlanGraphCardReconcile 纯函数对账：目标源 vs 现存卡 → 待重嵌 upsert 与墓碑
 // delete。预算语义：墓碑优先（召回卫生——闭合边/归并实体先退出召回），余量
-// 按目标源顺序承接 upsert；同名同 hash 的行不动。
-func PlanGraphCardReconcile(sources []GraphCardSource, existing []GraphCardRow, budget int) (upserts []GraphCardSource, deletes []GraphCardKey) {
+// 按目标源顺序承接 upsert；同名同 hash 且 dim 未漂移的行不动。
+// currentDim（G-39，ADR-KN-20261021-G）：embedder 实测当前输出维度——现存卡
+// dim 落后即视为 pending（chunk 侧 ListDocumentsPendingReembed 缺维口径的
+// 卡片镜像）；currentDim<=0（embedder 无探测能力）退化为纯 hash 对账。
+func PlanGraphCardReconcile(sources []GraphCardSource, existing []GraphCardRow, budget, currentDim int) (upserts []GraphCardSource, deletes []GraphCardKey) {
 	existingByKey := make(map[GraphCardKey]GraphCardRow, len(existing))
 	for _, row := range existing {
 		existingByKey[GraphCardKey{Kind: row.Kind, RefID: row.RefID}] = row
@@ -168,7 +175,7 @@ func PlanGraphCardReconcile(sources []GraphCardSource, existing []GraphCardRow, 
 		key := GraphCardKey{Kind: src.Kind, RefID: src.RefID}
 		sourceKeys[key] = struct{}{}
 		row, ok := existingByKey[key]
-		if ok && row.SourceHash == src.SourceHash {
+		if ok && row.SourceHash == src.SourceHash && (currentDim <= 0 || row.Dim == currentDim) {
 			continue
 		}
 		pending = append(pending, src)
@@ -226,12 +233,27 @@ func (w *GraphProjectionWorker) RunOnce(ctx context.Context) (GraphProjectionSta
 	if err != nil {
 		return stats, err
 	}
+	// G-39（ADR-KN-20261021-G）：当前 dim 取 embedder 实测口径（ProbeDim），
+	// 让换模型后的维度漂移卡被对账召回重嵌；embedder 无探测能力（窄端口
+	// 默认）→ currentDim=0 退化为纯 hash 对账（与修复前行为一致）。
+	currentDim := 0
+	if prober, ok := w.embedder.(interface {
+		ProbeDim(context.Context) (int, error)
+	}); ok {
+		if d, probeErr := prober.ProbeDim(ctx); probeErr != nil {
+			w.lg.Warn("图谱卡片 dim 探测失败（本轮跳过缺维治愈）",
+				loggateway.StepID("knowledge.graph_projection.probe_dim"),
+				loggateway.Err(probeErr))
+		} else {
+			currentDim = d
+		}
+	}
 	budget := GraphProjectionRoundBudget
 	for _, col := range cols {
 		if budget <= 0 {
 			break
 		}
-		upserts, deletes, planned := w.plan(ctx, col.ID, budget, &stats)
+		upserts, deletes, planned := w.plan(ctx, col.ID, budget, currentDim, &stats)
 		if !planned {
 			continue // 集合级失败（plan 已计 Failed）
 		}
@@ -293,7 +315,7 @@ func (w *GraphProjectionWorker) RunOnce(ctx context.Context) (GraphProjectionSta
 	return stats, nil
 }
 
-func (w *GraphProjectionWorker) plan(ctx context.Context, collectionID string, budget int, stats *GraphProjectionStats) ([]GraphCardSource, []GraphCardKey, bool) {
+func (w *GraphProjectionWorker) plan(ctx context.Context, collectionID string, budget, currentDim int, stats *GraphProjectionStats) ([]GraphCardSource, []GraphCardKey, bool) {
 	entities, err := w.store.ListGraphCardEntitySources(ctx, collectionID)
 	if err != nil {
 		w.lg.Warn("图谱卡片实体源读取失败（本集合跳过）",
@@ -328,6 +350,6 @@ func (w *GraphProjectionWorker) plan(ctx context.Context, collectionID string, b
 	for _, e := range edges {
 		sources = append(sources, BuildGraphCardSource(collectionID, e))
 	}
-	upserts, deletes := PlanGraphCardReconcile(sources, existing, budget)
+	upserts, deletes := PlanGraphCardReconcile(sources, existing, budget, currentDim)
 	return upserts, deletes, true
 }

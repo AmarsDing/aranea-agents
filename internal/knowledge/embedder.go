@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/event"
@@ -79,6 +80,11 @@ type MultiProviderEmbedder struct {
 	// 避免在进程堆中额外保留查询明文。
 	queryCache  map[[sha256.Size]byte]queryEmbeddingCacheEntry
 	queryFlight singleflight.Group
+	// probeDim G-39 实测输出维度缓存（0=未探测）：pending-reembed 缺维判定
+	// 的桶口径必须等于「新写入将落下的真实维度」len(vector)，配置 dim 与
+	// 模型原生维度可能分叉（OpenAI 兼容网关/Ollama 不传 dimensions 参数）。
+	// Update() 换配置即清零重探。
+	probeDim atomic.Int32
 }
 
 type queryEmbeddingCacheEntry struct {
@@ -176,6 +182,7 @@ func (e *MultiProviderEmbedder) Update(provider, baseURL, apiKey, model string, 
 		e.dim = dim
 	}
 	clear(e.queryCache)
+	e.probeDim.Store(0)
 }
 
 func (e *MultiProviderEmbedder) snapshot() (provider, baseURL, apiKey, model string, dim int) {
@@ -189,6 +196,31 @@ func (e *MultiProviderEmbedder) Dim() int {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.dim
+}
+
+// ProbeDim 取 embedder 实测输出维度（G-39，ADR-KN-20261021-G）：真实调用一次
+// 嵌入 API，维度 = len(返回向量)。配置 dim 与模型原生维度可能分叉（OpenAI
+// 兼容网关与 Ollama 均不向服务端传 dimensions 参数，实际输出恒为模型原生
+// 维度），而 pending-reembed 缺维判定的桶口径必须与「新写入将落下的真实
+// 维度」同源——否则 NOT EXISTS ce.dim=$configDim 永不命中，全集合陷入无限
+// 重嵌（烧配额且搜索侧不可见）。结果进程内缓存，Update() 失效重探；并发
+// 首次探测可能互发重复请求（幂等，可接受）。
+func (e *MultiProviderEmbedder) ProbeDim(ctx context.Context) (int, error) {
+	if e == nil {
+		return 0, apierror.Unavailable(apierror.DomainKnowledge, "embedder is nil")
+	}
+	if d := e.probeDim.Load(); d > 0 {
+		return int(d), nil
+	}
+	vecs, err := e.Embed(ctx, []string{"dimension probe"})
+	if err != nil {
+		return 0, err
+	}
+	if len(vecs) == 0 || len(vecs[0]) == 0 {
+		return 0, apierror.Unavailable(apierror.DomainKnowledge, "embedder probe returned empty vector")
+	}
+	e.probeDim.Store(int32(len(vecs[0])))
+	return len(vecs[0]), nil
 }
 
 // prewarmMinInterval bounds how often Prewarm re-sends its ping request.

@@ -216,9 +216,13 @@ type DocumentRepo interface {
 	// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
 	UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
 	ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
-	// ListDocumentsPendingReembed 列出待重嵌入文档（B1）：有正文、非 indexing、
-	// 且（chunks embedding IS NULL 或无任何 chunks）。按 created_at ASC（先入队先处理）。
-	ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error)
+	// ListDocumentsPendingReembed 列出待重嵌入文档（B1 + G-39 按 dim 口径）：
+	// 有正文、非 indexing、且（无子块，或存在欠缺当前 dim 侧表向量的子块）。
+	// 按 created_at ASC（先入队先处理）。dim 取调用方 embedder 当前输出维度
+	// （runtime 换维即时生效，不读集合台账——台账只作账本不做判定）；
+	// dim<=0（无语义层）跳过缺维判定。
+	// Stability:evolving（G-39 引入 dim 参数，ADR-KN-20261021-G）
+	ListDocumentsPendingReembed(ctx context.Context, collectionID string, dim int) ([]Document, error)
 	DeleteDocument(ctx context.Context, id string) error
 	// MoveDocument 文档连同 chunks 移至目标 Collection（US-14）。
 	// Repo 实现必须在单事务内完成 documents/chunks 的 collection_id 更新与两侧计数校正。
@@ -506,16 +510,17 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 	return u.documents.ListDocuments(ctx, collectionID, limit, offset)
 }
 
-// ListDocumentsPendingReembed 列出集合内待重嵌入文档（B1：维度对账向量置 NULL 后，
-// UI 上传文档无 vault_sync 自愈循环，由本方法筛出喂给重嵌入管线）。
-func (u *Usecase) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error) {
+// ListDocumentsPendingReembed 列出集合内待重嵌入文档（B1 + G-39 按 dim 口径：
+// 缺口按调用方 embedder 当前 dim 判定，换模型后旧 dim 向量不作废、按新 dim
+// 逐个补齐——UI 上传文档无 vault_sync 自愈循环，由本方法筛出喂给重嵌入管线）。
+func (u *Usecase) ListDocumentsPendingReembed(ctx context.Context, collectionID string, dim int) ([]Document, error) {
 	if err := u.requireRepo(); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(collectionID) == "" {
 		return nil, ErrCollectionIDRequired
 	}
-	return u.documents.ListDocumentsPendingReembed(ctx, collectionID)
+	return u.documents.ListDocumentsPendingReembed(ctx, collectionID, dim)
 }
 
 // DeleteDocument removes a document and its chunks. Repo implementations MUST

@@ -249,7 +249,8 @@ export async function deleteDocument(id: string): Promise<void> {
 }
 
 /** reembedDocuments 文档重嵌入受理（B1）：从已存正文重建向量索引（无需原文件），
- *  修复 reconcileEmbeddingDim 清空 embedding 的 UI 上传文档；vault 文档由 vault_sync 自愈（后端跳过）。 */
+ *  G-39：按「当前 dim」补齐 chunk_embeddings 侧表缺行的 UI 上传文档（换模型不再
+ *  清向量，旧 dim 侧行共存）；vault 文档由 vault_sync 自愈（后端跳过）。 */
 export async function reembedDocuments(
   collectionId: string,
   docIds?: string[],

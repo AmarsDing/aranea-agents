@@ -99,8 +99,10 @@ func (r *knowledgeRepo) ListGraphCardEdgeSources(ctx context.Context, collection
 }
 
 func (r *knowledgeRepo) ListGraphCards(ctx context.Context, collectionID string) ([]bizknowledge.GraphCardRow, error) {
+	// G-39：SELECT 带 dim——对账（PlanGraphCardReconcile）据此识别换模型后的
+	// 维度漂移并召回重嵌；纯 hash 对账会让旧 dim 卡永久退出向量腿。
 	rows, err := r.data.Postgres().QueryContext(ctx,
-		`SELECT kind, ref_id, collection_id, text, source_hash
+		`SELECT kind, ref_id, collection_id, text, source_hash, dim
 		 FROM knowledge_graph_embeddings WHERE collection_id = $1 ORDER BY kind, ref_id`, collectionID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "knowledge")
@@ -109,7 +111,7 @@ func (r *knowledgeRepo) ListGraphCards(ctx context.Context, collectionID string)
 	var out []bizknowledge.GraphCardRow
 	for rows.Next() {
 		var c bizknowledge.GraphCardRow
-		if err := rows.Scan(&c.Kind, &c.RefID, &c.CollectionID, &c.Text, &c.SourceHash); err != nil {
+		if err := rows.Scan(&c.Kind, &c.RefID, &c.CollectionID, &c.Text, &c.SourceHash, &c.Dim); err != nil {
 			return nil, entErrToBizErr(err, "knowledge")
 		}
 		out = append(out, c)
@@ -118,19 +120,25 @@ func (r *knowledgeRepo) ListGraphCards(ctx context.Context, collectionID string)
 }
 
 // UpsertGraphCards (kind,ref_id) 幂等重嵌（缺卡/漂移共用一径）。
+// G-39（ADR-KN-20261021-G）：dim 列跟随 len(embedding) 落账（多代模型卡片
+// 共存，embedding 裸型化后同表多 dim 合法），per-dim partial HNSW 经
+// ensureChunkEmbeddingDimIndexes 注册。空向量 upsert 保向量/dim 不覆盖
+// （Embedder 批内空切片不得抹掉既有向量使卡片静默退出向量腿）——文本/
+// hash 照常推进，缺维由 PlanGraphCardReconcile 的 dim 口径召回重嵌。
 func (r *knowledgeRepo) UpsertGraphCards(ctx context.Context, cards []bizknowledge.GraphCardUpsert) error {
 	if len(cards) == 0 {
 		return nil
 	}
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		stmt, err := tx.PrepareContext(ctx,
-			`INSERT INTO knowledge_graph_embeddings (kind, ref_id, collection_id, text, source_hash, embedding, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, NOW())
+			`INSERT INTO knowledge_graph_embeddings (kind, ref_id, collection_id, text, source_hash, dim, embedding, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 			 ON CONFLICT (kind, ref_id) DO UPDATE SET
 			   collection_id = EXCLUDED.collection_id,
 			   text = EXCLUDED.text,
 			   source_hash = EXCLUDED.source_hash,
-			   embedding = EXCLUDED.embedding,
+			   dim = CASE WHEN EXCLUDED.dim > 0 THEN EXCLUDED.dim ELSE knowledge_graph_embeddings.dim END,
+			   embedding = CASE WHEN EXCLUDED.embedding IS NOT NULL THEN EXCLUDED.embedding ELSE knowledge_graph_embeddings.embedding END,
 			   updated_at = NOW()`)
 		if err != nil {
 			return entErrToBizErr(err, "knowledge")
@@ -142,7 +150,7 @@ func (r *knowledgeRepo) UpsertGraphCards(ctx context.Context, cards []bizknowled
 				// pgvector.NewVector(nil) 会生成非法 '[]'（同 knowledge_chunks 纪律）。
 				vec = pgvector.NewVector(c.Embedding)
 			}
-			if _, err := stmt.ExecContext(ctx, c.Kind, c.RefID, c.CollectionID, c.Text, c.SourceHash, vec); err != nil {
+			if _, err := stmt.ExecContext(ctx, c.Kind, c.RefID, c.CollectionID, c.Text, c.SourceHash, len(c.Embedding), vec); err != nil {
 				return entErrToBizErr(err, "knowledge")
 			}
 		}
@@ -204,12 +212,17 @@ func (r *knowledgeRepo) SearchGraphCards(ctx context.Context, collectionID, kind
 	if kind == bizknowledge.GraphCardKindEdge {
 		join = "JOIN knowledge_links l ON l.id = t.ref_id"
 	}
+	// G-39（ADR-KN-20261021-G）：dim 按查询向量长度字面值内联（注入安全：
+	// 纯 int；generic plan 下 per-dim partial HNSW 谓词可证），跨 dim 卡片
+	// 不进比较桶——multi-dim 共存后 22P02 结构性不可能。ORDER BY 用 cast
+	// 表达式 `t.embedding::vector(N)`：索引建在表达式上（裸型列 pgvector
+	// 拒绝建 opclass，22023），查询侧必须同形方能命中。
 	raw := fmt.Sprintf(`
 SELECT t.kind, t.ref_id, t.text, (1 - (t.embedding <=> $3::vector)) AS score
 FROM knowledge_graph_embeddings t %s
-WHERE t.kind = $1 AND t.collection_id = $2 AND t.embedding IS NOT NULL%s
-ORDER BY t.embedding <=> $3::vector
-LIMIT $%d`, join, whereVis, limitPH)
+WHERE t.kind = $1 AND t.collection_id = $2 AND t.embedding IS NOT NULL AND t.dim = %d%s
+ORDER BY t.embedding::vector(%d) <=> $3::vector
+LIMIT $%d`, join, len(vec), whereVis, len(vec), limitPH)
 
 	tx, err := r.data.Postgres().BeginTx(ctx, nil)
 	if err != nil {
@@ -254,6 +267,10 @@ func (r *knowledgeRepo) SearchEntityCardsLexical(ctx context.Context, collection
   )`, vis)
 	}
 	args = append(args, visArgs...)
+	// 前缀 LIKE 通配符转义（防御路径纪律，同 monitor_trace_query.go:97——
+	// v1 装配下词法腿仅 searchRRF 喂向量后可达，但独立调用面不假设上游过滤）。
+	likePH := len(args) + 1
+	args = append(args, escapeLikePattern(q)+"%")
 	limitPH := len(args) + 1
 	args = append(args, limit)
 	raw := fmt.Sprintf(`
@@ -264,11 +281,11 @@ SELECT e.id, e.name, COALESCE(e.entity_type, ''),
             ELSE 0.5 END AS score
 FROM knowledge_entities e
 WHERE e.collection_id = $1
-  AND (e.name_norm = $2 OR e.name_norm LIKE $2 || '%%'
+  AND (e.name_norm = $2 OR e.name_norm LIKE $%d ESCAPE '\'
        OR EXISTS (SELECT 1 FROM knowledge_entity_aliases a
                   WHERE a.entity_id = e.id AND a.alias_norm = $2))%s
 ORDER BY score DESC, e.name ASC
-LIMIT $%d`, whereVis, limitPH)
+LIMIT $%d`, likePH, whereVis, limitPH)
 
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {

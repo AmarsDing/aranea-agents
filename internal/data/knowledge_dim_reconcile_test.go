@@ -9,9 +9,12 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// ── 维度对账（2026-08-10 事故根修）：embedder 换模型后 knowledge_chunks.embedding ──
-// 列类型仍是旧维度，CREATE TABLE IF NOT EXISTS 不会修正，所有新向量插入报
-// "expected N dimensions"。EnsureKnowledgeSchema 必须在启动期幂等 reconcile。
+// ── G-39 多维度向量共存层（ADR-KN-20261021-G）：reconcileEmbeddingDim（08-10
+// 事故根修的 wipe 对账）已退役——换模型不再 ALTER 主表列、不作废旧 dim 向量，
+// 改由 chunk_embeddings 侧表 (chunk_id, dim) 分列共存承载；Ensure 启动尾部
+// （ensureMultiDimEmbeddingLayer）只做幂等回填 + 台账 dim 对齐 + per-dim
+// partial HNSW 增量注册，全程零 wipe。这两个用例锁定「G-39 的 dim flip 安全」
+// 语义：正是 08-10 事故的反面。
 
 func setupDimReconcileRepo(t *testing.T, dim int) (*knowledgeRepo, func(dim int) error) {
 	t.Helper()
@@ -47,9 +50,11 @@ func embeddingColumnType(t *testing.T, repo *knowledgeRepo) string {
 	return typ
 }
 
-// 换维度：列类型被 ALTER、旧向量作废置 NULL、受影响文档 content_hash 清空（触发重嵌入）、
-// HNSW 索引按新维度重建。
-func TestEnsureKnowledgeSchema_ReconcilesEmbeddingDim(t *testing.T) {
+// 换维度（3→7）：零 wipe——legacy 主表列保持初始 typmod 浸泡不动、侧表旧 dim
+// 行保留、文档 content_hash 不清（缺失按 ListDocumentsPendingReembed 逐 dim
+// 补齐，自愈非全量作废）；集合台账 dim 只作账本更新为 7；新 dim 摄取即时合法
+// （per-dim partial HNSW 随 Ensure 预注册），两代向量共存检索互不串桶。
+func TestEnsureKnowledgeSchema_DimFlipPreservesVectors(t *testing.T) {
 	repo, reensure := setupDimReconcileRepo(t, 3)
 	ctx := context.Background()
 
@@ -72,47 +77,61 @@ func TestEnsureKnowledgeSchema_ReconcilesEmbeddingDim(t *testing.T) {
 		t.Fatalf("re-ensure with new dim: %v", err)
 	}
 
-	if typ := embeddingColumnType(t, repo); typ != "vector(7)" {
-		t.Fatalf("embedding column type = %s, want vector(7)", typ)
+	// legacy 主表列浸泡保留：列型维持初始 vector(3)（TK-G39-01 才 DROP），
+	// 行恒 NULL（写路径早已脱离主列）。零 ALTER、零 wipe。
+	if typ := embeddingColumnType(t, repo); typ != "vector(3)" {
+		t.Fatalf("legacy embedding column must stay at initial typmod under soak, got %s", typ)
 	}
-	// 有语义层集合的 dim 快照同步（否则应用层校验继续拒绝新维度插入 = 死库）。
+	// 集合台账 dim 对齐为账本语义（不再约束写入维度合法性）。
 	col, err := repo.GetCollection(ctx, "c1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if col.Dim != 7 {
-		t.Fatalf("collection dim snapshot = %d, want reconciled to 7", col.Dim)
+		t.Fatalf("collection dim ledger = %d, want aligned to 7", col.Dim)
 	}
-	var nonNull int
-	if err := repo.data.Postgres().QueryRow(`SELECT COUNT(*) FROM knowledge_chunks WHERE embedding IS NOT NULL`).Scan(&nonNull); err != nil {
+	// 旧 dim 侧表行保留（共存，不作废）。
+	var sideOld int
+	if err := repo.data.Postgres().QueryRow(`
+		SELECT COUNT(*) FROM chunk_embeddings WHERE chunk_id = 'k1' AND dim = 3`).Scan(&sideOld); err != nil {
 		t.Fatal(err)
 	}
-	if nonNull != 0 {
-		t.Fatalf("stale embeddings must be nulled on dim change, got %d non-null", nonNull)
+	if sideOld != 1 {
+		t.Fatalf("old-dim side row must be preserved on dim flip, got %d", sideOld)
 	}
+	// content_hash 不清空：自愈走 pending-reembed 按 dim 逐文档补齐，不再全量迫重嵌。
 	doc, err := repo.GetDocument(ctx, "d1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.ContentHash != "" {
-		t.Fatalf("affected document content_hash = %q, want empty (force re-embed)", doc.ContentHash)
+	if doc.ContentHash != "hash-1" {
+		t.Fatalf("content_hash must be preserved (heal via pending-reembed), got %q", doc.ContentHash)
 	}
-	// 索引存在且可用：新维度向量可插入并检索。
+	// 新 dim 摄取即时合法（curDim=7 的 per-dim partial HNSW 已预注册）。
 	if err := repo.InsertChunks(ctx, []biz.KnowledgeChunk{{
 		ID: "k2", DocID: "d1", CollectionID: "c1", Content: "world", Embedding: []float32{1, 0, 0, 0, 0, 0, 0},
 	}}); err != nil {
-		t.Fatalf("insert %d-dim chunk after reconcile: %v", 7, err)
+		t.Fatalf("insert %d-dim chunk after dim flip: %v", 7, err)
 	}
+	// 两代共存：dim 7 查询只中 k2；dim 3 查询只中 k1（桶定，无 22P02）。
 	got, err := repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 5}, []float32{1, 0, 0, 0, 0, 0, 0})
 	if err != nil {
-		t.Fatalf("search after reconcile: %v", err)
+		t.Fatalf("search dim 7 after flip: %v", err)
 	}
 	if len(got) != 1 || got[0].ID != "k2" {
-		t.Fatalf("search after reconcile = %+v, want only k2 (null-embedding rows excluded)", got)
+		t.Fatalf("dim-7 search = %+v, want only k2 (dim-3 bucket untouched)", got)
+	}
+	got, err = repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 5}, []float32{1, 0, 0})
+	if err != nil {
+		t.Fatalf("search dim 3 after flip: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "k1" {
+		t.Fatalf("dim-3 search = %+v, want only k1 (old generation still searchable)", got)
 	}
 }
 
-// 维度一致：零动作，存量向量与文档标记原样保留。
+// 维度一致复跑：零动作——侧表行、legacy 列、文档标记原样保留（回填 NOT EXISTS
+// 反连接 + ON CONFLICT 幂等，台账 UPDATE 命中 dim = $1 前置谓词零行）。
 func TestEnsureKnowledgeSchema_SameDim_NoOp(t *testing.T) {
 	repo, reensure := setupDimReconcileRepo(t, 3)
 	ctx := context.Background()
@@ -136,14 +155,15 @@ func TestEnsureKnowledgeSchema_SameDim_NoOp(t *testing.T) {
 	}
 
 	if typ := embeddingColumnType(t, repo); typ != "vector(3)" {
-		t.Fatalf("embedding column type = %s, want vector(3)", typ)
+		t.Fatalf("legacy embedding column type = %s, want vector(3) (soaked untouched)", typ)
 	}
-	var nonNull int
-	if err := repo.data.Postgres().QueryRow(`SELECT COUNT(*) FROM knowledge_chunks WHERE embedding IS NOT NULL`).Scan(&nonNull); err != nil {
+	var sideRows int
+	if err := repo.data.Postgres().QueryRow(`
+		SELECT COUNT(*) FROM chunk_embeddings WHERE chunk_id = 'k1' AND dim = 3`).Scan(&sideRows); err != nil {
 		t.Fatal(err)
 	}
-	if nonNull != 1 {
-		t.Fatalf("same-dim re-ensure must keep embeddings, got %d non-null (want 1)", nonNull)
+	if sideRows != 1 {
+		t.Fatalf("same-dim re-ensure must keep side-table rows, got %d (want 1)", sideRows)
 	}
 	doc, err := repo.GetDocument(ctx, "d1")
 	if err != nil {
@@ -151,6 +171,14 @@ func TestEnsureKnowledgeSchema_SameDim_NoOp(t *testing.T) {
 	}
 	if doc.ContentHash != "hash-1" {
 		t.Fatalf("same-dim re-ensure must keep content_hash, got %q", doc.ContentHash)
+	}
+	// 检索侧零回归：dim-3 桶照常命中。
+	got, err := repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 5}, []float32{1, 0, 0})
+	if err != nil {
+		t.Fatalf("search after same-dim re-ensure: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "k1" {
+		t.Fatalf("search after same-dim re-ensure = %+v, want k1", got)
 	}
 }
 

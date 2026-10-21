@@ -163,7 +163,7 @@ func (m *vaultSyncMemRepo) GetDocumentByContentHash(_ context.Context, collectio
 	}
 	return bizknowledge.Document{}, errMemNotFound
 }
-func (m *vaultSyncMemRepo) ListDocumentsPendingReembed(context.Context, string) ([]bizknowledge.Document, error) {
+func (m *vaultSyncMemRepo) ListDocumentsPendingReembed(context.Context, string, int) ([]bizknowledge.Document, error) {
 	return nil, nil
 }
 func (m *vaultSyncMemRepo) UpdateDocumentRelPath(_ context.Context, id, newRelPath string) error {

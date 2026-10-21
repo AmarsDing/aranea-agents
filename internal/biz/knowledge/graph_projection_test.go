@@ -98,7 +98,7 @@ func TestPlanGraphCardReconcile(t *testing.T) {
 			{Kind: "entity", RefID: 2, CollectionID: "col", Text: "B", SourceHash: GraphCardSourceHash("B")}, // 漂移 → 重嵌
 			{Kind: "entity", RefID: 4, CollectionID: "col", Text: "D", SourceHash: GraphCardSourceHash("D")}, // 孤儿 → 墓碑
 		}
-		upserts, deletes := PlanGraphCardReconcile(sources, existing, 100)
+		upserts, deletes := PlanGraphCardReconcile(sources, existing, 100, 0)
 		if len(upserts) != 2 || upserts[0].RefID != 2 || upserts[1].RefID != 3 {
 			t.Fatalf("upserts = %+v, want [entity/2 drift, edge/3 missing]", upserts)
 		}
@@ -111,7 +111,7 @@ func TestPlanGraphCardReconcile(t *testing.T) {
 		// 主键 (kind, ref_id)：entity/7 与 edge/7 是两行，互不遮蔽。
 		sources := []GraphCardSource{mk("entity", 7, "E7")}
 		existing := []GraphCardRow{{Kind: "edge", RefID: 7, CollectionID: "col", Text: "X", SourceHash: GraphCardSourceHash("X")}}
-		upserts, deletes := PlanGraphCardReconcile(sources, existing, 100)
+		upserts, deletes := PlanGraphCardReconcile(sources, existing, 100, 0)
 		if len(upserts) != 1 || len(deletes) != 1 {
 			t.Fatalf("upserts=%+v deletes=%+v, want 各一", upserts, deletes)
 		}
@@ -120,13 +120,34 @@ func TestPlanGraphCardReconcile(t *testing.T) {
 	t.Run("budget: deletes first then upserts, deterministic order", func(t *testing.T) {
 		sources := []GraphCardSource{mk("entity", 1, "A"), mk("entity", 2, "B"), mk("entity", 3, "C")}
 		existing := []GraphCardRow{{Kind: "entity", RefID: 9, CollectionID: "col", Text: "X", SourceHash: GraphCardSourceHash("X")}}
-		upserts, deletes := PlanGraphCardReconcile(sources, existing, 2)
+		upserts, deletes := PlanGraphCardReconcile(sources, existing, 2, 0)
 		// 墓碑优先（召回卫生：闭合边/归并实体先退出召回），预算余 1 给首个 upsert。
 		if len(deletes) != 1 || deletes[0] != key("entity", 9) {
 			t.Fatalf("deletes = %+v", deletes)
 		}
 		if len(upserts) != 1 || upserts[0].RefID != 1 {
 			t.Fatalf("upserts = %+v, want [entity/1]", upserts)
+		}
+	})
+
+	t.Run("dim drift marks pending even when hash matches (G-39)", func(t *testing.T) {
+		sources := []GraphCardSource{mk("entity", 1, "A"), mk("entity", 2, "B"), mk("entity", 3, "C")}
+		existing := []GraphCardRow{
+			{Kind: "entity", RefID: 1, CollectionID: "col", Text: "A", SourceHash: GraphCardSourceHash("A"), Dim: 1536}, // 维度跟上 → 不动
+			{Kind: "entity", RefID: 2, CollectionID: "col", Text: "B", SourceHash: GraphCardSourceHash("B"), Dim: 768},  // hash 同但 dim 落后 → 重嵌
+			{Kind: "entity", RefID: 3, CollectionID: "col", Text: "C", SourceHash: GraphCardSourceHash("C"), Dim: 0},    // 无向量卡 → 重嵌补起
+		}
+		upserts, deletes := PlanGraphCardReconcile(sources, existing, 100, 1536)
+		if len(upserts) != 2 || upserts[0].RefID != 2 || upserts[1].RefID != 3 {
+			t.Fatalf("upserts = %+v, want [entity/2 dim-drift, entity/3 no-vector]", upserts)
+		}
+		if len(deletes) != 0 {
+			t.Fatalf("deletes = %+v, want none", deletes)
+		}
+		// currentDim<=0（embedder 无探测能力）：退化纯 hash——三卡全不动。
+		upserts, deletes = PlanGraphCardReconcile(sources, existing, 100, 0)
+		if len(upserts) != 0 || len(deletes) != 0 {
+			t.Fatalf("hash-only fallback: upserts=%+v deletes=%+v, want both empty", upserts, deletes)
 		}
 	})
 }
@@ -173,6 +194,17 @@ type fakeGraphCardEmbedder struct {
 	calls      int
 }
 
+// probingGraphCardEmbedder 带流量维度探测能力的桩（G-39 worker dim 口径）。
+type probingGraphCardEmbedder struct {
+	fakeGraphCardEmbedder
+	dim      int
+	probeErr error
+}
+
+func (p *probingGraphCardEmbedder) ProbeDim(context.Context) (int, error) {
+	return p.dim, p.probeErr
+}
+
 func (f *fakeGraphCardEmbedder) EmbedGraphCardTexts(_ context.Context, texts []string) ([][]float32, error) {
 	f.batchSizes = append(f.batchSizes, len(texts))
 	if err := f.failAt[f.calls]; err != nil {
@@ -191,6 +223,46 @@ func TestGraphProjectionWorker_RunOnce(t *testing.T) {
 	mkEntity := func(id int64, name string) GraphCardEntitySource {
 		return GraphCardEntitySource{EntityID: id, Name: name}
 	}
+
+	t.Run("dim drift via ProbeDim: stale-dim card re-embedded despite same hash (G-39)", func(t *testing.T) {
+		store := &fakeGraphCardStore{
+			collections: []GraphProjectionCollection{{ID: "c1"}},
+			entitiesBy:  map[string][]GraphCardEntitySource{"c1": {mkEntity(1, "甲")}},
+			edgesBy:     map[string][]GraphCardEdgeSource{},
+			existingBy: map[string][]GraphCardRow{
+				"c1": {{Kind: "entity", RefID: 1, CollectionID: "c1", Text: "甲", SourceHash: GraphCardSourceHash("甲"), Dim: 768}},
+			},
+		}
+		// 探测口径 1536：现存 dim=768 卡（hash 一致）属维度漂移 → 本轮必重嵌。
+		w := NewGraphProjectionWorker(store, &probingGraphCardEmbedder{dim: 1536}, testNoopLogger())
+		stats, err := w.RunOnce(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.Upserted != 1 {
+			t.Fatalf("stats = %+v, want Upserted=1 (stale dim card healed)", stats)
+		}
+		if len(store.upserted) != 1 || store.upserted[0].RefID != 1 {
+			t.Fatalf("upserted = %+v, want entity/1", store.upserted)
+		}
+		// 探测失败退化纯 hash：同卡不再重嵌。
+		store2 := &fakeGraphCardStore{
+			collections: []GraphProjectionCollection{{ID: "c1"}},
+			entitiesBy:  map[string][]GraphCardEntitySource{"c1": {mkEntity(1, "甲")}},
+			edgesBy:     map[string][]GraphCardEdgeSource{},
+			existingBy: map[string][]GraphCardRow{
+				"c1": {{Kind: "entity", RefID: 1, CollectionID: "c1", Text: "甲", SourceHash: GraphCardSourceHash("甲"), Dim: 768}},
+			},
+		}
+		w2 := NewGraphProjectionWorker(store2, &probingGraphCardEmbedder{probeErr: errors.New("probe down")}, testNoopLogger())
+		stats2, err := w2.RunOnce(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats2.Upserted != 0 {
+			t.Fatalf("probe-fail fallback: stats = %+v, want Upserted=0 (hash-only reconcile)", stats2)
+		}
+	})
 
 	t.Run("happy path: two collections, three states, embeddings stored", func(t *testing.T) {
 		store := &fakeGraphCardStore{

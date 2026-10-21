@@ -34,18 +34,18 @@ func TestListDocumentsPendingReembed_LexicalChunksAreHealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lexical, err := repo.ListDocumentsPendingReembed(ctx, "pending-lexical")
+	lexical, err := repo.ListDocumentsPendingReembed(ctx, "pending-lexical", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(lexical) != 0 {
-		t.Fatalf("lexical chunks intentionally have NULL embeddings and must be healthy: %+v", lexical)
+		t.Fatalf("lexical chunks intentionally carry no side-table vectors and must be healthy: %+v", lexical)
 	}
-	semantic, err := repo.ListDocumentsPendingReembed(ctx, "pending-semantic")
+	semantic, err := repo.ListDocumentsPendingReembed(ctx, "pending-semantic", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(semantic) != 1 {
-		t.Fatalf("semantic NULL embedding must be repaired: %+v", semantic)
+		t.Fatalf("semantic doc with no dim-3 side row must be repaired: %+v", semantic)
 	}
 }

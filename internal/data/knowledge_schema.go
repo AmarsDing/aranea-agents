@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -13,9 +14,10 @@ import (
 const (
 	knowledgeEmbeddingIVFFlatIndex = "knowledge_chunks_embedding_idx"
 	knowledgeEmbeddingHNSWIndex    = "knowledge_chunks_embedding_hnsw"
-	// graphCardEmbeddingHNSWIndex G-33 卡片档 ANN 索引（与 chunks 同参 m16/ef64）。
-	graphCardEmbeddingHNSWIndex = "knowledge_graph_embeddings_embedding_hnsw"
-	defaultHNSWEfSearch         = 40
+	// graphCardLegacyHNSWIndex G-33 卡片档旧单维 ANN 索引（G-39 仅用于 DROP 退役，
+	// 替代为 per-dim partial HNSW，见 graphCardDimHNSWIndexSQL）。
+	graphCardLegacyHNSWIndex = "knowledge_graph_embeddings_embedding_hnsw"
+	defaultHNSWEfSearch      = 40
 )
 
 func knowledgeHNSWIndexSQL() string {
@@ -23,9 +25,29 @@ func knowledgeHNSWIndexSQL() string {
 			ON knowledge_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`, knowledgeEmbeddingHNSWIndex)
 }
 
-func graphCardHNSWIndexSQL() string {
-	return fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s
-			ON knowledge_graph_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`, graphCardEmbeddingHNSWIndex)
+// chunkEmbeddingDimHNSWIndexSQL G-39 侧表 per-dim partial HNSW（ADR-KN-20261021-G）：
+// pgvector HNSW opclass 要求列带维度 typmod（裸型 vector 报 22023），故索引建
+// 在表达式 `(embedding::vector(N))` 上（官方 halfvec/量化索引同款模式）；partial
+// WHERE `dim = N` 把索引切片限定在单维桶——桶内 cast 恒成功。CONCURRENTLY 在线
+// 构建（不持 SHARE 锁，大语料首启不阻塞写入/就绪）；已存在健康索引零动作，
+// INVALID 残留经 ensureIndexConcurrent 先 DROP 再重建。
+func chunkEmbeddingDimHNSWIndexName(dim int) string {
+	return fmt.Sprintf("chunk_embeddings_hnsw_d%d", dim)
+}
+func chunkEmbeddingDimHNSWIndexSQL(dim int) string {
+	return fmt.Sprintf(`CREATE INDEX CONCURRENTLY IF NOT EXISTS %s
+			ON chunk_embeddings USING hnsw ((embedding::vector(%d)) vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+			WHERE dim = %d`, chunkEmbeddingDimHNSWIndexName(dim), dim, dim)
+}
+
+// graphCardDimHNSWIndexSQL G-33 卡片档 per-dim partial HNSW（与侧表同约）。
+func graphCardDimHNSWIndexName(dim int) string {
+	return fmt.Sprintf("knowledge_graph_embeddings_hnsw_d%d", dim)
+}
+func graphCardDimHNSWIndexSQL(dim int) string {
+	return fmt.Sprintf(`CREATE INDEX CONCURRENTLY IF NOT EXISTS %s
+			ON knowledge_graph_embeddings USING hnsw ((embedding::vector(%d)) vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+			WHERE dim = %d`, graphCardDimHNSWIndexName(dim), dim, dim)
 }
 
 // ensureKnowledgeEmbeddingHNSW drops the legacy IVFFlat ANN index and creates
@@ -114,6 +136,27 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_content_trgm_idx
 			ON knowledge_chunks USING GIN (content gin_trgm_ops)`,
 
+		// --- G-39 多维度向量共存侧表（ADR-KN-20261021-G；fresh 形态，存量库由迁移
+		// 20261290 建裸表——迁移轨道免 pgvector 依赖，下方 ALTER 双轨补列） ---
+		// PK (chunk_id, dim)：同一 chunk 可并存多代模型向量；换模型不换表、不
+		// ALTER 主表、不作废旧向量（08-10 事故根因随 reconcileEmbeddingDim
+		// 退役终结）。doc_id 冗余落列支撑按文档批量操作（MoveDocument 等）。
+		`CREATE TABLE IF NOT EXISTS chunk_embeddings (
+			chunk_id      TEXT NOT NULL REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
+			dim           INT  NOT NULL CHECK (dim > 0),
+			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+			doc_id        TEXT NOT NULL,
+			model         TEXT NOT NULL DEFAULT '',
+			embedding     vector,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+			PRIMARY KEY (chunk_id, dim)
+		)`,
+		`ALTER TABLE chunk_embeddings ADD COLUMN IF NOT EXISTS embedding vector`,
+		`CREATE INDEX IF NOT EXISTS chunk_embeddings_collection_dim_idx
+			ON chunk_embeddings (collection_id, dim)`,
+		`CREATE INDEX IF NOT EXISTS chunk_embeddings_doc_idx
+			ON chunk_embeddings (doc_id)`,
+
 		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS root_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS sync_state TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ`,
@@ -162,25 +205,29 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_collection_hash_idx
 			ON knowledge_documents (collection_id, content_hash) WHERE content_hash <> ''`,
 
-		// --- G-33 图谱卡片向量档（ADR-KN-20261020-H；fresh 形态，存量库由迁移 20261286
-		// 建表——迁移轨道不带 vector 列，下方 ALTER 双轨补齐） ---
+		// --- G-33 图谱卡片向量档（ADR-KN-20261020-H + 20261021-G dim 裸型化；
+		// fresh 形态，存量库由迁移 20261286 建表、20261290 补 dim——迁移轨道免
+		// pgvector 依赖，下方 ALTER 双轨补齐） ---
 		// ref_id 无 FK：kind 复用实体/链接两宿主表无法单一 FK，孤儿行由
 		// GraphProjectionWorker 墓碑回收；可见性不落列，读路径经宿主文档投影
-		// 下推 G-08 中央谓词。
-		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS knowledge_graph_embeddings (
+		// 下推 G-08 中央谓词。embedding 裸型 vector：多维度卡片共存（G-39 同轮），
+		// per-dim partial HNSW 由 ensureChunkEmbeddingDimIndexes 注册。
+		`CREATE TABLE IF NOT EXISTS knowledge_graph_embeddings (
 			kind          TEXT NOT NULL CHECK (kind IN ('entity','edge')),
 			ref_id        BIGINT NOT NULL,
 			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
 			text          TEXT NOT NULL,
 			source_hash   TEXT NOT NULL DEFAULT '',
-			embedding     vector(%d),
+			dim           INT  NOT NULL DEFAULT 0,
+			embedding     vector,
 			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			PRIMARY KEY (kind, ref_id)
-		)`, dim),
+		)`,
 		// 存量库（迁移 20261286 已建表但无 vector 列）补列；fresh 库 CREATE 已含，
-		// ADD COLUMN IF NOT EXISTS 幂等。
-		fmt.Sprintf(`ALTER TABLE knowledge_graph_embeddings ADD COLUMN IF NOT EXISTS embedding vector(%d)`, dim),
-		graphCardHNSWIndexSQL(),
+		// ADD COLUMN IF NOT EXISTS 幂等。裸型化（typmod 剥离）与旧单维 HNSW DROP
+		// 在 ensureMultiDimEmbeddingLayer 尾部完成。
+		`ALTER TABLE knowledge_graph_embeddings ADD COLUMN IF NOT EXISTS embedding vector`,
+		`ALTER TABLE knowledge_graph_embeddings ADD COLUMN IF NOT EXISTS dim INT NOT NULL DEFAULT 0`,
 		`CREATE INDEX IF NOT EXISTS knowledge_graph_embeddings_collection_kind_idx
 			ON knowledge_graph_embeddings (collection_id, kind)`,
 
@@ -345,70 +392,142 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 			loggateway.StepID("data.schema.knowledge_ws_name_uidx"),
 			loggateway.Err(err))
 	}
-	return reconcileEmbeddingDim(ctx, db, dim, logger)
+	return ensureMultiDimEmbeddingLayer(ctx, db, dim, logger)
 }
 
-// reconcileEmbeddingDim 向量维度对账（2026-08-10 "expected N dimensions" 事故根修）：
-// knowledge_chunks.embedding 的列类型在首次建表时固定为当时的 embedder 维度；
-// embedder 换模型（维度变化）后 CREATE TABLE IF NOT EXISTS 不会修正列类型，
-// 新维度向量插入全部被 PG 拒绝——而应用层按 knowledge_collections.dim 的校验
-// 反而通过，错误只在 SQL 层爆炸，极难定位。
+// ensureMultiDimEmbeddingLayer G-39 多维度向量共存层对账（ADR-KN-20261021-G，
+// 取代 reconcileEmbeddingDim 的 08-10 事故 wipe 对账）：
+//  1. chunks 存量向量按行 vector_dims() 真实维度回填进 chunk_embeddings
+//     侧表（NOT EXISTS 反连接 + ON CONFLICT 幂等，崩溃后重启断点续补）；
+//     维度取真值而非集合台账——台账与列 typmod 在历史 reconcile 后必然一致，
+//     但行级 vector_dims() 是免证的；
+//  2. 卡片档（G-33）dim 台账回填（NULL embedding 的卡保持 dim=0，读路径
+//     `t.dim = vector_dims($n)` 谓词天然排除——无向量本就不可命中）；
+//  3. 卡片档 embedding 裸型化（typmod 剥离）+ 旧单维 HNSW 退役（先 DROP 后
+//     ALTER，避免 PG 沿索引重建连带旧切片）；
+//  4. 集合台账 dim 对齐 embedder 当前输出（仅展示/账本用途，G-39 后不再决定
+//     写入合法性——写入维度恒取 len(embedding)）；
+//  5. per-dim partial HNSW 注册（见 ensureChunkEmbeddingDimIndexes）。
 //
-// 对账策略（幂等；维度一致时零动作）：
-//  1. 旧维度向量对新 embedder 无检索意义 → 全部置 NULL 作废；
-//  2. 受影响文档 content_hash 清空 + status 回 pending——vault 文档下轮 sync
-//     自动重嵌入自愈；UI 上传文档（rel_path 空）无 sync 循环，Warn 日志提示
-//     需人工重传（ReindexDocument 出口属能力缺口提案）；
-//  3. 有语义层集合的 dim 快照同步为新维度——系统是单全局 embedder，集合 dim
-//     只是创建时快照；向量已作废后不同步 = 应用层校验永远拒绝新插入（死库）。
-//     embedding_model 名不动（Ensure 拿不到模型名，且仅作展示）；
-//  4. ALTER 列类型 + 重建 HNSW 索引（先 DROP ivfflat/hnsw 再 ALTER，
-//     避免 PG 级联重建沿用旧维度）。
-func reconcileEmbeddingDim(ctx context.Context, db *sql.DB, dim int, lg loggateway.Logger) error {
-	if dim <= 0 {
-		return nil
-	}
+// legacy knowledge_chunks.embedding 列与其 HNSW 保留 ≥1 版本（瞬时回滚浸泡，
+// DROP 见 TK-G39-01）；旧 dim 侧表行空间回收见 TK-G39-02。
+func ensureMultiDimEmbeddingLayer(ctx context.Context, db *sql.DB, dim int, lg loggateway.Logger) error {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	var cur int
-	if err := db.QueryRowContext(ctx, `
-		SELECT a.atttypmod FROM pg_attribute a
-		WHERE a.attrelid = 'knowledge_chunks'::regclass AND a.attname = 'embedding'`).Scan(&cur); err != nil {
-		return fmt.Errorf("knowledge dim reconcile: read embedding typmod: %w", err)
-	}
-	if cur == dim {
-		return nil
-	}
 	stmts := []string{
-		`DROP INDEX IF EXISTS knowledge_chunks_embedding_idx`,
-		`DROP INDEX IF EXISTS knowledge_chunks_embedding_hnsw`,
-		// G-33 卡片表同维对账（ADR-KN-20261020-H）：旧维度卡向量对新 embedder 无
-		// 检索意义，而卡片 source_hash 由卡片文推导——embedder 换维 hash 不漂移，
-		// 对账工人无法靠漂移自愈 → 整表墓碑式清空，由 GraphProjectionWorker 逐轮
-		// 重建（重建期第三腿召回退化回双腿，属可接受的短暂降级）。
-		`DROP INDEX IF EXISTS knowledge_graph_embeddings_embedding_hnsw`,
-		`DELETE FROM knowledge_graph_embeddings`,
-		`UPDATE knowledge_chunks SET embedding = NULL WHERE embedding IS NOT NULL`,
-		`UPDATE knowledge_documents SET content_hash = '', status = 'pending', updated_at = NOW()
-			WHERE content_hash <> '' AND id IN (SELECT DISTINCT doc_id FROM knowledge_chunks)`,
-		fmt.Sprintf(`UPDATE knowledge_collections SET dim = %d, updated_at = NOW()
-			WHERE embedding_model <> '' AND dim <> %d`, dim, dim),
-		fmt.Sprintf(`ALTER TABLE knowledge_chunks ALTER COLUMN embedding TYPE vector(%d)`, dim),
-		fmt.Sprintf(`ALTER TABLE knowledge_graph_embeddings ALTER COLUMN embedding TYPE vector(%d)`, dim),
-		knowledgeHNSWIndexSQL(),
-		graphCardHNSWIndexSQL(),
+		`UPDATE knowledge_graph_embeddings SET dim = vector_dims(embedding)
+			WHERE dim = 0 AND embedding IS NOT NULL`,
+		`DROP INDEX IF EXISTS ` + graphCardLegacyHNSWIndex,
+		`ALTER TABLE knowledge_graph_embeddings ALTER COLUMN embedding TYPE vector`,
+		`INSERT INTO chunk_embeddings (chunk_id, dim, collection_id, doc_id, model, embedding)
+			SELECT c.id, vector_dims(c.embedding), c.collection_id, c.doc_id, kc.embedding_model, c.embedding
+			FROM knowledge_chunks c
+			JOIN knowledge_collections kc ON kc.id = c.collection_id
+			WHERE c.embedding IS NOT NULL
+				AND NOT EXISTS (
+					SELECT 1 FROM chunk_embeddings ce
+					WHERE ce.chunk_id = c.id AND ce.dim = vector_dims(c.embedding)
+				)
+			ON CONFLICT (chunk_id, dim) DO NOTHING`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return fmt.Errorf("knowledge dim reconcile %d→%d: %w", cur, dim, err)
+			return fmt.Errorf("knowledge multi-dim layer: %w", err)
 		}
 	}
-	var affected int
-	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM knowledge_documents WHERE status = 'pending'`).Scan(&affected)
+	// 孤儿 chunks 巡检（F1-B3）：历史库若存在 collection_id 悬空行（现行
+	// 代码路径不产生——FK CASCADE 全覆盖，仅上古/手工修库数据可能引入），
+	// 回填 JOIN 会静默跳过它们，TK-G39-01 删 legacy 列后不可恢复——记 Warn
+	// 留痕（不阻断启动；修复靠人工核对）。
+	var orphaned int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM knowledge_chunks c
+		WHERE c.embedding IS NOT NULL
+			AND NOT EXISTS (SELECT 1 FROM knowledge_collections kc WHERE kc.id = c.collection_id)`).Scan(&orphaned); err == nil && orphaned > 0 {
+		lg.Warn("chunks with dangling collection_id skipped by side-table backfill",
+			loggateway.StepID("data.schema.knowledge_backfill_orphan"),
+			loggateway.Int("chunks", orphaned))
+	}
+	if dim > 0 {
+		res, err := db.ExecContext(ctx, `UPDATE knowledge_collections SET dim = $1, updated_at = NOW()
+			WHERE embedding_model <> '' AND dim <> $1`, dim)
+		if err != nil {
+			return fmt.Errorf("knowledge multi-dim layer: collections dim ledger: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			lg.Warn("knowledge collections dim ledger aligned to embedder dim (G-39 ledger, no vector wipe)",
+				loggateway.StepID("data.schema.knowledge_dim_ledger"),
+				loggateway.Int("dim", dim),
+				loggateway.Int("collections", int(n)))
+		}
+	}
+	return ensureChunkEmbeddingDimIndexes(ctx, db, dim)
+}
 
-	lg.Error("knowledge embedding dimension reconciled; stale embeddings voided, affected documents reset for re-embed",
-		loggateway.StepID("data.schema.knowledge_dim_reconcile"),
-		loggateway.Int("from_dim", cur), loggateway.Int("to_dim", dim), loggateway.Int("pending_docs", affected))
+// ensureChunkEmbeddingDimIndexes 为侧表/卡片档注册 per-dim partial HNSW。
+// 纯增量：存在且健康（indisvalid）的索引零动作；空表建 HNSW 瞬时完成，因此
+// 把当前 embedder dim 一并预注册（首次插入后首个查询不走 seq scan）。dim 集合
+// = 侧表现存 dims ∪ 卡片档 dims（>0）∪ embedder 当前 dim。存量旧 dim 索引永不
+// DROP（回滚浸泡）；索引注册表收敛见 TK-G39-03。构建一律 CONCURRENTLY
+// （F1-B2：首启对大语料表不持 SHARE 锁，就绪路径不被长构建阻塞；
+// CONCURRENTLY 不能进事务块，Ensure 各语句本就独立 Exec）。
+func ensureChunkEmbeddingDimIndexes(ctx context.Context, db *sql.DB, curDim int) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT dim FROM chunk_embeddings
+		UNION
+		SELECT dim FROM knowledge_graph_embeddings WHERE dim > 0`)
+	if err != nil {
+		return fmt.Errorf("knowledge multi-dim layer: list dims: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	dims := map[int]struct{}{}
+	if curDim > 0 {
+		dims[curDim] = struct{}{}
+	}
+	for rows.Next() {
+		var d int
+		if err := rows.Scan(&d); err != nil {
+			return fmt.Errorf("knowledge multi-dim layer: scan dim: %w", err)
+		}
+		if d > 0 {
+			dims[d] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("knowledge multi-dim layer: iterate dims: %w", err)
+	}
+	for d := range dims {
+		if err := ensureIndexConcurrent(ctx, db, chunkEmbeddingDimHNSWIndexName(d), chunkEmbeddingDimHNSWIndexSQL(d)); err != nil {
+			return fmt.Errorf("knowledge multi-dim layer: hnsw dim=%d: %w", d, err)
+		}
+		if err := ensureIndexConcurrent(ctx, db, graphCardDimHNSWIndexName(d), graphCardDimHNSWIndexSQL(d)); err != nil {
+			return fmt.Errorf("knowledge multi-dim layer: card hnsw dim=%d: %w", d, err)
+		}
+	}
+	return nil
+}
+
+// ensureIndexConcurrent 单张索引的健康性注册：存在且 indisvalid → 零动作；
+// 存在但 INVALID（历史上 CONCURRENTLY 构建中断的残留）→ 先 DROP 再以
+// CONCURRENTLY 重建；不存在 → 直接 CONCURRENTLY 创建。
+func ensureIndexConcurrent(ctx context.Context, db *sql.DB, name, createSQL string) error {
+	var valid bool
+	err := db.QueryRowContext(ctx,
+		`SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+		 WHERE c.relkind = 'i' AND c.relname = $1`, name).Scan(&valid)
+	switch {
+	case err == nil && valid:
+		return nil
+	case err == nil:
+		if _, derr := db.ExecContext(ctx, `DROP INDEX `+name); derr != nil {
+			return fmt.Errorf("drop invalid index %s: %w", name, derr)
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("probe index %s: %w", name, err)
+	}
+	if _, err := db.ExecContext(ctx, createSQL); err != nil {
+		return fmt.Errorf("create index %s: %w", name, err)
+	}
 	return nil
 }

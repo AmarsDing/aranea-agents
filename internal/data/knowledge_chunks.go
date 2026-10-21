@@ -96,21 +96,27 @@ func (r *knowledgeRepo) updateDocumentSyncMetaTx(ctx context.Context, tx *sql.Tx
 	return entErrToBizErr(err, "knowledge")
 }
 
-func (r *knowledgeRepo) assertChunkDimensions(ctx context.Context, chunks []biz.KnowledgeChunk) error {
-	var expectedDim int
-	err := r.data.Postgres().QueryRowContext(ctx,
-		"SELECT dim FROM knowledge_collections WHERE id = $1", chunks[0].CollectionID).Scan(&expectedDim)
-	if err != nil {
-		return entErrToBizErr(err, "knowledge")
-	}
+// assertChunkDimensions 批次统一校验（G-39，ADR-KN-20261021-G）：侧表多维度
+// 共存后写入维度恒取 len(embedding)，不再读集合台账 dim（去掉 collections
+// 往返）；只要求同一批次的非父块向量维度一致且 >0——批内混维是个体摄取
+// 流程的完整性错误（同一文档不可能产两种维度），与跨批次多代共存不矛盾。
+func (r *knowledgeRepo) assertChunkDimensions(_ context.Context, chunks []biz.KnowledgeChunk) error {
+	var batchDim int
 	for _, ch := range chunks {
 		// G-06 父块行不嵌入（语境回填专用），跳过维度校验；dense 召回恒有
 		// chunk_role='child' 谓词，误带向量也进不了召回。
 		if ch.IsParent {
 			continue
 		}
-		if expectedDim > 0 && len(ch.Embedding) != expectedDim {
-			return apierror.BadRequest(apierror.DomainKnowledge, "embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding))
+		if len(ch.Embedding) == 0 {
+			continue
+		}
+		if batchDim == 0 {
+			batchDim = len(ch.Embedding)
+			continue
+		}
+		if len(ch.Embedding) != batchDim {
+			return apierror.BadRequest(apierror.DomainKnowledge, "embedding dimension mismatch: batch expects %d, chunk %q has %d", batchDim, ch.ID, len(ch.Embedding))
 		}
 	}
 	return nil
@@ -120,31 +126,67 @@ func (r *knowledgeRepo) insertChunksTx(ctx context.Context, tx *sql.Tx, chunks [
 	if len(chunks) == 0 {
 		return nil
 	}
+	// G-39（ADR-KN-20261021-G）：legacy embedding 列退出写路径（浸泡期列保留、
+	// 恒 NULL），向量只落 chunk_embeddings 侧表。
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index, parent_chunk_id, chunk_role)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`)
+		`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, metadata, chunk_index, parent_chunk_id, chunk_role)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`)
 	if err != nil {
 		return entErrToBizErr(err, "knowledge")
 	}
 	defer stmt.Close()
+	// 侧表 upsert：同一 (chunk_id, dim) 重摄取覆盖同代向量；另批新 dim 合法
+	// 共存（多代浸泡）。DELETE 旧块时侧表行经 FK 级联回收。
+	sideStmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO chunk_embeddings (chunk_id, dim, collection_id, doc_id, model, embedding)
+		 VALUES ($1,$2,$3,$4,$5,$6)
+		 ON CONFLICT (chunk_id, dim) DO UPDATE
+		 SET embedding = EXCLUDED.embedding, model = EXCLUDED.model`)
+	if err != nil {
+		return entErrToBizErr(err, "knowledge")
+	}
+	defer sideStmt.Close()
+	// 侧表 model 列溯源用集合台账的 embedding_model（按集合惰性预查缓存；
+	// 无语义层集合无台账语义 → 落 ''）。批内混集合时各取各自台账——
+	// in-tree 调用方皆单集合，但 repo 端口不禁止混合批。
+	models := make(map[string]string, 1)
+	modelFor := func(colID string) string {
+		if m, ok := models[colID]; ok {
+			return m
+		}
+		var m string
+		if err := tx.QueryRowContext(ctx,
+			`SELECT embedding_model FROM knowledge_collections WHERE id = $1`, colID).Scan(&m); err != nil {
+			r.lg.Warn("chunk side-embedding model lookup fell back to empty",
+				loggateway.StepID("knowledge.chunk_side_model_skip"),
+				loggateway.Str("collection_id", colID),
+				loggateway.Err(err))
+			m = ""
+		}
+		models[colID] = m
+		return m
+	}
 	for _, ch := range chunks {
 		meta := ch.MetadataJSON
 		if meta == "" {
 			meta = "{}"
 		}
-		// 无语义层 vault（R-4）/ 父子分块父块行（G-06）：空 embedding 写 NULL，
-		// pgvector.NewVector(nil) 会生成非法 '[]'。
-		var vec any
-		if len(ch.Embedding) > 0 {
-			vec = pgvector.NewVector(ch.Embedding)
-		}
 		role := "child"
 		if ch.IsParent {
 			role = "parent"
 		}
-		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex, ch.ParentChunkID, role); err != nil {
+		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, meta, ch.ChunkIndex, ch.ParentChunkID, role); err != nil {
 			r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
 			return entErrToBizErr(err, "knowledge")
+		}
+		// 无语义层 vault（R-4）/ 父子分块父块行（G-06）：空向量与父块行
+		// 一律不落侧表（pending 语义由 ListDocumentsPendingReembed 侧表
+		// NOT EXISTS 表达；父块带向量属带外构造，同口径拦截防索引污染）。
+		if len(ch.Embedding) > 0 && !ch.IsParent {
+			if _, err := sideStmt.ExecContext(ctx, ch.ID, len(ch.Embedding), ch.CollectionID, ch.DocID, modelFor(ch.CollectionID), pgvector.NewVector(ch.Embedding)); err != nil {
+				r.lg.Warn("chunk side-embedding insert failed", loggateway.StepID("knowledge.chunk_side_embed_fail"), loggateway.Err(err))
+				return entErrToBizErr(err, "knowledge")
+			}
 		}
 	}
 	return nil

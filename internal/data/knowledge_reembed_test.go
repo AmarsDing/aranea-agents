@@ -10,12 +10,12 @@ import (
 )
 
 // ── B1 文档重嵌入：ListDocumentsPendingReembed 待重嵌入筛选 ──────────────────
-// 维度对账（reconcileEmbeddingDim）将向量置 NULL 后，UI 上传文档无 vault_sync
-// 自愈循环，由本筛选喂给 ReembedDocuments 重嵌入管线。
+// UI 上传文档无 vault_sync 自愈循环（G-39 后按「欠当前 dim 侧表向量」判定），
+// 由本筛选喂给 ReembedDocuments 重嵌入管线。
 
 // TestKnowledgeRepo_ListDocumentsPendingReembed 覆盖筛选正确性：
-// - 命中：chunks embedding IS NULL 的文档；无任何 chunks 但有 content_text 的文档
-// - 排除：content_text=” 的文档；status='indexing' 的文档；embedding 非 NULL 的正常文档
+// - 命中：侧表缺当前 dim 向量行的文档；无任何 chunks 但有 content_text 的文档
+// - 排除：content_text=” 的文档；status='indexing' 的文档；侧表已有当前 dim 向量的正常文档
 // - 排序：created_at ASC（先入队先处理）
 func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
@@ -52,8 +52,8 @@ func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
 			t.Fatalf("pin created_at %s: %v", id, err)
 		}
 	}
-	// nullChunk 模拟维度对账产物：chunk 行存在但 embedding 被置 NULL
-	// （绕开 InsertChunks 的维度校验——NULL 向量非生产插入路径）。
+	// nullChunk 模拟欠侧表向量的存量 chunk 行（G-39：pending 判定 = 侧表缺当前
+	// dim 行；直插主表不走 InsertChunks 侧表 upsert，等价于历史置 NULL 产物）。
 	nullChunk := func(docID string) {
 		t.Helper()
 		if _, err := db.ExecContext(ctx,
@@ -79,7 +79,7 @@ func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
 		t.Fatalf("insert healthy chunk: %v", err)
 	}
 
-	got, err := repo.ListDocumentsPendingReembed(ctx, "c1")
+	got, err := repo.ListDocumentsPendingReembed(ctx, "c1", 3)
 	if err != nil {
 		t.Fatalf("ListDocumentsPendingReembed: %v", err)
 	}

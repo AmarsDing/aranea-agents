@@ -458,4 +458,15 @@ var ddlMigrationsLate = []ddlMigration{
 	// updated_at 基线（76 设计「活跃性监管」§B）。两表均为 Ent Schema.Create 管理
 	// 的新表，fresh 建表自带全列，本迁移只服务存量库（重复列错误按 DB-N6 视为成功）。
 	{Version: 20261289, Name: "coding_liveness", SQL: "sql/migrations/20261289_coding_liveness.sql"},
+	// 20261290 chunk_embeddings（G-39，2026-10-21，ADR-KN-20261021-G）：多维度
+	// 向量共存侧表——chunk 向量从 knowledge_chunks.embedding（typmod 固化
+	// vector(N)，换模型须 ALTER 全表 + reconcileEmbeddingDim 置 NULL 作废，
+	// 08-10 事故根因）迁至按 (chunk_id, dim) 分列的 chunk_embeddings；
+	// embedding 列裸型 vector（typmod 无关先决，per-dim partial HNSW 由
+	// EnsureKnowledgeSchema 注册），reconcileEmbeddingDim 随本轮原子退役。
+	// G-33 卡片档（20261286 同源账，ADR-KN-20261020-H）同轮补 dim 列，
+	// 裸型化/per-dim 索引与 backfill（JOIN collections 账本 dim，ON CONFLICT
+	// 幂等、崩溃可断点续补）走 Ensure 双轨。迁移轨道免 pgvector 依赖先例
+	//（20261286）：本 .sql 不建 vector 列、不建 HNSW。编号紧跟 20261289。
+	{Version: 20261290, Name: "chunk_embeddings", SQL: "sql/migrations/20261290_chunk_embeddings.sql"},
 }

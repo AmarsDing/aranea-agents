@@ -243,8 +243,9 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 	}
 	// P0-2（2026-08-21）：dim 快照取当前 embedder 实际维度，禁止落入 biz 层
 	// 1536 兜底——运行中建库若快照与 embedder 维度不一致（如 bge-m3=1024），
-	// ingest 会被 data 层 dimension mismatch 全部拒绝，且启动对账
-	// （reconcileEmbeddingDim）只在重启后生效，故障窗口内整库不可写。
+	// 台账列即失真。G-39 后台账仅作账本（不再约束写入合法性：写入维度恒取
+	// len(embedding)，侧表多代共存），但 dim 快照仍是 UI/运维口径的展示源，
+	// 必须准确。
 	if model != "" && s.embedderAdmin != nil {
 		if _, _, _, dim, _, _ := s.embedderAdmin.Config(); dim > 0 {
 			in.Dim = dim

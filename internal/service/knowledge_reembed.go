@@ -15,9 +15,10 @@ import (
 )
 
 // ReembedDocuments B1：从已存 content_text 重建 chunks+embedding（无需原始文件）。
-// 修复维度对账（reconcileEmbeddingDim）置 NULL 的 UI 上传文档——vault 文档经
-// vault_sync 自愈不进入本链路。同步返回受理计数；重嵌入在单后台 goroutine
-// 串行执行（复用摄取管线路径，不打爆 embedder API）。
+// 修复缺当前 dim 向量的 UI 上传文档（G-39：换模型不再置 NULL 作废旧 dim 向量，
+// 缺口按 embedder 当前 dim 判定补齐）——vault 文档经 vault_sync 自愈不进入本链路。
+// 同步返回受理计数；重嵌入在单后台 goroutine 串行执行（复用摄取管线路径，
+// 不打爆 embedder API）。
 func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.ReembedDocumentsRequest) (*v1.ReembedDocumentsResponse, error) {
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
@@ -48,7 +49,7 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 			docs = append(docs, d)
 		}
 	} else {
-		pending, listErr := s.uc.ListDocumentsPendingReembed(ctx, col.ID)
+		pending, listErr := s.uc.ListDocumentsPendingReembed(ctx, col.ID, s.currentEmbedderDim(ctx))
 		if listErr != nil {
 			return nil, listErr
 		}
@@ -108,16 +109,22 @@ func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1
 	if s.embedderAdmin == nil {
 		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
 	}
-	_, _, model, dim, configured, _ := s.embedderAdmin.Config()
+	_, _, model, cfgDim, configured, _ := s.embedderAdmin.Config()
 	if !configured {
 		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
+	}
+	// 台账/判定口径取实测维度（G-39：新写入按 len(embedding) 落桶，台账须同
+	// 源方展示可信）；探测不可行时回落配置 dim。
+	dim := s.currentEmbedderDim(ctx)
+	if dim <= 0 {
+		dim = cfgDim
 	}
 	if err := s.uc.EnableCollectionSemantic(ctx, col.ID, model, dim); err != nil {
 		return nil, err
 	}
 
-	// 全集合有正文文档入队（复用 B1 同一串行管线；chunks 缺失/NULL 即 pending）。
-	docs, err := s.uc.ListDocumentsPendingReembed(ctx, col.ID)
+	// 全集合有正文文档入队（复用 B1 同一串行管线；chunks 缺失/欠当前 dim 即 pending）。
+	docs, err := s.uc.ListDocumentsPendingReembed(ctx, col.ID, dim)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +185,7 @@ func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, li
 		if repaired+failed >= limit {
 			break
 		}
-		docs, listErr := s.uc.ListDocumentsPendingReembed(ctx, col.ID)
+		docs, listErr := s.uc.ListDocumentsPendingReembed(ctx, col.ID, s.currentEmbedderDim(ctx))
 		if listErr != nil {
 			failed++
 			s.lg.Warn("索引修复列举待处理文档失败",
@@ -206,6 +213,32 @@ func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, li
 		}
 	}
 	return repaired, failed, nil
+}
+
+// currentEmbedderDim 取 embedder 当前输出维度（G-39 重嵌判定口径来源）：
+// runtime 换模型即时生效，不读集合台账；优先 ProbeDim 实测（配置 dim 与模型
+// 原生维度可能分叉——后者才是新写入落桶的真实维度，二者分叉时按配置值判定
+// 会让缺维腿永不命中、全集合无限重嵌）；embedder 不支持探测或探测失败回落
+// Dim() 配置值；未配置 embedder 返回 0（谓词跳过缺维判定，等价词法库只查
+// chunks 缺失）。
+func (s *KnowledgeService) currentEmbedderDim(ctx context.Context) int {
+	if s == nil || s.embedder == nil {
+		return 0
+	}
+	if prober, ok := s.embedder.(interface {
+		ProbeDim(context.Context) (int, error)
+	}); ok {
+		d, err := prober.ProbeDim(ctx)
+		if err == nil && d > 0 {
+			return d
+		}
+		if err != nil {
+			s.lg.Warn("embedder dim probe failed; falling back to configured dim",
+				loggateway.StepID("knowledge.embedder.probe_dim"),
+				loggateway.Err(err))
+		}
+	}
+	return s.embedder.Dim()
 }
 
 // reembedOneDocument 单文档串行管线：indexing+WS → BuildIndexedChunks(content_text)
