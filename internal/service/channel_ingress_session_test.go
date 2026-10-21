@@ -102,8 +102,8 @@ func (m *ingressSessionRepo) RestoreSession(context.Context, string) (biz.Sessio
 }
 func (m *ingressSessionRepo) ArchiveSession(context.Context, string) (int, error) { return 0, nil }
 func (m *ingressSessionRepo) DeleteSession(context.Context, string) (int, error)  { return 0, nil }
-func (m *ingressSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
-	return nil
+func (m *ingressSessionRepo) DeleteSessionsByAgentID(context.Context, string) (int, []string, error) {
+	return 0, nil, nil
 }
 func (m *ingressSessionRepo) CountMessagesBySession(context.Context, string) (int, error) {
 	return 0, nil

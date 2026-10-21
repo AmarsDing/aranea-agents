@@ -82,7 +82,7 @@ func (o *ChatOrchestrator) durableSessionRunLifecycle(
 	d durableResumeTurnCtx,
 	userMsg biz.ChatMessage,
 	userContent string,
-) (context.Context, string) {
+) (context.Context, string, error) {
 	ctx = event.WithTurnID(ctx, userMsg.ID)
 	if sess.DefaultContextWindowTokens > 0 {
 		ctx = event.WithSessionDefaultContextWindow(ctx, sess.DefaultContextWindowTokens)
@@ -92,7 +92,7 @@ func (o *ChatOrchestrator) durableSessionRunLifecycle(
 		if tid := strings.TrimSpace(d.spec.TurnID); tid != "" {
 			ctx = event.WithTurnID(ctx, tid)
 		}
-		return ctx, d.spec.SessionRunID
+		return ctx, d.spec.SessionRunID, nil
 	}
 	return o.sessionRunLC().BeginSessionRunLifecycle(ctx, SessionRunStartParams{
 		Emitter:      emitter,

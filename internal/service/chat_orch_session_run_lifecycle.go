@@ -9,6 +9,7 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 )
@@ -32,7 +33,9 @@ type SessionRunStartParams struct {
 // Stability:evolving
 type sessionRunLifecycle interface {
 	// BeginSessionRunLifecycle starts a session run and stores the binding.
-	BeginSessionRunLifecycle(ctx context.Context, p SessionRunStartParams) (context.Context, string)
+	// FR-13（89 批次3）准入 fail-closed：StartInteractive 真冲突且 awaiting
+	// 收养未命中时返回 error（调用方终止 turn 并 Warn），不再静默吞绑丢定。
+	BeginSessionRunLifecycle(ctx context.Context, p SessionRunStartParams) (context.Context, string, error)
 	// FinishSessionRunLifecycle ends a session run and cleans up the binding.
 	FinishSessionRunLifecycle(ctx context.Context, sessionID, sessionRunID string, turnErr error)
 	// EscalateToDurableByUser escalates a session run from interactive to durable mode by user action.
@@ -113,9 +116,9 @@ func (l *chatSessionRunLifecycle) ResolveChannelLongTaskConfig(ctx context.Conte
 // BeginSessionRunLifecycle starts a session run and stores the binding.
 func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 	ctx context.Context, p SessionRunStartParams,
-) (context.Context, string) {
+) (context.Context, string, error) {
 	if l == nil || l.sessionRuns == nil {
-		return ctx, ""
+		return ctx, "", apierror.Internal("SESSION_RUN", "session run lifecycle unavailable")
 	}
 	sessionID := strings.TrimSpace(p.Session.ID)
 	ltCfg := l.ResolveChannelLongTaskConfig(ctx, p.Session)
@@ -135,7 +138,15 @@ func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 		if adopted, ok := l.adoptAwaitingRun(ctx, sessionID); ok {
 			run = adopted
 		} else {
-			return ctx, ""
+			// FR-13（89 批次3）fail-closed：真冲突不再静默丢绑让 turn 裸跑；Warn
+			// 留证（会话存活状态审计），调用方终止本轮 turn。
+			l.lg.Warn("begin session run blocked: genuine conflict, fail closed",
+				loggateway.StepID("chat.session_run_begin"),
+				loggateway.SessionID(sessionID),
+				loggateway.Err(err),
+			)
+			return ctx, "", apierror.Conflict("SESSION_RUN",
+				"begin session run blocked: another active run exists for session %s (err=%v)", sessionID, err)
 		}
 	}
 	ctx = event.WithSessionRunID(ctx, run.ID)
@@ -161,7 +172,7 @@ func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 			event.P("turn_id", p.TurnID),
 		)
 	}
-	return ctx, run.ID
+	return ctx, run.ID, nil
 }
 
 // EscalateToDurableByUser escalates a session run from interactive to durable mode by user action.

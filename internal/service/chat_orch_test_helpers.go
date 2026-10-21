@@ -108,8 +108,8 @@ func (noopAwaitCoordinator) Sweep() {}
 // noopSessionRunLifecycle satisfies sessionRunLifecycle.
 type noopSessionRunLifecycle struct{}
 
-func (noopSessionRunLifecycle) BeginSessionRunLifecycle(ctx context.Context, _ SessionRunStartParams) (context.Context, string) {
-	return ctx, ""
+func (noopSessionRunLifecycle) BeginSessionRunLifecycle(ctx context.Context, _ SessionRunStartParams) (context.Context, string, error) {
+	return ctx, "", nil
 }
 func (noopSessionRunLifecycle) FinishSessionRunLifecycle(context.Context, string, string, error) {}
 func (noopSessionRunLifecycle) EscalateToDurableByUser(context.Context, string, string)          {}

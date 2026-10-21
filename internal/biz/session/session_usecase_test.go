@@ -92,8 +92,8 @@ func (m *mockSessionRepo) DeleteSession(ctx context.Context, id string) (int, er
 	return 0, nil
 }
 
-func (m *mockSessionRepo) DeleteSessionsByAgentID(_ context.Context, _ string) error {
-	return nil
+func (m *mockSessionRepo) DeleteSessionsByAgentID(_ context.Context, _ string) (int, []string, error) {
+	return 0, nil, nil
 }
 
 func (m *mockSessionRepo) PinSession(_ context.Context, _ string) (Session, error) {

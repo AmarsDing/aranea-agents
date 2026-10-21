@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 
+	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/session"
@@ -30,10 +31,15 @@ func cascadeDeleteByAgent(ctx context.Context, d *Data, agentID string) error {
 		return err
 	}
 
-	// Soft-delete sessions owned by this agent
+	// Soft-delete sessions owned by this agent.
+	// FR-13（89 批次3）：活跃会话保护谓词，对齐单删/批删语义——
+	// running/awaiting_confirmation 会话挂有 live run，agent 级联不得随删
+	// （调用方应已被前置 409 拦截；此为纵深防御兜底）。
 	now := nowRFC3339()
 	if _, err := d.RW().Write(ctx).Session.Update().
-		Where(session.AgentIDEQ(agentID), session.DeletedAtEQ("")).
+		Where(session.AgentIDEQ(agentID), session.DeletedAtEQ(""),
+			session.StatusNEQ(string(bizsession.SessionStatusRunning)),
+			session.StatusNEQ(string(bizsession.SessionStatusAwaitingConfirmation))).
 		SetDeletedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx); err != nil {

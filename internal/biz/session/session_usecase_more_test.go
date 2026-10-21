@@ -40,7 +40,7 @@ type testRepo struct {
 	compressSessionInTxFn         func(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
 	tryIncrementCompressVersionFn func(ctx context.Context, sessionID string) (int64, error)
 	sessionSummaryExistsFn        func(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
-	deleteSessionsByAgentIDFn     func(ctx context.Context, agentID string) error
+	deleteSessionsByAgentIDFn     func(ctx context.Context, agentID string) (int, []string, error)
 	bumpSessionRevisionFn         func(ctx context.Context, sessionID string) (int64, error)
 	getSessionRevisionFn          func(ctx context.Context, sessionID string) (int64, error)
 	updateSessionTurnFn           func(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)

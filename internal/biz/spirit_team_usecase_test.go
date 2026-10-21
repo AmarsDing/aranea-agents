@@ -337,7 +337,9 @@ func (m *memSpiritSessionRepo) ArchiveSession(_ context.Context, _ string) (int,
 	return 0, nil
 }
 func (m *memSpiritSessionRepo) DeleteSession(_ context.Context, _ string) (int, error)    { return 0, nil }
-func (m *memSpiritSessionRepo) DeleteSessionsByAgentID(_ context.Context, _ string) error { return nil }
+func (m *memSpiritSessionRepo) DeleteSessionsByAgentID(_ context.Context, _ string) (int, []string, error) {
+	return 0, nil, nil
+}
 func (m *memSpiritSessionRepo) PinSession(_ context.Context, _ string) (Session, error) {
 	return Session{}, nil
 }

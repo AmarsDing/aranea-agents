@@ -214,10 +214,13 @@ func TestBeginSessionRunLifecycle_AdoptsAwaitingRun(t *testing.T) {
 		Runs:        reg,
 		Logger:      loggateway.NewNoop(),
 	})
-	_, runID := lc.BeginSessionRunLifecycle(context.Background(), SessionRunStartParams{
+	_, runID, err := lc.BeginSessionRunLifecycle(context.Background(), SessionRunStartParams{
 		Session: biz.Session{ID: "sess-1"},
 		TurnID:  "turn-2",
 	})
+	if err != nil {
+		t.Fatalf("adoption path must succeed, got err=%v", err)
+	}
 	if runID != "srid-await" {
 		t.Fatalf("expected adopted run srid-await, got %q", runID)
 	}
@@ -226,7 +229,8 @@ func TestBeginSessionRunLifecycle_AdoptsAwaitingRun(t *testing.T) {
 	}
 }
 
-// 非挂起会话的真冲突仍 fail closed（不认领、不建行）。
+// 非挂起会话的真冲突 fail closed（FR-13，89 批次3）：不认领、不建行、返回
+// 409 错误——不再静默丢绑让 turn 裸跑。
 func TestBeginSessionRunLifecycle_GenuineConflictFailsClosed(t *testing.T) {
 	repo := &adoptSessionRunRepoStub{active: biz.SessionRun{
 		ID: "srid-busy", SessionID: "sess-1", Phase: biz.SessionRunPhaseInteractive,
@@ -239,10 +243,17 @@ func TestBeginSessionRunLifecycle_GenuineConflictFailsClosed(t *testing.T) {
 		Runs:        reg,
 		Logger:      loggateway.NewNoop(),
 	})
-	_, runID := lc.BeginSessionRunLifecycle(context.Background(), SessionRunStartParams{
+	_, runID, err := lc.BeginSessionRunLifecycle(context.Background(), SessionRunStartParams{
 		Session: biz.Session{ID: "sess-1"},
 		TurnID:  "turn-2",
 	})
+	if err == nil {
+		t.Fatal("genuine conflict must fail closed with error (FR-13), got nil")
+	}
+	var apiErr *apierror.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != apierror.CodeConflict {
+		t.Fatalf("expected apierror 409 Conflict, got %v", err)
+	}
 	if runID != "" {
 		t.Fatalf("genuine conflict must not adopt, got %q", runID)
 	}

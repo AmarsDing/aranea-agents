@@ -443,18 +443,39 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 	return n, entErrToBizErr(err, "SESSION")
 }
 
-func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
+// DeleteSessionsByAgentID soft-deletes all non-active sessions of an agent.
+// FR-13（89 批次3）：running/awaiting_confirmation 会话挂有 live run，跳过
+// 不删并在返回值中列出（对齐单删/批删的状态守卫语义）。返回 (processed,
+// skipped, err)。
+func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) (int, []string, error) {
 	c := r.data.RW().Write(ctx)
+	protected, err := c.Session.Query().
+		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ(""),
+			entsession.StatusIn(string(session.SessionStatusRunning), string(session.SessionStatusAwaitingConfirmation))).
+		IDs(ctx)
+	if err != nil {
+		return 0, nil, entErrToBizErr(err, "SESSION")
+	}
 	now := nowRFC3339()
-	_, err := c.Session.Update().
-		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ("")).
+	n, err := c.Session.Update().
+		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ(""),
+			entsession.StatusNEQ(string(session.SessionStatusRunning)),
+			entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
 		SetDeletedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
-	if err != nil {
+	if err == nil {
+		// FR-13（89 批次3）：活跃会话被跳过需 Warn 留证（单删/批删与 agent
+		// 删除 409 的语义对齐——删除响应不含明细，审计只能靠日志）。
+		if len(protected) > 0 {
+			r.data.lg.Warn("delete sessions by agent: active sessions skipped",
+				loggateway.StepID("data.session.delete_by_agent"),
+				loggateway.Int("skipped", len(protected)))
+		}
+	} else {
 		r.data.lg.Error("batch delete sessions by agent failed", loggateway.StepID("data.session.delete_by_agent"), loggateway.Err(err))
 	}
-	return entErrToBizErr(err, "SESSION")
+	return n, protected, entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]biz.ToolInvocationView, error) {

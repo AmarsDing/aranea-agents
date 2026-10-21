@@ -114,8 +114,8 @@ func (m *batchSessionRepo) RestoreSession(context.Context, string) (biz.Session,
 }
 func (m *batchSessionRepo) ArchiveSession(context.Context, string) (int, error) { return 0, nil }
 func (m *batchSessionRepo) DeleteSession(context.Context, string) (int, error)  { return 0, nil }
-func (m *batchSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
-	return nil
+func (m *batchSessionRepo) DeleteSessionsByAgentID(context.Context, string) (int, []string, error) {
+	return 0, nil, nil
 }
 func (m *batchSessionRepo) CountMessagesBySession(context.Context, string) (int, error) {
 	return 0, nil

@@ -53,8 +53,8 @@ func (fixedSessionRepo) RestoreSession(context.Context, string) (sessionsess.Ses
 }
 func (fixedSessionRepo) ArchiveSession(context.Context, string) (int, error) { return 0, nil }
 func (fixedSessionRepo) DeleteSession(context.Context, string) (int, error)  { return 0, nil }
-func (fixedSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
-	return nil
+func (fixedSessionRepo) DeleteSessionsByAgentID(context.Context, string) (int, []string, error) {
+	return 0, nil, nil
 }
 func (fixedSessionRepo) CountMessagesBySession(context.Context, string) (int, error) { return 0, nil }
 func (fixedSessionRepo) ListMessagesBySession(context.Context, string, int, int) ([]sessionsess.ChatMessage, error) {

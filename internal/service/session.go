@@ -329,9 +329,21 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 }
 
 // DeleteSessionsByAgent implements DELETE /v1/sessions.
+// FR-13（89 批次3）：running/awaiting_confirmation 会话被跳过不删；skipped 列表
+// 不进 proto 响应（emptypb.Empty 无对应字段），以 Warn 日志留证供审计。
 func (s *SessionService) DeleteSessionsByAgent(ctx context.Context, req *v1.DeleteSessionsByAgentRequest) (*emptypb.Empty, error) {
-	if err := s.uc.DeleteByAgent(ctx, req.GetAgentId()); err != nil {
+	deleted, skipped, err := s.uc.DeleteByAgent(ctx, req.GetAgentId())
+	if err != nil {
 		return nil, err
+	}
+	if len(skipped) > 0 {
+		s.lg.Warn("delete sessions by agent: active sessions skipped",
+			loggateway.StepID("service.session.delete_by_agent"),
+			loggateway.Str("agent_id", req.GetAgentId()),
+			loggateway.Int("deleted", deleted),
+			loggateway.Int("skipped", len(skipped)),
+			loggateway.Str("skipped_ids", strings.Join(skipped, ",")),
+		)
 	}
 	return &emptypb.Empty{}, nil
 }
