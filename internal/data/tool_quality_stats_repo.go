@@ -34,11 +34,8 @@ func (r *toolQualityStatsRepo) GetToolQualityStats(ctx context.Context, agentID 
 	}
 	repairedExpr := r.data.Dialect().JSONExtract("ti.metadata_json", "args_repaired")
 	invalidExpr := r.data.Dialect().JSONExtract("ti.metadata_json", "args_invalid")
-	// SQLite json_extract 对 JSON true 返回整数 1；Postgres ->> 返回文本 'true'。
+	// Postgres ->> 对 JSON true 返回文本 'true'。
 	trueLiteral := "'true'"
-	if r.data.Dialect().IsSQLite() {
-		trueLiteral = "1"
-	}
 	q := `
 SELECT ti.tool_key,
        COUNT(*) AS cnt,

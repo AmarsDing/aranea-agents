@@ -1,7 +1,6 @@
 cmd/admin/wire.go 4087
 cmd/checkteam/main.go 541
 cmd/launcher/main.go 508
-cmd/migrate-sqlite-to-postgres/migrator.go 524
 cmd/tools/agency-converter/main.go 971
 internal/a2a/federation_e2e_helpers_test.go 666
 internal/agent/agent_allocator_impl_test.go 666

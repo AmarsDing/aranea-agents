@@ -15,17 +15,15 @@ var memoryChainDDL string
 
 // EnsureSessionMemorySchema creates session-memory chain tables (L0–L4, evolution) if missing.
 // Safe on existing DBs (**CREATE IF NOT EXISTS**). FTS virtual tables are omitted (list APIs use LIKE).
-// When d is Postgres, SQLite-specific types (BLOB) are translated to Postgres equivalents (BYTEA).
+// BLOB types in the DDL are translated to Postgres BYTEA.
 func EnsureSessionMemorySchema(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
 	ddl := strings.TrimPrefix(memoryChainDDL, "\ufeff")
 	ddl = stripMemoryChainLineComments(ddl)
-	if d.IsPostgres() {
-		// Translate SQLite BLOB to Postgres BYTEA.
-		ddl = strings.ReplaceAll(ddl, "BLOB", "BYTEA")
-	}
+	// Translate BLOB to Postgres BYTEA.
+	ddl = strings.ReplaceAll(ddl, "BLOB", "BYTEA")
 	for _, stmt := range splitMemoryChainStatements(ddl) {
 		if stmt == "" {
 			continue

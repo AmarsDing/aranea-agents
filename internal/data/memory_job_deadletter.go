@@ -2,7 +2,7 @@ package data
 
 // memory_job_deadletter.go — MEM-OPT-03: persistent dead-letter store for AutoMemory jobs.
 //
-// Implements trpcmem.MemoryDeadLetterSink using the raw SQLite database.
+// Implements trpcmem.MemoryDeadLetterSink using the raw Postgres database.
 // Table is created by DDL migration 20260728 (primary path, DB-R4 compliance).
 // The ensureTable() safety net handles the Wire-construction-vs-P1-migration race.
 
@@ -42,14 +42,8 @@ func (r *MemoryJobDeadLetterRepo) ensureTable() {
 	if db == nil {
 		return
 	}
-	// Dialect-aware auto-increment syntax:
-	// SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
-	// Postgres: BIGSERIAL PRIMARY KEY
-	d := r.data.Dialect()
-	idColDef := "id INTEGER PRIMARY KEY AUTOINCREMENT"
-	if d.IsPostgres() {
-		idColDef = "id BIGSERIAL PRIMARY KEY"
-	}
+	// Postgres auto-increment syntax: BIGSERIAL PRIMARY KEY.
+	idColDef := "id BIGSERIAL PRIMARY KEY"
 	_, err := db.Exec(fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS memory_job_deadletter (
     %s,

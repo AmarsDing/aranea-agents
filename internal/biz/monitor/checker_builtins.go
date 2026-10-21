@@ -98,16 +98,10 @@ func (c *DBHealthChecker) Check(ctx context.Context) types.SelfCheckResult {
 	}
 	pingMs := time.Since(start).Milliseconds()
 
-	// Step 2: Verify monitor_events table exists (dialect-aware).
-	//   Postgres: information_schema.tables (SQL standard)
-	//   SQLite:   sqlite_master (SQLite system catalog)
+	// Step 2: Verify monitor_events table exists. Postgres only (SQLite
+	// support removed 2026-10-21): information_schema.tables (SQL standard).
 	var tableName string
-	var query string
-	if c.db.Dialect() == "postgres" {
-		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'monitor_events' LIMIT 1"
-	} else {
-		query = "SELECT name FROM sqlite_master WHERE type='table' AND name='monitor_events' LIMIT 1"
-	}
+	query := "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'monitor_events' LIMIT 1"
 	row := c.db.QueryRowContext(ctx, query)
 	if err := row.Scan(&tableName); err != nil {
 		result.Status = types.SelfCheckStatusFailed

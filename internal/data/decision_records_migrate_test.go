@@ -33,11 +33,6 @@ func TestDecisionRecordsMigration_PG(t *testing.T) {
 		}
 	}
 
-	// GIN Func must skip cleanly on non-Postgres dialects.
-	if err := ddlDecisionRecordsGINIndexes(ctx, db, nil, DialectSQLite, lg); err != nil {
-		t.Fatalf("gin skip on sqlite dialect: %v", err)
-	}
-
 	var n int
 	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM pg_indexes WHERE tablename='decision_records'`,

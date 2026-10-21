@@ -22,7 +22,7 @@ import (
 // without failing recall.
 func (r *l3FactRepo) searchL3Trigram(ctx context.Context, scopeType, scopeID, userID, query string, limit int) ([]string, error) {
 	query = strings.TrimSpace(query)
-	if r == nil || r.data == nil || !r.data.Dialect().IsPostgres() {
+	if r == nil || r.data == nil {
 		return nil, nil
 	}
 	if utf8.RuneCountInString(query) < 2 {

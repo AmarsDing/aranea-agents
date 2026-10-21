@@ -23,12 +23,9 @@ server:
   monitor:
     process_log_enabled: true
 data:
-  # Postgres is the only supported primary database in production.
+  # Postgres is the only supported primary database in production
+  # (SQLite support removed 2026-10-21).
   driver: postgres
-  sqlite:
-    # Ignored by NewData; kept for CLI maintenance tools.
-    enable: false
-    source: file:./data/arenea.sqlite?_fk=1
   initial_admin:
     name: dev
     email: dev@local.invalid

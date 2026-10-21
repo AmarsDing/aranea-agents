@@ -278,9 +278,6 @@ server:
     process_log_enabled: true
 data:
   driver: postgres
-  sqlite:
-    enable: false
-    source: file:./data/arenea.sqlite?cache=shared&_fk=1
   initial_admin:
     name: admin
     email: admin@local.invalid

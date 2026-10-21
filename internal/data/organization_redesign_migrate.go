@@ -108,11 +108,7 @@ func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, d Dialect, 
 
 	// Copy rows from industry_taxonomy that don't already exist in organizations.
 	// Map: taxonomy_key → org_key, keep all other columns as-is.
-	// SQLite: INSERT OR IGNORE INTO ...
-	// Postgres: INSERT INTO ... ON CONFLICT (id) DO NOTHING
-	var copySQL string
-	if d.IsPostgres() {
-		copySQL = `
+	copySQL := `
 		INSERT INTO organizations (id, org_key, name, description, status, enabled, sort_order,
 			parent_id, level, scenario_key, workspace_id, owner_user_id, is_system,
 			config_json, metadata_json, created_at, updated_at, deleted_at)
@@ -122,17 +118,6 @@ func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, d Dialect, 
 		FROM industry_taxonomy
 		WHERE id NOT IN (SELECT id FROM organizations)
 		ON CONFLICT (id) DO NOTHING`
-	} else {
-		copySQL = `
-		INSERT OR IGNORE INTO organizations (id, org_key, name, description, status, enabled, sort_order,
-			parent_id, level, scenario_key, workspace_id, owner_user_id, is_system,
-			config_json, metadata_json, created_at, updated_at, deleted_at)
-		SELECT id, taxonomy_key, name, description, status, enabled, sort_order,
-			parent_id, level, scenario_key, workspace_id, owner_user_id, is_system,
-			config_json, metadata_json, created_at, updated_at, deleted_at
-		FROM industry_taxonomy
-		WHERE id NOT IN (SELECT id FROM organizations)`
-	}
 	_, err = tx.ExecContext(ctx, copySQL)
 	if err != nil {
 		lg.Warn("organization redesign: copy data from industry_taxonomy failed (non-fatal)",
@@ -216,9 +201,9 @@ func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, d
 
 	for _, c := range newColumns {
 		// Postgres requires a real boolean literal for BOOLEAN columns;
-		// SQLite uses INTEGER 0/1. Translate "BOOLEAN DEFAULT 0" → "BOOLEAN DEFAULT FALSE".
+		// translate "BOOLEAN DEFAULT 0" → "BOOLEAN DEFAULT FALSE".
 		colType := c.typ
-		if d.IsPostgres() && colType == "BOOLEAN DEFAULT 0" {
+		if colType == "BOOLEAN DEFAULT 0" {
 			colType = "BOOLEAN DEFAULT FALSE"
 		}
 		stmt := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, c.table, c.col, colType)

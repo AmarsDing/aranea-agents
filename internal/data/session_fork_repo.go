@@ -71,24 +71,18 @@ func stripForkIDPrefixes(id string) string {
 	return forkIDPrefixRe.ReplaceAllString(id, "")
 }
 
-// stripForkPrefixSQL 双方言的 SQL 侧前缀剥离表达式（与 stripForkIDPrefixes
-// 同语义）。PG regexp_replace 支持多层叠加；SQLite 无内建正则，用定长
-// GLOB + substr 剥单层——归一不变量（每次 fork 重映射为单层新前缀）保证
-// 源会话 v2 行 id 至多一层前缀，单层剥离闭合。
+// stripForkPrefixSQL 返回 SQL 侧前缀剥离表达式（与 stripForkIDPrefixes
+// 同语义）。PG regexp_replace 支持多层叠加——归一不变量（每次 fork 重映射
+// 为单层新前缀）保证源会话 v2 行 id 至多一层前缀，单层剥离闭合。
 func stripForkPrefixSQL(d Dialect, col string) string {
-	if d.IsPostgres() {
-		return "regexp_replace(" + col + ", '^(fk[0-9a-fA-F]{8}-)+', '')"
-	}
-	const h = "[0-9a-fA-F]"
-	return "CASE WHEN " + col + " GLOB 'fk" + h + h + h + h + h + h + h + h + "-*' " +
-		"THEN substr(" + col + ", 12) ELSE " + col + " END"
+	return "regexp_replace(" + col + ", '^(fk[0-9a-fA-F]{8}-)+', '')"
 }
 
 func (r *sessionForkRepo) FindTurnEventBoundary(ctx context.Context, sessionID, turnID string) (int64, bool, error) {
 	// 多代 fork：分叉点为继承 turn 时 id 带 fk 前缀，剥离后匹配复制事件的
 	// 无前缀 invocationId（根会话 turn id 无前缀，剥离为恒等）。
 	turnID = stripForkIDPrefixes(turnID)
-	// JSONExtract 双方言：PG COALESCE(...::jsonb)->>'invocationId'；SQLite json_extract。
+	// JSONExtract：PG COALESCE(NULLIF(event::text,'')::jsonb,...)->>'invocationId'。
 	invExpr := r.data.Dialect().JSONExtract("event", "invocationId")
 	q := r.data.Dialect().RenumberPlaceholders(`
 		SELECT COUNT(1), COALESCE(MAX(id), 0) FROM trpc_session_events

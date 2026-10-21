@@ -193,8 +193,9 @@ func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Rec
 }
 
 // provideMemoryTRPCService builds the trpc-agent-go memory Service backed by
-// the SQLite adapter. Centralizing construction here lets both the composite
-// recall usecase (P3-11) and the persistence set share the same instance.
+// the Postgres-backed fact adapters (internal/memory/trpc). Centralizing
+// construction here lets both the composite recall usecase (P3-11) and the
+// persistence set share the same instance.
 func provideMemoryTRPCService(
 	d *data.Data,
 	agentsUC *biz.AgentUsecase,
@@ -225,7 +226,7 @@ func provideMemoryTRPCService(
 // MEMORY_LINK_EVOLUTION_PROVIDER / MEMORY_LINK_EVOLUTION_MODEL env vars; when
 // unset, llm is nil and EvolveLinks gracefully degrades to a no-op (warn log
 // inside the implementation). The evolution queue is intentionally nil: the
-// sqlite adapter triggers EvolveLinks directly via safego.Go, so the
+// memory service triggers EvolveLinks directly via safego.Go, so the
 // queue/worker loop is not needed.
 func provideLinkEvolutionService(
 	d *data.Data,
@@ -254,7 +255,7 @@ func provideLinkEvolutionService(
 		llm,
 		data.NewL3FactReaderForUser(d),
 		data.NewL3FactWriterAdapter(d, d.VectorStore()),
-		nil, // queue: not needed — sqlite adapter calls EvolveLinks directly
+		nil, // queue: not needed — memory service calls EvolveLinks directly
 		d,   // tx: *data.Data implements memory.TxProvider for atomic backlink updates
 		lg,
 	)

@@ -94,17 +94,11 @@ func buildTimelineUnionSQL(sessionID, kindFilter string, dialect Dialect) (strin
 		// Filter by spirit_session_id (root Spirit session) and use
 		// started_at as occurred_at.
 		//
-		// steps_v2.started_at is a timestamp column (Postgres timestamptz /
-		// SQLite TEXT), while skill/tool branches return occurred_at as an
-		// ISO8601 string. We normalize via dialect-specific formatting so
-		// the UNION ALL ORDER BY is consistent.
-		var tsExpr string
-		if dialect.IsPostgres() {
-			tsExpr = `to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
-		} else {
-			// SQLite: started_at stored as TEXT in ISO8601 already.
-			tsExpr = `started_at`
-		}
+		// steps_v2.started_at is a timestamp column (Postgres timestamptz),
+		// while skill/tool branches return occurred_at as an ISO8601 string.
+		// We normalize to an ISO8601 UTC string so the UNION ALL ORDER BY is
+		// consistent.
+		tsExpr := `to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 		branches = append(branches, fmt.Sprintf(
 			`SELECT 'message' AS src_kind, id, %s AS occurred_at FROM steps_v2 WHERE spirit_session_id = ? AND kind IN ('task', 'reply')`,
 			tsExpr,

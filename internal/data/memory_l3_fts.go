@@ -45,11 +45,11 @@ const (
 
 // searchL3FTS returns FTS-ranked fact IDs (best first) for the query within
 // the given scope, using ts_rank over statement + details_markdown.
-// Non-Postgres dialects and blank queries return nil — callers degrade to
-// vector-only / Go-keyword scoring.
+// Blank queries return nil — callers degrade to vector-only / Go-keyword
+// scoring.
 func (r *l3FactRepo) searchL3FTS(ctx context.Context, scopeType, scopeID, userID, query string, limit int) ([]string, error) {
 	query = strings.TrimSpace(query)
-	if r == nil || r.data == nil || query == "" || !r.data.Dialect().IsPostgres() {
+	if r == nil || r.data == nil || query == "" {
 		return nil, nil
 	}
 	if limit <= 0 {

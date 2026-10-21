@@ -103,7 +103,7 @@ func ddlMemoryRecallDefaultsFix(ctx context.Context, rawDB *sql.DB, _ *ent.Clien
 // Postgres-only: to_tsvector/GIN do not exist on SQLite, so CLI tools and
 // SQLite tests skip it (FTS candidate search degrades to nil there).
 func ddlMemoryFactsFTSIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("memory_facts_fts_index skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.memory_facts_fts"))
 		return nil
@@ -114,7 +114,7 @@ func ddlMemoryFactsFTSIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d
 // ddlMemoryFactsTrgmIndex creates the pg_trgm GIN index on memory_facts.statement
 // (P1-2). Postgres-only: gin_trgm_ops does not exist on SQLite.
 func ddlMemoryFactsTrgmIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("memory_facts_trgm_index skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.memory_facts_trgm"))
 		return nil
@@ -127,7 +127,7 @@ func ddlMemoryFactsTrgmIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, 
 // Postgres-only: GIN/jsonb cast do not exist on SQLite; columns are TEXT-stored
 // JSON per dual-dialect convention, so the index targets (col::jsonb).
 func ddlDecisionRecordsGINIndexes(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("decision_records_gin_indexes skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.decision_records_gin"))
 		return nil
@@ -139,7 +139,7 @@ func ddlDecisionRecordsGINIndexes(ctx context.Context, rawDB *sql.DB, _ *ent.Cli
 // source_run_id equality filters (M80 1.10 perf tuning, NFR-80-04).
 // Postgres-only: the indexed expression casts TEXT->jsonb; SQLite skips.
 func ddlDecisionRecordsRunIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("decision_records_runid_idx skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.decision_records_runid_idx"))
 		return nil
@@ -152,7 +152,7 @@ func ddlDecisionRecordsRunIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Cli
 // 2026-08-27 chat-side gate aggregation surface). Postgres-only: the indexed
 // expression casts TEXT->jsonb; SQLite skips.
 func ddlDecisionRecordsSessionIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("decision_records_sessionid_idx skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.decision_records_sessionid_idx"))
 		return nil
@@ -163,7 +163,7 @@ func ddlDecisionRecordsSessionIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent
 // ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).
 // Skipped on non-Postgres dialects (SQLite tests / CLI).
 func ddlTenantRLSPhase1(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("tenant_rls_phase1 skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.tenant_rls_phase1"))
 		return nil
@@ -178,7 +178,7 @@ func ddlTenantRLSPhase1(ctx context.Context, rawDB *sql.DB, entClient *ent.Clien
 // schema（entsql.IndexWhere 同谓词）建库时直接落成部分索引。
 // Idempotent: DROP IF EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS.
 func ddlAgentsPositionPartialUnique(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("agents_position_variant_partial_unique skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.agents_position_partial_unique"))
 		return nil
@@ -198,7 +198,7 @@ func ddlAgentsPositionPartialUnique(ctx context.Context, rawDB *sql.DB, _ *ent.C
 // 数据为退役遗留。Idempotent: DROP TABLE IF EXISTS.
 // sessions_v2 刻意保留：spirit 会话根实体（session_v2_repo.go 活跃），非死表。
 func ddlDropRetiredLegacyTables(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("drop_retired_legacy_tables skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.drop_retired_legacy_tables"))
 		return nil
@@ -215,7 +215,7 @@ func ddlDropRetiredLegacyTables(ctx context.Context, rawDB *sql.DB, _ *ent.Clien
 // (进化建议模块 P0-1a, IDOR 修复): column + index + backfill from host tables
 // (skill/agents) + RLS policy. Skipped on non-Postgres dialects.
 func ddlUnifiedEvolutionWorkspace(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("unified_evolution_workspace skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.unified_evolution_workspace"))
 		return nil
@@ -252,7 +252,7 @@ func ddlUsageEventsTraceIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Clien
 // never abort startup. Postgres-only: SQLite 侧由 Ent schema 建列。
 // Idempotent: ADD COLUMN IF NOT EXISTS + value-guarded UPDATE.
 func ddlToolGrantsExpiresAt(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("tool_grants_expires_at skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.tool_grants_expires_at"))
 		return nil
@@ -279,12 +279,12 @@ func ddlToolGrantsExpiresAt(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d
 
 // ddlToolInvocationsWorkspace adds workspace_id to tool_invocations
 // (A2, tools 端到端审计 2026-10-19): column + (workspace_id, started_at) index
-// + backfill from agents by agent_id. 宿主缺失的存量行保持 ''（仅系统调用方
+// + backfill from agents by agent_id. 宿主缺失的存量行保持 ”（仅系统调用方
 // 在 KPI 聚合可见）。Postgres-only：SQLite 侧由 Ent schema 建列（同
 // ddlToolGrantsExpiresAt 惯例）。Idempotent: ADD COLUMN IF NOT EXISTS +
 // CREATE INDEX IF NOT EXISTS + 空值守卫 UPDATE。
 func ddlToolInvocationsWorkspace(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("tool_invocations_workspace skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.tool_invocations_workspace"))
 		return nil
@@ -353,7 +353,7 @@ func ddlToolsRetryParallelDefaultOn(ctx context.Context, rawDB *sql.DB, _ *ent.C
 // Postgres-only: SQLite INTEGER is 64-bit and unaffected.
 // Idempotent: information_schema type guard, ALTER only when still integer.
 func ddlMonitorAlertFiringMsBigint(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("monitor_alert_firing_ms_bigint skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.monitor_alert_firing_ms_bigint"))
 		return nil
@@ -387,7 +387,7 @@ func ddlMonitorAlertFiringMsBigint(ctx context.Context, rawDB *sql.DB, _ *ent.Cl
 // PG varchar 加宽仅系统目录变更、不重写表、无损。SQLite 不校验 varchar 长度，
 // 跳过。幂等：information_schema 长度守卫，已达 512 不再 ALTER。
 func ddlSIRunClosedReasonWiden(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("si_run_closed_reason_widen skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.si_run_closed_reason_widen"))
 		return nil
@@ -441,24 +441,13 @@ func ddlUsageWaitMSColumns(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d 
 			return fmt.Errorf("add model_token_usage_events.%s: %w", col, err)
 		}
 	}
-	var backfill string
-	if d.IsPostgres() {
-		backfill = `
+	backfill := `
 UPDATE model_token_usage_events SET
   wait_ms = COALESCE((metadata_json::json->>'wait_ms')::int, 0),
   model_latency_ms = COALESCE((metadata_json::json->>'model_latency_ms')::int, 0)
 WHERE wait_ms = 0 AND model_latency_ms = 0
   AND metadata_json IS NOT NULL AND metadata_json <> '' AND metadata_json <> '{}'
   AND (metadata_json::jsonb ? 'wait_ms' OR metadata_json::jsonb ? 'model_latency_ms')`
-	} else {
-		backfill = `
-UPDATE model_token_usage_events SET
-  wait_ms = COALESCE(CAST(json_extract(metadata_json, '$.wait_ms') AS INTEGER), 0),
-  model_latency_ms = COALESCE(CAST(json_extract(metadata_json, '$.model_latency_ms') AS INTEGER), 0)
-WHERE wait_ms = 0 AND model_latency_ms = 0
-  AND (json_extract(metadata_json, '$.wait_ms') IS NOT NULL
-    OR json_extract(metadata_json, '$.model_latency_ms') IS NOT NULL)`
-	}
 	if _, err := rawDB.ExecContext(ctx, backfill); err != nil {
 		return fmt.Errorf("backfill usage wait_ms: %w", err)
 	}
@@ -469,7 +458,7 @@ WHERE wait_ms = 0 AND model_latency_ms = 0
 // ivfflat to HNSW. Skipped when knowledge_chunks is not present yet
 // (EnsureKnowledgeSchema owns the fresh shape).
 func ddlKnowledgeChunksEmbeddingHNSW(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		lg.Info("knowledge_chunks_embedding_hnsw skipped (non-postgres or nil db)",
 			loggateway.StepID("data.ddl_migration.knowledge_hnsw"))
 		return nil

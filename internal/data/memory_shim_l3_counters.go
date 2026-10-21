@@ -109,9 +109,6 @@ func (r *l3FactRepo) RecordFactCitations(ctx context.Context, citations []biz.Fa
 		return nil
 	}
 	insertSQL := `INSERT INTO memory_fact_citations (fact_id, turn_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`
-	if !r.data.Dialect().IsPostgres() {
-		insertSQL = `INSERT OR IGNORE INTO memory_fact_citations (fact_id, turn_id, created_at) VALUES (?, ?, ?)`
-	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		for _, c := range citations {

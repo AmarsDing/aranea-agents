@@ -95,23 +95,14 @@ func monitorTracesColumnPatches() []columnPatch {
 }
 
 // monitorEventsColumnPatches returns the generated-column patches for monitor_events.
-// Dialect-aware: SQLite uses VIRTUAL generated columns; Postgres uses STORED.
+// Postgres stores them as STORED generated columns.
 func monitorEventsColumnPatches(d Dialect) []columnPatch {
-	if d.IsPostgres() {
-		return []columnPatch{
-			{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "session_id") + ") STORED"},
-			{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "invocation_id") + ") STORED"},
-			{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "agent_id") + ") STORED"},
-			{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "trace_id") + ") STORED"},
-			{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms DOUBLE PRECISION GENERATED ALWAYS AS (CAST(" + d.JSONExtract("metadata_json", "duration_ms") + " AS DOUBLE PRECISION)) STORED"},
-		}
-	}
 	return []columnPatch{
-		{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.session_id')) VIRTUAL"},
-		{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.invocation_id')) VIRTUAL"},
-		{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.agent_id')) VIRTUAL"},
-		{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.trace_id')) VIRTUAL"},
-		{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms REAL GENERATED ALWAYS AS (CAST(json_extract(metadata_json, '$.duration_ms') AS REAL)) VIRTUAL"},
+		{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "session_id") + ") STORED"},
+		{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "invocation_id") + ") STORED"},
+		{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "agent_id") + ") STORED"},
+		{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "trace_id") + ") STORED"},
+		{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms DOUBLE PRECISION GENERATED ALWAYS AS (CAST(" + d.JSONExtract("metadata_json", "duration_ms") + " AS DOUBLE PRECISION)) STORED"},
 	}
 }
 
@@ -187,21 +178,12 @@ WHERE (agent_id = '' AND %s != '')
 	return nil
 }
 
-// createMonitorTraceSpansTable creates the monitor_trace_spans table with
-// dialect-aware auto-increment and timestamp column types.
-//
-// SQLite: INTEGER PRIMARY KEY AUTOINCREMENT, INTEGER timestamps (8 bytes).
+// createMonitorTraceSpansTable creates the monitor_trace_spans table.
 // Postgres: BIGSERIAL PRIMARY KEY, BIGINT timestamps (INTEGER is 4 bytes and
 // overflows on nanosecond timestamps).
 func createMonitorTraceSpansTable(ctx context.Context, db execer, d Dialect) error {
-	idColDef := "id INTEGER PRIMARY KEY AUTOINCREMENT"
-	if d.IsPostgres() {
-		idColDef = "id BIGSERIAL PRIMARY KEY"
-	}
-	tsType := "INTEGER"
-	if d.IsPostgres() {
-		tsType = "BIGINT"
-	}
+	idColDef := "id BIGSERIAL PRIMARY KEY"
+	tsType := "BIGINT"
 	if _, err := db.ExecContext(ctx, fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS monitor_trace_spans (
     %s,
@@ -252,19 +234,11 @@ func createMonitorEventsIndexes(ctx context.Context, db execer) error {
 	return nil
 }
 
-// columnExistsWithDialect is the dialect-aware variant of columnExists.
-// SQLite: pragma_table_info(table) WHERE name = ?
+// columnExistsWithDialect reports whether the given column exists on the table.
 // Postgres: information_schema.columns WHERE table_name = $1 AND column_name = $2
 func columnExistsWithDialect(ctx context.Context, db execer, table, column string, d Dialect) (bool, error) {
-	var query string
-	var args []any
-	if d.IsPostgres() {
-		query = `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2 LIMIT 1`
-		args = []any{table, column}
-	} else {
-		query = `SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1`
-		args = []any{table, column}
-	}
+	query := `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2 LIMIT 1`
+	args := []any{table, column}
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return false, err
@@ -283,24 +257,14 @@ func (r *monitorRepo) InsertMonitorTrace(ctx context.Context, tw biz.MonitorTrac
 		status = "running"
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	d := r.data.Dialect()
-	// SQLite: INSERT OR IGNORE; Postgres: INSERT ... ON CONFLICT DO NOTHING.
+	// Postgres: INSERT ... ON CONFLICT DO NOTHING.
 	// The conflict target is the primary key (id).
-	var sql string
-	if d.IsPostgres() {
-		sql = `INSERT INTO monitor_traces
+	sql := `INSERT INTO monitor_traces
 		 (id, trace_key, name, description, status, metadata_json, created_at, updated_at, deleted_at,
 		  session_id, run_id, invocation_id, agent_id, provider, model, team_id, parent_trace_id,
 		  duration_ms, span_count, error_count, total_tokens, total_cost_usd)
 		 VALUES ($1, $2, $3, '', $4, $5, $6, $7, '', $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		 ON CONFLICT (id) DO NOTHING`
-	} else {
-		sql = `INSERT OR IGNORE INTO monitor_traces
-		 (id, trace_key, name, description, status, metadata_json, created_at, updated_at, deleted_at,
-		  session_id, run_id, invocation_id, agent_id, provider, model, team_id, parent_trace_id,
-		  duration_ms, span_count, error_count, total_tokens, total_cost_usd)
-		 VALUES (?, ?, ?, '', ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, sql,
 		id, tw.TraceID, tw.Name, status, tw.MetadataJSON, now, now,
 		tw.SessionID, tw.RunID, tw.InvocationID, tw.AgentID, tw.Provider, tw.Model, tw.TeamID, tw.ParentTraceID,
@@ -310,25 +274,13 @@ func (r *monitorRepo) InsertMonitorTrace(ctx context.Context, tw biz.MonitorTrac
 }
 
 func (r *monitorRepo) UpsertMonitorTraceSpan(ctx context.Context, sw biz.MonitorTraceSpanWrite) error {
-	d := r.data.Dialect()
-	var sql string
-	if d.IsPostgres() {
-		sql = `INSERT INTO monitor_trace_spans (trace_id, span_id, parent_span_id, kind, name, started_at, ended_at, status, attributes_json, error_json)
+	sql := `INSERT INTO monitor_trace_spans (trace_id, span_id, parent_span_id, kind, name, started_at, ended_at, status, attributes_json, error_json)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 ON CONFLICT (trace_id, span_id) DO UPDATE SET
 		   ended_at = EXCLUDED.ended_at,
 		   status = EXCLUDED.status,
 		   attributes_json = EXCLUDED.attributes_json,
 		   error_json = EXCLUDED.error_json`
-	} else {
-		sql = `INSERT INTO monitor_trace_spans (trace_id, span_id, parent_span_id, kind, name, started_at, ended_at, status, attributes_json, error_json)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(trace_id, span_id) DO UPDATE SET
-		   ended_at = excluded.ended_at,
-		   status = excluded.status,
-		   attributes_json = excluded.attributes_json,
-		   error_json = excluded.error_json`
-	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, sql,
 		sw.TraceID, sw.SpanID, sw.ParentSpanID, sw.Kind, sw.Name,
 		sw.StartedAt, sw.EndedAt, sw.Status, sw.AttributesJSON, sw.ErrorJSON,
@@ -369,26 +321,15 @@ func (r *monitorRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID 
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	d := r.data.Dialect()
 	// provider/model are backfilled only when the stored column is still empty:
 	// flow-log metadata often lacks them, while usage events carry the
 	// authoritative provider/model of the actual LLM call.
-	var sql string
-	if d.IsPostgres() {
-		sql = `UPDATE monitor_traces SET status = $1, duration_ms = $2, span_count = $3, error_count = $4,
+	sql := `UPDATE monitor_traces SET status = $1, duration_ms = $2, span_count = $3, error_count = $4,
 		 total_tokens = $5, total_cost_usd = $6,
 		 provider = CASE WHEN provider = '' AND $7 != '' THEN $7 ELSE provider END,
 		 model    = CASE WHEN model    = '' AND $8 != '' THEN $8 ELSE model    END,
 		 updated_at = $9
 		 WHERE id = $10 AND deleted_at = ''`
-	} else {
-		sql = `UPDATE monitor_traces SET status = ?, duration_ms = ?, span_count = ?, error_count = ?,
-		 total_tokens = ?, total_cost_usd = ?,
-		 provider = CASE WHEN provider = '' AND ? != '' THEN ? ELSE provider END,
-		 model    = CASE WHEN model    = '' AND ? != '' THEN ? ELSE model    END,
-		 updated_at = ?
-		 WHERE id = ? AND deleted_at = ''`
-	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, sql,
 		c.Status, c.DurationMs, c.SpanCount, c.ErrorCount, c.TotalTokens, c.TotalCostUsd,
 		c.Provider, c.Model, now, traceID,
@@ -475,18 +416,14 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 	}
 	sinceStr := time.Now().UTC().Add(-since).Format(time.RFC3339)
 	d := r.data.Dialect()
-	// Build dialect-aware COALESCE expressions for JSON extraction.
-	// SQLite: COALESCE(meta_trace_id, json_extract(metadata_json, '$.trace_id'), '')
+	// Build COALESCE expressions for JSON extraction.
 	// Postgres: COALESCE(meta_trace_id, metadata_json ->> 'trace_id', '')
 	traceIDExpr := d.JSONExtract("metadata_json", "trace_id")
 	sessionIDExpr := d.JSONExtract("metadata_json", "session_id")
 	runIDExpr := d.JSONExtract("metadata_json", "run_id")
 	agentIDExpr := d.JSONExtract("metadata_json", "agent_id")
 	durationExpr := d.JSONExtract("metadata_json", "duration_ms")
-	var sql string
-	var args []any
-	if d.IsPostgres() {
-		sql = fmt.Sprintf(`SELECT COALESCE(meta_trace_id, %s, '') AS trace_id,
+	sql := fmt.Sprintf(`SELECT COALESCE(meta_trace_id, %s, '') AS trace_id,
 		        COALESCE(meta_session_id, %s, event_key) AS session_id,
 		        COALESCE(%s, '') AS run_id,
 		        COALESCE(meta_agent_id, %s, '') AS agent_id,
@@ -497,21 +434,7 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 		 WHERE event_key = 'runner.completion' AND created_at >= $1 AND deleted_at = ''
 		 ORDER BY created_at DESC
 		 LIMIT $2`, traceIDExpr, sessionIDExpr, runIDExpr, agentIDExpr, durationExpr)
-		args = []any{sinceStr, limit}
-	} else {
-		sql = fmt.Sprintf(`SELECT COALESCE(meta_trace_id, %s, '') AS trace_id,
-		        COALESCE(meta_session_id, %s, event_key) AS session_id,
-		        COALESCE(%s, '') AS run_id,
-		        COALESCE(meta_agent_id, %s, '') AS agent_id,
-		        CASE WHEN status = 'error' THEN 'error' ELSE 'ok' END AS status,
-		        COALESCE(%s, 0) AS duration_ms,
-		        created_at
-		 FROM monitor_events
-		 WHERE event_key = 'runner.completion' AND created_at >= ? AND deleted_at = ''
-		 ORDER BY created_at DESC
-		 LIMIT ?`, traceIDExpr, sessionIDExpr, runIDExpr, agentIDExpr, durationExpr)
-		args = []any{sinceStr, limit}
-	}
+	args := []any{sinceStr, limit}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "monitor")

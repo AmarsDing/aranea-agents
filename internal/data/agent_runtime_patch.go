@@ -8,8 +8,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// tableExistsWithDialect checks whether a table exists using dialect-aware
-// catalog queries (sqlite_master for SQLite, information_schema for Postgres).
+// tableExistsWithDialect checks whether a table exists via the Postgres
+// information_schema catalog.
 //
 // The query is sourced from Dialect.TableExistsQuery and executed via the
 // *ent.Client's QueryContext (shares the same connection pool as the Ent
@@ -29,8 +29,8 @@ func tableExistsWithDialect(ctx context.Context, c *ent.Client, lg loggateway.Lo
 	return rows.Next(), rows.Err()
 }
 
-// indexExistsWithDialect checks whether an index exists using dialect-aware
-// catalog queries (pragma_index_list for SQLite, pg_indexes for Postgres).
+// indexExistsWithDialect checks whether an index exists via the Postgres
+// pg_indexes catalog.
 //
 // The query is sourced from Dialect.IndexExistsQuery and executed via the
 // *ent.Client's QueryContext (shares the same connection pool as the Ent

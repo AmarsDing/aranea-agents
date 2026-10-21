@@ -24,7 +24,7 @@ import (
 //  4. usage events（metadata.trace_id 直配）回填 tokens/cost/provider/model；
 //  5. 无任何佐证的行保持 interrupted（真实中断，不粉饰）。
 //
-// 仅 Postgres 执行（生产唯一驱动）；SQLite（遗留 CLI）直接记录跳过。
+// 仅 Postgres 执行（生产唯一驱动）。
 func RunMonitorTraceInterruptedBackfillMigration(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("monitor trace interrupted backfill migration: ent client required")
@@ -38,9 +38,6 @@ func RunMonitorTraceInterruptedBackfillMigration(ctx context.Context, client *en
 	}
 	record := func() error {
 		return recordMigrationApplied(ctx, client, d, MigrationMonitorTraceInterruptedBackfill, migrationNameMonitorTraceInterruptedBackfill, lg)
-	}
-	if !d.IsPostgres() {
-		return record()
 	}
 	for _, table := range []string{"monitor_traces", "monitor_trace_spans"} {
 		has, err := tableExistsWithDialect(ctx, client, lg, table, d)

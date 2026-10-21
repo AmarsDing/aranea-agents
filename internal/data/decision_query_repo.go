@@ -13,11 +13,10 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// decisionQueryRepo 是 decision.QueryRepo 的 raw-SQL 双方言实现
+// decisionQueryRepo 是 decision.QueryRepo 的 raw-SQL 实现
 // （M80 Phase 1 查询面，设计 §4.2）。与 decision_repo.go 同表不同型：
 // 写侧为幂等 insert/outbox，读侧为过滤分页查询。JSON 过滤走 Dialect
-// 辅助（SQLite json_extract/json_each，PG ->>/json_array_elements），
-// 全部条件下推到 DB 侧，禁全表扫。
+// 辅助（PG ->>/jsonb 辅助），全部条件下推到 DB 侧，禁全表扫。
 type decisionQueryRepo struct {
 	data *Data
 	lg   loggateway.Logger
@@ -55,26 +54,20 @@ func buildDecisionListWhere(d Dialect, f decision.ListFilter) (string, []any) {
 		args = append(args, s)
 	}
 	// 实体过滤：related_entities 数组内对象 {type,key} 成对匹配。
-	// PG 走 @> 包含且表达式必须是裸 related_entities::jsonb——与 20261252
+	// 走 @> 包含且表达式必须是裸 related_entities::jsonb——与 20261252
 	// entities GIN 索引表达式精确一致方可命中（COALESCE 防御壳会导致索引
 	// 失配全表扫，1.10 实测 1.28s/276ms 两连踩）；列 NOT NULL DEFAULT '[]'
 	// 且写入侧恒为 json.Marshal 产物，裸转换安全。语义与 jsonb_array_elements
-	// 成对比较等价（数组任一元素含该 type+key 即中）。SQLite 保留 json_each。
+	// 成对比较等价（数组任一元素含该 type+key 即中）。
 	if strings.TrimSpace(f.EntityType) != "" && strings.TrimSpace(f.EntityKey) != "" {
-		if d.IsPostgres() {
-			conds = append(conds, `related_entities::jsonb @> ?::jsonb`)
-			containment, err := json.Marshal([]decision.EntityRef{
-				{Type: strings.TrimSpace(f.EntityType), Key: strings.TrimSpace(f.EntityKey)},
-			})
-			if err != nil {
-				return "", nil
-			}
-			args = append(args, string(containment))
-		} else {
-			conds = append(conds, `EXISTS (SELECT 1 FROM json_each(related_entities) je `+
-				`WHERE json_extract(je.value, '$.type') = ? AND json_extract(je.value, '$.key') = ?)`)
-			args = append(args, strings.TrimSpace(f.EntityType), strings.TrimSpace(f.EntityKey))
+		conds = append(conds, `related_entities::jsonb @> ?::jsonb`)
+		containment, err := json.Marshal([]decision.EntityRef{
+			{Type: strings.TrimSpace(f.EntityType), Key: strings.TrimSpace(f.EntityKey)},
+		})
+		if err != nil {
+			return "", nil
 		}
+		args = append(args, string(containment))
 	}
 	// source_run_id 过滤：source_ref.run_id（btree 表达式索引见 20261254）。
 	if s := strings.TrimSpace(f.SourceRunID); s != "" {
@@ -164,8 +157,7 @@ func (r *decisionQueryRepo) ListRecords(ctx context.Context, f decision.ListFilt
 var _ decision.RunGateStatsRepo = (*decisionQueryRepo)(nil)
 
 // RunGateStats 聚合一个 run 的 system_guard 记录（79-runtime-governance R7）。
-// 只取三列 JSON 抽取值、Go 侧计数求和——双方言零分支（SQLite json_extract
-// 数值返回 INTEGER、PG ->> 返回 text，统一扫 NullString 后解析）。单 run 的
+// 只取三列 JSON 抽取值、Go 侧计数求和——统一扫 NullString 后解析。单 run 的
 // guard 记录量级小（闸干预/剪枝/压缩事件），全行扫描可接受；过滤走下推的
 // source_ref.run_id 表达式（btree 表达式索引 20261254）。
 func (r *decisionQueryRepo) RunGateStats(ctx context.Context, runID string) (decision.RunGateStats, error) {
@@ -226,8 +218,8 @@ func parseMetadataInt(s string) int {
 	return 0
 }
 
-// gateSessionExpr 是闸事件会话归属的双方言表达式（T5）：SourceRef.SessionID
-// 优先，回落 metadata.session_id（Extra 注入时期的存量记录）。PG 下与
+// gateSessionExpr 是闸事件会话归属的表达式（T5）：SourceRef.SessionID
+// 优先，回落 metadata.session_id（Extra 注入时期的存量记录）。与
 // 20261268 表达式索引精确一致方可命中。
 func gateSessionExpr(d Dialect) string {
 	return "COALESCE(" + d.JSONExtract("source_ref", "session_id") + ", " +
@@ -238,7 +230,7 @@ var _ decision.SessionGateStatsRepo = (*decisionQueryRepo)(nil)
 
 // SessionGateStats 聚合一个 chat/team 会话的 system_guard 记录（T5，2026-08-27
 // chat 侧闸事件聚合面）。与 RunGateStats 同型：只取 JSON 抽取值、Go 侧计数
-// 求和，双方言零分支；过滤走下推的会话归属表达式（PG 表达式索引 20261268）。
+// 求和；过滤走下推的会话归属表达式（表达式索引 20261268）。
 // 会话的 guard 记录量级小，全行扫描可接受。
 func (r *decisionQueryRepo) SessionGateStats(ctx context.Context, sessionID string) (decision.RunGateStats, error) {
 	var out decision.RunGateStats

@@ -2,20 +2,14 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestChatTurnSubmitClaimer_TryClaimAndRelease(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:chat_turn_claim_test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureChatTurnSubmitClaimSchema(ctx, db); err != nil {
 		t.Fatal(err)
@@ -25,7 +19,7 @@ func TestChatTurnSubmitClaimer_TryClaimAndRelease(t *testing.T) {
 		readDB:  db,
 		rwDB:    NewReadWriteDB(db, db),
 		lg:      loggateway.NewNoop(),
-		dialect: DialectSQLite,
+		dialect: DialectPostgres,
 	})
 
 	ok, err := c.TryClaim(ctx, "sess-1", "pending-user-abc")

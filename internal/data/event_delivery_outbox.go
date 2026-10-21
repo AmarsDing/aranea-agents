@@ -112,12 +112,8 @@ func (r *eventDeliveryOutboxRepo) MarkPublishedBatch(ctx context.Context, ids []
 		publishedAt = time.Now().UTC()
 	}
 	// published_at is timestamptz on Postgres (raw-DDL column) — comparing it
-	// to '' raises 22007 (invalid input syntax). SQLite stores TEXT where
-	// legacy rows may hold '', so keep the '' guard only for SQLite.
+	// to '' raises 22007 (invalid input syntax), so only NULL is tested.
 	unpublishedCond := "published_at IS NULL"
-	if r.data.Dialect().IsSQLite() {
-		unpublishedCond = "(published_at IS NULL OR published_at='')"
-	}
 	placeholders := make([]string, len(clean))
 	for i := range placeholders {
 		placeholders[i] = "?"
@@ -195,17 +191,14 @@ func (r *eventDeliveryOutboxRepo) ListPending(ctx context.Context, cutoff time.T
 		limit = defaultEventOutboxPendingLimit
 	}
 	d := r.data.Dialect()
-	// See MarkPublished: published_at is timestamptz on Postgres, TEXT with
-	// possible legacy '' on SQLite — the '' guard is SQLite-only.
+	// See MarkPublished: published_at is timestamptz on Postgres, so only
+	// NULL is tested for "unpublished".
 	unpublishedCond := "published_at IS NULL"
-	if d.IsSQLite() {
-		unpublishedCond = "(published_at IS NULL OR published_at='')"
-	}
 	args := make([]any, 0, 3)
 	createdCond := ""
 	if !cutoff.IsZero() {
 		// created_at is written as UTC RFC3339Nano TEXT; a same-format string
-		// compare works on SQLite and coerces cleanly to timestamptz on PG.
+		// compare coerces cleanly to timestamptz on PG.
 		createdCond = " AND created_at < ?"
 		args = append(args, cutoff.UTC().Format(time.RFC3339Nano))
 	}

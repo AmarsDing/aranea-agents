@@ -355,10 +355,10 @@ func backfillKnowledgeEntityNameNorms(ctx context.Context, tx *sql.Tx, lg loggat
 //  4. 建 (collection_id, name_norm) 唯一索引（必须先于 ReplaceDocEntities 的
 //     ON CONFLICT 路径上线；回填前建会因冲突组失败）。
 //
-// fresh 库整体跳过（knowledge_entities 由 EnsureKnowledgeSchema 以新形态创建）；
-// Postgres-only（knowledge 依赖 pgvector）。幂等：IF NOT EXISTS + 合并确定性。
+// fresh 库整体跳过（knowledge_entities 由 EnsureKnowledgeSchema 以新形态创建）。
+// 幂等：IF NOT EXISTS + 合并确定性。
 func ddlKnowledgeEntityGovernance(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
-	if !d.IsPostgres() || rawDB == nil {
+	if rawDB == nil {
 		return nil
 	}
 	exists, err := d.TableExists(ctx, rawDB, "knowledge_entities")

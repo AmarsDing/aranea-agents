@@ -9,15 +9,8 @@ import (
 )
 
 func entColumnExists(ctx context.Context, client *ent.Client, d Dialect, table, column string) (bool, error) {
-	var query string
-	var args []any
-	if d.IsPostgres() {
-		query = `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`
-		args = []any{table, column}
-	} else {
-		query = `SELECT COUNT(1) FROM pragma_table_info(?) WHERE name = ?`
-		args = []any{table, column}
-	}
+	query := `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`
+	args := []any{table, column}
 	var count int
 	err := entQueryRowScan(client, ctx, query, args, &count)
 	if err != nil {
@@ -167,9 +160,7 @@ func RunSessionTurnNumberBackfillMigration(ctx context.Context, client *ent.Clie
 		return recordMigrationApplied(ctx, client, d, MigrationSessionTurnNumberBackfill, migrationNameSessionTurnNumberBackfill, lg)
 	}
 
-	var query string
-	if d.IsPostgres() {
-		query = `
+	query := `
 WITH ranked AS (
   SELECT id,
          ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
@@ -180,18 +171,6 @@ UPDATE session_turns st
 SET turn_number = r.rn
 FROM ranked r
 WHERE st.id = r.id`
-	} else {
-		query = `
-WITH ranked AS (
-  SELECT id,
-         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
-  FROM session_turns
-  WHERE turn_number = 0
-)
-UPDATE session_turns
-SET turn_number = COALESCE((SELECT rn FROM ranked WHERE ranked.id = session_turns.id), turn_number)
-WHERE id IN (SELECT id FROM ranked)`
-	}
 
 	res, err := client.ExecContext(ctx, query)
 	if err != nil {
@@ -224,9 +203,7 @@ func RunSessionTurnNumberRebackfillMigration(ctx context.Context, client *ent.Cl
 		return recordMigrationApplied(ctx, client, d, MigrationSessionTurnNumberRebackfill, migrationNameSessionTurnNumberRebackfill, lg)
 	}
 
-	var query string
-	if d.IsPostgres() {
-		query = `
+	query := `
 WITH ranked AS (
   SELECT id,
          ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
@@ -236,17 +213,6 @@ UPDATE session_turns st
 SET turn_number = r.rn
 FROM ranked r
 WHERE st.id = r.id`
-	} else {
-		query = `
-WITH ranked AS (
-  SELECT id,
-         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
-  FROM session_turns
-)
-UPDATE session_turns
-SET turn_number = COALESCE((SELECT rn FROM ranked WHERE ranked.id = session_turns.id), turn_number)
-WHERE id IN (SELECT id FROM ranked)`
-	}
 
 	res, err := client.ExecContext(ctx, query)
 	if err != nil {

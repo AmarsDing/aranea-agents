@@ -118,19 +118,11 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer,
 	return nil
 }
 
-// memColumnExists is the dialect-aware variant of memSqliteColumnExists.
-// SQLite: pragma_table_info(table) WHERE name = ?
-// Postgres: information_schema.columns WHERE table_name = $1 AND column_name = $2
+// memColumnExists reports whether table.column exists, via Postgres
+// information_schema.columns.
 func memColumnExists(ctx context.Context, client execer, d Dialect, table, column string) (bool, error) {
-	var query string
-	var args []any
-	if d.IsPostgres() {
-		query = `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2 LIMIT 1`
-		args = []any{table, column}
-	} else {
-		query = `SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1`
-		args = []any{table, column}
-	}
+	query := `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2 LIMIT 1`
+	args := []any{table, column}
 	rows, err := client.QueryContext(ctx, query, args...)
 	if err != nil {
 		return false, err
@@ -139,19 +131,11 @@ func memColumnExists(ctx context.Context, client execer, d Dialect, table, colum
 	return rows.Next(), nil
 }
 
-// memTableExists is the dialect-aware variant of memSqliteTableExists.
-// SQLite: sqlite_master WHERE type='table' AND name = ?
-// Postgres: information_schema.tables WHERE table_schema='public' AND table_name = $1
+// memTableExists reports whether table exists, via Postgres
+// information_schema.tables.
 func memTableExists(ctx context.Context, client execer, d Dialect, table string) (bool, error) {
-	var query string
-	var args []any
-	if d.IsPostgres() {
-		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`
-		args = []any{table}
-	} else {
-		query = `SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1`
-		args = []any{table}
-	}
+	query := `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`
+	args := []any{table}
 	rows, err := client.QueryContext(ctx, query, args...)
 	if err != nil {
 		return false, err

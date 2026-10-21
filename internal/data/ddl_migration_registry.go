@@ -169,9 +169,8 @@ const ddlMigrationAdvisoryLockKey int64 = 0x4152414E_4D4947 // "ARANMIG" truncat
 
 // withDDLMigrationAdvisoryLock serializes migration runners on Postgres via a
 // dedicated connection holding pg_advisory_lock for the duration of fn.
-// Non-Postgres dialects run fn without a lock (single-process / test adapters).
 func withDDLMigrationAdvisoryLock(ctx context.Context, rawDB *sql.DB, d Dialect, lg loggateway.Logger, fn func() error) error {
-	if rawDB == nil || !d.IsPostgres() {
+	if rawDB == nil {
 		return fn()
 	}
 	conn, err := rawDB.Conn(ctx)
@@ -201,9 +200,11 @@ func withDDLMigrationAdvisoryLock(ctx context.Context, rawDB *sql.DB, d Dialect,
 	return fn()
 }
 
-// executeSQLFileWithDialect is the dialect-aware SQL file executor.
+// executeSQLFileWithDialect executes an embedded migration SQL file.
 // Uses Dialect.AlreadyExistsErr and Dialect.UndefinedObjectErr for idempotent
-// error detection across SQLite and Postgres.
+// error detection. Migration .sql files are authored in SQLite-style DDL and
+// translated to Postgres here (translator is load-bearing — see
+// dialect_translate.go).
 func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, d Dialect, lg loggateway.Logger) error {
 	if rawDB == nil {
 		return fmt.Errorf("execute SQL file %s: rawDB is nil", path)
@@ -213,18 +214,14 @@ func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, 
 		return fmt.Errorf("read SQL file %s: %w", path, err)
 	}
 	ddl := strings.TrimPrefix(string(sqlBytes), "\ufeff")
-	if d.IsPostgres() {
-		// Translate SQLite-specific DDL syntax to Postgres equivalents.
-		// INTEGER PRIMARY KEY AUTOINCREMENT -> BIGSERIAL PRIMARY KEY
-		ddl = translateSQLiteDDLToPostgres(ddl)
-	}
+	// Translate SQLite-authored DDL syntax to Postgres equivalents.
+	// INTEGER PRIMARY KEY AUTOINCREMENT -> BIGSERIAL PRIMARY KEY
+	ddl = translateSQLiteDDLToPostgres(ddl)
 	for _, stmt := range splitDDLStatements(strings.TrimSpace(ddl)) {
 		if stmt == "" {
 			continue
 		}
-		if d.IsPostgres() {
-			stmt = translateSQLiteStatementToPostgres(stmt)
-		}
+		stmt = translateSQLiteStatementToPostgres(stmt)
 		// Wrap each DDL statement in a transaction. When a statement fails
 		// (e.g. "column already exists"), Postgres aborts the current
 		// transaction; without an explicit rollback, the connection is

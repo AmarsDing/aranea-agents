@@ -13,7 +13,8 @@ import (
 
 func TestRunnerRollbackStoreSoftDeletesEventsAfterBoundary(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
-	// DDL mirrors cmd/migrate-sqlite-to-postgres/framework_schema.go (Postgres dialect).
+	// DDL mirrors the trpc session events table (Postgres dialect); built inline
+	// here so the test stays independent of the migration runner.
 	_, err := db.Exec(`CREATE TABLE trpc_session_events (
 		id BIGSERIAL PRIMARY KEY,
 		app_name VARCHAR(255) NOT NULL,

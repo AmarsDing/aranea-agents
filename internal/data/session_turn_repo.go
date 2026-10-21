@@ -164,7 +164,7 @@ func isSessionTurnUniqueConflict(d Dialect, err error) bool {
 // rows and missing tables are non-fatal — unique-violation retry still covers
 // the race.
 func lockParentSessionForTurnAlloc(ctx context.Context, c *ent.Client, d Dialect, sessionID string) error {
-	if !d.IsPostgres() || c == nil || strings.TrimSpace(sessionID) == "" {
+	if c == nil || strings.TrimSpace(sessionID) == "" {
 		return nil
 	}
 	query := d.RenumberPlaceholders(`SELECT id FROM sessions WHERE id = ? FOR UPDATE`)
@@ -185,11 +185,7 @@ func nextSessionTurnNumber(ctx context.Context, c *ent.Client, d Dialect, sessio
 	}
 	// Postgres 不允许在含聚合函数的查询上直接使用 FOR UPDATE（错误 0A000），
 	// 改用子查询先锁定该 session 的行，再在外层做聚合，达到相同的串行化效果。
-	query := `SELECT COALESCE(MAX(turn_number), 0) FROM session_turns WHERE session_id = ?`
-	if d.IsPostgres() {
-		query = `SELECT COALESCE(MAX(turn_number), 0) FROM (SELECT turn_number FROM session_turns WHERE session_id = ? FOR UPDATE) AS locked_rows`
-	}
-	query = d.RenumberPlaceholders(query)
+	query := d.RenumberPlaceholders(`SELECT COALESCE(MAX(turn_number), 0) FROM (SELECT turn_number FROM session_turns WHERE session_id = ? FOR UPDATE) AS locked_rows`)
 	var maxTurnNumber int
 	if err := QueryRowScan(ctx, c, query, []any{sessionID}, &maxTurnNumber); err != nil {
 		return 0, err

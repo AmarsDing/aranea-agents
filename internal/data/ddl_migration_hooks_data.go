@@ -12,8 +12,8 @@ import (
 
 // ddlSessionRevisionDataMigration backfills session_revision from message counts.
 // The ALTER TABLE is handled by the SQL file; this Func only does the data migration.
-// Uses dialect-aware WHERE clause: SQLite needs `OR session_revision = ”` for
-// type-coerced empty strings; Postgres uses proper bigint type and only needs IS NULL.
+// Postgres uses a proper bigint type for session_revision, so the backfill
+// only needs an IS NULL guard.
 func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if entClient == nil {
 		return nil
@@ -22,34 +22,21 @@ func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClie
 	// Migration 20260902 drops the messages subsystem (superseded by activities);
 	// on a fresh DB the messages table never exists, so there is nothing to backfill.
 	var tableExists bool
-	if d.IsPostgres() {
-		// to_regclass returns NULL when the table doesn't exist; scan into a
-		// nullable string and check for empty/NULL.
-		var regclass *string
-		err := rawDB.QueryRowContext(ctx, "SELECT to_regclass('public.messages')::text").Scan(&regclass)
-		if err != nil || regclass == nil || *regclass == "" {
-			lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
-			return nil
-		}
-		tableExists = true
-	} else {
-		var name string
-		err := rawDB.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'").Scan(&name)
-		if err != nil {
-			lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
-			return nil
-		}
-		tableExists = name == "messages"
+	// to_regclass returns NULL when the table doesn't exist; scan into a
+	// nullable string and check for empty/NULL.
+	var regclass *string
+	err := rawDB.QueryRowContext(ctx, "SELECT to_regclass('public.messages')::text").Scan(&regclass)
+	if err != nil || regclass == nil || *regclass == "" {
+		lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
+		return nil
 	}
+	tableExists = true
 	if !tableExists {
 		lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
 		return nil
 	}
-	whereClause := "WHERE session_revision IS NULL OR session_revision = ''"
-	if d.IsPostgres() {
-		whereClause = "WHERE session_revision IS NULL"
-	}
-	_, err := entClient.ExecContext(ctx, fmt.Sprintf(`
+	whereClause := "WHERE session_revision IS NULL"
+	_, err = entClient.ExecContext(ctx, fmt.Sprintf(`
 UPDATE sessions SET session_revision = (
   SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id AND role = 'user'
 ) %s`, whereClause))
@@ -199,10 +186,7 @@ func ddlUnifiedEvolutionRebuildPendingIndex(ctx context.Context, rawDB *sql.DB, 
 	if _, err := rawDB.ExecContext(ctx, `DROP INDEX IF EXISTS idx_ues_pending_target`); err != nil {
 		return fmt.Errorf("unified evolution convergence: drop old pending index: %w", err)
 	}
-	dedupExpr := `COALESCE(json_extract(metadata, '$.pattern_hash'), json_extract(metadata, '$.legacy_type'), '')`
-	if d.IsPostgres() {
-		dedupExpr = `COALESCE(metadata::jsonb->>'pattern_hash', metadata::jsonb->>'legacy_type', '')`
-	}
+	dedupExpr := `COALESCE(metadata::jsonb->>'pattern_hash', metadata::jsonb->>'legacy_type', '')`
 	stmt := `CREATE UNIQUE INDEX IF NOT EXISTS idx_ues_pending_target
   ON unified_evolution_suggestions(target_type, target_id, action_type, ` + dedupExpr + `)
   WHERE status = 'pending'`

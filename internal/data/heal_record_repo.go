@@ -35,7 +35,6 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record heal.HealR
 	d := r.data.Dialect()
 	columns := "id, rule_id, trigger_type, trace_id, session_id, step_id, fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at, metadata"
 	placeholders := d.Placeholders(14)
-	// SQLite: INSERT OR IGNORE INTO heal_records (...) VALUES (...)
 	// Postgres: INSERT INTO heal_records (...) VALUES (...) ON CONFLICT (id) DO NOTHING
 	stmt := d.BuildInsertOrIgnore("heal_records", columns, placeholders, "id")
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, stmt,

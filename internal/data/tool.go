@@ -70,55 +70,29 @@ func toolSelectPrefixArgs() []any {
 }
 
 // toolP95Subquery returns the per-tool p95 duration subquery (one stats-window
-// placeholder). Postgres uses percentile_cont(0.95) WITHIN GROUP — an exact
-// interpolated percentile (PERF-2), replacing the old "average of the top 5%"
-// approximation which overstated p95 on skewed latencies. SQLite has no
-// ordered-set aggregates, so it keeps the top-5% AVG approximation (dev/CLI
-// only — production is always Postgres).
+// placeholder) using percentile_cont(0.95) WITHIN GROUP — an exact interpolated
+// percentile (PERF-2), replacing the old "average of the top 5%" approximation
+// which overstated p95 on skewed latencies.
 func toolP95Subquery(d Dialect) string {
-	if d.IsPostgres() {
-		return `
+	return `
 			SELECT tool_key,
 			       percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_duration_ms
 			FROM tool_invocations
 			WHERE started_at >= ?
 			GROUP BY tool_key`
-	}
-	topN := d.Greatest("1", "CAST(total_cnt * 0.05 AS INTEGER)")
-	return `
-			SELECT tool_key, AVG(duration_ms) AS p95_duration_ms
-			FROM (
-				SELECT tool_key, duration_ms,
-				       ROW_NUMBER() OVER (PARTITION BY tool_key ORDER BY duration_ms DESC) AS rn,
-				       COUNT(1) OVER (PARTITION BY tool_key) AS total_cnt
-				FROM tool_invocations
-				WHERE started_at >= ?
-			)
-			WHERE rn <= ` + topN + `
-			GROUP BY tool_key`
 }
 
 func toolSelectSQL(d Dialect) string {
-	// d.Greatest emits GREATEST on Postgres (MAX is aggregate-only) and MAX on
-	// SQLite (multi-argument MAX is a scalar function). Using GREATEST
-	// unconditionally breaks SQLite drivers that don't support it (e.g.
-	// glebarez/go-sqlite), and using MAX unconditionally breaks Postgres
-	// (error 42883: function max(integer, integer) does not exist).
-	//
 	// Status semantics: the runtime recorder writes 'failed' for tool errors
 	// (tool_invocation_recorder.go), while legacy paths (a2a/testexec) wrote
 	// 'error'. failure_count must cover both or runtime failures vanish from
 	// the tools list.
 	//
 	// Args quality (args_repaired/args_invalid booleans in metadata_json,
-	// written by the repair guard): SQLite json_extract yields integer 1 for
-	// JSON true; Postgres ->> yields text 'true'.
+	// written by the repair guard): Postgres ->> yields text 'true'.
 	repairedExpr := d.JSONExtract("metadata_json", "args_repaired")
 	invalidExpr := d.JSONExtract("metadata_json", "args_invalid")
 	trueLiteral := "'true'"
-	if d.IsSQLite() {
-		trueLiteral = "1"
-	}
 	return `
 		SELECT t.id, t.tool_key, t.display_name, t.description, t.category, t.source, t.risk_level,
 		       t.enabled, t.readonly, t.requires_confirmation, t.supports_streaming, t.supports_concurrency,
@@ -792,7 +766,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 
 // toolInvocationWorkspace 解析工具调用行的租户归属（A2）：写入方显式提供
 // 时优先；否则自 agents 表按 AgentID 派生（同 unified_evolution_suggestions
-// 空值派生惯例）；宿主缺失/查询失败 → ''（仅系统视图 KPI 可见，不丢数据）。
+// 空值派生惯例）；宿主缺失/查询失败 → ”（仅系统视图 KPI 可见，不丢数据）。
 // 注意：constraint fallback-update 路径刻意不写本列——workspace 随首次
 // 写入的身份行确定，chunk 合并不得改写身份字段。
 func (r *toolRepo) toolInvocationWorkspace(ctx context.Context, client *ent.Client, in biz.ToolInvocationWrite) string {

@@ -56,13 +56,4 @@ func TestBuildTimelineUnionSQL_messageBranchUsesStepsV2(t *testing.T) {
 	if !strings.Contains(pgSQL, "kind IN ('task', 'reply')") {
 		t.Fatalf("postgres message branch should filter kind IN task/reply, got %q", pgSQL)
 	}
-
-	// SQLite: started_at is TEXT already; no to_char needed
-	sqliteSQL, _ := buildTimelineUnionSQL("sess-1", "message", DialectSQLite)
-	if !strings.Contains(sqliteSQL, "steps_v2") {
-		t.Fatalf("sqlite message branch should query steps_v2, got %q", sqliteSQL)
-	}
-	if strings.Contains(sqliteSQL, "to_char") {
-		t.Fatalf("sqlite message branch should not use to_char, got %q", sqliteSQL)
-	}
 }

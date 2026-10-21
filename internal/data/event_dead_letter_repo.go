@@ -3,7 +3,7 @@ package data
 // event_dead_letter_repo.go — P1-R2b: durable dead-letter store for v2
 // sequencer events whose entity persist failed permanently.
 //
-// Implements biz.EventDeadLetterRepo using the raw SQLite database.
+// Implements biz.EventDeadLetterRepo using the raw Postgres database.
 // Table is created by DDL migration 20260826 (primary path, DB-R4 compliance).
 // The ensureTable() safety net handles the Wire-construction-vs-P1-migration
 // race, mirroring memory_job_deadletter.go.
@@ -42,11 +42,7 @@ func (r *EventDeadLetterRepo) ensureTable() {
 	if db == nil {
 		return
 	}
-	d := r.data.Dialect()
-	idColDef := "id INTEGER PRIMARY KEY AUTOINCREMENT"
-	if d.IsPostgres() {
-		idColDef = "id BIGSERIAL PRIMARY KEY"
-	}
+	idColDef := "id BIGSERIAL PRIMARY KEY"
 	_, err := db.Exec(fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS event_dead_letter (
     %s,

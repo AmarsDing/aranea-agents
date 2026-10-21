@@ -210,8 +210,8 @@ var ProviderSet = wire.NewSet(
 )
 
 // Data: Postgres is the only supported primary database (Ent CRUD + pgvector
-// agent memory share the same pool; see NewData). SQLite remains only in the
-// legacy offline migration tool (cmd/migrate-sqlite-to-postgres).
+// agent memory share the same pool; see NewData). SQLite support was removed
+// repo-wide on 2026-10-21 (migration CLI + dual-dialect branches deleted).
 type Data struct {
 	entClient   *ent.Client
 	readClient  *ent.Client
@@ -234,7 +234,8 @@ type Data struct {
 	// txTimeout is the hard deadline for ExecInTx transactions. Default 30s.
 	// Set to 0 to disable the timeout (e.g., for long-running Postgres migrations).
 	txTimeout time.Duration
-	// dialect identifies the primary database dialect (sqlite or postgres).
+	// dialect identifies the primary database dialect (postgres; the only
+	// supported dialect since SQLite removal on 2026-10-21).
 	// Controls dialect-aware SQL generation in Repo implementations.
 	dialect Dialect
 	// pgDSN stores the Postgres connection string when driver=postgres.
@@ -451,9 +452,8 @@ func entSQLDebugEnabled() bool {
 // NewData opens Postgres for Ent CRUD + pgvector.
 // The underlying *sql.DB is shared with trpc session/checkpoint adapters via RawDB().
 //
-// Postgres is the only supported primary database. SQLite remains only in the
-// legacy offline migration tool (cmd/migrate-sqlite-to-postgres). Tests use
-// isolated Postgres schemas via testhelper.SetupTestPG.
+// Postgres is the only supported primary database (SQLite removed 2026-10-21).
+// Tests use isolated Postgres schemas via testhelper.SetupTestPG.
 func NewData(c *conf.Data, lg loggateway.Logger, rr biz.Reranker) (*Data, func(), error) {
 	var entClient *ent.Client
 	var rawDB *sql.DB
@@ -517,8 +517,7 @@ func NewData(c *conf.Data, lg loggateway.Logger, rr biz.Reranker) (*Data, func()
 
 	vdim := vectorDimFromConf(c)
 
-	// Initialize VectorStore — pgvector is the only supported backend in production.
-	// SQLiteVectorStore remains available only for tests (see vector/sqlite.go).
+	// Initialize VectorStore — pgvector is the only supported backend.
 	var vs vector.VectorStore
 	if pg != nil && conf.DAOVectorPgVector() {
 		extCtx, extCancel := context.WithTimeout(context.Background(), 10*time.Second)

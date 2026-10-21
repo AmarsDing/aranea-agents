@@ -11,7 +11,7 @@ import (
 // usage_event_id 非空、或 trace_id 命中 monitor_traces（trace_key / metadata trace_id）。
 // 前端 Events 历史表恒传 true，保证分页 total 与实际渲染行数一致（ISSUE-007）。
 func TestMonitorEventsWhereHideLinkedCompletions(t *testing.T) {
-	for _, d := range []Dialect{DialectPostgres, DialectSQLite} {
+	for _, d := range []Dialect{DialectPostgres} {
 		where, args := monitorEventsWhere(biz.MonitorEventsQuery{HideLinkedCompletions: true}, d)
 		if !strings.Contains(where, "event_key != 'runner.completion'") {
 			t.Fatalf("%s: hide_linked_completions should scope exclusion to runner.completion, got %q", d, where)
