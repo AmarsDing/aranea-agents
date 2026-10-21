@@ -63,3 +63,31 @@ func TestSplitEvalStatements_ZeroMaxUsesDefault(t *testing.T) {
 		t.Fatalf("atoms=%d, want 2 with default cap", len(got))
 	}
 }
+
+// TestSplitEvalStatements_AbbreviationGuard covers AMC C3 修复 #5: ". " 后
+// 跟大写是英文句点拆分信号，但句点前为已知缩写词干（Dr./Mr./St./etc.）时
+// 不断句——"I met Dr. Lee yesterday." 必须是单原子，否则 人名被切半入库。
+func TestSplitEvalStatements_AbbreviationGuard(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{"honorific Dr keeps sentence", "I met Dr. Lee yesterday.", []string{"I met Dr. Lee yesterday."}},
+		{"honorific mid-sentence", "I met Dr. Lee yesterday. We talked.", []string{"I met Dr. Lee yesterday.", "We talked."}},
+		{"St mid-sentence", "I visited St. Paul. It rained.", []string{"I visited St. Paul.", "It rained."}},
+		// 合并方向权衡（安全侧）：etc. 后跟大写同样不断句 → 整句单原子。
+		{"abbrev etc keeps tail", "We bought apples, bread, etc. Then left.", []string{"We bought apples, bread, etc. Then left."}},
+		{"plain sentence still splits", "I like coffee. She lives in Rome", []string{"I like coffee.", "She lives in Rome"}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := SplitEvalStatements(tc.content, 8); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("SplitEvalStatements(%q) = %q, want %q", tc.content, got, tc.want)
+			}
+		})
+	}
+}

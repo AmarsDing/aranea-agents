@@ -310,6 +310,176 @@ func TestEvalStore_AggregateEpisodeDedup(t *testing.T) {
 	}
 }
 
+// TestEvalStore_ReplayDoesNotResurrectSuperseded_PG covers AMC C3 修复
+// #0/#4（红线「被 supersede 的旧值永不回流」）：平台重试重放旧请求时——
+//   (a) 已墓碑的旧行不得被指纹 upsert 起死（valid_until 保留）；
+//   (b) 重放的旧语句不得经同槽通道再次失效事件时间更晚的新行（时序守卫）；
+//   (c) 新行 metadata.previous_values 审计留痕不得被重放抹掉。
+// 该测试在修复前于 (a)/(b) 均失败。
+func TestEvalStore_ReplayDoesNotResurrectSuperseded_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	msgs1 := []biz.EvalMessage{
+		{Role: "user", Content: "我最喜欢的旅行城市是杭州", MessageID: "m1", Timestamp: "2025-03-05T08:00:00Z"},
+	}
+	msgs2 := []biz.EvalMessage{
+		{Role: "user", Content: "我上个月把最喜欢的旅行城市改成上海了", MessageID: "m2", Timestamp: "2025-03-06T08:00:00Z"},
+	}
+	if _, err := store.AddMessages(ctx, "u-rp", "s-rp", msgs1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMessages(ctx, "u-rp", "s-rp", msgs2); err != nil {
+		t.Fatal(err)
+	}
+
+	oldFact := evalC3FindFact(t, evalC3AllFacts(t, r, "u-rp"), "是杭州")
+	if vu, _ := oldFact["valid_until"].(string); vu == "" {
+		t.Fatalf("baseline: old fact must be superseded: %v", oldFact)
+	}
+	newFact := evalC3FindFact(t, evalC3AllFacts(t, r, "u-rp"), "改成上海")
+
+	// (a)(b) 重放第一条（较旧）请求：旧行不得起死，新行不得被回失效。
+	if _, err := store.AddMessages(ctx, "u-rp", "s-rp", msgs1); err != nil {
+		t.Fatal(err)
+	}
+	facts := evalC3AllFacts(t, r, "u-rp")
+	oldFact = evalC3FindFact(t, facts, "是杭州")
+	if vu, _ := oldFact["valid_until"].(string); vu == "" {
+		t.Fatalf("replay of older request resurrected the superseded fact: %v", oldFact)
+	}
+	newFact = evalC3FindFact(t, facts, "改成上海")
+	if vu, _ := newFact["valid_until"].(string); vu != "" {
+		t.Fatalf("replay of older request re-invalidated the newer fact (time guard broken): %v", newFact)
+	}
+	prevBefore, _ := newFact["metadata_json"].(string)
+	if !strings.Contains(prevBefore, "previous_values") || !strings.Contains(prevBefore, "是杭州") {
+		t.Fatalf("(c) prev audit missing before second replay: %s", prevBefore)
+	}
+
+	// (c) 重放第二条请求本身：previous_values 不得被 ON CONFLICT 抹掉。
+	if _, err := store.AddMessages(ctx, "u-rp", "s-rp", msgs2); err != nil {
+		t.Fatal(err)
+	}
+	newFact = evalC3FindFact(t, evalC3AllFacts(t, r, "u-rp"), "改成上海")
+	metaStr, _ := newFact["metadata_json"].(string)
+	if !strings.Contains(metaStr, "previous_values") || !strings.Contains(metaStr, "是杭州") {
+		t.Fatalf("replay of the same request wiped previous_values audit: %s", metaStr)
+	}
+
+	// 事实通道（非 L2 转录）绝不回浮旧值。
+	items, err := store.SearchMemories(ctx, "u-rp", "我最喜欢的旅行城市是哪里", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if strings.HasPrefix(it.ID, "l2:") {
+			continue
+		}
+		if strings.Contains(it.Content, "是杭州") {
+			t.Fatalf("superseded fact resurfaced in fact channel after replay: %q", it.Content)
+		}
+	}
+}
+
+// TestEvalStore_SameRequestSupersedesEarlierMessage_PG covers AMC C3 修复
+// #1：同一请求内的 [旧值, 改口] 消息对必须生效 supersede——batchIDs 早退
+// 只作用于向量通道（防同批 sibling 被近邻误判），不得挡住同槽时序通道。
+// 修复前 m1 行保持 active（有效回退）。
+func TestEvalStore_SameRequestSupersedesEarlierMessage_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	if _, err := store.AddMessages(ctx, "u-sbr", "s-sbr", []biz.EvalMessage{
+		{Role: "user", Content: "我最喜欢的颜色是蓝色", MessageID: "m1"},
+		{Role: "user", Content: "不对，我现在把最喜欢的颜色改成红色了", MessageID: "m2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	facts := evalC3AllFacts(t, r, "u-sbr")
+	if len(facts) != 2 {
+		t.Fatalf("facts=%d, want 2", len(facts))
+	}
+	oldFact := evalC3FindFact(t, facts, "是蓝色")
+	if vu, _ := oldFact["valid_until"].(string); vu == "" {
+		t.Fatalf("in-request earlier fact must be superseded by the later correction: %v", oldFact)
+	}
+	newFact := evalC3FindFact(t, facts, "改成红色")
+	if vu, _ := newFact["valid_until"].(string); vu != "" {
+		t.Fatalf("correction fact must stay active: %v", newFact)
+	}
+	items, err := store.SearchMemories(ctx, "u-sbr", "我最喜欢的颜色", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if strings.HasPrefix(it.ID, "l2:") {
+			continue
+		}
+		if strings.Contains(it.Content, "是蓝色") {
+			t.Fatalf("stale in-request value leaked into recall: %q", it.Content)
+		}
+	}
+}
+
+// TestEvalStore_PerAtomEventDates_PG covers AMC C3 修复 #3：相对时间须按
+// 原子解析——同一消息内第二枚原子的「前天」锚的消息时戳，不得复用第一枚
+// 原子「今天」的 event_dates。
+func TestEvalStore_PerAtomEventDates_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	if _, err := store.AddMessages(ctx, "u-pad", "s-pad", []biz.EvalMessage{
+		{Role: "user", Content: "我今天去医院体检了。前天我开始吃药调理。", MessageID: "m1",
+			Timestamp: "2025-05-07T08:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	facts := evalC3AllFacts(t, r, "u-pad")
+	if len(facts) != 2 {
+		t.Fatalf("facts=%d, want 2 atoms", len(facts))
+	}
+	wantDates := map[string]string{"体检": "2025-05-07", "吃药": "2025-05-05"}
+	for kw, want := range wantDates {
+		f := evalC3FindFact(t, facts, kw)
+		metaStr, _ := f["metadata_json"].(string)
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(metaStr), &meta); err != nil {
+			t.Fatal(err)
+		}
+		dates, _ := meta["event_dates"].([]any)
+		if len(dates) != 1 || dates[0] != want {
+			t.Fatalf("atom %q event_dates=%v, want [%s]", kw, meta["event_dates"], want)
+		}
+	}
+}
+
+// TestHasEvalCorrectionCue_Tightened covers AMC C3 修复 #8：裸「改」收紧为
+// 明确改口句式——改变/改天/改善 不再触发向量矛盾扫描。
+func TestHasEvalCorrectionCue_Tightened(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		stmt string
+		want bool
+	}{
+		{"我把城市改成上海了", true},
+		{"不对，我没去过北京", true},
+		{"其实我记错了", true},
+		{"不是杭州而是上海", true},
+		{"Actually I have already moved", true},
+		{"天气突然改变了", false},
+		{"我们改天再约", false},
+		{"最近伙食改善了", false},
+		{"routine check passed", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := HasEvalCorrectionCue(tc.stmt); got != tc.want {
+			t.Errorf("HasEvalCorrectionCue(%q) = %v, want %v", tc.stmt, got, tc.want)
+		}
+	}
+}
+
 // TestEvalStore_MaskEvidence_PG covers A6/Q9: identifiers in recalled
 // evidence are masked unless the query asks about that category; emails stay
 // readable.

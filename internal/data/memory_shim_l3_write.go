@@ -143,12 +143,41 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		source_kind = excluded.source_kind, source_episode_id = excluded.source_episode_id,
 		source_session_id = excluded.source_session_id, source_message_id = excluded.source_message_id,
 		source_external = excluded.source_external,
-		version = memory_facts.version + 1, status = excluded.status,
+		version = memory_facts.version + 1,
+		-- AMC C3 修复 #0/#4：评测注解（source_kind='agent_memory_challenge'）的行一旦被
+		-- supersede（valid_until 非空），对其所在请求的重放（平台重试无 request_id 去重，
+		-- 幂等仅靠指纹 upsert）绝不能起死（清空 valid_until/status）或抹掉审计元数据。
+		-- 守卫以事件时序区分"重放"与"真情改回同一句"：仅当进来的语句事件时间
+		-- （excluded.valid_from）不晚于存量行原事件时间（memory_facts.valid_from）时
+		-- 判定为重放而保留墓碑；事件时间严格更晚的同文本改写仍照常复活该行。
+		status = CASE
+			WHEN memory_facts.source_kind = 'agent_memory_challenge'
+				AND NULLIF(memory_facts.valid_until, '') IS NOT NULL
+				AND COALESCE(NULLIF(excluded.valid_from, '')::timestamptz, '-infinity'::timestamptz)
+					<= COALESCE(NULLIF(memory_facts.valid_from, '')::timestamptz, '-infinity'::timestamptz)
+			THEN memory_facts.status
+			ELSE excluded.status
+		END,
 		pii_flag = excluded.pii_flag, redacted_statement = excluded.redacted_statement,
-		quality_score = excluded.quality_score, pii_types = excluded.pii_types, metadata_json = excluded.metadata_json,
+		quality_score = excluded.quality_score, pii_types = excluded.pii_types,
+		metadata_json = CASE
+			WHEN memory_facts.source_kind = 'agent_memory_challenge'
+				AND memory_facts.statement = excluded.statement
+				AND COALESCE(NULLIF(excluded.valid_from, '')::timestamptz, '-infinity'::timestamptz)
+					<= COALESCE(NULLIF(memory_facts.valid_from, '')::timestamptz, '-infinity'::timestamptz)
+			THEN memory_facts.metadata_json
+			ELSE excluded.metadata_json
+		END,
 		updated_at = excluded.updated_at,
 		valid_from = COALESCE(NULLIF(memory_facts.valid_from, ''), excluded.valid_from),
-		valid_until = excluded.valid_until,
+		valid_until = CASE
+			WHEN memory_facts.source_kind = 'agent_memory_challenge'
+				AND NULLIF(memory_facts.valid_until, '') IS NOT NULL
+				AND COALESCE(NULLIF(excluded.valid_from, '')::timestamptz, '-infinity'::timestamptz)
+					<= COALESCE(NULLIF(memory_facts.valid_from, '')::timestamptz, '-infinity'::timestamptz)
+			THEN memory_facts.valid_until
+			ELSE excluded.valid_until
+		END,
 		links = excluded.links, keywords = excluded.keywords,
 		context_note = excluded.context_note`),
 			id,

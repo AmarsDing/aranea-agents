@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,8 +60,9 @@ func TestBigramTextExtraction_PG(t *testing.T) {
 
 // setupL3CJKFTSTestRepo builds the isolated PG repo (memory_facts via
 // EnsureSessionMemorySchema) and applies the 20261292 migration twice
-// (idempotency proof), enabling the statement_fts_cjk generated column +
-// GIN index on production DDL shape.
+// (idempotency proof), enabling the bigram_text() functional GIN index
+// (AMC C3 修复 #9: 不再建 STORED 生成列，索引表达式直接挂
+// to_tsvector('simple', bigram_text(statement)) on production DDL shape.
 func setupL3CJKFTSTestRepo(t *testing.T) *l3FactRepo {
 	t.Helper()
 	r := setupL3FTSTestRepo(t, nil, 0)
@@ -73,23 +75,15 @@ func setupL3CJKFTSTestRepo(t *testing.T) *l3FactRepo {
 			t.Fatalf("round %d apply %s: %v", round, cjkFTSMigrationFile, err)
 		}
 	}
-	var colExists bool
+	// 函数式索引存在且索引定义挂在 bigram_text 表达式上（#9 后无生成列）。
+	var idxDef string
 	if err := db.QueryRowContext(context.Background(),
-		`SELECT EXISTS(SELECT 1 FROM information_schema.columns
-		 WHERE table_name='memory_facts' AND column_name='statement_fts_cjk')`).Scan(&colExists); err != nil {
-		t.Fatalf("check statement_fts_cjk column: %v", err)
-	}
-	if !colExists {
-		t.Fatal("statement_fts_cjk column missing after migration")
-	}
-	var idxExists bool
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT EXISTS(SELECT 1 FROM pg_indexes
-		 WHERE tablename='memory_facts' AND indexname='idx_memory_facts_fts_cjk')`).Scan(&idxExists); err != nil {
+		`SELECT indexdef FROM pg_indexes
+		 WHERE tablename='memory_facts' AND indexname='idx_memory_facts_fts_cjk'`).Scan(&idxDef); err != nil {
 		t.Fatalf("check idx_memory_facts_fts_cjk: %v", err)
 	}
-	if !idxExists {
-		t.Fatal("idx_memory_facts_fts_cjk missing after migration")
+	if !strings.Contains(idxDef, "bigram_text") {
+		t.Fatalf("idx_memory_facts_fts_cjk is not the bigram_text functional index: %s", idxDef)
 	}
 	return r
 }
@@ -210,8 +204,8 @@ func TestSearchL3Trigram_ScopeFirstUserIsolation_PG(t *testing.T) {
 }
 
 // TestFTSCJKChannel_MissingColumnDegrades_PG: 老库未应用 20261292
-// （bigram_text 不存在 → 42883；statement_fts_cjk 不存在 → 42703）时，
-// CJK 通道必须记 debug 并跳过，绝不能使召回报错。
+// （bigram_text 不存在 → 42883；#9 后不再引用生成列，42703 仅可能来自
+// r1 时期的列设计库）时，CJK 通道必须记 debug 并跳过，绝不能使召回报错。
 func TestFTSCJKChannel_MissingColumnDegrades_PG(t *testing.T) {
 	r := setupL3FTSTestRepo(t, nil, 0) // 刻意不执行 20261292 迁移
 	ctx := context.Background()

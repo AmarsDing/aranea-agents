@@ -471,11 +471,18 @@ var ddlMigrationsLate = []ddlMigration{
 	{Version: 20261290, Name: "chunk_embeddings", SQL: "sql/migrations/20261290_chunk_embeddings.sql"},
 	// 20261292 memory_facts_cjk_bigram_fts（AMC C3-B 召回基建，2026-10-20 trgm
 	// 风暴治本配套——20261290/20261291 预留给并行轨，顺延 20261292）：
-	// memory_facts 增 statement_fts_cjk tsvector 生成列（bigram_text(statement)：
-	// 连续 CJK 段滑窗二元组 + ASCII 段小写原词）+ GIN 索引，L3 召回新增 CJK
+	// bigram_text() IMMUTABLE STRICT SQL 函数（连续 CJK 段滑窗二元组 +
+	// ASCII 段小写原词）+ 对该表达式的函数式 GIN 索引，L3 召回新增 CJK
 	// 全文通道——FTS 'simple' 不分词中文整段成单 lexeme，原 CJK 召回仅靠
 	// 20261242 trgm 单通道（其全表 GIN 候选扫描即 10-20 事故根因）。
-	// bigram_text 为 IMMUTABLE STRICT SQL 函数（生成列/索引表达式可用）；
+	// AMC C3 修复 #9：弃用 STORED 生成列（PG≤17 全表重写 + 启动迁移窗口
+	// 阻塞写），改函数式 GIN（零 heap 重写）；查询侧写同构表达式命中索引。
 	// 幂等（CREATE OR REPLACE FUNCTION / IF NOT EXISTS），存量库重跑安全。
 	{Version: 20261292, Name: "memory_facts_cjk_bigram_fts", SQL: "sql/migrations/20261292_memory_facts_cjk_bigram_fts.sql"},
+	// 20261293 memory_facts_embedding_due_idx（AMC C3 修复 #7）：
+	// MemoryFactIndexSweeper 每 30s 按 (embedding_status IN stale/pending/failed,
+	// status='active', deleted_at='', attempts 上限+退避) ORDER BY updated_at
+	// 拾取行批——无支撑索引时 38 万行/8.2GB 表每 30s 全表排序扫描并挤压
+	// 评测期 32 并发搜索。部分索引只覆盖 due 候选谓词，体积极小写放大趋零。
+	{Version: 20261293, Name: "memory_facts_embedding_due_idx", SQL: "sql/migrations/20261293_memory_facts_embedding_due_idx.sql"},
 }

@@ -117,10 +117,12 @@ func (r *l3FactRepo) ftsCandidateIDs(ctx context.Context, scopeType, scopeID, us
 // L3 CJK bigram FTS channel (AMC C3-B, migration 20261292)
 //
 // to_tsvector('simple') 把连续中文整段当单一 lexeme，英文 FTS 通道只能命中
-// 整段子串；statement_fts_cjk 生成列索引 bigram_text(statement) 的滑窗
-// 二元组，使「喜欢什么颜色」可经共享二元组命中「喜欢蓝色」，与 trgm 通道
+// 整段子串；20261292 的函数式 GIN 索引对 bigram_text(statement) 的滑窗
+// 二元组建 tsvector（修复 #9 后查询侧以同一表达式
+// to_tsvector('simple', bigram_text(statement)) 命中索引，不再依赖生成列），
+// 使「喜欢什么颜色」可经共享二元组命中「喜欢蓝色」，与 trgm 通道
 // 互补。查询词用库内同一 bigram_text() 分词，词表永不与索引漂移。
-// 老库未迁移 20261292（bigram_text 42883 / statement_fts_cjk 42703）时
+// 老库未迁移 20261292（bigram_text 42883；r1 遗留列时代 42703）时
 // 记 debug 并跳过本通道，英文 FTS 与原召回路径不受影响。
 // ──────────────────────────────────────────────────────────
 
@@ -136,8 +138,9 @@ func hasCJKRune(s string) bool {
 }
 
 // isMissingCJKFTS reports err means the 20261292 objects are absent on an
-// unmigrated DB: 42883 undefined_function (bigram_text) or 42703
-// undefined_column (statement_fts_cjk).
+// unmigrated DB: 42883 undefined_function (bigram_text)。对 r1 库曾按
+// STORED 列设计建过 statement_fts_cjk 的环境，42703 undefined_column
+// 也视为可降级缺席（查询侧已改走函数表达式，不再引用任何生成列）。
 func isMissingCJKFTS(err error) bool {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
@@ -150,9 +153,12 @@ func isMissingCJKFTS(err error) bool {
 }
 
 // searchL3FTSCJK returns CJK bigram FTS-ranked fact IDs (best first) via the
-// statement_fts_cjk generated column. Queries without CJK runes return nil
-// (callers keep the English channel only). Missing-migration errors degrade
-// to nil (debug-logged); other errors keep entErrToBizErr semantics.
+// 20261292 functional GIN index on to_tsvector('simple', bigram_text(statement))
+// (修复 #9：索引表达式与查询表达式逐字一致，PG 才能匹配函数式索引；
+// 原 STORED 生成列方案因全表重写在 #9 改为函数式)。Queries without CJK
+// runes return nil (callers keep the English channel only). Missing-migration
+// errors degrade to nil (debug-logged); other errors keep entErrToBizErr
+// semantics.
 func (r *l3FactRepo) searchL3FTSCJK(ctx context.Context, scopeType, scopeID, userID, query string, limit int) ([]string, error) {
 	query = strings.TrimSpace(query)
 	if r == nil || r.data == nil || query == "" || !hasCJKRune(query) {
@@ -178,16 +184,19 @@ func (r *l3FactRepo) searchL3FTSCJK(ctx context.Context, scopeType, scopeID, use
 		return nil, nil
 	}
 	// user_id 是唯一检索/写入隔离边界：scope 过滤始终强制（'' = 该维不限）。
+	// cjkFTSExpr 必须与 20261292 函数式 GIN 索引表达式逐字一致（含括号内
+	// 中间空格归一由 PG 解析器规整），否则 planner 无法匹配索引。
+	cjkFTSExpr := `to_tsvector('simple', bigram_text(statement))`
 	clauses := []string{
 		"status = 'active'", "deleted_at = ''", "valid_until = ''",
 		`(? = '' OR scope_type = ?)`,
 		`(? = '' OR scope_id = ?)`,
 		`(? = '' OR user_id = ?)`,
-		`statement_fts_cjk @@ to_tsquery('simple', ?)`,
+		cjkFTSExpr + ` @@ to_tsquery('simple', ?)`,
 	}
 	args := []any{scopeType, scopeType, scopeID, scopeID, userID, userID, tsq}
 	q := `SELECT id FROM memory_facts WHERE ` + strings.Join(clauses, " AND ") +
-		` ORDER BY ts_rank(statement_fts_cjk, to_tsquery('simple', ?)) DESC, COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
+		` ORDER BY ts_rank(` + cjkFTSExpr + `, to_tsquery('simple', ?)) DESC, COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
 	args = append(args, tsq, limit)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {

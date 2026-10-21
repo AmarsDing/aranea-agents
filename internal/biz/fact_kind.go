@@ -130,8 +130,12 @@ func LooksLikePreferenceStatement(statement string) bool {
 
 // LooksLikeConstraintStatement reports explicit rules. "always" alone is not
 // a constraint ("I always drink coffee" is a preference/habit). Conditional
-// and policy phrasings (如果/若/每当/只要/按照/规定/规则/whenever/if…then/
-// policy) count as constraints (AMC C3-A Q7a).
+// and policy phrasings (如果/每当/只要/规定/规则/whenever/if…then/policy)
+// count as constraints (AMC C3-A Q7a).
+// AMC C3 修复 #2：原裸字串「若」（若干/若隐若现）与「按照」（按照计划执行 =
+// 程序性陈述而非规则）误伤面太大，已移出约束 cue 清单——规则归类的召回
+// 服务 G 维度，宁可少收不可把普通句误判为 evergreen 高权重 constraint
+// （importance 0.9 会压制真实偏好事实）。
 func LooksLikeConstraintStatement(statement string) bool {
 	s := strings.ToLower(strings.TrimSpace(statement))
 	if s == "" {
@@ -142,7 +146,7 @@ func LooksLikeConstraintStatement(statement string) bool {
 			return true
 		}
 	}
-	for _, p := range []string{"如果", "若", "每当", "只要", "按照", "规定", "规则", "whenever", "policy"} {
+	for _, p := range []string{"如果", "每当", "只要", "规定", "规则", "whenever", "policy"} {
 		if strings.Contains(s, p) {
 			return true
 		}
@@ -151,6 +155,28 @@ func LooksLikeConstraintStatement(statement string) bool {
 		return true
 	}
 	return false
+}
+
+// IsHypotheticalStatement reports hypothetical/contrafactive statements
+// (如果…就/假如…则/要是…便/if…then…would) — they may classify as constraints
+// for retrieval (G 维度保留) but must NEVER supersede a live fact
+// (AMC C3 修复 #2): 「如果我搬到上海就退租」不能使「我住在杭州」失效。
+func IsHypotheticalStatement(statement string) bool {
+	s := strings.TrimSpace(statement)
+	if s == "" {
+		return false
+	}
+	low := strings.ToLower(s)
+	condCN := strings.Contains(s, "如果") || strings.Contains(s, "假如") ||
+		strings.Contains(s, "要是") || strings.Contains(s, "倘若") || strings.Contains(s, "假若")
+	outcomeCN := strings.Contains(s, "就") || strings.Contains(s, "则") || strings.Contains(s, "便")
+	if condCN && outcomeCN {
+		return true
+	}
+	condEN := strings.HasPrefix(low, "if ") || strings.Contains(low, " if ")
+	outcomeEN := strings.Contains(low, " then ") || strings.Contains(low, "then ") ||
+		strings.Contains(low, "would ") || strings.Contains(low, "'ll ")
+	return condEN && outcomeEN
 }
 
 // UserScopedFactKind reports whether the kind belongs on the user recall
@@ -230,12 +256,17 @@ func HasPreferenceUpdateCue(statement string) bool {
 // ShouldSupersedeSameSlotFact reports whether an existing governable fact
 // should be invalidated before writing the new one. Same-slot favorite /
 // live / name updates always supersede; generic "like" updates require an
-// update cue so "I like coffee" and "I like tea" can coexist.
+// update cue so "I like coffee" and "I like tea" can coexist. Hypothetical
+// statements (如果…就/if…would) never supersede anything (AMC C3 修复 #2) —
+// 「如果我搬到上海就退租」不是居住现状。
 func ShouldSupersedeSameSlotFact(oldKind, oldStmt, newKind, newStmt string) bool {
 	if !governableMemoryKind(oldKind) || !governableMemoryKind(newKind) {
 		return false
 	}
 	if NormalizeForDedup(oldStmt) == NormalizeForDedup(newStmt) {
+		return false
+	}
+	if IsHypotheticalStatement(newStmt) {
 		return false
 	}
 	oldSlot, newSlot := PreferenceSlotKey(oldStmt), PreferenceSlotKey(newStmt)

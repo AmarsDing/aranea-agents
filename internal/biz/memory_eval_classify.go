@@ -46,13 +46,41 @@ const EvalMaxStatementAtoms = 8
 // CJK full stops/exclamations/questions/semicolons, ASCII !?;, and newlines.
 const evalAtomBreakers = "。！？!?；;\n"
 
+// evalTrailingAbbrev are abbreviation stems that end at "." and must NOT be
+// treated as an English sentence break even when followed by ". "+uppercase
+// (AMC C3 修复 #5): "I met Dr. Lee yesterday." is one atom, not two.
+// Honorifics and common abbreviations keep the sentence intact; the merge
+// direction (fewer atoms) is recall-safe.
+var evalTrailingAbbrev = map[string]bool{
+	"mr": true, "mrs": true, "ms": true, "dr": true, "prof": true,
+	"st": true, "sr": true, "jr": true, "misc": true, "vs": true,
+	"etc": true, "approx": true, "no": true, "fig": true, "dept": true,
+	"inc": true, "ltd": true, "co": true, "rev": true,
+}
+
+func isASCIILetterRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+// evalEndsWithAbbrev reports whether the rune sequence ends with a known
+// abbreviation stem (ASCII letters immediately before a trailing dot).
+func evalEndsWithAbbrev(prev []rune) bool {
+	i := len(prev) - 1
+	for i >= 0 && isASCIILetterRune(prev[i]) {
+		i--
+	}
+	word := strings.ToLower(string(prev[i+1:]))
+	return evalTrailingAbbrev[word]
+}
+
 // SplitEvalStatements deterministically splits one eval message into atomic
 // statements (AMC C3-A Q4). Delimiters are CJK 。！？；, ASCII !?;, newline,
-// and an English ". " followed by an uppercase letter. Trailing delimiters
-// stay attached to their atom. Fragments shorter than 4 runes (after
-// trimming) are dropped; when the split would exceed maxAtoms the overflow
-// is merged back into the last atom. A message without any delimiter is
-// returned verbatim as exactly one atom (zero behavior change).
+// and an English ". " followed by an uppercase letter (skipped after known
+// abbreviation stems, 修复 #5). Trailing delimiters stay attached to their
+// atom. Fragments shorter than 4 runes (after trimming) are dropped; when the
+// split would exceed maxAtoms the overflow is merged back into the last atom.
+// A message without any delimiter is returned verbatim as exactly one atom
+// (zero behavior change).
 func SplitEvalStatements(content string, maxAtoms int) []string {
 	if maxAtoms <= 0 {
 		maxAtoms = EvalMaxStatementAtoms
@@ -72,8 +100,10 @@ func SplitEvalStatements(content string, maxAtoms int) []string {
 			// English ". " followed by an uppercase letter.
 			rest := runes[i+1:]
 			if len(rest) >= 2 && rest[0] == ' ' && rest[1] >= 'A' && rest[1] <= 'Z' {
-				isBreak = true
-				end++ // swallow the separating space into this segment
+				if !evalEndsWithAbbrev(runes[:i]) {
+					isBreak = true
+					end++ // swallow the separating space into this segment
+				}
 			}
 		}
 		if isBreak {

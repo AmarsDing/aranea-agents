@@ -37,7 +37,10 @@ const (
 	// supersede path (AMC C3-A Q7) to invalidate the old value.
 	evalCorrectionCosine = 0.82
 	// evalCorrectionTopK bounds the vector candidates scanned per correction.
-	evalCorrectionTopK = 5
+	// AMC C3 修复 #6：向量索引是全局（未按 scope 分区）索引，topK=5 时
+	// 候选可能被其它租户/用户的更近邻向量挤占，真正的同 scope 矛盾旧值
+	// 进不了前 5；宽取 50 后按 scope 过滤，成本仍是一次索引访问。
+	evalCorrectionTopK = 50
 )
 
 // evalMemoryStore implements biz.EvalMemoryStore over L3 facts plus a thin
@@ -93,11 +96,11 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 		// atom keeps the role prefix and is classified / superseded / stored
 		// independently; stored still counts messages, not atoms.
 		atoms := biz.SplitEvalStatements(m.Content, biz.EvalMaxStatementAtoms)
-		var eventDates []string
-		if len(atoms) > 0 {
-			eventDates = biz.ResolveEvalRelativeTimes(stripEvalRolePrefix(atoms[0]), anchor)
-		}
 		for j, atom := range atoms {
+			// AMC C3 修复 #3：相对时间按原子解析（此前只用 atoms[0] 的结果
+			// 复用到全部原子，「…。前天…。」第二枚原子丢失/错配 event_dates，
+			// Q6 区间/时序题与 Q9 前缀全部错位）。
+			atomDates := biz.ResolveEvalRelativeTimes(stripEvalRolePrefix(atom), anchor)
 			statement := atom
 			if m.Role != "" {
 				statement = m.Role + ": " + atom
@@ -107,7 +110,7 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 			if kind != "event" {
 				imp = 0.7
 			}
-			prevs, err := s.supersedeContradictions(ctx, userID, kind, statement, batchIDs)
+			prevs, err := s.supersedeContradictions(ctx, userID, kind, statement, eventAt, batchIDs)
 			if err != nil {
 				s.lg.Warn("eval supersede skipped",
 					loggateway.StepID("memoryeval.supersede"), loggateway.Err(err))
@@ -129,7 +132,7 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 				CreatedAt:       eventAt,
 				ValidFrom:       eventAt,
 				SkipPIIRedact:   true,
-				MetadataJSON:    evalMetadataJSON(sessionID, i, j, eventDates, prevs),
+				MetadataJSON:    evalMetadataJSON(sessionID, i, j, atomDates, prevs),
 			})
 			if err != nil {
 				return stored, err
@@ -376,15 +379,22 @@ func (s *evalMemoryStore) appendAggregateEpisodes(ctx context.Context, userID, q
 }
 
 // HasEvalCorrectionCue reports an explicit correction/改口 marker (AMC C3-A
-// Q7): 改… (改/换成/改为/改成), 其实, 不对, 错了, 不是…而是, and the English
-// actually / correction / no longer / in fact cues. Matching is
-// case-insensitive for the English cues.
+// Q7). AMC C3 修复 #8：原裸子串「改」误伤 改变/改善/修改/改天（每枚原子多付
+// 一次 EmbedText + 一次向量近邻搜索，且 0.82 余弦下存在误杀相邻事实风险），
+// 收紧为明确改口句式（改成/改为/改到/改回/改去/改口/改主意/调换/换成/换为/换了/
+// 转到/变成/变为/不再是/不喜欢了/没感觉），保留 其实/不对/错了 与英文
+// actually/correction/no longer/in fact。英文匹配大小写不敏感。
 func HasEvalCorrectionCue(statement string) bool {
 	s := strings.TrimSpace(statement)
 	if s == "" {
 		return false
 	}
-	for _, c := range []string{"改", "其实", "不对", "错了"} {
+	for _, c := range []string{
+		"改成", "改为", "改到", "改回", "改去", "改口", "改主意",
+		"调换", "换成", "换为", "换了", "转到", "变成", "变为",
+		"不再是", "不喜欢了", "没感觉",
+		"其实", "不对", "错了",
+	} {
 		if strings.Contains(s, c) {
 			return true
 		}
@@ -405,10 +415,16 @@ func HasEvalCorrectionCue(statement string) bool {
 // embedder is available and the new statement carries a correction cue — the
 // vector-correction pass (AMC C3-A Q7). It returns the audit trail of
 // superseded statements for the new fact's metadata.previous_values.
-// batchIDs holds facts already written by this AddMessages call and is
-// excluded from both passes, and the vector pass is skipped wholesale
-// (warn-only) when embedding fails or no embedder is wired.
-func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, newKind, newStmt string, batchIDs map[string]struct{}) ([]evalPrevValue, error) {
+//
+// AMC C3 修复 #1：batchIDs（本次 AddMessages 已写入的事实）只在向量通道
+// 排除——向量近邻可能把同批 sibling 误当矛盾旧值；同槽通道必须允许失效同批
+// 行，否则同一请求内的 [旧值, 改口] 消息对互不覆盖（对基线的功能回退）。
+//
+// AMC C3 修复 #0/#4（下）：事件时序守卫——平台重试会重放旧请求，重放里的
+// 旧语句绝不能失效事件时间（valid_from）严格更晚的事实；两通道统一执行。
+// 墓碑行（valid_until 非空）直接跳过，避免重放时无效翻动审计时戳。
+// 向量通道在 embedding 失败或未接线时整体跳过（warn-only）。
+func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, newKind, newStmt, newEventAt string, batchIDs map[string]struct{}) ([]evalPrevValue, error) {
 	if !evalGovernableKindForStore(newKind) {
 		return nil, nil
 	}
@@ -422,10 +438,10 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		if old.id == "" || old.statement == "" {
 			return
 		}
-		if _, dup := invalidated[old.id]; dup {
+		if old.validUntil != "" {
 			return
 		}
-		if _, sameBatch := batchIDs[old.id]; sameBatch {
+		if _, dup := invalidated[old.id]; dup {
 			return
 		}
 		if _, invErr := s.facts.InvalidateFact(ctx, old.id); invErr != nil {
@@ -457,6 +473,9 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		if !biz.ShouldSupersedeEvalFact(old.kind, old.statement, newKind, newStmt) {
 			continue
 		}
+		if !evalTimeAllowsInvalidate(old.validFrom, newEventAt) {
+			continue
+		}
 		invalidate(old)
 	}
 	// Vector-correction pass (Q7): a correction cue plus a semantically near
@@ -480,7 +499,6 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		return prevs, nil
 	}
 	var ids []string
-	scores := map[string]float64{}
 	for _, h := range hits {
 		if h.Score < evalCorrectionCosine {
 			continue
@@ -489,7 +507,6 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 			continue
 		}
 		ids = append(ids, h.ID)
-		scores[h.ID] = h.Score
 	}
 	if len(ids) == 0 {
 		return prevs, nil
@@ -511,9 +528,32 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		if biz.NormalizeForDedup(old.statement) == biz.NormalizeForDedup(newStmt) {
 			continue
 		}
+		if !evalTimeAllowsInvalidate(old.validFrom, newEventAt) {
+			continue
+		}
 		invalidate(old)
 	}
 	return prevs, candRows.Err()
+}
+
+// evalTimeAllowsInvalidate is the replay-safety guard (AMC C3 修复 #0/#4):
+// an existing fact may be invalidated only when its event time (valid_from)
+// is not strictly later than the new statement's event time. Platform
+// retries re-POST older requests after newer ones have landed; without this
+// guard the replayed old statement would re-invalidate newer facts via the
+// same-slot or vector pass. Unparseable/empty times fail open (allow).
+func evalTimeAllowsInvalidate(oldValidFrom, newEventAt string) bool {
+	oldValidFrom = strings.TrimSpace(oldValidFrom)
+	newEventAt = strings.TrimSpace(newEventAt)
+	if oldValidFrom == "" || newEventAt == "" {
+		return true
+	}
+	of, err1 := time.Parse(time.RFC3339Nano, oldValidFrom)
+	nv, err2 := time.Parse(time.RFC3339Nano, newEventAt)
+	if err1 != nil || err2 != nil {
+		return true
+	}
+	return !of.After(nv)
 }
 
 func evalGovernableKindForStore(kind string) bool {
@@ -691,6 +731,8 @@ type evalFactRow struct {
 	statement       string
 	kind            string
 	sourceSessionID string
+	validFrom       string
+	validUntil      string
 }
 
 func decodeEvalFactRow(raw []byte) evalFactRow {
@@ -699,11 +741,20 @@ func decodeEvalFactRow(raw []byte) evalFactRow {
 		Statement       string `json:"statement"`
 		FactKind        string `json:"fact_kind"`
 		SourceSessionID string `json:"source_session_id"`
+		ValidFrom       string `json:"valid_from"`
+		ValidUntil      string `json:"valid_until"`
 	}
 	if json.Unmarshal(raw, &row) != nil {
 		return evalFactRow{}
 	}
-	return evalFactRow{id: row.ID, statement: row.Statement, kind: row.FactKind, sourceSessionID: row.SourceSessionID}
+	return evalFactRow{
+		id:              row.ID,
+		statement:       row.Statement,
+		kind:            row.FactKind,
+		sourceSessionID: row.SourceSessionID,
+		validFrom:       row.ValidFrom,
+		validUntil:      row.ValidUntil,
+	}
 }
 
 func evalItemFromFactJSON(raw []byte, fallback float64) (biz.EvalMemoryItem, bool) {
