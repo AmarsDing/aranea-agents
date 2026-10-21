@@ -105,12 +105,20 @@ func (r *graphNodeV2Repo) UpdateGraphNode(ctx context.Context, gn biz.GraphNode)
 //
 // TeamStageID：Update 时仅在非空时写入，避免终态 status 更新用空串擦除
 // dispatch 已回填的 team_stage 关联（chat GraphStageBlock 点击跳转依赖此字段）。
+//
+// FR-11（89 批次3）：非终态 incoming status 的 update 追加终态谓词
+// （StatusNotIn completed/failed/interrupted）——sequencer 死信重放携带的陈旧
+// running 快照不得把已终态节点覆写回中间态。0 行命中即发生了守卫拦截或行不
+// 存在：先读分辨，行在 → 幂等返回现有行（镜像兄弟 repo 幂等语义）；行不在 →
+// 走 Create。终态 incoming（completed/failed/interrupted）不设防——终态单调，
+// 合法覆写（含死信重放的宕后收账）。
 func (r *graphNodeV2Repo) UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error) {
 	if r == nil || r.data == nil {
 		return biz.GraphNode{}, fmt.Errorf("graph node v2 repo: database not configured")
 	}
-	// Try update first.
-	upd := r.data.RW().Write(ctx).GraphNodeV2.UpdateOneID(gn.ID).
+	// Try update first. UpdateOneID 不可用——守卫谓词须挂在 bulk Update 上。
+	upd := r.data.RW().Write(ctx).GraphNodeV2.Update().
+		Where(graphnodev2.ID(gn.ID)).
 		SetGraphStageID(gn.GraphStageID).
 		SetDagNodeID(gn.DagNodeID).
 		SetLabel(gn.Label).
@@ -118,12 +126,31 @@ func (r *graphNodeV2Repo) UpsertGraphNode(ctx context.Context, gn biz.GraphNode)
 	if gn.TeamStageID != "" {
 		upd = upd.SetTeamStageID(gn.TeamStageID)
 	}
-	if err := upd.Exec(ctx); err == nil {
+	if !isTerminalGraphNodeStatus(gn.Status) {
+		upd = upd.Where(graphnodev2.StatusNotIn(
+			string(biz.GraphNodeStatusCompleted),
+			string(biz.GraphNodeStatusFailed),
+			string(biz.GraphNodeStatusInterrupted),
+		))
+	}
+	n, err := upd.Save(ctx)
+	if err == nil && n > 0 {
 		row, getErr := r.data.RW().Read(ctx).GraphNodeV2.Get(ctx, gn.ID)
 		if getErr != nil {
 			return biz.GraphNode{}, entErrToBizErr(getErr, "GRAPH_NODE_V2")
 		}
 		return entGraphNodeV2ToBiz(row), nil
+	}
+	if err == nil {
+		// n==0：守卫拦截（行已为终态）或行不存在——读一次分辨。
+		existing, getErr := r.data.RW().Read(ctx).GraphNodeV2.Get(ctx, gn.ID)
+		if getErr == nil {
+			return entGraphNodeV2ToBiz(existing), nil
+		}
+		if !ent.IsNotFound(getErr) {
+			return biz.GraphNode{}, entErrToBizErr(getErr, "GRAPH_NODE_V2")
+		}
+		// 行确不存在 → 落 Create。
 	}
 	// Fallback to create.
 	row, err := r.data.RW().Write(ctx).GraphNodeV2.Create().
@@ -145,6 +172,17 @@ func (r *graphNodeV2Repo) UpsertGraphNode(ctx context.Context, gn biz.GraphNode)
 		return biz.GraphNode{}, entErrToBizErr(err, "GRAPH_NODE_V2")
 	}
 	return entGraphNodeV2ToBiz(row), nil
+}
+
+// isTerminalGraphNodeStatus 报告 status 是否为 GraphNode 终态（FR-11 守卫
+// 名单——与 graph 状态机终态集一致：completed/failed/interrupted；
+// pending/running 为可逆中间态）。
+func isTerminalGraphNodeStatus(s biz.GraphNodeStatus) bool {
+	switch s {
+	case biz.GraphNodeStatusCompleted, biz.GraphNodeStatusFailed, biz.GraphNodeStatusInterrupted:
+		return true
+	}
+	return false
 }
 
 // entGraphNodeV2ToBiz converts an Ent GraphNodeV2 row to biz.GraphNode.
