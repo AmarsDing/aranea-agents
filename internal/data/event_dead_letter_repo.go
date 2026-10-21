@@ -150,3 +150,25 @@ func (r *EventDeadLetterRepo) IncrementEventDeadLetterAttempt(ctx context.Contex
 		lastErr, time.Now().UnixMilli(), id)
 	return entErrToBizErr(err, "EVENT_DL")
 }
+
+// DeferEventDeadLetter implements biz.EventDeadLetterDeferMarker (FR-10):
+// records a replay deferral marker without consuming the attempt budget.
+func (r *EventDeadLetterRepo) DeferEventDeadLetter(ctx context.Context, id int64, marker string) error {
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE event_dead_letter SET last_error=?, updated_at=? WHERE id=?`),
+		marker, time.Now().UnixMilli(), id)
+	return entErrToBizErr(err, "EVENT_DL")
+}
+
+// deletePendingEventDeadLetters removes pending dead-letter rows for one
+// entity. TxExecerFromCtx honors an in-flight ExecInTx: the resume CAS
+// (task_v2_repo.ResumeInterruptedTask, FR-10) commits CAS + cleanup
+// atomically, so a crash between them cannot leave a stale terminal replay
+// that would clobber the resurrected task. entityKind must match the v2
+// router's kind space (biz.EventDeadLetterEntityKindTask …).
+func deletePendingEventDeadLetters(ctx context.Context, d *Data, entityKind, entityID string) error {
+	_, err := TxExecerFromCtx(ctx, d.RWDB().WriteHandle()).ExecContext(ctx,
+		d.Dialect().RenumberPlaceholders(`DELETE FROM event_dead_letter WHERE entity_kind = ? AND entity_id = ? AND state = 'pending'`),
+		entityKind, entityID)
+	return entErrToBizErr(err, "EVENT_DL")
+}

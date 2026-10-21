@@ -281,8 +281,19 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	durableCtx := admit.durableCtx
 
 	// Session run lifecycle
+	// FR-13（89 批次3）准入 fail-closed：StartInteractive 真冲突且 awaiting
+	// 收养未命中 → 不再静默丢绑裸跑 turn，Warn 后终止本轮。
 	var sessionRunID string
-	ctx, sessionRunID = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
+	ctx, sessionRunID, err := o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
+	if err != nil {
+		o.lg().Warn("begin session run lifecycle failed (fail-closed)",
+			loggateway.StepID("chat.session_run_begin"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("turn_id", userMsg.ID),
+			loggateway.Err(err),
+		)
+		return turnExecuteResult{}, err
+	}
 
 	// Build run options + prepare run context
 	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, deps, intentRunOpts)

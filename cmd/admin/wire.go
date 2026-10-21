@@ -3497,8 +3497,12 @@ func provideV2RepoSet(
 // ActivityBridge upsert path removed; typed v2 events persist via RepoSet.
 // P1-R2b: durable dead-letter store enables restart-surviving replay of
 // permanently failed entity persists.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore))
+// FR-10: terminal fence gates complete_task_terminal replays against live
+// task state + active-run presence（wire_gen.go 已手工镜像——regen 时须与
+// 本参数与构造体一致，见 wire-gen-hand-merge-convention）。
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, taskRepo biz.TaskV2Repo, runRegistry *rt.RunRegistry, lg loggateway.Logger) *v2.Sequencer {
+	fence := &v2.TaskRunTerminalFence{Tasks: taskRepo, HasActive: runRegistry.HasActive}
+	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore), v2.WithDeadLetterTerminalFence(fence))
 }
 
 // provideWSServer constructs the WS server and attaches the durable outbox for

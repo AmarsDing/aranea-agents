@@ -308,29 +308,48 @@ func (r *taskV2Repo) CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.
 // single-statement CAS interrupted → running so a double click or concurrent
 // resume cannot resurrect the task twice. completed_at is cleared because the
 // task is active again; version bumps keep the v2 sequencer's VersionLT guard
-// monotonic.
+// monotonic. The CAS and the (entity_kind=task, entity_id) pending
+// dead-letter cleanup commit in ONE transaction (FR-10): a stale terminal
+// dead-letter replayed after the resurrection would otherwise clobber the
+// running task back into a terminal state.
 func (r *taskV2Repo) ResumeInterruptedTask(ctx context.Context, id string, resumeAt time.Time) (biz.Task, bool, error) {
 	if r == nil || r.data == nil {
 		return biz.Task{}, false, fmt.Errorf("task v2 repo: database not configured")
 	}
-	n, err := r.data.RW().Write(ctx).TaskV2.Update().
-		Where(taskv2.ID(id), taskv2.StatusEQ(string(biz.TaskStatusInterrupted))).
-		SetStatus(string(biz.TaskStatusRunning)).
-		ClearCompletedAt().
-		SetUpdatedAt(resumeAt).
-		AddVersion(1).
-		Save(ctx)
+	var resumed biz.Task
+	ok := false
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		n, err := r.data.RW().Write(txCtx).TaskV2.Update().
+			Where(taskv2.ID(id), taskv2.StatusEQ(string(biz.TaskStatusInterrupted))).
+			SetStatus(string(biz.TaskStatusRunning)).
+			ClearCompletedAt().
+			SetUpdatedAt(resumeAt).
+			AddVersion(1).
+			Save(txCtx)
+		if err != nil {
+			return entErrToBizErr(err, "TASK_V2")
+		}
+		if n == 0 {
+			return nil
+		}
+		if err := deletePendingEventDeadLetters(txCtx, r.data, biz.EventDeadLetterEntityKindTask, id); err != nil {
+			return err
+		}
+		row, err := r.data.RW().Read(txCtx).TaskV2.Get(txCtx, id)
+		if err != nil {
+			return entErrToBizErr(err, "TASK_V2")
+		}
+		resumed = entTaskV2ToBiz(row)
+		ok = true
+		return nil
+	})
 	if err != nil {
-		return biz.Task{}, false, entErrToBizErr(err, "TASK_V2")
+		return biz.Task{}, false, err
 	}
-	if n == 0 {
+	if !ok {
 		return biz.Task{}, false, nil
 	}
-	row, err := r.data.RW().Read(ctx).TaskV2.Get(ctx, id)
-	if err != nil {
-		return biz.Task{}, false, entErrToBizErr(err, "TASK_V2")
-	}
-	return entTaskV2ToBiz(row), true, nil
+	return resumed, true, nil
 }
 
 // entTaskV2ToBiz converts an Ent TaskV2 row to biz.Task.

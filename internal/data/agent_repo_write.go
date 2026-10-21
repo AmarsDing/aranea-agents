@@ -5,13 +5,17 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentruntimesetting"
+	entsession "aranea-agents/internal/data/ent/session"
 	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
@@ -134,10 +138,29 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 		return apierror.BadRequest("AGENT", "id is required")
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		// FR-13（89 批次3）：删除前对 running/awaiting_confirmation 会话计数——
+		// 挂有 live run 的会话不得随 agent 级联软删，整体 409 拒绝并带计数。
+		// 计数与删除同事务，防"检查后竞态活跃"；cascade 谓词仍保留作纵深防御。
+		txW := r.data.RW().Write(txCtx)
+		active, err := txW.Session.Query().
+			Where(entsession.AgentIDEQ(id), entsession.DeletedAtEQ(""),
+				entsession.StatusIn(string(bizsession.SessionStatusRunning),
+					string(bizsession.SessionStatusAwaitingConfirmation))).
+			Count(txCtx)
+		if err != nil {
+			return entErrToBizErr(err, "AGENT")
+		}
+		if active > 0 {
+			r.data.lg.Warn("delete agent refused: active sessions present",
+				loggateway.StepID("data.agent.delete_active_guard"),
+				loggateway.Int("active_sessions", active))
+			return apierror.Conflict("AGENT",
+				"agent has %d active session(s) (running/awaiting_confirmation); stop them before delete", active)
+		}
 		now := nowRFC3339()
 		// Tombstone is deleted_at. Status stays inside the catalog FSM
 		// (active/inactive/archived); "deleted" is not a valid AgentStatus.
-		if _, err := r.data.RW().Write(txCtx).Agent.UpdateOneID(id).
+		if _, err := txW.Agent.UpdateOneID(id).
 			SetDeletedAt(now).
 			SetStatus(string(biz.AgentStatusArchived)).
 			SetUpdatedAt(now).

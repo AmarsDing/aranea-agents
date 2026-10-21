@@ -29,7 +29,7 @@ func (r *testRepo) SessionSummaryExists(ctx context.Context, sessionID string, f
 	return r.mockSessionRepo.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 }
 
-func (r *testRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
+func (r *testRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) (int, []string, error) {
 	if r.deleteSessionsByAgentIDFn != nil {
 		return r.deleteSessionsByAgentIDFn(ctx, agentID)
 	}
@@ -418,32 +418,42 @@ func TestGetSessionRevision(t *testing.T) {
 
 func TestDeleteByAgent(t *testing.T) {
 	tests := []struct {
-		name    string
-		agentID string
-		delFn   func(_ context.Context, aid string) error
-		wantErr bool
-		wantMsg string
+		name        string
+		agentID     string
+		delFn       func(_ context.Context, aid string) (int, []string, error)
+		wantErr     bool
+		wantMsg     string
+		wantDeleted int
+		wantSkipped []string
 	}{
-		{"empty agent id returns error", "", nil, true, "agent_id is required"},
-		{"whitespace agent id returns error", "  ", nil, true, "agent_id is required"},
+		{"empty agent id returns error", "", nil, true, "agent_id is required", 0, nil},
+		{"whitespace agent id returns error", "  ", nil, true, "agent_id is required", 0, nil},
 		{
 			"valid agent id delegates to repo",
 			"agent-1",
-			func(_ context.Context, aid string) error {
+			func(_ context.Context, aid string) (int, []string, error) {
 				if aid != "agent-1" {
 					t.Errorf("aid = %q, want %q", aid, "agent-1")
 				}
-				return nil
+				return 2, nil, nil
 			},
-			false, "",
+			false, "", 2, nil,
+		},
+		{
+			"FR-13: skipped active sessions propagated",
+			"agent-1",
+			func(_ context.Context, _ string) (int, []string, error) {
+				return 3, []string{"s-live-1", "s-live-2"}, nil
+			},
+			false, "", 3, []string{"s-live-1", "s-live-2"},
 		},
 		{
 			"repo error propagated",
 			"agent-1",
-			func(_ context.Context, _ string) error {
-				return errors.New("db error")
+			func(_ context.Context, _ string) (int, []string, error) {
+				return 0, nil, errors.New("db error")
 			},
-			true, "",
+			true, "", 0, nil,
 		},
 	}
 
@@ -451,7 +461,7 @@ func TestDeleteByAgent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &testRepo{deleteSessionsByAgentIDFn: tt.delFn}
 			uc := newTestUc(repo)
-			err := uc.DeleteByAgent(context.Background(), tt.agentID)
+			deleted, skipped, err := uc.DeleteByAgent(context.Background(), tt.agentID)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -463,6 +473,17 @@ func TestDeleteByAgent(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if deleted != tt.wantDeleted {
+				t.Errorf("deleted = %d, want %d", deleted, tt.wantDeleted)
+			}
+			if len(skipped) != len(tt.wantSkipped) {
+				t.Fatalf("skipped = %v, want %v", skipped, tt.wantSkipped)
+			}
+			for i := range skipped {
+				if skipped[i] != tt.wantSkipped[i] {
+					t.Errorf("skipped[%d] = %q, want %q", i, skipped[i], tt.wantSkipped[i])
+				}
 			}
 		})
 	}

@@ -408,11 +408,13 @@ type SessionWriter interface {
 	UpdateSessionMetadataKey(ctx context.Context, id, key, value string) error
 }
 
-// Stability:stable
+// Stability:evolving（FR-13，2026-10-22：DeleteSessionsByAgentID 返回 skipped）
 type SessionMutator interface {
 	ArchiveSession(ctx context.Context, id string) (int, error)
 	DeleteSession(ctx context.Context, id string) (int, error)
-	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+	// DeleteSessionsByAgentID soft-deletes non-active sessions of an agent;
+	// running/awaiting_confirmation sessions are skipped and returned.
+	DeleteSessionsByAgentID(ctx context.Context, agentID string) (processed int, skipped []string, err error)
 	PinSession(ctx context.Context, id string) (Session, error)
 	UnpinSession(ctx context.Context, id string) (Session, error)
 }
@@ -952,9 +954,11 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error {
+// DeleteByAgent deletes all non-active sessions of an agent. FR-13：活跃
+// 会话（running/awaiting_confirmation）跳删并返回 skipped，供调用方留证。
+func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) (int, []string, error) {
 	if strings.TrimSpace(agentID) == "" {
-		return validationErr("agent_id is required")
+		return 0, nil, validationErr("agent_id is required")
 	}
 	return uc.sessionMutator.DeleteSessionsByAgentID(ctx, agentID)
 }

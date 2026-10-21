@@ -80,6 +80,9 @@ type persistWorker struct {
 	// dead-lettered events are also written to the event_dead_letter table
 	// and replayed (startup + periodic) until success or attempt cap.
 	store biz.EventDeadLetterRepo
+	// terminalFence gates complete_task_terminal replays against live task
+	// state (FR-10); nil preserves the legacy blind-apply semantics.
+	terminalFence DeadLetterTerminalFence
 
 	replayDone    chan struct{}
 	replayWG      sync.WaitGroup
@@ -90,16 +93,17 @@ type persistWorker struct {
 
 func newPersistWorker(rs RepoSet, lg loggateway.Logger, throttles *sequencerThrottles, cfg config) *persistWorker {
 	return &persistWorker{
-		repoSet:    rs,
-		lg:         lg,
-		ch:         make(chan persistItem, cfg.persistBuffer),
-		maxRetries: cfg.persistMaxRetries,
-		backoff:    cfg.persistBackoff,
-		ring:       newDeadLetterRing(cfg.deadLetterCapacity),
-		store:      cfg.deadLetterStore,
-		done:       make(chan struct{}),
-		replayDone: make(chan struct{}),
-		throttles:  throttles,
+		repoSet:       rs,
+		lg:            lg,
+		ch:            make(chan persistItem, cfg.persistBuffer),
+		maxRetries:    cfg.persistMaxRetries,
+		backoff:       cfg.persistBackoff,
+		ring:          newDeadLetterRing(cfg.deadLetterCapacity),
+		store:         cfg.deadLetterStore,
+		terminalFence: cfg.terminalFence,
+		done:          make(chan struct{}),
+		replayDone:    make(chan struct{}),
+		throttles:     throttles,
 	}
 }
 

@@ -38,7 +38,11 @@ func (w *SessionRunDurableWorker) Start(ctx context.Context) {
 			loggateway.Err(err),
 		)
 	} else if n > 0 {
-		w.lg.Info("orphaned runs cleaned up",
+		// 89 T14（单写者约束证据，Warn 级别便于误部署发现）：孤儿行=上一进程
+		// 非正常退出留下的未完成 run。正式部署为单副本形态，此日志每次启动最多
+		// 出现一次（对应上次异常退出）；若多副本部署下多实例互相清理对方活跃
+		// run，本行会高频出现——即 single-writer assumption 被击穿的证据。
+		w.lg.Warn("orphaned runs cleaned up (single-writer assumption evidence: frequent occurrences across replicas indicate cross-replica cleanup)",
 			loggateway.StepID("session.durable_worker"),
 			loggateway.Int("count", n),
 		)

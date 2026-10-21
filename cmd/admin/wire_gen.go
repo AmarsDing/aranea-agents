@@ -181,7 +181,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	v2Bus := provideV2EventBus()
 	eventDeliveryOutboxRepo := data.NewEventDeliveryOutboxRepoFromData(dataData)
 	eventDeadLetterRepo := data.NewEventDeadLetterRepo(dataData, loggatewayLogger)
-	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, loggatewayLogger)
+	// 89 FR-10：事前移 runRegistry 声明——sequencer 终态 fencing 需活跃 run
+	// 判读。wire_gen 手维护约定：wire.go regen 时须镜像（见 wire-gen-hand-merge-convention）。
+	runRegistry := provideRunRegistry(loggatewayLogger)
+	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, taskV2Repo, runRegistry, loggatewayLogger)
 	memoryCanaryStatus := biz.NewMemoryCanaryStatus()
 	alertMetricRegistry := alert.NewAlertMetricRegistry()
 	traceUsageRepo := data.NewMonitorTraceUsageRepo(dataData)
@@ -259,7 +262,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	flowLogWriter := service.ProvideFlowLogWriter(loggatewayLogger, monitorBus)
 	sessionFlowLogWriter := service.ProvideSessionFlowLogWriter(flowLogWriter)
 	sessionUsecase := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)
-	runRegistry := provideRunRegistry(loggatewayLogger)
 	pendingMessageQueue := providePendingMessageQueue(loggatewayLogger, dataData)
 	// 89 FR-7：删除/归档会话的内存 pending 队列级联清理（防批量 ReplaceAll
 	// 复活已删会话行/恢复标记）。wire_gen 手维护约定：wire.go regen 时须镜
@@ -4002,8 +4004,11 @@ func provideV2RepoSet(
 // ActivityBridge upsert path removed; typed v2 events persist via RepoSet.
 // P1-R2b: durable dead-letter store enables restart-surviving replay of
 // permanently failed entity persists.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore))
+// FR-10: terminal fence gates complete_task_terminal replays against live
+// task state + active-run presence（手维护副本，与 wire.go 一致）。
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, taskRepo biz.TaskV2Repo, runRegistry *runtime.RunRegistry, lg loggateway.Logger) *v2.Sequencer {
+	fence := &v2.TaskRunTerminalFence{Tasks: taskRepo, HasActive: runRegistry.HasActive}
+	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore), v2.WithDeadLetterTerminalFence(fence))
 }
 
 // provideWSServer constructs the WS server and attaches the durable outbox for

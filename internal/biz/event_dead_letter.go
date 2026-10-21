@@ -48,3 +48,23 @@ type EventDeadLetterRepo interface {
 	MarkEventDeadLetterAbandoned(ctx context.Context, id int64, reason string) error
 	IncrementEventDeadLetterAttempt(ctx context.Context, id int64, lastErr string) error
 }
+
+// EventDeadLetterEntityKindTask is the entity_kind value for task rows. It is
+// the single source shared by the v2 persist router (v2.EntityKindTask must
+// stay equal) and data-layer cleanup queries (FR-10 resume same-tx delete).
+const EventDeadLetterEntityKindTask = "task"
+
+// EventDeadLetterDeferMarker records a replay deferral (FR-10: a
+// complete_task_terminal dead-letter whose task was resurrected and has an
+// ACTIVE run must wait for the live terminal event instead of counting
+// attempts). Kept separate from EventDeadLetterRepo so streaming/test fakes
+// needn't grow: the replay loop resolves it via type assertion, and its
+// absence degrades deferrals to plain skips (no persisted defer count).
+// Stability: Internal
+type EventDeadLetterDeferMarker interface {
+	// DeferEventDeadLetter rewrites last_error with the defer marker and
+	// touches updated_at only — attempts is deliberately left alone so a
+	// deferred row never burns its replay budget while a live run is in
+	// flight.
+	DeferEventDeadLetter(ctx context.Context, id int64, marker string) error
+}
