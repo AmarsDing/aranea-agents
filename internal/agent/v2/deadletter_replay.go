@@ -126,7 +126,7 @@ func (p *persistWorker) replayDeadLettersOnce() {
 	if len(recs) == 0 {
 		return
 	}
-	var replayed, failed, abandoned int
+	var replayed, failed, abandoned, deferred int
 	for _, rec := range recs {
 		if rec.Attempts >= deadLetterMaxReplayAttempt {
 			p.abandonDeadLetter(ctx, rec, "max_attempts_exceeded")
@@ -139,6 +139,22 @@ func (p *persistWorker) replayDeadLettersOnce() {
 			p.abandonDeadLetter(ctx, rec, "decode_failed: "+decErr.Error())
 			abandoned++
 			continue
+		}
+		// FR-10: fence complete_task_terminal replays against live task state
+		// before re-applying — a resurrected/terminalized task must not be
+		// clobbered by a stale terminal snapshot.
+		if t, ok := entity.(biz.Task); ok && rec.EntityOp == PersistOpCompleteTaskTerminal {
+			switch p.fenceTerminalTaskReplay(ctx, rec, t.Status) {
+			case fenceReplayed:
+				replayed++
+				continue
+			case fenceAbandoned:
+				abandoned++
+				continue
+			case fenceDeferred:
+				deferred++
+				continue
+			}
 		}
 		pctx, pcancel := context.WithTimeout(context.Background(), 2*time.Second)
 		applyErr := applyPersist(pctx, p.repoSet, rec.EntityKind, rec.EntityOp, entity)
@@ -163,6 +179,7 @@ func (p *persistWorker) replayDeadLettersOnce() {
 		loggateway.Int("replayed", replayed),
 		loggateway.Int("failed", failed),
 		loggateway.Int("abandoned", abandoned),
+		loggateway.Int("deferred", deferred),
 		loggateway.Int("total", len(recs)))
 }
 

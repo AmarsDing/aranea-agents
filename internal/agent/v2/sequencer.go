@@ -101,6 +101,9 @@ type config struct {
 	deadLetterCapacity    int
 	outbox                biz.EventDeliveryOutboxRepo
 	deadLetterStore       biz.EventDeadLetterRepo
+	// terminalFence is the optional FR-10 replay fence for
+	// complete_task_terminal dead-letters (nil = legacy blind-apply).
+	terminalFence DeadLetterTerminalFence
 	// disableReplayLoop keeps the background dead-letter replay worker from
 	// starting. Test-only: tests that drive replayDeadLettersOnce manually
 	// must set this, otherwise the startup sweep races the manual call and
