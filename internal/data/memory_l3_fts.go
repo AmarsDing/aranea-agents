@@ -3,12 +3,15 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/lib/pq"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -96,15 +99,178 @@ func (r *l3FactRepo) searchL3FTS(ctx context.Context, scopeType, scopeID, userID
 // ftsCandidateIDs is the best-effort wrapper around searchL3FTS for the
 // recall hot path: FTS errors degrade to no FTS candidates (vector /
 // Go-keyword scoring continues) rather than failing the recall.
+// AMC C3-B: the ranked English list is merged with the CJK bigram channel
+// (searchL3FTSCJK, ranked first-list-wins dedup) so 中文部分词面查询也进
+// 候选池；英文 FTS 行为不削弱（英文通道仍是主列表）。
 func (r *l3FactRepo) ftsCandidateIDs(ctx context.Context, scopeType, scopeID, userID, query string, limit int) []string {
 	ids, err := r.searchL3FTS(ctx, scopeType, scopeID, userID, query, limit)
 	if err != nil {
 		r.data.lg.Warn("L3 FTS candidate search failed, degrading to non-FTS recall",
 			loggateway.StepID("memory.l3_fts_search"),
 			loggateway.Err(err))
+		ids = nil
+	}
+	return mergeRankedIDLists(ids, r.ftsCJKCandidateIDs(ctx, scopeType, scopeID, userID, query, limit))
+}
+
+// ──────────────────────────────────────────────────────────
+// L3 CJK bigram FTS channel (AMC C3-B, migration 20261292)
+//
+// to_tsvector('simple') 把连续中文整段当单一 lexeme，英文 FTS 通道只能命中
+// 整段子串；statement_fts_cjk 生成列索引 bigram_text(statement) 的滑窗
+// 二元组，使「喜欢什么颜色」可经共享二元组命中「喜欢蓝色」，与 trgm 通道
+// 互补。查询词用库内同一 bigram_text() 分词，词表永不与索引漂移。
+// 老库未迁移 20261292（bigram_text 42883 / statement_fts_cjk 42703）时
+// 记 debug 并跳过本通道，英文 FTS 与原召回路径不受影响。
+// ──────────────────────────────────────────────────────────
+
+// hasCJKRune reports whether s contains a CJK Unified Ideograph — the gate
+// for the CJK bigram channel (pure-ASCII queries stay on searchL3FTS).
+func hasCJKRune(s string) bool {
+	for _, r := range s {
+		if r >= 0x4e00 && r <= 0x9fff {
+			return true
+		}
+	}
+	return false
+}
+
+// isMissingCJKFTS reports err means the 20261292 objects are absent on an
+// unmigrated DB: 42883 undefined_function (bigram_text) or 42703
+// undefined_column (statement_fts_cjk).
+func isMissingCJKFTS(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		switch string(pqErr.Code) {
+		case "42703", "42883":
+			return true
+		}
+	}
+	return false
+}
+
+// searchL3FTSCJK returns CJK bigram FTS-ranked fact IDs (best first) via the
+// statement_fts_cjk generated column. Queries without CJK runes return nil
+// (callers keep the English channel only). Missing-migration errors degrade
+// to nil (debug-logged); other errors keep entErrToBizErr semantics.
+func (r *l3FactRepo) searchL3FTSCJK(ctx context.Context, scopeType, scopeID, userID, query string, limit int) ([]string, error) {
+	query = strings.TrimSpace(query)
+	if r == nil || r.data == nil || query == "" || !hasCJKRune(query) {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = l3FTSCandidateLimit
+	}
+	var bigrams string
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
+		r.data.Dialect().RenumberPlaceholders(`SELECT bigram_text(?)`), []any{query}, &bigrams)
+	if err != nil {
+		if isMissingCJKFTS(err) {
+			r.data.lg.Debug("L3 CJK FTS channel unavailable (migration 20261292 not applied), skipping",
+				loggateway.StepID("memory.l3_fts_cjk_tokenize"),
+				loggateway.Err(err))
+			return nil, nil
+		}
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	tsq := buildCJKBigramTSQuery(bigrams)
+	if tsq == "" {
+		return nil, nil
+	}
+	// user_id 是唯一检索/写入隔离边界：scope 过滤始终强制（'' = 该维不限）。
+	clauses := []string{
+		"status = 'active'", "deleted_at = ''", "valid_until = ''",
+		`(? = '' OR scope_type = ?)`,
+		`(? = '' OR scope_id = ?)`,
+		`(? = '' OR user_id = ?)`,
+		`statement_fts_cjk @@ to_tsquery('simple', ?)`,
+	}
+	args := []any{scopeType, scopeType, scopeID, scopeID, userID, userID, tsq}
+	q := `SELECT id FROM memory_facts WHERE ` + strings.Join(clauses, " AND ") +
+		` ORDER BY ts_rank(statement_fts_cjk, to_tsquery('simple', ?)) DESC, COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
+	args = append(args, tsq, limit)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		if isMissingCJKFTS(err) {
+			r.data.lg.Debug("L3 CJK FTS column unavailable (migration 20261292 not applied), skipping",
+				loggateway.StepID("memory.l3_fts_cjk_search"),
+				loggateway.Err(err))
+			return nil, nil
+		}
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			return nil, entErrToBizErr(scanErr, "MEMORY_L3")
+		}
+		ids = append(ids, id)
+	}
+	return ids, entErrToBizErr(rows.Err(), "MEMORY_L3")
+}
+
+// ftsCJKCandidateIDs is the best-effort wrapper around searchL3FTSCJK: CJK
+// channel errors degrade to no CJK candidates rather than failing recall.
+func (r *l3FactRepo) ftsCJKCandidateIDs(ctx context.Context, scopeType, scopeID, userID, query string, limit int) []string {
+	ids, err := r.searchL3FTSCJK(ctx, scopeType, scopeID, userID, query, limit)
+	if err != nil {
+		r.data.lg.Warn("L3 CJK FTS candidate search failed, degrading to non-CJK-FTS recall",
+			loggateway.StepID("memory.l3_fts_cjk_search"),
+			loggateway.Err(err))
 		return nil
 	}
 	return ids
+}
+
+// mergeRankedIDLists concatenates ranked ID lists, dropping blanks and
+// duplicates while preserving first-seen order — pass the primary list first
+// so its ranks dominate downstream RRF fusion.
+func mergeRankedIDLists(lists ...[]string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, ids := range lists {
+		for _, id := range ids {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// buildCJKBigramTSQuery turns bigram_text() output (space-separated CJK
+// bigrams + lowercase ASCII words) into an OR tsquery, mirroring
+// buildL3FTSQuery's question-form tolerance: any shared bigram ranks, ts_rank
+// plus the hybrid score does the precision work downstream.
+func buildCJKBigramTSQuery(bigrams string) string {
+	seen := map[string]struct{}{}
+	parts := []string{}
+	for _, tok := range strings.Fields(bigrams) {
+		term := escapeTSQueryTerm(tok)
+		if term == "" {
+			continue
+		}
+		if _, ok := seen[term]; ok {
+			continue
+		}
+		seen[term] = struct{}{}
+		parts = append(parts, term)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " | ")
 }
 
 // rrfFuseRanked merges ranked ID lists via Reciprocal Rank Fusion:
@@ -165,7 +331,9 @@ func (r *l3FactRepo) queryFactRowsByIDs(ctx context.Context, ids []string, scope
 // ftsExtraCandidates fetches and scores FTS-hit facts that are not already in
 // the present (already-pooled) set. Used by the brute-force and recency-pool
 // recall paths, whose SQL pre-limit (importance/updated_at top-N) can miss
-// keyword-strong facts with low importance or old timestamps.
+// keyword-strong facts with low importance or old timestamps. The FTS hit set
+// is ftsCandidateIDs — English FTS merged with the CJK bigram channel
+// (20261292), so 中文事实同样可被本注入路径救回。
 func (r *l3FactRepo) ftsExtraCandidates(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, present map[string]struct{}, minScore float64, now time.Time) ([]scoredFact, error) {
 	return r.ftsExtraCandidatesAt(ctx, scopeType, scopeID, userID, query, queryEmbedding, present, minScore, now, l3FTSCandidateLimit)
 }

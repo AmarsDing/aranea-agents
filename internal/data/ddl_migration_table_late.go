@@ -469,4 +469,13 @@ var ddlMigrationsLate = []ddlMigration{
 	// 幂等、崩溃可断点续补）走 Ensure 双轨。迁移轨道免 pgvector 依赖先例
 	//（20261286）：本 .sql 不建 vector 列、不建 HNSW。编号紧跟 20261289。
 	{Version: 20261290, Name: "chunk_embeddings", SQL: "sql/migrations/20261290_chunk_embeddings.sql"},
+	// 20261292 memory_facts_cjk_bigram_fts（AMC C3-B 召回基建，2026-10-20 trgm
+	// 风暴治本配套——20261290/20261291 预留给并行轨，顺延 20261292）：
+	// memory_facts 增 statement_fts_cjk tsvector 生成列（bigram_text(statement)：
+	// 连续 CJK 段滑窗二元组 + ASCII 段小写原词）+ GIN 索引，L3 召回新增 CJK
+	// 全文通道——FTS 'simple' 不分词中文整段成单 lexeme，原 CJK 召回仅靠
+	// 20261242 trgm 单通道（其全表 GIN 候选扫描即 10-20 事故根因）。
+	// bigram_text 为 IMMUTABLE STRICT SQL 函数（生成列/索引表达式可用）；
+	// 幂等（CREATE OR REPLACE FUNCTION / IF NOT EXISTS），存量库重跑安全。
+	{Version: 20261292, Name: "memory_facts_cjk_bigram_fts", SQL: "sql/migrations/20261292_memory_facts_cjk_bigram_fts.sql"},
 }
