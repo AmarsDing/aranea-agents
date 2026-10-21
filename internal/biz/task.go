@@ -92,7 +92,6 @@ type TaskReader interface {
 type TaskWriter interface {
 	SaveTask(ctx context.Context, task *GraphTask) error
 	UpdateTask(ctx context.Context, task *GraphTask) error
-	BatchUpdateGraphTaskStatus(ctx context.Context, taskIDs []string, status GraphTaskStatus) error
 	// ClaimTaskWhereStatus 原子认领：仅当任务 status ∈ fromStatuses 时置为 claimed 并
 	// 写入 assignee/claimed_at，返回最新任务。命中 0 行返回 (nil, false, nil)。
 	// 消除 read-check-write 认领竞态（并发认领只允许一个成功）。
@@ -101,8 +100,19 @@ type TaskWriter interface {
 	// toStatus；submitter 非空时附加 assignee=submitter 守卫（空串跳过，供无提交者上下文的
 	// 调用方使用）。命中 0 行返回 (nil, false, nil)。
 	CompleteTaskWhereStatus(ctx context.Context, taskID string, submitter string, output string, summary string, metadata string, toStatus GraphTaskStatus) (*GraphTask, bool, error)
-	// TransitionTaskStatusWhere 原子状态迁移（不改其他字段），用于 Review 等纯流转场景。
-	TransitionTaskStatusWhere(ctx context.Context, taskID string, fromStatuses []GraphTaskStatus, toStatus GraphTaskStatus) (*GraphTask, bool, error)
+	// TransitionTaskStatusWhere 原子状态迁移：仅当 status ∈ fromStatuses 时迁移到
+	// toStatus，patch（至多一个）随迁移同 UPDATE 落库——谓词未命中则任何字段都
+	// 不落（FR-8：ReportBlocked/Unblock/ReleaseClaim/CheckTimeouts 消全行覆写）。
+	TransitionTaskStatusWhere(ctx context.Context, taskID string, fromStatuses []GraphTaskStatus, toStatus GraphTaskStatus, patch ...TaskTransitionPatch) (*GraphTask, bool, error)
+}
+
+// TaskTransitionPatch 随谓词迁移原子写入的字段集合（仅谓词命中时生效）。
+// 只承载"迁移时刻的新写/清除"，不回填任何读到的旧值（Output/Summary 等并发
+// 热字段不在其中——那正是被本原语消灭的回退向量）。
+type TaskTransitionPatch struct {
+	Metadata       *string // 非 nil：SET metadata（ReportBlocked 的新写阻塞元数据）
+	ClearAssignee  bool    // SET assignee=''（Unblock/ReleaseClaim 释放认领）
+	ClearClaimedAt bool    // ClearClaimedAt（释放租约时间戳）
 }
 
 type TaskCommentStore interface {
@@ -366,17 +376,17 @@ func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey st
 }
 
 func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason string, metadata string) (*GraphTask, error) {
-	task, err := uc.reader.GetTask(ctx, taskID)
+	// FR-8：谓词迁移（claimed→blocked）+ metadata 随迁移原子写入。
+	// 旧实现 Get→改字段→全行 UpdateTask 会把 read 后并发落账的 Output/Summary
+	// 以旧值覆写回退；谓词 0 命中即并发已转态，报错而非覆写。
+	task, ok, err := uc.writer.TransitionTaskStatusWhere(ctx, taskID,
+		[]GraphTaskStatus{GraphTaskStatusClaimed}, GraphTaskStatusBlocked,
+		TaskTransitionPatch{Metadata: &metadata})
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != GraphTaskStatusClaimed {
-		return nil, apierror.BadRequest("TASK", "task %s cannot be blocked in status %s", taskID, task.Status)
-	}
-	task.Status = GraphTaskStatusBlocked
-	task.Metadata = metadata
-	if err := uc.writer.UpdateTask(ctx, task); err != nil {
-		return nil, err
+	if !ok {
+		return nil, apierror.BadRequest("TASK", "task %s cannot be blocked: not in claimed status", taskID)
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_blocked", task.NodeID, reason)
 	uc.afterTaskMutation(ctx, task, nil)
@@ -384,18 +394,16 @@ func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason 
 }
 
 func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment string) (*GraphTask, error) {
-	task, err := uc.reader.GetTask(ctx, taskID)
+	// FR-8：谓词迁移（blocked→pending）并同 UPDATE 清空 assignee/claimed_at。
+	// 旧实现经 UpdateTask 清 claimed_at 永不生效（builder 跳过 nil 字段）。
+	task, ok, err := uc.writer.TransitionTaskStatusWhere(ctx, taskID,
+		[]GraphTaskStatus{GraphTaskStatusBlocked}, GraphTaskStatusPending,
+		TaskTransitionPatch{ClearAssignee: true, ClearClaimedAt: true})
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != GraphTaskStatusBlocked {
+	if !ok {
 		return nil, apierror.BadRequest("TASK", "task %s is not blocked", taskID)
-	}
-	task.Status = GraphTaskStatusPending
-	task.Assignee = ""
-	task.ClaimedAt = nil
-	if err := uc.writer.UpdateTask(ctx, task); err != nil {
-		return nil, err
 	}
 	if comment != "" {
 		if _, err := uc.AddTaskComment(ctx, taskID, "system", comment, "unblock"); err != nil {
@@ -533,34 +541,36 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 			loggateway.Int("expired_count", len(expiredIDs)), loggateway.Err(err))
 		return err
 	}
-	var timedOutIDs []string
-	var timedOutTasks []*GraphTask
+	// FR-8：逐 id 谓词迁移（claimed→timed_out）替代无条件批量 UPDATE——批量
+	// 读到 claimed 与并发 Complete 之间无谓词保护会 complete→timed_out 回退。
+	// 输家（谓词 0 命中）记录 debug 跳过，事件/发布只对赢家触发。
+	timedOut := 0
 	for _, task := range tasks {
-		if task.Status == GraphTaskStatusClaimed {
-			timedOutIDs = append(timedOutIDs, task.TaskID)
-			task.Status = GraphTaskStatusTimedOut
-			timedOutTasks = append(timedOutTasks, task)
+		if task.Status != GraphTaskStatusClaimed {
+			continue
 		}
+		updated, ok, terr := uc.writer.TransitionTaskStatusWhere(ctx, task.TaskID,
+			[]GraphTaskStatus{GraphTaskStatusClaimed}, GraphTaskStatusTimedOut)
+		if terr != nil {
+			uc.lg.Error("task timeout check: transition failed",
+				loggateway.StepID("task.timeout_transition_fail"),
+				loggateway.Str("task_id", task.TaskID), loggateway.Err(terr))
+			return terr
+		}
+		if !ok {
+			uc.lg.Debug("task timeout check: concurrent transition won, skip",
+				loggateway.StepID("task.timeout_check"),
+				loggateway.Str("task_id", task.TaskID))
+			continue
+		}
+		timedOut++
+		uc.recordTaskEvent(ctx, updated.TaskID, "task_timed_out", updated.NodeID, "task timed out")
+		uc.publishGraphTaskStatus(ctx, updated, nil)
 	}
-	if len(timedOutIDs) == 0 {
-		uc.lg.Info("task timeout check: no claimed tasks among expired",
-			loggateway.StepID("task.timeout_check"),
-			loggateway.Int("expired_count", len(expiredIDs)))
-		return nil
-	}
-	if err := uc.writer.BatchUpdateGraphTaskStatus(ctx, timedOutIDs, GraphTaskStatusTimedOut); err != nil {
-		uc.lg.Error("batch timeout update failed",
-			loggateway.StepID("task.batch_timeout_fail"),
-			loggateway.Int("count", len(timedOutIDs)), loggateway.Err(err))
-		return err
-	}
-	uc.lg.Info("task timeout check: batch update succeeded",
+	uc.lg.Info("task timeout check: complete",
 		loggateway.StepID("task.timeout_check"),
-		loggateway.Int("timed_out_count", len(timedOutIDs)))
-	for _, task := range timedOutTasks {
-		uc.recordTaskEvent(ctx, task.TaskID, "task_timed_out", task.NodeID, "task timed out")
-		uc.publishGraphTaskStatus(ctx, task, nil)
-	}
+		loggateway.Int("expired_count", len(expiredIDs)),
+		loggateway.Int("timed_out_count", timedOut))
 	return nil
 }
 
@@ -577,17 +587,23 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 	delete(uc.leaseDeadline, taskID)
 	delete(uc.heartbeats, taskID)
 	uc.mu.Unlock()
-	task, err := uc.reader.GetTask(ctx, taskID)
+	// FR-8：谓词迁移（claimed→pending）+ 清空认领养字段。dispatch 失败释放
+	// 与并发 Complete 竞速时旧实现会 completed→pending 回退覆写；谓词 0 命中
+	// 即并发已转终态——跳过（事件/发布均不该产生）。
+	task, ok, err := uc.writer.TransitionTaskStatusWhere(ctx, taskID,
+		[]GraphTaskStatus{GraphTaskStatusClaimed}, GraphTaskStatusPending,
+		TaskTransitionPatch{ClearAssignee: true, ClearClaimedAt: true})
 	if err != nil {
-		return
-	}
-	task.Status = GraphTaskStatusPending
-	task.Assignee = ""
-	task.ClaimedAt = nil
-	if err := uc.writer.UpdateTask(ctx, task); err != nil {
-		uc.lg.Warn("release claim update failed",
+		uc.lg.Warn("release claim transition failed",
 			loggateway.StepID("task.release_claim_fail"),
 			loggateway.Str("task_id", taskID), loggateway.Err(err))
+		return
+	}
+	if !ok {
+		uc.lg.Debug("release claim: task left claimed concurrently, skip",
+			loggateway.StepID("task.release_claim_skip"),
+			loggateway.Str("task_id", taskID))
+		return
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_claim_released", task.NodeID, "claim released after dispatch failure")
 	uc.publishGraphTaskStatus(ctx, task, nil)

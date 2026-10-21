@@ -36,9 +36,6 @@ func (s *stubTaskRepo) GetTasksByIDs(_ context.Context, ids []string) ([]*GraphT
 	return result, nil
 }
 func (s *stubTaskRepo) UpdateTask(context.Context, *GraphTask) error { return nil }
-func (s *stubTaskRepo) BatchUpdateGraphTaskStatus(context.Context, []string, GraphTaskStatus) error {
-	return nil
-}
 func (s *stubTaskRepo) ClaimTaskWhereStatus(_ context.Context, taskID string, agentKey string, _ []GraphTaskStatus) (*GraphTask, bool, error) {
 	if t, ok := s.tasks[taskID]; ok && t.Status == GraphTaskStatusPending {
 		now := time.Now()
@@ -64,7 +61,7 @@ func (s *stubTaskRepo) CompleteTaskWhereStatus(_ context.Context, taskID string,
 	}
 	return nil, false, nil
 }
-func (s *stubTaskRepo) TransitionTaskStatusWhere(_ context.Context, taskID string, fromStatuses []GraphTaskStatus, toStatus GraphTaskStatus) (*GraphTask, bool, error) {
+func (s *stubTaskRepo) TransitionTaskStatusWhere(_ context.Context, taskID string, fromStatuses []GraphTaskStatus, toStatus GraphTaskStatus, _ ...TaskTransitionPatch) (*GraphTask, bool, error) {
 	if t, ok := s.tasks[taskID]; ok {
 		for _, from := range fromStatuses {
 			if t.Status == from {

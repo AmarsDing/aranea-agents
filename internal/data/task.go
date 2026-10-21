@@ -200,21 +200,6 @@ func (r *taskRepo) UpdateTask(ctx context.Context, task *biz.GraphTask) error {
 	return nil
 }
 
-func (r *taskRepo) BatchUpdateGraphTaskStatus(ctx context.Context, taskIDs []string, status biz.GraphTaskStatus) error {
-	if len(taskIDs) == 0 {
-		return nil
-	}
-	client := r.data.RW().Write(ctx)
-	_, err := client.GraphTask.Update().
-		Where(graphtask.IDIn(taskIDs...)).
-		SetStatus(string(status)).
-		Save(ctx)
-	if err != nil {
-		return entErrToBizErr(err, "TASK")
-	}
-	return nil
-}
-
 // taskStatusStrings converts biz statuses to the string slice ent predicates need.
 func taskStatusStrings(statuses []biz.GraphTaskStatus) []string {
 	strs := make([]string, 0, len(statuses))
@@ -287,18 +272,31 @@ func (r *taskRepo) CompleteTaskWhereStatus(ctx context.Context, taskID string, s
 	return t, true, nil
 }
 
-// TransitionTaskStatusWhere atomically transitions status only (no field
-// writes), guarding on fromStatuses. Zero rows matched → (nil, false, nil).
-func (r *taskRepo) TransitionTaskStatusWhere(ctx context.Context, taskID string, fromStatuses []biz.GraphTaskStatus, toStatus biz.GraphTaskStatus) (*biz.GraphTask, bool, error) {
+// TransitionTaskStatusWhere atomically transitions status, optionally applying
+// one patch's field writes in the same UPDATE (only when the fromStatuses
+// predicate matches — a lost race writes nothing). Zero rows matched →
+// (nil, false, nil).
+func (r *taskRepo) TransitionTaskStatusWhere(ctx context.Context, taskID string, fromStatuses []biz.GraphTaskStatus, toStatus biz.GraphTaskStatus, patches ...biz.TaskTransitionPatch) (*biz.GraphTask, bool, error) {
 	from := taskStatusStrings(fromStatuses)
 	if len(from) == 0 {
 		return nil, false, nil
 	}
-	client := r.data.RW().Write(ctx)
-	n, err := client.GraphTask.Update().
+	builder := r.data.RW().Write(ctx).GraphTask.Update().
 		Where(graphtask.IDIn(taskID), graphtask.StatusIn(from...)).
-		SetStatus(string(toStatus)).
-		Save(ctx)
+		SetStatus(string(toStatus))
+	if len(patches) > 0 {
+		p := patches[0]
+		if p.Metadata != nil {
+			builder = builder.SetMetadata(*p.Metadata)
+		}
+		if p.ClearAssignee {
+			builder = builder.SetAssignee("")
+		}
+		if p.ClearClaimedAt {
+			builder = builder.ClearClaimedAt()
+		}
+	}
+	n, err := builder.Save(ctx)
 	if err != nil {
 		return nil, false, entErrToBizErr(err, "TASK")
 	}
