@@ -297,8 +297,50 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 // operations (user sending more messages) aren't blocked while a turn runs.
 // After each turn, the loop re-acquires the lock, checks for an active run
 // (e.g. user interrupted with "send now"), and dequeues the next message.
+// P0 FR-1 双保险：
+//   - single-flight：入口同步 LoadOrStore 合并重复触发（turn defer、
+//     drainPendingAfterDispatchTeamTurn、重启惰性排空），杜绝并发排空循环；
+//     goroutine 退出时 Delete 并按需接力（仅非深度上限退出）。
+//   - 注册先于放锁：每轮 dequeue 后在临界区内 StoreCancelable(regID)，
+//     恢复 registration-before-unlock 不变量（对齐正常路径
+//     chat_orchestrator_turn.go StoreCancelable→unlock 序），执行窗口内
+//     HasActive=true，并发 Execute 走准入（queue/busy）而非双跑。
 func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string, rootTaskID string) {
+	if _, loaded := o.pendingLoops.LoadOrStore(sessionID, struct{}{}); loaded {
+		return
+	}
 	safego.GoBackground("pending-queue", func() {
+		capExited := false
+		// P0 FR-3：迭代执行句柄提到 goroutine 级，panic 时外层 defer 统一
+		// 收尾（cancel/ClearPendingCancel/Finish(regID)），防注册项泄漏。
+		var iterCancel context.CancelFunc
+		var iterRegID string
+		defer func() {
+			o.pendingLoops.Delete(sessionID)
+			if r := recover(); r != nil {
+				if iterCancel != nil {
+					iterCancel()
+					o.runs.ClearPendingCancel(sessionID)
+				}
+				if iterRegID != "" {
+					o.runs.Finish(sessionID, iterRegID)
+				}
+				o.lg().With(loggateway.SessionID(sessionID)).Error("pending queue loop panicked",
+					loggateway.StepID("chat.pending_queue.panic"),
+					loggateway.Any("panic", r))
+			}
+			if capExited {
+				return // 深度上限退出：等自然触发，防单会话霸占（原 Warn 语义）
+			}
+			// 合并吞触发补偿：循环存活期内的再次触发被 single-flight 合并，
+			// 退出瞬间新到的消息（含 panic 中断循环剩余的）可能无人驱动——
+			// 有可派发内容且无活跃 run 时接力。
+			if !o.runs.HasActive(sessionID) {
+				if _, _, _, ok := biz.SplitLeadingInjects(o.chatUC.GetPendingMessages(sessionID)); ok {
+					o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod, rootTaskID)
+				}
+			}
+		}()
 		// Mark the context so turns started from this loop skip the
 		// processPendingQueue call in their defer (otherwise each turn would
 		// spawn a new goroutine, re-introducing the chain we're eliminating).
@@ -376,7 +418,16 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			// subsequent team/agent run share one trace id (bgCtx flows into
 			// RunTurnFromInput / the single-agent path).
 			bgCtx, _ = turntrace.EnsureTraceID(bgCtx)
+			// P0 FR-1 注册先于放锁：unlock 前将出队 turn 登记进 RunRegistry
+			//（此前仅 SetPendingCancel —— pendingCancels 对 HasActive 不可见，
+			// 执行窗口内准入判定 HasActive=false 放行并发 turn 双跑，且双方
+			// StoreRunner/Finish CAS 交叉污染）。BUILD 阶段 StoreRunner 经
+			// UpdateOrStore 原地升级此槽位并保留 cancel（run_registry.go）。
+			regID := uuid.NewString()
+			o.runs.StoreCancelable(sessionID, regID, cancel)
 			o.runs.SetPendingCancel(sessionID, cancel)
+			iterCancel = cancel
+			iterRegID = regID
 			unlock()
 
 			pendingContent := biz.MergeInjectContext(injects, entry.Content)
@@ -433,6 +484,12 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			}
 			cancel()
 			o.runs.ClearPendingCancel(sessionID)
+			// P0 FR-1/FR-3 迭代收尾：turn 正常完成时 EXECUTE defer 已
+			// Finish(真 runID)，此处 CAS 幂等失配跳过；admit 前失败路径
+			//（无自身注册）兜底清除 regID。
+			o.runs.Finish(sessionID, regID)
+			iterCancel = nil
+			iterRegID = ""
 
 			if err != nil {
 				pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败",
@@ -460,6 +517,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 		// queued and will be picked up by the next processPendingQueue
 		// trigger (e.g. when the user sends another message or the active
 		// turn completes). Log so operators can spot sustained overload.
+		capExited = true
 		if remaining := len(o.chatUC.GetPendingMessages(sessionID)); remaining > 0 {
 			o.lg().With(loggateway.SessionID(sessionID)).Warn("pending queue reached depth cap; remaining messages stay queued",
 				loggateway.StepID("chat.pending_queue.depth_cap"),

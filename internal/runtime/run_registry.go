@@ -136,6 +136,49 @@ func (r *RunRegistry) StorePlaceholder(sessionID string) {
 	r.activeRuns.Store(sessionID, activeRun{placeholder: true})
 }
 
+// StorePlaceholderIfVacant 仅在槽位为空时原子的登记占位（P0 FR-4 durable
+// resume claim 窗口）。并发 turn 抢先占槽时返回 false 且绝不触碰既有
+// 条目——裸 Store 会冲掉真实条目的 cancel 函数（M3 取消语义）。占位本身
+// 不携 runID；resume turn 在会话锁内经 StoreCancelable 原地升级采用。
+// registry 为 nil 时返回 true（退化接线下无可保护槽位，呼叫方照常继续）。
+func (r *RunRegistry) StorePlaceholderIfVacant(sessionID string) bool {
+	if r == nil {
+		return true
+	}
+	stored := false
+	r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+		if ok {
+			return existing
+		}
+		stored = true
+		return activeRun{placeholder: true}
+	})
+	return stored
+}
+
+// IsPlaceholderOnly 报告槽位是否仍为未触碰的占位（无 runner/cancel/runID）。
+// 供 FR-4 采用判定：仅当占位未被升级时，携 DurableResume 标记的 turn 才可
+// 在锁内继续走向 StoreCancelable 采用，其余 turn 按 HasActive 拒绝。
+func (r *RunRegistry) IsPlaceholderOnly(sessionID string) bool {
+	if r == nil {
+		return false
+	}
+	run, ok := r.activeRuns.Load(sessionID)
+	return ok && run.placeholder && run.runner == nil && run.cancel == nil && run.runID == ""
+}
+
+// FinishPlaceholder 仅在槽位仍是未触碰占位时移除（CAS）。resume goroutine
+// 退出时用于清理未被采用的占位；已被真实 turn 采用的条目（含 runID/cancel）
+// 谓词失配不删，由该 turn 自身收尾 defer 负责。
+func (r *RunRegistry) FinishPlaceholder(sessionID string) {
+	if r == nil {
+		return
+	}
+	r.activeRuns.DeleteIf(sessionID, func(existing activeRun) bool {
+		return existing.placeholder && existing.runner == nil && existing.cancel == nil && existing.runID == ""
+	})
+}
+
 func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Runner) {
 	if r == nil {
 		return

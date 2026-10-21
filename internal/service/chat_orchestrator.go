@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,6 +174,13 @@ type ChatOrchestrator struct {
 	// turnIdem 是提交幂等键登记表（P3）：按 session+request_id 去重，
 	// 客户端重试/双击/断连重发不产生重复消息与重复 turn。
 	turnIdem *turnIdemRegistry
+
+	// pendingLoops 是 pending-queue 排空循环的 per-session single-flight
+	// 登记表（P0 FR-1）：processPendingQueue 入口同步 LoadOrStore，重复触发
+	// 合并；goroutine 退出时 Delete 并按需接力。替代
+	// drainPendingAfterDispatchTeamTurn 的 inPendingLoop(appctx.Ctx()) 死守卫
+	//（appctx.Ctx() 为全局生命周期 ctx，永不携带 pendingQueueLoopKey）。
+	pendingLoops sync.Map
 
 	// gateHysteresis 是预规划门控的会话级滞回热缓存（P2-⑤ R4-Q9）：
 	// 连续 2 轮同向越阈才切档，压住话题漂移引起的档位抖动。
@@ -771,7 +779,59 @@ func (o *ChatOrchestrator) InterruptAndSendMessage(ctx context.Context, sessionI
 	if o == nil || o.chatUC == nil {
 		return nil
 	}
-	return o.chatUC.InterruptAndSendMessage(ctx, sessionID, pendingEntryID)
+	if err := o.chatUC.InterruptAndSendMessage(ctx, sessionID, pendingEntryID); err != nil {
+		return err
+	}
+	// P0 FR-5/M-4：取消落空（会话此刻无活跃 run——排队后 run 已结束或进程
+	// 重启）时不得将提升后的消息留在队列里搁浅。语义退化为"正常发送"：
+	// 会话空闲即触发 pending 排空，被提升的消息按 FIFO 队首先行派发，消息
+	// 必达。有 run 时维持原打断语义——取消收账的 EXECUTE 收尾 defer 负责
+	// 排空，这里不另起循环（single-flight 亦天然合并重复触发）。
+	if o.runs != nil && !o.runs.HasActive(sessionID) {
+		o.triggerPendingDrainFromIdle(ctx, sessionID)
+	}
+	return nil
+}
+
+// triggerPendingDrainFromIdle 在无活跃 run 的会话上触发 pending 排空（P0
+// FR-5 打断退化发送 / P1 FR-7 恢复队列惰性排空 共用）。会话/Agent 解析失败
+// 只记录不阻断——调用方状态不依赖本触发成败。
+func (o *ChatOrchestrator) triggerPendingDrainFromIdle(ctx context.Context, sessionID string) {
+	if o == nil || o.chatUC == nil || sessionID == "" {
+		return
+	}
+	if len(o.chatUC.GetPendingMessages(sessionID)) == 0 {
+		return
+	}
+	sess, err := o.td().Sessions.Get(ctx, sessionID)
+	if err != nil {
+		o.lg().Warn("pending drain from idle: get session failed",
+			loggateway.SessionID(sessionID), loggateway.Err(err))
+		return
+	}
+	var ag biz.Agent
+	if agentID := strings.TrimSpace(sess.AgentID); agentID != "" {
+		a, herr := o.hydratedAgent(ctx, agentID)
+		if herr != nil {
+			o.lg().Warn("pending drain from idle: hydrate agent failed",
+				loggateway.SessionID(sessionID), loggateway.Err(herr))
+			return
+		}
+		ag = a
+	}
+	dialogMode := strings.TrimSpace(sess.DialogMode)
+	if dialogMode == "" {
+		dialogMode = "default"
+	}
+	prov := strings.TrimSpace(sess.DefaultProvider)
+	if prov == "" {
+		prov = ag.Provider
+	}
+	mod := strings.TrimSpace(sess.DefaultModel)
+	if mod == "" {
+		mod = ag.Model
+	}
+	o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod, "")
 }
 
 // DequeuePendingMessage dequeues the next pending message.

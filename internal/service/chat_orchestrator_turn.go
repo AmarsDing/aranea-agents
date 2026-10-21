@@ -127,8 +127,18 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	// 以 hasActive=false 放行，锁内再发现活跃运行只可能是竞态 —— 拒绝为
 	// CHAT_TURN_BUSY，防止双跑与取消函数被覆盖。
 	if o.runs.HasActive(sessionID) {
-		unlock()
-		return biz.ChatMessage{}, biz.ChatMessage{}, turnBusyError()
+		// P0 FR-4：durable resume 赢下 DB claim 后先登记占位（见
+		// ResumeDurableSessionRun），claim→turn 注册窗口内对其它 turn 呈现
+		// busy。携 DurableResume 标记的本 resume turn 在锁内采用该占位——
+		// 后续 StoreCancelable 的 UpdateOrStore 原地升级同一槽位条目（
+		// run_registry.go StoreCancelable 保留既有 runner 字段语义）。
+		// 非占位占用、或无标记 turn，照常 BUSY 拒绝。
+		// 锁内 TOCTOU 安全：从本检查到 StoreCancelable 全程持有会话锁，
+		// 占位不会被第三方替换。
+		if _, adopt := event.DurableResumeFromContext(ctx); !adopt || !o.runs.IsPlaceholderOnly(sessionID) {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, turnBusyError()
+		}
 	}
 	if !inPendingLoop(ctx) && o.chatUC != nil {
 		if injects := o.chatUC.ConsumeLeadingInjects(sessionID); len(injects) > 0 {
@@ -228,6 +238,14 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	agentRunID := uuid.NewString()
 	turnCtx, turnCancel := context.WithCancel(ctx)
 	o.runs.StoreCancelable(sessionID, agentRunID, turnCancel)
+	// P0 FR-3：注册点 defer 兜底 panic 泄漏（M-2）。StoreCancelable 与 EXECUTE
+	// 收尾 defer（trpc.go）之间存在 admit/状态转换/BUILD 前段等执行窗口，panic
+	// 走 defer 链而非 err 分支，注册项残留会让会话永久 busy。CAS 语义：BUILD
+	// 阶段 runID 升级为 admit.runID 后此 Finish(agentRunID) 失配跳过，由
+	// EXECUTE defer 的 Finish(runID) 收尾；正常/err 路径已清理时幂等 no-op。
+	// CAS 销定 runID（UUID 无重放）规避 ABA——本 defer 晚于自身收尾执行，
+	// 并发新 turn 即使已占槽，runID 也必不同。
+	defer func() { o.runs.Finish(sessionID, agentRunID); turnCancel() }()
 	unlock()
 	userMsg, assistantMsg, err = o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod)
 	if err != nil {
@@ -238,6 +256,13 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		// 此 Finish(agentRunID) 失配跳过，由 EXECUTE defer 的 Finish(runID) 收尾。
 		o.runs.Finish(sessionID, agentRunID)
 		turnCancel()
+		// P0 FR-2：早退失败同样负责触发 pending 队列排空——否则此刻队列内
+		// 消息永久搁浅（H-1）。守卫与 EXECUTE 收尾一致：排空循环内迭代的
+		// 失败交由循环自身接管，不递归触发新排水循环。
+		if !inPendingLoop(ctx) {
+			o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod,
+				string(chatagent.RootTaskActivityIDFromCtx(ctx)))
+		}
 	}
 	return userMsg, assistantMsg, err
 }
