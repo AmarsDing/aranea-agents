@@ -18,7 +18,8 @@ import (
 type DBPinger interface {
 	PingContext(ctx context.Context) error
 	QueryRowContext(ctx context.Context, query string, args ...any) DBRow
-	// Dialect returns the database dialect ("postgres" or "sqlite").
+	// Dialect returns the database dialect ("postgres"; sqlite arm removed
+	// 2026-10-21).
 	// Used to pick dialect-specific system-table queries.
 	Dialect() string
 }
@@ -45,7 +46,8 @@ func (a *dbPingerAdapter) QueryRowContext(ctx context.Context, query string, arg
 func (a *dbPingerAdapter) Dialect() string { return a.dialect }
 
 // NewDBPinger creates a DBPinger from *sql.DB. Returns nil if db is nil.
-// dialect is the database dialect ("postgres" or "sqlite") used to pick
+// dialect is the database dialect ("postgres" — kept as a parameter for
+// wiring compatibility after the sqlite arm was removed 2026-10-21) used to pick
 // dialect-specific system-table queries.
 func NewDBPinger(db *sql.DB, dialect string) DBPinger {
 	if db == nil {

@@ -14,8 +14,9 @@ import (
 // and the combined SQL then went through RenumberPlaceholders — renumbering
 // the ? from $1 again, colliding with the IN-list placeholders. Postgres
 // rejected the statement with a bind-param count mismatch (500 on the
-// compare/preference endpoints). SQLite never sees this (no renumbering),
-// so the coverage must run against Postgres.
+// compare/preference endpoints). Pre-2026-10 SQLite never saw this (no
+// renumbering); the regression must run against Postgres — now the only
+// dialect.
 func TestGetRunsByIDsPostgres(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()

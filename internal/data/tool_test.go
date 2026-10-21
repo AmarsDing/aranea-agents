@@ -47,11 +47,12 @@ func newToolTestRepo(t *testing.T) (biz.ToolRepo, *Data) {
 //	pq: 函数 max(integer, integer) 不存在 (42883)
 //
 // This test exercises the SearchTools path (which includes the p95 LEFT JOIN)
-// with tool_invocations rows present, ensuring the SQL is valid on both SQLite
-// and Postgres.
+// with tool_invocations rows present, ensuring the SQL parses and executes on
+// Postgres.
 //
-// PERF-2: on Postgres the p95 subquery uses percentile_cont(0.95) WITHIN GROUP
-// (interpolated exact percentile); SQLite keeps the top-5% AVG approximation.
+// PERF-2: the p95 subquery uses percentile_cont(0.95) WITHIN GROUP
+// (interpolated exact percentile; the SQLite top-5% AVG approximation arm was
+// removed 2026-10-21 with the sqlite engine).
 func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	ctx := context.Background()
 	repo, d := newToolTestRepo(t)

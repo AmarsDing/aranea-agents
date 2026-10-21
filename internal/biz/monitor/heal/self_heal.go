@@ -45,7 +45,7 @@ type HealActionHandler interface {
 	HandleFixAction(ctx context.Context, action FixAction, metadata map[string]any) error
 }
 
-// HealRecordRepo persists heal records to SQLite via Ent.
+// HealRecordRepo persists heal records (Postgres via Ent).
 type HealRecordRepo interface {
 	InsertHealRecord(ctx context.Context, record HealRecord) error
 	ListHealRecords(ctx context.Context, query HealRecordQuery) (HealRecordListResult, error)

@@ -316,7 +316,7 @@ func r7NoMuxHandleFunc(rel string, lines []string) []violation {
 	return nil
 }
 
-// R8: sql.Open is only allowed under internal/data/ (single SQLite pool owner).
+// R8: sql.Open is only allowed under internal/data/ (single DB pool owner).
 func r8SqlOpenOnlyInDataGo(rel string, lines []string) []violation {
 	if strings.HasPrefix(rel, "internal/data/") {
 		return nil

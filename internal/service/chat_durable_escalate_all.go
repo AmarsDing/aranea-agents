@@ -15,7 +15,7 @@ const shutdownEscalateBatchLimit = 64
 // EscalateAllActiveToDurable escalates every interactive SessionRun to durable
 // mode during server shutdown (L2 crash protection, 2026-07-22).
 //
-// For each active run it writes a durable checkpoint (SQLite/PG-backed
+// For each active run it writes a durable checkpoint (Postgres-backed
 // SessionRunCheckpoint), transitions the phase to durable, and cancels the
 // in-process runner. After restart, SessionRunDurableWorker picks up the
 // durable runs and resumes them automatically — the user reopens the app to

@@ -425,7 +425,7 @@ func (e *Engine) cachedAlertRules(ctx context.Context) []AlertRule {
 //
 // MON-OPT-02: Cooldown is evaluated against DB-persisted LastFiredAt (loaded via
 // ListAlertRules cache). This survives process restarts and prevents duplicate fires
-// across replicas when SQLite is used (single-writer).
+// across replicas (cooldown state is shared through the DB).
 func (e *Engine) ShouldFireAlert(rule AlertRule, now time.Time) bool {
 	if e == nil {
 		return false
