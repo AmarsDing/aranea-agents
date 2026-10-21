@@ -12,14 +12,27 @@ import (
 	"github.com/lib/pq"
 )
 
+// l3TrgmScopePrefilterLimit caps the scope-first candidate window the trigram
+// operator runs on. The scope predicates (scope_type/scope_id/user_id +
+// active/undeleted/currently-valid) already isolate one tenant's working
+// memory; 2000 rows comfortably covers 单用户评测规模（百级事实）乃至长记忆
+// 生产单 scope 的工作集——超出时取 created_at 最新 2000 行，再由外层
+// word_similarity 重排，最坏代价与表总量脱钩。
+const l3TrgmScopePrefilterLimit = 2000
+
 // searchL3Trigram returns trigram-ranked fact IDs (best first) for CJK and
 // short queries. FTS 'simple' treats a Chinese run as one token, so
 // word_similarity (query trigrams vs a contiguous span of statement) is the
 // third recall channel — same operator knowledge / agent-case already use.
 //
-// Operators resolve via search_path (production includes public; tests pin
-// schema, public then CREATE EXTENSION). Missing extension degrades to nil
-// without failing recall.
+// 2026-10-20 生产事故治本（AMC C3-B）：旧 SQL 把 statement %> / word_similarity
+// 直接挂在全表 WHERE/ORDER BY 上，GIN trgm 索引在 38 万行/8.2GB memory_facts
+// 上走全量候选扫描再排序，32 并发单条 10-16 分钟拖死全站。现改为 scope 先行：
+// CTE 先用 status/deleted_at/valid_until + (scope_type, scope_id) 复合索引
+// 等值谓词 + user_id 过滤把候选收敛到 created_at 最新 2000 行，%> 与
+// word_similarity 只在物化子集上求值（MATERIALIZED 阻止 CTE 内联——否则
+// 规划器可能把 %> 下推回全表 GIN 路径，复现事故）。
+// 占位符按文本顺序编号（Dialect().RenumberPlaceholders 逐 '?' 递增）。
 func (r *l3FactRepo) searchL3Trigram(ctx context.Context, scopeType, scopeID, userID, query string, limit int) ([]string, error) {
 	query = strings.TrimSpace(query)
 	if r == nil || r.data == nil {
@@ -31,26 +44,21 @@ func (r *l3FactRepo) searchL3Trigram(ctx context.Context, scopeType, scopeID, us
 	if limit <= 0 {
 		limit = l3FTSCandidateLimit
 	}
-	clauses := []string{
-		"status = 'active'", "deleted_at = ''", "valid_until = ''",
-		"statement %> ?",
-	}
-	args := []any{query}
-	if scopeType != "" {
-		clauses = append(clauses, "scope_type = ?")
-		args = append(args, scopeType)
-	}
-	if scopeID != "" {
-		clauses = append(clauses, "scope_id = ?")
-		args = append(args, scopeID)
-	}
-	if userID != "" {
-		clauses = append(clauses, "user_id = ?")
-		args = append(args, userID)
-	}
-	q := `SELECT id FROM memory_facts WHERE ` + strings.Join(clauses, " AND ") +
-		` ORDER BY word_similarity(?, statement) DESC, COALESCE(NULLIF(valid_from, ''), created_at) DESC LIMIT ?`
-	args = append(args, query, limit)
+	q := `WITH scoped AS MATERIALIZED (
+  SELECT id, statement, valid_from, created_at FROM memory_facts
+  WHERE status = 'active' AND deleted_at = '' AND valid_until = ''
+    AND (? = '' OR scope_type = ?)
+    AND (? = '' OR scope_id = ?)
+    AND (? = '' OR user_id = ?)
+  ORDER BY created_at DESC
+  LIMIT ?
+)
+SELECT id FROM scoped
+WHERE statement %> ?
+ORDER BY word_similarity(?, statement) DESC, COALESCE(NULLIF(valid_from, ''), created_at) DESC
+LIMIT ?`
+	args := []any{scopeType, scopeType, scopeID, scopeID, userID, userID,
+		l3TrgmScopePrefilterLimit, query, query, limit}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		if isMissingTrigramOp(err) {
