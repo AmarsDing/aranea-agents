@@ -45,11 +45,17 @@ const l2EpisodeConflictSetReplace = `goal = excluded.goal, outcome = excluded.ou
 	ended_at = excluded.ended_at,
 	updated_at = excluded.updated_at`
 
-// l2EpisodeConflictSetMerge appends the incoming transcript to the stored
+// l2EpisodeMergeConflictSet appends the incoming transcript to the stored
 // episode instead of replacing it. An identical replay is detected by
 // substring match and leaves the transcript unchanged; goal keeps the first
-// non-empty value. Used by the eval ingest path (MergeOutcome).
-var l2EpisodeConflictSetMerge = fmt.Sprintf(`goal = CASE WHEN memory_episodes.goal = '' THEN excluded.goal ELSE memory_episodes.goal END,
+// non-empty value. Used by the eval ingest path (MergeOutcome). maxChars
+// bounds the merged transcript; <=0 falls back to l2MergedTranscriptMaxChars
+// (AMC C3-A Q8a passes 32768 for the eval path).
+func l2EpisodeMergeConflictSet(maxChars int) string {
+	if maxChars <= 0 {
+		maxChars = l2MergedTranscriptMaxChars
+	}
+	return fmt.Sprintf(`goal = CASE WHEN memory_episodes.goal = '' THEN excluded.goal ELSE memory_episodes.goal END,
 	outcome = CASE
 		WHEN memory_episodes.outcome = '' THEN excluded.outcome
 		WHEN excluded.outcome = '' OR position(excluded.outcome in memory_episodes.outcome) > 0 THEN memory_episodes.outcome
@@ -66,7 +72,8 @@ var l2EpisodeConflictSetMerge = fmt.Sprintf(`goal = CASE WHEN memory_episodes.go
 	title = excluded.title,
 	episode_kind = excluded.episode_kind,
 	ended_at = excluded.ended_at,
-	updated_at = excluded.updated_at`, l2MergedTranscriptMaxChars, l2MergedTranscriptMaxChars)
+	updated_at = excluded.updated_at`, maxChars, maxChars)
+}
 
 func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1ArchiveEpisodeInsert) error {
 	id := newUUIDString()
@@ -114,7 +121,7 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 	consolidationStatus := "consolidated"
 	conflictSet := l2EpisodeConflictSetReplace
 	if in.MergeOutcome {
-		conflictSet = l2EpisodeConflictSetMerge
+		conflictSet = l2EpisodeMergeConflictSet(in.MaxMergeChars)
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
 		id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
