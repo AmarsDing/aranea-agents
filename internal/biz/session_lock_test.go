@@ -1,6 +1,8 @@
 package biz
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -141,5 +143,93 @@ func TestSessionLockManager_SweepReapsIdleUnheld(t *testing.T) {
 	m.sweep()
 	if m.Len() != 0 {
 		t.Fatalf("expected idle unheld entry to be reaped, got len=%d", m.Len())
+	}
+}
+
+// --- P1 FR-6：LockCtx 支持 ctx 取消（M-1） ---
+
+// TestSessionLockManager_LockCtxCancelledWhileWaiting 复现 M-1(lock 侧)：
+// Lock 不接受 ctx——被限流 turn 一旦阻塞在互斥上，连取消都解除不了。
+// 修复期望：LockCtx 在 ctx 到期时返回 error，不取得锁。
+func TestSessionLockManager_LockCtxCancelledWhileWaiting(t *testing.T) {
+	m := NewSessionLockManager()
+	defer m.Close()
+
+	unlockA := m.Lock("s-ctx")
+	defer unlockA()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	untilCtx, err := m.LockCtx(ctx, "s-ctx")
+	if err == nil {
+		untilCtx()
+		t.Fatal("P1 FR-6: LockCtx must fail when ctx expires while waiting")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded, got %v", err)
+	}
+}
+
+// TestSessionLockManager_LockCtxAcquiresWhenFree：空锁快路径立即成功；
+// 取消后再次 LockCtx 仍可获得（无残留等待态）。
+func TestSessionLockManager_LockCtxAcquiresWhenFree(t *testing.T) {
+	m := NewSessionLockManager()
+	defer m.Close()
+
+	unlock, err := m.LockCtx(context.Background(), "s-free")
+	if err != nil {
+		t.Fatalf("LockCtx on free session: %v", err)
+	}
+	unlock()
+
+	// 占住后取消一个 waiter，再释放——waiter 不得残留影响后续获取。
+	held := m.Lock("s-free")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		u, err := m.LockCtx(ctx, "s-free")
+		if err == nil {
+			u()
+		}
+		done <- err
+	}()
+	time.Sleep(30 * time.Millisecond) // 让 waiter 进入重试循环
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled for waiter, got %v", err)
+	}
+	held()
+
+	u2, err := m.LockCtx(context.Background(), "s-free")
+	if err != nil {
+		t.Fatalf("post-cancel LockCtx must succeed, got %v", err)
+	}
+	u2()
+}
+
+// TestSessionLockManager_LockDelegatesToLockCtx：原 Lock 语义不变（等至获得）。
+func TestSessionLockManager_LockDelegatesToLockCtx(t *testing.T) {
+	m := NewSessionLockManager()
+	defer m.Close()
+
+	held := m.Lock("s-delegate")
+	var got atomic.Bool
+	go func() {
+		u := m.Lock("s-delegate")
+		got.Store(true)
+		u()
+	}()
+	time.Sleep(30 * time.Millisecond)
+	if got.Load() {
+		t.Fatal("Lock must block until the holder releases")
+	}
+	held()
+	// 释放后等待 goroutine 获得锁：轮询截止 2s，避免调度时延抖动误红。
+	deadline := time.Now().Add(2 * time.Second)
+	for !got.Load() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !got.Load() {
+		t.Fatal("Lock must acquire once released")
 	}
 }

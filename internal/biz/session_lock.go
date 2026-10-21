@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -58,10 +59,49 @@ func NewSessionLockManager() *SessionLockManager {
 // Lock acquires the mutex for the given session. The returned function must
 // be called to release the lock; calling it twice is a programmer error and
 // may panic (Go mutex semantics).
+//
+// P1 FR-6：保留原阻塞语义，委托 LockCtx(context.Background())——永不可取消，
+// 与之前 entry.mu.Lock() 等价。
 func (m *SessionLockManager) Lock(sessionID string) func() {
+	unlock, _ := m.LockCtx(context.Background(), sessionID)
+	return unlock
+}
+
+// LockCtx acquires the per-session mutex honoring ctx cancellation
+// (89-session-concurrency-hardening / M-1)：被限流 turn 一旦阻塞在互斥上，
+// 用户取消/超时必须可解除——否则取消信号被锁吸收，turn 永远无法终止。
+//
+// 实现：TryLock 快路径 + 100ms tick 重试转轮（Go sync.Mutex 无条件变量，
+// 轮询是可取消等待的唯一可行形态；100ms 与 lane 等待同一取消时延量级）。
+// ctx 为 nil 或到期前锁可用时立即返回 (unlock, nil)；ctx 结束返回
+// (nil, ctx.Err())，不取得锁、不留等待残留。
+//
+// Stability:internal
+func (m *SessionLockManager) LockCtx(ctx context.Context, sessionID string) (func(), error) {
 	entry := m.getOrCreate(sessionID)
-	entry.mu.Lock()
-	return entry.mu.Unlock
+	// 快路径：多数调用空锁直通，避免 ticker 分配。
+	if entry.mu.TryLock() {
+		return entry.mu.Unlock, nil
+	}
+	if ctx == nil {
+		entry.mu.Lock()
+		return entry.mu.Unlock, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if entry.mu.TryLock() {
+				return entry.mu.Unlock, nil
+			}
+		}
+	}
 }
 
 // getOrCreate returns the entry for the session, creating it on first use.

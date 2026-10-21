@@ -2,10 +2,18 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+// ErrEventOutboxSeqConflict is returned by EventDeliveryOutboxRepo.Insert when
+// the ON CONFLICT DO NOTHING insert matched zero rows under
+// UNIQUE(session_id, seq): another writer already owns that delivery seq.
+// Callers holding the shared SeqAssigner should re-derive the seq and retry
+// (FR-9); a same-event_id pre-existing row is idempotent success instead.
+var ErrEventOutboxSeqConflict = errors.New("event outbox seq conflict")
 
 // EventDeliveryOutboxRow is one durable critical-delivery record (B-06).
 // Payload is the marshaled WS v2_event envelope bytes (ready to push on replay).
@@ -45,6 +53,18 @@ type EventDeliveryOutboxRepo interface {
 	// frames whose fan-out dropped or whose MarkPublished failed. limit <= 0
 	// defaults to 200; zero cutoff means "no age filter".
 	ListPending(ctx context.Context, cutoff time.Time, limit int) ([]EventDeliveryOutboxRow, error)
+}
+
+// EventOutboxWatermarkReader exposes the per-session persisted delivery-seq
+// high-watermark (FR-9). It is kept separate from EventDeliveryOutboxRepo so
+// streaming-side fakes needn't grow: the seq-restore fold in the chat
+// orchestrator resolves it via type assertion from the repo value.
+// Stability: Internal
+type EventOutboxWatermarkReader interface {
+	// MaxSeqBySession returns COALESCE(MAX(seq), 0) for the session — the
+	// durable lower bound the shared SeqAssigner must stay ahead of after
+	// restart (0 = no rows, fresh counter).
+	MaxSeqBySession(ctx context.Context, sessionID string) (int64, error)
 }
 
 // deliverySeqCarrier carries the Sequencer-assigned outbox delivery sequence

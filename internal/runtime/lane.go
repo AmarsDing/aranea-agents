@@ -56,7 +56,14 @@ type LaneScheduler struct {
 	limits LaneLimits
 	mu     sync.Mutex
 	active map[TurnLane]int
-	wait   map[TurnLane][]chan struct{}
+	wait   map[TurnLane][]*laneWaiter
+}
+
+// laneWaiter 排队等位单元。dropped 由取消方置位（与 send 同锁），release
+// 扫队列时跳过，避免向已取消 waiter 投递信号造成 lost wakeup。
+type laneWaiter struct {
+	ch      chan struct{}
+	dropped bool
 }
 
 // DefaultLaneScheduler is the process-wide lane gate used by ChatOrchestrator.
@@ -67,34 +74,42 @@ func NewLaneScheduler(limits LaneLimits) *LaneScheduler {
 	return &LaneScheduler{
 		limits: limits,
 		active: make(map[TurnLane]int),
-		wait:   make(map[TurnLane][]chan struct{}),
+		wait:   make(map[TurnLane][]*laneWaiter),
 	}
 }
 
-// Acquire blocks until the lane has capacity or ctx is cancelled. Returns a release func.
-func (s *LaneScheduler) Acquire(ctx context.Context, lane TurnLane) func() {
+// Acquire blocks until the lane has capacity or ctx is cancelled.
+//
+// P1 FR-6 (89-session-concurrency-hardening / M-1)：返回值从单 release 改为
+// (release, ok)——ctx 取消时返回 (no-op, false)，调用方必须检查并终止
+// turn，不得放行无槽位执行。nil 调度器与无上限车道（limit<=0）恒 ok=true。
+func (s *LaneScheduler) Acquire(ctx context.Context, lane TurnLane) (func(), bool) {
 	if s == nil {
-		return func() {}
+		return func() {}, true
 	}
 	limit := s.limitFor(lane)
 	if limit <= 0 {
-		return func() {}
+		return func() {}, true
 	}
 	for {
 		s.mu.Lock()
 		if s.active[lane] < limit {
 			s.active[lane]++
 			s.mu.Unlock()
-			return func() { s.release(lane) }
+			return func() { s.release(lane) }, true
 		}
-		waitCh := make(chan struct{}, 1)
-		s.wait[lane] = append(s.wait[lane], waitCh)
+		w := &laneWaiter{ch: make(chan struct{}, 1)}
+		s.wait[lane] = append(s.wait[lane], w)
 		s.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			s.dropWaiter(lane, waitCh)
-			return func() {}
-		case <-waitCh:
+			// 交接竞态：release 可能已在 select 汇合前把信号送入 w.ch——
+			// 丢弃会丢唤醒（后位 waiter 空转卡死）。drain 检查并转交。
+			if s.dropWaiter(lane, w) {
+				s.signalNext(lane)
+			}
+			return func() {}, false
+		case <-w.ch:
 		}
 	}
 }
@@ -118,31 +133,58 @@ func (s *LaneScheduler) release(lane TurnLane) {
 	if s.active[lane] > 0 {
 		s.active[lane]--
 	}
-	q := s.wait[lane]
-	for len(q) > 0 {
-		ch := q[0]
-		select {
-		case ch <- struct{}{}:
-			s.wait[lane] = q[1:]
-			return
-		default:
-			q = q[1:]
-		}
-	}
-	s.wait[lane] = q
+	s.signalNextLocked(lane)
 }
 
-func (s *LaneScheduler) dropWaiter(lane TurnLane, target chan struct{}) {
+// signalNextLocked 向队首存活 waiter 投递唤醒。已 dropped 或信号已投递
+// （该类 waiter 即将苏醒自行重查）的直接跳过。槽位计数不动——被唤醒者
+// 回到 Acquire 循环顶部自行 active++，计数与位次在锁内严格配对。
+func (s *LaneScheduler) signalNextLocked(lane TurnLane) {
+	q := s.wait[lane]
+	for len(q) > 0 {
+		w := q[0]
+		s.wait[lane] = q[1:]
+		q = q[1:]
+		if w.dropped {
+			continue
+		}
+		select {
+		case w.ch <- struct{}{}:
+			return
+		default:
+			continue
+		}
+	}
+}
+
+func (s *LaneScheduler) signalNext(lane TurnLane) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.signalNextLocked(lane)
+}
+
+// dropWaiter 将 waiter 从等位队列摘除并标记 dropped；返回该 waiter 是否
+// 已被 release 交接过信号（已送达但 select 里输给 ctx 分支）——true 时
+// 调用方须代其转交唤醒，避免槽位信号空转。
+func (s *LaneScheduler) dropWaiter(lane TurnLane, target *laneWaiter) bool {
+	s.mu.Lock()
+	target.dropped = true
 	q := s.wait[lane]
 	out := q[:0]
-	for _, ch := range q {
-		if ch != target {
-			out = append(out, ch)
+	for _, w := range q {
+		if w != target {
+			out = append(out, w)
 		}
 	}
 	s.wait[lane] = out
+	s.mu.Unlock()
+	// 已被 release 弹出的 waiter：信号已投递进缓冲通道，drain 判定转交义务。
+	select {
+	case <-target.ch:
+		return true
+	default:
+		return false
+	}
 }
 
 // InFlight returns active turn count for a lane (testing/diagnostics).
@@ -156,6 +198,7 @@ func (s *LaneScheduler) InFlight(lane TurnLane) int {
 }
 
 // AcquireTurnLane is a convenience wrapper around DefaultLaneScheduler.
-func AcquireTurnLane(ctx context.Context, input biz.TurnInput, ownerType string) func() {
+// P1 FR-6：取消即 (no-op, false)——调用方据此终止 turn。
+func AcquireTurnLane(ctx context.Context, input biz.TurnInput, ownerType string) (func(), bool) {
 	return DefaultLaneScheduler.Acquire(ctx, TurnLaneFromEntry(input.EntryConfig.EntryPoint, ownerType))
 }

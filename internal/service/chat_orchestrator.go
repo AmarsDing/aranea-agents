@@ -235,6 +235,40 @@ func (o *ChatOrchestrator) turnReader() biz.TurnV2Reader         { return o.core
 func (o *ChatOrchestrator) taskReader() biz.TaskV2Reader         { return o.core.TaskV2 }
 func (o *ChatOrchestrator) taskV2Writer() biz.TaskV2Writer       { return o.core.TaskV2 }
 
+// restoredSharedSeqMax 折入三处持久水位（steps_v2 / tasks_v2 /
+// event_delivery_outbox）取共享计数器恢复基线（FR-9）。B-06 仅取 steps 位
+// 会在"最后几次共享计数分配是关键事件"时把 SeqAssigner 重启到 outbox 水位
+// 之下，随后 critical insert 静默撞 UNIQUE(session_id, seq) 整批丢帧；
+// H2 折入 tasks，FR-9 再折入 outbox。各位独立容错，任一读到即恢复
+//（全失败 ok=false → 沿用出厂 1 起始，与 B-06 前行为一致）。outbox 经
+// EventOutboxWatermarkReader 窄口断言——fakes/旧 repo 未实现即静默跳过。
+func (o *ChatOrchestrator) restoredSharedSeqMax(ctx context.Context, sessionID string) (int64, bool) {
+	var maxSeq int64
+	found := false
+	if sr := o.stepReader(); sr != nil {
+		if v, err := sr.MaxSeqBySpiritSession(ctx, sessionID); err == nil {
+			maxSeq, found = v, true
+		}
+	}
+	if tr := o.taskReader(); tr != nil {
+		if v, err := tr.MaxSeqBySession(ctx, sessionID); err == nil {
+			found = true
+			if v > maxSeq {
+				maxSeq = v
+			}
+		}
+	}
+	if ob, ok := o.infraDeps.EventOutbox.(biz.EventOutboxWatermarkReader); ok {
+		if v, err := ob.MaxSeqBySession(ctx, sessionID); err == nil {
+			found = true
+			if v > maxSeq {
+				maxSeq = v
+			}
+		}
+	}
+	return maxSeq, found
+}
+
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
 func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }
 func (o *ChatOrchestrator) chNotify() ChannelNotifierDeps { return o.channelDeps.ChNotify }
@@ -375,6 +409,10 @@ type ChatInfraDeps struct {
 	// SeqAssigner so Seq allocation remains globally monotonic per spirit
 	// session. Wired via Wire DI; nil = v2 disabled.
 	V2ProjectorFactory *v2.ProjectorFactory
+	// EventOutbox 是 B-06 关键事件持久出口（FR-9）：恢复共享计数器时折入
+	// outbox 水位（restoredSharedSeqMax 经窄口 EventOutboxWatermarkReader
+	// 断言取 MaxSeqBySession）。nil = 不折入（退回 steps+tasks 两位水位）。
+	EventOutbox biz.EventDeliveryOutboxRepo
 	// MemberSessions looks up/upserts v2 MemberSession rows (PauseSession /
 	// ResumeSession sync). Optional: nil disables member pause projection.
 	MemberSessions biz.MemberSessionV2Repo
@@ -923,6 +961,12 @@ func (o *ChatOrchestrator) publishTurnTimeoutNotification(ctx context.Context, s
 
 func (o *ChatOrchestrator) lockSession(sessionID string) func() {
 	return o.chatUC.LockSession(sessionID)
+}
+
+// lockSessionCtx 是 P1 FR-6（89-session-concurrency-hardening / M-1）的
+// ctx 化变体：会话互斥上的等待随 ctx 取消解除（见 biz.LockSessionCtx）。
+func (o *ChatOrchestrator) lockSessionCtx(ctx context.Context, sessionID string) (func(), error) {
+	return o.chatUC.LockSessionCtx(ctx, sessionID)
 }
 
 // AttachNativeTurnAfterHook sets the post-turn hook.

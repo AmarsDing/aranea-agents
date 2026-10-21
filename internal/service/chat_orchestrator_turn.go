@@ -66,6 +66,24 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 
 	hasActive := o.runs.HasActive(sessionID)
 	flow.Log("chat.active_check", event.FlowPhaseDone, "检查活跃运行", event.P("has_active", hasActive))
+
+	// P1 FR-7（89-session-concurrency-hardening）：会话空闲但存在"持久层恢复
+	// 且未排空"的 pending 行时，新消息必须先强制入队、再触发整体 FIFO 排空
+	// ——直行 turn 会插队到恢复行之前（重启后 FIFO 反转）。返回形态与准入排
+	// 队一致（ErrTurnMessageQueued 由调用方按"已受理入队"处理）。
+	if !hasActive && input.AllowPendingQueue() && o.chatUC.PendingQueueHasRestored(sessionID) {
+		pendingID, rejectReason, ferr := o.chatUC.ForceEnqueueFollowup(sessionID, content)
+		if ferr != nil {
+			return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, ferr
+		}
+		if rejectReason != "" {
+			return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, enqueueRejectError(rejectReason)
+		}
+		flow.Log("chat.restored_enqueue", event.FlowPhaseDone, "恢复队列强制入队", event.P("pending_id", pendingID))
+		o.triggerPendingDrainFromIdle(ctx, sessionID)
+		return biz.TurnResult{Outcome: biz.TurnOutcomeQueued, PendingID: pendingID}, ErrTurnMessageQueued
+	}
+
 	contextPressure := o.sessionContextPressure(ctx, input)
 	if verdict, handled := o.checkTurnAdmission(input, hasActive, contextPressure); handled {
 		return turnResultFromAdmissionVerdict(verdict)
@@ -117,8 +135,40 @@ func (o *ChatOrchestrator) checkTurnAdmission(input biz.TurnInput, hasActive, co
 func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz.TurnInput, flow *event.TraceEmitter) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	sessionID := strings.TrimSpace(input.SessionID)
 
+	// P1 FR-6（89-session-concurrency-hardening / M-1）：车道等待移出会话锁
+	// 临界区。旧顺序 lock → Sessions.Get → AcquireTurnLane 使被限流 turn
+	// 持锁阻塞于车道，同会话后续 turn 被连带拖死在不可取消的互斥上。新顺序：
+	// 会话快照（取 OwnerType 定道）→ 车道等待（ctx 可取消，取消即终止）→
+	// 锁内只做快速复核与状态拼装。快照前置读的陈旧性可接受：锁内消费同一份
+	// 快照（agent_id/归属校验/车道分类），状态修改仍全部在锁内串行。
+	sessGetStart := time.Now()
+	sess, err := o.td().Sessions.Get(ctx, sessionID)
+	if err != nil {
+		flow.LogError("chat.session_fetch", "获取会话失败", event.P("error", err.Error()))
+		o.lg().With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
+			loggateway.StepID("chat.session_get_fail"), loggateway.Err(err))
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound(apierror.DomainSession, "session not found")
+		}
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: Sessions.Get",
+		loggateway.StepID("chat.session_get"),
+		loggateway.Any("elapsed_ms", time.Since(sessGetStart).Milliseconds()))
+	flow.LogDone("chat.session_fetch", "会话已获取", event.P("owner_type", sess.OwnerType), event.P("agent_id", sess.AgentID), event.P("team_id", sess.TeamID))
+
+	// 车道等待（锁外）：ctx 取消即终止 turn，不放行无槽位执行（FR-6）。
+	releaseLane, laneOK := rt.AcquireTurnLane(ctx, input, sess.OwnerType)
+	if !laneOK {
+		return biz.ChatMessage{}, biz.ChatMessage{}, ctx.Err()
+	}
+	defer releaseLane()
+
 	lockStart := time.Now()
-	unlock := o.lockSession(sessionID)
+	unlock, err := o.lockSessionCtx(ctx, sessionID)
+	if err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: lockSession",
 		loggateway.StepID("chat.lock_session"),
 		loggateway.Any("elapsed_ms", time.Since(lockStart).Milliseconds()))
@@ -145,22 +195,6 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 			input.Content = biz.MergeInjectContext(injects, input.Content)
 		}
 	}
-	sessGetStart := time.Now()
-	sess, err := o.td().Sessions.Get(ctx, sessionID)
-	if err != nil {
-		unlock()
-		flow.LogError("chat.session_fetch", "获取会话失败", event.P("error", err.Error()))
-		o.lg().With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
-			loggateway.StepID("chat.session_get_fail"), loggateway.Err(err))
-		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound(apierror.DomainSession, "session not found")
-		}
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: Sessions.Get",
-		loggateway.StepID("chat.session_get"),
-		loggateway.Any("elapsed_ms", time.Since(sessGetStart).Milliseconds()))
-	flow.LogDone("chat.session_fetch", "会话已获取", event.P("owner_type", sess.OwnerType), event.P("agent_id", sess.AgentID), event.P("team_id", sess.TeamID))
 
 	// P0-01 fix: verify the authenticated user owns this session.
 	// Skip for system-initiated turns (default_user) and shared sessions
@@ -175,14 +209,11 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	}
 
 	// 澄清等待态自由回复：cache 命中或（重启/他副本）从信封重建。
-	// 放在 Sessions.Get 之后，用已加载的会话状态门闩，避免每个 turn 额外 ListSteps。
+	// 放在锁内（快照读取之后），用已加载的会话状态门闩，避免每个 turn 额外 ListSteps。
 	input, intentArt := o.resolveClarificationFreeTextHint(ctx, input, &sess)
 	if intentArt != nil {
 		ctx = intent.WithArtifact(ctx, intentArt)
 	}
-
-	releaseLane := rt.AcquireTurnLane(ctx, input, sess.OwnerType)
-	defer releaseLane()
 
 	if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 		return o.executeTeamTurnViaHooks(ctx, sess, input, flow, unlock)

@@ -41,19 +41,29 @@ func (r *toctouAgentRepo) GetAgentByID(_ context.Context, _ string) (biz.Agent, 
 	return r.ag, nil
 }
 
-// toctouLocker 包装真实 SessionLockManager，在第二个 Lock 调用（turn B 到达
-// 临界区入口、即将因 A 持锁而阻塞）时发出信号，使竞态时序确定性复现。
+// toctouLocker 包装真实 SessionLockManager：
+//   - onFirst：首个 Lock 调用（turn A）在"已持有互斥"后发出信号并阻塞，模拟
+//     临界区窗口——P1 FR-6 顺序重排（Get → lane → lock）后，锁内阻塞点只能
+//     锚在锁包装层（旧实现锚在 Sessions.Get，彼时 Get 尚持锁；重排后 Get 无
+//     锁，锚点不移会导致 B 抢先持锁、A/B 角色错乱挂死）；
+//   - onSecond：第二个 Lock 调用（turn B）在"即将因 A 持锁而阻塞"前发出信号。
 type toctouLocker struct {
 	delegate *biz.SessionLockManager
 	calls    atomic.Int32
+	onFirst  func()
 	onSecond func()
 }
 
 func (l *toctouLocker) Lock(sessionID string) func() {
-	if l.calls.Add(1) == 2 && l.onSecond != nil {
-		l.onSecond()
+	n := l.calls.Add(1)
+	if n == 2 && l.onSecond != nil {
+		l.onSecond() // B：获取前发声——此时 A 持锁，B 将确定性阻塞在互斥上
 	}
-	return l.delegate.Lock(sessionID)
+	unlock := l.delegate.Lock(sessionID)
+	if n == 1 && l.onFirst != nil {
+		l.onFirst() // A：已持锁，进入受控临界区窗口
+	}
+	return unlock
 }
 
 // gatedFailureBus 在首个 TaskFailedEvent 发布处阻塞，直至测试放行。
@@ -85,9 +95,9 @@ func (b *gatedFailureBus) Publish(ctx context.Context, e biz.Event) {
 // 对同一会话的"双跑"竞态。
 //
 // 时序（确定性编排）：
-//  1. turn A 通过锁外 HasActive 快速检查（false），获取会话锁，阻塞在
-//     Sessions.Get（模拟 DB 窗口）——此时尚未 StoreCancelable。
-//  2. turn B 通过锁外 HasActive 快速检查（false，A 未存储），阻塞在会话锁上。
+//  1. turn A 通过锁外 HasActive 快速检查（false）→ Sessions.Get → 车道 →
+//     获取会话锁即阻塞（锁包装层锚点）——此时尚未 StoreCancelable。
+//  2. turn B 通过锁外快速检查 → Get → 车道 → 阻塞在会话锁上（A 持有）。
 //  3. A 放行：StoreCancelable(A) → 释放锁 → admitTurn 因 AgentKey 不匹配
 //     失败，首个 TaskFailedEvent 发布被 gatedFailureBus 挂起（A 的注册项
 //     因此钉在册，不会先 Finish）。
@@ -109,12 +119,18 @@ func TestRunNativeAgentTurn_TOCTOU_SecondTurnMustNotRun(t *testing.T) {
 
 	sessStub := &toctouSessionManager{
 		sess: biz.Session{ID: "sess-toctou", AgentID: "agent-1", OwnerType: "agent"},
+	}
+	// P1 FR-6 顺序重排（Get → lane → lock）后，"持锁临界区窗口"锚在锁包装层：
+	// A 获锁即阻塞（aInCritical → releaseA），B 的第二次 Lock 发声后确定性
+	// 阻塞在 A 持有的互斥上（bWaiting）。
+	locker := &toctouLocker{
+		delegate: lockMgr,
 		onFirst: func() {
 			close(aInCritical)
 			<-releaseA
 		},
+		onSecond: func() { close(bWaiting) },
 	}
-	locker := &toctouLocker{delegate: lockMgr, onSecond: func() { close(bWaiting) }}
 	chatUC := biz.NewChatUsecase(nil, locker, nil, nil, nil, loggateway.NewNoop())
 
 	// 失败事件闸门：A 在 admitTurn 失败（publishTurnFailure）处挂起，直到 B

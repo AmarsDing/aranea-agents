@@ -667,26 +667,53 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 		seq = s.seqAssigner.NextSeq(sessionID)
 		de.SetDeliverySeqValue(seq)
 	}
-	eventID := biz.DeliveryEventID(e, seq)
-	payload, err := marshalV2EventEnvelope(e, eventID)
+	// buildRow 按当前 seq 产出 outbox 行（payload 内嵌 eventID，换 seq 必须
+	// 重新 marshal——否则 durable 行与 live 帧的 event_id 分叉，回放去重失真）。
+	buildRow := func() (biz.EventDeliveryOutboxRow, error) {
+		eventID := biz.DeliveryEventID(e, seq)
+		payload, err := marshalV2EventEnvelope(e, eventID)
+		if err != nil {
+			return biz.EventDeliveryOutboxRow{}, err
+		}
+		return biz.EventDeliveryOutboxRow{
+			ID:        uuid.NewString(),
+			SessionID: sessionID,
+			Seq:       seq,
+			EventID:   eventID,
+			Kind:      string(e.EventKind()),
+			EntityID:  e.EntityID(),
+			Payload:   payload,
+			CreatedAt: time.Now().UTC(),
+		}, nil
+	}
+	row, err := buildRow()
 	if err != nil {
 		s.lg.Warn("outbox marshal failed",
 			loggateway.Str("kind", string(e.EventKind())),
 			loggateway.Err(err))
 		return ""
 	}
-	rowID := uuid.NewString()
-	row := biz.EventDeliveryOutboxRow{
-		ID:        rowID,
-		SessionID: sessionID,
-		Seq:       seq,
-		EventID:   eventID,
-		Kind:      string(e.EventKind()),
-		EntityID:  e.EntityID(),
-		Payload:   payload,
-		CreatedAt: time.Now().UTC(),
-	}
 	if err := s.outbox.Insert(ctx, row); err != nil {
+		// FR-9：(session_id, seq) 冲突 = 共享 SeqAssigner 落后于持久水位
+		// （重启恢复靠 FR-9 max(steps,tasks,outbox) 折入闭合主窗口；残余
+		// DeltaSeq 尾部消耗无持久水位可被一次重取覆盖）。重取 seq 重试
+		// 一次并 Warn；仍失败回落既有 best-effort 跳过。
+		if errors.Is(err, biz.ErrEventOutboxSeqConflict) && s.seqAssigner != nil {
+			seq = s.seqAssigner.NextSeq(sessionID)
+			de.SetDeliverySeqValue(seq)
+			if retryRow, buildErr := buildRow(); buildErr == nil {
+				if retryErr := s.outbox.Insert(ctx, retryRow); retryErr == nil {
+					s.lg.Warn("outbox seq conflict recovered by retry",
+						loggateway.Str("kind", string(e.EventKind())),
+						loggateway.SessionID(sessionID),
+						loggateway.Int64("retried_seq", seq),
+						loggateway.Err(err))
+					return retryRow.ID
+				} else {
+					err = retryErr
+				}
+			}
+		}
 		// R4: throttled — fires per critical event while the outbox table is
 		// down. The outbox skip itself is unchanged (best-effort).
 		if ok, suppressed := s.throttles.outboxInsertWarn.Allow(); ok {
@@ -698,7 +725,7 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 		}
 		return ""
 	}
-	return rowID
+	return row.ID
 }
 
 // marshalV2EventEnvelope builds the same WS frame shape as WSV2Subscriber.
