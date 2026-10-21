@@ -36,17 +36,18 @@ var ddlMigrations = append(append(append([]ddlMigration{}, ddlMigrationsEarly...
 // schema_migrations 版本全局唯一，与种子共享命名空间（参照
 // ddl_migration_table_late.go 里 20261118/20261119 重编号先例）：
 // origin/dev 保留 20261278 chat_turn_submit_claim，审计条目重编号至
-// 20261279。SQL 文件保留原磁盘文件名——版本唯一性由注册表 Version
-// 字段保证，与文件名无绑定。
-// TODO(merge-cleanup)：将本条目迁回 ddl_migration_table_late.go，并将
-// SQL 文件重命名为 20261279_skill_invocation_analysis_retry.sql。
+// 20261279。SQL 文件已按 canonical 命名（20261279_skill_invocation_analysis_retry.sql，
+// 2026-10-21 落地原 TODO(merge-cleanup)——migration_version_guard_test
+// TestMigrationRegistryCoversSQLFiles 护栏要求 SQL 路径与版本号一致）。
+// TODO(merge-cleanup)：将本条目迁回 ddl_migration_table_late.go（保留合并
+// 前科的可读隔离——待下个无并行会话窗口执行）。
 var ddlMigrationsMergeAuditFixes = []ddlMigration{
 	// 20261279 skill_invocation_analysis_retry（原 20261278，与 origin/dev 的
 	// chat_turn_submit_claim 撞号；审计 W5② 报告分析队列死信）：
 	// analysis_attempts/analysis_error 两列——GenerateReport 失败行的重试计数
 	// 与最近错误；ListUnanalyzed 谓词排除 attempts 达上限的行，根治「永久失败
 	// 毒行按 created_at ASC 每轮重扫 + 积压 100 条队头阻塞」。
-	{Version: 20261279, Name: "skill_invocation_analysis_retry", SQL: "sql/migrations/20261278_skill_invocation_analysis_retry.sql"},
+	{Version: 20261279, Name: "skill_invocation_analysis_retry", SQL: "sql/migrations/20261279_skill_invocation_analysis_retry.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

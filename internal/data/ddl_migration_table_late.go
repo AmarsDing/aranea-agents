@@ -438,4 +438,24 @@ var ddlMigrationsLate = []ddlMigration{
 	// knowledge_chunks 同源由 reconcileEmbeddingDim 对账。原拟 20261285 与
 	// tool_invocations_workspace 撞号（合并重排后的注册版本唯一）→ 重编号 20261286。
 	{Version: 20261286, Name: "knowledge_graph_embeddings", SQL: "sql/migrations/20261286_knowledge_graph_embeddings.sql"},
+	// 20261287 knowledge_links_recorded_idx（G-05-asof，2026-10-20，ADR-KN-20261020-J，
+	// 索引维度复审 F1[major]）：R 轴 as-of 读索引——ListCollectionLinksAsOf 的
+	// R-only/双轴谓词 recorded_at <= $R 原有零索引，valid_to > $R 分支与 GiST 表达式
+	// 索引凑不起 BitmapOr → 全库 as-of 图读退化全表 seq scan，且双时态表历史行只增
+	// 不删代价线性膨胀。(collection_id, recorded_at) 组合序：collection_id 前置等值
+	// + recorded_at 驱动范围，单索引同服务 R-only 与双轴两条 SQL 变体。
+	{Version: 20261287, Name: "knowledge_links_recorded_idx", SQL: "sql/migrations/20261287_knowledge_links_recorded_idx.sql"},
+	// 20261288 orchestration_cache_entries（D7-F5，2026-10-21）：编排配方缓存
+	// 逐行持久化表（PK(workspace_id, task_pattern)，D7-F6 租户分桶）。legacy
+	// system_settings 整包 JSON 由应用层 InitFromRepo 一次性逐条导入本表。
+	// 原拟 20261287 与 knowledge_links_recorded_idx 撞号 → 重编号 20261288；
+	// SQL 文件 2026-10-21 改 canonical 名（migration_version_guard_test 护栏）——
+	// schema_migrations 版本唯一性本由注册表 Version 保证，文件名绑定经护栏转正。
+	{Version: 20261288, Name: "orchestration_cache_entries", SQL: "sql/migrations/20261288_orchestration_cache_entries.sql"},
+	// 20261289 coding_liveness（M4，2026-10-21，ADR-88）：coding_tasks 增 child_pid
+	// （进程组根 PID，重启收割 taskkill /T /F）＋ liveness 四字段；coding_agents 增
+	// liveness_override（按 key 覆盖阈值，JSON 文本）。存量行 last_active_at 回填
+	// updated_at 基线（76 设计「活跃性监管」§B）。两表均为 Ent Schema.Create 管理
+	// 的新表，fresh 建表自带全列，本迁移只服务存量库（重复列错误按 DB-N6 视为成功）。
+	{Version: 20261289, Name: "coding_liveness", SQL: "sql/migrations/20261289_coding_liveness.sql"},
 }
