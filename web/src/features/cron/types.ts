@@ -14,6 +14,7 @@ export type CronTaskConfig = {
   timezone?: string;
   message?: string;
   retry_max_attempts?: number; // retry count after first attempt; default 3; 0 = disable
+  missed_run_grace_seconds?: number | null; // 宕机补跑宽限秒；null/缺省=禁用（见 21-cron.design.md §4.7）
 };
 
 export type CronFailureSummary = {

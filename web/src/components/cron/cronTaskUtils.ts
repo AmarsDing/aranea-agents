@@ -78,8 +78,11 @@ export function applyCronRowToForm(row: CronTaskRow | null, form: CronTaskFormVa
   });
 }
 
-export function buildCronTaskConfig(form: CronTaskFormValue): CronTaskConfig {
+export function buildCronTaskConfig(form: CronTaskFormValue, prior?: CronTaskConfig): CronTaskConfig {
   return {
+    // 先铺已有配置再覆写表单字段：无表单映射的键（如 missed_run_grace_seconds——
+    // 经 API/种子配置后）不得在 UI 保存时被静默丢弃（C6 修正）。
+    ...prior,
     target_type: form.target_type,
     team_id: form.target_type === 'team' ? form.team_id : '',
     schedule_type: form.schedule_type,
@@ -94,6 +97,7 @@ export function buildCronTaskConfig(form: CronTaskFormValue): CronTaskConfig {
 
 export function buildCronTaskPayload(form: CronTaskFormValue, row: CronTaskRow | null): PlatformResourceInput {
   const existingMetadata = parseCronJSON<CronTaskMetadata>(row?.metadata_json, {});
+  const existingConfig = parseCronJSON<CronTaskConfig>(row?.config_json, {});
   return {
     key: form.name.trim(),
     name: form.display_name.trim() || form.name.trim(),
@@ -102,7 +106,7 @@ export function buildCronTaskPayload(form: CronTaskFormValue, row: CronTaskRow |
     enabled: form.enabled,
     status: form.enabled ? 'active' : 'paused',
     sort_order: row?.sort_order || 0,
-    config_json: JSON.stringify(buildCronTaskConfig(form)),
+    config_json: JSON.stringify(buildCronTaskConfig(form, existingConfig)),
     metadata_json: JSON.stringify(existingMetadata),
   };
 }

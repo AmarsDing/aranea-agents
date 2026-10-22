@@ -1,4 +1,5 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 
@@ -11,6 +12,7 @@ import { formatCronDate } from '../../components/cron/cronTaskUtils';
 
 export function useCronTasksPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const cronStore = useCronStore();
   const { tasks: rows, agents, teams, runs, runsTotal } = storeToRefs(cronStore);
 
@@ -157,6 +159,8 @@ export function useCronTasksPage() {
     { label: '成功', value: 'success' },
     { label: '失败', value: 'failure' },
     { label: '跳过', value: 'skipped' },
+    // 新键走 i18n（check-i18n 不新增违例）；存量硬编码标签属既有 baseline，不在本改动迁移
+    { label: t('common.status.skippedMissed'), value: 'skipped_missed' },
     { label: '待执行', value: 'pending' },
   ];
   // 服务端分页：runs 即当前页数据，total 来自后端 count

@@ -55,6 +55,7 @@ const STATUS_META: Record<string, AppStatusMeta> = {
   stopped: { tone: 'neutral', icon: 'stop_circle', labelKey: 'common.status.stopped' },
   starting: { tone: 'info', icon: 'rocket_launch', labelKey: 'common.status.starting' },
   skipped: { tone: 'neutral', icon: 'skip_next', labelKey: 'common.status.skipped' },
+  skipped_missed: { tone: 'warning', icon: 'event_busy', labelKey: 'common.status.skippedMissed' },
   retrying: { tone: 'info', icon: 'refresh', labelKey: 'common.status.retrying' },
   unknown: { tone: 'neutral', icon: 'help_outline', labelKey: 'common.status.unknown' },
   // 渠道
