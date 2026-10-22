@@ -370,6 +370,11 @@ func (s *livenessSupervisor) probe(now time.Time) {
 		}
 		return
 	}
+	// 探测错误一律按「无法判定」（unverifiable）处理，绝不坍缩为「已死」：
+	// 单次 miss 只累计证据——网络抖动/对端调度繁忙/时钟漂移都会让个别 Ping
+	// 失败，仅当已进入 suspect 且连续 miss 达到阈值（多拍累计的正向证据）
+	// 才推进 lost。与 orca hang-watchdog「A false positive must never kill
+	// a live main thread」同一条红线（M19 注释契约）。
 	s.mu.Lock()
 	s.miss++
 	miss, state := s.miss, s.state
