@@ -96,8 +96,33 @@ func (f *Factory) getLocal(workDir string) trpcagentcodeexec.CodeExecutor {
 		return f.localExec
 	}
 	f.localWD = workDir
-	f.localExec = wrapMetrics(f.newLocal(workDir), TypeLocal)
+	// partialMarker：local 是无隔离强制后端，所有经它的输出都打
+	// "[enforcement:partial]" 尾注（§12.1-②：docker_adapter 在禁改面内，
+	// 用单点包装器落尾注；§12.1-① 框架 CodeExecutionResult 无元数据位，
+	// 尾注是模型可见的诚实信号）。
+	f.localExec = wrapMetrics(partialMarker{inner: f.newLocal(workDir)}, TypeLocal)
 	return f.localExec
+}
+
+// partialMarker wraps the unisolated local executor so every model-visible
+// output carries the honest enforcement grade (review §2.4 ②: enforcement 只能
+// 落内部 Result + Output 尾注)。事件与计数在降级决策点发（emitEnforcementPartial），
+// 尾注逐次打标——消灭"裸跑 local 无可见性"的静默区。
+type partialMarker struct{ inner trpcagentcodeexec.CodeExecutor }
+
+func (p partialMarker) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimiter {
+	return p.inner.CodeBlockDelimiter()
+}
+
+func (p partialMarker) ExecuteCode(ctx context.Context, input trpcagentcodeexec.CodeExecutionInput) (trpcagentcodeexec.CodeExecutionResult, error) {
+	res, err := p.inner.ExecuteCode(ctx, input)
+	if err != nil {
+		return res, err
+	}
+	if !strings.Contains(res.Output, "[enforcement:") {
+		res.Output += EnforcementPartialNote
+	}
+	return res, nil
 }
 
 func (f *Factory) getDocker() trpcagentcodeexec.CodeExecutor {
@@ -247,6 +272,7 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 			loggateway.StepID("codeexec.docker_fallback"),
 			loggateway.Str("requested", TypeDocker))
 		f.emitFallbackFlow(ctx, TypeDocker, TypeLocal)
+		f.emitEnforcementPartial(ctx, TypeDocker, TypeLocal)
 		return TypeLocal
 	}
 	if typ == TypeE2B && !f.IsBackendAvailable(TypeE2B) {
@@ -293,6 +319,8 @@ func (f *Factory) warnResolveFallback(ctx context.Context, requested string) {
 		loggateway.StepID("codeexec.resolve_fallback"),
 		loggateway.Str("requested", requested))
 	f.emitFallbackFlow(ctx, requested, TypeLocal)
+	// 落到 local 一律是 enforcement 降级（e2b/container → local 同理）。
+	f.emitEnforcementPartial(ctx, requested, TypeLocal)
 }
 
 // emitFallbackFlow 降级点流程日志（83-长时运行韧性 FR-3 K3）：ctx 携带
@@ -307,6 +335,72 @@ func (f *Factory) emitFallbackFlow(ctx context.Context, requested, fallback stri
 		fmt.Sprintf("代码执行后端降级：%s → %s", requested, fallback),
 		event.P("requested", requested),
 		event.P("fallback", fallback))
+}
+
+// emitEnforcementPartial 发火"请求隔离后端、实际落无隔离 local"的诚实分级
+// 信号 sandbox.enforcement_partial：AS-EVT-01 **Important** 级（review §9.3：
+// BlockUpTo + 异步持久化）。批 A 通道 = 进程 Warn + flow_log + metrics 计数；
+// decision_records 双写挂点（EmitGate + Trigger 常量）属批 B wire 接线——
+// decision/gate.go 在批 A 禁改面内，此处先留注释锚点，不新增 decision 枚举。
+func (f *Factory) emitEnforcementPartial(ctx context.Context, requested, fallback string) {
+	codeExecEnforcementPartialTotal.WithLabelValues(requested, fallback).Inc()
+	f.logger().Warn("代码执行降级为无隔离强制（enforcement=partial）",
+		loggateway.StepID("sandbox.enforcement_partial"),
+		loggateway.Str("requested", requested),
+		loggateway.Str("fallback", fallback))
+	em := event.TraceEmitterFromContext(ctx)
+	if em == nil {
+		return
+	}
+	em.LogWarn("sandbox.enforcement_partial", "enforcement 降级",
+		fmt.Sprintf("代码执行后端降级为 partial：%s → %s（无 OS 隔离强制）", requested, fallback),
+		event.P("requested", requested),
+		event.P("fallback", fallback),
+		event.P("enforcement", EnforcementPartial))
+}
+
+// SurfacePolicyFor reports the resolved per-surface posture（骨架只读面，批 A
+// 不在 ExecuteCode 热路径做强制；硬强制属批 B）。
+func (f *Factory) SurfacePolicyFor(s Surface) PolicyLevel { return f.env.Policy.For(s) }
+
+// StrictFallback reports the global fallback posture (83 FR-3).
+func (f *Factory) StrictFallback() bool { return f.env.StrictFallback() }
+
+// ResolveForSurface 是 per-surface 显式链解析入口（P0-1 doNow ③：替代调用点
+// 硬编码 backend，SurfacePolicy 三值骨架先落），返回 nil 时由调用点输出
+// 结构化 skipped（sandbox_runner）：
+//   - degrade（默认）：现状 local 链——与 sandbox_runner 旧硬编码
+//     Resolve(TypeLocal) 字节级同行为（零行为变更契约）；
+//   - refuse：恒 nil（面级拒绝执行）；
+//   - enforce：隔离优先 sandbox→docker（docker 直出、不挂 local 运行期回退），
+//     均不可用返回 nil（fail-closed 交由调用点明示 skipped）。
+func (f *Factory) ResolveForSurface(ctx context.Context, s Surface, workDir string) trpcagentcodeexec.CodeExecutor {
+	switch f.env.Policy.For(s) {
+	case PolicyRefuse:
+		f.logger().Warn("surface policy refuse：拒绝该面代码执行",
+			loggateway.StepID("codeexec.surface_refused"),
+			loggateway.Str("surface", string(s)))
+		return nil
+	case PolicyEnforce:
+		f.mu.RLock()
+		mgr := f.sandboxMgr
+		store := f.sandboxStore
+		f.mu.RUnlock()
+		if mgr != nil && mgr.Available() {
+			return wrapMetrics(newPooledAdapter(mgr, f.env.Timeout, store), TypeSandbox)
+		}
+		if DockerAvailable() {
+			return wrapMetrics(f.getDocker(), TypeDocker)
+		}
+		f.logger().Error("surface policy enforce 要求隔离执行域但 sandbox/docker 均不可用——拒绝执行",
+			loggateway.StepID("codeexec.surface_refused"),
+			loggateway.Str("surface", string(s)))
+		return nil
+	default:
+		// degrade（含空值；typo 已在 parsePolicyLevel fail-closed 归一为
+		// refuse，走不到这里）。
+		return f.Resolve(ctx, TypeLocal, workDir)
+	}
 }
 
 // refuseLocalInProd converts TypeLocal → TypeDisabled in production unless

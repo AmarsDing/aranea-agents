@@ -110,7 +110,27 @@ type ExecSpec struct {
 	// discarded so the process never blocks on a full pipe, while host memory
 	// stays bounded regardless of in-sandbox output size (ReadFile contract).
 	StdoutLimit int64
+	// StderrLimit caps how many stderr bytes are retained in ExecResult.Stderr
+	// (0 = StderrLimitDefault; <0 = unlimited). Unlike StdoutLimit the default
+	// is CAPPED (review 2026-10-21 §2.1: stderr was the one remaining unbounded
+	// buffer — the stdout gap was closed by StdoutLimit, stderr was missed).
+	// Truncation is marked in-band with a "[stderr truncated at N bytes]" tail
+	// note (per executor.go artifact-collect precedent) plus the
+	// ExecResult.StderrTruncated flag for metrics.
+	StderrLimit int64
 }
+
+// StderrLimitDefault is the fallback stderr retention cap (256 KiB, aligned
+// with the sandboxfs readHardMaxBytes ceiling, review §2.5 #5).
+const StderrLimitDefault = 256 * 1024
+
+// Enforcement grades on ExecResult (诚实分级 review 2026-10-21 §2.4).
+// EnforcementFull marks execution that ran under the engine's isolation
+// boundary (the docker sandbox). Less-isolated execution (local fallback)
+// is graded "partial" by the codeexecutor 适配层 on ITS Result/Output — the
+// framework CodeExecutionResult has no metadata slot, so the honest signal
+// lands on the internal Result + an "[enforcement:partial]" tail note.
+const EnforcementFull = "full"
 
 // ExecResult is the outcome of one Exec.
 type ExecResult struct {
@@ -119,6 +139,11 @@ type ExecResult struct {
 	ExitCode int
 	TimedOut bool
 	OOM      bool
+	// StderrTruncated reports stderr输出被 StderrLimit 截断（行内尾注见 Stderr）。
+	StderrTruncated bool
+	// Enforcement is the isolation grade the command actually ran under
+	// ("full" for every engine-issued execution; see note on EnforcementFull).
+	Enforcement string
 }
 
 // Destroy reasons (metric label values).

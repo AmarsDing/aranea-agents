@@ -1,0 +1,118 @@
+{
+  "name": "retrieval-heavy",
+  "provenance": "2026-10-21 A8 冻结。构造口径：工作区无真实会话导出可冻结，文本按真实产物形状合成（knowledge_search 命中 JSON / 巡检手册 markdown / 诊断脚本日志 / ASHRAE 网页摘录），all bodies synthesized in-tree > 1024B。config after_turns=2 size_bytes=1024。protected=[3,5]：检索族 K 轮外超尺寸仍不剪（内置豁免表默认 ON，P0-3 §4.4③）；idx 8 code_execute K 轮外超尺寸折叠（locator spill://fs/eval-call-3）；idx 14 web_fetch 在 K 轮内不剪（轮距豁免，未保护、不折叠、不变）。",
+  "config": {
+    "enabled": true,
+    "after_turns": 2,
+    "size_bytes": 1024
+  },
+  "protected_indices": [
+    3,
+    5
+  ],
+  "locators": {
+    "spill://fs/eval-call-3": "diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)\n[14:02:15] blanking panel gaps detected: 2U x 3 slots\n[14:02:16] suggestion: install blanking panels, re-check in 24h\n---- raw sensor dump ----diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)"
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是 Aranea 数据中心的巡检助手。"
+    },
+    {
+      "role": "user",
+      "content": "汇总 A 区机柜温度趋势"
+    },
+    {
+      "role": "assistant",
+      "content": "先查知识库的温度趋势记录。",
+      "tool_calls": [
+        {
+          "id": "call-1",
+          "name": "knowledge_search",
+          "args": "{\"query\":\"A区机柜温度趋势\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[{\"chunk_id\":\"kb-temp-001\",\"score\":0.91,\"text\":\"A 区 1-4 号机柜近 7 日进风温度均值 24.3C，峰值 31.2C 出现在 14:00-15:00；\"},{\"chunk_id\":\"kb-temp-002\",\"score\":0.87,\"text\":\"3 号柜后通道温度连续 3 日高于前通道 4C 以上，疑似热风回流；\"},{\"chunk_id\":\"kb-temp-003\",\"score\":0.82,\"text\":\"同楼层 B 区同型号机柜基线温度 22.1C，恶化速率 0.3C/日。\"}] 检索补充说明：[{\"chunk_id\":\"kb-temp-001\",\"score\":0.91,\"text\":\"A 区 1-4 号机柜近 7 日进风温度均值 24.3C，峰值 31.2C 出现在 14:00-15:00；\"},{\"chunk_id\":\"kb-temp-002\",\"score\":0.87,\"text\":\"3 号柜后通道温度连续 3 日高于前通道 4C 以上，疑似热风回流；\"},{\"chunk_id\"[{\"chunk_id\":\"kb-temp-001\",\"score\":0.91,\"text\":\"A 区 1-4 号机柜近 7 日进风温度均值 24.3C，峰值 31.2C 出现在 14:00-15:00；\"},{\"chunk_id\":\"kb-temp-002\",\"score\":0.87,\"text\":\"3 号柜后通道温度连续 3 日高于前通道 4C 以上，疑似热风回流；\"},{\"chunk_id\"[{\"chunk_id\":\"kb-temp-001\",\"score\":0.91,\"text\":\"A 区 1-4 号机柜近 7 日进风温度均值 24.3C，峰值 31.2C 出现在 14:00-15:00；\"},{\"chunk_id\":\"kb-temp-002\",\"score\":0.87,\"text\":\"3 号柜后通道温度连续 3 日高于前通道 4C 以上，疑似热风回流；\"},{\"chunk_id\"[{\"chunk_id\":\"kb-temp-001\",\"score\":0.91,\"text\":\"A 区 1-4 号机柜近 7 日进风温度均值 24.3C，峰值 31.2C 出现在 14:00-15:00；\"},{\"chunk_id\":\"kb-temp-002\",\"score\":0.87,\"text\":\"3 号柜后通道温度连续 3 日高于前通道 4C 以上，疑似热风回流；\"},{\"chunk_id\"",
+      "tool_name": "knowledge_search",
+      "tool_id": "call-1"
+    },
+    {
+      "role": "assistant",
+      "content": "再调出手册核对判定标准。",
+      "tool_calls": [
+        {
+          "id": "call-2",
+          "name": "read_document",
+          "args": "{\"doc\":\"机房温控巡检手册\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "# 机房温控巡检手册（摘录）\n\n## 3.2 热风回流判定\n当机柜前后温差连续 72 小时超过 3.5C 时判定为疑似热风回流，需检查盲板完整性与地板出线口封堵。\n\n## 3.3 处置流程\n1. 现场确认盲板；2. 临时加装机柜风机；3. 上报变更工单。\n\n附录 A：告警阈值对照表；附录 B：历史工单索引。# 机房温控巡检手册（摘录）\n\n## 3.2 热风回流判定\n当机柜前后温差连续 72 小时超过 3.5C 时判定为疑似热风回流，需检查盲板完整性与地板出线口封堵。\n\n## 3.3 处置流程\n1. 现场确认盲板；2. 临时加装机柜风机；3. 上报变更工单。\n\n附录 A：告警阈值对照表；附录 B：历史工单索引。# 机房温控巡检手册（摘录）\n\n## 3.2 热风回流判定\n当机柜前后温差连续 72 小时超过 3.5C 时判定为疑似热风回流，需检查盲板完整性与地板出线口封堵。\n\n## 3.3 处置流程\n1. 现场确认盲板；2. 临时加装机柜风机；3. 上报变更工单。\n\n附录 A：告警阈值对照表；附录 B：历史工单索引。# 机房温控巡检手册（摘录）\n\n## 3.2 热风回流判定\n当机柜前后温差连续 72 小时超# 机房温控巡检手册（摘录）\n\n## 3.2 热风回流判定\n当机柜前后温差连续 72 小时超过 3.5C 时判定为疑似热风回流，需检查盲板完整性与地板出线口封堵。\n\n## 3.3 处置流程\n1. 现场确认盲板；2. 临时加装机柜风机；3. 上报变更工单。\n\n附录 A：告警阈值对照表；附录 B：历史工单索引。# 机房温控巡检手册（摘录）\n\n## 3.2 热风回流判定\n当机柜前后温差连续 72 小时超",
+      "tool_name": "read_document",
+      "tool_id": "call-2"
+    },
+    {
+      "role": "user",
+      "content": "看起来 3 号柜偏高，跑一下诊断脚本"
+    },
+    {
+      "role": "assistant",
+      "content": "执行风扇与风道诊断。",
+      "tool_calls": [
+        {
+          "id": "call-3",
+          "name": "code_execute",
+          "args": "{\"cmd\":\"diag_fan_check.sh --rack A-03\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)\n[14:02:15] blanking panel gaps detected: 2U x 3 slots\n[14:02:16] suggestion: install blanking panels, re-check in 24h\n---- raw sensor dump ----diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)diag_fan_check.sh --rack A-03\n[14:02:11] fan tray 1: 4200 RPM (normal)\n[14:02:12] fan tray 2: 3900 RPM (normal)\n[14:02:13] rear duct temp: 34.8C (WARN > 32C)\n[14:02:14] front duct temp: 26.1C (normal)",
+      "tool_name": "code_execute",
+      "tool_id": "call-3"
+    },
+    {
+      "role": "user",
+      "content": "再对照下上周记录"
+    },
+    {
+      "role": "assistant",
+      "content": "无需再取数，结合手册即可定位。"
+    },
+    {
+      "role": "user",
+      "content": "把结论写进报告"
+    },
+    {
+      "role": "assistant",
+      "content": "顺手核对 ASHRAE 推荐包络。",
+      "tool_calls": [
+        {
+          "id": "call-5",
+          "name": "web_fetch",
+          "args": "{\"url\":\"https://example.test/ashrae\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "<html><body><h1>ASHRAE Thermal Guidelines - Rack Inlet Temperature</h1><p>Recommended envelope: 18C to 27C dry bulb. Allowable envelope A1: 15C to 32C. Continuous operation above 27C requires justification and monitoring.</p><p>Hot air recirculation is the most common cause of localized overheating in raised-floor data centers.</p>Reference table: class A1/A2/A3/A4 inlet limits and humidity envelopes.<html><body><h1>ASHRAE Thermal Guidelines - Rack Inlet Temperature</h1><p>Recommended envelope: 18C to 27C dry bulb. Allowable envelope A1: 15C to 32C. Continuous operation above 27C requires justific<html><body><h1>ASHRAE Thermal Guidelines - Rack Inlet Temperature</h1><p>Recommended envelope: 18C to 27C dry bulb. Allowable envelope A1: 15C to 32C. Continuous operation above 27C requires justific<html><body><h1>ASHRAE Thermal Guidelines - Rack Inlet Temperature</h1><p>Recommended envelope: 18C to 27C dry bulb. Allowable envelope A1: 15C to 32C. Continuous operation above 27C requires justific<html><body><h1>ASHRAE Thermal Guidelines - Rack Inlet Temperature</h1><p>Recommended envelope: 18C to 27C dry bulb. Allowable envelope A1: 15C to 32C. Continuous operation above 27C requires justific",
+      "tool_name": "web_fetch",
+      "tool_id": "call-5"
+    },
+    {
+      "role": "user",
+      "content": "谢谢"
+    },
+    {
+      "role": "assistant",
+      "content": "报告已生成：3 号柜疑似热风回流，建议补盲板并 24h 复测。"
+    }
+  ]
+}

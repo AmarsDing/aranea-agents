@@ -148,6 +148,9 @@ message Server {
   string a2a_public_base_url = 5;
   Monitor monitor = 6;
   OpenAI openai = 7;
+  // P0-6 阶段0(2026-10-22):部署方声明的副本数。0/1 = 单副本(现状安全边界,
+  // 进程级内存态可用);>1 时 replica_guard 对受影响功能逐项 Warn。
+  int32 declared_replicas = 8;
 }
 
 message OpenAI {
@@ -335,6 +338,9 @@ message Runtime {
     int32 after_turns = 2;            // K: prune results farther than K turns from current (0 = 8)
     int64 size_bytes = 3;             // S: min serialized size in bytes to prune (0 = 4096, aligned with loopGuardResultCap)
     repeated string exempt_tools = 4; // whitelist: tool names never pruned (取证关键类, e.g. gns3 forensics)
+    // P0-3 批 B(2026-10-22):检索类工具(read_document/webfetch/检索族)保护
+    // 最近 K 轮不折叠剪除。unset = ON(批 A 已默认化生效);显式 false 关闭豁免。
+    optional bool retrieval_exempt_enabled = 5;
   }
   // Run-level no-progress auditor (79-runtime-governance R5).
   // Tracks each member's consecutive identical terminal status fingerprint
@@ -345,6 +351,16 @@ message Runtime {
     optional bool enabled = 1; // master switch; unset = auditor ON (kill switch: enabled=false, dev plan Phase 2 回退)
     int32 correct_after = 2;   // consecutive same-fingerprint count that triggers correction-note injection (0 = 3)
     int32 cancel_after = 3;    // additional consecutive count post-correction that cancels the run (0 = 2)
+  }
+  // P0-2 工具结果溢出外置(2026-10-22 批 B):截断不全量丢失——超阈值工具结果
+  // 整体落盘 workspace 私有 spillStore(0700/O_EXCL/symlink 拒绝),inline 仅留
+  // head/tail + SpillLocator,模型经 read_tool_result locator 分支回读。
+  message ToolResultSpill {
+    optional bool enabled = 1; // master switch; unset = ON(批 B 接线后生效;kill switch: enabled=false)
+    string dir = 2;            // spill 根目录(空 = <workspace>/.aranea-spill,权限 0700)
+    int64 max_file_bytes = 3;  // 单 spill 文件上限(0 = 1 MiB,超限保原文并标 enforcement=partial)
+    int64 max_total_bytes = 4; // 每会话 spill 总量配额(0 = 64 MiB,防磁盘炸弹)
+    int32 ttl_hours = 5;       // GC 生存期(0 = 168 ≈ 7d)
   }
 
   WS ws = 1;
@@ -361,4 +377,9 @@ message Runtime {
   // recorded baseline by more than this fraction. 0 = 0.10 (±10%).
   double cache_hit_alert_drift = 10;
   NoProgressAuditor no_progress_auditor = 11;
+  ToolResultSpill tool_result_spill = 12;
+  // P0-7 批 B(2026-10-22):Skill 信任门禁三档 off|shadow|on。
+  // 空 = shadow(批 A 现状,仅 would_block 计数不真拒);on 需 shadow 期
+  // 零误拒证据后开启(off → shadow → on 单向翻转纪律)。
+  string skill_trust_gate_mode = 13;
 }

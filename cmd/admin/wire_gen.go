@@ -80,6 +80,7 @@ import (
 	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/subagent"
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
@@ -164,7 +165,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillSimilarityEngine := biz.NewSkillSimilarityEngine(dedupEmbedder, similarityWeights, loggatewayLogger)
 	skillDedupUsecase := biz.NewSkillDedupUsecase(skillDedupRepo, skillSimilarityEngine, loggatewayLogger)
 	tagRepo := data.NewSkillTagRepo(dataData)
-	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo, loggatewayLogger)
+	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo, runtime, loggatewayLogger)
 	filesystemHealthReader := provideFilesystemHealthReader(skillUsecase)
 	spanReader := data.NewMonitorTraceSpanReader(dataData)
 	taskV2Repo := data.NewTaskV2Repo(dataData, loggatewayLogger)
@@ -295,6 +296,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolResultBlobRepo := data.NewToolResultBlobRepo(dataData)
 	toolResultReplacementRepo := data.NewToolResultReplacementRepo(dataData)
 	toolResultGate := biz.NewToolResultGate(toolResultBlobRepo, toolResultBlobRepo, toolResultReplacementRepo, toolResultReplacementRepo)
+	// P0-2 批 B（2026-10-22）：toolspill 依赖束（wire-gen-hand-merge-convention：
+	// 与 wire.go 同位镜像；deps=nil 即四消费点灰闸 OFF，零行为变化）。
+	toolSpillDeps := provideToolSpillDeps(runtime, loggatewayLogger)
 	router := provideOutboundRouter(loggatewayLogger)
 	subagentService, err := provideSubAgentService(usecaseRef, loggatewayLogger)
 	if err != nil {
@@ -307,7 +311,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
 	decisionRepo := data.NewDecisionRepoFromData(dataData)
 	lifecycle := provideDecisionCollector(decisionRepo, loggatewayLogger)
-	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger)
+	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, toolSpillDeps)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
 	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger, sessionService)
 	sessionRuntimeReader := data.NewSessionRuntimeReader(dataData)
@@ -666,7 +670,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	policyResolver := provideAgentPolicyResolver(agentRepository, loggatewayLogger)
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, evolutionService, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, toolSpillDeps)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
@@ -1234,14 +1238,76 @@ func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistr
 // agentToolResultPruneConfig 翻译 runtime 配置为 agent 包消费侧配置
 // （79-runtime-governance R2；agent 包不依赖 internal/conf）。
 // runtimeConf 为 nil 时 ToolResultPruneConfig() 返回默认开阈值配置（nil-safe）。
+// 批 B（P0-3③）：检索豁免 kill switch 透传——conf.retrieval_exempt_enabled
+// 显式 false 时置 RetrievalExempt=false（覆盖 agent 侧 nil=ON 默认）。
 func agentToolResultPruneConfig(runtimeConf *conf.Runtime) agent.ToolResultPruneConfig {
 	c := runtimeConf.ToolResultPruneConfig()
-	return agent.ToolResultPruneConfig{
+	out := agent.ToolResultPruneConfig{
 		Enabled:     c.Enabled,
 		AfterTurns:  c.AfterTurns,
 		SizeBytes:   c.SizeBytes,
 		ExemptTools: c.ExemptTools,
 	}
+	if !c.RetrievalExemptEnabled {
+		f := false
+		out.RetrievalExempt = &f // 显式 false ≠ 未设置（agent 侧 nil=ON 语义分界）
+	}
+	return out
+}
+
+// skillTrustGateMode 读取 P0-7 skill 信任门禁档位（批 B 2026-10-22）。
+// conf.runtime.skill_trust_gate_mode 已归一（空/未知=shadow）；本翻译顺带在
+// conf 层"on"时降级为 shadow 并 Warn（与被构造者 biz.NormalizeTrustGateMode
+// 的 on→shadow 归一双重一致，Wire 层早暴露忽略配置）。
+func skillTrustGateMode(runtimeConf *conf.Runtime, lg loggateway.Logger) biz.TrustGateMode {
+	mode := runtimeConf.ParsedSkillTrustGateMode()
+	switch mode {
+	case conf.SkillTrustGateModeOn:
+		lg.Warn("skill trust gate 不允许在本批推向 on（零误拒证据未齐），降级为 shadow",
+			loggateway.StepID("skill.trust_gate.mode_degraded"),
+			loggateway.Str("component", "wire"),
+			loggateway.Str("conf_value", mode),
+			loggateway.Str("effective", string(biz.TrustGateModeShadow)))
+		return biz.TrustGateModeShadow
+	default:
+		return biz.TrustGateMode(mode)
+	}
+}
+// conf.runtime.tool_result_spill 翻译 → 进程级共享 toolspill.Deps（Deps 本身
+// 只读+nil 时钟安全）。workspace 根解析沿用 tools.WorkspaceRootFromEnv 先例
+// （env 未配置 → 返回 nil，四消费点灰闸 OFF 保持字节级旧行为）；构造失败仅
+// Warn + nil（spill 是安全网不是关键链路，失败一律 fail-soft——读写失败另有
+// Important 事件上报，构造失败降级静默即安全）。
+// wire-gen-hand-merge-convention：与 wire.go 同一函数体镜像（主本在 wire.go）。
+func provideToolSpillDeps(runtimeConf *conf.Runtime, lg loggateway.Logger) *toolspill.Deps {
+	cfg := runtimeConf.ToolResultSpillConfig() // nil-safe：默认 ON + 1MiB/64MiB/168h
+	if !cfg.Enabled {
+		return nil
+	}
+	root := strings.TrimSpace(cfg.Dir)
+	if root == "" {
+		root = tools.WorkspaceRootFromEnv()
+	}
+	if root == "" {
+		lg.Warn("toolspill 未配置 workspace: enabled=true 但 dir 与 ARANEA_WORKSPACE_ROOT/WORKSPACE_ROOT 皆空，continue OFF（零行为变化）",
+			loggateway.StepID("toolspill.deps.construct"),
+			loggateway.Str("component", "toolspill"))
+		return nil
+	}
+	store, err := toolspill.NewLocalFS(toolspill.Options{
+		WorkspaceRoot: root,
+		MaxFileBytes:  cfg.MaxFileBytes,
+		MaxTotalBytes: cfg.MaxTotalBytes,
+		TTL:           time.Duration(cfg.TTLHours) * time.Hour,
+		Logger:        lg,
+	})
+	if err != nil {
+		lg.Warn("toolspill store 构造失败，continue OFF（零行为变化）",
+			loggateway.StepID("toolspill.deps.construct"),
+			loggateway.Err(err))
+		return nil
+	}
+	return &toolspill.Deps{Store: store}
 }
 
 // teamNoProgressAuditorConfig 翻译 runtime 配置为 team 包消费侧配置
@@ -1875,6 +1941,7 @@ func provideGraphBuildDeps(
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
 	lg loggateway.Logger,
+	toolSpillDeps *toolspill.Deps,
 ) graph.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
 		return graph.GraphNodeResolverSet{NodeBreakers: nodeBreakers}
@@ -1924,6 +1991,7 @@ func provideGraphBuildDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
+			Spill:           toolSpillDeps,
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -1968,6 +2036,7 @@ func provideTRPCBuilderDeps(
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
 	lg loggateway.Logger,
+	toolSpillDeps *toolspill.Deps,
 ) *agent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 
@@ -2017,6 +2086,7 @@ func provideTRPCBuilderDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
+			Spill:           toolSpillDeps,
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -2164,10 +2234,15 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
 // tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
-func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, lg loggateway.Logger) *biz.SkillUsecase {
+func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, runtimeConf *conf.Runtime, lg loggateway.Logger) *biz.SkillUsecase {
 	u := biz.NewSkillUsecase(repo, embedder, lg)
 	u.SetDedupCacheInvalidator(dedup)
 	u.SetTagRepo(tagRepo)
+	// P0-7 批 B（2026-10-22）：skill 信任门禁 Set 回注钩子（与 SetDedupCacheInvalidator
+	// 同型先例）。conf.runtime.skill_trust_gate_mode 三档 off|shadow|on，conf 层归一
+	// 默认 shadow、本批 wire 层把 on 归一为 shadow（零误拒证据未齐——批 B 守住"不真拒"
+	// 底线，上线 on 需批间证据；biz.NormalizeTrustGateMode 内部另有同名降级，双保险）。
+	u.SetTrustGateHook(biz.NewTrustGateHook(lg, skillTrustGateMode(runtimeConf, lg), biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
 	return u
 }
 

@@ -104,6 +104,14 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 
 	configureMVPMedia(readiness, lg)
 
+	// P0-6 阶段 0：replica-safety 启动自检（未声明/声明 1 静默通过任何路径；
+	// 声明 >1 逐项 Warn，ENFORCE 开启时仅 Error 级上报——硬中止接线属批 B
+	// 部署立场拍板项，见 docs/development/replica-safety.md）。
+	if _, rerr := service.RunReplicaSafetyStartupCheck(lg, nil); rerr != nil {
+		lg.Error("replica-safety 启动自检触发 fail-fast 灰度",
+			loggateway.Err(rerr))
+	}
+
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
@@ -398,28 +406,47 @@ func registerInfrastructureRoutes(srv *kratoshttp.Server, readiness ReadinessPro
 	srv.Route("/").GET("/healthz", func(ctx kratoshttp.Context) error {
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		// P0-6 阶段 0（doNow ③）：/healthz 透出 coordination_mode（replica_safety
+		// 状态）；声明 0/1 恒定 "single"，与现状行为字节级兼容（仅新增字段）。
+		rs := service.CurrentReplicaSafety()
 		if readiness != nil && readiness.IsFailed() {
 			w.WriteHeader(nethttp.StatusServiceUnavailable)
-			return json.NewEncoder(w).Encode(map[string]string{
-				"status":    "failed",
-				"reason":    readiness.FailedReason(),
-				"auth_mode": auth.HealthAuthInfo().AuthMode,
+			return json.NewEncoder(w).Encode(map[string]any{
+				"status":            "failed",
+				"reason":            readiness.FailedReason(),
+				"auth_mode":         auth.HealthAuthInfo().AuthMode,
+				"coordination_mode": rs.Mode,
+				"declared_replicas": rs.DeclaredReplicas,
 			})
 		}
 		if readiness != nil && !readiness.IsReady() {
 			w.WriteHeader(nethttp.StatusServiceUnavailable)
-			return json.NewEncoder(w).Encode(map[string]string{
-				"status":    "starting",
-				"auth_mode": auth.HealthAuthInfo().AuthMode,
+			return json.NewEncoder(w).Encode(map[string]any{
+				"status":            "starting",
+				"auth_mode":         auth.HealthAuthInfo().AuthMode,
+				"coordination_mode": rs.Mode,
+				"declared_replicas": rs.DeclaredReplicas,
 			})
 		}
 		w.WriteHeader(nethttp.StatusOK)
-		return json.NewEncoder(w).Encode(auth.HealthAuthInfo())
+		return json.NewEncoder(w).Encode(healthzOKResponse{
+			HealthAuth:       auth.HealthAuthInfo(),
+			CoordinationMode: rs.Mode,
+			DeclaredReplicas: rs.DeclaredReplicas,
+		})
 	})
 	srv.Route("/").GET("/metrics", func(ctx kratoshttp.Context) error {
 		promhttp.Handler().ServeHTTP(ctx.Response(), ctx.Request())
 		return nil
 	})
+}
+
+// healthzOKResponse 在既有 auth.HealthAuthInfo 之上追加 P0-6 协调模式字段
+// （只新增字段，不改动既有键值，保持监控/启动器解析兼容）。
+type healthzOKResponse struct {
+	auth.HealthAuth
+	CoordinationMode string `json:"coordination_mode"`
+	DeclaredReplicas int    `json:"declared_replicas"`
 }
 
 // utf8ResponseEncoder wraps Kratos DefaultResponseEncoder to ensure

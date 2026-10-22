@@ -471,6 +471,9 @@ type Server struct {
 	A2APublicBaseUrl string                 `protobuf:"bytes,5,opt,name=a2a_public_base_url,json=a2aPublicBaseUrl,proto3" json:"a2a_public_base_url,omitempty"`
 	Monitor          *Monitor               `protobuf:"bytes,6,opt,name=monitor,proto3" json:"monitor,omitempty"`
 	Openai           *OpenAI                `protobuf:"bytes,7,opt,name=openai,proto3" json:"openai,omitempty"`
+	// P0-6 阶段0(2026-10-22):部署方声明的副本数。0/1 = 单副本(现状安全边界,
+	// 进程级内存态可用);>1 时 replica_guard 对受影响功能逐项 Warn。
+	DeclaredReplicas int32 `protobuf:"varint,8,opt,name=declared_replicas,json=declaredReplicas,proto3" json:"declared_replicas,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -545,6 +548,13 @@ func (x *Server) GetOpenai() *OpenAI {
 		return x.Openai
 	}
 	return nil
+}
+
+func (x *Server) GetDeclaredReplicas() int32 {
+	if x != nil {
+		return x.DeclaredReplicas
+	}
+	return 0
 }
 
 type OpenAI struct {
@@ -1088,6 +1098,11 @@ type Runtime struct {
 	// recorded baseline by more than this fraction. 0 = 0.10 (±10%).
 	CacheHitAlertDrift float64                    `protobuf:"fixed64,10,opt,name=cache_hit_alert_drift,json=cacheHitAlertDrift,proto3" json:"cache_hit_alert_drift,omitempty"`
 	NoProgressAuditor  *Runtime_NoProgressAuditor `protobuf:"bytes,11,opt,name=no_progress_auditor,json=noProgressAuditor,proto3" json:"no_progress_auditor,omitempty"`
+	ToolResultSpill    *Runtime_ToolResultSpill   `protobuf:"bytes,12,opt,name=tool_result_spill,json=toolResultSpill,proto3" json:"tool_result_spill,omitempty"`
+	// P0-7 批 B(2026-10-22):Skill 信任门禁三档 off|shadow|on。
+	// 空 = shadow(批 A 现状,仅 would_block 计数不真拒);on 需 shadow 期
+	// 零误拒证据后开启(off → shadow → on 单向翻转纪律)。
+	SkillTrustGateMode string `protobuf:"bytes,13,opt,name=skill_trust_gate_mode,json=skillTrustGateMode,proto3" json:"skill_trust_gate_mode,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1197,6 +1212,20 @@ func (x *Runtime) GetNoProgressAuditor() *Runtime_NoProgressAuditor {
 		return x.NoProgressAuditor
 	}
 	return nil
+}
+
+func (x *Runtime) GetToolResultSpill() *Runtime_ToolResultSpill {
+	if x != nil {
+		return x.ToolResultSpill
+	}
+	return nil
+}
+
+func (x *Runtime) GetSkillTrustGateMode() string {
+	if x != nil {
+		return x.SkillTrustGateMode
+	}
+	return ""
 }
 
 type Sandbox_Pool struct {
@@ -3015,13 +3044,16 @@ func (x *Runtime_Plugin) GetPersistSuccessRuns() bool {
 // BeforeModel hook prunes old oversized RoleTool results into blob pointers
 // (archive via ToolResultGate blob store, retrieve via read_tool_result).
 type Runtime_ToolResultPrune struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Enabled       *bool                  `protobuf:"varint,1,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`                     // master switch; unset = pruning ON (kill switch: enabled=false, dev plan Phase 1 回退)
-	AfterTurns    int32                  `protobuf:"varint,2,opt,name=after_turns,json=afterTurns,proto3" json:"after_turns,omitempty"`   // K: prune results farther than K turns from current (0 = 8)
-	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`      // S: min serialized size in bytes to prune (0 = 4096, aligned with loopGuardResultCap)
-	ExemptTools   []string               `protobuf:"bytes,4,rep,name=exempt_tools,json=exemptTools,proto3" json:"exempt_tools,omitempty"` // whitelist: tool names never pruned (取证关键类, e.g. gns3 forensics)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Enabled     *bool                  `protobuf:"varint,1,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`                     // master switch; unset = pruning ON (kill switch: enabled=false, dev plan Phase 1 回退)
+	AfterTurns  int32                  `protobuf:"varint,2,opt,name=after_turns,json=afterTurns,proto3" json:"after_turns,omitempty"`   // K: prune results farther than K turns from current (0 = 8)
+	SizeBytes   int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`      // S: min serialized size in bytes to prune (0 = 4096, aligned with loopGuardResultCap)
+	ExemptTools []string               `protobuf:"bytes,4,rep,name=exempt_tools,json=exemptTools,proto3" json:"exempt_tools,omitempty"` // whitelist: tool names never pruned (取证关键类, e.g. gns3 forensics)
+	// P0-3 批 B(2026-10-22):检索类工具(read_document/webfetch/检索族)保护
+	// 最近 K 轮不折叠剪除。unset = ON(批 A 已默认化生效);显式 false 关闭豁免。
+	RetrievalExemptEnabled *bool `protobuf:"varint,5,opt,name=retrieval_exempt_enabled,json=retrievalExemptEnabled,proto3,oneof" json:"retrieval_exempt_enabled,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *Runtime_ToolResultPrune) Reset() {
@@ -3080,6 +3112,13 @@ func (x *Runtime_ToolResultPrune) GetExemptTools() []string {
 		return x.ExemptTools
 	}
 	return nil
+}
+
+func (x *Runtime_ToolResultPrune) GetRetrievalExemptEnabled() bool {
+	if x != nil && x.RetrievalExemptEnabled != nil {
+		return *x.RetrievalExemptEnabled
+	}
+	return false
 }
 
 // Run-level no-progress auditor (79-runtime-governance R5).
@@ -3143,6 +3182,85 @@ func (x *Runtime_NoProgressAuditor) GetCorrectAfter() int32 {
 func (x *Runtime_NoProgressAuditor) GetCancelAfter() int32 {
 	if x != nil {
 		return x.CancelAfter
+	}
+	return 0
+}
+
+// P0-2 工具结果溢出外置(2026-10-22 批 B):截断不全量丢失——超阈值工具结果
+// 整体落盘 workspace 私有 spillStore(0700/O_EXCL/symlink 拒绝),inline 仅留
+// head/tail + SpillLocator,模型经 read_tool_result locator 分支回读。
+type Runtime_ToolResultSpill struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       *bool                  `protobuf:"varint,1,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`                              // master switch; unset = ON(批 B 接线后生效;kill switch: enabled=false)
+	Dir           string                 `protobuf:"bytes,2,opt,name=dir,proto3" json:"dir,omitempty"`                                             // spill 根目录(空 = <workspace>/.aranea-spill,权限 0700)
+	MaxFileBytes  int64                  `protobuf:"varint,3,opt,name=max_file_bytes,json=maxFileBytes,proto3" json:"max_file_bytes,omitempty"`    // 单 spill 文件上限(0 = 1 MiB,超限保原文并标 enforcement=partial)
+	MaxTotalBytes int64                  `protobuf:"varint,4,opt,name=max_total_bytes,json=maxTotalBytes,proto3" json:"max_total_bytes,omitempty"` // 每会话 spill 总量配额(0 = 64 MiB,防磁盘炸弹)
+	TtlHours      int32                  `protobuf:"varint,5,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`                  // GC 生存期(0 = 168 ≈ 7d)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Runtime_ToolResultSpill) Reset() {
+	*x = Runtime_ToolResultSpill{}
+	mi := &file_conf_conf_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Runtime_ToolResultSpill) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Runtime_ToolResultSpill) ProtoMessage() {}
+
+func (x *Runtime_ToolResultSpill) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Runtime_ToolResultSpill.ProtoReflect.Descriptor instead.
+func (*Runtime_ToolResultSpill) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{11, 10}
+}
+
+func (x *Runtime_ToolResultSpill) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+func (x *Runtime_ToolResultSpill) GetDir() string {
+	if x != nil {
+		return x.Dir
+	}
+	return ""
+}
+
+func (x *Runtime_ToolResultSpill) GetMaxFileBytes() int64 {
+	if x != nil {
+		return x.MaxFileBytes
+	}
+	return 0
+}
+
+func (x *Runtime_ToolResultSpill) GetMaxTotalBytes() int64 {
+	if x != nil {
+		return x.MaxTotalBytes
+	}
+	return 0
+}
+
+func (x *Runtime_ToolResultSpill) GetTtlHours() int32 {
+	if x != nil {
+		return x.TtlHours
 	}
 	return 0
 }
@@ -3241,14 +3359,15 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x11error_rate_factor\x18\x02 \x01(\x01R\x0ferrorRateFactor\x12\x1d\n" +
 	"\n" +
 	"p95_factor\x18\x03 \x01(\x01R\tp95Factor\x128\n" +
-	"\x18max_concurrent_observing\x18\x04 \x01(\x05R\x16maxConcurrentObserving\"\xb5\x04\n" +
+	"\x18max_concurrent_observing\x18\x04 \x01(\x05R\x16maxConcurrentObserving\"\xe2\x04\n" +
 	"\x06Server\x12+\n" +
 	"\x04http\x18\x01 \x01(\v2\x17.kratos.api.Server.HTTPR\x04http\x12+\n" +
 	"\x04grpc\x18\x02 \x01(\v2\x17.kratos.api.Server.GRPCR\x04grpc\x12%\n" +
 	"\x02ws\x18\x04 \x01(\v2\x15.kratos.api.Server.WSR\x02ws\x12-\n" +
 	"\x13a2a_public_base_url\x18\x05 \x01(\tR\x10a2aPublicBaseUrl\x12-\n" +
 	"\amonitor\x18\x06 \x01(\v2\x13.kratos.api.MonitorR\amonitor\x12*\n" +
-	"\x06openai\x18\a \x01(\v2\x12.kratos.api.OpenAIR\x06openai\x1ai\n" +
+	"\x06openai\x18\a \x01(\v2\x12.kratos.api.OpenAIR\x06openai\x12+\n" +
+	"\x11declared_replicas\x18\b \x01(\x05R\x10declaredReplicas\x1ai\n" +
 	"\x04HTTP\x12\x18\n" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x123\n" +
@@ -3329,7 +3448,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12<\n" +
 	"\fread_timeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\vreadTimeout\x12>\n" +
-	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xb0\x17\n" +
+	"\rwrite_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutJ\x04\b\x03\x10\x04R\x06sqlite\"\xcc\x1a\n" +
 	"\aRuntime\x12&\n" +
 	"\x02ws\x18\x01 \x01(\v2\x16.kratos.api.Runtime.WSR\x02ws\x12,\n" +
 	"\x04hook\x18\x02 \x01(\v2\x18.kratos.api.Runtime.HookR\x04hook\x129\n" +
@@ -3343,7 +3462,9 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x11tool_result_prune\x18\t \x01(\v2#.kratos.api.Runtime.ToolResultPruneR\x0ftoolResultPrune\x121\n" +
 	"\x15cache_hit_alert_drift\x18\n" +
 	" \x01(\x01R\x12cacheHitAlertDrift\x12U\n" +
-	"\x13no_progress_auditor\x18\v \x01(\v2%.kratos.api.Runtime.NoProgressAuditorR\x11noProgressAuditor\x1a\xe1\x03\n" +
+	"\x13no_progress_auditor\x18\v \x01(\v2%.kratos.api.Runtime.NoProgressAuditorR\x11noProgressAuditor\x12O\n" +
+	"\x11tool_result_spill\x18\f \x01(\v2#.kratos.api.Runtime.ToolResultSpillR\x0ftoolResultSpill\x121\n" +
+	"\x15skill_trust_gate_mode\x18\r \x01(\tR\x12skillTrustGateMode\x1a\xe1\x03\n" +
 	"\x02WS\x12\x1d\n" +
 	"\n" +
 	"read_limit\x18\x01 \x01(\x03R\treadLimit\x12 \n" +
@@ -3404,20 +3525,30 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x0echannel_buffer\x18\x03 \x01(\x05R\rchannelBuffer\x12\"\n" +
 	"\rdb_timeout_ms\x18\x04 \x01(\x03R\vdbTimeoutMs\x1a:\n" +
 	"\x06Plugin\x120\n" +
-	"\x14persist_success_runs\x18\x01 \x01(\bR\x12persistSuccessRuns\x1a\x9f\x01\n" +
+	"\x14persist_success_runs\x18\x01 \x01(\bR\x12persistSuccessRuns\x1a\xfb\x01\n" +
 	"\x0fToolResultPrune\x12\x1d\n" +
 	"\aenabled\x18\x01 \x01(\bH\x00R\aenabled\x88\x01\x01\x12\x1f\n" +
 	"\vafter_turns\x18\x02 \x01(\x05R\n" +
 	"afterTurns\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12!\n" +
-	"\fexempt_tools\x18\x04 \x03(\tR\vexemptToolsB\n" +
+	"\fexempt_tools\x18\x04 \x03(\tR\vexemptTools\x12=\n" +
+	"\x18retrieval_exempt_enabled\x18\x05 \x01(\bH\x01R\x16retrievalExemptEnabled\x88\x01\x01B\n" +
 	"\n" +
-	"\b_enabled\x1a\x86\x01\n" +
+	"\b_enabledB\x1b\n" +
+	"\x19_retrieval_exempt_enabled\x1a\x86\x01\n" +
 	"\x11NoProgressAuditor\x12\x1d\n" +
 	"\aenabled\x18\x01 \x01(\bH\x00R\aenabled\x88\x01\x01\x12#\n" +
 	"\rcorrect_after\x18\x02 \x01(\x05R\fcorrectAfter\x12!\n" +
 	"\fcancel_after\x18\x03 \x01(\x05R\vcancelAfterB\n" +
+	"\n" +
+	"\b_enabled\x1a\xb9\x01\n" +
+	"\x0fToolResultSpill\x12\x1d\n" +
+	"\aenabled\x18\x01 \x01(\bH\x00R\aenabled\x88\x01\x01\x12\x10\n" +
+	"\x03dir\x18\x02 \x01(\tR\x03dir\x12$\n" +
+	"\x0emax_file_bytes\x18\x03 \x01(\x03R\fmaxFileBytes\x12&\n" +
+	"\x0fmax_total_bytes\x18\x04 \x01(\x03R\rmaxTotalBytes\x12\x1b\n" +
+	"\tttl_hours\x18\x05 \x01(\x05R\bttlHoursB\n" +
 	"\n" +
 	"\b_enabled*g\n" +
 	"\bSinkType\x12\x19\n" +
@@ -3444,7 +3575,7 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 }
 
 var file_conf_conf_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_conf_conf_proto_goTypes = []any{
 	(SinkType)(0),                                // 0: kratos.api.SinkType
 	(DropPolicy)(0),                              // 1: kratos.api.DropPolicy
@@ -3491,7 +3622,8 @@ var file_conf_conf_proto_goTypes = []any{
 	(*Runtime_Plugin)(nil),                       // 42: kratos.api.Runtime.Plugin
 	(*Runtime_ToolResultPrune)(nil),              // 43: kratos.api.Runtime.ToolResultPrune
 	(*Runtime_NoProgressAuditor)(nil),            // 44: kratos.api.Runtime.NoProgressAuditor
-	(*durationpb.Duration)(nil),                  // 45: google.protobuf.Duration
+	(*Runtime_ToolResultSpill)(nil),              // 45: kratos.api.Runtime.ToolResultSpill
+	(*durationpb.Duration)(nil),                  // 46: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
 	5,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
@@ -3507,17 +3639,17 @@ var file_conf_conf_proto_depIdxs = []int32{
 	16, // 10: kratos.api.Sandbox.ttl:type_name -> kratos.api.Sandbox.TTL
 	19, // 11: kratos.api.Sandbox.profiles:type_name -> kratos.api.Sandbox.ProfilesEntry
 	18, // 12: kratos.api.Sandbox.egress:type_name -> kratos.api.Sandbox.Egress
-	45, // 13: kratos.api.SelfImprovement.observe_interval:type_name -> google.protobuf.Duration
+	46, // 13: kratos.api.SelfImprovement.observe_interval:type_name -> google.protobuf.Duration
 	20, // 14: kratos.api.SelfImprovement.error_cluster:type_name -> kratos.api.SelfImprovement.ErrorCluster
 	21, // 15: kratos.api.SelfImprovement.perf:type_name -> kratos.api.SelfImprovement.Perf
 	22, // 16: kratos.api.SelfImprovement.eval:type_name -> kratos.api.SelfImprovement.Eval
 	23, // 17: kratos.api.SelfImprovement.patch:type_name -> kratos.api.SelfImprovement.Patch
 	24, // 18: kratos.api.SelfImprovement.sandbox:type_name -> kratos.api.SelfImprovement.Sandbox
 	25, // 19: kratos.api.SelfImprovement.observe_window:type_name -> kratos.api.SelfImprovement.ObserveWindow
-	45, // 20: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
-	45, // 21: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
-	45, // 22: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
-	45, // 23: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
+	46, // 20: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
+	46, // 21: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
+	46, // 22: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
+	46, // 23: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
 	27, // 24: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
 	28, // 25: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
 	29, // 26: kratos.api.Server.ws:type_name -> kratos.api.Server.WS
@@ -3541,26 +3673,27 @@ var file_conf_conf_proto_depIdxs = []int32{
 	42, // 44: kratos.api.Runtime.plugin:type_name -> kratos.api.Runtime.Plugin
 	43, // 45: kratos.api.Runtime.tool_result_prune:type_name -> kratos.api.Runtime.ToolResultPrune
 	44, // 46: kratos.api.Runtime.no_progress_auditor:type_name -> kratos.api.Runtime.NoProgressAuditor
-	45, // 47: kratos.api.Sandbox.Pool.replenish_interval:type_name -> google.protobuf.Duration
-	45, // 48: kratos.api.Sandbox.Pool.max_pool_age:type_name -> google.protobuf.Duration
-	45, // 49: kratos.api.Sandbox.TTL.default:type_name -> google.protobuf.Duration
-	45, // 50: kratos.api.Sandbox.TTL.max:type_name -> google.protobuf.Duration
-	45, // 51: kratos.api.Sandbox.TTL.idle_timeout:type_name -> google.protobuf.Duration
-	17, // 52: kratos.api.Sandbox.ProfilesEntry.value:type_name -> kratos.api.Sandbox.Profile
-	26, // 53: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
-	45, // 54: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
-	45, // 55: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
-	45, // 56: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
-	45, // 57: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
-	45, // 58: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	45, // 59: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	45, // 60: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
-	45, // 61: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
-	62, // [62:62] is the sub-list for method output_type
-	62, // [62:62] is the sub-list for method input_type
-	62, // [62:62] is the sub-list for extension type_name
-	62, // [62:62] is the sub-list for extension extendee
-	0,  // [0:62] is the sub-list for field type_name
+	45, // 47: kratos.api.Runtime.tool_result_spill:type_name -> kratos.api.Runtime.ToolResultSpill
+	46, // 48: kratos.api.Sandbox.Pool.replenish_interval:type_name -> google.protobuf.Duration
+	46, // 49: kratos.api.Sandbox.Pool.max_pool_age:type_name -> google.protobuf.Duration
+	46, // 50: kratos.api.Sandbox.TTL.default:type_name -> google.protobuf.Duration
+	46, // 51: kratos.api.Sandbox.TTL.max:type_name -> google.protobuf.Duration
+	46, // 52: kratos.api.Sandbox.TTL.idle_timeout:type_name -> google.protobuf.Duration
+	17, // 53: kratos.api.Sandbox.ProfilesEntry.value:type_name -> kratos.api.Sandbox.Profile
+	26, // 54: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
+	46, // 55: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
+	46, // 56: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
+	46, // 57: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
+	46, // 58: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
+	46, // 59: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	46, // 60: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	46, // 61: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
+	46, // 62: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
+	63, // [63:63] is the sub-list for method output_type
+	63, // [63:63] is the sub-list for method input_type
+	63, // [63:63] is the sub-list for extension type_name
+	63, // [63:63] is the sub-list for extension extendee
+	0,  // [0:63] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -3570,13 +3703,14 @@ func file_conf_conf_proto_init() {
 	}
 	file_conf_conf_proto_msgTypes[41].OneofWrappers = []any{}
 	file_conf_conf_proto_msgTypes[42].OneofWrappers = []any{}
+	file_conf_conf_proto_msgTypes[43].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   43,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -1201,8 +1201,10 @@ func TestRunLoop_NoPatterns_NoOp(t *testing.T) {
 	}
 }
 
-// 端到端：3 条观察 → 模式 → 提案 → 验证 → EvoAutoApply=true → 自动注册为 applied。
-func TestRunLoop_AutoApplyOn_ProposalApplied(t *testing.T) {
+// 端到端：3 条观察 → 模式 → 提案 → 验证 → EvoAutoApply=true，但 P0-7 批 B 接线后
+// 自动注册经 EvolutionAutoApplyAllowed 门（永不放行，§8.4⑥）——提案停 validated
+// 等待人工审批，不再自动 applied（"全部推进"产品确认，2026-10-22）。
+func TestRunLoop_AutoApplyOn_GatedByLandingPolicy(t *testing.T) {
 	obs := &obsStubRW{list: []Observation{toolCallObs("o1", "search"), toolCallObs("o2", "search"), toolCallObs("o3", "search")}}
 	pats := &patternStubRW{}
 	propRW := newMockProposalRW()
@@ -1219,8 +1221,8 @@ func TestRunLoop_AutoApplyOn_ProposalApplied(t *testing.T) {
 		t.Fatalf("proposals created = %d, want 1", len(propRW.byID))
 	}
 	for _, p := range propRW.byID {
-		if p.Status != ProposalStatusApplied {
-			t.Errorf("proposal status = %q, want applied (EvoAutoApply=true)", p.Status)
+		if p.Status != ProposalStatusValidated {
+			t.Errorf("proposal status = %q, want validated (EvoAutoApply=true，但 landing policy 门永不自动放行)", p.Status)
 		}
 	}
 }

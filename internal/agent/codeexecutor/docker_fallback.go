@@ -60,5 +60,8 @@ func (d *dockerRuntimeFallback) ExecuteCode(ctx context.Context, input trpcagent
 		loggateway.StepID("agent.codeexec.docker_runtime_fallback"),
 		loggateway.Err(err))
 	ResetDockerProbe()
+	// §12.1-②：docker 运行期降级必须打 enforcement=partial（事件+计数在此
+	// 决策点发；输出尾注由 getLocal 的 partialMarker 逐次附加）。
+	d.factory.emitEnforcementPartial(ctx, TypeDocker, TypeLocal)
 	return d.factory.getLocal(d.workDir).ExecuteCode(ctx, input)
 }

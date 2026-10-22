@@ -254,10 +254,29 @@ func (e *DockerEngine) Exec(ctx context.Context, h Handle, spec ExecSpec) (ExecR
 	} else {
 		cmd.Stdout = &stdout
 	}
-	cmd.Stderr = &stderr
+	// stderr is capped by default (review 2026-10-21 §2.1: it was the one
+	// remaining unbounded buffer). 0 = StderrLimitDefault; <0 = unlimited.
+	stderrLimit := spec.StderrLimit
+	if stderrLimit == 0 {
+		stderrLimit = StderrLimitDefault
+	}
+	var stderrCap *cappedBuffer
+	if stderrLimit > 0 {
+		stderrCap = &cappedBuffer{buf: &stderr, limit: stderrLimit}
+		cmd.Stderr = stderrCap
+	} else {
+		cmd.Stderr = &stderr
+	}
 
 	err := cmd.Run()
-	res := ExecResult{Stdout: stdout.String(), Stderr: stderr.String()}
+	res := ExecResult{Stdout: stdout.String(), Stderr: stderr.String(), Enforcement: EnforcementFull}
+	if stderrCap != nil && stderrCap.truncated {
+		res.StderrTruncated = true
+		// 截断必须带行内尾注（§2.5 #5 反作用缓解：无提示截断会让 agent 拿着
+		// 残缺 stderr 反复重试烧 token；尾注格式沿用 executor.go artifact
+		// collect 先例 "[stderr truncated at N bytes]"）。
+		res.Stderr += fmt.Sprintf("\n[stderr truncated at %d bytes]", stderrLimit)
+	}
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()
 	}
@@ -330,10 +349,13 @@ func (e *DockerEngine) ListByLabels(ctx context.Context, labels map[string]strin
 
 // cappedBuffer retains at most limit bytes of a stream and discards the rest
 // without ever failing the write — the producer keeps running (no EPIPE) and
-// host memory stays bounded (ExecSpec.StdoutLimit).
+// host memory stays bounded (ExecSpec.StdoutLimit / StderrLimit).
 type cappedBuffer struct {
 	buf   *bytes.Buffer
 	limit int64
+	// truncated flips true once any incoming byte had to be dropped; Exec uses
+	// it to set ExecResult.StderrTruncated + the in-band tail note.
+	truncated bool
 }
 
 func (c *cappedBuffer) Write(p []byte) (int, error) {
@@ -342,7 +364,10 @@ func (c *cappedBuffer) Write(p []byte) (int, error) {
 			_, _ = c.buf.Write(p)
 		} else {
 			_, _ = c.buf.Write(p[:remaining])
+			c.truncated = true
 		}
+	} else {
+		c.truncated = true
 	}
 	return len(p), nil
 }

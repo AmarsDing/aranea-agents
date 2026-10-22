@@ -493,7 +493,13 @@ func (ac *assembleContext) assembleBrowserToolset() error {
 // assembleBlobAndResultTools creates read_tool_result and deferred tools.
 func (ac *assembleContext) assembleBlobAndResultTools() error {
 	if ac.cfg.Session.BlobReader != nil && ac.enabled["read_tool_result"] {
-		rt := custom.NewReadToolResultTool(ac.cfg.Session.BlobReader)
+		// P0-2 批 B：消费口接 skills locator（nil SpillStore → read 工具走老
+		// blob repo 兜底, 与现状字节级一致）。
+		var rtOpts *custom.ReadToolResultOptions
+		if ac.cfg.Session.SpillStore != nil {
+			rtOpts = &custom.ReadToolResultOptions{Spill: ac.cfg.Session.SpillStore, Logger: ac.lg}
+		}
+		rt := custom.NewReadToolResultTool(ac.cfg.Session.BlobReader, rtOpts)
 		ac.out.Tools = append(ac.out.Tools, rt)
 	}
 

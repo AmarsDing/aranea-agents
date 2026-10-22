@@ -40,3 +40,16 @@ type NetworkReaper interface {
 	// returns the count reaped.
 	ReapOrphanNetworks(ctx context.Context, labels map[string]string) (int, error)
 }
+
+// LabelUpdater is an optional Engine capability (review 2026-10-21 §12.1-④:
+// same NetworkReaper pattern — capability detection via type assertion, the
+// Engine interface itself stays unchanged). Manager.Renew uses it to sync the
+// deadline label back to the daemon-side instance after registry renewal
+// (ADR-82-4 label 真相源). DockerEngine deliberately does NOT implement it:
+// docker labels are immutable post-create (no `docker update --label`,
+// moby/moby#21721), so label drift vs the registry is instead surfaced via
+// the periodic light reconcile's drift metric.
+type LabelUpdater interface {
+	// UpdateLabels applies the given labels to the instance (merge semantics).
+	UpdateLabels(ctx context.Context, h Handle, labels map[string]string) error
+}

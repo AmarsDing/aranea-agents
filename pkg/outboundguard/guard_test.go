@@ -137,3 +137,79 @@ func containsStr(s, substr string) bool {
 	}
 	return false
 }
+
+// --- P0-1 ④ AllowlistMatch / ValidateAllowlist 纯函数（review §12.1-⑦⑧）---
+
+func TestAllowlistMatch(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		host string
+		want bool
+	}{
+		{name: "exact match", raw: "host.docker.internal", host: "host.docker.internal", want: true},
+		{name: "case-insensitive", raw: "Host.Docker.Internal", host: "host.docker.INTERNAL", want: true},
+		{name: "trim spaces", raw: "  a.com , b.com ", host: "b.com", want: true},
+		{name: "comma list middle", raw: "x.com,api.corp.com,y.com", host: "api.corp.com", want: true},
+		{name: "no wildcard suffix", raw: "example.com", host: "api.example.com", want: false},
+		{name: "empty raw", raw: "", host: "anything", want: false},
+		{name: "blank raw", raw: "   ", host: "anything", want: false},
+		// 空 entry 匹配空 host 是既有 isExplicitlyAllowed 的原样语义（生产不可
+		// 达：两处调用点先拒空 host）。§12.1-⑦ 提炼必须零行为变更——此处 pin
+		// 现状，不在纯函数里顺手"修复"语义。
+		{name: "empty entry matches empty host (inherited edge)", raw: ",,", host: "", want: true},
+		{name: "host empty no match", raw: "a.com", host: "", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := outboundguard.AllowlistMatch(tc.raw, tc.host); got != tc.want {
+				t.Fatalf("AllowlistMatch(%q,%q)=%v, want %v", tc.raw, tc.host, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateAllowlist(t *testing.T) {
+	t.Run("accepts safe entries", func(t *testing.T) {
+		good := [][]string{
+			nil,
+			{},
+			{"api.openai.com"},
+			{"Host.Docker.Internal", "mcp.corp.example.com"}, // lowercased + trimmed internally
+			{"8.8.8.8"},   // public IPv4
+			{"2001:4860:4860::8888"}, // public IPv6
+		}
+		for _, hosts := range good {
+			if err := outboundguard.ValidateAllowlist(hosts); err != nil {
+				t.Fatalf("ValidateAllowlist(%v) = %v, want nil", hosts, err)
+			}
+		}
+	})
+	t.Run("rejects foot-guns fail-closed", func(t *testing.T) {
+		bad := [][]string{
+			{""},
+			{"   "},
+			{"*"},
+			{"*.example.com"},
+			{"http://api.openai.com"},
+			{"https://a.com/path"},
+			{"a.com/"},
+			{"a.com:8080"},   // host:port
+			{"localhost"},
+			{"evil.localhost"},
+			{"printer.local"}, // mDNS
+			{"metadata.google.internal"}, // 确定性元数据主机（裸 *.internal 按设计允许）
+			{"127.0.0.1"},
+			{"::1"},
+			{"10.0.0.5"},
+			{"192.168.1.10"},
+			{"169.254.169.254"}, // link-local metadata IP
+			{"ok.com", "localhost"}, // poison in list
+		}
+		for _, hosts := range bad {
+			if err := outboundguard.ValidateAllowlist(hosts); err == nil {
+				t.Fatalf("ValidateAllowlist(%v) = nil, want error", hosts)
+			}
+		}
+	})
+}

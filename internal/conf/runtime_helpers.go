@@ -329,10 +329,14 @@ type RuntimeToolResultPruneConfig struct {
 	AfterTurns  int
 	SizeBytes   int64
 	ExemptTools map[string]bool
+	// RetrievalExemptEnabled（P0-3 批 B）：检索类工具（read_document/webfetch/
+	// 检索族）保护最近 K 轮不折叠剪除。批 A 已默认 ON 生效；此字段为
+	// conf 层 kill switch（显式 enabled=false 关闭豁免）。
+	RetrievalExemptEnabled bool
 }
 
 func (r *Runtime) ToolResultPruneConfig() RuntimeToolResultPruneConfig {
-	cfg := RuntimeToolResultPruneConfig{Enabled: true, AfterTurns: 8, SizeBytes: 4096}
+	cfg := RuntimeToolResultPruneConfig{Enabled: true, AfterTurns: 8, SizeBytes: 4096, RetrievalExemptEnabled: true}
 	if r == nil || r.ToolResultPrune == nil {
 		return cfg
 	}
@@ -346,6 +350,10 @@ func (r *Runtime) ToolResultPruneConfig() RuntimeToolResultPruneConfig {
 	}
 	if p.SizeBytes > 0 {
 		cfg.SizeBytes = p.SizeBytes
+	}
+	// proto3 optional: nil = unset → default ON; explicit false = kill switch.
+	if p.RetrievalExemptEnabled != nil {
+		cfg.RetrievalExemptEnabled = *p.RetrievalExemptEnabled
 	}
 	if len(p.ExemptTools) > 0 {
 		cfg.ExemptTools = make(map[string]bool, len(p.ExemptTools))
@@ -385,6 +393,86 @@ func (r *Runtime) NoProgressAuditorConfig() RuntimeNoProgressAuditorConfig {
 		cfg.CancelAfter = int(a.CancelAfter)
 	}
 	return cfg
+}
+
+// RuntimeToolResultSpillConfig returns resolved ToolResultSpill config values
+// (P0-2 工具结果溢出外置，批 B 2026-10-22)。默认：enabled=ON（接线后生效，
+// `enabled: false` 为 kill switch）；Dir 空由消费侧解析
+// <workspace>/.aranea-spill；MaxFileBytes=1MiB；MaxTotalBytes=64MiB；
+// TTLHours=168（≈7d）。
+type RuntimeToolResultSpillConfig struct {
+	Enabled       bool
+	Dir           string
+	MaxFileBytes  int64
+	MaxTotalBytes int64
+	TTLHours      int32
+}
+
+func (r *Runtime) ToolResultSpillConfig() RuntimeToolResultSpillConfig {
+	cfg := RuntimeToolResultSpillConfig{
+		Enabled:       true,
+		MaxFileBytes:  1 << 20,
+		MaxTotalBytes: 64 << 20,
+		TTLHours:      168,
+	}
+	if r == nil || r.ToolResultSpill == nil {
+		return cfg
+	}
+	s := r.ToolResultSpill
+	// proto3 optional: nil = unset → default ON; explicit false = kill switch.
+	if s.Enabled != nil {
+		cfg.Enabled = *s.Enabled
+	}
+	if trimmed := strings.TrimSpace(s.Dir); trimmed != "" {
+		cfg.Dir = trimmed
+	}
+	if s.MaxFileBytes > 0 {
+		cfg.MaxFileBytes = s.MaxFileBytes
+	}
+	if s.MaxTotalBytes > 0 {
+		cfg.MaxTotalBytes = s.MaxTotalBytes
+	}
+	if s.TtlHours > 0 {
+		cfg.TTLHours = s.TtlHours
+	}
+	return cfg
+}
+
+// SkillTrustGateMode 三档（P0-7 批 B 2026-10-22）：off（关闭，零行为）/
+// shadow（仅 would_block 计数不真拒，批 A 现状）/ on（真拒，需 shadow 期
+// 零误拒证据；单向翻转纪律 off → shadow → on）。
+const (
+	SkillTrustGateModeOff    = "off"
+	SkillTrustGateModeShadow = "shadow"
+	SkillTrustGateModeOn     = "on"
+)
+
+// ParsedSkillTrustGateMode returns the resolved skill trust gate mode. 空/未知值
+// 一律按 shadow 处理（fail-soft 保持批 A 现状：不真拒、只计数）。
+// 命名避开 pb getter（SkillTrustGateMode 已是 pb 方法名）。
+func (r *Runtime) ParsedSkillTrustGateMode() string {
+	if r == nil {
+		return SkillTrustGateModeShadow
+	}
+	switch strings.ToLower(strings.TrimSpace(r.SkillTrustGateMode)) {
+	case SkillTrustGateModeOff:
+		return SkillTrustGateModeOff
+	case SkillTrustGateModeOn:
+		return SkillTrustGateModeOn
+	default:
+		return SkillTrustGateModeShadow
+	}
+}
+
+// ParsedDeclaredReplicas（P0-6 批 B 2026-10-22）：部署方声明的副本数解析；
+// conf 链路优先于 ARANEA_DECLARED_REPLICAS 环境变量兜底。返回 -1 表示 conf
+// 未声明（0 = proto3 零值/未设置；负数非法），由装配层决定 env 兜底。
+// 命名避开 pb getter（DeclaredReplicas 已是 pb 方法名）。
+func (s *Server) ParsedDeclaredReplicas() int32 {
+	if s == nil || s.DeclaredReplicas <= 0 {
+		return -1
+	}
+	return s.DeclaredReplicas
 }
 
 // DefaultCacheHitAlertDrift is the default cache-hit-ratio drift alert

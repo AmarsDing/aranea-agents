@@ -1,0 +1,70 @@
+{
+  "name": "chit-chat",
+  "provenance": "2026-10-21 A8 冻结。构造口径：纯闲聊 + 一条未超尺寸（<1024B）的 knowledge_search 结果，K 轮外因尺寸豁免不剪——剪枝零动作（no-op 探针）。protected=[]、locators={}：断言长度守恒与全文零改动。",
+  "config": {
+    "enabled": true,
+    "after_turns": 2,
+    "size_bytes": 1024
+  },
+  "protected_indices": [],
+  "locators": {},
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是 Aranea 数据中心的巡检助手。"
+    },
+    {
+      "role": "user",
+      "content": "你好"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！有什么可以帮你？"
+    },
+    {
+      "role": "user",
+      "content": "介绍下 Aranea"
+    },
+    {
+      "role": "assistant",
+      "content": "查一下官方简介。",
+      "tool_calls": [
+        {
+          "id": "call-1",
+          "name": "knowledge_search",
+          "args": "{\"query\":\"Aranea 简介\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[{\"chunk_id\":\"kb-intro-001\",\"score\":0.90,\"text\":\"Aranea 面向数据中心的自治巡检平台，覆盖机柜、UPS、PDU 与网络设备。\"}]",
+      "tool_name": "knowledge_search",
+      "tool_id": "call-1"
+    },
+    {
+      "role": "user",
+      "content": "它支持哪些协议"
+    },
+    {
+      "role": "assistant",
+      "content": "支持 SNMP、Modbus、IPMI 与主流带外管理接口。"
+    },
+    {
+      "role": "user",
+      "content": "SCADA 接入呢"
+    },
+    {
+      "role": "assistant",
+      "content": "可通过网关接入，支持 IEC104 与 OPC UA 桥接。"
+    },
+    {
+      "role": "user",
+      "content": "好的，谢谢"
+    },
+    {
+      "role": "assistant",
+      "content": "不客气，随时找我。"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import (
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
@@ -67,6 +68,9 @@ type ToolsetConfig struct {
 	MemoryTools       []trpctool.Tool
 	DeferredTools     []string
 	BlobReader        biz.ToolResultBlobReader
+	// SpillStore 是 P0-2 locator 回读消费口（批 B）；nil → read_tool_result 走
+	// blob repo 直接取回（老行为）。
+	SpillStore        toolspill.Store
 	ReadDocument      bool
 	ReadSpreadsheet   bool
 	ReadLints         bool
@@ -313,6 +317,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 			OutboundRouter:  cfg.OutboundRouter,
 			SubAgentService: cfg.SubAgentService,
 			BlobReader:      cfg.BlobReader,
+			SpillStore:      cfg.SpillStore,
 			ClientBridge:    cfg.ClientBridgeSvc,
 			CodingBridge:    cfg.CodingBridgeSvc,
 		},

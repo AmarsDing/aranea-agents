@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -144,6 +145,13 @@ func TestApproveProposal_RejectsTerminalStatus(t *testing.T) {
 			t.Fatalf("status=%s: expected error, got nil", st)
 		}
 		ae, ok := apierror.From(err)
+		if st == ProposalStatusApplied {
+			// P0-7 A15⑤：applied 终态归一 Conflict（并发审批落败语义，重试安全）。
+			if !ok || ae.Code != apierror.CodeConflict {
+				t.Fatalf("status=%s: expected Conflict, got: %v", st, err)
+			}
+			continue
+		}
 		if !ok || ae.Code != apierror.CodeBadRequest {
 			t.Fatalf("status=%s: expected BadRequest, got: %v", st, err)
 		}
@@ -253,4 +261,61 @@ func TestDetectPatterns_DedupCoversAllStatuses(t *testing.T) {
 	if patRW.listStatusFilter != "" {
 		t.Fatalf("expected dedup query across all statuses (\"\"), got %q", patRW.listStatusFilter)
 	}
+}
+
+// TestApproveProposal_ConcurrentSingleWinner 钉死 P0-7 A15⑤ 并发幂等：
+// N 个 goroutine 并发 approve 同一 validated 提议，CAS 保证仅一单成功、
+// 其余全部 Conflict（不允许 BadRequest 泄漏为第二种错误语义），
+// 最终状态收敛为 applied 且 applied 只发生一次。
+func TestApproveProposal_ConcurrentSingleWinner(t *testing.T) {
+	const workers = 16
+	proposal := KnowledgeProposal{
+		ID:      "prop-race",
+		AgentID: "agent-1",
+		Kind:    "prompt",
+		Title:   "Race approve",
+		Status:  ProposalStatusValidated,
+	}
+	propRW := newMockProposalRW(proposal)
+	uc := &LearningLoopUsecase{proposals: propRW, lg: loggateway.NewNoop()}
+
+	start := make(chan struct{})
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, errs[i] = uc.ApproveProposal(context.Background(), proposal.ID, "user:1")
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	var success, conflict int
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			success++
+		default:
+			ae, ok := apierror.From(err)
+			if !ok || ae.Code != apierror.CodeConflict {
+				t.Fatalf("expected Conflict for all losers, got: %v", err)
+			}
+			conflict++
+		}
+	}
+	if success != 1 || conflict != workers-1 {
+		t.Fatalf("expected exactly 1 success + %d conflict, got success=%d conflict=%d", workers-1, success, conflict)
+	}
+	stored, err := propRW.GetByID(context.Background(), proposal.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if stored.Status != ProposalStatusApplied {
+		t.Fatalf("expected final status=%s, got=%s", ProposalStatusApplied, stored.Status)
+	}
+	// applied 唯一性由严格 CAS 保证（stored=approved 仅允许一单 approved→applied
+	// 成功，其余竞赛者 CAS 未命中归 Conflict）——成功计数=1 与终态=applied 即完备证据。
 }

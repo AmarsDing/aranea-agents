@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // Lease is the exclusive consumer handle over one sandbox (design §5.1).
@@ -70,6 +73,9 @@ func (l *Lease) Exec(ctx context.Context, spec ExecSpec) (ExecResult, error) {
 		l.m.st.execTimeout.Add(1)
 	default:
 		l.m.st.execError.Add(1)
+	}
+	if res.StderrTruncated {
+		stderrTruncatedTotal.WithLabelValues(l.profile).Inc()
 	}
 	l.m.registry.touch(l.id, l.m.now())
 	return res, err
@@ -190,8 +196,28 @@ func (l *Lease) Renew(ctx context.Context, extend time.Duration) error {
 		return nil
 	}
 	maxDeadline := l.m.now().Add(l.m.cfg.TTL.Max)
-	if _, ok := l.m.registry.renewDeadline(l.id, extend, maxDeadline); !ok {
+	nd, ok := l.m.registry.renewDeadline(l.id, extend, maxDeadline)
+	if !ok {
 		return ErrNotFound
+	}
+	// ADR-82-4 label 真相源同步：引擎实现可选 LabelUpdater 接口（仿
+	// NetworkReaper 模式，review §12.1-④ Engine 本体不变）时，把新 deadline
+	// 回写 daemon-side 实例；引擎失败仅告警 + 计数，不阻断租约（registry 视图
+	// 仍是运行时权威）。DockerEngine 不实现该接口（docker label 创建后不可变，
+	// moby/moby#21721）——docker 下的 label 漂移由周期 light reconcile 的
+	// drift 指标兜底观测。
+	if e, err := l.leasedEntry(); err == nil {
+		if lu, ok2 := l.m.engine.(LabelUpdater); ok2 {
+			if err2 := lu.UpdateLabels(ctx, e.handle, map[string]string{
+				LabelDeadline: strconv.FormatInt(nd.Unix(), 10),
+			}); err2 != nil {
+				renewLabelFailTotal.Inc()
+				l.m.lg.Warn("sandbox renew: deadline label sync failed (lease still alive)",
+					loggateway.StepID("sandbox.renew_label"),
+					loggateway.Str("sandbox_id", l.id),
+					loggateway.Err(err2))
+			}
+		}
 	}
 	return nil
 }

@@ -91,7 +91,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newCompactContextBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
-	if hook := newToolResultGateBeforeHook(deps.ToolResultGate, ag, lg); hook != nil {
+	if hook := newToolResultGateBeforeHook(deps.ToolResultGate, ag, lg, deps.Spill); hook != nil {
 		entries = append(entries, hook)
 	}
 	// R2 确定性工具结果剪枝（79-runtime-governance）：priority 7 = 全量注入类
@@ -275,7 +275,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		// Output size limiter: fallback truncation for undecorated string
 		// results. Decorator envelopes / budget-override tools are skipped.
 		// Runs after the tool recorder (priority 50) so original size is logged.
-		entries = append(entries, newOutputSizeLimiterAfterHook(lg))
+		entries = append(entries, newOutputSizeLimiterAfterHook(lg, deps.Spill))
 	}
 
 	if len(entries) == 0 {

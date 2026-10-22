@@ -73,6 +73,30 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 	if omitThinkingKey(pm, cfg) {
 		m = wrapOmitThinking(m)
 	}
+	// P0-3 批 B（2026-10-22）：SHRINK_STEPS 收缩重试接线——包内生效（shrink_retry.go
+	// 注释批准"wrapHA 后、WrapModelWithMetrics 内侧之外的 provider-具体模型上"点位
+	// 与外层等价、本批选最小改动外层包）。Baseline 优先级 MaxInputTokens > ContextWindow
+	// （per-provider 预算 :516/:530 先例以 ContextWindow 为回落 budget）。Rebuild 同变
+	// variant：仅覆 MaxInputTokens 重跑外层构造（HA/omitThinking/liveness 全纪录在
+	// 内外层一致）——裁剪不直改 messages 归 token tailoring 既有职（审批硬约束）。
+	baseline := cfg.MaxInputTokens
+	if baseline <= 0 {
+		baseline = cfg.ContextWindow
+	}
+	if baseline > 0 {
+		baselineCfg := cfg
+		m = WrapModelWithShrinkRetry(m, ShrinkRetryOptions{
+			BaselineInputTokens: baseline,
+			Provider:            strings.TrimSpace(cfg.ProviderType),
+			Model:               strings.TrimSpace(cfg.ModelAPI),
+			Logger:              lg,
+			Rebuild: func(maxInputTokens int) (trpcmodel.Model, error) {
+				cfg2 := baselineCfg
+				cfg2.MaxInputTokens = maxInputTokens
+				return trpcModelFromProviderModelConfig(ctx, cfg2, rt, lg)
+			},
+		})
+	}
 	// 活性守卫最外层（2026-09-01 治理由首字节单发重试升级为全程监控）：
 	// 首字节预算 + 流中段 stall 预算均由编排层经 ctx 注入
 	// （WithFirstByteRetryBudget / WithStallBudget）；stall 无注入时落回

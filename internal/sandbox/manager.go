@@ -2,7 +2,9 @@ package sandbox
 
 import (
 	"context"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,12 @@ import (
 // destroyTimeout bounds the engine teardown call; detached from the caller
 // ctx so a cancelled caller (e.g. exec timeout) cannot abort teardown.
 const destroyTimeout = 15 * time.Second
+
+// defaultReconcileInterval is the period of the light runtime reconcile that
+// is folded into the GC tick (review 2026-10-21 §12.1-⑤: default ≥60s, 0 or
+// negative disables, reuse the existing tick — no new goroutine). Override
+// via the ARANEA_SANDBOX_RECONCILE_INTERVAL env (ParseDuration syntax).
+const defaultReconcileInterval = 60 * time.Second
 
 // Manager is the sandbox供给层 entrypoint (design §5.1): Acquire hands out
 // exclusive leases over warm-pool or cold-created instances; every lease is
@@ -33,6 +41,11 @@ type Manager struct {
 
 	startOnce sync.Once
 	cancel    context.CancelFunc
+
+	// reconcileInterval is the light-reconcile cadence folded into the GC
+	// tick; lastReconcile is stamped with m.now (test-deterministic).
+	reconcileInterval time.Duration
+	lastReconcile     time.Time
 
 	hooksMu      sync.Mutex
 	destroyHooks []func(sandboxID string)
@@ -56,7 +69,7 @@ func NewManager(cfg Config, engine Engine, lg loggateway.Logger) *Manager {
 		lg = loggateway.NewNoop()
 	}
 	cfg = cfg.normalize()
-	return &Manager{
+	m := &Manager{
 		cfg:      cfg,
 		engine:   engine,
 		registry: NewRegistry(),
@@ -65,6 +78,15 @@ func NewManager(cfg Config, engine Engine, lg loggateway.Logger) *Manager {
 		st:       newStats(),
 		now:      time.Now,
 	}
+	// Light reconcile cadence: env-only knob (review §12.1-⑤ 条件式采纳 —
+	// config.go schema 不在批 A 允许面)."0"/负值 = 关闭；不可解析维持默认。
+	m.reconcileInterval = defaultReconcileInterval
+	if raw := strings.TrimSpace(os.Getenv("ARANEA_SANDBOX_RECONCILE_INTERVAL")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil {
+			m.reconcileInterval = d
+		}
+	}
+	return m
 }
 
 // Start runs the startup reconcile then launches the pool replenisher and GC
@@ -82,6 +104,9 @@ func (m *Manager) Start(ctx context.Context) {
 		m.cancel = cancel
 
 		m.reconcileOnce(ctx)
+		// First light reconcile fires one full interval after startup — the
+		// startup reconcileOnce above just did a full sweep.
+		m.lastReconcile = m.now()
 
 		safego.Go(ctx, "sandbox.pool_replenisher", func() { m.poolLoop(ctx) })
 		safego.Go(ctx, "sandbox.gc", func() { m.gcLoop(ctx) })

@@ -22,6 +22,78 @@ const (
 	FallbackPolicyStrict  = "strict"  // 严格：后端不可用即拒绝执行，禁止静默降级
 )
 
+// Surface 是 code_exec 的三个固定消费面（review 2026-10-21 §2.4 ③ per-surface
+// 策略骨架；§2.5 #2：策略只允许三固定面，未知面按 degrade 处理——防误拍死）。
+type Surface string
+
+const (
+	SurfaceChatCodeexec Surface = "chat_codeexec" // chat/聊天 code_exec
+	SurfaceSkillGate    Surface = "skill_gate"    // 技能发布校验门禁
+	SurfaceMonitor      Surface = "monitor"       // monitor 建议校验
+)
+
+// PolicyLevel 是单面三值：degrade（默认，现状降级链语义）| enforce（面级严格：
+// 要求隔离执行域 sandbox/docker，不和解为 local，不可得即拒绝可见执行）|
+// refuse（面级拒绝代码执行）。
+type PolicyLevel string
+
+const (
+	PolicyDegrade PolicyLevel = "degrade"
+	PolicyEnforce PolicyLevel = "enforce"
+	PolicyRefuse  PolicyLevel = "refuse"
+)
+
+// SurfacePolicy keeps the three fixed surfaces as a typed struct
+// (AS-COG-01: 单一 typed 字段注入 EnvConfig 而不是平铺三个字段)。
+// 零值 = 三面全 degrade（现状语义）。
+type SurfacePolicy struct {
+	ChatCodeexec PolicyLevel
+	SkillGate    PolicyLevel
+	Monitor      PolicyLevel
+}
+
+// For resolves the effective policy for a surface; unknown surfaces fall back
+// to degrade（防 typo 面名直接把面拍死）。
+func (p SurfacePolicy) For(s Surface) PolicyLevel {
+	switch s {
+	case SurfaceSkillGate:
+		return normLevel(p.SkillGate)
+	case SurfaceMonitor:
+		return normLevel(p.Monitor)
+	case SurfaceChatCodeexec:
+		return normLevel(p.ChatCodeexec)
+	default:
+		return PolicyDegrade
+	}
+}
+
+func normLevel(l PolicyLevel) PolicyLevel {
+	switch l {
+	case PolicyEnforce, PolicyRefuse:
+		return l
+	default:
+		return PolicyDegrade
+	}
+}
+
+// parsePolicyLevel 归一 per-surface 策略值（沿用下方 FallbackPolicy 归一先例
+// 的风格：ToLower+TrimSpace）。空 = 默认 degrade；三值之外一律归一为 refuse
+// ——fail-closed：宁可 typo（如 "enforcce"）显式拍死，也不静默放宽执行面。
+func parsePolicyLevel(raw string) PolicyLevel {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return PolicyDegrade
+	case string(PolicyDegrade):
+		return PolicyDegrade
+	case string(PolicyEnforce):
+		return PolicyEnforce
+	case string(PolicyRefuse):
+		return PolicyRefuse
+	default:
+		return PolicyRefuse
+	}
+}
+
 // EnvConfig holds process-level code executor settings from environment variables.
 type EnvConfig struct {
 	Backend          string
@@ -30,6 +102,9 @@ type EnvConfig struct {
 	E2BAPIKey        string
 	AllowLocalInProd bool   // when false and ARANEA_ENV=production, refuse local (fail-closed)
 	FallbackPolicy   string // CODE_EXECUTOR_FALLBACK_POLICY：degrade（默认）| strict
+	// Policy is the per-surface posture skeleton (P0-1 halv of P0-1↔P0-7：
+	// 类型先落、批 B 接硬强制热路径）。零值三面全 degrade = 现状。
+	Policy SurfacePolicy
 }
 
 // StrictFallback reports whether backend degradation is forbidden
@@ -62,6 +137,11 @@ func LoadEnvConfig() EnvConfig {
 	if cfg.FallbackPolicy != FallbackPolicyStrict {
 		// 未知值归一默认，避免 typo（如 "stict"）被当作显式 degrade 漏过审查。
 		cfg.FallbackPolicy = FallbackPolicyDegrade
+	}
+	cfg.Policy = SurfacePolicy{
+		ChatCodeexec: parsePolicyLevel(os.Getenv("CODE_EXECUTOR_POLICY_CHAT_CODEEXEC")),
+		SkillGate:    parsePolicyLevel(os.Getenv("CODE_EXECUTOR_POLICY_SKILL_GATE")),
+		Monitor:      parsePolicyLevel(os.Getenv("CODE_EXECUTOR_POLICY_MONITOR")),
 	}
 	return cfg
 }

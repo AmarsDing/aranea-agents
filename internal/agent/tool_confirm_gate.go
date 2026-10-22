@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/biz/policyrule"
+	biztool "aranea-agents/internal/biz/tool"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/alias"
@@ -82,6 +83,14 @@ const (
 	// confirmReasonParamRuleAsk: a tool_param_rules ask rule matched (79 R9)
 	// — confirmation forced; session/persisted grants still satisfy it.
 	confirmReasonParamRuleAsk = "param_rule_ask"
+	// confirmReasonPolicyAsk: a session/agent approval policy (mode=ask)
+	// forced confirmation (P0-5); session/persisted grants still satisfy it.
+	confirmReasonPolicyAsk = "policy_ask"
+	// confirmReasonPolicyTrusted: a session/agent approval policy
+	// (mode=trusted) pre-authorized the call — skips catalog/plugin/param-ask
+	// confirmation. The computer-use danger floor is evaluated strictly
+	// before this tier and can never be bypassed by it.
+	confirmReasonPolicyTrusted = "policy_trusted"
 )
 
 // confirmDecision is the outcome of the confirmation decision chain.
@@ -97,11 +106,13 @@ var defaultToolGrantStore = newToolGrantStore(time.Now)
 
 // decide runs the confirmation decision chain:
 //
-//	danger floor → param rule verdict (79 R9) → policy (catalog/plugin) →
-//	persisted grant → session grant → prompt
+//	danger floor → param rule verdict (79 R9) → approval policy (P0-5) →
+//	policy (catalog/plugin) → persisted grant → session grant → prompt
 //
 // Grants are only consulted for tools that actually require confirmation;
-// other tools short-circuit as default_allow.
+// other tools short-circuit as default_allow. Approval-policy never verdicts
+// are rejected upstream by the p3 gate (approval_policy_gate) and never
+// reach this chain.
 func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolName string, args []byte) confirmDecision {
 	toolName = strings.TrimSpace(toolName)
 	// Computer-use danger floor (75 A5 / M77 B3): danger-word content or a
@@ -125,7 +136,29 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 			if g.sessionGrants != nil && g.sessionGrants.HasSession(sessionID, agentID, toolName) {
 				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession}
 			}
+			// 审批策略 trusted 档位可满足 param rule ask（P0-5，与 grant 同语义；
+			// danger floor 恒在其上，trusted 绝不可越过）。
+			if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil && pv.mode == biztool.ApprovalModeTrusted {
+				return confirmDecision{needsConfirm: false, reason: confirmReasonPolicyTrusted}
+			}
 			return confirmDecision{needsConfirm: true, reason: confirmReasonParamRuleAsk}
+		}
+	}
+	// P0-5 审批策略裁定（批 A12）：p3 审批 hook 已先于本闸求值并写入 ctx。
+	// 消费点恒在 danger floor 与 param rule verdict 之下——trusted 不可越过
+	// 两者；ask 语义与 param rule ask 对齐（grant 可满足）。
+	if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil {
+		switch pv.mode {
+		case biztool.ApprovalModeAsk:
+			if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
+				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted}
+			}
+			if g.sessionGrants != nil && g.sessionGrants.HasSession(sessionID, agentID, toolName) {
+				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession}
+			}
+			return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyAsk}
+		case biztool.ApprovalModeTrusted:
+			return confirmDecision{needsConfirm: false, reason: confirmReasonPolicyTrusted}
 		}
 	}
 	needsByCatalog := g.catalogCheck(toolName)

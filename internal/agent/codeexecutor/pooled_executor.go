@@ -83,6 +83,9 @@ func (e *pooledRuntime) Run(ctx context.Context, lease *sandbox.Lease, language,
 		TimedOut:    res.TimedOut,
 		OOM:         res.OOM,
 		ArtifactDir: outDir,
+		// 沙箱池执行恒为隔离执行域（sandbox.ExecResult.Enforcement="full"）——
+		// 原样透传绝不在此虚构 partial（§2.4 诚实分级：按实际运行面打标）。
+		Enforcement: res.Enforcement,
 	}
 	if err != nil {
 		_ = os.RemoveAll(tmpDir) // no artifacts to hand out on exec failure

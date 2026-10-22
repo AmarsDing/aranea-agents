@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/toolspill"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -40,7 +43,38 @@ type readToolResultOutput struct {
 	HasMore   bool   `json:"has_more"`
 }
 
-func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.FunctionTool[readToolResultInput, readToolResultOutput] {
+// ReadToolResultOptions bundles the optional P0-2 dependencies of
+// read_tool_result (batch-B wire points; batch A leaves them unwired).
+type ReadToolResultOptions struct {
+	// Spill resolves spill://<store>/<id> locators written by the tool-result
+	// spill path (design §3.4). Nil keeps the gray gate (see below).
+	Spill toolspill.Store
+	// Logger receives structured logs; nil = noop.
+	Logger loggateway.Logger
+}
+
+// NewReadToolResultTool builds the read_tool_result function tool. The
+// variadic opts keep the historical single-argument call compiling: with no
+// options the tool resolves blob IDs only.
+//
+// P0-2 locator branch (design §3.8④ + §12.2 P0-2④, batch-A gray gate):
+// blob_id values carrying the spill:// scheme are parsed and validated
+// first; while no spill store is wired (opts absent or Spill nil) they are
+// answered with BadRequest — never a silent empty result the model could
+// mistake for an empty payload. Once wired, retrieval enforces the store's
+// own workspace containment: only spill://fs locators under the store root,
+// session-hash segment matching the calling session (cross-session reads
+// answer Found:false), symlink components rejected, so any path escaping the
+// private spill directory is refused.
+func NewReadToolResultTool(reader biz.ToolResultBlobReader, opts ...*ReadToolResultOptions) *trpcfunction.FunctionTool[readToolResultInput, readToolResultOutput] {
+	var cfg ReadToolResultOptions
+	if len(opts) > 0 && opts[0] != nil {
+		cfg = *opts[0]
+	}
+	lg := cfg.Logger
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input readToolResultInput) (readToolResultOutput, error) {
 			if input.BlobID == "" {
@@ -48,6 +82,10 @@ func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.Functi
 			}
 			if input.Offset < 0 {
 				return readToolResultOutput{}, apierror.BadRequest(apierror.DomainTool, "offset must be >= 0")
+			}
+
+			if strings.HasPrefix(input.BlobID, toolspill.Scheme) {
+				return readSpillResult(ctx, cfg.Spill, lg, input)
 			}
 
 			blob, err := reader.GetBlob(ctx, input.BlobID)
@@ -77,13 +115,7 @@ func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.Functi
 				return readToolResultOutput{Found: false}, nil
 			}
 
-			limit := DefaultReadChunkSize
-			if input.Limit > 0 {
-				limit = input.Limit
-			}
-			if limit > MaxReadChunkSize {
-				limit = MaxReadChunkSize
-			}
+			limit := clampReadLimit(input.Limit)
 
 			content, offset, totalSize, hasMore := sliceContent(blob.FullContent, input.Offset, limit)
 
@@ -106,6 +138,66 @@ func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.Functi
 			),
 		),
 	)
+}
+
+// readSpillResult serves the spill:// locator branch of read_tool_result.
+// Parse-and-validate happens unconditionally; the store then enforces
+// ownership and containment (see NewReadToolResultTool). Error mapping:
+// ErrNotFound -> Found:false (same posture as the blob path, no reason
+// leaked); ErrInvalidLocator / ErrUnsupportedStore / ErrSecurity ->
+// BadRequest; everything else -> Internal.
+func readSpillResult(ctx context.Context, store toolspill.Store, lg loggateway.Logger, input readToolResultInput) (readToolResultOutput, error) {
+	loc, err := toolspill.ParseLocator(input.BlobID)
+	if err != nil {
+		return readToolResultOutput{}, apierror.BadRequest(apierror.DomainTool, "invalid spill locator: "+err.Error())
+	}
+	if store == nil {
+		// Gray gate: locator parsed and validated, but this deployment has no
+		// spill store wired yet (batch B). BadRequest — never a silent nil.
+		return readToolResultOutput{}, apierror.BadRequest(apierror.DomainTool, "spill locator resolution is not wired in this deployment yet")
+	}
+	sessionID := sessionIDFromContext(ctx)
+	rec, err := store.Get(ctx, sessionID, loc.String())
+	if err != nil {
+		switch {
+		case errors.Is(err, toolspill.ErrNotFound):
+			return readToolResultOutput{Found: false}, nil
+		case errors.Is(err, toolspill.ErrInvalidLocator),
+			errors.Is(err, toolspill.ErrUnsupportedStore),
+			errors.Is(err, toolspill.ErrSecurity):
+			return readToolResultOutput{}, apierror.BadRequest(apierror.DomainTool, "spill locator rejected: "+err.Error())
+		default:
+			return readToolResultOutput{}, apierror.Internal(apierror.DomainTool, "read spill: "+err.Error())
+		}
+	}
+
+	lg.Info("spilled tool result read",
+		loggateway.StepID("tool.read_tool_result.spill"),
+		loggateway.SessionID(sessionID),
+		loggateway.Str("locator", loc.String()),
+		loggateway.Int64("bytes", rec.ByteSize),
+	)
+
+	limit := clampReadLimit(input.Limit)
+	content, offset, totalSize, hasMore := sliceContent(string(rec.Content), input.Offset, limit)
+	return readToolResultOutput{
+		Content:   content,
+		Found:     true,
+		Offset:    offset,
+		TotalSize: totalSize,
+		HasMore:   hasMore,
+	}, nil
+}
+
+// clampReadLimit applies the default and the hard cap to a requested limit.
+func clampReadLimit(limit int) int {
+	if limit <= 0 {
+		return DefaultReadChunkSize
+	}
+	if limit > MaxReadChunkSize {
+		return MaxReadChunkSize
+	}
+	return limit
 }
 
 // sessionIDFromContext extracts the current session ID from the agent

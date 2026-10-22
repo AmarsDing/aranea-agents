@@ -8,14 +8,33 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg loggateway.Logger) callbacks.Callback {
+// newToolResultGateBeforeHook registers the L0 ToolResultGate BeforeModel
+// hook (priority 3). The optional spillOpt carries the P0-2 spill
+// dependencies (batch-A gray switch, design §3.4): when the PG blob persist
+// inside gate.Check fails, the content is spilled to the workspace store and
+// replaced by a locator pointer instead of the legacy hard truncation; if the
+// spill itself fails, the content is preserved whole with an explicit
+// enforcement=partial note (never silently truncated) and the Important-level
+// tool_result.spill_failed signal is reported. With no deps the legacy
+// truncateContent fallback runs byte-identically.
+//
+// spillOpt is variadic so existing call sites keep compiling and the
+// auto-derived callback-chain hook name
+// ("agent.newToolResultGateBeforeHook.func1", pinned by the C3 execution-order
+// golden) is stable whether or not deps are passed.
+func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg loggateway.Logger, spillOpt ...*toolspill.Deps) callbacks.Callback {
 	enabled := toolResultGateEnabled(ag)
+	var spill *toolspill.Deps
+	if len(spillOpt) > 0 {
+		spill = spillOpt[0]
+	}
 	return callbacks.NewBeforeModelHook(3, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if !enabled || gate == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -52,6 +71,40 @@ func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg logg
 
 			result, err := gate.Check(ctx, sessionID, toolID, msg.ToolName, "", content, turnNumber)
 			if err != nil {
+				// P0-2 spill branch (design §3.4): the truncation point is a
+				// preservation point. Persist the full content to the spill
+				// store and hand the model a resolvable locator; fail-soft
+				// keeps the content whole with an explicit enforcement=partial
+				// note when even the spill store is unavailable.
+				if spill.Enabled() {
+					loc, serr := toolspill.PutWithRetry(ctx, spill.Store, toolspill.Record{
+						SessionID: sessionID,
+						Tool:      msg.ToolName,
+						Content:   []byte(content),
+					})
+					if serr == nil {
+						lg.Info("L0 ToolResultGate: persist failed, spilled to workspace store",
+							loggateway.StepID("agent.tool_result.gate_spill"),
+							loggateway.Str("session_id", sessionID),
+							loggateway.Str("tool", msg.ToolName),
+							loggateway.Str("locator", loc.String()),
+							loggateway.Err(err),
+						)
+						msg.Content = toolspill.PointerText(msg.ToolName, len(content), loc)
+						msg.ContentParts = nil
+						continue
+					}
+					lg.Warn("L0 ToolResultGate: persist and spill both failed, preserving full content (enforcement=partial)",
+						loggateway.StepID("agent.tool_result.gate_spill"),
+						loggateway.Str("session_id", sessionID),
+						loggateway.Str("tool", msg.ToolName),
+						loggateway.Err(serr),
+					)
+					spill.ReportSpillFailed(ctx, lg, "agent.tool_result.gate_spill", sessionID, serr)
+					msg.Content = content + toolspill.PartialPreservedNote
+					msg.ContentParts = nil
+					continue
+				}
 				lg.Error("L0 ToolResultGate: persist failed, truncating as fallback", loggateway.StepID("agent.tool_result.gate_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
 				msg.Content = truncateContent(content)
 				msg.ContentParts = nil

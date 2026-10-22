@@ -184,12 +184,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	runCtx = decision.WithGateSessionID(runCtx, run.SessionID)
 
+	// P0-4（A10）：首字节/stall 预算注入移入下方 attempt 闭包——invalid-retry
+	// 每次重试按 (attemptNo-1) 递减 stall 重连池（InvalidStallReconnects）
+	// 并同步重算消费端守卫总时限，防止模型层重连与编排层整轮重发的恢复
+	// 预算被乘数放大。首次尝试保持全量（与接线前行为逐字节一致）。
 	firstByteBudget := agent.ResolveFirstByteTimeout(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
-	runCtx = provider.WithFirstByteRetryBudget(runCtx, firstByteBudget)
 	stallTimeout, stallMaxReconnects := agent.ResolveStallPolicy(runCtx, r.td.ReadDeps.LLM, ar.prov, ar.mod)
-	runCtx = provider.WithStallBudget(runCtx, stallTimeout, stallMaxReconnects)
-	runCtx, abortRun := context.WithCancel(runCtx)
-	defer abortRun()
 	if teamEmitter != nil {
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
@@ -199,27 +199,9 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		traceID = teamEmitter.TraceID()
 	}
 	projectMeta := r.buildTeamProjectMeta(ctx, sess, run, teamRow, def, ar, memberKeys, ti.content, traceID)
-	streamOpts := r.newStreamConsumeOptions()
-	if streamOpts == nil {
-		streamOpts = &agent.StreamConsumeOptions{}
-	}
-	streamOpts.AbortOnStall = abortRun
-
-	streamOpts.OnPromptTokensAccumulated = func(delta int) {
-		if r.accumulateRunTokenBudgetFromStream(runCtx, run, teamRow.ID, delta) {
-			abortRun()
-		}
-	}
-
-	if r.heartbeatWriter != nil && run.TeamRunV2ID != "" {
-		pinger := newTeamRunHeartbeatPinger(r.heartbeatWriter, run.TeamRunV2ID, r.lg)
-		streamOpts.OnStreamActivity = func() { pinger.Ping(runCtx) }
-	}
-	if streamOpts.V2Projector != nil {
-		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
-		streamOpts.V2Projector.Configure(v2Meta)
-		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.V2Projector)
-	}
+	// v2 投影 meta 跨尝试共享（projectMeta 不变）；projector 实例按尝试
+	// 新建（newStreamConsumeOptions 每次返回独立实例，attempt 间无共享态）。
+	v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
 
 	if r.hasPublisher() {
 		for _, m := range ti.members {
@@ -266,22 +248,11 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		StageGraphAssetID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID); opt != nil {
 		runOpts = append(runOpts, opt)
 	}
-	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
-	if err != nil {
-		logTeamRunError(teamEmitter, "team.run.execute", err.Error(), mode)
-		r.finishTeamRunWithError(ctx, &run, t0, err.Error(), &turnStatus, rollbackRunnerSession)
-		return userMsg, biz.ChatMessage{}, err
-	}
-	// F-C: 团队 Graph 路径绕过 trpcGraphRuntime.Run（唯一 EventBridge 宿主），
-	// node_start/node_end 到不了 coordinator 的 step watch，per-member
-	// team_run_steps 不持久化。tee 框架事件流，把图节点生命周期以 graph_stage
-	// system notice 重发到 EventBus（watch 按 spiritSessionID + execution_id 过滤）。
-	// Y3: HITL interrupt 经 tee 内联同步标记（先于流结束），避免 async bus
-	// 握手与 run 收尾竞态（DeferTeamRunSuccessIfHITL 读到陈旧 Running 把暂停误判完成）。
+	// F-C/Y3: HITL interrupt 内联同步标记闭包（上移至 attempt 闭包前——每次
+	// 重试的 tee 都复用它；语义保持「流期间同步标记，先于流结束」）。
 	var onGraphInterrupt func(nodeID, lineageID string)
 	if r.mediator != nil && graphExecID != "" {
 		onGraphInterrupt = func(nodeID, lineageID string) {
-
 			markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			defer markCancel()
 			if err := r.mediator.MarkTeamGraphInterrupt(markCtx, graphExecID, nodeID, lineageID); err != nil {
@@ -293,10 +264,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			}
 		}
 	}
-	events = teeGraphStageNotices(ctx, events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), StageGraphAssetID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
-	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
-	// Phase 7: Consume stream (streamOpts already has the pre-created projector)
+	// Phase 7: Consume stream (per-attempt fresh streamOpts/projector)
 	var streamLastRoundPromptTok, streamLastRoundCompletionTok int
 	var contextUsagePatched bool
 	defer func() {
@@ -306,10 +275,75 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, stallMaxReconnects)
-	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, projectMeta, streamOpts, r.lg)
+	var lastRunCtx context.Context
+	invokeFailed := false
+	attemptFn := func(attemptCtx context.Context, attemptNo int) (agent.EventStreamResult, error) {
+		// invalid-retry stall 共账（P0-4 §12.2③）：第 1 次尝试保持全量
+		// stall 重连池（equals 接线前行为，OFF 直通时逐字节一致）；后续
+		// 每次重试递减重连预算，经 provider.WithStallBudget 同一 ctx key
+		// 注入，消费端守卫总时限按剩余重连数同步重算。
+		remainingReconnects := agent.InvalidStallReconnects(stallMaxReconnects, attemptNo)
+		attemptRunCtx := provider.WithFirstByteRetryBudget(attemptCtx, firstByteBudget)
+		attemptRunCtx = provider.WithStallBudget(attemptRunCtx, stallTimeout, remainingReconnects)
+		attemptRunCtx, abortRun := context.WithCancel(attemptRunCtx)
+		defer abortRun()
+		lastRunCtx = attemptRunCtx
+
+		// 每次尝试新建 consume options（内嵌独立 v2 projector，attempt 间
+		// 无共享态；factory 语义见 newStreamConsumeOptions）。
+		streamOpts := r.newStreamConsumeOptions()
+		if streamOpts == nil {
+			streamOpts = &agent.StreamConsumeOptions{}
+		}
+		streamOpts.AbortOnStall = abortRun
+
+		streamOpts.OnPromptTokensAccumulated = func(delta int) {
+			if r.accumulateRunTokenBudgetFromStream(attemptRunCtx, run, teamRow.ID, delta) {
+				abortRun()
+			}
+		}
+
+		if r.heartbeatWriter != nil && run.TeamRunV2ID != "" {
+			pinger := newTeamRunHeartbeatPinger(r.heartbeatWriter, run.TeamRunV2ID, r.lg)
+			streamOpts.OnStreamActivity = func() { pinger.Ping(attemptRunCtx) }
+		}
+		if streamOpts.V2Projector != nil {
+			streamOpts.V2Projector.Configure(v2Meta)
+			attemptRunCtx = biz.WithActivityEmitter(attemptRunCtx, streamOpts.V2Projector)
+		}
+
+		attemptEvents, runErr := agent.RunTRPCUserTurnMsg(attemptRunCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
+		if runErr != nil {
+			invokeFailed = true
+			return agent.EventStreamResult{}, runErr
+		}
+		invokeFailed = false
+		// F-C: 团队 Graph 路径绕过 trpcGraphRuntime.Run（唯一 EventBridge 宿主），
+		// node_start/node_end 到不了 coordinator 的 step watch，per-member
+		// team_run_steps 不持久化。tee 框架事件流，把图节点生命周期以 graph_stage
+		// system notice 重发到 EventBus（watch 按 spiritSessionID + execution_id 过滤）。
+		// Y3: HITL interrupt 经 tee 内联同步标记（先于流结束），避免 async bus
+		// 握手与 run 收尾竞态（DeferTeamRunSuccessIfHITL 读到陈旧 Running 把暂停误判完成）。
+		attemptEvents = teeGraphStageNotices(ctx, attemptEvents, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), StageGraphAssetID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
+		attemptEvents = event.WrapFrameworkEventsWithOtel(attemptEvents, teamEmitter, teamBridge, teamBridge)
+
+		firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, remainingReconnects)
+		return agent.ConsumeWithFirstByteGuard(attemptRunCtx, firstByteTimeout, attemptEvents, projectMeta, streamOpts, r.lg)
+	}
+
+	// invalid-retry（P0-4 A10）：默认关闭（env 开关），关闭时单次直通——
+	// 与接线前逐字节一致。
+	retryOpts := agent.InvalidRetryOptionsFromEnv()
+	retryOpts.Emitter = teamEmitter
+	result, streamErr := agent.RunTurnWithInvalidRetry(runCtx, attemptFn, retryOpts, r.lg)
 	streamLastRoundPromptTok = result.LastRoundPromptTok
 	streamLastRoundCompletionTok = result.LastRoundCompletionTok
+	if streamErr != nil && invokeFailed {
+		// LLM 调用发起失败（RunTRPCUserTurnMsg err）：保留原错误路径。
+		logTeamRunError(teamEmitter, "team.run.execute", streamErr.Error(), mode)
+		r.finishTeamRunWithError(ctx, &run, t0, streamErr.Error(), &turnStatus, rollbackRunnerSession)
+		return userMsg, biz.ChatMessage{}, streamErr
+	}
 	if streamErr != nil {
 		turnStatus = biz.TeamMemberStepStatusError
 		logTeamRunError(teamEmitter, "team.run.execute", streamErr.Error(), mode)
@@ -317,16 +351,15 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.finishRunErr(ctx, &run, t0, streamErr.Error())
 		return userMsg, biz.ChatMessage{}, streamErr
 	}
-	if runCtx.Err() != nil {
+	if lastRunCtx != nil && lastRunCtx.Err() != nil {
 		hint := ""
-		errMsg := runCtx.Err().Error()
+		errMsg := lastRunCtx.Err().Error()
 		switch {
-		case errors.Is(runCtx.Err(), context.DeadlineExceeded):
+		case errors.Is(lastRunCtx.Err(), context.DeadlineExceeded):
 			if dur := TurnDeadlineDuration(def); dur > 0 {
 				hint = fmt.Sprintf(" hint=definition_timeout_hit effective=%s", dur)
 			}
-		case errors.Is(runCtx.Err(), context.Canceled):
-
+		case errors.Is(lastRunCtx.Err(), context.Canceled):
 			if reason := r.cancelReason(sess.ID); reason != "" {
 				hint = " hint=cancel_reason:" + reason
 				errMsg += " (cancel_reason=" + reason + ")"
@@ -337,7 +370,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		logTeamRunError(teamEmitter, "team.run.execute", errMsg+hint, mode)
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, errMsg)
-		return userMsg, biz.ChatMessage{}, runCtx.Err()
+		return userMsg, biz.ChatMessage{}, lastRunCtx.Err()
 	}
 
 	if teamEmitter != nil {

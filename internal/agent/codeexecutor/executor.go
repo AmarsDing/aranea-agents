@@ -39,6 +39,31 @@ var (
 		Name: "aranea_codeexec_blocks_total",
 		Help: "Code blocks executed (one ExecuteCode may include multiple blocks).",
 	}, []string{"kind", "status"})
+
+	// codeExecEnforcementPartialTotal counts runs whose requested isolated
+	// backend degraded to the unisolated local executor (review 2026-10-21 ⑥).
+	codeExecEnforcementPartialTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_codeexec_enforcement_partial_total",
+		Help: "Code executions graded partial after backend degradation (requested -> fallback).",
+	}, []string{"requested", "fallback"})
+)
+
+// Enforcement grades (review 2026-10-21 §2.4 诚实分级): the isolation level the
+// code actually ran under. The framework CodeExecutionResult has no metadata
+// slot (§12.1-①), so the honest signal lands on the internal Result field AND
+// as an "[enforcement:partial]" output tail note on every degraded run.
+const (
+	// EnforcementFull — the run executed inside an isolation boundary
+	// (docker / sandbox pool / e2b / container).
+	EnforcementFull = "full"
+	// EnforcementPartial — the run executed on a less-isolated backend than
+	// requested (unisolated local subprocess). Strict semantics unchanged:
+	// this grade is only ever REACHED on the degrade path — strict refuses.
+	EnforcementPartial = "partial"
+	// EnforcementPartialNote is the model-visible tail note appended to
+	// outputs of partial-graded runs (same in-band precedent as the
+	// docker_adapter "[exit N]" / "[timeout]" notes).
+	EnforcementPartialNote = "\n[enforcement:partial]"
 )
 
 // Result holds the outcome of one code execution.
@@ -49,6 +74,9 @@ type Result struct {
 	TimedOut    bool
 	OOM         bool
 	ArtifactDir string // path to output directory (may be empty)
+	// Enforcement is the actual isolation grade (full|partial) — honest
+	// grading: what the code ran under, not what was requested (§2.4).
+	Enforcement string
 }
 
 // Executor is the interface for running code.
@@ -106,9 +134,10 @@ func (e *LocalExecutor) Run(ctx context.Context, language, code string, timeout 
 	err = cmd.Run()
 
 	res := Result{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		ExitCode: 0,
+		Stdout:      stdout.String(),
+		Stderr:      stderr.String(),
+		ExitCode:    0,
+		Enforcement: EnforcementPartial, // local subprocess: no OS isolation boundary
 	}
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()
@@ -239,6 +268,7 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 		Stdout:      stdout.String(),
 		Stderr:      stderr.String(),
 		ArtifactDir: outDir,
+		Enforcement: EnforcementFull, // docker container: isolated execution domain
 	}
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()

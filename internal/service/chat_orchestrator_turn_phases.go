@@ -297,82 +297,111 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 
 	// Build run options + prepare run context
 	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, deps, intentRunOpts)
-	firstByteTimeout := chatagent.ResolveFirstByteTimeout(ctx, deps.ModelCatalog, ag.Provider, ag.Model)
+	firstByteBudget := chatagent.ResolveFirstByteTimeout(ctx, deps.ModelCatalog, ag.Provider, ag.Model)
 	if custom, ok := firstByteTimeoutFromContext(ctx); ok {
-		firstByteTimeout = custom
+		firstByteBudget = custom
 	}
 	runCtx := o.prepareRunContext(ctx, input, ag, deps)
-	// P6-N3：向模型调用链注入首字节静默重试预算——每次 GenerateContent 在
+	// P6-N3：首字节静默重试预算向模型调用链注入——每次 GenerateContent 在
 	// budget 内零产出即取消该发并重连（S09 t32 deepseek 首字节 stall
 	// 直接 503 整轮的修复）。消费端守卫总时限必须按全部重连尝试放宽，
 	// 否则守卫会在重连中途取消 runCtx 误杀恢复。
 	// 2026-09-01 活性守卫治理：同点注入流中段 stall 预算（与 team 路径
 	// 同口径），模型目录 config_json 可覆盖包默认值。
-	runCtx = provider.WithFirstByteRetryBudget(runCtx, firstByteTimeout)
+	// P0-4（A10）：预算注入移入下方 attempt 闭包——invalid-retry 每次重试
+	// 按 (attemptNo-1) 递减 stall 重连池（InvalidStallReconnects）并同步
+	// 重算消费端守卫总时限，确保一层恢复预算不会被两层重试乘数放大。
 	stallTimeout, stallMaxReconnects := chatagent.ResolveStallPolicy(runCtx, deps.ModelCatalog, ag.Provider, ag.Model)
-	runCtx = provider.WithStallBudget(runCtx, stallTimeout, stallMaxReconnects)
-	firstByteTimeout = provider.FirstByteGuardWithRetry(firstByteTimeout, stallMaxReconnects)
-	runCtx, abortRun := context.WithCancel(runCtx)
-	defer abortRun()
 
-	// N-21/N-03: Pre-configure the v2 ActivityProjector and inject it into
-	// runCtx so that plugins (cost_guard, model_router) and hooks
-	// (tool_confirmation) can emit notice/confirm events via
-	// biz.ActivityEmitterFromContext during the LLM call. Configure sets the
-	// meta without emitting events. OnTurnStart (called later by the stream
-	// consumer) will emit task.created + turn.started.
-	//
+	// N-21/N-03: the v2 ActivityProjector is pre-configured per attempt and
+	// injected into the attempt runCtx so that plugins (cost_guard,
+	// model_router) and hooks (tool_confirmation) can emit notice/confirm
+	// events via biz.ActivityEmitterFromContext during the LLM call. Configure
+	// sets the meta without emitting events. OnTurnStart (called later by the
+	// stream consumer) will emit task.created + turn.started.
 	var turnProjector *v2.ActivityProjector
-	if o.infraDeps.V2ProjectorFactory != nil {
-		// B-06/H2/FR-9: restart 后共享计数器恢复折入 steps+tasks+outbox
-		// 三位持久水位（详见 restoredSharedSeqMax），避免复用已下发/已
-		// 持久 seq 撞 UNIQUE(session_id, seq)。
-		if maxSeq, ok := o.restoredSharedSeqMax(ctx, sessionID); ok {
-			o.infraDeps.V2ProjectorFactory.RestoreSeqIfNeeded(sessionID, maxSeq)
-		}
-		// R4-Q3: restore the dedicated per-session TURN counter from
-		// turns_v2 MAX(seq) so new turns continue the session's 1,2,3…
-		// numbering instead of restarting at 1 (which would collide with
-		// persisted turns in the session's seq ordering).
-		if tr := o.turnReader(); tr != nil {
-			if maxTurnSeq, err := tr.MaxSeqBySession(ctx, sessionID); err == nil {
-				o.infraDeps.V2ProjectorFactory.RestoreTurnSeqIfNeeded(sessionID, maxTurnSeq)
+	var lastRunCtx context.Context
+	lastFirstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, stallMaxReconnects)
+	invokeFailed := false
+	attemptFn := func(attemptCtx context.Context, attemptNo int) (chatagent.EventStreamResult, error) {
+		// invalid-retry stall 共账（P0-4 §12.2③）：第 1 次尝试保持全量
+		// stall 重连池（equals 接线前行为，OFF 直通时逐字节一致）；后续
+		// 每次重试递减重连预算，经 provider.WithStallBudget 同一 ctx key
+		// 注入，消费端守卫总时限按剩余重连数同步重算。
+		remainingReconnects := chatagent.InvalidStallReconnects(stallMaxReconnects, attemptNo)
+		attemptRunCtx := provider.WithFirstByteRetryBudget(attemptCtx, firstByteBudget)
+		attemptRunCtx = provider.WithStallBudget(attemptRunCtx, stallTimeout, remainingReconnects)
+		firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, remainingReconnects)
+		attemptRunCtx, abortRun := context.WithCancel(attemptRunCtx)
+		defer abortRun()
+		lastRunCtx = attemptRunCtx
+		lastFirstByteTimeout = firstByteTimeout
+
+		// B-06/R4-Q3: per-attempt fresh projector（factory 每次返回独立实例，
+		// attempt 间无共享状态；序号恢复幂等）。
+		turnProjector = nil
+		if o.infraDeps.V2ProjectorFactory != nil {
+			// B-06/H2/FR-9: restart 后共享计数器恢复折入 steps+tasks+outbox
+			// 三位持久水位（详见 restoredSharedSeqMax），避免复用已下发/已
+			// 持久 seq 撞 UNIQUE(session_id, seq)。attempt 间幂等。
+			if maxSeq, ok := o.restoredSharedSeqMax(ctx, sessionID); ok {
+				o.infraDeps.V2ProjectorFactory.RestoreSeqIfNeeded(sessionID, maxSeq)
 			}
+			// R4-Q3: restore the dedicated per-session TURN counter from
+			// turns_v2 MAX(seq) so new turns continue the session's 1,2,3…
+			// numbering instead of restarting at 1 (which would collide with
+			// persisted turns in the session's seq ordering).
+			if tr := o.turnReader(); tr != nil {
+				if maxTurnSeq, err := tr.MaxSeqBySession(ctx, sessionID); err == nil {
+					o.infraDeps.V2ProjectorFactory.RestoreTurnSeqIfNeeded(sessionID, maxTurnSeq)
+				}
+			}
+			earlyMeta := chatagent.ProjectMeta{
+				SessionID:        sessionID,
+				RequestID:        userMsg.ID,
+				InvocationID:     admit.runID,
+				RunID:            admit.runID,
+				TraceID:          emitter.TraceID(),
+				AgentID:          ag.ID,
+				AgentDisplayName: ag.DisplayName,
+				ContextWindow:    o.resolveContextWindowTokens(attemptRunCtx, sess, ag, admit.provider, admit.model),
+				Source:           event.EnvelopeSourceFromContext(attemptRunCtx),
+				TaskContent:      content,
+				ParentTaskID:     input.ParentTaskID,
+			}
+			v2Meta := chatagent.V2ProjectMetaFromV1(earlyMeta)
+			turnProjector = o.infraDeps.V2ProjectorFactory.NewProjector()
+			turnProjector.Configure(v2Meta)
+			attemptRunCtx = biz.WithActivityEmitter(attemptRunCtx, turnProjector)
 		}
-		earlyMeta := chatagent.ProjectMeta{
-			SessionID:        sessionID,
-			RequestID:        userMsg.ID,
-			InvocationID:     admit.runID,
-			RunID:            admit.runID,
-			TraceID:          emitter.TraceID(),
-			AgentID:          ag.ID,
-			AgentDisplayName: ag.DisplayName,
-			ContextWindow:    o.resolveContextWindowTokens(runCtx, sess, ag, admit.provider, admit.model),
-			Source:           event.EnvelopeSourceFromContext(runCtx),
-			TaskContent:      content,
-			ParentTaskID:     input.ParentTaskID,
+
+		// LLM invocation
+		events, err := o.invokeLLMCall(attemptRunCtx, ctx, runner, sess, input, ag, admit, emitter, traceBridge, runOpts, content, turnStart, turnProjector)
+		if err != nil {
+			invokeFailed = true
+			return chatagent.EventStreamResult{}, err
 		}
-		v2Meta := chatagent.V2ProjectMetaFromV1(earlyMeta)
-		turnProjector = o.infraDeps.V2ProjectorFactory.NewProjector()
-		turnProjector.Configure(v2Meta)
-		runCtx = biz.WithActivityEmitter(runCtx, turnProjector)
+		invokeFailed = false
+
+		// Stream consumption
+		return o.consumeTurnStream(attemptRunCtx, abortRun, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
 	}
 
-	// LLM invocation
-	events, err := o.invokeLLMCall(runCtx, ctx, runner, sess, input, ag, admit, emitter, traceBridge, runOpts, content, turnStart, turnProjector)
-	if err != nil {
+	// invalid-retry（P0-4 A10）：默认关闭（env 开关），关闭时单次直通——
+	// 与接线前逐字节一致。
+	retryOpts := chatagent.InvalidRetryOptionsFromEnv()
+	retryOpts.Emitter = emitter
+	result, streamErr := chatagent.RunTurnWithInvalidRetry(runCtx, attemptFn, retryOpts, o.lg())
+	if streamErr != nil && invokeFailed {
 		// sessionRunID 随错误路径上抛：runSingleAgentViaTRPC 的 EXECUTE 失败
 		// 分支需要它终结 session run（phase=failed），否则残留 interactive/
 		// durable 相位的 run 会被 durable worker 静默续跑（2026-08-19 事故）。
-		return turnExecuteResult{userMsg: userMsg, sessionRunID: sessionRunID}, err
+		return turnExecuteResult{userMsg: userMsg, sessionRunID: sessionRunID}, streamErr
 	}
-
-	// Stream consumption
-	result, streamErr := o.consumeTurnStream(runCtx, abortRun, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
 	if streamErr != nil {
-		res := o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart, turnProjector)
+		res := o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, lastFirstByteTimeout, turnStart, turnProjector)
 		res.sessionRunID = sessionRunID
-		return res, wrapLLMFailure(streamErr, firstByteTimeout)
+		return res, wrapLLMFailure(streamErr, lastFirstByteTimeout)
 	}
 
 	execResult, err := o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart, turnProjector)
@@ -384,7 +413,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// (parent of runCtx) may not carry the signal because cancellation
 	// propagates parent→child, not child→parent. Flag it so the
 	// FinishSessionRunLifecycle defer can align session_runs.phase.
-	if !execResult.cancelled && errors.Is(runCtx.Err(), context.Canceled) {
+	if !execResult.cancelled && lastRunCtx != nil && errors.Is(lastRunCtx.Err(), context.Canceled) {
 		execResult.cancelled = true
 	}
 	return execResult, nil

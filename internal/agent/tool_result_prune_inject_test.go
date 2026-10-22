@@ -250,7 +250,7 @@ func TestToolResultPrune_IdempotentAcrossTurns(t *testing.T) {
 	big := strings.Repeat("x", pruneTestBigContent)
 
 	out1 := runPruneHook(t, hook, pruneTestCtx(), pruneTestMessages(big))
-	// 第二轮：会话存储原文不动 �?请求副本再次携带全量原文�?	
+	// 第二轮：会话存储原文不动 �?请求副本再次携带全量原文�?
 	out2 := runPruneHook(t, hook, pruneTestCtx(), pruneTestMessages(big))
 
 	if len(blobs.blobs) != 1 {
@@ -302,5 +302,123 @@ func TestToolResultPrune_NoInvocationContext(t *testing.T) {
 	}
 	if meta := LoadPruneMeta(context.Background()); meta.Count != 0 {
 		t.Fatalf("no invocation must yield zero meta, got %+v", meta)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A8 retrieval-exemption tests (P0-3 design 4.4.3 / approval 12.2 P0-3.3)
+// ---------------------------------------------------------------------------
+
+// retrievalPruneMessages builds the same 3-turn shape as pruneTestMessages but
+// with a configurable tool name (检索族工具名走内置豁免表).
+func retrievalPruneMessages(toolName, toolContent string) []trpcmodel.Message {
+	return []trpcmodel.Message{
+		trpcmodel.NewSystemMessage("sys"),
+		trpcmodel.NewUserMessage("t1"),
+		{Role: trpcmodel.RoleAssistant, Content: "calling tool", ToolCalls: []trpcmodel.ToolCall{{ID: "call-1"}}},
+		{Role: trpcmodel.RoleTool, ToolName: toolName, ToolID: "call-1", Content: toolContent},
+		trpcmodel.NewUserMessage("t2"),
+		trpcmodel.NewAssistantMessage("a2"),
+		trpcmodel.NewUserMessage("t3"),
+	}
+}
+
+// 默认 ON：内置检索表六枚工具在 K 轮外超尺寸仍不剪（design 4.7 测试线：
+// K 轮外超尺寸仍不剪），且永不落归档。
+func TestToolResultPrune_RetrievalExemptByDefault(t *testing.T) {
+	big := strings.Repeat("x", pruneTestBigContent)
+	for toolName := range DefaultRetrievalExemptTools {
+		blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
+		hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), defaultPruneCfg(), loggateway.NewNoop(), nil)
+		out := runPruneHook(t, hook, pruneTestCtx(), retrievalPruneMessages(toolName, big))
+		if out[3].Content != big {
+			t.Fatalf("retrieval tool %q must be exempt by default (K 轮外超尺寸仍不剪)", toolName)
+		}
+		if len(blobs.blobs) != 0 {
+			t.Fatalf("retrieval tool %q must never archive, got %d blobs", toolName, len(blobs.blobs))
+		}
+	}
+}
+
+// RetrievalExempt=false 回到 A8 之前的空豁免表：同款超尺寸旧检索结果被剪。
+func TestToolResultPrune_RetrievalExemptOffRestoresOldBehavior(t *testing.T) {
+	off := false
+	cfg := defaultPruneCfg()
+	cfg.RetrievalExempt = &off
+	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
+	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), cfg, loggateway.NewNoop(), nil)
+	big := strings.Repeat("x", pruneTestBigContent)
+	ctx := pruneTestCtx()
+	out := runPruneHook(t, hook, ctx, retrievalPruneMessages("knowledge_search", big))
+	if out[3].Content == big {
+		t.Fatal("RetrievalExempt=false must restore old empty-table behavior (prune happens)")
+	}
+	if meta := LoadPruneMeta(ctx); meta.Count != 1 {
+		t.Fatalf("prune meta = %+v, want Count=1 after opt-out", meta)
+	}
+}
+
+// conf ExemptTools 非 nil 须整体替换内置表（审批 12.2 替换而非合并）：
+// 清单只列别的工具时，knowledge_search 不再豁免。
+func TestToolResultPrune_ConfExemptToolsReplacesBuiltin(t *testing.T) {
+	cfg := defaultPruneCfg()
+	cfg.ExemptTools = map[string]bool{"some_other_tool": true}
+	blobs, reps := newFakePruneBlobStore(), newFakePruneReplacementStore()
+	hook := newToolResultPruneBeforeHook(pruneTestGate(blobs, reps), cfg, loggateway.NewNoop(), nil)
+	big := strings.Repeat("x", pruneTestBigContent)
+	out := runPruneHook(t, hook, pruneTestCtx(), retrievalPruneMessages("knowledge_search", big))
+	if out[3].Content == big {
+		t.Fatal("ExemptTools 非 nil 须整体替换内置表（knowledge_search 不再豁免）")
+	}
+	if len(blobs.blobs) != 1 {
+		t.Fatalf("knowledge_search must be archived once replaced, got %d blobs", len(blobs.blobs))
+	}
+}
+
+// 评测入口与 hook 同源：同一份消息、同一份 cfg，RunToolResultPruneForEval
+// 的剪枝决策与 hook 完全一致（同一条消息被剪、指针由同一构造函数生成、
+// 归档拿到原文）。金闸门（internal/session/eval）断言的就是线上行为。
+func TestToolResultPrune_EvalEntryParityWithHook(t *testing.T) {
+	big := strings.Repeat("x", pruneTestBigContent)
+
+	blobsH, repsH := newFakePruneBlobStore(), newFakePruneReplacementStore()
+	hook := newToolResultPruneBeforeHook(pruneTestGate(blobsH, repsH), defaultPruneCfg(), loggateway.NewNoop(), nil)
+	hookOut := runPruneHook(t, hook, pruneTestCtx(), pruneTestMessages(big))
+
+	evalMsgs := pruneTestMessages(big)
+	archived := map[string]string{}
+	meta := RunToolResultPruneForEval(evalMsgs, defaultPruneCfg(),
+		func(toolID, toolName, content string) (string, bool) {
+			archived[toolID] = content
+			return "blob-" + toolID, true
+		})
+
+	if meta.Count != 1 || meta.Bytes != pruneTestBigContent {
+		t.Fatalf("eval meta = %+v, want {1 %d}", meta, pruneTestBigContent)
+	}
+	// 同一位置被剪、其余消息字节不动。
+	for i := range evalMsgs {
+		if i == 3 {
+			continue
+		}
+		if evalMsgs[i].Content != hookOut[i].Content {
+			t.Fatalf("msg %d diverged between hook and eval: %q vs %q", i, hookOut[i].Content, evalMsgs[i].Content)
+		}
+	}
+	wantEvalPtr := biz.ToolResultPrunePointer(pruneTestBigContent, "big_tool", "blob-call-1")
+	if evalMsgs[3].Content != wantEvalPtr {
+		t.Fatalf("eval pointer mismatch:\n got %q\nwant %q", evalMsgs[3].Content, wantEvalPtr)
+	}
+	if archived["call-1"] != big {
+		t.Fatal("eval archive must receive the original content")
+	}
+	// hook 侧指针与 eval 侧指针仅 locator 段不同，形状一致（同一构造函数）。
+	rep := repsH.byMessage[pruneRepKey("sess-prune", "call-1")]
+	if rep == nil {
+		t.Fatal("hook replacement must exist for pointer comparison")
+	}
+	wantHookPtr := biz.ToolResultPrunePointer(pruneTestBigContent, "big_tool", rep.ResultBlobID)
+	if hookOut[3].Content != wantHookPtr {
+		t.Fatalf("hook pointer mismatch:\n got %q\nwant %q", hookOut[3].Content, wantHookPtr)
 	}
 }

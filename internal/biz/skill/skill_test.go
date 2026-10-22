@@ -1407,3 +1407,65 @@ func sqrt64(v float64) float64 {
 	}
 	return z
 }
+
+// ── P0-7 A15：信任门禁 shadow 挂接点（去 ent 版：永不真拒）───────────────────
+
+// TestTrustGateHook_ShadowReportsNeverFilters 钉死 shadow 门禁在路由候选
+// 构造点的语义：逐候选上报、结果集原样返回（不过滤、不改写）。
+func TestTrustGateHook_ShadowReportsNeverFilters(t *testing.T) {
+	for _, entry := range []struct {
+		name string
+		call func(u *Usecase) ([]RuntimeCandidate, error)
+	}{
+		{"ListEnabledPublishedSkillCandidates", func(u *Usecase) ([]RuntimeCandidate, error) {
+			return u.ListEnabledPublishedSkillCandidates(context.Background())
+		}},
+		{"ListEnabledPublishedCandidates", func(u *Usecase) ([]RuntimeCandidate, error) {
+			return u.ListEnabledPublishedCandidates(context.Background())
+		}},
+	} {
+		t.Run(entry.name, func(t *testing.T) {
+			r := newMockRepo()
+			r.candidates = []RuntimeCandidate{
+				{SkillID: "s1", Slug: "a"},
+				{SkillID: "s2", Slug: "b", Source: "zip_import"},
+				{SkillID: "s3", Slug: "c", TrustLevel: "T4"},
+			}
+			u := NewUsecase(r, nil, loggateway.NewNoop())
+
+			var seen []RuntimeCandidate
+			u.SetTrustGateHook(func(c RuntimeCandidate) { seen = append(seen, c) })
+
+			got, err := entry.call(u)
+			if err != nil {
+				t.Fatalf("%s: %v", entry.name, err)
+			}
+			if len(got) != 3 {
+				t.Fatalf("%s: gate must never filter, got %d candidates", entry.name, len(got))
+			}
+			for i, c := range got {
+				if c.SkillID != r.candidates[i].SkillID || c.Slug != r.candidates[i].Slug {
+					t.Fatalf("%s: candidate %d rewritten: %+v vs %+v", entry.name, i, c, r.candidates[i])
+				}
+			}
+			if len(seen) != 3 {
+				t.Fatalf("%s: hook must observe all candidates, saw %d", entry.name, len(seen))
+			}
+		})
+	}
+}
+
+// TestTrustGateHook_NilIsZeroPath 钉死 OFF（nil hook）零行为变更。
+func TestTrustGateHook_NilIsZeroPath(t *testing.T) {
+	r := newMockRepo()
+	r.candidates = []RuntimeCandidate{{SkillID: "s1", Slug: "a"}}
+	u := NewUsecase(r, nil, loggateway.NewNoop())
+
+	got, err := u.ListEnabledPublishedSkillCandidates(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 1 || got[0].SkillID != "s1" {
+		t.Fatalf("unexpected candidates: %+v", got)
+	}
+}

@@ -38,12 +38,12 @@ const (
 // suffix/wildcard. Default empty = no behavior change.
 const allowHostsEnv = "ARANEA_OUTBOUND_ALLOW_HOSTS"
 
-// isExplicitlyAllowed reports whether host appears verbatim (case-insensitive)
-// in ARANEA_OUTBOUND_ALLOW_HOSTS. Exact match after trim/lower; a listed host
-// bypasses ALL subsequent block rules (localhost/.internal/private-IP), so
-// operators must only list hosts they fully control.
-func isExplicitlyAllowed(host string) bool {
-	raw := strings.TrimSpace(os.Getenv(allowHostsEnv))
+// AllowlistMatch is the PURE core of isExplicitlyAllowed (review 2026-10-21
+// §12.1-⑦ 零行为变更提炼：同 trim/lower/EqualFold 逐项语义，仅去掉 env 读取）。
+// rawAllowed is the raw ARANEA_OUTBOUND_ALLOW_HOSTS value (comma-separated);
+// empty/blank → false. Exact match, case-insensitive, NO suffix/wildcard.
+func AllowlistMatch(rawAllowed, host string) bool {
+	raw := strings.TrimSpace(rawAllowed)
 	if raw == "" {
 		return false
 	}
@@ -53,6 +53,63 @@ func isExplicitlyAllowed(host string) bool {
 		}
 	}
 	return false
+}
+
+// isExplicitlyAllowed reports whether host appears verbatim (case-insensitive)
+// in ARANEA_OUTBOUND_ALLOW_HOSTS. Exact match after trim/lower; a listed host
+// bypasses ALL subsequent block rules (localhost/.internal/private-IP), so
+// operators must only list hosts they fully control.
+func isExplicitlyAllowed(host string) bool {
+	return AllowlistMatch(os.Getenv(allowHostsEnv), host)
+}
+
+// ValidateAllowlist checks entries proposed for allowHostsEnv (review §12.1-⑧
+// 纯函数：NO env, NO DNS — 配置面/白名单编辑入口的 fail-closed 静态校验，
+// 防止把逃生门开成 SSRF 通道）。An entry is rejected when it:
+//   - is empty/blank, any "*" wildcard (allowlist 语义只有精确主机——后缀/通配
+//     一开 SSRF 即失守）, any URL form ("://") or path ("/"), or host:port;
+//   - is localhost / *.localhost / *.local (mDNS), or the deterministic cloud
+//     metadata host metadata.google.internal;
+//   - parses as an IP that isBlockedAddr would block (private/loopback/link-
+//     local/unspecified, incl. 169.254.169.254 这类链路本地元数据地址）。
+//
+// Bare hostnames and public IP literals are permitted (they still resolve at
+// validate time — this function only proves the ENTRY ITSELF is not a
+// foot-gun). Returns nil when every entry passes; the first error aborts.
+func ValidateAllowlist(hosts []string) error {
+	for _, raw := range hosts {
+		host := strings.TrimSpace(strings.ToLower(raw))
+		if host == "" {
+			return fmt.Errorf("outboundguard: allowlist entry is empty")
+		}
+		if strings.Contains(host, "*") {
+			// allowlist 语义是精确主机（无后缀/通配），任何形式的 "*" 都可能
+			// 把逃生门开成 SSRF 通道——fail-closed。
+			return fmt.Errorf("outboundguard: wildcard allowlist entry %q is not allowed", raw)
+		}
+		if strings.Contains(host, "://") || strings.Contains(host, "/") {
+			return fmt.Errorf("outboundguard: allowlist entry %q must be a bare host (no scheme/path)", raw)
+		}
+		if strings.Contains(host, ":") {
+			if _, err := netip.ParseAddr(host); err != nil {
+				// IPv6 字面量自带冒号可解析；其余含冒号形态一律按 host:port 拒绝。
+				return fmt.Errorf("outboundguard: allowlist entry %q must not carry a port", raw)
+			}
+		}
+		if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") {
+			return fmt.Errorf("outboundguard: allowlist entry %q must not be a loopback/mDNS name", raw)
+		}
+		if host == "metadata.google.internal" {
+			// 确定性云元数据主机必须 refuse（§12.1-⑧）；裸 *.internal 名称按
+			// 设计允许——host.docker.internal 正是 allowHostsEnv 的既定逃生
+			// 场景，运营商对自列主机全权负责（同 isExplicitlyAllowed 语义）。
+			return fmt.Errorf("outboundguard: allowlist entry %q is a cloud metadata host", raw)
+		}
+		if addr, err := netip.ParseAddr(host); err == nil && isBlockedAddr(addr) {
+			return fmt.Errorf("outboundguard: allowlist entry %q is a non-public address", raw)
+		}
+	}
+	return nil
 }
 
 // ValidateURL checks that rawURL:

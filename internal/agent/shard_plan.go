@@ -318,6 +318,11 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 	if deps.ToolResultGate != nil {
 		cfg.BlobReader = deps.ToolResultGate.BlobReader()
 	}
+	// P0-2 批 B：read_tool_result 的 locator 回读消费口（nil → read 工具保持
+	// 字节级旧行为；孤僻 deps 时仍读 blob repo 直接取回）。
+	if deps.Spill != nil && deps.Spill.Enabled() {
+		cfg.SpillStore = deps.Spill.Store
+	}
 
 	cfg.OutboundRouter = deps.OutboundRouter
 	cfg.SubAgentService = deps.SubAgentService

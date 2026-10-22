@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
@@ -167,6 +168,14 @@ type ToolDecoratorConfig struct {
 	// 0 = use DefaultStreamBudget. A negative value disables the budget
 	// (unlimited, not recommended for production).
 	StreamBudget int
+	// Spill is the P0-2 overflow preservation gate (batch-A gray switch,
+	// default OFF). Nil / nil-Store keeps the legacy behavior byte-identical:
+	// when the artifact offload is unavailable the result falls through to the
+	// classic truncation envelope. When set, an offload failure first spills
+	// the full payload via toolspill and injects a locator envelope; if the
+	// spill itself fails the content is preserved whole with an explicit
+	// enforcement=partial note (never silently truncated).
+	Spill *toolspill.Deps
 }
 
 // ToolDecorator wraps a CallableTool with three capabilities:
@@ -583,6 +592,13 @@ func (d *ToolDecorator) truncateResult(ctx context.Context, jsonArgs []byte, res
 		}
 		return envelope
 	}
+	// P0-2 (design §3.4): the truncation point is a preservation point. When a
+	// spill store is configured, an offload failure no longer falls straight
+	// into lossy truncation — the full payload is persisted to the workspace
+	// spill store and the model receives a resolvable locator envelope.
+	if envelope, ok := d.spillOversizedResult(ctx, data); ok {
+		return liftExecReceipt(envelope, result)
+	}
 	mode := budget.Mode
 	if mode == "" {
 		mode = "tail"
@@ -709,6 +725,80 @@ func (d *ToolDecorator) offloadResult(ctx context.Context, jsonArgs, data []byte
 		"preview_tail":  string(tail),
 		"read_hint": "Result too large for context. Full JSON saved to ref. " +
 			"Use read_file with file_name=ref and start_line/num_lines to page through it.",
+	}, true
+}
+
+// spillOversizedResult implements the P0-2 spill branch of truncateResult
+// (design §3.4/§3.8): called only after the artifact offload could not run.
+//
+// Returns (envelope, true) in exactly three situations:
+//   - spill succeeded: the model receives a locator envelope with dual-end
+//     previews and a read hint (spilled=true), byte-faithful retrieval via
+//     read_tool_result;
+//   - spill attempted but failed even after one retry: the full payload is
+//     preserved with an explicit enforcement=partial note
+//     (spill_failed=true) instead of being silently truncated, and the
+//     Important-level tool_result.spill_failed signal is reported;
+//   - in every other case (gate OFF, or no session identity to scope the
+//     spill to) it returns (nil, false) so the caller emits the classic
+//     truncation envelope — the default-OFF path stays byte-identical.
+func (d *ToolDecorator) spillOversizedResult(ctx context.Context, data []byte) (map[string]any, bool) {
+	deps := d.cfg.Spill
+	if !deps.Enabled() {
+		return nil, false
+	}
+	sessionID := ""
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
+		sessionID = inv.Session.ID
+	}
+	if sessionID == "" {
+		// Spill records are session-scoped by design (cross-session reads are
+		// denied). Without a session identity there is nothing to safely key
+		// the record on, so keep the pre-existing truncation behavior.
+		return nil, false
+	}
+	name := d.toolName()
+	loc, err := toolspill.PutWithRetry(ctx, deps.Store, toolspill.Record{
+		SessionID: sessionID,
+		Tool:      name,
+		Content:   data,
+	})
+	if err != nil {
+		// Honest partial enforcement (design §3.5 mitigation 2): preserve the
+		// full payload, mark it explicitly, and report the failure. Downstream
+		// gates (BeforeModel RunResultGate at 50K chars, assembly budget)
+		// still bound what reaches the model window.
+		d.cfg.Logger.Warn("tool result spill failed, preserving full output (enforcement=partial)",
+			loggateway.StepID("tool.decorator.spill"),
+			loggateway.Str("tool", name),
+			loggateway.Int("original_size", len(data)),
+			loggateway.Err(err),
+		)
+		deps.ReportSpillFailed(ctx, d.cfg.Logger, "tool.decorator.spill", sessionID, err)
+		return map[string]any{
+			"spill_failed":  true,
+			"original_size": len(data),
+			"total_lines":   countTotalLines(data),
+			"content":       string(data) + toolspill.PartialPreservedNote,
+		}, true
+	}
+	head := data
+	if len(head) > offloadPreviewHeadBytes {
+		head = head[:offloadPreviewHeadBytes]
+	}
+	tail := data
+	if len(tail) > offloadPreviewTailBytes {
+		tail = tail[len(tail)-offloadPreviewTailBytes:]
+	}
+	return map[string]any{
+		"spilled":       true,
+		"locator":       loc.String(),
+		"tool":          name,
+		"original_size": len(data),
+		"total_lines":   countTotalLines(data),
+		"preview_head":  string(head),
+		"preview_tail":  string(tail),
+		"read_hint":     loc.RetrievalHint(),
 	}, true
 }
 

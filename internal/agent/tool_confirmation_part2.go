@@ -22,7 +22,13 @@ import (
 // (hitl_approval，设计 §3.2 row 2)。flowlog 先写；collector 为 nil 时记
 // collector_nil 错误，不再静默跳过（D1）。四出口分支各一次。
 // blockCause 仅无回复通道分支使用（"no_reply_channel"）。
-func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.Context, toolKey, toolCallID, gateReason, outcome, reply string, arguments []byte, blockCause string) {
+//
+// P0-5 对偶审计（批 A12）：correlationID 为确认卡 activity id（首张卡，重试
+// 补发沿用）——asked/decided 两个半部以同一 correlation_id 配对联结（ability
+// 可回收）。无确认卡的出口（grant_skip / no_reply_channel）传空串（此时也无
+// approval.asked 半部，语义诚实：无人被真正询问过）。事件定级 AS-EVT-01=
+// Important（decision_records 经 outbox BlockUpTo；不进 Critical lane）。
+func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.Context, toolKey, toolCallID, gateReason, outcome, reply string, arguments []byte, blockCause string, correlationID string) {
 	userID := toolConfirmUserID(ctx)
 	if userID == "" {
 		userID = "unknown"
@@ -34,6 +40,9 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	metadata := map[string]any{"decision_reason": gateReason}
 	if blockCause != "" {
 		metadata["block_cause"] = blockCause
+	}
+	if correlationID != "" {
+		metadata["correlation_id"] = correlationID
 	}
 
 	reasoning := ""
@@ -72,6 +81,50 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 		Outcome:         outcome,
 		ActorType:       decision.ActorHuman,
 		ActorKey:        userID,
+		RelatedEntities: entities,
+		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID, SessionID: sessionID},
+		Metadata:        metadata,
+	}, "system.gate.hitl_approval", scenario, flowPairs...)
+}
+
+// emitToolConfirmAskedRecord 落 approval.asked 对偶半部（P0-5 批 A12）：确认
+// 卡发出即记——此前只有 decided 侧五出口，asked 事件全缺，被 never/超时拒绝
+// 的调用无独立审计轨迹。outcome=asked、Actor=system:hitl_approval；correlation
+// 锚定首张确认卡 activity id，与后续 decided 半部配对（重试补发第二卡沿用
+// 首个 id，保证整场确认流程 1:1 成对）。事件定级 AS-EVT-01=Important（同
+// decided 半部：decision_records 经 outbox BlockUpTo，不进 Critical lane）。
+// collector=nil 时 flowlog 仍落（EmitDecision D1 不变量）。
+func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Context, toolKey, toolCallID, gateReason, correlationID string, arguments []byte) {
+	if strings.TrimSpace(correlationID) == "" {
+		return
+	}
+	scenario := fmt.Sprintf("工具确认请求: %s (%s)", toolKey, gateReason)
+	if target := strings.TrimSpace(previewFromToolArgs(arguments)); target != "" {
+		scenario += " 目标: " + target
+	}
+	metadata := map[string]any{
+		"decision_reason": gateReason,
+		"correlation_id":  correlationID,
+	}
+	entities := []decision.EntityRef{{Type: "tool", Key: toolKey}}
+	if h.ag.AgentKey != "" {
+		entities = append(entities, decision.EntityRef{Type: "agent", Key: h.ag.AgentKey})
+	}
+	sessionID := toolConfirmSessionID(ctx)
+	if sessionID != "" {
+		metadata["session_id"] = sessionID
+	}
+	flowPairs := []event.Pair{event.P("trigger", "hitl_approval"), event.P("outcome", "asked")}
+	if toolKey != "" {
+		flowPairs = append(flowPairs, event.P("tool_key", toolKey))
+	}
+	event.EmitDecision(ctx, h.deps.DecisionCollector, decision.Record{
+		DecisionKey:     uuid.NewString(),
+		Category:        decision.CategoryHITLApproval,
+		Scenario:        scenario,
+		Outcome:         "asked",
+		ActorType:       decision.ActorSystem,
+		ActorKey:        "system:hitl_approval",
 		RelatedEntities: entities,
 		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID, SessionID: sessionID},
 		Metadata:        metadata,

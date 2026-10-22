@@ -55,6 +55,14 @@ type turnStreamConsumer struct {
 	// goroutine 访问，无需锁。
 	seenResponseIDs map[string]struct{}
 	seenToolCallIDs map[string]struct{}
+
+	// ── P0-4（A9）invalid 分类观测（consume 循环单 goroutine 访问）──
+	// sawFinishReason / lastFinishReason 记录流期间是否观察到 finish_reason
+	// 及其最后取值；lastErrorType 记录最后一个错误事件的 Type。三者只在此
+	// 处累积事实，分类决策全部留给纯函数 ClassifyInvalidStream。
+	sawFinishReason  bool
+	lastFinishReason string
+	lastErrorType    string
 }
 
 // streamEventSampleInterval 是高频流式事件日志的采样间隔（首条 + 每 N 条）。
@@ -305,6 +313,8 @@ func (c *turnStreamConsumer) markFirstByte(ev *trpcevent.Event) {
 		return
 	}
 	c.received = true
+	// P0-4（A10）：首字节事实——区分「零产出」与「半截产出」的重试语义。
+	c.result.PartialContentHadFirstByte = true
 	ttft := time.Since(c.consumeStart)
 	c.result.FirstTokenMs = int(ttft.Milliseconds())
 	evType := "unknown"
@@ -404,12 +414,18 @@ func (c *turnStreamConsumer) countToolCall(id string) {
 	}
 	c.seenToolCallIDs[id] = struct{}{}
 	c.result.ToolCallCount++
+	// P0-4（A10）：本轮流内已观察到带 ID 的 tool_call 信封——
+	// invalid-retry 的重复副作用闸门（重发整轮会重复执行工具）。
+	c.result.ToolCallDispatched = true
 }
 
 func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 	if ev.Response != nil && ev.Response.Error != nil {
 		c.result.HasError = true
 		c.result.LastError = ev.Response.Error.Message
+		// P0-4（A9）：记录错误 Type 供 invalid 分类（EOF / stream_error /
+		// content_filter 等由 ClassifyInvalidStream 统一判定）。
+		c.lastErrorType = ev.Response.Error.Type
 	}
 
 	c.projectAndTrackTools(ev)
@@ -476,6 +492,12 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 
 	partial := ev.Response.IsPartial
 	for _, choice := range ev.Response.Choices {
+		// P0-4（A9）：跟踪 finish_reason——无效分类的权威终态信号
+		// （stop/length/content_filter…），由 finalize 打标 InvalidKind。
+		if choice.FinishReason != nil {
+			c.sawFinishReason = true
+			c.lastFinishReason = *choice.FinishReason
+		}
 		if c.doomDetector != nil {
 			text, _ := ChoiceStreamContent(choice, partial)
 			// Filter short structural deltas: they repeat legitimately and
@@ -556,6 +578,22 @@ func (c *turnStreamConsumer) drainEventsAsync(events <-chan *trpcevent.Event) {
 }
 
 func (c *turnStreamConsumer) finalize() {
+	// P0-4（A9）：单一打标点——所有终止路径（正常收官/doom 早退/首字节
+	// 守卫判死/panic 兜底）都汇入 finalize，此处把 consume 期间收集的事实
+	// 交给纯分类器，结果写入 result.InvalidKind。消费端本身不做任何处置
+	// 决策（处置在 turn_invalid_retry.go 的表驱动判定）。
+	c.result.InvalidKind = ClassifyInvalidStream(StreamInvalidObs{
+		SawFinishReason:    c.sawFinishReason,
+		FinishReason:       c.lastFinishReason,
+		HasContent:         c.result.HasContent,
+		ToolCallDispatched: c.result.ToolCallDispatched,
+		DoomLoopDetected:   c.result.DoomLoopDetected,
+		FirstByteTimedOut:  c.result.FirstByteTimedOut,
+		Canceled:           c.canceled,
+		HasError:           c.result.HasError,
+		LastError:          c.result.LastError,
+		LastErrorType:      c.lastErrorType,
+	})
 	// v2 path: finalize the v2 turn. OnTurnEndEnhanced handles stuck-tool
 	// detection, remaining-step finalization, and emits turn.completed +
 	// task.completed. Close is a no-op for the per-turn v2 projector.

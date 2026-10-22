@@ -52,8 +52,8 @@ const (
 )
 
 type EventStreamResult struct {
-	Reply         strings.Builder
-	Reasoning     strings.Builder
+	Reply     strings.Builder
+	Reasoning strings.Builder
 	// PromptTok/CompletionTok/CachedTok are BILLING totals summed across all
 	// LLM rounds of the turn (each tool-call round re-sends the full prompt
 	// and is billed separately). Use these for cost/quota recording.
@@ -118,6 +118,21 @@ type EventStreamResult struct {
 	// detecting repetitive LLM output (doom loop). Callers should treat the
 	// reply as truncated and may retry with different sampling parameters.
 	DoomLoopDetected bool
+	// ── P0-4（A9/A10）invalid-retry 四字段（设计 §12.2② 裁决：正好是这 4 个，
+	//    不得扩列）──
+	// InvalidKind 是消费端 finalize 时经纯分类器 ClassifyInvalidStream 给本
+	// 次流式 turn 打的无效类别；None = 正常收官或既有语义路径接管。
+	InvalidKind StreamInvalidKind
+	// ToolCallDispatched 为 true 表示本轮流内观察到过至少一个带 ID 的
+	// tool_call 信封（≈ 工具已被模型请求/执行）——invalid-retry 据此禁止
+	// 任何整轮重发（重复副作用闸门）。
+	ToolCallDispatched bool
+	// PartialContentHadFirstByte 为 true 表示消费端观察到过首个有效模型
+	// 字节（流确实起过活）；供调用方区分「零产出」与「半截产出」。
+	PartialContentHadFirstByte bool
+	// InvalidRetryAttempts 记录 invalid-retry 助手实际执行过的重试次数
+	// （不含首次尝试；未启用/未重试时为 0）。
+	InvalidRetryAttempts int
 }
 
 func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {

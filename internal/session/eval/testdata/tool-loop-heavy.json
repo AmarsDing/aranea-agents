@@ -1,0 +1,136 @@
+{
+  "name": "tool-loop-heavy",
+  "provenance": "2026-10-21 A8 冻结。构造口径：工作区无真实会话导出可冻结，文本按 B 区 UPS 巡检工具链真实输出形状合成（status/deep_probe/报告脚本日志 + 一条超时错误 + 知识库命中），all bodies synthesized in-tree > 1024B（错误条目同为超尺寸）。config after_turns=2 size_bytes=1024。protected=[5,11]：idx 5 「Error: 」前缀错误结果 K 轮外超尺寸仍不剪（失败重试证据豁免）；idx 11 knowledge_search 检索豁免不剪。idx 3/8 code_execute 折叠（locators spill://fs/eval-call-1、spill://fs/eval-call-3）；idx 14 在 K 轮内不剪。",
+  "config": {
+    "enabled": true,
+    "after_turns": 2,
+    "size_bytes": 1024
+  },
+  "protected_indices": [
+    5,
+    11
+  ],
+  "locators": {
+    "spill://fs/eval-call-1": "ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, interval 5s, samples 60/60 complete\n---- raw ----ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ",
+    "spill://fs/eval-call-3": "ups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current within spec\nverdict: healthy\n---- raw ----ups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current w"
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是 Aranea 数据中心的巡检助手。"
+    },
+    {
+      "role": "user",
+      "content": "巡检 B 区 UPS"
+    },
+    {
+      "role": "assistant",
+      "content": "先拉取状态总览。",
+      "tool_calls": [
+        {
+          "id": "call-1",
+          "name": "code_execute",
+          "args": "{\"cmd\":\"ups_status.sh --zone B\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, interval 5s, samples 60/60 complete\n---- raw ----ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ups_status.sh --zone B\n[B-UPS-01] online, load 41%, battery 96%, temp 28.1C\n[B-UPS-02] online, load 38%, battery 94%, temp 27.6C\n[B-PDU-03] branch 7 current 12.4A (threshold 16A)\nsample window: 300s, ",
+      "tool_name": "code_execute",
+      "tool_id": "call-1"
+    },
+    {
+      "role": "assistant",
+      "content": "做深度自检。",
+      "tool_calls": [
+        {
+          "id": "call-2",
+          "name": "code_execute",
+          "args": "{\"cmd\":\"ups_deep_probe.sh --zone B --full\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: command timed out after 30s: ups_deep_probe.sh --zone B --full\npartial stdout before SIGTERM:\n[B-UPS-02] battery self-test started\n[B-UPS-02] discharge ramp 5% -> 10% ...\n(to be retried with higher timeout)Error: command timed out after 30s: ups_deep_probe.sh --zone B --full\npartial stdout before SIGTERM:\n[B-UPS-02] battery self-test started\n[B-UPS-02] discharge ramp 5% -> 10% ...\n(to be retried with hiError: command timed out after 30s: ups_deep_probe.sh --zone B --full\npartial stdout before SIGTERM:\n[B-UPS-02] battery self-test started\n[B-UPS-02] discharge ramp 5% -> 10% ...\n(to be retried with hiError: command timed out after 30s: ups_deep_probe.sh --zone B --full\npartial stdout before SIGTERM:\n[B-UPS-02] battery self-test started\n[B-UPS-02] discharge ramp 5% -> 10% ...\n(to be retried with hiError: command timed out after 30s: ups_deep_probe.sh --zone B --full\npartial stdout before SIGTERM:\n[B-UPS-02] battery self-test started\n[B-UPS-02] discharge ramp 5% -> 10% ...\n(to be retried with hiError: command timed out after 30s: ups_deep_probe.sh --zone B --full\npartial stdout before SIGTERM:\n[B-UPS-02] battery self-test started\n[B-UPS-02] discharge ramp 5% -> 10% ...\n(to be retried with hi",
+      "tool_name": "code_execute",
+      "tool_id": "call-2"
+    },
+    {
+      "role": "user",
+      "content": "超时了？重试并加 -v"
+    },
+    {
+      "role": "assistant",
+      "content": "提高超时重跑。",
+      "tool_calls": [
+        {
+          "id": "call-3",
+          "name": "code_execute",
+          "args": "{\"cmd\":\"ups_deep_probe.sh --zone B --full --timeout 120 -v\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "ups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current within spec\nverdict: healthy\n---- raw ----ups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current wups_deep_probe.sh --zone B --full --timeout 120 -v\n[B-UPS-02] self-test PASS, runtime estimate 27min at 38% load\n[B-UPS-02] cell voltages: 13.62 13.60 13.61 13.59 (uniform)\n[B-UPS-02] ripple current w",
+      "tool_name": "code_execute",
+      "tool_id": "call-3"
+    },
+    {
+      "role": "user",
+      "content": "顺便查下知识库里的 UPS 手册"
+    },
+    {
+      "role": "assistant",
+      "content": "检索自检判定标准。",
+      "tool_calls": [
+        {
+          "id": "call-4",
+          "name": "knowledge_search",
+          "args": "{\"query\":\"UPS 电池自检 判定\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[{\"chunk_id\":\"kb-ups-011\",\"score\":0.93,\"text\":\"UPS 电池自检期间负载比率短暂波动属正常，观察窗内无需干预；\"},{\"chunk_id\":\"kb-ups-012\",\"score\":0.88,\"text\":\"单体电压差 > 0.2V 时应安排均衡充电并生成工单。\"}] 检索补充：[{\"chunk_id\":\"kb-ups-011\",\"score\":0.93,\"text\":\"UPS 电池自检期间负载比率短暂波动属正常，观察窗内无需干预；\"},{\"chunk_id\":\"kb-ups-012\",\"score\":0.88,\"text\":\"单体电压差 > 0.2V 时应安排均衡充电并生成工单。\"}] 检索补充：[{\"chunk_id\":\"kb-ups-011\",\"score\":0.93,\"text\":\"UPS 电池自检期间负载比率短暂波动属正常，观察窗内无需干预；\"},{\"chunk_id\":\"kb-ups-012\",\"score\":0.88,\"text\":\"单体电压差 > 0.2V 时应安排均衡充电并生成工单。\"}] 检索补充：[{\"chunk_id\":\"kb-ups-011\",\"score\":0.9[{\"chunk_id\":\"kb-ups-011\",\"score\":0.93,\"text\":\"UPS 电池自检期间负载比率短暂波动属正常，观察窗内无需干预；\"},{\"chunk_id\":\"kb-ups-012\",\"score\":0.88,\"text\":\"单体电压差 > 0.2V 时应安排均衡充电并生成工单。\"}] 检索补充：[{\"chunk_id\":\"kb-ups-011\",\"score\":0.9[{\"chunk_id\":\"kb-ups-011\",\"score\":0.93,\"text\":\"UPS 电池自检期间负载比率短暂波动属正常，观察窗内无需干预；\"},{\"chunk_id\":\"kb-ups-012\",\"score\":0.88,\"text\":\"单体电压差 > 0.2V 时应安排均衡充电并生成工单。\"}] 检索补充：[{\"chunk_id\":\"kb-ups-011\",\"score\":0.9",
+      "tool_name": "knowledge_search",
+      "tool_id": "call-4"
+    },
+    {
+      "role": "user",
+      "content": "整理结论"
+    },
+    {
+      "role": "assistant",
+      "content": "生成周报。",
+      "tool_calls": [
+        {
+          "id": "call-5",
+          "name": "code_execute",
+          "args": "{\"cmd\":\"report_compose.sh --zone B --since 7d\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "report_compose.sh --zone B --since 7d\naggregated 168 hourly samples\nB-UPS-01: avail 100.00%, max load 46%\nB-UPS-02: avail 99.99%, max load 44%\nanomalies: none after retry\nreport written to /var/reports/B-zone-ups-weekly.md\n---- raw ----report_compose.sh --zone B --since 7d\naggregated 168 hourly samples\nB-UPS-01: avail 100.00%, max load 46%\nB-UPS-02: avail 99.99%, max load 44%\nanomalies: none after retry\nreport written to /var/reportreport_compose.sh --zone B --since 7d\naggregated 168 hourly samples\nB-UPS-01: avail 100.00%, max load 46%\nB-UPS-02: avail 99.99%, max load 44%\nanomalies: none after retry\nreport written to /var/reportreport_compose.sh --zone B --since 7d\naggregated 168 hourly samples\nB-UPS-01: avail 100.00%, max load 46%\nB-UPS-02: avail 99.99%, max load 44%\nanomalies: none after retry\nreport written to /var/reportreport_compose.sh --zone B --since 7d\naggregated 168 hourly samples\nB-UPS-01: avail 100.00%, max load 46%\nB-UPS-02: avail 99.99%, max load 44%\nanomalies: none after retry\nreport written to /var/reportreport_compose.sh --zone B --since 7d\naggregated 168 hourly samples\nB-UPS-01: avail 100.00%, max load 46%\nB-UPS-02: avail 99.99%, max load 44%\nanomalies: none after retry\nreport written to /var/report",
+      "tool_name": "code_execute",
+      "tool_id": "call-5"
+    },
+    {
+      "role": "user",
+      "content": "ok"
+    },
+    {
+      "role": "assistant",
+      "content": "结论：B 区 UPS 健康，初次超时为重试后恢复，无遗留异常。"
+    },
+    {
+      "role": "user",
+      "content": "归档吧"
+    }
+  ]
+}

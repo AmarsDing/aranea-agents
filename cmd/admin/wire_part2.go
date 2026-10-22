@@ -135,6 +135,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideToolTester,
 		provideParallelToolExecutor,
 		provideToolUsecaseWithDeps,
+		// P0-2 批 B（2026-10-22）：toolspill 依赖束（deps=nil 即四消费点灰闸 OFF）
+		provideToolSpillDeps,
 		provideChatServiceDeps,
 		provideRuntimeTooling,
 

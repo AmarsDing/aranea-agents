@@ -31,6 +31,7 @@ import (
 	"aranea-agents/internal/tools/codingbridge"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	workingmemory "aranea-agents/internal/tools/working_memory"
+	"aranea-agents/internal/toolspill"
 
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
@@ -572,6 +573,9 @@ type SessionConfig struct {
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
 	BlobReader      biz.ToolResultBlobReader
+	// SpillStore 是 P0-2 locator 回读消费口（批 B）；nil → read_tool_result 走
+	// blob repo 直接取回（老行为）。
+	SpillStore      toolspill.Store
 	// ClientBridge is the process-wide client tool bridge singleton. Optional:
 	// when nil, the "client" ToolSet is skipped even if enabled.
 	ClientBridge *clientbridge.Bridge

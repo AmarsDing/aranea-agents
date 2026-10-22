@@ -459,6 +459,34 @@ type Usecase struct {
 	tagRepo          TagRepo
 
 	runtimeInvalidator RuntimeCacheInvalidator
+
+	// trustGateHook 为 P0-7 信任门禁 shadow 挂接点（A15 去 ent 版）。
+	// 非 nil 时对每个路由候选求值并上报告警/日志；**永不真拒、永不改写
+	// 候选集**——过滤执行随 Batch B 的 off→shadow→on 三档 rollout 落地。
+	// nil = 门禁 OFF = 零行为变更。
+	trustGateHook TrustGateHook
+}
+
+// TrustGateHook 在路由候选构造点消费单条候选的信任判定输入。
+// 闭包由 biz 包（internal/biz/skill_trust.go）注入，携带解析与日志策略，
+// 避免 skill 包向上依赖 biz。
+type TrustGateHook func(c RuntimeCandidate)
+
+// SetTrustGateHook wires the shadow trust gate recorder.
+// Called once during DI setup; not safe for concurrent use with reads.
+func (u *Usecase) SetTrustGateHook(h TrustGateHook) {
+	u.trustGateHook = h
+}
+
+// reportTrustGateShadow 在路由候选集构造之后、返回之前逐条上报。
+// 门禁语义：只观测不过滤（shadow），结果集原样返回。
+func (u *Usecase) reportTrustGateShadow(candidates []RuntimeCandidate) {
+	if u.trustGateHook == nil {
+		return
+	}
+	for _, c := range candidates {
+		u.trustGateHook(c)
+	}
 }
 
 // RuntimeCacheInvalidator 主动失效面向运行时的 Skill 缓存（trpc Repository
@@ -712,7 +740,13 @@ func (u *Usecase) ListEnabledPublishedSkillRefs(ctx context.Context) ([]EnabledR
 }
 
 func (u *Usecase) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error) {
-	return u.repo.ListEnabledPublishedSkillCandidates(ctx)
+	candidates, err := u.repo.ListEnabledPublishedSkillCandidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 信任门禁 shadow（P0-7 A15）：路由候选构造点上报，永不真拒。
+	u.reportTrustGateShadow(candidates)
+	return candidates, nil
 }
 
 func (u *Usecase) RecordInvocation(ctx context.Context, in InvocationWrite) error {
@@ -885,7 +919,13 @@ func (u *Usecase) GetBySlug(ctx context.Context, slug string) (Skill, error) {
 
 // ListEnabledPublishedCandidates is a shorter alias for ListEnabledPublishedSkillCandidates.
 func (u *Usecase) ListEnabledPublishedCandidates(ctx context.Context) ([]RuntimeCandidate, error) {
-	return u.repo.ListEnabledPublishedSkillCandidates(ctx)
+	candidates, err := u.repo.ListEnabledPublishedSkillCandidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 信任门禁 shadow（P0-7 A15）：与正名入口保持同一上报路径，永不真拒。
+	u.reportTrustGateShadow(candidates)
+	return candidates, nil
 }
 
 // ── Skill invocation source constants ─────────────────────────────────────────
@@ -1053,6 +1093,12 @@ type RuntimeCandidate struct {
 	// Triggers 来自 SKILL.md frontmatter 的确定性触发词（P1-3）。
 	// 命中用户输入时在路由层强制纳入并置顶，不依赖模型自觉加载。
 	Triggers []string
+	// TrustLevel / Source 承载 P0-7 信任元数据（ent 列 trust_level/source 与
+	// 回填迁移随 Batch B 落地后由 data 层填充）；当前恒零值，经
+	// biz.DefaultTrustForSource 解析为存量默认档（T3 可加载），
+	// 与门禁上线前行为一致。
+	TrustLevel string
+	Source     string
 }
 
 // ParseRuntimePolicy unmarshals skill_runtime_json with safe defaults.

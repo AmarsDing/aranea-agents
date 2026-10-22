@@ -21,6 +21,7 @@ import (
 	"aranea-agents/internal/tools/skillrecommend"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -156,6 +157,11 @@ type TRPCExtensionDeps struct {
 	// Optional: when nil, category responsibility injection is skipped.
 	Organization   *biz.OrganizationUsecase
 	ToolResultGate *biz.ToolResultGate
+	// Spill（P0-2 批 B 2026-10-22）：toolspill 依赖束，wire 由
+	// conf.Runtime.ToolResultSpillConfig() 翻译后构造。nil *Deps（或
+	// Deps.Store==nil）→ 四消费点（decorator / output limiter /
+	// tool-result gate / read_tool_result）全部保持字节级旧行为（灰闸 OFF）。
+	Spill *toolspill.Deps
 	// ToolResultPrune 是 R2 确定性剪枝 hook 的消费侧配置（wire 由
 	// conf.Runtime.ToolResultPruneConfig() 翻译）。零值 Enabled=false →
 	// hook 不注册（一键回退）。

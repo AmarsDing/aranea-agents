@@ -85,3 +85,49 @@ func TestLoadEnvConfigFallbackPolicy(t *testing.T) {
 		t.Fatalf("typo must normalize to degrade: got policy %q", cfg.FallbackPolicy)
 	}
 }
+
+// SurfacePolicy 解析矩阵（P0-1 ③/§12.1-⑧）：3 固定面 × 3 值；空值为现状
+// degrade；非三值 typo 全部 fail-closed 归一 refuse（宁可拍死不可放宽）。
+// 归一风格沿用上方 FallbackPolicy 先例（ToLower+TrimSpace）。
+func TestLoadEnvConfigSurfacePolicy(t *testing.T) {
+	// 默认零值：三面全 degrade（零行为变更契约）。
+	t.Setenv("CODE_EXECUTOR_POLICY_CHAT_CODEEXEC", "")
+	t.Setenv("CODE_EXECUTOR_POLICY_SKILL_GATE", "")
+	t.Setenv("CODE_EXECUTOR_POLICY_MONITOR", "")
+	cfg := codeexecutor.LoadEnvConfig()
+	for _, s := range []codeexecutor.Surface{codeexecutor.SurfaceChatCodeexec, codeexecutor.SurfaceSkillGate, codeexecutor.SurfaceMonitor} {
+		if got := cfg.Policy.For(s); got != codeexecutor.PolicyDegrade {
+			t.Fatalf("default surface %s=%q, want degrade", s, got)
+		}
+	}
+
+	// 三值各自生效（大小写/空白不敏感）。
+	t.Setenv("CODE_EXECUTOR_POLICY_CHAT_CODEEXEC", " Enforce ")
+	t.Setenv("CODE_EXECUTOR_POLICY_SKILL_GATE", "REFUSE")
+	t.Setenv("CODE_EXECUTOR_POLICY_MONITOR", "degrade")
+	cfg = codeexecutor.LoadEnvConfig()
+	if got := cfg.Policy.For(codeexecutor.SurfaceChatCodeexec); got != codeexecutor.PolicyEnforce {
+		t.Fatalf("chat=%q, want enforce", got)
+	}
+	if got := cfg.Policy.For(codeexecutor.SurfaceSkillGate); got != codeexecutor.PolicyRefuse {
+		t.Fatalf("skill_gate=%q, want refuse", got)
+	}
+	if got := cfg.Policy.For(codeexecutor.SurfaceMonitor); got != codeexecutor.PolicyDegrade {
+		t.Fatalf("monitor=%q, want degrade", got)
+	}
+
+	// typo → fail-closed refuse（与 FallbackPolicy typo→degrade 相反，刻意：
+	// 面级策略 typo 放宽执行面风险更高）。
+	t.Setenv("CODE_EXECUTOR_POLICY_SKILL_GATE", "enforcce")
+	if cfg = codeexecutor.LoadEnvConfig(); cfg.Policy.For(codeexecutor.SurfaceSkillGate) != codeexecutor.PolicyRefuse {
+		t.Fatalf("typo must normalize to refuse: got %q", cfg.Policy.For(codeexecutor.SurfaceSkillGate))
+	}
+
+	// 未知面 → degrade（防 typo 面名把面误拍死）。
+	if got := cfg.Policy.For(codeexecutor.Surface("nope")); got != codeexecutor.PolicyDegrade {
+		t.Fatalf("unknown surface=%q, want degrade", got)
+	}
+	if got := cfg.Policy.For(""); got != codeexecutor.PolicyDegrade {
+		t.Fatalf("empty surface=%q, want degrade", got)
+	}
+}

@@ -22,21 +22,79 @@ var _ biz.SandboxRunner = (*SandboxRunner)(nil)
 // for isolated execution when available.
 type SandboxRunner struct {
 	uc       *biz.SkillIntelligenceUsecase
+	factory  *codeexecutor.Factory          // per-surface policy read (may be nil）
 	executor trpcagentcodeexec.CodeExecutor // optional, nil = rule-based only
 	lg       loggateway.Logger
 }
 
 // NewSandboxRunner creates a SandboxRunner with optional CodeExecutor.
 // If executor is nil, only rule-based validation is performed.
+//
+// Executor 经 per-surface 显式链解析（P0-1 doNow ③：skill_gate 面由
+// SurfacePolicy 决定 degradede/enforce/refuse；默认 degrade = 旧硬编码
+// Resolve(TypeLocal) 同语义，零行为变更）。executor==nil 不再静默放行：
+// 校验结果追加结构化 skipped check（见 executorUnavailableCheck）。
 func NewSandboxRunner(uc *biz.SkillIntelligenceUsecase, factory *codeexecutor.Factory, lg loggateway.Logger) *SandboxRunner {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	var executor trpcagentcodeexec.CodeExecutor
 	if factory != nil {
-		executor = factory.Resolve(context.Background(), codeexecutor.TypeLocal, "")
+		executor = factory.ResolveForSurface(context.Background(), codeexecutor.SurfaceSkillGate, "")
 	}
-	return &SandboxRunner{uc: uc, executor: executor, lg: lg}
+	return &SandboxRunner{uc: uc, factory: factory, executor: executor, lg: lg}
+}
+
+// executorUnavailableCheck builds the structured skipped check appended when
+// the code executor is unavailable (§12.1-③：与既有 check{Name,Passed,Message}
+// JSON 对齐，不新增顶层键）：
+//   - 默认 degrade（含无 factory）：可见降级跳过（Passed=true，明示 skipped，
+//     不再是静默通过）；
+//   - 面级 enforce/refuse 或全局 strict（83 FR-3）：fail-closed（Passed=false）
+//     ——fail-closed 仅限严格语义（评审 doNow ③/§2.5 #1：严格下宁可门禁变严
+//     可见，不可静默跳过执行校验）。
+func (s *SandboxRunner) executorUnavailableCheck() check {
+	passed := true
+	msg := "code execution skipped: executor unavailable (degraded surface — rule checks only)"
+	if s.factory != nil {
+		switch {
+		case s.factory.SurfacePolicyFor(codeexecutor.SurfaceSkillGate) != codeexecutor.PolicyDegrade:
+			passed = false
+			msg = "code execution required by surface policy, executor unavailable"
+		case s.factory.StrictFallback():
+			passed = false
+			msg = "code execution unavailable under strict fallback policy"
+		}
+	}
+	return check{Name: "code_execution_skipped", Passed: passed, Message: msg}
+}
+
+// applyCodeExecution 在 executor 可用时追加执行校验；不可用时追加结构化
+// skipped（fail-closed 仅限 strict/面级严格），返回是否仍通过。
+// factory==nil 是 legacy 构造面（线上 wire 恒注入 factory；nil 仅存在于测试
+// 通路）——保持旧行为零变更：不追加 skipped check。
+func (s *SandboxRunner) applyCodeExecution(ctx context.Context, suggestion *biz.SkillEvolutionSuggestion, result *sandboxValidationResult) {
+	if !result.Passed {
+		return
+	}
+	if s.executor == nil {
+		if s.factory == nil {
+			return // legacy path: keep byte-identical behavior
+		}
+		skipped := s.executorUnavailableCheck()
+		result.Checks = append(result.Checks, skipped)
+		if !skipped.Passed {
+			result.Passed = false
+			result.Message = "Code execution validation unavailable"
+		}
+		return
+	}
+	codeResult := s.codeExecutionValidation(ctx, suggestion)
+	result.Checks = append(result.Checks, codeResult.Checks...)
+	if !codeResult.Passed {
+		result.Passed = false
+		result.Message = "Code execution validation failed"
+	}
 }
 
 // RunSandbox implements biz.SandboxRunner for the Gate verification stage.
@@ -46,14 +104,7 @@ func NewSandboxRunner(uc *biz.SkillIntelligenceUsecase, factory *codeexecutor.Fa
 func (s *SandboxRunner) RunSandbox(ctx context.Context, skillID string, draftBody string) (bool, json.RawMessage, error) {
 	suggestion := &biz.SkillEvolutionSuggestion{SkillID: skillID, DraftSkillBody: draftBody}
 	result := s.ruleBasedValidation(suggestion)
-	if result.Passed && s.executor != nil {
-		codeResult := s.codeExecutionValidation(ctx, suggestion)
-		result.Checks = append(result.Checks, codeResult.Checks...)
-		if !codeResult.Passed {
-			result.Passed = false
-			result.Message = "Code execution validation failed"
-		}
-	}
+	s.applyCodeExecution(ctx, suggestion, result)
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
 		return false, nil, apierror.Internal("SANDBOX_RUNNER", "marshal sandbox result: %s", err)
@@ -83,15 +134,9 @@ func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID str
 
 	result := s.ruleBasedValidation(suggestion)
 
-	// If rule-based checks pass and CodeExecutor is available, run code validation.
-	if result.Passed && s.executor != nil {
-		codeResult := s.codeExecutionValidation(ctx, suggestion)
-		result.Checks = append(result.Checks, codeResult.Checks...)
-		if !codeResult.Passed {
-			result.Passed = false
-			result.Message = "Code execution validation failed"
-		}
-	}
+	// If rule-based checks pass: code execution when available, else a
+	// structured skipped check (fail-closed only under strict/posture).
+	s.applyCodeExecution(ctx, suggestion, result)
 
 	resultJSON, _ := json.Marshal(result)
 

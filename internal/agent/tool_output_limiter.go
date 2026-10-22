@@ -3,6 +3,7 @@ package agent
 import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -16,7 +17,7 @@ const (
 // newOutputSizeLimiterAfterHook creates an AfterTool hook that truncates
 // oversized tool results. It runs at priority 60, after the tool recorder
 // (priority 50) so the original size is logged before truncation.
-func newOutputSizeLimiterAfterHook(lg loggateway.Logger) callbacks.AfterToolHook {
-	hook := tools.NewOutputSizeLimiterHook(defaultToolOutputSizeLimit, lg)
+func newOutputSizeLimiterAfterHook(lg loggateway.Logger, spill *toolspill.Deps) callbacks.AfterToolHook {
+	hook := tools.NewOutputSizeLimiterHook(defaultToolOutputSizeLimit, lg, spill)
 	return callbacks.NewAfterToolHook(60, hook)
 }

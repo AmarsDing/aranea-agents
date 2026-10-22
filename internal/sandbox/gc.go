@@ -18,8 +18,28 @@ func (m *Manager) gcLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.gcOnce()
+			// 周期 light 对账折叠进既有 GC tick（review §12.1-⑤：不新增
+			// goroutine、默认 60s、env 可关）。
+			m.maybeLightReconcile(ctx)
 		}
 	}
+}
+
+// maybeLightReconcile runs the runtime light reconcile at most once per
+// reconcileInterval (0/negative = disabled). It piggybacks on the GC ticker
+// so no extra goroutine exists; destruction of registry-tracked entries never
+// happens here — only orphaned daemon instances are reaped directly, and
+// registry entries stay on the destroy() CAS single-fire path.
+func (m *Manager) maybeLightReconcile(ctx context.Context) {
+	if m.reconcileInterval <= 0 {
+		return
+	}
+	now := m.now()
+	if !m.lastReconcile.IsZero() && now.Sub(m.lastReconcile) < m.reconcileInterval {
+		return
+	}
+	m.lastReconcile = now
+	m.lightReconcile(ctx)
 }
 
 func (m *Manager) gcOnce() {

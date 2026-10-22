@@ -328,10 +328,27 @@ func (uc *LearningLoopUsecase) ApproveProposal(ctx context.Context, proposalID s
 		}
 	case ProposalStatusApproved:
 		// 已审批未注册（此前注册失败），直接重试注册。
+	case ProposalStatusApplied:
+		// 并发审批竞态落败（P0-7 A15⑤）：读到 applied 说明另一并发审批已完成
+		// approve+apply 全链——本单即重复审批，归一 Conflict 语义（重试安全），
+		// 而非以 BadRequest 吓退调用方。单线程重复审批同样语义成立。
+		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
 	default:
 		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only validated proposals can be approved")
 	}
-	return uc.RegisterKnowledge(ctx, proposalID, approvedBy)
+	out, err := uc.RegisterKnowledge(ctx, proposalID, approvedBy)
+	if err != nil {
+		// 并发审批竞态归一（P0-7 A15：并发 approve 仅一单成功，其余 Conflict）。
+		// ApproveProposal 的前置校验已放行 validated/approved；RegisterKnowledge
+		// 此处返回 BadRequest 只可能是竞态下状态已被并发推进（如另一审批者
+		// 抢先 applied），语义上是并发冲突而非客户端坏请求——归一为 Conflict，
+		// 与 CAS 未命中路径的对外契约一致。
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeBadRequest {
+			return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
+		}
+		return KnowledgeProposal{}, err
+	}
+	return out, nil
 }
 
 // ApplyProposal 显式注册入口：validated/approved → applied。
@@ -440,6 +457,20 @@ func (uc *LearningLoopUsecase) RunLoop(ctx context.Context, agentID string) erro
 			continue
 		}
 		if settings.EvoAutoApply {
+			// P0-7 A15⑦ 批 B 接线（"全部推进"产品确认，2026-10-22）：EvoAutoApply
+			// 自动注册改经 EvolutionAutoApplyAllowed 门——LLM 演化产物最高
+			// validated，applied 必须经人工审批（ApproveProposal/ApplyProposal
+			// 路径不受影响）；Gemini Auto Memory 先例：草稿绝不自动落盘。门当前
+			// 对任意来源永不放行（skill_trust.go §8.4⑥），此处被拒不静默吞掉，
+			// 落 Info 观测日志，提案停 validated 等待人工审批。
+			if !EvolutionAutoApplyAllowed(SkillSourceLLMEvolution) {
+				uc.lg.Info("learning_loop: evolution auto-apply suppressed by landing policy, awaiting human approval",
+					loggateway.StepID("learning_loop.evo_auto_apply_gated"),
+					loggateway.Str("agent_id", agentID),
+					loggateway.Str("proposal_id", prop.ID),
+					loggateway.Str("source", string(SkillSourceLLMEvolution)))
+				continue
+			}
 			if _, err := uc.RegisterKnowledge(ctx, prop.ID, "auto"); err != nil {
 				uc.lg.Warn("learning_loop: register knowledge failed",
 					loggateway.StepID("learning_loop.register_knowledge"),

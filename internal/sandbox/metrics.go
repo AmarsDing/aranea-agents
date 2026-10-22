@@ -41,6 +41,30 @@ var (
 		Name: "aranea_sandbox_quota_reject_total",
 		Help: "Acquire attempts rejected by quota.",
 	}, []string{"scope"})
+
+	// stderrTruncatedTotal counts Exec calls whose stderr hit StderrLimit and
+	// was truncated with the in-band tail note (review 2026-10-21 ⑥).
+	stderrTruncatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_sandbox_exec_stderr_truncated_total",
+		Help: "Exec calls whose stderr exceeded StderrLimit and was truncated.",
+	}, []string{"profile"})
+
+	// reconcileDriftTotal counts reverse drift spotted by the periodic light
+	// reconcile: a registry-leased entry whose daemon instance is gone. Lazily
+	// re-leased via Lease.Alive()/SessionLeases (review §2.5 #4), so this is
+	// observability-only (AS-EVT-01 Informational — never destroyed, never bused).
+	reconcileDriftTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_sandbox_reconcile_drift_total",
+		Help: "Reverse drift detected by the light reconcile (registry entry without a daemon instance).",
+	}, []string{"direction"})
+
+	// renewLabelFailTotal counts deadline-label sync failures on Renew
+	// (engine lacks the optional LabelUpdater capability or daemon error);
+	// the registry view stays authoritative, so failures are non-blocking.
+	renewLabelFailTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_sandbox_renew_label_fail_total",
+		Help: "Deadline label sync failures on Renew (engine capability missing or daemon error).",
+	})
 )
 
 // labeledCounter is a tiny mutex-guarded int64 map for reason/scope labels.

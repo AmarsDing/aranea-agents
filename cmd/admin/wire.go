@@ -77,6 +77,7 @@ import (
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
+	"aranea-agents/internal/toolspill"
 	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/appctx"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -249,6 +250,43 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 
 func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, paramRules biztool.ToolParamRuleStore, lg loggateway.Logger) *biztool.ToolUsecase {
 	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants), biztool.WithToolParamRuleStore(paramRules))
+}
+
+// provideToolSpillDeps 装配 P0-2 工具结果溢出外置（批 B 2026-10-22）：
+// conf.runtime.tool_result_spill 翻译 → 进程级共享 toolspill.Deps（Deps 本身
+// 只读+nil 时钟安全；设计评审 §3.4 不做一无是处）。workspace 根解析沿用
+// tools.WorkspaceRootFromEnv 先例（env 未配置 → 返回 nil，四消费点灰闸 OFF
+// 保持字节级旧行为）；构造失败仅 Warn + nil（spill 是安全网不是关键链路，
+// 失败一律 fail-soft 不回退为一个——调读写失败另有 Important 事件）。
+func provideToolSpillDeps(runtimeConf *conf.Runtime, lg loggateway.Logger) *toolspill.Deps {
+	cfg := runtimeConf.ToolResultSpillConfig() // nil-safe：默认 ON + 1MiB/64MiB/168h
+	if !cfg.Enabled {
+		return nil
+	}
+	root := strings.TrimSpace(cfg.Dir)
+	if root == "" {
+		root = tools.WorkspaceRootFromEnv()
+	}
+	if root == "" {
+		lg.Warn("toolspill 未配置 workspace: enabled=true 但 dir 与 ARANEA_WORKSPACE_ROOT/WORKSPACE_ROOT 皆空，continue OFF（零行为变化）",
+			loggateway.StepID("toolspill.deps.construct"),
+			loggateway.Str("component", "toolspill"))
+		return nil
+	}
+	store, err := toolspill.NewLocalFS(toolspill.Options{
+		WorkspaceRoot: root,
+		MaxFileBytes:  cfg.MaxFileBytes,
+		MaxTotalBytes: cfg.MaxTotalBytes,
+		TTL:           time.Duration(cfg.TTLHours) * time.Hour,
+		Logger:        lg,
+	})
+	if err != nil {
+		lg.Warn("toolspill store 构造失败，continue OFF（零行为变化）",
+			loggateway.StepID("toolspill.deps.construct"),
+			loggateway.Err(err))
+		return nil
+	}
+	return &toolspill.Deps{Store: store}
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -572,13 +610,39 @@ func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistr
 // agentToolResultPruneConfig 翻译 runtime 配置为 agent 包消费侧配置
 // （79-runtime-governance R2；agent 包不依赖 internal/conf）。
 // runtimeConf 为 nil 时 ToolResultPruneConfig() 返回默认开阈值配置（nil-safe）。
+// 批 B（P0-3③）：检索豁免 kill switch 透传——conf.retrieval_exempt_enabled
+// 显式 false 时置 RetrievalExempt=false（覆盖 agent 侧 nil=ON 默认）。
 func agentToolResultPruneConfig(runtimeConf *conf.Runtime) chatagent.ToolResultPruneConfig {
 	c := runtimeConf.ToolResultPruneConfig()
-	return chatagent.ToolResultPruneConfig{
+	out := chatagent.ToolResultPruneConfig{
 		Enabled:     c.Enabled,
 		AfterTurns:  c.AfterTurns,
 		SizeBytes:   c.SizeBytes,
 		ExemptTools: c.ExemptTools,
+	}
+	if !c.RetrievalExemptEnabled {
+		f := false
+		out.RetrievalExempt = &f // 显式 false ≠ 未设置（agent 侧 nil=ON 语义分界）
+	}
+	return out
+}
+
+// skillTrustGateMode 读取 P0-7 skill 信任门禁档位（批 B 2026-10-22）。
+// conf.runtime.skill_trust_gate_mode 已归一（空/未知=shadow）；本翻译顺带在
+// conf 层"on"时降级为 shadow 并 Warn（与被构造者 biz.NormalizeTrustGateMode
+// 的 on→shadow 归一双重一致，Wire 层早暴露忽略配置）。
+func skillTrustGateMode(runtimeConf *conf.Runtime, lg loggateway.Logger) biz.TrustGateMode {
+	mode := runtimeConf.ParsedSkillTrustGateMode()
+	switch mode {
+	case conf.SkillTrustGateModeOn:
+		lg.Warn("skill trust gate 不允许在本批推向 on（零误拒证据未齐），降级为 shadow",
+			loggateway.StepID("skill.trust_gate.mode_degraded"),
+			loggateway.Str("component", "wire"),
+			loggateway.Str("conf_value", mode),
+			loggateway.Str("effective", string(biz.TrustGateModeShadow)))
+		return biz.TrustGateModeShadow
+	default:
+		return biz.TrustGateMode(mode)
 	}
 }
 
@@ -1071,7 +1135,7 @@ func provideChatServiceDeps(
 			// system_guard 事件）。漏接则 collector 恒 nil、EmitGate 静默跳过
 			// （2026-08-28 S14 实测：input_risk_flagged 全不落库）。
 			DecisionCollector: decisions,
-			TurnSubmitClaimer:  data.NewChatTurnSubmitClaimer(d),
+			TurnSubmitClaimer: data.NewChatTurnSubmitClaimer(d),
 		},
 	}
 }
@@ -1285,6 +1349,7 @@ func provideGraphBuildDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
+			Spill:           provideToolSpillDeps(runtimeConf, lg), // wire 镜像时 wire_gen 须与 provideTRPCBuilderDeps 同步（注释见下"两处必须一致"）
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -1382,6 +1447,7 @@ func provideTRPCBuilderDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
+			Spill:           provideToolSpillDeps(runtimeConf, lg),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -1532,10 +1598,15 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
 // tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
-func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, lg loggateway.Logger) *biz.SkillUsecase {
+// P0-7 批 B（2026-10-22）：skill 信任门禁 Set 回注钩子（与 SetDedupCacheInvalidator
+// 同型先例）。conf.runtime.skill_trust_gate_mode 三档 off|shadow|on，conf 层归一
+// 默认 shadow、本批 wire 层把 on 归一为 shadow（零误拒证据未齐——批 B 守住"不真拒"
+// 底线，上线 on 需批间证据；biz.NormalizeTrustGateMode 内部另有同名降级，双保险）。
+func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, runtimeConf *conf.Runtime, lg loggateway.Logger) *biz.SkillUsecase {
 	u := biz.NewSkillUsecase(repo, embedder, lg)
 	u.SetDedupCacheInvalidator(dedup)
 	u.SetTagRepo(tagRepo)
+	u.SetTrustGateHook(biz.NewTrustGateHook(lg, skillTrustGateMode(runtimeConf, lg), biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
 	return u
 }
 

@@ -184,3 +184,23 @@ func classifyStatus(code int) RetryDecision {
 		return RetryDecision{Type: Retry, BackoffStrategy: "exponential"}
 	}
 }
+
+// IsContextOverflow reports whether an LLM error MESSAGE is a context-length
+// overflow (any provider phrasing, incl. HTTP 400 bodies whose text carries
+// the markers). A7 (P0-3 design §4.4②, "classifyResponseError 只读改造")：本
+// 函数为纯读取新增的导出，ClassifyRetry 的任何语义行都未触碰。协同分工：
+// overflow 在 transport 分类里是唯一一条 RetryFatal（不重试）且非用户错
+// （billing/content_filter）的缺口，shrink-retry 装饰器（shrink_retry.go）
+// 独占接管；429/5xx 与一切瞬时类在本谓词恒 false，仍归 RetryWithBackoff 由
+// retry_transport 独占——两条重试路径的触发集互斥，永不双重重试。
+func IsContextOverflow(msg string) bool {
+	return matchAny(strings.ToLower(msg), contextOverflowMarkers)
+}
+
+// IsContextOverflowError is the error-typed form of IsContextOverflow.
+func IsContextOverflowError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return IsContextOverflow(err.Error())
+}
